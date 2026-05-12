@@ -6,6 +6,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-05-12
+
+### Added
+
+- **Maven/JAR dependency management** — `CREATE/DROP/SHOW JAR DEPENDENCY` statements; `jar_dependencies` catalog table; skill and docs-site pages (MDL-JARDEP)
+- **Object-list pluggable widget properties** — grammar keywords for object-list blocks, extraction to `.def.json` (Phase 1), and BSON serialization through the executor (Phase 1 Layer 3)
+- **LEGACYDATAGRID grammar** — keyword dispatch table and `LEGACYDATAGRID` grammar rule (Phase 2 pluggable widget overhaul)
+- **`AllowCreateChangeLocally` flag** — exposed on external OData entities (#534)
+- **Catalog: contract_entities → external_entities link** — cross-reference between contract catalog and integration catalog
+- **`not(expr)` grammar enforcement** — grammar now requires parenthesised form; bare `not expr` rejected with CE0117 diagnostic
+
+### Fixed
+
+- `mxcli fmt` exits 1 on unparseable input and pipes describe output correctly (#398)
+- ALTER SNIPPET failing with "page not found" (#402)
+- `SHOW CONTEXT OF` entity showing empty definition (#396)
+- `CREATE ENTITY` rejects unknown attribute type names (#392)
+- `CREATE ENUMERATION` rejects duplicate value names (#390)
+- `DROP ENUMERATION` errors on ambiguous unqualified name (#391)
+- `CREATE ASSOCIATION` rejects duplicates for cross-module associations (#389)
+- `GRANT/REVOKE ON ENTITY` validates module roles (#399)
+- Enum XPath comparisons stored as string literals instead of enum refs (#176)
+- Catalog crash on duplicate OData contract entities/actions
+- `CATALOG.JAR_DEPENDENCIES` missing from `Tables()` list
+- Three nightly CI failures on Mendix 10.24
+- DataGrid2 `WidgetObject` boolean defaults aligned with `PropertyType` schema
+- `TextTemplate` translation defaults populated; `Editable=Always` set on filters
+- Required `CustomWidget` envelope fields added to filter widgets
+- `WidgetObject Properties` reordered to match `WidgetType PropertyTypes` order
+- `AllowUpload` field added to `WidgetValueType` BSON (closes one CE0463 gap)
+- Unique placeholder IDs for `TextTemplate` translations (#30)
+- Two ALTER PAGE bugs caught in test feedback
+- ComboBox CE0463 — guard auto-populate and null `selectAllButtonCaption`
+- Grammar added as explicit dependency of `build`, `test`, and `release` targets
+
 ## [0.9.0] - 2026-05-08
 
 ### Added
