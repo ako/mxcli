@@ -4,6 +4,7 @@ package executor
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
@@ -391,5 +392,70 @@ func TestApplyReplaceWidgetMutator_SameNameAllowed(t *testing.T) {
 	}
 	if !replaceCalled {
 		t.Error("expected ReplaceWidget to be called")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ValidateAlterPage static checks
+// ---------------------------------------------------------------------------
+
+// TestValidateAlterPage_CustomContentColumnInsert ensures that inserting a
+// COLUMN with nested widgets (custom content column) is flagged before
+// execution — this pattern crashes MxBuild with InvalidCastException.
+func TestValidateAlterPage_CustomContentColumnInsert(t *testing.T) {
+	stmt := &ast.AlterPageStmt{
+		PageName: ast.QualifiedName{Module: "MyModule", Name: "TestPage"},
+		Operations: []ast.AlterPageOperation{
+			&ast.InsertWidgetOp{
+				Position: "AFTER",
+				Target:   ast.WidgetRef{Widget: "colName"},
+				Widgets: []*ast.WidgetV3{
+					{
+						Type: "column",
+						Name: "colActions",
+						Children: []*ast.WidgetV3{
+							{Type: "actionbutton", Name: "btnEdit"},
+						},
+					},
+				},
+			},
+		},
+	}
+	violations := ValidateAlterPage(stmt)
+	if len(violations) == 0 {
+		t.Fatal("expected a violation for custom content column INSERT, got none")
+	}
+	v := violations[0]
+	if v.RuleID != "MDL-ALTPAGE001" {
+		t.Errorf("expected rule MDL-ALTPAGE001, got %s", v.RuleID)
+	}
+	if !strings.Contains(v.Message, "colActions") {
+		t.Errorf("violation message should mention column name 'colActions': %s", v.Message)
+	}
+}
+
+// TestValidateAlterPage_AttributeColumnInsert_OK ensures that inserting a
+// plain attribute column (no nested widgets) is not flagged.
+func TestValidateAlterPage_AttributeColumnInsert_OK(t *testing.T) {
+	stmt := &ast.AlterPageStmt{
+		PageName: ast.QualifiedName{Module: "MyModule", Name: "TestPage"},
+		Operations: []ast.AlterPageOperation{
+			&ast.InsertWidgetOp{
+				Position: "AFTER",
+				Target:   ast.WidgetRef{Widget: "colName"},
+				Widgets: []*ast.WidgetV3{
+					{
+						Type: "column",
+						Name: "colPrice",
+						Properties: map[string]any{"attribute": "Price", "caption": "Price"},
+						// No Children — this is a safe attribute column
+					},
+				},
+			},
+		},
+	}
+	violations := ValidateAlterPage(stmt)
+	if len(violations) != 0 {
+		t.Errorf("expected no violations for attribute column INSERT, got: %v", violations)
 	}
 }

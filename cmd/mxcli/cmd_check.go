@@ -109,6 +109,10 @@ Examples:
 			if mfStmt, ok := stmt.(*ast.CreateMicroflowStmt); ok {
 				violations = append(violations, executor.ValidateMicroflow(mfStmt)...)
 			}
+			// Check ALTER PAGE for crash-inducing patterns
+			if alterPageStmt, ok := stmt.(*ast.AlterPageStmt); ok {
+				violations = append(violations, executor.ValidateAlterPage(alterPageStmt)...)
+			}
 			// Check view entity OQL
 			if viewStmt, ok := stmt.(*ast.CreateViewEntityStmt); ok {
 				if viewStmt.Query.RawQuery != "" {

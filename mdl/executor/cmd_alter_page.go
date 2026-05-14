@@ -10,6 +10,7 @@ import (
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	"github.com/mendixlabs/mxcli/mdl/backend"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
+	"github.com/mendixlabs/mxcli/mdl/linter"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/pages"
 )
@@ -267,4 +268,36 @@ func buildWidgetsFromAST(ctx *ExecContext, widgets []*ast.WidgetV3, moduleName s
 		result = append(result, widget)
 	}
 	return result, nil
+}
+
+// ============================================================================
+// Static validation (used by mxcli check without project connection)
+// ============================================================================
+
+// ValidateAlterPage checks ALTER PAGE statements for patterns that produce
+// invalid BSON and crash MxBuild without a useful error message.
+func ValidateAlterPage(s *ast.AlterPageStmt) []linter.Violation {
+	var violations []linter.Violation
+	for _, op := range s.Operations {
+		insert, ok := op.(*ast.InsertWidgetOp)
+		if !ok {
+			continue
+		}
+		for _, w := range insert.Widgets {
+			if strings.EqualFold(w.Type, "column") && len(w.Children) > 0 {
+				violations = append(violations, linter.Violation{
+					RuleID:   "MDL-ALTPAGE001",
+					Severity: linter.SeverityError,
+					Message: fmt.Sprintf(
+						"ALTER PAGE INSERT: column '%s' has nested widgets — "+
+							"inserting a custom content column via ALTER PAGE produces invalid BSON "+
+							"and crashes MxBuild (InvalidCastException: DivContainer → WidgetObject). "+
+							"Use CREATE OR REPLACE PAGE to rebuild the page instead.",
+						w.Name,
+					),
+				})
+			}
+		}
+	}
+	return violations
 }
