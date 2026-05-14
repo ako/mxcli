@@ -372,24 +372,36 @@ create or modify workflow M.BrandNew begin end workflow;
 
 func TestCheckProjectConflicts_DropThenCreate_ChecksProjectAgain(t *testing.T) {
 	ctx, _ := setupProjectConflictCtx(t)
-	// After dropping ExistingWF, re-creating it still conflicts with the project
-	// because the project still has ExistingWF at execution time.
+	// The first CREATE conflicts because ExistingWF is in the project.
+	// The DROP records ExistingWF as dropped-from-project, so the second CREATE
+	// is not flagged — the script already removed it.
 	msgs := conflictErrorMessages(ctx, `
 create module M;
 create workflow M.ExistingWF begin end workflow;
 drop workflow M.ExistingWF;
 create workflow M.ExistingWF begin end workflow;
 `, t)
-	// Both CREATEs should be flagged — project still has ExistingWF
+	// Only the first CREATE should be flagged; the re-create after DROP is clean.
 	count := 0
 	for _, m := range msgs {
 		if strings.Contains(m, "M.ExistingWF") {
 			count++
 		}
 	}
-	if count != 2 {
-		t.Errorf("expected 2 conflicts for M.ExistingWF (one per CREATE), got %d: %v", count, msgs)
+	if count != 1 {
+		t.Errorf("expected 1 conflict for M.ExistingWF (first CREATE only), got %d: %v", count, msgs)
 	}
+}
+
+func TestCheckProjectConflicts_DropThenCreate_NoConflict(t *testing.T) {
+	ctx, _ := setupProjectConflictCtx(t)
+	// A script that drops an existing project entity and immediately recreates it
+	// with the same name should produce zero conflicts.
+	assertNoConflicts(t, ctx, `
+create module M;
+drop workflow M.ExistingWF;
+create workflow M.ExistingWF begin end workflow;
+`)
 }
 
 func TestCheckProjectConflicts_NotConnected_NoErrors(t *testing.T) {

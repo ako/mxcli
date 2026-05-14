@@ -524,6 +524,10 @@ func loadProjectNameSets(ctx *ExecContext) *projectNameSets {
 // exists in the project. Names created earlier in the same script (and not yet
 // dropped) are excluded from the project check — those conflicts will be caught
 // by CheckScriptDuplicates instead.
+//
+// A DROP that targets a name present in the project records that name in the
+// droppedFromProject registry. A subsequent CREATE for the same name is not
+// flagged as a conflict because the script already removed it.
 func CheckProjectConflicts(ctx *ExecContext, prog *ast.Program) []error {
 	if !ctx.Connected() {
 		return nil
@@ -531,6 +535,7 @@ func CheckProjectConflicts(ctx *ExecContext, prog *ast.Program) []error {
 
 	ps := loadProjectNameSets(ctx)
 	reg := newNameRegistry()
+	droppedFromProject := newNameRegistry()
 	var errs []error
 
 	for i, stmt := range prog.Statements {
@@ -547,19 +552,25 @@ func CheckProjectConflicts(ctx *ExecContext, prog *ast.Program) []error {
 			continue
 		}
 
-		// DROP — remove from live registry
+		// DROP — remove from live registry; if the name existed in the project,
+		// record it so a subsequent CREATE is not flagged as a conflict.
 		if dt, name := stmtDropInfo(stmt); dt != "" {
 			reg.remove(dt, name)
+			projectSet := ps.setFor(dt)
+			if projectSet != nil && projectSet[name] {
+				droppedFromProject.add(dt, name, stmtNum)
+			}
 			continue
 		}
 
-		// CREATE — check for project conflict if not idempotent and not alive in script
+		// CREATE — check for project conflict if not idempotent, not alive in
+		// script, and not already dropped from the project earlier in this script.
 		dt, name, idempotent := stmtCreateInfo(stmt)
 		if dt == "" {
 			continue
 		}
 
-		if !idempotent && !reg.isAlive(dt, name) {
+		if !idempotent && !reg.isAlive(dt, name) && !droppedFromProject.isAlive(dt, name) {
 			projectSet := ps.setFor(dt)
 			if projectSet != nil && projectSet[name] {
 				errs = append(errs, fmt.Errorf(
