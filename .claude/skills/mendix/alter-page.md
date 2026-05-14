@@ -12,10 +12,11 @@ ALTER PAGE and ALTER SNIPPET modify an existing page or snippet's widget tree **
 | Add a field to an existing form | `alter page` with `insert` |
 | Remove unused widgets | `alter page` with `drop` |
 | Replace a footer or section | `alter page` with `replace` |
+| Add/remove/reorder DataGrid **custom content columns** | `create or replace page` — **not** `alter page insert` |
 | Rebuild entire page from scratch | `create or replace page` |
 | Create a new page | `create page` |
 
-**Rule of thumb:** Use `alter page` for targeted edits to a few widgets. Use `create or replace page` when redefining the full page structure.
+**Rule of thumb:** Use `alter page` for targeted edits to a few widgets. Use `create or replace page` when redefining the full page structure or when dealing with DataGrid custom content columns.
 
 ## Syntax
 
@@ -99,6 +100,13 @@ insert before btnSave {
 ```
 
 Inserted widgets use the same syntax as `create page`. Multiple widgets can be inserted in a single block.
+
+> **RULE: Never INSERT a custom content column (a DataGrid column with nested widgets).**
+> Inserting a column whose body contains widgets (ACTIONBUTTON, CONTAINER, DYNAMICTEXT, etc.) produces invalid BSON and crashes MxBuild with:
+> ```
+> System.InvalidCastException: Unable to cast 'DivContainer' to 'WidgetObject'
+> ```
+> Use `CREATE OR REPLACE PAGE` to rebuild the entire page whenever you need to add, remove, or reorder custom content columns. This restriction applies to the old DATAGRID widget; DataGrid2 columns do not have this problem.
 
 ### DROP - Remove Widgets
 

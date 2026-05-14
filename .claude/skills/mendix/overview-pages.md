@@ -87,9 +87,22 @@ create page Module.Entity_Overview
       }
       column colContent (desktopwidth: 10) {
         dynamictext heading (content: 'Entities', rendermode: H2)
-        datagrid EntityGrid (datasource: database Module.Entity) {
-          column colName (attribute: Name, caption: 'Name')
-          column colDescription (attribute: description, caption: 'Description')
+        datagrid EntityGrid (
+          datasource: database Module.Entity,
+          selection: Multi,
+          PagingPosition: both,
+          designproperties: ['Compact': on, 'Hover': on, 'Striped': on]
+        ) {
+          column colName (attribute: Name, caption: 'Name') {
+            textfilter textFilter1
+          }
+          column colDescription (attribute: Description, caption: 'Description') {
+            textfilter textFilter2
+          }
+          column colActions (caption: 'Actions') {
+            actionbutton btnEdit (caption: 'Edit', action: show_page Module.Entity_NewEdit passing $currentObject)
+            actionbutton btnDelete (caption: 'Delete', action: delete, buttonstyle: danger)
+          }
         }
       }
     }
@@ -121,11 +134,15 @@ snippetcall widgetName (snippet: Module.SnippetName, params: {Customer: $Custome
 ```sql
 datagrid GridName (
   datasource: database from Module.Entity where [IsActive = true] sort by Name asc,
-  selection: single|multiple|none
+  selection: Multi,
+  PagingPosition: both,
+  designproperties: ['Compact': on, 'Hover': on, 'Striped': on]
 ) {
-  column colName (attribute: attributename, caption: 'Label')
-  column colCustom (caption: 'Custom') {
-    -- Nested widgets (ACTIONBUTTON, LINKBUTTON, DYNAMICTEXT)
+  column colName (attribute: Name, caption: 'Name') {
+    textfilter textFilter1
+  }
+  column colActions (caption: 'Actions') {
+    actionbutton btnEdit (caption: 'Edit', action: show_page Module.Entity_NewEdit passing $currentObject)
   }
 }
 ```
@@ -134,11 +151,20 @@ datagrid GridName (
 - `datasource: database from Module.Entity` - Entity data source (required)
 - `where [condition]` - Optional XPath filter (inline after entity in DataSource)
 - `sort by attr asc|desc` - Optional sorting (inline after WHERE: `sort by Name asc, Price desc`)
-- `selection: single|multiple|none` - Optional selection mode
+- `selection: Multi` - Multi-selection (`Multi`, `Single`, or omit for none)
+- `PagingPosition: both` - Pagination bar position (`top`, `bottom`, `both`)
+- `designproperties: ['Compact': on, 'Hover': on, 'Striped': on]` - Atlas design tokens
 
 **Column Types:**
 - `column colName (attribute: attribute, caption: 'label')` - Attribute column with binding
-- `column colName (caption: 'label') { ... }` - Custom column with nested widgets
+- `column colName (caption: 'label') { ... }` - Custom content column (nested widgets)
+
+> **Reserved keyword column names:** If the attribute name is a reserved MDL keyword (e.g. `Status`, `Type`), you must quote it and use a distinct column widget name:
+> ```sql
+> column colStatus (attribute: "Status", caption: 'Status')
+> column colType   (attribute: "Type",   caption: 'Type')
+> ```
+> Using `COLUMN Status (attribute: Status)` fails silently — the column won't sort or filter correctly because `Status` is parsed as a keyword. Always prefix the widget name (`colStatus`) when the attribute name is reserved.
 
 **Column Properties (non-default only in DESCRIBE output):**
 

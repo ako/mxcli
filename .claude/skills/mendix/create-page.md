@@ -286,11 +286,18 @@ Display list of objects using DataGrid widget:
 ```sql
 datagrid gridName (
   datasource: database from Module.Entity where [condition] sort by attributename asc|desc,
-  selection: single|multiple|none
+  selection: Multi
 ) {
   column colName (attribute: attributename, caption: 'Label')
 }
 ```
+
+> **Reserved keyword column names:** If the attribute name is an MDL reserved keyword (e.g. `Status`, `Type`), you must quote the attribute value and use a distinct widget name for the column:
+> ```sql
+> column colStatus (attribute: "Status", caption: 'Status')
+> column colType   (attribute: "Type",   caption: 'Type')
+> ```
+> Writing `COLUMN Status (attribute: Status)` fails silently — `Status` and `Type` are parsed as keywords. Always use a `col`-prefixed widget name when the attribute name is reserved.
 
 **Column Properties:**
 
@@ -480,7 +487,7 @@ Display items in card layout with selection and responsive columns:
 ```sql
 gallery galleryName (
   datasource: database from Module.Entity sort by Name asc,
-  selection: single|multiple|none,
+  selection: Single,
   DesktopColumns: 3,
   TabletColumns: 2,
   PhoneColumns: 1
