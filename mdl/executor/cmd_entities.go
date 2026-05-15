@@ -98,6 +98,15 @@ func execCreateEntity(ctx *ExecContext, s *ast.CreateEntityStmt) error {
 		}
 	}
 
+	// Reject reserved attribute names (CE7247) before writing anything.
+	// Mendix rejects names like Owner/Type/Context/Id at runtime regardless of
+	// entity kind — catching here avoids writing a project that Studio Pro will
+	// refuse to open. Issue #552.
+	if vs := ValidateEntity(s); len(vs) > 0 {
+		v := vs[0]
+		return mdlerrors.NewValidationf("%s — %s", v.Message, v.Suggestion)
+	}
+
 	// Validate TypeEnumeration attribute refs before writing anything.
 	// The visitor uses TypeEnumeration for both enum and entity type references
 	// (TypeEnumeration vs TypeEntity ambiguity). Accept the ref when it resolves

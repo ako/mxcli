@@ -281,7 +281,7 @@ var mendixReservedWords = map[string]bool{
 	// Mendix-specific reserved identifiers
 	"changedby": true, "changeddate": true, "con": true, "context": true,
 	"createddate": true, "currentuser": true, "guid": true,
-	"id": true, "mendixobject": true, "submetaobjectname": true,
+	"id": true, "mendixobject": true, "owner": true, "submetaobjectname": true,
 }
 
 // ValidateEnumeration checks enumeration value names for reserved words.
@@ -336,20 +336,25 @@ var mendixSystemAttributeNames = map[string]bool{
 
 // ValidateEntity checks entity attribute names for reserved system names.
 // Returns a list of structured violations with rule IDs. This function does not require a project connection.
+//
+// Two distinct checks run here:
+//   - MDL020 (mendixSystemAttributeNames): only applies to persistent entities.
+//     Owner/ChangedBy/CreatedDate/ChangedDate are auto-managed there and should
+//     be declared with the AutoX pseudo-types.
+//   - MDL021 (mendixReservedWords / CE7247): applies to ALL entity kinds.
+//     Mendix rejects these names at runtime regardless of persistence.
 func ValidateEntity(stmt *ast.CreateEntityStmt) []linter.Violation {
 	var violations []linter.Violation
-	// Only persistent entities have system attributes
-	if stmt.Kind != ast.EntityPersistent {
-		return violations
-	}
 	for _, attr := range stmt.Attributes {
-		// Skip pseudo-types — these ARE the system attributes
+		// Skip pseudo-types — these ARE the system attributes (persistent entities only).
 		if attr.Type.Kind == ast.TypeAutoOwner || attr.Type.Kind == ast.TypeAutoChangedBy ||
 			attr.Type.Kind == ast.TypeAutoCreatedDate || attr.Type.Kind == ast.TypeAutoChangedDate {
 			continue
 		}
 		lower := strings.ToLower(attr.Name)
-		if mendixSystemAttributeNames[lower] {
+		// MDL020: system-attribute conflict — only meaningful on persistent entities,
+		// where the suggested fix is to use the AutoX pseudo-type.
+		if stmt.Kind == ast.EntityPersistent && mendixSystemAttributeNames[lower] {
 			violations = append(violations, linter.Violation{
 				RuleID:   "MDL020",
 				Severity: linter.SeverityError,
@@ -363,7 +368,10 @@ func ValidateEntity(stmt *ast.CreateEntityStmt) []linter.Violation {
 				},
 				Suggestion: fmt.Sprintf("To use the Mendix built-in audit field, declare it with the pseudo-type: '%s: Auto%s'. To store an unrelated date, choose a different name (e.g., 'EntryDate', 'RecordDate')", attr.Name, attr.Name),
 			})
+			continue
 		}
+		// MDL021: CE7247 runtime reserved words — apply to all entity kinds
+		// including non-persistent and view entities.
 		if mendixReservedWords[lower] {
 			violations = append(violations, linter.Violation{
 				RuleID:   "MDL021",

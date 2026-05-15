@@ -132,12 +132,20 @@ func TestValidateEntityReservedAttributeName(t *testing.T) {
 	}
 }
 
-// TestValidateEntityNonPersistentAllowed verifies that non-persistent entities
-// can use system attribute names without error.
-func TestValidateEntityNonPersistentAllowed(t *testing.T) {
+// TestValidateEntityNPEReservedWords verifies that non-persistent entities
+// reject runtime-reserved attribute names (CE7247). Issue #552.
+//
+// Mendix Studio Pro reports CE7247 "The name 'X' is a reserved word." on
+// NPE attributes named Owner, Type, Context, Id, CreatedDate, ChangedDate,
+// ChangedBy, etc. Previously ValidateEntity early-returned for NPEs and
+// missed these.
+func TestValidateEntityNPEReservedWords(t *testing.T) {
 	input := `create non-persistent entity Test.MyNPE (
-  CreatedDate : DateTime,
-  Owner : String(200)
+  Owner : String(200),
+  Type : String(50),
+  Context : String(100),
+  Id : Integer,
+  CreatedDate : DateTime
 );`
 
 	prog, errs := visitor.Build(input)
@@ -151,8 +159,39 @@ func TestValidateEntityNonPersistentAllowed(t *testing.T) {
 	}
 
 	violations := ValidateEntity(stmt)
+	expected := []string{"Owner", "Type", "Context", "Id", "CreatedDate"}
+	for _, name := range expected {
+		found := false
+		for _, v := range violations {
+			if v.RuleID == "MDL021" && strings.Contains(v.Message, "'"+name+"'") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Expected MDL021 violation for NPE attribute %q (CE7247), got: %v", name, violations)
+		}
+	}
+}
+
+// TestValidateEntityNPENormalAttributesPass verifies that legitimate NPE
+// attribute names (non-reserved) do not trigger false positives.
+func TestValidateEntityNPENormalAttributesPass(t *testing.T) {
+	input := `create non-persistent entity Test.MyNPE (
+  Title : String(200),
+  Message : String(2000),
+  IsActive : Boolean
+);`
+
+	prog, errs := visitor.Build(input)
+	if len(errs) > 0 {
+		t.Fatalf("Parse error: %v", errs[0])
+	}
+
+	stmt := prog.Statements[0].(*ast.CreateEntityStmt)
+	violations := ValidateEntity(stmt)
 	if len(violations) > 0 {
-		t.Errorf("Non-persistent entity should allow system attribute names, got: %v", violations)
+		t.Errorf("Normal NPE attribute names should not trigger violations, got: %v", violations)
 	}
 }
 

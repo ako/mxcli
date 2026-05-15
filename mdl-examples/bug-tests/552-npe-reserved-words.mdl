@@ -1,0 +1,39 @@
+-- Bug test: Non-persistent entities must reject Mendix-reserved attribute names.
+-- Issue #552: Creating an NPE with attributes named Owner, Type, Context, Id,
+-- CreatedDate, ChangedDate, ChangedBy succeeded silently in mxcli but produced
+-- CE7247 "The name 'X' is a reserved word." errors when opening in Studio Pro.
+--
+-- Root cause: ValidateEntity in mdl/executor/cmd_enumerations.go early-returned
+-- for non-persistable entities, skipping the mendixReservedWords (CE7247) check.
+-- The check should apply to all entity kinds.
+--
+-- After the fix: `mxcli check` reports MDL021 for each reserved attribute name,
+-- preventing the broken MPR from being written.
+--
+-- Run with: mxcli check 552-npe-reserved-words.mdl
+--           (expect: 7 errors, all MDL021)
+create module bug552;
+
+-- All seven names below are runtime-reserved by Mendix (CE7247).
+create non-persistent entity bug552.BadNPE (
+  Owner: string(200),
+  Type: string(50),
+  Context: string(100),
+  Id: integer,
+  CreatedDate: dateTime,
+  ChangedDate: dateTime,
+  ChangedBy: string(100)
+);
+
+-- Quoted identifiers are NOT a workaround for Mendix runtime reserved words —
+-- Studio Pro still rejects them; CE7247 is enforced on the stored name, not the
+-- MDL surface syntax. Renaming is the only fix:
+create non-persistent entity bug552.GoodNPE (
+  OwnerName: string(200),
+  RecordType: string(50),
+  ContextLabel: string(100),
+  RecordId: integer,
+  EntryDate: dateTime,
+  ModifiedAt: dateTime,
+  ModifiedByUser: string(100)
+);
