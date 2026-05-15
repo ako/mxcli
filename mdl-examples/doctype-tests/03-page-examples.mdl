@@ -968,6 +968,88 @@ create page PgTest.P015_Product_EditFull
   }
 }
 
+-- ============================================================================
+-- LEVEL 3b: DataView Form Orientation (FormOrientation / LabelWidth)
+-- ============================================================================
+--
+-- Mendix stores the DataView "Form Orientation" UI setting as the BSON
+-- field `LabelWidth`:
+--   LabelWidth = 0       -> Vertical   (label above the input)
+--   LabelWidth > 0 (1..12)-> Horizontal (label beside the input; takes N/12
+--                                       of the row width — the Studio Pro
+--                                       label-width slider)
+--   Default (omitted)    -> Horizontal with LabelWidth = 3
+--
+-- MDL exposes both spellings; LabelWidth wins when both are set:
+--   FormOrientation: Vertical | Horizontal
+--   LabelWidth: <0..12>
+--
+-- DESCRIBE round-trips the canonical form: `FormOrientation: Vertical`
+-- for LabelWidth=0, an explicit `LabelWidth: N` for non-default positive
+-- widths, and emits nothing when the value is the default 3.
+
+/**
+ * DataView with Vertical form orientation (labels above inputs).
+ * @param $Product The product to edit
+ */
+create or replace page PgTest.P018_DataView_FormOrientation_Vertical (
+  title: 'Vertical Form',
+  layout: Atlas_Core.PopupLayout,
+  params: { $Product: PgTest.Product },
+  folder: 'DataView'
+) {
+  dataview ProductForm (datasource: $Product, FormOrientation: Vertical) {
+    textbox txtName (label: 'Product Name', attribute: Name)
+    textbox txtCode (label: 'Product Code', attribute: Code)
+    footer footer1 {
+      actionbutton btnSave (caption: 'Save', action: save_changes, buttonstyle: success)
+      actionbutton btnCancel (caption: 'Cancel', action: cancel_changes)
+    }
+  }
+}
+
+/**
+ * DataView with explicit Horizontal form orientation (labels beside inputs).
+ * Equivalent to the default; included to show the spelling works.
+ * @param $Product The product to edit
+ */
+create or replace page PgTest.P018_DataView_FormOrientation_Horizontal (
+  title: 'Horizontal Form',
+  layout: Atlas_Core.PopupLayout,
+  params: { $Product: PgTest.Product },
+  folder: 'DataView'
+) {
+  dataview ProductForm (datasource: $Product, FormOrientation: Horizontal) {
+    textbox txtName (label: 'Product Name', attribute: Name)
+    textbox txtCode (label: 'Product Code', attribute: Code)
+    footer footer1 {
+      actionbutton btnSave (caption: 'Save', action: save_changes, buttonstyle: success)
+      actionbutton btnCancel (caption: 'Cancel', action: cancel_changes)
+    }
+  }
+}
+
+/**
+ * DataView with an explicit LabelWidth (Horizontal, label spans 5/12).
+ * LabelWidth overrides FormOrientation when both are present.
+ * @param $Product The product to edit
+ */
+create or replace page PgTest.P018_DataView_LabelWidth (
+  title: 'Custom Label Width',
+  layout: Atlas_Core.PopupLayout,
+  params: { $Product: PgTest.Product },
+  folder: 'DataView'
+) {
+  dataview ProductForm (datasource: $Product, LabelWidth: 5) {
+    textbox txtName (label: 'Product Name', attribute: Name)
+    textbox txtCode (label: 'Product Code', attribute: Code)
+    footer footer1 {
+      actionbutton btnSave (caption: 'Save', action: save_changes, buttonstyle: success)
+      actionbutton btnCancel (caption: 'Cancel', action: cancel_changes)
+    }
+  }
+}
+
 -- MARK: Snippet
 
 
