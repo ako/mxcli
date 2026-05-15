@@ -154,6 +154,42 @@ Because Go's `internal/` rule allows only the parent package and its children to
 
 ---
 
+### Change 6: Reduce Folder Navigability Cost in Large Source Directories
+
+**What:** Several source folders have grown large enough that `ls` is a wall of text and a grep for a domain keyword matches dozens of files. Change 3 made the executor's *registration* discoverable but did not address the underlying file-count problem.
+
+**Current state (largest flat folders, excluding generated/reference):**
+
+| Folder | Files | Pattern |
+|---|---|---|
+| `mdl/executor/` | 261 (118 source + 143 test) | flat, `cmd_<domain>_*.go` |
+| `sdk/mpr/` | 102 | flat, `writer_*` (52), `parser_*` (27), `reader_*` (5) |
+| `mdl/visitor/` | 77 | flat, all `visitor_*` |
+| `cmd/mxcli/tui/` | 62 | flat |
+| `cmd/mxcli/` | 56 | flat |
+| `mdl/ast/` | 35 | flat |
+
+**Why this helps:** An agent starting a task in `mdl/executor/` cannot scan the folder structure to orient itself — there is no structure to scan. The naming convention `cmd_<domain>_<aspect>.go` is a *virtual* hierarchy that only pays off if you already know the domain word to grep for. First-touch tasks pay a full-folder-listing cost.
+
+**Two approaches considered:**
+
+1. **Split into subpackages by domain** (e.g. `mdl/executor/entities/`, `mdl/executor/pages/`, `mdl/executor/microflows/`). Real structural separation, but in Go each subdirectory is a separate package — anything currently shared between `cmd_*.go` files (helpers, types, the registry) would need to be exported and moved to a shared internal package. That's real churn, especially for the executor where handlers share `ExecContext`, dispatch helpers, and unexported parser/builder utilities. The same shared-state argument applies to `sdk/mpr/`, where `writer_*.go` and `parser_*.go` share private BSON types.
+
+2. **Keep flat packages, add a per-folder index file** — a `_index.md` (or extend the existing `register_stubs.go`-style index) that maps symptom/domain → file. Cheap, no code movement, no exports churn. The naming convention `cmd_<domain>_<aspect>.go` is already a virtual hierarchy; an index just makes it greppable in one place instead of via `ls | grep`. Same playbook as the existing `.claude/skills/fix-issue.md` symptom table.
+
+**Recommendation:**
+
+- **Option 2 for `mdl/executor/`, `sdk/mpr/`, `mdl/visitor/`** — low effort, immediate agent benefit. Add a `_index.md` per folder; treat it as part of the PR checklist when adding new files to these folders. For the executor, `register_stubs.go` already serves part of this role and could be lightly extended.
+- **Option 1 selectively for `cmd/mxcli/tui/` and `cmd/mxcli/`** where the files are more genuinely independent (separate CLI subcommands, separate TUI views) and don't share as much internal state.
+
+**Implementation steps (option 2, executor first):**
+1. Add `mdl/executor/_index.md` mapping every `cmd_*.go` to its domain, command keywords, and the corresponding `registerXxxHandlers` function
+2. Add to the PR checklist: "If you added a `cmd_*.go` file in `mdl/executor/`, update `_index.md`"
+3. Repeat for `sdk/mpr/_index.md` (writer/parser by document type) and `mdl/visitor/_index.md`
+4. Re-evaluate `cmd/mxcli/` and `cmd/mxcli/tui/` for an option-1 split as a separate PR
+
+---
+
 ## Summary and Priority
 
 | Change | Problem solved | Risk | Effort |
@@ -163,5 +199,6 @@ Because Go's `internal/` rule allows only the parent package and its children to
 | 3. Command self-registration | Reduces agent discovery cost | ✅ Done — explicit `NewRegistry()`, no `init()` | — |
 | 4. Code-generate mock | Eliminates mock drift, reduces sync errors | Low | Low |
 | 5. Compiler-enforced boundary | Converts checklist rule to compile error | Medium (needs design) | Medium |
+| 6. Folder navigability indexes | Reduces first-touch discovery cost in 260+/100+ file folders | Low | Low |
 
-**Status:** Changes 1, 2, and 3 are shipped. Remaining work: Change 4 (code-generate mock) and Change 5 (compiler-enforced boundary, needs design decision on the `internal/` approach).
+**Status:** Changes 1, 2, and 3 are shipped. Remaining work: Change 4 (code-generate mock), Change 5 (compiler-enforced boundary, needs design decision on the `internal/` approach), and Change 6 (per-folder `_index.md` for the largest source directories).
