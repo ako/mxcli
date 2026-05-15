@@ -5,6 +5,15 @@
 
 Use `show widgets` and `update widgets` to discover and modify widget properties across pages and snippets in bulk.
 
+**When to use which tool:**
+
+| Scope | Tool |
+|-------|------|
+| One page, one or several related changes | `alter page` — see `alter-page.md` |
+| Many pages matched by `WHERE` filter (across one or more modules) | `update widgets` (this skill) |
+
+`alter page` is the right call for targeted, page-specific edits — it can combine `set`/`insert`/`drop`/`replace` in a single block. `update widgets` is for cross-page patterns like "set `Class` on every Container in `MyMod`" where naming each page explicitly would be tedious or error-prone.
+
 ## Prerequisites
 
 Widget commands require a full catalog build:

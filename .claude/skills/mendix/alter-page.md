@@ -12,10 +12,15 @@ ALTER PAGE and ALTER SNIPPET modify an existing page or snippet's widget tree **
 | Add a field to an existing form | `alter page` with `insert` |
 | Remove unused widgets | `alter page` with `drop` |
 | Replace a footer or section | `alter page` with `replace` |
+| Several related changes on the same page | `alter page` with multiple operations in one block |
+| Same property across many pages (e.g., add `Class` to every Container) | `update widgets` — see `bulk-widget-updates.md` |
 | Rebuild entire page from scratch | `create or replace page` |
 | Create a new page | `create page` |
 
-**Rule of thumb:** Use `alter page` for targeted edits to a few widgets. Use `create or replace page` when redefining the full page structure.
+**Rule of thumb:**
+- `alter page` — targeted edits to one page. Combine multiple ops in one block when they belong together.
+- `update widgets` — cross-page bulk updates with `WHERE` filtering and `DRY RUN`.
+- `create or replace page` — redefining the full page structure.
 
 ## Syntax
 
@@ -33,7 +38,20 @@ alter snippet Module.SnippetName {
 };
 ```
 
-Multiple operations can be combined in a single ALTER statement. They are applied sequentially.
+Multiple operations can be combined in a single ALTER statement. They are applied sequentially; later operations see the page state produced by earlier ones, so you can `set` on a widget you just `insert`ed.
+
+```sql
+-- Rename a column, add a sibling, drop an obsolete one — all in one block.
+alter page MyMod.Product_Overview {
+  set caption = 'Product Name' on dgProducts.Name;
+  insert after dgProducts.Lifecycle {
+    column NewCol (attribute: Sku, caption: 'SKU')
+  };
+  drop widget dgProducts.OldCol
+};
+```
+
+For changes that should be applied across **many pages** (e.g., "add `Class='card'` to every Container in `MyMod`"), use `UPDATE WIDGETS` instead — see `bulk-widget-updates.md`.
 
 ## Operations
 
