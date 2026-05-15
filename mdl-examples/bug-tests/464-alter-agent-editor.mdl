@@ -1,0 +1,68 @@
+-- ============================================================================
+-- Bug test: issue #464 — ALTER AGENT (and friends) not supported in grammar
+-- ============================================================================
+--
+-- Before the fix, the user's reproducer:
+--   ALTER AGENT MyModule.VerifyAgent SET Instructions = 'updated';
+-- failed with `no viable alternative at input 'ALTERAGENT'` because the
+-- grammar listed 13 ALTER variants but none of the four agent-editor
+-- document types (Model, Knowledge Base, Consumed MCP Service, Agent).
+--
+-- This bug test exercises all four ALTER variants. ALTER MODEL / ALTER
+-- KNOWLEDGE BASE / ALTER CONSUMED MCP SERVICE are SET-only (no
+-- collections); ALTER AGENT additionally supports ADD/DROP for tools,
+-- MCP services, and knowledge bases.
+--
+-- Property names match CREATE AGENT (SystemPrompt, UserPrompt,
+-- Temperature, MaxTokens, etc.) — there is no separate "Instructions"
+-- field, the closest equivalent is SystemPrompt.
+--
+-- To verify in Studio Pro:
+--   1. Run this script against test5 (or another Mendix 11+ project with
+--      AgentEditorCommons installed).
+--   2. Open the agent editor for Bug464.MyAgent — temperature/system prompt
+--      should reflect the altered values; one MCP service and one knowledge
+--      base tool should be present.
+--   3. `mx check` should not introduce any new errors.
+-- ============================================================================
+
+-- ############################################################################
+-- PREREQUISITES — Set up baseline agent-editor documents.
+-- ############################################################################
+
+CREATE OR MODIFY MODEL Bug464.MyModel (
+  Provider: MxCloudGenAI,
+  Key: ExternalDatabaseConnector.LogNode
+);
+
+CREATE OR MODIFY KNOWLEDGE BASE Bug464.MyKB (
+  Provider: MxCloudGenAI,
+  Key: ExternalDatabaseConnector.LogNode
+);
+
+CREATE OR MODIFY CONSUMED MCP SERVICE Bug464.MyMCP (
+  ProtocolVersion: 'v2025_03_26',
+  Version: '0.1.0'
+);
+
+CREATE OR MODIFY AGENT Bug464.MyAgent (
+  UsageType: Task,
+  Model: Bug464.MyModel,
+  SystemPrompt: 'original prompt'
+);
+
+-- ############################################################################
+-- ALTER — the new statements.
+-- ############################################################################
+
+ALTER MODEL Bug464.MyModel SET DisplayName = 'GPT-4 Turbo', KeyName = 'OPENAI_KEY';
+
+ALTER KNOWLEDGE BASE Bug464.MyKB SET ModelDisplayName = 'text-embedding-3-small';
+
+ALTER CONSUMED MCP SERVICE Bug464.MyMCP SET ConnectionTimeoutSeconds = 60, Version = '0.2.0';
+
+-- ALTER AGENT — combines SET, ADD, and DROP in one statement.
+ALTER AGENT Bug464.MyAgent
+    SET SystemPrompt = 'updated prompt', Temperature = 0.7, MaxTokens = 4096
+    ADD KNOWLEDGE BASE Docs { Source: Bug464.MyKB, Collection: 'docs', MaxResults: 5 }
+    ADD MCP SERVICE Bug464.MyMCP { Description: 'weather', Enabled: true };

@@ -141,6 +141,10 @@ alterStatement
     | ALTER SNIPPET qualifiedName LBRACE alterPageOperation+ RBRACE
     | ALTER WORKFLOW qualifiedName alterWorkflowAction+ SEMICOLON?
     | ALTER PUBLISHED REST SERVICE qualifiedName alterPublishedRestServiceAction (COMMA? alterPublishedRestServiceAction)*
+    | ALTER MODEL qualifiedName SET agentEditorAlterAssignment (COMMA agentEditorAlterAssignment)*
+    | ALTER KNOWLEDGE BASE qualifiedName SET agentEditorAlterAssignment (COMMA agentEditorAlterAssignment)*
+    | ALTER CONSUMED MCP SERVICE qualifiedName SET agentEditorAlterAssignment (COMMA agentEditorAlterAssignment)*
+    | ALTER AGENT qualifiedName alterAgentAction+
     | alterModuleJarDepStatement
     ;
 

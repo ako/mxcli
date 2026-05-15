@@ -89,3 +89,42 @@ agentBodyBlock
     | KNOWLEDGE BASE identifierOrKeyword LBRACE modelProperty (COMMA modelProperty)* RBRACE // KNOWLEDGE BASE MyKB { ... }
     | TOOL identifierOrKeyword LBRACE modelProperty (COMMA modelProperty)* RBRACE        // TOOL ToolName { ... }
     ;
+
+// =============================================================================
+// ALTER actions for agent-editor documents
+// =============================================================================
+// Used by ALTER MODEL / ALTER KNOWLEDGE BASE / ALTER CONSUMED MCP SERVICE
+// (SET-only — these document types have no collections), and by the SET
+// clause of ALTER AGENT.
+agentEditorAlterAssignment
+    : identifierOrKeyword EQUALS agentEditorAlterValue
+    ;
+
+agentEditorAlterValue
+    : STRING_LITERAL
+    | NUMBER_LITERAL
+    | DOLLAR_STRING
+    | booleanLiteral
+    | qualifiedName
+    | identifierOrKeyword
+    ;
+
+// ALTER AGENT actions: a mix of SET (scalar properties) and ADD/DROP for
+// the agent's three collections (tools, MCP services, knowledge bases).
+//
+// @example Combine SET with collection mutations:
+// ```mdl
+// ALTER AGENT MyModule.Helper
+//   SET SystemPrompt = 'New prompt', Temperature = 0.5
+//   ADD TOOL DoSomething { Description: '...', Enabled: true }
+//   ADD MCP SERVICE MyModule.Weather { Description: '...', Enabled: true }
+//   DROP KNOWLEDGE BASE OldKB
+// ;
+// ```
+alterAgentAction
+    : SET agentEditorAlterAssignment (COMMA agentEditorAlterAssignment)*
+    | ADD agentBodyBlock
+    | DROP TOOL identifierOrKeyword
+    | DROP MCP SERVICE qualifiedName
+    | DROP KNOWLEDGE BASE identifierOrKeyword
+    ;

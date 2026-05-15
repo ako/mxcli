@@ -486,4 +486,16 @@ func registerAgentEditorHandlers(r *Registry) {
 	r.Register(&ast.DropAgentStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
 		return execDropAgent(ctx, stmt.(*ast.DropAgentStmt))
 	})
+	r.Register(&ast.AlterModelStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execAlterModel(ctx, stmt.(*ast.AlterModelStmt))
+	})
+	r.Register(&ast.AlterKnowledgeBaseStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execAlterKnowledgeBase(ctx, stmt.(*ast.AlterKnowledgeBaseStmt))
+	})
+	r.Register(&ast.AlterConsumedMCPServiceStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execAlterConsumedMCPService(ctx, stmt.(*ast.AlterConsumedMCPServiceStmt))
+	})
+	r.Register(&ast.AlterAgentStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execAlterAgent(ctx, stmt.(*ast.AlterAgentStmt))
+	})
 }

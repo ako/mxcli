@@ -80,6 +80,32 @@ prompt here.$$,
 };
 ```
 
+## Altering existing documents
+
+All four agent-editor document types support `ALTER` for targeted partial updates (no need to re-specify the whole document):
+
+```sql
+-- Model, Knowledge Base, Consumed MCP Service: SET-only (no collections)
+alter model Module.MyModel set DisplayName = 'GPT-4 Turbo', KeyName = 'OPENAI_KEY';
+
+alter knowledge base Module.MyKB set ModelDisplayName = 'text-embedding-3-small';
+
+alter consumed mcp service Module.MyMCP
+    set ConnectionTimeoutSeconds = 60, Version = '0.2.0';
+
+-- Agent: SET for scalars, ADD/DROP for tools, MCP services, knowledge bases
+alter agent Module.MyAgent
+    set SystemPrompt = 'New prompt', Temperature = 0.7, MaxTokens = 4096
+    add tool MyMicroflow { Description: '...', Enabled: true }
+    add mcp service Module.WeatherSvc { Description: '...', Enabled: true }
+    add knowledge base Docs { Source: Module.MyKB, Collection: 'docs', MaxResults: 5 }
+    drop tool OldTool
+    drop mcp service Module.OldSvc
+    drop knowledge base OldKB;
+```
+
+Property names match `CREATE` (`SystemPrompt`, `UserPrompt`, `Temperature`, `MaxTokens`, `ToolChoice`, `Model`, `Entity`, `Description`, `UsageType`, …). Unknown property names error out with `unknown agent property: X`. `CREATE OR MODIFY` remains available when you want a full replacement.
+
 ## Gotchas
 
 ### Dollar-quoting for multi-line prompts

@@ -35,6 +35,14 @@ func (b *Builder) ExitAlterStatement(ctx *parser.AlterStatementContext) {
 		return
 	}
 
+	// Handle agent-editor ALTER statements
+	if ctx.MODEL() != nil || ctx.AGENT() != nil ||
+		(ctx.KNOWLEDGE() != nil && ctx.BASE() != nil) ||
+		(ctx.CONSUMED() != nil && ctx.MCP() != nil && ctx.SERVICE() != nil) {
+		b.exitAlterAgentEditorStatement(ctx)
+		return
+	}
+
 	if ctx.ODATA() == nil {
 		return // Not an OData alter - handled elsewhere
 	}

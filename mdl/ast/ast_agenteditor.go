@@ -38,6 +38,14 @@ type DropModelStmt struct {
 
 func (s *DropModelStmt) isStatement() {}
 
+// AlterModelStmt represents: ALTER MODEL Module.Name SET key = value (, key = value)*
+type AlterModelStmt struct {
+	Name    QualifiedName
+	Changes map[string]string
+}
+
+func (s *AlterModelStmt) isStatement() {}
+
 // CreateConsumedMCPServiceStmt represents:
 //
 //	CREATE CONSUMED MCP SERVICE Module.Name (
@@ -64,6 +72,15 @@ type DropConsumedMCPServiceStmt struct {
 }
 
 func (s *DropConsumedMCPServiceStmt) isStatement() {}
+
+// AlterConsumedMCPServiceStmt represents:
+// ALTER CONSUMED MCP SERVICE Module.Name SET key = value (, key = value)*
+type AlterConsumedMCPServiceStmt struct {
+	Name    QualifiedName
+	Changes map[string]string
+}
+
+func (s *AlterConsumedMCPServiceStmt) isStatement() {}
 
 // CreateKnowledgeBaseStmt represents:
 //
@@ -94,6 +111,15 @@ type DropKnowledgeBaseStmt struct {
 
 func (s *DropKnowledgeBaseStmt) isStatement() {}
 
+// AlterKnowledgeBaseStmt represents:
+// ALTER KNOWLEDGE BASE Module.Name SET key = value (, key = value)*
+type AlterKnowledgeBaseStmt struct {
+	Name    QualifiedName
+	Changes map[string]string
+}
+
+func (s *AlterKnowledgeBaseStmt) isStatement() {}
+
 // CreateAgentStmt represents CREATE AGENT Module.Name (...) [{ body }].
 type CreateAgentStmt struct {
 	Name           QualifiedName
@@ -122,6 +148,27 @@ type DropAgentStmt struct {
 }
 
 func (s *DropAgentStmt) isStatement() {}
+
+// AlterAgentStmt represents:
+//
+//	ALTER AGENT Module.Name
+//	    SET key = value (, key = value)*
+//	    | ADD TOOL ... | ADD MCP SERVICE ... | ADD KNOWLEDGE BASE ...
+//	    | DROP TOOL name | DROP MCP SERVICE Module.Name | DROP KNOWLEDGE BASE name
+//	  ;
+//
+// Multiple actions can be combined in one statement; they apply in order.
+type AlterAgentStmt struct {
+	Name            QualifiedName
+	Sets            map[string]string
+	AddTools        []AgentToolDef   // includes TOOL and MCP SERVICE blocks (ToolType field distinguishes)
+	AddKBs          []AgentKBToolDef // KNOWLEDGE BASE blocks
+	DropTools       []string         // Microflow tool block names
+	DropMCPServices []QualifiedName  // MCP service qualified names
+	DropKBs         []string         // KB tool block names
+}
+
+func (s *AlterAgentStmt) isStatement() {}
 
 // AgentVarDef is a variable entry in CREATE AGENT's Variables: (...) property.
 type AgentVarDef struct {

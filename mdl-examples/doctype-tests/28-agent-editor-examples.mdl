@@ -197,6 +197,40 @@ create or modify agent AgentTest."ResearchAssistant" (
 /
 
 -- ============================================================================
+-- LEVEL 10: ALTER (targeted partial updates)
+-- ============================================================================
+--
+-- ALTER patches an existing document without re-specifying every property.
+-- Unknown property names error out — use the same names as CREATE.
+-- Model, Knowledge Base, and Consumed MCP Service support SET only;
+-- Agent additionally supports ADD/DROP for tools, MCP services, and KBs.
+
+-- SET scalar properties on Model.
+alter model AgentTest.TestModel
+    set DisplayName = 'GPT-4 Turbo', KeyName = 'OPENAI_KEY';
+
+-- SET scalar properties on Knowledge Base.
+alter knowledge base AgentTest.ProductDocs
+    set ModelDisplayName = 'text-embedding-3-small';
+
+-- SET scalar properties (including int) on Consumed MCP Service.
+alter consumed mcp service AgentTest.WebSearch
+    set ConnectionTimeoutSeconds = 90, Version = '1.2';
+
+-- ALTER AGENT: combine SET with ADD/DROP for collections.
+-- Add a TOOL (Microflow), MCP SERVICE, and KNOWLEDGE BASE in one statement.
+alter agent AgentTest.ResearchAssistant
+    set SystemPrompt = 'Updated assistant prompt.', Temperature = 0.7, MaxTokens = 4096
+    add knowledge base ExtraDocs { Source: AgentTest.ProductDocs, Collection: 'extra', MaxResults: 3 }
+    add mcp service AgentTest.WebSearch { Description: 'web search', Enabled: true };
+
+-- ALTER AGENT: drop collection entries (TOOL by name, MCP SERVICE by
+-- qualified name, KNOWLEDGE BASE by per-agent name).
+alter agent AgentTest.ResearchAssistant
+    drop knowledge base ExtraDocs
+    drop mcp service AgentTest.WebSearch;
+
+-- ============================================================================
 -- Cleanup (reverse dependency order: agents first, then their dependencies)
 -- ============================================================================
 

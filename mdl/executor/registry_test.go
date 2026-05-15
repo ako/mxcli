@@ -158,9 +158,13 @@ func TestRegistry_HandlerCount(t *testing.T) {
 // add it here so the completeness test catches missing handler registrations.
 func allKnownStatements() []ast.Statement {
 	return []ast.Statement{
+		&ast.AlterAgentStmt{},
 		&ast.AlterAssociationStmt{},
+		&ast.AlterConsumedMCPServiceStmt{},
 		&ast.AlterEntityStmt{},
 		&ast.AlterEnumerationStmt{},
+		&ast.AlterKnowledgeBaseStmt{},
+		&ast.AlterModelStmt{},
 		&ast.AlterModuleJarDepStmt{},
 		&ast.AlterNavigationStmt{},
 		&ast.AlterODataClientStmt{},
