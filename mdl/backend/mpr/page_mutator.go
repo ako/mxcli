@@ -628,6 +628,62 @@ func (m *mprPageMutator) EnclosingEntity(widgetRef string) string {
 	return findEnclosingEntityContext(m.rawData, widgetRef)
 }
 
+// EnclosingEntityForChildren returns the entity context that applies to
+// children of the named widget. For widgets with their own data source
+// (DataView, DataGrid, ListView, DataGrid2), this is the data source entity.
+// Used for ALTER PAGE column inserts/replaces, where new columns inherit the
+// grid's data source as their entity context.
+func (m *mprPageMutator) EnclosingEntityForChildren(widgetRef string) string {
+	result := m.widgetFinder(m.rawData, widgetRef)
+	if result == nil {
+		return ""
+	}
+	if ent := extractEntityFromDataSource(result.widget); ent != "" {
+		return ent
+	}
+	if ent := extractPluggableDataSourceEntity(result.widget); ent != "" {
+		return ent
+	}
+	return findEnclosingEntityContext(m.rawData, widgetRef)
+}
+
+// extractPluggableDataSourceEntity walks a CustomWidget's Object.Properties[]
+// looking for a "datasource" property and returns the EntityRef.Entity if any.
+func extractPluggableDataSourceEntity(widgetDoc bson.D) string {
+	obj := dGetDoc(widgetDoc, "Object")
+	if obj == nil {
+		return ""
+	}
+	propKeyMap := buildPropKeyMap(widgetDoc)
+	if len(propKeyMap) == 0 {
+		return ""
+	}
+	for _, prop := range dGetArrayElements(dGet(obj, "Properties")) {
+		propDoc, ok := prop.(bson.D)
+		if !ok {
+			continue
+		}
+		typePointerID := extractBinaryIDFromDoc(dGet(propDoc, "TypePointer"))
+		if propKeyMap[typePointerID] != "datasource" {
+			continue
+		}
+		valDoc := dGetDoc(propDoc, "Value")
+		if valDoc == nil {
+			continue
+		}
+		dsDoc := dGetDoc(valDoc, "DataSource")
+		if dsDoc == nil {
+			continue
+		}
+		if entityRef := dGetDoc(dsDoc, "EntityRef"); entityRef != nil {
+			if entity := dGetString(entityRef, "Entity"); entity != "" {
+				return entity
+			}
+		}
+	}
+	return ""
+}
+
 func (m *mprPageMutator) WidgetScope() map[string]model.ID {
 	return extractWidgetScopeFromBSON(m.rawData)
 }

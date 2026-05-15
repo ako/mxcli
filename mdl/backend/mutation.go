@@ -134,6 +134,12 @@ type PageMutator interface {
 	// data context, or "" if none.
 	EnclosingEntity(widgetRef string) string
 
+	// EnclosingEntityForChildren returns the entity context that applies to
+	// children of the named widget — i.e., the widget's own data source entity
+	// if it has one (DataView, DataGrid, ListView, DataGrid2), otherwise the
+	// surrounding enclosing entity. Used for column inserts/replaces.
+	EnclosingEntityForChildren(widgetRef string) string
+
 	// WidgetScope returns a map of widget name → unit ID for all widgets in the tree.
 	WidgetScope() map[string]model.ID
 

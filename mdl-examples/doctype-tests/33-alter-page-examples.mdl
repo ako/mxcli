@@ -1,0 +1,374 @@
+-- @version: 11.0+
+-- ============================================================================
+-- ALTER PAGE / ALTER SNIPPET Examples — Incremental Page Construction
+-- ============================================================================
+--
+-- This file demonstrates EVERY ALTER PAGE / ALTER SNIPPET operation by
+-- progressively building a complete CRUD overview page from an almost-empty
+-- starting page. Read top-to-bottom: each ALTER block adds, removes, or
+-- modifies one piece of the page, and you can follow what the page looks like
+-- after each step.
+--
+-- Operations covered:
+--   AP01. SET page-level property (Title)
+--   AP02. INSERT a widget into a container
+--   AP03. INSERT a DataGrid2 with initial columns
+--   AP04. INSERT an attribute column into a DataGrid2
+--   AP05. INSERT a CUSTOM CONTENT COLUMN with action buttons
+--   AP06. SET property on a DataGrid2 column
+--   AP07. REPLACE a column
+--   AP08. DROP a column
+--   AP09. REPLACE a widget subtree
+--   AP10. DROP a widget
+--   AP11. ADD / DROP page variables
+--   AP12. SET Layout (change page layout, auto-map placeholders)
+--   AP13. ALTER SNIPPET — the same operations work on snippets
+--
+-- Naming note: this file avoids attribute names that are MDL reserved keywords
+-- (Description, Status, Actions, etc.) so dotted column refs parse cleanly.
+-- See create-page.md for the workaround when you must use a reserved name.
+-- ============================================================================
+
+-- MARK: Setup
+
+-- ============================================================================
+-- Setup: module + entities + supporting pages
+-- ============================================================================
+
+create module AlterPg;
+
+create enumeration AlterPg.Lifecycle (
+  DRAFT 'Draft',
+  ACTIVE 'Active',
+  DISCONTINUED 'Discontinued'
+);
+
+@position(100,100)
+create persistent entity AlterPg.Product (
+  Name: string(200) not null,
+  Notes: string(1000),
+  Price: decimal default 0,
+  Lifecycle: enumeration(AlterPg.Lifecycle) default AlterPg.Lifecycle.DRAFT,
+  IsActive: boolean default true
+);
+
+-- A NewEdit page so the row Edit button has somewhere to navigate.
+create or replace page AlterPg.Product_NewEdit (
+  Params: { $Product: AlterPg.Product },
+  Title: 'Edit Product',
+  Layout: Atlas_Core.PopupLayout,
+  Folder: 'OverviewPages'
+) {
+  dataview dv1 (datasource: $Product) {
+    textbox txtName (label: 'Name', attribute: Name)
+    textarea txtNotes (label: 'Notes', attribute: Notes)
+    textbox txtPrice (label: 'Price', attribute: Price)
+    combobox cbLifecycle (label: 'Lifecycle', attribute: Lifecycle)
+    actionbutton btnSave (caption: 'Save', action: save_changes, buttonstyle: primary)
+    actionbutton btnCancel (caption: 'Cancel', action: cancel_changes)
+  }
+};
+
+-- MARK: AP00 — Starting page (almost empty)
+
+-- ============================================================================
+-- AP00: The starting page — just a layout grid with one empty column.
+-- All subsequent ALTER PAGE blocks build it up into a full overview page.
+-- ============================================================================
+
+create or replace page AlterPg.Product_Overview (
+  Title: 'Products (placeholder)',
+  Layout: Atlas_Core.Atlas_TopBar,
+  Folder: 'OverviewPages'
+) {
+  layoutgrid lg1 {
+    row r1 {
+      column c1 (DesktopWidth: AutoFill) {
+        -- This column is intentionally empty; widgets are added below.
+        container placeholder1 (Class: 'spacing-outer-bottom-large')
+      }
+    }
+  }
+};
+
+-- MARK: AP01 — SET widget property
+
+-- ============================================================================
+-- AP01: SET a property on a widget (uses ON clause).
+-- Page-level properties (Title, Url) are set via the create page block;
+-- ALTER PAGE SET is intended for widget-level property changes.
+-- ============================================================================
+
+alter page AlterPg.Product_Overview {
+  set Class = 'product-overview-placeholder' on placeholder1
+};
+
+-- MARK: AP02 — INSERT a widget
+
+-- ============================================================================
+-- AP02: INSERT widgets relative to an existing one
+-- ============================================================================
+
+-- Insert a heading BEFORE the placeholder container.
+alter page AlterPg.Product_Overview {
+  insert before placeholder1 {
+    dynamictext heading (Content: 'Products', RenderMode: H2)
+  }
+};
+
+-- Insert several widgets at once, AFTER the heading.
+alter page AlterPg.Product_Overview {
+  insert after heading {
+    dynamictext subtitle (Content: 'Manage your product catalog', RenderMode: paragraph)
+    container divider (Class: 'spacing-outer-bottom-small')
+  }
+};
+
+-- MARK: AP03 — INSERT a DataGrid2 with initial columns
+
+-- ============================================================================
+-- AP03: INSERT a DataGrid2 widget with two starter columns
+-- ============================================================================
+
+alter page AlterPg.Product_Overview {
+  insert after divider {
+    datagrid dgProducts (
+      datasource: database from AlterPg.Product sort by Name asc,
+      Selection: Single
+    ) {
+      column Name (attribute: Name, caption: 'Product Name') {
+        textfilter filterName
+      }
+      column Price (attribute: Price, caption: 'Price', Alignment: right) {
+        numberfilter filterPrice
+      }
+    }
+  }
+};
+
+-- MARK: AP04 — INSERT an attribute column
+
+-- ============================================================================
+-- AP04: INSERT another attribute column into the existing DataGrid2.
+-- Dotted ref `grid.colName` targets the column; new columns are spliced
+-- into the grid's column list at the requested position.
+-- ============================================================================
+
+alter page AlterPg.Product_Overview {
+  insert after dgProducts.Name {
+    column Notes (attribute: Notes, caption: 'Notes') {
+      textfilter filterNotes
+    }
+  }
+};
+
+-- ============================================================================
+-- AP04b: INSERT a column BEFORE another.
+-- ============================================================================
+
+alter page AlterPg.Product_Overview {
+  insert before dgProducts.Price {
+    column Lifecycle (attribute: Lifecycle, caption: 'Lifecycle') {
+      dropdownfilter filterLifecycle
+    }
+  }
+};
+
+-- MARK: AP05 — INSERT a custom content column
+
+-- ============================================================================
+-- AP05: INSERT a CUSTOM CONTENT COLUMN (column with nested widgets).
+--
+-- A custom content column is the "Actions" column pattern: a column whose
+-- body contains widgets (ACTIONBUTTON, LINKBUTTON, etc.) that operate on the
+-- row's object. Inside a DataGrid2, the row's object is implicitly passed to
+-- action buttons.
+--
+-- Attribute-bound + ShowContentAs: customContent mirrors how Mendix Studio Pro
+-- stores Actions columns. The attribute drives the derived column name (used
+-- for dotted refs); the body widgets supply the visible content.
+-- ============================================================================
+
+alter page AlterPg.Product_Overview {
+  insert after dgProducts.Price {
+    column IsActive (
+      attribute: IsActive,
+      caption: 'Manage',
+      ShowContentAs: customContent,
+      Sortable: false,
+      Hidable: no,
+      ColumnWidth: autoFit
+    ) {
+      actionbutton btnEdit (
+        caption: 'Edit',
+        action: show_page AlterPg.Product_NewEdit,
+        buttonstyle: primary
+      )
+      actionbutton btnDelete (
+        caption: 'Delete',
+        action: delete_object,
+        buttonstyle: danger
+      )
+    }
+  }
+};
+
+-- MARK: AP06 — SET a column property
+
+-- ============================================================================
+-- AP06: SET a property on a DataGrid2 column (caption, visibility, etc.)
+-- ============================================================================
+
+-- Column property aliases use capitalized names (Caption, Alignment, Visible, …)
+-- that match the schema PropertyKeys; see columnPropertyAliases in page_mutator.go.
+alter page AlterPg.Product_Overview {
+  set Caption = 'Name' on dgProducts.Name
+};
+
+-- Multiple column properties in a single SET.
+alter page AlterPg.Product_Overview {
+  set (Caption = 'Cost', Alignment = right) on dgProducts.Price
+};
+
+-- MARK: AP07 — REPLACE a column
+
+-- ============================================================================
+-- AP07: REPLACE a column with a different one (same dotted reference).
+-- The new column may keep the same name or use a new one.
+-- ============================================================================
+
+alter page AlterPg.Product_Overview {
+  replace dgProducts.Notes with {
+    column Notes (attribute: Notes, caption: 'Product Notes') {
+      textfilter filterNotesNew
+    }
+  }
+};
+
+-- MARK: AP08 — DROP a column
+
+-- ============================================================================
+-- AP08: DROP a column by dotted reference.
+-- ============================================================================
+
+alter page AlterPg.Product_Overview {
+  drop widget dgProducts.Notes
+};
+
+-- MARK: AP09 — REPLACE a widget subtree
+
+-- ============================================================================
+-- AP09: REPLACE a widget with a different one (or a whole subtree).
+-- ============================================================================
+
+alter page AlterPg.Product_Overview {
+  replace subtitle with {
+    container subtitleWrap (Class: 'mx-text-secondary') {
+      dynamictext subtitleText (Content: 'Browse and manage all active products', RenderMode: paragraph)
+    }
+  }
+};
+
+-- MARK: AP10 — DROP a widget
+
+-- ============================================================================
+-- AP10: DROP a widget (and its entire subtree).
+-- ============================================================================
+
+alter page AlterPg.Product_Overview {
+  drop widget placeholder1
+};
+
+-- DROP multiple widgets in one statement.
+alter page AlterPg.Product_Overview {
+  drop widget divider, subtitleWrap
+};
+
+-- MARK: AP11 — ADD / DROP page variables
+
+-- ============================================================================
+-- AP11: ADD / DROP page-level Forms$LocalVariable.
+-- Page variables are usable in widget expressions (e.g. column `visible:`).
+-- DataType: boolean | string | integer | decimal | datetime | entity.
+-- Default value is a Mendix expression in single quotes.
+-- ============================================================================
+
+alter page AlterPg.Product_Overview {
+  add variables $showPrice: boolean = 'true'
+};
+
+alter page AlterPg.Product_Overview {
+  add variables $filterMode: string = '''active'''
+};
+
+-- Both add and drop in a single ALTER block.
+alter page AlterPg.Product_Overview {
+  add variables $pageSize: integer = '20';
+  drop variables $filterMode
+};
+
+alter page AlterPg.Product_Overview {
+  drop variables $showPrice
+};
+
+-- MARK: AP12 — SET Layout
+
+-- ============================================================================
+-- AP12: SET Layout — swap the page's layout without rebuilding widgets.
+-- Placeholder names are auto-mapped when they match between layouts.
+-- ============================================================================
+
+-- Auto-map (placeholders with matching names).
+alter page AlterPg.Product_Overview {
+  set layout = Atlas_Core.Atlas_Default
+};
+
+-- Switch back.
+alter page AlterPg.Product_Overview {
+  set layout = Atlas_Core.Atlas_TopBar
+};
+
+-- MARK: AP13 — ALTER SNIPPET
+
+-- ============================================================================
+-- AP13: All the same operations work on snippets via ALTER SNIPPET.
+-- (SET Layout is the only exception — snippets don't have layouts.)
+-- ============================================================================
+
+create or replace snippet AlterPg.Product_Card_Snippet
+(
+  Params: { $Product: AlterPg.Product }
+)
+{
+  dataview dvCard (datasource: $Product) {
+    dynamictext cardTitle (Content: '{1}', ContentParams: [{1} = Name], RenderMode: H4)
+    dynamictext cardBody (Content: '{1}', ContentParams: [{1} = Notes])
+  }
+};
+
+-- SET a property on a snippet widget.
+alter snippet AlterPg.Product_Card_Snippet {
+  set Class = 'mx-card-title' on cardTitle
+};
+
+-- INSERT a widget into a snippet.
+alter snippet AlterPg.Product_Card_Snippet {
+  insert after cardBody {
+    actionbutton btnViewDetails (
+      caption: 'View Details',
+      action: show_page AlterPg.Product_NewEdit,
+      buttonstyle: default
+    )
+  }
+};
+
+-- DROP a widget from a snippet.
+alter snippet AlterPg.Product_Card_Snippet {
+  drop widget btnViewDetails
+};
+
+-- ============================================================================
+-- End of file. The Product_Overview page is now a fully functional CRUD
+-- overview with a heading, a DataGrid2 showing Name, Lifecycle, Price (renamed
+-- "Cost"), and a custom-content Manage column with Edit + Delete buttons.
+-- ============================================================================

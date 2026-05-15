@@ -32,6 +32,7 @@ type MockPageMutator struct {
 	SetLayoutFunc            func(newLayout string, paramMappings map[string]string) error
 	SetPluggablePropertyFunc func(widgetRef string, propKey string, op backend.PluggablePropertyOp, ctx backend.PluggablePropertyContext) error
 	EnclosingEntityFunc      func(widgetRef string) string
+	EnclosingEntityForChildrenFunc func(widgetRef string) string
 	WidgetScopeFunc          func() map[string]model.ID
 	ParamScopeFunc           func() (map[string]model.ID, map[string]string)
 	SaveFunc                 func() error
@@ -136,6 +137,16 @@ func (m *MockPageMutator) SetPluggableProperty(widgetRef string, propKey string,
 }
 
 func (m *MockPageMutator) EnclosingEntity(widgetRef string) string {
+	if m.EnclosingEntityFunc != nil {
+		return m.EnclosingEntityFunc(widgetRef)
+	}
+	return ""
+}
+
+func (m *MockPageMutator) EnclosingEntityForChildren(widgetRef string) string {
+	if m.EnclosingEntityForChildrenFunc != nil {
+		return m.EnclosingEntityForChildrenFunc(widgetRef)
+	}
 	if m.EnclosingEntityFunc != nil {
 		return m.EnclosingEntityFunc(widgetRef)
 	}

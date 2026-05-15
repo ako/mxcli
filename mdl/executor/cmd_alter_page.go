@@ -177,19 +177,21 @@ func applyInsertWidgetMutator(ctx *ExecContext, mutator backend.PageMutator, op 
 		}
 	}
 
-	// Find entity context from enclosing DataView/DataGrid/ListView
-	entityCtx := mutator.EnclosingEntity(op.Target.Widget)
-
 	// Special path: inserting columns into a DataGrid2 column. Columns are
 	// CustomWidgets$WidgetObject, not Forms$* widgets, so we go through
-	// InsertColumns to serialize them correctly.
+	// InsertColumns to serialize them correctly. Column children inherit the
+	// grid's data source entity as their entity context.
 	if op.Target.IsColumn() && allColumns(op.Widgets) {
+		entityCtx := mutator.EnclosingEntityForChildren(op.Target.Widget)
 		specs, err := buildColumnSpecsFromAST(ctx, op.Widgets, moduleName, moduleID, entityCtx, mutator)
 		if err != nil {
 			return mdlerrors.NewBackend("build column specs", err)
 		}
 		return mutator.InsertColumns(op.Target.Widget, op.Target.Column, backend.InsertPosition(op.Position), specs)
 	}
+
+	// Find entity context from enclosing DataView/DataGrid/ListView for regular widget insert.
+	entityCtx := mutator.EnclosingEntity(op.Target.Widget)
 
 	// Build new widgets from AST
 	widgets, err := buildWidgetsFromAST(ctx, op.Widgets, moduleName, moduleID, entityCtx, mutator)
@@ -224,18 +226,20 @@ func applyReplaceWidgetMutator(ctx *ExecContext, mutator backend.PageMutator, op
 		}
 	}
 
-	// Find entity context from enclosing DataView/DataGrid/ListView
-	entityCtx := mutator.EnclosingEntity(op.Target.Widget)
-
 	// Special path: replacing a DataGrid2 column with new columns. Columns are
-	// CustomWidgets$WidgetObject, not Forms$* widgets.
+	// CustomWidgets$WidgetObject, not Forms$* widgets. Column children inherit
+	// the grid's data source entity as their entity context.
 	if op.Target.IsColumn() && allColumns(op.NewWidgets) {
+		entityCtx := mutator.EnclosingEntityForChildren(op.Target.Widget)
 		specs, err := buildColumnSpecsFromAST(ctx, op.NewWidgets, moduleName, moduleID, entityCtx, mutator, op.Target.Widget, op.Target.Column)
 		if err != nil {
 			return mdlerrors.NewBackend("build replacement column specs", err)
 		}
 		return mutator.ReplaceColumn(op.Target.Widget, op.Target.Column, specs)
 	}
+
+	// Find entity context from enclosing DataView/DataGrid/ListView for regular widget replace.
+	entityCtx := mutator.EnclosingEntity(op.Target.Widget)
 
 	// Build new widgets from AST, excluding the target widget/column from the
 	// duplicate-name scope so a same-name replacement is allowed.
