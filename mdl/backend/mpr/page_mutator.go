@@ -1597,10 +1597,19 @@ func updateClientTemplateText(clientTemplate bson.D, text string) bool {
 func applyPageLevelSetMut(rawData bson.D, prop string, value any) error {
 	switch prop {
 	case "Title":
-		if formCall := dGetDoc(rawData, "FormCall"); formCall != nil {
-			setTranslatableText(formCall, "Title", value)
-		} else {
-			setTranslatableText(rawData, "Title", value)
+		strVal, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("Title value must be a string")
+		}
+		// The page's Title is at the top level of the Forms$Page document,
+		// parallel to FormCall (not nested inside it). It's a Texts$Text doc
+		// whose Items[] array holds Texts$Translation entries.
+		titleDoc := dGetDoc(rawData, "Title")
+		if titleDoc == nil {
+			return fmt.Errorf("page has no Title field")
+		}
+		if !updateTextsTextValue(titleDoc, strVal) {
+			return fmt.Errorf("could not update Title text")
 		}
 	case "Url":
 		strVal, _ := value.(string)
@@ -1609,6 +1618,41 @@ func applyPageLevelSetMut(rawData bson.D, prop string, value any) error {
 		return fmt.Errorf("unsupported page-level property: %s", prop)
 	}
 	return nil
+}
+
+// updateTextsTextValue updates the Text field of a Texts$Text doc's en_US
+// Translation in its Items[] array. If no Translation exists, an en_US one is
+// appended. Returns true on success.
+func updateTextsTextValue(textsTextDoc bson.D, text string) bool {
+	items := dGetArrayElements(dGet(textsTextDoc, "Items"))
+	updated := false
+	for _, item := range items {
+		itemDoc, ok := item.(bson.D)
+		if !ok {
+			continue
+		}
+		if dGetString(itemDoc, "$Type") == "Texts$Translation" {
+			dSet(itemDoc, "Text", text)
+			updated = true
+		}
+	}
+	if updated {
+		return true
+	}
+	// No existing Translation — append an en_US one.
+	newItem := bson.D{
+		{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
+		{Key: "$Type", Value: "Texts$Translation"},
+		{Key: "LanguageCode", Value: "en_US"},
+		{Key: "Text", Value: text},
+	}
+	newArr := bson.A{int32(3)}
+	for _, item := range items {
+		newArr = append(newArr, item)
+	}
+	newArr = append(newArr, newItem)
+	dSet(textsTextDoc, "Items", newArr)
+	return true
 }
 
 func setRawWidgetPropertyMut(widget bson.D, propName string, value any) error {

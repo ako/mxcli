@@ -93,14 +93,19 @@ create or replace page AlterPg.Product_Overview (
   }
 };
 
--- MARK: AP01 — SET widget property
+-- MARK: AP01 — SET widget property and page-level property
 
 -- ============================================================================
--- AP01: SET a property on a widget (uses ON clause).
--- Page-level properties (Title, Url) are set via the create page block;
--- ALTER PAGE SET is intended for widget-level property changes.
+-- AP01: SET a property. With an ON clause the SET targets a widget; without
+-- it the SET targets a page-level property (Title, Url).
 -- ============================================================================
 
+-- Page-level: update the page Title.
+alter page AlterPg.Product_Overview {
+  set Title = 'Products'
+};
+
+-- Widget-level: update a widget property using ON.
 alter page AlterPg.Product_Overview {
   set Class = 'product-overview-placeholder' on placeholder1
 };
@@ -346,9 +351,9 @@ alter page AlterPg.Product_Overview {
 alter page AlterPg.Product_Overview {
   set caption = 'Product Name' on dgProducts.Name;
   insert after dgProducts.Lifecycle {
-    column Sku (attribute: Name, caption: 'SKU')
+    column NewNotesCol (attribute: Notes, caption: 'Notes')
   };
-  drop widget dgProducts.Sku
+  drop widget dgProducts.Notes
 };
 
 -- MARK: AP12c — Bulk updates across multiple pages
