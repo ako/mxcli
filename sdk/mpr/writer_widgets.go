@@ -606,7 +606,11 @@ func serializeClientTemplateParameter(param *pages.ClientTemplateParameter) bson
 	// Build AttributeRef if present - use serializeAttributeRef for validation
 	attrRef := serializeAttributeRef(param.AttributeRef)
 
-	// Build FormattingInfo
+	// Build FormattingInfo — schema-aligned with Forms$FormattingInfo
+	// reflection (CustomDateFormat / DateFormat / DecimalPrecision /
+	// EnumFormat / GroupDigits). Writing TimeFormat here triggers Studio
+	// Pro CE0463 "widget definition changed" on pluggable widgets that
+	// embed this struct (e.g. Gallery / DataGrid2 column captions).
 	formattingInfo := bson.D{
 		{Key: "$ID", Value: idToBsonBinary(generateUUID())},
 		{Key: "$Type", Value: "Forms$FormattingInfo"},
@@ -615,7 +619,6 @@ func serializeClientTemplateParameter(param *pages.ClientTemplateParameter) bson
 		{Key: "DecimalPrecision", Value: int64(2)},
 		{Key: "EnumFormat", Value: "Text"},
 		{Key: "GroupDigits", Value: false},
-		{Key: "TimeFormat", Value: "HoursMinutes"},
 	}
 
 	// Build SourceVariable if present (references a page/snippet parameter)

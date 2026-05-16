@@ -110,17 +110,36 @@ func (ob *mprWidgetObjectBuilder) SetSelection(propertyKey string, value string)
 	if value == "" {
 		return
 	}
+	canonical := canonicalSelectionValue(value)
 	ob.object = updateWidgetPropertyValue(ob.object, ob.propertyTypeIDs, propertyKey, func(val bson.D) bson.D {
 		result := make(bson.D, 0, len(val))
 		for _, elem := range val {
 			if elem.Key == "Selection" {
-				result = append(result, bson.E{Key: "Selection", Value: value})
+				result = append(result, bson.E{Key: "Selection", Value: canonical})
 			} else {
 				result = append(result, elem)
 			}
 		}
 		return result
 	})
+}
+
+// canonicalSelectionValue normalises a selection-enum value to the
+// PascalCase form Studio Pro stores (Single / Multi / None). MDL accepts
+// any case; lowercase passes mx check on some widgets but contributes to
+// CE0463 widget-definition drift on others (gallery on Mendix 11.9).
+// Unknown values pass through unchanged so the runtime/Studio Pro can
+// surface them.
+func canonicalSelectionValue(value string) string {
+	switch strings.ToLower(value) {
+	case "single":
+		return "Single"
+	case "multi", "multiple":
+		return "Multi"
+	case "none":
+		return "None"
+	}
+	return value
 }
 
 func (ob *mprWidgetObjectBuilder) SetExpression(propertyKey string, value string) {
@@ -781,7 +800,6 @@ func createClientTemplateBSONWithParams(text string, entityContext string) bson.
 				{Key: "DecimalPrecision", Value: int64(2)},
 				{Key: "EnumFormat", Value: "Text"},
 				{Key: "GroupDigits", Value: false},
-				{Key: "TimeFormat", Value: "HoursMinutes"},
 			}},
 			{Key: "SourceVariable", Value: nil},
 		})
