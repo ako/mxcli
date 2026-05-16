@@ -161,16 +161,17 @@ func TestRoundtripSecurity_EntityAccessWithXPath(t *testing.T) {
 	entityName := securityTestModule + ".SecTestXPath"
 	env.registerCleanup("entity", entityName)
 
-	// Create entity
+	// Create entity. OwnerName (not Owner) — Owner is reserved on persistent
+	// entities (CE7247 / MDL020): it is auto-managed by Mendix via AutoOwner.
 	createMDL := `create persistent entity ` + entityName + ` (
-		Owner: String(100)
+		OwnerName: String(100)
 	);`
 	if err := env.executeMDL(createMDL); err != nil {
 		t.Fatalf("Failed to create entity: %v", err)
 	}
 
-	// Grant with XPath constraint
-	grantMDL := `grant ` + securityTestModule + `.SecTestViewer on ` + entityName + ` (read *) where '[%CurrentUser%] = Owner';`
+	// Grant with XPath constraint referencing the entity attribute.
+	grantMDL := `grant ` + securityTestModule + `.SecTestViewer on ` + entityName + ` (read *) where '[%CurrentUser%] = OwnerName';`
 	if err := env.executeMDL(grantMDL); err != nil {
 		t.Fatalf("Failed to grant entity access with XPath: %v", err)
 	}
@@ -184,7 +185,7 @@ func TestRoundtripSecurity_EntityAccessWithXPath(t *testing.T) {
 	if !strings.Contains(output, "where") {
 		t.Errorf("Expected where clause in grant statement.\nActual:\n%s", output)
 	}
-	if !strings.Contains(output, "[%CurrentUser%] = Owner") {
+	if !strings.Contains(output, "[%CurrentUser%] = OwnerName") {
 		t.Errorf("Expected XPath constraint in output.\nActual:\n%s", output)
 	}
 
