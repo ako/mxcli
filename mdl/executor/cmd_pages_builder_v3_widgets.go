@@ -184,6 +184,39 @@ func (pb *pageBuilder) buildDataGridV3(w *ast.WidgetV3) (*pages.CustomWidget, er
 	return grid, nil
 }
 
+// buildClientTemplateParams converts AST template parameters (e.g. from
+// CaptionParams / ContentParams) into pages.ClientTemplateParameter values
+// with attribute paths resolved against the current entity context.
+// Returns nil if the input is empty.
+func (pb *pageBuilder) buildClientTemplateParams(astParams []ast.ParamAssignmentV3) []*pages.ClientTemplateParameter {
+	if len(astParams) == 0 {
+		return nil
+	}
+	out := make([]*pages.ClientTemplateParameter, 0, len(astParams))
+	for _, p := range astParams {
+		param := &pages.ClientTemplateParameter{
+			BaseElement: model.BaseElement{
+				ID:       model.ID(types.GenerateID()),
+				TypeName: "Forms$ClientTemplateParameter",
+			},
+		}
+		strVal, ok := p.Value.(string)
+		if !ok {
+			out = append(out, param)
+			continue
+		}
+		if strings.HasPrefix(strVal, "'") || strings.HasPrefix(strVal, "\"") {
+			// Already a quoted string literal — use as-is.
+			param.Expression = strVal
+		} else {
+			// Attribute reference (with or without $ prefix) or bare attribute name.
+			pb.resolveTemplateAttributePathFull(strVal, param)
+		}
+		out = append(out, param)
+	}
+	return out
+}
+
 // buildColumnSpecFromAST converts a single AST column widget into a
 // DataGridColumnSpec. Filter-type grandchildren are routed to the column
 // filter slot; other grandchildren become ChildWidgets (custom content).
@@ -193,9 +226,13 @@ func (pb *pageBuilder) buildColumnSpecFromAST(child *ast.WidgetV3) (*backend.Dat
 		attr = child.Name
 	}
 	col := backend.DataGridColumnSpec{
-		Attribute:  pb.resolveAttributePath(attr),
-		Caption:    child.GetCaption(),
-		Properties: child.Properties,
+		Attribute:     pb.resolveAttributePath(attr),
+		Caption:       child.GetCaption(),
+		CaptionParams: pb.buildClientTemplateParams(child.GetCaptionParams()),
+		ShowContentAs: child.GetStringProp("ShowContentAs"),
+		Content:       child.GetContent(),
+		ContentParams: pb.buildClientTemplateParams(child.GetContentParams()),
+		Properties:    child.Properties,
 	}
 	for _, grandchild := range child.Children {
 		if filterWidgetID := dataGridFilterWidgetID(grandchild.Type); filterWidgetID != "" {

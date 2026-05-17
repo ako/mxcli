@@ -435,6 +435,25 @@ func extractDataGrid2Column(ctx *ExecContext, colObj map[string]any, colPropKeyM
 			}
 			continue
 		}
+		// Route header / dynamicText by property key so the read result doesn't
+		// depend on property iteration order. The writer emits properties
+		// alphabetically, which puts dynamicText before header — the old
+		// "first TextTemplate is the header" heuristic was wrong for that order.
+		if propKey == "header" {
+			if text, tt := extractTextTemplateText(value); text != "" {
+				col.Caption = text
+				col.CaptionParams = extractTextTemplateParameters(ctx, tt)
+				foundHeader = true
+			}
+			continue
+		}
+		if propKey == "dynamicText" {
+			if text, tt := extractTextTemplateText(value); text != "" {
+				col.DynamicText = text
+				col.DynamicTextParams = extractTextTemplateParameters(ctx, tt)
+			}
+			continue
+		}
 
 		// Check for AttributeRef (attribute property)
 		if col.Attribute == "" {
@@ -506,6 +525,31 @@ func extractDataGrid2Column(ctx *ExecContext, colObj map[string]any, colPropKeyM
 // DataGrid2 stores header/filter widgets in the 'filtersPlaceholder' property, same as Gallery.
 func extractDataGrid2ControlBar(ctx *ExecContext, w map[string]any) []rawWidget {
 	return extractGalleryWidgetsByPropertyKey(ctx, w, "filtersPlaceholder")
+}
+
+// extractTextTemplateText finds the first non-empty Text item inside a
+// WidgetValue's TextTemplate (Forms$ClientTemplate → Texts$Text → Items[]).
+// Returns the text and the TextTemplate map so callers can also pull
+// Parameters from it. Returns ("", nil) when the value has no template text.
+func extractTextTemplateText(value map[string]any) (string, map[string]any) {
+	textTemplate, ok := value["TextTemplate"].(map[string]any)
+	if !ok || textTemplate == nil {
+		return "", nil
+	}
+	template, ok := textTemplate["Template"].(map[string]any)
+	if !ok || template == nil {
+		return "", nil
+	}
+	for _, item := range getBsonArrayElements(template["Items"]) {
+		itemMap, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if text := extractString(itemMap["Text"]); text != "" {
+			return text, textTemplate
+		}
+	}
+	return "", nil
 }
 
 // extractTextTemplateParameters extracts parameters from a TextTemplate (Forms$ClientTemplate).

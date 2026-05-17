@@ -277,11 +277,16 @@ func (b *MprBackend) cloneAndUpdateColumnProperties(templateProps bson.A, column
 			}
 		}
 
+		hasDynamicText := !hasCustomContent && strings.EqualFold(col.ShowContentAs, "dynamicText")
+
 		switch propKey {
 		case "showContentAs":
-			if hasCustomContent {
+			switch {
+			case hasCustomContent:
 				result = append(result, clonePropertyWithPrimitiveValue(propMap, "customContent"))
-			} else {
+			case hasDynamicText:
+				result = append(result, clonePropertyWithPrimitiveValue(propMap, "dynamicText"))
+			default:
 				result = append(result, clonePropertyWithNewIDs(propMap))
 			}
 		case "attribute":
@@ -293,7 +298,14 @@ func (b *MprBackend) cloneAndUpdateColumnProperties(templateProps bson.A, column
 			}
 		case "header":
 			entry := columnPropertyIDs["header"]
-			result = append(result, buildColumnHeaderProperty(entry, caption))
+			result = append(result, buildColumnHeaderPropertyWithParams(entry, caption, col.CaptionParams))
+		case "dynamicText":
+			if hasDynamicText {
+				entry := columnPropertyIDs["dynamicText"]
+				result = append(result, buildColumnHeaderPropertyWithParams(entry, col.Content, col.ContentParams))
+			} else {
+				result = append(result, clonePropertyClearingTextTemplate(propMap))
+			}
 		case "content":
 			if hasCustomContent {
 				entry := columnPropertyIDs["content"]
@@ -453,13 +465,18 @@ func (b *MprBackend) buildDataGrid2ColumnObject(col *backend.DataGridColumnSpec,
 	}
 	sort.Strings(colKeys)
 
+	hasDynamicText := !hasCustomContent && strings.EqualFold(col.ShowContentAs, "dynamicText")
+
 	for _, key := range colKeys {
 		entry := columnPropertyIDs[key]
 		switch key {
 		case "showContentAs":
-			if hasCustomContent {
+			switch {
+			case hasCustomContent:
 				properties = append(properties, buildColumnPrimitiveProperty(entry, "customContent"))
-			} else {
+			case hasDynamicText:
+				properties = append(properties, buildColumnPrimitiveProperty(entry, "dynamicText"))
+			default:
 				properties = append(properties, buildColumnPrimitiveProperty(entry, "attribute"))
 			}
 
@@ -471,10 +488,20 @@ func (b *MprBackend) buildDataGrid2ColumnObject(col *backend.DataGridColumnSpec,
 			}
 
 		case "header":
-			if col.Caption != "" {
-				properties = append(properties, buildColumnHeaderProperty(entry, col.Caption))
+			caption := col.Caption
+			if caption == "" {
+				caption = col.Attribute
+			}
+			properties = append(properties, buildColumnHeaderPropertyWithParams(entry, caption, col.CaptionParams))
+
+		case "dynamicText":
+			// Studio Pro stores the cell template here when ShowContentAs is
+			// dynamicText. Otherwise the field is null (handled in the default
+			// branch via buildColumnDefaultProperty).
+			if hasDynamicText {
+				properties = append(properties, buildColumnHeaderPropertyWithParams(entry, col.Content, col.ContentParams))
 			} else {
-				properties = append(properties, buildColumnHeaderProperty(entry, col.Attribute))
+				properties = append(properties, buildColumnDefaultProperty(entry))
 			}
 
 		case "content":
@@ -837,7 +864,14 @@ func buildColumnAttributeProperty(entry pages.PropertyTypeIDEntry, attrPath stri
 }
 
 func buildColumnHeaderProperty(entry pages.PropertyTypeIDEntry, caption string) bson.D {
-	textTemplate := buildClientTemplateWithText(caption)
+	return buildColumnHeaderPropertyWithParams(entry, caption, nil)
+}
+
+// buildColumnHeaderPropertyWithParams emits a TextTemplate column property
+// (header / dynamicText / tooltip) whose ClientTemplate carries the supplied
+// ClientTemplateParameters. Pass nil params for plain-string templates.
+func buildColumnHeaderPropertyWithParams(entry pages.PropertyTypeIDEntry, caption string, params []*pages.ClientTemplateParameter) bson.D {
+	textTemplate := buildClientTemplateWithTextAndParams(caption, params)
 
 	return bson.D{
 		{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
@@ -934,7 +968,17 @@ func buildDefaultWidgetValueBSON(entry pages.PropertyTypeIDEntry, datasourceBSON
 	}
 }
 
-func buildClientTemplateWithText(text string) bson.D {
+// buildClientTemplateWithTextAndParams builds a Forms$ClientTemplate with the
+// given Template text and an optional list of ClientTemplateParameters.
+// Mirrors sdk/mpr/writer_widgets.go:serializeClientTemplate for the templated
+// column header / dynamicText paths.
+func buildClientTemplateWithTextAndParams(text string, params []*pages.ClientTemplateParameter) bson.D {
+	parametersArr := bson.A{int32(2)} // empty array marker; populated below if params exist
+	if len(params) > 0 {
+		for _, p := range params {
+			parametersArr = append(parametersArr, serializeColumnClientTemplateParameter(p))
+		}
+	}
 	return bson.D{
 		{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
 		{Key: "$Type", Value: "Forms$ClientTemplate"},
@@ -943,7 +987,7 @@ func buildClientTemplateWithText(text string) bson.D {
 			{Key: "$Type", Value: "Texts$Text"},
 			{Key: "Items", Value: bson.A{int32(3)}},
 		}},
-		{Key: "Parameters", Value: bson.A{int32(2)}},
+		{Key: "Parameters", Value: parametersArr},
 		{Key: "Template", Value: bson.D{
 			{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
 			{Key: "$Type", Value: "Texts$Text"},
@@ -957,6 +1001,57 @@ func buildClientTemplateWithText(text string) bson.D {
 				},
 			}},
 		}},
+	}
+}
+
+// serializeColumnClientTemplateParameter serializes a ClientTemplateParameter
+// for embedding inside a column TextTemplate. Mirrors the structure used by
+// sdk/mpr/writer_widgets.go:serializeClientTemplateParameter (Forms$FormattingInfo
+// schema-aligned to avoid CE0463).
+func serializeColumnClientTemplateParameter(param *pages.ClientTemplateParameter) bson.D {
+	paramID := bsonutil.NewIDBsonBinary()
+	if param.ID != "" {
+		paramID = bsonutil.IDToBsonBinary(string(param.ID))
+	}
+
+	var attrRefBSON any
+	if param.AttributeRef != "" {
+		attrRefBSON = bson.D{
+			{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
+			{Key: "$Type", Value: "DomainModels$AttributeRef"},
+			{Key: "Attribute", Value: param.AttributeRef},
+			{Key: "EntityRef", Value: nil},
+		}
+	}
+
+	formattingInfo := bson.D{
+		{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
+		{Key: "$Type", Value: "Forms$FormattingInfo"},
+		{Key: "CustomDateFormat", Value: ""},
+		{Key: "DateFormat", Value: "Date"},
+		{Key: "DecimalPrecision", Value: int64(2)},
+		{Key: "EnumFormat", Value: "Text"},
+		{Key: "GroupDigits", Value: false},
+	}
+
+	var sourceVariable any
+	if param.SourceVariable != "" {
+		sourceVariable = bson.D{
+			{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
+			{Key: "$Type", Value: "Forms$PageVariable"},
+			{Key: "PageParameter", Value: param.SourceVariable},
+			{Key: "UseAllPages", Value: false},
+			{Key: "Widget", Value: ""},
+		}
+	}
+
+	return bson.D{
+		{Key: "$ID", Value: paramID},
+		{Key: "$Type", Value: "Forms$ClientTemplateParameter"},
+		{Key: "AttributeRef", Value: attrRefBSON},
+		{Key: "Expression", Value: param.Expression},
+		{Key: "FormattingInfo", Value: formattingInfo},
+		{Key: "SourceVariable", Value: sourceVariable},
 	}
 }
 
