@@ -279,22 +279,28 @@ create page PluggableV10.P_PD06_DynamicCaption (
           DataSource: database from PluggableV10.Customer,
           Selection: Single
         ) {
-          -- NOTE: column-level CaptionParams / ContentParams are not yet wired
-          -- through cloneAndUpdateColumnProperties; using plain text here.
-          -- Tracked as follow-up for v0.11+: column-level TextTemplate parameter
-          -- support so `Caption: '{1}', CaptionParams: [{1} = Name]` produces
-          -- the correct BSON TextTemplate with parameter binding.
+          -- Templated header: Caption: '{1}' + CaptionParams binds the
+          -- placeholder to an attribute. Studio Pro renders the bound
+          -- attribute value as the column header.
           column Name (
             Attribute: Name,
-            Caption: 'Customer Name',
+            Caption: '{1}',
+            CaptionParams: [{1} = Name],
             ColumnWidth: manual,
             Size: 8
           ) {
             textfilter tfName
           }
+          -- ShowContentAs: dynamicText with a templated Content and
+          -- ContentParams. The cell body renders the template, not the
+          -- raw attribute value.
           column JoinedDate (
             Attribute: JoinedDate,
-            Caption: 'Joined',
+            Caption: '{1}',
+            CaptionParams: [{1} = JoinedDate],
+            ShowContentAs: dynamicText,
+            Content: 'Joined on {1}',
+            ContentParams: [{1} = JoinedDate],
             ColumnWidth: manual,
             Size: 6
           ) {
