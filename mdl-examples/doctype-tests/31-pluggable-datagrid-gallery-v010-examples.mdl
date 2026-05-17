@@ -267,7 +267,16 @@ create page PluggableV10.P_PD05_CustomCellContent (
 -- MARK: PD06 — Templated caption + ShowContentAs: dynamicText
 -- ============================================================================
 
+-- Column captions are STATIC text (resolved once per page render, not per
+-- row), so CaptionParams cannot reference row attributes — only page
+-- variables, page parameters, or runtime tokens. Cell content (the
+-- ShowContentAs: dynamicText branch below) IS per-row, so its
+-- ContentParams CAN reference $currentObject attributes.
 create page PluggableV10.P_PD06_DynamicCaption (
+  Variables: {
+    $Col1Label: String = '''Customer Name''',
+    $Col2Label: String = '''Date Joined'''
+  },
   Title: 'Customers — Dynamic',
   Layout: Atlas_Core.Atlas_Default,
   Folder: 'PluggableDataGrid'
@@ -279,25 +288,26 @@ create page PluggableV10.P_PD06_DynamicCaption (
           DataSource: database from PluggableV10.Customer,
           Selection: Single
         ) {
-          -- Templated header: Caption: '{1}' + CaptionParams binds the
-          -- placeholder to an attribute. Studio Pro renders the bound
-          -- attribute value as the column header.
+          -- Header bound to a page variable: mxcli's writer stores
+          -- $Col1Label as a literal Expression in the ClientTemplateParameter
+          -- (Studio Pro accepts this form alongside the Forms$PageVariable
+          -- structured form).
           column Name (
             Attribute: Name,
             Caption: '{1}',
-            CaptionParams: [{1} = Name],
+            CaptionParams: [{1} = $Col1Label],
             ColumnWidth: manual,
             Size: 8
           ) {
             textfilter tfName
           }
-          -- ShowContentAs: dynamicText with a templated Content and
-          -- ContentParams. The cell body renders the template, not the
-          -- raw attribute value.
+          -- Caption combines a page variable with the Mendix runtime token
+          -- [%CurrentDateTime%]. Cell body uses ShowContentAs: dynamicText
+          -- with a per-row template that references $currentObject/JoinedDate.
           column JoinedDate (
             Attribute: JoinedDate,
-            Caption: '{1}',
-            CaptionParams: [{1} = JoinedDate],
+            Caption: '{1}  {2}',
+            CaptionParams: [{1} = $Col2Label, {2} = '[%CurrentDateTime%]'],
             ShowContentAs: dynamicText,
             Content: 'Joined on {1}',
             ContentParams: [{1} = JoinedDate],
