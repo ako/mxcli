@@ -553,6 +553,9 @@ func (b *MprBackend) buildDataGrid2ColumnObject(col *backend.DataGridColumnSpec,
 			properties = append(properties, buildColumnPrimitiveProperty(entry, hidVal))
 
 		case "tooltip":
+			// Studio Pro convention (verified against Cars_Overview):
+			//   attribute column → empty ClientTemplate (no Translation entries)
+			//   custom-content column → null
 			if hasCustomContent {
 				properties = append(properties, buildColumnDefaultProperty(entry))
 			} else {
@@ -567,8 +570,18 @@ func (b *MprBackend) buildDataGrid2ColumnObject(col *backend.DataGridColumnSpec,
 				if tooltipText != "" {
 					properties = append(properties, buildColumnHeaderProperty(entry, tooltipText))
 				} else {
-					properties = append(properties, buildColumnDefaultProperty(entry))
+					properties = append(properties, buildColumnEmptyTextTemplateProperty(entry))
 				}
+			}
+
+		case "exportValue":
+			// Studio Pro convention (verified against Cars_Overview):
+			//   attribute column → null
+			//   custom-content column → empty ClientTemplate (no Translation entries)
+			if hasCustomContent {
+				properties = append(properties, buildColumnEmptyTextTemplateProperty(entry))
+			} else {
+				properties = append(properties, buildColumnDefaultProperty(entry))
 			}
 
 		default:
@@ -856,16 +869,32 @@ func buildColumnContentProperty(entry pages.PropertyTypeIDEntry, widgetsList any
 }
 
 func buildColumnDefaultProperty(entry pages.PropertyTypeIDEntry) bson.D {
-	var textTemplate any
-	if entry.ValueType == "TextTemplate" {
-		textTemplate = buildEmptyClientTemplate()
-	}
-
+	// For unset TextTemplate-typed column properties (dynamicText and
+	// hasCustomContent-conditional ones) Studio Pro stores TextTemplate:
+	// null, not an empty Forms$ClientTemplate. Emitting an empty
+	// ClientTemplate triggers CE0463 "widget definition changed" when the
+	// project is opened. For properties that DO want an empty ClientTemplate
+	// (tooltip on attribute columns, exportValue on custom-content columns)
+	// use buildColumnEmptyTextTemplateProperty instead.
 	return bson.D{
 		{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
 		{Key: "$Type", Value: "CustomWidgets$WidgetProperty"},
 		{Key: "TypePointer", Value: bsonutil.IDToBsonBinary(entry.PropertyTypeID)},
-		{Key: "Value", Value: buildDefaultWidgetValueBSON(entry, nil, nil, entry.DefaultValue, textTemplate, nil)},
+		{Key: "Value", Value: buildDefaultWidgetValueBSON(entry, nil, nil, entry.DefaultValue, nil, nil)},
+	}
+}
+
+// buildColumnEmptyTextTemplateProperty emits a column property whose
+// TextTemplate is an empty Forms$ClientTemplate (Items array with no
+// Texts$Translation entries). This is what Studio Pro stores for unset
+// `tooltip` on attribute-bound columns and unset `exportValue` on
+// custom-content columns.
+func buildColumnEmptyTextTemplateProperty(entry pages.PropertyTypeIDEntry) bson.D {
+	return bson.D{
+		{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
+		{Key: "$Type", Value: "CustomWidgets$WidgetProperty"},
+		{Key: "TypePointer", Value: bsonutil.IDToBsonBinary(entry.PropertyTypeID)},
+		{Key: "Value", Value: buildDefaultWidgetValueBSON(entry, nil, nil, "", buildEmptyClientTemplate(), nil)},
 	}
 }
 
