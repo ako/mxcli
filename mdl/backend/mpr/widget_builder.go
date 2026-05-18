@@ -330,12 +330,15 @@ func overlayItemValue(value bson.D, entry pages.PropertyTypeIDEntry, spec backen
 		value = setBSONField(value, "Expression", spec.Expression)
 		value = setBSONField(value, "PrimitiveValue", "")
 	case "texttemplate":
-		text := spec.TextTemplate
-		if text == "" {
-			text = " "
+		// Skip when the spec carries no text — leave the value's existing
+		// TextTemplate untouched (null, set by createDefaultWidgetValue).
+		// Inserting a placeholder ClientTemplate here causes Studio Pro
+		// CE0463 on object-list items where the field is conditionally
+		// unset (e.g., Accordion headerText when HeaderRenderMode is custom).
+		if spec.TextTemplate != "" {
+			tmpl := createClientTemplateBSONWithParams(spec.TextTemplate, spec.EntityContext)
+			value = setBSONField(value, "TextTemplate", tmpl)
 		}
-		tmpl := createClientTemplateBSONWithParams(text, spec.EntityContext)
-		value = setBSONField(value, "TextTemplate", tmpl)
 	case "datasource":
 		if spec.DataSource != nil {
 			value = setDataSource(value, spec.DataSource)
@@ -984,11 +987,13 @@ func createDefaultWidgetValue(entry pages.PropertyTypeIDEntry) bson.D {
 		expressionVal = primitiveVal
 		primitiveVal = ""
 	case "TextTemplate":
-		text := primitiveVal
-		if text == "" {
-			text = " "
+		// When the property has no schema default text, leave TextTemplate
+		// as null rather than manufacturing a single-space ClientTemplate.
+		// Studio Pro rejects the latter with CE0463 on object-list items
+		// (e.g., Accordion `headerText` when HeaderRenderMode is "custom").
+		if primitiveVal != "" {
+			textTemplate = createDefaultClientTemplateBSON(primitiveVal)
 		}
-		textTemplate = createDefaultClientTemplateBSON(text)
 	case "String":
 		if primitiveVal == "" {
 			primitiveVal = " "
