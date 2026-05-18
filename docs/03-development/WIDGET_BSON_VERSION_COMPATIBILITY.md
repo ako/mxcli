@@ -60,10 +60,17 @@ Mendix version is reading the BSON.
 | `7e6fee84` | Filter widgets carry full CustomWidget envelope (`Appearance`, `ConditionalEditabilitySettings`, `ConditionalVisibilitySettings`, `LabelTemplate`) | Studio Pro flags incomplete envelopes on nested CustomWidgets |
 | `f9818394` | `TextTemplate.Template.Items` populated from `PropertyType.ValueType.Translations` defaults; `Editable: "Always"` on filter widgets | Studio Pro copies translation defaults at widget creation; mxcli left them empty |
 | `aea000b7` | `columnsFilterable` and `sortable` Boolean values aligned with their `PropertyType.ValueType.DefaultValue` | Template-extraction bug: stored `false` vs schema-default `true`; Studio Pro detects mismatch |
+| `4ea402c2` | Object-list item TextTemplate slots emit `null` (not placeholder `" "` ClientTemplate) when unset | `createDefaultWidgetValue` + `overlayItemValue` were manufacturing `Text: " "` ClientTemplates for every TextTemplate-typed sub-property of every object-list item. Studio Pro CE0463 on Accordion, AreaChart, Maps engine-routed widgets (#548) |
 
-After these five fixes the v0.10 acceptance fixture
+After the first five fixes the v0.10 acceptance fixture
 (`mdl-examples/doctype-tests/31-pluggable-datagrid-gallery-v010-examples.mdl`)
-emits zero CE0463 errors on a fresh Mendix 11.9 project.
+emits zero CE0463 errors on a fresh Mendix 11.9 project. The sixth fix
+extends this to the engine-routed widgets in
+`mdl-examples/doctype-tests/32-pluggable-widget-object-lists-v010.test.mdl`
+— `mx check` reports zero CE0463 across all six failing widget instances
+(`acc2`, `map1`, `map2`, `menu1`, `menu2`, `chart1`). Remaining errors on
+that fixture are authoring issues (missing `menuTrigger` child slot
+keyword, missing Maps API key), not BSON drift.
 
 ## What's version-stable vs version-fragile
 
