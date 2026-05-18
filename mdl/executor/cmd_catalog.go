@@ -491,6 +491,20 @@ func execRefreshCatalogStmt(ctx *ExecContext, stmt *ast.RefreshCatalogStmt) erro
 		return nil
 	}
 
+	// Refresh widget definitions alongside the catalog rebuild. Same staleness
+	// detection as `mxcli widget init` — auto-fixes the case where an mxcli
+	// upgrade introduced new .def.json fields (e.g. `objectLists`) that the
+	// existing files don't have yet. Silent when everything is already
+	// up to date; never fatal — catalog refresh is the primary intent.
+	if ctx.MprPath != "" {
+		if stats, err := RefreshWidgetDefinitions(ctx.MprPath, false, nil); err == nil {
+			if stats.Extracted > 0 || stats.Refreshed > 0 {
+				fmt.Fprintf(ctx.Output, "Widget definitions: %d new, %d refreshed\n",
+					stats.Extracted, stats.Refreshed)
+			}
+		}
+	}
+
 	// Rebuild the catalog
 	return buildCatalog(ctx, stmt.Full, stmt.Source)
 }

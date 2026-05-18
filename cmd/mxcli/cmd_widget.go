@@ -3,9 +3,9 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -114,11 +114,11 @@ func runWidgetExtract(cmd *cobra.Command, args []string) error {
 	// Determine MDL name
 	mdlName := mdlNameOverride
 	if mdlName == "" {
-		mdlName = deriveMDLName(mpkDef.ID)
+		mdlName = executor.DeriveMDLName(mpkDef.ID)
 	}
 
 	// Generate .def.json
-	defJSON := generateDefJSON(mpkDef, mdlName)
+	defJSON := executor.GenerateDefJSON(mpkDef, mdlName)
 
 	// Determine output filename
 	filename := strings.ToLower(mdlName) + ".def.json"
@@ -146,178 +146,10 @@ func runWidgetExtract(cmd *cobra.Command, args []string) error {
 // deriveMDLName derives an uppercase MDL keyword from a widget ID.
 // e.g. "com.mendix.widget.web.combobox.Combobox" → "COMBOBOX"
 // e.g. "com.company.widget.MyCustomWidget" → "MYCUSTOMWIDGET"
-func deriveMDLName(widgetID string) string {
-	parts := strings.Split(widgetID, ".")
-	name := parts[len(parts)-1]
-	return strings.ToUpper(name)
-}
-
-// generateDefJSON creates a skeleton WidgetDefinition from an mpk.WidgetDefinition.
-// Properties are handled explicitly from MDL via the engine's explicit property pass,
-// so no propertyMappings or childSlots are generated here.
-func generateDefJSON(mpkDef *mpk.WidgetDefinition, mdlName string) *executor.WidgetDefinition {
-	widgetKind := "custom"
-	if mpkDef.IsPluggable {
-		widgetKind = "pluggable"
-	}
-	def := &executor.WidgetDefinition{
-		WidgetID:        mpkDef.ID,
-		MDLName:         mdlName,
-		WidgetKind:      widgetKind,
-		TemplateFile:    strings.ToLower(mdlName) + ".json",
-		DefaultEditable: "Always",
-	}
-
-	// Generate property mappings and child slots from MPK property definitions.
-	// Two passes: datasource first (association depends on entityContext set by datasource).
-	var assocMappings []executor.PropertyMapping
-	for _, p := range mpkDef.Properties {
-		// Object-list properties (e.g. Accordion `groups`, DataGrid `columns`)
-		// are emitted as ObjectListMapping entries. Each list item exposes its
-		// own sub-property tree.
-		if p.Type == "object" && p.IsList {
-			def.ObjectLists = append(def.ObjectLists, makeObjectListMapping(p))
-			continue
-		}
-		switch p.Type {
-		case "widgets":
-			container := strings.ToUpper(p.Key)
-			if p.Key == "content" {
-				container = "TEMPLATE"
-			}
-			def.ChildSlots = append(def.ChildSlots, executor.ChildSlotMapping{
-				PropertyKey:  p.Key,
-				MDLContainer: container,
-				Operation:    "widgets",
-			})
-		case "datasource":
-			def.PropertyMappings = append(def.PropertyMappings, executor.PropertyMapping{
-				PropertyKey: p.Key,
-				Source:      "DataSource",
-				Operation:   "datasource",
-			})
-		case "attribute":
-			def.PropertyMappings = append(def.PropertyMappings, executor.PropertyMapping{
-				PropertyKey: p.Key,
-				Source:      "Attribute",
-				Operation:   "attribute",
-			})
-		case "association":
-			assocMappings = append(assocMappings, executor.PropertyMapping{
-				PropertyKey: p.Key,
-				Source:      "Association",
-				Operation:   "association",
-			})
-		case "selection":
-			def.PropertyMappings = append(def.PropertyMappings, executor.PropertyMapping{
-				PropertyKey: p.Key,
-				Source:      "Selection",
-				Operation:   "selection",
-				Default:     p.DefaultValue,
-			})
-		case "boolean", "integer", "decimal", "string", "enumeration":
-			m := executor.PropertyMapping{
-				PropertyKey: p.Key,
-				Operation:   "primitive",
-			}
-			if p.DefaultValue != "" {
-				m.Value = p.DefaultValue
-			}
-			def.PropertyMappings = append(def.PropertyMappings, m)
-		}
-	}
-	// Append association mappings after datasource (association requires prior entityContext)
-	def.PropertyMappings = append(def.PropertyMappings, assocMappings...)
-
-	return def
-}
-
-// makeObjectListMapping converts an MPK object-list PropertyDef (e.g. Accordion
-// `groups`) into an ObjectListMapping. The MDL keyword is the singular form of
-// the property key (groups → GROUP, basicItems → ITEM, series → SERIES,
-// markers → MARKER). Sub-properties are walked into ItemProperties (scalar /
-// datasource / attribute / etc.) and ItemSlots (widgets-typed children).
-func makeObjectListMapping(p mpk.PropertyDef) executor.ObjectListMapping {
-	mapping := executor.ObjectListMapping{
-		PropertyKey:  p.Key,
-		MDLContainer: deriveObjectListKeyword(p.Key),
-	}
-	for _, child := range p.Children {
-		if child.Type == "widgets" {
-			mapping.ItemSlots = append(mapping.ItemSlots, executor.ItemSlotMapping{
-				PropertyKey:  child.Key,
-				MDLContainer: strings.ToUpper(child.Key),
-				Operation:    "widgets",
-			})
-			continue
-		}
-		op := operationForType(child.Type)
-		if op == "" {
-			continue
-		}
-		item := executor.ItemPropertyMapping{
-			PropertyKey: child.Key,
-			Operation:   op,
-		}
-		switch op {
-		case "attribute":
-			item.Source = "Attribute"
-		case "datasource":
-			item.Source = "DataSource"
-		case "association":
-			item.Source = "Association"
-		case "primitive":
-			if child.DefaultValue != "" {
-				item.Value = child.DefaultValue
-			}
-		}
-		mapping.ItemProperties = append(mapping.ItemProperties, item)
-	}
-	return mapping
-}
-
-// deriveObjectListKeyword turns a property key like "groups" / "basicItems" /
-// "series" / "markers" into an uppercase MDL keyword in the singular form.
-// The singular is computed by stripping a trailing "s" from the lowercased key,
-// with overrides for English-irregular cases (series, items with prefixes, etc.).
-func deriveObjectListKeyword(propertyKey string) string {
-	overrides := map[string]string{
-		"basicItems":     "ITEM",
-		"customItems":    "CUSTOMITEM",
-		"dynamicMarkers": "DYNAMICMARKER",
-		"attributesList": "ATTR",
-		"filterOptions":  "OPTION",
-		"series":         "SERIES", // Latin singular == plural
-	}
-	if k, ok := overrides[propertyKey]; ok {
-		return k
-	}
-	lower := strings.ToLower(propertyKey)
-	singular := strings.TrimSuffix(lower, "s")
-	return strings.ToUpper(singular)
-}
-
-// operationForType maps an MPK property type to the engine's operation name.
-// Returns "" for unsupported types (which are skipped in object-list extraction).
-func operationForType(t string) string {
-	switch t {
-	case "attribute":
-		return "attribute"
-	case "association":
-		return "association"
-	case "datasource":
-		return "datasource"
-	case "textTemplate":
-		return "texttemplate"
-	case "expression":
-		return "expression"
-	case "action":
-		return "action"
-	case "boolean", "integer", "decimal", "string", "enumeration":
-		return "primitive"
-	}
-	return ""
-}
+// Helpers deriveMDLName / generateDefJSON / makeObjectListMapping /
+// deriveObjectListKeyword / operationForType live in
+// mdl/executor/widget_defs.go so both the CLI command and the in-executor
+// refresh-catalog path share them.
 
 func runWidgetInit(cmd *cobra.Command, args []string) error {
 	projectPath, _ := cmd.Flags().GetString("project")
@@ -327,113 +159,40 @@ func runWidgetInit(cmd *cobra.Command, args []string) error {
 
 // ExtractWidgetDefinitions scans `projectDir/widgets/` for .mpk files and
 // generates/refreshes `projectDir/.mxcli/widgets/<name>.def.json` for each.
-// Auto-refreshes definitions whose generated content has drifted (e.g. when
-// mxcli was upgraded and now emits additional fields like objectLists).
-// When `force` is true, every existing def.json is rewritten regardless.
-// When `verbose` is false, suppresses per-widget output but keeps the summary.
+// Auto-refreshes definitions whose generated content has drifted. When
+// `force` is true, every existing def.json is rewritten regardless. When
+// `verbose` is false, suppresses per-widget output but keeps the summary.
+//
+// Delegates core extraction to executor.RefreshWidgetDefinitions; this CLI
+// wrapper also generates the widget skill .md docs.
 func ExtractWidgetDefinitions(projectPath string, force bool, verbose bool) error {
-	projectDir := filepath.Dir(projectPath)
-	widgetsDir := filepath.Join(projectDir, "widgets")
-	outputDir := filepath.Join(projectDir, ".mxcli", "widgets")
-
-	// Load built-in registry to skip widgets that already have hand-crafted definitions
-	builtinRegistry, _ := executor.NewWidgetRegistry()
-
-	// Scan widgets/ for .mpk files
-	matches, err := filepath.Glob(filepath.Join(widgetsDir, "*.mpk"))
-	if err != nil {
-		return fmt.Errorf("failed to scan widgets directory: %w", err)
+	var output io.Writer
+	if verbose {
+		output = os.Stdout
 	}
-	if len(matches) == 0 {
+	stats, err := executor.RefreshWidgetDefinitions(projectPath, force, output)
+	if err != nil {
+		return err
+	}
+
+	if stats.Extracted+stats.Refreshed+stats.UpToDate+stats.Skipped == 0 {
 		if verbose {
 			fmt.Println("No .mpk files found in widgets/ directory.")
 		}
 		return nil
 	}
 
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		return fmt.Errorf("failed to create output directory: %w", err)
-	}
-
-	var extracted, refreshed, upToDate, skipped int
-	for _, mpkPath := range matches {
-		mpkDef, err := mpk.ParseMPK(mpkPath)
-		if err != nil {
-			log.Printf("warning: skipping %s: %v", filepath.Base(mpkPath), err)
-			skipped++
-			continue
-		}
-
-		mdlName := deriveMDLName(mpkDef.ID)
-		filename := strings.ToLower(mdlName) + ".def.json"
-		outPath := filepath.Join(outputDir, filename)
-
-		// Skip widgets that have hand-crafted built-in definitions (e.g., COMBOBOX, GALLERY)
-		if builtinRegistry != nil {
-			if _, ok := builtinRegistry.GetByWidgetID(mpkDef.ID); ok {
-				skipped++
-				continue
-			}
-		}
-
-		// Generate fresh def.json content
-		defJSON := generateDefJSON(mpkDef, mdlName)
-		freshData, err := json.MarshalIndent(defJSON, "", "  ")
-		if err != nil {
-			log.Printf("warning: skipping %s: %v", mpkDef.ID, err)
-			skipped++
-			continue
-		}
-		freshData = append(freshData, '\n')
-
-		// Compare against existing — auto-refresh stale defs (those generated
-		// by an older mxcli build before fields like `objectLists` were
-		// emitted), report unchanged defs as "up to date". --force bypasses
-		// the comparison and rewrites unconditionally.
-		existingData, existsErr := os.ReadFile(outPath)
-		switch {
-		case existsErr != nil:
-			extracted++
-		case bytes.Equal(existingData, freshData):
-			if force {
-				refreshed++
-			} else {
-				upToDate++
-				continue
-			}
-		default:
-			refreshed++
-		}
-
-		if err := os.WriteFile(outPath, freshData, 0644); err != nil {
-			return fmt.Errorf("failed to write %s: %w", outPath, err)
-		}
-		if verbose {
-			kind := "custom"
-			if mpkDef.IsPluggable {
-				kind = "pluggable"
-			}
-			marker := "+"
-			if existsErr == nil {
-				marker = "~"
-			}
-			fmt.Printf("  %s %-12s %-20s %s\n", marker, kind, mdlName, mpkDef.ID)
-		}
-	}
-
 	if verbose {
 		fmt.Printf("\nExtracted: %d new, %d refreshed, %d up to date, %d skipped (built-in or unparseable)\n",
-			extracted, refreshed, upToDate, skipped)
-	} else if extracted > 0 || refreshed > 0 {
-		// Concise one-liner when called from another command
-		fmt.Printf("  Widget definitions: %d new, %d refreshed\n", extracted, refreshed)
+			stats.Extracted, stats.Refreshed, stats.UpToDate, stats.Skipped)
+	} else if stats.Extracted > 0 || stats.Refreshed > 0 {
+		fmt.Printf("  Widget definitions: %d new, %d refreshed\n", stats.Extracted, stats.Refreshed)
 	}
 
-	// Also generate docs
 	if verbose {
 		fmt.Println("\nGenerating widget documentation...")
 	}
-	return generateWidgetDocs(projectDir)
+	return generateWidgetDocs(filepath.Dir(projectPath))
 }
 
 func runWidgetDocs(cmd *cobra.Command, args []string) error {
@@ -468,7 +227,7 @@ func generateWidgetDocs(projectDir string) error {
 			continue
 		}
 
-		mdlName := deriveMDLName(mpkDef.ID)
+		mdlName := executor.DeriveMDLName(mpkDef.ID)
 		filename := strings.ToLower(mdlName) + ".md"
 		outPath := filepath.Join(docsDir, filename)
 

@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package main
+package executor
 
 import (
 	"testing"
 
-	"github.com/mendixlabs/mxcli/mdl/executor"
 	"github.com/mendixlabs/mxcli/sdk/widgets/mpk"
 )
 
@@ -22,9 +21,9 @@ func TestDeriveMDLName(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.widgetID, func(t *testing.T) {
-			result := deriveMDLName(tc.widgetID)
+			result := DeriveMDLName(tc.widgetID)
 			if result != tc.expected {
-				t.Errorf("deriveMDLName(%q) = %q, want %q", tc.widgetID, result, tc.expected)
+				t.Errorf("DeriveMDLName(%q) = %q, want %q", tc.widgetID, result, tc.expected)
 			}
 		})
 	}
@@ -46,7 +45,7 @@ func TestGenerateDefJSON(t *testing.T) {
 		},
 	}
 
-	def := generateDefJSON(mpkDef, "TESTWIDGET")
+	def := GenerateDefJSON(mpkDef, "TESTWIDGET")
 
 	// Verify basic fields
 	if def.WidgetID != "com.example.widget.TestWidget" {
@@ -133,7 +132,7 @@ func TestGenerateDefJSON_SkipsComplexTypes(t *testing.T) {
 		},
 	}
 
-	def := generateDefJSON(mpkDef, "COMPLEX")
+	def := GenerateDefJSON(mpkDef, "COMPLEX")
 
 	// Complex types should be skipped
 	if len(def.PropertyMappings) != 0 {
@@ -146,7 +145,7 @@ func TestGenerateDefJSON_SkipsComplexTypes(t *testing.T) {
 
 func TestGenerateDefJSON_AssociationAfterDataSource(t *testing.T) {
 	// Association mappings require entityContext from a prior DataSource mapping.
-	// generateDefJSON must order datasource before association regardless of MPK order.
+	// GenerateDefJSON must order datasource before association regardless of MPK order.
 	mpkDef := &mpk.WidgetDefinition{
 		ID:   "com.example.AssocFirst",
 		Name: "AssocFirst",
@@ -157,7 +156,7 @@ func TestGenerateDefJSON_AssociationAfterDataSource(t *testing.T) {
 		},
 	}
 
-	def := generateDefJSON(mpkDef, "ASSOCFIRST")
+	def := GenerateDefJSON(mpkDef, "ASSOCFIRST")
 
 	// Should have 3 mappings: datasource, string primitive, association
 	if len(def.PropertyMappings) != 3 {
@@ -188,7 +187,7 @@ func TestGenerateDefJSON_AssociationAfterDataSource(t *testing.T) {
 	// The registry's validateMappings enforces Association-after-DataSource ordering.
 }
 
-func findMapping(mappings []executor.PropertyMapping, key string) *executor.PropertyMapping {
+func findMapping(mappings []PropertyMapping, key string) *PropertyMapping {
 	for i := range mappings {
 		if mappings[i].PropertyKey == key {
 			return &mappings[i]
@@ -256,7 +255,7 @@ func TestGenerateDefJSON_ObjectList(t *testing.T) {
 		},
 	}
 
-	def := generateDefJSON(mpkDef, "ACCORDION")
+	def := GenerateDefJSON(mpkDef, "ACCORDION")
 
 	// Top-level primitive should still land in PropertyMappings.
 	if len(def.PropertyMappings) != 1 {
@@ -332,7 +331,7 @@ func TestGenerateDefJSON_ObjectList(t *testing.T) {
 			{Key: "myObj", Type: "object", IsList: false},
 		},
 	}
-	def2 := generateDefJSON(mpkDef2, "NOTALIST")
+	def2 := GenerateDefJSON(mpkDef2, "NOTALIST")
 	if len(def2.ObjectLists) != 0 {
 		t.Errorf("ObjectLists for non-list object property = %d, want 0",
 			len(def2.ObjectLists))
@@ -359,7 +358,7 @@ func TestGenerateDefJSON_ObjectListPrimitiveDefaults(t *testing.T) {
 		},
 	}
 
-	def := generateDefJSON(mpkDef, "SIZED")
+	def := GenerateDefJSON(mpkDef, "SIZED")
 	if len(def.ObjectLists) != 1 {
 		t.Fatalf("ObjectLists count = %d, want 1", len(def.ObjectLists))
 	}
