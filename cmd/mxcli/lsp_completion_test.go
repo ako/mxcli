@@ -3,7 +3,10 @@
 package main
 
 import (
+	"strings"
 	"testing"
+
+	"go.lsp.dev/protocol"
 )
 
 func TestExtractPageParamNames(t *testing.T) {
@@ -257,4 +260,72 @@ func mapKeys(m map[string]bool) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+// TestWidgetPropertyHover verifies LSP hover surfaces widget property
+// descriptions / type / default from the .def.json content.
+func TestWidgetPropertyHover(t *testing.T) {
+	s := &mdlServer{}
+
+	tests := []struct {
+		name     string
+		text     string
+		line     uint32
+		col      uint32
+		wantSub  []string // substrings expected in the rendered hover Value
+		wantNil  bool     // when the hover should not fire
+	}{
+		{
+			name: "cursor on combobox property key shows hover",
+			text: "create page X (Title: 'T') {\n" +
+				"  combobox cb1 (\n" +
+				"    optionsSourceType: 'enumeration'\n" +
+				"  )\n" +
+				"}",
+			line:    2,
+			col:     12, // mid-word in "optionsSourceType"
+			wantSub: []string{"optionsSourceType", "combobox"},
+		},
+		{
+			name: "cursor on universal Class property",
+			text: "create page X (Title: 'T') {\n" +
+				"  combobox cb1 (\n" +
+				"    Class: 'foo'\n" +
+				"  )\n" +
+				"}",
+			line:    2,
+			col:     6,
+			wantNil: true, // Class isn't a registered property; falls through
+		},
+		{
+			name: "cursor outside any widget block",
+			text: "create page X (Title: 'T') {\n" +
+				"  \n" +
+				"}",
+			line:    1,
+			col:     2,
+			wantNil: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := s.widgetPropertyHover(tt.text, protocol.Position{Line: tt.line, Character: tt.col})
+			if tt.wantNil {
+				if h != nil {
+					t.Errorf("expected nil hover; got %v", h.Contents.Value)
+				}
+				return
+			}
+			if h == nil {
+				t.Fatalf("expected hover, got nil")
+			}
+			content := h.Contents.Value
+			for _, sub := range tt.wantSub {
+				if !strings.Contains(content, sub) {
+					t.Errorf("hover missing %q. Full content:\n%s", sub, content)
+				}
+			}
+		})
+	}
 }

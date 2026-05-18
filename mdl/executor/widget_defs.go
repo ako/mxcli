@@ -180,18 +180,21 @@ func GenerateDefJSON(mpkDef *mpk.WidgetDefinition, mdlName string) *WidgetDefini
 				PropertyKey: p.Key,
 				Source:      "DataSource",
 				Operation:   "datasource",
+				Description: p.Description,
 			})
 		case "attribute":
 			def.PropertyMappings = append(def.PropertyMappings, PropertyMapping{
 				PropertyKey: p.Key,
 				Source:      "Attribute",
 				Operation:   "attribute",
+				Description: p.Description,
 			})
 		case "association":
 			assocMappings = append(assocMappings, PropertyMapping{
 				PropertyKey: p.Key,
 				Source:      "Association",
 				Operation:   "association",
+				Description: p.Description,
 			})
 		case "selection":
 			def.PropertyMappings = append(def.PropertyMappings, PropertyMapping{
@@ -199,11 +202,13 @@ func GenerateDefJSON(mpkDef *mpk.WidgetDefinition, mdlName string) *WidgetDefini
 				Source:      "Selection",
 				Operation:   "selection",
 				Default:     p.DefaultValue,
+				Description: p.Description,
 			})
 		case "boolean", "integer", "decimal", "string", "enumeration":
 			m := PropertyMapping{
 				PropertyKey: p.Key,
 				Operation:   "primitive",
+				Description: p.Description,
 			}
 			if p.DefaultValue != "" {
 				m.Value = p.DefaultValue
@@ -241,6 +246,7 @@ func makeObjectListMapping(p mpk.PropertyDef) ObjectListMapping {
 		item := ItemPropertyMapping{
 			PropertyKey: child.Key,
 			Operation:   op,
+			Description: child.Description,
 		}
 		switch op {
 		case "attribute":

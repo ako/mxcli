@@ -44,6 +44,11 @@ type PropertyMapping struct {
 	Value       string `json:"value,omitempty"`
 	Operation   string `json:"operation"`
 	Default     string `json:"default,omitempty"`
+	// Description is the human-readable text from the .mpk's widget XML
+	// (PropertyDef.Description). Populated by GenerateDefJSON; surfaced by
+	// the LSP on property hover. Optional — older .def.json files without
+	// this field still load fine.
+	Description string `json:"description,omitempty"`
 }
 
 // WidgetMode defines a conditional configuration variant for a widget.
@@ -90,6 +95,7 @@ type ItemPropertyMapping struct {
 	Value       string `json:"value,omitempty"`
 	Operation   string `json:"operation"`
 	Default     string `json:"default,omitempty"`
+	Description string `json:"description,omitempty"`
 }
 
 // ItemSlotMapping maps a widget child slot inside one object-list item

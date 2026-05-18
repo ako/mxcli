@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mendixlabs/mxcli/mdl/executor"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 )
@@ -22,6 +23,13 @@ func (s *mdlServer) Hover(ctx context.Context, params *protocol.HoverParams) (*p
 
 	if text == "" {
 		return nil, nil
+	}
+
+	// First try: cursor is on a property key inside a pluggable widget's
+	// (...) block. Surface the widget property's description, type, and
+	// default from the .def.json.
+	if h := s.widgetPropertyHover(text, params.Position); h != nil {
+		return h, nil
 	}
 
 	name, startCol, endCol, ok := qualifiedNameAtPosition(text, params.Position.Line, params.Position.Character)
@@ -205,4 +213,126 @@ func (s *mdlServer) resolveElementType(ctx context.Context, text string, line ui
 		}
 	}
 	return ""
+}
+
+// widgetPropertyHover returns a hover description when the cursor is on a
+// property key inside a pluggable widget's (...) block. Returns nil when
+// the cursor is elsewhere or the property isn't recognized by the widget.
+func (s *mdlServer) widgetPropertyHover(text string, pos protocol.Position) *protocol.Hover {
+	lines := strings.Split(text, "\n")
+	if int(pos.Line) >= len(lines) {
+		return nil
+	}
+	line := lines[pos.Line]
+	wordStart, wordEnd, ok := identifierRangeAt(line, int(pos.Character))
+	if !ok {
+		return nil
+	}
+	key := line[wordStart:wordEnd]
+	if key == "" {
+		return nil
+	}
+
+	def := scanEnclosingWidget(text, int(pos.Line), wordEnd, s)
+	if def == nil {
+		return nil
+	}
+	desc, found := findPropertyHoverContent(def, key)
+	if !found {
+		return nil
+	}
+	return &protocol.Hover{
+		Contents: protocol.MarkupContent{
+			Kind:  protocol.Markdown,
+			Value: desc,
+		},
+		Range: &protocol.Range{
+			Start: protocol.Position{Line: pos.Line, Character: uint32(wordStart)},
+			End:   protocol.Position{Line: pos.Line, Character: uint32(wordEnd)},
+		},
+	}
+}
+
+// findPropertyHoverContent looks up a property/childSlot/objectList by key
+// (case-insensitive) on a widget definition and renders a Markdown hover
+// blurb. Returns the rendered text and whether the key was recognized.
+func findPropertyHoverContent(def *executor.WidgetDefinition, key string) (string, bool) {
+	lk := strings.ToLower(key)
+
+	for _, m := range def.PropertyMappings {
+		if strings.EqualFold(m.PropertyKey, lk) || strings.EqualFold(m.Source, lk) {
+			return renderPropertyHover(def, m.PropertyKey, m.Operation, m.Default, m.Description, m.Value, ""), true
+		}
+	}
+	for _, mode := range def.Modes {
+		for _, m := range mode.PropertyMappings {
+			if strings.EqualFold(m.PropertyKey, lk) || strings.EqualFold(m.Source, lk) {
+				return renderPropertyHover(def, m.PropertyKey, m.Operation, m.Default, m.Description, m.Value, mode.Name), true
+			}
+		}
+	}
+	for _, slot := range def.ChildSlots {
+		if strings.EqualFold(slot.PropertyKey, lk) {
+			return fmt.Sprintf("**%s** _(child slot — `%s` block)_\n\nWidget: `%s`",
+				slot.PropertyKey, slot.MDLContainer, def.MDLName), true
+		}
+	}
+	for _, ol := range def.ObjectLists {
+		if strings.EqualFold(ol.PropertyKey, lk) {
+			return fmt.Sprintf("**%s** _(object list — `%s` blocks)_\n\nWidget: `%s` · items: %d properties, %d slots",
+				ol.PropertyKey, ol.MDLContainer, def.MDLName, len(ol.ItemProperties), len(ol.ItemSlots)), true
+		}
+	}
+	return "", false
+}
+
+func renderPropertyHover(def *executor.WidgetDefinition, propKey, operation, defaultVal, description, value, mode string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "**%s** _(property", propKey)
+	if operation != "" {
+		fmt.Fprintf(&b, " · %s", operation)
+	}
+	if mode != "" {
+		fmt.Fprintf(&b, " · mode: %s", mode)
+	}
+	b.WriteString(")_\n\n")
+	if description != "" {
+		b.WriteString(description)
+		b.WriteString("\n\n")
+	}
+	if defaultVal != "" {
+		fmt.Fprintf(&b, "_Default:_ `%s`\n\n", defaultVal)
+	} else if value != "" {
+		fmt.Fprintf(&b, "_Value:_ `%s`\n\n", value)
+	}
+	fmt.Fprintf(&b, "Widget: `%s` (`%s`)", def.MDLName, def.WidgetID)
+	return b.String()
+}
+
+// identifierRangeAt returns the start (inclusive) and end (exclusive) column
+// indices of the identifier containing or immediately to the right of the
+// given column. Falls back to false when no identifier is present.
+func identifierRangeAt(line string, col int) (int, int, bool) {
+	if col > len(line) {
+		col = len(line)
+	}
+	start := col
+	for start > 0 && isIdentChar(line[start-1]) {
+		start--
+	}
+	end := col
+	for end < len(line) && isIdentChar(line[end]) {
+		end++
+	}
+	if start == end {
+		return 0, 0, false
+	}
+	return start, end, true
+}
+
+func isIdentChar(c byte) bool {
+	return (c >= 'a' && c <= 'z') ||
+		(c >= 'A' && c <= 'Z') ||
+		(c >= '0' && c <= '9') ||
+		c == '_'
 }
