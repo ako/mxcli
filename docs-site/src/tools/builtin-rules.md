@@ -1,6 +1,8 @@
 # Built-in Rules
 
-mxcli ships with 14 built-in lint rules implemented in Go. These rules are fast and always available.
+mxcli ships with built-in rules implemented in Go. These rules are fast and always available.
+
+The **lint rules** below run with `mxcli lint`. There is also a separate group of **check-time rules** that run with `mxcli check` — see [Check-time Rules](#check-time-rules-mxcli-check) at the bottom of this page.
 
 ## MDL Rules
 
@@ -50,3 +52,14 @@ System and marketplace modules often trigger false positives. Exclude them:
 ```bash
 mxcli lint -p app.mpr --exclude System --exclude Administration
 ```
+
+## Check-time Rules (`mxcli check`)
+
+These rules run with `mxcli check` (and the LSP, for real-time diagnostics) rather than `mxcli lint`. They focus on pluggable-widget authoring.
+
+| Rule | Where it fires | Description |
+|------|----------------|-------------|
+| **MDL-WIDGET01** | `mxcli check` + LSP | Unknown property key on a pluggable widget. The property is not in the widget's `.def.json`. Catches typos like `optionsSourcType` (missing `e`) before MxBuild does. Suggests the nearest known key. |
+| **MDL-WIDGET02** | `mxcli check --post-migration` | Legacy native widget found on a project that has a pluggable replacement available. Reports each occurrence with the qualified document name, widget instance name, and the recommended pluggable widget. |
+
+Run `mxcli check --help` for usage. See [Error Messages → MDL-WIDGET01 / MDL-WIDGET02](../appendixes/error-messages.md#mdl-widget01-unknown-pluggable-widget-property) for cause-and-solution detail.
