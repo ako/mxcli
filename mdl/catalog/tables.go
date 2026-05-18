@@ -287,7 +287,57 @@ func (c *Catalog) createTables() error {
 			SourceRevision TEXT
 		)`,
 
-		// Widgets table
+		// Widget definitions — registry of widgets AVAILABLE in the project
+		// (the .mpk / .def.json side). Distinct from the `widgets` table below,
+		// which tracks each widget INSTANCE on a page or snippet.
+		// Sourced from widgets/*.mpk paired with .mxcli/widgets/*.def.json, plus
+		// built-in definitions (COMBOBOX, GALLERY, DATAGRID, filters, …).
+		`CREATE TABLE IF NOT EXISTS widget_definitions (
+			WidgetId TEXT PRIMARY KEY,
+			MdlName TEXT,
+			DisplayName TEXT,
+			WidgetKind TEXT,
+			Version TEXT,
+			MpkPath TEXT,
+			DefPath TEXT,
+			PropertyCount INTEGER,
+			ChildSlotCount INTEGER,
+			ObjectListCount INTEGER,
+			ProjectId TEXT,
+			ProjectName TEXT,
+			SnapshotId TEXT,
+			SnapshotDate TEXT,
+			SnapshotSource TEXT,
+			SourceId TEXT,
+			SourceBranch TEXT,
+			SourceRevision TEXT
+		)`,
+
+		// One row per property / child slot / object list belonging to a
+		// widget definition. Kind = 'property' | 'childSlot' | 'objectList'.
+		// MdlKeyword is set for childSlot (e.g. 'TRIGGER') and objectList
+		// (e.g. 'GROUP') rows; empty for scalar properties.
+		`CREATE TABLE IF NOT EXISTS widget_definition_properties (
+			Id TEXT PRIMARY KEY,
+			WidgetId TEXT,
+			PropertyKey TEXT,
+			Kind TEXT,
+			Type TEXT,
+			MdlKeyword TEXT,
+			Required INTEGER,
+			DefaultValue TEXT,
+			Description TEXT,
+			ProjectId TEXT,
+			ProjectName TEXT,
+			SnapshotId TEXT,
+			SnapshotDate TEXT,
+			SnapshotSource TEXT,
+			SourceId TEXT,
+			SourceBranch TEXT,
+			SourceRevision TEXT
+		)`,
+
+		// Widgets table — one row per widget INSTANCE (use site).
 		`CREATE TABLE IF NOT EXISTS widgets (
 			Id TEXT PRIMARY KEY,
 			Name TEXT,
@@ -963,6 +1013,10 @@ func (c *Catalog) createTables() error {
 		`CREATE INDEX IF NOT EXISTS idx_activities_type ON activities(ActivityType)`,
 		`CREATE INDEX IF NOT EXISTS idx_widgets_container ON widgets(ContainerId)`,
 		`CREATE INDEX IF NOT EXISTS idx_widgets_type ON widgets(WidgetType)`,
+		`CREATE INDEX IF NOT EXISTS idx_widget_defs_kind ON widget_definitions(WidgetKind)`,
+		`CREATE INDEX IF NOT EXISTS idx_widget_defs_mdlname ON widget_definitions(MdlName)`,
+		`CREATE INDEX IF NOT EXISTS idx_widget_def_props_widget ON widget_definition_properties(WidgetId)`,
+		`CREATE INDEX IF NOT EXISTS idx_widget_def_props_kind ON widget_definition_properties(Kind)`,
 		`CREATE INDEX IF NOT EXISTS idx_xpath_document ON xpath_expressions(DocumentId)`,
 		`CREATE INDEX IF NOT EXISTS idx_refs_source ON refs(SourceType, SourceName)`,
 		`CREATE INDEX IF NOT EXISTS idx_refs_target ON refs(TargetType, TargetName)`,

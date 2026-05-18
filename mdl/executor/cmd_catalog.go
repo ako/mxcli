@@ -374,6 +374,11 @@ func buildCatalog(ctx *ExecContext, full bool, source ...bool) error {
 			return captureDescribeParallel(ctx, objectType, qualifiedName)
 		})
 	}
+	// Supply built-in widget definitions (hand-crafted COMBOBOX, GALLERY,
+	// DATAGRID, filter widgets, …) for the widget_definitions catalog table.
+	// Project-level widgets (widgets/*.mpk) are added by the catalog builder
+	// itself by reading the filesystem.
+	builder.SetBuiltinWidgetMetas(builtinWidgetMetas())
 	err = builder.Build(func(table string, count int) {
 		fmt.Fprintf(ctx.Output, "✓ %s: %d\n", table, count)
 	})
@@ -597,6 +602,8 @@ func convertCatalogTableNames(query string) string {
 		"catalog.java_actions":              "java_actions",
 		"catalog.activities":                "activities",
 		"catalog.widgets":                   "widgets",
+		"catalog.widget_definitions":        "widget_definitions",
+		"catalog.widget_definition_properties": "widget_definition_properties",
 		"catalog.xpath_expressions":         "xpath_expressions",
 		"catalog.refs":                      "refs",
 		"catalog.role_mappings":             "role_mappings",
@@ -972,4 +979,48 @@ func search(ctx *ExecContext, query, format string) error {
 // Search performs a full-text search with the specified output format.
 func (e *Executor) Search(query, format string) error {
 	return search(e.newExecContext(context.Background()), query, format)
+}
+
+// builtinWidgetMetas adapts the built-in WidgetRegistry's definitions into
+// the catalog package's WidgetDefinitionMeta shape. Used by REFRESH CATALOG
+// to populate the widget_definitions table alongside project widgets/.
+func builtinWidgetMetas() []catalog.WidgetDefinitionMeta {
+	reg, err := NewWidgetRegistry()
+	if err != nil || reg == nil {
+		return nil
+	}
+	defs := reg.All()
+	if len(defs) == 0 {
+		return nil
+	}
+	out := make([]catalog.WidgetDefinitionMeta, 0, len(defs))
+	for _, def := range defs {
+		meta := catalog.WidgetDefinitionMeta{
+			WidgetId:    def.WidgetID,
+			MdlName:     def.MDLName,
+			DisplayName: def.MDLName,
+			WidgetKind:  "builtin",
+		}
+		for _, pm := range def.PropertyMappings {
+			meta.Properties = append(meta.Properties, catalog.WidgetDefinitionPropMeta{
+				PropertyKey:  pm.PropertyKey,
+				Type:         pm.Operation,
+				DefaultValue: pm.Default,
+			})
+		}
+		for _, cs := range def.ChildSlots {
+			meta.ChildSlots = append(meta.ChildSlots, catalog.WidgetDefinitionSlotMeta{
+				PropertyKey: cs.PropertyKey,
+				MdlKeyword:  cs.MDLContainer,
+			})
+		}
+		for _, ol := range def.ObjectLists {
+			meta.ObjectLists = append(meta.ObjectLists, catalog.WidgetDefinitionSlotMeta{
+				PropertyKey: ol.PropertyKey,
+				MdlKeyword:  ol.MDLContainer,
+			})
+		}
+		out = append(out, meta)
+	}
+	return out
 }

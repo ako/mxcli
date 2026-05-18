@@ -20,6 +20,10 @@ import (
 // CatalogReader defines the read-only backend surface used by the catalog builder.
 // Both *mpr.Reader and backend.FullBackend satisfy this interface.
 type CatalogReader interface {
+	// Project path — used to locate widgets/*.mpk and .mxcli/widgets/*.def.json
+	// when building the widget_definitions catalog table.
+	Path() string
+
 	// Infrastructure
 	GetRawUnit(id model.ID) (map[string]any, error)
 	ListRawUnitsByType(typePrefix string) ([]*types.RawUnit, error)
@@ -83,6 +87,10 @@ type Builder struct {
 	fullMode     bool      // If true, do full parsing (activities/widgets)
 	sourceMode   bool      // If true, build source FTS table (implies full)
 	describeFunc DescribeFunc
+
+	// Built-in widget definitions supplied by the caller — used to populate
+	// the widget_definitions catalog table alongside project widgets/.
+	builtinWidgetMetas []WidgetDefinitionMeta
 
 	// Document caches — avoid redundant BSON parsing across builder phases.
 	// Each List* call on the reader re-parses ALL documents from BSON.
@@ -399,6 +407,10 @@ func (b *Builder) Build(progress ProgressFunc) error {
 
 	if err := b.buildBusinessEventServices(); err != nil {
 		return fmt.Errorf("failed to build business event services: %w", err)
+	}
+
+	if err := b.buildWidgetDefinitions(); err != nil {
+		return fmt.Errorf("failed to build widget definitions: %w", err)
 	}
 
 	if err := b.buildDatabaseConnections(); err != nil {
