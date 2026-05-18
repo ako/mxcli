@@ -105,6 +105,16 @@ func (s *mdlServer) mdlCompletionItems(linePrefixUpper string) []protocol.Comple
 // NOTE: Cached via sync.Once — new .def.json files added while the LSP server is
 // running will not appear until the server is restarted.
 func (s *mdlServer) widgetRegistryCompletions() []protocol.CompletionItem {
+	s.ensureWidgetRegistry()
+	return s.widgetCompletionItems
+}
+
+// ensureWidgetRegistry loads the widget registry once per server lifetime,
+// caching the result on s.widgetRegistry and s.widgetCompletionItems.
+// Safe to call from any goroutine.
+// NOTE: new .def.json files added while the LSP server is running will not
+// appear until the server is restarted.
+func (s *mdlServer) ensureWidgetRegistry() {
 	s.widgetCompletionsOnce.Do(func() {
 		registry, err := executor.NewWidgetRegistry()
 		if err != nil {
@@ -113,6 +123,7 @@ func (s *mdlServer) widgetRegistryCompletions() []protocol.CompletionItem {
 		if err := registry.LoadUserDefinitions(s.mprPath); err != nil {
 			log.Printf("warning: loading user widget definitions for LSP: %v", err)
 		}
+		s.widgetRegistry = registry
 		for _, def := range registry.All() {
 			s.widgetCompletionItems = append(s.widgetCompletionItems, protocol.CompletionItem{
 				Label:  def.MDLName,
@@ -121,7 +132,6 @@ func (s *mdlServer) widgetRegistryCompletions() []protocol.CompletionItem {
 			})
 		}
 	})
-	return s.widgetCompletionItems
 }
 
 // mdlCreateContextKeywords are object types suggested after CREATE.
@@ -781,23 +791,7 @@ func scanEnclosingWidget(text string, cursorLine, cursorCol int, s *mdlServer) *
 	}
 
 	// Lazy-load the registry (re-use the widget-completions cache).
-	s.widgetCompletionsOnce.Do(func() {
-		registry, err := executor.NewWidgetRegistry()
-		if err != nil {
-			return
-		}
-		if err := registry.LoadUserDefinitions(s.mprPath); err != nil {
-			log.Printf("warning: loading user widget definitions for LSP: %v", err)
-		}
-		s.widgetRegistry = registry
-		for _, def := range registry.All() {
-			s.widgetCompletionItems = append(s.widgetCompletionItems, protocol.CompletionItem{
-				Label:  def.MDLName,
-				Kind:   protocol.CompletionItemKindClass,
-				Detail: "Pluggable widget: " + def.WidgetID,
-			})
-		}
-	})
+	s.ensureWidgetRegistry()
 	if s.widgetRegistry == nil {
 		return nil
 	}

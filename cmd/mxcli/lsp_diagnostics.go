@@ -63,7 +63,7 @@ func (s *mdlServer) publishDiagnostics(ctx context.Context, docURI uri.URI, text
 	diags := parseMDLDiagnostics(text)
 	// If no parse errors, run semantic validation inline
 	if len(diags) == 0 {
-		diags = append(diags, runSemanticValidation(text)...)
+		diags = append(diags, s.runSemanticValidation(text)...)
 	}
 	if diags == nil {
 		diags = []protocol.Diagnostic{} // send empty array to clear diagnostics
@@ -250,13 +250,18 @@ func mapStatementLines(text string) []uint32 {
 
 // runSemanticValidation runs the same validators as cmd_check.go directly on parsed text,
 // returning LSP diagnostics with structured rule IDs.
-func runSemanticValidation(text string) []protocol.Diagnostic {
+func (s *mdlServer) runSemanticValidation(text string) []protocol.Diagnostic {
 	prog, errs := visitor.Build(text)
 	if len(errs) > 0 || prog == nil {
 		return nil
 	}
 
 	stmtLines := mapStatementLines(text)
+
+	// Widget validation reuses the LSP's cached widget registry so the
+	// filesystem isn't walked on every keystroke. Nil-safe: when the registry
+	// hasn't loaded (no project context, etc.) widget validation is skipped.
+	s.ensureWidgetRegistry()
 
 	var diags []protocol.Diagnostic
 	for i, stmt := range prog.Statements {
@@ -275,6 +280,9 @@ func runSemanticValidation(text string) []protocol.Diagnostic {
 				violations = append(violations, executor.ValidateOQLSyntax(viewStmt.Query.RawQuery)...)
 				violations = append(violations, executor.ValidateOQLTypes(viewStmt.Query.RawQuery, viewStmt.Attributes)...)
 			}
+		}
+		if s.widgetRegistry != nil {
+			violations = append(violations, executor.ValidateWidgetPropertiesForStatement(stmt, s.widgetRegistry)...)
 		}
 
 		lineNum := uint32(0)

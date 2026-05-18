@@ -262,6 +262,84 @@ func mapKeys(m map[string]bool) []string {
 	return out
 }
 
+// TestWidgetPropertyDiagnostics verifies that unknown property keys on a
+// pluggable widget surface as LSP diagnostics through runSemanticValidation
+// (the path that fires on every keystroke).
+func TestWidgetPropertyDiagnostics(t *testing.T) {
+	s := &mdlServer{}
+
+	tests := []struct {
+		name        string
+		text        string
+		wantRule    string   // RuleID expected in at least one diagnostic
+		wantInMsg   []string // substrings expected somewhere in the diagnostics
+		wantNoMatch bool     // when no widget diagnostic should fire
+	}{
+		{
+			name: "typo on combobox property surfaces MDL-WIDGET01",
+			text: "create page Mod.X (Title: 'T') {\n" +
+				"  combobox cb1 (\n" +
+				"    optionsSourcType: 'enumeration'\n" +
+				"  )\n" +
+				"}",
+			wantRule:  "MDL-WIDGET01",
+			wantInMsg: []string{"optionsSourcType", "combobox"},
+		},
+		{
+			name: "valid property — no widget diagnostic",
+			text: "create page Mod.X (Title: 'T') {\n" +
+				"  combobox cb1 (\n" +
+				"    optionsSourceType: 'enumeration'\n" +
+				"  )\n" +
+				"}",
+			wantNoMatch: true,
+		},
+		{
+			name: "alter page insert — typo flagged",
+			text: "ALTER PAGE Mod.X {\n" +
+				"  INSERT AFTER target1 {\n" +
+				"    combobox cb1 (badprop: 'x')\n" +
+				"  }\n" +
+				"};",
+			wantRule:  "MDL-WIDGET01",
+			wantInMsg: []string{"badprop"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			diags := s.runSemanticValidation(tt.text)
+			var widgetDiags []protocol.Diagnostic
+			for _, d := range diags {
+				if code, ok := d.Code.(string); ok && code == "MDL-WIDGET01" {
+					widgetDiags = append(widgetDiags, d)
+				}
+			}
+			if tt.wantNoMatch {
+				if len(widgetDiags) != 0 {
+					t.Errorf("expected no widget diagnostics, got: %v", widgetDiags)
+				}
+				return
+			}
+			if len(widgetDiags) == 0 {
+				t.Fatalf("expected at least one MDL-WIDGET01 diagnostic, got none (all diags: %v)", diags)
+			}
+			for _, sub := range tt.wantInMsg {
+				found := false
+				for _, d := range widgetDiags {
+					if strings.Contains(d.Message, sub) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("expected substring %q in a widget diagnostic; messages: %v", sub, widgetDiags)
+				}
+			}
+		})
+	}
+}
+
 // TestWidgetPropertyHover verifies LSP hover surfaces widget property
 // descriptions / type / default from the .def.json content.
 func TestWidgetPropertyHover(t *testing.T) {

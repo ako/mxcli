@@ -40,6 +40,22 @@ var universalWidgetProperties = map[string]bool{
 // project-installed widgets get validated too; otherwise only built-in
 // definitions are consulted.
 func ValidateWidgetProperties(prog *ast.Program, projectPath string) []linter.Violation {
+	registry := LoadWidgetRegistry(projectPath)
+	if registry == nil {
+		return nil
+	}
+	var violations []linter.Violation
+	for _, stmt := range prog.Statements {
+		violations = append(violations, ValidateWidgetPropertiesForStatement(stmt, registry)...)
+	}
+	return violations
+}
+
+// LoadWidgetRegistry returns a widget registry loaded with both the built-in
+// definitions and (when projectPath is non-empty) project-level .def.json
+// files. Returns nil if registry initialization fails. The LSP uses this to
+// load the registry once per session rather than per validation pass.
+func LoadWidgetRegistry(projectPath string) *WidgetRegistry {
 	registry, err := NewWidgetRegistry()
 	if err != nil || registry == nil {
 		return nil
@@ -47,26 +63,35 @@ func ValidateWidgetProperties(prog *ast.Program, projectPath string) []linter.Vi
 	if projectPath != "" {
 		_ = registry.LoadUserDefinitions(projectPath)
 	}
+	return registry
+}
 
-	var violations []linter.Violation
-	for _, stmt := range prog.Statements {
-		switch s := stmt.(type) {
-		case *ast.CreatePageStmtV3:
-			violations = append(violations, validateWidgetTree(s.Widgets, registry, "page "+s.Name.String())...)
-		case *ast.CreateSnippetStmtV3:
-			violations = append(violations, validateWidgetTree(s.Widgets, registry, "snippet "+s.Name.String())...)
-		case *ast.AlterPageStmt:
-			for _, op := range s.Operations {
-				switch o := op.(type) {
-				case *ast.InsertWidgetOp:
-					violations = append(violations, validateWidgetTree(o.Widgets, registry, "alter "+s.PageName.String())...)
-				case *ast.ReplaceWidgetOp:
-					violations = append(violations, validateWidgetTree(o.NewWidgets, registry, "alter "+s.PageName.String())...)
-				}
+// ValidateWidgetPropertiesForStatement runs widget property validation on a
+// single statement using a pre-loaded registry. Returns no violations for
+// statements that don't carry pluggable widgets (everything except
+// CreatePageStmtV3, CreateSnippetStmtV3, AlterPageStmt).
+func ValidateWidgetPropertiesForStatement(stmt ast.Statement, registry *WidgetRegistry) []linter.Violation {
+	if registry == nil {
+		return nil
+	}
+	switch s := stmt.(type) {
+	case *ast.CreatePageStmtV3:
+		return validateWidgetTree(s.Widgets, registry, "page "+s.Name.String())
+	case *ast.CreateSnippetStmtV3:
+		return validateWidgetTree(s.Widgets, registry, "snippet "+s.Name.String())
+	case *ast.AlterPageStmt:
+		var out []linter.Violation
+		for _, op := range s.Operations {
+			switch o := op.(type) {
+			case *ast.InsertWidgetOp:
+				out = append(out, validateWidgetTree(o.Widgets, registry, "alter "+s.PageName.String())...)
+			case *ast.ReplaceWidgetOp:
+				out = append(out, validateWidgetTree(o.NewWidgets, registry, "alter "+s.PageName.String())...)
 			}
 		}
+		return out
 	}
-	return violations
+	return nil
 }
 
 // validateWidgetTree recursively walks the AST widget tree and validates
