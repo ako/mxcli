@@ -401,8 +401,11 @@ begin
   );
 
   -- Warning with template
+  -- Note: $OrderNumber is already a string parameter, so toString() would
+  -- be a type error in Mendix 10.24.19+. $TotalAmount is decimal, so it
+  -- does need toString().
   log warning node 'OrderService' 'High value order detected: {1} = {2}' with (
-      {1} = toString($OrderNumber)
+      {1} = $OrderNumber
     , {2} = toString($TotalAmount)
   );
 
