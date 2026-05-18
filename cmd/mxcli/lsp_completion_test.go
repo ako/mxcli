@@ -169,3 +169,92 @@ func TestScanEnclosingDataContainer(t *testing.T) {
 		})
 	}
 }
+
+// TestWidgetPropertyCompletion verifies that LSP completion inside a
+// pluggable widget's (...) block suggests the widget's known property keys
+// rather than the generic MDL keyword list.
+func TestWidgetPropertyCompletion(t *testing.T) {
+	s := &mdlServer{}
+
+	tests := []struct {
+		name        string
+		text        string
+		cursorLine  int
+		linePrefix  string
+		wantPresent []string // labels that must appear
+		wantAbsent  []string // labels that must NOT appear (e.g. typos, unrelated)
+	}{
+		{
+			name: "combobox property completion (built-in widget)",
+			text: "create page X (Title: 'T') {\n" +
+				"  combobox cb1 (\n" +
+				"    \n" +
+				"  )\n" +
+				"}",
+			cursorLine:  2,
+			linePrefix:  "    ",
+			wantPresent: []string{"Class", "Style", "Visible"},
+			wantAbsent:  []string{"ACCORDION", "CREATE", "ENTITY"},
+		},
+		{
+			name: "filtering by partial prefix",
+			text: "create page X (Title: 'T') {\n" +
+				"  combobox cb1 (\n" +
+				"    Vis\n" +
+				"  )\n" +
+				"}",
+			cursorLine:  2,
+			linePrefix:  "    Vis",
+			wantPresent: []string{"Visible"},
+			wantAbsent:  []string{"Class", "Style"}, // filtered out
+		},
+		{
+			name: "outside widget block → no widget completions",
+			text: "create page X (Title: 'T') {\n" +
+				"  \n" +
+				"}",
+			cursorLine: 1,
+			linePrefix: "  ",
+			wantAbsent: []string{"Visible", "Class"},
+		},
+		{
+			name: "pluggablewidget by ID form",
+			text: "create page X (Title: 'T') {\n" +
+				"  pluggablewidget 'com.mendix.widget.web.combobox.Combobox' cb1 (\n" +
+				"    \n" +
+				"  )\n" +
+				"}",
+			cursorLine:  2,
+			linePrefix:  "    ",
+			wantPresent: []string{"Class", "Visible"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			items := s.widgetPropertyCompletionItems(tt.text, tt.linePrefix, tt.cursorLine)
+			labels := make(map[string]bool, len(items))
+			for _, it := range items {
+				labels[it.Label] = true
+			}
+			for _, w := range tt.wantPresent {
+				if !labels[w] {
+					t.Errorf("expected label %q in completion items, got: %v", w, mapKeys(labels))
+				}
+			}
+			for _, w := range tt.wantAbsent {
+				if labels[w] {
+					t.Errorf("expected label %q NOT in completion items, but found it", w)
+				}
+			}
+		})
+	}
+}
+
+func mapKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}

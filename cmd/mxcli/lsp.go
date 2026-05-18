@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mendixlabs/mxcli/mdl/executor"
 	"github.com/spf13/cobra"
 
 	"go.lsp.dev/jsonrpc2"
@@ -60,6 +61,7 @@ type mdlServer struct {
 	// Widget completion cache (lazily populated)
 	widgetCompletionsOnce sync.Once
 	widgetCompletionItems []protocol.CompletionItem
+	widgetRegistry        *executor.WidgetRegistry // populated by the same Once
 }
 
 func newMDLServer(client protocol.Client) *mdlServer {

@@ -42,6 +42,16 @@ func (s *mdlServer) Completion(ctx context.Context, params *protocol.CompletionP
 		}
 	}
 
+	// Check if cursor is inside a widget property block — suggest the widget's
+	// known property keys from its .def.json (catches typos like
+	// `expanBehavior` before mxcli check ever runs).
+	if propItems := s.widgetPropertyCompletionItems(text, linePrefix, int(params.Position.Line)); propItems != nil {
+		return &protocol.CompletionList{
+			IsIncomplete: false,
+			Items:        propItems,
+		}, nil
+	}
+
 	// Check if context calls for catalog-based element completion
 	if types := inferCompletionTypes(linePrefixUpper); types != nil {
 		items := s.catalogCompletionItems(ctx, linePrefix, types)
@@ -624,4 +634,213 @@ func extractPageParamNames(text string) []string {
 		}
 	}
 	return unique
+}
+
+// widgetPropertyCompletionItems returns the widget's property keys when the
+// cursor sits inside a widget's (...) property block. Returns nil when the
+// cursor isn't in a widget context (so callers fall through to the generic
+// keyword completions).
+func (s *mdlServer) widgetPropertyCompletionItems(text, linePrefix string, cursorLine int) []protocol.CompletionItem {
+	def := scanEnclosingWidget(text, cursorLine, len(linePrefix), s)
+	if def == nil {
+		return nil
+	}
+
+	// Extract a partial-word prefix the user is currently typing — last
+	// run of letters before the cursor. Filter property suggestions to
+	// those that start with it (case-insensitive).
+	partial := trailingIdent(linePrefix)
+	partialUpper := strings.ToUpper(partial)
+
+	var items []protocol.CompletionItem
+	seen := make(map[string]bool)
+
+	addProp := func(key, detail string, kind protocol.CompletionItemKind) {
+		if key == "" || seen[strings.ToLower(key)] {
+			return
+		}
+		seen[strings.ToLower(key)] = true
+		if partialUpper != "" && !strings.HasPrefix(strings.ToUpper(key), partialUpper) {
+			return
+		}
+		items = append(items, protocol.CompletionItem{
+			Label:      key,
+			Kind:       kind,
+			Detail:     detail,
+			InsertText: key + ": ",
+		})
+	}
+
+	for _, m := range def.PropertyMappings {
+		addProp(m.PropertyKey, "Property ("+m.Operation+")", protocol.CompletionItemKindProperty)
+	}
+	for _, mode := range def.Modes {
+		for _, m := range mode.PropertyMappings {
+			detail := "Property (" + m.Operation + ")"
+			if mode.Name != "" {
+				detail += " [mode: " + mode.Name + "]"
+			}
+			addProp(m.PropertyKey, detail, protocol.CompletionItemKindProperty)
+		}
+	}
+	for _, m := range def.ChildSlots {
+		addProp(m.PropertyKey, "Child slot ("+m.MDLContainer+" block)", protocol.CompletionItemKindClass)
+	}
+	for _, m := range def.ObjectLists {
+		addProp(m.PropertyKey, "Object list ("+m.MDLContainer+" blocks)", protocol.CompletionItemKindClass)
+	}
+
+	// Universal infrastructure properties
+	for _, infra := range []struct{ name, detail string }{
+		{"Class", "CSS class (Forms$Appearance.Class)"},
+		{"Style", "Inline CSS (Forms$Appearance.Style)"},
+		{"DesignProperties", "Atlas design properties"},
+		{"Visible", "Conditional visibility"},
+		{"Editable", "Conditional editability"},
+	} {
+		addProp(infra.name, infra.detail, protocol.CompletionItemKindProperty)
+	}
+
+	if len(items) == 0 {
+		// Property block detected but partial matched nothing — return empty
+		// list so we don't fall through to the generic keyword completions
+		// (which would be noisy inside a widget property block).
+		return []protocol.CompletionItem{}
+	}
+	return items
+}
+
+// scanEnclosingWidget scans backwards from the cursor to find the widget
+// statement whose (...) property block the cursor is inside. Returns the
+// widget's WidgetDefinition from the server's lazily-loaded registry, or
+// nil when the cursor isn't inside a widget property block (or the widget
+// isn't registered).
+func scanEnclosingWidget(text string, cursorLine, cursorCol int, s *mdlServer) *executor.WidgetDefinition {
+	lines := strings.Split(text, "\n")
+	if cursorLine >= len(lines) {
+		return nil
+	}
+
+	// Walk backwards, counting parens. The cursor must sit inside an
+	// unmatched (.
+	skip := 0
+	openLine := -1
+	for i := cursorLine; i >= 0; i-- {
+		line := lines[i]
+		end := len(line)
+		if i == cursorLine {
+			end = cursorCol
+			if end > len(line) {
+				end = len(line)
+			}
+		}
+		for j := end - 1; j >= 0; j-- {
+			c := line[j]
+			switch c {
+			case ')':
+				skip++
+			case '(':
+				if skip > 0 {
+					skip--
+				} else {
+					openLine = i
+				}
+			}
+			if openLine != -1 {
+				break
+			}
+		}
+		if openLine != -1 {
+			break
+		}
+		// Don't scan back too far — widget statements are typically a few
+		// lines above. 200-line cap avoids pathological scans.
+		if cursorLine-i > 200 {
+			return nil
+		}
+	}
+	if openLine == -1 {
+		return nil
+	}
+
+	// Read the widget-statement header — joining the opening line and any
+	// continuation up to the `(`. The header looks like one of:
+	//   pluggablewidget 'com.example.widget.X' name
+	//   accordion name
+	//   gallery name (... unrelated property
+	// We only inspect from the start of openLine; multi-line widget headers
+	// are uncommon.
+	header := lines[openLine]
+	parenIdx := strings.LastIndex(header[:min(len(header), 4000)], "(")
+	if parenIdx < 0 {
+		return nil
+	}
+	header = strings.TrimSpace(header[:parenIdx])
+	if header == "" {
+		return nil
+	}
+
+	// Lazy-load the registry (re-use the widget-completions cache).
+	s.widgetCompletionsOnce.Do(func() {
+		registry, err := executor.NewWidgetRegistry()
+		if err != nil {
+			return
+		}
+		if err := registry.LoadUserDefinitions(s.mprPath); err != nil {
+			log.Printf("warning: loading user widget definitions for LSP: %v", err)
+		}
+		s.widgetRegistry = registry
+		for _, def := range registry.All() {
+			s.widgetCompletionItems = append(s.widgetCompletionItems, protocol.CompletionItem{
+				Label:  def.MDLName,
+				Kind:   protocol.CompletionItemKindClass,
+				Detail: "Pluggable widget: " + def.WidgetID,
+			})
+		}
+	})
+	if s.widgetRegistry == nil {
+		return nil
+	}
+
+	// Two header shapes: (1) pluggablewidget '<id>' name, (2) <keyword> name
+	tokens := strings.Fields(header)
+	if len(tokens) == 0 {
+		return nil
+	}
+	first := strings.ToLower(tokens[0])
+	if first == "pluggablewidget" || first == "customwidget" {
+		// Find the quoted widget ID
+		quoted := ""
+		for _, t := range tokens[1:] {
+			if strings.HasPrefix(t, "'") || strings.HasPrefix(t, "\"") {
+				quoted = strings.Trim(t, "'\"")
+				break
+			}
+		}
+		if quoted == "" {
+			return nil
+		}
+		if def, ok := s.widgetRegistry.GetByWidgetID(quoted); ok {
+			return def
+		}
+		return nil
+	}
+	// Keyword form: first token is the MDL name (e.g. ACCORDION)
+	if def, ok := s.widgetRegistry.Get(strings.ToUpper(first)); ok {
+		return def
+	}
+	return nil
+}
+
+// trailingIdent returns the trailing run of identifier characters on a line.
+// Used to extract the in-progress word for prefix-filtering completions.
+func trailingIdent(s string) string {
+	for i := len(s) - 1; i >= 0; i-- {
+		c := s[i]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' {
+			continue
+		}
+		return s[i+1:]
+	}
+	return s
 }
