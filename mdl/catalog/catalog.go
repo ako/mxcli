@@ -262,6 +262,12 @@ type CacheInfo struct {
 }
 
 // NewFromFile opens a catalog from a persisted SQLite file.
+//
+// Applies the current schema to the loaded database via CREATE TABLE IF NOT
+// EXISTS so cache files written by older mxcli builds gain newly-added tables
+// (e.g. widget_definitions) without forcing a full catalog rebuild. The new
+// tables will be empty until the next REFRESH CATALOG runs, but they're
+// queryable and won't trigger "no such table" errors.
 func NewFromFile(path string) (*Catalog, error) {
 	db, err := NewSqliteCatalogDBFromFile(path)
 	if err != nil {
@@ -273,6 +279,13 @@ func NewFromFile(path string) (*Catalog, error) {
 		projectID: "default",
 		snapshots: make(map[string]*Snapshot),
 		built:     true, // Assume built if loading from file
+	}
+
+	// Idempotent schema upgrade — adds any tables/indexes the cached file
+	// doesn't have yet. Existing data is untouched.
+	if err := c.createTables(); err != nil {
+		c.Close()
+		return nil, fmt.Errorf("failed to apply schema to cached catalog: %w", err)
 	}
 
 	return c, nil
