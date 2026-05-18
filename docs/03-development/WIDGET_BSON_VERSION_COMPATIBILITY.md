@@ -66,7 +66,7 @@ After the first five fixes the v0.10 acceptance fixture
 (`mdl-examples/doctype-tests/31-pluggable-datagrid-gallery-v010-examples.mdl`)
 emits zero CE0463 errors on a fresh Mendix 11.9 project. The sixth fix
 extends this to the engine-routed widgets in
-`mdl-examples/doctype-tests/32-pluggable-widget-object-lists-v010.test.mdl`
+`mdl-examples/doctype-tests/32-pluggable-widget-object-lists-v010.mdl`
 — `mx check` reports zero CE0463 across all six failing widget instances
 (`acc2`, `map1`, `map2`, `menu1`, `menu2`, `chart1`). Remaining errors on
 that fixture are authoring issues (missing `menuTrigger` child slot

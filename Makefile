@@ -144,11 +144,33 @@ release: clean grammar vscode-ext sync-all
 test: grammar
 	CGO_ENABLED=0 go test ./...
 
-# Check MDL syntax for all doctype example scripts
+# Check MDL syntax for all example scripts.
+#
+# Covers both doctype-tests/ (broad doctype demos) and bug-tests/ (per-PR
+# regression fixtures). Skips files ending in .test.mdl — those are
+# mxcli-test inputs, not mxcli-check inputs.
+#
+# Nine bug-test fixtures are pre-existing failures (varied causes: some
+# demonstrate intentionally-broken syntax, others are negative tests
+# asserting validation fires, some need project context). Tracked
+# separately; the SKIP list keeps CI green until each is triaged.
 check-mdl: build
 	@FAILED=0; \
-	for f in mdl-examples/doctype-tests/*.mdl; do \
+	for f in mdl-examples/doctype-tests/*.mdl mdl-examples/bug-tests/*.mdl; do \
 		case "$$f" in *.test.mdl) continue ;; esac; \
+		case "$$f" in \
+			*/116-datagrid2-column-name-mismatch.mdl|\
+			*/343-list-attribute-find-filter.mdl|\
+			*/352-java-action-return-type-inference.mdl|\
+			*/352-retrieve-compact-reverse-association.mdl|\
+			*/360-import-mapping-result-type.mdl|\
+			*/367-retrieve-sort-indirect-entity-ref.mdl|\
+			*/369-rest-mapping-result-cardinality.mdl|\
+			*/373-change-action-items-storage-list.mdl|\
+			*/552-npe-reserved-words.mdl) \
+				echo "SKIP: $$(basename "$$f") (pre-existing — tracked separately)"; \
+				continue ;; \
+		esac; \
 		NAME=$$(basename "$$f"); \
 		if ./$(BUILD_DIR)/$(BINARY_NAME) check "$$f" > /dev/null 2>&1; then \
 			echo "PASS: $$NAME"; \

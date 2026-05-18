@@ -27,7 +27,7 @@ Studio Pro represents specialization/type decisions as `InheritanceSplit` object
 
 ## Tests And Examples
 
-`mdl-examples/doctype-tests/inheritance_split_statement.test.mdl` demonstrates the syntax. Go regression tests cover parser construction, builder output, describer output, validation recursion, and BSON writer support for inheritance case values and cast actions.
+`mdl-examples/bug-tests/365-microflow-inheritance-split.mdl` demonstrates the syntax. Go regression tests cover parser construction, builder output, describer output, validation recursion, and BSON writer support for inheritance case values and cast actions.
 
 ## Open Questions
 

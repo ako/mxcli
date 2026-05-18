@@ -46,4 +46,4 @@ download file $GeneratedReport show in browser on error rollback;
 
 - Parser/visitor coverage for both normal and `show in browser` forms.
 - Builder/writer coverage for `DownloadFileAction`.
-- Example script: `mdl-examples/doctype-tests/download_file.test.mdl`.
+- Example script: `mdl-examples/bug-tests/333-microflow-download-file.mdl`.

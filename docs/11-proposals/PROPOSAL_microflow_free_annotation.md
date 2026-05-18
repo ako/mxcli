@@ -45,8 +45,8 @@ log info node 'Audit' 'starting';
 
 ## Tests And Examples
 
-- `mdl-examples/doctype-tests/free_annotation.test.mdl` documents the supported
-  syntax.
+- `mdl-examples/bug-tests/319-microflow-free-annotation.mdl` documents the
+  supported syntax.
 - Parser tests cover both order-sensitive cases.
 - Builder tests verify that the free annotation is emitted as a standalone
   annotation and not attached to the activity.
