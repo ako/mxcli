@@ -299,3 +299,188 @@ func operationForType(t string) string {
 	}
 	return ""
 }
+
+// ---------------------------------------------------------------------------
+// Skill markdown generation
+// ---------------------------------------------------------------------------
+
+// RegenerateWidgetDocs scans projectDir/widgets/ for .mpk files and writes a
+// per-widget .md skill file under .claude/skills/widgets/ (or
+// .ai-context/skills/widgets/ when that directory exists). The docs combine
+// human-readable info from the .mpk (descriptions, defaults) with the MDL
+// keyword routing from the matching .def.json (object lists, child slots,
+// MDL container keywords). Returns the number of files written.
+func RegenerateWidgetDocs(projectPath string) (int, error) {
+	projectDir := filepath.Dir(projectPath)
+	widgetsDir := filepath.Join(projectDir, "widgets")
+	defsDir := filepath.Join(projectDir, ".mxcli", "widgets")
+	docsDir := filepath.Join(projectDir, ".claude", "skills", "widgets")
+	if _, err := os.Stat(filepath.Join(projectDir, ".ai-context")); err == nil {
+		docsDir = filepath.Join(projectDir, ".ai-context", "skills", "widgets")
+	}
+
+	matches, err := filepath.Glob(filepath.Join(widgetsDir, "*.mpk"))
+	if err != nil {
+		return 0, fmt.Errorf("failed to scan widgets directory: %w", err)
+	}
+	if len(matches) == 0 {
+		return 0, nil
+	}
+
+	if err := os.MkdirAll(docsDir, 0755); err != nil {
+		return 0, fmt.Errorf("failed to create docs directory: %w", err)
+	}
+
+	var generated int
+	var indexEntries []string
+
+	for _, mpkPath := range matches {
+		mpkDef, err := mpk.ParseMPK(mpkPath)
+		if err != nil {
+			continue
+		}
+
+		mdlName := DeriveMDLName(mpkDef.ID)
+		filename := strings.ToLower(mdlName) + ".md"
+		outPath := filepath.Join(docsDir, filename)
+
+		// Load the matching .def.json (may not exist for built-in widgets like
+		// COMBOBOX / GALLERY — those have hand-crafted definitions in
+		// sdk/widgets/definitions/ that we don't extract per-project).
+		var def *WidgetDefinition
+		defPath := filepath.Join(defsDir, strings.ToLower(mdlName)+".def.json")
+		if data, err := os.ReadFile(defPath); err == nil {
+			def = &WidgetDefinition{}
+			if jsonErr := json.Unmarshal(data, def); jsonErr != nil {
+				def = nil
+			}
+		}
+
+		doc := widgetDocMarkdown(mpkDef, def, mdlName)
+		if err := os.WriteFile(outPath, []byte(doc), 0644); err != nil {
+			log.Printf("warning: failed to write %s: %v", filename, err)
+			continue
+		}
+
+		kind := "CUSTOMWIDGET"
+		if mpkDef.IsPluggable {
+			kind = "PLUGGABLEWIDGET"
+		}
+		indexEntries = append(indexEntries, fmt.Sprintf("| `%s` | %s | `%s` | %s | %d |",
+			kind, mdlName, mpkDef.ID, mpkDef.Name, len(mpkDef.Properties)))
+		generated++
+	}
+
+	var indexBuf strings.Builder
+	indexBuf.WriteString("# Available Widgets\n\n")
+	indexBuf.WriteString("Auto-generated. See individual files for property details, child slots, and object lists.\n\n")
+	indexBuf.WriteString("| Prefix | Name | Widget ID | Display Name | Props |\n")
+	indexBuf.WriteString("|--------|------|-----------|--------------|-------|\n")
+	for _, entry := range indexEntries {
+		indexBuf.WriteString(entry)
+		indexBuf.WriteString("\n")
+	}
+	indexBuf.WriteString("\n**Usage in MDL:**\n```sql\n")
+	indexBuf.WriteString("-- React pluggable widgets\n")
+	indexBuf.WriteString("PLUGGABLEWIDGET 'com.mendix.widget.custom.badge.Badge' badge1\n\n")
+	indexBuf.WriteString("-- Legacy custom widgets\n")
+	indexBuf.WriteString("CUSTOMWIDGET 'com.company.OldWidget' legacy1\n")
+	indexBuf.WriteString("```\n")
+
+	if err := os.WriteFile(filepath.Join(docsDir, "_index.md"), []byte(indexBuf.String()), 0644); err != nil {
+		return generated, fmt.Errorf("failed to write index: %w", err)
+	}
+
+	return generated, nil
+}
+
+// widgetDocMarkdown produces the per-widget skill markdown. Combines mpkDef
+// (for human descriptions, defaults, version) with def (for MDL keyword
+// routing — object lists, child slots, property bindings). def may be nil for
+// widgets without an extracted .def.json (e.g., hand-crafted built-ins).
+func widgetDocMarkdown(mpkDef *mpk.WidgetDefinition, def *WidgetDefinition, mdlName string) string {
+	var buf strings.Builder
+
+	prefix := "CUSTOMWIDGET"
+	if mpkDef.IsPluggable {
+		prefix = "PLUGGABLEWIDGET"
+	}
+
+	buf.WriteString(fmt.Sprintf("# %s\n\n", mpkDef.Name))
+	buf.WriteString(fmt.Sprintf("- **Widget ID:** `%s`\n", mpkDef.ID))
+	buf.WriteString(fmt.Sprintf("- **Type:** %s\n", prefix))
+	buf.WriteString(fmt.Sprintf("- **Version:** %s\n\n", mpkDef.Version))
+
+	buf.WriteString("## MDL Example\n\n```sql\n")
+	buf.WriteString(fmt.Sprintf("%s '%s' widget1", prefix, mpkDef.ID))
+	if def != nil && (len(def.ChildSlots) > 0 || len(def.ObjectLists) > 0) {
+		buf.WriteString(" {\n")
+		for _, slot := range def.ChildSlots {
+			buf.WriteString(fmt.Sprintf("  %s {\n    -- widgets for `%s`\n  }\n", strings.ToLower(slot.MDLContainer), slot.PropertyKey))
+		}
+		for _, ol := range def.ObjectLists {
+			itemKw := strings.ToLower(ol.MDLContainer)
+			buf.WriteString(fmt.Sprintf("  %s item1   -- one entry of `%s`\n", itemKw, ol.PropertyKey))
+		}
+		buf.WriteString("}\n")
+	} else {
+		buf.WriteString("\n")
+	}
+	buf.WriteString("```\n\n")
+
+	if len(mpkDef.Properties) > 0 {
+		buf.WriteString("## Properties\n\n")
+		buf.WriteString("| Property | Type | Required | Default | Description |\n")
+		buf.WriteString("|----------|------|----------|---------|-------------|\n")
+		for _, prop := range mpkDef.Properties {
+			if prop.IsSystem {
+				continue
+			}
+			req := ""
+			if prop.Required {
+				req = "Yes"
+			}
+			desc := prop.Description
+			if len(desc) > 80 {
+				desc = desc[:77] + "..."
+			}
+			buf.WriteString(fmt.Sprintf("| `%s` | %s | %s | %s | %s |\n",
+				prop.Key, prop.Type, req, prop.DefaultValue, desc))
+		}
+		buf.WriteString("\n")
+	}
+
+	if def != nil && len(def.ChildSlots) > 0 {
+		buf.WriteString("## Child Slots (curly-brace blocks)\n\n")
+		buf.WriteString("| MDL keyword | Widget property |\n|-------------|----------------|\n")
+		for _, s := range def.ChildSlots {
+			buf.WriteString(fmt.Sprintf("| `%s` | `%s` |\n", strings.ToLower(s.MDLContainer), s.PropertyKey))
+		}
+		buf.WriteString("\n")
+	}
+
+	if def != nil && len(def.ObjectLists) > 0 {
+		buf.WriteString("## Object Lists (repeating child entries)\n\n")
+		for _, ol := range def.ObjectLists {
+			buf.WriteString(fmt.Sprintf("### `%s` → property `%s`\n\n", strings.ToLower(ol.MDLContainer), ol.PropertyKey))
+			if len(ol.ItemProperties) > 0 {
+				buf.WriteString("Item properties:\n\n")
+				buf.WriteString("| Property | Operation |\n|----------|-----------|\n")
+				for _, ip := range ol.ItemProperties {
+					buf.WriteString(fmt.Sprintf("| `%s` | %s |\n", ip.PropertyKey, ip.Operation))
+				}
+				buf.WriteString("\n")
+			}
+			if len(ol.ItemSlots) > 0 {
+				buf.WriteString("Item child slots:\n\n")
+				buf.WriteString("| MDL keyword | Widget property |\n|-------------|----------------|\n")
+				for _, s := range ol.ItemSlots {
+					buf.WriteString(fmt.Sprintf("| `%s` | `%s` |\n", strings.ToLower(s.MDLContainer), s.PropertyKey))
+				}
+				buf.WriteString("\n")
+			}
+		}
+	}
+
+	return buf.String()
+}
