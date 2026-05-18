@@ -135,7 +135,7 @@ create page PW.P_PW03_DataSource (
         pluggablewidget 'com.mendix.widget.web.treenode.TreeNode' tree1 (
           datasource: database from PW.Item sort by title asc,
           headerType: 'text',
-          headerCaption: '{Title}',
+          headerCaption: '{title}',
           hasChildren: false,
           showIcon: 'no'
         )

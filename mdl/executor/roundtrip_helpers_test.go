@@ -56,6 +56,7 @@ func TestMain(m *testing.M) {
 		if _, err := os.Stat(filepath.Join(srcDir, sourceProjectMPR)); err == nil {
 			sharedSourceProject = srcDir
 			sharedSourceMPR = sourceProjectMPR
+			ensureWidgetDefs(filepath.Join(srcDir, sourceProjectMPR))
 			os.Exit(m.Run())
 		}
 	}
@@ -89,10 +90,24 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	}
 
+	ensureWidgetDefs(mprPath)
+
 	sharedSourceProject = tmpDir
 	sharedSourceMPR = "App.mpr"
 	fmt.Fprintf(os.Stderr, "TestMain: shared source project ready at %s\n", tmpDir)
 	os.Exit(m.Run())
+}
+
+// ensureWidgetDefs generates .mxcli/widgets/*.def.json from the project's
+// widgets/*.mpk files. Vanilla Mendix 11+ projects ship ~33 widgets (Badge,
+// Accordion, Maps, …) that pluggable-widget MDL fixtures depend on; without
+// the generated def.json files, the executor reports "no definition for widget".
+// Failures are logged but non-fatal — tests that don't touch pluggable widgets
+// still run.
+func ensureWidgetDefs(mprPath string) {
+	if _, err := RefreshWidgetDefinitions(mprPath, false, nil); err != nil {
+		fmt.Fprintf(os.Stderr, "TestMain: widget def refresh failed (non-fatal): %v\n", err)
+	}
 }
 
 // testEnv holds the test environment for roundtrip tests.
@@ -161,8 +176,9 @@ func copyTestProject(t *testing.T) string {
 		t.Fatalf("Failed to copy MPR file: %v", err)
 	}
 
-	// Copy required directories
-	for _, dir := range []string{"mprcontents", "widgets", "themesource", "theme", "javascriptsource"} {
+	// Copy required directories. `.mxcli` carries the widget def.json files
+	// generated once in TestMain from the project's vanilla .mpk widgets.
+	for _, dir := range []string{"mprcontents", "widgets", "themesource", "theme", "javascriptsource", ".mxcli"} {
 		srcSub := filepath.Join(sharedSourceProject, dir)
 		if _, err := os.Stat(srcSub); err == nil {
 			if err := copyDir(srcSub, filepath.Join(destDir, dir)); err != nil {
