@@ -1,0 +1,41 @@
+-- @version: 11.0+
+-- ============================================================================
+-- Bug #64 — PLUGGABLEWIDGET 'com.mendix.widget.web.datagrid.Datagrid' with
+-- column-attribute bindings produced BSON $Type "CustomWidgets$AttributeRef",
+-- which is not in Mendix's type cache. Studio Pro/mx flagged CE0463 and
+-- mx update-widgets failed with TypeCacheUnknownTypeException.
+--
+-- The fix in widget_builder.go setAttributeRefField switched to
+-- DomainModels$AttributeRef with the full qualified path, matching the
+-- existing setAttributeRef helper used by the native datagrid keyword.
+-- ============================================================================
+
+create module Issue64;
+create module role Issue64.User;
+
+@position(100, 100)
+create persistent entity Issue64.UoM (
+  NId: string(100) not null,
+  Name: string(200),
+  Description: string(500),
+  UoMDimension_Id: string(100),
+  IsHidden: boolean default false
+);
+
+create or replace page Issue64.UoM_TestDG2 (
+  Title: 'UoM Test - DataGrid2',
+  Layout: Atlas_Core.Atlas_Default
+) {
+  pluggablewidget 'com.mendix.widget.web.datagrid.Datagrid' dgUoM (
+    DataSource: database from Issue64.UoM sort by NId asc,
+    itemSelection: single
+  ) {
+    column colNId (Attribute: NId, Caption: 'NId')
+    column colName (Attribute: Name, Caption: 'Name')
+    column colDescription (Attribute: Description, Caption: 'Description')
+    column colDimension (Attribute: UoMDimension_Id, Caption: 'Dimension')
+    column colHidden (Attribute: IsHidden, Caption: 'Hidden')
+  }
+}
+
+grant view on page Issue64.UoM_TestDG2 to Issue64.User;

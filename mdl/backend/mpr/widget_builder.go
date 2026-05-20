@@ -385,15 +385,19 @@ func setBSONField(doc bson.D, key string, val any) bson.D {
 
 // setAttributeRefField sets the AttributeRef field on a WidgetValue BSON to
 // reference the given fully-qualified attribute path (Module.Entity.Attr).
+//
+// The BSON $Type is DomainModels$AttributeRef — CustomWidgets$AttributeRef
+// is not a registered Mendix type and triggers TypeCacheUnknownTypeException
+// when Studio Pro or mx update-widgets loads the project (issue #64).
 func setAttributeRefField(value bson.D, attributePath string) bson.D {
-	parts := strings.Split(attributePath, ".")
-	if len(parts) < 2 {
-		return value
+	if strings.Count(attributePath, ".") < 2 {
+		return setBSONField(value, "AttributeRef", nil)
 	}
 	attrRef := bson.D{
 		{Key: "$ID", Value: types.UUIDToBlob(types.GenerateID())},
-		{Key: "$Type", Value: "CustomWidgets$AttributeRef"},
-		{Key: "Attribute", Value: parts[len(parts)-1]},
+		{Key: "$Type", Value: "DomainModels$AttributeRef"},
+		{Key: "Attribute", Value: attributePath},
+		{Key: "EntityRef", Value: nil},
 	}
 	return setBSONField(value, "AttributeRef", attrRef)
 }
