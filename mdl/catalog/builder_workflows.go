@@ -17,18 +17,17 @@ func (b *Builder) buildWorkflows() error {
 	}
 
 	stmt, err := b.tx.Prepare(`
-		INSERT INTO workflows (Id, Name, QualifiedName, ModuleName, Folder, Description,
+		INSERT INTO workflows_data (Id, Name, QualifiedName, ModuleName, Folder, Description,
 			ExportLevel, ParameterEntity, ActivityCount, UserTaskCount, MicroflowCallCount, DecisionCount,
-			DueDate, ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource,
-			SourceId, SourceBranch, SourceRevision)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			DueDate, ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	projectID, projectName, snapshotID, snapshotDate, snapshotSource, sourceID, sourceBranch, sourceRevision := b.snapshotMeta()
+	projectID, snapshotID := b.snapshotMeta()
 
 	count := 0
 	for _, wf := range wfs {
@@ -59,8 +58,7 @@ func (b *Builder) buildWorkflows() error {
 			mfCount,
 			decCount,
 			wf.DueDate,
-			projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-			sourceID, sourceBranch, sourceRevision,
+			projectID, snapshotID,
 		)
 		if err != nil {
 			return err

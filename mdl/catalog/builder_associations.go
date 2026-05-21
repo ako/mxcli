@@ -23,18 +23,17 @@ func (b *Builder) buildAssociations() error {
 	}
 
 	stmt, err := b.tx.Prepare(`
-		INSERT INTO associations (Id, Name, QualifiedName, ModuleName,
+		INSERT INTO associations_data (Id, Name, QualifiedName, ModuleName,
 			FromEntity, ToEntity, AssociationType, Owner, StorageFormat, Description,
-			ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource,
-			SourceId, SourceBranch, SourceRevision)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	projectID, projectName, snapshotID, snapshotDate, snapshotSource, sourceID, sourceBranch, sourceRevision := b.snapshotMeta()
+	projectID, snapshotID := b.snapshotMeta()
 
 	count := 0
 	for _, dm := range domainModels {
@@ -60,8 +59,7 @@ func (b *Builder) buildAssociations() error {
 				string(assoc.Owner),
 				string(assoc.StorageFormat),
 				assoc.Documentation,
-				projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-				sourceID, sourceBranch, sourceRevision,
+				projectID, snapshotID,
 			)
 			if err != nil {
 				return err
@@ -85,8 +83,7 @@ func (b *Builder) buildAssociations() error {
 				string(ca.Owner),
 				string(ca.StorageFormat),
 				ca.Documentation,
-				projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-				sourceID, sourceBranch, sourceRevision,
+				projectID, snapshotID,
 			)
 			if err != nil {
 				return err

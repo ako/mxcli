@@ -11,17 +11,17 @@ func (b *Builder) buildConstants() error {
 	}
 
 	stmt, err := b.tx.Prepare(`
-		INSERT INTO constants (Id, Name, QualifiedName, ModuleName, Folder, Description, DataType,
+		INSERT INTO constants_data (Id, Name, QualifiedName, ModuleName, Folder, Description, DataType,
 			DefaultValue, ExposedToClient,
-			ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	projectID, projectName, snapshotID, snapshotDate, snapshotSource, _, _, _ := b.snapshotMeta()
+	projectID, snapshotID := b.snapshotMeta()
 
 	for _, c := range constants {
 		moduleID := b.hierarchy.findModuleID(c.ContainerID)
@@ -49,7 +49,7 @@ func (b *Builder) buildConstants() error {
 			dataType,
 			c.DefaultValue,
 			exposed,
-			projectID, projectName, snapshotID, snapshotDate, snapshotSource,
+			projectID, snapshotID,
 		)
 		if err != nil {
 			return err

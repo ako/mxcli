@@ -24,7 +24,7 @@ func TestAssociationsTableQueryable(t *testing.T) {
 	}
 	for _, r := range rows {
 		_, err := cat.CatalogDB().Exec(`
-			INSERT INTO associations (Id, Name, QualifiedName, ModuleName,
+			INSERT INTO associations_data (Id, Name, QualifiedName, ModuleName,
 				FromEntity, ToEntity, AssociationType, Owner, StorageFormat)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			r.id, r.name, r.qn, r.module, r.from, r.to, r.typ, r.owner, r.storage,

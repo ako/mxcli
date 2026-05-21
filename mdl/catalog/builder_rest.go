@@ -15,11 +15,10 @@ func (b *Builder) buildRestClients() error {
 	}
 
 	svcStmt, err := b.tx.Prepare(`
-		INSERT INTO rest_clients (Id, Name, QualifiedName, ModuleName, Folder,
+		INSERT INTO rest_clients_data (Id, Name, QualifiedName, ModuleName, Folder,
 			BaseUrl, AuthScheme, OperationCount, Documentation,
-			ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource,
-			SourceId, SourceBranch, SourceRevision)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
@@ -27,17 +26,17 @@ func (b *Builder) buildRestClients() error {
 	defer svcStmt.Close()
 
 	opStmt, err := b.tx.Prepare(`
-		INSERT INTO rest_operations (Id, ServiceId, ServiceQualifiedName, Name,
+		INSERT INTO rest_operations_data (Id, ServiceId, ServiceQualifiedName, Name,
 			HttpMethod, Path, ParameterCount, HasBody, ResponseType, Timeout,
-			ModuleName, ProjectId, SnapshotId, SnapshotDate, SnapshotSource)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ModuleName, ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
 	}
 	defer opStmt.Close()
 
-	projectID, projectName, snapshotID, snapshotDate, snapshotSource, sourceID, sourceBranch, sourceRevision := b.snapshotMeta()
+	projectID, snapshotID := b.snapshotMeta()
 
 	opCount := 0
 	for _, svc := range services {
@@ -60,8 +59,7 @@ func (b *Builder) buildRestClients() error {
 			authScheme,
 			len(svc.Operations),
 			svc.Documentation,
-			projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-			sourceID, sourceBranch, sourceRevision,
+			projectID, snapshotID,
 		)
 		if err != nil {
 			return err
@@ -90,7 +88,7 @@ func (b *Builder) buildRestClients() error {
 				op.ResponseType,
 				op.Timeout,
 				moduleName,
-				projectID, snapshotID, snapshotDate, snapshotSource,
+				projectID, snapshotID,
 			)
 			if err != nil {
 				return err
@@ -114,11 +112,10 @@ func (b *Builder) buildPublishedRestServices() error {
 	}
 
 	svcStmt, err := b.tx.Prepare(`
-		INSERT INTO published_rest_services (Id, Name, QualifiedName, ModuleName, Folder,
+		INSERT INTO published_rest_services_data (Id, Name, QualifiedName, ModuleName, Folder,
 			Path, Version, ServiceName, ResourceCount, OperationCount, Documentation,
-			ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource,
-			SourceId, SourceBranch, SourceRevision)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
@@ -126,17 +123,17 @@ func (b *Builder) buildPublishedRestServices() error {
 	defer svcStmt.Close()
 
 	opStmt, err := b.tx.Prepare(`
-		INSERT INTO published_rest_operations (Id, ServiceId, ServiceQualifiedName,
+		INSERT INTO published_rest_operations_data (Id, ServiceId, ServiceQualifiedName,
 			ResourceName, HttpMethod, Path, Summary, Microflow, Deprecated,
-			ModuleName, ProjectId, SnapshotId, SnapshotDate, SnapshotSource)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ModuleName, ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
 	}
 	defer opStmt.Close()
 
-	projectID, projectName, snapshotID, snapshotDate, snapshotSource, sourceID, sourceBranch, sourceRevision := b.snapshotMeta()
+	projectID, snapshotID := b.snapshotMeta()
 
 	totalOps := 0
 	for _, svc := range services {
@@ -162,8 +159,7 @@ func (b *Builder) buildPublishedRestServices() error {
 			len(svc.Resources),
 			opCount,
 			"", // Documentation not stored on published REST
-			projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-			sourceID, sourceBranch, sourceRevision,
+			projectID, snapshotID,
 		)
 		if err != nil {
 			return err
@@ -190,7 +186,7 @@ func (b *Builder) buildPublishedRestServices() error {
 					op.Microflow,
 					deprecated,
 					moduleName,
-					projectID, snapshotID, snapshotDate, snapshotSource,
+					projectID, snapshotID,
 				)
 				if err != nil {
 					return err

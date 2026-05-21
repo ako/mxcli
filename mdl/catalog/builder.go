@@ -576,14 +576,11 @@ func (b *Builder) updateSnapshotCount() {
 	b.snapshot.ObjectCount = count
 }
 
-// snapshotMeta returns common snapshot metadata for inserts.
-func (b *Builder) snapshotMeta() (projectID, projectName, snapshotID, snapshotDate, snapshotSource, sourceID, sourceBranch, sourceRevision string) {
-	return b.catalog.projectID,
-		b.catalog.projectName,
-		b.snapshot.ID,
-		b.snapshot.Date.Format("2006-01-02 15:04:05"),
-		string(b.snapshot.Source),
-		b.snapshot.SourceID,
-		b.snapshot.Branch,
-		b.snapshot.Revision
+// snapshotMeta returns the foreign-key columns that every domain table row
+// carries: the project ID and the snapshot ID. Project name, snapshot date,
+// source, branch, and revision are no longer copied per-row — they live on
+// the projects/snapshots lookup tables and are surfaced via the per-table
+// views (see tables.go and issue #576).
+func (b *Builder) snapshotMeta() (projectID, snapshotID string) {
+	return b.catalog.projectID, b.snapshot.ID
 }

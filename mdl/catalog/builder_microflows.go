@@ -22,11 +22,10 @@ func (b *Builder) buildMicroflows() error {
 	}
 
 	mfStmt, err := b.tx.Prepare(`
-		INSERT INTO microflows (Id, Name, QualifiedName, ModuleName, Folder, MicroflowType,
+		INSERT INTO microflows_data (Id, Name, QualifiedName, ModuleName, Folder, MicroflowType,
 			Description, ReturnType, ParameterCount, ActivityCount, Complexity, Excluded,
-			ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource,
-			SourceId, SourceBranch, SourceRevision)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
@@ -37,11 +36,10 @@ func (b *Builder) buildMicroflows() error {
 	var actStmt *sql.Stmt
 	if b.fullMode {
 		actStmt, err = b.tx.Prepare(`
-			INSERT INTO activities (Id, Name, Caption, ActivityType, Sequence, MicroflowId, MicroflowQualifiedName,
+			INSERT INTO activities_data (Id, Name, Caption, ActivityType, Sequence, MicroflowId, MicroflowQualifiedName,
 				ModuleName, Folder, EntityRef, ActionType, ServiceRef, ActionRef, Description,
-				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource,
-				SourceId, SourceBranch, SourceRevision)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				ProjectId, SnapshotId)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`)
 		if err != nil {
 			return err
@@ -49,7 +47,7 @@ func (b *Builder) buildMicroflows() error {
 		defer actStmt.Close()
 	}
 
-	projectID, projectName, snapshotID, snapshotDate, snapshotSource, sourceID, sourceBranch, sourceRevision := b.snapshotMeta()
+	projectID, snapshotID := b.snapshotMeta()
 
 	mfCount := 0
 	nfCount := 0
@@ -87,8 +85,7 @@ func (b *Builder) buildMicroflows() error {
 			activityCount,
 			complexity,
 			mf.Excluded,
-			projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-			sourceID, sourceBranch, sourceRevision,
+			projectID, snapshotID,
 		)
 		if err != nil {
 			return err
@@ -136,8 +133,7 @@ func (b *Builder) buildMicroflows() error {
 					serviceRef,
 					actionRef,
 					"",
-					projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-					sourceID, sourceBranch, sourceRevision,
+					projectID, snapshotID,
 				)
 				if err != nil {
 					return err
@@ -178,8 +174,7 @@ func (b *Builder) buildMicroflows() error {
 			activityCount,
 			complexity,
 			nf.Excluded,
-			projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-			sourceID, sourceBranch, sourceRevision,
+			projectID, snapshotID,
 		)
 		if err != nil {
 			return err
@@ -227,8 +222,7 @@ func (b *Builder) buildMicroflows() error {
 					serviceRef,
 					actionRef,
 					"",
-					projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-					sourceID, sourceBranch, sourceRevision,
+					projectID, snapshotID,
 				)
 				if err != nil {
 					return err

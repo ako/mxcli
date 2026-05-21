@@ -16,18 +16,17 @@ func (b *Builder) buildModules() error {
 	}
 
 	stmt, err := b.tx.Prepare(`
-		INSERT INTO modules (Id, Name, QualifiedName, ModuleName, Folder, Description,
+		INSERT INTO modules_data (Id, Name, QualifiedName, ModuleName, Folder, Description,
 			Source, AppStoreVersion, AppStoreGuid,
-			ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource,
-			SourceId, SourceBranch, SourceRevision)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	projectID, projectName, snapshotID, snapshotDate, snapshotSource, sourceID, sourceBranch, sourceRevision := b.snapshotMeta()
+	projectID, snapshotID := b.snapshotMeta()
 
 	for _, m := range modules {
 		source := ""
@@ -48,8 +47,7 @@ func (b *Builder) buildModules() error {
 			source,
 			m.AppStoreVersion,
 			m.AppStoreGuid,
-			projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-			sourceID, sourceBranch, sourceRevision,
+			projectID, snapshotID,
 		)
 		if err != nil {
 			return err
@@ -68,13 +66,12 @@ func (b *Builder) buildEntities() error {
 	}
 
 	entityStmt, err := b.tx.Prepare(`
-		INSERT INTO entities (Id, Name, QualifiedName, ModuleName, Folder, EntityType,
+		INSERT INTO entities_data (Id, Name, QualifiedName, ModuleName, Folder, EntityType,
 			Description, Generalization, AttributeCount, AssociationCount,
 			AccessRuleCount, ValidationRuleCount, HasEventHandlers,
 			IsExternal, ExternalService,
-			ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource,
-			SourceId, SourceBranch, SourceRevision)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
@@ -82,18 +79,17 @@ func (b *Builder) buildEntities() error {
 	defer entityStmt.Close()
 
 	attrStmt, err := b.tx.Prepare(`
-		INSERT INTO attributes (Id, Name, EntityId, EntityQualifiedName, ModuleName,
+		INSERT INTO attributes_data (Id, Name, EntityId, EntityQualifiedName, ModuleName,
 			DataType, Length, IsUnique, IsRequired, DefaultValue, IsCalculated, Description,
-			ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource,
-			SourceId, SourceBranch, SourceRevision)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
 	}
 	defer attrStmt.Close()
 
-	projectID, projectName, snapshotID, snapshotDate, snapshotSource, sourceID, sourceBranch, sourceRevision := b.snapshotMeta()
+	projectID, snapshotID := b.snapshotMeta()
 
 	entityCount := 0
 	attrCount := 0
@@ -145,8 +141,7 @@ func (b *Builder) buildEntities() error {
 				hasEventHandlers,
 				isExternal,
 				externalService,
-				projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-				sourceID, sourceBranch, sourceRevision,
+				projectID, snapshotID,
 			)
 			if err != nil {
 				return err
@@ -221,8 +216,7 @@ func (b *Builder) buildEntities() error {
 					defaultValue,
 					isCalculated,
 					attr.Documentation,
-					projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-					sourceID, sourceBranch, sourceRevision,
+					projectID, snapshotID,
 				)
 				if err != nil {
 					return err
@@ -255,17 +249,16 @@ func (b *Builder) buildEnumerations() error {
 	}
 
 	stmt, err := b.tx.Prepare(`
-		INSERT INTO enumerations (Id, Name, QualifiedName, ModuleName, Folder, Description, ValueCount,
-			ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource,
-			SourceId, SourceBranch, SourceRevision)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO enumerations_data (Id, Name, QualifiedName, ModuleName, Folder, Description, ValueCount,
+			ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	projectID, projectName, snapshotID, snapshotDate, snapshotSource, sourceID, sourceBranch, sourceRevision := b.snapshotMeta()
+	projectID, snapshotID := b.snapshotMeta()
 
 	for _, enum := range enums {
 		// Get module name using hierarchy
@@ -282,8 +275,7 @@ func (b *Builder) buildEnumerations() error {
 			moduleName, // Folder as module name for now
 			enum.Documentation,
 			len(enum.Values),
-			projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-			sourceID, sourceBranch, sourceRevision,
+			projectID, snapshotID,
 		)
 		if err != nil {
 			return err
@@ -301,18 +293,17 @@ func (b *Builder) buildJavaActions() error {
 	}
 
 	stmt, err := b.tx.Prepare(`
-		INSERT INTO java_actions (Id, Name, QualifiedName, ModuleName, Folder,
+		INSERT INTO java_actions_data (Id, Name, QualifiedName, ModuleName, Folder,
 			Documentation, ExportLevel, ReturnType, ParameterCount,
-			ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource,
-			SourceId, SourceBranch, SourceRevision)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	projectID, projectName, snapshotID, snapshotDate, snapshotSource, sourceID, sourceBranch, sourceRevision := b.snapshotMeta()
+	projectID, snapshotID := b.snapshotMeta()
 
 	for _, ja := range actions {
 		moduleID := b.hierarchy.findModuleID(ja.ContainerID)
@@ -335,8 +326,7 @@ func (b *Builder) buildJavaActions() error {
 			ja.ExportLevel,
 			returnType,
 			len(ja.Parameters),
-			projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-			sourceID, sourceBranch, sourceRevision,
+			projectID, snapshotID,
 		)
 		if err != nil {
 			return err
@@ -354,18 +344,17 @@ func (b *Builder) buildODataClients() error {
 	}
 
 	stmt, err := b.tx.Prepare(`
-		INSERT INTO odata_clients (Id, Name, QualifiedName, ModuleName,
+		INSERT INTO odata_clients_data (Id, Name, QualifiedName, ModuleName,
 			Version, ODataVersion, MetadataUrl, Validated,
-			ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource,
-			SourceId, SourceBranch, SourceRevision)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	projectID, projectName, snapshotID, snapshotDate, snapshotSource, sourceID, sourceBranch, sourceRevision := b.snapshotMeta()
+	projectID, snapshotID := b.snapshotMeta()
 
 	for _, svc := range services {
 		moduleID := b.hierarchy.findModuleID(svc.ContainerID)
@@ -387,8 +376,7 @@ func (b *Builder) buildODataClients() error {
 			svc.ODataVersion,
 			svc.MetadataUrl,
 			validated,
-			projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-			sourceID, sourceBranch, sourceRevision,
+			projectID, snapshotID,
 		)
 		if err != nil {
 			return err
@@ -406,18 +394,17 @@ func (b *Builder) buildODataServices() error {
 	}
 
 	stmt, err := b.tx.Prepare(`
-		INSERT INTO odata_services (Id, Name, QualifiedName, ModuleName,
+		INSERT INTO odata_services_data (Id, Name, QualifiedName, ModuleName,
 			Path, Version, ODataVersion, EntitySetCount, AuthenticationTypes,
-			ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource,
-			SourceId, SourceBranch, SourceRevision)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	projectID, projectName, snapshotID, snapshotDate, snapshotSource, sourceID, sourceBranch, sourceRevision := b.snapshotMeta()
+	projectID, snapshotID := b.snapshotMeta()
 
 	for _, svc := range services {
 		moduleID := b.hierarchy.findModuleID(svc.ContainerID)
@@ -436,8 +423,7 @@ func (b *Builder) buildODataServices() error {
 			svc.ODataVersion,
 			len(svc.EntitySets),
 			authTypes,
-			projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-			sourceID, sourceBranch, sourceRevision,
+			projectID, snapshotID,
 		)
 		if err != nil {
 			return err
@@ -455,19 +441,18 @@ func (b *Builder) buildBusinessEventServices() error {
 	}
 
 	stmt, err := b.tx.Prepare(`
-		INSERT INTO business_event_services (Id, Name, QualifiedName, ModuleName,
+		INSERT INTO business_event_services_data (Id, Name, QualifiedName, ModuleName,
 			Documentation, ServiceName, EventNamePrefix,
 			MessageCount, PublishCount, SubscribeCount,
-			ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource,
-			SourceId, SourceBranch, SourceRevision)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	projectID, projectName, snapshotID, snapshotDate, snapshotSource, sourceID, sourceBranch, sourceRevision := b.snapshotMeta()
+	projectID, snapshotID := b.snapshotMeta()
 
 	for _, svc := range services {
 		moduleID := b.hierarchy.findModuleID(svc.ContainerID)
@@ -508,8 +493,7 @@ func (b *Builder) buildBusinessEventServices() error {
 			msgCount,
 			publishCount,
 			subscribeCount,
-			projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-			sourceID, sourceBranch, sourceRevision,
+			projectID, snapshotID,
 		)
 		if err != nil {
 			return err
@@ -528,18 +512,18 @@ func (b *Builder) buildBusinessEvents() error {
 	}
 
 	stmt, err := b.tx.Prepare(`
-		INSERT INTO business_events (Id, ServiceId, ServiceQualifiedName, ChannelName,
+		INSERT INTO business_events_data (Id, ServiceId, ServiceQualifiedName, ChannelName,
 			MessageName, CanPublish, CanSubscribe, AttributeCount,
 			Entity, PublishMicroflow, SubscribeMicroflow,
-			ModuleName, ProjectId, SnapshotId, SnapshotDate, SnapshotSource)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ModuleName, ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	projectID, _, snapshotID, snapshotDate, snapshotSource, _, _, _ := b.snapshotMeta()
+	projectID, snapshotID := b.snapshotMeta()
 
 	count := 0
 	for _, svc := range services {
@@ -606,7 +590,7 @@ func (b *Builder) buildBusinessEvents() error {
 					publishMF,
 					subscribeMF,
 					moduleName,
-					projectID, snapshotID, snapshotDate, snapshotSource,
+					projectID, snapshotID,
 				)
 				if err != nil {
 					return err
@@ -627,18 +611,17 @@ func (b *Builder) buildDatabaseConnections() error {
 	}
 
 	stmt, err := b.tx.Prepare(`
-		INSERT INTO database_connections (Id, Name, QualifiedName, ModuleName, Folder,
+		INSERT INTO database_connections_data (Id, Name, QualifiedName, ModuleName, Folder,
 			DatabaseType, QueryCount,
-			ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource,
-			SourceId, SourceBranch, SourceRevision)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	projectID, projectName, snapshotID, snapshotDate, snapshotSource, sourceID, sourceBranch, sourceRevision := b.snapshotMeta()
+	projectID, snapshotID := b.snapshotMeta()
 
 	for _, conn := range connections {
 		moduleID := b.hierarchy.findModuleID(conn.ContainerID)
@@ -654,8 +637,7 @@ func (b *Builder) buildDatabaseConnections() error {
 			folderPath,
 			conn.DatabaseType,
 			len(conn.Queries),
-			projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-			sourceID, sourceBranch, sourceRevision,
+			projectID, snapshotID,
 		)
 		if err != nil {
 			return err
@@ -673,17 +655,16 @@ func (b *Builder) buildJarDependencies() error {
 	}
 
 	stmt, err := b.tx.Prepare(`
-		INSERT INTO jar_dependencies (Id, ModuleName, GroupId, ArtifactId, Coordinate, Version, IsIncluded,
-			ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource,
-			SourceId, SourceBranch, SourceRevision)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO jar_dependencies_data (Id, ModuleName, GroupId, ArtifactId, Coordinate, Version, IsIncluded,
+			ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	projectID, projectName, snapshotID, snapshotDate, snapshotSource, sourceID, sourceBranch, sourceRevision := b.snapshotMeta()
+	projectID, snapshotID := b.snapshotMeta()
 
 	count := 0
 	for _, ms := range allSettings {
@@ -702,8 +683,7 @@ func (b *Builder) buildJarDependencies() error {
 				coordinate,
 				dep.Version,
 				included,
-				projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-				sourceID, sourceBranch, sourceRevision,
+				projectID, snapshotID,
 			)
 			if err != nil {
 				return err
@@ -723,17 +703,17 @@ func (b *Builder) buildJsonStructures() error {
 	}
 
 	stmt, err := b.tx.Prepare(`
-		INSERT INTO json_structures (Name, QualifiedName, ModuleName,
+		INSERT INTO json_structures_data (Name, QualifiedName, ModuleName,
 			ElementCount, HasSnippet, Documentation, ExportLevel, Folder,
-			ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	projectID, projectName, snapshotID, snapshotDate, snapshotSource, _, _, _ := b.snapshotMeta()
+	projectID, snapshotID := b.snapshotMeta()
 
 	for _, js := range structures {
 		moduleID := b.hierarchy.findModuleID(js.ContainerID)
@@ -760,7 +740,7 @@ func (b *Builder) buildJsonStructures() error {
 			js.Documentation,
 			js.ExportLevel,
 			folderPath,
-			projectID, projectName, snapshotID, snapshotDate, snapshotSource,
+			projectID, snapshotID,
 		)
 		if err != nil {
 			return err
@@ -778,17 +758,17 @@ func (b *Builder) buildImportMappings() error {
 	}
 
 	stmt, err := b.tx.Prepare(`
-		INSERT INTO import_mappings (Name, QualifiedName, ModuleName,
+		INSERT INTO import_mappings_data (Name, QualifiedName, ModuleName,
 			SchemaSource, ElementCount, Documentation, Folder,
-			ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	projectID, projectName, snapshotID, snapshotDate, snapshotSource, _, _, _ := b.snapshotMeta()
+	projectID, snapshotID := b.snapshotMeta()
 
 	for _, im := range mappings {
 		moduleID := b.hierarchy.findModuleID(im.ContainerID)
@@ -812,7 +792,7 @@ func (b *Builder) buildImportMappings() error {
 			len(im.Elements),
 			im.Documentation,
 			folderPath,
-			projectID, projectName, snapshotID, snapshotDate, snapshotSource,
+			projectID, snapshotID,
 		)
 		if err != nil {
 			return err
@@ -830,17 +810,17 @@ func (b *Builder) buildExportMappings() error {
 	}
 
 	stmt, err := b.tx.Prepare(`
-		INSERT INTO export_mappings (Name, QualifiedName, ModuleName,
+		INSERT INTO export_mappings_data (Name, QualifiedName, ModuleName,
 			SchemaSource, NullValueOption, ElementCount, Documentation, Folder,
-			ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	projectID, projectName, snapshotID, snapshotDate, snapshotSource, _, _, _ := b.snapshotMeta()
+	projectID, snapshotID := b.snapshotMeta()
 
 	for _, em := range mappings {
 		moduleID := b.hierarchy.findModuleID(em.ContainerID)
@@ -865,7 +845,7 @@ func (b *Builder) buildExportMappings() error {
 			len(em.Elements),
 			em.Documentation,
 			folderPath,
-			projectID, projectName, snapshotID, snapshotDate, snapshotSource,
+			projectID, snapshotID,
 		)
 		if err != nil {
 			return err

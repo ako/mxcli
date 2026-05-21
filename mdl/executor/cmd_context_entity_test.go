@@ -21,7 +21,7 @@ func TestAssembleEntityContext_Issue396_DefinitionNotEmpty(t *testing.T) {
 	defer cat.Close()
 
 	db := cat.CatalogDB()
-	_, err = db.Exec(`INSERT INTO entities
+	_, err = db.Exec(`INSERT INTO entities_data
 		(Id, Name, QualifiedName, ModuleName, EntityType, Generalization, AttributeCount)
 		VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		"uuid-1", "Account", "Administration.Account", "Administration",

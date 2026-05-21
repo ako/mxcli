@@ -19,12 +19,11 @@ func (b *Builder) buildNavigation() error {
 	}
 
 	profileStmt, err := b.tx.Prepare(`
-		INSERT INTO navigation_profiles (ProfileName, Kind, IsNative,
+		INSERT INTO navigation_profiles_data (ProfileName, Kind, IsNative,
 			HomePage, HomePageType, LoginPage, NotFoundPage,
 			MenuItemCount, RoleBasedHomeCount, OfflineEntityCount,
-			ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource,
-			SourceId, SourceBranch, SourceRevision)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
@@ -52,7 +51,7 @@ func (b *Builder) buildNavigation() error {
 	}
 	defer roleHomeStmt.Close()
 
-	projectID, projectName, snapshotID, snapshotDate, snapshotSource, sourceID, sourceBranch, sourceRevision := b.snapshotMeta()
+	projectID, snapshotID := b.snapshotMeta()
 
 	profileCount := 0
 	menuCount := 0
@@ -91,8 +90,7 @@ func (b *Builder) buildNavigation() error {
 			totalMenuItems,
 			len(profile.RoleBasedHomePages),
 			len(profile.OfflineEntities),
-			projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-			sourceID, sourceBranch, sourceRevision,
+			projectID, snapshotID,
 		)
 		if err != nil {
 			return err

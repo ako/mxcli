@@ -29,21 +29,20 @@ func (b *Builder) buildXPathExpressions() error {
 	}
 
 	stmt, err := b.tx.Prepare(`
-		INSERT INTO xpath_expressions (
+		INSERT INTO xpath_expressions_data (
 			Id, DocumentType, DocumentId, DocumentQualifiedName,
 			ComponentType, ComponentId, ComponentName,
 			XPathExpression, TargetEntity, ReferencedEntities,
 			IsParameterized, UsageType, ModuleName,
-			ProjectId, ProjectName, SnapshotId, SnapshotDate,
-			SnapshotSource, SourceId, SourceBranch, SourceRevision
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ProjectId, SnapshotId
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	projectID, projectName, snapshotID, snapshotDate, snapshotSource, sourceID, sourceBranch, sourceRevision := b.snapshotMeta()
+	projectID, snapshotID := b.snapshotMeta()
 	count := 0
 
 	// 1. Extract from microflow/nanoflow retrieve actions
@@ -55,7 +54,7 @@ func (b *Builder) buildXPathExpressions() error {
 			sourceQN := moduleName + "." + mf.Name
 
 			count += b.extractMicroflowXPath(stmt, mf.ObjectCollection, "MICROFLOW", string(mf.ID), sourceQN, moduleName,
-				projectID, projectName, snapshotID, snapshotDate, snapshotSource, sourceID, sourceBranch, sourceRevision)
+				projectID, snapshotID)
 		}
 	}
 
@@ -67,7 +66,7 @@ func (b *Builder) buildXPathExpressions() error {
 			sourceQN := moduleName + "." + nf.Name
 
 			count += b.extractMicroflowXPath(stmt, nf.ObjectCollection, "NANOFLOW", string(nf.ID), sourceQN, moduleName,
-				projectID, projectName, snapshotID, snapshotDate, snapshotSource, sourceID, sourceBranch, sourceRevision)
+				projectID, snapshotID)
 		}
 	}
 
@@ -94,8 +93,7 @@ func (b *Builder) buildXPathExpressions() error {
 						"ACCESS_RULE", string(rule.ID), "",
 						rule.XPathConstraint, entityQN, refs,
 						isParam, XPathUsageSecurity, moduleName,
-						projectID, projectName, snapshotID, snapshotDate,
-						snapshotSource, sourceID, sourceBranch, sourceRevision)
+						projectID, snapshotID)
 					count++
 				}
 			}
@@ -129,7 +127,7 @@ func (b *Builder) buildXPathExpressions() error {
 
 			// Scan the full BSON tree for XPathConstraint fields
 			count += scanBSONForXPath(stmt, raw, docType, string(ru.ID), sourceQN, moduleName,
-				projectID, projectName, snapshotID, snapshotDate, snapshotSource, sourceID, sourceBranch, sourceRevision)
+				projectID, snapshotID)
 		}
 	}
 
@@ -140,7 +138,7 @@ func (b *Builder) buildXPathExpressions() error {
 // extractMicroflowXPath extracts XPath constraints from microflow/nanoflow actions.
 func (b *Builder) extractMicroflowXPath(stmt *sql.Stmt,
 	oc *microflows.MicroflowObjectCollection, docType, docID, docQN, moduleName,
-	projectID, projectName, snapshotID, snapshotDate, snapshotSource, sourceID, sourceBranch, sourceRevision string) int {
+	projectID, snapshotID string) int {
 
 	if oc == nil {
 		return 0
@@ -181,8 +179,7 @@ func (b *Builder) extractMicroflowXPath(stmt *sql.Stmt,
 			"RETRIEVE_ACTION", componentID, componentName,
 			xpath, entityQN, refs,
 			isParam, XPathUsageRetrieve, moduleName,
-			projectID, projectName, snapshotID, snapshotDate,
-			snapshotSource, sourceID, sourceBranch, sourceRevision)
+			projectID, snapshotID)
 		count++
 	}
 	return count
@@ -193,7 +190,7 @@ func (b *Builder) extractMicroflowXPath(stmt *sql.Stmt,
 // This works on raw BSON data, avoiding the need for a full widget tree parser.
 func scanBSONForXPath(stmt *sql.Stmt, raw map[string]any,
 	docType, docID, docQN, moduleName,
-	projectID, projectName, snapshotID, snapshotDate, snapshotSource, sourceID, sourceBranch, sourceRevision string) int {
+	projectID, snapshotID string) int {
 
 	count := 0
 
@@ -220,8 +217,7 @@ func scanBSONForXPath(stmt *sql.Stmt, raw map[string]any,
 			componentType, bsonID, bsonType,
 			xpath, entityQN, refs,
 			isParam, XPathUsageDatasource, moduleName,
-			projectID, projectName, snapshotID, snapshotDate,
-			snapshotSource, sourceID, sourceBranch, sourceRevision)
+			projectID, snapshotID)
 		count++
 	}
 
@@ -230,18 +226,18 @@ func scanBSONForXPath(stmt *sql.Stmt, raw map[string]any,
 		switch val := v.(type) {
 		case map[string]any:
 			count += scanBSONForXPath(stmt, val, docType, docID, docQN, moduleName,
-				projectID, projectName, snapshotID, snapshotDate, snapshotSource, sourceID, sourceBranch, sourceRevision)
+				projectID, snapshotID)
 		case bson.D:
 			m := make(map[string]any)
 			for _, elem := range val {
 				m[elem.Key] = elem.Value
 			}
 			count += scanBSONForXPath(stmt, m, docType, docID, docQN, moduleName,
-				projectID, projectName, snapshotID, snapshotDate, snapshotSource, sourceID, sourceBranch, sourceRevision)
+				projectID, snapshotID)
 		default:
 			scanBSONArray(v, func(child map[string]any) {
 				count += scanBSONForXPath(stmt, child, docType, docID, docQN, moduleName,
-					projectID, projectName, snapshotID, snapshotDate, snapshotSource, sourceID, sourceBranch, sourceRevision)
+					projectID, snapshotID)
 			})
 		}
 	}

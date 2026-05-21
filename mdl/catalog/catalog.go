@@ -268,6 +268,11 @@ type CacheInfo struct {
 // (e.g. widget_definitions) without forcing a full catalog rebuild. The new
 // tables will be empty until the next REFRESH CATALOG runs, but they're
 // queryable and won't trigger "no such table" errors.
+//
+// If the cached file was written against a different CatalogSchemaVersion,
+// every table, view, and index is dropped before recreation. The cache will
+// be empty until the next REFRESH CATALOG runs — the alternative (silently
+// querying stale rows with the wrong column shape) is worse.
 func NewFromFile(path string) (*Catalog, error) {
 	db, err := NewSqliteCatalogDBFromFile(path)
 	if err != nil {
@@ -281,14 +286,87 @@ func NewFromFile(path string) (*Catalog, error) {
 		built:     true, // Assume built if loading from file
 	}
 
+	if err := c.migrateIfSchemaMismatch(); err != nil {
+		c.Close()
+		return nil, fmt.Errorf("failed to migrate cached catalog: %w", err)
+	}
+
 	// Idempotent schema upgrade — adds any tables/indexes the cached file
-	// doesn't have yet. Existing data is untouched.
+	// doesn't have yet. Existing data is untouched (unless dropped above).
+	// createTables also records the current schema version in catalog_meta.
 	if err := c.createTables(); err != nil {
 		c.Close()
 		return nil, fmt.Errorf("failed to apply schema to cached catalog: %w", err)
 	}
 
 	return c, nil
+}
+
+// migrateIfSchemaMismatch drops every user table, view, and index when the
+// cache's recorded CatalogSchemaVersion differs from the current one. The
+// catalog_meta table itself is preserved so callers can still introspect what
+// happened. If the catalog_meta table doesn't exist yet (fresh cache), this
+// is a no-op.
+func (c *Catalog) migrateIfSchemaMismatch() error {
+	var hasMeta int
+	if err := c.db.QueryRow(
+		`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='catalog_meta'`,
+	).Scan(&hasMeta); err != nil {
+		return fmt.Errorf("probing catalog_meta: %w", err)
+	}
+	if hasMeta == 0 {
+		return nil // fresh cache, nothing to migrate from
+	}
+
+	stored, err := c.GetMeta(MetaSchemaVersion)
+	if err != nil {
+		return fmt.Errorf("reading schema version: %w", err)
+	}
+	if stored == CatalogSchemaVersion {
+		return nil
+	}
+
+	// Drop every user object except catalog_meta itself.
+	//
+	// FTS5 virtual tables (strings, source) are intentionally skipped — they
+	// are queried via FTS module hooks that can fail to load across
+	// reconnections in modernc.org/sqlite, and their schema is stable across
+	// catalog versions. They'll be reused as-is; their rows are derived from
+	// the dropped tables and get rebuilt on the next REFRESH CATALOG anyway.
+	for _, kind := range []string{"view", "index", "table"} {
+		rows, err := c.db.Query(
+			`SELECT name, sql FROM sqlite_master
+			 WHERE type=? AND name NOT LIKE 'sqlite_%' AND name != 'catalog_meta'`,
+			kind,
+		)
+		if err != nil {
+			return fmt.Errorf("listing %ss: %w", kind, err)
+		}
+		type item struct{ name, sqlText string }
+		var items []item
+		for rows.Next() {
+			var it item
+			var sqlText sql.NullString
+			if err := rows.Scan(&it.name, &sqlText); err != nil {
+				rows.Close()
+				return err
+			}
+			it.sqlText = sqlText.String
+			items = append(items, it)
+		}
+		rows.Close()
+		for _, it := range items {
+			if kind == "table" && strings.Contains(strings.ToUpper(it.sqlText), "VIRTUAL TABLE") {
+				continue
+			}
+			stmt := fmt.Sprintf(`DROP %s IF EXISTS %q`, strings.ToUpper(kind), it.name)
+			if _, err := c.db.Exec(stmt); err != nil {
+				return fmt.Errorf("dropping %s %s: %w", kind, it.name, err)
+			}
+		}
+	}
+
+	return nil
 }
 
 // SaveToFile saves the catalog to a SQLite file.

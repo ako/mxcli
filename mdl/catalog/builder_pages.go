@@ -19,11 +19,10 @@ func (b *Builder) buildPages() error {
 	}
 
 	pageStmt, err := b.tx.Prepare(`
-		INSERT INTO pages (Id, Name, QualifiedName, ModuleName, Folder, Title, URL, LayoutRef,
+		INSERT INTO pages_data (Id, Name, QualifiedName, ModuleName, Folder, Title, URL, LayoutRef,
 			Description, ParameterCount, WidgetCount, Excluded,
-			ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource,
-			SourceId, SourceBranch, SourceRevision)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
@@ -34,11 +33,10 @@ func (b *Builder) buildPages() error {
 	var widgetStmt *sql.Stmt
 	if b.fullMode {
 		widgetStmt, err = b.tx.Prepare(`
-			INSERT INTO widgets (Id, Name, WidgetType, ContainerId, ContainerQualifiedName, ContainerType,
+			INSERT INTO widgets_data (Id, Name, WidgetType, ContainerId, ContainerQualifiedName, ContainerType,
 				ModuleName, Folder, EntityRef, AttributeRef, Description,
-				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource,
-				SourceId, SourceBranch, SourceRevision)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				ProjectId, SnapshotId)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`)
 		if err != nil {
 			return err
@@ -46,7 +44,7 @@ func (b *Builder) buildPages() error {
 		defer widgetStmt.Close()
 	}
 
-	projectID, projectName, snapshotID, snapshotDate, snapshotSource, sourceID, sourceBranch, sourceRevision := b.snapshotMeta()
+	projectID, snapshotID := b.snapshotMeta()
 
 	pageCount := 0
 	widgetCount := 0
@@ -93,8 +91,7 @@ func (b *Builder) buildPages() error {
 			len(pg.Parameters),
 			widgetCnt,
 			pg.Excluded,
-			projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-			sourceID, sourceBranch, sourceRevision,
+			projectID, snapshotID,
 		)
 		if err != nil {
 			return err
@@ -116,8 +113,7 @@ func (b *Builder) buildPages() error {
 					w.EntityRef,
 					w.AttributeRef,
 					"",
-					projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-					sourceID, sourceBranch, sourceRevision,
+					projectID, snapshotID,
 				); err != nil {
 					return fmt.Errorf("insert widget %s for page %s: %w", w.Name, qualifiedName, err)
 				}
@@ -141,18 +137,17 @@ func (b *Builder) buildSnippets() error {
 	}
 
 	snippetStmt, err := b.tx.Prepare(`
-		INSERT INTO snippets (Id, Name, QualifiedName, ModuleName, Folder, Description,
+		INSERT INTO snippets_data (Id, Name, QualifiedName, ModuleName, Folder, Description,
 			ParameterCount, WidgetCount,
-			ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource,
-			SourceId, SourceBranch, SourceRevision)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
 	}
 	defer snippetStmt.Close()
 
-	projectID, projectName, snapshotID, snapshotDate, snapshotSource, sourceID, sourceBranch, sourceRevision := b.snapshotMeta()
+	projectID, snapshotID := b.snapshotMeta()
 
 	count := 0
 	for _, sn := range snippetList {
@@ -171,8 +166,7 @@ func (b *Builder) buildSnippets() error {
 			sn.Documentation,
 			0, // ParameterCount
 			0, // WidgetCount
-			projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-			sourceID, sourceBranch, sourceRevision,
+			projectID, snapshotID,
 		)
 		if err != nil {
 			return err
@@ -505,17 +499,16 @@ func (b *Builder) buildLayouts() error {
 	}
 
 	layoutStmt, err := b.tx.Prepare(`
-		INSERT INTO layouts (Id, Name, QualifiedName, ModuleName, Folder, LayoutType, Description,
-			ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource,
-			SourceId, SourceBranch, SourceRevision)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO layouts_data (Id, Name, QualifiedName, ModuleName, Folder, LayoutType, Description,
+			ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
 	}
 	defer layoutStmt.Close()
 
-	projectID, projectName, snapshotID, snapshotDate, snapshotSource, sourceID, sourceBranch, sourceRevision := b.snapshotMeta()
+	projectID, snapshotID := b.snapshotMeta()
 
 	count := 0
 	for _, l := range layoutList {
@@ -533,8 +526,7 @@ func (b *Builder) buildLayouts() error {
 			folder,
 			string(l.LayoutType),
 			l.Documentation,
-			projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-			sourceID, sourceBranch, sourceRevision,
+			projectID, snapshotID,
 		)
 		if err != nil {
 			return err

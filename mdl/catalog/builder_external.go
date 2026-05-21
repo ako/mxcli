@@ -19,18 +19,18 @@ func (b *Builder) buildExternalEntities() error {
 	}
 
 	stmt, err := b.tx.Prepare(`
-		INSERT INTO external_entities (Id, Name, QualifiedName, ModuleName,
+		INSERT INTO external_entities_data (Id, Name, QualifiedName, ModuleName,
 			ServiceName, EntitySet, RemoteName,
 			Countable, Creatable, Deletable, Updatable, AttributeCount,
-			ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	projectID, projectName, snapshotID, snapshotDate, snapshotSource, _, _, _ := b.snapshotMeta()
+	projectID, snapshotID := b.snapshotMeta()
 
 	count := 0
 	for _, dm := range domainModels {
@@ -64,7 +64,7 @@ func (b *Builder) buildExternalEntities() error {
 				boolToInt(entity.Deletable),
 				boolToInt(entity.Updatable),
 				len(entity.Attributes),
-				projectID, projectName, snapshotID, snapshotDate, snapshotSource,
+				projectID, snapshotID,
 			)
 			if err != nil {
 				return err
@@ -90,17 +90,17 @@ func (b *Builder) buildExternalActions() error {
 	}
 
 	stmt, err := b.tx.Prepare(`
-		INSERT INTO external_actions (Id, ServiceName, ActionName, ModuleName,
+		INSERT INTO external_actions_data (Id, ServiceName, ActionName, ModuleName,
 			UsageCount, CallerNames, ParameterNames,
-			ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	projectID, projectName, snapshotID, snapshotDate, snapshotSource, _, _, _ := b.snapshotMeta()
+	projectID, snapshotID := b.snapshotMeta()
 
 	// Collect unique actions: key = service + "|" + action name
 	type actionInfo struct {
@@ -187,7 +187,7 @@ func (b *Builder) buildExternalActions() error {
 			info.count,
 			strings.Join(info.callers, ", "),
 			strings.Join(info.params, ", "),
-			projectID, projectName, snapshotID, snapshotDate, snapshotSource,
+			projectID, snapshotID,
 		)
 		if err != nil {
 			return err

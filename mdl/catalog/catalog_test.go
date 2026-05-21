@@ -3,10 +3,13 @@
 package catalog
 
 import (
+	"database/sql"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	_ "modernc.org/sqlite"
 )
 
 func TestNew(t *testing.T) {
@@ -125,7 +128,7 @@ func TestQueryWithData(t *testing.T) {
 
 	// Insert test data
 	_, err = cat.CatalogDB().Exec(
-		"INSERT INTO modules (Id, Name, QualifiedName, ModuleName) VALUES (?, ?, ?, ?)",
+		"INSERT INTO modules_data (Id, Name, QualifiedName, ModuleName) VALUES (?, ?, ?, ?)",
 		"mod-1", "TestModule", "TestModule", "TestModule",
 	)
 	if err != nil {
@@ -281,7 +284,7 @@ func TestSaveAndLoadFromFile(t *testing.T) {
 
 	cat.SetProject("proj-1", "TestApp", "10.0.0")
 	_, err = cat.CatalogDB().Exec(
-		"INSERT INTO modules (Id, Name, QualifiedName, ModuleName) VALUES (?, ?, ?, ?)",
+		"INSERT INTO modules_data (Id, Name, QualifiedName, ModuleName) VALUES (?, ?, ?, ?)",
 		"mod-1", "MyModule", "MyModule", "MyModule",
 	)
 	if err != nil {
@@ -420,5 +423,135 @@ func TestCreateTablesAreQueryable(t *testing.T) {
 		if err != nil {
 			t.Errorf("Failed to query table %q: %v", tbl, err)
 		}
+	}
+}
+
+// TestNormalizedViewsExposeSnapshotColumns checks that the per-table views
+// (entities, modules, etc.) still expose ProjectName / SnapshotDate /
+// SnapshotSource via JOIN on snapshots, even though those columns are no
+// longer stored on the row itself.
+func TestNormalizedViewsExposeSnapshotColumns(t *testing.T) {
+	cat, err := New()
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer cat.Close()
+
+	// Seed a snapshot.
+	_, err = cat.CatalogDB().Exec(`
+		INSERT INTO snapshots (SnapshotId, SnapshotName, ProjectId, ProjectName,
+			SnapshotDate, SnapshotSource, SourceBranch, SourceRevision)
+		VALUES ('snap-1', 'Initial', 'proj-1', 'MyApp',
+			'2026-05-20 10:00:00', 'GIT', 'main', 'abc123')`)
+	if err != nil {
+		t.Fatalf("seed snapshots: %v", err)
+	}
+
+	// Seed a module pointing at that snapshot.
+	_, err = cat.CatalogDB().Exec(`
+		INSERT INTO modules_data (Id, Name, QualifiedName, ProjectId, SnapshotId)
+		VALUES ('mod-1', 'Sales', 'Sales', 'proj-1', 'snap-1')`)
+	if err != nil {
+		t.Fatalf("seed modules_data: %v", err)
+	}
+
+	// The view should surface columns sourced from the snapshots JOIN.
+	row := cat.CatalogDB().QueryRow(`
+		SELECT ProjectName, SnapshotDate, SnapshotSource, SourceBranch, SourceRevision
+		FROM modules WHERE Id = 'mod-1'`)
+	var projectName, snapshotDate, snapshotSource, sourceBranch, sourceRevision string
+	if err := row.Scan(&projectName, &snapshotDate, &snapshotSource, &sourceBranch, &sourceRevision); err != nil {
+		t.Fatalf("scan view row: %v", err)
+	}
+	if projectName != "MyApp" || snapshotSource != "GIT" || sourceBranch != "main" || sourceRevision != "abc123" {
+		t.Errorf("view did not surface snapshot columns: got (%q, %q, %q, %q, %q)",
+			projectName, snapshotDate, snapshotSource, sourceBranch, sourceRevision)
+	}
+
+	// Updating the snapshot should propagate through the view immediately.
+	if _, err := cat.CatalogDB().Exec(
+		`UPDATE snapshots SET SourceRevision = 'def456' WHERE SnapshotId = 'snap-1'`,
+	); err != nil {
+		t.Fatalf("update snapshots: %v", err)
+	}
+	row = cat.CatalogDB().QueryRow(`SELECT SourceRevision FROM modules WHERE Id = 'mod-1'`)
+	if err := row.Scan(&sourceRevision); err != nil {
+		t.Fatalf("scan after update: %v", err)
+	}
+	if sourceRevision != "def456" {
+		t.Errorf("snapshot update did not propagate via view: got %q, want %q", sourceRevision, "def456")
+	}
+}
+
+// TestCatalogSchemaVersionForcesRebuild checks that opening a cache that was
+// written against an older schema version drops the old tables/views so the
+// next REFRESH CATALOG produces clean rows in the new shape.
+func TestCatalogSchemaVersionForcesRebuild(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/cache.sqlite"
+
+	// Save a cache to disk with the current schema, then tamper with the
+	// stored schema version in-place to simulate an old cache.
+	cat, err := New()
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if _, err := cat.CatalogDB().Exec(
+		`INSERT INTO modules_data (Id, Name, QualifiedName, ProjectId, SnapshotId)
+		 VALUES ('mod-x', 'Stale', 'Stale', 'proj', 'snap')`,
+	); err != nil {
+		t.Fatalf("seed stale row: %v", err)
+	}
+	if err := cat.SaveToFile(path); err != nil {
+		t.Fatalf("SaveToFile: %v", err)
+	}
+	cat.Close()
+
+	// Open the saved file directly (bypassing NewFromFile's migration check)
+	// and downgrade the recorded schema version. NewFromFile next time should
+	// notice the mismatch and drop everything.
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open downgraded cache: %v", err)
+	}
+	if _, err := db.Exec(
+		`UPDATE catalog_meta SET Value = '0-old' WHERE Key = ?`, MetaSchemaVersion,
+	); err != nil {
+		db.Close()
+		t.Fatalf("downgrade schema_version: %v", err)
+	}
+	// Confirm the seeded row survived the downgrade.
+	var preCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM modules_data`).Scan(&preCount); err != nil {
+		db.Close()
+		t.Fatalf("count before migration: %v", err)
+	}
+	if preCount != 1 {
+		db.Close()
+		t.Fatalf("expected 1 seeded row before migration, got %d", preCount)
+	}
+	db.Close()
+
+	// Reopen — migration should fire, dropping the seeded row.
+	cat2, err := NewFromFile(path)
+	if err != nil {
+		t.Fatalf("NewFromFile (after downgrade): %v", err)
+	}
+	defer cat2.Close()
+
+	var count int
+	if err := cat2.CatalogDB().QueryRow(`SELECT COUNT(*) FROM modules_data`).Scan(&count); err != nil {
+		t.Fatalf("count after migration: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected migration to drop seeded rows, got %d", count)
+	}
+
+	stored, err := cat2.GetMeta(MetaSchemaVersion)
+	if err != nil {
+		t.Fatalf("GetMeta: %v", err)
+	}
+	if stored != CatalogSchemaVersion {
+		t.Errorf("schema version not bumped after migration: got %q, want %q", stored, CatalogSchemaVersion)
 	}
 }

@@ -27,14 +27,14 @@ import (
 // Callers (cmd_catalog.go) adapt the executor's WidgetDefinition into this
 // to avoid the mdl/catalog → mdl/executor import cycle.
 type WidgetDefinitionMeta struct {
-	WidgetId        string
-	MdlName         string
-	DisplayName     string
-	WidgetKind      string // "pluggable" | "custom" | "builtin"
-	Version         string
-	Properties      []WidgetDefinitionPropMeta
-	ChildSlots      []WidgetDefinitionSlotMeta
-	ObjectLists     []WidgetDefinitionSlotMeta
+	WidgetId    string
+	MdlName     string
+	DisplayName string
+	WidgetKind  string // "pluggable" | "custom" | "builtin"
+	Version     string
+	Properties  []WidgetDefinitionPropMeta
+	ChildSlots  []WidgetDefinitionSlotMeta
+	ObjectLists []WidgetDefinitionSlotMeta
 }
 
 // WidgetDefinitionPropMeta describes one scalar / datasource / attribute
@@ -68,12 +68,11 @@ func (b *Builder) SetBuiltinWidgetMetas(metas []WidgetDefinitionMeta) {
 // .def.json files + caller-supplied built-in definitions.
 func (b *Builder) buildWidgetDefinitions() error {
 	defStmt, err := b.tx.Prepare(`
-		INSERT INTO widget_definitions (
+		INSERT INTO widget_definitions_data (
 			WidgetId, MdlName, DisplayName, WidgetKind, Version,
 			MpkPath, DefPath, PropertyCount, ChildSlotCount, ObjectListCount,
-			ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource,
-			SourceId, SourceBranch, SourceRevision)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
@@ -81,20 +80,18 @@ func (b *Builder) buildWidgetDefinitions() error {
 	defer defStmt.Close()
 
 	propStmt, err := b.tx.Prepare(`
-		INSERT INTO widget_definition_properties (
+		INSERT INTO widget_definition_properties_data (
 			Id, WidgetId, PropertyKey, Kind, Type, MdlKeyword,
 			Required, DefaultValue, Description,
-			ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource,
-			SourceId, SourceBranch, SourceRevision)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
 	}
 	defer propStmt.Close()
 
-	projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-		sourceID, sourceBranch, sourceRevision := b.snapshotMeta()
+	projectID, snapshotID := b.snapshotMeta()
 
 	// Track widget IDs so a built-in def doesn't shadow a project .mpk and
 	// vice-versa. Project widgets win when both exist (the user shipped one).
@@ -128,8 +125,7 @@ func (b *Builder) buildWidgetDefinitions() error {
 				mpkDef.ID, mdlName, mpkDef.Name, kind, mpkDef.Version,
 				relPath(projectDir, mpkPath), relPath(projectDir, defPath),
 				mpkProperties(mpkDef), defFields.ChildSlots, defFields.ObjectLists,
-				projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-				sourceID, sourceBranch, sourceRevision,
+				projectID, snapshotID,
 			); err != nil {
 				return err
 			}
@@ -148,8 +144,7 @@ func (b *Builder) buildWidgetDefinitions() error {
 			meta.WidgetId, meta.MdlName, meta.DisplayName, "builtin", meta.Version,
 			"", "",
 			meta.Properties, meta.ChildSlots, meta.ObjectLists,
-			projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-			sourceID, sourceBranch, sourceRevision,
+			projectID, snapshotID,
 		); err != nil {
 			return err
 		}
@@ -234,14 +229,12 @@ func insertWidgetDef(
 	properties []WidgetDefinitionPropMeta,
 	childSlots []WidgetDefinitionSlotMeta,
 	objectLists []WidgetDefinitionSlotMeta,
-	projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-	sourceID, sourceBranch, sourceRevision string,
+	projectID, snapshotID string,
 ) error {
 	if _, err := defStmt.Exec(
 		widgetID, mdlName, displayName, kind, version,
 		mpkPath, defPath, len(properties), len(childSlots), len(objectLists),
-		projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-		sourceID, sourceBranch, sourceRevision,
+		projectID, snapshotID,
 	); err != nil {
 		return fmt.Errorf("insert widget_definitions: %w", err)
 	}
@@ -255,8 +248,7 @@ func insertWidgetDef(
 		if _, err := propStmt.Exec(
 			id, widgetID, p.PropertyKey, "property", p.Type, "",
 			req, p.DefaultValue, p.Description,
-			projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-			sourceID, sourceBranch, sourceRevision,
+			projectID, snapshotID,
 		); err != nil {
 			return fmt.Errorf("insert widget_definition_properties (property): %w", err)
 		}
@@ -266,8 +258,7 @@ func insertWidgetDef(
 		if _, err := propStmt.Exec(
 			id, widgetID, s.PropertyKey, "childSlot", "widgets", s.MdlKeyword,
 			0, "", "",
-			projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-			sourceID, sourceBranch, sourceRevision,
+			projectID, snapshotID,
 		); err != nil {
 			return fmt.Errorf("insert widget_definition_properties (childSlot): %w", err)
 		}
@@ -277,8 +268,7 @@ func insertWidgetDef(
 		if _, err := propStmt.Exec(
 			id, widgetID, ol.PropertyKey, "objectList", "object", ol.MdlKeyword,
 			0, "", "",
-			projectID, projectName, snapshotID, snapshotDate, snapshotSource,
-			sourceID, sourceBranch, sourceRevision,
+			projectID, snapshotID,
 		); err != nil {
 			return fmt.Errorf("insert widget_definition_properties (objectList): %w", err)
 		}
