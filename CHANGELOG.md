@@ -6,6 +6,47 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-05-21
+
+### Added
+
+- **Pluggable widget property validation** — `mxcli check` flags unknown widget property keys as `MDL-WIDGET01`; respects MDL builtin property names (e.g. `Label`, `Caption`, `DataSource`) so they aren't reported as typos
+- **`mxcli check --post-migration`** — scans for legacy native widgets in pages/snippets and reports `MDL-WIDGET02` with qualified module.document names; version-gated via the legacy-widget catalog
+- **LSP widget integration** — completion suggests widget property keys inside `(...)` blocks; hover shows property descriptions extracted from `.mpk`; widget property typos surface as real-time diagnostics
+- **Widget definition workflow** — `widget init --force` re-extracts existing `.def.json` files; `widget init` and `refresh catalog` auto-refresh stale definitions; `mxcli init` now runs `widget init` so new projects pick up widget defs automatically
+- **Catalog: widget tables** — `widget_definitions` and `widget_definition_properties` queryable via `SELECT ... FROM CATALOG.widget_definitions`
+- **`ALTER` for agent-editor documents** — `ALTER AGENT/MODEL/KNOWLEDGEBASE/MCPSERVICE` (#464)
+- **Skill docs include MDL keyword routing** — generated widget skill files document object-list and child-slot keywords driven from `.def.json`
+
+### Fixed
+
+- DataGrid2 column `tooltip` / `exportValue` / `dynamicText` TextTemplate now matches Studio Pro's per-column-kind convention (CE0463 on attribute-bound columns, #578)
+- DataGrid2 column `CaptionParams` / `ContentParams` / `ShowContentAs` / `Content` roundtrip (#547); `$localVar` references in column captions emit `Forms$PageVariable.LocalVariable`
+- Pluggable widget engine wrote `CustomWidgets$AttributeRef` (not a registered Mendix type); now emits `DomainModels$AttributeRef` with the fully-qualified path so `mx update-widgets` no longer fails with `TypeCacheUnknownTypeException` (#64)
+- Object-list item TextTemplate slots emit `null` when unset (Accordion `groups`, Maps `markers`, AreaChart `series`, PopupMenu items) instead of placeholder ClientTemplate that triggered CE0463 (#548)
+- Pluggable widget CE0463 on Mendix 11.9 — `FormattingInfo TimeFormat` + `Selection` PascalCase normalization
+- DataView `FormOrientation` / `LabelWidth` now controllable from MDL (#554)
+- `ALTER PAGE` fixes: `INSERT`/`REPLACE` serializes DataGrid2 columns correctly; `set Title` actually updates the title (#561); column `SET` is case-insensitive and supports TextTemplate captions (#560); column inserts use the grid's data source as entity context
+- Master-detail page round-trip — Gallery `ItemSelectionMode` + DataView selection-source described correctly
+- `DesktopWidth` / `TabletWidth` / `PhoneWidth`: `AutoFill` now actually sets `Weight: -1` instead of dropping the override
+- Pluggable widget validator respects MDL builtin property names (no false positives on `Label:`, `Caption:`, `DataSource:`, etc.)
+- `mxcli check` detects custom-content column INSERT issues before MxBuild
+- `--references` no longer flags `DROP + CREATE` of the same name as a conflict
+- Reject Mendix reserved words on non-persistent entity attributes (#552)
+- Cached catalog applies the current schema on load (no more "no such table" after schema bump)
+- Nightly CE0117 on Mendix 10.24.19 — drop redundant `toString()` on string parameter
+
+### Changed
+
+- Test infrastructure: `TestMain` runs `widget init` on the shared source project so per-test copies inherit `.def.json` files; integration tests now exercise pluggable widget fixtures end-to-end
+- Robust cleanup for doctype/mx-check tests eliminates ENOTEMPTY flake on CI
+- `modernc.org/sqlite` bumped from 1.50.0 to 1.50.1
+
+### Known limitations
+
+- Two CE0463 cases remain for widgets with property-conditional TextTemplate visibility (VideoPlayer with `type='expression'`, Timeline with `customVisualization='true'`). Root cause and proposal in `docs/11-proposals/PROPOSAL_widget_property_visibility.md`; tracked under #574
+- `pluggablewidget 'com.mendix.widget.web.datagrid.Datagrid'` form is less feature-complete than the `datagrid` keyword form (no CONTROLBAR/customContent/per-column filter routing). Tracked under #529 Phase 4
+
 ## [0.10.0] - 2026-05-12
 
 ### Added
