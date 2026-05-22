@@ -62,5 +62,14 @@ create odata client Issue573.HeadersMicroflowSvc (
 -- - Issue573.HeadersMicroflowSvc → "Configuration source" dropdown is
 --   "Headers microflow" and references Issue573.SetHeaders
 -- Both should show ErrorHandlingMicroflow = Issue573.HandleError.
+--
+-- Expected `mx check` output: Studio Pro now finds the referenced microflows
+-- and validates their signatures, so CE6808 / CE6815 / CE6816 are reported
+-- against the test stubs (which return void). That's the *correct* failure
+-- mode — before the fix, Studio Pro silently ignored ConfigurationMicroflow
+-- and HeaderListMicroflow as unknown keys and showed "Constants only" with
+-- no errors at all. Producing a green mx check would require giving the
+-- stubs the real signatures (HttpResponse→String, etc.), which is out of
+-- scope for a regression reproduction.
 describe odata client Issue573.ConfigMicroflowSvc;
 describe odata client Issue573.HeadersMicroflowSvc;
