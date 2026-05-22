@@ -1,0 +1,28 @@
+-- Bug test: String attribute length must roundtrip through write -> read -> describe.
+-- Issue #583: describe entity and CATALOG.ATTRIBUTES reported every String attribute
+-- as String(unlimited) / Length: 0, even when a finite length was set. Root cause was
+-- a type assertion in sdk/mpr/parser_domainmodel.go that only accepted BSON int32,
+-- while Mendix Studio Pro stores the Length field as BSON int64.
+--
+-- The Go unit test in sdk/mpr/parser_domainmodel_test.go reproduces the original
+-- int64-from-Studio-Pro decode path. This MDL script is a complementary end-to-end
+-- regression test: it creates entities with several finite lengths plus one unlimited
+-- string, then asserts that describe emits the expected lengths back.
+--
+-- Run with:
+--   mxcli exec mdl-examples/bug-tests/583-string-attribute-length-roundtrip.mdl
+--   mxcli check mdl-examples/bug-tests/583-string-attribute-length-roundtrip.mdl
+create module bug583;
+
+create persistent entity bug583.Item (
+  ShortCode: string(10),
+  Description: string(200),
+  LongText: string(4000),
+  Notes: string
+);
+
+describe entity bug583.Item;
+
+select Name, DataType, Length from CATALOG.ATTRIBUTES
+  where EntityQualifiedName = 'bug583.Item'
+  order by Name;
