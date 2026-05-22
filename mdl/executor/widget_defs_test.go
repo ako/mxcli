@@ -496,3 +496,48 @@ func TestObjectListItemAliases(t *testing.T) {
 		t.Errorf("attribute MdlAliases = %v, want []", got)
 	}
 }
+
+// TestItemSlotAcceptedChildTypes covers the routing of widget keywords (e.g.
+// textfilter, numberfilter) directly inside an object-list item body. Without
+// this routing, the engine would treat the filter widgets as default-slot
+// (content) children, putting them in the wrong slot.
+func TestItemSlotAcceptedChildTypes(t *testing.T) {
+	mpkDef := &mpk.WidgetDefinition{
+		ID:   "com.mendix.widget.web.datagrid.Datagrid",
+		Name: "Data grid 2",
+		Properties: []mpk.PropertyDef{
+			{
+				Key:    "columns",
+				Type:   "object",
+				IsList: true,
+				Children: []mpk.PropertyDef{
+					{Key: "content", Type: "widgets"},
+					{Key: "filter", Type: "widgets"},
+				},
+			},
+		},
+	}
+	def := GenerateDefJSON(mpkDef, "DATAGRID")
+	if len(def.ObjectLists) != 1 {
+		t.Fatalf("ObjectLists count = %d, want 1", len(def.ObjectLists))
+	}
+
+	slots := def.ObjectLists[0].ItemSlots
+	got := map[string][]string{}
+	for _, s := range slots {
+		got[s.PropertyKey] = s.AcceptedChildTypes
+	}
+
+	if len(got["content"]) != 0 {
+		t.Errorf("content slot AcceptedChildTypes = %v, want [] (no special routing)", got["content"])
+	}
+	wantFilter := []string{"textfilter", "numberfilter", "datefilter", "dropdownfilter"}
+	if len(got["filter"]) != len(wantFilter) {
+		t.Fatalf("filter slot AcceptedChildTypes = %v, want %v", got["filter"], wantFilter)
+	}
+	for i, w := range wantFilter {
+		if got["filter"][i] != w {
+			t.Errorf("filter[%d] = %q, want %q", i, got["filter"][i], w)
+		}
+	}
+}

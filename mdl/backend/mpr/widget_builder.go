@@ -336,8 +336,12 @@ const (
 // detectObjectListItemKind inspects the spec and child widgets of an item
 // to classify it. Mirrors the keyword path's `hasCustomContent` heuristic in
 // datagrid_builder.go.
+//
+// Custom-content kind requires widgets in the *content* slot specifically —
+// sidecar slots like `filter` (DataGrid column filter widget) don't make
+// the column a custom-content cell.
 func detectObjectListItemKind(specByKey map[string]backend.ObjectListItemProperty, childWidgets map[string][]pages.Widget) objectListItemKind {
-	if len(childWidgets) > 0 {
+	if len(childWidgets["content"]) > 0 {
 		return itemKindCustomContent
 	}
 	if attr, ok := specByKey["attribute"]; ok && attr.AttributePath != "" {

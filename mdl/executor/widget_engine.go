@@ -107,10 +107,17 @@ type ItemPropertyMapping struct {
 // ItemSlotMapping maps a widget child slot inside one object-list item
 // (e.g. headerContent of an Accordion group, content of a DataGrid column).
 // Mirrors ChildSlotMapping but scoped to the list item.
+//
+// AcceptedChildTypes lists MDL widget Type keywords (lowercase) that route
+// to this slot when they appear directly inside the item body without an
+// explicit MDLContainer wrapper. Used for editorial conventions where the
+// user types `column foo { textfilter ... }` and expects the textfilter
+// in the column's `filter` slot — not the default `content` slot.
 type ItemSlotMapping struct {
-	PropertyKey  string `json:"propertyKey"`
-	MDLContainer string `json:"mdlContainer"`
-	Operation    string `json:"operation"`
+	PropertyKey        string   `json:"propertyKey"`
+	MDLContainer       string   `json:"mdlContainer"`
+	Operation          string   `json:"operation"`
+	AcceptedChildTypes []string `json:"acceptedChildTypes,omitempty"`
 }
 
 // BuildContext carries resolved values from MDL parsing for use by operations.
@@ -467,6 +474,13 @@ func (e *PluggableWidgetEngine) resolveMapping(mapping PropertyMapping, w *ast.W
 
 	if mapping.Value != "" {
 		ctx.PrimitiveVal = mapping.Value
+		// AST overrides the def.json default: when the user explicitly sets the
+		// property in MDL (e.g. `PageSize: 25`), that value wins over the
+		// schema default ("20"). Without this, user-set primitive properties
+		// silently fall back to defaults.
+		if astVal, ok := lookupProperty(w.Properties, mapping.PropertyKey); ok {
+			ctx.PrimitiveVal = stringifyAny(astVal)
+		}
 		return ctx, nil
 	}
 
@@ -609,6 +623,19 @@ func (e *PluggableWidgetEngine) buildObjectListItem(mapping *ObjectListMapping, 
 			}
 		}
 		if !ok {
+			// MDL didn't set the property; if the .def.json schema carries a
+			// non-empty primitive default, apply it. Without this, the engine
+			// falls back to the embedded template's WidgetObject value, which
+			// is the Mendix 11.6 snapshot and may drift from the project's
+			// installed .mpk (e.g. column minWidth: template says "linked",
+			// current schema says "auto").
+			if ip.Operation == "primitive" && ip.Value != "" {
+				spec.Properties = append(spec.Properties, backend.ObjectListItemProperty{
+					PropertyKey:  ip.PropertyKey,
+					Operation:    "primitive",
+					PrimitiveVal: ip.Value,
+				})
+			}
 			continue
 		}
 		strVal := stringifyAny(raw)
@@ -640,24 +667,33 @@ func (e *PluggableWidgetEngine) buildObjectListItem(mapping *ObjectListMapping, 
 		spec.Properties = append(spec.Properties, prop)
 	}
 
-	// Widgets-typed slots: ItemSlots gives us per-slot keyword conventions,
-	// but for object-list items the most common shape today is direct child
-	// widgets (no inner container). Match nested AST children either by:
+	// Widgets-typed slots: ItemSlots gives us per-slot keyword conventions.
+	// For object-list items the most common shape today is direct child
+	// widgets (no inner container). Match nested AST children in three
+	// passes:
 	//   (a) MDLContainer name match (e.g. HEADERCONTENT block inside group)
-	//   (b) absence of a match → treat as default content slot if exactly one
-	//       Widgets-typed sub-property has no explicit container in the AST
+	//   (b) AcceptedChildTypes match (e.g. textfilter inside a column body
+	//       routes to the column's filter slot)
+	//   (c) Anything else → default Widgets-typed slot (usually content)
 	if len(child.Children) > 0 {
 		spec.ChildWidgets = make(map[string][]pages.Widget)
-		// Index slot containers by uppercase keyword.
+		// Index slot containers + accepted child types by uppercase keyword.
 		slotByContainer := make(map[string]string)
+		acceptedTypeToSlot := make(map[string]string)
 		for _, slot := range mapping.ItemSlots {
 			slotByContainer[strings.ToUpper(slot.MDLContainer)] = slot.PropertyKey
+			for _, t := range slot.AcceptedChildTypes {
+				acceptedTypeToSlot[strings.ToUpper(t)] = slot.PropertyKey
+			}
 		}
 
-		// First pass: explicit container blocks → matched slot.
+		// Pass (a): explicit container blocks → matched slot.
+		// Pass (b): widget Type matches an AcceptedChildTypes entry → that slot.
+		// Pass (c): everything else routes via the default slot.
 		var unmatched []*ast.WidgetV3
 		for _, gc := range child.Children {
-			if propKey, ok := slotByContainer[strings.ToUpper(gc.Type)]; ok {
+			gcTypeUpper := strings.ToUpper(gc.Type)
+			if propKey, ok := slotByContainer[gcTypeUpper]; ok {
 				for _, slotChild := range gc.Children {
 					widget, err := e.pageBuilder.buildWidgetV3(slotChild)
 					if err != nil {
@@ -669,11 +705,20 @@ func (e *PluggableWidgetEngine) buildObjectListItem(mapping *ObjectListMapping, 
 				}
 				continue
 			}
+			if propKey, ok := acceptedTypeToSlot[gcTypeUpper]; ok {
+				widget, err := e.pageBuilder.buildWidgetV3(gc)
+				if err != nil {
+					return spec, err
+				}
+				if widget != nil {
+					spec.ChildWidgets[propKey] = append(spec.ChildWidgets[propKey], widget)
+				}
+				continue
+			}
 			unmatched = append(unmatched, gc)
 		}
 
-		// Second pass: unmatched widgets → default Widgets-typed slot if there's
-		// exactly one; otherwise route to a "content" slot if present.
+		// Pass (c): unmatched widgets → default Widgets-typed slot.
 		if len(unmatched) > 0 {
 			defaultKey := defaultItemSlotKey(mapping)
 			if defaultKey != "" {

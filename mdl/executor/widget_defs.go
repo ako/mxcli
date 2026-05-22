@@ -257,6 +257,22 @@ func mdlContainerForWidgetSlot(widgetID, propertyKey string) string {
 	return strings.ToUpper(propertyKey)
 }
 
+// itemSlotAcceptedChildTypes lists widget MDL keywords that route to a
+// given item slot when they appear inside the item body without an explicit
+// MDLContainer wrapper. Keyed by (widgetID, objectListPropertyKey,
+// itemSlotPropertyKey) → list of widget Type keywords.
+//
+// Example: a DataGrid column accepts `textfilter`, `numberfilter`,
+// `datefilter`, `dropdownfilter` inside its body, routing them to the
+// column's `filter` slot rather than the default `content` slot.
+var itemSlotAcceptedChildTypes = map[string]map[string]map[string][]string{
+	"com.mendix.widget.web.datagrid.Datagrid": {
+		"columns": {
+			"filter": {"textfilter", "numberfilter", "datefilter", "dropdownfilter"},
+		},
+	},
+}
+
 // itemPropertyAliases lists alternative MDL property names that should
 // resolve to a given schema property on an object-list item. Keyed by
 // (widgetID, objectListPropertyKey, itemPropertyKey).
@@ -287,12 +303,14 @@ func makeObjectListMapping(widgetID string, p mpk.PropertyDef) ObjectListMapping
 		MDLContainer: deriveObjectListKeyword(p.Key),
 	}
 	aliases := itemPropertyAliases[widgetID][p.Key]
+	slotAccepts := itemSlotAcceptedChildTypes[widgetID][p.Key]
 	for _, child := range p.Children {
 		if child.Type == "widgets" {
 			mapping.ItemSlots = append(mapping.ItemSlots, ItemSlotMapping{
-				PropertyKey:  child.Key,
-				MDLContainer: strings.ToUpper(child.Key),
-				Operation:    "widgets",
+				PropertyKey:        child.Key,
+				MDLContainer:       strings.ToUpper(child.Key),
+				Operation:          "widgets",
+				AcceptedChildTypes: slotAccepts[child.Key],
 			})
 			continue
 		}

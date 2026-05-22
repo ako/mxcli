@@ -89,10 +89,20 @@ func TestDetectObjectListItemKind(t *testing.T) {
 			want:         itemKindAttribute,
 		},
 		{
-			name:         "child widgets present → customcontent kind",
+			name:         "content slot widgets present → customcontent kind",
 			spec:         nil,
-			childWidgets: map[string][]pages.Widget{"dynamicText": {nil}},
+			childWidgets: map[string][]pages.Widget{"content": {nil}},
 			want:         itemKindCustomContent,
+		},
+		{
+			name: "filter widget present + attribute set → still attribute kind",
+			// Filter widgets are sidecars to attribute columns; they don't
+			// make the column custom-content.
+			spec: map[string]backend.ObjectListItemProperty{
+				"attribute": {AttributePath: "Mod.Ent.Attr"},
+			},
+			childWidgets: map[string][]pages.Widget{"filter": {nil}},
+			want:         itemKindAttribute,
 		},
 		{
 			name:         "neither → default",
