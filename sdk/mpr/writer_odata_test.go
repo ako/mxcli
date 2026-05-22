@@ -67,6 +67,7 @@ func TestSerializeConsumedODataServiceWithHttpConfig(t *testing.T) {
 		MetadataUrl:            "https://api.example.com/odata/$metadata",
 		TimeoutExpression:      "300",
 		ConfigurationMicroflow: "MyModule.ConfigureMF",
+		HeadersMicroflow:       "MyModule.SetHeadersMF",
 		ErrorHandlingMicroflow: "MyModule.HandleErrorMF",
 		ProxyHost:              "MyModule.ProxyHostConst",
 		HttpConfiguration: &model.HttpConfiguration{
@@ -101,10 +102,16 @@ func TestSerializeConsumedODataServiceWithHttpConfig(t *testing.T) {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
 
-	// Microflow references
-	assertField(t, raw, "ConfigurationMicroflow", "MyModule.ConfigureMF")
+	// Microflow references. BSON storage names differ from the Go field
+	// names — Studio Pro renamed the dropdown's storage fields somewhere
+	// before 11.10 (issue #573 / #587 follow-up).
+	assertField(t, raw, "ConfigurationEntityMicroflow", "MyModule.ConfigureMF")
+	assertField(t, raw, "HeaderListMicroflow", "MyModule.SetHeadersMF")
 	assertField(t, raw, "ErrorHandlingMicroflow", "MyModule.HandleErrorMF")
 	assertField(t, raw, "ProxyHost", "MyModule.ProxyHostConst")
+	if _, exists := raw["ConfigurationMicroflow"]; exists {
+		t.Errorf("legacy field ConfigurationMicroflow leaked into BSON — Studio Pro will silently ignore it (see #573)")
+	}
 
 	// HTTP Configuration
 	httpCfg, ok := raw["HttpConfiguration"].(map[string]any)

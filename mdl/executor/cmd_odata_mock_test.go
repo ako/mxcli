@@ -521,3 +521,55 @@ func TestCreateODataClient_VisitorRoundtrip_Issue573(t *testing.T) {
 		t.Errorf("ErrorHandlingMicroflow = %q, want %q", captured.ErrorHandlingMicroflow, "MyModule.HandleError")
 	}
 }
+
+// TestCreateODataClient_HeadersMicroflow verifies the third Studio Pro
+// dropdown option ("Headers microflow"), which mxcli didn't support at all
+// before the #573 follow-up. It maps MDL `HeadersMicroflow: microflow X.Y`
+// to BSON `HeaderListMicroflow` on the ConsumedODataService document.
+func TestCreateODataClient_HeadersMicroflow(t *testing.T) {
+	mod := mkModule("MyModule")
+	h := mkHierarchy(mod)
+
+	var captured *model.ConsumedODataService
+	mb := &mock.MockBackend{
+		IsConnectedFunc: func() bool { return true },
+		ListModulesFunc: func() ([]*model.Module, error) {
+			return []*model.Module{mod}, nil
+		},
+		ListConsumedODataServicesFunc: func() ([]*model.ConsumedODataService, error) {
+			return nil, nil
+		},
+		CreateConsumedODataServiceFunc: func(svc *model.ConsumedODataService) error {
+			captured = svc
+			return nil
+		},
+	}
+	ctx, _ := newMockCtx(t, withBackend(mb), withHierarchy(h))
+
+	const script = `CREATE ODATA CLIENT MyModule.MyService (
+		ODataVersion: OData4,
+		MetadataUrl: 'https://example.com/odata/$metadata',
+		Timeout: 300,
+		HeadersMicroflow: microflow MyModule.SetHeaders,
+		ErrorHandlingMicroflow: microflow MyModule.HandleError
+	);`
+	prog, errs := visitor.Build(script)
+	if len(errs) > 0 {
+		t.Fatalf("parse errors: %v", errs)
+	}
+	stmt, ok := prog.Statements[0].(*ast.CreateODataClientStmt)
+	if !ok {
+		t.Fatalf("expected *CreateODataClientStmt, got %T", prog.Statements[0])
+	}
+	assertNoError(t, createODataClient(ctx, stmt))
+
+	if captured == nil {
+		t.Fatal("CreateConsumedODataService was not called")
+	}
+	if captured.HeadersMicroflow != "MyModule.SetHeaders" {
+		t.Errorf("HeadersMicroflow = %q, want %q", captured.HeadersMicroflow, "MyModule.SetHeaders")
+	}
+	if captured.ConfigurationMicroflow != "" {
+		t.Errorf("ConfigurationMicroflow should be empty when HeadersMicroflow is set, got %q", captured.ConfigurationMicroflow)
+	}
+}

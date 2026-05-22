@@ -1,16 +1,29 @@
 -- ============================================================================
--- Bug #573 — CREATE ODATA CLIENT stored ConfigurationMicroflow and
--- ErrorHandlingMicroflow with a literal "MICROFLOW " prefix in their BSON
--- values. Mendix then tried to resolve a microflow whose qualified name was
--- literally "MICROFLOW MyModule.HandleError" and failed.
+-- Bug #573 — CREATE ODATA CLIENT didn't reach Studio Pro correctly.
 --
--- Root cause: the visitor emitted uppercase "MICROFLOW Module.Name" for
--- `microflow ...` property values, but extractMicroflowRef in cmd_odata.go
--- only stripped lowercase "microflow ". Fixed by making the strip
--- case-insensitive.
+-- Originally reported as: BSON values arrived with a literal "MICROFLOW "
+-- prefix, e.g. "MICROFLOW Issue573.HandleError", causing Mendix to look up
+-- a non-existent microflow.
+--
+-- Two root causes were uncovered:
+--
+--   1. Case-sensitive prefix strip — extractMicroflowRef only trimmed
+--      lowercase "microflow ", but the visitor emitted uppercase
+--      "MICROFLOW " from `microflow ...` property values.
+--
+--   2. Wrong BSON field name — mxcli wrote `ConfigurationMicroflow`, but
+--      Studio Pro (≥ 11.10) renamed the storage field to
+--      `ConfigurationEntityMicroflow`. Studio Pro silently ignored the
+--      unknown key and showed "Constants only" in the dropdown. The fix
+--      keeps the MDL property name (ConfigurationMicroflow) but writes the
+--      correct BSON key. The third dropdown state ("Headers microflow")
+--      maps to BSON `HeaderListMicroflow` and is now exposed as the MDL
+--      property `HeadersMicroflow`.
 --
 -- This script should round-trip cleanly through `mxcli exec` and
--- Studio Pro's mx-check.
+-- Studio Pro's mx-check. Two clients are created — one with
+-- ConfigurationMicroflow, one with HeadersMicroflow — so both BSON
+-- storage paths are exercised end-to-end.
 -- ============================================================================
 
 create module Issue573;
@@ -23,7 +36,11 @@ create microflow Issue573.HandleError () returns void
 begin
 end;
 
-create odata client Issue573.MyService (
+create microflow Issue573.SetHeaders () returns void
+begin
+end;
+
+create odata client Issue573.ConfigMicroflowSvc (
   ODataVersion: OData4,
   MetadataUrl: 'https://example.com/odata/$metadata',
   Timeout: 300,
@@ -31,8 +48,19 @@ create odata client Issue573.MyService (
   ErrorHandlingMicroflow: microflow Issue573.HandleError
 );
 
--- Verify: the describe output below must contain
---   ConfigurationMicroflow: microflow Issue573.ConfigureRequest
--- and NOT
---   ConfigurationMicroflow: microflow MICROFLOW Issue573.ConfigureRequest
-describe odata client Issue573.MyService;
+create odata client Issue573.HeadersMicroflowSvc (
+  ODataVersion: OData4,
+  MetadataUrl: 'https://example.com/odata/$metadata',
+  Timeout: 300,
+  HeadersMicroflow: microflow Issue573.SetHeaders,
+  ErrorHandlingMicroflow: microflow Issue573.HandleError
+);
+
+-- Verify in Studio Pro:
+-- - Issue573.ConfigMicroflowSvc  → "Configuration source" dropdown is
+--   "Configuration microflow" and references Issue573.ConfigureRequest
+-- - Issue573.HeadersMicroflowSvc → "Configuration source" dropdown is
+--   "Headers microflow" and references Issue573.SetHeaders
+-- Both should show ErrorHandlingMicroflow = Issue573.HandleError.
+describe odata client Issue573.ConfigMicroflowSvc;
+describe odata client Issue573.HeadersMicroflowSvc;

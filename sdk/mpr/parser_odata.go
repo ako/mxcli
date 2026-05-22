@@ -39,8 +39,10 @@ func (r *Reader) parseConsumedODataService(unitID, containerID string, contents 
 	svc.Validated = extractBool(raw["Validated"], false)
 	svc.Excluded = extractBool(raw["Excluded"], false)
 
-	// Microflow references (BY_NAME)
-	svc.ConfigurationMicroflow = extractString(raw["ConfigurationMicroflow"])
+	// Microflow references (BY_NAME). Storage names differ from the MDL
+	// property names — see writer_odata.go for the why.
+	svc.ConfigurationMicroflow = extractString(raw["ConfigurationEntityMicroflow"])
+	svc.HeadersMicroflow = extractString(raw["HeaderListMicroflow"])
 	svc.ErrorHandlingMicroflow = extractString(raw["ErrorHandlingMicroflow"])
 
 	// Proxy constant references (BY_NAME)

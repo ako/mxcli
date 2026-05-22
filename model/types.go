@@ -319,9 +319,15 @@ type ConsumedODataService struct {
 	// HTTP configuration (nested Microflows$HttpConfiguration part)
 	HttpConfiguration *HttpConfiguration `json:"httpConfiguration,omitempty"`
 
-	// Microflow references (BY_NAME)
-	ConfigurationMicroflow string `json:"configurationMicroflow,omitempty"` // Microflow for configuring requests
-	ErrorHandlingMicroflow string `json:"errorHandlingMicroflow,omitempty"` // Microflow for handling errors
+	// Microflow references (BY_NAME). At most one of ConfigurationMicroflow
+	// and HeadersMicroflow is meaningful at a time — they map to the same
+	// "Configuration source" dropdown in Studio Pro and are mutually
+	// exclusive in the UI (a third state, "Constants only", is both empty).
+	// Studio Pro's BSON storage names differ from the MDL property names;
+	// see sdk/mpr/writer_odata.go for the mapping.
+	ConfigurationMicroflow string `json:"configurationMicroflow,omitempty"` // BSON: ConfigurationEntityMicroflow
+	HeadersMicroflow       string `json:"headersMicroflow,omitempty"`       // BSON: HeaderListMicroflow
+	ErrorHandlingMicroflow string `json:"errorHandlingMicroflow,omitempty"` // BSON: ErrorHandlingMicroflow
 
 	// Proxy constant references (BY_NAME to Constants$Constant)
 	ProxyHost     string `json:"proxyHost,omitempty"`

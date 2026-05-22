@@ -221,6 +221,11 @@ begin
   return true;
 end;
 
+create microflow OdTest.SetHeaders() returns boolean
+begin
+  return true;
+end;
+
 create constant OdTest.ProxyHostConst
 type string
 default 'proxy.example.com';
@@ -252,6 +257,23 @@ create odata client OdTest.FullConfigAPI (
 headers (
   'X-Api-Key': 'abc123',
   'Accept': 'application/json'
+);
+/
+
+/**
+ * Level 8.2b: Consumed OData service using the third "Configuration source"
+ * dropdown option — Headers microflow. ConfigurationMicroflow and
+ * HeadersMicroflow are mutually exclusive in Studio Pro; setting both on the
+ * same client is silently last-write-wins, so split into two clients to test
+ * each path. BSON storage: HeaderListMicroflow.
+ */
+create odata client OdTest.HeadersConfigAPI (
+  version: '3.0',
+  ODataVersion: OData4,
+  MetadataUrl: 'https://api.example.com/odata/v4/$metadata',
+  timeout: 300,
+  HeadersMicroflow: microflow OdTest.SetHeaders,
+  ErrorHandlingMicroflow: microflow OdTest.HandleError
 );
 /
 
@@ -465,7 +487,7 @@ create or modify external entities from TripPinClient."TripPinApiClient"
 -- ############################################################################
 -- LEVEL 8.8: DROP (cleanup)
 -- ############################################################################
-
+exit;
 /**
  * Level 8.8a: Drop objects that reference SalesforceAPI before dropping the client.
  * OdTest.ACT_CallExternalAction calls SalesforceAPI actions; OdTest.RemoteAccount
@@ -481,6 +503,7 @@ drop entity OdTest.RemoteAccount;
  * Level 8.8b: Drop OData clients (FullConfigAPI references must be cleaned up too)
  */
 drop odata client OdTest.FullConfigAPI;
+drop odata client OdTest.HeadersConfigAPI;
 drop odata client OdTest.SalesforceAPI;
 /
 

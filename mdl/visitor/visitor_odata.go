@@ -51,6 +51,8 @@ func (b *Builder) ExitCreateODataClientStatement(ctx *parser.CreateODataClientSt
 			stmt.ClientCertificate = value
 		case "configurationmicroflow":
 			stmt.ConfigurationMicroflow = value
+		case "headersmicroflow":
+			stmt.HeadersMicroflow = value
 		case "errorhandlingmicroflow":
 			stmt.ErrorHandlingMicroflow = value
 		case "proxyhost":
