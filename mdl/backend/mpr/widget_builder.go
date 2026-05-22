@@ -27,6 +27,7 @@ import (
 // ---------------------------------------------------------------------------
 
 type mprWidgetObjectBuilder struct {
+	widgetID        string // e.g. "com.mendix.widget.web.datagrid.Datagrid"; used for widget-specific BSON conventions
 	embeddedType    bson.D
 	object          bson.D // the mutable widget object BSON
 	propertyTypeIDs map[string]pages.PropertyTypeIDEntry
@@ -53,6 +54,7 @@ func (b *MprBackend) LoadWidgetTemplate(widgetID string, projectPath string) (ba
 	propertyTypeIDs := convertPropertyTypeIDs(embeddedIDs)
 
 	return &mprWidgetObjectBuilder{
+		widgetID:        widgetID,
 		embeddedType:    embeddedType,
 		object:          embeddedObject,
 		propertyTypeIDs: propertyTypeIDs,
@@ -242,7 +244,7 @@ func (ob *mprWidgetObjectBuilder) SetObjectList(propertyKey string, items []back
 
 	objects := bson.A{int32(2)}
 	for _, item := range items {
-		objects = append(objects, buildObjectListItemBSON(entry, item))
+		objects = append(objects, buildObjectListItemBSON(ob.widgetID, propertyKey, entry, item))
 	}
 
 	ob.object = updateWidgetPropertyValue(ob.object, ob.propertyTypeIDs, propertyKey, func(val bson.D) bson.D {
@@ -262,12 +264,19 @@ func (ob *mprWidgetObjectBuilder) SetObjectList(propertyKey string, items []back
 // property. Walks the nested PropertyTypeIDs, applies spec overrides where
 // the spec mentions a sub-property, and falls back to template defaults
 // otherwise.
-func buildObjectListItemBSON(parentEntry pages.PropertyTypeIDEntry, item backend.ObjectListItemSpec) bson.D {
+//
+// widgetID and listPropertyKey identify the parent widget and the object-list
+// property — used to look up widget-specific default-emission conventions
+// (e.g. DataGrid column tooltip → empty ClientTemplate when the column is
+// attribute-bound, matching the keyword path's c3d61af1 behavior).
+func buildObjectListItemBSON(widgetID, listPropertyKey string, parentEntry pages.PropertyTypeIDEntry, item backend.ObjectListItemSpec) bson.D {
 	// Index spec scalar properties by key for fast lookup.
 	specByKey := make(map[string]backend.ObjectListItemProperty, len(item.Properties))
 	for _, p := range item.Properties {
 		specByKey[p.PropertyKey] = p
 	}
+
+	itemKind := detectObjectListItemKind(specByKey, item.ChildWidgets)
 
 	propsArr := bson.A{int32(2)}
 	// Use template PropertyTypes order when available — Studio Pro expects
@@ -295,6 +304,8 @@ func buildObjectListItemBSON(parentEntry pages.PropertyTypeIDEntry, item backend
 			prop = buildItemSubProperty(nestedEntry, spec)
 		case len(childWidgets) > 0:
 			prop = buildItemChildWidgetsProperty(nestedEntry, childWidgets)
+		case shouldEmitEmptyClientTemplate(widgetID, listPropertyKey, k, itemKind):
+			prop = buildEmptyClientTemplateProperty(nestedEntry)
 		default:
 			prop = createDefaultWidgetProperty(nestedEntry)
 		}
@@ -306,6 +317,80 @@ func buildObjectListItemBSON(parentEntry pages.PropertyTypeIDEntry, item backend
 		{Key: "$Type", Value: "CustomWidgets$WidgetObject"},
 		{Key: "TypePointer", Value: types.UUIDToBlob(parentEntry.ObjectTypeID)},
 		{Key: "Properties", Value: propsArr},
+	}
+}
+
+// objectListItemKind classifies an item by what kind of content fills its
+// primary slot — relevant for widgets whose unset-property conventions vary
+// by item kind. For DataGrid columns: a column with `Attribute:` set and no
+// child widgets is "attribute"; a column with child widgets in the
+// dynamicText / content slot is "customcontent".
+type objectListItemKind string
+
+const (
+	itemKindAttribute     objectListItemKind = "attribute"
+	itemKindCustomContent objectListItemKind = "customcontent"
+	itemKindDefault       objectListItemKind = ""
+)
+
+// detectObjectListItemKind inspects the spec and child widgets of an item
+// to classify it. Mirrors the keyword path's `hasCustomContent` heuristic in
+// datagrid_builder.go.
+func detectObjectListItemKind(specByKey map[string]backend.ObjectListItemProperty, childWidgets map[string][]pages.Widget) objectListItemKind {
+	if len(childWidgets) > 0 {
+		return itemKindCustomContent
+	}
+	if attr, ok := specByKey["attribute"]; ok && attr.AttributePath != "" {
+		return itemKindAttribute
+	}
+	return itemKindDefault
+}
+
+// emptyClientTemplateRules maps (widgetID, listPropertyKey, itemKind,
+// propertyKey) tuples to "emit empty ClientTemplate" for unset TextTemplate
+// properties whose Studio Pro convention is an empty Forms$ClientTemplate
+// rather than null.
+//
+// Source: c3d61af1 in datagrid_builder.go — Studio Pro's per-column-kind
+// convention for DataGrid columns (verified against Cars_Overview):
+//
+//	property        attribute column   custom-content column
+//	tooltip         empty CT           null
+//	exportValue     null               empty CT
+//	dynamicText     null               null
+var emptyClientTemplateRules = map[string]map[string]map[objectListItemKind]map[string]bool{
+	"com.mendix.widget.web.datagrid.Datagrid": {
+		"columns": {
+			itemKindAttribute: {
+				"tooltip": true,
+			},
+			itemKindCustomContent: {
+				"exportValue": true,
+			},
+		},
+	},
+}
+
+// shouldEmitEmptyClientTemplate returns true when an unset TextTemplate-typed
+// property should be serialized as an empty Forms$ClientTemplate (Items=[3]
+// in both Fallback and Template, no Translation entries) instead of
+// TextTemplate=null.
+func shouldEmitEmptyClientTemplate(widgetID, listPropertyKey, propertyKey string, kind objectListItemKind) bool {
+	return emptyClientTemplateRules[widgetID][listPropertyKey][kind][propertyKey]
+}
+
+// buildEmptyClientTemplateProperty emits a WidgetProperty whose Value
+// carries an empty ClientTemplate (Items=[3] markers only, no Translations).
+// Used for column properties where Studio Pro stores an empty ClientTemplate
+// rather than null when the property is unset — see shouldEmitEmptyClientTemplate.
+func buildEmptyClientTemplateProperty(entry pages.PropertyTypeIDEntry) bson.D {
+	value := createDefaultWidgetValue(entry)
+	value = setBSONField(value, "TextTemplate", buildEmptyClientTemplate())
+	return bson.D{
+		{Key: "$ID", Value: types.UUIDToBlob(types.GenerateID())},
+		{Key: "$Type", Value: "CustomWidgets$WidgetProperty"},
+		{Key: "TypePointer", Value: types.UUIDToBlob(entry.PropertyTypeID)},
+		{Key: "Value", Value: value},
 	}
 }
 
@@ -819,7 +904,18 @@ func createClientTemplateBSONWithParams(text string, entityContext string) bson.
 		})
 	}
 
-	makeText := func(t string) bson.D {
+	// Studio Pro convention: caption-style ClientTemplates carry the text
+	// in Template and leave Fallback as an empty Items array (count marker
+	// only). The engine path now mirrors the keyword path's
+	// buildClientTemplateWithTextAndParams output in datagrid_builder.go.
+	emptyText := func() bson.D {
+		return bson.D{
+			{Key: "$ID", Value: types.UUIDToBlob(types.GenerateID())},
+			{Key: "$Type", Value: "Texts$Text"},
+			{Key: "Items", Value: bson.A{int32(3)}},
+		}
+	}
+	populatedText := func(t string) bson.D {
 		return bson.D{
 			{Key: "$ID", Value: types.UUIDToBlob(types.GenerateID())},
 			{Key: "$Type", Value: "Texts$Text"},
@@ -835,14 +931,21 @@ func createClientTemplateBSONWithParams(text string, entityContext string) bson.
 	return bson.D{
 		{Key: "$ID", Value: types.UUIDToBlob(types.GenerateID())},
 		{Key: "$Type", Value: "Forms$ClientTemplate"},
-		{Key: "Fallback", Value: makeText(paramText)},
+		{Key: "Fallback", Value: emptyText()},
 		{Key: "Parameters", Value: params},
-		{Key: "Template", Value: makeText(paramText)},
+		{Key: "Template", Value: populatedText(paramText)},
 	}
 }
 
 func createDefaultClientTemplateBSON(text string) bson.D {
-	makeText := func(t string) bson.D {
+	emptyText := func() bson.D {
+		return bson.D{
+			{Key: "$ID", Value: types.UUIDToBlob(types.GenerateID())},
+			{Key: "$Type", Value: "Texts$Text"},
+			{Key: "Items", Value: bson.A{int32(3)}},
+		}
+	}
+	populatedText := func(t string) bson.D {
 		return bson.D{
 			{Key: "$ID", Value: types.UUIDToBlob(types.GenerateID())},
 			{Key: "$Type", Value: "Texts$Text"},
@@ -857,9 +960,9 @@ func createDefaultClientTemplateBSON(text string) bson.D {
 	return bson.D{
 		{Key: "$ID", Value: types.UUIDToBlob(types.GenerateID())},
 		{Key: "$Type", Value: "Forms$ClientTemplate"},
-		{Key: "Fallback", Value: makeText(text)},
+		{Key: "Fallback", Value: emptyText()},
 		{Key: "Parameters", Value: bson.A{int32(2)}},
-		{Key: "Template", Value: makeText(text)},
+		{Key: "Template", Value: populatedText(text)},
 	}
 }
 

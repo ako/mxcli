@@ -6,6 +6,9 @@ import (
 	"testing"
 
 	"go.mongodb.org/mongo-driver/bson"
+
+	"github.com/mendixlabs/mxcli/mdl/backend"
+	"github.com/mendixlabs/mxcli/sdk/pages"
 )
 
 // TestSetAttributeRefField locks in the BSON shape for the
@@ -65,4 +68,87 @@ func findField(t *testing.T, doc bson.D, key string) any {
 	}
 	t.Fatalf("field %q not found in BSON doc", key)
 	return nil
+}
+
+// TestDetectObjectListItemKind covers the heuristic used to classify an
+// object-list item as attribute-bound, custom-content, or default. Mirrors
+// the keyword path's hasCustomContent logic.
+func TestDetectObjectListItemKind(t *testing.T) {
+	tests := []struct {
+		name         string
+		spec         map[string]backend.ObjectListItemProperty
+		childWidgets map[string][]pages.Widget
+		want         objectListItemKind
+	}{
+		{
+			name: "attribute set, no children → attribute kind",
+			spec: map[string]backend.ObjectListItemProperty{
+				"attribute": {AttributePath: "Mod.Ent.Attr"},
+			},
+			childWidgets: nil,
+			want:         itemKindAttribute,
+		},
+		{
+			name:         "child widgets present → customcontent kind",
+			spec:         nil,
+			childWidgets: map[string][]pages.Widget{"dynamicText": {nil}},
+			want:         itemKindCustomContent,
+		},
+		{
+			name:         "neither → default",
+			spec:         nil,
+			childWidgets: nil,
+			want:         itemKindDefault,
+		},
+		{
+			name: "empty AttributePath → default",
+			spec: map[string]backend.ObjectListItemProperty{
+				"attribute": {AttributePath: ""},
+			},
+			want: itemKindDefault,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := detectObjectListItemKind(tc.spec, tc.childWidgets)
+			if got != tc.want {
+				t.Errorf("detectObjectListItemKind() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestShouldEmitEmptyClientTemplate locks in the per-widget Studio Pro
+// convention for unset TextTemplate properties on DataGrid columns
+// (verified against Cars_Overview in c3d61af1).
+func TestShouldEmitEmptyClientTemplate(t *testing.T) {
+	const datagrid = "com.mendix.widget.web.datagrid.Datagrid"
+	tests := []struct {
+		name     string
+		widgetID string
+		listKey  string
+		propKey  string
+		kind     objectListItemKind
+		want     bool
+	}{
+		{"DataGrid attribute col tooltip → empty", datagrid, "columns", "tooltip", itemKindAttribute, true},
+		{"DataGrid attribute col exportValue → null", datagrid, "columns", "exportValue", itemKindAttribute, false},
+		{"DataGrid attribute col dynamicText → null", datagrid, "columns", "dynamicText", itemKindAttribute, false},
+		{"DataGrid custom-content col tooltip → null", datagrid, "columns", "tooltip", itemKindCustomContent, false},
+		{"DataGrid custom-content col exportValue → empty", datagrid, "columns", "exportValue", itemKindCustomContent, true},
+		{"DataGrid custom-content col dynamicText → null", datagrid, "columns", "dynamicText", itemKindCustomContent, false},
+		{"Unknown widget → null", "com.example.Other", "columns", "tooltip", itemKindAttribute, false},
+		{"Unknown list → null", datagrid, "rows", "tooltip", itemKindAttribute, false},
+		{"Unknown kind → null", datagrid, "columns", "tooltip", itemKindDefault, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := shouldEmitEmptyClientTemplate(tc.widgetID, tc.listKey, tc.propKey, tc.kind)
+			if got != tc.want {
+				t.Errorf("shouldEmitEmptyClientTemplate(%q, %q, %q, %q) = %v, want %v",
+					tc.widgetID, tc.listKey, tc.propKey, tc.kind, got, tc.want)
+			}
+		})
+	}
 }
