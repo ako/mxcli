@@ -1,0 +1,38 @@
+-- ============================================================================
+-- Bug #573 — CREATE ODATA CLIENT stored ConfigurationMicroflow and
+-- ErrorHandlingMicroflow with a literal "MICROFLOW " prefix in their BSON
+-- values. Mendix then tried to resolve a microflow whose qualified name was
+-- literally "MICROFLOW MyModule.HandleError" and failed.
+--
+-- Root cause: the visitor emitted uppercase "MICROFLOW Module.Name" for
+-- `microflow ...` property values, but extractMicroflowRef in cmd_odata.go
+-- only stripped lowercase "microflow ". Fixed by making the strip
+-- case-insensitive.
+--
+-- This script should round-trip cleanly through `mxcli exec` and
+-- Studio Pro's mx-check.
+-- ============================================================================
+
+create module Issue573;
+
+create microflow Issue573.ConfigureRequest () returns void
+begin
+end;
+
+create microflow Issue573.HandleError () returns void
+begin
+end;
+
+create odata client Issue573.MyService (
+  ODataVersion: OData4,
+  MetadataUrl: 'https://example.com/odata/$metadata',
+  Timeout: 300,
+  ConfigurationMicroflow: microflow Issue573.ConfigureRequest,
+  ErrorHandlingMicroflow: microflow Issue573.HandleError
+);
+
+-- Verify: the describe output below must contain
+--   ConfigurationMicroflow: microflow Issue573.ConfigureRequest
+-- and NOT
+--   ConfigurationMicroflow: microflow MICROFLOW Issue573.ConfigureRequest
+describe odata client Issue573.MyService;

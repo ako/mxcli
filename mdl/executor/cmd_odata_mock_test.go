@@ -416,3 +416,108 @@ func TestValidateMetadataURL_RejectsBarWords(t *testing.T) {
 		}
 	}
 }
+
+// TestCreateODataClient_StripsMicroflowPrefix_Issue573 verifies that the
+// "microflow " keyword prefix the visitor emits in front of a qualified name
+// is stripped before the value reaches BSON.
+//
+// The visitor at mdl/visitor/visitor_odata.go emits uppercase "MICROFLOW "
+// for `microflow Module.Name` property values. extractMicroflowRef used to
+// strip only lowercase "microflow ", so the prefix survived all the way to
+// BSON and Mendix tried to resolve a microflow whose qualified name was
+// literally "MICROFLOW Module.Name" — see issue #573.
+func TestCreateODataClient_StripsMicroflowPrefix_Issue573(t *testing.T) {
+	mod := mkModule("MyModule")
+	h := mkHierarchy(mod)
+
+	var captured *model.ConsumedODataService
+	mb := &mock.MockBackend{
+		IsConnectedFunc: func() bool { return true },
+		ListModulesFunc: func() ([]*model.Module, error) {
+			return []*model.Module{mod}, nil
+		},
+		ListConsumedODataServicesFunc: func() ([]*model.ConsumedODataService, error) {
+			return nil, nil
+		},
+		CreateConsumedODataServiceFunc: func(svc *model.ConsumedODataService) error {
+			captured = svc
+			return nil
+		},
+	}
+	ctx, _ := newMockCtx(t, withBackend(mb), withHierarchy(h))
+
+	stmt := &ast.CreateODataClientStmt{
+		Name:                   ast.QualifiedName{Module: "MyModule", Name: "MyService"},
+		ODataVersion:           "OData4",
+		MetadataUrl:            "https://example.com/odata/$metadata",
+		ConfigurationMicroflow: "MICROFLOW MyModule.ConfigureRequest",
+		ErrorHandlingMicroflow: "MICROFLOW MyModule.HandleError",
+	}
+	assertNoError(t, createODataClient(ctx, stmt))
+
+	if captured == nil {
+		t.Fatal("CreateConsumedODataService was not called")
+	}
+	if captured.ConfigurationMicroflow != "MyModule.ConfigureRequest" {
+		t.Errorf("ConfigurationMicroflow = %q, want %q (uppercase \"MICROFLOW \" prefix not stripped)",
+			captured.ConfigurationMicroflow, "MyModule.ConfigureRequest")
+	}
+	if captured.ErrorHandlingMicroflow != "MyModule.HandleError" {
+		t.Errorf("ErrorHandlingMicroflow = %q, want %q (uppercase \"MICROFLOW \" prefix not stripped)",
+			captured.ErrorHandlingMicroflow, "MyModule.HandleError")
+	}
+}
+
+// TestCreateODataClient_VisitorRoundtrip_Issue573 is the user-facing scenario
+// for issue #573: parse the exact MDL the user wrote, run the executor, and
+// confirm the value handed to the backend is the bare qualified name.
+func TestCreateODataClient_VisitorRoundtrip_Issue573(t *testing.T) {
+	mod := mkModule("MyModule")
+	h := mkHierarchy(mod)
+
+	var captured *model.ConsumedODataService
+	mb := &mock.MockBackend{
+		IsConnectedFunc: func() bool { return true },
+		ListModulesFunc: func() ([]*model.Module, error) {
+			return []*model.Module{mod}, nil
+		},
+		ListConsumedODataServicesFunc: func() ([]*model.ConsumedODataService, error) {
+			return nil, nil
+		},
+		CreateConsumedODataServiceFunc: func(svc *model.ConsumedODataService) error {
+			captured = svc
+			return nil
+		},
+	}
+	ctx, _ := newMockCtx(t, withBackend(mb), withHierarchy(h))
+
+	const script = `CREATE ODATA CLIENT MyModule.MyService (
+		ODataVersion: OData4,
+		MetadataUrl: 'https://example.com/odata/$metadata',
+		Timeout: 300,
+		ConfigurationMicroflow: microflow MyModule.ConfigureRequest,
+		ErrorHandlingMicroflow: microflow MyModule.HandleError
+	);`
+	prog, errs := visitor.Build(script)
+	if len(errs) > 0 {
+		t.Fatalf("parse errors: %v", errs)
+	}
+	if len(prog.Statements) != 1 {
+		t.Fatalf("expected 1 statement, got %d", len(prog.Statements))
+	}
+	stmt, ok := prog.Statements[0].(*ast.CreateODataClientStmt)
+	if !ok {
+		t.Fatalf("expected *CreateODataClientStmt, got %T", prog.Statements[0])
+	}
+	assertNoError(t, createODataClient(ctx, stmt))
+
+	if captured == nil {
+		t.Fatal("CreateConsumedODataService was not called")
+	}
+	if captured.ConfigurationMicroflow != "MyModule.ConfigureRequest" {
+		t.Errorf("ConfigurationMicroflow = %q, want %q", captured.ConfigurationMicroflow, "MyModule.ConfigureRequest")
+	}
+	if captured.ErrorHandlingMicroflow != "MyModule.HandleError" {
+		t.Errorf("ErrorHandlingMicroflow = %q, want %q", captured.ErrorHandlingMicroflow, "MyModule.HandleError")
+	}
+}

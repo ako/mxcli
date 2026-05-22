@@ -1485,10 +1485,16 @@ func formatExprValue(val string) string {
 	return "'" + strings.ReplaceAll(val, "'", "''") + "'"
 }
 
-// extractMicroflowRef strips "MICROFLOW " prefix from a microflow reference string.
-// Both "MICROFLOW Module.Name" and "Module.Name" formats are accepted.
+// extractMicroflowRef strips a leading "microflow " keyword (any case) from a
+// microflow reference string. The visitor emits uppercase `"MICROFLOW " + qn`
+// for `microflow Module.Name` property values (see visitor_odata.go); both
+// that form and a bare `Module.Name` are accepted. Issue #573.
 func extractMicroflowRef(ref string) string {
-	return strings.TrimPrefix(ref, "microflow ")
+	const prefix = "microflow "
+	if len(ref) >= len(prefix) && strings.EqualFold(ref[:len(prefix)], prefix) {
+		return ref[len(prefix):]
+	}
+	return ref
 }
 
 // astEntityDefToModel converts an AST PublishedEntityDef to model PublishedEntityType
