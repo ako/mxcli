@@ -292,10 +292,10 @@ func parseShowHomePageAction(raw map[string]any) *microflows.ShowHomePageAction 
 func parseClosePageAction(raw map[string]any) *microflows.ClosePageAction {
 	action := &microflows.ClosePageAction{}
 	action.ID = model.ID(extractBsonID(raw["$ID"]))
-	if numPages, ok := raw["NumberOfPagesToClose"].(int32); ok {
-		action.NumberOfPages = int(numPages)
-	} else if numPages, ok := raw["NumberOfPagesToClose"].(int64); ok {
-		action.NumberOfPages = int(numPages)
+	// Issue #585: collapse the int32/int64 dispatch to the shared extractInt
+	// helper. Default of 1 is preserved when the field is absent.
+	if _, ok := raw["NumberOfPagesToClose"]; ok {
+		action.NumberOfPages = extractInt(raw["NumberOfPagesToClose"])
 	} else {
 		action.NumberOfPages = 1
 	}

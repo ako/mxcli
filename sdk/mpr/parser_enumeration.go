@@ -197,8 +197,10 @@ func (r *Reader) parseScheduledEvent(unitID, containerID string, contents []byte
 	if enabled, ok := raw["Enabled"].(bool); ok {
 		event.Enabled = enabled
 	}
-	if interval, ok := raw["Interval"].(int32); ok {
-		event.Interval = int(interval)
+	// Issue #585: Studio Pro stores Interval as BSON int64; extractInt
+	// also accepts int32/int/float64 emitted by other writers.
+	if _, ok := raw["Interval"]; ok {
+		event.Interval = extractInt(raw["Interval"])
 	}
 	if intervalType, ok := raw["IntervalType"].(string); ok {
 		event.IntervalType = intervalType
