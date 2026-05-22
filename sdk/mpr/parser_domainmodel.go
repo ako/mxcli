@@ -360,9 +360,9 @@ func parseAttributeType(raw map[string]any) domainmodel.AttributeType {
 	case "DomainModels$StringAttributeType":
 		t := &domainmodel.StringAttributeType{}
 		t.ID = typeID
-		if length, ok := raw["Length"].(int32); ok {
-			t.Length = int(length)
-		}
+		// Issue #583: Studio Pro stores Length as BSON int64; mxcli's writer
+		// emits int32. extractInt accepts both (plus int and float64).
+		t.Length = extractInt(raw["Length"])
 		return t
 	case "DomainModels$IntegerAttributeType":
 		t := &domainmodel.IntegerAttributeType{}
