@@ -443,3 +443,56 @@ func TestMdlContainerForWidgetSlot(t *testing.T) {
 		})
 	}
 }
+
+// TestObjectListItemAliases covers MDL property name aliases on object-list
+// items. A DataGrid column's `Caption:` and `Content:` in MDL fill the
+// schema's `header` and `dynamicText` properties respectively. Without the
+// aliases, the engine would look up `header` / `dynamicText` in the AST
+// property bag and find nothing — the caption text would be silently dropped.
+func TestObjectListItemAliases(t *testing.T) {
+	mpkDef := &mpk.WidgetDefinition{
+		ID:   "com.mendix.widget.web.datagrid.Datagrid",
+		Name: "Data grid 2",
+		Properties: []mpk.PropertyDef{
+			{
+				Key:    "columns",
+				Type:   "object",
+				IsList: true,
+				Children: []mpk.PropertyDef{
+					{Key: "header", Type: "textTemplate"},
+					{Key: "dynamicText", Type: "textTemplate"},
+					{Key: "tooltip", Type: "textTemplate"},
+					{Key: "attribute", Type: "attribute"},
+				},
+			},
+		},
+	}
+	def := GenerateDefJSON(mpkDef, "DATAGRID")
+
+	if len(def.ObjectLists) != 1 {
+		t.Fatalf("ObjectLists count = %d, want 1", len(def.ObjectLists))
+	}
+	cols := def.ObjectLists[0]
+	if cols.PropertyKey != "columns" {
+		t.Fatalf("PropertyKey = %q, want columns", cols.PropertyKey)
+	}
+
+	aliases := map[string][]string{}
+	for _, ip := range cols.ItemProperties {
+		aliases[ip.PropertyKey] = ip.MdlAliases
+	}
+
+	if got := aliases["header"]; len(got) != 1 || got[0] != "Caption" {
+		t.Errorf("header MdlAliases = %v, want [Caption]", got)
+	}
+	if got := aliases["dynamicText"]; len(got) != 1 || got[0] != "Content" {
+		t.Errorf("dynamicText MdlAliases = %v, want [Content]", got)
+	}
+	// tooltip and attribute have no aliases — schema name is the MDL keyword.
+	if got := aliases["tooltip"]; len(got) != 0 {
+		t.Errorf("tooltip MdlAliases = %v, want []", got)
+	}
+	if got := aliases["attribute"]; len(got) != 0 {
+		t.Errorf("attribute MdlAliases = %v, want []", got)
+	}
+}

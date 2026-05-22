@@ -161,7 +161,7 @@ func GenerateDefJSON(mpkDef *mpk.WidgetDefinition, mdlName string) *WidgetDefini
 		// Object-list properties (e.g. Accordion `groups`, DataGrid `columns`)
 		// are emitted as ObjectListMapping entries.
 		if p.Type == "object" && p.IsList {
-			def.ObjectLists = append(def.ObjectLists, makeObjectListMapping(p))
+			def.ObjectLists = append(def.ObjectLists, makeObjectListMapping(mpkDef.ID, p))
 			continue
 		}
 		switch p.Type {
@@ -257,15 +257,36 @@ func mdlContainerForWidgetSlot(widgetID, propertyKey string) string {
 	return strings.ToUpper(propertyKey)
 }
 
+// itemPropertyAliases lists alternative MDL property names that should
+// resolve to a given schema property on an object-list item. Keyed by
+// (widgetID, objectListPropertyKey, itemPropertyKey).
+//
+// Example: a DataGrid column's `Caption: '...'` in MDL fills the schema's
+// `header` property. Without the alias, the engine looks up `header` in
+// the AST property bag and finds nothing — the caption is silently dropped.
+//
+// Aliases here capture conventions from the historical keyword path; when
+// the keyword path is retired (v0.12.0 Phase 4) this stays as the single
+// source of truth.
+var itemPropertyAliases = map[string]map[string]map[string][]string{
+	"com.mendix.widget.web.datagrid.Datagrid": {
+		"columns": {
+			"header":      {"Caption"},
+			"dynamicText": {"Content"},
+		},
+	},
+}
+
 // makeObjectListMapping converts an MPK object-list PropertyDef (e.g. Accordion
 // `groups`) into an ObjectListMapping. The MDL keyword is the singular form of
 // the property key (groups → GROUP, basicItems → ITEM, series → SERIES,
 // markers → MARKER).
-func makeObjectListMapping(p mpk.PropertyDef) ObjectListMapping {
+func makeObjectListMapping(widgetID string, p mpk.PropertyDef) ObjectListMapping {
 	mapping := ObjectListMapping{
 		PropertyKey:  p.Key,
 		MDLContainer: deriveObjectListKeyword(p.Key),
 	}
+	aliases := itemPropertyAliases[widgetID][p.Key]
 	for _, child := range p.Children {
 		if child.Type == "widgets" {
 			mapping.ItemSlots = append(mapping.ItemSlots, ItemSlotMapping{
@@ -283,6 +304,7 @@ func makeObjectListMapping(p mpk.PropertyDef) ObjectListMapping {
 			PropertyKey: child.Key,
 			Operation:   op,
 			Description: child.Description,
+			MdlAliases:  aliases[child.Key],
 		}
 		switch op {
 		case "attribute":

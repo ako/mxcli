@@ -89,13 +89,19 @@ type ObjectListMapping struct {
 // ItemPropertyMapping maps a property of one object-list item (e.g. headerText
 // of an Accordion group) to its operation kind. Mirrors PropertyMapping but
 // scoped to the list item rather than the top-level widget.
+//
+// MdlAliases lists alternative MDL property names that resolve to this same
+// schema property. Used for editorial conventions where the MDL keyword
+// differs from the .mpk schema name (e.g. DataGrid column `Caption:` maps
+// to schema property `header`).
 type ItemPropertyMapping struct {
-	PropertyKey string `json:"propertyKey"`
-	Source      string `json:"source,omitempty"`
-	Value       string `json:"value,omitempty"`
-	Operation   string `json:"operation"`
-	Default     string `json:"default,omitempty"`
-	Description string `json:"description,omitempty"`
+	PropertyKey string   `json:"propertyKey"`
+	Source      string   `json:"source,omitempty"`
+	Value       string   `json:"value,omitempty"`
+	Operation   string   `json:"operation"`
+	Default     string   `json:"default,omitempty"`
+	Description string   `json:"description,omitempty"`
+	MdlAliases  []string `json:"mdlAliases,omitempty"`
 }
 
 // ItemSlotMapping maps a widget child slot inside one object-list item
@@ -593,7 +599,15 @@ func (e *PluggableWidgetEngine) buildObjectListItem(mapping *ObjectListMapping, 
 	// sub-property key. Look up the value in the AST child's properties bag.
 	for _, ip := range mapping.ItemProperties {
 		// Property names in MDL are case-insensitive — find a match by lower-cased key.
+		// Try the schema name first, then fall back to MDL aliases (e.g. Caption → header).
 		raw, ok := lookupProperty(child.Properties, ip.PropertyKey)
+		if !ok {
+			for _, alias := range ip.MdlAliases {
+				if raw, ok = lookupProperty(child.Properties, alias); ok {
+					break
+				}
+			}
+		}
 		if !ok {
 			continue
 		}
