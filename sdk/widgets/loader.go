@@ -294,6 +294,7 @@ func jsonToBSONWithMappingAndObjectType(data map[string]any, idMapping map[strin
 	var required bool
 	var nestedObjectTypeID string
 	var nestedPropertyIDs map[string]PropertyTypeIDEntry
+	var nestedKeyOrder []string
 
 	// First pass: detect type
 	if typeVal, ok := data["$Type"]; ok {
@@ -335,7 +336,7 @@ func jsonToBSONWithMappingAndObjectType(data map[string]any, idMapping map[strin
 		} else if key == "ValueType" && isPropertyType {
 			// For PropertyTypes, extract ValueType info including nested ObjectType, DefaultValue, Type, Required
 			nestedPropertyIDs = make(map[string]PropertyTypeIDEntry)
-			elem.Value = jsonValueToBSONWithNestedObjectType(val, idMapping, &valueTypeID, &nestedObjectTypeID, nestedPropertyIDs, &defaultValue, &valueType, &required)
+			elem.Value = jsonValueToBSONWithNestedObjectType(val, idMapping, &valueTypeID, &nestedObjectTypeID, nestedPropertyIDs, &nestedKeyOrder, &defaultValue, &valueType, &required)
 		} else {
 			elem.Value = jsonValueToBSONWithMappingAndObjectType(val, idMapping, propertyTypeIDs, &valueTypeID, key == "ValueType", objectTypeID)
 		}
@@ -355,6 +356,7 @@ func jsonToBSONWithMappingAndObjectType(data map[string]any, idMapping map[strin
 		if nestedObjectTypeID != "" {
 			entry.ObjectTypeID = nestedObjectTypeID
 			entry.NestedPropertyIDs = nestedPropertyIDs
+			entry.NestedKeyOrder = nestedKeyOrder
 		}
 		propertyTypeIDs[propertyKey] = entry
 	}
@@ -363,7 +365,9 @@ func jsonToBSONWithMappingAndObjectType(data map[string]any, idMapping map[strin
 }
 
 // jsonValueToBSONWithNestedObjectType extracts ValueType info including nested ObjectType, DefaultValue, and Type.
-func jsonValueToBSONWithNestedObjectType(val any, idMapping map[string]string, valueTypeID *string, nestedObjectTypeID *string, nestedPropertyIDs map[string]PropertyTypeIDEntry, defaultValue *string, valueType *string, required *bool) any {
+// nestedKeyOrder is populated in template PropertyTypes order so callers can preserve
+// the schema-defined property order rather than relying on alphabetical map iteration.
+func jsonValueToBSONWithNestedObjectType(val any, idMapping map[string]string, valueTypeID *string, nestedObjectTypeID *string, nestedPropertyIDs map[string]PropertyTypeIDEntry, nestedKeyOrder *[]string, defaultValue *string, valueType *string, required *bool) any {
 	switch v := val.(type) {
 	case map[string]any:
 		result := make(bson.D, 0, len(v))
@@ -384,7 +388,7 @@ func jsonValueToBSONWithNestedObjectType(val any, idMapping map[string]string, v
 				}
 			} else if key == "ObjectType" {
 				// Extract nested ObjectType and its PropertyTypes
-				elem.Value = extractNestedObjectType(fieldVal, idMapping, nestedObjectTypeID, nestedPropertyIDs)
+				elem.Value = extractNestedObjectType(fieldVal, idMapping, nestedObjectTypeID, nestedPropertyIDs, nestedKeyOrder)
 			} else if key == "DefaultValue" {
 				// Extract default value
 				if dv, ok := fieldVal.(string); ok {
@@ -417,7 +421,8 @@ func jsonValueToBSONWithNestedObjectType(val any, idMapping map[string]string, v
 }
 
 // extractNestedObjectType extracts ObjectType ID and its PropertyType IDs.
-func extractNestedObjectType(val any, idMapping map[string]string, objectTypeID *string, nestedPropertyIDs map[string]PropertyTypeIDEntry) any {
+// nestedKeyOrder is appended to in PropertyTypes array order.
+func extractNestedObjectType(val any, idMapping map[string]string, objectTypeID *string, nestedPropertyIDs map[string]PropertyTypeIDEntry, nestedKeyOrder *[]string) any {
 	if val == nil {
 		return nil
 	}
@@ -444,7 +449,7 @@ func extractNestedObjectType(val any, idMapping map[string]string, objectTypeID 
 			}
 		} else if key == "PropertyTypes" {
 			// Extract PropertyTypes within the nested ObjectType
-			elem.Value = extractNestedPropertyTypes(fieldVal, idMapping, nestedPropertyIDs)
+			elem.Value = extractNestedPropertyTypes(fieldVal, idMapping, nestedPropertyIDs, nestedKeyOrder)
 		} else {
 			elem.Value = jsonValueToBSONSimple(fieldVal, idMapping)
 		}
@@ -456,7 +461,9 @@ func extractNestedObjectType(val any, idMapping map[string]string, objectTypeID 
 }
 
 // extractNestedPropertyTypes extracts PropertyType IDs from a nested ObjectType's PropertyTypes array.
-func extractNestedPropertyTypes(val any, idMapping map[string]string, nestedPropertyIDs map[string]PropertyTypeIDEntry) any {
+// nestedKeyOrder is appended to in template array order so callers can iterate
+// the nested PropertyTypes in schema order rather than alphabetically.
+func extractNestedPropertyTypes(val any, idMapping map[string]string, nestedPropertyIDs map[string]PropertyTypeIDEntry, nestedKeyOrder *[]string) any {
 	arr, ok := val.([]any)
 	if !ok {
 		return jsonValueToBSONSimple(val, idMapping)
@@ -518,6 +525,9 @@ func extractNestedPropertyTypes(val any, idMapping map[string]string, nestedProp
 
 					// Record the nested property type
 					if propKey != "" {
+						if _, exists := nestedPropertyIDs[propKey]; !exists && nestedKeyOrder != nil {
+							*nestedKeyOrder = append(*nestedKeyOrder, propKey)
+						}
 						nestedPropertyIDs[propKey] = PropertyTypeIDEntry{
 							PropertyTypeID: propTypeID,
 							ValueTypeID:    valueTypeID,
@@ -710,6 +720,7 @@ type PropertyTypeIDEntry struct {
 	// For object list properties (IsList=true with ObjectType), these hold nested IDs
 	ObjectTypeID      string                         // ID of the nested ObjectType (for object lists)
 	NestedPropertyIDs map[string]PropertyTypeIDEntry // Property IDs within the nested ObjectType
+	NestedKeyOrder    []string                       // Nested property keys in template PropertyTypes order; empty when no nested ObjectType
 }
 
 // collectIDs recursively collects all $ID values and creates old->new mappings.

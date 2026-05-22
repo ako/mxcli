@@ -179,6 +179,7 @@ type PropertyTypeIDEntry struct {
 	// For object list properties (IsList=true with ObjectType), these hold nested IDs
 	ObjectTypeID      string                         // ID of the nested ObjectType (for object lists like columns)
 	NestedPropertyIDs map[string]PropertyTypeIDEntry // Property IDs within the nested ObjectType
+	NestedKeyOrder    []string                       // Keys of NestedPropertyIDs in template PropertyTypes order; empty when no nested ObjectType
 }
 
 // CustomWidgetType defines the pluggable widget type (CustomWidgets$CustomWidgetType).

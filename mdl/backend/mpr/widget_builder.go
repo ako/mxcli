@@ -270,12 +270,19 @@ func buildObjectListItemBSON(parentEntry pages.PropertyTypeIDEntry, item backend
 	}
 
 	propsArr := bson.A{int32(2)}
-	// Sort keys for deterministic output.
-	nestedKeys := make([]string, 0, len(parentEntry.NestedPropertyIDs))
-	for k := range parentEntry.NestedPropertyIDs {
-		nestedKeys = append(nestedKeys, k)
+	// Use template PropertyTypes order when available — Studio Pro expects
+	// the WidgetObject.Properties array to mirror the WidgetType.PropertyTypes
+	// order or it flags CE0463. Fall back to alphabetical for templates that
+	// didn't capture the order (older callers, custom widgets without nested
+	// schema).
+	nestedKeys := parentEntry.NestedKeyOrder
+	if len(nestedKeys) == 0 {
+		nestedKeys = make([]string, 0, len(parentEntry.NestedPropertyIDs))
+		for k := range parentEntry.NestedPropertyIDs {
+			nestedKeys = append(nestedKeys, k)
+		}
+		sort.Strings(nestedKeys)
 	}
-	sort.Strings(nestedKeys)
 
 	for _, k := range nestedKeys {
 		nestedEntry := parentEntry.NestedPropertyIDs[k]
@@ -873,6 +880,7 @@ func convertPropertyTypeIDs(src map[string]widgets.PropertyTypeIDEntry) map[stri
 		}
 		if len(v.NestedPropertyIDs) > 0 {
 			entry.NestedPropertyIDs = convertPropertyTypeIDs(v.NestedPropertyIDs)
+			entry.NestedKeyOrder = append([]string(nil), v.NestedKeyOrder...)
 		}
 		result[k] = entry
 	}
