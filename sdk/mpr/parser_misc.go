@@ -759,11 +759,15 @@ func parseJsonElement(raw map[string]any) *JsonElement {
 	if v, ok := raw["PrimitiveType"].(string); ok {
 		elem.PrimitiveType = v
 	}
-	if v, ok := raw["MinOccurs"].(int32); ok {
-		elem.MinOccurs = int(v)
+	// Issue #585: Studio Pro writes these numeric facets as BSON int64;
+	// mxcli's writer emits int32. extractInt accepts both (plus int and
+	// float64). Default values for MaxLength/FractionDigits/TotalDigits
+	// stay at -1 (set in the literal above) when the field is absent.
+	if _, ok := raw["MinOccurs"]; ok {
+		elem.MinOccurs = extractInt(raw["MinOccurs"])
 	}
-	if v, ok := raw["MaxOccurs"].(int32); ok {
-		elem.MaxOccurs = int(v)
+	if _, ok := raw["MaxOccurs"]; ok {
+		elem.MaxOccurs = extractInt(raw["MaxOccurs"])
 	}
 	if v, ok := raw["Nillable"].(bool); ok {
 		elem.Nillable = v
@@ -771,14 +775,14 @@ func parseJsonElement(raw map[string]any) *JsonElement {
 	if v, ok := raw["IsDefaultType"].(bool); ok {
 		elem.IsDefaultType = v
 	}
-	if v, ok := raw["MaxLength"].(int32); ok {
-		elem.MaxLength = int(v)
+	if _, ok := raw["MaxLength"]; ok {
+		elem.MaxLength = extractInt(raw["MaxLength"])
 	}
-	if v, ok := raw["FractionDigits"].(int32); ok {
-		elem.FractionDigits = int(v)
+	if _, ok := raw["FractionDigits"]; ok {
+		elem.FractionDigits = extractInt(raw["FractionDigits"])
 	}
-	if v, ok := raw["TotalDigits"].(int32); ok {
-		elem.TotalDigits = int(v)
+	if _, ok := raw["TotalDigits"]; ok {
+		elem.TotalDigits = extractInt(raw["TotalDigits"])
 	}
 	if v, ok := raw["OriginalValue"].(string); ok {
 		elem.OriginalValue = v
