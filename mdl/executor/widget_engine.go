@@ -667,6 +667,13 @@ func (e *PluggableWidgetEngine) buildObjectListItem(mapping *ObjectListMapping, 
 		spec.Properties = append(spec.Properties, prop)
 	}
 
+	// DataGrid column header convention: when the user provides no Caption
+	// but does bind an Attribute, fall back to the attribute name as the
+	// header text. Mirrors buildDataGrid2ColumnObject in datagrid_builder.go
+	// (line 491-494). Without this, an attribute column with no Caption
+	// emits an empty header that Studio Pro flags as definition drift.
+	applyColumnHeaderFallback(&spec)
+
 	// Widgets-typed slots: ItemSlots gives us per-slot keyword conventions.
 	// For object-list items the most common shape today is direct child
 	// widgets (no inner container). Match nested AST children in three
@@ -741,6 +748,40 @@ func (e *PluggableWidgetEngine) buildObjectListItem(mapping *ObjectListMapping, 
 // defaultItemSlotKey picks a "default" widgets-typed slot for an object-list
 // item: the slot keyed "content" if present, otherwise the first slot.
 // Returns "" if there are no widgets-typed slots.
+// applyColumnHeaderFallback synthesizes a texttemplate spec for the `header`
+// property when the spec has an attribute binding but no header text. Mirrors
+// the keyword path's `if caption == "" { caption = col.Attribute }` fallback
+// in datagrid_builder.go. The check is conservative: only fires when the
+// header slot is genuinely empty, so it's safe to call for any object-list
+// item kind.
+func applyColumnHeaderFallback(spec *backend.ObjectListItemSpec) {
+	var hasHeader bool
+	var attrPath string
+	for _, p := range spec.Properties {
+		switch p.PropertyKey {
+		case "header":
+			hasHeader = true
+		case "attribute":
+			attrPath = p.AttributePath
+		}
+	}
+	if hasHeader || attrPath == "" {
+		return
+	}
+	// Extract the leaf attribute name from a fully-qualified path
+	// (Module.Entity.Attr → Attr).
+	attrName := attrPath
+	if idx := strings.LastIndex(attrName, "."); idx >= 0 {
+		attrName = attrName[idx+1:]
+	}
+	spec.Properties = append(spec.Properties, backend.ObjectListItemProperty{
+		PropertyKey:   "header",
+		Operation:     "texttemplate",
+		TextTemplate:  attrName,
+		EntityContext: "", // literal text — no template params to resolve
+	})
+}
+
 func defaultItemSlotKey(mapping *ObjectListMapping) string {
 	if len(mapping.ItemSlots) == 0 {
 		return ""

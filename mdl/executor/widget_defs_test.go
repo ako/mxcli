@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/mendixlabs/mxcli/sdk/widgets/mpk"
+	"github.com/mendixlabs/mxcli/mdl/backend"
 )
 
 func TestDeriveMDLName(t *testing.T) {
@@ -539,5 +540,60 @@ func TestItemSlotAcceptedChildTypes(t *testing.T) {
 		if got["filter"][i] != w {
 			t.Errorf("filter[%d] = %q, want %q", i, got["filter"][i], w)
 		}
+	}
+}
+
+// TestApplyColumnHeaderFallback covers the missing-Caption fallback that
+// makes DataGrid columns without `Caption:` emit a header populated with
+// the attribute leaf name. Mirrors datagrid_builder.go's
+// `if caption == "" { caption = col.Attribute }` convention.
+func TestApplyColumnHeaderFallback(t *testing.T) {
+	// Case 1: header already present → no change
+	spec1 := &backend.ObjectListItemSpec{
+		Properties: []backend.ObjectListItemProperty{
+			{PropertyKey: "header", Operation: "texttemplate", TextTemplate: "Override"},
+			{PropertyKey: "attribute", Operation: "attribute", AttributePath: "Mod.Ent.Foo"},
+		},
+	}
+	applyColumnHeaderFallback(spec1)
+	if len(spec1.Properties) != 2 {
+		t.Errorf("Case 1 (header present): expected 2 properties, got %d", len(spec1.Properties))
+	}
+
+	// Case 2: no header, no attribute → no change
+	spec2 := &backend.ObjectListItemSpec{
+		Properties: []backend.ObjectListItemProperty{
+			{PropertyKey: "showContentAs", Operation: "primitive", PrimitiveVal: "attribute"},
+		},
+	}
+	applyColumnHeaderFallback(spec2)
+	if len(spec2.Properties) != 1 {
+		t.Errorf("Case 2 (no attribute): expected 1 property, got %d", len(spec2.Properties))
+	}
+
+	// Case 3: no header, attribute set → synthesize header from attribute leaf
+	spec3 := &backend.ObjectListItemSpec{
+		Properties: []backend.ObjectListItemProperty{
+			{PropertyKey: "attribute", Operation: "attribute", AttributePath: "Mod.Ent.OrderNumber"},
+		},
+	}
+	applyColumnHeaderFallback(spec3)
+	if len(spec3.Properties) != 2 {
+		t.Fatalf("Case 3 (fallback): expected 2 properties, got %d", len(spec3.Properties))
+	}
+	hdr := spec3.Properties[1]
+	if hdr.PropertyKey != "header" || hdr.Operation != "texttemplate" || hdr.TextTemplate != "OrderNumber" {
+		t.Errorf("Case 3: synthesized header = %+v, want PropertyKey=header Operation=texttemplate TextTemplate=OrderNumber", hdr)
+	}
+
+	// Case 4: unqualified attribute path → use as-is
+	spec4 := &backend.ObjectListItemSpec{
+		Properties: []backend.ObjectListItemProperty{
+			{PropertyKey: "attribute", Operation: "attribute", AttributePath: "BareName"},
+		},
+	}
+	applyColumnHeaderFallback(spec4)
+	if len(spec4.Properties) != 2 || spec4.Properties[1].TextTemplate != "BareName" {
+		t.Errorf("Case 4: fallback for unqualified path = %v", spec4.Properties)
 	}
 }

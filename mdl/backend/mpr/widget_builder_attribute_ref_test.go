@@ -162,3 +162,6 @@ func TestShouldEmitEmptyClientTemplate(t *testing.T) {
 		})
 	}
 }
+
+// (TestApplyColumnHeaderFallback covers the helper in widget_engine.go; the
+// unit test lives in the executor package — see widget_defs_test.go.)
