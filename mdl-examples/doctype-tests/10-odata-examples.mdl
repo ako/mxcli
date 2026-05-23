@@ -400,16 +400,15 @@ revoke access on odata service OdTest.CustomerAPI from OdTest.user;
 -- LEVEL 9: EXTERNAL ACTION CALLS IN MICROFLOWS
 -- ############################################################################
 
-/**
- * Level 9.1: Call an external action with parameters and result variable
- */
-create microflow OdTest.ACT_CallExternalAction() returns boolean
-begin
-    $Result = call external action OdTest.SalesforceAPI.GetAccounts(status = 'active', Region = $SelectedRegion);
-    call external action OdTest.SalesforceAPI.NotifyUpdate(AccountId = $AccountId) on error continue;
-    return true;
-end;
-/
+-- Level 9.1: Call an external action — see Level 10.4.1 below.
+--
+-- The microflow is created after Level 10.1 because Studio Pro resolves
+-- `call external action` Name fields against the cached $metadata schema of
+-- the ConsumedODataService. SalesforceAPI's MetadataUrl is a placeholder
+-- that doesn't actually return $metadata, so its cache is empty and any
+-- action call against it would crash Studio Pro's project checker with a
+-- NullReferenceException in CallExternalAction.SchemaAction (see mxcli#590).
+-- TripPin has reachable metadata, so its actions resolve correctly.
 
 /**
  * Level 9.2: Show external actions discovered from microflow usage
@@ -484,6 +483,22 @@ create or modify external entities from TripPinClient."TripPinApiClient"
   into TripPinClient;
 /
 
+/**
+ * Level 10.4.1: Demonstrate `call external action` against TripPin schema
+ * actions. Both ResetDataSource (no parameters) and GetNearestAirport
+ * (parameterised with a return variable) are unbound entries in TripPin's
+ * cached $metadata, so Studio Pro's project checker resolves SchemaAction
+ * correctly. The microflow lives in OdTest to keep `show external actions
+ * in OdTest` (Level 9.2) returning a row, but references the TripPin client.
+ */
+create microflow OdTest.ACT_CallExternalAction() returns boolean
+begin
+    $Airport = call external action TripPinClient."TripPinApiClient".GetNearestAirport(lat = 47.6062, lon = -122.3321);
+    call external action TripPinClient."TripPinApiClient".ResetDataSource() on error continue;
+    return true;
+end;
+/
+
 -- ############################################################################
 -- LEVEL 8.8: DROP (cleanup)
 -- ############################################################################
@@ -491,9 +506,10 @@ create or modify external entities from TripPinClient."TripPinApiClient"
 exit;
 
 /**
- * Level 8.8a: Drop objects that reference SalesforceAPI before dropping the client.
- * OdTest.ACT_CallExternalAction calls SalesforceAPI actions; OdTest.RemoteAccount
- * is an external entity backed by SalesforceAPI — both must be removed first.
+ * Level 8.8a: Drop objects that reference OData clients before dropping the
+ * clients themselves. OdTest.ACT_CallExternalAction (created in Level 10.4.1)
+ * calls TripPin actions, and OdTest.RemoteAccount is an external entity
+ * backed by SalesforceAPI — both must be removed first.
  */
 drop microflow OdTest.ACT_CallExternalAction;
 /
