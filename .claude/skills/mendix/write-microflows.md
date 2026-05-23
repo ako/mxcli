@@ -10,6 +10,44 @@ Use this skill when:
 - Converting Studio Pro microflows to MDL
 - Understanding microflow control flow and structure
 
+If you're not sure whether the logic belongs in a microflow or a nanoflow, read the next section first. The mirror lives in [write-nanoflows.md](./write-nanoflows.md) — keep both copies in sync.
+
+## When to Use a Microflow vs a Nanoflow
+
+| Scenario | Use |
+|----------|-----|
+| Querying the database | Microflow |
+| Calling REST services or external actions | Microflow |
+| Running Java actions | Microflow |
+| File generation or download | Microflow |
+| Transactional commits (rollback on error) | Microflow |
+| Background scheduled logic | Microflow |
+| Client-side form validation before save | Nanoflow |
+| UI navigation and page routing | Nanoflow |
+| Calling device features (GPS, phone, camera) | Nanoflow |
+| Offline data access and local storage | Nanoflow |
+| Calling JavaScript actions (NanoflowCommons) | Nanoflow |
+| Showing progress indicators / confirmation dialogs | Nanoflow |
+
+**Rule of thumb:** A nanoflow runs before the server call. A microflow IS the server call.
+
+## Key Differences from Nanoflows
+
+| Aspect | Microflow | Nanoflow |
+|--------|-----------|----------|
+| **Execution** | Server-side | Client-side (browser/mobile) |
+| **Database access** | Full | No direct access |
+| **Transactions** | Supported | Not supported |
+| **Java actions** | Supported | Not supported |
+| **JavaScript actions** | Not supported | Supported |
+| **SYNCHRONIZE** | Not available | Available (offline sync) |
+| **File downloads** | Supported | Not supported |
+| **Error handling** | Full `ON ERROR` blocks + `RAISE ERROR` | Per-action `ON ERROR` supported; `RAISE ERROR` / `ErrorEvent` forbidden |
+| **Offline** | Not available | Available |
+| **Binary return type** | Supported | Not supported |
+
+For nanoflow-specific authoring guidance, see [write-nanoflows.md](./write-nanoflows.md).
+
 ## Microflow Structure
 
 **CRITICAL: All microflows MUST have JavaDoc-style documentation**

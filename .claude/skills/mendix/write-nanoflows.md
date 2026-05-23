@@ -10,6 +10,8 @@ Use this skill when:
 - Understanding nanoflow restrictions vs microflows
 - Building mobile or offline-capable features
 
+If you're not sure whether the logic belongs in a nanoflow or a microflow, read the next section first. The mirror lives in [write-microflows.md](./write-microflows.md) — keep both copies in sync.
+
 ## When to Use a Nanoflow vs a Microflow
 
 | Scenario | Use |
