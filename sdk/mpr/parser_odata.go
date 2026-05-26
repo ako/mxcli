@@ -237,6 +237,12 @@ func parsePublishedMember(raw map[string]any) *model.PublishedMember {
 	case "ODataPublish$PublishedAssociationEnd":
 		m.Kind = "association"
 		m.Name = extractString(raw["Association"])
+		// Studio Pro stores the target entity and the bare association
+		// name (separate from ExposedName, which is the navigation
+		// property). They round-trip through these fields so that
+		// ALTER ODATA SERVICE doesn't blank them out.
+		m.AssociationTargetEntity = extractString(raw["Entity"])
+		m.ExposedAssociationName = extractString(raw["ExposedAssociationName"])
 	case "ODataPublish$PublishedId":
 		m.Kind = "id"
 		m.Name = extractString(raw["Attribute"])

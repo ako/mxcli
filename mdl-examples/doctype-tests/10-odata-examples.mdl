@@ -217,7 +217,11 @@ authentication basic, session
     Email as 'customerId' (KEY, Filterable, Sortable),
     Name (Filterable, Sortable),
     Phone,
-    IsActive
+    IsActive,
+    -- Navigate from a Customer to its Orders. The bare name resolves
+    -- against the module's associations (OdTest.Order_Customer here);
+    -- the alias becomes the OData navigation property name.
+    Order_Customer as 'Orders'
   );
 
   publish entity OdTest.Order as 'Orders' (
@@ -230,7 +234,9 @@ authentication basic, session
     OrderNumber as 'orderId' (KEY, Filterable, Sortable),
     OrderDate (Sortable),
     TotalAmount (Sortable),
-    Status (Filterable)
+    Status (Filterable),
+    -- Reverse navigation: from an Order to its owning Customer.
+    Order_Customer as 'Customer'
   );
 };
 /

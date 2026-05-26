@@ -1368,9 +1368,12 @@ func createODataService(ctx *ExecContext, stmt *ast.CreateODataServiceStmt) erro
 		AuthenticationTypes: stmt.AuthenticationTypes,
 	}
 
-	// Map AST entity definitions to model entity types and entity sets
+	// Map AST entity definitions to model entity types and entity sets.
+	// Pass ctx so the executor can resolve exposed members against the
+	// entity's actual attributes and (for navigation properties) the
+	// module's associations.
 	for _, entityDef := range stmt.Entities {
-		entityType, entitySet := astEntityDefToModel(entityDef)
+		entityType, entitySet := astEntityDefToModel(ctx, entityDef)
 		newSvc.EntityTypes = append(newSvc.EntityTypes, entityType)
 		newSvc.EntitySets = append(newSvc.EntitySets, entitySet)
 	}
@@ -1545,10 +1548,74 @@ func extractMicroflowRef(ref string) string {
 	return ref
 }
 
+// assocMembership records both endpoints of an association by qualified
+// entity name, so callers can resolve "what's on the other side of
+// AssocName from Entity X".
+type assocMembership struct {
+	ParentQN string // FROM entity (CLAUDE.md: ParentPointer holds the FROM/FK side)
+	ChildQN  string // TO entity (ChildPointer holds the TO/referenced side)
+}
+
+// lookupEntityMembers returns (set of attribute names, map of association
+// name -> assocMembership) for the given entity. Both lookups are
+// best-effort — if the backend or domain model can't be resolved we
+// return empty collections rather than failing the whole publish.
+func lookupEntityMembers(ctx *ExecContext, entityQN ast.QualifiedName) (map[string]bool, map[string]*assocMembership) {
+	attrs := make(map[string]bool)
+	assocs := make(map[string]*assocMembership)
+	if ctx == nil || ctx.Backend == nil {
+		return attrs, assocs
+	}
+	module, err := findModule(ctx, entityQN.Module)
+	if err != nil {
+		return attrs, assocs
+	}
+	dm, err := ctx.Backend.GetDomainModel(module.ID)
+	if err != nil {
+		return attrs, assocs
+	}
+	// Build entity-id -> qualified-name map so we can resolve association
+	// Parent/Child IDs back to qualified names.
+	entityIDToQN := make(map[model.ID]string)
+	var thisEntity *domainmodel.Entity
+	for _, e := range dm.Entities {
+		entityIDToQN[e.ID] = entityQN.Module + "." + e.Name
+		if e.Name == entityQN.Name {
+			thisEntity = e
+		}
+	}
+	if thisEntity != nil {
+		for _, a := range thisEntity.Attributes {
+			attrs[a.Name] = true
+		}
+	}
+	for _, a := range dm.Associations {
+		parentQN := entityIDToQN[a.ParentID]
+		childQN := entityIDToQN[a.ChildID]
+		if parentQN == "" || childQN == "" {
+			continue
+		}
+		// Only include associations where this entity is on one side.
+		if parentQN != entityQN.String() && childQN != entityQN.String() {
+			continue
+		}
+		assocs[a.Name] = &assocMembership{ParentQN: parentQN, ChildQN: childQN}
+	}
+	return attrs, assocs
+}
+
 // astEntityDefToModel converts an AST PublishedEntityDef to model PublishedEntityType
 // and PublishedEntitySet. Each PUBLISH ENTITY block maps to both a type (schema) and
 // a set (runtime endpoint with CRUD modes).
-func astEntityDefToModel(def *ast.PublishedEntityDef) (*model.PublishedEntityType, *model.PublishedEntitySet) {
+//
+// Member kinds (attribute vs association) are auto-detected against the
+// entity's attributes and the module's associations: if a member's name
+// matches an attribute on the entity, it's an attribute; otherwise we
+// look for an association in the same module that involves this entity
+// and emit it as a PublishedAssociationEnd. The user writes the bare
+// association name (e.g. `Order_Customer as 'Orders'`) and the executor
+// fills in the target entity and qualified names from the domain model.
+func astEntityDefToModel(ctx *ExecContext, def *ast.PublishedEntityDef) (*model.PublishedEntityType, *model.PublishedEntitySet) {
 	// EntitySet ExposedName comes from the user's `AS 'X'` (typically plural,
 	// e.g. 'Customers'). EntityType ExposedName must differ — Studio Pro
 	// convention is the singular form (the entity's local name, e.g.
@@ -1565,10 +1632,15 @@ func astEntityDefToModel(def *ast.PublishedEntityDef) (*model.PublishedEntityTyp
 		ExposedName: entityTypeExposedName,
 	}
 
-	// Map AST members to model members
+	// Look up the entity's attributes and the module's associations so we
+	// can distinguish attribute exposures from association navigation
+	// properties. Failures here downgrade to "treat everything as
+	// attribute" — Mendix will then emit a missing-member error which is
+	// the right user-facing signal.
+	entityAttrs, moduleAssocs := lookupEntityMembers(ctx, def.Entity)
+
 	for _, m := range def.Members {
 		member := &model.PublishedMember{
-			Kind:        "attribute", // Default kind — cannot be distinguished from MDL syntax alone
 			Name:        m.Name,
 			ExposedName: m.ExposedName,
 			Filterable:  m.Filterable,
@@ -1577,6 +1649,27 @@ func astEntityDefToModel(def *ast.PublishedEntityDef) (*model.PublishedEntityTyp
 		}
 		if member.ExposedName == "" {
 			member.ExposedName = member.Name
+		}
+		// Auto-detect kind: attribute first, association as fallback.
+		if entityAttrs[m.Name] {
+			member.Kind = "attribute"
+		} else if assoc := moduleAssocs[m.Name]; assoc != nil {
+			member.Kind = "association"
+			member.ExposedAssociationName = m.Name
+			// Target entity = the OTHER side of the association.
+			if assoc.ParentQN == def.Entity.String() {
+				member.AssociationTargetEntity = assoc.ChildQN
+			} else {
+				member.AssociationTargetEntity = assoc.ParentQN
+			}
+			// AssociationEnd has no Filterable/Sortable/IsPartOfKey
+			// concept — clear them so the writer's bson.M doesn't
+			// leak stale attribute-shaped fields.
+			member.Filterable = false
+			member.Sortable = false
+			member.IsPartOfKey = false
+		} else {
+			member.Kind = "attribute"
 		}
 		entityType.Members = append(entityType.Members, member)
 	}
