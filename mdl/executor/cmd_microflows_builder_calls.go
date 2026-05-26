@@ -564,6 +564,77 @@ func (fb *flowBuilder) resolveMappingRefForWrite(ref string, preferExport bool) 
 	return ref
 }
 
+// resolveExternalActionReturnKind looks up the called OData action in the
+// consumed service's cached $metadata and returns the Mendix kind name
+// ("Boolean", "String", "Integer", "Long", "Decimal", "DateTime", "Binary",
+// or "Void") of its return type. Used to populate
+// CallExternalAction.ResultDataType so the writer can emit VariableDataType
+// BSON; without it Mendix raises CE7269 whenever the schema declares any
+// return type.
+//
+// Returns "" if the service or action can't be resolved — the writer omits
+// VariableDataType, falling back to the prior (buggy) behavior rather than
+// emitting a wrong type.
+func (fb *flowBuilder) resolveExternalActionReturnKind(serviceRef ast.QualifiedName, actionName string) string {
+	if fb.backend == nil {
+		return ""
+	}
+	services, err := fb.backend.ListConsumedODataServices()
+	if err != nil {
+		return ""
+	}
+	for _, svc := range services {
+		modName := fb.hierarchy.GetModuleName(fb.hierarchy.FindModuleID(svc.ContainerID))
+		if !strings.EqualFold(modName, serviceRef.Module) || !strings.EqualFold(svc.Name, serviceRef.Name) {
+			continue
+		}
+		if svc.Metadata == "" {
+			return ""
+		}
+		doc, err := types.ParseEdmx(svc.Metadata)
+		if err != nil {
+			return ""
+		}
+		for _, act := range doc.Actions {
+			if strings.EqualFold(act.Name, actionName) {
+				return edmReturnTypeToKind(act.ReturnType)
+			}
+		}
+		return ""
+	}
+	return ""
+}
+
+// edmReturnTypeToKind maps an EDM type name (e.g. "Edm.Boolean") to the
+// Mendix kind name used by serializeExternalActionReturnType. Returns "Void"
+// for an empty/unknown return type so action calls with no return still get
+// a valid DataTypes$VoidType BSON sub-doc rather than nothing.
+func edmReturnTypeToKind(edmType string) string {
+	switch edmType {
+	case "":
+		return "Void"
+	case "Edm.Boolean":
+		return "Boolean"
+	case "Edm.String", "Edm.Guid":
+		return "String"
+	case "Edm.Int32", "Edm.Int16", "Edm.Byte", "Edm.SByte":
+		return "Integer"
+	case "Edm.Int64":
+		return "Long"
+	case "Edm.Decimal", "Edm.Double", "Edm.Single":
+		return "Decimal"
+	case "Edm.DateTime", "Edm.DateTimeOffset", "Edm.Date":
+		return "DateTime"
+	case "Edm.Binary":
+		return "Binary"
+	default:
+		// Complex / collection / entity-typed returns aren't yet mapped.
+		// Leave empty so the writer omits VariableDataType rather than
+		// emitting a wrong type that would silently mislead Mendix.
+		return ""
+	}
+}
+
 // addCallExternalActionAction creates a CALL EXTERNAL ACTION statement.
 func (fb *flowBuilder) addCallExternalActionAction(s *ast.CallExternalActionStmt) model.ID {
 	serviceQN := s.ServiceName.Module + "." + s.ServiceName.Name
@@ -587,6 +658,7 @@ func (fb *flowBuilder) addCallExternalActionAction(s *ast.CallExternalActionStmt
 		ParameterMappings:    mappings,
 		ResultVariableName:   s.OutputVariable,
 		UseReturnVariable:    s.OutputVariable != "",
+		ResultDataType:       fb.resolveExternalActionReturnKind(s.ServiceName, s.ActionName),
 	}
 
 	activityX := fb.posX

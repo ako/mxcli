@@ -184,6 +184,14 @@ func serializeMicroflowAction(action microflows.MicroflowAction) bson.D {
 			{Key: "Name", Value: a.Name},
 			{Key: "VariableName", Value: a.ResultVariableName},
 		}
+		// Issue: Mendix's CallExternalAction.Check raises CE7269 ("return type
+		// for remote action has changed") when the stored VariableDataType
+		// doesn't match the cached schema's return type. Always emit
+		// VariableDataType when we know the schema kind — the executor
+		// resolves it from the consumed service's cached $metadata.
+		if a.ResultDataType != "" {
+			doc = append(doc, bson.E{Key: "VariableDataType", Value: serializeExternalActionReturnType(a.ResultDataType)})
+		}
 		// Serialize parameter mappings
 		if len(a.ParameterMappings) > 0 {
 			var mappings bson.A
@@ -1523,5 +1531,35 @@ func serializeExportXmlAction(a *microflows.ExportXmlAction) bson.D {
 		{Key: "IsValidationRequired", Value: a.IsValidationRequired},
 		{Key: "OutputMethod", Value: outputMethod},
 		{Key: "ResultHandling", Value: resultHandling},
+	}
+}
+
+// serializeExternalActionReturnType maps a Mendix kind name (resolved from a
+// consumed OData service's cached $metadata) to a DataTypes$* BSON sub-doc
+// suitable for ODataPublish$CallExternalAction.VariableDataType. Mendix's
+// CE7269 fires when this field's $Type doesn't match what the cached schema
+// declares for the action's return.
+func serializeExternalActionReturnType(kind string) bson.D {
+	typeID := idToBsonBinary(generateUUID())
+	bsonType := "DataTypes$VoidType"
+	switch kind {
+	case "Boolean":
+		bsonType = "DataTypes$BooleanType"
+	case "String":
+		bsonType = "DataTypes$StringType"
+	case "Integer", "Long":
+		bsonType = "DataTypes$IntegerType"
+	case "Decimal", "Float":
+		bsonType = "DataTypes$DecimalType"
+	case "DateTime":
+		bsonType = "DataTypes$DateTimeType"
+	case "Binary":
+		bsonType = "DataTypes$BinaryType"
+	case "Void", "":
+		bsonType = "DataTypes$VoidType"
+	}
+	return bson.D{
+		{Key: "$ID", Value: typeID},
+		{Key: "$Type", Value: bsonType},
 	}
 }

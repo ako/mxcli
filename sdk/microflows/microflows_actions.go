@@ -656,6 +656,13 @@ type CallExternalAction struct {
 	ParameterMappings    []*ExternalActionParameterMapping `json:"parameterMappings,omitempty"`
 	ResultVariableName   string                            `json:"resultVariableName,omitempty"`
 	UseReturnVariable    bool                              `json:"useReturnVariable"`
+	// ResultDataType is the Mendix kind name ("Boolean", "String", "Integer",
+	// "Decimal", "DateTime", "Void", "Object", "List") of the action's return
+	// type, resolved from the consumed service's cached $metadata at write
+	// time. If empty, the writer omits VariableDataType from BSON — which
+	// triggers Mendix's CE7269 "return type has changed" when the schema
+	// declares any return type.
+	ResultDataType string `json:"resultDataType,omitempty"`
 }
 
 func (CallExternalAction) isMicroflowAction() {}

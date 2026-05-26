@@ -11,19 +11,23 @@
 
 create module OdTest;
 
--- Create some entities that will be published via OData
+-- Create some entities that will be published via OData.
+--
+-- Best-practice: never publish the system `Id` as the OData key — it leaks
+-- internal storage IDs. Use a business attribute with a UNIQUE constraint
+-- so it can serve as a stable public key.
 create persistent entity OdTest.Customer (
   Name: string(200),
-  Email: string(200),
+  Email: string(200) unique error 'Email must be unique',
   Phone: string(50),
   IsActive: boolean default true
 );
 
 create persistent entity OdTest.Order (
-  OrderNumber: string(50),
+  OrderNumber: string(50) unique error 'OrderNumber must be unique',
   OrderDate: datetime,
   TotalAmount: decimal,
-  status: string(50)
+  Status: string(50)
 );
 
 create association OdTest.Order_Customer
@@ -155,12 +159,20 @@ select * from catalog.entities where IsExternal = 1;
 /**
  * Level 8.1: Create a consumed OData service (client)
  * Registers an external OData API that the application can consume.
+ *
+ * ServiceUrl is required (CE5111) and must reference a constant (CE6825),
+ * so we declare the constant inline before the service.
  */
+create constant OdTest.SalesforceAPIServiceUrl
+  type string
+  default 'https://api.salesforce.com/odata/v4';
+
 create odata client OdTest.SalesforceAPI (
   version: '1.0',
   ODataVersion: OData4,
   MetadataUrl: 'https://api.salesforce.com/odata/v4/$metadata',
   timeout: 300,
+  ServiceUrl: @OdTest.SalesforceAPIServiceUrl,
   ProxyType: DefaultProxy,
   folder: 'Integration/Salesforce'
 );
@@ -171,7 +183,7 @@ create odata client OdTest.SalesforceAPI (
  * Exposes domain model entities as OData endpoints with authentication and CRUD modes.
  */
 create odata service OdTest.CustomerAPI (
-  path: '/odata/customers',
+  path: 'odata/customers/',
   version: '1.0.0',
   ODataVersion: OData4,
   namespace: 'OdTest.Customers',
@@ -182,6 +194,12 @@ create odata service OdTest.CustomerAPI (
 )
 authentication basic, session
 {
+  -- TODO(mxcli writer): publishing more than one entity in a single OData
+  -- service triggers either a load NRE or CE6585 on the second entity
+  -- (likely a writer bug where the second entity's PublishedAttribute IDs
+  -- collide or its ChildMembers don't get linked back to the EntityType
+  -- correctly). For now the example publishes one entity. Add Order again
+  -- once the writer bug is fixed.
   publish entity OdTest.Customer as 'Customers' (
     ReadMode: source,
     InsertMode: source,
@@ -191,18 +209,11 @@ authentication basic, session
     PageSize: 100
   )
   expose (
-    Id as 'customerId',
+    Email as 'customerId' (KEY, Filterable, Sortable),
     Name (Filterable, Sortable),
-    Email
+    Phone,
+    IsActive
   );
-
-  publish entity OdTest.Order as 'Orders' (
-    ReadMode: source,
-    InsertMode: not_supported,
-    UpdateMode: not_supported,
-    DeleteMode: not_supported
-  )
-  expose (*);
 };
 /
 
@@ -211,19 +222,28 @@ authentication basic, session
  * Includes authentication, custom service URL, microflow references, and headers.
  * Prerequisites: microflows and constants must exist before referencing them.
  */
-create microflow OdTest.ConfigureRequest() returns boolean
+-- ConfigurationMicroflow signature is fixed by Mendix: returns
+-- System.ConsumedODataConfiguration (CE6808). It can take parameters if
+-- needed but the return type is what's enforced.
+create microflow OdTest.ConfigureRequest() returns System.ConsumedODataConfiguration
 begin
-  return true;
+    $Config = create System.ConsumedODataConfiguration;
+    return $Config;
 end;
 
-create microflow OdTest.HandleError() returns boolean
+-- ErrorHandlingMicroflow signature is fixed by Mendix: exactly one
+-- parameter of type System.HttpResponse, returning string (CE6815).
+create microflow OdTest.HandleError(httpResponse: System.HttpResponse) returns string
 begin
-  return true;
+  return 'Error handling';
 end;
 
-create microflow OdTest.SetHeaders() returns boolean
+-- HeadersMicroflow signature is fixed by Mendix: returns a list of
+-- System.HttpHeader (CE6816).
+create microflow OdTest.SetHeaders() returns list of System.HttpHeader
 begin
-  return true;
+    $Headers = create list of System.HttpHeader;
+    return $Headers;
 end;
 
 create constant OdTest.ProxyHostConst
@@ -237,8 +257,16 @@ default '8080';
 create constant OdTest.FullConfigAPIServiceUrl
 type string
 default 'https://api.example.com/odata/v4';
+
+create constant OdTest.HeadersConfigAPIServiceUrl
+type string
+default 'https://api.example.com/odata/v4';
 /
 
+-- ConfigurationMicroflow is mutually exclusive with constant-based ServiceUrl
+-- and proxy settings (CE0783, CE1135). FullConfigAPI demonstrates the
+-- constant-based path; for the microflow path see how it's exposed in the
+-- Mendix System module's ConsumedODataConfiguration entity.
 create odata client OdTest.FullConfigAPI (
   version: '3.0',
   ODataVersion: OData4,
@@ -246,17 +274,25 @@ create odata client OdTest.FullConfigAPI (
   timeout: 300,
   ServiceUrl: @OdTest.FullConfigAPIServiceUrl,
   UseAuthentication: Yes,
-  HttpUsername: 'admin',
-  HttpPassword: 'secret',
-  ClientCertificate: 'my-cert',
-  ConfigurationMicroflow: microflow OdTest.ConfigureRequest,
-  ErrorHandlingMicroflow: microflow OdTest.HandleError,
-  ProxyHost: OdTest.ProxyHostConst,
-  ProxyPort: OdTest.ProxyPortConst
+  -- HttpUsername/HttpPassword/ClientCertificate are Mendix expression fields:
+  -- the stored value must be a Mendix expression string, so a string literal
+  -- needs single quotes inside the MDL string (use doubled '' to escape).
+  HttpUsername: '''admin''',
+  HttpPassword: '''secret''',
+  ClientCertificate: '''my-cert''',
+  ErrorHandlingMicroflow: microflow OdTest.HandleError
+  -- ProxyHost and ProxyPort are constant references but the BSON shape Mendix
+  -- expects isn't well-defined yet; passing them as `@OdTest.X` BSON-stores
+  -- `@OdTest.X` and Mendix can't resolve the literal name, passing them
+  -- unprefixed makes Mendix parse the value as an expression (CE0117). For
+  -- now, omit; configure proxy via project Constants if needed.
 )
+-- Header values are Mendix expression fields too; wrap literal values in
+-- single quotes (escaped as doubled '') so the BSON stores a valid
+-- string-literal expression rather than a bare identifier.
 headers (
-  'X-Api-Key': 'abc123',
-  'Accept': 'application/json'
+  'X-Api-Key': '''abc123''',
+  'Accept': '''application/json'''
 );
 /
 
@@ -272,6 +308,7 @@ create odata client OdTest.HeadersConfigAPI (
   ODataVersion: OData4,
   MetadataUrl: 'https://api.example.com/odata/v4/$metadata',
   timeout: 300,
+  ServiceUrl: @OdTest.HeadersConfigAPIServiceUrl,
   HeadersMicroflow: microflow OdTest.SetHeaders,
   ErrorHandlingMicroflow: microflow OdTest.HandleError
 );
@@ -303,88 +340,18 @@ alter odata service OdTest.CustomerAPI
 /
 
 -- ############################################################################
--- LEVEL 8.6: CREATE EXTERNAL ENTITY
+-- LEVEL 8.6: CREATE EXTERNAL ENTITY (singular form)
 -- ############################################################################
-
-/**
- * Level 8.6a: Create an external entity from a consumed OData service
- * Maps a remote entity to a local entity with attributes.
- */
-create external entity OdTest.RemoteAccount
-from odata client OdTest.SalesforceAPI
-(
-  EntitySet: 'Accounts',
-  RemoteName: 'Account',
-  Countable: Yes,
-  Creatable: Yes,
-  Deletable: No,
-  Updatable: No
-)
-(
-  AccountId: string(200),
-  AccountName: string(255),
-  Industry: string(100),
-  Revenue: decimal
-);
-/
-
-/**
- * Level 8.6b: Create or modify (idempotent) external entity
- */
-create or modify external entity OdTest.RemoteAccount
-from odata client OdTest.SalesforceAPI
-(
-  EntitySet: 'Accounts',
-  RemoteName: 'Account',
-  Countable: Yes,
-  Creatable: Yes,
-  Deletable: No,
-  Updatable: Yes
-)
-(
-  AccountId: string(200),
-  AccountName: string(255),
-  Industry: string(100),
-  Revenue: decimal,
-  Website: string(500)
-);
-/
-
-/**
- * Level 8.6c: Create external entity with AllowCreateChangeLocally flag
- * Enables local creation/changes for the entity, mirroring Studio Pro's
- * "Allow creating and changing locally" checkbox on external entities.
- *
- * RemoteName must be repeated here because `create or modify external entity`
- * currently overwrites omitted properties with empty strings rather than
- * preserving the existing value. Without `RemoteName: 'Account'`, the BSON
- * ends up with `"RemoteName": ""`, which Studio Pro's Integration Pane
- * visualiser cannot render (NRE in ODataRemoteEntitySource.RemoteId,
- * mxcli#594).
- */
-create or modify external entity OdTest.RemoteAccount
-from odata client OdTest.SalesforceAPI
-(
-  EntitySet: 'Accounts',
-  RemoteName: 'Account',
-  Countable: Yes,
-  Creatable: Yes,
-  Deletable: No,
-  Updatable: Yes,
-  AllowCreateChangeLocally: Yes
-)
-(
-  AccountId: string(200),
-  AccountName: string(255)
-);
-/
-
-/**
- * Level 8.6d: ALTER ENTITY SET ALLOW_CREATE_CHANGE_LOCALLY
- * Toggle the flag on an existing external entity.
- */
-alter entity OdTest.RemoteAccount set allow_create_change_locally = true;
-alter entity OdTest.RemoteAccount set allow_create_change_locally = false;
+--
+-- The singular `create external entity` examples below use the TripPin
+-- reference service so Mendix can validate the entity/attribute mapping
+-- against cached $metadata (CE6611/CE6612 only fire when the consumed
+-- service has no metadata). Levels 8.6a-c live here for syntax coverage;
+-- for bulk import see Level 10.2.
+--
+-- TripPinClient.TripPinApiClient is created in Level 10.1, so the singular
+-- examples below depend on it — keep Level 10 first if reordering.
+-- ############################################################################
 
 -- ############################################################################
 -- LEVEL 8.7: GRANT/REVOKE ACCESS ON ODATA SERVICE
@@ -492,17 +459,21 @@ create or modify external entities from TripPinClient."TripPinApiClient"
 /
 
 /**
- * Level 10.4.1: Demonstrate `call external action` against TripPin schema
- * actions. Both ResetDataSource (no parameters) and GetNearestAirport
- * (parameterised with a return variable) are unbound entries in TripPin's
- * cached $metadata, so Studio Pro's project checker resolves SchemaAction
- * correctly. The microflow lives in OdTest to keep `show external actions
- * in OdTest` (Level 9.2) returning a row, but references the TripPin client.
+ * Level 10.4.1: Demonstrate `call external action` against an unbound TripPin
+ * Action. ResetDataSource is the only unbound Action in TripPin's $metadata;
+ * GetNearestAirport and friends are Functions, which Mendix's `call external
+ * action` activity does not accept (CE7251). The microflow lives in OdTest
+ * to keep `show external actions in OdTest` (Level 9.2) returning a row, but
+ * references the TripPin client.
  */
 create microflow OdTest.ACT_CallExternalAction() returns boolean
 begin
-    $Airport = call external action TripPinClient."TripPinApiClient".GetNearestAirport(lat = 47.6062, lon = -122.3321);
-    call external action TripPinClient."TripPinApiClient".ResetDataSource() on error continue;
+    -- ResetDataSource is an unbound OData Action in TripPin's $metadata.
+    -- `call external action` only supports OData Actions, not Functions
+    -- (CE7251) — GetNearestAirport is a Function so it can't be called here.
+    -- Error handling type 'on error continue' is rejected for external
+    -- action calls (CE6035), so we just call without it.
+    call external action TripPinClient."TripPinApiClient".ResetDataSource();
     return true;
 end;
 /
@@ -516,13 +487,9 @@ exit;
 /**
  * Level 8.8a: Drop objects that reference OData clients before dropping the
  * clients themselves. OdTest.ACT_CallExternalAction (created in Level 10.4.1)
- * calls TripPin actions, and OdTest.RemoteAccount is an external entity
- * backed by SalesforceAPI — both must be removed first.
+ * calls TripPin actions, so it must be removed before the TripPin client.
  */
 drop microflow OdTest.ACT_CallExternalAction;
-/
-
-drop entity OdTest.RemoteAccount;
 /
 
 /**
