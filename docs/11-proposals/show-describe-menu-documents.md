@@ -1,3 +1,8 @@
+---
+title: SHOW/DESCRIBE Menu Documents
+status: proposed
+---
+
 # Proposal: SHOW/DESCRIBE Menu Documents
 
 ## Overview

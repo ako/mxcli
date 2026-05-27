@@ -1,3 +1,9 @@
+---
+title: Expression Type Checking for mxcli check
+status: draft
+date: 2026-05-10
+---
+
 # Proposal: Expression Type Checking for mxcli check
 
 **Status:** Draft

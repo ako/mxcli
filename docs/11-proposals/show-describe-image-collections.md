@@ -1,3 +1,8 @@
+---
+title: SHOW/DESCRIBE Image Collections
+status: proposed
+---
+
 # Proposal: SHOW/DESCRIBE Image Collections
 
 ## Overview

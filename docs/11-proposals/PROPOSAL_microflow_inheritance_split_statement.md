@@ -1,3 +1,8 @@
+---
+title: Microflow Inheritance Split And Cast Statements
+status: draft
+---
+
 # Proposal: Microflow Inheritance Split And Cast Statements
 
 Status: Draft

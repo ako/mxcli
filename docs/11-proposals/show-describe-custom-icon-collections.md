@@ -1,3 +1,8 @@
+---
+title: SHOW/DESCRIBE Custom Icon Collections
+status: proposed
+---
+
 # Proposal: SHOW/DESCRIBE Custom Icon Collections
 
 ## Overview

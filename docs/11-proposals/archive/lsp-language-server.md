@@ -1,3 +1,8 @@
+---
+title: MDL Language Server for VS Code and Claude Code
+status: done
+---
+
 # Proposal: MDL Language Server for VS Code and Claude Code
 
 ## Goal

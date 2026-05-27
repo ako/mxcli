@@ -1,3 +1,8 @@
+---
+title: Large Source Files
+status: proposed
+---
+
 # Refactoring Proposal: Large Source Files
 
 ## Overview

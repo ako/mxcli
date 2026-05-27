@@ -1,3 +1,8 @@
+---
+title: Unified mxcli & MDL Documentation Site
+status: proposed
+---
+
 # Proposal: Unified mxcli & MDL Documentation Site
 
 ## Problem

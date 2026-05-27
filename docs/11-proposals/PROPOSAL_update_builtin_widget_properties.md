@@ -1,3 +1,9 @@
+---
+title: Extend UPDATE WIDGETS to Built-in Widgets via Schema Registry
+status: draft
+date: 2026-02-18
+---
+
 # Proposal: Extend UPDATE WIDGETS to Built-in Widgets via Schema Registry
 
 **Status:** Draft

@@ -1,3 +1,8 @@
+---
+title: SHOW/DESCRIBE JSON Structures
+status: proposed
+---
+
 # Proposal: SHOW/DESCRIBE JSON Structures
 
 ## Overview

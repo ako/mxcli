@@ -1,3 +1,9 @@
+---
+title: Multi-Project Tree View
+status: draft
+date: 2026-04-06
+---
+
 # Proposal: Multi-Project Tree View
 
 **Status:** Draft

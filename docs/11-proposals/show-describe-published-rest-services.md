@@ -1,3 +1,8 @@
+---
+title: SHOW/DESCRIBE Published REST Services
+status: proposed
+---
+
 # Proposal: SHOW/DESCRIBE Published REST Services
 
 ## Overview

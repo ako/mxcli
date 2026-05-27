@@ -1,3 +1,8 @@
+---
+title: Page Syntax V3 - Implementation Reference
+status: done
+---
+
 # Page Syntax V3 - Implementation Reference
 
 ## Status: Implemented ✅

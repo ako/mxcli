@@ -1,3 +1,9 @@
+---
+title: Comprehensive MDL Syntax and Grammar Improvements (v2)
+status: proposed
+date: 2026-01-20
+---
+
 # Proposal: Comprehensive MDL Syntax and Grammar Improvements (v2)
 
 **Date:** 2026-01-20

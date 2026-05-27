@@ -1,3 +1,9 @@
+---
+title: MCP BSON Benchmark — Correctness Oracle + Efficiency Measurement
+status: draft
+date: 2026-05-03
+---
+
 # Proposal: MCP BSON Benchmark — Correctness Oracle + Efficiency Measurement
 
 **Status:** Draft  

@@ -1,3 +1,8 @@
+---
+title: mxcli Code Search Extension - Design Input
+status: done
+---
+
 # mxcli Code Search Extension - Design Input
 
 ## Context

@@ -1,3 +1,8 @@
+---
+title: Integration Pane — Unified View of External Service Assets
+status: draft
+---
+
 # Proposal: Integration Pane — Unified View of External Service Assets
 
 ## Overview

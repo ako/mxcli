@@ -1,3 +1,8 @@
+---
+title: Version-Aware MDL and BSON Serialization
+status: proposed
+---
+
 # Proposal: Version-Aware MDL and BSON Serialization
 
 ## Problem Statement

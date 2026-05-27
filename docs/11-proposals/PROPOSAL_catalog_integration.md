@@ -1,3 +1,9 @@
+---
+title: mxcli catalog — Mendix Catalog Integration
+status: draft
+date: 2026-04-16
+---
+
 # Proposal: `mxcli catalog` — Mendix Catalog Integration
 
 **Status:** Draft  

@@ -1,3 +1,9 @@
+---
+title: Bulk Change Custom Widget Properties
+status: draft
+date: 2026-01-29
+---
+
 # Proposal: Bulk Change Custom Widget Properties
 
 **Status:** Draft

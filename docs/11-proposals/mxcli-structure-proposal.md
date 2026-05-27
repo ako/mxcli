@@ -1,3 +1,8 @@
+---
+title: Implement `mxcli structure` Command
+status: partial
+---
+
 # Implement `mxcli structure` Command
 
 ## Context

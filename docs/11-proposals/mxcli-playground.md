@@ -1,3 +1,8 @@
+---
+title: mxcli Playground
+status: draft
+---
+
 # Proposal: mxcli Playground
 
 ## Overview

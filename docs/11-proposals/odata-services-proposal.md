@@ -1,3 +1,8 @@
+---
+title: OData Clients, OData Services, and External Entities Support
+status: proposed
+---
+
 # Proposal: OData Clients, OData Services, and External Entities Support
 
 ## Overview

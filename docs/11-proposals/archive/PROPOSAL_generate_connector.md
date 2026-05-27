@@ -1,3 +1,8 @@
+---
+title: Generate Database Connector from External Schema
+status: done
+---
+
 # Proposal: Generate Database Connector from External Schema
 
 **Status**: Draft

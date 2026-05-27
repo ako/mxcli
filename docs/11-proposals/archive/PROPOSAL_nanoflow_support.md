@@ -1,3 +1,8 @@
+---
+title: Comprehensive Nanoflow Support
+status: done
+---
+
 # Proposal: Comprehensive Nanoflow Support
 
 ## Overview

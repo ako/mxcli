@@ -1,3 +1,8 @@
+---
+title: mxcli schema extract — Empirical Metamodel Schema Extraction
+status: superseded
+---
+
 # Proposal: `mxcli schema extract` — Empirical Metamodel Schema Extraction
 
 > **Status: Superseded by [UNIFIED_SCHEMA_REGISTRY.md](UNIFIED_SCHEMA_REGISTRY.md)**

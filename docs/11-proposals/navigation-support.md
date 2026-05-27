@@ -1,3 +1,8 @@
+---
+title: Navigation Support in MDL
+status: partial
+---
+
 # Proposal: Navigation Support in MDL
 
 ## Background

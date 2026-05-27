@@ -1,3 +1,8 @@
+---
+title: SHOW/DESCRIBE Regular Expressions
+status: proposed
+---
+
 # Proposal: SHOW/DESCRIBE Regular Expressions
 
 ## Overview

@@ -1,3 +1,8 @@
+---
+title: Prompt: Journey Architecture Diagram Generator for Mendix Projects
+status: proposed
+---
+
 # Prompt: Journey Architecture Diagram Generator for Mendix Projects
 
 ## Context

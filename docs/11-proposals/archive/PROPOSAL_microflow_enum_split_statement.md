@@ -1,3 +1,8 @@
+---
+title: Microflow ENUM SPLIT Statement
+status: done
+---
+
 # Proposal: Microflow ENUM SPLIT Statement
 
 Status: Implemented

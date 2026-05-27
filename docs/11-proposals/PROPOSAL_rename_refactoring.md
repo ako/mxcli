@@ -1,3 +1,9 @@
+---
+title: RENAME with Reference Refactoring
+status: draft
+date: 2026-04-08
+---
+
 # Proposal: RENAME with Reference Refactoring
 
 **Status:** Draft

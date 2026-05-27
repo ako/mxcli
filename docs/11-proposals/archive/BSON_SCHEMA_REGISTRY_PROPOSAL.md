@@ -1,3 +1,8 @@
+---
+title: Version-Aware BSON Schema Registry
+status: superseded
+---
+
 # Proposal: Version-Aware BSON Schema Registry
 
 > **Status: Superseded by [UNIFIED_SCHEMA_REGISTRY.md](UNIFIED_SCHEMA_REGISTRY.md)**

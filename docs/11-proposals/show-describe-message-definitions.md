@@ -1,3 +1,8 @@
+---
+title: SHOW/DESCRIBE Message Definitions
+status: proposed
+---
+
 # Proposal: SHOW/DESCRIBE Message Definitions
 
 ## Overview

@@ -1,3 +1,8 @@
+---
+title: DESCRIBE Nanoflow (Enhancement)
+status: superseded
+---
+
 # Proposal: DESCRIBE Nanoflow (Enhancement)
 
 > **Status: SUPERSEDED** — Full nanoflow support (SHOW, DESCRIBE, CREATE, DROP, CALL, GRANT/REVOKE, SHOW ACCESS, MOVE, MERMAID) is implemented in PRs #287–#297 and documented in [`PROPOSAL_nanoflow_support.md`](./PROPOSAL_nanoflow_support.md). This proposal is retained for historical context only.

@@ -1,3 +1,9 @@
+---
+title: MDL Syntax and Grammar Improvements
+status: draft
+date: 2026-01-20
+---
+
 # Proposal: MDL Syntax and Grammar Improvements
 
 **Date:** 2026-01-20

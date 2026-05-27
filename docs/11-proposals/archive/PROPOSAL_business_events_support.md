@@ -1,3 +1,8 @@
+---
+title: Business Events Support in mxcli
+status: done
+---
+
 # Proposal: Business Events Support in mxcli
 
 ## Motivation

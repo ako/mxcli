@@ -1,3 +1,8 @@
+---
+title: Replace Generated Playwright Tests with playwright-cli
+status: draft
+---
+
 # Proposal: Replace Generated Playwright Tests with playwright-cli
 
 **Status**: Draft

@@ -1,3 +1,8 @@
+---
+title: Workflow Support in mxcli
+status: done
+---
+
 # Proposal: Workflow Support in mxcli
 
 ## Motivation

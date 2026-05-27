@@ -1,3 +1,8 @@
+---
+title: Session Logging & Diagnostics for mxcli
+status: proposed
+---
+
 # Proposal: Session Logging & Diagnostics for mxcli
 
 ## Problem

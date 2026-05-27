@@ -1,3 +1,8 @@
+---
+title: VS Code MDL Visualizations
+status: proposed
+---
+
 # Proposal: VS Code MDL Visualizations
 
 ## Summary

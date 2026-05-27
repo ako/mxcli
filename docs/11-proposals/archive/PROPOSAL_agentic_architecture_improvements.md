@@ -1,3 +1,8 @@
+---
+title: Architecture Improvements for Agentic Development and Reduced Merge Conflicts
+status: done
+---
+
 # Proposal: Architecture Improvements for Agentic Development and Reduced Merge Conflicts
 
 ## Problem Statement

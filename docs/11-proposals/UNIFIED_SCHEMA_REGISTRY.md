@@ -1,3 +1,8 @@
+---
+title: Unified Schema Registry
+status: proposed
+---
+
 # Proposal: Unified Schema Registry
 
 **Status**: Proposed

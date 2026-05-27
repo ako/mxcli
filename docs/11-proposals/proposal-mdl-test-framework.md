@@ -1,3 +1,9 @@
+---
+title: MDL Test Framework
+status: draft
+date: 2026-02-23
+---
+
 # Proposal: MDL Test Framework
 
 **Status:** Draft

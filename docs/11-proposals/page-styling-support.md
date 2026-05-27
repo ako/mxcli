@@ -1,3 +1,8 @@
+---
+title: Add Styling Support to MDL Pages
+status: partial
+---
+
 # Proposal: Add Styling Support to MDL Pages
 
 ## Current State

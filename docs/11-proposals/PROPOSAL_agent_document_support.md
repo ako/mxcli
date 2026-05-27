@@ -1,3 +1,9 @@
+---
+title: Agent Document Type Support in MDL
+status: draft
+date: 2026-04-13
+---
+
 # Proposal: Agent Document Type Support in MDL
 
 **Status:** Draft

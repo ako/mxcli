@@ -1,3 +1,9 @@
+---
+title: Eval Framework for mxcli + Claude Code
+status: partial
+date: 2026-02-25
+---
+
 # Proposal: Eval Framework for mxcli + Claude Code
 
 **Status:** Phase 1 Implemented

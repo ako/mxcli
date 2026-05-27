@@ -1,3 +1,8 @@
+---
+title: Mendix Automated Testing Pipeline
+status: proposed
+---
+
 # Mendix Automated Testing Pipeline
 **Implementation Proposal for Claude Code**
 

@@ -1,3 +1,8 @@
+---
+title: mxcli Linter - Implementation Proposal (Revised)
+status: partial
+---
+
 # mxcli Linter - Implementation Proposal (Revised)
 
 ## Overview

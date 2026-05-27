@@ -1,3 +1,9 @@
+---
+title: mxcli auth — Mendix Platform Authentication
+status: draft
+date: 2026-04-14
+---
+
 # Proposal: `mxcli auth` — Mendix Platform Authentication
 
 **Status:** Draft

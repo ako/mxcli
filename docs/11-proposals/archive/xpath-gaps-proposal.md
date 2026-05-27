@@ -1,3 +1,9 @@
+---
+title: XPath Support Gap Analysis & Implementation Proposal
+status: done
+date: 2026-03-19
+---
+
 # XPath Support Gap Analysis & Implementation Proposal
 
 **Date:** 2026-03-19

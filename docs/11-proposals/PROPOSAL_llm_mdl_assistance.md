@@ -1,3 +1,8 @@
+---
+title: Improving LLM Assistance for MDL Code Generation
+status: proposed
+---
+
 # Proposal: Improving LLM Assistance for MDL Code Generation
 
 ## Problem Statement

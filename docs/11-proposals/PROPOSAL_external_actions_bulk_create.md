@@ -1,3 +1,8 @@
+---
+title: Bulk External Action Support from OData Contracts
+status: draft
+---
+
 # Proposal: Bulk External Action Support from OData Contracts
 
 ## Problem

@@ -1,3 +1,8 @@
+---
+title: SHOW/DESCRIBE Rules
+status: proposed
+---
+
 # Proposal: SHOW/DESCRIBE Rules
 
 ## Overview

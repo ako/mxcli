@@ -1,3 +1,8 @@
+---
+title: Direct SQL Query Execution in mxcli
+status: done
+---
+
 # Proposal: Direct SQL Query Execution in mxcli
 
 **Status**: Draft

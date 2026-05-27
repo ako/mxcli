@@ -1,3 +1,9 @@
+---
+title: Multi-Agent Merge for Mendix Projects
+status: draft
+date: 2026-03-30
+---
+
 # Proposal: Multi-Agent Merge for Mendix Projects
 
 **Status:** Draft

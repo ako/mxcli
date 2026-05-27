@@ -1,3 +1,8 @@
+---
+title: Consumed REST Services (SHOW / DESCRIBE / CREATE)
+status: proposed
+---
+
 # Proposal: Consumed REST Services (SHOW / DESCRIBE / CREATE)
 
 ## Overview

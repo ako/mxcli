@@ -1,3 +1,9 @@
+---
+title: Version-Aware Agent Support
+status: draft
+date: 2026-04-02
+---
+
 # Proposal: Version-Aware Agent Support
 
 **Status:** Draft

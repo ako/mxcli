@@ -1,3 +1,8 @@
+---
+title: mxcli Code Search Extension - Implementation Proposal
+status: done
+---
+
 # mxcli Code Search Extension - Implementation Proposal
 
 ## Executive Summary

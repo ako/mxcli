@@ -1,3 +1,8 @@
+---
+title: SHOW/DESCRIBE Support for Missing Pluggable (React) Widgets
+status: proposed
+---
+
 # Proposal: SHOW/DESCRIBE Support for Missing Pluggable (React) Widgets
 
 ## Overview

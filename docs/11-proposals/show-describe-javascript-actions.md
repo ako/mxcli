@@ -1,3 +1,8 @@
+---
+title: SHOW/DESCRIBE JavaScript Actions
+status: proposed
+---
+
 # Proposal: SHOW/DESCRIBE JavaScript Actions
 
 ## Overview

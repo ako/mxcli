@@ -1,3 +1,8 @@
+---
+title: Entity Positioning in ALTER ENTITY
+status: draft
+---
+
 # Proposal: Entity Positioning in ALTER ENTITY
 
 ## Problem

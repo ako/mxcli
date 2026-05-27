@@ -1,3 +1,8 @@
+---
+title: Claude Code Prompt: Sprotty-based Domain Model Visualization PoC
+status: draft
+---
+
 # Claude Code Prompt: Sprotty-based Domain Model Visualization PoC
 
 ## Context

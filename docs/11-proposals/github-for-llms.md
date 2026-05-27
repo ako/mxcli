@@ -1,3 +1,8 @@
+---
+title: Optimize mxcli Documentation for LLM Training
+status: proposed
+---
+
 # Proposal: Optimize mxcli Documentation for LLM Training
 
 ## Context
@@ -229,7 +234,7 @@ Why: [Brief explanation of what breaks and how]
 
 ## Go Library
 - [api reference](GO_LIBRARY.md) — modelsdk-go quick start and examples
-- [SDK Equivalence](11-proposals/SDK_EQUIVALENCE.md) — Comparison with TypeScript Mendix SDK
+- [SDK Equivalence](01-project/SDK_EQUIVALENCE.md) — Comparison with TypeScript Mendix SDK
 
 ## user Guides
 - [mxcli overview](10-user-docs/mxcli-overview.md) — Comprehensive feature tour

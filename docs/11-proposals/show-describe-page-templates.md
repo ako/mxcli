@@ -1,3 +1,8 @@
+---
+title: SHOW/DESCRIBE Page Templates
+status: proposed
+---
+
 # Proposal: SHOW/DESCRIBE Page Templates
 
 ## Overview

@@ -1,3 +1,8 @@
+---
+title: Empty Java Action Argument
+status: done
+---
+
 # Empty Java Action Argument
 
 Status: Implemented

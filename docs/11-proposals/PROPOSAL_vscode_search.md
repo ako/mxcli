@@ -1,3 +1,8 @@
+---
+title: VS Code Search — Quick Pick + Workspace Symbol
+status: proposed
+---
+
 # Proposal: VS Code Search — Quick Pick + Workspace Symbol
 
 ## Context

@@ -1,3 +1,8 @@
+---
+title: Page Composition and Partial Updates
+status: proposed
+---
+
 # Page Composition and Partial Updates
 
 ## Status: Proposal

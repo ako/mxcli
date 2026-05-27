@@ -1,3 +1,9 @@
+---
+title: Normalize Catalog Tables
+status: done
+date: 2026-05-20
+---
+
 # Proposal: Normalize Catalog Tables
 
 **Status:** Implemented (2026-05-22, commits `31987c71` + `c6607446`, issue #576)

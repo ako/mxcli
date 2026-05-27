@@ -1,3 +1,8 @@
+---
+title: SHOW/DESCRIBE Queues (Task Queues)
+status: proposed
+---
+
 # Proposal: SHOW/DESCRIBE Queues (Task Queues)
 
 ## Overview

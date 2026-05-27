@@ -1,3 +1,9 @@
+---
+title: mxcli marketplace — Download & Manage Marketplace Modules
+status: partial
+date: 2026-03-23 (initial), revised 2026-04-16 (spike results)
+---
+
 # Proposal: `mxcli marketplace` — Download & Manage Marketplace Modules
 
 **Status:** Partial — read-only commands shipping; install blocked upstream

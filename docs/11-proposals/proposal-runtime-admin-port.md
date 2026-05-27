@@ -1,3 +1,8 @@
+---
+title: mxcli Feature Request: Runtime Integration via M2EE Admin API
+status: proposed
+---
+
 # mxcli Feature Request: Runtime Integration via M2EE Admin API
 
 ## Background

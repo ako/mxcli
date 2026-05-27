@@ -1,3 +1,8 @@
+---
+title: Microflow CHANGE Refresh Modifier
+status: draft
+---
+
 # Proposal: Microflow CHANGE Refresh Modifier
 
 Status: Draft

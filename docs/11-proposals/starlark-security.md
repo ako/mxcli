@@ -1,3 +1,8 @@
+---
+title: Feature Request: Entity Access Rules in Starlark Lint API
+status: proposed
+---
+
 # Feature Request: Entity Access Rules in Starlark Lint API
 
 ## Background

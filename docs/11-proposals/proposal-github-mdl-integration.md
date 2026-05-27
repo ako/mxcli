@@ -1,3 +1,9 @@
+---
+title: GitHub Actions MDL Integration Tests
+status: draft
+date: 2026-03-16
+---
+
 # Proposal: GitHub Actions MDL Integration Tests
 
 **Status:** Draft

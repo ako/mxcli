@@ -1,3 +1,8 @@
+---
+title: SHOW/DESCRIBE Scheduled Events
+status: proposed
+---
+
 # Proposal: SHOW/DESCRIBE Scheduled Events
 
 ## Overview

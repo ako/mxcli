@@ -1,3 +1,8 @@
+---
+title: Association Mapping in IMPORT
+status: draft
+---
+
 # Proposal: Association Mapping in IMPORT
 
 **Status**: Draft

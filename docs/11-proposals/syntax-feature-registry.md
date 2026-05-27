@@ -1,3 +1,8 @@
+---
+title: Self-Describing Syntax Feature Registry
+status: draft
+---
+
 # Proposal: Self-Describing Syntax Feature Registry
 
 **Date**: 2026-04-10

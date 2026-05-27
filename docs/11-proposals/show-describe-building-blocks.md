@@ -1,3 +1,8 @@
+---
+title: SHOW/DESCRIBE Building Blocks
+status: proposed
+---
+
 # Proposal: SHOW/DESCRIBE Building Blocks
 
 ## Overview

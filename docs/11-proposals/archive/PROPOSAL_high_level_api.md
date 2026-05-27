@@ -1,3 +1,8 @@
+---
+title: High-Level API for modelsdk-go
+status: done
+---
+
 # Proposal: High-Level API for modelsdk-go
 
 **Status: IMPLEMENTED** (January 2026)

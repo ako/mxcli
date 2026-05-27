@@ -1,3 +1,8 @@
+---
+title: Catalog Tables for Go mxcli
+status: done
+---
+
 # Proposal: Catalog Tables for Go mxcli
 
 ## Overview

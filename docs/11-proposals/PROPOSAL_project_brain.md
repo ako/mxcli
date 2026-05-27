@@ -1,3 +1,8 @@
+---
+title: Project Brain — Persistent Knowledge and Session Scaffolding for Long-Term AI Collaboration
+status: draft
+---
+
 # Proposal: Project Brain — Persistent Knowledge and Session Scaffolding for Long-Term AI Collaboration
 
 ## Problem Statement

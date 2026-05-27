@@ -1,3 +1,8 @@
+---
+title: Widget Property Conditional Visibility
+status: draft
+---
+
 # Widget Property Conditional Visibility
 
 Status: Draft

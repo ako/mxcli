@@ -1,3 +1,8 @@
+---
+title: SHOW/DESCRIBE Export Mappings
+status: proposed
+---
+
 # Proposal: SHOW/DESCRIBE Export Mappings
 
 ## Overview

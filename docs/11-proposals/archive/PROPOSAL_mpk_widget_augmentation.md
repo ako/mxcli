@@ -1,3 +1,8 @@
+---
+title: Augment Widget Templates from .mpk at Runtime
+status: done
+---
+
 # Proposal: Augment Widget Templates from .mpk at Runtime
 
 ## Problem Statement

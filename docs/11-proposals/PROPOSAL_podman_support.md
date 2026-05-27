@@ -1,3 +1,9 @@
+---
+title: Podman Support as Docker Alternative
+status: partial
+date: 2026-03-27
+---
+
 # Proposal: Podman Support as Docker Alternative
 
 **Status:** Implemented (Phase 1 & 2)

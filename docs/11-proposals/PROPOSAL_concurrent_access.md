@@ -1,3 +1,8 @@
+---
+title: Concurrent Access Safety for mxcli
+status: proposed
+---
+
 # Proposal: Concurrent Access Safety for mxcli
 
 ## Problem

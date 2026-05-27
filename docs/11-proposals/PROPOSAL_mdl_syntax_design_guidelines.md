@@ -1,3 +1,9 @@
+---
+title: MDL Syntax Design Guidelines
+status: draft
+date: 2026-04-01
+---
+
 # Proposal: MDL Syntax Design Guidelines
 
 **Status:** Draft

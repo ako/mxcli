@@ -1,3 +1,8 @@
+---
+title: SHOW/DESCRIBE Module Settings
+status: proposed
+---
+
 # Proposal: SHOW/DESCRIBE Module Settings
 
 ## Overview

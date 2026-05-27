@@ -1,3 +1,8 @@
+---
+title: Page Syntax V2 - Implementation Reference
+status: superseded
+---
+
 # Page Syntax V2 - Implementation Reference
 
 ## Status: Superseded by V3 ⚠️

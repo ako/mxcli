@@ -1,3 +1,8 @@
+---
+title: MDL Security Support
+status: done
+---
+
 # Proposal: MDL Security Support
 
 ## Overview

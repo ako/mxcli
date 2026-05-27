@@ -1,3 +1,9 @@
+---
+title: Module Maven Dependencies (JAR Dependencies)
+status: draft
+date: 2026-05-10
+---
+
 # Proposal: Module Maven Dependencies (JAR Dependencies)
 
 **Status:** Draft  

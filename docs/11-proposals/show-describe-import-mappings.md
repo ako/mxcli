@@ -1,3 +1,8 @@
+---
+title: SHOW/DESCRIBE Import Mappings
+status: proposed
+---
+
 # Proposal: SHOW/DESCRIBE Import Mappings
 
 ## Overview

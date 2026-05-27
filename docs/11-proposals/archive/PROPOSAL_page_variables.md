@@ -1,3 +1,8 @@
+---
+title: Page Variables Support
+status: done
+---
+
 # Proposal: Page Variables Support
 
 ## Summary

@@ -1,3 +1,9 @@
+---
+title: Workflow Improvements: ALTER WORKFLOW + Cross-References
+status: proposed
+date: 2026-04-03
+---
+
 # Workflow Improvements: ALTER WORKFLOW + Cross-References
 
 **Date:** 2026-04-03
