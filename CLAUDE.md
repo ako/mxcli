@@ -235,6 +235,27 @@ Available namespaces: `DomainModels`, `enumerations`, `microflows`, `pages`, `mo
 - Export types that should be part of the public API
 - Use interfaces for polymorphic types (e.g., `Element`, `MicroflowObject`)
 
+## Documentation Artifacts
+
+mxcli uses a layered documentation system — each artifact type has a single canonical home. If a value can change without anyone touching the artifact, it does not belong there; link to the canonical home instead.
+
+| Artifact | Lives in | Created via | Purpose |
+|----------|----------|-------------|---------|
+| PRD / feature proposal | `docs/11-proposals/` | `/mxcli-dev:proposal` | What to build and why |
+| Bug report | `docs/12-bug-reports/` | — | Reproduction + diagnosis |
+| ADR | `docs/13-decisions/` | `/mxcli-dev:adr-new` | Cross-cutting decisions (immutable audit trail) |
+| User manual | `docs-site/src/` | hand-edited | How to use mxcli / MDL |
+| Concept wiki | `docs-wiki/` | `/mxcli-dev:wiki-sync` | Synthesized brain — framing and connecting only |
+| Skill | `.claude/skills/` | hand-edited | Step-by-step procedure for a recurring task |
+| Symptom table | `.claude/skills/fix-issue.md` | append on every bug fix | Bug symptom → file → fix recipe |
+| Load-bearing rule | this file | hand-edited | Always-in-context invariants and routing |
+
+**State stays in its native home.** Proposal status, PR / issue numbers, roadmap, version registries — these live only where they're authoritative (proposal frontmatter, GitHub, the `sdk/versions/*.yaml` files). The wiki and CLAUDE.md may cite this state but never mirror it.
+
+**ADRs are immutable once accepted.** Supersede with a new ADR rather than editing in place. Conventions and template in [`docs/13-decisions/README.md`](docs/13-decisions/README.md).
+
+**The wiki is synthesized, not stated.** It frames and connects across the other artifacts — it never restates content that has a canonical home. Rules and seed page list in [`.claude/skills/maintain-wiki.md`](.claude/skills/maintain-wiki.md).
+
 ## PR / Commit Review Checklist
 
 When reviewing pull requests or validating work before commit, verify these items:
@@ -251,7 +272,7 @@ When reviewing pull requests or validating work before commit, verify these item
 - [ ] Verify the PR doesn't re-document already-shipped features as new
 
 ### Syntax design for MDL features
-New or modified MDL syntax must follow the design guidelines:
+New or modified MDL syntax must follow the design guidelines. See [ADR-0003: MDL is SQL-shaped](docs/13-decisions/0003-mdl-is-sql-shaped.md) for the underlying decision and rejected alternatives; the design checklist below operationalises it.
 - [ ] **Design skill consulted** — read `.claude/skills/design-mdl-syntax.md` before designing syntax
 - [ ] **Follows standard patterns** — uses `create`/`alter`/`drop`/`show`/`describe`, not custom verbs
 - [ ] **Reads as English** — a business analyst understands the statement on first reading
@@ -268,7 +289,7 @@ New features that depend on a specific Mendix version must be version-gated:
 - [ ] **Skill updated** — `.claude/skills/version-awareness.md` updated if the feature has a workaround for older versions
 
 ### Backend abstraction compliance
-All executor code must go through the backend abstraction layer — the executor must never import `sdk/mpr` for write paths:
+All executor code must go through the backend abstraction layer — the executor must never import `sdk/mpr` for write paths. See [ADR-0002: Backend Abstraction Layer](docs/13-decisions/0002-backend-abstraction.md) for the context and alternatives.
 - [ ] **No `sdk/mpr` write imports in executor** — executor files must not call `sdk/mpr` writer/parser types directly; use `ctx.Backend.*` instead
 - [ ] **New backend methods on the interface** — any new data access or mutation goes in the appropriate interface in `mdl/backend/` (e.g., `DomainModelBackend`, `MicroflowBackend`), not as a direct SDK call
 - [ ] **MPR implementation in `mdl/backend/mpr/`** — the concrete implementation lives here; all BSON/reader/writer logic stays in this package
@@ -509,7 +530,7 @@ Full syntax tables for all MDL statements (microflows, pages, security, navigati
 - `README.md` - User documentation and API reference
 - `api/api.go` - High-level fluent API entry point
 - `api/domainmodels.go` - Entity/Association/Attribute builders
-- `docs/SDK_EQUIVALENCE.md` - Detailed comparison with TypeScript SDK, gap analysis
+- `docs/01-project/SDK_EQUIVALENCE.md` - Detailed comparison with TypeScript SDK, gap analysis
 - `sdk/mpr/parser.go` - BSON parsing logic (complex, handles polymorphic types)
 - `sdk/mpr/writer_widgets.go` - Widget BSON serialization
 - `sdk/widgets/templates/` - Embedded widget templates for pluggable widgets (ComboBox, DataGrid2, etc.)
