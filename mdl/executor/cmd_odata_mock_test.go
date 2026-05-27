@@ -617,10 +617,14 @@ func TestCreateODataClient_VisitorRoundtrip_Issue573(t *testing.T) {
 	}
 }
 
-// TestCreateODataClient_HeadersMicroflow verifies the third Studio Pro
-// dropdown option ("Headers microflow"), which mxcli didn't support at all
-// before the #573 follow-up. It maps MDL `HeadersMicroflow: microflow X.Y`
-// to BSON `HeaderListMicroflow` on the ConsumedODataService document.
+// TestCreateODataClient_HeadersMicroflow verifies the "Headers microflow"
+// dropdown option in Studio Pro's "Configuration source". Both the
+// "Configuration microflow" and "Headers microflow" options write to the
+// same BSON field `ConfigurationMicroflow`; Studio Pro picks the dropdown
+// label from the referenced microflow's return type (list of
+// System.HttpHeader -> "Headers microflow"). The MDL `HeadersMicroflow:`
+// keyword is therefore an alias for `ConfigurationMicroflow:` — both
+// routes flow into the same model field.
 func TestCreateODataClient_HeadersMicroflow(t *testing.T) {
 	mod := mkModule("MyModule")
 	h := mkHierarchy(mod)

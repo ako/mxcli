@@ -37,10 +37,88 @@ func init() {
 		Keywords: []string{
 			"create odata client", "consume odata", "external entity",
 			"metadata url", "odata4", "headers", "proxy",
+			"configurationmicroflow", "headersmicroflow", "service url",
 		},
-		Syntax:  "CREATE ODATA CLIENT Module.Name (\n  Version: '1.0',\n  ODataVersion: OData4,\n  MetadataUrl: 'https://.../$metadata',\n  Timeout: 300\n)\n[HEADERS ('Key': 'Value')];\n\nCREATE EXTERNAL ENTITY Module.Name\n  FROM ODATA CLIENT Module.Client\n  (EntitySet: 'Name', RemoteName: 'Name')\n  (Attr: Type, ...);\n\nCREATE EXTERNAL ENTITIES FROM Module.Client\n  [INTO Module] [ENTITIES (Name1, Name2)];",
-		Example: "CREATE ODATA CLIENT MyModule.SalesforceAPI (\n  Version: '1.0',\n  ODataVersion: OData4,\n  MetadataUrl: 'https://api.example.com/odata/$metadata',\n  Timeout: 300\n);\n\nCREATE EXTERNAL ENTITIES FROM MyModule.SalesforceAPI INTO Integration;",
-		SeeAlso: []string{"odata", "odata.show"},
+		Syntax: "CREATE ODATA CLIENT Module.Name (\n" +
+			"  Version: '1.0',\n" +
+			"  ODataVersion: OData4,\n" +
+			"  MetadataUrl: 'https://.../$metadata',\n" +
+			"  Timeout: 300,\n" +
+			"  ServiceUrl: @Module.ServiceUrlConstant,    -- must be a constant ref\n" +
+			"  -- Configuration source dropdown — pick ONE: constants only (omit\n" +
+			"  -- both microflows), Configuration microflow, OR Headers microflow.\n" +
+			"  -- Both MDL keywords map to the same BSON field; Studio Pro picks\n" +
+			"  -- the label from the microflow's return type:\n" +
+			"  --   System.ConsumedODataConfiguration -> Configuration microflow\n" +
+			"  --   list of System.HttpHeader         -> Headers microflow\n" +
+			"  ConfigurationMicroflow: microflow Module.Configure,\n" +
+			"  ErrorHandlingMicroflow: microflow Module.HandleError\n" +
+			")\n" +
+			"[HEADERS ('Key': 'Value')];\n\n" +
+			"CREATE EXTERNAL ENTITY Module.Name\n" +
+			"  FROM ODATA CLIENT Module.Client\n" +
+			"  (EntitySet: 'Name', RemoteName: 'Name')\n" +
+			"  (Attr: Type, ...);\n\n" +
+			"CREATE EXTERNAL ENTITIES FROM Module.Client\n" +
+			"  [INTO Module] [ENTITIES (Name1, Name2)];",
+		Example: "CREATE CONSTANT MyModule.SvcUrl TYPE String DEFAULT 'https://api.example.com/odata/v4/';\n\nCREATE ODATA CLIENT MyModule.SalesforceAPI (\n  Version: '1.0',\n  ODataVersion: OData4,\n  MetadataUrl: 'https://api.example.com/odata/$metadata',\n  Timeout: 300,\n  ServiceUrl: @MyModule.SvcUrl\n);\n\nCREATE EXTERNAL ENTITIES FROM MyModule.SalesforceAPI INTO Integration;",
+		SeeAlso: []string{"odata", "odata.publish", "odata.show"},
+	})
+
+	Register(SyntaxFeature{
+		Path:    "odata.publish",
+		Summary: "Publish entities as OData services with KEY, options, and navigation properties",
+		Keywords: []string{
+			"create odata service", "publish entity", "publish odata",
+			"expose", "key", "navigation property", "association exposure",
+			"authentication", "page size",
+		},
+		Syntax: "CREATE [OR MODIFY] ODATA SERVICE Module.Name (\n" +
+			"  path: 'odata/customers/',           -- no leading slash; trailing slash required\n" +
+			"  version: '1.0.0',\n" +
+			"  ODataVersion: OData4,\n" +
+			"  namespace: 'Module.Customers'\n" +
+			")\n" +
+			"authentication basic, session\n" +
+			"{\n" +
+			"  publish entity Module.Entity as 'EntitySet' (\n" +
+			"    ReadMode: source,\n" +
+			"    InsertMode: source | not_supported,\n" +
+			"    UpdateMode: source | not_supported,\n" +
+			"    DeleteMode: source | not_supported,\n" +
+			"    UsePaging: Yes,\n" +
+			"    PageSize: 100\n" +
+			"  )\n" +
+			"  expose (\n" +
+			"    KeyAttr as 'ExposedKey' (KEY, Filterable, Sortable),\n" +
+			"    OtherAttr (Filterable),\n" +
+			"    AssocName as 'NavProp'   -- bare association name -> PublishedAssociationEnd\n" +
+			"  );\n" +
+			"};\n" +
+			"\n" +
+			"GRANT ACCESS ON ODATA SERVICE Module.Name TO Module.Role;",
+		Example: "create persistent entity Shop.Customer (\n" +
+			"  Email: string(200) unique error 'unique' required error 'required',\n" +
+			"  Name:  string(200)\n" +
+			");\n" +
+			"\n" +
+			"create odata service Shop.CustomerAPI (\n" +
+			"  path: 'odata/customers/',\n" +
+			"  version: '1.0.0',\n" +
+			"  ODataVersion: OData4,\n" +
+			"  namespace: 'Shop.Customers'\n" +
+			")\n" +
+			"authentication basic\n" +
+			"{\n" +
+			"  publish entity Shop.Customer as 'Customers' (\n" +
+			"    ReadMode: source\n" +
+			"  )\n" +
+			"  expose (\n" +
+			"    Email as 'customerId' (KEY, Filterable, Sortable),\n" +
+			"    Name  (Filterable, Sortable)\n" +
+			"  );\n" +
+			"};",
+		SeeAlso: []string{"odata", "odata.consume", "odata.show"},
 	})
 
 	Register(SyntaxFeature{

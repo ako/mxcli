@@ -185,7 +185,7 @@ CREATE CONSTANT MyModule.ServiceLocation TYPE String DEFAULT 'https://api.exampl
 **OData Service Example:**
 ```sql
 create odata service MyModule.CustomerAPI (
-  path: '/odata/customers',
+  path: 'odata/customers/',     -- no leading slash (CE6550); trailing slash required (CE6552)
   version: '1.0.0',
   ODataVersion: OData4,
   namespace: 'MyModule.Customers'
@@ -200,9 +200,27 @@ authentication basic, session
     UsePaging: Yes,
     PageSize: 100
   )
-  expose (Name, Email, Phone);
+  -- One exposed member must be marked KEY. Use a business attribute with
+  -- a UNIQUE + REQUIRED validation rule on the entity rather than the
+  -- system Id (which leaks internal storage IDs). Multi-entity publish
+  -- and navigation properties work the same way — bare names resolve
+  -- against the module's associations.
+  expose (
+    Email as 'customerId' (KEY, Filterable, Sortable),
+    Name (Filterable, Sortable),
+    Phone,
+    Customer_Order as 'Orders'   -- navigation property to associated entity
+  );
 };
 ```
+
+The "Configuration source" dropdown on consumed OData services has three
+options — Constants only, Configuration microflow, Headers microflow.
+The two microflow options share a single BSON field: write either
+`ConfigurationMicroflow:` or the alias `HeadersMicroflow:` in MDL.
+Studio Pro picks the dropdown label from the referenced microflow's
+return type (`System.ConsumedODataConfiguration` vs
+`list of System.HttpHeader`).
 
 ## Microflows & Nanoflows
 
