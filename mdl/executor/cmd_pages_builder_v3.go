@@ -275,8 +275,6 @@ func (pb *pageBuilder) buildWidgetV3(w *ast.WidgetV3) (pages.Widget, error) {
 	switch strings.ToLower(w.Type) {
 	case "dataview":
 		widget, err = pb.buildDataViewV3(w)
-	case "datagrid":
-		widget, err = pb.buildDataGridV3(w)
 	case "legacydatagrid":
 		// LEGACYDATAGRID requests the dojo-based native Forms$DataGrid (the
 		// pre-pluggable widget). The codebase doesn't yet have a builder for

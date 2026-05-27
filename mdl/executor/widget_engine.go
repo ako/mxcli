@@ -608,6 +608,10 @@ func (e *PluggableWidgetEngine) applyObjectLists(builder backend.WidgetObjectBui
 //   - matching nested AST children against ItemSlots (widgets-typed slots)
 func (e *PluggableWidgetEngine) buildObjectListItem(mapping *ObjectListMapping, child *ast.WidgetV3) (backend.ObjectListItemSpec, error) {
 	spec := backend.ObjectListItemSpec{}
+	// Track whether the user explicitly set Sortable / ShowContentAs in MDL —
+	// drives the attribute-less and custom-content fallbacks below.
+	_, sortableExplicit := lookupProperty(child.Properties, "Sortable")
+	_, showContentAsExplicit := lookupProperty(child.Properties, "ShowContentAs")
 
 	// Scalar item properties: ItemProperties carries the operation kind per
 	// sub-property key. Look up the value in the AST child's properties bag.
@@ -687,6 +691,12 @@ func (e *PluggableWidgetEngine) buildObjectListItem(mapping *ObjectListMapping, 
 	// emits an empty header that Studio Pro flags as definition drift.
 	applyColumnHeaderFallback(&spec)
 
+	// DataGrid column sortable convention: attribute-less columns (typical
+	// "Actions" custom-content columns) default to sortable=false, since
+	// Studio Pro errors on sortable=true without an Attribute. The keyword
+	// path applies the same fallback (see datagrid_builder.go line 545+).
+	applyColumnSortableFallback(&spec, sortableExplicit)
+
 	// Widgets-typed slots: ItemSlots gives us per-slot keyword conventions.
 	// For object-list items the most common shape today is direct child
 	// widgets (no inner container). Match nested AST children in three
@@ -755,6 +765,12 @@ func (e *PluggableWidgetEngine) buildObjectListItem(mapping *ObjectListMapping, 
 		}
 	}
 
+	// DataGrid column showContentAs convention: when child widgets landed in
+	// the `content` slot without an explicit ShowContentAs in MDL, auto-infer
+	// customContent. Mirrors hasCustomContent in datagrid_builder.go. Must
+	// run after the child-routing pass so spec.ChildWidgets is populated.
+	applyColumnShowContentAsFallback(&spec, showContentAsExplicit, len(spec.ChildWidgets["content"]) > 0)
+
 	return spec, nil
 }
 
@@ -792,6 +808,71 @@ func applyColumnHeaderFallback(spec *backend.ObjectListItemSpec) {
 		Operation:     "texttemplate",
 		TextTemplate:  attrName,
 		EntityContext: "", // literal text — no template params to resolve
+	})
+}
+
+// applyColumnShowContentAsFallback forces showContentAs to "customContent"
+// when the column has child widgets in its `content` slot but no explicit
+// ShowContentAs in MDL. Mirrors the keyword path's `hasCustomContent :=
+// len(contentWidgets) > 0` heuristic (datagrid_builder.go line 257). Studio
+// Pro errors on `Show: Attribute` when no Attribute is set; auto-inferring
+// customContent from the presence of cell-content widgets matches what
+// users expect: `column foo { actionbutton x }` means "the cell renders
+// the button".
+func applyColumnShowContentAsFallback(spec *backend.ObjectListItemSpec, showContentAsExplicit bool, hasContentWidgets bool) {
+	if showContentAsExplicit || !hasContentWidgets {
+		return
+	}
+	for i, p := range spec.Properties {
+		if p.PropertyKey == "showContentAs" {
+			spec.Properties[i].PrimitiveVal = "customContent"
+			return
+		}
+	}
+	spec.Properties = append(spec.Properties, backend.ObjectListItemProperty{
+		PropertyKey:  "showContentAs",
+		Operation:    "primitive",
+		PrimitiveVal: "customContent",
+	})
+}
+
+// applyColumnSortableFallback forces `sortable` to "false" on attribute-less
+// DataGrid columns (the typical "Actions" custom-content column). Studio Pro
+// flags `sortable=true` + no Attribute as an authoring error (`An attribute
+// is required when column sorting is enabled`); the keyword path defaults
+// sortable to false when col.Attribute is empty
+// (see datagrid_builder.go line 545+).
+//
+// Conservative: only fires when the user didn't explicitly set Sortable in
+// MDL — an explicit `Sortable: true` on an attribute-less column is left
+// alone (the user's mistake, surfaced by mx check).
+func applyColumnSortableFallback(spec *backend.ObjectListItemSpec, sortableExplicit bool) {
+	if sortableExplicit {
+		return
+	}
+	var hasAttribute bool
+	var sortableIdx = -1
+	for i, p := range spec.Properties {
+		switch p.PropertyKey {
+		case "attribute":
+			if p.AttributePath != "" {
+				hasAttribute = true
+			}
+		case "sortable":
+			sortableIdx = i
+		}
+	}
+	if hasAttribute {
+		return
+	}
+	if sortableIdx >= 0 {
+		spec.Properties[sortableIdx].PrimitiveVal = "false"
+		return
+	}
+	spec.Properties = append(spec.Properties, backend.ObjectListItemProperty{
+		PropertyKey:  "sortable",
+		Operation:    "primitive",
+		PrimitiveVal: "false",
 	})
 }
 

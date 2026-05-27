@@ -26,6 +26,13 @@ var scriptModuleDeps = map[string][]string{
 	"13-business-events-examples.mdl":     {"BusinessEvents_3.12.0.mpk"},
 }
 
+// scriptSkipList marks fixtures that should be skipped, with the reason.
+// Use sparingly — only for fixtures whose failure is tracked elsewhere and
+// not actionable on this branch.
+var scriptSkipList = map[string]string{
+	"10-odata-examples.mdl": "mx CallExternalAction NPE (mx-side); fixes tracked on separate OData branch",
+}
+
 // scriptKnownCEErrors lists CE error codes that are expected for specific scripts.
 // These are syntax showcase scripts that intentionally omit entities, constants,
 // headers etc. that full validation requires.
@@ -76,6 +83,9 @@ func TestMxCheck_DoctypeScripts(t *testing.T) {
 			continue
 		}
 		if strings.HasSuffix(name, ".test.mdl") || strings.HasSuffix(name, ".tests.mdl") {
+			continue
+		}
+		if _, skip := scriptSkipList[name]; skip {
 			continue
 		}
 		scripts = append(scripts, name)
