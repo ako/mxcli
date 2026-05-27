@@ -325,12 +325,12 @@ headers (
  *
  * Mendix 11.9's "Configuration source" dropdown has three options:
  *   - Constants only            (the default — set ServiceUrl as a constant)
- *   - Configuration microflow   (BSON: ConfigurationEntityMicroflow)
- *   - Headers microflow         (BSON: HeaderListMicroflow)
+ *   - Configuration microflow   (BSON: ConfigurationMicroflow)
+ *   - Headers microflow         (BSON: HeadersMicroflow)
  *
  * The microflow paths are mutually exclusive with constants-based
  * ServiceUrl / proxy fields (Mendix raises CE0783/CE1135), so each
- * variant lives in its own service. HeaderListMicroflow returns a list
+ * variant lives in its own service. HeadersMicroflow returns a list
  * of System.HttpHeader; the call site provides the service URL itself
  * via the constant ServiceUrl above.
  */

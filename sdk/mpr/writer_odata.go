@@ -72,23 +72,15 @@ func (w *Writer) serializeConsumedODataService(svc *model.ConsumedODataService) 
 		"RecommendedMxVersion": "",
 	}
 
-	// Microflow references (BY_NAME).
-	//
-	// Studio Pro renamed the storage field for "Configuration microflow" to
-	// `ConfigurationEntityMicroflow` somewhere before Mendix 11.10 — the SDK
-	// reflection data we generated against still calls it
-	// `ConfigurationMicroflow`, but Studio Pro 11.10 ignores that key and
-	// shows "Constants only" in the dropdown. The MDL property name remains
-	// `ConfigurationMicroflow` for backwards compatibility; only the BSON
-	// storage name is the new one. See issue #587 (follow-up to #573).
-	//
-	// `HeadersMicroflow` is the BSON name for the third dropdown option
-	// "Headers microflow" — per the Mendix 9.x reflection-data
-	// storageName. A prior fix wrote it as `HeaderListMicroflow` but
-	// Studio Pro 11.9 doesn't recognise that key and the dropdown
-	// silently falls back to "Constants only".
+	// Microflow references (BY_NAME). BSON storage names verified by
+	// diffing Studio Pro-saved samples for both dropdown options:
+	//   - "Configuration microflow" -> ConfigurationMicroflow
+	//   - "Headers microflow"       -> HeadersMicroflow
+	// Earlier mxcli attempts used `ConfigurationEntityMicroflow` and
+	// `HeaderListMicroflow`; Studio Pro doesn't recognise either, and
+	// the dropdown silently falls back to "Constants only".
 	if svc.ConfigurationMicroflow != "" {
-		doc["ConfigurationEntityMicroflow"] = svc.ConfigurationMicroflow
+		doc["ConfigurationMicroflow"] = svc.ConfigurationMicroflow
 	}
 	if svc.HeadersMicroflow != "" {
 		doc["HeadersMicroflow"] = svc.HeadersMicroflow

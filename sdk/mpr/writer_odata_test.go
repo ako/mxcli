@@ -106,7 +106,10 @@ func TestSerializeConsumedODataServiceWithHttpConfig(t *testing.T) {
 	// Microflow references. BSON storage names differ from the Go field
 	// names — Studio Pro renamed the dropdown's storage fields somewhere
 	// before 11.10 (issue #573 / #587 follow-up).
-	assertField(t, raw, "ConfigurationEntityMicroflow", "MyModule.ConfigureMF")
+	// BSON storage name per Studio Pro samples — `ConfigurationMicroflow`,
+	// not the speculative `ConfigurationEntityMicroflow` from an earlier
+	// fix which Studio Pro doesn't recognise.
+	assertField(t, raw, "ConfigurationMicroflow", "MyModule.ConfigureMF")
 	// BSON storage name for HeadersMicroflow per Mendix 9.x+ reflection
 	// data — `HeadersMicroflow`, not the earlier `HeaderListMicroflow`
 	// which Studio Pro 11.9 doesn't recognise (the dropdown falls back
@@ -114,9 +117,12 @@ func TestSerializeConsumedODataServiceWithHttpConfig(t *testing.T) {
 	assertField(t, raw, "HeadersMicroflow", "MyModule.SetHeadersMF")
 	assertField(t, raw, "ErrorHandlingMicroflow", "MyModule.HandleErrorMF")
 	assertField(t, raw, "ProxyHost", "MyModule.ProxyHostConst")
-	if _, exists := raw["ConfigurationMicroflow"]; exists {
-		t.Errorf("legacy field ConfigurationMicroflow leaked into BSON — Studio Pro will silently ignore it (see #573)")
-	}
+	// Both microflow paths are written under the names Studio Pro uses:
+	// `HeadersMicroflow` and `ConfigurationMicroflow`. An older fix
+	// guarded against a `ConfigurationMicroflow` "leak" — that was when
+	// we wrongly thought the correct key was `ConfigurationEntityMicroflow`.
+	// Studio Pro samples actually carry `ConfigurationMicroflow`, so the
+	// negative assertion is dropped.
 
 	// HTTP Configuration
 	httpCfg, ok := raw["HttpConfiguration"].(map[string]any)

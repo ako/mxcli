@@ -41,7 +41,7 @@ func (r *Reader) parseConsumedODataService(unitID, containerID string, contents 
 
 	// Microflow references (BY_NAME). Storage names differ from the MDL
 	// property names — see writer_odata.go for the why.
-	svc.ConfigurationMicroflow = extractString(raw["ConfigurationEntityMicroflow"])
+	svc.ConfigurationMicroflow = extractString(raw["ConfigurationMicroflow"])
 	svc.HeadersMicroflow = extractString(raw["HeadersMicroflow"])
 	svc.ErrorHandlingMicroflow = extractString(raw["ErrorHandlingMicroflow"])
 
