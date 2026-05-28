@@ -8,7 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **DataGrid construction unified on the pluggable widget engine** — the `datagrid` MDL keyword now routes through the same registry-driven engine as the `pluggablewidget 'com.mendix.widget.web.datagrid.Datagrid'` form, so both produce equivalent BSON. The hand-coded keyword-path builder (`datagrid_builder.go` `BuildDataGrid2Widget` + ~30 helpers, ~990 lines) is deleted. Engine gained the column conventions the keyword path applied implicitly: CONTROLBAR→filtersPlaceholder routing, per-column filter-widget routing (`textfilter`/`numberfilter`/`datefilter`/`dropdownfilter`), object-list item property ordering, `Caption`/`Content` aliases with `CaptionParams`/`ContentParams` resolution, missing-Caption→attribute-name fallback, attribute-less columns default `sortable=false`, content-slot widgets auto-infer `ShowContentAs: customContent`, and the tooltip/exportValue empty-ClientTemplate conventions. (#529 Phase 4)
 - **Catalog schema normalized** — every domain table (entities, microflows, pages, …) is now split into a `<name>_data` storage table plus a `<name>` view that joins `snapshots` to expose `ProjectName`, `SnapshotDate`, `SnapshotSource`, `SourceId`, `SourceBranch`, `SourceRevision`. Existing queries (`SELECT * FROM CATALOG.ENTITIES`, ad-hoc filters by `SnapshotSource`, the `objects` UNION view) keep working unchanged. Existing `.mxcli/catalog.db` files rebuild automatically on first open (schema version bumped to 2); cache metadata is cleared so the rebuild fires through `isCacheValid`. (#576)
+
+### Fixed
+
+- DataGrid filter widgets (`textfilter`/`numberfilter`/`datefilter`/`dropdownfilter`) default `attrChoice` to `auto` instead of `linked`/`custom`, so a filter placed inside a column body binds to the column's attribute automatically rather than failing `mx check` with CE0642 ("Property 'Attribute' is required")
 
 ## [0.11.0] - 2026-05-21
 

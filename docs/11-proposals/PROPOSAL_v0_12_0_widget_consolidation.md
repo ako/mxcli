@@ -1,9 +1,31 @@
 # v0.12.0 Implementation Plan: Widget Path Consolidation
 
-**Status:** Draft
+**Status:** Stream B (engine consolidation) complete; Streams A + C in progress
 **Milestone:** [v0.12.0](https://github.com/mendixlabs/mxcli/milestone/5)
 **Builds on:** [UNIFIED_SCHEMA_REGISTRY.md](UNIFIED_SCHEMA_REGISTRY.md) (Phase 4 — Native/pluggable dispatch)
 **Closes (in part):** #529 (Phase 4), #574, #541, #566, #568, #569, #570
+
+## Progress
+
+Stream B (engine consolidation) landed across these commits:
+
+| Commit | Step | What |
+|---|---|---|
+| `cd70c185` | B1a | CONTROLBAR → filtersPlaceholder slot routing via `widgetSlotKeywordOverrides` |
+| `8777521a` | (ordering) | Object-list item properties serialize in template `PropertyTypes` order (`NestedKeyOrder`) |
+| `9ce0f62a` | B1d | `Caption`→`header`, `Content`→`dynamicText` MDL aliases for object-list items |
+| `7db97075` | B1c | ClientTemplate envelope (Fallback empty) + tooltip-on-attribute-col empty-CT |
+| `f61b3a42` | B1c-proper | Per-column filter-widget routing + primitive default plumbing |
+| `83762e59` | B1b | Missing-Caption → attribute-name fallback for column header |
+| `fb85a620` | (fix) | Filter widgets default `attrChoice=auto` (was `linked`/`custom`) |
+| `d7df93f5` | B1d-ext | `CaptionParams`/`ContentParams` resolved through the engine |
+| `62c4d995` | B2 | `datagrid` keyword dispatch flipped to the engine + sortable/showContentAs column fallbacks |
+| `4cb4f9c7` | B3 | Deleted orphaned keyword-path DataGrid builder (−994 lines) |
+
+Validated end-to-end: every v0.10 fixture DataGrid/Gallery/ComboBox
+pattern (PD01–PD06, PG01–PG03, MX01) produces engine-path BSON that
+`mx check` accepts without `mx update-widgets`. Full
+`TestMxCheck_DoctypeScripts` integration suite green on Mendix 11.9.
 
 ## Goal
 
@@ -11,13 +33,20 @@ One source of truth for widget BSON, derived from each project's installed
 `.mpk` files, used by every widget builder. After v0.12.0:
 
 - A single MDL script targeting DataGrid produces BSON that matches the
-  project's installed `.mpk` version exactly — no per-Mendix-version
-  embedded snapshots, no hand-coded BSON patches.
+  project's installed `.mpk` version exactly — no hand-coded BSON patches.
 - The `datagrid`, `gallery`, `combobox` keyword forms and the
   `pluggablewidget '<id>'` form route through the same engine and produce
-  byte-equivalent BSON.
-- `mdl/backend/mpr/datagrid_builder.go` (1467 lines) and the
-  `sdk/widgets/templates/mendix-11.6/*.json` snapshots are deleted.
+  byte-equivalent BSON. **(Done — B2/B3.)**
+- The hand-coded keyword-path builder `mdl/backend/mpr/datagrid_builder.go`
+  is reduced from 1467 lines to filter-widget construction + shared
+  ClientTemplate helpers + the ALTER PAGE column builder. **(Done — B3.)**
+
+> **Correction to an earlier assumption:** the `sdk/widgets/templates/mendix-11.6/*.json`
+> snapshots are NOT deleted. All 31 widgets (not just a "baseline 9") have an
+> embedded template that serves as the BSON base; `augment.go` modifies it
+> from the project's `.mpk`. Deleting them would break the engine. Replacing
+> the embedded base with fully `.mpk`-synthesized templates is a larger,
+> separate effort (UNIFIED_SCHEMA_REGISTRY Phase 2), not part of v0.12.0.
 
 ## Findings from investigation that shape the plan
 
@@ -71,40 +100,69 @@ Stream A (per-version envelope) ─ after ─┴─→ delete embedded snapshots
 Stream C (issue-queue cleanup) ─ parallel ─┘
 ```
 
-### Stream B — Engine feature parity with the keyword path
+### Stream B — Engine feature parity with the keyword path ✅ COMPLETE
 
-**B1a. `headerSlots[]` in `.def.json`**
-Engine routes child keywords (`CONTROLBAR`) to a named parent property
-(`filtersPlaceholder` for DataGrid, `filters` for Gallery). New
-`.def.json` field; existing files unaffected.
+How it actually shipped (the labels drifted from the original plan; the
+work below maps to the Progress table commits):
 
-**B1b. Object-list item with child widgets → `customContent` slot**
-When an item in an object list (e.g. DataGrid `column`) has nested child
-widgets, the engine routes them to the item's `customContent` /
-`template` sub-property. Eliminates `DataGridColumnSpec.ChildWidgets` as
-a special case.
+**B1a. CONTROLBAR slot routing ✅ (`cd70c185`)**
+Implemented as `widgetSlotKeywordOverrides` in `widget_defs.go` rather
+than a generic `headerSlots[]` `.def.json` field: a per-(widgetID,
+propertyKey) table maps `filtersPlaceholder` → `CONTROLBAR` for DataGrid
+and `FILTER` for Gallery. The extracted `.def.json` childSlot then carries
+the right MDL keyword so the engine's existing slot dispatch matches.
 
-**B1c. Per-column filter slot**
-The engine recognizes a nested `filter { textfilter … }` block inside an
-object-list item as filling that item's `filter` sub-property.
-Eliminates `DataGridColumnSpec.FilterWidget` as a special case.
+**Object-list item property ordering ✅ (`8777521a`)**
+Not in the original plan but required: `NestedKeyOrder` preserves the
+template `PropertyTypes` order for object-list item sub-properties, so the
+engine emits column properties in the order Studio Pro expects (was
+alphabetical → CE0463).
 
-**B1d. Caption/Content `texttemplate` placeholders**
-Extract `pageBuilder.buildClientTemplateParams` (currently in
-`cmd_pages_builder_v3_widgets.go`) into a reusable engine helper, wired
-through the `texttemplate` operation so any pluggable widget's
-`Caption: '{1}'` with `CaptionParams: [{1} = attr]` resolves correctly.
+**B1b. Missing-Caption fallback for custom-content columns ✅ (`83762e59`)**
+`applyColumnHeaderFallback` synthesizes a header from the attribute name
+when a column binds an attribute but sets no Caption — matching the
+keyword path. Custom-content columns (child widgets in the `content` slot)
+also auto-infer `ShowContentAs: customContent` (`62c4d995`).
 
-**B2. Switch dispatch**
-`cmd_pages_builder_v3.go:271` — `datagrid`, `gallery`, `combobox` cases
-route to `pluggableEngine.Build(def, w)`. Same dispatch path as the
-marketplace widgets.
+**B1c. Per-column filter routing ✅ (`f61b3a42`)**
+`ItemSlotMapping.AcceptedChildTypes` lets the engine route
+`textfilter`/`numberfilter`/`datefilter`/`dropdownfilter` widgets placed
+directly in a column body to the column's `filter` slot. Plus the
+ClientTemplate-envelope conventions (`7db97075`): Fallback empty,
+tooltip-on-attribute-col and exportValue-on-customcontent-col empty
+ClientTemplate.
 
-**B3. Delete the keyword-specific code**
-- `mdl/backend/mpr/datagrid_builder.go` (1467 lines)
-- `sdk/widgets/templates/mendix-11.6/*.json`
-- `sdk/widgets/loader.go` template-loading paths (simplified to a thin
-  wrapper over `.def.json` + `.mpk`)
+**B1d. Caption/Content aliases + params ✅ (`9ce0f62a`, `d7df93f5`)**
+`ItemPropertyMapping.MdlAliases` maps `Caption`→`header`,
+`Content`→`dynamicText`. The engine looks up the `<alias>Params` companion
+(`CaptionParams`/`ContentParams`) and resolves it via
+`pageBuilder.buildClientTemplateParams`, populating the ClientTemplate
+`Parameters[]` so numbered placeholders (`{1}`, `{2}`) work.
+
+**B2. Switch dispatch ✅ (`62c4d995`)**
+`cmd_pages_builder_v3.go` — removed the `case "datagrid"`; it now falls
+through to `pluggableEngine.Build`. `gallery` and `combobox` already
+routed through the engine default (no case to remove). Added the
+attribute-less `sortable=false` and content-slot `customContent`
+fallbacks here.
+
+**B3. Delete the keyword-specific code ✅ (`4cb4f9c7`)**
+- Deleted `BuildDataGrid2Widget` + ~25 helpers from `datagrid_builder.go`
+  (1467 → ~730 lines), `DataGridSpec`, `buildDataGridV3`, and the mock
+  stub. Net −994 lines.
+- Kept (still used): `BuildFilterWidget` + filter-BSON helpers, the shared
+  ClientTemplate helpers (`buildClientTemplateWithTextAndParams`,
+  `buildEmptyClientTemplate`), and `buildDataGrid2ColumnObject` +
+  `buildColumn*`/`colProp*` for the ALTER PAGE column path.
+- Did **not** delete `sdk/widgets/templates/mendix-11.6/*.json` — see the
+  correction in the Goal section; the embedded templates are the BSON base
+  the engine augments from.
+
+**Remaining Stream B follow-up (not blocking v0.12.0):** migrate the
+ALTER PAGE column insert/replace path (`page_mutator.go`'s
+`InsertColumns`/`ReplaceColumn`) off `buildDataGrid2ColumnObject` to the
+engine. That would let `DataGridColumnSpec` + the remaining `buildColumn*`
+helpers go, finishing the `datagrid_builder.go` cleanup.
 
 ### Stream A — Per-Mendix-version envelope conditionals
 
@@ -136,9 +194,10 @@ fresh 11.10 project for the matrix.
   The JS extractor is deferred to v0.13+ (only worth it if more widgets
   hit the same pattern).
 
-- **#541** — Gallery CE0463 on filter/textfilter combination. Likely
-  free after Stream B since the engine handles Gallery the same way it
-  handles DataGrid. Validated in A3.
+- **#541** — Gallery CE0463 on filter/textfilter combination. ✅ Resolved
+  by Stream B: PG02 (Gallery + container-wrapped textfilter) and the
+  filter `attrChoice=auto` fix (`fb85a620`) both pass `mx check` cleanly
+  through the engine. Confirmed in the PG-probe sweep.
 
 - **#566** — `MENUTRIGGER` grammar keyword. Small ANTLR change in
   `MDLPage.g4 widgetTypeV3`. Unblocks PopupMenu test cases currently
