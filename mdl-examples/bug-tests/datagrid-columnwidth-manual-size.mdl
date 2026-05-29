@@ -1,0 +1,42 @@
+-- @version: 11.0+
+-- ============================================================================
+-- Regression — DataGrid column `ColumnWidth: manual` + `Size: N` → CE0463.
+--
+-- Found during v0.12.0 Stream A cross-version validation (dgDyn in fixture 31).
+-- The keyword-path DataGrid builder mapped MDL `ColumnWidth:` to the schema's
+-- `width` enum (`colPropString(col.Properties, "ColumnWidth", "autoFill")`).
+-- The Stream B consolidation onto the pluggable engine dropped that mapping,
+-- so `width` stayed at its `autoFill` default. A `Size:` value is only valid
+-- when `width=manual`, so under autoFill it became inconsistent and Studio Pro
+-- / mx flagged CE0463 ("the definition of this widget has changed").
+--
+-- Fix: add the `width` ← `ColumnWidth` alias to the DataGrid columns
+-- itemPropertyAliases (mdl/executor/widget_defs.go); the engine now writes
+-- width=manual so the Size weight is honoured.
+--
+-- Verify: mx check passes with zero CE0463; each column's width=manual.
+-- ============================================================================
+
+create module DgWidth;
+create module role DgWidth.User;
+
+@position(100, 100)
+create persistent entity DgWidth.Customer (
+  Name: string(200),
+  City: string(100)
+);
+
+create or replace page DgWidth.CustomerGrid (
+  Title: 'DgWidth Customers',
+  Layout: Atlas_Core.Atlas_Default
+) {
+  datagrid dgManual (
+    DataSource: database from DgWidth.Customer,
+    Selection: Single
+  ) {
+    column Name (Attribute: Name, Caption: 'Name', ColumnWidth: manual, Size: 8)
+    column City (Attribute: City, Caption: 'City', ColumnWidth: manual, Size: 6)
+  }
+}
+
+grant view on page DgWidth.CustomerGrid to DgWidth.User;

@@ -467,6 +467,7 @@ func TestObjectListItemAliases(t *testing.T) {
 					{Key: "dynamicText", Type: "textTemplate"},
 					{Key: "tooltip", Type: "textTemplate"},
 					{Key: "attribute", Type: "attribute"},
+					{Key: "width", Type: "enumeration"},
 				},
 			},
 		},
@@ -491,6 +492,10 @@ func TestObjectListItemAliases(t *testing.T) {
 	}
 	if got := aliases["dynamicText"]; len(got) != 1 || got[0] != "Content" {
 		t.Errorf("dynamicText MdlAliases = %v, want [Content]", got)
+	}
+	// width is filled by MDL `ColumnWidth:` (dgDyn CE0463 regression fix).
+	if got := aliases["width"]; len(got) != 1 || got[0] != "ColumnWidth" {
+		t.Errorf("width MdlAliases = %v, want [ColumnWidth]", got)
 	}
 	// tooltip and attribute have no aliases — schema name is the MDL keyword.
 	if got := aliases["tooltip"]; len(got) != 0 {

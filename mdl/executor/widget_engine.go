@@ -37,7 +37,9 @@ const defaultSlotContainer = "template"
 //	    convention fallbacks
 //	3 — v0.12.0: propertyVisibility (VideoPlayer/Timeline hidden-property
 //	    TextTemplate nulling, #574)
-const WidgetDefGeneratorVersion = 3
+//	4 — v0.12.0: DataGrid column `width` ← `ColumnWidth` alias (dgDyn CE0463
+//	    regression from the keyword-path consolidation)
+const WidgetDefGeneratorVersion = 4
 
 // WidgetDefinition describes how to construct a pluggable widget from MDL syntax.
 // Loaded from embedded JSON definition files (*.def.json).

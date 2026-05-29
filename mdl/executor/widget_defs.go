@@ -369,6 +369,12 @@ var itemPropertyAliases = map[string]map[string]map[string][]string{
 		"columns": {
 			"header":      {"Caption"},
 			"dynamicText": {"Content"},
+			// MDL `ColumnWidth: manual` fills the schema's `width` enum. The
+			// keyword path mapped this (`colPropString(..., "ColumnWidth")`);
+			// without the alias the engine leaves width at its `autoFill`
+			// default, so a `Size:` value becomes invalid (size only applies
+			// when width=manual) and Studio Pro flags CE0463.
+			"width": {"ColumnWidth"},
 		},
 	},
 }
