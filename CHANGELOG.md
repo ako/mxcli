@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **Cross-version widget-envelope drift gate** — `make check-widget-versions` (script `scripts/check-widget-versions.sh`) runs a widget fixture through `exec` + `mx check` on multiple Mendix versions and fails if the CE0463 set differs between them. Confirmed no envelope drift between Mendix 11.9 and 11.10 (v0.12.0 Stream A); the planned per-version envelope conditionals turned out unnecessary. The 11.10 libSkiaSharp crash is handled automatically via `scripts/mx-check.sh`. Gate run (test5-app 11.9 / test6-app 11.10) — all three widget fixtures PASS with identical CE0463 sets across versions: `30-pluggable-widget-examples` = `tf1` only (#605, version-independent), `31-pluggable-datagrid-gallery-v010` = clean, `32-pluggable-widget-object-lists-v010` = clean
+- **Cross-version widget-envelope drift gate** — `make check-widget-versions` (script `scripts/check-widget-versions.sh`) runs a widget fixture through `exec` + `mx check` on multiple Mendix versions and fails if the CE0463 set differs between them (v0.12.0 Stream A). It drops each fixture's `create module` targets before exec so leftover/divergent reference-project state doesn't skew the comparison; the 11.10 libSkiaSharp crash is handled automatically via `scripts/mx-check.sh`. Fixture set: `03`, `30`, `31`, `32`. The gate surfaced one real 11.9→11.10 drift (textfilter `attrChoice`, #605, fixed above); after that fix all four fixtures pass with no cross-version drift
 
 ### Changed
 

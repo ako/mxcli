@@ -60,6 +60,17 @@ ce0463_set() {
 		echo "error: widget init failed for $ver — see $sandbox/.widgetinit.log" >&2
 		return 1
 	fi
+
+	# Drop any modules the fixture creates before running it, so the comparison
+	# is over a clean slate regardless of leftover/divergent state in the
+	# reference project (e.g. a stale PgTest from an earlier exec). Without this
+	# the gate compares two projects that aren't identical baselines and reports
+	# false drift. Errors (module absent) are ignored.
+	local mod
+	for mod in $(grep -oiE 'create module [A-Za-z_][A-Za-z0-9_]*' "$FIXTURE" | awk '{print $3}' | sort -u); do
+		"$MXCLI_BIN" -p "$sandbox/$name" -c "drop module $mod;" >/dev/null 2>&1 || true
+	done
+
 	if ! "$MXCLI_BIN" exec "$FIXTURE" -p "$sandbox/$name" >"$sandbox/.exec.log" 2>&1; then
 		echo "error: exec failed for $ver — see $sandbox/.exec.log" >&2
 		return 1

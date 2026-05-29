@@ -1,6 +1,6 @@
 # v0.12.0 Implementation Plan: Widget Path Consolidation
 
-**Status:** Stream B (engine consolidation) complete; Stream A complete (no envelope drift found — A1/A2 unnecessary, A3 gate landed); Stream C in progress
+**Status:** Stream B (engine consolidation) complete; Stream A complete (one 11.9→11.10 drift found + fixed — textfilter `attrChoice`, #605; A1/A2 unnecessary, A3 gate landed + hardened); Stream C in progress
 **Milestone:** [v0.12.0](https://github.com/mendixlabs/mxcli/milestone/5)
 **Builds on:** [UNIFIED_SCHEMA_REGISTRY.md](UNIFIED_SCHEMA_REGISTRY.md) (Phase 4 — Native/pluggable dispatch)
 **Closes (in part):** #529 (Phase 4), #574, #541, #566, #568, #569, #570
@@ -166,29 +166,42 @@ helpers go, finishing the `datagrid_builder.go` cleanup.
 
 ### Stream A — Per-Mendix-version envelope conditionals ✅ COMPLETE
 
-**Finding: there is no 11.9 → 11.10 envelope drift.** Running fixtures 30/31/32
-through `exec` + `mx check` on Mendix 11.9 (`test5-app`) and 11.10 (`test6-app`)
-yields **identical** CE0463 sets (`30`→`tf1`, `31`→`dgDyn`, `32`→none on both).
-The 11.6-based envelope is stable across these minors, so the planned per-version
-conditionals were unnecessary.
+**Finding: one real 11.9 → 11.10 drift, in `DatagridTextFilter`.** A filter with
+an explicit `attributes: [...]` list (e.g. inside a Gallery `filter` block)
+emitted `attrChoice="auto"` + the populated attributes; 11.9 accepted this, 11.10+
+rejects it with CE0463. Fixed (#605) by emitting `attrChoice="linked"` when
+attributes are explicit — see commit `a7cd73a7`. After the fix, all gate fixtures
+pass with no cross-version drift. No *per-version envelope field* differed, so the
+planned conditionals (A1/A2) were not needed; the one drift was a widget-property
+convention fixed in the builder.
 
-**A1. Thread `MendixVersion` through the engine** — ❌ not needed. No envelope
-field differs between 11.9 and 11.10, so there is nothing to gate on version.
+> **The first pass was a false negative.** An earlier revision of this section
+> claimed "no 11.9 → 11.10 drift". That was wrong: (1) the gate's fixtures
+> (31/32) only used column-bound filters, and the lone Gallery-filter case
+> (`tf1`) failed on both versions for an unrelated reason, so the gate read
+> "identical sets = no drift" without ever exercising the drifting construct;
+> (2) the gate compared `test5-app` vs `test6-app`, which had diverged (stale
+> `PgTest` in test5). Both are now fixed — `03-page-examples` is in the gate set,
+> and the gate drops each fixture's modules before running so divergent baselines
+> don't skew it. See `WIDGET_BSON_VERSION_COMPATIBILITY.md`.
+
+**A1. Thread `MendixVersion` through the engine** — ❌ not needed. No per-version
+envelope *field* differed; the one drift was a widget-property convention.
 
 **A2. Conditionalize envelope fields** — ❌ not needed. `AllowUpload`,
 `Forms$Appearance` shape, and `TextTemplate` `Translations` conventions are
-identical across 11.9/11.10 (confirmed by zero cross-version CE0463 delta).
-Would only become necessary if a future minor introduces a delta — A3 surfaces
-that automatically.
+identical across 11.9/11.10. Would only become necessary if a future minor
+introduces a delta — A3 surfaces that automatically.
 
 **A3. Validation gate** — ✅ implemented as `make check-widget-versions`
 (`scripts/check-widget-versions.sh`). Runs a fixture on multiple versions and
 fails on any cross-version CE0463 **difference** (envelope drift), tolerating
-version-independent bugs that appear on every version. The 11.10 libSkiaSharp
-crash is handled via `scripts/mx-check.sh`. See
+version-independent bugs that appear on every version. Drops each fixture's
+`create module` targets before exec so leftover/divergent reference-project state
+doesn't skew the comparison; the 11.10 libSkiaSharp crash is handled via
+`scripts/mx-check.sh`. Fixture set: `03`, `30`, `31`, `32`. See
 `docs/03-development/WIDGET_BSON_VERSION_COMPATIBILITY.md` → "Cross-version
-validation gate". The two residual version-independent CE0463s (`tf1` #605,
-`dgDyn`) are tracked separately, not envelope drift.
+validation gate".
 
 ### Stream C — Issue-queue cleanups (parallel with B)
 

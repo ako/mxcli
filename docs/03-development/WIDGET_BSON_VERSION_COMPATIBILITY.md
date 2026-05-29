@@ -166,30 +166,48 @@ counter per entry. Caught by the integration test
 `TestMxCheck_DoctypeScripts`, fixed in commit
 [`8ead1cff`](https://github.com/mendixlabs/mxcli/commit/8ead1cff).
 
-## 11.10 onboarding result: no envelope drift
+## 11.10 onboarding: one drift found (textfilter attrChoice)
 
-Running the v0.10 acceptance fixtures (`31-…`, `32-…`) and the broader
-`30-pluggable-widget-examples.mdl` through `exec` + `mx check` on **both**
-Mendix 11.9 (`test5-app`) and 11.10 (`test6-app`) produces **identical**
-CE0463 sets:
+Running the widget fixtures through `exec` + `mx check` on **both** Mendix 11.9
+(`test5-app`) and 11.10 (`test6-app`) surfaced exactly one real envelope drift,
+in the **`DatagridTextFilter`** widget:
 
-| Fixture | 11.9 | 11.10 |
-|---|---|---|
-| `30-pluggable-widget-examples` | `tf1` (#605) | `tf1` (#605) |
-| `31-…datagrid-gallery-v010` | `dgDyn` | `dgDyn` |
-| `32-…object-lists-v010` | none | none |
+| Construct | 11.9 | 11.10 | Cause |
+|---|---|---|---|
+| filter with explicit `attributes: [...]` (Gallery `filter` block) | accepted | **CE0463** | `attrChoice="auto"` + a populated `attributes` list. 11.9 tolerated it; 11.10+ rejects it. Fixed (#605): emit `attrChoice="linked"` when attributes are explicit |
+| bare filter inside a DataGrid column | accepted | accepted | `attrChoice="auto"` with no attributes — correct on both |
 
-So the 11.6-based envelope is **stable across 11.9 → 11.10** — no field was
-added to `WidgetValueType`, no ordering changed, no `Appearance`/`TextTemplate`
-convention shifted. The two residual CE0463s appear on *both* versions, so they
-are **version-independent widget bugs** (tracked separately: `tf1` = #605,
-`dgDyn` = a `datagrid` keyword-form regression), not envelope drift.
+That was the **only** field whose validation changed between 11.9 and 11.10 in
+the fixtures exercised. Everything else (the `AllowUpload` field set,
+`WidgetObject` property ordering, `Appearance`/`TextTemplate` conventions) is
+stable across 11.9 → 11.10. After the #605 fix, all fixtures pass the
+cross-version gate with no drift.
 
-Practically: v0.12.0 Stream A's planned per-version conditionals (threading
-`MendixVersion` into the serializer, gating `AllowUpload`/`Appearance` shape)
-turned out **unnecessary for 11.9 ↔ 11.10** — there is nothing to conditionalize.
-The conditionals would only become necessary if a future minor introduces a
-delta, and the gate below is what would surface that.
+> **Caution — the first "no drift" pass was a false negative.** An earlier run
+> concluded 11.9 ↔ 11.10 had *no* drift. It was wrong for two reasons, both now
+> fixed:
+> 1. **Coverage gap.** The gate's fixtures (31/32) only used *column-bound*
+>    filters. The one Gallery-filter case (`tf1` in 30) failed on *both*
+>    versions (it had its own bug), so the gate read "identical sets = no drift"
+>    and never exercised the drifting construct. Fixture `03-page-examples`
+>    (which has Gallery-filter textfilters) is now in the gate's set.
+> 2. **Divergent baselines.** The gate compared `test5-app` (11.9) against
+>    `test6-app` (11.10), but they had drifted apart — `test5-app` carried a
+>    leftover `PgTest` module from an earlier `exec` that `test6-app` lacked, so
+>    the two weren't equivalent baselines. The gate now drops each fixture's
+>    `create module` targets before running it, so leftover/divergent state in a
+>    reference project no longer skews the comparison.
+>
+> Lesson: a cross-version gate is only as good as (a) its fixture coverage of
+> *every* construct and (b) the equivalence of its reference baselines. "No
+> drift" means nothing if the drifting construct isn't in a fixture, or if the
+> two projects being compared aren't identical apart from Mendix version.
+
+So Stream A's planned per-version conditionals (threading `MendixVersion` into
+the serializer, gating `AllowUpload`/`Appearance` shape) were **not** needed —
+the one real drift was a widget-property convention (`attrChoice`) fixed in the
+builder, not a per-version envelope field. Future minors that *do* change an
+envelope field would surface through the gate below.
 
 ## Cross-version validation gate
 
@@ -214,7 +232,11 @@ scripts/check-widget-versions.sh mdl-examples/doctype-tests/31-pluggable-datagri
 Each version needs its mxbuild installed (`~/.mxcli/mxbuild/<ver>/`) and a
 reference project with the fixture's widgets (`.mpk`) installed. The 11.10
 `mx` binary's libSkiaSharp crash is handled automatically (the script checks
-via `scripts/mx-check.sh`). This catches version drift the moment it happens,
+via `scripts/mx-check.sh`). Before running a fixture the gate drops that
+fixture's `create module` targets in each sandbox, so leftover or divergent
+state in a reference project (e.g. a stale `PgTest`) doesn't skew the
+comparison — the reference projects only need the same installed widgets, not
+identical document content. This catches version drift the moment it happens,
 rather than at user-report time. The long-term replacement (build-time
 templates per version) is tracked under the unified schema registry effort
 ([#529](https://github.com/mendixlabs/mxcli/issues/529), Phase 5).

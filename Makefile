@@ -200,7 +200,7 @@ test-mdl: build
 MX_PROJECT_119 ?= ../ModelSDKGo/mx-test-projects/test5-app/test5.mpr
 MX_PROJECT_1110 ?= ../ModelSDKGo/mx-test-projects/test6-app/test6.mpr
 check-widget-versions: build
-	@for fix in 31-pluggable-datagrid-gallery-v010-examples 32-pluggable-widget-object-lists-v010; do \
+	@for fix in 03-page-examples 30-pluggable-widget-examples 31-pluggable-datagrid-gallery-v010-examples 32-pluggable-widget-object-lists-v010; do \
 		echo "== $$fix =="; \
 		./scripts/check-widget-versions.sh "mdl-examples/doctype-tests/$$fix.mdl" \
 			"11.9.0:$(MX_PROJECT_119)" "11.10.0:$(MX_PROJECT_1110)" || exit 1; \
