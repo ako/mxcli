@@ -485,6 +485,13 @@ commit $Product with events refresh;
 
 **Best Practice**: Use `with events` when you want before/after commit event handlers to execute. Use `refresh` when the committed object is displayed in the client and you want the UI to update immediately.
 
+> **Binding a microflow to an entity event is MDL — you do NOT need to map it manually in Studio Pro.** After writing a handler microflow (e.g. a `BeforeCommit` validation), wire it directly:
+> ```mdl
+> alter entity Sales.Order
+>   add event handler on before commit call Sales.ACT_ValidateOrder($currentObject) raise error;
+> ```
+> Works for `before`/`after` × `create`/`commit`/`delete`/`rollback`, and inside `create entity` too. See [generate-domain-model.md](generate-domain-model.md) for the full syntax. (There is no need for an `EVT_*` naming convention plus a manual Studio Pro mapping step.)
+
 ## List Operations
 
 ```mdl
@@ -524,6 +531,19 @@ retrieve $Product from Test.Product
 - RETRIEVE with `limit 1` returns a **single entity**
 - RETRIEVE without `limit 1` returns a **list** (`list of Module.Entity`)
 - Use `limit 1` when you expect exactly one result (e.g., lookup by unique key)
+
+**Sorting and paging** — use `sort by`, **not** `order by`:
+
+```mdl
+retrieve $Recent from Sales.Order
+  where Status = Sales.OrderStatus.Open
+  sort by Sales.Order.OrderDate desc, Sales.Order.OrderNumber asc
+  limit $PageSize
+  offset $Offset;
+```
+
+- The keyword is **`sort by`** (one or more `Module.Entity.Attr asc|desc`, comma-separated). `order by` is **not** valid on a microflow `retrieve` — it's reserved for `select ... from CATALOG.*` queries and will cause a parse error here.
+- `limit` and `offset` accept **a variable or expression**, not only a literal — `limit $PageSize`, `offset $Offset`, even `limit $Base + 5` all work. A bare literal (`limit 20`) is just the simplest case.
 
 **Enumeration attributes in WHERE**: XPath is a database query, so enum values are stored as plain strings. Both forms are valid — mxcli converts the qualified name to a string literal in BSON:
 
