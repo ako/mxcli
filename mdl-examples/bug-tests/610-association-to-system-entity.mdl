@@ -1,0 +1,24 @@
+-- Bug #610: create association to a System-module entity fails at exec
+--
+-- Symptom: `create [or modify] association ... to System.User` passed
+-- `mxcli check --references` and `mxcli diff`, but failed at `mxcli exec` with
+--   Error: child entity not found: System.User
+-- Root cause: findEntity (mdl/executor/oql_type_inference.go) resolved the
+-- owning module by walking up from the domain model's own unit ID. The virtual
+-- System domain model is not a real unit, so the hierarchy walk produced an
+-- empty module name and System entities never matched. The validation path
+-- (buildEntityQualifiedNames) resolved via dm.ContainerID and worked, hence the
+-- check-passes / exec-fails divergence.
+--
+-- Fix: findEntity now resolves the module from dm.ContainerID.
+--
+-- Run against a project that has MyFirstModule.Cars (e.g. test5):
+--   ./bin/mxcli exec mdl-examples/bug-tests/610-association-to-system-entity.mdl -p <project>.mpr
+--
+-- Expected: the association is created and DESCRIBE round-trips
+-- "from MyFirstModule.Cars to System.User". No "child entity not found" error.
+
+create or modify association MyFirstModule.Cars_Owner
+  from MyFirstModule.Cars to System.User;
+
+describe association MyFirstModule.Cars_Owner;

@@ -670,8 +670,12 @@ func findEntity(ctx *ExecContext, moduleName, entityName string) (*domainmodel.E
 	}
 
 	for _, dm := range dms {
-		modID := h.FindModuleID(dm.ID)
-		modName := h.GetModuleName(modID)
+		// Resolve the owning module from the domain model's container (the
+		// module ID), not by walking up from the DM's own unit ID. The virtual
+		// System domain model is not a real unit, so it is absent from the
+		// hierarchy's container-parent map and FindModuleID(dm.ID) would yield
+		// an empty module name — making System entities unresolvable (#610).
+		modName := h.GetModuleName(dm.ContainerID)
 		if modName != moduleName {
 			continue
 		}
