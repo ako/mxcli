@@ -76,30 +76,66 @@ implementation works: a nil `Func` field returns a safe default, so unsupported
 operations can return a clean `"not supported by MCP backend"` error instead of
 requiring all 226 methods up front.
 
-## The PED tool surface
+## The MCP tool surface (verified against Studio Pro 11.11)
 
-From `MXCLI_STRATEGIC_POSITIONING.md` and
-[`PROPOSAL_mcp_bson_benchmark`](PROPOSAL_mcp_bson_benchmark.md), the Studio Pro
-MCP server exposes document/BSON-level tools:
+Dumped live with `cmd/mcpprobe` on 2026-05-29. Server identifies as
+`mendix-studio-pro` 1.0.0, protocol `2025-06-18`; `initialize` instructs clients
+to first read the resource `mendix://studio-pro/system-prompt`. The server is
+exposing **Mendix's own "Maia" agent tools and PED contract**. Full captures
+(`tools.json`, the system-prompt resource) were taken locally with `cmd/mcpprobe`;
+they contain Mendix-internal content and are **not committed** pending a decision
+on whether to vendor them (see Open Questions).
+
+16 tools. The ones the backend needs:
 
 | Tool | Purpose | Maps to backend concept |
 |------|---------|-------------------------|
-| `ped_get_schema` | Property structure + valid enum values for a `$Type` | type metadata / validation |
-| `ped_read_document` | Read a document's current BSON | unit read |
-| `ped_find_document` | Locate a document by name (idempotency check) | "does X exist?" |
-| `ped_create_document` | Create a new document from BSON | `Create*` / unit write |
-| `ped_update_document` | Update an existing document's BSON | `Update*` / mutator `Save()` |
-| `ped_check_errors` | Validate the model (one-shot fix protocol) | post-write validation |
+| `ped_get_schema` | Schemas for element types (**mandatory before create/add**). Returns a `$constructor` (simplified, flattened — for creation) **and** a `$element` (full, for reads/updates) | type metadata |
+| `ped_read_document` | **Progressive** read — reads to element boundary; pass JSON paths (`/flows/0`) to descend | unit / element read |
+| `ped_find_document` | Find by `moduleName` + `documentType` (**mandatory before create**, idempotency) | "does X exist?" |
+| `ped_list_folder` | Immediate contents of a module/folder | partial enumeration |
+| `ped_create_document` | Create one or more documents. **"Never create domain models."** | `Create*` (most doctypes) |
+| `ped_create_module` | Create a module (and its domain model) | `CreateModule` |
+| `ped_update_document` | **Operation-based**: atomic set/add/remove ops at JSON paths | `Update*`, `ALTER`, mutator `Save()` |
+| `ped_check_errors` | Validate documents (**mandatory after final create/update**) | post-write validation |
+| `pg_read_page` / `pg_write_page` | **Pages only** — a separate write path; PED is *forbidden* for pages | page `Create/Update` |
 
-> **Open question (must verify against the running 11.11 server):** the exact
-> JSON-RPC tool names, argument schemas, and document-addressing scheme
-> (qualified name? unit ID? path?). The names above are from existing repo docs
-> and the archived `PROPOSAL_schema_extract`; they may have drifted in 11.11.
-> The first implementation task is to dump the real `tools/list` (see Test Plan).
+Other tools (`search_mendix_knowledge_base`, `read_skill`, `oql_generate`,
+`glob`/`read_file`/`write_file` over virtual "file domains") are agent helpers,
+not needed by the backend — though `write_file` is notable: the server itself can
+write Java/JS/CSS, an alternative to the mounted-filesystem approach.
 
-Crucially, these operate at the **document/BSON level** — which is exactly what
-mxcli's writer already *produces*. mxcli builds the BSON for an entity/microflow;
-instead of writing a `.mxunit`, it ships that BSON to `ped_create_document`.
+### Implications that reshape the design
+
+1. **Two write protocols, not one.** Pages **must** use `pg_*`; everything else
+   uses `ped_*`. The system prompt is explicit: "Never use PED … for pages." The
+   backend's page methods fork to `pg_write_page` while domain model / microflow /
+   enum / workflow methods go through `ped_*`. (Convenient: pages already have the
+   most fragile BSON in mxcli, and `pg_write_page` takes a high-level widget tree,
+   not raw BSON.)
+2. **Domain model is update-only.** `ped_create_document` refuses domain models.
+   The chosen vertical slice creates entities via `ped_update_document` (add-ops
+   on the module's existing DomainModel), and new modules via `ped_create_module`.
+   This is *more* aligned with mxcli's mutator pattern than with its `Create*`
+   path.
+3. **Operation-based updates map to ALTER and mutators directly.**
+   `ped_update_document(documentType, operations:[set/add/remove @ path])` is
+   almost a wire format for `PageMutator`/`WorkflowMutator` and `ALTER`
+   statements — set property, add widget, remove activity.
+4. **Construct vs read-path schema duality.** Creation uses the `$constructor`
+   shape (flattened, e.g. `objects`); updates/reads use real JSON paths (e.g.
+   `/objectCollection/objects`). The backend must hold both mappings per type
+   (from `ped_get_schema`) — a real implementation gotcha to budget for.
+5. **A mandatory call choreography** per write:
+   `ped_find_document` → `ped_get_schema` → `ped_create_document`/`ped_update_document`
+   → `ped_check_errors`. The backend encodes this sequence internally; mxcli's
+   own pre-flight `check` can run *before* any of it.
+6. **Non-user modules are read-only**; reserved attribute names (`Type`, `id`, …)
+   are rejected — both already partly enforced by mxcli's validation.
+
+These operate at the document/element level — which is what mxcli's writer
+already *produces*. mxcli builds the model change; instead of writing a `.mxunit`
+it ships document/operation JSON to `ped_*` (or a widget tree to `pg_write_page`).
 
 ## Connection model
 
@@ -117,45 +153,45 @@ instead of writing a `.mxunit`, it ships that BSON to `ped_create_document`.
 The `BackendFactory` signature stays the same shape; the factory body inspects
 the descriptor and returns the right `FullBackend`.
 
-### Transport gotcha — UNRESOLVED from inside a devcontainer
+### Transport — root-caused and bridged (works today)
 
-Two facts established empirically with the `cmd/mcpprobe` Go client (and raw
-sockets) against a running Studio Pro 11.11 on a macOS host:
+Established empirically with `cmd/mcpprobe` against a running Studio Pro 11.11 on
+a macOS host:
 
-1. **The server validates the HTTP `Host` header** as a DNS-rebinding guard.
-   A request to `/mcp` with `Host: host.docker.internal` → **404**; with
-   `Host: localhost` the route matches (no 404). So any client must dial the
-   host gateway while pinning `Host: localhost`.
+1. **The server binds IPv6 loopback only.** `lsof` on the host shows
+   `studiopro … TCP [::1]:7782 (LISTEN)` — not `127.0.0.1`, not `0.0.0.0`. On the
+   host, `localhost`/`mcp-remote` works because macOS resolves `localhost` to
+   `::1`. From a devcontainer, `host.docker.internal` is an **IPv4** gateway, and
+   `::1` is non-routable loopback — so the container cannot reach it directly
+   (connection refused). The earlier *hang* was a second Studio Pro (11.10)
+   answering on another interface; killing it left only the `[::1]` listener.
+2. **The server validates the HTTP `Host` header** (DNS-rebinding guard): the
+   `/mcp` route only matches when `Host: localhost` (else 404). So the client
+   must pin `Host: localhost` regardless of where it dials.
 
-2. **But the `/mcp` response never reaches the container.** With `Host: localhost`,
-   *every* request to `/mcp` — POST `initialize` or GET SSE, with any
-   `Accept`/`Origin`/protocol-version combination — returns **zero response
-   bytes** and hangs (verified up to 25 s). Meanwhile a fixed-length response on
-   another route (`GET /` → 404) comes back through the **same** Docker Desktop
-   gateway in milliseconds. `mcp-remote` against `localhost:7782` works fine
-   **on the host**. So the client/protocol is not the problem — the `/mcp`
-   handler's (streaming/SSE) response does not traverse the host gateway.
+**Working bridge:** a raw TCP forwarder **on the host** from an IPv4
+all-interfaces port to the IPv6 loopback:
 
-Two candidate root causes, distinguished by one host-side command
-(`lsof -nP -iTCP:7782 -sTCP:LISTEN`):
+```
+# on the host
+socat TCP4-LISTEN:7783,reuseaddr,fork 'TCP6:[::1]:7782'
+```
 
-- **(a) loopback-bound server.** Studio Pro binds the MCP port to `127.0.0.1`
-  only; `host.docker.internal:7782` reaches a *different* listener that 404s and
-  hangs. Fix: a host-side TCP forwarder bound to a gateway-reachable interface
-  (`0.0.0.0:7783 → 127.0.0.1:7782`); the container then dials
-  `host.docker.internal:7783` (raw TCP forwarding, so SSE passes), still sending
-  `Host: localhost`.
-- **(b) gateway doesn't pass the stream.** Docker Desktop's `host.docker.internal`
-  path buffers/blocks the long-lived SSE/chunked response. Same host-side
-  forwarder is the likely fix (raw TCP, no HTTP-aware buffering); if not, the
-  devcontainer must reach the server by another route (host networking, explicit
-  published port, or running the MCP backend on the host).
+The container then dials `host.docker.internal:7783` while sending
+`Host: localhost`. With this in place, `cmd/mcpprobe` completes the full
+handshake and `tools/list`/`resources/read` succeed (this is how the surface
+above was captured). `cmd/mcpprobe` bakes the `Host` override in via a custom
+dialer (dial target ≠ `Host` header).
 
-**This is now the top feasibility risk** for "run mxcli in a devcontainer and
-write via MCP," because the whole premise is the devcontainer. It must be
-resolved in Phase 0 before the backend work. The `cmd/mcpprobe` tool is the
-vehicle: run it **on the host** (`mcpprobe -dial localhost:7782`) to confirm the
-handshake + dump `tools/list`, then iterate on the container bridge.
+**Remaining productisation questions (Phase 3, not blockers):**
+
+- Ship the forwarder so users don't hand-run `socat`: a devcontainer
+  `postStartCommand`, a `make` target, or a tiny `-listen` mode added to the Go
+  client (no `socat` dependency). The bridge must run **on the host** (it reaches
+  `::1`), so a container-side `make` target alone won't do — document the host
+  step, or detect/instruct.
+- Confirm whether Studio Pro can be configured to bind `0.0.0.0`/IPv4 (would
+  remove the forwarder entirely). Needs a per-OS support matrix.
 
 ## Read path: hybrid (decided)
 
@@ -297,11 +333,10 @@ the devcontainer networking prerequisite doc.
 
 ## Test Plan
 
-- **Phase 0 probe:** a small harness (Go MCP client, or `mcp-remote` on the host)
-  capturing `tools/list` and one full create+validate exchange, committed as a
-  fixture. Note: raw `curl` through the relay reproduced the route match but did
-  **not** complete the streamable-HTTP handshake (0-byte responses) — the probe
-  must use a real MCP client, not `curl`.
+- **Phase 0 probe:** ✅ done — `cmd/mcpprobe` captured `tools/list` and the
+  `mendix://studio-pro/system-prompt` resource (locally; see note above).
+  Remaining: capture one full `ped_get_schema` → `ped_update_document` (add
+  entity) → `ped_check_errors` exchange as a fixture.
 - **Seam refactor (Phase 1):** existing `mdl/executor` + `mdl/backend/mpr` tests
   must stay green; add construction-level tests asserting the BSON produced is
   byte-identical before/after the refactor.
@@ -319,23 +354,26 @@ the devcontainer networking prerequisite doc.
 
 ## Open Questions
 
-1. **Exact PED tool schemas in 11.11** — names, argument shapes, document
-   addressing, session/auth, and whether any bulk-enumerate exists (would expand
-   the read-path options). Resolved by Phase 0.
-2. **Streamable-HTTP handshake details** — `cmd/mcpprobe` (this PR's recon tool)
-   implements the full handshake (initialize → `notifications/initialized` →
-   call, JSON **and** SSE framing, `Mcp-Session-Id`, `Host` override). Confirm
-   it completes the handshake **on the host** and dump the real tool surface;
-   decide whether to adopt an MCP client library or grow `mcpprobe`'s core into
-   `mdl/backend/mcp/client.go`.
-3. **Unsaved-state semantics** — does PED apply writes to Studio Pro's in-memory
-   model immediately, and does it expose save/flush? This determines how severe
-   the hybrid-read staleness actually is.
-4. **Devcontainer networking (top risk)** — the `/mcp` response does not traverse
-   the Docker Desktop host gateway today (see "Transport gotcha"). Resolve with
-   `lsof -nP -iTCP:7782` on the host to confirm loopback-vs-all-interfaces, then
-   settle on a supported bridge (host-side TCP forwarder, host networking, or
-   published port) and document a per-OS support matrix. Blocks Phase 2.
+1. **MCP tool surface** — ✅ resolved (see "MCP tool surface"; captured locally).
+   **Decision needed:** do we vendor the `tools.json` schemas and/or the Maia
+   system-prompt into the repo as reference? The schemas are useful for
+   implementation; the system prompt is Mendix-internal content. Follow-ups: the exact
+   `$constructor` schema for adding an entity via `ped_update_document`, and the
+   per-tool `taskSupport: forbidden` flag (does it block any of our calls, or
+   only async "tasks"?).
+2. **Streamable-HTTP handshake** — ✅ resolved. `cmd/mcpprobe` completes
+   initialize → `notifications/initialized` → call, handling JSON **and** SSE,
+   `Mcp-Session-Id`, and the `Host` override. Server is protocol `2025-06-18`,
+   single-JSON responses observed (no SSE needed so far). Decide: grow
+   `mcpprobe`'s client core into `mdl/backend/mcp/client.go` vs adopt a library.
+3. **Unsaved-state semantics** — does a `ped_*` write apply to Studio Pro's
+   in-memory model immediately and persist to the `.mxunit` files (so hybrid
+   local reads see it), or only in memory until the user saves? Determines how
+   severe the hybrid-read staleness is. Test directly now that the pipe works.
+4. **Devcontainer networking** — ✅ root-caused (IPv6-loopback bind) and bridged
+   with a host-side `socat` IPv4→`[::1]` forwarder (see "Transport"). Remaining is
+   *productisation* (ship the forwarder / host-bind option / per-OS matrix), not
+   feasibility.
 5. **Error-recovery UX** — `ped_check_errors` is a one-shot, post-application fix
    protocol. mxcli's strength is *pre-flight* `check`. How do we reconcile: run
    `mxcli check` locally before shipping any write, so MCP writes are only
