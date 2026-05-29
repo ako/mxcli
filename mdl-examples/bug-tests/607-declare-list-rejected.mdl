@@ -1,0 +1,22 @@
+-- Bug #607: `declare` of a list variable must be rejected by mxcli check
+--
+-- Symptom: `declare $x list of T = empty;` parsed and PASSED `mxcli check`, but
+-- Studio Pro rejected the project with CE0053 ("type not allowed") and CE0038
+-- ("value required") — `declare` maps to a Create Variable activity, which
+-- Mendix does not allow to produce a list.
+--
+-- Fix: mxcli check now flags any list-typed declare as MDL040 (error).
+--
+-- Expected: `mxcli check mdl-examples/bug-tests/607-declare-list-rejected.mdl`
+-- fails with MDL040 on $Items, and exits non-zero.
+--
+-- Correct alternatives (do NOT declare a list):
+--   * parameter:    create microflow M.Process ($Items: list of BugTest.Item) ...
+--   * retrieve:     retrieve $Items from BugTest.Item where IsActive = true;
+--   * create list:  $Items = create list of BugTest.Item;
+
+create microflow BugTest.MF_DeclareEmptyList ()
+begin
+  declare $Items list of BugTest.Item = empty;
+end;
+/

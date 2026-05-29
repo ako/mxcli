@@ -248,12 +248,12 @@ end;
 create microflow MyModule.ACT_ProcessPendingOrders ()
 returns string as $Result
 begin
-  declare $OrderList list of MyModule.Order = empty;
   declare $count integer = 0;
   declare $Total decimal = 0;
   declare $Result string = '';
 
-  -- Retrieve pending orders (replaces CURSOR)
+  -- Retrieve pending orders (replaces CURSOR) — retrieve creates $OrderList,
+  -- never declare a list variable first (CE0053/CE0038, MDL040)
   retrieve $OrderList from MyModule.Order
     where status = 'PENDING';
 

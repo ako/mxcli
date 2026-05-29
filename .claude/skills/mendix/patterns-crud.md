@@ -170,8 +170,7 @@ Used for data grid/list view sources.
 create microflow Module.DS_Customer_GetActive ()
 returns list of Module.Customer
 begin
-  declare $Customers list of Module.Customer = empty;
-
+  -- retrieve creates the list variable directly — never declare a list first
   retrieve $Customers from Module.Customer
     where IsActive = true;
 

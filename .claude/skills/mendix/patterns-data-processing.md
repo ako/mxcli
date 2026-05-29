@@ -239,7 +239,7 @@ create microflow Module.CollectHighValueOrders (
 )
 returns list of Module.Order
 begin
-  declare $HighValue list of Module.Order = empty;
+  $HighValue = create list of Module.Order;
 
   loop $Order in $Orders
   begin
@@ -264,7 +264,7 @@ create microflow Module.FilterActiveItems (
 )
 returns list of Module.Item
 begin
-  declare $ToRemove list of Module.Item = empty;
+  $ToRemove = create list of Module.Item;
 
   -- Collect items to remove
   loop $item in $Items
@@ -371,7 +371,7 @@ create microflow Module.CreateOrderSummaries (
 )
 returns list of Module.OrderSummary
 begin
-  declare $Summaries list of Module.OrderSummary = empty;
+  $Summaries = create list of Module.OrderSummary;
   declare $Summary as Module.OrderSummary;
 
   loop $Order in $Orders

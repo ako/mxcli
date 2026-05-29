@@ -118,8 +118,18 @@ func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 			}
 			v.walkBody(stmt.ElseBody)
 		case *ast.DeclareStmt:
-			// Track list variables declared as empty (candidates for the empty-list-in-loop anti-pattern)
 			if stmt.Type.Kind == ast.TypeListOf {
+				// A `declare` maps to a Create Variable activity, which cannot
+				// produce a list — Studio Pro rejects it with CE0053 ("type not
+				// allowed") and CE0038 ("value required"). Lists must come from a
+				// microflow parameter, a `retrieve`, or a `create list`. (#607)
+				v.addViolation("MDL040", linter.SeverityError,
+					fmt.Sprintf("declare '$%s' creates a list variable, but Mendix does not allow the "+
+						"Create Variable activity to produce a list (CE0053/CE0038). "+
+						"Pass the list as a microflow parameter, populate it with retrieve, or use create list.",
+						stmt.Variable),
+					"Accept the list as a parameter, use retrieve, or use create list — do not declare a list variable")
+				// Track list variables declared as empty (candidates for the empty-list-in-loop anti-pattern)
 				if isEmptyInit(stmt.InitialValue) {
 					v.emptyListVars[stmt.Variable] = true
 				}

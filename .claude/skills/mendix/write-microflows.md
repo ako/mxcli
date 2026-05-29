@@ -132,14 +132,22 @@ declare $Today datetime = [%CurrentDateTime%];
 -- Entity types (no initialization needed)
 declare $Product Test.Product;
 declare $Order Shop.Order;
-
--- Lists
-declare $ProductList list of Test.Product = empty;
 ```
+
+> **You cannot `declare` a list.** `declare` becomes a *Create Variable* activity,
+> which Mendix does not allow to produce a list — Studio Pro rejects it with
+> CE0053 ("type not allowed") and CE0038 ("value required"), and `mxcli check`
+> now flags it as **MDL040**. Get lists from one of these instead:
+> - a microflow **parameter**: `create microflow M.Process ($Items: list of Test.Product) ...`
+> - a **retrieve**: `retrieve $Products from Test.Product where IsActive = true;`
+> - a **create list**: `$Products = create list of Test.Product;`
 
 ### ❌ INCORRECT Syntax
 
 ```mdl
+-- WRONG: Declaring a list variable (CE0053/CE0038, MDL040)
+declare $ProductList list of Test.Product = empty;  -- use a parameter, retrieve, or create list
+
 -- WRONG: Using AS keyword (not supported in mxcli)
 declare $Product as Test.Product;  -- ERROR: parse error
 
@@ -826,7 +834,7 @@ return $Result;
 The same applies to RETRIEVE:
 
 ```mdl
--- WRONG: Duplicate variable
+-- WRONG: declaring a list at all (CE0053/CE0038, MDL040) — and duplicate variable
 declare $Items list of Module.Entity = empty;
 retrieve $Items from Module.Entity where Active = true;  -- CE0111!
 
@@ -1244,9 +1252,9 @@ Before executing a microflow script, verify:
 
 ### Variable Declaration Pattern
 ```mdl
-declare $primitive type = value;              -- Primitives
-declare $entity Module.Entity;                -- Entities (no AS, no = empty)
-declare $list list of Module.Entity = empty;  -- Lists
+declare $primitive type = value;   -- Primitives
+declare $entity Module.Entity;     -- Entities (no AS, no = empty)
+-- Lists: never declare. Use a parameter, retrieve, or `$list = create list of Module.Entity;`
 ```
 
 ### Object Operation Pattern
