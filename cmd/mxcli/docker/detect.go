@@ -164,6 +164,49 @@ func ResolveStudioProDir(version string) string {
 	return ""
 }
 
+// NativeMxBuildForSetup decides what `setup mxbuild` should do on the current
+// host OS. The Mendix CDN only publishes Linux mxbuild archives (Linux ELF
+// binaries), so on Windows and macOS a CDN download cannot execute natively —
+// running it via dotnet fails with "Exec format error". On those platforms
+// Studio Pro's bundled mxbuild is the correct binary.
+//
+// Returns:
+//   - (path, "", nil)  — an installed Studio Pro mxbuild was found; use it, no download.
+//   - ("", "", nil)    — the host is Linux (or the requested arch); a CDN download is appropriate.
+//   - ("", guidance, error) — non-Linux host with no Studio Pro; the caller should
+//     refuse to download and print `guidance` (unless the user forces it).
+func NativeMxBuildForSetup(goos, version string) (path, guidance string, err error) {
+	if goos == "linux" {
+		return "", "", nil
+	}
+
+	if dir := ResolveStudioProDir(version); dir != "" {
+		if found := findMxBuildInDir(dir); found != "" {
+			return found, "", nil
+		}
+	}
+
+	var hint string
+	switch goos {
+	case "windows":
+		hint = fmt.Sprintf("Install Mendix Studio Pro %[1]s and use its bundled mxbuild, e.g.:\n"+
+			"      \"C:\\Program Files\\Mendix\\%[1]s\\modeler\\mx.exe\" check app.mpr\n"+
+			"  Or point mxcli at it explicitly with --mxbuild-path.\n"+
+			"  (The Mendix CDN only publishes Linux mxbuild; downloading it on Windows would fail with \"Exec format error\".)\n"+
+			"  To download the Linux binary anyway (e.g. to pre-cache it for a Docker/devcontainer build), re-run with --force.", version)
+	case "darwin":
+		hint = fmt.Sprintf("Install Mendix Studio Pro %[1]s and use its bundled mx, e.g.:\n"+
+			"      \"/Applications/Mendix Studio Pro %[1]s.app/Contents/modeler/mx\" check app.mpr\n"+
+			"  Or point mxcli at it explicitly with --mxbuild-path.\n"+
+			"  (The Mendix CDN only publishes Linux mxbuild; downloading it on macOS would fail with \"Exec format error\".)\n"+
+			"  To download the Linux binary anyway (e.g. to pre-cache it for a Docker build), re-run with --force.", version)
+	default:
+		hint = fmt.Sprintf("The Mendix CDN only publishes Linux mxbuild, which cannot run natively on %s.\n"+
+			"  Install Mendix Studio Pro %s, or re-run with --force to download the Linux binary anyway.", goos, version)
+	}
+	return "", hint, fmt.Errorf("mxbuild from the Mendix CDN is a Linux binary and cannot run natively on %s", goos)
+}
+
 // resolveStudioProDirMacOS finds an installed Studio Pro on macOS that matches
 // the requested version. App bundles are named "Mendix Studio Pro X.Y.Z*.app"
 // where X.Y.Z is the base version (e.g., "11.10.0-rc.7 Beta" for 11.10.0).
