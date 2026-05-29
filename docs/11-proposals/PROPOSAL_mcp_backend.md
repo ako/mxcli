@@ -193,29 +193,51 @@ dialer (dial target ≠ `Host` header).
 - Confirm whether Studio Pro can be configured to bind `0.0.0.0`/IPv4 (would
   remove the forwarder entirely). Needs a per-OS support matrix.
 
-## Read path: hybrid (decided)
+## Read path: hybrid — but with a CONFIRMED consistency hole
 
-**Writes** always go through MCP. **Reads** (`SHOW`/`DESCRIBE`, reference
-validation, catalog, search, `show structure`) read the **mounted local
-`.mpr`/`mprcontents` files** directly, reusing all existing read code and the
-SQLite catalog unchanged.
+The plan was: **writes** via MCP; **reads** (`SHOW`/`DESCRIBE`, reference
+validation, catalog, search, `show structure`) from the **mounted local
+`.mpr`/`mprcontents` files**, reusing all existing read code and the SQLite
+catalog. Rationale held: PED is document-addressed with only `ped_list_folder`
+for enumeration, so catalog/search/structure can't be served from MCP without N
+round-trips; local files give full, fast read coverage for free.
 
-Rationale: PED is document-addressed and (as far as the docs show) has **no bulk
-enumerate**, so catalog/search/structure can't be served from MCP without N
-round-trips. The local files give full, fast read coverage for free.
+> **⚠ Disproven assumption (measured 2026-05-29 against test7-app).** While Studio
+> Pro is open, **the on-disk files are stale by default** — Studio Pro is the
+> system of record, and most MCP edits are *not persisted to disk until the user
+> saves*. Measured behaviour:
+> - `ped_create_module` → **flushed to disk immediately** (4 new `.mxunit`, `.mpr`
+>   touched; `mxcli show modules` saw the new module).
+> - `ped_update_document` (add an entity) → applied to Studio Pro's **in-memory
+>   model only**. MCP read-back showed the entity; the user saw it in the UI
+>   marked **unsaved**; disk was unchanged and `mxcli describe entity` returned
+>   "not found".
+> - `ped_check_errors` validated cleanly but did **not** flush either.
+> - There is **no save/flush tool** among the 16 exposed tools.
+>
+> So a hybrid read taken right after a write returns *stale* data for any edit
+> that stays in memory — which is most of them. This is not a rare edge case; it
+> is the default during a live editing session.
 
-**Accepted limitation:** local files lag Studio Pro's *unsaved in-memory* state
-until Studio Pro flushes to disk. Reads taken immediately after an MCP write may
-not reflect that write. Mitigations to evaluate (not first-cut):
+This forces a real decision the original "hybrid (decided)" answer did not
+anticipate. Options, in order of preference given the evidence:
 
-- If PED exposes a "save"/"flush" tool, call it after a write batch before
-  reads.
-- A `--freshness` guard that warns when the open Studio Pro project has unsaved
-  changes (if detectable). This is the "Hybrid + freshness guard" path deferred
-  from the design questions.
+1. **Read-through-MCP for just-written documents; local files for bulk/catalog.**
+   After a write, reads of *that* document/module go through `ped_read_document`
+   (consistent with memory); catalog/search/structure still use local files
+   (accepting they reflect last-saved state). The backend tracks a "dirty set"
+   of documents touched this session and routes their reads to MCP.
+2. **Require a save.** If Mendix adds a save/flush tool (or one exists undocumented),
+   call it after each write batch, then local reads are correct. Cleanest if
+   available — **action: ask Mendix / re-scan tool surface across versions.**
+3. **Pure-MCP reads.** Always consistent, but loses the catalog/search/fast
+   enumerate that motivated hybrid, and needs many round-trips.
 
-This means the MCP backend is, concretely, a **composite**: a local MPR reader
-for the read half of `FullBackend`, and an MCP client for the write half.
+Recommendation shifts toward **Option 1** for the vertical slice: it keeps the
+catalog/search win while staying correct for the documents the session just
+edited. The MCP backend is therefore a **composite with a dirty-set router**:
+local MPR reader for cold/bulk reads, MCP client for writes *and* for reads of
+documents written this session.
 
 ## Implementation seam — two options, with a recommendation
 
@@ -366,10 +388,14 @@ the devcontainer networking prerequisite doc.
    `Mcp-Session-Id`, and the `Host` override. Server is protocol `2025-06-18`,
    single-JSON responses observed (no SSE needed so far). Decide: grow
    `mcpprobe`'s client core into `mdl/backend/mcp/client.go` vs adopt a library.
-3. **Unsaved-state semantics** — does a `ped_*` write apply to Studio Pro's
-   in-memory model immediately and persist to the `.mxunit` files (so hybrid
-   local reads see it), or only in memory until the user saves? Determines how
-   severe the hybrid-read staleness is. Test directly now that the pipe works.
+3. **Unsaved-state semantics** — ✅ **answered (measured).** MCP edits apply to
+   Studio Pro's in-memory model; most (`ped_update_document`) are **not persisted
+   to disk until the user saves**, `ped_check_errors` does not flush, and there is
+   no save tool. Only `ped_create_module` flushed immediately. → drives the
+   "consistency hole" + dirty-set router in the Read-path section. Open follow-up:
+   is there *any* flush path (a save tool in another version, an autosave timer,
+   a `pg_*` equivalent), and does `pg_write_page` flush like module-create or stay
+   in memory like `ped_update_document`?
 4. **Devcontainer networking** — ✅ root-caused (IPv6-loopback bind) and bridged
    with a host-side `socat` IPv4→`[::1]` forwarder (see "Transport"). Remaining is
    *productisation* (ship the forwarder / host-bind option / per-OS matrix), not
