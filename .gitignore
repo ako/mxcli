@@ -36,6 +36,7 @@ reference/mdl-grammar/
 reference/mxbuild-11.6.0/
 /reference/
 mx-test-projects/*/
+mx-template-projects/
 tmp/
 
 # Generated files
