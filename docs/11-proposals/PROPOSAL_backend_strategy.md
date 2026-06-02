@@ -37,6 +37,11 @@ related:
 > commits, the architectural choice (adopt engalar base; target-axis backends)
 > should be recorded as an **ADR**, superseding the relevant parts of ADR-0002.
 
+> For how the inherited engine actually works — the read→mutate→encode pipeline,
+> template extraction, and the roundtrip field-preservation that motivates this
+> switch — see the companion
+> [`MODELSDK_BACKEND_PIPELINE.md`](../03-development/MODELSDK_BACKEND_PIPELINE.md).
+
 ---
 
 ## Investigation insights (evidence base)
