@@ -1771,11 +1771,7 @@ func setDesignPropertyMut(widget bson.D, key, valueType, option string) error {
 		if !ok || dGetString(entry, "Key") != key {
 			continue
 		}
-		existingType := ""
-		if v := dGetDoc(entry, "Value"); v != nil {
-			existingType = dGetString(v, "$Type")
-		}
-		dSet(entry, "Value", buildDesignPropertyValueDoc(valueType, option, existingType))
+		dSet(entry, "Value", buildDesignPropertyValueDoc(valueType, option))
 		dSetArray(appearance, "DesignProperties", elements)
 		return nil
 	}
@@ -1784,7 +1780,7 @@ func setDesignPropertyMut(widget bson.D, key, valueType, option string) error {
 		{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
 		{Key: "$Type", Value: designPropertyEntryType},
 		{Key: "Key", Value: key},
-		{Key: "Value", Value: buildDesignPropertyValueDoc(valueType, option, "")},
+		{Key: "Value", Value: buildDesignPropertyValueDoc(valueType, option)},
 	}
 	dSetArray(appearance, "DesignProperties", append(elements, entry))
 	return nil
@@ -1820,17 +1816,18 @@ func clearDesignPropertiesMut(widget bson.D) error {
 }
 
 // buildDesignPropertyValueDoc builds the typed Value sub-document for a design
-// property entry. valueType is "toggle", "option", or "custom"
-// (ToggleButtonGroup/ColorPicker). existingType preserves a custom value kind on
-// an option-typed update when the caller could not resolve the theme type.
-func buildDesignPropertyValueDoc(valueType, option, existingType string) bson.D {
-	switch {
-	case valueType == "toggle":
+// property entry. valueType is "toggle", "option", or "custom". Single-selection
+// design properties (Dropdown AND ToggleButtonGroup) use "option"
+// (Forms$OptionDesignPropertyValue) — verified against Studio Pro-authored
+// widgets; encoding a ToggleButtonGroup value as "custom" triggers CE6084.
+func buildDesignPropertyValueDoc(valueType, option string) bson.D {
+	switch valueType {
+	case "toggle":
 		return bson.D{
 			{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
 			{Key: "$Type", Value: toggleDesignPropertyType},
 		}
-	case valueType == "custom" || existingType == customDesignPropertyType:
+	case "custom":
 		return bson.D{
 			{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
 			{Key: "$Type", Value: customDesignPropertyType},

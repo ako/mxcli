@@ -249,29 +249,6 @@ func TestAlterStyling_QuotedStyleIsDesignProperty(t *testing.T) {
 	}
 }
 
-func TestResolveStylingValueType(t *testing.T) {
-	reg := &ThemeRegistry{WidgetProperties: map[string][]ThemeProperty{
-		"DivContainer": {{Name: "Flex container", Type: "ToggleButtonGroup"}, {Name: "Align content", Type: "Dropdown"}},
-		"Button":       {{Name: "Style", Type: "ToggleButtonGroup"}},
-		"DataView":     {{Name: "Background color", Type: "ColorPicker"}},
-	}}
-	cases := map[string]string{
-		"Flex container":   "custom",
-		"Style":            "custom",
-		"Background color": "custom",
-		"Align content":    "option",
-		"Unknown prop":     "option",
-	}
-	for key, want := range cases {
-		if got := resolveStylingValueType(reg, key); got != want {
-			t.Errorf("resolveStylingValueType(%q) = %q, want %q", key, got, want)
-		}
-	}
-	if got := resolveStylingValueType(nil, "anything"); got != "option" {
-		t.Errorf("nil registry should default to option, got %q", got)
-	}
-}
-
 func TestAlterStyling_WidgetNotFound(t *testing.T) {
 	mut := &mock.MockPageMutator{
 		FindWidgetFunc: func(name string) bool { return false },

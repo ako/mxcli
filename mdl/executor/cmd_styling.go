@@ -309,16 +309,7 @@ func execAlterStyling(ctx *ExecContext, s *ast.AlterStylingStmt) error {
 			fmt.Sprintf("widget %q not found in %s %s", s.WidgetName, containerType, s.ContainerName.String()))
 	}
 
-	// Load the theme registry (best-effort) to encode design-property values with
-	// the correct BSON value-type (Toggle / Option / Custom) per the theme.
-	var registry *ThemeRegistry
-	if ctx.MprPath != "" {
-		if r, rErr := loadThemeRegistry(filepath.Dir(ctx.MprPath)); rErr == nil {
-			registry = r
-		}
-	}
-
-	if err := applyStylingMutator(mutator, s, registry); err != nil {
+	if err := applyStylingMutator(mutator, s); err != nil {
 		return mdlerrors.NewBackend("alter styling", err)
 	}
 
@@ -332,7 +323,7 @@ func execAlterStyling(ctx *ExecContext, s *ast.AlterStylingStmt) error {
 
 // applyStylingMutator applies the ALTER STYLING assignments through the page
 // mutator. CLEAR DESIGN PROPERTIES is applied first, then each assignment in order.
-func applyStylingMutator(mutator backend.PageMutator, s *ast.AlterStylingStmt, registry *ThemeRegistry) error {
+func applyStylingMutator(mutator backend.PageMutator, s *ast.AlterStylingStmt) error {
 	if s.ClearDesignProps {
 		if err := mutator.ClearDesignProperties(s.WidgetName); err != nil {
 			return err
@@ -359,40 +350,17 @@ func applyStylingMutator(mutator backend.PageMutator, s *ast.AlterStylingStmt, r
 				return err
 			}
 		default:
-			// Option/Custom design property — resolve the BSON value-type from
-			// the theme so ToggleButtonGroup/ColorPicker values encode as Custom.
-			valueType := resolveStylingValueType(registry, a.Property)
-			if err := mutator.SetDesignProperty(s.WidgetName, a.Property, valueType, a.Value); err != nil {
+			// A single-selection design property (Dropdown or ToggleButtonGroup)
+			// is stored as Forms$OptionDesignPropertyValue — verified against
+			// Studio Pro-authored widgets. (The SDK's "custom" classification for
+			// ToggleButtonGroup is incorrect and triggers CE6084.)
+			if err := mutator.SetDesignProperty(s.WidgetName, a.Property, "option", a.Value); err != nil {
 				return err
 			}
 		}
 	}
 
 	return nil
-}
-
-// resolveStylingValueType returns the BSON value-type for a design-property value
-// assignment by consulting the theme registry: "custom" for ToggleButtonGroup /
-// ColorPicker properties, "option" otherwise (Dropdown or unknown/no theme info).
-func resolveStylingValueType(registry *ThemeRegistry, key string) string {
-	if registry == nil {
-		return "option"
-	}
-	custom := false
-	for _, props := range registry.WidgetProperties {
-		for _, p := range props {
-			if p.Name != key {
-				continue
-			}
-			if p.Type == "ToggleButtonGroup" || p.Type == "ColorPicker" {
-				custom = true
-			}
-		}
-	}
-	if custom {
-		return "custom"
-	}
-	return "option"
 }
 
 // findPageByName looks up a page by qualified name.

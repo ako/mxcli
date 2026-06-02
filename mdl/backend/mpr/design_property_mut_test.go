@@ -134,33 +134,35 @@ func TestSetDesignProperty_UpdatesExistingKeyInPlace(t *testing.T) {
 	}
 }
 
-func TestSetDesignProperty_PreservesCustomKind(t *testing.T) {
+// An option-typed set must overwrite a stale Custom value with an
+// OptionDesignPropertyValue. ToggleButtonGroup values are Option, not Custom;
+// writing Custom triggers Studio Pro CE6084, so re-applying must repair it.
+func TestSetDesignProperty_OptionOverwritesCustom(t *testing.T) {
 	w := makeStyleableWidget("ctn1")
-	// Seed an existing custom (ToggleButtonGroup/ColorPicker) design property.
 	app := dGetDoc(w, "Appearance")
 	dSetArray(app, "DesignProperties", []any{
 		bson.D{
 			{Key: "$Type", Value: designPropertyEntryType},
-			{Key: "Key", Value: "Accent"},
+			{Key: "Key", Value: "Flex container"},
 			{Key: "Value", Value: bson.D{
 				{Key: "$Type", Value: customDesignPropertyType},
-				{Key: "Value", Value: "blue"},
+				{Key: "Value", Value: "Horizontal (row)"},
 			}},
 		},
 	})
 	rawData := makeRawPage(w)
 	m := &mprPageMutator{rawData: rawData, widgetFinder: findBsonWidget}
 
-	if err := m.SetDesignProperty("ctn1", "Accent", "option", "red"); err != nil {
+	if err := m.SetDesignProperty("ctn1", "Flex container", "option", "Horizontal (row)"); err != nil {
 		t.Fatalf("SetDesignProperty failed: %v", err)
 	}
 
-	val := dGetDoc(findEntry(designPropEntries(t, rawData, "ctn1"), "Accent"), "Value")
-	if dGetString(val, "$Type") != customDesignPropertyType {
-		t.Errorf("expected custom kind preserved, got %q", dGetString(val, "$Type"))
+	val := dGetDoc(findEntry(designPropEntries(t, rawData, "ctn1"), "Flex container"), "Value")
+	if dGetString(val, "$Type") != optionDesignPropertyType {
+		t.Errorf("expected Custom overwritten with Option, got %q", dGetString(val, "$Type"))
 	}
-	if dGetString(val, "Value") != "red" {
-		t.Errorf("expected custom Value='red', got %q", dGetString(val, "Value"))
+	if dGetString(val, "Option") != "Horizontal (row)" {
+		t.Errorf("expected Option='Horizontal (row)', got %q", dGetString(val, "Option"))
 	}
 }
 
