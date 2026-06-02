@@ -1,0 +1,67 @@
+-- ============================================================================
+-- Bug #631: ALTER STYLING cannot set design properties on widgets in pages
+--           and snippets
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   `ALTER STYLING ON PAGE ... WIDGET ... SET ...` always failed with
+--   "unsupported container type: PAGE". The visitor stored ContainerType as
+--   uppercase "PAGE"/"SNIPPET" but the executor compared against lowercase, so
+--   it fell through to the unsupported-container error. The same casing bug
+--   silently broke DESCRIBE STYLING. Even past the casing issue, ALTER STYLING
+--   used a reflection walker (walkPageWidgets) that could not locate widgets in
+--   pages created by the MDL builder, so there was no working write path for
+--   design properties.
+--
+-- After fix:
+--   ALTER STYLING normalises the container type and goes through the page
+--   mutator (OpenPageForMutation), which works uniformly on pages/snippets
+--   created in Studio Pro and by the MDL builder. The mutator gained
+--   SetDesignProperty / RemoveDesignProperty / ClearDesignProperties writing the
+--   widget's Appearance.DesignProperties BSON array.
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/631-alter-styling-design-properties.mdl -p app.mpr
+--   Open in Studio Pro — the container shows the css class, inline style, and
+--   Atlas design properties (Spacing bottom = Large, Full width toggle).
+-- ============================================================================
+
+create module BugTest631;
+
+-- A builder-created page (the case the old reflection walker could not handle).
+create page BugTest631.P_Styling
+(
+  title: 'Styling Target',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  container ctnTarget (class: 'old-class') {
+    dynamictext txtHello (content: 'Hello')
+  }
+}
+
+-- Class + inline style
+ALTER STYLING ON PAGE BugTest631.P_Styling WIDGET ctnTarget
+  SET Class = 'card card-bordered',
+      Style = 'padding: 24px;';
+
+-- Option (dropdown) design property
+ALTER STYLING ON PAGE BugTest631.P_Styling WIDGET ctnTarget
+  SET 'Spacing bottom' = 'Large';
+
+-- Toggle design property ON
+ALTER STYLING ON PAGE BugTest631.P_Styling WIDGET ctnTarget
+  SET 'Full width' = ON;
+
+-- Read back — should report the class, style, and both design properties
+DESCRIBE STYLING ON PAGE BugTest631.P_Styling WIDGET ctnTarget;
+
+-- Toggle OFF removes the property again
+ALTER STYLING ON PAGE BugTest631.P_Styling WIDGET ctnTarget
+  SET 'Full width' = OFF;
+
+-- Clear all design properties (Class/Style remain)
+ALTER STYLING ON PAGE BugTest631.P_Styling WIDGET ctnTarget
+  CLEAR DESIGN PROPERTIES;
+
+DESCRIBE STYLING ON PAGE BugTest631.P_Styling WIDGET ctnTarget;

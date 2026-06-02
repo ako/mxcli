@@ -572,26 +572,38 @@ describe styling on snippet StyleTest.MySnippet widget ctnSnippet;
 -- Change Class, Style, or DesignProperties on a single widget without
 -- rewriting the entire page. This is a targeted, in-place update.
 
--- TODO: ALTER STYLING cannot find widgets in pages created by the MDL page builder
--- because walkPageWidgets traverses LayoutCall.Arguments but the page parser doesn't
--- fully reconstruct the widget tree when re-reading builder-created pages.
--- These commands work on pages originally created in Studio Pro.
+-- ALTER STYLING goes through the page mutator (issue #631), so it works on
+-- pages created by the MDL builder as well as those authored in Studio Pro.
 
--- ALTER STYLING ON PAGE StyleTest.P006_Roundtrip WIDGET ctnHeader
---   SET Class = 'card card-bordered';
--- ALTER STYLING ON PAGE StyleTest.P006_Roundtrip WIDGET ctnHeader
---   SET Style = 'padding: 24px; border-radius: 12px;';
--- ALTER STYLING ON PAGE StyleTest.P006_Roundtrip WIDGET ctnHeader
---   SET 'Spacing bottom' = 'Large';
--- ALTER STYLING ON PAGE StyleTest.P006_Roundtrip WIDGET ctnHeader
---   SET 'Full width' = ON;
--- ALTER STYLING ON PAGE StyleTest.P006_Roundtrip WIDGET ctnHeader
---   SET 'Full width' = OFF;
--- ALTER STYLING ON PAGE StyleTest.P006_Roundtrip WIDGET ctnHeader
---   SET Class = 'card card-bordered',
---       Style = 'padding: 24px;',
---       'Spacing bottom' = 'Large',
---       'Full width' = ON;
--- ALTER STYLING ON PAGE StyleTest.P006_Roundtrip WIDGET ctnHeader
---   CLEAR DESIGN PROPERTIES;
--- DESCRIBE STYLING ON PAGE StyleTest.P006_Roundtrip WIDGET ctnHeader;
+-- Set a CSS class
+ALTER STYLING ON PAGE StyleTest.P006_Roundtrip WIDGET ctnHeader
+  SET Class = 'card card-bordered';
+
+-- Set an inline style
+ALTER STYLING ON PAGE StyleTest.P006_Roundtrip WIDGET ctnHeader
+  SET Style = 'padding: 24px; border-radius: 12px;';
+
+-- Set an option (dropdown) design property
+ALTER STYLING ON PAGE StyleTest.P006_Roundtrip WIDGET ctnHeader
+  SET 'Spacing bottom' = 'Large';
+
+-- Turn a toggle design property ON
+ALTER STYLING ON PAGE StyleTest.P006_Roundtrip WIDGET ctnHeader
+  SET 'Full width' = ON;
+
+-- Turn a toggle design property OFF (removes it)
+ALTER STYLING ON PAGE StyleTest.P006_Roundtrip WIDGET ctnHeader
+  SET 'Full width' = OFF;
+
+-- Combine Class, Style, and design properties in one statement
+ALTER STYLING ON PAGE StyleTest.P006_Roundtrip WIDGET ctnHeader
+  SET Class = 'card card-bordered',
+      Style = 'padding: 24px;',
+      'Spacing bottom' = 'Large',
+      'Full width' = ON;
+
+-- Remove all design properties from a widget
+ALTER STYLING ON PAGE StyleTest.P006_Roundtrip WIDGET ctnHeader
+  CLEAR DESIGN PROPERTIES;
+
+DESCRIBE STYLING ON PAGE StyleTest.P006_Roundtrip WIDGET ctnHeader;

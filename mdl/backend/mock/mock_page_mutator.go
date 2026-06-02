@@ -17,25 +17,28 @@ var _ backend.PageMutator = (*MockPageMutator)(nil)
 // nil error (never panics). ContainerType defaults to ContainerPage when unset;
 // all other methods return zero values.
 type MockPageMutator struct {
-	ContainerTypeFunc        func() backend.ContainerKind
-	SetWidgetPropertyFunc    func(widgetRef string, prop string, value any) error
-	SetWidgetDataSourceFunc  func(widgetRef string, ds pages.DataSource) error
-	SetColumnPropertyFunc    func(gridRef string, columnRef string, prop string, value any) error
-	InsertWidgetFunc         func(widgetRef string, columnRef string, position backend.InsertPosition, widgets []pages.Widget) error
-	DropWidgetFunc           func(refs []backend.WidgetRef) error
-	ReplaceWidgetFunc        func(widgetRef string, columnRef string, widgets []pages.Widget) error
-	InsertColumnsFunc        func(gridRef, afterColumnRef string, position backend.InsertPosition, columns []*backend.DataGridColumnSpec) error
-	ReplaceColumnFunc        func(gridRef, columnRef string, columns []*backend.DataGridColumnSpec) error
-	FindWidgetFunc           func(name string) bool
-	AddVariableFunc          func(name, dataType, defaultValue string) error
-	DropVariableFunc         func(name string) error
-	SetLayoutFunc            func(newLayout string, paramMappings map[string]string) error
-	SetPluggablePropertyFunc func(widgetRef string, propKey string, op backend.PluggablePropertyOp, ctx backend.PluggablePropertyContext) error
-	EnclosingEntityFunc      func(widgetRef string) string
+	ContainerTypeFunc              func() backend.ContainerKind
+	SetWidgetPropertyFunc          func(widgetRef string, prop string, value any) error
+	SetWidgetDataSourceFunc        func(widgetRef string, ds pages.DataSource) error
+	SetColumnPropertyFunc          func(gridRef string, columnRef string, prop string, value any) error
+	SetDesignPropertyFunc          func(widgetRef string, key string, valueType string, option string) error
+	RemoveDesignPropertyFunc       func(widgetRef string, key string) error
+	ClearDesignPropertiesFunc      func(widgetRef string) error
+	InsertWidgetFunc               func(widgetRef string, columnRef string, position backend.InsertPosition, widgets []pages.Widget) error
+	DropWidgetFunc                 func(refs []backend.WidgetRef) error
+	ReplaceWidgetFunc              func(widgetRef string, columnRef string, widgets []pages.Widget) error
+	InsertColumnsFunc              func(gridRef, afterColumnRef string, position backend.InsertPosition, columns []*backend.DataGridColumnSpec) error
+	ReplaceColumnFunc              func(gridRef, columnRef string, columns []*backend.DataGridColumnSpec) error
+	FindWidgetFunc                 func(name string) bool
+	AddVariableFunc                func(name, dataType, defaultValue string) error
+	DropVariableFunc               func(name string) error
+	SetLayoutFunc                  func(newLayout string, paramMappings map[string]string) error
+	SetPluggablePropertyFunc       func(widgetRef string, propKey string, op backend.PluggablePropertyOp, ctx backend.PluggablePropertyContext) error
+	EnclosingEntityFunc            func(widgetRef string) string
 	EnclosingEntityForChildrenFunc func(widgetRef string) string
-	WidgetScopeFunc          func() map[string]model.ID
-	ParamScopeFunc           func() (map[string]model.ID, map[string]string)
-	SaveFunc                 func() error
+	WidgetScopeFunc                func() map[string]model.ID
+	ParamScopeFunc                 func() (map[string]model.ID, map[string]string)
+	SaveFunc                       func() error
 }
 
 func (m *MockPageMutator) ContainerType() backend.ContainerKind {
@@ -62,6 +65,27 @@ func (m *MockPageMutator) SetWidgetDataSource(widgetRef string, ds pages.DataSou
 func (m *MockPageMutator) SetColumnProperty(gridRef string, columnRef string, prop string, value any) error {
 	if m.SetColumnPropertyFunc != nil {
 		return m.SetColumnPropertyFunc(gridRef, columnRef, prop, value)
+	}
+	return nil
+}
+
+func (m *MockPageMutator) SetDesignProperty(widgetRef string, key string, valueType string, option string) error {
+	if m.SetDesignPropertyFunc != nil {
+		return m.SetDesignPropertyFunc(widgetRef, key, valueType, option)
+	}
+	return nil
+}
+
+func (m *MockPageMutator) RemoveDesignProperty(widgetRef string, key string) error {
+	if m.RemoveDesignPropertyFunc != nil {
+		return m.RemoveDesignPropertyFunc(widgetRef, key)
+	}
+	return nil
+}
+
+func (m *MockPageMutator) ClearDesignProperties(widgetRef string) error {
+	if m.ClearDesignPropertiesFunc != nil {
+		return m.ClearDesignPropertiesFunc(widgetRef)
 	}
 	return nil
 }

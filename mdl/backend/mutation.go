@@ -83,6 +83,22 @@ type PageMutator interface {
 	// SetColumnProperty sets a property on a column within a grid widget.
 	SetColumnProperty(gridRef string, columnRef string, prop string, value any) error
 
+	// --- Design property (Atlas styling) operations ---
+
+	// SetDesignProperty sets or updates an Atlas design property on the named
+	// widget's Appearance. valueType is "toggle" (no value) or "option" (carries
+	// option). When the property already exists as a "custom" value
+	// (ToggleButtonGroup/ColorPicker), an option-type set updates it in place to
+	// preserve its kind.
+	SetDesignProperty(widgetRef string, key string, valueType string, option string) error
+
+	// RemoveDesignProperty removes a single design property by key from the named
+	// widget (e.g. a toggle set to OFF).
+	RemoveDesignProperty(widgetRef string, key string) error
+
+	// ClearDesignProperties removes all design properties from the named widget.
+	ClearDesignProperties(widgetRef string) error
+
 	// --- Widget tree operations ---
 
 	// InsertWidget inserts serialized widgets at the given position
