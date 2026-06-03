@@ -2,6 +2,8 @@ module github.com/mendixlabs/mxcli
 
 go 1.26.0
 
+toolchain go1.26.4
+
 require (
 	github.com/alecthomas/chroma/v2 v2.26.1
 	github.com/antlr4-go/antlr/v4 v4.13.1
