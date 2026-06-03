@@ -54,19 +54,22 @@ func parseStylingAssignment(ctx *parser.AlterStylingAssignmentContext) ast.Styli
 	assignment := ast.StylingAssignment{}
 
 	if ctx.CLASS() != nil {
-		// CLASS = 'value'
+		// CLASS = 'value' (CSS appearance, not a design property)
 		assignment.Property = "Class"
+		assignment.IsCSS = true
 		if sl := ctx.STRING_LITERAL(0); sl != nil {
 			assignment.Value = unquoteString(sl.GetText())
 		}
 	} else if ctx.STYLE() != nil {
-		// STYLE = 'value'
+		// STYLE = 'value' (CSS appearance, not a design property)
 		assignment.Property = "Style"
+		assignment.IsCSS = true
 		if sl := ctx.STRING_LITERAL(0); sl != nil {
 			assignment.Value = unquoteString(sl.GetText())
 		}
 	} else {
-		// STRING_LITERAL = STRING_LITERAL | ON | OFF (design property)
+		// STRING_LITERAL = STRING_LITERAL | ON | OFF (design property; the key
+		// may itself be 'Class' or 'Style' — that is a design property, not CSS)
 		literals := ctx.AllSTRING_LITERAL()
 		if len(literals) > 0 {
 			assignment.Property = unquoteString(literals[0].GetText())

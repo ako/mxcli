@@ -113,6 +113,39 @@ func (m *mprPageMutator) SetColumnProperty(gridRef string, columnRef string, pro
 	return setColumnPropertyMut(result.widget, result.colPropKeys, prop, value)
 }
 
+func (m *mprPageMutator) SetDesignProperty(widgetRef, key, valueType, option string) error {
+	widget, err := m.findStyleableWidget(widgetRef)
+	if err != nil {
+		return err
+	}
+	return setDesignPropertyMut(widget, key, valueType, option)
+}
+
+func (m *mprPageMutator) RemoveDesignProperty(widgetRef, key string) error {
+	widget, err := m.findStyleableWidget(widgetRef)
+	if err != nil {
+		return err
+	}
+	return removeDesignPropertyMut(widget, key)
+}
+
+func (m *mprPageMutator) ClearDesignProperties(widgetRef string) error {
+	widget, err := m.findStyleableWidget(widgetRef)
+	if err != nil {
+		return err
+	}
+	return clearDesignPropertiesMut(widget)
+}
+
+// findStyleableWidget locates a widget by name for design-property operations.
+func (m *mprPageMutator) findStyleableWidget(widgetRef string) (bson.D, error) {
+	result := m.widgetFinder(m.rawData, widgetRef)
+	if result == nil {
+		return nil, fmt.Errorf("widget %q not found", widgetRef)
+	}
+	return result.widget, nil
+}
+
 func (m *mprPageMutator) InsertWidget(widgetRef string, columnRef string, position backend.InsertPosition, widgets []pages.Widget) error {
 	var result *bsonWidgetResult
 	if columnRef != "" {
@@ -1708,6 +1741,107 @@ func setRawWidgetPropertyMut(widget bson.D, propName string, value any) error {
 	default:
 		// Try as pluggable widget property
 		return setPluggableWidgetPropertyMut(widget, propName, value)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Design property (Atlas styling) mutation
+// ---------------------------------------------------------------------------
+
+const (
+	designPropertyEntryType  = "Forms$DesignPropertyValue"
+	toggleDesignPropertyType = "Forms$ToggleDesignPropertyValue"
+	optionDesignPropertyType = "Forms$OptionDesignPropertyValue"
+	customDesignPropertyType = "Forms$CustomDesignPropertyValue"
+)
+
+// setDesignPropertyMut sets or updates a single design property in the widget's
+// Appearance.DesignProperties array. valueType is "toggle" (no value) or "option"
+// (carries option). An existing entry's Value is fully rewritten to the new
+// valueType — so an option-type set on a stale "custom" value
+// (ToggleButtonGroup/ColorPicker) overwrites it with an OptionDesignPropertyValue,
+// repairing the CE6084 that a Custom encoding triggers (see
+// buildDesignPropertyValueDoc and TestSetDesignProperty_OptionOverwritesCustom).
+func setDesignPropertyMut(widget bson.D, key, valueType, option string) error {
+	appearance := dGetDoc(widget, "Appearance")
+	if appearance == nil {
+		return fmt.Errorf("widget has no Appearance; cannot set design property %q", key)
+	}
+	elements := dGetArrayElements(dGet(appearance, "DesignProperties"))
+
+	for _, el := range elements {
+		entry, ok := el.(bson.D)
+		if !ok || dGetString(entry, "Key") != key {
+			continue
+		}
+		dSet(entry, "Value", buildDesignPropertyValueDoc(valueType, option))
+		dSetArray(appearance, "DesignProperties", elements)
+		return nil
+	}
+
+	entry := bson.D{
+		{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
+		{Key: "$Type", Value: designPropertyEntryType},
+		{Key: "Key", Value: key},
+		{Key: "Value", Value: buildDesignPropertyValueDoc(valueType, option)},
+	}
+	dSetArray(appearance, "DesignProperties", append(elements, entry))
+	return nil
+}
+
+// removeDesignPropertyMut removes a single design property by key.
+func removeDesignPropertyMut(widget bson.D, key string) error {
+	appearance := dGetDoc(widget, "Appearance")
+	if appearance == nil {
+		return nil
+	}
+	elements := dGetArrayElements(dGet(appearance, "DesignProperties"))
+	kept := make([]any, 0, len(elements))
+	for _, el := range elements {
+		if entry, ok := el.(bson.D); ok && dGetString(entry, "Key") == key {
+			continue
+		}
+		kept = append(kept, el)
+	}
+	dSetArray(appearance, "DesignProperties", kept)
+	return nil
+}
+
+// clearDesignPropertiesMut removes all design properties from the widget,
+// leaving an empty (marker-only) array.
+func clearDesignPropertiesMut(widget bson.D) error {
+	appearance := dGetDoc(widget, "Appearance")
+	if appearance == nil {
+		return nil
+	}
+	dSetArray(appearance, "DesignProperties", nil)
+	return nil
+}
+
+// buildDesignPropertyValueDoc builds the typed Value sub-document for a design
+// property entry. valueType is "toggle", "option", or "custom". Single-selection
+// design properties (Dropdown AND ToggleButtonGroup) use "option"
+// (Forms$OptionDesignPropertyValue) — verified against Studio Pro-authored
+// widgets; encoding a ToggleButtonGroup value as "custom" triggers CE6084.
+func buildDesignPropertyValueDoc(valueType, option string) bson.D {
+	switch valueType {
+	case "toggle":
+		return bson.D{
+			{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
+			{Key: "$Type", Value: toggleDesignPropertyType},
+		}
+	case "custom":
+		return bson.D{
+			{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
+			{Key: "$Type", Value: customDesignPropertyType},
+			{Key: "Value", Value: option},
+		}
+	default:
+		return bson.D{
+			{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
+			{Key: "$Type", Value: optionDesignPropertyType},
+			{Key: "Option", Value: option},
+		}
 	}
 }
 

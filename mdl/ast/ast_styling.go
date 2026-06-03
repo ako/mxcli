@@ -37,6 +37,7 @@ func (s *AlterStylingStmt) isStatement() {}
 type StylingAssignment struct {
 	Property string // "Class", "Style", or design property key (e.g., "Spacing top")
 	Value    string // Value string (CSS class, style, or option name)
+	IsCSS    bool   // true when set via the CLASS/STYLE keyword (appearance), false for a quoted design-property key
 	IsToggle bool   // true for ON/OFF values
 	ToggleOn bool   // true for ON, false for OFF (only meaningful when IsToggle is true)
 }
