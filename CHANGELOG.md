@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.12.0] - 2026-05-29
+## [0.12.0] - 2026-06-04
 
 Headline: **one widget creation path.** The `datagrid`/`gallery`/`combobox`/`image` keywords and the `pluggablewidget '...'` form now build BSON through a single registry-driven engine, fed by widget definitions extracted from each project's installed `.mpk` files (`widget init`; auto-generated/refreshed on `exec`). The Mendix BSON *envelope* still comes from embedded `mendix-11.6` templates — full per-version, project-extracted templates remain tracked under #529.
 
@@ -14,13 +14,22 @@ Headline: **one widget creation path.** The `datagrid`/`gallery`/`combobox`/`ima
 
 - **Cross-version widget-envelope drift gate** — `make check-widget-versions` (script `scripts/check-widget-versions.sh`) runs a widget fixture through `exec` + `mx check` on multiple Mendix versions and fails if the CE0463 set differs between them (v0.12.0 Stream A). It drops each fixture's `create module` targets before exec so leftover/divergent reference-project state doesn't skew the comparison; the 11.10 libSkiaSharp crash is handled automatically via `scripts/mx-check.sh`. Fixture set: `03`, `30`, `31`, `32`. The gate surfaced one real 11.9→11.10 drift (textfilter `attrChoice`, #605, fixed above); after that fix all four fixtures pass with no cross-version drift
 
+### Security
+
+- **Go toolchain pinned to 1.26.4** — resolves two reachable standard-library vulnerabilities flagged by `govulncheck`: GO-2026-5039 (`net/textproto`, unescaped inputs in errors; reached via `mpk.ParseMPK`) and GO-2026-5037 (`crypto/x509`, inefficient candidate hostname parsing). `go.mod` now carries a `toolchain go1.26.4` directive and CI pins `go-version: '1.26.4'`, so every environment builds with the fixed stdlib
+
 ### Changed
 
+- **ALTER STYLING design properties** — `ALTER STYLING` now writes design properties on pages and snippets, with correct value-type encoding (Option vs Custom; ToggleButtonGroup uses Option). `DESCRIBE STYLING` round-trips them. (#631)
+- **Dependency bumps** — `chroma/v2` 2.24.1 → 2.26.1, `modernc.org/sqlite` 1.50.1 → 1.51.0, `mattn/go-runewidth` 0.0.23 → 0.0.24
 - **DataGrid construction unified on the pluggable widget engine** — the `datagrid` MDL keyword now routes through the same registry-driven engine as the `pluggablewidget 'com.mendix.widget.web.datagrid.Datagrid'` form, so both produce equivalent BSON. The hand-coded keyword-path builder (`datagrid_builder.go` `BuildDataGrid2Widget` + ~30 helpers, ~990 lines) is deleted. Engine gained the column conventions the keyword path applied implicitly: CONTROLBAR→filtersPlaceholder routing, per-column filter-widget routing (`textfilter`/`numberfilter`/`datefilter`/`dropdownfilter`), object-list item property ordering, `Caption`/`Content` aliases with `CaptionParams`/`ContentParams` resolution, missing-Caption→attribute-name fallback, attribute-less columns default `sortable=false`, content-slot widgets auto-infer `ShowContentAs: customContent`, and the tooltip/exportValue empty-ClientTemplate conventions. (#529 Phase 4)
 - **Catalog schema normalized** — every domain table (entities, microflows, pages, …) is now split into a `<name>_data` storage table plus a `<name>` view that joins `snapshots` to expose `ProjectName`, `SnapshotDate`, `SnapshotSource`, `SourceId`, `SourceBranch`, `SourceRevision`. Existing queries (`SELECT * FROM CATALOG.ENTITIES`, ad-hoc filters by `SnapshotSource`, the `objects` UNION view) keep working unchanged. Existing `.mxcli/catalog.db` files rebuild automatically on first open (schema version bumped to 2); cache metadata is cleared so the rebuild fires through `isCacheValid`. (#576)
 
 ### Fixed
 
+- **DESCRIBE round-trips for pages and widgets** — `DESCRIBE` now emits re-executable MDL for several cases that previously broke a roundtrip: bare grant member names (#633), `microflow`/`nanoflow` (not `call_`) for widget actions (#634), an always-present java-action body (#637), quoted reserved-keyword DataGrid column names (#638), and widget-action microflow arguments as `Param: value` (#640)
+- **Reserved-keyword names via quoting** — page/snippet parameter names (#114) and widget names (#619) that collide with MDL reserved words can now be expressed with quoting instead of being rejected
+- **OQL against Mendix 11.11** — `mxcli oql` supports the new `/dev/preview_execute_oql` dev endpoint and surfaces its query errors (which arrive as HTTP 200 with an `{"error": ...}` body) instead of silently succeeding
 - Filter widgets (`textfilter`/`numberfilter`/`datefilter`/`dropdownfilter`) with an explicit `attributes: [...]` list now emit `attrChoice="linked"` instead of `"auto"` (#605). `"auto"` is correct only for a *bare* filter inside a DataGrid column (it binds to the column's attribute); a filter with an explicit attributes list (e.g. inside a Gallery `filter` block) needs `"linked"`. Mendix 11.10+ flags `attrChoice="auto"` alongside a populated attributes list as definition drift (CE0463); Mendix 11.9 tolerated it. This was real 11.9→11.10 envelope drift that the v0.12.0 Stream A gate missed because its fixtures only exercised column-bound filters
 - DataGrid column `ColumnWidth: manual` is honoured again — the Stream B engine consolidation dropped the keyword path's `ColumnWidth` → schema `width` mapping, leaving width at its `autoFill` default. A `Size:` value is only valid when `width=manual`, so under autoFill Studio Pro / `mx check` flagged CE0463. Restored as a `width ← ColumnWidth` column alias (caught by the new cross-version gate as `dgDyn` in fixture 31)
 - Pluggable widget property conditional visibility (#574) — a TextTemplate property hidden by the widget's `editorConfig.js` under the current configuration now emits `TextTemplate: null` instead of the template's populated default, eliminating CE0463 ("the definition of this widget has changed"). Phase 1 hand-authors rules for VideoPlayer (`videoUrl`/`posterUrl` hidden when `type=expression`) and Timeline (`title`/`description`/`timeIndication` hidden when `customVisualization=true`); rules live in each widget's `.def.json` as a `propertyVisibility[]` block and ride the `generatorVersion` auto-refresh
