@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/backend"
+	mcpbackend "github.com/mendixlabs/mxcli/mdl/backend/mcp"
 	mprbackend "github.com/mendixlabs/mxcli/mdl/backend/mpr"
 	"github.com/mendixlabs/mxcli/mdl/diaglog"
 	"github.com/mendixlabs/mxcli/mdl/executor"
@@ -109,6 +110,8 @@ Examples:
 			}
 		}
 		globalJSONFlag, _ = cmd.Flags().GetBool("json")
+		globalMCPURL, _ = cmd.Flags().GetString("mcp")
+		globalMCPDial, _ = cmd.Flags().GetString("mcp-dial")
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		// Get flags
@@ -183,6 +186,15 @@ Examples:
 // globalJSONFlag is set by PersistentPreRun when --json is passed.
 var globalJSONFlag bool
 
+// globalMCPURL / globalMCPDial are set by PersistentPreRun from --mcp / --mcp-dial.
+// When globalMCPURL is non-empty, newLoggedExecutor builds an MCP backend that
+// routes model writes to a live Studio Pro while reads come from the local
+// .mpr given by -p. See docs/11-proposals/PROPOSAL_mcp_backend.md.
+var (
+	globalMCPURL  string
+	globalMCPDial string
+)
+
 // resolveFormat returns the effective output format for a command.
 // If the global --json flag is set and the command has a --format flag, it returns "json".
 // Otherwise it returns the command's --format flag value (or the provided default).
@@ -202,7 +214,13 @@ func resolveFormat(cmd *cobra.Command, defaultFormat string) string {
 func newLoggedExecutor(mode string) (*executor.Executor, *diaglog.Logger) {
 	logger := diaglog.Init(version, mode)
 	exec := executor.New(os.Stdout)
-	exec.SetBackendFactory(func() backend.FullBackend { return mprbackend.New() })
+	mcpURL, mcpDial := globalMCPURL, globalMCPDial
+	exec.SetBackendFactory(func() backend.FullBackend {
+		if mcpURL != "" {
+			return mcpbackend.New(mcpURL, mcpDial)
+		}
+		return mprbackend.New()
+	})
 	exec.SetLogger(logger)
 	if globalJSONFlag {
 		exec.SetFormat(executor.FormatJSON)
@@ -247,6 +265,8 @@ func init() {
 	// Global flags
 	rootCmd.PersistentFlags().StringP("project", "p", "", "Path to Mendix project (.mpr file)")
 	rootCmd.PersistentFlags().Bool("json", false, "Output in JSON format")
+	rootCmd.PersistentFlags().String("mcp", "", "Route model writes to a live Studio Pro MCP server (e.g. http://localhost:7782/mcp); reads come from -p")
+	rootCmd.PersistentFlags().String("mcp-dial", "", "Override the TCP address dialed for --mcp (e.g. host.docker.internal:7782 from a devcontainer)")
 	rootCmd.Flags().StringP("command", "c", "", "Execute MDL command(s) and exit")
 
 	// Check command flags
