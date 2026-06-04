@@ -51,6 +51,14 @@ curl -sf -X post http://localhost:8090/dev/preview_execute_oql \
 # -> {"data":[{"Name":"MxAdmin"}, ...]}
 ```
 
+A **failed query** on the dev endpoint returns **HTTP 200** (not 4xx/5xx) with an
+`{"error":"..."}` body and no `data` field, e.g.:
+```json
+{"error":"An exception has occurred for the following request(s):\n\tInternalOqlTextGetRequest (depth = -1): SELECT ..."}
+```
+So an error must be detected by the presence of the `error` field, not by the
+HTTP status. `mxcli oql` surfaces this message instead of returning empty.
+
 **Pre-11.11 (legacy action):**
 ```bash
 curl -sf -X post http://localhost:8090/ \

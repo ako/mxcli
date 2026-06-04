@@ -381,6 +381,30 @@ func TestExecuteOQL_DevEndpoint(t *testing.T) {
 	}
 }
 
+// TestExecuteOQL_DevEndpointError verifies that a query failure on the 11.11 dev
+// endpoint -- reported as HTTP 200 with {"error":"..."} and no data -- surfaces
+// as an error rather than a silent empty result.
+func TestExecuteOQL_DevEndpointError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Verbatim shape captured from Studio Pro 11.11 (division by zero).
+		w.Write([]byte(`{"error":"An exception has occurred for the following request(s):\n\tInternalOqlTextGetRequest (depth = -1): SELECT (1:0) FROM System.Language"}`))
+	}))
+	defer server.Close()
+
+	host, port := parseTestServerAddr(t, server.URL)
+
+	_, err := ExecuteOQL(OQLOptions{
+		Host: host, Port: port, Token: "testpass", Direct: true,
+	}, "SELECT (1:0) FROM System.Language")
+	if err == nil {
+		t.Fatal("expected error for failing query")
+	}
+	if !strings.Contains(err.Error(), "An exception has occurred") {
+		t.Errorf("error should carry the runtime message, got: %v", err)
+	}
+}
+
 // TestExecuteOQL_FallbackToLegacy verifies that when the dev endpoint 404s
 // (pre-11.11 runtime), ExecuteOQL falls back to the legacy preview_execute_oql
 // action at POST / and still parses the feedback envelope.
