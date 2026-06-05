@@ -24,6 +24,7 @@ require (
 	go.lsp.dev/protocol v0.12.0
 	go.lsp.dev/uri v0.3.0
 	go.mongodb.org/mongo-driver v1.17.9
+	go.mongodb.org/mongo-driver/v2 v2.6.0
 	go.starlark.net v0.0.0-20260102030733-3fee463870c9
 	go.uber.org/zap v1.28.0
 	golang.org/x/sync v0.20.0

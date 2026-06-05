@@ -1,0 +1,10 @@
+{
+  "widgetId": "com.mendix.widget.web.datagriddropdownfilter.DatagridDropdownFilter",
+  "mdlName": "DROPDOWNFILTER",
+  "templateFile": "datagrid-dropdown-filter.json",
+  "defaultEditable": "Always",
+  "propertyMappings": [
+    {"propertyKey": "attrChoice", "value": "linked", "operation": "primitive"},
+    {"propertyKey": "attr", "source": "FirstAttribute", "operation": "attribute"}
+  ]
+}

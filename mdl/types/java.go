@@ -4,7 +4,6 @@ package types
 
 import (
 	"github.com/mendixlabs/mxcli/model"
-	"github.com/mendixlabs/mxcli/sdk/javaactions"
 )
 
 // JavaAction is a lightweight Java action descriptor.
@@ -21,20 +20,23 @@ func (ja *JavaAction) GetName() string { return ja.Name }
 // GetContainerID returns the container ID.
 func (ja *JavaAction) GetContainerID() model.ID { return ja.ContainerID }
 
-// JavaScriptAction is a JavaScript action descriptor.
+// JavaScriptAction is a JavaScript action descriptor. Stage 3.3.2.C1
+// retired the mdl/* consumers (they now use *genJSA.JavaScriptAction
+// directly via ctx.JavaScriptActions); the struct is preserved because
+// sdk/mpr aliases it (Stage 4 territory).
 type JavaScriptAction struct {
 	model.BaseElement
-	ContainerID             model.ID                           `json:"containerId"`
-	Name                    string                             `json:"name"`
-	Documentation           string                             `json:"documentation,omitempty"`
-	Platform                string                             `json:"platform,omitempty"`
-	Excluded                bool                               `json:"excluded"`
-	ExportLevel             string                             `json:"exportLevel,omitempty"`
-	ActionDefaultReturnName string                             `json:"actionDefaultReturnName,omitempty"`
-	ReturnType              javaactions.CodeActionReturnType   `json:"returnType,omitempty"`
-	Parameters              []*javaactions.JavaActionParameter `json:"parameters,omitempty"`
-	TypeParameters          []*javaactions.TypeParameterDef    `json:"typeParameters,omitempty"`
-	MicroflowActionInfo     *javaactions.MicroflowActionInfo   `json:"microflowActionInfo,omitempty"`
+	ContainerID             model.ID               `json:"containerId"`
+	Name                    string                 `json:"name"`
+	Documentation           string                 `json:"documentation,omitempty"`
+	Platform                string                 `json:"platform,omitempty"`
+	Excluded                bool                   `json:"excluded"`
+	ExportLevel             string                 `json:"exportLevel,omitempty"`
+	ActionDefaultReturnName string                 `json:"actionDefaultReturnName,omitempty"`
+	ReturnType              CodeActionReturnType   `json:"returnType,omitempty"`
+	Parameters              []*JavaActionParameter `json:"parameters,omitempty"`
+	TypeParameters          []*TypeParameterDef    `json:"typeParameters,omitempty"`
+	MicroflowActionInfo     *MicroflowActionInfo   `json:"microflowActionInfo,omitempty"`
 }
 
 // GetName returns the JavaScript action's name.
