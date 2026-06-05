@@ -1,16 +1,33 @@
 ---
 title: mxcli marketplace — Download & Manage Marketplace Modules
-status: partial
-date: 2026-03-23 (initial), revised 2026-04-16 (spike results)
+status: shipping
+date: 2026-03-23 (initial), revised 2026-04-16 (spike), 2026-06-05 (download unblocked)
 ---
 
 # Proposal: `mxcli marketplace` — Download & Manage Marketplace Modules
 
-**Status:** Partial — read-only commands shipping; install blocked upstream
-**Date:** 2026-03-23 (initial), revised 2026-04-16 (spike results)
+**Status:** Shipping — discovery + download + type-aware install; module update postponed
+**Date:** 2026-03-23 (initial), revised 2026-04-16 (spike results), 2026-06-05 (download unblocked)
 **Author:** Generated with Claude Code
 
-## Status update (2026-04-16)
+## Status update (2026-06-05) — download UNBLOCKED
+
+Unblocking path #1 below has happened: the content API **now returns a
+`downloadUrl`** on each version (verified live 2026-06-05; see the
+`reference_marketplace_download_api` memory). `GET .../v1/versions/{id}/download`
+with `MxToken` auth 303-redirects to the public CDN `.mpk`. Shipped:
+
+- `marketplace download <id> [--version X] [-o file]` — fetch the `.mpk` to disk.
+- `marketplace install <id> -p app.mpr` — type-aware: **widget** → `widgets/`,
+  **module (new)** → `mx module-import`, other types → download + instruct.
+
+**Module *updates* remain postponed** (detect + report only, no mutation):
+re-importing an existing module would discard local edits and, for modules with
+persistent entities, change entity `$ID`s — losing runtime data. Studio Pro's
+Marketplace "Update" does an ID-preserving merge the `mx` CLI does not expose.
+A future ID-preserving merge is the remaining work.
+
+## Status update (2026-04-16) — historical (now resolved)
 
 After four rounds of spiking (`scripts/auth-discovery-spike.sh`), the
 **install** path is blocked by a gap in Mendix's API: there is no way to
