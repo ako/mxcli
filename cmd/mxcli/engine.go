@@ -9,6 +9,7 @@ import (
 
 	"github.com/mendixlabs/mxcli/mdl/backend"
 	mcpbackend "github.com/mendixlabs/mxcli/mdl/backend/mcp"
+	modelsdkbackend "github.com/mendixlabs/mxcli/mdl/backend/modelsdk"
 	mprbackend "github.com/mendixlabs/mxcli/mdl/backend/mpr"
 )
 
@@ -53,9 +54,10 @@ func resolveEngine() engineKind {
 
 // newBackendFactory returns the FullBackend factory for the active engine.
 //
-// Phase 0: only legacy is wired. modelsdk/compare are recognised but not yet
-// backed by an implementation, so they fail fast here (the factory is built once
-// at executor setup, before any project work). Phase 2 adds the modelsdk branch.
+// modelsdk is a READ-ONLY slice (Phase 1): reads run through the codec engine;
+// writes are not implemented and silently no-op via the embedded mock, so a
+// warning is printed. compare needs the run-both diff harness (Phase 2) and
+// still fails fast. An unknown value was already rejected by resolveEngine.
 func newBackendFactory() func() backend.FullBackend {
 	// The MCP backend (live Studio Pro) is selected by --mcp / --mcp-dial,
 	// independent of MXCLI_ENGINE: writes route to Studio Pro, reads come from -p.
@@ -76,12 +78,13 @@ func newBackendFactory() func() backend.FullBackend {
 	}
 	switch resolveEngine() {
 	case engineModelSDK:
-		fmt.Fprintln(os.Stderr, "mxcli: engine 'modelsdk' is not yet wired (Phase 2 of "+
-			"docs/plans/2026-06-05-adopt-modelsdk-engine.md). Only 'legacy' is available today.")
-		os.Exit(2)
+		fmt.Fprintln(os.Stderr, "mxcli: engine 'modelsdk' is an experimental READ-ONLY slice "+
+			"(Phase 1 of docs/plans/2026-06-05-adopt-modelsdk-engine.md). Writes are not yet "+
+			"implemented and will NOT persist — use 'legacy' for any modification.")
+		return func() backend.FullBackend { return modelsdkbackend.New() }
 	case engineCompare:
-		fmt.Fprintln(os.Stderr, "mxcli: engine 'compare' requires the modelsdk backend (Phase 2 of "+
-			"docs/plans/2026-06-05-adopt-modelsdk-engine.md). Only 'legacy' is available today.")
+		fmt.Fprintln(os.Stderr, "mxcli: engine 'compare' requires the run-both diff harness (Phase 2 of "+
+			"docs/plans/2026-06-05-adopt-modelsdk-engine.md). Only 'legacy' and (read-only) 'modelsdk' are available today.")
 		os.Exit(2)
 	}
 	return func() backend.FullBackend { return mprbackend.New() }
