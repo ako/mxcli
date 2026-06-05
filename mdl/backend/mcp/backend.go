@@ -52,6 +52,13 @@ type Backend struct {
 	// helpers resolve those back to names through this map before falling back
 	// to the local reader.
 	synthetic map[model.ID]string
+
+	// sessionEnums holds enumerations created over MCP this session. They are
+	// not on disk yet, so ListEnumerations/GetEnumeration merge them in — this
+	// is what lets "create enumeration X; create entity (a: X)" work in one run.
+	// Enumerations are create-only via PED (no delete tool), so a registry is
+	// enough; no live reconstruction is needed.
+	sessionEnums []*model.Enumeration
 }
 
 // compile-time guarantee that Backend (and its embedded base) satisfies the

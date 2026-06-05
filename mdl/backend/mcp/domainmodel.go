@@ -640,16 +640,42 @@ func (b *Backend) pedUpdate(moduleName string, ops ...pedOpEntry) error {
 
 // pedCheckErrors validates a module's domain model and surfaces any errors.
 func (b *Backend) pedCheckErrors(moduleName string) error {
+	return b.pedCheckDocument(domainModelDocType, moduleName)
+}
+
+// pedCheckDocument validates an arbitrary document and surfaces any errors.
+func (b *Backend) pedCheckDocument(docType, docName string) error {
 	res, err := b.client.CallTool("ped_check_errors", map[string]any{
 		"documents": []map[string]any{
-			{"documentType": domainModelDocType, "documentName": moduleName},
+			{"documentType": docType, "documentName": docName},
 		},
 	})
 	if err != nil {
 		return err
 	}
 	if res.IsError {
-		return fmt.Errorf("validation failed for %s: %s", moduleName, res.Text)
+		return fmt.Errorf("validation failed for %s: %s", docName, res.Text)
 	}
+	return nil
+}
+
+// pedCreateDocument creates a standalone document (enumeration, microflow, …)
+// via ped_create_document. documentContent is the type's $constructor body.
+func (b *Backend) pedCreateDocument(moduleName, docType, docName string, content any) error {
+	res, err := b.client.CallTool("ped_create_document", map[string]any{
+		"documents": []map[string]any{{
+			"documentType":    docType,
+			"moduleName":      moduleName,
+			"documentName":    docName,
+			"documentContent": content,
+		}},
+	})
+	if err != nil {
+		return err
+	}
+	if res.IsError {
+		return fmt.Errorf("ped_create_document %s.%s: %s", moduleName, docName, res.Text)
+	}
+	b.markDirty(moduleName)
 	return nil
 }
