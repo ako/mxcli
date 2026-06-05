@@ -78,6 +78,11 @@ requiring all 226 methods up front.
 
 ## The MCP tool surface (verified against Studio Pro 11.11)
 
+> The per-version tool matrix and capability gaps now live in
+> [`docs/03-development/PED_MCP_CAPABILITIES.md`](../03-development/PED_MCP_CAPABILITIES.md)
+> — the canonical, living record. Update that doc when onboarding a new Studio
+> Pro version. The summary below is the original snapshot.
+
 Dumped live with `cmd/mcpprobe` on 2026-05-29. Server identifies as
 `mendix-studio-pro` 1.0.0, protocol `2025-06-18`; `initialize` instructs clients
 to first read the resource `mendix://studio-pro/system-prompt`. The server is
