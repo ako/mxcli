@@ -239,11 +239,21 @@ anyway, so this is a transitional patch, not permanent debt.
 run during the spike) and `cmd/mxcli` `//go:embed changelog.md`. These are normal `make build`
 steps, unrelated to the engine.
 
-### Net & revised next step
+### Net & progress
 
 The Phase-0 gate is **substantially met**: engine vendored, both drivers coexist, engine builds.
-The remaining Phase-0 work is the **java-action `mdl/types` reconciliation** (3 packages, alias
-re-export — S effort), then wiring the `MXCLI_ENGINE` factory seam and the comparison harness.
-No forced early v2 migration. **Working-tree state:** engine + `unitstore` + engalar `mdl/types`
-vendored, `mongo-driver/v2` added, generated parser present, 3 packages currently red pending the
-alias fix — uncommitted, on the `modelsdk` branch.
+No forced early v2 migration.
+
+**Phase-0 checklist (committed on the `modelsdk` branch):**
+
+| Item | Status | Commit |
+|---|---|---|
+| Vendor `modelsdk/` + `unitstore` + read fixture; `mongo-driver/v2` coexists | ✅ done | `b1536ba7` |
+| Java-action `mdl/types` reconciliation (alias re-export; fixes 3 pkgs) | ✅ done | `b1536ba7` |
+| `MXCLI_ENGINE` / `--engine` selection seam (legacy wired; modelsdk/compare fail-fast) | ✅ done | `1e8ec679` |
+| Vendor engalar codegen + `TypeVersionInfo` type-level bound fix | ⏳ todo | — |
+| Comparison harness: port `cmd_bson_dump`/`cmd_bson_compare`, ID-canonicalizer, `make engine-diff` | ⏳ todo (run-both diff is Phase-2-gated on the modelsdk backend) | — |
+
+`make build` green; engine, backend, and affected packages tested. Legacy path verified end-to-end
+against `testdata/expr-checker/minimal.mpr` (SHOW ENTITIES / SHOW MODULES); the three engine guards
+(`modelsdk`, `compare`, unknown value) all fail loud with exit 2.
