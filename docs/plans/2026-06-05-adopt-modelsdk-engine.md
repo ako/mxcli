@@ -257,3 +257,23 @@ No forced early v2 migration.
 `make build` green; engine, backend, and affected packages tested. Legacy path verified end-to-end
 against `testdata/expr-checker/minimal.mpr` (SHOW ENTITIES / SHOW MODULES); the three engine guards
 (`modelsdk`, `compare`, unknown value) all fail loud with exit 2.
+
+### Phase 1 — read slice (started 2026-06-05)
+
+| Item | Status | Commit |
+|---|---|---|
+| `mdl/backend/modelsdk` (package `modelsdkbackend`): FullBackend reading via the codec engine | ✅ first slice | `43cbb3b3` |
+| Wire `MXCLI_ENGINE=modelsdk` → read backend (read-only warning; writes no-op via mock) | ✅ done | `43cbb3b3` |
+| Read coverage beyond modules (entities, microflows, pages, …) | ⏳ in progress | — |
+
+**Thesis validated.** The new backend embeds `*mock.MockBackend` (satisfies all 27 sub-interfaces;
+un-overridden methods are safe zero/nil stubs) and overrides only connection + module reads,
+delegating to `modelsdk/mpr.Reader`. `MXCLI_ENGINE=modelsdk show modules` returns a module list
+**byte-identical to legacy** (10 modules on `testdata/expr-checker`) — reads flow through
+`FullBackend` on the codec engine **without importing engalar's executor/backend rework**. This is
+the central "vendor, don't adopt" bet, now demonstrated on a real read. Un-ported reads (entities,
+etc.) fall through to empty stubs rather than crashing.
+
+**Next read targets** (each: override the method, delegate to `mprread`/Reader, convert gen→our
+types, diff vs legacy): domain models/entities → microflows → pages. These are where the
+gen→`domainmodel`/`model` conversion cost (engalar's `convert_reader.go`) gets sized for real.
