@@ -135,6 +135,144 @@ func (b *Backend) AddAttribute(domainModelID model.ID, entityID model.ID, attr *
 	return b.pedCheckErrors(moduleName)
 }
 
+// UpdateEntity applies an ALTER ENTITY change by diffing the incoming entity
+// against the live one (read over MCP) and emitting granular attribute add/drop
+// operations. The executor rebuilds the whole entity for every ALTER, so the
+// diff is how we recover "what changed".
+//
+// Supported: pure attribute additions (ALTER ... ADD ATTRIBUTE) and pure
+// attribute removals (ALTER ... DROP ATTRIBUTE). Anything that looks like a
+// rename or an in-place change (attribute type, documentation, generalization,
+// system members) is rejected rather than guessed at — a name-keyed diff cannot
+// distinguish a rename from a drop+add, and applying it would lose column data.
+func (b *Backend) UpdateEntity(domainModelID model.ID, entity *domainmodel.Entity) error {
+	moduleName, err := b.moduleNameForDomainModel(domainModelID)
+	if err != nil {
+		return err
+	}
+	if err := guardUnsupportedEntityFeatures(entity); err != nil {
+		return err
+	}
+	entIdx, err := b.entityIndex(moduleName, entity.Name)
+	if err != nil {
+		return err
+	}
+	liveNames, err := b.liveAttributeNames(moduleName, entIdx)
+	if err != nil {
+		return err
+	}
+
+	liveSet := toStringSet(liveNames)
+	incomingSet := map[string]bool{}
+	var toAdd []*domainmodel.Attribute
+	for _, a := range entity.Attributes {
+		incomingSet[a.Name] = true
+		if !liveSet[a.Name] {
+			toAdd = append(toAdd, a)
+		}
+	}
+	var toRemove []string
+	for _, n := range liveNames {
+		if !incomingSet[n] {
+			toRemove = append(toRemove, n)
+		}
+	}
+
+	switch {
+	case len(toAdd) > 0 && len(toRemove) > 0:
+		return fmt.Errorf("entity %q: this change adds and removes attributes at once (looks like a rename or replacement), which the MCP backend cannot apply safely; rename/type-change via MCP is not supported", entity.Name)
+	case len(toAdd) == 0 && len(toRemove) == 0:
+		return fmt.Errorf("entity %q: no attribute add or drop detected — in-place changes (attribute type, documentation, generalization, system members) are not yet supported by the MCP backend", entity.Name)
+	}
+
+	if len(toAdd) > 0 {
+		if err := b.ensureSchema("DomainModels$Attribute"); err != nil {
+			return err
+		}
+		ops := make([]pedOpEntry, 0, len(toAdd))
+		for _, a := range toAdd {
+			value, err := b.buildAttributeValue(a)
+			if err != nil {
+				return err
+			}
+			ops = append(ops, pedOpEntry{
+				Path:      fmt.Sprintf("/entities/%d/attributes", entIdx),
+				Operation: pedOperation{Type: "add", Value: value},
+			})
+		}
+		if err := b.pedUpdate(moduleName, ops...); err != nil {
+			return err
+		}
+	}
+
+	if len(toRemove) > 0 {
+		removeSet := toStringSet(toRemove)
+		var idxs []int
+		for i, n := range liveNames {
+			if removeSet[n] {
+				idxs = append(idxs, i)
+			}
+		}
+		// Remove highest index first so earlier indices stay valid.
+		ops := make([]pedOpEntry, 0, len(idxs))
+		for j := len(idxs) - 1; j >= 0; j-- {
+			idx := idxs[j]
+			ops = append(ops, pedOpEntry{
+				Path:      fmt.Sprintf("/entities/%d/attributes", entIdx),
+				Operation: pedOperation{Type: "remove", Index: &idx},
+			})
+		}
+		if err := b.pedUpdate(moduleName, ops...); err != nil {
+			return err
+		}
+	}
+
+	return b.pedCheckErrors(moduleName)
+}
+
+// liveAttributeNames returns the ordered attribute names of an entity from the
+// live model (names parsed from $QualifiedName, which is all a PED read of an
+// attribute array exposes).
+func (b *Backend) liveAttributeNames(moduleName string, entIdx int) ([]string, error) {
+	res, err := b.client.CallTool("ped_read_document", map[string]any{
+		"documentType": domainModelDocType,
+		"documentName": moduleName,
+		"paths":        []string{fmt.Sprintf("/entities/%d/attributes", entIdx)},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if res.IsError {
+		return nil, fmt.Errorf("ped_read_document %s entity %d attributes: %s", moduleName, entIdx, res.Text)
+	}
+	var doc struct {
+		Results []struct {
+			Result []struct {
+				QualifiedName string `json:"$QualifiedName"`
+			} `json:"result"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal([]byte(res.Text), &doc); err != nil {
+		return nil, fmt.Errorf("parse attributes of %s entity %d: %w", moduleName, entIdx, err)
+	}
+	if len(doc.Results) == 0 {
+		return nil, nil
+	}
+	names := make([]string, 0, len(doc.Results[0].Result))
+	for _, a := range doc.Results[0].Result {
+		names = append(names, lastSegment(a.QualifiedName))
+	}
+	return names, nil
+}
+
+func toStringSet(ss []string) map[string]bool {
+	m := make(map[string]bool, len(ss))
+	for _, s := range ss {
+		m[s] = true
+	}
+	return m
+}
+
 // ---------------------------------------------------------------------------
 // Association operations
 // ---------------------------------------------------------------------------
@@ -248,9 +386,13 @@ func guardAssociationFeatures(a *domainmodel.Association) error {
 	return nil
 }
 
-// associationNameForID resolves an association's name from its ID via the local
-// reader.
+// associationNameForID resolves an association's name from its ID. Synthetic
+// IDs from a reconstructed (dirty) read resolve through the synthetic map;
+// saved associations resolve via the local reader.
 func (b *Backend) associationNameForID(domainModelID, assocID model.ID) (string, error) {
+	if name, ok := b.syntheticName(assocID); ok {
+		return name, nil
+	}
 	dm, err := b.reader.GetDomainModelByID(domainModelID)
 	if err != nil {
 		return "", fmt.Errorf("resolve domain model %s: %w", domainModelID, err)
@@ -273,20 +415,8 @@ func (b *Backend) associationNameForID(domainModelID, assocID model.ID) (string,
 // rather than silently dropped — except a Boolean's auto-added `false` default,
 // which is Mendix's own default and carries no information.
 func (b *Backend) buildEntityValue(entity *domainmodel.Entity) (*pedEntity, error) {
-	if !entity.Persistable {
-		return nil, unsupportedEntityFeature(entity.Name, "non-persistent entities")
-	}
-	if len(entity.Indexes) > 0 {
-		return nil, unsupportedEntityFeature(entity.Name, "indexes")
-	}
-	if len(entity.ValidationRules) > 0 {
-		return nil, unsupportedEntityFeature(entity.Name, "validation rules (NOT NULL / UNIQUE)")
-	}
-	if len(entity.EventHandlers) > 0 {
-		return nil, unsupportedEntityFeature(entity.Name, "event handlers")
-	}
-	if entity.HasOwner || entity.HasChangedBy || entity.HasCreatedDate || entity.HasChangedDate {
-		return nil, unsupportedEntityFeature(entity.Name, "system members (owner/changedBy/createdDate/changedDate)")
+	if err := guardUnsupportedEntityFeatures(entity); err != nil {
+		return nil, err
 	}
 
 	pe := &pedEntity{
@@ -360,6 +490,28 @@ func pedAttributeType(name string) (string, error) {
 	}
 }
 
+// guardUnsupportedEntityFeatures rejects entity-level constructs the PED entity
+// path cannot express. Shared by create (buildEntityValue) and the ALTER diff
+// (UpdateEntity) so both refuse the same things instead of silently dropping.
+func guardUnsupportedEntityFeatures(entity *domainmodel.Entity) error {
+	if !entity.Persistable {
+		return unsupportedEntityFeature(entity.Name, "non-persistent entities")
+	}
+	if len(entity.Indexes) > 0 {
+		return unsupportedEntityFeature(entity.Name, "indexes")
+	}
+	if len(entity.ValidationRules) > 0 {
+		return unsupportedEntityFeature(entity.Name, "validation rules (NOT NULL / UNIQUE)")
+	}
+	if len(entity.EventHandlers) > 0 {
+		return unsupportedEntityFeature(entity.Name, "event handlers")
+	}
+	if entity.HasOwner || entity.HasChangedBy || entity.HasCreatedDate || entity.HasChangedDate {
+		return unsupportedEntityFeature(entity.Name, "system members (owner/changedBy/createdDate/changedDate)")
+	}
+	return nil
+}
+
 func unsupportedEntityFeature(entityName, feature string) error {
 	return fmt.Errorf("entity %q: %s are not yet supported by the MCP backend (entity slice); create it against a local .mpr instead", entityName, feature)
 }
@@ -382,8 +534,13 @@ func (b *Backend) moduleNameForDomainModel(domainModelID model.ID) (string, erro
 	return mod.Name, nil
 }
 
-// entityNameForID resolves an entity's name from its ID via the local reader.
+// entityNameForID resolves an entity's name from its ID. Synthetic IDs from a
+// reconstructed (dirty) read resolve through the synthetic map; saved entities
+// resolve via the local reader.
 func (b *Backend) entityNameForID(domainModelID, entityID model.ID) (string, error) {
+	if name, ok := b.syntheticName(entityID); ok {
+		return name, nil
+	}
 	dm, err := b.reader.GetDomainModelByID(domainModelID)
 	if err != nil {
 		return "", fmt.Errorf("resolve domain model %s: %w", domainModelID, err)
@@ -475,6 +632,9 @@ func (b *Backend) pedUpdate(moduleName string, ops ...pedOpEntry) error {
 	if res.IsError {
 		return fmt.Errorf("ped_update_document %s: %s", moduleName, res.Text)
 	}
+	// The write applied to Studio Pro's in-memory model; the on-disk .mpr is now
+	// stale for this module, so route its reads through reconstruction.
+	b.markDirty(moduleName)
 	return nil
 }
 

@@ -39,6 +39,19 @@ type Backend struct {
 	// schemaFetched records element types already fetched via ped_get_schema
 	// this session (the contract asks for a schema fetch before create/add).
 	schemaFetched map[string]bool
+
+	// dirty holds module names whose live (in-memory) domain model has diverged
+	// from the on-disk .mpr because of writes this session. Reads of a dirty
+	// module are reconstructed from MCP instead of the stale local reader —
+	// this is the dirty-set read router that closes the consistency hole.
+	dirty map[string]bool
+
+	// synthetic maps the synthetic IDs handed out by reconstructed reads back to
+	// the PED-addressable element name (entity or association name). PED never
+	// exposes real $IDs, so reconstructed elements get synthetic IDs; the write
+	// helpers resolve those back to names through this map before falling back
+	// to the local reader.
+	synthetic map[model.ID]string
 }
 
 // compile-time guarantee that Backend (and its embedded base) satisfies the
@@ -51,7 +64,13 @@ var _ backend.FullBackend = (*Backend)(nil)
 // host.docker.internal from a devcontainer). Call Connect with the local .mpr
 // path to open the read side.
 func New(mcpURL, dial string) *Backend {
-	return &Backend{mcpURL: mcpURL, dial: dial, schemaFetched: map[string]bool{}}
+	return &Backend{
+		mcpURL:        mcpURL,
+		dial:          dial,
+		schemaFetched: map[string]bool{},
+		dirty:         map[string]bool{},
+		synthetic:     map[model.ID]string{},
+	}
 }
 
 // Connect opens the local .mpr read-only (for reads/enumeration) and completes
@@ -126,11 +145,30 @@ func (b *Backend) GetModuleByName(name string) (*model.Module, error) {
 func (b *Backend) ListDomainModels() ([]*domainmodel.DomainModel, error) {
 	return b.reader.ListDomainModels()
 }
+
+// GetDomainModel returns a module's domain model. If the module was written
+// this session (dirty), it is reconstructed from Studio Pro's live in-memory
+// model so in-session edits are visible; otherwise it comes from the local
+// reader (last-saved state).
 func (b *Backend) GetDomainModel(moduleID model.ID) (*domainmodel.DomainModel, error) {
+	mod, err := b.reader.GetModule(moduleID)
+	if err == nil && b.dirty[mod.Name] {
+		return b.reconstructDomainModel(mod.Name, moduleID)
+	}
 	return b.reader.GetDomainModel(moduleID)
 }
+
+// GetDomainModelByID mirrors GetDomainModel but is keyed by the domain model's
+// own ID; it resolves the owning module and applies the same dirty routing.
 func (b *Backend) GetDomainModelByID(id model.ID) (*domainmodel.DomainModel, error) {
-	return b.reader.GetDomainModelByID(id)
+	localDM, err := b.reader.GetDomainModelByID(id)
+	if err != nil {
+		return nil, err
+	}
+	if mod, err := b.reader.GetModule(localDM.ContainerID); err == nil && b.dirty[mod.Name] {
+		return b.reconstructDomainModel(mod.Name, localDM.ContainerID)
+	}
+	return localDM, nil
 }
 
 // ReconcileMemberAccesses is a no-op for the MCP backend. It is the executor's
