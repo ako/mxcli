@@ -9,9 +9,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/mendixlabs/mxcli/mdl/backend"
-	mcpbackend "github.com/mendixlabs/mxcli/mdl/backend/mcp"
-	mprbackend "github.com/mendixlabs/mxcli/mdl/backend/mpr"
 	"github.com/mendixlabs/mxcli/mdl/diaglog"
 	"github.com/mendixlabs/mxcli/mdl/executor"
 	"github.com/mendixlabs/mxcli/mdl/repl"
@@ -117,6 +114,7 @@ Examples:
 		globalMCPSave, _ = cmd.Flags().GetBool("mcp-save")
 		globalMCPCheck, _ = cmd.Flags().GetBool("mcp-check")
 		globalMCPRun, _ = cmd.Flags().GetBool("mcp-run")
+		globalEngineFlag, _ = cmd.Flags().GetString("engine")
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		// Get flags
@@ -224,22 +222,7 @@ func resolveFormat(cmd *cobra.Command, defaultFormat string) string {
 func newLoggedExecutor(mode string) (*executor.Executor, *diaglog.Logger) {
 	logger := diaglog.Init(version, mode)
 	exec := executor.New(os.Stdout)
-	mcpURL, mcpDial := globalMCPURL, globalMCPDial
-	concordURL, concordDial := globalMCPConcord, globalMCPConcordDial
-	saveOnExit, checkOnExit, runOnExit := globalMCPSave, globalMCPCheck, globalMCPRun
-	exec.SetBackendFactory(func() backend.FullBackend {
-		if mcpURL != "" {
-			b := mcpbackend.New(mcpURL, mcpDial)
-			if concordURL != "" || saveOnExit || checkOnExit || runOnExit {
-				b = b.WithConcord(mcpbackend.ConcordConfig{
-					URL: concordURL, Dial: concordDial,
-					SaveOnExit: saveOnExit, CheckOnExit: checkOnExit, RunOnExit: runOnExit,
-				})
-			}
-			return b
-		}
-		return mprbackend.New()
-	})
+	exec.SetBackendFactory(newBackendFactory())
 	exec.SetLogger(logger)
 	if globalJSONFlag {
 		exec.SetFormat(executor.FormatJSON)
@@ -291,6 +274,8 @@ func init() {
 	rootCmd.PersistentFlags().Bool("mcp-save", false, "After the command, save all changes in Studio Pro via Concord (requires --mcp-concord; the built-in server has no save tool)")
 	rootCmd.PersistentFlags().Bool("mcp-check", false, "After the command, run Studio Pro's model consistency check via Concord and print the report (requires --mcp-concord)")
 	rootCmd.PersistentFlags().Bool("mcp-run", false, "After the command, start the app in Studio Pro via Concord (run_app) and print its URL (requires --mcp-concord)")
+	rootCmd.PersistentFlags().String("engine", "", "Model engine: legacy (default), modelsdk, compare [experimental; overrides MXCLI_ENGINE]")
+	_ = rootCmd.PersistentFlags().MarkHidden("engine")
 	rootCmd.Flags().StringP("command", "c", "", "Execute MDL command(s) and exit")
 
 	// Check command flags
