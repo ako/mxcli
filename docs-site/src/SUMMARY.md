@@ -325,6 +325,7 @@
 
 - [Capabilities Overview](reference/capabilities.md)
 - [Customizing AI Generation](guides/customizing-ai.md)
+- [Marketplace Content](guides/marketplace.md)
 
 ---
 

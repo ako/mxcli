@@ -46,6 +46,7 @@ External system integration:
 | [rest-call-from-json.md](rest-call-from-json.md) | REST CALL end-to-end | JSON Structure → Entities → Import Mapping → REST CALL microflow |
 | [json-structures-and-mappings.md](json-structures-and-mappings.md) | JSON structures & mappings | CREATE/DESCRIBE JSON structures, import/export mappings, domain model patterns |
 | [java-actions.md](java-actions.md) | Custom Java actions | Extending with Java code |
+| [download-marketplace-content.md](download-marketplace-content.md) | Marketplace download & install | Adding a marketplace module/widget; downloading a `.mpk`; module-update caveat |
 
 ## Page Patterns
 
