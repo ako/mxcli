@@ -123,6 +123,69 @@ func TestBuildAttributeValue_RejectsCalculatedAndNonDefaultValues(t *testing.T) 
 	}
 }
 
+func TestAssociationMultiplicity(t *testing.T) {
+	cases := []struct {
+		typ   domainmodel.AssociationType
+		owner domainmodel.AssociationOwner
+		want  string
+	}{
+		{domainmodel.AssociationTypeReference, domainmodel.AssociationOwnerDefault, "one_to_many"},
+		{domainmodel.AssociationTypeReference, domainmodel.AssociationOwnerBoth, "one_to_one"},
+		{domainmodel.AssociationTypeReferenceSet, domainmodel.AssociationOwnerBoth, "many_to_many"},
+	}
+	for _, c := range cases {
+		got, err := associationMultiplicity(&domainmodel.Association{Name: "A", Type: c.typ, Owner: c.owner})
+		if err != nil || got != c.want {
+			t.Errorf("type=%s owner=%s => %q,%v; want %q", c.typ, c.owner, got, err, c.want)
+		}
+	}
+}
+
+func TestGuardAssociationFeatures_RejectsCustomDeleteBehavior(t *testing.T) {
+	a := &domainmodel.Association{
+		Name:                "A",
+		ChildDeleteBehavior: &domainmodel.DeleteBehavior{Type: domainmodel.DeleteBehaviorTypeDeleteMeAndReferences},
+	}
+	if err := guardAssociationFeatures(a); err == nil {
+		t.Error("expected custom (cascade) delete behavior to be rejected")
+	}
+	// default keep-references is allowed
+	a.ChildDeleteBehavior.Type = domainmodel.DeleteBehaviorTypeDeleteMeButKeepReferences
+	if err := guardAssociationFeatures(a); err != nil {
+		t.Errorf("keep-references should be allowed, got: %v", err)
+	}
+}
+
+func TestPedUpdate_SendsAssociationGUIDs(t *testing.T) {
+	f := newFakePED(t, func(string, map[string]any) (string, bool) { return "SUCCESS", false })
+	b := &Backend{client: f.connectClient(t)}
+
+	err := b.pedUpdate("ObjListV10", pedOpEntry{
+		Path: "/associations",
+		Operation: pedOperation{Type: "add", Value: pedAssociation{
+			SType: "DomainModels$Association", Name: "SalesData_Location",
+			ParentEntity: "1f5aa90f-6b84-46d1-86cc-84e5a7ba8311",
+			ChildEntity:  "ec764fad-d840-45f5-b595-038662842e51",
+			Multiplicity: "one_to_many",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("pedUpdate: %v", err)
+	}
+	call, _ := f.callByName("ped_update_document")
+	raw, _ := json.Marshal(call.Args["operations"])
+	for _, want := range []string{
+		`"path":"/associations"`,
+		`"parentEntity":"1f5aa90f-6b84-46d1-86cc-84e5a7ba8311"`,
+		`"childEntity":"ec764fad-d840-45f5-b595-038662842e51"`,
+		`"multiplicity":"one_to_many"`,
+	} {
+		if !strings.Contains(string(raw), want) {
+			t.Errorf("association op missing %s: %s", want, raw)
+		}
+	}
+}
+
 func TestPedAttributeType(t *testing.T) {
 	ok := map[string]string{
 		"String": "String", "Integer": "Integer", "Boolean": "Boolean",

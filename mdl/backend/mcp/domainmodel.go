@@ -136,6 +136,134 @@ func (b *Backend) AddAttribute(domainModelID model.ID, entityID model.ID, attr *
 }
 
 // ---------------------------------------------------------------------------
+// Association operations
+// ---------------------------------------------------------------------------
+
+// pedAssociation is the PED $constructor shape for an association. parentEntity
+// and childEntity are entity GUIDs ($ID). For a project Studio Pro has open
+// from the same .mpr, those GUIDs equal the local reader's entity IDs — which
+// is exactly what the executor passes as assoc.ParentID / assoc.ChildID.
+type pedAssociation struct {
+	SType        string `json:"$Type"`
+	Name         string `json:"name"`
+	ParentEntity string `json:"parentEntity"` // FROM / owner (stores the reference)
+	ChildEntity  string `json:"childEntity"`  // TO / referenced
+	Multiplicity string `json:"multiplicity"`
+}
+
+// CreateAssociation adds a within-module association via PED.
+//
+// Mapping (note Mendix's inverted parent/child naming — see CLAUDE.md):
+//   - assoc.ParentID (FROM, FK owner)  -> parentEntity
+//   - assoc.ChildID  (TO, referenced)  -> childEntity
+//   - Type/Owner                       -> multiplicity
+func (b *Backend) CreateAssociation(domainModelID model.ID, assoc *domainmodel.Association) error {
+	moduleName, err := b.moduleNameForDomainModel(domainModelID)
+	if err != nil {
+		return err
+	}
+	if assoc.ParentID == "" || assoc.ChildID == "" {
+		return fmt.Errorf("association %q: missing parent/child entity id", assoc.Name)
+	}
+	if err := guardAssociationFeatures(assoc); err != nil {
+		return err
+	}
+	mult, err := associationMultiplicity(assoc)
+	if err != nil {
+		return err
+	}
+	if err := b.ensureSchema("DomainModels$Association"); err != nil {
+		return err
+	}
+	value := pedAssociation{
+		SType:        "DomainModels$Association",
+		Name:         assoc.Name,
+		ParentEntity: string(assoc.ParentID),
+		ChildEntity:  string(assoc.ChildID),
+		Multiplicity: mult,
+	}
+	if err := b.pedUpdate(moduleName, pedOpEntry{
+		Path:      "/associations",
+		Operation: pedOperation{Type: "add", Value: value},
+	}); err != nil {
+		return err
+	}
+	return b.pedCheckErrors(moduleName)
+}
+
+// DeleteAssociation removes a within-module association via PED.
+func (b *Backend) DeleteAssociation(domainModelID model.ID, assocID model.ID) error {
+	moduleName, err := b.moduleNameForDomainModel(domainModelID)
+	if err != nil {
+		return err
+	}
+	name, err := b.associationNameForID(domainModelID, assocID)
+	if err != nil {
+		return err
+	}
+	idx, err := b.arrayElementIndex(moduleName, "/associations", "association", name)
+	if err != nil {
+		return err
+	}
+	if err := b.pedUpdate(moduleName, pedOpEntry{
+		Path:      "/associations",
+		Operation: pedOperation{Type: "remove", Index: &idx},
+	}); err != nil {
+		return err
+	}
+	return b.pedCheckErrors(moduleName)
+}
+
+// associationMultiplicity maps a domain-model association's Type/Owner onto the
+// PED multiplicity enum. The "one" side is always the parent (FROM) entity.
+func associationMultiplicity(a *domainmodel.Association) (string, error) {
+	switch a.Type {
+	case domainmodel.AssociationTypeReferenceSet:
+		return "many_to_many", nil
+	case domainmodel.AssociationTypeReference:
+		if a.Owner == domainmodel.AssociationOwnerBoth {
+			return "one_to_one", nil
+		}
+		return "one_to_many", nil
+	default:
+		return "", fmt.Errorf("association %q: unsupported type %q for the MCP backend", a.Name, a.Type)
+	}
+}
+
+// guardAssociationFeatures rejects association settings the PED constructor
+// cannot express, rather than silently applying PED defaults. The constructor
+// covers name/parent/child/multiplicity only; delete behavior and storage
+// format fall back to Studio Pro's defaults (keep-references, column), so a
+// non-default request must be refused.
+func guardAssociationFeatures(a *domainmodel.Association) error {
+	defaultDelete := domainmodel.DeleteBehaviorTypeDeleteMeButKeepReferences
+	for _, db := range []*domainmodel.DeleteBehavior{a.ChildDeleteBehavior, a.ParentDeleteBehavior} {
+		if db != nil && db.Type != "" && db.Type != defaultDelete {
+			return fmt.Errorf("association %q: custom delete behavior (%s) is not yet supported by the MCP backend", a.Name, db.Type)
+		}
+	}
+	if a.Source != "" {
+		return fmt.Errorf("association %q: external/OData associations are not supported by the MCP backend", a.Name)
+	}
+	return nil
+}
+
+// associationNameForID resolves an association's name from its ID via the local
+// reader.
+func (b *Backend) associationNameForID(domainModelID, assocID model.ID) (string, error) {
+	dm, err := b.reader.GetDomainModelByID(domainModelID)
+	if err != nil {
+		return "", fmt.Errorf("resolve domain model %s: %w", domainModelID, err)
+	}
+	for _, a := range dm.Associations {
+		if a.ID == assocID {
+			return a.Name, nil
+		}
+	}
+	return "", fmt.Errorf("association %s not found in domain model %s", assocID, domainModelID)
+}
+
+// ---------------------------------------------------------------------------
 // Value builders + feature guards
 // ---------------------------------------------------------------------------
 
@@ -268,19 +396,26 @@ func (b *Backend) entityNameForID(domainModelID, entityID model.ID) (string, err
 	return "", fmt.Errorf("entity %s not found in domain model %s", entityID, domainModelID)
 }
 
-// entityIndex finds the position of an entity within the live /entities array
-// (read over MCP, so it reflects Studio Pro's in-memory order).
+// entityIndex finds the position of an entity within the live /entities array.
 func (b *Backend) entityIndex(moduleName, entityName string) (int, error) {
+	return b.arrayElementIndex(moduleName, "/entities", "entity", entityName)
+}
+
+// arrayElementIndex reads a named-element array (e.g. /entities, /associations)
+// over MCP and returns the index of the element with the given name. Reading
+// over MCP means the index reflects Studio Pro's in-memory order, which is what
+// a subsequent remove-by-index needs.
+func (b *Backend) arrayElementIndex(moduleName, jsonPath, kind, name string) (int, error) {
 	res, err := b.client.CallTool("ped_read_document", map[string]any{
 		"documentType": domainModelDocType,
 		"documentName": moduleName,
-		"paths":        []string{"/entities"},
+		"paths":        []string{jsonPath},
 	})
 	if err != nil {
 		return 0, err
 	}
 	if res.IsError {
-		return 0, fmt.Errorf("ped_read_document %s: %s", moduleName, res.Text)
+		return 0, fmt.Errorf("ped_read_document %s%s: %s", moduleName, jsonPath, res.Text)
 	}
 	var doc struct {
 		Results []struct {
@@ -290,17 +425,17 @@ func (b *Backend) entityIndex(moduleName, entityName string) (int, error) {
 		} `json:"results"`
 	}
 	if err := json.Unmarshal([]byte(res.Text), &doc); err != nil {
-		return 0, fmt.Errorf("parse /entities of %s: %w", moduleName, err)
+		return 0, fmt.Errorf("parse %s of %s: %w", jsonPath, moduleName, err)
 	}
 	if len(doc.Results) == 0 {
-		return 0, fmt.Errorf("entity %q not found in module %q", entityName, moduleName)
+		return 0, fmt.Errorf("%s %q not found in module %q", kind, name, moduleName)
 	}
 	for i, e := range doc.Results[0].Result {
-		if e.Name == entityName {
+		if e.Name == name {
 			return i, nil
 		}
 	}
-	return 0, fmt.Errorf("entity %q not found in module %q", entityName, moduleName)
+	return 0, fmt.Errorf("%s %q not found in module %q", kind, name, moduleName)
 }
 
 // ensureSchema fetches schemas for the given element types once per session.
