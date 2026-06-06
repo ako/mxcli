@@ -410,6 +410,36 @@ func mapMicroflowAction(a microflows.MicroflowAction) (map[string]any, error) {
 			m["outputVariableName"] = act.OutputVariable
 		}
 		return m, nil
+	case *microflows.DownloadFileAction:
+		return map[string]any{
+			"$Type":                    "Microflows$DownloadFileAction",
+			"fileDocumentVariableName": act.FileDocument,
+			"showFileInBrowser":        act.ShowInBrowser,
+		}, nil
+	case *microflows.ClosePageAction:
+		n := act.NumberOfPages
+		if n <= 0 {
+			n = 1
+		}
+		return map[string]any{
+			"$Type":                "Microflows$CloseFormAction",
+			"numberOfPagesToClose": fmt.Sprintf("%d", n),
+		}, nil
+	case *microflows.ValidationFeedbackAction:
+		m := map[string]any{
+			"$Type":              "Microflows$ValidationFeedbackAction",
+			"objectVariableName": act.ObjectVariable,
+			"feedbackTemplate":   mfStringTemplate("Microflows$TextTemplate", act.Template, act.TemplateParameters),
+		}
+		if act.AttributeName != "" {
+			m["attribute"] = act.AttributeName
+		}
+		if act.AssociationName != "" {
+			m["association"] = act.AssociationName
+		}
+		return m, nil
+	case *microflows.ShowPageAction:
+		return nil, fmt.Errorf("show page is not supported by the MCP backend — PED's ShowPageAction constructor does not expose the target page (pages are handled by the pg_* tools, not PED)")
 	case *microflows.NanoflowCallAction:
 		if act.NanoflowCall == nil || act.NanoflowCall.Nanoflow == "" {
 			return nil, fmt.Errorf("call nanoflow: missing target nanoflow")

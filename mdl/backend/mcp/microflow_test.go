@@ -259,6 +259,38 @@ func TestMapMicroflowAction_MicroflowCall(t *testing.T) {
 	}
 }
 
+func TestMapMicroflowAction_UIActions(t *testing.T) {
+	dl, err := mapMicroflowAction(&microflows.DownloadFileAction{FileDocument: "File", ShowInBrowser: true})
+	if err != nil || dl["$Type"] != "Microflows$DownloadFileAction" || dl["fileDocumentVariableName"] != "File" || dl["showFileInBrowser"] != true {
+		t.Fatalf("download: %+v / %v", dl, err)
+	}
+
+	cp, err := mapMicroflowAction(&microflows.ClosePageAction{NumberOfPages: 2})
+	if err != nil || cp["$Type"] != "Microflows$CloseFormAction" || cp["numberOfPagesToClose"] != "2" {
+		t.Fatalf("close page: %+v / %v", cp, err)
+	}
+	// default to 1 page when unset
+	cp0, _ := mapMicroflowAction(&microflows.ClosePageAction{})
+	if cp0["numberOfPagesToClose"] != "1" {
+		t.Fatalf("close page default: %+v", cp0)
+	}
+
+	vf, err := mapMicroflowAction(&microflows.ValidationFeedbackAction{
+		ObjectVariable: "Loc", AttributeName: "M.E.Name",
+		Template: &model.Text{Translations: map[string]string{"en_US": "required"}},
+	})
+	if err != nil || vf["$Type"] != "Microflows$ValidationFeedbackAction" || vf["objectVariableName"] != "Loc" || vf["attribute"] != "M.E.Name" {
+		t.Fatalf("validation feedback: %+v / %v", vf, err)
+	}
+	if ft, _ := vf["feedbackTemplate"].(map[string]any); ft["$Type"] != "Microflows$TextTemplate" || ft["text"] != "required" {
+		t.Fatalf("feedbackTemplate: %+v", vf["feedbackTemplate"])
+	}
+
+	if _, err := mapMicroflowAction(&microflows.ShowPageAction{PageName: "M.Home"}); err == nil {
+		t.Error("show page should be rejected (PED can't reference the page)")
+	}
+}
+
 func TestMapMicroflowAction_NanoflowCall(t *testing.T) {
 	m, err := mapMicroflowAction(&microflows.NanoflowCallAction{
 		OutputVariableName: "Valid",
