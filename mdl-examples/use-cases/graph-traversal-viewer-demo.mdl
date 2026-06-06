@@ -1,0 +1,472 @@
+-- @version: 11.9+
+-- =============================================================================
+-- Graph Traversal Viewer — MCP chat app build script
+-- =============================================================================
+-- Builds the custom OntologyViewer module: a conversational AI assistant that
+-- talks to a knowledge graph ("Graphmart") via an MCP client, rendering tool
+-- calls inline in the chat and embedding a custom GraphTraversalViewer widget.
+--
+-- PREREQUISITES (not built here — install from the Marketplace first, e.g. via
+-- `mxcli marketplace install <id> -p app.mpr`):
+--   - The conversational-AI / agent stack: ConversationalUI, GenAICommons,
+--     AgentCommons, MCPClient, plus an LLM provider (OpenAIConnector and/or
+--     AmazonBedrockConnector).
+--   - The custom pluggable widget `mendix.graphtraversalviewer.GraphTraversalViewer`
+--     present in widgets/ (run `mxcli widget init -p app.mpr` so MDL can place it).
+--
+-- Run:   mxcli exec mdl-examples/use-cases/graph-traversal-viewer-demo.mdl -p app.mpr
+-- Check: mxcli check mdl-examples/use-cases/graph-traversal-viewer-demo.mdl   (syntax only)
+--        mxcli check mdl-examples/use-cases/graph-traversal-viewer-demo.mdl -p app.mpr --references
+-- =============================================================================
+
+create module OntologyViewer;
+
+-- ----------------------------------------------------------------------------
+-- 1. Enumerations
+-- ----------------------------------------------------------------------------
+create or modify enumeration OntologyViewer.ENUM_GraphmartOperationalState (
+  DESIGN 'Design',
+  ONLINE 'Online',
+  OFFLINE 'Offline'
+);
+/
+
+create or modify enumeration OntologyViewer.ENUM_GraphmartPageState (
+  READY 'Ready',
+  NEEDS_PICKER 'Needs picker',
+  NEEDS_REFRESH_THEN_PICKER 'Needs refresh then picker'
+);
+/
+
+-- ----------------------------------------------------------------------------
+-- 2. Domain model — entities
+-- ----------------------------------------------------------------------------
+@Position(50, 50)
+create or modify persistent entity OntologyViewer.Graphmart (
+  Uri: String(500),
+  Title: String(200),
+  Description: String(4096),
+  IsOnline: Boolean default false,
+  LastSyncedAt: DateTime,
+  SortKey: String(200),
+  OperationalState: Enumeration(OntologyViewer.ENUM_GraphmartOperationalState),
+  Creator: String(200),
+  LastAccessed: DateTime,
+  Lakehouse: String(100),
+  SortIndex: Integer default 0
+)
+index (Uri);
+
+grant OntologyViewer.User on OntologyViewer.Graphmart (read *);
+/
+
+@Position(350, 50)
+create or modify persistent entity OntologyViewer.ChatbotSettings ();
+
+grant OntologyViewer.User on OntologyViewer.ChatbotSettings (read *);
+/
+
+-- Per-tool-call presentation metadata, attached 1:1 to a ConversationalUI.ToolMessage.
+-- This is what powers the custom tool-call cards (row counts, preview, expand/collapse).
+@Position(650, 50)
+create or modify persistent entity OntologyViewer.ToolCallMetadata (
+  RowCount: Integer default 0,
+  DurationMs: Integer default 0,
+  OutputPreview: String(1024),
+  InputText: String(unlimited),
+  MoreRowsLabel: String(48),
+  IsErrorCached: Boolean default false,
+  IsExpanded: Boolean default false
+);
+
+grant OntologyViewer.User on OntologyViewer.ToolCallMetadata (read *);
+/
+
+@Position(950, 50)
+create or modify persistent entity OntologyViewer.SuggestedUserPrompt (
+  Content: String(500)
+);
+
+grant OntologyViewer.User on OntologyViewer.SuggestedUserPrompt (read *);
+/
+
+@Position(1300, 50)
+create or modify persistent entity OntologyViewer.UserPreferences (
+  DefaultGraphmartUri: String(500)
+);
+/
+
+@Position(1550, 50)
+create or modify persistent entity OntologyViewer.ChatContextGraphmart (
+  SelectedGraphmartUri: String(500),
+  ConsecutiveNoOpCount: Integer default 0
+);
+/
+
+@Position(1800, 50)
+create or modify persistent entity OntologyViewer.LineageDeltaResult (
+  MergedJSON: String(unlimited),
+  TotalNodes: Integer default 0,
+  TotalEdges: Integer default 0,
+  AddedNodes: Integer default 0,
+  AddedEdges: Integer default 0,
+  PayloadHash: String(200)
+);
+/
+
+@Position(2050, 50)
+create or modify persistent entity OntologyViewer.ChatContext_Control (
+  StopRequested: Boolean default false
+);
+
+grant OntologyViewer.User on OntologyViewer.ChatContext_Control (read *);
+/
+
+@Position(2350, 50)
+create or modify persistent entity OntologyViewer.GraphTraversalHelper (
+  DataJSON: String(unlimited),
+  Sequence: AutoNumber default 1,
+  PayloadHash: String(200)
+)
+index (PayloadHash);
+
+grant OntologyViewer.User on OntologyViewer.GraphTraversalHelper (read *);
+/
+
+-- ----------------------------------------------------------------------------
+-- 3. Associations (intra-module + to marketplace entities)
+-- ----------------------------------------------------------------------------
+create association OntologyViewer.ChatContext_Control_ChatContext
+  from OntologyViewer.ChatContext_Control to ConversationalUI.ChatContext;
+/
+create association OntologyViewer.ChatbotSettings_Agent
+  from OntologyViewer.ChatbotSettings to AgentCommons.Agent;
+/
+create association OntologyViewer.ChatContextGraphmart_ChatContext
+  from OntologyViewer.ChatContextGraphmart to ConversationalUI.ChatContext;
+/
+create association OntologyViewer.ToolCallMetadata_ToolMessage
+  from OntologyViewer.ToolCallMetadata to ConversationalUI.ToolMessage;
+/
+create association OntologyViewer.GraphTraversalHelper_Message
+  from OntologyViewer.GraphTraversalHelper to ConversationalUI.Message;
+/
+create association OntologyViewer.GraphTraversalHelper_ChatContext
+  from OntologyViewer.GraphTraversalHelper to ConversationalUI.ChatContext;
+/
+
+-- ----------------------------------------------------------------------------
+-- 4. Java actions  (signature + generated javasource/.../*.java stub)
+-- ----------------------------------------------------------------------------
+-- Bridges the agent's tool call to the MCP server over the protocol transport.
+create java action OntologyViewer.MCP_CallTool(EndpointUrl: string not null, ToolName: string not null, ArgumentsJson: string not null) returns string
+as $$
+// TODO: open MCP transport to EndpointUrl, invoke ToolName with ArgumentsJson, return result
+return "";
+$$;
+/
+create java action OntologyViewer.Graphmart_UpsertFromJson(RawJson: string not null, SyncTimestamp: datetime not null) returns integer
+as $$
+return 0L;
+$$;
+/
+create java action OntologyViewer.Json_ExtractErrorCode(JsonString: string not null) returns string
+as $$
+return "";
+$$;
+/
+create java action OntologyViewer.LineageDelta_Merge(PriorJSON: string, DeltaJSON: string) returns string
+as $$
+return PriorJSON;
+$$;
+/
+create java action OntologyViewer.LineageDelta_MergeWithStats(PriorJSON: string not null, DeltaJSON: string not null) returns OntologyViewer.LineageDeltaResult
+as $$
+return null;
+$$;
+/
+
+-- ----------------------------------------------------------------------------
+-- 5. Microflows — the chat + MCP wiring (representative core set)
+-- ----------------------------------------------------------------------------
+
+-- Resolve the MCP endpoint URL configured on the agent's in-use version.
+create or modify microflow OntologyViewer.SUB_Agent_GetMCPEndpoint (
+  $Agent: AgentCommons.Agent
+)
+returns String as $ReturnValue
+folder 'Objects/Graphmart'
+begin
+  @position(300, 100)
+  retrieve $Version from $Agent/AgentCommons.Agent_Version_InUse;
+  @position(500, 100)
+  if $Version = empty then
+    @position(500, 280)
+    return '';
+  end if;
+  @position(700, 100)
+  retrieve $MCP from AgentCommons.MCP
+    where AgentCommons.Tool_Version = $Version
+    limit 1;
+  @position(900, 100)
+  if $MCP = empty then
+    @position(900, 280)
+    return '';
+  end if;
+  @position(1100, 100)
+  retrieve $Service from $MCP/AgentCommons.MCP_ConsumedMCPService;
+  @position(1300, 100)
+  if $Service = empty then
+    @position(1300, 280)
+    return '';
+  else
+    @position(1500, 100)
+    return $Service/MCPEndpoint;
+  end if;
+end;
+
+grant execute on microflow OntologyViewer.SUB_Agent_GetMCPEndpoint to OntologyViewer.User;
+/
+
+-- THE integration point: build the GenAI request, attach the agent (whose tools
+-- come from its Consumed MCP Service), call the agentic loop, post-process.
+create or modify microflow OntologyViewer.ChatContext_MCPClient_ActionMicroflow_custom (
+  $ChatContext: ConversationalUI.ChatContext
+)
+returns Boolean as $ReturnValue
+folder 'Objects/ChatContext'
+begin
+  @position(-150, 100)
+  $Request = call microflow ConversationalUI.ChatContext_Preprocessing(ChatContext = $ChatContext) on error rollback;
+  @position(50, 100)
+  retrieve $Agent from AgentCommons.Agent
+    where OntologyViewer.ChatbotSettings_Agent/OntologyViewer.ChatbotSettings
+    limit 1;
+  @position(250, 100)
+  retrieve $ChatContextGraphmart from OntologyViewer.ChatContextGraphmart
+    where OntologyViewer.ChatContextGraphmart_ChatContext = $ChatContext
+    limit 1;
+  @position(450, 100)
+  $Response = call java action AgentCommons.Agent_Call_WithHistory(Agent = $Agent, Request = $Request, OptionalContextObject = $ChatContextGraphmart) on error rollback;
+  @position(700, 100)
+  if $Response/GenAICommons.Response_Message != empty then
+    @position(950, 100)
+    call microflow OntologyViewer.ChatContext_UpdateAssistantResponse_custom(ChatContext = $ChatContext, MessageStatus = ConversationalUI.ENUM_MessageStatus.Success, Response = $Response) on error rollback;
+    @position(1200, 100)
+    return true;
+  else
+    @position(950, 260)
+    return false;
+  end if;
+end;
+
+grant execute on microflow OntologyViewer.ChatContext_MCPClient_ActionMicroflow_custom to OntologyViewer.User;
+/
+
+-- Write the model's reply back into the ConversationalUI message thread.
+create or modify microflow OntologyViewer.ChatContext_UpdateAssistantResponse_custom (
+  $ChatContext: ConversationalUI.ChatContext,
+  $MessageStatus: enum ConversationalUI.ENUM_MessageStatus,
+  $Response: GenAICommons.Response
+)
+returns ConversationalUI.Message as $ReturnValue
+folder 'Objects/ChatContext'
+begin
+  @position(100, 100)
+  retrieve $Message from ConversationalUI.Message
+    where ConversationalUI.Message_ChatContext = $ChatContext
+      and Role = GenAICommons.ENUM_MessageRole.assistant
+      and Status = ConversationalUI.ENUM_MessageStatus.Loading
+    sort by createdDate desc
+    limit 1;
+  @position(350, 100)
+  call microflow ConversationalUI.Message_SetContent(Message = $Message, Response = $Response) on error rollback;
+  @position(600, 100)
+  call microflow ConversationalUI.Message_SetStatus(Message = $Message, ENUM_MessageStatus = $MessageStatus) on error rollback;
+  @position(850, 100)
+  call microflow ConversationalUI.ChatContext_Commit(ChatContext = $ChatContext) on error rollback;
+  @position(1100, 100)
+  return $Message;
+end;
+/
+
+-- Create/refresh the 1:1 ToolCallMetadata for a tool message (row count = newlines).
+create or modify microflow OntologyViewer.ACT_ToolMessage_AttachMetadata (
+  $ToolMessage: ConversationalUI.ToolMessage
+)
+returns OntologyViewer.ToolCallMetadata as $ReturnValue
+folder 'Objects/ToolMessage'
+begin
+  @position(0, 100)
+  retrieve $Existing from $ToolMessage/OntologyViewer.ToolCallMetadata_ToolMessage;
+  @position(250, 100)
+  if $Existing != empty then
+    @position(250, 280)
+    return $Existing;
+  end if;
+  @position(500, 100)
+  $New = create OntologyViewer.ToolCallMetadata (
+    ToolCallMetadata_ToolMessage = $ToolMessage,
+    RowCount = if $ToolMessage/Content = '' then 0 else length(replaceAll($ToolMessage/Content, '[^\n]', '')),
+    OutputPreview = if length($ToolMessage/Content) > 1024 then substring($ToolMessage/Content, 0, 1024) else $ToolMessage/Content,
+    InputText = if $ToolMessage/Input = empty then '' else $ToolMessage/Input,
+    IsErrorCached = $ToolMessage/IsError
+  );
+  @position(750, 100)
+  return $New;
+end;
+
+grant execute on microflow OntologyViewer.ACT_ToolMessage_AttachMetadata to OntologyViewer.User;
+/
+
+-- Toggle expand/collapse on a tool-call card.
+create or modify microflow OntologyViewer.ACT_ToolCallMetadata_Toggle (
+  $ToolCallMetadata: OntologyViewer.ToolCallMetadata
+)
+folder 'Objects/ToolMessage'
+begin
+  @position(100, 100)
+  change $ToolCallMetadata (IsExpanded = not($ToolCallMetadata/IsExpanded)) refresh;
+  @position(350, 100)
+  return;
+end;
+
+grant execute on microflow OntologyViewer.ACT_ToolCallMetadata_Toggle to OntologyViewer.User;
+/
+
+-- User pressed Stop: flag the control object; the loop checks it between turns.
+create or modify microflow OntologyViewer.ACT_ChatContext_RequestStop (
+  $ChatContext: ConversationalUI.ChatContext
+)
+folder 'Objects/ChatContext'
+begin
+  @position(100, 100)
+  retrieve $Control from OntologyViewer.ChatContext_Control
+    where OntologyViewer.ChatContext_Control_ChatContext = $ChatContext
+    limit 1;
+  @position(350, 100)
+  change $Control (StopRequested = true) refresh;
+  @position(600, 100)
+  return;
+end;
+
+grant execute on microflow OntologyViewer.ACT_ChatContext_RequestStop to OntologyViewer.User;
+/
+
+-- Kick off one inference turn (delegates the agentic loop to ConversationalUI).
+create or modify microflow OntologyViewer.SUB_ChatContext_Inference (
+  $ChatContext: ConversationalUI.ChatContext
+)
+folder 'Objects/ChatContext'
+begin
+  @position(100, 100)
+  call microflow ConversationalUI.ChatContext_ExecuteAction(ChatContext = $ChatContext) on error rollback;
+  @position(400, 100)
+  return;
+end;
+
+grant execute on microflow OntologyViewer.SUB_ChatContext_Inference to OntologyViewer.User;
+/
+
+-- ----------------------------------------------------------------------------
+-- 6. Nanoflow — stop-aware send button (used by the input snippet)
+-- ----------------------------------------------------------------------------
+create or modify nanoflow OntologyViewer.ACT_StopAwareSendMessage (
+  $ChatContext: ConversationalUI.ChatContext
+)
+folder 'Objects/ChatContext'
+begin
+  @position(100, 100)
+  call microflow OntologyViewer.SUB_ChatContext_Inference(ChatContext = $ChatContext);
+  @position(400, 100)
+  return;
+end;
+
+grant execute on nanoflow OntologyViewer.ACT_StopAwareSendMessage to OntologyViewer.User;
+/
+
+-- ----------------------------------------------------------------------------
+-- 7. Input snippet — textarea + send/stop buttons + suggested prompts
+-- ----------------------------------------------------------------------------
+create snippet OntologyViewer.Snippet_ChatContext_Interaction (
+  params: { $ChatContext: ConversationalUI.ChatContext }
+) {
+  container container1 (class: 'chat-input-wrapper') {
+    textarea textAreaUserPrompt (attribute: CurrentUserPrompt)
+    container container16 (class: 'send-btn-container') {
+      actionbutton btnSendMessage (
+        caption: 'Send',
+        action: nanoflow OntologyViewer.ACT_StopAwareSendMessage,
+        buttonstyle: primary,
+        class: 'send-btn'
+      )
+      actionbutton btnStopMessage (
+        caption: 'Stop',
+        action: microflow OntologyViewer.ACT_ChatContext_RequestStop,
+        buttonstyle: primary,
+        class: 'stop-btn'
+      )
+    }
+  }
+}
+/
+
+-- ----------------------------------------------------------------------------
+-- 8. Chat page — embeds the custom graph widget + the tool-call cards
+-- ----------------------------------------------------------------------------
+create page OntologyViewer.ConversationalUI_FullScreenChat (
+  params: { $ChatContext: ConversationalUI.ChatContext },
+  title: 'Full Screen Chat',
+  layout: Atlas_Core.Atlas_Default
+) {
+  dataview dvChatContext (datasource: $ChatContext) {
+    -- the custom graph-visualization widget wraps the chat
+    pluggablewidget 'mendix.graphtraversalviewer.GraphTraversalViewer' graphTraversalViewer1 {
+      -- hand-built message thread
+      listview listViewMessages (datasource: database from ConversationalUI.Message, class: 'listview-scroll-to-last chat-listview-stylingless') {
+        pluggablewidget 'com.mendix.widget.web.markdown.Markdown' markdownViewer1 (class: 'chat-listview-stylingless')
+        -- custom tool-call card (rendered per tool message; bound to ToolCallMetadata in real app)
+        container toolCallCard (class: 'tool-call') {
+          container tcHeader (class: 'tool-call__header') {
+            dynamictext tcName (content: 'tool name', class: 'tool-call__name')
+            container tcStatusSuccess (class: 'tool-call__status tool-call__status--success') {
+              dynamictext tcOk (content: 'OK')
+            }
+          }
+          container tcInputSection (class: 'tool-call__section') {
+            dynamictext tcInputLabel (content: 'INPUT', class: 'tool-call__section-label')
+            dynamictext tcInput (content: 'arguments', class: 'tool-call__code')
+          }
+          container tcOutputSection (class: 'tool-call__section') {
+            dynamictext tcOutputLabel (content: 'OUTPUT', class: 'tool-call__section-label')
+            dynamictext tcOutput (content: 'result', class: 'tool-call__code')
+          }
+        }
+      }
+    }
+    snippetcall snippetCall1 (snippet: OntologyViewer.Snippet_ChatContext_Interaction)
+  }
+}
+
+grant view on page OntologyViewer.ConversationalUI_FullScreenChat to OntologyViewer.User;
+/
+
+-- ----------------------------------------------------------------------------
+-- 9. Datasource microflow referenced by the chat page
+-- ----------------------------------------------------------------------------
+create or modify microflow OntologyViewer.DS_ChatContext_CreateForAgent ()
+returns ConversationalUI.ChatContext as $ReturnValue
+folder 'Pages/ChatContext'
+begin
+  @position(100, 100)
+  retrieve $Agent from AgentCommons.Agent
+    where OntologyViewer.ChatbotSettings_Agent/OntologyViewer.ChatbotSettings
+    limit 1;
+  @position(350, 100)
+  $ChatContext = create ConversationalUI.ChatContext ();
+  @position(600, 100)
+  return $ChatContext;
+end;
+
+grant execute on microflow OntologyViewer.DS_ChatContext_CreateForAgent to OntologyViewer.User;
+/
