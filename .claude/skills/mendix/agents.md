@@ -11,7 +11,21 @@ Four AI agent document types stored as JSON inside Mendix MPR files:
 | Consumed MCP Service | `create consumed mcp service` | MCP tool server; referenced by Agent body |
 | Agent | `create agent` | Orchestrates model + tools + prompts |
 
-**Requires:** `AgentEditorCommons` marketplace module, Mendix 11.9+.
+**Requires:** Mendix 11.9+ and the full agent-editor marketplace stack (7 modules) —
+`AgentEditorCommons` depends transitively on the other six, so all must be installed:
+
+| Module | Role |
+|--------|------|
+| `GenAICommons` | Core AI types (Request/Response, DeployedModel, Tool, KnowledgeBase) |
+| `MxGenAIConnector` | Mendix Cloud AI backend, model config, embeddings |
+| `AgentCommons` | Agent management (versioned agents, tools, KBs, MCP) |
+| `AgentEditorCommons` | Bridge to the Studio Pro Agent Editor extension |
+| `MCPClient` | MCP server connections, tool discovery/execution |
+| `ConversationalUI` | Chat widgets, tool-approval UI, trace monitoring |
+| `Encryption` | Provides the 32-char key models/KBs reference |
+
+Install them with `mxcli marketplace install <id> -p app.mpr` (or via Studio Pro). Also
+register `ASU_AgentEditor` as an after-startup microflow.
 
 ## Syntax
 

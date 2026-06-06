@@ -11,7 +11,7 @@ date: 2026-04-13
 
 ## Problem Statement
 
-Mendix 11.9 introduces **Agents** as a first-class concept for building agentic AI applications. Agents are defined in Studio Pro through the Agent Editor extension and stored as `CustomBlobDocuments$CustomBlobDocument` with `CustomDocumentType = "agenteditor.agent"`. The ecosystem includes five marketplace modules:
+Mendix 11.9 introduces **Agents** as a first-class concept for building agentic AI applications. Agents are defined in Studio Pro through the Agent Editor extension and stored as `CustomBlobDocuments$CustomBlobDocument` with `CustomDocumentType = "agenteditor.agent"`. The ecosystem requires seven marketplace modules (`AgentEditorCommons` depends transitively on the others, so all must be installed):
 
 | Module | Role |
 |--------|------|
@@ -21,6 +21,7 @@ Mendix 11.9 introduces **Agents** as a first-class concept for building agentic 
 | **AgentEditorCommons** | Bridge between Studio Pro Agent Editor extension and AgentCommons runtime entities |
 | **MCPClient** | Model Context Protocol client: server connections, tool/prompt discovery, execution |
 | **ConversationalUI** | Chat widgets, message rendering, tool approval UI, trace monitoring, token & observability dashboards |
+| **Encryption** | Provides the 32-char key that Model/Knowledge Base documents reference |
 
 Currently, `mxcli` has no visibility into agent documents. `SHOW STRUCTURE` reports the Agents module as empty because it only contains `CustomBlobDocument` units, which are not parsed. An AI coding agent cannot discover, inspect, or create agents via MDL.
 

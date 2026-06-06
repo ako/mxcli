@@ -15,7 +15,10 @@
 --   - TOOL, MCP SERVICE, KNOWLEDGE BASE body blocks
 --
 -- Prerequisites:
---   - AgentEditorCommons module installed
+--   - The full agent-editor marketplace stack (7 modules) — AgentEditorCommons
+--     depends transitively on the rest, so all must be installed:
+--       GenAICommons, MxGenAIConnector, AgentCommons, AgentEditorCommons,
+--       MCPClient, ConversationalUI, Encryption
 --   - Encryption module configured (32-char key)
 --   - ASU_AgentEditor registered as after-startup microflow
 --

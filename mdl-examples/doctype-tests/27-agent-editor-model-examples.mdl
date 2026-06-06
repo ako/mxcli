@@ -22,7 +22,10 @@
 --
 -- Prerequisites:
 --   - A String constant must exist to hold the Portal key
---   - AgentEditorCommons module must be installed
+--   - The full agent-editor marketplace stack (7 modules) — AgentEditorCommons
+--     depends transitively on the rest, so all must be installed:
+--       GenAICommons, MxGenAIConnector, AgentCommons, AgentEditorCommons,
+--       MCPClient, ConversationalUI, Encryption
 --   - Encryption module must be configured (32-char key)
 --   - ASU_AgentEditor registered as after-startup microflow
 --
