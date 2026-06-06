@@ -23,6 +23,8 @@ func init() {
 		EmitGUID:       true,
 		MandatoryLists: []string{"Attributes", "AccessRules", "ValidationRules", "Indexes", "Events"},
 	})
+	// Attributes carry a GUID too (= their own $ID), but no member collections.
+	codec.RegisterTypeDefaults("DomainModels$Attribute", codec.TypeDefaults{EmitGUID: true})
 }
 
 // CreateEntity is the Phase-2 write slice: add an entity to a domain model
@@ -118,14 +120,83 @@ func entityToGen(e *domainmodel.Entity) *genDm.Entity {
 		}
 		out.SetGeneralization(ng)
 	}
+
+	for _, a := range e.Attributes {
+		out.AddAttributes(attributeToGen(a))
+	}
 	return out
 }
 
-// assignEntityIDs gives the entity and its generalization fresh IDs (mirrors
-// engalar's assignEntityIDsGen; extended to attributes/etc. with breadth).
+// attributeToGen converts a domainmodel.Attribute to its gen form: name,
+// documentation, ExportLevel, the typed NewType element, and a StoredValue
+// holding the default. The attribute's GUID is added by the encoder via the
+// registered DomainModels$Attribute defaults.
+func attributeToGen(a *domainmodel.Attribute) *genDm.Attribute {
+	out := genDm.NewAttribute()
+	out.SetName(a.Name)
+	out.SetDocumentation(a.Documentation)
+	out.SetExportLevel("Hidden")
+	out.SetType(attributeTypeToGen(a.Type))
+
+	// Studio Pro always serializes StoredValue.DefaultValue (empty string when no
+	// explicit default), so set it unconditionally to stay in parity.
+	sv := genDm.NewStoredValue()
+	def := ""
+	if a.Value != nil {
+		def = a.Value.DefaultValue
+	}
+	sv.SetDefaultValue(def)
+	out.SetValue(sv)
+	return out
+}
+
+// attributeTypeToGen maps a domainmodel attribute type to the gen NewType element.
+func attributeTypeToGen(t domainmodel.AttributeType) element.Element {
+	switch at := t.(type) {
+	case *domainmodel.StringAttributeType:
+		g := genDm.NewStringAttributeType()
+		if at.Length > 0 {
+			g.SetLength(int32(at.Length))
+		}
+		return g
+	case *domainmodel.IntegerAttributeType:
+		return genDm.NewIntegerAttributeType()
+	case *domainmodel.LongAttributeType:
+		return genDm.NewLongAttributeType()
+	case *domainmodel.DecimalAttributeType:
+		return genDm.NewDecimalAttributeType()
+	case *domainmodel.BooleanAttributeType:
+		return genDm.NewBooleanAttributeType()
+	case *domainmodel.DateTimeAttributeType, *domainmodel.DateAttributeType:
+		return genDm.NewDateTimeAttributeType()
+	case *domainmodel.AutoNumberAttributeType:
+		return genDm.NewAutoNumberAttributeType()
+	case *domainmodel.BinaryAttributeType:
+		return genDm.NewBinaryAttributeType()
+	case *domainmodel.HashedStringAttributeType:
+		return genDm.NewHashedStringAttributeType()
+	case *domainmodel.EnumerationAttributeType:
+		g := genDm.NewEnumerationAttributeType()
+		g.SetEnumerationQualifiedName(at.EnumerationRef)
+		return g
+	default:
+		return genDm.NewStringAttributeType()
+	}
+}
+
+// assignEntityIDs gives the entity, its generalization, and each attribute
+// (plus the attribute's type and stored value) fresh IDs (mirrors engalar's
+// assignEntityIDsGen).
 func assignEntityIDs(e *genDm.Entity) {
 	assignID(e)
 	assignID(e.Generalization())
+	for _, el := range e.AttributesItems() {
+		assignID(el)
+		if a, ok := el.(*genDm.Attribute); ok {
+			assignID(a.Type())
+			assignID(a.Value())
+		}
+	}
 }
 
 func assignID(elem element.Element) {
