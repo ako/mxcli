@@ -518,6 +518,39 @@ func mapListOperation(op microflows.ListOperation) (map[string]any, error) {
 		return attributeListOp("Microflows$Filter", o.ListVariable, o.Attribute, o.Association, o.Expression), nil
 	case *microflows.FindByAttributeOperation:
 		return attributeListOp("Microflows$Find", o.ListVariable, o.Attribute, o.Association, o.Expression), nil
+	case *microflows.SortOperation:
+		items := make([]any, 0, len(o.Sorting))
+		for _, si := range o.Sorting {
+			steps := make([]any, 0, len(si.EntityRefSteps))
+			for _, st := range si.EntityRefSteps {
+				step := map[string]any{"$Type": "DomainModels$EntityRefStep"}
+				if st.Association != "" {
+					step["association"] = st.Association
+				}
+				if st.DestinationEntity != "" {
+					step["destinationEntity"] = st.DestinationEntity
+				}
+				steps = append(steps, step)
+			}
+			order := string(si.Direction)
+			if order == "" {
+				order = "Ascending"
+			}
+			items = append(items, map[string]any{
+				"$Type": "Microflows$SortItem",
+				"attributeRef": map[string]any{
+					"$Type":     "DomainModels$AttributeRef",
+					"attribute": si.AttributeQualifiedName,
+					"entityRef": map[string]any{"$Type": "DomainModels$IndirectEntityRef", "steps": steps},
+				},
+				"sortOrder": order,
+			})
+		}
+		return map[string]any{
+			"$Type":            "Microflows$Sort",
+			"listVariableName": o.ListVariable,
+			"sortItemList":     map[string]any{"$Type": "Microflows$SortItemList", "items": items},
+		}, nil
 	case *microflows.UnionOperation:
 		return binary("Microflows$Union", o.ListVariable1, o.ListVariable2), nil
 	case *microflows.IntersectOperation:

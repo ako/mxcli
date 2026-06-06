@@ -190,9 +190,31 @@ func TestMapListOperation(t *testing.T) {
 		t.Fatalf("find-by-attribute: %+v / %v", afa, err)
 	}
 
-	// sort still not supported
-	if _, err := mapListOperation(&microflows.SortOperation{}); err == nil {
-		t.Error("sort should be rejected for now")
+	// sort: nested sortItemList/SortItem/attributeRef structure
+	srt, err := mapListOperation(&microflows.SortOperation{
+		ListVariable: "Items",
+		Sorting: []*microflows.SortItem{
+			{AttributeQualifiedName: "M.E.Name", Direction: microflows.SortDirectionDescending},
+		},
+	})
+	if err != nil || srt["$Type"] != "Microflows$Sort" || srt["listVariableName"] != "Items" {
+		t.Fatalf("sort: %+v / %v", srt, err)
+	}
+	sil, _ := srt["sortItemList"].(map[string]any)
+	if sil["$Type"] != "Microflows$SortItemList" {
+		t.Fatalf("sortItemList: %+v", sil)
+	}
+	sitems, _ := sil["items"].([]any)
+	if len(sitems) != 1 {
+		t.Fatalf("expected 1 sort item: %+v", sitems)
+	}
+	item, _ := sitems[0].(map[string]any)
+	if item["sortOrder"] != "Descending" {
+		t.Fatalf("sortOrder: %+v", item)
+	}
+	ar, _ := item["attributeRef"].(map[string]any)
+	if ar["$Type"] != "DomainModels$AttributeRef" || ar["attribute"] != "M.E.Name" {
+		t.Fatalf("attributeRef: %+v", ar)
 	}
 }
 
