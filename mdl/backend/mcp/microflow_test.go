@@ -199,29 +199,64 @@ func TestMapCaseValue(t *testing.T) {
 	}
 }
 
-func TestMapMicroflowObject_Split(t *testing.T) {
+func TestMapObjectTree_Split(t *testing.T) {
 	b := &Backend{}
-	split, err := b.mapMicroflowObject(&microflows.ExclusiveSplit{
+	idPath := map[model.ID]string{}
+	split, err := b.mapObjectTree(&microflows.ExclusiveSplit{
 		Caption:        "Is big?",
 		SplitCondition: &microflows.ExpressionSplitCondition{Expression: "$N > 10"},
-	}, 3)
+	}, "/objects/3", 3, idPath)
 	if err != nil || split["$Type"] != "Microflows$ExclusiveSplit" ||
 		split["expressionSplitCondition"] != "$N > 10" || split["caption"] != "Is big?" {
 		t.Fatalf("exclusive split: %+v / %v", split, err)
 	}
 
-	merge, err := b.mapMicroflowObject(&microflows.ExclusiveMerge{}, 4)
+	merge, err := b.mapObjectTree(&microflows.ExclusiveMerge{}, "/objects/4", 4, idPath)
 	if err != nil || merge["$Type"] != "Microflows$ExclusiveMerge" {
 		t.Fatalf("exclusive merge: %+v / %v", merge, err)
 	}
 }
 
-func TestMapMicroflowObject_SplitRejectsRuleCondition(t *testing.T) {
+func TestMapObjectTree_SplitRejectsRuleCondition(t *testing.T) {
 	b := &Backend{}
-	if _, err := b.mapMicroflowObject(&microflows.ExclusiveSplit{
+	if _, err := b.mapObjectTree(&microflows.ExclusiveSplit{
 		SplitCondition: &microflows.RuleSplitCondition{RuleQualifiedName: "M.SomeRule"},
-	}, 0); err == nil {
+	}, "/objects/0", 0, map[model.ID]string{}); err == nil {
 		t.Error("rule-based split condition should be rejected (only expression supported)")
+	}
+}
+
+func TestMapObjectTree_Loop(t *testing.T) {
+	b := &Backend{}
+	idPath := map[model.ID]string{}
+	body := &microflows.ActionActivity{Action: &microflows.LogMessageAction{LogLevel: microflows.LogLevelInfo}}
+	body.ID = "body-1"
+	loop := &microflows.LoopedActivity{
+		LoopSource: &microflows.IterableList{ListVariableName: "$Items", VariableName: "Item"},
+		ObjectCollection: &microflows.MicroflowObjectCollection{
+			Objects: []microflows.MicroflowObject{body},
+		},
+	}
+	loop.ID = "loop-1"
+
+	m, err := b.mapObjectTree(loop, "/objects/2", 2, idPath)
+	if err != nil {
+		t.Fatalf("loop: %v", err)
+	}
+	if m["$Type"] != "Microflows$LoopedActivity" {
+		t.Fatalf("loop $Type: %+v", m)
+	}
+	src, _ := m["iterableListSource"].(map[string]any)
+	if src["listVariableName"] != "$Items" || src["iteratorVariableName"] != "Item" {
+		t.Fatalf("loop source: %+v", src)
+	}
+	objs, _ := m["objects"].([]any)
+	if len(objs) != 1 {
+		t.Fatalf("loop body should have 1 object: %+v", objs)
+	}
+	// the body object's path nests under the loop
+	if idPath["body-1"] != "/objects/2/objects/0" {
+		t.Fatalf("body path = %q, want /objects/2/objects/0", idPath["body-1"])
 	}
 }
 

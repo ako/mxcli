@@ -51,14 +51,17 @@ func (b *Backend) CreateMicroflow(mf *microflows.Microflow) error {
 
 	// Map the flow objects (Start/End/activities) and remember each object's
 	// index so SequenceFlows can reference it by $id(/objects/N).
-	idIndex := map[model.ID]int{}
+	// idPath maps each object's ID to its JSON-pointer path. Loop bodies nest, so
+	// a body object's path is /objects/N/objects/M; flows (which all live at the
+	// microflow top level, even loop-body flows) reference objects by these paths.
+	idPath := map[model.ID]string{}
 	if mf.ObjectCollection != nil {
 		for i, o := range mf.ObjectCollection.Objects {
-			pedObj, err := b.mapMicroflowObject(o, paramCount+i)
+			path := fmt.Sprintf("/objects/%d", paramCount+i)
+			pedObj, err := b.mapObjectTree(o, path, i, idPath)
 			if err != nil {
 				return fmt.Errorf("microflow %q: %w", mf.Name, err)
 			}
-			idIndex[o.GetID()] = paramCount + i
 			objects = append(objects, pedObj)
 		}
 	}
@@ -66,14 +69,14 @@ func (b *Backend) CreateMicroflow(mf *microflows.Microflow) error {
 	flows := make([]any, 0)
 	if mf.ObjectCollection != nil {
 		for _, f := range mf.ObjectCollection.Flows {
-			oi, ok1 := idIndex[f.OriginID]
-			di, ok2 := idIndex[f.DestinationID]
+			op, ok1 := idPath[f.OriginID]
+			dp, ok2 := idPath[f.DestinationID]
 			if !ok1 || !ok2 {
 				return fmt.Errorf("microflow %q: a sequence flow references an object that is not supported yet", mf.Name)
 			}
 			pf := map[string]any{
-				"originId":      fmt.Sprintf("$id(/objects/%d)", oi),
-				"destinationId": fmt.Sprintf("$id(/objects/%d)", di),
+				"originId":      fmt.Sprintf("$id(%s)", op),
+				"destinationId": fmt.Sprintf("$id(%s)", dp),
 			}
 			cv, err := mapCaseValue(f.CaseValue)
 			if err != nil {
@@ -172,19 +175,22 @@ func canvasPoint(index, y int) map[string]int {
 	return map[string]int{"x": 120 + index*160, "y": y}
 }
 
-// mapMicroflowObject maps one executor microflow object onto a PED /objects
-// entry. Unmapped object types are rejected.
-func (b *Backend) mapMicroflowObject(o microflows.MicroflowObject, index int) (map[string]any, error) {
+// mapObjectTree maps one executor microflow object onto a PED /objects entry,
+// registering its path in idPath and recursing into loop bodies (whose objects
+// nest at <path>/objects/M). localIndex drives the cosmetic left-to-right layout
+// within the object's container. Unmapped object types are rejected.
+func (b *Backend) mapObjectTree(o microflows.MicroflowObject, path string, localIndex int, idPath map[model.ID]string) (map[string]any, error) {
+	idPath[o.GetID()] = path
 	switch obj := o.(type) {
 	case *microflows.StartEvent:
 		return map[string]any{
 			"$Type":               "Microflows$StartEvent",
-			"relativeMiddlePoint": canvasPoint(index, 120),
+			"relativeMiddlePoint": canvasPoint(localIndex, 120),
 		}, nil
 	case *microflows.EndEvent:
 		m := map[string]any{
 			"$Type":               "Microflows$EndEvent",
-			"relativeMiddlePoint": canvasPoint(index, 120),
+			"relativeMiddlePoint": canvasPoint(localIndex, 120),
 		}
 		if obj.ReturnValue != "" {
 			m["returnValue"] = obj.ReturnValue
@@ -197,13 +203,13 @@ func (b *Backend) mapMicroflowObject(o microflows.MicroflowObject, index int) (m
 		}
 		return map[string]any{
 			"$Type":               "Microflows$ActionActivity",
-			"relativeMiddlePoint": canvasPoint(index, 120),
+			"relativeMiddlePoint": canvasPoint(localIndex, 120),
 			"action":              action,
 		}, nil
 	case *microflows.ExclusiveSplit:
 		m := map[string]any{
 			"$Type":               "Microflows$ExclusiveSplit",
-			"relativeMiddlePoint": canvasPoint(index, 120),
+			"relativeMiddlePoint": canvasPoint(localIndex, 120),
 		}
 		switch c := obj.SplitCondition.(type) {
 		case *microflows.ExpressionSplitCondition:
@@ -220,8 +226,50 @@ func (b *Backend) mapMicroflowObject(o microflows.MicroflowObject, index int) (m
 	case *microflows.ExclusiveMerge:
 		return map[string]any{
 			"$Type":               "Microflows$ExclusiveMerge",
-			"relativeMiddlePoint": canvasPoint(index, 120),
+			"relativeMiddlePoint": canvasPoint(localIndex, 120),
 		}, nil
+	case *microflows.BreakEvent:
+		return map[string]any{
+			"$Type":               "Microflows$BreakEvent",
+			"relativeMiddlePoint": canvasPoint(localIndex, 120),
+		}, nil
+	case *microflows.ContinueEvent:
+		return map[string]any{
+			"$Type":               "Microflows$ContinueEvent",
+			"relativeMiddlePoint": canvasPoint(localIndex, 120),
+		}, nil
+	case *microflows.LoopedActivity:
+		m := map[string]any{
+			"$Type":               "Microflows$LoopedActivity",
+			"relativeMiddlePoint": canvasPoint(localIndex, 120),
+		}
+		switch src := obj.LoopSource.(type) {
+		case *microflows.IterableList:
+			m["iterableListSource"] = map[string]any{
+				"listVariableName":     src.ListVariableName,
+				"iteratorVariableName": src.VariableName,
+			}
+		case *microflows.WhileLoopCondition:
+			m["whileLoopSource"] = map[string]any{"condition": src.WhileExpression}
+		default:
+			return nil, fmt.Errorf("loop: unsupported loop source %T", obj.LoopSource)
+		}
+		// Body objects nest under <path>/objects/M. Their flows are already at
+		// the microflow top level (the executor lifts them there), so we only
+		// map objects here and register their nested paths.
+		body := make([]any, 0)
+		if obj.ObjectCollection != nil {
+			for j, bo := range obj.ObjectCollection.Objects {
+				bp := fmt.Sprintf("%s/objects/%d", path, j)
+				pedBody, err := b.mapObjectTree(bo, bp, j, idPath)
+				if err != nil {
+					return nil, err
+				}
+				body = append(body, pedBody)
+			}
+		}
+		m["objects"] = body
+		return m, nil
 	default:
 		return nil, fmt.Errorf("microflow object type %T is not yet supported by the MCP backend", o)
 	}
