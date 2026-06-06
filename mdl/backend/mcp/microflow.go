@@ -410,6 +410,59 @@ func mapMicroflowAction(a microflows.MicroflowAction) (map[string]any, error) {
 			m["outputVariableName"] = act.OutputVariable
 		}
 		return m, nil
+	case *microflows.NanoflowCallAction:
+		if act.NanoflowCall == nil || act.NanoflowCall.Nanoflow == "" {
+			return nil, fmt.Errorf("call nanoflow: missing target nanoflow")
+		}
+		mappings := make([]any, 0, len(act.NanoflowCall.ParameterMappings))
+		for _, pm := range act.NanoflowCall.ParameterMappings {
+			mappings = append(mappings, map[string]any{
+				"$Type":     "Microflows$NanoflowCallParameterMapping",
+				"parameter": pm.Parameter,
+				"argument":  pm.Argument,
+			})
+		}
+		call := map[string]any{"$Type": "Microflows$NanoflowCall", "nanoflow": act.NanoflowCall.Nanoflow}
+		if len(mappings) > 0 {
+			call["parameterMappings"] = mappings
+		}
+		m := map[string]any{
+			"$Type":             "Microflows$NanoflowCallAction",
+			"nanoflowCall":      call,
+			"useReturnVariable": act.UseReturnVariable,
+		}
+		if act.OutputVariableName != "" {
+			m["outputVariableName"] = act.OutputVariableName
+		}
+		return m, nil
+	case *microflows.JavaActionCallAction:
+		if act.JavaAction == "" {
+			return nil, fmt.Errorf("call java action: missing target java action")
+		}
+		mappings := make([]any, 0, len(act.ParameterMappings))
+		for _, pm := range act.ParameterMappings {
+			pv, err := mapCodeActionParameterValue(pm.Value)
+			if err != nil {
+				return nil, err
+			}
+			mappings = append(mappings, map[string]any{
+				"$Type":          "Microflows$JavaActionParameterMapping",
+				"parameter":      pm.Parameter,
+				"parameterValue": pv,
+			})
+		}
+		m := map[string]any{
+			"$Type":             "Microflows$JavaActionCallAction",
+			"javaAction":        act.JavaAction,
+			"useReturnVariable": act.UseReturnVariable,
+		}
+		if len(mappings) > 0 {
+			m["parameterMappings"] = mappings
+		}
+		if act.ResultVariableName != "" {
+			m["outputVariableName"] = act.ResultVariableName
+		}
+		return m, nil
 	case *microflows.MicroflowCallAction:
 		if act.MicroflowCall == nil || act.MicroflowCall.Microflow == "" {
 			return nil, fmt.Errorf("call microflow: missing target microflow")
@@ -485,6 +538,24 @@ func mapMicroflowAction(a microflows.MicroflowAction) (map[string]any, error) {
 		return m, nil
 	default:
 		return nil, fmt.Errorf("microflow action %T is not yet supported by the MCP backend", a)
+	}
+}
+
+// mapCodeActionParameterValue maps a Java-action parameter value onto its PED
+// element. Basic (expression) and entity-type values are supported; other code
+// value kinds are rejected.
+func mapCodeActionParameterValue(v microflows.CodeActionParameterValue) (map[string]any, error) {
+	switch cv := v.(type) {
+	case *microflows.BasicCodeActionParameterValue:
+		return map[string]any{"$Type": "Microflows$BasicCodeActionParameterValue", "argument": cv.Argument}, nil
+	case microflows.BasicCodeActionParameterValue:
+		return map[string]any{"$Type": "Microflows$BasicCodeActionParameterValue", "argument": cv.Argument}, nil
+	case *microflows.EntityTypeCodeActionParameterValue:
+		return map[string]any{"$Type": "Microflows$EntityTypeCodeActionParameterValue", "entity": cv.Entity}, nil
+	case microflows.EntityTypeCodeActionParameterValue:
+		return map[string]any{"$Type": "Microflows$EntityTypeCodeActionParameterValue", "entity": cv.Entity}, nil
+	default:
+		return nil, fmt.Errorf("java action parameter value %T is not yet supported by the MCP backend", v)
 	}
 }
 

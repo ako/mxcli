@@ -259,6 +259,51 @@ func TestMapMicroflowAction_MicroflowCall(t *testing.T) {
 	}
 }
 
+func TestMapMicroflowAction_NanoflowCall(t *testing.T) {
+	m, err := mapMicroflowAction(&microflows.NanoflowCallAction{
+		OutputVariableName: "Valid",
+		UseReturnVariable:  true,
+		NanoflowCall: &microflows.NanoflowCall{
+			Nanoflow:          "M.VAL_X",
+			ParameterMappings: []*microflows.NanoflowCallParameterMapping{{Parameter: "M.VAL_X.P", Argument: "$P"}},
+		},
+	})
+	if err != nil || m["$Type"] != "Microflows$NanoflowCallAction" || m["outputVariableName"] != "Valid" {
+		t.Fatalf("nanoflow call: %+v / %v", m, err)
+	}
+	nc, _ := m["nanoflowCall"].(map[string]any)
+	if nc["$Type"] != "Microflows$NanoflowCall" || nc["nanoflow"] != "M.VAL_X" {
+		t.Fatalf("nanoflowCall: %+v", nc)
+	}
+}
+
+func TestMapMicroflowAction_JavaActionCall(t *testing.T) {
+	m, err := mapMicroflowAction(&microflows.JavaActionCallAction{
+		JavaAction:         "M.ValidateEmail",
+		ResultVariableName: "Valid",
+		ParameterMappings: []*microflows.JavaActionParameterMapping{
+			{Parameter: "M.ValidateEmail.Email", Value: &microflows.BasicCodeActionParameterValue{Argument: "$Email"}},
+		},
+	})
+	if err != nil || m["$Type"] != "Microflows$JavaActionCallAction" || m["javaAction"] != "M.ValidateEmail" || m["outputVariableName"] != "Valid" {
+		t.Fatalf("java call: %+v / %v", m, err)
+	}
+	pms, _ := m["parameterMappings"].([]any)
+	pm, _ := pms[0].(map[string]any)
+	if pm["$Type"] != "Microflows$JavaActionParameterMapping" || pm["parameter"] != "M.ValidateEmail.Email" {
+		t.Fatalf("java param mapping: %+v", pm)
+	}
+	pv, _ := pm["parameterValue"].(map[string]any)
+	if pv["$Type"] != "Microflows$BasicCodeActionParameterValue" || pv["argument"] != "$Email" {
+		t.Fatalf("java param value: %+v", pv)
+	}
+	// entity-type value
+	ev, err := mapCodeActionParameterValue(&microflows.EntityTypeCodeActionParameterValue{Entity: "M.E"})
+	if err != nil || ev["$Type"] != "Microflows$EntityTypeCodeActionParameterValue" || ev["entity"] != "M.E" {
+		t.Fatalf("entity-type value: %+v / %v", ev, err)
+	}
+}
+
 func TestMapMicroflowAction_MicroflowCallMissingTarget(t *testing.T) {
 	if _, err := mapMicroflowAction(&microflows.MicroflowCallAction{MicroflowCall: &microflows.MicroflowCall{}}); err == nil {
 		t.Error("a call with no target microflow should error")
