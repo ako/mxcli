@@ -269,7 +269,14 @@ against `testdata/expr-checker/minimal.mpr` (SHOW ENTITIES / SHOW MODULES); the 
 | Container-tree reads (`ListUnits`/`ListFolders`) for module/folder resolution | ✅ done | `f7b2a020` |
 | Microflows read (`ListMicroflows`/`GetMicroflow` + flow-object/param conversion) | ✅ done | `f7b2a020` |
 | Pages read (`ListPages`/`GetPage` + title/template handling) | ✅ done | `fb9664da` |
-| Read coverage beyond pages (nanoflows, enums, security, …) | ⏳ next | — |
+| Nanoflows read (`ListNanoflows`/`GetNanoflow`, reuses microflow helpers) | ✅ done | `24c4428d` |
+| Read coverage beyond nanoflows (enums, constants, security, …) | ⏳ next | — |
+
+Nanoflows were a clean reuse — `nanoflowFromGen` shares `splitFlowObjects`/`dataTypeFromGen`
+with microflows unchanged; `SHOW NANOFLOWS` was byte-identical on the first run (13 rows). The
+per-document recipe is now well-established and the remaining doc types (enums, constants,
+security, etc.) are mostly mechanical, with the cross-cutting infrastructure (container tree,
+text registration, prefix-match handling) already solved.
 
 **Two more reusable lessons from pages** (both will recur across remaining doc types):
 
