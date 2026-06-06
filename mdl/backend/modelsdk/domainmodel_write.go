@@ -38,6 +38,17 @@ func init() {
 	codec.RegisterTypeDefaults("DomainModels$DeleteBehavior", codec.TypeDefaults{
 		NullFields: []string{"ChildErrorMessage", "ParentErrorMessage"},
 	})
+	// An entity index carries a GUID (= its own $ID). Confirmed against real
+	// Studio-Pro 11.x BSON (mx-test-projects/test7-app: IdxProbe).
+	codec.RegisterTypeDefaults("DomainModels$EntityIndex", codec.TypeDefaults{EmitGUID: true})
+	// Each index segment carries an AssociationPointer — an all-zero GUID for an
+	// attribute-based segment (the gen IndexedAttribute exposes no such property).
+	codec.RegisterTypeDefaults("DomainModels$IndexedAttribute", codec.TypeDefaults{
+		ZeroGUIDFields: []string{"AssociationPointer"},
+	})
+	// The index's IndexedAttribute list uses typed-array marker 2, not the
+	// domain-model default of 3 (verified in the same reference project).
+	codec.RegisterListMarker("DomainModels$IndexedAttribute", 2)
 }
 
 // CreateAssociation adds an association to a domain model. Associations are
@@ -217,6 +228,38 @@ func entityToGen(e *domainmodel.Entity, moduleName string) *genDm.Entity {
 			out.AddValidationRules(validationRuleToGen(vr, moduleName, e.Name, attrName))
 		}
 	}
+	for _, idx := range e.Indexes {
+		out.AddIndexes(indexToGen(idx))
+	}
+	return out
+}
+
+// indexToGen converts a domainmodel.Index to a gen EntityIndex. Each segment
+// references its attribute by AttributePointer (= the attribute's ID, carried
+// onto the gen attribute in attributeToGen); Ascending/Type replace legacy's
+// stale SortOrder string, and AssociationPointer (zero GUID) comes from the
+// registered ZeroGUIDFields default. Verified against real Studio-Pro 11.x BSON.
+func indexToGen(idx *domainmodel.Index) *genDm.Index {
+	out := genDm.NewIndex()
+	out.SetIncludeInOffline(false)
+	segs := idx.Attributes
+	for _, ia := range segs {
+		seg := genDm.NewIndexedAttribute()
+		seg.SetType("Normal")
+		seg.SetAscending(ia.Ascending)
+		seg.SetAttributeID(element.ID(ia.AttributeID))
+		out.AddAttributes(seg)
+	}
+	// Fall back to AttributeIDs (ascending) when the structured segments are absent.
+	if len(segs) == 0 {
+		for _, aid := range idx.AttributeIDs {
+			seg := genDm.NewIndexedAttribute()
+			seg.SetType("Normal")
+			seg.SetAscending(true)
+			seg.SetAttributeID(element.ID(aid))
+			out.AddAttributes(seg)
+		}
+	}
 	return out
 }
 
@@ -303,6 +346,12 @@ func attributeToGen(a *domainmodel.Attribute) *genDm.Attribute {
 	}
 	sv.SetDefaultValue(def)
 	out.SetValue(sv)
+	// Carry the domainmodel attribute ID onto the gen element so an index's
+	// AttributePointer (which references this same ID) resolves to it. assignID
+	// leaves non-empty IDs untouched; the canonical comparison masks IDs anyway.
+	if a.ID != "" {
+		out.SetID(element.ID(a.ID))
+	}
 	return out
 }
 
@@ -351,6 +400,14 @@ func assignEntityIDs(e *genDm.Entity) {
 		if a, ok := el.(*genDm.Attribute); ok {
 			assignID(a.Type())
 			assignID(a.Value())
+		}
+	}
+	for _, el := range e.IndexesItems() {
+		assignID(el)
+		if idx, ok := el.(*genDm.Index); ok {
+			for _, seg := range idx.AttributesItems() {
+				assignID(seg)
+			}
 		}
 	}
 	for _, el := range e.ValidationRulesItems() {

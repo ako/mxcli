@@ -24,6 +24,11 @@ type TypeDefaults struct {
 	// NullFields are keys Studio Pro always serializes as BSON null (e.g. an
 	// unset reference like an association's Source); emitted when not otherwise set.
 	NullFields []string
+	// ZeroGUIDFields are reference keys Studio Pro serializes as an all-zero GUID
+	// binary when the reference is unset (e.g. an IndexedAttribute's
+	// AssociationPointer on an attribute-based index segment). Emitted when not
+	// otherwise set. Stands in for a gen property the constructor doesn't expose.
+	ZeroGUIDFields []string
 }
 
 var registeredDefaults = map[string]TypeDefaults{}
@@ -37,4 +42,24 @@ func RegisterTypeDefaults(typeName string, d TypeDefaults) {
 func lookupTypeDefaults(typeName string) (TypeDefaults, bool) {
 	d, ok := registeredDefaults[typeName]
 	return d, ok
+}
+
+// listMarkers maps a child element $Type to the leading typed-array marker
+// Studio Pro writes for a PartList of that element type. Most domain-model
+// member lists use 3 (the encoder default); some — notably the IndexedAttribute
+// list inside an EntityIndex — use a different version marker. Confirmed against
+// real Studio-Pro 11.x BSON (mx-test-projects/test7-app: IdxProbe index uses 2).
+var listMarkers = map[string]int32{}
+
+// RegisterListMarker declares the typed-array marker for PartLists whose child
+// elements are of childType. Without registration the encoder emits 3.
+func RegisterListMarker(childType string, marker int32) {
+	listMarkers[childType] = marker
+}
+
+func lookupListMarker(childType string) int32 {
+	if m, ok := listMarkers[childType]; ok {
+		return m
+	}
+	return 3
 }

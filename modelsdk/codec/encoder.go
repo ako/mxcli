@@ -163,6 +163,11 @@ func (e *Encoder) buildDoc(elem element.Element) (bson.D, error) {
 					doc = append(doc, bson.E{Key: name, Value: nil})
 				}
 			}
+			for _, name := range d.ZeroGUIDFields {
+				if !emitted[name] {
+					doc = append(doc, bson.E{Key: name, Value: zeroGUIDBinary()})
+				}
+			}
 		}
 		return doc, nil
 	}
@@ -247,7 +252,7 @@ func (e *Encoder) encodeEntry(rb rebuildEntry) (any, error) {
 		if wp.Dirty() {
 			// Full rebuild: all children re-encoded.
 			arr := make(bson.A, 0, 1+len(children))
-			arr = append(arr, int32(3))
+			arr = append(arr, partListMarker(children))
 			for _, child := range children {
 				childDoc, err := e.buildDoc(child)
 				if err != nil {
@@ -304,4 +309,24 @@ func idToBinarySubtype0(id element.ID) any {
 // idToBinary converts a UUID string to Mendix BSON Binary format.
 func idToBinary(id element.ID) any {
 	return idToBinarySubtype0(id)
+}
+
+// zeroGUID is the all-zero UUID Studio Pro uses for an unset GUID reference.
+const zeroGUID = "00000000-0000-0000-0000-000000000000"
+
+// zeroGUIDBinary returns the BSON Binary (subtype 0, 16 zero bytes) Studio Pro
+// writes for an unset reference field (e.g. AssociationPointer on an
+// attribute-based index segment).
+func zeroGUIDBinary() any {
+	return mpr.IDToBsonBinary(zeroGUID)
+}
+
+// partListMarker returns the leading typed-array marker for a PartList, derived
+// from the child element $Type (defaulting to 3). An empty list keeps the
+// default — empty mandatory lists are entity member collections, all marker 3.
+func partListMarker(children []element.Element) int32 {
+	if len(children) == 0 {
+		return 3
+	}
+	return lookupListMarker(children[0].TypeName())
 }
