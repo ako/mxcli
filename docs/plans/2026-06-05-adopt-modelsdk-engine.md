@@ -277,12 +277,20 @@ against `testdata/expr-checker/minimal.mpr` (SHOW ENTITIES / SHOW MODULES); the 
 | Read coverage beyond constants (security, scheduled events, mappings, …) | ⏳ next | — |
 
 The harness automates what had been manual `diff`s: `make engine-diff` runs each `SHOW` query
-through both engines in-process and compares padding/order-normalized output. Strict cases
-(microflows, nanoflows, pages, enums, constants, entities-non-System) must match; `SHOW MODULES`
-is a declared **known gap** (module `Source`/`FromAppStore` not yet converted + legacy's injected
-System aggregate counts) — reported, not failed, and it self-flags if it unexpectedly matches.
-Every new read type should add a case here, making subsequent type work **self-validating** and
-regression-proofed. Write/BSON comparison (the ID-canonicalizer) is the Phase-2 extension.
+through both engines in-process and compares padding/order-normalized output. **All 7 cases now
+strict-PASS** (microflows, nanoflows, pages, enums, constants, entities, modules — the last two
+with the System row filtered). Every new read type should add a case here, making subsequent type
+work **self-validating** and regression-proofed. Write/BSON comparison (the ID-canonicalizer) is
+the Phase-2 extension.
+
+**Modules gap closed** (`b01a522f`): added module `Source` (decode the unit for
+`FromAppStore`/`AppStoreVersion` — the generic lister can't be used because the
+`Projects$ModuleImpl` alias defeats strict type resolution), `ListSnippets`, and `ListJavaActions`
+(the remaining non-zero count columns). Non-System modules now match across **every** column. The
+System row is filtered, not replicated: legacy injects a hardcoded 11.6.4 System module
+(`BuildSystemDomainModel`) because it couldn't read the real System contents, whereas modelsdk
+reads the real (sparser) unit — modelsdk is **arguably more correct**, so we treat System as a
+principled difference rather than porting the hardcoded data.
 
 Enums confirmed that engalar's `convert_reader.go` *does* have portable converters for the
 non-domain-model document types (`enumToModel`/`enumValueToModel`, etc.) — unlike domain models,
