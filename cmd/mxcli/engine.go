@@ -54,10 +54,12 @@ func resolveEngine() engineKind {
 
 // newBackendFactory returns the FullBackend factory for the active engine.
 //
-// modelsdk is a READ-ONLY slice (Phase 1): reads run through the codec engine;
-// writes are not implemented and silently no-op via the embedded mock, so a
-// warning is printed. compare needs the run-both diff harness (Phase 2) and
-// still fails fast. An unknown value was already rejected by resolveEngine.
+// modelsdk runs the codec engine: full reads, plus an experimental write slice
+// (domain-model entity/attributes/associations/generalization/validations/
+// indexes — verified against Studio-Pro BSON). Write paths not yet ported fall
+// through to the embedded mock and silently no-op, so a warning is printed.
+// compare needs the run-both diff harness (Phase 2) and still fails fast. An
+// unknown value was already rejected by resolveEngine.
 func newBackendFactory() func() backend.FullBackend {
 	// The MCP backend (live Studio Pro) is selected by --mcp / --mcp-dial,
 	// independent of MXCLI_ENGINE: writes route to Studio Pro, reads come from -p.
@@ -78,9 +80,10 @@ func newBackendFactory() func() backend.FullBackend {
 	}
 	switch resolveEngine() {
 	case engineModelSDK:
-		fmt.Fprintln(os.Stderr, "mxcli: engine 'modelsdk' is an experimental READ-ONLY slice "+
-			"(Phase 1 of docs/plans/2026-06-05-adopt-modelsdk-engine.md). Writes are not yet "+
-			"implemented and will NOT persist — use 'legacy' for any modification.")
+		fmt.Fprintln(os.Stderr, "mxcli: engine 'modelsdk' is experimental "+
+			"(docs/plans/2026-06-05-adopt-modelsdk-engine.md). Reads are complete; writes "+
+			"cover domain-model entity/attributes/associations/generalization/validations/"+
+			"indexes only — other modifications silently no-op. Use 'legacy' if unsure.")
 		return func() backend.FullBackend { return modelsdkbackend.New() }
 	case engineCompare:
 		fmt.Fprintln(os.Stderr, "mxcli: engine 'compare' requires the run-both diff harness (Phase 2 of "+

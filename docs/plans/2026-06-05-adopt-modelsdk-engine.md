@@ -590,3 +590,26 @@ spec is now captured and authoritative, so the follow-up is unblocked.
 
 (Scratch entities `MxcliDiskProbe.IdxProbe` + `OracleTmp` were saved into test7-app during the
 capture — safe to delete.)
+
+### Indexes shipped + legacy SortOrder bug fixed (2026-06-06)
+
+Both halves done and validated against the real Mendix validator:
+
+**(a) modelsdk index writes** — codec gains a per-child-type PartList marker registry
+(`RegisterListMarker`; IndexedAttribute lists use 2, not the default 3) and a `ZeroGUIDFields`
+default (emits `AssociationPointer` as an all-zero GUID). The converter builds `EntityIndex`
+(EmitGUID, IncludeInOffline=false) + `IndexedAttribute` (Ascending+Type("Normal")+AttributePointer);
+the domainmodel attribute ID is carried onto the gen attribute so AttributePointer resolves.
+
+**(b) legacy index writer** — `serializeIndex`/`serializeIndexAttribute` rewritten to emit the
+11.x shape (marker 2, GUID, IncludeInOffline, Ascending+Type+AttributePointer+AssociationPointer),
+replacing the stale `SortOrder` string + marker 3 + missing fields. Safe because the legacy
+*parser* already reads `Ascending` (with a `SortOrder` fallback for old projects) — writer and
+parser are now aligned. No version gating exists or was added; the parser's dual-read is the
+back-compat mechanism.
+
+**Validation (mx check, Mendix 11.10.0, test6-app):** baseline (no index) = legacy+index =
+modelsdk+index = **17 errors** (all pre-existing OdTest/OData issues); **zero** index-related
+errors in either engine. Both engines now produce byte-identical, Studio-Pro-faithful index BSON.
+`TestWriteParity_Index` asserts both match the MCP-captured truth. The modelsdk write slice now
+covers entity/attributes/associations/generalization/validations/indexes.

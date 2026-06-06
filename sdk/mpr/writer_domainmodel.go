@@ -1227,34 +1227,42 @@ func serializeDeleteBehavior(parentBehavior, childBehavior *domainmodel.DeleteBe
 	}
 }
 
+// zeroGUID is the all-zero UUID Studio Pro writes for an unset GUID reference.
+const zeroGUID = "00000000-0000-0000-0000-000000000000"
+
 func serializeIndex(idx *domainmodel.Index) bson.M {
-	// Index attributes array with version prefix 3
-	attrs := bson.A{int32(3)}
+	// IndexedAttribute lists use typed-array marker 2 (NOT the domain-model
+	// default of 3) — verified against real Studio-Pro 11.x BSON
+	// (mx-test-projects/test7-app: IdxProbe).
+	attrs := bson.A{int32(2)}
 	for _, ia := range idx.Attributes {
 		attrs = append(attrs, serializeIndexAttribute(ia))
 	}
 
 	return bson.M{
-		"$ID":        idToBsonBinary(string(idx.ID)),
-		"$Type":      "DomainModels$EntityIndex",
-		"Attributes": attrs,
+		"$ID":              idToBsonBinary(string(idx.ID)),
+		"$Type":            "DomainModels$EntityIndex",
+		"Attributes":       attrs,
+		"GUID":             idToBsonBinary(string(idx.ID)),
+		"IncludeInOffline": false,
 	}
 }
 
+// serializeIndexAttribute emits the Studio-Pro 11.x index-segment shape:
+// Ascending(bool)+Type("Normal")+AttributePointer, plus an all-zero
+// AssociationPointer for an attribute-based segment. This replaces the stale
+// "SortOrder" string the writer previously emitted — the legacy parser already
+// reads Ascending (with a SortOrder fallback), so writer and parser are now
+// aligned, and the output matches what Studio Pro produces.
 func serializeIndexAttribute(ia *domainmodel.IndexAttribute) bson.M {
 	return bson.M{
-		"$ID":              idToBsonBinary(string(ia.ID)),
-		"$Type":            "DomainModels$IndexedAttribute",
-		"AttributePointer": idToBsonBinary(string(ia.AttributeID)), // BSON Binary like $ID
-		"SortOrder":        getSortOrder(ia.Ascending),
+		"$ID":                idToBsonBinary(string(ia.ID)),
+		"$Type":              "DomainModels$IndexedAttribute",
+		"AttributePointer":   idToBsonBinary(string(ia.AttributeID)), // BSON Binary like $ID
+		"AssociationPointer": idToBsonBinary(zeroGUID),               // zero GUID: attribute-based segment
+		"Ascending":          ia.Ascending,
+		"Type":               "Normal",
 	}
-}
-
-func getSortOrder(ascending bool) string {
-	if ascending {
-		return "Ascending"
-	}
-	return "Descending"
 }
 
 func serializeValidationRule(vr *domainmodel.ValidationRule, moduleName string, entity *domainmodel.Entity) bson.D {
