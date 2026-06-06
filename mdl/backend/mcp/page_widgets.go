@@ -208,6 +208,23 @@ func mapDataViewSource(ds pages.DataSource) (map[string]any, error) {
 			return nil, fmt.Errorf("data view source has neither a page parameter nor an entity")
 		}
 		return src, nil
+	case *pages.MicroflowSource:
+		if s.Microflow == "" {
+			return nil, fmt.Errorf("microflow data source has no microflow")
+		}
+		return map[string]any{
+			"$Type":            "Pages$MicroflowSource",
+			"forceFullObjects": false,
+			"microflowSettings": map[string]any{
+				"$Type":             "Pages$MicroflowSettings",
+				"microflow":         s.Microflow,
+				"parameterMappings": []any{},
+				"outputMappings":    []any{},
+				"progressBar":       "None",
+				"asynchronous":      false,
+				"formValidations":   "All",
+			},
+		}, nil
 	case *pages.DatabaseSource:
 		if s.XPathConstraint != "" || len(s.Sorting) > 0 {
 			return nil, fmt.Errorf("database data source with an XPath constraint or sorting is not yet supported by the MCP backend")

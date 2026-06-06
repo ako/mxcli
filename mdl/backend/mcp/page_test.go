@@ -116,9 +116,18 @@ func TestMapDataViewSource(t *testing.T) {
 	if ref["entity"] != "Sales.Order" {
 		t.Fatalf("entityRef: %+v", er)
 	}
-	// microflow source not supported yet
-	if _, err := mapDataViewSource(&pages.MicroflowSource{Microflow: "M.GetX"}); err == nil {
-		t.Error("microflow data-view source should be rejected for now")
+	// microflow source -> Pages$MicroflowSource with microflowSettings
+	mf, err := mapDataViewSource(&pages.MicroflowSource{Microflow: "M.DSO_GetX"})
+	if err != nil || mf["$Type"] != "Pages$MicroflowSource" {
+		t.Fatalf("microflow source: %+v / %v", mf, err)
+	}
+	ms, _ := mf["microflowSettings"].(map[string]any)
+	if ms["$Type"] != "Pages$MicroflowSettings" || ms["microflow"] != "M.DSO_GetX" {
+		t.Fatalf("microflowSettings: %+v", ms)
+	}
+	// microflow source with no microflow -> error
+	if _, err := mapDataViewSource(&pages.MicroflowSource{}); err == nil {
+		t.Error("microflow source with no microflow should error")
 	}
 }
 

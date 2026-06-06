@@ -116,6 +116,13 @@ plus `CustomWidgets$CustomWidget` (pluggable). **No `Pages$DataGrid`** — the
 legacy DataGrid is rejected; DataGrid 2 is a pluggable custom widget. Coverage
 grows one widget/data-source type at a time.
 
+Data sources for DataView/ListView: page-variable (`Pages$PageVariable`),
+direct-entity (`DomainModels$DirectEntityRef`), and **microflow**
+(`Pages$MicroflowSource` wrapping `Pages$MicroflowSettings {microflow,
+parameterMappings:[], outputMappings:[], progressBar:"None", asynchronous:false,
+formValidations:"All"}`). Microflow sources with parameter mappings, and
+database sources with XPath/sorting, are not yet mapped.
+
 Microflow support is now broad: name, parameters, return type, and a recursive
 object/flow graph (positions reused from the executor's layout engine, so the
 MCP-authored canvas matches the file-written one). Supported activities:
