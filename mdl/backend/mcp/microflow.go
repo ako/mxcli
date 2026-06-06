@@ -218,9 +218,58 @@ func mapMicroflowAction(a microflows.MicroflowAction) (map[string]any, error) {
 			m["initialValue"] = act.InitialValue
 		}
 		return m, nil
+	case *microflows.ChangeVariableAction:
+		return map[string]any{
+			"$Type":              "Microflows$ChangeVariableAction",
+			"changeVariableName": act.VariableName,
+			"value":              act.Value,
+		}, nil
+	case *microflows.ShowMessageAction:
+		messageType := string(act.Type)
+		if messageType == "" {
+			messageType = "Information"
+		}
+		return map[string]any{
+			"$Type": "Microflows$ShowMessageAction",
+			"type":  messageType,
+			// ShowMessage's template is an inline object (no $Type).
+			"template": mfStringTemplate("", act.Template, act.TemplateParameters),
+		}, nil
+	case *microflows.LogMessageAction:
+		level := string(act.LogLevel)
+		if level == "" {
+			level = "Info"
+		}
+		m := map[string]any{
+			"$Type": "Microflows$LogMessageAction",
+			"level": level,
+			// LogMessage's messageTemplate is a StringTemplate element ($Type required).
+			"messageTemplate": mfStringTemplate("Microflows$StringTemplate", act.MessageTemplate, act.TemplateParameters),
+		}
+		if act.LogNodeName != "" {
+			m["node"] = act.LogNodeName
+		}
+		return m, nil
 	default:
 		return nil, fmt.Errorf("microflow action %T is not yet supported by the MCP backend", a)
 	}
+}
+
+// mfStringTemplate builds a PED StringTemplate ({text, arguments}) from a
+// localized text and its placeholder argument expressions. Shared by
+// ShowMessage (template) and LogMessage (messageTemplate).
+func mfStringTemplate(elementType string, text *model.Text, args []string) map[string]any {
+	tmpl := map[string]any{"text": ""}
+	if elementType != "" {
+		tmpl["$Type"] = elementType
+	}
+	if text != nil {
+		tmpl["text"] = text.Translations["en_US"]
+	}
+	if len(args) > 0 {
+		tmpl["arguments"] = args
+	}
+	return tmpl
 }
 
 // mfVariableType maps a variable's DataType onto the PED CreateVariableAction

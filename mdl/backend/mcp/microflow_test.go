@@ -5,8 +5,54 @@ package mcp
 import (
 	"testing"
 
+	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/microflows"
 )
+
+// TestPedOpError guards the critical fix: ped_create/ped_update report failures
+// in the result TEXT (often with isError=false). A successful op text starts
+// with "SUCCESS"; anything else must be treated as an error.
+func TestPedOpError(t *testing.T) {
+	if err := pedOpError("ped_create_document", "X", &ToolResult{Text: "SUCCESS: Creating documents (1)"}); err != nil {
+		t.Errorf("SUCCESS text should not be an error: %v", err)
+	}
+	if err := pedOpError("ped_create_document", "X", &ToolResult{Text: "Creating documents failed (1 of 1): ERROR: missing $Type"}); err == nil {
+		t.Error("a 'failed' text with isError=false must be detected as an error")
+	}
+	if err := pedOpError("ped_update_document", "X", &ToolResult{IsError: true, Text: "boom"}); err == nil {
+		t.Error("isError=true must be an error")
+	}
+}
+
+func TestMapMicroflowAction_VariableAndMessages(t *testing.T) {
+	chg, err := mapMicroflowAction(&microflows.ChangeVariableAction{VariableName: "Result", Value: "$N * 2"})
+	if err != nil || chg["changeVariableName"] != "Result" || chg["value"] != "$N * 2" {
+		t.Fatalf("change variable: %+v / %v", chg, err)
+	}
+
+	show, err := mapMicroflowAction(&microflows.ShowMessageAction{
+		Type:     microflows.MessageTypeWarning,
+		Template: &model.Text{Translations: map[string]string{"en_US": "Heads up"}},
+	})
+	if err != nil || show["type"] != "Warning" {
+		t.Fatalf("show message: %+v / %v", show, err)
+	}
+	if tmpl, _ := show["template"].(map[string]any); tmpl["text"] != "Heads up" || tmpl["$Type"] != nil {
+		t.Fatalf("show template should be inline (no $Type): %+v", show["template"])
+	}
+
+	logged, err := mapMicroflowAction(&microflows.LogMessageAction{
+		LogLevel:        microflows.LogLevelInfo,
+		LogNodeName:     "MyNode",
+		MessageTemplate: &model.Text{Translations: map[string]string{"en_US": "done"}},
+	})
+	if err != nil || logged["level"] != "Info" || logged["node"] != "MyNode" {
+		t.Fatalf("log message: %+v / %v", logged, err)
+	}
+	if tmpl, _ := logged["messageTemplate"].(map[string]any); tmpl["$Type"] != "Microflows$StringTemplate" || tmpl["text"] != "done" {
+		t.Fatalf("log messageTemplate needs $Type: %+v", logged["messageTemplate"])
+	}
+}
 
 func TestMfDataType_Primitives(t *testing.T) {
 	cases := []struct {

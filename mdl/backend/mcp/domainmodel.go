@@ -669,8 +669,25 @@ func (b *Backend) pedUpdateDoc(docType, docName string, ops ...pedOpEntry) error
 	if err != nil {
 		return err
 	}
-	if res.IsError {
-		return fmt.Errorf("ped_update_document %s: %s", docName, res.Text)
+	return pedOpError("ped_update_document", docName, res)
+}
+
+// pedStripReminder removes the trailing <system-reminder>…</system-reminder>
+// block the PED server appends to many results.
+func pedStripReminder(text string) string {
+	if i := strings.Index(text, "<system-reminder>"); i >= 0 {
+		text = text[:i]
+	}
+	return strings.TrimSpace(text)
+}
+
+// pedOpError turns a ped_create_document / ped_update_document result into an
+// error. CRITICAL: these tools report failures in the result TEXT, frequently
+// with isError=false (e.g. "Creating documents failed (1 of 1): ERROR …"). A
+// successful op's text begins with "SUCCESS"; anything else is a failure.
+func pedOpError(tool, target string, res *ToolResult) error {
+	if res.IsError || !strings.HasPrefix(strings.TrimSpace(res.Text), "SUCCESS") {
+		return fmt.Errorf("%s %s: %s", tool, target, pedStripReminder(res.Text))
 	}
 	return nil
 }
@@ -681,6 +698,8 @@ func (b *Backend) pedCheckErrors(moduleName string) error {
 }
 
 // pedCheckDocument validates an arbitrary document and surfaces any errors.
+// ped_check_errors reports a clean document as "No errors found." (with
+// isError=false); any other text is the validation error(s).
 func (b *Backend) pedCheckDocument(docType, docName string) error {
 	res, err := b.client.CallTool("ped_check_errors", map[string]any{
 		"documents": []map[string]any{
@@ -690,8 +709,9 @@ func (b *Backend) pedCheckDocument(docType, docName string) error {
 	if err != nil {
 		return err
 	}
-	if res.IsError {
-		return fmt.Errorf("validation failed for %s: %s", docName, res.Text)
+	text := pedStripReminder(res.Text)
+	if res.IsError || !strings.Contains(text, "No errors found") {
+		return fmt.Errorf("validation failed for %s: %s", docName, text)
 	}
 	return nil
 }
@@ -710,8 +730,8 @@ func (b *Backend) pedCreateDocument(moduleName, docType, docName string, content
 	if err != nil {
 		return err
 	}
-	if res.IsError {
-		return fmt.Errorf("ped_create_document %s.%s: %s", moduleName, docName, res.Text)
+	if e := pedOpError("ped_create_document", moduleName+"."+docName, res); e != nil {
+		return e
 	}
 	b.markDirty(moduleName)
 	return nil
