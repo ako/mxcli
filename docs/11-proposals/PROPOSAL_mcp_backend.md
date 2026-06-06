@@ -379,6 +379,61 @@ the devcontainer networking prerequisite doc.
 - **`mdl-examples/doctype-tests/`:** domain-model scripts run against both
   backends in CI where a Studio Pro instance is available.
 
+## Multi-agent orchestration (concurrent writes through one PED server)
+
+Because the PED server is session-based (each client gets its own
+`Mcp-Session-Id`) but backed by a **single** Studio Pro process with **one
+in-memory model**, several agents can edit the model concurrently *if they are
+orchestrated to avoid writing the same document at the same time*. The
+connection multiplexes fine; the model is the shared resource. Verified
+empirically: a read succeeds on one client while another session is connected.
+
+**The unit of isolation is the document, not the model.** Every write tool acts
+on one named document (`ped_create_document`, `ped_update_document`,
+`ped_check_errors`). Two agents on *different* documents are isolated; the
+hazards are all on the *same* document.
+
+Orchestration rules:
+
+1. **Partition by document — and domain models partition by MODULE.** A module's
+   whole domain model is one document, so two agents both adding entities to
+   `Sales` are mutating the same `/entities` array. Assign whole modules (not
+   entities within a module) to agents; assign whole microflows/pages likewise.
+2. **Same-array add/remove is the sharp edge.** `ped_update_document` uses
+   positional paths (`/entities/N`, `remove index N`); the skill's own
+   "re-read after every mutation, indices shift" rule is unenforceable across two
+   writers (TOCTOU). If two agents must touch one document, funnel those writes
+   through a single serialized owner.
+3. **Order cross-document dependencies first.** PED resolves references by name
+   against the live model *at write time*: the enum before the entity that uses
+   it, the view-entity source doc before the entity, the callee before the
+   caller. The orchestrator topologically sorts dependency edges and creates
+   dependencies before dependents.
+4. **Make writes idempotent for timeout-retry.** Slow creates can return
+   `-32000 Request timed out` *even though they succeeded* (Studio Pro appears to
+   serialize work on its UI thread). Retries must check-then-act
+   (`ped_find_document`/read before create) and treat "already exists" as done;
+   blind retry produces duplicates.
+5. **`ped_check_errors` sees everyone's in-progress state.** It validates the
+   live model as-is, including another agent's half-finished edits. Validate at a
+   quiescent point, scoped to your own documents, tolerant of unrelated transient
+   errors.
+6. **No per-agent commit; one human save at the end.** There is no flush tool —
+   all agents accumulate into one unsaved in-memory model and a human saves once
+   in Studio Pro. No agent can durably commit its slice independently.
+
+**Hybrid-backend wrinkle.** mxcli reads/enumerates from the local `.mpr` and
+writes via MCP, so an agent's existence checks (`findModule`, `ListMicroflows`,
+enum validation) read *last-saved disk state* and the dirty-set router only
+tracks the current process's own writes. Multiple mxcli agents therefore cannot
+see each other's *unsaved* work through the local reader. The orchestrator must
+own the dependency graph (create dependencies first and tell dependents they
+exist), or route shared-dependency lookups through MCP (`ped_read_document`)
+rather than the local reader.
+
+The recurring procedure for this is captured in
+[`.claude/skills/orchestrate-mcp-agents.md`](../../.claude/skills/orchestrate-mcp-agents.md).
+
 ## Open Questions
 
 1. **MCP tool surface** — ✅ resolved (see "MCP tool surface"; captured locally).
@@ -409,8 +464,11 @@ the devcontainer networking prerequisite doc.
    protocol. mxcli's strength is *pre-flight* `check`. How do we reconcile: run
    `mxcli check` locally before shipping any write, so MCP writes are only
    attempted for scripts that already pass static validation?
-6. **Concurrency** — with writes going through the single Studio Pro process,
-   does this *sidestep* the file-lock problem in
-   [`PROPOSAL_concurrent_access`](PROPOSAL_concurrent_access.md), or introduce a
-   new serialization point? Likely the former for writes; reads still touch local
-   files.
+6. **Concurrency** — ✅ characterised (see "Multi-agent orchestration"). Writes
+   through the single Studio Pro process sidestep the file-lock problem in
+   [`PROPOSAL_concurrent_access`](PROPOSAL_concurrent_access.md): the server is
+   session-multiplexed and the model is the shared resource, so concurrent agents
+   are safe when partitioned by document (modules for domain models) with
+   dependency ordering and idempotent retries. Open follow-up: confirm whether
+   the server processes sessions truly in parallel or serialises on the Studio
+   Pro UI thread (the `-32000` timeouts under load suggest serialisation).
