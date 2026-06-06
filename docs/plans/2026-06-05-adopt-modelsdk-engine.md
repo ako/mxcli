@@ -518,3 +518,23 @@ fidelity, not just legacy parity. (2) **Legacy's field set matches Studio Pro ex
 so the legacy baseline used in the read/write harness is authoritative-equivalent for
 entities. (3) MCP is validated as the live oracle / a real 4th backend on the `MXCLI_ENGINE`
 seam (`--mcp`/`--mcp-dial`).
+
+### Phase 2 — applyDefaults/GUID fix DONE (2026-06-06)
+
+Closed the fresh-element serialization gap (`09c0b6d1`):
+- `codec.TypeDefaults` + `RegisterTypeDefaults` — a per-`$Type` registry of the defaults
+  Studio Pro applies internally (`EmitGUID` = $ID-as-binary; `MandatoryLists` = PartList keys
+  always serialized, empty = the `[3]` marker). The encoder consults it for **new elements
+  only**, so it can't affect any unregistered type. Hand-maintained stand-in for codegen-from-
+  reflection-data (engalar Fix 4); extensible per type.
+- `modelsdkbackend` registers `DomainModels$EntityImpl` (GUID + the 5 member arrays).
+
+**Result:** the enginecompare **write-parity case is now a STRICT gate** — modelsdk `CreateEntity`
+BSON is canonically identical to legacy (byte-faithful to Studio Pro). Directly confirmed on a
+real **test7 (11.x)** copy: the created entity's field set matches a real Studio-Pro entity.
+codec roundtrip tests unaffected; broad sweep green.
+
+**Remaining for write breadth:** register `DomainModels$Attribute` / `DomainModels$Association`
+defaults (each carries a GUID) as those write paths land, and grow `entityToGen` to convert
+attributes/associations/generalization detail. The applyDefaults *mechanism* is now in place, so
+each new write type is just a converter + a registry entry.
