@@ -39,17 +39,12 @@ func TestWriteParity_CreateEntity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("modelsdk entity bson: %v", err)
 	}
-	// Known gap (not yet strict): the modelsdk fresh-entity encode omits fields
-	// legacy emits — the entity GUID and the empty member arrays
-	// (Attributes/AccessRules/ValidationRules/Indexes/Events) — because
-	// genDm.NewEntity's applyDefaults is still a TODO (engalar Fix 4) and the
-	// encoder only emits dirty/set properties for new elements. Studio Pro and
-	// the legacy engine both *read* the modelsdk-written entity fine (verified in
-	// modelsdkbackend.TestWriteSlice_CreateEntity), so this is a completeness gap,
-	// not a correctness one. Reported here, and self-flags if it closes.
-	if leg == msd {
-		t.Logf("write-parity now MATCHES — promote CreateEntity to a strict gate")
-	} else {
-		t.Logf("known applyDefaults gap (modelsdk omits GUID + empty member arrays):\nlegacy:   %s\nmodelsdk: %s", leg, msd)
+	// Strict: with applyDefaults wired (codec.RegisterTypeDefaults for
+	// DomainModels$EntityImpl emits GUID + the empty member arrays Studio Pro
+	// produces), the modelsdk-written entity is canonically identical to legacy's
+	// — which is itself byte-faithful to Studio Pro (verified vs real BSON in
+	// mx-test-projects/test7-app).
+	if leg != msd {
+		t.Errorf("CreateEntity BSON divergence:\nlegacy:   %s\nmodelsdk: %s", leg, msd)
 	}
 }

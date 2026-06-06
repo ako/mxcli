@@ -130,6 +130,7 @@ func (e *Encoder) buildDoc(elem element.Element) (bson.D, error) {
 			{Key: "$ID", Value: idToBinarySubtype0(elem.ID())},
 			{Key: "$Type", Value: elem.TypeName()},
 		}
+		emitted := make(map[string]bool)
 		for _, prop := range elem.Properties() {
 			idx := findRebuild(bytesOf(prop.Name()))
 			if idx < 0 {
@@ -141,6 +142,21 @@ func (e *Encoder) buildDoc(elem element.Element) (bson.D, error) {
 			}
 			if val != nil {
 				doc = append(doc, bson.E{Key: prop.Name(), Value: val})
+				emitted[prop.Name()] = true
+			}
+		}
+		// Apply Studio Pro serialization defaults the gen constructors don't set
+		// (the applyDefaults gap): a GUID (= $ID) and mandatory member collections
+		// emitted empty as the typed-array marker. Registered per $Type, so this
+		// affects only element types explicitly declared via RegisterTypeDefaults.
+		if d, ok := lookupTypeDefaults(elem.TypeName()); ok {
+			if d.EmitGUID && !emitted["GUID"] {
+				doc = append(doc, bson.E{Key: "GUID", Value: idToBinarySubtype0(elem.ID())})
+			}
+			for _, name := range d.MandatoryLists {
+				if !emitted[name] {
+					doc = append(doc, bson.E{Key: name, Value: bson.A{int32(3)}})
+				}
 			}
 		}
 		return doc, nil

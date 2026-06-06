@@ -14,6 +14,17 @@ import (
 	"github.com/mendixlabs/mxcli/sdk/domainmodel"
 )
 
+func init() {
+	// applyDefaults for domain-model elements: the fields Studio Pro adds
+	// internally on create that genDm.NewEntity() does not yet set (confirmed
+	// against real Studio-Pro BSON in mx-test-projects/test7-app). The encoder
+	// emits these for fresh elements of the registered $Type.
+	codec.RegisterTypeDefaults("DomainModels$EntityImpl", codec.TypeDefaults{
+		EmitGUID:       true,
+		MandatoryLists: []string{"Attributes", "AccessRules", "ValidationRules", "Indexes", "Events"},
+	})
+}
+
 // CreateEntity is the Phase-2 write slice: add an entity to a domain model
 // through the codec engine. Entities are children of the DomainModel unit, so
 // this loads the DM element, adds the new entity child (marking it dirty), and
