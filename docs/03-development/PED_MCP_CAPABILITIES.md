@@ -106,9 +106,12 @@ convention), and — unlike PED — there is **no pg validation tool**, so a bad
 attribute/page reference still writes "successfully" but shows a CE error in
 Studio Pro.
 
-Widgets so far: DivContainer, LayoutGrid/Row/Column, ActionButton, DynamicText,
-DataView, ListView, TextBox, CheckBox, DatePicker (+ No/Microflow/Page client
-actions; page-variable / direct-entity / database data sources). pg's widget
+Widgets so far: DivContainer, LayoutGrid/Row/Column, TabContainer/TabPage,
+ActionButton, DynamicText, DataView, ListView, TextBox, CheckBox, DatePicker
+(+ No/Microflow/Page client actions; page-variable / direct-entity / database /
+microflow data sources). Tab-page captions use the `t:caption` key (a plain
+string the server wraps in `Texts$Text`), not the `ct:` ClientTemplate prefix
+that button captions use. pg's widget
 union (from the tool schema) is the limit of native support: ActionButton,
 CheckBox, Content, DataView, DatePicker, DivContainer, DynamicText, LayoutGrid/
 Row/Column, ListView, RadioButtonGroup, TabContainer/TabPage, TextArea, TextBox,

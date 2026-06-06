@@ -242,11 +242,43 @@ func TestMapDataViewSource_Database(t *testing.T) {
 	}
 }
 
+func TestMapPageWidget_TabContainer(t *testing.T) {
+	b := &Backend{}
+	inner := &pages.DynamicText{AttributePath: "$currentObject/Name"}
+	inner.Name = "t"
+	tab := &pages.TabContainer{
+		TabPages: []*pages.TabPage{
+			{Name: "tab1", Caption: &model.Text{Translations: map[string]string{"en_US": "First"}}, Widgets: []pages.Widget{inner}},
+			{Name: "tab2"}, // no caption -> defaults to the tab name
+		},
+	}
+	tab.Name = "tabs1"
+	m, err := b.mapPageWidget(tab)
+	if err != nil || m["$Type"] != "Pages$TabContainer" || m["name"] != "tabs1" {
+		t.Fatalf("tab container: %+v / %v", m, err)
+	}
+	tabs, _ := m["tabPages"].([]any)
+	if len(tabs) != 2 {
+		t.Fatalf("tab pages: %+v", tabs)
+	}
+	tp0, _ := tabs[0].(map[string]any)
+	if tp0["$Type"] != "Pages$TabPage" || tp0["t:caption"] != "First" {
+		t.Fatalf("tab page 0: %+v", tp0)
+	}
+	if kids, _ := tp0["widgets"].([]any); len(kids) != 1 {
+		t.Fatalf("tab page 0 widgets: %+v", tp0["widgets"])
+	}
+	tp1, _ := tabs[1].(map[string]any)
+	if tp1["t:caption"] != "tab2" {
+		t.Fatalf("tab page 1 caption should default to name: %+v", tp1)
+	}
+}
+
 func TestMapPageWidget_Unsupported(t *testing.T) {
 	b := &Backend{}
-	tab := &pages.TabContainer{}
-	tab.Name = "tabs"
-	if _, err := b.mapPageWidget(tab); err == nil {
+	sc := &pages.ScrollContainer{}
+	sc.Name = "scroll"
+	if _, err := b.mapPageWidget(sc); err == nil {
 		t.Error("an unmapped widget type should error")
 	}
 }

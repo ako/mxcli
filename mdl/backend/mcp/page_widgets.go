@@ -156,6 +156,32 @@ func (b *Backend) mapPageWidget(w pages.Widget) (map[string]any, error) {
 			"editable":   wd.Editable,
 			"widgets":    kids,
 		}, nil
+	case *pages.TabContainer:
+		tabs := make([]any, 0, len(wd.TabPages))
+		for _, tp := range wd.TabPages {
+			kids, err := b.mapPageWidgets(tp.Widgets)
+			if err != nil {
+				return nil, fmt.Errorf("tab page %q: %w", tp.Name, err)
+			}
+			caption := textValue(tp.Caption)
+			if caption == "" {
+				caption = tp.Name
+			}
+			tabs = append(tabs, map[string]any{
+				"$Type":         "Pages$TabPage",
+				"name":          tp.Name,
+				"t:caption":     caption,
+				"refreshOnShow": tp.RefreshOnShow,
+				"widgets":       kids,
+			})
+		}
+		return map[string]any{
+			"$Type":      "Pages$TabContainer",
+			"name":       wd.Name,
+			"appearance": pageAppearance(wd.Class, wd.Style),
+			"tabIndex":   wd.TabIndex,
+			"tabPages":   tabs,
+		}, nil
 	case *pages.DataGrid:
 		return nil, fmt.Errorf("legacy DataGrid is not supported by the MCP backend — pg_write_page has no Pages$DataGrid type (use a ListView, or DataGrid 2 which is a pluggable widget)")
 	case *pages.TextBox:
