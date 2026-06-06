@@ -29,7 +29,7 @@ LDFLAGS = -ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME)"
 # Clean version for VS Code extension (must be valid semver: major.minor.patch)
 VSCE_VERSION = $(shell echo "$(VERSION)" | sed 's/^v//; s/-.*//' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$$' || echo "0.0.0")
 
-.PHONY: build build-debug release clean test test-mdl check-widget-versions grammar completions sync-skills sync-commands sync-lint-rules sync-changelog sync-all docs documentation docs-site docs-serve vscode-ext vscode-install source-tree sbom sbom-report lint lint-go lint-ts fmt vet
+.PHONY: build build-debug release clean test engine-diff test-mdl check-widget-versions grammar completions sync-skills sync-commands sync-lint-rules sync-changelog sync-all docs documentation docs-site docs-serve vscode-ext vscode-install source-tree sbom sbom-report lint lint-go lint-ts fmt vet
 
 # Helper: copy file only if content differs (avoids mtime updates that invalidate go build cache)
 # Usage: $(call copy-if-changed,src,dst)
@@ -143,6 +143,12 @@ release: clean grammar vscode-ext sync-all
 # Run tests
 test: grammar
 	CGO_ENABLED=0 go test ./...
+
+# Dual-engine read-parity harness: run read queries through the legacy (sdk/mpr)
+# and modelsdk engines and diff the rendered output. The read-side of the
+# engine-adoption comparison gate (docs/plans/2026-06-05-adopt-modelsdk-engine.md).
+engine-diff: grammar
+	CGO_ENABLED=0 go test ./mdl/enginecompare/ -run TestReadParity -v
 
 # Check MDL syntax for all example scripts.
 #
