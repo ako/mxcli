@@ -132,6 +132,50 @@ func TestMapMicroflowAction_RetrieveRejectsUnsupported(t *testing.T) {
 	}
 }
 
+func TestMapMicroflowAction_MicroflowCall(t *testing.T) {
+	m, err := mapMicroflowAction(&microflows.MicroflowCallAction{
+		ResultVariableName: "Tripled",
+		UseReturnVariable:  true,
+		MicroflowCall: &microflows.MicroflowCall{
+			Microflow: "MyFirstModule.ACT_Callee",
+			ParameterMappings: []*microflows.MicroflowCallParameterMapping{
+				{Parameter: "MyFirstModule.ACT_Callee.N", Argument: "$X"},
+			},
+		},
+	})
+	if err != nil || m["$Type"] != "Microflows$MicroflowCallAction" || m["outputVariableName"] != "Tripled" || m["useReturnVariable"] != true {
+		t.Fatalf("call action: %+v / %v", m, err)
+	}
+	mc, _ := m["microflowCall"].(map[string]any)
+	if mc["$Type"] != "Microflows$MicroflowCall" || mc["microflow"] != "MyFirstModule.ACT_Callee" {
+		t.Fatalf("microflowCall wrong: %+v", mc)
+	}
+	pms, _ := mc["parameterMappings"].([]any)
+	if len(pms) != 1 {
+		t.Fatalf("expected 1 mapping: %+v", mc["parameterMappings"])
+	}
+	pm, _ := pms[0].(map[string]any)
+	if pm["$Type"] != "Microflows$MicroflowCallParameterMapping" || pm["parameter"] != "MyFirstModule.ACT_Callee.N" || pm["argument"] != "$X" {
+		t.Fatalf("parameter mapping wrong: %+v", pm)
+	}
+}
+
+func TestMapMicroflowAction_MicroflowCallMissingTarget(t *testing.T) {
+	if _, err := mapMicroflowAction(&microflows.MicroflowCallAction{MicroflowCall: &microflows.MicroflowCall{}}); err == nil {
+		t.Error("a call with no target microflow should error")
+	}
+}
+
+func TestMfDataType_Void(t *testing.T) {
+	// nil and an explicit VoidType both map to "Void".
+	if got, _, _, err := mfDataType(nil); err != nil || got != "Void" {
+		t.Errorf("nil -> %q/%v", got, err)
+	}
+	if got, _, _, err := mfDataType(&microflows.VoidType{}); err != nil || got != "Void" {
+		t.Errorf("VoidType -> %q/%v", got, err)
+	}
+}
+
 func TestMfCommitType(t *testing.T) {
 	cases := map[microflows.CommitType]string{
 		microflows.CommitTypeYes:           "Yes",
@@ -164,13 +208,6 @@ func TestMfDataType_Primitives(t *testing.T) {
 		if err != nil || got != c.want || ent != "" || enum != "" {
 			t.Errorf("mfDataType(%s) = %q/%q/%q/%v; want %q", c.dt.GetTypeName(), got, ent, enum, err, c.want)
 		}
-	}
-}
-
-func TestMfDataType_Void(t *testing.T) {
-	got, _, _, err := mfDataType(nil)
-	if err != nil || got != "Void" {
-		t.Errorf("nil data type should be Void, got %q/%v", got, err)
 	}
 }
 

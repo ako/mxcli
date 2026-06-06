@@ -275,6 +275,34 @@ func mapMicroflowAction(a microflows.MicroflowAction) (map[string]any, error) {
 			"deleteVariableName": act.DeleteVariable,
 			"refreshInClient":    act.RefreshInClient,
 		}, nil
+	case *microflows.MicroflowCallAction:
+		if act.MicroflowCall == nil || act.MicroflowCall.Microflow == "" {
+			return nil, fmt.Errorf("call microflow: missing target microflow")
+		}
+		mappings := make([]any, 0, len(act.MicroflowCall.ParameterMappings))
+		for _, pm := range act.MicroflowCall.ParameterMappings {
+			mappings = append(mappings, map[string]any{
+				"$Type":     "Microflows$MicroflowCallParameterMapping",
+				"parameter": pm.Parameter,
+				"argument":  pm.Argument,
+			})
+		}
+		call := map[string]any{
+			"$Type":     "Microflows$MicroflowCall",
+			"microflow": act.MicroflowCall.Microflow,
+		}
+		if len(mappings) > 0 {
+			call["parameterMappings"] = mappings
+		}
+		m := map[string]any{
+			"$Type":             "Microflows$MicroflowCallAction",
+			"microflowCall":     call,
+			"useReturnVariable": act.UseReturnVariable,
+		}
+		if act.ResultVariableName != "" {
+			m["outputVariableName"] = act.ResultVariableName
+		}
+		return m, nil
 	case *microflows.RetrieveAction:
 		m := map[string]any{"$Type": "Microflows$RetrieveAction"}
 		if act.OutputVariable != "" {
@@ -406,6 +434,8 @@ func mfDataType(dt microflows.DataType) (typeName, entity, enumeration string, e
 		return "Void", "", "", nil
 	}
 	switch dt.GetTypeName() {
+	case "Void":
+		return "Void", "", "", nil
 	case "Boolean", "Integer", "Decimal", "String", "DateTime":
 		return dt.GetTypeName(), "", "", nil
 	case "Date":
