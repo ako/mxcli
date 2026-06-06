@@ -271,7 +271,8 @@ against `testdata/expr-checker/minimal.mpr` (SHOW ENTITIES / SHOW MODULES); the 
 | Pages read (`ListPages`/`GetPage` + title/template handling) | ✅ done | `fb9664da` |
 | Nanoflows read (`ListNanoflows`/`GetNanoflow`, reuses microflow helpers) | ✅ done | `24c4428d` |
 | Enumerations read (`ListEnumerations`/`GetEnumeration`, ports engalar's converter) | ✅ done | `0a5c532f` |
-| Read coverage beyond enums (constants, security, …) | ⏳ next | — |
+| Constants read (`ListConstants`/`GetConstant`, ports engalar's converter) | ✅ done | `82f7d7e0` |
+| Read coverage beyond constants (security, scheduled events, mappings, …) | ⏳ next | — |
 
 Enums confirmed that engalar's `convert_reader.go` *does* have portable converters for the
 non-domain-model document types (`enumToModel`/`enumValueToModel`, etc.) — unlike domain models,
