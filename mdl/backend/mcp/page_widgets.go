@@ -190,6 +190,10 @@ func (b *Backend) mapPageWidget(w pages.Widget) (map[string]any, error) {
 		return inputWidget("Pages$CheckBox", wd.Name, wd.Label, wd.AttributePath, wd.Class, wd.Style), nil
 	case *pages.DatePicker:
 		return inputWidget("Pages$DatePicker", wd.Name, wd.Label, wd.AttributePath, wd.Class, wd.Style), nil
+	case *pages.TextArea:
+		return inputWidget("Pages$TextArea", wd.Name, wd.Label, wd.AttributePath, wd.Class, wd.Style), nil
+	case *pages.RadioButtons:
+		return inputWidget("Pages$RadioButtonGroup", wd.Name, wd.Label, wd.AttributePath, wd.Class, wd.Style), nil
 	default:
 		return nil, fmt.Errorf("page widget type %s is not yet supported by the MCP backend", w.GetTypeName())
 	}

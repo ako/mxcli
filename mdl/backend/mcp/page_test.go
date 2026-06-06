@@ -158,6 +158,22 @@ func TestMapPageWidget_Inputs(t *testing.T) {
 	if ar, _ := m["attributeRef"].(map[string]any); ar["attribute"] != "M.E.When" {
 		t.Fatalf("datepicker attributeRef: %+v", m["attributeRef"])
 	}
+
+	ta := &pages.TextArea{Label: "Notes", AttributePath: "M.E.Notes"}
+	ta.Name = "ta1"
+	if m, err := b.mapPageWidget(ta); err != nil || m["$Type"] != "Pages$TextArea" {
+		t.Fatalf("textarea: %+v / %v", m, err)
+	}
+
+	rb := &pages.RadioButtons{Label: "Status", AttributePath: "M.E.Status"}
+	rb.Name = "rb1"
+	m, err = b.mapPageWidget(rb)
+	if err != nil || m["$Type"] != "Pages$RadioButtonGroup" {
+		t.Fatalf("radiobuttons: %+v / %v", m, err)
+	}
+	if ar, _ := m["attributeRef"].(map[string]any); ar["attribute"] != "M.E.Status" {
+		t.Fatalf("radiobuttons attributeRef: %+v", m["attributeRef"])
+	}
 }
 
 func TestMapPageWidget_LayoutGrid(t *testing.T) {

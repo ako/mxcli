@@ -107,9 +107,13 @@ attribute/page reference still writes "successfully" but shows a CE error in
 Studio Pro.
 
 Widgets so far: DivContainer, LayoutGrid/Row/Column, TabContainer/TabPage,
-ActionButton, DynamicText, DataView, ListView, TextBox, CheckBox, DatePicker
-(+ No/Microflow/Page client actions; page-variable / direct-entity / database /
-microflow data sources). Tab-page captions use the `t:caption` key (a plain
+ActionButton, DynamicText, DataView, ListView, TextBox, TextArea, CheckBox,
+RadioButtonGroup, DatePicker (+ No/Microflow/Page client actions; page-variable /
+direct-entity / database / microflow data sources). TextArea and the executor's
+RadioButtons (→ `Pages$RadioButtonGroup`) are attribute-bound inputs that share
+the same minimal `attributeRef` + `ct:labelTemplate` shape as TextBox; the server
+fills in the rest of their defaults (rows, render direction, placeholder, …),
+which are not yet mapped. Tab-page captions use the `t:caption` key (a plain
 string the server wraps in `Texts$Text`), not the `ct:` ClientTemplate prefix
 that button captions use. pg's widget
 union (from the tool schema) is the limit of native support: ActionButton,
