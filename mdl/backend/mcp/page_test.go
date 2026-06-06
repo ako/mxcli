@@ -122,6 +122,35 @@ func TestMapDataViewSource(t *testing.T) {
 	}
 }
 
+func TestMapPageWidget_Inputs(t *testing.T) {
+	b := &Backend{}
+	tb := &pages.TextBox{Label: "Name", AttributePath: "M.E.Name"}
+	tb.Name = "tb1"
+	m, err := b.mapPageWidget(tb)
+	if err != nil || m["$Type"] != "Pages$TextBox" || m["ct:labelTemplate"] != "Name" {
+		t.Fatalf("textbox: %+v / %v", m, err)
+	}
+	if ar, _ := m["attributeRef"].(map[string]any); ar["$Type"] != "DomainModels$AttributeRef" || ar["attribute"] != "M.E.Name" {
+		t.Fatalf("textbox attributeRef: %+v", m["attributeRef"])
+	}
+
+	cb := &pages.CheckBox{Label: "Active", AttributePath: "M.E.Active"}
+	cb.Name = "cb1"
+	if m, err := b.mapPageWidget(cb); err != nil || m["$Type"] != "Pages$CheckBox" {
+		t.Fatalf("checkbox: %+v / %v", m, err)
+	}
+
+	dp := &pages.DatePicker{Label: "When", AttributePath: "M.E.When"}
+	dp.Name = "dp1"
+	m, err = b.mapPageWidget(dp)
+	if err != nil || m["$Type"] != "Pages$DatePicker" {
+		t.Fatalf("datepicker: %+v / %v", m, err)
+	}
+	if ar, _ := m["attributeRef"].(map[string]any); ar["attribute"] != "M.E.When" {
+		t.Fatalf("datepicker attributeRef: %+v", m["attributeRef"])
+	}
+}
+
 func TestMapPageWidget_Unsupported(t *testing.T) {
 	b := &Backend{}
 	lv := &pages.ListView{}

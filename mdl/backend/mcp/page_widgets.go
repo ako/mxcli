@@ -86,8 +86,30 @@ func (b *Backend) mapPageWidget(w pages.Widget) (map[string]any, error) {
 			"editable":   wd.Editable,
 			"widgets":    children,
 		}, nil
+	case *pages.TextBox:
+		return inputWidget("Pages$TextBox", wd.Name, wd.Label, wd.AttributePath, wd.Class, wd.Style), nil
+	case *pages.CheckBox:
+		return inputWidget("Pages$CheckBox", wd.Name, wd.Label, wd.AttributePath, wd.Class, wd.Style), nil
+	case *pages.DatePicker:
+		return inputWidget("Pages$DatePicker", wd.Name, wd.Label, wd.AttributePath, wd.Class, wd.Style), nil
 	default:
 		return nil, fmt.Errorf("page widget type %s is not yet supported by the MCP backend", w.GetTypeName())
+	}
+}
+
+// inputWidget builds a label+attribute input widget (TextBox/CheckBox/DatePicker).
+// The executor already resolves AttributePath to a fully-qualified
+// "Module.Entity.Attribute", which is exactly what pg's attributeRef wants.
+func inputWidget(typ, name, label, attribute, class, style string) map[string]any {
+	return map[string]any{
+		"$Type":            typ,
+		"name":             name,
+		"appearance":       pageAppearance(class, style),
+		"ct:labelTemplate": label,
+		"attributeRef": map[string]any{
+			"$Type":     "DomainModels$AttributeRef",
+			"attribute": attribute,
+		},
 	}
 }
 
