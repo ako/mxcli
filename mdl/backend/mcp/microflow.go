@@ -495,6 +495,16 @@ func mapListOperation(op microflows.ListOperation) (map[string]any, error) {
 	binary := func(t, a, b string) map[string]any {
 		return map[string]any{"$Type": t, "listVariableName": a, "secondListOrObjectVariableName": b}
 	}
+	attributeListOp := func(t, list, attr, assoc, expr string) map[string]any {
+		m := map[string]any{"$Type": t, "listVariableName": list, "expression": expr}
+		if attr != "" {
+			m["attribute"] = attr
+		}
+		if assoc != "" {
+			m["association"] = assoc
+		}
+		return m
+	}
 	switch o := op.(type) {
 	case *microflows.HeadOperation:
 		return map[string]any{"$Type": "Microflows$Head", "listVariableName": o.ListVariable}, nil
@@ -504,6 +514,10 @@ func mapListOperation(op microflows.ListOperation) (map[string]any, error) {
 		return map[string]any{"$Type": "Microflows$FilterByExpression", "listVariableName": o.ListVariable, "expression": o.Expression}, nil
 	case *microflows.FindOperation:
 		return map[string]any{"$Type": "Microflows$FindByExpression", "listVariableName": o.ListVariable, "expression": o.Expression}, nil
+	case *microflows.FilterByAttributeOperation:
+		return attributeListOp("Microflows$Filter", o.ListVariable, o.Attribute, o.Association, o.Expression), nil
+	case *microflows.FindByAttributeOperation:
+		return attributeListOp("Microflows$Find", o.ListVariable, o.Attribute, o.Association, o.Expression), nil
 	case *microflows.UnionOperation:
 		return binary("Microflows$Union", o.ListVariable1, o.ListVariable2), nil
 	case *microflows.IntersectOperation:

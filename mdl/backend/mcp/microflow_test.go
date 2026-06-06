@@ -180,7 +180,17 @@ func TestMapListOperation(t *testing.T) {
 	if err != nil || union["$Type"] != "Microflows$Union" || union["listVariableName"] != "A" || union["secondListOrObjectVariableName"] != "B" {
 		t.Fatalf("union: %+v / %v", union, err)
 	}
-	// attribute-based filter/sort not supported yet
+	// attribute-based filter / find
+	af, err := mapListOperation(&microflows.FilterByAttributeOperation{ListVariable: "Items", Attribute: "M.E.Name", Expression: "$Target"})
+	if err != nil || af["$Type"] != "Microflows$Filter" || af["attribute"] != "M.E.Name" || af["expression"] != "$Target" {
+		t.Fatalf("filter-by-attribute: %+v / %v", af, err)
+	}
+	afa, err := mapListOperation(&microflows.FindByAttributeOperation{ListVariable: "Items", Association: "M.E_Other", Expression: "$Obj"})
+	if err != nil || afa["$Type"] != "Microflows$Find" || afa["association"] != "M.E_Other" {
+		t.Fatalf("find-by-attribute: %+v / %v", afa, err)
+	}
+
+	// sort still not supported
 	if _, err := mapListOperation(&microflows.SortOperation{}); err == nil {
 		t.Error("sort should be rejected for now")
 	}
