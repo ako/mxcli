@@ -360,6 +360,46 @@ func mapMicroflowAction(a microflows.MicroflowAction) (map[string]any, error) {
 			"deleteVariableName": act.DeleteVariable,
 			"refreshInClient":    act.RefreshInClient,
 		}, nil
+	case *microflows.RollbackObjectAction:
+		return map[string]any{
+			"$Type":                "Microflows$RollbackAction",
+			"rollbackVariableName": act.RollbackVariable,
+			"refreshInClient":      act.RefreshInClient,
+		}, nil
+	case *microflows.CreateListAction:
+		if act.EntityQualifiedName == "" {
+			return nil, fmt.Errorf("create list: missing entity")
+		}
+		return map[string]any{
+			"$Type":              "Microflows$CreateListAction",
+			"entity":             act.EntityQualifiedName,
+			"outputVariableName": act.OutputVariable,
+		}, nil
+	case *microflows.ChangeListAction:
+		m := map[string]any{
+			"$Type":              "Microflows$ChangeListAction",
+			"changeVariableName": act.ChangeVariable,
+			"type":               string(act.Type),
+		}
+		if act.Value != "" {
+			m["value"] = act.Value
+		}
+		return m, nil
+	case *microflows.AggregateListAction:
+		m := map[string]any{
+			"$Type":              "Microflows$AggregateListAction",
+			"inputVariableName":  act.InputVariable,
+			"outputVariableName": act.OutputVariable,
+			"function":           string(act.Function),
+		}
+		// Count needs neither; Sum/Average/Min/Max need an attribute or an
+		// expression to aggregate over.
+		if act.UseExpression && act.Expression != "" {
+			m["expression"] = act.Expression
+		} else if act.AttributeQualifiedName != "" {
+			m["attribute"] = act.AttributeQualifiedName
+		}
+		return m, nil
 	case *microflows.MicroflowCallAction:
 		if act.MicroflowCall == nil || act.MicroflowCall.Microflow == "" {
 			return nil, fmt.Errorf("call microflow: missing target microflow")

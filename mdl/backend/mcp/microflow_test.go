@@ -132,6 +132,37 @@ func TestMapMicroflowAction_RetrieveRejectsUnsupported(t *testing.T) {
 	}
 }
 
+func TestMapMicroflowAction_ListAndAggregate(t *testing.T) {
+	rb, err := mapMicroflowAction(&microflows.RollbackObjectAction{RollbackVariable: "Order"})
+	if err != nil || rb["$Type"] != "Microflows$RollbackAction" || rb["rollbackVariableName"] != "Order" {
+		t.Fatalf("rollback: %+v / %v", rb, err)
+	}
+
+	cl, err := mapMicroflowAction(&microflows.CreateListAction{EntityQualifiedName: "Sales.Order", OutputVariable: "Orders"})
+	if err != nil || cl["$Type"] != "Microflows$CreateListAction" || cl["entity"] != "Sales.Order" || cl["outputVariableName"] != "Orders" {
+		t.Fatalf("create list: %+v / %v", cl, err)
+	}
+
+	chl, err := mapMicroflowAction(&microflows.ChangeListAction{ChangeVariable: "Orders", Type: microflows.ChangeListTypeAdd, Value: "$Order"})
+	if err != nil || chl["$Type"] != "Microflows$ChangeListAction" || chl["changeVariableName"] != "Orders" || chl["type"] != "Add" || chl["value"] != "$Order" {
+		t.Fatalf("change list: %+v / %v", chl, err)
+	}
+
+	agg, err := mapMicroflowAction(&microflows.AggregateListAction{
+		InputVariable: "Orders", OutputVariable: "Total",
+		Function: microflows.AggregateFunctionSum, AttributeQualifiedName: "Sales.Order.Amount",
+	})
+	if err != nil || agg["$Type"] != "Microflows$AggregateListAction" || agg["function"] != "Sum" ||
+		agg["inputVariableName"] != "Orders" || agg["attribute"] != "Sales.Order.Amount" {
+		t.Fatalf("aggregate: %+v / %v", agg, err)
+	}
+	// Count needs no attribute
+	cnt, _ := mapMicroflowAction(&microflows.AggregateListAction{InputVariable: "Orders", OutputVariable: "N", Function: microflows.AggregateFunctionCount})
+	if cnt["attribute"] != nil || cnt["function"] != "Count" {
+		t.Fatalf("count should have no attribute: %+v", cnt)
+	}
+}
+
 func TestMapMicroflowAction_MicroflowCall(t *testing.T) {
 	m, err := mapMicroflowAction(&microflows.MicroflowCallAction{
 		ResultVariableName: "Tripled",
