@@ -11,6 +11,7 @@ import (
 	"github.com/mendixlabs/mxcli/sdk/domainmodel"
 	"github.com/mendixlabs/mxcli/sdk/microflows"
 	"github.com/mendixlabs/mxcli/sdk/mpr"
+	"github.com/mendixlabs/mxcli/sdk/pages"
 )
 
 // Backend executes domain-model writes against a live Studio Pro via its MCP
@@ -65,6 +66,10 @@ type Backend struct {
 	// into ListMicroflows/GetMicroflow for the same reason as sessionEnums
 	// (duplicate detection and create-then-reference within one run).
 	sessionMicroflows []*microflows.Microflow
+
+	// sessionPages holds pages created over MCP this session, merged into
+	// ListPages (the executor's duplicate/role checks read it).
+	sessionPages []*pages.Page
 }
 
 // compile-time guarantee that Backend (and its embedded base) satisfies the
