@@ -360,3 +360,107 @@ etc.) fall through to empty stubs rather than crashing.
 **Next read targets** (each: override the method, delegate to `mprread`/Reader, convert gen→our
 types, diff vs legacy): domain models/entities → microflows → pages. These are where the
 gen→`domainmodel`/`model` conversion cost (engalar's `convert_reader.go`) gets sized for real.
+
+## 9. Phase 2 — write-path scope (detailed, 2026-06-06)
+
+Investigated the modelsdk write API and engalar's reference write path to size the write slice.
+Phase 1 (reads) is essentially done — eight doc types + the module aggregate pass `make
+engine-diff` strictly. Phase 2 turns the read-only slice into a writing engine.
+
+### The write mechanics (how a mutation persists)
+
+The reference flow, from engalar's `CreateEntityGen` → `UpdateDomainModelGen`:
+
+```
+domainmodel.Entity  ──[write adapter]──▶  genDm.Entity
+        │
+        ▼  load DM unit, assign IDs, dm.AddEntities(child)  (marks dirty)
+   genDm.DomainModel (element tree)
+        │  codec.Encoder.Encode(dm)        ◀── roundtrip: clean children pass
+        ▼                                       through verbatim, only the new
+   BSON bytes                                   child is freshly encoded
+        │  Writer.UpdateRawUnit(dmID, bytes)  (entities are CHILDREN of the
+        ▼                                      DomainModel unit, not their own units)
+   modelsdk/mpr.Writer  ──▶  WriteTransaction / disk
+```
+
+Key facts:
+- **Entities are children of the DomainModel unit.** `CreateEntity` is *mutate the DM unit*
+  (`UpdateRawUnit`), not `InsertUnit`. Top-level docs (modules, microflows, pages) are
+  `InsertUnit`. So two write shapes: child-mutation and new-unit.
+- **The roundtrip encoder is the reliability core.** Encoding the dirty DM re-emits only the new
+  child; every untouched sibling entity passes through as its original raw bytes. This is exactly
+  what should make modelsdk's BSON match legacy's — and exactly what the canonicalized BSON diff
+  verifies.
+- Write API is small and present: `Writer.InsertUnit / UpdateRawUnit / DeleteUnit`,
+  `BeginWriteTransaction`, `codec.Encoder.Encode`. `unitstore.BufferedUnitStore` batches writes
+  (optional for the slice; direct writer is fine first).
+
+### The real cost: the write-direction adapter (`domainmodel → gen`)
+
+Just as engalar deleted `sdk/domainmodel` and we own the **read** adapter (`gen → domainmodel`),
+we own the **write** adapter (`domainmodel → gen`). It is *harder* than read: read populated only
+the fields a renderer shows (often counts); write must construct a **complete, valid** gen element
+— every attribute with its data type, the generalization (`NoGeneralization` with persistability +
+system flags, or `Generalization` with the parent ref), access rules, etc. — because that element
+becomes the persisted BSON. This per-doc-type adapter is the bulk of Phase 2/3 effort; the
+write infrastructure (writer, encoder, ID-gen, canonicalizer) is one-time.
+
+### Vertical slice (smallest end-to-end proof)
+
+`CREATE PERSISTENT ENTITY Module.Foo` with no attributes:
+- exercises the full path — `domainmodel.Entity → genDm.Entity` (name + `NoGeneralization{Persistable:true}`),
+  DM child-mutation, **roundtrip encode** (sibling entities preserved), `UpdateRawUnit`, commit;
+- is the minimum that proves the roundtrip encoder writes a Studio-Pro-valid unit;
+- validates two ways: `mx check` clean **and** canonicalized BSON diff vs legacy.
+
+(`CREATE MODULE` is an even smaller `InsertUnit`-only warm-up if the DM-mutation path needs
+de-risking first.)
+
+### Backend changes for the slice
+
+- `Connect` must open **read-write** (today `OpenOptions{ReadOnly: true}`) and hold a
+  `Writer` / `WriteTransaction`; `Commit`/`Disconnect` flush.
+- Override the write methods (`CreateEntity`, …) — they currently no-op via the embedded mock,
+  which is why `--engine modelsdk` writes silently don't persist today.
+- Reuse engalar's `assignEntityIDsGen` / `AddEntities` mutation helpers as reference (adapt
+  imports; do **not** pull his executor rework — `FullBackend` is the firewall).
+
+### Write/BSON comparison (extends the harness)
+
+The read harness diffs rendered `SHOW` output; writes need the **BSON canonicalizer** (plan §2):
+run the same `CREATE …` script through both engines on **separate copies** of a fixture, then for
+each changed `.mxunit`: decode → remap `$ID`/GUID binaries to ordinal tokens in document-walk order
+(preserving referential structure) → mask volatile fields → diff. A residual diff is a real
+divergence. This is the one genuinely new piece of tooling; engalar's `cmd_bson_dump`/
+`cmd_bson_compare` are the porting base.
+
+### Risks / open questions
+
+1. **Encoder fidelity on fresh elements.** For a *new* entity (no raw bytes) the encoder emits
+   `$ID`+`$Type`+set fields in `Properties()` order. Whether that byte-for-byte matches legacy's
+   hand-built BSON (field order, defaults, optional fields) is unknown until the canonicalized diff
+   runs — this is the main thing Phase 2 discovers, and where subtle divergences will surface.
+2. **ID nondeterminism.** New units get fresh UUIDs differing per engine/run; the canonicalizer's
+   ID-remap must neutralize them (and `dataStorageGuid`-class fields) or every write "diffs".
+3. **Transaction/commit semantics.** Match legacy's commit boundaries (per-statement vs per-script)
+   so the persisted result and the executor's connection lifecycle agree.
+4. **The 22 engine/backend-straddling commits.** The write path is where `modelsdk/` and
+   `mdl/backend/` entangle most; porting must stay on the `FullBackend` side of the firewall.
+5. **Write-adapter completeness.** A partial `domainmodel → gen` adapter writes an *incomplete*
+   unit → Studio-Pro rejection. Unlike reads (partial is harmless), writes need full per-type
+   field coverage. Size each doc type before committing to it.
+
+### Sequencing & effort
+
+1. **Infra (one-time):** read-write `Connect` + writer/transaction; the BSON canonicalizer +
+   write-compare harness mode. *(M)*
+2. **Vertical slice:** `CreateEntity` (empty persistent) → green on `mx check` + canonical BSON
+   diff. *(M, the de-risking milestone — proves the encoder writes valid, legacy-matching BSON)*
+3. **Domain-model breadth:** attributes (+ data types), associations, generalization, access
+   rules — the write adapter grows. *(L)*
+4. **Other doc types (Phase 3):** microflows, pages, … each = write adapter + harness case.
+
+**Effort:** L overall; **Risk: Med–High**, concentrated in step 2 (encoder fidelity is the
+unknown). Everything stays behind `MXCLI_ENGINE`/`compare`; `legacy` remains the default and the
+source of truth until the canonical-BSON gate is consistently green.
