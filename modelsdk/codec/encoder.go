@@ -158,6 +158,11 @@ func (e *Encoder) buildDoc(elem element.Element) (bson.D, error) {
 					doc = append(doc, bson.E{Key: name, Value: bson.A{int32(3)}})
 				}
 			}
+			for _, name := range d.NullFields {
+				if !emitted[name] {
+					doc = append(doc, bson.E{Key: name, Value: nil})
+				}
+			}
 		}
 		return doc, nil
 	}

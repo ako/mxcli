@@ -25,6 +25,85 @@ func init() {
 	})
 	// Attributes carry a GUID too (= their own $ID), but no member collections.
 	codec.RegisterTypeDefaults("DomainModels$Attribute", codec.TypeDefaults{EmitGUID: true})
+	// Associations carry a GUID and an always-null Source (for non-remote ones).
+	codec.RegisterTypeDefaults("DomainModels$Association", codec.TypeDefaults{
+		EmitGUID:   true,
+		NullFields: []string{"Source"},
+	})
+	// The association's delete behavior always serializes both error-message
+	// reference slots as null.
+	codec.RegisterTypeDefaults("DomainModels$DeleteBehavior", codec.TypeDefaults{
+		NullFields: []string{"ChildErrorMessage", "ParentErrorMessage"},
+	})
+}
+
+// CreateAssociation adds an association to a domain model. Associations are
+// children of the DomainModel unit (its Associations list), so this mirrors
+// CreateEntity: load → add → roundtrip-encode → persist.
+func (b *Backend) CreateAssociation(domainModelID model.ID, assoc *domainmodel.Association) error {
+	if assoc == nil {
+		return fmt.Errorf("CreateAssociation: nil association")
+	}
+	if b.writer == nil {
+		return fmt.Errorf("CreateAssociation: not connected for writing")
+	}
+	dm, err := b.loadDomainModelGen(domainModelID)
+	if err != nil {
+		return err
+	}
+	ga := assocToGen(assoc)
+	assignAssociationIDs(ga)
+	dm.AddAssociations(ga)
+
+	contents, err := (&codec.Encoder{}).Encode(dm)
+	if err != nil {
+		return fmt.Errorf("CreateAssociation: encode domain model: %w", err)
+	}
+	if err := b.writer.UpdateRawUnit(string(domainModelID), contents); err != nil {
+		return fmt.Errorf("CreateAssociation: persist domain model %s: %w", domainModelID, err)
+	}
+	return nil
+}
+
+// assocToGen converts a domainmodel.Association. Note the (counter-intuitive but
+// internally consistent) pointer convention: ParentPointer = the FROM entity
+// (FK owner), ChildPointer = the TO entity — domainmodel.ParentID/ChildID already
+// follow it, so the mapping is direct. Connections are the fixed defaults Studio
+// Pro/legacy emit. GUID is added by the encoder via registered defaults.
+func assocToGen(a *domainmodel.Association) *genDm.Association {
+	out := genDm.NewAssociation()
+	out.SetName(a.Name)
+	out.SetDocumentation(a.Documentation)
+	out.SetExportLevel("Hidden")
+	out.SetParentID(element.ID(string(a.ParentID)))
+	out.SetChildID(element.ID(string(a.ChildID)))
+	out.SetType(string(a.Type))
+	out.SetOwner(string(a.Owner))
+	sf := string(a.StorageFormat)
+	if sf == "" {
+		sf = "Column"
+	}
+	out.SetStorageFormat(sf)
+	out.SetParentConnection("0;50")
+	out.SetChildConnection("100;50")
+
+	db := genDm.NewAssociationDeleteBehavior()
+	parentDB, childDB := "DeleteMeButKeepReferences", "DeleteMeButKeepReferences"
+	if a.ParentDeleteBehavior != nil && a.ParentDeleteBehavior.Type != "" {
+		parentDB = string(a.ParentDeleteBehavior.Type)
+	}
+	if a.ChildDeleteBehavior != nil && a.ChildDeleteBehavior.Type != "" {
+		childDB = string(a.ChildDeleteBehavior.Type)
+	}
+	db.SetParentDeleteBehavior(parentDB)
+	db.SetChildDeleteBehavior(childDB)
+	out.SetDeleteBehavior(db)
+	return out
+}
+
+func assignAssociationIDs(a *genDm.Association) {
+	assignID(a)
+	assignID(a.DeleteBehavior())
 }
 
 // CreateEntity is the Phase-2 write slice: add an entity to a domain model

@@ -21,6 +21,9 @@ type TypeDefaults struct {
 	// MandatoryLists are PartList BSON keys Studio Pro always serializes; the
 	// encoder emits each (empty) as the typed-array marker when not otherwise set.
 	MandatoryLists []string
+	// NullFields are keys Studio Pro always serializes as BSON null (e.g. an
+	// unset reference like an association's Source); emitted when not otherwise set.
+	NullFields []string
 }
 
 var registeredDefaults = map[string]TypeDefaults{}

@@ -109,3 +109,48 @@ func EntityCanonBSON(projectPath, moduleName, entityName string) (string, error)
 	}
 	return "", fmt.Errorf("entity %q not found in module %q", entityName, moduleName)
 }
+
+// AssociationCanonBSON returns the canonicalized raw BSON of a named association
+// in a module's domain model (associations are DM children, not entity children).
+func AssociationCanonBSON(projectPath, moduleName, assocName string) (string, error) {
+	r, err := mmpr.OpenWithOptions(projectPath, mmpr.OpenOptions{ReadOnly: true})
+	if err != nil {
+		return "", err
+	}
+	defer r.Close()
+
+	mod, err := r.GetModuleByName(moduleName)
+	if err != nil || mod == nil {
+		return "", fmt.Errorf("module %q not found: %v", moduleName, err)
+	}
+	units, err := mprread.ListUnitsWithContainer[*genDm.DomainModel](r)
+	if err != nil {
+		return "", err
+	}
+	dec := codec.NewDecoder(codec.DefaultRegistry)
+	for _, u := range units {
+		if string(u.ContainerID) != mod.ID {
+			continue
+		}
+		raw, err := r.GetRawUnitBytes(string(u.Element.ID()))
+		if err != nil {
+			return "", err
+		}
+		el, err := dec.Decode(raw)
+		if err != nil {
+			return "", err
+		}
+		dm, ok := el.(*genDm.DomainModel)
+		if !ok {
+			continue
+		}
+		for _, ae := range dm.AssociationsItems() {
+			as, ok := ae.(*genDm.Association)
+			if !ok || as.Name() != assocName {
+				continue
+			}
+			return CanonicalizeRaw(bson.Raw(ae.Raw())), nil
+		}
+	}
+	return "", fmt.Errorf("association %q not found in module %q", assocName, moduleName)
+}
