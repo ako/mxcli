@@ -56,8 +56,10 @@ func runMarketplace(t *testing.T, handler http.HandlerFunc, args ...string) (str
 
 func TestMarketplaceSearch_TableOutput(t *testing.T) {
 	out, err := runMarketplace(t, func(w http.ResponseWriter, r *http.Request) {
-		if !strings.Contains(r.URL.RawQuery, "search=community") {
-			t.Errorf("expected search=community in query, got %q", r.URL.RawQuery)
+		// Search paginates the catalog (the API ignores ?search=): first page
+		// is limit=100&offset=0, then client-side filtering.
+		if !strings.Contains(r.URL.RawQuery, "offset=0") {
+			t.Errorf("expected paginated request (offset=0), got %q", r.URL.RawQuery)
 		}
 		_, _ = w.Write([]byte(sampleContentList))
 	}, "search", "community")

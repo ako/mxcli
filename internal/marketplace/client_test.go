@@ -4,6 +4,7 @@ package marketplace
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -116,6 +117,75 @@ func newMockServer(t *testing.T, handler http.HandlerFunc) (*Client, *httptest.S
 	return NewWithBaseURL(ts.Client(), ts.URL), ts
 }
 
+// contentPage renders a /v1/content page of `n` filler items (ids based at
+// `startID`), optionally appending one extra item named `special`.
+func contentPage(startID, n int, special string) string {
+	var b strings.Builder
+	b.WriteString(`{"items":[`)
+	for i := range n {
+		if i > 0 {
+			b.WriteString(",")
+		}
+		fmt.Fprintf(&b, `{"contentId":%d,"publisher":"Acme","type":"Module","latestVersion":{"name":"Filler %d","versionNumber":"1.0.0"}}`, startID+i, startID+i)
+	}
+	if special != "" {
+		if n > 0 {
+			b.WriteString(",")
+		}
+		fmt.Fprintf(&b, `{"contentId":999999,"publisher":"Mendix","type":"Module","latestVersion":{"name":%q,"versionNumber":"3.12.0"}}`, special)
+	}
+	b.WriteString(`]}`)
+	return b.String()
+}
+
+// TestSearch_PaginatesPastFirstPage is the regression test for the bug where
+// keyword search only looked at the first page: a match that lives on the second
+// page (offset=100) must still be found. The server returns a full page of 100
+// non-matching items at offset 0, and the match at offset 100.
+func TestSearch_PaginatesPastFirstPage(t *testing.T) {
+	var offsetsSeen []string
+	client, _ := newMockServer(t, func(w http.ResponseWriter, r *http.Request) {
+		off := r.URL.Query().Get("offset")
+		offsetsSeen = append(offsetsSeen, off)
+		switch off {
+		case "0":
+			_, _ = w.Write([]byte(contentPage(1, 100, ""))) // full page, no match
+		case "100":
+			_, _ = w.Write([]byte(contentPage(200, 5, "Mendix Business Events"))) // match here
+		default:
+			_, _ = w.Write([]byte(`{"items":[]}`))
+		}
+	})
+
+	result, err := client.Search(context.Background(), "business events", 20)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(result.Items) != 1 || result.Items[0].ContentID != 999999 {
+		t.Fatalf("expected the second-page match (999999), got %+v", result.Items)
+	}
+	// It must have advanced past the first page (offset 0 was a full 100).
+	if len(offsetsSeen) < 2 || offsetsSeen[1] != "100" {
+		t.Errorf("expected pagination to request offset=100; offsets seen: %v", offsetsSeen)
+	}
+}
+
+// TestSearch_StopsAtEndOfCatalog: a short first page (< pageSize) means the
+// catalog is exhausted, so search must not keep requesting further offsets.
+func TestSearch_StopsAtEndOfCatalog(t *testing.T) {
+	var calls int
+	client, _ := newMockServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		_, _ = w.Write([]byte(contentPage(1, 3, ""))) // only 3 items, < pageSize
+	})
+	if _, err := client.Search(context.Background(), "nomatch", 20); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Errorf("expected exactly 1 page fetch at end-of-catalog, got %d", calls)
+	}
+}
+
 func TestSearch_PassesQueryAndLimit(t *testing.T) {
 	var gotPath, gotQuery string
 	client, _ := newMockServer(t, func(w http.ResponseWriter, r *http.Request) {
@@ -125,8 +195,8 @@ func TestSearch_PassesQueryAndLimit(t *testing.T) {
 		_, _ = w.Write([]byte(sampleMultiContentList))
 	})
 
-	// User requests limit=3 but because the API ignores ?search=, we fetch
-	// searchFetchLimit items and apply client-side filtering.
+	// The API ignores ?search= and caps limit at 100, so we paginate with
+	// limit=pageSize + offset and filter client-side.
 	result, err := client.Search(context.Background(), "database", 3)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
@@ -134,12 +204,12 @@ func TestSearch_PassesQueryAndLimit(t *testing.T) {
 	if gotPath != "/v1/content" {
 		t.Errorf("path: got %q, want /v1/content", gotPath)
 	}
-	if !strings.Contains(gotQuery, "search=database") {
-		t.Errorf("query missing search param: %q", gotQuery)
+	// Paginated request shape: limit=pageSize, offset=0 on the first page.
+	if !strings.Contains(gotQuery, "limit="+strconv.Itoa(pageSize)) {
+		t.Errorf("expected API to receive limit=%d, got query %q", pageSize, gotQuery)
 	}
-	// API receives searchFetchLimit, not the user's limit=3
-	if !strings.Contains(gotQuery, "limit="+strconv.Itoa(searchFetchLimit)) {
-		t.Errorf("expected API to receive limit=%d, got query %q", searchFetchLimit, gotQuery)
+	if !strings.Contains(gotQuery, "offset=0") {
+		t.Errorf("expected offset=0 on first page, got query %q", gotQuery)
 	}
 	// Client-side filter: only items whose name contains "database"
 	if len(result.Items) != 2 {

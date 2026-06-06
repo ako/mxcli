@@ -13,10 +13,18 @@ import (
 	"strings"
 )
 
-// searchFetchLimit is the number of items fetched from the API when a search
-// query is provided. The marketplace API accepts the ?search= parameter but
-// does not filter server-side, so we fetch a larger page and filter locally.
-const searchFetchLimit = 200
+const (
+	// pageSize is the server-side cap on the /v1/content `limit` parameter:
+	// the API silently caps any larger value at 100 per page.
+	pageSize = 100
+	// maxSearchPages bounds how far keyword search paginates via `offset`
+	// (pageSize*maxSearchPages items) so a sparse/no-match query doesn't keep
+	// walking indefinitely as the catalog grows. The catalog is ~2300 items
+	// (~23 pages) today, so this comfortably covers a full scan with margin.
+	// (End-of-catalog normally terminates the loop first: an offset past the
+	// end returns a short/empty page.)
+	maxSearchPages = 50
+)
 
 // Client is a typed wrapper around the marketplace REST API. Callers
 // obtain an authenticated http.Client via internal/auth.ClientFor and
@@ -45,37 +53,52 @@ func NewWithBaseURL(httpClient *http.Client, baseURL string) *Client {
 // Search lists marketplace content matching a query. limit is the
 // maximum number of results to return; pass 0 for the API default.
 //
-// Note: the marketplace API accepts ?search= but does not filter server-side.
-// When query is non-empty, this method fetches a larger page and applies
-// client-side filtering on the item name and publisher (case-insensitive
-// substring match). The user-supplied limit is applied after filtering.
+// The marketplace API accepts ?search= but does NOT filter server-side, and it
+// caps `limit` at 100 per page. So keyword search paginates through the catalog
+// with `offset` and filters client-side (case-insensitive substring match on the
+// item name and publisher), stopping as soon as it has `limit` matches or it
+// reaches the end of the catalog. With no query it returns a single page.
 func (c *Client) Search(ctx context.Context, query string, limit int) (*ContentList, error) {
-	q := url.Values{}
-	fetchLimit := limit
-	if query != "" {
-		// Fetch a larger page so client-side filtering has enough candidates.
-		q.Set("search", query) // kept in case the API ever starts honouring it
-		fetchLimit = searchFetchLimit
+	if query == "" {
+		// Plain listing: a single page (the server caps `limit` at pageSize).
+		path := "/v1/content"
+		if limit > 0 {
+			path += "?limit=" + strconv.Itoa(limit)
+		}
+		var out ContentList
+		if err := c.get(ctx, path, &out); err != nil {
+			return nil, err
+		}
+		return &out, nil
 	}
-	if fetchLimit > 0 {
-		q.Set("limit", strconv.Itoa(fetchLimit))
+
+	var matched []Content
+	for page := range maxSearchPages {
+		items, err := c.fetchContentPage(ctx, page*pageSize)
+		if err != nil {
+			return nil, err
+		}
+		matched = append(matched, filterItems(items, query)...)
+		if limit > 0 && len(matched) >= limit {
+			matched = matched[:limit]
+			break
+		}
+		if len(items) < pageSize {
+			break // reached the end of the catalog
+		}
 	}
-	path := "/v1/content"
-	if len(q) > 0 {
-		path += "?" + q.Encode()
-	}
+	return &ContentList{Items: matched}, nil
+}
+
+// fetchContentPage returns one page of /v1/content starting at offset
+// (pageSize items, the server's per-page maximum).
+func (c *Client) fetchContentPage(ctx context.Context, offset int) ([]Content, error) {
+	path := fmt.Sprintf("/v1/content?limit=%d&offset=%d", pageSize, offset)
 	var out ContentList
 	if err := c.get(ctx, path, &out); err != nil {
 		return nil, err
 	}
-
-	if query != "" {
-		out.Items = filterItems(out.Items, query)
-		if limit > 0 && len(out.Items) > limit {
-			out.Items = out.Items[:limit]
-		}
-	}
-	return &out, nil
+	return out.Items, nil
 }
 
 // filterItems returns items whose name or publisher contains query
