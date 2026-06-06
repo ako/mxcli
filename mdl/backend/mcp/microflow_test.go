@@ -205,13 +205,13 @@ func TestMapObjectTree_Split(t *testing.T) {
 	split, err := b.mapObjectTree(&microflows.ExclusiveSplit{
 		Caption:        "Is big?",
 		SplitCondition: &microflows.ExpressionSplitCondition{Expression: "$N > 10"},
-	}, "/objects/3", 3, idPath)
+	}, "/objects/3", idPath)
 	if err != nil || split["$Type"] != "Microflows$ExclusiveSplit" ||
 		split["expressionSplitCondition"] != "$N > 10" || split["caption"] != "Is big?" {
 		t.Fatalf("exclusive split: %+v / %v", split, err)
 	}
 
-	merge, err := b.mapObjectTree(&microflows.ExclusiveMerge{}, "/objects/4", 4, idPath)
+	merge, err := b.mapObjectTree(&microflows.ExclusiveMerge{}, "/objects/4", idPath)
 	if err != nil || merge["$Type"] != "Microflows$ExclusiveMerge" {
 		t.Fatalf("exclusive merge: %+v / %v", merge, err)
 	}
@@ -221,7 +221,7 @@ func TestMapObjectTree_SplitRejectsRuleCondition(t *testing.T) {
 	b := &Backend{}
 	if _, err := b.mapObjectTree(&microflows.ExclusiveSplit{
 		SplitCondition: &microflows.RuleSplitCondition{RuleQualifiedName: "M.SomeRule"},
-	}, "/objects/0", 0, map[model.ID]string{}); err == nil {
+	}, "/objects/0", map[model.ID]string{}); err == nil {
 		t.Error("rule-based split condition should be rejected (only expression supported)")
 	}
 }
@@ -239,7 +239,7 @@ func TestMapObjectTree_Loop(t *testing.T) {
 	}
 	loop.ID = "loop-1"
 
-	m, err := b.mapObjectTree(loop, "/objects/2", 2, idPath)
+	m, err := b.mapObjectTree(loop, "/objects/2", idPath)
 	if err != nil {
 		t.Fatalf("loop: %v", err)
 	}

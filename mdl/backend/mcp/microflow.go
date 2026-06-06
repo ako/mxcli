@@ -37,7 +37,7 @@ func (b *Backend) CreateMicroflow(mf *microflows.Microflow) error {
 			"$Type":               "Microflows$MicroflowParameterObject",
 			"name":                p.Name,
 			"type":                typeName,
-			"relativeMiddlePoint": canvasPoint(i, 280),
+			"relativeMiddlePoint": map[string]int{"x": 200 + i*100, "y": 53},
 		}
 		if entity != "" {
 			po["entity"] = entity
@@ -58,7 +58,7 @@ func (b *Backend) CreateMicroflow(mf *microflows.Microflow) error {
 	if mf.ObjectCollection != nil {
 		for i, o := range mf.ObjectCollection.Objects {
 			path := fmt.Sprintf("/objects/%d", paramCount+i)
-			pedObj, err := b.mapObjectTree(o, path, i, idPath)
+			pedObj, err := b.mapObjectTree(o, path, idPath)
 			if err != nil {
 				return fmt.Errorf("microflow %q: %w", mf.Name, err)
 			}
@@ -169,28 +169,33 @@ func (b *Backend) GetNanoflow(id model.ID) (*microflows.Nanoflow, error) {
 }
 func (b *Backend) IsRule(qualifiedName string) (bool, error) { return b.reader.IsRule(qualifiedName) }
 
-// canvasPoint lays objects out left-to-right by index. Positions are cosmetic
-// (they do not affect validity); a clean linear layout is enough for the slice.
-func canvasPoint(index, y int) map[string]int {
-	return map[string]int{"x": 120 + index*160, "y": y}
+// pedMiddlePoint converts an executor object position to a PED relativeMiddlePoint.
+// The executor's layout engine already computes these coordinates (the same
+// value the MPR writer serializes as RelativeMiddlePoint), so reusing them makes
+// the MCP-authored canvas match the file-written one. Loop-body positions are
+// relative to their loop container, which is exactly what PED expects for
+// nested objects.
+func pedMiddlePoint(pt model.Point) map[string]int {
+	return map[string]int{"x": pt.X, "y": pt.Y}
 }
 
 // mapObjectTree maps one executor microflow object onto a PED /objects entry,
 // registering its path in idPath and recursing into loop bodies (whose objects
-// nest at <path>/objects/M). localIndex drives the cosmetic left-to-right layout
-// within the object's container. Unmapped object types are rejected.
-func (b *Backend) mapObjectTree(o microflows.MicroflowObject, path string, localIndex int, idPath map[model.ID]string) (map[string]any, error) {
+// nest at <path>/objects/M). Positions come from the executor's layout engine.
+// Unmapped object types are rejected.
+func (b *Backend) mapObjectTree(o microflows.MicroflowObject, path string, idPath map[model.ID]string) (map[string]any, error) {
 	idPath[o.GetID()] = path
+	pos := pedMiddlePoint(o.GetPosition())
 	switch obj := o.(type) {
 	case *microflows.StartEvent:
 		return map[string]any{
 			"$Type":               "Microflows$StartEvent",
-			"relativeMiddlePoint": canvasPoint(localIndex, 120),
+			"relativeMiddlePoint": pos,
 		}, nil
 	case *microflows.EndEvent:
 		m := map[string]any{
 			"$Type":               "Microflows$EndEvent",
-			"relativeMiddlePoint": canvasPoint(localIndex, 120),
+			"relativeMiddlePoint": pos,
 		}
 		if obj.ReturnValue != "" {
 			m["returnValue"] = obj.ReturnValue
@@ -203,13 +208,13 @@ func (b *Backend) mapObjectTree(o microflows.MicroflowObject, path string, local
 		}
 		return map[string]any{
 			"$Type":               "Microflows$ActionActivity",
-			"relativeMiddlePoint": canvasPoint(localIndex, 120),
+			"relativeMiddlePoint": pos,
 			"action":              action,
 		}, nil
 	case *microflows.ExclusiveSplit:
 		m := map[string]any{
 			"$Type":               "Microflows$ExclusiveSplit",
-			"relativeMiddlePoint": canvasPoint(localIndex, 120),
+			"relativeMiddlePoint": pos,
 		}
 		switch c := obj.SplitCondition.(type) {
 		case *microflows.ExpressionSplitCondition:
@@ -226,22 +231,27 @@ func (b *Backend) mapObjectTree(o microflows.MicroflowObject, path string, local
 	case *microflows.ExclusiveMerge:
 		return map[string]any{
 			"$Type":               "Microflows$ExclusiveMerge",
-			"relativeMiddlePoint": canvasPoint(localIndex, 120),
+			"relativeMiddlePoint": pos,
 		}, nil
 	case *microflows.BreakEvent:
 		return map[string]any{
 			"$Type":               "Microflows$BreakEvent",
-			"relativeMiddlePoint": canvasPoint(localIndex, 120),
+			"relativeMiddlePoint": pos,
 		}, nil
 	case *microflows.ContinueEvent:
 		return map[string]any{
 			"$Type":               "Microflows$ContinueEvent",
-			"relativeMiddlePoint": canvasPoint(localIndex, 120),
+			"relativeMiddlePoint": pos,
 		}, nil
 	case *microflows.LoopedActivity:
 		m := map[string]any{
 			"$Type":               "Microflows$LoopedActivity",
-			"relativeMiddlePoint": canvasPoint(localIndex, 120),
+			"relativeMiddlePoint": pos,
+		}
+		// The loop container must be large enough to hold its (loop-relative)
+		// body objects; reuse the executor's computed size.
+		if obj.Size.Width > 0 && obj.Size.Height > 0 {
+			m["size"] = map[string]int{"width": obj.Size.Width, "height": obj.Size.Height}
 		}
 		switch src := obj.LoopSource.(type) {
 		case *microflows.IterableList:
@@ -261,7 +271,7 @@ func (b *Backend) mapObjectTree(o microflows.MicroflowObject, path string, local
 		if obj.ObjectCollection != nil {
 			for j, bo := range obj.ObjectCollection.Objects {
 				bp := fmt.Sprintf("%s/objects/%d", path, j)
-				pedBody, err := b.mapObjectTree(bo, bp, j, idPath)
+				pedBody, err := b.mapObjectTree(bo, bp, idPath)
 				if err != nil {
 					return nil, err
 				}
