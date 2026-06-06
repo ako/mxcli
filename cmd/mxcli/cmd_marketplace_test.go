@@ -23,7 +23,7 @@ const sampleContent = `{"contentId":170,"publisher":"Mendix","type":"Module","ca
 const sampleVersions = `{"items":[{"name":"Community Commons","versionId":"0a03e65a","versionNumber":"11.5.0","minSupportedMendixVersion":"10.24.0","publicationDate":"2026-01-13T06:57:14.512Z","releaseNotes":"<p>upgraded guava</p>"}]}`
 
 func resetMarketplaceFlags() {
-	for _, c := range []*cobra.Command{marketplaceSearchCmd, marketplaceInfoCmd, marketplaceVersionsCmd} {
+	for _, c := range []*cobra.Command{marketplaceSearchCmd, marketplaceInfoCmd, marketplaceVersionsCmd, marketplaceDownloadCmd, marketplaceInstallCmd} {
 		c.Flags().VisitAll(func(f *pflag.Flag) {
 			_ = f.Value.Set(f.DefValue)
 			f.Changed = false
