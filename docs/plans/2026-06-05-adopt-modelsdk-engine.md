@@ -264,7 +264,24 @@ against `testdata/expr-checker/minimal.mpr` (SHOW ENTITIES / SHOW MODULES); the 
 |---|---|---|
 | `mdl/backend/modelsdk` (package `modelsdkbackend`): FullBackend reading via the codec engine | ✅ first slice | `43cbb3b3` |
 | Wire `MXCLI_ENGINE=modelsdk` → read backend (read-only warning; writes no-op via mock) | ✅ done | `43cbb3b3` |
-| Read coverage beyond modules (entities, microflows, pages, …) | ⏳ in progress | — |
+| Modules read (`ListModules`/`GetModule*`) — diff-identical to legacy | ✅ done | `43cbb3b3` |
+| Entities read (`ListDomainModels`/`GetDomainModel` + gen→`domainmodel` adapter) | ✅ done | `7dd42a1d` |
+| Read coverage beyond entities (microflows, pages, …) | ⏳ next | — |
+
+**Two discoveries this slice:**
+
+1. **We own the gen→`domainmodel` adapter — there is nothing to port.** engalar changed the
+   `DomainModelBackend` interface to traffic in `*genDm` types (`GetDomainModelGen`, …) and
+   **deleted `sdk/domainmodel`** entirely. Keeping main's executor and `domainmodel` types
+   canonical means the translation is net-new and ours. It is the concrete, recurring cost of
+   "vendor, don't adopt" — each read domain is *override + delegate to `mprread` + convert*.
+   The entity converter (`mdl/backend/modelsdk/domainmodel.go`) is the template.
+2. **System-module injection gap.** Legacy injects the whole System module from hardcoded
+   `sdk/mpr/system_module.go` (`BuildSystemDomainModel`); the codec reader returns only real
+   project units, so `SHOW ENTITIES` via modelsdk omits System.*. **All 8 non-System entities
+   are byte-identical to legacy** (type, Extends, every count). Closing the gap = surface the
+   same synthetic System module from the modelsdk backend (reuse/relocate `BuildSystemDomainModel`,
+   which is coupled to the legacy `sdk/mpr` package today). Tracked, not yet done.
 
 **Thesis validated.** The new backend embeds `*mock.MockBackend` (satisfies all 27 sub-interfaces;
 un-overridden methods are safe zero/nil stubs) and overrides only connection + module reads,
