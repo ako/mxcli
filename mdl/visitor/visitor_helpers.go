@@ -428,6 +428,18 @@ func buildDeleteBehavior(ctx parser.IDeleteBehaviorContext) ast.DeleteBehavior {
 	return ast.DeleteKeepReferences
 }
 
+// QuoteString escapes s for safe embedding inside an MDL single-quoted string
+// literal. It is the inverse of unquoteString: a backslash becomes `\\` and an
+// apostrophe becomes `”`. Use it whenever a runtime value (e.g. a filesystem
+// path) is interpolated into MDL source such as `CONNECT LOCAL '<path>'`, so a
+// Windows path like `C:\temp\App.mpr` round-trips unchanged instead of having
+// `\t`/`\n`/`\r` interpreted as escapes. See issue #644.
+func QuoteString(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `'`, `''`)
+	return s
+}
+
 func unquoteString(s string) string {
 	// Remove surrounding quotes and unescape
 	if len(s) >= 2 && s[0] == '\'' && s[len(s)-1] == '\'' {

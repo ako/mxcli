@@ -39,7 +39,7 @@ Example:
 
 		// Auto-connect if project specified
 		if projectPath != "" {
-			connectCmd := fmt.Sprintf("CONNECT LOCAL '%s';", projectPath)
+			connectCmd := fmt.Sprintf("CONNECT LOCAL '%s';", visitor.QuoteString(projectPath))
 			prog, _ := visitor.Build(connectCmd)
 			for _, stmt := range prog.Statements {
 				if err := exec.Execute(stmt); err != nil {

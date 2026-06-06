@@ -129,7 +129,7 @@ Examples:
 
 			// Auto-connect if project specified
 			if projectPath != "" {
-				commands = fmt.Sprintf("CONNECT LOCAL '%s'; %s", projectPath, commands)
+				commands = fmt.Sprintf("CONNECT LOCAL '%s'; %s", visitor.QuoteString(projectPath), commands)
 			}
 
 			prog, errs := visitor.Build(commands)
@@ -158,7 +158,7 @@ Examples:
 
 			// Auto-connect if project specified
 			if projectPath != "" {
-				if err := r.ExecuteString(fmt.Sprintf("CONNECT LOCAL '%s';", projectPath)); err != nil {
+				if err := r.ExecuteString(fmt.Sprintf("CONNECT LOCAL '%s';", visitor.QuoteString(projectPath))); err != nil {
 					fmt.Fprintf(os.Stderr, "Error connecting: %v\n", err)
 				}
 			}
@@ -216,7 +216,7 @@ func executeMDL(projectPath, mdlCmd string) {
 	defer logger.Close()
 	defer exec.Close()
 
-	fullCmd := fmt.Sprintf("CONNECT LOCAL '%s'; %s", projectPath, mdlCmd)
+	fullCmd := fmt.Sprintf("CONNECT LOCAL '%s'; %s", visitor.QuoteString(projectPath), mdlCmd)
 	prog, errs := visitor.Build(fullCmd)
 	if len(errs) > 0 {
 		for _, err := range errs {

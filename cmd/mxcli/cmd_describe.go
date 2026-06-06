@@ -170,7 +170,7 @@ Example:
 		exec.SetQuiet(true) // suppress status messages for programmatic output
 
 		// Connect
-		connectProg, _ := visitor.Build(fmt.Sprintf("CONNECT LOCAL '%s'", projectPath))
+		connectProg, _ := visitor.Build(fmt.Sprintf("CONNECT LOCAL '%s'", visitor.QuoteString(projectPath)))
 		for _, stmt := range connectProg.Statements {
 			if err := exec.Execute(stmt); err != nil {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)

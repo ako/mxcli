@@ -83,7 +83,7 @@ Example:
 		defer exec.Close()
 
 		// Connect
-		connectProg, _ := visitor.Build(fmt.Sprintf("CONNECT LOCAL '%s' FOR WRITING", projectPath))
+		connectProg, _ := visitor.Build(fmt.Sprintf("CONNECT LOCAL '%s' FOR WRITING", visitor.QuoteString(projectPath)))
 		for _, stmt := range connectProg.Statements {
 			if err := exec.Execute(stmt); err != nil {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
