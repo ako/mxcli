@@ -66,18 +66,23 @@ func (b *Backend) CreateMicroflow(mf *microflows.Microflow) error {
 	flows := make([]any, 0)
 	if mf.ObjectCollection != nil {
 		for _, f := range mf.ObjectCollection.Flows {
-			if f.CaseValue != nil {
-				return fmt.Errorf("microflow %q: conditional flows (splits) are not yet supported by the MCP backend", mf.Name)
-			}
 			oi, ok1 := idIndex[f.OriginID]
 			di, ok2 := idIndex[f.DestinationID]
 			if !ok1 || !ok2 {
 				return fmt.Errorf("microflow %q: a sequence flow references an object that is not supported yet", mf.Name)
 			}
-			flows = append(flows, map[string]any{
+			pf := map[string]any{
 				"originId":      fmt.Sprintf("$id(/objects/%d)", oi),
 				"destinationId": fmt.Sprintf("$id(/objects/%d)", di),
-			})
+			}
+			cv, err := mapCaseValue(f.CaseValue)
+			if err != nil {
+				return fmt.Errorf("microflow %q: %w", mf.Name, err)
+			}
+			if cv != nil {
+				pf["caseValue"] = cv
+			}
+			flows = append(flows, pf)
 		}
 	}
 
@@ -194,6 +199,28 @@ func (b *Backend) mapMicroflowObject(o microflows.MicroflowObject, index int) (m
 			"$Type":               "Microflows$ActionActivity",
 			"relativeMiddlePoint": canvasPoint(index, 120),
 			"action":              action,
+		}, nil
+	case *microflows.ExclusiveSplit:
+		m := map[string]any{
+			"$Type":               "Microflows$ExclusiveSplit",
+			"relativeMiddlePoint": canvasPoint(index, 120),
+		}
+		switch c := obj.SplitCondition.(type) {
+		case *microflows.ExpressionSplitCondition:
+			m["expressionSplitCondition"] = c.Expression
+		case microflows.ExpressionSplitCondition:
+			m["expressionSplitCondition"] = c.Expression
+		default:
+			return nil, fmt.Errorf("exclusive split: only expression conditions are supported yet (got %T)", obj.SplitCondition)
+		}
+		if obj.Caption != "" {
+			m["caption"] = obj.Caption
+		}
+		return m, nil
+	case *microflows.ExclusiveMerge:
+		return map[string]any{
+			"$Type":               "Microflows$ExclusiveMerge",
+			"relativeMiddlePoint": canvasPoint(index, 120),
 		}, nil
 	default:
 		return nil, fmt.Errorf("microflow object type %T is not yet supported by the MCP backend", o)
@@ -351,6 +378,44 @@ func mapMicroflowAction(a microflows.MicroflowAction) (map[string]any, error) {
 	default:
 		return nil, fmt.Errorf("microflow action %T is not yet supported by the MCP backend", a)
 	}
+}
+
+// mapCaseValue maps a sequence-flow case value onto the PED flow caseValue
+// object ({enumerationCase} for boolean/enum splits, {inheritanceCase} for
+// inheritance splits). A nil / NoCase value yields no caseValue (non-split
+// flow). Boolean branches arrive as ExpressionCase{"true"|"false"}.
+func mapCaseValue(cv microflows.CaseValue) (map[string]any, error) {
+	switch c := cv.(type) {
+	case nil:
+		return nil, nil
+	case *microflows.ExpressionCase:
+		return map[string]any{"enumerationCase": c.Expression}, nil
+	case microflows.ExpressionCase:
+		return map[string]any{"enumerationCase": c.Expression}, nil
+	case *microflows.EnumerationCase:
+		return map[string]any{"enumerationCase": c.Value}, nil
+	case microflows.EnumerationCase:
+		return map[string]any{"enumerationCase": c.Value}, nil
+	case *microflows.BooleanCase:
+		return map[string]any{"enumerationCase": boolString(c.Value)}, nil
+	case microflows.BooleanCase:
+		return map[string]any{"enumerationCase": boolString(c.Value)}, nil
+	case *microflows.InheritanceCase:
+		return map[string]any{"inheritanceCase": c.EntityQualifiedName}, nil
+	case microflows.InheritanceCase:
+		return map[string]any{"inheritanceCase": c.EntityQualifiedName}, nil
+	case *microflows.NoCase, microflows.NoCase:
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("unsupported flow case value %T", cv)
+	}
+}
+
+func boolString(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
 }
 
 // mapMemberChanges maps a list of attribute/association member changes onto PED

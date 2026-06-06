@@ -176,6 +176,55 @@ func TestMfDataType_Void(t *testing.T) {
 	}
 }
 
+func TestMapCaseValue(t *testing.T) {
+	cases := []struct {
+		cv      microflows.CaseValue
+		wantKey string
+		wantVal string
+	}{
+		{&microflows.ExpressionCase{Expression: "true"}, "enumerationCase", "true"},
+		{&microflows.ExpressionCase{Expression: "false"}, "enumerationCase", "false"},
+		{microflows.EnumerationCase{Value: "Active"}, "enumerationCase", "Active"},
+		{&microflows.BooleanCase{Value: true}, "enumerationCase", "true"},
+		{&microflows.InheritanceCase{EntityQualifiedName: "M.Employee"}, "inheritanceCase", "M.Employee"},
+	}
+	for _, c := range cases {
+		m, err := mapCaseValue(c.cv)
+		if err != nil || m[c.wantKey] != c.wantVal {
+			t.Errorf("mapCaseValue(%T) = %+v / %v; want %s=%s", c.cv, m, err, c.wantKey, c.wantVal)
+		}
+	}
+	if m, err := mapCaseValue(nil); err != nil || m != nil {
+		t.Errorf("nil case value should map to nil: %+v / %v", m, err)
+	}
+}
+
+func TestMapMicroflowObject_Split(t *testing.T) {
+	b := &Backend{}
+	split, err := b.mapMicroflowObject(&microflows.ExclusiveSplit{
+		Caption:        "Is big?",
+		SplitCondition: &microflows.ExpressionSplitCondition{Expression: "$N > 10"},
+	}, 3)
+	if err != nil || split["$Type"] != "Microflows$ExclusiveSplit" ||
+		split["expressionSplitCondition"] != "$N > 10" || split["caption"] != "Is big?" {
+		t.Fatalf("exclusive split: %+v / %v", split, err)
+	}
+
+	merge, err := b.mapMicroflowObject(&microflows.ExclusiveMerge{}, 4)
+	if err != nil || merge["$Type"] != "Microflows$ExclusiveMerge" {
+		t.Fatalf("exclusive merge: %+v / %v", merge, err)
+	}
+}
+
+func TestMapMicroflowObject_SplitRejectsRuleCondition(t *testing.T) {
+	b := &Backend{}
+	if _, err := b.mapMicroflowObject(&microflows.ExclusiveSplit{
+		SplitCondition: &microflows.RuleSplitCondition{RuleQualifiedName: "M.SomeRule"},
+	}, 0); err == nil {
+		t.Error("rule-based split condition should be rejected (only expression supported)")
+	}
+}
+
 func TestMfCommitType(t *testing.T) {
 	cases := map[microflows.CommitType]string{
 		microflows.CommitTypeYes:           "Yes",
