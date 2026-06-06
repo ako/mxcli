@@ -4,6 +4,7 @@ package mcp
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/pages"
@@ -47,8 +48,87 @@ func (b *Backend) mapPageWidget(w pages.Widget) (map[string]any, error) {
 			"buttonStyle":                   style,
 			"ariaRole":                      "Button",
 		}, nil
+	case *pages.DynamicText:
+		content := ""
+		if wd.Content != nil && wd.Content.Template != nil {
+			content = textValue(wd.Content.Template)
+		}
+		if content == "" {
+			content = wd.AttributePath
+		}
+		renderMode := string(wd.RenderMode)
+		if renderMode == "" {
+			renderMode = "Text"
+		}
+		return map[string]any{
+			"$Type":           "Pages$DynamicText",
+			"name":            wd.Name,
+			"appearance":      pageAppearance(wd.Class, wd.Style),
+			"ct:content":      content,
+			"tabIndex":        wd.TabIndex,
+			"renderMode":      renderMode,
+			"nativeTextStyle": "Text",
+		}, nil
+	case *pages.DataView:
+		src, err := mapDataViewSource(wd.DataSource)
+		if err != nil {
+			return nil, fmt.Errorf("data view %q: %w", wd.Name, err)
+		}
+		children, err := b.mapPageWidgets(wd.Widgets)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{
+			"$Type":      "Pages$DataView",
+			"name":       wd.Name,
+			"appearance": pageAppearance(wd.Class, wd.Style),
+			"dataSource": src,
+			"editable":   wd.Editable,
+			"widgets":    children,
+		}, nil
 	default:
 		return nil, fmt.Errorf("page widget type %s is not yet supported by the MCP backend", w.GetTypeName())
+	}
+}
+
+// mapDataViewSource maps a data-view data source onto a Pages$DataViewSource.
+// Supported: a page variable/parameter ($Var). Other source kinds (microflow,
+// association, listen-to-widget, multi-step paths) are rejected for now.
+func mapDataViewSource(ds pages.DataSource) (map[string]any, error) {
+	switch s := ds.(type) {
+	case *pages.DataViewSource:
+		src := map[string]any{"$Type": "Pages$DataViewSource", "forceFullObjects": false}
+		switch {
+		case s.ParameterName != "":
+			src["sourceVariable"] = map[string]any{
+				"$Type":         "Pages$PageVariable",
+				"pageParameter": s.ParameterName,
+				"useAllPages":   false,
+			}
+		case s.EntityName != "":
+			src["entityRef"] = map[string]any{
+				"$Type":  "DomainModels$DirectEntityRef",
+				"entity": s.EntityName,
+			}
+		default:
+			return nil, fmt.Errorf("data view source has neither a page parameter nor an entity")
+		}
+		return src, nil
+	case *pages.EntityPathSource:
+		if strings.HasPrefix(s.EntityPath, "$") && !strings.Contains(s.EntityPath, "/") {
+			return map[string]any{
+				"$Type": "Pages$DataViewSource",
+				"sourceVariable": map[string]any{
+					"$Type":         "Pages$PageVariable",
+					"pageParameter": strings.TrimPrefix(s.EntityPath, "$"),
+					"useAllPages":   false,
+				},
+				"forceFullObjects": false,
+			}, nil
+		}
+		return nil, fmt.Errorf("data view over path %q is not yet supported by the MCP backend (only a page variable $Var)", s.EntityPath)
+	default:
+		return nil, fmt.Errorf("data view source %T is not yet supported by the MCP backend", ds)
 	}
 }
 

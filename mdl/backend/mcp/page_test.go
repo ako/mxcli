@@ -65,11 +65,68 @@ func TestMapClientAction(t *testing.T) {
 	}
 }
 
+func TestMapPageWidget_DynamicText(t *testing.T) {
+	b := &Backend{}
+	dt := &pages.DynamicText{
+		Content:    &pages.ClientTemplate{Template: &model.Text{Translations: map[string]string{"en_US": "$Loc/Name"}}},
+		RenderMode: pages.TextRenderModeH2,
+	}
+	dt.Name = "txt1"
+	m, err := b.mapPageWidget(dt)
+	if err != nil || m["$Type"] != "Pages$DynamicText" || m["ct:content"] != "$Loc/Name" || m["renderMode"] != "H2" {
+		t.Fatalf("dynamic text: %+v / %v", m, err)
+	}
+}
+
+func TestMapPageWidget_DataView(t *testing.T) {
+	b := &Backend{}
+	inner := &pages.DynamicText{AttributePath: "$Loc/Name"}
+	inner.Name = "t"
+	dv := &pages.DataView{
+		DataSource: &pages.DataViewSource{ParameterName: "Loc"},
+		Widgets:    []pages.Widget{inner},
+	}
+	dv.Name = "dv1"
+	m, err := b.mapPageWidget(dv)
+	if err != nil || m["$Type"] != "Pages$DataView" {
+		t.Fatalf("data view: %+v / %v", m, err)
+	}
+	src, _ := m["dataSource"].(map[string]any)
+	sv, _ := src["sourceVariable"].(map[string]any)
+	if sv["pageParameter"] != "Loc" {
+		t.Fatalf("data view source: %+v", src)
+	}
+	if kids, _ := m["widgets"].([]any); len(kids) != 1 {
+		t.Fatalf("data view children: %+v", m["widgets"])
+	}
+}
+
+func TestMapDataViewSource(t *testing.T) {
+	// page parameter -> sourceVariable
+	pv, err := mapDataViewSource(&pages.DataViewSource{ParameterName: "Account"})
+	if err != nil || pv["sourceVariable"] == nil {
+		t.Fatalf("param source: %+v / %v", pv, err)
+	}
+	// direct entity -> entityRef
+	er, err := mapDataViewSource(&pages.DataViewSource{EntityName: "Sales.Order"})
+	if err != nil {
+		t.Fatalf("entity source: %v", err)
+	}
+	ref, _ := er["entityRef"].(map[string]any)
+	if ref["entity"] != "Sales.Order" {
+		t.Fatalf("entityRef: %+v", er)
+	}
+	// microflow source not supported yet
+	if _, err := mapDataViewSource(&pages.MicroflowSource{Microflow: "M.GetX"}); err == nil {
+		t.Error("microflow data-view source should be rejected for now")
+	}
+}
+
 func TestMapPageWidget_Unsupported(t *testing.T) {
 	b := &Backend{}
-	dt := &pages.DynamicText{}
-	dt.Name = "txt"
-	if _, err := b.mapPageWidget(dt); err == nil {
+	lv := &pages.ListView{}
+	lv.Name = "lv"
+	if _, err := b.mapPageWidget(lv); err == nil {
 		t.Error("an unmapped widget type should error")
 	}
 }
