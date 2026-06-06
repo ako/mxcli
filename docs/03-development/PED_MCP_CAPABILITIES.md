@@ -95,12 +95,17 @@ ASSOCIATION`, `CREATE ENUMERATION`, `CREATE VIEW ENTITY`, and `CREATE MICROFLOW`
 (shell + return only), with a dirty-set read router that makes in-session edits
 visible.
 
-Microflow slice: name, parameters, return type, and a Start→End body whose
-EndEvent carries the return expression (computed-value microflows). The
-constructor's `objects`/`flows` are the canvas graph — flows reference objects
-by `$id(/objects/N)` (the update/read path uses `/objectCollection/objects`).
-Microflows with activity bodies (the 130+ Microflows$* object types) are
-rejected with a clear error; full activity coverage is an iterative follow-on.
+Microflow support is now broad: name, parameters, return type, and a recursive
+object/flow graph (positions reused from the executor's layout engine, so the
+MCP-authored canvas matches the file-written one). Supported activities:
+declare/set variable; create/change/commit/delete/retrieve/rollback object;
+create list, change list, aggregate, list operations (head/tail, filter/find by
+expression or attribute, sort, union/intersect/subtract); show message; log;
+call microflow / nanoflow / java action; download file; close page; validation
+feedback. Control flow: if/else ExclusiveSplit + ExclusiveMerge, for-each/while
+LoopedActivity + break/continue. Rejected (PED can't express them faithfully):
+show page (constructor omits the page ref — pages are pg_*), cast, inheritance
+splits, rule-split conditions, contains/equals/range list ops, queue settings.
 
 View-entity choreography (verified): `ped_create_document
 DomainModels$ViewEntitySourceDocument {name}` → `ped_update_document` set
