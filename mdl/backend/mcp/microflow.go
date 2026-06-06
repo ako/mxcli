@@ -13,42 +13,22 @@ const microflowDocType = "Microflows$Microflow"
 
 // CreateMicroflow creates a microflow via ped_create_document.
 //
-// First slice: "shell + return" microflows — name, parameters, return type, and
-// a Start -> End body whose EndEvent carries the return expression (a computed
-// value). Microflows with activity bodies (Create/Change/Retrieve/… objects)
-// are rejected with a clear error; the 130+ activity object types are an
-// iterative follow-on. See docs/03-development/PED_MCP_CAPABILITIES.md.
+// The executor's object graph (Start/End/activities + sequence flows) is mapped
+// onto the PED constructor: each object becomes a /objects entry and each
+// SequenceFlow a /flows entry referencing objects by $id(/objects/N). Adding a
+// new activity is one case in mapMicroflowAction. Object and action types that
+// are not mapped yet are rejected with a clear error (the 130+ Microflows$*
+// types are an iterative follow-on). See docs/03-development/PED_MCP_CAPABILITIES.md.
 func (b *Backend) CreateMicroflow(mf *microflows.Microflow) error {
 	mod, err := b.reader.GetModule(mf.ContainerID)
 	if err != nil {
 		return fmt.Errorf("resolve module for microflow %q: %w", mf.Name, err)
 	}
 
-	// The body must be only Start/End — anything else is an activity we cannot
-	// map yet. Capture the return expression from the (single) EndEvent.
-	var returnValue string
-	endCount := 0
-	if mf.ObjectCollection != nil {
-		for _, o := range mf.ObjectCollection.Objects {
-			switch obj := o.(type) {
-			case *microflows.StartEvent:
-			case *microflows.EndEvent:
-				endCount++
-				returnValue = obj.ReturnValue
-			default:
-				return fmt.Errorf("microflow %q: activity bodies are not yet supported by the MCP backend (only parameters and a return value); found %T", mf.Name, o)
-			}
-		}
-	}
-	if endCount > 1 {
-		return fmt.Errorf("microflow %q: multiple return/end paths are not yet supported by the MCP backend", mf.Name)
-	}
-
-	// Build the canvas objects: parameters, then Start, then End. Parameters are
-	// laid out to the left; the flow connects only Start -> End.
+	// Parameters occupy the first object slots (they are canvas objects but take
+	// part in no flow); the executor's flow objects follow.
 	objects := make([]any, 0, len(mf.Parameters)+2)
-	x := 80
-	for _, p := range mf.Parameters {
+	for i, p := range mf.Parameters {
 		typeName, entity, enumeration, err := mfDataType(p.Type)
 		if err != nil {
 			return fmt.Errorf("microflow %q parameter %q: %w", mf.Name, p.Name, err)
@@ -57,7 +37,7 @@ func (b *Backend) CreateMicroflow(mf *microflows.Microflow) error {
 			"$Type":               "Microflows$MicroflowParameterObject",
 			"name":                p.Name,
 			"type":                typeName,
-			"relativeMiddlePoint": map[string]int{"x": x, "y": 200},
+			"relativeMiddlePoint": canvasPoint(i, 280),
 		}
 		if entity != "" {
 			po["entity"] = entity
@@ -66,28 +46,40 @@ func (b *Backend) CreateMicroflow(mf *microflows.Microflow) error {
 			po["enumeration"] = enumeration
 		}
 		objects = append(objects, po)
-		x += 120
+	}
+	paramCount := len(objects)
+
+	// Map the flow objects (Start/End/activities) and remember each object's
+	// index so SequenceFlows can reference it by $id(/objects/N).
+	idIndex := map[model.ID]int{}
+	if mf.ObjectCollection != nil {
+		for i, o := range mf.ObjectCollection.Objects {
+			pedObj, err := b.mapMicroflowObject(o, paramCount+i)
+			if err != nil {
+				return fmt.Errorf("microflow %q: %w", mf.Name, err)
+			}
+			idIndex[o.GetID()] = paramCount + i
+			objects = append(objects, pedObj)
+		}
 	}
 
-	startIdx := len(objects)
-	objects = append(objects, map[string]any{
-		"$Type":               "Microflows$StartEvent",
-		"relativeMiddlePoint": map[string]int{"x": x, "y": 100},
-	})
-	endIdx := len(objects)
-	endObj := map[string]any{
-		"$Type":               "Microflows$EndEvent",
-		"relativeMiddlePoint": map[string]int{"x": x + 240, "y": 100},
+	flows := make([]any, 0)
+	if mf.ObjectCollection != nil {
+		for _, f := range mf.ObjectCollection.Flows {
+			if f.CaseValue != nil {
+				return fmt.Errorf("microflow %q: conditional flows (splits) are not yet supported by the MCP backend", mf.Name)
+			}
+			oi, ok1 := idIndex[f.OriginID]
+			di, ok2 := idIndex[f.DestinationID]
+			if !ok1 || !ok2 {
+				return fmt.Errorf("microflow %q: a sequence flow references an object that is not supported yet", mf.Name)
+			}
+			flows = append(flows, map[string]any{
+				"originId":      fmt.Sprintf("$id(/objects/%d)", oi),
+				"destinationId": fmt.Sprintf("$id(/objects/%d)", di),
+			})
+		}
 	}
-	if returnValue != "" {
-		endObj["returnValue"] = returnValue
-	}
-	objects = append(objects, endObj)
-
-	flows := []any{map[string]any{
-		"originId":      fmt.Sprintf("$id(/objects/%d)", startIdx),
-		"destinationId": fmt.Sprintf("$id(/objects/%d)", endIdx),
-	}}
 
 	returnTypeName, rtEntity, rtEnum, err := mfDataType(mf.ReturnType)
 	if err != nil {
@@ -168,6 +160,84 @@ func (b *Backend) GetNanoflow(id model.ID) (*microflows.Nanoflow, error) {
 	return b.reader.GetNanoflow(id)
 }
 func (b *Backend) IsRule(qualifiedName string) (bool, error) { return b.reader.IsRule(qualifiedName) }
+
+// canvasPoint lays objects out left-to-right by index. Positions are cosmetic
+// (they do not affect validity); a clean linear layout is enough for the slice.
+func canvasPoint(index, y int) map[string]int {
+	return map[string]int{"x": 120 + index*160, "y": y}
+}
+
+// mapMicroflowObject maps one executor microflow object onto a PED /objects
+// entry. Unmapped object types are rejected.
+func (b *Backend) mapMicroflowObject(o microflows.MicroflowObject, index int) (map[string]any, error) {
+	switch obj := o.(type) {
+	case *microflows.StartEvent:
+		return map[string]any{
+			"$Type":               "Microflows$StartEvent",
+			"relativeMiddlePoint": canvasPoint(index, 120),
+		}, nil
+	case *microflows.EndEvent:
+		m := map[string]any{
+			"$Type":               "Microflows$EndEvent",
+			"relativeMiddlePoint": canvasPoint(index, 120),
+		}
+		if obj.ReturnValue != "" {
+			m["returnValue"] = obj.ReturnValue
+		}
+		return m, nil
+	case *microflows.ActionActivity:
+		action, err := mapMicroflowAction(obj.Action)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{
+			"$Type":               "Microflows$ActionActivity",
+			"relativeMiddlePoint": canvasPoint(index, 120),
+			"action":              action,
+		}, nil
+	default:
+		return nil, fmt.Errorf("microflow object type %T is not yet supported by the MCP backend", o)
+	}
+}
+
+// mapMicroflowAction maps one microflow action onto its PED action element.
+// Add a case here to support a new activity type.
+func mapMicroflowAction(a microflows.MicroflowAction) (map[string]any, error) {
+	switch act := a.(type) {
+	case *microflows.CreateVariableAction:
+		varType, err := mfVariableType(act.DataType)
+		if err != nil {
+			return nil, fmt.Errorf("create variable %q: %w", act.VariableName, err)
+		}
+		m := map[string]any{
+			"$Type":        "Microflows$CreateVariableAction",
+			"variableName": act.VariableName,
+			"variableType": varType,
+		}
+		if act.InitialValue != "" {
+			m["initialValue"] = act.InitialValue
+		}
+		return m, nil
+	default:
+		return nil, fmt.Errorf("microflow action %T is not yet supported by the MCP backend", a)
+	}
+}
+
+// mfVariableType maps a variable's DataType onto the PED CreateVariableAction
+// variableType enum (primitives only).
+func mfVariableType(dt microflows.DataType) (string, error) {
+	if dt == nil {
+		return "", fmt.Errorf("missing variable type")
+	}
+	switch dt.GetTypeName() {
+	case "Boolean", "Decimal", "Integer", "String", "DateTime":
+		return dt.GetTypeName(), nil
+	case "Date":
+		return "DateTime", nil
+	default:
+		return "", fmt.Errorf("variable type %q is not supported by the MCP backend (primitives only)", dt.GetTypeName())
+	}
+}
 
 // mfDataType maps a microflow DataType onto the PED parameter/return type enum,
 // returning (typeName, entityQualifiedName, enumerationQualifiedName). A nil

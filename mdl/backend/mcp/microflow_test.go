@@ -55,3 +55,36 @@ func TestMfDataType_UnsupportedErrors(t *testing.T) {
 		t.Error("Long is not in the PED param/return enum and should error")
 	}
 }
+
+func TestMapMicroflowAction_CreateVariable(t *testing.T) {
+	m, err := mapMicroflowAction(&microflows.CreateVariableAction{
+		VariableName: "Result",
+		DataType:     &microflows.IntegerType{},
+		InitialValue: "$N * 5",
+	})
+	if err != nil {
+		t.Fatalf("mapMicroflowAction: %v", err)
+	}
+	if m["$Type"] != "Microflows$CreateVariableAction" || m["variableName"] != "Result" ||
+		m["variableType"] != "Integer" || m["initialValue"] != "$N * 5" {
+		t.Fatalf("unexpected mapping: %+v", m)
+	}
+}
+
+func TestMapMicroflowAction_Unsupported(t *testing.T) {
+	if _, err := mapMicroflowAction(&microflows.CommitObjectsAction{}); err == nil {
+		t.Error("an unmapped action type should error")
+	}
+}
+
+func TestMfVariableType(t *testing.T) {
+	if got, err := mfVariableType(&microflows.StringType{}); err != nil || got != "String" {
+		t.Errorf("String: %q/%v", got, err)
+	}
+	if got, err := mfVariableType(&microflows.DateType{}); err != nil || got != "DateTime" {
+		t.Errorf("Date should map to DateTime: %q/%v", got, err)
+	}
+	if _, err := mfVariableType(&microflows.ObjectType{}); err == nil {
+		t.Error("object variable type should be rejected (primitives only)")
+	}
+}
