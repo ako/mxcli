@@ -178,6 +178,41 @@ func TestSearch_PaginatesPastFirstPage(t *testing.T) {
 	}
 }
 
+// TestSearch_OnProgress: the progress callback fires after each batch with a
+// monotonic, cumulative count of items scanned, ending at the total scanned.
+func TestSearch_OnProgress(t *testing.T) {
+	client, _ := newMockServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Query().Get("offset") {
+		case "0":
+			_, _ = w.Write([]byte(contentPage(1, 100, ""))) // full page
+		case "100":
+			_, _ = w.Write([]byte(contentPage(200, 100, ""))) // full page
+		case "200":
+			_, _ = w.Write([]byte(contentPage(400, 30, ""))) // short page -> end
+		default:
+			_, _ = w.Write([]byte(`{"items":[]}`))
+		}
+	})
+
+	var calls []int
+	client.OnProgress = func(scanned int) { calls = append(calls, scanned) }
+
+	if _, err := client.Search(context.Background(), "nomatch", 20); err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) == 0 {
+		t.Fatal("OnProgress was never called")
+	}
+	for i := 1; i < len(calls); i++ {
+		if calls[i] < calls[i-1] {
+			t.Errorf("progress not monotonic: %v", calls)
+		}
+	}
+	if got := calls[len(calls)-1]; got != 230 { // 100 + 100 + 30
+		t.Errorf("final scanned = %d, want 230 (total items returned)", got)
+	}
+}
+
 // TestSearch_FirstPageAlone: when enough matches appear on the first (full)
 // page, search stops there — a single request — without firing the concurrent
 // follow-on batch. This keeps the common case fast.

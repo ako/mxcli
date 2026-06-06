@@ -38,6 +38,12 @@ const (
 type Client struct {
 	httpClient *http.Client
 	baseURL    string
+
+	// OnProgress, if set, is called after each batch of a keyword Search with
+	// the cumulative number of catalog items scanned so far. Used by the CLI to
+	// show progress during a long client-side scan. Called from Search's
+	// goroutine (not the fetch workers), so it needs no synchronisation.
+	OnProgress func(scanned int)
 }
 
 // New returns a marketplace client bound to the given HTTP client.
@@ -83,6 +89,7 @@ func (c *Client) Search(ctx context.Context, query string, limit int) (*ContentL
 	// (near-full scan) is a handful of round-trips instead of ~23 sequential
 	// ones. Stops at `limit` matches or end-of-catalog (a short page).
 	var matched []Content
+	scanned := 0
 	for page := 0; page < maxSearchPages; {
 		batch := searchConcurrency
 		if page == 0 {
@@ -100,9 +107,13 @@ func (c *Client) Search(ctx context.Context, query string, limit int) (*ContentL
 		endReached := false
 		for _, items := range pages {
 			matched = append(matched, filterItems(items, query)...)
+			scanned += len(items)
 			if len(items) < pageSize {
 				endReached = true
 			}
+		}
+		if c.OnProgress != nil {
+			c.OnProgress(scanned)
 		}
 		if limit > 0 && len(matched) >= limit {
 			matched = matched[:limit]

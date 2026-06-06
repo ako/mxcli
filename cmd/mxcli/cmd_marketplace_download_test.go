@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"os"
@@ -12,6 +13,28 @@ import (
 
 	"github.com/mendixlabs/mxcli/internal/marketplace"
 )
+
+func TestStartSearchProgress_Gating(t *testing.T) {
+	t.Run("nil for --json", func(t *testing.T) {
+		c := marketplace.New(http.DefaultClient)
+		if startSearchProgress(c, os.Stderr, true) != nil {
+			t.Error("expected no progress for --json output")
+		}
+		if c.OnProgress != nil {
+			t.Error("OnProgress must stay unset for --json")
+		}
+	})
+	t.Run("nil for non-terminal writer", func(t *testing.T) {
+		c := marketplace.New(http.DefaultClient)
+		// A bytes.Buffer is not an *os.File, so it's never an interactive terminal.
+		if startSearchProgress(c, &bytes.Buffer{}, false) != nil {
+			t.Error("expected no progress for a non-terminal writer (pipe/buffer)")
+		}
+		if c.OnProgress != nil {
+			t.Error("OnProgress must stay unset for a non-terminal writer")
+		}
+	})
+}
 
 func TestResolveVersion(t *testing.T) {
 	versions := []marketplace.Version{

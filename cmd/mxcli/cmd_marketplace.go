@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/mendixlabs/mxcli/internal/auth"
 	"github.com/mendixlabs/mxcli/internal/marketplace"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 var marketplaceCmd = &cobra.Command{
@@ -207,6 +209,15 @@ func runMarketplaceSearch(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
+	// The Content API has no server-side search, so a rare query scans much of
+	// the catalog. Show progress on an interactive terminal so it doesn't look
+	// hung. Skipped for --json and non-terminal stderr (pipes, CI).
+	stderr := cmd.ErrOrStderr()
+	if progressDone := startSearchProgress(client, stderr, asJSON); progressDone != nil {
+		defer progressDone()
+	}
+
 	list, err := client.Search(cmd.Context(), query, limit)
 	if err != nil {
 		return err
@@ -215,6 +226,25 @@ func runMarketplaceSearch(cmd *cobra.Command, args []string) error {
 		return emitJSON(cmd, list)
 	}
 	return renderContentTable(cmd, list.Items)
+}
+
+// startSearchProgress wires a live "scanning" indicator on client.OnProgress
+// when stderr is an interactive terminal and output isn't JSON. It returns a
+// cleanup func that clears the progress line, or nil when no progress is shown.
+func startSearchProgress(client *marketplace.Client, stderr io.Writer, asJSON bool) func() {
+	if asJSON {
+		return nil
+	}
+	f, ok := stderr.(*os.File)
+	if !ok || !term.IsTerminal(int(f.Fd())) {
+		return nil
+	}
+	client.OnProgress = func(scanned int) {
+		fmt.Fprintf(stderr, "\rSearching marketplace… %d items scanned", scanned)
+	}
+	return func() {
+		fmt.Fprint(stderr, "\r\033[K") // clear the progress line
+	}
 }
 
 func runMarketplaceInfo(cmd *cobra.Command, args []string) error {
