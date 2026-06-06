@@ -4,10 +4,13 @@ package modelsdkbackend
 
 import (
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/mendixlabs/mxcli/modelsdk/codec"
 	"github.com/mendixlabs/mxcli/modelsdk/element"
 	genDm "github.com/mendixlabs/mxcli/modelsdk/gen/domainmodels"
+	genTexts "github.com/mendixlabs/mxcli/modelsdk/gen/texts"
 	mmpr "github.com/mendixlabs/mxcli/modelsdk/mpr"
 
 	"github.com/mendixlabs/mxcli/model"
@@ -122,7 +125,7 @@ func (b *Backend) CreateEntity(domainModelID model.ID, entity *domainmodel.Entit
 	if err != nil {
 		return err
 	}
-	ge := entityToGen(entity)
+	ge := entityToGen(entity, b.moduleNameFor(domainModelID))
 	assignEntityIDs(ge)
 	dm.AddEntities(ge)
 
@@ -164,7 +167,7 @@ func (b *Backend) loadDomainModelGen(id model.ID) (*genDm.DomainModel, error) {
 // generalization (NoGeneralization with persistability + system-attribute flags,
 // or a Generalization parent ref). Attributes/indexes/access rules come with the
 // domain-model breadth step.
-func entityToGen(e *domainmodel.Entity) *genDm.Entity {
+func entityToGen(e *domainmodel.Entity, moduleName string) *genDm.Entity {
 	out := genDm.NewEntity()
 	out.SetName(e.Name)
 	out.SetDocumentation(e.Documentation)
@@ -203,7 +206,81 @@ func entityToGen(e *domainmodel.Entity) *genDm.Entity {
 	for _, a := range e.Attributes {
 		out.AddAttributes(attributeToGen(a))
 	}
+	// Validation rules reference their attribute by qualified name
+	// (Module.Entity.Attr); resolve attribute IDs → names within this entity.
+	if len(e.ValidationRules) > 0 {
+		attrName := make(map[model.ID]string, len(e.Attributes))
+		for _, a := range e.Attributes {
+			attrName[a.ID] = a.Name
+		}
+		for _, vr := range e.ValidationRules {
+			out.AddValidationRules(validationRuleToGen(vr, moduleName, e.Name, attrName))
+		}
+	}
 	return out
+}
+
+// validationRuleToGen converts a domainmodel.ValidationRule: the attribute it
+// targets (by qualified name), an optional Message text, and the RuleInfo.
+func validationRuleToGen(vr *domainmodel.ValidationRule, moduleName, entityName string, attrName map[model.ID]string) *genDm.ValidationRule {
+	out := genDm.NewValidationRule()
+	qn := string(vr.AttributeID)
+	if !strings.Contains(qn, ".") {
+		if n, ok := attrName[vr.AttributeID]; ok {
+			qn = fmt.Sprintf("%s.%s.%s", moduleName, entityName, n)
+		}
+	}
+	out.SetAttributeQualifiedName(qn)
+	if vr.ErrorMessage != nil && len(vr.ErrorMessage.Translations) > 0 {
+		out.SetErrorMessage(textToGen(vr.ErrorMessage))
+	}
+	out.SetRuleInfo(ruleInfoToGen(vr.Type))
+	return out
+}
+
+// ruleInfoToGen maps a validation rule type to its RuleInfo element.
+func ruleInfoToGen(ruleType string) element.Element {
+	switch ruleType {
+	case "Unique":
+		return genDm.NewUniqueRuleInfo()
+	case "Required":
+		return genDm.NewRequiredRuleInfo()
+	default:
+		return genDm.NewRequiredRuleInfo()
+	}
+}
+
+// textToGen converts a model.Text to a gen Texts$Text with sorted translations.
+func textToGen(t *model.Text) *genTexts.Text {
+	out := genTexts.NewText()
+	langs := make([]string, 0, len(t.Translations))
+	for lang := range t.Translations {
+		langs = append(langs, lang)
+	}
+	sort.Strings(langs)
+	for _, lang := range langs {
+		tr := genTexts.NewTranslation()
+		tr.SetLanguageCode(lang)
+		tr.SetText(t.Translations[lang])
+		out.AddTranslations(tr)
+	}
+	return out
+}
+
+// moduleNameFor returns the name of the module that contains the given unit.
+func (b *Backend) moduleNameFor(unitID model.ID) string {
+	units, err := b.reader.ListUnits()
+	if err != nil {
+		return ""
+	}
+	for _, u := range units {
+		if u.ID == string(unitID) {
+			if mi, _ := b.reader.GetModule(u.ContainerID); mi != nil {
+				return mi.Name
+			}
+		}
+	}
+	return ""
 }
 
 // attributeToGen converts a domainmodel.Attribute to its gen form: name,
@@ -274,6 +351,20 @@ func assignEntityIDs(e *genDm.Entity) {
 		if a, ok := el.(*genDm.Attribute); ok {
 			assignID(a.Type())
 			assignID(a.Value())
+		}
+	}
+	for _, el := range e.ValidationRulesItems() {
+		assignID(el)
+		if vr, ok := el.(*genDm.ValidationRule); ok {
+			assignID(vr.RuleInfo())
+			if msg := vr.ErrorMessage(); msg != nil {
+				assignID(msg)
+				if txt, ok := msg.(*genTexts.Text); ok {
+					for _, tr := range txt.TranslationsItems() {
+						assignID(tr)
+					}
+				}
+			}
 		}
 	}
 }

@@ -3267,7 +3267,7 @@ func (o *ValidationRule) InitFromRaw(raw bson.Raw) {
 			o.attribute.SetFromDecode(s)
 		}
 	}
-	if child, err := codec.DecodeChild(raw, "ErrorMessage"); err == nil {
+	if child, err := codec.DecodeChild(raw, "Message"); err == nil { // PATCH: storage key is "Message" (see initValidationRule)
 		o.errorMessage.SetFromDecode(child)
 	}
 	if child, err := codec.DecodeChild(raw, "RuleInfo"); err == nil {
@@ -4537,7 +4537,11 @@ func initValidationRule() *ValidationRule {
 	o.SetTypeName("DomainModels$ValidationRule")
 	o.attribute = property.NewByNameRef[element.Element]("Attribute", "DomainModels$Attribute")
 	o.attribute.Bind(&o.Base, 0)
-	o.errorMessage = property.NewPart[element.Element]("ErrorMessage")
+	// PATCH: Studio Pro's BSON storage key is "Message", not the SDK property
+	// name "ErrorMessage" (verified vs real test7 BSON). The permanent fix is a
+	// property-key override in internal/codegen/supplements.json once the codegen
+	// is vendored; until then this hand-correction keeps read+write faithful.
+	o.errorMessage = property.NewPart[element.Element]("Message")
 	o.errorMessage.Bind(&o.Base, 1)
 	o.ruleInfo = property.NewPart[element.Element]("RuleInfo")
 	o.ruleInfo.Bind(&o.Base, 2)
