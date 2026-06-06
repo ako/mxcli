@@ -464,3 +464,34 @@ divergence. This is the one genuinely new piece of tooling; engalar's `cmd_bson_
 **Effort:** L overall; **Risk: Med–High**, concentrated in step 2 (encoder fidelity is the
 unknown). Everything stays behind `MXCLI_ENGINE`/`compare`; `legacy` remains the default and the
 source of truth until the canonical-BSON gate is consistently green.
+
+### Phase 2 slice results — CreateEntity (2026-06-06)
+
+Built the `CreateEntity` write slice + the BSON write-parity harness (`3d1a50f7`). The
+encoder-fidelity question is **answered, and the news is good**:
+
+- **Write path works end-to-end.** Connect opens read-write; `CreateEntity` runs the
+  `domainmodel→gen` adapter, mutates the DM element, roundtrip-encodes, `UpdateRawUnit`.
+  Create → reopen → the entity persists with the right properties.
+- **Cross-engine compatible.** The *legacy* engine reads the modelsdk-written project
+  correctly — strong structural-validity evidence absent a 10.24 `mx` locally.
+- **BSON parity: every emitted field matches legacy** — `$Type` (`DomainModels$EntityImpl`),
+  Documentation, ExportLevel, Location, Name, and the full `MaybeGeneralization`
+  (`NoGeneralization{Persistable}`) — verified by `CanonicalizeRaw` (walks `bson.Raw`;
+  `bson.M` unmarshal mis-decodes Mendix typed arrays) with IDs/GUIDs masked.
+- **Found+fixed an over-emission:** the adapter initially set `HasOwner/…=false`, which
+  legacy omits; now flags are set only when true → `MaybeGeneralization` matches exactly.
+
+**The lone residual** (tracked, `write_test` self-flags when closed): modelsdk omits the
+entity `GUID` and the **empty** member arrays (`Attributes/AccessRules/ValidationRules/
+Indexes/Events`, which legacy emits as a single typed-array marker `[3]`). Root cause is
+**engine-level, not the adapter**: `genDm.NewEntity` has a pending `applyDefaults` (engalar
+Fix 4) and the encoder only emits *dirty* properties for fresh elements (so unset PartLists
+and the unsettable `GUID` don't appear). Studio Pro / legacy read it fine → completeness, not
+correctness. **Decision:** close it at the engine layer (applyDefaults + GUID), not by hand in
+each adapter — it's shared across all write types, so fixing it once unblocks the breadth step.
+
+**Net:** the crux risk of Phase 2 (does the codec write legacy-matching BSON?) is retired —
+the engine writes *correct, parity* BSON for everything it emits; the only work left for full
+parity is the shared `applyDefaults`/GUID engine fix, then growing the write adapter
+(attributes, associations, …).
