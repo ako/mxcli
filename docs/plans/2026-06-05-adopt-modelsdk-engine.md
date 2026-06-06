@@ -538,3 +538,26 @@ codec roundtrip tests unaffected; broad sweep green.
 defaults (each carries a GUID) as those write paths land, and grow `entityToGen` to convert
 attributes/associations/generalization detail. The applyDefaults *mechanism* is now in place, so
 each new write type is just a converter + a registry entry.
+
+### Phase 2/3 write breadth — generalization ✅, validations ✅, indexes ⚠️ (2026-06-06)
+
+- **Generalization (EXTENDS)**: already worked via SetGeneralizationQualifiedName; added a
+  regression test.
+- **Validation rules**: implemented (Required/Unique) — attribute by qualified name, Message
+  text (Texts$Text + Translations), RuleInfo. Required a vendored-gen storage-key correction:
+  the message property serialized as `ErrorMessage` but Studio Pro's key is `Message` (verified
+  vs test7 BSON) — patched in gen with a tracking comment; permanent fix is a supplements.json
+  override once codegen is vendored. Write-parity strict.
+- **Indexes ⚠️ DEFERRED — legacy baseline is unreliable here.** This is the first write type
+  where the **legacy serializer disagrees with real Studio Pro**: legacy emits a `SortOrder`
+  string on `IndexedAttribute`, but the authoritative MCP model schema (`ped_get_schema
+  DomainModels$Index`) shows `ascending`(bool) + `type`(Normal/CreatedDate/…) + `attribute`
+  (by-id) — which matches the **gen** metamodel, not legacy. Legacy's `SortOrder` is almost
+  certainly stale (older Mendix). Consequences:
+  - The gen-native serialization (`Ascending`/`Type`/`AttributePointer`) is very likely correct
+    for 11.x, but **the write-parity-vs-legacy gate cannot confirm it** (legacy is wrong).
+  - **Resolution = an MCP index-BSON capture**: add an index via MCP → save → dump the `.mxunit`
+    to confirm the exact 11.x keys, then implement to match (and likely *fix legacy* too).
+  - No index conversion was shipped — better to leave it unimplemented than ship a guess against
+    an unreliable baseline. (Indexes are rare; the inline `index(...)` path stays legacy-only for
+    now.) This is exactly the case the MCP oracle exists for.
