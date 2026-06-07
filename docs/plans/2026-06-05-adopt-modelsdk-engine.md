@@ -613,3 +613,25 @@ modelsdk+index = **17 errors** (all pre-existing OdTest/OData issues); **zero** 
 errors in either engine. Both engines now produce byte-identical, Studio-Pro-faithful index BSON.
 `TestWriteParity_Index` asserts both match the MCP-captured truth. The modelsdk write slice now
 covers entity/attributes/associations/generalization/validations/indexes.
+
+### Domain-model deletes shipped; ALTER needs lossless reads (2026-06-06)
+
+Added `DeleteEntity` (+ legacy's cross-DM association cascade), `DeleteAttribute`, and
+`UpdateEntity` to the modelsdk backend. `DROP ENTITY` passes strict parity (kept entity is
+byte-faithful passthrough; dropped entity + dangling associations removed in both engines).
+
+**Blocker surfaced for ALTER ENTITY.** The executor routes *every* ALTER op (rename, doc,
+add/modify/drop attribute, generalization, index) through `UpdateEntity(domainmodel.Entity)` —
+a read-modify-write. `UpdateEntity` is implemented and correct (rebuilds the target via
+`entityToGen`, siblings pass through in order), but it's bottlenecked by a **lossy read
+adapter**: `entityFromGen` carries only attribute *names* (no type/length/default), drops entity
+`Location`, and reduces indexes/validations/access-rules/events to bare IDs. `entityToGen` also
+doesn't yet rebuild access rules or event handlers. So a round-tripped entity diverges from
+legacy (proven: `TestWriteParity_DropAttribute`, currently skipped).
+
+**Next gate: a lossless modelsdk read adapter.** Make `entityFromGen`/`attributeFromGen`
+round-trip-complete (attribute types incl. Length/enum-ref/default, Location, full
+index/validation/access-rule/event detail) and extend `entityToGen` to match. This unblocks ALL
+ALTER ENTITY ops at once. The codec's passthrough strength suggests an alternative worth
+weighing: have ALTER mutate the decoded gen tree directly instead of round-tripping through the
+lossy domainmodel.Entity — but that diverges from the executor's current UpdateEntity contract.
