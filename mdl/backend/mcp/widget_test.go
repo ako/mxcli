@@ -167,6 +167,29 @@ func TestCustomWidgetXPathSource_Sort(t *testing.T) {
 	}
 }
 
+func TestCustomWidgetXPathSource_Constraint(t *testing.T) {
+	src := customWidgetXPathSource(&pages.DatabaseSource{
+		EntityName:      "PgTest.Order",
+		XPathConstraint: "[OrderNumber > 100]",
+	})
+	if src["xPathConstraint"] != "[OrderNumber > 100]" {
+		t.Fatalf("xPathConstraint: %+v", src["xPathConstraint"])
+	}
+	// No constraint -> no key.
+	plain := customWidgetXPathSource(&pages.DatabaseSource{EntityName: "PgTest.Order"})
+	if _, ok := plain["xPathConstraint"]; ok {
+		t.Fatalf("unexpected xPathConstraint on unconstrained source: %+v", plain)
+	}
+}
+
+func TestMapDataViewSource_ConstraintRejected(t *testing.T) {
+	// pg's Pages$DataViewSource silently drops a constraint, so it must be rejected.
+	_, err := mapDataViewSource(&pages.DatabaseSource{EntityName: "Sales.Order", XPathConstraint: "[Total > 0]"})
+	if err == nil {
+		t.Error("data-view database source with an XPath constraint should be rejected")
+	}
+}
+
 func TestMapCustomWidget_Gallery(t *testing.T) {
 	b := &Backend{}
 	wb, _ := b.LoadWidgetTemplate("com.mendix.widget.web.gallery.Gallery", "")

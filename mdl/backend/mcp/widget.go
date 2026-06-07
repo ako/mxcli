@@ -192,11 +192,12 @@ func (w *mcpWidgetBuilder) SetDataSource(propertyKey string, ds pages.DataSource
 // association combobox). A `sort by` clause becomes the grid sort bar.
 // Microflow/other sources are not yet mapped.
 func customWidgetXPathSource(ds pages.DataSource) map[string]any {
-	var entity string
+	var entity, constraint string
 	var sorting []*pages.GridSort
 	switch s := ds.(type) {
 	case *pages.DatabaseSource:
 		entity = s.EntityName
+		constraint = s.XPathConstraint
 		sorting = s.Sorting
 	case *pages.DataViewSource:
 		entity = s.EntityName
@@ -208,6 +209,9 @@ func customWidgetXPathSource(ds pages.DataSource) map[string]any {
 		"$Type":            "CustomWidgets$CustomWidgetXPathSource",
 		"entityRef":        map[string]any{"$Type": "DomainModels$DirectEntityRef", "entity": entity},
 		"forceFullObjects": false,
+	}
+	if constraint != "" {
+		src["xPathConstraint"] = constraint
 	}
 	if len(sorting) > 0 {
 		src["sortBar"] = gridSortBar(sorting)

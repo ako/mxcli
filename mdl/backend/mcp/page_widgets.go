@@ -298,7 +298,11 @@ func mapDataViewSource(ds pages.DataSource) (map[string]any, error) {
 		}, nil
 	case *pages.DatabaseSource:
 		if s.XPathConstraint != "" || len(s.Sorting) > 0 {
-			return nil, fmt.Errorf("database data source with an XPath constraint or sorting is not yet supported by the MCP backend")
+			// pg's Pages$DataViewSource has no constraint/sort fields and silently
+			// drops them, so reject rather than write a misleading widget. (XPath
+			// constraints and sorting ARE supported on the pluggable DataGrid 2 /
+			// Gallery, which use CustomWidgets$CustomWidgetXPathSource.)
+			return nil, fmt.Errorf("an XPath constraint or sorting on a data-view/list-view database source is not supported by pg (use a DataGrid 2 or Gallery, which support both)")
 		}
 		if s.EntityName == "" {
 			return nil, fmt.Errorf("database data source has no entity")

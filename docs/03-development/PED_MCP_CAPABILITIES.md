@@ -157,7 +157,13 @@ translates the shared engine's storage-agnostic calls:
   via auto-datasource, which reads the DataSource property `PropertyTypeIDs`
   reports from the def; ComboBox/Gallery map it explicitly in their shared
   def.json). A `sort by` clause becomes the `Pages$GridSortBar` (`sortItems` with
-  `attributeRef` + `sortDirection`). (Page datasources have no grouping concept.)
+  `attributeRef` + `sortDirection`), and a `where [...]` clause becomes the
+  source's `xPathConstraint`. (Page datasources have no grouping concept.) Both
+  are supported only on the pluggable `CustomWidgetXPathSource` (DataGrid 2 /
+  Gallery / association ComboBox); pg's `Pages$DataViewSource` (DataView /
+  ListView) has no such fields and silently drops them, so a constraint/sort on a
+  data-view/list-view database source is rejected with a clear error rather than
+  written and lost.
 - `SetObjectList` → generic object-list items (DataGrid 2 `columns`): operation
   kind → pg shape, text-template keys take pg's `ct:` prefix.
 - `SetChildWidgets` → Widgets-typed slots (Gallery `content` template), mapped
