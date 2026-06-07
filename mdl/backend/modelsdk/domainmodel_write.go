@@ -231,6 +231,80 @@ func entityToGen(e *domainmodel.Entity, moduleName string) *genDm.Entity {
 	for _, idx := range e.Indexes {
 		out.AddIndexes(indexToGen(idx))
 	}
+	if len(e.AccessRules) > 0 {
+		// Member accesses are kept in sync with the entity's attributes: every
+		// attribute has a MemberAccess in each rule, new ones joining with the
+		// rule's default rights. This matches Studio Pro / the legacy writer,
+		// which auto-extend access rules when an attribute is added.
+		attrQNames := make([]string, 0, len(e.Attributes))
+		for _, a := range e.Attributes {
+			attrQNames = append(attrQNames, fmt.Sprintf("%s.%s.%s", moduleName, e.Name, a.Name))
+		}
+		for _, ar := range e.AccessRules {
+			gar := accessRuleToGen(ar)
+			syncMemberAccesses(gar, attrQNames)
+			out.AddAccessRules(gar)
+		}
+	}
+	return out
+}
+
+// syncMemberAccesses ensures the access rule has a MemberAccess for every
+// attribute qualified name, adding any missing one with the rule's default
+// rights (mirrors Studio Pro extending access rules when an attribute is added).
+func syncMemberAccesses(gar *genDm.AccessRule, attrQNames []string) {
+	have := make(map[string]bool)
+	for _, el := range gar.MemberAccessesItems() {
+		if ma, ok := el.(*genDm.MemberAccess); ok {
+			have[ma.AttributeQualifiedName()] = true
+		}
+	}
+	rights := gar.DefaultMemberAccessRights()
+	for _, qn := range attrQNames {
+		if !have[qn] {
+			ma := genDm.NewMemberAccess()
+			ma.SetAccessRights(rights)
+			ma.SetAttributeQualifiedName(qn)
+			gar.AddMemberAccesses(ma)
+		}
+	}
+}
+
+// accessRuleToGen converts a domainmodel.AccessRule to a gen AccessRule. Mirrors
+// the legacy serializer: module roles as a by-name list (the codec emits the
+// marker-1 ByNameRefList), AllowCreate/AllowDelete (read/write are per-member),
+// DefaultMemberAccessRights defaulting to "None", XPath + empty caption/doc, and
+// the per-member accesses.
+func accessRuleToGen(ar *domainmodel.AccessRule) *genDm.AccessRule {
+	out := genDm.NewAccessRule()
+	out.SetModuleRolesQualifiedNames(ar.ModuleRoleNames)
+	out.SetAllowCreate(ar.AllowCreate)
+	out.SetAllowDelete(ar.AllowDelete)
+	dmar := string(ar.DefaultMemberAccessRights)
+	if dmar == "" {
+		dmar = "None"
+	}
+	out.SetDefaultMemberAccessRights(dmar)
+	out.SetXPathConstraint(ar.XPathConstraint)
+	out.SetXPathConstraintCaption("")
+	out.SetDocumentation("")
+	for _, ma := range ar.MemberAccesses {
+		out.AddMemberAccesses(memberAccessToGen(ma))
+	}
+	return out
+}
+
+// memberAccessToGen converts a domainmodel.MemberAccess to a gen MemberAccess.
+// A member targets either an attribute or an association (by qualified name).
+func memberAccessToGen(ma *domainmodel.MemberAccess) *genDm.MemberAccess {
+	out := genDm.NewMemberAccess()
+	out.SetAccessRights(string(ma.AccessRights))
+	if ma.AttributeName != "" {
+		out.SetAttributeQualifiedName(ma.AttributeName)
+	}
+	if ma.AssociationName != "" {
+		out.SetAssociationQualifiedName(ma.AssociationName)
+	}
 	return out
 }
 
@@ -407,6 +481,14 @@ func assignEntityIDs(e *genDm.Entity) {
 		if idx, ok := el.(*genDm.Index); ok {
 			for _, seg := range idx.AttributesItems() {
 				assignID(seg)
+			}
+		}
+	}
+	for _, el := range e.AccessRulesItems() {
+		assignID(el)
+		if ar, ok := el.(*genDm.AccessRule); ok {
+			for _, ma := range ar.MemberAccessesItems() {
+				assignID(ma)
 			}
 		}
 	}

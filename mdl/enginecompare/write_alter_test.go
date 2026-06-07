@@ -33,6 +33,41 @@ func TestWriteParity_DropAttribute(t *testing.T) {
 	}
 }
 
+// TestWriteParity_AlterKeepsAccessRule verifies that ALTERing an entity which
+// already has an access rule preserves that rule (and its member accesses) on the
+// codec round-trip. The role/entity/grant are set up via the legacy engine on
+// both copies so the starting state is identical; only the final ALTER differs by
+// engine. This is the path the UpdateEntity guard used to refuse.
+func TestWriteParity_AlterKeepsAccessRule(t *testing.T) {
+	const ent = "MyFirstModule.AREnt"
+	setup := []string{
+		"CREATE MODULE ROLE MyFirstModule.ARRole",
+		"CREATE PERSISTENT ENTITY " + ent + " ( Code: string(20), Rank: integer )",
+		"GRANT MyFirstModule.ARRole ON " + ent + " (read *, write *)",
+	}
+	alter := "ALTER ENTITY " + ent + " ADD ATTRIBUTE Extra: boolean"
+
+	run := func(alterEng Engine) string {
+		p := copyProject(t)
+		for _, s := range setup {
+			if _, e := Run(Legacy, p, s); e != nil {
+				t.Fatalf("setup %q: %v", s, e)
+			}
+		}
+		if _, e := Run(alterEng, p, alter); e != nil {
+			t.Fatalf("%s alter: %v", alterEng, e)
+		}
+		s, e := EntityCanonBSON(p, "MyFirstModule", "AREnt")
+		if e != nil {
+			t.Fatalf("%s canon: %v", alterEng, e)
+		}
+		return s
+	}
+	if leg, msd := run(Legacy), run(ModelSDK); leg != msd {
+		t.Errorf("ALTER-keeps-access-rule divergence:\nlegacy:   %s\nmodelsdk: %s", leg, msd)
+	}
+}
+
 // alterSeq runs a CREATE then an ALTER as two sessions (so the ALTER loads the
 // entity from disk: read-modify-write), returning the entity's canonical BSON.
 func alterSeq(t *testing.T, eng Engine, create, alter, module, entity string) string {

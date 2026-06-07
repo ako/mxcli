@@ -656,3 +656,26 @@ an entity that has either ("use the legacy engine") rather than silently droppin
 this needs `accessRuleFromGen`/`eventHandlerFromGen` + `entityToGen` support (MemberAccess, roles,
 XPath) — a focused follow-up. modelsdk write slice now: entity/attributes/associations/
 generalization/validations/indexes (create) + DROP ENTITY + ALTER ENTITY (no access-rule entities).
+
+### Access rules round-trip; full-codec decision recorded (2026-06-06)
+
+ADR-0004 records the decision: route **all** document types through the codec (not engalar's
+implicit hybrid). Investigating the engalar fork confirmed engalar never codec-ified domain-model
+writes — `feat/modelsdk-core` ships the codec as a library but every domain-model write still
+delegates to `sdk/mpr`. So our codec-based domain-model write path is net-new.
+
+Closed the access-rule half of the ALTER gap:
+- `accessRuleFromGen`/`memberAccessFromGen` (lossless read: module roles by name, allow flags,
+  default rights, XPath, per-member accesses) and `accessRuleToGen`/`memberAccessToGen` (forward).
+- The codec already handles the marker-1 `ByNameRefList` (AllowedModuleRoles), so no codec change.
+- **Member-access sync**: on write, every access rule gets a MemberAccess for each attribute, new
+  ones joining with the rule's default rights — verified (via raw BSON) to match what legacy /
+  Studio Pro write when an attribute is added to an access-controlled entity. (Legacy's own source
+  for this sync was not locatable statically; we matched the observed on-disk output and gated it
+  with `TestWriteParity_AlterKeepsAccessRule`.)
+
+`UpdateEntity` now only refuses entities with **event handlers** — the gen wires BSON keys
+Event/PassEventObject while legacy emits Type/SendInputParameter, a discrepancy needing a real
+Studio-Pro reference to settle (an MCP capture, like the index spec) before it can be round-tripped.
+modelsdk domain-model write surface: create (entity/attrs/assoc/gen/validations/indexes) + DROP
+ENTITY + ALTER ENTITY (incl. access-rule entities; event-handler entities still deferred).

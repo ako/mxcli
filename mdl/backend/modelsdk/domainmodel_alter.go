@@ -112,12 +112,11 @@ func (b *Backend) UpdateEntity(domainModelID model.ID, entity *domainmodel.Entit
 	if existing == nil {
 		return fmt.Errorf("entity not found: %s", entity.ID)
 	}
-	// entityToGen does not yet rebuild access rules or event handlers, and the
-	// read adapter does not yet round-trip them — so rebuilding would silently
-	// drop them. Refuse rather than corrupt; the legacy engine handles these.
-	if len(existing.AccessRulesItems()) > 0 {
-		return fmt.Errorf("UpdateEntity: modelsdk engine cannot yet ALTER an entity with access rules (%s) — use the legacy engine", entity.ID)
-	}
+	// Event handlers are not round-tripped yet: the gen wires BSON keys
+	// Event/PassEventObject while the legacy serializer emits Type/SendInputParameter,
+	// a discrepancy that needs a real Studio-Pro reference to settle (cf. the index
+	// capture). Until then, refuse rather than risk corrupting them. Access rules,
+	// by contrast, are round-tripped (accessRuleFromGen/accessRuleToGen).
 	if len(existing.EventHandlersItems()) > 0 {
 		return fmt.Errorf("UpdateEntity: modelsdk engine cannot yet ALTER an entity with event handlers (%s) — use the legacy engine", entity.ID)
 	}

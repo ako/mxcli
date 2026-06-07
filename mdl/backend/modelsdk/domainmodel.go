@@ -96,9 +96,9 @@ func entityFromGen(e *genDm.Entity) *domainmodel.Entity {
 		}
 	}
 	for _, el := range e.AccessRulesItems() {
-		ar := &domainmodel.AccessRule{}
-		ar.ID = model.ID(el.ID())
-		out.AccessRules = append(out.AccessRules, ar)
+		if ar, ok := el.(*genDm.AccessRule); ok {
+			out.AccessRules = append(out.AccessRules, accessRuleFromGen(ar))
+		}
 	}
 	for _, el := range e.IndexesItems() {
 		if idx, ok := el.(*genDm.Index); ok {
@@ -144,6 +144,40 @@ func attributeFromGen(a *genDm.Attribute) *domainmodel.Attribute {
 		attr.Value = &domainmodel.AttributeValue{DefaultValue: sv.DefaultValue()}
 	}
 	return attr
+}
+
+// accessRuleFromGen converts a gen AccessRule to a lossless domainmodel.AccessRule
+// (module roles by qualified name, allow flags, default member rights, XPath, and
+// per-member accesses) so ALTER ENTITY preserves entity security on round-trip.
+// AllowRead/AllowWrite are intentionally absent — Mendix stores read/write per
+// member (MemberAccess.AccessRights), not at the rule level.
+func accessRuleFromGen(ar *genDm.AccessRule) *domainmodel.AccessRule {
+	out := &domainmodel.AccessRule{
+		ModuleRoleNames:           ar.ModuleRolesQualifiedNames(),
+		AllowCreate:               ar.AllowCreate(),
+		AllowDelete:               ar.AllowDelete(),
+		DefaultMemberAccessRights: domainmodel.MemberAccessRights(ar.DefaultMemberAccessRights()),
+		XPathConstraint:           ar.XPathConstraint(),
+	}
+	out.ID = model.ID(ar.ID())
+	for _, el := range ar.MemberAccessesItems() {
+		if ma, ok := el.(*genDm.MemberAccess); ok {
+			out.MemberAccesses = append(out.MemberAccesses, memberAccessFromGen(ma))
+		}
+	}
+	return out
+}
+
+// memberAccessFromGen converts a gen MemberAccess (attribute/association ref by
+// qualified name + access rights) to a domainmodel.MemberAccess.
+func memberAccessFromGen(ma *genDm.MemberAccess) *domainmodel.MemberAccess {
+	out := &domainmodel.MemberAccess{
+		AttributeName:   ma.AttributeQualifiedName(),
+		AssociationName: ma.AssociationQualifiedName(),
+		AccessRights:    domainmodel.MemberAccessRights(ma.AccessRights()),
+	}
+	out.ID = model.ID(ma.ID())
+	return out
 }
 
 // validationRuleFromGen converts a gen ValidationRule to a lossless
