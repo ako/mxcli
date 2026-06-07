@@ -7673,7 +7673,7 @@ func (o *Microflow) InitFromRaw(raw bson.Raw) {
 		o.workflowActionInfo.SetFromDecode(child)
 	}
 	o.allowConcurrentExecution.Init(raw)
-	if child, err := codec.DecodeChild(raw, "ConcurrencyErrorMessage"); err == nil {
+	if child, err := codec.DecodeChild(raw, "ConcurrenyErrorMessage"); err == nil { // storage typo (SDK name: ConcurrencyErrorMessage)
 		o.concurrencyErrorMessage.SetFromDecode(child)
 	}
 	if val, err := raw.LookupErr("ConcurrencyErrorMicroflow"); err == nil {
@@ -14990,7 +14990,10 @@ func initMicroflow() *Microflow {
 	o.workflowActionInfo.Bind(&o.Base, 13)
 	o.allowConcurrentExecution = property.NewPrimitive[bool]("AllowConcurrentExecution", property.DecodeBool)
 	o.allowConcurrentExecution.Bind(&o.Base, 14)
-	o.concurrencyErrorMessage = property.NewPart[element.Element]("ConcurrencyErrorMessage")
+	// STORAGE-NAME OVERRIDE: real BSON key is "ConcurrenyErrorMessage" (Mendix's
+	// long-standing typo, missing a 'c') — verified against test7-app ACT_Callee.
+	// Permanent fix belongs in supplements.json; patched here like other overrides.
+	o.concurrencyErrorMessage = property.NewPart[element.Element]("ConcurrenyErrorMessage")
 	o.concurrencyErrorMessage.Bind(&o.Base, 15)
 	o.concurrencyErrorMicroflow = property.NewByNameRef[element.Element]("ConcurrencyErrorMicroflow", "Microflows$Microflow")
 	o.concurrencyErrorMicroflow.Bind(&o.Base, 16)
