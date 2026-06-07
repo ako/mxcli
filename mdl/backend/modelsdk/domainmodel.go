@@ -3,7 +3,11 @@
 package modelsdkbackend
 
 import (
+	"fmt"
+
+	"github.com/mendixlabs/mxcli/modelsdk/element"
 	genDm "github.com/mendixlabs/mxcli/modelsdk/gen/domainmodels"
+	genTexts "github.com/mendixlabs/mxcli/modelsdk/gen/texts"
 	"github.com/mendixlabs/mxcli/modelsdk/mprread"
 
 	"github.com/mendixlabs/mxcli/model"
@@ -84,11 +88,11 @@ func entityFromGen(e *genDm.Entity) *domainmodel.Entity {
 		// matches legacy (sdk/mpr parser_domainmodel.go).
 	}
 
+	out.Location = parseLocation(e.Location())
+
 	for _, el := range e.AttributesItems() {
 		if a, ok := el.(*genDm.Attribute); ok {
-			attr := &domainmodel.Attribute{Name: a.Name()}
-			attr.ID = model.ID(a.ID())
-			out.Attributes = append(out.Attributes, attr)
+			out.Attributes = append(out.Attributes, attributeFromGen(a))
 		}
 	}
 	for _, el := range e.AccessRulesItems() {
@@ -97,14 +101,14 @@ func entityFromGen(e *genDm.Entity) *domainmodel.Entity {
 		out.AccessRules = append(out.AccessRules, ar)
 	}
 	for _, el := range e.IndexesItems() {
-		ix := &domainmodel.Index{}
-		ix.ID = model.ID(el.ID())
-		out.Indexes = append(out.Indexes, ix)
+		if idx, ok := el.(*genDm.Index); ok {
+			out.Indexes = append(out.Indexes, indexFromGen(idx))
+		}
 	}
 	for _, el := range e.ValidationRulesItems() {
-		vr := &domainmodel.ValidationRule{}
-		vr.ID = model.ID(el.ID())
-		out.ValidationRules = append(out.ValidationRules, vr)
+		if vr, ok := el.(*genDm.ValidationRule); ok {
+			out.ValidationRules = append(out.ValidationRules, validationRuleFromGen(vr))
+		}
 	}
 	for _, el := range e.EventHandlersItems() {
 		eh := &domainmodel.EventHandler{}
@@ -112,6 +116,121 @@ func entityFromGen(e *genDm.Entity) *domainmodel.Entity {
 		out.EventHandlers = append(out.EventHandlers, eh)
 	}
 	return out
+}
+
+// parseLocation converts a gen "X;Y" location string to a model.Point.
+func parseLocation(s string) model.Point {
+	var p model.Point
+	if s == "" {
+		return p
+	}
+	if _, err := fmt.Sscanf(s, "%d;%d", &p.X, &p.Y); err != nil {
+		return model.Point{}
+	}
+	return p
+}
+
+// attributeFromGen converts a gen Attribute to a lossless domainmodel.Attribute
+// (name, documentation, full type, and default value) so a read-modify-write
+// round-trip (ALTER ENTITY) reproduces the attribute faithfully.
+func attributeFromGen(a *genDm.Attribute) *domainmodel.Attribute {
+	attr := &domainmodel.Attribute{
+		Name:          a.Name(),
+		Documentation: a.Documentation(),
+		Type:          attributeTypeFromGen(a.Type()),
+	}
+	attr.ID = model.ID(a.ID())
+	if sv, ok := a.Value().(*genDm.StoredValue); ok {
+		attr.Value = &domainmodel.AttributeValue{DefaultValue: sv.DefaultValue()}
+	}
+	return attr
+}
+
+// validationRuleFromGen converts a gen ValidationRule to a lossless
+// domainmodel.ValidationRule (attribute ref by qualified name, rule type, and
+// error message text) so ALTER ENTITY preserves validations on round-trip.
+func validationRuleFromGen(vr *genDm.ValidationRule) *domainmodel.ValidationRule {
+	out := &domainmodel.ValidationRule{
+		AttributeID: model.ID(vr.AttributeQualifiedName()), // qualified name; ruleInfoToGen handles it
+		Type:        ruleTypeFromGen(vr.RuleInfo()),
+	}
+	out.ID = model.ID(vr.ID())
+	if txt, ok := vr.ErrorMessage().(*genTexts.Text); ok {
+		out.ErrorMessage = textFromGen(txt)
+	}
+	return out
+}
+
+// ruleTypeFromGen maps a gen RuleInfo element back to the domainmodel rule-type
+// string (reverse of ruleInfoToGen, which today emits Unique/Required).
+func ruleTypeFromGen(ri element.Element) string {
+	if ri == nil {
+		return "Required"
+	}
+	switch ri.TypeName() {
+	case "DomainModels$UniqueRuleInfo":
+		return "Unique"
+	default:
+		return "Required"
+	}
+}
+
+// textFromGen converts a gen Text (translations) back to a model.Text.
+func textFromGen(t *genTexts.Text) *model.Text {
+	out := &model.Text{Translations: map[string]string{}}
+	for _, el := range t.TranslationsItems() {
+		if tr, ok := el.(*genTexts.Translation); ok {
+			out.Translations[tr.LanguageCode()] = tr.Text()
+		}
+	}
+	return out
+}
+
+// indexFromGen converts a gen EntityIndex to a lossless domainmodel.Index so an
+// ALTER ENTITY round-trip preserves the index (segment attribute + sort order).
+func indexFromGen(idx *genDm.Index) *domainmodel.Index {
+	out := &domainmodel.Index{}
+	out.ID = model.ID(idx.ID())
+	for _, el := range idx.AttributesItems() {
+		if ia, ok := el.(*genDm.IndexedAttribute); ok {
+			seg := &domainmodel.IndexAttribute{
+				AttributeID: model.ID(ia.AttributeRefID()),
+				Ascending:   ia.Ascending(),
+			}
+			seg.ID = model.ID(ia.ID())
+			out.Attributes = append(out.Attributes, seg)
+		}
+	}
+	return out
+}
+
+// attributeTypeFromGen is the reverse of attributeTypeToGen: a gen attribute-type
+// element back to a domainmodel.AttributeType (with Length / enumeration ref).
+func attributeTypeFromGen(t element.Element) domainmodel.AttributeType {
+	switch at := t.(type) {
+	case *genDm.StringAttributeType:
+		return &domainmodel.StringAttributeType{Length: int(at.Length())}
+	case *genDm.IntegerAttributeType:
+		return &domainmodel.IntegerAttributeType{}
+	case *genDm.LongAttributeType:
+		return &domainmodel.LongAttributeType{}
+	case *genDm.DecimalAttributeType:
+		return &domainmodel.DecimalAttributeType{}
+	case *genDm.BooleanAttributeType:
+		return &domainmodel.BooleanAttributeType{}
+	case *genDm.DateTimeAttributeType:
+		return &domainmodel.DateTimeAttributeType{}
+	case *genDm.AutoNumberAttributeType:
+		return &domainmodel.AutoNumberAttributeType{}
+	case *genDm.BinaryAttributeType:
+		return &domainmodel.BinaryAttributeType{}
+	case *genDm.HashedStringAttributeType:
+		return &domainmodel.HashedStringAttributeType{}
+	case *genDm.EnumerationAttributeType:
+		return &domainmodel.EnumerationAttributeType{EnumerationRef: at.EnumerationQualifiedName()}
+	default:
+		return &domainmodel.StringAttributeType{}
+	}
 }
 
 func assocFromGen(a *genDm.Association) *domainmodel.Association {

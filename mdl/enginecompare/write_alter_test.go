@@ -26,18 +26,58 @@ func dropAttrSeq(t *testing.T, eng Engine) string {
 }
 
 func TestWriteParity_DropAttribute(t *testing.T) {
-	// BLOCKED on a lossless modelsdk read adapter. ALTER ENTITY is routed through
-	// UpdateEntity (read-modify-write of a domainmodel.Entity); the current read
-	// adapter (entityFromGen) is lossy — attribute types/lengths/defaults, entity
-	// Location, and full index/validation/access-rule detail are dropped — so the
-	// rebuilt entity diverges from legacy. UpdateEntity itself is implemented and
-	// correct; unskip once entityFromGen round-trips losslessly. See
-	// docs/plans/2026-06-05-adopt-modelsdk-engine.md "ALTER needs lossless reads".
-	t.Skip("blocked: modelsdk read adapter is lossy; ALTER read-modify-write needs lossless entityFromGen")
 	leg := dropAttrSeq(t, Legacy)
 	msd := dropAttrSeq(t, ModelSDK)
 	if leg != msd {
 		t.Errorf("DROP ATTRIBUTE divergence:\nlegacy:   %s\nmodelsdk: %s", leg, msd)
+	}
+}
+
+// alterSeq runs a CREATE then an ALTER as two sessions (so the ALTER loads the
+// entity from disk: read-modify-write), returning the entity's canonical BSON.
+func alterSeq(t *testing.T, eng Engine, create, alter, module, entity string) string {
+	t.Helper()
+	p := copyProject(t)
+	if _, e := Run(eng, p, create); e != nil {
+		t.Fatalf("%s create: %v", eng, e)
+	}
+	if _, e := Run(eng, p, alter); e != nil {
+		t.Fatalf("%s alter %q: %v", eng, alter, e)
+	}
+	s, e := EntityCanonBSON(p, module, entity)
+	if e != nil {
+		t.Fatalf("%s canon: %v", eng, e)
+	}
+	return s
+}
+
+// TestWriteParity_AlterEntity exercises ALTER ENTITY read-modify-write across
+// the codec engine vs legacy. Each case creates an entity then applies one ALTER
+// op; both engines must produce identical canonical BSON. Cases touching indexes
+// stress the lossless read adapter beyond attributes.
+func TestWriteParity_AlterEntity(t *testing.T) {
+	const ent = "MyFirstModule.AlterT"
+	base := "CREATE PERSISTENT ENTITY " + ent + " ( Code: string(20), Rank: integer )"
+	idxBase := base + " index (Code)"
+	cases := []struct{ name, create, alter string }{
+		{"AddAttribute", base, "ALTER ENTITY " + ent + " ADD ATTRIBUTE Extra: decimal"},
+		{"RenameAttribute", base, "ALTER ENTITY " + ent + " RENAME ATTRIBUTE Rank TO Position"},
+		{"ModifyAttribute", base, "ALTER ENTITY " + ent + " MODIFY ATTRIBUTE Code string(200)"},
+		{"SetDocumentation", base, "ALTER ENTITY " + ent + " SET DOCUMENTATION 'an altered entity'"},
+		{"AddIndex", base, "ALTER ENTITY " + ent + " ADD INDEX (Rank)"},
+		{"DropIndexKeepsAttrs", idxBase, "ALTER ENTITY " + ent + " ADD ATTRIBUTE Extra: boolean"},
+		{"AlterKeepsValidation",
+			"CREATE PERSISTENT ENTITY " + ent + " ( Code: string(20) unique error 'must be unique', Rank: integer )",
+			"ALTER ENTITY " + ent + " ADD ATTRIBUTE Extra: boolean"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			leg := alterSeq(t, Legacy, c.create, c.alter, "MyFirstModule", "AlterT")
+			msd := alterSeq(t, ModelSDK, c.create, c.alter, "MyFirstModule", "AlterT")
+			if leg != msd {
+				t.Errorf("%s divergence:\nlegacy:   %s\nmodelsdk: %s", c.name, leg, msd)
+			}
+		})
 	}
 }
 

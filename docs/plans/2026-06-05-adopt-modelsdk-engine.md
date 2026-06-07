@@ -635,3 +635,24 @@ index/validation/access-rule/event detail) and extend `entityToGen` to match. Th
 ALTER ENTITY ops at once. The codec's passthrough strength suggests an alternative worth
 weighing: have ALTER mutate the decoded gen tree directly instead of round-tripping through the
 lossy domainmodel.Entity — but that diverges from the executor's current UpdateEntity contract.
+
+### Lossless read adapter → ALTER ENTITY shipped (2026-06-06)
+
+Made the modelsdk read adapter round-trip-complete for the domain-model entity, unblocking ALTER:
+- `attributeFromGen` — full type (incl. StringAttributeType Length, EnumerationAttributeType ref)
+  via `attributeTypeFromGen`, plus Documentation and StoredValue DefaultValue.
+- `entityFromGen` — entity Location (`parseLocation`).
+- `indexFromGen` — index segments (AttributePointer→AttributeID + Ascending).
+- `validationRuleFromGen` — attribute ref (qualified name), rule type, error Text (`textFromGen`).
+
+`TestWriteParity_AlterEntity` is green across AddAttribute, RenameAttribute, ModifyAttribute,
+SetDocumentation, AddIndex, DropIndexKeepsAttrs, AlterKeepsValidation — all strict legacy parity,
+all read-modify-write (two-session) so they exercise the codec passthrough path. No read-parity
+regression (TestReadParity still green).
+
+**Remaining gap (guarded, not silent): access rules + event handlers.** `entityToGen` doesn't
+rebuild them and the adapter doesn't round-trip them yet, so `UpdateEntity` now *refuses* to ALTER
+an entity that has either ("use the legacy engine") rather than silently dropping them. Closing
+this needs `accessRuleFromGen`/`eventHandlerFromGen` + `entityToGen` support (MemberAccess, roles,
+XPath) — a focused follow-up. modelsdk write slice now: entity/attributes/associations/
+generalization/validations/indexes (create) + DROP ENTITY + ALTER ENTITY (no access-rule entities).

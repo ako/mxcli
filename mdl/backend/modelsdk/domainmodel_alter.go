@@ -108,15 +108,18 @@ func (b *Backend) UpdateEntity(domainModelID model.ID, entity *domainmodel.Entit
 		return err
 	}
 	order := dm.EntitiesItems()
-	found := false
-	for _, el := range order {
-		if string(el.ID()) == string(entity.ID) {
-			found = true
-			break
-		}
-	}
-	if !found {
+	existing := findGenEntity(dm, entity.ID)
+	if existing == nil {
 		return fmt.Errorf("entity not found: %s", entity.ID)
+	}
+	// entityToGen does not yet rebuild access rules or event handlers, and the
+	// read adapter does not yet round-trip them — so rebuilding would silently
+	// drop them. Refuse rather than corrupt; the legacy engine handles these.
+	if len(existing.AccessRulesItems()) > 0 {
+		return fmt.Errorf("UpdateEntity: modelsdk engine cannot yet ALTER an entity with access rules (%s) — use the legacy engine", entity.ID)
+	}
+	if len(existing.EventHandlersItems()) > 0 {
+		return fmt.Errorf("UpdateEntity: modelsdk engine cannot yet ALTER an entity with event handlers (%s) — use the legacy engine", entity.ID)
 	}
 
 	ge := entityToGen(entity, b.moduleNameFor(domainModelID))
