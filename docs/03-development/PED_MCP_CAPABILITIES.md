@@ -95,6 +95,17 @@ ASSOCIATION`, `CREATE ENUMERATION`, `CREATE VIEW ENTITY`, `CREATE MICROFLOW`
 (broad activity + control-flow coverage), and `CREATE PAGE` (foundation), with a
 dirty-set read router that makes in-session edits visible.
 
+**ALTER PAGE** is a read-modify-write on the pg tree: `OpenPageForMutation` loads
+the page via `pg_read_page`, the mutator edits the in-memory tree, and `Save()`
+writes it back via `pg_write_page`. Supported in-place ops: INSERT (before/after a
+widget), DROP widget, REPLACE widget, SET DataSource, SET Layout — plus the
+introspection the executor needs (FindWidget, WidgetScope, ParamScope,
+EnclosingEntity). The widget ref is the widget name (recursive tree search). The
+executor passes the AST position token (`"AFTER"`/`"BEFORE"`), so the mutator
+compares case-insensitively. Not yet mapped: `SET <widget> (Prop: value)`
+(MDL→pg property-name translation), column INSERT/REPLACE, design properties,
+pluggable-property SET, and page variables — each returns a clear error.
+
 Pages use a **separate protocol**: `pg_write_page` / `pg_read_page` (PED is
 forbidden for pages). The backend maps the executor's `pages.Page` (shell +
 LayoutCall slots + widget tree) onto the high-level page content. Note pg's

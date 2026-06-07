@@ -3,6 +3,7 @@
 package mcp
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -145,6 +146,28 @@ func pageParameters(params []*pages.PageParameter) []any {
 		out = append(out, po)
 	}
 	return out
+}
+
+// pgReadPage reads a page's current high-level content tree via pg_read_page.
+// The result is the same content shape pg_write_page accepts, so it round-trips
+// for read-modify-write (ALTER PAGE).
+func (b *Backend) pgReadPage(moduleName, pageName string) (map[string]any, error) {
+	res, err := b.client.CallTool("pg_read_page", map[string]any{
+		"moduleName": moduleName,
+		"pageName":   pageName,
+	})
+	if err != nil {
+		return nil, err
+	}
+	text := pedStripReminder(res.Text)
+	if res.IsError {
+		return nil, fmt.Errorf("pg_read_page %s.%s: %s", moduleName, pageName, text)
+	}
+	var content map[string]any
+	if err := json.Unmarshal([]byte(text), &content); err != nil {
+		return nil, fmt.Errorf("pg_read_page %s.%s: parsing content: %w", moduleName, pageName, err)
+	}
+	return content, nil
 }
 
 // pgWritePage calls the pg_write_page tool and surfaces failures (which, unlike
