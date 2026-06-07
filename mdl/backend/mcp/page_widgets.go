@@ -69,10 +69,7 @@ func (b *Backend) mapPageWidgetBody(w pages.Widget) (map[string]any, error) {
 		if err != nil {
 			return nil, fmt.Errorf("button %q: %w", wd.Name, err)
 		}
-		style := string(wd.ButtonStyle)
-		if style == "" {
-			style = "Default"
-		}
+		style := buttonStyle(string(wd.ButtonStyle))
 		return map[string]any{
 			"$Type":                         "Pages$ActionButton",
 			"name":                          wd.Name,
@@ -354,8 +351,45 @@ func mapClientAction(a pages.ClientAction) (map[string]any, error) {
 				"parameterMappings": []any{},
 			},
 		}, nil
+	case *pages.CreateObjectClientAction:
+		// Common control-bar "New" action: create an object then open a page on it.
+		return map[string]any{
+			"$Type":     "Pages$CreateObjectClientAction",
+			"entityRef": map[string]any{"$Type": "DomainModels$DirectEntityRef", "entity": act.EntityName},
+			"pageSettings": map[string]any{
+				"$Type":             "Pages$PageSettings",
+				"page":              act.PageName,
+				"parameterMappings": []any{},
+			},
+			"disabledDuringExecution": true,
+		}, nil
 	default:
 		return nil, fmt.Errorf("client action %T is not yet supported by the MCP backend", a)
+	}
+}
+
+// buttonStyle normalizes an MDL button-style token (which the executor passes
+// through verbatim, e.g. lowercase "primary") to pg's canonical enum value
+// ("Primary"). pg rejects an unknown value, so an unrecognized style falls back
+// to "Default".
+func buttonStyle(s string) string {
+	switch strings.ToLower(s) {
+	case "primary":
+		return "Primary"
+	case "secondary":
+		return "Secondary"
+	case "success":
+		return "Success"
+	case "warning":
+		return "Warning"
+	case "danger":
+		return "Danger"
+	case "inverse":
+		return "Inverse"
+	case "link":
+		return "Link"
+	default:
+		return "Default"
 	}
 }
 

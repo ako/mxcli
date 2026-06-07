@@ -63,6 +63,25 @@ func TestMapClientAction(t *testing.T) {
 	if ps["page"] != "M.Detail" {
 		t.Errorf("pageSettings: %+v", ps)
 	}
+	co, err := mapClientAction(&pages.CreateObjectClientAction{EntityName: "M.Order", PageName: "M.Order_Edit"})
+	if err != nil || co["$Type"] != "Pages$CreateObjectClientAction" {
+		t.Errorf("create-object action: %+v / %v", co, err)
+	}
+	if er, _ := co["entityRef"].(map[string]any); er["entity"] != "M.Order" {
+		t.Errorf("create-object entityRef: %+v", co["entityRef"])
+	}
+	if cps, _ := co["pageSettings"].(map[string]any); cps["page"] != "M.Order_Edit" {
+		t.Errorf("create-object pageSettings: %+v", co["pageSettings"])
+	}
+}
+
+func TestButtonStyle(t *testing.T) {
+	cases := map[string]string{"primary": "Primary", "PRIMARY": "Primary", "danger": "Danger", "": "Default", "bogus": "Default"}
+	for in, want := range cases {
+		if got := buttonStyle(in); got != want {
+			t.Errorf("buttonStyle(%q) = %q, want %q", in, got, want)
+		}
+	}
 }
 
 func TestMapPageWidget_DynamicText(t *testing.T) {

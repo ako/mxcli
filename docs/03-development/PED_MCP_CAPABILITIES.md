@@ -108,8 +108,11 @@ Studio Pro.
 
 Widgets so far: DivContainer, LayoutGrid/Row/Column, TabContainer/TabPage,
 ActionButton, DynamicText, DataView, ListView, TextBox, TextArea, CheckBox,
-RadioButtonGroup, DatePicker (+ No/Microflow/Page client actions; page-variable /
-direct-entity / database / microflow data sources). TextArea and the executor's
+RadioButtonGroup, DatePicker (+ No/Microflow/Page/CreateObject client actions;
+page-variable / direct-entity / database / microflow data sources). Button styles
+are normalized to pg's canonical enum (`primary` → `Primary`); an unknown style
+falls back to `Default` (pg rejects unknown values). A DataGrid 2 control bar is
+just the `filtersPlaceholder` slot holding action buttons. TextArea and the executor's
 RadioButtons (→ `Pages$RadioButtonGroup`) are attribute-bound inputs that share
 the same minimal `attributeRef` + `ct:labelTemplate` shape as TextBox; the server
 fills in the rest of their defaults (rows, render direction, placeholder, …),
