@@ -141,6 +141,21 @@ create or modify enumeration DmTest.UserRole (
 );
 /
 
+-- MARK: Altering Enumerations
+
+/**
+ * ALTER ENUMERATION applies targeted value changes: add or rename a single value
+ * without restating the whole enumeration.
+ */
+create enumeration DmTest.ShipmentStage (
+  Created 'Created',
+  Packed 'Packed'
+);
+
+alter enumeration DmTest.ShipmentStage add value Shipped caption 'Shipped to Customer';
+alter enumeration DmTest.ShipmentStage rename value Packed to Packaged;
+/
+
 -- ############################################################################
 -- PART 2: BASIC PERSISTENT ENTITIES
 -- ############################################################################

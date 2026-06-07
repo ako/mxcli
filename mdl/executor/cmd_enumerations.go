@@ -108,10 +108,63 @@ func findEnumeration(ctx *ExecContext, moduleName, enumName string) *model.Enume
 	return nil
 }
 
-// execAlterEnumeration handles ALTER ENUMERATION statements.
+// execAlterEnumeration handles ALTER ENUMERATION ADD/DROP/RENAME VALUE by
+// read-modify-writing the enumeration through the backend (engine-agnostic).
 func execAlterEnumeration(ctx *ExecContext, s *ast.AlterEnumerationStmt) error {
-	// TODO: Implement ALTER ENUMERATION
-	return mdlerrors.NewUnsupported("alter enumeration not yet implemented")
+	enum := findEnumeration(ctx, s.Name.Module, s.Name.Name)
+	if enum == nil {
+		return mdlerrors.NewNotFound("enumeration", s.Name.String())
+	}
+
+	switch s.Operation {
+	case ast.AlterEnumAdd:
+		for _, v := range enum.Values {
+			if v.Name == s.ValueName {
+				return mdlerrors.NewAlreadyExistsMsg("enumeration value", s.ValueName,
+					fmt.Sprintf("value '%s' already exists on enumeration %s", s.ValueName, s.Name))
+			}
+		}
+		enum.Values = append(enum.Values, model.EnumerationValue{
+			Name:    s.ValueName,
+			Caption: &model.Text{Translations: map[string]string{"en_US": s.Caption}},
+		})
+
+	case ast.AlterEnumDrop:
+		idx := -1
+		for i, v := range enum.Values {
+			if v.Name == s.ValueName {
+				idx = i
+				break
+			}
+		}
+		if idx < 0 {
+			return mdlerrors.NewNotFound("enumeration value", s.ValueName)
+		}
+		enum.Values = append(enum.Values[:idx], enum.Values[idx+1:]...)
+
+	case ast.AlterEnumRename:
+		idx := -1
+		for i, v := range enum.Values {
+			if v.Name == s.ValueName {
+				idx = i
+				break
+			}
+		}
+		if idx < 0 {
+			return mdlerrors.NewNotFound("enumeration value", s.ValueName)
+		}
+		enum.Values[idx].Name = s.NewName
+
+	default:
+		return mdlerrors.NewUnsupported("unknown ALTER ENUMERATION operation")
+	}
+
+	if err := ctx.Backend.UpdateEnumeration(enum); err != nil {
+		return mdlerrors.NewBackend("alter enumeration", err)
+	}
+	invalidateHierarchy(ctx)
+	fmt.Fprintf(ctx.Output, "Altered enumeration: %s\n", s.Name)
+	return nil
 }
 
 // execDropEnumeration handles DROP ENUMERATION statements.

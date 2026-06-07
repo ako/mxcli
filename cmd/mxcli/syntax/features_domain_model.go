@@ -144,7 +144,7 @@ func init() {
 			"caption", "show enumerations", "describe enumeration",
 			"drop enumeration",
 		},
-		Syntax:  "CREATE ENUMERATION Module.Name (\n  ValueName 'Display Caption',\n  ...\n);\n\nSHOW ENUMERATIONS;\nSHOW ENUMERATIONS IN <module>;\nDESCRIBE ENUMERATION Module.Name;\nDROP ENUMERATION Module.Name;\n\nUsing in entity:\n  AttrName: Enumeration(Module.EnumName)",
+		Syntax:  "CREATE ENUMERATION Module.Name (\n  ValueName 'Display Caption',\n  ...\n);\n\nALTER ENUMERATION Module.Name ADD VALUE NewValue [CAPTION 'Display Caption'];\nALTER ENUMERATION Module.Name RENAME VALUE OldName TO NewName;\nALTER ENUMERATION Module.Name DROP VALUE ValueName;\n\nSHOW ENUMERATIONS;\nSHOW ENUMERATIONS IN <module>;\nDESCRIBE ENUMERATION Module.Name;\nDROP ENUMERATION Module.Name;\n\nUsing in entity:\n  AttrName: Enumeration(Module.EnumName)",
 		Example: "CREATE ENUMERATION MyModule.OrderStatus (\n  Pending 'Pending Approval',\n  Processing 'Being Processed',\n  Shipped 'Shipped to Customer'\n);\n\n-- Using in an entity\nCREATE PERSISTENT ENTITY MyModule.Order (\n  OrderNumber: String(20) NOT NULL,\n  Status: Enumeration(MyModule.OrderStatus)\n);",
 		SeeAlso: []string{"domain-model.enumeration", "domain-model.entity.attributes"},
 	})

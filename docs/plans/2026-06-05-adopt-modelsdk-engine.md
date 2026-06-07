@@ -703,3 +703,19 @@ indexes (create) + DROP ENTITY + ALTER ENTITY with **no remaining guards** (acce
 handlers round-trip). Two storage-name overrides (this + ErrorMessage→Message) should move to
 supplements.json when the codegen is next run. (Scratch in test7-app/MxcliDiskProbe: IdxProbe now
 also carries two duplicate event handlers from the capture — safe to delete.)
+
+### Enumerations CREATE/DROP/ALTER (2026-06-07)
+
+First top-level-document writes in modelsdk (units, not domain-model children):
+- `CreateEnumeration` → build gen Enumeration + `InsertUnit` (containment "Documents").
+- `DeleteEnumeration` → `DeleteUnit`. `UpdateEnumeration` → rebuild + `UpdateRawUnit`.
+- `enumToGen`/`enumValueToGen` mirror the legacy serializer (Excluded=false, ExportLevel=Hidden,
+  Image="", captions as Texts$Text); registered defaults: Enumeration/EnumerationValue NullFields
+  (RemoteSource/RemoteValue), Texts$Text MandatoryLists [Items] (empty captions emit Items=[3]).
+- Added `EnumCanonBSON` to the harness. `TestWriteParity_Enumeration` (CreatePlain, CreateCaptioned,
+  AlterAddValue) + `TestWriteParity_DropEnumeration` are green — strict legacy parity.
+
+Also wired the previously-stubbed **executor ALTER ENUMERATION** handler (engine-agnostic: ADD VALUE
+/ RENAME VALUE read-modify-write through UpdateEnumeration) — so ALTER ENUMERATION now works for
+*both* engines. (DROP VALUE has an executor branch but no grammar rule yet; left as defensive code.)
+Updated the CLI syntax help and added a doctype-test example.

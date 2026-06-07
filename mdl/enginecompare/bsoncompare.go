@@ -11,9 +11,40 @@ import (
 
 	"github.com/mendixlabs/mxcli/modelsdk/codec"
 	genDm "github.com/mendixlabs/mxcli/modelsdk/gen/domainmodels"
+	genEnum "github.com/mendixlabs/mxcli/modelsdk/gen/enumerations"
 	"github.com/mendixlabs/mxcli/modelsdk/mprread"
 	mmpr "github.com/mendixlabs/mxcli/modelsdk/mpr"
 )
+
+// EnumCanonBSON returns the canonicalized raw BSON of a named enumeration unit in
+// a module (enumerations are top-level documents, not domain-model children).
+func EnumCanonBSON(projectPath, moduleName, enumName string) (string, error) {
+	r, err := mmpr.OpenWithOptions(projectPath, mmpr.OpenOptions{ReadOnly: true})
+	if err != nil {
+		return "", err
+	}
+	defer r.Close()
+
+	mod, err := r.GetModuleByName(moduleName)
+	if err != nil || mod == nil {
+		return "", fmt.Errorf("module %q not found: %v", moduleName, err)
+	}
+	units, err := mprread.ListUnitsWithContainer[*genEnum.Enumeration](r)
+	if err != nil {
+		return "", err
+	}
+	for _, u := range units {
+		if string(u.ContainerID) != mod.ID || u.Element.Name() != enumName {
+			continue
+		}
+		raw, err := r.GetRawUnitBytes(string(u.Element.ID()))
+		if err != nil {
+			return "", err
+		}
+		return CanonicalizeRaw(bson.Raw(raw)), nil
+	}
+	return "", fmt.Errorf("enumeration %q not found in module %q", enumName, moduleName)
+}
 
 // volatileKeys hold per-write-random values (IDs, GUIDs); masked before compare
 // so two engines' BSON can be diffed on structure + stable values.
