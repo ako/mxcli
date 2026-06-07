@@ -158,12 +158,19 @@ translates the shared engine's storage-agnostic calls:
   reports from the def; ComboBox/Gallery map it explicitly in their shared
   def.json). A `sort by` clause becomes the `Pages$GridSortBar` (`sortItems` with
   `attributeRef` + `sortDirection`), and a `where [...]` clause becomes the
-  source's `xPathConstraint`. (Page datasources have no grouping concept.) Both
-  are supported only on the pluggable `CustomWidgetXPathSource` (DataGrid 2 /
-  Gallery / association ComboBox); pg's `Pages$DataViewSource` (DataView /
-  ListView) has no such fields and silently drops them, so a constraint/sort on a
-  data-view/list-view database source is rejected with a clear error rather than
-  written and lost.
+  source's `xPathConstraint`. (Page datasources have no grouping concept.)
+
+`sort`/`where` are supported wherever the **official metamodel** has a source
+type that carries them (verified against the `modelsdk` branch's generated
+types): `GridXPathSource` (= pg `CustomWidgetXPathSource`, DataGrid 2 / Gallery /
+association ComboBox) and `ListViewXPathSource` (pg `Pages$ListViewXPathSource`,
+list views with a database source) both have `xPathConstraint` + `sortBar`. A
+**DataView**, by contrast, has *no* XPath source type — `DataViewSource` is
+context/parameter-only (`pageParameter`/`snippetParameter`/`entityRef`) — so a
+constraint/sort on a data-view database source is correctly rejected. This is a
+metamodel fact, not a pg limitation: emit the right source `$Type` and pg expands
+it. (List-view database sources must use `Pages$ListViewXPathSource`, NOT
+`Pages$DataViewSource`, or pg drops the constraint/sort.)
 - `SetObjectList` → generic object-list items (DataGrid 2 `columns`): operation
   kind → pg shape, text-template keys take pg's `ct:` prefix.
 - `SetChildWidgets` → Widgets-typed slots (Gallery `content` template), mapped

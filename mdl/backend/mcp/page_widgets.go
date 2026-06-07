@@ -175,7 +175,7 @@ func (b *Backend) mapPageWidgetBody(w pages.Widget) (map[string]any, error) {
 			"rows":       rows,
 		}, nil
 	case *pages.ListView:
-		src, err := mapDataViewSource(wd.DataSource)
+		src, err := mapListViewSource(wd.DataSource)
 		if err != nil {
 			return nil, fmt.Errorf("list view %q: %w", wd.Name, err)
 		}
@@ -254,6 +254,31 @@ func inputWidget(typ, name, label, attribute, class, style string) map[string]an
 			"attribute": attribute,
 		},
 	}
+}
+
+// mapListViewSource maps a list-view data source. A database source becomes a
+// Pages$ListViewXPathSource — the official metamodel's list-view database/XPath
+// source type, which (unlike the context-only Pages$DataViewSource) carries an
+// xPathConstraint and a sortBar. Non-database sources (microflow, page variable)
+// fall through to the shared data-view source mapping.
+func mapListViewSource(ds pages.DataSource) (map[string]any, error) {
+	if db, ok := ds.(*pages.DatabaseSource); ok {
+		if db.EntityName == "" {
+			return nil, fmt.Errorf("list view database source has no entity")
+		}
+		src := map[string]any{
+			"$Type":     "Pages$ListViewXPathSource",
+			"entityRef": map[string]any{"$Type": "DomainModels$DirectEntityRef", "entity": db.EntityName},
+		}
+		if db.XPathConstraint != "" {
+			src["xPathConstraint"] = db.XPathConstraint
+		}
+		if len(db.Sorting) > 0 {
+			src["sortBar"] = gridSortBar(db.Sorting)
+		}
+		return src, nil
+	}
+	return mapDataViewSource(ds)
 }
 
 // mapDataViewSource maps a data-view data source onto a Pages$DataViewSource.

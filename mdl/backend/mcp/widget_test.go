@@ -183,10 +183,36 @@ func TestCustomWidgetXPathSource_Constraint(t *testing.T) {
 }
 
 func TestMapDataViewSource_ConstraintRejected(t *testing.T) {
-	// pg's Pages$DataViewSource silently drops a constraint, so it must be rejected.
+	// A DataView has no XPath source type in the official metamodel (DataViewSource
+	// is context-only), so a constraint on a data-view database source is rejected.
 	_, err := mapDataViewSource(&pages.DatabaseSource{EntityName: "Sales.Order", XPathConstraint: "[Total > 0]"})
 	if err == nil {
 		t.Error("data-view database source with an XPath constraint should be rejected")
+	}
+}
+
+func TestMapListViewSource_DatabaseConstraintAndSort(t *testing.T) {
+	// A list-view database source uses Pages$ListViewXPathSource, which carries
+	// both an xPathConstraint and a sortBar (per the official metamodel).
+	src, err := mapListViewSource(&pages.DatabaseSource{
+		EntityName:      "PgTest.Order",
+		XPathConstraint: "[OrderNumber > 50]",
+		Sorting:         []*pages.GridSort{{AttributePath: "PgTest.Order.OrderNumber", Direction: pages.SortDirectionDescending}},
+	})
+	if err != nil || src["$Type"] != "Pages$ListViewXPathSource" {
+		t.Fatalf("list view source: %+v / %v", src, err)
+	}
+	if src["xPathConstraint"] != "[OrderNumber > 50]" {
+		t.Fatalf("xPathConstraint: %+v", src["xPathConstraint"])
+	}
+	sb, _ := src["sortBar"].(map[string]any)
+	if items, _ := sb["sortItems"].([]any); len(items) != 1 {
+		t.Fatalf("sortBar: %+v", src["sortBar"])
+	}
+	// A microflow source on a list view falls through to the shared mapping.
+	mf, err := mapListViewSource(&pages.MicroflowSource{Microflow: "M.DSO_X"})
+	if err != nil || mf["$Type"] != "Pages$MicroflowSource" {
+		t.Fatalf("microflow list source: %+v / %v", mf, err)
 	}
 }
 
