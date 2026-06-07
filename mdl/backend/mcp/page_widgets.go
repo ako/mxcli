@@ -221,6 +221,8 @@ func (b *Backend) mapPageWidgetBody(w pages.Widget) (map[string]any, error) {
 			"tabIndex":   wd.TabIndex,
 			"tabPages":   tabs,
 		}, nil
+	case *pages.CustomWidget:
+		return b.mapCustomWidget(wd)
 	case *pages.DataGrid:
 		return nil, fmt.Errorf("legacy DataGrid is not supported by the MCP backend — pg_write_page has no Pages$DataGrid type (use a ListView, or DataGrid 2 which is a pluggable widget)")
 	case *pages.TextBox:

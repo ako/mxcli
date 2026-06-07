@@ -129,6 +129,22 @@ plus `CustomWidgets$CustomWidget` (pluggable). **No `Pages$DataGrid`** — the
 legacy DataGrid is rejected; DataGrid 2 is a pluggable custom widget. Coverage
 grows one widget/data-source type at a time.
 
+**Pluggable widgets (ComboBox).** The reference/dropdown selector — the Mendix 11
+ComboBox (`com.mendix.widget.web.combobox.Combobox`) — is supported in both
+enumeration and association modes. Crucially, the MCP path does *not* build the
+BSON widget template the MPR writer must: it implements `LoadWidgetTemplate` with
+an `mcpWidgetBuilder` that records the engine's semantic property operations
+(`SetAttribute`/`SetAssociation`/`SetPrimitive`/`SetDataSource`) into a high-level
+pg `object`, and Studio Pro expands every default on `pg_write_page` (37 props
+filled from ~5). **This sidesteps the entire CE0463 "widget definition changed"
+template-mismatch class of bugs** that the on-disk BSON writer hits, because the
+server owns serialization. One quirk: the ComboBox def.json enum mode maps only
+`attributeEnumeration` (the MPR template carries `optionsSourceType`'s default),
+so the MCP backend infers `optionsSourceType: "enumeration"` — otherwise pg
+defaults it to `association` and prunes the enum binding. Other pluggable widgets
+(DataGrid 2, Gallery) and any ComboBox property op the builder doesn't translate
+are rejected, not silently emitted with missing properties.
+
 Data sources for DataView/ListView: page-variable (`Pages$PageVariable`),
 direct-entity (`DomainModels$DirectEntityRef`), and **microflow**
 (`Pages$MicroflowSource` wrapping `Pages$MicroflowSettings {microflow,

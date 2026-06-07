@@ -70,6 +70,13 @@ type Backend struct {
 	// sessionPages holds pages created over MCP this session, merged into
 	// ListPages (the executor's duplicate/role checks read it).
 	sessionPages []*pages.Page
+
+	// customWidgets holds the high-level pg `object` recorded for each pluggable
+	// widget built this session, keyed by the CustomWidget's ID. The pluggable
+	// widget engine builds widgets via LoadWidgetTemplate → an mcpWidgetBuilder
+	// that records semantic property ops here instead of mutating BSON;
+	// mapPageWidget then looks the object up to emit CustomWidgets$CustomWidget.
+	customWidgets map[model.ID]*mcpCustomWidget
 }
 
 // compile-time guarantee that Backend (and its embedded base) satisfies the
