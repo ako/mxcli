@@ -136,6 +136,37 @@ func TestSetObjectList_DataGridColumns(t *testing.T) {
 	}
 }
 
+func TestCustomWidgetXPathSource_Sort(t *testing.T) {
+	src := customWidgetXPathSource(&pages.DatabaseSource{
+		EntityName: "PgTest.Order",
+		Sorting: []*pages.GridSort{
+			{AttributePath: "PgTest.Order.OrderNumber", Direction: pages.SortDirectionAscending},
+			{AttributePath: "PgTest.Order.OrderDate", Direction: pages.SortDirectionDescending},
+		},
+	})
+	sb, _ := src["sortBar"].(map[string]any)
+	if sb["$Type"] != "Pages$GridSortBar" {
+		t.Fatalf("sortBar: %+v", src["sortBar"])
+	}
+	items, _ := sb["sortItems"].([]any)
+	if len(items) != 2 {
+		t.Fatalf("sortItems: %+v", items)
+	}
+	i0, _ := items[0].(map[string]any)
+	if ar, _ := i0["attributeRef"].(map[string]any); ar["attribute"] != "PgTest.Order.OrderNumber" || i0["sortDirection"] != "Ascending" {
+		t.Fatalf("sortItem[0]: %+v", i0)
+	}
+	i1, _ := items[1].(map[string]any)
+	if i1["sortDirection"] != "Descending" {
+		t.Fatalf("sortItem[1] direction: %+v", i1)
+	}
+	// No sort -> no sortBar key (pg fills an empty default).
+	plain := customWidgetXPathSource(&pages.DatabaseSource{EntityName: "PgTest.Order"})
+	if _, ok := plain["sortBar"]; ok {
+		t.Fatalf("unexpected sortBar on unsorted source: %+v", plain)
+	}
+}
+
 func TestMapCustomWidget_Gallery(t *testing.T) {
 	b := &Backend{}
 	wb, _ := b.LoadWidgetTemplate("com.mendix.widget.web.gallery.Gallery", "")

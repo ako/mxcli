@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/backend"
 	"github.com/mendixlabs/mxcli/mdl/types"
@@ -187,24 +188,51 @@ func (w *mcpWidgetBuilder) SetDataSource(propertyKey string, ds pages.DataSource
 }
 
 // customWidgetXPathSource maps a database/entity data source onto a
-// CustomWidgets$CustomWidgetXPathSource (the options source for an association
-// combobox). Microflow/other sources are not yet mapped.
+// CustomWidgets$CustomWidgetXPathSource (used by DataGrid 2, Gallery, and the
+// association combobox). A `sort by` clause becomes the grid sort bar.
+// Microflow/other sources are not yet mapped.
 func customWidgetXPathSource(ds pages.DataSource) map[string]any {
 	var entity string
+	var sorting []*pages.GridSort
 	switch s := ds.(type) {
 	case *pages.DatabaseSource:
 		entity = s.EntityName
+		sorting = s.Sorting
 	case *pages.DataViewSource:
 		entity = s.EntityName
 	}
 	if entity == "" {
 		return nil
 	}
-	return map[string]any{
+	src := map[string]any{
 		"$Type":            "CustomWidgets$CustomWidgetXPathSource",
 		"entityRef":        map[string]any{"$Type": "DomainModels$DirectEntityRef", "entity": entity},
 		"forceFullObjects": false,
 	}
+	if len(sorting) > 0 {
+		src["sortBar"] = gridSortBar(sorting)
+	}
+	return src
+}
+
+// gridSortBar maps a data source's `sort by` clause onto a Pages$GridSortBar.
+func gridSortBar(sorting []*pages.GridSort) map[string]any {
+	items := make([]any, 0, len(sorting))
+	for _, s := range sorting {
+		if s.AttributePath == "" {
+			continue
+		}
+		dir := "Ascending"
+		if strings.HasPrefix(strings.ToLower(string(s.Direction)), "desc") {
+			dir = "Descending"
+		}
+		items = append(items, map[string]any{
+			"$Type":         "Pages$GridSortItem",
+			"attributeRef":  map[string]any{"$Type": "DomainModels$AttributeRef", "attribute": s.AttributePath},
+			"sortDirection": dir,
+		})
+	}
+	return map[string]any{"$Type": "Pages$GridSortBar", "sortItems": items}
 }
 
 // SetSelection sets a selection-typed property (e.g. a DataGrid's itemSelection).

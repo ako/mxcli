@@ -156,7 +156,8 @@ translates the shared engine's storage-agnostic calls:
 - `SetDataSource` → `CustomWidgets$CustomWidgetXPathSource` (DataGrid 2 reaches it
   via auto-datasource, which reads the DataSource property `PropertyTypeIDs`
   reports from the def; ComboBox/Gallery map it explicitly in their shared
-  def.json).
+  def.json). A `sort by` clause becomes the `Pages$GridSortBar` (`sortItems` with
+  `attributeRef` + `sortDirection`). (Page datasources have no grouping concept.)
 - `SetObjectList` → generic object-list items (DataGrid 2 `columns`): operation
   kind → pg shape, text-template keys take pg's `ct:` prefix.
 - `SetChildWidgets` → Widgets-typed slots (Gallery `content` template), mapped
