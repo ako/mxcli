@@ -97,6 +97,7 @@ This preserves the audit trail.
 | [0001](0001-record-architecture-decisions.md) | Record Architecture Decisions | Accepted |
 | [0002](0002-backend-abstraction.md) | Backend Abstraction Layer | Accepted |
 | [0003](0003-mdl-is-sql-shaped.md) | MDL is SQL-shaped | Accepted |
+| [0004](0004-full-codec-engine.md) | Route all document types through the codec engine | Accepted |
 
 ## Candidates to back-fill
 
