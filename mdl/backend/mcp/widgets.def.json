@@ -8,6 +8,10 @@
     {
       "widgetId": "com.mendix.widget.web.datagrid.Datagrid",
       "dataSourceProperties": ["datasource"]
+    },
+    {
+      "widgetId": "com.mendix.widget.web.gallery.Gallery",
+      "dataSourceProperties": []
     }
   ]
 }

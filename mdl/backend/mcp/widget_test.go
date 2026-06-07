@@ -79,9 +79,9 @@ func TestMapCustomWidget_AssociationCombobox(t *testing.T) {
 
 func TestMapCustomWidget_UnsupportedWidgetRejected(t *testing.T) {
 	b := &Backend{}
-	wb, _ := b.LoadWidgetTemplate("com.mendix.widget.web.gallery.Gallery", "")
+	wb, _ := b.LoadWidgetTemplate("com.mendix.widget.web.barcodescanner.BarcodeScanner", "")
 	w := wb.(*mcpWidgetBuilder)
-	cw := w.Finalize(model.ID("g1"), "g", "", "Always")
+	cw := w.Finalize(model.ID("bc1"), "bc", "", "Always")
 	if _, err := b.mapPageWidget(cw); err == nil {
 		t.Error("a pluggable widget not in widgets.def.json should be rejected")
 	}
@@ -133,6 +133,54 @@ func TestSetObjectList_DataGridColumns(t *testing.T) {
 	ar, _ := col["attribute"].(map[string]any)
 	if ar["attribute"] != "PgTest.Order.OrderNumber" {
 		t.Fatalf("column attribute: %+v", col["attribute"])
+	}
+}
+
+func TestMapCustomWidget_Gallery(t *testing.T) {
+	b := &Backend{}
+	wb, _ := b.LoadWidgetTemplate("com.mendix.widget.web.gallery.Gallery", "")
+	w := wb.(*mcpWidgetBuilder)
+	// Gallery's def.json maps datasource explicitly and delivers the template
+	// body via SetChildWidgets(content, ...).
+	w.SetDataSource("datasource", &pages.DatabaseSource{EntityName: "PgTest.Order"})
+	w.SetSelection("itemSelection", "Multi")
+	row := &pages.DynamicText{Content: &pages.ClientTemplate{
+		Template:   &model.Text{Translations: map[string]string{"en_US": "{1}"}},
+		Parameters: []*pages.ClientTemplateParameter{{AttributeRef: "PgTest.Order.OrderNumber"}},
+	}}
+	row.Name = "dtNum"
+	w.SetChildWidgets("content", []pages.Widget{row})
+	cw := w.Finalize(model.ID("g1"), "gal", "", "Always")
+
+	m, err := b.mapPageWidget(cw)
+	if err != nil {
+		t.Fatalf("mapPageWidget: %v", err)
+	}
+	ob, _ := m["object"].(map[string]any)
+	if ob["itemSelection"] != "Multi" {
+		t.Fatalf("itemSelection: %+v", ob["itemSelection"])
+	}
+	if ds, _ := ob["datasource"].(map[string]any); ds["$Type"] != "CustomWidgets$CustomWidgetXPathSource" {
+		t.Fatalf("datasource: %+v", ob["datasource"])
+	}
+	content, _ := ob["content"].([]any)
+	if len(content) != 1 {
+		t.Fatalf("content widgets: %+v", content)
+	}
+	dt, _ := content[0].(map[string]any)
+	if dt["$Type"] != "Pages$DynamicText" {
+		t.Fatalf("content[0]: %+v", dt)
+	}
+	// The "{1}" binding must survive as a full ClientTemplate with a parameter.
+	ct, _ := dt["ct:content"].(map[string]any)
+	params, _ := ct["parameters"].([]any)
+	if len(params) != 1 {
+		t.Fatalf("template parameters dropped: %+v", dt["ct:content"])
+	}
+	p0, _ := params[0].(map[string]any)
+	ar, _ := p0["attributeRef"].(map[string]any)
+	if ar["attribute"] != "PgTest.Order.OrderNumber" {
+		t.Fatalf("param attributeRef: %+v", p0)
 	}
 }
 

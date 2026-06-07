@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	"github.com/mendixlabs/mxcli/mdl/backend"
 	"github.com/mendixlabs/mxcli/mdl/types"
@@ -72,6 +73,16 @@ func (b *Backend) mapCustomWidget(wd *pages.CustomWidget) (map[string]any, error
 			cw.object["optionsSourceType"] = "enumeration"
 		}
 	}
+	// Map Widgets-typed slots (e.g. Gallery `content`) recursively into the pg
+	// object. Each child goes through the full widget mapper, so nested pluggable
+	// widgets and conditional visibility work inside a slot.
+	for _, key := range sortedKeys(cw.childSlots) {
+		mapped, err := b.mapPageWidgets(cw.childSlots[key])
+		if err != nil {
+			return nil, fmt.Errorf("%s %q slot %q: %w", cw.widgetID, wd.Name, key, err)
+		}
+		cw.object[key] = mapped
+	}
 	return map[string]any{
 		"$Type":      "CustomWidgets$CustomWidget",
 		"name":       wd.Name,
@@ -79,6 +90,16 @@ func (b *Backend) mapCustomWidget(wd *pages.CustomWidget) (map[string]any, error
 		"widgetId":   cw.widgetID,
 		"object":     cw.object,
 	}, nil
+}
+
+// sortedKeys returns a map's keys in sorted order, for deterministic output.
+func sortedKeys(m map[string][]pages.Widget) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // mcpCustomWidget is the recorded high-level pg form of one pluggable widget:
@@ -89,7 +110,8 @@ func (b *Backend) mapCustomWidget(wd *pages.CustomWidget) (map[string]any, error
 type mcpCustomWidget struct {
 	widgetID    string
 	object      map[string]any
-	unsupported []string // property ops recorded for not-yet-supported widget shapes
+	childSlots  map[string][]pages.Widget // Widgets-typed slots (e.g. Gallery `content`), mapped at emit time
+	unsupported []string                  // property ops recorded for not-yet-supported widget shapes
 }
 
 // supportedWidgetIDs lists the pluggable widget ids the MCP backend can emit,
@@ -122,6 +144,7 @@ type mcpWidgetBuilder struct {
 	widgetID    string
 	def         mcpWidgetDef
 	object      map[string]any
+	childSlots  map[string][]pages.Widget
 	unsupported []string
 }
 
@@ -197,8 +220,18 @@ func (w *mcpWidgetBuilder) SetSelection(propertyKey, value string) {
 // Operations not needed by the supported widgets — recorded so a widget that
 // relies on them is rejected rather than emitted with missing properties.
 func (w *mcpWidgetBuilder) SetExpression(propertyKey, _ string) { w.note("expression:" + propertyKey) }
-func (w *mcpWidgetBuilder) SetChildWidgets(propertyKey string, _ []pages.Widget) {
-	w.note("childWidgets:" + propertyKey)
+
+// SetChildWidgets stores a Widgets-typed slot (e.g. a Gallery's `content`
+// template, emptyPlaceholder, filtersPlaceholder). The child widgets are mapped
+// to their pg forms lazily in mapCustomWidget, where errors can be surfaced.
+func (w *mcpWidgetBuilder) SetChildWidgets(propertyKey string, children []pages.Widget) {
+	if len(children) == 0 {
+		return
+	}
+	if w.childSlots == nil {
+		w.childSlots = make(map[string][]pages.Widget)
+	}
+	w.childSlots[propertyKey] = children
 }
 func (w *mcpWidgetBuilder) SetTextTemplate(propertyKey, _ string) {
 	w.note("textTemplate:" + propertyKey)
@@ -286,6 +319,7 @@ func (w *mcpWidgetBuilder) Finalize(id model.ID, name, label, editable string) *
 	w.backend.customWidgets[id] = &mcpCustomWidget{
 		widgetID:    w.widgetID,
 		object:      w.object,
+		childSlots:  w.childSlots,
 		unsupported: w.unsupported,
 	}
 	return &pages.CustomWidget{

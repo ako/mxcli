@@ -144,19 +144,30 @@ serialization. One ComboBox quirk: the def.json enum mode maps only
 so the MCP backend infers `optionsSourceType: "enumeration"` — otherwise pg
 defaults it to `association` and prunes the enum binding.
 
-Which pluggable widgets are supported, and each widget's DataSource property, are
-declared in `mdl/backend/mcp/widgets.def.json` — an MCP-owned capability registry
+Supported pluggable widgets: **ComboBox**, **DataGrid 2**, and **Gallery**. Which
+ones are supported, and each widget's DataSource property, are declared in
+`mdl/backend/mcp/widgets.def.json` — an MCP-owned capability registry
 **deliberately not** added to the shared widget registry, so it cannot change the
-MPR datagrid path (which is being replaced by the new engine). `PropertyTypeIDs`
-reports the DataSource property from it so the shared engine's auto-datasource
-pass routes the data source through `SetDataSource`; **DataGrid 2** columns are
-shaped generically in `SetObjectList` (operation kind → pg shape; text-template
-properties take pg's `ct:` prefix). DataGrid 2 columns with custom-content child
-widgets or parameterised header templates, the legacy Gallery, and any property
-op the builder doesn't translate are rejected, not silently emitted with missing
-content. The broader consolidation (removing the hardcoded Go maps in
-`widget_defs.go` and migrating the MPR path to def.json) is deferred until after
-the engine replacement merges.
+MPR datagrid path (which is being replaced by the new engine). The builder
+translates the shared engine's storage-agnostic calls:
+- `SetDataSource` → `CustomWidgets$CustomWidgetXPathSource` (DataGrid 2 reaches it
+  via auto-datasource, which reads the DataSource property `PropertyTypeIDs`
+  reports from the def; ComboBox/Gallery map it explicitly in their shared
+  def.json).
+- `SetObjectList` → generic object-list items (DataGrid 2 `columns`): operation
+  kind → pg shape, text-template keys take pg's `ct:` prefix.
+- `SetChildWidgets` → Widgets-typed slots (Gallery `content` template), mapped
+  recursively through the normal widget mapper so nested pluggable widgets and
+  conditional visibility work inside a slot.
+
+Client templates with `{N}` parameters (common in Gallery/DataGrid cells) emit a
+full `Pages$ClientTemplate` with `attributeRef`/`expression`/`sourceVariable`
+parameters — otherwise the literal `{1}` would show. DataGrid 2 columns with
+custom-content child widgets or parameterised header templates, pluggable widgets
+not in the registry, and any property op the builder doesn't translate are
+rejected, not silently emitted with missing content. The broader consolidation
+(removing the hardcoded Go maps in `widget_defs.go` and migrating the MPR path to
+def.json) is deferred until after the engine replacement merges.
 
 Data sources for DataView/ListView: page-variable (`Pages$PageVariable`),
 direct-entity (`DomainModels$DirectEntityRef`), and **microflow**

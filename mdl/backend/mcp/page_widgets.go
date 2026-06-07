@@ -88,11 +88,8 @@ func (b *Backend) mapPageWidgetBody(w pages.Widget) (map[string]any, error) {
 			"ariaRole":                      "Button",
 		}, nil
 	case *pages.DynamicText:
-		content := ""
-		if wd.Content != nil && wd.Content.Template != nil {
-			content = textValue(wd.Content.Template)
-		}
-		if content == "" {
+		content := clientTemplateValue(wd.Content)
+		if s, ok := content.(string); ok && s == "" && wd.AttributePath != "" {
 			content = wd.AttributePath
 		}
 		renderMode := string(wd.RenderMode)
@@ -379,4 +376,44 @@ func textValue(t *model.Text) string {
 		return ""
 	}
 	return t.Translations["en_US"]
+}
+
+// clientTemplateValue maps a client template (e.g. a DynamicText's content) onto
+// its pg form. With no parameters it returns the plain template string — pg wraps
+// it into a Pages$ClientTemplate and the caller's `ct:` key carries the wrapping.
+// With parameters (a "{1}"-style binding) it returns the full Pages$ClientTemplate
+// so the parameter bindings are preserved (otherwise the literal "{1}" would show).
+func clientTemplateValue(ct *pages.ClientTemplate) any {
+	if ct == nil {
+		return ""
+	}
+	text := textValue(ct.Template)
+	if len(ct.Parameters) == 0 {
+		return text
+	}
+	params := make([]any, 0, len(ct.Parameters))
+	for _, p := range ct.Parameters {
+		params = append(params, clientTemplateParam(p))
+	}
+	return map[string]any{
+		"$Type":      "Pages$ClientTemplate",
+		"t:template": text, // plain string; the server wraps it in Texts$Text
+		"parameters": params,
+	}
+}
+
+// clientTemplateParam maps one template parameter ("{N}" binding) onto a
+// Pages$ClientTemplateParameter. Attribute, literal-expression, and page-variable
+// parameters are supported (Studio Pro fills formattingInfo defaults).
+func clientTemplateParam(p *pages.ClientTemplateParameter) map[string]any {
+	param := map[string]any{"$Type": "Pages$ClientTemplateParameter"}
+	switch {
+	case p.AttributeRef != "":
+		param["attributeRef"] = map[string]any{"$Type": "DomainModels$AttributeRef", "attribute": p.AttributeRef}
+	case p.Expression != "":
+		param["expression"] = p.Expression
+	case p.SourceVariable != "":
+		param["sourceVariable"] = map[string]any{"$Type": "Pages$PageVariable", "pageParameter": p.SourceVariable, "useAllPages": false}
+	}
+	return param
 }
