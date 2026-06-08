@@ -98,6 +98,7 @@ This preserves the audit trail.
 | [0002](0002-backend-abstraction.md) | Backend Abstraction Layer | Accepted |
 | [0003](0003-mdl-is-sql-shaped.md) | MDL is SQL-shaped | Accepted |
 | [0004](0004-full-codec-engine.md) | Route all document types through the codec engine | Accepted |
+| [0005](0005-semantic-model-interface-currency.md) | Semantic model is the backend-interface currency; storage formats are swappable adapters | Accepted |
 
 ## Candidates to back-fill
 
