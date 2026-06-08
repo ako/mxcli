@@ -273,12 +273,26 @@ Wired so far:
   *errors*, not zero warnings — the report shows both.
 - **`save_all`** (`--mcp-save`) — PED has no save tool, so writes live only in
   Studio Pro's in-memory model until the user saves. `--mcp-save` flushes via
-  Concord's `save_all` on Disconnect. **Caveat:** Concord's `save_all` is
-  implemented as macOS **keystroke automation** (osascript sends Cmd+S), so it
-  requires the Mac to grant Accessibility/Automation permission to the osascript
-  host — otherwise it fails with `"osascript is not allowed to send keystrokes
-  (1002)"`. The failure is surfaced as a stderr warning (changes remain unsaved),
-  never silent.
+  Concord's `save_all` on Disconnect. **Unreliable — keystroke automation.**
+  Concord's `save_all` synthesizes a macOS Cmd+S (osascript → System Events), with
+  two failure modes observed against 11.11 Beta:
+  1. **Permission.** Needs macOS **Accessibility** on the *responsible* process.
+     If Studio Pro is launched from a shell that exec's the binary directly, the
+     responsible process is the **terminal**, not Studio Pro — relaunch via
+     `open -n -a "<app>" --args …` (launchd → app is its own responsible process)
+     and grant Studio Pro Accessibility. Otherwise it fails `osascript is not
+     allowed to send keystrokes (1002)`.
+  2. **The keystroke may not save even when permitted.** With permission granted
+     and Studio Pro frontmost, `save_all` returned `{"status":"save_command_sent"}`
+     yet the project on disk did **not** change (mtime unmoved, new docs absent) —
+     verified on a virtiofs-shared project so disk reads are authoritative.
+     Suspected cause: two Studio Pro instances sharing one bundle id make
+     "activate + Cmd+S" target the wrong window, and/or Studio Pro not honoring
+     synthetic keystrokes. **Treat `--mcp-save` as best-effort; confirm the save
+     in Studio Pro (or just Ctrl+S there).** The backend reports a save *failure*
+     as a stderr warning, but a silently-no-op `save_command_sent` it cannot
+     detect. This is a Concord automation limitation, not a backend issue —
+     model-based gap-closers (`delete_document`, `check_model`) do not have it.
 
 Candidate gap-closers not yet wired: `delete_model_element` (entity/attribute/
 association — but PED already deletes these, so low priority; snake_case args
