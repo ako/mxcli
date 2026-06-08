@@ -296,15 +296,24 @@ Wired so far:
      cannot detect. Model-based gap-closers (`delete_document`, `check_model`) are
      unaffected — they do not use keystroke automation.
 
-- **`run_app` / `get_app_status` / `stop_app`** — `--mcp-run` starts the app
-  (run_app — build + deploy the current model) on Disconnect and prints the
-  runtime URL from `get_app_status` (a read-only `{data:{running, runningUrl,
-  projectName, …}}` probe). `RunApp`/`StopApp`/`GetAppStatus` are also exposed as
-  backend methods. **Caution:** like `save_all`, `run_app`/`stop_app` are "click
-  the Run/Stop button" — possibly keystroke-driven, so they may share `save_all`'s
-  reliability/hang issues; `get_app_status` is a clean read-only API. Verify
-  `run_app`/`stop_app` in the real single-instance Concord setup before relying on
-  them (see [`MCP_SAVE_VERIFICATION.md`](MCP_SAVE_VERIFICATION.md)).
+- **`get_app_status`** — ✅ robust read-only probe (`{data:{running, runningUrl,
+  projectName, …}}`); verified live (e.g. `running | http://localhost:8080/`).
+  Exposed as `GetAppStatus()` and printed by `--mcp-run`.
+- **`run_app` / `stop_app`** (`--mcp-run` starts the app) — ⚠️ **same
+  UI-automation failure as `save_all`.** They are "click the Run/Stop button"
+  automations: `stop_app` returned `{"status":"command_sent"}` but the app stayed
+  running across repeated `get_app_status` polls (2026-06-08, 11.11 Beta). So like
+  `save_all` they report success without taking effect; `run_app` almost certainly
+  behaves the same. Wired correctly (will work once Concord's UI automation is
+  fixed), but **don't rely on `--mcp-run`/`stop_app` — start/stop the app manually
+  in Studio Pro.** Report upstream.
+
+**Pattern (important):** Concord's **model-API** tools work (`delete_document`,
+`check_model`, `get_app_status`); its **UI-automation** tools that synthesize
+button clicks / keystrokes do **not** in this environment (`save_all`, `stop_app`,
+`run_app` all return a `*_command_sent` status with no actual effect, and
+`save_all` can hang Studio Pro). When choosing a Concord capability, prefer the
+model-API ones.
 
 Candidate gap-closers not yet wired: `delete_model_element` (entity/attribute/
 association — but PED already deletes these, so low priority; snake_case args
