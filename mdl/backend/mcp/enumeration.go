@@ -37,10 +37,35 @@ func (b *Backend) UpdateEnumeration(enum *model.Enumeration) error {
 	return fmt.Errorf("modifying enumeration %q is not yet supported by the MCP backend (create a new one, or edit it in Studio Pro)", enum.Name)
 }
 
-// DeleteEnumeration is unsupported: the PED server exposes no delete-document
-// tool, so a created enumeration can only be removed inside Studio Pro.
-func (b *Backend) DeleteEnumeration(_ model.ID) error {
-	return fmt.Errorf("DROP ENUMERATION is not supported by the MCP backend — the PED server has no delete-document tool; remove the enumeration in Studio Pro")
+// DeleteEnumeration drops an enumeration via Concord's delete_document (PED has
+// no delete tool). Requires --mcp-concord; errors clearly otherwise.
+func (b *Backend) DeleteEnumeration(id model.ID) error {
+	enum, err := b.GetEnumeration(id)
+	if err != nil {
+		return fmt.Errorf("resolve enumeration %s for DROP: %w", id, err)
+	}
+	modName, err := b.moduleNameForContainer(enum.ContainerID)
+	if err != nil {
+		return fmt.Errorf("resolve module for enumeration %q: %w", enum.Name, err)
+	}
+	if err := b.concordDeleteDocument(modName, enum.Name); err != nil {
+		return err
+	}
+	b.forgetSessionEnum(modName, enum.Name)
+	return nil
+}
+
+// forgetSessionEnum removes a session-created enumeration from the registry after
+// it has been dropped, so later reads this run no longer surface it.
+func (b *Backend) forgetSessionEnum(moduleName, name string) {
+	out := b.sessionEnums[:0]
+	for _, e := range b.sessionEnums {
+		if mod, err := b.GetModule(e.ContainerID); err == nil && mod.Name == moduleName && e.Name == name {
+			continue
+		}
+		out = append(out, e)
+	}
+	b.sessionEnums = out
 }
 
 // ListEnumerations returns enumerations from the local reader merged with any

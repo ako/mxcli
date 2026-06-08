@@ -147,6 +147,20 @@ func (b *Backend) ListMicroflows() ([]*microflows.Microflow, error) {
 	return out, nil
 }
 
+// DeleteMicroflow drops a microflow via Concord's delete_document (PED has no
+// delete tool). Requires --mcp-concord; errors clearly otherwise.
+func (b *Backend) DeleteMicroflow(id model.ID) error {
+	mf, err := b.GetMicroflow(id)
+	if err != nil {
+		return fmt.Errorf("resolve microflow %s for DROP: %w", id, err)
+	}
+	modName, err := b.moduleNameForContainer(mf.ContainerID)
+	if err != nil {
+		return fmt.Errorf("resolve module for microflow %q: %w", mf.Name, err)
+	}
+	return b.concordDeleteDocument(modName, mf.Name)
+}
+
 // GetMicroflow resolves by ID, preferring session-created microflows.
 func (b *Backend) GetMicroflow(id model.ID) (*microflows.Microflow, error) {
 	for _, m := range b.sessionMicroflows {

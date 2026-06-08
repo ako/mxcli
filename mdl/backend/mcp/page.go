@@ -96,6 +96,20 @@ func (b *Backend) ListPages() ([]*pages.Page, error) {
 	return out, nil
 }
 
+// DeletePage drops a page via Concord's delete_document (PED has no delete tool).
+// Requires --mcp-concord; errors clearly otherwise.
+func (b *Backend) DeletePage(id model.ID) error {
+	page, err := b.GetPage(id)
+	if err != nil {
+		return fmt.Errorf("resolve page %s for DROP: %w", id, err)
+	}
+	modName, err := b.moduleNameForContainer(page.ContainerID)
+	if err != nil {
+		return fmt.Errorf("resolve module for page %q: %w", page.Name, err)
+	}
+	return b.concordDeleteDocument(modName, page.Name)
+}
+
 // Page-related reads delegate to the local reader (the executor's page builder
 // resolves layouts/snippets through these; without them the layout won't
 // resolve and the widget tree is dropped).

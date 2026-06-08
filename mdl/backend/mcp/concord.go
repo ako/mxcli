@@ -5,6 +5,8 @@ package mcp
 import (
 	"fmt"
 	"strings"
+
+	"github.com/mendixlabs/mxcli/model"
 )
 
 // Concord is a Studio Pro extension whose MCP server provides capabilities the
@@ -46,4 +48,25 @@ func concordFailed(text string) bool {
 func (b *Backend) SaveAll() error {
 	_, err := b.concordCall("save_all", map[string]any{})
 	return err
+}
+
+// concordDeleteDocument removes a standalone document (enumeration, microflow,
+// page) via Concord's delete_document. PED has no delete tool, so DROP of these
+// document types is only possible through Concord.
+func (b *Backend) concordDeleteDocument(moduleName, docName string) error {
+	_, err := b.concordCall("delete_document", map[string]any{
+		"module_name":   moduleName,
+		"document_name": docName,
+	})
+	return err
+}
+
+// moduleNameForContainer resolves a container (module) ID to its module name,
+// session-aware so freshly created modules resolve too.
+func (b *Backend) moduleNameForContainer(containerID model.ID) (string, error) {
+	mod, err := b.GetModule(containerID)
+	if err != nil {
+		return "", err
+	}
+	return mod.Name, nil
 }

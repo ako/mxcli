@@ -84,9 +84,22 @@ func TestListEnumerations_SessionTakesPrecedence(t *testing.T) {
 	}
 }
 
-func TestDeleteEnumeration_Unsupported(t *testing.T) {
+func TestDeleteEnumeration_RequiresConcord(t *testing.T) {
+	// DROP routes to Concord's delete_document; without --mcp-concord it must
+	// give an actionable error (not "no delete tool ever"). Use a session module
+	// + enum so the resolve path needs no local reader.
 	b := &Backend{}
-	if err := b.DeleteEnumeration("any"); err == nil || !strings.Contains(err.Error(), "not supported") {
-		t.Fatalf("DeleteEnumeration should be unsupported, got: %v", err)
+	mod := &model.Module{Name: "M"}
+	mod.ID = model.ID("mcp~module~M")
+	b.sessionModules = append(b.sessionModules, mod)
+	enum := &model.Enumeration{Values: []model.EnumerationValue{}}
+	enum.ID = model.ID("mcp~enum~M~E")
+	enum.Name = "E"
+	enum.ContainerID = mod.ID
+	b.sessionEnums = append(b.sessionEnums, enum)
+
+	err := b.DeleteEnumeration(enum.ID)
+	if err == nil || !strings.Contains(err.Error(), "Concord") {
+		t.Fatalf("DROP without Concord should error pointing at --mcp-concord, got: %v", err)
 	}
 }

@@ -260,6 +260,12 @@ it stays `nil` when not configured, and every Concord-backed op errors clearly i
 it's missing.
 
 Wired so far:
+- **`delete_document`** — real `DROP` of standalone documents (enumeration,
+  microflow, page), which PED cannot delete at all. `DROP ENUMERATION/MICROFLOW/
+  PAGE` resolves the document's module + name and calls
+  `delete_document {module_name, document_name}`. Unlike `save_all` this is
+  **model-based, not keystroke automation**, so it is robust. (Entities and
+  associations still delete via PED's array-element removal — no Concord needed.)
 - **`save_all`** (`--mcp-save`) — PED has no save tool, so writes live only in
   Studio Pro's in-memory model until the user saves. `--mcp-save` flushes via
   Concord's `save_all` on Disconnect. **Caveat:** Concord's `save_all` is
@@ -269,11 +275,11 @@ Wired so far:
   (1002)"`. The failure is surfaced as a stderr warning (changes remain unsaved),
   never silent.
 
-Candidate gap-closers not yet wired: `delete_document` / `delete_model_element`
-(real DROP — PED has no delete tool; note snake_case args like
-`{element_type, entity_name}` and `{module, page_name}`), `check_model` /
-`check_project_errors` (validation), `run_app` / `stop_app` / `get_app_status`,
-`refresh_project`. Concord identity captured 2026-06-08: `concord-mcp` (proto
+Candidate gap-closers not yet wired: `delete_model_element` (entity/attribute/
+association — but PED already deletes these, so low priority; snake_case args
+`{element_type, entity_name}`), `check_model` / `check_project_errors`
+(validation), `run_app` / `stop_app` / `get_app_status`, `refresh_project`.
+Concord identity captured 2026-06-08: `concord-mcp` (proto
 `2025-03-26`), 44 tools, on port 7783 (directly container-reachable; no socat).
 
 ## Onboarding a new Studio Pro version
