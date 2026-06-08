@@ -435,7 +435,7 @@ Both namespaces are discoverable by typing `/mxcli` in Claude Code. Add new cont
 ### mxcli init
 
 `mxcli init` creates a `.claude/` folder with skills, commands, CLAUDE.md, and VS Code MDL extension in a target Mendix project. Source of truth for synced assets:
-- Skills: `reference/mendix-repl/templates/.claude/skills/`
+- Skills: `.claude/skills/mendix/` — `make sync-skills` copies these to the `cmd/mxcli/skills/` embed dir (`//go:embed skills/*.md`), which `mxcli init` writes into the project. **Edit the `mendix/` source, not the embed dir** (it is regenerated). The top-level `.claude/skills/*.md` are contributor/dev skills and are **not** synced.
 - Commands: `.claude/commands/mendix/` (the `mxcli-dev/` folder is **not** synced)
 - VS Code extension: `vscode-mdl/vscode-mdl-*.vsix`
 
