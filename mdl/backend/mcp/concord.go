@@ -3,7 +3,9 @@
 package mcp
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/mendixlabs/mxcli/model"
@@ -59,6 +61,67 @@ func (b *Backend) concordDeleteDocument(moduleName, docName string) error {
 		"document_name": docName,
 	})
 	return err
+}
+
+// CheckItem is one domain-model consistency finding from check_model.
+type CheckItem struct {
+	Module  string `json:"module"`
+	Entity  string `json:"entity"`
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+// CheckResult is the parsed result of Concord's check_model.
+type CheckResult struct {
+	Success bool `json:"success"`
+	Healthy bool `json:"healthy"` // true == zero errors (NOT zero warnings)
+	Summary struct {
+		TotalItems   int `json:"totalItems"`
+		ErrorCount   int `json:"errorCount"`
+		WarningCount int `json:"warningCount"`
+		InfoCount    int `json:"infoCount"`
+	} `json:"summary"`
+	Errors   []CheckItem `json:"errors"`
+	Warnings []CheckItem `json:"warnings"`
+}
+
+// CheckModel runs Concord's domain-model consistency checker, optionally scoped to
+// one module (""=whole project). A non-empty Errors slice is a *result*, not a
+// tool failure, so this bypasses the flat success/error heuristic and parses the
+// structured body directly.
+func (b *Backend) CheckModel(moduleName string) (*CheckResult, error) {
+	if b.concord == nil {
+		return nil, fmt.Errorf("check_model requires the Concord MCP server — pass --mcp-concord")
+	}
+	args := map[string]any{}
+	if moduleName != "" {
+		args["module"] = moduleName
+	}
+	res, err := b.concord.CallTool("check_model", args)
+	if err != nil {
+		return nil, err
+	}
+	text := pedStripReminder(res.Text)
+	if res.IsError {
+		return nil, fmt.Errorf("check_model: %s", text)
+	}
+	var r CheckResult
+	if err := json.Unmarshal([]byte(text), &r); err != nil {
+		return nil, fmt.Errorf("check_model: parsing result: %w", err)
+	}
+	return &r, nil
+}
+
+// writeCheckReport prints a concise consistency report. Errors and warnings are
+// both shown — "healthy" (zero errors) does NOT mean zero warnings.
+func writeCheckReport(w io.Writer, r *CheckResult) {
+	fmt.Fprintf(w, "model check: %d error(s), %d warning(s)\n", r.Summary.ErrorCount, r.Summary.WarningCount)
+	for _, it := range r.Errors {
+		fmt.Fprintf(w, "  ERROR  %s.%s [%s]: %s\n", it.Module, it.Entity, it.Code, it.Message)
+	}
+	for _, it := range r.Warnings {
+		fmt.Fprintf(w, "  warn   %s.%s [%s]: %s\n", it.Module, it.Entity, it.Code, it.Message)
+	}
 }
 
 // moduleNameForContainer resolves a container (module) ID to its module name,

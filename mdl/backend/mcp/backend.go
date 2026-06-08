@@ -49,6 +49,9 @@ type Backend struct {
 	// saveOnExit flushes Studio Pro (Concord save_all) on Disconnect — PED has no
 	// save tool, so this is how `mxcli --mcp ... --mcp-save` persists writes.
 	saveOnExit bool
+	// checkOnExit runs Concord's check_model on Disconnect and prints the report
+	// (`--mcp-check`), so MCP-authored changes are validated.
+	checkOnExit bool
 
 	// schemaFetched records element types already fetched via ped_get_schema
 	// this session (the contract asks for a schema fetch before create/add).
@@ -120,10 +123,11 @@ func New(mcpURL, dial string) *Backend {
 // server (gap-filler for capabilities PED lacks). saveOnExit makes Disconnect run
 // Concord's save_all so PED-authored in-memory writes are persisted. Returns the
 // receiver for chaining.
-func (b *Backend) WithConcord(url, dial string, saveOnExit bool) *Backend {
+func (b *Backend) WithConcord(url, dial string, saveOnExit, checkOnExit bool) *Backend {
 	b.concordURL = url
 	b.concordDial = dial
 	b.saveOnExit = saveOnExit
+	b.checkOnExit = checkOnExit
 	return b
 }
 
@@ -178,6 +182,15 @@ func (b *Backend) Disconnect() error {
 	if b.saveOnExit && b.concord != nil {
 		if err := b.SaveAll(); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: --mcp-save failed, changes remain unsaved in Studio Pro: %v\n", err)
+		}
+	}
+	// Validate the (in-memory) model after writes if requested. Diagnostic, so it
+	// prints to stderr and never blocks teardown.
+	if b.checkOnExit && b.concord != nil {
+		if r, err := b.CheckModel(""); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: --mcp-check failed: %v\n", err)
+		} else {
+			writeCheckReport(os.Stderr, r)
 		}
 	}
 	if b.reader != nil {

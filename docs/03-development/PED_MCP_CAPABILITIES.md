@@ -266,6 +266,11 @@ Wired so far:
   `delete_document {module_name, document_name}`. Unlike `save_all` this is
   **model-based, not keystroke automation**, so it is robust. (Entities and
   associations still delete via PED's array-element removal — no Concord needed.)
+- **`check_model`** (`--mcp-check`) — domain-model consistency check after writes
+  (PED has no validation for the live model). Parses `{success, healthy, summary
+  {errorCount, warningCount, …}, errors[], warnings[]}` and prints a report to
+  stderr on Disconnect. Model-based (robust). Note: `healthy: true` means zero
+  *errors*, not zero warnings — the report shows both.
 - **`save_all`** (`--mcp-save`) — PED has no save tool, so writes live only in
   Studio Pro's in-memory model until the user saves. `--mcp-save` flushes via
   Concord's `save_all` on Disconnect. **Caveat:** Concord's `save_all` is
@@ -277,9 +282,9 @@ Wired so far:
 
 Candidate gap-closers not yet wired: `delete_model_element` (entity/attribute/
 association — but PED already deletes these, so low priority; snake_case args
-`{element_type, entity_name}`), `check_model` / `check_project_errors`
-(validation), `run_app` / `stop_app` / `get_app_status`, `refresh_project`.
-Concord identity captured 2026-06-08: `concord-mcp` (proto
+`{element_type, entity_name}`), `check_project_errors` (full-project validation —
+currently stubbed in Concord), `run_app` / `stop_app` / `get_app_status`,
+`refresh_project`. Concord identity captured 2026-06-08: `concord-mcp` (proto
 `2025-03-26`), 44 tools, on port 7783 (directly container-reachable; no socat).
 
 ## Onboarding a new Studio Pro version
