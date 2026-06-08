@@ -36,6 +36,17 @@ func init() {
 		MandatoryListMarkers: map[string]int32{"Sortings": 2},
 	})
 	codec.RegisterListMarker("Microflows$RetrieveSorting", 2)
+	// Call actions: ParameterMappings list always emitted (marker 2); a MicroflowCall
+	// always serializes QueueSettings as null.
+	codec.RegisterTypeDefaults("Microflows$MicroflowCall", codec.TypeDefaults{
+		NullFields:           []string{"QueueSettings"},
+		MandatoryListMarkers: map[string]int32{"ParameterMappings": 2},
+	})
+	codec.RegisterTypeDefaults("Microflows$NanoflowCall", codec.TypeDefaults{
+		MandatoryListMarkers: map[string]int32{"ParameterMappings": 2},
+	})
+	codec.RegisterListMarker("Microflows$MicroflowCallParameterMapping", 2)
+	codec.RegisterListMarker("Microflows$NanoflowCallParameterMapping", 2)
 }
 
 // majorVersion returns the project's Mendix major version (for version-gated BSON).
@@ -308,6 +319,46 @@ func microflowActionToGen(action microflows.MicroflowAction) element.Element {
 			g.SetRetrieveSource(src)
 		}
 		return g
+	case *microflows.MicroflowCallAction:
+		g := genMf.NewMicroflowCallAction()
+		g.SetID(element.ID(a.ID))
+		g.SetErrorHandlingType(orDefault(string(a.ErrorHandlingType), "Rollback"))
+		if a.MicroflowCall != nil {
+			mc := genMf.NewMicroflowCall()
+			mc.SetID(element.ID(a.MicroflowCall.ID))
+			mc.SetMicroflowQualifiedName(a.MicroflowCall.Microflow)
+			for _, pm := range a.MicroflowCall.ParameterMappings {
+				m := genMf.NewMicroflowCallParameterMapping()
+				m.SetID(element.ID(pm.ID))
+				m.SetParameterQualifiedName(pm.Parameter)
+				m.SetArgument(pm.Argument)
+				mc.AddParameterMappings(m)
+			}
+			g.SetMicroflowCall(mc)
+		}
+		g.SetOutputVariableName(a.ResultVariableName) // BSON key "ResultVariableName"
+		g.SetUseReturnVariable(a.UseReturnVariable)
+		return g
+	case *microflows.NanoflowCallAction:
+		g := genMf.NewNanoflowCallAction()
+		g.SetID(element.ID(a.ID))
+		g.SetErrorHandlingType(orDefault(string(a.ErrorHandlingType), "Rollback"))
+		g.SetOutputVariableName(a.OutputVariableName)
+		g.SetUseReturnVariable(a.UseReturnVariable)
+		if a.NanoflowCall != nil {
+			nc := genMf.NewNanoflowCall()
+			nc.SetID(element.ID(a.NanoflowCall.ID))
+			nc.SetNanoflowQualifiedName(a.NanoflowCall.Nanoflow)
+			for _, pm := range a.NanoflowCall.ParameterMappings {
+				m := genMf.NewNanoflowCallParameterMapping()
+				m.SetID(element.ID(pm.ID))
+				m.SetParameterQualifiedName(pm.Parameter)
+				m.SetArgument(pm.Argument)
+				nc.AddParameterMappings(m)
+			}
+			g.SetNanoflowCall(nc)
+		}
+		return g
 	default:
 		return nil // not yet supported (added in later groups)
 	}
@@ -554,6 +605,20 @@ func assignFlowObjectIDs(el element.Element) {
 					for _, it := range sl.ItemsItems() {
 						assignID(it)
 					}
+				}
+			}
+		case *genMf.MicroflowCallAction:
+			if mc, ok := a.MicroflowCall().(*genMf.MicroflowCall); ok {
+				assignID(mc)
+				for _, pm := range mc.ParameterMappingsItems() {
+					assignID(pm)
+				}
+			}
+		case *genMf.NanoflowCallAction:
+			if nc, ok := a.NanoflowCall().(*genMf.NanoflowCall); ok {
+				assignID(nc)
+				for _, pm := range nc.ParameterMappingsItems() {
+					assignID(pm)
 				}
 			}
 		}

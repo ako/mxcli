@@ -44,6 +44,45 @@ func TestWriteParity_Microflow_ObjectOps(t *testing.T) {
 	}
 }
 
+// TestWriteParity_Microflow_Calls validates the call group: microflow calls
+// (with/without args + result) and nanoflow calls, each with a nested Call
+// element + parameter mappings (marker-2 list).
+func TestWriteParity_Microflow_Calls(t *testing.T) {
+	setup := []string{
+		"CREATE MICROFLOW MyFirstModule.CTarget () RETURNS BOOLEAN BEGIN RETURN true END",
+		"CREATE MICROFLOW MyFirstModule.CTargetP (Val: string) RETURNS STRING BEGIN RETURN $Val END",
+		"CREATE NANOFLOW MyFirstModule.NTarget () RETURNS BOOLEAN BEGIN RETURN true END",
+	}
+	cases := []struct{ name, stmt, mf string }{
+		{"MicroflowNoArgs", "CREATE MICROFLOW MyFirstModule.MfCall () BEGIN call microflow MyFirstModule.CTarget(); END", "MfCall"},
+		{"MicroflowArgResult", "CREATE MICROFLOW MyFirstModule.MfCallR () BEGIN $R = call microflow MyFirstModule.CTargetP(Val = 'x'); END", "MfCallR"},
+		{"NanoflowCall", "CREATE MICROFLOW MyFirstModule.MfNano () BEGIN call nanoflow MyFirstModule.NTarget(); END", "MfNano"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			run := func(eng Engine) string {
+				p := copyProject(t)
+				for _, s := range setup {
+					if _, e := Run(Legacy, p, s); e != nil {
+						t.Fatalf("setup %q: %v", s, e)
+					}
+				}
+				if _, e := Run(eng, p, c.stmt); e != nil {
+					t.Fatalf("%s create: %v", eng, e)
+				}
+				s, e := MicroflowCanonBSON(p, "MyFirstModule", c.mf)
+				if e != nil {
+					t.Fatalf("%s canon: %v", eng, e)
+				}
+				return s
+			}
+			if leg, msd := run(Legacy), run(ModelSDK); leg != msd {
+				t.Errorf("%s divergence:\nlegacy:   %s\nmodelsdk: %s", c.name, leg, msd)
+			}
+		})
+	}
+}
+
 // TestWriteParity_Microflow_Loops validates the loop group: iterate-over-list
 // (IterableList) and while (WhileLoopCondition), each with a nested body
 // (ObjectCollection objects-only) and supported branch activities.
