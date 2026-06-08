@@ -77,6 +77,12 @@ type Backend struct {
 	// that records semantic property ops here instead of mutating BSON;
 	// mapPageWidget then looks the object up to emit CustomWidgets$CustomWidget.
 	customWidgets map[model.ID]*mcpCustomWidget
+
+	// sessionModules holds modules created over MCP this session, merged into
+	// ListModules/GetModule(ByName) so that a module-dependent op later in the
+	// same run (e.g. "create module X; create enumeration X.Y") can resolve the
+	// freshly created module, which the local reader does not yet know about.
+	sessionModules []*model.Module
 }
 
 // compile-time guarantee that Backend (and its embedded base) satisfies the
@@ -161,9 +167,43 @@ func (b *Backend) GetMendixVersion() (string, error)     { return b.reader.GetMe
 // a dirty-set read router is future work.
 // ---------------------------------------------------------------------------
 
-func (b *Backend) ListModules() ([]*model.Module, error)        { return b.reader.ListModules() }
-func (b *Backend) GetModule(id model.ID) (*model.Module, error) { return b.reader.GetModule(id) }
+func (b *Backend) ListModules() ([]*model.Module, error) {
+	local, err := b.reader.ListModules()
+	if err != nil {
+		return nil, err
+	}
+	if len(b.sessionModules) == 0 {
+		return local, nil
+	}
+	seen := make(map[string]bool, len(b.sessionModules))
+	out := make([]*model.Module, 0, len(local)+len(b.sessionModules))
+	for _, m := range b.sessionModules {
+		seen[m.Name] = true
+		out = append(out, m)
+	}
+	for _, m := range local {
+		if !seen[m.Name] {
+			out = append(out, m)
+		}
+	}
+	return out, nil
+}
+
+func (b *Backend) GetModule(id model.ID) (*model.Module, error) {
+	for _, m := range b.sessionModules {
+		if m.ID == id {
+			return m, nil
+		}
+	}
+	return b.reader.GetModule(id)
+}
+
 func (b *Backend) GetModuleByName(name string) (*model.Module, error) {
+	for _, m := range b.sessionModules {
+		if m.Name == name {
+			return m, nil
+		}
+	}
 	return b.reader.GetModuleByName(name)
 }
 

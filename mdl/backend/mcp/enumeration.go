@@ -14,7 +14,7 @@ const enumerationDocType = "Enumerations$Enumeration"
 // registers it in the session so it is visible to ListEnumerations this run
 // (e.g. a subsequent CREATE ENTITY with an attribute of this enum type).
 func (b *Backend) CreateEnumeration(enum *model.Enumeration) error {
-	mod, err := b.reader.GetModule(enum.ContainerID)
+	mod, err := b.GetModule(enum.ContainerID)
 	if err != nil {
 		return fmt.Errorf("resolve module for enumeration %q: %w", enum.Name, err)
 	}

@@ -20,7 +20,7 @@ const microflowDocType = "Microflows$Microflow"
 // are not mapped yet are rejected with a clear error (the 130+ Microflows$*
 // types are an iterative follow-on). See docs/03-development/PED_MCP_CAPABILITIES.md.
 func (b *Backend) CreateMicroflow(mf *microflows.Microflow) error {
-	mod, err := b.reader.GetModule(mf.ContainerID)
+	mod, err := b.GetModule(mf.ContainerID)
 	if err != nil {
 		return fmt.Errorf("resolve module for microflow %q: %w", mf.Name, err)
 	}

@@ -90,10 +90,21 @@ The port can change between Studio Pro sessions — confirm with `lsof` on the h
 
 ## How the mxcli MCP backend uses this surface
 
-Implemented (11.11): `CREATE/ALTER(add,drop attr)/DROP ENTITY`, `CREATE/DROP
-ASSOCIATION`, `CREATE ENUMERATION`, `CREATE VIEW ENTITY`, `CREATE MICROFLOW`
-(broad activity + control-flow coverage), and `CREATE PAGE` (foundation), with a
-dirty-set read router that makes in-session edits visible.
+Implemented (11.11): `CREATE MODULE`, `CREATE/ALTER(add,drop attr)/DROP ENTITY`,
+`CREATE/DROP ASSOCIATION`, `CREATE ENUMERATION`, `CREATE VIEW ENTITY`, `CREATE
+MICROFLOW` (broad activity + control-flow coverage), `CREATE PAGE` + `ALTER PAGE`
+(INSERT/DROP/REPLACE/SET DataSource/SET Layout), with a dirty-set read router that
+makes in-session edits visible.
+
+`CREATE MODULE` routes through `ped_create_module` (which flushes to disk
+immediately) and registers the module in a session list merged into
+`ListModules`/`GetModule(ByName)`, so a later op in the same run — e.g. `create
+module X; create enumeration X.Y` — resolves the freshly created module (the
+local reader does not yet know about it). The standalone-doc create paths
+(enumeration/page/microflow) resolve their module via `GetModule` (session-aware)
+rather than the reader directly. Note `ped_create_module`'s success text is
+`"Module 'X' created successfully."`, NOT the `SUCCESS`-prefix the document ops
+use, so it has its own success check (contains "success").
 
 **ALTER PAGE** is a read-modify-write on the pg tree: `OpenPageForMutation` loads
 the page via `pg_read_page`, the mutator edits the in-memory tree, and `Save()`

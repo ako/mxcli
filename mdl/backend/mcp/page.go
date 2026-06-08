@@ -21,7 +21,7 @@ import (
 
 // CreatePage creates a page via pg_write_page.
 func (b *Backend) CreatePage(page *pages.Page) error {
-	mod, err := b.reader.GetModule(page.ContainerID)
+	mod, err := b.GetModule(page.ContainerID)
 	if err != nil {
 		return fmt.Errorf("resolve module for page %q: %w", page.Name, err)
 	}
