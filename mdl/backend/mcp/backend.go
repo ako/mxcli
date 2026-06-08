@@ -46,12 +46,13 @@ type Backend struct {
 	concordURL  string
 	concordDial string
 	concord     *Client
-	// saveOnExit flushes Studio Pro (Concord save_all) on Disconnect — PED has no
-	// save tool, so this is how `mxcli --mcp ... --mcp-save` persists writes.
-	saveOnExit bool
-	// checkOnExit runs Concord's check_model on Disconnect and prints the report
-	// (`--mcp-check`), so MCP-authored changes are validated.
+	// On-Disconnect Concord actions (the gap-fillers PED lacks). saveOnExit flushes
+	// via save_all (--mcp-save), checkOnExit validates via check_model
+	// (--mcp-check), runOnExit starts the app via run_app and prints its URL
+	// (--mcp-run).
+	saveOnExit  bool
 	checkOnExit bool
+	runOnExit   bool
 
 	// schemaFetched records element types already fetched via ped_get_schema
 	// this session (the contract asks for a schema fetch before create/add).
@@ -119,15 +120,23 @@ func New(mcpURL, dial string) *Backend {
 	}
 }
 
-// WithConcord configures the optional second MCP client to the Concord extension
-// server (gap-filler for capabilities PED lacks). saveOnExit makes Disconnect run
-// Concord's save_all so PED-authored in-memory writes are persisted. Returns the
-// receiver for chaining.
-func (b *Backend) WithConcord(url, dial string, saveOnExit, checkOnExit bool) *Backend {
-	b.concordURL = url
-	b.concordDial = dial
-	b.saveOnExit = saveOnExit
-	b.checkOnExit = checkOnExit
+// ConcordConfig configures the optional second MCP client to the Concord
+// extension server (gap-filler for capabilities PED lacks) and which of its
+// on-Disconnect actions to run.
+type ConcordConfig struct {
+	URL, Dial   string
+	SaveOnExit  bool // run save_all   (--mcp-save)
+	CheckOnExit bool // run check_model (--mcp-check)
+	RunOnExit   bool // run run_app    (--mcp-run)
+}
+
+// WithConcord enables the Concord client. Returns the receiver for chaining.
+func (b *Backend) WithConcord(cfg ConcordConfig) *Backend {
+	b.concordURL = cfg.URL
+	b.concordDial = cfg.Dial
+	b.saveOnExit = cfg.SaveOnExit
+	b.checkOnExit = cfg.CheckOnExit
+	b.runOnExit = cfg.RunOnExit
 	return b
 }
 
@@ -191,6 +200,15 @@ func (b *Backend) Disconnect() error {
 			fmt.Fprintf(os.Stderr, "warning: --mcp-check failed: %v\n", err)
 		} else {
 			writeCheckReport(os.Stderr, r)
+		}
+	}
+	// Start the app (build + deploy current model) and report its URL, for a
+	// change-then-run loop.
+	if b.runOnExit && b.concord != nil {
+		if err := b.RunApp(); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: --mcp-run failed: %v\n", err)
+		} else if s, err := b.GetAppStatus(); err == nil && s.Data.RunningURL != "" {
+			fmt.Fprintf(os.Stderr, "app running at %s\n", s.Data.RunningURL)
 		}
 	}
 	if b.reader != nil {

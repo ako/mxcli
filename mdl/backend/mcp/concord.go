@@ -124,6 +124,51 @@ func writeCheckReport(w io.Writer, r *CheckResult) {
 	}
 }
 
+// AppStatus is the parsed result of Concord's get_app_status.
+type AppStatus struct {
+	Status string `json:"status"`
+	Data   struct {
+		ProjectPath string `json:"projectPath"`
+		ProjectName string `json:"projectName"`
+		Running     string `json:"running"`
+		RunningURL  string `json:"runningUrl"`
+	} `json:"data"`
+}
+
+// GetAppStatus returns whether the loaded app is running and its runtime URL
+// (Concord get_app_status — read-only, the "what state is the project in" probe).
+func (b *Backend) GetAppStatus() (*AppStatus, error) {
+	if b.concord == nil {
+		return nil, fmt.Errorf("get_app_status requires the Concord MCP server — pass --mcp-concord")
+	}
+	res, err := b.concord.CallTool("get_app_status", map[string]any{})
+	if err != nil {
+		return nil, err
+	}
+	text := pedStripReminder(res.Text)
+	if res.IsError {
+		return nil, fmt.Errorf("get_app_status: %s", text)
+	}
+	var s AppStatus
+	if err := json.Unmarshal([]byte(text), &s); err != nil {
+		return nil, fmt.Errorf("get_app_status: parsing result: %w", err)
+	}
+	return &s, nil
+}
+
+// RunApp starts the loaded Mendix app on its run profile (Concord run_app,
+// equivalent to the green Run button — builds + deploys the current model).
+func (b *Backend) RunApp() error {
+	_, err := b.concordCall("run_app", map[string]any{})
+	return err
+}
+
+// StopApp stops the running Mendix runtime (Concord stop_app, the red Stop button).
+func (b *Backend) StopApp() error {
+	_, err := b.concordCall("stop_app", map[string]any{})
+	return err
+}
+
 // moduleNameForContainer resolves a container (module) ID to its module name,
 // session-aware so freshly created modules resolve too.
 func (b *Backend) moduleNameForContainer(containerID model.ID) (string, error) {

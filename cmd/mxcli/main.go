@@ -116,6 +116,7 @@ Examples:
 		globalMCPConcordDial, _ = cmd.Flags().GetString("mcp-concord-dial")
 		globalMCPSave, _ = cmd.Flags().GetBool("mcp-save")
 		globalMCPCheck, _ = cmd.Flags().GetBool("mcp-check")
+		globalMCPRun, _ = cmd.Flags().GetBool("mcp-run")
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		// Get flags
@@ -201,6 +202,7 @@ var (
 	globalMCPConcordDial string
 	globalMCPSave        bool
 	globalMCPCheck       bool
+	globalMCPRun         bool
 )
 
 // resolveFormat returns the effective output format for a command.
@@ -224,12 +226,15 @@ func newLoggedExecutor(mode string) (*executor.Executor, *diaglog.Logger) {
 	exec := executor.New(os.Stdout)
 	mcpURL, mcpDial := globalMCPURL, globalMCPDial
 	concordURL, concordDial := globalMCPConcord, globalMCPConcordDial
-	saveOnExit, checkOnExit := globalMCPSave, globalMCPCheck
+	saveOnExit, checkOnExit, runOnExit := globalMCPSave, globalMCPCheck, globalMCPRun
 	exec.SetBackendFactory(func() backend.FullBackend {
 		if mcpURL != "" {
 			b := mcpbackend.New(mcpURL, mcpDial)
-			if concordURL != "" || saveOnExit || checkOnExit {
-				b = b.WithConcord(concordURL, concordDial, saveOnExit, checkOnExit)
+			if concordURL != "" || saveOnExit || checkOnExit || runOnExit {
+				b = b.WithConcord(mcpbackend.ConcordConfig{
+					URL: concordURL, Dial: concordDial,
+					SaveOnExit: saveOnExit, CheckOnExit: checkOnExit, RunOnExit: runOnExit,
+				})
 			}
 			return b
 		}
@@ -285,6 +290,7 @@ func init() {
 	rootCmd.PersistentFlags().String("mcp-concord-dial", "", "Override the TCP address dialed for --mcp-concord")
 	rootCmd.PersistentFlags().Bool("mcp-save", false, "After the command, save all changes in Studio Pro via Concord (requires --mcp-concord; the built-in server has no save tool)")
 	rootCmd.PersistentFlags().Bool("mcp-check", false, "After the command, run Studio Pro's model consistency check via Concord and print the report (requires --mcp-concord)")
+	rootCmd.PersistentFlags().Bool("mcp-run", false, "After the command, start the app in Studio Pro via Concord (run_app) and print its URL (requires --mcp-concord)")
 	rootCmd.Flags().StringP("command", "c", "", "Execute MDL command(s) and exit")
 
 	// Check command flags

@@ -296,11 +296,21 @@ Wired so far:
      cannot detect. Model-based gap-closers (`delete_document`, `check_model`) are
      unaffected — they do not use keystroke automation.
 
+- **`run_app` / `get_app_status` / `stop_app`** — `--mcp-run` starts the app
+  (run_app — build + deploy the current model) on Disconnect and prints the
+  runtime URL from `get_app_status` (a read-only `{data:{running, runningUrl,
+  projectName, …}}` probe). `RunApp`/`StopApp`/`GetAppStatus` are also exposed as
+  backend methods. **Caution:** like `save_all`, `run_app`/`stop_app` are "click
+  the Run/Stop button" — possibly keystroke-driven, so they may share `save_all`'s
+  reliability/hang issues; `get_app_status` is a clean read-only API. Verify
+  `run_app`/`stop_app` in the real single-instance Concord setup before relying on
+  them (see [`MCP_SAVE_VERIFICATION.md`](MCP_SAVE_VERIFICATION.md)).
+
 Candidate gap-closers not yet wired: `delete_model_element` (entity/attribute/
 association — but PED already deletes these, so low priority; snake_case args
 `{element_type, entity_name}`), `check_project_errors` (full-project validation —
-currently stubbed in Concord), `run_app` / `stop_app` / `get_app_status`,
-`refresh_project`. Concord identity captured 2026-06-08: `concord-mcp` (proto
+currently stubbed in Concord), `refresh_project`. Concord identity captured
+2026-06-08: `concord-mcp` (proto
 `2025-03-26`), 44 tools, on port 7783 (directly container-reachable; no socat).
 
 ## Onboarding a new Studio Pro version

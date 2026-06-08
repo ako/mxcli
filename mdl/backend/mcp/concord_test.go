@@ -34,6 +34,15 @@ func TestConcordCall_NotConfigured(t *testing.T) {
 	if _, err := b.CheckModel(""); err == nil {
 		t.Fatal("CheckModel without Concord should error")
 	}
+	if _, err := b.GetAppStatus(); err == nil {
+		t.Fatal("GetAppStatus without Concord should error")
+	}
+	if err := b.RunApp(); err == nil {
+		t.Fatal("RunApp without Concord should error")
+	}
+	if err := b.StopApp(); err == nil {
+		t.Fatal("StopApp without Concord should error")
+	}
 }
 
 func TestWriteCheckReport(t *testing.T) {
