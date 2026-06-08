@@ -296,9 +296,15 @@ Wired so far:
      cannot detect. Model-based gap-closers (`delete_document`, `check_model`) are
      unaffected — they do not use keystroke automation.
 
-- **`get_app_status`** — ✅ robust read-only probe (`{data:{running, runningUrl,
-  projectName, …}}`); verified live (e.g. `running | http://localhost:8080/`).
-  Exposed as `GetAppStatus()` and printed by `--mcp-run`.
+- **`get_app_status`** — the API call works and returns well-formed
+  `{data:{running, runningUrl, projectName, …}}` (exposed as `GetAppStatus()`,
+  printed by `--mcp-run`). **But `running`/`runningUrl` are effectively a
+  port/process probe**, not the current session's console-managed runtime: it
+  reported `running | :8080` while the Studio Pro runtime console was empty —
+  because an **orphaned runtime from a previous run** was still bound to `:8080`
+  (restarting Studio Pro doesn't kill the separate runtime process; `:8080` was
+  confirmed listening). So trust the API shape, but treat `running: running` as
+  "something is bound to the runtime port," which may be stale.
 - **`run_app` / `stop_app`** (`--mcp-run` starts the app) — ⚠️ **same
   UI-automation failure as `save_all`.** They are "click the Run/Stop button"
   automations: `stop_app` returned `{"status":"command_sent"}` but the app stayed
@@ -308,12 +314,13 @@ Wired so far:
   fixed), but **don't rely on `--mcp-run`/`stop_app` — start/stop the app manually
   in Studio Pro.** Report upstream.
 
-**Pattern (important):** Concord's **model-API** tools work (`delete_document`,
-`check_model`, `get_app_status`); its **UI-automation** tools that synthesize
-button clicks / keystrokes do **not** in this environment (`save_all`, `stop_app`,
-`run_app` all return a `*_command_sent` status with no actual effect, and
-`save_all` can hang Studio Pro). When choosing a Concord capability, prefer the
-model-API ones.
+**Pattern (important):** Concord's **model-editing** tools work (`delete_document`,
+`check_model`); its **UI-automation** tools that synthesize button clicks /
+keystrokes do **not** in this environment (`save_all`, `stop_app`, `run_app` all
+return a `*_command_sent` status with no actual effect, and `save_all` can hang
+Studio Pro). `get_app_status` is read-only and returns valid data but reflects raw
+port state (can be a stale runtime). Net: only `delete_document` and
+`check_model` are dependable today.
 
 Candidate gap-closers not yet wired: `delete_model_element` (entity/attribute/
 association — but PED already deletes these, so low priority; snake_case args
