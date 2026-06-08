@@ -112,9 +112,21 @@ func TestPageMutator_SetLayoutAndUnsupported(t *testing.T) {
 	if m.content["layout"] != "Atlas_Core.Atlas_TopBar" {
 		t.Fatalf("layout: %v", m.content["layout"])
 	}
-	// Property-name translation and column/variable ops are not yet supported.
-	if err := m.SetWidgetProperty("t1", "Caption", "x"); err == nil {
-		t.Error("SetWidgetProperty should be rejected")
+	// Known properties map to pg keys (case-insensitive); unknown ones are rejected.
+	if err := m.SetWidgetProperty("t1", "Class", "hl"); err != nil {
+		t.Fatalf("SetWidgetProperty Class: %v", err)
+	}
+	if _, _, _, w, _ := findWidget(m.content, "t1"); w["appearance"].(map[string]any)["class"] != "hl" {
+		t.Fatalf("Class not applied: %+v", w["appearance"])
+	}
+	if err := m.SetWidgetProperty("t1", "caption", "Hello"); err != nil {
+		t.Fatalf("SetWidgetProperty caption (lowercase): %v", err)
+	}
+	if _, _, _, w, _ := findWidget(m.content, "t1"); w["ct:caption"] != "Hello" {
+		t.Fatalf("caption not applied: %+v", w["ct:caption"])
+	}
+	if err := m.SetWidgetProperty("t1", "Bogus", "x"); err == nil {
+		t.Error("unknown SET property should be rejected")
 	}
 	if err := m.AddVariable("v", "String", ""); err == nil {
 		t.Error("AddVariable should be rejected")

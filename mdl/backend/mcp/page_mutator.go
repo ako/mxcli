@@ -329,8 +329,88 @@ func (m *mcpPageMutator) Save() error {
 
 // --- not-yet-supported operations (clear errors, no silent drops) ---
 
-func (m *mcpPageMutator) SetWidgetProperty(widgetRef, prop string, _ any) error {
-	return fmt.Errorf("SET %s (%s: ...) is not yet supported by the MCP backend (MDL→pg property-name mapping pending); use INSERT/DROP/REPLACE/SET DataSource/SET Layout", widgetRef, prop)
+// SetWidgetProperty maps an MDL widget property (SET <widget> (Prop: value)) onto
+// its pg key. The MDL property names come from the executor (page builder); their
+// pg equivalents are by convention: Class/Style live under the widget's
+// appearance; Caption/Content/Label are `ct:`-prefixed client templates;
+// ButtonStyle is normalized to pg's enum; Visible becomes a conditional-visibility
+// expression. Values arrive unquoted and typed (string / number / bool).
+func (m *mcpPageMutator) SetWidgetProperty(widgetRef, prop string, value any) error {
+	_, _, _, w, ok := findWidget(m.content, widgetRef)
+	if !ok {
+		return fmt.Errorf("widget %q not found", widgetRef)
+	}
+	// Property names arrive verbatim from MDL (any case), so match case-insensitively.
+	switch strings.ToLower(prop) {
+	case "class", "style":
+		ap, _ := w["appearance"].(map[string]any)
+		if ap == nil {
+			ap = pageAppearance("", "")
+			w["appearance"] = ap
+		}
+		ap[strings.ToLower(prop)] = toStr(value) // "class" / "style"
+	case "tabindex":
+		w["tabIndex"] = toInt(value)
+	case "caption":
+		w["ct:caption"] = toStr(value)
+	case "content":
+		w["ct:content"] = toStr(value)
+	case "label":
+		w["ct:labelTemplate"] = toStr(value)
+	case "rendermode":
+		w["renderMode"] = toStr(value)
+	case "buttonstyle":
+		w["buttonStyle"] = buttonStyle(toStr(value))
+	case "editable":
+		w["editable"] = value
+	case "name":
+		w["name"] = toStr(value)
+	case "visible":
+		// Static visibility is expressed as a conditional-visibility expression
+		// ("true"/"false"), since pg widgets carry no bare `visible` field.
+		w["conditionalVisibilitySettings"] = map[string]any{
+			"$Type":          "Pages$ConditionalVisibilitySettings",
+			"expression":     visibleExpr(value),
+			"conditions":     []any{},
+			"moduleRoles":    []any{},
+			"ignoreSecurity": false,
+		}
+	default:
+		return fmt.Errorf("SET %s (%s: …): property %q is not yet supported by the MCP backend", widgetRef, prop, prop)
+	}
+	return nil
+}
+
+func toStr(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return fmt.Sprint(v)
+}
+
+func toInt(v any) int {
+	switch n := v.(type) {
+	case int:
+		return n
+	case int64:
+		return int(n)
+	case float64:
+		return int(n)
+	}
+	return 0
+}
+
+func visibleExpr(v any) string {
+	switch x := v.(type) {
+	case bool:
+		if x {
+			return "true"
+		}
+		return "false"
+	case string:
+		return x
+	}
+	return fmt.Sprint(v)
 }
 
 func (m *mcpPageMutator) SetColumnProperty(gridRef, columnRef, prop string, _ any) error {
