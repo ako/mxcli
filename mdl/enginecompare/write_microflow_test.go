@@ -2,23 +2,30 @@ package enginecompare
 
 import "testing"
 
-// TestWriteParity_Microflow_Skeleton validates the codec-native microflow CREATE
-// path for the simplest microflow (start → end, boolean return, no parameters)
-// against legacy. Activity groups are added incrementally on top of this.
-func TestWriteParity_Microflow_Skeleton(t *testing.T) {
-	const s = "CREATE MICROFLOW MyFirstModule.MfEmpty () RETURNS BOOLEAN BEGIN RETURN true END"
-	run := func(eng Engine) string {
-		p := copyProject(t)
-		if _, e := Run(eng, p, s); e != nil {
-			t.Fatalf("%s create: %v", eng, e)
-		}
-		c, e := MicroflowCanonBSON(p, "MyFirstModule", "MfEmpty")
-		if e != nil {
-			t.Fatalf("%s canon: %v", eng, e)
-		}
-		return c
+// TestWriteParity_Microflow validates the codec-native microflow CREATE path
+// against legacy, group by group. Skeleton = start → end, boolean return.
+func TestWriteParity_Microflow(t *testing.T) {
+	cases := []struct{ name, stmt, mf string }{
+		{"Skeleton", "CREATE MICROFLOW MyFirstModule.MfEmpty () RETURNS BOOLEAN BEGIN RETURN true END", "MfEmpty"},
+		{"Parameters", "CREATE MICROFLOW MyFirstModule.MfParams (Count: integer, Label: string) RETURNS BOOLEAN BEGIN RETURN true END", "MfParams"},
+		{"VoidReturn", "CREATE MICROFLOW MyFirstModule.MfVoid () BEGIN END", "MfVoid"},
 	}
-	if leg, msd := run(Legacy), run(ModelSDK); leg != msd {
-		t.Errorf("microflow skeleton divergence:\nlegacy:   %s\nmodelsdk: %s", leg, msd)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			run := func(eng Engine) string {
+				p := copyProject(t)
+				if _, e := Run(eng, p, c.stmt); e != nil {
+					t.Fatalf("%s create: %v", eng, e)
+				}
+				s, e := MicroflowCanonBSON(p, "MyFirstModule", c.mf)
+				if e != nil {
+					t.Fatalf("%s canon: %v", eng, e)
+				}
+				return s
+			}
+			if leg, msd := run(Legacy), run(ModelSDK); leg != msd {
+				t.Errorf("%s divergence:\nlegacy:   %s\nmodelsdk: %s", c.name, leg, msd)
+			}
+		})
 	}
 }

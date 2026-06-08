@@ -172,15 +172,17 @@ func microflowObjectToGen(obj microflows.MicroflowObject) element.Element {
 // microflowParameterToGen builds a gen MicroflowParameter (position derives from
 // index, matching the legacy serializer).
 func microflowParameterToGen(p *microflows.MicroflowParameter, idx, major int) element.Element {
-	// NOTE: the gen MicroflowParameter is missing several fields the legacy writer
-	// emits (Documentation, HasVariableNameBeenChanged, IsRequired, DefaultValue);
-	// full parameter parity is handled in the parameters activity group (needs gen
-	// work). The skeleton is validated with a no-parameter microflow.
 	g := genMf.NewMicroflowParameter()
 	g.SetID(element.ID(p.ID))
+	g.SetDocumentation(p.Documentation)
+	g.SetHasVariableNameBeenChanged(false)
 	g.SetName(p.Name)
 	g.SetRelativeMiddlePoint(fmt.Sprintf("%d;53", 200+idx*100))
 	g.SetSize("30;30")
+	if major >= 10 {
+		g.SetDefaultValue("")
+		g.SetIsRequired(true)
+	}
 	g.SetParameterType(microflowDataTypeToGen(p.Type))
 	return g
 }

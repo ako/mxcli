@@ -8018,6 +8018,13 @@ type MicroflowParameter struct {
 	parameterType       *property.Part[element.Element]
 	relativeMiddlePoint *property.Primitive[string]
 	size                *property.Primitive[string]
+	// MANUAL COMPLETION: the codegen omitted these properties Studio Pro emits on
+	// every MicroflowParameter (verified vs legacy serializer). Belongs in
+	// reflection-data/regeneration; added by hand alongside the storage-name overrides.
+	documentation              *property.Primitive[string]
+	hasVariableNameBeenChanged *property.Primitive[bool]
+	isRequired                 *property.Primitive[bool]
+	defaultValue               *property.Primitive[string]
 }
 
 // Name returns the value of the name property.
@@ -8070,6 +8077,34 @@ func (o *MicroflowParameter) SetSize(v string) {
 	o.size.Set(v)
 }
 
+// Documentation returns the value of the documentation property.
+func (o *MicroflowParameter) Documentation() string { return o.documentation.Get() }
+
+// SetDocumentation sets the value of the documentation property.
+func (o *MicroflowParameter) SetDocumentation(v string) { o.documentation.Set(v) }
+
+// HasVariableNameBeenChanged returns the value of the hasVariableNameBeenChanged property.
+func (o *MicroflowParameter) HasVariableNameBeenChanged() bool {
+	return o.hasVariableNameBeenChanged.Get()
+}
+
+// SetHasVariableNameBeenChanged sets the value of the hasVariableNameBeenChanged property.
+func (o *MicroflowParameter) SetHasVariableNameBeenChanged(v bool) {
+	o.hasVariableNameBeenChanged.Set(v)
+}
+
+// IsRequired returns the value of the isRequired property.
+func (o *MicroflowParameter) IsRequired() bool { return o.isRequired.Get() }
+
+// SetIsRequired sets the value of the isRequired property.
+func (o *MicroflowParameter) SetIsRequired(v bool) { o.isRequired.Set(v) }
+
+// DefaultValue returns the value of the defaultValue property.
+func (o *MicroflowParameter) DefaultValue() string { return o.defaultValue.Get() }
+
+// SetDefaultValue sets the value of the defaultValue property.
+func (o *MicroflowParameter) SetDefaultValue(v string) { o.defaultValue.Set(v) }
+
 // InitFromRaw populates lazy-decoded property holders from raw BSON.
 func (o *MicroflowParameter) InitFromRaw(raw bson.Raw) {
 	o.name.Init(raw)
@@ -8079,6 +8114,10 @@ func (o *MicroflowParameter) InitFromRaw(raw bson.Raw) {
 	}
 	o.relativeMiddlePoint.Init(raw)
 	o.size.Init(raw)
+	o.documentation.Init(raw)
+	o.hasVariableNameBeenChanged.Init(raw)
+	o.isRequired.Init(raw)
+	o.defaultValue.Init(raw)
 }
 
 // ────────────────────────────────────────────────────────
@@ -15153,7 +15192,15 @@ func initMicroflowParameter() *MicroflowParameter {
 	o.relativeMiddlePoint.Bind(&o.Base, 3)
 	o.size = property.NewPrimitive[string]("Size", property.DecodeString)
 	o.size.Bind(&o.Base, 4)
-	o.SetProperties([]element.Property{o.name, o.propType, o.parameterType, o.relativeMiddlePoint, o.size})
+	o.documentation = property.NewPrimitive[string]("Documentation", property.DecodeString)
+	o.documentation.Bind(&o.Base, 5)
+	o.hasVariableNameBeenChanged = property.NewPrimitive[bool]("HasVariableNameBeenChanged", property.DecodeBool)
+	o.hasVariableNameBeenChanged.Bind(&o.Base, 6)
+	o.isRequired = property.NewPrimitive[bool]("IsRequired", property.DecodeBool)
+	o.isRequired.Bind(&o.Base, 7)
+	o.defaultValue = property.NewPrimitive[string]("DefaultValue", property.DecodeString)
+	o.defaultValue.Bind(&o.Base, 8)
+	o.SetProperties([]element.Property{o.name, o.propType, o.parameterType, o.relativeMiddlePoint, o.size, o.documentation, o.hasVariableNameBeenChanged, o.isRequired, o.defaultValue})
 	return o
 }
 
