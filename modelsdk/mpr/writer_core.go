@@ -528,6 +528,18 @@ func (w *Writer) DeleteUnit(unitID string) error {
 	return w.deleteUnit(unitID)
 }
 
+// MoveUnit reparents a unit to a new container (used by MOVE for top-level
+// documents like enumerations/constants/microflows). The container lives in the
+// Unit table; contents files are keyed by UnitID, so only the row changes.
+func (w *Writer) MoveUnit(unitID, newContainerID string) error {
+	_, err := w.reader.db.Exec(`UPDATE Unit SET ContainerID = ? WHERE UnitID = ?`,
+		uuidToBlob(newContainerID), uuidToBlob(unitID))
+	if err == nil {
+		w.reader.InvalidateCache()
+	}
+	return err
+}
+
 func (w *Writer) deleteUnit(unitID string) error {
 	// Convert UUID string to 16-byte blob
 	unitIDBlob := uuidToBlob(unitID)
