@@ -26,15 +26,13 @@ func TestSessionModuleResolution(t *testing.T) {
 		t.Fatalf("GetModule(by id) = %+v / %v", got, err)
 	}
 
-	// GetDomainModel for a session module returns an empty synthetic DM whose ID
-	// round-trips through moduleNameForDomainModel back to the module name — so
-	// "create module X; create entity X.Foo" resolves in one run.
-	dm, err := b.GetDomainModel(mod.ID)
-	if err != nil || dm.ID != "mcp~dm~NewMod" || dm.ContainerID != mod.ID || len(dm.Entities) != 0 {
-		t.Fatalf("GetDomainModel(session module) = %+v / %v", dm, err)
-	}
-	name, err := b.moduleNameForDomainModel(dm.ID)
+	// The synthetic domain-model ID handed out for a session module round-trips
+	// through moduleNameForDomainModel back to the module name — so a CREATE
+	// ENTITY in the same run resolves to the right module. (GetDomainModel itself
+	// reconstructs the module's live entities from PED, which needs a live client,
+	// so it's covered by the live tests rather than here.)
+	name, err := b.moduleNameForDomainModel(model.ID(sessionDMPrefix + "NewMod"))
 	if err != nil || name != "NewMod" {
-		t.Fatalf("moduleNameForDomainModel(%s) = %q / %v", dm.ID, name, err)
+		t.Fatalf("moduleNameForDomainModel = %q / %v", name, err)
 	}
 }

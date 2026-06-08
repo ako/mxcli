@@ -13,6 +13,7 @@ import (
 	"github.com/mendixlabs/mxcli/sdk/microflows"
 	"github.com/mendixlabs/mxcli/sdk/mpr"
 	"github.com/mendixlabs/mxcli/sdk/pages"
+	"github.com/mendixlabs/mxcli/sdk/workflows"
 )
 
 // Backend executes domain-model writes against a live Studio Pro via its MCP
@@ -99,6 +100,10 @@ type Backend struct {
 	// same run (e.g. "create module X; create enumeration X.Y") can resolve the
 	// freshly created module, which the local reader does not yet know about.
 	sessionModules []*model.Module
+
+	// sessionWorkflows holds workflows created over MCP this session, merged into
+	// ListWorkflows/GetWorkflow (duplicate detection + create-then-reference).
+	sessionWorkflows []*workflows.Workflow
 }
 
 // compile-time guarantee that Backend (and its embedded base) satisfies the
@@ -284,7 +289,23 @@ func (b *Backend) GetModuleByName(name string) (*model.Module, error) {
 }
 
 func (b *Backend) ListDomainModels() ([]*domainmodel.DomainModel, error) {
-	return b.reader.ListDomainModels()
+	local, err := b.reader.ListDomainModels()
+	if err != nil {
+		return nil, err
+	}
+	if len(b.sessionModules) == 0 {
+		return local, nil
+	}
+	// Append a live-reconstructed domain model for each session-created module, so
+	// entity references into a freshly created module (e.g. a microflow parameter
+	// or workflow context typed X.Foo) resolve in the same run. Best-effort.
+	out := append([]*domainmodel.DomainModel(nil), local...)
+	for _, m := range b.sessionModules {
+		if dm, derr := b.reconstructDomainModelFromPED(m.Name, model.ID(sessionDMPrefix+m.Name), m.ID); derr == nil {
+			out = append(out, dm)
+		}
+	}
+	return out, nil
 }
 
 // GetDomainModel returns a module's domain model. If the module was written
@@ -293,15 +314,14 @@ func (b *Backend) ListDomainModels() ([]*domainmodel.DomainModel, error) {
 // reader (last-saved state).
 func (b *Backend) GetDomainModel(moduleID model.ID) (*domainmodel.DomainModel, error) {
 	// A module created over MCP this session has no on-disk domain model for the
-	// reader to read (the reader is a pre-create snapshot). Return an empty
-	// synthetic domain model whose ID encodes the module name, so a subsequent
-	// CREATE ENTITY in the same run resolves back to it (moduleNameForDomainModel).
+	// reader to read (the reader is a pre-create snapshot). Reconstruct its live
+	// entities from Studio Pro with a synthetic domain-model ID (encoding the
+	// module name, so moduleNameForDomainModel can resolve it back) — so both
+	// "create entity X.Foo" and references to X's entities (e.g. a microflow
+	// parameter or workflow context typed X.Foo) resolve within the same run.
 	for _, m := range b.sessionModules {
 		if m.ID == moduleID {
-			dm := &domainmodel.DomainModel{ContainerID: moduleID}
-			dm.ID = model.ID(sessionDMPrefix + m.Name)
-			dm.TypeName = "DomainModels$DomainModel"
-			return dm, nil
+			return b.reconstructDomainModelFromPED(m.Name, model.ID(sessionDMPrefix+m.Name), moduleID)
 		}
 	}
 	mod, err := b.reader.GetModule(moduleID)

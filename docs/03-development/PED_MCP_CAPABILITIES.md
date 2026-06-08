@@ -94,8 +94,22 @@ The port can change between Studio Pro sessions — confirm with `lsof` on the h
 Implemented (11.11): `CREATE MODULE`, `CREATE/ALTER(add,drop attr)/DROP ENTITY`,
 `CREATE/DROP ASSOCIATION`, `CREATE ENUMERATION`, `CREATE VIEW ENTITY`, `CREATE
 MICROFLOW` (broad activity + control-flow coverage), `CREATE PAGE` + `ALTER PAGE`
-(INSERT/DROP/REPLACE/SET DataSource/SET Layout), with a dirty-set read router that
-makes in-session edits visible.
+(INSERT/DROP/REPLACE/SET property/DataSource/Layout), and `CREATE WORKFLOW` +
+`DROP WORKFLOW`, with a dirty-set read router that makes in-session edits visible.
+
+`CREATE WORKFLOW` maps the executor's workflow onto `Workflows$Workflow`
+(parameter + a linear `Workflows$Flow` of activities Start … End, connected via
+condition outcomes that may nest sub-flows). Activity-type coverage grows one at a
+time (currently Start/End + CallMicroflow with outcomes); UserTask, Decision,
+ParallelSplit, JumpTo, WaitForTimer, etc. and `ALTER WORKFLOW` are rejected with a
+clear error. **Type-name gotcha:** PED's element type for the call-microflow
+activity is `Workflows$CallMicroflowActivity`, NOT the on-disk BSON `$Type`
+`Workflows$CallMicroflowTask` — they differ; use `ped_get_schema
+Workflows$WorkflowActivity` to enumerate the valid concrete subtypes. Workflow
+documents are addressed by qualified name (`<module>.<workflow>`), not a bare
+name. Entity references into a session-created module (a workflow's context
+entity, a microflow parameter) resolve because `ListDomainModels`/`GetDomainModel`
+reconstruct the session module's live entities from PED.
 
 `CREATE MODULE` routes through `ped_create_module` (which flushes to disk
 immediately) and registers the module in a session list merged into

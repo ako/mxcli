@@ -65,7 +65,14 @@ func (b *Backend) reconstructDomainModel(moduleName string, moduleID model.ID) (
 	if err != nil {
 		return nil, fmt.Errorf("reconstruct %s: local domain model: %w", moduleName, err)
 	}
+	return b.reconstructDomainModelFromPED(moduleName, localDM.ID, localDM.ContainerID)
+}
 
+// reconstructDomainModelFromPED reads a module's live entities/associations from
+// Studio Pro and builds a domain model with the given IDs. It is shared by the
+// dirty-saved-module path (real on-disk IDs) and the session-created-module path
+// (synthetic IDs), the latter having no on-disk domain model for the reader.
+func (b *Backend) reconstructDomainModelFromPED(moduleName string, dmID, containerID model.ID) (*domainmodel.DomainModel, error) {
 	res, err := b.client.CallTool("ped_read_document", map[string]any{
 		"documentType": domainModelDocType,
 		"documentName": moduleName,
@@ -89,9 +96,9 @@ func (b *Backend) reconstructDomainModel(moduleName string, moduleID model.ID) (
 	}
 
 	dm := &domainmodel.DomainModel{
-		ContainerID: localDM.ContainerID,
+		ContainerID: containerID,
 	}
-	dm.ID = localDM.ID
+	dm.ID = dmID
 
 	var entityOrder []string // index -> entity synthetic ID (for $id(/entities/N) refs)
 
