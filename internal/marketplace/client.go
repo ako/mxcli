@@ -84,11 +84,36 @@ func (c *Client) Search(ctx context.Context, query string, limit int) (*ContentL
 		return &out, nil
 	}
 
-	// Fetch the first page alone so a common query that matches early costs a
-	// single request, then ramp to concurrent batches so a rare/deep match
-	// (near-full scan) is a handful of round-trips instead of ~23 sequential
-	// ones. Stops at `limit` matches or end-of-catalog (a short page).
 	var matched []Content
+	err := c.scanCatalog(ctx, func(items []Content) bool {
+		matched = append(matched, filterItems(items, query)...)
+		return limit > 0 && len(matched) >= limit
+	})
+	if err != nil {
+		return nil, err
+	}
+	if limit > 0 && len(matched) > limit {
+		matched = matched[:limit]
+	}
+	return &ContentList{Items: matched}, nil
+}
+
+// ListAll fetches the entire catalog listing (all pages), used to populate the
+// search cache. It honours OnProgress like Search.
+func (c *Client) ListAll(ctx context.Context) ([]Content, error) {
+	var all []Content
+	err := c.scanCatalog(ctx, func(items []Content) bool {
+		all = append(all, items...)
+		return false // never stop early — we want the whole catalog
+	})
+	return all, err
+}
+
+// scanCatalog walks /v1/content in concurrent batches, calling visit for each
+// page in catalog order. It fetches the first page alone (so a common early
+// match costs a single request) then ramps to concurrent batches. It stops when
+// visit returns true, at end-of-catalog (a short page), or at maxSearchPages.
+func (c *Client) scanCatalog(ctx context.Context, visit func(items []Content) bool) error {
 	scanned := 0
 	for page := 0; page < maxSearchPages; {
 		batch := searchConcurrency
@@ -101,30 +126,28 @@ func (c *Client) Search(ctx context.Context, query string, limit int) (*ContentL
 
 		pages, err := c.fetchPages(ctx, page, batch)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
-		endReached := false
+		stop, endReached := false, false
 		for _, items := range pages {
-			matched = append(matched, filterItems(items, query)...)
 			scanned += len(items)
 			if len(items) < pageSize {
 				endReached = true
+			}
+			if visit(items) {
+				stop = true
 			}
 		}
 		if c.OnProgress != nil {
 			c.OnProgress(scanned)
 		}
-		if limit > 0 && len(matched) >= limit {
-			matched = matched[:limit]
-			break
-		}
-		if endReached {
+		if stop || endReached {
 			break
 		}
 		page += batch
 	}
-	return &ContentList{Items: matched}, nil
+	return nil
 }
 
 // fetchContentPage returns one page of /v1/content starting at offset

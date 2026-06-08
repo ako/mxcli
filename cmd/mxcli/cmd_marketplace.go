@@ -32,8 +32,14 @@ downloaded module into a project, use Studio Pro or 'mx module-import'.`,
 var marketplaceSearchCmd = &cobra.Command{
 	Use:   "search <query>",
 	Short: "Search marketplace content by keyword",
+	Long: `Search marketplace content by keyword (matches item name and publisher).
+
+The Content API has no server-side search, so the first search fetches the full
+catalog listing and caches it under ~/.mxcli/ for a day. Subsequent searches
+(any query) are served from that cache instantly. Use --refresh to re-fetch.`,
 	Example: `  mxcli marketplace search "database connector"
-  mxcli marketplace search "audit" --limit 5 --json`,
+  mxcli marketplace search "audit" --limit 5 --json
+  mxcli marketplace search "external database" --refresh`,
 	Args: cobra.ExactArgs(1),
 	RunE: runMarketplaceSearch,
 }
@@ -76,6 +82,7 @@ func init() {
 	marketplaceSearchCmd.Flags().IntP("limit", "n", 20, "max results")
 	marketplaceSearchCmd.Flags().String("profile", auth.ProfileDefault, "credential profile")
 	marketplaceSearchCmd.Flags().Bool("json", false, "emit JSON instead of a table")
+	marketplaceSearchCmd.Flags().Bool("refresh", false, "bypass the catalog cache and fetch fresh from the marketplace")
 
 	marketplaceInfoCmd.Flags().String("profile", auth.ProfileDefault, "credential profile")
 	marketplaceInfoCmd.Flags().Bool("json", false, "emit JSON instead of a table")
@@ -204,6 +211,8 @@ func runMarketplaceSearch(cmd *cobra.Command, args []string) error {
 	query := args[0]
 	limit, _ := cmd.Flags().GetInt("limit")
 	asJSON, _ := cmd.Flags().GetBool("json")
+	refresh, _ := cmd.Flags().GetBool("refresh")
+	profile, _ := cmd.Flags().GetString("profile")
 
 	client, err := newMarketplaceClient(cmd.Context(), cmd)
 	if err != nil {
@@ -218,14 +227,34 @@ func runMarketplaceSearch(cmd *cobra.Command, args []string) error {
 		defer progressDone()
 	}
 
-	list, err := client.Search(cmd.Context(), query, limit)
+	// Serve from the on-disk catalog cache when fresh so repeat searches are
+	// instant; otherwise fetch the full catalog once, cache it, and filter.
+	cache := &marketplace.CatalogCache{Path: marketplaceCachePath(profile)}
+	list, fromCache, err := marketplace.SearchCached(cmd.Context(), client, cache, query, limit, refresh)
 	if err != nil {
 		return err
 	}
 	if asJSON {
 		return emitJSON(cmd, list)
 	}
+	if fromCache {
+		fmt.Fprintln(stderr, "(results from cached catalog; pass --refresh to update)")
+	}
 	return renderContentTable(cmd, list.Items)
+}
+
+// marketplaceCachePath returns the catalog cache file for a credential profile
+// (~/.mxcli/marketplace-catalog-<profile>.json). Keyed by profile so different
+// accounts don't share a cache.
+func marketplaceCachePath(profile string) string {
+	if profile == "" {
+		profile = auth.ProfileDefault
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "."
+	}
+	return filepath.Join(home, ".mxcli", "marketplace-catalog-"+profile+".json")
 }
 
 // startSearchProgress wires a live "scanning" indicator on client.OnProgress

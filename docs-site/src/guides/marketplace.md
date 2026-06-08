@@ -35,6 +35,8 @@ mxcli marketplace versions 2888 --min-mendix 10.24.0
 
 Each item has a numeric **content id** (shown by `search`/`info`); you pass it to `download` and `install`.
 
+> **Search caching.** The marketplace Content API has no server-side search, so the first `search` fetches the full catalog listing and caches it under `~/.mxcli/marketplace-catalog-<profile>.json` for a day. After that, searches (for any keyword) are served from the cache instantly. Pass `--refresh` to bypass the cache and re-fetch (e.g. to pick up a brand-new module).
+
 ## Download a `.mpk`
 
 ```bash

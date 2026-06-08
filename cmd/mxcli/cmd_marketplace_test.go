@@ -35,6 +35,9 @@ func resetMarketplaceFlags() {
 // used for every API call. Returns captured stdout+stderr.
 func runMarketplace(t *testing.T, handler http.HandlerFunc, args ...string) (string, error) {
 	t.Helper()
+	// Isolate the catalog cache (~/.mxcli/...) into a temp HOME so tests never
+	// read or write the real user cache.
+	t.Setenv("HOME", t.TempDir())
 	ts := httptest.NewServer(handler)
 	t.Cleanup(ts.Close)
 
