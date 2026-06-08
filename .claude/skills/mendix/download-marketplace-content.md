@@ -34,6 +34,13 @@ mxcli marketplace versions 2888 --min-mendix 10.24.0   # compatible versions onl
 
 The numeric **content id** (from `search`/`info`) is what `download`/`install` take.
 
+**Search caching.** The Content API has no server-side search, so the first `search`
+fetches the whole catalog (tens of seconds) and caches it under `~/.mxcli/` for 24h;
+later searches are instant. If the first search seems slow, it is scanning the catalog —
+let it finish. Pass `--refresh` to bypass the cache and re-fetch (e.g. for a brand-new
+module). If `search` returns nothing, the content may be private or named differently —
+look it up by id with `info <id>` (ids come from the marketplace URL `.../link/component/<id>`).
+
 ## Download a `.mpk` to disk
 
 ```bash

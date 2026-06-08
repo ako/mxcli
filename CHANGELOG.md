@@ -9,6 +9,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - **Marketplace download & install** — the content API now returns a per-version `downloadUrl`, so the previously-parked install path is unblocked. `mxcli marketplace download <id> [--version X] [-o file]` fetches a content version's `.mpk` (two-step: MxToken-authed `303` on `marketplace.mendix.com` → public CDN, no token sent to the CDN). `mxcli marketplace install <id> -p app.mpr` is type-aware: widgets are copied into `widgets/`, new modules are imported via `mx module-import`, other types are downloaded with import instructions. Module **updates** are intentionally reported-not-applied — re-importing an existing module would discard local edits and change persistent-entity IDs (data loss); that path is left to Studio Pro pending an ID-preserving merge
+- **Marketplace search caching** — the first `mxcli marketplace search` fetches the full catalog listing once and caches it under `~/.mxcli/marketplace-catalog-<profile>.json` (24h TTL, mode 0600); subsequent searches (any keyword) are served from the cache instantly. `--refresh` bypasses the cache and re-fetches. An interactive progress line ("Searching marketplace… N items scanned") shows during a fresh scan
+
+### Fixed
+
+- **Marketplace search now scans the whole catalog** — the Content API has no server-side search and caps `limit` at 100 per page, so `marketplace search` previously only filtered the first 100 items and silently missed matches further in (e.g. External Database Connector `219862`, Mendix Business Events `202649`). It now paginates via `offset`, fetching pages **concurrently** (first page alone so a common early match stays a single request; then bounded-parallel batches), and stops at `--limit` matches or end-of-catalog. Measured ~3m45s → ~44s on a slow link for a deep match; combined with the new cache, repeat searches are instant
 
 ## [0.12.0] - 2026-06-04
 
