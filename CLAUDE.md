@@ -550,6 +550,7 @@ Full syntax tables for all MDL statements (microflows, pages, security, navigati
 - `reference/mdl-grammar/` - Comprehensive MDL grammar reference
 - `reference/mendixmodellib/reflection-data/` - Type definitions with storage names and default values
 - `docs/03-development/MDL_PARSER_ARCHITECTURE.md` - ANTLR4 parser design documentation
+- `docs/03-development/MODELSDK_ENGINE_ARCHITECTURE.md` - **Read before extending the modelsdk engine**: layers, the canonical write/read/ALTER patterns, codec mechanisms (TypeDefaults, list markers, storage-name overrides), the engalar harvest rule, and the add-a-document-type recipe
 - `docs/03-development/PAGE_BSON_SERIALIZATION.md` - Page/widget BSON format, type mappings, required defaults
 - `docs/03-development/WIDGET_BSON_VERSION_COMPATIBILITY.md` - What's version-resilient vs version-fragile in widget BSON output, and how to onboard a new Mendix minor (e.g. 11.10)
 - `.claude/skills/debug-bson.md` - Workflow for debugging BSON serialization issues with `mx` tool (includes the "Studio Pro Update Widget" diff methodology that closed CE0463)
