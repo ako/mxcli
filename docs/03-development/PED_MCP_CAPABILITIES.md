@@ -248,6 +248,34 @@ the duplicate source-document create. See `mdl/backend/mcp/` and the
 return a clear "not supported by the MCP backend" error via the generated
 `unsupportedBackend` base.
 
+## Concord (optional second client — gap-filler)
+
+Some deployments run a second MCP server, **Concord** (a Studio Pro extension;
+`concord-mcp`), alongside the built-in PED server. Concord is **not** an authoring
+server — it has none of the `ped_*`/`pg_*` create tools — but it provides
+operational/refactor capabilities PED lacks. The backend uses **PED for authoring
+by default** and reaches for Concord **only** for these gaps. Configure it with
+`--mcp-concord` / `--mcp-concord-dial` (a second `Client`, dialed independently);
+it stays `nil` when not configured, and every Concord-backed op errors clearly if
+it's missing.
+
+Wired so far:
+- **`save_all`** (`--mcp-save`) — PED has no save tool, so writes live only in
+  Studio Pro's in-memory model until the user saves. `--mcp-save` flushes via
+  Concord's `save_all` on Disconnect. **Caveat:** Concord's `save_all` is
+  implemented as macOS **keystroke automation** (osascript sends Cmd+S), so it
+  requires the Mac to grant Accessibility/Automation permission to the osascript
+  host — otherwise it fails with `"osascript is not allowed to send keystrokes
+  (1002)"`. The failure is surfaced as a stderr warning (changes remain unsaved),
+  never silent.
+
+Candidate gap-closers not yet wired: `delete_document` / `delete_model_element`
+(real DROP — PED has no delete tool; note snake_case args like
+`{element_type, entity_name}` and `{module, page_name}`), `check_model` /
+`check_project_errors` (validation), `run_app` / `stop_app` / `get_app_status`,
+`refresh_project`. Concord identity captured 2026-06-08: `concord-mcp` (proto
+`2025-03-26`), 44 tools, on port 7783 (directly container-reachable; no socat).
+
 ## Onboarding a new Studio Pro version
 
 1. Open a project in the new Studio Pro; establish transport (direct or socat).

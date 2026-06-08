@@ -4,6 +4,7 @@ package mcp
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/mendixlabs/mxcli/mdl/backend"
 	"github.com/mendixlabs/mxcli/mdl/types"
@@ -37,6 +38,17 @@ type Backend struct {
 	reader *mpr.Reader
 	path   string
 	server ServerInfo
+
+	// concord is an optional second MCP client to the Concord extension server,
+	// used ONLY for capabilities the built-in PED server lacks (delete, save,
+	// validate, run). nil unless configured via WithConcord. PED stays the
+	// authoring path; Concord is the gap-filler.
+	concordURL  string
+	concordDial string
+	concord     *Client
+	// saveOnExit flushes Studio Pro (Concord save_all) on Disconnect — PED has no
+	// save tool, so this is how `mxcli --mcp ... --mcp-save` persists writes.
+	saveOnExit bool
 
 	// schemaFetched records element types already fetched via ped_get_schema
 	// this session (the contract asks for a schema fetch before create/add).
@@ -104,6 +116,17 @@ func New(mcpURL, dial string) *Backend {
 	}
 }
 
+// WithConcord configures the optional second MCP client to the Concord extension
+// server (gap-filler for capabilities PED lacks). saveOnExit makes Disconnect run
+// Concord's save_all so PED-authored in-memory writes are persisted. Returns the
+// receiver for chaining.
+func (b *Backend) WithConcord(url, dial string, saveOnExit bool) *Backend {
+	b.concordURL = url
+	b.concordDial = dial
+	b.saveOnExit = saveOnExit
+	return b
+}
+
 // Connect opens the local .mpr read-only (for reads/enumeration) and completes
 // the MCP handshake with Studio Pro (for writes).
 func (b *Backend) Connect(path string) error {
@@ -125,6 +148,19 @@ func (b *Backend) Connect(path string) error {
 	b.client = c
 	b.server = si
 	b.path = path
+
+	// Optional Concord gap-filler client. A failure here is fatal only because the
+	// user explicitly asked for it (--mcp-concord); PED authoring already succeeded.
+	if b.concordURL != "" {
+		cc, err := NewClient(ClientOptions{URL: b.concordURL, Dial: b.concordDial})
+		if err != nil {
+			return fmt.Errorf("create Concord client: %w", err)
+		}
+		if _, err := cc.Initialize(); err != nil {
+			return fmt.Errorf("connect to Concord MCP server %q: %w", b.concordURL, err)
+		}
+		b.concord = cc
+	}
 	return nil
 }
 
@@ -136,10 +172,19 @@ func (b *Backend) ServerInfo() ServerInfo { return b.server }
 // ---------------------------------------------------------------------------
 
 func (b *Backend) Disconnect() error {
+	// Persist PED's in-memory writes via Concord before tearing down (PED has no
+	// save tool). A save failure must not be silent — surface it on stderr — but
+	// it does not block teardown (the writes still live in Studio Pro's memory).
+	if b.saveOnExit && b.concord != nil {
+		if err := b.SaveAll(); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: --mcp-save failed, changes remain unsaved in Studio Pro: %v\n", err)
+		}
+	}
 	if b.reader != nil {
 		err := b.reader.Close()
 		b.reader = nil
 		b.client = nil
+		b.concord = nil
 		b.path = ""
 		return err
 	}

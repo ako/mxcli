@@ -346,12 +346,12 @@ func TestWidgetPropertyHover(t *testing.T) {
 	s := &mdlServer{}
 
 	tests := []struct {
-		name     string
-		text     string
-		line     uint32
-		col      uint32
-		wantSub  []string // substrings expected in the rendered hover Value
-		wantNil  bool     // when the hover should not fire
+		name    string
+		text    string
+		line    uint32
+		col     uint32
+		wantSub []string // substrings expected in the rendered hover Value
+		wantNil bool     // when the hover should not fire
 	}{
 		{
 			name: "cursor on combobox property key shows hover",

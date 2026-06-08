@@ -112,6 +112,9 @@ Examples:
 		globalJSONFlag, _ = cmd.Flags().GetBool("json")
 		globalMCPURL, _ = cmd.Flags().GetString("mcp")
 		globalMCPDial, _ = cmd.Flags().GetString("mcp-dial")
+		globalMCPConcord, _ = cmd.Flags().GetString("mcp-concord")
+		globalMCPConcordDial, _ = cmd.Flags().GetString("mcp-concord-dial")
+		globalMCPSave, _ = cmd.Flags().GetBool("mcp-save")
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		// Get flags
@@ -191,8 +194,11 @@ var globalJSONFlag bool
 // routes model writes to a live Studio Pro while reads come from the local
 // .mpr given by -p. See docs/11-proposals/PROPOSAL_mcp_backend.md.
 var (
-	globalMCPURL  string
-	globalMCPDial string
+	globalMCPURL         string
+	globalMCPDial        string
+	globalMCPConcord     string
+	globalMCPConcordDial string
+	globalMCPSave        bool
 )
 
 // resolveFormat returns the effective output format for a command.
@@ -215,9 +221,14 @@ func newLoggedExecutor(mode string) (*executor.Executor, *diaglog.Logger) {
 	logger := diaglog.Init(version, mode)
 	exec := executor.New(os.Stdout)
 	mcpURL, mcpDial := globalMCPURL, globalMCPDial
+	concordURL, concordDial, saveOnExit := globalMCPConcord, globalMCPConcordDial, globalMCPSave
 	exec.SetBackendFactory(func() backend.FullBackend {
 		if mcpURL != "" {
-			return mcpbackend.New(mcpURL, mcpDial)
+			b := mcpbackend.New(mcpURL, mcpDial)
+			if concordURL != "" || saveOnExit {
+				b = b.WithConcord(concordURL, concordDial, saveOnExit)
+			}
+			return b
 		}
 		return mprbackend.New()
 	})
@@ -267,6 +278,9 @@ func init() {
 	rootCmd.PersistentFlags().Bool("json", false, "Output in JSON format")
 	rootCmd.PersistentFlags().String("mcp", "", "Route model writes to a live Studio Pro MCP server (e.g. http://localhost:7782/mcp); reads come from -p")
 	rootCmd.PersistentFlags().String("mcp-dial", "", "Override the TCP address dialed for --mcp (e.g. host.docker.internal:7782 from a devcontainer)")
+	rootCmd.PersistentFlags().String("mcp-concord", "", "Optional second MCP server (Concord) for capabilities the built-in server lacks: delete, save, validate, run (e.g. http://localhost:7783/mcp)")
+	rootCmd.PersistentFlags().String("mcp-concord-dial", "", "Override the TCP address dialed for --mcp-concord")
+	rootCmd.PersistentFlags().Bool("mcp-save", false, "After the command, save all changes in Studio Pro via Concord (requires --mcp-concord; the built-in server has no save tool)")
 	rootCmd.Flags().StringP("command", "c", "", "Execute MDL command(s) and exit")
 
 	// Check command flags
