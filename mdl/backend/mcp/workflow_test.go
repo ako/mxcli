@@ -62,6 +62,57 @@ func TestMapWorkflow(t *testing.T) {
 	}
 }
 
+func TestMapUserTask(t *testing.T) {
+	call := &workflows.CallMicroflowTask{Microflow: "M.ACT_Process"}
+	call.Name = "proc"
+	approve := &workflows.UserTaskOutcome{Value: "Approve", Flow: &workflows.Flow{Activities: []workflows.WorkflowActivity{call}}}
+	reject := &workflows.UserTaskOutcome{Value: "Reject"}
+	ut := &workflows.UserTask{
+		Page:       "M.TaskPage",
+		UserSource: &workflows.XPathBasedUserSource{XPath: "[Status = 'Draft']"},
+		Outcomes:   []*workflows.UserTaskOutcome{approve, reject},
+	}
+	ut.Name = "Review"
+	ut.Caption = "Review it"
+
+	m, err := mapWorkflowActivity(ut)
+	if err != nil {
+		t.Fatalf("mapWorkflowActivity(UserTask): %v", err)
+	}
+	if m["$Type"] != "Workflows$SingleUserTaskActivity" || m["name"] != "Review" {
+		t.Fatalf("user task: %+v", m)
+	}
+	if tp, _ := m["taskPage"].(map[string]any); tp["page"] != "M.TaskPage" {
+		t.Fatalf("taskPage: %+v", m["taskPage"])
+	}
+	tg, _ := m["userTargeting"].(map[string]any)
+	if tg["$Type"] != "Workflows$XPathUserTargeting" || tg["xPathConstraint"] != "[Status = 'Draft']" {
+		t.Fatalf("userTargeting: %+v", tg)
+	}
+	ocs, _ := m["outcomes"].([]any)
+	if len(ocs) != 2 {
+		t.Fatalf("outcomes: %+v", ocs)
+	}
+	o0, _ := ocs[0].(map[string]any)
+	if o0["value"] != "Approve" {
+		t.Fatalf("outcome[0] value: %+v", o0)
+	}
+	// The Approve outcome carries a sub-flow with the mapped call-microflow.
+	flow, _ := o0["flow"].(map[string]any)
+	acts, _ := flow["activities"].([]any)
+	if len(acts) != 1 || acts[0].(map[string]any)["$Type"] != "Workflows$CallMicroflowActivity" {
+		t.Fatalf("outcome[0] flow: %+v", o0["flow"])
+	}
+}
+
+func TestMapUserTask_MultiRejected(t *testing.T) {
+	ut := &workflows.UserTask{IsMulti: true}
+	ut.Name = "multi"
+	if _, err := mapWorkflowActivity(ut); err == nil {
+		t.Error("multi user task should be rejected for now")
+	}
+}
+
 func TestMapWorkflowActivity_Unsupported(t *testing.T) {
 	// An activity type not yet mapped is rejected, not silently dropped.
 	d := &workflows.ExclusiveSplitActivity{}

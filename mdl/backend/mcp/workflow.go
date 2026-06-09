@@ -163,9 +163,75 @@ func mapWorkflowActivity(a workflows.WorkflowActivity) (map[string]any, error) {
 			"outcomes":          outcomes,
 			"parameterMappings": mapWorkflowParamMappings(act.ParameterMappings),
 		}, nil
+	case *workflows.UserTask:
+		if act.IsMulti {
+			return nil, fmt.Errorf("multi user task %q is not yet supported by the MCP backend", act.Name)
+		}
+		if len(act.BoundaryEvents) > 0 {
+			return nil, fmt.Errorf("user task %q with boundary events is not yet supported by the MCP backend", act.Name)
+		}
+		outcomes, err := mapUserTaskOutcomes(act.Outcomes)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{
+			"$Type":                      "Workflows$SingleUserTaskActivity",
+			"name":                       act.Name,
+			"caption":                    act.Caption,
+			"taskPage":                   map[string]any{"$Type": "Workflows$PageReference", "page": act.Page},
+			"taskName":                   mapWorkflowStringTemplate(act.TaskName),
+			"taskDescription":            mapWorkflowStringTemplate(act.TaskDescription),
+			"dueDate":                    act.DueDate,
+			"userTargeting":              mapUserTargeting(act.UserSource),
+			"onCreatedEvent":             map[string]any{"$Type": "Workflows$NoEvent"},
+			"outcomes":                   outcomes,
+			"autoAssignSingleTargetUser": false,
+		}, nil
 	default:
 		return nil, fmt.Errorf("workflow activity type %q is not yet supported by the MCP backend", a.ActivityType())
 	}
+}
+
+// mapUserTargeting maps a user task's user source onto its pg targeting element.
+func mapUserTargeting(source workflows.UserSource) map[string]any {
+	switch s := source.(type) {
+	case *workflows.XPathBasedUserSource:
+		return map[string]any{"$Type": "Workflows$XPathUserTargeting", "xPathConstraint": s.XPath}
+	case *workflows.MicroflowBasedUserSource:
+		return map[string]any{"$Type": "Workflows$MicroflowUserTargeting", "microflow": s.Microflow}
+	case *workflows.XPathGroupSource:
+		return map[string]any{"$Type": "Workflows$XPathGroupTargeting", "xPathConstraint": s.XPath}
+	case *workflows.MicroflowGroupSource:
+		return map[string]any{"$Type": "Workflows$MicroflowGroupTargeting", "microflow": s.Microflow}
+	default:
+		return map[string]any{"$Type": "Workflows$NoUserTargeting"}
+	}
+}
+
+// mapUserTaskOutcomes maps a user task's outcomes; each carries a recursive
+// sub-flow of activities run when that outcome is chosen.
+func mapUserTaskOutcomes(outcomes []*workflows.UserTaskOutcome) ([]any, error) {
+	out := make([]any, 0, len(outcomes))
+	for _, oc := range outcomes {
+		value := oc.Value
+		if value == "" {
+			value = oc.Caption
+		}
+		m := map[string]any{"$Type": "Workflows$UserTaskOutcome", "value": value}
+		if oc.Flow != nil {
+			acts := make([]any, 0, len(oc.Flow.Activities))
+			for _, a := range oc.Flow.Activities {
+				am, err := mapWorkflowActivity(a)
+				if err != nil {
+					return nil, err
+				}
+				acts = append(acts, am)
+			}
+			m["flow"] = map[string]any{"$Type": "Workflows$Flow", "activities": acts}
+		}
+		out = append(out, m)
+	}
+	return out, nil
 }
 
 // mapConditionOutcomes maps an activity's condition outcomes; each may carry a
