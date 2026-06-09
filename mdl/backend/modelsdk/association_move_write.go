@@ -116,6 +116,50 @@ func assignCrossAssocIDs(ca *genDm.CrossAssociation) {
 	assignID(ca.DeleteBehavior())
 }
 
+// UpdateEnumerationRefsInAllDomainModels rewrites every enumeration-typed
+// attribute that references oldQualifiedName to newQualifiedName, across all
+// domain models. Used after a MOVE ENUMERATION so dependent attributes don't
+// dangle (CE1613). Mutating the nested type marks the owning entity dirty; the
+// codec re-encodes only the touched entities, passing the rest through verbatim.
+func (b *Backend) UpdateEnumerationRefsInAllDomainModels(oldQualifiedName, newQualifiedName string) error {
+	if b.writer == nil {
+		return fmt.Errorf("UpdateEnumerationRefsInAllDomainModels: not connected for writing")
+	}
+	dms, err := b.ListDomainModels()
+	if err != nil {
+		return fmt.Errorf("UpdateEnumerationRefsInAllDomainModels: list domain models: %w", err)
+	}
+	for _, info := range dms {
+		gdm, err := b.loadDomainModelGen(info.ID)
+		if err != nil {
+			return err
+		}
+		changed := false
+		for _, el := range gdm.EntitiesItems() {
+			ent, ok := el.(*genDm.Entity)
+			if !ok {
+				continue
+			}
+			for _, ael := range ent.AttributesItems() {
+				attr, ok := ael.(*genDm.Attribute)
+				if !ok {
+					continue
+				}
+				if et, ok := attr.Type().(*genDm.EnumerationAttributeType); ok && et.EnumerationQualifiedName() == oldQualifiedName {
+					et.SetEnumerationQualifiedName(newQualifiedName)
+					changed = true
+				}
+			}
+		}
+		if changed {
+			if err := b.persistDM(info.ID, gdm); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // MoveEntity moves an entity from a source domain model to a target one,
 // converting any same-DM associations that reference it into cross-module
 // associations (FROM-child stays in source, FROM-parent goes to target), and

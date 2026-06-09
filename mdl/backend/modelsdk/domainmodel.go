@@ -90,6 +90,16 @@ func entityFromGen(e *genDm.Entity) *domainmodel.Entity {
 
 	out.Location = parseLocation(e.Location())
 
+	// View entities carry an OqlViewEntitySource referencing their source
+	// document by qualified name; surface it so read-modify-write paths (e.g.
+	// MOVE ENTITY, which must reparent the source doc) can see it.
+	if src, ok := e.Source().(*genDm.OqlViewEntitySource); ok {
+		out.Source = "DomainModels$OqlViewEntitySource"
+		out.SourceObjectID = model.ID(src.ID())
+		out.SourceDocumentRef = src.SourceDocumentQualifiedName()
+		out.OqlQuery = src.Oql()
+	}
+
 	for _, el := range e.AttributesItems() {
 		if a, ok := el.(*genDm.Attribute); ok {
 			out.Attributes = append(out.Attributes, attributeFromGen(a))
@@ -140,8 +150,13 @@ func attributeFromGen(a *genDm.Attribute) *domainmodel.Attribute {
 		Type:          attributeTypeFromGen(a.Type()),
 	}
 	attr.ID = model.ID(a.ID())
-	if sv, ok := a.Value().(*genDm.StoredValue); ok {
-		attr.Value = &domainmodel.AttributeValue{DefaultValue: sv.DefaultValue()}
+	switch v := a.Value().(type) {
+	case *genDm.StoredValue:
+		attr.Value = &domainmodel.AttributeValue{DefaultValue: v.DefaultValue()}
+	case *genDm.OqlViewValue:
+		// View-entity attribute: the OQL column reference must survive a
+		// read-modify-write (e.g. MOVE ENTITY) or the view goes out of sync (CE6770).
+		attr.Value = &domainmodel.AttributeValue{ViewReference: v.Reference()}
 	}
 	return attr
 }

@@ -4,6 +4,7 @@ package modelsdkbackend
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/modelsdk/codec"
@@ -37,6 +38,37 @@ func (b *Backend) MoveConstant(c *model.Constant) error {
 }
 
 
+// UpdateOqlQueriesForMovedEntity rewrites every ViewEntitySourceDocument whose
+// OQL text references oldQualifiedName to newQualifiedName. Used after a MOVE
+// ENTITY so view sources joining through the moved entity still resolve (CE0174).
+// Mirrors the legacy string-replace; returns the number of docs updated.
+func (b *Backend) UpdateOqlQueriesForMovedEntity(oldQualifiedName, newQualifiedName string) (int, error) {
+	if b.writer == nil {
+		return 0, fmt.Errorf("UpdateOqlQueriesForMovedEntity: not connected for writing")
+	}
+	units, err := mprread.ListUnitsWithContainer[*genDm.ViewEntitySourceDocument](b.reader)
+	if err != nil {
+		return 0, fmt.Errorf("UpdateOqlQueriesForMovedEntity: list source docs: %w", err)
+	}
+	updated := 0
+	for _, u := range units {
+		oql := u.Element.Oql()
+		if oql == "" || !strings.Contains(oql, oldQualifiedName) {
+			continue
+		}
+		u.Element.SetOql(strings.ReplaceAll(oql, oldQualifiedName, newQualifiedName))
+		contents, err := (&codec.Encoder{}).Encode(u.Element)
+		if err != nil {
+			return updated, fmt.Errorf("UpdateOqlQueriesForMovedEntity: encode %s: %w", u.Element.ID(), err)
+		}
+		if err := b.writer.UpdateRawUnit(string(u.Element.ID()), contents); err != nil {
+			return updated, fmt.Errorf("UpdateOqlQueriesForMovedEntity: update %s: %w", u.Element.ID(), err)
+		}
+		updated++
+	}
+	return updated, nil
+}
+
 // CreateViewEntitySourceDocument creates the OQL source document (a top-level
 // unit) that backs a view entity. The entity's OqlViewEntitySource references it
 // by qualified name (wired in entityToGen).
@@ -60,6 +92,20 @@ func (b *Backend) CreateViewEntitySourceDocument(moduleID model.ID, moduleName, 
 		return "", fmt.Errorf("CreateViewEntitySourceDocument: insert: %w", err)
 	}
 	return docID, nil
+}
+
+// MoveViewEntitySourceDocument reparents the OQL source document backing a moved
+// view entity to the target module. Without it the doc is orphaned in the source
+// module (CE6786). A view entity and its source doc share a name.
+func (b *Backend) MoveViewEntitySourceDocument(sourceModuleName string, targetModuleID model.ID, docName string) error {
+	if b.writer == nil {
+		return fmt.Errorf("MoveViewEntitySourceDocument: not connected for writing")
+	}
+	docID, err := b.FindViewEntitySourceDocumentID(sourceModuleName, docName)
+	if err != nil || docID == "" {
+		return err // nil docID → nothing to move
+	}
+	return b.writer.MoveUnit(string(docID), string(targetModuleID))
 }
 
 // FindAllViewEntitySourceDocumentIDs returns every ViewEntitySourceDocument unit
