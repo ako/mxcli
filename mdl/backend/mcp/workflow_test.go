@@ -113,6 +113,37 @@ func TestMapUserTask_MultiRejected(t *testing.T) {
 	}
 }
 
+func TestMapDecision(t *testing.T) {
+	call := &workflows.CallMicroflowTask{Microflow: "M.ACT_Process"}
+	call.Name = "proc"
+	dec := &workflows.ExclusiveSplitActivity{
+		Expression: "$ctx/Total > 1000",
+		Outcomes: []workflows.ConditionOutcome{
+			&workflows.BooleanConditionOutcome{Value: true, Flow: &workflows.Flow{Activities: []workflows.WorkflowActivity{call}}},
+			&workflows.BooleanConditionOutcome{Value: false},
+		},
+	}
+	dec.Name = "decide"
+	m, err := mapWorkflowActivity(dec)
+	if err != nil {
+		t.Fatalf("mapWorkflowActivity(Decision): %v", err)
+	}
+	if m["$Type"] != "Workflows$ExclusiveSplitActivity" || m["expression"] != "$ctx/Total > 1000" {
+		t.Fatalf("decision: %+v", m)
+	}
+	ocs, _ := m["outcomes"].([]any)
+	if len(ocs) != 2 {
+		t.Fatalf("outcomes: %+v", ocs)
+	}
+	o0, _ := ocs[0].(map[string]any)
+	if o0["$Type"] != "Workflows$BooleanConditionOutcome" || o0["value"] != true {
+		t.Fatalf("outcome[0]: %+v", o0)
+	}
+	if _, ok := o0["flow"]; !ok {
+		t.Fatalf("outcome[0] missing sub-flow: %+v", o0)
+	}
+}
+
 func TestMapWorkflowActivity_Unsupported(t *testing.T) {
 	// An activity type not yet mapped is rejected, not silently dropped.
 	d := &workflows.ExclusiveSplitActivity{}

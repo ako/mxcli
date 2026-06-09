@@ -163,6 +163,18 @@ func mapWorkflowActivity(a workflows.WorkflowActivity) (map[string]any, error) {
 			"outcomes":          outcomes,
 			"parameterMappings": mapWorkflowParamMappings(act.ParameterMappings),
 		}, nil
+	case *workflows.ExclusiveSplitActivity:
+		outcomes, err := mapConditionOutcomes(act.Outcomes)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{
+			"$Type":      "Workflows$ExclusiveSplitActivity",
+			"name":       act.Name,
+			"caption":    act.Caption,
+			"expression": act.Expression,
+			"outcomes":   outcomes,
+		}, nil
 	case *workflows.UserTask:
 		if act.IsMulti {
 			return nil, fmt.Errorf("multi user task %q is not yet supported by the MCP backend", act.Name)
