@@ -102,7 +102,7 @@ MICROFLOW` (broad activity + control-flow coverage), `CREATE PAGE` + `ALTER PAGE
 condition outcomes that may nest sub-flows). Activity-type coverage grows one at a
 time (currently Start/End, CallMicroflow with outcomes, single **UserTask** —
 task page, XPath/Microflow user targeting, task name/description, and named
-outcomes each with a recursive sub-flow), **Decision** (ExclusiveSplit: expression + boolean/enum outcomes), **ParallelSplit** (concurrent paths), and **JumpTo** (loop back to a named activity); MultiUserTask,
+outcomes each with a recursive sub-flow), **Decision** (ExclusiveSplit: expression + boolean/enum outcomes), **ParallelSplit** (concurrent paths), **JumpTo** (loop back to a named activity), and **WaitForTimer** (delay expression); MultiUserTask,
 JumpTo, WaitForTimer, boundary events, etc. and `ALTER WORKFLOW` are rejected with
 a clear error. **Type-name gotcha:** PED's element type for the call-microflow
 activity is `Workflows$CallMicroflowActivity`, NOT the on-disk BSON `$Type`

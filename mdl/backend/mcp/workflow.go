@@ -174,6 +174,13 @@ func mapWorkflowActivity(a workflows.WorkflowActivity) (map[string]any, error) {
 			"outcomes":          outcomes,
 			"parameterMappings": mapWorkflowParamMappings(act.ParameterMappings),
 		}, nil
+	case *workflows.WaitForTimerActivity:
+		return map[string]any{
+			"$Type":   "Workflows$WaitForTimerActivity",
+			"name":    act.Name,
+			"caption": act.Caption,
+			"delay":   act.DelayExpression,
+		}, nil
 	case *workflows.JumpToActivity:
 		return map[string]any{
 			"$Type":          "Workflows$JumpToActivity",

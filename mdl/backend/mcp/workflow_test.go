@@ -190,9 +190,21 @@ func TestMapJumpTo(t *testing.T) {
 	}
 }
 
+func TestMapWaitForTimer(t *testing.T) {
+	w := &workflows.WaitForTimerActivity{DelayExpression: "addHours([%CurrentDateTime%], 1)"}
+	w.Name = "wait"
+	m, err := mapWorkflowActivity(w)
+	if err != nil {
+		t.Fatalf("mapWorkflowActivity(WaitForTimer): %v", err)
+	}
+	if m["$Type"] != "Workflows$WaitForTimerActivity" || m["delay"] != "addHours([%CurrentDateTime%], 1)" {
+		t.Fatalf("wait for timer: %+v", m)
+	}
+}
+
 func TestMapWorkflowActivity_Unsupported(t *testing.T) {
 	// An activity type not yet mapped is rejected, not silently dropped.
-	w := &workflows.WaitForTimerActivity{}
+	w := &workflows.WaitForNotificationActivity{}
 	w.Name = "wait"
 	if _, err := mapWorkflowActivity(w); err == nil {
 		t.Error("unmapped workflow activity should be rejected")
