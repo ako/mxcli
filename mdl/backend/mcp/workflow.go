@@ -3,6 +3,7 @@
 package mcp
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/mendixlabs/mxcli/mdl/backend"
@@ -410,17 +411,116 @@ func (m *mcpWorkflowMutator) errUnsupported(op string) error {
 	return fmt.Errorf("ALTER WORKFLOW %s is not yet supported by the MCP backend (workflow-level SET is)", op)
 }
 
+// qn returns the workflow's qualified document name.
+func (m *mcpWorkflowMutator) qn() string { return m.moduleName + "." + m.workflowName }
+
+// findActivityIndex resolves an activity reference (caption or name, with an
+// optional 1-based position to disambiguate) to its index in the top-level
+// /flow/activities array. Nested activities (inside outcome sub-flows) are not
+// yet addressable.
+func (m *mcpWorkflowMutator) findActivityIndex(ref string, atPos int) (int, error) {
+	res, err := m.backend.client.CallTool("ped_read_document", map[string]any{
+		"documentType": workflowDocType,
+		"documentName": m.qn(),
+		"paths":        []string{"/flow/activities"},
+	})
+	if err != nil {
+		return 0, err
+	}
+	text := pedStripReminder(res.Text)
+	if res.IsError {
+		return 0, fmt.Errorf("read %s flow: %s", m.qn(), text)
+	}
+	var doc struct {
+		Results []struct {
+			Result []struct {
+				Name    string `json:"name"`
+				Caption string `json:"caption"`
+			} `json:"result"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal([]byte(text), &doc); err != nil || len(doc.Results) == 0 {
+		return 0, fmt.Errorf("read %s flow: %v", m.qn(), err)
+	}
+	var matches []int
+	for i, a := range doc.Results[0].Result {
+		if a.Caption == ref || a.Name == ref {
+			matches = append(matches, i)
+		}
+	}
+	switch {
+	case len(matches) == 0:
+		return 0, fmt.Errorf("activity %q not found in workflow %q (top-level activities only)", ref, m.qn())
+	case atPos > 0:
+		if atPos > len(matches) {
+			return 0, fmt.Errorf("activity %q @%d not found (only %d matches)", ref, atPos, len(matches))
+		}
+		return matches[atPos-1], nil
+	case len(matches) > 1:
+		return 0, fmt.Errorf("ambiguous activity %q (%d matches); use @N to disambiguate", ref, len(matches))
+	default:
+		return matches[0], nil
+	}
+}
+
 func (m *mcpWorkflowMutator) SetActivityProperty(string, int, string, string) error {
 	return m.errUnsupported("activity property changes")
 }
-func (m *mcpWorkflowMutator) InsertAfterActivity(string, int, []workflows.WorkflowActivity) error {
-	return m.errUnsupported("INSERT activity")
+
+func (m *mcpWorkflowMutator) InsertAfterActivity(activityRef string, atPos int, activities []workflows.WorkflowActivity) error {
+	idx, err := m.findActivityIndex(activityRef, atPos)
+	if err != nil {
+		return err
+	}
+	ops := make([]pedOpEntry, 0, len(activities))
+	for i, a := range activities {
+		mapped, err := mapWorkflowActivity(a)
+		if err != nil {
+			return err
+		}
+		at := idx + 1 + i
+		ops = append(ops, pedOpEntry{Path: "/flow/activities", Operation: pedOperation{Type: "add", Value: mapped, Index: &at}})
+	}
+	return m.backend.pedUpdateDoc(workflowDocType, m.qn(), ops...)
 }
-func (m *mcpWorkflowMutator) DropActivity(string, int) error {
-	return m.errUnsupported("DROP activity")
+
+func (m *mcpWorkflowMutator) DropActivity(activityRef string, atPos int) error {
+	idx, err := m.findActivityIndex(activityRef, atPos)
+	if err != nil {
+		return err
+	}
+	return m.backend.pedUpdateDoc(workflowDocType, m.qn(), pedOpEntry{
+		Path:      "/flow/activities",
+		Operation: pedOperation{Type: "remove", Index: &idx},
+	})
 }
-func (m *mcpWorkflowMutator) ReplaceActivity(string, int, []workflows.WorkflowActivity) error {
-	return m.errUnsupported("REPLACE activity")
+
+func (m *mcpWorkflowMutator) ReplaceActivity(activityRef string, atPos int, activities []workflows.WorkflowActivity) error {
+	idx, err := m.findActivityIndex(activityRef, atPos)
+	if err != nil {
+		return err
+	}
+	mapped := make([]map[string]any, 0, len(activities))
+	for _, a := range activities {
+		mm, err := mapWorkflowActivity(a)
+		if err != nil {
+			return err
+		}
+		mapped = append(mapped, mm)
+	}
+	// Single replacement: set in place. Multiple: remove then add at the slot.
+	if len(mapped) == 1 {
+		return m.backend.pedUpdateDoc(workflowDocType, m.qn(), pedOpEntry{
+			Path:      fmt.Sprintf("/flow/activities/%d", idx),
+			Operation: pedOperation{Type: "set", Value: mapped[0]},
+		})
+	}
+	ops := []pedOpEntry{{Path: "/flow/activities", Operation: pedOperation{Type: "remove", Index: &idx}}}
+	for i, mm := range mapped {
+		at := idx + i
+		ops = append(ops, pedOpEntry{Path: "/flow/activities", Operation: pedOperation{Type: "add", Value: mm, Index: &at}})
+	}
+	return m.backend.pedUpdateDoc(workflowDocType, m.qn(), ops...)
 }
 func (m *mcpWorkflowMutator) InsertOutcome(string, int, string, []workflows.WorkflowActivity) error {
 	return m.errUnsupported("INSERT outcome")

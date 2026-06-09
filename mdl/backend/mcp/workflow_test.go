@@ -242,7 +242,9 @@ func TestWorkflowMutator_SetProperties(t *testing.T) {
 	if err := m.SetProperty("export_level", "api"); err == nil {
 		t.Error("SET export_level should be rejected")
 	}
-	if err := m.DropActivity("x", 0); err == nil {
-		t.Error("DropActivity should be rejected")
+	// SetActivityProperty is still stubbed (no client call), unlike Insert/Drop/
+	// Replace which now resolve an activity index live.
+	if err := m.SetActivityProperty("x", 0, "page", "p"); err == nil {
+		t.Error("SetActivityProperty should be rejected (not yet supported)")
 	}
 }

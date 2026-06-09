@@ -119,10 +119,12 @@ elements to their `$Type`). Implemented: workflow-level SET — `display` →
 `/workflowName/text` + `/title`, `description` → `/workflowDescription/text`,
 `due_date` → `/dueDate`, `parameter` → `/parameter/entity`. Note nested template/
 parameter elements must be set by their leaf field (`/workflowName/text`), not
-replaced wholesale (PED rejects a whole-element set). The activity/outcome/path/
-branch/boundary-event ops are not yet wired (they need ref→array-index resolution
-via a shallow `/flow/activities` read; `pedOperation` does support add/remove by
-index) and return a clear error.
+replaced wholesale (PED rejects a whole-element set). Activity-level structural ops are wired via ref→index resolution (a shallow
+`/flow/activities` read matching caption/name, with `@N` disambiguation, top-level
+activities only): **INSERT** activity (ped add at index+1), **DROP** activity (ped
+remove at index), **REPLACE** activity (ped set at index, or remove+add for
+multiple). The outcome/path/branch/boundary-event ops and `SetActivityProperty`
+remain stubbed.
 
 `CREATE MODULE` routes through `ped_create_module` (which flushes to disk
 immediately) and registers the module in a session list merged into
