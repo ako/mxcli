@@ -199,6 +199,34 @@ func configuredExecuteTimeout() time.Duration {
 	return defaultExecuteTimeout
 }
 
+// effectiveExecuteTimeout returns the wall-clock timeout to apply to a single
+// statement. An explicit MXCLI_EXEC_TIMEOUT always wins (so users can both raise
+// and cap the limit). Otherwise, known bounded-but-slow statements — currently
+// REFRESH CATALOG, which on a large project legitimately runs past the default
+// 5m — are exempt from the guard (returns 0 = no wall-clock limit); the per-
+// statement output-line guard still bounds runaway output. The guard exists to
+// abort runaway loops, which a deterministic catalog build is not. See #651.
+func effectiveExecuteTimeout(stmt ast.Statement) time.Duration {
+	if os.Getenv("MXCLI_EXEC_TIMEOUT") != "" {
+		return configuredExecuteTimeout()
+	}
+	if isExemptFromExecuteTimeout(stmt) {
+		return 0
+	}
+	return defaultExecuteTimeout
+}
+
+// isExemptFromExecuteTimeout reports whether a statement is a known long-running
+// but bounded operation that should not be capped by the default wall-clock guard.
+func isExemptFromExecuteTimeout(stmt ast.Statement) bool {
+	switch stmt.(type) {
+	case *ast.RefreshCatalogStmt:
+		return true
+	default:
+		return false
+	}
+}
+
 // BackendFactory creates a new backend instance for connecting to a project.
 type BackendFactory func() backend.FullBackend
 
@@ -268,22 +296,29 @@ func (e *Executor) Execute(stmt ast.Statement) error {
 	// Enforce wall-clock timeout via context.WithTimeout.
 	// The goroutine pattern is retained because handlers are not yet
 	// context-aware; threading context through handlers is a follow-up.
-	executeTimeout := configuredExecuteTimeout()
-	ctx, cancel := context.WithTimeout(context.Background(), executeTimeout)
-	defer cancel()
-
-	type result struct{ err error }
-	ch := make(chan result, 1)
-	go func() {
-		ch <- result{e.executeInner(ctx, stmt)}
-	}()
+	executeTimeout := effectiveExecuteTimeout(stmt)
 
 	var err error
-	select {
-	case r := <-ch:
-		err = r.err
-	case <-ctx.Done():
-		err = mdlerrors.NewValidationf("statement timed out after %v", executeTimeout)
+	if executeTimeout <= 0 {
+		// No wall-clock guard for exempt statements (e.g. REFRESH CATALOG on a
+		// large project). The output-line guard still bounds runaway output.
+		err = e.executeInner(context.Background(), stmt)
+	} else {
+		ctx, cancel := context.WithTimeout(context.Background(), executeTimeout)
+		defer cancel()
+
+		type result struct{ err error }
+		ch := make(chan result, 1)
+		go func() {
+			ch <- result{e.executeInner(ctx, stmt)}
+		}()
+
+		select {
+		case r := <-ch:
+			err = r.err
+		case <-ctx.Done():
+			err = mdlerrors.NewValidationf("statement timed out after %v (raise the limit with MXCLI_EXEC_TIMEOUT, e.g. MXCLI_EXEC_TIMEOUT=30m)", executeTimeout)
+		}
 	}
 
 	if e.logger != nil {

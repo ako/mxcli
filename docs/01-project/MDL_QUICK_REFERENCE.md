@@ -1101,7 +1101,7 @@ Cross-reference commands require `refresh catalog full` to populate reference da
 | Setup mxcli | `mxcli setup mxcli [--os linux]` | Download platform-specific mxcli binary |
 | LSP server | `mxcli lsp --stdio` | Language server for VS Code |
 
-Set `MXCLI_EXEC_TIMEOUT` to override the per-statement execution timeout used by `mxcli exec` (for example `MXCLI_EXEC_TIMEOUT=12m` or `MXCLI_EXEC_TIMEOUT=900`).
+Set `MXCLI_EXEC_TIMEOUT` to override the per-statement execution timeout (default 5m) used by `mxcli exec` (for example `MXCLI_EXEC_TIMEOUT=12m` or `MXCLI_EXEC_TIMEOUT=900`). `REFRESH CATALOG` is exempt from the default guard — it runs without a wall-clock limit on large projects — unless you set `MXCLI_EXEC_TIMEOUT` explicitly (which then applies to it too, letting you cap it).
 
 ## ANTLR4 Parser Architecture
 
