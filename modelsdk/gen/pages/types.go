@@ -18932,7 +18932,7 @@ func (o *Page) InitFromRaw(raw bson.Raw) {
 	if child, err := codec.DecodeChild(raw, "Appearance"); err == nil {
 		o.appearance.SetFromDecode(child)
 	}
-	if val, err := raw.LookupErr("AllowedRoles"); err == nil {
+	if val, err := raw.LookupErr("AllowedModuleRoles"); err == nil { // STORAGE-NAME OVERRIDE: real BSON key is AllowedModuleRoles (gen emitted AllowedRoles)
 		if arr, ok := val.ArrayOK(); ok {
 			vals, _ := arr.Values()
 			qnames := make([]string, 0, len(vals))
@@ -31531,7 +31531,7 @@ func initPage() *Page {
 	o.style.Bind(&o.Base, 10)
 	o.appearance = property.NewPart[element.Element]("Appearance")
 	o.appearance.Bind(&o.Base, 11)
-	o.allowedRoles = property.NewByNameRefListV3[element.Element]("AllowedRoles", "Security$ModuleRole")
+	o.allowedRoles = property.NewByNameRefListV3[element.Element]("AllowedModuleRoles", "Security$ModuleRole") // STORAGE-NAME OVERRIDE: real BSON key is AllowedModuleRoles
 	o.allowedRoles.Bind(&o.Base, 12)
 	o.popupCloseAction = property.NewPrimitive[string]("PopupCloseAction", property.DecodeString)
 	o.popupCloseAction.Bind(&o.Base, 13)

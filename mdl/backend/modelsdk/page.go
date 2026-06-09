@@ -122,3 +122,34 @@ func textElementToModel(el element.Element) *model.Text {
 	}
 	return out
 }
+
+// ListLayouts reads Forms$Layout units (shallow: identity + name). The page
+// builder's resolveLayout matches a layout by name + module to bind a page's
+// FormCall, so the header is all it needs.
+func (b *Backend) ListLayouts() ([]*pages.Layout, error) {
+	units, err := mprread.ListUnitsWithContainer[*genPg.Layout](b.reader)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*pages.Layout, 0, len(units))
+	for _, u := range units {
+		l := &pages.Layout{ContainerID: u.ContainerID, Name: u.Element.Name(), Documentation: u.Element.Documentation()}
+		l.ID = model.ID(u.Element.ID())
+		out = append(out, l)
+	}
+	return out, nil
+}
+
+// GetLayout returns a single layout by ID (shallow).
+func (b *Backend) GetLayout(id model.ID) (*pages.Layout, error) {
+	layouts, err := b.ListLayouts()
+	if err != nil {
+		return nil, err
+	}
+	for _, l := range layouts {
+		if l.ID == id {
+			return l, nil
+		}
+	}
+	return nil, nil
+}
