@@ -5,6 +5,7 @@ package modelsdkbackend
 import (
 	"fmt"
 
+	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/modelsdk/codec"
 	"github.com/mendixlabs/mxcli/modelsdk/element"
 	genPg "github.com/mendixlabs/mxcli/modelsdk/gen/pages"
@@ -37,6 +38,17 @@ func init() {
 	codec.RegisterListMarker("Forms$LayoutGrid", 2)
 	codec.RegisterListMarker("Forms$LayoutGridRow", 2)
 	codec.RegisterListMarker("Forms$LayoutGridColumn", 2)
+	// ActionButton: null Icon/visibility/accessibility slots; marker 2 as a widget.
+	codec.RegisterTypeDefaults("Forms$ActionButton", codec.TypeDefaults{
+		NullFields: []string{"Icon", "ConditionalVisibilitySettings", "NativeAccessibilitySettings"},
+	})
+	codec.RegisterListMarker("Forms$ActionButton", 2)
+	// A caption parameter's AttributeRef/SourceVariable are null for the literal-
+	// expression form; populated Parameters lists use marker 2.
+	codec.RegisterTypeDefaults("Forms$ClientTemplateParameter", codec.TypeDefaults{
+		NullFields: []string{"AttributeRef", "SourceVariable"},
+	})
+	codec.RegisterListMarker("Forms$ClientTemplateParameter", 2)
 }
 
 // widgetToGen converts a model widget to its gen element, recursing into
@@ -78,6 +90,25 @@ func widgetToGen(w pages.Widget) (element.Element, error) {
 			}
 			g.AddRows(rg)
 		}
+		return g, nil
+
+	case *pages.ActionButton:
+		g := genPg.NewActionButton()
+		applyWidgetBase(g, &x.BaseWidget)
+		g.SetAriaRole("Button")
+		g.SetRenderType("Button")
+		g.SetButtonStyle(orDefaultStr(string(x.ButtonStyle), "Default"))
+		if x.CaptionTemplate != nil {
+			g.SetCaption(clientTemplateToGen(x.CaptionTemplate))
+		} else {
+			g.SetCaption(textAsClientTemplate(x.Caption))
+		}
+		g.SetTooltip(textAsClientTemplate(x.Tooltip))
+		act, err := clientActionToGen(x.Action)
+		if err != nil {
+			return nil, err
+		}
+		g.SetAction(act)
 		return g, nil
 
 	default:
@@ -183,18 +214,89 @@ func noActionGen() element.Element {
 }
 
 // clientTemplateToGen builds the Forms$ClientTemplate that backs a dynamic text
-// (Template + Fallback are Texts$Text; Parameters stays empty for static text).
+// or button caption (Template + Fallback are Texts$Text; Parameters supply the
+// {1}/{2}… placeholder values).
 func clientTemplateToGen(ct *pages.ClientTemplate) element.Element {
 	g := genPg.NewClientTemplate()
 	assignID(g)
-	if ct != nil {
-		g.SetTemplate(captionToGen(ct.Template))
-		g.SetFallback(captionToGen(ct.Fallback))
-	} else {
+	if ct == nil {
 		g.SetTemplate(genTexts.NewText())
 		g.SetFallback(genTexts.NewText())
+		return g
+	}
+	g.SetTemplate(captionToGen(ct.Template))
+	g.SetFallback(captionToGen(ct.Fallback))
+	for _, p := range ct.Parameters {
+		g.AddParameters(clientTemplateParameterToGen(p))
 	}
 	return g
+}
+
+// textAsClientTemplate wraps a plain caption/tooltip Text in a ClientTemplate.
+func textAsClientTemplate(t *model.Text) element.Element {
+	return clientTemplateToGen(&pages.ClientTemplate{Template: t})
+}
+
+// clientTemplateParameterToGen converts a caption parameter ({n} value). Only the
+// literal-expression form is supported; AttributeRef/SourceVariable stay null
+// (registered defaults). FormattingInfo carries the standard defaults.
+func clientTemplateParameterToGen(p *pages.ClientTemplateParameter) element.Element {
+	g := genPg.NewClientTemplateParameter()
+	if p.ID != "" {
+		g.SetID(element.ID(p.ID))
+	}
+	assignID(g)
+	g.SetExpression(p.Expression)
+	if p.AttributeRef != "" {
+		g.SetAttributePath(p.AttributeRef)
+	}
+	g.SetFormattingInfo(newFormattingInfo())
+	return g
+}
+
+// newFormattingInfo builds the default Forms$FormattingInfo (matches the legacy
+// serializer; TimeFormat is intentionally omitted — it triggers CE0463).
+func newFormattingInfo() element.Element {
+	f := genPg.NewFormattingInfo()
+	assignID(f)
+	f.SetCustomDateFormat("")
+	f.SetDateFormat("Date")
+	f.SetDecimalPrecision(2)
+	f.SetEnumFormat("Text")
+	f.SetGroupDigits(false)
+	return f
+}
+
+// clientActionToGen converts a widget client action. Simple actions are supported;
+// the page/microflow/nanoflow/create-object actions (which carry settings sub-
+// objects) are refused loudly for now.
+func clientActionToGen(a pages.ClientAction) (element.Element, error) {
+	switch x := a.(type) {
+	case nil, *pages.NoClientAction:
+		return noActionGen(), nil
+	case *pages.SaveChangesClientAction:
+		g := genPg.NewSaveChangesClientAction()
+		assignID(g)
+		g.SetClosePage(x.ClosePage)
+		g.SetSyncAutomatically(true)
+		return g, nil
+	case *pages.CancelChangesClientAction:
+		g := genPg.NewCancelChangesClientAction()
+		assignID(g)
+		g.SetClosePage(x.ClosePage)
+		return g, nil
+	case *pages.ClosePageClientAction:
+		g := genPg.NewClosePageClientAction()
+		assignID(g)
+		return g, nil
+	case *pages.DeleteClientAction:
+		g := genPg.NewDeleteClientAction()
+		assignID(g)
+		g.SetClosePage(x.ClosePage)
+		return g, nil
+	default:
+		return nil, fmt.Errorf("CreatePage: client action %T not yet supported by the modelsdk engine — rerun with MXCLI_ENGINE=legacy", a)
+	}
 }
 
 // orDefaultStr returns s, or def when s is empty.
