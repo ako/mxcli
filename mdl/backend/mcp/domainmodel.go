@@ -141,15 +141,20 @@ func (b *Backend) AddAttribute(domainModelID model.ID, entityID model.ID, attr *
 }
 
 // UpdateEntity applies an ALTER ENTITY change by diffing the incoming entity
-// against the live one (read over MCP) and emitting granular attribute add/drop
-// operations. The executor rebuilds the whole entity for every ALTER, so the
-// diff is how we recover "what changed".
+// against the live one (read over MCP). The executor rebuilds the whole entity
+// for every ALTER, so the diff is how we recover "what changed". The shape of
+// the name-keyed diff selects the operation:
 //
-// Supported: pure attribute additions (ALTER ... ADD ATTRIBUTE) and pure
-// attribute removals (ALTER ... DROP ATTRIBUTE). Anything that looks like a
-// rename or an in-place change (attribute type, documentation, generalization,
-// system members) is rejected rather than guessed at — a name-keyed diff cannot
-// distinguish a rename from a drop+add, and applying it would lose column data.
+//   - adds only / removes only  -> ADD / DROP ATTRIBUTE (granular array ops)
+//   - one add + one remove      -> RENAME ATTRIBUTE (set the `name` leaf in place)
+//   - no structural change      -> in-place: entity/attribute documentation;
+//     an attribute *type* change is rejected (PED cannot reassign a type in
+//     place, and recreating the attribute would drop its column data)
+//   - many adds + many removes  -> rejected (can't tell renames from drop+add)
+//
+// Reliable type-change detection relies on the reconstructed entity carrying
+// real attribute types (see enrichReconstructedEntities), so a documentation
+// edit on a dirty module is not mistaken for a type change.
 func (b *Backend) UpdateEntity(domainModelID model.ID, entity *domainmodel.Entity) error {
 	moduleName, err := b.moduleNameForDomainModel(domainModelID)
 	if err != nil {
@@ -184,10 +189,17 @@ func (b *Backend) UpdateEntity(domainModelID model.ID, entity *domainmodel.Entit
 	}
 
 	switch {
+	case len(toAdd) == 1 && len(toRemove) == 1:
+		// Exactly one name appeared and one disappeared: a rename. (A type change
+		// keeps the name, so it never lands here.) Set the name leaf in place,
+		// which preserves the attribute's $ID — and therefore its column data.
+		return b.renameAttribute(moduleName, entIdx, liveNames, toRemove[0], toAdd[0].Name)
 	case len(toAdd) > 0 && len(toRemove) > 0:
-		return fmt.Errorf("entity %q: this change adds and removes attributes at once (looks like a rename or replacement), which the MCP backend cannot apply safely; rename/type-change via MCP is not supported", entity.Name)
+		return fmt.Errorf("entity %q: this change adds and removes several attributes at once, which the MCP backend cannot apply safely (it cannot tell a rename from a drop-and-add); rename one attribute at a time", entity.Name)
 	case len(toAdd) == 0 && len(toRemove) == 0:
-		return fmt.Errorf("entity %q: no attribute add or drop detected — in-place changes (attribute type, documentation, generalization, system members) are not yet supported by the MCP backend", entity.Name)
+		// No structural change: documentation edit, a (rejected) type change, or a
+		// no-op. Reconcile in place against the live model.
+		return b.applyInPlaceEntityChanges(moduleName, entIdx, entity, liveNames)
 	}
 
 	if len(toAdd) > 0 {
@@ -233,6 +245,140 @@ func (b *Backend) UpdateEntity(domainModelID model.ID, entity *domainmodel.Entit
 	}
 
 	return b.pedCheckErrors(moduleName)
+}
+
+// renameAttribute renames an attribute in place by setting its `name` leaf — a
+// primitive property, which is one of the few things PED's update API permits
+// setting directly. This preserves the attribute element (its $ID), so column
+// data survives, unlike a drop-and-add.
+func (b *Backend) renameAttribute(moduleName string, entIdx int, liveNames []string, oldName, newName string) error {
+	idx := -1
+	for i, n := range liveNames {
+		if n == oldName {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return fmt.Errorf("rename attribute: %q not found on entity (index %d) in module %q", oldName, entIdx, moduleName)
+	}
+	if err := b.pedUpdate(moduleName, pedOpEntry{
+		Path:      fmt.Sprintf("/entities/%d/attributes/%d/name", entIdx, idx),
+		Operation: pedOperation{Type: "set", Value: newName},
+	}); err != nil {
+		return err
+	}
+	return b.pedCheckErrors(moduleName)
+}
+
+// liveAttr is the live state of one attribute relevant to an in-place ALTER.
+type liveAttr struct {
+	typ domainmodel.AttributeType
+	doc string
+}
+
+// applyInPlaceEntityChanges reconciles an ALTER that neither adds nor drops
+// attributes. PED only lets us set primitive/reference properties directly, so
+// this supports entity documentation and attribute documentation. A genuine
+// attribute *type* change is rejected rather than silently dropped: PED cannot
+// reassign an attribute's type element in place, and emulating it via drop-and-add
+// would discard the attribute's $ID — and its column data.
+func (b *Backend) applyInPlaceEntityChanges(moduleName string, entIdx int, entity *domainmodel.Entity, liveNames []string) error {
+	entDoc, attrs, err := b.liveEntityDetails(moduleName, entIdx, len(liveNames))
+	if err != nil {
+		return err
+	}
+	nameToIdx := make(map[string]int, len(liveNames))
+	for i, n := range liveNames {
+		nameToIdx[n] = i
+	}
+
+	var ops []pedOpEntry
+	if entity.Documentation != entDoc {
+		ops = append(ops, pedOpEntry{
+			Path:      fmt.Sprintf("/entities/%d/documentation", entIdx),
+			Operation: pedOperation{Type: "set", Value: entity.Documentation},
+		})
+	}
+	for _, a := range entity.Attributes {
+		idx, ok := nameToIdx[a.Name]
+		if !ok {
+			continue // no adds in this path; a name we don't know is unexpected
+		}
+		if !sameAttributeType(a.Type, attrs[idx].typ) {
+			return fmt.Errorf("entity %q attribute %q: changing an attribute's type is not possible via the MCP backend — Studio Pro's MCP server cannot reassign a type in place, and recreating the attribute would drop its column data; run this ALTER against a local .mpr instead", entity.Name, a.Name)
+		}
+		if a.Documentation != attrs[idx].doc {
+			ops = append(ops, pedOpEntry{
+				Path:      fmt.Sprintf("/entities/%d/attributes/%d/documentation", entIdx, idx),
+				Operation: pedOperation{Type: "set", Value: a.Documentation},
+			})
+		}
+	}
+	if len(ops) == 0 {
+		return nil // nothing changed (idempotent)
+	}
+	if err := b.pedUpdate(moduleName, ops...); err != nil {
+		return err
+	}
+	return b.pedCheckErrors(moduleName)
+}
+
+// liveEntityDetails reads an entity's documentation and each attribute's type +
+// documentation from PED in a single batched leaf read.
+func (b *Backend) liveEntityDetails(moduleName string, entIdx, attrCount int) (string, []liveAttr, error) {
+	paths := []string{fmt.Sprintf("/entities/%d/documentation", entIdx)}
+	for i := range attrCount {
+		paths = append(paths,
+			fmt.Sprintf("/entities/%d/attributes/%d/type", entIdx, i),
+			fmt.Sprintf("/entities/%d/attributes/%d/documentation", entIdx, i))
+	}
+	res, err := b.client.CallTool("ped_read_document", map[string]any{
+		"documentType": domainModelDocType,
+		"documentName": moduleName,
+		"paths":        paths,
+	})
+	if err != nil {
+		return "", nil, err
+	}
+	if res.IsError {
+		return "", nil, fmt.Errorf("ped_read_document %s entity %d: %s", moduleName, entIdx, pedStripReminder(res.Text))
+	}
+	byPath, err := parsePedResults(pedStripReminder(res.Text))
+	if err != nil {
+		return "", nil, fmt.Errorf("parse entity %d of %s: %w", entIdx, moduleName, err)
+	}
+	attrs := make([]liveAttr, attrCount)
+	for i := range attrCount {
+		attrs[i] = liveAttr{
+			typ: attributeTypeFromPED(byPath[fmt.Sprintf("/entities/%d/attributes/%d/type", entIdx, i)]),
+			doc: jsonString(byPath[fmt.Sprintf("/entities/%d/attributes/%d/documentation", entIdx, i)]),
+		}
+	}
+	return jsonString(byPath[fmt.Sprintf("/entities/%d/documentation", entIdx)]), attrs, nil
+}
+
+// sameAttributeType reports whether two attribute types are equivalent for the
+// purpose of detecting an ALTER type change. Unknown types (nil) compare equal
+// so a failed type read never manufactures a spurious "type change" rejection.
+func sameAttributeType(incoming, live domainmodel.AttributeType) bool {
+	if incoming == nil || live == nil {
+		return true
+	}
+	in, e1 := pedAttributeType(incoming.GetTypeName())
+	lv, e2 := pedAttributeType(live.GetTypeName())
+	if e1 != nil || e2 != nil {
+		return true // a type we can't name -> don't manufacture a type-change
+	}
+	if in != lv {
+		return false
+	}
+	ie, iok := incoming.(*domainmodel.EnumerationAttributeType)
+	le, lok := live.(*domainmodel.EnumerationAttributeType)
+	if iok && lok {
+		return ie.EnumerationRef == le.EnumerationRef
+	}
+	return true
 }
 
 // liveAttributeNames returns the ordered attribute names of an entity from the

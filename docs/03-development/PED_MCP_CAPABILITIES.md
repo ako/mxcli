@@ -72,7 +72,8 @@ since a gap closing (e.g. a delete or save tool appearing) unlocks features.
 | **No list-modules tool** | PED cannot enumerate modules. The backend must read modules/structure from the local mounted `.mpr` (hybrid model); `-p` must be the same project Studio Pro has open. | Watch for a modules-list tool. |
 | **No save/flush tool** | `ped_update_document` edits stay in Studio Pro's in-memory model; the on-disk `.mpr` is stale until the user saves. Drives the dirty-set read router. (`ped_create_module` is the one op observed to flush immediately.) | Watch for a save tool / autosave. |
 | **Reads omit `$ID`** | Reads expose `$QualifiedName` only. Association refs need entity GUIDs, recovered from the local reader (= live `$ID` for saved entities). Reconstructed reads use synthetic IDs mapped to names. | Recheck whether reads expose `$ID`. |
-| **Array reads omit primitive types** | A `/entities/N/attributes` read gives attribute names (`$QualifiedName`) but not their primitive type — only a per-attribute deep read does. Reconstructed attributes use placeholder types. | Recheck attribute-array read shape. |
+| **Array reads omit primitive types** | A `/entities/N/attributes` read gives attribute names (`$QualifiedName`) but not their primitive type or documentation — those need a per-*leaf* read (`/entities/N/attributes/M/type` → a `DomainModels$*AttributeType` constructor; `/…/documentation` → string). Reconstruction recovers them with a single **batched** leaf read (`enrichReconstructedEntities`) so a dirty/session module reports real types (correct DESCRIBE + a reliable ALTER diff); it falls back to placeholder `String` only if the read fails. | Recheck attribute-array read shape. |
+| **No in-place attribute-type change** | `set /entities/N/attributes/M/type` is rejected (`"only allowed to set primitive or reference properties directly"` — the type is a nested element), and a whole-attribute replace is rejected too (`"only allowed to update elements …"`). The only route to a new type is remove+add, which drops the attribute's `$ID` → **drops the column data**. So `ALTER ENTITY … MODIFY ATTRIBUTE <type>` is rejected over MCP; do it against a local `.mpr` (Studio Pro does an in-place migration PED can't). | Watch for a type-change / migrate op. |
 | **Two write protocols** | Pages **must** use `pg_*`; everything else uses `ped_*`. The system prompt forbids PED for pages. | Stable, but reconfirm. |
 | **No security document ops** | PED's `ped_find/read/update/create_document` reject every security type (`Security$ModuleSecurity`, `Security$ProjectSecurity`, …) as "Unknown document type" — only `ped_get_schema` knows them as nested *elements*. Concord exposes only security *reads* (`audit_security`, `read_entity_access_rules`, `read_microflow_security`, `read_security_info`). So **security cannot be authored via MCP** (module/user roles, entity access rules, GRANT/REVOKE, demo users, project security level) — neither server has a write path. Determine support with `ped_read_document`, NOT `ped_find_document`: `find` also reports the (supported) nameless `DomainModels$DomainModel` as "Unknown", so it is not a reliable probe. | Watch for security write tools on either server. |
 
@@ -91,11 +92,21 @@ The port can change between Studio Pro sessions — confirm with `lsof` on the h
 
 ## How the mxcli MCP backend uses this surface
 
-Implemented (11.11): `CREATE MODULE`, `CREATE/ALTER(add,drop attr)/DROP ENTITY`,
+Implemented (11.11): `CREATE MODULE`, `CREATE/ALTER/DROP ENTITY`,
 `CREATE/DROP ASSOCIATION`, `CREATE ENUMERATION`, `CREATE VIEW ENTITY`, `CREATE
 MICROFLOW` (broad activity + control-flow coverage), `CREATE PAGE` + `ALTER PAGE`
 (INSERT/DROP/REPLACE/SET property/DataSource/Layout), and `CREATE WORKFLOW` +
-`DROP WORKFLOW`, with a dirty-set read router that makes in-session edits visible.
+`DROP WORKFLOW` + `ALTER WORKFLOW`, with a dirty-set read router that makes
+in-session edits visible.
+
+**ALTER ENTITY** diffs the executor's rebuilt entity against the live model
+(name-keyed) and routes by the diff's shape: adds-only → ADD ATTRIBUTE, removes-only
+→ DROP ATTRIBUTE, one-add-one-remove → **RENAME** (set the `name` leaf in place,
+preserving the attribute's `$ID`/column data), and no structural change → in-place
+**entity & attribute documentation** (primitive-property sets). An attribute
+**type** change is rejected (see the type-change gap above) rather than silently
+no-op'd; reliable detection depends on the enriched reconstruction carrying real
+types, so a documentation edit on a dirty module is never mistaken for a type change.
 
 `CREATE WORKFLOW` maps the executor's workflow onto `Workflows$Workflow`
 (parameter + a linear `Workflows$Flow` of activities Start … End, connected via
@@ -103,8 +114,7 @@ condition outcomes that may nest sub-flows). Activity-type coverage grows one at
 time (currently Start/End, CallMicroflow with outcomes, single **UserTask** —
 task page, XPath/Microflow user targeting, task name/description, and named
 outcomes each with a recursive sub-flow), **Decision** (ExclusiveSplit: expression + boolean/enum outcomes), **ParallelSplit** (concurrent paths), **JumpTo** (loop back to a named activity), and **WaitForTimer** (delay); MultiUserTask,
-JumpTo, WaitForTimer, boundary events, etc. and `ALTER WORKFLOW` are rejected with
-a clear error. **Type-name gotcha:** PED's element type for the call-microflow
+boundary events, CallWorkflow, WaitForNotification, etc. are rejected with a clear error. **Type-name gotcha:** PED's element type for the call-microflow
 activity is `Workflows$CallMicroflowActivity`, NOT the on-disk BSON `$Type`
 `Workflows$CallMicroflowTask` — they differ; use `ped_get_schema
 Workflows$WorkflowActivity` to enumerate the valid concrete subtypes. Workflow

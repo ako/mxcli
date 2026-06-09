@@ -4,6 +4,7 @@ package mcp
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -201,5 +202,171 @@ func TestPedAttributeType(t *testing.T) {
 	}
 	if _, err := pedAttributeType("Reference"); err == nil {
 		t.Error("expected unsupported type to error")
+	}
+}
+
+// --- ALTER ENTITY in-place (rename + documentation; type-change rejection) ---
+
+func TestAttributeTypeFromPED(t *testing.T) {
+	cases := map[string]string{
+		`{"$Type":"DomainModels$StringAttributeType","length":200}`:                 "String",
+		`{"$Type":"DomainModels$IntegerAttributeType"}`:                             "Integer",
+		`{"$Type":"DomainModels$LongAttributeType"}`:                                "Long",
+		`{"$Type":"DomainModels$DecimalAttributeType"}`:                             "Decimal",
+		`{"$Type":"DomainModels$BooleanAttributeType"}`:                             "Boolean",
+		`{"$Type":"DomainModels$DateTimeAttributeType"}`:                            "DateTime",
+		`{"$Type":"DomainModels$EnumerationAttributeType","enumeration":"M.Color"}`: "Enumeration",
+	}
+	for raw, want := range cases {
+		got := attributeTypeFromPED(json.RawMessage(raw))
+		if got == nil || got.GetTypeName() != want {
+			t.Errorf("attributeTypeFromPED(%s) = %v, want %s", raw, got, want)
+		}
+	}
+	if attributeTypeFromPED(json.RawMessage(`{"$Type":"DomainModels$WhoKnows"}`)) != nil {
+		t.Error("unknown constructor should map to nil")
+	}
+	if attributeTypeFromPED(nil) != nil {
+		t.Error("absent type should map to nil")
+	}
+	// String length and enum ref are carried through.
+	if st, ok := attributeTypeFromPED(json.RawMessage(`{"$Type":"DomainModels$StringAttributeType","length":50}`)).(*domainmodel.StringAttributeType); !ok || st.Length != 50 {
+		t.Error("string length not captured")
+	}
+	if et, ok := attributeTypeFromPED(json.RawMessage(`{"$Type":"DomainModels$EnumerationAttributeType","enumeration":"M.Color"}`)).(*domainmodel.EnumerationAttributeType); !ok || et.EnumerationRef != "M.Color" {
+		t.Error("enum ref not captured")
+	}
+}
+
+func TestSameAttributeType(t *testing.T) {
+	s := &domainmodel.StringAttributeType{}
+	i := &domainmodel.IntegerAttributeType{}
+	if sameAttributeType(s, i) {
+		t.Error("String vs Integer should differ")
+	}
+	if !sameAttributeType(i, &domainmodel.IntegerAttributeType{}) {
+		t.Error("Integer vs Integer should match")
+	}
+	if !sameAttributeType(nil, i) || !sameAttributeType(s, nil) {
+		t.Error("an unknown (nil) type must never manufacture a type-change")
+	}
+	// Date normalises to DateTime, so they must compare equal.
+	if !sameAttributeType(&domainmodel.DateAttributeType{}, &domainmodel.DateTimeAttributeType{}) {
+		t.Error("Date and DateTime should match")
+	}
+	a := &domainmodel.EnumerationAttributeType{EnumerationRef: "M.A"}
+	if sameAttributeType(a, &domainmodel.EnumerationAttributeType{EnumerationRef: "M.B"}) {
+		t.Error("different enum refs should differ")
+	}
+	if !sameAttributeType(a, &domainmodel.EnumerationAttributeType{EnumerationRef: "M.A"}) {
+		t.Error("same enum ref should match")
+	}
+}
+
+// pedReadResponder scripts a fakePED: ped_read_document returns the given
+// path->raw-JSON results; every other tool succeeds.
+func pedReadResponder(values map[string]string) func(string, map[string]any) (string, bool) {
+	return func(name string, args map[string]any) (string, bool) {
+		if name == "ped_check_errors" {
+			return "No errors found.", false
+		}
+		if name != "ped_read_document" {
+			return "SUCCESS", false
+		}
+		paths, _ := args["paths"].([]any)
+		var sb strings.Builder
+		sb.WriteString(`{"results":[`)
+		for idx, p := range paths {
+			ps, _ := p.(string)
+			v, ok := values[ps]
+			if !ok {
+				v = "null"
+			}
+			if idx > 0 {
+				sb.WriteString(",")
+			}
+			fmt.Fprintf(&sb, `{"path":%q,"result":%s}`, ps, v)
+		}
+		sb.WriteString(`]}`)
+		return sb.String(), false
+	}
+}
+
+func TestRenameAttribute_SetsNameLeaf(t *testing.T) {
+	f := newFakePED(t, func(name string, _ map[string]any) (string, bool) {
+		if name == "ped_check_errors" {
+			return "No errors found.", false
+		}
+		return "SUCCESS", false
+	})
+	b := &Backend{client: f.connectClient(t)}
+	if err := b.renameAttribute("M", 0, []string{"Total", "Name"}, "Total", "Amount"); err != nil {
+		t.Fatalf("renameAttribute: %v", err)
+	}
+	call, ok := f.callByName("ped_update_document")
+	if !ok {
+		t.Fatal("no ped_update_document sent")
+	}
+	raw, _ := json.Marshal(call.Args["operations"])
+	for _, want := range []string{`"path":"/entities/0/attributes/0/name"`, `"type":"set"`, `"value":"Amount"`} {
+		if !strings.Contains(string(raw), want) {
+			t.Errorf("rename op missing %s: %s", want, raw)
+		}
+	}
+}
+
+func TestApplyInPlace_RejectsTypeChange(t *testing.T) {
+	f := newFakePED(t, pedReadResponder(map[string]string{
+		"/entities/0/documentation":              `""`,
+		"/entities/0/attributes/0/type":          `{"$Type":"DomainModels$IntegerAttributeType"}`,
+		"/entities/0/attributes/0/documentation": `""`,
+	}))
+	b := &Backend{client: f.connectClient(t)}
+	e := newPersistentEntity("Order", attr("Amount", &domainmodel.DecimalAttributeType{}))
+	err := b.applyInPlaceEntityChanges("M", 0, e, []string{"Amount"})
+	if err == nil || !strings.Contains(err.Error(), "changing an attribute's type") {
+		t.Fatalf("want type-change rejection, got %v", err)
+	}
+	if _, sent := f.callByName("ped_update_document"); sent {
+		t.Error("a rejected type change must not write")
+	}
+}
+
+func TestApplyInPlace_SetsEntityDocumentation(t *testing.T) {
+	f := newFakePED(t, pedReadResponder(map[string]string{
+		"/entities/0/documentation":              `""`,
+		"/entities/0/attributes/0/type":          `{"$Type":"DomainModels$StringAttributeType","length":200}`,
+		"/entities/0/attributes/0/documentation": `""`,
+	}))
+	b := &Backend{client: f.connectClient(t)}
+	e := newPersistentEntity("Order", attr("Name", &domainmodel.StringAttributeType{Length: 200}))
+	e.Documentation = "An order"
+	if err := b.applyInPlaceEntityChanges("M", 0, e, []string{"Name"}); err != nil {
+		t.Fatalf("applyInPlaceEntityChanges: %v", err)
+	}
+	call, ok := f.callByName("ped_update_document")
+	if !ok {
+		t.Fatal("expected an entity-documentation write")
+	}
+	raw, _ := json.Marshal(call.Args["operations"])
+	if !strings.Contains(string(raw), `"path":"/entities/0/documentation"`) || !strings.Contains(string(raw), `"value":"An order"`) {
+		t.Errorf("entity doc op wrong: %s", raw)
+	}
+}
+
+func TestApplyInPlace_NoChangeIsNoOp(t *testing.T) {
+	f := newFakePED(t, pedReadResponder(map[string]string{
+		"/entities/0/documentation":              `"An order"`,
+		"/entities/0/attributes/0/type":          `{"$Type":"DomainModels$StringAttributeType","length":200}`,
+		"/entities/0/attributes/0/documentation": `""`,
+	}))
+	b := &Backend{client: f.connectClient(t)}
+	e := newPersistentEntity("Order", attr("Name", &domainmodel.StringAttributeType{Length: 200}))
+	e.Documentation = "An order"
+	if err := b.applyInPlaceEntityChanges("M", 0, e, []string{"Name"}); err != nil {
+		t.Fatalf("applyInPlaceEntityChanges: %v", err)
+	}
+	if _, sent := f.callByName("ped_update_document"); sent {
+		t.Error("an identical-state ALTER must not write")
 	}
 }

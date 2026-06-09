@@ -165,7 +165,123 @@ func (b *Backend) reconstructEntities(moduleName string, dmID model.ID, raw json
 		entities = append(entities, e)
 		order = append(order, string(id))
 	}
+	// A shallow array read exposes only attribute names; the real primitive type
+	// and documentation live behind per-leaf reads. Enrich them so a dirty/session
+	// module reconstructs faithfully (correct DESCRIBE, and a reliable ALTER diff —
+	// UpdateEntity must tell a genuine type change from an unchanged attribute).
+	b.enrichReconstructedEntities(moduleName, entities)
 	return entities, order, nil
+}
+
+// enrichReconstructedEntities fills in each attribute's real type + documentation
+// and each entity's documentation from PED, using a single batched leaf read.
+// Best-effort: on any failure the entities keep their placeholder String types
+// (the same fidelity the reconstruction had before this enrichment).
+func (b *Backend) enrichReconstructedEntities(moduleName string, entities []*domainmodel.Entity) {
+	var paths []string
+	for ei, e := range entities {
+		paths = append(paths, fmt.Sprintf("/entities/%d/documentation", ei))
+		for ai := range e.Attributes {
+			paths = append(paths,
+				fmt.Sprintf("/entities/%d/attributes/%d/type", ei, ai),
+				fmt.Sprintf("/entities/%d/attributes/%d/documentation", ei, ai))
+		}
+	}
+	if len(paths) == 0 || b.client == nil {
+		return
+	}
+	res, err := b.client.CallTool("ped_read_document", map[string]any{
+		"documentType": domainModelDocType,
+		"documentName": moduleName,
+		"paths":        paths,
+	})
+	if err != nil || res.IsError {
+		return
+	}
+	byPath, err := parsePedResults(pedStripReminder(res.Text))
+	if err != nil {
+		return
+	}
+	for ei, e := range entities {
+		e.Documentation = jsonString(byPath[fmt.Sprintf("/entities/%d/documentation", ei)])
+		for ai, a := range e.Attributes {
+			if t := attributeTypeFromPED(byPath[fmt.Sprintf("/entities/%d/attributes/%d/type", ei, ai)]); t != nil {
+				a.Type = t
+			}
+			a.Documentation = jsonString(byPath[fmt.Sprintf("/entities/%d/attributes/%d/documentation", ei, ai)])
+		}
+	}
+}
+
+// parsePedResults decodes a ped_read_document response body into a path->result map.
+func parsePedResults(text string) (map[string]json.RawMessage, error) {
+	var doc struct {
+		Results []struct {
+			Path   string          `json:"path"`
+			Result json.RawMessage `json:"result"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal([]byte(text), &doc); err != nil {
+		return nil, err
+	}
+	out := make(map[string]json.RawMessage, len(doc.Results))
+	for _, r := range doc.Results {
+		out[r.Path] = r.Result
+	}
+	return out, nil
+}
+
+// jsonString decodes a JSON string value, returning "" for absent/non-string.
+func jsonString(raw json.RawMessage) string {
+	var s string
+	_ = json.Unmarshal(raw, &s)
+	return s
+}
+
+// attributeTypeFromPED maps a PED attribute `type` leaf (a polymorphic
+// DomainModels$*AttributeType constructor) back to a domainmodel attribute type.
+// Returns nil for an absent or unrecognised constructor (caller keeps its default).
+func attributeTypeFromPED(raw json.RawMessage) domainmodel.AttributeType {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	var t struct {
+		SType           string `json:"$Type"`
+		Length          int    `json:"length"`
+		Enumeration     string `json:"enumeration"`
+		EnumerationName string `json:"enumerationName"`
+	}
+	if json.Unmarshal(raw, &t) != nil {
+		return nil
+	}
+	switch t.SType {
+	case "DomainModels$StringAttributeType":
+		return &domainmodel.StringAttributeType{Length: t.Length}
+	case "DomainModels$IntegerAttributeType":
+		return &domainmodel.IntegerAttributeType{}
+	case "DomainModels$LongAttributeType":
+		return &domainmodel.LongAttributeType{}
+	case "DomainModels$DecimalAttributeType":
+		return &domainmodel.DecimalAttributeType{}
+	case "DomainModels$BooleanAttributeType":
+		return &domainmodel.BooleanAttributeType{}
+	case "DomainModels$DateTimeAttributeType":
+		return &domainmodel.DateTimeAttributeType{}
+	case "DomainModels$AutoNumberAttributeType":
+		return &domainmodel.AutoNumberAttributeType{}
+	case "DomainModels$BinaryAttributeType":
+		return &domainmodel.BinaryAttributeType{}
+	case "DomainModels$HashedStringAttributeType":
+		return &domainmodel.HashedStringAttributeType{}
+	case "DomainModels$EnumerationAttributeType":
+		ref := t.Enumeration
+		if ref == "" {
+			ref = t.EnumerationName
+		}
+		return &domainmodel.EnumerationAttributeType{EnumerationRef: ref}
+	default:
+		return nil
+	}
 }
 
 func (b *Backend) reconstructAssociations(moduleName string, raw json.RawMessage, entityOrder []string) ([]*domainmodel.Association, error) {
