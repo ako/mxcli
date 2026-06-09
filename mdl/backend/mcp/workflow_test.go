@@ -3,6 +3,9 @@
 package mcp
 
 import (
+	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/mendixlabs/mxcli/sdk/workflows"
@@ -238,13 +241,203 @@ func TestWorkflowMutator_SetProperties(t *testing.T) {
 			t.Errorf("op %s = %v, want %v", path, got[path], v)
 		}
 	}
-	// Unsupported workflow-level property and activity ops are rejected.
+	// Unsupported workflow-level property is rejected.
 	if err := m.SetProperty("export_level", "api"); err == nil {
 		t.Error("SET export_level should be rejected")
 	}
-	// SetActivityProperty is still stubbed (no client call), unlike Insert/Drop/
-	// Replace which now resolve an activity index live.
-	if err := m.SetActivityProperty("x", 0, "page", "p"); err == nil {
-		t.Error("SetActivityProperty should be rejected (not yet supported)")
+	// An unsupported activity property is rejected before any client call.
+	if err := m.SetActivityProperty("x", 0, "bogus_prop", "p"); err == nil {
+		t.Error("unsupported activity property should be rejected")
+	}
+}
+
+// --- ALTER WORKFLOW activity-level ops (outcome/path/branch/boundary/property) ---
+
+// wfMutatorFake returns a fakePED scripting the reads the activity-level ops need:
+// /flow/activities (for index resolution) and the nested outcome/targeting arrays.
+func wfMutatorFake(t *testing.T) (*fakePED, *mcpWorkflowMutator) {
+	t.Helper()
+	results := map[string]string{
+		"/flow/activities": `[{"$Type":"Workflows$SingleUserTaskActivity","name":"ReviewOrder","caption":"Review the order"},
+			{"$Type":"Workflows$ExclusiveSplitActivity","name":"Decide","caption":"Decision"},
+			{"$Type":"Workflows$ParallelSplitActivity","name":"Split","caption":"Parallel split"}]`,
+		"/flow/activities/0/outcomes": `[{"$Type":"Workflows$UserTaskOutcome","value":"Approve"},
+			{"$Type":"Workflows$UserTaskOutcome","value":"Hold"}]`,
+		"/flow/activities/1/outcomes": `[{"$Type":"Workflows$BooleanConditionOutcome","value":true},
+			{"$Type":"Workflows$BooleanConditionOutcome","value":false}]`,
+		"/flow/activities/2/outcomes": `[{"$Type":"Workflows$ParallelSplitOutcome"},
+			{"$Type":"Workflows$ParallelSplitOutcome"},{"$Type":"Workflows$ParallelSplitOutcome"}]`,
+		"/flow/activities/0/userTargeting":  `{"$Type":"Workflows$XPathUserTargeting"}`,
+		"/flow/activities/0/boundaryEvents": `[{"$Type":"Workflows$InterruptingTimerBoundaryEvent"}]`,
+	}
+	f := newFakePED(t, func(name string, args map[string]any) (string, bool) {
+		if name == "ped_check_errors" {
+			return "No errors found.", false
+		}
+		if name != "ped_read_document" {
+			return "SUCCESS", false
+		}
+		paths, _ := args["paths"].([]any)
+		p, _ := paths[0].(string)
+		v, ok := results[p]
+		if !ok {
+			v = "null"
+		}
+		return fmt.Sprintf(`{"results":[{"path":%q,"result":%s}]}`, p, v), false
+	})
+	b := &Backend{client: f.connectClient(t)}
+	return f, &mcpWorkflowMutator{backend: b, moduleName: "M", workflowName: "WF"}
+}
+
+func wfUpdateOps(t *testing.T, f *fakePED) string {
+	t.Helper()
+	call, ok := f.callByName("ped_update_document")
+	if !ok {
+		t.Fatal("no ped_update_document sent")
+	}
+	raw, _ := json.Marshal(call.Args["operations"])
+	return string(raw)
+}
+
+func TestWFInsertOutcome(t *testing.T) {
+	f, m := wfMutatorFake(t)
+	call := &workflows.CallMicroflowTask{Microflow: "M.ACT_Review"}
+	call.Name = "rev"
+	if err := m.InsertOutcome("ReviewOrder", 0, "Escalate", []workflows.WorkflowActivity{call}); err != nil {
+		t.Fatal(err)
+	}
+	ops := wfUpdateOps(t, f)
+	for _, want := range []string{
+		`"path":"/flow/activities/0/outcomes"`, `"type":"add"`,
+		`"$Type":"Workflows$UserTaskOutcome"`, `"value":"Escalate"`,
+		`"$Type":"Workflows$CallMicroflowActivity"`, // sub-flow mapped
+	} {
+		if !strings.Contains(ops, want) {
+			t.Errorf("insert outcome op missing %s: %s", want, ops)
+		}
+	}
+}
+
+func TestWFDropOutcome(t *testing.T) {
+	f, m := wfMutatorFake(t)
+	if err := m.DropOutcome("ReviewOrder", 0, "Hold"); err != nil { // index 1
+		t.Fatal(err)
+	}
+	ops := wfUpdateOps(t, f)
+	for _, want := range []string{`"path":"/flow/activities/0/outcomes"`, `"type":"remove"`, `"index":1`} {
+		if !strings.Contains(ops, want) {
+			t.Errorf("drop outcome op missing %s: %s", want, ops)
+		}
+	}
+	// A missing outcome is an error, not a silent no-op.
+	_, m2 := wfMutatorFake(t)
+	if err := m2.DropOutcome("ReviewOrder", 0, "Nope"); err == nil {
+		t.Error("dropping a missing outcome should error")
+	}
+}
+
+func TestWFInsertPath(t *testing.T) {
+	f, m := wfMutatorFake(t)
+	if err := m.InsertPath("Parallel split", 0, "", nil); err != nil {
+		t.Fatal(err)
+	}
+	ops := wfUpdateOps(t, f)
+	for _, want := range []string{`"path":"/flow/activities/2/outcomes"`, `"type":"add"`, `"$Type":"Workflows$ParallelSplitOutcome"`} {
+		if !strings.Contains(ops, want) {
+			t.Errorf("insert path op missing %s: %s", want, ops)
+		}
+	}
+}
+
+func TestWFDropPath(t *testing.T) {
+	f, m := wfMutatorFake(t)
+	if err := m.DropPath("Parallel split", 0, "Path 2"); err != nil { // index 1
+		t.Fatal(err)
+	}
+	if ops := wfUpdateOps(t, f); !strings.Contains(ops, `"path":"/flow/activities/2/outcomes"`) || !strings.Contains(ops, `"index":1`) {
+		t.Errorf("drop path 'Path 2' wrong: %s", ops)
+	}
+	// Empty caption drops the last path (index 2 of 3).
+	f2, m2 := wfMutatorFake(t)
+	if err := m2.DropPath("Parallel split", 0, ""); err != nil {
+		t.Fatal(err)
+	}
+	if ops := wfUpdateOps(t, f2); !strings.Contains(ops, `"index":2`) {
+		t.Errorf("drop last path wrong: %s", ops)
+	}
+}
+
+func TestWFInsertBranch(t *testing.T) {
+	cases := map[string]string{
+		"true":     `"$Type":"Workflows$BooleanConditionOutcome"`,
+		"default":  `"$Type":"Workflows$VoidConditionOutcome"`,
+		"Approved": `"$Type":"Workflows$EnumerationValueConditionOutcome"`,
+	}
+	for cond, wantType := range cases {
+		f, m := wfMutatorFake(t)
+		if err := m.InsertBranch("Decision", 0, cond, nil); err != nil {
+			t.Fatalf("%s: %v", cond, err)
+		}
+		ops := wfUpdateOps(t, f)
+		if !strings.Contains(ops, `"path":"/flow/activities/1/outcomes"`) || !strings.Contains(ops, wantType) {
+			t.Errorf("insert branch %q: want %s in %s", cond, wantType, ops)
+		}
+	}
+}
+
+func TestWFDropBranch(t *testing.T) {
+	f, m := wfMutatorFake(t)
+	if err := m.DropBranch("Decision", 0, "false"); err != nil { // index 1 (value:false)
+		t.Fatal(err)
+	}
+	if ops := wfUpdateOps(t, f); !strings.Contains(ops, `"path":"/flow/activities/1/outcomes"`) || !strings.Contains(ops, `"index":1`) {
+		t.Errorf("drop branch false wrong: %s", ops)
+	}
+}
+
+func TestWFBoundaryEvent(t *testing.T) {
+	f, m := wfMutatorFake(t)
+	if err := m.InsertBoundaryEvent("ReviewOrder", 0, "NonInterruptingTimer", "addHours([%CurrentDateTime%], 1)", nil); err != nil {
+		t.Fatal(err)
+	}
+	ops := wfUpdateOps(t, f)
+	for _, want := range []string{
+		`"path":"/flow/activities/0/boundaryEvents"`, `"type":"add"`,
+		`"$Type":"Workflows$NonInterruptingTimerBoundaryEvent"`,
+		`"firstExecutionTime":"addHours([%CurrentDateTime%], 1)"`,
+	} {
+		if !strings.Contains(ops, want) {
+			t.Errorf("insert boundary event missing %s: %s", want, ops)
+		}
+	}
+	// DROP removes index 0.
+	f2, m2 := wfMutatorFake(t)
+	if err := m2.DropBoundaryEvent("ReviewOrder", 0); err != nil {
+		t.Fatal(err)
+	}
+	if ops := wfUpdateOps(t, f2); !strings.Contains(ops, `"path":"/flow/activities/0/boundaryEvents"`) || !strings.Contains(ops, `"index":0`) {
+		t.Errorf("drop boundary event wrong: %s", ops)
+	}
+}
+
+func TestWFSetActivityProperty(t *testing.T) {
+	cases := map[string]string{
+		"page":        `"path":"/flow/activities/0/taskPage/page"`,
+		"description": `"path":"/flow/activities/0/taskDescription/text"`,
+		"due_date":    `"path":"/flow/activities/0/dueDate"`,
+	}
+	for prop, wantPath := range cases {
+		f, m := wfMutatorFake(t)
+		if err := m.SetActivityProperty("ReviewOrder", 0, prop, "X"); err != nil {
+			t.Fatalf("%s: %v", prop, err)
+		}
+		if ops := wfUpdateOps(t, f); !strings.Contains(ops, wantPath) || !strings.Contains(ops, `"type":"set"`) {
+			t.Errorf("set activity %s: want %s in %s", prop, wantPath, ops)
+		}
+	}
+	// Changing the targeting *kind* (current is XPath) is rejected.
+	_, m := wfMutatorFake(t)
+	if err := m.SetActivityProperty("ReviewOrder", 0, "targeting_microflow", "M.Pick"); err == nil {
+		t.Error("switching targeting kind from XPath to Microflow should be rejected")
 	}
 }

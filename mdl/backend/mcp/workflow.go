@@ -5,6 +5,7 @@ package mcp
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/backend"
 	"github.com/mendixlabs/mxcli/model"
@@ -405,12 +406,6 @@ func (m *mcpWorkflowMutator) Save() error {
 	return m.backend.pedCheckDocument(workflowDocType, qn)
 }
 
-// --- activity/outcome/path/branch/boundary-event ops: not yet supported ---
-
-func (m *mcpWorkflowMutator) errUnsupported(op string) error {
-	return fmt.Errorf("ALTER WORKFLOW %s is not yet supported by the MCP backend (workflow-level SET is)", op)
-}
-
 // qn returns the workflow's qualified document name.
 func (m *mcpWorkflowMutator) qn() string { return m.moduleName + "." + m.workflowName }
 
@@ -463,8 +458,58 @@ func (m *mcpWorkflowMutator) findActivityIndex(ref string, atPos int) (int, erro
 	}
 }
 
-func (m *mcpWorkflowMutator) SetActivityProperty(string, int, string, string) error {
-	return m.errUnsupported("activity property changes")
+// apply sends activity-level ops to PED immediately (the existing
+// INSERT/DROP/REPLACE activity ops do the same; only the workflow-level SETs
+// defer through m.set()/Save()).
+func (m *mcpWorkflowMutator) apply(ops ...pedOpEntry) error {
+	return m.backend.pedUpdateDoc(workflowDocType, m.qn(), ops...)
+}
+
+// SetActivityProperty sets a primitive/reference leaf on a top-level activity.
+// PED forbids replacing a nested element wholesale, so a property whose change
+// would swap an element's *kind* (e.g. switching user targeting from XPath to
+// Microflow) is rejected rather than silently dropped.
+func (m *mcpWorkflowMutator) SetActivityProperty(activityRef string, atPos int, prop, value string) error {
+	// Reject an unsupported property before the (live) index resolution.
+	leaf := map[string]string{
+		"page":        "/taskPage/page",
+		"description": "/taskDescription/text",
+		"due_date":    "/dueDate",
+	}[strings.ToLower(prop)]
+	switch strings.ToLower(prop) {
+	case "page", "description", "due_date", "targeting_microflow", "targeting_xpath":
+	default:
+		return fmt.Errorf("ALTER WORKFLOW set activity %s is not supported by the MCP backend (supported: page, description, due_date, targeting_microflow, targeting_xpath)", prop)
+	}
+	idx, err := m.findActivityIndex(activityRef, atPos)
+	if err != nil {
+		return err
+	}
+	switch strings.ToLower(prop) {
+	case "targeting_microflow":
+		return m.setUserTargetingLeaf(idx, "Workflows$MicroflowUserTargeting", "microflow", value)
+	case "targeting_xpath":
+		return m.setUserTargetingLeaf(idx, "Workflows$XPathUserTargeting", "xPathConstraint", value)
+	default:
+		return m.apply(pedOpEntry{Path: fmt.Sprintf("/flow/activities/%d%s", idx, leaf), Operation: pedOperation{Type: "set", Value: value}})
+	}
+}
+
+// setUserTargetingLeaf sets the microflow/xpath leaf on an activity's existing
+// userTargeting element. Because PED can't replace the element, this only works
+// when the activity is already targeted the requested way.
+func (m *mcpWorkflowMutator) setUserTargetingLeaf(idx int, wantType, field, value string) error {
+	cur, err := m.readActivityElementType(idx, "userTargeting")
+	if err != nil {
+		return err
+	}
+	if cur != "" && cur != wantType {
+		return fmt.Errorf("activity user targeting is %s; changing the targeting kind via MCP is not supported (PED cannot replace the element) — set it in Studio Pro, or recreate the user task", cur)
+	}
+	return m.apply(pedOpEntry{
+		Path:      fmt.Sprintf("/flow/activities/%d/userTargeting/%s", idx, field),
+		Operation: pedOperation{Type: "set", Value: value},
+	})
 }
 
 func (m *mcpWorkflowMutator) InsertAfterActivity(activityRef string, atPos int, activities []workflows.WorkflowActivity) error {
@@ -518,27 +563,285 @@ func (m *mcpWorkflowMutator) ReplaceActivity(activityRef string, atPos int, acti
 	}
 	return m.backend.pedUpdateDoc(workflowDocType, m.qn(), ops...)
 }
-func (m *mcpWorkflowMutator) InsertOutcome(string, int, string, []workflows.WorkflowActivity) error {
-	return m.errUnsupported("INSERT outcome")
+
+// --- outcome / path / branch ops (all live in an activity's `outcomes` array) ---
+
+// InsertOutcome adds a named outcome (with an optional sub-flow) to a user task.
+func (m *mcpWorkflowMutator) InsertOutcome(activityRef string, atPos int, outcomeName string, activities []workflows.WorkflowActivity) error {
+	idx, err := m.findActivityIndex(activityRef, atPos)
+	if err != nil {
+		return err
+	}
+	el := map[string]any{"$Type": "Workflows$UserTaskOutcome", "value": outcomeName}
+	if err := attachSubFlow(el, activities); err != nil {
+		return err
+	}
+	return m.addToActivityArray(idx, "outcomes", el)
 }
-func (m *mcpWorkflowMutator) DropOutcome(string, int, string) error {
-	return m.errUnsupported("DROP outcome")
+
+// DropOutcome removes a user-task outcome by its value ("Default" matches a void outcome).
+func (m *mcpWorkflowMutator) DropOutcome(activityRef string, atPos int, outcomeName string) error {
+	idx, err := m.findActivityIndex(activityRef, atPos)
+	if err != nil {
+		return err
+	}
+	return m.dropFromActivityArray(idx, "outcomes", activityRef, "outcome", func(o pedOutcomeElem) bool {
+		return o.valueString() == outcomeName ||
+			(strings.EqualFold(outcomeName, "Default") && o.SType == "Workflows$VoidConditionOutcome")
+	})
 }
-func (m *mcpWorkflowMutator) InsertPath(string, int, string, []workflows.WorkflowActivity) error {
-	return m.errUnsupported("INSERT path")
+
+// InsertPath adds a concurrent path (with an optional sub-flow) to a parallel split.
+func (m *mcpWorkflowMutator) InsertPath(activityRef string, atPos int, pathCaption string, activities []workflows.WorkflowActivity) error {
+	idx, err := m.findActivityIndex(activityRef, atPos)
+	if err != nil {
+		return err
+	}
+	el := map[string]any{"$Type": "Workflows$ParallelSplitOutcome"}
+	if err := attachSubFlow(el, activities); err != nil {
+		return err
+	}
+	return m.addToActivityArray(idx, "outcomes", el)
 }
-func (m *mcpWorkflowMutator) DropPath(string, int, string) error {
-	return m.errUnsupported("DROP path")
+
+// DropPath removes a parallel-split path. Paths have no stored name; the caption
+// "Path N" addresses the N-th path, and an empty caption drops the last one.
+func (m *mcpWorkflowMutator) DropPath(activityRef string, atPos int, pathCaption string) error {
+	idx, err := m.findActivityIndex(activityRef, atPos)
+	if err != nil {
+		return err
+	}
+	paths, err := m.readActivityArray(idx, "outcomes")
+	if err != nil {
+		return err
+	}
+	target := len(paths) - 1 // empty caption -> last
+	if pathCaption != "" {
+		target = -1
+		for i := range paths {
+			if fmt.Sprintf("Path %d", i+1) == pathCaption {
+				target = i
+				break
+			}
+		}
+	}
+	if target < 0 || target >= len(paths) {
+		return fmt.Errorf("path %q not found on parallel split %q", pathCaption, activityRef)
+	}
+	return m.apply(removeAtOp(fmt.Sprintf("/flow/activities/%d/outcomes", idx), target))
 }
-func (m *mcpWorkflowMutator) InsertBranch(string, int, string, []workflows.WorkflowActivity) error {
-	return m.errUnsupported("INSERT branch")
+
+// InsertBranch adds a condition branch (true/false/default/enum-value) to a decision.
+func (m *mcpWorkflowMutator) InsertBranch(activityRef string, atPos int, condition string, activities []workflows.WorkflowActivity) error {
+	idx, err := m.findActivityIndex(activityRef, atPos)
+	if err != nil {
+		return err
+	}
+	el := branchOutcomeElement(condition)
+	if err := attachSubFlow(el, activities); err != nil {
+		return err
+	}
+	return m.addToActivityArray(idx, "outcomes", el)
 }
-func (m *mcpWorkflowMutator) DropBranch(string, int, string) error {
-	return m.errUnsupported("DROP branch")
+
+// DropBranch removes a decision branch by name (true/false/default, or an enum value).
+func (m *mcpWorkflowMutator) DropBranch(activityRef string, atPos int, branchName string) error {
+	idx, err := m.findActivityIndex(activityRef, atPos)
+	if err != nil {
+		return err
+	}
+	return m.dropFromActivityArray(idx, "outcomes", activityRef, "branch", func(o pedOutcomeElem) bool {
+		switch strings.ToLower(branchName) {
+		case "true":
+			return o.SType == "Workflows$BooleanConditionOutcome" && o.valueBool()
+		case "false":
+			return o.SType == "Workflows$BooleanConditionOutcome" && !o.valueBool()
+		case "default":
+			return o.SType == "Workflows$VoidConditionOutcome"
+		default:
+			return o.valueString() == branchName
+		}
+	})
 }
-func (m *mcpWorkflowMutator) InsertBoundaryEvent(string, int, string, string, []workflows.WorkflowActivity) error {
-	return m.errUnsupported("INSERT boundary event")
+
+// --- boundary event ops (live in an activity's `boundaryEvents` array) ---
+
+// InsertBoundaryEvent attaches a (non-)interrupting timer boundary event, with an
+// optional handler sub-flow, to a user task or call-microflow activity.
+func (m *mcpWorkflowMutator) InsertBoundaryEvent(activityRef string, atPos int, eventType, delay string, activities []workflows.WorkflowActivity) error {
+	idx, err := m.findActivityIndex(activityRef, atPos)
+	if err != nil {
+		return err
+	}
+	el := boundaryEventElement(eventType, delay)
+	if err := attachSubFlow(el, activities); err != nil {
+		return err
+	}
+	return m.addToActivityArray(idx, "boundaryEvents", el)
 }
-func (m *mcpWorkflowMutator) DropBoundaryEvent(string, int) error {
-	return m.errUnsupported("DROP boundary event")
+
+// DropBoundaryEvent removes the activity's (first) boundary event.
+func (m *mcpWorkflowMutator) DropBoundaryEvent(activityRef string, atPos int) error {
+	idx, err := m.findActivityIndex(activityRef, atPos)
+	if err != nil {
+		return err
+	}
+	events, err := m.readActivityArray(idx, "boundaryEvents")
+	if err != nil {
+		return err
+	}
+	if len(events) == 0 {
+		return fmt.Errorf("activity %q has no boundary events", activityRef)
+	}
+	return m.apply(removeAtOp(fmt.Sprintf("/flow/activities/%d/boundaryEvents", idx), 0))
+}
+
+// --- shared helpers for nested-array ops ---
+
+// pedOutcomeElem is the shallow shape of an outcome/branch/path element as PED
+// returns it from a nested-array read (deeper structure collapses to $Type).
+type pedOutcomeElem struct {
+	SType string          `json:"$Type"`
+	Value json.RawMessage `json:"value"`
+}
+
+func (o pedOutcomeElem) valueString() string {
+	var s string
+	_ = json.Unmarshal(o.Value, &s)
+	return s
+}
+
+func (o pedOutcomeElem) valueBool() bool {
+	var b bool
+	_ = json.Unmarshal(o.Value, &b)
+	return b
+}
+
+func removeAtOp(path string, idx int) pedOpEntry {
+	return pedOpEntry{Path: path, Operation: pedOperation{Type: "remove", Index: &idx}}
+}
+
+// attachSubFlow maps the activities into a Workflows$Flow and stores it under
+// the element's `flow` key (omitted when there are no activities).
+func attachSubFlow(el map[string]any, activities []workflows.WorkflowActivity) error {
+	if len(activities) == 0 {
+		return nil
+	}
+	flow, err := mapWorkflowFlowValue(&workflows.Flow{Activities: activities})
+	if err != nil {
+		return err
+	}
+	el["flow"] = flow
+	return nil
+}
+
+// addToActivityArray appends an element to an activity's nested array (outcomes,
+// boundaryEvents). A PED `add` without an index appends.
+func (m *mcpWorkflowMutator) addToActivityArray(idx int, field string, el map[string]any) error {
+	return m.apply(pedOpEntry{
+		Path:      fmt.Sprintf("/flow/activities/%d/%s", idx, field),
+		Operation: pedOperation{Type: "add", Value: el},
+	})
+}
+
+// dropFromActivityArray reads an activity's nested array, finds the first element
+// matching the predicate, and removes it by index.
+func (m *mcpWorkflowMutator) dropFromActivityArray(idx int, field, activityRef, kind string, match func(pedOutcomeElem) bool) error {
+	elems, err := m.readActivityArray(idx, field)
+	if err != nil {
+		return err
+	}
+	for i, e := range elems {
+		if match(e) {
+			return m.apply(removeAtOp(fmt.Sprintf("/flow/activities/%d/%s", idx, field), i))
+		}
+	}
+	return fmt.Errorf("%s not found on activity %q", kind, activityRef)
+}
+
+// readActivityArray reads a top-level activity's nested array (outcomes,
+// boundaryEvents) for index resolution on DROP.
+func (m *mcpWorkflowMutator) readActivityArray(idx int, field string) ([]pedOutcomeElem, error) {
+	res, err := m.backend.client.CallTool("ped_read_document", map[string]any{
+		"documentType": workflowDocType,
+		"documentName": m.qn(),
+		"paths":        []string{fmt.Sprintf("/flow/activities/%d/%s", idx, field)},
+	})
+	if err != nil {
+		return nil, err
+	}
+	text := pedStripReminder(res.Text)
+	if res.IsError {
+		return nil, fmt.Errorf("read %s %s: %s", m.qn(), field, text)
+	}
+	var doc struct {
+		Results []struct {
+			Result []pedOutcomeElem `json:"result"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal([]byte(text), &doc); err != nil || len(doc.Results) == 0 {
+		return nil, fmt.Errorf("parse %s %s: %v", m.qn(), field, err)
+	}
+	return doc.Results[0].Result, nil
+}
+
+// readActivityElementType reads the $Type of a single nested element on an activity.
+func (m *mcpWorkflowMutator) readActivityElementType(idx int, field string) (string, error) {
+	res, err := m.backend.client.CallTool("ped_read_document", map[string]any{
+		"documentType": workflowDocType,
+		"documentName": m.qn(),
+		"paths":        []string{fmt.Sprintf("/flow/activities/%d/%s", idx, field)},
+	})
+	if err != nil {
+		return "", err
+	}
+	text := pedStripReminder(res.Text)
+	if res.IsError {
+		return "", fmt.Errorf("read %s %s: %s", m.qn(), field, text)
+	}
+	var doc struct {
+		Results []struct {
+			Result struct {
+				SType string `json:"$Type"`
+			} `json:"result"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal([]byte(text), &doc); err != nil || len(doc.Results) == 0 {
+		return "", nil // unknown -> caller proceeds (PED will reject a real mismatch)
+	}
+	return doc.Results[0].Result.SType, nil
+}
+
+// branchOutcomeElement builds the condition outcome for an exclusive-split branch.
+func branchOutcomeElement(condition string) map[string]any {
+	switch strings.ToLower(condition) {
+	case "true":
+		return map[string]any{"$Type": "Workflows$BooleanConditionOutcome", "value": true}
+	case "false":
+		return map[string]any{"$Type": "Workflows$BooleanConditionOutcome", "value": false}
+	case "default":
+		return map[string]any{"$Type": "Workflows$VoidConditionOutcome"}
+	default:
+		return map[string]any{"$Type": "Workflows$EnumerationValueConditionOutcome", "value": condition}
+	}
+}
+
+// boundaryEventElement builds a timer boundary event (mirrors the MPR backend's
+// type mapping; PED auto-assigns $ID/PersistentId).
+func boundaryEventElement(eventType, delay string) map[string]any {
+	typeName := "Workflows$InterruptingTimerBoundaryEvent"
+	switch eventType {
+	case "NonInterruptingTimer":
+		typeName = "Workflows$NonInterruptingTimerBoundaryEvent"
+	case "Timer":
+		typeName = "Workflows$TimerBoundaryEvent"
+	}
+	el := map[string]any{"$Type": typeName, "caption": ""}
+	if delay != "" {
+		el["firstExecutionTime"] = delay
+	}
+	if typeName == "Workflows$NonInterruptingTimerBoundaryEvent" {
+		el["recurrence"] = nil
+	}
+	return el
 }

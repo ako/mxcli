@@ -133,8 +133,18 @@ replaced wholesale (PED rejects a whole-element set). Activity-level structural 
 `/flow/activities` read matching caption/name, with `@N` disambiguation, top-level
 activities only): **INSERT** activity (ped add at index+1), **DROP** activity (ped
 remove at index), **REPLACE** activity (remove the slot, then add — a whole-element
-set by index is rejected). The outcome/path/branch/boundary-event ops and `SetActivityProperty`
-remain stubbed.
+set by index is rejected). The outcome/path/branch/boundary-event ops follow the
+same array add/remove pattern one level deeper — on the activity's nested
+`/flow/activities/<i>/outcomes` (user-task outcomes, decision branches, parallel
+paths all share this array, differing only by element `$Type`) or
+`/flow/activities/<i>/boundaryEvents`; DROP reads the array to resolve the
+match→index first. **SetActivityProperty** sets primitive/reference leaves
+(`page` → `/taskPage/page`, `description` → `/taskDescription/text`, `due_date`);
+changing the *kind* of user targeting (XPath↔Microflow) is rejected because PED
+can't replace the nested element. So `ALTER WORKFLOW` is now complete over MCP
+(workflow-level SET + all activity-level structural and property ops); the only
+ALTER gaps are activities nested inside a sub-flow (top-level only) and CREATE
+OR REPLACE WORKFLOW.
 
 `CREATE MODULE` routes through `ped_create_module` (which flushes to disk
 immediately) and registers the module in a session list merged into
