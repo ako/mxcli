@@ -178,11 +178,23 @@ func TestMapParallelSplit(t *testing.T) {
 	}
 }
 
+func TestMapJumpTo(t *testing.T) {
+	j := &workflows.JumpToActivity{TargetActivity: "ReviewStep"}
+	j.Name = "jump"
+	m, err := mapWorkflowActivity(j)
+	if err != nil {
+		t.Fatalf("mapWorkflowActivity(JumpTo): %v", err)
+	}
+	if m["$Type"] != "Workflows$JumpToActivity" || m["targetActivity"] != "ReviewStep" {
+		t.Fatalf("jump to: %+v", m)
+	}
+}
+
 func TestMapWorkflowActivity_Unsupported(t *testing.T) {
 	// An activity type not yet mapped is rejected, not silently dropped.
-	j := &workflows.JumpToActivity{}
-	j.Name = "jump"
-	if _, err := mapWorkflowActivity(j); err == nil {
+	w := &workflows.WaitForTimerActivity{}
+	w.Name = "wait"
+	if _, err := mapWorkflowActivity(w); err == nil {
 		t.Error("unmapped workflow activity should be rejected")
 	}
 }

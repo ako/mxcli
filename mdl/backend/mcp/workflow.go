@@ -174,6 +174,13 @@ func mapWorkflowActivity(a workflows.WorkflowActivity) (map[string]any, error) {
 			"outcomes":          outcomes,
 			"parameterMappings": mapWorkflowParamMappings(act.ParameterMappings),
 		}, nil
+	case *workflows.JumpToActivity:
+		return map[string]any{
+			"$Type":          "Workflows$JumpToActivity",
+			"name":           act.Name,
+			"caption":        act.Caption,
+			"targetActivity": act.TargetActivity,
+		}, nil
 	case *workflows.ParallelSplitActivity:
 		outcomes := make([]any, 0, len(act.Outcomes))
 		for _, oc := range act.Outcomes {
