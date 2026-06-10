@@ -26791,6 +26791,18 @@ type Title struct {
 	conditionalVisibilitySettings *property.Part[element.Element]
 	accessibilitySettings         *property.Part[element.Element]
 	nativeAccessibilitySettings   *property.Part[element.Element]
+	caption                       *property.Part[element.Element] // GEN FIX: Caption (Texts$Text) was missing
+}
+
+// SetCaption sets the title's caption (a Texts$Text). Added to repair the gen,
+// which omitted this property.
+func (o *Title) SetCaption(v element.Element) {
+	o.caption.Set(v)
+}
+
+// Caption returns the title's caption element.
+func (o *Title) Caption() element.Element {
+	return o.caption.Get()
 }
 
 // Name returns the value of the name property.
@@ -33637,7 +33649,9 @@ func initTitle() *Title {
 	o.accessibilitySettings.Bind(&o.Base, 6)
 	o.nativeAccessibilitySettings = property.NewPart[element.Element]("NativeAccessibilitySettings")
 	o.nativeAccessibilitySettings.Bind(&o.Base, 7)
-	o.SetProperties([]element.Property{o.name, o.class, o.style, o.appearance, o.tabIndex, o.conditionalVisibilitySettings, o.accessibilitySettings, o.nativeAccessibilitySettings})
+	o.caption = property.NewPart[element.Element]("Caption") // GEN FIX: Caption was missing
+	o.caption.Bind(&o.Base, 8)
+	o.SetProperties([]element.Property{o.name, o.class, o.style, o.appearance, o.tabIndex, o.conditionalVisibilitySettings, o.accessibilitySettings, o.nativeAccessibilitySettings, o.caption})
 	return o
 }
 

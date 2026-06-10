@@ -43,6 +43,11 @@ func init() {
 		NullFields: []string{"Icon", "ConditionalVisibilitySettings", "NativeAccessibilitySettings"},
 	})
 	codec.RegisterListMarker("Forms$ActionButton", 2)
+	// Title: null visibility/accessibility slots; marker 2 as a widget.
+	codec.RegisterTypeDefaults("Forms$Title", codec.TypeDefaults{
+		NullFields: []string{"ConditionalVisibilitySettings", "NativeAccessibilitySettings"},
+	})
+	codec.RegisterListMarker("Forms$Title", 2)
 	// A caption parameter's AttributeRef/SourceVariable are null for the literal-
 	// expression form; populated Parameters lists use marker 2.
 	codec.RegisterTypeDefaults("Forms$ClientTemplateParameter", codec.TypeDefaults{
@@ -90,6 +95,12 @@ func widgetToGen(w pages.Widget) (element.Element, error) {
 			}
 			g.AddRows(rg)
 		}
+		return g, nil
+
+	case *pages.Title:
+		g := genPg.NewTitle()
+		applyWidgetBase(g, &x.BaseWidget)
+		g.SetCaption(captionToGen(x.Caption))
 		return g, nil
 
 	case *pages.ActionButton:
