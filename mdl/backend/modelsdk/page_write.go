@@ -7,8 +7,9 @@ import (
 
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/modelsdk/codec"
-	"github.com/mendixlabs/mxcli/modelsdk/element"
+	genDT "github.com/mendixlabs/mxcli/modelsdk/gen/datatypes"
 	genPg "github.com/mendixlabs/mxcli/modelsdk/gen/pages"
+	"github.com/mendixlabs/mxcli/modelsdk/element"
 	mmpr "github.com/mendixlabs/mxcli/modelsdk/mpr"
 	"github.com/mendixlabs/mxcli/sdk/pages"
 )
@@ -111,7 +112,9 @@ func layoutCallToGen(lc *pages.LayoutCall) (*genPg.LayoutCall, error) {
 	return out, nil
 }
 
-// pageParameterToGen converts a page parameter (entity or primitive typed).
+// pageParameterToGen converts a page parameter, including its ParameterType — an
+// entity (DataTypes$ObjectType) or a primitive (DataTypes$StringType, …). Without
+// the type the parameter can't resolve (CE5601/CE5606).
 func pageParameterToGen(p *pages.PageParameter) *genPg.PageParameter {
 	gp := genPg.NewPageParameter()
 	if p.ID != "" {
@@ -119,5 +122,35 @@ func pageParameterToGen(p *pages.PageParameter) *genPg.PageParameter {
 	}
 	assignID(gp)
 	gp.SetName(p.Name)
+	gp.SetIsRequired(p.IsRequired)
+	gp.SetDefaultValue(p.DefaultValue)
+	gp.SetParameterType(pageParamTypeToGen(p))
 	return gp
+}
+
+// pageParamTypeToGen builds a page parameter's type: a DataTypes$ObjectType for an
+// entity parameter, or the named primitive DataTypes type. p.TypeName carries the
+// primitive's BSON $Type (e.g. "DataTypes$StringType") when set.
+func pageParamTypeToGen(p *pages.PageParameter) element.Element {
+	if p.TypeName == "" {
+		t := genDT.NewObjectType()
+		assignID(t)
+		t.SetEntityQualifiedName(p.EntityName)
+		return t
+	}
+	var t element.Element
+	switch p.TypeName {
+	case "DataTypes$IntegerType":
+		t = genDT.NewIntegerType()
+	case "DataTypes$BooleanType":
+		t = genDT.NewBooleanType()
+	case "DataTypes$DecimalType":
+		t = genDT.NewDecimalType()
+	case "DataTypes$DateTimeType":
+		t = genDT.NewDateTimeType()
+	default:
+		t = genDT.NewStringType()
+	}
+	assignID(t)
+	return t
 }

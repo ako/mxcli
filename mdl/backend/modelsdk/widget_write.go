@@ -4,6 +4,7 @@ package modelsdkbackend
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/modelsdk/codec"
@@ -66,6 +67,16 @@ func init() {
 	codec.RegisterTypeDefaults("Forms$DataViewSource", codec.TypeDefaults{
 		NullFields: []string{"EntityRef", "SourceVariable"},
 	})
+	// TextBox: many null slots when unbound (attribute ref, screen-reader label,
+	// source variable, label template, visibility/editability/native settings).
+	codec.RegisterTypeDefaults("Forms$TextBox", codec.TypeDefaults{
+		NullFields: []string{
+			"AttributeRef", "ScreenReaderLabel", "SourceVariable", "LabelTemplate",
+			"ConditionalVisibilitySettings", "ConditionalEditabilitySettings",
+			"NativeAccessibilitySettings",
+		},
+	})
+	codec.RegisterListMarker("Forms$TextBox", 2)
 }
 
 // widgetToGen converts a model widget to its gen element, recursing into
@@ -144,6 +155,44 @@ func widgetToGen(w pages.Widget) (element.Element, error) {
 		g := genPg.NewTitle()
 		applyWidgetBase(g, &x.BaseWidget)
 		g.SetCaption(captionToGen(x.Caption))
+		return g, nil
+
+	case *pages.TextBox:
+		g := genPg.NewTextBox()
+		applyWidgetBase(g, &x.BaseWidget)
+		g.SetAriaRequired(false)
+		g.SetAutoFocus(false)
+		g.SetAutocomplete(true)
+		g.SetAutocompletePurpose("On")
+		if ref := attributeRefToGen(x.AttributePath); ref != nil {
+			g.SetAttributeRef(ref)
+		}
+		g.SetEditable("Always")
+		g.SetFormattingInfo(newFormattingInfo())
+		g.SetInputMask("")
+		g.SetIsPasswordBox(x.IsPassword)
+		g.SetKeyboardType("Default")
+		if x.Label != "" {
+			g.SetLabelTemplate(textAsClientTemplate(textFromString(x.Label)))
+		}
+		g.SetMaxLengthCode(-1)
+		onChange, err := clientActionToGen(x.OnChangeAction)
+		if err != nil {
+			return nil, err
+		}
+		onEnter, err := clientActionToGen(x.OnEnterAction)
+		if err != nil {
+			return nil, err
+		}
+		g.SetOnChangeAction(onChange)
+		g.SetOnEnterAction(onEnter)
+		g.SetOnEnterKeyPressAction(noActionGen())
+		g.SetOnLeaveAction(noActionGen())
+		g.SetPlaceholderTemplate(textAsClientTemplate(x.Placeholder))
+		g.SetReadOnlyStyle("Inherit")
+		g.SetSubmitBehaviour("OnEndEditing")
+		g.SetSubmitOnInputDelay(300)
+		g.SetValidation(widgetValidationToGen())
 		return g, nil
 
 	case *pages.ActionButton:
@@ -319,6 +368,36 @@ func newFormattingInfo() element.Element {
 	f.SetEnumFormat("Text")
 	f.SetGroupDigits(false)
 	return f
+}
+
+// textFromString wraps a non-empty string as a single-translation model.Text.
+func textFromString(s string) *model.Text {
+	if s == "" {
+		return nil
+	}
+	return &model.Text{Translations: map[string]string{"en_US": s}}
+}
+
+// attributeRefToGen builds a DomainModels$AttributeRef for a fully-qualified
+// attribute path (Module.Entity.Attribute); returns nil otherwise (the slot is
+// then emitted null via the registered default), matching the legacy serializer.
+func attributeRefToGen(path string) element.Element {
+	if strings.Count(path, ".") < 2 {
+		return nil
+	}
+	r := genDm.NewAttributeRef()
+	assignID(r)
+	r.SetAttributeQualifiedName(path)
+	return r
+}
+
+// widgetValidationToGen builds the default empty Forms$WidgetValidation.
+func widgetValidationToGen() element.Element {
+	v := genPg.NewWidgetValidation()
+	assignID(v)
+	v.SetExpression("")
+	v.SetMessage(genTexts.NewText())
+	return v
 }
 
 // editability maps a read-only flag to the Forms editability enum.
