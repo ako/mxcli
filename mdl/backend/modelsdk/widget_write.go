@@ -126,6 +126,12 @@ func init() {
 		},
 	})
 	codec.RegisterListMarker("Forms$CheckBox", 2)
+	// NavigationList: null visibility; items + the widget itself use marker 2.
+	codec.RegisterTypeDefaults("Forms$NavigationList", codec.TypeDefaults{
+		NullFields: []string{"ConditionalVisibilitySettings"},
+	})
+	codec.RegisterListMarker("Forms$NavigationList", 2)
+	codec.RegisterListMarker("Forms$NavigationListItem", 2)
 	// show_page action (Forms$FormAction) + its FormSettings always emit their
 	// (empty) typed-array lists with marker 2.
 	codec.RegisterTypeDefaults("Forms$FormAction", codec.TypeDefaults{
@@ -369,6 +375,18 @@ func widgetToGen(w pages.Widget) (element.Element, error) {
 		g.SetValidation(widgetValidationToGen())
 		return g, nil
 
+	case *pages.NavigationList:
+		g := genPg.NewNavigationList()
+		applyWidgetBase(g, &x.BaseWidget)
+		for _, item := range x.Items {
+			ig, err := navListItemToGen(item)
+			if err != nil {
+				return nil, err
+			}
+			g.AddItems(ig)
+		}
+		return g, nil
+
 	case *pages.CustomWidget:
 		return customWidgetToGen(x)
 
@@ -414,6 +432,35 @@ func decodeRawBSON(d bson.D) (element.Element, error) {
 		return nil, err
 	}
 	return codec.NewDecoder(codec.DefaultRegistry).Decode(raw)
+}
+
+// navListItemToGen converts a NavigationListItem (its click action + content
+// widgets; a caption with no explicit widgets becomes a DynamicText).
+func navListItemToGen(item *pages.NavigationListItem) (element.Element, error) {
+	g := genPg.NewNavigationListItem()
+	if item.ID != "" {
+		g.SetID(element.ID(item.ID))
+	}
+	assignID(g)
+	g.SetAppearance(newAppearance("", ""))
+	act, err := clientActionToGen(item.Action)
+	if err != nil {
+		return nil, err
+	}
+	g.SetAction(act)
+
+	widgets := item.Widgets
+	if len(widgets) == 0 && item.Caption != nil {
+		widgets = []pages.Widget{&pages.DynamicText{Content: &pages.ClientTemplate{Template: item.Caption}}}
+	}
+	for _, w := range widgets {
+		wg, err := widgetToGen(w)
+		if err != nil {
+			return nil, err
+		}
+		g.AddWidgets(wg)
+	}
+	return g, nil
 }
 
 // layoutGridRowToGen converts a LayoutGridRow (alignment defaults match the
