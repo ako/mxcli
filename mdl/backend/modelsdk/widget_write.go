@@ -141,6 +141,13 @@ func init() {
 	codec.RegisterTypeDefaults("Forms$SnippetCall", codec.TypeDefaults{
 		MandatoryLists: []string{"ParameterMappings"},
 	})
+	// ListView: null visibility; always emits its Templates list; marker 2.
+	codec.RegisterTypeDefaults("Forms$ListView", codec.TypeDefaults{
+		NullFields:     []string{"ConditionalVisibilitySettings"},
+		MandatoryLists: []string{"Templates"},
+	})
+	codec.RegisterListMarker("Forms$ListView", 2)
+	codec.RegisterListMarker("Forms$ListViewTemplate", 2)
 	// show_page action (Forms$FormAction) + its FormSettings always emit their
 	// (empty) typed-array lists with marker 2.
 	codec.RegisterTypeDefaults("Forms$FormAction", codec.TypeDefaults{
@@ -386,6 +393,49 @@ func widgetToGen(w pages.Widget) (element.Element, error) {
 		g.SetOnChangeAction(onChange)
 		g.SetOnEnterAction(noActionGen())
 		g.SetValidation(widgetValidationToGen())
+		return g, nil
+
+	case *pages.ListView:
+		g := genPg.NewListView()
+		applyWidgetBase(g, &x.BaseWidget)
+		ds, err := listViewSourceToGen(x.DataSource)
+		if err != nil {
+			return nil, err
+		}
+		g.SetDataSource(ds)
+		clickAct, err := clientActionToGen(x.ClickAction)
+		if err != nil {
+			return nil, err
+		}
+		g.SetClickAction(clickAct)
+		g.SetEditable(x.Editable)
+		g.SetNumberOfColumns(1)
+		pageSize := int32(x.PageSize)
+		if pageSize == 0 {
+			pageSize = 20
+		}
+		g.SetPageSize(pageSize)
+		g.SetPullDownAction(noActionGen())
+		g.SetScrollDirection("Vertical")
+		for _, t := range x.Templates {
+			tg := genPg.NewListViewTemplate()
+			assignID(tg)
+			for _, w := range t.Widgets {
+				wg, err := widgetToGen(w)
+				if err != nil {
+					return nil, err
+				}
+				tg.AddWidgets(wg)
+			}
+			g.AddTemplates(tg)
+		}
+		for _, w := range x.Widgets {
+			wg, err := widgetToGen(w)
+			if err != nil {
+				return nil, err
+			}
+			g.AddWidgets(wg)
+		}
 		return g, nil
 
 	case *pages.SnippetCallWidget:
@@ -736,6 +786,25 @@ func dataViewSourceToGen(ds pages.DataSource) (element.Element, error) {
 
 	default:
 		return nil, fmt.Errorf("CreatePage: DataView source %T not yet supported by the modelsdk engine — rerun with MXCLI_ENGINE=legacy", ds)
+	}
+}
+
+// listViewSourceToGen builds a ListView data source. Microflow sources use the
+// same Forms$MicroflowSource as DataView; database sources (Forms$ListViewXPathSource)
+// are not yet ported.
+func listViewSourceToGen(ds pages.DataSource) (element.Element, error) {
+	switch d := ds.(type) {
+	case *pages.MicroflowSource:
+		ms := genPg.NewMicroflowSource()
+		if d.ID != "" {
+			ms.SetID(element.ID(d.ID))
+		}
+		assignID(ms)
+		ms.SetForceFullObjects(false)
+		ms.SetMicroflowSettings(microflowSettingsToGen(d.Microflow))
+		return ms, nil
+	default:
+		return nil, fmt.Errorf("CreatePage: ListView source %T not yet supported by the modelsdk engine — rerun with MXCLI_ENGINE=legacy", ds)
 	}
 }
 
