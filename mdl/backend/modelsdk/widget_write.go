@@ -117,6 +117,15 @@ func init() {
 		},
 	})
 	codec.RegisterListMarker("Forms$TextArea", 2)
+	// CheckBox: boolean input; same null-slot set.
+	codec.RegisterTypeDefaults("Forms$CheckBox", codec.TypeDefaults{
+		NullFields: []string{
+			"AttributeRef", "ScreenReaderLabel", "SourceVariable", "LabelTemplate",
+			"ConditionalVisibilitySettings", "ConditionalEditabilitySettings",
+			"NativeAccessibilitySettings",
+		},
+	})
+	codec.RegisterListMarker("Forms$CheckBox", 2)
 }
 
 // widgetToGen converts a model widget to its gen element, recursing into
@@ -252,6 +261,26 @@ func widgetToGen(w pages.Widget) (element.Element, error) {
 			return nil, err
 		}
 		g.SetAction(act)
+		return g, nil
+
+	case *pages.CheckBox:
+		g := genPg.NewCheckBox()
+		applyWidgetBase(g, &x.BaseWidget)
+		if ref := attributeRefToGen(x.AttributePath); ref != nil {
+			g.SetAttributeRef(ref)
+		}
+		g.SetEditable("Always")
+		if x.Label != "" {
+			g.SetLabelTemplate(textAsClientTemplate(textFromString(x.Label)))
+		}
+		onChangeCB, err := clientActionToGen(x.OnChangeAction)
+		if err != nil {
+			return nil, err
+		}
+		g.SetOnChangeAction(onChangeCB)
+		g.SetOnEnterAction(noActionGen())
+		g.SetReadOnlyStyle("Inherit")
+		g.SetValidation(widgetValidationToGen())
 		return g, nil
 
 	case *pages.TextArea:
