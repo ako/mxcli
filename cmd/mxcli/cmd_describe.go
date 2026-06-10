@@ -380,6 +380,13 @@ func resolveViaCatalog(projectPath, name string) []string {
 	}
 	defer cat.Close()
 
+	// Only trust a cache that matches the current project file. A stale cache
+	// (the .mpr changed since it was built) could resolve a renamed/deleted name
+	// to the wrong type, so fall back to the authoritative live scan instead.
+	if !catalogMatchesProject(cat, projectPath) {
+		return nil
+	}
+
 	q := "'" + strings.ReplaceAll(name, "'", "''") + "'"
 	var out []string
 	// Documents (the objects union view).
@@ -395,6 +402,34 @@ func resolveViaCatalog(projectPath, name string) []string {
 		out = append(out, "association")
 	}
 	return out
+}
+
+// catalogMatchesProject reports whether the cached catalog was built from the
+// current project file and is still up to date — same MPR path and unchanged
+// modification time (Unix seconds, mirroring isCacheValid). Any read failure or
+// mismatch is treated as "not fresh" so the caller live-scans (safe but slower).
+func catalogMatchesProject(cat *catalog.Catalog, projectPath string) bool {
+	info, err := cat.GetCacheInfo()
+	if err != nil {
+		return false
+	}
+	fi, err := os.Stat(projectPath)
+	if err != nil {
+		return false
+	}
+	if info.MprModTime.Unix() != fi.ModTime().Unix() {
+		return false
+	}
+	// Compare absolute paths when both resolve; a path mismatch means the cache
+	// is for a different .mpr in the same directory.
+	if info.MprPath != "" {
+		a, err1 := filepath.Abs(info.MprPath)
+		b, err2 := filepath.Abs(projectPath)
+		if err1 == nil && err2 == nil && a != b {
+			return false
+		}
+	}
+	return true
 }
 
 // resolveViaReader scans the live project for the name. Authoritative but slower
