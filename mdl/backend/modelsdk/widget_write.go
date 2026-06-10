@@ -731,18 +731,24 @@ func dataViewSourceToGen(ds pages.DataSource) (element.Element, error) {
 		}
 		assignID(ms)
 		ms.SetForceFullObjects(false)
-		s := genPg.NewMicroflowSettings()
-		assignID(s)
-		s.SetAsynchronous(false)
-		s.SetFormValidations("All")
-		s.SetMicroflowQualifiedName(d.Microflow)
-		s.SetProgressBar("None")
-		ms.SetMicroflowSettings(s)
+		ms.SetMicroflowSettings(microflowSettingsToGen(d.Microflow))
 		return ms, nil
 
 	default:
 		return nil, fmt.Errorf("CreatePage: DataView source %T not yet supported by the modelsdk engine — rerun with MXCLI_ENGINE=legacy", ds)
 	}
+}
+
+// microflowSettingsToGen builds the Forms$MicroflowSettings shared by the
+// microflow DataView source and the call-microflow action.
+func microflowSettingsToGen(microflowName string) element.Element {
+	s := genPg.NewMicroflowSettings()
+	assignID(s)
+	s.SetAsynchronous(false)
+	s.SetFormValidations("All")
+	s.SetMicroflowQualifiedName(microflowName)
+	s.SetProgressBar("None")
+	return s
 }
 
 // formSettingsToGen builds the Forms$FormSettings (PageSettings) shared by the
@@ -793,6 +799,16 @@ func clientActionToGen(a pages.ClientAction) (element.Element, error) {
 		g.SetDisabledDuringExecution(true)
 		g.SetNumberOfPagesToClose2("")
 		g.SetPageSettings(formSettingsToGen(x.PageName))
+		return g, nil
+	case *pages.MicroflowClientAction:
+		// call_microflow → Forms$MicroflowAction.
+		g := genPg.NewMicroflowClientAction()
+		if x.ID != "" {
+			g.SetID(element.ID(x.ID))
+		}
+		assignID(g)
+		g.SetDisabledDuringExecution(true)
+		g.SetMicroflowSettings(microflowSettingsToGen(x.MicroflowName))
 		return g, nil
 	case *pages.CreateObjectClientAction:
 		// create_object → Forms$CreateObjectClientAction (entity ref + page settings).
