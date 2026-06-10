@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package mprbackend
+package widgetobj
 
 import (
 	"testing"
@@ -32,8 +32,8 @@ func TestSetAttributeObjectsSetsLinkedAttrChoice(t *testing.T) {
 			{Key: "Value", Value: value},
 		}
 	}
-	newBuilder := func() *mprWidgetObjectBuilder {
-		return &mprWidgetObjectBuilder{
+	newBuilder := func() *Builder {
+		return &Builder{
 			widgetID: "com.mendix.widget.web.datagridtextfilter.DatagridTextFilter",
 			object: bson.D{{Key: "Properties", Value: bson.A{
 				int32(2),
@@ -53,7 +53,7 @@ func TestSetAttributeObjectsSetsLinkedAttrChoice(t *testing.T) {
 		}
 	}
 
-	primitiveOf := func(t *testing.T, ob *mprWidgetObjectBuilder, key string) string {
+	primitiveOf := func(t *testing.T, ob *Builder, key string) string {
 		t.Helper()
 		id := normalizeID(ob.propertyTypeIDs[key].PropertyTypeID)
 		for _, elem := range ob.object {

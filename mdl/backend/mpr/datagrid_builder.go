@@ -11,6 +11,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 
 	"github.com/mendixlabs/mxcli/mdl/backend"
+	"github.com/mendixlabs/mxcli/mdl/backend/widgetobj"
 	"github.com/mendixlabs/mxcli/mdl/bsonutil"
 	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
@@ -308,7 +309,7 @@ func buildColumnHeaderProperty(entry pages.PropertyTypeIDEntry, caption string) 
 // (header / dynamicText / tooltip) whose ClientTemplate carries the supplied
 // ClientTemplateParameters. Pass nil params for plain-string templates.
 func buildColumnHeaderPropertyWithParams(entry pages.PropertyTypeIDEntry, caption string, params []*pages.ClientTemplateParameter) bson.D {
-	textTemplate := buildClientTemplateWithTextAndParams(caption, params)
+	textTemplate := widgetobj.BuildClientTemplateWithTextAndParams(caption, params)
 
 	return bson.D{
 		{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
@@ -365,7 +366,7 @@ func buildColumnEmptyTextTemplateProperty(entry pages.PropertyTypeIDEntry) bson.
 		{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
 		{Key: "$Type", Value: "CustomWidgets$WidgetProperty"},
 		{Key: "TypePointer", Value: bsonutil.IDToBsonBinary(entry.PropertyTypeID)},
-		{Key: "Value", Value: buildDefaultWidgetValueBSON(entry, nil, nil, "", buildEmptyClientTemplate(), nil)},
+		{Key: "Value", Value: buildDefaultWidgetValueBSON(entry, nil, nil, "", widgetobj.BuildEmptyClientTemplate(), nil)},
 	}
 }
 
@@ -402,140 +403,6 @@ func buildDefaultWidgetValueBSON(entry pages.PropertyTypeIDEntry, datasourceBSON
 		{Key: "TypePointer", Value: bsonutil.IDToBsonBinary(entry.ValueTypeID)},
 		{Key: "Widgets", Value: widgetsArray},
 		{Key: "XPathConstraint", Value: ""},
-	}
-}
-
-// buildClientTemplateWithTextAndParams builds a Forms$ClientTemplate with the
-// given Template text and an optional list of ClientTemplateParameters.
-// Mirrors sdk/mpr/writer_widgets.go:serializeClientTemplate for the templated
-// column header / dynamicText paths.
-func buildClientTemplateWithTextAndParams(text string, params []*pages.ClientTemplateParameter) bson.D {
-	parametersArr := bson.A{int32(2)} // empty array marker; populated below if params exist
-	if len(params) > 0 {
-		for _, p := range params {
-			parametersArr = append(parametersArr, serializeColumnClientTemplateParameter(p))
-		}
-	}
-	return bson.D{
-		{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
-		{Key: "$Type", Value: "Forms$ClientTemplate"},
-		{Key: "Fallback", Value: bson.D{
-			{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
-			{Key: "$Type", Value: "Texts$Text"},
-			{Key: "Items", Value: bson.A{int32(3)}},
-		}},
-		{Key: "Parameters", Value: parametersArr},
-		{Key: "Template", Value: bson.D{
-			{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
-			{Key: "$Type", Value: "Texts$Text"},
-			{Key: "Items", Value: bson.A{
-				int32(3),
-				bson.D{
-					{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
-					{Key: "$Type", Value: "Texts$Translation"},
-					{Key: "LanguageCode", Value: "en_US"},
-					{Key: "Text", Value: text},
-				},
-			}},
-		}},
-	}
-}
-
-// serializeColumnClientTemplateParameter serializes a ClientTemplateParameter
-// for embedding inside a column TextTemplate. Mirrors the structure used by
-// sdk/mpr/writer_widgets.go:serializeClientTemplateParameter (Forms$FormattingInfo
-// schema-aligned to avoid CE0463).
-func serializeColumnClientTemplateParameter(param *pages.ClientTemplateParameter) bson.D {
-	paramID := bsonutil.NewIDBsonBinary()
-	if param.ID != "" {
-		paramID = bsonutil.IDToBsonBinary(string(param.ID))
-	}
-
-	var attrRefBSON any
-	if param.AttributeRef != "" {
-		attrRefBSON = bson.D{
-			{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
-			{Key: "$Type", Value: "DomainModels$AttributeRef"},
-			{Key: "Attribute", Value: param.AttributeRef},
-			{Key: "EntityRef", Value: nil},
-		}
-	}
-
-	formattingInfo := bson.D{
-		{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
-		{Key: "$Type", Value: "Forms$FormattingInfo"},
-		{Key: "CustomDateFormat", Value: ""},
-		{Key: "DateFormat", Value: "Date"},
-		{Key: "DecimalPrecision", Value: int64(2)},
-		{Key: "EnumFormat", Value: "Text"},
-		{Key: "GroupDigits", Value: false},
-	}
-
-	var sourceVariable any
-	if param.SourceVariable != "" {
-		// Studio Pro distinguishes between three Forms$PageVariable bindings:
-		//   - LocalVariable     → page-level Variables entry (Kind="local")
-		//   - SnippetParameter  → snippet parameter            (Kind="snippet")
-		//   - PageParameter     → page parameter               (Kind="" default)
-		// Emitting a $localVar reference as a literal Expression causes Studio
-		// Pro to interpret the value as an entity attribute path.
-		fields := bson.D{
-			{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
-			{Key: "$Type", Value: "Forms$PageVariable"},
-		}
-		switch param.SourceVariableKind {
-		case "local":
-			fields = append(fields,
-				bson.E{Key: "LocalVariable", Value: param.SourceVariable},
-				bson.E{Key: "PageParameter", Value: ""},
-				bson.E{Key: "SnippetParameter", Value: ""},
-			)
-		case "snippet":
-			fields = append(fields,
-				bson.E{Key: "LocalVariable", Value: ""},
-				bson.E{Key: "PageParameter", Value: ""},
-				bson.E{Key: "SnippetParameter", Value: param.SourceVariable},
-			)
-		default:
-			fields = append(fields,
-				bson.E{Key: "LocalVariable", Value: ""},
-				bson.E{Key: "PageParameter", Value: param.SourceVariable},
-				bson.E{Key: "SnippetParameter", Value: ""},
-			)
-		}
-		fields = append(fields,
-			bson.E{Key: "SubKey", Value: ""},
-			bson.E{Key: "UseAllPages", Value: false},
-			bson.E{Key: "Widget", Value: ""},
-		)
-		sourceVariable = fields
-	}
-
-	return bson.D{
-		{Key: "$ID", Value: paramID},
-		{Key: "$Type", Value: "Forms$ClientTemplateParameter"},
-		{Key: "AttributeRef", Value: attrRefBSON},
-		{Key: "Expression", Value: param.Expression},
-		{Key: "FormattingInfo", Value: formattingInfo},
-		{Key: "SourceVariable", Value: sourceVariable},
-	}
-}
-
-func buildEmptyClientTemplate() bson.D {
-	return bson.D{
-		{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
-		{Key: "$Type", Value: "Forms$ClientTemplate"},
-		{Key: "Fallback", Value: bson.D{
-			{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
-			{Key: "$Type", Value: "Texts$Text"},
-			{Key: "Items", Value: bson.A{int32(3)}},
-		}},
-		{Key: "Parameters", Value: bson.A{int32(2)}},
-		{Key: "Template", Value: bson.D{
-			{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
-			{Key: "$Type", Value: "Texts$Text"},
-			{Key: "Items", Value: bson.A{int32(3)}},
-		}},
 	}
 }
 

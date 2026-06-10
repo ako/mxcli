@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package mprbackend
+package widgetobj
 
 import (
 	"testing"
@@ -24,7 +24,7 @@ func TestApplyPropertyVisibility(t *testing.T) {
 
 	populatedTemplate := bson.D{{Key: "$Type", Value: "Forms$ClientTemplate"}}
 
-	build := func(typeValue string) *mprWidgetObjectBuilder {
+	build := func(typeValue string) *Builder {
 		mkProp := func(id, primitiveVal string, tt any) bson.D {
 			return bson.D{
 				{Key: "$Type", Value: "CustomWidgets$WidgetProperty"},
@@ -36,7 +36,7 @@ func TestApplyPropertyVisibility(t *testing.T) {
 				}},
 			}
 		}
-		return &mprWidgetObjectBuilder{
+		return &Builder{
 			widgetID: "com.mendix.widget.web.videoplayer.VideoPlayer",
 			object: bson.D{{Key: "Properties", Value: bson.A{
 				int32(2),
@@ -58,7 +58,7 @@ func TestApplyPropertyVisibility(t *testing.T) {
 		{PropertyKey: "height", HiddenWhen: &types.WidgetVisibilityCondition{PropertyKey: "type", Operator: "eq", Value: "expression"}},
 	}
 
-	textTemplateOf := func(t *testing.T, ob *mprWidgetObjectBuilder, key string) any {
+	textTemplateOf := func(t *testing.T, ob *Builder, key string) any {
 		t.Helper()
 		id := ob.propertyTypeIDs[key].PropertyTypeID
 		for _, elem := range ob.object {
