@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"strings"
 
+	"go.mongodb.org/mongo-driver/bson"
+
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/modelsdk/codec"
 	"github.com/mendixlabs/mxcli/modelsdk/element"
+	genCw "github.com/mendixlabs/mxcli/modelsdk/gen/customwidgets"
 	genDm "github.com/mendixlabs/mxcli/modelsdk/gen/domainmodels"
 	genPg "github.com/mendixlabs/mxcli/modelsdk/gen/pages"
 	genTexts "github.com/mendixlabs/mxcli/modelsdk/gen/texts"
@@ -77,6 +80,11 @@ func init() {
 		},
 	})
 	codec.RegisterListMarker("Forms$TextBox", 2)
+	// Pluggable widget container: null visibility/editability slots; marker 2.
+	codec.RegisterTypeDefaults("CustomWidgets$CustomWidget", codec.TypeDefaults{
+		NullFields: []string{"ConditionalVisibilitySettings", "ConditionalEditabilitySettings"},
+	})
+	codec.RegisterListMarker("CustomWidgets$CustomWidget", 2)
 }
 
 // widgetToGen converts a model widget to its gen element, recursing into
@@ -214,9 +222,51 @@ func widgetToGen(w pages.Widget) (element.Element, error) {
 		g.SetAction(act)
 		return g, nil
 
+	case *pages.CustomWidget:
+		return customWidgetToGen(x)
+
 	default:
 		return nil, fmt.Errorf("CreatePage: widget %T not yet supported by the modelsdk engine — rerun with MXCLI_ENGINE=legacy", w)
 	}
+}
+
+// customWidgetToGen embeds a pluggable widget (CustomWidgets$CustomWidget). Its
+// Type (PropertyTypes schema) and Object (filled WidgetObject) are the pluggable
+// widget's own raw BSON — not metamodel types — so they're decoded into the codec
+// as round-trippable passthrough elements and re-emitted verbatim.
+func customWidgetToGen(x *pages.CustomWidget) (element.Element, error) {
+	g := genCw.NewCustomWidget()
+	applyWidgetBase(g, &x.BaseWidget)
+	g.SetEditable(orDefaultStr(x.Editable, "Always"))
+	if x.Label != "" {
+		g.SetLabelTemplate(textAsClientTemplate(textFromString(x.Label)))
+	}
+	if x.RawType != nil {
+		t, err := decodeRawBSON(x.RawType)
+		if err != nil {
+			return nil, fmt.Errorf("custom widget %q: decode Type: %w", x.Name, err)
+		}
+		g.SetType(t)
+	}
+	if x.RawObject != nil {
+		o, err := decodeRawBSON(x.RawObject)
+		if err != nil {
+			return nil, fmt.Errorf("custom widget %q: decode Object: %w", x.Name, err)
+		}
+		g.SetObject(o)
+	}
+	return g, nil
+}
+
+// decodeRawBSON turns a raw widget-schema bson.D into a codec element. Unknown
+// pluggable $Types are preserved as raw passthrough by the decoder, so the
+// element re-emits byte-for-byte on encode.
+func decodeRawBSON(d bson.D) (element.Element, error) {
+	raw, err := bson.Marshal(d)
+	if err != nil {
+		return nil, err
+	}
+	return codec.NewDecoder(codec.DefaultRegistry).Decode(raw)
 }
 
 // layoutGridRowToGen converts a LayoutGridRow (alignment defaults match the
