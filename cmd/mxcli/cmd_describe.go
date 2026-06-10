@@ -307,6 +307,10 @@ var objectTypeToDescribe = map[string]string{
 	"DATABASE_CONNECTION":    "databaseconnection",
 	"IMAGE_COLLECTION":       "imagecollection",
 	"DATA_TRANSFORMER":       "datatransformer",
+	"AGENT":                  "agent",
+	"AI_MODEL":               "model",
+	"KNOWLEDGE_BASE":         "knowledgebase",
+	"CONSUMED_MCP_SERVICE":   "consumedmcpservice",
 	// JAVASCRIPT_ACTION is cataloged but has no `describe` CLI form, so it is
 	// intentionally omitted from auto-detect.
 }

@@ -189,6 +189,10 @@ func TestObjectsView_IncludesNewDocumentTypes(t *testing.T) {
 		{"javascript_actions", "JAVASCRIPT_ACTION"},
 		{"image_collections", "IMAGE_COLLECTION"},
 		{"data_transformers", "DATA_TRANSFORMER"},
+		{"agents", "AGENT"},
+		{"ai_models", "AI_MODEL"},
+		{"knowledge_bases", "KNOWLEDGE_BASE"},
+		{"consumed_mcp_services", "CONSUMED_MCP_SERVICE"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.objectType, func(t *testing.T) {

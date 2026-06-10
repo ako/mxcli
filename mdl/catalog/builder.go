@@ -389,6 +389,10 @@ func (b *Builder) Build(progress ProgressFunc) error {
 		return fmt.Errorf("failed to build data transformers: %w", err)
 	}
 
+	if err := b.buildAgentEditorDocs(); err != nil {
+		return fmt.Errorf("failed to build agent-editor documents: %w", err)
+	}
+
 	if err := b.buildMicroflows(); err != nil {
 		return fmt.Errorf("failed to build microflows: %w", err)
 	}
