@@ -287,6 +287,7 @@ var objectTypeToDescribe = map[string]string{
 	"MODULE":                 "module",
 	"ENTITY":                 "entity",
 	"EXTERNAL_ENTITY":        "entity",
+	"ASSOCIATION":            "association",
 	"MICROFLOW":              "microflow",
 	"NANOFLOW":               "nanoflow",
 	"PAGE":                   "page",
@@ -389,17 +390,14 @@ func resolveViaCatalog(projectPath, name string) []string {
 
 	q := "'" + strings.ReplaceAll(name, "'", "''") + "'"
 	var out []string
-	// Documents (the objects union view).
+	// The objects view is a complete index (associations included as of catalog
+	// schema v3), so a single query covers every auto-detectable type.
 	if res, err := cat.Query("SELECT DISTINCT ObjectType FROM objects WHERE QualifiedName = " + q); err == nil {
 		for _, row := range res.Rows {
 			if len(row) > 0 {
 				out = append(out, objectTypeToDescribe[fmt.Sprintf("%v", row[0])])
 			}
 		}
-	}
-	// Associations are not in the objects view; check their table directly.
-	if res, err := cat.Query("SELECT 1 FROM associations WHERE QualifiedName = " + q + " LIMIT 1"); err == nil && res.Count > 0 {
-		out = append(out, "association")
 	}
 	return out
 }

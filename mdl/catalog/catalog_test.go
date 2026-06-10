@@ -148,6 +148,36 @@ func TestQueryWithData(t *testing.T) {
 	}
 }
 
+// TestObjectsView_IncludesAssociations verifies that associations are part of
+// the unified objects index (catalog schema v3). They were previously only in
+// the standalone associations table, forcing consumers to query it separately.
+func TestObjectsView_IncludesAssociations(t *testing.T) {
+	cat, err := New()
+	if err != nil {
+		t.Fatalf("Failed to create catalog: %v", err)
+	}
+	defer cat.Close()
+
+	_, err = cat.CatalogDB().Exec(
+		"INSERT INTO associations_data (Id, Name, QualifiedName, ModuleName) VALUES (?, ?, ?, ?)",
+		"assoc-1", "Order_Customer", "Sales.Order_Customer", "Sales",
+	)
+	if err != nil {
+		t.Fatalf("Failed to insert association: %v", err)
+	}
+
+	result, err := cat.Query("SELECT ObjectType FROM objects WHERE QualifiedName = 'Sales.Order_Customer'")
+	if err != nil {
+		t.Fatalf("Query failed: %v", err)
+	}
+	if result.Count != 1 {
+		t.Fatalf("Expected 1 row in objects view, got %d", result.Count)
+	}
+	if got := result.Rows[0][0]; got != "ASSOCIATION" {
+		t.Errorf("ObjectType = %v, want ASSOCIATION", got)
+	}
+}
+
 func TestQueryError(t *testing.T) {
 	cat, err := New()
 	if err != nil {
