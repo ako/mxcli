@@ -281,10 +281,19 @@ recognize:
 }
 
 func generateDevcontainerJSON(projectName, mprPath, containerRuntime string) string {
-	feature := `"ghcr.io/devcontainers/features/docker-in-docker:2": {}`
+	features := `"features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },`
+	runArgs := ""
 	containerEnv := `"PLAYWRIGHT_CLI_SESSION": "mendix-app"`
 	if containerRuntime == "podman" {
-		feature = `"ghcr.io/devcontainers/features/podman-in-podman:1": {}`
+		// The devcontainers registry publishes no podman feature (issue #653),
+		// so Podman is installed and configured in the Dockerfile instead.
+		// label=disable eases SELinux hosts; nested rootless Podman otherwise
+		// runs without extra privileges (vfs storage, configured in the image).
+		features = `"features": {},`
+		runArgs = `
+  "runArgs": ["--security-opt", "label=disable"],`
 		containerEnv = `"PLAYWRIGHT_CLI_SESSION": "mendix-app",
     "MXCLI_CONTAINER_CLI": "podman"`
 	}
@@ -294,9 +303,7 @@ func generateDevcontainerJSON(projectName, mprPath, containerRuntime string) str
   "build": {
     "dockerfile": "Dockerfile"
   },
-  "features": {
-    %s
-  },
+  %s%s
   "forwardPorts": [8080, 8090, 5432],
   "portsAttributes": {
     "8080-8099": { "onAutoForward": "silent" },
@@ -318,10 +325,31 @@ func generateDevcontainerJSON(projectName, mprPath, containerRuntime string) str
   },
   "remoteUser": "vscode"
 }
-`, projectName, feature, containerEnv)
+`, projectName, features, runArgs, containerEnv)
 }
 
-func generateDockerfile(projectName, mprPath string) string {
+func generateDockerfile(projectName, mprPath, containerRuntime string) string {
+	podmanSetup := ""
+	if containerRuntime == "podman" {
+		// No devcontainers feature provides Podman (issue #653), so install and
+		// configure rootless Podman directly. The dev container has no systemd,
+		// so the cgroupfs manager + file event logger are required; vfs storage
+		// avoids needing /dev/fuse; the search registry lets unqualified image
+		// names (e.g. postgres:16) resolve.
+		podmanSetup = `
+# Install rootless Podman for nested in-container container management.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+       podman uidmap slirp4netns fuse-overlayfs \
+    && apt-get clean && rm -rf /var/lib/apt/lists/* \
+    && echo 'vscode:100000:65536' > /etc/subuid \
+    && echo 'vscode:100000:65536' > /etc/subgid \
+    && mkdir -p /etc/containers \
+    && printf '[storage]\ndriver = "vfs"\n' > /etc/containers/storage.conf \
+    && printf 'unqualified-search-registries = ["docker.io"]\n' > /etc/containers/registries.conf \
+    && printf '[engine]\ncgroup_manager = "cgroupfs"\nevents_logger = "file"\n' > /etc/containers/containers.conf
+`
+	}
+
 	return `FROM mcr.microsoft.com/devcontainers/base:bookworm
 
 # Install Adoptium JDK 21 (required by MxBuild), Node.js 22, and utility tools
@@ -341,7 +369,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends wget apt-transp
 # Install playwright-cli and Chromium with all system dependencies (must run as root)
 RUN npm install -g @playwright/cli@latest && \
     npx playwright install --with-deps chromium
-`
+` + podmanSetup
 }
 
 func generatePlaywrightConfig() string {

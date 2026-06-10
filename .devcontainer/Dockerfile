@@ -89,5 +89,21 @@ RUN MDBOOK_VERSION=v0.5.2 \
     && wget -qO- "https://github.com/rust-lang/mdBook/releases/download/${MDBOOK_VERSION}/mdbook-${MDBOOK_VERSION}-${ARCH}.tar.gz" \
     | tar -xz -C /usr/local/bin
 
+# Install rootless Podman for the Podman devcontainer variant (.devcontainer/podman/).
+# The devcontainers registry publishes no podman-in-podman feature (issue #653), so
+# install + configure it here. Harmless for the default Docker variant (unused).
+# The dev container has no systemd, so cgroupfs manager + file event logger are
+# required; vfs storage avoids needing /dev/fuse; the search registry lets
+# unqualified image names (e.g. postgres:16) resolve.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+       podman uidmap slirp4netns fuse-overlayfs \
+    && apt-get clean && rm -rf /var/lib/apt/lists/* \
+    && echo 'vscode:100000:65536' > /etc/subuid \
+    && echo 'vscode:100000:65536' > /etc/subgid \
+    && mkdir -p /etc/containers \
+    && printf '[storage]\ndriver = "vfs"\n' > /etc/containers/storage.conf \
+    && printf 'unqualified-search-registries = ["docker.io"]\n' > /etc/containers/registries.conf \
+    && printf '[engine]\ncgroup_manager = "cgroupfs"\nevents_logger = "file"\n' > /etc/containers/containers.conf
+
 # Create libs directory for reflection data
 RUN mkdir -p /workspaces/ModelSDKGo/libs

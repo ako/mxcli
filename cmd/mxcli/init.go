@@ -488,7 +488,7 @@ Container Runtime:
 				fmt.Fprintf(os.Stderr, "  Error writing devcontainer.json: %v\n", err)
 			}
 			dockerfile := filepath.Join(devcontainerDir, "Dockerfile")
-			dcDockerfile := generateDockerfile(projectName, mprFile)
+			dcDockerfile := generateDockerfile(projectName, mprFile, initContainerRuntime)
 			if err := os.WriteFile(dockerfile, []byte(dcDockerfile), 0644); err != nil {
 				fmt.Fprintf(os.Stderr, "  Error writing Dockerfile: %v\n", err)
 			}

@@ -4,9 +4,9 @@
     "dockerfile": "../Dockerfile"
   },
   "features": {
-    "ghcr.io/devcontainers/features/podman-in-podman:1": {},
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
+  "runArgs": ["--security-opt", "label=disable"],
   "forwardPorts": [8080, 8090, 5432],
   "portsAttributes": {
     "8080-8099": { "onAutoForward": "silent" },

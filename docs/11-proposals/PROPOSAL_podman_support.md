@@ -6,8 +6,21 @@ date: 2026-03-27
 
 # Proposal: Podman Support as Docker Alternative
 
-**Status:** Implemented (Phase 1 & 2)
+**Status:** Implemented (Phase 1 & 2); Phase 3 validation pending
 **Date:** 2026-03-27
+
+> **Correction (2026-06-10, issue #653):** Phases 1 & 2 shipped with a broken
+> assumption — they referenced a devcontainers feature
+> `ghcr.io/devcontainers/features/podman-in-podman:1` that **does not exist** in
+> the official or community registries (verified against
+> [containers.dev/features](https://containers.dev/features); the only nested-runtime
+> features published are `docker-in-docker` and `docker-outside-of-docker`). The
+> reference could never resolve, so every `--container-runtime podman` devcontainer
+> build failed. The root cause is that the feature's existence was never confirmed
+> and **Phase 3, step 10 (test the Podman devcontainer) was never run**. The fix
+> installs and configures rootless Podman **in the Dockerfile** instead of via a
+> feature — see "Devcontainer — Podman-in-Podman" below for the corrected approach.
+> Phase 3 (validation on a real Podman host) genuinely remains pending.
 
 ## Motivation
 
@@ -95,16 +108,22 @@ One consideration: `docker compose ps --format json` output differs slightly bet
 
 Add a parallel devcontainer config for Podman users. The outer container is run by Podman on the host; the inner containers (Mendix app, PostgreSQL) are run by Podman inside the devcontainer.
 
-Create `.devcontainer/podman/devcontainer.json`:
+There is **no devcontainers feature for Podman** (see the Correction note above),
+so Podman is installed and configured directly in the shared `../Dockerfile`
+(`apt-get install podman uidmap slirp4netns fuse-overlayfs`, plus the config a
+systemd-less container needs: `cgroup_manager = "cgroupfs"`,
+`events_logger = "file"`, `driver = "vfs"`, a `subuid`/`subgid` mapping for
+`vscode`, and a `docker.io` search registry). The `.devcontainer/podman/devcontainer.json`
+then references no runtime feature:
 
 ```jsonc
 {
   "name": "ModelSDKGo (Podman)",
-  "build": { "dockerfile": "../Dockerfile" },
+  "build": { "dockerfile": "../Dockerfile" }, // Podman is installed in the Dockerfile
   "features": {
-    // Installs Podman inside the container for Podman-in-Podman
-    "ghcr.io/devcontainers/features/podman-in-podman:1": {}
+    "ghcr.io/devcontainers/features/github-cli:1": {}
   },
+  "runArgs": ["--security-opt", "label=disable"],
   "forwardPorts": [8080, 8090, 5432],
   "containerEnv": {
     "MXCLI_CONTAINER_CLI": "podman"
@@ -120,7 +139,10 @@ The `containerEnv` setting ensures mxcli uses `podman compose` for all inner con
 
 Update `cmd/mxcli/init.go` and `cmd/mxcli/tool_templates.go` to accept a `--container-runtime podman` flag (default: `docker`). When set to `podman`:
 
-- Use `ghcr.io/devcontainers/features/podman-in-podman:1` instead of `docker-in-docker:2`
+- Emit an empty `"features": {}` (no runtime feature) and append the rootless-Podman
+  install + config to the generated `Dockerfile` — **not** a devcontainers feature,
+  which does not exist for Podman
+- Add `"runArgs": ["--security-opt", "label=disable"]`
 - Set `MXCLI_CONTAINER_CLI=podman` in `containerEnv`
 - Add a note in the generated CLAUDE.md about the Podman setup
 
