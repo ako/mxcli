@@ -14,7 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- **Catalog `objects` index includes associations** — the unified `objects` view now unions the `associations` table (`ObjectType = ASSOCIATION`), so it is a complete index for the cataloged document types and consumers no longer need a separate associations query. Catalog schema bumped to v3; cached `.mxcli/catalog.db` files rebuild automatically on the next `refresh catalog`. (Image collections, JavaScript actions, data transformers, and agent-editor docs are not yet cataloged at all, so they remain out of the index — tracked in #658.)
+- **Catalog `objects` index includes associations** — the unified `objects` view now unions the `associations` table (`ObjectType = ASSOCIATION`), so it is a complete index for the cataloged document types and consumers no longer need a separate associations query. Catalog schema bumped to v3; cached `.mxcli/catalog.db` files rebuild automatically on the next `refresh catalog`.
+- **Catalog indexes image collections, JavaScript actions, and data transformers** — these document types had no catalog table at all; they are now built (via the raw-unit surface, so no `CatalogReader`/backend change) into their own tables and unioned into `objects` (`IMAGE_COLLECTION`, `JAVASCRIPT_ACTION`, `DATA_TRANSFORMER`). `describe` auto-detect resolves image collections and data transformers by bare name. Catalog schema bumped to v4. (Agent-editor docs — agent/model/knowledge base/consumed MCP service — remain uncataloged: they are `CustomBlobDocument`s with the name inside a JSON blob; tracked in #658.)
 
 ### Fixed
 

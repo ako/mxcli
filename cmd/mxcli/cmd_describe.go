@@ -305,6 +305,10 @@ var objectTypeToDescribe = map[string]string{
 	"REST_CLIENT":            "restclient",
 	"BUSINESS_EVENT_SERVICE": "businesseventservice",
 	"DATABASE_CONNECTION":    "databaseconnection",
+	"IMAGE_COLLECTION":       "imagecollection",
+	"DATA_TRANSFORMER":       "datatransformer",
+	// JAVASCRIPT_ACTION is cataloged but has no `describe` CLI form, so it is
+	// intentionally omitted from auto-detect.
 }
 
 // unitTypeToDescribe maps a top-level unit's BSON $Type to the `describe`

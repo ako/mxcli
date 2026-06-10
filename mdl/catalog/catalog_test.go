@@ -178,6 +178,48 @@ func TestObjectsView_IncludesAssociations(t *testing.T) {
 	}
 }
 
+// TestObjectsView_IncludesNewDocumentTypes verifies the document types added to
+// the catalog in schema v4 (image collections, JavaScript actions, data
+// transformers) surface in the unified objects index.
+func TestObjectsView_IncludesNewDocumentTypes(t *testing.T) {
+	cases := []struct {
+		table      string
+		objectType string
+	}{
+		{"javascript_actions", "JAVASCRIPT_ACTION"},
+		{"image_collections", "IMAGE_COLLECTION"},
+		{"data_transformers", "DATA_TRANSFORMER"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.objectType, func(t *testing.T) {
+			cat, err := New()
+			if err != nil {
+				t.Fatalf("Failed to create catalog: %v", err)
+			}
+			defer cat.Close()
+
+			qn := "Mod." + tc.table
+			if _, err := cat.CatalogDB().Exec(
+				"INSERT INTO "+tc.table+"_data (Id, Name, QualifiedName, ModuleName) VALUES (?, ?, ?, ?)",
+				"id-1", tc.table, qn, "Mod",
+			); err != nil {
+				t.Fatalf("insert: %v", err)
+			}
+
+			result, err := cat.Query("SELECT ObjectType FROM objects WHERE QualifiedName = '" + qn + "'")
+			if err != nil {
+				t.Fatalf("query: %v", err)
+			}
+			if result.Count != 1 {
+				t.Fatalf("expected 1 row in objects view, got %d", result.Count)
+			}
+			if got := result.Rows[0][0]; got != tc.objectType {
+				t.Errorf("ObjectType = %v, want %s", got, tc.objectType)
+			}
+		})
+	}
+}
+
 func TestQueryError(t *testing.T) {
 	cat, err := New()
 	if err != nil {

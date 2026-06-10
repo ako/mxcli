@@ -377,6 +377,18 @@ func (b *Builder) Build(progress ProgressFunc) error {
 		return fmt.Errorf("failed to build java actions: %w", err)
 	}
 
+	if err := b.buildSimpleNamedDocs("JavaScriptActions$JavaScriptAction", "javascript_actions", "JavaScript Actions"); err != nil {
+		return fmt.Errorf("failed to build javascript actions: %w", err)
+	}
+
+	if err := b.buildSimpleNamedDocs("Images$ImageCollection", "image_collections", "Image Collections"); err != nil {
+		return fmt.Errorf("failed to build image collections: %w", err)
+	}
+
+	if err := b.buildSimpleNamedDocs("DataTransformers$DataTransformer", "data_transformers", "Data Transformers"); err != nil {
+		return fmt.Errorf("failed to build data transformers: %w", err)
+	}
+
 	if err := b.buildMicroflows(); err != nil {
 		return fmt.Errorf("failed to build microflows: %w", err)
 	}

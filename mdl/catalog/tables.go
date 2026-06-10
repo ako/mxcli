@@ -12,7 +12,7 @@ package catalog
 //	    SnapshotSource / SourceId / SourceBranch / SourceRevision columns
 //	    from every row (issue #576).
 //	1 — initial flat schema with denormalized snapshot columns on every row.
-const CatalogSchemaVersion = "3"
+const CatalogSchemaVersion = "4"
 
 // MetaSchemaVersion is the catalog_meta key that records the schema version
 // the cache was built against.
@@ -244,6 +244,45 @@ func (c *Catalog) createTables() error {
 			SnapshotId TEXT
 		)`,
 		viewWithFullSnapshot("java_actions"),
+
+		// javascript_actions
+		`CREATE TABLE IF NOT EXISTS javascript_actions_data (
+			Id TEXT PRIMARY KEY,
+			Name TEXT,
+			QualifiedName TEXT,
+			ModuleName TEXT,
+			Folder TEXT,
+			Description TEXT,
+			ProjectId TEXT,
+			SnapshotId TEXT
+		)`,
+		viewWithFullSnapshot("javascript_actions"),
+
+		// image_collections
+		`CREATE TABLE IF NOT EXISTS image_collections_data (
+			Id TEXT PRIMARY KEY,
+			Name TEXT,
+			QualifiedName TEXT,
+			ModuleName TEXT,
+			Folder TEXT,
+			Description TEXT,
+			ProjectId TEXT,
+			SnapshotId TEXT
+		)`,
+		viewWithFullSnapshot("image_collections"),
+
+		// data_transformers
+		`CREATE TABLE IF NOT EXISTS data_transformers_data (
+			Id TEXT PRIMARY KEY,
+			Name TEXT,
+			QualifiedName TEXT,
+			ModuleName TEXT,
+			Folder TEXT,
+			Description TEXT,
+			ProjectId TEXT,
+			SnapshotId TEXT
+		)`,
+		viewWithFullSnapshot("data_transformers"),
 
 		// activities
 		`CREATE TABLE IF NOT EXISTS activities_data (
@@ -806,6 +845,18 @@ func (c *Catalog) createTables() error {
 			SELECT Id, 'JAVA_ACTION' as ObjectType, Name, QualifiedName, ModuleName, Folder, Documentation as Description,
 				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
 			FROM java_actions
+			UNION ALL
+			SELECT Id, 'JAVASCRIPT_ACTION' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
+				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
+			FROM javascript_actions
+			UNION ALL
+			SELECT Id, 'IMAGE_COLLECTION' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
+				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
+			FROM image_collections
+			UNION ALL
+			SELECT Id, 'DATA_TRANSFORMER' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
+				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
+			FROM data_transformers
 			UNION ALL
 			SELECT Id, 'ODATA_CLIENT' as ObjectType, Name, QualifiedName, ModuleName, '' as Folder, '' as Description,
 				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
