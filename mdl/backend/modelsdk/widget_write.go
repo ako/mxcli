@@ -126,6 +126,14 @@ func init() {
 		},
 	})
 	codec.RegisterListMarker("Forms$CheckBox", 2)
+	// show_page action (Forms$FormAction) + its FormSettings always emit their
+	// (empty) typed-array lists with marker 2.
+	codec.RegisterTypeDefaults("Forms$FormAction", codec.TypeDefaults{
+		MandatoryListMarkers: map[string]int32{"PagesForSpecializations": 2},
+	})
+	codec.RegisterTypeDefaults("Forms$FormSettings", codec.TypeDefaults{
+		MandatoryListMarkers: map[string]int32{"ParameterMappings": 2},
+	})
 }
 
 // widgetToGen converts a model widget to its gen element, recursing into
@@ -681,6 +689,21 @@ func clientActionToGen(a pages.ClientAction) (element.Element, error) {
 		g := genPg.NewDeleteClientAction()
 		assignID(g)
 		g.SetClosePage(x.ClosePage)
+		return g, nil
+	case *pages.PageClientAction:
+		// show_page → Forms$FormAction with a Forms$FormSettings (PageSettings).
+		g := genPg.NewPageClientAction()
+		if x.ID != "" {
+			g.SetID(element.ID(x.ID))
+		}
+		assignID(g)
+		g.SetDisabledDuringExecution(true)
+		g.SetNumberOfPagesToClose2("")
+		ps := genPg.NewPageSettings()
+		assignID(ps)
+		ps.SetPageQualifiedName(x.PageName)
+		ps.SetTitleOverride(clientTemplateToGen(nil))
+		g.SetPageSettings(ps)
 		return g, nil
 	default:
 		return nil, fmt.Errorf("CreatePage: client action %T not yet supported by the modelsdk engine — rerun with MXCLI_ENGINE=legacy", a)
