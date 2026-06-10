@@ -13,9 +13,9 @@ import "fmt"
 
 //go:generate go run gen_unsupported.go
 
-// errUnsupported reports that an operation is not implemented by the MCP
-// backend. The MCP backend is scoped to the domain-model entity slice; other
-// operations must run against a local .mpr (drop the --mcp flag).
+// errUnsupported reports that an operation is not implemented by (or not
+// expressible through) the MCP backend. Such operations must run against a local
+// .mpr (drop the --mcp flag).
 func errUnsupported(op string) error {
-	return fmt.Errorf("%s: not supported by the MCP backend (entity operations only; run without --mcp for a local .mpr)", op)
+	return fmt.Errorf("%s: not supported by the MCP backend; run without --mcp to author against a local .mpr", op)
 }

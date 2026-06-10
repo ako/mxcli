@@ -51,7 +51,7 @@ live distinction is **MPR vs MCP**.
 | **Layouts** | Y | Y | Y | N | Not wired (reads delegate to the local `.mpr`) |
 | **View Entities** | Y | Y | Y | P | CREATE; CREATE OR REPLACE fails (no delete-document); DROP orphans the source doc |
 | **Workflows** | Y | Y | Y | Y | **Complete** — CREATE / CREATE OR REPLACE / DROP / ALTER, all activity types & ops, any nesting depth |
-| **Java Actions** | Y | Y | Y | N | Not wired |
+| **Java Actions** | Y | Y | Y | N | **Not authorable** — PED refuses to create `JavaActions$JavaAction` (backed by a `.java` source the IDE manages); CREATE/ALTER rejected with a clear error. *Calling* a Java action from a microflow IS supported. |
 | **Constants** | Y | Y | Y | P | CREATE / CREATE OR MODIFY (value + exposed-to-client) / DROP (via Concord); type limited to String/Integer/Decimal/Boolean/DateTime; in-place type change rejected; documentation not carried |
 | **OData Clients / Services** | Y | Y | Y | N | Not wired |
 | **External Entities** | Y | Y | Y | N | Not wired |
