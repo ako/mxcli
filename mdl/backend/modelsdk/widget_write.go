@@ -714,6 +714,16 @@ func dataViewSourceToGen(ds pages.DataSource) (element.Element, error) {
 		assignID(src)
 		return src, nil
 
+	case *pages.ListenToWidgetSource:
+		src := genPg.NewListenTargetSource()
+		if d.ID != "" {
+			src.SetID(element.ID(d.ID))
+		}
+		assignID(src)
+		src.SetForceFullObjects(false)
+		src.SetListenTarget(d.WidgetName)
+		return src, nil
+
 	case *pages.MicroflowSource:
 		ms := genPg.NewMicroflowSource()
 		if d.ID != "" {
