@@ -150,9 +150,16 @@ paths all share this array, differing only by element `$Type`) or
 match→index first. **SetActivityProperty** sets primitive/reference leaves
 (`page` → `/taskPage/page`, `description` → `/taskDescription/text`, `due_date`);
 changing the *kind* of user targeting (XPath↔Microflow) is rejected because PED
-can't replace the nested element. So `ALTER WORKFLOW` is now complete over MCP
-(workflow-level SET + all activity-level structural and property ops); the only
-gap is editing activities nested inside a sub-flow (top-level only).
+can't replace the nested element. Activity references resolve **anywhere in the
+flow tree**, not just the top level: `resolve` walks the flow depth-first (each
+activity, then its outcome sub-flows, then its boundary-event sub-flows — the same
+order as DESCRIBE, so `@N` numbering matches), reading each `…/outcomes` /
+`…/boundaryEvents` array (an outcome read exposes a collapsed `flow` field that
+signals a sub-flow to descend into) and returning the matched activity's *containing
+array path*. Every op then targets that path — e.g. `insert after NestedCall` adds
+into `/flow/activities/1/outcomes/0/flow/activities`, not the top level. So
+`ALTER WORKFLOW` is **complete** over MCP: workflow-level SET, all activity-level
+structural and property ops, on activities at any nesting depth.
 
 **CREATE OR REPLACE WORKFLOW** rewrites an existing workflow in place via
 `ped_update_document` (PED has no document-replace tool), preserving the `$ID`.

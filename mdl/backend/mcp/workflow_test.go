@@ -577,3 +577,54 @@ func TestUpdateWorkflow_ReplacesFlowAndProperties(t *testing.T) {
 		t.Errorf("session workflow not upserted: %+v", b.sessionWorkflows)
 	}
 }
+
+func TestWFNestedActivityResolution(t *testing.T) {
+	// A workflow whose user task "Review" has an Approve outcome containing a
+	// nested "NestedCall" activity. Dropping NestedCall must target the nested
+	// sub-flow's activities array, not the top level.
+	results := map[string]string{
+		"/flow/activities": `[{"$Type":"Workflows$StartWorkflowActivity","name":"Start"},
+			{"$Type":"Workflows$SingleUserTaskActivity","name":"Review","caption":"Review"},
+			{"$Type":"Workflows$EndWorkflowActivity","name":"End"}]`,
+		"/flow/activities/1/outcomes":                   `[{"$Type":"Workflows$UserTaskOutcome","value":"Approve","flow":{"$Type":"Workflows$Flow"}}]`,
+		"/flow/activities/1/outcomes/0/flow/activities": `[{"$Type":"Workflows$CallMicroflowActivity","name":"NestedCall","caption":"NestedCall"}]`,
+	}
+	f := newFakePED(t, func(name string, args map[string]any) (string, bool) {
+		if name == "ped_check_errors" {
+			return "No errors found.", false
+		}
+		if name != "ped_read_document" {
+			return "SUCCESS", false
+		}
+		paths, _ := args["paths"].([]any)
+		p, _ := paths[0].(string)
+		v, ok := results[p]
+		if !ok {
+			v = "null"
+		}
+		return fmt.Sprintf(`{"results":[{"path":%q,"result":%s}]}`, p, v), false
+	})
+	m := &mcpWorkflowMutator{backend: &Backend{client: f.connectClient(t)}, moduleName: "M", workflowName: "WF"}
+
+	// Resolve lands in the nested flow.
+	arrayPath, index, actPath, err := m.resolve("NestedCall", 0)
+	if err != nil {
+		t.Fatalf("resolve nested: %v", err)
+	}
+	if arrayPath != "/flow/activities/1/outcomes/0/flow/activities" || index != 0 {
+		t.Fatalf("nested resolve = %q[%d], want /flow/activities/1/outcomes/0/flow/activities[0]", arrayPath, index)
+	}
+	if actPath != "/flow/activities/1/outcomes/0/flow/activities/0" {
+		t.Fatalf("actPath = %q", actPath)
+	}
+
+	// DropActivity on the nested ref removes from the nested array.
+	if err := m.DropActivity("NestedCall", 0); err != nil {
+		t.Fatalf("DropActivity nested: %v", err)
+	}
+	call, _ := f.callByName("ped_update_document")
+	raw, _ := json.Marshal(call.Args["operations"])
+	if !strings.Contains(string(raw), `"path":"/flow/activities/1/outcomes/0/flow/activities"`) || !strings.Contains(string(raw), `"index":0`) {
+		t.Errorf("nested drop op wrong: %s", raw)
+	}
+}
