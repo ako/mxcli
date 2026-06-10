@@ -45,7 +45,7 @@ live distinction is **MPR vs MCP**.
 | **Associations** | Y | Y | Y | P | Within-module CREATE/DROP; no custom delete behavior; cross-module / external N |
 | **Enumerations** | Y | Y | Y | P | CREATE; DROP via Concord; ALTER (modify values) N |
 | **Microflows** | Y | Y | Y | P | Broad CREATE (most actions + control flow); rejects show-page, cast, retrieve sort/range, inheritance/rule splits |
-| **Nanoflows** | Y | Y | Y | N | Not wired (reads delegate to the local `.mpr`) |
+| **Nanoflows** | Y | Y | Y | N | **Not creatable** — PED's `ped_create_document` rejects `Microflows$Nanoflow` (create whitelist covers microflows, not nanoflows); CREATE/ALTER rejected with a clear error. DROP of an existing nanoflow works via Concord. |
 | **Pages** | Y | Y | Y | P | CREATE + ALTER via `pg_*`; widget/data-source coverage grows one type at a time |
 | **Snippets** | Y | Y | Y | P | ALTER via the page mutator; CREATE not wired |
 | **Layouts** | Y | Y | Y | N | Not wired (reads delegate to the local `.mpr`) |

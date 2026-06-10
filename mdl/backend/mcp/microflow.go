@@ -24,14 +24,38 @@ func (b *Backend) CreateMicroflow(mf *microflows.Microflow) error {
 	if err != nil {
 		return fmt.Errorf("resolve module for microflow %q: %w", mf.Name, err)
 	}
+	content, err := b.buildFlowDocContent("microflow", mf.Name, mf.Parameters, mf.ObjectCollection, mf.ReturnType)
+	if err != nil {
+		return err
+	}
+	content["returnVariableName"] = mf.ReturnVariableName
+	if err := b.ensureSchema(microflowDocType); err != nil {
+		return err
+	}
+	if err := b.pedCreateDocument(mod.Name, microflowDocType, mf.Name, content); err != nil {
+		return err
+	}
+	if mf.ID == "" {
+		mf.ID = model.ID("mcp~mf~" + mod.Name + "~" + mf.Name)
+	}
+	b.sessionMicroflows = append(b.sessionMicroflows, mf)
+	return b.pedCheckDocument(microflowDocType, mod.Name+"."+mf.Name)
+}
 
-	// Parameters occupy the first object slots (they are canvas objects but take
-	// part in no flow); the executor's flow objects follow.
-	objects := make([]any, 0, len(mf.Parameters)+2)
-	for i, p := range mf.Parameters {
+// buildFlowDocContent maps a microflow body — parameters as the leading canvas
+// objects, the flow object tree, the sequence flows, and the return type — onto PED
+// content. The caller adds doc-type-specific fields (returnVariableName) and picks
+// the document type. kind labels errors. (Nanoflows share this body shape but can't
+// be created over MCP — PED rejects the Microflows$Nanoflow doc type — so this has
+// the single microflow caller today; see nanoflow.go.)
+func (b *Backend) buildFlowDocContent(kind, name string, params []*microflows.MicroflowParameter, oc *microflows.MicroflowObjectCollection, returnType microflows.DataType) (map[string]any, error) {
+	// Parameters occupy the first object slots (canvas objects that take part in no
+	// flow); the executor's flow objects follow.
+	objects := make([]any, 0, len(params)+2)
+	for i, p := range params {
 		typeName, entity, enumeration, err := mfDataType(p.Type)
 		if err != nil {
-			return fmt.Errorf("microflow %q parameter %q: %w", mf.Name, p.Name, err)
+			return nil, fmt.Errorf("%s %q parameter %q: %w", kind, name, p.Name, err)
 		}
 		po := map[string]any{
 			"$Type":               "Microflows$MicroflowParameterObject",
@@ -49,30 +73,30 @@ func (b *Backend) CreateMicroflow(mf *microflows.Microflow) error {
 	}
 	paramCount := len(objects)
 
-	// Map the flow objects (Start/End/activities) and remember each object's
-	// index so SequenceFlows can reference it by $id(/objects/N).
-	// idPath maps each object's ID to its JSON-pointer path. Loop bodies nest, so
-	// a body object's path is /objects/N/objects/M; flows (which all live at the
-	// microflow top level, even loop-body flows) reference objects by these paths.
+	// Map the flow objects (Start/End/activities) and remember each object's index
+	// so SequenceFlows can reference it by $id(/objects/N). idPath maps each
+	// object's ID to its JSON-pointer path. Loop bodies nest, so a body object's
+	// path is /objects/N/objects/M; flows (all at the top level, even loop-body
+	// flows) reference objects by these paths.
 	idPath := map[model.ID]string{}
-	if mf.ObjectCollection != nil {
-		for i, o := range mf.ObjectCollection.Objects {
+	if oc != nil {
+		for i, o := range oc.Objects {
 			path := fmt.Sprintf("/objects/%d", paramCount+i)
 			pedObj, err := b.mapObjectTree(o, path, idPath)
 			if err != nil {
-				return fmt.Errorf("microflow %q: %w", mf.Name, err)
+				return nil, fmt.Errorf("%s %q: %w", kind, name, err)
 			}
 			objects = append(objects, pedObj)
 		}
 	}
 
 	flows := make([]any, 0)
-	if mf.ObjectCollection != nil {
-		for _, f := range mf.ObjectCollection.Flows {
+	if oc != nil {
+		for _, f := range oc.Flows {
 			op, ok1 := idPath[f.OriginID]
 			dp, ok2 := idPath[f.DestinationID]
 			if !ok1 || !ok2 {
-				return fmt.Errorf("microflow %q: a sequence flow references an object that is not supported yet", mf.Name)
+				return nil, fmt.Errorf("%s %q: a sequence flow references an object that is not supported yet", kind, name)
 			}
 			pf := map[string]any{
 				"originId":      fmt.Sprintf("$id(%s)", op),
@@ -80,7 +104,7 @@ func (b *Backend) CreateMicroflow(mf *microflows.Microflow) error {
 			}
 			cv, err := mapCaseValue(f.CaseValue)
 			if err != nil {
-				return fmt.Errorf("microflow %q: %w", mf.Name, err)
+				return nil, fmt.Errorf("%s %q: %w", kind, name, err)
 			}
 			if cv != nil {
 				pf["caseValue"] = cv
@@ -89,37 +113,19 @@ func (b *Backend) CreateMicroflow(mf *microflows.Microflow) error {
 		}
 	}
 
-	returnTypeName, rtEntity, rtEnum, err := mfDataType(mf.ReturnType)
+	returnTypeName, rtEntity, rtEnum, err := mfDataType(returnType)
 	if err != nil {
-		return fmt.Errorf("microflow %q return type: %w", mf.Name, err)
+		return nil, fmt.Errorf("%s %q return type: %w", kind, name, err)
 	}
-	returnType := map[string]any{"type": returnTypeName}
+	rt := map[string]any{"type": returnTypeName}
 	if rtEntity != "" {
-		returnType["entity"] = rtEntity
+		rt["entity"] = rtEntity
 	}
 	if rtEnum != "" {
-		returnType["enumeration"] = rtEnum
+		rt["enumeration"] = rtEnum
 	}
 
-	content := map[string]any{
-		"name":               mf.Name,
-		"objects":            objects,
-		"flows":              flows,
-		"returnType":         returnType,
-		"returnVariableName": mf.ReturnVariableName,
-	}
-
-	if err := b.ensureSchema(microflowDocType); err != nil {
-		return err
-	}
-	if err := b.pedCreateDocument(mod.Name, microflowDocType, mf.Name, content); err != nil {
-		return err
-	}
-	if mf.ID == "" {
-		mf.ID = model.ID("mcp~mf~" + mod.Name + "~" + mf.Name)
-	}
-	b.sessionMicroflows = append(b.sessionMicroflows, mf)
-	return b.pedCheckDocument(microflowDocType, mod.Name+"."+mf.Name)
+	return map[string]any{"name": name, "objects": objects, "flows": flows, "returnType": rt}, nil
 }
 
 // ListMicroflows returns microflows from the local reader merged with those
@@ -175,12 +181,7 @@ func mfKey(m *microflows.Microflow) string {
 	return string(m.ContainerID) + "." + m.Name
 }
 
-// Nanoflow + rule reads delegate to the local reader (read-only); their writes
-// remain unsupported via the generated base.
-func (b *Backend) ListNanoflows() ([]*microflows.Nanoflow, error) { return b.reader.ListNanoflows() }
-func (b *Backend) GetNanoflow(id model.ID) (*microflows.Nanoflow, error) {
-	return b.reader.GetNanoflow(id)
-}
+// Nanoflow reads/writes live in nanoflow.go (they reuse buildFlowDocContent).
 func (b *Backend) IsRule(qualifiedName string) (bool, error) { return b.reader.IsRule(qualifiedName) }
 
 // pedMiddlePoint converts an executor object position to a PED relativeMiddlePoint.
