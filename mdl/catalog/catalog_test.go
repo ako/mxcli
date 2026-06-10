@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -96,6 +97,48 @@ func TestTables(t *testing.T) {
 		if !tableSet[exp] {
 			t.Errorf("Expected table %q not found in Tables()", exp)
 		}
+	}
+}
+
+// TestTables_CoversAllViews is a drift guard: every catalog VIEW created by the
+// schema must be listed in Tables(), so SHOW CATALOG TABLES never silently omits
+// a document type. The churn is always in views — each new cataloged document
+// type adds a viewWithFullSnapshot — so enforcing "every view is listed" catches
+// the omission at test time (the failure mode that hid javascript_actions,
+// image_collections, data_transformers, the agent-editor views, and
+// navigation_profiles from SHOW CATALOG TABLES). Base tables (projects,
+// snapshots, FTS shadows, catalog_meta) are type='table' and intentionally
+// excluded from this invariant.
+func TestTables_CoversAllViews(t *testing.T) {
+	cat, err := New()
+	if err != nil {
+		t.Fatalf("Failed to create catalog: %v", err)
+	}
+	defer cat.Close()
+
+	listed := make(map[string]bool)
+	for _, tbl := range cat.Tables() {
+		listed[strings.ToLower(strings.TrimPrefix(tbl, "CATALOG."))] = true
+	}
+
+	rows, err := cat.CatalogDB().Query(
+		"SELECT name FROM sqlite_master WHERE type = 'view' ORDER BY name")
+	if err != nil {
+		t.Fatalf("Failed to enumerate views: %v", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			t.Fatalf("Scan failed: %v", err)
+		}
+		if !listed[name] {
+			t.Errorf("catalog view %q is not listed in Tables() — add CATALOG.%s "+
+				"so SHOW CATALOG TABLES includes it", name, strings.ToUpper(name))
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows error: %v", err)
 	}
 }
 
