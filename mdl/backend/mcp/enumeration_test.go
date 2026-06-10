@@ -46,7 +46,7 @@ func TestPedCreateDocument_SendsEnumConstructor(t *testing.T) {
 	b := &Backend{client: f.connectClient(t), dirty: map[string]bool{}}
 
 	enum := &model.Enumeration{Name: "OrderState", Values: []model.EnumerationValue{enumVal("Open", "Open")}}
-	if err := b.pedCreateDocument("MyFirstModule", enumerationDocType, enum.Name, buildEnumContent(enum)); err != nil {
+	if err := b.pedCreateDocument("MyFirstModule", enumerationDocType, enum.Name, buildEnumContent(enum), ""); err != nil {
 		t.Fatalf("pedCreateDocument: %v", err)
 	}
 	call, ok := f.callByName("ped_create_document")

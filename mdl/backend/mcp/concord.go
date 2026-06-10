@@ -172,9 +172,7 @@ func (b *Backend) StopApp() error {
 // moduleNameForContainer resolves a container (module) ID to its module name,
 // session-aware so freshly created modules resolve too.
 func (b *Backend) moduleNameForContainer(containerID model.ID) (string, error) {
-	mod, err := b.GetModule(containerID)
-	if err != nil {
-		return "", err
-	}
-	return mod.Name, nil
+	// Folder-aware: a document's container may be a folder, not the module directly.
+	name, _, err := b.resolveDocContainer(containerID)
+	return name, err
 }

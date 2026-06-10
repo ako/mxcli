@@ -20,9 +20,9 @@ const microflowDocType = "Microflows$Microflow"
 // are not mapped yet are rejected with a clear error (the 130+ Microflows$*
 // types are an iterative follow-on). See docs/03-development/PED_MCP_CAPABILITIES.md.
 func (b *Backend) CreateMicroflow(mf *microflows.Microflow) error {
-	mod, err := b.GetModule(mf.ContainerID)
+	moduleName, folderPath, err := b.resolveDocContainer(mf.ContainerID)
 	if err != nil {
-		return fmt.Errorf("resolve module for microflow %q: %w", mf.Name, err)
+		return fmt.Errorf("resolve container for microflow %q: %w", mf.Name, err)
 	}
 	content, err := b.buildFlowDocContent("microflow", mf.Name, mf.Parameters, mf.ObjectCollection, mf.ReturnType)
 	if err != nil {
@@ -32,14 +32,14 @@ func (b *Backend) CreateMicroflow(mf *microflows.Microflow) error {
 	if err := b.ensureSchema(microflowDocType); err != nil {
 		return err
 	}
-	if err := b.pedCreateDocument(mod.Name, microflowDocType, mf.Name, content); err != nil {
+	if err := b.pedCreateDocument(moduleName, microflowDocType, mf.Name, content, folderPath); err != nil {
 		return err
 	}
 	if mf.ID == "" {
-		mf.ID = model.ID("mcp~mf~" + mod.Name + "~" + mf.Name)
+		mf.ID = model.ID("mcp~mf~" + moduleName + "~" + mf.Name)
 	}
 	b.sessionMicroflows = append(b.sessionMicroflows, mf)
-	return b.pedCheckDocument(microflowDocType, mod.Name+"."+mf.Name)
+	return b.pedCheckDocument(microflowDocType, moduleName+"."+mf.Name)
 }
 
 // buildFlowDocContent maps a microflow body — parameters as the leading canvas

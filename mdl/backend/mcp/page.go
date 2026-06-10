@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/pages"
 )
@@ -19,11 +18,14 @@ import (
 // the microflow activities; unmapped widgets/actions are rejected with a clear
 // error. See docs/03-development/PED_MCP_CAPABILITIES.md.
 
-// CreatePage creates a page via pg_write_page.
+// CreatePage creates a page via pg_write_page. A foldered page (folder clause)
+// is created at the module root: pg_write_page takes no folderPath, so unlike the
+// ped_* document creates a page can't be placed in a folder over MCP — the page is
+// still created (addressable by its qualified name), just not foldered.
 func (b *Backend) CreatePage(page *pages.Page) error {
-	mod, err := b.GetModule(page.ContainerID)
+	moduleName, _, err := b.resolveDocContainer(page.ContainerID)
 	if err != nil {
-		return fmt.Errorf("resolve module for page %q: %w", page.Name, err)
+		return fmt.Errorf("resolve container for page %q: %w", page.Name, err)
 	}
 
 	layout := "Atlas_Core.Atlas_Default"
@@ -62,11 +64,11 @@ func (b *Backend) CreatePage(page *pages.Page) error {
 		"widgets":    slotWidgets,
 	}
 
-	if err := b.pgWritePage(mod.Name, page.Name, content); err != nil {
+	if err := b.pgWritePage(moduleName, page.Name, content); err != nil {
 		return err
 	}
 	if page.ID == "" {
-		page.ID = model.ID("mcp~page~" + mod.Name + "~" + page.Name)
+		page.ID = model.ID("mcp~page~" + moduleName + "~" + page.Name)
 	}
 	b.sessionPages = append(b.sessionPages, page)
 	return nil
@@ -122,20 +124,6 @@ func (b *Backend) ListBuildingBlocks() ([]*pages.BuildingBlock, error) {
 }
 func (b *Backend) ListPageTemplates() ([]*pages.PageTemplate, error) {
 	return b.reader.ListPageTemplates()
-}
-
-// ListFolders delegates to the local reader (the container hierarchy needs it to
-// map folder-contained documents — e.g. Atlas layouts — to their module).
-func (b *Backend) ListFolders() ([]*types.FolderInfo, error) {
-	in, err := b.reader.ListFolders()
-	if err != nil || in == nil {
-		return nil, err
-	}
-	out := make([]*types.FolderInfo, len(in))
-	for i, f := range in {
-		out[i] = &types.FolderInfo{ID: f.ID, ContainerID: f.ContainerID, Name: f.Name}
-	}
-	return out, nil
 }
 
 // slotName resolves the layout-slot name for a layout-call argument. The

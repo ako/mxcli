@@ -14,21 +14,21 @@ const enumerationDocType = "Enumerations$Enumeration"
 // registers it in the session so it is visible to ListEnumerations this run
 // (e.g. a subsequent CREATE ENTITY with an attribute of this enum type).
 func (b *Backend) CreateEnumeration(enum *model.Enumeration) error {
-	mod, err := b.GetModule(enum.ContainerID)
+	moduleName, folderPath, err := b.resolveDocContainer(enum.ContainerID)
 	if err != nil {
-		return fmt.Errorf("resolve module for enumeration %q: %w", enum.Name, err)
+		return fmt.Errorf("resolve container for enumeration %q: %w", enum.Name, err)
 	}
 	if err := b.ensureSchema(enumerationDocType); err != nil {
 		return err
 	}
-	if err := b.pedCreateDocument(mod.Name, enumerationDocType, enum.Name, buildEnumContent(enum)); err != nil {
+	if err := b.pedCreateDocument(moduleName, enumerationDocType, enum.Name, buildEnumContent(enum), folderPath); err != nil {
 		return err
 	}
 	if enum.ID == "" {
-		enum.ID = model.ID("mcp~enum~" + mod.Name + "~" + enum.Name)
+		enum.ID = model.ID("mcp~enum~" + moduleName + "~" + enum.Name)
 	}
 	b.sessionEnums = append(b.sessionEnums, enum)
-	return b.pedCheckDocument(enumerationDocType, mod.Name+"."+enum.Name)
+	return b.pedCheckDocument(enumerationDocType, moduleName+"."+enum.Name)
 }
 
 // UpdateEnumeration (CREATE OR MODIFY on an existing enumeration) is not yet

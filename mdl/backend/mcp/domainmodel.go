@@ -884,14 +884,20 @@ func (b *Backend) pedCheckDocument(docType, docName string) error {
 
 // pedCreateDocument creates a standalone document (enumeration, microflow, …)
 // via ped_create_document. documentContent is the type's $constructor body.
-func (b *Backend) pedCreateDocument(moduleName, docType, docName string, content any) error {
+func (b *Backend) pedCreateDocument(moduleName, docType, docName string, content any, folderPath string) error {
+	doc := map[string]any{
+		"documentType":    docType,
+		"moduleName":      moduleName,
+		"documentName":    docName,
+		"documentContent": content,
+	}
+	// A non-empty folderPath places the document in that folder, auto-creating the
+	// whole path (PED has no empty-folder create); "" leaves it at the module root.
+	if folderPath != "" {
+		doc["folderPath"] = folderPath
+	}
 	res, err := b.client.CallTool("ped_create_document", map[string]any{
-		"documents": []map[string]any{{
-			"documentType":    docType,
-			"moduleName":      moduleName,
-			"documentName":    docName,
-			"documentContent": content,
-		}},
+		"documents": []map[string]any{doc},
 	})
 	if err != nil {
 		return err

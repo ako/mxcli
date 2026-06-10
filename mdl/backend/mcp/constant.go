@@ -20,9 +20,9 @@ const constantDocType = "Constants$Constant"
 // exposedToClient only — there is no documentation field, and the type enum is
 // limited (see pedConstantType).
 func (b *Backend) CreateConstant(c *model.Constant) error {
-	mod, err := b.GetModule(c.ContainerID)
+	moduleName, folderPath, err := b.resolveDocContainer(c.ContainerID)
 	if err != nil {
-		return fmt.Errorf("resolve module for constant %q: %w", c.Name, err)
+		return fmt.Errorf("resolve container for constant %q: %w", c.Name, err)
 	}
 	content, err := buildConstantContent(c)
 	if err != nil {
@@ -31,14 +31,14 @@ func (b *Backend) CreateConstant(c *model.Constant) error {
 	if err := b.ensureSchema(constantDocType); err != nil {
 		return err
 	}
-	if err := b.pedCreateDocument(mod.Name, constantDocType, c.Name, content); err != nil {
+	if err := b.pedCreateDocument(moduleName, constantDocType, c.Name, content, folderPath); err != nil {
 		return err
 	}
 	if c.ID == "" {
-		c.ID = model.ID("mcp~const~" + mod.Name + "~" + c.Name)
+		c.ID = model.ID("mcp~const~" + moduleName + "~" + c.Name)
 	}
 	b.sessionConstants = append(b.sessionConstants, c)
-	return b.pedCheckDocument(constantDocType, mod.Name+"."+c.Name)
+	return b.pedCheckDocument(constantDocType, moduleName+"."+c.Name)
 }
 
 // UpdateConstant (CREATE OR MODIFY on an existing constant) sets the value and

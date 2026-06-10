@@ -89,6 +89,12 @@ type Backend struct {
 	// (duplicate detection and create-then-reference within one run).
 	sessionMicroflows []*microflows.Microflow
 
+	// sessionFolders holds folders the executor asked to create this session. PED
+	// can't create an empty folder, so these are pending until a document is created
+	// into one (which auto-creates the path); they are merged into ListFolders and
+	// drive folder-path resolution for foldered document creates.
+	sessionFolders []*types.FolderInfo
+
 	// sessionPages holds pages created over MCP this session, merged into
 	// ListPages (the executor's duplicate/role checks read it).
 	sessionPages []*pages.Page
@@ -280,6 +286,9 @@ func (b *Backend) GetModule(id model.ID) (*model.Module, error) {
 		if m.ID == id {
 			return m, nil
 		}
+	}
+	if b.reader == nil {
+		return nil, fmt.Errorf("module %s not found", id)
 	}
 	return b.reader.GetModule(id)
 }

@@ -19,9 +19,9 @@ const workflowDocType = "Workflows$Workflow"
 // of activity types grows one at a time, like microflow activities — unmapped
 // activity types are rejected with a clear error.
 func (b *Backend) CreateWorkflow(wf *workflows.Workflow) error {
-	mod, err := b.GetModule(wf.ContainerID)
+	moduleName, folderPath, err := b.resolveDocContainer(wf.ContainerID)
 	if err != nil {
-		return fmt.Errorf("resolve module for workflow %q: %w", wf.Name, err)
+		return fmt.Errorf("resolve container for workflow %q: %w", wf.Name, err)
 	}
 	content, err := b.mapWorkflow(wf)
 	if err != nil {
@@ -30,14 +30,14 @@ func (b *Backend) CreateWorkflow(wf *workflows.Workflow) error {
 	if err := b.ensureSchema(workflowDocType); err != nil {
 		return err
 	}
-	if err := b.pedCreateDocument(mod.Name, workflowDocType, wf.Name, content); err != nil {
+	if err := b.pedCreateDocument(moduleName, workflowDocType, wf.Name, content, folderPath); err != nil {
 		return err
 	}
 	if wf.ID == "" {
-		wf.ID = model.ID("mcp~workflow~" + mod.Name + "~" + wf.Name)
+		wf.ID = model.ID("mcp~workflow~" + moduleName + "~" + wf.Name)
 	}
 	b.sessionWorkflows = append(b.sessionWorkflows, wf)
-	return b.pedCheckDocument(workflowDocType, mod.Name+"."+wf.Name)
+	return b.pedCheckDocument(workflowDocType, moduleName+"."+wf.Name)
 }
 
 // UpdateWorkflow handles CREATE OR REPLACE/MODIFY on an existing workflow. PED has

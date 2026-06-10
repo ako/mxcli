@@ -21,7 +21,7 @@ func (b *Backend) CreateViewEntitySourceDocument(moduleID model.ID, moduleName, 
 	if err := b.ensureSchema(viewEntitySourceDocType); err != nil {
 		return "", err
 	}
-	if err := b.pedCreateDocument(moduleName, viewEntitySourceDocType, docName, map[string]any{"name": docName}); err != nil {
+	if err := b.pedCreateDocument(moduleName, viewEntitySourceDocType, docName, map[string]any{"name": docName}, ""); err != nil {
 		return "", err
 	}
 	qn := moduleName + "." + docName
