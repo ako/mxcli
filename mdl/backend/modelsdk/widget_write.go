@@ -70,6 +70,12 @@ func init() {
 	codec.RegisterTypeDefaults("Forms$DataViewSource", codec.TypeDefaults{
 		NullFields: []string{"EntityRef", "SourceVariable"},
 	})
+	// A microflow data source's settings carry an always-emitted (empty) parameter
+	// mapping list and null progress/confirmation slots.
+	codec.RegisterTypeDefaults("Forms$MicroflowSettings", codec.TypeDefaults{
+		MandatoryLists: []string{"ParameterMappings"},
+		NullFields:     []string{"ProgressMessage", "ConfirmationInfo"},
+	})
 	// TextBox: many null slots when unbound (attribute ref, screen-reader label,
 	// source variable, label template, visibility/editability/native settings).
 	codec.RegisterTypeDefaults("Forms$TextBox", codec.TypeDefaults{
@@ -524,12 +530,17 @@ func editability(readOnly bool) string {
 // (Forms$DataViewSource: entity ref + page/snippet parameter) is supported; flow
 // and database sources (which carry settings sub-objects) are refused for now.
 func dataViewSourceToGen(ds pages.DataSource) (element.Element, error) {
-	src := genPg.NewDataViewSource()
-	src.SetForceFullObjects(false)
 	switch d := ds.(type) {
 	case nil:
-		// empty DataViewSource — DataView requires a non-null source object
+		// empty DataViewSource — DataView requires a non-null source object.
+		src := genPg.NewDataViewSource()
+		src.SetForceFullObjects(false)
+		assignID(src)
+		return src, nil
+
 	case *pages.DataViewSource:
+		src := genPg.NewDataViewSource()
+		src.SetForceFullObjects(false)
 		if d.ID != "" {
 			src.SetID(element.ID(d.ID))
 		}
@@ -549,11 +560,28 @@ func dataViewSourceToGen(ds pages.DataSource) (element.Element, error) {
 			}
 			src.SetSourceVariable(pv)
 		}
+		assignID(src)
+		return src, nil
+
+	case *pages.MicroflowSource:
+		ms := genPg.NewMicroflowSource()
+		if d.ID != "" {
+			ms.SetID(element.ID(d.ID))
+		}
+		assignID(ms)
+		ms.SetForceFullObjects(false)
+		s := genPg.NewMicroflowSettings()
+		assignID(s)
+		s.SetAsynchronous(false)
+		s.SetFormValidations("All")
+		s.SetMicroflowQualifiedName(d.Microflow)
+		s.SetProgressBar("None")
+		ms.SetMicroflowSettings(s)
+		return ms, nil
+
 	default:
 		return nil, fmt.Errorf("CreatePage: DataView source %T not yet supported by the modelsdk engine — rerun with MXCLI_ENGINE=legacy", ds)
 	}
-	assignID(src)
-	return src, nil
 }
 
 // clientActionToGen converts a widget client action. Simple actions are supported;
