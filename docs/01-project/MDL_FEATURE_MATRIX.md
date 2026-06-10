@@ -81,6 +81,15 @@ live distinction is **MPR vs MCP**.
 > **Maintenance:** when a feature gains MCP support, flip its **MCP** cell and tighten the note;
 > when MDL gains a feature Mendix has but MDL didn't (closing an `SDK_EQUIVALENCE` gap), add a row.
 > Keep cells coverage-level — push specifics to the linked homes.
+>
+> **Follow-up (drift-proofing):** this matrix is hand-maintained, so the **MCP** column can
+> fall behind the code. It could instead be *generated*: the MCP backend's
+> `unsupportedBackend` base (`mdl/backend/mcp/unsupported_gen.go`) already encodes exactly
+> which interface methods are wired vs. rejected — a small tool could diff the implemented
+> receivers against that base to emit Y/N per feature. The P-with-gap nuances (e.g. "ALTER
+> MODIFY type rejected") can't be auto-derived and would stay hand-written, so realistically
+> this is a *hybrid*: generate the Y/N skeleton, annotate the partials by hand. Not yet built;
+> flip to generation if hand-maintenance starts drifting.
 
 ## Core Document Types
 
