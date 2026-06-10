@@ -93,6 +93,15 @@ func init() {
 		},
 	})
 	codec.RegisterListMarker("Forms$RadioButtonGroup", 2)
+	// DatePicker: TextBox-like null slots (+ native accessibility).
+	codec.RegisterTypeDefaults("Forms$DatePicker", codec.TypeDefaults{
+		NullFields: []string{
+			"AttributeRef", "ScreenReaderLabel", "SourceVariable", "LabelTemplate",
+			"ConditionalVisibilitySettings", "ConditionalEditabilitySettings",
+			"NativeAccessibilitySettings",
+		},
+	})
+	codec.RegisterListMarker("Forms$DatePicker", 2)
 }
 
 // widgetToGen converts a model widget to its gen element, recursing into
@@ -228,6 +237,29 @@ func widgetToGen(w pages.Widget) (element.Element, error) {
 			return nil, err
 		}
 		g.SetAction(act)
+		return g, nil
+
+	case *pages.DatePicker:
+		g := genPg.NewDatePicker()
+		applyWidgetBase(g, &x.BaseWidget)
+		g.SetAriaRequired(false)
+		if ref := attributeRefToGen(x.AttributePath); ref != nil {
+			g.SetAttributeRef(ref)
+		}
+		g.SetEditable("Always")
+		g.SetFormattingInfo(newFormattingInfo())
+		if x.Label != "" {
+			g.SetLabelTemplate(textAsClientTemplate(textFromString(x.Label)))
+		}
+		onChangeDP, err := clientActionToGen(x.OnChangeAction)
+		if err != nil {
+			return nil, err
+		}
+		g.SetOnChangeAction(onChangeDP)
+		g.SetOnEnterAction(noActionGen())
+		g.SetPlaceholderTemplate(textAsClientTemplate(x.Placeholder))
+		g.SetReadOnlyStyle("Inherit")
+		g.SetValidation(widgetValidationToGen())
 		return g, nil
 
 	case *pages.RadioButtons:
