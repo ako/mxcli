@@ -184,6 +184,31 @@ type toolCallResult struct {
 // decoded text content. A transport/protocol failure is returned as an error;
 // a tool that ran but reported a model-level problem is returned with
 // ToolResult.IsError set (so callers can surface the server's message).
+// ListTools returns the names of the tools the connected MCP server exposes
+// (a live tools/list probe — the tool-presence half of the capability model).
+func (c *Client) ListTools() ([]string, error) {
+	res, err := c.call("tools/list", map[string]any{})
+	if err != nil {
+		return nil, err
+	}
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	var r struct {
+		Tools []struct {
+			Name string `json:"name"`
+		} `json:"tools"`
+	}
+	if err := json.Unmarshal(res.Result, &r); err != nil {
+		return nil, fmt.Errorf("decode tools/list: %w", err)
+	}
+	names := make([]string, 0, len(r.Tools))
+	for _, t := range r.Tools {
+		names = append(names, t.Name)
+	}
+	return names, nil
+}
+
 func (c *Client) CallTool(name string, arguments any) (*ToolResult, error) {
 	res, err := c.call("tools/call", map[string]any{
 		"name":      name,

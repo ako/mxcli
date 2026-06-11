@@ -368,12 +368,15 @@ the `ped_create_document` whitelist checks, the "delete via Concord" fallbacks),
 an agent has no runtime way to know what is authorable against *this* version.
 ADR-0004 decides the model; this is the build plan, in dependency order:
 
-1. **Capability report (agent-facing — concern 1).** A read-only
-   `show mcp capabilities` (or make `show features` backend-aware so it reflects the
-   MCP-reduced set when connected via `--mcp`), built from the connected server's
-   identity + `tools/list` + the current known capability set. A synced skill (sibling
-   of `version-awareness`) tells the agent to check it before authoring over MCP.
-   Lowest risk, immediately useful, and doesn't require the registry yet.
+1. **Capability report (agent-facing — concern 1). ✅ Shipped.** `mxcli mcp
+   capabilities -p app.mpr --mcp …` connects, then prints the server identity, the
+   live `tools/list`, and a curated authorable/blocked summary
+   (`mdl/backend/mcp/capabilities.go` + `cmd/mxcli/mcp.go`). The
+   `live-edit-with-studio-pro` skill tells the agent to run it before authoring.
+   Implemented as a CLI subcommand, **not** a `show mcp capabilities` MDL statement —
+   the MCP backend wires *existing* MDL and must not extend the language. The
+   authorable/blocked lists are still a hand-curated snapshot; step 2 makes them
+   registry-driven.
 2. **Capability registry + `Capabilities` struct (concern 2 foundation).** A
    version-keyed table (`sdk/versions/ped-*.yaml`, mirroring the Mendix feature
    registry) for the *non-probeable* facts (create-whitelist, behavioral quirks),
