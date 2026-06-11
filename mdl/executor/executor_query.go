@@ -153,6 +153,16 @@ func execDescribe(ctx *ExecContext, s *ast.DescribeStmt) error {
 		return mdlerrors.NewNotConnected()
 	}
 
+	// Bare `DESCRIBE Module.Name` — resolve the concrete type from the project,
+	// then fall through to the normal typed dispatch.
+	if s.ObjectType == ast.DescribeAuto {
+		resolved, err := resolveDescribeAuto(ctx, s.Name.String())
+		if err != nil {
+			return err
+		}
+		s.ObjectType = resolved
+	}
+
 	// Determine the object type label and name for JSON wrapping.
 	objectType := describeObjectTypeLabel(s.ObjectType)
 	name := s.Name.String()

@@ -4,6 +4,17 @@ Complete syntax reference for MDL (Mendix Definition Language). This is the auth
 
 For task-specific guidance, see the skill files listed in [CLAUDE.md](../CLAUDE.md#important-before-writing-mdl-scripts-or-working-with-data).
 
+## DESCRIBE — type is optional
+
+Every `describe <type> Module.Name` statement also accepts a **bare** form with the type omitted — `describe Module.Name` — and the document type is auto-detected from the project (via the catalog `objects` index, built on demand). Use it anywhere: the REPL, `exec` scripts, and `mxcli describe Module.Name`.
+
+```sql
+describe Sales.Order;              -- resolves to entity / page / microflow / agent / … automatically
+describe page Sales.Order;        -- the explicit form still works and is required when a name is ambiguous
+```
+
+If a name matches more than one document (e.g. an entity and a snippet share a name), the bare form reports the candidates and asks you to specify the type. The explicit form is also still required for things that have no single qualified name (module role, user role, settings, navigation).
+
 ## Entity Generalization (EXTENDS)
 
 **CRITICAL: EXTENDS goes BEFORE the opening parenthesis, not after!**

@@ -1027,6 +1027,13 @@ func (b *Builder) ExitDescribeStatement(ctx *parser.DescribeStatementContext) {
 			ObjectType: ast.DescribeExportMapping,
 			Name:       name,
 		})
+	} else {
+		// Bare DESCRIBE qualifiedName — no type keyword matched, so the document
+		// type is auto-detected from the project at execution time.
+		b.statements = append(b.statements, &ast.DescribeStmt{
+			ObjectType: ast.DescribeAuto,
+			Name:       name,
+		})
 	}
 }
 
