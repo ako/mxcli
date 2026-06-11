@@ -28,10 +28,13 @@ func (b *Backend) ListDomainModels() ([]*domainmodel.DomainModel, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := make([]*domainmodel.DomainModel, 0, len(units))
+	out := make([]*domainmodel.DomainModel, 0, len(units)+1)
 	for _, u := range units {
 		out = append(out, domainModelFromGen(u.Element, u.ContainerID))
 	}
+	// The System module is virtual (not stored in the project); inject its domain
+	// model so platform entities (System.WorkflowUserTask, User, …) resolve.
+	out = append(out, buildSystemDomainModel())
 	return out, nil
 }
 
