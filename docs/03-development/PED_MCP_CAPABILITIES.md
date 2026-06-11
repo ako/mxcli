@@ -13,6 +13,13 @@ can do. This document is the canonical record of *which PED tools exist in which
 Studio Pro version* and *what capability gaps each version has*. Update it
 whenever a new Studio Pro version is onboarded (procedure at the bottom).
 
+> **Direction:** [ADR-0004](../13-decisions/0004-mcp-capability-model.md) decides to
+> make this knowledge machine-readable — a version-keyed capability table merged
+> with a live `tools/list` probe — so the backend gates on it and an agent-facing
+> capability report is generated from it. This document then becomes the
+> human-readable narrative over that table. Until that lands, this doc + the
+> scattered per-type rejections are the source of truth.
+
 This is a developer reference. It is the sibling of
 [`WIDGET_BSON_VERSION_COMPATIBILITY.md`](WIDGET_BSON_VERSION_COMPATIBILITY.md)
 for the MCP transport instead of on-disk BSON. For the **cross-layer** view —

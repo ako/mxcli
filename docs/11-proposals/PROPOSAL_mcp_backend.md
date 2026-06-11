@@ -358,6 +358,36 @@ the devcontainer networking prerequisite doc.
   domain-model statements); a registry/probe for the *MCP server* version may be
   warranted in Phase 3.
 
+### Version-aware capability model ([ADR-0004](../13-decisions/0004-mcp-capability-model.md))
+
+Now that coverage has grown well past the first slice, the backend's authoring
+surface is bounded by what the connected PED accepts, and that boundary moves per
+Studio Pro version. PED-limit knowledge is currently scattered across hardcoded
+rejections (`errJavaActionAuthoring`, `errNanoflowCreate`, `errBusinessEventAuthoring`,
+the `ped_create_document` whitelist checks, the "delete via Concord" fallbacks), and
+an agent has no runtime way to know what is authorable against *this* version.
+ADR-0004 decides the model; this is the build plan, in dependency order:
+
+1. **Capability report (agent-facing — concern 1).** A read-only
+   `show mcp capabilities` (or make `show features` backend-aware so it reflects the
+   MCP-reduced set when connected via `--mcp`), built from the connected server's
+   identity + `tools/list` + the current known capability set. A synced skill (sibling
+   of `version-awareness`) tells the agent to check it before authoring over MCP.
+   Lowest risk, immediately useful, and doesn't require the registry yet.
+2. **Capability registry + `Capabilities` struct (concern 2 foundation).** A
+   version-keyed table (`sdk/versions/ped-*.yaml`, mirroring the Mendix feature
+   registry) for the *non-probeable* facts (create-whitelist, behavioral quirks),
+   merged on connect with the live `tools/list` probe into a single `Capabilities`
+   value on the backend.
+3. **Gate behavior on the model.** Replace the scattered hardcoded rejections with
+   `capabilities.canCreate(docType)` / `capabilities.hasTool(name)`, and the report
+   from step 1 is regenerated from this same model (single source of truth, no
+   drift). A lifted PED limit then becomes a one-line table change (or is detected
+   live for tool-presence capabilities).
+
+`PED_MCP_CAPABILITIES.md` remains the human-readable narrative over the machine
+table; the onboarding procedure already there is extended to update the table.
+
 ## Test Plan
 
 - **Phase 0 probe:** ✅ done — `cmd/mcpprobe` captured `tools/list` and the
