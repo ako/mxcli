@@ -26,11 +26,17 @@ func (b *Backend) UpdateAllowedRoles(unitID model.ID, roles []string) error {
 	if err != nil {
 		return fmt.Errorf("UpdateAllowedRoles: decode unit %s: %w", unitID, err)
 	}
-	setter, ok := el.(interface{ SetAllowedModuleRolesQualifiedNames([]string) })
-	if !ok {
+	// Microflows/nanoflows expose SetAllowedModuleRolesQualifiedNames; pages/
+	// snippets use SetAllowedRolesQualifiedNames (different gen Go name, same
+	// AllowedModuleRoles storage key).
+	switch s := el.(type) {
+	case interface{ SetAllowedModuleRolesQualifiedNames([]string) }:
+		s.SetAllowedModuleRolesQualifiedNames(roles)
+	case interface{ SetAllowedRolesQualifiedNames([]string) }:
+		s.SetAllowedRolesQualifiedNames(roles)
+	default:
 		return fmt.Errorf("UpdateAllowedRoles: unit %s (%s) has no allowed-roles list", unitID, el.TypeName())
 	}
-	setter.SetAllowedModuleRolesQualifiedNames(roles)
 	contents, err := (&codec.Encoder{}).Encode(el)
 	if err != nil {
 		return fmt.Errorf("UpdateAllowedRoles: encode unit %s: %w", unitID, err)
