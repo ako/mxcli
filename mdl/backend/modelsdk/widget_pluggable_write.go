@@ -3,6 +3,7 @@
 package modelsdkbackend
 
 import (
+	"fmt"
 	"log"
 
 	bsonv1 "go.mongodb.org/mongo-driver/bson"
@@ -11,6 +12,7 @@ import (
 	"github.com/mendixlabs/mxcli/mdl/backend"
 	"github.com/mendixlabs/mxcli/mdl/backend/widgetobj"
 	"github.com/mendixlabs/mxcli/mdl/types"
+	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/modelsdk/codec"
 	"github.com/mendixlabs/mxcli/modelsdk/element"
 	mmpr "github.com/mendixlabs/mxcli/modelsdk/mpr"
@@ -51,6 +53,33 @@ func (b *Backend) BuildCreateAttributeObject(attributePath string, objectTypeID,
 	return widgetobj.CreateAttributeObject(attributePath, objectTypeID, propertyTypeID, valueTypeID)
 }
 
+// BuildFilterWidget builds a DataGrid2 filter widget (text / number / date /
+// dropdown) as a pages.CustomWidget whose Type/Object come from the
+// modelsdk/widgets registry. Mirrors the MPR backend's BuildFilterWidget; the rest
+// of the CustomWidget envelope (Appearance, editability, …) is added when the
+// widget is serialized via customWidgetToGen.
+func (b *Backend) BuildFilterWidget(spec backend.FilterWidgetSpec, projectPath string) (pages.Widget, error) {
+	typeBSON, objBSON, _, _, _, err := mwidgets.GetTemplateFullBSON(spec.WidgetID, mmpr.GenerateID, projectPath)
+	if err != nil {
+		return nil, fmt.Errorf("BuildFilterWidget: load template %s: %w", spec.WidgetID, err)
+	}
+	if typeBSON == nil || objBSON == nil {
+		return nil, fmt.Errorf("BuildFilterWidget: no template for widget %s", spec.WidgetID)
+	}
+	return &pages.CustomWidget{
+		BaseWidget: pages.BaseWidget{
+			BaseElement: model.BaseElement{
+				ID:       model.ID(types.GenerateID()),
+				TypeName: "CustomWidgets$CustomWidget",
+			},
+			Name: spec.FilterName,
+		},
+		Editable:  "Always",
+		RawObject: v2ToV1BSON(objBSON),
+		RawType:   v2ToV1BSON(typeBSON),
+	}, nil
+}
+
 // codecChildSerializer implements widgetobj.ChildSerializer by routing child
 // content through the modelsdk codec converters, then bridging v2→v1 BSON.
 type codecChildSerializer struct{}
@@ -74,9 +103,15 @@ func (codecChildSerializer) SerializeClientAction(a pages.ClientAction) bsonv1.D
 }
 
 func (codecChildSerializer) SerializeCustomWidgetDataSource(ds pages.DataSource) bsonv1.D {
-	// Pluggable-widget data sources are not yet converted on the codec path.
-	log.Printf("modelsdk: pluggable widget data source %T not yet supported", ds)
-	return nil
+	el, err := customWidgetDataSourceToGen(ds)
+	if err != nil {
+		log.Printf("modelsdk: serialize custom widget data source %T: %v", ds, err)
+		return nil
+	}
+	if el == nil {
+		return nil
+	}
+	return genToV1BSON(el)
 }
 
 // genToV1BSON encodes a gen element with the codec (bson v2 bytes) and decodes it

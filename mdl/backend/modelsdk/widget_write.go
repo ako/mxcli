@@ -13,6 +13,7 @@ import (
 	"github.com/mendixlabs/mxcli/modelsdk/element"
 	genCw "github.com/mendixlabs/mxcli/modelsdk/gen/customwidgets"
 	genDm "github.com/mendixlabs/mxcli/modelsdk/gen/domainmodels"
+	genMf "github.com/mendixlabs/mxcli/modelsdk/gen/microflows"
 	genPg "github.com/mendixlabs/mxcli/modelsdk/gen/pages"
 	genTexts "github.com/mendixlabs/mxcli/modelsdk/gen/texts"
 	"github.com/mendixlabs/mxcli/sdk/pages"
@@ -294,7 +295,9 @@ func widgetToGen(w pages.Widget) (element.Element, error) {
 		} else {
 			g.SetCaption(textAsClientTemplate(x.Caption))
 		}
-		g.SetTooltip(textAsClientTemplate(x.Tooltip))
+		// Tooltip is a Texts$Text (not a ClientTemplate, unlike Caption) — Studio
+		// Pro's loader rejects a ClientTemplate here with a type-cast error.
+		g.SetTooltip(captionToGen(x.Tooltip))
 		act, err := clientActionToGen(x.Action)
 		if err != nil {
 			return nil, err
@@ -828,6 +831,59 @@ func listViewSourceToGen(ds pages.DataSource) (element.Element, error) {
 	}
 }
 
+// customWidgetDataSourceToGen builds the data source embedded in a pluggable
+// widget (DataGrid2, Gallery, …) — the CustomWidgets$CustomWidgetXPathSource for
+// a database (XPath) source, or Forms$MicroflowSource for a microflow source.
+// Mirrors sdk/mpr.SerializeCustomWidgetDataSource. Nanoflow and association
+// sources are refused loudly (their gen shapes are not yet verified).
+func customWidgetDataSourceToGen(ds pages.DataSource) (element.Element, error) {
+	switch d := ds.(type) {
+	case nil:
+		return nil, nil
+
+	case *pages.DatabaseSource:
+		src := genCw.NewCustomWidgetXPathSource()
+		if d.ID != "" {
+			src.SetID(element.ID(d.ID))
+		}
+		assignID(src)
+		src.SetForceFullObjects(false)
+		src.SetXPathConstraint(d.XPathConstraint)
+		if d.EntityName != "" {
+			ref := genDm.NewDirectEntityRef()
+			assignID(ref)
+			ref.SetEntityQualifiedName(d.EntityName)
+			src.SetEntityRef(ref)
+		}
+		bar := genPg.NewGridSortBar()
+		assignID(bar)
+		for _, s := range d.Sorting {
+			item := genPg.NewGridSortItem()
+			assignID(item)
+			item.SetSortDirection(string(s.Direction))
+			if ref := attributeRefToGen(s.AttributePath); ref != nil {
+				item.SetAttributeRef(ref)
+			}
+			bar.AddSortItems(item)
+		}
+		src.SetSortBar(bar)
+		return src, nil
+
+	case *pages.MicroflowSource:
+		ms := genPg.NewMicroflowSource()
+		if d.ID != "" {
+			ms.SetID(element.ID(d.ID))
+		}
+		assignID(ms)
+		ms.SetForceFullObjects(false)
+		ms.SetMicroflowSettings(microflowSettingsToGen(d.Microflow))
+		return ms, nil
+
+	default:
+		return nil, fmt.Errorf("modelsdk: pluggable widget data source %T not yet supported — rerun with MXCLI_ENGINE=legacy", ds)
+	}
+}
+
 // microflowSettingsToGen builds the Forms$MicroflowSettings shared by the
 // microflow DataView source and the call-microflow action.
 func microflowSettingsToGen(microflowName string) element.Element {
@@ -847,8 +903,19 @@ func formSettingsToGen(pageName string) element.Element {
 	ps := genPg.NewPageSettings()
 	assignID(ps)
 	ps.SetPageQualifiedName(pageName)
-	ps.SetTitleOverride(clientTemplateToGen(nil))
+	ps.SetTitleOverride(emptyTextTemplateToGen())
 	return ps
+}
+
+// emptyTextTemplateToGen builds an empty Microflows$TextTemplate. This is the type
+// of FormSettings/PageSettings TitleOverride (NOT a Forms$ClientTemplate, which
+// Studio Pro's loader rejects with a type-cast error) and it must be non-nil
+// (issue #468). Mirrors sdk/mpr.emptyTextTemplate.
+func emptyTextTemplateToGen() element.Element {
+	tt := genMf.NewTextTemplate()
+	assignID(tt)
+	tt.SetText(genTexts.NewText())
+	return tt
 }
 
 // clientActionToGen converts a widget client action. Simple actions are supported;
