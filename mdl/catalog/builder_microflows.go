@@ -4,6 +4,8 @@ package catalog
 
 import (
 	"database/sql"
+	"fmt"
+	"strings"
 
 	"github.com/mendixlabs/mxcli/sdk/microflows"
 )
@@ -270,45 +272,28 @@ func getMicroflowObjectType(obj microflows.MicroflowObject) string {
 	}
 }
 
-// getMicroflowActionType returns the type name for a microflow action.
+// getMicroflowActionType returns the catalog ActionType label for a microflow
+// action. Every modelled action's Go type name is exactly its Mendix action type
+// (CreateObjectAction, RestCallAction, ShowPageAction, …), so the label is derived
+// directly from the concrete type rather than a hand-maintained switch. A parallel
+// switch silently buckets anything it forgets under a generic "MicroflowAction" —
+// which is how REST, web-service, nanoflow-call, XML import/export, JavaScript
+// action, execute-database-query, transform-json and show-home-page actions all
+// went unlabelled. Deriving the name keeps the table correct for every action
+// the parser models, including ones added later.
 func getMicroflowActionType(action microflows.MicroflowAction) string {
-	switch action.(type) {
-	case *microflows.CreateObjectAction:
-		return "CreateObjectAction"
-	case *microflows.ChangeObjectAction:
-		return "ChangeObjectAction"
-	case *microflows.RetrieveAction:
-		return "RetrieveAction"
-	case *microflows.MicroflowCallAction:
-		return "MicroflowCallAction"
-	case *microflows.JavaActionCallAction:
-		return "JavaActionCallAction"
-	case *microflows.ShowMessageAction:
-		return "ShowMessageAction"
-	case *microflows.LogMessageAction:
-		return "LogMessageAction"
-	case *microflows.ValidationFeedbackAction:
-		return "ValidationFeedbackAction"
-	case *microflows.ChangeVariableAction:
-		return "ChangeVariableAction"
-	case *microflows.CreateVariableAction:
-		return "CreateVariableAction"
-	case *microflows.AggregateListAction:
-		return "AggregateListAction"
-	case *microflows.ListOperationAction:
-		return "ListOperationAction"
-	case *microflows.CastAction:
-		return "CastAction"
-	case *microflows.DownloadFileAction:
-		return "DownloadFileAction"
-	case *microflows.ClosePageAction:
-		return "ClosePageAction"
-	case *microflows.ShowPageAction:
-		return "ShowPageAction"
-	case *microflows.CallExternalAction:
-		return "CallExternalAction"
-	default:
+	switch a := action.(type) {
+	case nil:
 		return "MicroflowAction"
+	case *microflows.UnknownAction:
+		// An action type the parser does not model yet — surface its real Mendix
+		// storage name (e.g. "SomeAction") instead of a generic label.
+		if a.TypeName != "" {
+			return strings.TrimPrefix(a.TypeName, "Microflows$")
+		}
+		return "UnknownAction"
+	default:
+		return strings.TrimPrefix(fmt.Sprintf("%T", action), "*microflows.")
 	}
 }
 

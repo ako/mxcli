@@ -68,7 +68,25 @@ func TestGetMicroflowActionType(t *testing.T) {
 		{"ClosePageAction", &microflows.ClosePageAction{}, "ClosePageAction"},
 		{"ShowPageAction", &microflows.ShowPageAction{}, "ShowPageAction"},
 		{"CallExternalAction", &microflows.CallExternalAction{}, "CallExternalAction"},
-		{"unknown action falls to default", &microflows.UnknownAction{TypeName: "CustomThing"}, "MicroflowAction"},
+		// Previously these fell through to the generic "MicroflowAction" label
+		// because the switch lacked a case for them; the type-derived label now
+		// names them correctly.
+		{"RestCallAction", &microflows.RestCallAction{}, "RestCallAction"},
+		{"RestOperationCallAction", &microflows.RestOperationCallAction{}, "RestOperationCallAction"},
+		{"WebServiceCallAction", &microflows.WebServiceCallAction{}, "WebServiceCallAction"},
+		{"NanoflowCallAction", &microflows.NanoflowCallAction{}, "NanoflowCallAction"},
+		{"JavaScriptActionCallAction", &microflows.JavaScriptActionCallAction{}, "JavaScriptActionCallAction"},
+		{"ExecuteDatabaseQueryAction", &microflows.ExecuteDatabaseQueryAction{}, "ExecuteDatabaseQueryAction"},
+		{"TransformJsonAction", &microflows.TransformJsonAction{}, "TransformJsonAction"},
+		{"ImportXmlAction", &microflows.ImportXmlAction{}, "ImportXmlAction"},
+		{"ExportXmlAction", &microflows.ExportXmlAction{}, "ExportXmlAction"},
+		{"ShowHomePageAction", &microflows.ShowHomePageAction{}, "ShowHomePageAction"},
+		// UnknownAction surfaces its real Mendix storage name (prefix stripped)
+		// rather than a generic label.
+		{"UnknownAction with prefixed storage name", &microflows.UnknownAction{TypeName: "Microflows$SomeFutureAction"}, "SomeFutureAction"},
+		{"UnknownAction with bare type name", &microflows.UnknownAction{TypeName: "CustomThing"}, "CustomThing"},
+		{"UnknownAction without type name", &microflows.UnknownAction{}, "UnknownAction"},
+		{"nil action", nil, "MicroflowAction"},
 	}
 
 	for _, tt := range tests {
