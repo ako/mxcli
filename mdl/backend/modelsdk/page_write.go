@@ -7,9 +7,9 @@ import (
 
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/modelsdk/codec"
+	"github.com/mendixlabs/mxcli/modelsdk/element"
 	genDT "github.com/mendixlabs/mxcli/modelsdk/gen/datatypes"
 	genPg "github.com/mendixlabs/mxcli/modelsdk/gen/pages"
-	"github.com/mendixlabs/mxcli/modelsdk/element"
 	mmpr "github.com/mendixlabs/mxcli/modelsdk/mpr"
 	"github.com/mendixlabs/mxcli/sdk/pages"
 )
@@ -85,7 +85,45 @@ func pageToGen(page *pages.Page) (*genPg.Page, error) {
 	for _, p := range page.Parameters {
 		out.AddParameters(pageParameterToGen(p))
 	}
+	for _, v := range page.Variables {
+		out.AddVariables(localVariableToGen(v))
+	}
 	return out, nil
+}
+
+// localVariableToGen builds a Forms$LocalVariable (a page-level variable: name,
+// default-value expression, and data type). Without this, a column header or widget
+// bound to $VarName dangles → CE1151 "Missing variable".
+func localVariableToGen(v *pages.LocalVariable) element.Element {
+	lv := genPg.NewLocalVariable()
+	if v.ID != "" {
+		lv.SetID(element.ID(v.ID))
+	}
+	assignID(lv)
+	lv.SetName(v.Name)
+	lv.SetDefaultValue(v.DefaultValue)
+	lv.SetVariableType(localVarTypeToGen(v.VariableType))
+	return lv
+}
+
+// localVarTypeToGen maps a LocalVariable's BSON $Type ("DataTypes$StringType", …)
+// to the gen data-type element. Defaults to String.
+func localVarTypeToGen(typeName string) element.Element {
+	var t element.Element
+	switch typeName {
+	case "DataTypes$IntegerType":
+		t = genDT.NewIntegerType()
+	case "DataTypes$BooleanType":
+		t = genDT.NewBooleanType()
+	case "DataTypes$DecimalType":
+		t = genDT.NewDecimalType()
+	case "DataTypes$DateTimeType":
+		t = genDT.NewDateTimeType()
+	default:
+		t = genDT.NewStringType()
+	}
+	assignID(t)
+	return t
 }
 
 // layoutCallToGen builds the Forms$LayoutCall (page → layout binding) with one
