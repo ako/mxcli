@@ -25,10 +25,16 @@ func buildSystemDomainModel() *domainmodel.DomainModel {
 		}
 		ent.ID = model.ID("System." + e.Name)
 		for _, a := range e.Attributes {
-			ent.Attributes = append(ent.Attributes, &domainmodel.Attribute{
+			attr := &domainmodel.Attribute{
 				Name: a.Name,
 				Type: systemAttrType(a),
-			})
+			}
+			// Synthesize a stable, unique ID per attribute. The System module is
+			// virtual (no BSON), so these IDs aren't stored — but the catalog keys
+			// attributes_data on Id, so empty IDs collide (UNIQUE constraint on
+			// attributes_data.Id). Mirror the entity ID scheme.
+			attr.ID = model.ID("System." + e.Name + "." + a.Name)
+			ent.Attributes = append(ent.Attributes, attr)
 		}
 		dm.Entities = append(dm.Entities, ent)
 	}
