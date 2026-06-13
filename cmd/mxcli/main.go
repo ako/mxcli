@@ -160,6 +160,9 @@ Examples:
 
 			r := repl.New(os.Stdin, os.Stdout)
 			r.SetLogger(logger)
+			// Honor MXCLI_ENGINE / --engine in the interactive REPL; without this
+			// the REPL falls back to its hardcoded legacy backend (see repl.New).
+			r.SetBackendFactory(newBackendFactory())
 			defer r.Close()
 
 			// Auto-connect if project specified

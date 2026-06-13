@@ -41,6 +41,14 @@ func (r *REPL) SetLogger(l *diaglog.Logger) {
 	r.executor.SetLogger(l)
 }
 
+// SetBackendFactory overrides the backend factory used when the REPL connects to
+// a project. Without this the REPL defaults to the legacy mprbackend (see New),
+// which silently ignores MXCLI_ENGINE — the CLI wires the engine-aware factory
+// here so the interactive REPL honors the selected engine.
+func (r *REPL) SetBackendFactory(f func() backend.FullBackend) {
+	r.executor.SetBackendFactory(f)
+}
+
 // New creates a new REPL with the given input and output.
 func New(input io.Reader, output io.Writer) *REPL {
 	exec := executor.New(output)
