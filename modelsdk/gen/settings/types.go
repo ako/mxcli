@@ -916,7 +916,8 @@ func (o *ProjectSettings) RemoveSettingsParts(index int) {
 
 // InitFromRaw populates lazy-decoded property holders from raw BSON.
 func (o *ProjectSettings) InitFromRaw(raw bson.Raw) {
-	if children, err := codec.DecodeChildren(raw, "SettingsParts"); err == nil {
+	// BSON storage key is "Settings" (SDK property name is "SettingsParts").
+	if children, err := codec.DecodeChildren(raw, "Settings"); err == nil {
 		for _, child := range children {
 			o.settingsParts.AppendFromDecode(child)
 		}
@@ -2117,7 +2118,10 @@ func NewPrivateValue() *PrivateValue {
 func initProjectSettings() *ProjectSettings {
 	o := &ProjectSettings{}
 	o.SetTypeName("Settings$ProjectSettings")
-	o.settingsParts = property.NewPartList[element.Element]("SettingsParts")
+	// BSON storage key is "Settings"; the SDK property name is "SettingsParts".
+	// codegen's propertyKeyOverrides should map this — patched here until the
+	// (engalar-fork) generator override is added. See memory page_gen_bugs.
+	o.settingsParts = property.NewPartList[element.Element]("Settings")
 	o.settingsParts.Bind(&o.Base, 0)
 	o.SetProperties([]element.Property{o.settingsParts})
 	return o
