@@ -101,6 +101,38 @@ func (b *Backend) CreateModule(m *model.Module) error {
 	return nil
 }
 
+// UpdateModule rewrites an existing module unit. The read path (GetModule) only
+// surfaces Name+ID, so a rename is the only meaningful change; we decode the gen
+// module and set Name alone, preserving FromAppStore / SortIndex / IsThemeModule
+// and every other field the semantic model does not carry (ADR-0005: mutate only
+// what changed, never round-trip through a lossy model). References to the old
+// qualified name are fixed separately via UpdateQualifiedNameInAllUnits.
+func (b *Backend) UpdateModule(m *model.Module) error {
+	if m == nil {
+		return fmt.Errorf("UpdateModule: nil module")
+	}
+	if b.writer == nil {
+		return fmt.Errorf("UpdateModule: not connected for writing")
+	}
+	if m.ID == "" {
+		return fmt.Errorf("UpdateModule: module has no ID")
+	}
+	raw, err := b.reader.GetRawUnitBytes(string(m.ID))
+	if err != nil {
+		return fmt.Errorf("UpdateModule: read unit %s: %w", m.ID, err)
+	}
+	el, err := codec.NewDecoder(codec.DefaultRegistry).Decode(raw)
+	if err != nil {
+		return fmt.Errorf("UpdateModule: decode unit %s: %w", m.ID, err)
+	}
+	gm, ok := el.(*genProj.Module)
+	if !ok {
+		return fmt.Errorf("UpdateModule: unit %s is not a Module (%s)", m.ID, el.TypeName())
+	}
+	gm.SetName(m.Name)
+	return b.persistUnit(m.ID, gm)
+}
+
 // insertChildUnit builds, encodes, and inserts a fresh-ID'd unit contained in the
 // module under the given containment name.
 func (b *Backend) insertChildUnit(enc *codec.Encoder, moduleID model.ID, containment, unitType string, build func() element.Element) error {

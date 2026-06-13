@@ -99,6 +99,34 @@ func (b *Backend) WriteJavaSourceFile(moduleName, actionName string, javaCode st
 	return nil
 }
 
+// RenameJavaSourceFile renames javasource/<module>/actions/<old>.java to <new>.java.
+// A missing source file is not an error (the action may have no generated stub yet).
+func (b *Backend) RenameJavaSourceFile(moduleName, oldName, newName string) error {
+	if b.path == "" {
+		return fmt.Errorf("RenameJavaSourceFile: no project path")
+	}
+	dir := filepath.Join(filepath.Dir(b.path), "javasource", strings.ToLower(moduleName), "actions")
+	oldPath := filepath.Join(dir, oldName+".java")
+	newPath := filepath.Join(dir, newName+".java")
+	if err := os.Rename(oldPath, newPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("RenameJavaSourceFile: %w", err)
+	}
+	return nil
+}
+
+// ReadJavaSourceFile reads javasource/<module>/actions/<action>.java.
+func (b *Backend) ReadJavaSourceFile(moduleName, actionName string) (string, error) {
+	if b.path == "" {
+		return "", fmt.Errorf("ReadJavaSourceFile: no project path")
+	}
+	filePath := filepath.Join(filepath.Dir(b.path), "javasource", strings.ToLower(moduleName), "actions", actionName+".java")
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", fmt.Errorf("ReadJavaSourceFile: %w", err)
+	}
+	return string(content), nil
+}
+
 // javaActionToGen converts a model JavaAction to its gen element.
 func javaActionToGen(ja *javaactions.JavaAction) *genJa.JavaAction {
 	out := genJa.NewJavaAction()
