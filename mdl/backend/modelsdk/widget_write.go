@@ -926,6 +926,34 @@ func customWidgetDataSourceToGen(ds pages.DataSource) (element.Element, error) {
 		ms.SetMicroflowSettings(microflowSettingsToGen(d.Microflow))
 		return ms, nil
 
+	case *pages.AssociationSource:
+		// Forms$AssociationSource: an IndirectEntityRef with one EntityRefStep
+		// (Association[/DestinationEntity]); optional page-parameter source variable.
+		src := genPg.NewAssociationSource()
+		if d.ID != "" {
+			src.SetID(element.ID(d.ID))
+		}
+		assignID(src)
+		src.SetForceFullObjects(false)
+		parts := strings.SplitN(d.EntityPath, "/", 2)
+		step := genDm.NewEntityRefStep()
+		assignID(step)
+		step.SetAssociationQualifiedName(parts[0])
+		if len(parts) == 2 {
+			step.SetDestinationEntityQualifiedName(parts[1])
+		}
+		ref := genDm.NewIndirectEntityRef()
+		assignID(ref)
+		ref.AddSteps(step)
+		src.SetEntityRef(ref)
+		if d.ContextVariable != "" {
+			pv := genPg.NewPageVariable()
+			assignID(pv)
+			pv.SetPageParameterQualifiedName(d.ContextVariable)
+			src.SetSourceVariable(pv)
+		}
+		return src, nil
+
 	default:
 		return nil, fmt.Errorf("modelsdk: pluggable widget data source %T not yet supported — rerun with MXCLI_ENGINE=legacy", ds)
 	}
