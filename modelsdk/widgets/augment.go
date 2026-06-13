@@ -160,7 +160,76 @@ func AugmentTemplate(tmpl *WidgetTemplate, def *mpk.WidgetDefinition) error {
 		}
 	}
 
+	// Reconcile enumeration values of existing properties against the .mpk. The
+	// augmentation above syncs property KEYS, but an enum property's option SET can
+	// change between the embedded-template's widget version and the installed one
+	// (e.g. Gallery pagingPosition {top,bottom,both} → {above,below} between 3.4.0
+	// and 3.0.1). A stale option in the embedded Type that the installed widget
+	// doesn't define triggers CE0463 ("definition has changed"). The .mpk is
+	// authoritative, so overwrite each enum PropertyType's option set from it.
+	reconcileEnumValues(tmpl.Type, mpkEnumValuesByKey(def))
+
 	return nil
+}
+
+// mpkEnumValuesByKey indexes a widget's enumeration option sets by property key,
+// across both top-level and nested (object-list) properties.
+func mpkEnumValuesByKey(def *mpk.WidgetDefinition) map[string][]mpk.EnumValue {
+	out := map[string][]mpk.EnumValue{}
+	var add func([]mpk.PropertyDef)
+	add = func(props []mpk.PropertyDef) {
+		for _, p := range props {
+			if len(p.EnumValues) > 0 {
+				out[p.Key] = p.EnumValues
+			}
+			if len(p.Children) > 0 {
+				add(p.Children)
+			}
+		}
+	}
+	add(def.Properties)
+	return out
+}
+
+// reconcileEnumValues walks a widget Type and, for every enumeration PropertyType
+// whose key has a .mpk option set, rebuilds its ValueType.EnumerationValues from
+// the .mpk so the embedded Type's enum members exactly match the installed widget.
+func reconcileEnumValues(node any, byKey map[string][]mpk.EnumValue) {
+	switch v := node.(type) {
+	case map[string]any:
+		if v["$Type"] == "CustomWidgets$WidgetPropertyType" {
+			if vt, ok := v["ValueType"].(map[string]any); ok && vt["Type"] == "Enumeration" {
+				if key, _ := v["PropertyKey"].(string); key != "" {
+					if opts, ok := byKey[key]; ok {
+						vt["EnumerationValues"] = buildEnumValuesArray(opts)
+					}
+				}
+			}
+		}
+		for _, val := range v {
+			reconcileEnumValues(val, byKey)
+		}
+	case []any:
+		for _, item := range v {
+			reconcileEnumValues(item, byKey)
+		}
+	}
+}
+
+// buildEnumValuesArray builds a CustomWidgets$WidgetEnumerationValue list (with the
+// leading Mendix array marker) from .mpk enumeration options. Placeholder $IDs are
+// remapped to fresh UUIDs by the loader's ID phase.
+func buildEnumValuesArray(opts []mpk.EnumValue) []any {
+	arr := []any{float64(2)}
+	for _, o := range opts {
+		arr = append(arr, map[string]any{
+			"$ID":     placeholderID(),
+			"$Type":   "CustomWidgets$WidgetEnumerationValue",
+			"_Key":    o.Key,
+			"Caption": o.Caption,
+		})
+	}
+	return arr
 }
 
 // augmentNestedObjectType syncs nested ObjectType PropertyTypes for an Object-type property.

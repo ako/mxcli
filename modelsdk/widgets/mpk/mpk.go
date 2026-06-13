@@ -28,7 +28,14 @@ type PropertyDef struct {
 	IsSystem     bool          // true for <systemProperty> elements
 	DataSource   string        // dataSource attribute reference
 	AllowedTypes []string      // for attribute properties: Mendix type names ("String", "Decimal", etc.)
+	EnumValues   []EnumValue   // for enumeration properties: the declared options (key + caption)
 	Children     []PropertyDef // nested properties for object-type properties
+}
+
+// EnumValue is one option of an enumeration-typed widget property.
+type EnumValue struct {
+	Key     string
+	Caption string
 }
 
 // WidgetDefinition holds the parsed definition of a pluggable widget from an .mpk file.
@@ -106,8 +113,15 @@ type xmlProperty struct {
 	Caption        string             `xml:"caption"`
 	Description    string             `xml:"description"`
 	AttributeTypes []xmlAttributeType `xml:"attributeTypes>attributeType"`
+	EnumValues     []xmlEnumValue     `xml:"enumerationValues>enumerationValue"`
 	// Nested properties for object type
 	NestedProps []xmlPropGroup `xml:"properties>propertyGroup"`
+}
+
+// xmlEnumValue represents <enumerationValue key="...">Caption</enumerationValue>.
+type xmlEnumValue struct {
+	Key     string `xml:"key,attr"`
+	Caption string `xml:",chardata"`
 }
 
 // xmlSystemProp represents <systemProperty key="..."/> element.
@@ -242,6 +256,10 @@ func walkPropertyGroup(pg xmlPropGroup, parentCategory string, def *WidgetDefini
 				allowedTypes = append(allowedTypes, at.Name)
 			}
 		}
+		var enumValues []EnumValue
+		for _, ev := range p.EnumValues {
+			enumValues = append(enumValues, EnumValue{Key: ev.Key, Caption: strings.TrimSpace(ev.Caption)})
+		}
 		prop := PropertyDef{
 			Key:          p.Key,
 			Type:         p.Type,
@@ -253,6 +271,7 @@ func walkPropertyGroup(pg xmlPropGroup, parentCategory string, def *WidgetDefini
 			IsList:       p.IsList == "true",
 			DataSource:   p.DataSource,
 			AllowedTypes: allowedTypes,
+			EnumValues:   enumValues,
 		}
 
 		// Parse nested properties for object-type properties
@@ -290,6 +309,10 @@ func collectNestedProperties(pg xmlPropGroup, parent *PropertyDef) {
 				allowedTypes = append(allowedTypes, at.Name)
 			}
 		}
+		var enumValues []EnumValue
+		for _, ev := range p.EnumValues {
+			enumValues = append(enumValues, EnumValue{Key: ev.Key, Caption: strings.TrimSpace(ev.Caption)})
+		}
 		child := PropertyDef{
 			Key:          p.Key,
 			Type:         p.Type,
@@ -300,6 +323,13 @@ func collectNestedProperties(pg xmlPropGroup, parent *PropertyDef) {
 			IsList:       p.IsList == "true",
 			DataSource:   p.DataSource,
 			AllowedTypes: allowedTypes,
+			EnumValues:   enumValues,
+		}
+		// Nested object-type properties can themselves contain object lists.
+		if p.Type == "object" && len(p.NestedProps) > 0 {
+			for _, npg := range p.NestedProps {
+				collectNestedProperties(npg, &child)
+			}
 		}
 		parent.Children = append(parent.Children, child)
 	}
