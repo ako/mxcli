@@ -99,6 +99,15 @@ func (b *Backend) WriteJavaSourceFile(moduleName, actionName string, javaCode st
 	return nil
 }
 
+// DeleteJavaAction removes a JavaActions$JavaAction document unit. The generated
+// .java source file (if any) is left in place, matching the legacy writer.
+func (b *Backend) DeleteJavaAction(id model.ID) error {
+	if b.writer == nil {
+		return fmt.Errorf("DeleteJavaAction: not connected for writing")
+	}
+	return b.writer.DeleteUnit(string(id))
+}
+
 // RenameJavaSourceFile renames javasource/<module>/actions/<old>.java to <new>.java.
 // A missing source file is not an error (the action may have no generated stub yet).
 func (b *Backend) RenameJavaSourceFile(moduleName, oldName, newName string) error {
@@ -110,6 +119,19 @@ func (b *Backend) RenameJavaSourceFile(moduleName, oldName, newName string) erro
 	newPath := filepath.Join(dir, newName+".java")
 	if err := os.Rename(oldPath, newPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("RenameJavaSourceFile: %w", err)
+	}
+	return nil
+}
+
+// DeleteJavaSourceFile removes javasource/<module>/actions/<action>.java. A missing
+// file is not an error.
+func (b *Backend) DeleteJavaSourceFile(moduleName, actionName string) error {
+	if b.path == "" {
+		return fmt.Errorf("DeleteJavaSourceFile: no project path")
+	}
+	filePath := filepath.Join(filepath.Dir(b.path), "javasource", strings.ToLower(moduleName), "actions", actionName+".java")
+	if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("DeleteJavaSourceFile: %w", err)
 	}
 	return nil
 }
