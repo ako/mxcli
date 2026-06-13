@@ -198,12 +198,15 @@ regenerate gen from the target version's reflection-data.
 
 ## Open Questions
 
-1. **Object-default version sensitivity.** Schema is version-reconciled and the
-   envelope is tolerated. The remaining unknown: do the fresh-widget Object defaults
-   (which only a clean extraction captures) themselves differ across Mendix versions
-   — i.e. does ComboBox `2.4.3`@10.24 need a different Object than `2.5.0`@11.10?
-   The cross-version matrix answers this; if yes, we may need a clean template *per
-   widget-version*, not one shared base.
+1. **Per-widget-version templates for object-list widgets.** The cross-version
+   matrix (`scripts/widget-version-matrix.sh`) answered part of this concretely:
+   ComboBox and DataGrid2 reconcile across versions via augment (flat PropertyKeys),
+   but **Gallery `3.0.1`@10.24 produces CE0463 on both engines** — the 11.6-extracted
+   template's *nested object-list* sub-schema (items/content) doesn't match the
+   10.24-installed widget, and augment's flat-key add/remove doesn't reach it. So
+   object-list widgets likely need a clean template **per widget-version**, not one
+   shared 11.6 base. Open: root-cause the Gallery nested diff, then decide
+   per-version template vs deeper (nested) augment.
 2. **Long-tail marketplace widgets.** Built-ins can be hand-extracted clean. For
    arbitrary marketplace widgets with no embedded template, the only correct Object
    source is a fresh extraction — can `widget init` extract from a freshly-dropped
