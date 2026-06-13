@@ -1,0 +1,45 @@
+-- Cross-version pluggable-widget smoke fixture.
+-- Creates DataGrid2 and Gallery (the two database-sourced bundled pluggable
+-- widgets) in a self-contained module, so scripts/widget-version-matrix.sh can
+-- assert `mx check` reports zero new CE0463 on every supported Mendix version.
+-- Self-contained: no dependency on the host project's modules.
+--
+-- ComboBox is intentionally NOT here: giving it an entity context portably across
+-- engines+versions hits orthogonal gaps (page parameters need Mendix 11.0+; the
+-- modelsdk engine doesn't yet emit a DataView *database* source). ComboBox's
+-- cross-version template cleanliness is covered instead by the dirty-template guard
+-- (modelsdk/widgets/dirty_template_test.go) and the augment-fidelity result
+-- (PropertyKey set matches the installed widget on 10.24, 56=56). Add ComboBox here
+-- once the modelsdk DataView-database-source converter lands.
+
+create module WMatrix;
+
+create entity WMatrix.Item (
+  Name: String,
+  Qty: Integer
+);
+
+create page WMatrix.Pg
+(
+  title: 'Widget Matrix',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  -- DataGrid2 (pluggable) over a database datasource with one attribute column.
+  datagrid grid (
+    DataSource: database from WMatrix.Item sort by Name asc,
+    Selection: Single
+  ) {
+    column colName (caption: 'Name', attribute: Name)
+  }
+
+  -- Gallery (pluggable) over a database datasource with a parameterized dynamic text.
+  gallery gal (
+    DataSource: database from WMatrix.Item sort by Name asc,
+    Selection: Single
+  ) {
+    template tmpl {
+      dynamictext dt (content: '{1}', contentparams: [{1} = Name])
+    }
+  }
+}
