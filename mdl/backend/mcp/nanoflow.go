@@ -17,18 +17,22 @@ import (
 // still works via Concord's delete_document, like microflows; reads delegate to the
 // local .mpr.
 
-// CreateNanoflow is rejected — PED won't create Microflows$Nanoflow documents.
+// CreateNanoflow is gated on the capability model (capabilities.yaml /
+// nanoflow_create). Today PED's create whitelist excludes Microflows$Nanoflow, so it
+// is not authorable and this rejects; if a future server lifts that, flip the table.
 func (b *Backend) CreateNanoflow(nf *microflows.Nanoflow) error {
-	return errNanoflowCreate(nf.Name)
+	if !b.canAuthor(capNanoflowCreate) {
+		return b.notAuthorable("nanoflow", nf.Name, capNanoflowCreate)
+	}
+	return errCreatePathUnbuilt("nanoflow", nf.Name)
 }
 
-// UpdateNanoflow (CREATE OR MODIFY) is rejected for the same reason.
+// UpdateNanoflow (CREATE OR MODIFY) is gated the same way.
 func (b *Backend) UpdateNanoflow(nf *microflows.Nanoflow) error {
-	return errNanoflowCreate(nf.Name)
-}
-
-func errNanoflowCreate(name string) error {
-	return fmt.Errorf("nanoflow %q cannot be created via the MCP backend — Studio Pro's MCP server refuses Microflows$Nanoflow in ped_create_document (its create whitelist covers microflows but not nanoflows); author it against a local .mpr or in Studio Pro", name)
+	if !b.canAuthor(capNanoflowCreate) {
+		return b.notAuthorable("nanoflow", nf.Name, capNanoflowCreate)
+	}
+	return errCreatePathUnbuilt("nanoflow", nf.Name)
 }
 
 // DeleteNanoflow drops an existing nanoflow via Concord's delete_document (PED has

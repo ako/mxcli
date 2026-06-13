@@ -5,57 +5,89 @@
 # whitelist, behavioral quirks).
 #
 # Keyed by MCP serverInfo.version. The baseline below is the first server (1.0.0,
-# shipped in Studio Pro 11.11). When a newer MCP server lifts a limit, set
-# `available_since` on the blocked feature to that server version — the loader flips
-# it for servers at or above that version. Adding/auditing entries is part of the
+# shipped in Studio Pro 11.11). `available` means *the MCP backend can author it* —
+# both PED permits it AND mxcli has a create path. To lift a blocked feature, set
+# `available_since` to the MCP server version once BOTH hold (the loader flips it for
+# servers at or above that version, and both the agent report and the backend's gate
+# pick it up — they read this same table via `key`). Auditing entries is part of the
 # "onboarding a new version" procedure in docs/03-development/PED_MCP_CAPABILITIES.md.
+#
+# `key` is the stable machine identifier the backend gates on (canAuthor(key)); the
+# capability constants in capabilities.go must match these.
 
 baseline_server_version: "1.0.0"
 
 features:
-  - feature: "Modules"
+  - key: modules
+    feature: "Modules"
     available: true
     note: "CREATE"
-  - feature: "Entities"
+  - key: entities
+    feature: "Entities"
     available: true
     note: "CREATE/DROP; ALTER add/drop/rename attribute, entity & attribute documentation; generalization (extends)"
-  - feature: "Associations"
+  - key: associations
+    feature: "Associations"
     available: true
     note: "CREATE/DROP within a module"
-  - feature: "Enumerations"
+  - key: enumerations
+    feature: "Enumerations"
     available: true
     note: "CREATE (DROP via Concord)"
-  - feature: "Constants"
+  - key: constants
+    feature: "Constants"
     available: true
     note: "CREATE / CREATE OR MODIFY / DROP (String/Integer/Decimal/Boolean/DateTime)"
-  - feature: "Microflows"
+  - key: microflows
+    feature: "Microflows"
     available: true
     note: "CREATE (broad activity + control-flow coverage)"
-  - feature: "Pages"
+  - key: pages
+    feature: "Pages"
     available: true
     note: "CREATE + ALTER (widget coverage grows per type)"
-  - feature: "Workflows"
+  - key: workflows
+    feature: "Workflows"
     available: true
     note: "CREATE / CREATE OR REPLACE / DROP / ALTER (full, any nesting depth)"
-  - feature: "View entities"
+  - key: view_entities
+    feature: "View entities"
     available: true
     note: "CREATE"
-  - feature: "Documents into folders"
+  - key: documents_into_folders
+    feature: "Documents into folders"
     available: true
     note: "create <doc> … folder 'A/B' (nested; folder auto-created)"
 
-  - feature: "Nanoflows, Java actions, Business-event services"
+  # Gated create rejections — the backend checks these keys via canAuthor().
+  - key: nanoflow_create
+    feature: "Nanoflows — CREATE"
     available: false
-    note: "CREATE — off PED's create whitelist"
-  - feature: "Security (roles, access, demo users), Navigation, OData/REST, mappings, settings"
+    note: "PED's create whitelist excludes Microflows$Nanoflow (it covers microflows, not nanoflows)"
+  - key: javaaction_create
+    feature: "Java actions — CREATE"
+    available: false
+    note: "PED won't create JavaActions$JavaAction (a Java action is backed by a .java source Studio Pro generates)"
+  - key: businessevent_create
+    feature: "Business-event services — CREATE"
+    available: false
+    note: "PED won't create BusinessEvents$BusinessEventService (off the create whitelist); the published-event entities & constants it relies on ARE creatable"
+
+  # Display-only blocked rows (not method-gated — these are whole features the backend
+  # doesn't implement, or PED-fundamental limits unlikely to be lifted).
+  - key: security_integrations_nav
+    feature: "Security (roles, access, demo users), Navigation, OData/REST, mappings, settings"
     available: false
     note: "no PED write path"
-  - feature: "ALTER … MODIFY attribute type"
+  - key: attribute_type_change
+    feature: "ALTER … MODIFY attribute type"
     available: false
     note: "PED can't change a type in place (would drop the column)"
-  - feature: "MOVE / re-parent a document, empty CREATE FOLDER"
+  - key: document_move
+    feature: "MOVE / re-parent a document, empty CREATE FOLDER"
     available: false
     note: "PED can't re-parent documents or create empty folders"
-  - feature: "Pages into folders"
+  - key: pages_foldered
+    feature: "Pages into folders"
     available: false
     note: "pg_write_page has no folderPath (page lands at the module root)"

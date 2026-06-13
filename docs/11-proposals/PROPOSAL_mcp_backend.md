@@ -384,11 +384,19 @@ ADR-0004 decides the model; this is the build plan, in dependency order:
    for the connected version with the live `tools/list` probe into a `Capabilities`
    value, and the slice-1 report is now generated entirely from it (no hardcoded
    lists). Still kept in step with `PED_MCP_CAPABILITIES.md` by hand on onboarding.
-3. **Gate behavior on the model.** Replace the scattered hardcoded rejections with
-   `capabilities.canCreate(docType)` / `capabilities.hasTool(name)`, and the report
-   from step 1 is regenerated from this same model (single source of truth, no
-   drift). A lifted PED limit then becomes a one-line table change (or is detected
-   live for tool-presence capabilities).
+3. **Gate behavior on the model. ✅ Shipped.** Each table feature now has a stable
+   `key`, and the create rejections consult `(*Backend).canAuthor(key)` with the
+   message sourced from the table note (`notAuthorable`) — so the report and the gate
+   read the same row and can't disagree. Wired for the whitelist-driven doc-type
+   creates (`CreateNanoflow`/`UpdateNanoflow`, `CreateJavaAction`/`UpdateJavaAction`,
+   `CreateBusinessEventService`/`UpdateBusinessEventService`); the bundled
+   "nanoflow/java/biz" report row was split into three keyed entries. `available` now
+   means *the backend can author it* (PED permits **and** mxcli has a create path), so
+   `available_since` is set only when both hold — flipping it then lights the feature
+   up in both the report and the gate. PED-*fundamental* limits (attribute type
+   change, MOVE/re-parent, empty folder) stay inline as display-only rows — they're
+   not whitelist-driven and won't flip. Today every gated method still rejects
+   (baseline table); unit-tested, behavior-preserving.
 
 `PED_MCP_CAPABILITIES.md` remains the human-readable narrative over the machine
 table; the onboarding procedure already there is extended to update the table.

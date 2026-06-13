@@ -26,18 +26,21 @@ func (b *Backend) ListBusinessEventServices() ([]*model.BusinessEventService, er
 	return b.reader.ListBusinessEventServices()
 }
 
-// CreateBusinessEventService is rejected — PED won't create the service document.
+// CreateBusinessEventService is gated on the capability model (capabilities.yaml /
+// businessevent_create). PED won't create the service document today, so it rejects.
 func (b *Backend) CreateBusinessEventService(svc *model.BusinessEventService) error {
-	return errBusinessEventAuthoring(svc.Name)
+	if !b.canAuthor(capBusinessEventCreate) {
+		return b.notAuthorable("business event service", svc.Name, capBusinessEventCreate)
+	}
+	return errCreatePathUnbuilt("business event service", svc.Name)
 }
 
-// UpdateBusinessEventService (CREATE OR MODIFY) is rejected for the same reason.
+// UpdateBusinessEventService (CREATE OR MODIFY) is gated the same way.
 func (b *Backend) UpdateBusinessEventService(svc *model.BusinessEventService) error {
-	return errBusinessEventAuthoring(svc.Name)
-}
-
-func errBusinessEventAuthoring(name string) error {
-	return fmt.Errorf("business event service %q cannot be authored via the MCP backend — Studio Pro's MCP server refuses to create BusinessEvents$BusinessEventService documents (off the ped_create_document whitelist); create it against a local .mpr or in Studio Pro. The published-event entities and constants it relies on ARE creatable over MCP", name)
+	if !b.canAuthor(capBusinessEventCreate) {
+		return b.notAuthorable("business event service", svc.Name, capBusinessEventCreate)
+	}
+	return errCreatePathUnbuilt("business event service", svc.Name)
 }
 
 // DeleteBusinessEventService drops an existing service via Concord's delete_document
