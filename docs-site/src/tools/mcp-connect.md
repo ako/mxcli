@@ -81,8 +81,11 @@ mxcli exec mdl-examples/doctype-tests/01-mcp-domain-model-examples.mdl \
 ```
 
 The new entities, enumerations, associations, and view entities appear in Studio
-Pro as the script runs — no save or reload required. You can also use `-c` for a
-single statement or run the REPL with the same flags.
+Pro as the script runs — no save or reload required.
+
+The same `--mcp` / `--mcp-dial` flags work for a single statement (`-c "…"`) and in
+the interactive REPL (`mxcli -p app.mpr --mcp …` with no subcommand) — in every
+mode, writes go to Studio Pro while reads come from the local `.mpr`.
 
 ## Adding Concord (optional)
 

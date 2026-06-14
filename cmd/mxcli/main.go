@@ -161,6 +161,10 @@ Examples:
 			defer logger.Close()
 
 			r := repl.New(os.Stdin, os.Stdout)
+			// Honor --mcp in interactive mode too (the REPL defaulted to the local
+			// .mpr backend and silently ignored --mcp). Must precede the auto-connect
+			// below, since CONNECT consumes the factory.
+			r.SetBackendFactory(mcpAwareBackendFactory())
 			r.SetLogger(logger)
 			defer r.Close()
 
@@ -219,15 +223,16 @@ func resolveFormat(cmd *cobra.Command, defaultFormat string) string {
 	return defaultFormat
 }
 
-// newLoggedExecutor creates an executor with diagnostics logging attached.
-// The caller must call logger.Close() when done (safe on nil).
-func newLoggedExecutor(mode string) (*executor.Executor, *diaglog.Logger) {
-	logger := diaglog.Init(version, mode)
-	exec := executor.New(os.Stdout)
+// mcpAwareBackendFactory returns the backend factory honoring the global --mcp
+// flags: when --mcp is set it builds an MCP backend (writes go to a live Studio
+// Pro, reads from the local .mpr), optionally wrapped with Concord; otherwise the
+// local .mpr (file) backend. Shared by newLoggedExecutor and the interactive REPL
+// so both paths route writes the same way — the REPL ignored --mcp before this.
+func mcpAwareBackendFactory() executor.BackendFactory {
 	mcpURL, mcpDial := globalMCPURL, globalMCPDial
 	concordURL, concordDial := globalMCPConcord, globalMCPConcordDial
 	saveOnExit, checkOnExit, runOnExit := globalMCPSave, globalMCPCheck, globalMCPRun
-	exec.SetBackendFactory(func() backend.FullBackend {
+	return func() backend.FullBackend {
 		if mcpURL != "" {
 			b := mcpbackend.New(mcpURL, mcpDial)
 			if concordURL != "" || saveOnExit || checkOnExit || runOnExit {
@@ -239,7 +244,15 @@ func newLoggedExecutor(mode string) (*executor.Executor, *diaglog.Logger) {
 			return b
 		}
 		return mprbackend.New()
-	})
+	}
+}
+
+// newLoggedExecutor creates an executor with diagnostics logging attached.
+// The caller must call logger.Close() when done (safe on nil).
+func newLoggedExecutor(mode string) (*executor.Executor, *diaglog.Logger) {
+	logger := diaglog.Init(version, mode)
+	exec := executor.New(os.Stdout)
+	exec.SetBackendFactory(mcpAwareBackendFactory())
 	exec.SetLogger(logger)
 	if globalJSONFlag {
 		exec.SetFormat(executor.FormatJSON)

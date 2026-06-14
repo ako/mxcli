@@ -41,6 +41,14 @@ func (r *REPL) SetLogger(l *diaglog.Logger) {
 	r.executor.SetLogger(l)
 }
 
+// SetBackendFactory overrides the backend used on CONNECT. The default is the
+// local .mpr (file) backend; callers pass an MCP-aware factory here so the REPL
+// can route writes to a live Studio Pro (--mcp) instead of disk. Call before the
+// first CONNECT (e.g. before auto-connect), since CONNECT consumes the factory.
+func (r *REPL) SetBackendFactory(f executor.BackendFactory) {
+	r.executor.SetBackendFactory(f)
+}
+
 // New creates a new REPL with the given input and output.
 func New(input io.Reader, output io.Writer) *REPL {
 	exec := executor.New(output)
