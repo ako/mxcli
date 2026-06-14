@@ -478,11 +478,22 @@ func (b *Backend) CreateAssociation(domainModelID model.ID, assoc *domainmodel.A
 	if err := b.ensureSchema("DomainModels$Association"); err != nil {
 		return err
 	}
+	// parentEntity/childEntity are by-id references. PED accepts the $id(/entities/N)
+	// path-reference form it also emits on read — use that, since a session-created
+	// entity has no on-disk GUID (its model ID is a synthetic mcp~ent~… placeholder).
+	parentRef, err := b.pedEntityRef(domainModelID, moduleName, assoc.ParentID)
+	if err != nil {
+		return fmt.Errorf("association %q: parent entity: %w", assoc.Name, err)
+	}
+	childRef, err := b.pedEntityRef(domainModelID, moduleName, assoc.ChildID)
+	if err != nil {
+		return fmt.Errorf("association %q: child entity: %w", assoc.Name, err)
+	}
 	value := pedAssociation{
 		SType:        "DomainModels$Association",
 		Name:         assoc.Name,
-		ParentEntity: string(assoc.ParentID),
-		ChildEntity:  string(assoc.ChildID),
+		ParentEntity: parentRef,
+		ChildEntity:  childRef,
 		Multiplicity: mult,
 	}
 	if err := b.pedUpdate(moduleName, pedOpEntry{
@@ -844,6 +855,24 @@ func (b *Backend) entityNameForID(domainModelID, entityID model.ID) (string, err
 // entityIndex finds the position of an entity within the live /entities array.
 func (b *Backend) entityIndex(moduleName, entityName string) (int, error) {
 	return b.arrayElementIndex(moduleName, "/entities", "entity", entityName)
+}
+
+// pedEntityRef resolves an entity ID to the $id(/entities/N) path-reference PED
+// uses for by-id entity references (an association's parentEntity/childEntity).
+// It maps the ID to the entity name (handling synthetic session IDs and on-disk
+// IDs) and then to the entity's live index. PED accepts this form on write — the
+// same form it emits on read — which sidesteps needing a real GUID for an entity
+// created earlier in this session.
+func (b *Backend) pedEntityRef(domainModelID model.ID, moduleName string, entityID model.ID) (string, error) {
+	name, err := b.entityNameForID(domainModelID, entityID)
+	if err != nil {
+		return "", err
+	}
+	idx, err := b.entityIndex(moduleName, name)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("$id(/entities/%d)", idx), nil
 }
 
 // arrayElementIndex reads a named-element array (e.g. /entities, /associations)
