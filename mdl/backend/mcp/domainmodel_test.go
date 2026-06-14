@@ -92,11 +92,12 @@ func TestBuildEntityValue_BooleanFalseDefaultAllowed(t *testing.T) {
 func TestBuildEntityValue_RejectsUnsupportedFeatures(t *testing.T) {
 	b := &Backend{}
 	cases := map[string]func(*domainmodel.Entity){
-		"non-persistent":  func(e *domainmodel.Entity) { e.Persistable = false },
-		"indexes":         func(e *domainmodel.Entity) { e.Indexes = []*domainmodel.Index{{}} },
-		"validation rule": func(e *domainmodel.Entity) { e.ValidationRules = []*domainmodel.ValidationRule{{}} },
-		"event handler":   func(e *domainmodel.Entity) { e.EventHandlers = []*domainmodel.EventHandler{{}} },
-		"system owner":    func(e *domainmodel.Entity) { e.HasOwner = true },
+		// Validation rules (NOT NULL / UNIQUE) are NOT in this list anymore — they
+		// are authored at create time via addValidationRules, not rejected here.
+		"non-persistent": func(e *domainmodel.Entity) { e.Persistable = false },
+		"indexes":        func(e *domainmodel.Entity) { e.Indexes = []*domainmodel.Index{{}} },
+		"event handler":  func(e *domainmodel.Entity) { e.EventHandlers = []*domainmodel.EventHandler{{}} },
+		"system owner":   func(e *domainmodel.Entity) { e.HasOwner = true },
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
