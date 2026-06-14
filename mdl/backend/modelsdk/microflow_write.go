@@ -4,6 +4,7 @@ package modelsdkbackend
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/modelsdk/codec"
@@ -339,6 +340,34 @@ func microflowActionToGen(action microflows.MicroflowAction) element.Element {
 		g.SetOutputVariableName(a.ResultVariableName) // BSON key "ResultVariableName"
 		g.SetUseReturnVariable(a.UseReturnVariable)
 		return g
+	case *microflows.LogMessageAction:
+		g := genMf.NewLogMessageAction()
+		g.SetID(element.ID(a.ID))
+		g.SetErrorHandlingType(orDefault(string(a.ErrorHandlingType), "Rollback"))
+		g.SetIncludeLatestStackTrace(a.IncludeLastStackTrace)
+		g.SetLevel(string(a.LogLevel))
+		g.SetNode(a.LogNodeName)
+		if a.MessageTemplate != nil {
+			g.SetMessageTemplate(stringTemplateToGen(a.MessageTemplate, a.TemplateParameters))
+		}
+		return g
+	case *microflows.CreateVariableAction:
+		g := genMf.NewCreateVariableAction()
+		g.SetID(element.ID(a.ID))
+		g.SetErrorHandlingType(orDefault(string(a.ErrorHandlingType), "Rollback"))
+		g.SetVariableName(a.VariableName)
+		g.SetInitialValue(a.InitialValue)
+		if a.DataType != nil {
+			g.SetVariableType(microflowDataTypeToGen(a.DataType))
+		}
+		return g
+	case *microflows.ChangeVariableAction:
+		g := genMf.NewChangeVariableAction()
+		g.SetID(element.ID(a.ID))
+		g.SetErrorHandlingType(orDefault(string(a.ErrorHandlingType), "Rollback"))
+		g.SetChangeVariableName(a.VariableName)
+		g.SetValue(a.Value)
+		return g
 	case *microflows.NanoflowCallAction:
 		g := genMf.NewNanoflowCallAction()
 		g.SetID(element.ID(a.ID))
@@ -507,6 +536,36 @@ func sequenceFlowToGen(f *microflows.SequenceFlow, major int) element.Element {
 	line.SetDestinationControlVector(destCV)
 	g.SetLine(line)
 	return g
+}
+
+// stringTemplateToGen builds a Microflows$StringTemplate (the message body of a
+// LogMessageAction): a Text plus one TemplateParameter per {1},{2},… expression.
+// The text is taken from the (sorted, for determinism) first translation.
+func stringTemplateToGen(text *model.Text, params []string) *genMf.StringTemplate {
+	st := genMf.NewStringTemplate()
+	assignID(st)
+	st.SetText(firstTranslation(text))
+	for _, expr := range params {
+		tp := genMf.NewTemplateArgument()
+		assignID(tp)
+		tp.SetExpression(expr)
+		st.AddArguments(tp)
+	}
+	return st
+}
+
+// firstTranslation returns a translation value deterministically (lowest language
+// code), or "" when there are none.
+func firstTranslation(text *model.Text) string {
+	if text == nil || len(text.Translations) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(text.Translations))
+	for k := range text.Translations {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return text.Translations[keys[0]]
 }
 
 // microflowDataTypeToGen maps a microflow DataType to a gen DataTypes$* element
