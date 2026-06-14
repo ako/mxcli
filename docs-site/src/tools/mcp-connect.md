@@ -38,6 +38,8 @@ of routing through MCP, see
 | `--mcp-save` | After the command, save all changes in Studio Pro (requires `--mcp-concord`). |
 | `--mcp-check` | After the command, run Studio Pro's consistency check and print the report (requires `--mcp-concord`). |
 | `--mcp-run` | After the command, start the app in Studio Pro and print its URL (requires `--mcp-concord`). |
+| `--mcp-verbose` | Print each PED tool call the backend makes (to stderr). |
+| `--mcp-trace` | Print each MDL command with the PED tool calls it makes (implies `--mcp-verbose`). |
 
 If `--mcp-dial` is omitted and the URL host is `localhost`/`127.0.0.1`, mxcli
 defaults the dial target to `host.docker.internal:<port>` — the right behaviour
@@ -86,6 +88,38 @@ Pro as the script runs — no save or reload required.
 The same `--mcp` / `--mcp-dial` flags work for a single statement (`-c "…"`) and in
 the interactive REPL (`mxcli -p app.mpr --mcp …` with no subcommand) — in every
 mode, writes go to Studio Pro while reads come from the local `.mpr`.
+
+## Seeing the tool calls (`--mcp-verbose` / `--mcp-trace`)
+
+Because each MDL statement expands into several PED tool calls, it's useful to
+see what actually goes over the wire — for debugging, or just to understand the
+[cost](../internals/mcp-backend-cost.md). Two levels, both printed to **stderr**
+(so they don't pollute a piped stdout):
+
+- **`--mcp-verbose`** — one line per PED tool call, with its target document:
+
+  ```
+  → ped_create_module
+  → ped_get_schema
+  → ped_update_document McpDm
+  → ped_check_errors McpDm
+  ```
+
+- **`--mcp-trace`** — groups the calls under the MDL command that triggered them,
+  and adds per-call detail (the update operations, schema types, read paths):
+
+  ```
+  ▸ create persistent entity McpDm.Customer
+    → ped_read_document McpDm: /entities, /associations
+    → ped_get_schema: DomainModels$Entity, DomainModels$Attribute
+    → ped_update_document McpDm: add /entities
+    → ped_get_schema: DomainModels$ValidationRule
+    → ped_update_document McpDm: add /entities/0/validationRules ×2
+    → ped_check_errors McpDm
+  ```
+
+  This makes the statement-to-tool-call mapping (and surprises like a read-back
+  reconstructing a dirty module) visible at runtime.
 
 ## Adding Concord (optional)
 

@@ -117,6 +117,8 @@ Examples:
 		globalMCPSave, _ = cmd.Flags().GetBool("mcp-save")
 		globalMCPCheck, _ = cmd.Flags().GetBool("mcp-check")
 		globalMCPRun, _ = cmd.Flags().GetBool("mcp-run")
+		globalMCPVerbose, _ = cmd.Flags().GetBool("mcp-verbose")
+		globalMCPTrace, _ = cmd.Flags().GetBool("mcp-trace")
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		// Get flags
@@ -165,6 +167,7 @@ Examples:
 			// .mpr backend and silently ignored --mcp). Must precede the auto-connect
 			// below, since CONNECT consumes the factory.
 			r.SetBackendFactory(mcpAwareBackendFactory())
+			r.SetTracer(mcpTracer())
 			r.SetLogger(logger)
 			defer r.Close()
 
@@ -207,6 +210,8 @@ var (
 	globalMCPSave        bool
 	globalMCPCheck       bool
 	globalMCPRun         bool
+	globalMCPVerbose     bool
+	globalMCPTrace       bool
 )
 
 // resolveFormat returns the effective output format for a command.
@@ -232,9 +237,13 @@ func mcpAwareBackendFactory() executor.BackendFactory {
 	mcpURL, mcpDial := globalMCPURL, globalMCPDial
 	concordURL, concordDial := globalMCPConcord, globalMCPConcordDial
 	saveOnExit, checkOnExit, runOnExit := globalMCPSave, globalMCPCheck, globalMCPRun
+	tracer := mcpTracer()
 	return func() backend.FullBackend {
 		if mcpURL != "" {
 			b := mcpbackend.New(mcpURL, mcpDial)
+			if tracer != nil {
+				b = b.WithTracer(tracer)
+			}
 			if concordURL != "" || saveOnExit || checkOnExit || runOnExit {
 				b = b.WithConcord(mcpbackend.ConcordConfig{
 					URL: concordURL, Dial: concordDial,
@@ -247,12 +256,30 @@ func mcpAwareBackendFactory() executor.BackendFactory {
 	}
 }
 
+// mcpTracer builds the PED tool-call tracer from --mcp-verbose / --mcp-trace.
+// Returns nil when tracing is off or --mcp is not set (tracing is meaningless
+// without the MCP backend). Output goes to stderr so stdout stays pipeable.
+func mcpTracer() *backend.Tracer {
+	if globalMCPURL == "" {
+		return nil
+	}
+	switch {
+	case globalMCPTrace:
+		return &backend.Tracer{Level: 2, W: os.Stderr}
+	case globalMCPVerbose:
+		return &backend.Tracer{Level: 1, W: os.Stderr}
+	default:
+		return nil
+	}
+}
+
 // newLoggedExecutor creates an executor with diagnostics logging attached.
 // The caller must call logger.Close() when done (safe on nil).
 func newLoggedExecutor(mode string) (*executor.Executor, *diaglog.Logger) {
 	logger := diaglog.Init(version, mode)
 	exec := executor.New(os.Stdout)
 	exec.SetBackendFactory(mcpAwareBackendFactory())
+	exec.SetTracer(mcpTracer())
 	exec.SetLogger(logger)
 	if globalJSONFlag {
 		exec.SetFormat(executor.FormatJSON)
@@ -304,6 +331,8 @@ func init() {
 	rootCmd.PersistentFlags().Bool("mcp-save", false, "After the command, save all changes in Studio Pro via Concord (requires --mcp-concord; the built-in server has no save tool)")
 	rootCmd.PersistentFlags().Bool("mcp-check", false, "After the command, run Studio Pro's model consistency check via Concord and print the report (requires --mcp-concord)")
 	rootCmd.PersistentFlags().Bool("mcp-run", false, "After the command, start the app in Studio Pro via Concord (run_app) and print its URL (requires --mcp-concord)")
+	rootCmd.PersistentFlags().Bool("mcp-verbose", false, "Print each PED tool call the MCP backend makes (requires --mcp)")
+	rootCmd.PersistentFlags().Bool("mcp-trace", false, "Print each MDL command with the PED tool calls it makes (implies --mcp-verbose; requires --mcp)")
 	rootCmd.Flags().StringP("command", "c", "", "Execute MDL command(s) and exit")
 
 	// Check command flags

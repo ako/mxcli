@@ -35,6 +35,10 @@ type Backend struct {
 	mcpURL string
 	dial   string
 
+	// tracer, when set, reports PED tool calls for --mcp-verbose / --mcp-trace.
+	// Wired onto the clients in Connect. nil is a no-op.
+	tracer *backend.Tracer
+
 	client *Client
 	reader *mpr.Reader
 	path   string
@@ -146,6 +150,14 @@ type ConcordConfig struct {
 	RunOnExit   bool // run run_app    (--mcp-run)
 }
 
+// WithTracer attaches a tool-call tracer (--mcp-verbose / --mcp-trace). The same
+// tracer should also be given to the executor (SetTracer) so MDL-command headers
+// and PED-call lines interleave on one writer. Returns the receiver for chaining.
+func (b *Backend) WithTracer(t *backend.Tracer) *Backend {
+	b.tracer = t
+	return b
+}
+
 // WithConcord enables the Concord client. Returns the receiver for chaining.
 func (b *Backend) WithConcord(cfg ConcordConfig) *Backend {
 	b.concordURL = cfg.URL
@@ -168,6 +180,7 @@ func (b *Backend) Connect(path string) error {
 		r.Close()
 		return err
 	}
+	c.trace = b.tracer
 	si, err := c.Initialize()
 	if err != nil {
 		r.Close()
@@ -185,6 +198,7 @@ func (b *Backend) Connect(path string) error {
 		if err != nil {
 			return fmt.Errorf("create Concord client: %w", err)
 		}
+		cc.trace = b.tracer
 		if _, err := cc.Initialize(); err != nil {
 			return fmt.Errorf("connect to Concord MCP server %q: %w", b.concordURL, err)
 		}

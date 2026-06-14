@@ -41,6 +41,10 @@ The choreography — not the statement count — drives the cost.
 For the 25-statement example that works out to **≈ 62 tool calls** on the happy
 path: ~47 writes-plus-validation, ~10 read-backs, 4 schema fetches, 1 handshake.
 
+> **See it yourself.** Run any script with `--mcp-trace` (or `--mcp-verbose`) to
+> print the actual PED calls each MDL command makes — the runtime view of this
+> table. See [Connecting to a Running Studio Pro](../tools/mcp-connect.md#seeing-the-tool-calls---mcp-verbose----mcp-trace).
+
 ### Three things inflate the count
 
 1. **Validation runs after every write.** `ped_check_errors` fires once per write

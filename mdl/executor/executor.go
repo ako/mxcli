@@ -243,6 +243,7 @@ type Executor struct {
 	quiet          bool                               // suppress connection and status messages
 	format         OutputFormat                       // output format (table, json)
 	logger         *diaglog.Logger                    // session diagnostics logger (nil = no logging)
+	tracer         *backend.Tracer                    // MCP tool-call tracer (--mcp-trace; nil = off)
 	fragments      map[string]*ast.DefineFragmentStmt // script-scoped fragment definitions
 	sqlMgr         *sqllib.Manager                    // external SQL connection manager (lazy init)
 	themeRegistry  *ThemeRegistry                     // cached theme design property definitions (lazy init)
@@ -282,11 +283,23 @@ func (e *Executor) SetLogger(l *diaglog.Logger) {
 	e.logger = l
 }
 
+// SetTracer attaches an MCP tool-call tracer. At level 2 the executor prints
+// each MDL command before it runs, so the PED calls reported by the backend's
+// client interleave underneath it. The same tracer must be given to the MCP
+// backend (WithTracer) for the call lines to appear.
+func (e *Executor) SetTracer(t *backend.Tracer) {
+	e.tracer = t
+}
+
 // Execute runs a single MDL statement with output-line and wall-clock guards.
 // Each statement gets a fresh line budget. If the statement exceeds maxOutputLines
 // lines of output or runs longer than the configured timeout, it is aborted with an error.
 func (e *Executor) Execute(stmt ast.Statement) error {
 	start := time.Now()
+
+	// Announce the MDL command so the PED calls it triggers (reported by the MCP
+	// client) group under it (--mcp-trace, level 2; no-op otherwise).
+	e.tracer.Statement(stmtSummary(stmt))
 
 	// Reset per-statement line counter.
 	if e.guard != nil {
