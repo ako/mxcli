@@ -51,9 +51,9 @@ features:
     available: true
     note: "CREATE / CREATE OR REPLACE / DROP / ALTER (full, any nesting depth)"
   - key: view_entities
-    feature: "View entities"
-    available: true
-    note: "CREATE"
+    feature: "View entities — CREATE"
+    available: false
+    note: "PED syncs a view entity's attributes to its OQL only via the LLM-backed oql_generate tool; its deterministic write tools leave attributes as StoredValue, out of sync with the query (CE6770). mxcli writes user OQL verbatim and does not invoke the generator, so it does not author view entities over MCP"
   - key: documents_into_folders
     feature: "Documents into folders"
     available: true

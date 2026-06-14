@@ -16,7 +16,7 @@ and what it means for latency, token usage, and an LLM's context window.
 
 > The numbers below trace the worked example
 > [`mdl-examples/doctype-tests/01-mcp-domain-model-examples.mdl`](https://github.com/mendixlabs/mxcli/blob/main/mdl-examples/doctype-tests/01-mcp-domain-model-examples.mdl)
-> — a 25-statement domain-model script that stays entirely inside the MCP
+> — a ~20-statement domain-model script that stays entirely inside the MCP
 > authoring surface. To see the surface for your connected version, run
 > `mxcli mcp capabilities -p app.mpr --mcp`.
 
@@ -29,17 +29,19 @@ The choreography — not the statement count — drives the cost.
 |---|---|---|
 | `create module` | `ped_create_module` | 1 |
 | `create enumeration` | `ped_create_document` + `ped_check_errors` | 2 |
-| `create entity` (incl. `extends`, non-persistent) | `ped_update_document` (add) + `ped_check_errors` | 2 |
-| `create association` | `ped_update_document` (add) + `ped_check_errors` | 2 |
-| `create view entity` | create source-doc + set `/oql` + entity add + check | 4 |
+| `create entity` (incl. `extends`) | `ped_update_document` (add) + `ped_check_errors` | 2 |
+| … plus each `NOT NULL` / `UNIQUE` rule | `ped_read_document` (locate entity) + `ped_update_document` (add rules) | +2 |
+| `create association` | 2× `ped_read_document` (resolve parent/child entity refs) + `ped_update_document` (add) + `ped_check_errors` | 4 |
 | `alter entity` (add / rename / set documentation) | 2× `ped_read_document` (locate + read live attrs) + `ped_update_document` + `ped_check_errors` | 4 |
 | `show` / `describe` of a **just-modified** module | `ped_read_document` (entities + associations) + an enrichment read for attribute types | 2 |
 | `show enumerations` (and other reads of unchanged docs) | served from the local `.mpr` | 0 |
-| one-time `ped_get_schema` per element type (entity, attribute, association, view source) | fetched once per session, then cached | 4 total |
+| one-time `ped_get_schema` per element type (entity, attribute, association, validation rule) | fetched once per session, then cached | ~4 total |
 | `initialize` handshake | once per connection | 1 |
 
-For the 25-statement example that works out to **≈ 62 tool calls** on the happy
-path: ~47 writes-plus-validation, ~10 read-backs, 4 schema fetches, 1 handshake.
+For a ~20-statement domain-model script like the example, that's **on the order of
+60 tool calls** — overwhelmingly per-write validation and read-backs, not the
+statement count. (Run it with `--mcp-trace` to see the exact tally for your
+script; the precise number shifts as the example evolves.)
 
 > **See it yourself.** Run any script with `--mcp-trace` (or `--mcp-verbose`) to
 > print the actual PED calls each MDL command makes — the runtime view of this
@@ -48,7 +50,7 @@ path: ~47 writes-plus-validation, ~10 read-backs, 4 schema fetches, 1 handshake.
 ### Three things inflate the count
 
 1. **Validation runs after every write.** `ped_check_errors` fires once per write
-   statement, so **~17 of the 62 calls are validation alone**. This keeps the live
+   statement, so **a large share of the calls are validation alone**. This keeps the live
    model provably consistent at each step, but it is not free.
 2. **`ALTER` is read-modify-write.** Because PED cannot change an attribute's type
    in place, mxcli first *reads* the live entity (to tell a rename from a drop+add,
@@ -73,9 +75,9 @@ statements. The practical levers:
 
 - **Batch writes into one script run**, not many small invocations — the
   `initialize` handshake and schema fetches are paid once per connection.
-- **Drop trailing `SHOW`/`DESCRIBE` verification** from production scripts. In the
-  example, the eight read-back lines account for ~10 of the 62 calls; removing them
-  cuts roughly a sixth of the traffic.
+- **Drop trailing `SHOW`/`DESCRIBE` verification** from production scripts. Each
+  read-back of a just-written module costs ~2 calls, so the verification block is an
+  easy chunk to cut when you don't need it.
 - **The file backend has zero round trips.** If Studio Pro doesn't need to be open
   — e.g. CI, bulk generation, or scripted migrations — the file backend applies the
   same script far faster. Reserve `--mcp` for when live, validated, no-reload edits
@@ -90,7 +92,7 @@ hinges on a single question: *who makes the tool calls?*
 
 When an agent runs `mxcli exec script.mdl -p app.mpr --mcp` (via the shell, the
 REPL, or an editor command), the agent emits **one** action — the MDL script — and
-receives **one** summarized result. The ~62 PED tool calls, and their often
+receives **one** summarized result. The ~60 PED tool calls, and their often
 verbose, schema-laden JSON responses, happen *inside the mxcli process*. They never
 enter the model's context window, and they don't each cost a model turn.
 
@@ -104,12 +106,12 @@ That is a few thousand tokens, regardless of how many PED round trips it took.
 ### Agent → Studio Pro MCP directly (expensive)
 
 An agent connected straight to Studio Pro's MCP server has no such amortization. To
-build the same domain model it must issue each of the ~62 calls **as its own tool
+build the same domain model it must issue each of the ~60 calls **as its own tool
 call**:
 
 - every request *and* every response (schemas, validation output, read-backs) is
   written into the context window, and
-- each call is a separate model turn — so the model "thinks" ~62 times instead of
+- each call is a separate model turn — so the model "thinks" ~60 times instead of
   once, multiplying both latency and per-turn token cost.
 
 The same work that is one declarative script for the mxcli path becomes dozens of
@@ -120,14 +122,14 @@ imperative, stateful tool calls whose intermediate results accumulate in context
 ```
                      calls in LLM context   model turns   tokens in context
 Agent → mxcli (--mcp)          0                  1              low (script + summary)
-Agent → Studio Pro MCP        ~62               ~62             high (every request + result)
+Agent → Studio Pro MCP        ~60               ~60             high (every request + result)
 ```
 
 mxcli's MCP backend is, in effect, a **compression layer over the PED tool surface**:
 the LLM works in compact, reviewable MDL while mxcli absorbs the chatty,
 validation-heavy, read-modify-write round trips on the model's behalf. For bulk
 authoring this is the difference between one cheap turn and dozens of expensive
-ones — and it is why, even though a script "costs" ~62 tool calls, running it
+ones — and it is why, even though a script "costs" ~60 tool calls, running it
 *through mxcli* keeps that cost out of the model's context.
 
 ## See also

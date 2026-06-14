@@ -18,10 +18,12 @@
 --   - create persistent entity, with NOT NULL / UNIQUE validation rules (+ error messages)
 --   - create entity ... extends ...                    (generalization)
 --   - create association ... (reference, referenceset) WITHIN a single module
---   - create view entity ... as <OQL>
 --   - alter entity ... add / rename attribute, set documentation
 --
 -- OUT of scope — NOT used here, with reasons (capabilities.yaml):
+--   - view entities (OQL)               PED syncs view-entity attributes to the OQL only via
+--                                        the LLM-backed oql_generate tool; its deterministic
+--                                        tools leave the entity out of sync (CE6770)
 --   - default values                    the entity slice doesn't author attribute defaults yet
 --                                        (PED's attribute object carries name/type only)
 --   - non-persistent entities           PED's entity constructor exposes no persistable flag
@@ -206,51 +208,8 @@ create persistent entity McpDm.Truck extends McpDm.Vehicle (
 );
 /
 
--- @version: 10.18+
 -- ############################################################################
--- PART 5: VIEW ENTITIES (OQL) — requires Mendix 10.18+
--- ############################################################################
-
-/**
- * Active products only.
- */
-@position(1100, 100)
-create view entity McpDm.ActiveProducts (
-  Name: string(200),
-  Code: string(50),
-  Price: decimal,
-  Stock: integer
-) as
-  select
-    p.Name as Name,
-    p.Code as Code,
-    p.Price as Price,
-    p.Stock as Stock
-  from McpDm.Product as p
-  where p.IsActive = true;
-/
-
-/**
- * Order totals per customer, joined via the association.
- */
-@position(1100, 300)
-create view entity McpDm.CustomerOrderTotals (
-  CustomerEmail: string(200),
-  OrderCount: integer,
-  TotalSpent: decimal
-) as
-  select
-    c.Email as CustomerEmail,
-    count(o.OrderNumber) as OrderCount,
-    sum(o.TotalAmount) as TotalSpent
-  from McpDm.SalesOrder as o
-  inner join o/McpDm.SalesOrder_Customer/McpDm.Customer as c
-  GROUP by c.Email;
-/
-
--- @version: any
--- ############################################################################
--- PART 6: ALTER ENTITY (add / rename attribute, documentation)
+-- PART 5: ALTER ENTITY (add / rename attribute, documentation)
 -- ############################################################################
 --
 -- Only the ALTER actions the MCP backend supports are used here: add attribute
@@ -274,7 +233,7 @@ alter entity McpDm.Customer
   set comment 'Customer master, MCP-authored.';
 
 -- ############################################################################
--- PART 7: VERIFY (reads always work over MCP — they delegate to the local .mpr)
+-- PART 6: VERIFY (reads always work over MCP — they delegate to the local .mpr)
 -- ############################################################################
 
 show entities in McpDm;
@@ -282,4 +241,3 @@ show enumerations in McpDm;
 describe entity McpDm.Customer;
 describe entity McpDm.SalesOrder;
 describe entity McpDm.Truck;
-describe entity McpDm.CustomerOrderTotals;

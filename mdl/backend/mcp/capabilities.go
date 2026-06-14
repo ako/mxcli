@@ -24,6 +24,7 @@ const (
 	capNanoflowCreate      = "nanoflow_create"
 	capJavaActionCreate    = "javaaction_create"
 	capBusinessEventCreate = "businessevent_create"
+	capViewEntityCreate    = "view_entities"
 )
 
 // Capability is one authorable/blocked feature for a given server version.

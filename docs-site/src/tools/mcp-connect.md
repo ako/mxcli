@@ -82,8 +82,8 @@ mxcli exec mdl-examples/doctype-tests/01-mcp-domain-model-examples.mdl \
   --mcp-dial host.docker.internal:7784
 ```
 
-The new entities, enumerations, associations, and view entities appear in Studio
-Pro as the script runs — no save or reload required.
+The new entities, enumerations, and associations appear in Studio Pro as the
+script runs — no save or reload required.
 
 The same `--mcp` / `--mcp-dial` flags work for a single statement (`-c "…"`) and in
 the interactive REPL (`mxcli -p app.mpr --mcp …` with no subcommand) — in every
@@ -151,12 +151,12 @@ mxcli exec changes.mdl -p app.mpr --mcp http://localhost/mcp --mcp-dial 127.0.0.
 
 ## What works over MCP
 
-The MCP backend authors a subset of MDL — entities (incl. `extends` and
-`ALTER`), associations, enumerations, constants, microflows, pages (`CREATE` +
-`ALTER`), workflows, and view entities. Some document types (nanoflows, Java
-actions, business-event services), security, navigation, and `MOVE` are **not**
-authorable over MCP today. Reads of any document type always work (they come from
-the local `.mpr`).
+The MCP backend authors a subset of MDL — entities (incl. `extends`, `ALTER`, and
+NOT NULL / UNIQUE), associations, enumerations, constants, microflows, pages
+(`CREATE` + `ALTER`), and workflows. Some document types (nanoflows, Java actions,
+business-event services, **view entities**), security, navigation, and `MOVE` are
+**not** authorable over MCP today. Reads of any document type always work (they
+come from the local `.mpr`).
 
 `mxcli mcp capabilities -p app.mpr --mcp … --mcp-dial …` reports exactly what your
 connected version supports. See also

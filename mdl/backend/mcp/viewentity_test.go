@@ -53,42 +53,19 @@ func TestBuildEntityValue_ViewEntity_RequiresSourceRef(t *testing.T) {
 	}
 }
 
-func TestCreateViewEntitySourceDocument_Choreography(t *testing.T) {
-	f := newFakePED(t, func(string, map[string]any) (string, bool) { return "SUCCESS", false })
-	b := &Backend{
-		client:        f.connectClient(t),
-		dirty:         map[string]bool{},
-		schemaFetched: map[string]bool{},
+// View entities are not authorable over MCP: PED can only sync a view entity's
+// attributes to its OQL via the LLM-backed oql_generate tool, so the deterministic
+// path leaves the entity out of sync (CE6770). CreateViewEntitySourceDocument is
+// the executor's first view-entity backend call and must reject before any PED
+// write, leaving nothing half-created.
+func TestCreateViewEntitySourceDocument_Rejected(t *testing.T) {
+	b := &Backend{} // no client/server needed — it rejects before any PED call
+	_, err := b.CreateViewEntitySourceDocument("m1", "MyFirstModule", "LocView", "select 1 as X", "")
+	if err == nil {
+		t.Fatal("expected view-entity creation to be rejected over MCP")
 	}
-
-	id, err := b.CreateViewEntitySourceDocument("m1", "MyFirstModule", "LocView", "select 1 as X", "")
-	if err != nil {
-		t.Fatalf("CreateViewEntitySourceDocument: %v", err)
-	}
-	if id == "" {
-		t.Error("expected a non-empty source document id")
-	}
-
-	create, ok := f.callByName("ped_create_document")
-	if !ok {
-		t.Fatal("ped_create_document not called")
-	}
-	craw, _ := json.Marshal(create.Args["documents"])
-	if !strings.Contains(string(craw), `"documentType":"DomainModels$ViewEntitySourceDocument"`) ||
-		!strings.Contains(string(craw), `"documentName":"LocView"`) {
-		t.Errorf("create-document args wrong: %s", craw)
-	}
-
-	update, ok := f.callByName("ped_update_document")
-	if !ok {
-		t.Fatal("ped_update_document (set /oql) not called")
-	}
-	uraw, _ := json.Marshal(update.Args["operations"])
-	if !strings.Contains(string(uraw), `"path":"/oql"`) || !strings.Contains(string(uraw), `"select 1 as X"`) {
-		t.Errorf("set /oql op wrong: %s", uraw)
-	}
-	if update.Args["documentName"] != "MyFirstModule.LocView" {
-		t.Errorf("oql set targeted wrong doc: %v", update.Args["documentName"])
+	if !strings.Contains(err.Error(), "not authorable") {
+		t.Errorf("error should explain the view entity is not authorable: %v", err)
 	}
 }
 

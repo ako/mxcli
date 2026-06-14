@@ -6,33 +6,25 @@ import (
 	"github.com/mendixlabs/mxcli/model"
 )
 
-const viewEntitySourceDocType = "DomainModels$ViewEntitySourceDocument"
-
-// CreateViewEntitySourceDocument creates the OQL source document that backs a
-// view entity, then sets its query. The companion view entity (created
-// afterwards by the executor via CreateEntity) references this document by
-// qualified name through its OqlViewEntitySource. By convention the source
-// document's name equals the view entity's name.
+// CreateViewEntitySourceDocument is gated on the capability model
+// (capabilities.yaml / view_entities) and rejects. A view entity is only valid
+// when its attributes are synced to the OQL's SELECT columns (each attribute's
+// value becomes an OqlViewValue). PED has no deterministic way to do that — its
+// Attribute schema exposes no `value`, a `set` on the nested value is refused,
+// and the sync (syncViewEntity) is reachable only through the LLM-backed
+// oql_generate tool, which regenerates the query rather than writing the user's
+// OQL verbatim. Writing the OQL with PED's plain tools leaves the entity out of
+// sync with its query (CE6770). So mxcli refuses up front instead of leaving a
+// broken entity in the model.
 //
-// Choreography (verified live): ped_create_document {name} -> ped_update_document
-// set /oql. No ped_check_errors here: the source document is "unlinked" until
-// the entity referencing it exists, so validation runs after the entity write.
+// This is the executor's first view-entity backend call (before the companion
+// entity is created), so rejecting here leaves nothing half-created.
 func (b *Backend) CreateViewEntitySourceDocument(moduleID model.ID, moduleName, docName, oqlQuery, documentation string) (model.ID, error) {
-	if err := b.ensureSchema(viewEntitySourceDocType); err != nil {
-		return "", err
-	}
-	if err := b.pedCreateDocument(moduleName, viewEntitySourceDocType, docName, map[string]any{"name": docName}, ""); err != nil {
-		return "", err
-	}
 	qn := moduleName + "." + docName
-	ops := []pedOpEntry{{Path: "/oql", Operation: pedOperation{Type: "set", Value: oqlQuery}}}
-	if documentation != "" {
-		ops = append(ops, pedOpEntry{Path: "/documentation", Operation: pedOperation{Type: "set", Value: documentation}})
+	if !b.canAuthor(capViewEntityCreate) {
+		return "", b.notAuthorable("view entity", qn, capViewEntityCreate)
 	}
-	if err := b.pedUpdateDoc(viewEntitySourceDocType, qn, ops...); err != nil {
-		return "", err
-	}
-	return model.ID("mcp~vesrc~" + qn), nil
+	return "", errCreatePathUnbuilt("view entity", qn)
 }
 
 // DeleteViewEntitySourceDocumentByName is a no-op: the PED server exposes no
