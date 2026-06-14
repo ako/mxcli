@@ -1,0 +1,305 @@
+-- ============================================================================
+-- MCP-Only Domain Model Examples — what the MCP backend can author
+-- ============================================================================
+--
+-- Every statement in this file stays inside the MCP backend's authoring surface
+-- (the Studio Pro embedded MCP server, "PED"). Run it with the MCP backend:
+--
+--   mxcli exec mdl-examples/doctype-tests/01-mcp-domain-model-examples.mdl \
+--     -p app.mpr --mcp
+--
+-- Source of truth for what is in/out of scope:
+--   mdl/backend/mcp/capabilities.yaml   (see also: mxcli mcp capabilities -p app.mpr --mcp)
+--
+-- IN scope (used below):
+--   - create module
+--   - create enumeration
+--   - create [persistent | non-persistent] entity     (+ NOT NULL / UNIQUE / DEFAULT, enum attrs)
+--   - create entity ... extends ...                    (generalization)
+--   - create association ... (reference, referenceset) WITHIN a single module
+--   - create view entity ... as <OQL>
+--   - alter entity ... add / rename attribute, set documentation
+--
+-- OUT of scope — deliberately NOT used here, with reasons (capabilities.yaml):
+--   - index (...)                       PED entity authoring does not cover indexes
+--   - alter entity ... modify attribute <type>   attribute_type_change: PED can't change a type in place
+--   - move entity / move enumeration    document_move: PED can't re-parent a document
+--   - cross-module associations         associations are authorable WITHIN a module
+--   - security (roles/grants), navigation        no PED write path
+--
+-- This script creates only — it never DROPs or MOVEs, so the results stay in the
+-- model for inspection in Studio Pro after the run.
+--
+-- ============================================================================
+
+create module McpDm;
+
+-- ############################################################################
+-- PART 1: ENUMERATIONS
+-- ############################################################################
+
+/**
+ * Order lifecycle states.
+ */
+create enumeration McpDm.OrderStatus (
+  /** Order received, awaiting processing */
+  PENDING 'Pending',
+  /** Order is being processed */
+  PROCESSING 'Processing',
+  /** Order has been shipped */
+  SHIPPED 'Shipped',
+  /** Order delivered to customer */
+  DELIVERED 'Delivered',
+  /** Order was cancelled */
+  CANCELLED 'Cancelled'
+);
+/
+
+/**
+ * Payment methods with user-friendly captions.
+ */
+create enumeration McpDm.PaymentMethod (
+  /** Credit card payment */
+  CC 'Credit Card',
+  /** Debit card payment */
+  DC 'Debit Card',
+  /** PayPal payment */
+  PP 'PayPal',
+  /** Bank transfer payment */
+  BT 'Bank Transfer'
+);
+/
+
+-- ############################################################################
+-- PART 2: PERSISTENT ENTITIES (types + constraints, no indexes)
+-- ############################################################################
+
+/**
+ * Customer master record.
+ * Demonstrates NOT NULL, UNIQUE and DEFAULT constraints plus an enum attribute.
+ */
+@position(100, 100)
+create persistent entity McpDm.Customer (
+  /** Customer first name */
+  FirstName: string(100) not null error 'First name is required',
+  /** Customer last name */
+  LastName: string(100) not null error 'Last name is required',
+  /** Customer email address (unique) */
+  Email: string(200) not null error 'Email is required' unique error 'Email must be unique',
+  /** Phone number */
+  Phone: string(50),
+  /** Whether the customer is active */
+  IsActive: boolean default true
+);
+/
+
+/**
+ * Product catalog entry.
+ * Demonstrates the common attribute types the MCP backend can author.
+ */
+@position(100, 300)
+create persistent entity McpDm.Product (
+  /** Product name (required) */
+  Name: string(200) not null error 'Product name is required',
+  /** Unique product code */
+  Code: string(50) unique error 'Product code must be unique',
+  /** Full product description */
+  Description1: string(2000),
+  /** Unit price */
+  Price: decimal not null error 'Price is required' default 0.00,
+  /** Current stock quantity (32-bit) */
+  Stock: integer default 0,
+  /** Lifetime units produced (64-bit) */
+  TotalUnitsProduced: long default 0,
+  /** Whether the product is available for sale */
+  IsActive: boolean default true,
+  /** Release date (date only) */
+  ReleaseDate: date,
+  /** Creation timestamp */
+  CreatedAt: datetime
+);
+/
+
+/**
+ * Sales order header.
+ * Uses enumeration-typed attributes for status and payment method.
+ */
+@position(400, 100)
+create persistent entity McpDm.SalesOrder (
+  /** Unique order number */
+  OrderNumber: string(50) not null error 'Order number is required' unique error 'Order number must be unique',
+  /** Order date */
+  OrderDate: datetime not null error 'Order date is required',
+  /** Order status */
+  OrderStatus: enumeration(McpDm.OrderStatus) not null error 'Status is required',
+  /** Payment method */
+  PaymentMethod: enumeration(McpDm.PaymentMethod),
+  /** Total amount */
+  TotalAmount: decimal not null error 'Total is required' default 0.00
+);
+/
+
+-- ############################################################################
+-- PART 3: NON-PERSISTENT ENTITY
+-- ############################################################################
+
+/**
+ * Search criteria object passed to microflows (not stored in the database).
+ */
+@position(400, 300)
+create non-persistent entity McpDm.SearchParameters (
+  /** Free-text search term */
+  SearchTerm: string(200),
+  /** Filter by status */
+  StatusFilter: enumeration(McpDm.OrderStatus),
+  /** Start of date range */
+  StartDate: datetime,
+  /** End of date range */
+  EndDate: datetime,
+  /** Include inactive records */
+  IncludeInactive: boolean default false
+);
+/
+
+-- ############################################################################
+-- PART 4: ASSOCIATIONS (within McpDm only)
+-- ############################################################################
+
+/**
+ * Many orders belong to one customer.
+ */
+create association McpDm.SalesOrder_Customer
+from McpDm.SalesOrder to McpDm.Customer
+type reference
+owner default
+delete_behavior DELETE_BUT_KEEP_REFERENCES;
+/
+
+/**
+ * Many-to-many: products can appear on many orders and vice versa.
+ */
+create association McpDm.SalesOrder_Products
+from McpDm.SalesOrder to McpDm.Product
+type ReferenceSet
+owner both;
+/
+
+-- ############################################################################
+-- PART 5: ENTITY GENERALIZATION (extends)
+-- ############################################################################
+
+/**
+ * Attachment entity that extends System.FileDocument (inherits file storage).
+ */
+@position(700, 100)
+create persistent entity McpDm.Attachment extends System.FileDocument (
+  /** Description of the attachment */
+  FileDescription: string(500),
+  /** Whether the attachment is publicly accessible */
+  IsPublic: boolean default false
+);
+/
+
+/**
+ * Application-level base/derived hierarchy.
+ */
+@position(700, 300)
+create persistent entity McpDm.Vehicle (
+  /** License plate (unique) */
+  LicensePlate: string(20) not null error 'License plate is required' unique error 'License plate must be unique',
+  /** Manufacturer */
+  Make: string(100),
+  /** Current mileage */
+  Mileage: long default 0
+);
+/
+
+/**
+ * Truck specializes Vehicle with cargo attributes.
+ */
+@position(900, 300)
+create persistent entity McpDm.Truck extends McpDm.Vehicle (
+  /** Maximum payload in kilograms */
+  MaxPayload: decimal,
+  /** Number of axles */
+  AxleCount: integer default 2
+);
+/
+
+-- @version: 10.18+
+-- ############################################################################
+-- PART 6: VIEW ENTITIES (OQL) — requires Mendix 10.18+
+-- ############################################################################
+
+/**
+ * Active products only.
+ */
+@position(1100, 100)
+create view entity McpDm.ActiveProducts (
+  Name: string(200),
+  Code: string(50),
+  Price: decimal,
+  Stock: integer
+) as
+  select
+    p.Name as Name,
+    p.Code as Code,
+    p.Price as Price,
+    p.Stock as Stock
+  from McpDm.Product as p
+  where p.IsActive = true;
+/
+
+/**
+ * Order totals per customer, joined via the association.
+ */
+@position(1100, 300)
+create view entity McpDm.CustomerOrderTotals (
+  CustomerEmail: string(200),
+  OrderCount: integer,
+  TotalSpent: decimal
+) as
+  select
+    c.Email as CustomerEmail,
+    count(o.OrderNumber) as OrderCount,
+    sum(o.TotalAmount) as TotalSpent
+  from McpDm.SalesOrder as o
+  inner join o/McpDm.SalesOrder_Customer/McpDm.Customer as c
+  GROUP by c.Email;
+/
+
+-- @version: any
+-- ############################################################################
+-- PART 7: ALTER ENTITY (add / rename attribute, documentation)
+-- ############################################################################
+--
+-- Only the ALTER actions the MCP backend supports are used here:
+--   add attribute, rename attribute, set documentation/comment.
+-- (modify attribute <type>, add index, and move are intentionally absent.)
+
+-- Add attributes to an existing entity.
+alter entity McpDm.Customer
+  add attribute LoyaltyPoints: integer default 0
+  add attribute PreferredContact: string(50);
+
+-- Rename an attribute (non-destructive — preserves the attribute identity).
+alter entity McpDm.Customer
+  rename attribute Phone to PhoneNumber;
+
+-- Set entity-level documentation and comment.
+alter entity McpDm.Product
+  set documentation 'Catalog product. Authored entirely over the MCP backend.';
+
+alter entity McpDm.Customer
+  set comment 'Customer master, MCP-authored.';
+
+-- ############################################################################
+-- PART 8: VERIFY (reads always work over MCP — they delegate to the local .mpr)
+-- ############################################################################
+
+show entities in McpDm;
+show enumerations in McpDm;
+describe entity McpDm.Customer;
+describe entity McpDm.SalesOrder;
+describe entity McpDm.Truck;
+describe entity McpDm.CustomerOrderTotals;
