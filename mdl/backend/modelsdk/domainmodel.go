@@ -49,6 +49,12 @@ func (b *Backend) GetDomainModel(moduleID model.ID) (*domainmodel.DomainModel, e
 			return domainModelFromGen(u.Element, u.ContainerID), nil
 		}
 	}
+	// The System module is virtual — its domain model is not stored in the project,
+	// so serve the injected one (matching ListDomainModels) so DESCRIBE System.* and
+	// any lookup of a platform entity's domain model resolves instead of erroring.
+	if sys := buildSystemDomainModel(); sys.ContainerID == moduleID {
+		return sys, nil
+	}
 	// Match the legacy contract: a missing domain model is an error, not (nil, nil).
 	// Callers (e.g. finalizeProgramExecution after a module drop) rely on the error
 	// to skip — returning (nil, nil) caused a nil-pointer panic downstream.
