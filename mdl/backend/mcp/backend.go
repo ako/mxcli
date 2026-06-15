@@ -35,6 +35,10 @@ type Backend struct {
 	mcpURL string
 	dial   string
 
+	// tracer, when set, reports PED tool calls for --mcp-verbose / --mcp-trace.
+	// Wired onto the clients in Connect. nil is a no-op.
+	tracer *backend.Tracer
+
 	client *Client
 	reader *mpr.Reader
 	path   string
@@ -146,6 +150,14 @@ type ConcordConfig struct {
 	RunOnExit   bool // run run_app    (--mcp-run)
 }
 
+// WithTracer attaches a tool-call tracer (--mcp-verbose / --mcp-trace). The same
+// tracer should also be given to the executor (SetTracer) so MDL-command headers
+// and PED-call lines interleave on one writer. Returns the receiver for chaining.
+func (b *Backend) WithTracer(t *backend.Tracer) *Backend {
+	b.tracer = t
+	return b
+}
+
 // WithConcord enables the Concord client. Returns the receiver for chaining.
 func (b *Backend) WithConcord(cfg ConcordConfig) *Backend {
 	b.concordURL = cfg.URL
@@ -168,6 +180,7 @@ func (b *Backend) Connect(path string) error {
 		r.Close()
 		return err
 	}
+	c.trace = b.tracer
 	si, err := c.Initialize()
 	if err != nil {
 		r.Close()
@@ -185,6 +198,7 @@ func (b *Backend) Connect(path string) error {
 		if err != nil {
 			return fmt.Errorf("create Concord client: %w", err)
 		}
+		cc.trace = b.tracer
 		if _, err := cc.Initialize(); err != nil {
 			return fmt.Errorf("connect to Concord MCP server %q: %w", b.concordURL, err)
 		}
@@ -302,52 +316,67 @@ func (b *Backend) GetModuleByName(name string) (*model.Module, error) {
 	return b.reader.GetModuleByName(name)
 }
 
+// sessionDMPrefix prefixes the synthetic domain-model ID handed out for a
+// session-created module; the suffix is the module name.
+const sessionDMPrefix = "mcp~dm~"
+
+// effectiveDomainModel is the SINGLE seam for reading a module's domain model:
+// the live view that accounts for writes made this session. Every domain-model
+// read funnels through it, so none can forget the dirty routing — the omission
+// that made ListDomainModels return stale entities and broke CREATE ASSOCIATION
+// for an existing module.
+//
+// Routing, in order:
+//   - session-created module (no on-disk domain model): reconstruct from Studio
+//     Pro with a synthetic DM ID encoding the module name (so
+//     moduleNameForDomainModel can resolve it back);
+//   - dirty existing module (written this session): reconstruct from Studio Pro;
+//   - otherwise: the on-disk reader copy (last-saved state).
+func (b *Backend) effectiveDomainModel(moduleID model.ID) (*domainmodel.DomainModel, error) {
+	for _, m := range b.sessionModules {
+		if m.ID == moduleID {
+			return b.reconstructDomainModelFromPED(m.Name, model.ID(sessionDMPrefix+m.Name), moduleID)
+		}
+	}
+	localDM, err := b.reader.GetDomainModel(moduleID)
+	if err != nil {
+		return nil, err
+	}
+	if mod, merr := b.reader.GetModule(moduleID); merr == nil && b.dirty[mod.Name] {
+		if recon, rerr := b.reconstructDomainModelFromPED(mod.Name, localDM.ID, localDM.ContainerID); rerr == nil {
+			return recon, nil // best-effort: fall back to the local copy on failure
+		}
+	}
+	return localDM, nil
+}
+
+// ListDomainModels returns every module's live domain model (dirty routing via
+// effectiveDomainModel), plus session-created modules that have no on-disk copy.
 func (b *Backend) ListDomainModels() ([]*domainmodel.DomainModel, error) {
 	local, err := b.reader.ListDomainModels()
 	if err != nil {
 		return nil, err
 	}
-	if len(b.sessionModules) == 0 {
-		return local, nil
+	out := make([]*domainmodel.DomainModel, 0, len(local)+len(b.sessionModules))
+	for _, dm := range local {
+		eff, eerr := b.effectiveDomainModel(dm.ContainerID)
+		if eerr != nil {
+			eff = dm // best-effort: keep the on-disk copy if the live view fails
+		}
+		out = append(out, eff)
 	}
-	// Append a live-reconstructed domain model for each session-created module, so
-	// entity references into a freshly created module (e.g. a microflow parameter
-	// or workflow context typed X.Foo) resolve in the same run. Best-effort.
-	out := append([]*domainmodel.DomainModel(nil), local...)
 	for _, m := range b.sessionModules {
-		if dm, derr := b.reconstructDomainModelFromPED(m.Name, model.ID(sessionDMPrefix+m.Name), m.ID); derr == nil {
+		if dm, derr := b.effectiveDomainModel(m.ID); derr == nil {
 			out = append(out, dm)
 		}
 	}
 	return out, nil
 }
 
-// GetDomainModel returns a module's domain model. If the module was written
-// this session (dirty), it is reconstructed from Studio Pro's live in-memory
-// model so in-session edits are visible; otherwise it comes from the local
-// reader (last-saved state).
+// GetDomainModel returns a module's live domain model (see effectiveDomainModel).
 func (b *Backend) GetDomainModel(moduleID model.ID) (*domainmodel.DomainModel, error) {
-	// A module created over MCP this session has no on-disk domain model for the
-	// reader to read (the reader is a pre-create snapshot). Reconstruct its live
-	// entities from Studio Pro with a synthetic domain-model ID (encoding the
-	// module name, so moduleNameForDomainModel can resolve it back) — so both
-	// "create entity X.Foo" and references to X's entities (e.g. a microflow
-	// parameter or workflow context typed X.Foo) resolve within the same run.
-	for _, m := range b.sessionModules {
-		if m.ID == moduleID {
-			return b.reconstructDomainModelFromPED(m.Name, model.ID(sessionDMPrefix+m.Name), moduleID)
-		}
-	}
-	mod, err := b.reader.GetModule(moduleID)
-	if err == nil && b.dirty[mod.Name] {
-		return b.reconstructDomainModel(mod.Name, moduleID)
-	}
-	return b.reader.GetDomainModel(moduleID)
+	return b.effectiveDomainModel(moduleID)
 }
-
-// sessionDMPrefix prefixes the synthetic domain-model ID handed out for a
-// session-created module; the suffix is the module name.
-const sessionDMPrefix = "mcp~dm~"
 
 // GetDomainModelByID mirrors GetDomainModel but is keyed by the domain model's
 // own ID; it resolves the owning module and applies the same dirty routing.
@@ -356,10 +385,7 @@ func (b *Backend) GetDomainModelByID(id model.ID) (*domainmodel.DomainModel, err
 	if err != nil {
 		return nil, err
 	}
-	if mod, err := b.reader.GetModule(localDM.ContainerID); err == nil && b.dirty[mod.Name] {
-		return b.reconstructDomainModel(mod.Name, localDM.ContainerID)
-	}
-	return localDM, nil
+	return b.effectiveDomainModel(localDM.ContainerID)
 }
 
 // ReconcileMemberAccesses is a no-op for the MCP backend. It is the executor's

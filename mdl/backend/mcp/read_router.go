@@ -48,30 +48,17 @@ func (b *Backend) registerSynthetic(id model.ID, name string) {
 // pedIDRef matches a PED path reference like "$id(/entities/3)".
 var pedIDRef = regexp.MustCompile(`^\$id\(/entities/(\d+)\)$`)
 
-// reconstructDomainModel builds a *domainmodel.DomainModel for a dirty module
-// from Studio Pro's live in-memory model (read over MCP), assigning synthetic
-// IDs to entities and associations.
-//
-// Fidelity note: PED reads expose attribute NAMES (parsed from $QualifiedName)
-// but not their primitive types — recovering a type costs a read per attribute.
-// The reconstruction therefore uses placeholder attribute types. That is
-// sufficient for the operations the slice routes through it (ALTER attribute
-// add/drop and DROP, which key on names), but DESCRIBE of an in-session-edited
-// entity will not show precise attribute types until the project is saved.
-func (b *Backend) reconstructDomainModel(moduleName string, moduleID model.ID) (*domainmodel.DomainModel, error) {
-	// The domain-model document itself always exists on disk (nameless), so the
-	// local reader gives us its real ID/container even when entities diverged.
-	localDM, err := b.reader.GetDomainModel(moduleID)
-	if err != nil {
-		return nil, fmt.Errorf("reconstruct %s: local domain model: %w", moduleName, err)
-	}
-	return b.reconstructDomainModelFromPED(moduleName, localDM.ID, localDM.ContainerID)
-}
-
 // reconstructDomainModelFromPED reads a module's live entities/associations from
 // Studio Pro and builds a domain model with the given IDs. It is shared by the
-// dirty-saved-module path (real on-disk IDs) and the session-created-module path
-// (synthetic IDs), the latter having no on-disk domain model for the reader.
+// dirty existing-module path (real on-disk IDs) and the session-created-module
+// path (synthetic IDs), the latter having no on-disk domain model for the reader.
+//
+// Fidelity note: PED reads expose attribute NAMES (from $QualifiedName) but not
+// their primitive types — recovering a type costs a read per attribute. The
+// shallow reconstruction uses placeholder types; enrichReconstructedEntities then
+// fills in real types/documentation with one batched leaf read. This is enough
+// for the operations routed through it (name-keyed resolution, ALTER add/drop,
+// DROP); a DESCRIBE of an in-session-edited entity is faithful after enrichment.
 func (b *Backend) reconstructDomainModelFromPED(moduleName string, dmID, containerID model.ID) (*domainmodel.DomainModel, error) {
 	dm := &domainmodel.DomainModel{ContainerID: containerID}
 	dm.ID = dmID
@@ -158,7 +145,7 @@ func (b *Backend) reconstructEntities(moduleName string, dmID model.ID, raw json
 			e.Attributes = append(e.Attributes, &domainmodel.Attribute{
 				ContainerID: id,
 				Name:        lastSegment(pa.QualifiedName),
-				// Placeholder type — see fidelity note on reconstructDomainModel.
+				// Placeholder type — see fidelity note on reconstructDomainModelFromPED.
 				Type: &domainmodel.StringAttributeType{},
 			})
 		}

@@ -14,6 +14,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/mendixlabs/mxcli/mdl/backend"
 )
 
 // Client is a minimal MCP "streamable HTTP" client for Studio Pro's PED server.
@@ -31,6 +33,10 @@ type Client struct {
 	sessionID string
 	protocol  string
 	nextID    int
+
+	// trace, when set, reports each CallTool invocation for --mcp-verbose /
+	// --mcp-trace. nil is a no-op (Tracer methods guard their receiver).
+	trace *backend.Tracer
 }
 
 // ClientOptions configures a Client.
@@ -210,6 +216,10 @@ func (c *Client) ListTools() ([]string, error) {
 }
 
 func (c *Client) CallTool(name string, arguments any) (*ToolResult, error) {
+	if c.trace.Enabled() {
+		target, detail := summarizeToolCall(name, arguments)
+		c.trace.Call(name, target, detail)
+	}
 	res, err := c.call("tools/call", map[string]any{
 		"name":      name,
 		"arguments": arguments,

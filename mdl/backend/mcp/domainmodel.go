@@ -5,6 +5,7 @@ package mcp
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -82,6 +83,12 @@ func (b *Backend) CreateEntity(domainModelID model.ID, entity *domainmodel.Entit
 		Path:      "/entities",
 		Operation: pedOperation{Type: "add", Value: value},
 	}); err != nil {
+		return err
+	}
+	// Validation rules (NOT NULL / UNIQUE) are not part of the entity constructor
+	// — PED's schema directs you to add them as separate DomainModels$ValidationRule
+	// elements once the entity exists.
+	if err := b.addValidationRules(moduleName, entity); err != nil {
 		return err
 	}
 	return b.pedCheckErrors(moduleName)
@@ -162,6 +169,13 @@ func (b *Backend) UpdateEntity(domainModelID model.ID, entity *domainmodel.Entit
 	}
 	if err := guardUnsupportedEntityFeatures(entity); err != nil {
 		return err
+	}
+	// Validation rules on an existing entity (ALTER / CREATE OR MODIFY) need diffing
+	// against the live rules; only CreateEntity authors them today. Reject rather
+	// than silently drop, preserving the prior behavior now that the shared guard
+	// no longer covers validation rules.
+	if len(entity.ValidationRules) > 0 {
+		return unsupportedEntityFeature(entity.Name, "validation rules via ALTER / CREATE OR MODIFY")
 	}
 	entIdx, err := b.entityIndex(moduleName, entity.Name)
 	if err != nil {
@@ -464,11 +478,22 @@ func (b *Backend) CreateAssociation(domainModelID model.ID, assoc *domainmodel.A
 	if err := b.ensureSchema("DomainModels$Association"); err != nil {
 		return err
 	}
+	// parentEntity/childEntity are by-id references. PED accepts the $id(/entities/N)
+	// path-reference form it also emits on read — use that, since a session-created
+	// entity has no on-disk GUID (its model ID is a synthetic mcp~ent~… placeholder).
+	parentRef, err := b.pedEntityRef(domainModelID, moduleName, assoc.ParentID)
+	if err != nil {
+		return fmt.Errorf("association %q: parent entity: %w", assoc.Name, err)
+	}
+	childRef, err := b.pedEntityRef(domainModelID, moduleName, assoc.ChildID)
+	if err != nil {
+		return fmt.Errorf("association %q: child entity: %w", assoc.Name, err)
+	}
 	value := pedAssociation{
 		SType:        "DomainModels$Association",
 		Name:         assoc.Name,
-		ParentEntity: string(assoc.ParentID),
-		ChildEntity:  string(assoc.ChildID),
+		ParentEntity: parentRef,
+		ChildEntity:  childRef,
 		Multiplicity: mult,
 	}
 	if err := b.pedUpdate(moduleName, pedOpEntry{
@@ -674,9 +699,6 @@ func guardUnsupportedEntityFeatures(entity *domainmodel.Entity) error {
 	if len(entity.Indexes) > 0 {
 		return unsupportedEntityFeature(entity.Name, "indexes")
 	}
-	if len(entity.ValidationRules) > 0 {
-		return unsupportedEntityFeature(entity.Name, "validation rules (NOT NULL / UNIQUE)")
-	}
 	if len(entity.EventHandlers) > 0 {
 		return unsupportedEntityFeature(entity.Name, "event handlers")
 	}
@@ -688,6 +710,104 @@ func guardUnsupportedEntityFeatures(entity *domainmodel.Entity) error {
 
 func unsupportedEntityFeature(entityName, feature string) error {
 	return fmt.Errorf("entity %q: %s are not yet supported by the MCP backend (entity slice); create it against a local .mpr instead", entityName, feature)
+}
+
+// pedValidationRule is a DomainModels$ValidationRule $element added to an entity's
+// /validationRules. PED's entity constructor cannot carry rules (its schema says
+// to add them separately), and the target attribute is referenced by qualified
+// name (Module.Entity.Attribute), not by ID.
+type pedValidationRule struct {
+	SType        string       `json:"$Type"`
+	Attribute    string       `json:"attribute"`
+	ErrorMessage *pedText     `json:"errorMessage,omitempty"`
+	RuleInfo     *pedRuleInfo `json:"ruleInfo"`
+}
+
+type pedText struct {
+	SType string `json:"$Type"`
+	Text  string `json:"text"`
+}
+
+type pedRuleInfo struct {
+	SType string `json:"$Type"`
+}
+
+// addValidationRules adds NOT NULL (Required) and UNIQUE validation rules to a
+// just-created entity. They are separate $element adds to /entities/<idx>/
+// validationRules, applied after the entity exists (the freshly created entity's
+// rule array starts empty, so an index-less add appends).
+func (b *Backend) addValidationRules(moduleName string, entity *domainmodel.Entity) error {
+	if len(entity.ValidationRules) == 0 {
+		return nil
+	}
+	if err := b.ensureSchema("DomainModels$ValidationRule"); err != nil {
+		return err
+	}
+	nameByID := make(map[model.ID]string, len(entity.Attributes))
+	for _, a := range entity.Attributes {
+		nameByID[a.ID] = a.Name
+	}
+	entIdx, err := b.entityIndex(moduleName, entity.Name)
+	if err != nil {
+		return err
+	}
+	ops := make([]pedOpEntry, 0, len(entity.ValidationRules))
+	for _, vr := range entity.ValidationRules {
+		attrName, ok := nameByID[vr.AttributeID]
+		if !ok {
+			return fmt.Errorf("entity %q: validation rule references unknown attribute %s", entity.Name, vr.AttributeID)
+		}
+		ruleInfoType, err := pedRuleInfoType(vr.Type)
+		if err != nil {
+			return fmt.Errorf("entity %q attribute %q: %w", entity.Name, attrName, err)
+		}
+		rule := &pedValidationRule{
+			SType:     "DomainModels$ValidationRule",
+			Attribute: moduleName + "." + entity.Name + "." + attrName,
+			RuleInfo:  &pedRuleInfo{SType: ruleInfoType},
+		}
+		if msg := validationErrorText(vr.ErrorMessage); msg != "" {
+			rule.ErrorMessage = &pedText{SType: "Texts$Text", Text: msg}
+		}
+		ops = append(ops, pedOpEntry{
+			Path:      fmt.Sprintf("/entities/%d/validationRules", entIdx),
+			Operation: pedOperation{Type: "add", Value: rule},
+		})
+	}
+	return b.pedUpdate(moduleName, ops...)
+}
+
+// pedRuleInfoType maps a domain-model validation rule type onto PED's RuleInfo
+// element type. Only NOT NULL (Required) and UNIQUE are authorable today.
+func pedRuleInfoType(ruleType string) (string, error) {
+	switch ruleType {
+	case "Required":
+		return "DomainModels$RequiredRuleInfo", nil
+	case "Unique":
+		return "DomainModels$UniqueRuleInfo", nil
+	default:
+		return "", fmt.Errorf("validation rule %q is not yet supported by the MCP backend (only NOT NULL / UNIQUE)", ruleType)
+	}
+}
+
+// validationErrorText extracts a validation rule's error message, preferring the
+// en_US translation and otherwise the lexicographically first (deterministic).
+func validationErrorText(t *model.Text) string {
+	if t == nil {
+		return ""
+	}
+	if v, ok := t.Translations["en_US"]; ok {
+		return v
+	}
+	keys := make([]string, 0, len(t.Translations))
+	for k := range t.Translations {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	if len(keys) > 0 {
+		return t.Translations[keys[0]]
+	}
+	return ""
 }
 
 // ---------------------------------------------------------------------------
@@ -735,6 +855,24 @@ func (b *Backend) entityNameForID(domainModelID, entityID model.ID) (string, err
 // entityIndex finds the position of an entity within the live /entities array.
 func (b *Backend) entityIndex(moduleName, entityName string) (int, error) {
 	return b.arrayElementIndex(moduleName, "/entities", "entity", entityName)
+}
+
+// pedEntityRef resolves an entity ID to the $id(/entities/N) path-reference PED
+// uses for by-id entity references (an association's parentEntity/childEntity).
+// It maps the ID to the entity name (handling synthetic session IDs and on-disk
+// IDs) and then to the entity's live index. PED accepts this form on write — the
+// same form it emits on read — which sidesteps needing a real GUID for an entity
+// created earlier in this session.
+func (b *Backend) pedEntityRef(domainModelID model.ID, moduleName string, entityID model.ID) (string, error) {
+	name, err := b.entityNameForID(domainModelID, entityID)
+	if err != nil {
+		return "", err
+	}
+	idx, err := b.entityIndex(moduleName, name)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("$id(/entities/%d)", idx), nil
 }
 
 // arrayElementIndex reads a named-element array (e.g. /entities, /associations)

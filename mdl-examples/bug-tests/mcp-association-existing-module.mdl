@@ -1,0 +1,48 @@
+-- ============================================================================
+-- Bug — CREATE ASSOCIATION fails over --mcp when the from/to entities were
+-- created earlier in the SAME run, inside an EXISTING module.
+--
+--   Created entity: MyFirstModule.Contact
+--   Created entity: MyFirstModule.Address
+--   Error: parent entity not found: MyFirstModule.Address
+--
+-- Root cause: the executor resolves an association's from/to entities via
+-- findEntity, which lists modules through Backend.ListDomainModels. In the MCP
+-- backend that method reconstructed only *session-created* modules from Studio
+-- Pro's live model — for a *dirty existing* module it returned the stale on-disk
+-- snapshot, hiding entities created earlier in the run. (Backend.GetDomainModel
+-- already had the correct dirty routing; ListDomainModels did not — the two were
+-- inconsistent.) Fix: ListDomainModels applies the same dirty routing.
+--
+-- IMPORTANT — how to reproduce: run this OVER --mcp against a project where
+-- MyFirstModule ALREADY EXISTS on disk (e.g. a fresh Mendix app). The bug is
+-- specific to dirty *existing* modules: if the module is created in-script it
+-- becomes a "session module", which always reconstructed correctly and does NOT
+-- reproduce. On the file (MPR) backend this also passes — the bug is MCP-only.
+--
+--   mxcli exec mcp-association-existing-module.mdl -p app.mpr \
+--     --mcp http://localhost:7782/mcp
+--
+-- Expected after the fix: both entities and the association are created; no
+-- "parent entity not found".
+-- ============================================================================
+
+create persistent entity MyFirstModule.BugContact (
+  Name: string(100) not null error 'Name is required'
+);
+/
+
+create persistent entity MyFirstModule.BugAddress (
+  Street: string(200),
+  City: string(100)
+);
+/
+
+-- This statement failed before the fix because BugAddress (just created over MCP)
+-- was not visible to the association's entity resolution.
+create association MyFirstModule.BugContact_BugAddress
+from MyFirstModule.BugContact to MyFirstModule.BugAddress
+type reference
+owner default
+delete_behavior DELETE_BUT_KEEP_REFERENCES;
+/

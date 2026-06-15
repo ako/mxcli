@@ -155,6 +155,7 @@
   - [mxcli docker run](tools/docker-run.md)
   - [OQL Queries](tools/oql.md)
   - [Dev Container Setup](tools/devcontainer.md)
+- [Live Studio Pro Sync (MCP)](tools/mcp-connect.md)
 
 ---
 
@@ -318,6 +319,7 @@
   - [SQLite Schema](internals/catalog-schema.md)
   - [FTS5 Full-Text Search](internals/fts5.md)
   - [Reference Tracking](internals/reference-tracking.md)
+- [MCP Backend: Script-to-Tool-Call Cost](internals/mcp-backend-cost.md)
 
 ---
 

@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/mendixlabs/mxcli/mdl/backend"
 	"github.com/mendixlabs/mxcli/mdl/diaglog"
 	"github.com/mendixlabs/mxcli/mdl/executor"
 	"github.com/mendixlabs/mxcli/mdl/repl"
@@ -114,6 +115,8 @@ Examples:
 		globalMCPSave, _ = cmd.Flags().GetBool("mcp-save")
 		globalMCPCheck, _ = cmd.Flags().GetBool("mcp-check")
 		globalMCPRun, _ = cmd.Flags().GetBool("mcp-run")
+		globalMCPVerbose, _ = cmd.Flags().GetBool("mcp-verbose")
+		globalMCPTrace, _ = cmd.Flags().GetBool("mcp-trace")
 		globalEngineFlag, _ = cmd.Flags().GetString("engine")
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -159,10 +162,14 @@ Examples:
 			defer logger.Close()
 
 			r := repl.New(os.Stdin, os.Stdout)
-			r.SetLogger(logger)
-			// Honor MXCLI_ENGINE / --engine in the interactive REPL; without this
-			// the REPL falls back to its hardcoded legacy backend (see repl.New).
+			// Honor MXCLI_ENGINE/--engine AND --mcp in interactive mode (the REPL
+			// defaulted to the legacy local .mpr backend and ignored both). The
+			// unified factory routes writes to the modelsdk engine or a live Studio
+			// Pro as configured. Must precede the auto-connect below, since CONNECT
+			// consumes the factory.
 			r.SetBackendFactory(newBackendFactory())
+			r.SetTracer(mcpTracer())
+			r.SetLogger(logger)
 			defer r.Close()
 
 			// Auto-connect if project specified
@@ -204,6 +211,8 @@ var (
 	globalMCPSave        bool
 	globalMCPCheck       bool
 	globalMCPRun         bool
+	globalMCPVerbose     bool
+	globalMCPTrace       bool
 )
 
 // resolveFormat returns the effective output format for a command.
@@ -220,12 +229,32 @@ func resolveFormat(cmd *cobra.Command, defaultFormat string) string {
 	return defaultFormat
 }
 
+// mcpTracer builds the PED tool-call tracer from --mcp-verbose / --mcp-trace.
+// Returns nil when tracing is off or --mcp is not set (tracing is meaningless
+// without the MCP backend). Output goes to stderr so stdout stays pipeable.
+// (The MCP backend selection itself lives in newBackendFactory, the unified
+// engine+MCP factory.)
+func mcpTracer() *backend.Tracer {
+	if globalMCPURL == "" {
+		return nil
+	}
+	switch {
+	case globalMCPTrace:
+		return &backend.Tracer{Level: 2, W: os.Stderr}
+	case globalMCPVerbose:
+		return &backend.Tracer{Level: 1, W: os.Stderr}
+	default:
+		return nil
+	}
+}
+
 // newLoggedExecutor creates an executor with diagnostics logging attached.
 // The caller must call logger.Close() when done (safe on nil).
 func newLoggedExecutor(mode string) (*executor.Executor, *diaglog.Logger) {
 	logger := diaglog.Init(version, mode)
 	exec := executor.New(os.Stdout)
 	exec.SetBackendFactory(newBackendFactory())
+	exec.SetTracer(mcpTracer())
 	exec.SetLogger(logger)
 	if globalJSONFlag {
 		exec.SetFormat(executor.FormatJSON)
@@ -277,6 +306,8 @@ func init() {
 	rootCmd.PersistentFlags().Bool("mcp-save", false, "After the command, save all changes in Studio Pro via Concord (requires --mcp-concord; the built-in server has no save tool)")
 	rootCmd.PersistentFlags().Bool("mcp-check", false, "After the command, run Studio Pro's model consistency check via Concord and print the report (requires --mcp-concord)")
 	rootCmd.PersistentFlags().Bool("mcp-run", false, "After the command, start the app in Studio Pro via Concord (run_app) and print its URL (requires --mcp-concord)")
+	rootCmd.PersistentFlags().Bool("mcp-verbose", false, "Print each PED tool call the MCP backend makes (requires --mcp)")
+	rootCmd.PersistentFlags().Bool("mcp-trace", false, "Print each MDL command with the PED tool calls it makes (implies --mcp-verbose; requires --mcp)")
 	rootCmd.PersistentFlags().String("engine", "", "Model engine: legacy (default), modelsdk, compare [experimental; overrides MXCLI_ENGINE]")
 	_ = rootCmd.PersistentFlags().MarkHidden("engine")
 	rootCmd.Flags().StringP("command", "c", "", "Execute MDL command(s) and exit")

@@ -1,0 +1,243 @@
+-- ============================================================================
+-- MCP-Only Domain Model Examples — what the MCP backend can author
+-- ============================================================================
+--
+-- Every statement here stays inside the MCP backend's authoring surface (the
+-- Studio Pro embedded MCP server, "PED"), verified by running this script against
+-- a live Studio Pro 11.11 with the MCP backend:
+--
+--   mxcli exec mdl-examples/doctype-tests/01-mcp-domain-model-examples.mdl \
+--     -p app.mpr --mcp http://localhost:7782/mcp
+--
+-- Source of truth: mdl/backend/mcp/capabilities.yaml
+--   (live view: mxcli mcp capabilities -p app.mpr --mcp http://localhost:7782/mcp)
+--
+-- IN scope (used below):
+--   - create module
+--   - create enumeration
+--   - create persistent entity, with NOT NULL / UNIQUE validation rules (+ error messages)
+--   - create entity ... extends ...                    (generalization)
+--   - create association ... (reference, referenceset) WITHIN a single module
+--   - alter entity ... add / rename attribute, set documentation
+--
+-- OUT of scope — NOT used here, with reasons (capabilities.yaml):
+--   - view entities (OQL)               PED syncs view-entity attributes to the OQL only via
+--                                        the LLM-backed oql_generate tool; its deterministic
+--                                        tools leave the entity out of sync (CE6770)
+--   - default values                    the entity slice doesn't author attribute defaults yet
+--                                        (PED's attribute object carries name/type only)
+--   - non-persistent entities           PED's entity constructor exposes no persistable flag
+--   - index (...)                       not built in the entity slice
+--   - alter entity ... modify attribute <type>   attribute_type_change: PED can't change a type in place
+--   - move entity / move enumeration    document_move: PED can't re-parent a document
+--   - cross-module associations         associations are authorable WITHIN a module
+--   - security (roles/grants), navigation        no PED write path
+--
+-- Create-only — no DROP/MOVE — so results stay in the model for inspection.
+--
+-- ============================================================================
+
+create module McpDm;
+
+-- ############################################################################
+-- PART 1: ENUMERATIONS
+-- ############################################################################
+
+/**
+ * Order lifecycle states.
+ */
+create enumeration McpDm.OrderStatus (
+  /** Order received, awaiting processing */
+  PENDING 'Pending',
+  /** Order is being processed */
+  PROCESSING 'Processing',
+  /** Order has been shipped */
+  SHIPPED 'Shipped',
+  /** Order delivered to customer */
+  DELIVERED 'Delivered',
+  /** Order was cancelled */
+  CANCELLED 'Cancelled'
+);
+/
+
+/**
+ * Payment methods with user-friendly captions.
+ */
+create enumeration McpDm.PaymentMethod (
+  /** Credit card payment */
+  CC 'Credit Card',
+  /** Debit card payment */
+  DC 'Debit Card',
+  /** PayPal payment */
+  PP 'PayPal',
+  /** Bank transfer payment */
+  BT 'Bank Transfer'
+);
+/
+
+-- ############################################################################
+-- PART 2: PERSISTENT ENTITIES (types + NOT NULL / UNIQUE validation rules)
+-- ############################################################################
+
+/**
+ * Customer master record.
+ * Demonstrates NOT NULL and UNIQUE validation rules (with error messages) plus
+ * an enumeration-typed attribute — all authorable over MCP.
+ */
+@position(100, 100)
+create persistent entity McpDm.Customer (
+  /** Customer first name */
+  FirstName: string(100) not null error 'First name is required',
+  /** Customer last name */
+  LastName: string(100) not null error 'Last name is required',
+  /** Customer email address (unique) */
+  Email: string(200) not null error 'Email is required' unique error 'Email must be unique',
+  /** Phone number */
+  Phone: string(50),
+  /** Whether the customer is active */
+  IsActive: boolean
+);
+/
+
+/**
+ * Product catalog entry — the common attribute types the MCP backend authors.
+ */
+@position(100, 300)
+create persistent entity McpDm.Product (
+  /** Product name (required) */
+  Name: string(200) not null error 'Product name is required',
+  /** Unique product code */
+  Code: string(50) unique error 'Product code must be unique',
+  /** Full product description */
+  Description1: string(2000),
+  /** Unit price */
+  Price: decimal,
+  /** Current stock quantity (32-bit) */
+  Stock: integer,
+  /** Lifetime units produced (64-bit) */
+  TotalUnitsProduced: long,
+  /** Whether the product is available for sale */
+  IsActive: boolean,
+  /** Release date (date only) */
+  ReleaseDate: date,
+  /** Creation timestamp */
+  CreatedAt: datetime
+);
+/
+
+/**
+ * Sales order header — enumeration-typed status and payment method.
+ */
+@position(400, 100)
+create persistent entity McpDm.SalesOrder (
+  /** Unique order number */
+  OrderNumber: string(50) not null error 'Order number is required' unique error 'Order number must be unique',
+  /** Order date */
+  OrderDate: datetime not null error 'Order date is required',
+  /** Order status */
+  OrderStatus: enumeration(McpDm.OrderStatus) not null error 'Status is required',
+  /** Payment method */
+  PaymentMethod: enumeration(McpDm.PaymentMethod),
+  /** Total amount */
+  TotalAmount: decimal not null error 'Total is required'
+);
+/
+
+-- ############################################################################
+-- PART 3: ASSOCIATIONS (within McpDm only)
+-- ############################################################################
+
+/**
+ * Many orders belong to one customer.
+ */
+create association McpDm.SalesOrder_Customer
+from McpDm.SalesOrder to McpDm.Customer
+type reference
+owner default
+delete_behavior DELETE_BUT_KEEP_REFERENCES;
+/
+
+/**
+ * Many-to-many: products can appear on many orders and vice versa.
+ */
+create association McpDm.SalesOrder_Products
+from McpDm.SalesOrder to McpDm.Product
+type ReferenceSet
+owner both;
+/
+
+-- ############################################################################
+-- PART 4: ENTITY GENERALIZATION (extends)
+-- ############################################################################
+
+/**
+ * Attachment entity that extends System.FileDocument (inherits file storage).
+ */
+@position(700, 100)
+create persistent entity McpDm.Attachment extends System.FileDocument (
+  /** Description of the attachment */
+  FileDescription: string(500),
+  /** Whether the attachment is publicly accessible */
+  IsPublic: boolean
+);
+/
+
+/**
+ * Application-level base/derived hierarchy.
+ */
+@position(700, 300)
+create persistent entity McpDm.Vehicle (
+  /** License plate (unique) */
+  LicensePlate: string(20) not null error 'License plate is required' unique error 'License plate must be unique',
+  /** Manufacturer */
+  Make: string(100),
+  /** Current mileage */
+  Mileage: long
+);
+/
+
+/**
+ * Truck specializes Vehicle with cargo attributes.
+ */
+@position(900, 300)
+create persistent entity McpDm.Truck extends McpDm.Vehicle (
+  /** Maximum payload in kilograms */
+  MaxPayload: decimal,
+  /** Number of axles */
+  AxleCount: integer
+);
+/
+
+-- ############################################################################
+-- PART 5: ALTER ENTITY (add / rename attribute, documentation)
+-- ############################################################################
+--
+-- Only the ALTER actions the MCP backend supports are used here: add attribute
+-- (without defaults or NOT NULL/UNIQUE — validation rules on ALTER are a future
+-- slice), rename attribute, set documentation/comment.
+
+-- Add plain attributes to an existing entity.
+alter entity McpDm.Customer
+  add attribute LoyaltyPoints: integer
+  add attribute PreferredContact: string(50);
+
+-- Rename an attribute (non-destructive — preserves the attribute identity).
+alter entity McpDm.Customer
+  rename attribute Phone to PhoneNumber;
+
+-- Set entity-level documentation and comment.
+alter entity McpDm.Product
+  set documentation 'Catalog product. Authored entirely over the MCP backend.';
+
+alter entity McpDm.Customer
+  set comment 'Customer master, MCP-authored.';
+
+-- ############################################################################
+-- PART 6: VERIFY (reads always work over MCP — they delegate to the local .mpr)
+-- ############################################################################
+
+show entities in McpDm;
+show enumerations in McpDm;
+describe entity McpDm.Customer;
+describe entity McpDm.SalesOrder;
+describe entity McpDm.Truck;

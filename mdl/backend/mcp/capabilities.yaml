@@ -25,7 +25,7 @@ features:
   - key: entities
     feature: "Entities"
     available: true
-    note: "CREATE/DROP; ALTER add/drop/rename attribute, entity & attribute documentation; generalization (extends)"
+    note: "CREATE/DROP (+ NOT NULL / UNIQUE validation rules on create); ALTER add/drop/rename attribute, entity & attribute documentation; generalization (extends)"
   - key: associations
     feature: "Associations"
     available: true
@@ -51,9 +51,9 @@ features:
     available: true
     note: "CREATE / CREATE OR REPLACE / DROP / ALTER (full, any nesting depth)"
   - key: view_entities
-    feature: "View entities"
-    available: true
-    note: "CREATE"
+    feature: "View entities — CREATE"
+    available: false
+    note: "PED syncs a view entity's attributes to its OQL only via the LLM-backed oql_generate tool; its deterministic write tools leave attributes as StoredValue, out of sync with the query (CE6770). mxcli writes user OQL verbatim and does not invoke the generator, so it does not author view entities over MCP"
   - key: documents_into_folders
     feature: "Documents into folders"
     available: true
@@ -83,6 +83,10 @@ features:
     feature: "ALTER … MODIFY attribute type"
     available: false
     note: "PED can't change a type in place (would drop the column)"
+  - key: entity_slice_gaps
+    feature: "Entity defaults, indexes, non-persistent entities, event handlers, system members"
+    available: false
+    note: "the entity slice authors plain attributes + NOT NULL/UNIQUE; default values, indexes, and non-persistent entities are not built yet (and PED's entity constructor exposes no persistable flag)"
   - key: document_move
     feature: "MOVE / re-parent a document, empty CREATE FOLDER"
     available: false

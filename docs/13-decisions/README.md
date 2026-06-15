@@ -99,6 +99,8 @@ This preserves the audit trail.
 | [0003](0003-mdl-is-sql-shaped.md) | MDL is SQL-shaped | Accepted |
 | [0004](0004-full-codec-engine.md) | Route all document types through the codec engine | Accepted |
 | [0005](0005-semantic-model-interface-currency.md) | Semantic model is the backend-interface currency; storage formats are swappable adapters | Accepted |
+| [0004](0004-mcp-capability-model.md) | Version-aware MCP capability model | Proposed |
+| [0005](0005-mcp-read-model-session-overlay.md) | MCP backend read model — disk base with session overlay | Proposed |
 
 ## Candidates to back-fill
 

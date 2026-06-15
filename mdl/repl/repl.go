@@ -42,13 +42,19 @@ func (r *REPL) SetLogger(l *diaglog.Logger) {
 }
 
 // SetBackendFactory overrides the backend factory used when the REPL connects to
-// a project. Without this the REPL defaults to the legacy mprbackend (see New),
-// which silently ignores MXCLI_ENGINE — the CLI wires the engine-aware factory
-// here so the interactive REPL honors the selected engine.
-func (r *REPL) SetBackendFactory(f func() backend.FullBackend) {
+// a project. The default is the legacy local .mpr backend (see New); the CLI
+// passes the engine- and MCP-aware factory here so the interactive REPL honors
+// MXCLI_ENGINE/--engine and --mcp (it ignored both before). Call before the first
+// CONNECT (e.g. before auto-connect), since CONNECT consumes the factory.
+func (r *REPL) SetBackendFactory(f executor.BackendFactory) {
 	r.executor.SetBackendFactory(f)
 }
 
+// SetTracer attaches an MCP tool-call tracer (--mcp-verbose / --mcp-trace) so the
+// REPL prints PED calls (and, at level 2, the MDL command above them).
+func (r *REPL) SetTracer(t *backend.Tracer) {
+	r.executor.SetTracer(t)
+}
 // New creates a new REPL with the given input and output.
 func New(input io.Reader, output io.Writer) *REPL {
 	exec := executor.New(output)
