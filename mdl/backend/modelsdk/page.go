@@ -3,9 +3,10 @@
 package modelsdkbackend
 
 import (
+	"github.com/mendixlabs/mxcli/modelsdk/element"
+	genDT "github.com/mendixlabs/mxcli/modelsdk/gen/datatypes"
 	genPg "github.com/mendixlabs/mxcli/modelsdk/gen/pages"
 	_ "github.com/mendixlabs/mxcli/modelsdk/gen/texts" // register Texts$Text so page titles decode concretely
-	"github.com/mendixlabs/mxcli/modelsdk/element"
 	"github.com/mendixlabs/mxcli/modelsdk/mprread"
 
 	"github.com/mendixlabs/mxcli/model"
@@ -72,6 +73,21 @@ func (b *Backend) ListSnippets() ([]*pages.Snippet, error) {
 	for _, u := range units {
 		s := &pages.Snippet{ContainerID: u.ContainerID, Name: u.Element.Name()}
 		s.ID = model.ID(u.Element.ID())
+		// Populate declared parameters — the page builder reads these to validate
+		// and wire SNIPPETCALL argument mappings (without them every parameterised
+		// snippet call writes an empty argument → CE1571 in Studio Pro).
+		for _, el := range u.Element.ParametersItems() {
+			sp, ok := el.(*genPg.SnippetParameter)
+			if !ok {
+				continue
+			}
+			p := &pages.SnippetParameter{Name: sp.Name()}
+			p.ID = model.ID(sp.ID())
+			if ot, ok := sp.ParameterType().(*genDT.ObjectType); ok {
+				p.EntityName = ot.EntityQualifiedName()
+			}
+			s.Parameters = append(s.Parameters, p)
+		}
 		out = append(out, s)
 	}
 	return out, nil

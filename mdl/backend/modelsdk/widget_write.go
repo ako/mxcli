@@ -504,12 +504,24 @@ func widgetToGen(w pages.Widget) (element.Element, error) {
 	case *pages.SnippetCallWidget:
 		g := genPg.NewSnippetCallWidget()
 		applyWidgetBase(g, &x.BaseWidget)
-		if len(x.ParameterMappings) > 0 {
-			return nil, fmt.Errorf("CreatePage: parameterised snippet call %q not yet supported by the modelsdk engine — rerun with MXCLI_ENGINE=legacy", x.Name)
-		}
 		call := genPg.NewSnippetCall()
 		assignID(call)
 		call.SetSnippetQualifiedName(x.SnippetName)
+		// Parameter mappings: each maps a snippet parameter (BY_NAME, as
+		// "Snippet.Param") to the page variable being passed. Argument stays empty;
+		// the variable reference lives in Variable.PageParameter (mirrors the legacy
+		// serializer). Without these, Studio Pro reports CE1571 "no argument selected".
+		for _, pm := range x.ParameterMappings {
+			m := genPg.NewSnippetParameterMapping()
+			assignID(m)
+			m.SetParameterQualifiedName(x.SnippetName + "." + pm.ParamName)
+			m.SetArgument("")
+			pv := genPg.NewPageVariable()
+			assignID(pv)
+			pv.SetPageParameterQualifiedName(strings.TrimPrefix(pm.Argument, "$"))
+			m.SetVariable(pv)
+			call.AddParameterMappings(m)
+		}
 		g.SetSnippetCall(call)
 		return g, nil
 
@@ -742,8 +754,34 @@ func clientTemplateParameterToGen(p *pages.ClientTemplateParameter) element.Elem
 			g.SetAttributePath(p.AttributeRef)
 		}
 	}
+	// When the attribute is read from a page/local/snippet variable (e.g.
+	// {1}=$Product.Name where $Product is a page parameter), the variable source
+	// MUST be emitted as a Forms$PageVariable. Without it Studio Pro can't resolve
+	// the attribute's data context → CE1365 "move into a data container" + CE7006
+	// "selected value is not valid for attribute". Matches the legacy serializer.
+	if p.SourceVariable != "" {
+		g.SetSourceVariable(sourceVariableToGen(p.SourceVariable, p.SourceVariableKind))
+	}
 	g.SetFormattingInfo(newFormattingInfo())
 	return g
+}
+
+// sourceVariableToGen builds the Forms$PageVariable that names a template
+// parameter's (or similar) data source. kind selects which slot the variable
+// name fills: "" = page parameter, "local" = page-level Variables entry,
+// "snippet" = snippet parameter.
+func sourceVariableToGen(name, kind string) element.Element {
+	pv := genPg.NewPageVariable()
+	assignID(pv)
+	switch kind {
+	case "local":
+		pv.SetLocalVariableQualifiedName(name)
+	case "snippet":
+		pv.SetSnippetParameterQualifiedName(name)
+	default:
+		pv.SetPageParameterQualifiedName(name)
+	}
+	return pv
 }
 
 // newFormattingInfo builds the default Forms$FormattingInfo (matches the legacy
