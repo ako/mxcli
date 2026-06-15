@@ -14,6 +14,20 @@ import (
 // flows are nested in folders) need these — without them the rows are silently
 // dropped because folder→module resolution fails.
 
+// GetRawUnit returns a unit's decoded BSON as an ordered map (catalog +
+// raw-inspection paths). Delegates to the codec reader.
+func (b *Backend) GetRawUnit(id model.ID) (map[string]any, error) {
+	return b.reader.GetRawUnit(id)
+}
+
+// ListRawUnitsByType returns every unit whose $Type has the given prefix, with
+// resolved raw contents — the catalog uses this for document types that have no
+// dedicated typed reader (e.g. JavaScript actions, data transformers). Delegates
+// to the codec reader.
+func (b *Backend) ListRawUnitsByType(typePrefix string) ([]*types.RawUnit, error) {
+	return b.reader.ListRawUnitsByType(typePrefix)
+}
+
 func (b *Backend) ListUnits() ([]*types.UnitInfo, error) {
 	us, err := b.reader.ListUnits()
 	if err != nil {

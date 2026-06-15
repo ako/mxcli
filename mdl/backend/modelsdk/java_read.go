@@ -41,6 +41,23 @@ func (b *Backend) ReadJavaActionByName(qualifiedName string) (*javaactions.JavaA
 	return nil, fmt.Errorf("java action not found: %s", qualifiedName)
 }
 
+// ListJavaActionsFull reads every Java action unit into the fully-parsed semantic
+// form (parameters, types, return type) — what the catalog's java-actions builder
+// and SHOW JAVA ACTIONS need. (The virtual System-module java actions that the
+// legacy reader appends are not yet modelled in modelsdk/meta, so they're omitted;
+// the catalog simply indexes fewer rows, it does not error.)
+func (b *Backend) ListJavaActionsFull() ([]*javaactions.JavaAction, error) {
+	units, err := mprread.ListUnitsWithContainer[*genJa.JavaAction](b.reader)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*javaactions.JavaAction, 0, len(units))
+	for _, u := range units {
+		out = append(out, javaActionFromGen(u.Element, u.ContainerID))
+	}
+	return out, nil
+}
+
 // javaActionFromGen converts a gen JavaAction to the semantic type.
 func javaActionFromGen(g *genJa.JavaAction, containerID model.ID) *javaactions.JavaAction {
 	out := &javaactions.JavaAction{
