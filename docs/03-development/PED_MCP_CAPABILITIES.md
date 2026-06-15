@@ -448,12 +448,76 @@ Studio Pro). `get_app_status` is read-only and returns valid data but reflects r
 port state (can be a stale runtime). Net: only `delete_document` and
 `check_model` are dependable today.
 
-Candidate gap-closers not yet wired: `delete_model_element` (entity/attribute/
-association — but PED already deletes these, so low priority; snake_case args
-`{element_type, entity_name}`), `check_project_errors` (full-project validation —
-currently stubbed in Concord), `refresh_project`. Concord identity captured
-2026-06-08: `concord-mcp` (proto
-`2025-03-26`), 44 tools, on port 7783 (directly container-reachable; no socat).
+### Full tool inventory (44 tools, captured 2026-06-15)
+
+Concord identity: `concord-mcp` (proto `2025-03-26`), port 7783 (directly
+container-reachable; no socat). **Two behaviors to know:**
+
+- **`tools/list` is context-curated.** After `concord__set_task_context`, a
+  subsequent `tools/list` returns only a *curated subset* relevant to the declared
+  task. The full 44 below come from a fresh `tools/list` with no task context set.
+  Always re-probe without a task context to see everything.
+- **No Maia / agent-invoke tool.** Like PED, Concord exposes *tools an agent uses*,
+  not a "run the Maia agent" entrypoint. The `concord__*` tools are agent **self-
+  management** helpers (calibration, friction journal, tool discovery), not Maia.
+
+Wired/tested status: ✅ dependable · ⚠️ UI-automation, unreliable (see above) ·
+○ present, not yet wired/vetted. `R` = readOnlyHint.
+
+| Category | Tool | R/W | Status / note |
+|----------|------|-----|---------------|
+| Domain model | `rename_entity` | W | ○ in-place, identity-preserving rename (PED only does `set /name`) |
+| Domain model | `rename_attribute` | W | ○ identity-preserving |
+| Domain model | `rename_association` | W | ○ identity-preserving |
+| Domain model | `rename_module` | W | ○ identity-preserving |
+| Domain model | `rename_document` | W | ○ identity-preserving |
+| Domain model | `set_documentation` | W | ○ set element documentation |
+| Domain model | `arrange_domain_model` | W | ○ auto-layout entities/associations |
+| Domain model | `delete_model_element` | W | ○ delete entity/attribute/association (PED already removes these via array op) |
+| Constants/enums | `rename_enumeration_value` | W | ○ identity-preserving |
+| Microflows | `modify_microflow_activity` | W | ○ mutate an activity by 1-based position |
+| Microflows | `insert_before_activity` | W | ○ sequence an activity |
+| Microflows | `set_microflow_url` | W | ○ |
+| Pages | `delete_document` | W | ✅ real `DROP` of standalone docs (wired) |
+| Pages | `exclude_document` | W | ○ |
+| Pages | `generate_overview_pages` | W | ○ CRUD list + new-edit pages |
+| Navigation | `manage_navigation` | W | ○ menu structure, home page, role gating (PED has no nav path) |
+| Project settings | `read_configurations` | R | ○ |
+| Project settings | `set_configuration` | W | ○ |
+| Project settings | `read_runtime_settings` | R | ○ |
+| Project settings | `set_runtime_settings` | W | ○ |
+| Project settings | `get_active_run_configuration` | R | ○ which run config will run |
+| Validation/diag | `check_model` | R | ✅ domain-model consistency check (wired, `--mcp-check`) |
+| Validation/diag | `check_project_errors` | R | ○ full-project "Check All Errors" — reported stubbed in Concord |
+| Validation/diag | `analyze_project_patterns` | R | ○ architectural pattern/anti-pattern scan |
+| Validation/diag | `get_last_error` | R | ○ |
+| Validation/diag | `get_studio_pro_logs` | R | ○ |
+| Security (read) | `audit_security` | R | ○ full security audit (intended) |
+| Security (read) | `read_entity_access_rules` | R | ○ |
+| Security (read) | `read_microflow_security` | R | ○ |
+| Security (read) | `read_security_info` | R | ○ project security overview |
+| App runtime | `get_app_status` | R | ✅ valid data, but raw port probe (can be a stale runtime) |
+| App runtime | `run_app` | W | ⚠️ UI automation — `command_sent`, no effect |
+| App runtime | `stop_app` | W | ⚠️ UI automation — `command_sent`, app stays running |
+| App runtime | `save_all` | W | ⚠️ UI automation — does not persist and **hangs Studio Pro**; save manually |
+| Project | `refresh_project` | W | ○ force re-scan of project dir for external file changes |
+| Concord meta | `concord__session_context` | R | ○ session-start briefing (call once) |
+| Concord meta | `concord__set_task_context` | W | ○ declares task → curates subsequent `tools/list` |
+| Concord meta | `concord__find_tool` | R | ○ free-text "which tool for this task" |
+| Concord meta | `concord__verify` | R | ○ verify a high-level workflow (e.g. `entity_created`) actually applied |
+| Concord meta | `concord__diagnose_project` | R | ○ parallel project-state probes (SP running? .mpr locked?) |
+| Concord meta | `concord__calibration_summary` | R | ○ C4 calibration journal summary |
+| Concord meta | `concord__record_calibration` | W | ○ append (claimed, actual) calibration entry |
+| Concord meta | `concord__silence_friction` | W | ○ suppress friction-wire emission for a tool |
+| Concord meta | `concord__tried_approaches` | R | ○ prior friction occurrences for a pattern/tool |
+
+**Highest-value unwired gap-closers** (would fill PED limits the matrix currently
+marks unsupported, pending probe + identity-preservation vetting per
+[ADR-0002](../13-decisions/0002-backend-abstraction.md) and the "don't fake
+identity ops" rule): the `rename_*` family (true renames vs PED's `set /name`) and
+`manage_navigation` (no PED nav write path). `check_project_errors` and
+`refresh_project` are also candidates. `delete_model_element` is low priority (PED
+already removes entities/associations).
 
 ## Onboarding a new Studio Pro version
 
