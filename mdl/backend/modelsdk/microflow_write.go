@@ -60,6 +60,13 @@ func init() {
 	codec.RegisterTypeDefaults("Microflows$TypedTemplate", codec.TypeDefaults{
 		MandatoryListMarkers: map[string]int32{"Arguments": 2},
 	})
+	// EXECUTE DATABASE QUERY action: both mapping lists empty as marker 2; their
+	// child mapping $Types use marker 2 too.
+	codec.RegisterListMarker("DatabaseConnector$ConnectionParameterMapping", 2)
+	codec.RegisterListMarker("DatabaseConnector$QueryParameterMapping", 2)
+	codec.RegisterTypeDefaults("DatabaseConnector$ExecuteDatabaseQueryAction", codec.TypeDefaults{
+		MandatoryListMarkers: map[string]int32{"ConnectionParameterMappings": 2, "ParameterMappings": 2},
+	})
 	// A ListOperationAction's Sort operation reuses the same Microflows$SortingsList
 	// envelope as a retrieve (registered above: empty "Sortings" = marker 2,
 	// RetrieveSorting child marker = 2). Studio Pro tolerates the inner Sortings
@@ -409,6 +416,32 @@ func microflowActionToGen(action microflows.MicroflowAction) element.Element {
 		}
 		g.SetOutputVariableName(a.ResultVariableName) // BSON key "ResultVariableName"
 		g.SetUseReturnVariable(a.UseReturnVariable)
+		return g
+	case *microflows.ExecuteDatabaseQueryAction:
+		// Storage $Type is DatabaseConnector$ExecuteDatabaseQueryAction (not the
+		// Microflows$ prefix); built directly with the verified keys, mirroring the
+		// legacy serializer (fields in alphabetical order, both mapping lists marker 2).
+		g := newElem("DatabaseConnector$ExecuteDatabaseQueryAction", string(a.ID))
+		conns := make([]element.Element, 0, len(a.ConnectionParameterMappings))
+		for _, cm := range a.ConnectionParameterMappings {
+			m := newElem("DatabaseConnector$ConnectionParameterMapping", string(cm.ID))
+			addStr(m, "ParameterName", cm.ParameterName)
+			addStr(m, "Value", cm.Value)
+			conns = append(conns, m)
+		}
+		addPartList(g, "ConnectionParameterMappings", conns)
+		addStr(g, "DynamicQuery", a.DynamicQuery)
+		addStr(g, "ErrorHandlingType", orDefault(string(a.ErrorHandlingType), "Rollback"))
+		addStr(g, "OutputVariableName", a.OutputVariableName)
+		params := make([]element.Element, 0, len(a.ParameterMappings))
+		for _, pm := range a.ParameterMappings {
+			m := newElem("DatabaseConnector$QueryParameterMapping", string(pm.ID))
+			addStr(m, "ParameterName", pm.ParameterName)
+			addStr(m, "Value", pm.Value)
+			params = append(params, m)
+		}
+		addPartList(g, "ParameterMappings", params)
+		addStr(g, "Query", a.Query)
 		return g
 	case *microflows.JavaActionCallAction:
 		// Built directly: the gen JavaActionCallAction binds the wrong BSON keys

@@ -177,3 +177,19 @@ func TestListOperationToGen_StorageNames(t *testing.T) {
 		})
 	}
 }
+
+// TestMicroflowActionToGen_ExecuteDatabaseQuery guards 05: EXECUTE DATABASE QUERY
+// must convert to a DatabaseConnector$ExecuteDatabaseQueryAction (else CE0008).
+func TestMicroflowActionToGen_ExecuteDatabaseQuery(t *testing.T) {
+	g := microflowActionToGen(&microflows.ExecuteDatabaseQueryAction{
+		Query:              "DbTest.Conn.GetAll",
+		OutputVariableName: "Rows",
+		ParameterMappings:  []*microflows.DatabaseQueryParameterMapping{{ParameterName: "p", Value: "$x"}},
+	})
+	if g == nil {
+		t.Fatal("nil action (CE0008 regression)")
+	}
+	if g.TypeName() != "DatabaseConnector$ExecuteDatabaseQueryAction" {
+		t.Errorf("$Type = %q, want DatabaseConnector$ExecuteDatabaseQueryAction", g.TypeName())
+	}
+}
