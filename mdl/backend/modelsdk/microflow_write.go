@@ -666,6 +666,10 @@ func microflowActionToGen(action microflows.MicroflowAction) element.Element {
 		// set task outcome, workflow operation pause/continue/abort/…, etc.).
 		// Mirrors sdk/mpr/writer_microflow_workflow.go field-for-field.
 		return workflowMicroflowActionToGen(a)
+	case *microflows.RestOperationCallAction:
+		// "call rest operation" — Microflows$RestOperationCallAction. Mirrors
+		// serializeRestOperationCallAction.
+		return restOperationCallActionToGen(a)
 	default:
 		return nil // not yet supported (added in later groups)
 	}
