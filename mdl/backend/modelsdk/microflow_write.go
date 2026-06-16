@@ -651,6 +651,21 @@ func microflowActionToGen(action microflows.MicroflowAction) element.Element {
 		// StringExport output method and a MappingRequestHandling. Mirrors
 		// serializeExportXmlAction.
 		return exportXmlActionToGen(a)
+	case *microflows.WorkflowCallAction,
+		*microflows.GetWorkflowDataAction,
+		*microflows.GetWorkflowsAction,
+		*microflows.GetWorkflowActivityRecordsAction,
+		*microflows.WorkflowOperationAction,
+		*microflows.SetTaskOutcomeAction,
+		*microflows.OpenUserTaskAction,
+		*microflows.NotifyWorkflowAction,
+		*microflows.OpenWorkflowAction,
+		*microflows.LockWorkflowAction,
+		*microflows.UnlockWorkflowAction:
+		// Workflow-related microflow actions (call workflow, get workflow data,
+		// set task outcome, workflow operation pause/continue/abort/…, etc.).
+		// Mirrors sdk/mpr/writer_microflow_workflow.go field-for-field.
+		return workflowMicroflowActionToGen(a)
 	default:
 		return nil // not yet supported (added in later groups)
 	}

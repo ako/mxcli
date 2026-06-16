@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package mprbackend
+package wfmutator
 
 import (
 	"strings"
@@ -12,6 +12,22 @@ import (
 
 	"github.com/mendixlabs/mxcli/mdl/backend/bsonnav"
 )
+
+// testWfDeps is a minimal Deps for unit tests: it serializes an activity to a
+// bson.D carrying just $Type/Caption/Name (enough for the structural assertions)
+// and discards Save output.
+type testWfDeps struct{}
+
+func (testWfDeps) SerializeWorkflowActivity(a workflows.WorkflowActivity) bson.D {
+	return bson.D{
+		{Key: "$ID", Value: primitive.Binary{Subtype: 0x04, Data: make([]byte, 16)}},
+		{Key: "$Type", Value: "Workflows$SingleUserTaskActivity"},
+		{Key: "Caption", Value: a.GetCaption()},
+		{Key: "Name", Value: a.GetName()},
+	}
+}
+
+func (testWfDeps) SaveUnit(string, []byte) error { return nil }
 
 // makeWorkflowDoc builds a minimal workflow BSON document for testing.
 func makeWorkflowDoc(activities ...bson.D) bson.D {
@@ -72,9 +88,9 @@ func makeWfBoundaryEvent(typeName string) bson.D {
 	}
 }
 
-// newMutator creates a mprWorkflowMutator for testing (no real backend).
-func newMutator(doc bson.D) *mprWorkflowMutator {
-	return &mprWorkflowMutator{rawData: doc}
+// newMutator creates a Mutator for testing with the minimal test deps.
+func newMutator(doc bson.D) *Mutator {
+	return New(doc, "", testWfDeps{})
 }
 
 // --- SetProperty tests ---
