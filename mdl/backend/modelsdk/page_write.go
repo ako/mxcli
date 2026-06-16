@@ -53,6 +53,14 @@ func (b *Backend) CreatePage(page *pages.Page) error {
 	return nil
 }
 
+// DeletePage removes a page unit by ID.
+func (b *Backend) DeletePage(id model.ID) error {
+	if b.writer == nil {
+		return fmt.Errorf("DeletePage: not connected for writing")
+	}
+	return b.writer.DeleteUnit(string(id))
+}
+
 // pageToGen builds the gen Page header. Returns an error if the page contains a
 // widget (widget-tree conversion is a later phase).
 func pageToGen(page *pages.Page) (*genPg.Page, error) {
