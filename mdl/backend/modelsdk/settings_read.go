@@ -3,6 +3,8 @@
 package modelsdkbackend
 
 import (
+	"go.mongodb.org/mongo-driver/bson"
+
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/modelsdk/codec"
 	"github.com/mendixlabs/mxcli/modelsdk/element"
@@ -20,6 +22,12 @@ func init() {
 	// typed gen elements and their fields become readable.
 	codec.DefaultRegistry.RegisterAlias("Settings$ModelSettings", "Settings$RuntimeSettings")
 	codec.DefaultRegistry.RegisterAlias("Settings$ConventionSettings", "Settings$ModelerSettings")
+	// A server configuration is stored as "Settings$ServerConfiguration" but the
+	// gen type registers under the SDK name "Settings$Configuration"; without this
+	// alias the ConfigurationSettings.Configurations children decode to bare
+	// element.Base and the read surfaces zero configurations (ALTER SETTINGS
+	// CONFIGURATION then can't find 'Default').
+	codec.DefaultRegistry.RegisterAlias("Settings$ServerConfiguration", "Settings$Configuration")
 }
 
 // GetProjectSettings reads the Settings$ProjectSettings document (a versioned
@@ -30,7 +38,41 @@ func (b *Backend) GetProjectSettings() (*model.ProjectSettings, error) {
 	if err != nil {
 		return nil, err
 	}
-	return projectSettingsFromGen(g), nil
+	ps := projectSettingsFromGen(g)
+	// Capture each settings part's raw BSON so UpdateProjectSettings can overlay
+	// modified fields onto the preserved part and pass every untouched part
+	// through byte-for-byte (ADR-0005 guard-don't-drop). Without RawParts an
+	// ALTER SETTINGS would have nothing to rewrite.
+	ps.RawParts = b.readSettingsRawParts(string(g.ID()))
+	return ps, nil
+}
+
+// readSettingsRawParts decodes the Settings$ProjectSettings unit and returns each
+// element of its Settings array as a map (the versioned-array marker is skipped).
+func (b *Backend) readSettingsRawParts(unitID string) []map[string]any {
+	raw, err := b.reader.GetRawUnitBytes(unitID)
+	if err != nil {
+		return nil
+	}
+	var doc bson.M
+	if err := bson.Unmarshal(raw, &doc); err != nil {
+		return nil
+	}
+	arr, ok := doc["Settings"].(bson.A)
+	if !ok {
+		return nil
+	}
+	parts := make([]map[string]any, 0, len(arr))
+	for _, el := range arr {
+		switch p := el.(type) {
+		case bson.M:
+			parts = append(parts, map[string]any(p))
+		case map[string]any:
+			parts = append(parts, p)
+		}
+		// non-map elements (the leading int32 marker) are skipped
+	}
+	return parts
 }
 
 // projectSettingsFromGen converts a decoded gen ProjectSettings to the semantic
@@ -136,8 +178,17 @@ func configurationSettingsFromGen(p *genSet.ConfigurationSettings) *model.Config
 			if !ok {
 				continue
 			}
+			// The gen ConstantValue hardcodes its constant reference under the BSON
+			// key "Constant", but Studio Pro stores it as "ConstantId"; read the
+			// real key from the raw element (ConstantQualifiedName() is empty here).
+			constantID := cv.ConstantQualifiedName()
+			if constantID == "" {
+				if v, ok := cv.Raw().Lookup("ConstantId").StringValueOK(); ok {
+					constantID = v
+				}
+			}
 			mcv := &model.ConstantValue{
-				ConstantId: cv.ConstantQualifiedName(),
+				ConstantId: constantID,
 				Value:      constantValueOf(cv),
 			}
 			setBase(&mcv.BaseElement, cv, "Settings$ConstantValue")
