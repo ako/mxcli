@@ -24,10 +24,8 @@ func init() {
 	codec.RegisterListMarker("Forms$FormCallArgument", 2)
 }
 
-// CreatePage inserts a new Forms$Page document unit. The page header (appearance,
-// layout call, title, parameters) is built here; the widget tree is not yet
-// ported, so a page that places any widget is refused loudly rather than written
-// half-formed (ADR-0005 guard-don't-drop).
+// CreatePage inserts a new Forms$Page document unit (header, layout call, the
+// widget tree, parameters, and variables) via pageToGen.
 func (b *Backend) CreatePage(page *pages.Page) error {
 	if page == nil {
 		return fmt.Errorf("CreatePage: nil page")
@@ -53,6 +51,32 @@ func (b *Backend) CreatePage(page *pages.Page) error {
 	return nil
 }
 
+// UpdatePage rewrites an existing Forms$Page unit in place, preserving its UUID.
+// Used by CREATE OR REPLACE PAGE and the styling alterations, which rebuild the
+// full page (header + widget tree) and replace the existing unit. Serialization
+// is identical to CreatePage.
+func (b *Backend) UpdatePage(page *pages.Page) error {
+	if page == nil {
+		return fmt.Errorf("UpdatePage: nil page")
+	}
+	if b.writer == nil {
+		return fmt.Errorf("UpdatePage: not connected for writing")
+	}
+	g, err := pageToGen(page)
+	if err != nil {
+		return err
+	}
+	g.SetID(element.ID(page.ID))
+	contents, err := (&codec.Encoder{}).Encode(g)
+	if err != nil {
+		return fmt.Errorf("UpdatePage: encode: %w", err)
+	}
+	if err := b.writer.UpdateRawUnit(string(page.ID), contents); err != nil {
+		return fmt.Errorf("UpdatePage: update: %w", err)
+	}
+	return nil
+}
+
 // DeletePage removes a page unit by ID.
 func (b *Backend) DeletePage(id model.ID) error {
 	if b.writer == nil {
@@ -61,8 +85,8 @@ func (b *Backend) DeletePage(id model.ID) error {
 	return b.writer.DeleteUnit(string(id))
 }
 
-// pageToGen builds the gen Page header. Returns an error if the page contains a
-// widget (widget-tree conversion is a later phase).
+// pageToGen builds the full gen Page: header, layout call, the widget tree (under
+// the layout call's form-call arguments), parameters, and variables.
 func pageToGen(page *pages.Page) (*genPg.Page, error) {
 	out := genPg.NewPage()
 	out.SetName(page.Name)
@@ -135,7 +159,7 @@ func localVarTypeToGen(typeName string) element.Element {
 }
 
 // layoutCallToGen builds the Forms$LayoutCall (page → layout binding) with one
-// Forms$FormCallArgument per placeholder. Widget-bearing arguments are refused.
+// Forms$FormCallArgument per placeholder, including each placeholder's widget.
 func layoutCallToGen(lc *pages.LayoutCall) (*genPg.LayoutCall, error) {
 	out := genPg.NewLayoutCall()
 	assignID(out)
