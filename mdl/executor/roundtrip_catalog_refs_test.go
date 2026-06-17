@@ -151,8 +151,6 @@ end;`, mod, mod)); err != nil {
 }
 
 func TestCatalogRefs_Association(t *testing.T) {
-	t.Skip("TODO: association references not yet extracted into refs table (RefKindAssociate defined but unused)")
-
 	env := setupTestEnv(t)
 	defer env.teardown()
 
@@ -169,7 +167,9 @@ func TestCatalogRefs_Association(t *testing.T) {
 	}
 
 	buildCatalogFull(t, env)
+	// An association emits an `associate` ref to each endpoint (FROM and TO).
 	assertRefExists(t, env, mod+".RefChild_RefParent", mod+".RefParent", "associate")
+	assertRefExists(t, env, mod+".RefChild_RefParent", mod+".RefChild", "associate")
 }
 
 func TestCatalogRefs_MultipleRefKindsToSameTarget(t *testing.T) {
@@ -409,6 +409,55 @@ end;`, mod, mod)); err != nil {
 	}
 	if !strings.Contains(output, mod+".RefRetriever") {
 		t.Errorf("expected RefRetriever in references output:\n%s", output)
+	}
+}
+
+// TestCatalogRefs_ShowContextResolvesTypes guards against the case-mismatch that
+// silently broke SHOW CONTEXT's relationship sections: they filter on
+// TargetType/SourceType, but those literals were lowercase ('entity') while the
+// refs builder stores uppercase ('ENTITY'), and SQLite '=' is case-sensitive — so
+// "Entities Used" / "Microflows Using This Entity" always rendered empty.
+func TestCatalogRefs_ShowContextResolvesTypes(t *testing.T) {
+	env := setupTestEnv(t)
+	defer env.teardown()
+
+	mod := testModule
+
+	if err := env.executeMDL(fmt.Sprintf(`create or modify persistent entity %s.CtxEntity (Name: String(100));`, mod)); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.executeMDL(fmt.Sprintf(`create microflow %s.CtxCreator () returns Boolean
+begin
+  $Obj = create %s.CtxEntity;
+  return true;
+end;`, mod, mod)); err != nil {
+		t.Fatal(err)
+	}
+
+	buildCatalogFull(t, env)
+
+	// Microflow context must list the entity it uses (TargetType = 'ENTITY').
+	env.output.Reset()
+	if err := env.executor.Execute(&ast.ShowStmt{
+		ObjectType: ast.ShowContext,
+		Name:       parseQualifiedName(mod + ".CtxCreator"),
+	}); err != nil {
+		t.Fatalf("show context of microflow failed: %v", err)
+	}
+	if mfCtx := env.output.String(); !strings.Contains(mfCtx, mod+".CtxEntity") {
+		t.Errorf("microflow context should list the entity it uses:\n%s", mfCtx)
+	}
+
+	// Entity context must list the microflow that uses it (SourceType = 'MICROFLOW').
+	env.output.Reset()
+	if err := env.executor.Execute(&ast.ShowStmt{
+		ObjectType: ast.ShowContext,
+		Name:       parseQualifiedName(mod + ".CtxEntity"),
+	}); err != nil {
+		t.Fatalf("show context of entity failed: %v", err)
+	}
+	if entCtx := env.output.String(); !strings.Contains(entCtx, mod+".CtxCreator") {
+		t.Errorf("entity context should list the microflow using it:\n%s", entCtx)
 	}
 }
 

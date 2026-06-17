@@ -113,7 +113,7 @@ func assembleMicroflowContext(ctx *ExecContext, out *strings.Builder, name strin
 	out.WriteString("### Entities Used\n\n")
 	result, err = ctx.Catalog.Query(fmt.Sprintf(
 		`select distinct TargetName, RefKind from refs
-		 where SourceName = '%s' and TargetType = 'entity'
+		 where SourceName = '%s' and TargetType = 'ENTITY'
 		 ORDER by RefKind, TargetName`, name))
 	if err == nil && result.Count > 0 {
 		out.WriteString("| Entity | Usage |\n")
@@ -212,7 +212,7 @@ func assembleEntityContext(ctx *ExecContext, out *strings.Builder, name string, 
 	out.WriteString("### Microflows Using This Entity\n\n")
 	result, err = ctx.Catalog.Query(fmt.Sprintf(
 		`select distinct SourceName, RefKind from refs
-		 where TargetName = '%s' and SourceType = 'microflow'
+		 where TargetName = '%s' and SourceType = 'MICROFLOW'
 		 ORDER by RefKind, SourceName limit 20`, name))
 	if err == nil && result.Count > 0 {
 		out.WriteString("| Microflow | Usage |\n")
@@ -232,7 +232,7 @@ func assembleEntityContext(ctx *ExecContext, out *strings.Builder, name string, 
 	out.WriteString("### Pages Displaying This Entity\n\n")
 	result, err = ctx.Catalog.Query(fmt.Sprintf(
 		`select distinct SourceName from refs
-		 where TargetName = '%s' and SourceType = 'page'
+		 where TargetName = '%s' and SourceType = 'PAGE'
 		 ORDER by SourceName limit 10`, name))
 	if err == nil && result.Count > 0 {
 		for _, row := range result.Rows {
@@ -247,10 +247,10 @@ func assembleEntityContext(ctx *ExecContext, out *strings.Builder, name string, 
 	out.WriteString("### Related Entities\n\n")
 	result, err = ctx.Catalog.Query(fmt.Sprintf(
 		`select distinct TargetName, RefKind from refs
-		 where SourceName = '%s' and TargetType = 'entity'
+		 where SourceName = '%s' and TargetType = 'ENTITY'
 		 union
 		 select distinct SourceName, RefKind from refs
-		 where TargetName = '%s' and SourceType = 'entity'
+		 where TargetName = '%s' and SourceType = 'ENTITY'
 		 ORDER by RefKind, TargetName limit 10`, name, name))
 	if err == nil && result.Count > 0 {
 		for _, row := range result.Rows {
@@ -287,7 +287,7 @@ func assemblePageContext(ctx *ExecContext, out *strings.Builder, name string, de
 	out.WriteString("### Entities Used\n\n")
 	result, err = ctx.Catalog.Query(fmt.Sprintf(
 		`select distinct TargetName from refs
-		 where SourceName = '%s' and TargetType = 'entity'
+		 where SourceName = '%s' and TargetType = 'ENTITY'
 		 ORDER by TargetName`, name))
 	if err == nil && result.Count > 0 {
 		for _, row := range result.Rows {
@@ -302,7 +302,7 @@ func assemblePageContext(ctx *ExecContext, out *strings.Builder, name string, de
 	out.WriteString("### Microflows Called\n\n")
 	result, err = ctx.Catalog.Query(fmt.Sprintf(
 		`select distinct TargetName from refs
-		 where SourceName = '%s' and TargetType = 'microflow'
+		 where SourceName = '%s' and TargetType = 'MICROFLOW'
 		 ORDER by TargetName limit 15`, name))
 	if err == nil && result.Count > 0 {
 		for _, row := range result.Rows {
@@ -345,7 +345,7 @@ func assembleEnumerationContext(ctx *ExecContext, out *strings.Builder, name str
 	out.WriteString("### Used By Entities\n\n")
 	result, err = ctx.Catalog.Query(fmt.Sprintf(
 		`select distinct SourceName from refs
-		 where TargetName = '%s' and SourceType = 'entity'
+		 where TargetName = '%s' and SourceType = 'ENTITY'
 		 ORDER by SourceName limit 15`, name))
 	if err == nil && result.Count > 0 {
 		for _, row := range result.Rows {
@@ -360,7 +360,7 @@ func assembleEnumerationContext(ctx *ExecContext, out *strings.Builder, name str
 	out.WriteString("### Used By Microflows\n\n")
 	result, err = ctx.Catalog.Query(fmt.Sprintf(
 		`select distinct SourceName from refs
-		 where TargetName = '%s' and SourceType = 'microflow'
+		 where TargetName = '%s' and SourceType = 'MICROFLOW'
 		 ORDER by SourceName limit 15`, name))
 	if err == nil && result.Count > 0 {
 		for _, row := range result.Rows {
@@ -515,7 +515,7 @@ func assembleWorkflowContext(ctx *ExecContext, out *strings.Builder, name string
 	out.WriteString("### Microflows Called\n\n")
 	result, err = ctx.Catalog.Query(fmt.Sprintf(
 		`select distinct TargetName, RefKind from refs
-		 where SourceName = '%s' and TargetType = 'microflow'
+		 where SourceName = '%s' and TargetType = 'MICROFLOW'
 		 ORDER by RefKind, TargetName`, name))
 	if err == nil && result.Count > 0 {
 		out.WriteString("| Microflow | Usage |\n")
@@ -532,7 +532,7 @@ func assembleWorkflowContext(ctx *ExecContext, out *strings.Builder, name string
 	out.WriteString("### Pages Used\n\n")
 	result, err = ctx.Catalog.Query(fmt.Sprintf(
 		`select distinct TargetName, RefKind from refs
-		 where SourceName = '%s' and TargetType = 'page'
+		 where SourceName = '%s' and TargetType = 'PAGE'
 		 ORDER by TargetName`, name))
 	if err == nil && result.Count > 0 {
 		for _, row := range result.Rows {
@@ -547,7 +547,7 @@ func assembleWorkflowContext(ctx *ExecContext, out *strings.Builder, name string
 	out.WriteString("### Entities Used\n\n")
 	result, err = ctx.Catalog.Query(fmt.Sprintf(
 		`select distinct TargetName, RefKind from refs
-		 where SourceName = '%s' and TargetType = 'entity'
+		 where SourceName = '%s' and TargetType = 'ENTITY'
 		 ORDER by TargetName`, name))
 	if err == nil && result.Count > 0 {
 		for _, row := range result.Rows {
