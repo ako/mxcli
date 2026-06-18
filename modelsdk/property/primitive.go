@@ -61,13 +61,27 @@ func DecodeBool(raw bson.Raw, key string) bool {
 	return b
 }
 
+// DecodeInt32 reads an int32-typed gen field. Mendix/Studio Pro stores small
+// integers (connection indices, canvas positions, …) as BSON int64 — and
+// occasionally as double — not int32, so accept all three numeric encodings.
+// Reading only Int32OK silently returns 0 for Studio-Pro-authored content, which
+// surfaced as bogus @anchor(from: top, …) lines (index 0 = AnchorTop) on every
+// flow whose real connection index (right=1 / left=3) was stored as int64.
 func DecodeInt32(raw bson.Raw, key string) int32 {
 	val, err := raw.LookupErr(key)
 	if err != nil {
 		return 0
 	}
-	i, _ := val.Int32OK()
-	return i
+	if i, ok := val.Int32OK(); ok {
+		return i
+	}
+	if i, ok := val.Int64OK(); ok {
+		return int32(i)
+	}
+	if d, ok := val.DoubleOK(); ok {
+		return int32(d)
+	}
+	return 0
 }
 
 func DecodeFloat64(raw bson.Raw, key string) float64 {
