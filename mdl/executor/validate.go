@@ -182,7 +182,72 @@ func validateProgram(ctx *ExecContext, prog *ast.Program) []error {
 			errors = append(errors, fmt.Errorf("statement %d: %w", i+1, err))
 		}
 	}
+	errors = append(errors, validateForwardPageRefs(ctx, prog)...)
 	return errors
+}
+
+// validateForwardPageRefs catches widget `show_page` actions whose target page
+// is defined LATER in the same script. The whole-script scriptContext used by
+// validateWithContext tolerates these (the page exists *somewhere* in the
+// script), but the executor resolves page references in statement order and
+// fails on a forward reference. This ordered pass keeps `mxcli check` consistent
+// with execution: a referenced page must already exist in the project or be
+// created earlier in the script.
+func validateForwardPageRefs(ctx *ExecContext, prog *ast.Program) []error {
+	if !ctx.Connected() {
+		return nil
+	}
+
+	known := buildPageQualifiedNames(ctx)
+	definedEarlier := make(map[string]bool)
+
+	var errors []error
+	for i, stmt := range prog.Statements {
+		var widgets []*ast.WidgetV3
+		var label string
+		switch s := stmt.(type) {
+		case *ast.CreatePageStmtV3:
+			widgets, label = s.Widgets, "page "+s.Name.String()
+		case *ast.CreateSnippetStmtV3:
+			widgets, label = s.Widgets, "snippet "+s.Name.String()
+		default:
+			continue
+		}
+
+		refs := &widgetRefCollector{}
+		refs.collectFromWidgets(widgets)
+		for _, ref := range refs.pages {
+			if known[ref] || definedEarlier[ref] {
+				continue
+			}
+			// Unknown to both project and earlier-in-script. A truly-missing page
+			// is already reported by validateWidgetReferences; only add the
+			// forward-reference hint when the page IS defined later in the script.
+			if pageDefinedAfter(prog, ref, i) {
+				errors = append(errors, fmt.Errorf(
+					"statement %d: %s references page %s before it is created — move the create statement for %s earlier in the script",
+					i+1, label, ref, ref))
+			}
+		}
+
+		if s, ok := stmt.(*ast.CreatePageStmtV3); ok && s.Name.Module != "" {
+			definedEarlier[s.Name.String()] = true
+		}
+	}
+	return errors
+}
+
+// pageDefinedAfter reports whether a page named ref is created by a
+// CreatePageStmtV3 at a statement index greater than fromIdx.
+func pageDefinedAfter(prog *ast.Program, ref string, fromIdx int) bool {
+	for j := fromIdx + 1; j < len(prog.Statements); j++ {
+		if s, ok := prog.Statements[j].(*ast.CreatePageStmtV3); ok && s.Name.Module != "" {
+			if s.Name.String() == ref {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // ValidateProgram validates all statements in a program, skipping references
