@@ -31,7 +31,48 @@ func (r *Reader) GetRawUnit(id model.ID) (map[string]any, error) {
 	if err := bson.Unmarshal(contents, &raw); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal BSON: %w", err)
 	}
+	// bson v2 decodes nested documents/arrays in interface{} slots as bson.D /
+	// bson.A, whereas the legacy reader (bson v1) yields nested map[string]any /
+	// []any. The raw-BSON consumers (DESCRIBE PAGE's widget-tree walk, snippet
+	// variables, etc.) type-assert map[string]any and []any, so normalise the
+	// whole tree to the legacy shape — otherwise every nested assertion fails and
+	// pages render as empty shells.
+	for k, v := range raw {
+		raw[k] = normalizeBSONValue(v)
+	}
 	return raw, nil
+}
+
+// normalizeBSONValue recursively converts bson.D → map[string]any and bson.A →
+// []any so raw-BSON consumers written against the legacy (bson v1) shape work
+// unchanged against the modelsdk (bson v2) reader.
+func normalizeBSONValue(v any) any {
+	switch t := v.(type) {
+	case bson.D:
+		m := make(map[string]any, len(t))
+		for _, e := range t {
+			m[e.Key] = normalizeBSONValue(e.Value)
+		}
+		return m
+	case bson.A:
+		out := make([]any, len(t))
+		for i, e := range t {
+			out[i] = normalizeBSONValue(e)
+		}
+		return out
+	case map[string]any:
+		for k, e := range t {
+			t[k] = normalizeBSONValue(e)
+		}
+		return t
+	case []any:
+		for i, e := range t {
+			t[i] = normalizeBSONValue(e)
+		}
+		return t
+	default:
+		return v
+	}
 }
 
 // GetUnitTypes returns a count of units by type.
