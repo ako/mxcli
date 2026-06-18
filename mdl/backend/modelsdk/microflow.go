@@ -85,8 +85,9 @@ func nanoflowFromGen(nf *genMf.Nanoflow, containerID model.ID) *microflows.Nanof
 	params, objs := splitFlowObjects(nf.ObjectCollection())
 	out.Parameters = params
 	flows := flowsFromGen(nf.FlowsItems())
-	if objs != nil || flows != nil {
-		out.ObjectCollection = &microflows.MicroflowObjectCollection{Objects: objs, Flows: flows}
+	annotFlows := annotationFlowsFromGen(nf.FlowsItems())
+	if objs != nil || flows != nil || annotFlows != nil {
+		out.ObjectCollection = &microflows.MicroflowObjectCollection{Objects: objs, Flows: flows, AnnotationFlows: annotFlows}
 	}
 	return out
 }
@@ -108,8 +109,9 @@ func microflowFromGen(mf *genMf.Microflow, containerID model.ID) *microflows.Mic
 	// the edges, traversal from the start event has nowhere to go and the body
 	// renders empty.
 	flows := flowsFromGen(mf.FlowsItems())
-	if objs != nil || flows != nil {
-		out.ObjectCollection = &microflows.MicroflowObjectCollection{Objects: objs, Flows: flows}
+	annotFlows := annotationFlowsFromGen(mf.FlowsItems())
+	if objs != nil || flows != nil || annotFlows != nil {
+		out.ObjectCollection = &microflows.MicroflowObjectCollection{Objects: objs, Flows: flows, AnnotationFlows: annotFlows}
 	}
 	return out
 }
@@ -130,6 +132,27 @@ func flowsFromGen(items []element.Element) []*microflows.SequenceFlow {
 			DestinationConnectionIndex: int(g.DestinationConnectionIndex()),
 			IsErrorHandler:             g.IsErrorHandler(),
 			CaseValue:                  caseValueFromGen(g.CaseValuesItems()),
+		}
+		f.ID = model.ID(g.ID())
+		flows = append(flows, f)
+	}
+	return flows
+}
+
+// annotationFlowsFromGen reconstructs the annotation→activity connections. They
+// live in the same gen flow list as the sequence flows (FlowsItems), so this
+// filters out the AnnotationFlow entries; buildAnnotationsByTarget joins each
+// flow's origin (the annotation) to its destination (the activity).
+func annotationFlowsFromGen(items []element.Element) []*microflows.AnnotationFlow {
+	var flows []*microflows.AnnotationFlow
+	for _, el := range items {
+		g, ok := el.(*genMf.AnnotationFlow)
+		if !ok {
+			continue
+		}
+		f := &microflows.AnnotationFlow{
+			OriginID:      model.ID(g.OriginRefID()),
+			DestinationID: model.ID(g.DestinationRefID()),
 		}
 		f.ID = model.ID(g.ID())
 		flows = append(flows, f)
@@ -256,6 +279,18 @@ func flowObjectFromGen(el element.Element) microflows.MicroflowObject {
 		o := &microflows.InheritanceSplit{}
 		o.ID = id
 		o.Position = pos
+		return o
+	case "Microflows$Annotation":
+		// Sticky-note annotation. Not reached by the sequence-flow traversal (it is
+		// attached via an AnnotationFlow), so it never renders as a statement, but
+		// collectAnnotationCaptions needs it in Objects with its caption to emit the
+		// @annotation line on the activity the AnnotationFlow points at.
+		o := &microflows.Annotation{}
+		o.ID = id
+		o.Position = pos
+		if g, ok := el.(*genMf.Annotation); ok {
+			o.Caption = g.Caption()
+		}
 		return o
 	case "Microflows$ErrorEvent":
 		o := &microflows.ErrorEvent{}
