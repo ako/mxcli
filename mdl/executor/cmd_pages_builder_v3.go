@@ -390,7 +390,9 @@ func (pb *pageBuilder) buildWidgetV3(w *ast.WidgetV3) (pages.Widget, error) {
 	}
 
 	// Apply Class/Style appearance properties to the widget
-	applyWidgetAppearance(widget, w, pb.themeRegistry)
+	if err := applyWidgetAppearance(widget, w, pb.themeRegistry); err != nil {
+		return nil, err
+	}
 
 	// Apply conditional visibility/editability
 	applyConditionalSettings(widget, w)
@@ -433,8 +435,19 @@ func applyConditionalSettings(widget pages.Widget, w *ast.WidgetV3) {
 
 // applyWidgetAppearance sets Class, Style, and DesignProperties on a widget if specified in the AST.
 // The theme registry (if non-nil) is used to determine the correct BSON type for each design property.
-func applyWidgetAppearance(widget pages.Widget, w *ast.WidgetV3, theme *ThemeRegistry) {
+func applyWidgetAppearance(widget pages.Widget, w *ast.WidgetV3, theme *ThemeRegistry) error {
 	class, style := w.GetClass(), w.GetStyle()
+
+	// A DynamicText with an inline Style crashes MxBuild with a
+	// NullReferenceException. Reject it here (the workaround is to wrap the
+	// widget in a container and style the container instead).
+	if style != "" && strings.EqualFold(w.Type, "dynamictext") {
+		return mdlerrors.NewValidationf(
+			"dynamictext %q: an inline `style` crashes MxBuild — wrap it in a container and style the container instead",
+			w.Name,
+		)
+	}
+
 	if class != "" || style != "" {
 		type appearanceSetter interface {
 			SetAppearance(class, style string)
@@ -462,6 +475,7 @@ func applyWidgetAppearance(widget pages.Widget, w *ast.WidgetV3, theme *ThemeReg
 			}
 		}
 	}
+	return nil
 }
 
 // astDesignPropToValue converts one MDL design-property entry to a

@@ -18,6 +18,7 @@ import (
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	"github.com/mendixlabs/mxcli/mdl/linter"
+	"github.com/mendixlabs/mxcli/sdk/pages"
 )
 
 // extraUniversalWidgetProperties are AST keys produced by the visitor that
@@ -98,10 +99,49 @@ func validateWidgetTree(widgets []*ast.WidgetV3, registry *WidgetRegistry, locat
 			continue
 		}
 		out = append(out, validatePluggableWidgetProperties(w, registry, locationPrefix)...)
+		out = append(out, validateStaticWidget(w, locationPrefix)...)
 		if len(w.Children) > 0 {
 			out = append(out, validateWidgetTree(w.Children, registry, locationPrefix)...)
 		}
 	}
+	return out
+}
+
+// validateStaticWidget checks value-level constraints on built-in (non-pluggable)
+// widgets that the grammar can't express and that otherwise fail silently or at
+// build time rather than at `mxcli check` time.
+func validateStaticWidget(w *ast.WidgetV3, locationPrefix string) []linter.Violation {
+	var out []linter.Violation
+
+	// An unrecognized (often mis-cased) button style is silently degraded to
+	// btn-default by MxBuild. Reject it at check time. CanonicalButtonStyle is
+	// case-insensitive, so legitimate lowercase values still pass.
+	if bs := w.GetButtonStyle(); bs != "" {
+		if _, ok := pages.CanonicalButtonStyle(bs); !ok {
+			out = append(out, linter.Violation{
+				RuleID:   "MDL-WIDGET02",
+				Severity: linter.SeverityError,
+				Message: fmt.Sprintf(
+					"%s: widget `%s` has unknown button style `%s` — valid styles are %s",
+					locationPrefix, w.Name, bs, strings.Join(pages.ValidButtonStyleList(), ", "),
+				),
+			})
+		}
+	}
+
+	// An inline Style on a DynamicText crashes MxBuild with a
+	// NullReferenceException — the widget must be wrapped in a container.
+	if strings.EqualFold(w.Type, "dynamictext") && w.GetStyle() != "" {
+		out = append(out, linter.Violation{
+			RuleID:   "MDL-WIDGET03",
+			Severity: linter.SeverityError,
+			Message: fmt.Sprintf(
+				"%s: widget `%s` (dynamictext) cannot have an inline `style` — it crashes MxBuild; wrap it in a container and style the container instead",
+				locationPrefix, w.Name,
+			),
+		})
+	}
+
 	return out
 }
 

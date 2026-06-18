@@ -201,8 +201,9 @@ actionbutton widgetName (caption: 'Caption', action: ACTION_TYPE [, buttonstyle:
 - `action: show_page Module.PageName($Param = $value)` - Also accepted (microflow-style)
 - `action: create_object Module.Entity then show_page Module.PageName` - Create and navigate
 
-**Button Styles:**
-- `default`, `primary`, `success`, `info`, `warning`, `danger`, `Inverse`
+**Button Styles:** `default`, `primary`, `success`, `info`, `warning`, `danger`, `inverse`
+- Case-insensitive (`primary` and `Primary` both work).
+- These are the only values Mendix recognizes — anything else (a typo, or `secondary`/`link`, which Mendix has no button style for) is rejected by `mxcli check` (MDL-WIDGET02). Previously an unknown value was silently rendered as `btn-default`.
 
 **Examples:**
 ```sql

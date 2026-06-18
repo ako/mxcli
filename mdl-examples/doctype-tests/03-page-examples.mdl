@@ -1866,7 +1866,11 @@ create page PgTest.StyledPage
     dataview dvCustomer (datasource: $Customer) {
       textbox txtName (label: 'Name', attribute: Name, class: 'form-control-lg')
       textbox txtEmail (label: 'Email', attribute: Email, style: 'font-style: italic;')
-      dynamictext dtCity (content: 'City: {1}', contentparams: [{1} = City], class: 'text-muted', style: 'font-size: 12px;')
+      -- NOTE: an inline `style` on a dynamictext crashes MxBuild — style the
+      -- wrapping container instead (the dynamictext keeps its class).
+      container ctnCity (style: 'font-size: 12px;') {
+        dynamictext dtCity (content: 'City: {1}', contentparams: [{1} = City], class: 'text-muted')
+      }
 
       footer footer1 {
         actionbutton btnSave (caption: 'Save', action: save_changes, buttonstyle: primary, class: 'btn-block')

@@ -2,5 +2,5 @@
 
 create snippet WidgetDemo.SNIPPET_ButtonShowcase {
   actionbutton btnInfo (caption: 'Info Button', action: close_page, buttonstyle: info)
-  actionbutton btnLink (caption: 'Link Button', action: close_page, buttonstyle: link)
+  actionbutton btnInverse (caption: 'Inverse Button', action: close_page, buttonstyle: inverse)
 }

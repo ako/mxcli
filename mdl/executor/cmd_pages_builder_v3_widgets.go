@@ -648,9 +648,18 @@ func (pb *pageBuilder) buildButtonV3(w *ast.WidgetV3) (*pages.ActionButton, erro
 		}
 	}
 
-	// Handle ButtonStyle
+	// Handle ButtonStyle. Normalize case (so `primary` becomes `Primary`) and
+	// reject unknown values up front — an unrecognized style is silently
+	// degraded to btn-default by MxBuild, which is a quiet authoring footgun.
 	if style := w.GetButtonStyle(); style != "" {
-		btn.ButtonStyle = pages.ButtonStyle(style)
+		canonical, ok := pages.CanonicalButtonStyle(style)
+		if !ok {
+			return nil, mdlerrors.NewValidationf(
+				"button %q: unknown button style %q — valid styles are %s",
+				w.Name, style, strings.Join(pages.ValidButtonStyleList(), ", "),
+			)
+		}
+		btn.ButtonStyle = canonical
 	}
 
 	// Handle Action

@@ -3,6 +3,8 @@
 package pages
 
 import (
+	"strings"
+
 	"github.com/mendixlabs/mxcli/model"
 )
 
@@ -30,9 +32,39 @@ const (
 	ButtonStyleSuccess   ButtonStyle = "Success"
 	ButtonStyleWarning   ButtonStyle = "Warning"
 	ButtonStyleDanger    ButtonStyle = "Danger"
+	ButtonStyleInfo      ButtonStyle = "Info"
 	ButtonStyleInverse   ButtonStyle = "Inverse"
 	ButtonStyleLink      ButtonStyle = "Link"
 )
+
+// canonicalButtonStyles maps a lowercased button-style token to its canonical
+// Mendix enum value. The set mirrors the generated metamodel's PagesButtonStyle
+// — note that Mendix recognizes neither "Secondary" nor "Link" as a button
+// style, so they are intentionally absent.
+var canonicalButtonStyles = map[string]ButtonStyle{
+	"default": ButtonStyleDefault,
+	"primary": ButtonStylePrimary,
+	"success": ButtonStyleSuccess,
+	"warning": ButtonStyleWarning,
+	"danger":  ButtonStyleDanger,
+	"info":    ButtonStyleInfo,
+	"inverse": ButtonStyleInverse,
+}
+
+// CanonicalButtonStyle normalizes a button-style token (in any case) to its
+// canonical Mendix enum value. ok is false when s does not name a recognized
+// style — callers should surface an error rather than silently writing an
+// unknown value, which Mendix degrades to btn-default at build time.
+func CanonicalButtonStyle(s string) (ButtonStyle, bool) {
+	bs, ok := canonicalButtonStyles[strings.ToLower(strings.TrimSpace(s))]
+	return bs, ok
+}
+
+// ValidButtonStyleList returns the recognized button styles in canonical case,
+// for use in error messages and suggestions.
+func ValidButtonStyleList() []string {
+	return []string{"Default", "Primary", "Success", "Warning", "Danger", "Info", "Inverse"}
+}
 
 // ButtonRenderMode represents how a button is rendered.
 type ButtonRenderMode string

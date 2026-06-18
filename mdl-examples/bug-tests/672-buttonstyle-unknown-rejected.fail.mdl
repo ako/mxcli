@@ -1,0 +1,27 @@
+-- Bug #672: an unknown / mis-cased button style must be rejected by mxcli check
+--
+-- NEGATIVE TEST (.fail.mdl) — this script is EXPECTED to fail `mxcli check`.
+-- `make check-mdl` inverts the exit code for .fail.mdl files: an unexpected
+-- pass would be reported as a regression of the MDL-WIDGET02 rule.
+--
+-- Symptom: `buttonstyle: <value>` accepted any identifier and wrote it verbatim
+-- to BSON. An unrecognized value (e.g. a typo, or a name Mendix doesn't know
+-- like "secondary"/"link") is silently degraded to btn-default by MxBuild —
+-- it fails quietly at build, not at check.
+--
+-- Fix: mxcli now normalizes the style case-insensitively and rejects any value
+-- that is not one of Default, Primary, Success, Warning, Danger, Info, Inverse
+-- (MDL-WIDGET02). Legitimate lowercase values such as `primary` still pass.
+--
+-- Expected: `mxcli check` exits non-zero with MDL-WIDGET02 on btnBad.
+
+create page BugTest.ButtonStylePage
+(
+  title: 'Button Style',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'bug632_button_style'
+)
+{
+  actionbutton btnGood (caption: 'OK', buttonstyle: primary)
+  actionbutton btnBad (caption: 'Nope', buttonstyle: fancy)
+}
