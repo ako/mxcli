@@ -126,11 +126,34 @@ func flowsFromGen(items []element.Element) []*microflows.SequenceFlow {
 			OriginConnectionIndex:      int(g.OriginConnectionIndex()),
 			DestinationConnectionIndex: int(g.DestinationConnectionIndex()),
 			IsErrorHandler:             g.IsErrorHandler(),
+			CaseValue:                  caseValueFromGen(g.CaseValuesItems()),
 		}
 		f.ID = model.ID(g.ID())
 		flows = append(flows, f)
 	}
 	return flows
+}
+
+// splitConditionFromGen reconstructs an exclusive split's condition (the `if <expr>`
+// expression). Inverse of splitConditionToGen.
+func splitConditionFromGen(el element.Element) microflows.SplitCondition {
+	if g, ok := el.(*genMf.ExpressionSplitCondition); ok {
+		return &microflows.ExpressionSplitCondition{Expression: g.Expression()}
+	}
+	return nil
+}
+
+// caseValueFromGen reconstructs a sequence flow's branch case (the true/false/enum
+// label that findBranchFlows keys on). Both expression and enum cases are stored
+// as a gen EnumerationCase (Value carries the label), so reconstruct that form;
+// no case (a normal flow) yields nil.
+func caseValueFromGen(items []element.Element) microflows.CaseValue {
+	for _, el := range items {
+		if c, ok := el.(*genMf.EnumerationCase); ok {
+			return &microflows.EnumerationCase{Value: c.Value()}
+		}
+	}
+	return nil
 }
 
 // splitFlowObjects separates parameter objects (which our model keeps in
@@ -184,6 +207,10 @@ func flowObjectFromGen(el element.Element) microflows.MicroflowObject {
 	case "Microflows$ExclusiveSplit":
 		o := &microflows.ExclusiveSplit{}
 		o.ID = id
+		if g, ok := el.(*genMf.ExclusiveSplit); ok {
+			o.Caption = g.Caption()
+			o.SplitCondition = splitConditionFromGen(g.SplitCondition())
+		}
 		return o
 	case "Microflows$InheritanceSplit":
 		o := &microflows.InheritanceSplit{}
