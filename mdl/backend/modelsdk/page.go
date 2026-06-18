@@ -103,8 +103,28 @@ func pageFromGen(p *genPg.Page, containerID model.ID) *pages.Page {
 	}
 	out.ID = model.ID(p.ID())
 	for _, el := range p.ParametersItems() {
-		pp := &pages.PageParameter{}
-		pp.ID = model.ID(el.ID())
+		gp, ok := el.(*genPg.PageParameter)
+		if !ok {
+			continue
+		}
+		pp := &pages.PageParameter{
+			ContainerID:  out.ID,
+			Name:         gp.Name(),
+			DefaultValue: gp.DefaultValue(),
+			IsRequired:   gp.IsRequired(),
+		}
+		pp.ID = model.ID(gp.ID())
+		// Object parameters carry an entity (rendered as the qualified entity
+		// name); primitive parameters carry their DataTypes$ storage name (mapped
+		// to String/Integer/… by the renderer). pageParamTypeMDL checks TypeName
+		// first, so leave it empty for object params and set EntityName instead.
+		if pt := gp.ParameterType(); pt != nil {
+			if ot, ok := pt.(*genDT.ObjectType); ok {
+				pp.EntityName = ot.EntityQualifiedName()
+			} else {
+				pp.TypeName = pt.TypeName()
+			}
+		}
 		out.Parameters = append(out.Parameters, pp)
 	}
 	return out

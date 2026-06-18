@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"strings"
 
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/v2/bson"
 
 	"github.com/mendixlabs/mxcli/mdl/types"
@@ -70,6 +71,12 @@ func normalizeBSONValue(v any) any {
 			t[i] = normalizeBSONValue(e)
 		}
 		return t
+	case bson.Binary:
+		// Reference IDs (entity/attribute/widget refs) are stored as binary. The
+		// raw-BSON consumers (extractBinaryID, blobToUUID, …) type-assert the v1
+		// primitive.Binary the legacy reader produces, so convert to match — else
+		// reference properties (Attribute / DataSource / CaptionAttribute) read empty.
+		return primitive.Binary{Subtype: t.Subtype, Data: t.Data}
 	default:
 		return v
 	}
