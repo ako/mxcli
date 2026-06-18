@@ -3,6 +3,8 @@
 package modelsdkbackend
 
 import (
+	"go.mongodb.org/mongo-driver/v2/bson"
+
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/modelsdk/element"
 	genMf "github.com/mendixlabs/mxcli/modelsdk/gen/microflows"
@@ -192,9 +194,130 @@ func actionFromGen(el element.Element) microflows.MicroflowAction {
 		out.ID = model.ID(a.ID())
 		return out
 
+	case *genMf.ListOperationAction:
+		// Storage $Type Microflows$ListOperationsAction. The write binds the output
+		// to "ResultVariableName" and the operation to "NewOperation" (not the gen
+		// keys), so read both from the raw BSON — the inverse of the write's
+		// listOperationToGen.
+		raw := a.Raw()
+		out := &microflows.ListOperationAction{OutputVariable: rawStr(raw, "ResultVariableName")}
+		out.ID = model.ID(a.ID())
+		if opDoc, ok := raw.Lookup("NewOperation").DocumentOK(); ok {
+			out.Operation = listOperationFromRaw(opDoc)
+		}
+		return out
+
 	default:
 		return nil
 	}
+}
+
+// rawStr reads a string field from a raw BSON document, returning "" if the field
+// is absent or not a string.
+func rawStr(doc bson.Raw, key string) string {
+	if doc == nil {
+		return ""
+	}
+	v, _ := doc.Lookup(key).StringValueOK()
+	return v
+}
+
+// listOperationFromRaw reconstructs a list operation from its NewOperation BSON
+// sub-document, the inverse of listOperationToGen. Each operation carries the
+// verified legacy storage keys (ListName / SecondListOrObjectName / …).
+func listOperationFromRaw(doc bson.Raw) microflows.ListOperation {
+	id := model.ID(rawStr(doc, "$ID"))
+	list := rawStr(doc, "ListName")
+	expr := rawStr(doc, "Expression")
+	second := rawStr(doc, "SecondListOrObjectName")
+	switch rawStr(doc, "$Type") {
+	case "Microflows$Head":
+		o := &microflows.HeadOperation{ListVariable: list}
+		o.ID = id
+		return o
+	case "Microflows$Tail":
+		o := &microflows.TailOperation{ListVariable: list}
+		o.ID = id
+		return o
+	case "Microflows$FindByExpression":
+		o := &microflows.FindOperation{ListVariable: list, Expression: expr}
+		o.ID = id
+		return o
+	case "Microflows$FilterByExpression":
+		o := &microflows.FilterOperation{ListVariable: list, Expression: expr}
+		o.ID = id
+		return o
+	case "Microflows$Find":
+		o := &microflows.FindByAttributeOperation{ListVariable: list, Association: rawStr(doc, "Association"), Attribute: rawStr(doc, "Attribute"), Expression: expr}
+		o.ID = id
+		return o
+	case "Microflows$Filter":
+		o := &microflows.FilterByAttributeOperation{ListVariable: list, Association: rawStr(doc, "Association"), Attribute: rawStr(doc, "Attribute"), Expression: expr}
+		o.ID = id
+		return o
+	case "Microflows$Sort":
+		o := &microflows.SortOperation{ListVariable: list, Sorting: sortItemsFromRaw(doc)}
+		o.ID = id
+		return o
+	case "Microflows$Union":
+		o := &microflows.UnionOperation{ListVariable1: list, ListVariable2: second}
+		o.ID = id
+		return o
+	case "Microflows$Intersect":
+		o := &microflows.IntersectOperation{ListVariable1: list, ListVariable2: second}
+		o.ID = id
+		return o
+	case "Microflows$Subtract":
+		o := &microflows.SubtractOperation{ListVariable1: list, ListVariable2: second}
+		o.ID = id
+		return o
+	case "Microflows$Contains":
+		o := &microflows.ContainsOperation{ListVariable: list, ObjectVariable: second}
+		o.ID = id
+		return o
+	case "Microflows$Equals":
+		o := &microflows.EqualsOperation{ListVariable1: list, ListVariable2: second}
+		o.ID = id
+		return o
+	case "Microflows$ListRange":
+		o := &microflows.ListRangeOperation{ListVariable: list, LimitExpression: rawStr(doc, "LimitExpression"), OffsetExpression: rawStr(doc, "OffsetExpression")}
+		o.ID = id
+		return o
+	default:
+		return nil
+	}
+}
+
+// sortItemsFromRaw reconstructs a Sort operation's sort columns from its nested
+// SortingsList → Sortings array. The first array element is the typed-array marker
+// (an int, not a document) and is skipped by the DocumentOK guard.
+func sortItemsFromRaw(doc bson.Raw) []*microflows.SortItem {
+	slDoc, ok := doc.Lookup("Sortings").DocumentOK()
+	if !ok {
+		return nil
+	}
+	arr, ok := slDoc.Lookup("Sortings").ArrayOK()
+	if !ok {
+		return nil
+	}
+	vals, err := arr.Values()
+	if err != nil {
+		return nil
+	}
+	var out []*microflows.SortItem
+	for _, v := range vals {
+		sd, ok := v.DocumentOK()
+		if !ok {
+			continue
+		}
+		it := &microflows.SortItem{Direction: microflows.SortDirection(rawStr(sd, "SortOrder"))}
+		it.ID = model.ID(rawStr(sd, "$ID"))
+		if ref, ok := sd.Lookup("AttributeRef").DocumentOK(); ok {
+			it.AttributeQualifiedName = rawStr(ref, "AttributeQualifiedName")
+		}
+		out = append(out, it)
+	}
+	return out
 }
 
 // memberChangesFromGen reconstructs the attribute/association assignments of a
