@@ -234,7 +234,7 @@ func actionFromGen(el element.Element) microflows.MicroflowAction {
 		// raw (Form / ParameterMappings with legacy keys), so read it from raw.
 		out := &microflows.ShowPageAction{ErrorHandlingType: microflows.ErrorHandlingType(a.ErrorHandlingType())}
 		out.ID = model.ID(a.ID())
-		if fs, ok := a.Raw().Lookup("PageSettings").DocumentOK(); ok {
+		if fs, ok := a.Raw().Lookup("FormSettings").DocumentOK(); ok {
 			out.FormSettingsID = model.ID(rawStr(fs, "$ID"))
 			out.PageName = rawStr(fs, "Form")
 			if arr, ok := fs.Lookup("ParameterMappings").ArrayOK(); ok {
@@ -464,7 +464,8 @@ func sortItemsFromRaw(doc bson.Raw) []*microflows.SortItem {
 		it := &microflows.SortItem{Direction: microflows.SortDirection(rawStr(sd, "SortOrder"))}
 		it.ID = model.ID(rawStr(sd, "$ID"))
 		if ref, ok := sd.Lookup("AttributeRef").DocumentOK(); ok {
-			it.AttributeQualifiedName = rawStr(ref, "AttributeQualifiedName")
+			// The AttributeRef stores its by-name reference under "Attribute".
+			it.AttributeQualifiedName = rawStr(ref, "Attribute")
 		}
 		out = append(out, it)
 	}
