@@ -148,7 +148,7 @@ draft SQL).
 
 | View | Purpose | Shape (key columns) |
 |------|---------|---------------------|
-| `graph_god_nodes` | degree centrality | `Asset, ObjectType, InDegree, OutDegree, Degree, ModuleName` |
+| `graph_god_nodes` | centrality (degree always; PageRank/betweenness when computed) | `Asset, ObjectType, InDegree, OutDegree, Degree, PageRank, Betweenness, ModuleName` |
 | `graph_module_coupling` | cross-module "surprise edges" | `SourceModule, TargetModule, Edges, RefKinds` |
 | `graph_module_cohesion` | intra vs inter-module ratio | `ModuleName, IntraEdges, InterEdges, CohesionPct` |
 | `graph_dead_assets` | no inbound reference | `QualifiedName, ObjectType, ModuleName` |
@@ -156,6 +156,13 @@ draft SQL).
 | `graph_entity_hotspots` | entities most used by flows | `Entity, UsedByFlows, AcrossModules` |
 
 Notes:
+- `graph_god_nodes` computes **degree** in pure SQL (available after `refresh
+  catalog full`) and **LEFT JOINs** the `graph_centrality_data` table for
+  **PageRank** and **betweenness** (NULL until `refresh catalog communities` runs
+  the algorithmic pass — see Part 1b). Degree, PageRank, and betweenness are
+  complementary signals, validated as distinct on Evora (top-8 by PageRank
+  overlaps degree only 3/8): degree = "referenced a lot", PageRank = "referenced by
+  *important* things", betweenness = "bridge/chokepoint on many paths".
 - `graph_god_nodes` exposes `ModuleName` so the renderer/consumer can filter
   framework modules (`System`, `Atlas_Core`, marketplace connectors) — the raw
   top-N is dominated by shared infrastructure (layouts, `System.User`), which is
@@ -202,6 +209,27 @@ to tables); one is pure SQL.
 
 No opinionated `graph_layer_violations` view ships: a violation is defined by the
 user's architecture, not ours.
+
+### Centrality beyond degree (algorithm → `graph_centrality_data`)
+
+Degree centrality (god nodes) is pure SQL, but two richer signals need the graph
+and are computed in the same pure-Go pass:
+
+- **PageRank** — power-method on the *directed* `refs` graph (uses edge direction
+  naturally; ~30 lines; deterministic with a fixed damping factor and stable node
+  order). Ranks an asset by the importance of what references it, not just the
+  count — surfaces structurally-central nodes degree misses (Evora:
+  `TcConnector.POM_application_object`, degree 10 → PageRank #2).
+- **Betweenness** — Brandes' algorithm; identifies **bridge/chokepoint** assets on
+  many shortest paths (distinct from both degree and PageRank — the thing that, if
+  changed, ripples through unrelated parts). **Cost caveat:** Brandes is O(V·E) —
+  fine at Evora scale (3k·5k ≈ 15M ops, sub-second) but expensive on the largest
+  apps (#651-scale: ~30k nodes). Compute it **opt-in** (a flag on
+  `refresh catalog communities`, default on up to a node-count threshold, skipped
+  with a logged note above it), so a routine refresh never silently becomes slow.
+
+Both write to `graph_centrality_data (Id, PageRank, Betweenness)`, LEFT-JOINed by
+`graph_god_nodes`.
 
 ### UC2 — integration surface (pure SQL view over communities)
 
@@ -260,8 +288,8 @@ the views above (same pattern as the existing `refs_to`):
 | `module_dependencies()` | list of `{source_module, target_module, ref_kind, edges}` | forbid/allow specific module→module deps |
 | `refs_from(source)` | outbound refs (complements existing `refs_to`) | walk a node's own dependencies |
 | `cycles()` | list of SCCs (members, scope: asset/module) | fail if any cycle (or a *specific* forbidden cycle) exists |
-| `degree(asset)` | `{in, out, total}` | flag god nodes above the team's threshold |
-| `god_nodes(min_degree=N)` | high-degree assets | same, as a filtered list |
+| `centrality(asset)` | `{in, out, total, pagerank, betweenness}` | flag hotspots above the team's threshold on *any* metric |
+| `god_nodes(metric="degree"\|"pagerank"\|"betweenness", min=N)` | high-centrality assets | same, as a filtered list |
 | `integration_surface()` | cross-community edges by kind+mechanism | gate that an app split's contract count stays under budget |
 
 These read the `graph_*` / `communities` views, so they're only meaningful after
@@ -337,10 +365,12 @@ and graph build**, then runs all three algorithms (they share the substrate):
    default, opt-in via flag). Keep both a **directed** view (for SCC/layering) and
    an **undirected** view (for Leiden).
 3. Run **native Go Leiden** (communities) + **Tarjan SCC** (cycles) +
-   **condensation topo-leveling** (layers) — all pure Go, deterministic.
-4. Upsert `communities_data`, `graph_cycles_data`, `graph_layers_data`; the
-   dependent views (`community_summary`, `graph_integration_surface`,
-   `graph_module_dependencies`) read from them directly.
+   **condensation topo-leveling** (layers) + **PageRank** and **betweenness**
+   (centrality) — all pure Go, deterministic.
+4. Upsert `communities_data`, `graph_cycles_data`, `graph_layers_data`,
+   `graph_centrality_data`; the dependent views (`community_summary`,
+   `graph_integration_surface`, `graph_module_dependencies`, and the
+   PageRank/betweenness columns of `graph_god_nodes`) read from them directly.
 
 `--resolution <γ>` (default 1.0) exposes the validated granularity knob. Results
 must be **deterministic** (stable node ordering + fixed seed) per the repo's
@@ -377,19 +407,69 @@ error with a hint to run `refresh catalog communities`. (Following
 `.claude/skills/design-mdl-syntax.md`: standard `SHOW` verb, qualified names,
 reads as English.)
 
+## Algorithm choice (and why not Infomap)
+
+This was contested, so the rationale is recorded here to avoid re-litigation. The
+choices are deliberate, not defaults, and were validated empirically on
+`Evora-FactoryManagement`.
+
+**Different questions need different algorithms — they are complementary, not
+alternatives:**
+
+| Question | Algorithm | Why |
+|----------|-----------|-----|
+| What groups belong together (candidate modules/apps)? | **Leiden** (undirected, modularity) | modularity *minimises inter-cluster edges* — which **are** the integration contracts in UC2, so it directly minimises split cost |
+| Where are the dependency tangles? | **Tarjan SCC** (directed) | cycles are inherently directional; pure-SQL CTEs cannot compute SCC |
+| What's the dependency depth / layering? | **topo-level on the SCC condensation** (directed) | must break cycles first (SCC), then level — not expressible in SQL on a cyclic graph |
+| What's most important? | **degree + PageRank + betweenness** (PageRank/betweenness directed) | three distinct, complementary signals (count / referrer-importance / bridge) |
+
+**Why undirected Leiden for communities, despite `refs` being directed.**
+Direction matters — but for *layering and cut-asymmetry*, which SCC + the directed
+`graph_integration_surface` already capture (A→B with no B→A is a clean one-way
+contract; A↔B is a hard cut = same SCC). For the *grouping* question, "should A
+and B be one app?" is symmetric coupling, and modularity is the objective that
+yields the **fewest crossing edges = fewest contracts**.
+
+**Why not Infomap (the directed-flow alternative), tested head-to-head:**
+
+| | communities | modularity | module-purity |
+|---|---|---|---|
+| Leiden (undirected) | 105 | **0.878** | 71% |
+| Infomap (directed) | **320** | 0.782 | 86% |
+
+Infomap optimises random-walk description length, not cut size, and on this graph
+it is **worse on every axis that matters for refactoring**: 3× more communities
+(too granular to action, and no resolution knob), **lower modularity → more
+crossing edges → more integration contracts** (the opposite of the UC2 goal), and
+**higher module-purity → it mostly reproduces the existing modules**, hiding the
+cross-module bounded contexts that are the whole point of UC1. The same pattern
+held on the homogeneous call-flow subgraph (Infomap's best case). Its objective
+also assumes edges are *flow*; `refs` is mostly typed static dependencies
+(`generalize`/`associate`/`retrieve`), where the flow model doesn't apply. Infomap
+is also materially harder to implement natively than Leiden (Leiden = Louvain + a
+refinement pass). *Niche where it could earn a place later:* its high
+module-purity is a useful **conformance** signal ("do my modules match the natural
+structure?") — a possible `graph-conformance` follow-up, not the partitioner.
+
+**Other considered and declined for v1:** Louvain (Leiden minus the connectivity
+guarantee — we get it nearly free natively); label propagation (non-deterministic,
+conflicts with the catalog-stability requirement; viable only as an opt-in
+`--fast` with fixed ordering).
+
 ## Implementation Plan
 
 ### Files to modify/create
 
 | File | Change |
 |------|--------|
-| `mdl/catalog/tables.go` | add report views (`graph_god_nodes`, `graph_module_coupling`, `graph_module_cohesion`, `graph_dead_assets`, `graph_refkind_distribution`, `graph_entity_hotspots`) + `graph_module_dependencies` + `graph_integration_surface` views; `communities_data`/`graph_cycles_data`/`graph_layers_data` tables + their framed views + `community_summary`; bump `CatalogSchemaVersion` |
-| `mdl/linter/starlark.go` | add graph builtins: `layer_of`, `community_of`, `module_dependencies`, `refs_from`, `cycles`, `degree`, `god_nodes`, `integration_surface` |
+| `mdl/catalog/tables.go` | add report views (`graph_god_nodes`, `graph_module_coupling`, `graph_module_cohesion`, `graph_dead_assets`, `graph_refkind_distribution`, `graph_entity_hotspots`) + `graph_module_dependencies` + `graph_integration_surface` views; `communities_data`/`graph_cycles_data`/`graph_layers_data`/`graph_centrality_data` tables + their framed views + `community_summary`; bump `CatalogSchemaVersion` |
+| `mdl/linter/starlark.go` | add graph builtins: `layer_of`, `community_of`, `module_dependencies`, `refs_from`, `cycles`, `centrality`, `god_nodes`, `integration_surface` |
 | `mdl/linter/context.go` | `LintContext` accessors backing the graph builtins (read `graph_*`/`communities` views) |
 | `mdl/catalog/graph/leiden.go` (new) | pure-Go Leiden (local-move, refine, aggregate) with resolution γ |
 | `mdl/catalog/graph/scc.go` (new) | pure-Go Tarjan SCC + condensation topo-leveling (cycles, layers) |
-| `mdl/catalog/graph/*_test.go` (new) | algorithm unit tests (Zachary karate club; synthetic graphs with planted communities; known-cycle graphs for SCC; DAG layering) |
-| `mdl/catalog/builder_graph.go` (new) | load edges from `refs` once, build directed+undirected graph, run Leiden/SCC/layers, write the three `_data` tables |
+| `mdl/catalog/graph/centrality.go` (new) | pure-Go PageRank (power method) + betweenness (Brandes, opt-in/capped) |
+| `mdl/catalog/graph/*_test.go` (new) | algorithm unit tests (Zachary karate club; planted communities; known-cycle graphs for SCC; DAG layering; PageRank/betweenness vs reference values) |
+| `mdl/catalog/builder_graph.go` (new) | load edges from `refs` once, build directed+undirected graph, run Leiden/SCC/layers/centrality, write the four `_data` tables |
 | `mdl/catalog/builder.go` | wire the graph build into the `communities` refresh mode |
 | `mdl/ast/ast_query.go` | `RefreshCatalogStmt.Communities` + `Resolution`; `ShowCommunity`, `ShowCommunityMembers`, `ShowCommunities` |
 | `mdl/grammar/domains/MDLCatalog.g4` | `REFRESH CATALOG COMMUNITIES [RESOLUTION n]`; `SHOW COMMUNITY [MEMBERS] OF qn`; `SHOW COMMUNITIES` |
@@ -403,10 +483,11 @@ reads as English.)
 ### Order of operations
 
 1. **Views + `graph-report`** (no algorithm) — ships standalone value, pure SQL.
-2. **Native Go Leiden + SCC/layering + tests** — algorithms in isolation,
-   validated on known graphs before touching the catalog.
-3. **`refresh catalog communities`** + `communities`/`graph_cycles`/`graph_layers`
-   tables and dependent views (`graph_integration_surface`, `graph_module_dependencies`).
+2. **Native Go Leiden + SCC/layering + PageRank/betweenness + tests** — algorithms
+   in isolation, validated on known graphs before touching the catalog.
+3. **`refresh catalog communities`** + `communities`/`graph_cycles`/`graph_layers`/
+   `graph_centrality` tables and dependent views (`graph_integration_surface`,
+   `graph_module_dependencies`, `graph_god_nodes` PageRank/betweenness columns).
 4. **`SHOW COMMUNITY*`** MDL surface.
 5. **Starlark graph builtins** (`layer_of`, `cycles`, `module_dependencies`, …) +
    an example user-layering rule in the docs — the UC1/UC2 validation surface.
@@ -430,6 +511,9 @@ No `sdk/versions/*.yaml` entry needed.
   - *Layering*: a known DAG → assert the sequence numbers match the topological
     order; a graph with a back-edge → assert the two ends land in the expected
     relative order (no opinionated "violation" — that's the user's rule).
+  - *Centrality*: PageRank against a hand-computed small graph (and sums to 1);
+    betweenness against a known graph (e.g. a star → centre has max, leaves 0);
+    both deterministic across runs.
   - *Starlark builtins*: a fixture `.star` rule using `layer_of`,
     `module_dependencies`, `cycles`, `community_of` runs against a seeded catalog
     and produces the expected violations; builtins return `[]` (not error) when the
