@@ -455,7 +455,14 @@ rangeConstraint
     ;
 
 attributeReference
-    : IDENTIFIER (SLASH IDENTIFIER)*
+    : attributeRefSegment (SLASH attributeRefSegment)*
+    ;
+
+// One segment of an attribute reference. Accepts a quoted identifier so a
+// segment that is a reserved word can be escaped, e.g. "Order"/Status.
+attributeRefSegment
+    : IDENTIFIER
+    | QUOTED_IDENTIFIER
     ;
 
 attributeReferenceList

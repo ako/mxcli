@@ -229,6 +229,31 @@ func TestGrantEntityAccess(t *testing.T) {
 	}
 }
 
+func TestGrantEntityAccess_QuotedMembers(t *testing.T) {
+	// Members whose name is a reserved word can be escaped with quotes.
+	input := `GRANT MyModule.Admin ON MyModule.Order (READ ("Order", "Status"), WRITE ("Order"));`
+	prog, errs := Build(input)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Errorf("Parse error: %v", e)
+		}
+		return
+	}
+	stmt := prog.Statements[0].(*ast.GrantEntityAccessStmt)
+	if len(stmt.Rights) != 2 {
+		t.Fatalf("expected 2 rights, got %d", len(stmt.Rights))
+	}
+	if stmt.Rights[0].Type != ast.EntityAccessReadMembers ||
+		len(stmt.Rights[0].Members) != 2 ||
+		stmt.Rights[0].Members[0] != "Order" || stmt.Rights[0].Members[1] != "Status" {
+		t.Errorf("expected READ members [Order Status] (unquoted), got %v", stmt.Rights[0].Members)
+	}
+	if stmt.Rights[1].Type != ast.EntityAccessWriteMembers ||
+		len(stmt.Rights[1].Members) != 1 || stmt.Rights[1].Members[0] != "Order" {
+		t.Errorf("expected WRITE members [Order] (unquoted), got %v", stmt.Rights[1].Members)
+	}
+}
+
 func TestGrantEntityAccess_MultipleRoles(t *testing.T) {
 	input := `GRANT MyModule.Admin, MyModule.Editor ON MyModule.Customer (READ *);`
 	prog, errs := Build(input)

@@ -487,8 +487,8 @@ func parseEntityAccessRight(ctx parser.IEntityAccessRightContext) ast.EntityAcce
 			return ast.EntityAccessRight{Type: ast.EntityAccessReadAll}
 		}
 		right := ast.EntityAccessRight{Type: ast.EntityAccessReadMembers}
-		for _, id := range earCtx.AllIDENTIFIER() {
-			right.Members = append(right.Members, id.GetText())
+		for _, m := range earCtx.AllEntityMemberName() {
+			right.Members = append(right.Members, unquoteIdentifier(m.GetText()))
 		}
 		return right
 	}
@@ -497,8 +497,8 @@ func parseEntityAccessRight(ctx parser.IEntityAccessRightContext) ast.EntityAcce
 			return ast.EntityAccessRight{Type: ast.EntityAccessWriteAll}
 		}
 		right := ast.EntityAccessRight{Type: ast.EntityAccessWriteMembers}
-		for _, id := range earCtx.AllIDENTIFIER() {
-			right.Members = append(right.Members, id.GetText())
+		for _, m := range earCtx.AllEntityMemberName() {
+			right.Members = append(right.Members, unquoteIdentifier(m.GetText()))
 		}
 		return right
 	}

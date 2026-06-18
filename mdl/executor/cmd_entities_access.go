@@ -156,18 +156,29 @@ func formatAccessRuleRights(ctx *ExecContext, rule *domainmodel.AccessRule, attr
 		if readMembers == nil {
 			rights = append(rights, "read *")
 		} else {
-			rights = append(rights, fmt.Sprintf("read (%s)", strings.Join(readMembers, ", ")))
+			rights = append(rights, fmt.Sprintf("read (%s)", strings.Join(quoteMembers(readMembers), ", ")))
 		}
 	}
 	if hasWrite {
 		if writeMembers == nil {
 			rights = append(rights, "write *")
 		} else if len(writeMembers) > 0 {
-			rights = append(rights, fmt.Sprintf("write (%s)", strings.Join(writeMembers, ", ")))
+			rights = append(rights, fmt.Sprintf("write (%s)", strings.Join(quoteMembers(writeMembers), ", ")))
 		}
 	}
 
 	return strings.Join(rights, ", ")
+}
+
+// quoteMembers quotes any member name that is a reserved word (or otherwise does
+// not lex as a bare identifier) so the emitted READ/WRITE list re-parses. The
+// grammar accepts a QUOTED_IDENTIFIER in member positions.
+func quoteMembers(members []string) []string {
+	out := make([]string, len(members))
+	for i, m := range members {
+		out[i] = mdlIdent(m)
+	}
+	return out
 }
 
 // formatAccessRuleResult re-reads the entity and formats the resulting access state

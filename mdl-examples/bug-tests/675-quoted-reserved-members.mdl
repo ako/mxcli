@@ -1,0 +1,21 @@
+-- Bug #675: quoted identifiers must be accepted in entity-access member lists
+-- and validation-rule attribute references.
+--
+-- POSITIVE TEST — this script is EXPECTED to PASS `mxcli check`.
+--
+-- Symptom: a member (attribute/association) or validation-rule attribute whose
+-- name is a reserved word (e.g. Order, Status) could not be referenced — the
+-- READ/WRITE list and the validation-rule attribute position accepted only a
+-- bare IDENTIFIER, so there was no way to escape the reserved word.
+--
+-- Fix: those positions now accept a QUOTED_IDENTIFIER, matching how qualified
+-- names, page params and widget names already work. DESCRIBE re-emits such
+-- members quoted so the roundtrip stays clean.
+
+grant MyMod.Administrator on MyMod.SalesOrder (
+  read ("Order", "Status", LineTotal),
+  write ("Order")
+);
+
+create validation rule MyMod.OrderRequiresOrder for MyMod.SalesOrder
+  required "Order" feedback 'Order number is required';

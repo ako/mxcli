@@ -122,7 +122,15 @@ entityAccessRight
     : CREATE
     | DELETE
     | READ STAR
-    | READ LPAREN IDENTIFIER (COMMA IDENTIFIER)* RPAREN
+    | READ LPAREN entityMemberName (COMMA entityMemberName)* RPAREN
     | WRITE STAR
-    | WRITE LPAREN IDENTIFIER (COMMA IDENTIFIER)* RPAREN
+    | WRITE LPAREN entityMemberName (COMMA entityMemberName)* RPAREN
+    ;
+
+// Member (attribute / association) name in a READ/WRITE list. Accepts a quoted
+// identifier so members whose name is a reserved word can be escaped, e.g.
+// READ ("Order", Status).
+entityMemberName
+    : IDENTIFIER
+    | QUOTED_IDENTIFIER
     ;
