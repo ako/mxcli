@@ -140,8 +140,8 @@ func init() {
 			"boundary event", "timer", "timeout", "deadline",
 			"SLA", "escalation",
 		},
-		Syntax:     "BOUNDARY TIMER ON <task-name> AFTER '<duration>' {\n  <activities>\n}",
-		Example:    "BOUNDARY TIMER ON ReviewTask AFTER 'P3D' {\n  CALL MICROFLOW Module.Escalate;\n}",
+		Syntax:     "-- inline, as a clause of a USER TASK (after OUTCOMES):\nBOUNDARY EVENT [INTERRUPTING | NON INTERRUPTING] TIMER '<duration>' { <activities> }\n\n-- or add one to an existing task:\nALTER WORKFLOW <wf> INSERT BOUNDARY EVENT ON <task> TIMER '<duration>' { <activities> }",
+		Example:    "user task ReviewTask 'Review'\n  page Module.WF_Review\n  outcomes 'Done' { }\n  boundary event timer 'P3D' {\n    call microflow Module.WF_Escalate;\n  };",
 		MinVersion: "10.6.0",
 		SeeAlso:    []string{"workflow.user-task"},
 	})
