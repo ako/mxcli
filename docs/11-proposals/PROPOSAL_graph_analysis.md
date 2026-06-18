@@ -576,3 +576,30 @@ No `sdk/versions/*.yaml` entry needed.
    `refresh catalog communities` when the table is stale/absent, or only warn-and-
    skip (proposed)? Auto-trigger is convenient but makes a lint run unexpectedly
    expensive; warn-and-skip keeps lint fast and predictable.
+
+## Relation to Graphify — coverage & deferred scope
+
+This proposal covers, and in places exceeds, Graphify's **offline structural
+analysis**: god nodes (degree **+ PageRank + betweenness** vs Graphify's degree
+only), surprise edges, Leiden communities (**+ directed SCC/layering + cut→contract
+analysis** Graphify lacks), and the `GRAPH_REPORT.md` convention — over **typed**
+edges a generic AST extractor can't produce.
+
+It deliberately does **not** cover Graphify's **runtime agent-context** half:
+
+- **Query-scoped subgraph as an agent primitive** — Graphify's headline pitch
+  (the "71.5× token reduction") is that an agent pulls the slice around a node
+  instead of ingesting everything. mxcli's `show context of X depth N` already does
+  the BFS walk, but emits human-readable markdown, isn't a **token-minimal
+  machine-readable** subgraph, and isn't exposed as an **MCP tool** an agent can
+  call. Closing this — plus *measuring* the compression on a real Mendix app — is a
+  distinct concern (runtime serving, not offline analysis) and belongs in a
+  **sibling proposal** built on the catalog graph this one establishes, not here.
+- **Semantic / multi-modal extraction** — Graphify also extracts concepts from
+  prose/docs/diagrams via LLMs. For a self-describing typed model this is low value;
+  the one Mendix analogue (concept extraction from `Documentation` fields) is a
+  separate, fuzzier project and is **not pursued**.
+
+So: this proposal is the **analysis layer**; the **agent-context-compression
+layer** (BFS subgraph → MCP, with a measured token-reduction claim) is
+acknowledged here and left to follow-up work.
