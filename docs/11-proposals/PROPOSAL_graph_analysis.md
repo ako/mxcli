@@ -121,13 +121,26 @@ Explicitly **out of scope**:
 
 ## Dependency: refs completeness
 
-Both halves are only as good as the edges in `CATALOG.REFS`. The recent #663 work
-(nanoflow/REST/association/layout edges + nanoflow sources) is what makes the
-validation above meaningful. Known remaining edge gaps — **widget→microflow
-button actions, attribute-level, calculated-by** — will under-weight some nodes
-and slightly blur page/UI clusters. Closing those (#663 remainder) multiplies the
-value here and should proceed in parallel. This is noted as a limitation, not a
-blocker.
+Both halves are only as good as the edges in `CATALOG.REFS`. The #663 work has now
+closed the structural backbone — control-flow calls, CRUD (create/retrieve/change/
+delete via intra-flow variable resolution), associations, generalization, calculated-
+by, page/snippet widget datasource+action, layout/navigation, and **flow→entity
+parameter/return "uses"** edges (Evora `refs` ~5.5k → ~9k). This is what makes the
+validation above meaningful.
+
+**Remaining edge frontier — expression/XPath references** (entities, associations,
+attributes, enums, constants referenced *inside* XPath constraints, decision
+conditions, change-values, and calculated expressions) are not yet edges. Turning
+these into refs needs an expression/XPath resolver — exactly the machinery in
+[`PROPOSAL_expression_type_checking.md`](PROPOSAL_expression_type_checking.md):
+its `InferType` / `AttributeAccessExpr`→catalog lookup / `QualifiedNameExpr`→enum
+resolution / variable-scope walker resolve what an expression fragment *points
+at*. The refs extractor should become a **second consumer** of that typesystem
+(emit an edge per resolved reference) rather than parse expressions independently.
+So the expression-ref half of refs completeness is **sequenced behind that
+proposal**. The structural backbone is sufficient for v1 of the analysis here;
+expression edges (and the enum/constant nodes that mostly fall out of them) are a
+quality multiplier, not a blocker.
 
 ## BSON Structure
 

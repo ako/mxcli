@@ -51,6 +51,33 @@ Two tiers of checking:
 
 ---
 
+## Second consumer: catalog `refs` expression edges
+
+Type checking is not the only use of this machinery. The catalog cross-reference
+graph (`CATALOG.REFS`, see [`PROPOSAL_graph_analysis.md`](PROPOSAL_graph_analysis.md))
+currently captures structural edges (calls, CRUD, associations, widget datasource/
+action, flow parameter/return types) but **not** the references buried *inside*
+expressions and XPath constraints — an entity/association/attribute named in a
+`retrieve … where [...]`, an enum compared in an `if`, a constant used in a
+change-value. Those are the same things this checker must resolve to do its job:
+
+- `AttributeAccessExpr` → catalog lookup gives the **entity + attribute** (and the
+  association in a path) — i.e. the entity/attribute/association edges.
+- `QualifiedNameExpr` (3-part) → `Enumeration{QN}` gives the **enum** edge.
+- The scope/`populate.go` walker already tracks `$Var → entity type`, the same
+  intra-flow resolution the refs builder hand-rolls today for change/delete.
+
+So the catalog `refs` extractor should be wired as a **second consumer of
+`InferType`/the resolver** — emitting a ref edge for each resolved reference —
+rather than writing a parallel expression parser. This proposal is therefore a
+**prerequisite for the expression-edge half of refs completeness**; building the
+typesystem here unblocks both type checking *and* a materially richer model graph
+(it also fills the enum/constant nodes that today have zero inbound edges). Worth
+keeping the `Type`/`Checker` API usable headlessly (no LSP/lint coupling) so the
+catalog builder can call it directly.
+
+---
+
 ## Background: Mendix Type System
 
 Mendix expressions use these types:
