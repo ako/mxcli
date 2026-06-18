@@ -159,6 +159,31 @@ func actionFromGen(el element.Element) microflows.MicroflowAction {
 		}
 		return out
 
+	case *genMf.JavaScriptActionCallAction:
+		out := &microflows.JavaScriptActionCallAction{
+			ErrorHandlingType: microflows.ErrorHandlingType(a.ErrorHandlingType()),
+			JavaScriptAction:  a.JavaScriptActionQualifiedName(),
+			// The gen binds outputVariableName to the key "VariableName", but a JS
+			// action stores its output under "OutputVariableName" (per the legacy
+			// parser), so read it from raw.
+			OutputVariableName: rawStr(a.Raw(), "OutputVariableName"),
+			UseReturnVariable:  a.UseReturnVariable(),
+		}
+		out.ID = model.ID(a.ID())
+		for _, pmEl := range a.ParameterMappingsItems() {
+			pm, ok := pmEl.(*genMf.JavaScriptActionParameterMapping)
+			if !ok {
+				continue
+			}
+			m := &microflows.JavaScriptActionParameterMapping{Parameter: pm.ParameterQualifiedName()}
+			m.ID = model.ID(pm.ID())
+			if v := pm.ParameterValue(); v != nil {
+				m.Value = codeActionParameterValueFromRaw(v.Raw())
+			}
+			out.ParameterMappings = append(out.ParameterMappings, m)
+		}
+		return out
+
 	case *genMf.CreateListAction:
 		out := &microflows.CreateListAction{
 			EntityQualifiedName: a.EntityQualifiedName(),
