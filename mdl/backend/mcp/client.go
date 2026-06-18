@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mendixlabs/mxcli/mdl/backend"
@@ -86,18 +87,47 @@ func NewClient(opts ClientOptions) (*Client, error) {
 	}, nil
 }
 
-// defaultDial maps a localhost endpoint to the Docker host gateway so the
-// client works from inside a devcontainer, while the Host header stays
-// localhost.
+// defaultDial maps a localhost endpoint to the Docker host gateway so the client
+// works from inside a devcontainer, while the Host header stays localhost. The
+// rewrite happens only when host.docker.internal is actually reachable — i.e.
+// inside a container. On the host (e.g. macOS, where host.docker.internal does
+// not resolve) it dials localhost directly, so `--mcp http://localhost:PORT/mcp`
+// works without an explicit --mcp-dial.
 func defaultDial(host string) string {
+	return dialFor(host, hostDockerInternalReachable())
+}
+
+// dialFor is the pure decision behind defaultDial: rewrite a localhost endpoint to
+// the docker host gateway only when that gateway is reachable. Split out so both
+// branches are unit-testable without depending on the runtime environment.
+func dialFor(host string, dockerReachable bool) string {
 	h, port, err := net.SplitHostPort(host)
 	if err != nil { // no port
 		h, port = host, "80"
 	}
-	if h == "localhost" || h == "127.0.0.1" {
-		return net.JoinHostPort("host.docker.internal", port)
+	if (h == "localhost" || h == "127.0.0.1") && dockerReachable {
+		return net.JoinHostPort(dockerHostName, port)
 	}
 	return host
+}
+
+// dockerHostName is the gateway hostname Docker injects for reaching the host.
+const dockerHostName = "host.docker.internal"
+
+var dockerHostOnce struct {
+	sync.Once
+	reachable bool
+}
+
+// hostDockerInternalReachable reports whether host.docker.internal resolves
+// (true inside a Docker/devcontainer with the host-gateway mapping, false on a
+// bare host). Resolved once and cached.
+func hostDockerInternalReachable() bool {
+	dockerHostOnce.Do(func() {
+		_, err := net.LookupHost(dockerHostName)
+		dockerHostOnce.reachable = err == nil
+	})
+	return dockerHostOnce.reachable
 }
 
 func newHTTPClient(dialAddr string, timeout time.Duration) *http.Client {
