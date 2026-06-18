@@ -603,3 +603,47 @@ It deliberately does **not** cover Graphify's **runtime agent-context** half:
 So: this proposal is the **analysis layer**; the **agent-context-compression
 layer** (BFS subgraph → MCP, with a measured token-reduction claim) is
 acknowledged here and left to follow-up work.
+
+## Relation to engalar's `mxgraph` — substrate & the deferred sibling
+
+The engalar fork carries an `internal/mxgraph` package (a "file-based graph index
+framework") that overlaps this proposal — but **at a different layer**, so it is
+not a conflict. Recorded here so the substrate decision is deliberate.
+
+**What `mxgraph` is:** an extraction + incremental-index + traversal-query engine —
+an in-memory graph (adjacency/label/property indexes) maintained **incrementally**
+via an append-only delta log + snapshot compaction and a `Watch()` file watcher,
+populated by pluggable adapters (MPR docs **plus** access rules, document grants,
+widget instances, theme/SCSS, design properties), exposing a path/traversal query
+API (`FindPathSchemas`/`ExplorePath`/`Traverse`/`Neighbors`) aimed at AI model
+exploration. It does **no** community/centrality/cycle analysis (verified: no
+Leiden/PageRank/betweenness/modularity anywhere in the package).
+
+**No overlap on this proposal's core.** The analysis half — Leiden communities,
+SCC/cycles, layering, PageRank/betweenness, integration-surface, the Starlark
+builtins and `SHOW COMMUNITY` surface — has no counterpart in `mxgraph`. This
+proposal proceeds unchanged, on `refs`, single-binary and SQL-native.
+
+**Two genuine points of contact:**
+
+1. **Substrate (a tension to weigh later, not now).** This proposal's premise is
+   "`refs` is already a rich typed edge list — this is a rendering problem, not an
+   extraction problem." `mxgraph` is a more elaborate extraction layer that
+   directly addresses the two limitations this proposal flags: it is **incremental**
+   (Watch/delta vs `refs`' full rebuild) and its adapters cover the exact edge gaps
+   called out under *Dependency: refs completeness* (widget→microflow, attribute-
+   level, theme/design). The cost is a second model-graph substrate and persistence
+   store (`mxgraph` snapshots vs `catalog.db`). **Decision: ship the analysis over
+   `refs` as designed.** Whether the analysis should later read `mxgraph`'s edges
+   instead of `refs` (richer + incremental) is a substrate migration to evaluate
+   explicitly as a separate piece of work — out of scope here.
+
+2. **`mxgraph` ≈ the deferred agent-context sibling.** The
+   query-scoped-subgraph / token-minimal / MCP-tool layer this section defers to a
+   "sibling proposal" is essentially what `mxgraph`'s traversal + path-schema query
+   API already implements. When that sibling is taken up, **evaluate porting
+   `mxgraph` as its base rather than building greenfield.**
+
+(Naming note: engalar's spec uses "graphify" for a *knowledge/docs* indexer and
+`mxgraph` for the *model* graph; this proposal is named after the graphify.net
+analysis it reproduces. The collision is incidental.)
