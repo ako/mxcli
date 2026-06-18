@@ -4,6 +4,7 @@ package modelsdkbackend
 
 import (
 	"github.com/mendixlabs/mxcli/modelsdk/element"
+	genDT "github.com/mendixlabs/mxcli/modelsdk/gen/datatypes"
 	genMf "github.com/mendixlabs/mxcli/modelsdk/gen/microflows"
 	"github.com/mendixlabs/mxcli/modelsdk/mprread"
 
@@ -222,27 +223,35 @@ func dataTypeFromGen(el element.Element) microflows.DataType {
 	if el == nil {
 		return nil
 	}
-	switch el.TypeName() {
-	case "DataTypes$BooleanType":
-		return microflows.BooleanType{}
-	case "DataTypes$IntegerType":
-		return microflows.IntegerType{}
-	case "DataTypes$LongType":
-		return microflows.LongType{}
-	case "DataTypes$DecimalType":
-		return microflows.DecimalType{}
-	case "DataTypes$StringType":
-		return microflows.StringType{}
-	case "DataTypes$DateTimeType":
-		return microflows.DateTimeType{}
-	case "DataTypes$VoidType":
-		return microflows.VoidType{}
-	case "DataTypes$ObjectType":
-		return microflows.ObjectType{}
-	case "DataTypes$ListType":
-		return microflows.ListType{}
-	case "DataTypes$EnumerationType":
-		return microflows.EnumerationType{}
+	// Return pointer types: the describe formatter (formatMicroflowDataType) and
+	// microflowHasReturnValue both type-switch on *microflows.X, matching the
+	// legacy reader — value types would silently fall through (showing "Unknown",
+	// and misdetecting Void so the void `return;` is dropped). Object/List carry
+	// the entity name and Enumeration the enum name so "List of Module.Entity"
+	// renders instead of a bare "List".
+	// Long has no distinct gen type; match it by storage name before the switch.
+	if el.TypeName() == "DataTypes$LongType" {
+		return &microflows.LongType{}
+	}
+	switch g := el.(type) {
+	case *genDT.BooleanType:
+		return &microflows.BooleanType{}
+	case *genDT.IntegerType:
+		return &microflows.IntegerType{}
+	case *genDT.DecimalType:
+		return &microflows.DecimalType{}
+	case *genDT.StringType:
+		return &microflows.StringType{}
+	case *genDT.DateTimeType:
+		return &microflows.DateTimeType{}
+	case *genDT.VoidType:
+		return &microflows.VoidType{}
+	case *genDT.ObjectType:
+		return &microflows.ObjectType{EntityQualifiedName: g.EntityQualifiedName()}
+	case *genDT.ListType:
+		return &microflows.ListType{EntityQualifiedName: g.EntityQualifiedName()}
+	case *genDT.EnumerationType:
+		return &microflows.EnumerationType{EnumerationQualifiedName: g.EnumerationQualifiedName()}
 	default:
 		return nil
 	}
