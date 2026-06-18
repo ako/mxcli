@@ -31,6 +31,7 @@ const (
 	RefKindChange     = "change"     // Microflow changes an entity object
 	RefKindDelete     = "delete"     // Microflow deletes an entity object
 	RefKindCalculate  = "calculate"  // Calculated attribute uses a microflow
+	RefKindReturn     = "return"     // Microflow/nanoflow returns an entity type
 )
 
 // collectActionActivities returns all ActionActivity objects from an ObjectCollection,
@@ -197,16 +198,9 @@ func (b *Builder) buildReferences() error {
 	// emitActionRefs walks the action activities of a microflow or nanoflow and
 	// records the document reference each action makes. Nanoflows share the same
 	// action types as microflows, so both flow kinds use the same extraction.
-	emitActionRefs := func(sourceType, sourceID string, containerID model.ID, name string, params []*microflows.MicroflowParameter, oc *microflows.MicroflowObjectCollection) {
-		if oc == nil {
-			return
-		}
+	emitActionRefs := func(sourceType, sourceID string, containerID model.ID, name string, params []*microflows.MicroflowParameter, returnType microflows.DataType, oc *microflows.MicroflowObjectCollection) {
 		moduleName := b.hierarchy.getModuleName(b.hierarchy.findModuleID(containerID))
 		sourceQN := moduleName + "." + name
-		acts := collectActionActivities(oc)
-		// Intra-flow variable→entity map so change/delete (which operate on a
-		// variable, not a named entity) can resolve their target.
-		varEntity := buildVarEntityMap(params, acts)
 		emit := func(targetType, targetName, refKind string) {
 			if _, err := stmt.Exec(sourceType, sourceID, sourceQN,
 				targetType, "", targetName,
@@ -214,6 +208,25 @@ func (b *Builder) buildReferences() error {
 				refCount++
 			}
 		}
+
+		// Boundary entity refs: the flow operates on its object-typed parameters
+		// and return type even when it never create/retrieves them.
+		for _, p := range params {
+			if qn := entityOfDataType(p.Type); qn != "" {
+				emit("ENTITY", qn, RefKindParameter)
+			}
+		}
+		if qn := entityOfDataType(returnType); qn != "" {
+			emit("ENTITY", qn, RefKindReturn)
+		}
+
+		if oc == nil {
+			return
+		}
+		acts := collectActionActivities(oc)
+		// Intra-flow variable→entity map so change/delete (which operate on a
+		// variable, not a named entity) can resolve their target.
+		varEntity := buildVarEntityMap(params, acts)
 		for _, act := range acts {
 			if tt, tn, rk, ok := microflowActionRef(act.Action); ok {
 				emit(tt, tn, rk)
@@ -230,7 +243,7 @@ func (b *Builder) buildReferences() error {
 		return err
 	}
 	for _, mf := range mfs {
-		emitActionRefs("MICROFLOW", string(mf.ID), mf.ContainerID, mf.Name, mf.Parameters, mf.ObjectCollection)
+		emitActionRefs("MICROFLOW", string(mf.ID), mf.ContainerID, mf.Name, mf.Parameters, mf.ReturnType, mf.ObjectCollection)
 	}
 
 	// Extract nanoflow references — nanoflows also call microflows/nanoflows,
@@ -238,7 +251,7 @@ func (b *Builder) buildReferences() error {
 	nfs, err := b.cachedNanoflows()
 	if err == nil {
 		for _, nf := range nfs {
-			emitActionRefs("NANOFLOW", string(nf.ID), nf.ContainerID, nf.Name, nf.Parameters, nf.ObjectCollection)
+			emitActionRefs("NANOFLOW", string(nf.ID), nf.ContainerID, nf.Name, nf.Parameters, nf.ReturnType, nf.ObjectCollection)
 		}
 	}
 

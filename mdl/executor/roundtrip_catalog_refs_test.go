@@ -150,6 +150,29 @@ end;`, mod, mod)); err != nil {
 	assertRefExists(t, env, mod+".RetrieverMf", mod+".RefProduct", "retrieve")
 }
 
+// A microflow that only takes/returns an entity (never create/retrieve) still
+// references it via its parameter and return type.
+func TestCatalogRefs_MicroflowParameterAndReturn(t *testing.T) {
+	env := setupTestEnv(t)
+	defer env.teardown()
+
+	mod := testModule
+
+	if err := env.executeMDL(fmt.Sprintf(`create or modify persistent entity %s.RefAcct (Name: String(50));`, mod)); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.executeMDL(fmt.Sprintf(`create microflow %s.PassThru ($Acct: %s.RefAcct) returns %s.RefAcct
+begin
+  return $Acct;
+end;`, mod, mod, mod)); err != nil {
+		t.Fatal(err)
+	}
+
+	buildCatalogFull(t, env)
+	assertRefExists(t, env, mod+".PassThru", mod+".RefAcct", "parameter")
+	assertRefExists(t, env, mod+".PassThru", mod+".RefAcct", "return")
+}
+
 func TestCatalogRefs_Association(t *testing.T) {
 	env := setupTestEnv(t)
 	defer env.teardown()
