@@ -425,16 +425,73 @@ func (m *mcpPageMutator) ReplaceColumn(gridRef, columnRef string, _ []*backend.D
 	return fmt.Errorf("replacing column %s.%s is not yet supported by the MCP backend", gridRef, columnRef)
 }
 
-func (m *mcpPageMutator) SetDesignProperty(widgetRef, key, _, _ string) error {
-	return fmt.Errorf("setting design property %s on %s is not yet supported by the MCP backend", key, widgetRef)
+// designPropsMap returns the widget's appearance.designProperties object,
+// creating the appearance and the map if absent.
+func designPropsMap(w map[string]any) map[string]any {
+	ap, _ := w["appearance"].(map[string]any)
+	if ap == nil {
+		ap = pageAppearance("", "")
+		w["appearance"] = ap
+	}
+	dp, _ := ap["designProperties"].(map[string]any)
+	if dp == nil {
+		dp = map[string]any{}
+		ap["designProperties"] = dp
+	}
+	return dp
+}
+
+// designPropKeys are the possible prefixed keys for one design property name,
+// across kinds. Removing/replacing keys on all of them keeps a single entry per
+// property name (a re-SET with a different kind overwrites, matching the file
+// backend's update-in-place semantics).
+func designPropKeys(key string) []string {
+	return []string{"toggle:" + key, "option:" + key, "compound:" + key}
+}
+
+func (m *mcpPageMutator) SetDesignProperty(widgetRef, key, valueType, option string) error {
+	_, _, _, w, ok := findWidget(m.content, widgetRef)
+	if !ok {
+		return fmt.Errorf("widget %q not found", widgetRef)
+	}
+	dp := designPropsMap(w)
+	for _, k := range designPropKeys(key) { // one entry per property name
+		delete(dp, k)
+	}
+	// Mirror designPropertiesMap (the CREATE-path shape verified against
+	// pg_read_page): toggle → bool, option/custom → the selected string.
+	if strings.EqualFold(valueType, "toggle") {
+		dp["toggle:"+key] = true
+	} else {
+		dp["option:"+key] = option
+	}
+	return nil
 }
 
 func (m *mcpPageMutator) RemoveDesignProperty(widgetRef, key string) error {
-	return fmt.Errorf("removing design property %s on %s is not yet supported by the MCP backend", key, widgetRef)
+	_, _, _, w, ok := findWidget(m.content, widgetRef)
+	if !ok {
+		return fmt.Errorf("widget %q not found", widgetRef)
+	}
+	if ap, ok := w["appearance"].(map[string]any); ok {
+		if dp, ok := ap["designProperties"].(map[string]any); ok {
+			for _, k := range designPropKeys(key) {
+				delete(dp, k)
+			}
+		}
+	}
+	return nil
 }
 
 func (m *mcpPageMutator) ClearDesignProperties(widgetRef string) error {
-	return fmt.Errorf("clearing design properties on %s is not yet supported by the MCP backend", widgetRef)
+	_, _, _, w, ok := findWidget(m.content, widgetRef)
+	if !ok {
+		return fmt.Errorf("widget %q not found", widgetRef)
+	}
+	if ap, ok := w["appearance"].(map[string]any); ok {
+		ap["designProperties"] = map[string]any{}
+	}
+	return nil
 }
 
 func (m *mcpPageMutator) SetPluggableProperty(widgetRef, propKey string, _ backend.PluggablePropertyOp, _ backend.PluggablePropertyContext) error {
