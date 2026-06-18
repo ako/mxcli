@@ -149,9 +149,27 @@ func (b *Builder) buildSnippets() error {
 	}
 	defer snippetStmt.Close()
 
+	// Snippet widgets feed the same widgets_data table as page widgets (full mode
+	// only), with ContainerType=SNIPPET, so the refs projection in buildReferences
+	// emits snippet → entity/microflow/nanoflow edges automatically.
+	var widgetStmt *sql.Stmt
+	if b.fullMode {
+		widgetStmt, err = b.tx.Prepare(`
+			INSERT INTO widgets_data (Id, Name, WidgetType, ContainerId, ContainerQualifiedName, ContainerType,
+				ModuleName, Folder, EntityRef, AttributeRef, MicroflowRef, NanoflowRef, Description,
+				ProjectId, SnapshotId)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`)
+		if err != nil {
+			return err
+		}
+		defer widgetStmt.Close()
+	}
+
 	projectID, snapshotID := b.snapshotMeta()
 
 	count := 0
+	widgetCount := 0
 	for _, sn := range snippetList {
 		// Get module name
 		moduleID := b.hierarchy.findModuleID(sn.ContainerID)
@@ -159,7 +177,14 @@ func (b *Builder) buildSnippets() error {
 		qualifiedName := moduleName + "." + sn.Name
 		folder := b.hierarchy.buildFolderPath(sn.ContainerID)
 
-		_, err := snippetStmt.Exec(
+		var rawWidgets []rawWidgetInfo
+		if b.fullMode {
+			if rawData, _ := b.reader.GetRawUnit(sn.ID); rawData != nil {
+				rawWidgets = extractSnippetWidgets(rawData)
+			}
+		}
+
+		if _, err := snippetStmt.Exec(
 			string(sn.ID),
 			sn.Name,
 			qualifiedName,
@@ -167,16 +192,33 @@ func (b *Builder) buildSnippets() error {
 			folder,
 			sn.Documentation,
 			0, // ParameterCount
-			0, // WidgetCount
+			len(rawWidgets),
 			projectID, snapshotID,
-		)
-		if err != nil {
+		); err != nil {
 			return err
 		}
 		count++
+
+		if b.fullMode {
+			for _, w := range rawWidgets {
+				if _, err := widgetStmt.Exec(
+					w.ID, w.Name, w.WidgetType,
+					string(sn.ID), qualifiedName, "SNIPPET",
+					moduleName, folder,
+					w.EntityRef, w.AttributeRef, w.MicroflowRef, w.NanoflowRef, "",
+					projectID, snapshotID,
+				); err != nil {
+					return fmt.Errorf("insert widget %s for snippet %s: %w", w.Name, qualifiedName, err)
+				}
+				widgetCount++
+			}
+		}
 	}
 
 	b.report("Snippets", count)
+	if b.fullMode {
+		b.report("Snippet widgets", widgetCount)
+	}
 	return nil
 }
 
