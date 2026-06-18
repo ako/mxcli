@@ -3,6 +3,9 @@
 package modelsdkbackend
 
 import (
+	"strconv"
+	"strings"
+
 	"github.com/mendixlabs/mxcli/modelsdk/element"
 	genDT "github.com/mendixlabs/mxcli/modelsdk/gen/datatypes"
 	genMf "github.com/mendixlabs/mxcli/modelsdk/gen/microflows"
@@ -195,20 +198,42 @@ func splitFlowObjects(coll element.Element) ([]*microflows.MicroflowParameter, [
 // activity/complexity counters discriminate on. Non-control objects collapse to
 // ActionActivity (sufficient for counting); LoopedActivity recurses so decision
 // points inside loop bodies are counted.
+// pointFromGen reads a flow object's canvas position from its RelativeMiddlePoint
+// accessor (a "X;Y" string, e.g. "570;297"); mirrors the legacy parsePoint. All
+// gen flow objects expose RelativeMiddlePoint() via their embedded base.
+func pointFromGen(el element.Element) model.Point {
+	rm, ok := el.(interface{ RelativeMiddlePoint() string })
+	if !ok {
+		return model.Point{}
+	}
+	parts := strings.SplitN(rm.RelativeMiddlePoint(), ";", 2)
+	if len(parts) != 2 {
+		return model.Point{}
+	}
+	x, _ := strconv.Atoi(strings.TrimSpace(parts[0]))
+	y, _ := strconv.Atoi(strings.TrimSpace(parts[1]))
+	return model.Point{X: x, Y: y}
+}
+
 func flowObjectFromGen(el element.Element) microflows.MicroflowObject {
 	// Carry the real object ID: the catalog keys activities_data on the activity Id,
 	// so bare objects with an empty ID collide (UNIQUE constraint on
 	// activities_data.Id) on the second activity of any microflow (full-mode catalog
 	// / REFRESH CATALOG FULL). ID is the promoted public field from BaseElement.
 	id := model.ID(el.ID())
+	// Canvas position (@position) lives on every flow object as a "X;Y"
+	// RelativeMiddlePoint string; reconstruct it so the diagram layout round-trips.
+	pos := pointFromGen(el)
 	switch el.TypeName() {
 	case "Microflows$StartEvent":
 		o := &microflows.StartEvent{}
 		o.ID = id
+		o.Position = pos
 		return o
 	case "Microflows$EndEvent":
 		o := &microflows.EndEvent{}
 		o.ID = id
+		o.Position = pos
 		if g, ok := el.(*genMf.EndEvent); ok {
 			o.ReturnValue = g.ReturnValue()
 		}
@@ -216,10 +241,12 @@ func flowObjectFromGen(el element.Element) microflows.MicroflowObject {
 	case "Microflows$ExclusiveMerge":
 		o := &microflows.ExclusiveMerge{}
 		o.ID = id
+		o.Position = pos
 		return o
 	case "Microflows$ExclusiveSplit":
 		o := &microflows.ExclusiveSplit{}
 		o.ID = id
+		o.Position = pos
 		if g, ok := el.(*genMf.ExclusiveSplit); ok {
 			o.Caption = g.Caption()
 			o.SplitCondition = splitConditionFromGen(g.SplitCondition())
@@ -228,14 +255,17 @@ func flowObjectFromGen(el element.Element) microflows.MicroflowObject {
 	case "Microflows$InheritanceSplit":
 		o := &microflows.InheritanceSplit{}
 		o.ID = id
+		o.Position = pos
 		return o
 	case "Microflows$ErrorEvent":
 		o := &microflows.ErrorEvent{}
 		o.ID = id
+		o.Position = pos
 		return o
 	case "Microflows$LoopedActivity":
 		la := &microflows.LoopedActivity{}
 		la.ID = id
+		la.Position = pos
 		if g, ok := el.(*genMf.LoopedActivity); ok {
 			la.LoopSource = loopSourceFromGen(g.LoopSource())
 			if _, objs := splitFlowObjects(g.ObjectCollection()); objs != nil {
@@ -246,6 +276,7 @@ func flowObjectFromGen(el element.Element) microflows.MicroflowObject {
 	default:
 		o := &microflows.ActionActivity{}
 		o.ID = id
+		o.Position = pos
 		// Reconstruct the action body so DESCRIBE/SHOW can render it. Unhandled
 		// action types leave Action nil (renders empty), so coverage grows
 		// incrementally without regressing.
