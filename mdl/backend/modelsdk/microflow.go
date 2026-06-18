@@ -250,6 +250,14 @@ func flowObjectFromGen(el element.Element) microflows.MicroflowObject {
 		// action types leave Action nil (renders empty), so coverage grows
 		// incrementally without regressing.
 		if g, ok := el.(*genMf.ActionActivity); ok {
+			// Activity-level annotations (@caption / @color / @excluded /
+			// documentation) live on the activity, not the action, so reconstruct
+			// them too — emitObjectAnnotations renders them around the action body.
+			o.Caption = g.Caption()
+			o.AutoGenerateCaption = g.AutoGenerateCaption()
+			o.BackgroundColor = g.BackgroundColor()
+			o.Disabled = g.Disabled()
+			o.Documentation = g.Documentation()
 			if act := g.Action(); act != nil {
 				o.Action = actionFromGen(act)
 			}

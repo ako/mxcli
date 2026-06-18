@@ -195,6 +195,25 @@ func actionFromGen(el element.Element) microflows.MicroflowAction {
 		out.ID = model.ID(a.ID())
 		return out
 
+	case *genMf.CloseFormAction:
+		out := &microflows.ClosePageAction{
+			ErrorHandlingType: microflows.ErrorHandlingType(a.ErrorHandlingType()),
+			NumberOfPages:     int(a.NumberOfPages()),
+		}
+		out.ID = model.ID(a.ID())
+		return out
+
+	case *genMf.ValidationFeedbackAction:
+		out := &microflows.ValidationFeedbackAction{
+			ErrorHandlingType: microflows.ErrorHandlingType(a.ErrorHandlingType()),
+			ObjectVariable:    a.ObjectVariableName(),
+			AttributeName:     a.AttributeQualifiedName(),
+			AssociationName:   a.AssociationQualifiedName(),
+		}
+		out.ID = model.ID(a.ID())
+		out.Template, out.TemplateParameters = textTemplateFromGen(a.FeedbackTemplate())
+		return out
+
 	case *genMf.ShowHomePageAction:
 		out := &microflows.ShowHomePageAction{}
 		out.ID = model.ID(a.ID())
