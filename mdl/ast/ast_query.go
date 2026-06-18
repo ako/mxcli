@@ -429,10 +429,12 @@ func (s *RefreshStmt) isStatement() {}
 
 // RefreshCatalogStmt represents: REFRESH CATALOG [FULL] [SOURCE] [FORCE] [BACKGROUND]
 type RefreshCatalogStmt struct {
-	Full       bool // If true, do full parsing (slow but includes activities/widgets/refs)
-	Source     bool // If true, build source FTS table (implies full)
-	Force      bool // If true, force rebuild even if cache is valid
-	Background bool // If true, run in background and return immediately
+	Full        bool    // If true, do full parsing (slow but includes activities/widgets/refs)
+	Source      bool    // If true, build source FTS table (implies full)
+	Force       bool    // If true, force rebuild even if cache is valid
+	Background  bool    // If true, run in background and return immediately
+	Communities bool    // If true, run graph analysis (communities/cycles/layers/centrality); implies full
+	Resolution  float64 // Leiden resolution for the graph-analysis pass (0 = default 1.0)
 }
 
 func (s *RefreshCatalogStmt) isStatement() {}

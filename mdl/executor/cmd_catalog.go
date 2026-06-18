@@ -241,7 +241,7 @@ func ensureCatalog(ctx *ExecContext, full bool) error {
 	}
 
 	// Build fresh catalog
-	return buildCatalog(ctx, full)
+	return buildCatalog(ctx, full, false, false, 0)
 }
 
 // getCachePath returns the path to the catalog cache file for the current project.
@@ -345,10 +345,9 @@ func formatDuration(d time.Duration) string {
 }
 
 // buildCatalog builds the catalog from the project.
-func buildCatalog(ctx *ExecContext, full bool, source ...bool) error {
-	isSource := len(source) > 0 && source[0]
-	if isSource {
-		full = true // source implies full
+func buildCatalog(ctx *ExecContext, full, isSource, communities bool, resolution float64) error {
+	if isSource || communities {
+		full = true // both imply full (they read refs/source built in full mode)
 	}
 
 	if !ctx.Quiet {
@@ -375,6 +374,9 @@ func buildCatalog(ctx *ExecContext, full bool, source ...bool) error {
 	// Build catalog
 	builder := catalog.NewBuilder(cat, ctx.Backend)
 	builder.SetFullMode(full)
+	if communities {
+		builder.SetCommunitiesMode(true, resolution)
+	}
 	if isSource {
 		builder.SetSourceMode(true)
 		preWarmCache(ctx)
@@ -438,15 +440,16 @@ func execRefreshCatalogStmt(ctx *ExecContext, stmt *ast.RefreshCatalogStmt) erro
 	}
 
 	requiredMode := "fast"
-	if stmt.Full {
+	if stmt.Full || stmt.Communities {
 		requiredMode = "full"
 	}
 	if stmt.Source {
 		requiredMode = "source"
 	}
 
-	// Check cache unless FORCE is specified
-	if !stmt.Force {
+	// Check cache unless FORCE is specified. Communities mode always rebuilds: a
+	// cached full catalog does not contain the graph-analysis tables.
+	if !stmt.Force && !stmt.Communities {
 		cachePath := getCachePath(ctx)
 		if cachePath != "" {
 			valid, reason := isCacheValid(ctx, cachePath, requiredMode)
@@ -485,7 +488,7 @@ func execRefreshCatalogStmt(ctx *ExecContext, stmt *ast.RefreshCatalogStmt) erro
 		bgCtx.Output = sw                // background goroutine writes through sw
 		syncCatalog := ctx.SyncCatalog   // capture callback before returning
 		go func() {
-			if err := buildCatalog(&bgCtx, stmt.Full, stmt.Source); err != nil {
+			if err := buildCatalog(&bgCtx, stmt.Full, stmt.Source, stmt.Communities, stmt.Resolution); err != nil {
 				fmt.Fprintf(bgCtx.Output, "Background catalog build failed: %v\n", err)
 				return
 			}
@@ -524,7 +527,7 @@ func execRefreshCatalogStmt(ctx *ExecContext, stmt *ast.RefreshCatalogStmt) erro
 	}
 
 	// Rebuild the catalog
-	return buildCatalog(ctx, stmt.Full, stmt.Source)
+	return buildCatalog(ctx, stmt.Full, stmt.Source, stmt.Communities, stmt.Resolution)
 }
 
 // execRefreshCatalog handles REFRESH CATALOG [FULL] command (legacy signature).

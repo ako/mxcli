@@ -1113,10 +1113,16 @@ func (b *Builder) ExitUpdateStatement(ctx *parser.UpdateStatementContext) {
 	} else if ctx.REFRESH() != nil {
 		if ctx.CATALOG() != nil {
 			stmt := &ast.RefreshCatalogStmt{
-				Full:       ctx.FULL() != nil,
-				Source:     ctx.SOURCE_KW() != nil,
-				Force:      ctx.FORCE() != nil,
-				Background: ctx.BACKGROUND() != nil,
+				Full:        ctx.FULL() != nil,
+				Source:      ctx.SOURCE_KW() != nil,
+				Force:       ctx.FORCE() != nil,
+				Background:  ctx.BACKGROUND() != nil,
+				Communities: ctx.COMMUNITIES() != nil,
+			}
+			if ctx.RESOLUTION() != nil && ctx.NUMBER_LITERAL() != nil {
+				if f, err := strconv.ParseFloat(ctx.NUMBER_LITERAL().GetText(), 64); err == nil {
+					stmt.Resolution = f
+				}
 			}
 			b.statements = append(b.statements, stmt)
 		} else {

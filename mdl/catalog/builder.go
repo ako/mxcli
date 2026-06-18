@@ -84,8 +84,10 @@ type Builder struct {
 	progress     ProgressFunc
 	hierarchy    *hierarchy
 	tx           CatalogTx // Transaction for batched inserts
-	fullMode     bool      // If true, do full parsing (activities/widgets)
-	sourceMode   bool      // If true, build source FTS table (implies full)
+	fullMode        bool    // If true, do full parsing (activities/widgets)
+	sourceMode      bool    // If true, build source FTS table (implies full)
+	communitiesMode bool    // If true, run the graph-analysis pass (reads refs)
+	resolution      float64 // Leiden resolution for the graph-analysis pass
 	describeFunc DescribeFunc
 
 	// Built-in widget definitions supplied by the caller — used to populate
@@ -116,6 +118,16 @@ func (b *Builder) SetFullMode(full bool) {
 func (b *Builder) SetSourceMode(source bool) {
 	b.sourceMode = source
 	if source {
+		b.fullMode = true
+	}
+}
+
+// SetCommunitiesMode enables the graph-analysis pass (communities/cycles/layers/
+// centrality) at the given Leiden resolution. Implies full mode (it reads refs).
+func (b *Builder) SetCommunitiesMode(on bool, resolution float64) {
+	b.communitiesMode = on
+	b.resolution = resolution
+	if on {
 		b.fullMode = true
 	}
 }
@@ -512,6 +524,12 @@ func (b *Builder) Build(progress ProgressFunc) error {
 	// Build source FTS table (source mode only)
 	if err := b.buildSource(); err != nil {
 		return fmt.Errorf("failed to build source: %w", err)
+	}
+
+	// Graph analysis (communities/cycles/layers/centrality) — only when requested
+	// via REFRESH CATALOG COMMUNITIES; reads the refs table built above.
+	if err := b.buildGraphAnalysis(); err != nil {
+		return fmt.Errorf("failed to build graph analysis: %w", err)
 	}
 
 	// Update snapshot with object count

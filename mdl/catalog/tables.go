@@ -12,7 +12,7 @@ package catalog
 //	    SnapshotSource / SourceId / SourceBranch / SourceRevision columns
 //	    from every row (issue #576).
 //	1 — initial flat schema with denormalized snapshot columns on every row.
-const CatalogSchemaVersion = "7"
+const CatalogSchemaVersion = "8"
 
 // MetaSchemaVersion is the catalog_meta key that records the schema version
 // the cache was built against.
@@ -1070,11 +1070,14 @@ func (c *Catalog) createTables() error {
 				SELECT SourceName AS Asset, 0 AS InDeg, COUNT(*) AS OutDeg
 				FROM refs WHERE SourceName != '' GROUP BY SourceName
 			)
-			SELECT Asset,
-				(SELECT ObjectType FROM objects WHERE QualifiedName = Asset LIMIT 1) AS ObjectType,
-				CASE WHEN instr(Asset, '.') > 0 THEN substr(Asset, 1, instr(Asset, '.') - 1) ELSE Asset END AS ModuleName,
-				SUM(InDeg) AS InDegree, SUM(OutDeg) AS OutDegree, SUM(InDeg) + SUM(OutDeg) AS Degree
-			FROM deg GROUP BY Asset`,
+			SELECT d.Asset,
+				(SELECT ObjectType FROM objects WHERE QualifiedName = d.Asset LIMIT 1) AS ObjectType,
+				CASE WHEN instr(d.Asset, '.') > 0 THEN substr(d.Asset, 1, instr(d.Asset, '.') - 1) ELSE d.Asset END AS ModuleName,
+				SUM(d.InDeg) AS InDegree, SUM(d.OutDeg) AS OutDegree, SUM(d.InDeg) + SUM(d.OutDeg) AS Degree,
+				MAX(gc.PageRank) AS PageRank, MAX(gc.Betweenness) AS Betweenness
+			FROM deg d
+			LEFT JOIN graph_centrality_data gc ON gc.AssetName = d.Asset
+			GROUP BY d.Asset`,
 
 		// graph_module_coupling — cross-module edges ("surprise edges").
 		`CREATE VIEW IF NOT EXISTS graph_module_coupling AS
@@ -1123,6 +1126,79 @@ func (c *Catalog) createTables() error {
 			FROM refs
 			WHERE TargetType = 'ENTITY' AND SourceType IN ('MICROFLOW', 'NANOFLOW')
 			GROUP BY TargetName`,
+
+		// --- Algorithmic graph analysis (populated by REFRESH CATALOG COMMUNITIES,
+		// computed by the pure-Go mdl/catalog/graph package). ---
+
+		// communities — Leiden community membership per asset.
+		`CREATE TABLE IF NOT EXISTS communities_data (
+			AssetName TEXT, ModuleName TEXT, CommunityId INTEGER,
+			ProjectId TEXT, SnapshotId TEXT
+		)`,
+		viewWithFullSnapshot("communities"),
+
+		// graph_cycles — SCC membership for assets in a dependency cycle.
+		`CREATE TABLE IF NOT EXISTS graph_cycles_data (
+			AssetName TEXT, ModuleName TEXT, CycleId INTEGER, CycleSize INTEGER,
+			ProjectId TEXT, SnapshotId TEXT
+		)`,
+		viewWithFullSnapshot("graph_cycles"),
+
+		// graph_layers — topological layer (sequence number) per asset.
+		`CREATE TABLE IF NOT EXISTS graph_layers_data (
+			AssetName TEXT, ModuleName TEXT, Layer INTEGER,
+			ProjectId TEXT, SnapshotId TEXT
+		)`,
+		viewWithFullSnapshot("graph_layers"),
+
+		// graph_centrality — PageRank / betweenness per asset.
+		`CREATE TABLE IF NOT EXISTS graph_centrality_data (
+			AssetName TEXT, PageRank REAL, Betweenness REAL,
+			ProjectId TEXT, SnapshotId TEXT
+		)`,
+		viewWithFullSnapshot("graph_centrality"),
+
+		// community_summary — per-community size, type breakdown, dominant-module
+		// Label, and members.
+		`CREATE VIEW IF NOT EXISTS community_summary AS
+			SELECT c.CommunityId,
+				(SELECT c2.ModuleName FROM communities_data c2 WHERE c2.CommunityId = c.CommunityId
+					GROUP BY c2.ModuleName ORDER BY COUNT(*) DESC, c2.ModuleName LIMIT 1) AS Label,
+				COUNT(*) AS Size,
+				COUNT(DISTINCT c.ModuleName) AS Modules,
+				group_concat(c.AssetName) AS Members
+			FROM communities_data c GROUP BY c.CommunityId`,
+
+		// graph_module_dependencies — directed module→module edges (the facts a
+		// layering/architecture Starlark rule consumes), with kinds and counts.
+		`CREATE VIEW IF NOT EXISTS graph_module_dependencies AS
+			SELECT substr(SourceName, 1, instr(SourceName, '.') - 1) AS SourceModule,
+				substr(TargetName, 1, instr(TargetName, '.') - 1) AS TargetModule,
+				RefKind, COUNT(*) AS Edges
+			FROM refs
+			WHERE instr(SourceName, '.') > 0 AND instr(TargetName, '.') > 0
+				AND substr(SourceName, 1, instr(SourceName, '.') - 1) != substr(TargetName, 1, instr(TargetName, '.') - 1)
+			GROUP BY SourceModule, TargetModule, RefKind`,
+
+		// graph_integration_surface — cross-community edges classified into the
+		// integration mechanism a split would require (UC2 contract list).
+		`CREATE VIEW IF NOT EXISTS graph_integration_surface AS
+			SELECT cs.CommunityId AS SourceCommunity, ct.CommunityId AS TargetCommunity,
+				r.RefKind, COUNT(*) AS Edges,
+				CASE r.RefKind
+					WHEN 'associate'  THEN 'OData / shared entity'
+					WHEN 'retrieve'   THEN 'OData read'
+					WHEN 'create'     THEN 'event / REST write'
+					WHEN 'change'     THEN 'event / REST write'
+					WHEN 'call'       THEN 'REST (published microflow)'
+					WHEN 'generalize' THEN 'BLOCKER: inheritance across boundary'
+					ELSE 'review'
+				END AS Mechanism
+			FROM refs r
+			JOIN communities_data cs ON r.SourceName = cs.AssetName
+			JOIN communities_data ct ON r.TargetName = ct.AssetName
+			WHERE cs.CommunityId != ct.CommunityId
+			GROUP BY SourceCommunity, TargetCommunity, r.RefKind`,
 	}
 
 	for _, schema := range schemas {

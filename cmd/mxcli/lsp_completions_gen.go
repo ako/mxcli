@@ -486,6 +486,8 @@ var mdlGeneratedKeywords = []protocol.CompletionItem{
 	{Label: "CATALOG", Kind: protocol.CompletionItemKindKeyword, Detail: "Utility keyword"},
 	{Label: "FORCE", Kind: protocol.CompletionItemKindKeyword, Detail: "Utility keyword"},
 	{Label: "BACKGROUND", Kind: protocol.CompletionItemKindKeyword, Detail: "Utility keyword"},
+	{Label: "COMMUNITIES", Kind: protocol.CompletionItemKindKeyword, Detail: "Utility keyword"},
+	{Label: "RESOLUTION", Kind: protocol.CompletionItemKindKeyword, Detail: "Utility keyword"},
 	{Label: "CALLERS", Kind: protocol.CompletionItemKindKeyword, Detail: "Utility keyword"},
 	{Label: "CALLEES", Kind: protocol.CompletionItemKindKeyword, Detail: "Utility keyword"},
 	{Label: "REFERENCES", Kind: protocol.CompletionItemKindKeyword, Detail: "Utility keyword"},

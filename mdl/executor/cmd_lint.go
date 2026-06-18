@@ -27,7 +27,7 @@ func execLint(ctx *ExecContext, s *ast.LintStmt) error {
 	// Ensure catalog is built
 	if ctx.Catalog == nil {
 		fmt.Fprintln(ctx.Output, "Building catalog for linting...")
-		if err := buildCatalog(ctx, false); err != nil {
+		if err := buildCatalog(ctx, false, false, false, 0); err != nil {
 			return mdlerrors.NewBackend("build catalog", err)
 		}
 	}
