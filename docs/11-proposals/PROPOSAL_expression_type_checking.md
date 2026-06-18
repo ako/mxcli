@@ -327,3 +327,60 @@ version dependency. No version-gating required.
    cover the ~40 documented built-in functions. User-defined Java actions and
    microflow calls are covered by catalog lookup; the table only needs to cover
    the built-ins.
+
+---
+
+## Relation to engalar's `exprcheck` — port, don't rebuild
+
+The engalar fork already carries `mdl/exprcheck/`, a **working and more complete
+implementation of this proposal's Phase 1–2**, architected the same way. This
+section recasts the proposal accordingly: **the recommended path is to port and
+adapt `exprcheck`, not build `mdl/typesystem` from scratch.**
+
+Decisive detail this draft missed: our microflow/nanoflow expressions are stored
+as **raw strings** (`Expression string` in `ast_microflow.go`) — the typed
+`LiteralExpr`/`BinaryExpr`/`FunctionCallExpr` nodes in `ast_expression.go` are not
+produced for them. So type-checking *requires* an expression parser, which this
+draft assumed away (it planned to "walk the existing expression AST"). `exprcheck`
+already includes that parser (`lexer.go`/`parser.go`/`recovery.go`).
+
+`exprcheck` mirrors this proposal's two-tier design exactly: a
+`Context{Scope, Catalog, Slots}` where `Catalog`/`Slots` are **optional** —
+nil → syntax-only (our Tier 1, scope-local), non-nil → semantic (our Tier 2,
+catalog-backed).
+
+| This proposal | `exprcheck` | Status |
+|---------------|-------------|--------|
+| `Type`/`Kind` | `TypeKind` + `inferKind` (all 15 AST nodes) | built |
+| `Scope` symbol table | `Scope` interface + `adapter_scope.go` | built |
+| `InferType` engine | `inferKind` | built |
+| `+` overload / arithmetic / comparison | `E004` mixed-`+` + operand checks | built |
+| built-in function return table (~40) | `func_checker.go` funcTable (full DateTime/String API) | built, **more complete** |
+| enum / context rules | `slot_resolver` + `slot_to_context` (`SlotResolver`) | built, systematised |
+| two tiers (scope-local / catalog) | `Context{Scope, Catalog, Slots}` (nil = syntax-only) | **same design, built** |
+| error codes `TC001–TC005` | `E001–E012` (hints registry + formatter) | built, **more codes** |
+| *(unstated)* expression parsing | own lexer/parser/recovery | built — this draft missed the need |
+| Tier-2 catalog-backed attr/microflow-return | `CatalogReader` seam; `AttributePathExpr` partly `KindUnknown` | seam done, depth partial |
+| Phase 3 LSP diagnostics | not wired (validate/check path only) | to-do |
+
+**Portability:** self-contained — `exprcheck`'s only mxcli deps are `mdl/ast` and
+`mdl/linter` (both already on our branch); no dependency on engalar's other
+refactors (`mprrepos`/`mxgraph`). Cherry-pickable like the modelsdk engine.
+
+**Work remaining after a port** (this becomes the real implementation plan,
+superseding "Phase 1 — Type infrastructure" above, which `exprcheck` already
+delivers):
+
+1. Provide our-catalog-backed `CatalogReader` + `SlotResolver` implementations and
+   finish Tier-2 depth (attribute types, microflow return types) — the
+   `AttributePathExpr → KindUnknown` gap.
+2. Wire the `exprcheck` adapters into **our** `mxcli check` / `validate` path.
+3. **Phase 3 LSP** — still to-do; the `Context`-based design makes it
+   straightforward (run with `Scope` only for the inline, project-less path).
+4. Decide the cosmetics: keep `exprcheck`'s `E0xx` codes (faithful port) vs remap
+   to this proposal's `TC0xx`; keep the `mdl/exprcheck` package name vs the
+   proposed `mdl/typesystem`.
+
+**Process note:** two proposals in a row (this one and the graph-analysis
+proposal) turned out to be substantially pre-built on the engalar fork — **check
+the fork before greenfielding** future proposals.
