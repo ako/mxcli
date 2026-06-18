@@ -308,8 +308,7 @@ func init() {
 	rootCmd.PersistentFlags().Bool("mcp-run", false, "After the command, start the app in Studio Pro via Concord (run_app) and print its URL (requires --mcp-concord)")
 	rootCmd.PersistentFlags().Bool("mcp-verbose", false, "Print each PED tool call the MCP backend makes (requires --mcp)")
 	rootCmd.PersistentFlags().Bool("mcp-trace", false, "Print each MDL command with the PED tool calls it makes (implies --mcp-verbose; requires --mcp)")
-	rootCmd.PersistentFlags().String("engine", "", "Model engine: legacy (default), modelsdk, compare [experimental; overrides MXCLI_ENGINE]")
-	_ = rootCmd.PersistentFlags().MarkHidden("engine")
+	rootCmd.PersistentFlags().String("engine", "", "Model engine: modelsdk (default), legacy (fallback for unsupported writes, e.g. SOAP). Overrides MXCLI_ENGINE.")
 	rootCmd.Flags().StringP("command", "c", "", "Execute MDL command(s) and exit")
 
 	// Check command flags
