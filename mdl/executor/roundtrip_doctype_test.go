@@ -5,6 +5,7 @@
 package executor
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -148,7 +149,10 @@ func TestMxCheck_DoctypeScripts(t *testing.T) {
 				t.Fatalf("Parse error: %v", errs[0])
 			}
 
-			if err := env.executor.ExecuteProgram(prog); err != nil {
+			// A trailing `exit;` is a legitimate clean halt — several fixtures use
+			// it to leave artifacts in the project for Studio Pro inspection. Treat
+			// ErrExit as success, not an execution failure.
+			if err := env.executor.ExecuteProgram(prog); err != nil && !errors.Is(err, ErrExit) {
 				t.Errorf("Execution error: %v", err)
 			}
 
