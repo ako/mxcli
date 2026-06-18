@@ -282,6 +282,28 @@ func actionFromGen(el element.Element) microflows.MicroflowAction {
 		}
 		return out
 
+	case *genMf.RestCallAction:
+		// The whole RestCall tree is written raw with the verified legacy storage
+		// keys (HttpConfiguration / RequestHandling / ResultHandling and their
+		// children), so reconstruct it from raw BSON — the inverse of
+		// restCallActionToGen.
+		raw := a.Raw()
+		out := &microflows.RestCallAction{
+			ErrorHandlingType: microflows.ErrorHandlingType(rawStr(raw, "ErrorHandlingType")),
+			TimeoutExpression: rawStr(raw, "TimeOutExpression"),
+		}
+		out.ID = model.ID(a.ID())
+		if hc, ok := raw.Lookup("HttpConfiguration").DocumentOK(); ok {
+			out.HttpConfiguration = httpConfigFromRaw(hc)
+		}
+		if rh, ok := raw.Lookup("RequestHandling").DocumentOK(); ok {
+			out.RequestHandling = restRequestHandlingFromRaw(rh)
+		}
+		if rh, ok := raw.Lookup("ResultHandling").DocumentOK(); ok {
+			out.ResultHandling = restResultHandlingFromRaw(rh)
+		}
+		return out
+
 	case *genMf.ListOperationAction:
 		// Storage $Type Microflows$ListOperationsAction. The write binds the output
 		// to "ResultVariableName" and the operation to "NewOperation" (not the gen
@@ -360,6 +382,129 @@ func codeActionParameterValueFromRaw(doc bson.Raw) microflows.CodeActionParamete
 		return v
 	default:
 		return nil
+	}
+}
+
+// stringTemplateFromRaw reads a Microflows$StringTemplate's Text and its
+// {1},{2},… parameter expressions. Inverse of stringTemplateElem.
+func stringTemplateFromRaw(doc bson.Raw) (string, []string) {
+	text := rawStr(doc, "Text")
+	var params []string
+	if arr, ok := doc.Lookup("Parameters").ArrayOK(); ok {
+		vals, _ := arr.Values()
+		for _, v := range vals {
+			pd, ok := v.DocumentOK()
+			if !ok {
+				continue
+			}
+			params = append(params, rawStr(pd, "Expression"))
+		}
+	}
+	return text, params
+}
+
+// httpConfigFromRaw reconstructs a REST call's HttpConfiguration (method, URL
+// template + params, basic auth, custom headers). Inverse of httpConfigToGen; the
+// auth/method/header keys are the verified legacy storage names.
+func httpConfigFromRaw(doc bson.Raw) *microflows.HttpConfiguration {
+	c := &microflows.HttpConfiguration{
+		HttpMethod:     microflows.HttpMethod(rawStr(doc, "HttpMethod")),
+		Username:       rawStr(doc, "HttpAuthenticationUserName"),
+		Password:       rawStr(doc, "HttpAuthenticationPassword"),
+		CustomLocation: rawStr(doc, "CustomLocation"),
+	}
+	c.ID = model.ID(rawStr(doc, "$ID"))
+	if b, ok := doc.Lookup("UseHttpAuthentication").BooleanOK(); ok {
+		c.UseAuthentication = b
+	}
+	if lt, ok := doc.Lookup("CustomLocationTemplate").DocumentOK(); ok {
+		c.LocationTemplate, c.LocationParams = stringTemplateFromRaw(lt)
+	}
+	if arr, ok := doc.Lookup("HttpHeaderEntries").ArrayOK(); ok {
+		vals, _ := arr.Values()
+		for _, v := range vals {
+			hd, ok := v.DocumentOK()
+			if !ok {
+				continue
+			}
+			h := &microflows.HttpHeader{Name: rawStr(hd, "Key"), Value: rawStr(hd, "Value")}
+			h.ID = model.ID(rawStr(hd, "$ID"))
+			c.CustomHeaders = append(c.CustomHeaders, h)
+		}
+	}
+	return c
+}
+
+// restRequestHandlingFromRaw reconstructs a REST call's request body handling
+// (custom template, response mapping, or simple). Inverse of restRequestHandlingToGen.
+func restRequestHandlingFromRaw(doc bson.Raw) microflows.RequestHandling {
+	id := model.ID(rawStr(doc, "$ID"))
+	switch rawStr(doc, "$Type") {
+	case "Microflows$CustomRequestHandling":
+		h := &microflows.CustomRequestHandling{}
+		h.ID = id
+		if t, ok := doc.Lookup("Template").DocumentOK(); ok {
+			h.Template, h.TemplateParams = stringTemplateFromRaw(t)
+		}
+		return h
+	case "Microflows$MappingRequestHandling":
+		h := &microflows.MappingRequestHandling{
+			MappingID:         model.ID(rawStr(doc, "MappingId")),
+			ContentType:       rawStr(doc, "ContentType"),
+			ParameterVariable: rawStr(doc, "ParameterVariable"),
+		}
+		h.ID = id
+		return h
+	case "Microflows$SimpleRequestHandling":
+		h := &microflows.SimpleRequestHandling{}
+		h.ID = id
+		return h
+	default:
+		return nil
+	}
+}
+
+// restResultHandlingFromRaw reconstructs a REST call's result handling. A Mapping
+// result carries an ImportMappingCall; the other variants discriminate on the
+// VariableType ($Type Void → Nothing, ObjectType System.HttpResponse → response,
+// else String). Inverse of restResultHandlingToGen.
+func restResultHandlingFromRaw(doc bson.Raw) microflows.ResultHandling {
+	id := model.ID(rawStr(doc, "$ID"))
+	resultVar := rawStr(doc, "ResultVariableName")
+	if imc, ok := doc.Lookup("ImportMappingCall").DocumentOK(); ok {
+		h := &microflows.ResultHandlingMapping{
+			ResultVariable: resultVar,
+			MappingID:      model.ID(rawStr(imc, "ReturnValueMapping")),
+		}
+		h.ID = id
+		if rng, ok := imc.Lookup("Range").DocumentOK(); ok {
+			if b, ok := rng.Lookup("SingleObject").BooleanOK(); ok {
+				h.SingleObject = b
+			}
+		}
+		if vt, ok := doc.Lookup("VariableType").DocumentOK(); ok {
+			h.ResultEntityID = model.ID(rawStr(vt, "Entity"))
+		}
+		return h
+	}
+	vtType, entity := "", ""
+	if vt, ok := doc.Lookup("VariableType").DocumentOK(); ok {
+		vtType = rawStr(vt, "$Type")
+		entity = rawStr(vt, "Entity")
+	}
+	switch {
+	case vtType == "DataTypes$VoidType":
+		h := &microflows.ResultHandlingNone{}
+		h.ID = id
+		return h
+	case vtType == "DataTypes$ObjectType" && entity == "System.HttpResponse":
+		h := &microflows.ResultHandlingHttpResponse{VariableName: resultVar}
+		h.ID = id
+		return h
+	default:
+		h := &microflows.ResultHandlingString{VariableName: resultVar}
+		h.ID = id
+		return h
 	}
 }
 
