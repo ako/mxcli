@@ -115,7 +115,16 @@ func (b *Backend) DeletePage(id model.ID) error {
 // Page-related reads delegate to the local reader (the executor's page builder
 // resolves layouts/snippets through these; without them the layout won't
 // resolve and the widget tree is dropped).
-func (b *Backend) GetPage(id model.ID) (*pages.Page, error)     { return b.reader.GetPage(id) }
+func (b *Backend) GetPage(id model.ID) (*pages.Page, error) {
+	// Mirror ListPages / GetMicroflow: a page created this session is visible by ID
+	// within the same run, before it is saved to disk.
+	for _, p := range b.sessionPages {
+		if p.ID == id {
+			return p, nil
+		}
+	}
+	return b.reader.GetPage(id)
+}
 func (b *Backend) ListLayouts() ([]*pages.Layout, error)        { return b.reader.ListLayouts() }
 func (b *Backend) GetLayout(id model.ID) (*pages.Layout, error) { return b.reader.GetLayout(id) }
 func (b *Backend) ListSnippets() ([]*pages.Snippet, error)      { return b.reader.ListSnippets() }
