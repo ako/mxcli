@@ -78,17 +78,17 @@ type DescribeFunc func(objectType string, qualifiedName string) (string, error)
 
 // Builder populates catalog tables from MPR data.
 type Builder struct {
-	catalog      *Catalog
-	reader       CatalogReader
-	snapshot     *Snapshot
-	progress     ProgressFunc
-	hierarchy    *hierarchy
-	tx           CatalogTx // Transaction for batched inserts
-	fullMode        bool    // If true, do full parsing (activities/widgets)
-	sourceMode      bool    // If true, build source FTS table (implies full)
-	communitiesMode bool    // If true, run the graph-analysis pass (reads refs)
-	resolution      float64 // Leiden resolution for the graph-analysis pass
-	describeFunc DescribeFunc
+	catalog         *Catalog
+	reader          CatalogReader
+	snapshot        *Snapshot
+	progress        ProgressFunc
+	hierarchy       *hierarchy
+	tx              CatalogTx // Transaction for batched inserts
+	fullMode        bool      // If true, do full parsing (activities/widgets)
+	sourceMode      bool      // If true, build source FTS table (implies full)
+	communitiesMode bool      // If true, run the graph-analysis pass (reads refs)
+	resolution      float64   // Leiden resolution for the graph-analysis pass
+	describeFunc    DescribeFunc
 
 	// Built-in widget definitions supplied by the caller — used to populate
 	// the widget_definitions catalog table alongside project widgets/.
