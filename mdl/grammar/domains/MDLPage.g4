@@ -430,6 +430,7 @@ designPropertyEntryV3
     : STRING_LITERAL COLON STRING_LITERAL
     | STRING_LITERAL COLON ON
     | STRING_LITERAL COLON OFF
+    | STRING_LITERAL COLON designPropertyListV3   // compound: 'Spacing': ['margin-top': 'Large', ...]
     ;
 
 // V3 Widget body: { children }

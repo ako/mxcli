@@ -607,3 +607,30 @@ ALTER STYLING ON PAGE StyleTest.P006_Roundtrip WIDGET ctnHeader
   CLEAR DESIGN PROPERTIES;
 
 DESCRIBE STYLING ON PAGE StyleTest.P006_Roundtrip WIDGET ctnHeader;
+
+-- ============================================================================
+-- COMPOUND (NESTED) DESIGN PROPERTIES (#668)
+-- ============================================================================
+-- A compound design property's value is itself a list of sub-properties (e.g.
+-- Atlas "Spacing" → margin-top/bottom). Written as a nested list. Flat option
+-- and toggle properties can sit alongside it.
+
+create or modify page StyleTest."P007_Compound" (
+  title: 'Compound Design Properties',
+  layout: Atlas_Core.Atlas_Default
+) {
+  layoutgrid lgCompound (
+    designproperties: [
+      'Column gap': 'Medium',
+      'Spacing': ['margin-top': 'Large', 'margin-bottom': 'Medium']
+    ]
+  ) {
+    row rCompound {
+      column colCompound (desktopwidth: autofill) {
+        dynamictext txtCompound (content: 'Compound spacing demo')
+      }
+    }
+  }
+}
+
+DESCRIBE STYLING ON PAGE StyleTest.P007_Compound WIDGET lgCompound;

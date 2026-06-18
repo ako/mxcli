@@ -108,10 +108,13 @@ type ParamAssignmentV3 struct {
 	Value any // Expression value
 }
 
-// DesignPropertyEntryV3 represents a single design property key-value pair.
+// DesignPropertyEntryV3 represents a single design property entry. It is either
+// flat (Value set) or compound (Nested set) — a compound property's value is
+// itself a list of sub-properties, e.g. 'Spacing': ['margin-top': 'Large', …].
 type DesignPropertyEntryV3 struct {
-	Key   string // e.g., "Spacing top"
-	Value string // e.g., "Large", "ON", "OFF"
+	Key    string                  // e.g., "Spacing top" or "Spacing"
+	Value  string                  // flat value: "Large", "on", "off" (empty when Nested is set)
+	Nested []DesignPropertyEntryV3 // compound sub-properties (empty for a flat property)
 }
 
 // Helper functions to extract typed properties from WidgetV3

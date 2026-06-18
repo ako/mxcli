@@ -101,21 +101,23 @@ designproperties: ['Spacing top': 'Large']
 designproperties: ['spacing top': 'Large']
 ```
 
-### Compound (Nested) Design Properties Are Not Supported
+### Compound (Nested) Design Properties
 
-`designproperties:` expresses only **flat** properties — a key with a single value
-(an option/dropdown string, or a toggle boolean). It **cannot** express a
-**compound** design property: one whose value is itself a set of sub-properties
-(e.g. Atlas's `Spacing`, which Studio Pro stores as
-`compound:Spacing → {option:margin-top: 'L', option:margin-bottom: 'M', …}`).
+Besides **flat** properties (a key with a single value — an option/dropdown
+string or a toggle), `designproperties:` also supports **compound** properties:
+one whose value is itself a set of sub-properties (e.g. Atlas's `Spacing` →
+`margin-top`, `margin-bottom`, …). A compound value is written as a nested list:
 
-This is a **stack-wide** limitation, not backend-specific — the MDL grammar, the
-SDK `DesignPropertyValue` type, and both the file (`.mpr`) and MCP (live Studio
-Pro) backends handle only flat option/toggle properties. A compound property
-written in MDL is silently not emitted.
+```sql
+designproperties: [
+  'Column gap': 'Medium',                                       -- flat option
+  'Cards style': ON,                                            -- flat toggle
+  'Spacing': ['margin-top': 'Large', 'margin-bottom': 'Medium'] -- compound
+]
+```
 
-Workaround: set compound design properties in Studio Pro directly, or use
-`style:` (raw CSS) / `class:` (Atlas utility classes) for the equivalent effect.
+Supported on the **modelsdk** (`.mpr`) and **MCP** (live Studio Pro) backends.
+Sub-property keys are case-sensitive, same as flat keys.
 
 ### ALTER STYLING Limitation with Builder-Created Pages
 
@@ -125,7 +127,7 @@ Workaround: set compound design properties in Studio Pro directly, or use
 
 - [ ] Never apply `style` directly to DYNAMICTEXT — wrap in a CONTAINER
 - [ ] Design property keys are case-sensitive — match `design-properties.json` exactly
-- [ ] Compound/nested design properties (e.g. grouped Spacing) aren't supported — set them in Studio Pro or use `style`/`class`
+- [ ] Compound/nested design properties (e.g. grouped Spacing) use a nested list: `'Spacing': ['margin-top': 'Large']`
 - [ ] For CSS changes, run `docker build` then `docker reload --css`
 - [ ] Use `describe styling` to verify changes after modification
 - [ ] Check `docs/11-proposals/page-styling-support.md` for BSON format details

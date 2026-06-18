@@ -449,20 +449,8 @@ func applyWidgetAppearance(widget pages.Widget, w *ast.WidgetV3, theme *ThemeReg
 	if len(astProps) > 0 {
 		var dpValues []pages.DesignPropertyValue
 		for _, p := range astProps {
-			switch strings.ToLower(p.Value) {
-			case "on":
-				dpValues = append(dpValues, pages.DesignPropertyValue{
-					Key:       p.Key,
-					ValueType: "toggle",
-				})
-			case "off":
-				// OFF means toggle absence - skip
-			default:
-				dpValues = append(dpValues, pages.DesignPropertyValue{
-					Key:       p.Key,
-					ValueType: "option",
-					Option:    p.Value,
-				})
+			if dp, ok := astDesignPropToValue(p); ok {
+				dpValues = append(dpValues, dp)
 			}
 		}
 		if len(dpValues) > 0 {
@@ -473,6 +461,30 @@ func applyWidgetAppearance(widget pages.Widget, w *ast.WidgetV3, theme *ThemeReg
 				setter.SetDesignProperties(dpValues)
 			}
 		}
+	}
+}
+
+// astDesignPropToValue converts one MDL design-property entry to a
+// pages.DesignPropertyValue. Compound entries (a key whose value is a nested
+// list, e.g. 'Spacing': ['margin-top': 'Large', …]) recurse into sub-properties.
+// Returns ok=false for an entry that should be skipped (a flat toggle set OFF).
+func astDesignPropToValue(p ast.DesignPropertyEntryV3) (pages.DesignPropertyValue, bool) {
+	if len(p.Nested) > 0 {
+		dp := pages.DesignPropertyValue{Key: p.Key, ValueType: "compound"}
+		for _, sub := range p.Nested {
+			if sv, ok := astDesignPropToValue(sub); ok {
+				dp.Compound = append(dp.Compound, sv)
+			}
+		}
+		return dp, true
+	}
+	switch strings.ToLower(p.Value) {
+	case "on":
+		return pages.DesignPropertyValue{Key: p.Key, ValueType: "toggle"}, true
+	case "off":
+		return pages.DesignPropertyValue{}, false // toggle absence — skip
+	default:
+		return pages.DesignPropertyValue{Key: p.Key, ValueType: "option", Option: p.Value}, true
 	}
 }
 

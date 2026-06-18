@@ -1100,6 +1100,11 @@ func buildDesignPropertyEntryV3(ctx parser.IDesignPropertyEntryV3Context) *ast.D
 
 	key := unquoteString(allStrings[0].GetText())
 
+	// Compound (nested): 'Spacing': ['margin-top': 'Large', 'margin-bottom': 'Medium']
+	if listCtx := entryCtx.DesignPropertyListV3(); listCtx != nil {
+		return &ast.DesignPropertyEntryV3{Key: key, Nested: buildDesignPropertyListV3(listCtx)}
+	}
+
 	// Value: second STRING_LITERAL, ON, or OFF
 	if entryCtx.ON() != nil {
 		return &ast.DesignPropertyEntryV3{Key: key, Value: "on"}

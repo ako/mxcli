@@ -592,7 +592,7 @@ func navListItemToGen(item *pages.NavigationListItem) (element.Element, error) {
 		g.SetID(element.ID(item.ID))
 	}
 	assignID(g)
-	g.SetAppearance(newAppearance("", ""))
+	g.SetAppearance(newAppearance("", "", nil))
 	act, err := clientActionToGen(item.Action)
 	if err != nil {
 		return nil, err
@@ -621,7 +621,7 @@ func layoutGridRowToGen(row *pages.LayoutGridRow) (element.Element, error) {
 		g.SetID(element.ID(row.ID))
 	}
 	assignID(g)
-	g.SetAppearance(newAppearance("", ""))
+	g.SetAppearance(newAppearance("", "", nil))
 	g.SetHorizontalAlignment("None")
 	g.SetSpacingBetweenColumns(true)
 	g.SetVerticalAlignment("None")
@@ -643,7 +643,7 @@ func layoutGridColumnToGen(col *pages.LayoutGridColumn) (element.Element, error)
 		g.SetID(element.ID(col.ID))
 	}
 	assignID(g)
-	g.SetAppearance(newAppearance("", ""))
+	g.SetAppearance(newAppearance("", "", nil))
 	g.SetWeight(int32(columnWeight(col.Weight)))
 	g.SetTabletWeight(int32(columnWeight(col.TabletWeight)))
 	g.SetPhoneWeight(int32(columnWeight(col.PhoneWeight)))
@@ -686,19 +686,61 @@ func applyWidgetBase(g widgetBaseGen, b *pages.BaseWidget) {
 	}
 	assignID(g)
 	g.SetName(b.Name)
-	g.SetAppearance(newAppearance(b.Class, b.Style))
+	g.SetAppearance(newAppearance(b.Class, b.Style, b.DesignProperties))
 	g.SetTabIndex(int32(b.TabIndex))
 }
 
-// newAppearance builds a Forms$Appearance with the given class/style (empty
-// DesignProperties / dynamic classes).
-func newAppearance(class, style string) *genPg.Appearance {
+// newAppearance builds a Forms$Appearance with the given class/style and design
+// properties (empty dynamic classes).
+func newAppearance(class, style string, dps []pages.DesignPropertyValue) *genPg.Appearance {
 	a := genPg.NewAppearance()
 	assignID(a)
 	a.SetClass(class)
 	a.SetStyle(style)
 	a.SetDynamicClasses("")
+	for _, dp := range dps {
+		a.AddDesignProperties(designPropertyGen(dp))
+	}
 	return a
+}
+
+// designPropertyGen builds a Forms$DesignPropertyValue wrapper (Key + typed Value
+// element) for the codec, mirroring the on-disk structure.
+func designPropertyGen(dp pages.DesignPropertyValue) element.Element {
+	w := genPg.NewDesignPropertyValue()
+	assignID(w)
+	w.SetKey(dp.Key)
+	w.SetValue(designPropertyValueGen(dp))
+	return w
+}
+
+// designPropertyValueGen builds the typed value element. Compound values nest a
+// Forms$CompoundDesignPropertyValue whose Properties are themselves
+// DesignPropertyValue wrappers (recursive), e.g. Spacing → margin-top/bottom.
+func designPropertyValueGen(dp pages.DesignPropertyValue) element.Element {
+	switch dp.ValueType {
+	case "toggle":
+		v := genPg.NewToggleDesignPropertyValue()
+		assignID(v)
+		return v
+	case "custom":
+		v := genPg.NewCustomDesignPropertyValue()
+		assignID(v)
+		v.SetValue(dp.Option)
+		return v
+	case "compound":
+		v := genPg.NewCompoundDesignPropertyValue()
+		assignID(v)
+		for _, sub := range dp.Compound {
+			v.AddProperties(designPropertyGen(sub))
+		}
+		return v
+	default: // "option"
+		v := genPg.NewOptionDesignPropertyValue()
+		assignID(v)
+		v.SetOption(dp.Option)
+		return v
+	}
 }
 
 // noActionGen builds the default Forms$NoAction (DisabledDuringExecution=true)

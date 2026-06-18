@@ -68,6 +68,9 @@ func TestDesignPropertiesMap(t *testing.T) {
 		{Key: "Column gap", ValueType: "option", Option: "Medium"},
 		{Key: "Background color", ValueType: "option", Option: "Background Secondary"},
 		{Key: "Cards style", ValueType: "toggle"},
+		{Key: "Spacing", ValueType: "compound", Compound: []pages.DesignPropertyValue{
+			{Key: "margin-top", ValueType: "option", Option: "L"},
+		}},
 	})
 	if out["option:Column gap"] != "Medium" {
 		t.Errorf("option mapping wrong: %v", out)
@@ -77,5 +80,13 @@ func TestDesignPropertiesMap(t *testing.T) {
 	}
 	if out["toggle:Cards style"] != true {
 		t.Errorf("toggle mapping wrong: %v", out)
+	}
+	// Compound nests an object of the same shape, keyed "compound:<Name>".
+	nested, ok := out["compound:Spacing"].(map[string]any)
+	if !ok {
+		t.Fatalf("compound mapping missing/wrong type: %v", out["compound:Spacing"])
+	}
+	if nested["option:margin-top"] != "L" {
+		t.Errorf("nested compound mapping wrong: %v", nested)
 	}
 }

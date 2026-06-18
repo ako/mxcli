@@ -474,15 +474,17 @@ func pageAppearance(class, style string) map[string]any {
 // designPropertiesMap renders a widget's design properties into the object shape
 // pg_write_page expects (verified against testdata/pg-page-contact-newedit-
 // designprops.json): keys are "<kind>:<DisplayName>" — "toggle:" with a bool
-// value, "option:" with a string value. (Compound/nested design properties are
-// not expressible in MDL, so they are not emitted; "custom" carries a string
-// value like option.)
+// value, "option:" with a string value, "compound:" with a nested object of the
+// same shape (e.g. "compound:Spacing": {"option:margin-top": "L"}). "custom"
+// carries a string value like option.
 func designPropertiesMap(dps []pages.DesignPropertyValue) map[string]any {
 	out := make(map[string]any, len(dps))
 	for _, dp := range dps {
 		switch dp.ValueType {
 		case "toggle":
 			out["toggle:"+dp.Key] = true
+		case "compound":
+			out["compound:"+dp.Key] = designPropertiesMap(dp.Compound)
 		default: // "option" and "custom" both carry a string value
 			out["option:"+dp.Key] = dp.Option
 		}
