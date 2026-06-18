@@ -80,8 +80,9 @@ func nanoflowFromGen(nf *genMf.Nanoflow, containerID model.ID) *microflows.Nanof
 	out.ID = model.ID(nf.ID())
 	params, objs := splitFlowObjects(nf.ObjectCollection())
 	out.Parameters = params
-	if objs != nil {
-		out.ObjectCollection = &microflows.MicroflowObjectCollection{Objects: objs}
+	flows := flowsFromGen(nf.FlowsItems())
+	if objs != nil || flows != nil {
+		out.ObjectCollection = &microflows.MicroflowObjectCollection{Objects: objs, Flows: flows}
 	}
 	return out
 }
@@ -98,10 +99,37 @@ func microflowFromGen(mf *genMf.Microflow, containerID model.ID) *microflows.Mic
 	out.ID = model.ID(mf.ID())
 	params, objs := splitFlowObjects(mf.ObjectCollection())
 	out.Parameters = params
-	if objs != nil {
-		out.ObjectCollection = &microflows.MicroflowObjectCollection{Objects: objs}
+	// Flows live on the gen Microflow, but the model keeps them in the object
+	// collection (where the DESCRIBE flow-graph traversal reads them). Without
+	// the edges, traversal from the start event has nowhere to go and the body
+	// renders empty.
+	flows := flowsFromGen(mf.FlowsItems())
+	if objs != nil || flows != nil {
+		out.ObjectCollection = &microflows.MicroflowObjectCollection{Objects: objs, Flows: flows}
 	}
 	return out
+}
+
+// flowsFromGen reconstructs the sequence-flow edges (origin/destination + branch
+// case) from a gen flow list, so DESCRIBE can order activities by the flow graph.
+func flowsFromGen(items []element.Element) []*microflows.SequenceFlow {
+	var flows []*microflows.SequenceFlow
+	for _, el := range items {
+		g, ok := el.(*genMf.SequenceFlow)
+		if !ok {
+			continue
+		}
+		f := &microflows.SequenceFlow{
+			OriginID:                   model.ID(g.OriginRefID()),
+			DestinationID:              model.ID(g.DestinationRefID()),
+			OriginConnectionIndex:      int(g.OriginConnectionIndex()),
+			DestinationConnectionIndex: int(g.DestinationConnectionIndex()),
+			IsErrorHandler:             g.IsErrorHandler(),
+		}
+		f.ID = model.ID(g.ID())
+		flows = append(flows, f)
+	}
+	return flows
 }
 
 // splitFlowObjects separates parameter objects (which our model keeps in
@@ -116,7 +144,7 @@ func splitFlowObjects(coll element.Element) ([]*microflows.MicroflowParameter, [
 	var objs []microflows.MicroflowObject
 	for _, el := range mc.ObjectsItems() {
 		if po, ok := el.(*genMf.MicroflowParameter); ok {
-			p := &microflows.MicroflowParameter{Name: po.Name()}
+			p := &microflows.MicroflowParameter{Name: po.Name(), Type: dataTypeFromGen(po.ParameterType())}
 			p.ID = model.ID(el.ID())
 			params = append(params, p)
 			continue
@@ -144,6 +172,9 @@ func flowObjectFromGen(el element.Element) microflows.MicroflowObject {
 	case "Microflows$EndEvent":
 		o := &microflows.EndEvent{}
 		o.ID = id
+		if g, ok := el.(*genMf.EndEvent); ok {
+			o.ReturnValue = g.ReturnValue()
+		}
 		return o
 	case "Microflows$ExclusiveMerge":
 		o := &microflows.ExclusiveMerge{}
@@ -173,6 +204,14 @@ func flowObjectFromGen(el element.Element) microflows.MicroflowObject {
 	default:
 		o := &microflows.ActionActivity{}
 		o.ID = id
+		// Reconstruct the action body so DESCRIBE/SHOW can render it. Unhandled
+		// action types leave Action nil (renders empty), so coverage grows
+		// incrementally without regressing.
+		if g, ok := el.(*genMf.ActionActivity); ok {
+			if act := g.Action(); act != nil {
+				o.Action = actionFromGen(act)
+			}
+		}
 		return o
 	}
 }
