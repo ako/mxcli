@@ -101,6 +101,22 @@ designproperties: ['Spacing top': 'Large']
 designproperties: ['spacing top': 'Large']
 ```
 
+### Compound (Nested) Design Properties Are Not Supported
+
+`designproperties:` expresses only **flat** properties — a key with a single value
+(an option/dropdown string, or a toggle boolean). It **cannot** express a
+**compound** design property: one whose value is itself a set of sub-properties
+(e.g. Atlas's `Spacing`, which Studio Pro stores as
+`compound:Spacing → {option:margin-top: 'L', option:margin-bottom: 'M', …}`).
+
+This is a **stack-wide** limitation, not backend-specific — the MDL grammar, the
+SDK `DesignPropertyValue` type, and both the file (`.mpr`) and MCP (live Studio
+Pro) backends handle only flat option/toggle properties. A compound property
+written in MDL is silently not emitted.
+
+Workaround: set compound design properties in Studio Pro directly, or use
+`style:` (raw CSS) / `class:` (Atlas utility classes) for the equivalent effect.
+
 ### ALTER STYLING Limitation with Builder-Created Pages
 
 `alter styling` cannot find widgets in pages created by the MDL page builder because `walkPageWidgets` traverses `LayoutCall.Arguments` but the page parser doesn't fully reconstruct the widget tree when re-reading builder-created pages. These commands work on pages originally created in Studio Pro.
@@ -109,6 +125,7 @@ designproperties: ['spacing top': 'Large']
 
 - [ ] Never apply `style` directly to DYNAMICTEXT — wrap in a CONTAINER
 - [ ] Design property keys are case-sensitive — match `design-properties.json` exactly
+- [ ] Compound/nested design properties (e.g. grouped Spacing) aren't supported — set them in Studio Pro or use `style`/`class`
 - [ ] For CSS changes, run `docker build` then `docker reload --css`
 - [ ] Use `describe styling` to verify changes after modification
 - [ ] Check `docs/11-proposals/page-styling-support.md` for BSON format details
