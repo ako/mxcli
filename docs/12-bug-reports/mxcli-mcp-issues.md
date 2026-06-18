@@ -4,11 +4,13 @@ Discovered during page writing tests against Mendix 11.11.0.
 mxcli version: v0.12.0-290-g9a58b1692 (2026-06-17)
 Repo: https://github.com/mendixlabs/mxcli
 
-> **Status (2026-06-17): all three resolved** on the `mcp` branch (commit
-> `a70e50b73`). All three were mxcli `pg_write_page` payload gaps — **not PED
-> limitations** — confirmed by capturing a Studio-Pro-generated edit page via
-> `pg_read_page` (fixtures in `mdl/backend/mcp/testdata/pg-page-contact-newedit*.json`)
-> and matching the real shapes. See the per-issue **Resolution** notes below.
+> **Status (2026-06-18): all resolved or diagnosed** on the `mcp` branch.
+> Issues **1–3** (page authoring) were mxcli `pg_write_page` payload gaps — not PED
+> limitations — fixed in `a70e50b73` (real shapes captured via `pg_read_page`,
+> fixtures in `mdl/backend/mcp/testdata/pg-page-contact-newedit*.json`). Issues
+> **4–6** (found later, mxcli `v0.12.0-298`): **#4 is not a data-loss bug** (read-back
+> staleness — the workflow is created correctly), **#5** was a documentation error,
+> **#6** a too-broad guard (fixed). See the per-issue **Resolution** notes.
 
 ---
 
@@ -233,3 +235,114 @@ expects — keyed `"<kind>:<DisplayName>"` (`option:`→string, `toggle:`→bool
 ```
 
 (Compound/nested design properties aren't expressible in MDL, so they're not emitted.)
+
+---
+
+## Issue 4: Workflow body appears empty after CREATE WORKFLOW via MCP
+
+### Summary
+
+`CREATE WORKFLOW` via `mxcli exec --mcp` reports success, but a subsequent
+`SHOW`/`DESCRIBE WORKFLOW` shows an empty body — 0 activities, no parameter entity.
+
+### Reproduce
+
+```mdl
+create workflow MyFirstModule."ContactReviewWorkflow"
+  parameter $Contact: MyFirstModule.Contact
+begin
+  call microflow MyFirstModule.WF_SendNotification;
+  parallel split
+    path 1 { user task LegalReview 'Legal review' page MyFirstModule.WF_LegalReview_Task
+      targeting xpath '[System.User/Name != ""]' outcomes 'Complete' { }; }
+    path 2 { user task TechnicalReview 'Technical review' page MyFirstModule.WF_TechnicalReview_Task
+      targeting xpath '[System.User/Name != ""]' outcomes 'Complete' { }; };
+  user task ManagerApproval 'Manager approval' page MyFirstModule.WF_ManagerApproval_Task
+    targeting xpath '[System.User/Name != ""]' outcomes 'Approve' { } 'Reject' { };
+end workflow;
+```
+
+`mxcli exec workflow.mdl -p FeeDemo.mpr --mcp http://localhost:7782/mcp` →
+`Created workflow: …` (no error); a later `SHOW WORKFLOWS` shows 0 activities.
+
+### Resolution (NOT A DATA-LOSS BUG — read-back staleness)
+
+The workflow **is created correctly.** Reading Studio Pro's live model directly
+(`ped_read_document … /flow/activities /parameter`) shows the full body: the
+parameter (`MyFirstModule.Contact`) plus all activities — `CallMicroflowActivity`,
+`ParallelSplitActivity` (2 paths), and the `SingleUserTaskActivity` with its
+outcomes.
+
+The "empty" is a **read-back artifact**: the user's `SHOW`/`DESCRIBE` ran as
+**separate `mxcli` invocations**, where the in-process session cache is empty, so
+the MCP backend fell back to the **stale on-disk `.mpr`** (Studio Pro hadn't saved,
+and the MCP backend does not reconstruct workflows from PED). This also explains
+"no `--mcp-verbose` output" — a `SHOW`/`DESCRIBE` makes **zero PED calls** (it reads
+the local reader).
+
+**Scope:** this cross-invocation staleness affects **all standalone document types**
+(microflows, pages, workflows, …), not just workflows — only the **domain model**
+reconstructs from PED. **Same-session** reads (a `DESCRIBE` right after `CREATE` in
+one exec/REPL) are correct. The durable fix is uniform PED reconstruction
+([ADR-0005](../13-decisions/0005-mcp-read-model-session-overlay.md)), deferred to the
+engine work. Today: to see a workflow via `mxcli` from a separate invocation, **save
+in Studio Pro first**, or trust Studio Pro's UI. A related *same-session* gap
+(`GetPage` lacked the session-cache merge) was fixed in `de61559eb`.
+
+---
+
+## Issue 5: `BOUNDARY TIMER ON` parse error — documented syntax not in the grammar
+
+### Summary
+
+`mxcli syntax workflow.boundary-event` documented `BOUNDARY TIMER ON <task> AFTER
+'<duration>' { … }`, but the parser rejected it with
+`mismatched input 'boundary' expecting END`.
+
+### Resolution (FIXED — documentation error, commit `f1dbd1058`)
+
+Not a grammar gap. The documented standalone `BOUNDARY TIMER ON …` form never
+existed. The feature is real but is an **inline clause of a USER TASK**:
+
+```mdl
+user task ReviewTask 'Review'
+  page MyFirstModule.WF_Review
+  outcomes 'Done' { }
+  boundary event [interrupting | non interrupting] timer '<duration>' {
+    call microflow MyFirstModule.WF_Escalate;
+  };
+```
+
+or added to an existing task via `ALTER WORKFLOW … INSERT BOUNDARY EVENT ON <task>
+TIMER '<duration>' { … }`. Corrected the `mxcli syntax` entry to the real syntax;
+both forms verified with `mxcli check`. No new syntax was added — the documented
+standalone form would have duplicated the inline one.
+
+---
+
+## Issue 6: `ALTER ENTITY ADD ATTRIBUTE` fails on entities with existing validation rules
+
+### Summary
+
+Adding an attribute to an entity that already has `NOT NULL`/`UNIQUE` rules failed
+with `validation rules via ALTER / CREATE OR MODIFY are not yet supported by the
+MCP backend`, even when the new attribute had no constraints.
+
+### Reproduce
+
+```mdl
+-- Contact already has NOT NULL on FirstName/LastName, UNIQUE on Email
+alter entity MyFirstModule."Contact" add attribute "Status": String(50);
+```
+
+### Resolution (FIXED — commit `49eca4a5d`)
+
+A guard added alongside the NOT NULL/UNIQUE *create* support was too broad: it
+rejected `UpdateEntity` whenever the entity carried **any** validation rules,
+including pre-existing ones the ALTER does not touch (the executor passes the full
+entity for the attribute diff). Refined so the check applies to the **attribute
+being added**: a rule on an already-live attribute is pre-existing and passes
+through; only a rule on a not-yet-live attribute (which this ALTER would have to
+author, and the entity slice can't) is rejected, with a clear message. `ALTER ADD
+ATTRIBUTE` now works on any constrained entity; adding a *constrained new* attribute
+via ALTER is still rejected explicitly rather than silently dropping the constraint.
