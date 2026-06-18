@@ -170,13 +170,6 @@ func (b *Backend) UpdateEntity(domainModelID model.ID, entity *domainmodel.Entit
 	if err := guardUnsupportedEntityFeatures(entity); err != nil {
 		return err
 	}
-	// Validation rules on an existing entity (ALTER / CREATE OR MODIFY) need diffing
-	// against the live rules; only CreateEntity authors them today. Reject rather
-	// than silently drop, preserving the prior behavior now that the shared guard
-	// no longer covers validation rules.
-	if len(entity.ValidationRules) > 0 {
-		return unsupportedEntityFeature(entity.Name, "validation rules via ALTER / CREATE OR MODIFY")
-	}
 	entIdx, err := b.entityIndex(moduleName, entity.Name)
 	if err != nil {
 		return err
@@ -199,6 +192,21 @@ func (b *Backend) UpdateEntity(domainModelID model.ID, entity *domainmodel.Entit
 	for _, n := range liveNames {
 		if !incomingSet[n] {
 			toRemove = append(toRemove, n)
+		}
+	}
+
+	// Validation rules: a rule on an attribute that is ALREADY live is pre-existing
+	// (already in Studio Pro, untouched by an attribute add/rename/drop) — let it
+	// pass. A rule on a NOT-yet-live attribute would have to be authored by this
+	// ALTER, which the entity slice can't do; reject that specific case rather than
+	// blocking every ALTER on a constrained entity (the Issue 6 over-rejection).
+	nameByAttrID := make(map[model.ID]string, len(entity.Attributes))
+	for _, a := range entity.Attributes {
+		nameByAttrID[a.ID] = a.Name
+	}
+	for _, vr := range entity.ValidationRules {
+		if name, ok := nameByAttrID[vr.AttributeID]; ok && !liveSet[name] {
+			return unsupportedEntityFeature(entity.Name, "adding NOT NULL / UNIQUE on a new attribute via ALTER")
 		}
 	}
 
