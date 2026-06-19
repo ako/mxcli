@@ -86,8 +86,9 @@ func init() {
 		Keywords: []string{
 			"alter page", "modify page", "update page",
 			"set property", "insert widget", "drop widget", "replace widget",
+			"popup width", "popup height", "popup resizable",
 		},
-		Syntax:  "ALTER PAGE Module.Name {\n  SET property = value ON widgetName;\n  SET (prop1 = val1, prop2 = val2) ON widgetName;\n  SET Title = 'New Title';  -- page-level\n  INSERT AFTER widgetName { <widgets> };\n  INSERT BEFORE widgetName { <widgets> };\n  DROP WIDGET name1, name2;\n  REPLACE widgetName WITH { <widgets> };\n};",
+		Syntax:  "ALTER PAGE Module.Name {\n  SET property = value ON widgetName;\n  SET (prop1 = val1, prop2 = val2) ON widgetName;\n  SET Title = 'New Title';  -- page-level (case-sensitive)\n  SET PopupWidth = 800;     -- page-level pop-up dimensions\n  SET PopupHeight = 480;\n  SET PopupResizable = true;\n  INSERT AFTER widgetName { <widgets> };\n  INSERT BEFORE widgetName { <widgets> };\n  DROP WIDGET name1, name2;\n  REPLACE widgetName WITH { <widgets> };\n};",
 		Example: "ALTER PAGE Module.EditPage {\n  SET (Caption = 'Save & Close', ButtonStyle = Success) ON btnSave;\n  INSERT AFTER txtName {\n    TEXTBOX txtMiddleName (Label: 'Middle Name', Binds: MiddleName)\n  };\n  DROP WIDGET txtUnused;\n};",
 		SeeAlso: []string{"page.create", "page.show", "snippet.alter"},
 	})

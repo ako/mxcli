@@ -979,3 +979,87 @@ func TestSanitizeColumnName(t *testing.T) {
 		}
 	}
 }
+
+// --- Page-level pop-up dimension SET (issue #661) -------------------------
+
+func TestSetPageLevel_PopupWidth(t *testing.T) {
+	rawData := makeRawPage()
+	m := &Mutator{rawData: rawData, widgetFinder: findBsonWidget}
+
+	// Integer literals arrive from the visitor as Go int.
+	if err := m.SetWidgetProperty("", "PopupWidth", 800); err != nil {
+		t.Fatalf("SetWidgetProperty PopupWidth failed: %v", err)
+	}
+	got := bsonnav.DGet(m.rawData, "PopupWidth")
+	if got != int64(800) {
+		t.Errorf("PopupWidth = %v (%T), want int64(800)", got, got)
+	}
+}
+
+func TestSetPageLevel_PopupHeight(t *testing.T) {
+	rawData := makeRawPage()
+	m := &Mutator{rawData: rawData, widgetFinder: findBsonWidget}
+
+	if err := m.SetWidgetProperty("", "PopupHeight", 480); err != nil {
+		t.Fatalf("SetWidgetProperty PopupHeight failed: %v", err)
+	}
+	if got := bsonnav.DGet(m.rawData, "PopupHeight"); got != int64(480) {
+		t.Errorf("PopupHeight = %v (%T), want int64(480)", got, got)
+	}
+}
+
+func TestSetPageLevel_PopupWidth_Float(t *testing.T) {
+	rawData := makeRawPage()
+	m := &Mutator{rawData: rawData, widgetFinder: findBsonWidget}
+
+	// A value written with a decimal point arrives as float64; whole values coerce.
+	if err := m.SetWidgetProperty("", "PopupWidth", float64(640)); err != nil {
+		t.Fatalf("SetWidgetProperty PopupWidth float failed: %v", err)
+	}
+	if got := bsonnav.DGet(m.rawData, "PopupWidth"); got != int64(640) {
+		t.Errorf("PopupWidth = %v (%T), want int64(640)", got, got)
+	}
+}
+
+func TestSetPageLevel_PopupResizable(t *testing.T) {
+	rawData := makeRawPage()
+	m := &Mutator{rawData: rawData, widgetFinder: findBsonWidget}
+
+	if err := m.SetWidgetProperty("", "PopupResizable", true); err != nil {
+		t.Fatalf("SetWidgetProperty PopupResizable failed: %v", err)
+	}
+	if got := bsonnav.DGet(m.rawData, "PopupResizable"); got != true {
+		t.Errorf("PopupResizable = %v, want true", got)
+	}
+}
+
+func TestSetPageLevel_Popup_Invalid(t *testing.T) {
+	cases := []struct {
+		name  string
+		prop  string
+		value any
+	}{
+		{"zero width", "PopupWidth", 0},
+		{"negative height", "PopupHeight", -10},
+		{"non-whole float", "PopupWidth", 12.5},
+		{"non-number width", "PopupWidth", "wide"},
+		{"non-bool resizable", "PopupResizable", "yes"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			rawData := makeRawPage()
+			m := &Mutator{rawData: rawData, widgetFinder: findBsonWidget}
+			if err := m.SetWidgetProperty("", c.prop, c.value); err == nil {
+				t.Errorf("expected error for %s = %v, got nil", c.prop, c.value)
+			}
+		})
+	}
+}
+
+func TestSetPageLevel_UnsupportedProperty(t *testing.T) {
+	rawData := makeRawPage()
+	m := &Mutator{rawData: rawData, widgetFinder: findBsonWidget}
+	if err := m.SetWidgetProperty("", "NotARealProperty", 1); err == nil {
+		t.Fatal("expected error for unsupported page-level property, got nil")
+	}
+}

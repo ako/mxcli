@@ -102,6 +102,56 @@ func TestAlterPage_SetProperty_Success(t *testing.T) {
 	assertContainsStr(t, buf.String(), "MyModule.TestPage")
 }
 
+// Issue #661 — page-level SET of pop-up dimensions routes to the mutator with an
+// empty widget ref (page-level), not a widget target.
+func TestAlterPage_SetPopupDimensions_Issue661(t *testing.T) {
+	mod := mkModule("MyModule")
+	pg := mkPage(mod.ID, "TestPage")
+	saved := false
+	gotProps := map[string]any{}
+	mb := &mock.MockBackend{
+		IsConnectedFunc: func() bool { return true },
+		ListModulesFunc: func() ([]*model.Module, error) { return []*model.Module{mod}, nil },
+		ListFoldersFunc: func() ([]*types.FolderInfo, error) { return nil, nil },
+		ListPagesFunc:   func() ([]*pages.Page, error) { return []*pages.Page{pg}, nil },
+		OpenPageForMutationFunc: func(unitID model.ID) (backend.PageMutator, error) {
+			return &mock.MockPageMutator{
+				SetWidgetPropertyFunc: func(widgetRef string, prop string, value any) error {
+					if widgetRef != "" {
+						t.Errorf("expected page-level set (empty widgetRef), got %q", widgetRef)
+					}
+					gotProps[prop] = value
+					return nil
+				},
+				SaveFunc: func() error { saved = true; return nil },
+			}, nil
+		},
+	}
+	h := mkHierarchy(mod)
+	withContainer(h, pg.ContainerID, mod.ID)
+	ctx, buf := newMockCtx(t, withBackend(mb), withHierarchy(h))
+	assertNoError(t, execAlterPage(ctx, &ast.AlterPageStmt{
+		PageName: ast.QualifiedName{Module: "MyModule", Name: "TestPage"},
+		Operations: []ast.AlterPageOperation{
+			&ast.SetPropertyOp{
+				Target: ast.WidgetRef{Widget: ""},
+				Properties: map[string]any{
+					"PopupWidth":     800,
+					"PopupHeight":    480,
+					"PopupResizable": true,
+				},
+			},
+		},
+	}))
+	if !saved {
+		t.Error("expected Save to be called")
+	}
+	if gotProps["PopupWidth"] != 800 || gotProps["PopupHeight"] != 480 || gotProps["PopupResizable"] != true {
+		t.Errorf("unexpected props passed to mutator: %#v", gotProps)
+	}
+	assertContainsStr(t, buf.String(), "Altered page")
+}
+
 // ---------------------------------------------------------------------------
 // Snippet happy path
 // ---------------------------------------------------------------------------

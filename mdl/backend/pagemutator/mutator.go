@@ -4,6 +4,7 @@ package pagemutator
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -91,7 +92,12 @@ func (m *Mutator) ContainerType() backend.ContainerKind { return m.containerType
 func (m *Mutator) SetWidgetProperty(widgetRef string, prop string, value any) error {
 	if widgetRef == "" {
 		// Page-level property
-		return applyPageLevelSetMut(m.rawData, prop, value)
+		newRaw, err := applyPageLevelSetMut(m.rawData, prop, value)
+		if err != nil {
+			return err
+		}
+		m.rawData = newRaw
+		return nil
 	}
 	result := m.widgetFinder(m.rawData, widgetRef)
 	if result == nil {
@@ -1538,30 +1544,99 @@ func updateClientTemplateText(clientTemplate bson.D, text string) bool {
 	return true
 }
 
-func applyPageLevelSetMut(rawData bson.D, prop string, value any) error {
+// applyPageLevelSetMut applies a page-level SET (no widget target). It returns
+// the (possibly extended) rawData so the caller can pick up appended top-level
+// fields — bson.D is a slice, so appending a new key isn't visible through the
+// value parameter alone.
+func applyPageLevelSetMut(rawData bson.D, prop string, value any) (bson.D, error) {
 	switch prop {
 	case "Title":
 		strVal, ok := value.(string)
 		if !ok {
-			return fmt.Errorf("Title value must be a string")
+			return rawData, fmt.Errorf("Title value must be a string")
 		}
 		// The page's Title is at the top level of the Forms$Page document,
 		// parallel to FormCall (not nested inside it). It's a Texts$Text doc
 		// whose Items[] array holds Texts$Translation entries.
 		titleDoc := bsonnav.DGetDoc(rawData, "Title")
 		if titleDoc == nil {
-			return fmt.Errorf("page has no Title field")
+			return rawData, fmt.Errorf("page has no Title field")
 		}
 		if !updateTextsTextValue(titleDoc, strVal) {
-			return fmt.Errorf("could not update Title text")
+			return rawData, fmt.Errorf("could not update Title text")
 		}
 	case "Url":
 		strVal, _ := value.(string)
-		bsonnav.DSet(rawData, "Url", strVal)
+		rawData = dSetOrAppend(rawData, "Url", strVal)
+	case "PopupWidth", "PopupHeight":
+		// Pop-up dimensions live at the top level of the Forms$Page document and
+		// are stored as int64 (matching what Studio Pro and the legacy writer
+		// emit). They apply when the page is shown in a pop-up.
+		n, err := coercePopupDimension(prop, value)
+		if err != nil {
+			return rawData, err
+		}
+		rawData = dSetOrAppend(rawData, prop, n)
+	case "PopupResizable":
+		boolVal, ok := value.(bool)
+		if !ok {
+			return rawData, fmt.Errorf("PopupResizable value must be a boolean (true or false)")
+		}
+		rawData = dSetOrAppend(rawData, "PopupResizable", boolVal)
+	case "PopupCloseAction":
+		strVal, ok := value.(string)
+		if !ok {
+			return rawData, fmt.Errorf("PopupCloseAction value must be a string")
+		}
+		rawData = dSetOrAppend(rawData, "PopupCloseAction", strVal)
 	default:
-		return fmt.Errorf("unsupported page-level property: %s", prop)
+		return rawData, fmt.Errorf("unsupported page-level property: %s "+
+			"(supported: Title, Url, PopupWidth, PopupHeight, PopupResizable, PopupCloseAction)", prop)
 	}
-	return nil
+	return rawData, nil
+}
+
+// dSetOrAppend updates the value of an existing top-level key, or appends the key
+// when it is absent. Returns the (possibly grown) doc.
+func dSetOrAppend(doc bson.D, key string, value any) bson.D {
+	if bsonnav.DSet(doc, key, value) {
+		return doc
+	}
+	return append(doc, bson.E{Key: key, Value: value})
+}
+
+// coercePopupDimension converts an MDL numeric value to the int64 BSON form used
+// by the page's PopupWidth/PopupHeight fields. Integer literals arrive from the
+// visitor as int (strconv.Atoi); a value written with a decimal point arrives as
+// float64. The result is bounds-checked to a positive int32-range pixel count —
+// the range Studio Pro accepts — so silent overflow can't reach the serializer.
+func coercePopupDimension(prop string, value any) (int64, error) {
+	var n int64
+	switch v := value.(type) {
+	case int:
+		n = int64(v)
+	case int32:
+		n = int64(v)
+	case int64:
+		n = v
+	case float64:
+		if v != math.Trunc(v) {
+			return 0, fmt.Errorf("%s must be a whole number, got %v", prop, v)
+		}
+		if v < math.MinInt32 || v > math.MaxInt32 {
+			return 0, fmt.Errorf("%s value %v is out of range", prop, v)
+		}
+		n = int64(v)
+	default:
+		return 0, fmt.Errorf("%s value must be a number, got %T", prop, value)
+	}
+	if n <= 0 {
+		return 0, fmt.Errorf("%s must be a positive number, got %d", prop, n)
+	}
+	if n > math.MaxInt32 {
+		return 0, fmt.Errorf("%s value %d is out of range", prop, n)
+	}
+	return n, nil
 }
 
 // updateTextsTextValue updates the Text field of a Texts$Text doc's en_US

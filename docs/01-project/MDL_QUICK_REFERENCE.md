@@ -954,7 +954,8 @@ Modify an existing page or snippet's widget tree in-place without full `create o
 |-----------|--------|-------|
 | Set property | `set caption = 'New' on widgetName` | Single property on a widget |
 | Set multiple | `set (caption = 'Save', buttonstyle = success) on btn` | Multiple properties at once |
-| Page-level set | `set title = 'New title'` | No ON clause for page properties |
+| Page-level set | `set Title = 'New title'` | No ON clause; page-level names are case-sensitive |
+| Pop-up dimensions | `set PopupWidth = 800` / `set PopupHeight = 480` / `set PopupResizable = true` | Page-level; apply when the page opens in a pop-up |
 | Insert after | `insert after widgetName { widgets }` | Add widgets after target |
 | Insert before | `insert before widgetName { widgets }` | Add widgets before target |
 | Drop widgets | `drop widget name1, name2` | Remove widgets by name |
@@ -968,7 +969,7 @@ Modify an existing page or snippet's widget tree in-place without full `create o
 | Set layout | `set layout = Module.LayoutName` | Change page layout, auto-maps placeholders |
 | Set layout + map | `set layout = Module.Layout map (Old as New)` | Explicit placeholder mapping |
 
-**Supported SET properties:** Caption, Label, ButtonStyle, Class, Style, Editable, Visible, Name, Title (page-level), Layout (page-level), and quoted pluggable widget properties.
+**Supported SET properties:** Caption, Label, ButtonStyle, Class, Style, Editable, Visible, Name, Title (page-level), Layout (page-level), PopupWidth / PopupHeight / PopupResizable (page-level), and quoted pluggable widget properties.
 
 **Example:**
 ```sql

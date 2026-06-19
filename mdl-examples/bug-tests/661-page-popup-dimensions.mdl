@@ -1,0 +1,49 @@
+-- ============================================================================
+-- Bug #661: The Pop-up width / Pop-up height of a Page are not managed
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   There was no way to set a page's Pop-up width / Pop-up height / Resizable
+--   programmatically. CREATE PAGE always emitted the hardcoded defaults
+--   (PopupWidth=600, PopupHeight=600, PopupResizable=false), and ALTER PAGE's
+--   page-level SET handler (applyPageLevelSetMut) only understood Title and Url —
+--   any other page-level property failed with
+--   "unsupported page-level property: ...".
+--
+-- After fix:
+--   ALTER PAGE's page-level SET understands PopupWidth, PopupHeight,
+--   PopupResizable (and PopupCloseAction). The values are written as int64 at the
+--   top level of the Forms$Page document — the shape Studio Pro and the legacy
+--   writer already use — so both the modelsdk and legacy engines persist them.
+--   DESCRIBE PAGE emits a trailing `alter page` block for any non-default value,
+--   so the output round-trips.
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/661-page-popup-dimensions.mdl -p app.mpr
+--   Open BugTest661.P_Popup in Studio Pro → page properties → Pop-up:
+--   width 800, height 480, Resizable = Yes.
+-- ============================================================================
+
+create module BugTest661;
+
+create page BugTest661.P_Popup
+(
+  title: 'Pop-up Page',
+  layout: Atlas_Core.PopupLayout
+)
+{
+  container ctnBody {
+    dynamictext txtHello (content: 'Shown in a pop-up')
+  }
+}
+
+-- Set the pop-up dimensions and make it resizable (the issue's request).
+alter page BugTest661.P_Popup {
+  set PopupWidth = 800;
+  set PopupHeight = 480;
+  set PopupResizable = true;
+}
+
+-- Read back — DESCRIBE should emit the trailing `alter page` block with the
+-- non-default pop-up values, so this output re-executes.
+describe page BugTest661.P_Popup;

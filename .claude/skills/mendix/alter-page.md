@@ -64,8 +64,14 @@ set caption = 'New Caption' on widgetName
 -- Multiple properties
 set (caption = 'Save & Close', buttonstyle = success) on btnSave
 
--- Page-level property (no ON clause)
-set title = 'New Page Title'
+-- Page-level property (no ON clause). Page-level property names are
+-- case-sensitive and must match the Mendix property exactly.
+set Title = 'New Page Title'
+
+-- Pop-up dimensions (apply when the page is opened in a pop-up)
+set PopupWidth = 800
+set PopupHeight = 480
+set PopupResizable = true
 ```
 
 **Supported SET properties:**
@@ -81,8 +87,11 @@ set title = 'New Page Title'
 | `editable` | Input widgets | String | `set editable = 'Never' on txtReadOnly` |
 | `visible` | Any widget | String or Boolean | `set visible = false on txtHidden` |
 | `Name` | Any widget | String | `set Name = 'newName' on oldName` |
-| `title` | Page-level only | String | `set title = 'Edit Customer'` |
+| `Title` | Page-level only (case-sensitive) | String | `set Title = 'Edit Customer'` |
 | `layout` | Page-level only | Qualified name | `set layout = Atlas_Core.Atlas_Default` |
+| `PopupWidth` | Page-level only (case-sensitive) | Positive integer (pixels) | `set PopupWidth = 800` |
+| `PopupHeight` | Page-level only (case-sensitive) | Positive integer (pixels) | `set PopupHeight = 480` |
+| `PopupResizable` | Page-level only (case-sensitive) | Boolean | `set PopupResizable = true` |
 | `visible` | Any widget | Boolean or `[xpath]` | `set visible = false on txtHidden` |
 | `editable` | Input widgets | Never/Always or `[xpath]` | `set editable = Never on txtReadOnly` |
 | `'quotedProp'` | Pluggable widgets | String, Boolean, Number | `set 'showLabel' = false on cbStatus` |
@@ -284,7 +293,8 @@ alter page MyModule.Customer_Edit {
 
 | Mistake | Fix |
 |---------|-----|
-| Missing `on widgetName` for widget SET | Add `on widgetName` (only page-level Title omits ON) |
+| Missing `on widgetName` for widget SET | Add `on widgetName` (only page-level properties — `Title`, `PopupWidth`, `PopupHeight`, `PopupResizable` — omit ON) |
+| `unsupported page-level property: title` | Page-level property names are case-sensitive — use `Title`, `PopupWidth`, `PopupHeight`, `PopupResizable` |
 | Using unquoted pluggable property names | Quote pluggable props: `set 'showLabel' = false on cb` |
 | Wrong widget name | Use `describe page Module.Name` to see widget names |
 | SET on non-existent widget | Widget names are case-sensitive; check with DESCRIBE |
