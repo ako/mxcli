@@ -57,65 +57,9 @@ ORDER by activity_count desc
 
 ### Step 2b: Architecture & Dependency-Graph Analysis
 
-mxcli models the project as a dependency graph (`CATALOG.REFS`) and exposes
-topological analyses on top of it. Use these to understand *where to intervene*
-when improving or restructuring an app — they answer questions catalog metrics
-can't (what's central, what's tangled, what belongs together).
+mxcli models the project as a dependency graph and exposes topological analyses on top of it — god nodes, coupling, cohesion, communities, centrality, cycles, and layering. These answer questions catalog metrics can't: what's central, what's tangled, what belongs together.
 
-```bash
-# One-shot architecture map: god nodes, cross-module coupling ("surprise edges"),
-# module cohesion, dead documents, reference-kind mix, entity hotspots.
-# Framework/marketplace modules are excluded by default.
-mxcli graph-report -p app.mpr --top 20
-```
-
-For community detection / centrality / cycles / layers, build the graph tables
-first (this also fills PageRank/betweenness in the report):
-
-```bash
-mxcli -p app.mpr -c "refresh catalog communities"   # 'resolution 0.6' = coarser, '2.0' = finer
-```
-
-Then query the analyses:
-
-```sql
--- God nodes: most depended-upon (change-risk) + richer centrality
-select Asset, ObjectType, Degree, PageRank, Betweenness
-from CATALOG.graph_god_nodes order by PageRank desc limit 20
-
--- Surprise edges: which modules are entangled (and via what kinds)
-select * from CATALOG.graph_module_coupling order by Edges desc limit 20
-
--- Module cohesion (lowest first = most tangled, candidate to split)
-select * from CATALOG.graph_module_cohesion order by CohesionPct asc
-
--- Dependency cycles (spaghetti — must be broken before layering)
-select * from CATALOG.graph_cycles
-
--- Bounded contexts the current module layout doesn't reflect
-show communities
-show community members of MyModule.SomeAsset
-
--- Dead documents (no inbound reference; excl. framework)
-select * from CATALOG.graph_dead_assets
-```
-
-**Two refactoring journeys this supports:**
-
-1. **Spaghetti → layered / modular.** `graph_cycles` finds the tangles to break;
-   `CATALOG.graph_layers` gives each asset a topological sequence number; the
-   communities propose cleaner module groupings. mxcli reports the *facts*
-   (numbers + directed `graph_module_dependencies`); a team encodes its own
-   layering policy as a Starlark lint rule (see `write-lint-rules.md`).
-2. **Monolith → multi-app (REST/OData/events).** Run `refresh catalog communities
-   resolution 0.6` for coarse candidate apps, then `select * from
-   CATALOG.graph_integration_surface` — every cross-community edge is classified
-   into the integration contract a split would require (OData / REST / event),
-   with `generalize` crossings flagged as blockers.
-
-god nodes dominated by `System`/`Atlas_*`/marketplace connectors are expected, not
-actionable — `graph-report` filters them by default; add `--include-framework` to
-see them as shared dependencies.
+**Read [`graph-analysis.md`](./graph-analysis.md) before running graph analysis.** It covers setup (two-step refresh required), all eight use cases (impact assessment, dead code, cohesion, communities, bridges, hotspots, cycles, monolith splits), column schemas, false-positive caveats for dead assets, and a quick-reference table mapping questions to tables.
 
 ### Step 3: Manual Review Against Guidelines
 
