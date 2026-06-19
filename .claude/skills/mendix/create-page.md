@@ -13,12 +13,19 @@ create [or replace] page Module.PageName
   title: 'Page Title',
   layout: Module.LayoutName,
   [url: 'page-url',]
-  [folder: 'FolderPath']
+  [folder: 'FolderPath',]
+  [PopupWidth: 800, PopupHeight: 480, PopupResizable: true]
 )
 {
   -- Widget definitions using explicit properties
 }
 ```
+
+**Pop-up dimensions** (`PopupWidth` / `PopupHeight` / `PopupResizable`) apply when the
+page is opened in a pop-up. They are optional — omitting them uses the Mendix defaults
+(600 × 600, not resizable). Unlike the other header keywords, these property names are
+**case-sensitive** and must be written exactly as shown. They can also be changed later
+with `alter page … { set PopupWidth = …; }` (see the alter-page skill).
 
 **Page Variables**: Local variables at the page level for use in expressions (e.g., column visibility).
 - DataType: `boolean`, `string`, `integer`, `decimal`, `datetime`

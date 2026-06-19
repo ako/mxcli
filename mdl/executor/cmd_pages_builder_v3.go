@@ -43,6 +43,20 @@ func (pb *pageBuilder) buildPageV3(s *ast.CreatePageStmtV3) (*pages.Page, error)
 		URL:           s.URL,
 		MarkAsUsed:    false,
 		Excluded:      s.Excluded,
+		// Pop-up dimensions (issue #661): Mendix defaults, overridable in the
+		// page header. The writers serialize these top-level Forms$Page fields.
+		PopupWidth:     600,
+		PopupHeight:    600,
+		PopupResizable: false,
+	}
+	if s.PopupWidth != nil {
+		page.PopupWidth = *s.PopupWidth
+	}
+	if s.PopupHeight != nil {
+		page.PopupHeight = *s.PopupHeight
+	}
+	if s.PopupResizable != nil {
+		page.PopupResizable = *s.PopupResizable
 	}
 
 	// Set title

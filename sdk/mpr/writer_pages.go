@@ -114,6 +114,16 @@ func (w *Writer) MoveSnippet(snippet *pages.Snippet) error {
 	return w.moveUnitByID(string(snippet.ID), string(snippet.ContainerID))
 }
 
+// popupDimension returns the pop-up width/height as the int64 BSON value Studio
+// Pro uses, falling back to the Mendix default (600) for an unset/non-positive
+// value so pages built without explicit pop-up dimensions keep valid defaults.
+func popupDimension(n int) int64 {
+	if n <= 0 {
+		return 600
+	}
+	return int64(n)
+}
+
 func (w *Writer) serializePage(page *pages.Page) ([]byte, error) {
 	// Build document with Mendix 10+ format (Forms$Page)
 	doc := bson.D{
@@ -221,9 +231,9 @@ func (w *Writer) serializePage(page *pages.Page) ([]byte, error) {
 	doc = append(doc, bson.E{Key: "Parameters", Value: params})
 
 	doc = append(doc, bson.E{Key: "PopupCloseAction", Value: ""})
-	doc = append(doc, bson.E{Key: "PopupHeight", Value: int64(600)})
-	doc = append(doc, bson.E{Key: "PopupResizable", Value: false})
-	doc = append(doc, bson.E{Key: "PopupWidth", Value: int64(600)})
+	doc = append(doc, bson.E{Key: "PopupHeight", Value: popupDimension(page.PopupHeight)})
+	doc = append(doc, bson.E{Key: "PopupResizable", Value: page.PopupResizable})
+	doc = append(doc, bson.E{Key: "PopupWidth", Value: popupDimension(page.PopupWidth)})
 
 	// Add Title
 	// Mendix uses [3] for empty arrays, [2, item1, item2, ...] for non-empty arrays

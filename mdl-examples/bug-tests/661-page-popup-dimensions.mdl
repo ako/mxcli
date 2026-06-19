@@ -6,44 +6,58 @@
 --   There was no way to set a page's Pop-up width / Pop-up height / Resizable
 --   programmatically. CREATE PAGE always emitted the hardcoded defaults
 --   (PopupWidth=600, PopupHeight=600, PopupResizable=false), and ALTER PAGE's
---   page-level SET handler (applyPageLevelSetMut) only understood Title and Url —
---   any other page-level property failed with
---   "unsupported page-level property: ...".
+--   page-level SET handler only understood Title and Url.
 --
 -- After fix:
---   ALTER PAGE's page-level SET understands PopupWidth, PopupHeight,
---   PopupResizable (and PopupCloseAction). The values are written as int64 at the
---   top level of the Forms$Page document — the shape Studio Pro and the legacy
---   writer already use — so both the modelsdk and legacy engines persist them.
---   DESCRIBE PAGE emits a trailing `alter page` block for any non-default value,
---   so the output round-trips.
+--   * CREATE PAGE accepts PopupWidth / PopupHeight / PopupResizable in the
+--     header (case-sensitive; omitting them keeps the 600/600/false defaults).
+--   * ALTER PAGE's page-level SET understands the same properties.
+--   * The values are written to the top level of the Forms$Page document; the
+--     legacy engine writes int64 (matching Studio Pro), the modelsdk codec
+--     writes int32 (tolerated by mx check, like its canvas dimensions).
+--   * DESCRIBE PAGE emits the non-default values back in the header so it
+--     round-trips.
 --
 -- Usage:
 --   mxcli exec mdl-examples/bug-tests/661-page-popup-dimensions.mdl -p app.mpr
---   Open BugTest661.P_Popup in Studio Pro → page properties → Pop-up:
---   width 800, height 480, Resizable = Yes.
+--   Open the pages in Studio Pro → page properties → Pop-up.
 -- ============================================================================
 
 create module BugTest661;
 
-create page BugTest661.P_Popup
+-- (1) CREATE PAGE with pop-up dimensions in the header.
+create page BugTest661.P_PopupCreate
 (
-  title: 'Pop-up Page',
-  layout: Atlas_Core.PopupLayout
+  Title: 'Pop-up via CREATE',
+  Layout: Atlas_Core.PopupLayout,
+  PopupWidth: 720,
+  PopupHeight: 460,
+  PopupResizable: true
 )
 {
   container ctnBody {
-    dynamictext txtHello (content: 'Shown in a pop-up')
+    dynamictext txtHello (content: 'Configured at create time')
   }
 }
 
--- Set the pop-up dimensions and make it resizable (the issue's request).
-alter page BugTest661.P_Popup {
+-- (2) CREATE a plain page, then set the dimensions with ALTER PAGE.
+create page BugTest661.P_PopupAlter
+(
+  Title: 'Pop-up via ALTER',
+  Layout: Atlas_Core.PopupLayout
+)
+{
+  container ctnBody {
+    dynamictext txtHello (content: 'Configured via ALTER')
+  }
+}
+
+alter page BugTest661.P_PopupAlter {
   set PopupWidth = 800;
   set PopupHeight = 480;
   set PopupResizable = true;
 }
 
--- Read back — DESCRIBE should emit the trailing `alter page` block with the
--- non-default pop-up values, so this output re-executes.
-describe page BugTest661.P_Popup;
+-- Read back — both pages should report their pop-up dimensions in the header.
+describe page BugTest661.P_PopupCreate;
+describe page BugTest661.P_PopupAlter;

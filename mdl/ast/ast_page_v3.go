@@ -31,6 +31,12 @@ type CreatePageStmtV3 struct {
 	IsReplace     bool // CREATE OR REPLACE
 	IsModify      bool // CREATE OR MODIFY
 	Excluded      bool // @excluded — document excluded from project
+
+	// Pop-up dimensions (issue #661). nil means "not specified" — the executor
+	// applies the Mendix defaults (600 / 600 / false).
+	PopupWidth     *int
+	PopupHeight    *int
+	PopupResizable *bool
 }
 
 func (s *CreatePageStmtV3) isStatement() {}

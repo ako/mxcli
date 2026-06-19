@@ -85,6 +85,16 @@ func (b *Backend) DeletePage(id model.ID) error {
 	return b.writer.DeleteUnit(string(id))
 }
 
+// popupDimension returns the pop-up width/height for the gen Page (int32),
+// falling back to the Mendix default (600) for an unset/non-positive value so
+// pages built without explicit pop-up dimensions keep valid defaults.
+func popupDimension(n int) int32 {
+	if n <= 0 {
+		return 600
+	}
+	return int32(n)
+}
+
 // pageToGen builds the full gen Page: header, layout call, the widget tree (under
 // the layout call's form-call arguments), parameters, and variables.
 func pageToGen(page *pages.Page) (*genPg.Page, error) {
@@ -99,8 +109,8 @@ func pageToGen(page *pages.Page) (*genPg.Page, error) {
 	out.SetMarkAsUsed(page.MarkAsUsed)
 	out.SetUrl(page.URL)
 	out.SetPopupCloseAction("")
-	out.SetPopupWidth(int32(page.PopupWidth))
-	out.SetPopupHeight(int32(page.PopupHeight))
+	out.SetPopupWidth(popupDimension(page.PopupWidth))
+	out.SetPopupHeight(popupDimension(page.PopupHeight))
 	out.SetPopupResizable(page.PopupResizable)
 	out.SetAllowedRolesQualifiedNames(moduleRoleNames(page.AllowedRoles))
 	out.SetTitle(captionToGen(page.Title))

@@ -106,6 +106,20 @@ func describePage(ctx *ExecContext, name ast.QualifiedName) error {
 	if folderPath := h.BuildFolderPath(foundPage.ContainerID); folderPath != "" {
 		props = append(props, fmt.Sprintf("Folder: %s", mdlQuote(folderPath)))
 	}
+	// Pop-up dimensions (issue #661) — emit only non-default values so the
+	// CREATE PAGE header round-trips. Defaults are 600/600/false; a non-pop-up
+	// content page stores 0, which we also skip.
+	if rawData != nil {
+		if w := toInt(rawData["PopupWidth"]); w != 0 && w != 600 {
+			props = append(props, fmt.Sprintf("PopupWidth: %d", w))
+		}
+		if hgt := toInt(rawData["PopupHeight"]); hgt != 0 && hgt != 600 {
+			props = append(props, fmt.Sprintf("PopupHeight: %d", hgt))
+		}
+		if r, ok := rawData["PopupResizable"].(bool); ok && r {
+			props = append(props, "PopupResizable: true")
+		}
+	}
 	if len(foundPage.Parameters) > 0 {
 		params := []string{}
 		for _, p := range foundPage.Parameters {
@@ -154,29 +168,6 @@ func describePage(ctx *ExecContext, name ast.QualifiedName) error {
 		}
 		fmt.Fprintf(ctx.Output, "\n\ngrant view on page %s.%s to %s;",
 			modName, foundPage.Name, strings.Join(roles, ", "))
-	}
-
-	// Pop-up dimensions (issue #661). Emitted as a trailing ALTER PAGE for any
-	// non-default value so DESCRIBE output round-trips — the CREATE PAGE header
-	// does not carry pop-up properties, but ALTER PAGE SET does.
-	if rawData != nil {
-		var popupSets []string
-		if w := toInt(rawData["PopupWidth"]); w != 0 && w != 600 {
-			popupSets = append(popupSets, fmt.Sprintf("set PopupWidth = %d;", w))
-		}
-		if hgt := toInt(rawData["PopupHeight"]); hgt != 0 && hgt != 600 {
-			popupSets = append(popupSets, fmt.Sprintf("set PopupHeight = %d;", hgt))
-		}
-		if r, ok := rawData["PopupResizable"].(bool); ok && r {
-			popupSets = append(popupSets, "set PopupResizable = true;")
-		}
-		if len(popupSets) > 0 {
-			fmt.Fprintf(ctx.Output, "\n\nalter page %s.%s {\n", modName, foundPage.Name)
-			for _, s := range popupSets {
-				fmt.Fprintf(ctx.Output, "    %s\n", s)
-			}
-			fmt.Fprint(ctx.Output, "}")
-		}
 	}
 
 	fmt.Fprint(ctx.Output, "\n")

@@ -4,6 +4,7 @@ package visitor
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -117,8 +118,60 @@ func (b *Builder) parsePageHeaderV3(ctx parser.IPageHeaderV3Context, stmt *ast.C
 			if str := prop.STRING_LITERAL(); str != nil {
 				stmt.Folder = unquoteString(str.GetText())
 			}
+		} else if id := prop.IDENTIFIER(); id != nil {
+			// Generic page header property (e.g. PopupWidth: 800). Only the
+			// pop-up dimensions are recognized; anything else is a typo/unsupported.
+			b.applyGenericPageHeaderProp(stmt, id.GetText(), buildPropertyValueV3(prop.PropertyValueV3()), id.GetSymbol())
 		}
 	}
+}
+
+// applyGenericPageHeaderProp maps a generic `Name: value` page-header property
+// onto the AST. Today only the pop-up dimensions are supported; an unrecognized
+// name is reported as an error rather than silently dropped (issue #661).
+func (b *Builder) applyGenericPageHeaderProp(stmt *ast.CreatePageStmtV3, name string, val any, tok antlr.Token) {
+	switch name {
+	case "PopupWidth", "PopupHeight":
+		n, ok := popupDimensionValue(val)
+		if !ok {
+			b.addError(fmt.Errorf("line %d:%d: %s must be a positive whole number of pixels, got %v",
+				tok.GetLine(), tok.GetColumn(), name, val))
+			return
+		}
+		if name == "PopupWidth" {
+			stmt.PopupWidth = &n
+		} else {
+			stmt.PopupHeight = &n
+		}
+	case "PopupResizable":
+		bval, ok := val.(bool)
+		if !ok {
+			b.addError(fmt.Errorf("line %d:%d: PopupResizable must be true or false, got %v",
+				tok.GetLine(), tok.GetColumn(), val))
+			return
+		}
+		stmt.PopupResizable = &bval
+	default:
+		b.addError(fmt.Errorf("line %d:%d: unknown page property %q "+
+			"(supported: Title, Layout, Url, Folder, Params, Variables, PopupWidth, PopupHeight, PopupResizable)",
+			tok.GetLine(), tok.GetColumn(), name))
+	}
+}
+
+// popupDimensionValue accepts a positive whole number within int32 range from the
+// generic property value (int literal → int, decimal literal → float64).
+func popupDimensionValue(v any) (int, bool) {
+	switch n := v.(type) {
+	case int:
+		if n > 0 && n <= math.MaxInt32 {
+			return n, true
+		}
+	case float64:
+		if n == math.Trunc(n) && n > 0 && n <= math.MaxInt32 {
+			return int(n), true
+		}
+	}
+	return 0, false
 }
 
 // buildSnippetV3 builds a V3 snippet statement from the parse context.
