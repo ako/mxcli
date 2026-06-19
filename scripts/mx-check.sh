@@ -1,13 +1,18 @@
 #!/bin/bash
 
-# mx-check.sh — run `mx check` with the libSkiaSharp.so move-aside workaround.
+# mx-check.sh — run `mx check` with the libSkiaSharp/FreeType LD_PRELOAD fix.
 #
-# Some bundled mxbuild releases (observed on 11.10.0) ship a libSkiaSharp.so that
-# fails to load in this devcontainer:
+# Some bundled mxbuild releases (observed on 11.10.0) abort in this devcontainer
+# with:
 #   symbol lookup error: .../libSkiaSharp.so: undefined symbol: FT_Get_BDF_Property
-# `mx check` does not need Skia, so we move the library aside, run the check, and
-# ALWAYS restore it afterwards — including on error or Ctrl-C — so that other
-# `mx` commands (which DO need Skia) keep working. Never leave the lib moved.
+# Root cause: mx runs under the Temurin JVM, whose bundled libfreetype is
+# stripped and lacks FT_Get_BDF_Property, so Skia loads the JVM's FreeType
+# instead of the system one (which has the symbol). Preloading the system
+# libfreetype makes it load first — fixing mx check/build/run while keeping Skia
+# working (unlike the old move-aside hack, which disabled Skia).
+#
+# Note: `mxcli docker check`/`build`/`new` now apply this fix automatically; this
+# wrapper is for invoking a bundled `mx` binary directly.
 #
 # Usage:
 #   scripts/mx-check.sh -p <project.mpr> [--version X.Y.Z] [--mx /path/to/modeler/mx] [-- <extra mx check args>]
@@ -64,25 +69,27 @@ fi
 
 [[ -x "$MX_BIN" ]] || { echo "error: mx binary not found or not executable: $MX_BIN" >&2; exit 1; }
 
-LIB="$(dirname "$MX_BIN")/libSkiaSharp.so"
-BAK="$LIB.mxcli-bak"
+# Find the system libfreetype across common multiarch locations (works on
+# amd64, aarch64, …) and prepend it to LD_PRELOAD for the mx invocation only.
+FREETYPE=""
+for pat in /usr/lib/*/libfreetype.so.6 /usr/lib/libfreetype.so.6 /lib/*/libfreetype.so.6 /usr/local/lib/libfreetype.so.6; do
+	for cand in $pat; do
+		if [[ -f "$cand" ]]; then FREETYPE="$cand"; break 2; fi
+	done
+done
 
-# Always put the library back, whatever happens.
-restore() {
-	if [[ -e "$BAK" ]]; then
-		mv -f "$BAK" "$LIB"
+PRELOAD="${LD_PRELOAD:-}"
+if [[ -n "$FREETYPE" && "$PRELOAD" != *libfreetype.so* ]]; then
+	if [[ -n "$PRELOAD" ]]; then
+		PRELOAD="$FREETYPE:$PRELOAD"
+	else
+		PRELOAD="$FREETYPE"
 	fi
-}
-trap restore EXIT INT TERM
-
-# Move aside only if present (older/working builds may not need the workaround).
-if [[ -e "$LIB" ]]; then
-	mv "$LIB" "$BAK"
 fi
 
 # Run the check, preserving mx's exit code for callers / CI.
 set +e
-"$MX_BIN" check "$PROJECT" "${EXTRA[@]}"
+LD_PRELOAD="$PRELOAD" "$MX_BIN" check "$PROJECT" "${EXTRA[@]}"
 rc=$?
 set -e
 exit "$rc"

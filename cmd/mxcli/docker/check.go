@@ -68,6 +68,7 @@ func Check(opts CheckOptions) error {
 		uwCmd := exec.Command(mxPath, "update-widgets", opts.ProjectPath)
 		uwCmd.Stdout = w
 		uwCmd.Stderr = stderr
+		PrepareMxCommand(uwCmd)
 		if err := uwCmd.Run(); err != nil {
 			// Non-fatal: warn and continue with check
 			fmt.Fprintf(w, "Warning: update-widgets failed (continuing with check): %v\n", err)
@@ -81,6 +82,7 @@ func Check(opts CheckOptions) error {
 	cmd := exec.Command(mxPath, "check", opts.ProjectPath)
 	cmd.Stdout = w
 	cmd.Stderr = stderr
+	PrepareMxCommand(cmd)
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("project check failed: %w", err)

@@ -106,6 +106,7 @@ func Build(opts BuildOptions) error {
 				uwCmd := exec.Command(mxPath, "update-widgets", opts.ProjectPath)
 				uwCmd.Stdout = w
 				uwCmd.Stderr = os.Stderr
+				PrepareMxCommand(uwCmd)
 				if err := uwCmd.Run(); err != nil {
 					fmt.Fprintf(w, "  Warning: update-widgets failed (continuing): %v\n", err)
 				}
@@ -114,6 +115,7 @@ func Build(opts BuildOptions) error {
 			cmd := exec.Command(mxPath, "check", opts.ProjectPath)
 			cmd.Stdout = w
 			cmd.Stderr = os.Stderr
+			PrepareMxCommand(cmd)
 			if err := cmd.Run(); err != nil {
 				return fmt.Errorf("project has errors (fix them or use --skip-check to bypass): %w", err)
 			}
@@ -171,6 +173,7 @@ func Build(opts BuildOptions) error {
 	)
 	cmd.Stdout = w
 	cmd.Stderr = os.Stderr
+	PrepareMxCommand(cmd)
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("mxbuild failed: %w", err)

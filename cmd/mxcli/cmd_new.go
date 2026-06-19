@@ -82,6 +82,7 @@ Examples:
 		mxCmd.Dir = absDir
 		mxCmd.Stdout = os.Stdout
 		mxCmd.Stderr = os.Stderr
+		docker.PrepareMxCommand(mxCmd)
 		if err := mxCmd.Run(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error creating project: %v\n", err)
 			os.Exit(1)

@@ -66,13 +66,15 @@ mxcli setup mxbuild -p app.mpr
 mxcli docker check -p app.mpr
 ```
 
-**Devcontainer gotcha — libSkiaSharp crash on some mxbuild releases.** Certain bundled `mx` binaries (observed on 11.10.0) abort with `symbol lookup error: .../libSkiaSharp.so: undefined symbol: FT_Get_BDF_Property` against the system libfreetype. `mx check` doesn't need Skia, so use the guarded wrapper which moves the library aside, runs the check, and always restores it (even on Ctrl-C):
+**Devcontainer gotcha — libSkiaSharp/FreeType crash on some mxbuild releases.** Certain bundled `mx` binaries (observed on 11.10.0) abort with `symbol lookup error: .../libSkiaSharp.so: undefined symbol: FT_Get_BDF_Property`. Root cause: `mx`/mxbuild run under the Temurin JVM, whose bundled libfreetype is stripped and lacks `FT_Get_BDF_Property`, so Skia loads the *JVM's* FreeType instead of the system one (which has the symbol). Preloading the system libfreetype makes it load first and fixes `mx check`/`build`/`run` while keeping Skia working.
+
+`mxcli docker check`/`build`/`new` apply this automatically (`docker.PrepareMxCommand`, which globs the system libfreetype and sets `LD_PRELOAD` on the `mx` child — no-op on non-Linux or when none is found). To invoke a bundled `mx` directly, use the wrapper (same fix) or export `LD_PRELOAD` yourself:
 
 ```bash
 scripts/mx-check.sh -p /path/to/app.mpr --version 11.10.0
+# or, for any mx command:
+export LD_PRELOAD=/usr/lib/$(uname -m)-linux-gnu/libfreetype.so.6
 ```
-
-Never leave `libSkiaSharp.so` moved aside manually — other `mx` commands (build, etc.) need it.
 
 ## Project Architecture
 

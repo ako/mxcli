@@ -159,6 +159,7 @@ func installModule(ctx context.Context, client *marketplace.Client, v *marketpla
 	}
 
 	c := exec.CommandContext(ctx, mxPath, "module-import", mpkPath, mprPath)
+	docker.PrepareMxCommand(c)
 	combined, runErr := c.CombinedOutput()
 	if runErr != nil {
 		return fmt.Errorf("mx module-import failed: %w\n%s", runErr, strings.TrimSpace(string(combined)))
