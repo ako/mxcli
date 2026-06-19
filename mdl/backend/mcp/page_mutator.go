@@ -336,6 +336,15 @@ func (m *mcpPageMutator) Save() error {
 // ButtonStyle is normalized to pg's enum; Visible becomes a conditional-visibility
 // expression. Values arrive unquoted and typed (string / number / bool).
 func (m *mcpPageMutator) SetWidgetProperty(widgetRef, prop string, value any) error {
+	if widgetRef == "" {
+		// Page-level SET (no ON clause): Title, Url, PopupWidth/PopupHeight/
+		// PopupResizable, etc. These map onto the pg page object itself, not a
+		// widget. Their pg content-tree representation hasn't been probed/mapped
+		// against pg_read_page yet, so reject honestly rather than guess at the
+		// key names (and avoid the misleading "widget \"\" not found"). The MPR
+		// engines support these via the shared pagemutator's applyPageLevelSetMut.
+		return fmt.Errorf("setting page-level property %q is not yet supported by the MCP backend", prop)
+	}
 	_, _, _, w, ok := findWidget(m.content, widgetRef)
 	if !ok {
 		return fmt.Errorf("widget %q not found", widgetRef)

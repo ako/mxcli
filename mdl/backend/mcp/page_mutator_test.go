@@ -3,6 +3,7 @@
 package mcp
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/mendixlabs/mxcli/mdl/backend"
@@ -132,3 +133,21 @@ func TestPageMutator_SetLayoutAndUnsupported(t *testing.T) {
 		t.Error("AddVariable should be rejected")
 	}
 }
+
+// Page-level SET (empty widgetRef) — Title / pop-up dimensions / etc. — is not
+// yet mapped onto the pg content tree. It must reject clearly rather than report
+// the misleading "widget \"\" not found" (issue #661).
+func TestPageMutator_PageLevelSet_Rejected(t *testing.T) {
+	for _, prop := range []string{"Title", "PopupWidth", "PopupHeight", "PopupResizable"} {
+		m := newTestMutator()
+		err := m.SetWidgetProperty("", prop, 800)
+		if err == nil {
+			t.Fatalf("%s: expected rejection, got nil", prop)
+		}
+		if got := err.Error(); !contains(got, "page-level property") || !contains(got, "MCP backend") {
+			t.Errorf("%s: unclear error %q", prop, got)
+		}
+	}
+}
+
+func contains(s, sub string) bool { return strings.Contains(s, sub) }
