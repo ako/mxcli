@@ -159,6 +159,12 @@ datagrid GridName (
 - `column colName (attribute: attribute, caption: 'label')` - Attribute column with binding
 - `column colName (caption: 'label') { ... }` - Custom content column (nested widgets)
 
+> **Custom-content action columns are experimental.** A `column (caption: …) { actionbutton … }`
+> (buttons nested in a column) can trigger CE0463 in Studio Pro and may render `btn-default`
+> regardless of `buttonstyle`. Prefer a row-level `onclick` (open the NewEdit page on row click)
+> for a reliable Edit affordance, or accept the limitation. See create-page.md "Custom Content
+> Columns (EXPERIMENTAL)".
+
 > **Reserved keyword column names:** If the attribute name is a reserved MDL keyword (e.g. `Status`, `Type`), you must quote it and use a distinct column widget name:
 > ```sql
 > column colStatus (attribute: "Status", caption: 'Status')
@@ -179,6 +185,28 @@ datagrid GridName (
 | `visible` | expression | `true` |
 | `DynamicCellClass` | expression | (empty) |
 | `tooltip` | text | (empty) |
+
+### Column Filters (match the attribute's data type)
+
+A filter widget must match the column attribute's type, or MxBuild fails with
+*"The text filter is not compatible with the … data type"*. Do **not** apply
+`textfilter` to every column — it only works on String attributes. Pick by type:
+
+| Attribute type | Filter widget |
+|----------------|---------------|
+| String | `textfilter` |
+| Integer / Long / Decimal / Autonumber | `numberfilter` |
+| Date and time | `datefilter` |
+| Enumeration | `dropdownfilter` |
+| Boolean | *(no filter — every filter widget errors on Boolean)* |
+
+```sql
+column colName   (attribute: Name)      { textfilter f1 }      -- String
+column colQty    (attribute: Quantity)  { numberfilter f2 }    -- Integer/Decimal
+column colDate   (attribute: OrderDate) { datefilter f3 }      -- Date and time
+column colStatus (attribute: "Status")  { dropdownfilter f4 }  -- Enumeration
+-- Boolean columns: omit the filter entirely
+```
 
 ## NewEdit Page Template
 
