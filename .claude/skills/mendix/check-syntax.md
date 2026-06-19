@@ -55,6 +55,13 @@ Before writing any MDL, verify these requirements:
 
 **Best practice: Always quote all identifiers** (entity names, attribute names, parameter names) with double quotes. This eliminates all reserved keyword conflicts and is always safe — quotes are stripped automatically by the parser.
 
+> **Exception — never quote `$`-prefixed variable/parameter references.** The quote
+> rule is for *bare* names (entities, attributes, associations, declared parameter
+> names). Variable and parameter **references** in expressions and widget bindings
+> stay **unquoted**: `datasource: $X`, `params: { $X: MES."Order" }`, `$currentObject`.
+> Quoting them (`"$X"`) breaks resolution ("parameter … references '$X' but no such
+> parameter is declared").
+
 ```sql
 create persistent entity Module."Customer" (
   "Name": string(200),

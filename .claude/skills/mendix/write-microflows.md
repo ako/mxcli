@@ -1200,6 +1200,12 @@ end loop;
 
 **Best practice: Always quote all identifiers** (attribute names, parameter names, entity names) with double quotes. This eliminates all reserved keyword conflicts and is always safe — quotes are stripped automatically by the parser.
 
+> **Exception — never quote `$`-prefixed variable/parameter references.** The quote
+> rule is for *bare* names (entities, attributes, associations, declared parameter
+> names). Variable/parameter **references** in expressions stay **unquoted**:
+> `$Customer/Name`, `$currentObject`, `retrieve … from $List`. Quoting the `$` token
+> (`"$Customer"`) breaks resolution.
+
 ```mdl
 create persistent entity Module."item" (
   "check": boolean default false,
