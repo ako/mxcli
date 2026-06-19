@@ -173,6 +173,12 @@ func callM2EEViaDocker(opts M2EEOptions, dockerDir string, action string, params
 
 	if err := cmd.Run(); err != nil {
 		stderrStr := strings.TrimSpace(stderr.String())
+		// docker compose reports a stopped/absent container as
+		// `service "mendix" is not running` / `no such service`. Translate that
+		// into an actionable hint instead of surfacing the raw compose error.
+		if strings.Contains(stderrStr, "is not running") || strings.Contains(stderrStr, "no such service") {
+			return nil, fmt.Errorf("Mendix container is not running -- start it with 'mxcli docker up'")
+		}
 		if stderrStr != "" {
 			return nil, fmt.Errorf("docker compose exec failed: %s", stderrStr)
 		}
