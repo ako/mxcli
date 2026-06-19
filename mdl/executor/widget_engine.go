@@ -582,6 +582,14 @@ func (e *PluggableWidgetEngine) resolveMapping(mapping PropertyMapping, w *ast.W
 
 	default:
 		val := w.GetStringProp(source)
+		if val == "" {
+			// Non-string AST values (e.g. `DesktopColumns: 3`, parsed as an int)
+			// are invisible to GetStringProp; read them generically so numeric
+			// properties aren't silently dropped to the schema default.
+			if astVal, ok := lookupProperty(w.Properties, source); ok {
+				val = stringifyAny(astVal)
+			}
+		}
 		if val == "" && mapping.Default != "" {
 			val = mapping.Default
 		}

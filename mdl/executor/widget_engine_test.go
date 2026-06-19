@@ -384,6 +384,29 @@ func TestResolveMapping_GenericProp(t *testing.T) {
 	}
 }
 
+// A non-string property value (e.g. `gallery (DesktopColumns: 3)` parsed as an
+// int) must reach the generic source path instead of being silently dropped to
+// the schema default by GetStringProp, which only sees strings.
+func TestResolveMapping_GenericProp_NonStringValue(t *testing.T) {
+	engine := &PluggableWidgetEngine{}
+
+	mapping := PropertyMapping{
+		PropertyKey: "desktopItems",
+		Source:      "DesktopColumns",
+		Operation:   "primitive",
+		Default:     "1",
+	}
+	w := &ast.WidgetV3{Properties: map[string]any{"DesktopColumns": 3}}
+
+	ctx, err := engine.resolveMapping(mapping, w)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ctx.PrimitiveVal != "3" {
+		t.Errorf("expected PrimitiveVal='3' (not the default '1'), got %q", ctx.PrimitiveVal)
+	}
+}
+
 func TestResolveMapping_EmptySource(t *testing.T) {
 	engine := &PluggableWidgetEngine{}
 

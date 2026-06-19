@@ -351,7 +351,7 @@ func (pb *pageBuilder) buildWidgetV3(w *ast.WidgetV3) (pages.Widget, error) {
 		pb.initPluggableEngine()
 		if pb.widgetRegistry != nil {
 			if def, ok := pb.widgetRegistry.Get("image"); ok {
-				return pb.pluggableEngine.Build(def, w)
+				return pb.buildPluggable(def, w)
 			}
 		}
 		// Fallback to static image if pluggable engine unavailable
@@ -361,13 +361,13 @@ func (pb *pageBuilder) buildWidgetV3(w *ast.WidgetV3) (pages.Widget, error) {
 		if pb.widgetRegistry != nil {
 			// Try by MDL name first
 			if def, ok := pb.widgetRegistry.Get(strings.ToUpper(w.Type)); ok {
-				return pb.pluggableEngine.Build(def, w)
+				return pb.buildPluggable(def, w)
 			}
 			// PLUGGABLEWIDGET/CUSTOMWIDGET 'widget.id' name — lookup by widget ID
 			if w.Type == "pluggablewidget" || w.Type == "customwidget" {
 				if widgetType, ok := w.Properties["WidgetType"].(string); ok {
 					if def, ok := pb.widgetRegistry.GetByWidgetID(widgetType); ok {
-						return pb.pluggableEngine.Build(def, w)
+						return pb.buildPluggable(def, w)
 					}
 					return nil, mdlerrors.NewNotFoundMsg("widget", widgetType, "no definition for widget "+widgetType+" (run 'mxcli widget init -p app.mpr')")
 				}
@@ -397,6 +397,25 @@ func (pb *pageBuilder) buildWidgetV3(w *ast.WidgetV3) (pages.Widget, error) {
 	// Apply conditional visibility/editability
 	applyConditionalSettings(widget, w)
 
+	return widget, nil
+}
+
+// buildPluggable builds a pluggable widget via the engine and then applies
+// `class`/`style`/design-property appearance, which the engine itself does not
+// handle. CustomWidget embeds BaseWidget and already serializes an Appearance
+// node, so this only fills in values the user set — no structural BSON change.
+//
+// Conditional visibility/editability is intentionally NOT applied here: the
+// CustomWidget serializer currently hardcodes those settings to nil, so wiring
+// them would have no effect (and is tracked separately).
+func (pb *pageBuilder) buildPluggable(def *WidgetDefinition, w *ast.WidgetV3) (pages.Widget, error) {
+	widget, err := pb.pluggableEngine.Build(def, w)
+	if err != nil {
+		return nil, err
+	}
+	if err := applyWidgetAppearance(widget, w, pb.themeRegistry); err != nil {
+		return nil, err
+	}
 	return widget, nil
 }
 
