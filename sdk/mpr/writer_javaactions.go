@@ -12,7 +12,40 @@ import (
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/javaactions"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
+
+// emptyBinary is the BSON subtype-0 binary Studio Pro writes for an unset
+// toolbox bitmap. It must never be BSON null: the MicroflowActionInfo *Data
+// properties are mandatory binaries and a null crashes Studio Pro's UnitWriter
+// on re-serialize (issue #656).
+func bsonBinary(b []byte) primitive.Binary {
+	if b == nil {
+		b = []byte{}
+	}
+	return primitive.Binary{Subtype: 0x00, Data: b}
+}
+
+// microflowActionInfoBSON serializes a MicroflowActionInfo in the current
+// metamodel shape: $Type CodeActions$MicroflowActionInfo, with all four icon/
+// image bitmaps always present as (possibly empty) binaries and never null.
+// The legacy JavaActions$ alias and the removed `Icon` key are not emitted.
+func microflowActionInfoBSON(mai *javaactions.MicroflowActionInfo) bson.D {
+	maiID := string(mai.ID)
+	if maiID == "" {
+		maiID = generateUUID()
+	}
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(maiID)},
+		{Key: "$Type", Value: "CodeActions$MicroflowActionInfo"},
+		{Key: "Caption", Value: mai.Caption},
+		{Key: "Category", Value: mai.Category},
+		{Key: "IconData", Value: bsonBinary(mai.IconData)},
+		{Key: "IconDataDark", Value: bsonBinary(mai.IconDataDark)},
+		{Key: "ImageData", Value: bsonBinary(mai.ImageData)},
+		{Key: "ImageDataDark", Value: bsonBinary(mai.ImageDataDark)},
+	}
+}
 
 // CreateJavaAction creates a new Java action in the MPR.
 func (w *Writer) CreateJavaAction(ja *javaactions.JavaAction) error {
@@ -147,24 +180,7 @@ func (w *Writer) serializeJavaAction(ja *javaactions.JavaAction) ([]byte, error)
 	// Build MicroflowActionInfo
 	var maiValue any
 	if ja.MicroflowActionInfo != nil {
-		mai := ja.MicroflowActionInfo
-		maiID := string(mai.ID)
-		if maiID == "" {
-			maiID = generateUUID()
-		}
-		// ImageData is byte[] in Mendix; use nil when empty instead of empty string
-		var imageData any
-		if mai.ImageData != "" {
-			imageData = mai.ImageData
-		}
-		maiValue = bson.D{
-			{Key: "$ID", Value: idToBsonBinary(maiID)},
-			{Key: "$Type", Value: "JavaActions$MicroflowActionInfo"},
-			{Key: "Caption", Value: mai.Caption},
-			{Key: "Category", Value: mai.Category},
-			{Key: "Icon", Value: mai.Icon},
-			{Key: "ImageData", Value: imageData},
-		}
+		maiValue = microflowActionInfoBSON(ja.MicroflowActionInfo)
 	}
 
 	// Build main document

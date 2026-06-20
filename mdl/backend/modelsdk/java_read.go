@@ -93,7 +93,14 @@ func javaActionFromGen(g *genJa.JavaAction, containerID model.ID) *javaactions.J
 		d.ID = model.ID(tp.ID())
 		out.TypeParameters = append(out.TypeParameters, d)
 	}
-	if mai, ok := g.MicroflowActionInfo().(*genJa.MicroflowActionInfo); ok && mai != nil {
+	// The MicroflowActionInfo sub-document may decode as either gen type: the
+	// legacy JavaActions$ shape or the current CodeActions$ shape we now write
+	// (#656). Both expose Caption/Category/ID, so read via a shared interface.
+	if mai, ok := g.MicroflowActionInfo().(interface {
+		Caption() string
+		Category() string
+		ID() element.ID
+	}); ok && mai != nil {
 		m := &javaactions.MicroflowActionInfo{Caption: mai.Caption(), Category: mai.Category()}
 		m.ID = model.ID(mai.ID())
 		out.MicroflowActionInfo = m

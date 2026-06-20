@@ -1,0 +1,33 @@
+-- ============================================================================
+-- Bug #656: Java action `exposed as` wrote a legacy MicroflowActionInfo with a
+-- null ImageData, crashing Studio Pro export/upgrade/Save-As
+-- ============================================================================
+--
+-- Symptom (before fix): a Java action created with an `exposed as … in …` clause
+-- was written with a MicroflowActionInfo whose $Type was the legacy
+-- `JavaActions$MicroflowActionInfo` and whose icon/image bitmaps were absent or
+-- BSON-null. Studio Pro opens the project, but the first re-serialization of the
+-- unit (export to .mpk, version upgrade, Save As) throws:
+--   System.InvalidOperationException: Null value found in primitive property
+--   'ImageDataStorage' of object of type 'Mendix.Modeler.CodeActions.MicroflowActionInfo'.
+-- Both engines were affected (legacy emitted null ImageData; the default modelsdk
+-- engine omitted the binary fields entirely).
+--
+-- After fix: both engines emit the current shape —
+--   $Type = CodeActions$MicroflowActionInfo
+--   IconData / IconDataDark / ImageData / ImageDataDark = binary(0) (never null)
+--   (no obsolete Icon key)
+--
+-- Verify the written MAI re-serializes in Studio Pro (open → Save As / export).
+-- Usage:
+--   mxcli check mdl-examples/bug-tests/656-java-action-exposed-as-imagedata.mdl
+--   mxcli exec  mdl-examples/bug-tests/656-java-action-exposed-as-imagedata.mdl -p App.mpr
+-- ============================================================================
+
+create module BugTest656;
+
+create java action BugTest656.JA_Repro656 (Input: String not null) returns Boolean
+exposed as 'Repro Null ImageData' in 'String Utils'
+as $$
+// repro for #656 — exercises the MicroflowActionInfo write path
+$$;

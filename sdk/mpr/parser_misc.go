@@ -266,13 +266,7 @@ func (r *Reader) parseJavaScriptAction(unitID, containerID string, contents []by
 
 	// Parse MicroflowActionInfo
 	if mai := toMap(raw["MicroflowActionInfo"]); mai != nil {
-		jsa.MicroflowActionInfo = &javaactions.MicroflowActionInfo{
-			BaseElement: model.BaseElement{ID: model.ID(extractBsonID(mai["$ID"]))},
-			Caption:     extractString(mai["Caption"]),
-			Category:    extractString(mai["Category"]),
-			Icon:        extractString(mai["Icon"]),
-			ImageData:   extractString(mai["ImageData"]),
-		}
+		jsa.MicroflowActionInfo = parseMicroflowActionInfo(mai)
 	}
 
 	// Resolve type parameter names for EntityTypeParameterType and TypeParameter

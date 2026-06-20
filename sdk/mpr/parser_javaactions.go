@@ -182,13 +182,7 @@ func (r *Reader) parseJavaActionFull(unitID, containerID string, contents []byte
 
 	// Parse MicroflowActionInfo
 	if mai := toMap(raw["MicroflowActionInfo"]); mai != nil {
-		ja.MicroflowActionInfo = &javaactions.MicroflowActionInfo{
-			BaseElement: model.BaseElement{ID: model.ID(extractBsonID(mai["$ID"]))},
-			Caption:     extractString(mai["Caption"]),
-			Category:    extractString(mai["Category"]),
-			Icon:        extractString(mai["Icon"]),
-			ImageData:   extractString(mai["ImageData"]),
-		}
+		ja.MicroflowActionInfo = parseMicroflowActionInfo(mai)
 	}
 
 	// Resolve type parameter names for EntityTypeParameterType and ParameterizedEntityType parameters
@@ -553,4 +547,32 @@ func primitiveToMap(d primitive.D) map[string]any {
 		result[e.Key] = e.Value
 	}
 	return result
+}
+
+// extractBinary returns the bytes of a BSON binary value, or nil when the field
+// is absent, BSON null, or some other type. This tolerates the legacy
+// MicroflowActionInfo shape (null/absent ImageData) on read so already-corrupted
+// units can still be loaded and repaired. See issue #656.
+func extractBinary(v any) []byte {
+	if b, ok := v.(primitive.Binary); ok {
+		return b.Data
+	}
+	return nil
+}
+
+// parseMicroflowActionInfo reads a MicroflowActionInfo sub-document. It accepts
+// both the current CodeActions$ binary shape and the legacy JavaActions$ shape
+// (an `Icon` string and a null/absent `ImageData`), reading the four icon/image
+// bitmaps as binaries and silently dropping the obsolete `Icon` key. Shared by
+// the Java- and JavaScript-action parsers. See issue #656.
+func parseMicroflowActionInfo(mai map[string]any) *javaactions.MicroflowActionInfo {
+	return &javaactions.MicroflowActionInfo{
+		BaseElement:   model.BaseElement{ID: model.ID(extractBsonID(mai["$ID"]))},
+		Caption:       extractString(mai["Caption"]),
+		Category:      extractString(mai["Category"]),
+		IconData:      extractBinary(mai["IconData"]),
+		IconDataDark:  extractBinary(mai["IconDataDark"]),
+		ImageData:     extractBinary(mai["ImageData"]),
+		ImageDataDark: extractBinary(mai["ImageDataDark"]),
+	}
 }

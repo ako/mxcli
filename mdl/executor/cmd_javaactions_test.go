@@ -339,13 +339,16 @@ func TestMicroflowActionInfo_Fields(t *testing.T) {
 	info := &javaactions.MicroflowActionInfo{
 		Caption:  "My Action",
 		Category: "My Category",
-		Icon:     "icon.png",
+		IconData: []byte{0x1, 0x2, 0x3},
 	}
 	if info.Caption != "My Action" {
 		t.Errorf("got %q", info.Caption)
 	}
 	if info.Category != "My Category" {
 		t.Errorf("got %q", info.Category)
+	}
+	if len(info.IconData) != 3 {
+		t.Errorf("IconData len = %d, want 3", len(info.IconData))
 	}
 }
 

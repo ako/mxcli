@@ -10,19 +10,21 @@ import (
 
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/modelsdk/codec"
+	"github.com/mendixlabs/mxcli/modelsdk/element"
 	genCa "github.com/mendixlabs/mxcli/modelsdk/gen/codeactions"
 	genJa "github.com/mendixlabs/mxcli/modelsdk/gen/javaactions"
-	"github.com/mendixlabs/mxcli/modelsdk/element"
 	mmpr "github.com/mendixlabs/mxcli/modelsdk/mpr"
 	"github.com/mendixlabs/mxcli/sdk/javaactions"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 // NOTE: the parameter/return TYPE elements (StringType, BasicParameterType,
 // ConcreteEntityType, …) are emitted with the CodeActions$ storage prefix and so
 // come from gen/codeactions (genCa). The gen/javaactions copies of those types
 // emit a JavaActions$ prefix, which Studio Pro does not recognise. Only the
-// JavaAction document, its JavaActionParameter, and its (JavaActions$)
-// MicroflowActionInfo come from gen/javaactions.
+// JavaAction document and its JavaActionParameter come from gen/javaactions; the
+// MicroflowActionInfo is post-patched as raw BSON (CodeActions$ shape — see
+// patchMicroflowActionInfo / issue #656) rather than built from a gen element.
 
 func init() {
 	// A JavaAction always emits its Parameters and TypeParameters arrays (empty
@@ -55,6 +57,9 @@ func (b *Backend) CreateJavaAction(ja *javaactions.JavaAction) error {
 	if err != nil {
 		return fmt.Errorf("CreateJavaAction: encode: %w", err)
 	}
+	if contents, err = patchMicroflowActionInfo(contents, ja); err != nil {
+		return fmt.Errorf("CreateJavaAction: patch action info: %w", err)
+	}
 	if err := b.writer.InsertUnit(string(ja.ID), string(ja.ContainerID), "Documents", "JavaActions$JavaAction", contents); err != nil {
 		return fmt.Errorf("CreateJavaAction: insert: %w", err)
 	}
@@ -74,6 +79,9 @@ func (b *Backend) UpdateJavaAction(ja *javaactions.JavaAction) error {
 	contents, err := (&codec.Encoder{}).Encode(g)
 	if err != nil {
 		return fmt.Errorf("UpdateJavaAction: encode: %w", err)
+	}
+	if contents, err = patchMicroflowActionInfo(contents, ja); err != nil {
+		return fmt.Errorf("UpdateJavaAction: patch action info: %w", err)
 	}
 	if err := b.writer.UpdateRawUnit(string(ja.ID), contents); err != nil {
 		return fmt.Errorf("UpdateJavaAction: update: %w", err)
@@ -186,16 +194,52 @@ func javaActionToGen(ja *javaactions.JavaAction) *genJa.JavaAction {
 		out.AddTypeParameters(gtp)
 	}
 
-	if ja.MicroflowActionInfo != nil {
-		mai := genJa.NewMicroflowActionInfo()
-		assignID(mai)
-		mai.SetCaption(ja.MicroflowActionInfo.Caption)
-		mai.SetCategory(ja.MicroflowActionInfo.Category)
-		out.SetMicroflowActionInfo(mai)
-	}
+	// MicroflowActionInfo is intentionally left null here and injected after
+	// encoding (see patchMicroflowActionInfo). The gen MicroflowActionInfo models
+	// its icon/image bitmaps as Primitive[string], which serialises to BSON
+	// strings — but Studio Pro stores them as mandatory binaries and crashes on a
+	// null or wrong-typed value (#656). Post-patching lets us emit the correct
+	// CodeActions$ shape with empty binaries without diverging the generated code.
 
 	out.SetJavaReturnType(codeActionReturnTypeToGen(ja.ReturnType))
 	return out
+}
+
+// microflowActionInfoBSON builds a MicroflowActionInfo sub-document in the
+// current metamodel shape: $Type CodeActions$MicroflowActionInfo with all four
+// icon/image bitmaps always present as (possibly empty) binaries, never null,
+// and no obsolete Icon key. Mirrors the legacy writer's shape (issue #656).
+func microflowActionInfoBSON(mai *javaactions.MicroflowActionInfo) bson.D {
+	id := string(mai.ID)
+	if id == "" {
+		id = mmpr.GenerateID()
+	}
+	bin := func(b []byte) bson.Binary {
+		if b == nil {
+			b = []byte{}
+		}
+		return bson.Binary{Subtype: 0x00, Data: b}
+	}
+	return bson.D{
+		{Key: "$ID", Value: mmpr.IDToBsonBinary(id)},
+		{Key: "$Type", Value: "CodeActions$MicroflowActionInfo"},
+		{Key: "Caption", Value: mai.Caption},
+		{Key: "Category", Value: mai.Category},
+		{Key: "IconData", Value: bin(mai.IconData)},
+		{Key: "IconDataDark", Value: bin(mai.IconDataDark)},
+		{Key: "ImageData", Value: bin(mai.ImageData)},
+		{Key: "ImageDataDark", Value: bin(mai.ImageDataDark)},
+	}
+}
+
+// patchMicroflowActionInfo replaces the encoded unit's null MicroflowActionInfo
+// slot with the correct sub-document when the action is exposed as a toolbox
+// item; a no-op otherwise. See issue #656.
+func patchMicroflowActionInfo(contents []byte, ja *javaactions.JavaAction) ([]byte, error) {
+	if ja.MicroflowActionInfo == nil {
+		return contents, nil
+	}
+	return codec.PatchBSONField(contents, "MicroflowActionInfo", microflowActionInfoBSON(ja.MicroflowActionInfo))
 }
 
 // codeActionParamTypeToGen converts a parameter type. Most types are wrapped in a

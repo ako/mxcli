@@ -153,9 +153,8 @@ func describeJavaAction(ctx *ExecContext, name ast.QualifiedName) error {
 		sb.WriteString("' in '")
 		sb.WriteString(ja.MicroflowActionInfo.Category)
 		sb.WriteString("'")
-		if ja.MicroflowActionInfo.Icon != "" {
-			sb.WriteString("\n-- icon: ")
-			sb.WriteString(ja.MicroflowActionInfo.Icon)
+		if n := len(ja.MicroflowActionInfo.IconData); n > 0 {
+			fmt.Fprintf(&sb, "\n-- icon: %d bytes", n)
 		}
 	}
 

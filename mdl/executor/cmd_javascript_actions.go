@@ -171,9 +171,8 @@ func describeJavaScriptAction(ctx *ExecContext, name ast.QualifiedName) error {
 		sb.WriteString("' in '")
 		sb.WriteString(jsa.MicroflowActionInfo.Category)
 		sb.WriteString("'")
-		if jsa.MicroflowActionInfo.Icon != "" {
-			sb.WriteString("\n-- icon: ")
-			sb.WriteString(jsa.MicroflowActionInfo.Icon)
+		if n := len(jsa.MicroflowActionInfo.IconData); n > 0 {
+			fmt.Fprintf(&sb, "\n-- icon: %d bytes", n)
 		}
 	}
 

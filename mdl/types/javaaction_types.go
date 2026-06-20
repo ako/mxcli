@@ -35,12 +35,22 @@ type TypeParameterDef struct {
 }
 
 // MicroflowActionInfo exposes a Java action as a toolbox item in Studio Pro.
+//
+// The four *Data fields are the inline toolbox icon/image bitmaps. In Mendix
+// BSON they are binary (byte[]) primitives that must ALWAYS be present and
+// non-null — emitting BSON null (or omitting them) crashes Studio Pro's
+// UnitWriter on re-serialize ("Null value found in primitive property
+// 'ImageDataStorage'"); see issue #656. An empty bitmap is an empty binary, not
+// null. The legacy `Icon` string field (a key removed from the current
+// metamodel) was dropped.
 type MicroflowActionInfo struct {
 	model.BaseElement
-	Caption   string `json:"caption,omitempty"`
-	Category  string `json:"category,omitempty"`
-	Icon      string `json:"icon,omitempty"`
-	ImageData string `json:"imageData,omitempty"`
+	Caption       string `json:"caption,omitempty"`
+	Category      string `json:"category,omitempty"`
+	IconData      []byte `json:"iconData,omitempty"`
+	IconDataDark  []byte `json:"iconDataDark,omitempty"`
+	ImageData     []byte `json:"imageData,omitempty"`
+	ImageDataDark []byte `json:"imageDataDark,omitempty"`
 }
 
 // TypeParameter represents a generic type parameter reference in a return type or parameter type.

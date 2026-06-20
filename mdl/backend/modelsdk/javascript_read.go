@@ -117,10 +117,12 @@ func jsActionFromRaw(raw map[string]any, id, containerID model.ID) *types.JavaSc
 
 	if mai := jsToMap(raw["MicroflowActionInfo"]); mai != nil {
 		info := &types.MicroflowActionInfo{
-			Caption:   jsExtractString(mai["Caption"]),
-			Category:  jsExtractString(mai["Category"]),
-			Icon:      jsExtractString(mai["Icon"]),
-			ImageData: jsExtractString(mai["ImageData"]),
+			Caption:       jsExtractString(mai["Caption"]),
+			Category:      jsExtractString(mai["Category"]),
+			IconData:      jsExtractBinary(mai["IconData"]),
+			IconDataDark:  jsExtractBinary(mai["IconDataDark"]),
+			ImageData:     jsExtractBinary(mai["ImageData"]),
+			ImageDataDark: jsExtractBinary(mai["ImageDataDark"]),
 		}
 		info.ID = model.ID(jsExtractBsonID(mai["$ID"]))
 		jsa.MicroflowActionInfo = info
@@ -285,6 +287,16 @@ func jsTypeParamPointer(raw map[string]any) string {
 func jsExtractString(v any) string {
 	s, _ := v.(string)
 	return s
+}
+
+// jsExtractBinary returns the bytes of a BSON binary value, or nil when the
+// field is absent/null/non-binary (tolerating the legacy MicroflowActionInfo
+// shape on read). See issue #656.
+func jsExtractBinary(v any) []byte {
+	if b, ok := v.(primitive.Binary); ok {
+		return b.Data
+	}
+	return nil
 }
 
 func jsExtractBool(v any) bool {
