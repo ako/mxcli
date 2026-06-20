@@ -3,7 +3,7 @@
 --
 -- NEGATIVE TEST (.fail.mdl) — this script is EXPECTED to fail `mxcli check`.
 -- `make check-mdl` inverts the exit code for .fail.mdl files: an unexpected
--- pass would be reported as a regression of the MDL-WIDGET03 rule.
+-- pass would be reported as a regression of the MDL-WIDGET05 rule.
 --
 -- Symptom: `optionsSourceAssociationDataSource: Module.Entity` on a Combo Box
 -- passed `check` and applied via `exec` with no error, but was NOT persisted —
@@ -13,9 +13,9 @@
 -- Fix: a datasource-typed property must be authored via the widget `datasource:`
 -- clause (`datasource: database Module.Entity`), which the engine reads. Writing
 -- it by name lands in a slot the engine ignores, so mxcli now rejects it
--- (MDL-WIDGET03) instead of silently dropping it.
+-- (MDL-WIDGET05) instead of silently dropping it.
 --
--- Expected: `mxcli check` exits non-zero with MDL-WIDGET03 on widget `cb`.
+-- Expected: `mxcli check` exits non-zero with MDL-WIDGET05 on widget `cb`.
 
 create page Administration.MxfCombo
 (

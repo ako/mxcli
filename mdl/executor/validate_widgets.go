@@ -226,7 +226,7 @@ func validatePluggableWidgetProperties(w *ast.WidgetV3, registry *WidgetRegistry
 		// without an entity (CE0642). Flag it instead of passing it (issue #643).
 		if dsKeys[lower] {
 			out = append(out, linter.Violation{
-				RuleID:   "MDL-WIDGET03",
+				RuleID:   "MDL-WIDGET05",
 				Severity: linter.SeverityError,
 				Message: fmt.Sprintf(
 					"%s: widget `%s` (%s) property `%s` is datasource-typed — provide it via the widget `datasource:` clause (e.g. `datasource: database Module.Entity`); a value written as `%s: …` is not persisted",
@@ -245,7 +245,7 @@ func validatePluggableWidgetProperties(w *ast.WidgetV3, registry *WidgetRegistry
 		// won't persist through mxcli yet (issue #643).
 		if knownUnmapped[lower] {
 			out = append(out, linter.Violation{
-				RuleID:   "MDL-WIDGET04",
+				RuleID:   "MDL-WIDGET06",
 				Severity: linter.SeverityWarning,
 				Message: fmt.Sprintf(
 					"%s: widget `%s` (%s) property `%s` is recognized but not yet persisted by mxcli — a non-default value will be dropped; set it in Studio Pro if needed",
