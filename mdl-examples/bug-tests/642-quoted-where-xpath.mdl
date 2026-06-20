@@ -1,0 +1,60 @@
+-- ============================================================================
+-- Bug #642: quoted `where '<xpath>'` mis-stores every constraint (CE0161)
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   The single-quoted where-clause form `where '[Title=''abc'']'` stored a
+--   malformed constraint — `['[Title=''abc'']']` — so `mx check` reported CE0161
+--   "Error(s) in XPath constraint." for every retrieve/datasource. The inline
+--   bracket form `where [Title='abc']` stored correctly.
+--
+-- Root cause: the quoted string was unquoted correctly to `[Title='abc']`, but
+--   the visitor preserved the RAW token (`'[Title=''abc'']'`, outer quotes + ''
+--   escapes) as the constraint source; the builder then bracket-wrapped it.
+--   Affected both the microflow retrieve path and the page datasource path.
+--
+-- After fix:
+--   A bare quoted where-clause uses its UNQUOTED value as the XPath constraint,
+--   bracket-wrapping only when needed. Both forms now store `[Title='abc']`.
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/642-quoted-where-xpath.mdl -p app.mpr
+--   mx check  → 0 errors (was CE0161 on every quoted constraint)
+-- ============================================================================
+
+create or modify persistent entity BugTest642.MxfQ (Title: String(100), Active: Boolean);
+
+-- Quoted form (the bug). '' escapes an internal single quote.
+create or modify microflow BugTest642.Mf_Quoted ()
+begin
+  retrieve $L from BugTest642.MxfQ where '[Title=''abc'']';
+  return;
+end;
+
+-- Inline form (always worked) — must store identically.
+create or modify microflow BugTest642.Mf_Inline ()
+begin
+  retrieve $L from BugTest642.MxfQ where [Title='abc'];
+  return;
+end;
+
+-- Quoted form without brackets and a multi-condition constraint.
+create or modify microflow BugTest642.Mf_Complex ()
+begin
+  retrieve $L from BugTest642.MxfQ where '[Title=''abc'' and Active=true()]';
+  return;
+end;
+
+-- Page datasource also accepted the quoted form (same bug, same fix).
+create page BugTest642.PgQuoted
+(
+  title: 'Quoted Where',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  listview lv (datasource: database BugTest642.MxfQ where '[Title=''abc'']') {
+    dynamictext t (Attribute: Title)
+  }
+}
+
+describe microflow BugTest642.Mf_Quoted;

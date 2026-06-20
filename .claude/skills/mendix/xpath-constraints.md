@@ -42,6 +42,13 @@ retrieve $HighValue from Module.Order
 
 Operators: `=`, `!=`, `<`, `>`, `<=`, `>=`
 
+> **Inline vs quoted form.** The inline bracket form `where [State = 'Completed']`
+> is preferred. The quoted form — `where '[State = ''Completed'']'`, with internal
+> single quotes doubled (`''`) — is also accepted for `retrieve` and datasource
+> `where` clauses, and now stores the identical constraint (it un-escapes the `''`
+> and strips the outer quotes). Don't double-bracket: write either `[...]` or
+> `'[...]'`, not both.
+
 ### Boolean Logic
 
 ```mdl

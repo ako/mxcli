@@ -1389,6 +1389,17 @@ func buildRetrieveWhereExpression(ctx parser.IExpressionContext) ast.Expression 
 		return nil
 	}
 	expr := buildExpression(ctx)
+	// `where '<xpath>'` — the whole clause is a single quoted string carrying the
+	// XPath constraint as a literal. Use the UNQUOTED value as the source, not the
+	// raw token: preserving the raw text keeps the outer quotes and the doubled
+	// '' escapes, which get bracket-wrapped into `['[Title=''abc'']']` and fail
+	// CE0161. The inline `where [...]` form is unaffected (it takes the
+	// xpathConstraint path, not this one). Issue #642.
+	if lit, ok := expr.(*ast.LiteralExpr); ok && lit.Kind == ast.LiteralString {
+		if s, ok := lit.Value.(string); ok {
+			return &ast.SourceExpr{Expression: expr, Source: s}
+		}
+	}
 	if prc, ok := ctx.(antlr.ParserRuleContext); ok {
 		if source := strings.TrimSpace(extractOriginalText(prc)); source != "" {
 			if shouldPreserveExpressionSource(source) || strings.Contains(source, "/") {

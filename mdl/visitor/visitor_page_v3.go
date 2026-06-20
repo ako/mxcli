@@ -706,7 +706,7 @@ func buildDataSourceV3(ctx parser.IDataSourceExprV3Context) *ast.DataSourceV3 {
 			if len(xpathConstraints) > 0 {
 				ds.Where = buildXPathString(xpathConstraints, dsCtx.AllAndOrXpath())
 			} else if expr := dsCtx.Expression(); expr != nil {
-				ds.Where = "[" + xpathExprToString(buildExpression(expr)) + "]"
+				ds.Where = bracketedXPathFromExpr(buildExpression(expr))
 			}
 		}
 
@@ -978,6 +978,25 @@ func buildParamAssignmentV3(ctx parser.IParamAssignmentV3Context) ast.ParamAssig
 }
 
 // buildXPathString builds a WHERE string from xpath constraints and and/or operators.
+// bracketedXPathFromExpr converts a datasource WHERE expression (the
+// `where '<xpath>'` / `where <expr>` form, as opposed to inline `where [<xpath>]`)
+// into a bracketed XPath constraint. A bare quoted string is the constraint as a
+// literal — use its UNQUOTED value; re-serializing it via xpathExprToString would
+// re-double the ” escapes and produce `['[Title=”abc”]']`, which fails CE0161
+// (issue #642). Other expressions serialize normally.
+func bracketedXPathFromExpr(built ast.Expression) string {
+	if lit, ok := built.(*ast.LiteralExpr); ok && lit.Kind == ast.LiteralString {
+		if s, ok := lit.Value.(string); ok {
+			s = strings.TrimSpace(s)
+			if strings.HasPrefix(s, "[") && strings.HasSuffix(s, "]") {
+				return s
+			}
+			return "[" + s + "]"
+		}
+	}
+	return "[" + xpathExprToString(built) + "]"
+}
+
 func buildXPathString(xpathConstraints []parser.IXpathConstraintContext, andOrOps []parser.IAndOrXpathContext) string {
 	if len(xpathConstraints) == 0 {
 		return ""
