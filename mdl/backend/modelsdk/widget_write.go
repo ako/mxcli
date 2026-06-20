@@ -54,6 +54,19 @@ func init() {
 		NullFields: []string{"ConditionalVisibilitySettings", "NativeAccessibilitySettings"},
 	})
 	codec.RegisterListMarker("Forms$Title", 2)
+	// Conditional visibility/editability settings (issue #627). When a widget
+	// carries one, applyWidgetBase emits the node; these defaults fill the
+	// sub-fields Studio Pro writes: null Attribute/SourceVariable and empty
+	// (marker-3) Conditions/ModuleRoles lists. Expression/IgnoreSecurity are set
+	// from the model. ExpressionModel is intentionally omitted (legacy omits it).
+	codec.RegisterTypeDefaults("Forms$ConditionalVisibilitySettings", codec.TypeDefaults{
+		NullFields:     []string{"Attribute", "SourceVariable"},
+		MandatoryLists: []string{"Conditions", "ModuleRoles"},
+	})
+	codec.RegisterTypeDefaults("Forms$ConditionalEditabilitySettings", codec.TypeDefaults{
+		NullFields:     []string{"Attribute", "SourceVariable"},
+		MandatoryLists: []string{"Conditions"},
+	})
 	// A caption parameter's AttributeRef/SourceVariable are null for the literal-
 	// expression form; populated Parameters lists use marker 2.
 	codec.RegisterTypeDefaults("Forms$ClientTemplateParameter", codec.TypeDefaults{
@@ -688,6 +701,50 @@ func applyWidgetBase(g widgetBaseGen, b *pages.BaseWidget) {
 	g.SetName(b.Name)
 	g.SetAppearance(newAppearance(b.Class, b.Style, b.DesignProperties))
 	g.SetTabIndex(int32(b.TabIndex))
+
+	// Conditional visibility/editability. When unset these stay null via the
+	// per-type NullFields defaults; when set we must emit the settings node, or
+	// the codec silently drops the expression (issue #627). Type-asserted because
+	// only the widgets that actually carry these slots expose the setters.
+	if b.ConditionalVisibility != nil {
+		if cv, ok := g.(interface {
+			SetConditionalVisibilitySettings(element.Element)
+		}); ok {
+			cv.SetConditionalVisibilitySettings(conditionalVisibilityToGen(b.ConditionalVisibility))
+		}
+	}
+	if b.ConditionalEditability != nil {
+		if ce, ok := g.(interface {
+			SetConditionalEditabilitySettings(element.Element)
+		}); ok {
+			ce.SetConditionalEditabilitySettings(conditionalEditabilityToGen(b.ConditionalEditability))
+		}
+	}
+}
+
+// conditionalVisibilityToGen builds a Forms$ConditionalVisibilitySettings element
+// for the codec. The empty Conditions/ModuleRoles lists, null Attribute/
+// SourceVariable, and IgnoreSecurity=false come from the registered TypeDefaults.
+func conditionalVisibilityToGen(cvs *pages.ConditionalVisibilitySettings) element.Element {
+	g := genPg.NewConditionalVisibilitySettings()
+	if cvs.ID != "" {
+		g.SetID(element.ID(cvs.ID))
+	}
+	assignID(g)
+	g.SetExpression(cvs.Expression)
+	g.SetIgnoreSecurity(false)
+	return g
+}
+
+// conditionalEditabilityToGen builds a Forms$ConditionalEditabilitySettings element.
+func conditionalEditabilityToGen(ces *pages.ConditionalEditabilitySettings) element.Element {
+	g := genPg.NewConditionalEditabilitySettings()
+	if ces.ID != "" {
+		g.SetID(element.ID(ces.ID))
+	}
+	assignID(g)
+	g.SetExpression(ces.Expression)
+	return g
 }
 
 // newAppearance builds a Forms$Appearance with the given class/style and design

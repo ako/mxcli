@@ -1,0 +1,56 @@
+-- ============================================================================
+-- Bug #627: CONTAINER (and any widget) Visible/Editable expression → CE0117
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   `Visible: [Name != '']` on a widget produced CE0117 "Error(s) in expression."
+--   in Studio Pro on the legacy engine, and was *silently dropped* on the default
+--   modelsdk engine.
+--
+-- Root cause (two bugs, not BSON-structure as first hypothesized):
+--   1. The conditional-visibility expression was written with a bare attribute
+--      reference (`Name != ''`). A Mendix client expression must root attributes
+--      in the widget data context: `$currentObject/Name != ''`. The bare form is
+--      invalid → CE0117.
+--   2. The modelsdk codec hardcoded ConditionalVisibilitySettings to null, so the
+--      expression never reached the BSON at all (silent data loss, no error).
+--
+-- After fix:
+--   * The `[ ... ]` expression is rewritten to root bare attributes in
+--     $currentObject (paths already starting with $… and literals are untouched).
+--   * The modelsdk codec serializes the settings node (with the Studio Pro
+--     sub-field set) when a widget carries a conditional visibility/editability.
+--   Verified: `mx check` = 0 errors on both engines.
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/627-container-visible-expression.mdl -p app.mpr
+-- ============================================================================
+
+create entity MyFirstModule.Customer ( Name: String, Active: Boolean );
+
+create page MyFirstModule.P_Vis
+(
+  Title: 'Conditional Visibility',
+  Layout: Atlas_Core.Atlas_Default,
+  Params: { $Customer: MyFirstModule.Customer }
+)
+{
+  dataview dv (datasource: $Customer) {
+    -- bare attribute → rooted in $currentObject automatically
+    container ctnA (Visible: [Name != '']) {
+      dynamictext tA (content: 'shown when Name set')
+    }
+    -- bare boolean attribute
+    container ctnB (Visible: [Active]) {
+      dynamictext tB (content: 'shown when Active')
+    }
+    -- already-qualified path is passed through unchanged
+    container ctnC (Visible: [$currentObject/Name != empty]) {
+      dynamictext tC (content: 'shown when Name not empty')
+    }
+    -- conditional editability uses the same rewrite
+    textbox tbName (label: 'Name', attribute: Name, Editable: [Active])
+  }
+}
+
+describe page MyFirstModule.P_Vis;

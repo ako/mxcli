@@ -810,20 +810,22 @@ See the dedicated skill file: [ALTER PAGE/SNIPPET](./alter-page.md)
 
 ## Conditional Visibility and Editability
 
-Any widget can have conditional visibility. Input widgets can also have conditional editability. Use XPath bracket syntax `[expression]`:
+Any widget (including CONTAINER) can have conditional visibility. Input widgets can also have conditional editability. Use bracket syntax `[expression]`:
 
 ```sql
 -- Conditionally visible widget (boolean attribute)
 textbox txtName (label: 'Name', attribute: Name, visible: [IsActive])
 
+-- Conditionally visible container
+container ctnDetails (visible: [Name != '']) { dynamictext t (content: '...') }
+
 -- Conditionally editable input (boolean)
 textbox txtStatus (label: 'Status', attribute: status, editable: [CanEdit])
 
--- Enum comparison: use the QUALIFIED enum value and the $currentObject path.
--- A bare attribute or a quoted string (e.g. [status != 'Closed']) parses fine
--- but only fails later at MxBuild ("Error(s) in expression").
+-- Enum comparison: use the QUALIFIED enum value. Attributes are rooted for you,
+-- but a bare enum VALUE would be treated as an attribute — always qualify it.
 textbox txtNotes (label: 'Notes', attribute: Notes,
-  visible: [$currentObject/Status = MES.EquipmentStatus.Running])
+  visible: [Status = MES.EquipmentStatus.Running])
 
 -- Combined
 textbox txtEmail (label: 'Email', attribute: Email,
@@ -835,19 +837,23 @@ textbox txtReadOnly (label: 'Read Only', attribute: Name, editable: Never)
 textbox txtHidden (label: 'Hidden', attribute: Name, visible: false)
 ```
 
-> **Enum comparison differs by context** — and `check` cannot yet catch a wrong
-> form, so these only fail at MxBuild:
-> - **Widget visibility/editability expression** (inside a data container / gallery,
->   per-object): qualified value + `$currentObject` path —
->   `[$currentObject/Status = MES.EquipmentStatus.Running]`.
+> **Attribute rooting is automatic** — a bare attribute in a widget
+> visibility/editability expression (`[Name != '']`, `[IsActive]`) is rooted in the
+> widget data context as `$currentObject/Name != ''` for you, so it no longer
+> triggers CE0117. Paths you write with an explicit `$currentObject/…` or `$Param/…`
+> prefix pass through unchanged.
+>
+> **Enum comparison differs by context:**
+> - **Widget visibility/editability expression** (per-object): qualified enum value —
+>   `[Status = MES.EquipmentStatus.Running]` (the `Status` attribute is rooted for you;
+>   the *value* must stay qualified, or it would be mistaken for an attribute).
 > - **XPath datasource constraint** (`where […]`): the string key works —
 >   `where [Status = 'Running']` (see [xpath-constraints.md](./xpath-constraints.md)).
-> - **Microflow expression**: qualified value, no `$currentObject` —
+> - **Microflow expression**: qualified value —
 >   `$obj/Status = MES.EquipmentStatus.Running` (see [write-microflows.md](./write-microflows.md)).
 >
-> The `$currentObject` form above is for **widget-level** visibility in a per-object
-> context. It does **not** apply to **DataGrid2 column** `visible:` (next section),
-> which hides/shows the whole column and must use page variables.
+> Widget-level visibility does **not** apply to **DataGrid2 column** `visible:` (next
+> section), which hides/shows the whole column and must use page variables.
 
 ## Known Limitations
 

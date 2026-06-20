@@ -628,20 +628,20 @@ func parseWidgetPropertyV3(ctx parser.IWidgetPropertyV3Context, widget *ast.Widg
 		return
 	}
 
-	// Visible: [xpath] (conditional visibility) or Visible: false (static)
+	// Visible: [expression] (conditional visibility) or Visible: false (static)
 	if propCtx.VISIBLE() != nil {
 		if xc := propCtx.XpathConstraint(); xc != nil {
-			widget.Properties["VisibleIf"] = extractXpathText(xc)
+			widget.Properties["VisibleIf"] = buildConditionalExpression(xc)
 		} else if valCtx := propCtx.PropertyValueV3(); valCtx != nil {
 			widget.Properties["Visible"] = buildPropertyValueV3(valCtx)
 		}
 		return
 	}
 
-	// Editable: [xpath] (conditional editability) or Editable: Never (static)
+	// Editable: [expression] (conditional editability) or Editable: Never (static)
 	if propCtx.EDITABLE() != nil {
 		if xc := propCtx.XpathConstraint(); xc != nil {
-			widget.Properties["EditableIf"] = extractXpathText(xc)
+			widget.Properties["EditableIf"] = buildConditionalExpression(xc)
 		} else if valCtx := propCtx.PropertyValueV3(); valCtx != nil {
 			widget.Properties["Editable"] = buildPropertyValueV3(valCtx)
 		}
@@ -1045,6 +1045,76 @@ func buildSortColumnAsOrderBy(ctx parser.ISortColumnContext) ast.OrderByItemV3 {
 	}
 
 	return item
+}
+
+// buildConditionalExpression turns a `Visible: [...]` / `Editable: [...]`
+// constraint into a Mendix client-side visibility expression. Unlike a data
+// source XPath, conditional visibility is evaluated against the widget's data
+// context, so a bare attribute reference (`Name`) must be rooted in the context
+// object as `$currentObject/Name`; otherwise Studio Pro rejects it with CE0117.
+// Paths already rooted in a variable (`$currentObject/...`, `$Param/...`) and
+// literals/functions are left untouched. See issue #627.
+func buildConditionalExpression(xc parser.IXpathConstraintContext) string {
+	if xc == nil {
+		return ""
+	}
+	xcCtx, ok := xc.(*parser.XpathConstraintContext)
+	if !ok {
+		return extractXpathText(xc)
+	}
+	xe := xcCtx.XpathExpr()
+	if xe == nil {
+		return extractXpathText(xc)
+	}
+	expr := buildXPathExpr(xe)
+	if expr == nil {
+		return extractXpathText(xc)
+	}
+	return conditionalExprToString(expr)
+}
+
+// conditionalExprToString serializes an expression as a Mendix conditional-
+// visibility expression, prefixing bare attribute references with the widget
+// data context ($currentObject). It mirrors xpathExprToString for every other
+// node, recursing through the logical/comparison structure.
+func conditionalExprToString(expr ast.Expression) string {
+	switch e := expr.(type) {
+	case *ast.IdentifierExpr:
+		// A bare attribute (`Active`, `Name`) — root it in the context object.
+		return "$currentObject/" + e.Name
+	case *ast.XPathPathExpr:
+		// Multi-step / predicated path. If it already starts with a variable
+		// ($currentObject/…, $Param/…) it is fully qualified; otherwise it is a
+		// bare attribute path and needs the context root.
+		if len(e.Steps) > 0 {
+			if _, isVar := e.Steps[0].Expr.(*ast.VariableExpr); !isVar {
+				return "$currentObject/" + xpathPathToString(e)
+			}
+		}
+		return xpathPathToString(e)
+	case *ast.BinaryExpr:
+		return conditionalExprToString(e.Left) + " " + strings.ToLower(e.Operator) + " " + conditionalExprToString(e.Right)
+	case *ast.UnaryExpr:
+		op := strings.ToLower(e.Operator)
+		if op == "not" {
+			if p, ok := e.Operand.(*ast.ParenExpr); ok {
+				return "not(" + conditionalExprToString(p.Inner) + ")"
+			}
+			return "not(" + conditionalExprToString(e.Operand) + ")"
+		}
+		return op + " " + conditionalExprToString(e.Operand)
+	case *ast.ParenExpr:
+		return "(" + conditionalExprToString(e.Inner) + ")"
+	case *ast.FunctionCallExpr:
+		args := make([]string, 0, len(e.Arguments))
+		for _, arg := range e.Arguments {
+			args = append(args, conditionalExprToString(arg))
+		}
+		return e.Name + "(" + strings.Join(args, ", ") + ")"
+	default:
+		// Literals, $variables, enum qualified names — same as XPath rendering.
+		return xpathExprToString(expr)
+	}
 }
 
 // buildPropertyValueV3 builds a generic property value.
