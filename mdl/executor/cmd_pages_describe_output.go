@@ -630,7 +630,7 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 	case "Forms$NavigationList", "Pages$NavigationList":
 		fmt.Fprintf(ctx.Output, "%snavigationlist %s {\n", prefix, mdlIdent(w.Name))
 		for _, child := range w.Children {
-			itemHeader := fmt.Sprintf("item %s", child.Name)
+			itemHeader := fmt.Sprintf("item %s", mdlIdent(child.Name))
 			props := []string{}
 			if child.Action != "" {
 				props = append(props, fmt.Sprintf("Action: %s", child.Action))

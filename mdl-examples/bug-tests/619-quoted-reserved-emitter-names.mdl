@@ -1,0 +1,61 @@
+-- ============================================================================
+-- Bug #619: DESCRIBE emitters must quote reserved-word identifiers
+-- (mdlIdent-only slice: positions whose grammar already accepts quoting)
+-- ============================================================================
+--
+-- The widget-name slice of #619 (and #114, #638, #675) is already merged. This
+-- fixture covers four further DESCRIBE-output positions that emitted a name
+-- BARE and so produced non-re-parseable MDL when the name collides with a
+-- reserved keyword (e.g. "List", "Value", "Template"):
+--
+--   1. navigationlist  item <name>          (cmd_pages_describe_output.go)
+--   2. fragment widget <type> <name>        (cmd_fragments.go)
+--   3. workflow        user task <name>      (cmd_workflows.go)
+--   4. workflow        jump to <name>        (cmd_workflows.go)
+--
+-- All four grammar positions already accept (IDENTIFIER | QUOTED_IDENTIFIER), so
+-- the fix is purely on the emitter: wrap the name in executor.mdlIdent, which
+-- quotes only names that would not lex as a bare identifier. This fixture is the
+-- DESCRIBE→parse roundtrip target: every construct below uses a quoted reserved
+-- word and must pass `mxcli check`.
+--
+-- Usage:
+--   mxcli check mdl-examples/bug-tests/619-quoted-reserved-emitter-names.mdl
+-- ============================================================================
+
+create module BugTest619b;
+
+-- 1. navigationlist item named after a reserved keyword
+create page BugTest619b.P_Nav
+(
+  title: 'Reserved nav item',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  navigationlist navMenu {
+    item "List" (action: show_page BugTest619b.P_Nav) {
+      dynamictext text1 (content: 'Lists')
+    }
+  }
+}
+
+-- 2. fragment widget named after a reserved keyword
+define fragment ReservedFragment as {
+  container "Template" {
+    dynamictext "Value" (content: 'Reserved fragment widget names, quoted')
+  }
+};
+
+-- 3 + 4. workflow user task and jump-to target named after reserved keywords
+create entity BugTest619b.OrderContext;
+
+create workflow BugTest619b.ReservedWF
+  parameter $WorkflowContext: BugTest619b.OrderContext
+  display 'Reserved Names Workflow'
+begin
+  user task "Value" 'Review'
+    outcomes
+      'Approve' { }
+      'Reject' { jump to "Value"; }
+  ;
+end workflow;

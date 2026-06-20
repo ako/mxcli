@@ -318,7 +318,7 @@ func formatWorkflowActivities(flow *workflows.Flow, indent string) []string {
 				actLines = append(actLines, formatAnnotation(a.Annotation, indent))
 			}
 			escapedCaption := strings.ReplaceAll(caption, "'", "''")
-			actLines = append(actLines, fmt.Sprintf("%sjump to %s comment '%s'", indent, target, escapedCaption))
+			actLines = append(actLines, fmt.Sprintf("%sjump to %s comment '%s'", indent, mdlIdent(target), escapedCaption))
 		case *workflows.WaitForTimerActivity:
 			caption := a.Caption
 			if caption == "" {
@@ -415,7 +415,7 @@ func formatUserTask(a *workflows.UserTask, indent string) []string {
 	if a.IsMulti {
 		taskKeyword = "multi user task"
 	}
-	lines = append(lines, fmt.Sprintf("%s%s %s '%s'", indent, taskKeyword, nameStr, caption))
+	lines = append(lines, fmt.Sprintf("%s%s %s '%s'", indent, taskKeyword, mdlIdent(nameStr), caption))
 
 	if a.Page != "" {
 		lines = append(lines, fmt.Sprintf("%s  page %s", indent, a.Page))

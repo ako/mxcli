@@ -166,7 +166,7 @@ func outputASTWidgetMDL(w io.Writer, widget *ast.WidgetV3, indent int) {
 	prefix := strings.Repeat("  ", indent)
 
 	// Widget type and name
-	fmt.Fprintf(w, "%s%s %s", prefix, widget.Type, widget.Name)
+	fmt.Fprintf(w, "%s%s %s", prefix, widget.Type, mdlIdent(widget.Name))
 
 	// Properties (excluding internal ones like Prefix)
 	props := formatASTWidgetProps(widget)
