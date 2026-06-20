@@ -204,6 +204,8 @@ func validatePluggableWidgetProperties(w *ast.WidgetV3, registry *WidgetRegistry
 		return nil
 	}
 	allowed, knownKeys := allowedWidgetProperties(def)
+	dsKeys := datasourceTypedKeys(def)
+	knownUnmapped := knownUnmappedProperties(def, allowed)
 
 	var out []linter.Violation
 	for key := range w.Properties {
@@ -216,9 +218,43 @@ func validatePluggableWidgetProperties(w *ast.WidgetV3, registry *WidgetRegistry
 			continue
 		}
 		lower := strings.ToLower(key)
+
+		// A datasource-typed property must be supplied via the widget's
+		// `datasource:` clause (which the engine reads), NOT as a named value
+		// like `optionsSourceAssociationDataSource: Module.Entity` — that lands
+		// in a different slot and is silently dropped, so the widget builds
+		// without an entity (CE0642). Flag it instead of passing it (issue #643).
+		if dsKeys[lower] {
+			out = append(out, linter.Violation{
+				RuleID:   "MDL-WIDGET03",
+				Severity: linter.SeverityError,
+				Message: fmt.Sprintf(
+					"%s: widget `%s` (%s) property `%s` is datasource-typed — provide it via the widget `datasource:` clause (e.g. `datasource: database Module.Entity`); a value written as `%s: …` is not persisted",
+					locationPrefix, w.Name, def.MDLName, key, key,
+				),
+			})
+			continue
+		}
+
 		if allowed[lower] {
 			continue
 		}
+
+		// Recognized real property the .def.json doesn't map to a write path:
+		// don't reject it as unknown, but be honest that a non-default value
+		// won't persist through mxcli yet (issue #643).
+		if knownUnmapped[lower] {
+			out = append(out, linter.Violation{
+				RuleID:   "MDL-WIDGET04",
+				Severity: linter.SeverityWarning,
+				Message: fmt.Sprintf(
+					"%s: widget `%s` (%s) property `%s` is recognized but not yet persisted by mxcli — a non-default value will be dropped; set it in Studio Pro if needed",
+					locationPrefix, w.Name, def.MDLName, key,
+				),
+			})
+			continue
+		}
+
 		suggestion := nearestKey(key, knownKeys)
 		hint := ""
 		if suggestion != "" {
@@ -232,6 +268,39 @@ func validatePluggableWidgetProperties(w *ast.WidgetV3, registry *WidgetRegistry
 				locationPrefix, w.Name, def.MDLName, key, hint,
 			),
 		})
+	}
+	return out
+}
+
+// datasourceTypedKeys returns the lowercased propertyKeys whose def.json mapping
+// has operation "datasource" (across the top-level mappings and every mode).
+// These must be authored via the widget `datasource:` clause, not by name.
+func datasourceTypedKeys(def *WidgetDefinition) map[string]bool {
+	out := make(map[string]bool)
+	collect := func(ms []PropertyMapping) {
+		for _, m := range ms {
+			if m.Operation == "datasource" && m.PropertyKey != "" {
+				out[strings.ToLower(m.PropertyKey)] = true
+			}
+		}
+	}
+	collect(def.PropertyMappings)
+	for _, mode := range def.Modes {
+		collect(mode.PropertyMappings)
+	}
+	return out
+}
+
+// knownUnmappedProperties returns the lowercased def.KnownProperties that are
+// not already in the mapped/allowed set (so they get the WIDGET04 warning, not
+// silently accepted).
+func knownUnmappedProperties(def *WidgetDefinition, allowed map[string]bool) map[string]bool {
+	out := make(map[string]bool, len(def.KnownProperties))
+	for _, k := range def.KnownProperties {
+		l := strings.ToLower(k)
+		if !allowed[l] {
+			out[l] = true
+		}
 	}
 	return out
 }

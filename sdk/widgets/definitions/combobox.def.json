@@ -3,6 +3,12 @@
   "mdlName": "COMBOBOX",
   "templateFile": "combobox.json",
   "defaultEditable": "Always",
+  "knownProperties": [
+    "optionsSourceAssociationCaptionType",
+    "optionsSourceAssociationCaptionExpression",
+    "optionsSourceAssociationCustomContent",
+    "optionsSourceAssociationCustomContentType"
+  ],
   "modes": [
     {
       "name": "association",

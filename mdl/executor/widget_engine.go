@@ -55,6 +55,12 @@ type WidgetDefinition struct {
 	ObjectLists        []ObjectListMapping          `json:"objectLists,omitempty"`
 	PropertyVisibility []types.WidgetVisibilityRule `json:"propertyVisibility,omitempty"`
 	Modes              []WidgetMode                 `json:"modes,omitempty"`
+	// KnownProperties lists real widget properties that the .def.json does not
+	// (yet) map to a write path. `check` recognizes them so they aren't flagged
+	// as unknown, but the engine does not persist them — setting a non-default
+	// value yields an MDL-WIDGET04 warning rather than a false MDL-WIDGET01
+	// error. Validation-only; never written to BSON. See issue #643.
+	KnownProperties []string `json:"knownProperties,omitempty"`
 }
 
 // PropertyMapping maps an MDL source (attribute, association, literal, etc.)

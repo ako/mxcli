@@ -1,0 +1,35 @@
+-- Bug #643: a datasource-typed pluggable-widget property given as a named value
+-- must be rejected by `mxcli check`.
+--
+-- NEGATIVE TEST (.fail.mdl) — this script is EXPECTED to fail `mxcli check`.
+-- `make check-mdl` inverts the exit code for .fail.mdl files: an unexpected
+-- pass would be reported as a regression of the MDL-WIDGET03 rule.
+--
+-- Symptom: `optionsSourceAssociationDataSource: Module.Entity` on a Combo Box
+-- passed `check` and applied via `exec` with no error, but was NOT persisted —
+-- the options datasource ended up with no entity and `mx check` failed with
+-- CE0642 "Property 'Entity' is required." (silent data loss).
+--
+-- Fix: a datasource-typed property must be authored via the widget `datasource:`
+-- clause (`datasource: database Module.Entity`), which the engine reads. Writing
+-- it by name lands in a slot the engine ignores, so mxcli now rejects it
+-- (MDL-WIDGET03) instead of silently dropping it.
+--
+-- Expected: `mxcli check` exits non-zero with MDL-WIDGET03 on widget `cb`.
+
+create page Administration.MxfCombo
+(
+  title: 'T',
+  layout: Atlas_Core.Atlas_Default,
+  params: { $Obj: Administration.AccountPasswordData }
+)
+{
+  dataview dv (datasource: $Obj) {
+    pluggablewidget 'com.mendix.widget.web.combobox.Combobox' cb (
+      optionsSourceType: association,
+      attributeAssociation: Administration.AccountPasswordData_Account,
+      optionsSourceAssociationDataSource: Administration.Account,
+      optionsSourceAssociationCaptionAttribute: Administration.Account.FullName
+    )
+  }
+}
