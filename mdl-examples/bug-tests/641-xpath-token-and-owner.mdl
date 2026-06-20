@@ -1,0 +1,42 @@
+-- ============================================================================
+-- Bug #641: XPath constraint with a [%…%] token reported as CE0161
+-- ============================================================================
+--
+-- Investigation outcome: NOT a token-storage bug. mxcli stores [%…%] tokens
+-- correctly (the token below passes `mx check`). The reporter's failing cases
+-- were semantically-invalid XPath that mxcli faithfully stored and Mendix
+-- correctly rejected:
+--
+--   1. `[Title = '[%CurrentUser%]']` — comparing a String attribute to the User
+--      token [%CurrentUser%] is a type mismatch (invalid regardless of mxcli).
+--   2. `[System.owner = '[%CurrentUser%]']` — fails ONLY when the entity does not
+--      store `owner`. Enable it first (this script does), and it passes.
+--
+-- mxcli now flags case 2 at `mxcli check -p <app> --references` (MDL reference
+-- check) with an actionable message, instead of letting it slip to `mx check`.
+--
+-- This script shows the CORRECT, working patterns — `mx check` = 0 errors.
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/641-xpath-token-and-owner.mdl -p app.mpr
+-- ============================================================================
+
+create or modify persistent entity BugTest641.Doc (Title: String(100), DueDate: DateTime);
+
+-- Enable System.owner so it can be referenced in XPath (this is the step the
+-- reporter was missing). `autoowner` stores the owner association.
+alter entity BugTest641.Doc add attribute owner: autoowner;
+
+-- Owner filter — the canonical "records owned by the current user" pattern.
+create or modify microflow BugTest641.Mf_Owned ()
+begin
+  retrieve $L from BugTest641.Doc where [System.owner = '[%CurrentUser%]'];
+  return;
+end;
+
+-- DateTime token compared to a DateTime attribute — type-correct, always worked.
+create or modify microflow BugTest641.Mf_Due ()
+begin
+  retrieve $L from BugTest641.Doc where [DueDate < '[%CurrentDateTime%]'];
+  return;
+end;

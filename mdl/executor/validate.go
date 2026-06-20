@@ -6,10 +6,13 @@ package executor
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
+	"github.com/mendixlabs/mxcli/model"
+	"github.com/mendixlabs/mxcli/sdk/domainmodel"
 )
 
 // scriptContext holds objects defined within a script for reference validation.
@@ -586,7 +589,100 @@ func validateFlowBodyReferences(ctx *ExecContext, body []ast.MicroflowStatement,
 		}
 	}
 
+	if len(refs.retrieves) > 0 {
+		errors = append(errors, validateRetrieveConstraints(ctx, refs.retrieves)...)
+	}
+
 	return errors
+}
+
+// systemMemberStore maps a System.* member usable in an XPath constraint to the
+// entity flag that records whether the entity actually stores it. Referencing one
+// of these in a constraint when the entity doesn't store it produces CE0161 in
+// Studio Pro ("Error(s) in XPath constraint."). Issue #641.
+var systemMemberStore = map[string]string{
+	"owner":       "owner",
+	"changedBy":   "changedBy",
+	"changedDate": "changedDate",
+	"createdDate": "createdDate",
+}
+
+// baseSystemMemberRe matches a `System.<member>` reference on the retrieve's own
+// entity (not behind an association traversal, i.e. not preceded by `/`).
+var baseSystemMemberRe = regexp.MustCompile(`(^|[^/\w.])System\.(owner|changedBy|changedDate|createdDate)\b`)
+
+// validateRetrieveConstraints flags constraints that will fail Mendix's own
+// `mx check` (CE0161) even though mxcli stored them faithfully: a System.owner /
+// changedBy / changedDate / createdDate member referenced on an entity that
+// doesn't store it. This is the legitimate "owned by current user" pattern that
+// silently fails when owner isn't enabled (issue #641).
+func validateRetrieveConstraints(ctx *ExecContext, retrieves []retrieveConstraintRef) []string {
+	entities := buildEntityIndex(ctx)
+	if entities == nil {
+		return nil
+	}
+	var errors []string
+	for _, r := range retrieves {
+		ent := entities[r.entity]
+		if ent == nil {
+			continue // entity-not-found is reported separately
+		}
+		for _, m := range baseSystemMemberRe.FindAllStringSubmatch(r.constraint, -1) {
+			member := m[2]
+			if entityStoresSystemMember(ent, systemMemberStore[member]) {
+				continue
+			}
+			errors = append(errors, fmt.Sprintf(
+				"constraint references System.%s on %s, but the entity does not store %s — Studio Pro rejects this with CE0161. "+
+					"Enable it first: alter entity %s add attribute %s: auto%s",
+				member, r.entity, member, r.entity, member, strings.ToLower(member)))
+		}
+	}
+	return errors
+}
+
+// entityStoresSystemMember reports whether the entity records the given system
+// member (owner/changedBy/changedDate/createdDate).
+func entityStoresSystemMember(e *domainmodel.Entity, member string) bool {
+	switch member {
+	case "owner":
+		return e.HasOwner
+	case "changedBy":
+		return e.HasChangedBy
+	case "changedDate":
+		return e.HasChangedDate
+	case "createdDate":
+		return e.HasCreatedDate
+	}
+	return true // unknown member → don't flag
+}
+
+// buildEntityIndex maps every entity's qualified name to its definition for
+// schema-aware validation. Returns nil if the domain model can't be read.
+func buildEntityIndex(ctx *ExecContext) map[string]*domainmodel.Entity {
+	modules, err := getModulesFromCache(ctx)
+	if err != nil {
+		return nil
+	}
+	moduleNames := make(map[model.ID]string, len(modules))
+	for _, m := range modules {
+		moduleNames[m.ID] = m.Name
+	}
+	dms, err := ctx.Backend.ListDomainModels()
+	if err != nil {
+		return nil
+	}
+	index := make(map[string]*domainmodel.Entity)
+	for _, dm := range dms {
+		modName := moduleNames[dm.ContainerID]
+		if modName == "" {
+			continue
+		}
+		for _, ent := range dm.Entities {
+			index[modName+"."+ent.Name] = ent
+		}
+	}
+	return index
 }
 
 // qualifiedNameModule returns the module portion of a "Module.Name" qualified
@@ -606,6 +702,7 @@ type flowRefCollector struct {
 	javaActions       []string
 	javaScriptActions []string
 	entities          []entityRef
+	retrieves         []retrieveConstraintRef
 }
 
 // entityRef tracks an entity reference along with the statement that referenced it.
@@ -614,9 +711,17 @@ type entityRef struct {
 	source string // e.g., "CREATE", "RETRIEVE", "CREATE LIST OF"
 }
 
+// retrieveConstraintRef pairs a database retrieve's entity with its XPath
+// constraint so the constraint can be validated against the entity schema.
+type retrieveConstraintRef struct {
+	entity     string // entity qualified name (database retrieve only)
+	constraint string // bracketed XPath constraint, e.g. "[System.owner = '[%CurrentUser%]']"
+}
+
 func (c *flowRefCollector) empty() bool {
 	return len(c.pages) == 0 && len(c.microflows) == 0 && len(c.nanoflows) == 0 &&
-		len(c.javaActions) == 0 && len(c.javaScriptActions) == 0 && len(c.entities) == 0
+		len(c.javaActions) == 0 && len(c.javaScriptActions) == 0 && len(c.entities) == 0 &&
+		len(c.retrieves) == 0
 }
 
 func (c *flowRefCollector) collectFromStatements(stmts []ast.MicroflowStatement) {
@@ -654,6 +759,12 @@ func (c *flowRefCollector) collectFromStatements(stmts []ast.MicroflowStatement)
 				// Association retrieve — Source is an association name, not an entity; skip entity validation
 			} else if s.Source.Module != "" {
 				c.entities = append(c.entities, entityRef{name: s.Source.String(), source: "retrieve"})
+				if s.Where != nil {
+					c.retrieves = append(c.retrieves, retrieveConstraintRef{
+						entity:     s.Source.String(),
+						constraint: expressionToXPath(s.Where),
+					})
+				}
 			}
 		case *ast.CreateListStmt:
 			if s.EntityType.Module != "" {

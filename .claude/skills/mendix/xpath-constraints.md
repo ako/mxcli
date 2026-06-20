@@ -128,16 +128,30 @@ Supported functions: `contains()`, `starts-with()`, `not()`, `true()`, `false()`
 
 ### Tokens
 
-Mendix tokens provide runtime values. In XPath, tokens used as values must be quoted:
+Mendix tokens provide runtime values. In an XPath constraint a token used as a
+value **must be quoted** as `'[%Token%]'` — always write the quoted form:
 
 ```mdl
--- Unquoted token (parsed by MDL, auto-quoted in BSON)
-where [OrderDate < [%CurrentDateTime%]]
-where [System.owner = [%CurrentUser%]]
-
--- Quoted token in string literal (passed through as-is)
+-- Quoted token (correct in every context: retrieve, datasource, grant)
+where [OrderDate < '[%CurrentDateTime%]']
 where [System.owner = '[%CurrentUser%]']
 ```
+
+> **Always quote tokens inside a bracketed constraint.** The bare form inside
+> brackets — `where [OrderDate < [%CurrentDateTime%]]` — is currently stored
+> unquoted and fails Studio Pro with CE0161. (The bracket-less form
+> `where DueDate < [%CurrentDateTime%]` does auto-quote, but the quoted-token
+> form above is the reliable one to use everywhere.)
+
+> **Tokens are typed.** `[%CurrentUser%]` is a **User** reference — compare it only
+> to an association to System.User (e.g. `System.owner`), never to a String/other
+> attribute (`[Title = '[%CurrentUser%]']` is a type error → CE0161).
+> `[%CurrentDateTime%]` compares to DateTime attributes, etc.
+
+> **`System.owner` / `System.changedBy` must be enabled** on the entity before you
+> can reference them in XPath, or Studio Pro reports CE0161. Enable with
+> `alter entity Module.Entity add attribute owner: autoowner;` (mxcli's
+> `check --references` flags this). Same for `changedBy`/`changedDate`/`createdDate`.
 
 Common tokens: `[%CurrentUser%]`, `[%CurrentDateTime%]`, `[%CurrentObject%]`, `[%UserRole_RoleName%]`, `[%DayLength%]`
 
