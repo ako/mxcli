@@ -1674,6 +1674,29 @@ func updateTextsTextValue(textsTextDoc bson.D, text string) bool {
 	return true
 }
 
+// setWidgetConditionalSettingMut replaces a widget's ConditionalVisibility/
+// EditabilitySettings slot (null when unset) with a node carrying the expression,
+// mirroring the legacy/Studio Pro structure (null Attribute/SourceVariable, empty
+// marker-3 Conditions, plus IgnoreSecurity/ModuleRoles for visibility). Returns
+// false when the widget has no such slot (e.g. editability on a non-input widget).
+func setWidgetConditionalSettingMut(widget bson.D, field, typeName, expression string, withSecurity bool) bool {
+	doc := bson.D{
+		{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
+		{Key: "$Type", Value: typeName},
+		{Key: "Attribute", Value: nil},
+		{Key: "Conditions", Value: bson.A{int32(3)}},
+		{Key: "Expression", Value: expression},
+	}
+	if withSecurity {
+		doc = append(doc,
+			bson.E{Key: "IgnoreSecurity", Value: false},
+			bson.E{Key: "ModuleRoles", Value: bson.A{int32(3)}},
+		)
+	}
+	doc = append(doc, bson.E{Key: "SourceVariable", Value: nil})
+	return bsonnav.DSet(widget, field, doc)
+}
+
 func setRawWidgetPropertyMut(widget bson.D, propName string, value any) error {
 	switch propName {
 	case "Caption":
@@ -1715,6 +1738,23 @@ func setRawWidgetPropertyMut(widget bson.D, propName string, value any) error {
 			} else {
 				bsonnav.DSet(widget, "Visible", "False")
 			}
+		}
+		return nil
+	case "VisibleIf":
+		// Conditional visibility expression (issue #627): replace the widget's
+		// ConditionalVisibilitySettings node (null when unset) with one carrying
+		// the rooted expression the visitor produced.
+		expr, _ := value.(string)
+		if !setWidgetConditionalSettingMut(widget, "ConditionalVisibilitySettings",
+			"Forms$ConditionalVisibilitySettings", expr, true) {
+			return fmt.Errorf("widget does not support conditional visibility")
+		}
+		return nil
+	case "EditableIf":
+		expr, _ := value.(string)
+		if !setWidgetConditionalSettingMut(widget, "ConditionalEditabilitySettings",
+			"Forms$ConditionalEditabilitySettings", expr, false) {
+			return fmt.Errorf("widget does not support conditional editability (only input widgets are editable)")
 		}
 		return nil
 	case "Name":

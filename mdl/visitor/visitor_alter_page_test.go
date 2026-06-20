@@ -507,3 +507,32 @@ func TestAlterPageContainerType(t *testing.T) {
 		t.Errorf("Expected ContainerType 'PAGE', got %q", stmt.ContainerType)
 	}
 }
+
+// Issue #627 — ALTER PAGE SET Visible/Editable = [expr] roots bare attributes in
+// $currentObject and routes to VisibleIf/EditableIf (so the mutator builds a
+// ConditionalVisibilitySettings node, not a static field).
+func TestAlterPageSetConditionalVisibility(t *testing.T) {
+	input := `ALTER PAGE Module.Page {
+		SET Visible = [Name != ''] ON ctn;
+		SET Editable = [Active] ON tb;
+	};`
+	prog, errs := Build(input)
+	if len(errs) > 0 {
+		t.Fatalf("parse errors: %v", errs)
+	}
+	stmt := prog.Statements[0].(*ast.AlterPageStmt)
+	if len(stmt.Operations) != 2 {
+		t.Fatalf("expected 2 operations, got %d", len(stmt.Operations))
+	}
+	vis := stmt.Operations[0].(*ast.SetPropertyOp)
+	if vis.Target.Widget != "ctn" {
+		t.Errorf("visible target = %q, want ctn", vis.Target.Widget)
+	}
+	if v, _ := vis.Properties["VisibleIf"].(string); v != "$currentObject/Name != ''" {
+		t.Errorf("VisibleIf = %q, want $currentObject/Name != ''", v)
+	}
+	edit := stmt.Operations[1].(*ast.SetPropertyOp)
+	if v, _ := edit.Properties["EditableIf"].(string); v != "$currentObject/Active" {
+		t.Errorf("EditableIf = %q, want $currentObject/Active", v)
+	}
+}

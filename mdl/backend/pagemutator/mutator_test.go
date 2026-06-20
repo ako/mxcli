@@ -1063,3 +1063,45 @@ func TestSetPageLevel_UnsupportedProperty(t *testing.T) {
 		t.Fatal("expected error for unsupported page-level property, got nil")
 	}
 }
+
+// Issue #627 — SET VisibleIf builds a ConditionalVisibilitySettings node carrying
+// the expression, replacing the null slot. Editable on a widget without the slot
+// is rejected.
+func TestSetWidgetProperty_VisibleIf(t *testing.T) {
+	w := bson.D{
+		{Key: "$Type", Value: "Forms$DivContainer"},
+		{Key: "Name", Value: "ctn"},
+		{Key: "ConditionalVisibilitySettings", Value: nil},
+	}
+	rawData := makeRawPage(w)
+	m := &Mutator{rawData: rawData, widgetFinder: findBsonWidget}
+
+	if err := m.SetWidgetProperty("ctn", "VisibleIf", "$currentObject/Name != ''"); err != nil {
+		t.Fatalf("SetWidgetProperty VisibleIf: %v", err)
+	}
+	res := findBsonWidget(rawData, "ctn")
+	cvs, ok := bsonnav.DGet(res.widget, "ConditionalVisibilitySettings").(bson.D)
+	if !ok {
+		t.Fatalf("ConditionalVisibilitySettings not a doc: %T", bsonnav.DGet(res.widget, "ConditionalVisibilitySettings"))
+	}
+	if got := bsonnav.DGetString(cvs, "Expression"); got != "$currentObject/Name != ''" {
+		t.Errorf("Expression = %q", got)
+	}
+	if bsonnav.DGetString(cvs, "$Type") != "Forms$ConditionalVisibilitySettings" {
+		t.Errorf("wrong $Type: %v", bsonnav.DGet(cvs, "$Type"))
+	}
+}
+
+func TestSetWidgetProperty_EditableIf_Unsupported(t *testing.T) {
+	// A container has no ConditionalEditabilitySettings slot → reject.
+	w := bson.D{
+		{Key: "$Type", Value: "Forms$DivContainer"},
+		{Key: "Name", Value: "ctn"},
+		{Key: "ConditionalVisibilitySettings", Value: nil},
+	}
+	rawData := makeRawPage(w)
+	m := &Mutator{rawData: rawData, widgetFinder: findBsonWidget}
+	if err := m.SetWidgetProperty("ctn", "EditableIf", "$currentObject/Active"); err == nil {
+		t.Fatal("expected error setting EditableIf on a container, got nil")
+	}
+}

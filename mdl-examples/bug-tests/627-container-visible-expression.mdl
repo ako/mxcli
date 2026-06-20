@@ -50,7 +50,16 @@ create page MyFirstModule.P_Vis
     }
     -- conditional editability uses the same rewrite
     textbox tbName (label: 'Name', attribute: Name, Editable: [Active])
+    -- a plain container we'll make conditionally visible via ALTER below
+    container ctnLater { dynamictext tL (content: 'shown via ALTER') }
   }
+}
+
+-- ALTER PAGE sets conditional visibility/editability after the fact, with the
+-- same $currentObject rooting (issue #627 — previously a silent no-op).
+alter page MyFirstModule.P_Vis {
+  set Visible = [Active] on ctnLater;
+  set Editable = [Name != ''] on tbName;
 }
 
 describe page MyFirstModule.P_Vis;

@@ -245,6 +245,8 @@ alterLayoutMapping
 
 alterPageAssignment
     : DATASOURCE EQUALS dataSourceExprV3               // DataSource = SELECTION widgetName
+    | VISIBLE EQUALS xpathConstraint                   // Visible = [Name != ''] (conditional visibility)
+    | EDITABLE EQUALS xpathConstraint                  // Editable = [Status = 'Open'] (conditional editability)
     | identifierOrKeyword EQUALS propertyValueV3       // Caption = 'Save'
     | STRING_LITERAL EQUALS propertyValueV3             // 'showLabel' = false
     ;

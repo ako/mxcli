@@ -111,6 +111,19 @@ func (b *Builder) buildAlterPageAssignment(ctx *parser.AlterPageAssignmentContex
 		return "DataSource", buildDataSourceV3(dsCtx)
 	}
 
+	// Visible = [expr] / Editable = [expr] — conditional visibility/editability.
+	// Same context-rooting as CREATE PAGE (issue #627): bare attributes become
+	// $currentObject/Attr. Routed to VisibleIf/EditableIf so the mutator builds a
+	// ConditionalVisibilitySettings node instead of a static Visible string.
+	if xc := ctx.XpathConstraint(); xc != nil {
+		if ctx.VISIBLE() != nil {
+			return "VisibleIf", buildConditionalExpression(xc)
+		}
+		if ctx.EDITABLE() != nil {
+			return "EditableIf", buildConditionalExpression(xc)
+		}
+	}
+
 	var name string
 
 	if id := ctx.IdentifierOrKeyword(); id != nil {
