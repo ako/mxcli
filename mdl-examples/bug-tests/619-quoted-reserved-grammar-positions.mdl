@@ -1,0 +1,50 @@
+-- ============================================================================
+-- Bug #619: reserved-word names in three strict-IDENTIFIER grammar positions
+-- ============================================================================
+--
+-- Unlike the emitter-only slice (619-quoted-reserved-emitter-names.mdl), these
+-- three positions accepted ONLY a bare IDENTIFIER, so a reserved-word name could
+-- not be expressed at all — even hand-quoting failed. DESCRIBE therefore emitted
+-- non-re-parseable MDL whenever the underlying element name collided with a
+-- keyword. The grammar was widened to (IDENTIFIER | QUOTED_IDENTIFIER), the
+-- visitor now unquotes, and the emitters quote via executor.mdlIdent.
+--
+--   1. microflowArgV3   — show_page / microflow arg param name:  ("Status": $x)
+--   2. dataSourceExprV3  — SELECTION widget ref:                 selection "List"
+--   3. sortSpec          — list sort attribute:                  sort($l, "Status" asc)
+--
+-- Usage:
+--   mxcli check mdl-examples/bug-tests/619-quoted-reserved-grammar-positions.mdl
+-- ============================================================================
+
+create module BugTest619c;
+
+create entity BugTest619c.Product (
+  Status: string,
+  Name: string
+);
+
+-- 3. sortSpec: sort a list by a reserved-word attribute ("Status")
+create microflow BugTest619c.MF_SortByStatus (
+  $ProductList: list of BugTest619c.Product
+)
+returns list of BugTest619c.Product as $Sorted
+begin
+  $Sorted = sort($ProductList, "Status" asc, Name desc);
+  return $Sorted;
+end;
+
+-- 1. microflowArgV3 (quoted reserved param name) + 2. dataSourceExprV3 SELECTION
+create page BugTest619c.P_Detail
+(
+  title: 'Reserved grammar positions',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  gallery "List" (datasource: database BugTest619c.Product, selection: single) {
+    dynamictext t1 (content: 'Row')
+  }
+  dataview detail (datasource: selection "List") {
+    actionbutton btnOpen (caption: 'Open', action: show_page BugTest619c.P_Detail ("Status": $currentObject))
+  }
+}

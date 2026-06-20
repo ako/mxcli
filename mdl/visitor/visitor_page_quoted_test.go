@@ -183,6 +183,53 @@ func TestQuotedReservedParamNames(t *testing.T) {
 	})
 }
 
+// TestQuotedReservedSelectionAndArgNames covers the #619 grammar-widen slice:
+// a SELECTION data-source widget reference (dataSourceExprV3) and a microflow/
+// page argument parameter name (microflowArgV3) that collide with a reserved
+// keyword. Both positions previously accepted only a bare IDENTIFIER (so even
+// hand-quoting failed); they now accept QUOTED_IDENTIFIER and the visitor
+// unquotes back to the bare name.
+func TestQuotedReservedSelectionAndArgNames(t *testing.T) {
+	input := `CREATE PAGE M.Home (
+		Layout: Atlas_Core.Atlas_Default
+	) {
+		GALLERY "List" (DataSource: DATABASE FROM M.Product, Selection: single) {
+			DYNAMICTEXT t1 (Content: 'row')
+		}
+		DATAVIEW detail (DataSource: SELECTION "List") {
+			ACTIONBUTTON btnOpen (
+				Caption: 'Open',
+				Action: SHOW_PAGE M.Home ("Status": $currentObject)
+			)
+		}
+	};`
+
+	prog, errs := Build(input)
+	if len(errs) > 0 {
+		t.Fatalf("Parse errors: %v", errs)
+	}
+	stmt := prog.Statements[0].(*ast.CreatePageStmtV3)
+
+	// SELECTION reference must unquote back to the reserved word "List".
+	detail := findChildByName2(stmt.Widgets, "detail")
+	if detail == nil || detail.GetDataSource() == nil {
+		t.Fatal("detail dataview or its datasource not found")
+	}
+	if got := detail.GetDataSource().Reference; got != "List" {
+		t.Errorf(`SELECTION reference: expected "List", got %q`, got)
+	}
+
+	// The reserved-word argument param name "Status" must unquote.
+	btnOpen := findChildByName(detail, "btnOpen")
+	if btnOpen == nil || btnOpen.GetAction() == nil {
+		t.Fatal("btnOpen or its action not found")
+	}
+	args := btnOpen.GetAction().Args
+	if len(args) != 1 || args[0].Name != "Status" {
+		t.Errorf(`expected one arg named "Status", got %+v`, args)
+	}
+}
+
 func findChildByName(parent *ast.WidgetV3, name string) *ast.WidgetV3 {
 	for _, c := range parent.Children {
 		if c.Name == name {

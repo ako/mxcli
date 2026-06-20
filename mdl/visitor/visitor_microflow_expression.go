@@ -453,9 +453,14 @@ func buildListOperationAsFunction(ctx parser.IListOperationContext) ast.Expressi
 		sortCtx := sortSpecs.(*parser.SortSpecListContext)
 		for _, spec := range sortCtx.AllSortSpec() {
 			specCtx := spec.(*parser.SortSpecContext)
+			attrName := ""
 			if id := specCtx.IDENTIFIER(); id != nil {
+				attrName = id.GetText()
+			} else if qid := specCtx.QUOTED_IDENTIFIER(); qid != nil {
+				attrName = unquoteIdentifier(qid.GetText())
+			}
+			if attrName != "" {
 				// Create a sort spec representation
-				attrName := id.GetText()
 				ascending := true
 				if specCtx.DESC() != nil {
 					ascending = false

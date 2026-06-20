@@ -620,7 +620,7 @@ sortSpecList
     ;
 
 sortSpec
-    : IDENTIFIER (ASC | DESC)?
+    : (IDENTIFIER | QUOTED_IDENTIFIER) (ASC | DESC)?  // "attr" if reserved
     ;
 
 /**

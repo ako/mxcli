@@ -1134,7 +1134,7 @@ func formatListOperation(ctx *ExecContext, op microflows.ListOperation, outputVa
 				if attrName == "" {
 					attrName = "..."
 				}
-				sortCols = append(sortCols, fmt.Sprintf("%s %s", attrName, dir))
+				sortCols = append(sortCols, fmt.Sprintf("%s %s", mdlIdent(attrName), dir))
 			}
 			return fmt.Sprintf("$%s = sort($%s, %s);", outputVar, o.ListVariable, strings.Join(sortCols, ", "))
 		}

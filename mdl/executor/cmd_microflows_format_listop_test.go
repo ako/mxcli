@@ -46,13 +46,28 @@ func TestFormatListOperation_Filter(t *testing.T) {
 
 func TestFormatListOperation_Sort(t *testing.T) {
 	e := newTestExecutor()
+	// "Date" is a reserved keyword, so it must be quoted to re-parse (#619 sortSpec).
 	got := e.formatListOperation(&microflows.SortOperation{
 		ListVariable: "Orders",
 		Sorting: []*microflows.SortItem{
 			{AttributeQualifiedName: "MyModule.Order.Date", Direction: microflows.SortDirectionDescending},
 		},
 	}, "Sorted")
-	if got != "$Sorted = sort($Orders, Date desc);" {
+	if got != `$Sorted = sort($Orders, "Date" desc);` {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestFormatListOperation_SortNonReserved(t *testing.T) {
+	e := newTestExecutor()
+	// A non-reserved attribute name stays bare (mdlIdent quotes only reserved words).
+	got := e.formatListOperation(&microflows.SortOperation{
+		ListVariable: "Orders",
+		Sorting: []*microflows.SortItem{
+			{AttributeQualifiedName: "MyModule.Order.Amount", Direction: microflows.SortDirectionAscending},
+		},
+	}, "Sorted")
+	if got != "$Sorted = sort($Orders, Amount asc);" {
 		t.Errorf("got %q", got)
 	}
 }

@@ -323,7 +323,7 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			case "parameter":
 				props = append(props, fmt.Sprintf("DataSource: $%s", w.DataSource.Reference))
 			case "selection":
-				props = append(props, fmt.Sprintf("DataSource: selection %s", w.DataSource.Reference))
+				props = append(props, fmt.Sprintf("DataSource: selection %s", mdlIdent(w.DataSource.Reference)))
 			}
 		}
 		switch {
@@ -1111,7 +1111,7 @@ func extractPageParameters(ctx *ExecContext, settings map[string]any) string {
 		}
 
 		if value != "" {
-			params = append(params, paramName+": "+value)
+			params = append(params, mdlIdent(paramName)+": "+value)
 		}
 	}
 
@@ -1174,7 +1174,7 @@ func extractMicroflowParameters(ctx *ExecContext, settings map[string]any) strin
 		if value != "" {
 			// Canonical microflowArgV3 form is `Param: $value` (IDENTIFIER COLON expr);
 			// emitting `Param = $value` is IDENTIFIER EQUALS, which doesn't re-parse (#640).
-			params = append(params, paramName+": "+value)
+			params = append(params, mdlIdent(paramName)+": "+value)
 		}
 	}
 
@@ -1237,7 +1237,7 @@ func extractNanoflowParameters(ctx *ExecContext, action map[string]any) string {
 		if value != "" {
 			// Canonical microflowArgV3 form is `Param: $value` (IDENTIFIER COLON expr);
 			// emitting `Param = $value` is IDENTIFIER EQUALS, which doesn't re-parse (#640).
-			params = append(params, paramName+": "+value)
+			params = append(params, mdlIdent(paramName)+": "+value)
 		}
 	}
 

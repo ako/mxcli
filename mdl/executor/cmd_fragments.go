@@ -252,7 +252,7 @@ func formatDataSourceV3(ds *ast.DataSourceV3) string {
 	case "association":
 		return "association " + ds.Reference
 	case "selection":
-		return "selection " + ds.Reference
+		return "selection " + mdlIdent(ds.Reference)
 	default:
 		return ds.Reference
 	}

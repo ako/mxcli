@@ -745,6 +745,9 @@ func buildDataSourceV3(ctx parser.IDataSourceExprV3Context) *ast.DataSourceV3 {
 		ds.Type = "selection"
 		if id := dsCtx.IDENTIFIER(); id != nil {
 			ds.Reference = id.GetText()
+		} else if qid := dsCtx.QUOTED_IDENTIFIER(); qid != nil {
+			// SELECTION "widgetName" — reserved-word widget name
+			ds.Reference = unquoteIdentifier(qid.GetText())
 		}
 	}
 
@@ -849,6 +852,9 @@ func buildMicroflowArgV3(ctx parser.IMicroflowArgV3Context) ast.FlowArgV3 {
 	} else if id := argCtx.IDENTIFIER(); id != nil {
 		// Widget-style: Param: $value
 		arg.Name = id.GetText()
+	} else if qid := argCtx.QUOTED_IDENTIFIER(); qid != nil {
+		// Widget-style with reserved-word param name: "Param": $value
+		arg.Name = unquoteIdentifier(qid.GetText())
 	}
 	if expr := argCtx.Expression(); expr != nil {
 		arg.Value = expr.GetText()

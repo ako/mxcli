@@ -335,7 +335,7 @@ dataSourceExprV3
     | MICROFLOW qualifiedName microflowArgsV3?        // MICROFLOW Module.Flow
     | NANOFLOW qualifiedName microflowArgsV3?         // NANOFLOW Module.Flow
     | ASSOCIATION associationPathV3                   // ASSOCIATION Module.Assoc (explicit form)
-    | SELECTION IDENTIFIER                            // SELECTION widgetName
+    | SELECTION (IDENTIFIER | QUOTED_IDENTIFIER)      // SELECTION widgetName ("name" if reserved)
     ;
 
 // Association path: Module.Assoc or Module.Assoc/Module.Entity or multi-step
@@ -365,7 +365,7 @@ microflowArgsV3
     ;
 
 microflowArgV3
-    : IDENTIFIER COLON expression                    // Param: $value (canonical)
+    : (IDENTIFIER | QUOTED_IDENTIFIER) COLON expression  // Param: $value (canonical; "Param" if reserved)
     | VARIABLE EQUALS expression                     // $Param = $value (microflow-style, also accepted)
     ;
 
