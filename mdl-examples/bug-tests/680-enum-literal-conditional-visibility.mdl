@@ -1,0 +1,60 @@
+-- ============================================================================
+-- Regression (v0.13.0): enum literal in a `visible:` expression mangled to a
+-- string, failing MxBuild with CE0117 "Error(s) in expression."
+-- ============================================================================
+--
+-- Symptom (v0.13.0):
+--   visible: [$currentObject/Status = MES.EquipmentStatus.Running]
+--   was stored as `$currentObject/Status = 'Running'` (string) → CE0117 on both
+--   the modelsdk (default) and legacy engines. Pages written by <=0.12 kept the
+--   enum literal and still built; re-running generators on 0.13.0 broke them.
+--
+-- Root cause: the conditional-visibility serializer (added with #627) delegated a
+--   qualified enum `QualifiedNameExpr` to the XPath serializer, which converts a
+--   3-part enum name to a string literal ('Running'). That's correct for an XPath
+--   *datasource* constraint (evaluated at the database level), but WRONG for a
+--   client visibility/editability expression, which compares to the qualified
+--   enum value.
+--
+-- After fix:
+--   conditionalExprToString preserves the qualified enum literal. Datasource
+--   `where [Status = MES.EquipmentStatus.Running]` still stringifies to 'Running'
+--   (unchanged). Both store correctly; mx check = 0 errors.
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/680-enum-literal-conditional-visibility.mdl -p app.mpr
+-- ============================================================================
+
+create enumeration BugTest680.EquipmentStatus ( Running, Stopped );
+
+create or modify persistent entity BugTest680.Equip (
+  Name: String(100),
+  Status: BugTest680.EquipmentStatus
+);
+
+create page BugTest680.Dashboard
+(
+  title: 'Dashboard',
+  layout: Atlas_Core.Atlas_Default,
+  params: { $Equip: BugTest680.Equip }
+)
+{
+  dataview dv (datasource: $Equip) {
+    -- Status pill: conditional visibility on a qualified enum literal.
+    container pillRunning (Visible: [$currentObject/Status = BugTest680.EquipmentStatus.Running]) {
+      dynamictext t (content: 'Running')
+    }
+  }
+
+  -- Datasource WHERE with the same enum — correctly stored as 'Running' (DB level).
+  listview lvRunning (datasource: database BugTest680.Equip where [Status = BugTest680.EquipmentStatus.Running]) {
+    dynamictext lt (Attribute: Name)
+  }
+}
+
+-- ALTER uses the same serializer — enum literal preserved here too.
+alter page BugTest680.Dashboard {
+  set Visible = [$currentObject/Status = BugTest680.EquipmentStatus.Stopped] on pillRunning;
+}
+
+describe page BugTest680.Dashboard;

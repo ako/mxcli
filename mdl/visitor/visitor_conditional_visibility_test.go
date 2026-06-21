@@ -71,3 +71,20 @@ func findWidgetV3(widgets []*ast.WidgetV3, name string) *ast.WidgetV3 {
 	}
 	return nil
 }
+
+// Regression: a qualified enum value in a conditional-visibility expression must
+// be preserved as the qualified literal (Module.Enum.Value), NOT stringified to
+// 'Value' like an XPath datasource constraint — that produced CE0117 in v0.13.0.
+func TestConditionalVisibility_EnumLiteralPreserved(t *testing.T) {
+	input := "CREATE PAGE M.P (Title: 'P') { CONTAINER ctn (Visible: [$currentObject/Status = MES.EquipmentStatus.Running]) { DYNAMICTEXT t (Content: 'x') } };"
+	prog, errs := Build(input)
+	if len(errs) > 0 {
+		t.Fatalf("parse errors: %v", errs)
+	}
+	ctn := findWidgetV3(prog.Statements[0].(*ast.CreatePageStmtV3).Widgets, "ctn")
+	got, _ := ctn.Properties["VisibleIf"].(string)
+	want := "$currentObject/Status = MES.EquipmentStatus.Running"
+	if got != want {
+		t.Errorf("VisibleIf = %q, want %q", got, want)
+	}
+}

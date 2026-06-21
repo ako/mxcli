@@ -1172,8 +1172,15 @@ func conditionalExprToString(expr ast.Expression) string {
 			args = append(args, conditionalExprToString(arg))
 		}
 		return e.Name + "(" + strings.Join(args, ", ") + ")"
+	case *ast.QualifiedNameExpr:
+		// Enum value (Module.Enum.Value) in a client visibility/editability
+		// expression: keep the QUALIFIED literal. Unlike an XPath datasource
+		// constraint (evaluated at the database level, where enums are strings),
+		// a client expression compares to the qualified enum value, not 'Value' —
+		// stringifying it produces CE0117 "Error(s) in expression" (#627 regression).
+		return e.QualifiedName.String()
 	default:
-		// Literals, $variables, enum qualified names — same as XPath rendering.
+		// Literals, $variables — same as XPath rendering.
 		return xpathExprToString(expr)
 	}
 }
