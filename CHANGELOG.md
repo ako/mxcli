@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-06-21
+
+Headline: **JavaScript actions, clickable containers, and the v0.13.0 enum-visibility regression fixed.** This release adds `CREATE JAVASCRIPT ACTION` authoring and clickable-container support, a new `check` heuristic for `System.owner` XPath constraints, and fixes a v0.13.0 regression that mangled enum literals in conditional-visibility expressions (a release blocker for status-pill authoring).
+
+### Added
+
+- **`CREATE` / `DROP JAVASCRIPT ACTION`** — author JavaScript actions in MDL, mirroring `CREATE JAVA ACTION`, on both engines:
+
+  ```sql
+  create [or modify] javascript action Mod.Name(P: Type not null)
+    returns Type
+    [exposed as 'caption' in 'category']
+    [platform Web|Native|Hybrid|All]   -- Web default
+  as $$ <javascript> $$;
+  drop javascript action Mod.Name;
+  ```
+
+  Each create writes the `JavaScriptActions$JavaScriptAction` unit plus `javascriptsource/<Module>/actions/<Name>.js` (BEGIN/END USER CODE markers), and the action is callable from nanoflows via `CALL JAVASCRIPT ACTION`. A JS action's BSON is structurally identical to a Java action but with `JavaScriptActions$` `$Type` names and a `Platform` field; the modelsdk engine encodes through the working Java gen path then rewrites the `$Type`s and injects `Platform`, so there's no generated-code divergence. `DESCRIBE` emits re-executable MDL. Verified end-to-end under both engines (`mx check` = 0). Ships with a synced user skill and a docs-site reference page.
+- **Clickable `CONTAINER` — `OnClick:` / `Action:`** (#603) — a container's on-click action can now be set (`container c (OnClick: microflow Mod.Foo) { … }`, or the `Action:` alias), wired through both engines with a clean `DESCRIBE` roundtrip. Previously `OnClick:`/`Click:` errored in the parser and the one form that parsed (`Action:`) was silently dropped — the container always serialized `Forms$NoAction`. Non-clickable containers are unchanged (still `NoAction`).
+- **`check --references` flags `System.owner` XPath refs on entities that don't store owner** (#641) — a retrieve/datasource constraint referencing `System.owner` / `changedBy` / `changedDate` / `createdDate` on an entity that doesn't store that member (which Studio Pro rejects with CE0161) is now caught at `mxcli check` time, with the exact `alter entity X add attribute owner: autoowner` fix hint. Fires against existing project entities (associations traversed via `/` are excluded, so a related entity's owner isn't false-flagged).
+
+### Fixed
+
+- **Enum literal in a conditional `Visible:` / `Editable:` expression (v0.13.0 regression)** (#677) — `visible: [$currentObject/Status = Mod.Status.Running]` was mis-encoded as a string (`… = 'Running'`), failing MxBuild with CE0117 "Error(s) in expression" on both engines; re-running page generators on v0.13.0 broke every enum-based status pill (pages written by ≤0.12 retained the working enum literal). The qualified enum literal is now preserved for client visibility/editability expressions (CREATE and ALTER). The datasource `where` path is unchanged — database-level enums still correctly stringify to `'Value'`.
+- **Bare `[%token%]` inside a bracketed XPath constraint** (#641) — `where [DueDate < [%CurrentDateTime%]]` (and `[System.owner = [%CurrentUser%]]`) was stored unquoted and rejected by Studio Pro with CE0161; the inline-bracket path carried the constraint's raw source text verbatim, so the token never got the required quoting. Bare tokens are now requoted to `'[%…%]'` across microflow retrieves and page datasources (single- and multi-predicate), leaving already-quoted tokens untouched. The bracket-less expression form (`where DueDate < [%CurrentDateTime%]`) already worked.
+- **Lint rule-ID collision (`MDL-WIDGET03`/`MDL-WIDGET04`)** — v0.13.0 shipped two pairs of widget checks sharing IDs: the #643 ComboBox-datasource checks collided with #673 (dynamictext inline style) and #650 (orphaned `{N}` placeholder). The #643 checks are renumbered to `MDL-WIDGET05` (datasource-typed property authored by name) and `MDL-WIDGET06` (recognized-but-unmapped property warning); the earlier-shipped 03/04 keep their IDs. Update any lint suppressions that reference the #643 rules.
+
 ## [0.13.0] - 2026-06-20
 
 Headline: **the roundtrip codec engine is now the default.** Reads and writes route through the new `modelsdk` codec engine — a Go-native, roundtrip-safe metamodel codec spanning 53 domains — replacing the legacy `sdk/mpr` write path. Legacy remains available as an explicit `--engine legacy` (or `MXCLI_ENGINE=legacy`) fallback for the few constructs the codec can't yet reproduce (e.g. SOAP), and refuses an op rather than dropping data where it can't. This release also lands an experimental **MCP/PED backend** for authoring against a running Studio Pro.
