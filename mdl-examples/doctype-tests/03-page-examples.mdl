@@ -899,6 +899,51 @@ create page PgTest.P013c_Container_Empty
   container spacer1 (class: 'spacing-outer-bottom-large')
 }
 
+/**
+ * Clickable container (the Container "On click" event, Issue #603).
+ *
+ * A container is made clickable with OnClick: (the canonical Action: keyword is
+ * an exact synonym). Any client action works — microflow, nanoflow, show_page,
+ * save_changes, etc. A container WITHOUT OnClick:/Action: is non-clickable, as
+ * in Studio Pro.
+ */
+create page PgTest.P013d_Container_Clickable
+(
+  title: 'Clickable Containers',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'p013d_container_clickable',
+  folder: 'Container'
+)
+{
+  layoutgrid clickGrid {
+    row row1 {
+      column col1 (desktopwidth: 6) {
+        -- OnClick: calls a microflow when the whole card is clicked.
+        container mfCard (onclick: microflow PgTest.Open_P002_Dynamic_Text_Page, class: 'card clickable') {
+          dynamictext mfCardTitle (content: 'Open via microflow', rendermode: H4)
+          dynamictext mfCardText (content: 'Click anywhere on this card')
+        }
+      }
+      column col2 (desktopwidth: 6) {
+        -- Action: is the exact synonym of OnClick:; here it opens a page.
+        container pageCard (action: show_page PgTest.P002_Dynamic_Text_Page, class: 'card clickable') {
+          dynamictext pageCardTitle (content: 'Open via page', rendermode: H4)
+          dynamictext pageCardText (content: 'Click to navigate to another page')
+        }
+      }
+    }
+    row row2 {
+      column col3 (desktopwidth: 12) {
+        -- No OnClick:/Action: — a plain, non-clickable container for contrast.
+        container plainCard (class: 'card') {
+          dynamictext plainCardTitle (content: 'Not clickable', rendermode: H4)
+          dynamictext plainCardText (content: 'This container has no On click action')
+        }
+      }
+    }
+  }
+}
+
 -- MARK: DataView
 
 -- ============================================================================

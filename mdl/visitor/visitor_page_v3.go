@@ -447,8 +447,8 @@ func parseWidgetPropertyV3(ctx parser.IWidgetPropertyV3Context, widget *ast.Widg
 		return
 	}
 
-	// Action: ...
-	if propCtx.ACTION() != nil {
+	// Action: ... (also accepts the OnClick: alias — e.g. clickable CONTAINER, issue #603)
+	if propCtx.ACTION() != nil || propCtx.ONCLICK() != nil {
 		if actCtx := propCtx.ActionExprV3(); actCtx != nil {
 			widget.Properties["Action"] = buildActionV3(actCtx)
 		}

@@ -203,6 +203,16 @@ func (pb *pageBuilder) buildContainerV3(w *ast.WidgetV3) (*pages.Container, erro
 		container.RenderMode = pages.ContainerRenderMode(rm)
 	}
 
+	// Handle Action / OnClick property — a Container is clickable in Mendix via
+	// its OnClickAction (Forms$DivContainer.onClickAction). See issue #603.
+	if action := w.GetAction(); action != nil {
+		clientAction, err := pb.buildClientActionV3(action)
+		if err != nil {
+			return nil, err
+		}
+		container.OnClickAction = clientAction
+	}
+
 	// Build child widgets
 	for _, child := range w.Children {
 		widget, err := pb.buildWidgetV3(child)

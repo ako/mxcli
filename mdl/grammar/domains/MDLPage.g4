@@ -274,6 +274,7 @@ widgetPropertyV3
     | ATTRIBUTE COLON attributePathV3                 // Attribute: Name | Product/Category
     | BINDS COLON attributePathV3                     // Binds: (deprecated, use Attribute:)
     | ACTION COLON actionExprV3                       // Action: SAVE_CHANGES | SHOW_PAGE ...
+    | ONCLICK COLON actionExprV3                      // OnClick: MICROFLOW ... (alias of Action: — e.g. clickable CONTAINER, issue #603)
     | CAPTION COLON stringExprV3                      // Caption: 'Save'
     | LABEL COLON STRING_LITERAL                      // Label: 'Name'
     | ATTR COLON attributePathV3                      // Attr: (deprecated, use Attribute:)

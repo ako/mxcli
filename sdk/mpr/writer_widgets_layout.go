@@ -18,7 +18,7 @@ func serializeContainer(c *pages.Container) bson.D {
 		{Key: "ConditionalVisibilitySettings", Value: nil},
 		{Key: "Name", Value: c.Name},
 		{Key: "NativeAccessibilitySettings", Value: nil},
-		{Key: "OnClickAction", Value: serializeClientAction(nil)},
+		{Key: "OnClickAction", Value: serializeClientAction(c.OnClickAction)},
 		{Key: "RenderMode", Value: "Div"},
 		{Key: "ScreenReaderHidden", Value: false},
 		{Key: "TabIndex", Value: int64(0)},

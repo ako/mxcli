@@ -884,6 +884,7 @@ MDL uses explicit property declarations for pages:
 | Variable binding | `datasource: $Var` | `dataview dv (datasource: $Product) { ... }` |
 | Action binding | `action: type` | `actionbutton btn (caption: 'Save', action: save_changes)` |
 | Microflow action | `action: microflow Name(Param: val)` | `action: microflow Mod.ACT_Process(Order: $Order)` |
+| Clickable container | `onclick: action` (alias of `action:`) | `container card (onclick: microflow Mod.ACT_Open) { ... }` |
 | Database source | `datasource: database entity` | `datagrid dg (datasource: database Module.Entity)` |
 | Selection binding | `datasource: selection widget` | `dataview dv (datasource: selection galleryList)` |
 | CSS class | `class: 'classes'` | `container c (class: 'card mx-spacing-top-large')` |

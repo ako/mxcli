@@ -189,6 +189,9 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 	case "Forms$DivContainer", "Pages$DivContainer":
 		header := fmt.Sprintf("container %s", mdlIdent(w.Name))
 		props := appendAppearanceProps(nil, w)
+		if w.Action != "" {
+			props = append(props, fmt.Sprintf("Action: %s", w.Action))
+		}
 		if len(w.Children) > 0 {
 			formatWidgetProps(ctx.Output, prefix, header, props, " {\n")
 			for _, child := range w.Children {

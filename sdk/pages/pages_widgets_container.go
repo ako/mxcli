@@ -32,8 +32,9 @@ type LayoutGridColumn struct {
 // Container represents a generic container widget.
 type Container struct {
 	BaseWidget
-	Widgets    []Widget            `json:"widgets,omitempty"`
-	RenderMode ContainerRenderMode `json:"renderMode,omitempty"`
+	Widgets       []Widget            `json:"widgets,omitempty"`
+	RenderMode    ContainerRenderMode `json:"renderMode,omitempty"`
+	OnClickAction ClientAction        `json:"onClickAction,omitempty"` // optional "On click" action (clickable container)
 }
 
 // ContainerRenderMode represents how a container is rendered.

@@ -191,7 +191,11 @@ func widgetToGen(w pages.Widget) (element.Element, error) {
 		applyWidgetBase(g, &x.BaseWidget)
 		g.SetRenderMode(orDefaultStr(string(x.RenderMode), "Div"))
 		g.SetScreenReaderHidden(false)
-		g.SetOnClickAction(noActionGen())
+		onClick, err := clientActionToGen(x.OnClickAction)
+		if err != nil {
+			return nil, err
+		}
+		g.SetOnClickAction(onClick)
 		for _, c := range x.Widgets {
 			cg, err := widgetToGen(c)
 			if err != nil {

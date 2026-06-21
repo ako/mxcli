@@ -148,6 +148,82 @@ func TestOutputWidgetMDLV3_TabControlEmitsTabPageStructure(t *testing.T) {
 	}
 }
 
+// Issue #603: a DivContainer is clickable via its OnClickAction. DESCRIBE must
+// surface that action so the emitted MDL re-parses into the same clickable
+// container (roundtrip), and must not invent an Action for a non-clickable one.
+func TestParseRawWidget_DivContainerExtractsOnClickAction(t *testing.T) {
+	ctx, _ := newMockCtx(t)
+
+	raw := map[string]any{
+		"$Type": "Forms$DivContainer",
+		"Name":  "box",
+		"OnClickAction": map[string]any{
+			"$Type": "Forms$MicroflowAction",
+			"MicroflowSettings": map[string]any{
+				"$Type":     "Forms$MicroflowSettings",
+				"Microflow": "MyFirstModule.MyFirstLogic",
+			},
+		},
+		"Widgets": []any{
+			map[string]any{"$Type": "Forms$DynamicText", "Name": "t"},
+		},
+	}
+
+	got := parseRawWidget(ctx, raw)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 widget, got %d", len(got))
+	}
+	if want := "microflow MyFirstModule.MyFirstLogic"; got[0].Action != want {
+		t.Errorf("Action: got %q, want %q", got[0].Action, want)
+	}
+	if len(got[0].Children) != 1 || got[0].Children[0].Name != "t" {
+		t.Errorf("children not preserved: %+v", got[0].Children)
+	}
+}
+
+func TestParseRawWidget_DivContainerNoActionLeavesActionEmpty(t *testing.T) {
+	ctx, _ := newMockCtx(t)
+
+	raw := map[string]any{
+		"$Type":         "Forms$DivContainer",
+		"Name":          "box",
+		"OnClickAction": map[string]any{"$Type": "Forms$NoAction"},
+	}
+
+	got := parseRawWidget(ctx, raw)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 widget, got %d", len(got))
+	}
+	if got[0].Action != "" {
+		t.Errorf("a no-op OnClickAction must not emit an Action, got %q", got[0].Action)
+	}
+}
+
+func TestOutputWidgetMDLV3_DivContainerEmitsAction(t *testing.T) {
+	var buf bytes.Buffer
+	ctx := &ExecContext{Output: &buf}
+
+	box := rawWidget{
+		Type:   "Forms$DivContainer",
+		Name:   "box",
+		Action: "microflow MyFirstModule.MyFirstLogic",
+		Children: []rawWidget{
+			{Type: "Forms$DynamicText", Name: "t"},
+		},
+	}
+	outputWidgetMDLV3(ctx, box, 0)
+
+	out := buf.String()
+	for _, want := range []string{
+		"container box",
+		"Action: microflow MyFirstModule.MyFirstLogic",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\nfull output:\n%s", want, out)
+		}
+	}
+}
+
 func TestOutputWidgetMDLV3_ScrollContainerEmitsHeader(t *testing.T) {
 	var buf bytes.Buffer
 	ctx := &ExecContext{Output: &buf}

@@ -6,7 +6,23 @@ import (
 	"strings"
 
 	"github.com/mendixlabs/mxcli/model"
+
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
+
+// asActionMap normalizes a raw BSON sub-document (a client action) into a
+// map[string]any, accepting either the already-converted map form or the
+// raw primitive.M produced by the mongo driver. Returns nil if v is neither.
+func asActionMap(v any) map[string]any {
+	switch m := v.(type) {
+	case map[string]any:
+		return m
+	case primitive.M:
+		return map[string]any(m)
+	default:
+		return nil
+	}
+}
 
 // parseRawWidget parses a raw widget map into rawWidget structs.
 // extractConditionalSettings extracts ConditionalVisibility/Editability from raw BSON.
@@ -127,6 +143,13 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 				widget.Style = style
 			}
 			widget.DesignProperties = extractDesignProperties(appearance)
+		}
+		// Extract the container's "On click" action (Forms$DivContainer.OnClickAction).
+		// GroupBox has no click action, so only DivContainer is inspected (issue #603).
+		if typeName == "Forms$DivContainer" || typeName == "Pages$DivContainer" {
+			if onClick := asActionMap(w["OnClickAction"]); onClick != nil {
+				widget.Action = extractButtonAction(ctx, map[string]any{"Action": onClick})
+			}
 		}
 		// Extract GroupBox-specific properties
 		if typeName == "Forms$GroupBox" || typeName == "Pages$GroupBox" {

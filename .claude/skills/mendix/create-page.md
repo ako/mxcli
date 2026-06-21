@@ -676,6 +676,19 @@ customcontainer outer1 (class: 'section') {
 }
 ```
 
+**Clickable container (On click action).** A container can trigger an action when
+clicked — use `OnClick:` (or the equivalent `Action:` keyword) with any client
+action (`microflow`, `nanoflow`, `show_page`, `save_changes`, …):
+
+```sql
+container card1 (OnClick: microflow MyModule.ACT_OpenDetails, class: 'clickable-card') {
+  dynamictext title (content: 'Open details')
+}
+```
+
+This maps to the Mendix Container's **On click** event (`Forms$DivContainer.OnClickAction`).
+A container with no `OnClick:`/`Action:` is non-clickable (a no-op action), exactly as in Studio Pro.
+
 ### FOOTER Widget
 
 Container for form action buttons:

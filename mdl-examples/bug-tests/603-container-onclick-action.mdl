@@ -1,0 +1,41 @@
+-- ============================================================================
+-- Issue #603 — the click action on a CONTAINER could not be expressed in MDL.
+--
+-- A Mendix Container (Forms$DivContainer) is clickable via its OnClickAction
+-- (a real, required metamodel property introduced in 8.3.0). Before the fix:
+--   * `OnClick:`/`Click:` errored in the parser ("mismatched input MICROFLOW")
+--     — only the `Action:` keyword accepted an action expression value, and
+--   * even `Action:` was silently dropped by buildContainerV3 (the container's
+--     OnClickAction was always serialized as Forms$NoAction).
+--
+-- Fix: CONTAINER now accepts an action via the `OnClick:` alias (and `Action:`),
+-- builds it through the shared client-action machinery, and serializes it as the
+-- container's OnClickAction. DESCRIBE re-emits `Action: <action>` so the
+-- roundtrip stays clean.
+--
+-- POSITIVE TEST — this script is EXPECTED to PASS `mxcli check`.
+--
+-- A Layout is specified so the container actually lands in the page content;
+-- without one a page has no FormCall to host top-level widgets.
+-- ============================================================================
+
+create page MyFirstModule.ClickableCard (
+  Title: 'Clickable card',
+  Layout: Atlas_Core.Atlas_Default
+) {
+  -- OnClick: alias — reads as English, matches Studio Pro's "On click" event.
+  container card (OnClick: MICROFLOW MyFirstModule.ACT_OpenDetails, Class: 'clickable-card') {
+    dynamictext cardText (Content: 'Open details')
+  }
+
+  -- Action: keyword — the canonical form; both build the same OnClickAction.
+  container nfCard (Action: NANOFLOW MyFirstModule.NF_Refresh, Class: 'clickable-card') {
+    dynamictext nfText (Content: 'Refresh')
+  }
+
+  -- A plain (non-clickable) container is still valid: its OnClickAction stays
+  -- a no-op (Forms$NoAction).
+  container plain (Class: 'plain-card') {
+    dynamictext plainText (Content: 'Not clickable')
+  }
+}
