@@ -109,28 +109,31 @@ func (b *Builder) buildWidgetDefinitions() error {
 			return fmt.Errorf("scan widgets directory: %w", err)
 		}
 		for _, mpkPath := range matches {
-			mpkDef, err := mpk.ParseMPK(mpkPath)
+			mpkDefs, err := mpk.ParseMPKAll(mpkPath)
 			if err != nil {
 				continue
 			}
-			mdlName := strings.ToUpper(lastSegment(mpkDef.ID))
-			defPath := filepath.Join(defsDir, strings.ToLower(mdlName)+".def.json")
-			defFields := loadDefFields(defPath)
-			kind := "custom"
-			if mpkDef.IsPluggable {
-				kind = "pluggable"
+			// A single .mpk can bundle many widgets (e.g. Charts.mpk).
+			for _, mpkDef := range mpkDefs {
+				mdlName := strings.ToUpper(lastSegment(mpkDef.ID))
+				defPath := filepath.Join(defsDir, strings.ToLower(mdlName)+".def.json")
+				defFields := loadDefFields(defPath)
+				kind := "custom"
+				if mpkDef.IsPluggable {
+					kind = "pluggable"
+				}
+				if err := insertWidgetDef(
+					defStmt, propStmt,
+					mpkDef.ID, mdlName, mpkDef.Name, kind, mpkDef.Version,
+					relPath(projectDir, mpkPath), relPath(projectDir, defPath),
+					mpkProperties(mpkDef), defFields.ChildSlots, defFields.ObjectLists,
+					projectID, snapshotID,
+				); err != nil {
+					return err
+				}
+				seen[mpkDef.ID] = true
+				count++
 			}
-			if err := insertWidgetDef(
-				defStmt, propStmt,
-				mpkDef.ID, mdlName, mpkDef.Name, kind, mpkDef.Version,
-				relPath(projectDir, mpkPath), relPath(projectDir, defPath),
-				mpkProperties(mpkDef), defFields.ChildSlots, defFields.ObjectLists,
-				projectID, snapshotID,
-			); err != nil {
-				return err
-			}
-			seen[mpkDef.ID] = true
-			count++
 		}
 	}
 

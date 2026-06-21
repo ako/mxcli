@@ -70,61 +70,65 @@ func RefreshWidgetDefinitions(projectPath string, force bool, output io.Writer) 
 	builtinRegistry, _ := NewWidgetRegistry()
 
 	for _, mpkPath := range matches {
-		mpkDef, err := mpk.ParseMPK(mpkPath)
+		mpkDefs, err := mpk.ParseMPKAll(mpkPath)
 		if err != nil {
 			log.Printf("warning: skipping %s: %v", filepath.Base(mpkPath), err)
 			stats.Skipped++
 			continue
 		}
 
-		mdlName := DeriveMDLName(mpkDef.ID)
-		filename := strings.ToLower(mdlName) + ".def.json"
-		outPath := filepath.Join(outputDir, filename)
+		// A single .mpk can bundle many widgets (e.g. Charts.mpk); emit a def
+		// for each, not just the first.
+		for _, mpkDef := range mpkDefs {
+			mdlName := DeriveMDLName(mpkDef.ID)
+			filename := strings.ToLower(mdlName) + ".def.json"
+			outPath := filepath.Join(outputDir, filename)
 
-		if builtinRegistry != nil {
-			if _, ok := builtinRegistry.GetByWidgetID(mpkDef.ID); ok {
+			if builtinRegistry != nil {
+				if _, ok := builtinRegistry.GetByWidgetID(mpkDef.ID); ok {
+					stats.Skipped++
+					continue
+				}
+			}
+
+			defJSON := GenerateDefJSON(mpkDef, mdlName)
+			freshData, err := json.MarshalIndent(defJSON, "", "  ")
+			if err != nil {
+				log.Printf("warning: skipping %s: %v", mpkDef.ID, err)
 				stats.Skipped++
 				continue
 			}
-		}
+			freshData = append(freshData, '\n')
 
-		defJSON := GenerateDefJSON(mpkDef, mdlName)
-		freshData, err := json.MarshalIndent(defJSON, "", "  ")
-		if err != nil {
-			log.Printf("warning: skipping %s: %v", mpkDef.ID, err)
-			stats.Skipped++
-			continue
-		}
-		freshData = append(freshData, '\n')
-
-		existingData, existsErr := os.ReadFile(outPath)
-		switch {
-		case existsErr != nil:
-			stats.Extracted++
-		case bytes.Equal(existingData, freshData):
-			if force {
+			existingData, existsErr := os.ReadFile(outPath)
+			switch {
+			case existsErr != nil:
+				stats.Extracted++
+			case bytes.Equal(existingData, freshData):
+				if force {
+					stats.Refreshed++
+				} else {
+					stats.UpToDate++
+					continue
+				}
+			default:
 				stats.Refreshed++
-			} else {
-				stats.UpToDate++
-				continue
 			}
-		default:
-			stats.Refreshed++
-		}
 
-		if err := os.WriteFile(outPath, freshData, 0644); err != nil {
-			return stats, fmt.Errorf("failed to write %s: %w", outPath, err)
-		}
-		if output != nil {
-			kind := "custom"
-			if mpkDef.IsPluggable {
-				kind = "pluggable"
+			if err := os.WriteFile(outPath, freshData, 0644); err != nil {
+				return stats, fmt.Errorf("failed to write %s: %w", outPath, err)
 			}
-			marker := "+"
-			if existsErr == nil {
-				marker = "~"
+			if output != nil {
+				kind := "custom"
+				if mpkDef.IsPluggable {
+					kind = "pluggable"
+				}
+				marker := "+"
+				if existsErr == nil {
+					marker = "~"
+				}
+				fmt.Fprintf(output, "  %s %-12s %-20s %s\n", marker, kind, mdlName, mpkDef.ID)
 			}
-			fmt.Fprintf(output, "  %s %-12s %-20s %s\n", marker, kind, mdlName, mpkDef.ID)
 		}
 	}
 

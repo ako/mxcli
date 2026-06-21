@@ -1,0 +1,113 @@
+-- ============================================================================
+-- Chart widget examples (Charts.mpk — issue #679)
+-- ============================================================================
+--
+-- Demonstrates authoring the chart widgets bundled in Charts.mpk. Before #679,
+-- only the FIRST widget in a bundled .mpk was registered (Charts.mpk lists
+-- AreaChart first), so `exec` of BarChart / ColumnChart / PieChart / LineChart
+-- failed with "no definition for widget … (run 'mxcli widget init')". The
+-- multi-widget .mpk fix registers a def for every widget in the package, so all
+-- chart types are now recognized and authorable.
+--
+-- PREREQUISITE: the project must have Charts.mpk installed (widgets/Charts.mpk)
+-- and current widget defs. `mxcli exec` regenerates defs automatically; run
+-- `mxcli widget init -p app.mpr` if authoring by hand.
+--
+-- KNOWN LIMITATIONS (tracked in #679 — these are NOT fixed here):
+--   * Per-series DATA BINDING cannot be expressed yet. A series' datasource is
+--     a custom-named datasource-typed property (`staticDataSource` /
+--     `dynamicDataSource`), which the grammar can't carry as a datasource
+--     expression (same class as #643). So these examples set only PRIMITIVE
+--     series sub-properties (DataSet / StaticName / Interpolation) — they show
+--     the widget is authorable, not a runtime-complete chart.
+--   * Only charts whose object-list container is `series` (→ SERIES, a grammar
+--     keyword) can take child data items: BarChart, ColumnChart, AreaChart.
+--     LineChart's container is `lines` (→ LINE) and PieChart has none — LINE is
+--     not a grammar object-list keyword yet, so those two are now REGISTERED by
+--     the #679 fix but their data items aren't authorable. Examples below cover
+--     the SERIES charts; Line/Pie are noted, not generated.
+--   * Charts may still require a manual "Update widget" in Studio Pro if the
+--     installed Charts version differs from mxcli's embedded baseline (the
+--     #600 version-drift / CE0463 class).
+--
+-- Mirrors the AreaChart smoke test in 32-pluggable-widget-object-lists-v010.mdl
+-- (OL05), extended across the SERIES chart types the #679 fix unlocks.
+
+create module ChartExamples;
+
+create persistent entity ChartExamples.Sales (
+  Region: string(100),
+  Quarter: string(20),
+  Amount: decimal
+);
+
+-- ----------------------------------------------------------------------------
+-- BarChart — previously unregistered (WidgetFiles[1+] in Charts.mpk)
+-- ----------------------------------------------------------------------------
+create page ChartExamples.P_Bar (
+  Title: 'Sales by Region (Bar)',
+  Layout: Atlas_Core.Atlas_Default,
+  Folder: 'Charts'
+) {
+  layoutgrid lg1 {
+    row r1 {
+      column c1 (DesktopWidth: 12) {
+        pluggablewidget 'com.mendix.widget.web.barchart.BarChart' barChart1 {
+          series sNorth (DataSet: 'static', StaticName: 'North')
+          series sSouth (DataSet: 'static', StaticName: 'South')
+        }
+      }
+    }
+  }
+}
+
+-- ----------------------------------------------------------------------------
+-- ColumnChart
+-- ----------------------------------------------------------------------------
+create page ChartExamples.P_Column (
+  Title: 'Sales by Region (Column)',
+  Layout: Atlas_Core.Atlas_Default,
+  Folder: 'Charts'
+) {
+  layoutgrid lg1 {
+    row r1 {
+      column c1 (DesktopWidth: 12) {
+        pluggablewidget 'com.mendix.widget.web.columnchart.ColumnChart' columnChart1 {
+          series sQ1 (DataSet: 'static', StaticName: 'Q1')
+          series sQ2 (DataSet: 'static', StaticName: 'Q2')
+        }
+      }
+    }
+  }
+}
+
+-- ----------------------------------------------------------------------------
+-- LineChart / PieChart — registered by #679 but data items NOT yet authorable.
+-- LineChart's data container is `lines` (→ LINE keyword, which the grammar does
+-- not expose); PieChart takes a single datasource (a custom-named datasource
+-- property the grammar can't bind yet — #643 class). Both `exec` cleanly only as
+-- empty widgets, which isn't a useful chart, so they are documented here rather
+-- than generated. Author them in Studio Pro until the grammar work lands.
+--
+--   pluggablewidget 'com.mendix.widget.web.linechart.LineChart' lc { line l1 (...) }   -- LINE keyword: pending
+--   pluggablewidget 'com.mendix.widget.web.piechart.PieChart'  pc (... datasource ...) -- series datasource: pending
+
+-- ----------------------------------------------------------------------------
+-- AreaChart — the one chart that registered before #679 (WidgetFiles[0])
+-- ----------------------------------------------------------------------------
+create page ChartExamples.P_Area (
+  Title: 'Cumulative Sales (Area)',
+  Layout: Atlas_Core.Atlas_Default,
+  Folder: 'Charts'
+) {
+  layoutgrid lg1 {
+    row r1 {
+      column c1 (DesktopWidth: 12) {
+        pluggablewidget 'com.mendix.widget.web.areachart.AreaChart' areaChart1 {
+          series sNorth (DataSet: 'static', StaticName: 'North', Interpolation: 'linear')
+          series sSouth (DataSet: 'static', StaticName: 'South', Interpolation: 'smooth')
+        }
+      }
+    }
+  }
+}

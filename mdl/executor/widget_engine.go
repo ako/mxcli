@@ -39,7 +39,11 @@ const defaultSlotContainer = "template"
 //	    TextTemplate nulling, #574)
 //	4 — v0.12.0: DataGrid column `width` ← `ColumnWidth` alias (dgDyn CE0463
 //	    regression from the keyword-path consolidation)
-const WidgetDefGeneratorVersion = 4
+//	5 — bundled multi-widget .mpk support: a def is now emitted for every
+//	    widget in a package (e.g. Charts.mpk → BarChart/PieChart/…), not just
+//	    the first. Bump forces existing projects to regenerate and pick up the
+//	    previously-missing widgets (#679).
+const WidgetDefGeneratorVersion = 5
 
 // WidgetDefinition describes how to construct a pluggable widget from MDL syntax.
 // Loaded from embedded JSON definition files (*.def.json).

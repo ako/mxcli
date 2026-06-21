@@ -97,8 +97,8 @@ func runWidgetExtract(cmd *cobra.Command, args []string) error {
 	outputDir, _ := cmd.Flags().GetString("output")
 	mdlNameOverride, _ := cmd.Flags().GetString("mdl-name")
 
-	// Parse .mpk
-	mpkDef, err := mpk.ParseMPK(mpkPath)
+	// Parse .mpk — a single package can bundle many widgets (e.g. Charts.mpk).
+	mpkDefs, err := mpk.ParseMPKAll(mpkPath)
 	if err != nil {
 		return fmt.Errorf("failed to parse .mpk: %w", err)
 	}
@@ -111,34 +111,37 @@ func runWidgetExtract(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	// Determine MDL name
-	mdlName := mdlNameOverride
-	if mdlName == "" {
-		mdlName = executor.DeriveMDLName(mpkDef.ID)
+	// The --mdl-name override only makes sense for a single-widget package.
+	if mdlNameOverride != "" && len(mpkDefs) > 1 {
+		return fmt.Errorf("--mdl-name cannot be used with a bundled .mpk that contains %d widgets", len(mpkDefs))
 	}
 
-	// Generate .def.json
-	defJSON := executor.GenerateDefJSON(mpkDef, mdlName)
+	for _, mpkDef := range mpkDefs {
+		mdlName := mdlNameOverride
+		if mdlName == "" {
+			mdlName = executor.DeriveMDLName(mpkDef.ID)
+		}
 
-	// Determine output filename
-	filename := strings.ToLower(mdlName) + ".def.json"
-	outPath := filepath.Join(outputDir, filename)
+		defJSON := executor.GenerateDefJSON(mpkDef, mdlName)
+		filename := strings.ToLower(mdlName) + ".def.json"
+		outPath := filepath.Join(outputDir, filename)
 
-	data, err := json.MarshalIndent(defJSON, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal definition: %w", err)
+		data, err := json.MarshalIndent(defJSON, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal definition for %s: %w", mpkDef.ID, err)
+		}
+		data = append(data, '\n')
+
+		if err := os.WriteFile(outPath, data, 0644); err != nil {
+			return fmt.Errorf("failed to write %s: %w", outPath, err)
+		}
+
+		fmt.Printf("Extracted widget definition:\n")
+		fmt.Printf("  Widget ID:  %s\n", mpkDef.ID)
+		fmt.Printf("  MDL name:   %s\n", mdlName)
+		fmt.Printf("  Properties: %d\n", len(mpkDef.Properties))
+		fmt.Printf("  Output:     %s\n", outPath)
 	}
-	data = append(data, '\n')
-
-	if err := os.WriteFile(outPath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write %s: %w", outPath, err)
-	}
-
-	fmt.Printf("Extracted widget definition:\n")
-	fmt.Printf("  Widget ID:  %s\n", mpkDef.ID)
-	fmt.Printf("  MDL name:   %s\n", mdlName)
-	fmt.Printf("  Properties: %d\n", len(mpkDef.Properties))
-	fmt.Printf("  Output:     %s\n", outPath)
 
 	return nil
 }

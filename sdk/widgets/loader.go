@@ -918,7 +918,9 @@ func augmentFromMPK(tmpl *WidgetTemplate, widgetID string, projectPath string) *
 		return tmpl
 	}
 
-	def, err := mpk.ParseMPK(mpkPath)
+	// Select the specific widget within the .mpk — a bundled package (e.g.
+	// Charts.mpk) holds many, and ParseMPK would return only the first.
+	def, err := mpk.ParseMPKWidget(mpkPath, widgetID)
 	if err != nil {
 		return tmpl
 	}
