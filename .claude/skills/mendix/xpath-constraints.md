@@ -129,19 +129,15 @@ Supported functions: `contains()`, `starts-with()`, `not()`, `true()`, `false()`
 ### Tokens
 
 Mendix tokens provide runtime values. In an XPath constraint a token used as a
-value **must be quoted** as `'[%Token%]'` — always write the quoted form:
+value is stored quoted as `'[%Token%]'` (Studio Pro requires this, or it reports
+CE0161). mxcli quotes it for you whether you write the bare or quoted form:
 
 ```mdl
--- Quoted token (correct in every context: retrieve, datasource, grant)
+-- Both store identically as '[%CurrentDateTime%]' and pass mx check
+where [OrderDate < [%CurrentDateTime%]]
 where [OrderDate < '[%CurrentDateTime%]']
 where [System.owner = '[%CurrentUser%]']
 ```
-
-> **Always quote tokens inside a bracketed constraint.** The bare form inside
-> brackets — `where [OrderDate < [%CurrentDateTime%]]` — is currently stored
-> unquoted and fails Studio Pro with CE0161. (The bracket-less form
-> `where DueDate < [%CurrentDateTime%]` does auto-quote, but the quoted-token
-> form above is the reliable one to use everywhere.)
 
 > **Tokens are typed.** `[%CurrentUser%]` is a **User** reference — compare it only
 > to an association to System.User (e.g. `System.owner`), never to a String/other

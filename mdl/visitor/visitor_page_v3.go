@@ -5,6 +5,7 @@ package visitor
 import (
 	"fmt"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -704,7 +705,7 @@ func buildDataSourceV3(ctx parser.IDataSourceExprV3Context) *ast.DataSourceV3 {
 		if dsCtx.WHERE() != nil {
 			xpathConstraints := dsCtx.AllXpathConstraint()
 			if len(xpathConstraints) > 0 {
-				ds.Where = buildXPathString(xpathConstraints, dsCtx.AllAndOrXpath())
+				ds.Where = normalizeXPathTokens(buildXPathString(xpathConstraints, dsCtx.AllAndOrXpath()))
 			} else if expr := dsCtx.Expression(); expr != nil {
 				ds.Where = bracketedXPathFromExpr(buildExpression(expr))
 			}
@@ -978,6 +979,41 @@ func buildParamAssignmentV3(ctx parser.IParamAssignmentV3Context) ast.ParamAssig
 }
 
 // buildXPathString builds a WHERE string from xpath constraints and and/or operators.
+// xpathTokenRe matches a Mendix XPath token like [%CurrentUser%] or
+// [%UserRole_Admin%]. The body is anything but % or ].
+var xpathTokenRe = regexp.MustCompile(`\[%[^%\]]+%\]`)
+
+// normalizeXPathTokens quotes any bare [%Token%] in an XPath constraint string.
+// A token used as a value must be quoted ('[%CurrentDateTime%]') or Studio Pro
+// rejects the constraint with CE0161. The inline bracket form preserved the raw
+// (unquoted) token via the constraint's original source text; this requotes it.
+// Tokens already wrapped in single quotes are left untouched (no double-quoting).
+// Issue #641.
+func normalizeXPathTokens(xpath string) string {
+	locs := xpathTokenRe.FindAllStringIndex(xpath, -1)
+	if locs == nil {
+		return xpath
+	}
+	var b strings.Builder
+	prev := 0
+	for _, loc := range locs {
+		start, end := loc[0], loc[1]
+		b.WriteString(xpath[prev:start])
+		quotedBefore := start > 0 && xpath[start-1] == '\''
+		quotedAfter := end < len(xpath) && xpath[end] == '\''
+		if quotedBefore || quotedAfter {
+			b.WriteString(xpath[start:end])
+		} else {
+			b.WriteByte('\'')
+			b.WriteString(xpath[start:end])
+			b.WriteByte('\'')
+		}
+		prev = end
+	}
+	b.WriteString(xpath[prev:])
+	return b.String()
+}
+
 // bracketedXPathFromExpr converts a datasource WHERE expression (the
 // `where '<xpath>'` / `where <expr>` form, as opposed to inline `where [<xpath>]`)
 // into a bracketed XPath constraint. A bare quoted string is the constraint as a
@@ -988,13 +1024,13 @@ func bracketedXPathFromExpr(built ast.Expression) string {
 	if lit, ok := built.(*ast.LiteralExpr); ok && lit.Kind == ast.LiteralString {
 		if s, ok := lit.Value.(string); ok {
 			s = strings.TrimSpace(s)
-			if strings.HasPrefix(s, "[") && strings.HasSuffix(s, "]") {
-				return s
+			if !strings.HasPrefix(s, "[") || !strings.HasSuffix(s, "]") {
+				s = "[" + s + "]"
 			}
-			return "[" + s + "]"
+			return normalizeXPathTokens(s)
 		}
 	}
-	return "[" + xpathExprToString(built) + "]"
+	return normalizeXPathTokens("[" + xpathExprToString(built) + "]")
 }
 
 func buildXPathString(xpathConstraints []parser.IXpathConstraintContext, andOrOps []parser.IAndOrXpathContext) string {

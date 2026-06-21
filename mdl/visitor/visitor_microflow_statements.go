@@ -1106,7 +1106,7 @@ func buildRetrieveStatement(ctx parser.IRetrieveStatementContext) *ast.RetrieveS
 					andExprs = append(andExprs, buildXPathSourceExpression(xpathExpr))
 					if prc, ok := xpathExpr.(antlr.ParserRuleContext); ok {
 						if source := strings.TrimSpace(extractOriginalText(prc)); source != "" {
-							predicateSources = append(predicateSources, "["+source+"]")
+							predicateSources = append(predicateSources, normalizeXPathTokens("["+source+"]"))
 						}
 					}
 				}
@@ -1378,7 +1378,9 @@ func buildXPathSourceExpression(ctx parser.IXpathExprContext) ast.Expression {
 	expr := buildXPathExpr(ctx)
 	if prc, ok := ctx.(antlr.ParserRuleContext); ok {
 		if source := strings.TrimSpace(extractOriginalText(prc)); source != "" {
-			return &ast.SourceExpr{Expression: expr, Source: source}
+			// Requote any bare [%token%] so the stored constraint passes mx check
+			// (CE0161) — the original source preserves the unquoted form (#641).
+			return &ast.SourceExpr{Expression: expr, Source: normalizeXPathTokens(source)}
 		}
 	}
 	return expr
