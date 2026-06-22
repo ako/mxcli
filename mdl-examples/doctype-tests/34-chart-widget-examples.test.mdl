@@ -1,0 +1,288 @@
+-- ============================================================================
+-- Chart widget examples — TARGET SPEC for full chart authoring (issue #679)
+-- ============================================================================
+--
+-- STATUS: this is a GOAL/SPEC, not a passing example. The `.test.mdl` extension
+-- makes `make check-mdl` skip it (Makefile: "Skips files ending in .test.mdl"),
+-- so the not-yet-implemented syntax below does not break the build. It captures
+-- exactly what "option B" (runtime-complete charts bound to data) must deliver.
+--
+-- WHAT WORKS TODAY (after the #679 multi-widget .mpk fix):
+--   * Every chart type is REGISTERED and authorable (BarChart/ColumnChart/
+--     PieChart/LineChart/etc. no longer fail "no definition for widget").
+--   * SERIES object-list items (Bar/Column/Area) with PRIMITIVE sub-properties
+--     and X/Y ATTRIBUTES (the `attribute` operation in buildObjectListItem).
+--
+-- WHAT'S STILL MISSING (the option-B implementation checklist at the bottom):
+--   1. Per-series / per-widget DATASOURCE binding (OQL view or database). This
+--      is the whole point of a chart and is what the OQL views below feed.
+--   2. LINE and SCALECOLOR object-list keywords (LineChart/BubbleChart/
+--      TimeSeries use `line`; HeatMap uses `scalecolor`).
+--   3. CE0463 "Update widget" version-drift fix (BarChart/ColumnChart already
+--      hit it even without data; #600 class).
+--
+-- ENGALAR FORK: checked — no ready solution. Engalar has NO object-list support
+-- at all (no SERIES/LINE keywords; 0 references to objectLists/ObjectListMapping;
+-- our branch is ahead via #538/#539). So option B is built on OUR object-list
+-- infrastructure, not cherry-picked. (Engalar's only adjacent bit is a
+-- SetDataSourceOpaque backend refactor — not a chart solution.)
+--
+-- Companion to the working SERIES smoke test in
+-- 32-pluggable-widget-object-lists-v010.mdl (OL05).
+
+create module ChartExamples;
+
+create persistent entity ChartExamples.Sales (
+  Region:  string(100),
+  Quarter: string(20),
+  Product: string(100),
+  Amount:  decimal,
+  Units:   integer
+);
+
+-- ----------------------------------------------------------------------------
+-- OQL VIEW ENTITIES — the chart data sources (these DO build today)
+-- ----------------------------------------------------------------------------
+-- Aggregated views are the natural feed for charts: one row per category.
+
+create view entity ChartExamples.SalesByRegion (
+  Region: string(100),
+  Total:  decimal
+) as
+  select
+    s.Region as Region,
+    sum(s.Amount) as Total
+  from ChartExamples.Sales as s
+  group by s.Region;
+/
+
+create view entity ChartExamples.SalesByQuarter (
+  Quarter: string(20),
+  Total:   decimal,
+  Units:   integer
+) as
+  select
+    s.Quarter as Quarter,
+    sum(s.Amount) as Total,
+    sum(s.Units) as Units
+  from ChartExamples.Sales as s
+  group by s.Quarter;
+/
+
+-- ============================================================================
+-- SERIES charts (container keyword SERIES — parses today)
+-- ============================================================================
+-- The `DataSource:` on a series PARSES today but is currently DROPPED by
+-- buildObjectListItem (default: skip of the `datasource` operation). Option-B
+-- item 1 makes it persist. X/Y attributes already resolve.
+
+-- BarChart -------------------------------------------------------------------
+create page ChartExamples.P_Bar (
+  Title: 'Sales by Region (Bar)', Layout: Atlas_Core.Atlas_Default, Folder: 'Charts'
+) {
+  pluggablewidget 'com.mendix.widget.web.barchart.BarChart' barChart1 {
+    series sRegion (
+      DataSet: 'static',
+      DataSource: database from ChartExamples.SalesByRegion,   -- option B: bind OQL view
+      StaticXAttribute: Region,
+      StaticYAttribute: Total,
+      StaticName: 'Revenue'
+    )
+  }
+}
+
+-- ColumnChart ----------------------------------------------------------------
+create page ChartExamples.P_Column (
+  Title: 'Sales by Quarter (Column)', Layout: Atlas_Core.Atlas_Default, Folder: 'Charts'
+) {
+  pluggablewidget 'com.mendix.widget.web.columnchart.ColumnChart' columnChart1 {
+    series sRevenue (
+      DataSet: 'static',
+      DataSource: database from ChartExamples.SalesByQuarter,
+      StaticXAttribute: Quarter,
+      StaticYAttribute: Total,
+      StaticName: 'Revenue'
+    )
+    series sUnits (
+      DataSet: 'static',
+      DataSource: database from ChartExamples.SalesByQuarter,
+      StaticXAttribute: Quarter,
+      StaticYAttribute: Units,
+      StaticName: 'Units'
+    )
+  }
+}
+
+-- AreaChart ------------------------------------------------------------------
+create page ChartExamples.P_Area (
+  Title: 'Cumulative Sales (Area)', Layout: Atlas_Core.Atlas_Default, Folder: 'Charts'
+) {
+  pluggablewidget 'com.mendix.widget.web.areachart.AreaChart' areaChart1 {
+    series sRegion (
+      DataSet: 'static',
+      DataSource: database from ChartExamples.SalesByRegion,
+      StaticXAttribute: Region,
+      StaticYAttribute: Total,
+      StaticName: 'Revenue',
+      Interpolation: 'linear'
+    )
+  }
+}
+
+-- ============================================================================
+-- LINE charts (container keyword LINE — option-B item 2: keyword pending)
+-- ============================================================================
+-- LineChart / BubbleChart / TimeSeries use the `lines` object-list (→ LINE).
+-- LINE is NOT a grammar object-list keyword yet, so these blocks do not parse
+-- today — they are the target syntax option B must enable.
+
+-- LineChart ------------------------------------------------------------------
+create page ChartExamples.P_Line (
+  Title: 'Sales Trend (Line)', Layout: Atlas_Core.Atlas_Default, Folder: 'Charts'
+) {
+  pluggablewidget 'com.mendix.widget.web.linechart.LineChart' lineChart1 {
+    line lRevenue (
+      DataSet: 'static',
+      DataSource: database from ChartExamples.SalesByQuarter,
+      StaticXAttribute: Quarter,
+      StaticYAttribute: Total,
+      StaticName: 'Revenue',
+      Interpolation: 'smooth'
+    )
+  }
+}
+
+-- TimeSeries -----------------------------------------------------------------
+create page ChartExamples.P_TimeSeries (
+  Title: 'Sales Over Time', Layout: Atlas_Core.Atlas_Default, Folder: 'Charts'
+) {
+  pluggablewidget 'com.mendix.widget.web.timeseries.TimeSeries' timeSeries1 {
+    line lRevenue (
+      DataSet: 'static',
+      DataSource: database from ChartExamples.SalesByQuarter,
+      StaticXAttribute: Quarter,
+      StaticYAttribute: Total,
+      StaticName: 'Revenue'
+    )
+  }
+}
+
+-- BubbleChart ----------------------------------------------------------------
+create page ChartExamples.P_Bubble (
+  Title: 'Region vs Units (Bubble)', Layout: Atlas_Core.Atlas_Default, Folder: 'Charts'
+) {
+  pluggablewidget 'com.mendix.widget.web.bubblechart.BubbleChart' bubbleChart1 {
+    line lRegion (
+      DataSet: 'static',
+      DataSource: database from ChartExamples.SalesByRegion,
+      StaticXAttribute: Region,
+      StaticYAttribute: Total,
+      StaticName: 'Revenue'
+    )
+  }
+}
+
+-- ============================================================================
+-- HEATMAP (container keyword SCALECOLOR — option-B item 2: keyword pending)
+-- ============================================================================
+create page ChartExamples.P_HeatMap (
+  Title: 'Sales Heat Map', Layout: Atlas_Core.Atlas_Default, Folder: 'Charts'
+) {
+  pluggablewidget 'com.mendix.widget.web.heatmap.HeatMap' heatMap1 (
+    DataSource: database from ChartExamples.SalesByRegion,
+    HorizontalAxisAttribute: Region,
+    VerticalAxisAttribute: Region,
+    ValueAttribute: Total
+  ) {
+    scalecolor scLow  (ValuePercentage: 0,   ColorValue: '#f7fbff')
+    scalecolor scHigh (ValuePercentage: 100, ColorValue: '#08306b')
+  }
+}
+
+-- ============================================================================
+-- PIECHART (no object-list — widget-level datasource; option-B item 1b)
+-- ============================================================================
+-- PieChart binds a single datasource at the widget level (no series). The
+-- `DataSource:` parses today but, like series datasources, is not yet persisted.
+create page ChartExamples.P_Pie (
+  Title: 'Sales Share (Pie)', Layout: Atlas_Core.Atlas_Default, Folder: 'Charts'
+) {
+  pluggablewidget 'com.mendix.widget.web.piechart.PieChart' pieChart1 (
+    DataSource: database from ChartExamples.SalesByRegion,
+    NameAttribute: Region,
+    ValueAttribute: Total
+  )
+}
+
+-- ============================================================================
+-- DASHBOARD — all chart types on a single page (the showcase page)
+-- ============================================================================
+create page ChartExamples.P_Dashboard (
+  Title: 'Sales Dashboard', Layout: Atlas_Core.Atlas_Default, Folder: 'Charts'
+) {
+  layoutgrid dash {
+    row rTop {
+      column cBar (DesktopWidth: 6) {
+        dynamictext hBar (Content: 'Revenue by Region', RenderMode: H4)
+        pluggablewidget 'com.mendix.widget.web.barchart.BarChart' dashBar {
+          series s (DataSet: 'static', DataSource: database from ChartExamples.SalesByRegion,
+                    StaticXAttribute: Region, StaticYAttribute: Total, StaticName: 'Revenue')
+        }
+      }
+      column cColumn (DesktopWidth: 6) {
+        dynamictext hCol (Content: 'Quarterly Revenue', RenderMode: H4)
+        pluggablewidget 'com.mendix.widget.web.columnchart.ColumnChart' dashColumn {
+          series s (DataSet: 'static', DataSource: database from ChartExamples.SalesByQuarter,
+                    StaticXAttribute: Quarter, StaticYAttribute: Total, StaticName: 'Revenue')
+        }
+      }
+    }
+    row rMid {
+      column cLine (DesktopWidth: 8) {
+        dynamictext hLine (Content: 'Trend', RenderMode: H4)
+        pluggablewidget 'com.mendix.widget.web.linechart.LineChart' dashLine {
+          line l (DataSet: 'static', DataSource: database from ChartExamples.SalesByQuarter,
+                  StaticXAttribute: Quarter, StaticYAttribute: Total, StaticName: 'Revenue')
+        }
+      }
+      column cPie (DesktopWidth: 4) {
+        dynamictext hPie (Content: 'Share', RenderMode: H4)
+        pluggablewidget 'com.mendix.widget.web.piechart.PieChart' dashPie (
+          DataSource: database from ChartExamples.SalesByRegion,
+          NameAttribute: Region, ValueAttribute: Total
+        )
+      }
+    }
+    row rBot {
+      column cArea (DesktopWidth: 12) {
+        dynamictext hArea (Content: 'Cumulative', RenderMode: H4)
+        pluggablewidget 'com.mendix.widget.web.areachart.AreaChart' dashArea {
+          series s (DataSet: 'static', DataSource: database from ChartExamples.SalesByRegion,
+                    StaticXAttribute: Region, StaticYAttribute: Total, StaticName: 'Revenue',
+                    Interpolation: 'linear')
+        }
+      }
+    }
+  }
+}
+
+-- ============================================================================
+-- OPTION-B IMPLEMENTATION CHECKLIST (what must change to make this real)
+-- ============================================================================
+--  [ ] 1. Object-list-item DATASOURCE binding.
+--         buildObjectListItem (mdl/executor/widget_engine.go) currently has a
+--         `default:` branch that SKIPS the `datasource` operation. Resolve the
+--         item's DataSource via pageBuilder.buildDataSourceV3, choose static vs
+--         dynamic by `DataSet`, carry it on backend.ObjectListItemSpec, and
+--         write the datasource node into the series BSON. Wire in BOTH backends
+--         (modelsdk default + sdk legacy). Engalar has no equivalent.
+--  [ ] 1b. Widget-level datasource for PieChart/HeatMap (no object-list) — the
+--         same datasource-by-name binding (#643 class) at the widget level.
+--  [ ] 2. LINE and SCALECOLOR object-list keywords.
+--         Add to MDLPage.g4 widgetTypeV3 (alongside SERIES/GROUP/MARKER) and
+--         regenerate; ensure the def container derivation matches.
+--  [ ] 3. CE0463 version-drift fix (charts). Build the widget PropertyTypes from
+--         the installed .mpk rather than the embedded 11.6 baseline (#600 class).
+--         Verify against a Studio-Pro-saved chart reference before writing BSON.
+--  [x] X/Y attributes on a series already resolve (attribute operation).
+--  [x] Chart registration (multi-widget .mpk) — done in #679.
