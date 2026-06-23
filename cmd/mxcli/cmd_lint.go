@@ -77,6 +77,9 @@ Examples:
   mxcli lint -p app.mpr --format json
   mxcli lint -p app.mpr --format sarif > results.sarif
   mxcli lint -p app.mpr --list-rules
+  mxcli lint -p app.mpr -r MPR001
+  mxcli lint -p app.mpr -r MPR001 -r SEC001
+  mxcli lint -p app.mpr -r MPR001,SEC001
 `,
 	Run: func(cmd *cobra.Command, args []string) {
 		projectPath, _ := cmd.Flags().GetString("project")
