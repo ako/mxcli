@@ -180,6 +180,14 @@ func (b *Backend) loadDomainModelGen(id model.ID) (*genDm.DomainModel, error) {
 // domain-model breadth step.
 func entityToGen(e *domainmodel.Entity, moduleName string, major int) *genDm.Entity {
 	out := genDm.NewEntity()
+	// Honor a caller-provided ID so the persisted entity keeps the same $ID the
+	// caller recorded. Otherwise assignEntityIDs generates a fresh one and any
+	// association the caller wires up with ChildID/ParentID = entity.ID dangles
+	// — e.g. the Trip_TripTag NPE association in the external-entities import,
+	// which made the project unopenable in Studio Pro (KeyNotFoundException).
+	if e.ID != "" {
+		out.SetID(element.ID(e.ID))
+	}
 	out.SetName(e.Name)
 	out.SetDocumentation(e.Documentation)
 	out.SetLocation(fmt.Sprintf("%d;%d", e.Location.X, e.Location.Y))
