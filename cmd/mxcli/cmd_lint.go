@@ -84,6 +84,7 @@ Examples:
 		useColor, _ := cmd.Flags().GetBool("color")
 		listRules, _ := cmd.Flags().GetBool("list-rules")
 		excludeModules, _ := cmd.Flags().GetStringSlice("exclude")
+		onlyRules, _ := cmd.Flags().GetStringSlice("rules")
 
 		if projectPath == "" {
 			fmt.Fprintln(os.Stderr, "Error: --project (-p) is required")
@@ -153,6 +154,19 @@ Examples:
 		if starlarkRules, err := linter.LoadStarlarkRulesFromDir(lintRulesDir); err == nil {
 			for _, rule := range starlarkRules {
 				lint.AddRule(rule)
+			}
+		}
+
+		// If --rules is specified, disable every rule not in the allowlist.
+		if len(onlyRules) > 0 {
+			allowed := make(map[string]bool, len(onlyRules))
+			for _, id := range onlyRules {
+				allowed[id] = true
+			}
+			for _, rule := range lint.Rules() {
+				if !allowed[rule.ID()] {
+					lint.ConfigureRule(rule.ID(), linter.RuleConfig{Enabled: false})
+				}
 			}
 		}
 
