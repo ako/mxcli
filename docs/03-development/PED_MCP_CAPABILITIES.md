@@ -39,6 +39,17 @@ document is the MCP column's deep-dive.
 |------------|--------------------|--------------|--------------|----------|
 | ≤ 11.10    | **No**             | —            | —            | —        |
 | 11.11      | Yes                | `mendix-studio-pro` 1.0.0 | `2025-06-18` | 2026-06-05 |
+| 11.12      | Yes                | `mendix-studio-pro` 1.0.0 | `2025-06-18` | 2026-06-23 |
+
+> **`serverInfo.version` is frozen at `1.0.0` across 11.11 and 11.12 even though the
+> tool surface and behaviour changed.** So the server version is **not** a reliable
+> discriminator between Studio Pro releases. The machine-readable
+> [`capabilities.yaml`](../../mdl/backend/mcp/capabilities.yaml) keys `available_since`
+> on the server version and therefore **cannot express an 11.12-only capability** —
+> features that vary by Studio Pro version must be gated on the **project's Mendix
+> version** instead (e.g. `gateAttributeDefaults` → `ProjectVersion().IsAtLeast(11,12)`).
+> Until the table grows a Studio-Pro-version dimension, this per-version doc is the
+> source of truth for the 11.11→11.12 delta below.
 
 `serverInfo.version` is the MCP server's own version, distinct from the Studio
 Pro version. The MCP server first appears in **11.11**; earlier versions have no
@@ -71,6 +82,21 @@ blank = absent, `—` = n/a). `cmd/mcpprobe -method tools/list` is the source.
 `initialize` instructs clients to first read the resource
 `mendix://studio-pro/system-prompt` (the Maia system prompt + PED contract).
 
+## 11.12 changes (delta vs 11.11)
+
+Captured live 2026-06-23 (`cmd/mcpprobe -method tools/list`). The 11.11 matrix above is otherwise unchanged; this section records only what differs. Tool count 16 → 18.
+
+| Change | Tool | Effect on the backend |
+|--------|------|-----------------------|
+| **Removed** | `pg_write_page` | **Breaking.** Replaced by `pg_patch_page`. The page backend (`page.go`, `page_mutator.go`, `page_widgets.go`) calls `pg_write_page`, which now returns `"Tool pg_write_page not found"` → **MCP page authoring is broken on 11.12** until migrated. |
+| **Added** | `pg_patch_page` | Pages via JSON Patch (RFC 6902): create = one `{op:"replace", path:"", value:<full LightPage>}`; patch existing = targeted ops (path must reference an existing element). Migrating both fixes the breakage **and** enables in-place page ALTER over MCP (previously a gap — pages were full-replace only). |
+| **Added** | `list_modules` | Returns `[{moduleName, writable, fromMarketplace}]`. **Closes the "No list-modules tool" gap** (see below) — pure-MCP module enumeration is now possible, reducing the hard dependency on a matching local `.mpr`. |
+| **Added** | `install_marketplace_module` | `{moduleName, versionId, conflictResolution}` — installs a Marketplace module into the open project. (Not used by the backend yet.) |
+
+Tools already present in 11.11 and unchanged (do **not** re-add as "new"): `ped_list_folder`, `oql_generate`, `search_mendix_knowledge_base`, `read_skill`, `glob`, `read_file`, `write_file`.
+
+**New authoring capability — attribute default values (implemented, `domainmodel.go`).** PED's `DomainModels$StoredValue.defaultValue` is settable via a `ped_update_document` path-op (`/entities/N/attributes/M/value/defaultValue`); the create constructor still can't carry it, so it's set as a follow-up after the attribute exists (`applyAttributeDefaults`). Verified live on 11.12: enums store **bare** (`Draft`, not `MES.WorkOrderStatus.Draft`); PED accepts bare or qualified input but normalises to bare. **Gated on the project Mendix version (11.12+), not the server version** (frozen at 1.0.0 — see the caveat under Server identity). The entity/attribute `$constructor` schema is otherwise unchanged from 11.11; its text now hints `DomainModels$Index` and `DomainModels$ValidationRule` are addable the same constructor-then-path-op way — candidates to wire next, like defaults.
+
 ## Capability gaps (11.11)
 
 These are the *absences* that bound what the backend can do. They are as
@@ -80,7 +106,7 @@ since a gap closing (e.g. a delete or save tool appearing) unlocks features.
 | Gap | Consequence for the backend | Status to recheck each version |
 |-----|-----------------------------|-------------------------------|
 | **No delete-document tool** | `DROP` of any *standalone document* (enum, microflow, page) is impossible. Only entities/associations delete, via a `ped_update_document` remove op on the domain-model array. Test docs created via MCP cannot be cleaned up — they persist until the user closes Studio Pro without saving. | Watch for a `ped_delete_document` / equivalent. |
-| **No list-modules tool** | PED cannot enumerate modules. The backend must read modules/structure from the local mounted `.mpr` (hybrid model); `-p` must be the same project Studio Pro has open. | Watch for a modules-list tool. |
+| **No list-modules tool** ⟶ **CLOSED in 11.12** | PED cannot enumerate modules. The backend must read modules/structure from the local mounted `.mpr` (hybrid model); `-p` must be the same project Studio Pro has open. | **11.12 adds `list_modules`** (`[{moduleName, writable, fromMarketplace}]`) → pure-MCP module enumeration is now possible; the local-`.mpr` dependency for *module listing* can be lifted on 11.12+. Other reads (structure, IDs) still use the hybrid model. |
 | **No save/flush tool** | `ped_update_document` edits stay in Studio Pro's in-memory model; the on-disk `.mpr` is stale until the user saves. Drives the dirty-set read router. (`ped_create_module` is the one op observed to flush immediately.) | Watch for a save tool / autosave. |
 | **Reads omit `$ID`** | Reads expose `$QualifiedName` only. Association refs need entity GUIDs, recovered from the local reader (= live `$ID` for saved entities). Reconstructed reads use synthetic IDs mapped to names. | Recheck whether reads expose `$ID`. |
 | **Array reads omit primitive types** | A `/entities/N/attributes` read gives attribute names (`$QualifiedName`) but not their primitive type or documentation — those need a per-*leaf* read (`/entities/N/attributes/M/type` → a `DomainModels$*AttributeType` constructor; `/…/documentation` → string). Reconstruction recovers them with a single **batched** leaf read (`enrichReconstructedEntities`) so a dirty/session module reports real types (correct DESCRIBE + a reliable ALTER diff); it falls back to placeholder `String` only if the read fails. | Recheck attribute-array read shape. |
