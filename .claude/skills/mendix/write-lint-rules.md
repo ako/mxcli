@@ -27,6 +27,7 @@ def check():
 | `microflows()` | list of microflow | All non-system microflows |
 | `pages()` | list of page | All non-system pages |
 | `enumerations()` | list of enumeration | All non-system enumerations |
+| `constants()` | list of constant | All non-system constants |
 | `widgets()` | list of widget | All non-system widgets |
 | `snippets()` | list of snippet | All non-system snippets |
 | `attributes_for(entity_qualified_name)` | list of attribute | Attributes for a specific entity |
@@ -145,6 +146,18 @@ def check():
 | `folder` | string | `"enumerations"` — folder path within module |
 | `description` | string | Documentation text |
 | `value_count` | int | Number of enum values |
+
+### constant
+| Property | Type | Example |
+|----------|------|---------|
+| `id` | string | Document UUID |
+| `name` | string | `"AppBaseUrl"` |
+| `qualified_name` | string | `"MyModule.AppBaseUrl"` |
+| `module_name` | string | `"MyModule"` |
+| `folder` | string | `"constants"` — folder path within module |
+| `description` | string | Documentation text |
+| `default_value` | string | `"https://example.com"` |
+| `exposed_to_client` | bool | `true` if constant is exposed to client |
 
 ### widget
 | Property | Type | Example |
