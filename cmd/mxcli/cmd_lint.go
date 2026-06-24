@@ -77,6 +77,9 @@ Examples:
   mxcli lint -p app.mpr --format json
   mxcli lint -p app.mpr --format sarif > results.sarif
   mxcli lint -p app.mpr --list-rules
+  mxcli lint -p app.mpr -r MPR001
+  mxcli lint -p app.mpr -r MPR001 -r SEC001
+  mxcli lint -p app.mpr -r MPR001,SEC001
 `,
 	Run: func(cmd *cobra.Command, args []string) {
 		projectPath, _ := cmd.Flags().GetString("project")
@@ -84,6 +87,7 @@ Examples:
 		useColor, _ := cmd.Flags().GetBool("color")
 		listRules, _ := cmd.Flags().GetBool("list-rules")
 		excludeModules, _ := cmd.Flags().GetStringSlice("exclude")
+		onlyRules, _ := cmd.Flags().GetStringSlice("rules")
 
 		if projectPath == "" {
 			fmt.Fprintln(os.Stderr, "Error: --project (-p) is required")
@@ -153,6 +157,19 @@ Examples:
 		if starlarkRules, err := linter.LoadStarlarkRulesFromDir(lintRulesDir); err == nil {
 			for _, rule := range starlarkRules {
 				lint.AddRule(rule)
+			}
+		}
+
+		// If --rules is specified, disable every rule not in the allowlist.
+		if len(onlyRules) > 0 {
+			allowed := make(map[string]bool, len(onlyRules))
+			for _, id := range onlyRules {
+				allowed[id] = true
+			}
+			for _, rule := range lint.Rules() {
+				if !allowed[rule.ID()] {
+					lint.ConfigureRule(rule.ID(), linter.RuleConfig{Enabled: false})
+				}
 			}
 		}
 
