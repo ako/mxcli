@@ -823,6 +823,69 @@ func (ctx *LintContext) ScheduledEvents() iter.Seq[ScheduledEvent] {
 	}
 }
 
+// XPathExpressionEntry represents an XPath constraint expression from the catalog.
+type XPathExpressionEntry struct {
+	ID                    string
+	DocumentType          string // MICROFLOW, NANOFLOW, DOMAIN_MODEL, PAGE, SNIPPET
+	DocumentID            string
+	DocumentQualifiedName string
+	ComponentType         string // RETRIEVE_ACTION, ACCESS_RULE, WIDGET
+	ComponentID           string
+	ComponentName         string
+	XPathExpression       string // raw XPath string, may include outer [ ]
+	TargetEntity          string // qualified name of entity being queried
+	ReferencedEntities    string // comma-separated qualified names
+	IsParameterized       bool   // true when XPath contains $variable references
+	UsageType             string // RETRIEVE, SECURITY, DATASOURCE
+	ModuleName            string
+}
+
+// XPathExpressions returns an iterator over all XPath expression entries in the catalog.
+func (ctx *LintContext) XPathExpressions() iter.Seq[XPathExpressionEntry] {
+	return func(yield func(XPathExpressionEntry) bool) {
+		rows, err := ctx.db.Query(`
+			SELECT Id, DocumentType, DocumentId, DocumentQualifiedName,
+			       ComponentType, ComponentId, ComponentName,
+			       XPathExpression, TargetEntity, ReferencedEntities,
+			       IsParameterized, UsageType, ModuleName
+			FROM xpath_expressions
+			ORDER BY ModuleName, DocumentQualifiedName
+		`)
+		if err != nil {
+			return
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var e XPathExpressionEntry
+			var componentName, targetEntity, refEntities, moduleName sql.NullString
+			var isParam int
+			err := rows.Scan(
+				&e.ID, &e.DocumentType, &e.DocumentID, &e.DocumentQualifiedName,
+				&e.ComponentType, &e.ComponentID, &componentName,
+				&e.XPathExpression, &targetEntity, &refEntities,
+				&isParam, &e.UsageType, &moduleName,
+			)
+			if err != nil {
+				continue
+			}
+			e.ComponentName = componentName.String
+			e.TargetEntity = targetEntity.String
+			e.ReferencedEntities = refEntities.String
+			e.ModuleName = moduleName.String
+			e.IsParameterized = isParam == 1
+
+			if ctx.IsExcluded(e.ModuleName) {
+				continue
+			}
+
+			if !yield(e) {
+				return
+			}
+		}
+	}
+}
+
 // DatabaseConnection represents a database connection from the catalog.
 type DatabaseConnection struct {
 	ID            string
