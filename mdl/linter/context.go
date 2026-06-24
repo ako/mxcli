@@ -24,6 +24,7 @@ type LintReader interface {
 	ListModules() ([]*model.Module, error)
 	ListFolders() ([]*types.FolderInfo, error)
 	GetRawUnit(id model.ID) (map[string]any, error)
+	ListScheduledEvents() ([]*model.ScheduledEvent, error)
 }
 
 // LintContext wraps a catalog and provides rule-friendly APIs.
@@ -725,6 +726,81 @@ func (ctx *LintContext) Snippets() iter.Seq[Snippet] {
 			}
 
 			if !yield(s) {
+				return
+			}
+		}
+	}
+}
+
+// ScheduledEvent represents a scheduled event document.
+type ScheduledEvent struct {
+	Name            string
+	QualifiedName   string
+	ModuleName      string
+	MicroflowName   string // qualified name of the microflow to execute
+	IntervalSeconds int
+	Enabled         bool
+}
+
+// intervalToSeconds converts a Mendix interval value and type to seconds.
+func intervalToSeconds(interval int, intervalType string) int {
+	multipliers := map[string]int{
+		"Second": 1,
+		"Minute": 60,
+		"Hour":   3600,
+		"Day":    86400,
+		"Week":   604800,
+		"Month":  2592000,
+		"Year":   31536000,
+	}
+	if mult, ok := multipliers[intervalType]; ok {
+		return interval * mult
+	}
+	return 0
+}
+
+// ScheduledEvents returns an iterator over all scheduled events (excluding system modules).
+// Returns an empty iterator if no reader is available.
+func (ctx *LintContext) ScheduledEvents() iter.Seq[ScheduledEvent] {
+	return func(yield func(ScheduledEvent) bool) {
+		if ctx.reader == nil {
+			return
+		}
+
+		// Build module ID → name map from catalog.
+		moduleNames := map[model.ID]string{}
+		if ctx.db != nil {
+			rows, err := ctx.db.Query(`SELECT Id, Name FROM modules`)
+			if err == nil {
+				defer rows.Close()
+				for rows.Next() {
+					var id, name string
+					if rows.Scan(&id, &name) == nil {
+						moduleNames[model.ID(id)] = name
+					}
+				}
+			}
+		}
+
+		events, err := ctx.reader.ListScheduledEvents()
+		if err != nil {
+			return
+		}
+
+		for _, e := range events {
+			moduleName := moduleNames[e.ContainerID]
+			if ctx.IsExcluded(moduleName) {
+				continue
+			}
+			se := ScheduledEvent{
+				Name:            e.Name,
+				QualifiedName:   moduleName + "." + e.Name,
+				ModuleName:      moduleName,
+				MicroflowName:   string(e.MicroflowID),
+				IntervalSeconds: intervalToSeconds(e.Interval, e.IntervalType),
+				Enabled:         e.Enabled,
+			}
+			if !yield(se) {
 				return
 			}
 		}

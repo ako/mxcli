@@ -228,15 +228,16 @@ func LoadStarlarkRule(path string) (*StarlarkRule, error) {
 func (r *StarlarkRule) buildPredeclared() starlark.StringDict {
 	return starlark.StringDict{
 		// Query functions
-		"entities":       starlark.NewBuiltin("entities", r.builtinEntities),
-		"microflows":     starlark.NewBuiltin("microflows", r.builtinMicroflows),
-		"pages":          starlark.NewBuiltin("pages", r.builtinPages),
-		"enumerations":   starlark.NewBuiltin("enumerations", r.builtinEnumerations),
-		"constants":      starlark.NewBuiltin("constants", r.builtinConstants),
-		"widgets":        starlark.NewBuiltin("widgets", r.builtinWidgets),
-		"refs_to":        starlark.NewBuiltin("refs_to", r.builtinRefsTo),
-		"refs_from":      starlark.NewBuiltin("refs_from", r.builtinRefsFrom),
-		"attributes_for": starlark.NewBuiltin("attributes_for", r.builtinAttributesFor),
+		"entities":         starlark.NewBuiltin("entities", r.builtinEntities),
+		"microflows":       starlark.NewBuiltin("microflows", r.builtinMicroflows),
+		"pages":            starlark.NewBuiltin("pages", r.builtinPages),
+		"enumerations":     starlark.NewBuiltin("enumerations", r.builtinEnumerations),
+		"constants":        starlark.NewBuiltin("constants", r.builtinConstants),
+		"widgets":          starlark.NewBuiltin("widgets", r.builtinWidgets),
+		"refs_to":          starlark.NewBuiltin("refs_to", r.builtinRefsTo),
+		"refs_from":        starlark.NewBuiltin("refs_from", r.builtinRefsFrom),
+		"attributes_for":   starlark.NewBuiltin("attributes_for", r.builtinAttributesFor),
+		"scheduled_events": starlark.NewBuiltin("scheduled_events", r.builtinScheduledEvents),
 
 		// Graph-analysis facts (populated by `refresh catalog communities`).
 		"community_of":         starlark.NewBuiltin("community_of", r.builtinCommunityOf),
@@ -459,6 +460,20 @@ func (r *StarlarkRule) builtinDatabaseConnections(_ *starlark.Thread, _ *starlar
 	}
 
 	return starlark.NewList(connections), nil
+}
+
+// builtinScheduledEvents returns all scheduled events.
+func (r *StarlarkRule) builtinScheduledEvents(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if r.ctx == nil {
+		return starlark.NewList(nil), nil
+	}
+
+	var result []starlark.Value
+	for se := range r.ctx.ScheduledEvents() {
+		result = append(result, scheduledEventToStarlark(se))
+	}
+
+	return starlark.NewList(result), nil
 }
 
 // builtinActivitiesFor returns the activities for a given microflow.
@@ -786,6 +801,17 @@ func databaseConnectionToStarlark(dc DatabaseConnection) starlark.Value {
 		"folder":         starlark.String(dc.Folder),
 		"database_type":  starlark.String(dc.DatabaseType),
 		"query_count":    starlark.MakeInt(dc.QueryCount),
+	})
+}
+
+func scheduledEventToStarlark(se ScheduledEvent) starlark.Value {
+	return starlarkstruct.FromStringDict(starlark.String("scheduled_event"), starlark.StringDict{
+		"name":             starlark.String(se.Name),
+		"qualified_name":   starlark.String(se.QualifiedName),
+		"module_name":      starlark.String(se.ModuleName),
+		"microflow_name":   starlark.String(se.MicroflowName),
+		"interval_seconds": starlark.MakeInt(se.IntervalSeconds),
+		"enabled":          starlark.Bool(se.Enabled),
 	})
 }
 
