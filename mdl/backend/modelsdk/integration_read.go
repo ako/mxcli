@@ -55,6 +55,14 @@ func (b *Backend) ListConsumedODataServices() ([]*model.ConsumedODataService, er
 		}
 		svc.ID = model.ID(g.ID())
 		svc.TypeName = "Rest$ConsumedODataService"
+		// HttpConfiguration (ServiceUrl/auth/headers) is read from the raw unit —
+		// the gen accessors bind mismatched storage keys. Without it a CREATE OR
+		// MODIFY drops the ServiceUrl (CE5111).
+		if raw, rerr := b.GetRawUnit(svc.ID); rerr == nil {
+			if hc := jsToMap(raw["HttpConfiguration"]); hc != nil {
+				svc.HttpConfiguration = odataHttpConfigFromRaw(hc)
+			}
+		}
 		out = append(out, svc)
 	}
 	return out, nil
@@ -95,10 +103,12 @@ func (b *Backend) ListPublishedODataServices() ([]*model.PublishedODataService, 
 		}
 		svc.ID = model.ID(g.ID())
 		svc.TypeName = "ODataPublish$PublishedODataService2"
-		// EntitySets length is consumed by the catalog; populate one empty
-		// entry per gen entity set so len() matches without decoding members.
-		for range g.EntitySetsItems() {
-			svc.EntitySets = append(svc.EntitySets, &model.PublishedEntitySet{})
+		// EntityTypes/EntitySets (with their members + modes) are read from the
+		// raw unit; the gen surfaces only counts. Without the full tree an ALTER
+		// rewrites the service stripped of its entity sets, which crashes Studio
+		// Pro on load (NullReferenceException).
+		if raw, rerr := b.GetRawUnit(svc.ID); rerr == nil {
+			svc.EntityTypes, svc.EntitySets = publishedEntityTreeFromRaw(raw)
 		}
 		out = append(out, svc)
 	}

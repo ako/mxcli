@@ -30,9 +30,7 @@ var scriptModuleDeps = map[string][]string{
 // scriptSkipList marks fixtures that should be skipped, with the reason.
 // Use sparingly — only for fixtures whose failure is tracked elsewhere and
 // not actionable on this branch.
-var scriptSkipList = map[string]string{
-	"10-odata-examples.mdl": "mx CallExternalAction NPE (mx-side); fixes tracked on separate OData branch",
-}
+var scriptSkipList = map[string]string{}
 
 // scriptKnownCEErrors lists CE error codes that are expected for specific scripts.
 // These are syntax showcase scripts that intentionally omit entities, constants,

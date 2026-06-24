@@ -670,6 +670,10 @@ func microflowActionToGen(action microflows.MicroflowAction) element.Element {
 		// "call rest operation" — Microflows$RestOperationCallAction. Mirrors
 		// serializeRestOperationCallAction.
 		return restOperationCallActionToGen(a)
+	case *microflows.CallExternalAction:
+		// "call external action" — Microflows$CallExternalAction. Without this
+		// the activity serialized with no action → CE0008 "No action defined".
+		return callExternalActionToGen(a)
 	default:
 		return nil // not yet supported (added in later groups)
 	}
