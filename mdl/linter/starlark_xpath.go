@@ -23,7 +23,7 @@ func stripXPathBrackets(s string) string {
 
 // robustExprToStarlark converts a RobustExpr AST node to a Starlark struct tree.
 // Each node is a struct with a "kind" field and type-specific fields.
-// Returns starlark.None for a nil node.
+// Returns a struct with kind="null" for a nil node.
 func robustExprToStarlark(expr exprcheck.RobustExpr) starlark.Value {
 	if expr == nil {
 		return starlarkstruct.FromStringDict(starlark.String("expr"), starlark.StringDict{
