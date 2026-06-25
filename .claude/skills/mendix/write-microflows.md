@@ -435,6 +435,38 @@ end loop;
 - The loop variable type is **automatically derived** from the list type (e.g., `list of Test.Product` → `Test.Product`)
 - CHANGE statements inside loops use the derived type to resolve attribute names
 
+### Performance: Batch Commit After Loop
+
+**CRITICAL**: Do NOT commit inside a loop. Each `commit` inside a loop issues a separate database transaction, which causes N round-trips for N records and degrades performance significantly.
+
+❌ **INCORRECT — commit inside loop (N transactions):**
+```mdl
+loop $Binding in $BindingsList
+begin
+  $NewBatch = create BatteryOntology.MaterialBatch (BatchNo = $BatchNoObj/Value);
+  commit $NewBatch with events;  -- ❌ one DB transaction per record
+end loop;
+```
+
+✅ **CORRECT — create list before loop, commit once after:**
+```mdl
+$BatchList = create list of BatteryOntology.MaterialBatch;
+loop $Binding in $BindingsList
+begin
+  $NewBatch = create BatteryOntology.MaterialBatch (BatchNo = $BatchNoObj/Value);
+  add $NewBatch to $BatchList;   -- accumulate in memory
+end loop;
+commit $BatchList with events on error rollback;  -- ✅ single transaction
+```
+
+**Pattern:**
+1. Before the loop: `$XxxList = create list of Module.Entity;`
+2. Inside the loop: `add $NewXxx to $XxxList;` (replaces `commit`)
+3. After the loop: `commit $XxxList with events on error rollback;`
+
+This applies whenever the loop **creates** new objects. For loops that only **change** existing objects, the same pattern applies — accumulate changed objects in a list, commit the list once outside the loop.
+
+
 ## Object Operations
 
 ### CREATE Object
