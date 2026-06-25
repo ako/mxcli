@@ -232,6 +232,7 @@ func (r *StarlarkRule) buildPredeclared() starlark.StringDict {
 		"microflows":     starlark.NewBuiltin("microflows", r.builtinMicroflows),
 		"pages":          starlark.NewBuiltin("pages", r.builtinPages),
 		"enumerations":   starlark.NewBuiltin("enumerations", r.builtinEnumerations),
+		"constants":      starlark.NewBuiltin("constants", r.builtinConstants),
 		"widgets":        starlark.NewBuiltin("widgets", r.builtinWidgets),
 		"refs_to":        starlark.NewBuiltin("refs_to", r.builtinRefsTo),
 		"refs_from":      starlark.NewBuiltin("refs_from", r.builtinRefsFrom),
@@ -325,6 +326,20 @@ func (r *StarlarkRule) builtinEnumerations(_ *starlark.Thread, _ *starlark.Built
 	}
 
 	return starlark.NewList(enums), nil
+}
+
+// builtinConstants returns an iterator over constants.
+func (r *StarlarkRule) builtinConstants(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if r.ctx == nil {
+		return starlark.NewList(nil), nil
+	}
+
+	var constants []starlark.Value
+	for c := range r.ctx.Constants() {
+		constants = append(constants, constantToStarlark(c))
+	}
+
+	return starlark.NewList(constants), nil
 }
 
 // builtinWidgets returns an iterator over widgets.
@@ -612,6 +627,20 @@ func enumerationToStarlark(e Enumeration) starlark.Value {
 		"folder":         starlark.String(e.Folder),
 		"description":    starlark.String(e.Description),
 		"value_count":    starlark.MakeInt(e.ValueCount),
+	})
+}
+
+// constantToStarlark converts a LintConstant to a Starlark struct.
+func constantToStarlark(c LintConstant) starlark.Value {
+	return starlarkstruct.FromStringDict(starlark.String("constant"), starlark.StringDict{
+		"id":                starlark.String(c.ID),
+		"name":              starlark.String(c.Name),
+		"qualified_name":    starlark.String(c.QualifiedName),
+		"module_name":       starlark.String(c.ModuleName),
+		"folder":            starlark.String(c.Folder),
+		"description":       starlark.String(c.Description),
+		"default_value":     starlark.String(c.DefaultValue),
+		"exposed_to_client": starlark.Bool(c.ExposedToClient),
 	})
 }
 

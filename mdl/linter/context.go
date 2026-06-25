@@ -577,6 +577,59 @@ func (ctx *LintContext) Enumerations() iter.Seq[Enumeration] {
 	}
 }
 
+// LintConstant represents a constant from the catalog.
+type LintConstant struct {
+	ID              string
+	Name            string
+	QualifiedName   string
+	ModuleName      string
+	Folder          string
+	Description     string
+	DefaultValue    string
+	ExposedToClient bool
+}
+
+// Constants returns an iterator over all constants (excluding system modules).
+func (ctx *LintContext) Constants() iter.Seq[LintConstant] {
+	return func(yield func(LintConstant) bool) {
+		rows, err := ctx.db.Query(`
+			SELECT c.Id, c.Name, c.QualifiedName, c.ModuleName, c.Folder,
+			       c.Description, c.DefaultValue, c.ExposedToClient
+			FROM constants c
+			LEFT JOIN modules m ON c.ModuleName = m.Name
+			WHERE COALESCE(m.Source, '') = ''
+			ORDER BY c.ModuleName, c.Name
+		`)
+		if err != nil {
+			return
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var c LintConstant
+			var folder, desc, defaultVal sql.NullString
+			var exposedToClient int
+			err := rows.Scan(&c.ID, &c.Name, &c.QualifiedName, &c.ModuleName,
+				&folder, &desc, &defaultVal, &exposedToClient)
+			if err != nil {
+				continue
+			}
+			c.Folder = folder.String
+			c.Description = desc.String
+			c.DefaultValue = defaultVal.String
+			c.ExposedToClient = exposedToClient == 1
+
+			if ctx.excluded[c.ModuleName] {
+				continue
+			}
+
+			if !yield(c) {
+				return
+			}
+		}
+	}
+}
+
 // Widget represents a widget from the catalog.
 type Widget struct {
 	ID                     string
