@@ -651,6 +651,13 @@ func describeModule(ctx *ExecContext, moduleName string, withAll bool) error {
 				fmt.Fprintln(ctx.Output)
 			}
 		}
+		// Cross-module associations are stored in a separate collection but are
+		// owned by this module (the FROM entity lives here); emit them too.
+		for _, ca := range dm.CrossAssociations {
+			if err := describeAssociation(ctx, ast.QualifiedName{Module: moduleName, Name: ca.Name}); err == nil {
+				fmt.Fprintln(ctx.Output)
+			}
+		}
 	}
 
 	// Output microflows

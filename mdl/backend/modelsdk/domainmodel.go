@@ -74,6 +74,14 @@ func domainModelFromGen(dm *genDm.DomainModel, containerID model.ID) *domainmode
 			out.Associations = append(out.Associations, assocFromGen(a))
 		}
 	}
+	// Cross-module associations live in a separate collection (the FROM entity's
+	// module owns them, the TO entity is referenced BY_NAME). Without this loop
+	// they were invisible to LIST/SHOW ASSOCIATIONS and DESCRIBE MODULE.
+	for _, el := range dm.CrossAssociationsItems() {
+		if ca, ok := el.(*genDm.CrossAssociation); ok {
+			out.CrossAssociations = append(out.CrossAssociations, crossAssocFromGen(ca))
+		}
+	}
 	return out
 }
 
@@ -328,6 +336,26 @@ func assocFromGen(a *genDm.Association) *domainmodel.Association {
 	}
 	out.ID = model.ID(a.ID())
 	if db, ok := a.DeleteBehavior().(*genDm.AssociationDeleteBehavior); ok && db != nil {
+		out.ParentDeleteBehavior = &domainmodel.DeleteBehavior{Type: domainmodel.DeleteBehaviorType(db.ParentDeleteBehavior())}
+		out.ChildDeleteBehavior = &domainmodel.DeleteBehavior{Type: domainmodel.DeleteBehaviorType(db.ChildDeleteBehavior())}
+	}
+	return out
+}
+
+// crossAssocFromGen converts a gen CrossAssociation (cross-module: local FROM
+// entity by ID, remote TO entity by qualified name) to the semantic model.
+func crossAssocFromGen(ca *genDm.CrossAssociation) *domainmodel.CrossModuleAssociation {
+	out := &domainmodel.CrossModuleAssociation{
+		Name:          ca.Name(),
+		Documentation: ca.Documentation(),
+		ParentID:      model.ID(ca.ParentRefID()), // local FROM entity (owns the FK)
+		ChildRef:      ca.ChildQualifiedName(),    // remote TO entity, BY_NAME
+		Type:          domainmodel.AssociationType(ca.Type()),
+		Owner:         domainmodel.AssociationOwner(ca.Owner()),
+		StorageFormat: domainmodel.AssociationStorageFormat(ca.StorageFormat()),
+	}
+	out.ID = model.ID(ca.ID())
+	if db, ok := ca.DeleteBehavior().(*genDm.AssociationDeleteBehavior); ok && db != nil {
 		out.ParentDeleteBehavior = &domainmodel.DeleteBehavior{Type: domainmodel.DeleteBehaviorType(db.ParentDeleteBehavior())}
 		out.ChildDeleteBehavior = &domainmodel.DeleteBehavior{Type: domainmodel.DeleteBehaviorType(db.ChildDeleteBehavior())}
 	}

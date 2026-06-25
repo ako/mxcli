@@ -1,0 +1,43 @@
+-- ============================================================================
+-- Bug — cross-module associations were invisible to SHOW/LIST ASSOCIATIONS,
+-- DESCRIBE ASSOCIATION, and DESCRIBE MODULE ... WITH ALL on the default
+-- (modelsdk) engine, and to DESCRIBE MODULE ... WITH ALL on BOTH engines.
+--
+-- Root cause (two layers):
+--   1. modelsdk reader: cross-module associations live in the gen DomainModel's
+--      separate `CrossAssociations` collection (the FROM entity's module owns
+--      them; the TO entity is referenced BY_NAME), NOT in `AssociationsItems`.
+--      domainModelFromGen only read AssociationsItems, so dm.CrossAssociations
+--      was always empty → nothing to list. Fix: also read CrossAssociationsItems
+--      (mdl/backend/modelsdk/domainmodel.go, crossAssocFromGen).
+--   2. executor: describeModule iterated dm.Associations but not
+--      dm.CrossAssociations, so DESCRIBE MODULE ... WITH ALL omitted them on
+--      every engine. Fix: also iterate dm.CrossAssociations
+--      (mdl/executor/cmd_modules.go).
+--
+-- Reproduce on the file (MPR) backend against a project with at least two
+-- modules (e.g. MyFirstModule + Administration):
+--
+--   mxcli exec cross-module-association-listing.mdl -p app.mpr
+--   mxcli -p app.mpr -c "show associations in MyFirstModule"
+--   mxcli -p app.mpr -c "describe module MyFirstModule with all"
+--
+-- Expected after the fix: MyFirstModule.BugOrder_Account appears in
+-- "show associations", "describe association ...", and "describe module
+-- ... with all" — on both the modelsdk (default) and legacy engines.
+-- ============================================================================
+
+create persistent entity MyFirstModule.BugOrder (
+  OrderNo: string(50)
+);
+/
+
+-- Cross-module association: FROM a local entity TO an entity in another module.
+-- (Administration.Account ships with the Administration marketplace module.)
+create association MyFirstModule.BugOrder_Account
+from MyFirstModule.BugOrder to Administration.Account
+type reference
+owner default
+storage column
+delete_behavior DELETE_BUT_KEEP_REFERENCES;
+/
