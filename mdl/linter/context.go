@@ -31,6 +31,7 @@ type LintContext struct {
 	catalog  *catalog.Catalog
 	db       catalog.CatalogDB
 	excluded map[string]bool
+	included map[string]bool // when non-empty, only these modules are linted
 	reader   LintReader
 }
 
@@ -67,9 +68,26 @@ func (ctx *LintContext) SetExcludedModules(modules []string) {
 	}
 }
 
-// IsExcluded returns true if the module should be excluded from linting.
+// SetIncludedModules sets an allowlist of modules to lint. When non-empty,
+// only modules in this list are linted (modules not in the list are skipped).
+func (ctx *LintContext) SetIncludedModules(modules []string) {
+	ctx.included = make(map[string]bool)
+	for _, m := range modules {
+		ctx.included[m] = true
+	}
+}
+
+// IsExcluded returns true if the module should be skipped during linting.
+// A module is skipped when it is explicitly excluded, or when an inclusion
+// filter is active and the module is not in it.
 func (ctx *LintContext) IsExcluded(moduleName string) bool {
-	return ctx.excluded[moduleName]
+	if ctx.excluded[moduleName] {
+		return true
+	}
+	if len(ctx.included) > 0 && !ctx.included[moduleName] {
+		return true
+	}
+	return false
 }
 
 // Catalog returns the underlying catalog.
@@ -145,7 +163,7 @@ func (ctx *LintContext) Entities() iter.Seq[Entity] {
 			e.HasEventHandlers = hasEventHandlers == 1
 			e.IsExternal = isExternal == 1
 
-			if ctx.excluded[e.ModuleName] {
+			if ctx.IsExcluded(e.ModuleName) {
 				continue
 			}
 
@@ -444,7 +462,7 @@ func (ctx *LintContext) Microflows() iter.Seq[Microflow] {
 			mf.Description = desc.String
 			mf.ReturnType = retType.String
 
-			if ctx.excluded[mf.ModuleName] {
+			if ctx.IsExcluded(mf.ModuleName) {
 				continue
 			}
 
@@ -499,7 +517,7 @@ func (ctx *LintContext) Pages() iter.Seq[Page] {
 			pg.Description = desc.String
 			pg.WidgetCount = int(widgetCount.Int64)
 
-			if ctx.excluded[pg.ModuleName] {
+			if ctx.IsExcluded(pg.ModuleName) {
 				continue
 			}
 
@@ -548,7 +566,7 @@ func (ctx *LintContext) Enumerations() iter.Seq[Enumeration] {
 			en.Folder = folder.String
 			en.Description = desc.String
 
-			if ctx.excluded[en.ModuleName] {
+			if ctx.IsExcluded(en.ModuleName) {
 				continue
 			}
 
@@ -602,7 +620,7 @@ func (ctx *LintContext) Widgets() iter.Seq[Widget] {
 			w.EntityRef = entityRef.String
 			w.AttributeRef = attrRef.String
 
-			if ctx.excluded[w.ModuleName] {
+			if ctx.IsExcluded(w.ModuleName) {
 				continue
 			}
 
@@ -649,7 +667,7 @@ func (ctx *LintContext) Snippets() iter.Seq[Snippet] {
 			s.Folder = folder.String
 			s.WidgetCount = int(widgetCount.Int64)
 
-			if ctx.excluded[s.ModuleName] {
+			if ctx.IsExcluded(s.ModuleName) {
 				continue
 			}
 
@@ -697,7 +715,7 @@ func (ctx *LintContext) DatabaseConnections() iter.Seq[DatabaseConnection] {
 			}
 			dc.Folder = folder.String
 
-			if ctx.excluded[dc.ModuleName] {
+			if ctx.IsExcluded(dc.ModuleName) {
 				continue
 			}
 

@@ -80,6 +80,8 @@ Examples:
   mxcli lint -p app.mpr -r MPR001
   mxcli lint -p app.mpr -r MPR001 -r SEC001
   mxcli lint -p app.mpr -r MPR001,SEC001
+  mxcli lint -p app.mpr -m MyModule
+  mxcli lint -p app.mpr -m MyModule -m AnotherModule
 `,
 	Run: func(cmd *cobra.Command, args []string) {
 		projectPath, _ := cmd.Flags().GetString("project")
@@ -88,6 +90,7 @@ Examples:
 		listRules, _ := cmd.Flags().GetBool("list-rules")
 		excludeModules, _ := cmd.Flags().GetStringSlice("exclude")
 		onlyRules, _ := cmd.Flags().GetStringSlice("rules")
+		moduleFilter, _ := cmd.Flags().GetStringSlice("modules")
 
 		if projectPath == "" {
 			fmt.Fprintln(os.Stderr, "Error: --project (-p) is required")
@@ -127,6 +130,9 @@ Examples:
 		// Create lint context
 		ctx := linter.NewLintContext(cat, exec.Backend())
 		ctx.SetExcludedModules(excludeModules)
+		if len(moduleFilter) > 0 {
+			ctx.SetIncludedModules(moduleFilter)
+		}
 
 		// Create linter and register rules
 		lint := linter.New(ctx)
