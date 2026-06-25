@@ -38,6 +38,22 @@ func buildSystemDomainModel() *domainmodel.DomainModel {
 		}
 		dm.Entities = append(dm.Entities, ent)
 	}
+	// Platform associations (UserRoles, Session_User, Workflow_*, …). Without
+	// these, SHOW/LIST ASSOCIATIONS and DESCRIBE MODULE System omit every System
+	// association on the modelsdk engine (legacy already builds them via
+	// BuildSystemDomainModel). IDs are synthetic and match the entity ID scheme
+	// so the Parent/Child columns resolve to qualified names.
+	for _, a := range meta.SystemAssociations {
+		assoc := &domainmodel.Association{
+			Name:     a.Name,
+			ParentID: model.ID("System." + a.Parent),
+			ChildID:  model.ID("System." + a.Child),
+			Type:     domainmodel.AssociationType(a.Type),
+			Owner:    domainmodel.AssociationOwner(a.Owner),
+		}
+		assoc.ID = model.ID("System." + a.Name)
+		dm.Associations = append(dm.Associations, assoc)
+	}
 	return dm
 }
 
