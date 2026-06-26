@@ -25,6 +25,12 @@ type StarlarkRule struct {
 	ctx         *LintContext
 	checkFn     starlark.Callable
 	globals     starlark.StringDict
+	options     map[string]any
+}
+
+// Configure stores options from the lint config file so Starlark rules can read them via get_option().
+func (r *StarlarkRule) Configure(options map[string]any) {
+	r.options = options
 }
 
 // ID returns the rule ID.
@@ -270,6 +276,9 @@ func (r *StarlarkRule) buildPredeclared() starlark.StringDict {
 
 		// Struct constructor (from starlarkstruct)
 		"struct": starlark.NewBuiltin("struct", starlarkstruct.Make),
+
+		// Options access: get_option("key") or get_option("key", default)
+		"get_option": starlark.NewBuiltin("get_option", r.builtinGetOption),
 	}
 }
 
@@ -474,6 +483,41 @@ func (r *StarlarkRule) builtinScheduledEvents(_ *starlark.Thread, _ *starlark.Bu
 	}
 
 	return starlark.NewList(result), nil
+}
+
+// builtinGetOption returns a rule option value from the lint config file.
+// Signature: get_option(key, default=None)
+func (r *StarlarkRule) builtinGetOption(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var key starlark.String
+	var defaultVal starlark.Value = starlark.None
+	if err := starlark.UnpackArgs("get_option", args, kwargs,
+		"key", &key,
+		"default?", &defaultVal,
+	); err != nil {
+		return nil, err
+	}
+	if r.options != nil {
+		if v, ok := r.options[string(key)]; ok {
+			return goValueToStarlark(v), nil
+		}
+	}
+	return defaultVal, nil
+}
+
+// goValueToStarlark converts a Go value (from YAML unmarshaling) to a Starlark value.
+func goValueToStarlark(v any) starlark.Value {
+	switch val := v.(type) {
+	case bool:
+		return starlark.Bool(val)
+	case int:
+		return starlark.MakeInt(val)
+	case float64:
+		return starlark.Float(val)
+	case string:
+		return starlark.String(val)
+	default:
+		return starlark.None
+	}
 }
 
 // builtinActivitiesFor returns the activities for a given microflow.

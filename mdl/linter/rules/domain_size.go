@@ -32,6 +32,19 @@ func (r *DomainModelSizeRule) Description() string {
 	return fmt.Sprintf("Checks that modules have no more than %d persistent entities", r.MaxPersistentEntities)
 }
 
+// Configure applies options from the lint config file.
+// Supported option: max_entities (int) — override DefaultMaxPersistentEntities.
+func (r *DomainModelSizeRule) Configure(options map[string]any) {
+	if v, ok := options["max_entities"]; ok {
+		switch n := v.(type) {
+		case int:
+			r.MaxPersistentEntities = n
+		case float64:
+			r.MaxPersistentEntities = int(n)
+		}
+	}
+}
+
 // Check counts persistent entities per module and flags those exceeding the limit.
 func (r *DomainModelSizeRule) Check(ctx *linter.LintContext) []linter.Violation {
 	// Count persistent entities per module

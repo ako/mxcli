@@ -377,6 +377,9 @@ func (ctx *LintContext) RoleMappings() iter.Seq[RoleMappingInfo] {
 			if err := rows.Scan(&rm.UserRoleName, &rm.ModuleRoleName, &rm.ModuleName); err != nil {
 				continue
 			}
+			if ctx.IsExcluded(rm.ModuleName) {
+				continue
+			}
 			if !yield(rm) {
 				return
 			}
@@ -410,6 +413,9 @@ func (ctx *LintContext) ModuleRoles() iter.Seq[ModuleRoleInfo] {
 		for rows.Next() {
 			var mr ModuleRoleInfo
 			if err := rows.Scan(&mr.Name, &mr.ModuleName); err != nil {
+				continue
+			}
+			if ctx.IsExcluded(mr.ModuleName) {
 				continue
 			}
 			if !yield(mr) {

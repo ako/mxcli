@@ -84,6 +84,12 @@ type Rule interface {
 	Check(ctx *LintContext) []Violation
 }
 
+// Configurable is an optional interface for rules that accept options from the lint config file.
+// Rules implementing this interface receive their options map before Check is called.
+type Configurable interface {
+	Configure(options map[string]any)
+}
+
 // RuleConfig holds configuration for a specific rule.
 type RuleConfig struct {
 	Enabled  bool
@@ -147,6 +153,15 @@ func (l *Linter) Run(ctx context.Context) ([]Violation, error) {
 		case <-ctx.Done():
 			return allViolations, ctx.Err()
 		default:
+		}
+
+		// Pass options to rules that support configuration.
+		if config, ok := l.configs[rule.ID()]; ok {
+			if len(config.Options) > 0 {
+				if c, ok := rule.(Configurable); ok {
+					c.Configure(config.Options)
+				}
+			}
 		}
 
 		// Run the rule

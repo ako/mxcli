@@ -21,6 +21,16 @@ func (r *stubRule) Check(_ *LintContext) []Violation {
 	return []Violation{{RuleID: r.id, Severity: SeverityWarning, Message: "hit"}}
 }
 
+// configurableRule is a stubRule that also implements Configurable.
+type configurableRule struct {
+	stubRule
+	configuredOptions map[string]any
+}
+
+func (r *configurableRule) Configure(options map[string]any) {
+	r.configuredOptions = options
+}
+
 func TestRuleFilter_AllowlistRestrictsExecution(t *testing.T) {
 	lint := New(nil)
 	lint.AddRule(&stubRule{"MPR001"})
@@ -59,6 +69,43 @@ func TestRuleFilter_EmptyAllowlistRunsAll(t *testing.T) {
 	}
 	if len(violations) != 2 {
 		t.Fatalf("expected 2 violations, got %d", len(violations))
+	}
+}
+
+func TestConfigurable_OptionsDeliveredBeforeCheck(t *testing.T) {
+	rule := &configurableRule{stubRule: stubRule{"MPR003"}}
+	lint := New(nil)
+	lint.AddRule(rule)
+	lint.ConfigureRule("MPR003", RuleConfig{
+		Enabled:  true,
+		Severity: SeverityWarning,
+		Options:  map[string]any{"max_entities": 20},
+	})
+
+	_, err := lint.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if rule.configuredOptions == nil {
+		t.Fatal("Configure was never called")
+	}
+	if rule.configuredOptions["max_entities"] != 20 {
+		t.Errorf("max_entities = %v, want 20", rule.configuredOptions["max_entities"])
+	}
+}
+
+func TestConfigurable_NotCalledWhenNoOptions(t *testing.T) {
+	rule := &configurableRule{stubRule: stubRule{"MPR003"}}
+	lint := New(nil)
+	lint.AddRule(rule)
+	// Config exists but Options is empty — Configure should not be called.
+	lint.ConfigureRule("MPR003", RuleConfig{Enabled: true})
+
+	if _, err := lint.Run(context.Background()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if rule.configuredOptions != nil {
+		t.Errorf("Configure should not be called when options are empty")
 	}
 }
 

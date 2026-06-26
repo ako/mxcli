@@ -166,6 +166,19 @@ Examples:
 			}
 		}
 
+		// Load lint config file and apply (excludedModules, rule severity/enabled overrides).
+		// Config ExcludeModules merges with --exclude flag values.
+		configPath := linter.FindConfigFile(projectDir)
+		if cfg, err := linter.LoadConfig(configPath); err == nil {
+			if len(cfg.ExcludeModules) > 0 {
+				merged := append(excludeModules, cfg.ExcludeModules...)
+				ctx.SetExcludedModules(merged)
+			}
+			cfg.ApplyConfig(lint)
+		} else {
+			fmt.Fprintf(os.Stderr, "Warning: failed to load lint config: %v\n", err)
+		}
+
 		// If --rules is specified, disable every rule not in the allowlist.
 		if len(onlyRules) > 0 {
 			allowed := make(map[string]bool, len(onlyRules))
