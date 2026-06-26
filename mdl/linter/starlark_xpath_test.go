@@ -93,6 +93,9 @@ func TestStripXPathBrackets(t *testing.T) {
 		{"Status = 'Active'", "Status = 'Active'"},
 		{"  [foo]  ", "foo"},
 		{"", ""},
+		// Chained predicates must not be partially stripped.
+		{"[a = 1][b = 2]", "[a = 1][b = 2]"},
+		{"[a = 1][b = 2][c = 3]", "[a = 1][b = 2][c = 3]"},
 	}
 	for _, c := range cases {
 		got := stripXPathBrackets(c.in)

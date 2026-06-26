@@ -13,10 +13,29 @@ import (
 
 // stripXPathBrackets removes the outer [ and ] from a Mendix XPath constraint string.
 // Returns the inner expression ready for parsing.
+// Only strips when the opening [ at position 0 is matched by the final ] (i.e. they
+// form a single outer pair). Chained predicates like [a = 1][b = 2] are returned as-is.
 func stripXPathBrackets(s string) string {
 	s = strings.TrimSpace(s)
-	if strings.HasPrefix(s, "[") && strings.HasSuffix(s, "]") {
-		return s[1 : len(s)-1]
+	if !strings.HasPrefix(s, "[") || !strings.HasSuffix(s, "]") {
+		return s
+	}
+	// Walk forward to find where the first '[' closes.
+	depth := 0
+	for i, ch := range s {
+		switch ch {
+		case '[':
+			depth++
+		case ']':
+			depth--
+			if depth == 0 {
+				if i == len(s)-1 {
+					return s[1 : len(s)-1]
+				}
+				// First '[' closes before the end — chained predicates; don't strip.
+				return s
+			}
+		}
 	}
 	return s
 }
