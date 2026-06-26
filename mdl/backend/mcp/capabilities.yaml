@@ -79,8 +79,16 @@ features:
     feature: "Navigation (web profile: home page, login/not-found page, menu tree)"
     available: true
     note: "CREATE OR REPLACE NAVIGATION on a web profile, via generic ped_update_document path-ops on the project-level Navigation$NavigationDocument (menu items use Menus$MenuItem + Pages$*ClientAction; the menu is cleared then rebuilt). Native profiles (bottom-bar items, native home) and role-based home pages are not authored yet"
-  - key: security_integrations
-    feature: "Security (roles, access, demo users), OData/REST, mappings, settings"
+  - key: entity_access_rules
+    feature: "Entity access rules (GRANT)"
+    available: true
+    note: "GRANT a NEW entity access rule for an existing role — the rule lives on DomainModels$Entity.accessRules (the domain-model document PED authors), NOT the security document. ADD-only: PED refuses to remove DomainModels$AccessRule / DomainModels$MemberAccess, so REVOKE and replacing an existing rule in place are rejected (edit in Studio Pro). The referenced module role must already exist"
+  - key: security_roles
+    feature: "Security roles & settings — module roles, user roles, demo users, project security settings"
+    available: false
+    note: "PED reports 'Unknown document type' for Security$ProjectSecurity and Security$ModuleSecurity — the security documents are not exposed, so roles/users/settings cannot be authored over MCP (entity access *rules* are separate — see entity_access_rules)"
+  - key: integrations_settings
+    feature: "OData/REST, mappings, project settings"
     available: false
     note: "no PED write path"
   - key: attribute_type_change
