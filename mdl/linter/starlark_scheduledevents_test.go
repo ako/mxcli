@@ -203,6 +203,47 @@ func TestScheduledEvents_ExcludedModules(t *testing.T) {
 	}
 }
 
+func TestScheduledEvents_IncludedModules(t *testing.T) {
+	modA := model.ID("mod-a")
+	modB := model.ID("mod-b")
+
+	reader := &minimalReader{
+		listScheduledEvents: func() ([]*model.ScheduledEvent, error) {
+			return []*model.ScheduledEvent{
+				{ContainerID: modA, Name: "SE_A", Interval: 1, IntervalType: "Hour", Enabled: true},
+				{ContainerID: modB, Name: "SE_B", Interval: 1, IntervalType: "Hour", Enabled: true},
+			}, nil
+		},
+	}
+
+	cat, err := catalog.NewFromFile(filepath.Join(t.TempDir(), "cat.db"))
+	if err != nil {
+		t.Fatalf("NewFromFile: %v", err)
+	}
+	defer cat.Close()
+	db := cat.CatalogDB()
+
+	for _, row := range []struct{ id, name string }{{string(modA), "ModA"}, {string(modB), "ModB"}} {
+		if _, err := db.Exec(
+			`INSERT INTO modules_data (Id, Name, ProjectId, SnapshotId) VALUES (?,?,?,?)`,
+			row.id, row.name, "default", "s1",
+		); err != nil {
+			t.Fatalf("insert module %s: %v", row.name, err)
+		}
+	}
+
+	ctx := linter.NewLintContext(cat, reader)
+	ctx.SetIncludedModules([]string{"ModA"}) // only ModA is in scope
+
+	var names []string
+	for se := range ctx.ScheduledEvents() {
+		names = append(names, se.ModuleName)
+	}
+	if len(names) != 1 || names[0] != "ModA" {
+		t.Errorf("expected [ModA], got %v", names)
+	}
+}
+
 func TestScheduledEvents_NilReader(t *testing.T) {
 	cat, err := catalog.NewFromFile(filepath.Join(t.TempDir(), "cat.db"))
 	if err != nil {

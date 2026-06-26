@@ -30,6 +30,7 @@ def check():
 | `constants()` | list of constant | All non-system constants |
 | `widgets()` | list of widget | All non-system widgets |
 | `snippets()` | list of snippet | All non-system snippets |
+| `scheduled_events()` | list of scheduled_event | All non-system scheduled events (requires MPR reader) |
 | `attributes_for(entity_qualified_name)` | list of attribute | Attributes for a specific entity |
 | `activities_for(microflow_qualified_name)` | list of activity | Activities for a microflow (requires FULL catalog) |
 | `permissions()` | list of permission | All permissions across all element types |
@@ -181,6 +182,16 @@ def check():
 | `module_name` | string | `"Sales"` |
 | `folder` | string | `"snippets"` — folder path within module |
 | `widget_count` | int | Number of widgets |
+
+### scheduled_event
+| Property | Type | Example |
+|----------|------|---------|
+| `name` | string | `"SE_NightlyCleanup"` |
+| `qualified_name` | string | `"MyModule.SE_NightlyCleanup"` |
+| `module_name` | string | `"MyModule"` |
+| `microflow_name` | string | `"MyModule.MF_NightlyCleanup"` — resolved from catalog; raw UUID when catalog not built |
+| `interval_seconds` | int | `86400` — `0` for unrecognised interval type |
+| `enabled` | bool | `True` if the event is active |
 
 ### attribute
 | Property | Type | Example |
