@@ -39,6 +39,7 @@ proactively. Add a row after every review that surfaces something new.
 | 14 | Visitor test for `CREATE JAVA ACTION` omits `AS $$ ... $$` body, causing opaque parse error `no viable alternative at input '...'` — the body is mandatory, not optional | Test coverage / grammar | The grammar rule ends with `AS DOLLAR_STRING SEMICOLON?`; always include a minimal body (`as $$ return false; $$;`) even in tests |
 | 15 | New MDL document type or `OR MODIFY` variant added but `cmd/mxcli/syntax/features_*.go` not updated — `mxcli syntax <topic>` and REPL `help` show stale syntax | Docs quality | Add/update `SyntaxFeature` entries: new type → new `Register(...)` block; changed syntax → update `Syntax` field of existing topic; grep `Path:` to confirm topic exists |
 | 16 | Bug-fix PR missing `mdl-examples/bug-tests/<issue>-description.mdl` — checklist requires one per fix so Studio Pro can validate the regression case | Test coverage | Add minimal MDL that reproduces the symptom; commit alongside the fix; the PR description often contains the exact reproduction snippet already |
+| 17 | Commit message claims a change (e.g. `"PERF001": "Performance"` mapping in `report.go`) that is not present in the diff — git body overstates the actual change, often referencing an example rule as if it were shipped | Docs quality | Diff the file the commit names (`git show <sha> -- <file>`); if the change isn't there, fix the commit body so it doesn't imply shipped behavior |
 
 ---
 
