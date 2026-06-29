@@ -41,6 +41,7 @@ def check():
 | `module_roles()` | list of module_role | All module roles (deduplicated from role mappings) |
 | `role_mappings()` | list of role_mapping | User role to module role assignments |
 | `project_security()` | project_security or None | Project-level security settings (requires MPR reader) |
+| `xpath_expressions()` | list of xpath_expression | All XPath constraint expressions in the catalog (access rules, retrieve actions, widgets) |
 
 ### Graph-analysis functions (architecture rules)
 
@@ -193,6 +194,76 @@ def check():
 | `interval_seconds` | int | `86400` — `0` for unrecognised interval type |
 | `enabled` | bool | `True` if the event is active |
 
+### xpath_expression
+
+Returned by `xpath_expressions()`. Each row represents one XPath constraint used in a retrieve action, access rule, or widget data source.
+
+| Property | Type | Example |
+|----------|------|---------|
+| `id` | string | Row UUID |
+| `document_type` | string | `"MICROFLOW"`, `"NANOFLOW"`, `"DOMAIN_MODEL"`, `"PAGE"`, `"SNIPPET"` |
+| `document_id` | string | Owning document UUID |
+| `document_qualified_name` | string | `"MyApp.GetActiveItems"` |
+| `component_type` | string | `"RETRIEVE_ACTION"`, `"ACCESS_RULE"`, `"WIDGET"` |
+| `component_id` | string | Component UUID |
+| `component_name` | string | Activity/rule name (may be empty) |
+| `xpath_expression` | string | Raw XPath string, may include outer `[ ]` |
+| `target_entity` | string | Qualified name of entity being queried, e.g. `"MyApp.Order"` |
+| `referenced_entities` | string | Comma-separated qualified names of entities referenced by the XPath |
+| `is_parameterized` | bool | True when the XPath contains `$variable` references |
+| `usage_type` | string | `"RETRIEVE"`, `"SECURITY"`, `"DATASOURCE"` |
+| `module_name` | string | `"MyApp"` |
+
+### expr
+
+Returned by `parse_xpath(s)`. Every node has a `kind` field; additional fields depend on the kind.
+
+| `kind` | Additional fields | Description |
+|--------|-------------------|-------------|
+| `"bin"` | `op` (string), `left` (expr), `right` (expr) | Binary operator: `=`, `!=`, `<`, `>`, `<=`, `>=`, `and`, `or` |
+| `"unary"` | `op` (string), `operand` (expr) | Unary operator: `not`, `-` |
+| `"call"` | `name` (string), `args` (list of expr) | Function call, e.g. `contains(…)`, `length(…)` |
+| `"string"` | `value` (string) | String literal |
+| `"number"` | `value` (string) | Numeric literal (kept as string to preserve precision) |
+| `"bool"` | `value` (bool) | `true` or `false` |
+| `"empty"` | — | Mendix `empty` keyword |
+| `"variable"` | `name` (string) | `$ParameterName` |
+| `"attr_path"` | `variable` (string), `path` (list of string) | `$Obj/Association/Attribute` |
+| `"qname"` | `module` (string), `name` (string), `sub` (string) | Qualified name, e.g. `MyApp.Status.Active` |
+| `"paren"` | `inner` (expr) | Parenthesised expression |
+| `"if"` | `cond` (expr), `then` (expr), `else_` (expr) | If-then-else expression |
+| `"constant"` | `qname` (string) | Mendix constant reference, e.g. `[%MyConst%]` |
+| `"token"` | `token` (string), `arg` (string) | Mendix token expression, e.g. `[%CurrentUser%]` |
+| `"recovered"` | `source` (string), `reason` (string) | Parse failure — node carries the raw source fragment |
+| `"null"` | — | Nil / missing node |
+| `"unknown"` | — | Unrecognised AST node type |
+
+**Walking an expr tree:** check `node.kind` and recurse into child fields. Leaf kinds (no child nodes) are: `string`, `number`, `bool`, `empty`, `variable`, `qname`, `constant`, `token`, `recovered`, `null`, `unknown`.
+
+Example — count `not(…)` calls in an XPath (using `parse_xpath`):
+
+```python
+def count_not(node):
+    if node.kind in ("null", "unknown", "recovered", "string", "number",
+                     "bool", "empty", "variable", "qname", "constant", "token"):
+        return 0
+    if node.kind == "call" and node.name == "not":
+        return 1 + sum([count_not(a) for a in node.args])
+    if node.kind == "call":
+        return sum([count_not(a) for a in node.args])
+    if node.kind == "bin":
+        return count_not(node.left) + count_not(node.right)
+    if node.kind == "unary":
+        return count_not(node.operand)
+    if node.kind == "paren":
+        return count_not(node.inner)
+    if node.kind == "if":
+        return count_not(node.cond) + count_not(node.then) + count_not(node.else_)
+    if node.kind == "attr_path":
+        return 0
+    return 0
+```
+
 ### attribute
 | Property | Type | Example |
 |----------|------|---------|
@@ -298,6 +369,7 @@ Returned by `project_security()`. Returns `none` if no MPR reader is available.
 |----------|-------------|
 | `violation(message, location?, suggestion?)` | Create a violation to return |
 | `location(module, document_type, document_name, document_id?)` | Create a location for a violation |
+| `parse_xpath(s)` | Parse a raw XPath/expression string and return its AST as an `expr` struct tree. Outer `[ ]` are stripped automatically. Parse failures produce a `recovered` root node rather than raising. |
 | `is_pascal_case(s)` | Returns True if string is PascalCase |
 | `is_camel_case(s)` | Returns True if string is camelCase |
 | `matches(s, pattern)` | Returns True if string matches regex |

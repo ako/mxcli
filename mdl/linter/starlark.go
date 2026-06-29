@@ -12,6 +12,8 @@ import (
 
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
+
+	"github.com/mendixlabs/mxcli/mdl/exprcheck"
 )
 
 // StarlarkRule is a lint rule implemented in Starlark.
@@ -264,6 +266,10 @@ func (r *StarlarkRule) buildPredeclared() starlark.StringDict {
 		"module_roles":     starlark.NewBuiltin("module_roles", r.builtinModuleRoles),
 		"role_mappings":    starlark.NewBuiltin("role_mappings", r.builtinRoleMappings),
 		"project_security": starlark.NewBuiltin("project_security", r.builtinProjectSecurity),
+
+		// XPath / expression analysis
+		"xpath_expressions": starlark.NewBuiltin("xpath_expressions", r.builtinXPathExpressions),
+		"parse_xpath":       starlark.NewBuiltin("parse_xpath", r.builtinParseXPath),
 
 		// Violation helpers
 		"violation": starlark.NewBuiltin("violation", builtinViolation),
@@ -857,6 +863,34 @@ func scheduledEventToStarlark(se ScheduledEvent) starlark.Value {
 		"interval_seconds": starlark.MakeInt(se.IntervalSeconds),
 		"enabled":          starlark.Bool(se.Enabled),
 	})
+}
+
+// builtinXPathExpressions returns all XPath expression entries from the catalog.
+func (r *StarlarkRule) builtinXPathExpressions(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if r.ctx == nil {
+		return starlark.NewList(nil), nil
+	}
+
+	var result []starlark.Value
+	for e := range r.ctx.XPathExpressions() {
+		result = append(result, xpathExpressionEntryToStarlark(e))
+	}
+
+	return starlark.NewList(result), nil
+}
+
+// builtinParseXPath parses a raw XPath/expression string and returns its AST as a Starlark struct tree.
+// Outer [ ] brackets are stripped automatically. Parse failures produce a "recovered" root node.
+func (r *StarlarkRule) builtinParseXPath(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var s starlark.String
+	if err := starlark.UnpackArgs("parse_xpath", args, kwargs, "s", &s); err != nil {
+		return nil, err
+	}
+
+	inner := stripXPathBrackets(string(s))
+	parser := exprcheck.NewParser()
+	ast, _ := parser.Parse(inner, exprcheck.NewSyntaxContext("", ""))
+	return robustExprToStarlark(ast), nil
 }
 
 // builtinViolation creates a violation struct.
