@@ -29,8 +29,11 @@ var DefaultMicroflowPattern = regexp.MustCompile(`^(ACT_|SUB_|DS_|VAL_|SCH_|IVK_
 // DefaultPagePattern matches page naming conventions.
 var DefaultPagePattern = regexp.MustCompile(`^[A-Z][a-zA-Z0-9_]*$`)
 
-// DefaultEnumerationPattern matches enumeration naming conventions.
-var DefaultEnumerationPattern = regexp.MustCompile(`^[A-Z][a-zA-Z0-9]*$`)
+// DefaultEnumerationPattern matches enumeration naming conventions: PascalCase
+// with the optional ENUM_ prefix from the Mendix Naming Convention Best Practices
+// (e.g. ENUM_ShippingStatus). The prefix is what CONV004 recommends, so allowing
+// it here keeps the two rules consistent (issue #715).
+var DefaultEnumerationPattern = regexp.MustCompile(`^(ENUM_)?[A-Z][a-zA-Z0-9]*$`)
 
 // NamingConventionRule checks naming conventions for entities, microflows, etc.
 type NamingConventionRule struct {
@@ -123,14 +126,14 @@ func (r *NamingConventionRule) Check(ctx *linter.LintContext) []linter.Violation
 			violations = append(violations, linter.Violation{
 				RuleID:   r.ID(),
 				Severity: r.DefaultSeverity(),
-				Message:  fmt.Sprintf("Enumeration name '%s' should use PascalCase", enum.Name),
+				Message:  fmt.Sprintf("Enumeration name '%s' should use PascalCase with optional ENUM_ prefix (e.g. ENUM_ShippingStatus)", enum.Name),
 				Location: linter.Location{
 					Module:       enum.ModuleName,
 					DocumentType: "enumeration",
 					DocumentName: enum.Name,
 					DocumentID:   enum.ID,
 				},
-				Suggestion: toPascalCase(enum.Name),
+				Suggestion: suggestEnumerationName(enum.Name),
 			})
 		}
 	}
@@ -213,6 +216,17 @@ func suggestMicroflowName(name string) string {
 			rest := name[len(prefix):]
 			return prefix + toPascalCase(rest)
 		}
+	}
+	return toPascalCase(name)
+}
+
+// suggestEnumerationName suggests a better enumeration name, preserving the
+// Mendix-recommended ENUM_ prefix when present (issue #715). Mirrors
+// suggestMicroflowName so the suggestion does not strip the prefix.
+func suggestEnumerationName(name string) string {
+	const prefix = "ENUM_"
+	if strings.HasPrefix(strings.ToUpper(name), prefix) {
+		return prefix + toPascalCase(name[len(prefix):])
 	}
 	return toPascalCase(name)
 }

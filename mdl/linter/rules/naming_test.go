@@ -167,4 +167,32 @@ func TestDefaultPatterns(t *testing.T) {
 	if DefaultEnumerationPattern.MatchString("orderStatus") {
 		t.Error("enumeration pattern should not match 'orderStatus'")
 	}
+	// Issue #715: the Mendix-recommended ENUM_ prefix must be accepted.
+	if !DefaultEnumerationPattern.MatchString("ENUM_ShippingStatus") {
+		t.Error("enumeration pattern should match 'ENUM_ShippingStatus'")
+	}
+	// A lowercase body after the prefix is still wrong.
+	if DefaultEnumerationPattern.MatchString("ENUM_shippingStatus") {
+		t.Error("enumeration pattern should not match 'ENUM_shippingStatus'")
+	}
+	// A bare prefix with no body must not pass.
+	if DefaultEnumerationPattern.MatchString("ENUM_") {
+		t.Error("enumeration pattern should not match 'ENUM_'")
+	}
+}
+
+// Issue #715: the suggestion must preserve the ENUM_ prefix, not mangle it to
+// EnumShippingStatus the way a plain toPascalCase would.
+func TestSuggestEnumerationName(t *testing.T) {
+	cases := map[string]string{
+		"ENUM_shipping_status": "ENUM_ShippingStatus",
+		"enum_shippingStatus":  "ENUM_ShippingStatus",
+		"order_status":         "OrderStatus",
+		"OrderStatus":          "OrderStatus",
+	}
+	for in, want := range cases {
+		if got := suggestEnumerationName(in); got != want {
+			t.Errorf("suggestEnumerationName(%q) = %q, want %q", in, got, want)
+		}
+	}
 }
