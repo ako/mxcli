@@ -338,6 +338,13 @@ func flowObjectFromGen(el element.Element) microflows.MicroflowObject {
 		o := &microflows.InheritanceSplit{}
 		o.ID = id
 		o.Position = pos
+		if g, ok := el.(*genMf.InheritanceSplit); ok {
+			// Without the split variable the loop header renders "split type $"
+			// (empty), and without the caption the @caption line is dropped.
+			o.VariableName = g.SplitVariableName()
+			o.Caption = g.Caption()
+			o.Documentation = g.Documentation()
+		}
 		return o
 	case "Microflows$Annotation":
 		// Sticky-note annotation. Not reached by the sequence-flow traversal (it is
