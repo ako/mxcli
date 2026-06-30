@@ -82,6 +82,9 @@ func nanoflowFromGen(nf *genMf.Nanoflow, containerID model.ID) *microflows.Nanof
 		ReturnType:    dataTypeFromGen(nf.MicroflowReturnType()),
 	}
 	out.ID = model.ID(nf.ID())
+	for _, qn := range nf.AllowedModuleRolesQualifiedNames() {
+		out.AllowedModuleRoles = append(out.AllowedModuleRoles, model.ID(qn))
+	}
 	params, objs := splitFlowObjects(nf.ObjectCollection())
 	out.Parameters = params
 	flows := flowsFromGen(nf.FlowsItems())
@@ -102,6 +105,11 @@ func microflowFromGen(mf *genMf.Microflow, containerID model.ID) *microflows.Mic
 		ReturnType:         dataTypeFromGen(mf.MicroflowReturnType()),
 	}
 	out.ID = model.ID(mf.ID())
+	// AllowedModuleRoles (BY_NAME role references) — without these DESCRIBE omits
+	// the "grant execute on microflow … to …" line that legacy emits.
+	for _, qn := range mf.AllowedModuleRolesQualifiedNames() {
+		out.AllowedModuleRoles = append(out.AllowedModuleRoles, model.ID(qn))
+	}
 	params, objs := splitFlowObjects(mf.ObjectCollection())
 	out.Parameters = params
 	// Flows live on the gen Microflow, but the model keeps them in the object
