@@ -135,6 +135,12 @@ Examples:
 		// loads project-installed .def.json files for full coverage.
 		violations = append(violations, executor.ValidateWidgetProperties(prog, projectPath)...)
 
+		// Warn (MPR010) when an edit/new form (a parameter-bound DataView) is not
+		// wrapped in a layout grid — its label/input widths only render correctly
+		// inside a layoutgrid. Same rule as the MPR010 lint rule, surfaced at
+		// authoring time on the AST.
+		violations = append(violations, executor.ValidatePageLayoutGrid(prog)...)
+
 		if isStructured {
 			// Always emit structured output (even when clean)
 			formatter.Format(violations, os.Stderr)

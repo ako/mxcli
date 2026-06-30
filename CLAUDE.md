@@ -397,7 +397,7 @@ go build -o bin/mxcli ./cmd/mxcli
 | **Catalog queries** | `show catalog tables`, `select ... from CATALOG.table` | SQL querying of project metadata |
 | **Code search** | `show callers\|callees\|references\|impact\|context of ...` | Cross-reference navigation (requires `refresh catalog full`) |
 | **Full-text search** | `search 'keyword'` | Search across all strings and source |
-| **Linting** | `mxcli lint -p app.mpr [--format json\|sarif]` | 14 built-in rules + 27 Starlark rules (MDL, SEC, QUAL, ARCH, DESIGN, CONV) |
+| **Linting** | `mxcli lint -p app.mpr [--format json\|sarif]` | 15 built-in rules + 27 Starlark rules (MDL, SEC, QUAL, ARCH, DESIGN, CONV) |
 | **Report** | `mxcli report -p app.mpr [--format markdown\|json\|html]` | Scored best practices report with category breakdown |
 | **Testing** | `mxcli test tests/ -p app.mpr` | `.test.mdl` / `.test.md` files, requires Docker |
 | **Diff** | `mxcli diff -p app.mpr changes.mdl` | Compare script against project state |

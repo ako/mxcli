@@ -1106,7 +1106,7 @@ Cross-reference commands require `refresh catalog full` to populate reference da
 | Execute script | `mxcli exec script.mdl -p app.mpr` | Script file |
 | Check syntax | `mxcli check script.mdl` | Parse-only validation |
 | Check references | `mxcli check script.mdl -p app.mpr --references` | With reference validation |
-| Lint project | `mxcli lint -p app.mpr [--format json\|sarif]` | 14 built-in + 27 Starlark rules |
+| Lint project | `mxcli lint -p app.mpr [--format json\|sarif]` | 15 built-in + 27 Starlark rules |
 | Report | `mxcli report -p app.mpr [--format markdown\|json\|html]` | Best practices report |
 | Test | `mxcli test tests/ -p app.mpr` | `.test.mdl` / `.test.md` files |
 | Diff script | `mxcli diff -p app.mpr changes.mdl` | Compare script vs project |

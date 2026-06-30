@@ -58,6 +58,7 @@ func execLint(ctx *ExecContext, s *ast.LintStmt) error {
 	lint.AddRule(rules.NewImageSourceRule())
 	lint.AddRule(rules.NewMissingTranslationsRule())
 	lint.AddRule(rules.NewGallerySelectionListenerRule())
+	lint.AddRule(rules.NewDataViewLayoutGridRule())
 
 	// Load custom Starlark rules
 	rulesDir := filepath.Join(projectDir, ".claude", "lint-rules")
@@ -126,6 +127,7 @@ func listLintRules(ctx *ExecContext) error {
 	lint.AddRule(rules.NewImageSourceRule())
 	lint.AddRule(rules.NewMissingTranslationsRule())
 	lint.AddRule(rules.NewGallerySelectionListenerRule())
+	lint.AddRule(rules.NewDataViewLayoutGridRule())
 
 	for _, rule := range lint.Rules() {
 		fmt.Fprintf(ctx.Output, "  %s (%s)\n", rule.ID(), rule.Name())

@@ -92,6 +92,7 @@ Examples:
 		lint.AddRule(rules.NewImageSourceRule())
 		lint.AddRule(rules.NewEmptyContainerRule())
 		lint.AddRule(rules.NewGallerySelectionListenerRule())
+		lint.AddRule(rules.NewDataViewLayoutGridRule())
 		lint.AddRule(rules.NewPageNavigationSecurityRule())
 		lint.AddRule(rules.NewNoEntityAccessRulesRule())
 		lint.AddRule(rules.NewWeakPasswordPolicyRule())

@@ -732,15 +732,25 @@ create or replace page CRM.CustomerEdit
   layout: Atlas_Core.PopupLayout
 )
 {
-  dataview dvCustomer (datasource: $Customer) {
-    textbox txtName (label: 'Name', attribute: Name)
-    textbox txtEmail (label: 'Email', attribute: Email)
-    textbox txtPhone (label: 'Phone', attribute: Phone)
-    checkbox cbActive (label: 'Active', attribute: IsActive)
+  -- Wrap the form's DataView in a layout grid. Label width and input-control
+  -- width are expressed in Bootstrap grid columns and only render correctly
+  -- inside a layoutgrid → row → column. A parameter-bound DataView placed
+  -- directly on the page (no grid) is flagged by lint rule MPR010 / mxcli check.
+  layoutgrid mainGrid {
+    row row1 {
+      column col1 (desktopwidth: autofill) {
+        dataview dvCustomer (datasource: $Customer) {
+          textbox txtName (label: 'Name', attribute: Name)
+          textbox txtEmail (label: 'Email', attribute: Email)
+          textbox txtPhone (label: 'Phone', attribute: Phone)
+          checkbox cbActive (label: 'Active', attribute: IsActive)
 
-    footer footer1 {
-      actionbutton btnSave (caption: 'Save', action: save_changes, buttonstyle: primary)
-      actionbutton btnCancel (caption: 'Cancel', action: cancel_changes)
+          footer footer1 {
+            actionbutton btnSave (caption: 'Save', action: save_changes, buttonstyle: primary)
+            actionbutton btnCancel (caption: 'Cancel', action: cancel_changes)
+          }
+        }
+      }
     }
   }
 }
