@@ -29,7 +29,7 @@ func TestSerializeCrossAssociation_NoConnectionFields(t *testing.T) {
 	}
 	ca.ID = "test-cross-assoc-id"
 
-	result := serializeCrossAssociation(ca)
+	result := dToM(serializeCrossAssociation(ca))
 
 	// Must NOT contain these fields
 	for key := range result {
@@ -182,7 +182,7 @@ func TestSerializeAssociation_HasConnectionFields(t *testing.T) {
 	}
 	a.ID = "test-assoc-id"
 
-	result := serializeAssociation(a)
+	result := dToM(serializeAssociation(a))
 
 	hasParentConn := false
 	hasChildConn := false

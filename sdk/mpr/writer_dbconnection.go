@@ -47,24 +47,24 @@ func (w *Writer) DeleteDatabaseConnection(id model.ID) error {
 
 func (w *Writer) serializeDatabaseConnection(conn *model.DatabaseConnection) ([]byte, error) {
 	// Build ConnectionInput — stores actual JDBC URL for Studio Pro development
-	connInput := bson.M{
-		"$Type": "DatabaseConnector$ConnectionString",
-		"$ID":   idToBsonBinary(generateUUID()),
-		"Value": conn.ConnectionInputValue,
+	connInput := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+		{Key: "$Type", Value: "DatabaseConnector$ConnectionString"},
+		{Key: "Value", Value: conn.ConnectionInputValue},
 	}
 
-	doc := bson.M{
-		"$ID":              idToBsonBinary(string(conn.ID)),
-		"$Type":            "DatabaseConnector$DatabaseConnection",
-		"Name":             conn.Name,
-		"DatabaseType":     conn.DatabaseType,
-		"ConnectionString": conn.ConnectionString,
-		"UserName":         conn.UserName,
-		"Password":         conn.Password,
-		"Documentation":    conn.Documentation,
-		"Excluded":         conn.Excluded,
-		"ExportLevel":      "Hidden",
-		"ConnectionInput":  connInput,
+	doc := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(string(conn.ID))},
+		{Key: "$Type", Value: "DatabaseConnector$DatabaseConnection"},
+		{Key: "Name", Value: conn.Name},
+		{Key: "DatabaseType", Value: conn.DatabaseType},
+		{Key: "ConnectionString", Value: conn.ConnectionString},
+		{Key: "UserName", Value: conn.UserName},
+		{Key: "Password", Value: conn.Password},
+		{Key: "Documentation", Value: conn.Documentation},
+		{Key: "Excluded", Value: conn.Excluded},
+		{Key: "ExportLevel", Value: "Hidden"},
+		{Key: "ConnectionInput", Value: connInput},
 	}
 
 	// Serialize Queries
@@ -72,28 +72,21 @@ func (w *Writer) serializeDatabaseConnection(conn *model.DatabaseConnection) ([]
 	for _, q := range conn.Queries {
 		queries = append(queries, serializeDBQuery(q))
 	}
-	doc["Queries"] = queries
+	doc = append(doc, bson.E{Key: "Queries", Value: queries})
 
 	// AdditionalProperties (empty array)
-	doc["AdditionalProperties"] = bson.A{int32(2)}
+	doc = append(doc, bson.E{Key: "AdditionalProperties", Value: bson.A{int32(2)}})
 
 	// LastSelectedQuery (empty ref)
-	doc["LastSelectedQuery"] = ""
+	doc = append(doc, bson.E{Key: "LastSelectedQuery", Value: ""})
 
 	return bson.Marshal(doc)
 }
 
-func serializeDBQuery(q *model.DatabaseQuery) bson.M {
-	qDoc := bson.M{
-		"$Type":     "DatabaseConnector$DatabaseQuery",
-		"Name":      q.Name,
-		"Query":     q.SQL,
-		"QueryType": int64(q.QueryType),
-	}
-	if q.ID != "" {
-		qDoc["$ID"] = idToBsonBinary(string(q.ID))
-	} else {
-		qDoc["$ID"] = idToBsonBinary(generateUUID())
+func serializeDBQuery(q *model.DatabaseQuery) bson.D {
+	id := string(q.ID)
+	if id == "" {
+		id = generateUUID()
 	}
 
 	// TableMappings
@@ -101,32 +94,28 @@ func serializeDBQuery(q *model.DatabaseQuery) bson.M {
 	for _, m := range q.TableMappings {
 		mappings = append(mappings, serializeDBTableMapping(m))
 	}
-	qDoc["TableMappings"] = mappings
 
 	// Parameters
 	params := bson.A{int32(2)}
 	for _, p := range q.Parameters {
 		params = append(params, serializeDBQueryParameter(p))
 	}
-	qDoc["Parameters"] = params
 
-	return qDoc
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(id)},
+		{Key: "$Type", Value: "DatabaseConnector$DatabaseQuery"},
+		{Key: "Name", Value: q.Name},
+		{Key: "Query", Value: q.SQL},
+		{Key: "QueryType", Value: int64(q.QueryType)},
+		{Key: "TableMappings", Value: mappings},
+		{Key: "Parameters", Value: params},
+	}
 }
 
-func serializeDBQueryParameter(p *model.DatabaseQueryParameter) bson.M {
-	pDoc := bson.M{
-		"$Type":                 "DatabaseConnector$QueryParameter",
-		"ParameterName":         p.ParameterName,
-		"DatabaseParameterName": "",
-		"DefaultValue":          p.DefaultValue,
-		"EmptyValueBecomesNull": p.EmptyValueBecomesNull,
-		"Mode":                  "Unknown",
-		"TableMapping":          nil,
-	}
-	if p.ID != "" {
-		pDoc["$ID"] = idToBsonBinary(string(p.ID))
-	} else {
-		pDoc["$ID"] = idToBsonBinary(generateUUID())
+func serializeDBQueryParameter(p *model.DatabaseQueryParameter) bson.D {
+	id := string(p.ID)
+	if id == "" {
+		id = generateUUID()
 	}
 
 	// DataType
@@ -134,31 +123,32 @@ func serializeDBQueryParameter(p *model.DatabaseQueryParameter) bson.M {
 	if dataType == "" {
 		dataType = "DataTypes$StringType"
 	}
-	pDoc["DataType"] = bson.M{
-		"$Type": dataType,
-		"$ID":   idToBsonBinary(generateUUID()),
-	}
 
-	// SqlDataType
-	pDoc["SqlDataType"] = bson.M{
-		"$Type":        "DatabaseConnector$SimpleSqlDataType",
-		"DataTypeName": "",
-		"$ID":          idToBsonBinary(generateUUID()),
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(id)},
+		{Key: "$Type", Value: "DatabaseConnector$QueryParameter"},
+		{Key: "ParameterName", Value: p.ParameterName},
+		{Key: "DatabaseParameterName", Value: ""},
+		{Key: "DefaultValue", Value: p.DefaultValue},
+		{Key: "EmptyValueBecomesNull", Value: p.EmptyValueBecomesNull},
+		{Key: "Mode", Value: "Unknown"},
+		{Key: "TableMapping", Value: nil},
+		{Key: "DataType", Value: bson.D{
+			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+			{Key: "$Type", Value: dataType},
+		}},
+		{Key: "SqlDataType", Value: bson.D{
+			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+			{Key: "$Type", Value: "DatabaseConnector$SimpleSqlDataType"},
+			{Key: "DataTypeName", Value: ""},
+		}},
 	}
-
-	return pDoc
 }
 
-func serializeDBTableMapping(m *model.DatabaseTableMapping) bson.M {
-	mDoc := bson.M{
-		"$Type":     "DatabaseConnector$TableMapping",
-		"Entity":    m.Entity,
-		"TableName": m.TableName,
-	}
-	if m.ID != "" {
-		mDoc["$ID"] = idToBsonBinary(string(m.ID))
-	} else {
-		mDoc["$ID"] = idToBsonBinary(generateUUID())
+func serializeDBTableMapping(m *model.DatabaseTableMapping) bson.D {
+	id := string(m.ID)
+	if id == "" {
+		id = generateUUID()
 	}
 
 	// Columns
@@ -166,28 +156,34 @@ func serializeDBTableMapping(m *model.DatabaseTableMapping) bson.M {
 	for _, c := range m.Columns {
 		columns = append(columns, serializeDBColumnMapping(c))
 	}
-	mDoc["Columns"] = columns
 
-	return mDoc
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(id)},
+		{Key: "$Type", Value: "DatabaseConnector$TableMapping"},
+		{Key: "Entity", Value: m.Entity},
+		{Key: "TableName", Value: m.TableName},
+		{Key: "Columns", Value: columns},
+	}
 }
 
-func serializeDBColumnMapping(c *model.DatabaseColumnMapping) bson.M {
-	cDoc := bson.M{
-		"$Type":      "DatabaseConnector$ColumnMapping",
-		"Attribute":  c.Attribute,
-		"ColumnName": c.ColumnName,
-	}
-	if c.ID != "" {
-		cDoc["$ID"] = idToBsonBinary(string(c.ID))
-	} else {
-		cDoc["$ID"] = idToBsonBinary(generateUUID())
+func serializeDBColumnMapping(c *model.DatabaseColumnMapping) bson.D {
+	id := string(c.ID)
+	if id == "" {
+		id = generateUUID()
 	}
 
 	// SqlDataType — use SimpleSqlDataType as default
-	cDoc["SqlDataType"] = bson.M{
-		"$Type": "DatabaseConnector$SimpleSqlDataType",
-		"$ID":   idToBsonBinary(generateUUID()),
+	cDoc := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(id)},
+		{Key: "$Type", Value: "DatabaseConnector$ColumnMapping"},
+		{Key: "Attribute", Value: c.Attribute},
+		{Key: "ColumnName", Value: c.ColumnName},
 	}
+
+	cDoc = append(cDoc, bson.E{Key: "SqlDataType", Value: bson.D{
+		{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+		{Key: "$Type", Value: "DatabaseConnector$SimpleSqlDataType"},
+	}})
 
 	return cDoc
 }

@@ -81,7 +81,9 @@ func (b *Backend) UpdateProjectSettings(ps *model.ProjectSettings) error {
 		"$Type":    "Settings$ProjectSettings",
 		"Settings": settings,
 	}
-	contents, err := bson.Marshal(doc)
+	// Mendix 11.12+ requires "$ID" first in every storage object; the raw-part
+	// overlay above works with unordered maps, so order the whole tree on write.
+	contents, err := bson.Marshal(bsonutil.OrderStorageValue(doc))
 	if err != nil {
 		return fmt.Errorf("UpdateProjectSettings: marshal: %w", err)
 	}

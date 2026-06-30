@@ -59,74 +59,74 @@ func SerializeDataTransformer(dt *model.DataTransformer) ([]byte, error) {
 
 	// Root element
 	rootElemID := generateUUID()
-	rootElement := bson.M{
-		"$ID":        idToBsonBinary(rootElemID),
-		"$Type":      "DataTransformers$StructureObject",
-		"Attributes": bson.A{int32(2)},
+	rootElement := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(rootElemID)},
+		{Key: "$Type", Value: "DataTransformers$StructureObject"},
+		{Key: "Attributes", Value: bson.A{int32(2)}},
 	}
 
 	// Source
-	var source bson.M
+	var source bson.D
 	switch strings.ToUpper(dt.SourceType) {
 	case "XML":
-		source = bson.M{
-			"$ID":     idToBsonBinary(generateUUID()),
-			"$Type":   "DataTransformers$XmlSource",
-			"Content": dt.SourceJSON,
+		source = bson.D{
+			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+			{Key: "$Type", Value: "DataTransformers$XmlSource"},
+			{Key: "Content", Value: dt.SourceJSON},
 		}
 	default: // JSON
-		source = bson.M{
-			"$ID":     idToBsonBinary(generateUUID()),
-			"$Type":   "DataTransformers$JsonSource",
-			"Content": dt.SourceJSON,
+		source = bson.D{
+			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+			{Key: "$Type", Value: "DataTransformers$JsonSource"},
+			{Key: "Content", Value: dt.SourceJSON},
 		}
 	}
 
 	// Steps (versioned array prefix int32(2))
 	steps := bson.A{int32(2)}
 	for _, step := range dt.Steps {
-		var action bson.M
+		var action bson.D
 		switch strings.ToUpper(step.Technology) {
 		case "JSLT":
-			action = bson.M{
-				"$ID":   idToBsonBinary(generateUUID()),
-				"$Type": "DataTransformers$JsltAction",
-				"Jslt":  step.Expression,
+			action = bson.D{
+				{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+				{Key: "$Type", Value: "DataTransformers$JsltAction"},
+				{Key: "Jslt", Value: step.Expression},
 			}
 		case "XSLT":
-			action = bson.M{
-				"$ID":   idToBsonBinary(generateUUID()),
-				"$Type": "DataTransformers$XsltAction",
-				"Xslt":  step.Expression,
+			action = bson.D{
+				{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+				{Key: "$Type", Value: "DataTransformers$XsltAction"},
+				{Key: "Xslt", Value: step.Expression},
 			}
 		default:
-			action = bson.M{
-				"$ID":   idToBsonBinary(generateUUID()),
-				"$Type": "DataTransformers$JsltAction",
-				"Jslt":  step.Expression,
+			action = bson.D{
+				{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+				{Key: "$Type", Value: "DataTransformers$JsltAction"},
+				{Key: "Jslt", Value: step.Expression},
 			}
 		}
 
-		steps = append(steps, bson.M{
-			"$ID":                  idToBsonBinary(generateUUID()),
-			"$Type":                "DataTransformers$Step",
-			"Action":               action,
-			"InputElementPointer":  idToBsonBinary(rootElemID),
-			"OutputElementPointer": idToBsonBinary(rootElemID),
+		steps = append(steps, bson.D{
+			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+			{Key: "$Type", Value: "DataTransformers$Step"},
+			{Key: "Action", Value: action},
+			{Key: "InputElementPointer", Value: idToBsonBinary(rootElemID)},
+			{Key: "OutputElementPointer", Value: idToBsonBinary(rootElemID)},
 		})
 	}
 
-	doc := bson.M{
-		"$ID":                idToBsonBinary(string(dt.ID)),
-		"$Type":              "DataTransformers$DataTransformer",
-		"Name":               dt.Name,
-		"Documentation":      "",
-		"Excluded":           dt.Excluded,
-		"ExportLevel":        "Hidden",
-		"Source":             source,
-		"Elements":           bson.A{int32(2), rootElement},
-		"RootElementPointer": idToBsonBinary(rootElemID),
-		"Steps":              steps,
+	doc := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(string(dt.ID))},
+		{Key: "$Type", Value: "DataTransformers$DataTransformer"},
+		{Key: "Name", Value: dt.Name},
+		{Key: "Documentation", Value: ""},
+		{Key: "Excluded", Value: dt.Excluded},
+		{Key: "ExportLevel", Value: "Hidden"},
+		{Key: "Source", Value: source},
+		{Key: "Elements", Value: bson.A{int32(2), rootElement}},
+		{Key: "RootElementPointer", Value: idToBsonBinary(rootElemID)},
+		{Key: "Steps", Value: steps},
 	}
 
 	return bson.Marshal(doc)
@@ -135,9 +135,9 @@ func SerializeDataTransformer(dt *model.DataTransformer) ([]byte, error) {
 // SerializeProjectSettings returns BSON bytes for the project settings unit.
 // Ported from sdk/mpr/writer_settings.go — same logic, no Writer dependency.
 func SerializeProjectSettings(ps *model.ProjectSettings) ([]byte, error) {
-	doc := bson.M{
-		"$ID":   idToBsonBinary(string(ps.ID)),
-		"$Type": "Settings$ProjectSettings",
+	doc := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(string(ps.ID))},
+		{Key: "$Type", Value: "Settings$ProjectSettings"},
 	}
 
 	// Rebuild the Settings array from RawParts, overwriting modified parts.
@@ -176,7 +176,7 @@ func SerializeProjectSettings(ps *model.ProjectSettings) ([]byte, error) {
 		}
 	}
 
-	doc["Settings"] = settings
+	doc = append(doc, bson.E{Key: "Settings", Value: settings})
 	return bson.Marshal(doc)
 }
 
@@ -210,30 +210,30 @@ func serPSConfigurationSettings(cs *model.ConfigurationSettings, raw map[string]
 	return raw
 }
 
-func serPSServerConfiguration(cfg *model.ServerConfiguration) bson.M {
-	cfgDoc := bson.M{
-		"$Type":                         "Settings$ServerConfiguration",
-		"Name":                          cfg.Name,
-		"DatabaseType":                  cfg.DatabaseType,
-		"DatabaseUrl":                   cfg.DatabaseUrl,
-		"DatabaseName":                  cfg.DatabaseName,
-		"DatabaseUserName":              cfg.DatabaseUserName,
-		"DatabasePassword":              cfg.DatabasePassword,
-		"DatabaseUseIntegratedSecurity": cfg.DatabaseUseIntegratedSecurity,
-		"HttpPortNumber":                serPSInt64(cfg.HttpPortNumber),
-		"ServerPortNumber":              serPSInt64(cfg.ServerPortNumber),
-		"ApplicationRootUrl":            cfg.ApplicationRootUrl,
-		"MaxJavaHeapSize":               serPSInt64(cfg.MaxJavaHeapSize),
-		"ExtraJvmParameters":            cfg.ExtraJvmParameters,
-		"OpenAdminPort":                 cfg.OpenAdminPort,
-		"OpenHttpPort":                  cfg.OpenHttpPort,
-		"CustomSettings":                bson.A{int32(2)},
-		"Tracing":                       nil,
+func serPSServerConfiguration(cfg *model.ServerConfiguration) bson.D {
+	cfgID := string(cfg.ID)
+	if cfgID == "" {
+		cfgID = generateUUID()
 	}
-	if cfg.ID != "" {
-		cfgDoc["$ID"] = idToBsonBinary(string(cfg.ID))
-	} else {
-		cfgDoc["$ID"] = idToBsonBinary(generateUUID())
+	cfgDoc := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(cfgID)},
+		{Key: "$Type", Value: "Settings$ServerConfiguration"},
+		{Key: "Name", Value: cfg.Name},
+		{Key: "DatabaseType", Value: cfg.DatabaseType},
+		{Key: "DatabaseUrl", Value: cfg.DatabaseUrl},
+		{Key: "DatabaseName", Value: cfg.DatabaseName},
+		{Key: "DatabaseUserName", Value: cfg.DatabaseUserName},
+		{Key: "DatabasePassword", Value: cfg.DatabasePassword},
+		{Key: "DatabaseUseIntegratedSecurity", Value: cfg.DatabaseUseIntegratedSecurity},
+		{Key: "HttpPortNumber", Value: serPSInt64(cfg.HttpPortNumber)},
+		{Key: "ServerPortNumber", Value: serPSInt64(cfg.ServerPortNumber)},
+		{Key: "ApplicationRootUrl", Value: cfg.ApplicationRootUrl},
+		{Key: "MaxJavaHeapSize", Value: serPSInt64(cfg.MaxJavaHeapSize)},
+		{Key: "ExtraJvmParameters", Value: cfg.ExtraJvmParameters},
+		{Key: "OpenAdminPort", Value: cfg.OpenAdminPort},
+		{Key: "OpenHttpPort", Value: cfg.OpenHttpPort},
+		{Key: "CustomSettings", Value: bson.A{int32(2)}},
+		{Key: "Tracing", Value: nil},
 	}
 
 	// Serialize ConstantValues (versioned array prefix)
@@ -241,23 +241,22 @@ func serPSServerConfiguration(cfg *model.ServerConfiguration) bson.M {
 	for _, cv := range cfg.ConstantValues {
 		cvArr = append(cvArr, serPSConstantValue(cv))
 	}
-	cfgDoc["ConstantValues"] = cvArr
+	cfgDoc = append(cfgDoc, bson.E{Key: "ConstantValues", Value: cvArr})
 
 	return cfgDoc
 }
 
-func serPSConstantValue(cv *model.ConstantValue) bson.M {
-	cvDoc := bson.M{
-		"$Type":      "Settings$ConstantValue",
-		"ConstantId": cv.ConstantId,
-		"Value":      cv.Value,
+func serPSConstantValue(cv *model.ConstantValue) bson.D {
+	cvID := string(cv.ID)
+	if cvID == "" {
+		cvID = generateUUID()
 	}
-	if cv.ID != "" {
-		cvDoc["$ID"] = idToBsonBinary(string(cv.ID))
-	} else {
-		cvDoc["$ID"] = idToBsonBinary(generateUUID())
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(cvID)},
+		{Key: "$Type", Value: "Settings$ConstantValue"},
+		{Key: "ConstantId", Value: cv.ConstantId},
+		{Key: "Value", Value: cv.Value},
 	}
-	return cvDoc
 }
 
 func serPSLanguageSettings(ls *model.LanguageSettings, raw map[string]any) map[string]any {

@@ -30,9 +30,9 @@ func (w *Writer) UpdateProjectSettings(ps *model.ProjectSettings) error {
 // It uses the RawParts for round-trip fidelity, updating only the parts
 // that have been parsed and modified.
 func (w *Writer) serializeProjectSettings(ps *model.ProjectSettings) ([]byte, error) {
-	doc := bson.M{
-		"$ID":   idToBsonBinary(string(ps.ID)),
-		"$Type": "Settings$ProjectSettings",
+	doc := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(string(ps.ID))},
+		{Key: "$Type", Value: "Settings$ProjectSettings"},
 	}
 
 	// Rebuild the Settings array from RawParts, overwriting modified parts
@@ -71,7 +71,7 @@ func (w *Writer) serializeProjectSettings(ps *model.ProjectSettings) ([]byte, er
 		}
 	}
 
-	doc["Settings"] = settings
+	doc = append(doc, bson.E{Key: "Settings", Value: settings})
 	return bson.Marshal(doc)
 }
 
@@ -103,30 +103,10 @@ func serializeConfigurationSettings(cs *model.ConfigurationSettings, raw map[str
 	return raw
 }
 
-func serializeServerConfiguration(cfg *model.ServerConfiguration) bson.M {
-	cfgDoc := bson.M{
-		"$Type":                         "Settings$ServerConfiguration",
-		"Name":                          cfg.Name,
-		"DatabaseType":                  cfg.DatabaseType,
-		"DatabaseUrl":                   cfg.DatabaseUrl,
-		"DatabaseName":                  cfg.DatabaseName,
-		"DatabaseUserName":              cfg.DatabaseUserName,
-		"DatabasePassword":              cfg.DatabasePassword,
-		"DatabaseUseIntegratedSecurity": cfg.DatabaseUseIntegratedSecurity,
-		"HttpPortNumber":                safeInt64(cfg.HttpPortNumber),
-		"ServerPortNumber":              safeInt64(cfg.ServerPortNumber),
-		"ApplicationRootUrl":            cfg.ApplicationRootUrl,
-		"MaxJavaHeapSize":               safeInt64(cfg.MaxJavaHeapSize),
-		"ExtraJvmParameters":            cfg.ExtraJvmParameters,
-		"OpenAdminPort":                 cfg.OpenAdminPort,
-		"OpenHttpPort":                  cfg.OpenHttpPort,
-		"CustomSettings":                bson.A{int32(2)},
-		"Tracing":                       nil,
-	}
-	if cfg.ID != "" {
-		cfgDoc["$ID"] = idToBsonBinary(string(cfg.ID))
-	} else {
-		cfgDoc["$ID"] = idToBsonBinary(generateUUID())
+func serializeServerConfiguration(cfg *model.ServerConfiguration) bson.D {
+	id := string(cfg.ID)
+	if id == "" {
+		id = generateUUID()
 	}
 
 	// Serialize ConstantValues
@@ -134,23 +114,43 @@ func serializeServerConfiguration(cfg *model.ServerConfiguration) bson.M {
 	for _, cv := range cfg.ConstantValues {
 		cvArr = append(cvArr, serializeConstantValue(cv))
 	}
-	cfgDoc["ConstantValues"] = cvArr
+
+	cfgDoc := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(id)},
+		{Key: "$Type", Value: "Settings$ServerConfiguration"},
+		{Key: "Name", Value: cfg.Name},
+		{Key: "DatabaseType", Value: cfg.DatabaseType},
+		{Key: "DatabaseUrl", Value: cfg.DatabaseUrl},
+		{Key: "DatabaseName", Value: cfg.DatabaseName},
+		{Key: "DatabaseUserName", Value: cfg.DatabaseUserName},
+		{Key: "DatabasePassword", Value: cfg.DatabasePassword},
+		{Key: "DatabaseUseIntegratedSecurity", Value: cfg.DatabaseUseIntegratedSecurity},
+		{Key: "HttpPortNumber", Value: safeInt64(cfg.HttpPortNumber)},
+		{Key: "ServerPortNumber", Value: safeInt64(cfg.ServerPortNumber)},
+		{Key: "ApplicationRootUrl", Value: cfg.ApplicationRootUrl},
+		{Key: "MaxJavaHeapSize", Value: safeInt64(cfg.MaxJavaHeapSize)},
+		{Key: "ExtraJvmParameters", Value: cfg.ExtraJvmParameters},
+		{Key: "OpenAdminPort", Value: cfg.OpenAdminPort},
+		{Key: "OpenHttpPort", Value: cfg.OpenHttpPort},
+		{Key: "CustomSettings", Value: bson.A{int32(2)}},
+		{Key: "Tracing", Value: nil},
+		{Key: "ConstantValues", Value: cvArr},
+	}
 
 	return cfgDoc
 }
 
-func serializeConstantValue(cv *model.ConstantValue) bson.M {
-	cvDoc := bson.M{
-		"$Type":      "Settings$ConstantValue",
-		"ConstantId": cv.ConstantId,
-		"Value":      cv.Value,
+func serializeConstantValue(cv *model.ConstantValue) bson.D {
+	id := string(cv.ID)
+	if id == "" {
+		id = generateUUID()
 	}
-	if cv.ID != "" {
-		cvDoc["$ID"] = idToBsonBinary(string(cv.ID))
-	} else {
-		cvDoc["$ID"] = idToBsonBinary(generateUUID())
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(id)},
+		{Key: "$Type", Value: "Settings$ConstantValue"},
+		{Key: "ConstantId", Value: cv.ConstantId},
+		{Key: "Value", Value: cv.Value},
 	}
-	return cvDoc
 }
 
 // serializeLanguageSettings updates the raw BSON map with modified language settings.

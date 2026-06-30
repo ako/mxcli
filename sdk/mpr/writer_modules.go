@@ -196,10 +196,10 @@ func (w *Writer) CreateFolder(folder *model.Folder) error {
 
 // serializeFolder serializes a folder to BSON.
 func (w *Writer) serializeFolder(folder *model.Folder) ([]byte, error) {
-	doc := bson.M{
-		"$ID":   idToBsonBinary(string(folder.ID)),
-		"$Type": "Projects$Folder",
-		"Name":  folder.Name,
+	doc := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(string(folder.ID))},
+		{Key: "$Type", Value: "Projects$Folder"},
+		{Key: "Name", Value: folder.Name},
 	}
 
 	return bson.Marshal(doc)
@@ -235,25 +235,25 @@ func (w *Writer) MoveFolder(id model.ID, newContainerID model.ID) error {
 }
 
 func (w *Writer) serializeModuleSecurity(id string) ([]byte, error) {
-	doc := bson.M{
-		"$ID":         idToBsonBinary(id),
-		"$Type":       "Security$ModuleSecurity",
-		"ModuleRoles": bson.A{int32(1)},
+	doc := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(id)},
+		{Key: "$Type", Value: "Security$ModuleSecurity"},
+		{Key: "ModuleRoles", Value: bson.A{int32(1)}},
 	}
 	return bson.Marshal(doc)
 }
 
 func (w *Writer) serializeModuleSettings(id string) ([]byte, error) {
-	doc := bson.M{
-		"$ID":                 idToBsonBinary(id),
-		"$Type":               "Projects$ModuleSettings",
-		"BasedOnVersion":      "",
-		"ExportLevel":         "Source",
-		"ExtensionName":       "",
-		"JarDependencies":     bson.A{int32(2)},
-		"ProtectedModuleType": "AddOn",
-		"SolutionIdentifier":  "",
-		"Version":             "1.0.0",
+	doc := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(id)},
+		{Key: "$Type", Value: "Projects$ModuleSettings"},
+		{Key: "BasedOnVersion", Value: ""},
+		{Key: "ExportLevel", Value: "Source"},
+		{Key: "ExtensionName", Value: ""},
+		{Key: "JarDependencies", Value: bson.A{int32(2)}},
+		{Key: "ProtectedModuleType", Value: "AddOn"},
+		{Key: "SolutionIdentifier", Value: ""},
+		{Key: "Version", Value: "1.0.0"},
 	}
 	return bson.Marshal(doc)
 }
@@ -289,13 +289,13 @@ func (w *Writer) serializeModuleSettingsFull(ms *types.ModuleSettings) ([]byte, 
 		if depID == "" {
 			depID = generateUUID()
 		}
-		depDoc := bson.M{
-			"$ID":        idToBsonBinary(depID),
-			"$Type":      "Projects$JarDependency",
-			"GroupId":    d.GroupID,
-			"ArtifactId": d.ArtifactID,
-			"Version":    d.Version,
-			"IsIncluded": d.IsIncluded,
+		depDoc := bson.D{
+			{Key: "$ID", Value: idToBsonBinary(depID)},
+			{Key: "$Type", Value: "Projects$JarDependency"},
+			{Key: "GroupId", Value: d.GroupID},
+			{Key: "ArtifactId", Value: d.ArtifactID},
+			{Key: "Version", Value: d.Version},
+			{Key: "IsIncluded", Value: d.IsIncluded},
 		}
 		if len(d.Exclusions) > 0 {
 			excArr := bson.A{int32(2)}
@@ -304,44 +304,44 @@ func (w *Writer) serializeModuleSettingsFull(ms *types.ModuleSettings) ([]byte, 
 				if excID == "" {
 					excID = generateUUID()
 				}
-				excArr = append(excArr, bson.M{
-					"$ID":        idToBsonBinary(excID),
-					"$Type":      "Projects$JarDependencyExclusion",
-					"GroupId":    e.GroupID,
-					"ArtifactId": e.ArtifactID,
+				excArr = append(excArr, bson.D{
+					{Key: "$ID", Value: idToBsonBinary(excID)},
+					{Key: "$Type", Value: "Projects$JarDependencyExclusion"},
+					{Key: "GroupId", Value: e.GroupID},
+					{Key: "ArtifactId", Value: e.ArtifactID},
 				})
 			}
-			depDoc["Exclusions"] = excArr
+			depDoc = append(depDoc, bson.E{Key: "Exclusions", Value: excArr})
 		}
 		deps = append(deps, depDoc)
 	}
 
-	doc := bson.M{
-		"$ID":                 idToBsonBinary(string(ms.ID)),
-		"$Type":               "Projects$ModuleSettings",
-		"BasedOnVersion":      ms.BasedOnVersion,
-		"ExportLevel":         exportLevel,
-		"ExtensionName":       ms.ExtensionName,
-		"JarDependencies":     deps,
-		"ProtectedModuleType": protectedType,
-		"SolutionIdentifier":  ms.SolutionIdentifier,
-		"Version":             ver,
+	doc := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(string(ms.ID))},
+		{Key: "$Type", Value: "Projects$ModuleSettings"},
+		{Key: "BasedOnVersion", Value: ms.BasedOnVersion},
+		{Key: "ExportLevel", Value: exportLevel},
+		{Key: "ExtensionName", Value: ms.ExtensionName},
+		{Key: "JarDependencies", Value: deps},
+		{Key: "ProtectedModuleType", Value: protectedType},
+		{Key: "SolutionIdentifier", Value: ms.SolutionIdentifier},
+		{Key: "Version", Value: ver},
 	}
 	return bson.Marshal(doc)
 }
 
 func (w *Writer) serializeModule(module *model.Module) ([]byte, error) {
-	doc := bson.M{
-		"$ID":                     idToBsonBinary(string(module.ID)),
-		"$Type":                   "Projects$ModuleImpl",
-		"Name":                    module.Name,
-		"FromAppStore":            module.FromAppStore,
-		"AppStoreGuid":            module.AppStoreGuid,
-		"AppStorePackageIdString": "",
-		"AppStoreVersion":         module.AppStoreVersion,
-		"AppStoreVersionGuid":     "",
-		"IsThemeModule":           false,
-		"NewSortIndex":            int64(0),
+	doc := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(string(module.ID))},
+		{Key: "$Type", Value: "Projects$ModuleImpl"},
+		{Key: "Name", Value: module.Name},
+		{Key: "FromAppStore", Value: module.FromAppStore},
+		{Key: "AppStoreGuid", Value: module.AppStoreGuid},
+		{Key: "AppStorePackageIdString", Value: ""},
+		{Key: "AppStoreVersion", Value: module.AppStoreVersion},
+		{Key: "AppStoreVersionGuid", Value: ""},
+		{Key: "IsThemeModule", Value: false},
+		{Key: "NewSortIndex", Value: int64(0)},
 	}
 	return bson.Marshal(doc)
 }

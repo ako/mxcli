@@ -153,7 +153,7 @@ func TestSerializeRestOperationGetWithParams(t *testing.T) {
 		Timeout:      30,
 	}
 
-	result := serializeRestOperation(op)
+	result := dToM(serializeRestOperation(op))
 
 	assertField(t, result, "$Type", "Rest$RestOperation")
 	assertField(t, result, "Name", "GetPet")
@@ -232,7 +232,7 @@ func TestSerializeRestOperationPostWithBody(t *testing.T) {
 		ResponseType: "JSON",
 	}
 
-	result := serializeRestOperation(op)
+	result := dToM(serializeRestOperation(op))
 
 	// Method should be WithBody (POST)
 	method, ok := result["Method"].(bson.M)
@@ -264,7 +264,7 @@ func TestSerializeRestOperationNoResponse(t *testing.T) {
 		ResponseType: "NONE",
 	}
 
-	result := serializeRestOperation(op)
+	result := dToM(serializeRestOperation(op))
 
 	respHandling, ok := result["ResponseHandling"].(bson.M)
 	if !ok {
@@ -286,7 +286,7 @@ func TestSerializeRestOperationQueryParams(t *testing.T) {
 		ResponseType: "JSON",
 	}
 
-	result := serializeRestOperation(op)
+	result := dToM(serializeRestOperation(op))
 
 	queryParams := extractBsonArray(result["QueryParameters"])
 	if len(queryParams) != 1 {

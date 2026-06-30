@@ -57,36 +57,36 @@ func (w *Writer) serializeImportMapping(im *model.ImportMapping) ([]byte, error)
 
 	// ParameterType is a required sub-document even when not used (DataTypes$UnknownType).
 	// Without it Studio Pro fails to render the schema source and mapping elements correctly.
-	parameterType := bson.M{
-		"$ID":   idToBsonBinary(generateUUID()),
-		"$Type": "DataTypes$UnknownType",
+	parameterType := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+		{Key: "$Type", Value: "DataTypes$UnknownType"},
 	}
 
-	doc := bson.M{
-		"$ID":               idToBsonBinary(string(im.ID)),
-		"$Type":             "ImportMappings$ImportMapping",
-		"Name":              im.Name,
-		"Documentation":     im.Documentation,
-		"Excluded":          im.Excluded,
-		"ExportLevel":       exportLevel,
-		"JsonStructure":     im.JsonStructure,
-		"XmlSchema":         im.XmlSchema,
-		"MessageDefinition": im.MessageDefinition,
-		"Elements":          elements,
+	doc := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(string(im.ID))},
+		{Key: "$Type", Value: "ImportMappings$ImportMapping"},
+		{Key: "Name", Value: im.Name},
+		{Key: "Documentation", Value: im.Documentation},
+		{Key: "Excluded", Value: im.Excluded},
+		{Key: "ExportLevel", Value: exportLevel},
+		{Key: "JsonStructure", Value: im.JsonStructure},
+		{Key: "XmlSchema", Value: im.XmlSchema},
+		{Key: "MessageDefinition", Value: im.MessageDefinition},
+		{Key: "Elements", Value: elements},
 		// Required fields with defaults — verified against Studio Pro-created BSON
-		"UseSubtransactionsForMicroflows": false,
-		"PublicName":                      "", // Studio Pro writes "" not the mapping name
-		"XsdRootElementName":              "",
-		"MappingSourceReference":          nil,
-		"ParameterType":                   parameterType,
-		"OperationName":                   "",
-		"ServiceName":                     "",
-		"WsdlFile":                        "",
+		{Key: "UseSubtransactionsForMicroflows", Value: false},
+		{Key: "PublicName", Value: ""}, // Studio Pro writes "" not the mapping name
+		{Key: "XsdRootElementName", Value: ""},
+		{Key: "MappingSourceReference", Value: nil},
+		{Key: "ParameterType", Value: parameterType},
+		{Key: "OperationName", Value: ""},
+		{Key: "ServiceName", Value: ""},
+		{Key: "WsdlFile", Value: ""},
 	}
 	return bson.Marshal(doc)
 }
 
-func serializeImportMappingElement(elem *model.ImportMappingElement, parentPath string) bson.M {
+func serializeImportMappingElement(elem *model.ImportMappingElement, parentPath string) bson.D {
 	id := string(elem.ID)
 	if id == "" {
 		id = generateUUID()
@@ -98,7 +98,7 @@ func serializeImportMappingElement(elem *model.ImportMappingElement, parentPath 
 	return serializeImportValueElement(id, elem, parentPath)
 }
 
-func serializeImportObjectElement(id string, elem *model.ImportMappingElement, parentPath string) bson.M {
+func serializeImportObjectElement(id string, elem *model.ImportMappingElement, parentPath string) bson.D {
 	// Use pre-computed JsonPath from the executor when available.
 	// The executor aligns JsonPath with the JSON structure element paths.
 	jsonPath := elem.JsonPath
@@ -129,58 +129,58 @@ func serializeImportObjectElement(id string, elem *model.ImportMappingElement, p
 	// The generated metamodel (ImportMappingsImportObjectMappingElement) is misleading — Studio Pro will throw
 	// TypeCacheUnknownTypeException if you use "ImportMappings$ImportObjectMappingElement".
 	// Rule: MappingElement $Type names do NOT repeat the namespace prefix (same for ExportMappings).
-	return bson.M{
-		"$ID":                               idToBsonBinary(id),
-		"$Type":                             "ImportMappings$ObjectMappingElement",
-		"Entity":                            elem.Entity,
-		"ExposedName":                       elem.ExposedName,
-		"JsonPath":                          jsonPath,
-		"XmlPath":                           "",
-		"ObjectHandling":                    objectHandling,
-		"ObjectHandlingBackup":              objectHandlingBackup,
-		"ObjectHandlingBackupAllowOverride": false,
-		"Association":                       elem.Association,
-		"Children":                          children,
-		"MinOccurs":                         int32(elem.MinOccurs),
-		"MaxOccurs":                         int32(elem.MaxOccurs),
-		"Nillable":                          elem.Nillable,
-		"IsDefaultType":                     false,
-		"ElementType":                       elementTypeForKind(elem.Kind),
-		"Documentation":                     "",
-		"CustomHandlerCall":                 nil,
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(id)},
+		{Key: "$Type", Value: "ImportMappings$ObjectMappingElement"},
+		{Key: "Entity", Value: elem.Entity},
+		{Key: "ExposedName", Value: elem.ExposedName},
+		{Key: "JsonPath", Value: jsonPath},
+		{Key: "XmlPath", Value: ""},
+		{Key: "ObjectHandling", Value: objectHandling},
+		{Key: "ObjectHandlingBackup", Value: objectHandlingBackup},
+		{Key: "ObjectHandlingBackupAllowOverride", Value: false},
+		{Key: "Association", Value: elem.Association},
+		{Key: "Children", Value: children},
+		{Key: "MinOccurs", Value: int32(elem.MinOccurs)},
+		{Key: "MaxOccurs", Value: int32(elem.MaxOccurs)},
+		{Key: "Nillable", Value: elem.Nillable},
+		{Key: "IsDefaultType", Value: false},
+		{Key: "ElementType", Value: elementTypeForKind(elem.Kind)},
+		{Key: "Documentation", Value: ""},
+		{Key: "CustomHandlerCall", Value: nil},
 	}
 }
 
-func serializeImportValueElement(id string, elem *model.ImportMappingElement, parentPath string) bson.M {
+func serializeImportValueElement(id string, elem *model.ImportMappingElement, parentPath string) bson.D {
 	dataType := serializeImportValueDataType(elem.DataType)
 	jsonPath := elem.JsonPath
 	if jsonPath == "" {
 		jsonPath = parentPath + "|" + elem.ExposedName
 	}
 
-	return bson.M{
-		"$ID":              idToBsonBinary(id),
-		"$Type":            "ImportMappings$ValueMappingElement",
-		"Attribute":        elem.Attribute,
-		"ExposedName":      elem.ExposedName,
-		"JsonPath":         jsonPath,
-		"XmlPath":          "",
-		"IsKey":            elem.IsKey,
-		"Type":             dataType,
-		"MinOccurs":        int32(elem.MinOccurs),
-		"MaxOccurs":        int32(elem.MaxOccurs),
-		"Nillable":         elem.Nillable,
-		"IsDefaultType":    false,
-		"ElementType":      "Value",
-		"Documentation":    "",
-		"Converter":        "",
-		"FractionDigits":   int32(elem.FractionDigits),
-		"TotalDigits":      int32(elem.TotalDigits),
-		"MaxLength":        int32(elem.MaxLength),
-		"IsContent":        false,
-		"IsXmlAttribute":   false,
-		"OriginalValue":    elem.OriginalValue,
-		"XmlPrimitiveType": xmlPrimitiveTypeName(elem.DataType),
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(id)},
+		{Key: "$Type", Value: "ImportMappings$ValueMappingElement"},
+		{Key: "Attribute", Value: elem.Attribute},
+		{Key: "ExposedName", Value: elem.ExposedName},
+		{Key: "JsonPath", Value: jsonPath},
+		{Key: "XmlPath", Value: ""},
+		{Key: "IsKey", Value: elem.IsKey},
+		{Key: "Type", Value: dataType},
+		{Key: "MinOccurs", Value: int32(elem.MinOccurs)},
+		{Key: "MaxOccurs", Value: int32(elem.MaxOccurs)},
+		{Key: "Nillable", Value: elem.Nillable},
+		{Key: "IsDefaultType", Value: false},
+		{Key: "ElementType", Value: "Value"},
+		{Key: "Documentation", Value: ""},
+		{Key: "Converter", Value: ""},
+		{Key: "FractionDigits", Value: int32(elem.FractionDigits)},
+		{Key: "TotalDigits", Value: int32(elem.TotalDigits)},
+		{Key: "MaxLength", Value: int32(elem.MaxLength)},
+		{Key: "IsContent", Value: false},
+		{Key: "IsXmlAttribute", Value: false},
+		{Key: "OriginalValue", Value: elem.OriginalValue},
+		{Key: "XmlPrimitiveType", Value: xmlPrimitiveTypeName(elem.DataType)},
 	}
 }
 

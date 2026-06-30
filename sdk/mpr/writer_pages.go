@@ -278,12 +278,12 @@ func (w *Writer) serializePage(page *pages.Page) ([]byte, error) {
 }
 
 func (w *Writer) serializeLayout(layout *pages.Layout) ([]byte, error) {
-	doc := bson.M{
-		"$ID":           string(layout.ID),
-		"$Type":         layout.TypeName,
-		"Name":          layout.Name,
-		"Documentation": layout.Documentation,
-		"LayoutType":    string(layout.LayoutType),
+	doc := bson.D{
+		{Key: "$ID", Value: string(layout.ID)},
+		{Key: "$Type", Value: layout.TypeName},
+		{Key: "Name", Value: layout.Name},
+		{Key: "Documentation", Value: layout.Documentation},
+		{Key: "LayoutType", Value: string(layout.LayoutType)},
 	}
 	return bson.Marshal(doc)
 }

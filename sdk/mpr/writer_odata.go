@@ -47,29 +47,29 @@ func (w *Writer) DeleteConsumedODataService(id model.ID) error {
 
 // serializeConsumedODataService converts a ConsumedODataService to BSON bytes.
 func (w *Writer) serializeConsumedODataService(svc *model.ConsumedODataService) ([]byte, error) {
-	doc := bson.M{
-		"$ID":                  idToBsonBinary(string(svc.ID)),
-		"$Type":                "Rest$ConsumedODataService",
-		"Name":                 svc.Name,
-		"Documentation":        svc.Documentation,
-		"Version":              svc.Version,
-		"ServiceName":          svc.ServiceName,
-		"ODataVersion":         svc.ODataVersion,
-		"MetadataUrl":          svc.MetadataUrl,
-		"TimeoutExpression":    svc.TimeoutExpression,
-		"ProxyType":            svc.ProxyType,
-		"Description":          svc.Description,
-		"Validated":            svc.Validated,
-		"Excluded":             svc.Excluded,
-		"ExportLevel":          "Hidden",
-		"Metadata":             svc.Metadata,
-		"MetadataHash":         svc.MetadataHash,
-		"MetadataReferences":   bson.A{int32(0)}, // empty BSON array marker
-		"ValidatedEntities":    bson.A{int32(0)}, // empty BSON array marker
-		"LastUpdated":          "",
-		"UseQuerySegment":      false,
-		"MinimumMxVersion":     "",
-		"RecommendedMxVersion": "",
+	doc := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(string(svc.ID))},
+		{Key: "$Type", Value: "Rest$ConsumedODataService"},
+		{Key: "Name", Value: svc.Name},
+		{Key: "Documentation", Value: svc.Documentation},
+		{Key: "Version", Value: svc.Version},
+		{Key: "ServiceName", Value: svc.ServiceName},
+		{Key: "ODataVersion", Value: svc.ODataVersion},
+		{Key: "MetadataUrl", Value: svc.MetadataUrl},
+		{Key: "TimeoutExpression", Value: svc.TimeoutExpression},
+		{Key: "ProxyType", Value: svc.ProxyType},
+		{Key: "Description", Value: svc.Description},
+		{Key: "Validated", Value: svc.Validated},
+		{Key: "Excluded", Value: svc.Excluded},
+		{Key: "ExportLevel", Value: "Hidden"},
+		{Key: "Metadata", Value: svc.Metadata},
+		{Key: "MetadataHash", Value: svc.MetadataHash},
+		{Key: "MetadataReferences", Value: bson.A{int32(0)}}, // empty BSON array marker
+		{Key: "ValidatedEntities", Value: bson.A{int32(0)}},  // empty BSON array marker
+		{Key: "LastUpdated", Value: ""},
+		{Key: "UseQuerySegment", Value: false},
+		{Key: "MinimumMxVersion", Value: ""},
+		{Key: "RecommendedMxVersion", Value: ""},
 	}
 
 	// Microflow reference (BY_NAME). Both the "Configuration microflow"
@@ -81,76 +81,76 @@ func (w *Writer) serializeConsumedODataService(svc *model.ConsumedODataService) 
 	// Pro doesn't recognise either and the dropdown silently falls back
 	// to "Constants only".
 	if svc.ConfigurationMicroflow != "" {
-		doc["ConfigurationMicroflow"] = svc.ConfigurationMicroflow
+		doc = append(doc, bson.E{Key: "ConfigurationMicroflow", Value: svc.ConfigurationMicroflow})
 	}
 	if svc.ErrorHandlingMicroflow != "" {
-		doc["ErrorHandlingMicroflow"] = svc.ErrorHandlingMicroflow
+		doc = append(doc, bson.E{Key: "ErrorHandlingMicroflow", Value: svc.ErrorHandlingMicroflow})
 	}
 
 	// Proxy constant references (BY_NAME)
 	if svc.ProxyHost != "" {
-		doc["ProxyHost"] = svc.ProxyHost
+		doc = append(doc, bson.E{Key: "ProxyHost", Value: svc.ProxyHost})
 	}
 	if svc.ProxyPort != "" {
-		doc["ProxyPort"] = svc.ProxyPort
+		doc = append(doc, bson.E{Key: "ProxyPort", Value: svc.ProxyPort})
 	}
 	if svc.ProxyUsername != "" {
-		doc["ProxyUsername"] = svc.ProxyUsername
+		doc = append(doc, bson.E{Key: "ProxyUsername", Value: svc.ProxyUsername})
 	}
 	if svc.ProxyPassword != "" {
-		doc["ProxyPassword"] = svc.ProxyPassword
+		doc = append(doc, bson.E{Key: "ProxyPassword", Value: svc.ProxyPassword})
 	}
 
 	// Mendix Catalog integration (optional)
 	if svc.ApplicationId != "" {
-		doc["ApplicationId"] = svc.ApplicationId
+		doc = append(doc, bson.E{Key: "ApplicationId", Value: svc.ApplicationId})
 	}
 	if svc.EndpointId != "" {
-		doc["EndpointId"] = svc.EndpointId
+		doc = append(doc, bson.E{Key: "EndpointId", Value: svc.EndpointId})
 	}
 	if svc.CatalogUrl != "" {
-		doc["CatalogUrl"] = svc.CatalogUrl
+		doc = append(doc, bson.E{Key: "CatalogUrl", Value: svc.CatalogUrl})
 	}
 	if svc.EnvironmentType != "" {
-		doc["EnvironmentType"] = svc.EnvironmentType
+		doc = append(doc, bson.E{Key: "EnvironmentType", Value: svc.EnvironmentType})
 	}
 
 	// HTTP configuration (required nested part)
-	doc["HttpConfiguration"] = serializeHttpConfiguration(svc.HttpConfiguration)
+	doc = append(doc, bson.E{Key: "HttpConfiguration", Value: serializeHttpConfiguration(svc.HttpConfiguration)})
 
 	return bson.Marshal(doc)
 }
 
 // serializeHttpConfiguration converts an HttpConfiguration to a BSON map.
 // If cfg is nil, a minimal default configuration is created.
-func serializeHttpConfiguration(cfg *model.HttpConfiguration) bson.M {
+func serializeHttpConfiguration(cfg *model.HttpConfiguration) bson.D {
 	cfgID := generateUUID()
 	if cfg != nil && cfg.ID != "" {
 		cfgID = string(cfg.ID)
 	}
 
-	doc := bson.M{
-		"$ID":                        idToBsonBinary(cfgID),
-		"$Type":                      "Microflows$HttpConfiguration",
-		"UseHttpAuthentication":      false,
-		"HttpAuthenticationUserName": "",
-		"HttpAuthenticationPassword": "",
-		"HttpMethod":                 "Post",
-		"OverrideLocation":           false,
-		"CustomLocation":             "",
-		"ClientCertificate":          "",
-	}
+	// Field defaults; overridden below when cfg is provided. These are
+	// resolved before building the ordered document so that providing a
+	// cfg replaces (rather than duplicates) the default entries.
+	useHttpAuthentication := false
+	httpAuthenticationUserName := ""
+	httpAuthenticationPassword := ""
+	httpMethod := "Post"
+	overrideLocation := false
+	customLocation := ""
+	clientCertificate := ""
+	var httpHeaderEntries bson.A
 
 	if cfg != nil {
-		doc["UseHttpAuthentication"] = cfg.UseAuthentication
-		doc["HttpAuthenticationUserName"] = cfg.Username
-		doc["HttpAuthenticationPassword"] = cfg.Password
+		useHttpAuthentication = cfg.UseAuthentication
+		httpAuthenticationUserName = cfg.Username
+		httpAuthenticationPassword = cfg.Password
 		if cfg.HttpMethod != "" {
-			doc["HttpMethod"] = cfg.HttpMethod
+			httpMethod = cfg.HttpMethod
 		}
-		doc["OverrideLocation"] = cfg.OverrideLocation
-		doc["CustomLocation"] = cfg.CustomLocation
-		doc["ClientCertificate"] = cfg.ClientCertificate
+		overrideLocation = cfg.OverrideLocation
+		customLocation = cfg.CustomLocation
+		clientCertificate = cfg.ClientCertificate
 
 		// Serialize header entries
 		if len(cfg.HeaderEntries) > 0 {
@@ -160,15 +160,31 @@ func serializeHttpConfiguration(cfg *model.HttpConfiguration) bson.M {
 				if hID == "" {
 					hID = generateUUID()
 				}
-				headers = append(headers, bson.M{
-					"$ID":   idToBsonBinary(hID),
-					"$Type": "Microflows$HttpHeaderEntry",
-					"Key":   h.Key,
-					"Value": h.Value,
+				headers = append(headers, bson.D{
+					{Key: "$ID", Value: idToBsonBinary(hID)},
+					{Key: "$Type", Value: "Microflows$HttpHeaderEntry"},
+					{Key: "Key", Value: h.Key},
+					{Key: "Value", Value: h.Value},
 				})
 			}
-			doc["HttpHeaderEntries"] = headers
+			httpHeaderEntries = headers
 		}
+	}
+
+	doc := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(cfgID)},
+		{Key: "$Type", Value: "Microflows$HttpConfiguration"},
+		{Key: "UseHttpAuthentication", Value: useHttpAuthentication},
+		{Key: "HttpAuthenticationUserName", Value: httpAuthenticationUserName},
+		{Key: "HttpAuthenticationPassword", Value: httpAuthenticationPassword},
+		{Key: "HttpMethod", Value: httpMethod},
+		{Key: "OverrideLocation", Value: overrideLocation},
+		{Key: "CustomLocation", Value: customLocation},
+		{Key: "ClientCertificate", Value: clientCertificate},
+	}
+
+	if httpHeaderEntries != nil {
+		doc = append(doc, bson.E{Key: "HttpHeaderEntries", Value: httpHeaderEntries})
 	}
 
 	return doc
@@ -252,40 +268,40 @@ func (w *Writer) serializePublishedODataService(svc *model.PublishedODataService
 		entitySets = append(entitySets, serializePublishedEntitySet(es, entityTypeID))
 	}
 
-	doc := bson.M{
-		"$ID":                     idToBsonBinary(string(svc.ID)),
-		"$Type":                   "ODataPublish$PublishedODataService2",
-		"Name":                    svc.Name,
-		"Documentation":           svc.Documentation,
-		"Path":                    svc.Path,
-		"Namespace":               svc.Namespace,
-		"ServiceName":             svc.ServiceName,
-		"Version":                 svc.Version,
-		"ODataVersion":            svc.ODataVersion,
-		"Summary":                 svc.Summary,
-		"Description":             svc.Description,
-		"PublishAssociations":     svc.PublishAssociations,
-		"UseGeneralization":       svc.UseGeneralization,
-		"AuthenticationMicroflow": svc.AuthMicroflow,
-		"AuthenticationTypes":     authTypes,
-		"EntityTypes":             entityTypes,
-		"EntitySets":              entitySets,
-		"Excluded":                svc.Excluded,
+	doc := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(string(svc.ID))},
+		{Key: "$Type", Value: "ODataPublish$PublishedODataService2"},
+		{Key: "Name", Value: svc.Name},
+		{Key: "Documentation", Value: svc.Documentation},
+		{Key: "Path", Value: svc.Path},
+		{Key: "Namespace", Value: svc.Namespace},
+		{Key: "ServiceName", Value: svc.ServiceName},
+		{Key: "Version", Value: svc.Version},
+		{Key: "ODataVersion", Value: svc.ODataVersion},
+		{Key: "Summary", Value: svc.Summary},
+		{Key: "Description", Value: svc.Description},
+		{Key: "PublishAssociations", Value: svc.PublishAssociations},
+		{Key: "UseGeneralization", Value: svc.UseGeneralization},
+		{Key: "AuthenticationMicroflow", Value: svc.AuthMicroflow},
+		{Key: "AuthenticationTypes", Value: authTypes},
+		{Key: "EntityTypes", Value: entityTypes},
+		{Key: "EntitySets", Value: entitySets},
+		{Key: "Excluded", Value: svc.Excluded},
 		// Empty collection markers required by Studio Pro 11.10. Without
 		// these fields Mendix can resolve the first entity's key but fails
 		// to resolve the second's (CE6585) — observed when comparing a
 		// Studio Pro-authored multi-entity service against ours.
-		"Enumerations":             bson.A{int32(3)},
-		"Microflows":               bson.A{int32(3)},
-		"IncludeMetadataByDefault": true,
-		"ReplaceIllegalChars":      false,
-		"SupportsGraphQL":          false,
+		{Key: "Enumerations", Value: bson.A{int32(3)}},
+		{Key: "Microflows", Value: bson.A{int32(3)}},
+		{Key: "IncludeMetadataByDefault", Value: true},
+		{Key: "ReplaceIllegalChars", Value: false},
+		{Key: "SupportsGraphQL", Value: false},
 	}
 	return bson.Marshal(doc)
 }
 
 // serializePublishedEntityType converts a PublishedEntityType to a BSON map.
-func serializePublishedEntityType(et *model.PublishedEntityType) bson.M {
+func serializePublishedEntityType(et *model.PublishedEntityType) bson.D {
 	// Serialize child members. Pass the owning entity's qualified name so
 	// the writer can emit fully-qualified Attribute / Association BSON
 	// references (Module.Entity.AttributeName) — Studio Pro and mx check
@@ -298,56 +314,56 @@ func serializePublishedEntityType(et *model.PublishedEntityType) bson.M {
 		members = append(members, serializePublishedMember(m, et.Entity))
 	}
 
-	return bson.M{
-		"$ID":          idToBsonBinary(string(et.ID)),
-		"$Type":        "ODataPublish$EntityType",
-		"Entity":       et.Entity,
-		"ExposedName":  et.ExposedName,
-		"Summary":      et.Summary,
-		"Description":  et.Description,
-		"ChildMembers": members,
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(string(et.ID))},
+		{Key: "$Type", Value: "ODataPublish$EntityType"},
+		{Key: "Entity", Value: et.Entity},
+		{Key: "ExposedName", Value: et.ExposedName},
+		{Key: "Summary", Value: et.Summary},
+		{Key: "Description", Value: et.Description},
+		{Key: "ChildMembers", Value: members},
 	}
 }
 
 // serializePublishedEntitySet converts a PublishedEntitySet to a BSON map.
-func serializePublishedEntitySet(es *model.PublishedEntitySet, entityTypeID string) bson.M {
-	doc := bson.M{
-		"$ID":                    idToBsonBinary(string(es.ID)),
-		"$Type":                  "ODataPublish$EntitySet",
-		"ExposedName":            es.ExposedName,
-		"AlternativeExposedName": "",
-		"UsePaging":              es.UsePaging,
-		"PageSize":               int64(es.PageSize),
+func serializePublishedEntitySet(es *model.PublishedEntitySet, entityTypeID string) bson.D {
+	doc := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(string(es.ID))},
+		{Key: "$Type", Value: "ODataPublish$EntitySet"},
+		{Key: "ExposedName", Value: es.ExposedName},
+		{Key: "AlternativeExposedName", Value: ""},
+		{Key: "UsePaging", Value: es.UsePaging},
+		{Key: "PageSize", Value: int64(es.PageSize)},
 		// QueryOptions is required by Studio Pro's BSON shape for the
 		// entity set to be considered valid. Without it the second
 		// published entity in a multi-entity service fails to resolve
 		// its key (CE6585) — see Studio Pro reference dump.
-		"QueryOptions": bson.M{
-			"$ID":           idToBsonBinary(generateUUID()),
-			"$Type":         "ODataPublish$QueryOptions",
-			"Countable":     true,
-			"SkipSupported": true,
-			"TopSupported":  true,
-		},
+		{Key: "QueryOptions", Value: bson.D{
+			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+			{Key: "$Type", Value: "ODataPublish$QueryOptions"},
+			{Key: "Countable", Value: true},
+			{Key: "SkipSupported", Value: true},
+			{Key: "TopSupported", Value: true},
+		}},
 	}
 
 	// EntityTypePointer is a BY_ID reference
 	if entityTypeID != "" {
-		doc["EntityTypePointer"] = idToBsonBinary(entityTypeID)
+		doc = append(doc, bson.E{Key: "EntityTypePointer", Value: idToBsonBinary(entityTypeID)})
 	}
 
 	// Serialize mode objects
 	if es.ReadMode != "" {
-		doc["ReadMode"] = serializeReadMode(es.ReadMode)
+		doc = append(doc, bson.E{Key: "ReadMode", Value: serializeReadMode(es.ReadMode)})
 	}
 	if es.InsertMode != "" {
-		doc["InsertMode"] = serializeChangeMode(es.InsertMode)
+		doc = append(doc, bson.E{Key: "InsertMode", Value: serializeChangeMode(es.InsertMode)})
 	}
 	if es.UpdateMode != "" {
-		doc["UpdateMode"] = serializeChangeMode(es.UpdateMode)
+		doc = append(doc, bson.E{Key: "UpdateMode", Value: serializeChangeMode(es.UpdateMode)})
 	}
 	if es.DeleteMode != "" {
-		doc["DeleteMode"] = serializeChangeMode(es.DeleteMode)
+		doc = append(doc, bson.E{Key: "DeleteMode", Value: serializeChangeMode(es.DeleteMode)})
 	}
 
 	return doc
@@ -360,7 +376,7 @@ func serializePublishedEntitySet(es *model.PublishedEntitySet, entityTypeID stri
 // "Module.Entity.AttributeName" for attributes and "Module.AssociationName"
 // for associations. If the AST already supplied a qualified name (contains
 // a dot), it's used as-is; otherwise the owner is prepended.
-func serializePublishedMember(m *model.PublishedMember, ownerQN string) bson.M {
+func serializePublishedMember(m *model.PublishedMember, ownerQN string) bson.D {
 	memberID := string(m.ID)
 	if memberID == "" {
 		memberID = generateUUID()
@@ -371,48 +387,48 @@ func serializePublishedMember(m *model.PublishedMember, ownerQN string) bson.M {
 	// defaults to !IsPartOfKey (keys are required to have a value) which
 	// matches Studio Pro's convention and is required for Mendix to
 	// recognise the attribute as a valid OData key (CE6585).
-	doc := bson.M{
-		"$ID":         idToBsonBinary(memberID),
-		"ExposedName": m.ExposedName,
-		"CanBeEmpty":  !m.IsPartOfKey,
-		"Description": "",
-		"Summary":     "",
+	doc := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(memberID)},
+		{Key: "ExposedName", Value: m.ExposedName},
+		{Key: "CanBeEmpty", Value: !m.IsPartOfKey},
+		{Key: "Description", Value: ""},
+		{Key: "Summary", Value: ""},
 	}
 
 	switch m.Kind {
 	case "attribute":
-		doc["$Type"] = "ODataPublish$PublishedAttribute"
-		doc["Attribute"] = qualifyMemberName(m.Name, ownerQN)
-		doc["Filterable"] = m.Filterable
-		doc["Sortable"] = m.Sortable
-		doc["IsPartOfKey"] = m.IsPartOfKey
-		doc["EnumerationAsString"] = false
-		doc["StringAsGuid"] = false
+		doc = append(doc, bson.E{Key: "$Type", Value: "ODataPublish$PublishedAttribute"})
+		doc = append(doc, bson.E{Key: "Attribute", Value: qualifyMemberName(m.Name, ownerQN)})
+		doc = append(doc, bson.E{Key: "Filterable", Value: m.Filterable})
+		doc = append(doc, bson.E{Key: "Sortable", Value: m.Sortable})
+		doc = append(doc, bson.E{Key: "IsPartOfKey", Value: m.IsPartOfKey})
+		doc = append(doc, bson.E{Key: "EnumerationAsString", Value: false})
+		doc = append(doc, bson.E{Key: "StringAsGuid", Value: false})
 	case "association":
-		doc["$Type"] = "ODataPublish$PublishedAssociationEnd"
+		doc = append(doc, bson.E{Key: "$Type", Value: "ODataPublish$PublishedAssociationEnd"})
 		// Associations live at module scope (Module.AssocName), so prepend
 		// only the module portion of the owner.
-		doc["Association"] = qualifyAssociationName(m.Name, ownerQN)
+		doc = append(doc, bson.E{Key: "Association", Value: qualifyAssociationName(m.Name, ownerQN)})
 		// AssociationEnd carries the target entity and a separate
 		// ExposedAssociationName (typically the bare assoc name). Both
 		// are required by Studio Pro's BSON shape.
-		doc["Entity"] = m.AssociationTargetEntity
-		doc["ExposedAssociationName"] = m.ExposedAssociationName
+		doc = append(doc, bson.E{Key: "Entity", Value: m.AssociationTargetEntity})
+		doc = append(doc, bson.E{Key: "ExposedAssociationName", Value: m.ExposedAssociationName})
 	case "id":
-		doc["$Type"] = "ODataPublish$PublishedId"
-		doc["Attribute"] = qualifyMemberName(m.Name, ownerQN)
-		doc["Filterable"] = m.Filterable
-		doc["Sortable"] = m.Sortable
-		doc["IsPartOfKey"] = m.IsPartOfKey
+		doc = append(doc, bson.E{Key: "$Type", Value: "ODataPublish$PublishedId"})
+		doc = append(doc, bson.E{Key: "Attribute", Value: qualifyMemberName(m.Name, ownerQN)})
+		doc = append(doc, bson.E{Key: "Filterable", Value: m.Filterable})
+		doc = append(doc, bson.E{Key: "Sortable", Value: m.Sortable})
+		doc = append(doc, bson.E{Key: "IsPartOfKey", Value: m.IsPartOfKey})
 	default:
 		// Default to attribute for unknown kinds
-		doc["$Type"] = "ODataPublish$PublishedAttribute"
-		doc["Attribute"] = qualifyMemberName(m.Name, ownerQN)
-		doc["Filterable"] = m.Filterable
-		doc["Sortable"] = m.Sortable
-		doc["IsPartOfKey"] = m.IsPartOfKey
-		doc["EnumerationAsString"] = false
-		doc["StringAsGuid"] = false
+		doc = append(doc, bson.E{Key: "$Type", Value: "ODataPublish$PublishedAttribute"})
+		doc = append(doc, bson.E{Key: "Attribute", Value: qualifyMemberName(m.Name, ownerQN)})
+		doc = append(doc, bson.E{Key: "Filterable", Value: m.Filterable})
+		doc = append(doc, bson.E{Key: "Sortable", Value: m.Sortable})
+		doc = append(doc, bson.E{Key: "IsPartOfKey", Value: m.IsPartOfKey})
+		doc = append(doc, bson.E{Key: "EnumerationAsString", Value: false})
+		doc = append(doc, bson.E{Key: "StringAsGuid", Value: false})
 	}
 
 	return doc
@@ -443,69 +459,69 @@ func qualifyAssociationName(name, ownerQN string) string {
 
 // serializeReadMode converts a read mode string to a BSON mode object.
 // Accepts both parsed format ("ReadFromDatabase") and MDL format ("SOURCE").
-func serializeReadMode(mode string) bson.M {
+func serializeReadMode(mode string) bson.D {
 	modeID := idToBsonBinary(generateUUID())
 
 	switch {
 	case strings.EqualFold(mode, "ReadFromDatabase") || strings.EqualFold(mode, "SOURCE"):
-		return bson.M{
-			"$ID":   modeID,
-			"$Type": "ODataPublish$ReadSource",
+		return bson.D{
+			{Key: "$ID", Value: modeID},
+			{Key: "$Type", Value: "ODataPublish$ReadSource"},
 		}
 	case strings.HasPrefix(mode, "CallMicroflow:"):
-		return bson.M{
-			"$ID":       modeID,
-			"$Type":     "ODataPublish$CallMicroflowToRead",
-			"Microflow": strings.TrimPrefix(mode, "CallMicroflow:"),
+		return bson.D{
+			{Key: "$ID", Value: modeID},
+			{Key: "$Type", Value: "ODataPublish$CallMicroflowToRead"},
+			{Key: "Microflow", Value: strings.TrimPrefix(mode, "CallMicroflow:")},
 		}
 	case strings.HasPrefix(mode, "MICROFLOW "):
-		return bson.M{
-			"$ID":       modeID,
-			"$Type":     "ODataPublish$CallMicroflowToRead",
-			"Microflow": strings.TrimPrefix(mode, "MICROFLOW "),
+		return bson.D{
+			{Key: "$ID", Value: modeID},
+			{Key: "$Type", Value: "ODataPublish$CallMicroflowToRead"},
+			{Key: "Microflow", Value: strings.TrimPrefix(mode, "MICROFLOW ")},
 		}
 	default:
 		// Unknown mode — store as ReadSource
-		return bson.M{
-			"$ID":   modeID,
-			"$Type": "ODataPublish$ReadSource",
+		return bson.D{
+			{Key: "$ID", Value: modeID},
+			{Key: "$Type", Value: "ODataPublish$ReadSource"},
 		}
 	}
 }
 
 // serializeChangeMode converts a change mode string to a BSON mode object.
 // Accepts both parsed format ("ChangeFromDatabase", "NotSupported") and MDL format ("SOURCE", "NOT_SUPPORTED").
-func serializeChangeMode(mode string) bson.M {
+func serializeChangeMode(mode string) bson.D {
 	modeID := idToBsonBinary(generateUUID())
 
 	switch {
 	case strings.EqualFold(mode, "ChangeFromDatabase") || strings.EqualFold(mode, "SOURCE"):
-		return bson.M{
-			"$ID":   modeID,
-			"$Type": "ODataPublish$ChangeSource",
+		return bson.D{
+			{Key: "$ID", Value: modeID},
+			{Key: "$Type", Value: "ODataPublish$ChangeSource"},
 		}
 	case strings.EqualFold(mode, "NotSupported") || strings.EqualFold(mode, "NOT_SUPPORTED"):
-		return bson.M{
-			"$ID":   modeID,
-			"$Type": "ODataPublish$ChangeNotSupported",
+		return bson.D{
+			{Key: "$ID", Value: modeID},
+			{Key: "$Type", Value: "ODataPublish$ChangeNotSupported"},
 		}
 	case strings.HasPrefix(mode, "CallMicroflow:"):
-		return bson.M{
-			"$ID":       modeID,
-			"$Type":     "ODataPublish$CallMicroflowToChange",
-			"Microflow": strings.TrimPrefix(mode, "CallMicroflow:"),
+		return bson.D{
+			{Key: "$ID", Value: modeID},
+			{Key: "$Type", Value: "ODataPublish$CallMicroflowToChange"},
+			{Key: "Microflow", Value: strings.TrimPrefix(mode, "CallMicroflow:")},
 		}
 	case strings.HasPrefix(mode, "MICROFLOW "):
-		return bson.M{
-			"$ID":       modeID,
-			"$Type":     "ODataPublish$CallMicroflowToChange",
-			"Microflow": strings.TrimPrefix(mode, "MICROFLOW "),
+		return bson.D{
+			{Key: "$ID", Value: modeID},
+			{Key: "$Type", Value: "ODataPublish$CallMicroflowToChange"},
+			{Key: "Microflow", Value: strings.TrimPrefix(mode, "MICROFLOW ")},
 		}
 	default:
 		// Unknown mode — store as ChangeNotSupported
-		return bson.M{
-			"$ID":   modeID,
-			"$Type": "ODataPublish$ChangeNotSupported",
+		return bson.D{
+			{Key: "$ID", Value: modeID},
+			{Key: "$Type", Value: "ODataPublish$ChangeNotSupported"},
 		}
 	}
 }

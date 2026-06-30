@@ -75,7 +75,9 @@ func (b *Backend) UpdateModuleSettings(ms *types.ModuleSettings) error {
 		"SolutionIdentifier":  ms.SolutionIdentifier,
 		"Version":             orDefault(ms.Version, "1.0.0"),
 	}
-	contents, err := bson.Marshal(doc)
+	// Mendix 11.12+ requires "$ID" first in every storage object; doc and its
+	// nested JarDependency/Exclusion maps are unordered, so order on write.
+	contents, err := bson.Marshal(bsonutil.OrderStorageValue(doc))
 	if err != nil {
 		return fmt.Errorf("UpdateModuleSettings: marshal: %w", err)
 	}

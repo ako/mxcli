@@ -139,16 +139,16 @@ func (w *Writer) serializeEnumeration(enum *model.Enumeration) ([]byte, error) {
 }
 
 func (w *Writer) serializeConstant(constant *model.Constant) ([]byte, error) {
-	doc := bson.M{
-		"$ID":             idToBsonBinary(string(constant.ID)),
-		"$Type":           "Constants$Constant",
-		"Name":            constant.Name,
-		"Documentation":   constant.Documentation,
-		"Type":            serializeConstantDataType(constant.Type),
-		"DefaultValue":    constant.DefaultValue,
-		"ExposedToClient": constant.ExposedToClient,
-		"Excluded":        constant.Excluded,
-		"ExportLevel":     constant.ExportLevel,
+	doc := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(string(constant.ID))},
+		{Key: "$Type", Value: "Constants$Constant"},
+		{Key: "Name", Value: constant.Name},
+		{Key: "Documentation", Value: constant.Documentation},
+		{Key: "Type", Value: serializeConstantDataType(constant.Type)},
+		{Key: "DefaultValue", Value: constant.DefaultValue},
+		{Key: "ExposedToClient", Value: constant.ExposedToClient},
+		{Key: "Excluded", Value: constant.Excluded},
+		{Key: "ExportLevel", Value: constant.ExportLevel},
 	}
 	return bson.Marshal(doc)
 }

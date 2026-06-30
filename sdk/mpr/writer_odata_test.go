@@ -351,9 +351,9 @@ func TestSerializeModeRoundTrip(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var result bson.M
 			if tc.isRead {
-				result = serializeReadMode(tc.mode)
+				result = dToM(serializeReadMode(tc.mode))
 			} else {
-				result = serializeChangeMode(tc.mode)
+				result = dToM(serializeChangeMode(tc.mode))
 			}
 
 			typeName, ok := result["$Type"].(string)

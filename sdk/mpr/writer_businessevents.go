@@ -42,20 +42,20 @@ func (w *Writer) DeleteBusinessEventService(id model.ID) error {
 
 // serializeBusinessEventService converts a BusinessEventService to BSON bytes.
 func (w *Writer) serializeBusinessEventService(svc *model.BusinessEventService) ([]byte, error) {
-	doc := bson.M{
-		"$ID":           idToBsonBinary(string(svc.ID)),
-		"$Type":         "BusinessEvents$BusinessEventService",
-		"Name":          svc.Name,
-		"Documentation": svc.Documentation,
-		"Excluded":      svc.Excluded,
-		"ExportLevel":   svc.ExportLevel,
+	doc := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(string(svc.ID))},
+		{Key: "$Type", Value: "BusinessEvents$BusinessEventService"},
+		{Key: "Name", Value: svc.Name},
+		{Key: "Documentation", Value: svc.Documentation},
+		{Key: "Excluded", Value: svc.Excluded},
+		{Key: "ExportLevel", Value: svc.ExportLevel},
 	}
 
 	// Serialize Definition
 	if svc.Definition != nil {
-		doc["Definition"] = serializeBusinessEventDefinition(svc.Definition)
+		doc = append(doc, bson.E{Key: "Definition", Value: serializeBusinessEventDefinition(svc.Definition)})
 	} else {
-		doc["Definition"] = nil
+		doc = append(doc, bson.E{Key: "Definition", Value: nil})
 	}
 
 	// Serialize OperationImplementations
@@ -63,26 +63,18 @@ func (w *Writer) serializeBusinessEventService(svc *model.BusinessEventService) 
 	for _, op := range svc.OperationImplementations {
 		opImpls = append(opImpls, serializeServiceOperation(op))
 	}
-	doc["OperationImplementations"] = opImpls
+	doc = append(doc, bson.E{Key: "OperationImplementations", Value: opImpls})
 
 	// SourceApi is null for service definitions
-	doc["SourceApi"] = nil
+	doc = append(doc, bson.E{Key: "SourceApi", Value: nil})
 
 	return bson.Marshal(doc)
 }
 
-func serializeBusinessEventDefinition(def *model.BusinessEventDefinition) bson.M {
-	defDoc := bson.M{
-		"$Type":           "BusinessEvents$BusinessEventDefinition",
-		"ServiceName":     def.ServiceName,
-		"EventNamePrefix": def.EventNamePrefix,
-		"Description":     def.Description,
-		"Summary":         def.Summary,
-	}
-	if def.ID != "" {
-		defDoc["$ID"] = idToBsonBinary(string(def.ID))
-	} else {
-		defDoc["$ID"] = idToBsonBinary(generateUUID())
+func serializeBusinessEventDefinition(def *model.BusinessEventDefinition) bson.D {
+	id := string(def.ID)
+	if id == "" {
+		id = generateUUID()
 	}
 
 	// Serialize Channels
@@ -90,21 +82,22 @@ func serializeBusinessEventDefinition(def *model.BusinessEventDefinition) bson.M
 	for _, ch := range def.Channels {
 		channels = append(channels, serializeBusinessEventChannel(ch))
 	}
-	defDoc["Channels"] = channels
 
-	return defDoc
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(id)},
+		{Key: "$Type", Value: "BusinessEvents$BusinessEventDefinition"},
+		{Key: "ServiceName", Value: def.ServiceName},
+		{Key: "EventNamePrefix", Value: def.EventNamePrefix},
+		{Key: "Description", Value: def.Description},
+		{Key: "Summary", Value: def.Summary},
+		{Key: "Channels", Value: channels},
+	}
 }
 
-func serializeBusinessEventChannel(ch *model.BusinessEventChannel) bson.M {
-	chDoc := bson.M{
-		"$Type":       "BusinessEvents$Channel",
-		"ChannelName": ch.ChannelName,
-		"Description": ch.Description,
-	}
-	if ch.ID != "" {
-		chDoc["$ID"] = idToBsonBinary(string(ch.ID))
-	} else {
-		chDoc["$ID"] = idToBsonBinary(generateUUID())
+func serializeBusinessEventChannel(ch *model.BusinessEventChannel) bson.D {
+	id := string(ch.ID)
+	if id == "" {
+		id = generateUUID()
 	}
 
 	// Serialize Messages
@@ -112,23 +105,20 @@ func serializeBusinessEventChannel(ch *model.BusinessEventChannel) bson.M {
 	for _, msg := range ch.Messages {
 		messages = append(messages, serializeBusinessEventMessage(msg))
 	}
-	chDoc["Messages"] = messages
 
-	return chDoc
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(id)},
+		{Key: "$Type", Value: "BusinessEvents$Channel"},
+		{Key: "ChannelName", Value: ch.ChannelName},
+		{Key: "Description", Value: ch.Description},
+		{Key: "Messages", Value: messages},
+	}
 }
 
-func serializeBusinessEventMessage(msg *model.BusinessEventMessage) bson.M {
-	msgDoc := bson.M{
-		"$Type":        "BusinessEvents$Message",
-		"MessageName":  msg.MessageName,
-		"Description":  msg.Description,
-		"CanPublish":   msg.CanPublish,
-		"CanSubscribe": msg.CanSubscribe,
-	}
-	if msg.ID != "" {
-		msgDoc["$ID"] = idToBsonBinary(string(msg.ID))
-	} else {
-		msgDoc["$ID"] = idToBsonBinary(generateUUID())
+func serializeBusinessEventMessage(msg *model.BusinessEventMessage) bson.D {
+	id := string(msg.ID)
+	if id == "" {
+		id = generateUUID()
 	}
 
 	// Serialize Attributes
@@ -136,37 +126,43 @@ func serializeBusinessEventMessage(msg *model.BusinessEventMessage) bson.M {
 	for _, attr := range msg.Attributes {
 		attrs = append(attrs, serializeBusinessEventAttribute(attr))
 	}
-	msgDoc["Attributes"] = attrs
 
-	return msgDoc
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(id)},
+		{Key: "$Type", Value: "BusinessEvents$Message"},
+		{Key: "MessageName", Value: msg.MessageName},
+		{Key: "Description", Value: msg.Description},
+		{Key: "CanPublish", Value: msg.CanPublish},
+		{Key: "CanSubscribe", Value: msg.CanSubscribe},
+		{Key: "Attributes", Value: attrs},
+	}
 }
 
-func serializeBusinessEventAttribute(attr *model.BusinessEventAttribute) bson.M {
-	attrDoc := bson.M{
-		"$Type":         "BusinessEvents$MessageAttribute",
-		"AttributeName": attr.AttributeName,
-		"Description":   attr.Description,
-	}
-	if attr.ID != "" {
-		attrDoc["$ID"] = idToBsonBinary(string(attr.ID))
-	} else {
-		attrDoc["$ID"] = idToBsonBinary(generateUUID())
+func serializeBusinessEventAttribute(attr *model.BusinessEventAttribute) bson.D {
+	id := string(attr.ID)
+	if id == "" {
+		id = generateUUID()
 	}
 
 	// Convert attribute type to BSON format: "Long" → {"$Type": "DomainModels$LongAttributeType", "$ID": ...}
-	attrTypeDoc := bson.M{
-		"$Type": attributeTypeToBsonType(attr.AttributeType),
-		"$ID":   idToBsonBinary(generateUUID()),
+	attrTypeDoc := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+		{Key: "$Type", Value: attributeTypeToBsonType(attr.AttributeType)},
 	}
 	// Date and DateTime both use DateTimeAttributeType; distinguish via LocalizeDate
 	if attr.AttributeType == "DateTime" {
-		attrTypeDoc["LocalizeDate"] = true
+		attrTypeDoc = append(attrTypeDoc, bson.E{Key: "LocalizeDate", Value: true})
 	} else if attr.AttributeType == "Date" {
-		attrTypeDoc["LocalizeDate"] = false
+		attrTypeDoc = append(attrTypeDoc, bson.E{Key: "LocalizeDate", Value: false})
 	}
-	attrDoc["AttributeType"] = attrTypeDoc
 
-	return attrDoc
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(id)},
+		{Key: "$Type", Value: "BusinessEvents$MessageAttribute"},
+		{Key: "AttributeName", Value: attr.AttributeName},
+		{Key: "Description", Value: attr.Description},
+		{Key: "AttributeType", Value: attrTypeDoc},
+	}
 }
 
 // attributeTypeToBsonType converts a simple type name to a BSON $Type string.
@@ -193,18 +189,17 @@ func attributeTypeToBsonType(typeName string) string {
 	}
 }
 
-func serializeServiceOperation(op *model.ServiceOperation) bson.M {
-	opDoc := bson.M{
-		"$Type":       "BusinessEvents$ServiceOperation",
-		"MessageName": op.MessageName,
-		"Operation":   op.Operation,
-		"Entity":      op.Entity,
-		"Microflow":   op.Microflow,
+func serializeServiceOperation(op *model.ServiceOperation) bson.D {
+	id := string(op.ID)
+	if id == "" {
+		id = generateUUID()
 	}
-	if op.ID != "" {
-		opDoc["$ID"] = idToBsonBinary(string(op.ID))
-	} else {
-		opDoc["$ID"] = idToBsonBinary(generateUUID())
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(id)},
+		{Key: "$Type", Value: "BusinessEvents$ServiceOperation"},
+		{Key: "MessageName", Value: op.MessageName},
+		{Key: "Operation", Value: op.Operation},
+		{Key: "Entity", Value: op.Entity},
+		{Key: "Microflow", Value: op.Microflow},
 	}
-	return opDoc
 }

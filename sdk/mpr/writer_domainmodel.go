@@ -1130,58 +1130,61 @@ func serializeAttribute(a *domainmodel.Attribute, isExternalEntity bool) bson.D 
 	}
 }
 
-func serializeAssociation(a *domainmodel.Association) bson.M {
+func serializeAssociation(a *domainmodel.Association) bson.D {
 	storageFormat := string(a.StorageFormat)
 	if storageFormat == "" {
 		storageFormat = "Column"
 	}
-	doc := bson.M{
-		"$ID":              idToBsonBinary(string(a.ID)),
-		"$Type":            "DomainModels$Association",
-		"Name":             a.Name,
-		"Documentation":    a.Documentation,
-		"ExportLevel":      "Hidden",
-		"GUID":             idToBsonBinary(string(a.ID)),
-		"ParentPointer":    idToBsonBinary(string(a.ParentID)),
-		"ChildPointer":     idToBsonBinary(string(a.ChildID)),
-		"Type":             string(a.Type),
-		"Owner":            string(a.Owner),
-		"ParentConnection": "0;50",
-		"ChildConnection":  "100;50",
-		"StorageFormat":    storageFormat,
-		"DeleteBehavior":   serializeDeleteBehavior(a.ParentDeleteBehavior, a.ChildDeleteBehavior),
-	}
+
+	var source any
 	switch a.Source {
 	case "Rest$ODataRemoteAssociationSource":
 		nav := a.Navigability2
 		if nav == "" {
 			nav = "ParentToChild"
 		}
-		doc["Source"] = bson.M{
-			"$ID":                            idToBsonBinary(generateUUID()),
-			"$Type":                          "Rest$ODataRemoteAssociationSource",
-			"CreatableFromChild":             a.CreatableFromChild,
-			"CreatableFromParent":            a.CreatableFromParent,
-			"Navigability2":                  nav,
-			"RemoteChildNavigationProperty":  a.RemoteChildNavigationProperty,
-			"RemoteParentNavigationProperty": a.RemoteParentNavigationProperty,
-			"UpdatableFromChild":             a.UpdatableFromChild,
-			"UpdatableFromParent":            a.UpdatableFromParent,
+		source = bson.D{
+			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+			{Key: "$Type", Value: "Rest$ODataRemoteAssociationSource"},
+			{Key: "CreatableFromChild", Value: a.CreatableFromChild},
+			{Key: "CreatableFromParent", Value: a.CreatableFromParent},
+			{Key: "Navigability2", Value: nav},
+			{Key: "RemoteChildNavigationProperty", Value: a.RemoteChildNavigationProperty},
+			{Key: "RemoteParentNavigationProperty", Value: a.RemoteParentNavigationProperty},
+			{Key: "UpdatableFromChild", Value: a.UpdatableFromChild},
+			{Key: "UpdatableFromParent", Value: a.UpdatableFromParent},
 		}
 	case "Rest$ODataPrimitiveCollectionAssociationSource":
 		// Studio Pro emits this with no extra fields — it's a marker that
 		// pairs with Rest$ODataPrimitiveCollectionEntitySource on the child.
-		doc["Source"] = bson.M{
-			"$ID":   idToBsonBinary(generateUUID()),
-			"$Type": "Rest$ODataPrimitiveCollectionAssociationSource",
+		source = bson.D{
+			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+			{Key: "$Type", Value: "Rest$ODataPrimitiveCollectionAssociationSource"},
 		}
 	default:
-		doc["Source"] = nil
+		source = nil
 	}
-	return doc
+
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(string(a.ID))},
+		{Key: "$Type", Value: "DomainModels$Association"},
+		{Key: "Name", Value: a.Name},
+		{Key: "Documentation", Value: a.Documentation},
+		{Key: "ExportLevel", Value: "Hidden"},
+		{Key: "GUID", Value: idToBsonBinary(string(a.ID))},
+		{Key: "ParentPointer", Value: idToBsonBinary(string(a.ParentID))},
+		{Key: "ChildPointer", Value: idToBsonBinary(string(a.ChildID))},
+		{Key: "Type", Value: string(a.Type)},
+		{Key: "Owner", Value: string(a.Owner)},
+		{Key: "ParentConnection", Value: "0;50"},
+		{Key: "ChildConnection", Value: "100;50"},
+		{Key: "StorageFormat", Value: storageFormat},
+		{Key: "DeleteBehavior", Value: serializeDeleteBehavior(a.ParentDeleteBehavior, a.ChildDeleteBehavior)},
+		{Key: "Source", Value: source},
+	}
 }
 
-func serializeCrossAssociation(ca *domainmodel.CrossModuleAssociation) bson.M {
+func serializeCrossAssociation(ca *domainmodel.CrossModuleAssociation) bson.D {
 	storageFormat := string(ca.StorageFormat)
 	if storageFormat == "" {
 		storageFormat = "Column"
@@ -1189,24 +1192,24 @@ func serializeCrossAssociation(ca *domainmodel.CrossModuleAssociation) bson.M {
 	// CrossAssociation does NOT have ParentConnection/ChildConnection properties
 	// (unlike Association). Writing them causes Studio Pro to crash with
 	// InvalidOperationException in MprProperty..ctor.
-	return bson.M{
-		"$ID":            idToBsonBinary(string(ca.ID)),
-		"$Type":          "DomainModels$CrossAssociation",
-		"Name":           ca.Name,
-		"Documentation":  ca.Documentation,
-		"ExportLevel":    "Hidden",
-		"GUID":           idToBsonBinary(string(ca.ID)),
-		"ParentPointer":  idToBsonBinary(string(ca.ParentID)),
-		"Child":          ca.ChildRef,
-		"Type":           string(ca.Type),
-		"Owner":          string(ca.Owner),
-		"StorageFormat":  storageFormat,
-		"Source":         nil,
-		"DeleteBehavior": serializeDeleteBehavior(ca.ParentDeleteBehavior, ca.ChildDeleteBehavior),
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(string(ca.ID))},
+		{Key: "$Type", Value: "DomainModels$CrossAssociation"},
+		{Key: "Name", Value: ca.Name},
+		{Key: "Documentation", Value: ca.Documentation},
+		{Key: "ExportLevel", Value: "Hidden"},
+		{Key: "GUID", Value: idToBsonBinary(string(ca.ID))},
+		{Key: "ParentPointer", Value: idToBsonBinary(string(ca.ParentID))},
+		{Key: "Child", Value: ca.ChildRef},
+		{Key: "Type", Value: string(ca.Type)},
+		{Key: "Owner", Value: string(ca.Owner)},
+		{Key: "StorageFormat", Value: storageFormat},
+		{Key: "Source", Value: nil},
+		{Key: "DeleteBehavior", Value: serializeDeleteBehavior(ca.ParentDeleteBehavior, ca.ChildDeleteBehavior)},
 	}
 }
 
-func serializeDeleteBehavior(parentBehavior, childBehavior *domainmodel.DeleteBehavior) bson.M {
+func serializeDeleteBehavior(parentBehavior, childBehavior *domainmodel.DeleteBehavior) bson.D {
 	parentType := "DeleteMeButKeepReferences"
 	childType := "DeleteMeButKeepReferences"
 
@@ -1217,20 +1220,20 @@ func serializeDeleteBehavior(parentBehavior, childBehavior *domainmodel.DeleteBe
 		childType = string(childBehavior.Type)
 	}
 
-	return bson.M{
-		"$ID":                  idToBsonBinary(generateUUID()),
-		"$Type":                "DomainModels$DeleteBehavior",
-		"ChildDeleteBehavior":  childType,
-		"ChildErrorMessage":    nil,
-		"ParentDeleteBehavior": parentType,
-		"ParentErrorMessage":   nil,
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+		{Key: "$Type", Value: "DomainModels$DeleteBehavior"},
+		{Key: "ChildDeleteBehavior", Value: childType},
+		{Key: "ChildErrorMessage", Value: nil},
+		{Key: "ParentDeleteBehavior", Value: parentType},
+		{Key: "ParentErrorMessage", Value: nil},
 	}
 }
 
 // zeroGUID is the all-zero UUID Studio Pro writes for an unset GUID reference.
 const zeroGUID = "00000000-0000-0000-0000-000000000000"
 
-func serializeIndex(idx *domainmodel.Index) bson.M {
+func serializeIndex(idx *domainmodel.Index) bson.D {
 	// IndexedAttribute lists use typed-array marker 2 (NOT the domain-model
 	// default of 3) — verified against real Studio-Pro 11.x BSON
 	// (mx-test-projects/test7-app: IdxProbe).
@@ -1239,12 +1242,12 @@ func serializeIndex(idx *domainmodel.Index) bson.M {
 		attrs = append(attrs, serializeIndexAttribute(ia))
 	}
 
-	return bson.M{
-		"$ID":              idToBsonBinary(string(idx.ID)),
-		"$Type":            "DomainModels$EntityIndex",
-		"Attributes":       attrs,
-		"GUID":             idToBsonBinary(string(idx.ID)),
-		"IncludeInOffline": false,
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(string(idx.ID))},
+		{Key: "$Type", Value: "DomainModels$EntityIndex"},
+		{Key: "Attributes", Value: attrs},
+		{Key: "GUID", Value: idToBsonBinary(string(idx.ID))},
+		{Key: "IncludeInOffline", Value: false},
 	}
 }
 
@@ -1254,14 +1257,14 @@ func serializeIndex(idx *domainmodel.Index) bson.M {
 // "SortOrder" string the writer previously emitted — the legacy parser already
 // reads Ascending (with a SortOrder fallback), so writer and parser are now
 // aligned, and the output matches what Studio Pro produces.
-func serializeIndexAttribute(ia *domainmodel.IndexAttribute) bson.M {
-	return bson.M{
-		"$ID":                idToBsonBinary(string(ia.ID)),
-		"$Type":              "DomainModels$IndexedAttribute",
-		"AttributePointer":   idToBsonBinary(string(ia.AttributeID)), // BSON Binary like $ID
-		"AssociationPointer": idToBsonBinary(zeroGUID),               // zero GUID: attribute-based segment
-		"Ascending":          ia.Ascending,
-		"Type":               "Normal",
+func serializeIndexAttribute(ia *domainmodel.IndexAttribute) bson.D {
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(string(ia.ID))},
+		{Key: "$Type", Value: "DomainModels$IndexedAttribute"},
+		{Key: "AttributePointer", Value: idToBsonBinary(string(ia.AttributeID))}, // BSON Binary like $ID
+		{Key: "AssociationPointer", Value: idToBsonBinary(zeroGUID)},             // zero GUID: attribute-based segment
+		{Key: "Ascending", Value: ia.Ascending},
+		{Key: "Type", Value: "Normal"},
 	}
 }
 

@@ -43,38 +43,38 @@ func (w *Writer) DeleteConsumedRestService(id model.ID) error {
 
 // serializeConsumedRestService converts a ConsumedRestService to BSON bytes.
 func (w *Writer) serializeConsumedRestService(svc *model.ConsumedRestService) ([]byte, error) {
-	doc := bson.M{
-		"$ID":           idToBsonBinary(string(svc.ID)),
-		"$Type":         "Rest$ConsumedRestService",
-		"Name":          svc.Name,
-		"Documentation": svc.Documentation,
-		"Excluded":      svc.Excluded,
+	doc := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(string(svc.ID))},
+		{Key: "$Type", Value: "Rest$ConsumedRestService"},
+		{Key: "Name", Value: svc.Name},
+		{Key: "Documentation", Value: svc.Documentation},
+		{Key: "Excluded", Value: svc.Excluded},
 		// ExportLevel: whether the document is exposed to other modules/projects.
 		// Studio Pro defaults to "Hidden". Missing this field has been observed
 		// to cause runtime auth issues (#200).
-		"ExportLevel":      "Hidden",
-		"BaseUrlParameter": nil,
+		{Key: "ExportLevel", Value: "Hidden"},
+		{Key: "BaseUrlParameter", Value: nil},
 	}
 
 	// OpenApiFile: only present when the service was created from an OpenAPI spec.
 	// Field name and subfield are PascalCase to match Studio Pro serialization.
 	// Do NOT write a null entry for manually-created services — Studio Pro omits this field entirely.
 	if svc.OpenApiContent != "" {
-		doc["OpenApiFile"] = bson.M{
-			"$ID":     idToBsonBinary(generateUUID()),
-			"$Type":   "Rest$OpenApiFile",
-			"Content": svc.OpenApiContent,
-		}
+		doc = append(doc, bson.E{Key: "OpenApiFile", Value: bson.D{
+			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+			{Key: "$Type", Value: "Rest$OpenApiFile"},
+			{Key: "Content", Value: svc.OpenApiContent},
+		}})
 	}
 
 	// BaseUrl as Rest$ValueTemplate
-	doc["BaseUrl"] = serializeValueTemplate(svc.BaseUrl)
+	doc = append(doc, bson.E{Key: "BaseUrl", Value: serializeValueTemplate(svc.BaseUrl)})
 
 	// AuthenticationScheme: polymorphic (null or Rest$BasicAuthenticationScheme)
 	if svc.Authentication == nil {
-		doc["AuthenticationScheme"] = nil
+		doc = append(doc, bson.E{Key: "AuthenticationScheme", Value: nil})
 	} else {
-		doc["AuthenticationScheme"] = serializeRestAuthScheme(svc.Authentication)
+		doc = append(doc, bson.E{Key: "AuthenticationScheme", Value: serializeRestAuthScheme(svc.Authentication)})
 	}
 
 	// Operations: versioned array
@@ -82,58 +82,58 @@ func (w *Writer) serializeConsumedRestService(svc *model.ConsumedRestService) ([
 	for _, op := range svc.Operations {
 		ops = append(ops, serializeRestOperation(op))
 	}
-	doc["Operations"] = ops
+	doc = append(doc, bson.E{Key: "Operations", Value: ops})
 
 	return bson.Marshal(doc)
 }
 
 // serializeValueTemplate creates a Rest$ValueTemplate BSON object.
-func serializeValueTemplate(value string) bson.M {
-	return bson.M{
-		"$ID":   idToBsonBinary(generateUUID()),
-		"$Type": "Rest$ValueTemplate",
-		"Value": value,
+func serializeValueTemplate(value string) bson.D {
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+		{Key: "$Type", Value: "Rest$ValueTemplate"},
+		{Key: "Value", Value: value},
 	}
 }
 
 // serializeRestAuthScheme converts authentication config to a BSON map.
-func serializeRestAuthScheme(auth *model.RestAuthentication) bson.M {
-	doc := bson.M{
-		"$ID":   idToBsonBinary(generateUUID()),
-		"$Type": "Rest$BasicAuthenticationScheme",
+func serializeRestAuthScheme(auth *model.RestAuthentication) bson.D {
+	doc := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+		{Key: "$Type", Value: "Rest$BasicAuthenticationScheme"},
 	}
 
-	doc["Username"] = serializeRestValue(auth.Username)
-	doc["Password"] = serializeRestValue(auth.Password)
+	doc = append(doc, bson.E{Key: "Username", Value: serializeRestValue(auth.Username)})
+	doc = append(doc, bson.E{Key: "Password", Value: serializeRestValue(auth.Password)})
 
 	return doc
 }
 
 // serializeRestValue creates a polymorphic Rest$Value (StringValue or ConstantValue).
 // Values starting with "$" are treated as constant references; others as string literals.
-func serializeRestValue(value string) bson.M {
+func serializeRestValue(value string) bson.D {
 	if strings.HasPrefix(value, "$") {
 		// Constant reference — the BSON field is "Value" (QualifiedName of the constant).
 		constRef := strings.TrimPrefix(value, "$")
-		return bson.M{
-			"$ID":   idToBsonBinary(generateUUID()),
-			"$Type": "Rest$ConstantValue",
-			"Value": constRef,
+		return bson.D{
+			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+			{Key: "$Type", Value: "Rest$ConstantValue"},
+			{Key: "Value", Value: constRef},
 		}
 	}
-	return bson.M{
-		"$ID":   idToBsonBinary(generateUUID()),
-		"$Type": "Rest$StringValue",
-		"Value": value,
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+		{Key: "$Type", Value: "Rest$StringValue"},
+		{Key: "Value", Value: value},
 	}
 }
 
 // serializeRestOperation converts a RestClientOperation to a BSON map.
-func serializeRestOperation(op *model.RestClientOperation) bson.M {
-	doc := bson.M{
-		"$ID":   idToBsonBinary(generateUUID()),
-		"$Type": "Rest$RestOperation",
-		"Name":  op.Name,
+func serializeRestOperation(op *model.RestClientOperation) bson.D {
+	doc := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+		{Key: "$Type", Value: "Rest$RestOperation"},
+		{Key: "Name", Value: op.Name},
 	}
 
 	// Timeout: Studio Pro always writes this field; default is 300 seconds.
@@ -141,20 +141,20 @@ func serializeRestOperation(op *model.RestClientOperation) bson.M {
 	if timeout <= 0 {
 		timeout = 300
 	}
-	doc["Timeout"] = timeout
+	doc = append(doc, bson.E{Key: "Timeout", Value: timeout})
 
 	// Tags: versioned string array; used by Studio Pro as resource group labels.
 	tags := bson.A{int32(1)}
 	for _, t := range op.Tags {
 		tags = append(tags, t)
 	}
-	doc["Tags"] = tags
+	doc = append(doc, bson.E{Key: "Tags", Value: tags})
 
 	// Method: polymorphic (WithBody or WithoutBody)
-	doc["Method"] = serializeRestMethod(op)
+	doc = append(doc, bson.E{Key: "Method", Value: serializeRestMethod(op)})
 
 	// Path as Rest$ValueTemplate
-	doc["Path"] = serializeValueTemplate(op.Path)
+	doc = append(doc, bson.E{Key: "Path", Value: serializeValueTemplate(op.Path)})
 
 	// Headers: versioned array of Rest$HeaderWithValueTemplate
 	headers := bson.A{int32(2)}
@@ -169,27 +169,27 @@ func serializeRestOperation(op *model.RestClientOperation) bson.M {
 	if !hasAccept {
 		headers = append(headers, serializeRestHeader(&model.RestClientHeader{Name: "Accept", Value: "*/*"}))
 	}
-	doc["Headers"] = headers
+	doc = append(doc, bson.E{Key: "Headers", Value: headers})
 
 	// Parameters: versioned array of Rest$RestOperationParameter (path params)
 	params := bson.A{int32(2)}
 	for _, p := range op.Parameters {
 		params = append(params, serializeRestParameter(p))
 	}
-	doc["Parameters"] = params
+	doc = append(doc, bson.E{Key: "Parameters", Value: params})
 
 	// QueryParameters: versioned array of Rest$QueryParameter
 	queryParams := bson.A{int32(2)}
 	for _, q := range op.QueryParameters {
 		queryParams = append(queryParams, serializeRestQueryParameter(q))
 	}
-	doc["QueryParameters"] = queryParams
+	doc = append(doc, bson.E{Key: "QueryParameters", Value: queryParams})
 
 	// ResponseHandling: polymorphic
 	if op.ResponseType == "MAPPING" && op.ResponseEntity != "" && len(op.ResponseMappings) > 0 {
-		doc["ResponseHandling"] = serializeRestImplicitMappingResponse(op.ResponseEntity, op.ResponseMappings)
+		doc = append(doc, bson.E{Key: "ResponseHandling", Value: serializeRestImplicitMappingResponse(op.ResponseEntity, op.ResponseMappings)})
 	} else {
-		doc["ResponseHandling"] = serializeRestResponseHandling(op.ResponseType)
+		doc = append(doc, bson.E{Key: "ResponseHandling", Value: serializeRestResponseHandling(op.ResponseType)})
 	}
 
 	return doc
@@ -198,20 +198,20 @@ func serializeRestOperation(op *model.RestClientOperation) bson.M {
 // serializeRestMethod creates the polymorphic Method field.
 // Methods with bodies (POST, PUT, PATCH) use Rest$RestOperationMethodWithBody;
 // others use Rest$RestOperationMethodWithoutBody.
-func serializeRestMethod(op *model.RestClientOperation) bson.M {
+func serializeRestMethod(op *model.RestClientOperation) bson.D {
 	httpMethod := httpMethodToMendix(op.HttpMethod)
 
 	if op.BodyType != "" {
 		// Method with explicit body
-		doc := bson.M{
-			"$ID":        idToBsonBinary(generateUUID()),
-			"$Type":      "Rest$RestOperationMethodWithBody",
-			"HttpMethod": httpMethod,
+		doc := bson.D{
+			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+			{Key: "$Type", Value: "Rest$RestOperationMethodWithBody"},
+			{Key: "HttpMethod", Value: httpMethod},
 		}
 		if op.BodyType == "EXPORT_MAPPING" && len(op.BodyMappings) > 0 {
-			doc["Body"] = serializeRestImplicitMappingBody(op.BodyVariable, op.BodyMappings)
+			doc = append(doc, bson.E{Key: "Body", Value: serializeRestImplicitMappingBody(op.BodyVariable, op.BodyMappings)})
 		} else {
-			doc["Body"] = serializeRestBody(op.BodyType, op.BodyVariable)
+			doc = append(doc, bson.E{Key: "Body", Value: serializeRestBody(op.BodyType, op.BodyVariable)})
 		}
 		return doc
 	}
@@ -219,20 +219,20 @@ func serializeRestMethod(op *model.RestClientOperation) bson.M {
 	// POST, PUT, PATCH must include a body even if not explicitly specified (CE7064)
 	methodUpper := strings.ToUpper(op.HttpMethod)
 	if methodUpper == "POST" || methodUpper == "PUT" || methodUpper == "PATCH" {
-		doc := bson.M{
-			"$ID":        idToBsonBinary(generateUUID()),
-			"$Type":      "Rest$RestOperationMethodWithBody",
-			"HttpMethod": httpMethod,
+		doc := bson.D{
+			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+			{Key: "$Type", Value: "Rest$RestOperationMethodWithBody"},
+			{Key: "HttpMethod", Value: httpMethod},
 		}
-		doc["Body"] = serializeRestBody("JSON", op.BodyVariable)
+		doc = append(doc, bson.E{Key: "Body", Value: serializeRestBody("JSON", op.BodyVariable)})
 		return doc
 	}
 
 	// Method without body
-	return bson.M{
-		"$ID":        idToBsonBinary(generateUUID()),
-		"$Type":      "Rest$RestOperationMethodWithoutBody",
-		"HttpMethod": httpMethod,
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+		{Key: "$Type", Value: "Rest$RestOperationMethodWithoutBody"},
+		{Key: "HttpMethod", Value: httpMethod},
 	}
 }
 
@@ -243,63 +243,63 @@ func serializeRestMethod(op *model.RestClientOperation) bson.M {
 // bodyExpr is a Mendix expression (typically "$variableName") that produces
 // the JSON or file body at call time. It is stored verbatim in the BSON Value
 // field so a roundtrip preserves it.
-func serializeRestBody(bodyType, bodyExpr string) bson.M {
+func serializeRestBody(bodyType, bodyExpr string) bson.D {
 	switch strings.ToUpper(bodyType) {
 	case "JSON":
-		return bson.M{
-			"$ID":   idToBsonBinary(generateUUID()),
-			"$Type": "Rest$JsonBody",
-			"Value": bodyExpr,
+		return bson.D{
+			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+			{Key: "$Type", Value: "Rest$JsonBody"},
+			{Key: "Value", Value: bodyExpr},
 		}
 	case "FILE", "TEMPLATE":
-		return bson.M{
-			"$ID":           idToBsonBinary(generateUUID()),
-			"$Type":         "Rest$StringBody",
-			"ValueTemplate": serializeValueTemplate(bodyExpr),
+		return bson.D{
+			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+			{Key: "$Type", Value: "Rest$StringBody"},
+			{Key: "ValueTemplate", Value: serializeValueTemplate(bodyExpr)},
 		}
 	default:
-		return bson.M{
-			"$ID":   idToBsonBinary(generateUUID()),
-			"$Type": "Rest$JsonBody",
-			"Value": bodyExpr,
+		return bson.D{
+			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+			{Key: "$Type", Value: "Rest$JsonBody"},
+			{Key: "Value", Value: bodyExpr},
 		}
 	}
 }
 
 // serializeRestImplicitMappingBody creates a Rest$ImplicitMappingBody with an inline
 // export mapping tree (ExportMappings$ObjectMappingElement). Used for Body: MAPPING Entity { ... }.
-func serializeRestImplicitMappingBody(entity string, mappings []*model.RestResponseMapping) bson.M {
+func serializeRestImplicitMappingBody(entity string, mappings []*model.RestResponseMapping) bson.D {
 	rootElement := serializeInlineMappingElement(entity, "", "", "(Object)", mappings, "ExportMappings", "Parameter")
 
-	return bson.M{
-		"$ID":                idToBsonBinary(generateUUID()),
-		"$Type":              "Rest$ImplicitMappingBody",
-		"RootMappingElement": rootElement,
-		"TestValue": bson.M{
-			"$ID":   idToBsonBinary(generateUUID()),
-			"$Type": "Rest$StringValue",
-			"Value": "",
-		},
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+		{Key: "$Type", Value: "Rest$ImplicitMappingBody"},
+		{Key: "RootMappingElement", Value: rootElement},
+		{Key: "TestValue", Value: bson.D{
+			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+			{Key: "$Type", Value: "Rest$StringValue"},
+			{Key: "Value", Value: ""},
+		}},
 	}
 }
 
 // serializeRestImplicitMappingResponse creates a Rest$ImplicitMappingResponseHandling with an
 // inline import mapping tree (ImportMappings$ObjectMappingElement). Used for Response: MAPPING Entity { ... }.
-func serializeRestImplicitMappingResponse(entity string, mappings []*model.RestResponseMapping) bson.M {
+func serializeRestImplicitMappingResponse(entity string, mappings []*model.RestResponseMapping) bson.D {
 	rootElement := serializeInlineMappingElement(entity, "", "", "(Object)", mappings, "ImportMappings", "Create")
 
-	return bson.M{
-		"$ID":                idToBsonBinary(generateUUID()),
-		"$Type":              "Rest$ImplicitMappingResponseHandling",
-		"ContentType":        "application/json",
-		"RootMappingElement": rootElement,
-		"StatusCode":         int32(200),
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+		{Key: "$Type", Value: "Rest$ImplicitMappingResponseHandling"},
+		{Key: "ContentType", Value: "application/json"},
+		{Key: "RootMappingElement", Value: rootElement},
+		{Key: "StatusCode", Value: int32(200)},
 	}
 }
 
 // serializeInlineMappingElement creates a single ObjectMappingElement with children for inline REST mappings.
 // namespace is "ImportMappings" or "ExportMappings". objectHandling is "Create" or "Parameter".
-func serializeInlineMappingElement(entity, association, exposedName, jsonPath string, mappings []*model.RestResponseMapping, namespace, objectHandling string) bson.M {
+func serializeInlineMappingElement(entity, association, exposedName, jsonPath string, mappings []*model.RestResponseMapping, namespace, objectHandling string) bson.D {
 	children := bson.A{int32(2)}
 	for _, m := range mappings {
 		if m.Entity != "" {
@@ -314,29 +314,29 @@ func serializeInlineMappingElement(entity, association, exposedName, jsonPath st
 				valueJsonPath = jsonPath + "|" + m.ExposedName
 			}
 			attrQN := entity + "." + m.Attribute
-			children = append(children, bson.M{
-				"$ID":              idToBsonBinary(generateUUID()),
-				"$Type":            namespace + "$ValueMappingElement",
-				"Attribute":        attrQN,
-				"ExposedName":      m.ExposedName,
-				"JsonPath":         valueJsonPath,
-				"XmlPath":          "",
-				"IsKey":            false,
-				"Type":             bson.M{"$ID": idToBsonBinary(generateUUID()), "$Type": "DataTypes$StringType"},
-				"MinOccurs":        int32(0),
-				"MaxOccurs":        int32(1),
-				"Nillable":         true,
-				"IsDefaultType":    false,
-				"ElementType":      "Value",
-				"Documentation":    "",
-				"Converter":        "",
-				"FractionDigits":   int32(-1),
-				"TotalDigits":      int32(-1),
-				"MaxLength":        int32(0),
-				"IsContent":        false,
-				"IsXmlAttribute":   false,
-				"OriginalValue":    "",
-				"XmlPrimitiveType": "String",
+			children = append(children, bson.D{
+				{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+				{Key: "$Type", Value: namespace + "$ValueMappingElement"},
+				{Key: "Attribute", Value: attrQN},
+				{Key: "ExposedName", Value: m.ExposedName},
+				{Key: "JsonPath", Value: valueJsonPath},
+				{Key: "XmlPath", Value: ""},
+				{Key: "IsKey", Value: false},
+				{Key: "Type", Value: bson.D{{Key: "$ID", Value: idToBsonBinary(generateUUID())}, {Key: "$Type", Value: "DataTypes$StringType"}}},
+				{Key: "MinOccurs", Value: int32(0)},
+				{Key: "MaxOccurs", Value: int32(1)},
+				{Key: "Nillable", Value: true},
+				{Key: "IsDefaultType", Value: false},
+				{Key: "ElementType", Value: "Value"},
+				{Key: "Documentation", Value: ""},
+				{Key: "Converter", Value: ""},
+				{Key: "FractionDigits", Value: int32(-1)},
+				{Key: "TotalDigits", Value: int32(-1)},
+				{Key: "MaxLength", Value: int32(0)},
+				{Key: "IsContent", Value: false},
+				{Key: "IsXmlAttribute", Value: false},
+				{Key: "OriginalValue", Value: ""},
+				{Key: "XmlPrimitiveType", Value: "String"},
 			})
 		}
 	}
@@ -346,78 +346,78 @@ func serializeInlineMappingElement(entity, association, exposedName, jsonPath st
 		minOccurs = 0
 	}
 
-	return bson.M{
-		"$ID":                               idToBsonBinary(generateUUID()),
-		"$Type":                             namespace + "$ObjectMappingElement",
-		"Entity":                            entity,
-		"ExposedName":                       exposedName,
-		"JsonPath":                          jsonPath,
-		"XmlPath":                           "",
-		"ObjectHandling":                    objectHandling,
-		"ObjectHandlingBackup":              "Create",
-		"ObjectHandlingBackupAllowOverride": false,
-		"Association":                       association,
-		"Children":                          children,
-		"MinOccurs":                         minOccurs,
-		"MaxOccurs":                         int32(1),
-		"Nillable":                          true,
-		"IsDefaultType":                     false,
-		"ElementType":                       "Object",
-		"Documentation":                     "",
-		"CustomHandlerCall":                 nil,
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+		{Key: "$Type", Value: namespace + "$ObjectMappingElement"},
+		{Key: "Entity", Value: entity},
+		{Key: "ExposedName", Value: exposedName},
+		{Key: "JsonPath", Value: jsonPath},
+		{Key: "XmlPath", Value: ""},
+		{Key: "ObjectHandling", Value: objectHandling},
+		{Key: "ObjectHandlingBackup", Value: "Create"},
+		{Key: "ObjectHandlingBackupAllowOverride", Value: false},
+		{Key: "Association", Value: association},
+		{Key: "Children", Value: children},
+		{Key: "MinOccurs", Value: minOccurs},
+		{Key: "MaxOccurs", Value: int32(1)},
+		{Key: "Nillable", Value: true},
+		{Key: "IsDefaultType", Value: false},
+		{Key: "ElementType", Value: "Object"},
+		{Key: "Documentation", Value: ""},
+		{Key: "CustomHandlerCall", Value: nil},
 	}
 }
 
 // serializeRestHeader creates a Rest$HeaderWithValueTemplate BSON object.
-func serializeRestHeader(h *model.RestClientHeader) bson.M {
-	return bson.M{
-		"$ID":   idToBsonBinary(generateUUID()),
-		"$Type": "Rest$HeaderWithValueTemplate",
-		"Name":  h.Name,
-		"Value": serializeValueTemplate(h.Value),
+func serializeRestHeader(h *model.RestClientHeader) bson.D {
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+		{Key: "$Type", Value: "Rest$HeaderWithValueTemplate"},
+		{Key: "Name", Value: h.Name},
+		{Key: "Value", Value: serializeValueTemplate(h.Value)},
 	}
 }
 
 // serializeRestParameter creates a Rest$OperationParameter BSON object.
 // This is the correct type for consumed REST operation parameters
 // (distinct from Rest$RestOperationParameter used in published REST services).
-func serializeRestParameter(p *model.RestClientParameter) bson.M {
-	return bson.M{
-		"$ID":      idToBsonBinary(generateUUID()),
-		"$Type":    "Rest$OperationParameter",
-		"Name":     p.Name,
-		"DataType": serializeRestDataType(p.DataType),
+func serializeRestParameter(p *model.RestClientParameter) bson.D {
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+		{Key: "$Type", Value: "Rest$OperationParameter"},
+		{Key: "Name", Value: p.Name},
+		{Key: "DataType", Value: serializeRestDataType(p.DataType)},
 	}
 }
 
 // serializeRestQueryParameter creates a Rest$QueryParameter BSON object.
-func serializeRestQueryParameter(p *model.RestClientParameter) bson.M {
-	return bson.M{
-		"$ID":   idToBsonBinary(generateUUID()),
-		"$Type": "Rest$QueryParameter",
-		"Name":  p.Name,
-		"ParameterUsage": bson.M{
-			"$ID":   idToBsonBinary(generateUUID()),
-			"$Type": "Rest$RequiredQueryParameterUsage",
-		},
+func serializeRestQueryParameter(p *model.RestClientParameter) bson.D {
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+		{Key: "$Type", Value: "Rest$QueryParameter"},
+		{Key: "Name", Value: p.Name},
+		{Key: "ParameterUsage", Value: bson.D{
+			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+			{Key: "$Type", Value: "Rest$RequiredQueryParameterUsage"},
+		}},
 	}
 }
 
 // serializeRestResponseHandling creates a polymorphic ResponseHandling BSON object.
 // Uses Rest$NoResponseHandling for all types to avoid CE0061 (ImplicitMappingResponseHandling
 // requires entity mapping which isn't supported yet). ContentType is set to enable roundtripping.
-func serializeRestResponseHandling(responseType string) bson.M {
-	doc := bson.M{
-		"$ID":   idToBsonBinary(generateUUID()),
-		"$Type": "Rest$NoResponseHandling",
+func serializeRestResponseHandling(responseType string) bson.D {
+	doc := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+		{Key: "$Type", Value: "Rest$NoResponseHandling"},
 	}
 	switch strings.ToUpper(responseType) {
 	case "JSON":
-		doc["ContentType"] = "application/json"
+		doc = append(doc, bson.E{Key: "ContentType", Value: "application/json"})
 	case "STRING":
-		doc["ContentType"] = "text/plain"
+		doc = append(doc, bson.E{Key: "ContentType", Value: "text/plain"})
 	case "FILE":
-		doc["ContentType"] = "application/octet-stream"
+		doc = append(doc, bson.E{Key: "ContentType", Value: "application/octet-stream"})
 	}
 	return doc
 }
@@ -425,7 +425,7 @@ func serializeRestResponseHandling(responseType string) bson.M {
 // serializeRestDataType converts a simple type name to a BSON DataType object.
 // REST operation parameters use the DataTypes$ namespace with simple type names
 // (e.g., DataTypes$IntegerType, not DataTypes$IntegerAttributeType).
-func serializeRestDataType(typeName string) bson.M {
+func serializeRestDataType(typeName string) bson.D {
 	bsonType := "DataTypes$StringType"
 	switch typeName {
 	case "Integer":
@@ -439,9 +439,9 @@ func serializeRestDataType(typeName string) bson.M {
 	case "String":
 		bsonType = "DataTypes$StringType"
 	}
-	return bson.M{
-		"$ID":   idToBsonBinary(generateUUID()),
-		"$Type": bsonType,
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+		{Key: "$Type", Value: bsonType},
 	}
 }
 
@@ -480,49 +480,49 @@ func (w *Writer) serializePublishedRestService(svc *model.PublishedRestService) 
 	for _, res := range svc.Resources {
 		ops := bson.A{int32(2)}
 		for _, op := range res.Operations {
-			opDoc := bson.M{
-				"$ID":                  idToBsonBinary(GenerateID()),
-				"$Type":                "Rest$PublishedRestServiceOperation",
-				"HttpMethod":           httpMethodToMendix(op.HTTPMethod),
-				"Path":                 op.Path,
-				"Microflow":            op.Microflow,
-				"Summary":              op.Summary,
-				"Deprecated":           op.Deprecated,
-				"Commit":               "Yes",
-				"Documentation":        "",
-				"ExportMapping":        "",
-				"ImportMapping":        "",
-				"ObjectHandlingBackup": "Create",
-				"Parameters":           serializePublishedRestParams(op.Path, op.Microflow, op.Parameters),
+			opDoc := bson.D{
+				{Key: "$ID", Value: idToBsonBinary(GenerateID())},
+				{Key: "$Type", Value: "Rest$PublishedRestServiceOperation"},
+				{Key: "HttpMethod", Value: httpMethodToMendix(op.HTTPMethod)},
+				{Key: "Path", Value: op.Path},
+				{Key: "Microflow", Value: op.Microflow},
+				{Key: "Summary", Value: op.Summary},
+				{Key: "Deprecated", Value: op.Deprecated},
+				{Key: "Commit", Value: "Yes"},
+				{Key: "Documentation", Value: ""},
+				{Key: "ExportMapping", Value: ""},
+				{Key: "ImportMapping", Value: ""},
+				{Key: "ObjectHandlingBackup", Value: "Create"},
+				{Key: "Parameters", Value: serializePublishedRestParams(op.Path, op.Microflow, op.Parameters)},
 			}
 			ops = append(ops, opDoc)
 		}
-		resDoc := bson.M{
-			"$ID":           idToBsonBinary(GenerateID()),
-			"$Type":         "Rest$PublishedRestServiceResource",
-			"Name":          res.Name,
-			"Documentation": "",
-			"Operations":    ops,
+		resDoc := bson.D{
+			{Key: "$ID", Value: idToBsonBinary(GenerateID())},
+			{Key: "$Type", Value: "Rest$PublishedRestServiceResource"},
+			{Key: "Name", Value: res.Name},
+			{Key: "Documentation", Value: ""},
+			{Key: "Operations", Value: ops},
 		}
 		resources = append(resources, resDoc)
 	}
 
-	doc := bson.M{
-		"$ID":                     idToBsonBinary(string(svc.ID)),
-		"$Type":                   "Rest$PublishedRestService",
-		"Name":                    svc.Name,
-		"Documentation":           "",
-		"Excluded":                svc.Excluded,
-		"ExportLevel":             "Hidden",
-		"Path":                    svc.Path,
-		"Version":                 svc.Version,
-		"ServiceName":             svc.ServiceName,
-		"AllowedRoles":            makeMendixStringArray(svc.AllowedRoles),
-		"AuthenticationTypes":     bson.A{int32(2)},
-		"AuthenticationMicroflow": "",
-		"CorsConfiguration":       nil,
-		"Parameters":              bson.A{int32(2)},
-		"Resources":               resources,
+	doc := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(string(svc.ID))},
+		{Key: "$Type", Value: "Rest$PublishedRestService"},
+		{Key: "Name", Value: svc.Name},
+		{Key: "Documentation", Value: ""},
+		{Key: "Excluded", Value: svc.Excluded},
+		{Key: "ExportLevel", Value: "Hidden"},
+		{Key: "Path", Value: svc.Path},
+		{Key: "Version", Value: svc.Version},
+		{Key: "ServiceName", Value: svc.ServiceName},
+		{Key: "AllowedRoles", Value: makeMendixStringArray(svc.AllowedRoles)},
+		{Key: "AuthenticationTypes", Value: bson.A{int32(2)}},
+		{Key: "AuthenticationMicroflow", Value: ""},
+		{Key: "CorsConfiguration", Value: nil},
+		{Key: "Parameters", Value: bson.A{int32(2)}},
+		{Key: "Resources", Value: resources},
 	}
 
 	return bson.Marshal(doc)
@@ -548,17 +548,17 @@ func serializePublishedRestParams(path string, microflowQN string, _ []string) b
 		if microflowQN != "" {
 			mfParam = microflowQN + "." + name
 		}
-		params = append(params, bson.M{
-			"$ID":   idToBsonBinary(generateUUID()),
-			"$Type": "Rest$RestOperationParameter",
-			"Name":  name,
-			"Type": bson.M{
-				"$ID":   idToBsonBinary(generateUUID()),
-				"$Type": "DataTypes$StringType",
-			},
-			"ParameterType":      "Path",
-			"MicroflowParameter": mfParam,
-			"Description":        "",
+		params = append(params, bson.D{
+			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+			{Key: "$Type", Value: "Rest$RestOperationParameter"},
+			{Key: "Name", Value: name},
+			{Key: "Type", Value: bson.D{
+				{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+				{Key: "$Type", Value: "DataTypes$StringType"},
+			}},
+			{Key: "ParameterType", Value: "Path"},
+			{Key: "MicroflowParameter", Value: mfParam},
+			{Key: "Description", Value: ""},
 		})
 	}
 	return params

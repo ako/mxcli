@@ -46,74 +46,74 @@ func (w *Writer) DeleteDataTransformer(id model.ID) error {
 func serializeDataTransformer(dt *model.DataTransformer) ([]byte, error) {
 	// Root element
 	rootElemID := generateUUID()
-	rootElement := bson.M{
-		"$ID":        idToBsonBinary(rootElemID),
-		"$Type":      "DataTransformers$StructureObject",
-		"Attributes": bson.A{int32(2)},
+	rootElement := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(rootElemID)},
+		{Key: "$Type", Value: "DataTransformers$StructureObject"},
+		{Key: "Attributes", Value: bson.A{int32(2)}},
 	}
 
 	// Source
-	var source bson.M
+	var source bson.D
 	switch strings.ToUpper(dt.SourceType) {
 	case "XML":
-		source = bson.M{
-			"$ID":     idToBsonBinary(generateUUID()),
-			"$Type":   "DataTransformers$XmlSource",
-			"Content": dt.SourceJSON,
+		source = bson.D{
+			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+			{Key: "$Type", Value: "DataTransformers$XmlSource"},
+			{Key: "Content", Value: dt.SourceJSON},
 		}
 	default: // JSON
-		source = bson.M{
-			"$ID":     idToBsonBinary(generateUUID()),
-			"$Type":   "DataTransformers$JsonSource",
-			"Content": dt.SourceJSON,
+		source = bson.D{
+			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+			{Key: "$Type", Value: "DataTransformers$JsonSource"},
+			{Key: "Content", Value: dt.SourceJSON},
 		}
 	}
 
 	// Steps
 	steps := bson.A{int32(2)}
 	for _, step := range dt.Steps {
-		var action bson.M
+		var action bson.D
 		switch strings.ToUpper(step.Technology) {
 		case "JSLT":
-			action = bson.M{
-				"$ID":   idToBsonBinary(generateUUID()),
-				"$Type": "DataTransformers$JsltAction",
-				"Jslt":  step.Expression,
+			action = bson.D{
+				{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+				{Key: "$Type", Value: "DataTransformers$JsltAction"},
+				{Key: "Jslt", Value: step.Expression},
 			}
 		case "XSLT":
-			action = bson.M{
-				"$ID":   idToBsonBinary(generateUUID()),
-				"$Type": "DataTransformers$XsltAction",
-				"Xslt":  step.Expression,
+			action = bson.D{
+				{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+				{Key: "$Type", Value: "DataTransformers$XsltAction"},
+				{Key: "Xslt", Value: step.Expression},
 			}
 		default:
-			action = bson.M{
-				"$ID":   idToBsonBinary(generateUUID()),
-				"$Type": "DataTransformers$JsltAction",
-				"Jslt":  step.Expression,
+			action = bson.D{
+				{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+				{Key: "$Type", Value: "DataTransformers$JsltAction"},
+				{Key: "Jslt", Value: step.Expression},
 			}
 		}
 
-		steps = append(steps, bson.M{
-			"$ID":                  idToBsonBinary(generateUUID()),
-			"$Type":                "DataTransformers$Step",
-			"Action":               action,
-			"InputElementPointer":  idToBsonBinary(rootElemID),
-			"OutputElementPointer": idToBsonBinary(rootElemID),
+		steps = append(steps, bson.D{
+			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+			{Key: "$Type", Value: "DataTransformers$Step"},
+			{Key: "Action", Value: action},
+			{Key: "InputElementPointer", Value: idToBsonBinary(rootElemID)},
+			{Key: "OutputElementPointer", Value: idToBsonBinary(rootElemID)},
 		})
 	}
 
-	doc := bson.M{
-		"$ID":                idToBsonBinary(string(dt.ID)),
-		"$Type":              "DataTransformers$DataTransformer",
-		"Name":               dt.Name,
-		"Documentation":      "",
-		"Excluded":           dt.Excluded,
-		"ExportLevel":        "Hidden",
-		"Source":             source,
-		"Elements":           bson.A{int32(2), rootElement},
-		"RootElementPointer": idToBsonBinary(rootElemID),
-		"Steps":              steps,
+	doc := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(string(dt.ID))},
+		{Key: "$Type", Value: "DataTransformers$DataTransformer"},
+		{Key: "Name", Value: dt.Name},
+		{Key: "Documentation", Value: ""},
+		{Key: "Excluded", Value: dt.Excluded},
+		{Key: "ExportLevel", Value: "Hidden"},
+		{Key: "Source", Value: source},
+		{Key: "Elements", Value: bson.A{int32(2), rootElement}},
+		{Key: "RootElementPointer", Value: idToBsonBinary(rootElemID)},
+		{Key: "Steps", Value: steps},
 	}
 
 	return bson.Marshal(doc)
