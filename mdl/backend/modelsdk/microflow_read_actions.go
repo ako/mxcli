@@ -342,6 +342,22 @@ func actionFromGen(el element.Element) microflows.MicroflowAction {
 		}
 		return out
 
+	case *genMf.DownloadFileAction:
+		// DOWNLOAD FILE. Without this case it renders "-- Empty action". Mirror
+		// legacy parseDownloadFileAction, including the Rollback default for an
+		// empty error-handling type.
+		eht := microflows.ErrorHandlingType(a.ErrorHandlingType())
+		if eht == "" {
+			eht = microflows.ErrorHandlingTypeRollback
+		}
+		out := &microflows.DownloadFileAction{
+			ErrorHandlingType: eht,
+			FileDocument:      a.FileDocumentVariableName(),
+			ShowInBrowser:     a.ShowFileInBrowser(),
+		}
+		out.ID = model.ID(a.ID())
+		return out
+
 	case *genMf.ExportXmlAction:
 		// EXPORT TO MAPPING. The mapping/argument live in ResultHandling
 		// (Microflows$MappingRequestHandling) and the output variable in
