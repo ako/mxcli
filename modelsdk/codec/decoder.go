@@ -85,12 +85,20 @@ func decodeTypeName(raw bson.Raw) string {
 // Both directions are needed: Studio Pro writes "NewType" (so looking up "Type"
 // falls back to "NewType"), and the mxcli legacy write path wrote "Type" (so
 // looking up "NewType" must fall back to "Type").
+//
+// A SequenceFlow's branch case is likewise stored under "NewCaseValue" (the
+// storage name) while the gen property is "CaseValue" (see
+// sdk/mpr/parser_microflow.go:165 — legacy reads CaseValues, then NewCaseValue).
+// Without this alias the case is never decoded, so an enumeration/boolean split
+// reads as case-less and DESCRIBE MICROFLOW renders "if cond then end if;",
+// dropping the entire then/when body.
 var fieldAliases = map[string]string{
 	"LayoutCall":   "FormCall",
 	"PageSettings": "FormSettings",
 	"Layout":       "Form",
 	"Type":         "NewType",
 	"NewType":      "Type",
+	"CaseValue":    "NewCaseValue",
 }
 
 // DecodeChild decodes a single embedded document child from raw BSON by key.

@@ -131,7 +131,7 @@ func flowsFromGen(items []element.Element) []*microflows.SequenceFlow {
 			OriginConnectionIndex:      int(g.OriginConnectionIndex()),
 			DestinationConnectionIndex: int(g.DestinationConnectionIndex()),
 			IsErrorHandler:             g.IsErrorHandler(),
-			CaseValue:                  caseValueFromGen(g.CaseValuesItems()),
+			CaseValue:                  caseValueFromGen(g),
 		}
 		f.ID = model.ID(g.ID())
 		flows = append(flows, f)
@@ -183,14 +183,34 @@ func splitConditionFromGen(el element.Element) microflows.SplitCondition {
 }
 
 // caseValueFromGen reconstructs a sequence flow's branch case (the true/false/enum
-// label that findBranchFlows keys on). Both expression and enum cases are stored
-// as a gen EnumerationCase (Value carries the label), so reconstruct that form;
-// no case (a normal flow) yields nil.
-func caseValueFromGen(items []element.Element) microflows.CaseValue {
-	for _, el := range items {
-		if c, ok := el.(*genMf.EnumerationCase); ok {
-			return &microflows.EnumerationCase{Value: c.Value()}
+// label that findBranchFlows and the enum/inheritance-split renderers key on).
+//
+// The case can live in either of two places: the singular `caseValue`/`NewCaseValue`
+// child (the form Studio Pro still writes for boolean and enumeration splits — see
+// the codec fieldAliases "CaseValue"→"NewCaseValue") or the plural `caseValues`
+// list (newer format). Read the singular first, then the list. Both expression and
+// enum cases are stored as a gen EnumerationCase (Value carries the label);
+// inheritance cases as a gen InheritanceCase; a normal flow's NoCase yields nil.
+func caseValueFromGen(g *genMf.SequenceFlow) microflows.CaseValue {
+	if cv := mapGenCaseValue(g.CaseValue()); cv != nil {
+		return cv
+	}
+	for _, el := range g.CaseValuesItems() {
+		if cv := mapGenCaseValue(el); cv != nil {
+			return cv
 		}
+	}
+	return nil
+}
+
+// mapGenCaseValue converts a single gen case element to its model form, or nil
+// when the element is absent or a NoCase (no branch label).
+func mapGenCaseValue(el element.Element) microflows.CaseValue {
+	switch c := el.(type) {
+	case *genMf.EnumerationCase:
+		return &microflows.EnumerationCase{Value: c.Value()}
+	case *genMf.InheritanceCase:
+		return &microflows.InheritanceCase{EntityQualifiedName: c.ValueQualifiedName()}
 	}
 	return nil
 }

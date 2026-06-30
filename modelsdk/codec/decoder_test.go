@@ -41,6 +41,27 @@ func TestDecodeChildValid(t *testing.T) {
 	}
 }
 
+// TestDecodeChildAliasNewCaseValue guards the storage-name alias for a
+// SequenceFlow's branch case: Mendix stores it under "NewCaseValue" while the
+// gen property looks it up as "CaseValue". Without the fieldAliases entry the
+// case is never decoded, so enumeration/boolean splits read as case-less and
+// DESCRIBE MICROFLOW drops the then/when body ("if cond then end if;").
+func TestDecodeChildAliasNewCaseValue(t *testing.T) {
+	raw := mustMarshal(bson.D{
+		{Key: "NewCaseValue", Value: bson.D{
+			{Key: "$ID", Value: "case-1"},
+			{Key: "$Type", Value: "Test$Child"},
+		}},
+	})
+	elem, err := DecodeChild(raw, "CaseValue")
+	if err != nil {
+		t.Fatalf("DecodeChild(CaseValue) should fall back to NewCaseValue: %v", err)
+	}
+	if elem.TypeName() != "Test$Child" {
+		t.Errorf("TypeName = %q", elem.TypeName())
+	}
+}
+
 func TestDecodeChildrenMissingKey(t *testing.T) {
 	raw := mustMarshal(bson.D{{Key: "$Type", Value: "X"}})
 	_, err := DecodeChildren(raw, "noSuchKey")
