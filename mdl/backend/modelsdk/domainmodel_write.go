@@ -10,6 +10,7 @@ import (
 	"github.com/mendixlabs/mxcli/modelsdk/codec"
 	"github.com/mendixlabs/mxcli/modelsdk/element"
 	genDm "github.com/mendixlabs/mxcli/modelsdk/gen/domainmodels"
+	genRest "github.com/mendixlabs/mxcli/modelsdk/gen/rest"
 	genTexts "github.com/mendixlabs/mxcli/modelsdk/gen/texts"
 	mmpr "github.com/mendixlabs/mxcli/modelsdk/mpr"
 
@@ -112,6 +113,12 @@ func assocToGen(a *domainmodel.Association) *genDm.Association {
 	db.SetParentDeleteBehavior(parentDB)
 	db.SetChildDeleteBehavior(childDB)
 	out.SetDeleteBehavior(db)
+
+	// An association between external entities carries a Rest$OData* source; a
+	// plain association leaves Source unset (the registered TypeDefaults null it).
+	if src := externalAssociationSourceToGen(a); src != nil {
+		out.SetSource(src)
+	}
 	return out
 }
 
@@ -205,6 +212,16 @@ func entityToGen(e *domainmodel.Entity, moduleName string, major int) *genDm.Ent
 		}
 		out.SetSource(src)
 	}
+	// External (OData remote) entities carry a Rest$OData* source referencing the
+	// consumed service (issue #718). Without it the entity serializes as a plain
+	// persistent/non-persistent entity, losing its "external / from service"
+	// nature. The attributes also switch to OData mapped values (isExternal).
+	isExternal := e.Source == "Rest$ODataRemoteEntitySource" ||
+		e.Source == "Rest$ODataEntityTypeSource" ||
+		e.Source == "Rest$ODataPrimitiveCollectionEntitySource"
+	if isExternal && e.RemoteServiceName != "" {
+		out.SetSource(externalEntitySourceToGen(e))
+	}
 	// ExportLevel is a mandatory scalar NewEntity's pending applyDefaults does not
 	// yet set (engalar tech-debt Fix 4). The entity GUID and the empty member
 	// arrays (Attributes/AccessRules/…) legacy also emits are NOT settable on the
@@ -237,7 +254,7 @@ func entityToGen(e *domainmodel.Entity, moduleName string, major int) *genDm.Ent
 	}
 
 	for _, a := range e.Attributes {
-		out.AddAttributes(attributeToGen(a))
+		out.AddAttributes(attributeToGen(a, isExternal))
 	}
 	// Validation rules reference their attribute by qualified name
 	// (Module.Entity.Attr); resolve attribute IDs → names within this entity.
@@ -453,27 +470,50 @@ func (b *Backend) moduleNameFor(unitID model.ID) string {
 // documentation, ExportLevel, the typed NewType element, and a StoredValue
 // holding the default. The attribute's GUID is added by the encoder via the
 // registered DomainModels$Attribute defaults.
-func attributeToGen(a *domainmodel.Attribute) *genDm.Attribute {
+func attributeToGen(a *domainmodel.Attribute, isExternal bool) *genDm.Attribute {
 	out := genDm.NewAttribute()
 	out.SetName(a.Name)
 	out.SetDocumentation(a.Documentation)
 	out.SetExportLevel("Hidden")
 	out.SetType(attributeTypeToGen(a.Type))
 
-	// View-entity attributes carry an OqlViewValue referencing the OQL column
-	// (not a StoredValue) — emitting StoredValue triggers CE6770 "View Entity out
-	// of sync". Otherwise Studio Pro always serializes StoredValue.DefaultValue
-	// (empty string when no explicit default), so set it unconditionally.
-	if a.Value != nil && a.Value.ViewReference != "" {
+	def := ""
+	if a.Value != nil {
+		def = a.Value.DefaultValue
+	}
+	switch {
+	case a.Value != nil && a.Value.ViewReference != "":
+		// View-entity attributes carry an OqlViewValue referencing the OQL column
+		// (not a StoredValue) — emitting StoredValue triggers CE6770 "View Entity
+		// out of sync".
 		vv := genDm.NewOqlViewValue()
 		vv.SetReference(a.Value.ViewReference)
 		out.SetValue(vv)
-	} else {
+	case isExternal && a.IsPrimitiveCollection:
+		// The single attribute of a primitive-collection NPE (e.g. TripTag.Tag) is
+		// backed by a Rest$ODataMappedPrimitiveCollectionValue (issue #718).
+		mv := genRest.NewODataMappedPrimitiveCollectionValue()
+		mv.SetDefaultValueDesignTime(def)
+		mv.SetRemoteName(a.RemoteName)
+		mv.SetRemoteType(a.RemoteType)
+		out.SetValue(mv)
+	case isExternal && a.RemoteName != "":
+		// External-entity attribute backed by an OData property → Rest$ODataMappedValue
+		// instead of DomainModels$StoredValue (issue #718).
+		mv := genRest.NewODataMappedValue()
+		mv.SetCreatable(a.Creatable)
+		mv.SetDefaultValueDesignTime(def)
+		mv.SetFilterable(a.Filterable)
+		mv.SetRemoteName(a.RemoteName)
+		mv.SetRemoteType(a.RemoteType)
+		mv.SetRepresentsStream(false)
+		mv.SetSortable(a.Sortable)
+		mv.SetUpdatable(a.Updatable)
+		out.SetValue(mv)
+	default:
+		// Regular entity attribute — Studio Pro always serializes a StoredValue
+		// (empty DefaultValue when none), so set it unconditionally.
 		sv := genDm.NewStoredValue()
-		def := ""
-		if a.Value != nil {
-			def = a.Value.DefaultValue
-		}
 		sv.SetDefaultValue(def)
 		out.SetValue(sv)
 	}
@@ -518,6 +558,105 @@ func attributeTypeToGen(t domainmodel.AttributeType) element.Element {
 	default:
 		return genDm.NewStringAttributeType()
 	}
+}
+
+// externalEntitySourceToGen builds the Rest$OData* entity source element for an
+// external (OData remote) entity, mirroring the legacy serializer
+// (sdk/mpr/writer_domainmodel.go). Nested key elements get fresh IDs here because
+// assignEntityIDs only stamps the top-level source object (issue #718).
+func externalEntitySourceToGen(e *domainmodel.Entity) element.Element {
+	switch e.Source {
+	case "Rest$ODataRemoteEntitySource":
+		// Top-level external entity (has an entity set): CRUD + paging capabilities.
+		src := genRest.NewODataRemoteEntitySource()
+		src.SetCountable(e.Countable)
+		src.SetCreatable(e.Creatable)
+		src.SetCreateChangeLocally(e.CreateChangeLocally)
+		src.SetDeletable(e.Deletable)
+		src.SetEntitySet(e.RemoteEntitySet)
+		if key := odataKeyToGen(e.RemoteKeyParts); key != nil {
+			src.SetKey(key)
+		}
+		src.SetRemoteName(e.RemoteEntityName)
+		src.SetSkipSupported(e.SkipSupported)
+		src.SetSourceDocumentQualifiedName(e.RemoteServiceName)
+		src.SetTopSupported(e.TopSupported)
+		return src
+	case "Rest$ODataEntityTypeSource":
+		// Derived/abstract/contained type (no entity set): type name + key only.
+		src := genRest.NewODataEntityTypeSource()
+		src.SetEntityTypeName(e.RemoteEntityName)
+		src.SetIsOpen(e.IsOpen)
+		if key := odataKeyToGen(e.RemoteKeyParts); key != nil {
+			src.SetKey(key)
+		}
+		src.SetSourceDocumentQualifiedName(e.RemoteServiceName)
+		return src
+	case "Rest$ODataPrimitiveCollectionEntitySource":
+		// Primitive-collection NPE (e.g. TripTag for Trip.Tags = Collection(Edm.String)).
+		src := genRest.NewODataPrimitiveCollectionEntitySource()
+		src.SetSourceDocumentQualifiedName(e.RemoteServiceName)
+		return src
+	}
+	return nil
+}
+
+// odataKeyToGen builds a Rest$ODataKey from the entity's remote key parts, or nil
+// when there are none.
+func odataKeyToGen(parts []*domainmodel.RemoteKeyPart) element.Element {
+	if len(parts) == 0 {
+		return nil
+	}
+	key := genRest.NewODataKey()
+	for _, kp := range parts {
+		key.AddParts(odataKeyPartToGen(kp))
+	}
+	assignID(key)
+	return key
+}
+
+func odataKeyPartToGen(kp *domainmodel.RemoteKeyPart) element.Element {
+	part := genRest.NewODataKeyPart()
+	part.SetEntityKeyPartName(kp.Name)
+	part.SetName(kp.RemoteName)
+	part.SetFilterable(true)
+	part.SetRemoteType(kp.RemoteType)
+	t := attributeTypeToGen(kp.Type)
+	assignID(t)
+	part.SetType(t)
+	assignID(part)
+	return part
+}
+
+// externalAssociationSourceToGen builds the Rest$OData* association source for an
+// association between external entities, or nil for a plain association (issue
+// #718). The source object gets a fresh ID here (assignAssociationIDs stamps only
+// the association and its delete behavior).
+func externalAssociationSourceToGen(a *domainmodel.Association) element.Element {
+	switch a.Source {
+	case "Rest$ODataRemoteAssociationSource":
+		nav := a.Navigability2
+		if nav == "" {
+			nav = "ParentToChild"
+		}
+		src := genRest.NewODataRemoteAssociationSource()
+		src.SetCreatableFromChild(a.CreatableFromChild)
+		src.SetCreatableFromParent(a.CreatableFromParent)
+		src.SetNavigability2(nav)
+		src.SetRemoteChildNavigationProperty(a.RemoteChildNavigationProperty)
+		src.SetRemoteParentNavigationProperty(a.RemoteParentNavigationProperty)
+		src.SetUpdatableFromChild(a.UpdatableFromChild)
+		src.SetUpdatableFromParent(a.UpdatableFromParent)
+		assignID(src)
+		return src
+	case "Rest$ODataPrimitiveCollectionAssociationSource":
+		// Marker source pairing with Rest$ODataPrimitiveCollectionEntitySource on
+		// the child — no extra fields.
+		src := genRest.NewODataPrimitiveCollectionAssociationSource()
+		assignID(src)
+		return src
+	}
+	return nil
 }
 
 // assignEntityIDs gives the entity, its generalization, and each attribute
