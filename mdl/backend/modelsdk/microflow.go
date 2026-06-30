@@ -356,6 +356,19 @@ func flowObjectFromGen(el element.Element) microflows.MicroflowObject {
 		o.ID = id
 		o.Position = pos
 		return o
+	case "Microflows$BreakEvent":
+		// Loop break — without this case it falls through to ActionActivity and
+		// renders "-- Empty action" instead of "break;".
+		o := &microflows.BreakEvent{}
+		o.ID = id
+		o.Position = pos
+		return o
+	case "Microflows$ContinueEvent":
+		// Loop continue — see BreakEvent above ("continue;").
+		o := &microflows.ContinueEvent{}
+		o.ID = id
+		o.Position = pos
+		return o
 	case "Microflows$LoopedActivity":
 		la := &microflows.LoopedActivity{}
 		la.ID = id
