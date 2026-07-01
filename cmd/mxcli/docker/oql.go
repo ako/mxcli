@@ -94,19 +94,44 @@ func ExecuteOQL(opts OQLOptions, query string) (*OQLResult, error) {
 	return parseOQLFeedback(raw)
 }
 
-// oqlDevError returns the message from a dev-endpoint error response
-// ({"error":"..."}), or "" when the body carries no error field.
+// oqlDevError returns the message from a dev-endpoint error response, or "" when
+// the body is a valid result. Two error shapes are handled:
+//   - {"error":"..."} — a query error (bad OQL) reported by the preview servlet.
+//   - {"result":<non-zero>,"message":"..."} — the admin dispatcher's response
+//     when the request never reached the preview servlet, e.g. the OQL preview
+//     servlet isn't mounted ("Action not found") because the app wasn't started
+//     with the live-preview dev flags, or auth failed. A successful result carries
+//     "data" and no "result"; without this check these would be silently parsed
+//     as 0 rows.
 func oqlDevError(raw json.RawMessage) string {
 	if len(raw) == 0 {
 		return ""
 	}
 	var env struct {
-		Error string `json:"error"`
+		Error   string          `json:"error"`
+		Result  *int            `json:"result"`
+		Message string          `json:"message"`
+		Data    json.RawMessage `json:"data"`
 	}
 	if err := json.Unmarshal(raw, &env); err != nil {
 		return ""
 	}
-	return env.Error
+	if env.Error != "" {
+		return env.Error
+	}
+	if len(env.Data) == 0 && env.Result != nil && *env.Result != 0 {
+		msg := env.Message
+		if msg == "" {
+			msg = fmt.Sprintf("runtime returned result %d", *env.Result)
+		}
+		// "Action not found" means the OQL preview servlet isn't mounted — the app
+		// must be started with the live-preview dev flags (mxcli docker does this).
+		if strings.Contains(strings.ToLower(msg), "not found") {
+			msg += " -- the running app does not expose the OQL preview endpoint; rebuild and restart with `mxcli docker build && mxcli docker up` (it starts the runtime with the live-preview dev flags)"
+		}
+		return msg
+	}
+	return ""
 }
 
 // parseOQLFeedback extracts OQL results from the raw M2EE feedback JSON,

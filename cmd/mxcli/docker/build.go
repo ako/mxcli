@@ -791,5 +791,6 @@ func DescribePatches(pv *version.ProjectVersion) []string {
 	patches = append(patches, "Replace deprecated openjdk base image")
 	patches = append(patches, "Add HEALTHCHECK instruction")
 	patches = append(patches, "Bind admin API to all interfaces")
+	patches = append(patches, "Set runtime/admin ports (avoid port 0 startup crash)")
 	return patches
 }

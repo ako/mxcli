@@ -290,7 +290,7 @@ func TestPatchAdminAddresses_Skipped_NoConfigFile(t *testing.T) {
 	}
 }
 
-func TestApplyPatches_116x_Gets6Patches(t *testing.T) {
+func TestApplyPatches_116x_Gets7Patches(t *testing.T) {
 	dir := t.TempDir()
 
 	// Create bin/start without execute permission
@@ -318,8 +318,8 @@ CMD ["./bin/start.sh", "etc/Default"]
 	}
 
 	results := ApplyPatches(dir, pv)
-	if len(results) != 6 {
-		t.Errorf("expected 6 patches for 11.6.x, got %d", len(results))
+	if len(results) != 7 {
+		t.Errorf("expected 7 patches for 11.6.x, got %d", len(results))
 	}
 
 	applied := 0
@@ -328,12 +328,12 @@ CMD ["./bin/start.sh", "etc/Default"]
 			applied++
 		}
 	}
-	if applied != 6 {
-		t.Errorf("expected 6 applied patches, got %d", applied)
+	if applied != 7 {
+		t.Errorf("expected 7 applied patches, got %d", applied)
 	}
 }
 
-func TestApplyPatches_12x_Gets5Patches(t *testing.T) {
+func TestApplyPatches_12x_Gets6Patches(t *testing.T) {
 	dir := t.TempDir()
 
 	// Create bin/start without execute permission
@@ -361,8 +361,8 @@ CMD ["./bin/start", "etc/Default"]
 	}
 
 	results := ApplyPatches(dir, pv)
-	if len(results) != 5 {
-		t.Errorf("expected 5 patches for 12.x, got %d", len(results))
+	if len(results) != 6 {
+		t.Errorf("expected 6 patches for 12.x, got %d", len(results))
 	}
 }
 
@@ -739,15 +739,62 @@ func TestFlattenPADDir_OverwritesOldContents(t *testing.T) {
 func TestDescribePatches_116x(t *testing.T) {
 	pv := &version.ProjectVersion{MajorVersion: 11, MinorVersion: 6, PatchVersion: 1}
 	patches := DescribePatches(pv)
-	if len(patches) != 6 {
-		t.Errorf("expected 6 patches for 11.6.x, got %d", len(patches))
+	if len(patches) != 7 {
+		t.Errorf("expected 7 patches for 11.6.x, got %d", len(patches))
 	}
 }
 
 func TestDescribePatches_12x(t *testing.T) {
 	pv := &version.ProjectVersion{MajorVersion: 12, MinorVersion: 0, PatchVersion: 0}
 	patches := DescribePatches(pv)
-	if len(patches) != 5 {
-		t.Errorf("expected 5 patches for 12.x, got %d", len(patches))
+	if len(patches) != 6 {
+		t.Errorf("expected 6 patches for 12.x, got %d", len(patches))
 	}
+}
+
+func TestPatchRuntimePorts_Applied(t *testing.T) {
+	dir := t.TempDir()
+	etcDir := filepath.Join(dir, "etc")
+	os.MkdirAll(etcDir, 0755)
+	os.WriteFile(filepath.Join(etcDir, "Default"), []byte("# root config\ninclude file(\"etc/configurations/Default.conf\")\n"), 0644)
+
+	result := patchRuntimePorts(dir)
+	if result.Status != "applied" {
+		t.Fatalf("expected applied, got %s (%v)", result.Status, result.Error)
+	}
+	s := string(mustRead(t, filepath.Join(etcDir, "Default")))
+	if !strings.Contains(s, "runtime.http { port = 8080 }") {
+		t.Error("should set the runtime http port to 8080")
+	}
+	if !strings.Contains(s, "admin { port = 8090 }") {
+		t.Error("should set the admin port to 8090")
+	}
+	if !strings.Contains(s, "# root config") {
+		t.Error("should preserve existing content")
+	}
+}
+
+func TestPatchRuntimePorts_Skipped_AlreadyPatched(t *testing.T) {
+	dir := t.TempDir()
+	etcDir := filepath.Join(dir, "etc")
+	os.MkdirAll(etcDir, 0755)
+	os.WriteFile(filepath.Join(etcDir, "Default"), []byte("# mxcli: runtime/admin ports\n"), 0644)
+	if got := patchRuntimePorts(dir).Status; got != "skipped" {
+		t.Errorf("expected skipped, got %s", got)
+	}
+}
+
+func TestPatchRuntimePorts_Skipped_NoFile(t *testing.T) {
+	if got := patchRuntimePorts(t.TempDir()).Status; got != "skipped" {
+		t.Errorf("expected skipped, got %s", got)
+	}
+}
+
+func mustRead(t *testing.T, path string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return b
 }

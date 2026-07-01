@@ -483,3 +483,46 @@ func TestSplitCurlStatus(t *testing.T) {
 func base64Encode(s string) string {
 	return m2eeAuthHeader(s)
 }
+
+func TestOqlDevError(t *testing.T) {
+	cases := []struct {
+		name    string
+		body    string
+		want    string // "" = no error; otherwise a substring the result must contain
+		wantErr bool
+	}{
+		{"valid rows", `{"data":[{"N":"3"}]}`, "", false},
+		{"valid empty", `{"data":[]}`, "", false},
+		{"query error", `{"error":"parse error near FROM"}`, "parse error", true},
+		{"action not found", `{"result":-5,"message":"Action not found."}`, "not found", true},
+		{"action not found hint", `{"result":-5,"message":"Action not found."}`, "live-preview", true},
+		{"auth failed", `{"result":-4,"message":"Authentication failed."}`, "Authentication failed", true},
+		{"empty body", ``, "", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := oqlDevError([]byte(c.body))
+			if c.wantErr && got == "" {
+				t.Fatalf("expected an error message, got empty")
+			}
+			if !c.wantErr && got != "" {
+				t.Fatalf("expected no error, got %q", got)
+			}
+			if c.want != "" && !contains(got, c.want) {
+				t.Errorf("message %q does not contain %q", got, c.want)
+			}
+		})
+	}
+}
+
+func contains(s, sub string) bool {
+	return len(sub) == 0 || (len(s) >= len(sub) && indexOf(s, sub) >= 0)
+}
+func indexOf(s, sub string) int {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return i
+		}
+	}
+	return -1
+}

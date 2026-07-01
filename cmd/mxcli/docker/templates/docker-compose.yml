@@ -4,7 +4,12 @@ services:
     working_dir: /mendix
     volumes:
       - ./build:/mendix
-    command: ["./bin/start", "-J", "-Dmendix.live-preview=enabled"]
+    # live-preview + the "running locally by Studio Pro" flag together mount the
+    # runtime's development servlets — including /dev/preview_execute_oql, which
+    # `mxcli oql` uses. Without the studiopro flag the servlet is never registered
+    # (AppContainer.addDevelopmentServlet gates on it) and OQL returns "Action not
+    # found" — silently 0 rows. Each JVM option needs its own -J for bin/start.
+    command: ["./bin/start", "-J", "-Dmendix.live-preview=enabled", "-J", "-Dmendix.running.locally.by.studiopro=true"]
     ports:
       - "${APP_PORT:-8080}:8080"
       - "${ADMIN_PORT:-8090}:8090"   # admin API — bound to * by build patch
