@@ -567,10 +567,19 @@ func restRequestHandlingFromRaw(doc bson.Raw) microflows.RequestHandling {
 		}
 		return h
 	case "Microflows$MappingRequestHandling":
+		// The export-mapping source variable is stored under "MappingVariableName"
+		// (same key ExportXmlAction uses), not "ParameterVariable". Reading the
+		// wrong key left it empty, so the renderer emitted `body mapping X` without
+		// the grammar-mandatory `from $var` — invalid MDL that broke the DESCRIBE
+		// roundtrip (mismatched input, expecting FROM).
+		paramVar := rawStr(doc, "MappingVariableName")
+		if paramVar == "" {
+			paramVar = rawStr(doc, "ParameterVariable")
+		}
 		h := &microflows.MappingRequestHandling{
 			MappingID:         model.ID(rawStr(doc, "MappingId")),
 			ContentType:       rawStr(doc, "ContentType"),
-			ParameterVariable: rawStr(doc, "ParameterVariable"),
+			ParameterVariable: paramVar,
 		}
 		h.ID = id
 		return h
