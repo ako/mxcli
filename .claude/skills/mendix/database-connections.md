@@ -55,8 +55,8 @@ create constant MyModule.DbUsername type string
 -- Password (use PRIVATE for local development)
 create constant MyModule.DbPassword type string
   default ''
-  PRIVATE
-  comment 'Database password - inject via environment variable in production';
+  comment 'Database password - inject via environment variable in production'
+  PRIVATE;
 ```
 
 ## Database Connection Syntax

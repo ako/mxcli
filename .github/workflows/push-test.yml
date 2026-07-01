@@ -44,6 +44,8 @@ jobs:
             echo "::endgroup::"
           done
           exit $FAILED
+      - name: Check skill MDL blocks
+        run: ./scripts/check-skill-mdl.sh ./bin/mxcli .claude/skills/mendix
       - name: Setup mxbuild
         run: ./bin/mxcli setup mxbuild --version 11.9.0
       - name: Integration tests

@@ -29,7 +29,7 @@ LDFLAGS = -ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME)"
 # Clean version for VS Code extension (must be valid semver: major.minor.patch)
 VSCE_VERSION = $(shell echo "$(VERSION)" | sed 's/^v//; s/-.*//' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$$' || echo "0.0.0")
 
-.PHONY: build build-debug release clean test engine-diff test-mdl check-widget-versions grammar completions sync-skills sync-commands sync-lint-rules sync-changelog sync-all docs documentation docs-site docs-serve vscode-ext vscode-install source-tree sbom sbom-report lint lint-go lint-ts fmt vet
+.PHONY: build build-debug release clean test engine-diff test-mdl check-mdl check-skill-mdl check-widget-versions grammar completions sync-skills sync-commands sync-lint-rules sync-changelog sync-all docs documentation docs-site docs-serve vscode-ext vscode-install source-tree sbom sbom-report lint lint-go lint-ts fmt vet
 
 # Helper: copy file only if content differs (avoids mtime updates that invalidate go build cache)
 # Usage: $(call copy-if-changed,src,dst)
@@ -201,6 +201,11 @@ check-mdl: build
 		fi; \
 	done; \
 	exit $$FAILED
+
+# Syntax-check the domain-model DDL statements embedded in the user skills, so
+# invalid MDL (e.g. enum `= 'x'`, association PARENT/CHILD) can't drift into docs.
+check-skill-mdl: build
+	@./scripts/check-skill-mdl.sh ./$(BUILD_DIR)/$(BINARY_NAME) .claude/skills/mendix
 
 # Run integration tests (requires mx binary / mxbuild)
 test-integration:

@@ -44,7 +44,7 @@ create persistent entity MyModule.FormField (
   check: boolean default false,  -- Works unquoted
   text: string(500),             -- Works unquoted
   format: string(50),            -- Works unquoted
-  CheckFlag: boolean default false  -- Renamed alternative (also fine)
+  CheckFlag: boolean default false, -- Renamed alternative (also fine)
   TextContent: string(500), -- Renamed
   FormatType: string(50)    -- Renamed
 );
