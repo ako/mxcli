@@ -641,31 +641,15 @@ func extractShowLabel(ctx *ExecContext, w map[string]any) bool {
 // extractTextFromTemplate extracts text from a ClientTemplate.
 // ClientTemplate structure: Template.Items[] contains Texts$Translation with Text field
 func extractTextFromTemplate(ctx *ExecContext, template map[string]any) string {
+	lang := describeDefaultLanguage(ctx)
 	// For ClientTemplate (Forms$ClientTemplate), the text is in Template.Items[].Text
 	if innerTemplate, ok := template["Template"].(map[string]any); ok {
-		items := getBsonArrayElements(innerTemplate["Items"])
-		for _, item := range items {
-			itemMap, ok := item.(map[string]any)
-			if !ok {
-				continue
-			}
-			if text, ok := itemMap["Text"].(string); ok && text != "" {
-				return text
-			}
-		}
-	}
-	// Fallback: direct Items array (for legacy or different template types)
-	items := getBsonArrayElements(template["Items"])
-	for _, item := range items {
-		itemMap, ok := item.(map[string]any)
-		if !ok {
-			continue
-		}
-		if text, ok := itemMap["Text"].(string); ok {
+		if text := selectTranslationText(getBsonArrayElements(innerTemplate["Items"]), lang); text != "" {
 			return text
 		}
 	}
-	return ""
+	// Fallback: direct Items array (for legacy or different template types).
+	return selectTranslationText(getBsonArrayElements(template["Items"]), lang)
 }
 
 // shortAttributeName strips the qualified prefix from a BSON attribute path.

@@ -51,6 +51,12 @@ type executorCache struct {
 	// Track domain models modified during this session for finalization
 	modifiedDomainModels map[model.ID]string // domain model unit ID -> module name
 
+	// Project default language for describe text selection (issue #702). Loaded
+	// once (pre-warmed before any parallel widget extraction) so the getter is a
+	// race-free read during describe.
+	defaultLang       string
+	defaultLangLoaded bool
+
 	// Pre-warmed name lookup maps for parallel describe (goroutine-safe after init)
 	entityNames    map[model.ID]string // entity ID -> "Module.EntityName"
 	microflowNames map[model.ID]string // microflow ID -> "Module.MicroflowName"

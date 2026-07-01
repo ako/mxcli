@@ -61,17 +61,12 @@ func describePage(ctx *ExecContext, name ast.QualifiedName) error {
 		fmt.Fprint(ctx.Output, " */\n")
 	}
 
-	// Get title
-	title := ""
-	if foundPage.Title != nil {
-		title = foundPage.Title.GetTranslation("en_US")
-		if title == "" {
-			for _, text := range foundPage.Title.Translations {
-				title = text
-				break
-			}
-		}
-	}
+	// Pre-warm the project default language before any (possibly parallel) widget
+	// text extraction, so the getter is a race-free cached read (issue #702).
+	lang := describeDefaultLanguage(ctx)
+
+	// Get title in the project default language (falls back to en_US, then any).
+	title := pickTextTranslation(foundPage.Title, lang)
 
 	// Get layout from raw data
 	layoutName := ""

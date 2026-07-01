@@ -876,18 +876,10 @@ func extractTextContent(ctx *ExecContext, w map[string]any, field string) string
 	if !ok {
 		return ""
 	}
+	// Select the project default language's translation (issue #702), not just
+	// whichever Items entry happens to be first.
 	items := getBsonArrayElements(template["Items"])
-	for _, item := range items {
-		itemMap, ok := item.(map[string]any)
-		if !ok {
-			continue
-		}
-		// Translation objects have Text directly as a string
-		if text, ok := itemMap["Text"].(string); ok {
-			return text
-		}
-	}
-	return ""
+	return selectTranslationText(items, describeDefaultLanguage(ctx))
 }
 
 func extractButtonCaption(ctx *ExecContext, w map[string]any) string {
@@ -1253,16 +1245,7 @@ func extractTextCaption(ctx *ExecContext, w map[string]any) string {
 		return ""
 	}
 	items := getBsonArrayElements(caption["Items"])
-	for _, item := range items {
-		itemMap, ok := item.(map[string]any)
-		if !ok {
-			continue
-		}
-		if text, ok := itemMap["Text"].(string); ok {
-			return text
-		}
-	}
-	return ""
+	return selectTranslationText(items, describeDefaultLanguage(ctx))
 }
 
 // extractClientTemplateParameters extracts parameter values from a ClientTemplate field (Content or Caption).

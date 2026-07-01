@@ -796,6 +796,10 @@ func preWarmCache(ctx *ExecContext) {
 	for _, pg := range pgs {
 		ctx.Cache.pageNames[pg.ID] = h.GetQualifiedName(pg.ContainerID, pg.Name)
 	}
+
+	// Pre-warm the project default language so language-aware text selection in
+	// (possibly parallel) describe is a race-free cached read (issue #702).
+	describeDefaultLanguage(ctx)
 }
 
 // execSearch handles SEARCH 'query' command.
