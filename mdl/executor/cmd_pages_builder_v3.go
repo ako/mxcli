@@ -51,6 +51,9 @@ func (pb *pageBuilder) buildPageV3(s *ast.CreatePageStmtV3) (*pages.Page, error)
 		PopupWidth:     0,
 		PopupHeight:    0,
 		PopupResizable: false,
+		// Page CSS class / inline style (issue #714).
+		Class: s.Class,
+		Style: s.Style,
 	}
 	if s.PopupWidth != nil {
 		page.PopupWidth = *s.PopupWidth

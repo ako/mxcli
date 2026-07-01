@@ -26,6 +26,10 @@ type CreatePageStmtV3 struct {
 	Layout        string
 	URL           string
 	Folder        string
+	// Class / Style set the page's Forms$Appearance CSS class and inline style
+	// (issue #714). Empty means "not specified".
+	Class         string
+	Style         string
 	Widgets       []*WidgetV3
 	Documentation string
 	IsReplace     bool // CREATE OR REPLACE

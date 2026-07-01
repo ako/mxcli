@@ -170,6 +170,8 @@ pageHeaderPropertyV3
     | LAYOUT COLON (qualifiedName | STRING_LITERAL)                  // Layout: Atlas_Core.Atlas_Default
     | URL COLON STRING_LITERAL                                       // Url: 'my-page'
     | FOLDER COLON STRING_LITERAL                                    // Folder: 'Pages/Admin'
+    | CLASS COLON STRING_LITERAL                                     // Class: 'my-page bg-primary'
+    | STYLE COLON STRING_LITERAL                                     // Style: 'padding: 10px'
     | IDENTIFIER COLON propertyValueV3                               // Generic page property: PopupWidth: 800, PopupResizable: true
     ;
 

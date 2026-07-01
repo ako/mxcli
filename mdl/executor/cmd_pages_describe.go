@@ -114,6 +114,16 @@ func describePage(ctx *ExecContext, name ast.QualifiedName) error {
 		if r, ok := rawData["PopupResizable"].(bool); ok && r {
 			props = append(props, "PopupResizable: true")
 		}
+		// Page CSS class / inline style from Forms$Appearance (issue #714) — emit
+		// only when set so the CREATE PAGE header round-trips.
+		if ap, ok := rawData["Appearance"].(map[string]any); ok {
+			if cls, _ := ap["Class"].(string); cls != "" {
+				props = append(props, fmt.Sprintf("Class: %s", mdlQuote(cls)))
+			}
+			if st, _ := ap["Style"].(string); st != "" {
+				props = append(props, fmt.Sprintf("Style: %s", mdlQuote(st)))
+			}
+		}
 	}
 	if len(foundPage.Parameters) > 0 {
 		params := []string{}

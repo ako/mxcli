@@ -23,8 +23,12 @@ type Page struct {
 	PopupWidth     int              `json:"popupWidth,omitempty"`
 	PopupHeight    int              `json:"popupHeight,omitempty"`
 	PopupResizable bool             `json:"popupResizable,omitempty"`
-	MarkAsUsed     bool             `json:"markAsUsed"`
-	Excluded       bool             `json:"excluded"`
+	// Class / Style are the page's Forms$Appearance CSS class and inline style
+	// (issue #714).
+	Class      string `json:"class,omitempty"`
+	Style      string `json:"style,omitempty"`
+	MarkAsUsed bool   `json:"markAsUsed"`
+	Excluded   bool   `json:"excluded"`
 }
 
 // GetName returns the page's name.

@@ -14,7 +14,8 @@ create [or replace] page Module.PageName
   layout: Module.LayoutName,
   [url: 'page-url',]
   [folder: 'FolderPath',]
-  [PopupWidth: 800, PopupHeight: 480, PopupResizable: true]
+  [PopupWidth: 800, PopupHeight: 480, PopupResizable: true,]
+  [Class: 'css-class', Style: 'css: rule']
 )
 {
   -- Widget definitions using explicit properties
@@ -26,6 +27,10 @@ page is opened in a pop-up. They are optional — omitting them uses the Mendix 
 (600 × 600, not resizable). Unlike the other header keywords, these property names are
 **case-sensitive** and must be written exactly as shown. They can also be changed later
 with `alter page … { set PopupWidth = …; }` (see the alter-page skill).
+
+**Page CSS class / style** (`Class` / `Style`) set the page's Appearance — a CSS class
+and inline style applied to the whole page (e.g. `Class: 'container-fluid bg-light'`).
+Both are optional and can be changed later with `alter page … { set Class = '…'; }`.
 
 **Page Variables**: Local variables at the page level for use in expressions (e.g., column visibility).
 - DataType: `boolean`, `string`, `integer`, `decimal`, `datetime`

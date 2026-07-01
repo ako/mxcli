@@ -114,7 +114,7 @@ func pageToGen(page *pages.Page) (*genPg.Page, error) {
 	out.SetPopupResizable(page.PopupResizable)
 	out.SetAllowedRolesQualifiedNames(moduleRoleNames(page.AllowedRoles))
 	out.SetTitle(captionToGen(page.Title))
-	out.SetAppearance(newAppearance("", "", nil))
+	out.SetAppearance(newAppearance(page.Class, page.Style, nil))
 
 	if page.LayoutCall != nil {
 		lc, err := layoutCallToGen(page.LayoutCall)

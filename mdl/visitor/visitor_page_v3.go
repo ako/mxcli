@@ -119,6 +119,16 @@ func (b *Builder) parsePageHeaderV3(ctx parser.IPageHeaderV3Context, stmt *ast.C
 			if str := prop.STRING_LITERAL(); str != nil {
 				stmt.Folder = unquoteString(str.GetText())
 			}
+		} else if prop.CLASS() != nil {
+			// Class: 'my-page' — page-level CSS class (issue #714)
+			if str := prop.STRING_LITERAL(); str != nil {
+				stmt.Class = unquoteString(str.GetText())
+			}
+		} else if prop.STYLE() != nil {
+			// Style: 'padding: 10px' — page-level inline CSS (issue #714)
+			if str := prop.STRING_LITERAL(); str != nil {
+				stmt.Style = unquoteString(str.GetText())
+			}
 		} else if id := prop.IDENTIFIER(); id != nil {
 			// Generic page header property (e.g. PopupWidth: 800). Only the
 			// pop-up dimensions are recognized; anything else is a typo/unsupported.
@@ -154,7 +164,7 @@ func (b *Builder) applyGenericPageHeaderProp(stmt *ast.CreatePageStmtV3, name st
 		stmt.PopupResizable = &bval
 	default:
 		b.addError(fmt.Errorf("line %d:%d: unknown page property %q "+
-			"(supported: Title, Layout, Url, Folder, Params, Variables, PopupWidth, PopupHeight, PopupResizable)",
+			"(supported: Title, Layout, Url, Folder, Params, Variables, PopupWidth, PopupHeight, PopupResizable, Class, Style)",
 			tok.GetLine(), tok.GetColumn(), name))
 	}
 }

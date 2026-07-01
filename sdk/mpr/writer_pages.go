@@ -133,10 +133,10 @@ func (w *Writer) serializePage(page *pages.Page) ([]byte, error) {
 		{Key: "Appearance", Value: bson.D{
 			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
 			{Key: "$Type", Value: "Forms$Appearance"},
-			{Key: "Class", Value: ""},
+			{Key: "Class", Value: page.Class},
 			{Key: "DesignProperties", Value: bson.A{int32(3)}},
 			{Key: "DynamicClasses", Value: ""},
-			{Key: "Style", Value: ""},
+			{Key: "Style", Value: page.Style},
 		}},
 		{Key: "Autofocus", Value: "DesktopOnly"},
 		{Key: "CanvasHeight", Value: int64(600)},

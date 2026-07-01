@@ -1,0 +1,52 @@
+-- ============================================================================
+-- Issue #714 — associate a CSS Class (and inline Style) with a page
+-- ============================================================================
+--
+-- Before the fix, `Class:` in a CREATE PAGE header was rejected ("Class is not a
+-- page property" / "unknown page property"), even though every Forms$Page has a
+-- Forms$Appearance with Class/Style. Now the page-level Class and Style are wired
+-- through CREATE PAGE, ALTER PAGE SET, and DESCRIBE (round-trips).
+--
+-- To verify in Studio Pro:
+--   1. Run this script.
+--   2. Open Bug714.PageWithClass → page's "Class" = "container-fluid bg-light",
+--      "Style" = "min-height: 100vh".
+--   3. Open Bug714.PageAltered → after the ALTER, Class = "updated", Style cleared? no
+--      (Style set to "color: red"). mx check should report 0 errors.
+-- ============================================================================
+
+CREATE MODULE Bug714;
+
+CREATE OR REPLACE PAGE Bug714.PageWithClass (
+  Title: 'Page with a CSS class',
+  Layout: Atlas_Core.Atlas_Default,
+  Class: 'container-fluid bg-light',
+  Style: 'min-height: 100vh'
+) {
+  layoutgrid g {
+    row r {
+      column c (desktopwidth: autofill) {
+        dynamictext heading (content: 'Styled page', rendermode: H2)
+      }
+    }
+  }
+}
+
+CREATE OR REPLACE PAGE Bug714.PageAltered (
+  Title: 'Page altered',
+  Layout: Atlas_Core.Atlas_Default
+) {
+  layoutgrid g {
+    row r {
+      column c (desktopwidth: autofill) {
+        dynamictext heading (content: 'Altered page', rendermode: H2)
+      }
+    }
+  }
+}
+
+-- Page-level SET applies the class/style to an existing page.
+ALTER PAGE Bug714.PageAltered {
+  SET Class = 'updated';
+  SET Style = 'color: red';
+}

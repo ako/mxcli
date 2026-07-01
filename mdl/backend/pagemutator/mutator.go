@@ -1589,9 +1589,24 @@ func applyPageLevelSetMut(rawData bson.D, prop string, value any) (bson.D, error
 			return rawData, fmt.Errorf("PopupCloseAction value must be a string")
 		}
 		rawData = dSetOrAppend(rawData, "PopupCloseAction", strVal)
+	case "Class", "Style":
+		// The page's CSS class / inline style live on its Forms$Appearance
+		// sub-document (issue #714), not at the top level of the Forms$Page.
+		strVal, ok := value.(string)
+		if !ok {
+			return rawData, fmt.Errorf("%s value must be a string", prop)
+		}
+		appearance := bsonnav.DGetDoc(rawData, "Appearance")
+		if appearance == nil {
+			appearance = bson.D{{Key: "$Type", Value: "Forms$Appearance"}, {Key: prop, Value: strVal}}
+			rawData = dSetOrAppend(rawData, "Appearance", appearance)
+		} else if !bsonnav.DSet(appearance, prop, strVal) {
+			appearance = append(appearance, bson.E{Key: prop, Value: strVal})
+			rawData = dSetOrAppend(rawData, "Appearance", appearance)
+		}
 	default:
 		return rawData, fmt.Errorf("unsupported page-level property: %s "+
-			"(supported: Title, Url, PopupWidth, PopupHeight, PopupResizable, PopupCloseAction)", prop)
+			"(supported: Title, Url, PopupWidth, PopupHeight, PopupResizable, PopupCloseAction, Class, Style)", prop)
 	}
 	return rawData, nil
 }

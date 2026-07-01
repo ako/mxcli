@@ -1008,6 +1008,47 @@ func TestSetPageLevel_PopupHeight(t *testing.T) {
 	}
 }
 
+// Issue #714 — page-level SET Class/Style writes the page's Forms$Appearance.
+func TestSetPageLevel_ClassAndStyle(t *testing.T) {
+	// No Appearance present yet → one is created.
+	m := &Mutator{rawData: makeRawPage(), widgetFinder: findBsonWidget}
+	if err := m.SetWidgetProperty("", "Class", "my-page"); err != nil {
+		t.Fatalf("SET Class: %v", err)
+	}
+	if err := m.SetWidgetProperty("", "Style", "padding: 10px"); err != nil {
+		t.Fatalf("SET Style: %v", err)
+	}
+	ap := bsonnav.DGetDoc(m.rawData, "Appearance")
+	if ap == nil {
+		t.Fatal("Appearance not created")
+	}
+	if got := bsonnav.DGet(ap, "Class"); got != "my-page" {
+		t.Errorf("Appearance.Class = %v, want my-page", got)
+	}
+	if got := bsonnav.DGet(ap, "Style"); got != "padding: 10px" {
+		t.Errorf("Appearance.Style = %v, want 'padding: 10px'", got)
+	}
+
+	// Existing Appearance with a Class → updated in place.
+	raw := makeRawPage()
+	raw = append(raw, bson.E{Key: "Appearance", Value: bson.D{
+		{Key: "$Type", Value: "Forms$Appearance"}, {Key: "Class", Value: "old"}, {Key: "Style", Value: ""},
+	}})
+	m2 := &Mutator{rawData: raw, widgetFinder: findBsonWidget}
+	if err := m2.SetWidgetProperty("", "Class", "new"); err != nil {
+		t.Fatalf("SET Class (update): %v", err)
+	}
+	if got := bsonnav.DGet(bsonnav.DGetDoc(m2.rawData, "Appearance"), "Class"); got != "new" {
+		t.Errorf("updated Appearance.Class = %v, want new", got)
+	}
+
+	// A non-string value is rejected.
+	m3 := &Mutator{rawData: makeRawPage(), widgetFinder: findBsonWidget}
+	if err := m3.SetWidgetProperty("", "Class", 42); err == nil {
+		t.Error("non-string Class should be rejected")
+	}
+}
+
 func TestSetPageLevel_PopupWidth_Float(t *testing.T) {
 	rawData := makeRawPage()
 	m := &Mutator{rawData: rawData, widgetFinder: findBsonWidget}
