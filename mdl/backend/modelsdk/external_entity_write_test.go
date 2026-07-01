@@ -106,11 +106,20 @@ func TestEntityToGen_ODataRemoteEntitySource(t *testing.T) {
 		t.Errorf("Key.Parts count = %d, want 1", len(parts))
 	}
 	// Every attribute must be backed by a Rest$ODataMappedValue (CE6612).
+	// String attribute types must always emit Length explicitly — including 0
+	// (= unlimited). If Length is omitted, Studio Pro applies its UI default of
+	// 200, which contradicts the OData service's "unlimited" type (CE6621).
 	for _, it := range extractArray(em["Attributes"]) {
 		am, _ := it.(map[string]any)
 		val, _ := am["Value"].(map[string]any)
 		if val["$Type"] != "Rest$ODataMappedValue" {
 			t.Errorf("attr %v Value.$Type = %v, want Rest$ODataMappedValue", am["Name"], val["$Type"])
+		}
+		typ, _ := am["NewType"].(map[string]any)
+		if typ["$Type"] == "DomainModels$StringAttributeType" {
+			if _, ok := typ["Length"]; !ok {
+				t.Errorf("attr %v StringAttributeType omits Length — Studio Pro defaults to 200 (CE6621)", am["Name"])
+			}
 		}
 	}
 }

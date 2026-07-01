@@ -531,9 +531,11 @@ func attributeTypeToGen(t domainmodel.AttributeType) element.Element {
 	switch at := t.(type) {
 	case *domainmodel.StringAttributeType:
 		g := genDm.NewStringAttributeType()
-		if at.Length > 0 {
-			g.SetLength(int32(at.Length))
-		}
+		// Always emit Length — including 0 (= unlimited) — to match the legacy
+		// serializer. If Length is omitted, Studio Pro falls back to its own UI
+		// default of 200, which for external (OData) attributes without a MaxLength
+		// contradicts the service's "unlimited" type and raises CE6621.
+		g.SetLength(int32(at.Length))
 		return g
 	case *domainmodel.IntegerAttributeType:
 		return genDm.NewIntegerAttributeType()
