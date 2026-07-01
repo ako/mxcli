@@ -18,17 +18,21 @@ import (
 
 // StarlarkRule is a lint rule implemented in Starlark.
 type StarlarkRule struct {
-	id          string
-	name        string
-	description string
-	severity    Severity
-	category    string
-	path        string
-	ctx         *LintContext
-	checkFn     starlark.Callable
-	globals     starlark.StringDict
-	options     map[string]any
+	id           string
+	name         string
+	description  string
+	severity     Severity
+	category     string
+	path         string
+	ctx          *LintContext
+	checkFn      starlark.Callable
+	globals      starlark.StringDict
+	options      map[string]any
+	requiredMode CatalogMode
 }
+
+// RequiredCatalogMode reports the catalog depth this rule needs (CatalogRequirer).
+func (r *StarlarkRule) RequiredCatalogMode() CatalogMode { return r.requiredMode }
 
 // Configure stores options from the lint config file so Starlark rules can read them via get_option().
 func (r *StarlarkRule) Configure(options map[string]any) {
@@ -151,6 +155,71 @@ func (r *StarlarkRule) convertViolation(v starlark.Value) *Violation {
 }
 
 // LoadStarlarkRule loads a Starlark rule from a file.
+// communityBuiltins need REFRESH CATALOG COMMUNITIES (the graph_* tables).
+var communityBuiltins = []string{
+	"cycles", "module_dependencies", "community_of", "layer_of",
+	"centrality", "god_nodes", "integration_surface",
+}
+
+// fullBuiltins need REFRESH CATALOG FULL (the refs cross-reference table).
+var fullBuiltins = []string{"refs_to", "refs_from"}
+
+// detectRequiredCatalogMode infers the catalog depth a Starlark rule needs by
+// scanning its source for calls to the graph / refs builtins.
+func detectRequiredCatalogMode(src string) CatalogMode {
+	for _, b := range communityBuiltins {
+		if strings.Contains(src, b+"(") {
+			return CatalogCommunities
+		}
+	}
+	for _, b := range fullBuiltins {
+		if strings.Contains(src, b+"(") {
+			return CatalogFull
+		}
+	}
+	return CatalogFast
+}
+
+// requiresFromGlobal reads an explicit `REQUIRES` declaration — a string or list
+// of strings, each "refs"/"full" (→ full) or "communities"/"graph" (→ communities).
+// It lets a rule author raise the auto-detected mode (e.g. when a helper hides the
+// builtin call from the source scan).
+func requiresFromGlobal(globals starlark.StringDict) (CatalogMode, bool) {
+	v, ok := globals["REQUIRES"]
+	if !ok {
+		return CatalogFast, false
+	}
+	mode := CatalogFast
+	apply := func(s string) {
+		switch strings.ToLower(strings.TrimSpace(s)) {
+		case "communities", "graph":
+			if CatalogCommunities > mode {
+				mode = CatalogCommunities
+			}
+		case "full", "refs":
+			if CatalogFull > mode {
+				mode = CatalogFull
+			}
+		}
+	}
+	switch val := v.(type) {
+	case starlark.String:
+		apply(string(val))
+	case *starlark.List:
+		it := val.Iterate()
+		defer it.Done()
+		var x starlark.Value
+		for it.Next(&x) {
+			if s, ok := x.(starlark.String); ok {
+				apply(string(s))
+			}
+		}
+	default:
+		return CatalogFast, false
+	}
+	return mode, true
+}
+
 func LoadStarlarkRule(path string) (*StarlarkRule, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -177,6 +246,15 @@ func LoadStarlarkRule(path string) (*StarlarkRule, error) {
 	}
 
 	rule.globals = globals
+
+	// Determine the catalog depth this rule needs. Auto-detect from the builtins
+	// the source calls (so existing rules Just Work), and let an explicit
+	// REQUIRES global override/raise it. Without this, a rule using refs_to /
+	// cycles / … under `mxcli lint` silently returns empty (issue #721).
+	rule.requiredMode = detectRequiredCatalogMode(string(data))
+	if m, ok := requiresFromGlobal(globals); ok && m > rule.requiredMode {
+		rule.requiredMode = m
+	}
 
 	// Extract metadata
 	if id, ok := globals["RULE_ID"]; ok {

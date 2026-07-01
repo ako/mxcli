@@ -110,9 +110,41 @@ Examples:
 			}
 		}
 
-		// Build catalog (required for linting)
-		refreshCmd := "REFRESH CATALOG"
-		refreshProg, _ := visitor.Build(refreshCmd)
+		projectDir := filepath.Dir(projectPath)
+
+		// Build the rule set first — rules construct independently of the catalog,
+		// so we can compute the catalog depth they need BEFORE building it. A rule
+		// that needs the refs (full) or graph_* (communities) tables then gets them
+		// automatically instead of silently returning empty results (issue #721).
+		lintRules := []linter.Rule{
+			rules.NewNamingConventionRule(),
+			rules.NewEmptyMicroflowRule(),
+			rules.NewDomainModelSizeRule(),
+			rules.NewValidationFeedbackRule(),
+			rules.NewImageSourceRule(),
+			rules.NewEmptyContainerRule(),
+			rules.NewGallerySelectionListenerRule(),
+			rules.NewDataViewLayoutGridRule(),
+			rules.NewPageNavigationSecurityRule(),
+			rules.NewNoEntityAccessRulesRule(),
+			rules.NewWeakPasswordPolicyRule(),
+			rules.NewDemoUsersActiveRule(),
+			rules.NewOverlappingActivitiesRule(), // MPR008 - requires BSON inspection
+			rules.NewNoCommitInLoopRule(),        // CONV011-CONV014 - require BSON inspection
+			rules.NewExclusiveSplitCaptionRule(),
+			rules.NewErrorHandlingOnCallsRule(),
+			rules.NewNoContinueErrorHandlingRule(),
+		}
+		lintRulesDir := filepath.Join(projectDir, ".claude", "lint-rules")
+		if starlarkRules, err := linter.LoadStarlarkRulesFromDir(lintRulesDir); err == nil {
+			for _, rule := range starlarkRules {
+				lintRules = append(lintRules, rule)
+			}
+		}
+
+		// Build catalog at the depth the rules need (fast / full / communities).
+		catalogMode := linter.RequiredCatalogMode(lintRules)
+		refreshProg, _ := visitor.Build(catalogRefreshCommand(catalogMode))
 		for _, stmt := range refreshProg.Statements {
 			if err := exec.Execute(stmt); err != nil {
 				fmt.Fprintf(os.Stderr, "Error building catalog: %v\n", err)
@@ -134,37 +166,17 @@ Examples:
 			ctx.SetIncludedModules(moduleFilter)
 		}
 
-		// Create linter and register rules
+		// Safety net: if a rule needs data the catalog still lacks (e.g. a project
+		// with no cross-references, or a build that couldn't populate the graph),
+		// warn instead of silently under-reporting.
+		if !ctx.SatisfiesCatalogMode(catalogMode) {
+			fmt.Fprintf(os.Stderr, "Warning: some rules need '%s' catalog data that is unavailable; their results may be incomplete\n", catalogMode)
+		}
+
+		// Create linter and register the rules built above.
 		lint := linter.New(ctx)
-		lint.AddRule(rules.NewNamingConventionRule())
-		lint.AddRule(rules.NewEmptyMicroflowRule())
-		lint.AddRule(rules.NewDomainModelSizeRule())
-		lint.AddRule(rules.NewValidationFeedbackRule())
-		lint.AddRule(rules.NewImageSourceRule())
-		lint.AddRule(rules.NewEmptyContainerRule())
-		lint.AddRule(rules.NewGallerySelectionListenerRule())
-		lint.AddRule(rules.NewDataViewLayoutGridRule())
-		lint.AddRule(rules.NewPageNavigationSecurityRule())
-		lint.AddRule(rules.NewNoEntityAccessRulesRule())
-		lint.AddRule(rules.NewWeakPasswordPolicyRule())
-		lint.AddRule(rules.NewDemoUsersActiveRule())
-
-		// MPR008 - requires BSON inspection
-		lint.AddRule(rules.NewOverlappingActivitiesRule())
-
-		// Convention rules (CONV011-CONV014) - require BSON inspection
-		lint.AddRule(rules.NewNoCommitInLoopRule())
-		lint.AddRule(rules.NewExclusiveSplitCaptionRule())
-		lint.AddRule(rules.NewErrorHandlingOnCallsRule())
-		lint.AddRule(rules.NewNoContinueErrorHandlingRule())
-
-		// Load custom Starlark rules from project's .claude/lint-rules/
-		projectDir := filepath.Dir(projectPath)
-		lintRulesDir := filepath.Join(projectDir, ".claude", "lint-rules")
-		if starlarkRules, err := linter.LoadStarlarkRulesFromDir(lintRulesDir); err == nil {
-			for _, rule := range starlarkRules {
-				lint.AddRule(rule)
-			}
+		for _, rule := range lintRules {
+			lint.AddRule(rule)
 		}
 
 		// Load lint config file and apply (excludedModules, rule severity/enabled overrides).
@@ -226,4 +238,17 @@ Examples:
 			os.Exit(1)
 		}
 	},
+}
+
+// catalogRefreshCommand maps the required catalog depth to the MDL refresh
+// statement that builds it (COMMUNITIES implies FULL implies fast).
+func catalogRefreshCommand(mode linter.CatalogMode) string {
+	switch mode {
+	case linter.CatalogCommunities:
+		return "REFRESH CATALOG COMMUNITIES"
+	case linter.CatalogFull:
+		return "REFRESH CATALOG FULL"
+	default:
+		return "REFRESH CATALOG"
+	}
 }

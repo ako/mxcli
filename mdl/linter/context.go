@@ -1045,6 +1045,31 @@ func (ctx *LintContext) HasRefsTable() bool {
 	return err == nil && count > 0
 }
 
+// HasGraphTables reports whether the catalog carries the graph analysis data
+// populated by REFRESH CATALOG COMMUNITIES (needed by the graph_* Starlark
+// builtins). Like HasRefsTable, it returns false when the tables are absent or
+// empty.
+func (ctx *LintContext) HasGraphTables() bool {
+	var count int
+	err := ctx.db.QueryRow("SELECT COUNT(*) FROM graph_layers_data").Scan(&count)
+	return err == nil && count > 0
+}
+
+// SatisfiesCatalogMode reports whether the catalog carries the data a rule
+// declared it needs (mode). It is the safety net: even with auto-upgrade, a
+// reused fast catalog that can't be rebuilt, or a project with no refs/graph
+// rows, should surface a diagnostic rather than silently under-report.
+func (ctx *LintContext) SatisfiesCatalogMode(mode CatalogMode) bool {
+	switch mode {
+	case CatalogCommunities:
+		return ctx.HasGraphTables()
+	case CatalogFull:
+		return ctx.HasRefsTable()
+	default:
+		return true
+	}
+}
+
 // FindReferences finds all references to a given element.
 func (ctx *LintContext) FindReferences(targetName string) []Reference {
 	var refs []Reference

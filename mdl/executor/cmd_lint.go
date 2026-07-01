@@ -24,10 +24,37 @@ func execLint(ctx *ExecContext, s *ast.LintStmt) error {
 		return listLintRules(ctx)
 	}
 
-	// Ensure catalog is built
+	projectDir := filepath.Dir(ctx.MprPath)
+
+	// Build the rule set first so we can size the catalog to what the rules need
+	// (issue #721): a rule using the refs (full) or graph_* (communities) tables
+	// gets them instead of silently returning empty.
+	lintRules := []linter.Rule{
+		rules.NewNamingConventionRule(),
+		rules.NewEmptyMicroflowRule(),
+		rules.NewDomainModelSizeRule(),
+		rules.NewValidationFeedbackRule(),
+		rules.NewImageSourceRule(),
+		rules.NewMissingTranslationsRule(),
+		rules.NewGallerySelectionListenerRule(),
+		rules.NewDataViewLayoutGridRule(),
+	}
+	rulesDir := filepath.Join(projectDir, ".claude", "lint-rules")
+	starlarkRules, err := linter.LoadStarlarkRulesFromDir(rulesDir)
+	if err != nil {
+		fmt.Fprintf(ctx.Output, "Warning: failed to load custom rules: %v\n", err)
+	}
+	for _, rule := range starlarkRules {
+		lintRules = append(lintRules, rule)
+	}
+	catalogMode := linter.RequiredCatalogMode(lintRules)
+	needFull := catalogMode >= linter.CatalogFull
+	needCommunities := catalogMode >= linter.CatalogCommunities
+
+	// Ensure the catalog exists and is deep enough.
 	if ctx.Catalog == nil {
 		fmt.Fprintln(ctx.Output, "Building catalog for linting...")
-		if err := buildCatalog(ctx, false, false, false, 0); err != nil {
+		if err := buildCatalog(ctx, needFull, false, needCommunities, 0); err != nil {
 			return mdlerrors.NewBackend("build catalog", err)
 		}
 	}
@@ -35,8 +62,18 @@ func execLint(ctx *ExecContext, s *ast.LintStmt) error {
 	// Create lint context
 	lintCtx := linter.NewLintContext(ctx.Catalog, ctx.Backend)
 
+	// A reused catalog (e.g. a prior fast REFRESH CATALOG in the same REPL session)
+	// may be too shallow — rebuild it at the required depth.
+	if (needFull || needCommunities) && !lintCtx.SatisfiesCatalogMode(catalogMode) {
+		if err := buildCatalog(ctx, needFull, false, needCommunities, 0); err == nil {
+			lintCtx = linter.NewLintContext(ctx.Catalog, ctx.Backend)
+		}
+	}
+	if !lintCtx.SatisfiesCatalogMode(catalogMode) {
+		fmt.Fprintf(ctx.Output, "Warning: some rules need '%s' catalog data that is unavailable; their results may be incomplete\n", catalogMode)
+	}
+
 	// Load configuration
-	projectDir := filepath.Dir(ctx.MprPath)
 	configPath := linter.FindConfigFile(projectDir)
 	config, err := linter.LoadConfig(configPath)
 	if err != nil {
@@ -49,24 +86,9 @@ func execLint(ctx *ExecContext, s *ast.LintStmt) error {
 		lintCtx.SetExcludedModules(config.ExcludeModules)
 	}
 
-	// Create linter and register built-in rules
+	// Create linter and register the rules built above.
 	lint := linter.New(lintCtx)
-	lint.AddRule(rules.NewNamingConventionRule())
-	lint.AddRule(rules.NewEmptyMicroflowRule())
-	lint.AddRule(rules.NewDomainModelSizeRule())
-	lint.AddRule(rules.NewValidationFeedbackRule())
-	lint.AddRule(rules.NewImageSourceRule())
-	lint.AddRule(rules.NewMissingTranslationsRule())
-	lint.AddRule(rules.NewGallerySelectionListenerRule())
-	lint.AddRule(rules.NewDataViewLayoutGridRule())
-
-	// Load custom Starlark rules
-	rulesDir := filepath.Join(projectDir, ".claude", "lint-rules")
-	starlarkRules, err := linter.LoadStarlarkRulesFromDir(rulesDir)
-	if err != nil {
-		fmt.Fprintf(ctx.Output, "Warning: failed to load custom rules: %v\n", err)
-	}
-	for _, rule := range starlarkRules {
+	for _, rule := range lintRules {
 		lint.AddRule(rule)
 	}
 

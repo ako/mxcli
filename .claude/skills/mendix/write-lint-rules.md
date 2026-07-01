@@ -19,6 +19,27 @@ def check():
     return violations
 ```
 
+### Catalog data requirements (`refs_to`, `cycles`, …)
+
+Some builtins need a deeper catalog than the default fast build:
+
+- `refs_to` / `refs_from` need **`REFRESH CATALOG FULL`** (the `refs` table).
+- The graph-analysis builtins (`cycles`, `module_dependencies`, `community_of`,
+  `layer_of`, `centrality`, `god_nodes`, `integration_surface`) need
+  **`REFRESH CATALOG COMMUNITIES`** (the `graph_*` tables).
+
+You don't have to do anything: `mxcli lint` (and the `LINT` statement)
+**auto-detect** these builtins in your rule's source and build the catalog at the
+required depth automatically. If a helper hides the call from the source scan, or
+you want to be explicit, declare it:
+
+```python
+REQUIRES = ["full"]          # or ["communities"] — raises the auto-detected depth
+```
+
+Without this, a rule that queries `refs`/`graph_*` under a fast build would
+silently return empty results (issue #721).
+
 ## Available Query Functions
 
 | Function | Returns | Description |
