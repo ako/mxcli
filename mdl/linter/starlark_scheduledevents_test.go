@@ -26,6 +26,7 @@ type minimalReader struct {
 func (m *minimalReader) GetMicroflow(_ model.ID) (*microflows.Microflow, error) {
 	return nil, nil
 }
+func (m *minimalReader) ListMicroflows() ([]*microflows.Microflow, error)       { return nil, nil }
 func (m *minimalReader) GetProjectSecurity() (*security.ProjectSecurity, error) { return nil, nil }
 func (m *minimalReader) GetNavigation() (*types.NavigationDocument, error)      { return nil, nil }
 func (m *minimalReader) ListPages() ([]*pages.Page, error)                      { return nil, nil }

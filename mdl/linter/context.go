@@ -18,6 +18,7 @@ import (
 // Implemented by MprBackend (and any backend satisfying these signatures).
 type LintReader interface {
 	GetMicroflow(id model.ID) (*microflows.Microflow, error)
+	ListMicroflows() ([]*microflows.Microflow, error)
 	GetProjectSecurity() (*security.ProjectSecurity, error)
 	GetNavigation() (*types.NavigationDocument, error)
 	ListPages() ([]*pages.Page, error)
@@ -34,6 +35,43 @@ type LintContext struct {
 	excluded map[string]bool
 	included map[string]bool // when non-empty, only these modules are linted
 	reader   LintReader
+
+	// fullMFCache memoizes every fully-parsed microflow for the lifetime of the
+	// lint run (see FullMicroflow). Populated lazily on first FullMicroflow call.
+	fullMFCache  map[model.ID]*microflows.Microflow
+	fullMFErr    error
+	fullMFLoaded bool
+}
+
+// FullMicroflow returns the fully-parsed microflow (with its object collection)
+// for id, or nil if absent. It loads and caches ALL microflows once on the first
+// call and serves subsequent lookups from the cache.
+//
+// Rules that inspect microflow bodies MUST use this instead of calling
+// Reader().GetMicroflow(id) inside a `for … range ctx.Microflows()` loop: on the
+// modelsdk backend GetMicroflow re-lists and re-BSON-decodes EVERY microflow unit
+// on each call, so per-microflow calls are O(N^2) full decodes. On a large project
+// that made `mxcli report` appear to hang for many minutes (issue #720). The cache
+// is safe because the lint run is read-only and short-lived.
+func (ctx *LintContext) FullMicroflow(id model.ID) (*microflows.Microflow, error) {
+	if !ctx.fullMFLoaded {
+		ctx.fullMFLoaded = true
+		if ctx.reader != nil {
+			mfs, err := ctx.reader.ListMicroflows()
+			if err != nil {
+				ctx.fullMFErr = err
+			} else {
+				ctx.fullMFCache = make(map[model.ID]*microflows.Microflow, len(mfs))
+				for _, mf := range mfs {
+					ctx.fullMFCache[mf.ID] = mf
+				}
+			}
+		}
+	}
+	if ctx.fullMFErr != nil {
+		return nil, ctx.fullMFErr
+	}
+	return ctx.fullMFCache[id], nil
 }
 
 // Reader returns the LintReader, or nil if not set.

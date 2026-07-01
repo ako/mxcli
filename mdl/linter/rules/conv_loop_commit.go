@@ -37,7 +37,7 @@ func (r *NoCommitInLoopRule) Check(ctx *linter.LintContext) []linter.Violation {
 			continue
 		}
 
-		fullMF, err := reader.GetMicroflow(model.ID(mf.ID))
+		fullMF, err := ctx.FullMicroflow(model.ID(mf.ID))
 		if err != nil || fullMF == nil || fullMF.ObjectCollection == nil {
 			continue
 		}
