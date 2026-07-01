@@ -1000,11 +1000,42 @@ func dataViewSourceToGen(ds pages.DataSource) (element.Element, error) {
 	}
 }
 
-// listViewSourceToGen builds a ListView data source. Microflow sources use the
-// same Forms$MicroflowSource as DataView; database sources (Forms$ListViewXPathSource)
-// are not yet ported.
+// listViewSourceToGen builds a ListView data source. A database source becomes a
+// Forms$ListViewXPathSource (EntityRef + XPathConstraint + a GridSortBar and a
+// ListViewSearch sub-element, matching what Studio Pro/the legacy writer emit);
+// a microflow source uses Forms$MicroflowSource (as DataView does).
 func listViewSourceToGen(ds pages.DataSource) (element.Element, error) {
 	switch d := ds.(type) {
+	case *pages.DatabaseSource:
+		src := genPg.NewListViewXPathSource()
+		if d.ID != "" {
+			src.SetID(element.ID(d.ID))
+		}
+		assignID(src)
+		src.SetForceFullObjects(false)
+		src.SetXPathConstraint(d.XPathConstraint)
+		if d.EntityName != "" {
+			ref := genDm.NewDirectEntityRef()
+			assignID(ref)
+			ref.SetEntityQualifiedName(d.EntityName)
+			src.SetEntityRef(ref)
+		}
+		bar := genPg.NewGridSortBar()
+		assignID(bar)
+		for _, s := range d.Sorting {
+			item := genPg.NewGridSortItem()
+			assignID(item)
+			item.SetSortDirection(string(s.Direction))
+			if ref := attributeRefToGen(s.AttributePath); ref != nil {
+				item.SetAttributeRef(ref)
+			}
+			bar.AddSortItems(item)
+		}
+		src.SetSortBar(bar)
+		search := genPg.NewListViewSearch()
+		assignID(search)
+		src.SetSearch(search)
+		return src, nil
 	case *pages.MicroflowSource:
 		ms := genPg.NewMicroflowSource()
 		if d.ID != "" {
