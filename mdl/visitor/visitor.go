@@ -45,6 +45,18 @@ func enhanceErrorMessage(msg string) string {
 			"    GRANT Mod.Role ON Mod.Entity (READ \"Attr1\", \"Attr2\");            (wrong — causes parse error)", msg)
 	}
 
+	// Check for an `=` between an enumeration value name and its caption. Users
+	// coming from SQL (or the "always quote identifiers" habit) write
+	// `Value = 'Caption'`, but MDL enumeration values are `Value 'Caption'`
+	// (optionally `Value CAPTION 'Caption'`) — no equals sign. The value name may
+	// itself be quoted; the `=` is the actual problem, not the quotes.
+	if looksLikeEnumEquals(msg) {
+		return fmt.Sprintf("%s\n\n  Enumeration values do not use '='. Write the value name (quoted or not)\n"+
+			"  followed by an optional quoted caption:\n"+
+			"    create enumeration Mod.E (Value1 'Caption 1', \"Value2\" 'Caption 2');  (correct)\n"+
+			"    create enumeration Mod.E (Value1 = 'Caption 1');                       (wrong — causes parse error)", msg)
+	}
+
 	// Check for a misplaced EXTENDS / GENERALIZATION clause. It must precede the
 	// attribute list — `create entity Mod.Child extends Mod.Parent ( ... )` — but
 	// users often append it after the closing parenthesis, where ANTLR reports a
@@ -113,6 +125,14 @@ func enhanceErrorMessage(msg string) string {
 func looksLikeMisplacedExtends(msg string) bool {
 	lower := strings.ToLower(msg)
 	return strings.Contains(lower, "input 'extends'") || strings.Contains(lower, "input 'generalization'")
+}
+
+// looksLikeEnumEquals detects `Value = 'Caption'` inside an enumeration value
+// list. ANTLR reports the `=` as `mismatched input '=' expecting ')'`; an
+// attribute default with `=` produces a different ("no viable alternative")
+// message, so this pattern is specific to the enum-value case.
+func looksLikeEnumEquals(msg string) bool {
+	return strings.Contains(msg, "mismatched input '=' expecting ')'")
 }
 
 // looksLikeQuotedGrantAttribute detects ANTLR errors from `READ "Attr"` /

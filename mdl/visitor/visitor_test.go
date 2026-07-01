@@ -1315,6 +1315,47 @@ func TestEnhanceErrorMessage_QuotedGrantAttribute(t *testing.T) {
 	}
 }
 
+func TestEnhanceErrorMessage_EnumEquals(t *testing.T) {
+	tests := []struct {
+		name     string
+		msg      string
+		wantHint bool
+	}{
+		{"enum value equals", `mismatched input '=' expecting ')'`, true},
+		{"attribute default equals (different msg)", `no viable alternative at input 'string'`, false},
+		{"unrelated mismatched", `mismatched input 'foo' expecting ';'`, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := enhanceErrorMessage(tt.msg)
+			hasHint := strings.Contains(result, "Enumeration values do not use '='")
+			if hasHint != tt.wantHint {
+				t.Errorf("expected hint=%v\n  input:  %s\n  output: %s", tt.wantHint, tt.msg, result)
+			}
+		})
+	}
+}
+
+// TestParseError_EnumEqualsHint confirms the hint reaches the surface for the
+// full statement, and that a quoted value name is NOT the problem — the `=` is.
+func TestParseError_EnumEqualsHint(t *testing.T) {
+	_, errs := Build(`CREATE ENUMERATION Mod."ENUM_X" ( "Grade1" = 'Grade 1' );`)
+	if len(errs) == 0 {
+		t.Fatal("expected a parse error for the enum '=' form")
+	}
+	joined := ""
+	for _, e := range errs {
+		joined += e.Error() + "\n"
+	}
+	if !strings.Contains(joined, "Enumeration values do not use '='") {
+		t.Errorf("expected enum-equals hint, got: %s", joined)
+	}
+	// The quoted value name + space caption must parse cleanly (no error).
+	if _, ok := Build(`CREATE ENUMERATION Mod."ENUM_X" ( "Grade1" 'Grade 1' );`); len(ok) != 0 {
+		t.Errorf("quoted enum value name + caption should parse, got errors: %v", ok)
+	}
+}
+
 func TestParseError_QuotedGrantAttribute(t *testing.T) {
 	input := `GRANT Mod.Role ON Mod.Entity (READ "Attr1", "Attr2");`
 	_, errs := Build(input)

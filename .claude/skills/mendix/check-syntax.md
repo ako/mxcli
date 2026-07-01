@@ -61,6 +61,12 @@ Before writing any MDL, verify these requirements:
 > stay **unquoted**: `datasource: $X`, `params: { $X: MES."Order" }`, `$currentObject`.
 > Quoting them (`"$X"`) breaks resolution ("parameter … references '$X' but no such
 > parameter is declared").
+>
+> **Enumeration values: no `=`.** Value names may be quoted like any identifier, but
+> the caption follows as a quoted string — there is **no equals sign**:
+> `create enumeration Mod.E ("Grade1" 'Grade 1', Grade2 'Grade 2');` (or `Grade1 caption 'Grade 1'`).
+> Writing `"Grade1" = 'Grade 1'` fails with `mismatched input '='` — the `=` is the
+> problem, not the quotes.
 
 ```sql
 create persistent entity Module."Customer" (

@@ -1,0 +1,33 @@
+-- ============================================================================
+-- Feedback: "Cannot quote enumeration value identifiers" — actually a misread.
+--
+-- Enumeration VALUE NAMES may be quoted like any other identifier; the reported
+-- failure came from the `=` sign, not the quotes. MDL enumeration values are
+-- `Name 'Caption'` (or `Name caption 'Caption'`, or a bare `Name`) — there is no
+-- equals sign. `"Grade1" = 'Grade 1'` fails with `mismatched input '='`; mxcli
+-- now emits a hint pointing at the `=`.
+--
+-- All forms below are valid and pass `mxcli check`.
+-- ============================================================================
+
+-- Quoted value name + caption (the reporter's case, minus the '=').
+create enumeration MyFirstModule.ENUM_SkillLevel (
+  "Grade1" 'Grade 1',
+  "Grade2" 'Grade 2'
+);
+/
+
+-- Unquoted value name + caption.
+create enumeration MyFirstModule.ENUM_Status (
+  Draft 'Draft',
+  Active 'Active'
+);
+/
+
+-- Explicit CAPTION keyword, quoted name, and a bare value (no caption) mixed.
+create enumeration MyFirstModule.ENUM_Mixed (
+  "First" caption 'First value',
+  Second 'Second value',
+  Third
+);
+/
