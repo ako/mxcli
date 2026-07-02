@@ -91,6 +91,31 @@ catalog builder can call it directly.
 
 ---
 
+## Third consumer: MxBuild-gap check heuristics beyond microflow expressions
+
+The resolution core (build-order step 1 — the `ModelResolver` interface:
+`AttributeKind`, `EnumCases`, `MicroflowReturn` + memoized index + script overlay)
+has consumers outside this proposal's microflow/nanoflow scope. See
+[`PROPOSAL_check_mxbuild_gap_heuristics.md`](PROPOSAL_check_mxbuild_gap_heuristics.md),
+which addresses constructs that pass `check` but MxBuild rejects. Two of its cases
+want this resolver:
+
+- **dynamictext `contentparams` on an enum/date attribute → CE0117.** The page
+  builder's `isNonStringAttribute` (`mdl/executor/cmd_pages_builder_v3.go:1432`)
+  currently **fails open** — unresolved type → assume String → skips the
+  `toString()` wrapping enum/date require. `ModelResolver.AttributeKind` is the
+  reliable attribute-kind answer that turns this from a warning band-aid into a
+  root-cause fix; the check heuristic and the builder consume the same resolver.
+- **Workflow decision outcomes ∈ enum cases** (the strong form of the free-text
+  outcome check) needs `MicroflowReturn` + `EnumCases` — though it additionally
+  requires extending typing scope to workflows and the workflow AST exposing the
+  decision's return type.
+
+These are reasons to keep step 1 **headless and page/workflow-agnostic** (as
+already intended for the catalog `refs` consumer), not microflow-coupled.
+
+---
+
 ## Background: Mendix Type System
 
 Mendix expressions use these types:
