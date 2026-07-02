@@ -672,7 +672,11 @@ func buildSetStatement(ctx parser.ISetStatementContext) ast.MicroflowStatement {
 	if v := setCtx.VARIABLE(); v != nil {
 		targetVar = strings.TrimPrefix(v.GetText(), "$")
 	} else if ap := setCtx.AttributePath(); ap != nil {
-		targetVar = ap.GetText()
+		// Rebuild the path from its structured segments (quotes stripped) rather
+		// than ap.GetText(): a quoted member/association name would otherwise be
+		// carried verbatim (with quotes) into the Change activity's member
+		// identifier, corrupting the .mpr. See buildAttributePathFromContext.
+		targetVar = attributePathTargetText(ap)
 	}
 
 	// Get value expression. Keep the structured expression for list/aggregate

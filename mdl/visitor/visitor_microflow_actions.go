@@ -1244,6 +1244,26 @@ func buildValidationFeedbackStatement(ctx parser.IValidationFeedbackStatementCon
 	return stmt
 }
 
+// attributePathTargetText reconstructs the normalized "$Variable<sep>Segment..."
+// text of an attribute path with each qualified-name segment unquoted. Used for
+// SET targets, whose string form is later split on '/' to derive the member
+// (attribute or association) name; carrying quotes through would corrupt the
+// serialized member identifier.
+func attributePathTargetText(ctx parser.IAttributePathContext) string {
+	ap := buildAttributePathFromContext(ctx)
+	if ap == nil {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("$")
+	sb.WriteString(ap.Variable)
+	for _, seg := range ap.Segments {
+		sb.WriteString(seg.Separator)
+		sb.WriteString(seg.Name)
+	}
+	return sb.String()
+}
+
 // buildAttributePathFromContext builds an AttributePathExpr from attributePath context.
 // Grammar: VARIABLE ((SLASH | DOT) qualifiedName)+
 // attributePath is shared by SET, LOOP, aggregate expressions, and validation
@@ -1279,7 +1299,12 @@ func buildAttributePathFromContext(ctx parser.IAttributePathContext) *ast.Attrib
 				result.Segments = append(result.Segments, ast.PathSegment{Name: name, Separator: lastSep})
 			}
 		} else if qn, ok := child.(parser.IQualifiedNameContext); ok {
-			name := qn.GetText()
+			// Unquote each segment: a quoted member/association name like
+			// BuildScheduling."SkillProfile_Resource" must resolve to the bare
+			// identifier, otherwise the quotes leak into the serialized
+			// Change/Set member and produce an invalid AttributeIdentifier that
+			// passes `mxcli check` but fails to load in MxBuild/Studio Pro.
+			name := getQualifiedNameText(qn)
 			result.Path = append(result.Path, name)
 			result.Segments = append(result.Segments, ast.PathSegment{Name: name, Separator: lastSep})
 		}

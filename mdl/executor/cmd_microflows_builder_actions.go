@@ -1451,7 +1451,43 @@ func (fb *flowBuilder) isEntity(moduleName, entityName string) bool {
 // available, it falls back to a name-shape heuristic.
 //
 // memberName can be either bare ("Order_Customer") or qualified ("MfTest.Order_Customer").
+// isValidMemberIdentifier reports whether name is a plain member identifier or a
+// dot-qualified name (e.g. "Resource", "SkillProfile_Resource", or
+// "BuildScheduling.SkillProfile_Resource"). Each dot-separated segment must be a
+// valid Mendix identifier: a letter or underscore followed by letters, digits, or
+// underscores. Quotes, spaces, and empty segments are rejected.
+func isValidMemberIdentifier(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, seg := range strings.Split(name, ".") {
+		if seg == "" {
+			return false
+		}
+		for i, r := range seg {
+			ok := r == '_' ||
+				(r >= 'a' && r <= 'z') ||
+				(r >= 'A' && r <= 'Z') ||
+				(i > 0 && r >= '0' && r <= '9')
+			if !ok {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func (fb *flowBuilder) resolveMemberChange(mc *microflows.MemberChange, memberName string, entityQN string) {
+	// Guard against a malformed member identifier reaching the writer, where it
+	// would serialize as an invalid Attribute/Association value that passes
+	// `mxcli check` but fails to load in MxBuild/Studio Pro (StorageLoadException:
+	// "... is not a valid AttributeIdentifier"). The visitor normalizes quoted
+	// members, so this only fires on genuinely invalid input. Empty names are
+	// left to the existing graceful handling below.
+	if memberName != "" && !isValidMemberIdentifier(memberName) {
+		fb.addError("invalid member name %q — a Change/Set member must be a plain identifier or Module.Name; remove quotes and other illegal characters", memberName)
+		return
+	}
 	if entityQN == "" {
 		// Entity type of $variable is unknown (e.g., the variable comes from a
 		// java action whose return type isn't registered, or from the iterator
