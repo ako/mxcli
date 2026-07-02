@@ -50,12 +50,13 @@ func TestAttrNameForOData_ReservedWords(t *testing.T) {
 	}
 }
 
-// TestApplyExternalEntityFields_PermissiveCapabilityDefault guards issue #729:
-// an OData entity set with no InsertRestrictions/DeleteRestrictions annotation
-// (e.g. TripPin) must import as Creatable/Deletable = true, because Mendix reads
-// an absent restriction as "operation allowed". Defaulting to false produced
-// "marked Creatable=True in the OData service, but False in the app".
-func TestApplyExternalEntityFields_PermissiveCapabilityDefault(t *testing.T) {
+// TestApplyExternalEntityFields_ConservativeCapabilityDefault guards the OData
+// capability defaulting: an entity set with no InsertRestrictions/
+// DeleteRestrictions annotation must import as Creatable/Deletable = false,
+// matching Mendix's conservative read-only default. Verified against the
+// TripPin RESTier service (zero capability annotations, entities Creatable=False
+// per mx check). An earlier permissive default caused CE6630 regressions.
+func TestApplyExternalEntityFields_ConservativeCapabilityDefault(t *testing.T) {
 	ent := &domainmodel.Entity{}
 	et := &types.EdmEntityType{Name: "Person"}
 	// entitySet with no Insertable/Deletable annotation (nil) — the TripPin case.
@@ -63,19 +64,19 @@ func TestApplyExternalEntityFields_PermissiveCapabilityDefault(t *testing.T) {
 
 	applyExternalEntityFields(ent, et, true /*isTopLevel*/, "Svc.TripPin", es, nil, nil)
 
-	if !ent.Creatable {
-		t.Error("Creatable = false, want true (absent InsertRestrictions is permissive)")
+	if ent.Creatable {
+		t.Error("Creatable = true, want false (absent InsertRestrictions ⇒ conservative read-only)")
 	}
-	if !ent.Deletable {
-		t.Error("Deletable = false, want true (absent DeleteRestrictions is permissive)")
+	if ent.Deletable {
+		t.Error("Deletable = true, want false (absent DeleteRestrictions ⇒ conservative read-only)")
 	}
 
-	// An explicit restriction must still turn the capability off.
-	off := false
-	es2 := &types.EdmEntitySet{Name: "People", Insertable: &off}
+	// An explicit annotation must turn the capability on.
+	on := true
+	es2 := &types.EdmEntitySet{Name: "People", Insertable: &on}
 	ent2 := &domainmodel.Entity{}
 	applyExternalEntityFields(ent2, et, true, "Svc.TripPin", es2, nil, nil)
-	if ent2.Creatable {
-		t.Error("Creatable = true, want false (explicit InsertRestrictions=false)")
+	if !ent2.Creatable {
+		t.Error("Creatable = false, want true (explicit InsertRestrictions=true)")
 	}
 }

@@ -574,17 +574,22 @@ func createExternalEntities(ctx *ExecContext, s *ast.CreateExternalEntitiesStmt)
 				})
 			}
 
-			// OData capability defaults are PERMISSIVE: an absent
-			// InsertRestrictions / UpdateRestrictions annotation means the
-			// service allows the operation. Mendix reads the metadata the same
-			// way, so defaulting to false produces "marked Creatable=True in the
-			// OData service, but False in the app" errors on services that don't
-			// annotate capabilities — e.g. TripPin, which has no Capabilities
-			// annotations at all (issue #729). Only an explicit restriction
-			// (InsertRestrictions=false / NonInsertableProperties, or a computed/
-			// immutable property below) turns a capability off.
-			defaultCreatable := true
-			defaultUpdatable := true
+			// Capability defaults follow Mendix's CONSERVATIVE model: an OData
+			// entity set with no InsertRestrictions/UpdateRestrictions annotation
+			// is treated as read-only (Creatable/Updatable = false). Verified
+			// against `mx check` on the TripPin RESTier service — its metadata has
+			// zero capability annotations, and Mendix reports the entities as
+			// Creatable=False, so the app must match or CE6630 fires. Only an
+			// explicit annotation flips a capability on. Non-top-level (contained/
+			// derived) types default true — they are mutated via their parent's
+			// write flow. (The earlier permissive default regressed this; the
+			// service that motivated #729 was a narrower ETag/Concurrency case.)
+			defaultCreatable := false
+			defaultUpdatable := false
+			if !isTopLevel {
+				defaultCreatable = true
+				defaultUpdatable = true
+			}
 			if entitySet != nil && entitySet.Insertable != nil {
 				defaultCreatable = *entitySet.Insertable
 			}
@@ -1119,17 +1124,16 @@ func applyExternalEntityFields(
 		ent.Persistable = true
 		ent.RemoteEntitySet = entitySet.Name
 		ent.Countable = true
-		// Capabilities default to PERMISSIVE (true) when the entity set's
-		// Capabilities annotations are absent — an absent InsertRestrictions /
-		// DeleteRestrictions means the service allows the operation, and Mendix
-		// reads the metadata the same way. Defaulting to false triggered
-		// "marked Creatable=True in the OData service, but False in the app"
-		// on annotation-less services like TripPin (issue #729). Only an
-		// explicit restriction turns a capability off.
+		// Capabilities default to false (Mendix's conservative read-only default)
+		// when the entity set has no Insert/Delete restriction annotation — an
+		// unannotated service is treated as read-only, and the app must match or
+		// mx check reports CE6630 (verified against the TripPin RESTier service,
+		// whose metadata has zero capability annotations). Only an explicit
+		// annotation turns a capability on.
 		// Rest$ODataRemoteEntitySource has no Updatable field; updatability
 		// is expressed per attribute via Rest$ODataMappedValue.
-		ent.Creatable = entitySet.Insertable == nil || *entitySet.Insertable
-		ent.Deletable = entitySet.Deletable == nil || *entitySet.Deletable
+		ent.Creatable = entitySet.Insertable != nil && *entitySet.Insertable
+		ent.Deletable = entitySet.Deletable != nil && *entitySet.Deletable
 		ent.Updatable = false
 		ent.SkipSupported = true
 		ent.TopSupported = true
