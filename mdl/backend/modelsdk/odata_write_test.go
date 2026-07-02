@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/mendixlabs/mxcli/model"
+	"github.com/mendixlabs/mxcli/modelsdk/codec"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 // TestCreateConsumedODataService_RoundTrip creates a consumed OData service with
@@ -176,5 +178,38 @@ func TestCreatePublishedODataService_RoundTrip(t *testing.T) {
 	}
 	if !es.UsePaging || es.PageSize != 100 {
 		t.Errorf("entity set paging not round-tripped: %+v", es)
+	}
+}
+
+// TestConsumedODataServiceToGen_ConfigMicroflowKey guards issue #728: the config
+// microflow must be serialized under the version-appropriate BSON key. On
+// 11.10+ that is ConfigurationEntityMicroflow (writing the pre-11.10
+// ConfigurationMicroflow makes Studio Pro show "Constants only").
+func TestConsumedODataServiceToGen_ConfigMicroflowKey(t *testing.T) {
+	svc := &model.ConsumedODataService{
+		Name:                   "Svc",
+		ConfigurationMicroflow: "MyModule.ConfigureMF",
+	}
+	for _, tc := range []struct {
+		key      string
+		wantHave string
+		wantGone string
+	}{
+		{"ConfigurationEntityMicroflow", "ConfigurationEntityMicroflow", "ConfigurationMicroflow"},
+		{"ConfigurationMicroflow", "ConfigurationMicroflow", "ConfigurationEntityMicroflow"},
+	} {
+		raw, err := (&codec.Encoder{}).Encode(consumedODataServiceToGen(svc, tc.key))
+		if err != nil {
+			t.Fatalf("encode(%s): %v", tc.key, err)
+		}
+		r := bson.Raw(raw)
+		if v, err := r.LookupErr(tc.wantHave); err != nil {
+			t.Errorf("key %s: expected field %q present, got err %v", tc.key, tc.wantHave, err)
+		} else if got := v.StringValue(); got != "MyModule.ConfigureMF" {
+			t.Errorf("key %s: field %q = %q, want MyModule.ConfigureMF", tc.key, tc.wantHave, got)
+		}
+		if _, err := r.LookupErr(tc.wantGone); err == nil {
+			t.Errorf("key %s: field %q must NOT be present when using %q", tc.key, tc.wantGone, tc.key)
+		}
 	}
 }

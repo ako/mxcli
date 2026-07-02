@@ -72,16 +72,18 @@ func (w *Writer) serializeConsumedODataService(svc *model.ConsumedODataService) 
 		{Key: "RecommendedMxVersion", Value: ""},
 	}
 
-	// Microflow reference (BY_NAME). Both the "Configuration microflow"
-	// and "Headers microflow" dropdown options in Studio Pro write to a
-	// single BSON field, `ConfigurationMicroflow` — Studio Pro picks the
-	// dropdown label by the microflow's return type, not by which field
-	// the reference lives in. Earlier mxcli attempts used separate
-	// `ConfigurationEntityMicroflow` / `HeaderListMicroflow` keys; Studio
-	// Pro doesn't recognise either and the dropdown silently falls back
-	// to "Constants only".
+	// Microflow reference (BY_NAME). Mendix renamed this storage field across
+	// versions: `ConfigurationMicroflow` (10.12–11.10) → `ConfigurationEntity-
+	// Microflow` (11.10+). Writing the wrong key makes Studio Pro ignore it and
+	// fall back to "Constants only" (issue #728), so gate on the project version.
 	if svc.ConfigurationMicroflow != "" {
-		doc = append(doc, bson.E{Key: "ConfigurationMicroflow", Value: svc.ConfigurationMicroflow})
+		key := "ConfigurationMicroflow"
+		if w.reader != nil {
+			if pv := w.reader.ProjectVersion(); pv != nil {
+				key = model.ODataConfigMicroflowBSONKey(pv.MajorVersion, pv.MinorVersion)
+			}
+		}
+		doc = append(doc, bson.E{Key: key, Value: svc.ConfigurationMicroflow})
 	}
 	if svc.ErrorHandlingMicroflow != "" {
 		doc = append(doc, bson.E{Key: "ErrorHandlingMicroflow", Value: svc.ErrorHandlingMicroflow})

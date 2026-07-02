@@ -28,25 +28,32 @@ func (b *Backend) ListConsumedODataServices() ([]*model.ConsumedODataService, er
 	for _, u := range units {
 		g := u.Element
 		svc := &model.ConsumedODataService{
-			ContainerID:            model.ID(u.ContainerID),
-			Name:                   g.Name(),
-			Documentation:          g.Documentation(),
-			Version:                g.Version(),
-			ServiceName:            g.ServiceName(),
-			ODataVersion:           g.ODataVersion(),
-			MetadataUrl:            g.MetadataUrl(),
-			TimeoutExpression:      g.TimeoutExpression(),
-			ProxyType:              g.ProxyType(),
-			Description:            g.Description(),
-			Validated:              g.Validated(),
-			Excluded:               g.Excluded(),
-			Metadata:               g.Metadata(),
-			MetadataHash:           g.MetadataHash(),
-			ApplicationId:          g.ApplicationId(),
-			EndpointId:             g.EndpointId(),
-			CatalogUrl:             g.CatalogUrl(),
-			EnvironmentType:        g.EnvironmentType(),
-			ConfigurationMicroflow: g.ConfigurationMicroflowQualifiedName(),
+			ContainerID:       model.ID(u.ContainerID),
+			Name:              g.Name(),
+			Documentation:     g.Documentation(),
+			Version:           g.Version(),
+			ServiceName:       g.ServiceName(),
+			ODataVersion:      g.ODataVersion(),
+			MetadataUrl:       g.MetadataUrl(),
+			TimeoutExpression: g.TimeoutExpression(),
+			ProxyType:         g.ProxyType(),
+			Description:       g.Description(),
+			Validated:         g.Validated(),
+			Excluded:          g.Excluded(),
+			Metadata:          g.Metadata(),
+			MetadataHash:      g.MetadataHash(),
+			ApplicationId:     g.ApplicationId(),
+			EndpointId:        g.EndpointId(),
+			CatalogUrl:        g.CatalogUrl(),
+			EnvironmentType:   g.EnvironmentType(),
+			// The config-microflow field was renamed across versions (issue #728);
+			// coalesce every historical storage key so DESCRIBE round-trips a
+			// service authored by any Mendix version.
+			ConfigurationMicroflow: firstNonEmpty(
+				g.ConfigurationEntityMicroflowQualifiedName(), // >= 11.10
+				g.ConfigurationMicroflowQualifiedName(),       // 10.12 – 11.10
+				g.HeadersMicroflowQualifiedName(),             // < 10.12
+			),
 			ErrorHandlingMicroflow: g.ErrorHandlingMicroflowQualifiedName(),
 			ProxyHost:              g.ProxyHostQualifiedName(),
 			ProxyPort:              g.ProxyPortQualifiedName(),
@@ -445,4 +452,14 @@ func (b *Backend) ListDatabaseConnections() ([]*model.DatabaseConnection, error)
 		out = append(out, conn)
 	}
 	return out, nil
+}
+
+// firstNonEmpty returns the first non-empty string in vals, or "".
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }

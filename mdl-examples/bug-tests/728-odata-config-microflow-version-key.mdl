@@ -1,0 +1,46 @@
+-- ============================================================================
+-- Bug #728 — Consumed OData service ConfigurationMicroflow ignored on 11.10+
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   Setting a Configuration microflow on a consumed OData service had no
+--   effect in Studio Pro 11.11 — the "Configuration source" dropdown stayed
+--   on the default "Constants only".
+--
+--   Root cause: Mendix renamed the BSON storage field. Per the
+--   Rest$ConsumedODataService reflection metadata:
+--     configurationMicroflow:       introduced 10.12.0, DELETED 11.10.0
+--     configurationEntityMicroflow: introduced 11.10.0
+--   mxcli always wrote the pre-11.10 `ConfigurationMicroflow` key, which
+--   Studio Pro >= 11.10 ignores as unknown → falls back to "Constants only".
+--
+-- After fix:
+--   The BSON key is version-gated (model.ODataConfigMicroflowBSONKey): 11.10+
+--   projects write `ConfigurationEntityMicroflow`, older projects keep
+--   `ConfigurationMicroflow`. DESCRIBE reads every historical key so the
+--   service round-trips regardless of authoring version. Applies to both the
+--   modelsdk and legacy engines.
+--
+-- Usage (on an 11.10+ project):
+--   mxcli exec mdl-examples/bug-tests/728-odata-config-microflow-version-key.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe odata client BugTest728.ConfigSvc"
+--   In Studio Pro the "Configuration source" dropdown must show
+--   "Configuration microflow" referencing BugTest728.ConfigureRequest — not
+--   "Constants only".
+-- ============================================================================
+
+create module BugTest728;
+
+create microflow BugTest728.ConfigureRequest () returns void
+begin
+end;
+/
+
+create odata client BugTest728.ConfigSvc (
+  ODataVersion: OData4,
+  MetadataUrl: 'https://example.com/odata/$metadata',
+  Timeout: 300,
+  ConfigurationMicroflow: microflow BugTest728.ConfigureRequest
+);
+
+describe odata client BugTest728.ConfigSvc;

@@ -52,7 +52,7 @@ func (b *Backend) CreateConsumedODataService(svc *model.ConsumedODataService) er
 		svc.ID = model.ID(mmpr.GenerateID())
 	}
 	svc.TypeName = "Rest$ConsumedODataService"
-	contents, err := (&codec.Encoder{}).Encode(consumedODataServiceToGen(svc))
+	contents, err := (&codec.Encoder{}).Encode(consumedODataServiceToGen(svc, b.configMicroflowKey()))
 	if err != nil {
 		return fmt.Errorf("CreateConsumedODataService: encode: %w", err)
 	}
@@ -66,7 +66,7 @@ func (b *Backend) UpdateConsumedODataService(svc *model.ConsumedODataService) er
 	if b.writer == nil {
 		return fmt.Errorf("UpdateConsumedODataService: not connected for writing")
 	}
-	contents, err := (&codec.Encoder{}).Encode(consumedODataServiceToGen(svc))
+	contents, err := (&codec.Encoder{}).Encode(consumedODataServiceToGen(svc, b.configMicroflowKey()))
 	if err != nil {
 		return fmt.Errorf("UpdateConsumedODataService: encode: %w", err)
 	}
@@ -80,7 +80,17 @@ func (b *Backend) DeleteConsumedODataService(id model.ID) error {
 	return b.writer.DeleteUnit(string(id))
 }
 
-func consumedODataServiceToGen(svc *model.ConsumedODataService) element.Element {
+// configMicroflowKey returns the version-appropriate BSON field name for the
+// consumed OData service's configuration microflow (issue #728). Defaults to the
+// pre-11.10 key when the project version is unknown.
+func (b *Backend) configMicroflowKey() string {
+	if pv := b.ProjectVersion(); pv != nil {
+		return model.ODataConfigMicroflowBSONKey(pv.MajorVersion, pv.MinorVersion)
+	}
+	return "ConfigurationMicroflow"
+}
+
+func consumedODataServiceToGen(svc *model.ConsumedODataService, configMicroflowKey string) element.Element {
 	g := newElem("Rest$ConsumedODataService", string(svc.ID))
 	addStr(g, "Name", svc.Name)
 	addStr(g, "Documentation", svc.Documentation)
@@ -104,7 +114,7 @@ func consumedODataServiceToGen(svc *model.ConsumedODataService) element.Element 
 
 	// Optional by-name / constant references — only emitted when set, matching the
 	// legacy writer (Studio Pro omits empties).
-	addStrIf(g, "ConfigurationMicroflow", svc.ConfigurationMicroflow)
+	addStrIf(g, configMicroflowKey, svc.ConfigurationMicroflow)
 	addStrIf(g, "ErrorHandlingMicroflow", svc.ErrorHandlingMicroflow)
 	addStrIf(g, "ProxyHost", svc.ProxyHost)
 	addStrIf(g, "ProxyPort", svc.ProxyPort)

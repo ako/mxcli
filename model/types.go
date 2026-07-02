@@ -320,14 +320,13 @@ type ConsumedODataService struct {
 	HttpConfiguration *HttpConfiguration `json:"httpConfiguration,omitempty"`
 
 	// Microflow reference (BY_NAME). Studio Pro's "Configuration source"
-	// dropdown has three options: Constants only, Configuration microflow,
-	// Headers microflow. Both microflow options write to the same BSON
-	// field `ConfigurationMicroflow`; Studio Pro picks the dropdown label
-	// based on the microflow's return type
-	// (System.ConsumedODataConfiguration vs list of System.HttpHeader).
-	// The MDL `HeadersMicroflow` keyword is an alias that writes to this
-	// same field.
-	ConfigurationMicroflow string `json:"configurationMicroflow,omitempty"` // BSON: ConfigurationMicroflow
+	// dropdown selects a configuration microflow. The BSON storage field was
+	// renamed across Mendix versions (see ODataConfigMicroflowBSONKey): Studio
+	// Pro >= 11.10 stores it under `ConfigurationEntityMicroflow` and ignores
+	// the pre-11.10 `ConfigurationMicroflow` key, silently showing "Constants
+	// only" (issue #728). The MDL `HeadersMicroflow` keyword is an alias that
+	// writes to this same field.
+	ConfigurationMicroflow string `json:"configurationMicroflow,omitempty"` // BSON: version-gated, see ODataConfigMicroflowBSONKey
 	ErrorHandlingMicroflow string `json:"errorHandlingMicroflow,omitempty"` // BSON: ErrorHandlingMicroflow
 
 	// Proxy constant references (BY_NAME to Constants$Constant)
@@ -345,6 +344,30 @@ type ConsumedODataService struct {
 	EndpointId      string `json:"endpointId,omitempty"`
 	CatalogUrl      string `json:"catalogUrl,omitempty"`
 	EnvironmentType string `json:"environmentType,omitempty"`
+}
+
+// ODataConfigMicroflowBSONKey returns the BSON storage field for a consumed
+// OData service's configuration microflow, which Mendix renamed across versions.
+// From the Rest$ConsumedODataService reflection metadata:
+//
+//	configurationMicroflow:       introduced 10.12.0, DELETED 11.10.0
+//	configurationEntityMicroflow: introduced 11.10.0
+//
+// Writing the pre-11.10 key on a >= 11.10 project makes Studio Pro ignore the
+// unknown field and fall back to "Constants only" (issue #728). Callers pass the
+// project's major/minor version.
+func ODataConfigMicroflowBSONKey(major, minor int) string {
+	if major > 11 || (major == 11 && minor >= 10) {
+		return "ConfigurationEntityMicroflow"
+	}
+	return "ConfigurationMicroflow"
+}
+
+// ODataConfigMicroflowBSONKeys lists every BSON field name the configuration
+// microflow has been stored under, across Mendix versions, so readers can accept
+// a service authored by any version (or by Studio Pro on a different version).
+func ODataConfigMicroflowBSONKeys() []string {
+	return []string{"ConfigurationEntityMicroflow", "ConfigurationMicroflow", "HeadersMicroflow"}
 }
 
 // HttpConfiguration represents the HTTP transport configuration (Microflows$HttpConfiguration).
