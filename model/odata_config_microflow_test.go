@@ -26,3 +26,25 @@ func TestODataConfigMicroflowBSONKey(t *testing.T) {
 		}
 	}
 }
+
+// TestODataHeadersMicroflowBSONKey guards the headers-microflow slot (issue
+// #728): distinct from the configuration slot on 11.10+ (HeaderListMicroflow);
+// before 11.10 both shared ConfigurationMicroflow. Writing a headers microflow
+// into the configuration slot triggers CE6808.
+func TestODataHeadersMicroflowBSONKey(t *testing.T) {
+	cases := []struct {
+		major, minor int
+		want         string
+	}{
+		{11, 9, "ConfigurationMicroflow"}, // pre-11.10 shared slot
+		{11, 10, "HeaderListMicroflow"},   // split introduced
+		{11, 11, "HeaderListMicroflow"},   // reporter's version
+		{11, 12, "HeaderListMicroflow"},   // doctype project
+		{12, 0, "HeaderListMicroflow"},
+	}
+	for _, c := range cases {
+		if got := ODataHeadersMicroflowBSONKey(c.major, c.minor); got != c.want {
+			t.Errorf("ODataHeadersMicroflowBSONKey(%d.%d) = %q, want %q", c.major, c.minor, got, c.want)
+		}
+	}
+}

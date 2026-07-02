@@ -39,16 +39,18 @@ func (r *Reader) parseConsumedODataService(unitID, containerID string, contents 
 	svc.Validated = extractBool(raw["Validated"], false)
 	svc.Excluded = extractBool(raw["Excluded"], false)
 
-	// Microflow references (BY_NAME). The config-microflow storage field was
-	// renamed across Mendix versions (see writer_odata.go / issue #728), so
-	// accept every historical key to round-trip a service authored by any
-	// version.
-	for _, key := range model.ODataConfigMicroflowBSONKeys() {
+	// Microflow references (BY_NAME). The microflow storage fields were renamed/
+	// split across Mendix versions (see writer_odata.go / issue #728). Config
+	// slot: ConfigurationEntityMicroflow (11.10+) or the pre-11.10 single slot
+	// (ConfigurationMicroflow / ancient HeadersMicroflow). Headers slot is only
+	// distinct on 11.10+ (HeaderListMicroflow).
+	for _, key := range []string{"ConfigurationEntityMicroflow", "ConfigurationMicroflow", "HeadersMicroflow"} {
 		if v := extractString(raw[key]); v != "" {
 			svc.ConfigurationMicroflow = v
 			break
 		}
 	}
+	svc.HeadersMicroflow = extractString(raw["HeaderListMicroflow"])
 	svc.ErrorHandlingMicroflow = extractString(raw["ErrorHandlingMicroflow"])
 
 	// Proxy constant references (BY_NAME)

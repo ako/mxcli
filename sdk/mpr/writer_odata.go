@@ -76,14 +76,18 @@ func (w *Writer) serializeConsumedODataService(svc *model.ConsumedODataService) 
 	// versions: `ConfigurationMicroflow` (10.12–11.10) → `ConfigurationEntity-
 	// Microflow` (11.10+). Writing the wrong key makes Studio Pro ignore it and
 	// fall back to "Constants only" (issue #728), so gate on the project version.
-	if svc.ConfigurationMicroflow != "" {
-		key := "ConfigurationMicroflow"
-		if w.reader != nil {
-			if pv := w.reader.ProjectVersion(); pv != nil {
-				key = model.ODataConfigMicroflowBSONKey(pv.MajorVersion, pv.MinorVersion)
-			}
+	configKey, headersKey := "ConfigurationMicroflow", "ConfigurationMicroflow"
+	if w.reader != nil {
+		if pv := w.reader.ProjectVersion(); pv != nil {
+			configKey = model.ODataConfigMicroflowBSONKey(pv.MajorVersion, pv.MinorVersion)
+			headersKey = model.ODataHeadersMicroflowBSONKey(pv.MajorVersion, pv.MinorVersion)
 		}
-		doc = append(doc, bson.E{Key: key, Value: svc.ConfigurationMicroflow})
+	}
+	if svc.ConfigurationMicroflow != "" {
+		doc = append(doc, bson.E{Key: configKey, Value: svc.ConfigurationMicroflow})
+	}
+	if svc.HeadersMicroflow != "" {
+		doc = append(doc, bson.E{Key: headersKey, Value: svc.HeadersMicroflow})
 	}
 	if svc.ErrorHandlingMicroflow != "" {
 		doc = append(doc, bson.E{Key: "ErrorHandlingMicroflow", Value: svc.ErrorHandlingMicroflow})

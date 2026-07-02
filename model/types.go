@@ -327,6 +327,12 @@ type ConsumedODataService struct {
 	// only" (issue #728). The MDL `HeadersMicroflow` keyword is an alias that
 	// writes to this same field.
 	ConfigurationMicroflow string `json:"configurationMicroflow,omitempty"` // BSON: version-gated, see ODataConfigMicroflowBSONKey
+	// HeadersMicroflow is the "Headers microflow" dropdown option (returns a
+	// list of System.HttpHeader). It is a DIFFERENT storage slot from the
+	// configuration microflow on Mendix >= 11.10 (see ODataHeadersMicroflowBSONKey):
+	// mapping it to the configuration slot makes Studio Pro demand a
+	// System.ConsumedODataConfiguration return type (CE6808).
+	HeadersMicroflow       string `json:"headersMicroflow,omitempty"`       // BSON: version-gated, see ODataHeadersMicroflowBSONKey
 	ErrorHandlingMicroflow string `json:"errorHandlingMicroflow,omitempty"` // BSON: ErrorHandlingMicroflow
 
 	// Proxy constant references (BY_NAME to Constants$Constant)
@@ -368,6 +374,19 @@ func ODataConfigMicroflowBSONKey(major, minor int) string {
 // a service authored by any version (or by Studio Pro on a different version).
 func ODataConfigMicroflowBSONKeys() []string {
 	return []string{"ConfigurationEntityMicroflow", "ConfigurationMicroflow", "HeadersMicroflow"}
+}
+
+// ODataHeadersMicroflowBSONKey returns the BSON storage field for a consumed
+// OData service's "Headers microflow" (returns list of System.HttpHeader). On
+// Mendix >= 11.10 this is a distinct slot, HeaderListMicroflow; before 11.10 the
+// configuration and headers microflows shared the single ConfigurationMicroflow
+// field (Studio Pro distinguished them by the microflow's return type). Writing
+// a headers microflow into the configuration slot triggers CE6808 (issue #728).
+func ODataHeadersMicroflowBSONKey(major, minor int) string {
+	if major > 11 || (major == 11 && minor >= 10) {
+		return "HeaderListMicroflow"
+	}
+	return "ConfigurationMicroflow"
 }
 
 // HttpConfiguration represents the HTTP transport configuration (Microflows$HttpConfiguration).

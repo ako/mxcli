@@ -52,7 +52,7 @@ func (b *Backend) CreateConsumedODataService(svc *model.ConsumedODataService) er
 		svc.ID = model.ID(mmpr.GenerateID())
 	}
 	svc.TypeName = "Rest$ConsumedODataService"
-	contents, err := (&codec.Encoder{}).Encode(consumedODataServiceToGen(svc, b.configMicroflowKey()))
+	contents, err := b.encodeConsumedODataService(svc)
 	if err != nil {
 		return fmt.Errorf("CreateConsumedODataService: encode: %w", err)
 	}
@@ -66,7 +66,7 @@ func (b *Backend) UpdateConsumedODataService(svc *model.ConsumedODataService) er
 	if b.writer == nil {
 		return fmt.Errorf("UpdateConsumedODataService: not connected for writing")
 	}
-	contents, err := (&codec.Encoder{}).Encode(consumedODataServiceToGen(svc, b.configMicroflowKey()))
+	contents, err := b.encodeConsumedODataService(svc)
 	if err != nil {
 		return fmt.Errorf("UpdateConsumedODataService: encode: %w", err)
 	}
@@ -80,17 +80,25 @@ func (b *Backend) DeleteConsumedODataService(id model.ID) error {
 	return b.writer.DeleteUnit(string(id))
 }
 
-// configMicroflowKey returns the version-appropriate BSON field name for the
-// consumed OData service's configuration microflow (issue #728). Defaults to the
-// pre-11.10 key when the project version is unknown.
-func (b *Backend) configMicroflowKey() string {
-	if pv := b.ProjectVersion(); pv != nil {
-		return model.ODataConfigMicroflowBSONKey(pv.MajorVersion, pv.MinorVersion)
-	}
-	return "ConfigurationMicroflow"
+// encodeConsumedODataService serializes the service with version-appropriate
+// microflow BSON keys.
+func (b *Backend) encodeConsumedODataService(svc *model.ConsumedODataService) ([]byte, error) {
+	configKey, headersKey := b.microflowKeys()
+	return (&codec.Encoder{}).Encode(consumedODataServiceToGen(svc, configKey, headersKey))
 }
 
-func consumedODataServiceToGen(svc *model.ConsumedODataService, configMicroflowKey string) element.Element {
+// microflowKeys returns the version-appropriate BSON field names for the
+// consumed OData service's configuration and headers microflows (issue #728).
+// Defaults to the pre-11.10 keys when the project version is unknown.
+func (b *Backend) microflowKeys() (configKey, headersKey string) {
+	if pv := b.ProjectVersion(); pv != nil {
+		return model.ODataConfigMicroflowBSONKey(pv.MajorVersion, pv.MinorVersion),
+			model.ODataHeadersMicroflowBSONKey(pv.MajorVersion, pv.MinorVersion)
+	}
+	return "ConfigurationMicroflow", "ConfigurationMicroflow"
+}
+
+func consumedODataServiceToGen(svc *model.ConsumedODataService, configMicroflowKey, headersMicroflowKey string) element.Element {
 	g := newElem("Rest$ConsumedODataService", string(svc.ID))
 	addStr(g, "Name", svc.Name)
 	addStr(g, "Documentation", svc.Documentation)
@@ -115,6 +123,7 @@ func consumedODataServiceToGen(svc *model.ConsumedODataService, configMicroflowK
 	// Optional by-name / constant references — only emitted when set, matching the
 	// legacy writer (Studio Pro omits empties).
 	addStrIf(g, configMicroflowKey, svc.ConfigurationMicroflow)
+	addStrIf(g, headersMicroflowKey, svc.HeadersMicroflow)
 	addStrIf(g, "ErrorHandlingMicroflow", svc.ErrorHandlingMicroflow)
 	addStrIf(g, "ProxyHost", svc.ProxyHost)
 	addStrIf(g, "ProxyPort", svc.ProxyPort)

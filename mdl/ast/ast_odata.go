@@ -26,11 +26,13 @@ type CreateODataClientStmt struct {
 	HttpPassword      string // Mendix expression for password
 	ClientCertificate string
 
-	// Microflow reference. Both `ConfigurationMicroflow` and the legacy
-	// `HeadersMicroflow` MDL keywords write to this same field; Studio
-	// Pro distinguishes the two dropdown options by the microflow's
-	// return type, not by BSON field.
-	ConfigurationMicroflow string // microflow Module.ConfigureMF or Module.SetHeadersMF
+	// Microflow references. `ConfigurationMicroflow` (returns
+	// System.ConsumedODataConfiguration) and `HeadersMicroflow` (returns a list
+	// of System.HttpHeader) are distinct storage slots on Mendix >= 11.10, so
+	// they are tracked separately (writing one into the other's slot triggers
+	// CE6808/CE6816).
+	ConfigurationMicroflow string // microflow Module.ConfigureMF
+	HeadersMicroflow       string // microflow Module.SetHeadersMF
 	ErrorHandlingMicroflow string // microflow Module.HandleErrorMF
 
 	// Proxy constant references

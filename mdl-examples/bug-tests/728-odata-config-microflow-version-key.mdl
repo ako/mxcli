@@ -31,11 +31,20 @@
 
 create module BugTest728;
 
-create microflow BugTest728.ConfigureRequest () returns void
+create microflow BugTest728.ConfigureRequest () returns System.ConsumedODataConfiguration
 begin
+  $Config = create System.ConsumedODataConfiguration;
+  return $Config;
+end;
+
+create microflow BugTest728.SetHeaders () returns list of System.HttpHeader
+begin
+  $Headers = create list of System.HttpHeader;
+  return $Headers;
 end;
 /
 
+-- Configuration microflow → BSON ConfigurationEntityMicroflow (11.10+).
 create odata client BugTest728.ConfigSvc (
   ODataVersion: OData4,
   MetadataUrl: 'https://example.com/odata/$metadata',
@@ -43,4 +52,14 @@ create odata client BugTest728.ConfigSvc (
   ConfigurationMicroflow: microflow BugTest728.ConfigureRequest
 );
 
+-- Headers microflow → BSON HeaderListMicroflow (11.10+), a DIFFERENT slot.
+-- Storing it in the configuration slot would trigger CE6808.
+create odata client BugTest728.HeadersSvc (
+  ODataVersion: OData4,
+  MetadataUrl: 'https://example.com/odata/$metadata',
+  Timeout: 300,
+  HeadersMicroflow: microflow BugTest728.SetHeaders
+);
+
 describe odata client BugTest728.ConfigSvc;
+describe odata client BugTest728.HeadersSvc;

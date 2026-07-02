@@ -665,11 +665,13 @@ func TestCreateODataClient_HeadersMicroflow(t *testing.T) {
 	if captured == nil {
 		t.Fatal("CreateConsumedODataService was not called")
 	}
-	// Both `HeadersMicroflow` and `ConfigurationMicroflow` MDL keywords
-	// now map to the same model field (and the same Studio Pro BSON
-	// field). Studio Pro picks the dropdown label by the microflow's
-	// return type, not by which field carries the reference.
-	if captured.ConfigurationMicroflow != "MyModule.SetHeaders" {
-		t.Errorf("ConfigurationMicroflow = %q, want %q", captured.ConfigurationMicroflow, "MyModule.SetHeaders")
+	// The `HeadersMicroflow` keyword maps to the distinct HeadersMicroflow
+	// model field (Studio Pro's HeaderListMicroflow slot on 11.10+), NOT the
+	// configuration slot — conflating them triggers CE6808 (issue #728).
+	if captured.HeadersMicroflow != "MyModule.SetHeaders" {
+		t.Errorf("HeadersMicroflow = %q, want %q", captured.HeadersMicroflow, "MyModule.SetHeaders")
+	}
+	if captured.ConfigurationMicroflow != "" {
+		t.Errorf("ConfigurationMicroflow = %q, want empty (headers keyword must not populate the config slot)", captured.ConfigurationMicroflow)
 	}
 }

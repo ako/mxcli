@@ -46,14 +46,17 @@ func (b *Backend) ListConsumedODataServices() ([]*model.ConsumedODataService, er
 			EndpointId:        g.EndpointId(),
 			CatalogUrl:        g.CatalogUrl(),
 			EnvironmentType:   g.EnvironmentType(),
-			// The config-microflow field was renamed across versions (issue #728);
-			// coalesce every historical storage key so DESCRIBE round-trips a
-			// service authored by any Mendix version.
+			// The microflow storage fields were renamed/split across versions
+			// (issue #728). Config slot: ConfigurationEntityMicroflow (11.10+) or
+			// the pre-11.10 single slot (ConfigurationMicroflow / ancient
+			// HeadersMicroflow). Headers slot is only distinct on 11.10+
+			// (HeaderListMicroflow). Coalesce so DESCRIBE round-trips any version.
 			ConfigurationMicroflow: firstNonEmpty(
-				g.ConfigurationEntityMicroflowQualifiedName(), // >= 11.10
-				g.ConfigurationMicroflowQualifiedName(),       // 10.12 – 11.10
-				g.HeadersMicroflowQualifiedName(),             // < 10.12
+				g.ConfigurationEntityMicroflowQualifiedName(), // >= 11.10 config
+				g.ConfigurationMicroflowQualifiedName(),       // 10.12 – 11.10 (single slot)
+				g.HeadersMicroflowQualifiedName(),             // < 10.12 (single slot)
 			),
+			HeadersMicroflow:       g.HeaderListMicroflowQualifiedName(), // >= 11.10 headers
 			ErrorHandlingMicroflow: g.ErrorHandlingMicroflowQualifiedName(),
 			ProxyHost:              g.ProxyHostQualifiedName(),
 			ProxyPort:              g.ProxyPortQualifiedName(),

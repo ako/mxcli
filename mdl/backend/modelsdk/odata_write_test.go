@@ -198,7 +198,7 @@ func TestConsumedODataServiceToGen_ConfigMicroflowKey(t *testing.T) {
 		{"ConfigurationEntityMicroflow", "ConfigurationEntityMicroflow", "ConfigurationMicroflow"},
 		{"ConfigurationMicroflow", "ConfigurationMicroflow", "ConfigurationEntityMicroflow"},
 	} {
-		raw, err := (&codec.Encoder{}).Encode(consumedODataServiceToGen(svc, tc.key))
+		raw, err := (&codec.Encoder{}).Encode(consumedODataServiceToGen(svc, tc.key, "HeaderListMicroflow"))
 		if err != nil {
 			t.Fatalf("encode(%s): %v", tc.key, err)
 		}
