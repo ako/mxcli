@@ -219,6 +219,7 @@ func validateForwardPageRefs(ctx *ExecContext, prog *ast.Program) []error {
 
 		refs := &widgetRefCollector{}
 		refs.collectFromWidgets(widgets)
+		refs.dedupe()
 		for _, ref := range refs.pages {
 			if known[ref] || definedEarlier[ref] {
 				continue

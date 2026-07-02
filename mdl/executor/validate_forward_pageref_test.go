@@ -45,6 +45,31 @@ create page M.Detail (title: 'D', layout: Atlas_Core.Atlas_Default) {
 	}
 }
 
+// TestValidateForwardPageRefs_DuplicateRefsReportedOnce guards against emitting
+// the same diagnostic twice when one page references the same forward page from
+// more than one widget (e.g. an overview page with both a New button and a
+// per-row Edit button pointing at the edit page).
+func TestValidateForwardPageRefs_DuplicateRefsReportedOnce(t *testing.T) {
+	src := `create page M.Overview (title: 'O', layout: Atlas_Core.Atlas_Default) {
+  actionbutton newBtn (caption: 'New', action: show_page M.NewEdit)
+  actionbutton editBtn (caption: 'Edit', action: show_page M.NewEdit)
+}
+create page M.NewEdit (title: 'E', layout: Atlas_Core.Atlas_Default) {
+  dynamictext dt (content: 'x')
+}`
+	prog, errs := visitor.Build(src)
+	if len(errs) > 0 {
+		t.Fatalf("parse errors: %v", errs)
+	}
+	got := validateForwardPageRefs(forwardRefCtx(t), prog)
+	if len(got) != 1 {
+		t.Fatalf("expected exactly 1 forward-reference error, got %d: %v", len(got), got)
+	}
+	if !strings.Contains(got[0].Error(), "M.NewEdit") || !strings.Contains(got[0].Error(), "before it is created") {
+		t.Errorf("unexpected error: %v", got[0])
+	}
+}
+
 func TestValidateForwardPageRefs_CorrectOrderPasses(t *testing.T) {
 	src := `create page M.Detail (title: 'D', layout: Atlas_Core.Atlas_Default) {
   dynamictext dt (content: 'x')

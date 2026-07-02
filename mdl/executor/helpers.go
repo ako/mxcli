@@ -219,6 +219,7 @@ func validateWidgetReferences(ctx *ExecContext, widgets []*ast.WidgetV3, sc *scr
 	// Collect all references from the widget tree
 	refs := &widgetRefCollector{}
 	refs.collectFromWidgets(widgets)
+	refs.dedupe()
 
 	if refs.empty() {
 		return nil
@@ -282,6 +283,36 @@ type widgetRefCollector struct {
 	pages      []string
 	snippets   []string
 	entities   []string
+}
+
+// dedupe collapses repeated references within each category, preserving first
+// occurrence order. A single widget tree often points at the same target more
+// than once (e.g. an overview page with both a New button and a per-row Edit
+// button referencing the same edit page), which would otherwise produce
+// duplicate identical diagnostics.
+func (c *widgetRefCollector) dedupe() {
+	c.microflows = uniqueStrings(c.microflows)
+	c.nanoflows = uniqueStrings(c.nanoflows)
+	c.pages = uniqueStrings(c.pages)
+	c.snippets = uniqueStrings(c.snippets)
+	c.entities = uniqueStrings(c.entities)
+}
+
+// uniqueStrings returns s with duplicate values removed, preserving order.
+func uniqueStrings(s []string) []string {
+	if len(s) < 2 {
+		return s
+	}
+	seen := make(map[string]bool, len(s))
+	out := s[:0]
+	for _, v := range s {
+		if seen[v] {
+			continue
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+	return out
 }
 
 func (c *widgetRefCollector) empty() bool {
