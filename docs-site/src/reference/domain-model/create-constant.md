@@ -56,10 +56,13 @@ CREATE CONSTANT MyModule.EnableLogging TYPE Boolean DEFAULT true;
 CREATE OR MODIFY CONSTANT MyModule.ApiBaseUrl TYPE String DEFAULT 'https://api.example.com/v2';
 ```
 
-### Constant without a default
+### Constant with an empty default
+
+A `DEFAULT` is always required. For secrets, use an empty default and set the
+real value per configuration (see below):
 
 ```sql
-CREATE CONSTANT MyModule.DatabasePassword TYPE String;
+CREATE CONSTANT MyModule.DatabasePassword TYPE String DEFAULT '';
 ```
 
 ### Override constant per configuration

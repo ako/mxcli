@@ -2,82 +2,75 @@
 
 `ALTER ENTITY` modifies an existing entity's attributes, indexes, or documentation without recreating it. This is useful for incremental changes to entities that already contain data.
 
+Each `ALTER ENTITY` statement performs **one** action — add, drop, modify, or rename a single attribute; add or drop one index; etc. Apply several changes with several statements.
+
 ## ADD Attributes
 
-Add one or more new attributes:
+Add a new attribute with `ADD ATTRIBUTE`:
 
 ```sql
-ALTER ENTITY Sales.Customer
-  ADD (Phone: String(50), Notes: String(unlimited));
+ALTER ENTITY Sales.Customer ADD ATTRIBUTE Phone: String(50);
 ```
 
-New attributes support the same [constraints](./constraints.md) as in `CREATE ENTITY`:
+New attributes support the same [constraints](./constraints.md) as in `CREATE ENTITY`. Add several with one statement each:
 
 ```sql
-ALTER ENTITY Sales.Customer
-  ADD (
-    LoyaltyPoints: Integer DEFAULT 0,
-    MemberSince: DateTime NOT NULL
-  );
+ALTER ENTITY Sales.Customer ADD ATTRIBUTE LoyaltyPoints: Integer DEFAULT 0;
+ALTER ENTITY Sales.Customer ADD ATTRIBUTE MemberSince: DateTime NOT NULL;
 ```
 
 ## DROP Attributes
 
-Remove one or more attributes:
+Remove an attribute with `DROP ATTRIBUTE`:
 
 ```sql
-ALTER ENTITY Sales.Customer
-  DROP (Notes);
+ALTER ENTITY Sales.Customer DROP ATTRIBUTE Notes;
 ```
 
-Multiple attributes can be dropped at once:
+Drop several with one statement each:
 
 ```sql
-ALTER ENTITY Sales.Customer
-  DROP (Notes, TempField, OldStatus);
+ALTER ENTITY Sales.Customer DROP ATTRIBUTE Notes;
+ALTER ENTITY Sales.Customer DROP ATTRIBUTE TempField;
+ALTER ENTITY Sales.Customer DROP ATTRIBUTE OldStatus;
 ```
 
 ## MODIFY Attributes
 
-Change the type or constraints of existing attributes:
+Change the type or constraints of an existing attribute with `MODIFY ATTRIBUTE`:
 
 ```sql
-ALTER ENTITY Sales.Customer
-  MODIFY (Name: String(400) NOT NULL);
+ALTER ENTITY Sales.Customer MODIFY ATTRIBUTE Name: String(400) NOT NULL;
 ```
 
 ## RENAME Attributes
 
-Rename an attribute:
+Rename an attribute with `RENAME ATTRIBUTE`:
 
 ```sql
-ALTER ENTITY Sales.Customer
-  RENAME Phone TO PhoneNumber;
+ALTER ENTITY Sales.Customer RENAME ATTRIBUTE Phone TO PhoneNumber;
 ```
 
 ## ADD INDEX
 
-Add an index to the entity:
+Add an index to the entity (the index name is optional):
 
 ```sql
-ALTER ENTITY Sales.Customer
-  ADD INDEX (Email);
+ALTER ENTITY Sales.Customer ADD INDEX (Email);
 ```
 
-Composite indexes:
+Composite indexes, with optional sort direction:
 
 ```sql
-ALTER ENTITY Sales.Customer
-  ADD INDEX (Name, CreatedAt DESC);
+ALTER ENTITY Sales.Customer ADD INDEX (Name, CreatedAt DESC);
 ```
 
 ## DROP INDEX
 
-Remove an index:
+Remove an index by name:
 
 ```sql
-ALTER ENTITY Sales.Customer
-  DROP INDEX (Email);
+ALTER ENTITY Sales.Customer DROP INDEX idx_customer_email;
 ```
 
 ## SET DOCUMENTATION
@@ -91,7 +84,7 @@ ALTER ENTITY Sales.Customer
 
 ## ADD/DROP System Attributes
 
-System attributes use the same ADD/DROP syntax as regular attributes:
+System attributes use the same `ADD ATTRIBUTE` / `DROP ATTRIBUTE` syntax as regular attributes:
 
 ```sql
 -- Add system attributes
@@ -139,30 +132,21 @@ Parameter: `($currentObject)` passes the entity to the microflow, `()` does not.
 ## Syntax Summary
 
 ```sql
-ALTER ENTITY <Module>.<Entity>
-  ADD (<attribute-definition> [, ...])
+ALTER ENTITY <Module>.<Entity> ADD ATTRIBUTE <name>: <type> [constraints];
 
-ALTER ENTITY <Module>.<Entity>
-  DROP (<attribute-name> [, ...])
+ALTER ENTITY <Module>.<Entity> DROP ATTRIBUTE <name>;
 
-ALTER ENTITY <Module>.<Entity>
-  MODIFY (<attribute-definition> [, ...])
+ALTER ENTITY <Module>.<Entity> MODIFY ATTRIBUTE <name>: <type> [constraints];
 
-ALTER ENTITY <Module>.<Entity>
-  RENAME <old-name> TO <new-name>
+ALTER ENTITY <Module>.<Entity> RENAME ATTRIBUTE <old-name> TO <new-name>;
 
-ALTER ENTITY <Module>.<Entity>
-  ADD INDEX (<column-list>)
+ALTER ENTITY <Module>.<Entity> ADD INDEX [<name>] (<column> [ASC|DESC] [, ...]);
 
-ALTER ENTITY <Module>.<Entity>
-  DROP INDEX (<column-list>)
+ALTER ENTITY <Module>.<Entity> DROP INDEX <index-name>;
 
-ALTER ENTITY <Module>.<Entity>
-  SET DOCUMENTATION '<text>'
+ALTER ENTITY <Module>.<Entity> SET DOCUMENTATION '<text>';
 
-ALTER ENTITY <Module>.<Entity>
-  SET POSITION (<x>, <y>)
-
+ALTER ENTITY <Module>.<Entity> SET POSITION (<x>, <y>);
 ```
 
 ## See Also

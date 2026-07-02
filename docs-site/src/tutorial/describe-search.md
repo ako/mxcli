@@ -42,7 +42,7 @@ CREATE ASSOCIATION MyFirstModule.Order_Customer
   FROM MyFirstModule.Order TO MyFirstModule.Customer
   TYPE Reference
   OWNER Default
-  DELETE_BEHAVIOR DeleteRefSetOnly;
+  DELETE_BEHAVIOR DELETE_BUT_KEEP_REFERENCES;
 ```
 
 ## DESCRIBE MICROFLOW
@@ -132,7 +132,7 @@ CREATE ASSOCIATION MyFirstModule.Order_Customer
   FROM MyFirstModule.Order TO MyFirstModule.Customer
   TYPE Reference
   OWNER Default
-  DELETE_BEHAVIOR DeleteRefSetOnly;
+  DELETE_BEHAVIOR DELETE_BUT_KEEP_REFERENCES;
 ```
 
 ## DESCRIBE MODULE

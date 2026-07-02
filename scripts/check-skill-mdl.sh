@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 # check-skill-mdl.sh — syntax-check the domain-model DDL blocks embedded in the
-# user-facing skills, so invalid MDL can't drift into the docs. This is the class
-# of drift seen in practice: associations documented with PARENT/CHILD or
-# `[*] -> [1]`, enumerations with `= 'x'` or `as ( x: 'y' )`, etc.
+# user-facing skills AND the docs site, so invalid MDL can't drift into the docs.
+# This is the class of drift seen in practice: associations documented with
+# PARENT/CHILD or `[*] -> [1]`, enumerations with `= 'x'` or `as ( x: 'y' )`,
+# ALTER ENTITY with `ADD (attr, ...)` instead of `ADD ATTRIBUTE attr: type`, etc.
 #
-# It extracts every ```mdl and ```sql fenced block from .claude/skills/mendix/*.md
-# and runs `mxcli check` (syntax only) on the blocks whose first statement is a
-# domain-model DDL statement — CREATE/ALTER/DROP of an entity, association,
-# enumeration, module, or constant. Those are reliably complete and standalone.
+# It recursively finds every *.md under the given directory, extracts each ```mdl
+# and ```sql fenced block, and runs `mxcli check` (syntax only) on the individual
+# statements whose first keyword is a domain-model DDL statement — CREATE/ALTER/DROP
+# of an entity, association, enumeration, or constant. Those are reliably complete
+# and standalone; a bad statement inside a larger multi-document example is still
+# caught (extraction is per-statement, not per-block).
 #
 # Everything else is skipped on purpose, because skills legitimately show
 # fragments that are NOT standalone top-level MDL: microflow activities
@@ -17,7 +20,7 @@
 # alternation, `<name>`, `[optional]`), brace-based mini-DSL (`{`/`}`), or a
 # deliberately-wrong example (❌ / INCORRECT / WRONG / -- BAD).
 #
-# Usage: scripts/check-skill-mdl.sh [mxcli-binary] [skills-dir]
+# Usage: scripts/check-skill-mdl.sh [mxcli-binary] [docs-dir]
 set -uo pipefail
 
 MXCLI="${1:-bin/mxcli}"
@@ -41,7 +44,7 @@ FAILED=0
 CHECKED=0
 SKIPPED=0
 
-for md in "$SKILLS_DIR"/*.md; do
+while IFS= read -r md; do
 	[ -e "$md" ] || continue
 	# Split the file into ```mdl / ```sql blocks, one file per block.
 	rm -f "$WORK"/block_* 2>/dev/null || true
@@ -61,7 +64,7 @@ for md in "$SKILLS_DIR"/*.md; do
 		# always syntactically valid but semantically wrong (e.g. a reversed
 		# association direction), so they pass a syntax check and their statements
 		# should still be validated. Only genuinely syntax-broken demos are skipped.
-		if grep -qE '\.\.\.| \| |<[a-zA-Z]' "$blk" ||
+		if grep -qE '\.\.\.| \| |<[a-zA-Z]|[$][{]' "$blk" ||
 			grep -qiE 'check-skip|parse error' "$blk"; then
 			SKIPPED=$((SKIPPED + 1)); continue
 		fi
@@ -104,12 +107,12 @@ for md in "$SKILLS_DIR"/*.md; do
 			fi
 		done
 	done
-done
+done < <(find "$SKILLS_DIR" -name '*.md' | sort)
 
 echo "---"
-echo "skill MDL blocks: checked $CHECKED, skipped $SKIPPED (illustrative/templates)"
+echo "MDL blocks: checked $CHECKED, skipped $SKIPPED (illustrative/templates)"
 if [ "$FAILED" -ne 0 ]; then
-	echo "Some skill MDL blocks have invalid syntax (see above)."
+	echo "Some MDL blocks have invalid syntax (see above)."
 	exit 1
 fi
-echo "All checkable skill MDL blocks pass 'mxcli check'."
+echo "All checkable MDL blocks pass 'mxcli check'."

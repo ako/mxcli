@@ -47,13 +47,13 @@ INDEX (Name, CreatedAt DESC)    -- mixed: Name ascending, CreatedAt descending
 Use `ALTER ENTITY` to add or remove indexes on existing entities:
 
 ```sql
--- Add an index
+-- Add a named index
 ALTER ENTITY Sales.Customer
-  ADD INDEX (Email);
+  ADD INDEX idx_customer_email (Email);
 
--- Remove an index
+-- Remove an index by name
 ALTER ENTITY Sales.Customer
-  DROP INDEX (Email);
+  DROP INDEX idx_customer_email;
 ```
 
 ## Guidelines

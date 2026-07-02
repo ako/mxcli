@@ -51,13 +51,13 @@ Status: Enumeration(Sales.OrderStatus) DEFAULT 'Draft'
 Add or remove values from an existing enumeration:
 
 ```sql
--- Add a new value
+-- Add a new value (the CAPTION keyword is required for ALTER, unlike CREATE)
 ALTER ENUMERATION Sales.OrderStatus
-  ADD VALUE OnHold 'On Hold';
+  ADD VALUE OnHold CAPTION 'On Hold';
 
 -- Remove a value
 ALTER ENUMERATION Sales.OrderStatus
-  REMOVE VALUE Draft;
+  DROP VALUE Draft;
 ```
 
 ## DROP ENUMERATION

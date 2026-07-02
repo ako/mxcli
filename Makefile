@@ -202,10 +202,12 @@ check-mdl: build
 	done; \
 	exit $$FAILED
 
-# Syntax-check the domain-model DDL statements embedded in the user skills, so
-# invalid MDL (e.g. enum `= 'x'`, association PARENT/CHILD) can't drift into docs.
+# Syntax-check the domain-model DDL statements embedded in the user skills and the
+# docs site, so invalid MDL (e.g. enum `= 'x'`, association PARENT/CHILD, ALTER
+# ENTITY `ADD (attr)` instead of `ADD ATTRIBUTE attr: type`) can't drift into docs.
 check-skill-mdl: build
 	@./scripts/check-skill-mdl.sh ./$(BUILD_DIR)/$(BINARY_NAME) .claude/skills/mendix
+	@./scripts/check-skill-mdl.sh ./$(BUILD_DIR)/$(BINARY_NAME) docs-site/src
 
 # Run integration tests (requires mx binary / mxbuild)
 test-integration:

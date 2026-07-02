@@ -22,12 +22,11 @@ The textarea supports standard text editing. Type or paste any MDL statements:
 ```sql
 SHOW MODULES;
 
-CREATE ENTITY MyModule.Customer
-  NAME "Customer"
-  PERSISTENT
-  ATTRIBUTE Name STRING(100)
-  ATTRIBUTE Email STRING(200)
-  ATTRIBUTE Age INTEGER;
+CREATE PERSISTENT ENTITY MyModule.Customer (
+  Name: String(100),
+  Email: String(200),
+  Age: Integer
+);
 ```
 
 Press `Ctrl+E` to execute. The TUI writes the content to a temporary file and runs `mxcli exec` as a subprocess. During execution, a status indicator shows "Executing..." in the status bar.

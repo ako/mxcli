@@ -46,6 +46,8 @@ jobs:
           exit $FAILED
       - name: Check skill MDL blocks
         run: ./scripts/check-skill-mdl.sh ./bin/mxcli .claude/skills/mendix
+      - name: Check docs-site MDL blocks
+        run: ./scripts/check-skill-mdl.sh ./bin/mxcli docs-site/src
       - name: Setup mxbuild
         run: ./bin/mxcli setup mxbuild --version 11.9.0
       - name: Integration tests
