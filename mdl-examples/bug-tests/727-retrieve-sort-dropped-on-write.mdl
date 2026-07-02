@@ -1,0 +1,47 @@
+-- ============================================================================
+-- Bug #727: Retrieve "sort by" clause lost on the modelsdk engine
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   A database retrieve with sorting round-tripped without its sort clause:
+--   DESCRIBE emitted "retrieve $x from Module.Entity;" with the "sort by …"
+--   line completely missing. Reported on MX 10.8 / 10.10, mxcli 0.13.
+--
+--   Root cause was on the WRITE side of the default (modelsdk) engine:
+--   retrieveSourceToGen set an EMPTY SortItemList on the DatabaseRetrieveSource
+--   and never serialized the sort columns. (The generated SortItemList type
+--   also stores its items under "Items", but Mendix stores retrieve sort
+--   columns under "Sortings" — so the envelope must be built manually,
+--   mirroring the Sort list-operation.) With nothing written, the read side
+--   had nothing to render.
+--
+-- After fix:
+--   retrieveSourceToGen builds a Microflows$SortingsList with the sort columns
+--   (addPartList "Sortings"), so the retrieve round-trips its "sort by …".
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/727-retrieve-sort-dropped-on-write.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe microflow BugTest727.MF_ListTickets"
+--   The describe output MUST keep the "sort by … desc, … asc" line, and
+--   `mx check` against the resulting MPR must report 0 errors.
+-- ============================================================================
+
+create module BugTest727;
+/
+
+create entity BugTest727.Ticket (
+  Name: String,
+  Priority: Integer
+);
+/
+
+-- Same-entity sort on two attributes, mixed directions. Before the fix the
+-- entire "sort by" line was dropped from the DESCRIBE output.
+create microflow BugTest727.MF_ListTickets ()
+returns list of BugTest727.Ticket as $Tickets
+begin
+  retrieve $Tickets from BugTest727.Ticket
+    sort by Priority desc, Name asc;
+  return $Tickets;
+end;
+/

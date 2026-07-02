@@ -51,3 +51,44 @@ func TestRetrieveSourceFromGen_SortBy(t *testing.T) {
 		t.Errorf("sort item = {%q, %q}, want {LoftManagement.Application.Name, asc}", got.AttributeQualifiedName, got.Direction)
 	}
 }
+
+// TestRetrieveSourceToGen_SortByRoundTrip guards the write path: a database
+// retrieve's "sort by …" columns must be serialized into the NewSortings
+// envelope. Previously retrieveSourceToGen wrote an empty SortItemList and
+// dropped every sort column, so DESCRIBE emitted a retrieve with no sort
+// (issue #727).
+func TestRetrieveSourceToGen_SortByRoundTrip(t *testing.T) {
+	in := &microflows.DatabaseRetrieveSource{
+		EntityQualifiedName: "SortBug.Ticket",
+		Sorting: []*microflows.SortItem{
+			{AttributeQualifiedName: "SortBug.Ticket.Priority", Direction: microflows.SortDirectionDescending},
+			{AttributeQualifiedName: "SortBug.Ticket.Name", Direction: microflows.SortDirectionAscending},
+		},
+	}
+
+	el := retrieveSourceToGen(in)
+	if el == nil {
+		t.Fatal("retrieveSourceToGen returned nil")
+	}
+	raw, err := (&codec.Encoder{}).Encode(el)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	decoded, err := codec.NewDecoder(codec.DefaultRegistry).Decode(raw)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	out, ok := retrieveSourceFromGen(decoded).(*microflows.DatabaseRetrieveSource)
+	if !ok {
+		t.Fatal("round-trip did not yield a DatabaseRetrieveSource")
+	}
+	if len(out.Sorting) != 2 {
+		t.Fatalf("Sorting = %d items after round-trip, want 2 (sort columns dropped on write)", len(out.Sorting))
+	}
+	if out.Sorting[0].AttributeQualifiedName != "SortBug.Ticket.Priority" || out.Sorting[0].Direction != microflows.SortDirectionDescending {
+		t.Errorf("sort[0] = {%q, %q}, want {SortBug.Ticket.Priority, Descending}", out.Sorting[0].AttributeQualifiedName, out.Sorting[0].Direction)
+	}
+	if out.Sorting[1].AttributeQualifiedName != "SortBug.Ticket.Name" || out.Sorting[1].Direction != microflows.SortDirectionAscending {
+		t.Errorf("sort[1] = {%q, %q}, want {SortBug.Ticket.Name, Ascending}", out.Sorting[1].AttributeQualifiedName, out.Sorting[1].Direction)
+	}
+}

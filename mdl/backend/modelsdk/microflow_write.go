@@ -1026,7 +1026,18 @@ func retrieveSourceToGen(src microflows.RetrieveSource) element.Element {
 		if s.XPathConstraint != "" {
 			g.SetXPathConstraint(s.XPathConstraint)
 		}
-		g.SetSortItemList(genMf.NewSortItemList()) // empty Sortings=[2] via default; sort columns are a later slice
+		// Build the SortingsList (stored under "NewSortings") with the actual sort
+		// columns. The generated SortItemList type serializes its items under
+		// "Items", but Mendix stores retrieve/sort columns under "Sortings" — so
+		// build the envelope manually, mirroring the Sort list-operation branch.
+		// Without this, "retrieve … sort by …" columns are dropped on write.
+		sl := newElem("Microflows$SortingsList", "")
+		items := make([]element.Element, 0, len(s.Sorting))
+		for _, it := range s.Sorting {
+			items = append(items, sortItemToGen(it))
+		}
+		addPartList(sl, "Sortings", items)
+		g.SetSortItemList(sl)
 		return g
 	case *microflows.AssociationRetrieveSource:
 		g := genMf.NewAssociationRetrieveSource()
