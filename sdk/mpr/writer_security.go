@@ -221,8 +221,8 @@ func (w *Writer) AddModuleRole(unitID model.ID, roleName, description string) er
 
 		// Build the new role BSON document
 		newRole := bson.D{
-			{Key: "$Type", Value: "Security$ModuleRole"},
 			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+			{Key: "$Type", Value: "Security$ModuleRole"},
 			{Key: "Name", Value: roleName},
 			{Key: "Description", Value: description},
 		}
@@ -289,8 +289,8 @@ func (w *Writer) SetProjectDemoUsersEnabled(unitID model.ID, enabled bool) error
 func (w *Writer) AddUserRole(unitID model.ID, name string, moduleRoles []string, manageAllRoles bool) error {
 	return w.readPatchWrite(unitID, func(doc bson.D) (bson.D, error) {
 		newRole := bson.D{
-			{Key: "$Type", Value: "Security$UserRole"},
 			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+			{Key: "$Type", Value: "Security$UserRole"},
 			{Key: "Name", Value: name},
 			{Key: "Description", Value: ""},
 			{Key: "ModuleRoles", Value: makeMendixStringArray(moduleRoles)},
@@ -496,8 +496,8 @@ func (w *Writer) RemoveUserRole(unitID model.ID, name string) error {
 func (w *Writer) AddDemoUser(unitID model.ID, userName, password, entity string, userRoles []string) error {
 	return w.readPatchWrite(unitID, func(doc bson.D) (bson.D, error) {
 		newUser := bson.D{
-			{Key: "$Type", Value: "Security$DemoUserImpl"},
 			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+			{Key: "$Type", Value: "Security$DemoUserImpl"},
 			{Key: "UserName", Value: userName},
 			{Key: "Password", Value: password},
 			{Key: "Entity", Value: entity},
@@ -598,8 +598,8 @@ func (w *Writer) AddEntityAccessRule(unitID model.ID, entityName string, roleNam
 				memberAccessesBson = bson.A{int32(3)} // storageListType 3
 				for _, ma := range memberAccesses {
 					maDoc := bson.D{
-						{Key: "$Type", Value: "DomainModels$MemberAccess"},
 						{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+						{Key: "$Type", Value: "DomainModels$MemberAccess"},
 						{Key: "AccessRights", Value: ma.AccessRights},
 					}
 					if ma.AttributeRef != "" {
@@ -657,8 +657,8 @@ func (w *Writer) AddEntityAccessRule(unitID model.ID, entityName string, roleNam
 				ruleID = existingID
 			}
 			newRule := bson.D{
-				{Key: "$Type", Value: "DomainModels$AccessRule"},
 				{Key: "$ID", Value: idToBsonBinary(ruleID)},
+				{Key: "$Type", Value: "DomainModels$AccessRule"},
 				{Key: "AllowedModuleRoles", Value: makeMendixStringArray(roleNames)},
 				{Key: "AllowCreate", Value: allowCreate},
 				{Key: "AllowDelete", Value: allowDelete},
@@ -1511,8 +1511,8 @@ func (w *Writer) ReconcileMemberAccesses(unitID model.ID, moduleName string) (in
 									rights = "ReadOnly"
 								}
 								newMA := bson.D{
-									{Key: "$Type", Value: "DomainModels$MemberAccess"},
 									{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+									{Key: "$Type", Value: "DomainModels$MemberAccess"},
 									{Key: "AccessRights", Value: rights},
 									{Key: "Attribute", Value: moduleName + "." + entityName + "." + attrName},
 								}
@@ -1525,8 +1525,8 @@ func (w *Writer) ReconcileMemberAccesses(unitID model.ID, moduleName string) (in
 						for aName := range entityAssocNames {
 							if !coveredAssocs[aName] {
 								newMA := bson.D{
-									{Key: "$Type", Value: "DomainModels$MemberAccess"},
 									{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+									{Key: "$Type", Value: "DomainModels$MemberAccess"},
 									{Key: "AccessRights", Value: defaultRights},
 									{Key: "Association", Value: moduleName + "." + aName},
 								}
@@ -1539,8 +1539,8 @@ func (w *Writer) ReconcileMemberAccesses(unitID model.ID, moduleName string) (in
 						for sysRef := range systemAssocRefs {
 							if !coveredSystemAssocs[sysRef] {
 								newMA := bson.D{
-									{Key: "$Type", Value: "DomainModels$MemberAccess"},
 									{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+									{Key: "$Type", Value: "DomainModels$MemberAccess"},
 									{Key: "AccessRights", Value: defaultRights},
 									{Key: "Association", Value: sysRef},
 								}

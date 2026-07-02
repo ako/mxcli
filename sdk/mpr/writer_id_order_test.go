@@ -153,6 +153,37 @@ func TestStorageObjects_IDIsFirstProperty(t *testing.T) {
 		marshalAndValidate(t, "CrossAssociation", serializeCrossAssociation(ca))
 	})
 
+	// Entity + Attribute: these were bson.D but in Studio Pro field order
+	// (Name-first, $ID mid-document), which 11.12 rejects. validateStorageOrder
+	// recurses, so this also covers the nested AccessRule and MemberAccess (which
+	// were $Type-first). Regression guard for the 11.12 nightly `got 'Name'`.
+	t.Run("Entity", func(t *testing.T) {
+		attr := &domainmodel.Attribute{Name: "Amount", Type: &domainmodel.IntegerAttributeType{}}
+		attr.ID = "attr-1"
+		ma := &domainmodel.MemberAccess{AttributeName: "Amount", AccessRights: domainmodel.MemberAccessRightsReadWrite}
+		ma.ID = "ma-1"
+		ar := &domainmodel.AccessRule{
+			ModuleRoleNames: []string{"Mod.User"},
+			AllowRead:       true,
+			MemberAccesses:  []*domainmodel.MemberAccess{ma},
+		}
+		ar.ID = "ar-1"
+		e := &domainmodel.Entity{
+			Name:        "Order",
+			Persistable: true,
+			Attributes:  []*domainmodel.Attribute{attr},
+			AccessRules: []*domainmodel.AccessRule{ar},
+		}
+		e.ID = "ent-1"
+		marshalAndValidate(t, "Entity", serializeEntity(e, "Mod", nil))
+	})
+
+	t.Run("Attribute", func(t *testing.T) {
+		attr := &domainmodel.Attribute{Name: "Amount", Type: &domainmodel.IntegerAttributeType{}}
+		attr.ID = "attr-2"
+		marshalAndValidate(t, "Attribute", serializeAttribute(attr, false))
+	})
+
 	// Business-event tree: $ID was added dynamically after a $Type-first literal.
 	t.Run("BusinessEventDefinition", func(t *testing.T) {
 		def := &model.BusinessEventDefinition{

@@ -699,16 +699,19 @@ func serializeEntity(e *domainmodel.Entity, moduleName string, pv *version.Proje
 	}
 
 	// Use bson.D (ordered document) to match Studio Pro field order
+	// Mendix 11.12 requires "$ID" to be the first property of every storage object
+	// ("$Type" conventionally second); it rejects the unit otherwise. Remaining
+	// fields keep Studio Pro's order.
 	// CRITICAL: Attributes MUST come before ValidationRules for attribute lookup to work
 	doc := bson.D{
+		{Key: "$ID", Value: idToBsonBinary(string(e.ID))},
+		{Key: "$Type", Value: "DomainModels$EntityImpl"},
 		{Key: "Name", Value: e.Name},
 		{Key: "Documentation", Value: e.Documentation},
 		{Key: "MaybeGeneralization", Value: maybeGeneralization},
 		{Key: "Attributes", Value: attrs}, // Must come before ValidationRules!
 		{Key: "AccessRules", Value: accessRules},
 		{Key: "ValidationRules", Value: validationRules}, // After Attributes
-		{Key: "$ID", Value: idToBsonBinary(string(e.ID))},
-		{Key: "$Type", Value: "DomainModels$EntityImpl"},
 		{Key: "ExportLevel", Value: "Hidden"},
 		{Key: "GUID", Value: entityGUID},
 		{Key: "Location", Value: location},
@@ -841,8 +844,8 @@ func serializeAccessRule(ar *domainmodel.AccessRule) bson.D {
 	}
 
 	return bson.D{
-		{Key: "$Type", Value: "DomainModels$AccessRule"},
 		{Key: "$ID", Value: idToBsonBinary(ruleID)},
+		{Key: "$Type", Value: "DomainModels$AccessRule"},
 		{Key: "AllowedModuleRoles", Value: roles},
 		{Key: "AllowCreate", Value: ar.AllowCreate},
 		{Key: "AllowDelete", Value: ar.AllowDelete},
@@ -861,8 +864,8 @@ func serializeMemberAccess(ma *domainmodel.MemberAccess) bson.D {
 	}
 
 	doc := bson.D{
-		{Key: "$Type", Value: "DomainModels$MemberAccess"},
 		{Key: "$ID", Value: idToBsonBinary(maID)},
+		{Key: "$Type", Value: "DomainModels$MemberAccess"},
 		{Key: "AccessRights", Value: string(ma.AccessRights)},
 	}
 
@@ -1116,17 +1119,17 @@ func serializeAttribute(a *domainmodel.Attribute, isExternalEntity bool) bson.D 
 		}
 	}
 
-	// Use bson.D with Studio Pro field order:
-	// Name, Documentation, ExportLevel, GUID, NewType, Value, $ID, $Type
+	// Mendix 11.12 requires "$ID" first, "$Type" second; remaining fields keep
+	// Studio Pro's order (Name, Documentation, ExportLevel, GUID, NewType, Value).
 	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(string(a.ID))},
+		{Key: "$Type", Value: "DomainModels$Attribute"},
 		{Key: "Name", Value: a.Name},
 		{Key: "Documentation", Value: a.Documentation},
 		{Key: "ExportLevel", Value: "Hidden"},
 		{Key: "GUID", Value: idToBsonBinary(string(a.ID))},
 		{Key: "NewType", Value: attrType},
 		{Key: "Value", Value: valueDoc},
-		{Key: "$ID", Value: idToBsonBinary(string(a.ID))},
-		{Key: "$Type", Value: "DomainModels$Attribute"},
 	}
 }
 
