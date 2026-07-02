@@ -17,7 +17,7 @@ For **microflow logic testing** (business rules, calculations, entity operations
 
 The devcontainer created by `mxcli init` installs:
 - **Node.js** (LTS) — via the base image
-- **playwright-cli** — installed globally (`npm install -g @playwright/cli@latest`)
+- **playwright-cli** — installed globally, pinned to a known-good version (`npm install -g @playwright/cli@0.1.15`; the package's CLI surface shifts between releases, so it is deliberately not `@latest`)
 - **Chromium (headless shell)** — installed via `@playwright/cli`'s **bundled** `playwright-core`, into a shared `PLAYWRIGHT_BROWSERS_PATH`, and exposed at the stable path `/usr/local/bin/mx-headless-shell`. The generated `.playwright/cli.config.json` pins `executablePath` to that symlink.
 - **Docker-in-Docker** — Mendix + PostgreSQL running via `mxcli docker run`
 

@@ -79,6 +79,12 @@ func TestGenerateDockerfile_PlaywrightArm64(t *testing.T) {
 	if strings.Contains(df, "npx playwright install") {
 		t.Error("Dockerfile must not use 'npx playwright install' — it resolves a different playwright than the CLI's bundled core (wrong revision + wrong cache)")
 	}
+	if strings.Contains(df, "@playwright/cli@latest") {
+		t.Error("@playwright/cli must be pinned to a known-good version, not @latest (its CLI surface shifts between releases)")
+	}
+	if !strings.Contains(df, "@playwright/cli@0.1.") {
+		t.Error("Dockerfile should install a pinned @playwright/cli@0.1.x version")
+	}
 	for _, want := range []string{
 		"@playwright/cli/node_modules/playwright-core/cli.js", // install via bundled core
 		"chromium-headless-shell",                             // headless needs the shell build

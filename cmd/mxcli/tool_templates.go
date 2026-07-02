@@ -378,8 +378,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends wget apt-transp
 # Chromium headless-shell through a stable symlink referenced by
 # .playwright/cli.config.json (executablePath). The symlink keeps the config
 # revision-proof as the headless-shell build number changes.
+# @playwright/cli is pinned (not @latest): it is a young package whose CLI
+# surface still shifts between releases, and an unexpected bump has silently
+# broken browser provisioning before. Bump deliberately after re-verifying the
+# flow below. NOTE: the npm package version (0.1.x) is independent of the
+# playwright-core version the CLI's --version reports (e.g. 1.59.0-alpha).
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
-RUN npm install -g @playwright/cli@latest && \
+RUN npm install -g @playwright/cli@0.1.15 && \
     CORE="$(npm root -g)/@playwright/cli/node_modules/playwright-core/cli.js" && \
     node "$CORE" install --with-deps chromium chromium-headless-shell && \
     chmod -R a+rX "$PLAYWRIGHT_BROWSERS_PATH" && \
