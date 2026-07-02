@@ -340,7 +340,14 @@ for custom attributes — they will cause errors when the app tries to sync the 
 | `owner`       | Reference to creating user |
 | `ChangedBy`   | Reference to last user to commit |
 
-If you need a "date created" field, name it `DateCreated`, `NoteDate`, etc.
+If you need a "date created" field, name it `DateCreated`, `NoteDate`, etc. Also avoid
+`Type` and `ID` — these are platform-reserved (CE7247) and, like the audit names above,
+are rejected **even when quoted** (`"Type"` still fails MDL021); rename to `ResourceType`,
+`TypeValue`, etc.
+
+> **Seed microflow wired to after-startup must return `Boolean`.** If you point the
+> project's after-startup setting at a seed microflow, it must end with `return true` —
+> a void seed microflow fails the Mendix build with **CE0142**.
 
 ### New entities need a runtime sync before demo data can be inserted
 

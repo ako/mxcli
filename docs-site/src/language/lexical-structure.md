@@ -36,6 +36,17 @@ WIDGETS, WITH, WORKFLOWS, WRITE
 
 Most keywords work **unquoted** as identifiers (entity names, attribute names). Only structural keywords like `CREATE`, `DELETE`, `BEGIN`, `END`, `RETURN`, `ENTITY`, and `MODULE` require quoting when used as identifiers.
 
+> **Quoting escapes *parser* keywords only — not *platform*-reserved member names.**
+> Quoting an identifier tells the MDL parser to treat it as a name rather than a token,
+> so `"create"`, `"status"`, and `"type"` parse fine as attribute names. But some names
+> are reserved by the Mendix *platform*, and Studio Pro rejects them **even when quoted**
+> (the quotes are stripped, and the bare name is still invalid): `Type` (CE7247), the
+> audit attributes `CreatedDate` / `ChangedDate` / `Owner` / `ChangedBy`, plus `ID`,
+> `GUID`, `CurrentUser`, and the Java keyword list. `mxcli check --references` flags these
+> as `MDL021` (CE7247) / `MDL020`. Rename them (e.g. `Type` → `ResourceType`); use the
+> `AutoCreatedDate` / `AutoChangedDate` / `AutoOwner` / `AutoChangedBy` pseudo-types for
+> the audit fields.
+
 ## Literals
 
 ### String Literals

@@ -483,7 +483,7 @@ Priority: enumeration(Module.Priority) default Module.Priority.Normal
 
 ## Reserved Keywords
 
-**Best practice: Always quote all identifiers** (entity names, attribute names) with double quotes. This eliminates all reserved keyword conflicts and is always safe — quotes are stripped automatically by the parser.
+**Best practice: Always quote all identifiers** (entity names, attribute names) with double quotes. This escapes every **MDL parser** keyword conflict — quotes are stripped automatically by the parser. So `"create"`, `"status"`, `"end"` become valid attribute names.
 
 ```sql
 create persistent entity Module."VATRate" (
@@ -492,6 +492,14 @@ create persistent entity Module."VATRate" (
   "status": string(50)
 );
 ```
+
+> **Caveat — quoting does not exempt *platform*-reserved member names.** Some names are
+> reserved by the Mendix *platform*, not just the MDL parser, and are rejected **even when
+> quoted** (the check strips the quotes and still flags them): `Type` (CE7247, MDL021),
+> the audit attributes `CreatedDate` / `ChangedDate` / `Owner` / `ChangedBy` (MDL020 — use
+> the `AutoCreatedDate` / `AutoChangedDate` / `AutoOwner` / `AutoChangedBy` pseudo-types
+> instead), plus `ID`, `GUID`, `CurrentUser` and the Java-keyword list. `"Type": String`
+> fails MDL021 — rename to `ResourceType` / `TypeValue`.
 
 Both `"Name"` and `` `Name` `` syntax are supported. Prefer double quotes for consistency.
 
@@ -991,7 +999,7 @@ Before finalizing an MDL script:
 
 ## Tips for AI Assistants
 
-1. **Always quote all identifiers** with double quotes to avoid reserved keyword conflicts
+1. **Always quote all identifiers** with double quotes to avoid MDL parser keyword conflicts — but note quoting does **not** exempt platform-reserved member names (`Type`, `CreatedDate`, `ChangedDate`, `Owner`, `ChangedBy`, `ID`, …); rename those
 2. **Use descriptive names** (ServiceType, CustomerOrder)
 3. **Run linter** on generated scripts before presenting to user
 4. **Fix all errors** reported by linter before finalizing

@@ -192,6 +192,19 @@ The MDL visitor (`buildDataType` in `visitor_helpers.go`) cannot distinguish bet
 
 When generating Mendix expression strings (e.g., in `expressionToString()`), single quotes within string literals must be escaped by doubling them: `'it''s here'`. Do NOT use backslash escaping (`\'`). This matches Mendix Studio Pro's expression syntax.
 
+### Quoting Escapes Parser Keywords, Not Platform-Reserved Member Names
+
+The skills advise **quoting all identifiers** to avoid keyword collisions, but this only escapes **MDL parser** keywords (so `"create"`, `"status"`, `"end"` become valid attribute names). It does **not** exempt names the Mendix **platform** reserves for entity members — those are rejected by Studio Pro (and by `mxcli check --references`) **even when quoted**, because the check strips the quotes and validates the bare name:
+
+- `Type` → CE7247 / `MDL021` ("reserved word"). Rename (e.g. `ResourceType`, `TypeValue`). Also `ID`, `GUID`, `CurrentUser`, and the Java-keyword list.
+- `CreatedDate` / `ChangedDate` / `Owner` / `ChangedBy` → `MDL020` on persistent entities. Use the `AutoCreatedDate` / `AutoChangedDate` / `AutoOwner` / `AutoChangedBy` pseudo-types for the audit fields, or a different name for an unrelated value.
+
+The reserved-word lists live in `mdl/executor/cmd_enumerations.go` (`mendixReservedWords`, `mendixSystemAttributeNames`). "Always safe to quote" in the skills means *parser*-safe, not *platform*-safe.
+
+### AfterStartupMicroflow Must Return Boolean
+
+A microflow wired as the project's **after-startup** microflow must return `Boolean` — Mendix build fails with **CE0142** on a void (no-return) microflow. A common trip-up: a seed/demo-data microflow wired to after-startup will not build until it ends with a `return true` (Boolean). This is a Mendix platform rule, not an mxcli check.
+
 ### Association Parent/Child Pointer Semantics (Counter-Intuitive)
 
 **CRITICAL**: Mendix BSON uses inverted naming for association pointers:

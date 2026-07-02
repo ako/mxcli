@@ -54,6 +54,10 @@ Modifies project settings by category. Each category has its own syntax and avai
 ALTER SETTINGS MODEL AfterStartupMicroflow = 'MyModule.ACT_Startup';
 ```
 
+> **The after-startup microflow must return `Boolean`.** Mendix build fails with **CE0142**
+> if it has no return type. A common trip-up is wiring a void seed/demo-data microflow to
+> after-startup — end it with `return true` so it returns a Boolean.
+
 ### Configure database type
 
 ```sql

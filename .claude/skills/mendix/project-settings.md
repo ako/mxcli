@@ -25,7 +25,7 @@ describe settings;
 ### Modify Model Settings
 
 ```sql
-alter settings model AfterStartupMicroflow = 'Module.MF_Startup';
+alter settings model AfterStartupMicroflow = 'Module.MF_Startup';  -- must return Boolean (CE0142)
 alter settings model BeforeShutdownMicroflow = 'Module.MF_Shutdown';
 alter settings model HealthCheckMicroflow = 'Module.MF_HealthCheck';
 alter settings model HashAlgorithm = 'BCrypt';

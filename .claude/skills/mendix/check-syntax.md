@@ -53,8 +53,18 @@ Before writing any MDL, verify these requirements:
 
 ### 2. Quote All Identifiers
 
-**Best practice: Always quote all identifiers** (entity names, attribute names, parameter names) with double quotes. This eliminates all reserved keyword conflicts and is always safe — quotes are stripped automatically by the parser.
+**Best practice: Always quote all identifiers** (entity names, attribute names, parameter names) with double quotes. This escapes every **MDL parser** keyword conflict — quotes are stripped automatically by the parser.
 
+> **Caveat — quoting does not exempt *platform*-reserved member names.** Quoting
+> only escapes MDL *parser* keywords. Names the Mendix *platform* reserves for entity
+> members are still rejected after the quotes are stripped: `Type` (CE7247, MDL021),
+> the system audit attributes `CreatedDate` / `ChangedDate` / `Owner` / `ChangedBy`
+> (MDL020 — use the `AutoCreatedDate` / `AutoChangedDate` / `AutoOwner` / `AutoChangedBy`
+> pseudo-types instead), plus the CE7247 word list (`ID`, `GUID`, `CurrentUser`, Java
+> keywords, …). `"Type": String` still fails MDL021 — rename to a non-reserved name
+> (e.g. `ResourceType`, `TypeValue`). "Always safe to quote" covers parser keywords, not
+> these.
+>
 > **Exception — never quote `$`-prefixed variable/parameter references.** The quote
 > rule is for *bare* names (entities, attributes, associations, declared parameter
 > names). Variable and parameter **references** in expressions and widget bindings
