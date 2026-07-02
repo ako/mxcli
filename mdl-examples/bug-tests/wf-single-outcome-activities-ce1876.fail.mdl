@@ -1,0 +1,26 @@
+-- Wave 1 / case 4: a single-outcome user task with nested activities is rejected
+--
+-- NEGATIVE TEST (.fail.mdl) — EXPECTED to fail `mxcli check`.
+-- `make check-mdl` inverts the exit code: an unexpected pass is a regression of
+-- the MDL-WF02 rule.
+--
+-- Symptom: a user task with exactly one outcome carrying a nested activity flow
+-- parsed and PASSED `mxcli check`, but MxBuild rejected it with CE1876
+-- "Single outcome must not contain any activities in its flow".
+--
+-- Fix: `mxcli check` now flags this as MDL-WF02 (error).
+--
+-- Correct form: move the activities to the workflow's main flow after the user
+-- task, or give the task a second outcome.
+
+create persistent entity BugTest.Ctx ( Total: decimal );
+create page BugTest.TaskPage ( title: 'Task', layout: Atlas_Core.PopupLayout ) { };
+create microflow BugTest.ACT ($Ctx: BugTest.Ctx) begin return; end;
+
+create workflow BugTest.SingleOutcome parameter $Ctx: BugTest.Ctx
+begin
+  user task ReviewOrder 'Review the order'
+    page BugTest.TaskPage
+    outcomes 'Done' { call microflow BugTest.ACT; }
+  ;
+end workflow;

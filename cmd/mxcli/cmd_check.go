@@ -117,6 +117,11 @@ Examples:
 			if mfStmt, ok := stmt.(*ast.CreateMicroflowStmt); ok {
 				violations = append(violations, executor.ValidateMicroflow(mfStmt)...)
 			}
+			// Check workflow for constructs MxBuild rejects (missing page,
+			// single-outcome-with-activities, invalid decision outcome names)
+			if wfStmt, ok := stmt.(*ast.CreateWorkflowStmt); ok {
+				violations = append(violations, executor.ValidateWorkflow(wfStmt)...)
+			}
 			// Check view entity OQL
 			if viewStmt, ok := stmt.(*ast.CreateViewEntityStmt); ok {
 				if viewStmt.Query.RawQuery != "" {
@@ -140,6 +145,10 @@ Examples:
 		// inside a layoutgrid. Same rule as the MPR010 lint rule, surfaced at
 		// authoring time on the AST.
 		violations = append(violations, executor.ValidatePageLayoutGrid(prog)...)
+
+		// Flag control-bar buttons that pass $currentObject — a control bar is
+		// not row-scoped, so the argument is unbound (CE1571) at build time.
+		violations = append(violations, executor.ValidatePageButtonContext(prog)...)
 
 		if isStructured {
 			// Always emit structured output (even when clean)

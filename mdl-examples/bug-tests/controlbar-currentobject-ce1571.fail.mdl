@@ -1,0 +1,24 @@
+-- Wave 1 / case 5: a control-bar button passing $currentObject is rejected
+--
+-- NEGATIVE TEST (.fail.mdl) — EXPECTED to fail `mxcli check`.
+-- `make check-mdl` inverts the exit code: an unexpected pass is a regression of
+-- the MDL-BUTTON01 rule.
+--
+-- Symptom: a DataGrid control-bar button whose action passes $currentObject
+-- parsed and PASSED `mxcli check`, but MxBuild rejected it with CE1571 "No
+-- argument has been selected for parameter …". A control bar sits above the
+-- grid and is not row-scoped, so $currentObject is unbound there.
+--
+-- Fix: `mxcli check` now flags $currentObject in a control-bar button action as
+-- MDL-BUTTON01 (error). The same button inside a grid column (row-scoped) is fine.
+--
+-- Correct form: move the button into a grid column, or pass a page parameter.
+
+create page BugTest.Grid ( Title: 'Orders', Layout: Atlas_Core.Atlas_Default ) {
+  datagrid dgOrders ( DataSource: database from BugTest.Order ) {
+    controlbar cb1 {
+      actionbutton btnEdit (Caption: 'Edit', Action: show_page BugTest.Detail (Order: $currentObject))
+    }
+    column OrderNumber (Attribute: OrderNumber) { }
+  }
+};

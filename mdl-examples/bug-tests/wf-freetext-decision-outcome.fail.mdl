@@ -1,0 +1,28 @@
+-- Wave 1 / case 1: a decision outcome that is not a valid enum value identifier
+--
+-- NEGATIVE TEST (.fail.mdl) — EXPECTED to fail `mxcli check`.
+-- `make check-mdl` inverts the exit code: an unexpected pass is a regression of
+-- the MDL-WF03 rule.
+--
+-- Symptom: a decision with a free-text outcome ('Confirmed closed', with a
+-- space) parsed and PASSED `mxcli check`, but MxBuild rejected it because the
+-- outcome is not a valid EnumerationValueIdentifier (a decision branches on the
+-- enumeration returned by its expression).
+--
+-- Fix: `mxcli check` now flags any decision/call-microflow outcome whose name
+-- is not a valid identifier as MDL-WF03 (error). 'Reopened' is a valid
+-- identifier and is NOT flagged; only 'Confirmed closed' is.
+--
+-- Note: the deeper issue — MDL decision syntax cannot bind the enum / deciding
+-- microflow the outcomes belong to — is a separate language-design gap.
+
+create persistent entity BugTest.Ctx ( Total: decimal );
+
+create workflow BugTest.FreeTextOutcome parameter $Ctx: BugTest.Ctx
+begin
+  decision '$Ctx/Total > 1000'
+    outcomes
+      'Reopened' -> { }
+      'Confirmed closed' -> { }
+  ;
+end workflow;

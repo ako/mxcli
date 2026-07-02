@@ -1,0 +1,21 @@
+-- Wave 1 / case 2: a workflow user task without a page must be rejected by check
+--
+-- NEGATIVE TEST (.fail.mdl) — EXPECTED to fail `mxcli check`.
+-- `make check-mdl` inverts the exit code for .fail.mdl files: an unexpected
+-- pass would be reported as a regression of the MDL-WF01 rule.
+--
+-- Symptom: a `user task` with no `page` clause parsed and PASSED `mxcli check`,
+-- but MxBuild rejected the project with CE1834 "The 'Page' property is required".
+--
+-- Fix: `mxcli check` now flags a user task without a page as MDL-WF01 (error).
+--
+-- Correct form: add `page Module.TaskPage` (a page typed to System.WorkflowUserTask).
+
+create persistent entity BugTest.Ctx ( Total: decimal );
+
+create workflow BugTest.NoPage parameter $Ctx: BugTest.Ctx
+begin
+  user task ReviewOrder 'Review the order'
+    outcomes 'Done' { }
+  ;
+end workflow;

@@ -49,11 +49,19 @@ define fragment ReservedFragment as {
 -- 3 + 4. workflow user task and jump-to target named after reserved keywords
 create entity BugTest619b.OrderContext;
 
+-- User-task page (System.WorkflowUserTask param) — required by MxBuild (CE1834).
+create page BugTest619b.TaskPage (
+  title: 'Task Page',
+  layout: Atlas_Core.Atlas_Default,
+  params: { $WorkflowUserTask: System.WorkflowUserTask }
+) { };
+
 create workflow BugTest619b.ReservedWF
   parameter $WorkflowContext: BugTest619b.OrderContext
   display 'Reserved Names Workflow'
 begin
   user task "Value" 'Review'
+    page BugTest619b.TaskPage
     outcomes
       'Approve' { }
       'Reject' { jump to "Value"; }

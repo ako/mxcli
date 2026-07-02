@@ -211,6 +211,9 @@ set $count = 1;
 | CE0104 | Action activity is unreachable | Code after RETURN |
 | CE0105 | Must end with end event | Missing RETURN |
 | CE0117 | Error in expression | Unqualified association path |
+| CE1571 | No argument selected for parameter | `$currentObject` in a control-bar button (not row-scoped) — `check` flags MDL-BUTTON01 |
+| CE1834 | The 'Page' property is required | Workflow user task without a `page` — `check` flags MDL-WF01 |
+| CE1876 | Single outcome must not contain activities | Single-outcome user task with a nested activity flow — `check` flags MDL-WF02 |
 | CW0094 | Variable never used | Unused parameter/variable |
 
 ## Quick Validation Checklist
