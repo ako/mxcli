@@ -252,6 +252,7 @@ func parsePublishedMember(raw map[string]any) *model.PublishedMember {
 		// ALTER ODATA SERVICE doesn't blank them out.
 		m.AssociationTargetEntity = extractString(raw["Entity"])
 		m.ExposedAssociationName = extractString(raw["ExposedAssociationName"])
+		m.IsMany = extractBool(raw["IsMany"], false)
 	case "ODataPublish$PublishedId":
 		m.Kind = "id"
 		m.Name = extractString(raw["Attribute"])

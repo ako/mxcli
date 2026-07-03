@@ -1,0 +1,70 @@
+-- ============================================================================
+-- Published OData service: attributes need EdmType (CE5016), association ends
+-- need IsMany (CE5022)
+-- ============================================================================
+--
+-- Symptom (before fix, modelsdk engine):
+--   `mx check` on a published OData service reported, per exposed attribute,
+--   CE5016 "Attribute X has type String(50), but is published as ." (empty
+--   published type); and per exposed association, CE5022 "Published
+--   association Y has changed multiplicity."
+--
+--   Root cause: mxcli never wrote two fields Studio Pro stores —
+--     ODataPublish$PublishedAttribute.EdmType     (the OData EDM type)
+--     ODataPublish$PublishedAssociationEnd.IsMany  (the navigation multiplicity)
+--   Both confirmed by diffing mxcli's BSON against a Studio-Pro-corrected copy.
+--   (The legacy engine also omitted them but its field order let the checker
+--   recompute; modelsdk's order tripped the errors — legacy was non-canonical.)
+--
+-- After fix:
+--   The executor derives EdmType from each attribute's Mendix type and IsMany
+--   from the association type + exposed side; both engines serialize them.
+--   `mx check` reports 0 CE5016 and 0 CE5022.
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/pub-odata-published-type-ce5016-ce5022.mdl -p app.mpr
+--   mx check <app>  ->  no CE5016 / CE5022 on PubMeta.ShopAPI
+-- ============================================================================
+
+create module PubMeta;
+
+create persistent entity PubMeta.Customer (
+  Email: string(200) unique error 'Email must be unique' required error 'Email is required',
+  Name: string(200)
+);
+
+create persistent entity PubMeta.Order (
+  OrderNumber: string(50) unique error 'OrderNumber must be unique' required error 'OrderNumber is required',
+  Amount: decimal
+);
+
+create association PubMeta.Order_Customer
+from PubMeta.Order to PubMeta.Customer
+type reference owner default;
+
+create odata service PubMeta.ShopAPI (
+  path: 'odata/shop/', version: '1.0.0', ODataVersion: OData4,
+  namespace: 'PubMeta.Shop', ServiceName: 'Shop Service', PublishAssociations: Yes
+)
+authentication basic, session
+{
+  publish entity PubMeta.Customer as 'Customers' (
+    ReadMode: source, InsertMode: source, UpdateMode: source, DeleteMode: not_supported
+  )
+  expose (
+    Email as 'customerId' (KEY, Filterable, Sortable),
+    Name (Filterable, Sortable),
+    -- to-many navigation (Customer has many Orders) -> IsMany true
+    Order_Customer as 'Orders'
+  );
+
+  publish entity PubMeta.Order as 'Orders' (
+    ReadMode: source, InsertMode: not_supported, UpdateMode: not_supported, DeleteMode: not_supported
+  )
+  expose (
+    OrderNumber as 'orderId' (KEY, Filterable, Sortable),
+    Amount (Sortable),
+    -- to-one navigation (Order has one Customer) -> IsMany false
+    Order_Customer as 'Customer'
+  );
+};

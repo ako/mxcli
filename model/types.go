@@ -496,6 +496,11 @@ type PublishedMember struct {
 	// alongside ExposedName (the navigation property name).
 	AssociationTargetEntity string `json:"associationTargetEntity,omitempty"`
 	ExposedAssociationName  string `json:"exposedAssociationName,omitempty"`
+
+	// IsMany is the exposed navigation's multiplicity (to-many vs to-one).
+	// Studio Pro stores it on every PublishedAssociationEnd; without it
+	// `mx check` reports CE5022 ("changed multiplicity"). Association members only.
+	IsMany bool `json:"isMany,omitempty"`
 }
 
 // ============================================================================

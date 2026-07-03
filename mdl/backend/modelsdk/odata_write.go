@@ -321,6 +321,9 @@ func publishedMemberToGen(m *model.PublishedMember, ownerQN string) element.Elem
 		addStr(g, "Summary", "")
 		addStr(g, "Association", qualifyAssociationName(m.Name, ownerQN))
 		addStr(g, "Entity", m.AssociationTargetEntity)
+		// IsMany is the exposed navigation's multiplicity; without it Studio Pro
+		// reports CE5022 ("changed multiplicity"). Verified against Studio Pro BSON.
+		addBool(g, "IsMany", m.IsMany)
 		addStr(g, "ExposedAssociationName", m.ExposedAssociationName)
 		return g
 	case "id":

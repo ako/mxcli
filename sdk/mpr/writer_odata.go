@@ -422,6 +422,9 @@ func serializePublishedMember(m *model.PublishedMember, ownerQN string) bson.D {
 		// ExposedAssociationName (typically the bare assoc name). Both
 		// are required by Studio Pro's BSON shape.
 		doc = append(doc, bson.E{Key: "Entity", Value: m.AssociationTargetEntity})
+		// IsMany is the exposed navigation's multiplicity; without it Studio Pro
+		// reports CE5022 ("changed multiplicity"). Verified against Studio Pro BSON.
+		doc = append(doc, bson.E{Key: "IsMany", Value: m.IsMany})
 		doc = append(doc, bson.E{Key: "ExposedAssociationName", Value: m.ExposedAssociationName})
 	case "id":
 		doc = append(doc, bson.E{Key: "$Type", Value: "ODataPublish$PublishedId"})

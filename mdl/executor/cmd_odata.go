@@ -1552,8 +1552,9 @@ func extractMicroflowRef(ref string) string {
 // entity name, so callers can resolve "what's on the other side of
 // AssocName from Entity X".
 type assocMembership struct {
-	ParentQN string // FROM entity (CLAUDE.md: ParentPointer holds the FROM/FK side)
-	ChildQN  string // TO entity (ChildPointer holds the TO/referenced side)
+	ParentQN string                      // FROM entity (CLAUDE.md: ParentPointer holds the FROM/FK side)
+	ChildQN  string                      // TO entity (ChildPointer holds the TO/referenced side)
+	Type     domainmodel.AssociationType // Reference (to-one) vs ReferenceSet (to-many)
 }
 
 // lookupEntityMembers returns (set of attribute names, map of association
@@ -1631,7 +1632,7 @@ func lookupEntityMembers(ctx *ExecContext, entityQN ast.QualifiedName) (map[stri
 		if parentQN != entityQN.String() && childQN != entityQN.String() {
 			continue
 		}
-		assocs[a.Name] = &assocMembership{ParentQN: parentQN, ChildQN: childQN}
+		assocs[a.Name] = &assocMembership{ParentQN: parentQN, ChildQN: childQN, Type: a.Type}
 	}
 	return attrs, assocs
 }
@@ -1689,11 +1690,17 @@ func astEntityDefToModel(ctx *ExecContext, def *ast.PublishedEntityDef) (*model.
 		} else if assoc := moduleAssocs[m.Name]; assoc != nil {
 			member.Kind = "association"
 			member.ExposedAssociationName = m.Name
-			// Target entity = the OTHER side of the association.
+			// Target entity = the OTHER side of the association. Multiplicity
+			// (IsMany) of the exposed navigation: a ReferenceSet is to-many
+			// from either side; a Reference is to-many only when exposed from
+			// the TO/Child side (Customer→Orders), to-one from the FROM/Parent
+			// side (Order→Customer). Without IsMany, mx check reports CE5022.
 			if assoc.ParentQN == def.Entity.String() {
 				member.AssociationTargetEntity = assoc.ChildQN
+				member.IsMany = assoc.Type == domainmodel.AssociationTypeReferenceSet
 			} else {
 				member.AssociationTargetEntity = assoc.ParentQN
+				member.IsMany = true // reverse of a Reference is to-many; ReferenceSet is too
 			}
 			// AssociationEnd has no Filterable/Sortable/IsPartOfKey
 			// concept — clear them so the writer's bson.M doesn't

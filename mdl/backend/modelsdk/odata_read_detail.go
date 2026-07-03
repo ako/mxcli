@@ -106,6 +106,7 @@ func publishedMemberFromRaw(raw map[string]any) *model.PublishedMember {
 		m.Name = jsExtractString(raw["Association"])
 		m.AssociationTargetEntity = jsExtractString(raw["Entity"])
 		m.ExposedAssociationName = jsExtractString(raw["ExposedAssociationName"])
+		m.IsMany = jsExtractBool(raw["IsMany"])
 	case "ODataPublish$PublishedId":
 		m.Kind = "id"
 		m.Name = jsExtractString(raw["Attribute"])
