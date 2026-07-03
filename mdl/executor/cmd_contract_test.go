@@ -5,7 +5,9 @@ package executor
 import (
 	"testing"
 
+	"github.com/mendixlabs/mxcli/mdl/backend/mock"
 	"github.com/mendixlabs/mxcli/mdl/types"
+	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/domainmodel"
 )
 
@@ -78,5 +80,55 @@ func TestApplyExternalEntityFields_ConservativeCapabilityDefault(t *testing.T) {
 	applyExternalEntityFields(ent2, et, true, "Svc.TripPin", es2, nil, nil)
 	if !ent2.Creatable {
 		t.Error("Creatable = false, want true (explicit InsertRestrictions=true)")
+	}
+}
+
+// TestCreateNavigationAssociations_NoDuplicateOnReimport guards against the
+// re-import duplication where each OData nav property spawned a numerically-
+// suffixed copy (Friends, Friends2, Friends3 …) on every import. A nav property
+// that already has an association must be skipped.
+func TestCreateNavigationAssociations_NoDuplicateOnReimport(t *testing.T) {
+	person := &types.EdmEntityType{
+		Name: "Person",
+		NavigationProperties: []*types.EdmNavigationProperty{
+			{Name: "Friends", Type: "Collection(NS.Person)"},
+			{Name: "BestFriend", Type: "NS.Person"},
+		},
+	}
+	doc := &types.EdmxDocument{
+		Schemas:    []*types.EdmSchema{{Namespace: "NS", EntityTypes: []*types.EdmEntityType{person}}},
+		EntitySets: []*types.EdmEntitySet{{Name: "People", EntityType: "NS.Person"}},
+	}
+	people := &domainmodel.Entity{Name: "People", Persistable: true}
+	people.ID = model.ID("ent-people")
+	dm := &domainmodel.DomainModel{Entities: []*domainmodel.Entity{people}}
+	dm.ID = model.ID("dm-1")
+
+	typeByQualified := map[string]*types.EdmEntityType{"NS.Person": person}
+	esMap := map[string]string{"NS.Person": "People"}
+
+	var created []*domainmodel.Association
+	mb := &mock.MockBackend{
+		CreateAssociationFunc: func(_ model.ID, a *domainmodel.Association) error {
+			created = append(created, a)
+			return nil
+		},
+	}
+	ctx, _ := newMockCtx(t, withBackend(mb))
+
+	// First import creates both nav associations.
+	if n := createNavigationAssociations(ctx, dm, doc, typeByQualified, esMap, "TripPin.Client"); n != 2 {
+		t.Fatalf("first import created %d associations, want 2", n)
+	}
+	// Persist them into the domain model, as a re-read between imports would.
+	dm.Associations = append(dm.Associations, created...)
+	countAfterFirst := len(created)
+
+	// Second import must create nothing — no Friends2 / BestFriend2 duplicates.
+	if n := createNavigationAssociations(ctx, dm, doc, typeByQualified, esMap, "TripPin.Client"); n != 0 {
+		t.Errorf("re-import created %d associations, want 0 (duplicates)", n)
+	}
+	if extra := len(created) - countAfterFirst; extra != 0 {
+		t.Errorf("re-import persisted %d new associations via the backend, want 0", extra)
 	}
 }

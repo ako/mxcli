@@ -954,13 +954,23 @@ func createNavigationAssociations(
 	}
 
 	// Track associations we've already created to avoid duplicates from
-	// inherited nav properties.
+	// inherited nav properties. existingAssocs is keyed by association name (for
+	// uniqueness/renaming); existingNav is keyed by the OData nav-property name
+	// so a re-import skips a nav property that already has an association instead
+	// of creating a numerically-suffixed duplicate (Friends, Friends2, …). The
+	// nav-property key relies on RemoteParentNavigationProperty, which the
+	// legacy read preserves; the modelsdk read does not, so the natural
+	// association name (== nav-property name) is the fallback skip signal.
 	existingAssocs := make(map[assocKey]bool)
+	existingNav := make(map[assocKey]bool)
 	for _, a := range dm.Associations {
 		// Find parent entity name for this association
 		for _, ent := range dm.Entities {
 			if ent.ID == a.ParentID {
 				existingAssocs[assocKey{ent.Name, a.Name}] = true
+				if a.RemoteParentNavigationProperty != "" {
+					existingNav[assocKey{ent.Name, a.RemoteParentNavigationProperty}] = true
+				}
 				break
 			}
 		}
@@ -1001,6 +1011,17 @@ func createNavigationAssociations(
 				// Studio Pro doesn't create them either when the target is
 				// stored as Rest$ODataEntityTypeSource (Persistable=false).
 				if parentEnt.Persistable && !childEnt.Persistable {
+					continue
+				}
+
+				// Re-import dedup: if this nav property already has an
+				// association on the parent, skip it — otherwise a second import
+				// creates a numerically-suffixed duplicate (Friends, Friends2,
+				// Friends3 …). Match by the OData nav-property name when the read
+				// preserves it (legacy), else by the natural association name
+				// (== nav-property name; the modelsdk read drops the nav prop).
+				if existingNav[assocKey{parentEnt.Name, np.Name}] ||
+					existingAssocs[assocKey{parentEnt.Name, np.Name}] {
 					continue
 				}
 
@@ -1059,6 +1080,7 @@ func createNavigationAssociations(
 					continue
 				}
 				existingAssocs[assocKey{parentEnt.Name, assocName}] = true
+				existingNav[assocKey{parentEnt.Name, np.Name}] = true
 				count++
 			}
 		}
