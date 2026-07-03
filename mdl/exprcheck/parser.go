@@ -486,17 +486,23 @@ func inferKind(e RobustExpr, ctx Context) TypeKind {
 	case *ParenExpr:
 		return inferKind(n.Inner, ctx)
 	case *BinExpr:
-		if n.Op == "+" {
+		switch n.Op {
+		case "AND", "OR", "=", "!=", "<", "<=", ">", ">=":
+			return KindBoolean
+		case "div":
+			// Mendix division always yields a Decimal, even Integer div Integer.
+			// Assigning the result to an Integer/Long fails mx check with CE0117.
+			return KindDecimal
+		case "+":
 			l := inferKind(n.L, ctx)
 			r := inferKind(n.R, ctx)
-			if l == KindString && r == KindString {
+			// String '+' concatenates (Mendix auto-converts a numeric operand).
+			if l == KindString || r == KindString {
 				return KindString
 			}
-			return l
-		}
-		if n.Op == "AND" || n.Op == "OR" || n.Op == "=" || n.Op == "!=" ||
-			n.Op == "<" || n.Op == "<=" || n.Op == ">" || n.Op == ">=" {
-			return KindBoolean
+			return arithResult(l, r)
+		case "-", "*", "mod":
+			return arithResult(inferKind(n.L, ctx), inferKind(n.R, ctx))
 		}
 	case *UnaryExpr:
 		if n.Op == "NOT" {
@@ -556,4 +562,25 @@ func otherKind(l, r TypeKind) TypeKind {
 		return r
 	}
 	return l
+}
+
+// arithResult returns the Mendix result kind of a non-division arithmetic
+// operation (+, -, *, mod) from its operand kinds. Decimal is contagious (a
+// Decimal operand makes the whole expression Decimal), then Long, then Integer
+// when both sides are Integer. Any operand of unknown kind yields KindUnknown so
+// callers stay conservative and never flag an assignment they can't prove wrong.
+func arithResult(l, r TypeKind) TypeKind {
+	if l == KindDecimal || r == KindDecimal {
+		return KindDecimal
+	}
+	if l == KindLong || r == KindLong {
+		if l == KindUnknown || r == KindUnknown {
+			return KindUnknown
+		}
+		return KindLong
+	}
+	if l == KindInteger && r == KindInteger {
+		return KindInteger
+	}
+	return KindUnknown
 }

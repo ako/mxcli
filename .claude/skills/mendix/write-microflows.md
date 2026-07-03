@@ -142,6 +142,16 @@ declare $Order Shop.Order;
 > - a **retrieve**: `retrieve $Products from Test.Product where IsActive = true;`
 > - a **create list**: `$Products = create list of Test.Product;`
 
+> **Integer division (`div`) returns a Decimal.** `$a div $b` is always a Decimal,
+> even for two integers, so assigning it to an `integer`/`long` variable fails
+> `mx check` with **CE0117** (`mxcli check` now flags it as **MDL041**). Either
+> declare the target as `decimal`, or round the result:
+> ```mdl
+> declare $Avg decimal = $Total div $Count;        -- ✅ Decimal target
+> declare $Whole integer = round($Total div $Count); -- ✅ rounded to Integer
+> declare $Bad integer = $Total div $Count;        -- ❌ CE0117 / MDL041
+> ```
+
 ### ❌ INCORRECT Syntax
 
 ```mdl

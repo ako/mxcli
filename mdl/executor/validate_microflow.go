@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
+	"github.com/mendixlabs/mxcli/mdl/exprcheck"
 	"github.com/mendixlabs/mxcli/mdl/linter"
 )
 
@@ -16,6 +17,14 @@ func ValidateMicroflow(stmt *ast.CreateMicroflowStmt) []linter.Violation {
 	v := &microflowValidator{
 		mfName:     stmt.Name.String(),
 		returnType: stmt.ReturnType,
+		varKinds:   map[string]exprcheck.TypeKind{},
+	}
+	// Seed the variable→kind scope with the microflow's parameters so numeric
+	// assignment checks can resolve operands like $count.
+	for _, p := range stmt.Parameters {
+		if k, ok := astKindToExprKind(p.Type.Kind); ok {
+			v.varKinds[p.Name] = k
+		}
 	}
 	// Validate parameter entity references — reject bare names without module prefix
 	for _, p := range stmt.Parameters {
@@ -38,6 +47,9 @@ type microflowValidator struct {
 	violations    []linter.Violation
 	loopDepth     int             // Track nesting depth inside loops
 	emptyListVars map[string]bool // List variables declared empty and never populated
+	// varKinds maps in-scope variable names (params + declared) to their kind,
+	// used to detect assigning a Decimal expression to an Integer/Long target.
+	varKinds map[string]exprcheck.TypeKind
 }
 
 func (v *microflowValidator) addViolation(ruleID string, severity linter.Severity, message, suggestion string) {
@@ -134,6 +146,22 @@ func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 					v.emptyListVars[stmt.Variable] = true
 				}
 			}
+			// Register the declared variable's kind for later assignment checks,
+			// and flag a Decimal initial value assigned to an Integer/Long declare.
+			if k, ok := astKindToExprKind(stmt.Type.Kind); ok {
+				v.varKinds[stmt.Variable] = k
+				if stmt.InitialValue != nil {
+					v.checkNumericAssignment("$"+stmt.Variable, k, stmt.InitialValue)
+				}
+			}
+		case *ast.MfSetStmt:
+			// SET on a plain variable target (not $var/Member = …, which is a
+			// member change). Flag a Decimal value assigned to an Integer/Long var.
+			if !strings.Contains(stmt.Target, "/") {
+				if k, ok := v.varKinds[stmt.Target]; ok {
+					v.checkNumericAssignment("$"+stmt.Target, k, stmt.Value)
+				}
+			}
 		case *ast.RetrieveStmt:
 			// RETRIEVE populates a list variable — remove from empty tracking
 			delete(v.emptyListVars, stmt.Variable)
@@ -165,6 +193,72 @@ func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 				v.walkBody(eh.Body)
 			}
 		}
+	}
+}
+
+// checkNumericAssignment flags assigning a Decimal-typed expression to an
+// Integer or Long target. Mendix integer division (`div`) yields a Decimal, so
+// `set $IntVar = $a * 100 div $b;` fails mx check with CE0117 even though the
+// syntax is valid. Only Integer/Long targets with a provably-Decimal value are
+// flagged (unknown inference never fires), keeping false positives out.
+func (v *microflowValidator) checkNumericAssignment(targetLabel string, targetKind exprcheck.TypeKind, value ast.Expression) {
+	if targetKind != exprcheck.KindInteger && targetKind != exprcheck.KindLong {
+		return
+	}
+	src := microflowExprSource(value)
+	if src == "" {
+		return
+	}
+	// Only flag a raw arithmetic Decimal (e.g. `$a div $b`); a rounding function
+	// result assigned to Integer is accepted by Mendix and must not be flagged.
+	if !exprcheck.SourceIsArithmeticDecimal(src, v.varKinds) {
+		return
+	}
+	target := "Integer"
+	if targetKind == exprcheck.KindLong {
+		target = "Long"
+	}
+	v.addViolation("MDL041", linter.SeverityError,
+		fmt.Sprintf("assigning a Decimal expression to %s variable '%s' — Mendix rejects this with CE0117. "+
+			"Integer division ('div') always yields a Decimal.", target, targetLabel),
+		fmt.Sprintf("Declare '%s' as Decimal, or round the value (e.g. round(%s) or floor(%s)).", targetLabel, src, src))
+}
+
+// microflowExprSource returns the Mendix source text of a microflow value
+// expression: the preserved raw source when available, otherwise the structured
+// expression rendered back to a string. Returns "" when nothing is available.
+func microflowExprSource(expr ast.Expression) string {
+	if expr == nil {
+		return ""
+	}
+	if se, ok := expr.(*ast.SourceExpr); ok && se.Source != "" {
+		return se.Source
+	}
+	return expressionToString(expr)
+}
+
+// astKindToExprKind maps an MDL primitive data-type kind to an exprcheck kind.
+// Returns false for non-primitive / unmappable kinds (entities, lists, void).
+func astKindToExprKind(k ast.DataTypeKind) (exprcheck.TypeKind, bool) {
+	switch k {
+	case ast.TypeString, ast.TypeStringTemplate:
+		return exprcheck.KindString, true
+	case ast.TypeInteger, ast.TypeAutoNumber:
+		return exprcheck.KindInteger, true
+	case ast.TypeLong:
+		return exprcheck.KindLong, true
+	case ast.TypeDecimal:
+		return exprcheck.KindDecimal, true
+	case ast.TypeBoolean:
+		return exprcheck.KindBoolean, true
+	case ast.TypeDateTime, ast.TypeDate:
+		return exprcheck.KindDateTime, true
+	case ast.TypeBinary:
+		return exprcheck.KindBinary, true
+	case ast.TypeEnumeration:
+		return exprcheck.KindEnumeration, true
+	default:
+		return exprcheck.KindUnknown, false
 	}
 }
 
