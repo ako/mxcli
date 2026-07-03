@@ -132,3 +132,30 @@ func TestCreateNavigationAssociations_NoDuplicateOnReimport(t *testing.T) {
 		t.Errorf("re-import persisted %d new associations via the backend, want 0", extra)
 	}
 }
+
+// TestMendixAttrTypeToEdm guards the Mendix→EDM type mapping used to populate a
+// published attribute's EdmType. Without it Studio Pro reports CE5016
+// ("published as ."). String/Decimal/Boolean/DateTimeOffset are verified against
+// Studio Pro's corrected BSON.
+func TestMendixAttrTypeToEdm(t *testing.T) {
+	cases := []struct {
+		typ  domainmodel.AttributeType
+		want string
+	}{
+		{&domainmodel.StringAttributeType{}, "Edm.String"},
+		{&domainmodel.HashedStringAttributeType{}, "Edm.String"},
+		{&domainmodel.IntegerAttributeType{}, "Edm.Int32"},
+		{&domainmodel.LongAttributeType{}, "Edm.Int64"},
+		{&domainmodel.AutoNumberAttributeType{}, "Edm.Int64"},
+		{&domainmodel.DecimalAttributeType{}, "Edm.Decimal"},
+		{&domainmodel.BooleanAttributeType{}, "Edm.Boolean"},
+		{&domainmodel.DateTimeAttributeType{}, "Edm.DateTimeOffset"},
+		{&domainmodel.BinaryAttributeType{}, "Edm.Binary"},
+		{nil, ""},
+	}
+	for _, c := range cases {
+		if got := mendixAttrTypeToEdm(c.typ); got != c.want {
+			t.Errorf("mendixAttrTypeToEdm(%T) = %q, want %q", c.typ, got, c.want)
+		}
+	}
+}

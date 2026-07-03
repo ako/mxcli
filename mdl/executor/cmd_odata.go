@@ -1560,8 +1560,40 @@ type assocMembership struct {
 // name -> assocMembership) for the given entity. Both lookups are
 // best-effort — if the backend or domain model can't be resolved we
 // return empty collections rather than failing the whole publish.
-func lookupEntityMembers(ctx *ExecContext, entityQN ast.QualifiedName) (map[string]bool, map[string]*assocMembership) {
-	attrs := make(map[string]bool)
+// mendixAttrTypeToEdm maps a Mendix attribute type to the OData EDM type Studio
+// Pro publishes it as (the PublishedAttribute.EdmType field). Inverse of
+// edmToDomainModelAttrType. String/Decimal/Boolean/DateTimeOffset verified
+// against Studio Pro output; the rest follow the standard OData mapping.
+func mendixAttrTypeToEdm(t domainmodel.AttributeType) string {
+	if t == nil {
+		return ""
+	}
+	switch t.GetTypeName() {
+	case "String", "HashedString":
+		return "Edm.String"
+	case "Integer":
+		return "Edm.Int32"
+	case "Long", "AutoNumber":
+		return "Edm.Int64"
+	case "Decimal":
+		return "Edm.Decimal"
+	case "Boolean":
+		return "Edm.Boolean"
+	case "DateTime", "Date":
+		return "Edm.DateTimeOffset"
+	case "Binary":
+		return "Edm.Binary"
+	case "Enumeration":
+		// Enums exposed as string (EnumerationAsString path). A non-string enum
+		// exposure would use the enum's own type — not yet modelled.
+		return "Edm.String"
+	default:
+		return "Edm.String"
+	}
+}
+
+func lookupEntityMembers(ctx *ExecContext, entityQN ast.QualifiedName) (map[string]string, map[string]*assocMembership) {
+	attrs := make(map[string]string) // attr name -> OData EDM type (for the published EdmType)
 	assocs := make(map[string]*assocMembership)
 	if ctx == nil || ctx.Backend == nil {
 		return attrs, assocs
@@ -1586,7 +1618,7 @@ func lookupEntityMembers(ctx *ExecContext, entityQN ast.QualifiedName) (map[stri
 	}
 	if thisEntity != nil {
 		for _, a := range thisEntity.Attributes {
-			attrs[a.Name] = true
+			attrs[a.Name] = mendixAttrTypeToEdm(a.Type)
 		}
 	}
 	for _, a := range dm.Associations {
@@ -1651,8 +1683,9 @@ func astEntityDefToModel(ctx *ExecContext, def *ast.PublishedEntityDef) (*model.
 			member.ExposedName = member.Name
 		}
 		// Auto-detect kind: attribute first, association as fallback.
-		if entityAttrs[m.Name] {
+		if edmType, ok := entityAttrs[m.Name]; ok {
 			member.Kind = "attribute"
+			member.EdmType = edmType
 		} else if assoc := moduleAssocs[m.Name]; assoc != nil {
 			member.Kind = "association"
 			member.ExposedAssociationName = m.Name

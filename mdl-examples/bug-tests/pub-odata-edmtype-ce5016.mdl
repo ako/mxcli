@@ -1,0 +1,52 @@
+-- ============================================================================
+-- Published OData service: exposed attributes must carry EdmType (CE5016)
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   `mx check` on a published OData service reported, for every exposed
+--   attribute: CE5016 "Attribute X has type String(50), but is published as ."
+--   (empty published type). Occurred on the modelsdk (default) engine.
+--
+--   Root cause: mxcli never wrote the ODataPublish$PublishedAttribute.EdmType
+--   field. Studio Pro stores it on every published attribute (the OData EDM
+--   type: Edm.String, Edm.Decimal, …). The legacy engine also omitted it but
+--   happened to slide past the checker; modelsdk's field order tripped it.
+--   Verified by diffing mxcli's BSON against a Studio-Pro-corrected copy.
+--
+-- After fix:
+--   The executor derives each exposed attribute's EdmType from its Mendix type
+--   and both engines serialize it. `mx check` reports 0 CE5016.
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/pub-odata-edmtype-ce5016.mdl -p app.mpr
+--   mx check <app>  →  no CE5016 on PubEdm.ProductAPI
+-- ============================================================================
+
+create module PubEdm;
+
+create persistent entity PubEdm.Product (
+  Sku: string(50) unique error 'Sku must be unique' required error 'Sku is required',
+  Title: string(200),
+  Price: decimal,
+  InStock: boolean default true
+);
+
+create odata service PubEdm.ProductAPI (
+  path: 'odata/products/',
+  version: '1.0.0',
+  ODataVersion: OData4,
+  namespace: 'PubEdm.Products',
+  ServiceName: 'Product Service'
+)
+authentication basic, session
+{
+  publish entity PubEdm.Product as 'Products' (
+    ReadMode: source, InsertMode: source, UpdateMode: source, DeleteMode: not_supported
+  )
+  expose (
+    Sku as 'productId' (KEY, Filterable, Sortable),
+    Title (Filterable, Sortable),
+    Price (Sortable),
+    InStock
+  );
+};

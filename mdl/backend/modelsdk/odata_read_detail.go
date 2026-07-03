@@ -100,6 +100,7 @@ func publishedMemberFromRaw(raw map[string]any) *model.PublishedMember {
 	case "ODataPublish$PublishedAttribute":
 		m.Kind = "attribute"
 		m.Name = jsExtractString(raw["Attribute"])
+		m.EdmType = jsExtractString(raw["EdmType"])
 	case "ODataPublish$PublishedAssociationEnd":
 		m.Kind = "association"
 		m.Name = jsExtractString(raw["Association"])

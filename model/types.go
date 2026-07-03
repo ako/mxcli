@@ -485,6 +485,11 @@ type PublishedMember struct {
 	Sortable    bool   `json:"sortable,omitempty"`
 	IsPartOfKey bool   `json:"isPartOfKey,omitempty"`
 
+	// EdmType is the OData EDM type the attribute is published as (e.g.
+	// "Edm.String"). Studio Pro stores this on every ODataPublish$PublishedAttribute;
+	// without it `mx check` reports CE5016 ("published as ."). Attribute members only.
+	EdmType string `json:"edmType,omitempty"`
+
 	// Association-specific fields (Kind == "association"). Studio Pro's
 	// ODataPublish$PublishedAssociationEnd records both the association
 	// target entity (qualified name) and the bare association name

@@ -242,6 +242,7 @@ func parsePublishedMember(raw map[string]any) *model.PublishedMember {
 	case "ODataPublish$PublishedAttribute":
 		m.Kind = "attribute"
 		m.Name = extractString(raw["Attribute"])
+		m.EdmType = extractString(raw["EdmType"])
 	case "ODataPublish$PublishedAssociationEnd":
 		m.Kind = "association"
 		m.Name = extractString(raw["Association"])

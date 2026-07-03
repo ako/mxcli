@@ -405,6 +405,9 @@ func serializePublishedMember(m *model.PublishedMember, ownerQN string) bson.D {
 	case "attribute":
 		doc = append(doc, bson.E{Key: "$Type", Value: "ODataPublish$PublishedAttribute"})
 		doc = append(doc, bson.E{Key: "Attribute", Value: qualifyMemberName(m.Name, ownerQN)})
+		// EdmType is the published OData type; without it Studio Pro reports
+		// CE5016 ("published as ."). Verified against Studio Pro's corrected BSON.
+		doc = append(doc, bson.E{Key: "EdmType", Value: m.EdmType})
 		doc = append(doc, bson.E{Key: "Filterable", Value: m.Filterable})
 		doc = append(doc, bson.E{Key: "Sortable", Value: m.Sortable})
 		doc = append(doc, bson.E{Key: "IsPartOfKey", Value: m.IsPartOfKey})

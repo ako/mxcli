@@ -341,6 +341,9 @@ func publishedMemberToGen(m *model.PublishedMember, ownerQN string) element.Elem
 		addStr(g, "Description", "")
 		addStr(g, "Summary", "")
 		addStr(g, "Attribute", qualifyMemberName(m.Name, ownerQN))
+		// EdmType is the published OData type; without it Studio Pro reports
+		// CE5016 ("published as ."). Verified against Studio Pro's corrected BSON.
+		addStr(g, "EdmType", m.EdmType)
 		addBool(g, "Filterable", m.Filterable)
 		addBool(g, "Sortable", m.Sortable)
 		addBool(g, "IsPartOfKey", m.IsPartOfKey)
