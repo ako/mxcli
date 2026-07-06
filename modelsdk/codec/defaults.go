@@ -28,6 +28,11 @@ type TypeDefaults struct {
 	// NullFields are keys Studio Pro always serializes as BSON null (e.g. an
 	// unset reference like an association's Source); emitted when not otherwise set.
 	NullFields []string
+	// EmptyStringFields are keys Studio Pro always serializes as the empty string ""
+	// (not null) when unset — e.g. a ConditionalVisibility/EditabilitySettings'
+	// Attribute (a BY_NAME AttributeIdentifier). Mendix 11.12's reader rejects a
+	// null there. Emitted as "" when not otherwise set.
+	EmptyStringFields []string
 	// ZeroGUIDFields are reference keys Studio Pro serializes as an all-zero GUID
 	// binary when the reference is unset (e.g. an IndexedAttribute's
 	// AssociationPointer on an attribute-based index segment). Emitted when not

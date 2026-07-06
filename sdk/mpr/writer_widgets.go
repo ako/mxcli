@@ -136,7 +136,9 @@ func serializeConditionalVisibility(cvs *pages.ConditionalVisibilitySettings) bs
 	return bson.D{
 		{Key: "$ID", Value: idToBsonBinary(string(cvs.ID))},
 		{Key: "$Type", Value: "Forms$ConditionalVisibilitySettings"},
-		{Key: "Attribute", Value: nil},
+		// Attribute is a BY_NAME AttributeIdentifier; Studio Pro writes "" (not null)
+		// when there is no attribute-based condition. 11.12's reader rejects the null.
+		{Key: "Attribute", Value: ""},
 		{Key: "Conditions", Value: bson.A{int32(3)}},
 		{Key: "Expression", Value: cvs.Expression},
 		{Key: "IgnoreSecurity", Value: false},
@@ -149,7 +151,7 @@ func serializeConditionalEditability(ces *pages.ConditionalEditabilitySettings) 
 	return bson.D{
 		{Key: "$ID", Value: idToBsonBinary(string(ces.ID))},
 		{Key: "$Type", Value: "Forms$ConditionalEditabilitySettings"},
-		{Key: "Attribute", Value: nil},
+		{Key: "Attribute", Value: ""}, // "" not null — see serializeConditionalVisibility
 		{Key: "Conditions", Value: bson.A{int32(3)}},
 		{Key: "Expression", Value: ces.Expression},
 		{Key: "SourceVariable", Value: nil},

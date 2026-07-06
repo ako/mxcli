@@ -56,16 +56,21 @@ func init() {
 	codec.RegisterListMarker("Forms$Title", 2)
 	// Conditional visibility/editability settings (issue #627). When a widget
 	// carries one, applyWidgetBase emits the node; these defaults fill the
-	// sub-fields Studio Pro writes: null Attribute/SourceVariable and empty
-	// (marker-3) Conditions/ModuleRoles lists. Expression/IgnoreSecurity are set
-	// from the model. ExpressionModel is intentionally omitted (legacy omits it).
+	// sub-fields Studio Pro writes: empty-string Attribute, null SourceVariable, and
+	// empty (marker-3) Conditions/ModuleRoles lists. Expression/IgnoreSecurity are
+	// set from the model. ExpressionModel is intentionally omitted (legacy omits it).
+	// Attribute is "" (not null): it is a BY_NAME AttributeIdentifier and Mendix
+	// 11.12's reader rejects a null there (StorageLoadException, "not a valid
+	// AttributeIdentifier").
 	codec.RegisterTypeDefaults("Forms$ConditionalVisibilitySettings", codec.TypeDefaults{
-		NullFields:     []string{"Attribute", "SourceVariable"},
-		MandatoryLists: []string{"Conditions", "ModuleRoles"},
+		NullFields:        []string{"SourceVariable"},
+		EmptyStringFields: []string{"Attribute"},
+		MandatoryLists:    []string{"Conditions", "ModuleRoles"},
 	})
 	codec.RegisterTypeDefaults("Forms$ConditionalEditabilitySettings", codec.TypeDefaults{
-		NullFields:     []string{"Attribute", "SourceVariable"},
-		MandatoryLists: []string{"Conditions"},
+		NullFields:        []string{"SourceVariable"},
+		EmptyStringFields: []string{"Attribute"},
+		MandatoryLists:    []string{"Conditions"},
 	})
 	// A caption parameter's AttributeRef/SourceVariable are null for the literal-
 	// expression form; populated Parameters lists use marker 2.

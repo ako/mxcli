@@ -1,0 +1,32 @@
+-- Bug: a widget with a conditional visibility/editability setting failed to LOAD
+-- on Mendix 11.12 with a StorageLoadException — "Conditional editability settings
+-- ... has an invalid value '' for property Attribute. The text '   ' is not a valid
+-- AttributeIdentifier." (the 11.12 nightly failed 03-page-examples on both engines).
+--
+-- Root cause: mxcli serialized the ConditionalVisibilitySettings /
+-- ConditionalEditabilitySettings Attribute property as BSON null when there is no
+-- attribute-based condition. Studio Pro writes the empty string "" there (Attribute
+-- is a BY_NAME AttributeIdentifier). Mendix <= 11.11 tolerated the null; 11.12's
+-- stricter streaming reader rejects it (the null mis-reads as the object's own $Type
+-- string / an int32 list marker). Fix: emit "" — legacy writer, and a codec
+-- EmptyStringFields default for the modelsdk engine.
+--
+-- Verify in Studio Pro (11.12): the page must load and check without a
+-- StorageLoadException on the conditional properties.
+
+create entity MyFirstModule.Cust ( Name: string(50), Phone: string(20) );
+
+create microflow MyFirstModule.DS_GetCust ()
+returns MyFirstModule.Cust as $First
+begin
+  retrieve $First from MyFirstModule.Cust limit 1;
+  return $First;
+end;
+
+create page MyFirstModule.P_Conditional ( title: 'Conditional', layout: Atlas_Core.Atlas_Default )
+{
+  dataview dv (datasource: microflow MyFirstModule.DS_GetCust) {
+    textbox txtName  (label: 'Name',  attribute: Name,  visible: [$currentObject/Name != empty])
+    textbox txtPhone (label: 'Phone', attribute: Phone, editable: [true])
+  }
+};
