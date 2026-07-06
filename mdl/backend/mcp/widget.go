@@ -21,10 +21,16 @@ import (
 // widgets.def.json.
 const comboboxWidgetID = "com.mendix.widget.web.combobox.Combobox"
 
-// widgetsDefJSON is the MCP backend's pluggable-widget capability registry. It is
-// embedded and consumed ONLY by this package — deliberately not registered in the
-// shared widget registry — so it cannot change the MPR datagrid path while that
-// backend is being replaced. See the file's _comment for the rationale.
+// widgetsDefJSON is an auto-datasource HINT table for the built-in pluggable
+// widgets, no longer a capability whitelist (Phase 1 of
+// PROPOSAL_mcp_pluggable_widget_authoring.md). Acceptance is now registry-driven
+// in mapCustomWidget; this table only supplies which property of a built-in widget
+// is its DataSource so PropertyTypeIDs can report it and the engine's auto-
+// datasource pass fires (DataGrid 2 reaches its datasource that way). A widget
+// absent here is still authorable — it just can't use auto-datasource and must map
+// its datasource explicitly via the .def.json (which `mxcli widget extract`
+// produces). Embedded and consumed ONLY by this package so it cannot perturb the
+// MPR datagrid path while that backend is being replaced.
 //
 //go:embed widgets.def.json
 var widgetsDefJSON []byte
@@ -57,9 +63,14 @@ func (b *Backend) mapCustomWidget(wd *pages.CustomWidget) (map[string]any, error
 	if cw == nil {
 		return nil, fmt.Errorf("custom widget %q has no recorded properties (the MCP backend builds pluggable widgets via the widget engine)", wd.Name)
 	}
-	if _, ok := mcpWidgetDefs[cw.widgetID]; !ok {
-		return nil, fmt.Errorf("pluggable widget %q (%s) is not yet supported by the MCP backend (supported: %v)", wd.Name, cw.widgetID, supportedWidgetIDs())
-	}
+	// Acceptance is registry-driven, not a private whitelist: the pluggable widget
+	// engine only calls LoadWidgetTemplate for a widget it resolved a definition
+	// for (project .mxcli/widgets → global → embedded), so any widget reaching here
+	// is registered. We still refuse a widget that relied on a property operation
+	// the MCP builder can't faithfully emit (recorded in `unsupported`) — loud
+	// rejection over silent drop. Over pg_patch_page Studio Pro owns serialization
+	// and expands every default, so no per-widget template is needed (Phase 1 of
+	// PROPOSAL_mcp_pluggable_widget_authoring.md).
 	if len(cw.unsupported) > 0 {
 		return nil, fmt.Errorf("%s %q uses properties not yet supported by the MCP backend: %v", cw.widgetID, wd.Name, cw.unsupported)
 	}
@@ -113,16 +124,6 @@ type mcpCustomWidget struct {
 	object      map[string]any
 	childSlots  map[string][]pages.Widget // Widgets-typed slots (e.g. Gallery `content`), mapped at emit time
 	unsupported []string                  // property ops recorded for not-yet-supported widget shapes
-}
-
-// supportedWidgetIDs lists the pluggable widget ids the MCP backend can emit,
-// for use in error messages. Order is not significant.
-func supportedWidgetIDs() []string {
-	ids := make([]string, 0, len(mcpWidgetDefs))
-	for id := range mcpWidgetDefs {
-		ids = append(ids, id)
-	}
-	return ids
 }
 
 // LoadWidgetTemplate returns an MCP-specific pluggable-widget builder. Unlike the

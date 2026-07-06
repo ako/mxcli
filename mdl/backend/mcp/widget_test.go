@@ -77,13 +77,29 @@ func TestMapCustomWidget_AssociationCombobox(t *testing.T) {
 	}
 }
 
-func TestMapCustomWidget_UnsupportedWidgetRejected(t *testing.T) {
+// TestMapCustomWidget_RegistryWidgetAccepted pins Phase 1: a widget outside the
+// built-in widgets.def.json hint table (here BarcodeScanner, which the engine
+// resolves from the shared embedded registry) is no longer rejected on a whitelist
+// — it is accepted and emitted, using only operations the MCP builder supports.
+// Studio Pro expands the rest over pg_patch_page.
+func TestMapCustomWidget_RegistryWidgetAccepted(t *testing.T) {
+	const barcodeWidgetID = "com.mendix.widget.web.barcodescanner.BarcodeScanner"
 	b := &Backend{}
-	wb, _ := b.LoadWidgetTemplate("com.mendix.widget.web.barcodescanner.BarcodeScanner", "")
+	wb, _ := b.LoadWidgetTemplate(barcodeWidgetID, "")
 	w := wb.(*mcpWidgetBuilder)
+	w.SetAttribute("valueAttribute", "PgTest.Order.Barcode") // a supported op
 	cw := w.Finalize(model.ID("bc1"), "bc", "", "Always")
-	if _, err := b.mapPageWidget(cw); err == nil {
-		t.Error("a pluggable widget not in widgets.def.json should be rejected")
+	m, err := b.mapPageWidget(cw)
+	if err != nil {
+		t.Fatalf("registry-resolved widget should be accepted, got: %v", err)
+	}
+	if m["widgetId"] != barcodeWidgetID {
+		t.Fatalf("widgetId: %+v", m)
+	}
+	ob, _ := m["object"].(map[string]any)
+	ar, _ := ob["valueAttribute"].(map[string]any)
+	if ar["attribute"] != "PgTest.Order.Barcode" {
+		t.Fatalf("valueAttribute not emitted: %+v", ob)
 	}
 }
 
