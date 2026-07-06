@@ -108,10 +108,78 @@ func TestMapCustomWidget_UnsupportedPropertyRejected(t *testing.T) {
 	wb, _ := b.LoadWidgetTemplate(comboboxWidgetID, "")
 	w := wb.(*mcpWidgetBuilder)
 	w.SetAttribute("attributeEnumeration", "M.E.Status")
-	w.SetAction("onChange", nil) // records an unsupported op
+	// A save action has no verified pg shape inside a custom-widget object, so
+	// it must record an unsupported op and reject the widget loudly.
+	w.SetAction("onChange", &pages.SaveChangesClientAction{})
 	cw := w.Finalize(model.ID("cw2"), "cmb", "", "Always")
 	if _, err := b.mapPageWidget(cw); err == nil {
 		t.Error("combobox using an unsupported property op should be rejected")
+	}
+}
+
+func TestMapCustomWidget_ActionWithParameterMappingsRejected(t *testing.T) {
+	b := &Backend{}
+	wb, _ := b.LoadWidgetTemplate(comboboxWidgetID, "")
+	w := wb.(*mcpWidgetBuilder)
+	w.SetAction("onChange", &pages.MicroflowClientAction{
+		MicroflowName:     "M.MF",
+		ParameterMappings: []*pages.MicroflowParameterMapping{{ParameterName: "P"}},
+	})
+	cw := w.Finalize(model.ID("cw4"), "cmb", "", "Always")
+	if _, err := b.mapPageWidget(cw); err == nil {
+		t.Error("action with parameter mappings should be rejected, not emitted with mappings dropped")
+	}
+}
+
+func TestMapCustomWidget_Phase2Operations(t *testing.T) {
+	// Pins the pg shapes verified live against Studio Pro 11.12 (Phase 2 of
+	// PROPOSAL_mcp_pluggable_widget_authoring.md): texttemplate → ct:-prefixed
+	// plain string, expression → plain string, microflow action → nested
+	// microflowSettings (a flat `microflow` key is silently dropped by pg).
+	const imageWidgetID = "com.mendix.widget.web.image.Image"
+	b := &Backend{}
+	wb, _ := b.LoadWidgetTemplate(imageWidgetID, "")
+	w := wb.(*mcpWidgetBuilder)
+	w.SetPrimitive("datasource", "imageUrl")
+	w.SetTextTemplate("imageUrl", "https://example.com/x.png")
+	w.SetTextTemplateWithParams("alternativeText", "Image of {Name}", "M.Thing")
+	w.SetExpression("visibleExpression", "$currentObject/Name != empty")
+	w.SetAction("onClick", &pages.MicroflowClientAction{MicroflowName: "M.MF"})
+	cw := w.Finalize(model.ID("cw3"), "img", "", "Always")
+	m, err := b.mapPageWidget(cw)
+	if err != nil {
+		t.Fatalf("phase 2 operations should be accepted, got: %v", err)
+	}
+	ob, _ := m["object"].(map[string]any)
+	if ob["ct:imageUrl"] != "https://example.com/x.png" {
+		t.Errorf("plain texttemplate should be a ct:-prefixed string: %+v", ob["ct:imageUrl"])
+	}
+	tmpl, _ := ob["ct:alternativeText"].(map[string]any)
+	if tmpl["t:template"] != "Image of {1}" {
+		t.Errorf("parameterised template text not rewritten: %+v", tmpl)
+	}
+	params, _ := tmpl["parameters"].([]any)
+	if len(params) != 1 {
+		t.Fatalf("expected 1 template parameter: %+v", tmpl)
+	}
+	p0, _ := params[0].(map[string]any)
+	ar, _ := p0["attributeRef"].(map[string]any)
+	if ar["attribute"] != "M.Thing.Name" {
+		t.Errorf("template parameter attribute not resolved against entity context: %+v", p0)
+	}
+	if ob["visibleExpression"] != "$currentObject/Name != empty" {
+		t.Errorf("expression should be a plain string: %+v", ob["visibleExpression"])
+	}
+	act, _ := ob["onClick"].(map[string]any)
+	if act["$Type"] != "Pages$MicroflowClientAction" {
+		t.Fatalf("onClick: %+v", act)
+	}
+	if _, flat := act["microflow"]; flat {
+		t.Error("flat microflow key is silently dropped by pg; must nest in microflowSettings")
+	}
+	ms, _ := act["microflowSettings"].(map[string]any)
+	if ms["microflow"] != "M.MF" {
+		t.Errorf("microflow reference must nest in microflowSettings: %+v", act)
 	}
 }
 

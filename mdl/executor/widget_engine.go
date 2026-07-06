@@ -4,6 +4,7 @@ package executor
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -430,6 +431,11 @@ func (e *PluggableWidgetEngine) Build(def *WidgetDefinition, w *ast.WidgetV3) (*
 	return cw, nil
 }
 
+// templateAttrPlaceholderRe matches `{AttrName}` placeholders in a text
+// template. Numeric parameter references (`{1}`) don't match and pass through
+// verbatim.
+var templateAttrPlaceholderRe = regexp.MustCompile(`\{[A-Za-z][A-Za-z0-9_]*\}`)
+
 // applyOperation dispatches a named operation to the corresponding builder method.
 func (e *PluggableWidgetEngine) applyOperation(builder backend.WidgetObjectBuilder, opName string, propKey string, ctx *BuildContext) error {
 	switch opName {
@@ -448,7 +454,16 @@ func (e *PluggableWidgetEngine) applyOperation(builder backend.WidgetObjectBuild
 	case "widgets":
 		// ctx doesn't carry child widgets for this path — handled by applyChildSlots
 	case "texttemplate":
-		builder.SetTextTemplate(propKey, ctx.PrimitiveVal)
+		// A `{AttrName}` placeholder needs ClientTemplate parameters resolved
+		// against the entity context — plain SetTextTemplate would emit the
+		// braces literally, which Studio Pro's translatable-text parser rejects
+		// ("Brace should be followed by a number of digits"). Placeholder-less
+		// text keeps the SetTextTemplate path so backend output is unchanged.
+		if templateAttrPlaceholderRe.MatchString(ctx.PrimitiveVal) {
+			builder.SetTextTemplateWithParams(propKey, ctx.PrimitiveVal, e.pageBuilder.entityContext)
+		} else {
+			builder.SetTextTemplate(propKey, ctx.PrimitiveVal)
+		}
 	case "action":
 		builder.SetAction(propKey, ctx.Action)
 	case "attributeObjects":

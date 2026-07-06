@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -250,9 +251,16 @@ func (w *mcpWidgetBuilder) SetSelection(propertyKey, value string) {
 	}
 }
 
-// Operations not needed by the supported widgets — recorded so a widget that
-// relies on them is rejected rather than emitted with missing properties.
-func (w *mcpWidgetBuilder) SetExpression(propertyKey, _ string) { w.note("expression:" + propertyKey) }
+// SetExpression stores an expression-typed property. In a pg custom-widget
+// `object` an expression is a plain string (verified live on Studio Pro 11.12:
+// ComboBox customEditabilityExpression round-trip, ped_check_errors clean —
+// Phase 2 of PROPOSAL_mcp_pluggable_widget_authoring.md).
+func (w *mcpWidgetBuilder) SetExpression(propertyKey, value string) {
+	if value == "" {
+		return
+	}
+	w.object[propertyKey] = value
+}
 
 // SetChildWidgets stores a Widgets-typed slot (e.g. a Gallery's `content`
 // template, emptyPlaceholder, filtersPlaceholder). The child widgets are mapped
@@ -266,14 +274,132 @@ func (w *mcpWidgetBuilder) SetChildWidgets(propertyKey string, children []pages.
 	}
 	w.childSlots[propertyKey] = children
 }
-func (w *mcpWidgetBuilder) SetTextTemplate(propertyKey, _ string) {
-	w.note("textTemplate:" + propertyKey)
+
+// SetTextTemplate stores a text-template property. pg keys these with a `ct:`
+// prefix and accepts a plain string, which Studio Pro expands into a full
+// Pages$ClientTemplate (verified live on 11.12: Image ct:imageUrl /
+// ct:alternativeText, ped_check_errors clean).
+func (w *mcpWidgetBuilder) SetTextTemplate(propertyKey, text string) {
+	if text == "" {
+		return
+	}
+	w.object["ct:"+propertyKey] = text
 }
-func (w *mcpWidgetBuilder) SetTextTemplateWithParams(propertyKey, _ string, _ string) {
-	w.note("textTemplate:" + propertyKey)
+
+// templateAttrPlaceholderRe matches `{AttrName}` placeholders in a text
+// template. Numeric placeholders (`{1}`) don't match and pass through verbatim.
+var templateAttrPlaceholderRe = regexp.MustCompile(`\{([A-Za-z][A-Za-z0-9_]*)\}`)
+
+// SetTextTemplateWithParams stores a text-template property whose text may
+// embed `{AttrName}` placeholders. Placeholders become `{1}`-style parameter
+// references backed by Pages$ClientTemplateParameter attributeRefs, resolved
+// against the page's entity context — the same semantics as the MPR builder
+// (widgetobj.createClientTemplateBSONWithParams). The parameterised
+// Pages$ClientTemplate shape was verified live on 11.12 (attributeRef
+// persisted, ped_check_errors clean).
+func (w *mcpWidgetBuilder) SetTextTemplateWithParams(propertyKey, text, entityContext string) {
+	if text == "" {
+		return
+	}
+	var attrNames []string
+	paramText := templateAttrPlaceholderRe.ReplaceAllStringFunc(text, func(s string) string {
+		name := s[1 : len(s)-1]
+		for i, an := range attrNames {
+			if an == name {
+				return fmt.Sprintf("{%d}", i+1)
+			}
+		}
+		attrNames = append(attrNames, name)
+		return fmt.Sprintf("{%d}", len(attrNames))
+	})
+	if len(attrNames) == 0 {
+		w.object["ct:"+propertyKey] = text
+		return
+	}
+	params := make([]any, 0, len(attrNames))
+	for _, attrName := range attrNames {
+		attrPath := attrName
+		if entityContext != "" && !strings.Contains(attrName, ".") {
+			attrPath = entityContext + "." + attrName
+		}
+		params = append(params, map[string]any{
+			"$Type":        "Pages$ClientTemplateParameter",
+			"attributeRef": map[string]any{"$Type": "DomainModels$AttributeRef", "attribute": attrPath},
+			"formattingInfo": map[string]any{
+				"$Type":            "Pages$FormattingInfo",
+				"decimalPrecision": 2,
+				"groupDigits":      false,
+				"enumFormat":       "Text",
+				"dateFormat":       "Date",
+				"customDateFormat": "",
+			},
+		})
+	}
+	w.object["ct:"+propertyKey] = map[string]any{
+		"$Type":      "Pages$ClientTemplate",
+		"t:template": paramText,
+		"parameters": params,
+		"t:fallback": "",
+	}
 }
-func (w *mcpWidgetBuilder) SetAction(propertyKey string, _ pages.ClientAction) {
-	w.note("action:" + propertyKey)
+
+// SetAction stores an action-typed property using the documented
+// Pages$*ClientAction shapes. One deviation from the native LightPage widget
+// constructors: inside a custom widget's `object`, MicroflowClientAction must
+// nest the microflow reference in microflowSettings — pg silently drops a flat
+// `microflow` key there (verified live on 11.12: flat key → "Select a
+// microflow" consistency error; nested → clean). Actions with parameter
+// mappings need PageVariable-shaped values and fully-qualified parameter names
+// whose pg forms are not yet pinned live, so they are rejected loudly rather
+// than emitted with the mappings dropped.
+func (w *mcpWidgetBuilder) SetAction(propertyKey string, action pages.ClientAction) {
+	mapped, err := customWidgetClientAction(action)
+	if err != nil {
+		w.note(fmt.Sprintf("action:%s (%v)", propertyKey, err))
+		return
+	}
+	w.object[propertyKey] = mapped
+}
+
+// customWidgetClientAction maps a semantic client action onto the pg shape a
+// custom widget's `object` accepts. Kept separate from mapClientAction (the
+// native-widget mapper) because the accepted shapes differ — see SetAction.
+func customWidgetClientAction(a pages.ClientAction) (map[string]any, error) {
+	switch act := a.(type) {
+	case nil, *pages.NoClientAction:
+		return map[string]any{"$Type": "Pages$NoClientAction"}, nil
+	case *pages.MicroflowClientAction:
+		if len(act.ParameterMappings) > 0 {
+			return nil, fmt.Errorf("microflow action parameter mappings are not yet supported over MCP")
+		}
+		return map[string]any{
+			"$Type": "Pages$MicroflowClientAction",
+			"microflowSettings": map[string]any{
+				"$Type":             "Pages$MicroflowSettings",
+				"microflow":         act.MicroflowName,
+				"parameterMappings": []any{},
+				"progressBar":       "None",
+				"asynchronous":      false,
+				"formValidations":   "All",
+			},
+			"disabledDuringExecution": true,
+		}, nil
+	case *pages.PageClientAction:
+		if len(act.ParameterMappings) > 0 {
+			return nil, fmt.Errorf("page action parameter mappings are not yet supported over MCP")
+		}
+		return map[string]any{
+			"$Type": "Pages$PageClientAction",
+			"pageSettings": map[string]any{
+				"$Type":             "Pages$PageSettings",
+				"page":              act.PageName,
+				"parameterMappings": []any{},
+			},
+			"disabledDuringExecution": true,
+		}, nil
+	default:
+		return nil, fmt.Errorf("client action %T is not yet supported over MCP", a)
+	}
 }
 
 // SetAttributeObjects is a deliberate no-op. The only widgets that use it are the
