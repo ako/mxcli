@@ -1,6 +1,6 @@
 # Proposal: Pluggable Widget Authoring in MDL over the MCP Backend
 
-**Status:** Draft — Phase 1 implemented and live-validated against Studio Pro 11.12 (2026-07-06, see "Phase 1 validation results")
+**Status:** Draft — Phases 1 and 2 implemented and live-validated against Studio Pro 11.12 (2026-07-06, see the validation-results sections)
 **Date:** 2026-06-30
 **Related:** [`PROPOSAL_mcp_backend.md`](PROPOSAL_mcp_backend.md), [`PROPOSAL_v0_12_0_widget_consolidation.md`](PROPOSAL_v0_12_0_widget_consolidation.md), [`PROPOSAL_multi_version_pluggable_widgets.md`](PROPOSAL_multi_version_pluggable_widgets.md)
 
@@ -219,12 +219,63 @@ Observations from the run (follow-ups, not blockers):
 - Docs: `MDL_QUICK_REFERENCE.md` shows `alter entity … add (attr: type)`, which
   does not parse; the working form is `add attribute attr: type`.
 
+## Phase 2 validation results (2026-07-06, Studio Pro 11.12.0, test8-app)
+
+The pg shapes for all three previously-stubbed operations were captured live
+(server-published sources: the `page-gen-common` skill + its
+`references/common-objects.md` / `references/actions.md`, plus the per-widget
+schemas Studio Pro exposes at `/pagegen/customWidgetsVFS/*.schema.json`) and
+then pinned empirically with direct `pg_patch_page` probes before enabling:
+
+| Operation | pg shape inside a custom widget's `object` | Probe |
+|---|---|---|
+| texttemplate | `"ct:<key>": "plain string"` — Studio Pro expands to a full `Pages$ClientTemplate` | accepted, check clean |
+| texttemplate (params) | `ct:<key>` = `Pages$ClientTemplate` with `t:template: "… {1} …"` + `Pages$ClientTemplateParameter` `attributeRef`s | attributeRef persisted, check clean |
+| expression | `"<key>": "expr string"` | accepted, check clean |
+| action | documented `Pages$*ClientAction` shapes; **deviation**: `MicroflowClientAction` must nest the reference in `microflowSettings` — a flat `microflow` key (as the native LightPage constructor accepts) is *silently dropped*, yielding "Select a microflow" | flat → dropped; nested → clean |
+
+Implementation (`mdl/backend/mcp/widget.go`): `SetExpression`,
+`SetTextTemplate`, `SetTextTemplateWithParams` (with `{AttrName}` → `{1}` +
+attributeRef rewriting resolved against the entity context), and `SetAction`
+via a new `customWidgetClientAction` mapper (NoClientAction /
+MicroflowClientAction / PageClientAction). Actions with parameter mappings and
+other action kinds are still rejected loudly — their pg value shapes
+(PageVariable-typed `variable`, fully-qualified `parameter` names) are not yet
+pinned live.
+
+One shared-engine fix rode along: `applyOperation`'s `texttemplate` case now
+routes text containing `{AttrName}` placeholders through
+`SetTextTemplateWithParams` (placeholder-less text keeps the byte-identical
+`SetTextTemplate` path). Previously the braces were emitted literally, which
+Studio Pro's translatable-text parser rejects ("Brace should be followed by a
+number of digits") — on the MCP *and* MPR paths.
+
+End-to-end: an Image widget with `ImageType: 'imageUrl'`, `imageUrl:`,
+`alternativeText: '… {Name}'`, and `onClick: microflow …` authored over MCP →
+`ped_check_errors` clean, read-back shows the URL template, the `{1}` +
+`attributeRef MyFirstModule.CE0488Thing.Name` parameter, and the nested
+microflow action. The same script executed on the modelsdk engine against a
+local copy passes `mx check` (11.12 mxbuild) with zero errors from the page.
+
+Additional run observations:
+
+- The Image widget requires `ImageType: 'imageUrl'` alongside `imageUrl:` —
+  with the def-default `datasource: "image"`, Studio Pro prunes `ct:imageUrl`
+  from the patch (same class of pruning as the ComboBox `optionsSourceType`
+  quirk).
+- Refinement of the Phase 1 persistence observation: Studio Pro 11.12 flushes
+  PED-**created** documents to `mprcontents/` immediately, but
+  `ped_update_document` changes (e.g. `alter entity add attribute`) stay
+  in-memory until save — an on-disk copy taken mid-session can reference
+  attributes that don't exist on disk yet (CE1613 on `mx check`).
+
 ## Open Questions
 
-1. **pg shape for `expression` / `texttemplate`** — unverified. The pg
-   `object` key/shape Studio Pro expects for an expression-typed or
-   text-template-typed pluggable property must be captured live (read back a
-   Studio-Pro-authored instance via `pg_read_page`) before implementing.
+1. ~~**pg shape for `expression` / `texttemplate`** — unverified.~~ **Resolved
+   2026-07-06** — captured live and pinned; see "Phase 2 validation results".
+   Still open within actions: parameter-mapping value shapes
+   (PageVariable-typed `variable`, fully-qualified `parameter`) and the
+   remaining action kinds (save/cancel/close/delete/create/open-link/nanoflow).
 2. **Registry plumbing** — pass the resolved `WidgetDefinition` into
    `LoadWidgetTemplate`, or give the MCP backend read access to the same registry
    resolver the engine uses? The former keeps MCP from re-reading disk and reuses
