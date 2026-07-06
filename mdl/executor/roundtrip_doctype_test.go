@@ -52,11 +52,47 @@ var engineScriptSkip = map[string]string{
 	"legacy/34-chart-widget-examples.mdl": "legacy widget builder lacks the barchart template (works on modelsdk); tracked",
 }
 
-// scriptModuleDeps maps script filenames to marketplace module MPKs they require.
-// These modules are imported via `mx module-import` before executing the script.
-var scriptModuleDeps = map[string][]string{
-	"05-database-connection-examples.mdl": {"ExternalDatabaseConnector-v6.2.3.mpk"},
-	"13-business-events-examples.mdl":     {"BusinessEvents_3.12.0.mpk"},
+// moduleDep is one marketplace-module MPK a script requires, optionally gated to
+// a Mendix version range. A marketplace .mpk is built with a specific Studio Pro
+// version and refuses to import into an older one ("created with a newer version
+// of Mendix Studio Pro"), while an older .mpk can be rejected as incompatible by
+// a newer runtime — so a single file often can't span the whole tested range.
+// When constraint is nil the MPK is used for every version; otherwise it is only
+// imported when the project's Mendix version satisfies the constraint.
+type moduleDep struct {
+	mpk        string
+	constraint *versionConstraint // nil = any version
+}
+
+// mustConstraint parses a "-- @version:" style range ("..11.11", "11.12+",
+// "10.6..11.11") for a module gate. Panics on an invalid literal (test-time
+// constant, so a typo should fail loudly rather than silently gate nothing).
+func mustConstraint(s string) *versionConstraint {
+	vc := parseVersionDirective("-- @version:" + s)
+	if vc == nil {
+		panic(fmt.Sprintf("mustConstraint: invalid version constraint %q", s))
+	}
+	return vc
+}
+
+// scriptModuleDeps maps script filenames to the marketplace module MPKs they
+// require. These modules are imported via `mx module-import` before executing the
+// script; version-gated entries pick the MPK compatible with the test's Mendix
+// version (see moduleDep).
+var scriptModuleDeps = map[string][]moduleDep{
+	"05-database-connection-examples.mdl": {
+		// EDC 6.2.3 imports on <= 11.11 but the 11.12 runtime reports it
+		// incompatible; EDC 6.3.0 is built with Studio Pro 11.12 and refuses to
+		// import into anything older. Split the range between them. (The bundled
+		// 6.3.0 has its ~100 MB snowflake JDBC driver stripped to fit under GitHub's
+		// file-size limit — mx check needs the model, not the driver; see
+		// mx-modules/README.md.)
+		{mpk: "ExternalDatabaseConnector-v6.2.3.mpk", constraint: mustConstraint("..11.11")},
+		{mpk: "ExternalDatabaseConnector-v6.3.0.mpk", constraint: mustConstraint("11.12+")},
+	},
+	"13-business-events-examples.mdl": {
+		{mpk: "BusinessEvents_3.12.0.mpk"},
+	},
 }
 
 // scriptSkipList marks fixtures that should be skipped, with the reason.
@@ -150,20 +186,28 @@ func TestMxCheck_DoctypeScripts(t *testing.T) {
 				env := setupTestEnvWithBackend(t, eng.factory)
 				defer env.teardown()
 
-				// Import required marketplace modules before executing script
+				// Import required marketplace modules before executing script,
+				// selecting the MPK compatible with this project's Mendix version.
 				if deps, ok := scriptModuleDeps[name]; ok && modulesDir != "" && mxPath != "" {
+					// Read the version before disconnecting (the backend can't be
+					// queried once disconnected).
+					depVersion := env.executor.Backend().ProjectVersion()
+
 					// Disconnect so mx can access the MPR file
 					env.executor.Execute(&ast.DisconnectStmt{})
 
-					for _, mpk := range deps {
-						mpkPath := filepath.Join(modulesDir, mpk)
+					for _, dep := range deps {
+						if dep.constraint != nil && !dep.constraint.matches(depVersion) {
+							continue
+						}
+						mpkPath := filepath.Join(modulesDir, dep.mpk)
 						if _, err := os.Stat(mpkPath); err != nil {
 							t.Logf("Skipping module import (not found): %s", mpkPath)
 							continue
 						}
 						cmd := exec.Command(mxPath, "module-import", mpkPath, env.projectPath)
 						if out, err := cmd.CombinedOutput(); err != nil {
-							t.Logf("Warning: module import failed for %s: %v\n%s", mpk, err, string(out))
+							t.Logf("Warning: module import failed for %s: %v\n%s", dep.mpk, err, string(out))
 						}
 					}
 
