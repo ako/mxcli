@@ -95,10 +95,14 @@ create non-persistent entity MfTest.ImportRow (
 );
 
 -- Create associations
+-- Order_Customer is owner="default" so a reverse retrieve-by-association from
+-- the Customer side (M029) stays an in-memory AssociationRetrieveSource that
+-- returns a list. (A reverse Reference over an owner="both" association resolves
+-- to a single object in Mendix, forcing a database retrieve instead — see #726.)
 create association MfTest.Order_Customer
 from MfTest.Order to MfTest.Customer
 type reference
-owner both;
+owner default;
 
 create association MfTest.Order_Product
 from MfTest.Order to MfTest.Product
