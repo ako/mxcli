@@ -10,6 +10,7 @@ import (
 	"github.com/mendixlabs/mxcli/modelsdk/codec"
 	"github.com/mendixlabs/mxcli/modelsdk/element"
 	genDm "github.com/mendixlabs/mxcli/modelsdk/gen/domainmodels"
+	"github.com/mendixlabs/mxcli/modelsdk/meta"
 	mmpr "github.com/mendixlabs/mxcli/modelsdk/mpr"
 	"github.com/mendixlabs/mxcli/modelsdk/mprread"
 )
@@ -36,7 +37,6 @@ func (b *Backend) MoveConstant(c *model.Constant) error {
 	}
 	return b.writer.MoveUnit(string(c.ID), string(c.ContainerID))
 }
-
 
 // UpdateOqlQueriesForMovedEntity rewrites every ViewEntitySourceDocument whose
 // OQL text references oldQualifiedName to newQualifiedName. Used after a MOVE
@@ -77,6 +77,13 @@ func (b *Backend) UpdateOqlQueriesForMovedEntity(oldQualifiedName, newQualifiedN
 		return updated, fmt.Errorf("UpdateOqlQueriesForMovedEntity: list domain models: %w", err)
 	}
 	for _, info := range dms {
+		// The System module's domain model is virtual (not stored in mprcontents),
+		// so it can't be re-loaded from disk — and it holds no view entities with
+		// inline OQL. Skip it; otherwise loadDomainModelGen fails with a spurious
+		// "no such file or directory" warning.
+		if string(info.ID) == meta.SystemDomainModelID {
+			continue
+		}
 		gdm, err := b.loadDomainModelGen(info.ID)
 		if err != nil {
 			return updated, err

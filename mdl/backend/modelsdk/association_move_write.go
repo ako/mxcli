@@ -10,6 +10,7 @@ import (
 	"github.com/mendixlabs/mxcli/modelsdk/codec"
 	"github.com/mendixlabs/mxcli/modelsdk/element"
 	genDm "github.com/mendixlabs/mxcli/modelsdk/gen/domainmodels"
+	"github.com/mendixlabs/mxcli/modelsdk/meta"
 	"github.com/mendixlabs/mxcli/sdk/domainmodel"
 )
 
@@ -130,6 +131,13 @@ func (b *Backend) UpdateEnumerationRefsInAllDomainModels(oldQualifiedName, newQu
 		return fmt.Errorf("UpdateEnumerationRefsInAllDomainModels: list domain models: %w", err)
 	}
 	for _, info := range dms {
+		// The System module's domain model is virtual (not stored in mprcontents),
+		// so it can't be re-loaded from disk — and it never references a user
+		// enumeration. Skip it; otherwise loadDomainModelGen fails with a spurious
+		// "no such file or directory" warning.
+		if string(info.ID) == meta.SystemDomainModelID {
+			continue
+		}
 		gdm, err := b.loadDomainModelGen(info.ID)
 		if err != nil {
 			return err
