@@ -438,7 +438,19 @@ begin
     set $ActiveCount = $ActiveCount + 1;
   end if;
 end loop;
+
+-- Label a loop with a note (loops have no caption in Mendix)
+@annotation 'Process each product'
+loop $Product in $ProductList
+begin
+  set $count = $count + 1;
+end loop;
 ```
+
+> **`@caption` does nothing on a loop.** Mendix for-loops have no caption
+> property, so `@caption` on a `loop` is silently dropped (`mxcli check` flags
+> it as **MDL042**). To label a loop, use `@annotation 'text'` — it attaches a
+> note, exactly like drawing one onto the loop in Studio Pro.
 
 **Note**:
 - Loop variable (`$Product`) is scoped to the loop body
