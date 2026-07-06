@@ -240,11 +240,13 @@ func TestMxCheck_DoctypeScripts(t *testing.T) {
 				// Flush to disk
 				env.executor.Execute(&ast.DisconnectStmt{})
 
-				// Update widgets for scripts that create pluggable widgets (prevents CE0463).
-				// Skip for other scripts — update-widgets can corrupt non-widget projects.
-				if strings.Contains(name, "page") || strings.Contains(name, "widget") {
-					runMxUpdateWidgets(t, env.projectPath)
-				}
+				// NB: we deliberately do NOT run `mx update-widgets` here. mxcli is
+				// expected to emit valid pluggable-widget BSON on its own (verified by
+				// mx check below), and `mx update-widgets` has been observed to CORRUPT
+				// otherwise-valid projects on 11.12 — e.g. it rewrites a widget's
+				// ConditionalEditabilitySettings.Attribute with the int32(3) list marker,
+				// yielding a StorageLoadException. Running mx check directly on mxcli's
+				// output is both the stricter and the correct gate.
 
 				// Run mx check
 				output, mxErr := runMxCheck(t, env.projectPath)
