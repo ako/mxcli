@@ -1,6 +1,6 @@
 # Proposal: Pluggable Widget Authoring in MDL over the MCP Backend
 
-**Status:** Draft
+**Status:** Draft — Phase 1 implemented and live-validated against Studio Pro 11.12 (2026-07-06, see "Phase 1 validation results")
 **Date:** 2026-06-30
 **Related:** [`PROPOSAL_mcp_backend.md`](PROPOSAL_mcp_backend.md), [`PROPOSAL_v0_12_0_widget_consolidation.md`](PROPOSAL_v0_12_0_widget_consolidation.md), [`PROPOSAL_multi_version_pluggable_widgets.md`](PROPOSAL_multi_version_pluggable_widgets.md)
 
@@ -181,6 +181,43 @@ backends + extract auto-inference. Out of scope here; track separately.
 4. **Isolation regression** — confirm the MPR datagrid path is byte-unchanged
    (the private→shared registry move must not leak into MPR): run the existing
    widget doctype-tests (29/30/31/32) on the MPR engine and diff `mx check`.
+
+## Phase 1 validation results (2026-07-06, Studio Pro 11.12.0, test8-app)
+
+Live end-to-end run against a running Studio Pro 11.12 (`mendix-studio-pro` MCP
+1.0.0, protocol 2025-06-18, `pg_patch_page` toolset) with the Phase 1 change
+(registry-driven acceptance, whitelist removed):
+
+1. **Baseline (regression)** — `create enumeration` + `alter entity add attribute`
+   + `create page` with a whitelisted ComboBox over MCP: page created,
+   `pg_read_page` shows `attributeEnumeration` → the new enum attribute with all
+   defaults expanded by Studio Pro, `ped_check_errors` clean.
+2. **Phase 1 target** — BarcodeScanner
+   (`com.mendix.widget.web.barcodescanner.BarcodeScanner`, registry-resolved,
+   **outside** the old 7-entry whitelist) authored via the generic
+   `pluggablewidget '<id>' name (attribute: Name)` syntax: widget created with
+   `object.datasource` → `AttributeRef MyFirstModule.CE0488Thing.Name`; Studio Pro
+   expanded all remaining defaults (`showMask`, `useAllFormats`, sizing,
+   `detectionLogic`); `ped_check_errors`: **no errors, no CE0463**.
+3. **Negative (reject-loudly)** — Image widget
+   (`com.mendix.widget.web.image.Image`, def maps `texttemplate`/`action` ops):
+   rejected client-side before any tool call with
+   `uses properties not yet supported by the MCP backend: [textTemplate:imageUrl
+   textTemplate:alternativeText action:onClick]`, exit 1, no partial page in
+   Studio Pro.
+
+Observations from the run (follow-ups, not blockers):
+
+- **Studio Pro 11.12 persists PED/pg-created documents to `mprcontents/`
+  immediately** (no explicit save needed) — differs from the documented 11.11
+  Concord `--mcp-save` requirement; update `PED_MCP_CAPABILITIES.md`.
+- **`pg_patch_page` can return MCP `-32000 Request timed out` while the patch
+  still applies** — mxcli reported failure for a create that succeeded. Client
+  timeout/retry-read handling needed.
+- **`--mcp-trace` regression** — prints the `▸` MDL command lines but no PED
+  tool-call lines beneath them; tracer isn't reaching the MCP client.
+- Docs: `MDL_QUICK_REFERENCE.md` shows `alter entity … add (attr: type)`, which
+  does not parse; the working form is `add attribute attr: type`.
 
 ## Open Questions
 
