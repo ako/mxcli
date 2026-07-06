@@ -294,7 +294,11 @@ func parseClosePageAction(raw map[string]any) *microflows.ClosePageAction {
 	action.ID = model.ID(extractBsonID(raw["$ID"]))
 	// Issue #585: collapse the int32/int64 dispatch to the shared extractInt
 	// helper. Default of 1 is preserved when the field is absent.
-	if _, ok := raw["NumberOfPagesToClose"]; ok {
+	// Storage name is "NumberOfPages"; also accept the legacy "NumberOfPagesToClose"
+	// that older mxcli/Mendix wrote, for round-trip fidelity on existing projects.
+	if _, ok := raw["NumberOfPages"]; ok {
+		action.NumberOfPages = extractInt(raw["NumberOfPages"])
+	} else if _, ok := raw["NumberOfPagesToClose"]; ok {
 		action.NumberOfPages = extractInt(raw["NumberOfPagesToClose"])
 	} else {
 		action.NumberOfPages = 1

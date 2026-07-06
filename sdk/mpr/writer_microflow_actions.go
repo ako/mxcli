@@ -460,7 +460,11 @@ func serializeMicroflowAction(action microflows.MicroflowAction) bson.D {
 			{Key: "$ID", Value: idToBsonBinary(string(a.ID))},
 			{Key: "$Type", Value: "Microflows$CloseFormAction"},
 			{Key: "ErrorHandlingType", Value: stringOrDefault(string(a.ErrorHandlingType), "Rollback")},
-			{Key: "NumberOfPagesToClose", Value: int32(a.NumberOfPages)},
+			// The storage name is "NumberOfPages" (matches the metamodel/codec). The
+			// old "NumberOfPagesToClose" was tolerated by Mendix <= 11.6 but rejected
+			// by 11.12 (CE0117 "Error(s) in expression" — the real NumberOfPages field
+			// is then absent and defaults to an empty expression).
+			{Key: "NumberOfPages", Value: int32(a.NumberOfPages)},
 		}
 		return doc
 

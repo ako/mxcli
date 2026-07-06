@@ -1,0 +1,23 @@
+-- Bug: a CLOSE PAGE microflow/nanoflow activity failed `mx check` on Mendix 11.12
+-- with CE0117 "Error(s) in expression" at the Close page activity (the 11.12
+-- nightly failed 02-microflow / 02b-nanoflow on the legacy engine this way).
+--
+-- Root cause: the legacy sdk/mpr writer serialized the CloseFormAction's page
+-- count under the field name "NumberOfPagesToClose". The metamodel storage name
+-- is "NumberOfPages" (modelsdk/codec already used it). Mendix <= 11.6 tolerated
+-- the wrong name, but 11.12 rejects it: the real NumberOfPages field is then
+-- absent and defaults to an empty expression -> CE0117. Fix: write "NumberOfPages"
+-- (reader accepts both for round-trip fidelity on existing projects).
+--
+-- Any annotation on the activity (@caption / @color / @position) forced the
+-- activity to serialize, exposing the field; a bare `close page;` sometimes did
+-- not. Verify in Studio Pro (Mendix 11.12): the microflow's Close page activity
+-- must load and check without CE0117.
+
+create microflow MyFirstModule.ACT_ClosePageAnnotated ()
+begin
+  @position(200, 200)
+  @caption 'Done editing'
+  @color Green
+  close page;
+end;
