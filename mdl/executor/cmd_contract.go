@@ -685,11 +685,23 @@ func createExternalEntities(ctx *ExecContext, s *ast.CreateExternalEntitiesStmt)
 	// Second pass: create primitive-collection NPEs (e.g. TripTag for
 	// Trip.Tags = Collection(Edm.String)) and the association from the
 	// parent entity to each NPE.
-	dm, err = ctx.Backend.GetDomainModel(module.ID)
-	if err == nil {
-		npesCreated := createPrimitiveCollectionNPEs(ctx, dm, doc, typeByQualified, esMap, serviceRef)
-		if npesCreated > 0 {
-			fmt.Fprintf(ctx.Output, "Created %d primitive-collection NPEs\n", npesCreated)
+	//
+	// OData primitive collections are a Mendix 11.0 feature: the backing
+	// Rest$ODataMappedPrimitiveCollectionValue / Rest$ODataPrimitiveCollection*
+	// storage types do not exist in the 10.x type cache, so writing them makes
+	// `mx check` on Mendix 10.x abort the whole load with
+	// TypeCacheUnknownTypeException. Pre-11 Studio Pro simply omits these
+	// properties when importing an external entity, so mirror that: skip the NPEs
+	// on < 11.0 (the rest of the entity imports normally).
+	if pv := ctx.Backend.ProjectVersion(); pv != nil && !pv.IsAtLeast(11, 0) {
+		fmt.Fprintf(ctx.Output, "Skipped primitive-collection NPEs (OData primitive collections require Mendix 11.0+; project is %s)\n", pv.ProductVersion)
+	} else {
+		dm, err = ctx.Backend.GetDomainModel(module.ID)
+		if err == nil {
+			npesCreated := createPrimitiveCollectionNPEs(ctx, dm, doc, typeByQualified, esMap, serviceRef)
+			if npesCreated > 0 {
+				fmt.Fprintf(ctx.Output, "Created %d primitive-collection NPEs\n", npesCreated)
+			}
 		}
 	}
 
