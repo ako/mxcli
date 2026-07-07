@@ -169,7 +169,9 @@ Localized to the `playwright` package and its Cobra command. No changes outside
    `eval "() => location.href"`. `--auth-state` on `open` deferred to step 5.
 4. `--isolated` per-script session wrapping.
 5. `--auth-state` auto state-load (`open` + fresh `verify` open).
-6. Skill (`test-app.md`) agentic-loop pattern.
+6. ✅ **Done** — Skill (`test-app.md`) agentic-loop pattern + lifecycle commands
+   in the Session Management section. (Docs for Add 1/Add 2 now cover mxcli help,
+   docs-site, the `mendix:test` command, and the skill.)
 
 > **Implementation note (shipped):** the probe uses `eval "() => location.origin"`
 > with a substring/origin match rather than parsing `list` output — it checks

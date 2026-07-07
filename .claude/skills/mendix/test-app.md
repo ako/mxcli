@@ -265,7 +265,17 @@ for f in tests/verify-*.sh; do bash "$f" || exit 1; done
 
 # via mxcli (auto-detects app port, captures a screenshot on failure)
 mxcli playwright verify tests/ -p app.mpr
+
+# in the edit -> rebuild -> re-verify loop, keep the browser warm so the next
+# run reuses the live, still-logged-in session instead of cold-launching
+# Chromium (reuse re-navigates, so a rebuilt app is loaded fresh)
+mxcli playwright verify tests/ -p app.mpr --keep-open
 ```
+
+> When reusing across runs (`--keep-open`), **drop any trailing
+> `playwright-cli close`** from the scripts — a script that closes the session
+> tears it down for the next run regardless of `--keep-open`. Omit `--keep-open`
+> for CI so the browser is torn down at the end.
 
 ### Assertion Pattern
 
@@ -280,20 +290,44 @@ playwright-cli eval "() => { if (!document.querySelector('.mx-name-widgetName'))
 
 ## Session Management
 
-playwright-cli maintains browser sessions across commands. The devcontainer sets `PLAYWRIGHT_CLI_SESSION=mendix-app` by default.
+playwright-cli maintains browser sessions across commands. The devcontainer sets `PLAYWRIGHT_CLI_SESSION=mendix-app` by default, so every command shares one browser — state, cookies, and login persist between invocations.
+
+### mxcli lifecycle commands (preferred)
+
+`mxcli playwright` wraps the session so you manage it explicitly across turns, with the project's port/browser resolution built in:
 
 ```bash
-# list active sessions
-playwright-cli list
+# open or attach to the session (URL: arg, else --base-url, else .docker/.env, else :8080)
+mxcli playwright open -p app.mpr
 
-# close current session
-playwright-cli close
+# is a session live, and what page is it on?
+mxcli playwright status
 
-# close all sessions
-playwright-cli close-all
+# tear down
+mxcli playwright close          # current session
+mxcli playwright close --all    # every session
+```
 
-# use a named session (for parallel testing)
-playwright-cli -s=test2 open http://localhost:8080
+**Agentic loop pattern** — open once, log in once, then iterate cheaply:
+
+```bash
+mxcli playwright open -p app.mpr                 # 1. warm the browser
+# ... log in (script or the login snippet above), state-save mendix-auth ...
+mxcli playwright verify tests/ -p app.mpr --keep-open   # 2. verify, keep it warm
+# ... edit MDL, mxcli exec, mxcli docker run --fresh --wait ...
+mxcli playwright verify tests/ -p app.mpr --keep-open   # 3. reuses the warm, logged-in session
+mxcli playwright status                          # check it's still up before deciding to reopen
+```
+
+`open` and `verify` share the same open-or-reuse behavior: attach to a live same-origin session (re-navigating so a rebuilt app loads fresh), or open a new one.
+
+### Low-level playwright-cli session commands
+
+```bash
+playwright-cli list                          # list active sessions
+playwright-cli close                         # close current session
+playwright-cli close-all                     # close all sessions
+playwright-cli -s=test2 open http://localhost:8080   # named session (parallel testing)
 ```
 
 ---
