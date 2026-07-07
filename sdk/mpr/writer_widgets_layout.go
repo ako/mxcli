@@ -14,7 +14,7 @@ func serializeContainer(c *pages.Container) bson.D {
 	doc := bson.D{
 		{Key: "$ID", Value: idToBsonBinary(string(c.ID))},
 		{Key: "$Type", Value: "Forms$DivContainer"},
-		{Key: "Appearance", Value: serializeAppearance(c.Class, c.Style, c.DesignProperties)},
+		{Key: "Appearance", Value: serializeAppearance(c.Class, c.Style, c.DynamicClasses, c.DesignProperties)},
 		{Key: "ConditionalVisibilitySettings", Value: nil},
 		{Key: "Name", Value: c.Name},
 		{Key: "NativeAccessibilitySettings", Value: nil},
@@ -49,7 +49,7 @@ func serializeGroupBox(gb *pages.GroupBox) bson.D {
 	doc := bson.D{
 		{Key: "$ID", Value: idToBsonBinary(string(gb.ID))},
 		{Key: "$Type", Value: "Forms$GroupBox"},
-		{Key: "Appearance", Value: serializeAppearance(gb.Class, gb.Style, gb.DesignProperties)},
+		{Key: "Appearance", Value: serializeAppearance(gb.Class, gb.Style, gb.DynamicClasses, gb.DesignProperties)},
 		{Key: "CaptionTemplate", Value: captionTemplate},
 		{Key: "Collapsible", Value: collapsible},
 		{Key: "ConditionalVisibilitySettings", Value: nil},
@@ -87,7 +87,7 @@ func serializeTabContainer(tc *pages.TabContainer) bson.D {
 			{Key: "DisabledDuringExecution", Value: true},
 		}},
 		{Key: "ActivePageSourceVariable", Value: nil},
-		{Key: "Appearance", Value: serializeAppearance(tc.Class, tc.Style, tc.DesignProperties)},
+		{Key: "Appearance", Value: serializeAppearance(tc.Class, tc.Style, tc.DynamicClasses, tc.DesignProperties)},
 		{Key: "ConditionalVisibilitySettings", Value: nil},
 		{Key: "DefaultPagePointer", Value: defaultPageID},
 		{Key: "Name", Value: tc.Name},
@@ -143,7 +143,7 @@ func serializeLayoutGrid(lg *pages.LayoutGrid) bson.D {
 	doc := bson.D{
 		{Key: "$ID", Value: idToBsonBinary(string(lg.ID))},
 		{Key: "$Type", Value: "Forms$LayoutGrid"},
-		{Key: "Appearance", Value: serializeAppearance(lg.Class, lg.Style, lg.DesignProperties)},
+		{Key: "Appearance", Value: serializeAppearance(lg.Class, lg.Style, lg.DynamicClasses, lg.DesignProperties)},
 		{Key: "ConditionalVisibilitySettings", Value: nil},
 		{Key: "Name", Value: lg.Name},
 		{Key: "Rows", Value: rows},
@@ -170,7 +170,7 @@ func serializeLayoutGridRow(row *pages.LayoutGridRow) bson.D {
 	return bson.D{
 		{Key: "$ID", Value: idToBsonBinary(string(row.ID))},
 		{Key: "$Type", Value: "Forms$LayoutGridRow"},
-		{Key: "Appearance", Value: serializeAppearance("", "", nil)},
+		{Key: "Appearance", Value: serializeAppearance("", "", "", nil)},
 		{Key: "Columns", Value: cols},
 		{Key: "ConditionalVisibilitySettings", Value: nil},
 		{Key: "HorizontalAlignment", Value: "None"},
@@ -198,7 +198,7 @@ func serializeLayoutGridColumn(col *pages.LayoutGridColumn) bson.D {
 	return bson.D{
 		{Key: "$ID", Value: idToBsonBinary(string(col.ID))},
 		{Key: "$Type", Value: "Forms$LayoutGridColumn"},
-		{Key: "Appearance", Value: serializeAppearance("", "", nil)},
+		{Key: "Appearance", Value: serializeAppearance("", "", "", nil)},
 		{Key: "PhoneWeight", Value: int64(columnWeight(col.PhoneWeight))},
 		{Key: "PreviewWidth", Value: int64(-1)}, // Default preview width
 		{Key: "TabletWeight", Value: int64(columnWeight(col.TabletWeight))},

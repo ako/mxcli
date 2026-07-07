@@ -62,6 +62,9 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 			if style, ok := appearance["Style"].(string); ok && style != "" {
 				widget.Style = style
 			}
+			if dc, ok := appearance["DynamicClasses"].(string); ok && dc != "" {
+				widget.DynamicClasses = dc
+			}
 			widget.DesignProperties = extractDesignProperties(appearance)
 		}
 		extractConditionalSettings(&widget, w)
@@ -96,6 +99,9 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 			}
 			if style, ok := appearance["Style"].(string); ok && style != "" {
 				widget.Style = style
+			}
+			if dc, ok := appearance["DynamicClasses"].(string); ok && dc != "" {
+				widget.DynamicClasses = dc
 			}
 			widget.DesignProperties = extractDesignProperties(appearance)
 		}
@@ -141,6 +147,9 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 			}
 			if style, ok := appearance["Style"].(string); ok && style != "" {
 				widget.Style = style
+			}
+			if dc, ok := appearance["DynamicClasses"].(string); ok && dc != "" {
+				widget.DynamicClasses = dc
 			}
 			widget.DesignProperties = extractDesignProperties(appearance)
 		}
@@ -192,6 +201,9 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 		}
 		if style, ok := appearance["Style"].(string); ok && style != "" {
 			widget.Style = style
+		}
+		if dc, ok := appearance["DynamicClasses"].(string); ok && dc != "" {
+			widget.DynamicClasses = dc
 		}
 		widget.DesignProperties = extractDesignProperties(appearance)
 	}

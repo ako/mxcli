@@ -615,7 +615,7 @@ func navListItemToGen(item *pages.NavigationListItem) (element.Element, error) {
 		g.SetID(element.ID(item.ID))
 	}
 	assignID(g)
-	g.SetAppearance(newAppearance("", "", nil))
+	g.SetAppearance(newAppearance("", "", "", nil))
 	act, err := clientActionToGen(item.Action)
 	if err != nil {
 		return nil, err
@@ -644,7 +644,7 @@ func layoutGridRowToGen(row *pages.LayoutGridRow) (element.Element, error) {
 		g.SetID(element.ID(row.ID))
 	}
 	assignID(g)
-	g.SetAppearance(newAppearance("", "", nil))
+	g.SetAppearance(newAppearance("", "", "", nil))
 	g.SetHorizontalAlignment("None")
 	g.SetSpacingBetweenColumns(true)
 	g.SetVerticalAlignment("None")
@@ -666,7 +666,7 @@ func layoutGridColumnToGen(col *pages.LayoutGridColumn) (element.Element, error)
 		g.SetID(element.ID(col.ID))
 	}
 	assignID(g)
-	g.SetAppearance(newAppearance("", "", nil))
+	g.SetAppearance(newAppearance("", "", "", nil))
 	g.SetWeight(int32(columnWeight(col.Weight)))
 	g.SetTabletWeight(int32(columnWeight(col.TabletWeight)))
 	g.SetPhoneWeight(int32(columnWeight(col.PhoneWeight)))
@@ -709,7 +709,7 @@ func applyWidgetBase(g widgetBaseGen, b *pages.BaseWidget) {
 	}
 	assignID(g)
 	g.SetName(b.Name)
-	g.SetAppearance(newAppearance(b.Class, b.Style, b.DesignProperties))
+	g.SetAppearance(newAppearance(b.Class, b.Style, b.DynamicClasses, b.DesignProperties))
 	g.SetTabIndex(int32(b.TabIndex))
 
 	// Conditional visibility/editability. When unset these stay null via the
@@ -757,14 +757,14 @@ func conditionalEditabilityToGen(ces *pages.ConditionalEditabilitySettings) elem
 	return g
 }
 
-// newAppearance builds a Forms$Appearance with the given class/style and design
-// properties (empty dynamic classes).
-func newAppearance(class, style string, dps []pages.DesignPropertyValue) *genPg.Appearance {
+// newAppearance builds a Forms$Appearance with the given class/style, dynamic
+// classes expression, and design properties.
+func newAppearance(class, style, dynamicClasses string, dps []pages.DesignPropertyValue) *genPg.Appearance {
 	a := genPg.NewAppearance()
 	assignID(a)
 	a.SetClass(class)
 	a.SetStyle(style)
-	a.SetDynamicClasses("")
+	a.SetDynamicClasses(dynamicClasses)
 	for _, dp := range dps {
 		a.AddDesignProperties(designPropertyGen(dp))
 	}

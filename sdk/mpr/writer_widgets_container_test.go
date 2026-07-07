@@ -36,6 +36,26 @@ func bsonSubDoc(t *testing.T, doc bson.D, key string) bson.D {
 	return sub
 }
 
+// TestSerializeContainer_DynamicClasses locks in the DynamicClasses serialization fix: a widget's
+// DynamicClasses expression is serialized into its Forms$Appearance
+// (previously the field was hardcoded to "").
+func TestSerializeContainer_DynamicClasses(t *testing.T) {
+	c := &pages.Container{}
+	c.Name = "box"
+	c.Class = "ss-box"
+	c.DynamicClasses = "if $currentObject/Name = '' then 'ss-box--empty' else ''"
+
+	doc := serializeContainer(c)
+
+	appearance := bsonSubDoc(t, doc, "Appearance")
+	if got := bsonLookup(appearance, "DynamicClasses"); got != c.DynamicClasses {
+		t.Errorf("Appearance.DynamicClasses = %v, want %q", got, c.DynamicClasses)
+	}
+	if got := bsonLookup(appearance, "Class"); got != "ss-box" {
+		t.Errorf("Appearance.Class = %v, want %q", got, "ss-box")
+	}
+}
+
 func TestSerializeContainer_OnClickActionDefaultsToNoAction(t *testing.T) {
 	c := &pages.Container{}
 	c.Name = "box"

@@ -33,6 +33,7 @@ type BaseWidget struct {
 	Name                   string                          `json:"name"`
 	Class                  string                          `json:"class,omitempty"`
 	Style                  string                          `json:"style,omitempty"`
+	DynamicClasses         string                          `json:"dynamicClasses,omitempty"` // Set via DynamicClasses: expression
 	TabIndex               int                             `json:"tabIndex,omitempty"`
 	DesignProperties       []DesignPropertyValue           `json:"designProperties,omitempty"`
 	ConditionalVisibility  *ConditionalVisibilitySettings  `json:"-"` // Set via VISIBLE IF
@@ -53,6 +54,12 @@ func (w *BaseWidget) GetBaseWidget() *BaseWidget {
 func (w *BaseWidget) SetAppearance(class, style string) {
 	w.Class = class
 	w.Style = style
+}
+
+// SetDynamicClasses sets the dynamic-classes expression on the widget's
+// Forms$Appearance (a class-list computed at runtime from an expression).
+func (w *BaseWidget) SetDynamicClasses(dynamicClasses string) {
+	w.DynamicClasses = dynamicClasses
 }
 
 // SetDesignProperties sets the design properties on the widget.

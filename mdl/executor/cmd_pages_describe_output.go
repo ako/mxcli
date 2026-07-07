@@ -62,6 +62,9 @@ func appendAppearanceProps(props []string, w rawWidget) []string {
 	if w.Style != "" {
 		props = append(props, fmt.Sprintf("Style: %s", mdlQuote(w.Style)))
 	}
+	if w.DynamicClasses != "" {
+		props = append(props, fmt.Sprintf("DynamicClasses: %s", mdlQuote(w.DynamicClasses)))
+	}
 	if len(w.DesignProperties) > 0 {
 		props = append(props, formatDesignPropertiesMDL(w.DesignProperties))
 	}

@@ -13,7 +13,7 @@ func serializeTextBox(tb *pages.TextBox) bson.D {
 	return bson.D{
 		{Key: "$ID", Value: idToBsonBinary(string(tb.ID))},
 		{Key: "$Type", Value: "Forms$TextBox"},
-		{Key: "Appearance", Value: serializeAppearance(tb.Class, tb.Style, tb.DesignProperties)},
+		{Key: "Appearance", Value: serializeAppearance(tb.Class, tb.Style, tb.DynamicClasses, tb.DesignProperties)},
 		{Key: "AriaRequired", Value: false},
 		{Key: "AttributeRef", Value: serializeAttributeRef(tb.AttributePath)},
 		{Key: "AutoFocus", Value: false},
@@ -50,7 +50,7 @@ func serializeTextArea(ta *pages.TextArea) bson.D {
 	return bson.D{
 		{Key: "$ID", Value: idToBsonBinary(string(ta.ID))},
 		{Key: "$Type", Value: "Forms$TextArea"},
-		{Key: "Appearance", Value: serializeAppearance(ta.Class, ta.Style, ta.DesignProperties)},
+		{Key: "Appearance", Value: serializeAppearance(ta.Class, ta.Style, ta.DynamicClasses, ta.DesignProperties)},
 		{Key: "AriaRequired", Value: false},
 		{Key: "AttributeRef", Value: serializeAttributeRef(ta.AttributePath)},
 		{Key: "AutoFocus", Value: false},
@@ -82,7 +82,7 @@ func serializeDatePicker(dp *pages.DatePicker) bson.D {
 	return bson.D{
 		{Key: "$ID", Value: idToBsonBinary(string(dp.ID))},
 		{Key: "$Type", Value: "Forms$DatePicker"},
-		{Key: "Appearance", Value: serializeAppearance(dp.Class, dp.Style, dp.DesignProperties)},
+		{Key: "Appearance", Value: serializeAppearance(dp.Class, dp.Style, dp.DynamicClasses, dp.DesignProperties)},
 		{Key: "AriaRequired", Value: false},
 		{Key: "AttributeRef", Value: serializeAttributeRef(dp.AttributePath)},
 		{Key: "ConditionalEditabilitySettings", Value: nil},
@@ -109,7 +109,7 @@ func serializeCheckBox(cb *pages.CheckBox) bson.D {
 	return bson.D{
 		{Key: "$ID", Value: idToBsonBinary(string(cb.ID))},
 		{Key: "$Type", Value: "Forms$CheckBox"},
-		{Key: "Appearance", Value: serializeAppearance(cb.Class, cb.Style, cb.DesignProperties)},
+		{Key: "Appearance", Value: serializeAppearance(cb.Class, cb.Style, cb.DynamicClasses, cb.DesignProperties)},
 		{Key: "AttributeRef", Value: serializeAttributeRef(cb.AttributePath)},
 		{Key: "ConditionalEditabilitySettings", Value: nil},
 		{Key: "ConditionalVisibilitySettings", Value: nil},
@@ -132,7 +132,7 @@ func serializeRadioButtons(rb *pages.RadioButtons) bson.D {
 	return bson.D{
 		{Key: "$ID", Value: idToBsonBinary(string(rb.ID))},
 		{Key: "$Type", Value: "Forms$RadioButtonGroup"},
-		{Key: "Appearance", Value: serializeAppearance(rb.Class, rb.Style, rb.DesignProperties)},
+		{Key: "Appearance", Value: serializeAppearance(rb.Class, rb.Style, rb.DynamicClasses, rb.DesignProperties)},
 		{Key: "AriaRequired", Value: false},
 		{Key: "AttributeRef", Value: serializeAttributeRef(rb.AttributePath)},
 		{Key: "ConditionalEditabilitySettings", Value: nil},
@@ -157,7 +157,7 @@ func serializeDropDown(dd *pages.DropDown) bson.D {
 	return bson.D{
 		{Key: "$ID", Value: idToBsonBinary(string(dd.ID))},
 		{Key: "$Type", Value: "Forms$DropDown"},
-		{Key: "Appearance", Value: serializeAppearance(dd.Class, dd.Style, dd.DesignProperties)},
+		{Key: "Appearance", Value: serializeAppearance(dd.Class, dd.Style, dd.DynamicClasses, dd.DesignProperties)},
 		{Key: "AriaRequired", Value: false},
 		{Key: "AttributeRef", Value: serializeAttributeRef(dd.AttributePath)},
 		{Key: "ConditionalEditabilitySettings", Value: nil},

@@ -50,7 +50,7 @@ func serializeSnippetCall(s *pages.SnippetCallWidget) bson.D {
 	doc := bson.D{
 		{Key: "$ID", Value: idToBsonBinary(string(s.ID))},
 		{Key: "$Type", Value: "Forms$SnippetCallWidget"},
-		{Key: "Appearance", Value: serializeAppearance(s.Class, s.Style, s.DesignProperties)},
+		{Key: "Appearance", Value: serializeAppearance(s.Class, s.Style, s.DynamicClasses, s.DesignProperties)},
 		{Key: "ConditionalVisibilitySettings", Value: nil},
 		{Key: "FormCall", Value: snippetCall},
 		{Key: "Name", Value: s.Name},
@@ -111,7 +111,7 @@ func serializeGallery(g *pages.Gallery) bson.D {
 	doc := bson.D{
 		{Key: "$ID", Value: idToBsonBinary(string(g.ID))},
 		{Key: "$Type", Value: "Forms$ListView"},
-		{Key: "Appearance", Value: serializeAppearance(g.Class, g.Style, g.DesignProperties)},
+		{Key: "Appearance", Value: serializeAppearance(g.Class, g.Style, g.DynamicClasses, g.DesignProperties)},
 		{Key: "ClickAction", Value: serializeClientAction(nil)},
 		{Key: "ConditionalVisibilitySettings", Value: nil},
 		{Key: "DataSource", Value: dataSource},
@@ -189,7 +189,7 @@ func serializeListView(lv *pages.ListView) bson.D {
 	doc := bson.D{
 		{Key: "$ID", Value: idToBsonBinary(string(lv.ID))},
 		{Key: "$Type", Value: "Forms$ListView"},
-		{Key: "Appearance", Value: serializeAppearance(lv.Class, lv.Style, lv.DesignProperties)},
+		{Key: "Appearance", Value: serializeAppearance(lv.Class, lv.Style, lv.DynamicClasses, lv.DesignProperties)},
 		{Key: "ClickAction", Value: serializeClientAction(lv.ClickAction)},
 		{Key: "ConditionalVisibilitySettings", Value: nil},
 		{Key: "DataSource", Value: dataSource},
@@ -300,7 +300,7 @@ func serializeDynamicText(dt *pages.DynamicText) bson.D {
 	doc := bson.D{
 		{Key: "$ID", Value: idToBsonBinary(string(dt.ID))},
 		{Key: "$Type", Value: "Forms$DynamicText"},
-		{Key: "Appearance", Value: serializeAppearance(dt.Class, dt.Style, dt.DesignProperties)},
+		{Key: "Appearance", Value: serializeAppearance(dt.Class, dt.Style, dt.DynamicClasses, dt.DesignProperties)},
 		{Key: "ConditionalVisibilitySettings", Value: nil},
 		{Key: "Content", Value: content},
 		{Key: "Name", Value: dt.Name},
@@ -333,7 +333,7 @@ func serializeActionButton(ab *pages.ActionButton) bson.D {
 		{Key: "$ID", Value: idToBsonBinary(string(ab.ID))},
 		{Key: "$Type", Value: "Forms$ActionButton"},
 		{Key: "Action", Value: serializeClientAction(ab.Action)},
-		{Key: "Appearance", Value: serializeAppearance(ab.Class, ab.Style, ab.DesignProperties)},
+		{Key: "Appearance", Value: serializeAppearance(ab.Class, ab.Style, ab.DynamicClasses, ab.DesignProperties)},
 		{Key: "AriaRole", Value: "Button"},
 		{Key: "ButtonStyle", Value: buttonStyle},
 		{Key: "CaptionTemplate", Value: caption}, // Must be CaptionTemplate, not Caption
@@ -371,7 +371,7 @@ func serializeStaticText(t *pages.Text) bson.D {
 	doc := bson.D{
 		{Key: "$ID", Value: idToBsonBinary(string(t.ID))},
 		{Key: "$Type", Value: "Forms$Text"},
-		{Key: "Appearance", Value: serializeAppearance(t.Class, t.Style, t.DesignProperties)},
+		{Key: "Appearance", Value: serializeAppearance(t.Class, t.Style, t.DynamicClasses, t.DesignProperties)},
 		{Key: "Caption", Value: bson.D{
 			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
 			{Key: "$Type", Value: "Texts$Text"},
@@ -406,7 +406,7 @@ func serializeTitle(t *pages.Title) bson.D {
 	doc := bson.D{
 		{Key: "$ID", Value: idToBsonBinary(string(t.ID))},
 		{Key: "$Type", Value: "Forms$Title"},
-		{Key: "Appearance", Value: serializeAppearance(t.Class, t.Style, t.DesignProperties)},
+		{Key: "Appearance", Value: serializeAppearance(t.Class, t.Style, t.DynamicClasses, t.DesignProperties)},
 		{Key: "Caption", Value: bson.D{
 			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
 			{Key: "$Type", Value: "Texts$Text"},
@@ -478,7 +478,7 @@ func serializeDataView(dv *pages.DataView) bson.D {
 	doc := bson.D{
 		{Key: "$ID", Value: idToBsonBinary(string(dv.ID))},
 		{Key: "$Type", Value: "Forms$DataView"},
-		{Key: "Appearance", Value: serializeAppearance(dv.Class, dv.Style, dv.DesignProperties)},
+		{Key: "Appearance", Value: serializeAppearance(dv.Class, dv.Style, dv.DynamicClasses, dv.DesignProperties)},
 		{Key: "ConditionalEditabilitySettings", Value: nil},
 		{Key: "ConditionalVisibilitySettings", Value: nil},
 		{Key: "DataSource", Value: dataSource},
@@ -617,7 +617,7 @@ func serializeDataGrid(dg *pages.DataGrid) bson.D {
 	doc := bson.D{
 		{Key: "$ID", Value: idToBsonBinary(string(dg.ID))},
 		{Key: "$Type", Value: "Forms$DataGrid"},
-		{Key: "Appearance", Value: serializeAppearance(dg.Class, dg.Style, dg.DesignProperties)},
+		{Key: "Appearance", Value: serializeAppearance(dg.Class, dg.Style, dg.DynamicClasses, dg.DesignProperties)},
 		{Key: "ClickAction", Value: serializeClientAction(nil)},
 		{Key: "Columns", Value: columns},
 		{Key: "ConditionalVisibilitySettings", Value: nil},
@@ -665,7 +665,7 @@ func serializeDataGridColumn(col *pages.DataGridColumn) bson.D {
 		{Key: "$Type", Value: "Forms$DataGridColumn"},
 		{Key: "AggregateCaption", Value: serializeEmptyText()},
 		{Key: "AggregateFunction", Value: "None"},
-		{Key: "Appearance", Value: serializeAppearance("", "", nil)},
+		{Key: "Appearance", Value: serializeAppearance("", "", "", nil)},
 		{Key: "AttributeRef", Value: attrRef},
 		{Key: "Caption", Value: caption},
 		{Key: "ConditionalEditabilitySettings", Value: nil},
@@ -755,7 +755,7 @@ func serializeNavigationList(nl *pages.NavigationList) bson.D {
 	doc := bson.D{
 		{Key: "$ID", Value: idToBsonBinary(string(nl.ID))},
 		{Key: "$Type", Value: "Forms$NavigationList"},
-		{Key: "Appearance", Value: serializeAppearance(nl.Class, nl.Style, nl.DesignProperties)},
+		{Key: "Appearance", Value: serializeAppearance(nl.Class, nl.Style, nl.DynamicClasses, nl.DesignProperties)},
 		{Key: "ConditionalVisibilitySettings", Value: nil},
 		{Key: "Items", Value: items},
 		{Key: "Name", Value: nl.Name},
@@ -820,7 +820,7 @@ func serializeNavigationListItem(item *pages.NavigationListItem) bson.D {
 		{Key: "$ID", Value: idToBsonBinary(string(item.ID))},
 		{Key: "$Type", Value: "Forms$NavigationListItem"},
 		{Key: "Action", Value: action},
-		{Key: "Appearance", Value: serializeAppearance("", "", nil)},
+		{Key: "Appearance", Value: serializeAppearance("", "", "", nil)},
 		{Key: "ConditionalVisibilitySettings", Value: nil},
 		{Key: "Name", Value: item.Name},
 		{Key: "Widgets", Value: widgets},
@@ -832,7 +832,7 @@ func serializeStaticImage(img *pages.StaticImage) bson.D {
 	doc := bson.D{
 		{Key: "$ID", Value: idToBsonBinary(string(img.ID))},
 		{Key: "$Type", Value: "Forms$StaticImageViewer"},
-		{Key: "Appearance", Value: serializeAppearance(img.Class, img.Style, img.DesignProperties)},
+		{Key: "Appearance", Value: serializeAppearance(img.Class, img.Style, img.DynamicClasses, img.DesignProperties)},
 		{Key: "ClickAction", Value: serializeClientAction(img.OnClickAction)},
 		{Key: "ConditionalVisibilitySettings", Value: nil},
 		{Key: "Height", Value: int64(img.Height)},
@@ -863,7 +863,7 @@ func serializeDynamicImage(img *pages.DynamicImage) bson.D {
 				{Key: "Items", Value: bson.A{int32(3)}},
 			}},
 		}},
-		{Key: "Appearance", Value: serializeAppearance(img.Class, img.Style, img.DesignProperties)},
+		{Key: "Appearance", Value: serializeAppearance(img.Class, img.Style, img.DynamicClasses, img.DesignProperties)},
 		{Key: "ClickAction", Value: serializeClientAction(img.OnClickAction)},
 		{Key: "ConditionalVisibilitySettings", Value: nil},
 		{Key: "DataSource", Value: bson.D{

@@ -204,6 +204,32 @@ func TestSetWidgetProperty_Name(t *testing.T) {
 	}
 }
 
+// TestSetWidgetProperty_DynamicClasses locks in the DynamicClasses ALTER fix: `alter page ... set
+// DynamicClasses` writes the expression into the widget's Forms$Appearance
+// (previously it fell through to the pluggable-property setter and hard-errored
+// "widget has no pluggable Object" on core widgets).
+func TestSetWidgetProperty_DynamicClasses(t *testing.T) {
+	rawData := makeRawPage(makeStyleableWidget("ctn1"))
+	m := &Mutator{rawData: rawData, widgetFinder: findBsonWidget}
+
+	expr := "if $currentObject/Name = 'x' then 'c--x' else ''"
+	if err := m.SetWidgetProperty("ctn1", "DynamicClasses", expr); err != nil {
+		t.Fatalf("SetWidgetProperty(DynamicClasses) failed: %v", err)
+	}
+
+	result := findBsonWidget(rawData, "ctn1")
+	if result == nil {
+		t.Fatal("widget 'ctn1' not found")
+	}
+	app := bsonnav.DGetDoc(result.widget, "Appearance")
+	if app == nil {
+		t.Fatal("widget 'ctn1' has no Appearance")
+	}
+	if got := bsonnav.DGetString(app, "DynamicClasses"); got != expr {
+		t.Errorf("Appearance.DynamicClasses = %q, want %q", got, expr)
+	}
+}
+
 func TestSetWidgetProperty_ButtonStyle(t *testing.T) {
 	w1 := bson.D{
 		{Key: "$Type", Value: "Pages$ActionButton"},

@@ -19,13 +19,13 @@ package ast
 // CreatePageStmtV3 represents a V3 page creation statement.
 // V3 syntax: CREATE PAGE Module.Page (Title: '...', Layout: ...) { widgets }
 type CreatePageStmtV3 struct {
-	Name          QualifiedName
-	Parameters    []PageParameter // From Params: { } block
-	Variables     []PageVariable  // From Variables: { } block
-	Title         string
-	Layout        string
-	URL           string
-	Folder        string
+	Name       QualifiedName
+	Parameters []PageParameter // From Params: { } block
+	Variables  []PageVariable  // From Variables: { } block
+	Title      string
+	Layout     string
+	URL        string
+	Folder     string
 	// Class / Style set the page's Forms$Appearance CSS class and inline style
 	// (issue #714). Empty means "not specified".
 	Class         string
@@ -221,6 +221,11 @@ func (w *WidgetV3) GetClass() string {
 // GetStyle returns the Style property or empty string.
 func (w *WidgetV3) GetStyle() string {
 	return w.GetStringProp("Style")
+}
+
+// GetDynamicClasses returns the DynamicClasses expression or empty string.
+func (w *WidgetV3) GetDynamicClasses() string {
+	return w.GetStringProp("DynamicClasses")
 }
 
 // GetDesktopWidth returns the DesktopWidth property.

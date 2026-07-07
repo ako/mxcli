@@ -1740,6 +1740,13 @@ func setRawWidgetPropertyMut(widget bson.D, propName string, value any) error {
 			}
 		}
 		return nil
+	case "DynamicClasses":
+		if appearance := bsonnav.DGetDoc(widget, "Appearance"); appearance != nil {
+			if s, ok := value.(string); ok {
+				bsonnav.DSet(appearance, "DynamicClasses", s)
+			}
+		}
+		return nil
 	case "Editable":
 		if s, ok := value.(string); ok {
 			bsonnav.DSet(widget, "Editable", s)

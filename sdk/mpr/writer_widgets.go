@@ -397,13 +397,13 @@ func serializeEntityRef(entityPath string) any {
 // ============================================================================
 
 // serializeAppearance creates a standard Appearance object for widgets.
-func serializeAppearance(class, style string, designProps []pages.DesignPropertyValue) bson.D {
+func serializeAppearance(class, style, dynamicClasses string, designProps []pages.DesignPropertyValue) bson.D {
 	return bson.D{
 		{Key: "$ID", Value: idToBsonBinary(generateUUID())},
 		{Key: "$Type", Value: "Forms$Appearance"},
 		{Key: "Class", Value: class},
 		{Key: "DesignProperties", Value: serializeDesignProperties(designProps)},
-		{Key: "DynamicClasses", Value: ""},
+		{Key: "DynamicClasses", Value: dynamicClasses},
 		{Key: "Style", Value: style},
 	}
 }

@@ -23,7 +23,7 @@ func TestAppearanceDesignProperties(t *testing.T) {
 		}},
 	}
 
-	out, err := (&codec.Encoder{}).Encode(newAppearance("", "", dps))
+	out, err := (&codec.Encoder{}).Encode(newAppearance("", "", "", dps))
 	if err != nil {
 		t.Fatalf("encode appearance: %v", err)
 	}
@@ -39,5 +39,19 @@ func TestAppearanceDesignProperties(t *testing.T) {
 		if !bytes.Contains(out, []byte(want)) {
 			t.Errorf("encoded appearance missing %q\nBSON: %x", want, out)
 		}
+	}
+}
+
+// TestAppearanceDynamicClasses locks in the DynamicClasses fix: the codec serializes the
+// Forms$Appearance.DynamicClasses expression when the widget carries one
+// (previously hardcoded to ""), so the runtime class list is not dropped.
+func TestAppearanceDynamicClasses(t *testing.T) {
+	expr := "if $currentObject/Name = 'Astute' then 'ss-chip--astute' else ''"
+	out, err := (&codec.Encoder{}).Encode(newAppearance("ss-chip", "", expr, nil))
+	if err != nil {
+		t.Fatalf("encode appearance: %v", err)
+	}
+	if !bytes.Contains(out, []byte(expr)) {
+		t.Errorf("encoded appearance missing DynamicClasses expression %q\nBSON: %x", expr, out)
 	}
 }

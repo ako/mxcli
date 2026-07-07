@@ -519,6 +519,7 @@ type rawWidget struct {
 	Selection       string // For Gallery selection mode (Single, Multi, None)
 	Class           string // CSS class from Appearance
 	Style           string // Inline CSS style from Appearance
+	DynamicClasses  string // Dynamic-classes expression from Appearance
 	Parameters      []string
 	Children        []rawWidget
 	FilterWidgets   []rawWidget // For Gallery filter widgets

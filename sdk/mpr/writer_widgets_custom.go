@@ -34,7 +34,7 @@ func serializeCustomWidget(cw *pages.CustomWidget) bson.D {
 	doc := bson.D{
 		{Key: "$ID", Value: idToBsonBinary(string(cw.ID))},
 		{Key: "$Type", Value: "CustomWidgets$CustomWidget"},
-		{Key: "Appearance", Value: serializeAppearance(cw.Class, cw.Style, cw.DesignProperties)},
+		{Key: "Appearance", Value: serializeAppearance(cw.Class, cw.Style, cw.DynamicClasses, cw.DesignProperties)},
 		{Key: "ConditionalEditabilitySettings", Value: nil},
 		{Key: "ConditionalVisibilitySettings", Value: nil},
 		{Key: "Editable", Value: editable},
@@ -69,7 +69,7 @@ func serializeCustomWidgetWithRawType(cw *pages.CustomWidget) bson.D {
 	doc := bson.D{
 		{Key: "$ID", Value: idToBsonBinary(string(cw.ID))},
 		{Key: "$Type", Value: "CustomWidgets$CustomWidget"},
-		{Key: "Appearance", Value: serializeAppearance(cw.Class, cw.Style, cw.DesignProperties)},
+		{Key: "Appearance", Value: serializeAppearance(cw.Class, cw.Style, cw.DynamicClasses, cw.DesignProperties)},
 		{Key: "ConditionalEditabilitySettings", Value: nil},
 		{Key: "ConditionalVisibilitySettings", Value: nil},
 		{Key: "Editable", Value: editable},

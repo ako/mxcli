@@ -1,0 +1,64 @@
+-- ============================================================================
+-- DynamicClasses expression silently dropped by the MDL page builder
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   `DynamicClasses: '<expr>'` on a widget passed `mxcli check` but was discarded
+--   on write. `describe page` showed the widget with `Class` but no
+--   `DynamicClasses` — silent data loss, no error, no warning. Confirmed on both
+--   the create path and `alter page ... set`, on core widgets (dynamictext,
+--   container).
+--
+-- Root cause:
+--   `DynamicClasses` was not wired at any layer: parsed into the generic
+--   Properties map but never read by `applyWidgetAppearance`; `pages.BaseWidget`
+--   had no field; both write engines hardcoded `DynamicClasses: ""`; and the
+--   describe read path never surfaced it. It is a real metamodel field
+--   (`Forms$Appearance.DynamicClasses`, string — a sibling of `Class`/`Style`).
+--
+-- After fix:
+--   `DynamicClasses` is carried on `BaseWidget`, read in `applyWidgetAppearance`,
+--   serialized by both engines, settable via `alter page ... set DynamicClasses`,
+--   and round-tripped by `describe page`.
+--   Verified: `mx check` = 0 errors on both engines (modelsdk + legacy).
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/72-widget-dynamicclasses.mdl -p app.mpr
+-- ============================================================================
+
+create entity MyFirstModule.Boat ( Name: String );
+
+create or replace page MyFirstModule.P_DynClass
+(
+  Title: 'Dynamic Classes',
+  Layout: Atlas_Core.Atlas_Default,
+  Params: { $Boat: MyFirstModule.Boat }
+)
+{
+  dataview dv (datasource: $Boat) {
+    -- DynamicClasses on a dynamictext (a runtime-computed class list)
+    dynamictext ovClass (
+      Content: 'chip',
+      Class: 'ss-chip',
+      DynamicClasses: 'if $currentObject/Name = ''Astute'' then ''ss-chip--astute'' else '''''
+    )
+    -- DynamicClasses on a container
+    container ovBox (
+      Class: 'ss-box',
+      DynamicClasses: 'if $currentObject/Name = '''' then ''ss-box--empty'' else '''''
+    ) {
+      dynamictext boxLabel (content: 'inner')
+    }
+    -- a plain container we make dynamically classed via ALTER below
+    container ovLater { dynamictext tL (content: 'set via ALTER') }
+  }
+}
+
+-- ALTER PAGE ... SET DynamicClasses sets it after the fact (previously a
+-- hard error "widget has no pluggable Object" on core widgets).
+alter page MyFirstModule.P_DynClass {
+  set Class = 'ss-later' on ovLater;
+  set DynamicClasses = 'if $currentObject/Name != '''' then ''ss-later--named'' else '''''  on ovLater;
+}
+
+describe page MyFirstModule.P_DynClass;

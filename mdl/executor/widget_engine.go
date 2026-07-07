@@ -1054,7 +1054,7 @@ func (e *PluggableWidgetEngine) applyChildSlots(builder backend.WidgetObjectBuil
 func isBuiltinPropName(name string) bool {
 	switch name {
 	case "DataSource", "Attribute", "Label", "Caption", "Action",
-		"Selection", "Class", "Style", "Editable", "Visible",
+		"Selection", "Class", "Style", "DynamicClasses", "Editable", "Visible",
 		"WidgetType", "DesignProperties", "Association", "CaptionAttribute",
 		"Content", "RenderMode", "ContentParams", "CaptionParams",
 		"ButtonStyle", "DesktopWidth", "DesktopColumns", "TabletColumns",

@@ -472,7 +472,8 @@ func applyConditionalSettings(widget pages.Widget, w *ast.WidgetV3) {
 	}
 }
 
-// applyWidgetAppearance sets Class, Style, and DesignProperties on a widget if specified in the AST.
+// applyWidgetAppearance sets Class, Style, DynamicClasses, and DesignProperties on a widget
+// if specified in the AST.
 // The theme registry (if non-nil) is used to determine the correct BSON type for each design property.
 func applyWidgetAppearance(widget pages.Widget, w *ast.WidgetV3, theme *ThemeRegistry) error {
 	class, style := w.GetClass(), w.GetStyle()
@@ -493,6 +494,17 @@ func applyWidgetAppearance(widget pages.Widget, w *ast.WidgetV3, theme *ThemeReg
 		}
 		if setter, ok := widget.(appearanceSetter); ok {
 			setter.SetAppearance(class, style)
+		}
+	}
+
+	// Apply the DynamicClasses expression (a runtime-computed class list on the
+	// widget's Forms$Appearance). Every widget that embeds BaseWidget supports it.
+	if dynamicClasses := w.GetDynamicClasses(); dynamicClasses != "" {
+		type dynamicClassesSetter interface {
+			SetDynamicClasses(dynamicClasses string)
+		}
+		if setter, ok := widget.(dynamicClassesSetter); ok {
+			setter.SetDynamicClasses(dynamicClasses)
 		}
 	}
 
