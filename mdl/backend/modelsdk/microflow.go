@@ -46,6 +46,40 @@ func (b *Backend) GetMicroflow(id model.ID) (*microflows.Microflow, error) {
 	return nil, nil
 }
 
+// IsRule reports whether qualifiedName refers to a rule (Microflows$Rule).
+// Rules share the microflow namespace but are stored under a distinct BSON
+// $Type, so the flow-builder needs the distinction to emit a RuleSplitCondition
+// (not an ExpressionSplitCondition) for a rule-based `if Module.SomeRule(...)`.
+//
+// Without this the modelsdk backend fell back to the embedded `unimplemented`
+// stub (which errors); the builder's `if err != nil || !isRule` guard then
+// treated the rule call as a plain expression and emitted an invalid
+// ExpressionSplitCondition → mx check CE0117 "Error in expression" (issue #723
+// §A). Mirrors the legacy reader's IsRule.
+func (b *Backend) IsRule(qualifiedName string) (bool, error) {
+	if qualifiedName == "" {
+		return false, nil
+	}
+	units, err := mprread.ListUnitsWithContainer[*genMf.Rule](b.reader)
+	if err != nil {
+		return false, err
+	}
+	for _, u := range units {
+		name := u.Element.Name()
+		if name == "" {
+			continue
+		}
+		fullName := name
+		if mod := b.moduleNameFor(model.ID(u.Element.ID())); mod != "" {
+			fullName = mod + "." + name
+		}
+		if fullName == qualifiedName {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (b *Backend) ListNanoflows() ([]*microflows.Nanoflow, error) {
 	units, err := mprread.ListUnitsWithContainer[*genMf.Nanoflow](b.reader)
 	if err != nil {
