@@ -14,8 +14,8 @@ Verify the running Mendix application using playwright-cli.
 playwright-cli open http://localhost:8080
 playwright-cli snapshot
 
-# Verify a widget exists
-playwright-cli run-code "document.querySelector('.mx-name-widgetName') !== null"
+# Verify a widget exists (page/DOM assertions run in page context -> eval)
+playwright-cli eval "() => document.querySelector('.mx-name-widgetName') !== null"
 
 # Take a screenshot
 playwright-cli screenshot
@@ -28,10 +28,10 @@ playwright-cli close
 
 ```bash
 playwright-cli open http://localhost:8080
-playwright-cli run-code "document.querySelector('#usernameInput').value = 'MxAdmin'"
-playwright-cli run-code "document.querySelector('#passwordInput').value = 'AdminPassword1!'"
-playwright-cli run-code "document.querySelector('#loginButton').click()"
-playwright-cli run-code "await new Promise(r => setTimeout(r, 3000))"
+playwright-cli eval "() => { document.querySelector('#usernameInput').value = 'MxAdmin' }"
+playwright-cli eval "() => { document.querySelector('#passwordInput').value = 'AdminPassword1!' }"
+playwright-cli eval "() => document.querySelector('#loginButton').click()"
+playwright-cli eval "() => new Promise(r => setTimeout(r, 3000))"
 playwright-cli state-save mendix-auth
 ```
 
@@ -71,9 +71,8 @@ for f in tests/verify-*.sh; do bash "$f" || exit 1; done
 ## Tips
 
 - Use `.mx-name-*` selectors from your MDL widget names — they are stable
-- Use `run-code` with `throw new Error()` for assertions in scripts
+- Use `eval "() => ..."` for page/DOM assertions (`run-code` runs in Node, where `document` is undefined); `throw new Error(...)` inside the function to fail under `set -e`
 - Use `state-save`/`state-load` to persist login across verifications
 - Use `mxcli oql` for data assertions (no npm packages needed)
-- Use `--headed` flag to see the browser for debugging
-- Use `playwright-cli screenshot` to capture visual state
+- The devcontainer ships only the headless shell (no display), so use `playwright-cli screenshot` (and `tracing-start`/`tracing-stop`) for visual debugging — headed mode needs the full Chromium build and a display
 - See skill: test-app for full reference

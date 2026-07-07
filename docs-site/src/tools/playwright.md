@@ -8,20 +8,38 @@ Mendix apps are React single-page applications. The server returns a JavaScript 
 
 ## Prerequisites
 
-- **Node.js** -- Required for playwright-cli
-- **playwright-cli** -- Install globally: `npm install -g @playwright/cli@latest`
-- **Chromium** -- Install via: `playwright-cli install --with-deps chromium`
-- **Running Mendix app** -- Start with `mxcli docker run -p app.mpr --wait`
+`mxcli init` provisions everything below inside the generated devcontainer, so in a normal project you do not install anything manually:
 
-### Devcontainer Setup
+- **Node.js** (LTS) -- via the base image; required for playwright-cli.
+- **playwright-cli** -- installed globally and **pinned** to a known-good version (`npm install -g @playwright/cli@0.1.15`). It is deliberately *not* `@latest`: the package is young and its CLI surface shifts between releases.
+- **Chromium (headless shell)** -- installed via `@playwright/cli`'s **bundled** `playwright-core` into a shared `PLAYWRIGHT_BROWSERS_PATH`, and exposed at the stable path `/usr/local/bin/mx-headless-shell`. The generated `.playwright/cli.config.json` pins `executablePath` to that symlink.
+- **Running Mendix app** -- start with `mxcli docker run -p app.mpr --wait`.
 
-If using a devcontainer, add the following to `postCreateCommand` in your `devcontainer.json`:
+`mxcli init` also generates `.playwright/cli.config.json` (headless Chromium, timeouts, allowed origins) and sets `PLAYWRIGHT_CLI_SESSION=mendix-app` in the devcontainer so the runner and your scripts share one browser session.
 
-```bash
-npm install -g @playwright/cli@latest && playwright-cli install --with-deps chromium
-```
+### Manual / non-devcontainer setup (Linux arm64 gotchas)
 
-The `mxcli init` command generates a `.playwright/cli.config.json` with sensible defaults for headless Chromium and a `PLAYWRIGHT_CLI_SESSION` environment variable for session management.
+If you provision outside `mxcli init` or debug a browser-launch failure:
+
+- `playwright-cli install` **initializes the workspace** -- it does *not* install a browser (the browser command is `playwright-cli install-browser`).
+- `open --browser` only accepts `chrome | firefox | webkit | msedge` (no `chromium`), and defaults to the **chrome channel**, which has **no distribution on Linux arm64**. Use the bundled Chromium instead and pin it explicitly:
+
+  ```bash
+  node "$(npm root -g)/@playwright/cli/node_modules/playwright-core/cli.js" \
+    install chromium chromium-headless-shell
+  ```
+
+  Then point `.playwright/cli.config.json` at the headless-shell binary (headless mode needs the `chromium_headless_shell-*` build, not the full `chromium-*` one):
+
+  ```json
+  "browser": {
+    "browserName": "chromium",
+    "launchOptions": {
+      "headless": true,
+      "executablePath": "/usr/local/bin/mx-headless-shell"
+    }
+  }
+  ```
 
 ## mxcli playwright verify
 
@@ -78,6 +96,17 @@ The verify runner performs these steps:
 9. **Writes** JUnit XML if `--junit` is specified
 10. **Exits** with non-zero status if any script failed
 
+## `eval` vs `run-code` -- read this first
+
+`@playwright/cli` has **two** evaluation commands with **different execution contexts**. Getting this wrong is the most common scripting mistake:
+
+| Command | Runs in | Use for |
+|---------|---------|---------|
+| `playwright-cli eval "() => ..."` | **browser page** (`document`, `window` exist) | DOM assertions, clicks, filling fields, reading `.mx-name-*` |
+| `playwright-cli run-code "..."` | **Node** (Playwright API; `document` is **undefined**) | Playwright-level scripting, not page DOM |
+
+`eval` takes a **function** (`"() => ..."`) and prints its return value under `### Result`; it awaits a returned Promise. **Do not** use `run-code "document.querySelector(...)"` -- it throws `ReferenceError: document is not defined`. Every page/DOM assertion below uses `eval`.
+
 ## Test Script Format
 
 Test scripts are plain bash files using playwright-cli commands. The naming convention is `tests/verify-<name>.test.sh`. Scripts should use `set -euo pipefail` so that any failing command causes the script to exit with a non-zero code.
@@ -89,25 +118,27 @@ Test scripts are plain bash files using playwright-cli commands. The naming conv
 # tests/verify-customers.test.sh -- Customer module smoke test
 set -euo pipefail
 
-# --- Login ---
+# --- Login (page context -> eval) ---
 playwright-cli open http://localhost:8080
-playwright-cli fill e12 "MxAdmin"
-playwright-cli fill e15 "AdminPassword1!"
-playwright-cli click e18
+playwright-cli eval "() => { document.querySelector('#usernameInput').value = 'MxAdmin' }"
+playwright-cli eval "() => { document.querySelector('#passwordInput').value = 'AdminPassword1!' }"
+playwright-cli eval "() => document.querySelector('#loginButton').click()"
+playwright-cli eval "() => new Promise(r => setTimeout(r, 3000))"
 playwright-cli state-save mendix-auth
 
-# --- Customer Overview page ---
+# --- Customer Overview page (throw to fail the script under set -e) ---
 playwright-cli goto http://localhost:8080/p/Customer_Overview
-playwright-cli run-code "document.querySelector('.mx-name-dgCustomers') !== null"
-playwright-cli run-code "document.querySelector('.mx-name-btnNew') !== null"
-playwright-cli run-code "document.querySelector('.mx-name-btnEdit') !== null"
+playwright-cli eval "() => { if (!document.querySelector('.mx-name-dgCustomers')) throw new Error('dgCustomers not found') }"
+playwright-cli eval "() => { if (!document.querySelector('.mx-name-btnNew')) throw new Error('btnNew not found') }"
+playwright-cli eval "() => { if (!document.querySelector('.mx-name-btnEdit')) throw new Error('btnEdit not found') }"
 
 # --- Create a customer ---
-playwright-cli click btnNew
-playwright-cli snapshot
+playwright-cli eval "() => document.querySelector('.mx-name-btnNew').click()"
+playwright-cli eval "() => new Promise(r => setTimeout(r, 2000))"
 playwright-cli fill txtName "CI Test Customer"
 playwright-cli fill txtEmail "ci@test.com"
-playwright-cli click btnSave
+playwright-cli eval "() => document.querySelector('.mx-name-btnSave').click()"
+playwright-cli eval "() => new Promise(r => setTimeout(r, 2000))"
 
 # --- Verify persistence (via OQL, not direct DB query) ---
 mxcli oql -p app.mpr --json \
@@ -131,23 +162,23 @@ These `.mx-name-*` classes are stable, predictable, and directly derived from MD
 
 ### Using Selectors in Scripts
 
-The recommended approach for CI scripts is to use `run-code` with CSS selectors, since dynamic element refs (`e12`, `e15`) change between page loads:
+The recommended approach for CI scripts is to use `eval` (page context) with CSS selectors, since dynamic element refs (`e12`, `e15`) change between page loads:
 
 ```bash
 # Check widget presence
-playwright-cli run-code "document.querySelector('.mx-name-btnSave') !== null"
+playwright-cli eval "() => document.querySelector('.mx-name-btnSave') !== null"
 
 # Click a widget
-playwright-cli run-code "document.querySelector('.mx-name-btnSave').click()"
+playwright-cli eval "() => document.querySelector('.mx-name-btnSave').click()"
 
 # Check text content
-playwright-cli run-code "document.querySelector('.mx-name-lblTitle').textContent.includes('Customers')"
+playwright-cli eval "() => document.querySelector('.mx-name-lblTitle').textContent.includes('Customers')"
 ```
 
-For assertions that should cause failures, use `throw` so the script exits non-zero under `set -e`:
+For assertions that should cause failures, `throw` inside the function so the script exits non-zero under `set -e`:
 
 ```bash
-playwright-cli run-code "if (!document.querySelector('.mx-name-btnSave')) throw new Error('btnSave not found')"
+playwright-cli eval "() => { if (!document.querySelector('.mx-name-btnSave')) throw new Error('btnSave not found') }"
 ```
 
 ## Three Test Layers
@@ -169,12 +200,12 @@ Verify that every widget generated in MDL is present and interactive in the DOM.
 
 ```bash
 # Widget presence
-playwright-cli run-code "document.querySelector('.mx-name-dgCustomers') !== null"
-playwright-cli run-code "document.querySelector('.mx-name-btnNew') !== null"
+playwright-cli eval "() => document.querySelector('.mx-name-dgCustomers') !== null"
+playwright-cli eval "() => document.querySelector('.mx-name-btnNew') !== null"
 
-# Form interaction
-playwright-cli run-code "document.querySelector('.mx-name-txtName input').value = 'Test'"
-playwright-cli run-code "document.querySelector('.mx-name-btnSave').click()"
+# Form interaction (dispatch an input event so Mendix registers the change)
+playwright-cli eval "() => { const el = document.querySelector('.mx-name-txtName input'); el.value = 'Test'; el.dispatchEvent(new Event('input', {bubbles: true})) }"
+playwright-cli eval "() => document.querySelector('.mx-name-btnSave').click()"
 ```
 
 ### Layer 3: Data Assertions
