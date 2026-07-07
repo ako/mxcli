@@ -187,6 +187,9 @@ Statement 5: create page (never executed)
 Organize scripts in dependency order:
 
 ```mdl
+-- check-skip: illustrative ordering example; the PHASE 5 page block uses
+-- shorthand pseudo-syntax (layout/title/parameter/widgets) for brevity, not
+-- runnable MDL. See create-page.md for the real page syntax.
 -- ============================================
 -- PHASE 1: Enumerations (no dependencies)
 -- ============================================

@@ -7,15 +7,19 @@
 #
 # It recursively finds every *.md under the given directory, extracts each ```mdl
 # and ```sql fenced block, and runs `mxcli check` (syntax only) on the individual
-# statements whose first keyword is a domain-model DDL statement — CREATE/ALTER/DROP
-# of an entity, association, enumeration, or constant. Those are reliably complete
-# and standalone; a bad statement inside a larger multi-document example is still
-# caught (extraction is per-statement, not per-block).
+# statements whose first keyword is in scope — CREATE/ALTER/DROP of an entity,
+# association, enumeration, or constant, PLUS complete CREATE/DROP of a page or
+# snippet. Those are reliably complete and standalone; a bad statement inside a
+# larger multi-document example is still caught (extraction is per-statement, not
+# per-block). CREATE PAGE/SNIPPET is included because full page bodies are complete
+# top-level statements — this is what catches page-action drift like
+# `show_page X passing $obj` (the valid form is `show_page X(Param: $obj)`).
 #
 # Everything else is skipped on purpose, because skills legitimately show
 # fragments that are NOT standalone top-level MDL: microflow activities
-# (`change $x`, `show page X(...)`), page/REST snippets, and the import-mapping /
-# JSON-structure mini-DSL (`create entity X { ... }`). Blocks are also skipped when
+# (`change $x`, `show page X(...)`), ALTER PAGE operation fragments (`set ...`,
+# `insert ...`), bare widget snippets, and the import-mapping / JSON-structure
+# mini-DSL (`create entity X { ... }`). Blocks are also skipped when
 # they are clearly illustrative: placeholders (`...`), syntax templates (` | `
 # alternation, `<name>`, `[optional]`), brace-based mini-DSL (`{`/`}`), or a
 # deliberately-wrong example (❌ / INCORRECT / WRONG / -- BAD).
@@ -34,11 +38,18 @@ fi
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-# A checkable block's first statement must be a domain-model DDL statement. Scope
-# is deliberately the drift-prone domain model — entity / association /
-# enumeration / constant — not security (`create module role`), pages, or
-# microflows, whose blocks are fragment-heavy and have their own syntax surface.
+# A checkable statement's first keyword must be in scope. Two families:
+#   DDL_RE  — the drift-prone domain model (entity / association / enumeration /
+#             constant), for create / alter / drop.
+#   PAGE_RE — complete CREATE / DROP of a page or snippet. A full `create page … { … }`
+#             body is a standalone top-level statement, so it checks cleanly; this is
+#             the family that catches page-action drift (e.g. `passing $obj`). ALTER
+#             PAGE/SNIPPET is deliberately excluded — its blocks are operation
+#             fragments (`set …`, `insert …`) that are not standalone.
+# Out of scope entirely: security (`create module role`), microflows — fragment-heavy
+# with their own syntax surface.
 DDL_RE='^(create|alter|drop)( or (modify|replace))?( (persistent|non_persistent|view|external))? (entity|association|enumeration|constant)\b'
+PAGE_RE='^(create|drop)( or (modify|replace))? (page|snippet)\b'
 
 FAILED=0
 CHECKED=0
@@ -69,28 +80,56 @@ while IFS= read -r md; do
 			SKIPPED=$((SKIPPED + 1)); continue
 		fi
 
-		# Split the block into individual statements (strip line comments and `/`
-		# separators first, then split on `;`), so a bad DDL statement inside a
-		# larger multi-document example is still caught.
+		# Split the block into individual statements so a bad statement inside a larger
+		# multi-document example is still caught. DDL and page/snippet statements
+		# terminate differently: DDL ends at a top-level `;`, but a `create page … { … }`
+		# body ends at its matching `}` with NO `;`. The splitter scans character by
+		# character tracking paren depth, brace depth, and quoted strings, so it can
+		# tell a page BODY brace (at paren depth 0) from an inline map brace such as
+		# `params: { $x: M.E }` (inside the header parens) or `params: {C: $c}` in a
+		# widget arg. A statement flushes when its body brace closes, on a top-level `;`,
+		# or on a standalone `/` separator — so a following statement (e.g. a
+		# `create … navigation`) is never concatenated onto a page.
 		rm -f "$WORK"/stmt_* 2>/dev/null || true
 		awk -v dir="$WORK" '
-			{ sub(/[[:space:]]*--.*/, "") }              # drop line comments
-			/^[[:space:]]*\/[[:space:]]*$/ { next }       # drop `/` separators
-			{ buf = buf $0 "\n" }
-			END {
-				m = split(buf, parts, ";")
-				for (i = 1; i <= m; i++)
-					if (parts[i] ~ /[^[:space:]]/) {
-						fn = sprintf("%s/stmt_%03d.mdl", dir, i)
-						printf "%s;\n", parts[i] > fn
+			BEGIN { q = sprintf("%c", 39) }                   # single quote
+			function flush(   fn) {
+				if (buf ~ /[^[:space:]]/) {
+					i++
+					fn = sprintf("%s/stmt_%03d.mdl", dir, i)
+					printf "%s\n", buf > fn
+					close(fn)
+				}
+				buf = ""; bdepth = 0; pdepth = 0; bopened = 0; instr = 0
+			}
+			{
+				line = $0
+				sub(/[[:space:]]*--.*/, "", line)             # strip line comment
+				if (line ~ /^[[:space:]]*\/[[:space:]]*$/) { flush(); next }  # `/` separator
+				buf = buf line "\n"
+				n = length(line)
+				for (k = 1; k <= n; k++) {
+					ch = substr(line, k, 1)
+					if (instr) { if (ch == q) instr = 0; continue }  # skip string body
+					if (ch == q) { instr = 1; continue }
+					if (ch == "(") pdepth++
+					else if (ch == ")") { if (pdepth > 0) pdepth-- }
+					else if (pdepth == 0) {
+						if (ch == "{") { bdepth++; bopened = 1 }
+						else if (ch == "}") { if (bdepth > 0) bdepth-- }
+						else if (ch == ";" && bdepth == 0) { flush(); break }
 					}
-			}' "$blk"
+				}
+				if (bopened && bdepth == 0 && pdepth == 0) flush()   # body closed
+			}
+			END { flush() }' "$blk"
 
 		for stmt in "$WORK"/stmt_*.mdl; do
 			[ -e "$stmt" ] || continue
 			first="$(grep -vE '^[[:space:]]*$' "$stmt" | head -1 | sed -E 's/^[[:space:]]+//' | tr 'A-Z' 'a-z')"
-			# Only domain-model DDL statements are in scope.
-			printf '%s' "$first" | grep -qE "$DDL_RE" || { SKIPPED=$((SKIPPED + 1)); continue; }
+			# Only in-scope statements: domain-model DDL, or complete CREATE/DROP of a
+			# page or snippet.
+			printf '%s' "$first" | grep -qE "$DDL_RE|$PAGE_RE" || { SKIPPED=$((SKIPPED + 1)); continue; }
 			# Skip the JSON-structure mini-DSL (`create entity X (NON_PERSISTENT)`).
 			grep -qE 'NON_PERSISTENT\)' "$stmt" && { SKIPPED=$((SKIPPED + 1)); continue; }
 

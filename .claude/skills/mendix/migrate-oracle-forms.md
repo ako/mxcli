@@ -61,6 +61,9 @@ MDL scripts execute statements sequentially. Items created in one statement can 
 ### Recommended Script Structure
 
 ```mdl
+-- check-skip: the PHASE 3 page block uses shorthand pseudo-syntax
+-- (layout/title/parameter/widgets, dataview source, INPUT ...) to sketch the
+-- migrated UI concept; it is not runnable MDL. See create-page.md / overview-pages.md.
 -- ============================================
 -- PHASE 1: Domain Model (Entities & Associations)
 -- ============================================
@@ -312,6 +315,8 @@ datagrid source $OrderList (
 
 **Oracle Forms Master-Detail → Mendix:**
 ```mdl
+-- check-skip: shorthand pseudo-syntax sketch of the migrated page, not runnable
+-- MDL. See create-page.md / overview-pages.md for real page syntax.
 create page MyModule.CustomerOrders
 layout Atlas_Default
 title 'Customer Orders'
