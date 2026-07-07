@@ -1753,14 +1753,19 @@ func setRawWidgetPropertyMut(widget bson.D, propName string, value any) error {
 		}
 		return nil
 	case "Visible":
-		if s, ok := value.(string); ok {
-			bsonnav.DSet(widget, "Visible", s)
-		} else if b, ok := value.(bool); ok {
-			if b {
-				bsonnav.DSet(widget, "Visible", "True")
-			} else {
-				bsonnav.DSet(widget, "Visible", "False")
-			}
+		// A page widget has no plain boolean "Visible" field — visibility is modeled
+		// via ConditionalVisibilitySettings. Route static booleans and expression
+		// strings into it (previously a bare "Visible" string was written and Studio
+		// Pro silently dropped it). The `[expr]` bracket form arrives as VisibleIf.
+		expr, hasSetting := pages.StaticVisibleExpression(value)
+		if !hasSetting {
+			// `Visible = true` (default-visible): clear any conditional-visibility node.
+			bsonnav.DSet(widget, "ConditionalVisibilitySettings", nil)
+			return nil
+		}
+		if !setWidgetConditionalSettingMut(widget, "ConditionalVisibilitySettings",
+			"Forms$ConditionalVisibilitySettings", expr, true) {
+			return fmt.Errorf("widget does not support conditional visibility")
 		}
 		return nil
 	case "VisibleIf":

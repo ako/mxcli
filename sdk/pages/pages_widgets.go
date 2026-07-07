@@ -3,6 +3,8 @@
 package pages
 
 import (
+	"strings"
+
 	"github.com/mendixlabs/mxcli/model"
 )
 
@@ -87,6 +89,36 @@ type ConditionalVisibilitySettings struct {
 type ConditionalEditabilitySettings struct {
 	model.BaseElement
 	Expression string `json:"expression,omitempty"`
+}
+
+// StaticVisibleExpression maps a static/string `Visible` value to the client
+// expression stored in a widget's ConditionalVisibilitySettings. Page widgets
+// have no plain boolean "Visible" field — visibility is always modeled as a
+// conditional-visibility expression — so `Visible: false` becomes the constant
+// "false", and a string is treated as the expression verbatim (the caller is
+// responsible for rooting it in $currentObject, unlike the `[ … ]` form which
+// auto-roots). It returns hasSetting=false for the default-visible cases
+// (`true` / "true" / empty), signalling "no settings node / clear it".
+func StaticVisibleExpression(v any) (expr string, hasSetting bool) {
+	switch t := v.(type) {
+	case bool:
+		if t {
+			return "", false
+		}
+		return "false", true
+	case string:
+		s := strings.TrimSpace(t)
+		switch strings.ToLower(s) {
+		case "", "true":
+			return "", false
+		case "false":
+			return "false", true
+		default:
+			return s, true
+		}
+	default:
+		return "", false
+	}
 }
 
 // PageVariable represents a page variable reference.

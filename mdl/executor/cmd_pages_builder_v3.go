@@ -452,12 +452,24 @@ func applyConditionalSettings(widget pages.Widget, w *ast.WidgetV3) {
 	bw := bwg.GetBaseWidget()
 
 	if visibleIf := w.GetStringProp("VisibleIf"); visibleIf != "" {
+		// `Visible: [expr]` — bracket form, expression already rooted by the visitor.
 		bw.ConditionalVisibility = &pages.ConditionalVisibilitySettings{
 			BaseElement: model.BaseElement{
 				ID:       model.ID(types.GenerateID()),
 				TypeName: "Forms$ConditionalVisibilitySettings",
 			},
 			Expression: visibleIf,
+		}
+	} else if expr, ok := pages.StaticVisibleExpression(w.Properties["Visible"]); ok {
+		// `Visible: false` or `Visible: '<expr>'` — a page widget has no plain
+		// boolean Visible field, so route it through ConditionalVisibilitySettings
+		// (previously this value was parsed but never consumed → silently dropped).
+		bw.ConditionalVisibility = &pages.ConditionalVisibilitySettings{
+			BaseElement: model.BaseElement{
+				ID:       model.ID(types.GenerateID()),
+				TypeName: "Forms$ConditionalVisibilitySettings",
+			},
+			Expression: expr,
 		}
 	}
 

@@ -1,0 +1,57 @@
+-- ============================================================================
+-- Visible (conditional-visibility) via the string / static-boolean form was
+-- silently dropped by the MDL page builder
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   Conditional visibility worked only via the `[ ... ]` bracket XPath form.
+--   The quoted-string form (`Visible: '<expr>'` / `set Visible = "<expr>"`) and
+--   the static boolean (`Visible: false`) passed check + exec but were never
+--   persisted — describe page showed no Visible, exec reported success with no
+--   warning. A silent syntax trap.
+--
+-- Root cause:
+--   The visitor routed a bracket constraint to Properties["VisibleIf"] (consumed
+--   by applyConditionalSettings), but any other value to Properties["Visible"],
+--   which nothing consumed. The ALTER mutator's `case "Visible"` wrote a bare
+--   "Visible" string (a DataGrid2-column alias), which Studio Pro ignores on a
+--   general widget.
+--
+-- After fix:
+--   A page widget has no plain boolean Visible field — visibility is modeled via
+--   ConditionalVisibilitySettings. Static booleans and expression strings are now
+--   routed into it (pages.StaticVisibleExpression): `false` → "false", an
+--   expression passes through (root it in $currentObject yourself — the `[ ]`
+--   form auto-roots), `true` clears it. describe converges every form to the
+--   canonical `Visible: [expr]`.
+--   Verified: create + alter round-trip on both engines; mx check = 0 errors.
+--
+-- Note: the `[ ... ]` bracket form (see 627-container-visible-expression.mdl)
+-- remains the recommended form — it auto-roots bare attributes in $currentObject.
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/widget-visible-expression.mdl -p app.mpr
+-- ============================================================================
+
+create entity MyFirstModule.Vessel ( Name: String, Active: Boolean );
+
+create or replace page MyFirstModule.P_VisString
+( Title: 'Visible string form', Layout: Atlas_Core.Atlas_Default, Params: { $Vessel: MyFirstModule.Vessel } )
+{
+  dataview dv (datasource: $Vessel) {
+    -- expression as a quoted string (root in $currentObject yourself)
+    dynamictext ovChip ( Content: 'chip', Visible: '$currentObject/Name != empty' )
+    -- static boolean false → hidden
+    container ovHidden ( Visible: false ) { dynamictext t2 (content: 'hidden') }
+    -- a plain widget we make conditionally visible via ALTER below
+    dynamictext ovLater ( Content: 'later' )
+  }
+}
+
+-- ALTER PAGE ... SET Visible = "<expr>" (quoted string) — previously a silent
+-- no-op; now writes ConditionalVisibilitySettings.
+alter page MyFirstModule.P_VisString {
+  set Visible = "$currentObject/Active" on ovLater;
+}
+
+describe page MyFirstModule.P_VisString;

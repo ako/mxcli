@@ -230,6 +230,69 @@ func TestSetWidgetProperty_DynamicClasses(t *testing.T) {
 	}
 }
 
+// makeVisibilityWidget builds a widget with a null ConditionalVisibilitySettings
+// slot (as Studio Pro writes it when unset), matching the widgets that support
+// conditional visibility.
+func makeVisibilityWidget(name string) bson.D {
+	return bson.D{
+		{Key: "$Type", Value: "Pages$DivContainer"},
+		{Key: "Name", Value: name},
+		{Key: "ConditionalVisibilitySettings", Value: nil},
+	}
+}
+
+// TestSetWidgetProperty_VisibleExpression locks in the fix for the silently
+// dropped string/boolean `Visible` form: `alter page ... set Visible = "<expr>"`
+// (and `= false`) writes a ConditionalVisibilitySettings node rather than a bare
+// (ignored) "Visible" string; `= true` clears it.
+func TestSetWidgetProperty_VisibleExpression(t *testing.T) {
+	t.Run("expression string", func(t *testing.T) {
+		rawData := makeRawPage(makeVisibilityWidget("ctn1"))
+		m := &Mutator{rawData: rawData, widgetFinder: findBsonWidget}
+		expr := "$currentObject/Name = 'Astute'"
+		if err := m.SetWidgetProperty("ctn1", "Visible", expr); err != nil {
+			t.Fatalf("SetWidgetProperty(Visible) failed: %v", err)
+		}
+		cvs := bsonnav.DGetDoc(findBsonWidget(rawData, "ctn1").widget, "ConditionalVisibilitySettings")
+		if cvs == nil {
+			t.Fatal("expected ConditionalVisibilitySettings node")
+		}
+		if got := bsonnav.DGetString(cvs, "Expression"); got != expr {
+			t.Errorf("Expression = %q, want %q", got, expr)
+		}
+		// The bare (wrong) Visible field must not be written.
+		if v := bsonnav.DGet(findBsonWidget(rawData, "ctn1").widget, "Visible"); v != nil {
+			t.Errorf("unexpected bare Visible field: %v", v)
+		}
+	})
+
+	t.Run("static false hides", func(t *testing.T) {
+		rawData := makeRawPage(makeVisibilityWidget("ctn1"))
+		m := &Mutator{rawData: rawData, widgetFinder: findBsonWidget}
+		if err := m.SetWidgetProperty("ctn1", "Visible", false); err != nil {
+			t.Fatalf("SetWidgetProperty(Visible=false) failed: %v", err)
+		}
+		cvs := bsonnav.DGetDoc(findBsonWidget(rawData, "ctn1").widget, "ConditionalVisibilitySettings")
+		if cvs == nil || bsonnav.DGetString(cvs, "Expression") != "false" {
+			t.Errorf("expected ConditionalVisibilitySettings Expression=false, got %v", cvs)
+		}
+	})
+
+	t.Run("static true clears", func(t *testing.T) {
+		w := makeVisibilityWidget("ctn1")
+		// Pre-populate a settings node, then set Visible=true to clear it.
+		bsonnav.DSet(w, "ConditionalVisibilitySettings", bson.D{{Key: "Expression", Value: "false"}})
+		rawData := makeRawPage(w)
+		m := &Mutator{rawData: rawData, widgetFinder: findBsonWidget}
+		if err := m.SetWidgetProperty("ctn1", "Visible", true); err != nil {
+			t.Fatalf("SetWidgetProperty(Visible=true) failed: %v", err)
+		}
+		if cvs := bsonnav.DGet(findBsonWidget(rawData, "ctn1").widget, "ConditionalVisibilitySettings"); cvs != nil {
+			t.Errorf("expected ConditionalVisibilitySettings cleared to nil, got %v", cvs)
+		}
+	})
+}
+
 func TestSetWidgetProperty_ButtonStyle(t *testing.T) {
 	w1 := bson.D{
 		{Key: "$Type", Value: "Pages$ActionButton"},
