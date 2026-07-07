@@ -83,10 +83,16 @@ func (b *Backend) CreateEntity(domainModelID model.ID, entity *domainmodel.Entit
 	if err := b.ensureSchema("DomainModels$Entity", "DomainModels$Attribute"); err != nil {
 		return err
 	}
-	if err := b.pedUpdate(moduleName, pedOpEntry{
-		Path:      "/entities",
-		Operation: pedOperation{Type: "add", Value: value},
-	}); err != nil {
+	// verify-on-timeout: an entity add is not idempotent (a blind re-run
+	// duplicates the entity — observed live on 11.12), so on a server timeout
+	// confirm via a shallow /entities read before failing a write that landed.
+	if err := b.pedUpdateVerify(moduleName,
+		fmt.Sprintf("entity %s.%s", moduleName, entity.Name),
+		func() (bool, error) { return b.domainModelHasEntity(moduleName, entity.Name) },
+		pedOpEntry{
+			Path:      "/entities",
+			Operation: pedOperation{Type: "add", Value: value},
+		}); err != nil {
 		return err
 	}
 	// Validation rules (NOT NULL / UNIQUE) are not part of the entity constructor
@@ -1219,6 +1225,18 @@ func (b *Backend) pedCreateDocument(moduleName, docType, docName string, content
 	res, err := b.client.CallTool("ped_create_document", map[string]any{
 		"documents": []map[string]any{doc},
 	})
+	if isTimeoutErr(err) {
+		// The create is not idempotent (a re-run would fail or duplicate), but
+		// its outcome is verifiable: Studio Pro frequently applies the create
+		// even though the response timed out, so confirm before failing.
+		time.Sleep(timeoutVerifyDelay)
+		if exists, verr := b.pedDocumentExists(moduleName, docType, docName); verr == nil && exists {
+			timeoutNotice(fmt.Sprintf("%s %s.%s", docType, moduleName, docName))
+			b.markDirty(moduleName)
+			return nil
+		}
+		return timeoutUnverified(err, fmt.Sprintf("%s %s.%s", docType, moduleName, docName))
+	}
 	if err != nil {
 		return err
 	}

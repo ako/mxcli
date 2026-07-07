@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/pages"
@@ -199,13 +200,27 @@ func (b *Backend) pgReadPage(moduleName, pageName string) (map[string]any, error
 // so the content builders are unchanged. Failures are reported as a non-"success"
 // result text (like the old tool), not res.IsError.
 func (b *Backend) pgWritePage(moduleName, pageName string, content any) error {
-	res, err := b.client.CallTool("pg_patch_page", map[string]any{
+	args := map[string]any{
 		"moduleName": moduleName,
 		"pageName":   pageName,
 		"patches": []any{
 			map[string]any{"op": "replace", "path": "", "value": content},
 		},
-	})
+	}
+	res, err := b.client.CallTool("pg_patch_page", args)
+	if isTimeoutErr(err) {
+		// The root-replace patch is idempotent (create-if-missing + full
+		// replace), so a retry cannot double-apply — and Studio Pro frequently
+		// applies the patch even though the response timed out (-32000).
+		time.Sleep(timeoutVerifyDelay)
+		res, err = b.client.CallTool("pg_patch_page", args)
+		if isTimeoutErr(err) {
+			return timeoutUnverified(err, fmt.Sprintf("page %s.%s", moduleName, pageName))
+		}
+		if err == nil {
+			timeoutNotice(fmt.Sprintf("page %s.%s", moduleName, pageName))
+		}
+	}
 	if err != nil {
 		return err
 	}
