@@ -277,7 +277,16 @@ func splitFlowObjects(coll element.Element) ([]*microflows.MicroflowParameter, [
 			params = append(params, p)
 			continue
 		}
-		objs = append(objs, flowObjectFromGen(el))
+		o := flowObjectFromGen(el)
+		// Carry the object's box size (@size) alongside its position, so a
+		// write → read → write round-trip keeps the real box dimensions
+		// instead of resetting them to 0;0 (issue #723 §A: 1-px slivers in
+		// Studio Pro). Nested loop-body objects go through this same recursive
+		// call, so they are covered too.
+		if s, ok := o.(interface{ SetSize(model.Size) }); ok {
+			s.SetSize(sizeFromGen(el))
+		}
+		objs = append(objs, o)
 	}
 	return params, objs
 }
@@ -301,6 +310,25 @@ func pointFromGen(el element.Element) model.Point {
 	x, _ := strconv.Atoi(strings.TrimSpace(parts[0]))
 	y, _ := strconv.Atoi(strings.TrimSpace(parts[1]))
 	return model.Point{X: x, Y: y}
+}
+
+// sizeFromGen reads a flow object's box size from its Size accessor (a "W;H"
+// string, e.g. "120;60"); mirrors pointFromGen. Without it the read path left
+// every node at size 0;0, so a round-trip (write → read → write) shrank each
+// activity/decision to a 1-px sliver in Studio Pro (issue #723 §A). All gen flow
+// objects expose Size() via their embedded base.
+func sizeFromGen(el element.Element) model.Size {
+	sz, ok := el.(interface{ Size() string })
+	if !ok {
+		return model.Size{}
+	}
+	parts := strings.SplitN(sz.Size(), ";", 2)
+	if len(parts) != 2 {
+		return model.Size{}
+	}
+	w, _ := strconv.Atoi(strings.TrimSpace(parts[0]))
+	h, _ := strconv.Atoi(strings.TrimSpace(parts[1]))
+	return model.Size{Width: w, Height: h}
 }
 
 func flowObjectFromGen(el element.Element) microflows.MicroflowObject {

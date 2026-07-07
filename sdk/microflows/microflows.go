@@ -144,6 +144,16 @@ type BaseMicroflowObject struct {
 	RelativeMiddle model.Point `json:"relativeMiddle,omitempty"`
 }
 
+// GetSize returns the object's box size.
+func (o *BaseMicroflowObject) GetSize() model.Size {
+	return o.Size
+}
+
+// SetSize sets the object's box size.
+func (o *BaseMicroflowObject) SetSize(s model.Size) {
+	o.Size = s
+}
+
 // GetPosition returns the object's position.
 func (o *BaseMicroflowObject) GetPosition() model.Point {
 	return o.Position
