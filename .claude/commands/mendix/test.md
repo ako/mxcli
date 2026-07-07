@@ -73,6 +73,7 @@ for f in tests/verify-*.sh; do bash "$f" || exit 1; done
 - Use `.mx-name-*` selectors from your MDL widget names — they are stable
 - Use `eval "() => ..."` for page/DOM assertions (`run-code` runs in Node, where `document` is undefined); `throw new Error(...)` inside the function to fail under `set -e`
 - Use `state-save`/`state-load` to persist login across verifications
+- In the edit → re-verify loop, pass `mxcli playwright verify … --keep-open` so the next run reuses the warm, logged-in browser instead of cold-launching Chromium (drop any trailing `playwright-cli close` from reused scripts)
 - Use `mxcli oql` for data assertions (no npm packages needed)
 - The devcontainer ships only the headless shell (no display), so use `playwright-cli screenshot` (and `tracing-start`/`tracing-stop`) for visual debugging — headed mode needs the full Chromium build and a display
 - See skill: test-app for full reference

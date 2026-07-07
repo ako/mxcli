@@ -155,13 +155,25 @@ Localized to the `playwright` package and its Cobra command. No changes outside
 
 ### Order of operations
 
-1. `sessionAlive` probe + reuse-attach in `Verify` (skip redundant open). Lowest
-   surface, immediate speedup, no behavior change to teardown.
-2. `--keep-open` (gate the final `close`) + `VerifyOptions.KeepOpen` + flag.
+1. ✅ **Done** — `sessionAlive` probe (`eval "() => location.origin"` + origin
+   match) + reuse-attach in `Verify` (skip redundant open). Lowest surface,
+   immediate speedup, no behavior change to teardown.
+2. ✅ **Done** — `--keep-open` (gate the final `close`) + `VerifyOptions.KeepOpen`
+   + flag. (Steps 1–2 shipped together as "Add 1: session reuse on verify",
+   with `docs-site` + command-doc updates.)
 3. `open` / `status` / `close` subcommands (extract shared resolution helpers first).
 4. `--isolated` per-script session wrapping.
 5. `--auth-state` auto state-load.
-6. Docs + skill/command updates.
+6. Skill (`test-app.md`) agentic-loop pattern.
+
+> **Implementation note (shipped):** the probe uses `eval "() => location.origin"`
+> with a substring/origin match rather than parsing `list` output — it checks
+> liveness and same-origin in one call and is tolerant of the CLI's exact output
+> formatting. On reuse the runner **re-navigates** to the base URL (`goto`), so a
+> rebuilt app is loaded fresh — otherwise the reused page keeps the pre-rebuild
+> DOM/JS and the run would silently verify the stale build (the failure mode in
+> the very loop this targets). `resolveBaseURL`/`sessionName` helper extraction
+> was deferred to the subcommand step (3), where they're actually shared.
 
 ## Version Compatibility
 

@@ -79,6 +79,7 @@ mxcli playwright verify tests/ --skip-health-check
 | `--timeout`, `-t` | `2m` | Timeout per script execution |
 | `--base-url` | `http://localhost:8080` | Mendix app base URL |
 | `--skip-health-check` | `false` | Skip app reachability check before running |
+| `--keep-open` | `false` | Leave the browser session open after the run so the next verify reuses it |
 | `-p` | | Path to the `.mpr` project file |
 
 ### How It Works
@@ -88,13 +89,39 @@ The verify runner performs these steps:
 1. **Discovers** all `.test.sh` files in the provided paths
 2. **Checks** that `playwright-cli` is available in PATH
 3. **Health-checks** the app at the base URL (unless `--skip-health-check`)
-4. **Opens** a playwright-cli browser session (Chromium by default)
+4. **Reuses** a live browser session if one is already open on the same origin (left by a prior `--keep-open` run), re-navigating to the base URL so a rebuilt app loads fresh; otherwise **opens** a new one (Chromium by default)
 5. **Runs** each `.test.sh` script sequentially via `bash`
 6. **Captures** a screenshot on failure for debugging
-7. **Closes** the browser session
+7. **Closes** the browser session -- unless `--keep-open` was passed, in which case it is left warm
 8. **Reports** pass/fail per script with timing
 9. **Writes** JUnit XML if `--junit` is specified
 10. **Exits** with non-zero status if any script failed
+
+### Reusing the session across runs (the iterate loop)
+
+The generate → build → verify → fix loop re-runs `verify` after each change.
+Passing `--keep-open` leaves the browser warm and logged in, and the next run
+detects that live session and **skips the ~1–2s Chromium cold start**:
+
+```bash
+# First run opens the browser (log in once inside a script or via state-save)
+mxcli playwright verify tests/ -p app.mpr --keep-open
+
+# ... edit MDL, mxcli exec, mxcli docker run ...
+
+# Subsequent runs reuse the warm, still-authenticated session
+mxcli playwright verify tests/ -p app.mpr --keep-open
+```
+
+Reuse only happens when a session is alive **and** on the target origin; if not,
+verify opens fresh, so there is no downside to leaving `--keep-open` on. On reuse
+the runner re-navigates to the base URL, so a rebuilt app is always loaded fresh
+(no risk of verifying a stale, pre-rebuild page). For CI regression runs, omit
+`--keep-open` so the browser is torn down at the end.
+
+> **Note:** if a script ends with its own `playwright-cli close`, it tears down
+> the shared session regardless of `--keep-open` — drop the trailing `close`
+> from scripts you want to reuse across runs.
 
 ## `eval` vs `run-code` -- read this first
 

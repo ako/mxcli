@@ -121,6 +121,26 @@ func TestLastNonEmptyLine(t *testing.T) {
 	}
 }
 
+func TestOriginOf(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"http://localhost:8080", "http://localhost:8080"},
+		{"http://localhost:8080/", "http://localhost:8080"},
+		{"http://localhost:8080/p/Customer_Overview", "http://localhost:8080"},
+		{"https://app.example.com:9443/index.html", "https://app.example.com:9443"},
+		{"localhost:8080", ""}, // no scheme -> not absolute
+		{"", ""},
+		{"not a url", ""},
+	}
+	for _, tt := range tests {
+		if got := originOf(tt.in); got != tt.want {
+			t.Errorf("originOf(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
 func TestSuiteResultCounts(t *testing.T) {
 	result := &SuiteResult{
 		Scripts: []ScriptResult{

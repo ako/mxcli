@@ -49,6 +49,10 @@ Examples:
 
   # Custom app URL
   mxcli playwright verify tests/ --base-url http://localhost:9090
+
+  # Leave the browser open so the next run reuses a warm, logged-in session
+  # (the generate -> verify -> fix loop)
+  mxcli playwright verify tests/ -p app.mpr --keep-open
 `,
 	Args: cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
@@ -58,6 +62,7 @@ Examples:
 		color, _ := cmd.Flags().GetBool("color")
 		baseURL, _ := cmd.Flags().GetString("base-url")
 		skipHealth, _ := cmd.Flags().GetBool("skip-health-check")
+		keepOpen, _ := cmd.Flags().GetBool("keep-open")
 		timeoutStr, _ := cmd.Flags().GetString("timeout")
 		projectPath, _ := cmd.Flags().GetString("project")
 
@@ -91,6 +96,7 @@ Examples:
 			Color:           color,
 			Verbose:         verbose,
 			SkipHealthCheck: skipHealth,
+			KeepOpen:        keepOpen,
 			Stdout:          os.Stdout,
 			Stderr:          os.Stderr,
 		}
@@ -115,6 +121,7 @@ func init() {
 	playwrightVerifyCmd.Flags().StringP("timeout", "t", "2m", "Timeout per script execution")
 	playwrightVerifyCmd.Flags().StringP("base-url", "", "http://localhost:8080", "Mendix app base URL")
 	playwrightVerifyCmd.Flags().BoolP("skip-health-check", "", false, "Skip app reachability check")
+	playwrightVerifyCmd.Flags().BoolP("keep-open", "", false, "Leave the browser session open after the run so the next verify reuses it")
 
 	playwrightCmd.AddCommand(playwrightVerifyCmd)
 }

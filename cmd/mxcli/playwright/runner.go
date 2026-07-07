@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -42,6 +43,11 @@ type VerifyOptions struct {
 
 	// SkipHealthCheck skips the app reachability check.
 	SkipHealthCheck bool
+
+	// KeepOpen leaves the browser session open after the run instead of closing
+	// it, so the next verify (the agentic generate->verify->fix loop) reuses a
+	// warm, still-authenticated browser instead of cold-launching Chromium.
+	KeepOpen bool
 
 	// Stdout for output messages.
 	Stdout io.Writer
@@ -167,14 +173,30 @@ func Verify(opts VerifyOptions) (*SuiteResult, error) {
 		fmt.Fprintf(w, "  App is reachable\n")
 	}
 
-	// Step 4: Open browser session
+	// Step 4: Open browser session, or reuse a live one. A previous run with
+	// --keep-open leaves the session warm; reusing it skips the ~1-2s Chromium
+	// cold start and keeps any saved auth, which is the point of the shared
+	// PLAYWRIGHT_CLI_SESSION. Reuse only when a session is alive AND on the
+	// target origin; otherwise open fresh (no regression vs a cold start).
 	browser := readBrowserName(opts.ProjectPath)
 	if browser == "" {
 		browser = "chromium"
 	}
-	fmt.Fprintf(w, "Opening browser session (%s)...\n", browser)
-	if err := runPlaywrightCLI("--browser", browser, "open", baseURL); err != nil {
-		return nil, fmt.Errorf("opening browser: %w", err)
+	if sessionAlive(baseURL) {
+		// Reuse the warm session, but re-navigate to the base URL so a rebuilt
+		// app (the whole point of the generate->rebuild->verify loop) is loaded
+		// fresh — a reused page otherwise keeps the pre-rebuild DOM/JS and the run
+		// would silently verify the stale build. This makes reuse behave like a
+		// fresh open, minus the Chromium cold start.
+		fmt.Fprintf(w, "Reusing browser session; reloading %s...\n", baseURL)
+		if err := runPlaywrightCLI("goto", baseURL); err != nil {
+			return nil, fmt.Errorf("reloading reused session: %w", err)
+		}
+	} else {
+		fmt.Fprintf(w, "Opening browser session (%s)...\n", browser)
+		if err := runPlaywrightCLI("--browser", browser, "open", baseURL); err != nil {
+			return nil, fmt.Errorf("opening browser: %w", err)
+		}
 	}
 
 	// Step 5: Run each script
@@ -215,8 +237,14 @@ func Verify(opts VerifyOptions) (*SuiteResult, error) {
 		}
 	}
 
-	// Step 6: Close browser
-	runPlaywrightCLI("close")
+	// Step 6: Close browser, unless the caller wants it left warm for the next
+	// run. (A script that ends with its own `playwright-cli close` still tears
+	// down the shared session — that is script-authoring, not the runner.)
+	if opts.KeepOpen {
+		fmt.Fprintf(w, "Leaving browser session open (--keep-open); reuse it with the next verify.\n")
+	} else {
+		runPlaywrightCLI("close")
+	}
 
 	result.Duration = time.Since(result.Started)
 
@@ -434,6 +462,45 @@ func runPlaywrightCLI(args ...string) error {
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	return cmd.Run()
+}
+
+// runPlaywrightCLIOutput runs a playwright-cli command and returns its combined
+// stdout+stderr, for probes that need to inspect the output.
+func runPlaywrightCLIOutput(args ...string) (string, error) {
+	cmd := exec.Command("playwright-cli", args...)
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	err := cmd.Run()
+	return buf.String(), err
+}
+
+// originOf returns the scheme://host[:port] origin of a URL, or "" if rawURL is
+// not an absolute URL. Matches what the browser's location.origin reports.
+func originOf(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host
+}
+
+// sessionAlive reports whether a playwright-cli session is already open AND on
+// the target origin, so the runner can reuse it instead of opening a new one.
+// It asks the page for its own origin: if there is no live session the eval
+// fails, and if the session is on a different app the origin won't match — in
+// both cases the caller opens fresh, so there is no false reuse. Substring
+// matching keeps this tolerant of the CLI's exact eval output formatting.
+func sessionAlive(baseURL string) bool {
+	origin := originOf(baseURL)
+	if origin == "" {
+		return false
+	}
+	out, err := runPlaywrightCLIOutput("eval", "() => location.origin")
+	if err != nil {
+		return false
+	}
+	return strings.Contains(out, origin)
 }
 
 // PrintResults writes a human-readable summary.
