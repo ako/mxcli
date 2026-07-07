@@ -103,6 +103,12 @@ func microflowFromGen(mf *genMf.Microflow, containerID model.ID) *microflows.Mic
 		Excluded:           mf.Excluded(),
 		ReturnVariableName: mf.ReturnVariableName(),
 		ReturnType:         dataTypeFromGen(mf.MicroflowReturnType()),
+		// Read back the execution flags (issue #723 §A). Without these, an
+		// UpdateMicroflow round-trip reset them to false: a microflow that
+		// allowed concurrent execution came back as "disallow" with no error
+		// message configured → mx check CE4899.
+		AllowConcurrentExecution: mf.AllowConcurrentExecution(),
+		MarkAsUsed:               mf.MarkAsUsed(),
 	}
 	out.ID = model.ID(mf.ID())
 	// AllowedModuleRoles (BY_NAME role references) — without these DESCRIBE omits
