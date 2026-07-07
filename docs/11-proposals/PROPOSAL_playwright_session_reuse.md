@@ -160,7 +160,9 @@ Localized to the `playwright` package and its Cobra command. No changes outside
    immediate speedup, no behavior change to teardown.
 2. ✅ **Done** — `--keep-open` (gate the final `close`) + `VerifyOptions.KeepOpen`
    + flag. (Steps 1–2 shipped together as "Add 1: session reuse on verify",
-   with `docs-site` + command-doc updates.)
+   with `docs-site` + command-doc updates. **Verified end-to-end** against a live
+   `@playwright/cli@0.1.15`: a second `verify --keep-open` reused the warm session
+   rather than cold-starting.)
 3. `open` / `status` / `close` subcommands (extract shared resolution helpers first).
 4. `--isolated` per-script session wrapping.
 5. `--auth-state` auto state-load.
@@ -180,8 +182,9 @@ Localized to the `playwright` package and its Cobra command. No changes outside
 **Not applicable to Mendix versions** — this is mxcli tooling behavior and works
 against any running app. It depends only on `@playwright/cli`'s existing session
 support (`list`, `-s=<name>`, `state-load`), which the integration already
-requires; `@playwright/cli` is pinned to `0.1.15` in the generated devcontainer,
-so verify the exact `list` / `eval` output shape against that pin.
+requires; `@playwright/cli` is pinned to `0.1.15` in the generated devcontainer.
+The Add 1 probe (`eval "() => location.origin"`) has been confirmed against that
+pin; Add 2/Add 3 should re-check any new `list` output parsing against it.
 
 ## Test Plan
 
