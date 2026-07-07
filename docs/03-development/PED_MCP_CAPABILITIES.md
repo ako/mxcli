@@ -111,7 +111,7 @@ since a gap closing (e.g. a delete or save tool appearing) unlocks features.
 |-----|-----------------------------|-------------------------------|
 | **No delete-document tool** | `DROP` of any *standalone document* (enum, microflow, page) is impossible. Only entities/associations delete, via a `ped_update_document` remove op on the domain-model array. Test docs created via MCP cannot be cleaned up — they persist until the user closes Studio Pro without saving. | Watch for a `ped_delete_document` / equivalent. |
 | **No list-modules tool** ⟶ **CLOSED in 11.12** | PED cannot enumerate modules. The backend must read modules/structure from the local mounted `.mpr` (hybrid model); `-p` must be the same project Studio Pro has open. | **11.12 adds `list_modules`** (`[{moduleName, writable, fromMarketplace}]`) → pure-MCP module enumeration is now possible; the local-`.mpr` dependency for *module listing* can be lifted on 11.12+. Other reads (structure, IDs) still use the hybrid model. |
-| **No save/flush tool** | `ped_update_document` edits stay in Studio Pro's in-memory model; the on-disk `.mpr` is stale until the user saves. Drives the dirty-set read router. (`ped_create_module` is the one op observed to flush immediately.) | Watch for a save tool / autosave. |
+| **No save/flush tool** | `ped_update_document` edits stay in Studio Pro's in-memory model; the on-disk `.mpr` is stale until the user saves. Drives the dirty-set read router. **Refined on 11.12 (observed live, test8):** *created* documents (`ped_create_document`, `pg_patch_page` page-create) flush to `mprcontents/` immediately — no Concord `save_all` needed for them — but *update* ops still stay in memory (an `alter entity add attribute` was visible to `ped_check_errors` yet absent on disk → CE1613 on an `mx check` of a mid-session disk copy). (`ped_create_module` already flushed immediately on 11.11.) | Watch for a save tool / autosave; recheck the create-flush behavior each version. |
 | **Reads omit `$ID`** | Reads expose `$QualifiedName` only. Association refs need entity GUIDs, recovered from the local reader (= live `$ID` for saved entities). Reconstructed reads use synthetic IDs mapped to names. | Recheck whether reads expose `$ID`. |
 | **Array reads omit primitive types** | A `/entities/N/attributes` read gives attribute names (`$QualifiedName`) but not their primitive type or documentation — those need a per-*leaf* read (`/entities/N/attributes/M/type` → a `DomainModels$*AttributeType` constructor; `/…/documentation` → string). Reconstruction recovers them with a single **batched** leaf read (`enrichReconstructedEntities`) so a dirty/session module reports real types (correct DESCRIBE + a reliable ALTER diff); it falls back to placeholder `String` only if the read fails. | Recheck attribute-array read shape. |
 | **No in-place attribute-type change** | `set /entities/N/attributes/M/type` is rejected (`"only allowed to set primitive or reference properties directly"` — the type is a nested element), and a whole-attribute replace is rejected too (`"only allowed to update elements …"`). The only route to a new type is remove+add, which drops the attribute's `$ID` → **drops the column data**. So `ALTER ENTITY … MODIFY ATTRIBUTE <type>` is rejected over MCP; do it against a local `.mpr` (Studio Pro does an in-place migration PED can't). | Watch for a type-change / migrate op. |
@@ -316,7 +316,7 @@ plus `CustomWidgets$CustomWidget` (pluggable). **No `Pages$DataGrid`** — the
 legacy DataGrid is rejected; DataGrid 2 is a pluggable custom widget. Coverage
 grows one widget/data-source type at a time.
 
-**Pluggable widgets (ComboBox, DataGrid 2).** The reference/dropdown selector — the Mendix 11
+**Pluggable widgets.** The reference/dropdown selector — the Mendix 11
 ComboBox (`com.mendix.widget.web.combobox.Combobox`) — is supported in both
 enumeration and association modes. Crucially, the MCP path does *not* build the
 BSON widget template the MPR writer must: it implements `LoadWidgetTemplate` with
@@ -331,12 +331,17 @@ serialization. One ComboBox quirk: the def.json enum mode maps only
 so the MCP backend infers `optionsSourceType: "enumeration"` — otherwise pg
 defaults it to `association` and prunes the enum binding.
 
-Supported pluggable widgets: **ComboBox**, **DataGrid 2**, and **Gallery**. Which
-ones are supported, and each widget's DataSource property, are declared in
-`mdl/backend/mcp/widgets.def.json` — an MCP-owned capability registry
-**deliberately not** added to the shared widget registry, so it cannot change the
-MPR datagrid path (which is being replaced by the new engine). The builder
-translates the shared engine's storage-agnostic calls:
+**Acceptance is registry-driven, not a curated list** (Phases 1+2 of
+`PROPOSAL_mcp_pluggable_widget_authoring.md`, live-validated on 11.12): any
+widget the executor's shared registry resolves (project `.mxcli/widgets/*.def.json`
+→ global → embedded — including defs produced by `mxcli widget extract`) is
+authorable over MCP. `mdl/backend/mcp/widgets.def.json` is demoted to an
+auto-datasource *hint* table (which property of a built-in widget is its
+DataSource, so the engine's auto-datasource pass fires for e.g. DataGrid 2); it
+is still MCP-owned and **deliberately not** merged into the shared widget
+registry, so it cannot change the MPR datagrid path. A widget absent from the
+hint table is still authorable — it just maps its datasource explicitly via its
+def.json. The builder translates the shared engine's storage-agnostic calls:
 - `SetDataSource` → `CustomWidgets$CustomWidgetXPathSource` (DataGrid 2 reaches it
   via auto-datasource, which reads the DataSource property `PropertyTypeIDs`
   reports from the def; ComboBox/Gallery map it explicitly in their shared
@@ -369,14 +374,41 @@ it. (List-view database sources must use `Pages$ListViewXPathSource`, NOT
   `attributes` list — so `SetAttributeObjects` is a deliberate no-op (emitting the
   derived attribute would drop the widget).
 
+- `SetExpression` → plain string key in the custom-widget `object` (Phase 2,
+  verified live: ComboBox `customEditabilityExpression`).
+- `SetTextTemplate` → `ct:`-prefixed plain string; Studio Pro expands it to a
+  full `Pages$ClientTemplate`. `SetTextTemplateWithParams` rewrites `{AttrName}`
+  placeholders to `{1}` refs backed by `Pages$ClientTemplateParameter`
+  `attributeRef`s resolved against the entity context (the shared engine routes
+  placeholder-bearing def-mapped texttemplates here — emitted literally, the
+  braces fail Studio Pro's translatable-text parser).
+- `SetAction` → `Pages$NoClientAction` / `Pages$MicroflowClientAction` /
+  `Pages$PageClientAction` via `customWidgetClientAction`. **Shape deviation
+  from the native LightPage constructors:** inside a custom widget's `object`,
+  the microflow reference must nest in `microflowSettings` — pg *silently
+  drops* a flat `microflow` key there (verified live: flat → "Select a
+  microflow"; nested → clean). Actions with parameter mappings, and other
+  action kinds (save/cancel/close/delete/create/open-link/nanoflow), are
+  rejected loudly — their pg value shapes are not yet pinned.
+
+The authoritative pg shape sources are published **by the server itself**:
+`read_skill` (`page-gen-common` + `references/common-objects.md` /
+`references/actions.md`) and per-widget schemas at
+`/pagegen/customWidgetsVFS/<widgetId>.schema.json` (via `glob`/`read_file`).
+Consult these before probing new shapes. Widget-specific gotcha class: pg
+prunes properties made irrelevant by a selector primitive's default — the
+ComboBox `optionsSourceType` quirk above, and the Image widget dropping
+`ct:imageUrl` unless `datasource` is set to `"imageUrl"` (MDL:
+`ImageType: 'imageUrl'`).
+
 Client templates with `{N}` parameters (common in Gallery/DataGrid cells) emit a
 full `Pages$ClientTemplate` with `attributeRef`/`expression`/`sourceVariable`
 parameters — otherwise the literal `{1}` would show. DataGrid 2 columns with
-custom-content child widgets or parameterised header templates, pluggable widgets
-not in the registry, and any property op the builder doesn't translate are
-rejected, not silently emitted with missing content. The broader consolidation
-(removing the hardcoded Go maps in `widget_defs.go` and migrating the MPR path to
-def.json) is deferred until after the engine replacement merges.
+custom-content child widgets or parameterised header templates, and any property
+op the builder doesn't translate, are rejected, not silently emitted with
+missing content. The broader consolidation (removing the hardcoded Go maps in
+`widget_defs.go` and migrating the MPR path to def.json) is deferred until after
+the engine replacement merges.
 
 Data sources for DataView/ListView: page-variable (`Pages$PageVariable`),
 direct-entity (`DomainModels$DirectEntityRef`), and **microflow**

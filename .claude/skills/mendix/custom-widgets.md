@@ -165,6 +165,31 @@ MYWIDGET myWidget1 (datasource: database Module.Entity, attribute: Name) {
 }
 ```
 
+## Authoring over MCP (live Studio Pro)
+
+When mxcli runs with `--mcp` (writes routed to a running Studio Pro), pluggable
+widgets take a different, simpler path than the MPR writer:
+
+- **No BSON template needed** -- skip Step 2 entirely. Only the `.def.json`
+  (Step 1) is required. Studio Pro owns serialization over `pg_patch_page` and
+  expands every default, so the CE0463 template-mismatch class does not exist
+  on this path.
+- **Any registry-resolved widget is accepted** -- same 3-tier resolution
+  (project `.mxcli/widgets/` -> global -> embedded). There is no separate MCP
+  whitelist.
+- **Supported property operations**: attribute, association, primitive,
+  selection, datasource, widgets (child slots), object lists, expression,
+  texttemplate (including `{AttrName}` placeholders -> template parameters),
+  and action (`microflow Module.Flow`, `show_page Module.Page`, or none).
+- **Rejected loudly** (widget refused, nothing sent): actions *with argument
+  mappings*, other action kinds (save/cancel/close/delete/create/open-link/
+  nanoflow), and any operation the MCP builder does not translate. The error
+  names each unsupported property.
+- **Selector-primitive pruning gotcha**: Studio Pro prunes properties made
+  irrelevant by a mode-selector primitive's default. Example: the Image widget
+  drops `imageUrl` unless `ImageType: 'imageUrl'` is also set. If a property
+  you set does not appear in Studio Pro, check the widget's mode selector.
+
 ## .def.json Reference
 
 ```json
