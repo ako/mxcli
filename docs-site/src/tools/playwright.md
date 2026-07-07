@@ -123,6 +123,30 @@ the runner re-navigates to the base URL, so a rebuilt app is always loaded fresh
 > the shared session regardless of `--keep-open` — drop the trailing `close`
 > from scripts you want to reuse across runs.
 
+## Session lifecycle commands
+
+For interactive or agent-driven use, manage the browser session explicitly
+instead of only through `verify`:
+
+```bash
+# Open (or attach to) the session; URL from the arg, else --base-url,
+# else APP_PORT in .docker/.env, else :8080
+mxcli playwright open -p app.mpr
+mxcli playwright open http://localhost:9090
+
+# Is a session live, and what page is it on?
+mxcli playwright status
+
+# Tear it down
+mxcli playwright close
+mxcli playwright close --all   # close every session
+```
+
+`open` uses the same open-or-reuse behavior as `verify` (attach to a live
+same-origin session and re-navigate, or open fresh). A typical agent loop is:
+`open` once, log in, then iterate `verify --keep-open` — and `status` to check
+whether the browser is still up before deciding to reopen.
+
 ## `eval` vs `run-code` -- read this first
 
 `@playwright/cli` has **two** evaluation commands with **different execution contexts**. Getting this wrong is the most common scripting mistake:

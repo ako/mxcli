@@ -163,9 +163,12 @@ Localized to the `playwright` package and its Cobra command. No changes outside
    with `docs-site` + command-doc updates. **Verified end-to-end** against a live
    `@playwright/cli@0.1.15`: a second `verify --keep-open` reused the warm session
    rather than cold-starting.)
-3. `open` / `status` / `close` subcommands (extract shared resolution helpers first).
+3. ✅ **Done** — `open` / `status` / `close` (`--all`) subcommands (Add 2). Shared
+   `resolveBaseURL` (cmd) and `ensureSession` (open-or-reuse, package) extracted
+   so `verify` and `open` behave identically; `status` probes via
+   `eval "() => location.href"`. `--auth-state` on `open` deferred to step 5.
 4. `--isolated` per-script session wrapping.
-5. `--auth-state` auto state-load.
+5. `--auth-state` auto state-load (`open` + fresh `verify` open).
 6. Skill (`test-app.md`) agentic-loop pattern.
 
 > **Implementation note (shipped):** the probe uses `eval "() => location.origin"`

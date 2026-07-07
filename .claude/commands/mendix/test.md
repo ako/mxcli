@@ -7,6 +7,18 @@ Verify the running Mendix application using playwright-cli.
 - App must be running: `mxcli docker run -p app.mpr --wait`
 - playwright-cli installed (included in devcontainer)
 
+## Session lifecycle
+
+Manage the browser session across commands (attach/reuse, check, tear down):
+
+```bash
+mxcli playwright open -p app.mpr    # open or attach to the session
+mxcli playwright status             # is it live? what page?
+mxcli playwright close [--all]      # tear down
+```
+
+Typical loop: `open` once and log in, then iterate `mxcli playwright verify … --keep-open`.
+
 ## Quick Start
 
 ```bash

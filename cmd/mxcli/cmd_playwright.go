@@ -60,7 +60,6 @@ Examples:
 		junitOutput, _ := cmd.Flags().GetString("junit")
 		verbose, _ := cmd.Flags().GetBool("verbose")
 		color, _ := cmd.Flags().GetBool("color")
-		baseURL, _ := cmd.Flags().GetString("base-url")
 		skipHealth, _ := cmd.Flags().GetBool("skip-health-check")
 		keepOpen, _ := cmd.Flags().GetBool("keep-open")
 		timeoutStr, _ := cmd.Flags().GetString("timeout")
@@ -72,12 +71,7 @@ Examples:
 			os.Exit(1)
 		}
 
-		// Auto-detect port from .docker/.env when --base-url is not explicitly set
-		if !cmd.Flags().Changed("base-url") && projectPath != "" {
-			if port := readAppPort(projectPath); port != "" {
-				baseURL = fmt.Sprintf("http://localhost:%s", port)
-			}
-		}
+		baseURL := resolveBaseURL(cmd, projectPath)
 
 		if list {
 			if err := playwright.ListScripts(args, os.Stdout); err != nil {
@@ -113,6 +107,60 @@ Examples:
 	},
 }
 
+var playwrightOpenCmd = &cobra.Command{
+	Use:   "open [url]",
+	Short: "Open (or attach to) the browser session for interactive use",
+	Long: `Launch a playwright-cli browser session, or attach to a live one on the same
+origin, so you can drive the app across separate commands (and reuse it with
+'mxcli playwright verify --keep-open').
+
+The URL is resolved from the positional argument, else --base-url, else APP_PORT
+in .docker/.env, else http://localhost:8080.
+
+Examples:
+  mxcli playwright open -p app.mpr
+  mxcli playwright open http://localhost:9090`,
+	Args: cobra.MaximumNArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		projectPath, _ := cmd.Flags().GetString("project")
+		baseURL := resolveBaseURL(cmd, projectPath)
+		if len(args) == 1 {
+			baseURL = args[0]
+		}
+		if err := playwright.OpenSession(playwright.SessionOptions{
+			BaseURL:     baseURL,
+			ProjectPath: projectPath,
+			Stdout:      os.Stdout,
+		}); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	},
+}
+
+var playwrightStatusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Report whether a browser session is live and what page it is on",
+	Run: func(cmd *cobra.Command, args []string) {
+		if err := playwright.SessionStatus(os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	},
+}
+
+var playwrightCloseCmd = &cobra.Command{
+	Use:   "close",
+	Short: "Close the current browser session",
+	Run: func(cmd *cobra.Command, args []string) {
+		all, _ := cmd.Flags().GetBool("all")
+		if err := playwright.CloseSession(all, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	},
+}
+
 func init() {
 	playwrightVerifyCmd.Flags().BoolP("list", "l", false, "List test scripts without executing")
 	playwrightVerifyCmd.Flags().StringP("junit", "j", "", "Write JUnit XML results to file")
@@ -123,7 +171,29 @@ func init() {
 	playwrightVerifyCmd.Flags().BoolP("skip-health-check", "", false, "Skip app reachability check")
 	playwrightVerifyCmd.Flags().BoolP("keep-open", "", false, "Leave the browser session open after the run so the next verify reuses it")
 
+	playwrightOpenCmd.Flags().StringP("base-url", "", "http://localhost:8080", "Mendix app base URL")
+	playwrightCloseCmd.Flags().BoolP("all", "", false, "Close all browser sessions")
+
 	playwrightCmd.AddCommand(playwrightVerifyCmd)
+	playwrightCmd.AddCommand(playwrightOpenCmd)
+	playwrightCmd.AddCommand(playwrightStatusCmd)
+	playwrightCmd.AddCommand(playwrightCloseCmd)
+}
+
+// resolveBaseURL resolves the Mendix app base URL for playwright commands:
+// an explicit --base-url wins, otherwise APP_PORT from .docker/.env (relative to
+// the project), otherwise the default localhost:8080. Shared by verify and open.
+func resolveBaseURL(cmd *cobra.Command, projectPath string) string {
+	baseURL, _ := cmd.Flags().GetString("base-url")
+	if baseURL == "" {
+		baseURL = "http://localhost:8080"
+	}
+	if !cmd.Flags().Changed("base-url") && projectPath != "" {
+		if port := readAppPort(projectPath); port != "" {
+			baseURL = fmt.Sprintf("http://localhost:%s", port)
+		}
+	}
+	return baseURL
 }
 
 // readAppPort reads APP_PORT from .docker/.env relative to the project file.

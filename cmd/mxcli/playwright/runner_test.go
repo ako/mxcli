@@ -141,6 +141,26 @@ func TestOriginOf(t *testing.T) {
 	}
 }
 
+func TestParseEvalResult(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"result heading with value", "### Result\nhttp://localhost:8080/p/Home\n", "http://localhost:8080/p/Home"},
+		{"quoted value under heading", "### Result\n\"http://localhost:8080\"\n", "http://localhost:8080"},
+		{"heading with blank line before value", "### Result\n\n  http://localhost:8080  \n", "http://localhost:8080"},
+		{"no heading falls back to first non-empty line", "http://localhost:8080\n", "http://localhost:8080"},
+		{"empty", "", ""},
+		{"about:blank", "### Result\nabout:blank\n", "about:blank"},
+	}
+	for _, tt := range tests {
+		if got := parseEvalResult(tt.in); got != tt.want {
+			t.Errorf("%s: parseEvalResult(%q) = %q, want %q", tt.name, tt.in, got, tt.want)
+		}
+	}
+}
+
 func TestSuiteResultCounts(t *testing.T) {
 	result := &SuiteResult{
 		Scripts: []ScriptResult{

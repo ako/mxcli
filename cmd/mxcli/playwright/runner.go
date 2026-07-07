@@ -176,27 +176,13 @@ func Verify(opts VerifyOptions) (*SuiteResult, error) {
 	// Step 4: Open browser session, or reuse a live one. A previous run with
 	// --keep-open leaves the session warm; reusing it skips the ~1-2s Chromium
 	// cold start and keeps any saved auth, which is the point of the shared
-	// PLAYWRIGHT_CLI_SESSION. Reuse only when a session is alive AND on the
-	// target origin; otherwise open fresh (no regression vs a cold start).
+	// PLAYWRIGHT_CLI_SESSION. (Shared with `mxcli playwright open`.)
 	browser := readBrowserName(opts.ProjectPath)
 	if browser == "" {
 		browser = "chromium"
 	}
-	if sessionAlive(baseURL) {
-		// Reuse the warm session, but re-navigate to the base URL so a rebuilt
-		// app (the whole point of the generate->rebuild->verify loop) is loaded
-		// fresh — a reused page otherwise keeps the pre-rebuild DOM/JS and the run
-		// would silently verify the stale build. This makes reuse behave like a
-		// fresh open, minus the Chromium cold start.
-		fmt.Fprintf(w, "Reusing browser session; reloading %s...\n", baseURL)
-		if err := runPlaywrightCLI("goto", baseURL); err != nil {
-			return nil, fmt.Errorf("reloading reused session: %w", err)
-		}
-	} else {
-		fmt.Fprintf(w, "Opening browser session (%s)...\n", browser)
-		if err := runPlaywrightCLI("--browser", browser, "open", baseURL); err != nil {
-			return nil, fmt.Errorf("opening browser: %w", err)
-		}
+	if err := ensureSession(baseURL, browser, w); err != nil {
+		return nil, err
 	}
 
 	// Step 5: Run each script
