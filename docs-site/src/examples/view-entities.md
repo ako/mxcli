@@ -76,11 +76,11 @@ CREATE PAGE Reports.SalesByCategory_Overview (
   Title: 'Sales by Category',
   Layout: Atlas_Core.Atlas_Default
 ) {
-  DATAGRID2 ON Reports.SalesTotalByCategory (
-    COLUMN CategoryName { Caption: 'Category' }
-    COLUMN TotalAmount { Caption: 'Total Sales' }
-    COLUMN TransactionCount { Caption: 'Transactions' }
-  )
+  DATAGRID dgSales (DataSource: DATABASE Reports.SalesTotalByCategory) {
+    COLUMN colCategory (Attribute: CategoryName, Caption: 'Category')
+    COLUMN colTotal (Attribute: TotalAmount, Caption: 'Total Sales')
+    COLUMN colCount (Attribute: TransactionCount, Caption: 'Transactions')
+  }
 };
 /
 ```

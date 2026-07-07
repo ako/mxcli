@@ -87,7 +87,7 @@ CREATE PAGE Sales.Order_Edit (
           FOOTER footer1 {
             ACTIONBUTTON btnSave (
               Caption: 'Save',
-              Action: CALL Sales.ACT_Order_Save,
+              Action: MICROFLOW Sales.ACT_Order_Save,
               ButtonStyle: Success
             )
             ACTIONBUTTON btnCancel (Caption: 'Cancel', Action: CANCEL_CHANGES)

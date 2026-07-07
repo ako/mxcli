@@ -220,7 +220,7 @@ CREATE PAGE Sales.Order_Overview
         COLUMN colStatus (Attribute: Status, Caption: 'Status')
         COLUMN colAmount (Attribute: TotalAmount, Caption: 'Amount', Alignment: right)
         CONTROLBAR cb1 {
-            ACTIONBUTTON btnNew (Caption: 'New Order', Action: PAGE Sales.Order_Edit, ButtonStyle: Primary)
+            ACTIONBUTTON btnNew (Caption: 'New Order', Action: SHOW_PAGE Sales.Order_Edit, ButtonStyle: Primary)
         }
     }
 };

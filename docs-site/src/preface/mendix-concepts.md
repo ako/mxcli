@@ -126,15 +126,17 @@ Widgets are nested in a tree. Common widget types:
 
 ```sql
 CREATE PAGE Sales.CustomerOverview
-    LAYOUT Atlas_Core.Atlas_Default
-    TITLE 'Customers'
 (
-    DATAGRID SOURCE DATABASE Sales.Customer (
-        COLUMN Name,
-        COLUMN Email,
-        COLUMN IsActive
-    )
-);
+    Title: 'Customers',
+    Layout: Atlas_Core.Atlas_Default
+)
+{
+    DATAGRID dgCustomers (DataSource: DATABASE Sales.Customer) {
+        COLUMN colName (Attribute: Name, Caption: 'Name')
+        COLUMN colEmail (Attribute: Email, Caption: 'Email')
+        COLUMN colActive (Attribute: IsActive, Caption: 'Active')
+    }
+}
 ```
 
 ### Snippets

@@ -23,15 +23,17 @@ An overview page typically shows a data grid that lists all objects of an entity
 
 ```sql
 CREATE PAGE MyModule.ProductOverview
-    LAYOUT Atlas_Core.Atlas_Default
-    TITLE 'Products'
 (
-    DATAGRID SOURCE DATABASE MyModule.Product (
-        COLUMN Name,
-        COLUMN Price,
-        COLUMN IsActive
-    )
-);
+    Title: 'Products',
+    Layout: Atlas_Core.Atlas_Default
+)
+{
+    DATAGRID dgProducts (DataSource: DATABASE MyModule.Product) {
+        COLUMN colName (Attribute: Name, Caption: 'Name')
+        COLUMN colPrice (Attribute: Price, Caption: 'Price')
+        COLUMN colActive (Attribute: IsActive, Caption: 'Active')
+    }
+}
 ```
 
 Let's break this down:
@@ -47,7 +49,7 @@ Let's break this down:
 Execute it:
 
 ```bash
-mxcli -p app.mpr -c "CREATE PAGE MyModule.ProductOverview LAYOUT Atlas_Core.Atlas_Default TITLE 'Products' (DATAGRID SOURCE DATABASE MyModule.Product (COLUMN Name, COLUMN Price, COLUMN IsActive));"
+mxcli -p app.mpr -c "CREATE PAGE MyModule.ProductOverview (Title: 'Products', Layout: Atlas_Core.Atlas_Default) { DATAGRID dgProducts (DataSource: DATABASE MyModule.Product) { COLUMN colName (Attribute: Name, Caption: 'Name') COLUMN colPrice (Attribute: Price, Caption: 'Price') COLUMN colActive (Attribute: IsActive, Caption: 'Active') } }"
 ```
 
 Or save to a file and run:

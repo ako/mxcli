@@ -116,17 +116,16 @@ CREATE PAGE CRM.Customer_Overview (
   Title: 'Customers',
   Layout: Atlas_Core.Atlas_Default
 ) {
-  DATAGRID2 ON CRM.Customer (
-    COLUMN Name { Caption: 'Name' }
-    COLUMN Email { Caption: 'Email' }
-    COLUMN Phone { Caption: 'Phone' }
-    COLUMN Status { Caption: 'Status' }
-    COLUMN IsActive { Caption: 'Active' }
-    SEARCH ON Name, Email
-    BUTTON 'New' CALL CRM.Customer_NewEdit
-    BUTTON 'Edit' CALL CRM.Customer_NewEdit
-    BUTTON 'Delete' CALL CONFIRM DELETE
-  )
+  DATAGRID dgCustomers (DataSource: DATABASE CRM.Customer, Selection: Single) {
+    COLUMN colName (Attribute: Name, Caption: 'Name') { TEXTFILTER fName }
+    COLUMN colEmail (Attribute: Email, Caption: 'Email') { TEXTFILTER fEmail }
+    COLUMN colPhone (Attribute: Phone, Caption: 'Phone')
+    COLUMN colStatus (Attribute: Status, Caption: 'Status')
+    COLUMN colActive (Attribute: IsActive, Caption: 'Active')
+    CONTROLBAR cb1 {
+      ACTIONBUTTON btnNew (Caption: 'New', Action: SHOW_PAGE CRM.Customer_NewEdit, ButtonStyle: Primary)
+    }
+  }
 };
 /
 
@@ -147,7 +146,7 @@ CREATE PAGE CRM.Customer_NewEdit (
           FOOTER footer1 {
             ACTIONBUTTON btnSave (
               Caption: 'Save',
-              Action: CALL CRM.ACT_Customer_Save,
+              Action: MICROFLOW CRM.ACT_Customer_Save,
               ButtonStyle: Success
             )
             ACTIONBUTTON btnCancel (Caption: 'Cancel', Action: CANCEL_CHANGES)

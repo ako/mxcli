@@ -52,7 +52,7 @@ CREATE PAGE MyModule.Order_Edit
   Folder: 'Orders'
 )
 {
-  CONTAINER main () {}
+  CONTAINER main {}
 }
 ```
 

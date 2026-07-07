@@ -25,7 +25,7 @@ CREATE PAGE MyModule.Customer_Overview
         Action: MICROFLOW MyModule.ACT_Customer_New,
         ButtonStyle: Primary
       )
-      ACTIONBUTTON btnEdit (Caption: 'Edit', Action: PAGE MyModule.Customer_Edit)
+      ACTIONBUTTON btnEdit (Caption: 'Edit', Action: SHOW_PAGE MyModule.Customer_Edit)
       ACTIONBUTTON btnDelete (Caption: 'Delete', Action: DELETE, ButtonStyle: Danger)
     }
   }
@@ -107,7 +107,7 @@ CREATE PAGE MyModule.Customer_Detail
     FOOTER footer1 {
       ACTIONBUTTON btnEdit (
         Caption: 'Edit',
-        Action: PAGE MyModule.Customer_Edit,
+        Action: SHOW_PAGE MyModule.Customer_Edit,
         ButtonStyle: Primary
       )
       ACTIONBUTTON btnBack (Caption: 'Back', Action: CLOSE_PAGE)
@@ -199,7 +199,7 @@ CREATE PAGE MyModule.Order_MasterDetail
           FOOTER footer1 {
             ACTIONBUTTON btnEdit (
               Caption: 'Edit Order',
-              Action: PAGE MyModule.Order_Edit,
+              Action: SHOW_PAGE MyModule.Order_Edit,
               ButtonStyle: Primary
             )
           }
@@ -239,7 +239,7 @@ CREATE PAGE HR.Employee_Overview
         Action: MICROFLOW HR.ACT_Employee_New,
         ButtonStyle: Primary
       )
-      ACTIONBUTTON btnEdit (Caption: 'Edit', Action: PAGE HR.Employee_Edit)
+      ACTIONBUTTON btnEdit (Caption: 'Edit', Action: SHOW_PAGE HR.Employee_Edit)
       ACTIONBUTTON btnDelete (Caption: 'Delete', Action: DELETE, ButtonStyle: Danger)
     }
   }
