@@ -20,6 +20,22 @@ Mendix projects are stored in binary `.mpr` files that AI agents can't read dire
 - **Linting** - Check projects for common issues
 - **Unix pipe support** - Output formats designed for scripting and chaining
 
+### Design principles
+
+mxcli is built on a single bet: the agent writes a compact, human-readable DSL, and mxcli's deterministic layer turns it into the many low-level mutations, validations, and tool calls a real model change requires. The differentiators that follow:
+
+- **Token efficiency** - the agent emits one larger MDL script instead of many small, chatty tool calls. MDL is 5-10x denser than raw model JSON, and one script is one model turn -- less orchestration overhead means lower cost and faster runs.
+- **Complexity in the deterministic layer** - one MDL statement maps deterministically to multiple documents (or MCP tool calls). The LLM states intent; mxcli carries the fan-out, ordering, and read-modify-write bookkeeping.
+- **Human-readable DSL** - MDL is inspired by SQL, Ada, and PL/SQL. LLM-generated scripts are easy for humans to review, audit, and author. Readable code is reviewable code.
+- **Headless agentic loop** - build and test Mendix applications without ever opening Studio Pro.
+- **Understanding large applications** - a queryable catalog and dependency-graph tables let agents explore complex apps through straightforward SQL.
+- **Precise skills** - a concrete DSL lets skill files embed specific, copyable examples of exactly the MDL to produce, for more reliable output.
+- **Power with safety** - `mxcli init` provisions a Dev Container that scopes exactly what the agent can see, do, and modify.
+- **Deterministic verification** - `mxcli check` and `mxcli lint` verify generated projects against deterministic rules -- no LLM judgement -- keeping the feedback loop fast and reliable.
+- **Longer-term: smaller local models** - generating a constrained DSL is simpler for an LLM than orchestrating tool calls, and a grammar can be enforced via grammar-constrained decoding.
+
+See [Design Principles](https://mendixlabs.github.io/mxcli/preface/design-principles.html) in the documentation for the full rationale.
+
 ## What is mxcli?
 
 Mxcli is a tool that enables some of the following use cases.
