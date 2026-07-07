@@ -1,0 +1,110 @@
+-- @version: 11.0+
+-- ============================================================================
+-- MCP Pluggable-Widget Authoring — registry acceptance + Phase 2 operations
+-- ============================================================================
+--
+-- Exercises the paths added by PROPOSAL_mcp_pluggable_widget_authoring.md:
+--   1. A registry-resolved pluggable widget OUTSIDE the old MCP whitelist
+--      (BarcodeScanner) via the generic pluggablewidget syntax.
+--   2. Phase 2 property operations on the Image widget: texttemplate
+--      (imageUrl / alternativeText with an {AttrName} placeholder) and
+--      action (onClick: microflow).
+--
+-- Runs on both engines. Over MCP (--mcp against a live Studio Pro 11.12+):
+--   mxcli exec 35-mcp-pluggable-thirdparty.mdl -p app.mpr \
+--     --mcp http://localhost:7782/mcp --mcp-dial host.docker.internal:7782
+-- then validate with Studio Pro's consistency check (ped_check_errors).
+-- On the local engine, validate with mx check.
+--
+-- Live-validated against Studio Pro 11.12.0 on 2026-07-06 (test8-app):
+-- ped_check_errors clean; the same pages pass mx check on the modelsdk engine.
+--
+-- Note: the widgets must be installed in the project (widgets/*.mpk):
+-- com.mendix.widget.web.BarcodeScanner.mpk and com.mendix.widget.web.Image.mpk
+-- ship with the Atlas blank app template.
+--
+-- ============================================================================
+
+-- MARK: Setup
+
+create module MCPWidgetTest;
+
+@position(100,100)
+create persistent entity MCPWidgetTest.Item (
+  Name: string(200) not null,
+  Barcode: string(64)
+);
+
+create microflow MCPWidgetTest.ACT_Item_OnClick ()
+begin
+end;
+/
+
+-- MARK: Registry-resolved widget (outside the old whitelist)
+
+/**
+ * BarcodeScanner: accepted because the shared widget registry resolves it —
+ * there is no MCP-specific whitelist (Phase 1). Its def.json maps
+ * attribute: -> the pg object key `datasource` (a String attribute).
+ */
+create page MCPWidgetTest.P_BarcodeScanner
+(
+  params: {
+    $Item: MCPWidgetTest.Item
+  },
+  title: 'Scan Barcode',
+  layout: Atlas_Core.PopupLayout,
+  folder: 'MCPWidgets'
+)
+{
+  layoutgrid lg1 {
+    row row1 {
+      column col1 (desktopwidth: 12) {
+        dataview dvItem (datasource: $Item) {
+          textbox txtName (label: 'Name', attribute: Name)
+          pluggablewidget 'com.mendix.widget.web.barcodescanner.BarcodeScanner' scanner1 (attribute: Barcode)
+        }
+      }
+    }
+  }
+}
+/
+
+-- MARK: Phase 2 operations (texttemplate, placeholder params, action)
+
+/**
+ * Image widget: texttemplate (imageUrl, alternativeText) and action (onClick)
+ * operations. ImageType: 'imageUrl' is required alongside imageUrl: — with the
+ * def-default datasource "image", Studio Pro prunes the URL template
+ * (selector-primitive pruning). The {Name} placeholder becomes a {1} template
+ * parameter bound to the entity-context attribute.
+ */
+create page MCPWidgetTest.P_ImageActions
+(
+  params: {
+    $Item: MCPWidgetTest.Item
+  },
+  title: 'Item Image',
+  layout: Atlas_Core.PopupLayout,
+  folder: 'MCPWidgets'
+)
+{
+  layoutgrid lg1 {
+    row row1 {
+      column col1 (desktopwidth: 12) {
+        dataview dvItem (datasource: $Item) {
+          pluggablewidget 'com.mendix.widget.web.image.Image' img1 (
+            ImageType: 'imageUrl',
+            imageUrl: 'https://example.com/item.png',
+            alternativeText: 'Image of {Name}',
+            onClick: microflow MCPWidgetTest.ACT_Item_OnClick
+          )
+        }
+      }
+    }
+  }
+}
+/
+
+-- Keep created objects for inspection in Studio Pro (no cleanup).
+exit;
