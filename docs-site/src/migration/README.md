@@ -16,12 +16,12 @@ Traditional migrations require deep Mendix expertise and manual work in Studio P
 ## The Five Phases
 
 ```
-  Phase 1          Phase 2           Phase 3           Phase 4         Phase 5
- ┌──────────┐   ┌───────────┐   ┌──────────────┐   ┌──────────┐   ┌──────────┐
- │  Assess  │──▶│  Propose  │──▶│   Generate   │──▶│   Test   │──▶│  Finish  │
- │  Source   │   │ Transform │   │  Mendix App  │   │  & Lint  │   │ in Studio│
- └──────────┘   └───────────┘   └──────────────┘   └──────────┘   │   Pro    │
-                                                                    └──────────┘
+  Phase 1           Phase 2           Phase 3           Phase 4         Phase 5
+ ┌──────────┐    ┌───────────┐   ┌──────────────┐   ┌──────────┐   ┌──────────┐
+ │  Assess  │--> │  Propose  │-->│   Generate   │-->│   Test   │-->│  Finish  │
+ │  Source  │    │ Transform │   │  Mendix App  │   │  & Lint  │   │ in Studio│
+ └──────────┘    └───────────┘   └──────────────┘   └──────────┘   │   Pro    │
+                                                                   └──────────┘
 ```
 
 | Phase | What Happens | Key Skills |
