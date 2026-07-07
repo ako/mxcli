@@ -100,7 +100,7 @@ create page Module.Entity_Overview
             textfilter textFilter2
           }
           column colActions (caption: 'Actions') {
-            actionbutton btnEdit (caption: 'Edit', action: show_page Module.Entity_NewEdit passing $currentObject)
+            actionbutton btnEdit (caption: 'Edit', action: show_page Module.Entity_NewEdit("entity": $currentObject))
             actionbutton btnDelete (caption: 'Delete', action: delete, buttonstyle: danger)
           }
         }
@@ -142,7 +142,7 @@ datagrid GridName (
     textfilter textFilter1
   }
   column colActions (caption: 'Actions') {
-    actionbutton btnEdit (caption: 'Edit', action: show_page Module.Entity_NewEdit passing $currentObject)
+    actionbutton btnEdit (caption: 'Edit', action: show_page Module.Entity_NewEdit("entity": $currentObject))
   }
 }
 ```
@@ -255,7 +255,8 @@ create page Module.PageName
 
 - Parameter name conventionally matches the entity name (e.g., `$store`, `$Customer`)
 - The DataView's binding references this parameter (`datasource: $ParamName`)
-- When calling the page via SHOW_PAGE, pass an object of this entity type
+- When calling the page via SHOW_PAGE, pass the object by parameter name: `show_page Module.PageName(ParamName: $value)`
+- **Reserved-word parameter names must be quoted in the SHOW_PAGE args.** The generic examples above name the parameter `entity`, which is a reserved keyword, so the call quotes it: `show_page Module.Entity_NewEdit("entity": $currentObject)`. A non-reserved name (`$store`, `$Customer`) needs no quotes: `show_page Module.Store_NewEdit(store: $currentObject)`.
 
 ### NewEdit Page Components
 
@@ -508,7 +509,7 @@ create snippet Module.Entity_Menu
 )
 {
   navigationlist EntityMenuNav {
-    item itemEdit (caption: 'Edit', action: show_page Module.Entity_NewEdit(entity: $EntityParameter))
+    item itemEdit (caption: 'Edit', action: show_page Module.Entity_NewEdit("entity": $EntityParameter))
     item itemDelete (caption: 'Delete', action: delete)
     item itemBack (caption: 'Back', action: close_page)
   }
