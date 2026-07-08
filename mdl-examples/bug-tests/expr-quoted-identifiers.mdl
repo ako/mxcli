@@ -1,0 +1,62 @@
+-- ============================================================================
+-- Quoted attribute names must be stripped in expression contexts
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   The skills tell users to quote any identifier to escape MDL parser keywords
+--   ("always safe to quote"). That held in binding/declaration positions (entity
+--   attrs, `attribute:` bindings, change/create targets) but NOT in expression
+--   positions. A quoted attribute in a microflow decision, a widget
+--   `contentparams` entry, or a `visible`/`editable` expression passed
+--   `mxcli check` but produced an invalid compiled expression that only mxbuild
+--   rejected ("Error(s) in expression"):
+--     if $Expense/"Justification" != empty then ...            -- 1a
+--     dynamictext (content: '{1}', contentparams: [{1} = "Amount"])  -- 1b
+--     dynamictext (visible: [ "Amount" > 1000 ])               -- 1c
+--
+-- Root cause:
+--   Expression contexts stored the raw source text verbatim (SourceExpr.Source /
+--   expr.GetText() / the serialized visibility string), so the quotes leaked
+--   through, whereas binding contexts route every identifier through
+--   unquoteIdentifier. The structured expression AST was already clean; only the
+--   raw-text copy that wins on write-back kept the quotes.
+--
+-- After fix:
+--   The visitor strips double-quote / backtick identifier quotes from expression
+--   and XPath source strings (stripExpressionIdentifierQuotes), leaving
+--   single-quoted string literals untouched. The quoted forms below now compile
+--   to the same expression as their unquoted equivalents.
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/expr-quoted-identifiers.mdl -p app.mpr
+-- ============================================================================
+
+create entity MyFirstModule.Expense (
+  "Justification": String,
+  Amount: Decimal
+);
+
+-- 1a — quoted attribute in a microflow decision / if condition.
+create microflow MyFirstModule.ACT_Expense_Submit (
+  $Expense: MyFirstModule.Expense
+) returns Boolean as $Result
+begin
+  if $Expense/"Justification" != empty and $Expense/"Amount" > 1000 then
+    return true;
+  end if;
+  return false;
+end
+
+-- 1b/1c — quoted attributes in widget contentparams and visibility expressions.
+create or replace page MyFirstModule.P_Expense
+( Title: 'Expense', Layout: Atlas_Core.Atlas_Default, Params: { $Expense: MyFirstModule.Expense } )
+{
+  dataview dv (datasource: $Expense) {
+    dynamictext qAmount (content: '{1}', contentparams: [{1} = "Amount"])
+    dynamictext qReview (content: 'Needs review', visible: [ "Amount" > 1000 ])
+  }
+}
+
+-- Both should round-trip to the unquoted form.
+describe microflow MyFirstModule.ACT_Expense_Submit;
+describe page MyFirstModule.P_Expense;

@@ -568,6 +568,54 @@ func extractOriginalText(ctx antlr.ParserRuleContext) string {
 	return is.GetText(startPos, stopPos)
 }
 
+// stripExpressionIdentifierQuotes removes double-quote / backtick identifier
+// quotes from a Mendix expression or XPath source string, leaving single-quoted
+// string literals untouched.
+//
+// The skills tell users to quote any identifier to escape MDL parser keywords
+// ("always safe to quote"). In binding/declaration positions this holds because
+// each identifier token is routed through unquoteIdentifier. In expression
+// positions the source text was previously stored verbatim, so a quoted
+// attribute like $Order/"Status" leaked its quotes into the compiled expression
+// and only mxbuild rejected it. This helper extends the same quote-stripping to
+// expression contexts.
+//
+// It is safe because in Mendix expression and XPath syntax string literals use
+// single quotes exclusively; double quotes and backticks only ever wrap
+// identifiers (attribute / association names). Any that appear outside a
+// single-quoted literal are therefore identifier quotes and can be dropped.
+// Doubled single quotes (”) inside a literal are the Mendix escape for a
+// literal quote and do not terminate the literal.
+func stripExpressionIdentifierQuotes(s string) string {
+	if !strings.ContainsAny(s, "\"`") {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	inString := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '\'' {
+			if inString && i+1 < len(s) && s[i+1] == '\'' {
+				// Escaped quote inside a string literal: keep both, stay inside.
+				b.WriteByte(c)
+				b.WriteByte(s[i+1])
+				i++
+				continue
+			}
+			inString = !inString
+			b.WriteByte(c)
+			continue
+		}
+		if !inString && (c == '"' || c == '`') {
+			// Identifier quote outside a string literal: drop it.
+			continue
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
+}
+
 // ----------------------------------------------------------------------------
 // Microflow Statements
 // ----------------------------------------------------------------------------

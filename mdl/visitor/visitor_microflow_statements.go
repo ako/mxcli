@@ -1368,7 +1368,7 @@ func buildSourceExpression(ctx parser.IExpressionContext) ast.Expression {
 	if prc, ok := ctx.(antlr.ParserRuleContext); ok {
 		if source := strings.TrimSpace(extractOriginalText(prc)); source != "" {
 			if shouldPreserveExpressionSource(source) {
-				return &ast.SourceExpr{Expression: expr, Source: source}
+				return &ast.SourceExpr{Expression: expr, Source: stripExpressionIdentifierQuotes(source)}
 			}
 		}
 	}
@@ -1384,7 +1384,7 @@ func buildXPathSourceExpression(ctx parser.IXpathExprContext) ast.Expression {
 		if source := strings.TrimSpace(extractOriginalText(prc)); source != "" {
 			// Requote any bare [%token%] so the stored constraint passes mx check
 			// (CE0161) — the original source preserves the unquoted form (#641).
-			return &ast.SourceExpr{Expression: expr, Source: normalizeXPathTokens(source)}
+			return &ast.SourceExpr{Expression: expr, Source: stripExpressionIdentifierQuotes(normalizeXPathTokens(source))}
 		}
 	}
 	return expr
@@ -1403,13 +1403,13 @@ func buildRetrieveWhereExpression(ctx parser.IExpressionContext) ast.Expression 
 	// xpathConstraint path, not this one). Issue #642.
 	if lit, ok := expr.(*ast.LiteralExpr); ok && lit.Kind == ast.LiteralString {
 		if s, ok := lit.Value.(string); ok {
-			return &ast.SourceExpr{Expression: expr, Source: s}
+			return &ast.SourceExpr{Expression: expr, Source: stripExpressionIdentifierQuotes(s)}
 		}
 	}
 	if prc, ok := ctx.(antlr.ParserRuleContext); ok {
 		if source := strings.TrimSpace(extractOriginalText(prc)); source != "" {
 			if shouldPreserveExpressionSource(source) || strings.Contains(source, "/") {
-				return &ast.SourceExpr{Expression: expr, Source: source}
+				return &ast.SourceExpr{Expression: expr, Source: stripExpressionIdentifierQuotes(source)}
 			}
 		}
 	}

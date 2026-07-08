@@ -983,7 +983,7 @@ func buildParamAssignmentV3(ctx parser.IParamAssignmentV3Context) ast.ParamAssig
 		}
 	}
 	if expr := paCtx.Expression(); expr != nil {
-		param.Value = expr.GetText()
+		param.Value = stripExpressionIdentifierQuotes(expr.GetText())
 	}
 
 	return param
@@ -1132,17 +1132,17 @@ func buildConditionalExpression(xc parser.IXpathConstraintContext) string {
 	}
 	xcCtx, ok := xc.(*parser.XpathConstraintContext)
 	if !ok {
-		return extractXpathText(xc)
+		return stripExpressionIdentifierQuotes(extractXpathText(xc))
 	}
 	xe := xcCtx.XpathExpr()
 	if xe == nil {
-		return extractXpathText(xc)
+		return stripExpressionIdentifierQuotes(extractXpathText(xc))
 	}
 	expr := buildXPathExpr(xe)
 	if expr == nil {
-		return extractXpathText(xc)
+		return stripExpressionIdentifierQuotes(extractXpathText(xc))
 	}
-	return conditionalExprToString(expr)
+	return stripExpressionIdentifierQuotes(conditionalExprToString(expr))
 }
 
 // conditionalExprToString serializes an expression as a Mendix conditional-
