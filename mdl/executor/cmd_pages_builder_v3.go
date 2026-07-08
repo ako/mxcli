@@ -1438,6 +1438,15 @@ func (pb *pageBuilder) resolveTemplateAttributePathFull(attrRef string, param *p
 		}
 	}
 
+	// Attribute navigated over one or more associations (e.g.
+	// Order_Customer/Name or $currentObject/Sales.Order_Customer/Name). Mendix
+	// stores this as an AttributeRef whose EntityRef is an IndirectEntityRef of
+	// association steps — a flat "Assoc/Attr" string binds nothing (CE "No value
+	// specified"). Resolve the hops against the domain model.
+	if pb.resolveTemplateAssociationPath(attrRef, param) {
+		return
+	}
+
 	// For other patterns, resolve and check type
 	resolved := pb.resolveTemplateAttributePath(attrRef)
 	if !strings.HasPrefix(attrRef, "$") && pb.isNonStringAttribute(resolved) {
@@ -1448,6 +1457,110 @@ func (pb *pageBuilder) resolveTemplateAttributePathFull(attrRef string, param *p
 		return
 	}
 	param.AttributeRef = resolved
+}
+
+// resolveTemplateAssociationPath resolves a template-parameter value that
+// navigates one or more associations (e.g. "Order_Customer/Name" or
+// "$currentObject/Sales.Order_Customer/Name") against the current entity
+// context, populating param.AttributeRef (the fully-qualified FINAL attribute)
+// and param.AttributeRefSteps (one hop per association). Returns false when the
+// value is not an association path or cannot be resolved, so the caller falls
+// back to the previous behavior.
+func (pb *pageBuilder) resolveTemplateAssociationPath(attrRef string, param *pages.ClientTemplateParameter) bool {
+	path := strings.TrimPrefix(attrRef, "$currentObject/")
+	// Only context-relative association paths are handled here; a $param- or
+	// $widget-rooted navigation is a different (unsupported) shape.
+	if strings.HasPrefix(path, "$") || !strings.Contains(path, "/") {
+		return false
+	}
+	segs := strings.Split(path, "/")
+	if len(segs) < 2 {
+		return false
+	}
+	attrName := segs[len(segs)-1]
+	current := pb.entityContext
+	if current == "" {
+		return false
+	}
+
+	steps := make([]pages.AttributeRefStep, 0, len(segs)-1)
+	for _, seg := range segs[:len(segs)-1] {
+		assocQN := pb.resolveAssociationPath(seg)
+		dest, ok := pb.associationDestination(assocQN, current)
+		if !ok {
+			return false
+		}
+		steps = append(steps, pages.AttributeRefStep{Association: assocQN, DestinationEntity: dest})
+		current = dest
+	}
+
+	param.AttributeRef = current + "." + attrName
+	param.AttributeRefSteps = steps
+	return true
+}
+
+// associationDestination returns the entity reached by navigating assocQN from
+// currentEntityQN. Uses the FROM/TO endpoints (ParentID = FROM, ChildID = TO);
+// forward navigation from the FROM entity yields the TO entity and vice versa.
+func (pb *pageBuilder) associationDestination(assocQN, currentEntityQN string) (string, bool) {
+	from, to, ok := pb.associationEndpoints(assocQN)
+	if !ok {
+		return "", false
+	}
+	switch currentEntityQN {
+	case from:
+		return to, true
+	case to:
+		return from, true
+	default:
+		// Context is neither endpoint exactly (e.g. a specialization). We can't
+		// pick the direction reliably — refuse rather than emit a wrong ref.
+		return "", false
+	}
+}
+
+// associationEndpoints resolves a qualified association name to its FROM
+// (ParentID) and TO (ChildID) entity qualified names.
+func (pb *pageBuilder) associationEndpoints(assocQN string) (fromEntity, toEntity string, ok bool) {
+	parts := strings.SplitN(assocQN, ".", 2)
+	if len(parts) != 2 {
+		return "", "", false
+	}
+	modName, assocName := parts[0], parts[1]
+
+	dms, err := pb.getDomainModels()
+	if err != nil {
+		return "", "", false
+	}
+	h, err := pb.getHierarchy()
+	if err != nil {
+		return "", "", false
+	}
+
+	// Index every entity ID → qualified name (association endpoints are BY_ID).
+	entityQN := make(map[model.ID]string)
+	for _, dm := range dms {
+		mod := h.GetModuleName(dm.ContainerID)
+		for _, e := range dm.Entities {
+			entityQN[e.ID] = mod + "." + e.Name
+		}
+	}
+
+	for _, dm := range dms {
+		if h.GetModuleName(dm.ContainerID) != modName {
+			continue
+		}
+		a := dm.FindAssociationByName(assocName)
+		if a == nil {
+			continue
+		}
+		from, to := entityQN[a.ParentID], entityQN[a.ChildID]
+		if from == "" || to == "" {
+			return "", "", false
+		}
+		return from, to, true
+	}
+	return "", "", false
 }
 
 // isNonStringAttribute checks if an attribute path refers to a non-String type.

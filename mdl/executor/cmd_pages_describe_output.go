@@ -1289,6 +1289,12 @@ func extractClientTemplateParameters(ctx *ExecContext, w map[string]any, fieldNa
 
 		// Check for AttributeRef
 		if attrRef, ok := pMap["AttributeRef"].(map[string]any); ok && attrRef != nil {
+			// Attribute navigated over associations (AttributeRef.EntityRef):
+			// reconstruct the "Assoc/.../Attr" path so DESCRIBE round-trips.
+			if assocPath := associationTemplateParamPath(attrRef); assocPath != "" {
+				result = append(result, assocPath)
+				continue
+			}
 			if attr, ok := attrRef["Attribute"].(string); ok {
 				if sourceVarName != "" {
 					// Has SourceVariable - this is a page parameter reference
@@ -1309,6 +1315,41 @@ func extractClientTemplateParameters(ctx *ExecContext, w map[string]any, fieldNa
 		result = append(result, "<unbound>")
 	}
 	return result
+}
+
+// associationTemplateParamPath reconstructs the "Assoc/.../Attr" navigation of a
+// template parameter whose AttributeRef binds an attribute over one or more
+// associations (AttributeRef.EntityRef = DomainModels$IndirectEntityRef). Returns
+// "" when the parameter is a plain (direct-attribute) binding.
+func associationTemplateParamPath(attrRef map[string]any) string {
+	entityRef, ok := attrRef["EntityRef"].(map[string]any)
+	if !ok || entityRef == nil {
+		return ""
+	}
+	if extractString(entityRef["$Type"]) != "DomainModels$IndirectEntityRef" {
+		return ""
+	}
+	steps := getBsonArrayElements(entityRef["Steps"])
+	if len(steps) == 0 {
+		return ""
+	}
+	assocs := make([]string, 0, len(steps))
+	for _, s := range steps {
+		sm, ok := s.(map[string]any)
+		if !ok {
+			return ""
+		}
+		assoc := extractString(sm["Association"])
+		if assoc == "" {
+			return ""
+		}
+		assocs = append(assocs, assoc)
+	}
+	attr := shortAttributeName(extractString(attrRef["Attribute"]))
+	if attr == "" {
+		return ""
+	}
+	return strings.Join(assocs, "/") + "/" + attr
 }
 
 func (e *Executor) outputWidgetMDLV3(w rawWidget, indent int) {

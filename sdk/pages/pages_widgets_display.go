@@ -38,15 +38,25 @@ type ClientTemplate struct {
 	Fallback   *model.Text                `json:"fallback,omitempty"`
 }
 
+// AttributeRefStep is one hop of an association-navigated attribute reference
+// (DomainModels$EntityRefStep). A ClientTemplateParameter that binds an
+// attribute *over* an association (e.g. {1} = Order_Customer/Name) carries one
+// step per association hop; the final attribute lives in AttributeRef.
+type AttributeRefStep struct {
+	Association       string `json:"association,omitempty"`       // qualified association name, e.g. "Sales.Order_Customer"
+	DestinationEntity string `json:"destinationEntity,omitempty"` // qualified entity reached by this hop, e.g. "Sales.Customer"
+}
+
 // ClientTemplateParameter represents a parameter in a client template.
 // Used to substitute values for placeholders like {1}, {2} in template text.
 type ClientTemplateParameter struct {
 	model.BaseElement
-	AttributeRef       string          `json:"attributeRef,omitempty"`       // Qualified attribute path like "Module.Entity.Attribute"
-	Expression         string          `json:"expression,omitempty"`         // Literal expression like "'Hello'"
-	SourceVariable     string          `json:"sourceVariable,omitempty"`     // Variable name (no $ prefix)
-	SourceVariableKind string          `json:"sourceVariableKind,omitempty"` // "" (default = page parameter), "local" (page-level Variables entry), or "snippet"
-	FormattingInfo     *FormattingInfo `json:"formattingInfo,omitempty"`
+	AttributeRef       string             `json:"attributeRef,omitempty"`       // Qualified attribute path like "Module.Entity.Attribute"
+	AttributeRefSteps  []AttributeRefStep `json:"attributeRefSteps,omitempty"`  // association hops when the attribute is navigated over associations (AttributeRef.EntityRef)
+	Expression         string             `json:"expression,omitempty"`         // Literal expression like "'Hello'"
+	SourceVariable     string             `json:"sourceVariable,omitempty"`     // Variable name (no $ prefix)
+	SourceVariableKind string             `json:"sourceVariableKind,omitempty"` // "" (default = page parameter), "local" (page-level Variables entry), or "snippet"
+	FormattingInfo     *FormattingInfo    `json:"formattingInfo,omitempty"`
 }
 
 // DynamicText represents dynamic text based on an attribute.

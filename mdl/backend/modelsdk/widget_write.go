@@ -16,6 +16,7 @@ import (
 	genMf "github.com/mendixlabs/mxcli/modelsdk/gen/microflows"
 	genPg "github.com/mendixlabs/mxcli/modelsdk/gen/pages"
 	genTexts "github.com/mendixlabs/mxcli/modelsdk/gen/texts"
+	"github.com/mendixlabs/mxcli/sdk/microflows"
 	"github.com/mendixlabs/mxcli/sdk/pages"
 )
 
@@ -857,7 +858,11 @@ func clientTemplateParameterToGen(p *pages.ClientTemplateParameter) element.Elem
 		// The parameter's value source is a DomainModels$AttributeRef sub-object,
 		// NOT the AttributePath scalar — Studio Pro reads AttributeRef and reports
 		// CE0402 "No value specified" if it is null. Matches legacy.
-		if ref := attributeRefToGen(p.AttributeRef); ref != nil {
+		if len(p.AttributeRefSteps) > 0 {
+			// Attribute navigated over associations: AttributeRef carries the final
+			// attribute plus an IndirectEntityRef of association steps.
+			g.SetAttributeRef(attributeRefWithStepsToGen(p.AttributeRef, p.AttributeRefSteps))
+		} else if ref := attributeRefToGen(p.AttributeRef); ref != nil {
 			g.SetAttributeRef(ref)
 		} else {
 			g.SetAttributePath(p.AttributeRef)
@@ -924,6 +929,23 @@ func attributeRefToGen(path string) element.Element {
 	r := genDm.NewAttributeRef()
 	assignID(r)
 	r.SetAttributeQualifiedName(path)
+	return r
+}
+
+// attributeRefWithStepsToGen builds a DomainModels$AttributeRef for an attribute
+// navigated over one or more associations: the final attribute qualified name
+// plus an EntityRef (DomainModels$IndirectEntityRef) of association hops. Reuses
+// entityRefToGen (the microflow IndirectEntityRef builder) — the storage names
+// are identical.
+func attributeRefWithStepsToGen(attrQN string, steps []pages.AttributeRefStep) element.Element {
+	r := genDm.NewAttributeRef()
+	assignID(r)
+	r.SetAttributeQualifiedName(attrQN)
+	mSteps := make([]microflows.EntityRefStep, len(steps))
+	for i, s := range steps {
+		mSteps[i] = microflows.EntityRefStep{Association: s.Association, DestinationEntity: s.DestinationEntity}
+	}
+	r.SetEntityRef(entityRefToGen(mSteps))
 	return r
 }
 

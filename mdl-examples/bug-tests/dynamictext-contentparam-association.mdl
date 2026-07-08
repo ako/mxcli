@@ -1,0 +1,60 @@
+-- ============================================================================
+-- DynamicText contentparam over an association silently persisted no value
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   A DynamicText template parameter that navigates a reference association —
+--     dynamictext dEmp (content: 'Submitted by {1}',
+--       contentparams: [{1} = MyFirstModule.Expense_Employee/Name])
+--   passed `mxcli check --references` but FAILED mxbuild with
+--     "Value of text template parameter {1} of text 'dEmp': No value specified."
+--   Direct-attribute params ([{1} = Description]) persisted fine — the bug was
+--   specific to association navigation.
+--
+-- Root cause:
+--   The value string "MyFirstModule.Expense_Employee/Name" reached the widget
+--   writer's AttributeRef serializer, which rejects any path with < 2 dots
+--   (the association hop has 1 dot; the /Name is navigation, not counted) and
+--   emitted a null AttributeRef → no value bound. Nothing built the association
+--   step structure Mendix requires.
+--
+-- After fix (modelsdk engine):
+--   The resolver splits the path into association hop(s) + final attribute,
+--   resolves each association's destination entity from the domain model, and
+--   emits a DomainModels$AttributeRef whose Attribute is the FINAL attribute
+--   (MyFirstModule.Employee.Name) and whose EntityRef is a
+--   DomainModels$IndirectEntityRef of DomainModels$EntityRefStep hops
+--   (Association + DestinationEntity) — byte-structurally identical to a
+--   Studio-Pro-authored page. DESCRIBE round-trips the Assoc/Attr form.
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/dynamictext-contentparam-association.mdl -p app.mpr
+-- ============================================================================
+
+create entity MyFirstModule.Employee (
+  Name: String
+);
+
+create entity MyFirstModule.Expense (
+  Description: String
+);
+
+create association MyFirstModule.Expense_Employee
+  from MyFirstModule.Expense
+  to MyFirstModule.Employee;
+
+create or replace page MyFirstModule.ExpensePage
+(
+  Title: 'Expense',
+  Layout: Atlas_Core.Atlas_Default,
+  Params: { $Expense: MyFirstModule.Expense }
+)
+{
+  dataview dv (datasource: $Expense) {
+    -- Association-navigated template parameter (the fixed case).
+    dynamictext dEmp (content: 'Submitted by {1}', contentparams: [{1} = MyFirstModule.Expense_Employee/Name])
+  }
+}
+
+-- Should round-trip to contentparams: [{1} = MyFirstModule.Expense_Employee/Name]
+describe page MyFirstModule.ExpensePage;
