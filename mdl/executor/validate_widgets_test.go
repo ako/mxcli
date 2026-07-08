@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
+	"github.com/mendixlabs/mxcli/mdl/linter"
 )
 
 // Issue #650 — MDL-WIDGET04 flags a dynamictext whose template references a {N}
@@ -50,5 +51,72 @@ func TestValidateDynamicTextPlaceholders(t *testing.T) {
 				t.Errorf("message lacks guidance: %s", v.Message)
 			}
 		})
+	}
+}
+
+// TestValidateStaticWidgetUnknownProps covers MDL-WIDGET07: a property a core
+// widget doesn't consume is warned (not errored) so the silent drop is visible.
+func TestValidateStaticWidgetUnknownProps(t *testing.T) {
+	dt := func(props map[string]any) *ast.WidgetV3 {
+		return &ast.WidgetV3{Type: "dynamictext", Name: "txt", Properties: props}
+	}
+	cases := []struct {
+		name      string
+		widget    *ast.WidgetV3
+		wantCount int
+		wantHint  string // substring expected in the message, if any
+	}{
+		{"known props clean", dt(map[string]any{
+			"Content": "hi", "Class": "c", "DynamicClasses": "x", "RenderMode": "H1",
+		}), 0, ""},
+		{"describe vocabulary clean (image units)", &ast.WidgetV3{
+			Type: "image", Name: "img",
+			Properties: map[string]any{"WidthUnit": "pixels", "Width": 36, "HeightUnit": "pixels", "Height": 36},
+		}, 0, ""},
+		{"lowercase keyword clean", dt(map[string]any{"content": "hi", "dynamicclasses": "x"}), 0, ""},
+		{"unknown property warns", dt(map[string]any{"Content": "hi", "TotallyMadeUp": "x"}), 1, ""},
+		{"typo suggests nearest", dt(map[string]any{"Contnet": "hi"}), 1, "did you mean `Content`"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			vs := validateStaticWidgetUnknownProps(c.widget, "page X")
+			if len(vs) != c.wantCount {
+				t.Fatalf("got %d violations, want %d: %+v", len(vs), c.wantCount, vs)
+			}
+			for _, v := range vs {
+				if v.RuleID != "MDL-WIDGET07" {
+					t.Errorf("RuleID = %s, want MDL-WIDGET07", v.RuleID)
+				}
+				if v.Severity != linter.SeverityWarning {
+					t.Errorf("severity = %v, want warning (must not hard-fail check)", v.Severity)
+				}
+			}
+			if c.wantHint != "" && (len(vs) == 0 || !strings.Contains(vs[0].Message, c.wantHint)) {
+				t.Errorf("expected hint %q in message, got %+v", c.wantHint, vs)
+			}
+		})
+	}
+}
+
+// TestStaticWidgetKnownPropsCoverDescribe guards against describe-vocabulary
+// drift: every property describe page can emit must be recognized, otherwise the
+// describe→create roundtrip would self-warn. Representative sample of the
+// describe emit set (native widgets + datagrid columns).
+func TestStaticWidgetKnownPropsCoverDescribe(t *testing.T) {
+	describeVocabulary := []string{
+		"Action", "Alignment", "AlternativeText", "Attribute", "Attributes", "ButtonStyle",
+		"Caption", "CaptionAttribute", "CaptionParams", "Class", "Collapsible", "ColumnWidth",
+		"Content", "ContentParams", "DataSource", "DesignProperties", "DesktopColumns",
+		"DisplayAs", "DynamicCellClass", "DynamicClasses", "Editable", "FilterType", "HeaderMode",
+		"Height", "HeightUnit", "Hidable", "ImageType", "ImageUrl", "Label", "LabelWidth",
+		"OnClick", "PageSize", "Pagination", "PagingPosition", "PhoneColumns", "PhoneWidth",
+		"ReadOnlyStyle", "RenderMode", "Responsive", "Selection", "ShowContentAs",
+		"ShowPagingButtons", "Size", "Snippet", "Sortable", "Style", "TabletColumns",
+		"TabletWidth", "Tooltip", "Visible", "Width", "WidthUnit",
+	}
+	for _, p := range describeVocabulary {
+		if !isKnownStaticWidgetProp(p) {
+			t.Errorf("describe emits %q but it is not in the MDL-WIDGET07 allow-list — the describe→create roundtrip would false-warn", p)
+		}
 	}
 }

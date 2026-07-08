@@ -1,0 +1,35 @@
+-- ============================================================================
+-- Unknown properties on a built-in widget are silently dropped (now warned)
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   A property a core (non-pluggable) widget doesn't consume — a typo like
+--   `Contnet`, or a genuinely unsupported key — passed `mxcli check` + `exec`
+--   with no error and was silently dropped on write. Pluggable widgets already
+--   rejected unknown keys (MDL-WIDGET01); built-in widgets had no such check.
+--
+-- Fix:
+--   MDL-WIDGET07 — a WARNING (not an error) on any unrecognized property of a
+--   built-in widget, with a "did you mean" hint. It is a warning because the
+--   core-widget property vocabulary can't be proven complete per widget type
+--   (describe even emits keys like WidthUnit the native builder doesn't consume),
+--   so a hard reject would false-positive on valid MDL and break the
+--   describe→create roundtrip. The allow-list is the union of grammar keyword
+--   properties, builder-consumed keys, and the full describe-emit vocabulary.
+--
+-- Usage (observe the two MDL-WIDGET07 warnings — check still passes):
+--   mxcli check mdl-examples/bug-tests/widget-unknown-property.mdl
+-- ============================================================================
+
+create or replace page MyFirstModule.P_UnknownProp
+( Title: 'Unknown prop', Layout: Atlas_Core.Atlas_Default )
+{
+  -- all recognized → no warning
+  dynamictext ok ( Content: 'hi', Class: 'c', DynamicClasses: 'if true then ''a'' else ''''', RenderMode: H1 )
+  -- typo of a real property → MDL-WIDGET07 "did you mean `Content`?"
+  dynamictext typo ( Content: 'hi', Contnet: 'oops' )
+  -- genuinely unknown property → MDL-WIDGET07 (no suggestion)
+  dynamictext unknown ( Content: 'hi', TotallyMadeUp: 'x' )
+  -- describe-vocabulary props on a native image → no warning
+  image img ( WidthUnit: pixels, Width: 36, HeightUnit: pixels, Height: 36 )
+}

@@ -102,9 +102,109 @@ func validateWidgetTree(widgets []*ast.WidgetV3, registry *WidgetRegistry, locat
 		}
 		out = append(out, validatePluggableWidgetProperties(w, registry, locationPrefix)...)
 		out = append(out, validateStaticWidget(w, locationPrefix)...)
+		// Unknown-property warning applies only to built-in widgets; pluggable
+		// widgets get the stricter def.json check (MDL-WIDGET01) above.
+		if lookupWidgetDef(w, registry) == nil {
+			out = append(out, validateStaticWidgetUnknownProps(w, locationPrefix)...)
+		}
 		if len(w.Children) > 0 {
 			out = append(out, validateWidgetTree(w.Children, registry, locationPrefix)...)
 		}
+	}
+	return out
+}
+
+// staticWidgetKnownProps is the lowercase vocabulary of properties a built-in
+// (non-pluggable) page widget can legitimately carry. It is the union of the
+// grammar keyword properties, every key the executor builders consume, and every
+// property `describe page` can emit (so the describe→create roundtrip never
+// self-warns). A property outside this set on a core widget is not consumed by
+// any builder — i.e. it is silently dropped — so it earns an MDL-WIDGET07
+// warning. It is deliberately generous (a union across all widget types, not
+// per-type) to avoid false positives; TestStaticWidgetKnownPropsCoverDescribe
+// guards it against describe-vocabulary drift.
+var staticWidgetKnownProps = func() map[string]bool {
+	names := []string{
+		// grammar keyword properties (widgetPropertyV3)
+		"DataSource", "Attribute", "Binds", "Action", "OnClick", "Caption", "Label",
+		"Attr", "Content", "RenderMode", "ContentParams", "CaptionParams", "ButtonStyle",
+		"Class", "Style", "DesktopWidth", "TabletWidth", "PhoneWidth", "Selection",
+		"Snippet", "Params", "Attributes", "FilterType", "DesignProperties", "Width",
+		"Height", "Visible", "Editable", "Tooltip",
+		// keys the builders/visitor consume and the conditional-binding metadata
+		"CaptionAttribute", "Collapsible", "DatabaseHost", "DefaultLanguage", "Footer",
+		"FormOrientation", "HeaderMode", "LabelWidth", "Prefix", "ShowContentAs", "Title",
+		"Widget", "WidgetType", "ShowLabel", "VisibleIf", "EditableIf", "DynamicClasses",
+		// vocabulary describe page emits (native widgets + datagrid columns)
+		"Alignment", "AlternativeText", "ColumnClass", "ColumnWidth", "DesktopColumns",
+		"DisplayAs", "Draggable", "DynamicCellClass", "HeightUnit", "Hidable", "ImageType",
+		"ImageUrl", "LabelPosition", "PageSize", "Pagination", "PagingPosition",
+		"PhoneColumns", "ReadOnlyStyle", "Resizable", "Responsive", "ShowPagingButtons",
+		"Size", "Sortable", "TabletColumns", "WidthUnit", "WrapText", "Name",
+	}
+	m := make(map[string]bool, len(names))
+	for _, n := range names {
+		m[strings.ToLower(n)] = true
+	}
+	return m
+}()
+
+// staticWidgetKnownPropList is the canonical-cased key list used for "did you
+// mean" suggestions on MDL-WIDGET07.
+var staticWidgetKnownPropList = func() []string {
+	seen := map[string]bool{}
+	var list []string
+	add := func(names ...string) {
+		for _, n := range names {
+			if l := strings.ToLower(n); !seen[l] {
+				seen[l] = true
+				list = append(list, n)
+			}
+		}
+	}
+	add("DataSource", "Attribute", "Action", "OnClick", "Caption", "Label", "Content",
+		"RenderMode", "ContentParams", "CaptionParams", "ButtonStyle", "Class", "Style",
+		"DesktopWidth", "TabletWidth", "PhoneWidth", "Selection", "Snippet", "Params",
+		"Attributes", "FilterType", "DesignProperties", "Width", "Height", "Visible",
+		"Editable", "Tooltip", "DynamicClasses", "WidthUnit", "HeightUnit",
+		"DesktopColumns", "TabletColumns", "PhoneColumns", "PageSize", "Pagination")
+	return list
+}()
+
+// isKnownStaticWidgetProp reports whether key is a recognized property for a
+// built-in widget (case-insensitively).
+func isKnownStaticWidgetProp(key string) bool {
+	if isBuiltinPropName(key) {
+		return true
+	}
+	l := strings.ToLower(key)
+	return extraUniversalWidgetProperties[l] || staticWidgetKnownProps[l]
+}
+
+// validateStaticWidgetUnknownProps warns (MDL-WIDGET07) about property keys on a
+// built-in widget that no builder consumes — they pass `check`/`exec` but are
+// silently dropped on write. It is a warning, not an error: the core-widget
+// property vocabulary can't be proven complete per widget type, so a hard reject
+// could false-positive on a valid property. Pluggable widgets are validated
+// separately (MDL-WIDGET01) and must not reach here.
+func validateStaticWidgetUnknownProps(w *ast.WidgetV3, locationPrefix string) []linter.Violation {
+	var out []linter.Violation
+	for key := range w.Properties {
+		if isKnownStaticWidgetProp(key) {
+			continue
+		}
+		hint := ""
+		if suggestion := nearestKey(key, staticWidgetKnownPropList); suggestion != "" {
+			hint = fmt.Sprintf(" — did you mean `%s`?", suggestion)
+		}
+		out = append(out, linter.Violation{
+			RuleID:   "MDL-WIDGET07",
+			Severity: linter.SeverityWarning,
+			Message: fmt.Sprintf(
+				"%s: widget `%s` (%s) property `%s` is not recognized and will be silently dropped on write%s",
+				locationPrefix, w.Name, w.Type, key, hint,
+			),
+		})
 	}
 	return out
 }
