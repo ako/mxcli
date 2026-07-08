@@ -1,0 +1,64 @@
+-- ============================================================================
+-- Bug #112: COMBOBOX bound to an enum triggers CE0463 "widget definition changed"
+-- ============================================================================
+--
+-- Symptom:
+--   create ... combobox cbClass (Label: 'Class', Attribute: VesselClass)  -- enum
+--   then `mx check` (or `mxcli docker build`) fails:
+--   [CE0463] "The definition of this widget has changed. Update this widget
+--   by right-clicking it and selecting 'Update widget'…" at Combo box 'cbClass'.
+--
+-- Root cause (refined):
+--   #112 originally blamed an incomplete template (58 PropertyTypes / 52
+--   WidgetProperties). That is fixed — a combobox emitted against a project whose
+--   installed com.mendix.widget.web.Combobox.mpk matches mxcli's embedded template
+--   (Mendix 11.6 / widget 2.5.0) now passes `mx check` with 0 errors.
+--
+--   The RESIDUAL CE0463 is a widget-VERSION mismatch: mxcli emits the embedded
+--   2.5.0-shaped PropertyTypes, but a project may have a NEWER combobox (e.g.
+--   2.8.1) whose schema reorders / regroups properties. `augmentFromMPK` patches
+--   presence + enum values from the project .mpk but cannot restructure the
+--   2.5.0 baseline into the newer shape, and full generation-from-mpk is less
+--   faithful still (fails even on a matching version).
+--
+--   The DESIGNED remediation is `mx update-widgets`, which migrates the stored
+--   widget to the installed version and clears CE0463. `mxcli docker build/check`
+--   run it automatically — but it was crashing on a bare .mpr path
+--   (AddProjectDirAsAllowedPath → ArgumentNullException), so the migration never
+--   ran. That path-arg crash is fixed (docker: pass an absolute path).
+--
+-- Verification:
+--   - On a project whose combobox.mpk matches the template version, this script
+--     passes `mx check` with 0 errors (the incomplete-template regression is gone).
+--   - On a project with a newer combobox, `mxcli docker check -p app.mpr` now runs
+--     update-widgets successfully and `mx check` reports 0 errors.
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/112-combobox-enum-ce0463-widget-version.mdl -p app.mpr
+--   mxcli docker check -p app.mpr      # runs update-widgets (now crash-free), then mx check
+-- ============================================================================
+
+create module CBBug112;
+/
+
+create enumeration CBBug112.VesselClass (
+  Sailboat 'Sailboat',
+  Motorboat 'Motorboat'
+);
+/
+
+create entity CBBug112.Boat (
+  Name: String,
+  VesselClass: enum CBBug112.VesselClass
+);
+/
+
+create or replace page CBBug112.Boat_NewEdit (
+  params: { $Boat: CBBug112.Boat },
+  layout: Atlas_Core.Atlas_Default
+) {
+  dataview boatDV (DataSource: $Boat) {
+    combobox cbClass (Label: 'Class', Attribute: VesselClass)
+  }
+}
+/
