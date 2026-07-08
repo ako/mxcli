@@ -64,6 +64,7 @@ Page-specific patterns:
 |-------|---------|----------|
 | [generate-domain-model.md](generate-domain-model.md) | Complete domain model generation | Generating full domain models |
 | [create-custom-widget.md](create-custom-widget.md) | Custom pluggable widget AIGC | Creating custom React widgets from scratch |
+| [migrate-design-prototype.md](migrate-design-prototype.md) | Turn a Claude Design prototype into a themed Mendix app | Reproducing a design handoff/prototype as an SCSS theme + styled pages |
 | [debug-bson.md](debug-bson.md) | BSON debugging | Troubleshooting SDK issues |
 
 ---
@@ -94,6 +95,8 @@ Load skills based on the task:
 | "Define a fragment" | `fragments.md` |
 | "Create custom widget" | `create-custom-widget.md` |
 | "Build a pluggable widget" | `create-custom-widget.md` |
+| "Turn a design prototype/handoff into a Mendix app" | `migrate-design-prototype.md`, `theme-styling.md`, `create-page.md` |
+| "Build/apply a theme from a design" | `migrate-design-prototype.md`, `theme-styling.md` |
 
 ### For Error Recovery
 
