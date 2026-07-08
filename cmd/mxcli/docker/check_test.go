@@ -119,6 +119,61 @@ func TestCheck_SkipUpdateWidgetsFlag(t *testing.T) {
 	}
 }
 
+// TestUpdateWidgetsPathArg_AbsolutizesBareFilename guards the fix for the
+// `mx update-widgets` crash: a bare .mpr filename (no directory component) makes
+// MxToolset's AddProjectDirAsAllowedPath compute an empty directory and throw
+// System.ArgumentNullException, silently skipping the widget migration (leaving
+// CE0463 unresolved). The arg must be absolutized so it always has a directory.
+func TestUpdateWidgetsPathArg_AbsolutizesBareFilename(t *testing.T) {
+	got := updateWidgetsPathArg("app.mpr")
+	if !filepath.IsAbs(got) {
+		t.Errorf("updateWidgetsPathArg(%q) = %q, want an absolute path", "app.mpr", got)
+	}
+	// An already-absolute path is returned unchanged.
+	if got := updateWidgetsPathArg("/proj/app.mpr"); got != "/proj/app.mpr" {
+		t.Errorf("updateWidgetsPathArg(abs) = %q, want it unchanged", got)
+	}
+}
+
+// TestCheck_UpdateWidgetsReceivesAbsolutePath verifies the invocation passes an
+// absolute path to `mx update-widgets` even when ProjectPath is a bare filename
+// (as with `mxcli docker check -p app.mpr` run from the project directory).
+func TestCheck_UpdateWidgetsReceivesAbsolutePath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script test not supported on Windows")
+	}
+	dir := t.TempDir()
+	logFile := filepath.Join(dir, "args.log")
+	script := "#!/bin/sh\necho \"$@\" >> " + logFile + "\n"
+	for _, name := range []string{"mx", "mxbuild"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(script), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var stdout, stderr bytes.Buffer
+	// Bare filename — the crash trigger.
+	Check(CheckOptions{ProjectPath: "fake.mpr", MxBuildPath: dir, Stdout: &stdout, Stderr: &stderr})
+
+	logBytes, err := os.ReadFile(logFile)
+	if err != nil {
+		t.Fatalf("failed to read command log: %v", err)
+	}
+	var found bool
+	for _, line := range bytes.Split(logBytes, []byte("\n")) {
+		fields := bytes.Fields(line)
+		if len(fields) == 2 && string(fields[0]) == "update-widgets" {
+			found = true
+			if !filepath.IsAbs(string(fields[1])) {
+				t.Errorf("update-widgets path arg = %q, want absolute", fields[1])
+			}
+		}
+	}
+	if !found {
+		t.Errorf("update-widgets was not invoked; log:\n%s", logBytes)
+	}
+}
+
 func TestResolveMxForVersion_PrefersExactCachedVersion(t *testing.T) {
 	dir := t.TempDir()
 	setTestHomeDir(t, dir)

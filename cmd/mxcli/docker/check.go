@@ -34,6 +34,22 @@ type CheckOptions struct {
 	Stderr io.Writer
 }
 
+// updateWidgetsPathArg returns an absolute form of the .mpr path for the
+// `mx update-widgets` invocation. MxToolset's AddProjectDirAsAllowedPath computes
+// Path.GetDirectoryName(mprFilePath) to whitelist the project directory; given a
+// bare filename (e.g. "app.mpr", as passed by `mxcli docker build -p app.mpr` run
+// from the project dir) that returns "" → null and the tool throws
+// System.ArgumentNullException, silently skipping the widget migration. That in
+// turn leaves CE0463 "widget definition changed" errors unresolved at check time.
+// An absolute path always has a directory component. `mx check` is unaffected, so
+// only the update-widgets arg is normalized. Falls back to the input if Abs fails.
+func updateWidgetsPathArg(p string) string {
+	if abs, err := filepath.Abs(p); err == nil {
+		return abs
+	}
+	return p
+}
+
 // Check runs 'mx check' on the project to validate it before building.
 func Check(opts CheckOptions) error {
 	w := opts.Stdout
@@ -65,7 +81,7 @@ func Check(opts CheckOptions) error {
 	// by mismatch between widget Object properties and Type PropertyTypes.
 	if !opts.SkipUpdateWidgets {
 		fmt.Fprintf(w, "Updating widget definitions in %s...\n", opts.ProjectPath)
-		uwCmd := exec.Command(mxPath, "update-widgets", opts.ProjectPath)
+		uwCmd := exec.Command(mxPath, "update-widgets", updateWidgetsPathArg(opts.ProjectPath))
 		uwCmd.Stdout = w
 		uwCmd.Stderr = stderr
 		PrepareMxCommand(uwCmd)

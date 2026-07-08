@@ -103,7 +103,7 @@ func Build(opts BuildOptions) error {
 			// Run update-widgets before check to prevent false CE0463 errors
 			if !opts.SkipUpdateWidgets {
 				fmt.Fprintln(w, "  Updating widget definitions...")
-				uwCmd := exec.Command(mxPath, "update-widgets", opts.ProjectPath)
+				uwCmd := exec.Command(mxPath, "update-widgets", updateWidgetsPathArg(opts.ProjectPath))
 				uwCmd.Stdout = w
 				uwCmd.Stderr = os.Stderr
 				PrepareMxCommand(uwCmd)
