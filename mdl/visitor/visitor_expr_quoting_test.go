@@ -103,6 +103,50 @@ func TestBug1_VisibleExprStripsQuotes(t *testing.T) {
 	}
 }
 
+// 1d — XPath database datasource WHERE constraint. The worst variant: a quoted
+// attribute compiled to the string literal 'Status', making the constraint
+// always false — passes check + mxbuild, silently returns zero rows.
+func TestBug1d_DatasourceWhereStripsQuotes(t *testing.T) {
+	prog, errs := Build(`create page M.P (title: 'T', layout: Atlas_Core.Atlas_Default) {
+  gallery g (datasource: database from M.Expense where [ "Status" = 'Submitted' ]) {
+    dynamictext t (content: 'x')
+  }
+}`)
+	if len(errs) > 0 {
+		t.Fatalf("parse errors: %v", errs)
+	}
+	page := prog.Statements[0].(*ast.CreatePageStmtV3)
+	w := findWidget(page.Widgets, "g")
+	if w == nil {
+		t.Fatal("gallery not found")
+	}
+	ds, ok := w.Properties["DataSource"].(*ast.DataSourceV3)
+	if !ok || ds == nil {
+		t.Fatalf("unexpected DataSource: %#v", w.Properties["DataSource"])
+	}
+	if want := "[Status = 'Submitted']"; ds.Where != want {
+		t.Errorf("datasource Where = %q, want %q", ds.Where, want)
+	}
+}
+
+// A quoted value that happens to be an XPath keyword ("empty"/"true"/"false")
+// must stay an attribute name, not collapse to the literal.
+func TestBug1d_QuotedKeywordAttributeStaysMember(t *testing.T) {
+	prog, errs := Build(`create page M.P (title: 'T', layout: Atlas_Core.Atlas_Default) {
+  gallery g (datasource: database from M.Expense where [ "empty" != empty ]) {
+    dynamictext t (content: 'x')
+  }
+}`)
+	if len(errs) > 0 {
+		t.Fatalf("parse errors: %v", errs)
+	}
+	page := prog.Statements[0].(*ast.CreatePageStmtV3)
+	ds := findWidget(page.Widgets, "g").Properties["DataSource"].(*ast.DataSourceV3)
+	if want := "[empty != empty]"; ds.Where != want {
+		t.Errorf("datasource Where = %q, want %q", ds.Where, want)
+	}
+}
+
 func findWidget(ws []*ast.WidgetV3, name string) *ast.WidgetV3 {
 	for _, w := range ws {
 		if w.Name == name {

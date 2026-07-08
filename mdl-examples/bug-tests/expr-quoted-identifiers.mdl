@@ -13,6 +13,11 @@
 --     if $Expense/"Justification" != empty then ...            -- 1a
 --     dynamictext (content: '{1}', contentparams: [{1} = "Amount"])  -- 1b
 --     dynamictext (visible: [ "Amount" > 1000 ])               -- 1c
+--     gallery (datasource: database from M.Expense where [ "Status" = 'x' ])  -- 1d
+--
+--   1d is the worst variant: it also passes mxbuild, then silently returns ZERO
+--   rows at runtime — the quoted "Status" is read as the string literal 'Status',
+--   so the constraint is 'Status' = 'x' (always false).
 --
 -- Root cause:
 --   Expression contexts stored the raw source text verbatim (SourceExpr.Source /
@@ -33,7 +38,8 @@
 
 create entity MyFirstModule.Expense (
   "Justification": String,
-  Amount: Decimal
+  Amount: Decimal,
+  Status: String
 );
 
 -- 1a — quoted attribute in a microflow decision / if condition.
@@ -57,6 +63,16 @@ create or replace page MyFirstModule.P_Expense
   }
 }
 
--- Both should round-trip to the unquoted form.
+-- 1d — quoted attribute in an XPath database datasource WHERE constraint.
+create or replace page MyFirstModule.P_Queue
+( Title: 'Queue', Layout: Atlas_Core.Atlas_Default )
+{
+  gallery galQueue (datasource: database from MyFirstModule.Expense where [ "Status" = 'Submitted' ]) {
+    dynamictext qStatus (content: '{1}', contentparams: [{1} = "Status"])
+  }
+}
+
+-- All should round-trip to the unquoted form (1d WHERE → [Status = 'Submitted']).
 describe microflow MyFirstModule.ACT_Expense_Submit;
 describe page MyFirstModule.P_Expense;
+describe page MyFirstModule.P_Queue;

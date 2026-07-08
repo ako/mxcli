@@ -226,24 +226,31 @@ func buildXPathQualifiedName(ctx parser.IXpathQualifiedNameContext) ast.Expressi
 	words := qnCtx.AllXpathWord()
 
 	if len(words) == 1 {
-		text := words[0].GetText()
-		// Handle special XPath values
-		switch strings.ToLower(text) {
-		case "empty":
-			return &ast.LiteralExpr{Value: nil, Kind: ast.LiteralEmpty}
-		case "true":
-			return &ast.LiteralExpr{Value: true, Kind: ast.LiteralBoolean}
-		case "false":
-			return &ast.LiteralExpr{Value: false, Kind: ast.LiteralBoolean}
+		raw := words[0].GetText()
+		// Strip identifier quotes so a keyword-escaped attribute like "Status"
+		// becomes the member name Status, not the string literal 'Status' (which
+		// Mendix would compare as an always-false constant — silent zero rows).
+		text := unquoteIdentifier(raw)
+		// The special XPath values are only special when written UNquoted; a
+		// quoted "empty"/"true"/"false" is an ordinary (keyword-escaped) name.
+		if raw == text {
+			switch strings.ToLower(text) {
+			case "empty":
+				return &ast.LiteralExpr{Value: nil, Kind: ast.LiteralEmpty}
+			case "true":
+				return &ast.LiteralExpr{Value: true, Kind: ast.LiteralBoolean}
+			case "false":
+				return &ast.LiteralExpr{Value: false, Kind: ast.LiteralBoolean}
+			}
 		}
 		return &ast.IdentifierExpr{Name: text}
 	}
 
 	// Multi-part: first part is module, rest joined as name
-	module := words[0].GetText()
+	module := unquoteIdentifier(words[0].GetText())
 	remaining := make([]string, len(words)-1)
 	for i, w := range words[1:] {
-		remaining[i] = w.GetText()
+		remaining[i] = unquoteIdentifier(w.GetText())
 	}
 	return &ast.QualifiedNameExpr{
 		QualifiedName: ast.QualifiedName{
