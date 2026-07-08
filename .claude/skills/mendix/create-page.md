@@ -109,16 +109,33 @@ container c (designproperties: ['Full width': on]) { ... }
 actionbutton btn (caption: 'Save', designproperties: ['Size': 'Large', 'Full width': on])
 ```
 
-**All three can be combined on a single widget:**
+**Dynamic Classes** — a Mendix expression evaluated at runtime that returns a
+class list (applied on top of the static `class`). Root attributes in
+`$currentObject` and escape single quotes by doubling them (`''`):
+```sql
+dynamictext ovChip (
+  content: 'chip',
+  class: 'ss-chip',
+  dynamicclasses: 'if $currentObject/VesselClass = Mod.BoatClass.Astute then ''ss-chip--astute'' else '''''
+)
+```
+
+**All can be combined on a single widget:**
 ```sql
 container ctnHero (
   class: 'card',
   style: 'border-left: 4px solid #264AE5;',
+  dynamicclasses: 'if $currentObject/Featured then ''is-featured'' else ''''',
   designproperties: ['Spacing top': 'Large', 'Full width': on]
 ) {
   dynamictext txtTitle (content: 'Styled Container', rendermode: H3)
 }
 ```
+
+> `mxcli check` **warns** (MDL-WIDGET07) when a built-in widget carries an
+> unrecognized property (a typo, or a property mxcli doesn't persist) — it would
+> otherwise be silently dropped on write. It is a warning, not an error, so the
+> check still passes; fix the spelling or remove the property.
 
 ## Basic Examples
 
@@ -873,6 +890,10 @@ textbox txtEmail (label: 'Email', attribute: Email,
 -- Static values still work
 textbox txtReadOnly (label: 'Read Only', attribute: Name, editable: Never)
 textbox txtHidden (label: 'Hidden', attribute: Name, visible: false)
+
+-- A quoted-string expression is also accepted (CREATE and ALTER). Unlike the
+-- bracket form, it is NOT auto-rooted — write $currentObject/ yourself.
+dynamictext ovChip (content: 'chip', visible: '$currentObject/Name != empty')
 ```
 
 > **Attribute rooting is automatic** — a bare attribute in a widget
