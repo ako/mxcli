@@ -155,14 +155,23 @@ func (pb *pageBuilder) buildColumnSpecFromAST(child *ast.WidgetV3) (*backend.Dat
 	if attr == "" && child.Name != "" && len(child.Children) == 0 {
 		attr = child.Name
 	}
+	// An attribute over associations (Assoc/Attr) resolves to a final attribute +
+	// association steps (AttributeRef.EntityRef); a flat path is resolved as-is.
+	resolvedAttr := pb.resolveAttributePath(attr)
+	var attrSteps []pages.AttributeRefStep
+	if finalQN, steps, ok := pb.resolveAssociationAttributePath(attr); ok {
+		resolvedAttr = finalQN
+		attrSteps = steps
+	}
 	col := backend.DataGridColumnSpec{
-		Attribute:     pb.resolveAttributePath(attr),
-		Caption:       child.GetCaption(),
-		CaptionParams: pb.buildClientTemplateParams(child.GetCaptionParams()),
-		ShowContentAs: child.GetStringProp("ShowContentAs"),
-		Content:       child.GetContent(),
-		ContentParams: pb.buildClientTemplateParams(child.GetContentParams()),
-		Properties:    child.Properties,
+		Attribute:         resolvedAttr,
+		AttributeRefSteps: attrSteps,
+		Caption:           child.GetCaption(),
+		CaptionParams:     pb.buildClientTemplateParams(child.GetCaptionParams()),
+		ShowContentAs:     child.GetStringProp("ShowContentAs"),
+		Content:           child.GetContent(),
+		ContentParams:     pb.buildClientTemplateParams(child.GetContentParams()),
+		Properties:        child.Properties,
 	}
 	for _, grandchild := range child.Children {
 		if filterWidgetID := dataGridFilterWidgetID(grandchild.Type); filterWidgetID != "" {

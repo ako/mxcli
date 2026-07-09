@@ -730,7 +730,13 @@ func (e *PluggableWidgetEngine) buildObjectListItem(mapping *ObjectListMapping, 
 				}
 			}
 		case "attribute":
-			if e.pageBuilder.entityContext != "" {
+			// An attribute navigated over associations (e.g. Order_Customer/Name)
+			// resolves to a final attribute + association steps (AttributeRef.EntityRef);
+			// a flat path is left as-is. Mirrors the DynamicText contentparam path.
+			if finalQN, steps, ok := e.pageBuilder.resolveAssociationAttributePath(strVal); ok {
+				prop.AttributePath = finalQN
+				prop.AttributeRefSteps = steps
+			} else if e.pageBuilder.entityContext != "" {
 				prop.AttributePath = e.pageBuilder.resolveAttributePath(strVal)
 			} else {
 				prop.AttributePath = strVal

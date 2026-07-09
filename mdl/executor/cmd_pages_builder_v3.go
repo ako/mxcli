@@ -1467,36 +1467,52 @@ func (pb *pageBuilder) resolveTemplateAttributePathFull(attrRef string, param *p
 // value is not an association path or cannot be resolved, so the caller falls
 // back to the previous behavior.
 func (pb *pageBuilder) resolveTemplateAssociationPath(attrRef string, param *pages.ClientTemplateParameter) bool {
+	finalQN, steps, ok := pb.resolveAssociationAttributePath(attrRef)
+	if !ok {
+		return false
+	}
+	param.AttributeRef = finalQN
+	param.AttributeRefSteps = steps
+	return true
+}
+
+// resolveAssociationAttributePath resolves a context-relative attribute path that
+// navigates one or more associations (e.g. "Order_Customer/Name" or
+// "$currentObject/Sales.Order_Customer/Name") into the fully-qualified FINAL
+// attribute and the association hops (one per `/` segment). Returns ok=false when
+// the value is not an association path or cannot be resolved, so callers fall back
+// to their own-attribute handling. Shared by DynamicText template parameters and
+// DataGrid2 columns — both store the binding as a DomainModels$AttributeRef whose
+// EntityRef is an IndirectEntityRef of these steps.
+func (pb *pageBuilder) resolveAssociationAttributePath(attrRef string) (finalQN string, steps []pages.AttributeRefStep, ok bool) {
 	path := strings.TrimPrefix(attrRef, "$currentObject/")
 	// Only context-relative association paths are handled here; a $param- or
 	// $widget-rooted navigation is a different (unsupported) shape.
 	if strings.HasPrefix(path, "$") || !strings.Contains(path, "/") {
-		return false
+		return "", nil, false
 	}
 	segs := strings.Split(path, "/")
 	if len(segs) < 2 {
-		return false
+		return "", nil, false
 	}
 	attrName := segs[len(segs)-1]
 	current := pb.entityContext
 	if current == "" {
-		return false
+		return "", nil, false
 	}
 
-	steps := make([]pages.AttributeRefStep, 0, len(segs)-1)
+	steps = make([]pages.AttributeRefStep, 0, len(segs)-1)
 	for _, seg := range segs[:len(segs)-1] {
 		assocQN := pb.resolveAssociationPath(seg)
 		dest, ok := pb.associationDestination(assocQN, current)
 		if !ok {
-			return false
+			return "", nil, false
 		}
 		steps = append(steps, pages.AttributeRefStep{Association: assocQN, DestinationEntity: dest})
 		current = dest
 	}
 
-	param.AttributeRef = current + "." + attrName
-	param.AttributeRefSteps = steps
-	return true
+	return current + "." + attrName, steps, true
 }
 
 // associationDestination returns the entity reached by navigating assocQN from

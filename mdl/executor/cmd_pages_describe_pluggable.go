@@ -345,6 +345,38 @@ func buildColumnPropertyKeyMap(ctx *ExecContext, w map[string]any) map[string]st
 // - "dynamicText": TextTemplate for dynamic text (when showContentAs = "dynamicText")
 // - "alignment": enum value ("left", "center", "right")
 // - "wrapText": boolean ("true", "false")
+// columnAttributeFromRef reconstructs a DataGrid2 column's `attribute:` value
+// from its DomainModels$AttributeRef. For an own-entity attribute it returns the
+// short attribute name; for an attribute navigated over associations
+// (AttributeRef.EntityRef = IndirectEntityRef of steps) it returns
+// `Assoc/.../Attr` using SHORT association names — the column-attribute grammar
+// (attributePathV3) accepts bare segments only, so a module-qualified association
+// would not re-parse.
+func columnAttributeFromRef(attrRef map[string]any) string {
+	attr := shortAttributeName(extractString(attrRef["Attribute"]))
+	entityRef, ok := attrRef["EntityRef"].(map[string]any)
+	if !ok || entityRef == nil || extractString(entityRef["$Type"]) != "DomainModels$IndirectEntityRef" {
+		return attr
+	}
+	steps := getBsonArrayElements(entityRef["Steps"])
+	assocs := make([]string, 0, len(steps))
+	for _, s := range steps {
+		sm, ok := s.(map[string]any)
+		if !ok {
+			return attr
+		}
+		a := extractString(sm["Association"])
+		if a == "" {
+			return attr
+		}
+		assocs = append(assocs, shortAttributeName(a)) // drop module prefix
+	}
+	if len(assocs) == 0 || attr == "" {
+		return attr
+	}
+	return strings.Join(assocs, "/") + "/" + attr
+}
+
 func extractDataGrid2Column(ctx *ExecContext, colObj map[string]any, colPropKeyMap map[string]string, entityContext string) rawDataGridColumn {
 	col := rawDataGridColumn{}
 
@@ -471,14 +503,7 @@ func extractDataGrid2Column(ctx *ExecContext, colObj map[string]any, colPropKeyM
 		// Check for AttributeRef (attribute property)
 		if col.Attribute == "" {
 			if attrRef, ok := value["AttributeRef"].(map[string]any); ok && attrRef != nil {
-				attr := extractString(attrRef["Attribute"])
-				if attr != "" {
-					// Extract just the attribute name from qualified path
-					parts := strings.Split(attr, ".")
-					if len(parts) > 0 {
-						col.Attribute = parts[len(parts)-1]
-					}
-				}
+				col.Attribute = columnAttributeFromRef(attrRef)
 			}
 		}
 
