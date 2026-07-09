@@ -46,13 +46,13 @@ func init() {
 
 	Register(SyntaxFeature{
 		Path:    "page.datasource",
-		Summary: "Datasource bindings: variable, database, microflow, selection",
+		Summary: "Datasource bindings: variable, database, microflow, selection, association",
 		Keywords: []string{
 			"datasource", "data source", "database", "microflow",
-			"selection", "variable", "binding", "binds",
+			"selection", "variable", "binding", "binds", "association", "data from context",
 		},
-		Syntax:  "DataSource: $Variable              -- Parameter/variable binding\nDataSource: DATABASE Module.Entity  -- Database query\nDataSource: MICROFLOW Module.MF()   -- Microflow datasource\nDataSource: SELECTION widgetName    -- Selection from another widget\nBinds: AttributeName                -- Attribute binding (inputs)",
-		Example: "-- Database datasource with grid\nDATAGRID grid (DataSource: DATABASE Module.Customer) {\n  COLUMN colName (Attribute: Name, Caption: 'Name')\n}\n\n-- Microflow datasource\nDATAVIEW dv (DataSource: MICROFLOW Module.GetData()) { ... }\n\n-- Selection-based datasource\nDATAVIEW dvDetail (DataSource: SELECTION gridCustomers) { ... }",
+		Syntax:  "DataSource: $Variable                    -- Parameter/variable binding\nDataSource: DATABASE Module.Entity        -- Database query\nDataSource: MICROFLOW Module.MF()         -- Microflow datasource\nDataSource: SELECTION widgetName          -- Selection from another widget\nDataSource: $currentObject/Module.Assoc   -- Over an association (\"data from context\")\n                                          --   list widget → to-many collection\n                                          --   nested DATAVIEW → the to-one referenced object\nBinds: AttributeName                      -- Attribute binding (inputs)",
+		Example: "-- Database datasource with grid\nDATAGRID grid (DataSource: DATABASE Module.Customer) {\n  COLUMN colName (Attribute: Name, Caption: 'Name')\n}\n\n-- Microflow datasource\nDATAVIEW dv (DataSource: MICROFLOW Module.GetData()) { ... }\n\n-- Over an association: a nested DataView shows the referenced (to-one) object\nDATAVIEW dvOrder (DataSource: $Order) {\n  DATAVIEW dvCustomer (DataSource: $currentObject/Order_Customer) {\n    TEXTBOX (Label: 'Name', Attribute: Name)\n  }\n}\n\n-- Over an association: a list widget shows the (to-many) collection\nLISTVIEW lvLines (DataSource: $currentObject/Order_OrderLine) { ... }",
 		SeeAlso: []string{"page.widgets", "page.create"},
 	})
 
