@@ -51,7 +51,11 @@ const defaultSlotContainer = "template"
 //	    binding, so the engine can emit an empty Forms$ClientTemplate for a
 //	    VISIBLE texttemplate sub-property (chart series staticName / active
 //	    static·/dynamic· names) instead of a null that trips CE0463 (Bug 9a).
-const WidgetDefGeneratorVersion = 7
+//	8 — object-list ItemProperties record their enumeration member keys
+//	    (enumValues), so `check` can flag an invalid enum value (MDL-WIDGET08)
+//	    instead of Studio Pro silently defaulting it (e.g. a Maps marker
+//	    locationType outside {address, latlng}).
+const WidgetDefGeneratorVersion = 8
 
 // WidgetDefinition describes how to construct a pluggable widget from MDL syntax.
 // Loaded from embedded JSON definition files (*.def.json).
@@ -141,6 +145,11 @@ type ItemPropertyMapping struct {
 	Default     string   `json:"default,omitempty"`
 	Description string   `json:"description,omitempty"`
 	MdlAliases  []string `json:"mdlAliases,omitempty"`
+	// EnumValues lists the valid member keys for an enumeration sub-property
+	// (e.g. a Maps marker `locationType` accepts address/latlng). `check` flags
+	// a value outside this set (MDL-WIDGET08) — Studio Pro silently defaults an
+	// invalid enum value, which is why chart/Maps sub-properties fail quietly.
+	EnumValues []string `json:"enumValues,omitempty"`
 	// DataSource is the widget.xml `dataSource="..."` binding, if any (e.g. a
 	// chart series `staticTooltipHoverText` is bound to `staticDataSource`). It
 	// drives object-list-item visibility: a texttemplate sub-property is

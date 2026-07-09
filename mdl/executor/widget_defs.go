@@ -444,6 +444,7 @@ func makeObjectListMapping(widgetID string, p mpk.PropertyDef) ObjectListMapping
 			Description: child.Description,
 			MdlAliases:  aliases[child.Key],
 			DataSource:  child.DataSource,
+			EnumValues:  child.EnumValues,
 		}
 		switch op {
 		case "attribute":

@@ -98,19 +98,22 @@ func validateWidgetTree(widgets []*ast.WidgetV3, registry *WidgetRegistry, locat
 	return validateWidgetTreeIn(widgets, registry, locationPrefix, nil)
 }
 
-// validateWidgetTreeIn is validateWidgetTree with the set of the *parent*
-// widget's object-list container keywords (e.g. a chart's SERIES / LINE). A
-// child whose Type is one of those is an object-list item, not a built-in
-// widget — its sub-properties (staticDataSource, staticXAttribute, …) are
-// resolved by the object-list engine and written, so it must be exempt from the
-// MDL-WIDGET07 "unrecognized property, silently dropped" warning. Chart series (9a).
-func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, locationPrefix string, parentObjectListContainers map[string]bool) []linter.Violation {
+// validateWidgetTreeIn is validateWidgetTree with the *parent* widget's
+// object-list mappings keyed by container keyword (e.g. a chart's SERIES / LINE,
+// a Maps DYNAMICMARKER). A child whose Type is one of those is an object-list
+// item, not a built-in widget — its sub-properties (staticDataSource,
+// staticXAttribute, …) are resolved by the object-list engine and written, so it
+// must be exempt from the MDL-WIDGET07 "unrecognized property, silently dropped"
+// warning. When the parent mapping is known, the child's enumeration
+// sub-properties are validated against their member keys (MDL-WIDGET08). (9a)
+func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, locationPrefix string, parentObjectLists map[string]*ObjectListMapping) []linter.Violation {
 	var out []linter.Violation
 	for _, w := range widgets {
 		if w == nil {
 			continue
 		}
-		isObjectListItem := parentObjectListContainers[strings.ToUpper(w.Type)] || isUniversalObjectListKeyword(w.Type)
+		mapping := parentObjectLists[strings.ToUpper(w.Type)]
+		isObjectListItem := mapping != nil || isUniversalObjectListKeyword(w.Type)
 		out = append(out, validatePluggableWidgetProperties(w, registry, locationPrefix)...)
 		out = append(out, validateStaticWidget(w, locationPrefix)...)
 		// Unknown-property warning applies only to built-in widgets; pluggable
@@ -120,11 +123,67 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 		if def == nil && !isObjectListItem {
 			out = append(out, validateStaticWidgetUnknownProps(w, locationPrefix)...)
 		}
+		if mapping != nil {
+			out = append(out, validateObjectListItemEnums(w, mapping, locationPrefix)...)
+		}
 		if len(w.Children) > 0 {
-			out = append(out, validateWidgetTreeIn(w.Children, registry, locationPrefix, objectListContainerSet(def))...)
+			out = append(out, validateWidgetTreeIn(w.Children, registry, locationPrefix, objectListMappingSet(def))...)
 		}
 	}
 	return out
+}
+
+// validateObjectListItemEnums flags an enumeration sub-property of an object-list
+// item (e.g. a Maps marker `LocationType`, a chart series `Interpolation`) whose
+// value isn't one of the widget's declared member keys. Studio Pro silently
+// defaults an invalid enum value, so this class of typo otherwise fails quietly
+// at build (e.g. CE "a dynamic marker requires an address"). MDL-WIDGET08.
+func validateObjectListItemEnums(w *ast.WidgetV3, mapping *ObjectListMapping, locationPrefix string) []linter.Violation {
+	var out []linter.Violation
+	for _, ip := range mapping.ItemProperties {
+		if len(ip.EnumValues) == 0 {
+			continue
+		}
+		raw, ok := w.Properties[ip.PropertyKey]
+		if !ok {
+			// case-insensitive fallback (MDL keys keep the author's casing)
+			for k, v := range w.Properties {
+				if strings.EqualFold(k, ip.PropertyKey) {
+					raw, ok = v, true
+					break
+				}
+			}
+		}
+		if !ok {
+			continue
+		}
+		val, isStr := raw.(string)
+		if !isStr || val == "" {
+			continue
+		}
+		if enumValuesContain(ip.EnumValues, val) {
+			continue
+		}
+		out = append(out, linter.Violation{
+			RuleID:   "MDL-WIDGET08",
+			Severity: linter.SeverityError,
+			Message: fmt.Sprintf(
+				"%s: widget `%s` (%s) property `%s` has invalid value `%s` — valid values are %s",
+				locationPrefix, w.Name, w.Type, ip.PropertyKey, val, strings.Join(ip.EnumValues, ", "),
+			),
+		})
+	}
+	return out
+}
+
+// enumValuesContain reports whether val matches any member key case-insensitively.
+func enumValuesContain(members []string, val string) bool {
+	for _, m := range members {
+		if strings.EqualFold(m, val) {
+			return true
+		}
+	}
+	return false
 }
 
 // isUniversalObjectListKeyword reports whether a widget Type is one of the
@@ -141,15 +200,15 @@ func isUniversalObjectListKeyword(widgetType string) bool {
 	return false
 }
 
-// objectListContainerSet returns the uppercased object-list container keywords
-// declared by a widget definition (empty when def is nil or has none).
-func objectListContainerSet(def *WidgetDefinition) map[string]bool {
+// objectListMappingSet returns a widget definition's object-list mappings keyed
+// by uppercase container keyword (nil when def is nil or has none).
+func objectListMappingSet(def *WidgetDefinition) map[string]*ObjectListMapping {
 	if def == nil || len(def.ObjectLists) == 0 {
 		return nil
 	}
-	set := make(map[string]bool, len(def.ObjectLists))
-	for _, ol := range def.ObjectLists {
-		set[strings.ToUpper(ol.MDLContainer)] = true
+	set := make(map[string]*ObjectListMapping, len(def.ObjectLists))
+	for i := range def.ObjectLists {
+		set[strings.ToUpper(def.ObjectLists[i].MDLContainer)] = &def.ObjectLists[i]
 	}
 	return set
 }

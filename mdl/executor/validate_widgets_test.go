@@ -152,3 +152,47 @@ func TestValidateStaticWidget_DataViewDatabaseSource(t *testing.T) {
 		})
 	}
 }
+
+// TestValidateObjectListItemEnums — MDL-WIDGET08 flags an object-list item's
+// enumeration sub-property whose value isn't a declared member key (e.g. a Maps
+// marker LocationType outside {address, latlng}). Studio Pro silently defaults
+// an invalid value, so this class of typo otherwise fails quietly at build.
+func TestValidateObjectListItemEnums(t *testing.T) {
+	mapping := &ObjectListMapping{
+		MDLContainer: "DYNAMICMARKER",
+		ItemProperties: []ItemPropertyMapping{
+			{PropertyKey: "locationType", Operation: "primitive", EnumValues: []string{"address", "latlng"}},
+			{PropertyKey: "markerStyleDynamic", Operation: "primitive", EnumValues: []string{"default", "custom"}},
+			{PropertyKey: "title", Operation: "attribute"}, // no enum → never flagged
+		},
+	}
+	marker := func(props map[string]any) *ast.WidgetV3 {
+		return &ast.WidgetV3{Type: "dynamicmarker", Name: "m1", Properties: props}
+	}
+	cases := []struct {
+		name    string
+		widget  *ast.WidgetV3
+		wantBad bool
+	}{
+		{"invalid locationType", marker(map[string]any{"LocationType": "coordinates"}), true},
+		{"valid latlng", marker(map[string]any{"LocationType": "latlng"}), false},
+		{"valid address (case-insensitive key match)", marker(map[string]any{"locationType": "address"}), false},
+		{"unset enum is fine", marker(map[string]any{"Title": "Name"}), false},
+		{"non-string value ignored", marker(map[string]any{"LocationType": 3}), false},
+		{"second enum prop invalid", marker(map[string]any{"MarkerStyleDynamic": "sparkly"}), true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			vs := validateObjectListItemEnums(c.widget, mapping, "page X")
+			got := len(vs) > 0
+			if got != c.wantBad {
+				t.Errorf("got %d violations (bad=%v), want bad=%v: %+v", len(vs), got, c.wantBad, vs)
+			}
+			for _, v := range vs {
+				if v.RuleID != "MDL-WIDGET08" {
+					t.Errorf("expected MDL-WIDGET08, got %s", v.RuleID)
+				}
+			}
+		})
+	}
+}
