@@ -9,14 +9,19 @@
 -- engine-routed widgets; mx check now reports zero CE0463 across
 -- Accordion / Maps / PopupMenu / AreaChart instances.
 --
--- TODO(grammar): two slot/sub-property forms are not yet expressible:
---   1. PopupMenu's `MENUTRIGGER` child slot (required) — keyword missing
---      from MDLPage.g4 widgetTypeV3. OL03 + OL04 popupmenu widgets are
---      commented out below; ITEM / CUSTOMITEM keyword syntax is shown.
---   2. Datasource sub-properties inside object-list items
---      (Maps `dynamicMarkers[].markersDS`, AreaChart `series[].staticDataSource`).
---      OL07 is commented out; OL05 demonstrates SERIES with primitives only.
--- Track under v0.11+ pluggable-widget grammar work.
+-- Datasource + attribute sub-properties inside object-list items now work
+-- (Bug 9a): OL05 binds an AreaChart series to an entity via `DataSource:` +
+-- `StaticXAttribute:`/`StaticYAttribute:` — it parses, persists, and (after
+-- `mx update-widgets`, which `mxcli docker check`/`build` run) passes mx check.
+-- The same datasource syntax binds Maps `dynamicMarkers[].markersDS` (OL07),
+-- though that widget has a separate open gap (see OL07).
+--
+-- TODO(grammar/widget): still not fully expressible:
+--   1. PopupMenu's `MENUTRIGGER` child slot (required) — keyword missing from
+--      MDLPage.g4 widgetTypeV3. OL03 + OL04 popupmenu widgets are commented out
+--      below; ITEM / CUSTOMITEM keyword syntax is shown.
+--   2. Maps dynamicmarker `LocationType` enum isn't persisted, so OL07's marker
+--      body stays commented (the `markersDS:` datasource itself binds fine).
 --
 -- This file scopes the Phase 1 deliverable from issue #529: support for
 -- `Type: "Object" + IsList: true` properties in pluggable widget templates,
@@ -231,11 +236,11 @@ create page ObjListV10.P_OL04_PopupMenuCustom (
 -- MARK: OL05 — AreaChart with multiple series (simplified)
 -- ============================================================================
 --
--- NOTE: The full series syntax with `StaticDataSource: database from ...`
--- requires grammar work beyond Layer 3 (datasource expressions in sub-property
--- positions). For now, this test only exercises the SERIES keyword with
--- primitive sub-properties; full datasource sub-properties land in a later
--- iteration.
+-- Each series binds its own datasource (an entity or OQL view) and picks the
+-- X/Y attributes on it. `DataSource:` is a friendly alias for the mode-specific
+-- `StaticDataSource:` / `DynamicDataSource:`; the X/Y attributes resolve against
+-- the series' OWN datasource, not the page. (Bug 9a — datasource + attribute
+-- sub-properties inside object-list items.)
 
 create page ObjListV10.P_OL05_AreaChartSeries (
   Title: 'Sales Trends',
@@ -246,15 +251,13 @@ create page ObjListV10.P_OL05_AreaChartSeries (
     row r1 {
       column c1 (DesktopWidth: 12) {
         pluggablewidget 'com.mendix.widget.web.areachart.AreaChart' chart1 {
-          series seriesNorth (
+          series seriesRevenue (
             DataSet: 'static',
-            StaticName: 'North Region',
+            DataSource: database from ObjListV10.SalesData,
+            StaticXAttribute: PeriodLabel,
+            StaticYAttribute: RevenueValue,
+            StaticName: 'Revenue',
             Interpolation: 'linear'
-          )
-          series seriesSouth (
-            DataSet: 'static',
-            StaticName: 'South Region',
-            Interpolation: 'smooth'
           )
         }
       }
@@ -311,11 +314,13 @@ create page ObjListV10.P_OL06_MapsStatic (
 -- MARK: OL07 — Maps with dynamicMarkers (datasource-driven)
 -- ============================================================================
 
--- TODO(grammar): dynamicmarker `markersDS: database from ...` requires grammar
--- support for datasource expressions inside object-list sub-properties. Without
--- the datasource, mx check fails with "A data source should be selected in
--- order to retrieve a list of markers". The body is left as a comment so the
--- DYNAMICMARKER keyword form is still documented in this fixture.
+-- The dynamicmarker `markersDS: database from ...` datasource sub-property now
+-- parses, persists, and binds (Bug 9a) — the marker's Latitude/Longitude/Title
+-- attributes resolve against that datasource entity. The Maps body is still left
+-- commented because a SEPARATE Maps gap remains: the marker's `LocationType:
+-- 'coordinates'` enum is not persisted (defaults to 'address'), so mx check
+-- fails "A dynamic marker requires an address". That marker-enum handling is
+-- unrelated to the datasource sub-property work and is tracked separately.
 
 create page ObjListV10.P_OL07_MapsDynamic (
   Title: 'Customer Locations',
@@ -331,15 +336,15 @@ create page ObjListV10.P_OL07_MapsDynamic (
         --   googleMapId: 'default'
         -- ) {
         --   dynamicmarker locMarkers (
-        --     markersDS: database from ObjListV10.Location,
-        --     LocationType: 'coordinates',
+        --     markersDS: database from ObjListV10.Location,   -- datasource binds (9a)
+        --     LocationType: 'coordinates',                    -- NOT persisted yet (separate Maps gap)
         --     Latitude: Latitude,
         --     Longitude: Longitude,
         --     Title: Name,
         --     MarkerStyleDynamic: 'default'
         --   )
         -- }
-        dynamictext placeholderOL07 (Content: 'Dynamic markers pending datasource sub-property syntax')
+        dynamictext placeholderOL07 (Content: 'Dynamic markers: datasource sub-property works (9a); Maps LocationType enum pending')
       }
     }
   }
