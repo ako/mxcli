@@ -470,19 +470,25 @@ the fast index so a design migration doesn't rediscover them.
 
 - **A real `docker build` is the only trustworthy check.** `mxcli check --references` passes MDL
   that `mxbuild` rejects. Build after every slice before you screenshot.
-- **Quote in bindings, UNQUOTE in expressions.** Quote identifiers in `create entity`,
-  `attribute:` bindings, and `create`/`change` targets. **Unquote** attribute/association names
-  inside expressions — microflow `if`/decisions, `contentparams`, `visible`, `dynamicclasses`,
-  and XPath `where`/`sort`. Quoting there breaks the build (or an XPath `where` silently returns
-  0 rows). See `write-microflows.md`.
-- **Show a related object's attributes with a nested "data from context" DataView**, not an
-  association path in a text template:
-  ```
-  dataview dvEmp (datasource: $currentObject/"Module"."Entity_Related") {
-    dynamictext n (content: 'By {1}', contentparams: [{1} = Name])   -- own attr of the related entity
-  }
-  ```
-  `contentparams: [{1} = Entity_Related/Name]` (association path) does **not** persist.
+- **Quote to escape keywords in bindings; the unquoted form is cleaner in expressions.** Quote
+  identifiers in `create entity`, `attribute:` bindings, and `create`/`change` targets when they
+  collide with an MDL keyword. Inside expressions — microflow `if`/decisions, `contentparams`,
+  `visible`, `dynamicclasses`, and inline-bracket XPath `where` — mxcli now **strips** stray
+  identifier quotes, so a quoted attribute no longer breaks the build or makes an XPath `where`
+  silently return 0 rows; still prefer the unquoted form there for readability. See
+  `write-microflows.md`.
+- **Show a related (to-one) object's attributes** — two ways, both persist now:
+  - A nested **"data from context" DataView** for a full read view of the referenced object; its
+    children bind to the related entity:
+    ```
+    dataview dvEmp (datasource: $currentObject/Module.Entity_Related) {
+      dynamictext n (content: 'By {1}', contentparams: [{1} = Name])   -- own attr of the related entity
+    }
+    ```
+  - An **association path** for a single inline value: `contentparams: [{1} = Entity_Related/Name]`
+    in a `dynamictext`, or `attribute: Entity_Related/Name` on a DataGrid2 column — both persist as
+    an AttributeRef over the association (use a **bare** association name; a module-qualified one is
+    rejected on a column).
 - **Status chips = one `dynamictext` + a `DynamicClasses:` expression** mapping the enum/value to
   a colour modifier (`ea-chip--ok/--warn/--danger`). Base `.ea-chip` + modifiers; `white-space: nowrap`.
 - **Charts:** `ProgressCircle` / `ProgressBar` build and work (donut, meters). **Mendix Charts
@@ -518,7 +524,7 @@ the fast index so a design migration doesn't rediscover them.
 - [ ] Persistent sidebar/topbar built as **navigation profile + layout + CSS**, not per-page widgets; new screens added via `CREATE OR REPLACE NAVIGATION`
 - [ ] Shell **restructured** to the design (full-height sidebar via `position:fixed` + `margin-left` offset; region sizes forced with `flex-basis`; collapse toggle hidden if unused)
 - [ ] Multi-part chrome (brand block, user chip) rendered as **inline-SVG backgrounds**; single-style chrome (labels, dots, footer) as plain `::before`/`::after`
-- [ ] Related-object attributes shown via a **nested "data from context" DataView**, not an association path in `contentparams`
+- [ ] Related (to-one) object attributes shown via a **nested "data from context" DataView** (full read view) or an **association path** (`contentparams: [{1} = Assoc/Attr]` / column `attribute: Assoc/Attr`) for a single inline value — both persist
 - [ ] A real **`docker build`** run after each slice (not just `mxcli check`) before screenshotting
 - [ ] Widgets styled with `Class:`; data-driven state via `DynamicClasses:`
 - [ ] No inline `Style:` on any DYNAMICTEXT
