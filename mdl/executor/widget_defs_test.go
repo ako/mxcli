@@ -468,6 +468,7 @@ func TestObjectListItemAliases(t *testing.T) {
 					{Key: "tooltip", Type: "textTemplate"},
 					{Key: "attribute", Type: "attribute"},
 					{Key: "width", Type: "enumeration"},
+					{Key: "columnClass", Type: "expression"},
 				},
 			},
 		},
@@ -496,6 +497,11 @@ func TestObjectListItemAliases(t *testing.T) {
 	// width is filled by MDL `ColumnWidth:` (dgDyn CE0463 regression fix).
 	if got := aliases["width"]; len(got) != 1 || got[0] != "ColumnWidth" {
 		t.Errorf("width MdlAliases = %v, want [ColumnWidth]", got)
+	}
+	// columnClass is filled by MDL `DynamicCellClass:` (Bug 10a — per-cell
+	// dynamic class was silently dropped without this alias).
+	if got := aliases["columnClass"]; len(got) != 1 || got[0] != "DynamicCellClass" {
+		t.Errorf("columnClass MdlAliases = %v, want [DynamicCellClass]", got)
 	}
 	// tooltip and attribute have no aliases — schema name is the MDL keyword.
 	if got := aliases["tooltip"]; len(got) != 0 {

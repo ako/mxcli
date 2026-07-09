@@ -403,6 +403,12 @@ var itemPropertyAliases = map[string]map[string]map[string][]string{
 			// default, so a `Size:` value becomes invalid (size only applies
 			// when width=manual) and Studio Pro flags CE0463.
 			"width": {"ColumnWidth"},
+			// MDL `DynamicCellClass: '<expr>'` fills the schema's `columnClass`
+			// expression (a per-cell dynamic CSS class). Without the alias the
+			// engine looks up `columnClass` in the AST property bag, finds
+			// nothing, and writes an empty expression — the class is silently
+			// dropped. Bug 10a.
+			"columnClass": {"DynamicCellClass"},
 		},
 	},
 }

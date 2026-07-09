@@ -44,7 +44,10 @@ const defaultSlotContainer = "template"
 //	    widget in a package (e.g. Charts.mpk → BarChart/PieChart/…), not just
 //	    the first. Bump forces existing projects to regenerate and pick up the
 //	    previously-missing widgets (#679).
-const WidgetDefGeneratorVersion = 5
+//	6 — DataGrid column `columnClass` ← `DynamicCellClass` alias. Bump forces
+//	    existing projects to regenerate so the per-cell dynamic class is no
+//	    longer silently dropped on write (Bug 10a).
+const WidgetDefGeneratorVersion = 6
 
 // WidgetDefinition describes how to construct a pluggable widget from MDL syntax.
 // Loaded from embedded JSON definition files (*.def.json).
