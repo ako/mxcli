@@ -765,7 +765,7 @@ func extractListViewDataSource(ctx *ExecContext, w map[string]any) *rawDataSourc
 				if attrRef, ok := sortItem["AttributeRef"].(map[string]any); ok {
 					col.Attribute = shortAttributeName(extractString(attrRef["Attribute"]))
 				}
-				sortOrder := extractString(sortItem["SortOrder"])
+				sortOrder := gridSortDirection(sortItem)
 				if sortOrder == "Descending" {
 					col.Order = "desc"
 				}

@@ -137,6 +137,19 @@ func extractComboBoxDataSource(ctx *ExecContext, w map[string]any) *rawDataSourc
 	return nil
 }
 
+// gridSortDirection reads a grid sort item's direction. A Pages/Forms$GridSortItem
+// (pluggable DataGrid2/Gallery, ListView) stores it under SortDirection — the name
+// Studio Pro and the modelsdk engine write. The legacy sdk/mpr writer used the
+// SortOrder key (correct only for Microflows$SortItem / DocumentTemplates), so we
+// fall back to it to keep pre-fix files readable. Returns the raw Mendix enum value
+// ("Ascending"/"Descending"), or "" when unset.
+func gridSortDirection(sortItem map[string]any) string {
+	if v := extractString(sortItem["SortDirection"]); v != "" {
+		return v
+	}
+	return extractString(sortItem["SortOrder"])
+}
+
 // extractDataGrid2DataSource extracts the datasource from a DataGrid2 CustomWidget.
 func extractDataGrid2DataSource(ctx *ExecContext, w map[string]any) *rawDataSource {
 	obj, ok := w["Object"].(map[string]any)
@@ -194,7 +207,7 @@ func extractDataGrid2DataSource(ctx *ExecContext, w map[string]any) *rawDataSour
 						col.Attribute = shortAttributeName(extractString(attrRef["Attribute"]))
 					}
 					// Extract sort order
-					sortOrder := extractString(sortItem["SortOrder"])
+					sortOrder := gridSortDirection(sortItem)
 					if sortOrder == "Descending" {
 						col.Order = "desc"
 					}
@@ -669,7 +682,7 @@ func extractGalleryDataSource(ctx *ExecContext, w map[string]any) *rawDataSource
 				if attrRef, ok := sortItem["AttributeRef"].(map[string]any); ok {
 					col.Attribute = shortAttributeName(extractString(attrRef["Attribute"]))
 				}
-				sortOrder := extractString(sortItem["SortOrder"])
+				sortOrder := gridSortDirection(sortItem)
 				if sortOrder == "Descending" {
 					col.Order = "desc"
 				}
@@ -718,7 +731,7 @@ func parseCustomWidgetDataSource(ctx *ExecContext, ds map[string]any) *rawDataSo
 				if attrRef, ok := sortItem["AttributeRef"].(map[string]any); ok {
 					col.Attribute = shortAttributeName(extractString(attrRef["Attribute"]))
 				}
-				sortOrder := extractString(sortItem["SortOrder"])
+				sortOrder := gridSortDirection(sortItem)
 				if sortOrder == "Descending" {
 					col.Order = "desc"
 				}
