@@ -46,22 +46,14 @@ func (pb *pageBuilder) buildDataViewV3(w *ast.WidgetV3) (*pages.DataView, error)
 
 	// Handle DataSource
 	if ds := w.GetDataSource(); ds != nil {
-		// A DataView cannot use an association data source — Studio Pro rejects it
-		// ("cannot have a data source of type association"); only list-producing
-		// widgets may. `check` flags this as MDL-WIDGET08, but refuse it here too so
-		// a bare `exec` (skipping check) can't silently create an unbuildable page
-		// on either engine.
-		if ds.Type == "association" {
-			return nil, mdlerrors.NewValidationf(
-				"dataview %q cannot use an association data source ($%s/%s) — use a list widget (listview/datagrid/gallery) for a related collection [MDL-WIDGET08]",
-				w.Name, dataSourceContextVar(ds), ds.Reference)
-		}
 		// A DataView shows a single object; Mendix offers only Context / Microflow /
 		// Nanoflow / Listen sources — never Database (that belongs to list widgets).
 		// The legacy writer emits a best-effort Forms$DataViewSource that MxBuild
 		// rejects with CE7007; modelsdk refuses the DatabaseSource downstream. Refuse
 		// early with an actionable message so neither engine produces a broken page,
 		// and mirror the check-time MDL-WIDGET09.
+		// (An *association* DataView source IS valid — "data from context over an
+		// association" — and is handled downstream, so it is not refused here.)
 		if ds.Type == "database" {
 			return nil, mdlerrors.NewValidationf(
 				"dataview %q cannot use a database data source (from %s) — a data view shows one object; use a microflow/nanoflow source (or a page parameter), or a list widget (listview/datagrid/gallery) for a collection [MDL-WIDGET09]",
