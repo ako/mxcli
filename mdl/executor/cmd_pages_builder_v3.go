@@ -1518,21 +1518,74 @@ func (pb *pageBuilder) resolveAssociationAttributePath(attrRef string) (finalQN 
 // associationDestination returns the entity reached by navigating assocQN from
 // currentEntityQN. Uses the FROM/TO endpoints (ParentID = FROM, ChildID = TO);
 // forward navigation from the FROM entity yields the TO entity and vice versa.
+//
+// The context may be a **specialization** of an endpoint: associations are often
+// declared on a base entity while the widget is bound to a subclass (e.g. an
+// association on Expense, a grid over SpecialExpense extends Expense). Match the
+// endpoint the context *is or descends from* — an exact-equality check would
+// drop the binding and MxBuild would fail CE0402 "No value specified" (Bug 3).
 func (pb *pageBuilder) associationDestination(assocQN, currentEntityQN string) (string, bool) {
 	from, to, ok := pb.associationEndpoints(assocQN)
 	if !ok {
 		return "", false
 	}
-	switch currentEntityQN {
-	case from:
+	switch {
+	case pb.entityIsOrDescendsFrom(currentEntityQN, from):
 		return to, true
-	case to:
+	case pb.entityIsOrDescendsFrom(currentEntityQN, to):
 		return from, true
 	default:
-		// Context is neither endpoint exactly (e.g. a specialization). We can't
-		// pick the direction reliably — refuse rather than emit a wrong ref.
+		// Context is related to neither endpoint — can't pick a direction reliably;
+		// refuse rather than emit a wrong ref.
 		return "", false
 	}
+}
+
+// entityIsOrDescendsFrom reports whether entityQN equals baseQN or is a
+// specialization of it (following the generalization chain transitively). Used
+// so an association declared on a base entity resolves from a subclass context.
+func (pb *pageBuilder) entityIsOrDescendsFrom(entityQN, baseQN string) bool {
+	if entityQN == "" || baseQN == "" {
+		return false
+	}
+	if entityQN == baseQN {
+		return true
+	}
+	parents, err := pb.entityGeneralizations()
+	if err != nil {
+		return false
+	}
+	seen := map[string]bool{}
+	for cur := entityQN; cur != "" && !seen[cur]; cur = parents[cur] {
+		seen[cur] = true
+		if parents[cur] == baseQN {
+			return true
+		}
+	}
+	return false
+}
+
+// entityGeneralizations builds a map of entity qualified name → its direct
+// parent (generalization) qualified name, across all domain models.
+func (pb *pageBuilder) entityGeneralizations() (map[string]string, error) {
+	dms, err := pb.getDomainModels()
+	if err != nil {
+		return nil, err
+	}
+	h, err := pb.getHierarchy()
+	if err != nil {
+		return nil, err
+	}
+	m := make(map[string]string)
+	for _, dm := range dms {
+		mod := h.GetModuleName(dm.ContainerID)
+		for _, e := range dm.Entities {
+			if e.GeneralizationRef != "" {
+				m[mod+"."+e.Name] = e.GeneralizationRef
+			}
+		}
+	}
+	return m, nil
 }
 
 // associationEndpoints resolves a qualified association name to its FROM
