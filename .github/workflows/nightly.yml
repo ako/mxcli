@@ -22,7 +22,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version: '1.26.4'
+          go-version: '1.26.5'
 
       - name: Cache ANTLR4 JAR
         uses: actions/cache@v6
@@ -58,7 +58,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version: '1.26.4'
+          go-version: '1.26.5'
 
       - uses: oven-sh/setup-bun@v2
 
