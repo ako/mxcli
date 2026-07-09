@@ -46,6 +46,16 @@ func (pb *pageBuilder) buildDataViewV3(w *ast.WidgetV3) (*pages.DataView, error)
 
 	// Handle DataSource
 	if ds := w.GetDataSource(); ds != nil {
+		// A DataView cannot use an association data source — Studio Pro rejects it
+		// ("cannot have a data source of type association"); only list-producing
+		// widgets may. `check` flags this as MDL-WIDGET08, but refuse it here too so
+		// a bare `exec` (skipping check) can't silently create an unbuildable page
+		// on either engine.
+		if ds.Type == "association" {
+			return nil, mdlerrors.NewValidationf(
+				"dataview %q cannot use an association data source ($%s/%s) — use a list widget (listview/datagrid/gallery) for a related collection [MDL-WIDGET08]",
+				w.Name, dataSourceContextVar(ds), ds.Reference)
+		}
 		dataSource, entityName, err := pb.buildDataSourceV3(ds)
 		if err != nil {
 			return nil, mdlerrors.NewBackend("build datasource", err)
