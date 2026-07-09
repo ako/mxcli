@@ -478,10 +478,45 @@ type rawSortColumn struct {
 
 // rawDataSource represents a data source for describe output.
 type rawDataSource struct {
-	Type            string          // "microflow", "nanoflow", "parameter", "database", "selection"
-	Reference       string          // Qualified name, parameter name, or selection-source widget name
+	Type            string          // "microflow", "nanoflow", "parameter", "database", "selection", "association"
+	Reference       string          // Qualified name, parameter name, selection-source widget name, or association path
 	XPathConstraint string          // XPath constraint (WHERE clause)
 	SortColumns     []rawSortColumn // Multiple sort columns
+	ContextVariable string          // association source: context variable name (empty → $currentObject)
+}
+
+// associationSourcePath reconstructs the association navigation of a
+// Forms$AssociationSource (EntityRef = IndirectEntityRef of association steps)
+// into its path ("Module.Assoc" or "Module.Assoc/…") plus the context variable
+// ("currentObject" when the source has no page-parameter SourceVariable).
+func associationSourcePath(ds map[string]any) (path, contextVar string) {
+	entityRef, ok := ds["EntityRef"].(map[string]any)
+	if !ok || entityRef == nil {
+		return "", ""
+	}
+	steps := getBsonArrayElements(entityRef["Steps"])
+	assocs := make([]string, 0, len(steps))
+	for _, s := range steps {
+		sm, ok := s.(map[string]any)
+		if !ok {
+			return "", ""
+		}
+		assoc := extractString(sm["Association"])
+		if assoc == "" {
+			return "", ""
+		}
+		assocs = append(assocs, assoc)
+	}
+	if len(assocs) == 0 {
+		return "", ""
+	}
+	contextVar = "currentObject"
+	if sv, ok := ds["SourceVariable"].(map[string]any); ok && sv != nil {
+		if pp := extractString(sv["PageParameter"]); pp != "" {
+			contextVar = pp
+		}
+	}
+	return strings.Join(assocs, "/"), contextVar
 }
 
 // rawDataGridColumn represents a DataGrid2 column for describe output.

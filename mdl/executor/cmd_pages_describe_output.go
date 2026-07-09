@@ -335,6 +335,8 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 				props = append(props, fmt.Sprintf("DataSource: $%s", w.DataSource.Reference))
 			case "selection":
 				props = append(props, fmt.Sprintf("DataSource: selection %s", mdlIdent(w.DataSource.Reference)))
+			case "association":
+				props = append(props, fmt.Sprintf("DataSource: %s", associationDataSourceExpr(w.DataSource)))
 			}
 		}
 		switch {
@@ -738,6 +740,8 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 				props = append(props, fmt.Sprintf("DataSource: nanoflow %s", w.DataSource.Reference))
 			case "parameter":
 				props = append(props, fmt.Sprintf("DataSource: %s", w.DataSource.Reference))
+			case "association":
+				props = append(props, fmt.Sprintf("DataSource: %s", associationDataSourceExpr(w.DataSource)))
 			}
 		}
 		props = appendAppearanceProps(props, w)
@@ -1350,6 +1354,18 @@ func associationTemplateParamPath(attrRef map[string]any) string {
 		return ""
 	}
 	return strings.Join(assocs, "/") + "/" + attr
+}
+
+// associationDataSourceExpr renders an association data source as the MDL
+// navigation expression `$currentObject/Module.Assoc` (or `$Param/…`). The
+// executor re-resolves the destination entity on re-parse, so the emitted form
+// carries only the association path.
+func associationDataSourceExpr(ds *rawDataSource) string {
+	ctx := ds.ContextVariable
+	if ctx == "" {
+		ctx = "currentObject"
+	}
+	return "$" + ctx + "/" + ds.Reference
 }
 
 func (e *Executor) outputWidgetMDLV3(w rawWidget, indent int) {

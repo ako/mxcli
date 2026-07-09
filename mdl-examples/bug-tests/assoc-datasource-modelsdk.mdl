@@ -1,0 +1,48 @@
+-- ============================================================================
+-- Default (modelsdk) engine could not create association page datasources
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   Any page widget whose datasource is by association
+--     dataview dvEmp (datasource: $currentObject/MyFirstModule.Expense_Employee)
+--     listview lvEmp (datasource: $currentObject/MyFirstModule.Expense_Employee)
+--   failed at exec time under the DEFAULT engine:
+--     "CreatePage: DataView source *pages.AssociationSource not yet supported by
+--      the modelsdk engine — rerun with MXCLI_ENGINE=legacy"
+--   blocking the standard master-detail idiom (show a selected object's related
+--   data via a nested list/grid over an association).
+--
+-- Root cause:
+--   customWidgetDataSourceToGen (pluggable widgets) already built a correct
+--   Forms$AssociationSource, but dataViewSourceToGen / listViewSourceToGen had
+--   no *pages.AssociationSource case and hit the "not yet supported" default.
+--
+-- After fix (modelsdk engine):
+--   A shared associationSourceToGen emits Forms$AssociationSource with an
+--   IndirectEntityRef of EntityRefStep{Association, DestinationEntity} hops and
+--   an optional page-parameter SourceVariable ($currentObject → none), matching
+--   the canonical legacy serializeAssociationSource and the Studio-Pro-verified
+--   EntityRefStep structure. DESCRIBE round-trips the $currentObject/Assoc form.
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/assoc-datasource-modelsdk.mdl -p app.mpr
+-- ============================================================================
+
+create entity MyFirstModule.Employee ( Name: String );
+create entity MyFirstModule.Expense ( Description: String );
+create association MyFirstModule.Expense_Employee
+  from MyFirstModule.Expense to MyFirstModule.Employee;
+
+create or replace page MyFirstModule.AssocDsPage
+( Title: 'Assoc DS', Layout: Atlas_Core.Atlas_Default, Params: { $Expense: MyFirstModule.Expense } )
+{
+  dataview dvOuter (datasource: $Expense) {
+    -- association-sourced nested data view (master-detail idiom)
+    dataview dvEmp (datasource: $currentObject/MyFirstModule.Expense_Employee) {
+      dynamictext t (content: 'Emp')
+    }
+  }
+}
+
+-- Should round-trip: dvEmp (DataSource: $currentObject/MyFirstModule.Expense_Employee)
+describe page MyFirstModule.AssocDsPage;

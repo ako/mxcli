@@ -592,6 +592,10 @@ func extractDataViewDataSource(ctx *ExecContext, w map[string]any) *rawDataSourc
 		if target, ok := ds["ListenTarget"].(string); ok && target != "" {
 			return &rawDataSource{Type: "selection", Reference: target}
 		}
+	case "Forms$AssociationSource":
+		if path, ctx := associationSourcePath(ds); path != "" {
+			return &rawDataSource{Type: "association", Reference: path, ContextVariable: ctx}
+		}
 	}
 
 	return nil
@@ -788,6 +792,10 @@ func extractListViewDataSource(ctx *ExecContext, w map[string]any) *rawDataSourc
 		}
 		if nanoflow != "" {
 			return &rawDataSource{Type: "nanoflow", Reference: nanoflow}
+		}
+	case "Forms$AssociationSource":
+		if path, ctx := associationSourcePath(ds); path != "" {
+			return &rawDataSource{Type: "association", Reference: path, ContextVariable: ctx}
 		}
 	}
 	return nil
