@@ -371,17 +371,33 @@ column colPrice (
 )
 ```
 
-**Custom Content Columns (EXPERIMENTAL):**
+**Associated-attribute columns:**
 
-Columns can contain nested widgets instead of attribute bindings. This feature is experimental and may show CE0463 "widget definition changed" warnings in Studio Pro:
+A column can bind an attribute *over an association*, not just an own-entity
+attribute — use a bare association path `Assoc/Attr`:
+
+```sql
+datagrid dgOrders (datasource: database from Sales.Order) {
+  column colNumber   (attribute: Number, caption: 'Order #')
+  column colCustomer (attribute: Order_Customer/Name, caption: 'Customer')  -- associated attr
+}
+```
+
+The association name is bare (resolved against the grid's entity module);
+multi-hop paths (`A/B/Attr`) are supported. Module-qualified associations
+(`Module.Assoc/Attr`) are **not** accepted — use the bare name.
+
+**Custom Content Columns:**
+
+Columns can contain nested widgets instead of attribute bindings. These build
+correctly on the default engine (mxbuild-verified, 0 errors) — an earlier CE0463
+(column property ordering) was fixed:
 
 ```sql
 column colActions (caption: 'Actions') {
   actionbutton btnView (caption: 'View', action: close_page)
 }
 ```
-
-> **Note:** Custom content columns work at the syntax level but may require manual widget update in Studio Pro due to complex BSON structure requirements.
 
 **Supported Datasource Types:**
 

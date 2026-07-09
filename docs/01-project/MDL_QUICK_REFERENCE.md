@@ -902,7 +902,7 @@ MDL uses explicit property declarations for pages:
 
 | Property | Values | Default | Example |
 |----------|--------|---------|---------|
-| `attribute` | attribute name | (required) | `attribute: Price` |
+| `attribute` | attribute name, or association path `Assoc/Attr` | (required) | `attribute: Price` · `attribute: Order_Customer/Name` (associated attr; bare association name, multi-hop OK) |
 | `caption` | string | attribute name | `caption: 'Unit Price'` |
 | `Alignment` | `left`, `center`, `right` | `left` | `Alignment: right` |
 | `WrapText` | `true`, `false` | `false` | `WrapText: true` |
