@@ -252,7 +252,34 @@ func validateStaticWidget(w *ast.WidgetV3, locationPrefix string) []linter.Viola
 		out = append(out, *v)
 	}
 
+	// A plain DataView cannot use an association data source — Studio Pro rejects
+	// it ("data view 'X' cannot have a data source of type association"). Only
+	// list-producing widgets (listview, datagrid, gallery, templategrid) may.
+	// The widget still exec-creates (the BSON is valid), so only Studio Pro
+	// catches it — flag it here.
+	if strings.EqualFold(w.Type, "dataview") {
+		if ds := w.GetDataSource(); ds != nil && ds.Type == "association" {
+			out = append(out, linter.Violation{
+				RuleID:   "MDL-WIDGET08",
+				Severity: linter.SeverityError,
+				Message: fmt.Sprintf(
+					"%s: dataview `%s` cannot use an association data source (`$%s/%s`) — Studio Pro rejects it; use a list widget (listview/datagrid/gallery) for a related collection",
+					locationPrefix, w.Name, dataSourceContextVar(ds), ds.Reference,
+				),
+			})
+		}
+	}
+
 	return out
+}
+
+// dataSourceContextVar returns the context variable of an association data
+// source for messages ("currentObject" when implicit).
+func dataSourceContextVar(ds *ast.DataSourceV3) string {
+	if ds.ContextVariable == "" {
+		return "currentObject"
+	}
+	return ds.ContextVariable
 }
 
 var templatePlaceholderRe = regexp.MustCompile(`\{(\d+)\}`)

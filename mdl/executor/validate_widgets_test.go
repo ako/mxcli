@@ -120,3 +120,33 @@ func TestStaticWidgetKnownPropsCoverDescribe(t *testing.T) {
 		}
 	}
 }
+
+// Bug 4 follow-up — MDL-WIDGET08: a DataView cannot use an association data
+// source (Studio Pro rejects it). List widgets may.
+func TestValidateStaticWidget_DataViewAssociationSource(t *testing.T) {
+	assocDS := &ast.DataSourceV3{Type: "association", Reference: "M.Order_Customer", ContextVariable: ""}
+	paramDS := &ast.DataSourceV3{Type: "parameter", Reference: "$Order"}
+
+	cases := []struct {
+		name   string
+		widget *ast.WidgetV3
+		want   bool // expect an MDL-WIDGET08 violation
+	}{
+		{"dataview + association → rejected", &ast.WidgetV3{Type: "dataview", Name: "dv", Properties: map[string]any{"DataSource": assocDS}}, true},
+		{"dataview + parameter → ok", &ast.WidgetV3{Type: "dataview", Name: "dv", Properties: map[string]any{"DataSource": paramDS}}, false},
+		{"listview + association → ok", &ast.WidgetV3{Type: "listview", Name: "lv", Properties: map[string]any{"DataSource": assocDS}}, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := false
+			for _, v := range validateStaticWidget(c.widget, "page X") {
+				if v.RuleID == "MDL-WIDGET08" {
+					got = true
+				}
+			}
+			if got != c.want {
+				t.Errorf("MDL-WIDGET08 present = %v, want %v", got, c.want)
+			}
+		})
+	}
+}

@@ -3,14 +3,13 @@
 -- ============================================================================
 --
 -- Symptom (before fix):
---   Any page widget whose datasource is by association
---     dataview dvEmp (datasource: $currentObject/MyFirstModule.Expense_Employee)
---     listview lvEmp (datasource: $currentObject/MyFirstModule.Expense_Employee)
+--   A list-producing widget whose datasource is by association
+--     listview lvExpenses (datasource: $currentObject/MyFirstModule.Expense_Employee)
 --   failed at exec time under the DEFAULT engine:
---     "CreatePage: DataView source *pages.AssociationSource not yet supported by
+--     "CreatePage: ListView source *pages.AssociationSource not yet supported by
 --      the modelsdk engine — rerun with MXCLI_ENGINE=legacy"
 --   blocking the standard master-detail idiom (show a selected object's related
---   data via a nested list/grid over an association).
+--   data via a nested list over an association).
 --
 -- Root cause:
 --   customWidgetDataSourceToGen (pluggable widgets) already built a correct
@@ -24,25 +23,35 @@
 --   the canonical legacy serializeAssociationSource and the Studio-Pro-verified
 --   EntityRefStep structure. DESCRIBE round-trips the $currentObject/Assoc form.
 --
+-- NOTE: an association data source is valid on LIST-producing widgets (ListView,
+-- DataGrid, Gallery, TemplateGrid) — NOT on a plain DataView. Studio Pro rejects
+-- a DataView with an association source ("cannot have a data source of type
+-- association"). Use a list widget for the related collection.
+--
 -- Usage:
 --   mxcli exec mdl-examples/bug-tests/assoc-datasource-modelsdk.mdl -p app.mpr
 -- ============================================================================
 
 create entity MyFirstModule.Employee ( Name: String );
 create entity MyFirstModule.Expense ( Description: String );
+-- Expense references one Employee; navigated from an Employee it yields that
+-- employee's Expenses (the to-many master-detail direction).
 create association MyFirstModule.Expense_Employee
   from MyFirstModule.Expense to MyFirstModule.Employee;
 
-create or replace page MyFirstModule.AssocDsPage
-( Title: 'Assoc DS', Layout: Atlas_Core.Atlas_Default, Params: { $Expense: MyFirstModule.Expense } )
+create or replace page MyFirstModule.MasterDetail
+( Title: 'Master Detail', Layout: Atlas_Core.Atlas_Default, Params: { $Employee: MyFirstModule.Employee } )
 {
-  dataview dvOuter (datasource: $Expense) {
-    -- association-sourced nested data view (master-detail idiom)
-    dataview dvEmp (datasource: $currentObject/MyFirstModule.Expense_Employee) {
-      dynamictext t (content: 'Emp')
+  dataview dvEmp (datasource: $Employee) {
+    dynamictext hName (content: 'Employee')
+    -- the selected Employee's related Expenses, via the association (valid on a
+    -- list widget). Employee is the association's TO side, so navigation resolves
+    -- the destination to MyFirstModule.Expense.
+    listview lvExpenses (datasource: $currentObject/MyFirstModule.Expense_Employee) {
+      dynamictext t (content: 'Expense')
     }
   }
 }
 
--- Should round-trip: dvEmp (DataSource: $currentObject/MyFirstModule.Expense_Employee)
-describe page MyFirstModule.AssocDsPage;
+-- Should round-trip: lvExpenses (DataSource: $currentObject/MyFirstModule.Expense_Employee)
+describe page MyFirstModule.MasterDetail;
