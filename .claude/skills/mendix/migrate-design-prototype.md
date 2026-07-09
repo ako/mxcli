@@ -486,10 +486,14 @@ the fast index so a design migration doesn't rediscover them.
 - **Status chips = one `dynamictext` + a `DynamicClasses:` expression** mapping the enum/value to
   a colour modifier (`ea-chip--ok/--warn/--danger`). Base `.ea-chip` + modifiers; `white-space: nowrap`.
 - **Charts:** `ProgressCircle` / `ProgressBar` build and work (donut, meters). **Mendix Charts
-  (`Charts.mpk`: column/bar/line/area/pie)** currently **fail to build via mxcli** — for
-  sparklines/trends use a **CSS-background SVG** container or `HTMLElement`; for a single-value
-  gauge use `ProgressCircle` (`type: expression`, `expressionCurrentValue: '$currentObject/Rate'`,
-  min `'0'` / max `'100'`, `labelType: percentage`).
+  (`Charts.mpk`: column/bar/line/area/pie)** now author via MDL — each `series` (an object-list
+  item inside the chart) binds a datasource plus X/Y attributes:
+  `series s1 (staticDataSource: database from Module.View, staticXAttribute: "X", staticYAttribute: "Y")`
+  (a per-series OQL view works too). `mxcli docker check`/`build` run `mx update-widgets`, which
+  clears the widget-version-drift CE0463. Still lighter when the design allows: a **CSS-background
+  SVG** container (or `HTMLElement`) for sparklines/trends — no datasource — and `ProgressCircle`
+  (`type: expression`, `expressionCurrentValue: '$currentObject/Rate'`, min `'0'` / max `'100'`,
+  `labelType: percentage`) for a single-value gauge.
 - **Dashboard aggregates → OQL view entities** (`write-oql-queries.md`). A grouped enum column in
   the view must be typed `enumeration(Module.Enum)`, not `string`, or you get CE6770. Test with
   `mxcli oql` first.
