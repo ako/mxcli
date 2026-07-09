@@ -374,6 +374,12 @@ type ObjectListItemProperty struct {
 	Action            pages.ClientAction
 	EntityContext     string                           // for texttemplate operations needing param resolution
 	Parameters        []*pages.ClientTemplateParameter // resolved CaptionParams / ContentParams for texttemplate operations
+	// EmptyTemplate, on a texttemplate operation with an empty TextTemplate,
+	// forces an empty Forms$ClientTemplate value instead of leaving the field
+	// null. A VISIBLE-but-unset texttemplate sub-property (e.g. a chart series'
+	// staticName) must serialize as an empty ClientTemplate or Studio Pro flags
+	// CE0463 "widget definition changed". Chart series (9a).
+	EmptyTemplate bool
 }
 
 // DataGridColumnSpec carries pre-resolved column data for DataGrid2 construction.

@@ -413,6 +413,15 @@ func overlayItemValue(value bson.D, entry pages.PropertyTypeIDEntry, spec backen
 		value = setBSONField(value, "Expression", spec.Expression)
 		value = setBSONField(value, "PrimitiveValue", "")
 	case "texttemplate":
+		// A VISIBLE-but-unset texttemplate sub-property must serialize as an
+		// empty Forms$ClientTemplate, not null, or Studio Pro flags CE0463
+		// (e.g. a chart series' staticName, or a static·/dynamic· name whose
+		// datasource is configured). EmptyTemplate is set by the executor from
+		// the widget.xml dataSource-binding visibility rule. Chart series (9a).
+		if spec.TextTemplate == "" && spec.EmptyTemplate {
+			value = setBSONField(value, "TextTemplate", BuildEmptyClientTemplate())
+			break
+		}
 		// Skip when the spec carries no text — leave the value's existing
 		// TextTemplate untouched (null, set by createDefaultWidgetValue).
 		// Inserting a placeholder ClientTemplate here causes Studio Pro

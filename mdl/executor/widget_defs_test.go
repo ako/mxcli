@@ -771,3 +771,76 @@ func writeDef(t *testing.T, dir, name string, genVersion int) {
 		t.Fatal(err)
 	}
 }
+
+// TestRegenerateWidgetDocsMultiWidgetMPK guards bug 9a's docs half: a bundled
+// .mpk (Charts.mpk holds 10 chart widgets) must produce one doc per widget, not
+// just the first widgetFile. Before the fix RegenerateWidgetDocs used ParseMPK
+// (first widget only), so only areachart.md was written and the other charts
+// (columnchart, barchart, piechart, linechart, bubblechart, …) were omitted.
+func TestRegenerateWidgetDocsMultiWidgetMPK(t *testing.T) {
+	const chartsFixture = "../../testdata/expr-checker/widgets/Charts.mpk"
+	if _, err := os.Stat(chartsFixture); err != nil {
+		t.Skipf("Charts.mpk fixture not available: %v", err)
+	}
+
+	projectDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(projectDir, "widgets"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	// Copy the bundled Charts.mpk into the project's widgets/ dir.
+	src, err := os.ReadFile(chartsFixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "widgets", "Charts.mpk"), src, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	projectPath := filepath.Join(projectDir, "App.mpr")
+	generated, err := RegenerateWidgetDocs(projectPath)
+	if err != nil {
+		t.Fatalf("RegenerateWidgetDocs: %v", err)
+	}
+
+	// ParseMPKAll reports 10 widgets in this fixture; assert we documented more
+	// than the single first widget the old code produced.
+	all, err := mpk.ParseMPKAll(chartsFixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if generated != len(all) {
+		t.Errorf("generated %d docs, want %d (one per widget in the bundle)", generated, len(all))
+	}
+
+	docsDir := filepath.Join(projectDir, ".claude", "skills", "widgets")
+	// Every chart widget must have a doc file, not just areachart.md.
+	for _, w := range all {
+		name := "widget"
+		if i := lastDotIndex(w.ID); i >= 0 {
+			name = w.ID[i+1:]
+		}
+		f := filepath.Join(docsDir, toLowerASCII(name)+".md")
+		if _, err := os.Stat(f); err != nil {
+			t.Errorf("expected doc for %s at %s, but it is missing", w.ID, f)
+		}
+	}
+}
+
+func lastDotIndex(s string) int {
+	for i := len(s) - 1; i >= 0; i-- {
+		if s[i] == '.' {
+			return i
+		}
+	}
+	return -1
+}
+
+func toLowerASCII(s string) string {
+	b := []byte(s)
+	for i := range b {
+		if b[i] >= 'A' && b[i] <= 'Z' {
+			b[i] += 'a' - 'A'
+		}
+	}
+	return string(b)
+}

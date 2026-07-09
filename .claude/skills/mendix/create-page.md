@@ -758,6 +758,46 @@ controlbar controlBar1 {
 }
 ```
 
+### Charts (Charts.mpk — ColumnChart / BarChart / AreaChart / PieChart)
+
+Charts are pluggable widgets whose data lives in one or more `series` object-list
+items. Each series binds a datasource (an OQL **view entity** is the natural feed —
+one row per category) and picks X/Y attributes on that datasource. Requires the
+Charts widget installed (`widgets/Charts.mpk`); run `mxcli widget init -p app.mpr`.
+
+```sql
+-- Aggregated view entity = the chart's data source
+create view entity Sales.ByRegion (Region: string(100), Total: decimal) as
+  select s.Region as Region, sum(s.Amount) as Total
+  from Sales.Sale as s group by s.Region;
+
+create page Sales.Dashboard (Title: 'Revenue', Layout: Atlas_Core.Atlas_Default) {
+  pluggablewidget 'com.mendix.widget.web.columnchart.ColumnChart' revenueChart {
+    series sRevenue (
+      dataSet: static,
+      DataSource: database from Sales.ByRegion,   -- or: staticDataSource: database from Sales.ByRegion
+      StaticXAttribute: Region,
+      StaticYAttribute: Total,
+      StaticName: 'Revenue'
+    )
+  }
+}
+```
+
+Notes:
+- `DataSource:` inside a series is a friendly alias for `staticDataSource:` /
+  `dynamicDataSource:` (chosen by `dataSet`); either form works.
+- X/Y attributes resolve against the **series' own** datasource entity, not the page.
+- Add multiple `series ( ... )` blocks for multi-series charts. BarChart/AreaChart/
+  PieChart use the same `series` shape.
+- **CE0463 at `mx check`**: charts can report "widget definition changed" from
+  widget-version drift (embedded template vs the installed `Charts.mpk`), even for a
+  chart with no series. `mxcli docker check`/`build` fix this automatically by
+  running `mx update-widgets` first; if you invoke `mx check` directly, run
+  `mx update-widgets <app.mpr>` (absolute path) beforehand.
+- LineChart/BubbleChart/HeatMap (the `line`/`scalecolor` object-lists) are not yet
+  authorable via MDL — use Studio Pro for those.
+
 ## Complete Examples
 
 ### Customer Edit Page

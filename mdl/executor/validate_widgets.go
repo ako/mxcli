@@ -95,23 +95,63 @@ func ValidateWidgetPropertiesForStatement(stmt ast.Statement, registry *WidgetRe
 // validateWidgetTree recursively walks the AST widget tree and validates
 // pluggable widgets it encounters.
 func validateWidgetTree(widgets []*ast.WidgetV3, registry *WidgetRegistry, locationPrefix string) []linter.Violation {
+	return validateWidgetTreeIn(widgets, registry, locationPrefix, nil)
+}
+
+// validateWidgetTreeIn is validateWidgetTree with the set of the *parent*
+// widget's object-list container keywords (e.g. a chart's SERIES / LINE). A
+// child whose Type is one of those is an object-list item, not a built-in
+// widget — its sub-properties (staticDataSource, staticXAttribute, …) are
+// resolved by the object-list engine and written, so it must be exempt from the
+// MDL-WIDGET07 "unrecognized property, silently dropped" warning. Chart series (9a).
+func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, locationPrefix string, parentObjectListContainers map[string]bool) []linter.Violation {
 	var out []linter.Violation
 	for _, w := range widgets {
 		if w == nil {
 			continue
 		}
+		isObjectListItem := parentObjectListContainers[strings.ToUpper(w.Type)] || isUniversalObjectListKeyword(w.Type)
 		out = append(out, validatePluggableWidgetProperties(w, registry, locationPrefix)...)
 		out = append(out, validateStaticWidget(w, locationPrefix)...)
 		// Unknown-property warning applies only to built-in widgets; pluggable
-		// widgets get the stricter def.json check (MDL-WIDGET01) above.
-		if lookupWidgetDef(w, registry) == nil {
+		// widgets get the stricter def.json check (MDL-WIDGET01) above, and
+		// object-list items are validated by the object-list engine.
+		def := lookupWidgetDef(w, registry)
+		if def == nil && !isObjectListItem {
 			out = append(out, validateStaticWidgetUnknownProps(w, locationPrefix)...)
 		}
 		if len(w.Children) > 0 {
-			out = append(out, validateWidgetTree(w.Children, registry, locationPrefix)...)
+			out = append(out, validateWidgetTreeIn(w.Children, registry, locationPrefix, objectListContainerSet(def))...)
 		}
 	}
 	return out
+}
+
+// isUniversalObjectListKeyword reports whether a widget Type is one of the
+// grammar's object-list container keywords (the singular forms routed via a
+// parent's def.json `objectLists`). These are never built-in widgets, so their
+// sub-properties must be exempt from the MDL-WIDGET07 static-widget check even
+// when no project def is loaded (syntax-only `check`). Mirrors the object-list
+// keywords in MDLPage.g4 `widgetTypeV3`. Chart series (9a).
+func isUniversalObjectListKeyword(widgetType string) bool {
+	switch strings.ToUpper(widgetType) {
+	case "SERIES", "LINE", "GROUP", "CUSTOMITEM", "ITEM", "MARKER", "DYNAMICMARKER":
+		return true
+	}
+	return false
+}
+
+// objectListContainerSet returns the uppercased object-list container keywords
+// declared by a widget definition (empty when def is nil or has none).
+func objectListContainerSet(def *WidgetDefinition) map[string]bool {
+	if def == nil || len(def.ObjectLists) == 0 {
+		return nil
+	}
+	set := make(map[string]bool, len(def.ObjectLists))
+	for _, ol := range def.ObjectLists {
+		set[strings.ToUpper(ol.MDLContainer)] = true
+	}
+	return set
 }
 
 // staticWidgetKnownProps is the lowercase vocabulary of properties a built-in
