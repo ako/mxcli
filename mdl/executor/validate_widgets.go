@@ -270,6 +270,25 @@ func validateStaticWidget(w *ast.WidgetV3, locationPrefix string) []linter.Viola
 		}
 	}
 
+	// A DataView cannot use a database data source either — a data view shows one
+	// object, so Mendix offers only Context / Microflow / Nanoflow / Listen sources.
+	// mxcli used to accept it: the modelsdk engine then errors "not yet supported —
+	// rerun with legacy", and the legacy engine silently writes a Forms$DataViewSource
+	// that MxBuild rejects with CE7007 "Selected value is not valid for entity". Flag
+	// it here (sibling of MDL-WIDGET08) so the user gets an actionable message.
+	if strings.EqualFold(w.Type, "dataview") {
+		if ds := w.GetDataSource(); ds != nil && ds.Type == "database" {
+			out = append(out, linter.Violation{
+				RuleID:   "MDL-WIDGET09",
+				Severity: linter.SeverityError,
+				Message: fmt.Sprintf(
+					"%s: dataview `%s` cannot use a database data source (`from %s`) — a data view shows one object; use a microflow/nanoflow source (or a page parameter), or a list widget (listview/datagrid/gallery) for a collection",
+					locationPrefix, w.Name, ds.Reference,
+				),
+			})
+		}
+	}
+
 	return out
 }
 

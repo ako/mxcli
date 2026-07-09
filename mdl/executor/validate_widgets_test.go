@@ -150,3 +150,35 @@ func TestValidateStaticWidget_DataViewAssociationSource(t *testing.T) {
 		})
 	}
 }
+
+// Bug 3 — MDL-WIDGET09: a DataView cannot use a database data source either
+// (a data view shows one object; database sources belong to list widgets).
+// mxbuild rejects the legacy fallback with CE7007.
+func TestValidateStaticWidget_DataViewDatabaseSource(t *testing.T) {
+	dbDS := &ast.DataSourceV3{Type: "database", Reference: "M.Expense"}
+	mfDS := &ast.DataSourceV3{Type: "microflow", Reference: "M.GetExpense"}
+
+	cases := []struct {
+		name   string
+		widget *ast.WidgetV3
+		want   bool // expect an MDL-WIDGET09 violation
+	}{
+		{"dataview + database → rejected", &ast.WidgetV3{Type: "dataview", Name: "dv", Properties: map[string]any{"DataSource": dbDS}}, true},
+		{"dataview + microflow → ok", &ast.WidgetV3{Type: "dataview", Name: "dv", Properties: map[string]any{"DataSource": mfDS}}, false},
+		{"listview + database → ok", &ast.WidgetV3{Type: "listview", Name: "lv", Properties: map[string]any{"DataSource": dbDS}}, false},
+		{"datagrid + database → ok", &ast.WidgetV3{Type: "datagrid", Name: "dg", Properties: map[string]any{"DataSource": dbDS}}, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := false
+			for _, v := range validateStaticWidget(c.widget, "page X") {
+				if v.RuleID == "MDL-WIDGET09" {
+					got = true
+				}
+			}
+			if got != c.want {
+				t.Errorf("MDL-WIDGET09 present = %v, want %v", got, c.want)
+			}
+		})
+	}
+}

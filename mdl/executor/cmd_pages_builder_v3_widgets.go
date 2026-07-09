@@ -56,6 +56,17 @@ func (pb *pageBuilder) buildDataViewV3(w *ast.WidgetV3) (*pages.DataView, error)
 				"dataview %q cannot use an association data source ($%s/%s) — use a list widget (listview/datagrid/gallery) for a related collection [MDL-WIDGET08]",
 				w.Name, dataSourceContextVar(ds), ds.Reference)
 		}
+		// A DataView shows a single object; Mendix offers only Context / Microflow /
+		// Nanoflow / Listen sources — never Database (that belongs to list widgets).
+		// The legacy writer emits a best-effort Forms$DataViewSource that MxBuild
+		// rejects with CE7007; modelsdk refuses the DatabaseSource downstream. Refuse
+		// early with an actionable message so neither engine produces a broken page,
+		// and mirror the check-time MDL-WIDGET09.
+		if ds.Type == "database" {
+			return nil, mdlerrors.NewValidationf(
+				"dataview %q cannot use a database data source (from %s) — a data view shows one object; use a microflow/nanoflow source (or a page parameter), or a list widget (listview/datagrid/gallery) for a collection [MDL-WIDGET09]",
+				w.Name, ds.Reference)
+		}
 		dataSource, entityName, err := pb.buildDataSourceV3(ds)
 		if err != nil {
 			return nil, mdlerrors.NewBackend("build datasource", err)
