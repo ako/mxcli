@@ -565,10 +565,33 @@ func (b *Builder) ExitAlterEntityAction(ctx *parser.AlterEntityActionContext) {
 					AttributeName: attributeNameText(attrNames[0]),
 					DataType:      dt,
 				}
-				// Capture CALCULATED constraint if present
+				// Capture constraints. MODIFY applies the constraints you
+				// specify and preserves the ones you don't (Bug 12a). NULLABLE
+				// explicitly clears NOT NULL; NOT NULL / REQUIRED set it.
+				true_, false_ := true, false
 				for _, constraintCtx := range ctx.AllAttributeConstraint() {
 					c := constraintCtx.(*parser.AttributeConstraintContext)
-					if c.CALCULATED() != nil {
+					switch {
+					case c.NULLABLE() != nil:
+						stmt.ModifyNotNull = &false_
+					case c.NOT_NULL() != nil || (c.NOT() != nil && c.NULL() != nil) || c.REQUIRED() != nil:
+						stmt.ModifyNotNull = &true_
+						if c.ERROR() != nil && c.STRING_LITERAL() != nil {
+							stmt.ModifyNotNullError = unquoteString(c.STRING_LITERAL().GetText())
+						}
+					case c.UNIQUE() != nil:
+						stmt.ModifyUnique = &true_
+						if c.ERROR() != nil && c.STRING_LITERAL() != nil {
+							stmt.ModifyUniqueError = unquoteString(c.STRING_LITERAL().GetText())
+						}
+					case c.DEFAULT() != nil:
+						stmt.ModifyHasDefault = true
+						if lit := c.Literal(); lit != nil {
+							stmt.ModifyDefaultValue = extractLiteralValue(lit)
+						} else if expr := c.Expression(); expr != nil {
+							stmt.ModifyDefaultValue = unquoteQualifiedName(expr.GetText())
+						}
+					case c.CALCULATED() != nil:
 						stmt.Calculated = true
 						if qn := c.QualifiedName(); qn != nil {
 							calcName := buildQualifiedName(qn)

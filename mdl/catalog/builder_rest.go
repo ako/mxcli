@@ -54,7 +54,7 @@ func (b *Builder) buildRestClients() error {
 			svc.Name,
 			qualifiedName,
 			moduleName,
-			moduleName, // Folder
+			b.hierarchy.buildFolderPath(svc.ContainerID), // real folder path (Bug 12b class)
 			svc.BaseUrl,
 			authScheme,
 			len(svc.Operations),
@@ -152,7 +152,7 @@ func (b *Builder) buildPublishedRestServices() error {
 			svc.Name,
 			qualifiedName,
 			moduleName,
-			moduleName, // Folder
+			b.hierarchy.buildFolderPath(svc.ContainerID), // real folder path (Bug 12b class)
 			svc.Path,
 			svc.Version,
 			svc.ServiceName,

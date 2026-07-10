@@ -339,4 +339,11 @@ create enumeration Module.Name (
   Value1 'Caption1',
   Value2 'Caption2'
 );
+
+-- Optionally place the enumeration in a module folder:
+create enumeration Module.Currency (
+  USD 'US Dollar',
+  EUR 'Euro'
+) FOLDER 'Shared';
+-- Or move an existing one:  move enumeration Module.Currency to folder 'Shared';
 ```

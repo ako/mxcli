@@ -76,6 +76,7 @@ attributeName
 attributeConstraint
     : NOT_NULL (ERROR STRING_LITERAL)?
     | NOT NULL (ERROR STRING_LITERAL)?
+    | NULLABLE                              // explicit: clear NOT NULL (MODIFY ATTRIBUTE, Bug 12a)
     | UNIQUE (ERROR STRING_LITERAL)?
     | DEFAULT (literal | expression)
     | REQUIRED (ERROR STRING_LITERAL)?
@@ -301,6 +302,7 @@ enumerationOptions
 
 enumerationOption
     : COMMENT STRING_LITERAL
+    | FOLDER STRING_LITERAL                 // place the enumeration in a module folder (Bug 12b)
     ;
 
 // =============================================================================

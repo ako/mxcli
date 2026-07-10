@@ -85,19 +85,30 @@ type EventHandlerDef struct {
 type AlterEntityStmt struct {
 	Name                QualifiedName
 	Operation           AlterEntityOp
-	Attribute           *Attribute       // For ADD ATTRIBUTE
-	AttributeName       string           // For RENAME/MODIFY/DROP ATTRIBUTE
-	NewName             string           // For RENAME ATTRIBUTE
-	DataType            DataType         // For MODIFY ATTRIBUTE
-	Calculated          bool             // For MODIFY ATTRIBUTE with CALCULATED
-	CalculatedMicroflow *QualifiedName   // For MODIFY ATTRIBUTE with CALCULATED microflow
-	Documentation       string           // For SET DOCUMENTATION
-	Comment             string           // For SET COMMENT
-	Index               *Index           // For ADD INDEX
-	IndexName           string           // For DROP INDEX
-	Position            *Position        // For SET POSITION
-	EventHandler        *EventHandlerDef // For ADD/DROP EVENT HANDLER
-	BoolValue           bool             // For SET ALLOW_CREATE_CHANGE_LOCALLY
+	Attribute           *Attribute     // For ADD ATTRIBUTE
+	AttributeName       string         // For RENAME/MODIFY/DROP ATTRIBUTE
+	NewName             string         // For RENAME ATTRIBUTE
+	DataType            DataType       // For MODIFY ATTRIBUTE
+	Calculated          bool           // For MODIFY ATTRIBUTE with CALCULATED
+	CalculatedMicroflow *QualifiedName // For MODIFY ATTRIBUTE with CALCULATED microflow
+	// MODIFY ATTRIBUTE constraint changes (Bug 12a). A nil pointer means
+	// "preserve the existing constraint"; a non-nil pointer means "set it".
+	// NULLABLE sets ModifyNotNull=false (clears the Required rule); NOT NULL /
+	// REQUIRED sets it true. UNIQUE sets ModifyUnique=true (there is no
+	// "not unique" keyword). DEFAULT sets ModifyHasDefault + ModifyDefaultValue.
+	ModifyNotNull      *bool
+	ModifyNotNullError string
+	ModifyUnique       *bool
+	ModifyUniqueError  string
+	ModifyHasDefault   bool
+	ModifyDefaultValue any
+	Documentation      string           // For SET DOCUMENTATION
+	Comment            string           // For SET COMMENT
+	Index              *Index           // For ADD INDEX
+	IndexName          string           // For DROP INDEX
+	Position           *Position        // For SET POSITION
+	EventHandler       *EventHandlerDef // For ADD/DROP EVENT HANDLER
+	BoolValue          bool             // For SET ALLOW_CREATE_CHANGE_LOCALLY
 }
 
 func (s *AlterEntityStmt) isStatement() {}

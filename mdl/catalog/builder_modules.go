@@ -267,12 +267,18 @@ func (b *Builder) buildEnumerations() error {
 
 		qualifiedName := moduleName + "." + enum.Name
 
+		// Resolve the real folder path from the enum's container (matches pages /
+		// simple docs). Hardcoding this to the module name made a MOVE ENUMERATION
+		// … TO FOLDER look like a silent no-op in the catalog even though the move
+		// persisted (Bug 12b).
+		folderPath := b.hierarchy.buildFolderPath(enum.ContainerID)
+
 		_, err := stmt.Exec(
 			string(enum.ID),
 			enum.Name,
 			qualifiedName,
 			moduleName,
-			moduleName, // Folder as module name for now
+			folderPath,
 			enum.Documentation,
 			len(enum.Values),
 			projectID, snapshotID,

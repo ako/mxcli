@@ -1,0 +1,30 @@
+-- ============================================================================
+-- Bug 12a — MODIFY ATTRIBUTE … NULLABLE was a silent no-op
+-- ============================================================================
+--
+-- Before the fix, MODIFY ATTRIBUTE dropped every constraint the user specified
+-- (the visitor captured only CALCULATED; the executor only changed the type),
+-- and there was no NULLABLE keyword — so there was no way to make a required
+-- attribute optional via mxcli. `alter … NULLABLE` even "parsed" only because
+-- trailing tokens were silently swallowed.
+--
+-- Now MODIFY applies the constraints you specify and preserves the ones you
+-- don't: NULLABLE clears NOT NULL, NOT NULL / REQUIRED (re)add it, UNIQUE adds a
+-- Unique rule, DEFAULT sets a default. (NOT NULL / UNIQUE are stored as entity
+-- ValidationRules, so NULLABLE removes the attribute's "Required" rule.)
+--
+-- To verify: run this script, then `describe entity Bug12a.Expense` — Title is
+-- now optional, Amount stays required. `mx check` reports 0 errors.
+
+create persistent entity Bug12a.Expense (
+  "Title": String(200) NOT NULL,
+  "Amount": Decimal NOT NULL,
+  "Note": String(500)
+);
+
+-- Make the previously-required Title optional (the report's scenario:
+-- Expense.Title couldn't be made nullable, forcing an 'Untitled expense' default).
+alter entity Bug12a.Expense modify attribute "Title": String(200) NULLABLE;
+
+-- The inverse still works: make an optional attribute required.
+alter entity Bug12a.Expense modify attribute "Note": String(500) NOT NULL;

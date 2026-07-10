@@ -50,7 +50,8 @@ type CreateEnumerationStmt struct {
 	Values         []EnumValue
 	Documentation  string
 	Comment        string
-	CreateOrModify bool // True if CREATE OR MODIFY was used
+	Folder         string // Module folder to place the enumeration in (Bug 12b)
+	CreateOrModify bool   // True if CREATE OR MODIFY was used
 }
 
 func (s *CreateEnumerationStmt) isStatement() {}

@@ -21,6 +21,9 @@ func (b *Builder) ExitCreateEnumerationStatement(ctx *parser.CreateEnumerationSt
 			if optCtx.COMMENT() != nil && optCtx.STRING_LITERAL() != nil {
 				stmt.Comment = unquoteString(optCtx.STRING_LITERAL().GetText())
 			}
+			if optCtx.FOLDER() != nil && optCtx.STRING_LITERAL() != nil {
+				stmt.Folder = unquoteString(optCtx.STRING_LITERAL().GetText())
+			}
 		}
 	}
 
@@ -106,6 +109,9 @@ func (b *Builder) ExitCreateConstantStatement(ctx *parser.CreateConstantStatemen
 			optCtx := opt.(*parser.ConstantOptionContext)
 			if optCtx.COMMENT() != nil && optCtx.STRING_LITERAL() != nil {
 				stmt.Comment = unquoteString(optCtx.STRING_LITERAL().GetText())
+			}
+			if optCtx.FOLDER() != nil && optCtx.STRING_LITERAL() != nil {
+				stmt.Folder = unquoteString(optCtx.STRING_LITERAL().GetText())
 			} else if optCtx.FOLDER() != nil && optCtx.STRING_LITERAL() != nil {
 				stmt.Folder = unquoteString(optCtx.STRING_LITERAL().GetText())
 			} else if optCtx.EXPOSED() != nil {

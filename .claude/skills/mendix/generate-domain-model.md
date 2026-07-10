@@ -888,6 +888,17 @@ alter entity Module.Product
 alter entity Module.Customer
   modify attribute Address: string(500);
 
+-- Modify attribute constraints. MODIFY applies the constraints you specify and
+-- preserves the ones you don't:
+--   NULLABLE   -> make a required attribute optional (removes NOT NULL)
+--   NOT NULL   -> make an optional attribute required
+--   UNIQUE     -> add a uniqueness constraint
+--   DEFAULT x  -> set/replace the default
+alter entity Module.Customer
+  modify attribute Email: string(200) nullable;   -- Email is now optional
+alter entity Module.Customer
+  modify attribute Code: string(20) not null unique;
+
 -- Set entity documentation
 alter entity Module.Customer
   set documentation 'Core customer entity for CRM module';
@@ -901,7 +912,7 @@ alter entity Module.Customer
   set position (100, 200);
 ```
 
-**Supported operations:** ADD ATTRIBUTE, RENAME ATTRIBUTE, MODIFY ATTRIBUTE, DROP ATTRIBUTE, SET DOCUMENTATION, SET COMMENT, ADD INDEX, DROP INDEX, SET POSITION.
+**Supported operations:** ADD ATTRIBUTE, RENAME ATTRIBUTE, MODIFY ATTRIBUTE (type + `NULLABLE`/`NOT NULL`/`UNIQUE`/`DEFAULT` constraints), DROP ATTRIBUTE, SET DOCUMENTATION, SET COMMENT, ADD INDEX, DROP INDEX, SET POSITION.
 
 ### Entity Positioning Guidelines
 

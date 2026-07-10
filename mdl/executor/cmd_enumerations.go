@@ -54,9 +54,21 @@ func execCreateEnumeration(ctx *ExecContext, s *ast.CreateEnumerationStmt) error
 		})
 	}
 
+	// Resolve the target container: a module folder if FOLDER was given, else
+	// the module root. Mirrors CREATE PAGE (… Folder: '…') so DESCRIBE can
+	// round-trip a foldered enumeration (Bug 12b).
+	containerID := module.ID
+	if s.Folder != "" {
+		folderID, ferr := resolveFolder(ctx, module.ID, s.Folder)
+		if ferr != nil {
+			return mdlerrors.NewBackend("resolve folder "+s.Folder, ferr)
+		}
+		containerID = folderID
+	}
+
 	// Create or update enumeration
 	enum := &model.Enumeration{
-		ContainerID:   module.ID,
+		ContainerID:   containerID,
 		Name:          s.Name.Name,
 		Documentation: s.Documentation,
 		Values:        values,
@@ -303,7 +315,14 @@ func describeEnumeration(ctx *ExecContext, name ast.QualifiedName) error {
 				}
 				fmt.Fprintf(ctx.Output, "  %s '%s'%s\n", v.Name, caption, comma)
 			}
-			fmt.Fprintln(ctx.Output, ");")
+			// Emit the module folder so a moved enumeration round-trips (Bug 12b).
+			// BuildFolderPath returns the module name at the module root and the
+			// folder path when the enum lives in a folder.
+			folderClause := ""
+			if fp := h.BuildFolderPath(enum.ContainerID); fp != "" && fp != modName {
+				folderClause = fmt.Sprintf(" FOLDER '%s'", fp)
+			}
+			fmt.Fprintf(ctx.Output, ")%s;\n", folderClause)
 			fmt.Fprintln(ctx.Output, "/")
 			return nil
 		}

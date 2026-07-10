@@ -79,7 +79,7 @@ func (b *Builder) buildMicroflows() error {
 			mf.Name,
 			qualifiedName,
 			moduleName,
-			moduleName, // Folder
+			b.hierarchy.buildFolderPath(mf.ContainerID), // real folder path (Bug 12b class)
 			"MICROFLOW",
 			mf.Documentation,
 			returnType,
@@ -168,7 +168,7 @@ func (b *Builder) buildMicroflows() error {
 			nf.Name,
 			qualifiedName,
 			moduleName,
-			moduleName, // Folder
+			b.hierarchy.buildFolderPath(nf.ContainerID), // real folder path (Bug 12b class)
 			"NANOFLOW",
 			nf.Documentation,
 			returnType,

@@ -680,6 +680,24 @@ func execAlterEntity(ctx *ExecContext, s *ast.AlterEntityStmt) error {
 					}
 					attr.Value = attrValue
 				}
+				// Bug 12a: apply the constraints the user specified and preserve
+				// the ones they didn't. NOT NULL / UNIQUE are stored as entity
+				// ValidationRules, not attribute flags, so NULLABLE removes the
+				// "Required" rule and NOT NULL (re)adds it.
+				attrQN := s.Name.String() + "." + attr.Name
+				if s.ModifyNotNull != nil {
+					setAttributeValidationRule(entity, attr, attrQN, "Required", *s.ModifyNotNull, s.ModifyNotNullError)
+				}
+				if s.ModifyUnique != nil {
+					setAttributeValidationRule(entity, attr, attrQN, "Unique", *s.ModifyUnique, s.ModifyUniqueError)
+				}
+				if s.ModifyHasDefault {
+					defaultStr := fmt.Sprintf("%v", s.ModifyDefaultValue)
+					if s.DataType.Kind == ast.TypeEnumeration && s.DataType.EnumRef != nil {
+						defaultStr = strings.TrimPrefix(defaultStr, s.DataType.EnumRef.String()+".")
+					}
+					attr.Value = &domainmodel.AttributeValue{DefaultValue: defaultStr}
+				}
 				found = true
 				break
 			}
@@ -959,6 +977,53 @@ func execAlterEntity(ctx *ExecContext, s *ast.AlterEntityStmt) error {
 
 	ctx.trackModifiedDomainModel(module.ID, module.Name)
 	return nil
+}
+
+// setAttributeValidationRule sets or clears an attribute's "Required" (NOT NULL)
+// or "Unique" validation rule on the entity. NOT NULL and UNIQUE are entity-level
+// ValidationRule entries, not attribute flags — so MODIFY ATTRIBUTE … NULLABLE
+// has to drop the rule and NOT NULL has to (re)add it (Bug 12a). Any existing
+// rule of the same type for the attribute is removed first, so this is
+// idempotent and preserves rules of other types / attributes.
+//
+// The rule's AttributeID is representation-dependent: the read path stores the
+// fully-qualified attribute name (Module.Entity.Attr), while a freshly-created
+// rule may carry the bare UUID — ruleTargetsAttribute handles both. A rule we
+// add is stored as the qualified name, which validationRuleToGen writes verbatim.
+func setAttributeValidationRule(entity *domainmodel.Entity, attr *domainmodel.Attribute, attrQualifiedName, ruleType string, want bool, errMsg string) {
+	kept := entity.ValidationRules[:0]
+	for _, vr := range entity.ValidationRules {
+		if vr != nil && vr.Type == ruleType && ruleTargetsAttribute(string(vr.AttributeID), attr) {
+			continue // drop the existing rule of this type for this attribute
+		}
+		kept = append(kept, vr)
+	}
+	entity.ValidationRules = kept
+	if !want {
+		return
+	}
+	vr := &domainmodel.ValidationRule{AttributeID: model.ID(attrQualifiedName), Type: ruleType}
+	vr.ID = model.ID(types.GenerateID())
+	if errMsg != "" {
+		vr.ErrorMessage = &model.Text{Translations: map[string]string{"en_US": errMsg}}
+		vr.ErrorMessage.ID = model.ID(types.GenerateID())
+	}
+	entity.ValidationRules = append(entity.ValidationRules, vr)
+}
+
+// ruleTargetsAttribute reports whether a validation rule's AttributeID refers to
+// attr. The ID is either the bare attribute UUID (freshly-created rules) or the
+// fully-qualified attribute name Module.Entity.Attr (read-back rules) — for the
+// latter the final dot-segment is the attribute name. Validation rules are
+// entity-scoped, so a last-segment name match is unambiguous within the entity.
+func ruleTargetsAttribute(ruleAttrID string, attr *domainmodel.Attribute) bool {
+	if ruleAttrID == string(attr.ID) {
+		return true
+	}
+	if i := strings.LastIndex(ruleAttrID, "."); i >= 0 {
+		return ruleAttrID[i+1:] == attr.Name
+	}
+	return ruleAttrID == attr.Name
 }
 
 // execDropEntity handles DROP ENTITY statements.

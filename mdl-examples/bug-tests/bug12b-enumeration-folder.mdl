@@ -1,0 +1,28 @@
+-- ============================================================================
+-- Bug 12b — MOVE ENUMERATION … TO FOLDER looked like a silent no-op
+-- ============================================================================
+--
+-- The MOVE actually persisted (the enum's container changed and `show
+-- enumerations` reported the folder), but two OTHER read paths misreported it,
+-- making it look like nothing happened:
+--   * CATALOG.ENUMERATIONS.Folder was hardcoded to the module name (never
+--     resolved the real folder — same latent bug in microflows/nanoflows/rest).
+--   * DESCRIBE ENUMERATION emitted no FOLDER clause (unlike DESCRIBE PAGE).
+--
+-- Now the catalog resolves the real folder, CREATE ENUMERATION accepts a FOLDER
+-- clause, and DESCRIBE ENUMERATION emits it so a foldered enum round-trips.
+--
+-- To verify: run this, then
+--   describe enumeration Bug12b.Currency   → ends with `) FOLDER 'Shared';`
+--   describe enumeration Bug12b.Status     → ends with `) FOLDER 'Shared';`
+--   select Name, Folder from CATALOG.ENUMERATIONS where Module = 'Bug12b'
+--     → both show Folder = Shared.
+
+create module Bug12b;
+
+-- Create directly in a folder (new CREATE ENUMERATION … FOLDER support).
+create enumeration Bug12b.Currency ( USD 'US Dollar', EUR 'Euro' ) FOLDER 'Shared';
+
+-- Or create at the module root and MOVE it (the report's path).
+create enumeration Bug12b.Status ( Open 'Open', Closed 'Closed' );
+move enumeration Bug12b.Status to folder 'Shared';
