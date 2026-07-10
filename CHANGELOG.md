@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **REPL filesystem path completion for `EXECUTE SCRIPT`** — pressing Tab while typing the path argument of `execute script '<path>'` now completes against the filesystem (e.g. `execute script "mdl-`⇥ → `mdl-examples/`). Directories complete with a trailing `/` so you can keep tabbing to descend, hidden entries are offered only when the fragment starts with `.`, and completion works whether or not a project is connected (you often run a script to connect in the first place). Both single- and double-quoted paths are handled; keyword/object-name completion is unaffected.
+
 ## [0.14.0] - 2026-07-06
 
 Headline: **Mendix 11.12 support and `modelsdk`-engine parity.** This release makes mxcli's output load and build cleanly on Mendix 11.12 (strict `$ID`-first BSON ordering, and `CloseFormAction` / conditional-settings / number-filter serialization fixes), closes dozens of `DESCRIBE` and read-fidelity gaps on the now-default `modelsdk` engine, hardens OData import and publishing, and substantially expands the Starlark lint surface and the experimental MCP/PED backend. It also adds `CREATE` / `DROP JAVASCRIPT ACTION`, clickable containers, chart widgets, page-level CSS, and `linkbutton`.

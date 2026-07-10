@@ -55,6 +55,7 @@ func (r *REPL) SetBackendFactory(f executor.BackendFactory) {
 func (r *REPL) SetTracer(t *backend.Tracer) {
 	r.executor.SetTracer(t)
 }
+
 // New creates a new REPL with the given input and output.
 func New(input io.Reader, output io.Writer) *REPL {
 	exec := executor.New(output)
@@ -433,6 +434,13 @@ func (c *mdlCompleter) Do(line []rune, pos int) (newLine [][]rune, length int) {
 	lineStr := string(line[:pos])
 	lineUpper := strings.ToUpper(lineStr)
 
+	// Filesystem path completion for EXECUTE SCRIPT '<path>'. Handled before the
+	// connection gate below because completing a script path does not require a
+	// connected project (you often EXECUTE SCRIPT to connect in the first place).
+	if completions, offset, ok := c.completeScriptPath(lineStr); ok {
+		return completions, offset
+	}
+
 	// Try dynamic completions first (for object names)
 	if c.executor != nil && c.executor.IsConnected() {
 		if completions, length := c.dynamicComplete(lineStr, lineUpper); len(completions) > 0 {
@@ -517,6 +525,69 @@ func (c *mdlCompleter) dynamicComplete(line, lineUpper string) ([][]rune, int) {
 	}
 
 	return nil, 0
+}
+
+// scriptPathRe matches an in-progress `EXECUTE SCRIPT ` command up to the path
+// fragment being typed, capturing the opening quote (group 1, may be empty) and
+// the partial path after it (group 2). Case-insensitive on the keywords only.
+var scriptPathRe = regexp.MustCompile(`(?i)^\s*EXECUTE\s+SCRIPT\s+(['"` + "`" + `]?)(.*)$`)
+
+// completeScriptPath provides filesystem path completion for the argument of an
+// `EXECUTE SCRIPT '<path>'` command. It returns (completions, displayOffset, true)
+// when the line is inside such a command's path argument; ok is false otherwise
+// so the caller falls through to keyword/name completion. Once the path literal
+// is closed (a matching closing quote has been typed), completion stops.
+func (c *mdlCompleter) completeScriptPath(line string) ([][]rune, int, bool) {
+	m := scriptPathRe.FindStringSubmatch(line)
+	if m == nil {
+		return nil, 0, false
+	}
+	quote, partial := m[1], m[2]
+	// A matching closing quote means the path literal is finished — don't complete.
+	if quote != "" && strings.Contains(partial, quote) {
+		return nil, 0, false
+	}
+	// displayOffset = runes of the current path segment (the basename fragment)
+	// already typed, so the candidate menu shows full filenames rather than bare
+	// suffixes. It does not affect what is inserted (that is always the suffix).
+	_, base := filepath.Split(partial)
+	return fileCompletions(partial), len([]rune(base)), true
+}
+
+// fileCompletions returns the completions (as append-suffixes) for a partial
+// filesystem path. Directories get a trailing "/" so tabbing can descend into
+// them. Hidden entries are only offered when the fragment explicitly starts with
+// a dot. Matching is case-sensitive to mirror the underlying filesystem.
+func fileCompletions(partial string) [][]rune {
+	dir, base := filepath.Split(partial)
+	searchDir := dir
+	if searchDir == "" {
+		searchDir = "."
+	}
+	entries, err := os.ReadDir(searchDir)
+	if err != nil {
+		return nil
+	}
+	var names []string
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasPrefix(name, ".") && !strings.HasPrefix(base, ".") {
+			continue
+		}
+		if !strings.HasPrefix(name, base) {
+			continue
+		}
+		if e.IsDir() {
+			name += "/"
+		}
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	completions := make([][]rune, 0, len(names))
+	for _, name := range names {
+		completions = append(completions, []rune(name[len(base):]))
+	}
+	return completions
 }
 
 // completeModuleNames returns completions for module names.
