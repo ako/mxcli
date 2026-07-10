@@ -411,6 +411,15 @@ var itemPropertyAliases = map[string]map[string]map[string][]string{
 			"columnClass": {"DynamicCellClass"},
 		},
 	},
+	"com.mendix.widget.web.heatmap.HeatMap": {
+		"scaleColors": {
+			// MDL `ColorValue: '#rrggbb'` fills the schema's `colour` primitive
+			// (British spelling). Without the alias the engine looks up `colour`,
+			// doesn't find `ColorValue`, and the scale colour is silently dropped
+			// on write. Same class as `columnClass` (Bug 10a).
+			"colour": {"ColorValue"},
+		},
+	},
 }
 
 // makeObjectListMapping converts an MPK object-list PropertyDef (e.g. Accordion

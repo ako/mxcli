@@ -55,7 +55,10 @@ const defaultSlotContainer = "template"
 //	    (enumValues), so `check` can flag an invalid enum value (MDL-WIDGET08)
 //	    instead of Studio Pro silently defaulting it (e.g. a Maps marker
 //	    locationType outside {address, latlng}).
-const WidgetDefGeneratorVersion = 8
+//	9 — HeatMap scaleColors `colour` ← `ColorValue` alias. Bump forces existing
+//	    projects to regenerate so a scale colour is no longer silently dropped
+//	    on write (Bug 10a class).
+const WidgetDefGeneratorVersion = 9
 
 // WidgetDefinition describes how to construct a pluggable widget from MDL syntax.
 // Loaded from embedded JSON definition files (*.def.json).

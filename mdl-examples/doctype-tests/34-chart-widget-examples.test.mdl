@@ -298,9 +298,9 @@ create page ChartExamples.P_Dashboard (
 --         extractObjectLists (cmd_pages_describe_objectlist.go) reconstructs the
 --         series/line/scalecolor child blocks (datasource + attribute + name +
 --         primitives) generically for the `pluggablewidget` DESCRIBE branch;
---         describe→exec is byte-stable. (Applies to SERIES too.) Known gap: a
---         HeatMap `colour` value has no MDL alias yet, so ColorValue isn't
---         persisted (write-side, same class as Bug 10a) — describe reflects that.
+--         describe→exec is byte-stable. (Applies to SERIES too.)
+--  [x] 2c. HeatMap `ColorValue` ← `colour` alias — DONE (Bug 10a class). The
+--         scale colour now persists and round-trips.
 --  [ ] 3. CE0463 version-drift fix (charts). Build the widget PropertyTypes from
 --         the installed .mpk rather than the embedded 11.6 baseline (#600 class).
 --         Verify against a Studio-Pro-saved chart reference before writing BSON.

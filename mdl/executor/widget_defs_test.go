@@ -512,6 +512,38 @@ func TestObjectListItemAliases(t *testing.T) {
 	}
 }
 
+// HeatMap scaleColors `colour` (British spelling) is filled by MDL `ColorValue:`
+// — without the alias the scale colour is silently dropped on write (Bug 10a class).
+func TestObjectListItemAliases_HeatMapColour(t *testing.T) {
+	mpkDef := &mpk.WidgetDefinition{
+		ID:   "com.mendix.widget.web.heatmap.HeatMap",
+		Name: "Heat map",
+		Properties: []mpk.PropertyDef{{
+			Key:    "scaleColors",
+			Type:   "object",
+			IsList: true,
+			Children: []mpk.PropertyDef{
+				{Key: "valuePercentage", Type: "integer"},
+				{Key: "colour", Type: "string"},
+			},
+		}},
+	}
+	def := GenerateDefJSON(mpkDef, "HEATMAP")
+	if len(def.ObjectLists) != 1 {
+		t.Fatalf("ObjectLists = %d, want 1", len(def.ObjectLists))
+	}
+	aliases := map[string][]string{}
+	for _, ip := range def.ObjectLists[0].ItemProperties {
+		aliases[ip.PropertyKey] = ip.MdlAliases
+	}
+	if got := aliases["colour"]; len(got) != 1 || got[0] != "ColorValue" {
+		t.Errorf("colour MdlAliases = %v, want [ColorValue]", got)
+	}
+	if got := aliases["valuePercentage"]; len(got) != 0 {
+		t.Errorf("valuePercentage MdlAliases = %v, want [] (matches case-insensitively)", got)
+	}
+}
+
 // TestItemSlotAcceptedChildTypes covers the routing of widget keywords (e.g.
 // textfilter, numberfilter) directly inside an object-list item body. Without
 // this routing, the engine would treat the filter widgets as default-slot
