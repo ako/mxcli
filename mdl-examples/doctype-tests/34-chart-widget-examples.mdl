@@ -9,10 +9,12 @@
 -- the LINE/SCALECOLOR keywords landed). Per-keyword coverage also lives in
 -- 32-pluggable-widget-object-lists-v010.mdl (OL05/OL08/OL09).
 --
--- ONE CAVEAT — this file is NOT yet `mx check`-clean: charts hit CE0463 widget
--- version-drift on mxbuild (checklist item 3 below). CI never mxbuilds the
--- examples, so that doesn't gate this file; for a full build check use
--- `mxcli docker check` (which runs `mx update-widgets` first).
+-- MXBUILD: this file is `mx check`-CLEAN (0 errors) via `mxcli docker check`
+-- (or `mx update-widgets` + `mx check`) — verified on 11.12.0 across every chart
+-- type incl. PieChart/HeatMap widget-level binding and TimeSeries/Bubble. The
+-- update-widgets step is required only to clear the CE0463 WidgetType
+-- version-drift (checklist item 3 — a separate #529 concern); CI never mxbuilds
+-- the examples, so none of this gates `mxcli check`/check-mdl.
 --
 -- WHAT WORKS TODAY (after the #679 multi-widget .mpk fix + bug 9a):
 --   * Every chart type is REGISTERED and authorable (BarChart/ColumnChart/
@@ -241,8 +243,8 @@ create page ChartExamples.P_Pie (
 ) {
   pluggablewidget 'com.mendix.widget.web.piechart.PieChart' pieChart1 (
     DataSource: database from ChartExamples.SalesByRegion,
-    NameAttribute: Region,
-    ValueAttribute: Total
+    ValueAttribute: Total,
+    SeriesName: 'Sales by Region'
   )
 }
 
@@ -281,7 +283,7 @@ create page ChartExamples.P_Dashboard (
         dynamictext hPie (Content: 'Share', RenderMode: H4)
         pluggablewidget 'com.mendix.widget.web.piechart.PieChart' dashPie (
           DataSource: database from ChartExamples.SalesByRegion,
-          NameAttribute: Region, ValueAttribute: Total
+          ValueAttribute: Total, SeriesName: 'Share'
         )
       }
     }
@@ -301,15 +303,15 @@ create page ChartExamples.P_Dashboard (
 -- ============================================================================
 -- OPTION-B IMPLEMENTATION CHECKLIST (what must change to make this real)
 -- ============================================================================
---  [ ] 1. Object-list-item DATASOURCE binding.
---         buildObjectListItem (mdl/executor/widget_engine.go) currently has a
---         `default:` branch that SKIPS the `datasource` operation. Resolve the
---         item's DataSource via pageBuilder.buildDataSourceV3, choose static vs
---         dynamic by `DataSet`, carry it on backend.ObjectListItemSpec, and
---         write the datasource node into the series BSON. Wire in BOTH backends
---         (modelsdk default + sdk legacy). Engalar has no equivalent.
---  [ ] 1b. Widget-level datasource for PieChart/HeatMap (no object-list) — the
---         same datasource-by-name binding (#643 class) at the widget level.
+--  [x] 1. Object-list-item DATASOURCE binding — DONE (bug 9a). Each series/line
+--         binds its own datasource; X/Y attributes resolve against it.
+--  [x] 1b. Widget-level datasource + attributes for PieChart/HeatMap — DONE.
+--         `DataSource:` (datasource clause) persists; `ValueAttribute:` →
+--         `seriesValueAttribute` and `SeriesName:` → `seriesName` (texttemplate)
+--         via top-level property aliases (widget_defs.go `propertyAliases`) +
+--         named-property resolution in resolveMapping (widget_engine.go). The
+--         value attribute resolves against the widget's datasource entity.
+--         mxbuild-verified 0 errors (update-widgets + check, 11.12.0).
 --  [x] 2. LINE and SCALECOLOR object-list keywords — DONE.
 --         Added LINE/SCALECOLOR lexer tokens (MDLLexer.g4) + widgetTypeV3 and the
 --         `keyword` rule (so they stay usable as identifiers). deriveObjectListKeyword

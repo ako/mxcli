@@ -58,7 +58,10 @@ const defaultSlotContainer = "template"
 //	9 — HeatMap scaleColors `colour` ← `ColorValue` alias. Bump forces existing
 //	    projects to regenerate so a scale colour is no longer silently dropped
 //	    on write (Bug 10a class).
-const WidgetDefGeneratorVersion = 9
+//	10 — widget-level named-property aliases + emitted `seriesName` texttemplate
+//	    for PieChart/HeatMap (item 1b): `ValueAttribute`→`seriesValueAttribute`,
+//	    `SeriesName`→`seriesName`. Bump forces regeneration to carry the aliases.
+const WidgetDefGeneratorVersion = 10
 
 // WidgetDefinition describes how to construct a pluggable widget from MDL syntax.
 // Loaded from embedded JSON definition files (*.def.json).
@@ -95,6 +98,14 @@ type PropertyMapping struct {
 	// the LSP on property hover. Optional — older .def.json files without
 	// this field still load fine.
 	Description string `json:"description,omitempty"`
+	// MdlAliases lists alternative MDL property names that resolve to this
+	// widget-level property. Used for named attribute/texttemplate properties
+	// where the friendly MDL keyword differs from the schema key (e.g. a
+	// PieChart's `ValueAttribute:` fills `seriesValueAttribute`). Without an
+	// alias, a widget with several attribute-typed properties can't route the
+	// right MDL value to each — the generic single `Attribute:` keyword is
+	// ambiguous. Mirrors ItemPropertyMapping.MdlAliases.
+	MdlAliases []string `json:"mdlAliases,omitempty"`
 }
 
 // WidgetMode defines a conditional configuration variant for a widget.
@@ -547,6 +558,23 @@ func (e *PluggableWidgetEngine) evaluateCondition(condition string, w *ast.Widge
 	}
 }
 
+// namedPropValue returns the MDL value written for a mapping's property, matched
+// by its PropertyKey or any registered MdlAlias (case-insensitive, via
+// lookupProperty). Returns "" when the user didn't set it. Used to route several
+// same-typed widget-level properties (e.g. a chart's ValueAttribute vs
+// SortAttribute) to the right MDL keyword.
+func namedPropValue(mapping PropertyMapping, w *ast.WidgetV3) string {
+	if v, ok := lookupProperty(w.Properties, mapping.PropertyKey); ok {
+		return stringifyAny(v)
+	}
+	for _, alias := range mapping.MdlAliases {
+		if v, ok := lookupProperty(w.Properties, alias); ok {
+			return stringifyAny(v)
+		}
+	}
+	return ""
+}
+
 // resolveMapping resolves a PropertyMapping's source into a BuildContext.
 func (e *PluggableWidgetEngine) resolveMapping(mapping PropertyMapping, w *ast.WidgetV3) (*BuildContext, error) {
 	ctx := &BuildContext{pageBuilder: e.pageBuilder}
@@ -570,8 +598,26 @@ func (e *PluggableWidgetEngine) resolveMapping(mapping PropertyMapping, w *ast.W
 
 	switch source {
 	case "Attribute":
-		if attr := w.GetAttribute(); attr != "" {
+		// Named widget-level attribute (e.g. PieChart `ValueAttribute` →
+		// `seriesValueAttribute`): look up by the property's own name/aliases so
+		// several attribute properties route correctly, and resolve against the
+		// widget datasource entity (set by the DataSource mapping, which
+		// GenerateDefJSON orders first). Fall back to the generic single
+		// `Attribute:` keyword for single-attribute widgets (ComboBox, filters).
+		attr := namedPropValue(mapping, w)
+		if attr == "" {
+			attr = w.GetAttribute()
+		}
+		if attr != "" {
 			ctx.AttributePath = e.pageBuilder.resolveAttributePath(attr)
+		}
+
+	case "TextTemplate":
+		// A required widget-level caption authored by a named MDL property
+		// (e.g. PieChart `SeriesName: '...'` → `seriesName`). applyOperation
+		// "texttemplate" writes ctx.PrimitiveVal as the ClientTemplate text.
+		if v := namedPropValue(mapping, w); v != "" {
+			ctx.PrimitiveVal = v
 		}
 
 	case "Attributes":

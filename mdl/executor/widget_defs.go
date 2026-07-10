@@ -266,7 +266,23 @@ func GenerateDefJSON(mpkDef *mpk.WidgetDefinition, mdlName string) *WidgetDefini
 				Source:      "Attribute",
 				Operation:   "attribute",
 				Description: p.Description,
+				MdlAliases:  propertyAliases[mpkDef.ID][p.Key],
 			})
+		case "textTemplate":
+			// Top-level texttemplate properties are normally skipped (complex
+			// type). Emit one only when an MDL alias is registered — i.e. it's a
+			// required widget-level caption we know how to author (e.g. a
+			// PieChart's `seriesName` ← `SeriesName`). This keeps the broad
+			// "skip texttemplate" default while enabling the few that matter.
+			if aliases := propertyAliases[mpkDef.ID][p.Key]; len(aliases) > 0 {
+				def.PropertyMappings = append(def.PropertyMappings, PropertyMapping{
+					PropertyKey: p.Key,
+					Source:      "TextTemplate",
+					Operation:   "texttemplate",
+					Description: p.Description,
+					MdlAliases:  aliases,
+				})
+			}
 		case "association":
 			assocMappings = append(assocMappings, PropertyMapping{
 				PropertyKey: p.Key,
@@ -419,6 +435,24 @@ var itemPropertyAliases = map[string]map[string]map[string][]string{
 			// on write. Same class as `columnClass` (Bug 10a).
 			"colour": {"ColorValue"},
 		},
+	},
+}
+
+// propertyAliases lists alternative MDL names for a widget's TOP-LEVEL properties
+// (not object-list items — those use itemPropertyAliases). Needed where a widget
+// has several attribute/texttemplate-typed properties whose friendly MDL keyword
+// differs from the schema key. Keyed by (widgetID, propertyKey).
+//
+// Charts that bind their data at the widget level (PieChart, HeatMap — no series
+// object-list) expose `seriesDataSource` + `seriesValueAttribute` + `seriesName`.
+// The friendly MDL is `DataSource:` / `ValueAttribute:` / `SeriesName:`.
+var propertyAliases = map[string]map[string][]string{
+	"com.mendix.widget.web.piechart.PieChart": {
+		"seriesValueAttribute": {"ValueAttribute"},
+		"seriesName":           {"SeriesName"},
+	},
+	"com.mendix.widget.web.heatmap.HeatMap": {
+		"seriesValueAttribute": {"ValueAttribute"},
 	},
 }
 
