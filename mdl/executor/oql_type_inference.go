@@ -955,5 +955,46 @@ func ValidateOQLSyntax(oql string) []linter.Violation {
 		}
 	}
 
+	// Reserved-word collision. An attribute/alias named after a Mendix OQL
+	// keyword (notably date-part words like Quarter/Month/Year) parses fine in
+	// mxcli but makes MxBuild reject the view with CE0174 "The '<word>' part is
+	// incomplete or incorrect", because OQL reads the bare word as the keyword.
+	// mxcli cannot escape it — the OQL grammar has no quoted-identifier form — so
+	// surface it here instead of leaving it a silent-until-mxbuild failure. A
+	// reserved word counts only in identifier position: after a `.` (attribute
+	// access, `s.Quarter`) or after `as` (alias). Warning, not error: the set is
+	// the common date-part list, not an exhaustive mirror of Mendix's grammar.
+	reservedIdentRe := regexp.MustCompile(`(?i)(?:\.\s*|\bas\s+)(` + oqlReservedWordAlternation + `)\b`)
+	seenReserved := map[string]bool{}
+	for _, m := range reservedIdentRe.FindAllStringSubmatch(oql, -1) {
+		word := m[1]
+		if seenReserved[strings.ToLower(word)] {
+			continue
+		}
+		seenReserved[strings.ToLower(word)] = true
+		violations = append(violations, linter.Violation{
+			RuleID:   "MDL032",
+			Severity: linter.SeverityWarning,
+			Message: fmt.Sprintf(
+				"OQL reserved word %q used as an identifier — MxBuild rejects the view with CE0174 (mxcli cannot quote it); rename the attribute",
+				word),
+			Location:   linter.Location{DocumentType: "viewentity"},
+			Suggestion: fmt.Sprintf("Rename the %q column/attribute (both the source reference and the alias), e.g. %qValue or a domain term", word, word),
+		})
+	}
+
 	return violations
 }
+
+// oqlReservedWords are Mendix OQL keywords that realistically collide with
+// attribute names — the date/time-part words. Referenced unquoted (`s.Quarter`,
+// `as Quarter`) they trip CE0174 in MxBuild. Not exhaustive (SQL words like
+// SELECT/FROM are never plausible attribute names, so they're omitted).
+var oqlReservedWords = []string{
+	"YEAR", "QUARTER", "MONTH", "WEEK", "WEEKDAY", "DAY",
+	"DAYOFYEAR", "DAYOFMONTH", "DAYOFWEEK", "HOUR", "MINUTE", "SECOND",
+}
+
+// oqlReservedWordAlternation is the regex alternation of oqlReservedWords, e.g.
+// "YEAR|QUARTER|...". Built once so the MDL032 check regex stays a literal join.
+var oqlReservedWordAlternation = strings.Join(oqlReservedWords, "|")

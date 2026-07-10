@@ -45,7 +45,7 @@ create module ChartExamples;
 
 create persistent entity ChartExamples.Sales (
   Region:  string(100),
-  Quarter: string(20),
+  Period: string(20),
   Product: string(100),
   Amount:  decimal,
   Units:   integer
@@ -68,16 +68,16 @@ create view entity ChartExamples.SalesByRegion (
 /
 
 create view entity ChartExamples.SalesByQuarter (
-  Quarter: string(20),
+  Period: string(20),
   Total:   decimal,
   Units:   integer
 ) as
   select
-    s.Quarter as Quarter,
+    s.Period as Period,
     sum(s.Amount) as Total,
     sum(s.Units) as Units
   from ChartExamples.Sales as s
-  group by s.Quarter;
+  group by s.Period;
 /
 
 -- ============================================================================
@@ -104,20 +104,20 @@ create page ChartExamples.P_Bar (
 
 -- ColumnChart ----------------------------------------------------------------
 create page ChartExamples.P_Column (
-  Title: 'Sales by Quarter (Column)', Layout: Atlas_Core.Atlas_Default, Folder: 'Charts'
+  Title: 'Sales by Period (Column)', Layout: Atlas_Core.Atlas_Default, Folder: 'Charts'
 ) {
   pluggablewidget 'com.mendix.widget.web.columnchart.ColumnChart' columnChart1 {
     series sRevenue (
       DataSet: 'static',
       DataSource: database from ChartExamples.SalesByQuarter,
-      StaticXAttribute: Quarter,
+      StaticXAttribute: Period,
       StaticYAttribute: Total,
       StaticName: 'Revenue'
     )
     series sUnits (
       DataSet: 'static',
       DataSource: database from ChartExamples.SalesByQuarter,
-      StaticXAttribute: Quarter,
+      StaticXAttribute: Period,
       StaticYAttribute: Units,
       StaticName: 'Units'
     )
@@ -154,7 +154,7 @@ create page ChartExamples.P_Line (
     line lRevenue (
       DataSet: 'static',
       DataSource: database from ChartExamples.SalesByQuarter,
-      StaticXAttribute: Quarter,
+      StaticXAttribute: Period,
       StaticYAttribute: Total,
       StaticName: 'Revenue',
       Interpolation: 'smooth'
@@ -170,7 +170,7 @@ create page ChartExamples.P_TimeSeries (
     line lRevenue (
       DataSet: 'static',
       DataSource: database from ChartExamples.SalesByQuarter,
-      StaticXAttribute: Quarter,
+      StaticXAttribute: Period,
       StaticYAttribute: Total,
       StaticName: 'Revenue'
     )
@@ -243,7 +243,7 @@ create page ChartExamples.P_Dashboard (
         dynamictext hCol (Content: 'Quarterly Revenue', RenderMode: H4)
         pluggablewidget 'com.mendix.widget.web.columnchart.ColumnChart' dashColumn {
           series s (DataSet: 'static', DataSource: database from ChartExamples.SalesByQuarter,
-                    StaticXAttribute: Quarter, StaticYAttribute: Total, StaticName: 'Revenue')
+                    StaticXAttribute: Period, StaticYAttribute: Total, StaticName: 'Revenue')
         }
       }
     }
@@ -252,7 +252,7 @@ create page ChartExamples.P_Dashboard (
         dynamictext hLine (Content: 'Trend', RenderMode: H4)
         pluggablewidget 'com.mendix.widget.web.linechart.LineChart' dashLine {
           line l (DataSet: 'static', DataSource: database from ChartExamples.SalesByQuarter,
-                  StaticXAttribute: Quarter, StaticYAttribute: Total, StaticName: 'Revenue')
+                  StaticXAttribute: Period, StaticYAttribute: Total, StaticName: 'Revenue')
         }
       }
       column cPie (DesktopWidth: 4) {
