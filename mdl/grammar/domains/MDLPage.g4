@@ -260,6 +260,8 @@ widgetTypeV3
     | MARKER
     | DYNAMICMARKER
     | SERIES
+    | LINE
+    | SCALECOLOR
     // Dual-stack keyword (Phase 2 — #539). LEGACYDATAGRID always routes to
     // the dojo-based native Forms$DataGrid even on Mendix 11+; useful for
     // migrated projects that still have native datagrids on the page.

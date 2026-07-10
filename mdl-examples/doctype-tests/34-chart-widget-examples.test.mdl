@@ -20,11 +20,12 @@
 --   * [bug 9a] VISIBLE texttemplate series sub-props (staticName; static·/dynamic·
 --     names once their datasource is set) serialize an empty Forms$ClientTemplate
 --     instead of a null (a null there trips CE0463).
+--   * LINE and SCALECOLOR object-list keywords now parse and persist (LineChart/
+--     BubbleChart/TimeSeries `line`; HeatMap `scalecolor`) — same object-list
+--     infra as SERIES. The whole file now parses and `exec`s end-to-end.
 --
 -- WHAT'S STILL MISSING (the option-B implementation checklist at the bottom):
---   1. LINE and SCALECOLOR object-list keywords (LineChart/BubbleChart/
---      TimeSeries use `line`; HeatMap uses `scalecolor`) — not yet grammar tokens.
---   2. CE0463 "Update widget" WIDGET-TYPE version-drift on charts (embedded
+--   1. CE0463 "Update widget" WIDGET-TYPE version-drift on charts (embedded
 --      template vs installed Charts.mpk; #529/#600 class). This is ORTHOGONAL to
 --      series authoring and is remediated by the `mx update-widgets` step that
 --      `mxcli docker check`/`build` run before `mx check`. A bare chart (no
@@ -140,11 +141,10 @@ create page ChartExamples.P_Area (
 }
 
 -- ============================================================================
--- LINE charts (container keyword LINE — option-B item 2: keyword pending)
+-- LINE charts (container keyword LINE)
 -- ============================================================================
 -- LineChart / BubbleChart / TimeSeries use the `lines` object-list (→ LINE).
--- LINE is NOT a grammar object-list keyword yet, so these blocks do not parse
--- today — they are the target syntax option B must enable.
+-- LINE is now a grammar object-list keyword; these blocks parse and persist.
 
 -- LineChart ------------------------------------------------------------------
 create page ChartExamples.P_Line (
@@ -193,7 +193,7 @@ create page ChartExamples.P_Bubble (
 }
 
 -- ============================================================================
--- HEATMAP (container keyword SCALECOLOR — option-B item 2: keyword pending)
+-- HEATMAP (container keyword SCALECOLOR)
 -- ============================================================================
 create page ChartExamples.P_HeatMap (
   Title: 'Sales Heat Map', Layout: Atlas_Core.Atlas_Default, Folder: 'Charts'
@@ -288,9 +288,13 @@ create page ChartExamples.P_Dashboard (
 --         (modelsdk default + sdk legacy). Engalar has no equivalent.
 --  [ ] 1b. Widget-level datasource for PieChart/HeatMap (no object-list) — the
 --         same datasource-by-name binding (#643 class) at the widget level.
---  [ ] 2. LINE and SCALECOLOR object-list keywords.
---         Add to MDLPage.g4 widgetTypeV3 (alongside SERIES/GROUP/MARKER) and
---         regenerate; ensure the def container derivation matches.
+--  [x] 2. LINE and SCALECOLOR object-list keywords — DONE.
+--         Added LINE/SCALECOLOR lexer tokens (MDLLexer.g4) + widgetTypeV3 and the
+--         `keyword` rule (so they stay usable as identifiers). deriveObjectListKeyword
+--         already maps `lines`→LINE and `scaleColors`→SCALECOLOR, so buildObjectListItem
+--         routes them via the existing SERIES infra; X/Y attrs + per-item datasource
+--         (bug 9a) persist. Round-trip DESCRIBE of chart object-lists is a separate,
+--         pre-existing gap (SERIES has it too).
 --  [ ] 3. CE0463 version-drift fix (charts). Build the widget PropertyTypes from
 --         the installed .mpk rather than the embedded 11.6 baseline (#600 class).
 --         Verify against a Studio-Pro-saved chart reference before writing BSON.

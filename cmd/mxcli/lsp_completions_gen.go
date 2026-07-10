@@ -189,6 +189,8 @@ var mdlGeneratedKeywords = []protocol.CompletionItem{
 	{Label: "MARKER", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
 	{Label: "DYNAMICMARKER", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
 	{Label: "SERIES", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
+	{Label: "LINE", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
+	{Label: "SCALECOLOR", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
 	{Label: "LEGACYDATAGRID", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
 	{Label: "ACTIONBUTTON", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
 	{Label: "LINKBUTTON", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},

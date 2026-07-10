@@ -261,6 +261,8 @@ CUSTOMITEM: C U S T O M I T E M;        // PopupMenu customItems
 MARKER: M A R K E R;                    // Maps markers
 DYNAMICMARKER: D Y N A M I C M A R K E R; // Maps dynamicMarkers
 SERIES: S E R I E S;                    // AreaChart / chart series
+LINE: L I N E;                          // LineChart / TimeSeries / BubbleChart lines
+SCALECOLOR: S C A L E C O L O R;        // HeatMap scaleColors
 
 // Dual-stack keywords (Phase 2 — issue #539). LEGACY* keywords route to the
 // dojo-based native widgets even on Mendix 11+ where the pluggable React
