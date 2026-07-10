@@ -6,9 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-07-10
+
+Headline: **A page-authoring fidelity wave on the `modelsdk` engine**, plus MCP pluggable-widget authoring (Phases 1–2), Playwright warm-session reuse, and new `check` heuristics for widget properties. A batch of numbered page bugs (DataView/DataGrid2/widget serialization and round-trip) are fixed, microflow round-trip gaps (#723) are closed, and several new authoring-time checks catch widget mistakes before they reach MxBuild.
+
 ### Added
 
 - **REPL filesystem path completion for `EXECUTE SCRIPT`** — pressing Tab while typing the path argument of `execute script '<path>'` now completes against the filesystem (e.g. `execute script "mdl-`⇥ → `mdl-examples/`). Directories complete with a trailing `/` so you can keep tabbing to descend, hidden entries are offered only when the fragment starts with `.`, and completion works whether or not a project is connected (you often run a script to connect in the first place). Both single- and double-quoted paths are handled; keyword/object-name completion is unaffected.
+- **Author Mendix Charts series via MDL** (Bug 9a) — SERIES chart types can now bind their data via MDL; object-list datasource sub-properties work, and the multi-widget docs are corrected.
+- **DataGrid2 column binding to an associated attribute** (Bug 7) — a DataGrid2 column can now bind to an attribute reached over an association, not just a direct attribute of the grid's entity.
+- **MCP pluggable-widget authoring** — the experimental MCP/PED backend can now author pluggable widgets against a running Studio Pro: Phase 1 accepts any registry-resolved pluggable widget via the shared `.def.json` registry; Phase 2 implements the expression, text-template, and action widget ops.
+- **Playwright warm-session reuse and lifecycle control** — verify runs reuse a warm browser session across invocations, with new `open` / `status` / `close` session-lifecycle subcommands.
+- **New authoring-time `check` heuristics for widgets** — `MDL-WIDGET07` warns on unrecognized built-in widget properties; `MDL-WIDGET08` flags invalid enum values on widget object-list sub-properties and rejects an association datasource on a `DataView`; `MDL-WIDGET09` rejects an invalid `DataView` database source.
+
+### Changed
+
+- **Go toolchain 1.26.4 → 1.26.5** for GO-2026-5856.
+
+### Fixed
+
+- **Page / widget serialization on the `modelsdk` engine** — a wave of numbered page bugs:
+  - DataGrid2 column properties are now ordered by the widget template, fixing CE0463 on the modelsdk engine (Bug 6).
+  - An association attribute is resolved correctly from a subclass context (Bug 3).
+  - `DataView` "data from context over association" is supported, and an invalid association/database `DataView` source is now refused at both `check` and `exec` (Bug 5, `MDL-WIDGET09`).
+  - Widget datasource `sort by … desc` is persisted and round-tripped by `DESCRIBE` (Bug 8).
+  - `DynamicCellClass` is persisted and `dynamicclasses` is lowercased (Bug 10).
+  - `DynamicText` contentparam over an association is persisted.
+  - The `Visible` string/boolean conditional-visibility form and widget `DynamicClasses` expressions are persisted.
+- **MDL parsing** — identifier quotes are stripped in expression contexts and in inline-bracket XPath (datasource `WHERE`).
+- **OQL select-clause parser** was case-broken and is now case-insensitive (Bug 9b).
+- **Microflow round-trip on the `modelsdk` engine** (#723) — execution flags (A1), flow-object box size (A2), and rule-based decisions (`IsRule`, A4) now read back correctly.
+- **`docker` widget update** — the absolute `.mpr` path is passed to `mx update-widgets`, fixing a crash that left CE0463 unresolved.
+- **MCP verify-on-timeout** — Studio Pro's `-32000` false failures are re-verified instead of reported as failures.
+- **Executor** keeps the connection when a script reconnects internally.
+- **Dependency bump** — `golang.org/x/crypto` → v0.52.0.
 
 ## [0.14.0] - 2026-07-06
 
@@ -638,7 +669,7 @@ First public release.
 - **Full-text Search** — SEARCH across all strings, messages, captions, labels, and MDL source
 - **Code Navigation** — SHOW CALLERS/CALLEES/REFERENCES/IMPACT/CONTEXT for cross-reference analysis
 - **Catalog Queries** — SQL-based querying of project metadata via CATALOG tables
-- **Linting** — 14 built-in rules + 27 Starlark rules across MDL, SEC, QUAL, ARCH, DESIGN, CONV categories
+- **Linting** — 15 built-in rules + 27 Starlark rules across MDL, SEC, QUAL, ARCH, DESIGN, CONV categories
 - **Report** — Scored best practices report with category breakdown (`mxcli report`)
 - **Testing** — `.test.mdl` / `.test.md` test files with Docker-based runtime validation
 - **Diff** — Compare MDL scripts against project state, git diff for MPR v2 projects
