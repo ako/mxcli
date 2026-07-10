@@ -67,6 +67,7 @@ CONTAINER cCard (Class: 'card mx-spacing-top-large') {
 |----------|-------------|---------|
 | `Class` | CSS class names | `Class: 'card p-3'` |
 | `Style` | Inline CSS styles | `Style: 'padding: 16px;'` |
+| `DynamicClasses` | Runtime-computed CSS classes (expression; stacks on `Class`) | `DynamicClasses: 'if $currentObject/IsActive then ''is-active'' else '''''` |
 | `DesignProperties` | Design property values | `DesignProperties: ['Spacing top': 'Large']` |
 
 ### CUSTOMCONTAINER
@@ -406,6 +407,7 @@ These properties are shared across many widget types:
 |----------|-------------|---------|
 | `Class` | CSS class names | `Class: 'card p-3'` |
 | `Style` | Inline CSS styles | `Style: 'margin-top: 8px;'` |
+| `DynamicClasses` | Runtime-computed CSS classes (expression; stacks on `Class`) | `DynamicClasses: 'if $currentObject/IsActive then ''is-active'' else '''''` |
 | `DesignProperties` | Atlas design properties | `DesignProperties: ['Spacing top': 'Large', 'Full width': ON]` |
 | `Visible` | Visibility expression | `Visible: '$showSection'` |
 | `Editable` | Editability mode | `Editable: ReadOnly` |

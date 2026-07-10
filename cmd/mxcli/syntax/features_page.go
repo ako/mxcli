@@ -95,13 +95,14 @@ func init() {
 
 	Register(SyntaxFeature{
 		Path:    "page.styling",
-		Summary: "CSS classes, inline styles, and Atlas design properties on widgets",
+		Summary: "CSS classes, inline styles, dynamic (runtime-computed) classes, and Atlas design properties on widgets",
 		Keywords: []string{
 			"class", "style", "css", "design properties", "atlas",
-			"spacing", "full width",
+			"spacing", "full width", "dynamic classes", "dynamicclasses",
+			"conditional class", "runtime class",
 		},
-		Syntax:  "Class: 'css-class-name'\nStyle: 'color: red; padding: 8px;'\nDesignProperties: ['Spacing top': 'Large']\nDesignProperties: ['Full width': ON]",
-		Example: "CONTAINER ctn (Class: 'my-card', Style: 'padding: 16px;') {\n  DYNAMICTEXT txt (Content: 'Styled text')\n}",
+		Syntax:  "Class: 'css-class-name'                 -- static CSS classes\nStyle: 'color: red; padding: 8px;'      -- inline CSS\nDynamicClasses: '<expression>'          -- runtime-computed classes (stacks on Class)\nDesignProperties: ['Spacing top': 'Large']\nDesignProperties: ['Full width': ON]",
+		Example: "CONTAINER ctn (\n  Class: 'my-card',\n  DynamicClasses: 'if $currentObject/Priority = ''High'' then ''card-danger'' else ''card-normal'''\n) {\n  DYNAMICTEXT txt (Content: 'Styled text')\n}",
 		SeeAlso: []string{"page.widgets"},
 	})
 

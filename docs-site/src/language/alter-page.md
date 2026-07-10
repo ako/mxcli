@@ -43,6 +43,7 @@ ALTER PAGE Module.EditPage {
 | `ButtonStyle` | Button visual style | `SET ButtonStyle = Danger ON btnDelete` |
 | `Class` | CSS class names | `SET Class = 'card p-3' ON cMain` |
 | `Style` | Inline CSS | `SET Style = 'margin: 8px;' ON cBox` |
+| `DynamicClasses` | Runtime-computed CSS classes | `SET DynamicClasses = 'if $currentObject/IsActive then ''is-active'' else ''''' ON cMain` |
 | `Editable` | Editability mode | `SET Editable = ReadOnly ON txtEmail` |
 | `Visible` | Visibility expression | `SET Visible = '$showField' ON txtPhone` |
 | `Name` | Widget name | `SET Name = 'txtFullName' ON txtName` |

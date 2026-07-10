@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Documentation
+
+- **`DynamicClasses` documented across the styling surfaces** — the runtime-computed CSS-class property (a sibling of `Class`/`Style`) was wired and skill-documented but missing from every reference enumeration that lists its siblings. Added it to the `mxcli syntax page.styling` topic, `MDL_QUICK_REFERENCE.md` (styling table + ALTER PAGE `SET` properties), and the docs-site pages (`quick-reference`, `create-page`, `widget-types`, `alter-page`). Also demonstrated end-to-end in the `12-styling` doctype example (create-time, bulk `UPDATE WIDGETS`, and `ALTER PAGE ... SET DynamicClasses ON <container>`).
+
 ## [0.15.0] - 2026-07-10
 
 Headline: **A page-authoring fidelity wave on the `modelsdk` engine**, plus MCP pluggable-widget authoring (Phases 1–2), Playwright warm-session reuse, and new `check` heuristics for widget properties. A batch of numbered page bugs (DataView/DataGrid2/widget serialization and round-trip) are fixed, microflow round-trip gaps (#723) are closed, and several new authoring-time checks catch widget mistakes before they reach MxBuild.
