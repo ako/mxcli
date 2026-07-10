@@ -21,6 +21,8 @@
 --   DG13  Selection modes — none, single, multiple
 --   DG14  Design properties — Compact, Striped, Hover, Borders
 --   DG15  Page variable visibility — column visible expression
+--   DG16  Associated-attribute columns — related-entity attribute in a column
+--         (single-hop + multi-hop) and an embedded widget over an association
 --
 -- ============================================================================
 
@@ -59,8 +61,19 @@ create persistent entity DgTest.Category (
   Description: string(1000)
 );
 
+@position(700, 100)
+create persistent entity DgTest.Supplier (
+  Name:    string(200) not null,
+  Country: string(100)
+);
+
 create association DgTest.Product_Category
   from DgTest.Product to DgTest.Category;
+
+-- Second hop for DG16's multi-hop associated-attribute column (Product →
+-- Category → Supplier).
+create association DgTest.Category_Supplier
+  from DgTest.Category to DgTest.Supplier;
 
 -- @version: 11.0+
 -- Helper page: edit form opened from CRUD examples (page params require 11.0+)
@@ -637,6 +650,57 @@ create page DgTest.DG15_Variable_Visibility (
   }
 };
 
+-- @version: 11.0+
+-- ============================================================================
+-- DG16: Associated-attribute columns (show data from a related entity)
+-- ============================================================================
+
+/**
+ * DG16: Columns that display an attribute reached through an association, so a
+ * grid over Product can surface its related Category (and the Category's
+ * Supplier) directly — no nested DataView required.
+ *
+ *   - Bind an associated attribute on a column with `attribute: Assoc/Attr`,
+ *     using a BARE association name. A module-qualified `Mod.Assoc/Attr` is
+ *     rejected on a column; bare only. Multi-hop paths `A/B/Attr` are supported.
+ *   - A custom-content column can instead embed a widget (here a dynamictext)
+ *     that navigates the same association via `contentparams`. Inside
+ *     contentparams the association MAY be module-qualified.
+ *
+ * Product_Category is `from Product to Category`, so from a Product row the path
+ * Product_Category/Name resolves to that Product's Category Name; a second hop
+ * Category_Supplier/Name reaches the Supplier's Name.
+ */
+create page DgTest.DG16_Associated_Attributes (
+  title: 'Products with related data',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'dg16_associated_attributes',
+  folder: 'DataGrid'
+) {
+  datagrid dg1 (datasource: database from DgTest.Product sort by Name asc) {
+    column colName (attribute: Name, caption: 'Product')
+
+    -- single-hop associated attribute: the related Category's Name
+    column colCategory (attribute: Product_Category/Name, caption: 'Category')
+
+    -- multi-hop associated attribute: the Category's Supplier's Name
+    column colSupplier (
+      attribute: Product_Category/Category_Supplier/Name,
+      caption: 'Supplier'
+    )
+
+    -- embedded widget over the association: a dynamictext showing the related
+    -- Category Name inside a custom-content cell
+    column colCatBadge (caption: 'Category (badge)', ShowContentAs: customContent) {
+      dynamictext dtCat (
+        content: 'in {1}',
+        contentparams: [{1} = DgTest.Product_Category/Name]
+      )
+    }
+  }
+};
+
+-- @version: any
 -- ============================================================================
 -- Coverage summary
 -- ============================================================================
@@ -649,7 +713,8 @@ create page DgTest.DG15_Variable_Visibility (
 --
 -- Column types:
 --   ✓ Attribute column (all ShowContentAs values: text, url, email, customContent)
---   ✓ Custom content column (widgets in cell)
+--   ✓ Associated-attribute column (attribute: Assoc/Attr — bare name; single + multi-hop)
+--   ✓ Custom content column (widgets in cell, incl. a widget navigating an association)
 --   ✓ Empty caption column (Actions column with no attribute)
 --
 -- Column properties:
