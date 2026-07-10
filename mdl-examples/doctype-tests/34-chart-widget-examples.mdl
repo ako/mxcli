@@ -1,14 +1,18 @@
 -- ============================================================================
--- Chart widget examples — TARGET SPEC for full chart authoring (issue #679)
+-- Chart widget examples — full chart authoring showcase (issue #679)
 -- ============================================================================
 --
--- STATUS: the authoring syntax below now PARSES, `mxcli check`s, and `exec`s
--- end-to-end (series/line/scalecolor object-lists, per-item datasource + X/Y
--- attributes, HeatMap ColorValue). Validated line/scalecolor examples live in
--- 32-pluggable-widget-object-lists-v010.mdl (OL05/OL08/OL09). This file stays
--- `.test.mdl` (skipped by `make check-mdl`) only because it still fails `mx check`
--- on the CE0463 widget version-drift (checklist item 3 below) — the one remaining
--- gap. It doubles as the full option-B spec/showcase across every chart type.
+-- STATUS: a validated example. The authoring syntax below PARSES, `mxcli check`s
+-- (0 errors), and `exec`s end-to-end — series/line/scalecolor object-lists,
+-- per-item datasource + X/Y attributes, HeatMap ColorValue — so it now runs in
+-- the regular "Check MDL example scripts" suite (was `.test.mdl`, promoted once
+-- the LINE/SCALECOLOR keywords landed). Per-keyword coverage also lives in
+-- 32-pluggable-widget-object-lists-v010.mdl (OL05/OL08/OL09).
+--
+-- ONE CAVEAT — this file is NOT yet `mx check`-clean: charts hit CE0463 widget
+-- version-drift on mxbuild (checklist item 3 below). CI never mxbuilds the
+-- examples, so that doesn't gate this file; for a full build check use
+-- `mxcli docker check` (which runs `mx update-widgets` first).
 --
 -- WHAT WORKS TODAY (after the #679 multi-widget .mpk fix + bug 9a):
 --   * Every chart type is REGISTERED and authorable (BarChart/ColumnChart/
