@@ -18,11 +18,12 @@ import (
 // that carry references (user tasks → page/entity/user-source/outcome flows,
 // call-microflow / call-workflow tasks, exclusive and parallel splits).
 //
-// Documented gap: boundary events, parameter mappings, jump-to targets and the
-// completion/criteria sub-parts of multi-user tasks are not reconstructed — no
-// catalog or describe path that reaches this method reads them. Unrecognised
-// activity types decode to a GenericWorkflowActivity carrying their $Type, so
-// no activity is silently dropped.
+// Start/end, jump-to (with target), and the wait activities are reconstructed as
+// typed activities so DESCRIBE round-trips them as executable MDL (Bug 11b).
+// Documented gap: boundary events, parameter mappings and the completion/criteria
+// sub-parts of multi-user tasks are not reconstructed — no catalog or describe
+// path that reaches this method reads them. Unrecognised activity types decode to
+// a GenericWorkflowActivity carrying their $Type, so no activity is silently dropped.
 func (b *Backend) ListWorkflows() ([]*workflows.Workflow, error) {
 	units, err := mprread.ListUnitsWithContainer[*genWf.Workflow](b.reader)
 	if err != nil {
@@ -151,9 +152,59 @@ func workflowActivityFromGen(el element.Element) workflows.WorkflowActivity {
 		}
 		return t
 	default:
-		t := &workflows.GenericWorkflowActivity{TypeString: el.TypeName()}
+		return workflowSimpleActivityFromGen(el)
+	}
+}
+
+// workflowSimpleActivityFromGen reconstructs the "simple" workflow activities
+// that the codec decodes as untyped elements because they have no genWf struct:
+// start/end (implicit in MDL), jump-to, and the two wait activities. Reading
+// their fields from the raw BSON lets DESCRIBE emit executable, round-trippable
+// MDL instead of a "-- [Workflows$…]" comment (Bug 11b). This mirrors the legacy
+// parser_workflow.go cases; anything still unrecognised falls back to
+// GenericWorkflowActivity so no activity is ever dropped.
+func workflowSimpleActivityFromGen(el element.Element) workflows.WorkflowActivity {
+	typeName := el.TypeName()
+	raw := el.Raw()
+	setBase := func(a *workflows.BaseWorkflowActivity) {
+		a.ID = model.ID(el.ID())
+		a.Name = genWf.RawFieldString(raw, "Name")
+		a.Caption = genWf.RawFieldString(raw, "Caption")
+		a.TypeName = typeName
+	}
+	switch typeName {
+	case "Workflows$StartWorkflowActivity":
+		a := &workflows.StartWorkflowActivity{}
+		setBase(&a.BaseWorkflowActivity)
+		return a
+	case "Workflows$EndWorkflowActivity":
+		a := &workflows.EndWorkflowActivity{}
+		setBase(&a.BaseWorkflowActivity)
+		return a
+	case "Workflows$JumpToActivity":
+		a := &workflows.JumpToActivity{}
+		setBase(&a.BaseWorkflowActivity)
+		a.TargetActivity = genWf.RawFieldString(raw, "TargetActivity")
+		if a.TargetActivity == "" {
+			a.TargetActivity = genWf.RawFieldString(raw, "TargetActivityName")
+		}
+		return a
+	case "Workflows$WaitForTimerActivity":
+		a := &workflows.WaitForTimerActivity{}
+		setBase(&a.BaseWorkflowActivity)
+		a.DelayExpression = genWf.RawFieldString(raw, "Delay")
+		if a.DelayExpression == "" {
+			a.DelayExpression = genWf.RawFieldString(raw, "DelayExpression")
+		}
+		return a
+	case "Workflows$WaitForNotificationActivity":
+		a := &workflows.WaitForNotificationActivity{}
+		setBase(&a.BaseWorkflowActivity)
+		return a
+	default:
+		t := &workflows.GenericWorkflowActivity{TypeString: typeName}
 		t.ID = model.ID(el.ID())
-		t.TypeName = el.TypeName()
+		t.TypeName = typeName
 		return t
 	}
 }

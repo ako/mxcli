@@ -1,0 +1,55 @@
+-- ============================================================================
+-- Bug 11b: DESCRIBE WORKFLOW rendered jump/wait/start/end as comments
+-- ============================================================================
+--
+-- Symptom (before fix, default modelsdk engine):
+--   DESCRIBE WORKFLOW emitted several activities as non-executable comments —
+--     -- [Workflows$StartWorkflowActivity]
+--     -- [Workflows$JumpToActivity]
+--     -- [Workflows$WaitForTimerActivity]
+--     -- [Workflows$WaitForNotificationActivity]
+--   so `describe -> exec` dropped those activities, and you could not learn the
+--   jump/wait syntax by describing an existing workflow. User tasks, decisions,
+--   splits and call-microflow already round-tripped.
+--
+-- Root cause:
+--   The describe formatter (formatWorkflowActivities) already had typed cases
+--   for these, but the modelsdk reader (workflowActivityFromGen) decoded them to
+--   GenericWorkflowActivity — they have no genWf struct — which the formatter
+--   renders as `-- [$Type]`. Legacy's parser_workflow.go had dedicated cases.
+--
+-- After fix:
+--   workflowSimpleActivityFromGen recognises the untyped simple activities by
+--   $Type and reads their fields (jump TargetActivity, timer Delay) from raw
+--   BSON, so DESCRIBE emits executable MDL. Start/end are omitted (implicit).
+--
+-- Verify the round-trip:
+--   mxcli exec mdl-examples/bug-tests/bug11-workflow-describe-roundtrip.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe workflow WF11.WF_RoundTrip"
+--   Expect: `jump to ...`, `wait for timer ...`, `wait for notification`
+--   as statements (no `-- [Workflows$...]` comments); re-exec of that output
+--   reproduces a workflow that `docker build` accepts.
+-- ============================================================================
+
+create module WF11;
+
+create persistent entity WF11.Request (
+  Title: string(100)
+);
+
+create microflow WF11.ACT_Noop ()
+  returns boolean as $Result
+begin
+  return true;
+end;
+/
+
+create or replace workflow WF11.WF_RoundTrip
+  parameter $Context: WF11.Request
+begin
+  call microflow WF11.ACT_Noop;
+  wait for timer 'addHours([%CurrentDateTime%], 1)';
+  wait for notification;
+  jump to ACT_Noop;
+end workflow;
+/

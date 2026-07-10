@@ -471,6 +471,7 @@ Regenerate after modifying `MDLLexer.g4`, `MDLParser.g4`, or any `domains/*.g4` 
 - `.claude/skills/design-mdl-syntax.md` - **READ before designing new MDL syntax** - Design principles, decision framework, anti-patterns, checklist
 - `.claude/skills/write-microflows.md` - Microflow syntax, common mistakes, validation checklist
 - `.claude/skills/write-nanoflows.md` - Nanoflow syntax, restrictions, disallowed activities, validation checklist
+- `.claude/skills/write-workflows.md` - **Workflow authoring** (CREATE/DROP/ALTER WORKFLOW): activities (user task, decision, parallel split, jump, wait, boundary events), header options, gotchas. Workflows are authorable, not read-only.
 - `.claude/skills/create-page.md` - Page/widget syntax reference
 - `.claude/skills/alter-page.md` - ALTER PAGE/SNIPPET in-place modifications (SET, INSERT, DROP, REPLACE, SET Layout)
 - `.claude/skills/overview-pages.md` - CRUD page patterns
