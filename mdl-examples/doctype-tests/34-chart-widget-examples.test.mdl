@@ -2,10 +2,13 @@
 -- Chart widget examples — TARGET SPEC for full chart authoring (issue #679)
 -- ============================================================================
 --
--- STATUS: this is a GOAL/SPEC, not a passing example. The `.test.mdl` extension
--- makes `make check-mdl` skip it (Makefile: "Skips files ending in .test.mdl"),
--- so the not-yet-implemented syntax below does not break the build. It captures
--- exactly what "option B" (runtime-complete charts bound to data) must deliver.
+-- STATUS: the authoring syntax below now PARSES, `mxcli check`s, and `exec`s
+-- end-to-end (series/line/scalecolor object-lists, per-item datasource + X/Y
+-- attributes, HeatMap ColorValue). Validated line/scalecolor examples live in
+-- 32-pluggable-widget-object-lists-v010.mdl (OL05/OL08/OL09). This file stays
+-- `.test.mdl` (skipped by `make check-mdl`) only because it still fails `mx check`
+-- on the CE0463 widget version-drift (checklist item 3 below) — the one remaining
+-- gap. It doubles as the full option-B spec/showcase across every chart type.
 --
 -- WHAT WORKS TODAY (after the #679 multi-widget .mpk fix + bug 9a):
 --   * Every chart type is REGISTERED and authorable (BarChart/ColumnChart/

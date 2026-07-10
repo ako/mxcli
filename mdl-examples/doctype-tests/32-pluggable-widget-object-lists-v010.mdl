@@ -347,6 +347,62 @@ create page ObjListV10.P_OL07_MapsDynamic (
   }
 }
 
+-- ============================================================================
+-- MARK: OL08 — LineChart with a data-bound line
+-- ============================================================================
+--
+-- LineChart / TimeSeries / BubbleChart use the `lines` object-list → the LINE
+-- keyword. A line binds its own datasource and X/Y attributes, exactly like a
+-- SERIES; `Interpolation:` picks the curve style.
+
+create page ObjListV10.P_OL08_LineChart (
+  Title: 'Revenue Trend',
+  Layout: Atlas_Core.Atlas_Default,
+  Folder: 'ObjectLists/Chart'
+) {
+  layoutgrid lg1 {
+    row r1 {
+      column c1 (DesktopWidth: 12) {
+        pluggablewidget 'com.mendix.widget.web.linechart.LineChart' lineChart1 {
+          line lRevenue (
+            DataSet: 'static',
+            DataSource: database from ObjListV10.SalesData,
+            StaticXAttribute: PeriodLabel,
+            StaticYAttribute: RevenueValue,
+            StaticName: 'Revenue',
+            Interpolation: 'smooth'
+          )
+        }
+      }
+    }
+  }
+}
+
+-- ============================================================================
+-- MARK: OL09 — HeatMap with scale colours
+-- ============================================================================
+--
+-- HeatMap's `scaleColors` object-list → the SCALECOLOR keyword. Each entry maps
+-- a value percentage to a colour; `ColorValue:` fills the schema's `colour`
+-- primitive (British spelling — the alias keeps the friendly MDL name).
+
+create page ObjListV10.P_OL09_HeatMap (
+  Title: 'Sales Heat Map',
+  Layout: Atlas_Core.Atlas_Default,
+  Folder: 'ObjectLists/Chart'
+) {
+  layoutgrid lg1 {
+    row r1 {
+      column c1 (DesktopWidth: 12) {
+        pluggablewidget 'com.mendix.widget.web.heatmap.HeatMap' heatMap1 {
+          scalecolor scLow (ValuePercentage: 0, ColorValue: '#f7fbff')
+          scalecolor scHigh (ValuePercentage: 100, ColorValue: '#08306b')
+        }
+      }
+    }
+  }
+}
+
 grant view on page ObjListV10.P_OL01_AccordionGroups to ObjListV10.User;
 grant view on page ObjListV10.P_OL02_AccordionCustomHeader to ObjListV10.User;
 grant view on page ObjListV10.P_OL03_PopupMenuBasic to ObjListV10.User;
@@ -354,3 +410,5 @@ grant view on page ObjListV10.P_OL04_PopupMenuCustom to ObjListV10.User;
 grant view on page ObjListV10.P_OL05_AreaChartSeries to ObjListV10.User;
 grant view on page ObjListV10.P_OL06_MapsStatic to ObjListV10.User;
 grant view on page ObjListV10.P_OL07_MapsDynamic to ObjListV10.User;
+grant view on page ObjListV10.P_OL08_LineChart to ObjListV10.User;
+grant view on page ObjListV10.P_OL09_HeatMap to ObjListV10.User;
