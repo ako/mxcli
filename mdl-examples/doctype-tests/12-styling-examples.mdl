@@ -495,17 +495,16 @@ update widgets
   dry run;
 
 -- Bulk-set a runtime class expression (DynamicClasses) — applied, not a dry run.
--- UPDATE WIDGETS only matches CATALOGUED widgets: pluggable widgets and leaf core
--- widgets (dynamictext, textbox, …). Core CONTAINERS are not in the widget
--- catalog, so a '%Container%' filter matches none of them — target those in place
--- with ALTER PAGE (below). Here we set it on the two DynamicClasses demo texts.
+-- UPDATE WIDGETS matches catalogued widgets: pluggable widgets, leaf core widgets
+-- (dynamictext, textbox, …), and containers. Here we scope it to the two
+-- DynamicClasses demo texts by name.
 update widgets
   set 'DynamicClasses' = 'if 1 = 1 then ''bulk-highlight'' else '''''
   where widgettype like '%DynamicText%' and Name like 'dc%'
   in StyleTest;
 
--- Containers aren't catalogued, so use ALTER PAGE ... SET DynamicClasses ON <name>
--- to set (or change) a container's runtime class expression in place.
+-- ALTER PAGE ... SET DynamicClasses ON <name> is the surgical alternative to a
+-- bulk update — set (or change) a single widget's runtime class expression in place.
 alter page StyleTest.P002b_Dynamic_Classes {
   set DynamicClasses = 'if $currentObject/Department = ''HR'' then ''card-hr'' else '''''  on dcCard;
 }

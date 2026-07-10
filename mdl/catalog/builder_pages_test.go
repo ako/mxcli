@@ -189,7 +189,9 @@ func TestExtractWidgetsRecursive(t *testing.T) {
 		}
 	})
 
-	t.Run("skips DivContainer but includes children", func(t *testing.T) {
+	t.Run("indexes a user DivContainer and its children", func(t *testing.T) {
+		// A named/plain DivContainer is a real `container` widget (styleable,
+		// clickable) — it must appear in the catalog alongside its children.
 		w := map[string]any{
 			"$ID":   "div1",
 			"Name":  "divContainer",
@@ -204,18 +206,23 @@ func TestExtractWidgetsRecursive(t *testing.T) {
 			},
 		}
 		got := extractWidgetsRecursive(w)
-		if len(got) != 1 {
-			t.Fatalf("expected 1 widget (child only), got %d", len(got))
+		if len(got) != 2 {
+			t.Fatalf("expected 2 widgets (container + child), got %d", len(got))
 		}
-		if got[0].ID != "child1" {
-			t.Errorf("expected child1, got %q", got[0].ID)
+		if got[0].ID != "div1" || got[0].WidgetType != "Forms$DivContainer" {
+			t.Errorf("expected the container first, got %+v", got[0])
+		}
+		if got[1].ID != "child1" {
+			t.Errorf("expected child1 second, got %q", got[1].ID)
 		}
 	})
 
-	t.Run("skips Pages$DivContainer but includes children", func(t *testing.T) {
+	t.Run("skips the transparent conditionalVisibilityWidget wrapper", func(t *testing.T) {
+		// The synthetic layout placeholder (DivContainer named
+		// conditionalVisibilityWidget*, no styling) is omitted; children stay.
 		w := map[string]any{
 			"$ID":   "div2",
-			"Name":  "pagesDivContainer",
+			"Name":  "conditionalVisibilityWidget1",
 			"$Type": "Pages$DivContainer",
 			"Widgets": []any{
 				int32(0),
@@ -232,6 +239,20 @@ func TestExtractWidgetsRecursive(t *testing.T) {
 		}
 		if got[0].ID != "child2" {
 			t.Errorf("expected child2, got %q", got[0].ID)
+		}
+	})
+
+	t.Run("indexes a styled conditionalVisibilityWidget (not transparent)", func(t *testing.T) {
+		// If a wrapper-named container carries styling it is a real user widget.
+		w := map[string]any{
+			"$ID":       "div3",
+			"Name":      "conditionalVisibilityWidget9",
+			"$Type":     "Forms$DivContainer",
+			"Appearance": map[string]any{"Class": "card"},
+		}
+		got := extractWidgetsRecursive(w)
+		if len(got) != 1 || got[0].ID != "div3" {
+			t.Fatalf("expected the styled container to be indexed, got %+v", got)
 		}
 	})
 

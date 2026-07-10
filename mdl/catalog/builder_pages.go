@@ -346,6 +346,33 @@ func extractPageWidgets(rawData map[string]any, containerID string) []rawWidgetI
 	return widgets
 }
 
+// isTransparentDivWrapper reports whether w is the synthetic
+// "conditionalVisibilityWidget*" DivContainer that mxcli / Studio Pro insert as a
+// layout placeholder. Such a wrapper carries no user styling and is not an
+// authored widget, so the catalog omits it (its children are still indexed) —
+// matching DESCRIBE PAGE's isConditionalVisibilityWrapper. A DivContainer that is
+// named differently, or that carries any appearance, is a real user container and
+// IS indexed.
+func isTransparentDivWrapper(w map[string]any, widgetType string) bool {
+	if widgetType != "Forms$DivContainer" && widgetType != "Pages$DivContainer" {
+		return false
+	}
+	if !strings.HasPrefix(extractString(w["Name"]), "conditionalVisibilityWidget") {
+		return false
+	}
+	// A styled wrapper is a real container the user cares about, not a placeholder.
+	appearance, _ := w["Appearance"].(map[string]any)
+	if appearance == nil {
+		return true
+	}
+	if extractString(appearance["Class"]) != "" ||
+		extractString(appearance["Style"]) != "" ||
+		extractString(appearance["DynamicClasses"]) != "" {
+		return false
+	}
+	return len(getBsonArrayElements(appearance["DesignProperties"])) == 0
+}
+
 // extractWidgetsRecursive recursively extracts widgets from a widget map.
 func extractWidgetsRecursive(w map[string]any) []rawWidgetInfo {
 	var result []rawWidgetInfo
@@ -375,8 +402,13 @@ func extractWidgetsRecursive(w map[string]any) []rawWidgetInfo {
 	// widget's own content (not its child widgets).
 	widget.EntityRef, widget.MicroflowRef, widget.NanoflowRef = scanWidgetOwnRefs(w)
 
-	// Skip DivContainer wrapper types - only collect their children
-	if widget.WidgetType != "Forms$DivContainer" && widget.WidgetType != "Pages$DivContainer" {
+	// Index user-authored containers, but skip the synthetic
+	// "conditionalVisibilityWidget*" wrapper that mxcli / Studio Pro insert as a
+	// transparent layout placeholder (mirrors DESCRIBE's isConditionalVisibilityWrapper).
+	// Previously ALL DivContainers were dropped, so real `container` widgets —
+	// which carry Class/Style/DynamicClasses/DesignProperties and OnClick — were
+	// invisible to `show widgets` and untargetable by `update widgets`.
+	if !isTransparentDivWrapper(w, widget.WidgetType) {
 		result = append(result, widget)
 	}
 

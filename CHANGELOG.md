@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Containers now appear in the widget catalog** — `show widgets`, `update widgets`, and `CATALOG.widgets` queries dropped every `container` (`Forms$DivContainer` / `Pages$DivContainer`), so a `WHERE widgettype LIKE '%Container%'` filter silently matched nothing and containers couldn't be bulk-styled — even though they carry `Class` / `Style` / `DynamicClasses` / `DesignProperties` and can be clickable. The catalog now indexes user-authored containers and skips only the synthetic transparent `conditionalVisibilityWidget*` layout wrapper (matching how `DESCRIBE PAGE` already unwraps it). Other container types (LayoutGrid, TabContainer, …) were already indexed.
+
 ### Documentation
 
 - **`DynamicClasses` documented across the styling surfaces** — the runtime-computed CSS-class property (a sibling of `Class`/`Style`) was wired and skill-documented but missing from every reference enumeration that lists its siblings. Added it to the `mxcli syntax page.styling` topic, `MDL_QUICK_REFERENCE.md` (styling table + ALTER PAGE `SET` properties), and the docs-site pages (`quick-reference`, `create-page`, `widget-types`, `alter-page`). Also demonstrated end-to-end in the `12-styling` doctype example (create-time, bulk `UPDATE WIDGETS`, and `ALTER PAGE ... SET DynamicClasses ON <container>`).
