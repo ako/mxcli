@@ -344,6 +344,7 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 		// extract all non-default properties as explicit key-value pairs.
 		if !isKnownCustomWidgetType(widget.RenderMode) {
 			widget.ExplicitProperties = extractExplicitProperties(ctx, w)
+			widget.ObjectLists = extractObjectLists(ctx, w)
 		}
 		return []rawWidget{widget}
 

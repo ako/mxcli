@@ -595,6 +595,9 @@ type rawWidget struct {
 	DesignProperties []rawDesignProp
 	// Explicit widget properties (for generic PLUGGABLEWIDGET output)
 	ExplicitProperties []rawExplicitProp
+	// Object-list child blocks (for generic PLUGGABLEWIDGET output): chart series,
+	// lines, scale colors, etc. Reconstructed from the widget's WidgetObject lists.
+	ObjectLists []rawObjectList
 	// Data container context: entity qualified name provided by this container
 	EntityContext string
 	// Full widget ID (e.g. "com.mendix.widget.custom.switch.Switch")

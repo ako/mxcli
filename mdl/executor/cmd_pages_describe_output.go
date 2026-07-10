@@ -595,8 +595,9 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			props = appendConditionalProps(props, w)
 			props = appendAppearanceProps(props, w)
 			formatWidgetProps(ctx.Output, prefix, header, props, "\n")
-		} else if len(w.ExplicitProperties) > 0 && w.WidgetID != "" {
-			// Generic pluggable widget with explicit properties
+		} else if (len(w.ExplicitProperties) > 0 || len(w.ObjectLists) > 0) && w.WidgetID != "" {
+			// Generic pluggable widget with explicit properties and/or object-list
+			// child blocks (chart series/lines/scaleColors).
 			header := fmt.Sprintf("pluggablewidget '%s' %s", w.WidgetID, mdlIdent(w.Name))
 			props := []string{}
 			if w.Caption != "" {
@@ -606,7 +607,35 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 				props = append(props, fmt.Sprintf("%s: %s", ep.Key, ep.Value))
 			}
 			props = appendAppearanceProps(props, w)
-			formatWidgetProps(ctx.Output, prefix, header, props, "\n")
+			if len(w.ObjectLists) == 0 {
+				formatWidgetProps(ctx.Output, prefix, header, props, "\n")
+			} else {
+				// Emit the widget with a body holding its object-list items.
+				formatWidgetProps(ctx.Output, prefix, header, props, " {\n")
+				childPrefix := prefix + "  "
+				for _, ol := range w.ObjectLists {
+					for i, item := range ol.Items {
+						itemHeader := fmt.Sprintf("%s %s", ol.Keyword, mdlIdent(fmt.Sprintf("%s%d", ol.Keyword, i+1)))
+						itemProps := []string{}
+						if item.DataSource != nil && item.DataSource.Reference != "" {
+							dsExpr := fmt.Sprintf("DataSource: database from %s", item.DataSource.Reference)
+							if item.DataSource.XPathConstraint != "" {
+								dsExpr += fmt.Sprintf(" where %s", item.DataSource.XPathConstraint)
+							}
+							itemProps = append(itemProps, dsExpr)
+						}
+						for _, p := range item.Props {
+							if p.IsRef {
+								itemProps = append(itemProps, fmt.Sprintf("%s: %s", p.Key, p.Value))
+							} else {
+								itemProps = append(itemProps, fmt.Sprintf("%s: %s", p.Key, mdlQuote(p.Value)))
+							}
+						}
+						formatWidgetProps(ctx.Output, childPrefix, itemHeader, itemProps, "\n")
+					}
+				}
+				fmt.Fprintf(ctx.Output, "%s}\n", prefix)
+			}
 		} else {
 			header := fmt.Sprintf("%s %s", widgetType, mdlIdent(w.Name))
 			props := []string{}
