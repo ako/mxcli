@@ -53,6 +53,7 @@ create module ChartExamples;
 create persistent entity ChartExamples.Sales (
   Region:  string(100),
   Period: string(20),
+  SaleDate: datetime,
   Product: string(100),
   Amount:  decimal,
   Units:   integer
@@ -85,6 +86,19 @@ create view entity ChartExamples.SalesByQuarter (
     sum(s.Units) as Units
   from ChartExamples.Sales as s
   group by s.Period;
+/
+
+-- A time-series feed: one aggregated row per DATE. A TimeSeries chart requires
+-- its X axis to be a Date and time attribute, so the view exposes a datetime.
+create view entity ChartExamples.SalesByDate (
+  SaleDate: datetime,
+  Total:    decimal
+) as
+  select
+    s.SaleDate as SaleDate,
+    sum(s.Amount) as Total
+  from ChartExamples.Sales as s
+  group by s.SaleDate;
 /
 
 -- ============================================================================
@@ -176,8 +190,8 @@ create page ChartExamples.P_TimeSeries (
   pluggablewidget 'com.mendix.widget.web.timeseries.TimeSeries' timeSeries1 {
     line lRevenue (
       DataSet: 'static',
-      DataSource: database from ChartExamples.SalesByQuarter,
-      StaticXAttribute: Period,
+      DataSource: database from ChartExamples.SalesByDate,
+      StaticXAttribute: SaleDate,   -- TimeSeries X must be a Date and time attribute
       StaticYAttribute: Total,
       StaticName: 'Revenue'
     )
@@ -191,9 +205,10 @@ create page ChartExamples.P_Bubble (
   pluggablewidget 'com.mendix.widget.web.bubblechart.BubbleChart' bubbleChart1 {
     line lRegion (
       DataSet: 'static',
-      DataSource: database from ChartExamples.SalesByRegion,
-      StaticXAttribute: Region,
+      DataSource: database from ChartExamples.SalesByQuarter,
+      StaticXAttribute: Period,
       StaticYAttribute: Total,
+      StaticSizeAttribute: Units,   -- BubbleChart requires a size attribute
       StaticName: 'Revenue'
     )
   }
