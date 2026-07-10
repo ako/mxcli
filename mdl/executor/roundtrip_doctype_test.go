@@ -50,6 +50,17 @@ var engineScriptSkip = map[string]string{
 	// The legacy widget builder has no `barchart` pluggable-widget template, so
 	// page build fails ("template not found: barchart"). Passes on modelsdk.
 	"legacy/34-chart-widget-examples.mdl": "legacy widget builder lacks the barchart template (works on modelsdk); tracked",
+	// The legacy widget builder has no `linechart` template either, so the OL08
+	// LineChart object-list example (added in 6b837ad7) fails page build
+	// ("template not found: linechart"). Passes on modelsdk. Same class as the
+	// 34-chart barchart skip above.
+	"legacy/32-pluggable-widget-object-lists-v010.mdl": "legacy widget builder lacks the linechart template (works on modelsdk); tracked",
+	// DG16 (association-navigating DataGrid2 column + a custom-content dynamictext
+	// over an association) is a modelsdk-only capability (Bug 6/7): legacy writes a
+	// flat, unresolvable binding, so mxbuild rejects the dynamictext with CE1365
+	// "Attribute … is not an attribute of entity …". Legacy known issue L1; do not
+	// fix legacy. See docs/03-development/LEGACY_ENGINE_KNOWN_ISSUES.md.
+	"legacy/29-datagrid-examples.mdl": "legacy can't serialize association-navigating bindings (DG16) → CE1365 (works on modelsdk); known issue L1, tracked",
 	// The "data from context" association DataView (P_OrderWithCustomer, added in
 	// 7b9c251b) serializes correctly on modelsdk (Forms$DataViewSource) but the
 	// legacy widget builder writes an association source → CE6705 "Data view

@@ -54,6 +54,26 @@ When a legacy issue is encountered:
   Studio Pro. See the Bug 4 fix and `mdl-examples/bug-tests/assoc-datasource-modelsdk.mdl`.
 - **Discovered:** 2026-07 (while fixing the modelsdk Bug 4).
 
+### L2 — Association-navigating attribute bindings write a flat, unresolvable ref
+
+- **Symptom:** a widget binding that navigates an association to an attribute —
+  a DataGrid2 column `attribute: Assoc/Attr`, or a `dynamictext`/`datagrid`
+  `contentparams: [{1} = Module.Assoc/Attr]` — is written by legacy as a flat
+  attribute reference with no association step, so `mx check` fails with
+  **CE1365** "Attribute 'Module.Dest.Attr' is not an attribute of entity
+  'Module.Context'" (the destination attribute resolved against the context
+  entity). Reproduces on the `29-datagrid-examples.mdl` DG16 example (skipped on
+  legacy in `engineScriptSkip`).
+- **Legacy code path:** the legacy column/contentparam serializers emit the final
+  attribute QN without building the `DomainModels$AttributeRef.EntityRef` =
+  `IndirectEntityRef` of `EntityRefStep{Association, DestinationEntity}` hops.
+- **modelsdk (correct):** `attributeRefWithStepsToGen` /
+  `associationSourceToGen` (`mdl/backend/modelsdk/widget_write.go`) and the
+  shared `resolveAssociationAttributePath` (`mdl/executor/cmd_pages_builder_v3.go`)
+  emit the full `AttributeRef` with association steps, verified against Studio Pro
+  (Bug 7 associated-attribute columns and the Bug 3 contentparam fix).
+- **Discovered:** 2026-07 (DG16 legacy CI failure).
+
 <!--
 Template for new entries:
 
