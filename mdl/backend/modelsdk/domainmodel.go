@@ -32,10 +32,58 @@ func (b *Backend) ListDomainModels() ([]*domainmodel.DomainModel, error) {
 	for _, u := range units {
 		out = append(out, domainModelFromGen(u.Element, u.ContainerID))
 	}
+	b.populateViewEntityOql(out)
 	// The System module is virtual (not stored in the project); inject its domain
 	// model so platform entities (System.WorkflowUserTask, User, …) resolve.
 	out = append(out, buildSystemDomainModel())
 	return out, nil
+}
+
+// populateViewEntityOql fills OqlQuery for view entities from their separate
+// DomainModels$ViewEntitySourceDocument. On Mendix 11.0+ the OQL is stored ONLY
+// in that document — the writer's version gate drops the inline
+// OqlViewEntitySource.Oml field (serializeOqlViewEntitySource), so entityFromGen
+// leaves OqlQuery empty and DESCRIBE VIEW ENTITY would omit the `as (…)` clause.
+// Follow the SourceDocumentRef here. Mirrors the legacy reader's
+// loadViewEntityOqlQueries. No-op when nothing needs it (pre-11 inline OQL, or no
+// view entities).
+func (b *Backend) populateViewEntityOql(dms []*domainmodel.DomainModel) {
+	need := false
+	for _, dm := range dms {
+		for _, e := range dm.Entities {
+			if e.SourceDocumentRef != "" && e.OqlQuery == "" {
+				need = true
+			}
+		}
+	}
+	if !need {
+		return
+	}
+	units, err := mprread.ListUnitsWithContainer[*genDm.ViewEntitySourceDocument](b.reader)
+	if err != nil {
+		return
+	}
+	oqlByQN := make(map[string]string, len(units))
+	for _, u := range units {
+		name := u.Element.Name()
+		if name == "" {
+			continue
+		}
+		mi, _ := b.reader.GetModule(string(u.ContainerID))
+		if mi == nil {
+			continue
+		}
+		oqlByQN[mi.Name+"."+name] = u.Element.Oql()
+	}
+	for _, dm := range dms {
+		for _, e := range dm.Entities {
+			if e.OqlQuery == "" && e.SourceDocumentRef != "" {
+				if oql, ok := oqlByQN[e.SourceDocumentRef]; ok {
+					e.OqlQuery = oql
+				}
+			}
+		}
+	}
 }
 
 // GetDomainModel returns the domain model whose container is moduleID.
@@ -46,7 +94,9 @@ func (b *Backend) GetDomainModel(moduleID model.ID) (*domainmodel.DomainModel, e
 	}
 	for _, u := range units {
 		if u.ContainerID == moduleID {
-			return domainModelFromGen(u.Element, u.ContainerID), nil
+			dm := domainModelFromGen(u.Element, u.ContainerID)
+			b.populateViewEntityOql([]*domainmodel.DomainModel{dm})
+			return dm, nil
 		}
 	}
 	// The System module is virtual — its domain model is not stored in the project,
