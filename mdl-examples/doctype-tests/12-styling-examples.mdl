@@ -2,11 +2,12 @@
 -- Styling Examples - Classes, Inline Styles, and Design Properties
 -- ============================================================================
 --
--- This file demonstrates the three styling mechanisms available in MDL V3:
+-- This file demonstrates the four styling mechanisms available in MDL V3:
 --
--- 1. Class: 'css-class-names'     - CSS classes (Atlas UI or custom)
--- 2. Style: 'inline-css'          - Inline CSS styles
--- 3. DesignProperties: [...]      - Atlas UI design properties (structured)
+-- 1. Class: 'css-class-names'     - static CSS classes (Atlas UI or custom)
+-- 2. Style: 'inline-css'          - inline CSS styles
+-- 3. DynamicClasses: '<expr>'     - runtime-computed CSS classes (an expression)
+-- 4. DesignProperties: [...]      - Atlas UI design properties (structured)
 --
 -- Design Properties use key-value pairs:
 --   'Key': 'Value'   - Option (dropdown) properties
@@ -134,6 +135,53 @@ create page StyleTest.P002_Inline_Styles
     }
   }
 }
+
+-- MARK: DynamicClasses
+
+-- ============================================================================
+-- LEVEL 2B: Dynamic CSS Classes (DynamicClasses property)
+-- ============================================================================
+
+/**
+ * DynamicClasses is the runtime-computed sibling of the static Class property:
+ * a Mendix expression that returns a (space-separated) class string, re-evaluated
+ * as the data changes. Use it to reflect object state — status colors, validity,
+ * active/inactive — in CSS without a microflow.
+ *
+ * It lives on any widget's Appearance (dynamictext, container, inputs, …) and
+ * coexists with a static Class: both are emitted and the client concatenates
+ * them. Single quotes inside the expression are doubled ('' → ').
+ */
+create page StyleTest.P002b_Dynamic_Classes
+(
+  title: 'Dynamic Classes',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'style_002b_dynamic_classes/{Employee}',
+  params: { $Employee: StyleTest.Employee }
+)
+{
+  dataview dvEmp (datasource: $Employee) {
+    -- runtime class from a boolean attribute, alongside a static base class
+    dynamictext dcStatus (
+      content: 'Status',
+      class: 'badge',
+      dynamicclasses: 'if $currentObject/IsActive then ''badge-success'' else ''badge-muted'''
+    )
+
+    -- runtime class on a container from a string attribute
+    container dcCard (
+      class: 'card',
+      dynamicclasses: 'if $currentObject/Department = ''Sales'' then ''card-sales'' else ''card-default'''
+    ) {
+      dynamictext dcName (
+        content: 'Name',
+        dynamicclasses: 'if $currentObject/Name = '''' then ''is-empty'' else '''''
+      )
+    }
+  }
+}
+
+describe page StyleTest.P002b_Dynamic_Classes;
 
 -- @version: 11.0+
 -- MARK: DesignProperties — requires Mendix 11.0+ (Atlas v3 design properties)
@@ -445,6 +493,22 @@ update widgets
   where widgettype like '%Container%'
   in StyleTest
   dry run;
+
+-- Bulk-set a runtime class expression (DynamicClasses) — applied, not a dry run.
+-- UPDATE WIDGETS only matches CATALOGUED widgets: pluggable widgets and leaf core
+-- widgets (dynamictext, textbox, …). Core CONTAINERS are not in the widget
+-- catalog, so a '%Container%' filter matches none of them — target those in place
+-- with ALTER PAGE (below). Here we set it on the two DynamicClasses demo texts.
+update widgets
+  set 'DynamicClasses' = 'if 1 = 1 then ''bulk-highlight'' else '''''
+  where widgettype like '%DynamicText%' and Name like 'dc%'
+  in StyleTest;
+
+-- Containers aren't catalogued, so use ALTER PAGE ... SET DynamicClasses ON <name>
+-- to set (or change) a container's runtime class expression in place.
+alter page StyleTest.P002b_Dynamic_Classes {
+  set DynamicClasses = 'if $currentObject/Department = ''HR'' then ''card-hr'' else '''''  on dcCard;
+}
 
 -- MARK: Roundtrip
 
