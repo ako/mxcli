@@ -1,0 +1,43 @@
+-- ============================================================================
+-- Issue #628: DataGrid2 SELECTION binding persists (master-detail)
+-- ============================================================================
+--
+-- Original report: a `selection: single` DataGrid2 and a DataView bound to its
+-- selection (`datasource: selection dgProducts`) might not persist after exec —
+-- Gallery was the documented workaround, and the pluggable-vs-built-in scope was
+-- undocumented.
+--
+-- Current state (this test): DataGrid2 SELECTION binding works on BOTH engines —
+-- the grid's `Selection: Single` and the DataView's selection source both persist
+-- and `mx check` is clean. No Gallery workaround needed. Documented in
+-- docs-site/src/language/data-binding.md ("Selection Source", DataGrid master-detail).
+--
+-- Verify:
+--   mxcli exec mdl-examples/bug-tests/628-datagrid2-selection.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe page DG628.MasterDetail"
+--     → grid shows `Selection: Single`; dataview shows `DataSource: selection dgProducts`
+--   mxcli docker check -p app.mpr   → 0 errors  (verified on modelsdk + legacy, 11.12)
+-- ============================================================================
+
+create module DG628;
+
+create persistent entity DG628.Product (
+  Name:  string(100),
+  Price: decimal
+);
+
+create or replace page DG628.MasterDetail
+( Title: 'Master Detail', Layout: Atlas_Core.Atlas_Default )
+{
+  -- Master: a DataGrid2 with single-row selection
+  datagrid dgProducts (datasource: database DG628.Product, selection: single) {
+    column colName  (attribute: Name,  caption: 'Name')
+    column colPrice (attribute: Price, caption: 'Price')
+  }
+
+  -- Detail: a DataView listening to the grid's selection
+  dataview dvDetail (datasource: selection dgProducts) {
+    textbox tName  (label: 'Name',  attribute: Name)
+    textbox tPrice (label: 'Price', attribute: Price)
+  }
+}
