@@ -117,7 +117,7 @@ When encountering errors:
 | Mistake | Frequency | Quick Fix |
 |---------|-----------|-----------|
 | SET without DECLARE | High | Add `declare $var type = value;` before SET |
-| Missing AS for entity | High | Use `declare $var as Module.Entity;` |
+| Declaring an object/list variable | High | Use a parameter, retrieve, create, or loop — never declare an object (MDL043) or list (MDL040) |
 | Unqualified association | Medium | Use `$var/Module.Assoc/attr` |
 | String enum comparison | Medium | Use `Module.Enum.Value` not `'string'` |
 | Missing RETURN | Low | Add `return $value;` at end |

@@ -306,7 +306,6 @@ create or modify snippet MyModule.AppNav
 create microflow MyModule.ACT_Customer_New ()
 begin
   @position(200,200)
-  declare $c as MyModule.Customer;
   $c = create MyModule.Customer;
   @position(400,200)
   show page MyModule.Customer_NewEdit ($Customer = $c);

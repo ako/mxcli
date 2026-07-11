@@ -113,7 +113,6 @@ to publish an event from a microflow:
 create microflow Module.ACT_PublishCustomerChanged
   folder 'ACT'
 begin
-  declare $event Module.PBE_CustomerChangedEvent;
   $event = create Module.PBE_CustomerChangedEvent (CustomerId = $CustomerId);
   commit $event;
   call java action BusinessEvents.PublishBusinessEvent_V2(EventObject = $event);

@@ -146,6 +146,36 @@ func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 					v.emptyListVars[stmt.Variable] = true
 				}
 			}
+			// A bare `Module.X` declare type parses as TypeEnumeration with EnumRef
+			// (the documented entity/enum ambiguity); an explicit `Enumeration(...)`
+			// sets ExplicitEnum. Treat the ambiguous form — and a resolved
+			// TypeEntity — as an object declare.
+			if stmt.Type.Kind == ast.TypeEntity ||
+				(stmt.Type.Kind == ast.TypeEnumeration && stmt.Type.EnumRef != nil && !stmt.Type.ExplicitEnum) {
+				// Same restriction as lists (MDL040): a `declare` maps to a Create
+				// Variable activity, which only holds primitive types. An object type
+				// is rejected by Studio Pro/mxbuild with CE0053 ("Selected type is
+				// not allowed") — bare or initialized — plus CE0038 ("Value
+				// required") and CE7247 on any following `set`. Object variables must
+				// come from a microflow parameter, a retrieve, a create object, or a
+				// loop iterator; there is no Create Variable form for them. mxcli
+				// check previously passed this, so the invalid microflow surfaced
+				// only later in mxbuild.
+				typeName := stmt.Variable
+				switch {
+				case stmt.Type.EntityRef != nil:
+					typeName = stmt.Type.EntityRef.String()
+				case stmt.Type.EnumRef != nil:
+					typeName = stmt.Type.EnumRef.String()
+				}
+				v.addViolation("MDL043", linter.SeverityError,
+					fmt.Sprintf("declare '$%s' creates an object variable of type %s, but Mendix does not allow the "+
+						"Create Variable activity to hold an object (CE0053). "+
+						"Get the object from a microflow parameter, a retrieve, or a create object instead — do not declare an object variable. "+
+						"(If %s is an enumeration, write it as Enumeration(%s).)",
+						stmt.Variable, typeName, typeName, typeName),
+					"Accept the object as a parameter, use retrieve, or use create object — do not declare an object variable")
+			}
 			// Register the declared variable's kind for later assignment checks,
 			// and flag a Decimal initial value assigned to an Integer/Long declare.
 			if k, ok := astKindToExprKind(stmt.Type.Kind); ok {

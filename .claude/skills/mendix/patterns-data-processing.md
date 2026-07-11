@@ -342,8 +342,6 @@ create microflow Module.CopyOrder (
 )
 returns Module.Order
 begin
-  declare $Copy as Module.Order;
-
   $Copy = create Module.Order (
     OrderNumber = 'COPY-' + $source/OrderNumber,
     Amount = $source/Amount,
@@ -372,7 +370,6 @@ create microflow Module.CreateOrderSummaries (
 returns list of Module.OrderSummary
 begin
   $Summaries = create list of Module.OrderSummary;
-  declare $Summary as Module.OrderSummary;
 
   loop $Order in $Orders
   begin

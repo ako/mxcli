@@ -128,16 +128,24 @@ declare $Counter integer = 0;
 declare $message string = 'Hello';
 declare $IsValid boolean = true;
 declare $Today datetime = [%CurrentDateTime%];
-
--- Entity types (no initialization needed)
-declare $Product Test.Product;
-declare $Order Shop.Order;
+declare $status Enumeration(Module.OrderStatus) = Module.OrderStatus.Open;
 ```
 
-> **You cannot `declare` a list.** `declare` becomes a *Create Variable* activity,
-> which Mendix does not allow to produce a list — Studio Pro rejects it with
-> CE0053 ("type not allowed") and CE0038 ("value required"), and `mxcli check`
-> now flags it as **MDL040**. Get lists from one of these instead:
+> **You cannot `declare` an object (entity) variable.** `declare` becomes a
+> *Create Variable* activity, which Mendix only allows to hold **primitive** types
+> (String, Integer/Long, Decimal, Boolean, DateTime, Enumeration). An object type
+> is rejected by Studio Pro/mxbuild with CE0053 ("Selected type is not allowed"),
+> plus CE0038 ("Value required") and CE7247 on any following `set` — whether or
+> not you give it an initializer. `mxcli check` now flags it as **MDL043**. There
+> is **no** "empty object variable" activity. Get objects from one of these:
+> - a microflow **parameter**: `create microflow M.Save ($Product: Test.Product) ...`
+> - a **retrieve**: `retrieve $Product from Test.Product where Code = $c limit 1;`
+> - a **create object**: `$Product = create Test.Product (Name = $n);`
+> - a **loop iterator**: `loop $Product in $Products ...`
+
+> **You cannot `declare` a list either.** Same *Create Variable* restriction —
+> Studio Pro rejects a list with CE0053/CE0038, and `mxcli check` flags it as
+> **MDL040**. Get lists from:
 > - a microflow **parameter**: `create microflow M.Process ($Items: list of Test.Product) ...`
 > - a **retrieve**: `retrieve $Products from Test.Product where IsActive = true;`
 > - a **create list**: `$Products = create list of Test.Product;`
@@ -155,6 +163,10 @@ declare $Order Shop.Order;
 ### ❌ INCORRECT Syntax
 
 ```mdl
+-- WRONG: Declaring an object/entity variable (CE0053/CE0038, MDL043)
+declare $Product Test.Product;            -- bare object declare is invalid
+declare $Product Test.Product = $someObj; -- initialized object declare is also invalid
+
 -- WRONG: Declaring a list variable (CE0053/CE0038, MDL040)
 declare $ProductList list of Test.Product = empty;  -- use a parameter, retrieve, or create list
 
@@ -166,30 +178,45 @@ declare $Counter = 0;  -- Type inference not always supported
 
 -- WRONG: Using 'OF' instead of 'of'
 declare $list list of Test.Product;  -- Case sensitive
-
--- WRONG: Using = empty for entity types
-declare $Product Test.Product = empty;  -- Use without initialization
 ```
 
 ## Common Pitfalls
 
-### 1. Entity Type Declarations
+### 1. Object (Entity) Variables Cannot Be Declared
 
-**Error**: Parse error or CE0053 - "Selected type is not allowed"
+**Error**: CE0053 - "Selected type is not allowed" (+ CE0038, CE7247) — passes
+`mxcli check` only until MDL043 was added; previously surfaced at mxbuild.
 
 ❌ **INCORRECT:**
 ```mdl
-declare $Product as Test.Product;      -- AS keyword not supported
-declare $Product Test.Product = empty; -- = empty not needed for entities
+declare $Product Test.Product;             -- object Create Variable — rejected
+declare $Product Test.Product = $In;       -- aliasing a parameter — rejected
+declare $Product as Test.Product;          -- AS keyword also not supported
 ```
 
-✅ **CORRECT:**
+✅ **CORRECT** — get the object from a source that produces one:
 ```mdl
-declare $Product Test.Product;
-declare $Order Shop.Order;
+-- as a microflow parameter
+create microflow Test.Save ($Product: Test.Product) returns boolean as $ok ...
+
+-- from a retrieve (single object)
+retrieve $Product from Test.Product where Code = $Code limit 1;
+
+-- from a create object
+$Product = create Test.Product (Name = $Name);
+
+-- from a loop iterator
+loop $Product in $Products
+begin
+  change $Product (Processed = true);
+end
 ```
 
-**Explanation**: Entity types are declared with just the type name, no `as` keyword and no `= empty` initialization.
+**Explanation**: `declare` becomes a *Create Variable* activity, which in Mendix
+only holds primitive types. Objects (and lists) have no Create Variable form — use
+the parameter/retrieve/create/loop sources above. To "keep a reference" to an
+existing object, just use the variable you already have (`$In`, the loop variable,
+the retrieve/create output); Mendix has no aliasing activity.
 
 ### 2. XPath Association Navigation
 
@@ -774,9 +801,8 @@ returns boolean as $success
 comment 'Process order with validation and status update'
 begin
   declare $success boolean = false;
-  declare $Order Shop.Order;
 
-  -- Find the order
+  -- Find the order (the retrieve establishes $Order — objects are never declared)
   retrieve $Order from Shop.Order
     where OrderNumber = $OrderNumber;
 
@@ -1129,9 +1155,7 @@ create microflow Module.SafeExternalCall (
 )
 returns Module.Response as $response
 begin
-  declare $response Module.Response;
-
-  -- Try external call with custom error handler
+  -- The call output establishes $response — objects are never declared
   $response = call microflow Module.CallExternalAPI(data = $RequestData)
     on error without rollback {
       log error node 'ExternalAPI' 'API call failed for: ' + $RequestData;
@@ -1284,7 +1308,7 @@ end;
 
 Before executing a microflow script, verify:
 
-- [ ] All entity types use `declare $var as EntityType` (not `EntityType = empty`)
+- [ ] **No object (entity) or list is `declare`d** — objects come from a parameter, retrieve, create object, or loop iterator (MDL043); lists from a parameter, retrieve, or create list (MDL040)
 - [ ] **All primitive variables are declared before SET** (`declare $var type = value;`)
 - [ ] XPath association navigation uses qualified names (`Module.AssociationName`)
 - [ ] All referenced attributes exist in entity definitions
@@ -1301,7 +1325,7 @@ Before executing a microflow script, verify:
 
 | Error Code | Message | Fix |
 |------------|---------|-----|
-| CE0053 | Selected type is not allowed | Use `declare $var EntityType;` (no AS, no = empty) |
+| CE0053 | Selected type is not allowed | Don't `declare` an object/list — get it from a parameter, retrieve, create, or loop (MDL043/MDL040) |
 | CE0117 | Error in expression | Use qualified association names; use `not(expr)` not bare `not expr` |
 | CE0104 | Action activity is unreachable | Remove code after RETURN |
 | CE0105 | Must end with end event | Add RETURN statement |
@@ -1332,9 +1356,10 @@ Before executing a microflow script, verify:
 
 ### Variable Declaration Pattern
 ```mdl
-declare $primitive type = value;   -- Primitives
-declare $entity Module.Entity;     -- Entities (no AS, no = empty)
--- Lists: never declare. Use a parameter, retrieve, or `$list = create list of Module.Entity;`
+declare $primitive type = value;              -- Primitives (String/Integer/Decimal/Boolean/DateTime)
+declare $status Enumeration(Module.Enum) = …; -- Enumerations are primitives too
+-- Objects: never declare. Use a parameter, retrieve (limit 1), `$obj = create Module.Entity(...)`, or a loop iterator.
+-- Lists:   never declare. Use a parameter, retrieve, or `$list = create list of Module.Entity;`
 ```
 
 ### Object Operation Pattern

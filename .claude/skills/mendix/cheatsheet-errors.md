@@ -27,18 +27,32 @@ end if;
 
 ### "Selected type is not allowed" (CE0053)
 
-**Problem**: Wrong syntax for entity type declaration.
+**Problem**: Declaring an object (entity) or list variable. A `declare` maps to a
+Create Variable activity, which only accepts primitives
+(String/Integer/Long/Decimal/Boolean/DateTime/Enumeration). Declaring an object or
+list is rejected (CE0053/CE0038, plus CE7247 on any later `set`) — bare *or*
+initialized. The `as` keyword is also a parse error in mxcli. `mxcli check` flags an
+object declare as **MDL043** and a list declare as **MDL040**.
 
 ```mdl
--- WRONG: Missing AS keyword
+-- WRONG: declaring an object — there is no "empty object variable" (MDL043)
 declare $Product Module.Product = empty;
+declare $Product as Module.Product;         -- AS is also a parse error
+-- WRONG: declaring a list (MDL040)
+declare $Products list of Module.Product = empty;
 ```
 
-**Fix**: Use AS keyword for entity types.
+**Fix**: Objects and lists can't be declared — get them from a source that produces one.
 
 ```mdl
--- CORRECT
-declare $Product as Module.Product;
+-- object: a microflow parameter, a retrieve, a create, or a loop iterator
+retrieve $Product from Module.Product where Code = $Code limit 1;  -- retrieve
+$Product = create Module.Product (Name = $Name);                   -- create
+-- or: create microflow M.Save ($Product: Module.Product) ... / loop $Product in $Products ...
+
+-- list: a parameter, a retrieve, or a create list
+$Products = create list of Module.Product;   -- empty list to accumulate into
+retrieve $Products from Module.Product where ...;  -- or populate from the database
 ```
 
 ## Expression Errors
@@ -207,7 +221,7 @@ set $count = 1;
 
 | Code | Message | Common Cause |
 |------|---------|--------------|
-| CE0053 | Selected type is not allowed | Missing AS for entity type |
+| CE0053 | Selected type is not allowed | Declared an object/list variable — get it from a parameter/retrieve/create/loop (MDL043 objects, MDL040 lists) |
 | CE0104 | Action activity is unreachable | Code after RETURN |
 | CE0105 | Must end with end event | Missing RETURN |
 | CE0117 | Error in expression | Unqualified association path |
@@ -220,7 +234,7 @@ set $count = 1;
 
 Before executing MDL:
 
-- [ ] All entity types use `declare $var as Module.Entity`
+- [ ] No object or list is declared — objects come from a parameter/retrieve/create/loop (MDL043); lists from a parameter/retrieve/create list (MDL040)
 - [ ] All SET targets have prior DECLARE
 - [ ] Association paths are qualified: `$var/Module.Assoc/attr`
 - [ ] Enum comparisons use `Module.Enum.Value`

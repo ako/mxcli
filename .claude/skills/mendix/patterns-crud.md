@@ -143,8 +143,6 @@ Used for New/Add buttons on overview pages.
 create microflow Module.ACT_Customer_New ()
 returns boolean
 begin
-  declare $NewCustomer as Module.Customer;
-
   $NewCustomer = create Module.Customer (
     IsActive = true,
     CreatedDate = [%CurrentDateTime%]

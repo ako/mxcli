@@ -16,8 +16,8 @@ Before writing any MDL, verify these requirements:
 ### 1. Check Supported Syntax
 
 **Supported in Microflows:**
-- `declare $Var type = value;` (primitives)
-- `declare $entity Module.Entity;` (entities - no AS keyword, no = empty)
+- `declare $Var type = value;` (primitives only: String/Integer/Long/Decimal/Boolean/DateTime/Enumeration)
+- `$entity = create Module.Entity (...);` / `retrieve $entity from ... limit 1;` (objects — **never** `declare` an object; that fails CE0053/CE0038 and is flagged MDL043)
 - `$list = create list of Module.Entity;` (lists — **never** `declare` a list; that fails CE0053/CE0038 and is flagged MDL040)
 - `set $Var = expression;`
 - `$Var = create Module.Entity (attr = value);`

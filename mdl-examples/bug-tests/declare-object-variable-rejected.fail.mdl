@@ -1,0 +1,41 @@
+-- Declare-object trap — MDL043 negative test: an object-typed `declare` maps to
+-- a Create Variable activity, which in Mendix only holds primitive types. An
+-- object/entity type is rejected by Studio Pro/mxbuild with CE0053 ("Selected
+-- type is not allowed"), plus CE0038 ("Value required") and CE7247 on any
+-- following `set`. This is true whether or not an initializer is supplied.
+--
+-- The trap: `declare $x Module.Entity = $obj` parsed and passed `mxcli check`,
+-- so a testing session shipped a microflow that only failed later in mxbuild
+-- (StorageLoadException / CE0053). Object variables must come from a microflow
+-- parameter, a `retrieve`, a `create object`, or a loop iterator — there is no
+-- Create Variable form for them. `check` now rejects the object declare (MDL043),
+-- mirroring MDL040 for lists.
+--
+-- mxbuild-confirmed (11.12.0): both the initialized and the bare form abort with
+-- [error] [CE0053] "Selected type is not allowed." at the Create variable
+-- activity. An explicit `Enumeration(Module.X)` declare is a primitive and is
+-- NOT flagged. See 02-microflow-examples.mdl for the valid patterns (parameter,
+-- retrieve, create object).
+
+create entity MyFirstModule.Expense ( Description: String, Amount: Decimal );
+
+-- WRONG: aliasing a parameter into a declared object variable (the reported trap)
+create microflow MyFirstModule.ACT_DeclObjectInit ( $In: MyFirstModule.Expense )
+returns boolean as $ok
+begin
+  declare $x MyFirstModule.Expense = $In;
+  change $x (Amount = 5);
+  declare $ok boolean = true;
+  return $ok;
+end;
+/
+
+-- WRONG: bare object declare (no initializer) is equally invalid
+create microflow MyFirstModule.ACT_DeclObjectBare ()
+returns boolean as $ok
+begin
+  declare $x MyFirstModule.Expense;
+  declare $ok boolean = true;
+  return $ok;
+end;
+/

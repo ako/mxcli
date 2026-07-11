@@ -419,7 +419,6 @@ Complex calculations → microflow expressions
 create microflow CRM.SUB_GetManager ($Employee: HR.Employee)
 returns HR.Employee as $Manager
 begin
-  declare $Manager HR.Employee;
   retrieve $Manager from HR.Employee
     where [HR.Employee_Reports = $Employee];
   return $Manager;
