@@ -7,9 +7,71 @@ package executor
 import (
 	"strings"
 	"testing"
+
+	"github.com/mendixlabs/mxcli/mdl/visitor"
 )
 
 // --- V3 Page Syntax Tests ---
+
+// stripDescribeArtifacts removes the non-MDL lines from DESCRIBE output (the
+// `-- Page:` comment header and the SQL*Plus `/` terminator) so the body can be
+// fed back through the parser.
+func stripDescribeArtifacts(s string) string {
+	var b strings.Builder
+	for _, line := range strings.Split(s, "\n") {
+		t := strings.TrimSpace(line)
+		if t == "/" || strings.HasPrefix(t, "-- Page:") {
+			continue
+		}
+		b.WriteString(line)
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+// TestRoundtripPage_DescribeReparses guarantees DESCRIBE PAGE output re-parses
+// through the MDL parser — issue #626 (previously only substring-asserted). The
+// empty page is the regression case: a widget-less page used to describe without
+// a `{ }` body block, which the CREATE PAGE grammar rejects on re-parse.
+func TestRoundtripPage_DescribeReparses(t *testing.T) {
+	env := setupTestEnv(t)
+	defer env.teardown()
+
+	entityName := testModule + ".RtReparseEntity"
+	env.registerCleanup("entity", entityName)
+	if err := env.executeMDL(`create or modify persistent entity ` + entityName + ` ( Name: String(100) );`); err != nil {
+		t.Fatalf("create entity: %v", err)
+	}
+
+	emptyPage := testModule + ".RtEmptyPage"
+	widgetPage := testModule + ".RtWidgetPage"
+	env.registerCleanup("page", emptyPage)
+	env.registerCleanup("page", widgetPage)
+
+	// A widget-less page must still supply the `{ }` body block — the grammar
+	// requires it. This is exactly what DESCRIBE used to omit (#626).
+	if err := env.executeMDL(`create page ` + emptyPage + ` ( Title: 'Empty', Layout: Atlas_Core.Atlas_Default ) { }`); err != nil {
+		t.Fatalf("create empty page: %v", err)
+	}
+	if err := env.executeMDL(`create page ` + widgetPage + ` ( Title: 'Grid', Layout: Atlas_Core.Atlas_Default ) {
+		datagrid dg (DataSource: database ` + entityName + `) {
+			column colName (Attribute: Name, Caption: 'Name')
+		}
+	}`); err != nil {
+		t.Fatalf("create widget page: %v", err)
+	}
+
+	for _, pg := range []string{emptyPage, widgetPage} {
+		output, err := env.describeMDL(`describe page ` + pg + `;`)
+		if err != nil {
+			t.Fatalf("describe %s: %v", pg, err)
+		}
+		reparse := stripDescribeArtifacts(output)
+		if _, errs := visitor.Build(reparse); len(errs) > 0 {
+			t.Errorf("DESCRIBE PAGE %s does not re-parse (#626): %v\n--- output ---\n%s", pg, errs, reparse)
+		}
+	}
+}
 
 // TestRoundtripPage_V3DataGridColumns tests that DataGrid columns are correctly created with V3 syntax.
 // This is a regression test for the bug where user-defined columns were ignored and template columns were used.
