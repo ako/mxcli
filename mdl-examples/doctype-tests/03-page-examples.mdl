@@ -1712,6 +1712,21 @@ end;
 /
 
 /**
+ * Client-side nanoflow called from a widget button (Bug 2). A nanoflow widget
+ * action must serialize on the default (modelsdk) engine, with its parameter.
+ *
+ * @param $Product The product passed from the button's data context
+ */
+create nanoflow PgTest.NAV_RefreshProduct
+  ($Product: PgTest.Product)
+  folder 'MicroflowActions'
+begin
+  change $Product (ModifiedDate = [%CurrentDateTime%]) refresh;
+  log info 'Refreshed product (client-side)';
+end;
+/
+
+/**
  * Delete a product with confirmation - called from button actions.
  *
  * @param $Product The product to delete
@@ -1807,6 +1822,12 @@ create page PgTest.P023c_Detail_MicroflowAction
         caption: 'Process Product',
         action: microflow PgTest.ACT_ProcessProduct(Product: $Product),
         buttonstyle: success
+      )
+      -- Nanoflow (client-side) action with the same page parameter (Bug 2).
+      actionbutton btnRefresh (
+        caption: 'Refresh',
+        action: nanoflow PgTest.NAV_RefreshProduct(Product: $Product),
+        buttonstyle: default
       )
       actionbutton btnSave (caption: 'Save', action: save_changes close_page, buttonstyle: primary)
       actionbutton btnCancel (caption: 'Cancel', action: cancel_changes close_page, buttonstyle: default)
