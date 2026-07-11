@@ -626,6 +626,36 @@ retrieve $Recent from Sales.Order
 - The keyword is **`sort by`** (one or more `Module.Entity.Attr asc|desc`, comma-separated). `order by` is **not** valid on a microflow `retrieve` — it's reserved for `select ... from CATALOG.*` queries and will cause a parse error here.
 - `limit` and `offset` accept **a variable or expression**, not only a literal — `limit $PageSize`, `offset $Offset`, even `limit $Base + 5` all work. A bare literal (`limit 20`) is just the simplest case.
 
+### Retrieve by Association (in-memory, over an association path)
+
+To get the object(s) related to one you already have, retrieve **over an
+association** — `retrieve $out from $source/Module.Association;`. This is an
+*association* (in-memory) retrieve, not a database query, so it has no `where` /
+`sort by` / `limit`. **The result type depends on the direction you navigate:**
+
+```mdl
+-- FORWARD (from the reference-owner / "one" side) → a SINGLE object.
+-- An Expense has one Employee (Expense_Employee: from Expense to Employee):
+retrieve $Employee from $Expense/MyFirstModule.Expense_Employee;
+change $Employee (Name = 'Updated');        -- change it directly — do NOT loop
+
+-- REVERSE (from the "many" side) → a LIST of the related objects.
+-- One Employee has many Expenses (same association, navigated the other way):
+retrieve $Expenses from $Employee/MyFirstModule.Expense_Employee;
+loop $Expense in $Expenses
+begin
+  change $Expense (Amount = 0);
+end loop;
+```
+
+- **Forward Reference traversal returns a single object** — do **not** `loop` over
+  it. Looping a single object passes `mxcli check` but produces an invalid project
+  (mxbuild `StorageLoadException` — the loop's `change` writes an unqualified
+  attribute). Loop only over the list-valued (reverse / ReferenceSet) form.
+- The association is always fully qualified (`Module.Association`), and the start
+  variable is an object you already have (a parameter, a prior retrieve/create, or
+  a loop iterator). Both forms above are mxbuild-verified (0 errors).
+
 **Enumeration attributes in WHERE**: XPath is a database query, so enum values are stored as plain strings. Both forms are valid — mxcli converts the qualified name to a string literal in BSON:
 
 ```mdl

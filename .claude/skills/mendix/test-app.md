@@ -115,11 +115,17 @@ playwright-cli eval "() => document.querySelector('.mx-name-submitButton') !== n
 
 The Mendix login page uses standard HTML IDs:
 
+> **Always dispatch an `input` event after setting `.value`.** Mendix (and React)
+> inputs track their state from the `input` event, not the raw `.value` property.
+> Setting `.value` alone can leave the field "empty" as far as the app is
+> concerned, so the login — or any form fill — silently fails. Every field-setting
+> `eval` below follows the `set value → dispatchEvent('input')` pattern.
+
 ```bash
 playwright-cli open http://localhost:8080
 playwright-cli snapshot
-playwright-cli eval "() => { document.querySelector('#usernameInput').value = 'MxAdmin' }"
-playwright-cli eval "() => { document.querySelector('#passwordInput').value = 'AdminPassword1!' }"
+playwright-cli eval "() => { const el = document.querySelector('#usernameInput'); el.value = 'MxAdmin'; el.dispatchEvent(new Event('input', {bubbles: true})) }"
+playwright-cli eval "() => { const el = document.querySelector('#passwordInput'); el.value = 'AdminPassword1!'; el.dispatchEvent(new Event('input', {bubbles: true})) }"
 playwright-cli eval "() => document.querySelector('#loginButton').click()"
 
 # wait for home page to load
@@ -227,8 +233,8 @@ set -euo pipefail
 
 # Setup
 playwright-cli open http://localhost:8080
-playwright-cli eval "() => { document.querySelector('#usernameInput').value = 'MxAdmin' }"
-playwright-cli eval "() => { document.querySelector('#passwordInput').value = 'AdminPassword1!' }"
+playwright-cli eval "() => { const el = document.querySelector('#usernameInput'); el.value = 'MxAdmin'; el.dispatchEvent(new Event('input', {bubbles: true})) }"
+playwright-cli eval "() => { const el = document.querySelector('#passwordInput'); el.value = 'AdminPassword1!'; el.dispatchEvent(new Event('input', {bubbles: true})) }"
 playwright-cli eval "() => document.querySelector('#loginButton').click()"
 playwright-cli eval "() => new Promise(r => setTimeout(r, 3000))"
 
