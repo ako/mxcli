@@ -104,6 +104,15 @@ show image collection;
 show image collection in ImgTest;
 /
 
+-- ICON collections are a distinct, read-only document type (CustomIcons$
+-- CustomIconCollection, e.g. Atlas_Core.Atlas_Filled) that ship with the theme.
+-- SHOW / DESCRIBE ICON COLLECTION discover the icon names used by a widget's
+-- `icon:` property (referenced as Module.Collection.IconName). Plural or singular
+-- ("collection(s)") both parse.
+show icon collections;
+/
+-- describe icon collection Atlas_Core.Atlas_Filled;   -- lists every icon + its reference
+
 -- MARK: Describe
 
 -- ============================================================================

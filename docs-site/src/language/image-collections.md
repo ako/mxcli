@@ -73,6 +73,27 @@ Remove a collection and all its embedded images:
 DROP IMAGE COLLECTION MyModule.StatusIcons;
 ```
 
+## Icon collections (read-only)
+
+Distinct from image collections, **icon collections**
+(`CustomIcons$CustomIconCollection`, e.g. `Atlas_Core.Atlas_Filled`) ship with the
+theme/Atlas. Their icons are referenced from a widget as
+`Module.Collection.IconName` — most commonly a button's `Icon:` property. They're
+read-only in mxcli; use `SHOW` / `DESCRIBE` to discover valid icon names (icons
+have non-obvious names — it's `add`, not `plus`):
+
+```sql
+SHOW ICON COLLECTIONS;                              -- name, prefix, export level, icon count
+DESCRIBE ICON COLLECTION Atlas_Core.Atlas_Filled;   -- every icon + its reference form
+```
+
+Then use one on a button:
+
+```sql
+ACTIONBUTTON btnEdit (Caption: 'Edit', Action: PAGE App.Edit,
+  Icon: 'Atlas_Core.Atlas_Filled.pencil')
+```
+
 ## See Also
 
 - [MDL Quick Reference](../appendixes/quick-reference.md) -- syntax summary table

@@ -230,6 +230,14 @@ properties). Both accept an `icon:` — an **icon-collection** reference, e.g.
 `icon: 'Atlas_Core.Atlas_Filled.pencil'` (the modern Atlas icon set). The name
 must exist in the icon collection or MxBuild rejects it (CE1613).
 
+**Find valid icon names** — don't guess (icons have non-obvious names: it's
+`add`, not `plus`). List them:
+
+```
+show icon collections                              -- the project's icon sets
+describe icon collection Atlas_Core.Atlas_Filled   -- every icon + its reference form
+```
+
 **Action Bindings:**
 - `action: save_changes` - Save changes to object
 - `action: save_changes close_page` - Save and close page

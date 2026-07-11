@@ -612,6 +612,15 @@ Respond in {{Language}}.$$,
 | Create or modify | `create or modify image collection Module.Name [...];` | Preserves UUID — preferred for AI agents |
 | Drop collection | `drop image collection Module.Name;` | Removes collection and all embedded images |
 
+## Icon Collections (read-only)
+
+Icon collections (`CustomIcons$CustomIconCollection`, e.g. `Atlas_Core.Atlas_Filled`) ship with the theme/Atlas. Their icons are referenced from a widget as `Module.Collection.IconName` (a button's `icon:`). Use these to discover valid icon names — icons have non-obvious names (it's `add`, not `plus`).
+
+| Statement | Syntax | Notes |
+|-----------|--------|-------|
+| Show collections | `show icon collections [in module];` | Name, prefix, export level, icon count |
+| Describe collection | `describe icon collection Module.Name;` | Lists every icon + its ready-to-use `Module.Collection.IconName` reference |
+
 **Export levels:** `'Hidden'` (default, internal to module), `'Public'` (accessible from other modules).
 
 ## Consumed REST Services

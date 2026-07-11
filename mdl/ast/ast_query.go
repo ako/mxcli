@@ -82,6 +82,7 @@ const (
 	ShowFragments             // SHOW FRAGMENTS
 	ShowDatabaseConnections   // SHOW DATABASE CONNECTIONS [IN module]
 	ShowImageCollections      // SHOW IMAGE COLLECTIONS [IN module]
+	ShowIconCollections       // SHOW ICON COLLECTIONS [IN module]
 	ShowRestClients           // SHOW REST CLIENTS [IN module]
 	ShowPublishedRestServices // SHOW PUBLISHED REST SERVICES [IN module]
 	ShowDataTransformers      // LIST DATA TRANSFORMERS [IN module]
@@ -202,6 +203,8 @@ func (t ShowObjectType) String() string {
 		return "DATABASE CONNECTIONS"
 	case ShowImageCollections:
 		return "IMAGE COLLECTIONS"
+	case ShowIconCollections:
+		return "ICON COLLECTIONS"
 	case ShowRestClients:
 		return "REST CLIENTS"
 	case ShowPublishedRestServices:
@@ -304,6 +307,7 @@ const (
 	DescribeSettings             // DESCRIBE SETTINGS
 	DescribeFragment             // DESCRIBE FRAGMENT Name
 	DescribeImageCollection      // DESCRIBE IMAGE COLLECTION Module.Name
+	DescribeIconCollection       // DESCRIBE ICON COLLECTION Module.Name
 	DescribeRestClient           // DESCRIBE REST CLIENT Module.Name
 	DescribePublishedRestService // DESCRIBE PUBLISHED REST SERVICE Module.Name
 	DescribeDataTransformer      // DESCRIBE DATA TRANSFORMER Module.Name
@@ -373,6 +377,8 @@ func (t DescribeObjectType) String() string {
 		return "FRAGMENT"
 	case DescribeImageCollection:
 		return "IMAGE COLLECTION"
+	case DescribeIconCollection:
+		return "ICON COLLECTION"
 	case DescribeRestClient:
 		return "REST CLIENT"
 	case DescribePublishedRestService:

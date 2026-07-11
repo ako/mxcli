@@ -119,6 +119,8 @@ func execShow(ctx *ExecContext, s *ast.ShowStmt) error {
 		return listDatabaseConnections(ctx, s.InModule)
 	case ast.ShowImageCollections:
 		return listImageCollections(ctx, s.InModule)
+	case ast.ShowIconCollections:
+		return listIconCollections(ctx, s.InModule)
 	case ast.ShowModels:
 		return listAgentEditorModels(ctx, s.InModule)
 	case ast.ShowAgents:
@@ -225,6 +227,8 @@ func execDescribe(ctx *ExecContext, s *ast.DescribeStmt) error {
 			return describeFragment(ctx, s.Name)
 		case ast.DescribeImageCollection:
 			return describeImageCollection(ctx, s.Name)
+		case ast.DescribeIconCollection:
+			return describeIconCollection(ctx, s.Name)
 		case ast.DescribeModel:
 			return describeAgentEditorModel(ctx, s.Name)
 		case ast.DescribeAgent:
@@ -312,6 +316,8 @@ func describeObjectTypeLabel(t ast.DescribeObjectType) string {
 		return "fragment"
 	case ast.DescribeImageCollection:
 		return "imagecollection"
+	case ast.DescribeIconCollection:
+		return "iconcollection"
 	case ast.DescribeModel:
 		return "model"
 	case ast.DescribeAgent:

@@ -260,7 +260,6 @@ var mdlGeneratedKeywords = []protocol.CompletionItem{
 	{Label: "ATTRIBUTES", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
 	{Label: "FILTERTYPE", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
 	{Label: "IMAGE", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
-	{Label: "COLLECTION", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
 	{Label: "JAR", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
 	{Label: "DEPENDENCY", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
 	{Label: "DEPENDENCIES", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},

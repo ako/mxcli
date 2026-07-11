@@ -79,6 +79,9 @@ type ImageBackend interface {
 	CreateImageCollection(ic *types.ImageCollection) error
 	UpdateImageCollection(ic *types.ImageCollection) error
 	DeleteImageCollection(id string) error
+	// ListIconCollections reads the project's icon collections (CustomIcons$
+	// CustomIconCollection) for SHOW / DESCRIBE ICON COLLECTION. Read-only.
+	ListIconCollections() ([]*types.IconCollection, error)
 }
 
 // ScheduledEventBackend provides scheduled event operations.

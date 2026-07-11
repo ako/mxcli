@@ -32,6 +32,7 @@ showStatement
     | showOrList JAVA ACTIONS (IN (qualifiedName | IDENTIFIER))?
     | showOrList JAVASCRIPT ACTIONS (IN (qualifiedName | IDENTIFIER))?
     | showOrList IMAGE COLLECTION (IN (qualifiedName | IDENTIFIER))?
+    | showOrList ICON COLLECTION (IN (qualifiedName | IDENTIFIER))?
     | showOrList MODELS (IN (qualifiedName | IDENTIFIER))?
     | showOrList AGENTS (IN (qualifiedName | IDENTIFIER))?
     | showOrList KNOWLEDGE BASES (IN (qualifiedName | IDENTIFIER))?
@@ -159,6 +160,7 @@ describeStatement
     | DESCRIBE FRAGMENT FROM PAGE qualifiedName WIDGET identifierOrKeyword     // DESCRIBE FRAGMENT FROM PAGE Module.Page WIDGET name
     | DESCRIBE FRAGMENT FROM SNIPPET qualifiedName WIDGET identifierOrKeyword  // DESCRIBE FRAGMENT FROM SNIPPET Module.Snippet WIDGET name
     | DESCRIBE IMAGE COLLECTION qualifiedName           // DESCRIBE IMAGE COLLECTION Module.Name
+    | DESCRIBE ICON COLLECTION qualifiedName            // DESCRIBE ICON COLLECTION Module.Name
     | DESCRIBE MODEL qualifiedName                      // DESCRIBE MODEL Module.Name (agent-editor)
     | DESCRIBE AGENT qualifiedName                      // DESCRIBE AGENT Module.Name (agent-editor)
     | DESCRIBE KNOWLEDGE BASE qualifiedName             // DESCRIBE KNOWLEDGE BASE Module.Name

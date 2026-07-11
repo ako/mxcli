@@ -368,7 +368,19 @@ func init() {
 		},
 		Syntax:  "SHOW IMAGE COLLECTION [IN Module];\nDESCRIBE IMAGE COLLECTION Module.Name;\nCREATE IMAGE COLLECTION Module.Name\n  [EXPORT LEVEL 'Hidden'|'Public']\n  [COMMENT 'text']\n  [(IMAGE 'name' FROM FILE 'path', ...)];\nCREATE OR MODIFY IMAGE COLLECTION Module.Name [...];\nDROP IMAGE COLLECTION Module.Name;",
 		Example: "CREATE OR MODIFY IMAGE COLLECTION MyModule.AppIcons\n  EXPORT LEVEL 'Public'\n  COMMENT 'Application icons' (\n  IMAGE 'logo' FROM FILE 'assets/logo.png',\n  IMAGE 'favicon' FROM FILE 'assets/favicon.ico'\n);\n\nDESCRIBE IMAGE COLLECTION MyModule.AppIcons;",
-		SeeAlso: []string{"integration"},
+		SeeAlso: []string{"integration", "icon-collection"},
+	})
+
+	Register(SyntaxFeature{
+		Path:    "icon-collection",
+		Summary: "Icon collections (read-only) — discover icon names for a widget's icon:",
+		Keywords: []string{
+			"icon collection", "icon set", "iconset", "show icon collections",
+			"describe icon collection", "atlas icon", "button icon", "glyph",
+		},
+		Syntax:  "SHOW ICON COLLECTIONS [IN Module];\nDESCRIBE ICON COLLECTION Module.Name;   -- lists every icon + its reference form",
+		Example: "-- Icon collections ship with the theme/Atlas (read-only). Their icons are\n-- referenced from a widget as Module.Collection.IconName (e.g. a button's icon:).\nSHOW ICON COLLECTIONS;\nDESCRIBE ICON COLLECTION Atlas_Core.Atlas_Filled;\n-- → then: ACTIONBUTTON b (Caption: 'Edit', Action: ..., Icon: 'Atlas_Core.Atlas_Filled.pencil')",
+		SeeAlso: []string{"image-collection", "page.action"},
 	})
 
 	// ── Import / Export Mappings ──────────────────────────────────────

@@ -672,6 +672,11 @@ func (unsupportedBackend) ListImageCollections() (r0 []*types.ImageCollection, e
 	return
 }
 
+func (unsupportedBackend) ListIconCollections() (r0 []*types.IconCollection, err1 error) {
+	err1 = errUnsupported("ListIconCollections")
+	return
+}
+
 func (unsupportedBackend) ListImportMappings() (r0 []*model.ImportMapping, err1 error) {
 	err1 = errUnsupported("ListImportMappings")
 	return

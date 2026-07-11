@@ -487,6 +487,17 @@ func (b *Builder) ExitShowStatement(ctx *parser.ShowStatementContext) {
 			}
 		}
 		b.statements = append(b.statements, stmt)
+	} else if ctx.ICON() != nil && ctx.COLLECTION() != nil {
+		// SHOW ICON COLLECTION [IN module]
+		stmt := &ast.ShowStmt{ObjectType: ast.ShowIconCollections}
+		if ctx.IN() != nil {
+			if qn := ctx.QualifiedName(); qn != nil {
+				stmt.InModule = getQualifiedNameText(qn)
+			} else if id := ctx.IDENTIFIER(); id != nil {
+				stmt.InModule = id.GetText()
+			}
+		}
+		b.statements = append(b.statements, stmt)
 	} else if ctx.MODELS() != nil {
 		// SHOW MODELS [IN module] (agent-editor Model documents)
 		stmt := &ast.ShowStmt{ObjectType: ast.ShowModels}
@@ -984,6 +995,11 @@ func (b *Builder) ExitDescribeStatement(ctx *parser.DescribeStatementContext) {
 	} else if ctx.IMAGE() != nil && ctx.COLLECTION() != nil {
 		b.statements = append(b.statements, &ast.DescribeStmt{
 			ObjectType: ast.DescribeImageCollection,
+			Name:       name,
+		})
+	} else if ctx.ICON() != nil && ctx.COLLECTION() != nil {
+		b.statements = append(b.statements, &ast.DescribeStmt{
+			ObjectType: ast.DescribeIconCollection,
 			Name:       name,
 		})
 	} else if ctx.MODEL() != nil {

@@ -56,6 +56,34 @@ func (ic *ImageCollection) GetName() string { return ic.Name }
 // GetContainerID returns the container ID.
 func (ic *ImageCollection) GetContainerID() model.ID { return ic.ContainerID }
 
+// IconCollection represents a CustomIcons$CustomIconCollection — an icon *set*
+// (e.g. Atlas_Core.Atlas_Filled). Its icons are referenced from a widget as
+// `Module.CollectionName.IconName` (the button `icon:` property). Read-only in
+// mxcli (SHOW / DESCRIBE ICON COLLECTION); icon collections are authored via the
+// theme/Atlas, not MDL.
+type IconCollection struct {
+	model.BaseElement
+	ContainerID   model.ID   `json:"containerId"`
+	Name          string     `json:"name"`
+	Prefix        string     `json:"prefix,omitempty"`
+	ExportLevel   string     `json:"exportLevel,omitempty"`
+	Documentation string     `json:"documentation,omitempty"`
+	Icons         []IconItem `json:"icons,omitempty"`
+}
+
+// GetName returns the icon collection's name.
+func (ic *IconCollection) GetName() string { return ic.Name }
+
+// GetContainerID returns the container ID.
+func (ic *IconCollection) GetContainerID() model.ID { return ic.ContainerID }
+
+// IconItem is a single named icon within an icon collection.
+type IconItem struct {
+	Name          string   `json:"name"`
+	CharacterCode int      `json:"characterCode,omitempty"`
+	Tags          []string `json:"tags,omitempty"`
+}
+
 // Image represents a single image in an image collection.
 type Image struct {
 	ID     model.ID `json:"id"`

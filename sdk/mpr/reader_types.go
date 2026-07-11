@@ -163,6 +163,56 @@ func (r *Reader) ListImageCollections() ([]*types.ImageCollection, error) {
 	return result, nil
 }
 
+// ListIconCollections returns all icon collections (CustomIcons$
+// CustomIconCollection) in the project — read-only, for SHOW / DESCRIBE ICON
+// COLLECTION. Mirrors the modelsdk backend's reader.
+func (r *Reader) ListIconCollections() ([]*types.IconCollection, error) {
+	units, err := r.listUnitsByType("CustomIcons$CustomIconCollection")
+	if err != nil {
+		return nil, err
+	}
+	var result []*types.IconCollection
+	for _, u := range units {
+		var doc bson.M
+		if err := bson.Unmarshal(u.Contents, &doc); err != nil {
+			return nil, fmt.Errorf("failed to parse icon collection %s: %w", u.ID, err)
+		}
+		ic := &types.IconCollection{ContainerID: model.ID(u.ContainerID)}
+		ic.ID = model.ID(u.ID)
+		ic.TypeName = "CustomIcons$CustomIconCollection"
+		ic.Name, _ = doc["Name"].(string)
+		ic.Prefix, _ = doc["Prefix"].(string)
+		ic.Documentation, _ = doc["Documentation"].(string)
+		ic.ExportLevel, _ = doc["ExportLevel"].(string)
+		if arr, ok := doc["Icons"].(bson.A); ok {
+			for _, el := range arr {
+				iconDoc, ok := el.(bson.M)
+				if !ok {
+					continue
+				}
+				item := types.IconItem{}
+				item.Name, _ = iconDoc["Name"].(string)
+				switch cc := iconDoc["CharacterCode"].(type) {
+				case int32:
+					item.CharacterCode = int(cc)
+				case int64:
+					item.CharacterCode = int(cc)
+				}
+				if tags, ok := iconDoc["Tags"].(bson.A); ok {
+					for _, t := range tags {
+						if s, ok := t.(string); ok {
+							item.Tags = append(item.Tags, s)
+						}
+					}
+				}
+				ic.Icons = append(ic.Icons, item)
+			}
+		}
+		result = append(result, ic)
+	}
+	return result, nil
+}
+
 // ListJsonStructures returns all JSON structures in the project.
 func (r *Reader) ListJsonStructures() ([]*types.JsonStructure, error) {
 	units, err := r.listUnitsByType("JsonStructures$JsonStructure")

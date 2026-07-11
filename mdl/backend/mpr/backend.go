@@ -684,6 +684,9 @@ func (b *MprBackend) UpdateImageCollection(ic *types.ImageCollection) error {
 func (b *MprBackend) DeleteImageCollection(id string) error {
 	return b.writer.DeleteImageCollection(id)
 }
+func (b *MprBackend) ListIconCollections() ([]*types.IconCollection, error) {
+	return b.reader.ListIconCollections()
+}
 
 // ---------------------------------------------------------------------------
 // ScheduledEventBackend

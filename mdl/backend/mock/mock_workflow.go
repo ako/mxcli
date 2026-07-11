@@ -78,6 +78,13 @@ func (m *MockBackend) ListImageCollections() ([]*types.ImageCollection, error) {
 	return nil, nil
 }
 
+func (m *MockBackend) ListIconCollections() ([]*types.IconCollection, error) {
+	if m.ListIconCollectionsFunc != nil {
+		return m.ListIconCollectionsFunc()
+	}
+	return nil, nil
+}
+
 func (m *MockBackend) CreateImageCollection(ic *types.ImageCollection) error {
 	if m.CreateImageCollectionFunc != nil {
 		return m.CreateImageCollectionFunc(ic)

@@ -243,6 +243,7 @@ type MockBackend struct {
 
 	// ImageBackend
 	ListImageCollectionsFunc  func() ([]*types.ImageCollection, error)
+	ListIconCollectionsFunc   func() ([]*types.IconCollection, error)
 	CreateImageCollectionFunc func(ic *types.ImageCollection) error
 	UpdateImageCollectionFunc func(ic *types.ImageCollection) error
 	DeleteImageCollectionFunc func(id string) error
