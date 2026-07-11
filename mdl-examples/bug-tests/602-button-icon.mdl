@@ -1,0 +1,43 @@
+-- ============================================================================
+-- Issue #602: Link button mode + button icon
+-- ============================================================================
+--
+-- Report: a button with Link render mode and a dedicated icon was not possible —
+-- the button rendered as the default Button mode and the icon was not visible.
+--
+-- Current state:
+--   - Link render mode: `linkbutton` (an ActionButton with RenderType "Link").
+--   - Icon (this fix): `icon: 'Module.IconCollection.IconName'` on an
+--     actionbutton/linkbutton → a Forms$IconCollectionIcon (the modern Atlas
+--     icon), verified against a Studio-Pro-authored button.
+--
+-- Use a real icon-collection icon name (Atlas_Core ships the Atlas_Filled set);
+-- a non-existent icon is correctly rejected by MxBuild with CE1613.
+--
+-- Verify:
+--   mxcli exec mdl-examples/bug-tests/602-button-icon.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe page I602.IconButtons"
+--     → linkbutton/actionbutton lines carry `Icon: 'Atlas_Core.Atlas_Filled.…'`
+--   mxcli docker check -p app.mpr   → 0 errors (modelsdk, 11.12)
+-- ============================================================================
+
+create module I602;
+
+create or replace page I602.IconButtons
+( Title: 'Icon Buttons', Layout: Atlas_Core.Atlas_Default )
+{
+  -- Link render mode + icon
+  linkbutton lbEdit (
+    caption: 'Edit',
+    action: nothing,
+    icon: 'Atlas_Core.Atlas_Filled.pencil'
+  )
+
+  -- Regular action button + icon + style
+  actionbutton abDelete (
+    caption: 'Delete',
+    action: nothing,
+    buttonstyle: danger,
+    icon: 'Atlas_Core.Atlas_Filled.trash'
+  )
+}

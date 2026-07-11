@@ -558,6 +558,7 @@ type rawWidget struct {
 	RenderMode      string
 	Action          string
 	ButtonStyle     string
+	Icon            string // Icon-collection reference on a button (e.g. Atlas_Core.Atlas_Filled.pencil)
 	Selection       string // For Gallery selection mode (Single, Multi, None)
 	Class           string // CSS class from Appearance
 	Style           string // Inline CSS style from Appearance

@@ -368,6 +368,10 @@ func widgetToGen(w pages.Widget) (element.Element, error) {
 		// Tooltip is a Texts$Text (not a ClientTemplate, unlike Caption) — Studio
 		// Pro's loader rejects a ClientTemplate here with a type-cast error.
 		g.SetTooltip(captionToGen(x.Tooltip))
+		// Icon (issue #602): overrides the null-Icon TypeDefault when set.
+		if x.Icon != nil {
+			g.SetIcon(iconToGen(x.Icon))
+		}
 		act, err := clientActionToGen(x.Action)
 		if err != nil {
 			return nil, err
@@ -824,6 +828,16 @@ func noActionGen() element.Element {
 	assignID(a)
 	a.SetDisabledDuringExecution(true)
 	return a
+}
+
+// iconToGen builds a widget Icon element. Currently supports the modern
+// icon-collection icon (Atlas icons): Forms$IconCollectionIcon{Image: QN},
+// verified against a Studio-Pro-authored button (issue #602). It has no typed
+// gen struct, so it is built as a raw element (like the workflow simple activities).
+func iconToGen(ic *pages.Icon) element.Element {
+	e := newElem("Forms$IconCollectionIcon", "")
+	addStr(e, "Image", ic.Image)
+	return e
 }
 
 // clientTemplateToGen builds the Forms$ClientTemplate that backs a dynamic text

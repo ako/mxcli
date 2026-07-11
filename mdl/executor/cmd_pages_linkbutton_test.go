@@ -51,6 +51,47 @@ func TestBuildButtonV3_LinkButton(t *testing.T) {
 	}
 }
 
+// TestBuildButtonV3_Icon covers issue #602: a button `icon:` property builds an
+// icon-collection icon (Forms$IconCollectionIcon) referencing the given
+// qualified name. Quotes around the value are stripped.
+func TestBuildButtonV3_Icon(t *testing.T) {
+	pb := &pageBuilder{widgetScope: map[string]model.ID{}}
+	w := &ast.WidgetV3{
+		Type:       "linkbutton",
+		Name:       "btnEdit",
+		Properties: map[string]any{"Caption": "Edit", "icon": "Atlas_Core.Atlas_Filled.pencil"},
+	}
+	widget, err := pb.buildWidgetV3(w)
+	if err != nil {
+		t.Fatalf("buildWidgetV3 errored: %v", err)
+	}
+	btn := widget.(*pages.ActionButton)
+	if btn.Icon == nil {
+		t.Fatal("button Icon is nil — the `icon` property was dropped (#602)")
+	}
+	if btn.Icon.Type != pages.IconTypeIconCollection {
+		t.Errorf("Icon.Type = %q, want IconCollection", btn.Icon.Type)
+	}
+	if btn.Icon.Image != "Atlas_Core.Atlas_Filled.pencil" {
+		t.Errorf("Icon.Image = %q, want Atlas_Core.Atlas_Filled.pencil", btn.Icon.Image)
+	}
+	if btn.Icon.TypeName != "Forms$IconCollectionIcon" {
+		t.Errorf("Icon.TypeName = %q, want Forms$IconCollectionIcon", btn.Icon.TypeName)
+	}
+}
+
+// TestOutputWidgetMDLV3_ButtonIcon verifies DESCRIBE emits `Icon: '<qn>'` for a
+// button that carries an icon-collection reference, so it round-trips (#602).
+func TestOutputWidgetMDLV3_ButtonIcon(t *testing.T) {
+	var buf bytes.Buffer
+	ctx := &ExecContext{Output: &buf}
+	w := rawWidget{Type: "Forms$ActionButton", Name: "btn", Icon: "Atlas_Core.Atlas_Filled.pencil"}
+	outputWidgetMDLV3(ctx, w, 0)
+	if got := buf.String(); !strings.Contains(got, "Icon: 'Atlas_Core.Atlas_Filled.pencil'") {
+		t.Errorf("output %q does not contain the Icon clause", got)
+	}
+}
+
 // TestOutputWidgetMDLV3_LinkButtonKeyword verifies DESCRIBE emits `linkbutton`
 // for an action button whose RenderType is "Link", and `actionbutton` otherwise,
 // so a linkbutton round-trips through describe → exec.

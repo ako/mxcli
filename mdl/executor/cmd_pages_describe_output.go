@@ -302,6 +302,9 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 		if w.ButtonStyle != "" && w.ButtonStyle != "Default" {
 			props = append(props, fmt.Sprintf("ButtonStyle: %s", w.ButtonStyle))
 		}
+		if w.Icon != "" {
+			props = append(props, fmt.Sprintf("Icon: %s", mdlQuote(w.Icon)))
+		}
 		props = appendAppearanceProps(props, w)
 		formatWidgetProps(ctx.Output, prefix, header, props, "\n")
 
@@ -948,6 +951,21 @@ func extractButtonStyle(ctx *ExecContext, w map[string]any) string {
 		return style
 	}
 	return "Default"
+}
+
+// extractIconRef reads a button's Icon element and returns its icon-collection
+// reference (the `Image` qualified name, e.g. Atlas_Core.Atlas_Filled.pencil),
+// or "" when there is no icon. Currently only Forms$IconCollectionIcon is
+// reconstructed (the modern Atlas icon; issue #602).
+func extractIconRef(w map[string]any) string {
+	icon, ok := w["Icon"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	if img, ok := icon["Image"].(string); ok {
+		return img
+	}
+	return ""
 }
 
 func extractButtonAction(ctx *ExecContext, w map[string]any) string {

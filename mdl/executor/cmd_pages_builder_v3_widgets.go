@@ -710,6 +710,20 @@ func (pb *pageBuilder) buildButtonV3(w *ast.WidgetV3) (*pages.ActionButton, erro
 		btn.Action = act
 	}
 
+	// Handle Icon (issue #602): an icon-collection reference (a modern Atlas
+	// icon) — e.g. `icon: 'Atlas_Core.Atlas_Filled.pencil'` — serialized as a
+	// Forms$IconCollectionIcon.
+	if iconRef := strings.Trim(strings.TrimSpace(w.GetStringProp("icon")), "'\""); iconRef != "" {
+		btn.Icon = &pages.Icon{
+			BaseElement: model.BaseElement{
+				ID:       model.ID(types.GenerateID()),
+				TypeName: "Forms$IconCollectionIcon",
+			},
+			Type:  pages.IconTypeIconCollection,
+			Image: iconRef,
+		}
+	}
+
 	if err := pb.registerWidgetName(w.Name, btn.ID); err != nil {
 		return nil, err
 	}

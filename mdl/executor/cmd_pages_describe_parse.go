@@ -231,6 +231,7 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 		if rt, ok := w["RenderType"].(string); ok {
 			widget.RenderMode = rt
 		}
+		widget.Icon = extractIconRef(w)
 		return []rawWidget{widget}
 
 	case "Forms$Text", "Pages$Text":

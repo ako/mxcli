@@ -74,12 +74,15 @@ const (
 	ButtonRenderModeLink   ButtonRenderMode = "Link"
 )
 
-// Icon represents an icon.
+// Icon represents a widget icon (e.g. on an action/link button).
 type Icon struct {
 	model.BaseElement
-	Type    IconType `json:"type"`
-	Name    string   `json:"name,omitempty"`
-	ImageID model.ID `json:"imageId,omitempty"`
+	Type IconType `json:"type"`
+	// Image is the qualified name of the referenced icon/image for
+	// IconCollection and Image icons, e.g. "Atlas_Core.Atlas_Filled.pencil".
+	Image   string   `json:"image,omitempty"`
+	Name    string   `json:"name,omitempty"`    // glyph name (legacy Glyph icons)
+	ImageID model.ID `json:"imageId,omitempty"` // legacy image id
 }
 
 // IconType represents the type of icon.
@@ -88,6 +91,9 @@ type IconType string
 const (
 	IconTypeGlyph IconType = "Glyph"
 	IconTypeImage IconType = "Image"
+	// IconTypeIconCollection is the modern Atlas icon: a by-name reference into
+	// an icon collection (serialized as Forms$IconCollectionIcon).
+	IconTypeIconCollection IconType = "IconCollection"
 )
 
 // DropDownButton represents a dropdown button.

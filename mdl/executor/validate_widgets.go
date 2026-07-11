@@ -240,6 +240,8 @@ var staticWidgetKnownProps = func() map[string]bool {
 		"ImageUrl", "LabelPosition", "PageSize", "Pagination", "PagingPosition",
 		"PhoneColumns", "ReadOnlyStyle", "Resizable", "Responsive", "ShowPagingButtons",
 		"Size", "Sortable", "TabletColumns", "WidthUnit", "WrapText", "Name",
+		// button icon-collection reference (issue #602)
+		"Icon",
 	}
 	m := make(map[string]bool, len(names))
 	for _, n := range names {

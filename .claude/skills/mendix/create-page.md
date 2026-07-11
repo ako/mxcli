@@ -222,8 +222,13 @@ dynamictext title (Attribute: Title)
 Create a button with action binding:
 
 ```sql
-actionbutton widgetName (caption: 'Caption', action: ACTION_TYPE [, buttonstyle: style])
+actionbutton widgetName (caption: 'Caption', action: ACTION_TYPE [, buttonstyle: style] [, icon: 'Module.IconCollection.IconName'])
 ```
+
+Use `linkbutton` instead of `actionbutton` for a button rendered as a link (same
+properties). Both accept an `icon:` — an **icon-collection** reference, e.g.
+`icon: 'Atlas_Core.Atlas_Filled.pencil'` (the modern Atlas icon set). The name
+must exist in the icon collection or MxBuild rejects it (CE1613).
 
 **Action Bindings:**
 - `action: save_changes` - Save changes to object
