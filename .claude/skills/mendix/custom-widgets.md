@@ -59,6 +59,79 @@ combobox cmbCustomer (
 - `CaptionAttribute` is the display attribute on the **target** entity
 - In association mode, mapping order matters: DataSource must resolve before Association (sets entityContext)
 
+## Charts (Mendix Charts.mpk)
+
+Charts are pluggable widgets authored by their **package id**. Install `Charts.mpk`
+into the project's `widgets/` folder first (any Charts-based app has it); `exec`
+auto-generates the `.def.json`.
+
+**Chart type → widget id → data container:**
+
+| Chart | Widget id (`pluggablewidget '…'`) | Data block |
+|-------|-----------------------------------|------------|
+| Bar / Column / Area | `com.mendix.widget.web.{barchart.BarChart, columnchart.ColumnChart, areachart.AreaChart}` | `series` (one or more) |
+| Line / TimeSeries / Bubble | `com.mendix.widget.web.{linechart.LineChart, timeseries.TimeSeries, bubblechart.BubbleChart}` | `line` (one or more) |
+| HeatMap | `com.mendix.widget.web.heatmap.HeatMap` | widget-level attrs **+** `scalecolor` items |
+| Pie | `com.mendix.widget.web.piechart.PieChart` | widget-level attrs (no object-list) |
+
+**Series / line — each binds its OWN datasource + X/Y:**
+
+```
+pluggablewidget 'com.mendix.widget.web.barchart.BarChart' chart1 {
+  series s1 (
+    DataSet: 'static',
+    DataSource: database from MyModule.SalesByRegion,  -- an OQL VIEW (aggregated)
+    StaticXAttribute: Region,      -- resolves against the series' own datasource
+    StaticYAttribute: Total,
+    StaticName: 'Revenue',
+    Interpolation: 'linear'        -- line/area only: linear | smooth
+  )
+}
+```
+
+**Pie / HeatMap bind at the WIDGET level** (no series block). Both need `DataSource:`
++ `ValueAttribute:`; Pie also needs a required `SeriesName:`; HeatMap adds `scalecolor` items:
+
+```
+pluggablewidget 'com.mendix.widget.web.piechart.PieChart' pie1 (
+  DataSource: database from MyModule.SalesByRegion,
+  ValueAttribute: Total,
+  SeriesName: 'Sales by Region'   -- REQUIRED (CE4899 without it)
+)
+
+pluggablewidget 'com.mendix.widget.web.heatmap.HeatMap' heat1 (
+  DataSource: database from MyModule.SalesByRegion,
+  ValueAttribute: Total           -- REQUIRED (CE0642 without it)
+) {
+  scalecolor scLow  (ValuePercentage: 0,   ColorValue: '#f7fbff')
+  scalecolor scHigh (ValuePercentage: 100, ColorValue: '#08306b')
+}
+```
+
+**Per-chart required-property gotchas (all are mxbuild errors, not `check` errors):**
+
+- **TimeSeries** — `StaticXAttribute` MUST be a **Date and time** attribute (CE7247 otherwise). Feed it a view with a datetime column.
+- **BubbleChart** — the `line` needs a `StaticSizeAttribute:` (a numeric) in addition to X/Y.
+- **PieChart** — `SeriesName:` is required (CE4899); `ValueAttribute:` is required (CE0642).
+- **HeatMap** — `ValueAttribute:` is required (CE0642).
+
+**Data feed = OQL view entities.** Charts want *aggregated* data (one row per
+category). Build a `create view entity … as select … group by …` and point the
+chart's `DataSource:` at it. **Never name a view column after an OQL keyword**
+(`Quarter`/`Month`/`Year`/`Day` → CE0174); use `Period` etc. (`check` warns —
+MDL032).
+
+**CE0463 "update this widget" is EXPECTED after generating charts.** mxcli writes
+the WidgetType from an embedded 11.6 baseline; the installed Charts.mpk is a
+different version, so Studio Pro/mxbuild flags drift. Clear it with
+`mx update-widgets` (or just use `mxcli docker check`/`build`, which run it first)
+before `mx check`. The whole `mdl-examples/doctype-tests/34-chart-widget-examples.mdl`
+builds **0 errors** after update-widgets.
+
+**DESCRIBE round-trips** series/line/scalecolor object-lists (item names are
+synthesized, e.g. `series1`); a Pie/HeatMap's widget-level `SeriesName`/datasource
+are not yet reconstructed.
+
 ## Adding a Third-Party Widget
 
 ### Step 1 -- Extract .def.json from .mpk

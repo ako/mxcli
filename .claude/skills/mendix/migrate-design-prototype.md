@@ -214,9 +214,9 @@ Scheduling and Expense Approval designs.
 
 ### Pluggable widgets (charts, donut, HTML/SVG)
 
-Pluggable widgets **do round-trip through MDL** — but not by bare name. `progresscircle` /
-`piechart` / `CUSTOMWIDGET` are all rejected by the builder (*"unsupported widget type"*). The
-working form uses the widget's **full package id** as a quoted string:
+Pluggable widgets **do round-trip through MDL** — but not by bare name. A bare
+`progresscircle` / `CUSTOMWIDGET` is rejected by the builder (*"unsupported widget
+type"*). The working form uses the widget's **full package id** as a quoted string:
 
 ```
 PLUGGABLEWIDGET '<widget.package.id>' widgetName ( prop: value, … ) { childslots }
@@ -249,8 +249,15 @@ container donutWrap (Class: 'ea-donut') {
 ```
 
 This passed `mx check` with 0 errors, survived `docker build`, and renders its SVG arc at
-runtime (verified on the dashboard). Charts follow the same shape but need a **datasource +
-series config inside the child slot** rather than static values.
+runtime (verified on the dashboard).
+
+**Real Mendix Charts** (BarChart/LineChart/PieChart/HeatMap/…) are fully authorable
+too — each `series`/`line` binds its own OQL-view datasource + X/Y attributes;
+Pie/HeatMap bind at the widget level (`ValueAttribute:`, Pie needs `SeriesName:`).
+See **[Custom & Pluggable Widgets → Charts](custom-widgets.md)** for the chart-type
+→ id table, per-chart required-property gotchas (TimeSeries needs a datetime X,
+Bubble needs a size attribute), and the **CE0463 → `mx update-widgets`** step.
+`mdl-examples/doctype-tests/34-chart-widget-examples.mdl` is the full showcase.
 
 **Pluggable-widget gotchas:**
 - **Reach for built-ins first.** `listview`, `dynamictext`, `container`, `gallery`, `combobox`
