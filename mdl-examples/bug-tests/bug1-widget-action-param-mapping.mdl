@@ -1,0 +1,46 @@
+-- ============================================================================
+-- Bug 1 — modelsdk engine silently dropped widget action parameter mappings
+-- ============================================================================
+--
+-- Symptom (before fix): a button/container action calling a microflow WITH an
+-- argument had the argument dropped on the default (modelsdk) engine — the flow
+-- ran with no parameter, so the button/row no-op'd at runtime. `mxcli check`,
+-- `docker check`, and `docker build` all passed (0 errors) — a silent break.
+-- The legacy engine persisted it correctly (the workaround).
+--
+--   describe (before, default engine):
+--     actionbutton b1 (... Action: microflow M.ACT_Submit)   <- (Form: $Form) dropped
+--
+-- Root cause: modelsdk `clientActionToGen` built the `MicroflowSettings` from the
+-- microflow NAME only (`microflowSettingsToGen(x.MicroflowName)`), never
+-- serializing `x.ParameterMappings`.
+--
+-- Fix: `microflowSettingsToGen` now takes the mappings and emits one
+-- `Forms$MicroflowParameterMapping` each (Parameter = `<MicroflowQName>.<Param>`
+-- BY_NAME, Expression = the bound variable/expression).
+--
+-- Verify: exec then `describe page`, and mxbuild — 0 errors; the args survive.
+--   The types line up (context object is the ExpenseForm the flows take), so this
+--   whole file is mx check-clean.
+-- ============================================================================
+
+create module BugOne;
+create persistent entity BugOne.ExpenseForm ( Name: String(100) );
+
+create microflow BugOne.ACT_Submit ($Form: BugOne.ExpenseForm)
+  returns boolean as $ok begin declare $ok boolean = true; return $ok; end;
+/
+create microflow BugOne.ACT_Edit ($Form: BugOne.ExpenseForm)
+  returns boolean as $ok begin declare $ok boolean = true; return $ok; end;
+/
+
+create or replace page BugOne.P
+( params: { $Form: BugOne.ExpenseForm }, title: 'Bug 1', layout: Atlas_Core.Atlas_Default )
+{
+  dataview dv (datasource: $Form) {
+    actionbutton b1 (Caption: 'Submit', Action: microflow BugOne.ACT_Submit(Form: $Form))
+    container rowCard (Action: microflow BugOne.ACT_Edit(Form: $currentObject)) {
+      dynamictext t (Content: 'Edit')
+    }
+  }
+}

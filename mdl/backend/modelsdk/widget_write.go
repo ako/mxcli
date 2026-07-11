@@ -1020,7 +1020,7 @@ func dataViewSourceToGen(ds pages.DataSource) (element.Element, error) {
 		}
 		assignID(ms)
 		ms.SetForceFullObjects(false)
-		ms.SetMicroflowSettings(microflowSettingsToGen(d.Microflow))
+		ms.SetMicroflowSettings(microflowSettingsToGen(d.Microflow, nil))
 		return ms, nil
 
 	case *pages.AssociationSource:
@@ -1113,7 +1113,7 @@ func listViewSourceToGen(ds pages.DataSource) (element.Element, error) {
 		}
 		assignID(ms)
 		ms.SetForceFullObjects(false)
-		ms.SetMicroflowSettings(microflowSettingsToGen(d.Microflow))
+		ms.SetMicroflowSettings(microflowSettingsToGen(d.Microflow, nil))
 		return ms, nil
 	case *pages.AssociationSource:
 		return associationSourceToGen(d), nil
@@ -1167,7 +1167,7 @@ func customWidgetDataSourceToGen(ds pages.DataSource) (element.Element, error) {
 		}
 		assignID(ms)
 		ms.SetForceFullObjects(false)
-		ms.SetMicroflowSettings(microflowSettingsToGen(d.Microflow))
+		ms.SetMicroflowSettings(microflowSettingsToGen(d.Microflow, nil))
 		return ms, nil
 
 	case *pages.AssociationSource:
@@ -1211,14 +1211,30 @@ func associationSourceToGen(d *pages.AssociationSource) element.Element {
 }
 
 // microflowSettingsToGen builds the Forms$MicroflowSettings shared by the
-// microflow DataView source and the call-microflow action.
-func microflowSettingsToGen(microflowName string) element.Element {
+// microflow DataView source and the call-microflow action. mappings carries the
+// call-microflow action's argument bindings (nil for a datasource); dropping them
+// left a parameterized button/row invoking its microflow with no argument — the
+// widget no-ops at runtime yet mx check passes clean (Bug 1).
+func microflowSettingsToGen(microflowName string, mappings []*pages.MicroflowParameterMapping) element.Element {
 	s := genPg.NewMicroflowSettings()
 	assignID(s)
 	s.SetAsynchronous(false)
 	s.SetFormValidations("All")
 	s.SetMicroflowQualifiedName(microflowName)
 	s.SetProgressBar("None")
+	for _, pm := range mappings {
+		gm := genPg.NewMicroflowParameterMapping()
+		assignID(gm)
+		// Parameter is a BY_NAME reference: <MicroflowQName>.<ParameterName>.
+		gm.SetParameterQualifiedName(microflowName + "." + pm.ParameterName)
+		// The bound value: a variable ref ($x, $currentObject) or an expression.
+		if pm.Variable != "" {
+			gm.SetExpression(pm.Variable)
+		} else {
+			gm.SetExpression(pm.Expression)
+		}
+		s.AddParameterMappings(gm)
+	}
 	return s
 }
 
@@ -1301,7 +1317,7 @@ func clientActionToGen(a pages.ClientAction) (element.Element, error) {
 		}
 		assignID(g)
 		g.SetDisabledDuringExecution(true)
-		g.SetMicroflowSettings(microflowSettingsToGen(x.MicroflowName))
+		g.SetMicroflowSettings(microflowSettingsToGen(x.MicroflowName, x.ParameterMappings))
 		return g, nil
 	case *pages.CreateObjectClientAction:
 		// create_object → Forms$CreateObjectClientAction (entity ref + page settings).
