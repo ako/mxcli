@@ -852,16 +852,16 @@ func TestRoundtripNanoflow_CallJavaScriptAction(t *testing.T) {
 	env := setupTestEnv(t)
 	defer env.teardown()
 
-	// First, verify a JavaScript action exists in the test module.
-	// If none exist, skip—this test requires a pre-provisioned JS action.
-	jsActions, err := env.describeMDL(fmt.Sprintf("show javascript actions in %s;", testModule))
-	if err != nil || jsActions == "" || strings.Contains(jsActions, "0 javascript actions") {
-		t.Skip("No JavaScript actions available in test module — skipping roundtrip test")
+	// Provision the JavaScript action to call — CREATE JAVASCRIPT ACTION now
+	// exists, so this test brings its own action into being instead of skipping
+	// when none is pre-provisioned (issue #593).
+	jsActionName := testModule + ".RT_JSA_Echo"
+	if err := env.executeMDL(`create javascript action ` + jsActionName + ` () returns String
+as $$
+  return Promise.resolve('ok');
+$$;`); err != nil {
+		t.Fatalf("create javascript action: %v", err)
 	}
-
-	// Extract first available JS action name from SHOW output for the test.
-	// Fallback: use a known action name if the test project provisions one.
-	jsActionName := testModule + ".MyJSAction"
 
 	nfName := testModule + ".RT_NF_CallJSAction"
 	createMDL := `create nanoflow ` + nfName + ` () returns String
