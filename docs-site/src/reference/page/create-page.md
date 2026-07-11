@@ -86,8 +86,8 @@ The widget tree inside `{ ... }` defines the page content. Widgets are nested hi
 
 | Widget | Description | Key Properties |
 |--------|-------------|----------------|
-| `ACTIONBUTTON` | Button that triggers an action | `Caption`, `Action`, `ButtonStyle` |
-| `LINKBUTTON` | Hyperlink-styled action | `Caption`, `Action` |
+| `ACTIONBUTTON` | Button that triggers an action | `Caption`, `Action`, `ButtonStyle`, `Icon` |
+| `LINKBUTTON` | Hyperlink-styled action | `Caption`, `Action`, `Icon` |
 
 **Structure Widgets**
 

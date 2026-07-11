@@ -38,6 +38,6 @@ create or replace page I602.IconButtons
     caption: 'Delete',
     action: nothing,
     buttonstyle: danger,
-    icon: 'Atlas_Core.Atlas_Filled.trash'
+    icon: 'Atlas_Core.Atlas_Filled.pencil'
   )
 }

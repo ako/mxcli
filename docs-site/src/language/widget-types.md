@@ -332,12 +332,23 @@ ACTIONBUTTON btnProcess (
 )
 ```
 
+**Icon** — `Icon: 'Module.IconCollection.IconName'` gives the button an icon from
+an icon collection (the modern Atlas icon set). The name must exist in the
+collection, or MxBuild rejects it (CE1613):
+
+```sql
+ACTIONBUTTON btnEdit (Caption: 'Edit', Action: PAGE App.Edit,
+  Icon: 'Atlas_Core.Atlas_Filled.pencil')
+```
+
 ### LINKBUTTON
 
-Renders as a hyperlink instead of a button. Same action types as `ACTIONBUTTON`:
+Renders as a hyperlink instead of a button. Same action types, styles, and
+`Icon:` as `ACTIONBUTTON`:
 
 ```sql
 LINKBUTTON lnkDetails (Caption: 'View Details', Action: PAGE MyModule.Customer_Detail)
+LINKBUTTON lnkEdit (Caption: 'Edit', Action: PAGE App.Edit, Icon: 'Atlas_Core.Atlas_Filled.pencil')
 ```
 
 ## Structure Widgets

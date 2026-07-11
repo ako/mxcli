@@ -63,9 +63,10 @@ func init() {
 			"action", "save", "cancel", "close", "delete",
 			"show page", "navigate", "microflow", "create object",
 			"button style", "primary", "danger", "success",
+			"icon", "linkbutton", "link button",
 		},
-		Syntax:  "Action: SAVE_CHANGES\nAction: CANCEL_CHANGES\nAction: CLOSE_PAGE\nAction: DELETE\nAction: SHOW_PAGE Module.Page\nAction: SHOW_PAGE Module.Page(Param: $val)\nAction: MICROFLOW Module.MF\nAction: MICROFLOW Module.MF(Param: $val)\nAction: CREATE_OBJECT Module.Entity THEN SHOW_PAGE Module.Page\n\nButton styles: Default, Primary, Success, Info, Warning, Danger",
-		Example: "ACTIONBUTTON btnSave (Caption: 'Save', Action: SAVE_CHANGES, ButtonStyle: Primary)\nACTIONBUTTON btnEdit (Caption: 'Edit',\n  Action: SHOW_PAGE Module.EditPage(Item: $currentObject))\nACTIONBUTTON btnNew (Caption: 'New',\n  Action: CREATE_OBJECT Module.Entity THEN SHOW_PAGE Module.EditPage,\n  ButtonStyle: Primary)",
+		Syntax:  "Action: SAVE_CHANGES\nAction: CANCEL_CHANGES\nAction: CLOSE_PAGE\nAction: DELETE\nAction: SHOW_PAGE Module.Page\nAction: SHOW_PAGE Module.Page(Param: $val)\nAction: MICROFLOW Module.MF\nAction: MICROFLOW Module.MF(Param: $val)\nAction: CREATE_OBJECT Module.Entity THEN SHOW_PAGE Module.Page\n\nButton styles: Default, Primary, Success, Info, Warning, Danger\nIcon: 'Module.IconCollection.IconName'   -- e.g. 'Atlas_Core.Atlas_Filled.pencil'\nUse `linkbutton` instead of `actionbutton` for link render mode (same properties).",
+		Example: "ACTIONBUTTON btnSave (Caption: 'Save', Action: SAVE_CHANGES, ButtonStyle: Primary)\nACTIONBUTTON btnEdit (Caption: 'Edit',\n  Action: SHOW_PAGE Module.EditPage(Item: $currentObject))\nLINKBUTTON btnDelete (Caption: 'Delete', Action: DELETE,\n  Icon: 'Atlas_Core.Atlas_Filled.pencil')",
 		SeeAlso: []string{"page.widgets"},
 	})
 

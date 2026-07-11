@@ -790,10 +790,13 @@ create page PgTest.P012_Product_Manage
           column colStock (attribute: Stock, caption: 'In Stock')
           column colActive (attribute: IsActive, caption: 'Active')
           column colActions (caption: 'Actions') {
+            -- `icon:` gives the button an icon-collection icon (Atlas). The name
+            -- must exist in the icon collection or MxBuild rejects it (CE1613).
             actionbutton btnEdit (
               caption: 'Edit',
               action: show_page PgTest.P012_Product_Manage_Edit (Product: $currentObject),
-              buttonstyle: default
+              buttonstyle: default,
+              icon: 'Atlas_Core.Atlas_Filled.pencil'
             )
             actionbutton btnDelete (caption: 'Delete', action: delete_object, buttonstyle: danger)
           }
