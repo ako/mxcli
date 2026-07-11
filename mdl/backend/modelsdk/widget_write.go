@@ -96,6 +96,12 @@ func init() {
 		MandatoryLists: []string{"ParameterMappings"},
 		NullFields:     []string{"ProgressMessage", "ConfirmationInfo"},
 	})
+	// A nanoflow client action carries its (possibly empty) parameter-mapping
+	// list directly and nulls its progress/confirmation slots. Bug 2.
+	codec.RegisterTypeDefaults("Forms$CallNanoflowClientAction", codec.TypeDefaults{
+		MandatoryLists: []string{"ParameterMappings"},
+		NullFields:     []string{"ProgressMessage", "ConfirmationInfo"},
+	})
 	// TextBox: many null slots when unbound (attribute ref, screen-reader label,
 	// source variable, label template, visibility/editability/native settings).
 	codec.RegisterTypeDefaults("Forms$TextBox", codec.TypeDefaults{
@@ -1318,6 +1324,32 @@ func clientActionToGen(a pages.ClientAction) (element.Element, error) {
 		assignID(g)
 		g.SetDisabledDuringExecution(true)
 		g.SetMicroflowSettings(microflowSettingsToGen(x.MicroflowName, x.ParameterMappings))
+		return g, nil
+	case *pages.NanoflowClientAction:
+		// call_nanoflow → Forms$CallNanoflowClientAction. Unlike the microflow
+		// action (which nests a Forms$MicroflowSettings), the nanoflow name and
+		// parameter mappings live directly on the action. Mirrors the legacy
+		// serializer in sdk/mpr/writer_widgets_action.go. Bug 2.
+		g := genPg.NewCallNanoflowClientAction()
+		if x.ID != "" {
+			g.SetID(element.ID(x.ID))
+		}
+		assignID(g)
+		g.SetDisabledDuringExecution(true)
+		g.SetNanoflowQualifiedName(x.NanoflowName)
+		g.SetProgressBar("None")
+		for _, pm := range x.ParameterMappings {
+			m := genPg.NewNanoflowParameterMapping()
+			assignID(m)
+			// Parameter is a BY_NAME reference: Nanoflow.ParamName.
+			m.SetParameterQualifiedName(x.NanoflowName + "." + pm.ParameterName)
+			expr := pm.Variable
+			if expr == "" {
+				expr = pm.Expression
+			}
+			m.SetExpression(expr)
+			g.AddParameterMappings(m)
+		}
 		return g, nil
 	case *pages.CreateObjectClientAction:
 		// create_object → Forms$CreateObjectClientAction (entity ref + page settings).

@@ -1,0 +1,34 @@
+-- ============================================================================
+-- Bug 2 — modelsdk engine could not write a nanoflow client action on a widget
+-- ============================================================================
+--
+-- Before the fix, a widget `Action: nanoflow …` failed on the DEFAULT engine:
+--   Error: failed to create page: CreatePage: client action
+--   *pages.NanoflowClientAction not yet supported by the modelsdk engine —
+--   rerun with MXCLI_ENGINE=legacy
+-- (`clientActionToGen` had a case for microflow but not nanoflow.)
+--
+-- Now the modelsdk engine serializes a Forms$CallNanoflowClientAction with the
+-- nanoflow name + parameter mappings. The parallel gap — the microflow client
+-- action never persisted its argument mappings — is fixed too (both would have
+-- tripped Studio Pro CE1571 "no argument selected for parameter").
+--
+-- To verify: run this on the default engine (no MXCLI_ENGINE), then
+--   describe page Bug2.P   → both buttons round-trip with their (Form: $Form) arg
+--   mx check reports 0 errors.
+
+create persistent entity Bug2.Expense ( Name: string(100) );
+
+create nanoflow  Bug2.NAV_Test ( Form: Bug2.Expense ) begin end
+create microflow Bug2.ACT_Test ( Form: Bug2.Expense ) begin end
+
+create or replace page Bug2.P (
+  params: { $Form: Bug2.Expense },
+  title: 'x',
+  layout: Atlas_Core.Atlas_Default
+) {
+  dataview dv (datasource: $Form) {
+    actionbutton bNano (Caption: 'N', Action: nanoflow  Bug2.NAV_Test(Form: $Form))
+    actionbutton bMf   (Caption: 'M', Action: microflow Bug2.ACT_Test(Form: $Form))
+  }
+}
