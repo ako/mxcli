@@ -69,9 +69,11 @@ func (b *Builder) buildPageV3(ctx *parser.CreatePageStatementContext) *ast.Creat
 		b.parsePageHeaderV3(headerCtx, stmt)
 	}
 
-	// Parse V3 body
+	// Parse V3 body. Bare widgets bind to Main; `placeholder <Name> { … }`
+	// blocks bind to named layout placeholders (issue #532).
 	if bodyCtx := ctx.PageBodyV3(); bodyCtx != nil {
 		stmt.Widgets = buildPageBodyV3(bodyCtx, b)
+		stmt.Placeholders = buildPagePlaceholdersV3(bodyCtx, b)
 	}
 
 	return stmt
@@ -352,6 +354,48 @@ func buildPageBodyV3(ctx parser.IPageBodyV3Context, b *Builder) []*ast.WidgetV3 
 	}
 
 	return widgets
+}
+
+// buildPagePlaceholdersV3 extracts `placeholder <Name> { … }` blocks from a page
+// body (issue #532). Bare widgets are handled by buildPageBodyV3 (→ Main); this
+// collects the named-placeholder groups. Only meaningful for pages (a snippet or
+// widget child has no layout), where the caller ignores the result.
+func buildPagePlaceholdersV3(ctx parser.IPageBodyV3Context, b *Builder) []*ast.PagePlaceholderV3 {
+	if ctx == nil {
+		return nil
+	}
+	bodyCtx := ctx.(*parser.PageBodyV3Context)
+	var out []*ast.PagePlaceholderV3
+	for _, child := range bodyCtx.GetChildren() {
+		pc, ok := child.(*parser.PlaceholderBlockV3Context)
+		if !ok {
+			continue
+		}
+		ph := &ast.PagePlaceholderV3{Name: placeholderBlockName(pc)}
+		for _, inner := range pc.GetChildren() {
+			switch c := inner.(type) {
+			case *parser.WidgetV3Context:
+				if w := buildWidgetV3(c, b); w != nil {
+					ph.Widgets = append(ph.Widgets, w)
+				}
+			case *parser.UseFragmentRefContext:
+				if ref := buildUseFragmentRef(c); ref != nil {
+					ph.Widgets = append(ph.Widgets, ref)
+				}
+			}
+		}
+		out = append(out, ph)
+	}
+	return out
+}
+
+// placeholderBlockName returns the placeholder name (unquoted if `"quoted"`;
+// keywords like Right/Left/Content are accepted via identifierOrKeyword).
+func placeholderBlockName(pc *parser.PlaceholderBlockV3Context) string {
+	if idk := pc.IdentifierOrKeyword(); idk != nil {
+		return identifierOrKeywordText(idk)
+	}
+	return ""
 }
 
 // buildUseFragmentRef creates a WidgetV3 with sentinel type USE_FRAGMENT.

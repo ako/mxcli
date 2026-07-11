@@ -1,0 +1,28 @@
+-- ============================================================================
+-- Issue #532 — assign widgets to multiple layout placeholders
+-- ============================================================================
+--
+-- Before, a `create page` body was a single flat widget list, so every widget
+-- landed in the layout's Main placeholder — there was no way to populate a
+-- second placeholder (e.g. Main + Right/Topbar of a multi-placeholder layout).
+--
+-- Now a `placeholder <Name> { … }` block binds its widgets to that named layout
+-- placeholder. Bare widgets still bind to Main (backward-compatible). DESCRIBE
+-- round-trips multi-placeholder pages as explicit `placeholder` blocks.
+--
+-- Atlas_Core.Atlas_SideBar has two placeholders: Main and Topbar.
+--
+-- To verify: run this, then `describe page Issue532.P` shows both placeholder
+-- blocks; mx check reports 0 errors.
+
+create page Issue532.P (
+  title: 'Two Placeholders',
+  layout: Atlas_Core.Atlas_SideBar
+) {
+  placeholder Main {
+    dynamictext lblMain (Content: 'This widget is in the Main placeholder')
+  }
+  placeholder Topbar {
+    dynamictext lblTop (Content: 'This widget is in the Topbar placeholder')
+  }
+}

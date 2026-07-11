@@ -30,9 +30,14 @@ type CreatePageStmtV3 struct {
 	Folder     string
 	// Class / Style set the page's Forms$Appearance CSS class and inline style
 	// (issue #714). Empty means "not specified".
-	Class         string
-	Style         string
-	Widgets       []*WidgetV3
+	Class   string
+	Style   string
+	Widgets []*WidgetV3
+	// Placeholders holds widgets assigned to named layout placeholders via
+	// `placeholder <Name> { … }` blocks (issue #532). `Widgets` above is the
+	// bare-body content, which binds to the Main placeholder. A `placeholder
+	// Main { … }` block merges into Main.
+	Placeholders  []*PagePlaceholderV3
 	Documentation string
 	IsReplace     bool // CREATE OR REPLACE
 	IsModify      bool // CREATE OR MODIFY
@@ -46,6 +51,14 @@ type CreatePageStmtV3 struct {
 }
 
 func (s *CreatePageStmtV3) isStatement() {}
+
+// PagePlaceholderV3 is a `placeholder <Name> { … }` block: widgets bound to the
+// layout placeholder named Name (issue #532). Widgets may include fragment-use
+// sentinels, expanded by the executor.
+type PagePlaceholderV3 struct {
+	Name    string
+	Widgets []*WidgetV3
+}
 
 // CreateSnippetStmtV3 represents a V3 snippet creation statement.
 type CreateSnippetStmtV3 struct {

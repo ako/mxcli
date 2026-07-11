@@ -2433,6 +2433,31 @@ create page PgTest.P036_ComboBox_Association
 
 -- ============================================================================================ --
 
+-- MARK: Layout Placeholders (issue #532)
+
+-- ============================================================================
+-- LEVEL: assign widgets to specific layout placeholders
+-- ============================================================================
+-- Atlas_Core.Atlas_SideBar has two placeholders: Main and Topbar. A
+-- `placeholder <Name> { … }` block binds its widgets to that placeholder; bare
+-- widgets (none here) would bind to Main. DESCRIBE round-trips the blocks.
+
+create page PgTest.P041_Placeholders
+(
+  title: 'Multiple Placeholders',
+  layout: Atlas_Core.Atlas_SideBar
+)
+{
+  placeholder Main {
+    dynamictext lblMain (content: 'This widget is in the Main placeholder', rendermode: H2)
+  }
+  placeholder Topbar {
+    dynamictext lblTop (content: 'This widget is in the Topbar placeholder')
+  }
+}
+
+-- ============================================================================================ --
+
 -- MARK: ALTER PAGE Variable Examples
 
 -- =============================================================================

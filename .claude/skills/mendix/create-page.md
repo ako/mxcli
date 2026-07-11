@@ -179,6 +179,32 @@ create page MyModule.CustomerPage
 }
 ```
 
+### Layout Placeholders (multiple content areas)
+
+By default all top-level widgets bind to the layout's **Main** placeholder. When a
+layout has more than one placeholder (e.g. Main + a sidebar/topbar), use a
+`placeholder <Name> { … }` block to assign widgets to a specific placeholder. Bare
+widgets still bind to Main.
+
+```sql
+-- Atlas_Core.Atlas_SideBar has two placeholders: Main and Topbar
+create page MyModule.Dashboard (title: 'Dashboard', layout: Atlas_Core.Atlas_SideBar)
+{
+  placeholder Main {
+    dynamictext lblMain (content: 'Main content area')
+  }
+  placeholder Topbar {
+    dynamictext lblTop (content: 'Top bar content')
+  }
+}
+```
+
+Notes:
+- The placeholder name must match a placeholder defined in the layout (e.g. `Main`,
+  `Right`, `Topbar`, `Content` — depends on the layout). An unknown name fails `mx check`.
+- Keyword-like names (`Right`, `Left`, `Content`) are accepted.
+- `describe page` emits `placeholder` blocks for multi-placeholder pages so they round-trip.
+
 ## Supported Widgets
 
 ### DYNAMICTEXT Widget

@@ -186,9 +186,17 @@ snippetHeaderPropertyV3
     | FOLDER COLON STRING_LITERAL                                  // Folder: 'Snippets/Common'
     ;
 
-// V3 Page body
+// V3 Page body. Bare widgets bind to the layout's Main placeholder; a
+// `placeholder <Name> { … }` block binds its widgets to that named layout
+// placeholder (issue #532 — pages over a layout with >1 placeholder).
 pageBodyV3
-    : (widgetV3 | useFragmentRef)*
+    : (widgetV3 | useFragmentRef | placeholderBlockV3)*
+    ;
+
+// PLACEHOLDER <Name> { widgets } — assign widgets to a named layout placeholder.
+// The name accepts keywords so placeholders like Right / Left / Content parse.
+placeholderBlockV3
+    : PLACEHOLDER identifierOrKeyword LBRACE (widgetV3 | useFragmentRef)* RBRACE
     ;
 
 // USE FRAGMENT Name [AS prefix_]

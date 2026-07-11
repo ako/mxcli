@@ -153,21 +153,37 @@ func describePage(ctx *ExecContext, name ast.QualifiedName) error {
 		}
 	}
 
-	// Output widgets from raw page data
-	rawWidgets := getPageWidgetsFromRaw(ctx, foundPage.ID)
-	if len(rawWidgets) > 0 {
-		formatWidgetProps(ctx.Output, "", header, props, " {\n")
-		for _, w := range rawWidgets {
-			outputWidgetMDLV3(ctx, w, 1)
+	// Output widgets from raw page data, grouped by layout placeholder. A single
+	// Main placeholder renders as bare widgets (backward-compatible); a page that
+	// binds widgets to more than one placeholder emits explicit `placeholder
+	// <Name> { … }` blocks so it round-trips (issue #532).
+	groups := getPageWidgetGroupsFromRaw(ctx, foundPage.ID)
+	var nonEmpty []pageWidgetGroup
+	for _, g := range groups {
+		if len(g.Widgets) > 0 {
+			nonEmpty = append(nonEmpty, g)
 		}
-		fmt.Fprint(ctx.Output, "}")
-	} else {
+	}
+	formatWidgetProps(ctx.Output, "", header, props, " {\n")
+	switch {
+	case len(nonEmpty) == 0:
 		// A widget-less page still needs an (empty) body block: the CREATE PAGE
 		// grammar requires `{ }`, so omitting it made DESCRIBE output fail to
 		// re-parse through `mxcli check` (#626).
-		formatWidgetProps(ctx.Output, "", header, props, " {\n")
-		fmt.Fprint(ctx.Output, "}")
+	case len(nonEmpty) == 1 && nonEmpty[0].Placeholder == "Main":
+		for _, w := range nonEmpty[0].Widgets {
+			outputWidgetMDLV3(ctx, w, 1)
+		}
+	default:
+		for _, g := range nonEmpty {
+			fmt.Fprintf(ctx.Output, "  placeholder %s {\n", mdlIdent(g.Placeholder))
+			for _, w := range g.Widgets {
+				outputWidgetMDLV3(ctx, w, 2)
+			}
+			fmt.Fprint(ctx.Output, "  }\n")
+		}
 	}
+	fmt.Fprint(ctx.Output, "}")
 
 	// Add GRANT VIEW if roles are assigned
 	if len(foundPage.AllowedRoles) > 0 {
@@ -727,6 +743,64 @@ func getPageWidgetsFromRaw(ctx *ExecContext, pageID model.ID) []rawWidget {
 		}
 	}
 	return widgets
+}
+
+// pageWidgetGroup is one layout placeholder's widgets (issue #532).
+type pageWidgetGroup struct {
+	Placeholder string // placeholder name (e.g. "Main", "Topbar")
+	Widgets     []rawWidget
+}
+
+// getPageWidgetGroupsFromRaw returns the page's widgets grouped by layout
+// placeholder (one group per FormCallArgument), preserving order. Used by
+// DESCRIBE to emit `placeholder <Name> { … }` blocks for multi-placeholder
+// pages (issue #532) instead of flattening everything into Main.
+func getPageWidgetGroupsFromRaw(ctx *ExecContext, pageID model.ID) []pageWidgetGroup {
+	rawData, err := ctx.Backend.GetRawUnit(pageID)
+	if err != nil {
+		return nil
+	}
+	formCall, ok := rawData["FormCall"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	layoutName := extractString(formCall["Form"]) // e.g. "Atlas_Core.Atlas_SideBar"
+	args := getBsonArrayElements(formCall["Arguments"])
+	if args == nil {
+		return nil
+	}
+
+	var groups []pageWidgetGroup
+	for _, arg := range args {
+		argMap, ok := arg.(map[string]any)
+		if !ok {
+			continue
+		}
+		// Parameter is a BY_NAME ref "<Layout>.<Placeholder>"; strip the layout
+		// prefix (fall back to the last dot-segment) to get the placeholder name.
+		ph := extractString(argMap["Parameter"])
+		if layoutName != "" && strings.HasPrefix(ph, layoutName+".") {
+			ph = ph[len(layoutName)+1:]
+		} else if i := strings.LastIndex(ph, "."); i >= 0 {
+			ph = ph[i+1:]
+		}
+		var widgets []rawWidget
+		for _, w := range getBsonArrayElements(argMap["Widgets"]) {
+			wMap, ok := w.(map[string]any)
+			if !ok {
+				continue
+			}
+			for _, pw := range parseRawWidget(ctx, wMap) {
+				if isConditionalVisibilityWrapper(pw) {
+					widgets = append(widgets, pw.Children...)
+				} else {
+					widgets = append(widgets, pw)
+				}
+			}
+		}
+		groups = append(groups, pageWidgetGroup{Placeholder: ph, Widgets: widgets})
+	}
+	return groups
 }
 
 // isConditionalVisibilityWrapper returns true if the widget is a DivContainer
