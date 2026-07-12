@@ -167,6 +167,25 @@ func execAlterEnumeration(ctx *ExecContext, s *ast.AlterEnumerationStmt) error {
 		}
 		enum.Values[idx].Name = s.NewName
 
+	case ast.AlterEnumModifyCaption:
+		idx := -1
+		for i, v := range enum.Values {
+			if v.Name == s.ValueName {
+				idx = i
+				break
+			}
+		}
+		if idx < 0 {
+			return mdlerrors.NewNotFound("enumeration value", s.ValueName)
+		}
+		// Preserve any existing non-en_US translations; only replace the en_US caption.
+		if enum.Values[idx].Caption == nil {
+			enum.Values[idx].Caption = &model.Text{Translations: map[string]string{}}
+		} else if enum.Values[idx].Caption.Translations == nil {
+			enum.Values[idx].Caption.Translations = map[string]string{}
+		}
+		enum.Values[idx].Caption.Translations["en_US"] = s.Caption
+
 	default:
 		return mdlerrors.NewUnsupported("unknown ALTER ENUMERATION operation")
 	}

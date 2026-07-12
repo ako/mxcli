@@ -78,6 +78,13 @@ func (b *Builder) ExitAlterEnumerationAction(ctx *parser.AlterEnumerationActionC
 						ValueName: ids[0].GetText(),
 						NewName:   ids[1].GetText(),
 					})
+				} else if ctx.MODIFY() != nil && ctx.VALUE() != nil && ctx.CAPTION() != nil && len(ids) >= 1 && ctx.STRING_LITERAL() != nil {
+					b.statements = append(b.statements, &ast.AlterEnumerationStmt{
+						Name:      name,
+						Operation: ast.AlterEnumModifyCaption,
+						ValueName: ids[0].GetText(),
+						Caption:   unquoteString(ctx.STRING_LITERAL().GetText()),
+					})
 				}
 			}
 			break

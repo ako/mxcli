@@ -71,6 +71,33 @@ func TestAlterEnumeration_DropValue(t *testing.T) {
 	}
 }
 
+// MODIFY VALUE X CAPTION changes an existing value's caption in place (no name
+// change) — the operation the bug report asked for, avoiding drop + recreate on a
+// referenced enum.
+func TestAlterEnumeration_ModifyValueCaption(t *testing.T) {
+	input := `ALTER ENUMERATION MyModule.Status MODIFY VALUE Active CAPTION 'Currently Active';`
+	prog, errs := Build(input)
+	if len(errs) > 0 {
+		for _, e := range errs {
+			t.Errorf("Parse error: %v", e)
+		}
+		return
+	}
+	stmt := prog.Statements[0].(*ast.AlterEnumerationStmt)
+	if stmt.Operation != ast.AlterEnumModifyCaption {
+		t.Errorf("Expected ModifyCaption, got %v", stmt.Operation)
+	}
+	if stmt.ValueName != "Active" {
+		t.Errorf("Got ValueName %q, want Active", stmt.ValueName)
+	}
+	if stmt.Caption != "Currently Active" {
+		t.Errorf("Got Caption %q, want 'Currently Active'", stmt.Caption)
+	}
+	if stmt.NewName != "" {
+		t.Errorf("MODIFY CAPTION must not set NewName, got %q", stmt.NewName)
+	}
+}
+
 func TestCreateConstant(t *testing.T) {
 	input := `CREATE CONSTANT MyModule.MaxRetries TYPE Integer DEFAULT 3 COMMENT 'Max retry count';`
 	prog, errs := Build(input)

@@ -175,5 +175,79 @@ func TestCreateEnumeration_DuplicateValueName_Issue390(t *testing.T) {
 	assertContainsStr(t, err.Error(), "duplicate")
 }
 
+// ALTER ENUMERATION ... MODIFY VALUE X CAPTION '...' changes an existing value's
+// caption in place, without dropping/recreating the enum (which fails while it is
+// referenced by an attribute). The value keeps its ID; only the en_US caption
+// changes.
+func TestAlterEnumeration_ModifyValueCaption_Mock(t *testing.T) {
+	mod := mkModule("MyModule")
+	enum := mkEnumeration(mod.ID, "Status", "Active", "Inactive") // captions start nil
+
+	h := mkHierarchy(mod)
+	withContainer(h, enum.ContainerID, mod.ID)
+
+	var updated *model.Enumeration
+	mb := &mock.MockBackend{
+		IsConnectedFunc:      func() bool { return true },
+		ListEnumerationsFunc: func() ([]*model.Enumeration, error) { return []*model.Enumeration{enum}, nil },
+		UpdateEnumerationFunc: func(e *model.Enumeration) error {
+			updated = e
+			return nil
+		},
+	}
+
+	ctx, _ := newMockCtx(t, withBackend(mb), withHierarchy(h))
+	origID := enum.Values[0].ID
+	err := execAlterEnumeration(ctx, &ast.AlterEnumerationStmt{
+		Name:      ast.QualifiedName{Module: "MyModule", Name: "Status"},
+		Operation: ast.AlterEnumModifyCaption,
+		ValueName: "Active",
+		Caption:   "Currently Active",
+	})
+	assertNoError(t, err)
+	if updated == nil {
+		t.Fatal("UpdateEnumeration was not called")
+	}
+	if got := updated.Values[0].Caption.GetTranslation("en_US"); got != "Currently Active" {
+		t.Errorf("Active caption = %q, want 'Currently Active'", got)
+	}
+	if updated.Values[0].ID != origID {
+		t.Errorf("value ID changed (%s -> %s); MODIFY CAPTION must preserve the value identity", origID, updated.Values[0].ID)
+	}
+	if updated.Values[0].Name != "Active" {
+		t.Errorf("value name changed to %q; MODIFY CAPTION must not rename", updated.Values[0].Name)
+	}
+	if updated.Values[1].Caption != nil && updated.Values[1].Caption.GetTranslation("en_US") != "" {
+		t.Errorf("sibling value 'Inactive' caption was altered: %q", updated.Values[1].Caption.GetTranslation("en_US"))
+	}
+}
+
+func TestAlterEnumeration_ModifyValueCaption_ValueNotFound_Mock(t *testing.T) {
+	mod := mkModule("MyModule")
+	enum := mkEnumeration(mod.ID, "Status", "Active")
+
+	h := mkHierarchy(mod)
+	withContainer(h, enum.ContainerID, mod.ID)
+
+	mb := &mock.MockBackend{
+		IsConnectedFunc:      func() bool { return true },
+		ListEnumerationsFunc: func() ([]*model.Enumeration, error) { return []*model.Enumeration{enum}, nil },
+		UpdateEnumerationFunc: func(e *model.Enumeration) error {
+			t.Fatal("UpdateEnumeration must not be called when the value is missing")
+			return nil
+		},
+	}
+
+	ctx, _ := newMockCtx(t, withBackend(mb), withHierarchy(h))
+	err := execAlterEnumeration(ctx, &ast.AlterEnumerationStmt{
+		Name:      ast.QualifiedName{Module: "MyModule", Name: "Status"},
+		Operation: ast.AlterEnumModifyCaption,
+		ValueName: "Missing",
+		Caption:   "x",
+	})
+	assertError(t, err)
+	assertContainsStr(t, err.Error(), "not found")
+}
+
 // Backend error: cmd_error_mock_test.go (TestShowEnumerations_Mock_BackendError)
 // JSON: cmd_json_mock_test.go (TestShowEnumerations_Mock_JSON)

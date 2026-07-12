@@ -87,6 +87,20 @@ create enumeration Module.TransactionType (
 );
 ```
 
+**Editing an existing enumeration** — use `alter enumeration`, never drop + recreate
+(a drop is blocked while the enum is referenced by an attribute):
+
+```sql
+alter enumeration Module.TransactionType add value REFUND caption 'Refund';
+alter enumeration Module.TransactionType rename value INCOME to CREDIT;      -- changes the name/key
+alter enumeration Module.TransactionType modify value EXPENSE caption 'Expense / Debit'; -- caption only, name unchanged
+alter enumeration Module.TransactionType drop value REFUND;
+```
+
+`modify value … caption` re-captions in place — the value keeps its identity, so it
+works even while the enumeration is in use. (Value names in `alter` must be plain
+identifiers; a value whose name is a reserved word can't be targeted by `alter`.)
+
 ### Entities
 
 **IMPORTANT: All entities MUST have @Position annotation**

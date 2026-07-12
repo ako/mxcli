@@ -72,6 +72,7 @@ create persistent entity Module.Photo (
 | Rename association | `rename association Module.Old to New;` | Updates all references |
 | Show entities | `show entities [in module];` | List all or filter by module |
 | Create enumeration | `create [or modify] enumeration Module.Name (Value1 'caption', ...);` | |
+| Alter enumeration values | `alter enumeration Module.Name add value X [caption '..'] \| rename value X to Y \| modify value X caption '..' \| drop value X;` | `modify value … caption` re-captions in place (works while referenced) |
 | Drop enumeration | `drop enumeration Module.Name;` | |
 | Create association | `create [or modify] association Module.Name from Parent to Child type reference\|ReferenceSet [owner default\|both] [delete_behavior ...];` | OR MODIFY updates existing association in-place |
 | Drop association | `drop association Module.Name;` | |

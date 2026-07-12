@@ -48,17 +48,30 @@ Status: Enumeration(Sales.OrderStatus) DEFAULT 'Draft'
 
 ## ALTER ENUMERATION
 
-Add or remove values from an existing enumeration:
+Add, rename, re-caption, or remove values on an existing enumeration:
 
 ```sql
 -- Add a new value (the CAPTION keyword is required for ALTER, unlike CREATE)
 ALTER ENUMERATION Sales.OrderStatus
   ADD VALUE OnHold CAPTION 'On Hold';
 
+-- Rename a value's identifier (the name used in code)
+ALTER ENUMERATION Sales.OrderStatus
+  RENAME VALUE Draft TO Pending;
+
+-- Change an existing value's display caption in place (the name is unchanged)
+ALTER ENUMERATION Sales.OrderStatus
+  MODIFY VALUE OnHold CAPTION 'Temporarily On Hold';
+
 -- Remove a value
 ALTER ENUMERATION Sales.OrderStatus
   DROP VALUE Draft;
 ```
+
+`MODIFY VALUE … CAPTION` edits the caption without dropping the value, so it works
+even while the enumeration is referenced by an entity attribute — unlike drop +
+recreate, which is blocked by the reference. Several actions can be combined in one
+statement (e.g. `RENAME VALUE Draft TO Pending MODIFY VALUE Pending CAPTION 'Pending Review'`).
 
 ## DROP ENUMERATION
 

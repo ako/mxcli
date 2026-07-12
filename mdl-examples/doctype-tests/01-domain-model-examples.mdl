@@ -154,6 +154,9 @@ create enumeration DmTest.ShipmentStage (
 
 alter enumeration DmTest.ShipmentStage add value Shipped caption 'Shipped to Customer';
 alter enumeration DmTest.ShipmentStage rename value Packed to Packaged;
+-- Change an existing value's caption in place (name unchanged). Unlike drop +
+-- recreate, this works even while the enumeration is referenced by an attribute.
+alter enumeration DmTest.ShipmentStage modify value Shipped caption 'Delivered to Customer';
 /
 
 -- ############################################################################

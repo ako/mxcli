@@ -56,13 +56,13 @@ type CreateEnumerationStmt struct {
 
 func (s *CreateEnumerationStmt) isStatement() {}
 
-// AlterEnumerationStmt represents: ALTER ENUMERATION Module.Name ADD/DROP/RENAME VALUE ...
+// AlterEnumerationStmt represents: ALTER ENUMERATION Module.Name ADD/DROP/RENAME/MODIFY VALUE ...
 type AlterEnumerationStmt struct {
 	Name      QualifiedName
 	Operation AlterEnumOp
 	ValueName string
 	NewName   string // For RENAME
-	Caption   string // For ADD
+	Caption   string // For ADD and MODIFY CAPTION
 }
 
 func (s *AlterEnumerationStmt) isStatement() {}
@@ -74,6 +74,7 @@ const (
 	AlterEnumAdd AlterEnumOp = iota
 	AlterEnumDrop
 	AlterEnumRename
+	AlterEnumModifyCaption // MODIFY VALUE X CAPTION '...' — change an existing value's caption
 )
 
 // DropEnumerationStmt represents: DROP ENUMERATION Module.Name
