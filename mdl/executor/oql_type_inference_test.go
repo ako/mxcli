@@ -107,3 +107,88 @@ func TestValidateOQLTypesNoFalsePositive(t *testing.T) {
 		})
 	}
 }
+
+// TestValidateOQLTypesDerivedString covers the CE6770 case: a DERIVED string
+// column (CAST(x AS string) or a string-returning CASE) is normalized by Mendix
+// to the platform default length (200). Declaring any other length builds fine
+// in mxcli but makes mxbuild report CE6770 "View Entity is out of sync". The
+// checker must flag the mismatch pre-build (MDL031) and accept string(200).
+func TestValidateOQLTypesDerivedString(t *testing.T) {
+	cases := []struct {
+		name      string
+		oql       string
+		attrs     []ast.ViewAttribute
+		wantMDL31 bool
+	}{
+		{
+			name: "CAST enum to string declared short is flagged",
+			oql:  "select cast(e.Status as string) as StatusName from Mod.E e",
+			attrs: []ast.ViewAttribute{
+				{Name: "StatusName", Type: ast.DataType{Kind: ast.TypeString, Length: 30}},
+			},
+			wantMDL31: true,
+		},
+		{
+			name: "CAST to string declared 200 passes",
+			oql:  "select cast(e.Status as string) as StatusName from Mod.E e",
+			attrs: []ast.ViewAttribute{
+				{Name: "StatusName", Type: ast.DataType{Kind: ast.TypeString, Length: 200}},
+			},
+			wantMDL31: false,
+		},
+		{
+			name: "CAST to string declared unlimited is flagged",
+			oql:  "select cast(e.Status as string) as StatusName from Mod.E e",
+			attrs: []ast.ViewAttribute{
+				{Name: "StatusName", Type: ast.DataType{Kind: ast.TypeString, Length: 0}},
+			},
+			wantMDL31: true,
+		},
+		{
+			name: "string-returning CASE declared short is flagged",
+			oql:  "select case when e.Amount > 100 then 'High' else 'Low' end as Bucket from Mod.E e",
+			attrs: []ast.ViewAttribute{
+				{Name: "Bucket", Type: ast.DataType{Kind: ast.TypeString, Length: 10}},
+			},
+			wantMDL31: true,
+		},
+		{
+			name: "string-returning CASE declared 200 passes",
+			oql:  "select case when e.Amount > 100 then 'High' else 'Low' end as Bucket from Mod.E e",
+			attrs: []ast.ViewAttribute{
+				{Name: "Bucket", Type: ast.DataType{Kind: ast.TypeString, Length: 200}},
+			},
+			wantMDL31: false,
+		},
+		{
+			name: "CAST to integer declared integer passes",
+			oql:  "select cast(e.Code as integer) as CodeNum from Mod.E e",
+			attrs: []ast.ViewAttribute{
+				{Name: "CodeNum", Type: ast.DataType{Kind: ast.TypeInteger}},
+			},
+			wantMDL31: false,
+		},
+		{
+			name: "CAST to integer declared decimal is flagged",
+			oql:  "select cast(e.Code as integer) as CodeNum from Mod.E e",
+			attrs: []ast.ViewAttribute{
+				{Name: "CodeNum", Type: ast.DataType{Kind: ast.TypeDecimal}},
+			},
+			wantMDL31: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			violations := ValidateOQLTypes(tc.oql, tc.attrs)
+			got := false
+			for _, v := range violations {
+				if v.RuleID == "MDL031" {
+					got = true
+				}
+			}
+			if got != tc.wantMDL31 {
+				t.Errorf("ValidateOQLTypes MDL031=%v, want %v (violations=%v)", got, tc.wantMDL31, violations)
+			}
+		})
+	}
+}

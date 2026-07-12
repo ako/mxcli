@@ -120,6 +120,15 @@ func ValidateOQLTypes(oql string, attrs []ast.ViewAttribute) []linter.Violation 
 		if inferred.Kind == ast.TypeUnknown {
 			continue
 		}
+		// A DERIVED string column (CAST AS string, a string-returning CASE, a
+		// string literal/expression) always maps to Mendix's default length (200)
+		// in a view entity — a plain attribute reference infers TypeUnknown and is
+		// skipped above, so any concrete String here is derived. Declaring another
+		// length makes mxbuild report CE6770 "out of sync"; normalize so the check
+		// flags that mismatch pre-build.
+		if inferred.Kind == ast.TypeString {
+			inferred.Length = derivedStringLength
+		}
 
 		declared := attrs[i].Type
 		// Use strict type matching: no implicit widening (e.g., count() returns Integer,
@@ -152,7 +161,7 @@ func inferTypeStatic(expr string) ast.DataType {
 	if strings.HasPrefix(expr, "(") && strings.HasSuffix(expr, ")") {
 		inner := strings.TrimSpace(expr[1 : len(expr)-1])
 		innerUpper := strings.ToUpper(inner)
-		if strings.HasPrefix(innerUpper, "select") {
+		if strings.HasPrefix(innerUpper, "SELECT") {
 			// Extract the inner SELECT clause and infer the single column
 			innerSelect := extractSelectClause(inner)
 			if innerSelect != "" {
@@ -169,29 +178,33 @@ func inferTypeStatic(expr string) ast.DataType {
 	}
 
 	// count(...) → Integer (Mendix OQL COUNT returns Integer)
-	if strings.HasPrefix(upper, "count(") {
+	if strings.HasPrefix(upper, "COUNT(") {
 		return ast.DataType{Kind: ast.TypeInteger}
 	}
 
-	// sum(...) → preserves input type (Integer→Integer, else Decimal)
-	if strings.HasPrefix(upper, "sum(") {
+	// sum(...) → preserves input type. When the argument type can't be inferred
+	// statically (a bare attribute reference — the common case), we CANNOT know
+	// whether the sum is Integer/Long/Decimal, so return Unknown and skip the
+	// column rather than guessing Decimal (which false-positives on sum() over an
+	// integer attribute declared as integer/long).
+	if strings.HasPrefix(upper, "SUM(") {
 		innerArg := extractFunctionArg(expr)
 		if innerArg != "" {
 			innerType := inferTypeStatic(innerArg)
-			if innerType.Kind == ast.TypeInteger || innerType.Kind == ast.TypeLong {
+			if innerType.Kind != ast.TypeUnknown {
 				return innerType
 			}
 		}
-		return ast.DataType{Kind: ast.TypeDecimal}
+		return ast.DataType{Kind: ast.TypeUnknown}
 	}
 
 	// avg(...) → always Decimal
-	if strings.HasPrefix(upper, "avg(") {
+	if strings.HasPrefix(upper, "AVG(") {
 		return ast.DataType{Kind: ast.TypeDecimal}
 	}
 
 	// min(...) / max(...) → propagates input type
-	if strings.HasPrefix(upper, "min(") || strings.HasPrefix(upper, "max(") {
+	if strings.HasPrefix(upper, "MIN(") || strings.HasPrefix(upper, "MAX(") {
 		innerArg := extractFunctionArg(expr)
 		if innerArg != "" {
 			innerType := inferTypeStatic(innerArg)
@@ -208,12 +221,18 @@ func inferTypeStatic(expr string) ast.DataType {
 	}
 
 	// length(...) → Integer
-	if strings.HasPrefix(upper, "length(") {
+	if strings.HasPrefix(upper, "LENGTH(") {
 		return ast.DataType{Kind: ast.TypeInteger}
 	}
 
+	// CAST(expr AS type) → the target type. Mendix normalizes a derived string
+	// column to its default length (200); the view-entity validator applies that.
+	if strings.HasPrefix(upper, "CAST(") {
+		return castTargetType(expr)
+	}
+
 	// CASE expression: infer from THEN clauses
-	if strings.HasPrefix(upper, "case") {
+	if strings.HasPrefix(upper, "CASE") {
 		return inferCaseType(expr)
 	}
 
@@ -231,11 +250,43 @@ func inferTypeStatic(expr string) ast.DataType {
 	}
 
 	// Boolean literals
-	if upper == "true" || upper == "false" {
+	if upper == "TRUE" || upper == "FALSE" {
 		return ast.DataType{Kind: ast.TypeBoolean}
 	}
 
 	return ast.DataType{Kind: ast.TypeUnknown}
+}
+
+// derivedStringLength is the length Mendix assigns to a DERIVED string column in
+// a view entity (CAST(x AS string), a string-returning CASE, a string
+// expression). It is the platform default (200); declaring any other length for
+// such a column makes mxbuild report CE6770 "View Entity is out of sync".
+const derivedStringLength = 200
+
+// castTargetType maps a CAST(expr AS type) to the target Mendix data type. Only
+// the target matters for view-entity column typing; the source expression is
+// ignored. Unknown targets return TypeUnknown (the column is then not validated).
+func castTargetType(expr string) ast.DataType {
+	m := regexp.MustCompile(`(?is)\bAS\s+([A-Za-z]+)\s*\)\s*$`).FindStringSubmatch(expr)
+	if m == nil {
+		return ast.DataType{Kind: ast.TypeUnknown}
+	}
+	switch strings.ToLower(m[1]) {
+	case "string":
+		return ast.DataType{Kind: ast.TypeString, Length: derivedStringLength}
+	case "integer", "int":
+		return ast.DataType{Kind: ast.TypeInteger}
+	case "long":
+		return ast.DataType{Kind: ast.TypeLong}
+	case "decimal", "float":
+		return ast.DataType{Kind: ast.TypeDecimal}
+	case "boolean", "bool":
+		return ast.DataType{Kind: ast.TypeBoolean}
+	case "datetime", "date":
+		return ast.DataType{Kind: ast.TypeDateTime}
+	default:
+		return ast.DataType{Kind: ast.TypeUnknown}
+	}
 }
 
 // inferCaseType infers the type of a CASE expression by looking at THEN clause values.
@@ -246,7 +297,7 @@ func inferCaseType(expr string) ast.DataType {
 	// Nested CASE expressions are too complex for static regex-based inference.
 	// The regex would match inner THEN clauses, producing wrong types.
 	upperExpr := strings.ToUpper(expr)
-	if strings.Count(upperExpr, "case") > 1 {
+	if strings.Count(upperExpr, "CASE") > 1 {
 		return ast.DataType{Kind: ast.TypeUnknown}
 	}
 
@@ -563,14 +614,14 @@ func inferAggregateType(ctx *ExecContext, expr string, col *OQLColumnInfo, alias
 	upperExpr := strings.ToUpper(strings.TrimSpace(expr))
 
 	// COUNT(*) or COUNT(expression) → Integer (Mendix OQL COUNT returns Integer)
-	if strings.HasPrefix(upperExpr, "count(") {
+	if strings.HasPrefix(upperExpr, "COUNT(") {
 		col.IsAggregate = true
 		col.AggregateFunc = "count"
 		return ast.DataType{Kind: ast.TypeInteger}
 	}
 
 	// SUM(expression) → preserves input type (Integer→Integer, else Decimal)
-	if strings.HasPrefix(upperExpr, "sum(") {
+	if strings.HasPrefix(upperExpr, "SUM(") {
 		col.IsAggregate = true
 		col.AggregateFunc = "sum"
 		innerArg := extractFunctionArg(expr)
@@ -584,14 +635,14 @@ func inferAggregateType(ctx *ExecContext, expr string, col *OQLColumnInfo, alias
 	}
 
 	// AVG(expression) → always Decimal
-	if strings.HasPrefix(upperExpr, "avg(") {
+	if strings.HasPrefix(upperExpr, "AVG(") {
 		col.IsAggregate = true
 		col.AggregateFunc = "avg"
 		return ast.DataType{Kind: ast.TypeDecimal}
 	}
 
 	// MIN/MAX preserve the input type — try to resolve inner expression
-	if strings.HasPrefix(upperExpr, "min(") || strings.HasPrefix(upperExpr, "max(") {
+	if strings.HasPrefix(upperExpr, "MIN(") || strings.HasPrefix(upperExpr, "MAX(") {
 		col.IsAggregate = true
 		col.AggregateFunc = strings.Split(upperExpr, "(")[0]
 		innerArg := extractFunctionArg(expr)
@@ -605,12 +656,12 @@ func inferAggregateType(ctx *ExecContext, expr string, col *OQLColumnInfo, alias
 	}
 
 	// LENGTH returns Integer
-	if strings.HasPrefix(upperExpr, "length(") {
+	if strings.HasPrefix(upperExpr, "LENGTH(") {
 		return ast.DataType{Kind: ast.TypeInteger}
 	}
 
 	// COALESCE - we'd need to analyze the arguments
-	if strings.HasPrefix(upperExpr, "coalesce(") {
+	if strings.HasPrefix(upperExpr, "COALESCE(") {
 		return ast.DataType{Kind: ast.TypeUnknown}
 	}
 
@@ -742,8 +793,17 @@ func typesStrictlyCompatible(declared, inferred ast.DataType) bool {
 	if inferred.Kind == ast.TypeUnknown {
 		return true
 	}
-
-	return declared.Kind == inferred.Kind
+	if declared.Kind != inferred.Kind {
+		return false
+	}
+	// For a derived string column the LENGTH must also match: Mendix's view-entity
+	// sync (CE6770) requires the declared length to equal the OQL column's length
+	// (200 for CAST/CASE/string expressions — see ValidateOQLTypes). Length 0 =
+	// unlimited, which also mismatches the fixed 200.
+	if inferred.Kind == ast.TypeString {
+		return declared.Length == inferred.Length
+	}
+	return true
 }
 
 // typesCompatible checks if declared and inferred types are compatible.

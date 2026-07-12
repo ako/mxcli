@@ -223,6 +223,24 @@ as
 /
 ```
 
+**Derived string columns must be `string(200)`.** A plain pass-through column
+(`c.Name as CustomerName`) inherits its source attribute's length, so declaring
+`string(100)` above is fine. But a **derived** string column — `cast(x as
+string)`, a string-returning `CASE`, or a string expression — is normalized by
+Mendix to the platform default length **`string(200)`**. Declaring any other
+length (`string(30)`, unlimited, …) passes `mxcli check`'s parser but fails the
+MxBuild consistency check with **CE6770 "View Entity is out of sync with the OQL
+Query."** `mxcli check` catches this pre-build as **MDL031** with a suggested
+fix:
+
+```mdl
+create view entity Module.TicketLabel (
+  StatusLabel: string(200)          -- derived → must be 200, not string(30)
+) as
+  select cast(t.Status as string) as StatusLabel from Module.Ticket t;
+/
+```
+
 ## Entity with Index
 
 ```mdl

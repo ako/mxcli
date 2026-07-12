@@ -1,0 +1,65 @@
+-- Bug: a view entity with a DERIVED string column (CAST(x AS string), or a
+-- string-returning CASE) fails MxBuild CE6770 "View Entity is out of sync with
+-- the OQL Query" whenever the declared attribute length is anything other than
+-- 200 — even though the OQL itself runs fine and mxcli's own `check`/`exec`
+-- accepted it. The confusing part: the OQL is valid, so the failure looks like
+-- an mxcli serialization gap, but it is a Mendix PLATFORM rule.
+--
+-- Root cause (platform behavior, now caught pre-build by mxcli):
+--   Mendix normalizes a DERIVED string column to the platform default length
+--   (String(200)). A plain pass-through column (e.g. `c.LastName as Name`)
+--   inherits its source attribute's length, but any CAST-to-string, a
+--   string-returning CASE, or a string expression becomes String(200). The
+--   view-entity static sync check (CE6770) then rejects a declaration that says
+--   string(30) / string(50) / unlimited.
+--
+-- Fix in mxcli: the OQL type checker (`ValidateOQLTypes`, MDL031) now infers a
+--   derived string column as String(200) and flags a mismatched declared length
+--   at `check` time with an actionable suggestion — instead of letting it fall
+--   through to a cryptic CE6770 at build time. (The checker was previously dead
+--   due to a case-comparison bug — sibling of Bug 9b — which this fix also
+--   repairs, so CAST/CASE/aggregate inference actually runs now.)
+--
+-- Verify:
+--   ./bin/mxcli check mdl-examples/bug-tests/view-entity-derived-string-length.mdl
+--     → MDL031 on StatusLabelWrong (declared string(30), OQL returns String(200))
+--     → no MDL031 on StatusLabelOk (declared string(200))
+--   In Studio Pro / mxbuild: the string(200) view builds clean; changing it to
+--   string(30) reproduces CE6770.
+
+create module VDeriv;
+
+create enumeration VDeriv.Status (
+  Open   'Open',
+  Closed 'Closed'
+);
+
+create entity VDeriv.Ticket (
+  Title:  string(100),
+  State:  VDeriv.Status
+);
+
+-- WRONG: a derived (CAST-to-string) column declared as string(30) → CE6770.
+-- mxcli now flags this at check time as MDL031.
+create view entity VDeriv.TicketLabelWrong (
+  StatusLabelWrong: string(30)
+) as
+  select
+    cast(t.State as string) as StatusLabelWrong
+  from VDeriv.Ticket as t;
+
+-- CORRECT: the same derived column declared as string(200) → builds clean.
+create view entity VDeriv.TicketLabelOk (
+  StatusLabelOk: string(200)
+) as
+  select
+    cast(t.State as string) as StatusLabelOk
+  from VDeriv.Ticket as t;
+
+-- Also correct: a string-returning CASE is likewise String(200).
+create view entity VDeriv.TicketBucketOk (
+  Bucket: string(200)
+) as
+  select
+    case when t.State = 'Open' then 'Active' else 'Done' end as Bucket
+  from VDeriv.Ticket as t;
