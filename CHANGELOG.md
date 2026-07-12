@@ -6,16 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-07-12
+
+Headline: **Pluggable chart authoring reaches round-trip fidelity**, plus in-place enum-caption editing, named layout placeholders, and a batch of new pre-build `check` heuristics. Charts gain widget-level datasource attributes, the `LINE`/`SCALECOLOR` object-list keywords, and a `DESCRIBE` that reconstructs them as executable MDL; workflows and widget-less pages now describe cleanly; view-entity OQL is validated before build; and several authoring mistakes are caught at `mxcli check` time instead of only by MxBuild.
+
+### Added
+
+- **Chart authoring expanded — object-lists, scale colours, and `DESCRIBE` round-trip** — building on the v0.15.0 chart-series work: widget-level datasource attributes for `PieChart`/`HeatMap` (item 1b), the `LINE` and `SCALECOLOR` object-list keywords, and a `DESCRIBE` that reconstructs pluggable-widget object-lists (series / line / scalecolor) as executable MDL, so an existing chart's syntax can be learned by describing it. Validated `LineChart` / `HeatMap` / `TimeSeries` / `BubbleChart` examples now run in the regular check-mdl suite.
+- **`ALTER ENUMERATION … MODIFY VALUE <name> CAPTION '…'`** — edit an enumeration value's caption in place, without dropping and recreating the value.
+- **Assign widgets to named layout placeholders** (#532) — a widget can be placed into a layout's named placeholder, not only the default content slot.
+- **New authoring-time `check` heuristics** — caught at `mxcli check`, before a build round-trip:
+  - `MDL043` — rejects an object/list-typed `declare` where a primitive variable is required.
+  - `MDL032` — warns on a reserved OQL word used as a view-entity attribute name.
+  - a derived-string view entity that MxBuild rejects with `CE6770` is now caught pre-build (reviving the OQL type-checker it depends on).
+- **Workflow authoring skill (Bug 11a)** — added `.claude/skills/mendix/write-workflows.md` (synced to user projects and CLAUDE.md's "read first" list) documenting `CREATE` / `DROP` / `ALTER WORKFLOW`: the activity grammar (user task, multi-user task, decision, parallel split, jump, wait-for-timer/notification, boundary events), header options, and the two first-attempt gotchas (`PARAMETER $var: Entity`, body closes with `END WORKFLOW`). Workflow authoring already worked and built, but no skill documented it, so it read as read-only.
+- **`DynamicClasses` documented across the styling surfaces** — the runtime-computed CSS-class property (a sibling of `Class`/`Style`) was wired and skill-documented but missing from every reference enumeration that lists its siblings. Added it to the `mxcli syntax page.styling` topic, `MDL_QUICK_REFERENCE.md` (styling table + ALTER PAGE `SET` properties), and the docs-site pages (`quick-reference`, `create-page`, `widget-types`, `alter-page`). Also demonstrated end-to-end in the `12-styling` doctype example (create-time, bulk `UPDATE WIDGETS`, and `ALTER PAGE ... SET DynamicClasses ON <container>`).
+
 ### Fixed
 
 - **`DESCRIBE PAGE`/`DESCRIBE SNIPPET` of a widget-less page/snippet now re-parses (#626)** — an empty page described as `create page … ( … )` with no `{ }` body block, which the CREATE PAGE grammar rejects, so the DESCRIBE output failed to round-trip through `mxcli check`. Empty pages and snippets now emit an empty `{ }` body. Added an integration test (`TestRoundtripPage_DescribeReparses`) that actually re-parses DESCRIBE output (not just substring assertions); a full describe→check pass over the 57 `03-page-examples` pages is clean.
 - **`DESCRIBE WORKFLOW` round-trips all activities as executable MDL (Bug 11b)** — on the default `modelsdk` engine, jump-to, wait-for-timer, and wait-for-notification activities (and the implicit start/end) decoded to `GenericWorkflowActivity` and rendered as non-executable `-- [Workflows$…]` comments, so `describe → exec` dropped them and their syntax couldn't be learned by describing an existing workflow. The reader now reconstructs these as typed activities (reading the jump target and timer delay from raw BSON), matching the legacy engine and the describe formatter, which already handled them. Round-trip verified: `describe → drop → exec → docker check` with zero workflow errors.
 - **Containers now appear in the widget catalog** — `show widgets`, `update widgets`, and `CATALOG.widgets` queries dropped every `container` (`Forms$DivContainer` / `Pages$DivContainer`), so a `WHERE widgettype LIKE '%Container%'` filter silently matched nothing and containers couldn't be bulk-styled — even though they carry `Class` / `Style` / `DynamicClasses` / `DesignProperties` and can be clickable. The catalog now indexes user-authored containers and skips only the synthetic transparent `conditionalVisibilityWidget*` layout wrapper (matching how `DESCRIBE PAGE` already unwraps it). Other container types (LayoutGrid, TabContainer, …) were already indexed.
-
-### Documentation
-
-- **Workflow authoring skill (Bug 11a)** — added `.claude/skills/mendix/write-workflows.md` (synced to user projects and CLAUDE.md's "read first" list) documenting `CREATE` / `DROP` / `ALTER WORKFLOW`: the activity grammar (user task, multi-user task, decision, parallel split, jump, wait-for-timer/notification, boundary events), header options, and the two first-attempt gotchas (`PARAMETER $var: Entity`, body closes with `END WORKFLOW`). Workflow authoring already worked and built, but no skill documented it, so it read as read-only.
-- **`DynamicClasses` documented across the styling surfaces** — the runtime-computed CSS-class property (a sibling of `Class`/`Style`) was wired and skill-documented but missing from every reference enumeration that lists its siblings. Added it to the `mxcli syntax page.styling` topic, `MDL_QUICK_REFERENCE.md` (styling table + ALTER PAGE `SET` properties), and the docs-site pages (`quick-reference`, `create-page`, `widget-types`, `alter-page`). Also demonstrated end-to-end in the `12-styling` doctype example (create-time, bulk `UPDATE WIDGETS`, and `ALTER PAGE ... SET DynamicClasses ON <container>`).
+- **Widget action microflow parameter mappings persist (Bug 1)** — a widget action's microflow parameter mappings were dropped on write; they are now serialized and round-tripped.
+- **Nanoflow client actions on widgets (Bug 2)** — the `modelsdk` engine now writes nanoflow client actions on widgets; previously only microflow actions serialized.
+- **HeatMap scale colour persists via the `ColorValue` alias (Bug 10a class)** — a HeatMap's scale colour was not written; it now serializes through the `ColorValue` object-list alias.
+- **`ALTER ENTITY … MODIFY ATTRIBUTE` constraints and `MOVE ENUMERATION` folder reads (Bug 12)** — the read paths for attribute constraints and an enumeration's folder are corrected so both operations round-trip.
+- **View-entity OQL is read from the source document on the `modelsdk` engine (Mendix 11.x)** — so `DESCRIBE` and validation see the actual query text.
+- **ELSIF arms preserved by lowering to nested `IfStmt` (#746)** — microflow expression `ELSIF` branches were dropped on round-trip; they are now retained.
 
 ## [0.15.0] - 2026-07-10
 
