@@ -121,11 +121,17 @@ jobs:
 
       - name: Create nightly release
         if: steps.check.outputs.skip != 'true'
+        # Pass the notes body via an env var, NOT via `${{ }}` interpolation into
+        # the shell. Interpolating it directly lets the shell re-interpret the
+        # body's backticks (command substitution) and double quotes (from commit
+        # subjects in the git log), which broke the release step. `"$NOTES"` is
+        # inert literal data.
         run: |
           gh release create nightly \
             --prerelease \
             --title "Nightly $(date -u +%Y-%m-%d)" \
-            --notes "${{ steps.changelog.outputs.body }}" \
+            --notes "$NOTES" \
             bin/mxcli-*
         env:
           GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ steps.changelog.outputs.body }}
