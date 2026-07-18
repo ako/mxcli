@@ -180,7 +180,16 @@ mxcli add-tool cursor
 
 ## Installation
 
-Download the latest release for your platform from the [releases page](https://github.com/mendixlabs/mxcli/releases), or build from source:
+Download a pre-built binary from the [releases page](https://github.com/mendixlabs/mxcli/releases) — the assets are raw binaries named `mxcli-<os>-<arch>` (nothing to extract). While mxcli is fast-moving alpha, the rolling `nightly` build is recommended (new features land there first); pin a `vX.Y.Z` release for reproducibility:
+
+```bash
+# Linux/macOS — nightly
+curl -fsSL -o mxcli \
+  https://github.com/mendixlabs/mxcli/releases/download/nightly/mxcli-linux-amd64
+chmod +x mxcli && sudo mv mxcli /usr/local/bin/
+```
+
+Or build from source (Go + Make — `make build` runs the ANTLR parser generation that `go install` can't):
 
 ```bash
 git clone https://github.com/mendixlabs/mxcli.git
@@ -188,6 +197,8 @@ cd mxcli
 make build
 # binary is at ./bin/mxcli
 ```
+
+> `go install …@latest` is not supported: the generated ANTLR parser isn't committed, so a module-source build fails. Use a pre-built binary or `make build`.
 
 ## Core Features
 
