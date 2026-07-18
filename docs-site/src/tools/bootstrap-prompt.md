@@ -33,6 +33,22 @@ This is an empty repo. Provision it as a Mendix app developed with mxcli:
 (Optional) Seed the domain model, pages, and microflows from this prototype: <paste or link a design here>.
 ```
 
+## Which mxcli version gets installed
+
+- **`go install github.com/mendixlabs/mxcli/cmd/mxcli@latest`** installs the **latest
+  tagged release** (highest semver tag) — *not* the nightly. Pin a specific one with
+  `@vX.Y.Z`.
+- **`mxcli setup mxcli`** downloads the release asset that **matches the mxcli already
+  running it** — a nightly build pulls the moving `nightly` release, a `vX.Y.Z` build
+  pulls that exact release. Override with `--tag nightly` or `--tag vX.Y.Z`. (This is
+  mainly for getting the *Linux* binary that matches your host, e.g. into a Dev
+  Container.)
+- **Environment pre-install** (the robust path) installs whatever the Claude Code Web
+  image bakes in — the recommended way to pin a known-good version fleet-wide.
+
+For a reproducible bootstrap, pin the version (`@vX.Y.Z` or `--tag vX.Y.Z`) rather than
+tracking `@latest`; nightly is opt-in only.
+
 ## Two rules that make this robust
 
 - **Committing the config (step 5) is mandatory.** The prompt is a *one-time seed*.
