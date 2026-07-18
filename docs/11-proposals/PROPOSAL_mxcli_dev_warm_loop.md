@@ -235,7 +235,81 @@ mxcli dev push --to https://<name>-9000.app.github.dev --secret $TOKEN -p app.mp
 | **A. Push built deployment artifact over 443** (recommended) | ✅ | robust; runtime in a legit host; ~1–2 s + network |
 | B. Push MDL/model, build in the Preview container | ✅ | keeps a synced `.mpr` in the Preview container; heavier transfer for MPR v2 |
 | C. Git branch, Codespace pulls | ❌ | requires a commit — **rejected**, violates the core requirement |
-| D. Live tunnel (app stays in DEV, Codespace relays) | ✅ | instant, but fragile (chisel over two proxies), ties the app to the ephemeral sandbox, and Codespace-as-relay is an AUP gray area — **not recommended** |
+| D. Live tunnel (app stays in DEV, static relay forwards) | ✅ | **viable — chisel verified** (see § Scaling). Cleanest dev loop: hot-reload stays local, no artifact sync, and the relay is a generic static component. Caveat: the DEV runtime is ephemeral. **Preferred for the multi-container dev loop; A remains the durable/persistent-preview fallback.** |
+
+## Scaling: tunnel hub with self-registration and admin overview
+
+The two-container model generalizes to **one static hub fronting many dynamic dev
+containers** — parallel agents on different features, or the several apps of one
+distributed solution. Verified: a single `chisel server --reverse` fans in to multiple
+clients, each on its own server-side port (`server:8001 → container A`,
+`server:8002 → container B`), and `--authfile` (auto-reloaded on change) isolates them
+per-agent.
+
+**Why chisel and not the others** (all tested this session): it installs via
+`go install` (through `proxy.golang.org`, bypassing the GitHub gate), multiplexes
+everything over a **single 443 connection** (no second data port — the wall that killed
+localtunnel and cloudflared), and its TLS **passes the sandbox's mandatory MITM**
+because it uses the system trust store, which already contains the agent CA (ngrok
+failed only because it pins its own roots). The one hop not provable without a live
+host: the WebSocket upgrade through Codespaces' `app.github.dev` proxy — a **VPS relay
+removes that unknown** and is cleaner AUP-wise for a pure relay.
+
+### `mxcli tunnel-hub` (static) + `mxcli dev --hub` (dynamic)
+
+- **`mxcli tunnel-hub`** — the always-on static container. Embeds a chisel server
+  (`github.com/jpillora/chisel/server` as a library), a host-routing layer
+  (Caddy/Traefik or built-in), a **registration API**, and an **admin overview page**.
+  Runs once on a VPS (preferred) or a Codespace. It never changes when an app changes.
+- **`mxcli dev --hub <url>`** — the dynamic side self-registers on startup.
+
+Self-registration flow — chisel has **no native registration API**; this thin control
+plane adds one on top of its two primitives (the auto-reloading `--authfile` and the
+client-declared reverse remote):
+
+```
+mxcli dev --hub https://hub.example.com            (on container startup)
+  → POST /register {app, feature, agent}           → hub allocates {port, subdomain, token}
+                                                      appends users.json  (chisel reloads)
+                                                      writes vhost subdomain→port (proxy reloads)
+  ← {port, subdomain, token}
+  → chisel client HUB R:<port>:localhost:8080 --auth <user:token>
+  → set Mendix ApplicationRootUrl = https://<subdomain>.example.com
+  → heartbeat POST /status {health, last_reload, change_summary}   (periodic)
+on stop / TTL expiry → POST /deregister            (frees the slot)
+```
+
+### Admin overview page
+
+The hub serves an authenticated dashboard — the single place to see and reach every
+in-flight preview:
+
+- **One row per dev container:** agent/feature name, app, **clickable public URL**,
+  runtime health (from the heartbeat), last hot-reload time, uptime.
+- **Pending changes per container:** each `mxcli dev` reports its delta — from
+  `mxcli diff-local` against the committed baseline, or the running list of MDL
+  statements applied this session — and the hub aggregates them, so a reviewer sees
+  *what each agent has changed* without opening each session.
+- **Use cases:** a PM/reviewer clicks through parallel feature previews; comparing two
+  agents' takes on the same screen side by side; spotting a container that has drifted
+  or broken; a distributed-solution operator seeing all constituent apps and their
+  states at once.
+
+The change list makes the hub more than a router — it is a **live index of work in
+progress across the fleet**, which is exactly the "keep overview" need.
+
+### Mendix wrinkles at fleet scale
+
+- **Subdomain, not path**, per container — `ApplicationRootUrl` = the container's own
+  subdomain. Path-prefix routing fights Mendix's SPA/XAS/cookies; subdomains give each
+  app a clean origin and free **cookie/session isolation** between agents.
+- **DB per container** — each dev container needs its own Postgres/schema + demo data,
+  or agents overwrite each other. (Sandbox model: each has its own local Postgres.)
+- **Slot assignment** — the hub owns the `{port, subdomain, token}` map via the
+  registration API; `--authfile` pins each agent to its allowed remote.
+- **Distributed solution** — constituent apps register as separate containers on
+  separate subdomains and integrate via their public routes (published REST/OData),
+  faithfully previewing the real multi-app topology.
 
 ## Implementation Plan
 
@@ -254,6 +328,11 @@ downloads/caches mxbuild + runtime and speaks the M2EE admin API.
 | `cmd/mxcli/docker/mxenv.go` | Reuse `PrepareMxCommand` (LD_PRELOAD FreeType fix) for the `mx`/`mxbuild` children (no change). |
 | `.devcontainer/preview/devcontainer.json` + `boot.sh` | New: Codespace preview container — `forwardPorts: [8080]` public, Postgres, `postStart` → `mxcli dev serve`. |
 | `.claude/skills/mendix/docker-workflow.md` | Add a "warm dev loop" section pointing at `mxcli dev`. |
+| `cmd/mxcli/tunnelhub/server.go` | New: `mxcli tunnel-hub` — embedded chisel server (`chisel/server` lib), host routing, slot allocation, `--authfile` writer. |
+| `cmd/mxcli/tunnelhub/register.go` | New: registration API (`/register`, `/status` heartbeat, `/deregister`); owns the `{port, subdomain, token}` map + TTL cleanup. |
+| `cmd/mxcli/tunnelhub/admin.go` | New: authenticated admin overview page — fleet list (URL, health, last reload) + per-container change summaries. |
+| `cmd/mxcli/dev.go` | Add `--hub <url>`: self-register on startup, run the chisel client, set `ApplicationRootUrl` from the assigned subdomain, push `change_summary` heartbeats, deregister on stop. |
+| `cmd/mxcli/tunnelhub/*_test.go` | Tests: slot allocation/isolation, authfile + vhost reload, register/heartbeat/deregister lifecycle, admin-page rendering. |
 | `cmd/mxcli/dev_test.go` | Tests for the serve client and the `restartRequired` branch logic (mock the serve/admin HTTP endpoints). |
 
 ### The standalone-boot config set (discovered, must be encoded)
@@ -329,3 +408,17 @@ supply. `mxcli dev` must set all of it or `start` fails:
 6. **Relationship to `check`.** The instant `mxcli check` gate (see
    `PROPOSAL_check_mxbuild_gap_heuristics.md`) should run *before* every warm build so
    most errors never reach even the ~0.8 s build. `mxcli dev` should call it first.
+7. **Tunnel-hub auth & multi-tenancy.** The hub fronts multiple previews on one host —
+   who may view the admin page, and how are per-container URLs protected (per-subdomain
+   auth, shared secret, SSO)? Registration tokens must be scoped so one agent cannot
+   claim another's slot (`--authfile` allowed-remote regex per user).
+8. **Change-summary source & cadence.** `mxcli diff-local` (git baseline) vs a running
+   MDL-statement log — which is the better per-container "changes" feed for the admin
+   page, and how often to push it (every reload vs periodic)?
+9. **WebSocket through `app.github.dev` unverified.** chisel's reverse tunnel is proven
+   through the sandbox egress + MITM, but not through a live Codespace forward. Verify
+   on a real Codespace, or default the hub to a VPS (also the cleaner AUP posture for a
+   pure relay).
+10. **Fleet lifecycle.** TTL/heartbeat-timeout cleanup of dead containers, port/subdomain
+    reclamation, and what the admin page shows for a container whose sandbox was reaped
+    (the ephemeral-runtime reality observed this session).
