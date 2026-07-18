@@ -16,8 +16,10 @@ can seed the model from a design prototype in the same session — nothing to ma
 This is an empty repo. Provision it as a Mendix app developed with mxcli:
 
 1. Ensure `mxcli` is available. It should be pre-installed by the environment; if
-   not, install it (`go install github.com/mendixlabs/mxcli/cmd/mxcli@latest`, or
-   `mxcli setup mxcli`), and make a `./mxcli` available at the repo root.
+   not, download a prebuilt binary from the GitHub releases for your OS/arch (e.g.
+   `mxcli-linux-amd64`) and put it at `./mxcli`. (`go install …@latest` does **not**
+   work yet — the ANTLR parser is generated at build time and isn't committed; a
+   from-source build needs `make grammar`. Use the prebuilt binary.)
 2. Create the app at the repo root: `mxcli new App --version 11.6.3`
    (or `mxcli init` if an .mpr already exists).
 3. Ensure the Claude tooling is set up: `mxcli init --tool claude`. This adds a
@@ -35,19 +37,24 @@ This is an empty repo. Provision it as a Mendix app developed with mxcli:
 
 ## Which mxcli version gets installed
 
-- **`go install github.com/mendixlabs/mxcli/cmd/mxcli@latest`** installs the **latest
-  tagged release** (highest semver tag) — *not* the nightly. Pin a specific one with
-  `@vX.Y.Z`.
-- **`mxcli setup mxcli`** downloads the release asset that **matches the mxcli already
-  running it** — a nightly build pulls the moving `nightly` release, a `vX.Y.Z` build
-  pulls that exact release. Override with `--tag nightly` or `--tag vX.Y.Z`. (This is
-  mainly for getting the *Linux* binary that matches your host, e.g. into a Dev
-  Container.)
+- **Prebuilt release binary** (`mxcli setup mxcli`, or a direct download of
+  `mxcli-<os>-<arch>` from GitHub releases) is the working install path. Releases are
+  published by CI on every `vX.Y.Z` tag (latest is v0.16.0), plus a rolling `nightly`
+  pre-release. `mxcli setup mxcli` downloads the asset that **matches the mxcli already
+  running it** (a nightly build → the `nightly` release; a `vX.Y.Z` build → that exact
+  release); override with `--tag nightly` / `--tag vX.Y.Z`. Because `setup mxcli` needs
+  an mxcli to run it, it's mainly for replicating a version onto another OS/arch (e.g.
+  the Linux binary in a Dev Container), not the first install.
 - **Environment pre-install** (the robust path) installs whatever the Claude Code Web
   image bakes in — the recommended way to pin a known-good version fleet-wide.
+- **`go install …@latest` does not work yet.** The module *is* public (tags v0.1.0–
+  v0.16.0), but the generated ANTLR parser (`mdl/grammar/parser/`) is gitignored and
+  not committed, so a `go install` from the tagged source fails on the missing package.
+  Building from source works only via `make build`/`make release` (which run
+  `make grammar` first). Enabling `go install` would require committing the generated
+  parser (or generating it during module build) — a maintainer decision.
 
-For a reproducible bootstrap, pin the version (`@vX.Y.Z` or `--tag vX.Y.Z`) rather than
-tracking `@latest`; nightly is opt-in only.
+For a reproducible bootstrap, pin the version (`--tag vX.Y.Z`); nightly is opt-in only.
 
 ## Two rules that make this robust
 
