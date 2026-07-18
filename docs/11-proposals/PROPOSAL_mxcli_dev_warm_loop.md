@@ -237,6 +237,58 @@ mxcli dev push --to https://<name>-9000.app.github.dev --secret $TOKEN -p app.mp
 | C. Git branch, Codespace pulls | ❌ | requires a commit — **rejected**, violates the core requirement |
 | D. Live tunnel (app stays in DEV, static relay forwards) | ✅ | **viable — chisel verified** (see § Scaling). Cleanest dev loop: hot-reload stays local, no artifact sync, and the relay is a generic static component. Caveat: the DEV runtime is ephemeral. **Preferred for the multi-container dev loop; A remains the durable/persistent-preview fallback.** |
 
+## Provisioning: from new Claude Code Web project to a running testable app
+
+Two entry points, both on tooling that already exists:
+
+- **New app:** `mxcli new MyApp --version <X.Y.Z>` — downloads MxBuild, runs
+  `mx create-project`, scaffolds `.claude/` tooling + a devcontainer, and installs the
+  Linux mxcli binary. Optionally seed the blank model from a Claude design prototype
+  (mxcli/MDL `create entity` / `page` / `microflow`) per § End-to-end workflow.
+- **Existing app:** point the Claude Code Web project at a repo containing the `.mpr`,
+  then `mxcli init` — adds `.claude/` skills/commands/CLAUDE.md and a devcontainer if
+  missing.
+
+### Initializing the Claude Code Web session
+
+`mxcli init` / `new` today scaffold a **devcontainer + `.claude/` tooling** — enough for
+Codespaces and local dev containers, but Claude Code Web needs one more piece: a
+**SessionStart hook** (or devcontainer `postStart`) that idempotently brings the runtime
+up on **every** session, because background processes (Postgres, the JVM) are **reaped
+on idle** — observed repeatedly during this investigation. Proposed: `mxcli init` also
+emits an `mxcli dev up` bootstrap, wired to SessionStart, that idempotently:
+
+1. **Ensure mxcli** — prefer a prebuilt binary via `mxcli setup mxcli` (fast) over a
+   from-source build (needs antlr4 + Go, ~70 s).
+2. **Ensure MxBuild + runtime cached** — `mxcli setup mxbuild -p app.mpr` and
+   `mxcli setup mxruntime -p app.mpr` (both already exist). One-time ~700 MB / ~30–40 s;
+   **bake into the devcontainer image** so the first session is instant.
+3. **Start Postgres + create the app DB** — re-run every session (survives reaping).
+4. **Boot the runtime + `mxbuild --serve`** — the standalone-boot recipe
+   (BasePath / RuntimePath / MicroflowConstants / data-dirs → `start` → DDL if needed),
+   leaving a warm serve daemon.
+
+End state: the session comes up **ready to prompt → build → test**. Then:
+
+- `mxcli dev` — local testable app at `localhost:8080` (the ~1 s warm loop).
+- `mxcli dev --hub <url>` — externally testable: self-registers with the hub and gets a
+  public subdomain (§ Scaling).
+
+### First-run vs warm
+
+| Phase | One-time (first session / image build) | Per session (after reap) |
+|-------|----------------------------------------|--------------------------|
+| mxcli binary | `setup mxcli` download (or ~70 s build) | cached |
+| MxBuild + runtime | ~700 MB, ~30–40 s | cached |
+| Postgres + DB | — | start + createdb (~seconds) |
+| runtime boot | — | ~40 s cold / seconds warm |
+
+The heavy costs are one-time and **image-cacheable**; steady-state session startup is
+just Postgres + a runtime boot. The only real gap is the **SessionStart bootstrap** —
+mxcli already has every ingredient (`new`, `init`, `setup mx*`, the standalone boot);
+this proposal wires them into one idempotent `mxcli dev up` that Claude Code Web runs on
+session start.
+
 ## Scaling: tunnel hub with self-registration and admin overview
 
 The two-container model generalizes to **one static hub fronting many dynamic dev
@@ -332,6 +384,8 @@ downloads/caches mxbuild + runtime and speaks the M2EE admin API.
 | `cmd/mxcli/tunnelhub/register.go` | New: registration API (`/register`, `/status` heartbeat, `/deregister`); owns the `{port, subdomain, token}` map + TTL cleanup. |
 | `cmd/mxcli/tunnelhub/admin.go` | New: authenticated admin overview page — fleet list (URL, health, last reload) + per-container change summaries. |
 | `cmd/mxcli/dev.go` | Add `--hub <url>`: self-register on startup, run the chisel client, set `ApplicationRootUrl` from the assigned subdomain, push `change_summary` heartbeats, deregister on stop. |
+| `cmd/mxcli/dev.go` (`dev up`) | Idempotent bootstrap for provisioning: `setup mxcli`/`mxbuild`/`mxruntime` if missing, start Postgres + create DB, boot runtime + `mxbuild --serve`. Safe to re-run every session (survives reaping). |
+| `cmd/mxcli/init.go` | Emit a **SessionStart hook** (Claude Code Web) and/or devcontainer `postStart` that runs `mxcli dev up`; keep the existing devcontainer + `.claude/` scaffolding. |
 | `cmd/mxcli/tunnelhub/*_test.go` | Tests: slot allocation/isolation, authfile + vhost reload, register/heartbeat/deregister lifecycle, admin-page rendering. |
 | `cmd/mxcli/dev_test.go` | Tests for the serve client and the `restartRequired` branch logic (mock the serve/admin HTTP endpoints). |
 
@@ -422,3 +476,8 @@ supply. `mxcli dev` must set all of it or `start` fails:
 10. **Fleet lifecycle.** TTL/heartbeat-timeout cleanup of dead containers, port/subdomain
     reclamation, and what the admin page shows for a container whose sandbox was reaped
     (the ephemeral-runtime reality observed this session).
+11. **Provisioning baseline.** Best mechanism to pre-bake MxBuild + runtime (~700 MB)
+    into the Claude Code Web image so first session is instant, vs downloading on first
+    `mxcli dev up`. And the exact SessionStart hook contract on Claude Code Web (does it
+    run on every resume, with what timeout?) — determines whether `dev up` must be fully
+    idempotent and how long it may take.
