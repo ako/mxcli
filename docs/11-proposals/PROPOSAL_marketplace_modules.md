@@ -1,7 +1,7 @@
 ---
 title: mxcli marketplace — Download & Manage Marketplace Modules
-status: shipping
-date: 2026-03-23 (initial), revised 2026-04-16 (spike), 2026-06-05 (download unblocked)
+status: partial
+date: 2026-06-05
 ---
 
 # Proposal: `mxcli marketplace` — Download & Manage Marketplace Modules

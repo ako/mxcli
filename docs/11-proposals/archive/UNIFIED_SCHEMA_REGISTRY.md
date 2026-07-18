@@ -1,6 +1,7 @@
 ---
 title: Unified Schema Registry
-status: descoped
+status: abandoned
+date: 2026-06-05
 ---
 
 # Proposal: Unified Schema Registry
