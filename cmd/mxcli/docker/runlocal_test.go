@@ -203,3 +203,42 @@ func TestResolveScreenshotURL(t *testing.T) {
 		}
 	}
 }
+
+func TestSlugifyPage(t *testing.T) {
+	cases := map[string]string{
+		"":                       "home",
+		"/":                      "home",
+		"/p/customers":           "p-customers",
+		"p/Customer_Overview":    "p-customer-overview",
+		"http://127.0.0.1:8080/": "home",
+		"http://h:8080/p/orders": "p-orders",
+		"/p/a//b":                "p-a-b",
+	}
+	for in, want := range cases {
+		if got := slugifyPage(in); got != want {
+			t.Errorf("slugifyPage(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestScreenshotOutName(t *testing.T) {
+	base := filepath.FromSlash("/x/.mxcli/run-local.png")
+	cases := map[string]string{
+		"/p/customers": filepath.FromSlash("/x/.mxcli/run-local-p-customers.png"),
+		"":             filepath.FromSlash("/x/.mxcli/run-local-home.png"),
+	}
+	for in, want := range cases {
+		if got := screenshotOutName(base, in); got != want {
+			t.Errorf("screenshotOutName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestPageLabel(t *testing.T) {
+	if pageLabel("") != "home" {
+		t.Errorf("pageLabel(\"\") = %q, want home", pageLabel(""))
+	}
+	if pageLabel("/p/x") != "/p/x" {
+		t.Errorf("pageLabel(/p/x) = %q", pageLabel("/p/x"))
+	}
+}

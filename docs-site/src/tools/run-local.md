@@ -68,7 +68,7 @@ createdb -h 127.0.0.1 -U mendix app1112
 | `--db-user` / `--db-password` | mendix / mendix | Database credentials |
 | `--screenshot` | off | Capture a Playwright PNG after boot and each applied change |
 | `--screenshot-path` | `<projectDir>/.mxcli/run-local.png` | Screenshot output PNG |
-| `--screenshot-url` | app root | Page to shoot: full URL, or a path relative to the app root (e.g. `/p/customers`) |
+| `--screenshot-url` | app root | Page to shoot: full URL, or a path relative to the app root (e.g. `/p/customers`). Repeat for a multi-page set. |
 | `--screenshot-user` / `--screenshot-password` | — | Log in once (Mendix form auth) and reuse the session, so pages behind login render authenticated |
 
 ## The change signal
@@ -109,6 +109,15 @@ mxcli run --local -p app.mpr --watch --screenshot
 **Deep links.** `--screenshot-url /p/customers` shoots a specific page instead of the
 app root (a bare path is resolved against the app URL; a full `http(s)://…` is used
 as-is).
+
+**Multi-page sets.** Repeat `--screenshot-url` to shoot several pages after every
+change — a visual-regression sheet. Each page gets its own PNG, named from the page
+(`run-local-p-customers.png`, `run-local-home.png`):
+
+```bash
+mxcli run --local -p app.mpr --watch --screenshot \
+  --screenshot-url / --screenshot-url /p/customers --screenshot-url /p/orders
+```
 
 **Pages behind login.** `--screenshot-user`/`--screenshot-password` log in once via
 the Mendix login form (Playwright drives `#usernameInput`/`#passwordInput`/

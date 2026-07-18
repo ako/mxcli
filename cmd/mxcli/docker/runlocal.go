@@ -48,10 +48,13 @@ type LocalRunOptions struct {
 	// applied change (requires the Playwright CLI + a browser).
 	Screenshot bool
 	// ScreenshotPath is where the PNG is written (default <projectDir>/.mxcli/run-local.png).
+	// With multiple ScreenshotURLs, it is the base name and each page gets a
+	// per-page suffix (run-local-<page>.png).
 	ScreenshotPath string
-	// ScreenshotURL overrides the page shot: a full http(s) URL, or a path
-	// relative to the app root (e.g. "/p/customers"). Default the app root.
-	ScreenshotURL string
+	// ScreenshotURLs are the pages to shoot each change: full http(s) URLs, or
+	// paths relative to the app root (e.g. "/p/customers"). Empty -> the app root.
+	// More than one produces a screenshot set (one PNG per page).
+	ScreenshotURLs []string
 	// ScreenshotUser/Password log in once (Mendix form auth) and reuse the session
 	// for every screenshot, so pages behind login render authenticated.
 	ScreenshotUser     string
@@ -361,21 +364,33 @@ func maybeScreenshot(opts LocalRunOptions, rt *LocalRuntime) {
 		fmt.Fprintf(opts.Stderr, "  screenshot skipped: %v\n", err)
 		return
 	}
-	if err := CaptureScreenshot(ScreenshotOptions{
-		URL:      resolveScreenshotURL(rt.AppURL(), opts.ScreenshotURL),
-		OutPath:  opts.ScreenshotPath,
-		WaitMs:   4000,
-		FullPage: true,
-		Viewport: "1280,800",
-		Storage:  opts.screenshotStorage,
-	}); err != nil {
-		fmt.Fprintf(opts.Stderr, "  screenshot skipped: %v\n", err)
-		return
+	// Empty list -> the app root; multiple pages -> a screenshot set (one PNG each).
+	targets := opts.ScreenshotURLs
+	if len(targets) == 0 {
+		targets = []string{""}
 	}
-	fmt.Fprintf(opts.Stdout, "  screenshot -> %s\n", opts.ScreenshotPath)
+	multi := len(targets) > 1
+	for _, t := range targets {
+		out := opts.ScreenshotPath
+		if multi {
+			out = screenshotOutName(opts.ScreenshotPath, t)
+		}
+		if err := CaptureScreenshot(ScreenshotOptions{
+			URL:      resolveScreenshotURL(rt.AppURL(), t),
+			OutPath:  out,
+			WaitMs:   4000,
+			FullPage: true,
+			Viewport: "1280,800",
+			Storage:  opts.screenshotStorage,
+		}); err != nil {
+			fmt.Fprintf(opts.Stderr, "  screenshot skipped (%s): %v\n", pageLabel(t), err)
+			continue
+		}
+		fmt.Fprintf(opts.Stdout, "  screenshot -> %s\n", out)
+	}
 }
 
-// resolveScreenshotURL resolves the --screenshot-url value against the app root:
+// resolveScreenshotURL resolves a --screenshot-url value against the app root:
 // empty -> the root; a full http(s) URL -> as-is; anything else -> treated as a
 // path relative to the app root (so "/p/customers" deep-links a specific page).
 func resolveScreenshotURL(appURL, urlOrPath string) string {
@@ -386,6 +401,54 @@ func resolveScreenshotURL(appURL, urlOrPath string) string {
 		return urlOrPath
 	}
 	return strings.TrimRight(appURL, "/") + "/" + strings.TrimLeft(urlOrPath, "/")
+}
+
+// pageLabel is a short human label for a screenshot target ("home" for the root).
+func pageLabel(urlOrPath string) string {
+	if urlOrPath == "" {
+		return "home"
+	}
+	return urlOrPath
+}
+
+// screenshotOutName derives a per-page output path from the base path and a
+// target, so a screenshot set writes distinct files: run-local.png +
+// "/p/customers" -> run-local-p-customers.png; the app root -> run-local-home.png.
+func screenshotOutName(basePath, urlOrPath string) string {
+	ext := filepath.Ext(basePath)             // ".png"
+	stem := strings.TrimSuffix(basePath, ext) // ".../run-local"
+	slug := slugifyPage(urlOrPath)
+	return stem + "-" + slug + ext
+}
+
+// slugifyPage turns a page URL/path into a filesystem-safe slug.
+func slugifyPage(urlOrPath string) string {
+	s := urlOrPath
+	// Drop scheme://host for full URLs, keep the path.
+	if i := strings.Index(s, "://"); i >= 0 {
+		if j := strings.IndexByte(s[i+3:], '/'); j >= 0 {
+			s = s[i+3+j:]
+		} else {
+			s = ""
+		}
+	}
+	var b strings.Builder
+	for _, r := range strings.ToLower(s) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte('-')
+		}
+	}
+	slug := strings.Trim(b.String(), "-")
+	// collapse runs of '-'
+	for strings.Contains(slug, "--") {
+		slug = strings.ReplaceAll(slug, "--", "-")
+	}
+	if slug == "" {
+		return "home"
+	}
+	return slug
 }
 
 // resolveRuntimeInstall returns the directory to use as MX_INSTALL_PATH (its
