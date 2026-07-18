@@ -110,6 +110,50 @@ this proposal.
 (verified). The 11.12 CLI adds no build-skip flags (only `--export-secrets`), so the
 incremental path is `--serve`, not a new one-shot flag.
 
+## Hot-reload scope: what `reload_model` can and cannot do (verified)
+
+`reload_model` reloads exactly three subsystems — the model store
+(`ProjectModelStoreLoader.load`), the microflow engine
+(`MicroflowEngineModule.reload`), and translations (`I18NProcessor.reload`) — after
+draining in-flight actions. It does **not** touch the datastorage / entity layer.
+
+The runtime maintains a **metamodel catalog inside the app database** —
+`mendixsystem$entity`, `mendixsystem$entityidentifier`, `mendixsystem$attribute`,
+`mendixsystem$association` — and reconciles it **at startup**, not during a reload.
+This was verified directly: a view entity added via `reload_model` (`TaskView`)
+returned `Success` but **never appeared in `mendixsystem$entity`**, while the base
+`Task` (present at the last startup) has its row (`entity_name` → `table_name` → a
+stable identifier GUID). So any change that needs a catalog row — a new/changed
+entity, **including OQL view entities**, and associations in
+`mendixsystem$association` (e.g. a view entity referencing a persistent entity) —
+requires a **restart**, because that is when the catalog is reconciled.
+
+This makes the apply-decision **two-dimensional**: `restartRequired` (from the serve
+build) and `get_ddl_commands` (from the runtime) are **independent** signals.
+
+| Change class | `restartRequired` | `get_ddl_commands` | Apply via |
+|---|---|---|---|
+| microflow / page / text | `false` | 0 | `reload_model` (~0.1 s, hot) |
+| **OQL view entity** | **`true`** | **0** | **restart** — catalog sync, **no DDL** |
+| persistable entity / attribute | `true` | > 0 | `execute_ddl_commands` → restart |
+| association (adds FK) | `true` | > 0 | `execute_ddl_commands` → restart |
+
+The loop must branch on **both** signals: `restartRequired == false` → `reload_model`;
+`restartRequired == true` → restart, running `execute_ddl_commands` **only if**
+`get_ddl_commands > 0`. Treating "restart" as implying "DDL" is wrong — **OQL view
+entities are the counterexample**: they need a restart (to write the
+`mendixsystem$entity` catalog row) but no DDL (they are query-time, not materialized —
+confirmed: no view/table for `TaskView` in Postgres).
+
+**Caveat (not fully closed):** `reload_model` *returns* `Success` for a view-entity
+change (it doesn't reject it), and I could not run the functional tiebreaker —
+querying `TaskView` post-reload — because the standalone hand-boot does not register
+the `preview_execute_oql` admin action (it needs the dev-preview flag `mxcli docker`
+sets). The conclusion rests on the authoritative `restartRequired` signal plus the
+catalog evidence, which agree. Enabling the dev-preview flag on the standalone boot
+(so the agent can verify via OQL) is itself a small item worth doing — see Open
+Questions.
+
 ## Proposed CLI
 
 ### Scenario A: `mxcli dev` — Docker-free warm run loop
@@ -229,8 +273,10 @@ supply. `mxcli dev` must set all of it or `start` fails:
 - Boot sequence: `update_appcontainer_configuration` (runtime port) →
   `update_configuration` → `start` → on `"database has to be updated"`:
   `execute_ddl_commands` → `start`.
-- Reload cycle: `mxbuild --serve` Deploy build → if `restartRequired` then
-  `execute_ddl_commands` (if schema changed) + restart, else `reload_model`.
+- Reload cycle (two independent signals — see § Hot-reload scope): `mxbuild --serve`
+  Deploy build → if `restartRequired == false` then `reload_model`; else restart,
+  running `execute_ddl_commands` first **only if** `get_ddl_commands > 0`. Do **not**
+  couple "restart" to "DDL" — OQL view entities need a restart with zero DDL.
 
 ## Version Compatibility
 
@@ -271,10 +317,15 @@ supply. `mxcli dev` must set all of it or `start` fails:
    side. Confirm this framing.
 4. **Warm-serve memory.** `mxbuild --serve` holds the model in memory; quantify for
    large apps and document guidance.
-5. **`reload_model` scope.** Verified for microflow changes (hot) and flagged
-   correctly for entity changes (`restartRequired`). Not yet exercised: styling-only
-   (`update_styling` exists as a separate admin action) and multi-unit changes.
-   Worth a coverage pass before shipping.
+5. **`reload_model` scope (largely resolved — see § Hot-reload scope).** Verified:
+   microflow changes hot-reload; entity/view-entity/association changes flip
+   `restartRequired` because the runtime reconciles its DB metamodel catalog
+   (`mendixsystem$entity` / `entityidentifier` / `attribute` / `association`) at
+   startup, not on reload. Open sub-items: (a) enable the `preview_execute_oql`
+   dev flag on the standalone boot so the loop can *functionally* verify a change via
+   OQL (needed to close the view-entity caveat and to power agentic verification);
+   (b) exercise styling-only changes (`update_styling` is a distinct admin action —
+   likely a third hot path); (c) multi-unit and mixed changes.
 6. **Relationship to `check`.** The instant `mxcli check` gate (see
    `PROPOSAL_check_mxbuild_gap_heuristics.md`) should run *before* every warm build so
    most errors never reach even the ~0.8 s build. `mxcli dev` should call it first.
