@@ -174,13 +174,29 @@ mxbuild's `rollup-runner.mjs` (production, one-shot) over `deployment/web` after
 deploy build. Verified: driving the devcontainer's Chromium with Playwright renders
 the Mendix homepage fully. `web/dist/index.js` now serves HTTP 200 out of the box.
 
-**Remaining optimization.** In `--watch` the client bundle is rebuilt in full on
-every change (~6–7 s). Behavioural changes (microflows) don't need it, and page
-changes could use rollup's incremental watch mode (the runner's non-production branch
-speaks the `modern-web-bundler-protocol` over stdout — a long-lived companion bundler,
-mirroring `mxbuild --serve`). Making the client rebuild incremental/conditional is the
-next optimization; then wire Playwright screenshotting into the loop for the
-pixel-perfect page workflow.
+**Incremental client bundler + screenshots — done.** `--watch` now keeps a
+long-lived incremental bundler hot (`docker.WebClientWatcher`) — the client-side
+mirror of `mxbuild --serve`, running the runner's watch branch and parsing its
+`modern-web-bundler-protocol` stdout to count successful bundles. A page/widget edit
+re-bundles in ~3–4 s (vs ~7 s cold); the loop re-bundles **only when the edit touched
+web/ client source** (mtime gate), so a microflow/entity edit skips it and just
+hot-reloads. `WaitForRebuild` settles out cleanly if the touched file isn't a rollup
+input, so it never hangs.
+
+Two findings from implementation:
+- **inotify is silent on container overlay filesystems** — the rollup watcher's
+  chokidar detected changes only after tens of seconds until `CHOKIDAR_USEPOLLING`
+  (+`CHOKIDAR_INTERVAL`) was set, which drops detection to ~1 s. (Thanks to the polling
+  tip.)
+- **The change signal must watch model source, not the project dir.** The build
+  rewrites `theme-cache/`, `.mendix-cache/`, and `deployment/` every run, and
+  screenshots land in `.mxcli/`; an initial whole-dir watcher self-triggered an
+  infinite rebuild loop. `projectSourceMTime` watches only `.mpr` + `mprcontents/`.
+
+`--screenshot` captures a PNG after boot and each applied change via Playwright's
+built-in `screenshot` command (Chromium from `PLAYWRIGHT_BROWSERS_PATH`; no
+`playwright-cli` dependency), completing the pixel-perfect page loop. Deep-link /
+authenticated-state screenshots are the natural next step.
 
 ## Proposed CLI
 

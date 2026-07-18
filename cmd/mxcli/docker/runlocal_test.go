@@ -107,33 +107,83 @@ func TestEnsureMxBuildRuntimeSibling_MissingSource(t *testing.T) {
 	}
 }
 
-func TestProjectMTime(t *testing.T) {
+func TestProjectSourceMTime(t *testing.T) {
 	dir := t.TempDir()
-	deploy := filepath.Join(dir, "deployment")
-	_ = os.MkdirAll(deploy, 0o755)
-	_ = os.MkdirAll(filepath.Join(dir, ".git"), 0o755)
+	// Build-output/cache dirs the serve/mxbuild build churns — must be ignored.
+	for _, d := range []string{"deployment", "theme-cache", ".mendix-cache", ".mxcli"} {
+		_ = os.MkdirAll(filepath.Join(dir, d), 0o755)
+	}
+	mprcontents := filepath.Join(dir, "mprcontents", "ab")
+	_ = os.MkdirAll(mprcontents, 0o755)
 
 	mpr := filepath.Join(dir, "App.mpr")
 	if err := os.WriteFile(mpr, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	base := projectMTime(dir, deploy)
+	doc := filepath.Join(mprcontents, "doc.mxunit")
+	_ = os.WriteFile(doc, []byte("d"), 0o644)
+
+	base := projectSourceMTime(mpr)
 	if base.IsZero() {
-		t.Fatal("expected a non-zero mtime")
+		t.Fatal("expected a non-zero source mtime")
 	}
 
-	// A change under deployment/ must NOT advance the signal.
+	// Churn in every build-output/cache dir must NOT advance the signal.
 	future := time.Now().Add(time.Hour)
-	deployFile := filepath.Join(deploy, "model.mdp")
-	_ = os.WriteFile(deployFile, []byte("y"), 0o644)
-	_ = os.Chtimes(deployFile, future, future)
-	if got := projectMTime(dir, deploy); got.After(base) {
-		t.Error("deployment/ changes should be ignored by the watch signal")
+	for _, f := range []string{
+		filepath.Join(dir, "deployment", "model.mdp"),
+		filepath.Join(dir, "theme-cache", "theme.compiled.css"),
+		filepath.Join(dir, ".mendix-cache", "x"),
+		filepath.Join(dir, ".mxcli", "run-local.png"),
+	} {
+		_ = os.WriteFile(f, []byte("y"), 0o644)
+		_ = os.Chtimes(f, future, future)
+	}
+	if projectSourceMTime(mpr).After(base) {
+		t.Error("build-output/cache churn must not advance the source signal")
 	}
 
-	// A change to the project file MUST advance the signal.
+	// An edit to the .mpr MUST advance the signal.
 	_ = os.Chtimes(mpr, future, future)
-	if got := projectMTime(dir, deploy); !got.After(base) {
-		t.Error("project file change should advance the watch signal")
+	if !projectSourceMTime(mpr).After(base) {
+		t.Error(".mpr change should advance the signal")
+	}
+
+	// An edit under mprcontents/ (v2 documents) MUST advance the signal.
+	base2 := projectSourceMTime(mpr)
+	future2 := time.Now().Add(2 * time.Hour)
+	_ = os.Chtimes(doc, future2, future2)
+	if !projectSourceMTime(mpr).After(base2) {
+		t.Error("mprcontents/ change should advance the signal")
+	}
+}
+
+func TestWebClientSourceMTime_ExcludesDist(t *testing.T) {
+	dep := t.TempDir()
+	web := filepath.Join(dep, "web")
+	dist := filepath.Join(web, "dist")
+	_ = os.MkdirAll(filepath.Join(web, "pages"), 0o755)
+	_ = os.MkdirAll(dist, 0o755)
+
+	src := filepath.Join(web, "pages", "Home.js")
+	_ = os.WriteFile(src, []byte("x"), 0o644)
+	base := webClientSourceMTime(dep)
+	if base.IsZero() {
+		t.Fatal("expected a non-zero web source mtime")
+	}
+
+	// A newer file under dist/ must NOT advance the source mtime.
+	future := time.Now().Add(time.Hour)
+	df := filepath.Join(dist, "index.js")
+	_ = os.WriteFile(df, []byte("y"), 0o644)
+	_ = os.Chtimes(df, future, future)
+	if webClientSourceMTime(dep).After(base) {
+		t.Error("dist/ changes must be excluded from the web source mtime")
+	}
+
+	// A newer source file MUST advance it.
+	_ = os.Chtimes(src, future, future)
+	if !webClientSourceMTime(dep).After(base) {
+		t.Error("a client source change should advance the web source mtime")
 	}
 }
