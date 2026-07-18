@@ -206,7 +206,8 @@ func RunLocal(opts LocalRunOptions) error {
 
 	// 2. Ensure mxbuild + runtime are cached, and linked for the serve javac step.
 	fmt.Fprintln(w, "Ensuring MxBuild and runtime are available...")
-	if _, err := DownloadMxBuild(version, w); err != nil {
+	mxbuildPath, err := DownloadMxBuild(version, w)
+	if err != nil {
 		return fmt.Errorf("setting up mxbuild: %w", err)
 	}
 	installPath, err := resolveRuntimeInstall(version, w)
@@ -243,6 +244,14 @@ func RunLocal(opts LocalRunOptions) error {
 		return fmt.Errorf("initial build failed: %s\n%s", build.Message, string(build.Raw))
 	}
 
+	// 5b. Bundle the browser client (web/dist). The serve Deploy target writes the
+	// client source but not the rollup bundle, so without this the app 404s on
+	// /dist/index.js and renders blank.
+	fmt.Fprintln(w, "Bundling web client...")
+	if err := BuildWebClient(WebClientOptions{DeployDir: opts.DeployDir, MxBuildPath: mxbuildPath, Stdout: w}); err != nil {
+		return fmt.Errorf("bundling web client: %w", err)
+	}
+
 	// 6. Boot the runtime against the fresh deployment.
 	rt, err := StartLocalRuntime(LocalRuntimeOptions{
 		DeployDir:   opts.DeployDir,
@@ -265,7 +274,7 @@ func RunLocal(opts LocalRunOptions) error {
 	// 7. Stay up until interrupted. With --watch, rebuild + hot-apply on every
 	// project change; otherwise just keep the runtime serving.
 	if opts.Watch {
-		return watchAndApply(opts, serve, rt)
+		return watchAndApply(opts, serve, rt, mxbuildPath)
 	}
 	fmt.Fprintln(w, "(run with --watch to rebuild and hot-apply on changes; Ctrl-C to stop)")
 	waitForInterrupt()
@@ -318,7 +327,7 @@ func waitForInterrupt() {
 // watchAndApply polls the project for changes and applies each rebuild until the
 // user interrupts (Ctrl-C). StartLocalRuntime already resolved the JVM; here we
 // only rebuild via serve and let the RuntimeController decide reload vs restart.
-func watchAndApply(opts LocalRunOptions, serve *ServeServer, rt *LocalRuntime) error {
+func watchAndApply(opts LocalRunOptions, serve *ServeServer, rt *LocalRuntime, mxbuildPath string) error {
 	w := opts.Stdout
 	projectDir := filepath.Dir(opts.ProjectPath)
 
@@ -351,6 +360,14 @@ func watchAndApply(opts LocalRunOptions, serve *ServeServer, rt *LocalRuntime) e
 			}
 			if !build.OK() {
 				fmt.Fprintf(opts.Stderr, "  build failed: %s\n", build.Message)
+				continue
+			}
+			// Rebuild the browser client bundle so page/widget edits are reflected
+			// (the serve Deploy target writes client source but not the rollup
+			// bundle). This is a full ~7s bundle today; an incremental watch-mode
+			// companion bundler is the optimization follow-up.
+			if err := BuildWebClient(WebClientOptions{DeployDir: opts.DeployDir, MxBuildPath: mxbuildPath, Stdout: w}); err != nil {
+				fmt.Fprintf(opts.Stderr, "  web client build failed: %v\n", err)
 				continue
 			}
 			action, err := rt.Controller().ApplyBuild(build, rt.Restart)

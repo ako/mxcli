@@ -14,11 +14,12 @@ Use this when:
 - You want the fastest edit → running-app loop for a Mendix 11.x project.
 - You're driving the model programmatically (`mxcli exec`/MDL) and want each change
   live immediately.
-- You're doing runtime/model/API-level or headless verification.
+- You're iterating on **page design** (the app renders in a real browser) or doing
+  runtime/model/API/headless verification.
 
 Prefer `mxcli docker run` when:
-- You need the app's pages to **render in a browser** (see limitation).
 - The project is Mendix 9/10 (JDK 11/17 — not yet supported by `run --local`).
+- You want a container-parity deployment rather than a standalone runtime.
 
 ## Usage
 
@@ -78,21 +79,22 @@ mxcli exec add-page.mdl -p app.mpr
 | `--app-port` / `--admin-port` / `--serve-port` | 8080 / 8090 / 6543 | Ports |
 | `--db-host` / `--db-name` / `--db-user` / `--db-password` | 127.0.0.1:5432 / derived / mendix / mendix | Database |
 
-## Limitation — browser pages render blank (for now)
+## Pages render in the browser
 
-The runtime, model, and admin API work end to end (the app answers HTTP 200 and
-reload/restart apply correctly), **but the browser client does not yet render**: the
-web client bundle (`web/dist/index.js`) is produced by a rollup step the serve/
-standalone path does not currently run, so `index.html` 404s on its main bundle.
+`run --local` bundles the browser client (`web/dist/`) with mxbuild's rollup tooling
+after the deploy build, so the app renders in a real browser (verified with
+Playwright + the devcontainer's Chromium). Pair it with Playwright screenshots for a
+pixel-perfect page loop: edit → auto-rebuild → re-screenshot.
 
-So `run --local` is currently for **runtime/model/API iteration and headless
-checks**, not visual page-design work. For a rendered browser client, use
-`mxcli docker run`. Closing this gap is tracked follow-up work.
+**Watch cost:** in `--watch` the client bundle is rebuilt on every change (~6–7 s full
+bundle today). Behavioural changes (microflows) don't strictly need it; making the
+client rebuild incremental/conditional is a tracked optimization.
 
 ## Validation checklist
 
 - [ ] Project is Mendix 11.x.
 - [ ] Postgres is running and the target database exists.
-- [ ] `curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/` returns `200`.
+- [ ] `curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/` returns `200`,
+      and `.../dist/index.js` also returns `200` (client bundle served).
 - [ ] With `--watch`, editing a microflow logs `applied via reload`; adding an entity
       logs `applied via restart` and creates the table in Postgres.
