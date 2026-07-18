@@ -451,6 +451,29 @@ supply. `mxcli dev` must set all of it or `start` fails:
   running `execute_ddl_commands` first **only if** `get_ddl_commands > 0`. Do **not**
   couple "restart" to "DDL" — OQL view entities need a restart with zero DDL.
 
+## Delivery slices
+
+This stays one proposal, but it should **ship as four independent slices** — each
+valuable on its own, each a candidate for its own PR. Ordered by value-to-risk; each
+builds on the previous.
+
+| # | Slice | Delivers | Depends on | Size / risk |
+|---|-------|----------|------------|-------------|
+| 1 | **Warm local loop** — `mxcli dev` (serve daemon + M2EE admin client + `restartRequired` × `get_ddl_commands` branching) | Docker-free ~1 s edit→test loop, locally | nothing new | medium / low — highest bang-for-buck |
+| 2 | **Provisioning** — `mxcli dev up` bootstrap + `mxcli init` SessionStart hook + prompt template | a fresh Claude Code Web session comes up testable; iPad-native start | slice 1 | small / low |
+| 3 | **Single-app external preview** — `mxcli dev serve` + chisel client → one static relay + `ApplicationRootUrl` wiring | a shareable live preview URL (the iPad two-container flow) | slice 1 | medium / medium — the `app.github.dev` WebSocket hop is unverified (a VPS relay avoids it) |
+| 4 | **Tunnel hub** — `mxcli tunnel-hub` + `mxcli dev --hub` + registration API + admin overview | many dev containers behind one ingress; fleet overview + per-container change lists | slice 3 | large / higher — a product in its own right, with a multi-tenant auth surface |
+
+Recommended sequencing: **1 → 2** delivers the complete solo dev experience (Scenario A
+plus provisioning) with no external moving parts, and can ship first. **3** adds external
+preview for a single app. **4** is the scale-out and deserves its own design/security
+review — build it only once 1–3 are proven. Slices 1–2 stand alone if the tunnel/hub work
+is deferred indefinitely.
+
+Cross-cut: the instant `mxcli check` gate (`PROPOSAL_check_mxbuild_gap_heuristics.md`)
+should front slice 1's build on every iteration, so most errors never reach even the
+~0.8 s warm build.
+
 ## Version Compatibility
 
 - `mxbuild --serve` and `reload_model`: **≥ 11.6.3** (verified on 11.6.3 and
