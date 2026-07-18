@@ -64,6 +64,7 @@ so structural changes need a restart; behavioural changes do not.
 | `--local` | — | Required; run without Docker |
 | `--watch` | off | Rebuild + hot-apply on every project change |
 | `--ensure-db` | off | Provision local Postgres + the app database if missing (fresh-session bootstrap) |
+| `--setup` | off | Prepare prerequisites (cache MxBuild+runtime, ensure DB) and exit without booting — for a SessionStart hook |
 | `--app-port` | 8080 | App HTTP port |
 | `--admin-port` | 8090 | M2EE admin API port |
 | `--serve-port` | 6543 | `mxbuild --serve` port |
@@ -134,6 +135,17 @@ mxcli run --local -p app.mpr --watch --screenshot \
   --screenshot-user demo_admin --screenshot-password '<pw>' \
   --screenshot-url /p/customer_overview
 ```
+
+## Fresh sessions (Claude Code Web)
+
+Background processes (Postgres, the JVM) are reaped on idle, so a resumed web session
+needs to bring prerequisites back up. `mxcli init` emits a **SessionStart hook** into
+`.claude/settings.json` that runs `./mxcli run --local --setup --ensure-db -p <app.mpr>`
+on every session start — the non-blocking `--setup` mode caches MxBuild+runtime and
+provisions the database, then exits, leaving the session ready to `run --local`.
+
+To start from an **empty repo** on the web or an iPad, use the
+[bootstrap prompt](bootstrap-prompt.md) instead of a GitHub template.
 
 See also: [PROPOSAL_mxcli_dev_warm_loop](../../../docs/11-proposals/PROPOSAL_mxcli_dev_warm_loop.md),
 [mxcli docker run](docker-run.md), [Playwright Testing](playwright.md).
