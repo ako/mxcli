@@ -154,6 +154,28 @@ catalog evidence, which agree. Enabling the dev-preview flag on the standalone b
 (so the agent can verify via OQL) is itself a small item worth doing — see Open
 Questions.
 
+## Implementation status (slice 1 — `mxcli run --local`)
+
+Shipped and verified end to end against a blank Mendix 11.12.1 app on a clean
+Postgres: boot → HTTP 200; a microflow edit applies via `reload_model` in ~1.1 s (no
+restart); an entity add applies via restart in ~9 s, runs `execute_ddl_commands`, and
+returns HTTP 200 with the table present in Postgres. Pieces:
+`docker.RuntimeController` (reload-vs-restart + DDL-aware start), `docker.LocalRuntime`
+(standalone boot; constants lifted from `deployment/model/config.json`),
+`docker.RunLocal` (+ `--watch`), and the `run --local` command.
+
+**Known gap — browser client bundle not produced (blocks visual page iteration).**
+The runtime/model/admin API work, but a browser loads blank: `index.html` requests
+`web/dist/index.js`, which neither the serve `Deploy` target nor a one-shot `mxbuild`
+produces here. The client bundle is built by a **rollup** step (`web/rollup.config.mjs`,
+using mxbuild's bundled `modeler/tools/node` tooling) that the serve/standalone path
+does not run — `web/index.js` (the rollup *input*) is present but the bundled
+`web/dist/index.js` output is missing. Until this is closed, `run --local` is for
+runtime/model/API iteration and headless checks; use `mxcli docker run` for a rendered
+client. **Next step:** invoke mxbuild's rollup client build after the deploy build (or
+find the serve option that emits `dist/`), then wire Playwright screenshotting for the
+pixel-perfect page loop.
+
 ## Proposed CLI
 
 ### Scenario A: `mxcli dev` — Docker-free warm run loop
