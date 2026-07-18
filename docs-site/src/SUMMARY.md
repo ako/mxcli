@@ -151,6 +151,7 @@
   - [IMPORT FROM](tools/import-from.md)
   - [Credential Management](tools/credentials.md)
   - [Database Connector Generation](tools/connector-generation.md)
+- [Local Dev Loop](tools/run-local.md)
 - [Docker Integration](tools/docker.md)
   - [mxcli docker build](tools/docker-build.md)
   - [mxcli docker check](tools/docker-check.md)
