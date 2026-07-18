@@ -106,7 +106,8 @@ mxcli run --local -p app.mpr --watch --screenshot
 ```
 
 - `--screenshot-url /p/customers` shoots a specific page (bare path resolved against
-  the app root; a full URL is used as-is).
+  the app root; a full URL is used as-is). Repeat it for a multi-page set — each page
+  gets its own PNG (`run-local-p-customers.png`, `run-local-home.png`).
 - `--screenshot-user`/`--screenshot-password` log in once (Mendix form auth) and
   reuse the session, so pages behind login render authenticated. Best-effort: an
   anonymous app with no login form proceeds unauthenticated.

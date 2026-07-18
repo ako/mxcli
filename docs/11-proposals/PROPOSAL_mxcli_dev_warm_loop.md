@@ -208,6 +208,12 @@ Playwright storage state, and reuse it for every screenshot via
 proceeds unauthenticated. Verified E2E: the saved storage state carries the Mendix
 session cookies and the screenshot renders the authenticated page.
 
+**Multi-page screenshot sets — done.** `--screenshot-url` is repeatable; more than one
+target produces a screenshot *set* — one PNG per page, named from the page slug
+(`run-local-p-customers.png`, `run-local-home.png`) — so every change yields a
+visual-regression sheet across the key pages. Verified E2E: two targets produced two
+distinct PNGs in one change cycle.
+
 ## Proposed CLI
 
 ### Scenario A: `mxcli dev` — Docker-free warm run loop
