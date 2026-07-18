@@ -78,6 +78,7 @@ mxcli exec add-page.mdl -p app.mpr
 | `--local` | — | Required; run without Docker |
 | `--watch` | off | Rebuild + hot-apply on each change |
 | `--ensure-db` | off | Provision local Postgres + app database if missing |
+| `--setup` | off | Cache MxBuild+runtime + ensure DB, then exit (SessionStart bring-up) |
 | `--screenshot` | off | Playwright PNG after boot + each change |
 | `--screenshot-path` / `--screenshot-url` | `.mxcli/run-local.png` / app root | Screenshot output / page (URL or `/path`) |
 | `--screenshot-user` / `--screenshot-password` | — | Log in once, reuse session (pages behind login) |

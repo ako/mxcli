@@ -360,18 +360,26 @@ Two rules make this robust:
 Codespaces and local dev containers, but Claude Code Web needs one more piece: a
 **SessionStart hook** (or devcontainer `postStart`) that idempotently brings the runtime
 up on **every** session, because background processes (Postgres, the JVM) are **reaped
-on idle** — observed repeatedly during this investigation. Proposed: `mxcli init` also
-emits an `mxcli dev up` bootstrap, wired to SessionStart, that idempotently:
+on idle** — observed repeatedly during this investigation.
+
+**Shipped:** `mxcli init` now emits a Claude Code **SessionStart hook** into
+`.claude/settings.json` (merged idempotently, preserving existing settings) that runs
+`./mxcli run --local --setup --ensure-db -p <app.mpr>`. That `--setup` mode is the
+non-blocking bring-up — it does steps 1–3 below and **returns** (a SessionStart hook
+must not block), leaving the session ready to `mxcli run --local` on demand:
 
 1. **Ensure mxcli** — prefer a prebuilt binary via `mxcli setup mxcli` (fast) over a
-   from-source build (needs antlr4 + Go, ~70 s).
-2. **Ensure MxBuild + runtime cached** — `mxcli setup mxbuild -p app.mpr` and
-   `mxcli setup mxruntime -p app.mpr` (both already exist). One-time ~700 MB / ~30–40 s;
-   **bake into the devcontainer image** so the first session is instant.
-3. **Start Postgres + create the app DB** — re-run every session (survives reaping).
-4. **Boot the runtime + `mxbuild --serve`** — the standalone-boot recipe
-   (BasePath / RuntimePath / MicroflowConstants / data-dirs → `start` → DDL if needed),
-   leaving a warm serve daemon.
+   from-source build (needs antlr4 + Go, ~70 s). *(mxcli delivery is the environment's
+   job; the hook guards on `test -x ./mxcli`.)*
+2. **Ensure MxBuild + runtime cached** — `run --local --setup` runs DownloadMxBuild +
+   the runtime resolve. One-time ~700 MB / ~30–40 s; **bake into the devcontainer
+   image** so the first session is instant.
+3. **Start Postgres + create the app DB** — `--ensure-db`, re-run every session
+   (survives reaping).
+
+Step 4 — **booting the runtime + `mxbuild --serve`** — is deliberately *not* in the
+hook (it is long-lived and would block session start). The agent runs the full
+`mxcli run --local` when it wants to test; the heavy prerequisites are already warm.
 
 End state: the session comes up **ready to prompt → build → test**. Then:
 
@@ -528,7 +536,7 @@ builds on the previous.
 | # | Slice | Delivers | Depends on | Size / risk |
 |---|-------|----------|------------|-------------|
 | 1 | **Warm local loop** — shipped as `mxcli run --local [--watch]` (serve daemon + M2EE admin client + `restartRequired` branching; + client bundling & Playwright screenshots) | Docker-free ~1 s edit→test loop, locally | nothing new | ✅ **shipped** |
-| 2 | **Provisioning** — database provisioning (`run --local --ensure-db`, ✅ done) + `mxcli init` SessionStart hook + prompt template (remaining) | a fresh Claude Code Web session comes up testable; iPad-native start | slice 1 | small / low |
+| 2 | **Provisioning** — `run --local --ensure-db` (DB) + `run --local --setup` (non-blocking bring-up) + `mxcli init` SessionStart hook + bootstrap prompt template | a fresh Claude Code Web session comes up testable; iPad-native start | slice 1 | ✅ **shipped** |
 | 3 | **Single-app external preview** — `mxcli dev serve` + chisel client → one static relay + `ApplicationRootUrl` wiring | a shareable live preview URL (the iPad two-container flow) | slice 1 | medium / medium — the `app.github.dev` WebSocket hop is unverified (a VPS relay avoids it) |
 | 4 | **Tunnel hub** — `mxcli tunnel-hub` + `mxcli dev --hub` + registration API + admin overview | many dev containers behind one ingress; fleet overview + per-container change lists | slice 3 | large / higher — a product in its own right, with a multi-tenant auth surface |
 

@@ -45,6 +45,11 @@ type LocalRunOptions struct {
 	// EnsureDB provisions the local Postgres + app database if missing (otherwise
 	// the DB must already exist). Intended for a fresh session / SessionStart boot.
 	EnsureDB bool
+	// SetupOnly does the idempotent prerequisites (cache mxbuild+runtime, ensure
+	// the database) and returns without booting serve/runtime — the non-blocking
+	// bring-up a SessionStart hook runs each session. The agent then runs the full
+	// (blocking) loop on demand.
+	SetupOnly bool
 	// PollInterval is how often Watch checks for changes (default 1s).
 	PollInterval time.Duration
 	// Screenshot, when set, captures a PNG of the app after boot and after each
@@ -274,6 +279,14 @@ func RunLocal(opts LocalRunOptions) error {
 		return fmt.Errorf("database not reachable at %s: %w\n"+
 			"  Pass --ensure-db to provision it, or start Postgres and create the '%s' database (user %q).",
 			opts.DB.Host, err, opts.DB.Name, opts.DB.User)
+	}
+
+	// Setup-only: prerequisites are ready (mxbuild+runtime cached, database up).
+	// Stop here without booting — this is the non-blocking SessionStart bring-up.
+	if opts.SetupOnly {
+		fmt.Fprintf(w, "Setup complete: MxBuild %s + runtime cached, database %q ready.\n", version, opts.DB.Name)
+		fmt.Fprintln(w, "Run 'mxcli run --local -p <app.mpr>' to boot the warm dev loop.")
+		return nil
 	}
 
 	// 4. Start the warm build server.
