@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 )
@@ -110,6 +112,32 @@ func TestServeBuild_PackageTargetSendsMdaPath(t *testing.T) {
 	})
 	if _, err := s.Build(BuildRequest{Target: TargetPackage, ProjectFilePath: "/x/App.mpr", MdaFilePath: "/out/app.mda"}); err != nil {
 		t.Fatalf("Build: %v", err)
+	}
+}
+
+func TestVerifyMxBuildCache(t *testing.T) {
+	// layout: <cache>/modeler/mxbuild  and  <cache>/runtime
+	cache := t.TempDir()
+	modeler := filepath.Join(cache, "modeler")
+	if err := os.MkdirAll(modeler, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mxbuild := filepath.Join(modeler, "mxbuild")
+	if err := os.WriteFile(mxbuild, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// runtime/ missing -> error
+	if err := verifyMxBuildCache(mxbuild); err == nil {
+		t.Error("expected error when runtime/ dir is missing")
+	}
+
+	// runtime/ present -> ok
+	if err := os.MkdirAll(filepath.Join(cache, "runtime"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyMxBuildCache(mxbuild); err != nil {
+		t.Errorf("expected no error when runtime/ present, got %v", err)
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"sync"
@@ -78,6 +79,22 @@ type ServeServer struct {
 	log  *syncBuffer
 }
 
+// verifyMxBuildCache checks the mxbuild cache is complete: the sibling runtime/
+// directory (which holds the Mendix API libraries on the javac classpath) must
+// exist next to modeler/. Without it, Java compilation fails with a cryptic
+// "package com.mendix.* does not exist" — in both serve and one-shot builds. A
+// normal `mxcli setup mxbuild` / DownloadMxBuild extracts both dirs; this guards
+// against a partially-populated cache. mxbuildPath is <cache>/modeler/mxbuild,
+// so the runtime dir is <cache>/runtime.
+func verifyMxBuildCache(mxbuildPath string) error {
+	runtimeDir := filepath.Join(filepath.Dir(filepath.Dir(mxbuildPath)), "runtime")
+	if fi, err := os.Stat(runtimeDir); err != nil || !fi.IsDir() {
+		return fmt.Errorf("mxbuild cache incomplete: missing runtime directory %s "+
+			"(Java compilation needs the Mendix runtime libraries) -- re-run 'mxcli setup mxbuild -p <app.mpr>'", runtimeDir)
+	}
+	return nil
+}
+
 // StartServe launches `mxbuild --serve` and blocks until the build API responds.
 // Call Stop() to shut it down. The first Build() loads the model (cold, ~10-15s);
 // subsequent builds are incremental (~1s).
@@ -91,6 +108,9 @@ func StartServe(opts ServeOptions) (*ServeServer, error) {
 	}
 	if mxbuildPath == "" {
 		return nil, fmt.Errorf("mxbuild not found; run 'mxcli setup mxbuild -p <app.mpr>' or pass ServeOptions.MxBuildPath")
+	}
+	if err := verifyMxBuildCache(mxbuildPath); err != nil {
+		return nil, err
 	}
 
 	javaHome := opts.JavaHome
