@@ -1,0 +1,181 @@
+---
+title: mxcli check — mine Mendix's diagnostics catalog to close the check↔mxbuild gap
+status: draft
+date: 2026-07-18
+---
+
+# Proposal: mine Mendix's diagnostics catalog for `mxcli check`
+
+**Status:** Draft
+**Date:** 2026-07-18
+**Relates to:** `PROPOSAL_check_mxbuild_gap_heuristics.md` (one *tactical* slice of this —
+6 specific constructs), `PROPOSAL_expression_type_checking.md` (Tier B enabler),
+`PROPOSAL_mxcli_dev_warm_loop.md` (this catalog fronts the warm loop's build).
+
+## Problem Statement
+
+`mxcli check` reports "Check passed" for many constructs that the real MxBuild
+(`docker build` / `mx check`) then rejects. Each miss costs a full build round-trip
+(~30–60 s) to discover — and in the warm-dev-loop world (`PROPOSAL_mxcli_dev_warm_loop.md`)
+it's the difference between an instant gate and a ~0.8 s build. The gap is currently
+closed **reactively**, one rule at a time, whenever someone hits a build error.
+
+Mendix already ships the complete list of things it will reject: a **diagnostics catalog**
+embedded in `Mendix.Modeler.Texts.dll`. This proposal mines it into a **target list** so
+`check`/`lint` coverage becomes a measured, prioritised program instead of a reactive one.
+
+## BSON Structure
+
+Not applicable — this is a static-analysis/tooling proposal. It reads Mendix's build-tool
+assemblies (design-time), not app `.mpr` documents.
+
+## Research findings (verified this session)
+
+**Where the catalog lives.** `Mendix.Modeler.Texts.dll` embeds GNU-gettext `.po` resources
+named `problem-descriptions_<locale>.po` (en-US primary, plus deprecated/test variants and
+5 translations). They *are* the catalog.
+
+**Format — already structured, not free text.**
+- `msgid` = `CODE__SUMMARY`, e.g. `CE0001__ASSOCIATION_BETWEEN_PERSISTABLE_...`.
+- `msgstr` = a **parameterised template** with named `{PLACEHOLDER}` tokens (and
+  pluralisation tokens like `{S_IF_PLURAL}`), not runtime-assembled fragments.
+- **Severity is encoded in the prefix**: `CE` = Consistency Error, `CW` = Warning,
+  `CI` = Info. No inference needed.
+- Each entry carries a `# LOCATION: <SourceFile>.cs` comment and an optional
+  `# NOTE: MX_DOCS_CAT:<category>` docs-deep-link tag.
+
+**Scale (Mendix 11.12.1, primary en-US PO):** **1318 codes** — 1265 `CE` + 53 `CW`
+(`CI` codes live mostly in the deprecated/test POs); **727/1318 are parameterised**.
+Present identically in 11.6.3 and 11.12.1.
+
+**Static-checkability tiering** (heuristic, by message + source subsystem):
+
+| Tier | Share | Nature | `mxcli check` reach |
+|------|-------|--------|---------------------|
+| A | ~60% (791) | structural / reference / required-property / naming | direct — model already parsed |
+| B | ~26% (338) | expression / type-inference / XPath | needs a type-inference pass (`PROPOSAL_expression_type_checking.md`) |
+| C | ~9% (120) | cross-document / datasource / client-compat | whole-model graph analysis |
+| D | ~5% (69) | runtime / platform / tooling state | **not** statically checkable — skip |
+
+Subsystem split (by source file): Microflows 364, Domain model 275, Pages/Widgets 248,
+Integration/REST/OData 129, Security 29, Workflows 15, Navigation 7.
+
+**mxcli already does ~6% of this by hand.** The source references **~77–81 distinct
+`CE`/`CW` codes** across ~24 `validate_*.go` files and ~30 lint rules — proof the approach
+works; the catalog just turns "port as we hit them" into an ordered backlog of ~1240 left.
+
+**There is no cheaper Mendix-native shortcut.** `mx check` (consistency only, no build)
+measured **~22 s** — *slower* than an incremental build — because both cold-start the .NET
+model engine + load the full `.mpr`. So mxcli's Go-native `check` is the **only** path under
+the ~18–60 s floor. That is the entire justification for porting rules into Go rather than
+shelling out to `mx check`.
+
+## Extraction methodology
+
+Reproducible, ~1 min, no Studio Pro. The **script is ours; its output is Mendix's corpus**
+(see § Open questions on IP). Committed as `scripts/extract-diagnostics-catalog.sh`:
+
+```bash
+# 1. stream just the one assembly from the Mendix CDN (no full mxbuild download)
+curl -s "https://cdn.mendix.com/runtime/mxbuild-${VERSION}.tar.gz" \
+  | tar -xz --occurrence=1 modeler/Mendix.Modeler.Texts.dll
+
+# 2. extract the embedded PO resources (needs mono-utils → monodis)
+monodis --manifest   Mendix.Modeler.Texts.dll   # lists the .po resources
+monodis --mresources Mendix.Modeler.Texts.dll   # writes each resource to a file
+
+# 3. parse problem-descriptions_en-US.po into structured rows:
+#    code, prefix→severity, slug, message-template, {params}, source .cs, MX_DOCS_CAT
+#    then tier each by static-checkability. (Python parser in the script.)
+```
+
+`msgid` → `(prefix, number, slug)`; prefix → severity; `{...}` tokens → parameter list;
+`# LOCATION:`/`# NOTE:` comments → source file + docs category. Output: `catalog.csv` /
+`catalog.json` (local only). Re-run per Mendix version to refresh.
+
+## Representative examples (verbatim, small fair-use sample)
+
+```
+CE0001  error  An association between a persistable entity and a non-persistable entity
+               must start in the non-persistable entity and have owner 'Default'.
+CE0002  error  Owner must be 'Default' for self-referential associations.
+CE0006  error  An XPath constraint on an access rule on {DESCRIPTION} is not allowed,
+               because it is not persistable.
+CE0190  error  Scheduled events of type Legacy are removed; right click for possible
+               remedies.                        [# NOTE: MX_DOCS_CAT:ScheduledEventMigration]
+CE0529  error  The selected page '{PAGE_NAME}' contains {A_IF_SINGULAR}required
+               parameter{S_IF_PLURAL} and can not be used as home page.
+CE0572  error  Widget{S_IF_PLURAL} {WIDGETS} {IS_OR_ARE} not supported in React client.
+CW0001  warn   Property 'Sort order' of the {CONTAINER} has no effect when a page is
+               used for selecting.
+CW0040  warn   Action activity that has a side effect on the client is not recommended
+               here because the microflow is used as a data source for
+               {CONTAINER_TYPE_AND_NAME}.
+CI1561  info   Path parameter 'x' does not appear in the path ''.
+```
+
+Plus the production-security rule this session actually hit and fixed with one `grant`:
+*"At least one allowed role must be selected if the page is used from navigation, a
+button, or a URL."*
+
+## Proposed approach
+
+1. **Ship the catalog as a versioned data asset** — `sdk/versions/diagnostics-{version}.json`,
+   produced by the extraction script per Mendix version. Lets `check`/`lint` emit
+   **Studio-Pro-identical codes + messages + severities**, a UX win even before new rules.
+   (Subject to the IP decision below — may ship code IDs + our own message text rather than
+   Mendix's verbatim strings.)
+2. **Port by tier then frequency.** Tier A first (cheapest, highest hit-rate), Tier B behind
+   the type-inference work, Tier C case-by-case, Tier D never. Route `CE`→`check` (hard),
+   `CW`→`lint` (advisory) — severity is free from the prefix.
+3. **Harvest-against-the-oracle loop.** Use `mx check` (~22 s, the full 1318-code truth) as
+   an **offline oracle** over a corpus of deliberately-broken projects; diff its findings
+   against `mxcli check`; the misses are the ranked backlog; port; re-run to confirm parity.
+   This is the build tool for the porting effort, and reuses the "run mxbuild over broken
+   projects and harvest output" fallback from the very first spike as a *deliberate* tool.
+4. `PROPOSAL_check_mxbuild_gap_heuristics.md` is the first tactical instance; this proposal
+   is the strategic program it fits into.
+
+## Implementation Plan
+
+| File | Change |
+|------|--------|
+| `scripts/extract-diagnostics-catalog.sh` | New: the reproducible extractor (stream DLL → `monodis --mresources` → parse+tier). Committed here. |
+| `sdk/versions/diagnostics-{version}.json` | Generated catalog data asset per version (IP decision pending). |
+| `mdl/linter/rules/`, `mdl/executor/validate_*.go` | Port Tier-A codes, prioritised by frequency; cite the `CE`/`CW` code in each. |
+| `mdl/executor/…` (oracle harness) | Offline `mx check` vs `mxcli check` parity report over a broken-project corpus → ranked backlog. |
+| `mdl-examples/check-gap/` | Broken-project fixtures feeding the oracle harness. |
+
+## Version Compatibility
+
+- Codes are stable across 11.6.3 / 11.12.1; the extractor is version-parameterised, so the
+  catalog refreshes per Mendix release. Register generated assets alongside the existing
+  `sdk/versions/mendix-{9,10,11}.yaml`.
+- New/removed codes between versions are themselves a useful signal (what Studio Pro started
+  or stopped checking).
+
+## Test Plan
+
+- Extractor: unit-test the PO parser against a small committed fixture PO (our own, not
+  Mendix's), asserting code/severity/params/location parsing.
+- Oracle harness (gated, needs mxbuild): for each broken fixture, assert `mxcli check` now
+  reports the same code `mx check` does — parity regression per ported rule.
+- Each ported rule: a `mdl-examples/check-gap/` fixture + a `validate_*`/lint test.
+
+## Open Questions
+
+1. **IP / licensing (blocking the data-asset shape).** The message *text* is Mendix's
+   proprietary copyrighted content extracted from their DLL. Committing all 1318 verbatim
+   into the repo is redistribution. Options: (a) ship only **code IDs + severity + source +
+   our own paraphrased messages**; (b) generate the full catalog **locally at build time**
+   from the user's own licensed mxbuild (never committed); (c) confirm redistribution is
+   permitted. Default: **(b)** — commit the extractor, not the corpus.
+2. **`monodis` dependency.** The extractor needs `mono-utils`. Alternatives: `ilspycmd`
+   (dotnet tool) or a small pure-Go PE manifest-resource reader to drop the mono dep.
+3. **Tiering is heuristic.** The A/B/C/D split is keyword+subsystem-based; the real
+   per-rule trigger predicate lives in Mendix's `.cs` (the `LOCATION` breadcrumb) and must
+   be reverse-engineered per rule. The catalog gives the *target + message*, not the
+   predicate — sizing must account for that.
+4. **Overlap with `PROPOSAL_check_mxbuild_gap_heuristics.md`.** Fold that proposal's 6 cases
+   in as the first harvested batch, or keep it separate and cross-link? (Recommend: keep it
+   as the tactical pilot; this proposal owns the methodology + backlog.)
