@@ -204,6 +204,15 @@ func StartLocalRuntime(opts LocalRuntimeOptions) (*LocalRuntime, error) {
 	if opts.InstallPath == "" {
 		return nil, fmt.Errorf("InstallPath is required")
 	}
+	if opts.JavaHome == "" {
+		// Mendix 11 needs JDK 21. Version-aware selection (9/10) is a follow-up;
+		// the local loop targets 11.x for now.
+		jh, err := resolveJDK21()
+		if err != nil {
+			return nil, err
+		}
+		opts.JavaHome = jh
+	}
 	if _, err := os.Stat(opts.launcherJar()); err != nil {
 		return nil, fmt.Errorf("runtime launcher not found at %s (incomplete mxbuild cache?): %w", opts.launcherJar(), err)
 	}
