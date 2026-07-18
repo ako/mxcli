@@ -44,15 +44,18 @@ so structural changes need a restart; behavioural changes do not.
 
 - **Mendix 11.x** project. The runtime is launched under **JDK 21**; version-aware
   JDK selection for Mendix 9/10 is a follow-up.
-- A reachable **PostgreSQL**, with the database already created. The devcontainer
-  provides one. Defaults: `127.0.0.1:5432`, user `mendix`, database derived from the
-  project file name (`App1112.mpr` → `app1112`). If the DB is unreachable, `run
-  --local` stops with an actionable message rather than booting.
+- A **PostgreSQL** database. Defaults: `127.0.0.1:5432`, user `mendix`, database
+  derived from the project file name (`App1112.mpr` → `app1112`). Two ways to have it:
+  - **`--ensure-db`** (recommended for a fresh session) provisions it: starts the
+    local Postgres service if the port is down, and creates the app role + database
+    if missing (via a local `sudo -u postgres` superuser). For a non-local `--db-host`
+    it only verifies reachability — mxcli won't provision a remote database.
+  - Otherwise create it once yourself; without `--ensure-db`, `run --local` stops with
+    an actionable message if the DB is unreachable:
 
-```bash
-# devcontainer Postgres, one-time DB creation
-createdb -h 127.0.0.1 -U mendix app1112
-```
+    ```bash
+    createdb -h 127.0.0.1 -U mendix app1112
+    ```
 
 ## Flags
 
@@ -60,6 +63,7 @@ createdb -h 127.0.0.1 -U mendix app1112
 |------|---------|---------|
 | `--local` | — | Required; run without Docker |
 | `--watch` | off | Rebuild + hot-apply on every project change |
+| `--ensure-db` | off | Provision local Postgres + the app database if missing (fresh-session bootstrap) |
 | `--app-port` | 8080 | App HTTP port |
 | `--admin-port` | 8090 | M2EE admin API port |
 | `--serve-port` | 6543 | `mxbuild --serve` port |

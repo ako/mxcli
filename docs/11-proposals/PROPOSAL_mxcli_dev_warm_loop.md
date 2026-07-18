@@ -216,6 +216,14 @@ distinct PNGs in one change cycle.
 
 ## Proposed CLI
 
+> **Shipped name (slice 1):** the warm loop shipped as **`mxcli run --local`**, not
+> `mxcli dev`. The separate `dev reload`/`dev exec`/`dev status`/`dev stop`
+> subcommands envisioned below were folded into a single long-lived
+> `mxcli run --local --watch` (it watches the model source and hot-applies each
+> change itself), so no `reload`/`exec` subcommands were needed. The `mxcli dev …`
+> names in the rest of this proposal refer to that command (and the not-yet-built
+> `dev up`/`dev serve` bootstrap + preview pieces of slices 2–3).
+
 ### Scenario A: `mxcli dev` — Docker-free warm run loop
 
 A long-lived local dev supervisor. Boots (or reuses) the standalone runtime +
@@ -519,8 +527,8 @@ builds on the previous.
 
 | # | Slice | Delivers | Depends on | Size / risk |
 |---|-------|----------|------------|-------------|
-| 1 | **Warm local loop** — `mxcli dev` (serve daemon + M2EE admin client + `restartRequired` × `get_ddl_commands` branching) | Docker-free ~1 s edit→test loop, locally | nothing new | medium / low — highest bang-for-buck |
-| 2 | **Provisioning** — `mxcli dev up` bootstrap + `mxcli init` SessionStart hook + prompt template | a fresh Claude Code Web session comes up testable; iPad-native start | slice 1 | small / low |
+| 1 | **Warm local loop** — shipped as `mxcli run --local [--watch]` (serve daemon + M2EE admin client + `restartRequired` branching; + client bundling & Playwright screenshots) | Docker-free ~1 s edit→test loop, locally | nothing new | ✅ **shipped** |
+| 2 | **Provisioning** — database provisioning (`run --local --ensure-db`, ✅ done) + `mxcli init` SessionStart hook + prompt template (remaining) | a fresh Claude Code Web session comes up testable; iPad-native start | slice 1 | small / low |
 | 3 | **Single-app external preview** — `mxcli dev serve` + chisel client → one static relay + `ApplicationRootUrl` wiring | a shareable live preview URL (the iPad two-container flow) | slice 1 | medium / medium — the `app.github.dev` WebSocket hop is unverified (a VPS relay avoids it) |
 | 4 | **Tunnel hub** — `mxcli tunnel-hub` + `mxcli dev --hub` + registration API + admin overview | many dev containers behind one ingress; fleet overview + per-container change lists | slice 3 | large / higher — a product in its own right, with a multi-tenant auth surface |
 
