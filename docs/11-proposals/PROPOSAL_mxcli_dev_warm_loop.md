@@ -164,17 +164,23 @@ returns HTTP 200 with the table present in Postgres. Pieces:
 (standalone boot; constants lifted from `deployment/model/config.json`),
 `docker.RunLocal` (+ `--watch`), and the `run --local` command.
 
-**Known gap — browser client bundle not produced (blocks visual page iteration).**
-The runtime/model/admin API work, but a browser loads blank: `index.html` requests
-`web/dist/index.js`, which neither the serve `Deploy` target nor a one-shot `mxbuild`
-produces here. The client bundle is built by a **rollup** step (`web/rollup.config.mjs`,
-using mxbuild's bundled `modeler/tools/node` tooling) that the serve/standalone path
-does not run — `web/index.js` (the rollup *input*) is present but the bundled
-`web/dist/index.js` output is missing. Until this is closed, `run --local` is for
-runtime/model/API iteration and headless checks; use `mxcli docker run` for a rendered
-client. **Next step:** invoke mxbuild's rollup client build after the deploy build (or
-find the serve option that emits `dist/`), then wire Playwright screenshotting for the
-pixel-perfect page loop.
+**Browser client bundle — closed.** Initially a blocker: a browser loaded blank
+because `index.html` requests `web/dist/index.js`, which neither the serve `Deploy`
+target nor a one-shot `mxbuild` produces. The client bundle is built by a **rollup**
+step (`web/rollup.config.mjs`, using mxbuild's bundled `modeler/tools/node` tooling)
+that the serve/standalone path doesn't run — `web/index.js` (the rollup *input*) is
+written but `web/dist/index.js` is not. Fixed by `docker.BuildWebClient`, which runs
+mxbuild's `rollup-runner.mjs` (production, one-shot) over `deployment/web` after the
+deploy build. Verified: driving the devcontainer's Chromium with Playwright renders
+the Mendix homepage fully. `web/dist/index.js` now serves HTTP 200 out of the box.
+
+**Remaining optimization.** In `--watch` the client bundle is rebuilt in full on
+every change (~6–7 s). Behavioural changes (microflows) don't need it, and page
+changes could use rollup's incremental watch mode (the runner's non-production branch
+speaks the `modern-web-bundler-protocol` over stdout — a long-lived companion bundler,
+mirroring `mxbuild --serve`). Making the client rebuild incremental/conditional is the
+next optimization; then wire Playwright screenshotting into the loop for the
+pixel-perfect page workflow.
 
 ## Proposed CLI
 

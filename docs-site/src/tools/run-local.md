@@ -33,8 +33,12 @@ so structural changes need a restart; behavioural changes do not.
 2. Ensures MxBuild and the runtime are cached (downloads once, reused after).
 3. Checks the database is reachable (it does **not** provision it — see below).
 4. Starts `mxbuild --serve` and does the first (cold) build into `deployment/`.
-5. Boots a standalone runtime against that deployment and serves it.
-6. With `--watch`, rebuilds and hot-applies on every project change until `Ctrl-C`.
+5. Bundles the browser client (`web/dist/`) with mxbuild's rollup tooling — the
+   serve Deploy target writes client *source* but not the bundle, so this step is
+   what makes pages render.
+6. Boots a standalone runtime against that deployment and serves it.
+7. With `--watch`, rebuilds, re-bundles the client, and hot-applies on every
+   project change until `Ctrl-C`.
 
 ## Requirements
 
@@ -70,19 +74,19 @@ createdb -h 127.0.0.1 -U mendix app1112
 intended loop is: an agent (or you) edits the model with `mxcli exec`/MDL, and the
 running `run --local` picks the change up and hot-applies it.
 
-## Current limitation — browser page rendering
+## Pages render in the browser
 
-The runtime, model, and admin API work end to end (the app answers HTTP 200, and
-model reload/restart is applied correctly). **However, the browser client does not
-yet render**: the `mxbuild` web client bundle (`web/dist/index.js`) is produced by a
-separate rollup step that the serve/standalone path does not currently run, so
-`index.html` 404s on its main bundle and the page is blank.
+`run --local` bundles the browser client (`web/dist/`) after the deploy build, so
+the app renders in a real browser — verified by driving the pre-installed Chromium
+with Playwright against a booted app (the Mendix homepage renders fully). This makes
+`run --local` usable for **visual page-design iteration**, not just headless checks.
 
-This means `run --local` is presently useful for **runtime/model/API-level
-iteration and headless verification**, but **not yet for visual page-design
-iteration**. Closing the client-bundle gap (running mxbuild's bundled rollup tooling
-after the deploy build) is tracked as follow-up work. Until then, use `mxcli docker
-run` when you need the fully-rendered client in a browser.
+**Watch cost.** In `--watch`, the client bundle is rebuilt on every change — a full
+rollup bundle (~6–7 s) today. Behavioural changes (microflows) don't actually need
+it, and page changes could use an incremental watch-mode bundler; making the client
+rebuild incremental/conditional is a tracked optimization. For pixel-perfect page
+work, pair this with Playwright screenshots (see below): edit → auto-rebuild →
+re-screenshot.
 
 See also: [PROPOSAL_mxcli_dev_warm_loop](../../../docs/11-proposals/PROPOSAL_mxcli_dev_warm_loop.md),
 [mxcli docker run](docker-run.md), [Playwright Testing](playwright.md).
