@@ -501,7 +501,7 @@ downloads/caches mxbuild + runtime and speaks the M2EE admin API.
 | `cmd/mxcli/init.go` | Emit a **SessionStart hook** (Claude Code Web) and/or devcontainer `postStart` that runs `mxcli dev up`; keep the existing devcontainer + `.claude/` scaffolding. |
 | `cmd/mxcli/new.go` | Add `--emit-template`: write a GitHub-template-ready repo (config + starter `.mpr`), for CI-per-version publishing of `mendix-mxcli-starter`. |
 | `docs-site/.../bootstrap-prompt.md` | Ship the canonical **prompt template** (the web/iPad seed prompt) as documented, copy-pasteable text. |
-| release / go.mod | Ensure mxcli is deliverable into a gated web session — **public Go module** (`go install`) and/or an **environment setup-script** that pre-installs it; do not rely on a GitHub release `curl` (may be gate-blocked). |
+| release / go.mod | Ensure mxcli is deliverable into a gated web session. **Status:** the module is public (tags to v0.16.0) but **`go install` does not build** — the generated ANTLR parser (`mdl/grammar/parser/`) is gitignored/uncommitted, so the tagged source is missing the package. Working paths today: prebuilt release binaries (`mxcli-<os>-<arch>`, incl. a rolling `nightly`) via `mxcli setup mxcli` / direct download, or an **environment setup-script** pre-install. Enabling `go install` needs the parser committed (or generated during module build) — open decision. |
 | `cmd/mxcli/tunnelhub/*_test.go` | Tests: slot allocation/isolation, authfile + vhost reload, register/heartbeat/deregister lifecycle, admin-page rendering. |
 | `cmd/mxcli/dev_test.go` | Tests for the serve client and the `restartRequired` branch logic (mock the serve/admin HTTP endpoints). |
 
