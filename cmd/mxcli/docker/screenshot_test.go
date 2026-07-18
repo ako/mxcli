@@ -49,3 +49,11 @@ func TestCaptureScreenshot_NoOutPath(t *testing.T) {
 		t.Error("expected error when OutPath is empty")
 	}
 }
+
+func TestScreenshotArgs_LoadStorage(t *testing.T) {
+	args := screenshotArgs(ScreenshotOptions{URL: "u", OutPath: "o", Storage: "/s.json"})
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "--load-storage /s.json") {
+		t.Errorf("expected --load-storage: %v", args)
+	}
+}

@@ -77,7 +77,8 @@ mxcli exec add-page.mdl -p app.mpr
 | `--local` | — | Required; run without Docker |
 | `--watch` | off | Rebuild + hot-apply on each change |
 | `--screenshot` | off | Playwright PNG after boot + each change |
-| `--screenshot-path` / `--screenshot-url` | `.mxcli/run-local.png` / app root | Screenshot output / page |
+| `--screenshot-path` / `--screenshot-url` | `.mxcli/run-local.png` / app root | Screenshot output / page (URL or `/path`) |
+| `--screenshot-user` / `--screenshot-password` | — | Log in once, reuse session (pages behind login) |
 | `--app-port` / `--admin-port` / `--serve-port` | 8080 / 8090 / 6543 | Ports |
 | `--db-host` / `--db-name` / `--db-user` / `--db-password` | 127.0.0.1:5432 / derived / mendix / mendix | Database |
 
@@ -104,7 +105,11 @@ mxcli run --local -p app.mpr --watch --screenshot
 # edit a page -> auto rebuild -> re-bundle -> reload -> fresh screenshot
 ```
 
-Use `--screenshot-url` to shoot a specific page (deep link).
+- `--screenshot-url /p/customers` shoots a specific page (bare path resolved against
+  the app root; a full URL is used as-is).
+- `--screenshot-user`/`--screenshot-password` log in once (Mendix form auth) and
+  reuse the session, so pages behind login render authenticated. Best-effort: an
+  anonymous app with no login form proceeds unauthenticated.
 
 ## Validation checklist
 
