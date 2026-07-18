@@ -187,3 +187,19 @@ func TestWebClientSourceMTime_ExcludesDist(t *testing.T) {
 		t.Error("a client source change should advance the web source mtime")
 	}
 }
+
+func TestResolveScreenshotURL(t *testing.T) {
+	app := "http://127.0.0.1:8080/"
+	cases := map[string]string{
+		"":                      app,
+		"/p/customers":          "http://127.0.0.1:8080/p/customers",
+		"p/customers":           "http://127.0.0.1:8080/p/customers",
+		"http://host:9000/x":    "http://host:9000/x",
+		"https://example.com/a": "https://example.com/a",
+	}
+	for in, want := range cases {
+		if got := resolveScreenshotURL(app, in); got != want {
+			t.Errorf("resolveScreenshotURL(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

@@ -49,10 +49,18 @@ type LocalRunOptions struct {
 	Screenshot bool
 	// ScreenshotPath is where the PNG is written (default <projectDir>/.mxcli/run-local.png).
 	ScreenshotPath string
-	// ScreenshotURL overrides the page shot (default the app root).
+	// ScreenshotURL overrides the page shot: a full http(s) URL, or a path
+	// relative to the app root (e.g. "/p/customers"). Default the app root.
 	ScreenshotURL string
-	Stdout        io.Writer
-	Stderr        io.Writer
+	// ScreenshotUser/Password log in once (Mendix form auth) and reuse the session
+	// for every screenshot, so pages behind login render authenticated.
+	ScreenshotUser     string
+	ScreenshotPassword string
+	// screenshotStorage is the resolved Playwright storage-state file (from login);
+	// internal, set during boot.
+	screenshotStorage string
+	Stdout            io.Writer
+	Stderr            io.Writer
 }
 
 // defaultLocalAdminPass is the admin password for a local dev runtime. The admin
@@ -315,6 +323,21 @@ func RunLocal(opts LocalRunOptions) error {
 	defer rt.Stop()
 
 	fmt.Fprintf(w, "\nApp is running at %s\n", rt.AppURL())
+
+	// 6b. If screenshot auth was requested, log in once and reuse the session for
+	// every screenshot (pages behind login render authenticated).
+	if opts.Screenshot && opts.ScreenshotUser != "" {
+		storage := filepath.Join(filepath.Dir(opts.ScreenshotPath), "run-local-storage.json")
+		fmt.Fprintf(w, "Logging in as %q for authenticated screenshots...\n", opts.ScreenshotUser)
+		if err := LoginAndSaveStorage(LoginOptions{
+			AppURL: rt.AppURL(), Username: opts.ScreenshotUser, Password: opts.ScreenshotPassword,
+			StoragePath: storage, MxBuildPath: mxbuildPath,
+		}); err != nil {
+			fmt.Fprintf(stderr, "  screenshot login failed (continuing unauthenticated): %v\n", err)
+		} else {
+			opts.screenshotStorage = storage
+		}
+	}
 	maybeScreenshot(opts, rt)
 
 	// 7. Stay up until interrupted. With --watch, rebuild + hot-apply on every
@@ -334,25 +357,35 @@ func maybeScreenshot(opts LocalRunOptions, rt *LocalRuntime) {
 	if !opts.Screenshot {
 		return
 	}
-	url := opts.ScreenshotURL
-	if url == "" {
-		url = rt.AppURL()
-	}
 	if err := os.MkdirAll(filepath.Dir(opts.ScreenshotPath), 0o755); err != nil {
 		fmt.Fprintf(opts.Stderr, "  screenshot skipped: %v\n", err)
 		return
 	}
 	if err := CaptureScreenshot(ScreenshotOptions{
-		URL:      url,
+		URL:      resolveScreenshotURL(rt.AppURL(), opts.ScreenshotURL),
 		OutPath:  opts.ScreenshotPath,
 		WaitMs:   4000,
 		FullPage: true,
 		Viewport: "1280,800",
+		Storage:  opts.screenshotStorage,
 	}); err != nil {
 		fmt.Fprintf(opts.Stderr, "  screenshot skipped: %v\n", err)
 		return
 	}
 	fmt.Fprintf(opts.Stdout, "  screenshot -> %s\n", opts.ScreenshotPath)
+}
+
+// resolveScreenshotURL resolves the --screenshot-url value against the app root:
+// empty -> the root; a full http(s) URL -> as-is; anything else -> treated as a
+// path relative to the app root (so "/p/customers" deep-links a specific page).
+func resolveScreenshotURL(appURL, urlOrPath string) string {
+	if urlOrPath == "" {
+		return appURL
+	}
+	if strings.HasPrefix(urlOrPath, "http://") || strings.HasPrefix(urlOrPath, "https://") {
+		return urlOrPath
+	}
+	return strings.TrimRight(appURL, "/") + "/" + strings.TrimLeft(urlOrPath, "/")
 }
 
 // resolveRuntimeInstall returns the directory to use as MX_INSTALL_PATH (its

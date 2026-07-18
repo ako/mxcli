@@ -68,7 +68,8 @@ createdb -h 127.0.0.1 -U mendix app1112
 | `--db-user` / `--db-password` | mendix / mendix | Database credentials |
 | `--screenshot` | off | Capture a Playwright PNG after boot and each applied change |
 | `--screenshot-path` | `<projectDir>/.mxcli/run-local.png` | Screenshot output PNG |
-| `--screenshot-url` | app root | Page URL to screenshot |
+| `--screenshot-url` | app root | Page to shoot: full URL, or a path relative to the app root (e.g. `/p/customers`) |
+| `--screenshot-user` / `--screenshot-password` | — | Log in once (Mendix form auth) and reuse the session, so pages behind login render authenticated |
 
 ## The change signal
 
@@ -105,8 +106,21 @@ mxcli run --local -p app.mpr --watch --screenshot
 # edit a page with mxcli exec/MDL -> auto rebuild -> re-bundle -> reload -> new PNG
 ```
 
-Point `--screenshot-url` at a deep link to shoot a specific page. Screenshotting a
-failure or a specific state (auth, navigation) is a natural next step.
+**Deep links.** `--screenshot-url /p/customers` shoots a specific page instead of the
+app root (a bare path is resolved against the app URL; a full `http(s)://…` is used
+as-is).
+
+**Pages behind login.** `--screenshot-user`/`--screenshot-password` log in once via
+the Mendix login form (Playwright drives `#usernameInput`/`#passwordInput`/
+`#loginButton`), save the session as a Playwright storage state, and reuse it for
+every screenshot — so authenticated pages render. Login is best-effort: if no login
+form appears (anonymous app) it proceeds unauthenticated.
+
+```bash
+mxcli run --local -p app.mpr --watch --screenshot \
+  --screenshot-user demo_admin --screenshot-password '<pw>' \
+  --screenshot-url /p/customer_overview
+```
 
 See also: [PROPOSAL_mxcli_dev_warm_loop](../../../docs/11-proposals/PROPOSAL_mxcli_dev_warm_loop.md),
 [mxcli docker run](docker-run.md), [Playwright Testing](playwright.md).

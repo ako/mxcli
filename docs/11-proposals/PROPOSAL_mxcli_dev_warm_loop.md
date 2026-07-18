@@ -195,8 +195,18 @@ Two findings from implementation:
 
 `--screenshot` captures a PNG after boot and each applied change via Playwright's
 built-in `screenshot` command (Chromium from `PLAYWRIGHT_BROWSERS_PATH`; no
-`playwright-cli` dependency), completing the pixel-perfect page loop. Deep-link /
-authenticated-state screenshots are the natural next step.
+`playwright-cli` dependency), completing the pixel-perfect page loop.
+
+**Deep-link + authenticated screenshots — done.** `--screenshot-url` accepts a page
+path (resolved against the app root) or a full URL, so a specific page under edit is
+shot rather than the app root. `--screenshot-user`/`--screenshot-password` log in
+once through the Mendix login form (a headless Playwright script driving
+`#usernameInput`/`#passwordInput`/`#loginButton`, run via the same Playwright install
+resolved from the CLI's package dir — no hardcoded paths), save the session as a
+Playwright storage state, and reuse it for every screenshot via
+`screenshot --load-storage`. Login is best-effort: an anonymous app with no form
+proceeds unauthenticated. Verified E2E: the saved storage state carries the Mendix
+session cookies and the screenshot renders the authenticated page.
 
 ## Proposed CLI
 

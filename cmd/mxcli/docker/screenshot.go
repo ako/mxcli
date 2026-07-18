@@ -27,6 +27,7 @@ type ScreenshotOptions struct {
 	WaitMs   int           // fixed wait before shooting, ms (default 4000)
 	FullPage bool          // capture the full scrollable page
 	Viewport string        // "W,H" (e.g. "1280,800")
+	Storage  string        // Playwright storage-state JSON to load (for authed pages)
 	Timeout  time.Duration // overall command timeout (default 90s)
 }
 
@@ -61,6 +62,9 @@ func screenshotArgs(opts ScreenshotOptions) []string {
 	}
 	if opts.Viewport != "" {
 		args = append(args, "--viewport-size", opts.Viewport)
+	}
+	if opts.Storage != "" {
+		args = append(args, "--load-storage", opts.Storage)
 	}
 	return append(args, opts.URL, opts.OutPath)
 }
