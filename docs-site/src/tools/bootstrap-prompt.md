@@ -16,10 +16,20 @@ can seed the model from a design prototype in the same session — nothing to ma
 This is an empty repo. Provision it as a Mendix app developed with mxcli:
 
 1. Ensure `mxcli` is available. It should be pre-installed by the environment; if
-   not, download a prebuilt binary from the GitHub releases for your OS/arch (e.g.
-   `mxcli-linux-amd64`) and put it at `./mxcli`. (`go install …@latest` does **not**
-   work yet — the ANTLR parser is generated at build time and isn't committed; a
-   from-source build needs `make grammar`. Use the prebuilt binary.)
+   not, download a prebuilt binary for your OS/arch and put it at `./mxcli`, e.g.:
+
+   ```bash
+   curl -fsSL -o ./mxcli \
+     https://github.com/mendixlabs/mxcli/releases/download/nightly/mxcli-linux-amd64
+   chmod +x ./mxcli
+   ```
+
+   Use the **`nightly`** build: this is fast-moving alpha software and the warm-loop
+   commands used below (`run --local`, `--setup`, `--ensure-db`) land in `nightly`
+   before they appear in a tagged release. For a reproducible setup, pin a specific
+   release instead (`.../releases/download/vX.Y.Z/mxcli-<os>-<arch>`). Note: `go
+   install …@latest` does **not** work — the generated ANTLR parser isn't committed,
+   so use the prebuilt binary (a from-source build needs `make grammar`).
 2. Create the app at the repo root: `mxcli new App --version 11.6.3`
    (or `mxcli init` if an .mpr already exists).
 3. Ensure the Claude tooling is set up: `mxcli init --tool claude`. This adds a
@@ -37,24 +47,29 @@ This is an empty repo. Provision it as a Mendix app developed with mxcli:
 
 ## Which mxcli version gets installed
 
-- **Prebuilt release binary** (`mxcli setup mxcli`, or a direct download of
-  `mxcli-<os>-<arch>` from GitHub releases) is the working install path. Releases are
-  published by CI on every `vX.Y.Z` tag (latest is v0.16.0), plus a rolling `nightly`
-  pre-release. `mxcli setup mxcli` downloads the asset that **matches the mxcli already
-  running it** (a nightly build → the `nightly` release; a `vX.Y.Z` build → that exact
-  release); override with `--tag nightly` / `--tag vX.Y.Z`. Because `setup mxcli` needs
-  an mxcli to run it, it's mainly for replicating a version onto another OS/arch (e.g.
-  the Linux binary in a Dev Container), not the first install.
+Prebuilt binaries are the working install path. CI publishes them on every `vX.Y.Z`
+tag (latest is v0.16.0) **and** as a rolling `nightly` pre-release, with assets named
+`mxcli-<os>-<arch>`.
+
+- **`nightly` — recommended while mxcli is fast-moving alpha.** New features (the whole
+  warm-loop surface: `run --local`, `--watch`, `--ensure-db`, `--setup`, screenshots)
+  land in `nightly` before they reach a tagged release, so the bootstrap flow above
+  needs it. Download `.../releases/download/nightly/mxcli-<os>-<arch>`, or once mxcli is
+  present, `mxcli setup mxcli --tag nightly`.
+- **`vX.Y.Z` — pin for reproducibility / stability.** The CI marks nightly a
+  pre-release ("use tagged releases for production"). Download
+  `.../releases/download/vX.Y.Z/mxcli-<os>-<arch>` or `mxcli setup mxcli --tag vX.Y.Z`.
+  With no `--tag`, `mxcli setup mxcli` matches the mxcli already running it (nightly →
+  `nightly`, `vX.Y.Z` → that release) — mainly useful for replicating a version onto
+  another OS/arch (e.g. the Linux binary in a Dev Container), not the first install.
 - **Environment pre-install** (the robust path) installs whatever the Claude Code Web
-  image bakes in — the recommended way to pin a known-good version fleet-wide.
+  image bakes in — the way to pin a known-good version fleet-wide.
 - **`go install …@latest` does not work yet.** The module *is* public (tags v0.1.0–
   v0.16.0), but the generated ANTLR parser (`mdl/grammar/parser/`) is gitignored and
   not committed, so a `go install` from the tagged source fails on the missing package.
   Building from source works only via `make build`/`make release` (which run
   `make grammar` first). Enabling `go install` would require committing the generated
   parser (or generating it during module build) — a maintainer decision.
-
-For a reproducible bootstrap, pin the version (`--tag vX.Y.Z`); nightly is opt-in only.
 
 ## Two rules that make this robust
 
