@@ -43,6 +43,40 @@ This proposal wires those two primitives into mxcli to serve **two scenarios**:
   pane, a browser preview in the other, prompt → build → test, all on the iPad,
   **without committing to the repo** before testing.
 
+## End-to-end workflow: Claude design prototype → secured production Mendix app (on iPad)
+
+Scenario B is one leg of a larger journey this loop is meant to unlock — taking an
+idea all the way to a **secured, production-grade Mendix app entirely on an iPad**,
+with no desktop Studio Pro in the loop:
+
+1. **Prototype in Claude.** A Claude design Artifact (a clickable HTML/React mockup)
+   captures the app's screens, data, and flows — fast and throwaway, no Mendix yet.
+2. **Translate to Mendix in Claude Code (web).** In the same iPad session, mxcli/MDL
+   turns the prototype into a real Mendix model: `create entity` / `create page` /
+   `create microflow` / navigation. The prototype's structure becomes actual `.mpr`
+   documents — a running Mendix app, not a mockup.
+3. **Secure it for production.** Raise the app from prototype to production security
+   and make it pass the real Mendix consistency rules — the exact path proven during
+   the investigation behind this proposal:
+   - `ALTER PROJECT SECURITY LEVEL PRODUCTION` — required before `DTAPMode=P` will
+     even boot (otherwise `start` returns `result:11 — security must be
+     CHECKEVERYTHING`).
+   - `grant` / `revoke` page, entity, and microflow access per module role; define
+     user roles and their mappings; wire the login and anonymous navigation profiles.
+   - `mxcli check` (instant) plus the warm `mxbuild` build surface the
+     production-only errors up front (e.g. *"page needs an allowed role"*, which we
+     hit and fixed with a single `grant`) instead of discovering them at deploy time.
+4. **Test each change live, on the iPad.** The warm loop (§Proposed CLI) previews
+   every edit in ~1 s in the Safari pane, under **real production security** (login
+   enforced, anonymous blocked) — so the author iterates prototype → model → secured
+   app → test without ever leaving the tablet.
+
+The deliverable is not a throwaway preview but a **secured, production-representative
+Mendix app** — the same artifact you would deploy. The warm dev loop is what makes
+step 4 fast enough for this to be a genuine authoring experience rather than a batch
+process, and Scenario B is what makes it work on a device that has neither Docker nor
+Studio Pro.
+
 ## BSON Structure
 
 Not applicable — this is a build/runtime orchestration feature. It touches no
