@@ -57,13 +57,19 @@ Examples:
 		dbName, _ := cmd.Flags().GetString("db-name")
 		dbUser, _ := cmd.Flags().GetString("db-user")
 		dbPassword, _ := cmd.Flags().GetString("db-password")
+		screenshot, _ := cmd.Flags().GetBool("screenshot")
+		screenshotPath, _ := cmd.Flags().GetString("screenshot-path")
+		screenshotURL, _ := cmd.Flags().GetString("screenshot-url")
 
 		opts := docker.LocalRunOptions{
-			ProjectPath: projectPath,
-			AppPort:     appPort,
-			AdminPort:   adminPort,
-			ServePort:   servePort,
-			Watch:       watch,
+			ProjectPath:    projectPath,
+			AppPort:        appPort,
+			AdminPort:      adminPort,
+			ServePort:      servePort,
+			Watch:          watch,
+			Screenshot:     screenshot,
+			ScreenshotPath: screenshotPath,
+			ScreenshotURL:  screenshotURL,
 			DB: docker.DBConfig{
 				Host:     dbHost,
 				Name:     dbName,
@@ -91,5 +97,8 @@ func init() {
 	runCmd.Flags().String("db-name", "", "Database name (default derived from the project name)")
 	runCmd.Flags().String("db-user", "", "Database user (default mendix)")
 	runCmd.Flags().String("db-password", "", "Database password (default mendix)")
+	runCmd.Flags().Bool("screenshot", false, "Capture a Playwright screenshot after boot and each applied change")
+	runCmd.Flags().String("screenshot-path", "", "Screenshot output PNG (default <projectDir>/.mxcli/run-local.png)")
+	runCmd.Flags().String("screenshot-url", "", "Page URL to screenshot (default the app root)")
 	rootCmd.AddCommand(runCmd)
 }

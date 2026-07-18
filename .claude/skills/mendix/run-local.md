@@ -76,6 +76,8 @@ mxcli exec add-page.mdl -p app.mpr
 |------|---------|---------|
 | `--local` | — | Required; run without Docker |
 | `--watch` | off | Rebuild + hot-apply on each change |
+| `--screenshot` | off | Playwright PNG after boot + each change |
+| `--screenshot-path` / `--screenshot-url` | `.mxcli/run-local.png` / app root | Screenshot output / page |
 | `--app-port` / `--admin-port` / `--serve-port` | 8080 / 8090 / 6543 | Ports |
 | `--db-host` / `--db-name` / `--db-user` / `--db-password` | 127.0.0.1:5432 / derived / mendix / mendix | Database |
 
@@ -83,12 +85,26 @@ mxcli exec add-page.mdl -p app.mpr
 
 `run --local` bundles the browser client (`web/dist/`) with mxbuild's rollup tooling
 after the deploy build, so the app renders in a real browser (verified with
-Playwright + the devcontainer's Chromium). Pair it with Playwright screenshots for a
-pixel-perfect page loop: edit → auto-rebuild → re-screenshot.
+Playwright + the devcontainer's Chromium).
 
-**Watch cost:** in `--watch` the client bundle is rebuilt on every change (~6–7 s full
-bundle today). Behavioural changes (microflows) don't strictly need it; making the
-client rebuild incremental/conditional is a tracked optimization.
+- **`--watch`** keeps a long-lived incremental bundler hot (the client-side mirror of
+  `mxbuild --serve`): a page/widget edit re-bundles in ~3–4 s; a microflow/entity edit
+  skips the bundle and just hot-reloads. It uses `CHOKIDAR_USEPOLLING` because inotify
+  is silent on container filesystems.
+- Without `--watch`, a single one-shot bundle (~7 s) runs before boot.
+
+## Pixel-perfect page loop
+
+`--screenshot` captures a PNG (default `<projectDir>/.mxcli/run-local.png`) after boot
+and after each applied change, via Playwright's built-in `screenshot` command
+(Chromium from `PLAYWRIGHT_BROWSERS_PATH`):
+
+```bash
+mxcli run --local -p app.mpr --watch --screenshot
+# edit a page -> auto rebuild -> re-bundle -> reload -> fresh screenshot
+```
+
+Use `--screenshot-url` to shoot a specific page (deep link).
 
 ## Validation checklist
 

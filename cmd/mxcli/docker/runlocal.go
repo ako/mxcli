@@ -44,8 +44,15 @@ type LocalRunOptions struct {
 	Watch bool
 	// PollInterval is how often Watch checks for changes (default 1s).
 	PollInterval time.Duration
-	Stdout       io.Writer
-	Stderr       io.Writer
+	// Screenshot, when set, captures a PNG of the app after boot and after each
+	// applied change (requires the Playwright CLI + a browser).
+	Screenshot bool
+	// ScreenshotPath is where the PNG is written (default <projectDir>/.mxcli/run-local.png).
+	ScreenshotPath string
+	// ScreenshotURL overrides the page shot (default the app root).
+	ScreenshotURL string
+	Stdout        io.Writer
+	Stderr        io.Writer
 }
 
 // defaultLocalAdminPass is the admin password for a local dev runtime. The admin
@@ -85,6 +92,9 @@ func (o *LocalRunOptions) applyDefaults() {
 	}
 	if o.DB.Name == "" {
 		o.DB.Name = deriveDBName(o.ProjectPath)
+	}
+	if o.ScreenshotPath == "" {
+		o.ScreenshotPath = filepath.Join(filepath.Dir(o.ProjectPath), ".mxcli", "run-local.png")
 	}
 	if o.Stdout == nil {
 		o.Stdout = os.Stdout
@@ -158,28 +168,51 @@ func pingTCP(hostPort string, timeout time.Duration) error {
 	return nil
 }
 
-// projectMTime returns the newest mtime under the project directory, ignoring
-// the deployment dir and VCS metadata. It is the change signal for Watch: it
-// covers both MPR v1 (single .mpr file) and v2 (metadata + mprcontents/).
-func projectMTime(projectDir, deployDir string) time.Time {
+// webClientSourceMTime returns the newest mtime of the browser-client *source*
+// under <deployDir>/web, excluding the rollup output (dist/) and the build log.
+// A page/widget/theme edit bumps it (and needs a client re-bundle); a
+// microflow/entity-only edit does not. Zero time if web/ is absent.
+func webClientSourceMTime(deployDir string) time.Time {
+	webDir := filepath.Join(deployDir, "web")
 	var newest time.Time
-	deployAbs, _ := filepath.Abs(deployDir)
-	_ = filepath.WalkDir(projectDir, func(path string, d fs.DirEntry, err error) error {
+	_ = filepath.WalkDir(webDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
 		if d.IsDir() {
-			name := d.Name()
-			if name == ".git" || name == "node_modules" || name == "deployment" {
-				return fs.SkipDir
-			}
-			if abs, _ := filepath.Abs(path); abs == deployAbs {
+			if d.Name() == "dist" {
 				return fs.SkipDir
 			}
 			return nil
 		}
 		if info, err := d.Info(); err == nil && info.ModTime().After(newest) {
 			newest = info.ModTime()
+		}
+		return nil
+	})
+	return newest
+}
+
+// projectSourceMTime returns the newest mtime of the Mendix model *source*: the
+// .mpr file (v1 stores everything here) plus the mprcontents/ document tree (v2).
+// It is the change signal for Watch. Watching only the model source — not the
+// whole project dir — makes it immune to build-output churn: the serve/mxbuild
+// build rewrites theme-cache/, .mendix-cache/, and deployment/ on every run, and
+// screenshots land in .mxcli/, none of which must re-trigger the watcher.
+func projectSourceMTime(projectPath string) time.Time {
+	var newest time.Time
+	if fi, err := os.Stat(projectPath); err == nil {
+		newest = fi.ModTime()
+	}
+	mprcontents := filepath.Join(filepath.Dir(projectPath), "mprcontents")
+	_ = filepath.WalkDir(mprcontents, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if !d.IsDir() {
+			if info, err := d.Info(); err == nil && info.ModTime().After(newest) {
+				newest = info.ModTime()
+			}
 		}
 		return nil
 	})
@@ -246,10 +279,22 @@ func RunLocal(opts LocalRunOptions) error {
 
 	// 5b. Bundle the browser client (web/dist). The serve Deploy target writes the
 	// client source but not the rollup bundle, so without this the app 404s on
-	// /dist/index.js and renders blank.
-	fmt.Fprintln(w, "Bundling web client...")
-	if err := BuildWebClient(WebClientOptions{DeployDir: opts.DeployDir, MxBuildPath: mxbuildPath, Stdout: w}); err != nil {
-		return fmt.Errorf("bundling web client: %w", err)
+	// /dist/index.js and renders blank. In --watch we keep an incremental bundler
+	// hot (warm rollup graph + polling file detection -> ~3-4s re-bundles);
+	// otherwise a single one-shot build (~7s cold) suffices.
+	var watcher *WebClientWatcher
+	if opts.Watch {
+		fmt.Fprintln(w, "Starting incremental web client bundler...")
+		watcher, err = StartWebClientWatch(WebClientOptions{DeployDir: opts.DeployDir, MxBuildPath: mxbuildPath, Stdout: w})
+		if err != nil {
+			return fmt.Errorf("starting web client bundler: %w", err)
+		}
+		defer watcher.Stop()
+	} else {
+		fmt.Fprintln(w, "Bundling web client...")
+		if err := BuildWebClient(WebClientOptions{DeployDir: opts.DeployDir, MxBuildPath: mxbuildPath, Stdout: w}); err != nil {
+			return fmt.Errorf("bundling web client: %w", err)
+		}
 	}
 
 	// 6. Boot the runtime against the fresh deployment.
@@ -270,16 +315,44 @@ func RunLocal(opts LocalRunOptions) error {
 	defer rt.Stop()
 
 	fmt.Fprintf(w, "\nApp is running at %s\n", rt.AppURL())
+	maybeScreenshot(opts, rt)
 
 	// 7. Stay up until interrupted. With --watch, rebuild + hot-apply on every
 	// project change; otherwise just keep the runtime serving.
 	if opts.Watch {
-		return watchAndApply(opts, serve, rt, mxbuildPath)
+		return watchAndApply(opts, serve, rt, watcher)
 	}
 	fmt.Fprintln(w, "(run with --watch to rebuild and hot-apply on changes; Ctrl-C to stop)")
 	waitForInterrupt()
 	fmt.Fprintln(w, "\nShutting down...")
 	return nil
+}
+
+// maybeScreenshot captures the app (best-effort) when --screenshot is set. A
+// failure is reported but never aborts the loop — the app is still running.
+func maybeScreenshot(opts LocalRunOptions, rt *LocalRuntime) {
+	if !opts.Screenshot {
+		return
+	}
+	url := opts.ScreenshotURL
+	if url == "" {
+		url = rt.AppURL()
+	}
+	if err := os.MkdirAll(filepath.Dir(opts.ScreenshotPath), 0o755); err != nil {
+		fmt.Fprintf(opts.Stderr, "  screenshot skipped: %v\n", err)
+		return
+	}
+	if err := CaptureScreenshot(ScreenshotOptions{
+		URL:      url,
+		OutPath:  opts.ScreenshotPath,
+		WaitMs:   4000,
+		FullPage: true,
+		Viewport: "1280,800",
+	}); err != nil {
+		fmt.Fprintf(opts.Stderr, "  screenshot skipped: %v\n", err)
+		return
+	}
+	fmt.Fprintf(opts.Stdout, "  screenshot -> %s\n", opts.ScreenshotPath)
 }
 
 // resolveRuntimeInstall returns the directory to use as MX_INSTALL_PATH (its
@@ -327,16 +400,15 @@ func waitForInterrupt() {
 // watchAndApply polls the project for changes and applies each rebuild until the
 // user interrupts (Ctrl-C). StartLocalRuntime already resolved the JVM; here we
 // only rebuild via serve and let the RuntimeController decide reload vs restart.
-func watchAndApply(opts LocalRunOptions, serve *ServeServer, rt *LocalRuntime, mxbuildPath string) error {
+func watchAndApply(opts LocalRunOptions, serve *ServeServer, rt *LocalRuntime, watcher *WebClientWatcher) error {
 	w := opts.Stdout
-	projectDir := filepath.Dir(opts.ProjectPath)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(sigCh)
 
 	fmt.Fprintln(w, "Watching for changes (Ctrl-C to stop)...")
-	last := projectMTime(projectDir, opts.DeployDir)
+	last := projectSourceMTime(opts.ProjectPath)
 	ticker := time.NewTicker(opts.PollInterval)
 	defer ticker.Stop()
 
@@ -346,13 +418,20 @@ func watchAndApply(opts LocalRunOptions, serve *ServeServer, rt *LocalRuntime, m
 			fmt.Fprintln(w, "\nShutting down...")
 			return nil
 		case <-ticker.C:
-			now := projectMTime(projectDir, opts.DeployDir)
+			now := projectSourceMTime(opts.ProjectPath)
 			if !now.After(last) {
 				continue
 			}
 			last = now
 			fmt.Fprintln(w, "Change detected, rebuilding...")
 			start := time.Now()
+
+			// Capture the client-bundle generation and the web-source mtime before
+			// the serve build, so we can tell whether the change plausibly touched
+			// client source and, if so, wait for the incremental re-bundle.
+			genBefore := watcher.Generation()
+			webBefore := webClientSourceMTime(opts.DeployDir)
+
 			build, err := serve.Build(BuildRequest{Target: TargetDeploy, ProjectFilePath: opts.ProjectPath})
 			if err != nil {
 				fmt.Fprintf(opts.Stderr, "  build error: %v\n", err)
@@ -362,22 +441,37 @@ func watchAndApply(opts LocalRunOptions, serve *ServeServer, rt *LocalRuntime, m
 				fmt.Fprintf(opts.Stderr, "  build failed: %s\n", build.Message)
 				continue
 			}
-			// Rebuild the browser client bundle so page/widget edits are reflected
-			// (the serve Deploy target writes client source but not the rollup
-			// bundle). This is a full ~7s bundle today; an incremental watch-mode
-			// companion bundler is the optimization follow-up.
-			if err := BuildWebClient(WebClientOptions{DeployDir: opts.DeployDir, MxBuildPath: mxbuildPath, Stdout: w}); err != nil {
-				fmt.Fprintf(opts.Stderr, "  web client build failed: %v\n", err)
-				continue
+			// If the serve build touched web/ source, wait (briefly) for the
+			// incremental bundler to re-bundle. WaitForRebuild settles out cleanly if
+			// no rebuild materializes (the touched file isn't a rollup input — e.g. a
+			// microflow edit that rewrites a web metadata file but no page/widget), so
+			// this never hangs. A pure model change skips the wait entirely.
+			bundled := false
+			if webClientSourceMTime(opts.DeployDir).After(webBefore) {
+				// Detection is a reliable ~1s with polling, so a 2.5s settle is ample
+				// margin to catch a rebuild that's going to start, while keeping the
+				// no-rebuild case (a model edit that only grazed web/) snappy.
+				bundled, err = watcher.WaitForRebuild(genBefore, 2500*time.Millisecond, 90*time.Second)
+				if err != nil {
+					fmt.Fprintf(opts.Stderr, "  web client rebuild failed: %v\n", err)
+					continue
+				}
 			}
+
 			action, err := rt.Controller().ApplyBuild(build, rt.Restart)
 			if err != nil {
 				fmt.Fprintf(opts.Stderr, "  apply (%s) failed: %v\n", action, err)
 				continue
 			}
-			// Refresh last after the apply so edits made during the build are caught.
-			last = projectMTime(projectDir, opts.DeployDir)
-			fmt.Fprintf(w, "  applied via %s in %s -> %s\n", action, time.Since(start).Round(time.Millisecond), rt.AppURL())
+			client := ""
+			if bundled {
+				client = ", client re-bundled"
+			}
+			fmt.Fprintf(w, "  applied via %s in %s%s -> %s\n", action, time.Since(start).Round(time.Millisecond), client, rt.AppURL())
+			maybeScreenshot(opts, rt)
+			// Refresh the baseline AFTER the apply so an edit made mid-build is
+			// still caught on the next tick.
+			last = projectSourceMTime(opts.ProjectPath)
 		}
 	}
 }

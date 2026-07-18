@@ -66,27 +66,47 @@ createdb -h 127.0.0.1 -U mendix app1112
 | `--db-host` | 127.0.0.1:5432 | Database `host:port` |
 | `--db-name` | derived from project | Database name |
 | `--db-user` / `--db-password` | mendix / mendix | Database credentials |
+| `--screenshot` | off | Capture a Playwright PNG after boot and each applied change |
+| `--screenshot-path` | `<projectDir>/.mxcli/run-local.png` | Screenshot output PNG |
+| `--screenshot-url` | app root | Page URL to screenshot |
 
 ## The change signal
 
-`--watch` watches the project directory (both MPR v1 single-file and v2
-`mprcontents/` layouts), ignoring `deployment/`, `.git`, and `node_modules`. The
-intended loop is: an agent (or you) edits the model with `mxcli exec`/MDL, and the
-running `run --local` picks the change up and hot-applies it.
+`--watch` watches the model **source** — the `.mpr` file and the `mprcontents/`
+document tree (v2) — not the whole project dir. This is deliberate: the serve/mxbuild
+build rewrites `deployment/`, `theme-cache/`, and `.mendix-cache/` on every run, and
+screenshots land in `.mxcli/`; watching only the source keeps that build-output churn
+from re-triggering the loop. The intended cycle: an agent (or you) edits the model
+with `mxcli exec`/MDL, and the running `run --local` picks it up and hot-applies it.
 
 ## Pages render in the browser
 
-`run --local` bundles the browser client (`web/dist/`) after the deploy build, so
-the app renders in a real browser — verified by driving the pre-installed Chromium
-with Playwright against a booted app (the Mendix homepage renders fully). This makes
-`run --local` usable for **visual page-design iteration**, not just headless checks.
+`run --local` bundles the browser client (`web/dist/`) so the app renders in a real
+browser — verified by driving the pre-installed Chromium with Playwright (the Mendix
+homepage renders fully). This makes it usable for **visual page-design iteration**,
+not just headless checks.
 
-**Watch cost.** In `--watch`, the client bundle is rebuilt on every change — a full
-rollup bundle (~6–7 s) today. Behavioural changes (microflows) don't actually need
-it, and page changes could use an incremental watch-mode bundler; making the client
-rebuild incremental/conditional is a tracked optimization. For pixel-perfect page
-work, pair this with Playwright screenshots (see below): edit → auto-rebuild →
-re-screenshot.
+- **Non-`--watch`**: a one-shot rollup bundle after the deploy build (~7 s cold).
+- **`--watch`**: a long-lived incremental bundler stays hot (the client-side mirror
+  of `mxbuild --serve`), so a page/widget edit re-bundles in ~3–4 s. It runs with
+  `CHOKIDAR_USEPOLLING` because inotify does not fire on container overlay
+  filesystems — without it, change detection takes tens of seconds. The loop
+  re-bundles **only when the edit touched client source**: a microflow/entity edit
+  skips the bundle and just hot-reloads.
+
+## Pixel-perfect page loop
+
+Pass `--screenshot` and each applied change is captured to a PNG (default
+`<projectDir>/.mxcli/run-local.png`) using Playwright's built-in `screenshot`
+command (Chromium from `PLAYWRIGHT_BROWSERS_PATH` — no `playwright-cli` needed):
+
+```bash
+mxcli run --local -p app.mpr --watch --screenshot
+# edit a page with mxcli exec/MDL -> auto rebuild -> re-bundle -> reload -> new PNG
+```
+
+Point `--screenshot-url` at a deep link to shoot a specific page. Screenshotting a
+failure or a specific state (auth, navigation) is a natural next step.
 
 See also: [PROPOSAL_mxcli_dev_warm_loop](../../../docs/11-proposals/PROPOSAL_mxcli_dev_warm_loop.md),
 [mxcli docker run](docker-run.md), [Playwright Testing](playwright.md).
