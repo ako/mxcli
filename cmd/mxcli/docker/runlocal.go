@@ -42,6 +42,9 @@ type LocalRunOptions struct {
 	DB DBConfig
 	// Watch keeps running, rebuilding+applying on every project change.
 	Watch bool
+	// EnsureDB provisions the local Postgres + app database if missing (otherwise
+	// the DB must already exist). Intended for a fresh session / SessionStart boot.
+	EnsureDB bool
 	// PollInterval is how often Watch checks for changes (default 1s).
 	PollInterval time.Duration
 	// Screenshot, when set, captures a PNG of the app after boot and after each
@@ -259,10 +262,17 @@ func RunLocal(opts LocalRunOptions) error {
 		return fmt.Errorf("setting up runtime: %w", err)
 	}
 
-	// 3. Check the database is reachable (we don't provision it here).
-	if err := pingTCP(opts.DB.Host, 3*time.Second); err != nil {
+	// 3. Ensure the database is available. With --ensure-db, provision it (start
+	// local Postgres + create the role/db if missing); otherwise just check
+	// reachability and point the user at --ensure-db.
+	if opts.EnsureDB {
+		fmt.Fprintln(w, "Ensuring database...")
+		if err := EnsureDatabase(opts.DB, w); err != nil {
+			return fmt.Errorf("ensuring database: %w", err)
+		}
+	} else if err := pingTCP(opts.DB.Host, 3*time.Second); err != nil {
 		return fmt.Errorf("database not reachable at %s: %w\n"+
-			"  Start Postgres and create the '%s' database (user %q), or pass --db-* flags.",
+			"  Pass --ensure-db to provision it, or start Postgres and create the '%s' database (user %q).",
 			opts.DB.Host, err, opts.DB.Name, opts.DB.User)
 	}
 

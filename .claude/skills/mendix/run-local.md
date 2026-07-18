@@ -47,15 +47,16 @@ association catalog only at startup; behavioural changes are hot-reloaded.
 ## Prerequisites
 
 - **Mendix 11.x** project (runtime launches under **JDK 21**).
-- A reachable **PostgreSQL** with the database already created. In the devcontainer:
+- A **PostgreSQL** database (defaults: `127.0.0.1:5432`, user `mendix`, db derived
+  from the project name; override with `--db-host/--db-name/--db-user/--db-password`).
+  - **`--ensure-db`** provisions it for a fresh session: starts local Postgres if the
+    port is down and creates the role + database if missing (local superuser via
+    `sudo -u postgres`). Remote hosts are only checked, not provisioned.
+  - Without `--ensure-db`, create it once and the command errors if it's unreachable:
 
-  ```bash
-  createdb -h 127.0.0.1 -U mendix "$(basename app.mpr .mpr | tr '[:upper:]' '[:lower:]')"
-  ```
-
-  Defaults: `127.0.0.1:5432`, user `mendix`, db derived from the project name.
-  Override with `--db-host/--db-name/--db-user/--db-password`. If the database is
-  unreachable the command stops with an actionable message (it does not provision it).
+    ```bash
+    createdb -h 127.0.0.1 -U mendix "$(basename app.mpr .mpr | tr '[:upper:]' '[:lower:]')"
+    ```
 
 ## The intended loop
 
@@ -76,6 +77,7 @@ mxcli exec add-page.mdl -p app.mpr
 |------|---------|---------|
 | `--local` | — | Required; run without Docker |
 | `--watch` | off | Rebuild + hot-apply on each change |
+| `--ensure-db` | off | Provision local Postgres + app database if missing |
 | `--screenshot` | off | Playwright PNG after boot + each change |
 | `--screenshot-path` / `--screenshot-url` | `.mxcli/run-local.png` / app root | Screenshot output / page (URL or `/path`) |
 | `--screenshot-user` / `--screenshot-password` | — | Log in once, reuse session (pages behind login) |

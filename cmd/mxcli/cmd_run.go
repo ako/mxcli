@@ -50,6 +50,7 @@ Examples:
 		}
 
 		watch, _ := cmd.Flags().GetBool("watch")
+		ensureDB, _ := cmd.Flags().GetBool("ensure-db")
 		appPort, _ := cmd.Flags().GetInt("app-port")
 		adminPort, _ := cmd.Flags().GetInt("admin-port")
 		servePort, _ := cmd.Flags().GetInt("serve-port")
@@ -69,6 +70,7 @@ Examples:
 			AdminPort:          adminPort,
 			ServePort:          servePort,
 			Watch:              watch,
+			EnsureDB:           ensureDB,
 			Screenshot:         screenshot,
 			ScreenshotPath:     screenshotPath,
 			ScreenshotURLs:     screenshotURLs,
@@ -94,6 +96,7 @@ Examples:
 func init() {
 	runCmd.Flags().Bool("local", false, "Run locally without Docker (warm serve + standalone runtime)")
 	runCmd.Flags().Bool("watch", false, "Rebuild and hot-apply on every project change")
+	runCmd.Flags().Bool("ensure-db", false, "Provision the local Postgres + app database if missing (fresh-session bootstrap)")
 	runCmd.Flags().Int("app-port", 0, "HTTP port for the app (default 8080)")
 	runCmd.Flags().Int("admin-port", 0, "M2EE admin API port (default 8090)")
 	runCmd.Flags().Int("serve-port", 0, "mxbuild --serve port (default 6543)")
