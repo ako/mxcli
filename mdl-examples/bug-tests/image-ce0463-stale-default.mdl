@@ -1,0 +1,55 @@
+-- ============================================================================
+-- Image widget CE0463 "widget definition changed" from a stale template default
+-- ============================================================================
+--
+-- Symptom (before fix): authoring an Image widget on any Mendix 11.7+ project
+-- and running `mx check` (without `mx update-widgets`) reports:
+--
+--   [CE0463] "The definition of this widget has changed. Update this widget..."
+--     at Image 'img'
+--
+-- The documented remedy was `mx update-widgets`, which on an MPRv2 project
+-- rewrites storage to v1 and deletes mprcontents/ (issue #763) — so this stale
+-- default quietly funnelled users into data loss.
+--
+-- Root cause: NOT a version stamp, Type $IDs, property order, or missing
+-- properties (all ruled out empirically). The embedded template
+-- `image.json` carried a spurious default value — a `WidgetValue.Image`
+-- pointing at `Atlas_Core.Content.Mendix` (Atlas's Mendix logo) — captured
+-- when the template was extracted from a project that happened to have it set.
+-- The installed 11.12 Image widget expects that field empty (""), so MxBuild
+-- flagged the definition as changed. Clearing the default to "" makes the
+-- widget pass with 0 errors and no update-widgets.
+--
+-- Diagnosis method (reusable for this whole CE0463 class): dump the widget
+-- BSON, run `mx update-widgets` on a COPY, dump again, and diff the
+-- CustomWidget subtree ORDER-INDEPENDENTLY (canonicalise key order + mask
+-- $ID/TypePointer blobs). Reordering and generic instance chrome
+-- (LabelTemplate, Appearance/DesignProperties) are cosmetic — a passing
+-- widget gets those too. The real cause is whatever value/structure survives
+-- that normalisation.
+--
+-- Fix: modelsdk/widgets/templates/mendix-11.6/image.json (+ sdk/widgets/...):
+--   "Image": "Atlas_Core.Content.Mendix"  ->  "Image": ""
+--
+-- Verify:
+--   mxcli exec image-ce0463-stale-default.mdl -p <11.12 app.mpr>
+--   mxcli docker check -p <app.mpr> --no-update-widgets   -> 0 errors
+--     (before the fix: 1 error, CE0463 at Image 'img')
+-- ============================================================================
+
+create page MyFirstModule.ImgPage (
+  Title: 'Image CE0463 repro',
+  Layout: Atlas_Core.Atlas_Default
+) {
+  layoutgrid lg {
+    row r {
+      column c (DesktopWidth: 12) {
+        pluggablewidget 'com.mendix.widget.web.image.Image' img (
+          ImageType: 'imageUrl',
+          imageUrl: 'https://example.com/x.png'
+        )
+      }
+    }
+  }
+}
