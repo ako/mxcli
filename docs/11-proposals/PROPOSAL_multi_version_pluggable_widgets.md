@@ -246,15 +246,33 @@ regenerate gen from the target version's reflection-data.
      reconciles key *presence* (add/remove) but **not within-key definition changes**,
      so the emitted Type ≠ the installed widget → CE0463.
 
-   **This is the general object-list drift, not a Gallery quirk.** DataGrid2 passes on
-   the tested versions only because its 3.x schema stayed close to the 11.6 template;
-   the same mechanism will bite it on a far-enough version (a future 11.x, or another
-   old release). **Fix options:** (a) **deeper augment** — reconcile each matched
-   PropertyType's full definition (Category, DefaultValue, enum values, Type) from the
-   installed `.mpk`, not just key presence, so the emitted Type equals what
-   `update-widgets` produces; the general fix, future-proofs every object-list widget;
-   or (b) **per-version templates** (`gallery-10.24.json`) — simpler, maintenance-heavy,
-   doesn't generalise. Recommend (a), validated by `scripts/widget-version-matrix.sh`.
+   **This is the general object-list drift, not a Gallery quirk** — DataGrid2 with a
+   marketplace-updated Data Widgets (3.10.0, the #600 case) drifts the same way.
+   Root-caused via the key-indexed PropertyType diff into **two independent axes:**
+
+   - **Axis 1 — within-key PropertyType metadata drift. FIXED (`8b65f06`).**
+     `augment` reconciled key presence and enum option sets but left the rest of a
+     matched PropertyType stale: a `DefaultValue` outside the reconciled enum set
+     (Gallery `pagingPosition` options → `{below,above}` but default stayed `bottom`),
+     a `Category` rename (`General::Pagination`→`General::Items`), a `Caption` change.
+     `reconcilePropertyMetadata` now overwrites Category/Caption/DefaultValue from the
+     `.mpk` for every matched key. Verified: after it, **every Gallery@10.24
+     PropertyType matches `update-widgets`**; no regression on 11.12. This is the
+     likely complete fix for the #600 DataGrid2 case (its drift is PropertyType
+     metadata). *(modelsdk engine; the legacy sdk `augment` lacks even
+     `reconcileEnumValues` and is behind — consolidate per item 3 above.)*
+   - **Axis 2 — datasource-structure drift. REMAINING.** Gallery@10.24 *additionally*
+     drifts in its datasource: mxcli emits `Forms$GridSortBar` without `SortItems` and
+     `CustomWidgets$CustomWidgetXPathSource` without `SourceVariable`; the 10.24 widget
+     expects both (empty/null). This is a **codec `TypeDefaults`** gap in
+     `mdl/backend/modelsdk/widget_write.go`, not augment — a different axis from the
+     PropertyType schema. DataGrid2 has not been observed to hit it (its datasource
+     stayed stable), which is why Axis 1 alone likely closes #600. Fixing Gallery@10.24
+     end-to-end needs Axis 2: register the empty `SortItems` / null `SourceVariable`
+     defaults so the emitted datasource matches the installed widget.
+
+   Validate both against `scripts/widget-version-matrix.sh`. (Per-version templates
+   remain a fallback but are maintenance-heavy and don't generalise.)
 
    **Also noted (dirty-template audit):** `datagrid.json`'s Object carries a configured
    delete `Forms$ActionButton` (`Forms$DeleteClientAction` + `Atlas_Core.Atlas.trash-can`)
