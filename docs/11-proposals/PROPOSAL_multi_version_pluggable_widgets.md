@@ -261,18 +261,27 @@ regenerate gen from the target version's reflection-data.
      likely complete fix for the #600 DataGrid2 case (its drift is PropertyType
      metadata). *(modelsdk engine; the legacy sdk `augment` lacks even
      `reconcileEnumValues` and is behind — consolidate per item 3 above.)*
-   - **Axis 2 — datasource-structure drift. REMAINING.** Gallery@10.24 *additionally*
-     drifts in its datasource: mxcli emits `Forms$GridSortBar` without `SortItems` and
-     `CustomWidgets$CustomWidgetXPathSource` without `SourceVariable`; the 10.24 widget
-     expects both (empty/null). This is a **codec `TypeDefaults`** gap in
-     `mdl/backend/modelsdk/widget_write.go`, not augment — a different axis from the
-     PropertyType schema. DataGrid2 has not been observed to hit it (its datasource
-     stayed stable), which is why Axis 1 alone likely closes #600. Fixing Gallery@10.24
-     end-to-end needs Axis 2: register the empty `SortItems` / null `SourceVariable`
-     defaults so the emitted datasource matches the installed widget.
+   - **Axis 2 — datasource structure + PropertyType order. FIXED (`10b5bcf`).**
+     Gallery@10.24 *additionally* drifted two ways: (a) mxcli emitted `Forms$GridSortBar`
+     without `SortItems` and `CustomWidgets$CustomWidgetXPathSource` without
+     `SourceVariable` (the 10.24 widget expects both, empty/null) — fixed with codec
+     `TypeDefaults` in `widget_write.go` (`MandatoryListMarkers: SortItems=2`,
+     `NullFields: SourceVariable`); and (b) the top-level PropertyType **order** differed
+     — the 3.x widget moved `pagingPosition` ahead of `showTotalCount`, and augment kept
+     the template order. **The WidgetType's PropertyType order IS checked by CE0463**
+     (unlike the WidgetObject's Properties order, which the spike proved tolerated);
+     `reorderPropertyTypes` now sorts the Type's PropertyTypes to the `.mpk` declaration
+     order (refs are by `$ID`, so it's safe).
 
-   Validate both against `scripts/widget-version-matrix.sh`. (Per-version templates
-   remain a fallback but are maintenance-heavy and don't generalise.)
+   **Result: Gallery@10.24 now passes `mx check` with 0 errors and NO `update-widgets`.**
+   Full regression clean — DataGrid2 (attribute + filter + custom-content) and Gallery
+   both 0 errors on 10.24 / 11.10 / 11.12.0 / 11.12.1. All three axes (metadata, datasource,
+   order) are the general within-key/order drift that any object-list widget hits when its
+   installed version moves past the 11.6 template — including the #600 DataGrid2 case.
+   *(modelsdk engine; the legacy sdk `augment` remains behind — consolidate per item 3.)*
+   Remaining: fold these into `scripts/widget-version-matrix.sh` as a standing gate; and
+   direct end-to-end validation of the #600 DataGrid2 case awaits a project with Data
+   Widgets 3.10.0.
 
    **Also noted (dirty-template audit):** `datagrid.json`'s Object carries a configured
    delete `Forms$ActionButton` (`Forms$DeleteClientAction` + `Atlas_Core.Atlas.trash-can`)
