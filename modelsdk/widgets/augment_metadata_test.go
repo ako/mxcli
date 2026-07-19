@@ -81,3 +81,40 @@ func TestReconcilePropertyMetadata_LeavesUnknownKeys(t *testing.T) {
 		t.Errorf("DefaultValue = %v, want keep (empty .mpk value must not clobber)", got)
 	}
 }
+
+// TestReorderPropertyTypes verifies the top-level PropertyTypes are reordered to the
+// installed .mpk's declaration order (leading array marker preserved, keys absent from
+// the .mpk kept after the declared ones), closing the order axis of the object-list
+// CE0463 drift (e.g. Gallery 3.x moved pagingPosition ahead of showTotalCount).
+func TestReorderPropertyTypes(t *testing.T) {
+	pt := func(key string) map[string]any {
+		return map[string]any{"$Type": "CustomWidgets$WidgetPropertyType", "PropertyKey": key}
+	}
+	typ := map[string]any{
+		"ObjectType": map[string]any{
+			// template order: c, a, sys, b  — marker 2 leads the list
+			"PropertyTypes": []any{float64(2), pt("c"), pt("a"), pt("sys"), pt("b")},
+		},
+	}
+	def := &mpk.WidgetDefinition{
+		Properties: []mpk.PropertyDef{{Key: "a"}, {Key: "b"}, {Key: "c"}},
+	}
+	reorderPropertyTypes(typ, def)
+
+	got := typ["ObjectType"].(map[string]any)["PropertyTypes"].([]any)
+	if m, ok := got[0].(float64); !ok || m != 2 {
+		t.Fatalf("marker not preserved at head: %v", got[0])
+	}
+	var order []string
+	for _, e := range got[1:] {
+		order = append(order, e.(map[string]any)["PropertyKey"].(string))
+	}
+	// declared keys in .mpk order (a,b,c), then undeclared "sys" kept after
+	want := []string{"a", "b", "c", "sys"}
+	for i := range want {
+		if order[i] != want[i] {
+			t.Errorf("order = %v, want %v", order, want)
+			break
+		}
+	}
+}
