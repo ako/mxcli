@@ -222,13 +222,20 @@ regenerate gen from the target version's reflection-data.
 
 1. **Within-key PropertyType drift on object-list widgets — root-caused.** Verified
    directly against cached mxbuild (10.24.19 / 11.10.0 / 11.12.1):
-   - **DataGrid2 is clean across all three** — attribute columns (the exact `#600`
-     repro), custom content (dynamictext / actionbutton / multi-widget), column
-     filters, and selection all produce **0 CE0463**. `#600` was filed on the old
-     v0.11.0 and is resolved on HEAD by the accumulated fixes (NestedKeyOrder
-     `f12aba2`, custom-content `58508d4`, …). (An earlier note here that DataGrid2
-     custom-content "still reproduces on 11.12.1" was a **test-syntax artifact** —
-     `Content: showContentAs` injected a spurious TextTemplate — not a real defect.)
+   - **DataGrid2 is clean with the *bundled* Data Widgets** (3.0.0@10.24, 3.4.0@11.10/
+     11.12) across attribute columns (the exact `#600` repro), custom content, filters,
+     and selection — all **0 CE0463**. The old-v0.11.0 mxcli-side bugs (NestedKeyOrder
+     `f12aba2`, custom-content `58508d4`) are resolved on HEAD. **But DataGrid2 drifts
+     exactly like Gallery when the installed Data Widgets is *updated from the
+     marketplace* past what the 11.6 template reconciles with.** `#600`'s latest report
+     (3 days ago: mxcli **v0.16.0**, Mendix **11.12.0**, "still present") is this case —
+     the original reporter noted **Data Widgets 3.10.0**, newer than the 3.4.0 bundled
+     with 11.12.0. Confirmed material facts: mxcli's widget code is **identical
+     v0.16.0→HEAD** (the only deltas are the Image fix + guard), so **no mxcli upgrade
+     fixes it** — it is a widget-version drift needing the deeper-augment fix below.
+     (An earlier note that DataGrid2 custom-content "still reproduces on 11.12.1" was a
+     **test-syntax artifact** — `Content: showContentAs` injected a spurious
+     TextTemplate — not a real defect; the real driver is the updated `.mpk`.)
    - **Gallery custom content produces CE0463 on 10.24** (clean on 11.10 / 11.12).
      The before/after-`update-widgets` subtree diff shows the cause is **NOT** a dirty
      default and **NOT** merely nested: the 11.6 template and the 10.24-installed
