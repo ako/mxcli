@@ -47,6 +47,23 @@ Two real, narrow gaps remain:
   builder applied `attribute: Country` on top without resetting them → an Object
   inconsistent with the schema → `CE0463`. The fix that worked (commit `827bffd4b`)
   was simply swapping in the legacy template's **clean/neutral** Object defaults.
+  **A second confirmed instance (commit `549c44f`): `image.json` carried a baked-in
+  static image `WidgetValue.Image = "Atlas_Core.Content.Mendix"` (Atlas's Mendix logo,
+  captured from a configured instance) where a fresh Image widget has `""`.** Any
+  Image authored on 11.7+ tripped `CE0463`; the documented remedy (`mx update-widgets`)
+  then destroyed MPRv2 storage (#763) — so a dirty default was silently funnelling
+  users into data loss. Isolated by the reusable method below and fixed by clearing
+  the value; verified `mx check --no-update-widgets` = 0 errors. The dirty-default
+  class is therefore broader than datasources: it includes **image-asset refs, page
+  refs, and configured client actions**, not just entity/attribute/flow bindings.
+
+  **Reusable diagnosis method (this whole `CE0463` class).** Dump the widget BSON,
+  `mx update-widgets` on a **copy**, dump again, and diff the
+  `CustomWidgets$CustomWidget` subtree **order-independently** (canonicalise key order
+  + mask `$ID`/`TypePointer` blobs). Confirms the spike's tolerance result *per case*:
+  reordering and generic instance chrome (`LabelTemplate`, `Appearance.DesignProperties`)
+  are cosmetic — a *passing* widget gets those too; the real cause is whatever
+  value/structure survives that normalisation. For Image it was exactly one field.
 - **No cross-version guarantee.** Nothing tests that creation stays `CE0463`-free
   as Mendix minors and widget versions move; regressions surface in the field.
 
@@ -154,8 +171,8 @@ changes. Applies to both engines.
 
 | File | Change |
 |------|--------|
-| `sdk/widgets/templates/`, `modelsdk/widgets/templates/` | Audit every embedded template's Object for instance bindings; re-extract any dirty one from a fresh Studio-Pro widget (as done for ComboBox in `827bffd4b`) |
-| `modelsdk/widgets/` (+ `sdk/widgets`) | New dirty-template guard: a test/`widget init` check that rejects Objects with populated `AttributeRef`/`DataSource`/`EntityRef` |
+| `sdk/widgets/templates/`, `modelsdk/widgets/templates/` | Audit every embedded template's Object for instance bindings; re-extract any dirty one from a fresh Studio-Pro widget (ComboBox `827bffd4b`; **Image `549c44f` — done**) |
+| `modelsdk/widgets/dirty_template_test.go` | **Built + broadened (this cycle).** Dirty-template guard (`dirtyBindings` + `TestEmbeddedTemplates_NoDirtyBindings`) rejects Objects with concrete entity/attribute/flow refs **and now image-asset / page / configured-action bindings** — the class the original guard missed, which is how the Image bug shipped. Scans **both** engines' template sets; proven non-vacuous (detect-dirt + clean-is-clean cases) and proven to catch the real Image regression. Follow-up: promote `dirtyBindings` from test-only to a runtime `widget init` check |
 | `modelsdk/widgets/loader.go`, `sdk/widgets/loader.go` | Consolidate so both engines share one augment path |
 | `sdk/widgets/augment.go` / `modelsdk/widgets/augment.go` | Reconcile to a single implementation |
 | `mdl/backend/widgetobj/builder.go` | Ensure the builder fully overrides every Object slot it sets (no bleed-through) |
@@ -164,8 +181,13 @@ changes. Applies to both engines.
 
 ### Phasing
 
-1. **Audit embedded templates for dirty Objects** + add the guard. ComboBox is
-   already clean (`827bffd4b`); confirm DataGrid2/Gallery/the rest.
+1. **Audit embedded templates for dirty Objects** + add the guard. **In progress:**
+   ComboBox clean (`827bffd4b`); Image cleaned (`549c44f`); the guard is built and
+   broadened to the image/page/action class over both engines. Remaining: a broader
+   any-node scan surfaces a **configured delete `Forms$ActionButton`**
+   (`Forms$DeleteClientAction` + `Atlas_Core.Atlas.trash-can`) baked into
+   `datagrid.json` — nested-Forms-widget dirt, out of the WidgetValue-scoped guard's
+   safe reach (see Open Question 1). Confirm/clean it as part of the DataGrid2 pass.
 2. Consolidate the two engines' widget loaders / augment onto one path.
 3. Cross-version validation matrix.
 4. (Optional) Evaluate whether a fresh-instance extraction could *generate* clean
@@ -207,6 +229,15 @@ regenerate gen from the target version's reflection-data.
    object-list widgets likely need a clean template **per widget-version**, not one
    shared 11.6 base. Open: root-cause the Gallery nested diff, then decide
    per-version template vs deeper (nested) augment.
+   **Concrete lead (from the dirty-template audit):** `datagrid.json`'s Object has 0
+   default `Forms$GridColumn`s but **1 configured `Forms$ActionButton`** — a
+   `Forms$DeleteClientAction` with an `Atlas_Core.Atlas.trash-can` icon, clearly
+   extracted from a configured grid. `#600`'s DataGrid2 custom-content `CE0463` still
+   reproduces on 11.12.1 (`datagrid` with an attribute column passes, but adding a
+   custom-content column fails; `update-widgets` clears it) and is likely this
+   nested-object-list dirt — which the flat WidgetValue-scoped guard deliberately does
+   NOT flag (false-positive risk on nested Forms widgets). Root-cause via the
+   before/after-`update-widgets` subtree diff, then clean or template-per-version.
 2. **Long-tail marketplace widgets.** Built-ins can be hand-extracted clean. For
    arbitrary marketplace widgets with no embedded template, the only correct Object
    source is a fresh extraction — can `widget init` extract from a freshly-dropped
