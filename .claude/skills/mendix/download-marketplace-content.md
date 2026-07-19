@@ -60,7 +60,7 @@ mxcli marketplace install <content-id> -p app.mpr [--version X.Y.Z]
 
 | Content type | Behavior |
 |---|---|
-| **Widget** | Copied into `widgets/` (overwrites on update). Reload in Studio Pro or run `mx update-widgets`. |
+| **Widget** | Copied into `widgets/` (overwrites on update). Reload in Studio Pro, or run `mxcli docker check`/`build` to normalize (v2-safe). Do **not** run bare `mx update-widgets` on an `mprcontents/` project — it converts to v1 and deletes `mprcontents/`. |
 | **Module** (new) | Imported via `mx module-import` — needs a matching mxbuild (`mxcli setup mxbuild -p app.mpr`). |
 | **Module** (already present) | **Reported, not modified** — see the caveat below. |
 | Theme / Starter App / Sample | Downloaded with import instructions (import via Studio Pro). |

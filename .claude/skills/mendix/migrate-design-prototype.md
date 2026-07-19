@@ -256,7 +256,9 @@ too — each `series`/`line` binds its own OQL-view datasource + X/Y attributes;
 Pie/HeatMap bind at the widget level (`ValueAttribute:`, Pie needs `SeriesName:`).
 See **[Custom & Pluggable Widgets → Charts](custom-widgets.md)** for the chart-type
 → id table, per-chart required-property gotchas (TimeSeries needs a datetime X,
-Bubble needs a size attribute), and the **CE0463 → `mx update-widgets`** step.
+Bubble needs a size attribute), and the **CE0463 → `mxcli docker check`/`build`** step
+(these normalize widgets *and* preserve MPRv2 storage — never run bare
+`mx update-widgets` on a `mxcli new` project; it deletes `mprcontents/`).
 `mdl-examples/doctype-tests/34-chart-widget-examples.mdl` is the full showcase.
 
 **Pluggable-widget gotchas:**
@@ -502,8 +504,9 @@ the fast index so a design migration doesn't rediscover them.
   (`Charts.mpk`: column/bar/line/area/pie)** now author via MDL — each `series` (an object-list
   item inside the chart) binds a datasource plus X/Y attributes:
   `series s1 (staticDataSource: database from Module.View, staticXAttribute: "X", staticYAttribute: "Y")`
-  (a per-series OQL view works too). `mxcli docker check`/`build` run `mx update-widgets`, which
-  clears the widget-version-drift CE0463. Still lighter when the design allows: a **CSS-background
+  (a per-series OQL view works too). `mxcli docker check`/`build` clear the
+  widget-version-drift CE0463 (they normalize the widgets and preserve MPRv2 storage —
+  do not run bare `mx update-widgets`, which deletes `mprcontents/`). Still lighter when the design allows: a **CSS-background
   SVG** container (or `HTMLElement`) for sparklines/trends — no datasource — and `ProgressCircle`
   (`type: expression`, `expressionCurrentValue: '$currentObject/Rate'`, min `'0'` / max `'100'`,
   `labelType: percentage`) for a single-value gauge.

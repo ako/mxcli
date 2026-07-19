@@ -37,12 +37,14 @@ Note the exact error code (CE0463, CE0642, etc.) and which widget triggers it.
 
 ### Step 2: Get a Known-Good Reference
 
-Create a working example in Studio Pro and update it:
+Create a working example in Studio Pro and update it. **Do this on a COPY** — both
+commands below mutate the project, and `update-widgets` converts an MPRv2 project to
+single-file v1 (deletes `mprcontents/`):
 
 ```bash
-# Convert project to latest format and update widget definitions
-reference/mxbuild/modeler/mx convert -p /path/to/app.mpr
-reference/mxbuild/modeler/mx update-widgets /path/to/app.mpr
+# Convert project to latest format and update widget definitions (mutates in place)
+reference/mxbuild/modeler/mx convert -p /path/to/copy.mpr
+reference/mxbuild/modeler/mx update-widgets /path/to/copy.mpr
 ```
 
 Then extract the widget's BSON to compare against your generated output.
@@ -323,7 +325,7 @@ for t, props in crash_props.items():
 
 **Investigation methodology used for v0.10 CE0463 fixes** — see [WIDGET_BSON_VERSION_COMPATIBILITY.md](../../docs/03-development/WIDGET_BSON_VERSION_COMPATIBILITY.md) for the full case study and version-resilience model.
 
-**Quick workaround** (if you can't fix the root cause): Run `mx update-widgets` after creating pages.
+**Quick workaround** (if you can't fix the root cause): normalize with `mxcli docker check`/`build`, which run the widget update **and preserve MPRv2 storage** (they snapshot/restore `.mpr` + `mprcontents/`). Do **not** run bare `mx update-widgets` on a v2 project you care about — it converts to single-file v1 and deletes `mprcontents/` (corrupts git, breaks `mxcli run --local`). Raw `mx update-widgets` is fine only on a throwaway diagnostic copy or a v1 project.
 
 ### CE0642: Property X Is Required
 
@@ -388,7 +390,7 @@ for _, pm := range a.ParameterMappings {
 
 2. **Mode-dependent properties must be consistent**: When changing a mode-switching property (e.g., `showContentAs`), all dependent properties must be updated to match.
 
-3. **`mx update-widgets` is the safety net**: Running this post-processing step normalizes all widget Objects to match mpk definitions. Use it as a fallback.
+3. **Widget normalization is the safety net — via `mxcli docker check`/`build`**: they run the update-widgets normalization *and* preserve MPRv2 storage (snapshot/restore). Bare `mx update-widgets` does the same normalization but rewrites a v2 project to v1 and deletes `mprcontents/` — only use it on a v1 project or a throwaway diagnostic copy.
 
 4. **The mpk is the source of truth**: The XML schema defines property types/defaults, the editorConfig.js defines visibility rules. Together they specify the complete expected Object structure.
 
