@@ -169,7 +169,72 @@ func AugmentTemplate(tmpl *WidgetTemplate, def *mpk.WidgetDefinition) error {
 	// authoritative, so overwrite each enum PropertyType's option set from it.
 	reconcileEnumValues(tmpl.Type, mpkEnumValuesByKey(def))
 
+	// Reconcile per-property metadata (Category, Caption) and the DefaultValue of
+	// existing PropertyTypes against the .mpk. reconcileEnumValues above rebuilds an
+	// enum's OPTION SET, but leaves a stale DefaultValue: e.g. Gallery pagingPosition's
+	// options reconcile to {below,above} while its default stays "bottom" — a value
+	// the installed widget no longer defines, so the PropertyType is inconsistent →
+	// CE0463. Category likewise drifts across widget versions (e.g.
+	// "General::Pagination" → "General::Items" on Data Widgets 3.x). The .mpk is
+	// authoritative for a freshly-created instance, so overwrite these from it. This is
+	// the within-key definition drift behind the marketplace-updated-widget CE0463
+	// (issue #600 / Gallery@10.24) — augment previously reconciled key presence and
+	// enum options but not the rest of each matched PropertyType's definition.
+	reconcilePropertyMetadata(tmpl.Type, mpkPropDefsByKey(def))
+
 	return nil
+}
+
+// mpkPropDefsByKey indexes a widget's PropertyDefs by key, across both top-level and
+// nested (object-list) properties.
+func mpkPropDefsByKey(def *mpk.WidgetDefinition) map[string]mpk.PropertyDef {
+	out := map[string]mpk.PropertyDef{}
+	var add func([]mpk.PropertyDef)
+	add = func(props []mpk.PropertyDef) {
+		for _, p := range props {
+			out[p.Key] = p
+			if len(p.Children) > 0 {
+				add(p.Children)
+			}
+		}
+	}
+	add(def.Properties)
+	return out
+}
+
+// reconcilePropertyMetadata walks a widget Type and, for every PropertyType whose key
+// the installed .mpk defines, overwrites its Category, Caption, and ValueType
+// DefaultValue from the .mpk so the emitted definition matches the installed widget.
+// Only non-empty .mpk values are applied (the .mpk always carries a category/caption;
+// DefaultValue is present for enumeration/boolean/integer types).
+func reconcilePropertyMetadata(node any, byKey map[string]mpk.PropertyDef) {
+	switch v := node.(type) {
+	case map[string]any:
+		if v["$Type"] == "CustomWidgets$WidgetPropertyType" {
+			if key, _ := v["PropertyKey"].(string); key != "" {
+				if pd, ok := byKey[key]; ok {
+					if pd.Category != "" {
+						v["Category"] = pd.Category
+					}
+					if pd.Caption != "" {
+						v["Caption"] = pd.Caption
+					}
+					if pd.DefaultValue != "" {
+						if vt, ok := v["ValueType"].(map[string]any); ok {
+							vt["DefaultValue"] = pd.DefaultValue
+						}
+					}
+				}
+			}
+		}
+		for _, val := range v {
+			reconcilePropertyMetadata(val, byKey)
+		}
+	case []any:
+		for _, item := range v {
+			reconcilePropertyMetadata(item, byKey)
+		}
+	}
 }
 
 // mpkEnumValuesByKey indexes a widget's enumeration option sets by property key,
