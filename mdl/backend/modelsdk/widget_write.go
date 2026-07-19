@@ -35,6 +35,19 @@ func init() {
 	codec.RegisterTypeDefaults("Forms$ClientTemplate", codec.TypeDefaults{
 		MandatoryListMarkers: map[string]int32{"Parameters": 2},
 	})
+	// A pluggable-widget XPath datasource (DataGrid2 / Gallery / …) always serializes
+	// SourceVariable as null when unbound, and its GridSortBar always emits an (empty)
+	// SortItems list with marker 2. An older embedded template extracted before these
+	// existed omits them, so a project whose installed widget expects them (e.g. Data
+	// Widgets updated past the 11.6 template — Gallery@10.24) reports CE0463. Registering
+	// the defaults makes the emitted datasource match the installed widget. (Axis 2 of
+	// the object-list drift — see PROPOSAL_multi_version_pluggable_widgets.md.)
+	codec.RegisterTypeDefaults("CustomWidgets$CustomWidgetXPathSource", codec.TypeDefaults{
+		NullFields: []string{"SourceVariable"},
+	})
+	codec.RegisterTypeDefaults("Forms$GridSortBar", codec.TypeDefaults{
+		MandatoryListMarkers: map[string]int32{"SortItems": 2},
+	})
 	// LayoutGrid and its rows carry a null ConditionalVisibilitySettings; the grid,
 	// rows, and columns all use the typed-array marker 2 in their parent lists.
 	for _, t := range []string{"Forms$LayoutGrid", "Forms$LayoutGridRow"} {

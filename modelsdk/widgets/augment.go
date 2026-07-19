@@ -5,6 +5,7 @@ package widgets
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"sync/atomic"
 
 	"github.com/mendixlabs/mxcli/modelsdk/widgets/mpk"
@@ -182,7 +183,51 @@ func AugmentTemplate(tmpl *WidgetTemplate, def *mpk.WidgetDefinition) error {
 	// enum options but not the rest of each matched PropertyType's definition.
 	reconcilePropertyMetadata(tmpl.Type, mpkPropDefsByKey(def))
 
+	// Reorder the top-level PropertyTypes to match the installed .mpk's declaration
+	// order. augment above adds/removes/reconciles by KEY but leaves the template's
+	// original order; when the installed widget reordered its properties across
+	// versions (e.g. Gallery 3.x moved pagingPosition ahead of showTotalCount), the
+	// emitted Type's PropertyType order ≠ the installed widget → CE0463. Unlike the
+	// WidgetObject's Properties order (which Studio Pro tolerates — see the spike),
+	// the WidgetType's PropertyType order is checked. Object↔Type references are by
+	// $ID, so reordering the Type list is safe. The .mpk is authoritative.
+	reorderPropertyTypes(tmpl.Type, def)
+
 	return nil
+}
+
+// reorderPropertyTypes reorders the top-level ObjectType.PropertyTypes to match the
+// installed .mpk's property declaration order. Leading array markers are preserved;
+// keys the .mpk does not declare (system/accessibility props absent from
+// def.Properties) keep their relative order after the declared ones (stable sort).
+func reorderPropertyTypes(tmplType map[string]any, def *mpk.WidgetDefinition) {
+	objType, ok := getMapField(tmplType, "ObjectType")
+	if !ok {
+		return
+	}
+	propTypes, ok := getArrayField(objType, "PropertyTypes")
+	if !ok {
+		return
+	}
+	order := make(map[string]int, len(def.Properties))
+	for i, p := range def.Properties {
+		order[p.Key] = i
+	}
+	rank := func(pt any) int {
+		m, ok := pt.(map[string]any)
+		if !ok {
+			return -1 // markers sort first, keeping their leading position
+		}
+		key, _ := m["PropertyKey"].(string)
+		if pos, ok := order[key]; ok {
+			return pos
+		}
+		return 1 << 30 // not declared by the .mpk (system/accessibility): keep after declared
+	}
+	sort.SliceStable(propTypes, func(i, j int) bool {
+		return rank(propTypes[i]) < rank(propTypes[j])
+	})
+	setArrayField(objType, "PropertyTypes", propTypes)
 }
 
 // mpkPropDefsByKey indexes a widget's PropertyDefs by key, across both top-level and
