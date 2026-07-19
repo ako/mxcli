@@ -220,24 +220,39 @@ regenerate gen from the target version's reflection-data.
 
 ## Open Questions
 
-1. **Per-widget-version templates for object-list widgets.** The cross-version
-   matrix (`scripts/widget-version-matrix.sh`) answered part of this concretely:
-   ComboBox and DataGrid2 reconcile across versions via augment (flat PropertyKeys),
-   but **Gallery `3.0.1`@10.24 produces CE0463 on both engines** — the 11.6-extracted
-   template's *nested object-list* sub-schema (items/content) doesn't match the
-   10.24-installed widget, and augment's flat-key add/remove doesn't reach it. So
-   object-list widgets likely need a clean template **per widget-version**, not one
-   shared 11.6 base. Open: root-cause the Gallery nested diff, then decide
-   per-version template vs deeper (nested) augment.
-   **Concrete lead (from the dirty-template audit):** `datagrid.json`'s Object has 0
-   default `Forms$GridColumn`s but **1 configured `Forms$ActionButton`** — a
-   `Forms$DeleteClientAction` with an `Atlas_Core.Atlas.trash-can` icon, clearly
-   extracted from a configured grid. `#600`'s DataGrid2 custom-content `CE0463` still
-   reproduces on 11.12.1 (`datagrid` with an attribute column passes, but adding a
-   custom-content column fails; `update-widgets` clears it) and is likely this
-   nested-object-list dirt — which the flat WidgetValue-scoped guard deliberately does
-   NOT flag (false-positive risk on nested Forms widgets). Root-cause via the
-   before/after-`update-widgets` subtree diff, then clean or template-per-version.
+1. **Within-key PropertyType drift on object-list widgets — root-caused.** Verified
+   directly against cached mxbuild (10.24.19 / 11.10.0 / 11.12.1):
+   - **DataGrid2 is clean across all three** — attribute columns (the exact `#600`
+     repro), custom content (dynamictext / actionbutton / multi-widget), column
+     filters, and selection all produce **0 CE0463**. `#600` was filed on the old
+     v0.11.0 and is resolved on HEAD by the accumulated fixes (NestedKeyOrder
+     `f12aba2`, custom-content `58508d4`, …). (An earlier note here that DataGrid2
+     custom-content "still reproduces on 11.12.1" was a **test-syntax artifact** —
+     `Content: showContentAs` injected a spurious TextTemplate — not a real defect.)
+   - **Gallery custom content produces CE0463 on 10.24** (clean on 11.10 / 11.12).
+     The before/after-`update-widgets` subtree diff shows the cause is **NOT** a dirty
+     default and **NOT** merely nested: the 11.6 template and the 10.24-installed
+     Gallery share the same PropertyType *keys* but differ in their *definitions* —
+     `pagingPosition` enum values changed (`bottom`/`top` → `below`/`above`, default
+     `bottom`→`below`), a `Category` was renamed (`General::Pagination` →
+     `General::Items`), and a property's `Type`/order shifted. `augmentFromMPK`
+     reconciles key *presence* (add/remove) but **not within-key definition changes**,
+     so the emitted Type ≠ the installed widget → CE0463.
+
+   **This is the general object-list drift, not a Gallery quirk.** DataGrid2 passes on
+   the tested versions only because its 3.x schema stayed close to the 11.6 template;
+   the same mechanism will bite it on a far-enough version (a future 11.x, or another
+   old release). **Fix options:** (a) **deeper augment** — reconcile each matched
+   PropertyType's full definition (Category, DefaultValue, enum values, Type) from the
+   installed `.mpk`, not just key presence, so the emitted Type equals what
+   `update-widgets` produces; the general fix, future-proofs every object-list widget;
+   or (b) **per-version templates** (`gallery-10.24.json`) — simpler, maintenance-heavy,
+   doesn't generalise. Recommend (a), validated by `scripts/widget-version-matrix.sh`.
+
+   **Also noted (dirty-template audit):** `datagrid.json`'s Object carries a configured
+   delete `Forms$ActionButton` (`Forms$DeleteClientAction` + `Atlas_Core.Atlas.trash-can`)
+   — a separate nested-Forms dirty default the flat WidgetValue-scoped guard deliberately
+   does not flag; benign on the tested versions but worth cleaning during the object-list pass.
 2. **Long-tail marketplace widgets.** Built-ins can be hand-extracted clean. For
    arbitrary marketplace widgets with no embedded template, the only correct Object
    source is a fresh extraction — can `widget init` extract from a freshly-dropped
