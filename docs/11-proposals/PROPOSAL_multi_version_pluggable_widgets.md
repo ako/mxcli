@@ -434,11 +434,16 @@ regenerate gen from the target version's reflection-data.
    `widgetobj.ApplyVisibilityRules`, threaded through `FilterWidgetSpec`, and resolved by the
    executor. **Text/Number/Date filters → 0.**
 
-   **Open — Dropdown filter definition drift (not a visibility gap).** `ddf` still shows 1
-   CE0463, but its **definition** diff vs `update-widgets` is ~1529 lines (~30 `Type`, 28
-   `ObjectType`): its nested filter-options `ObjectType` drifts from the 3.10.0 widget. This
+   **Open — Dropdown filter & ComboBox definition drift (not a visibility gap).** `ddf` still
+   shows 1 CE0463, but its **definition** diff vs `update-widgets` is ~1529 lines (~30 `Type`,
+   28 `ObjectType`): its nested filter-options `ObjectType` drifts from the 3.10.0 widget. This
    is the DataGrid-class definition reconciliation applied to the dropdown filter's
-   object-list structure, a distinct follow-up — visibility can't touch it. TreeNode's
+   object-list structure, a distinct follow-up — visibility can't touch it. **ComboBox is the
+   same class**: on a fresh 11.12.0 project the embedded 2.5.0-shaped template drifts ~3351
+   definition lines from the installed (newer) ComboBox, so the `112-combobox-…` bug-test
+   still reproduces 1 CE0463 — a large-version-jump definition restructure, not an
+   instance-applicability gap the editorConfig extractor addresses. Both fold into follow-up
+   (1) below. TreeNode's
    remaining 3/7 skips are its "dynamic structure" guards (`transformGroupsIntoTabs`, nested
    `advancedMode`/`headerType` ternaries, `e.hasChildren||hide([…children…])`) — the ones the
    latest DW release expanded; a JS AST would be needed to lift them.
@@ -450,8 +455,20 @@ regenerate gen from the target version's reflection-data.
    `check`/lint/an LLM can consume, which JS execution wouldn't. (b) per-version templates —
    rejected.
 
-   Remaining (follow-ups, not blockers): (1) the Dropdown filter's definition drift (above);
-   (2) a real JS AST to lift the compound/ternary and object-list-nested guards (incl.
+   **Verified against `mdl-examples/` widget scripts.** `make check-mdl` is green for every
+   widget script (the lone unrelated FAIL is `view-entity-derived-string-length.mdl`,
+   MDL031). Running the pluggable scripts through `mx check` on fresh 11.12.0 projects:
+   **8 of 9 report 0 CE0463** — `pluggable-smoke`, `189-datagrid2-column-textfilter`,
+   `628-datagrid2-selection`, `datagrid2-custom-content-column`,
+   `datagrid-numberfilter-array-marker`, `bug8-datagrid-gallery-sort-desc`,
+   `datagrid-columnwidth-manual-size`, `datagrid2-associated-attribute-column`. The 9th,
+   `112-combobox-enum-ce0463-widget-version`, reports 1 — the documented ComboBox version
+   drift above, not a regression from this work.
+
+   Remaining (follow-ups, not blockers): (1) definition-drift reconciliation for large
+   version jumps — the Dropdown filter's nested object-list structure **and ComboBox's
+   2.5.0→newer restructure** (above); (2) a real JS AST to lift the compound/ternary and
+   object-list-nested guards (incl.
    TreeNode's dynamic structures) the regex extractor skips; (3) the same rules could feed
    LLM "property cards"; (4) fold the matrix into `scripts/widget-version-matrix.sh` as a
    standing gate (feasible now — `mxcli marketplace download` fetches any widget version)
