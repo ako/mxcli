@@ -825,7 +825,13 @@ func createDefaultWidgetValue(vtID string, bsonType string, p mpk.PropertyDef) m
 			val["PrimitiveValue"] = p.DefaultValue
 		}
 	case "TextTemplate":
-		val["TextTemplate"] = createDefaultClientTemplate()
+		// Populate the default template with the widget's shipped caption
+		// translations (empty when the .mpk declares none). A required textTemplate
+		// left empty fails CE4899 ("property is required"). Templates that the
+		// widget's editorConfig.js hides under the current config are nulled
+		// afterward by the builder's ApplyPropertyVisibility (#574), so populating
+		// unconditionally here is correct: visible→default caption, hidden→null.
+		val["TextTemplate"] = createDefaultClientTemplate(p.Translations)
 	}
 
 	return val
@@ -840,8 +846,11 @@ func createDefaultNoAction() map[string]any {
 	}
 }
 
-// createDefaultClientTemplate creates a default Forms$ClientTemplate structure.
-func createDefaultClientTemplate() map[string]any {
+// createDefaultClientTemplate creates a default Forms$ClientTemplate structure,
+// populating the Template's Texts$Text with the property's shipped caption
+// translations (Texts$Translation items) — the default caption a freshly-dropped
+// widget carries. With no translations the template is present but empty.
+func createDefaultClientTemplate(translations []mpk.Translation) map[string]any {
 	return map[string]any{
 		"$ID":   placeholderID(),
 		"$Type": "Forms$ClientTemplate",
@@ -854,9 +863,24 @@ func createDefaultClientTemplate() map[string]any {
 		"Template": map[string]any{
 			"$ID":   placeholderID(),
 			"$Type": "Texts$Text",
-			"Items": []any{float64(3)},
+			"Items": buildTextItems(translations),
 		},
 	}
+}
+
+// buildTextItems builds a Texts$Text Items list (leading marker 3 followed by
+// Texts$Translation entries) from a property's default caption translations.
+func buildTextItems(translations []mpk.Translation) []any {
+	arr := []any{float64(3)}
+	for _, t := range translations {
+		arr = append(arr, map[string]any{
+			"$ID":          placeholderID(),
+			"$Type":        "Texts$Translation",
+			"LanguageCode": t.Lang,
+			"Text":         t.Text,
+		})
+	}
+	return arr
 }
 
 // resetPropertyValue resets a WidgetValue to defaults for the given property type.
@@ -901,7 +925,7 @@ func resetPropertyValue(val map[string]any, p mpk.PropertyDef) {
 			val["PrimitiveValue"] = p.DefaultValue
 		}
 	case "TextTemplate":
-		val["TextTemplate"] = createDefaultClientTemplate()
+		val["TextTemplate"] = createDefaultClientTemplate(p.Translations)
 	}
 }
 

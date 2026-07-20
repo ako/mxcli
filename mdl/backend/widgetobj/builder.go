@@ -607,6 +607,7 @@ func (ob *Builder) EnsureRequiredObjectLists() {
 // TextTemplate. The widget's current primitive values (read from the assembled
 // object) drive rule evaluation, so a rule keyed on e.g. `type` sees the value
 // just set from MDL.
+
 func (ob *Builder) ApplyPropertyVisibility(rules []types.WidgetVisibilityRule) {
 	if len(rules) == 0 {
 		return

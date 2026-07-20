@@ -283,11 +283,11 @@ func walkPropertyGroup(pg xmlPropGroup, parentCategory string, def *WidgetDefini
 			enumValues = append(enumValues, EnumValue{Key: ev.Key, Caption: strings.TrimSpace(ev.Caption)})
 		}
 		prop := PropertyDef{
-			Key:          p.Key,
-			Type:         p.Type,
-			Caption:      p.Caption,
-			Description:  p.Description,
-			Category:     category,
+			Key:         p.Key,
+			Type:        p.Type,
+			Caption:     p.Caption,
+			Description: p.Description,
+			Category:    category,
 			// Mendix pluggable-widget spec: `required` defaults to true when the
 			// attribute is absent (mxbuild's update-widgets emits Required=true for
 			// every property that omits required=, e.g. DataGrid2 showContentAs). Only
@@ -352,11 +352,11 @@ func collectNestedProperties(pg xmlPropGroup, parent *PropertyDef, parentCategor
 			enumValues = append(enumValues, EnumValue{Key: ev.Key, Caption: strings.TrimSpace(ev.Caption)})
 		}
 		child := PropertyDef{
-			Key:          p.Key,
-			Type:         p.Type,
-			Caption:      p.Caption,
-			Description:  p.Description,
-			Category:     category,
+			Key:         p.Key,
+			Type:        p.Type,
+			Caption:     p.Caption,
+			Description: p.Description,
+			Category:    category,
 			// Mendix pluggable-widget spec: `required` defaults to true when the
 			// attribute is absent (mxbuild's update-widgets emits Required=true for
 			// every property that omits required=, e.g. DataGrid2 showContentAs). Only
@@ -521,6 +521,86 @@ func getWidgetIDsFromMPK(mpkPath string) ([]string, error) {
 		}
 	}
 	return ids, nil
+}
+
+// ReadEditorConfig returns the compiled editorConfig.js source for the given
+// widgetID inside an .mpk, or "" if the widget ships none. The editor config is
+// the sibling `<WidgetFile-basename>.editorConfig.js` of the widget's XML
+// definition. It carries the widget's property-applicability logic
+// (hidePropertyIn / hidePropertiesIn) that mxcli lifts into WidgetVisibilityRules.
+func ReadEditorConfig(mpkPath, widgetID string) (string, error) {
+	r, err := zip.OpenReader(mpkPath)
+	if err != nil {
+		return "", fmt.Errorf("open mpk: %w", err)
+	}
+	defer r.Close()
+
+	// Find the widget-file path whose XML declares widgetID.
+	var pkg xmlPackage
+	for _, f := range r.File {
+		if f.Name != "package.xml" {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return "", err
+		}
+		data, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			return "", err
+		}
+		if err := xml.Unmarshal(data, &pkg); err != nil {
+			return "", err
+		}
+		break
+	}
+
+	fileByName := make(map[string]*zip.File, len(r.File))
+	for _, f := range r.File {
+		fileByName[f.Name] = f
+	}
+
+	for _, wf := range pkg.ClientModule.WidgetFiles {
+		xf := fileByName[wf.Path]
+		if xf == nil {
+			continue
+		}
+		rc, err := xf.Open()
+		if err != nil {
+			continue
+		}
+		data, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			continue
+		}
+		var widget struct {
+			ID string `xml:"id,attr"`
+		}
+		if err := xml.Unmarshal(data, &widget); err != nil || widget.ID != widgetID {
+			continue
+		}
+		ecPath := strings.TrimSuffix(wf.Path, ".xml") + ".editorConfig.js"
+		ec := fileByName[ecPath]
+		if ec == nil {
+			return "", nil // widget ships no editor config
+		}
+		if ec.UncompressedSize64 > maxFileSize {
+			return "", fmt.Errorf("editorConfig %s exceeds max file size", ecPath)
+		}
+		erc, err := ec.Open()
+		if err != nil {
+			return "", err
+		}
+		defer erc.Close()
+		body, err := io.ReadAll(erc)
+		if err != nil {
+			return "", err
+		}
+		return string(body), nil
+	}
+	return "", nil
 }
 
 // buildDefinition constructs a WidgetDefinition from a parsed xmlWidget and version string.
