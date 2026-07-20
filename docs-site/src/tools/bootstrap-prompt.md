@@ -12,7 +12,7 @@ can seed the model from a design prototype in the same session — nothing to ma
 
 ## The prompt
 
-```text
+````text
 This is an empty repo. Provision it as a Mendix app developed with mxcli:
 
 1. Ensure `mxcli` is available. It should be pre-installed by the environment; if
@@ -43,7 +43,7 @@ This is an empty repo. Provision it as a Mendix app developed with mxcli:
    the app answers HTTP 200 at http://localhost:8080/ and report.
 
 (Optional) Seed the domain model, pages, and microflows from this prototype: <paste or link a design here>.
-```
+````
 
 ## Which mxcli version gets installed
 

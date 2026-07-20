@@ -3,10 +3,14 @@
 --   1. "Upgrade Widgets" prompt in Studio Pro (wrong widget structure)
 --   2. Duplicated filter search (filter appeared in content AND filter row)
 --
--- Fix: in buildDataGridV3, filter-type children (TEXTFILTER, NUMBERFILTER,
--- DATEFILTER, DROPDOWNFILTER) of a COLUMN are routed through BuildFilterWidget
--- and stored in DataGridColumnSpec.FilterWidget, which is then serialized
--- into the column's "filter" property slot in both BSON construction paths.
+-- Fix: filter-type children (TEXTFILTER, NUMBERFILTER, DATEFILTER,
+-- DROPDOWNFILTER) of a COLUMN are routed into the column's "filter" slot rather
+-- than its custom-content slot. On the page-build path this is the generic
+-- pluggable engine matching the filter keyword against the column's filter
+-- item-slot (ItemSlots AcceptedChildTypes); on the ALTER PAGE column
+-- insert/replace path it is buildColumnSpecFromAST → BuildFilterWidget stored in
+-- DataGridColumnSpec.FilterWidget. Both serialize the filter into the column's
+-- "filter" property slot.
 
 CREATE ENTITY Bug189.MyEntity ( Attribute: String, Attribute_2: String );
 

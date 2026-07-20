@@ -607,31 +607,44 @@ func (ob *Builder) EnsureRequiredObjectLists() {
 // TextTemplate. The widget's current primitive values (read from the assembled
 // object) drive rule evaluation, so a rule keyed on e.g. `type` sees the value
 // just set from MDL.
+
 func (ob *Builder) ApplyPropertyVisibility(rules []types.WidgetVisibilityRule) {
+	ob.object = ApplyVisibilityRules(ob.object, ob.propertyTypeIDs, rules)
+}
+
+// ApplyVisibilityRules nulls the TextTemplate of any TextTemplate-typed property
+// the rules mark as hidden under the object's current configuration, returning
+// the updated object. It is the engine-agnostic form of ApplyPropertyVisibility
+// so build paths that construct a widget object without a full Builder (e.g. the
+// filter-widget build path) can apply the same #574 nulling. Non-TextTemplate
+// properties are left untouched — only the populated-vs-null ClientTemplate
+// choice triggers CE0463.
+func ApplyVisibilityRules(object bson.D, propertyTypeIDs map[string]pages.PropertyTypeIDEntry, rules []types.WidgetVisibilityRule) bson.D {
 	if len(rules) == 0 {
-		return
+		return object
 	}
-	values := ob.currentPrimitiveValues()
+	values := primitiveValuesOf(object, propertyTypeIDs)
 	for _, rule := range rules {
 		if !rule.HiddenWhen.Hidden(values) {
 			continue
 		}
-		entry, ok := ob.propertyTypeIDs[rule.PropertyKey]
+		entry, ok := propertyTypeIDs[rule.PropertyKey]
 		if !ok || entry.ValueType != "TextTemplate" {
 			continue
 		}
-		ob.object = updateWidgetPropertyValue(ob.object, ob.propertyTypeIDs, rule.PropertyKey, func(val bson.D) bson.D {
+		object = updateWidgetPropertyValue(object, propertyTypeIDs, rule.PropertyKey, func(val bson.D) bson.D {
 			return setBSONField(val, "TextTemplate", nil)
 		})
 	}
+	return object
 }
 
-// currentPrimitiveValues maps each known property key to its current
-// PrimitiveValue string in the assembled object (e.g. type → "expression",
-// customVisualization → "true"). Properties absent from the object map to "".
-func (ob *Builder) currentPrimitiveValues() map[string]string {
-	byID := make(map[string]string)
-	for _, elem := range ob.object {
+// primitiveValuesOf maps each known property key to its current comparable value
+// string in the object (e.g. type → "expression", itemSelection → "Single").
+// Properties absent from the object map to "".
+func primitiveValuesOf(object bson.D, propertyTypeIDs map[string]pages.PropertyTypeIDEntry) map[string]string {
+	rawByID := make(map[string]bson.D)
+	for _, elem := range object {
 		if elem.Key != "Properties" {
 			continue
 		}
@@ -648,17 +661,55 @@ func (ob *Builder) currentPrimitiveValues() map[string]string {
 			if id == "" {
 				continue
 			}
-			byID[id] = primitiveValueOfProperty(prop)
+			if val := widgetValueOfProperty(prop); val != nil {
+				rawByID[id] = val
+			}
 		}
 	}
 
-	out := make(map[string]string, len(ob.propertyTypeIDs))
-	for key, entry := range ob.propertyTypeIDs {
-		if v, ok := byID[strings.ReplaceAll(entry.PropertyTypeID, "-", "")]; ok {
-			out[key] = v
+	out := make(map[string]string, len(propertyTypeIDs))
+	for key, entry := range propertyTypeIDs {
+		if val, ok := rawByID[strings.ReplaceAll(entry.PropertyTypeID, "-", "")]; ok {
+			out[key] = effectiveValue(val, entry.ValueType)
 		}
 	}
 	return out
+}
+
+// effectiveValue reads the field of a WidgetValue that holds a property's
+// primitive-comparable value, keyed by its ValueType: a Selection-typed property
+// (e.g. DataGrid2 itemSelection = None/Single/Multi) stores its value in the
+// `Selection` field, everything else in `PrimitiveValue`. editorConfig
+// visibility conditions compare against this value, so reading the wrong field
+// (always PrimitiveValue) made selection-conditioned rules evaluate against ""
+// and mis-fire (issue #574: singleSelectionColumnLabel nulled under Selection:Single).
+func effectiveValue(val bson.D, valueType string) string {
+	field := "PrimitiveValue"
+	if valueType == "Selection" {
+		field = "Selection"
+	}
+	for _, ve := range val {
+		if ve.Key == field {
+			if s, ok := ve.Value.(string); ok {
+				return s
+			}
+			return ""
+		}
+	}
+	return ""
+}
+
+// widgetValueOfProperty returns a WidgetProperty's Value document, or nil.
+func widgetValueOfProperty(prop bson.D) bson.D {
+	for _, elem := range prop {
+		if elem.Key == "Value" {
+			if val, ok := elem.Value.(bson.D); ok {
+				return val
+			}
+			return nil
+		}
+	}
+	return nil
 }
 
 // propertyTypePointerID returns a WidgetProperty's TypePointer as a normalized

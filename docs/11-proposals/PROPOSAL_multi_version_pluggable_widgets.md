@@ -47,6 +47,23 @@ Two real, narrow gaps remain:
   builder applied `attribute: Country` on top without resetting them → an Object
   inconsistent with the schema → `CE0463`. The fix that worked (commit `827bffd4b`)
   was simply swapping in the legacy template's **clean/neutral** Object defaults.
+  **A second confirmed instance (commit `549c44f`): `image.json` carried a baked-in
+  static image `WidgetValue.Image = "Atlas_Core.Content.Mendix"` (Atlas's Mendix logo,
+  captured from a configured instance) where a fresh Image widget has `""`.** Any
+  Image authored on 11.7+ tripped `CE0463`; the documented remedy (`mx update-widgets`)
+  then destroyed MPRv2 storage (#763) — so a dirty default was silently funnelling
+  users into data loss. Isolated by the reusable method below and fixed by clearing
+  the value; verified `mx check --no-update-widgets` = 0 errors. The dirty-default
+  class is therefore broader than datasources: it includes **image-asset refs, page
+  refs, and configured client actions**, not just entity/attribute/flow bindings.
+
+  **Reusable diagnosis method (this whole `CE0463` class).** Dump the widget BSON,
+  `mx update-widgets` on a **copy**, dump again, and diff the
+  `CustomWidgets$CustomWidget` subtree **order-independently** (canonicalise key order
+  + mask `$ID`/`TypePointer` blobs). Confirms the spike's tolerance result *per case*:
+  reordering and generic instance chrome (`LabelTemplate`, `Appearance.DesignProperties`)
+  are cosmetic — a *passing* widget gets those too; the real cause is whatever
+  value/structure survives that normalisation. For Image it was exactly one field.
 - **No cross-version guarantee.** Nothing tests that creation stays `CE0463`-free
   as Mendix minors and widget versions move; regressions surface in the field.
 
@@ -154,8 +171,8 @@ changes. Applies to both engines.
 
 | File | Change |
 |------|--------|
-| `sdk/widgets/templates/`, `modelsdk/widgets/templates/` | Audit every embedded template's Object for instance bindings; re-extract any dirty one from a fresh Studio-Pro widget (as done for ComboBox in `827bffd4b`) |
-| `modelsdk/widgets/` (+ `sdk/widgets`) | New dirty-template guard: a test/`widget init` check that rejects Objects with populated `AttributeRef`/`DataSource`/`EntityRef` |
+| `sdk/widgets/templates/`, `modelsdk/widgets/templates/` | Audit every embedded template's Object for instance bindings; re-extract any dirty one from a fresh Studio-Pro widget (ComboBox `827bffd4b`; **Image `549c44f` — done**) |
+| `modelsdk/widgets/dirty_template_test.go` | **Built + broadened (this cycle).** Dirty-template guard (`dirtyBindings` + `TestEmbeddedTemplates_NoDirtyBindings`) rejects Objects with concrete entity/attribute/flow refs **and now image-asset / page / configured-action bindings** — the class the original guard missed, which is how the Image bug shipped. Scans **both** engines' template sets; proven non-vacuous (detect-dirt + clean-is-clean cases) and proven to catch the real Image regression. Follow-up: promote `dirtyBindings` from test-only to a runtime `widget init` check |
 | `modelsdk/widgets/loader.go`, `sdk/widgets/loader.go` | Consolidate so both engines share one augment path |
 | `sdk/widgets/augment.go` / `modelsdk/widgets/augment.go` | Reconcile to a single implementation |
 | `mdl/backend/widgetobj/builder.go` | Ensure the builder fully overrides every Object slot it sets (no bleed-through) |
@@ -164,8 +181,13 @@ changes. Applies to both engines.
 
 ### Phasing
 
-1. **Audit embedded templates for dirty Objects** + add the guard. ComboBox is
-   already clean (`827bffd4b`); confirm DataGrid2/Gallery/the rest.
+1. **Audit embedded templates for dirty Objects** + add the guard. **In progress:**
+   ComboBox clean (`827bffd4b`); Image cleaned (`549c44f`); the guard is built and
+   broadened to the image/page/action class over both engines. Remaining: a broader
+   any-node scan surfaces a **configured delete `Forms$ActionButton`**
+   (`Forms$DeleteClientAction` + `Atlas_Core.Atlas.trash-can`) baked into
+   `datagrid.json` — nested-Forms-widget dirt, out of the WidgetValue-scoped guard's
+   safe reach (see Open Question 1). Confirm/clean it as part of the DataGrid2 pass.
 2. Consolidate the two engines' widget loaders / augment onto one path.
 3. Cross-version validation matrix.
 4. (Optional) Evaluate whether a fresh-instance extraction could *generate* clean
@@ -198,15 +220,287 @@ regenerate gen from the target version's reflection-data.
 
 ## Open Questions
 
-1. **Per-widget-version templates for object-list widgets.** The cross-version
-   matrix (`scripts/widget-version-matrix.sh`) answered part of this concretely:
-   ComboBox and DataGrid2 reconcile across versions via augment (flat PropertyKeys),
-   but **Gallery `3.0.1`@10.24 produces CE0463 on both engines** — the 11.6-extracted
-   template's *nested object-list* sub-schema (items/content) doesn't match the
-   10.24-installed widget, and augment's flat-key add/remove doesn't reach it. So
-   object-list widgets likely need a clean template **per widget-version**, not one
-   shared 11.6 base. Open: root-cause the Gallery nested diff, then decide
-   per-version template vs deeper (nested) augment.
+1. **Within-key PropertyType drift on object-list widgets — root-caused.** Verified
+   directly against cached mxbuild (10.24.19 / 11.10.0 / 11.12.1):
+   - **DataGrid2 is clean with the *bundled* Data Widgets** (3.0.0@10.24, 3.4.0@11.10/
+     11.12) across attribute columns (the exact `#600` repro), custom content, filters,
+     and selection — all **0 CE0463**. The old-v0.11.0 mxcli-side bugs (NestedKeyOrder
+     `f12aba2`, custom-content `58508d4`) are resolved on HEAD. **But DataGrid2 drifts
+     exactly like Gallery when the installed Data Widgets is *updated from the
+     marketplace* past what the 11.6 template reconciles with.** `#600`'s latest report
+     (3 days ago: mxcli **v0.16.0**, Mendix **11.12.0**, "still present") is this case —
+     the original reporter noted **Data Widgets 3.10.0**, newer than the 3.4.0 bundled
+     with 11.12.0. Confirmed material facts: mxcli's widget code is **identical
+     v0.16.0→HEAD** (the only deltas are the Image fix + guard), so **no mxcli upgrade
+     fixes it** — it is a widget-version drift needing the deeper-augment fix below.
+     (An earlier note that DataGrid2 custom-content "still reproduces on 11.12.1" was a
+     **test-syntax artifact** — `Content: showContentAs` injected a spurious
+     TextTemplate — not a real defect; the real driver is the updated `.mpk`.)
+   - **Gallery custom content produces CE0463 on 10.24** (clean on 11.10 / 11.12).
+     The before/after-`update-widgets` subtree diff shows the cause is **NOT** a dirty
+     default and **NOT** merely nested: the 11.6 template and the 10.24-installed
+     Gallery share the same PropertyType *keys* but differ in their *definitions* —
+     `pagingPosition` enum values changed (`bottom`/`top` → `below`/`above`, default
+     `bottom`→`below`), a `Category` was renamed (`General::Pagination` →
+     `General::Items`), and a property's `Type`/order shifted. `augmentFromMPK`
+     reconciles key *presence* (add/remove) but **not within-key definition changes**,
+     so the emitted Type ≠ the installed widget → CE0463.
+
+   **This is the general object-list drift, not a Gallery quirk** — DataGrid2 with a
+   marketplace-updated Data Widgets (3.10.0, the #600 case) drifts the same way.
+   Root-caused via the key-indexed PropertyType diff into **two independent axes:**
+
+   - **Axis 1 — within-key PropertyType metadata drift. FIXED (`8b65f06`).**
+     `augment` reconciled key presence and enum option sets but left the rest of a
+     matched PropertyType stale: a `DefaultValue` outside the reconciled enum set
+     (Gallery `pagingPosition` options → `{below,above}` but default stayed `bottom`),
+     a `Category` rename (`General::Pagination`→`General::Items`), a `Caption` change.
+     `reconcilePropertyMetadata` now overwrites Category/Caption/DefaultValue from the
+     `.mpk` for every matched key. Verified: after it, **every Gallery@10.24
+     PropertyType matches `update-widgets`**; no regression on 11.12. (An earlier draft
+     claimed this was "the likely complete fix for #600" — **disproven**; see the
+     large-drift measurement below, which shows the #600 DataGrid2 case needs more.)
+     *(modelsdk engine; the legacy sdk `augment` lacks even `reconcileEnumValues` and is
+     behind — consolidate per item 3 above.)*
+   - **Axis 2 — datasource structure + PropertyType order. FIXED (`10b5bcf`).**
+     Gallery@10.24 *additionally* drifted two ways: (a) mxcli emitted `Forms$GridSortBar`
+     without `SortItems` and `CustomWidgets$CustomWidgetXPathSource` without
+     `SourceVariable` (the 10.24 widget expects both, empty/null) — fixed with codec
+     `TypeDefaults` in `widget_write.go` (`MandatoryListMarkers: SortItems=2`,
+     `NullFields: SourceVariable`); and (b) the top-level PropertyType **order** differed
+     — the 3.x widget moved `pagingPosition` ahead of `showTotalCount`, and augment kept
+     the template order. **The WidgetType's PropertyType order IS checked by CE0463**
+     (unlike the WidgetObject's Properties order, which the spike proved tolerated);
+     `reorderPropertyTypes` now sorts the Type's PropertyTypes to the `.mpk` declaration
+     order (refs are by `$ID`, so it's safe).
+
+   **Result (moderate drift): Gallery@10.24 passes `mx check` with 0 errors and NO
+   `update-widgets`.** Regression clean — DataGrid2 (attribute + filter + custom-content)
+   and Gallery both 0 errors on 10.24 / 11.10 / 11.12.0 / 11.12.1 with the *bundled*
+   Data Widgets. *(modelsdk engine; the legacy sdk `augment` remains behind — item 3.)*
+
+   **The three axes are necessary but NOT sufficient for large version jumps — measured
+   against the #600 reporter's exact stack.** Downloaded Data Widgets **3.10.0** from the
+   marketplace, swapped it into a Mendix 11.12.0 project (over the bundled 3.4.0), and
+   authored a DataGrid2 with the fixed binary: **still CE0463.** Isolating that one grid
+   from the Atlas template pages (which legitimately drift and are a separate "update
+   widgets" concern), the installed 3.10.0 schema differs from the 11.6-era template in
+   **far more than the three axes reconcile** — an aggregated field diff over the
+   `CustomWidgetType`:
+
+   | Differing `ValueType` field | # properties |
+   |---|---|
+   | `AllowUpload` (null vs false) | 79 |
+   | `Type` (property type changed) | 15 |
+   | `Translations` | 14 |
+   | `DefaultValue` | 13 |
+   | `Required` | 7 |
+   | `EnumerationValues` | 7 |
+   | `AllowedTypes` | 4 |
+   | + `Category`, `Description`, `ReturnType`, nested `ObjectType.PropertyTypes` | |
+
+   So **augment's key-presence + metadata/enum/order reconciliation scales to a *moderate*
+   drift (Gallery@10.24: Category + one DefaultValue + order + datasource) but not to a
+   *large* one (DataGrid2 11.6-era → 3.10.0).** This directly disproves the earlier
+   working assumption that Axis 1 alone would close #600. The Phase-1 measurement that
+   "augment already delivers version-correct schemas (56=56 for ComboBox 2.4.3)" held only
+   because that was a *small* version delta; a big jump exposes per-field schema evolution
+   (`Type`, `Required`, `AllowedTypes`, `Translations`) that key-level augment never touches.
+
+   **RESOLVED (definition side) — the `WidgetType` IS generically reproducible; an
+   earlier "only mxbuild can produce the envelope" conclusion was WRONG.** `update-widgets`
+   is fully generic (no per-widget knowledge), so everything it emits is derivable from the
+   package + the generic metamodel/spec defaults — the "not in `Datagrid.xml`" fields are
+   generic defaults, not widget-specific computation:
+   - `AllowUpload` (on **all 105** ValueTypes) is a generic `WidgetValueType` metamodel
+     default (`false`) — emitted for every ValueType, widget-agnostic.
+   - `Required` "computed 3→54" is just the **pluggable-widget spec default**: `required`
+     defaults to **true** when the attribute is absent. The `.mpk` parser had the wrong
+     default (missing→false); fixed.
+   - `Type`/`DefaultValue` drift was augment cloning new keys from **wrong-typed exemplars**
+     (our bug), plus stale template values — fixed by reconciling each matched ValueType's
+     `Type`/`Required`/`DefaultValue`/`AllowedTypes`/`IsList`/`ReturnType`/`Translations`
+     from the `.mpk` and normalizing the mutually-exclusive type-specific fields.
+   - `Translations`/`ReturnType`/nested `Category`/nested order — all parsed from the
+     widget XML (`<translations>`, `<returnType>`, propertyGroup captions) and emitted.
+
+   **Committed (`c7fe714`): the emitted `CustomWidgetType` is byte-identical (canonical,
+   `$ID`/`TypePointer`-masked) to `update-widgets` output for the #600 stack (DW 3.10.0 /
+   Mendix 11.12.0) — definition diff 326 → 0 — with no regression on bundled DW across
+   11.12.0 / 11.10.0 / 10.24.** The generic-reconciliation thesis holds for the definition.
+
+   **NOT resolved (instance side) — the last-mile Object default-template instantiation is
+   config-conditional applicability that lives in the widget's editor code, not the
+   declarative package.** With the definition matching, the residual CE0463 is entirely in
+   the `WidgetObject`: a handful of `textTemplate` properties whose default template
+   (`Forms$ClientTemplate` with the shipped caption translations) mxbuild instantiates in
+   the instance. Even a **minimal** DataGrid2 (Selection:None, one column) reproduces it —
+   definition identical, only ~9 `textTemplate` default-templates differ, `update-widgets` →
+   0. **Which textTemplates get a default template is config-dependent**: aria/status labels
+   are always instantiated, but `clearSelectionButtonLabel` / `loadMoreButtonCaption` /
+   `singleSelectionColumnLabel` stay `null` because their feature is off. Empirically: an
+   "always-populate" rule closes 9→3 but over-populates the 3 feature-gated ones (still
+   CE0463); a `Required`-gate closes 3→9 the other way. Neither declarative rule matches,
+   because the rule isn't declarative.
+
+   **CONFIRMED mechanism — the widget's compiled `editorConfig.js` decides applicability.**
+   The `.mpk` ships `Datagrid.editorConfig.js` (16 KB) alongside `Datagrid.xml`. Its
+   `getProperties(values, defaultProperties)` function calls `hidePropertyIn` (24×) /
+   `hidePropertiesIn` (6×) / `changePropertyIn` conditionally on the *instance's* current
+   values. The exact hides for the three null properties are present verbatim:
+
+   ```js
+   "Multi"    !== r            && hidePropertiesIn(e, t, ["selectionCounterPosition","clearSelectionButtonLabel","enableSelectAll"])
+   "loadMore" !== e.pagination && hidePropertyIn(t, e, "loadMoreButtonCaption")
+                                  hidePropertyIn(e, t, "singleSelectionColumnLabel")   // conditional
+   ```
+
+   This maps 1:1 onto the measurements: our minimal grid has `Selection:None` (≠ "Multi") →
+   `clearSelectionButtonLabel` hidden → `null`; `Pagination:buttons` (≠ "loadMore") →
+   `loadMoreButtonCaption` hidden → `null`. The always-populated properties
+   (`selectRowLabel`, `cancelExportLabel`) appear **0×** in `editorConfig.js` — never hidden,
+   so their default is instantiated. **A hidden property does not get its default template
+   instantiated in the Object.** The applicability graph is imperative JS keyed on the
+   instance config, not declarative XML — which is why no `.mpk` parsing reproduces it, and
+   why the null-vs-populated property *definitions* in `Datagrid.xml` are byte-identical.
+
+   **Object-from-definition rebuild — tried, REJECTED (regresses the common case).**
+   Regenerating the whole `WidgetObject` from the reconciled definition (one WidgetValue per
+   PropertyType, defaults built from each ValueType) makes the count match (127=127) and is
+   architecturally clean, but it **discards the byte-exact extracted template Object** — and
+   because it can't replicate the editor-applicability rule, it **regressed bundled DataGrid2
+   from 0 → 1 CE0463 on both 11.12.0 and 10.24**. The extracted template Object is the best
+   available source for the no-drift case; a rebuild trades that away for an approximation.
+   Reverted.
+
+   **RESOLVED (instance side) — a static editorConfig extractor closes it, natively in
+   mxcli. No mxbuild / update-widgets dependency needed for DataGrid2.** The codebase
+   already had the scaffold — `WidgetVisibilityRule` + `Builder.ApplyPropertyVisibility`
+   (nulls a hidden textTemplate's ClientTemplate), fed by a *hand-transcribed*
+   `widgetVisibilityRules` table (VideoPlayer/Timeline only; the comment: "Until the JS
+   extractor lands (#574 Phase 2)"). The three landed commits automate that table and wire
+   it through:
+
+   - **Extractor** (`4b8c4f5`, `mdl/executor/editorconfig_extract.go`) — a static analyzer
+     lifts the dominant `getProperties` idioms from the compiled `editorConfig.js`
+     (`"V"===/!==ref && hide`, `ref && hide`, `ref || hide`, `ref ? hide : …`) into
+     `WidgetVisibilityRule`s, with **scoped** alias resolution (`var r=e.itemSelection`) so
+     minified single-letter identifiers don't leak across functions, and a boundary check
+     that **skips compound/ternary-nested and object-list-nested guards** rather than emit a
+     partial (wrong) rule — degrading safely to "not hidden". Coverage on the real DW 3.10.0
+     `Datagrid.editorConfig.js`: **9/28 hide-calls lifted** (12 object-list-nested, 7
+     compound — safely skipped, honestly counted), including the three that drive #600.
+   - **Wiring** — built-in widgets (DataGrid2/Gallery), which the `.def.json` generator
+     skips, resolve rules on the fly from the project's installed `.mpk` editorConfig at
+     build time (`resolveWidgetVisibilityRules`); `ApplyPropertyVisibility` then nulls the
+     hidden textTemplates. Object-side textTemplate defaults are populated with the `.mpk`'s
+     shipped caption translations (fixes CE4899 required-textTemplate) and the visibility
+     pass nulls the hidden ones afterward.
+   - **Selection-value fix** (`666a65b`) — conditions keyed on a Selection-typed property
+     (`itemSelection` = None/Single/Multi) must read the WidgetValue's `Selection` field, not
+     `PrimitiveValue`; reading the wrong field mis-fired under `Selection:Single`.
+
+   **Result: DataGrid2 on Mendix 11.12.0 + Data Widgets 3.10.0 (the exact #600 stack) →
+   0 errors, minimal AND full (Selection:Single + column textfilters).** No regression on
+   bundled DW across 11.12.0 / 11.10.0 / 10.24.
+
+   **Phase 2 landed** (`458c52a`): extraction moved into `.def.json` **generation**
+   (generated defs now carry `propertyVisibility`, superseding the hand table), and the rules
+   are wired into **`check`** as **MDL-WIDGET10** — a config-aware warning when the user sets
+   a property the widget hides under the current config (e.g. `ClearSelectionButtonLabel`
+   with `Selection:None`). Conservative: only warns when the property is explicitly set and
+   the condition value is determinable.
+
+   **Phase 3 landed** (`da30bab`) — all 9 Data Widgets, plus the filter build path.
+   The DW 3.10.0 package ships **9 widgets**, all with an `editorConfig.js`: DataGrid2,
+   Gallery, DropdownSort, SelectionHelper, TreeNode (the outline tree), and the 4 filters
+   (Date/Dropdown/Number/Text). The extractor recognized DataGrid only; the rest used guard
+   forms it skipped, so three generalisations were needed — strip **any** `<ident>.`
+   namespace (the minifier names it `D.`/`M.`/`j.`/`A.` per widget, not just `_.`), strip a
+   leading `return` (getProperties' first statement is `return <cond> && hide…`), and handle
+   grouping parens `cond && ( hide, … )`. Coverage after (was 0 for everything but DataGrid):
+
+   | Widget | lifted | Widget | lifted |
+   |---|---|---|---|
+   | DataGrid2 | 9/28 | DropdownFilter | 5/13 |
+   | Gallery | 5/13 | DateFilter | 3/5 |
+   | TreeNode (outline tree) | 4/7 | Number/TextFilter | 2–3 |
+   | SelectionHelper | 1/2 | DropdownSort | 0/0 (no hides) |
+
+   Remaining skips are grouped-subsequent and compound guards — safely skipped, never
+   mis-lifted (DataGrid matrix + bundled stay 0). The filter **build path** was separate
+   (`BuildFilterWidget` never applied visibility → a filter's hidden textTemplate stayed
+   populated → CE0463); the nulling is now factored into engine-agnostic
+   `widgetobj.ApplyVisibilityRules`, threaded through `FilterWidgetSpec`, and resolved by the
+   executor. **Text/Number/Date filters → 0.**
+
+   **RESOLVED — ComboBox definition drift (`#112`), two generic causes (`bf6c577`).** The
+   earlier "~3351-line ComboBox drift / large version jump" framing was an artifact of an
+   **ID-unmasked** diff. Re-measured with `$ID`/pointers masked, a ComboBox on a fresh 11.12.1
+   project (which ships ComboBox **2.5.0 — the same version as the embedded template**, so no
+   version jump) drifted only **243 definition lines**, from two generic causes augment didn't
+   yet cover:
+   1. **System-property order.** ComboBox declares `<systemProperty>` Label/Visibility/
+      Editability **inline mid-list** (its Editability group even mixes the systemProperty
+      ahead of a regular property). mxbuild emits the WidgetType's PropertyTypes in that
+      declared order and CE0463 checks it, but the `.mpk` parser split system properties into a
+      separate list and `reorderPropertyTypes` pushed them to the **end**. DataGrid2/Gallery
+      declare **no** inline system properties, so they were unaffected — precisely why they
+      passed and ComboBox didn't. Fixed by preserving the `.mpk`'s full declared order (regular
+      + system interleaved) in `mpk.WidgetDefinition.AllTopLevel` (built via a document-ordered
+      custom `UnmarshalXML` on `propertyGroup`) and ranking `reorderPropertyTypes` by it →
+      243 → 9 lines.
+   2. **`<returnType assignableTo="../staticAttribute"/>`.** ComboBox's `staticDataSourceValue`
+      expression derives its return type from another property; the parser read only
+      `<returnType type=…>` and emitted a null `ReturnType` where mxbuild emits
+      `WidgetReturnType{Type:None, AssignableTo}`. Fixed by parsing/emitting `assignableTo` →
+      9 → **0**.
+
+   After both (generic, no ComboBox-specific code) the emitted `CustomWidgetType` is
+   **byte-identical (ID-masked) to `mx update-widgets`** and `mx check` reports **0 errors** —
+   no `update-widgets` needed. The residual 210-line **Object** diff is pure WidgetValue
+   *ordering*, which Studio Pro tolerates (0 errors confirms it).
+
+   **Also RESOLVED on bundled DW — DropdownFilter (`ddf`).** The prior ~1529-line `ddf`
+   definition drift was measured against a *marketplace-swapped* Data Widgets 3.10.0. On the
+   **bundled** DW in 11.12.1 a DataGrid2 with a `dropdownfilter` now reports **0 CE0463** — the
+   system-property-order fix closes it there too. The 3.10.0-marketplace nested filter-options
+   `ObjectType` axis remains the only open definition-reconciliation follow-up (needs a project
+   with that exact package to re-measure). TreeNode's
+   remaining 3/7 visibility skips are its "dynamic structure" guards (`transformGroupsIntoTabs`,
+   nested `advancedMode`/`headerType` ternaries, `e.hasChildren||hide([…children…])`) — the ones
+   the latest DW release expanded; a JS AST would be needed to lift them.
+
+   **Superseded options** (kept for the record): (c) v2-safe `update-widgets` via #764 — no
+   longer needed for DataGrid2 (mxcli now closes it natively); still the fallback for widgets
+   whose editorConfig the static extractor can't fully lift. (d) in-process `goja` execution
+   — moot: static lifting suffices for the common cases *and* yields declarative rules that
+   `check`/lint/an LLM can consume, which JS execution wouldn't. (b) per-version templates —
+   rejected.
+
+   **Verified against `mdl-examples/` widget scripts.** `make check-mdl` is green for every
+   widget script (the lone unrelated FAIL is `view-entity-derived-string-length.mdl`,
+   MDL031). Running the pluggable scripts through `mx check` on fresh 11.12.1 projects:
+   **all 9 report 0 CE0463** — `pluggable-smoke`, `189-datagrid2-column-textfilter`,
+   `628-datagrid2-selection`, `datagrid2-custom-content-column`,
+   `datagrid-numberfilter-array-marker`, `bug8-datagrid-gallery-sort-desc`,
+   `datagrid-columnwidth-manual-size`, `datagrid2-associated-attribute-column`, and
+   `112-combobox-enum-ce0463-widget-version` (now closed by `bf6c577`).
+
+   Remaining (follow-ups, not blockers): (1) definition-drift reconciliation for the one
+   remaining axis — the Dropdown filter's nested object-list `ObjectType` structure against a
+   *marketplace-swapped* Data Widgets 3.10.0 (ComboBox's drift is now closed by `bf6c577`, and
+   `ddf` is clean on bundled DW); (2) a real JS AST to lift the compound/ternary and
+   object-list-nested guards (incl.
+   TreeNode's dynamic structures) the regex extractor skips; (3) the same rules could feed
+   LLM "property cards"; (4) fold the matrix into `scripts/widget-version-matrix.sh` as a
+   standing gate (feasible now — `mxcli marketplace download` fetches any widget version)
+   asserting the DW widgets across versions stay at 0.
+
+   **Also noted (dirty-template audit):** `datagrid.json`'s Object carries a configured
+   delete `Forms$ActionButton` (`Forms$DeleteClientAction` + `Atlas_Core.Atlas.trash-can`)
+   — a separate nested-Forms dirty default the flat WidgetValue-scoped guard deliberately
+   does not flag; benign on the tested versions but worth cleaning during the object-list pass.
 2. **Long-tail marketplace widgets.** Built-ins can be hand-extracted clean. For
    arbitrary marketplace widgets with no embedded template, the only correct Object
    source is a fresh extraction — can `widget init` extract from a freshly-dropped

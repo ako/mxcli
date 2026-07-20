@@ -59,12 +59,28 @@ func (b *Backend) BuildCreateAttributeObject(attributePath string, objectTypeID,
 // of the CustomWidget envelope (Appearance, editability, …) is added when the
 // widget is serialized via customWidgetToGen.
 func (b *Backend) BuildFilterWidget(spec backend.FilterWidgetSpec, projectPath string) (pages.Widget, error) {
-	typeBSON, objBSON, _, _, _, err := mwidgets.GetTemplateFullBSON(spec.WidgetID, mmpr.GenerateID, projectPath)
+	typeBSON, objBSON, propertyTypeIDs, _, _, err := mwidgets.GetTemplateFullBSON(spec.WidgetID, mmpr.GenerateID, projectPath)
 	if err != nil {
 		return nil, fmt.Errorf("BuildFilterWidget: load template %s: %w", spec.WidgetID, err)
 	}
 	if typeBSON == nil || objBSON == nil {
 		return nil, fmt.Errorf("BuildFilterWidget: no template for widget %s", spec.WidgetID)
+	}
+	objV1 := v2ToV1BSON(objBSON)
+	// Null any TextTemplate the widget's editorConfig hides in the filter's default
+	// configuration (#574) — e.g. a DropdownFilter's screen-reader captions when
+	// `adjustable` is off — else the populated default trips CE0463.
+	if len(spec.VisibilityRules) > 0 {
+		pageIDs := make(map[string]pages.PropertyTypeIDEntry, len(propertyTypeIDs))
+		for k, e := range propertyTypeIDs {
+			pageIDs[k] = pages.PropertyTypeIDEntry{
+				PropertyTypeID: e.PropertyTypeID,
+				ValueTypeID:    e.ValueTypeID,
+				DefaultValue:   e.DefaultValue,
+				ValueType:      e.ValueType,
+			}
+		}
+		objV1 = widgetobj.ApplyVisibilityRules(objV1, pageIDs, spec.VisibilityRules)
 	}
 	return &pages.CustomWidget{
 		BaseWidget: pages.BaseWidget{
@@ -75,7 +91,7 @@ func (b *Backend) BuildFilterWidget(spec backend.FilterWidgetSpec, projectPath s
 			Name: spec.FilterName,
 		},
 		Editable:  "Always",
-		RawObject: v2ToV1BSON(objBSON),
+		RawObject: objV1,
 		RawType:   v2ToV1BSON(typeBSON),
 	}, nil
 }
