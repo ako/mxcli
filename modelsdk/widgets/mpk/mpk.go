@@ -25,13 +25,17 @@ type PropertyDef struct {
 	Required     bool
 	DefaultValue string // for enumeration/boolean/integer types
 	IsList       bool
-	IsSystem     bool          // true for <systemProperty> elements
-	DataSource   string        // dataSource attribute reference
-	ReturnType   string        // for expression properties: the <returnType type="..."/> Mendix type
-	AllowedTypes []string      // for attribute properties: Mendix type names ("String", "Decimal", etc.)
-	EnumValues   []EnumValue   // for enumeration properties: the declared options (key + caption)
-	Translations []Translation // widget-shipped caption/template translations (<translations>)
-	Children     []PropertyDef // nested properties for object-type properties
+	IsSystem     bool   // true for <systemProperty> elements
+	DataSource   string // dataSource attribute reference
+	ReturnType   string // for expression properties: the <returnType type="..."/> Mendix type
+	// ReturnTypeAssignableTo is the <returnType assignableTo="..."/> reference (e.g.
+	// "../staticAttribute"), when the expression's return type is derived from another
+	// property rather than a concrete type. mxbuild emits Type "None" with this set.
+	ReturnTypeAssignableTo string
+	AllowedTypes           []string      // for attribute properties: Mendix type names ("String", "Decimal", etc.)
+	EnumValues             []EnumValue   // for enumeration properties: the declared options (key + caption)
+	Translations           []Translation // widget-shipped caption/template translations (<translations>)
+	Children               []PropertyDef // nested properties for object-type properties
 }
 
 // EnumValue is one option of an enumeration-typed widget property.
@@ -61,6 +65,12 @@ type WidgetDefinition struct {
 	StudioProCategory  string        // studioProCategory attribute
 	Properties         []PropertyDef // regular <property> elements
 	SystemProps        []PropertyDef // <systemProperty> elements
+	// AllTopLevel is the top-level properties (regular and system interleaved) in
+	// the widget XML's declared document order. It is the authoritative order for
+	// the emitted WidgetType's PropertyTypes — mxbuild's update-widgets uses it and
+	// CE0463 checks it. Regular entries carry their full PropertyDef (incl.
+	// Children); system entries carry only Key with IsSystem=true.
+	AllTopLevel []PropertyDef
 }
 
 // --- XML structures for parsing ---
@@ -98,11 +108,82 @@ type xmlWidget struct {
 }
 
 // xmlPropGroup represents <propertyGroup caption="..."> element.
+//
+// It has a custom UnmarshalXML (below) so that, in addition to the split
+// Properties/SystemProps/SubGroups slices existing code reads, it records the
+// children in document order (Children). The declared order matters: a widget
+// may interleave <systemProperty> (Label/Visibility/Editability) among regular
+// <property> elements (ComboBox declares them mid-list, and its Editability group
+// even mixes a systemProperty ahead of a regular property). mxbuild's
+// update-widgets emits the WidgetType's PropertyTypes in that declared order, and
+// CE0463 checks the Type's PropertyType order — so we must reproduce it, not push
+// system properties to the end.
 type xmlPropGroup struct {
-	Caption     string          `xml:"caption,attr"`
-	Properties  []xmlProperty   `xml:"property"`
-	SystemProps []xmlSystemProp `xml:"systemProperty"`
-	SubGroups   []xmlPropGroup  `xml:"propertyGroup"`
+	Caption     string
+	Properties  []xmlProperty
+	SystemProps []xmlSystemProp
+	SubGroups   []xmlPropGroup
+	Children    []xmlPropGroupChild // document-ordered union of the three above
+}
+
+// xmlPropGroupChild is one child of a propertyGroup in document order: exactly one
+// of Property/SystemProp/SubGroup is non-nil.
+type xmlPropGroupChild struct {
+	Property   *xmlProperty
+	SystemProp *xmlSystemProp
+	SubGroup   *xmlPropGroup
+}
+
+// UnmarshalXML decodes a <propertyGroup>, populating both the split slices
+// (Properties/SystemProps/SubGroups) that existing walkers read and the
+// document-ordered Children list used to reproduce the .mpk's declared property
+// order. Unknown child elements are skipped.
+func (pg *xmlPropGroup) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	for _, a := range start.Attr {
+		if a.Name.Local == "caption" {
+			pg.Caption = a.Value
+		}
+	}
+	for {
+		tok, err := d.Token()
+		if err != nil {
+			return err
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			switch t.Name.Local {
+			case "property":
+				p := new(xmlProperty)
+				if err := d.DecodeElement(p, &t); err != nil {
+					return err
+				}
+				pg.Properties = append(pg.Properties, *p)
+				pg.Children = append(pg.Children, xmlPropGroupChild{Property: p})
+			case "systemProperty":
+				sp := new(xmlSystemProp)
+				if err := d.DecodeElement(sp, &t); err != nil {
+					return err
+				}
+				pg.SystemProps = append(pg.SystemProps, *sp)
+				pg.Children = append(pg.Children, xmlPropGroupChild{SystemProp: sp})
+			case "propertyGroup":
+				sub := new(xmlPropGroup)
+				if err := d.DecodeElement(sub, &t); err != nil {
+					return err
+				}
+				pg.SubGroups = append(pg.SubGroups, *sub)
+				pg.Children = append(pg.Children, xmlPropGroupChild{SubGroup: sub})
+			default:
+				if err := d.Skip(); err != nil {
+					return err
+				}
+			}
+		case xml.EndElement:
+			if t.Name.Local == start.Name.Local {
+				return nil
+			}
+		}
+	}
 }
 
 // xmlAttributeType represents <attributeType name="..."/> element.
@@ -128,9 +209,14 @@ type xmlProperty struct {
 	NestedProps []xmlPropGroup `xml:"properties>propertyGroup"`
 }
 
-// xmlReturnType represents <returnType type="..."/> on an expression property.
+// xmlReturnType represents <returnType type="..."/> or
+// <returnType assignableTo="../otherProp"/> on an expression property. A widget may
+// declare either a concrete Mendix type or an assignableTo reference (the expression
+// must be assignable to another property's type); mxbuild emits a WidgetReturnType in
+// both cases, with Type "None" when only assignableTo is given.
 type xmlReturnType struct {
-	Type string `xml:"type,attr"`
+	Type         string `xml:"type,attr"`
+	AssignableTo string `xml:"assignableTo,attr"`
 }
 
 // xmlTranslation represents <translation lang="...">Text</translation> — a widget-shipped
@@ -293,14 +379,15 @@ func walkPropertyGroup(pg xmlPropGroup, parentCategory string, def *WidgetDefini
 			// every property that omits required=, e.g. DataGrid2 showContentAs). Only
 			// an explicit required="false" is optional. Defaulting missing→false here
 			// caused within-key CE0463 drift on augment-added keys (issue #600).
-			Required:     p.Required != "false",
-			DefaultValue: p.DefaultValue,
-			IsList:       p.IsList == "true",
-			DataSource:   p.DataSource,
-			ReturnType:   p.ReturnType.Type,
-			AllowedTypes: allowedTypes,
-			EnumValues:   enumValues,
-			Translations: toTranslations(p.Translations),
+			Required:               p.Required != "false",
+			DefaultValue:           p.DefaultValue,
+			IsList:                 p.IsList == "true",
+			DataSource:             p.DataSource,
+			ReturnType:             p.ReturnType.Type,
+			ReturnTypeAssignableTo: p.ReturnType.AssignableTo,
+			AllowedTypes:           allowedTypes,
+			EnumValues:             enumValues,
+			Translations:           toTranslations(p.Translations),
 		}
 
 		// Parse nested properties for object-type properties
@@ -362,14 +449,15 @@ func collectNestedProperties(pg xmlPropGroup, parent *PropertyDef, parentCategor
 			// every property that omits required=, e.g. DataGrid2 showContentAs). Only
 			// an explicit required="false" is optional. Defaulting missing→false here
 			// caused within-key CE0463 drift on augment-added keys (issue #600).
-			Required:     p.Required != "false",
-			DefaultValue: p.DefaultValue,
-			IsList:       p.IsList == "true",
-			DataSource:   p.DataSource,
-			ReturnType:   p.ReturnType.Type,
-			AllowedTypes: allowedTypes,
-			EnumValues:   enumValues,
-			Translations: toTranslations(p.Translations),
+			Required:               p.Required != "false",
+			DefaultValue:           p.DefaultValue,
+			IsList:                 p.IsList == "true",
+			DataSource:             p.DataSource,
+			ReturnType:             p.ReturnType.Type,
+			ReturnTypeAssignableTo: p.ReturnType.AssignableTo,
+			AllowedTypes:           allowedTypes,
+			EnumValues:             enumValues,
+			Translations:           toTranslations(p.Translations),
 		}
 		// Nested object-type properties can themselves contain object lists.
 		if p.Type == "object" && len(p.NestedProps) > 0 {
@@ -625,7 +713,38 @@ func buildDefinition(widget *xmlWidget, version string) *WidgetDefinition {
 	for _, pg := range widget.PropertyGroups {
 		walkPropertyGroup(pg, "", def)
 	}
+	// Build the document-ordered top-level property list (regular + system
+	// interleaved) from the ordered Children, reusing the fully-built regular
+	// PropertyDefs so they keep Category/Children/etc.
+	byKey := make(map[string]*PropertyDef, len(def.Properties))
+	for i := range def.Properties {
+		byKey[def.Properties[i].Key] = &def.Properties[i]
+	}
+	for _, pg := range widget.PropertyGroups {
+		collectTopLevelOrder(pg, def, byKey)
+	}
 	return def
+}
+
+// collectTopLevelOrder walks a property group's document-ordered Children and
+// appends each top-level property (regular or system) to def.AllTopLevel in the
+// order declared in the widget XML. Regular entries reuse the already-built
+// PropertyDef (via byKey); system entries are recorded as Key + IsSystem. It does
+// not descend into an object property's nested properties — only the top-level
+// PropertyType order is reproduced here.
+func collectTopLevelOrder(pg xmlPropGroup, def *WidgetDefinition, byKey map[string]*PropertyDef) {
+	for _, c := range pg.Children {
+		switch {
+		case c.Property != nil:
+			if pd := byKey[c.Property.Key]; pd != nil {
+				def.AllTopLevel = append(def.AllTopLevel, *pd)
+			}
+		case c.SystemProp != nil:
+			def.AllTopLevel = append(def.AllTopLevel, PropertyDef{Key: c.SystemProp.Key, IsSystem: true})
+		case c.SubGroup != nil:
+			collectTopLevelOrder(*c.SubGroup, def, byKey)
+		}
+	}
 }
 
 // ParseMPKForWidget parses the widget XML for a specific widgetID from an .mpk file.
