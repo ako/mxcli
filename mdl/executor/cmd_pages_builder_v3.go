@@ -297,10 +297,12 @@ func (pb *pageBuilder) buildSnippetV3(s *ast.CreateSnippetStmtV3) (*pages.Snippe
 //
 // Keyword dispatch (Phase 2 — issue #539): the keywordDispatchTable encodes
 // our editorial policy for dual-stack keywords (e.g. DATAGRID → pluggable
-// Datagrid 2.x). Today the existing switch cases handle this correctly via
-// the hand-coded builders (buildDataGridV3 already produces pluggable BSON).
-// The dispatch table is consumed by inspection commands and DESCRIBE-side
-// keyword resolution rather than overriding write-side routing here.
+// Datagrid 2.x). DATAGRID has no switch case below; it falls through to the
+// default branch, which resolves it via the widget registry (a datagrid.def.json
+// generated on demand from the project .mpk) and builds it through the generic
+// pluggable engine (buildPluggable) — columns as an ObjectList, per-column filters
+// as item slots. The dispatch table is consumed by inspection commands and
+// DESCRIBE-side keyword resolution rather than overriding write-side routing here.
 func (pb *pageBuilder) buildWidgetV3(w *ast.WidgetV3) (pages.Widget, error) {
 	var widget pages.Widget
 	var err error
