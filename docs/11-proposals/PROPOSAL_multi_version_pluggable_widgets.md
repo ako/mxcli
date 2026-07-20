@@ -411,6 +411,38 @@ regenerate gen from the target version's reflection-data.
    with `Selection:None`). Conservative: only warns when the property is explicitly set and
    the condition value is determinable.
 
+   **Phase 3 landed** (`da30bab`) — all 9 Data Widgets, plus the filter build path.
+   The DW 3.10.0 package ships **9 widgets**, all with an `editorConfig.js`: DataGrid2,
+   Gallery, DropdownSort, SelectionHelper, TreeNode (the outline tree), and the 4 filters
+   (Date/Dropdown/Number/Text). The extractor recognized DataGrid only; the rest used guard
+   forms it skipped, so three generalisations were needed — strip **any** `<ident>.`
+   namespace (the minifier names it `D.`/`M.`/`j.`/`A.` per widget, not just `_.`), strip a
+   leading `return` (getProperties' first statement is `return <cond> && hide…`), and handle
+   grouping parens `cond && ( hide, … )`. Coverage after (was 0 for everything but DataGrid):
+
+   | Widget | lifted | Widget | lifted |
+   |---|---|---|---|
+   | DataGrid2 | 9/28 | DropdownFilter | 5/13 |
+   | Gallery | 5/13 | DateFilter | 3/5 |
+   | TreeNode (outline tree) | 4/7 | Number/TextFilter | 2–3 |
+   | SelectionHelper | 1/2 | DropdownSort | 0/0 (no hides) |
+
+   Remaining skips are grouped-subsequent and compound guards — safely skipped, never
+   mis-lifted (DataGrid matrix + bundled stay 0). The filter **build path** was separate
+   (`BuildFilterWidget` never applied visibility → a filter's hidden textTemplate stayed
+   populated → CE0463); the nulling is now factored into engine-agnostic
+   `widgetobj.ApplyVisibilityRules`, threaded through `FilterWidgetSpec`, and resolved by the
+   executor. **Text/Number/Date filters → 0.**
+
+   **Open — Dropdown filter definition drift (not a visibility gap).** `ddf` still shows 1
+   CE0463, but its **definition** diff vs `update-widgets` is ~1529 lines (~30 `Type`, 28
+   `ObjectType`): its nested filter-options `ObjectType` drifts from the 3.10.0 widget. This
+   is the DataGrid-class definition reconciliation applied to the dropdown filter's
+   object-list structure, a distinct follow-up — visibility can't touch it. TreeNode's
+   remaining 3/7 skips are its "dynamic structure" guards (`transformGroupsIntoTabs`, nested
+   `advancedMode`/`headerType` ternaries, `e.hasChildren||hide([…children…])`) — the ones the
+   latest DW release expanded; a JS AST would be needed to lift them.
+
    **Superseded options** (kept for the record): (c) v2-safe `update-widgets` via #764 — no
    longer needed for DataGrid2 (mxcli now closes it natively); still the fallback for widgets
    whose editorConfig the static extractor can't fully lift. (d) in-process `goja` execution
@@ -418,11 +450,12 @@ regenerate gen from the target version's reflection-data.
    `check`/lint/an LLM can consume, which JS execution wouldn't. (b) per-version templates —
    rejected.
 
-   Remaining (follow-ups, not blockers): the extractor covers the dominant idioms only — a
-   real JS AST would lift the compound/ternary and object-list-nested guards too; the same
-   rules could feed LLM "property cards"; and the matrix should fold into
-   `scripts/widget-version-matrix.sh` as a standing gate (feasible now — `mxcli marketplace
-   download` fetches any widget version) asserting DataGrid2 across DW versions stays at 0.
+   Remaining (follow-ups, not blockers): (1) the Dropdown filter's definition drift (above);
+   (2) a real JS AST to lift the compound/ternary and object-list-nested guards (incl.
+   TreeNode's dynamic structures) the regex extractor skips; (3) the same rules could feed
+   LLM "property cards"; (4) fold the matrix into `scripts/widget-version-matrix.sh` as a
+   standing gate (feasible now — `mxcli marketplace download` fetches any widget version)
+   asserting the DW widgets across versions stay at 0.
 
    **Also noted (dirty-template audit):** `datagrid.json`'s Object carries a configured
    delete `Forms$ActionButton` (`Forms$DeleteClientAction` + `Atlas_Core.Atlas.trash-can`)
