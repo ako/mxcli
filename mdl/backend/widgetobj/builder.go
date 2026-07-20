@@ -631,7 +631,7 @@ func (ob *Builder) ApplyPropertyVisibility(rules []types.WidgetVisibilityRule) {
 // PrimitiveValue string in the assembled object (e.g. type → "expression",
 // customVisualization → "true"). Properties absent from the object map to "".
 func (ob *Builder) currentPrimitiveValues() map[string]string {
-	byID := make(map[string]string)
+	rawByID := make(map[string]bson.D)
 	for _, elem := range ob.object {
 		if elem.Key != "Properties" {
 			continue
@@ -649,17 +649,55 @@ func (ob *Builder) currentPrimitiveValues() map[string]string {
 			if id == "" {
 				continue
 			}
-			byID[id] = primitiveValueOfProperty(prop)
+			if val := widgetValueOfProperty(prop); val != nil {
+				rawByID[id] = val
+			}
 		}
 	}
 
 	out := make(map[string]string, len(ob.propertyTypeIDs))
 	for key, entry := range ob.propertyTypeIDs {
-		if v, ok := byID[strings.ReplaceAll(entry.PropertyTypeID, "-", "")]; ok {
-			out[key] = v
+		if val, ok := rawByID[strings.ReplaceAll(entry.PropertyTypeID, "-", "")]; ok {
+			out[key] = effectiveValue(val, entry.ValueType)
 		}
 	}
 	return out
+}
+
+// effectiveValue reads the field of a WidgetValue that holds a property's
+// primitive-comparable value, keyed by its ValueType: a Selection-typed property
+// (e.g. DataGrid2 itemSelection = None/Single/Multi) stores its value in the
+// `Selection` field, everything else in `PrimitiveValue`. editorConfig
+// visibility conditions compare against this value, so reading the wrong field
+// (always PrimitiveValue) made selection-conditioned rules evaluate against ""
+// and mis-fire (issue #574: singleSelectionColumnLabel nulled under Selection:Single).
+func effectiveValue(val bson.D, valueType string) string {
+	field := "PrimitiveValue"
+	if valueType == "Selection" {
+		field = "Selection"
+	}
+	for _, ve := range val {
+		if ve.Key == field {
+			if s, ok := ve.Value.(string); ok {
+				return s
+			}
+			return ""
+		}
+	}
+	return ""
+}
+
+// widgetValueOfProperty returns a WidgetProperty's Value document, or nil.
+func widgetValueOfProperty(prop bson.D) bson.D {
+	for _, elem := range prop {
+		if elem.Key == "Value" {
+			if val, ok := elem.Value.(bson.D); ok {
+				return val
+			}
+			return nil
+		}
+	}
+	return nil
 }
 
 // propertyTypePointerID returns a WidgetProperty's TypePointer as a normalized
