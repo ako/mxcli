@@ -434,19 +434,42 @@ regenerate gen from the target version's reflection-data.
    `widgetobj.ApplyVisibilityRules`, threaded through `FilterWidgetSpec`, and resolved by the
    executor. **Text/Number/Date filters → 0.**
 
-   **Open — Dropdown filter & ComboBox definition drift (not a visibility gap).** `ddf` still
-   shows 1 CE0463, but its **definition** diff vs `update-widgets` is ~1529 lines (~30 `Type`,
-   28 `ObjectType`): its nested filter-options `ObjectType` drifts from the 3.10.0 widget. This
-   is the DataGrid-class definition reconciliation applied to the dropdown filter's
-   object-list structure, a distinct follow-up — visibility can't touch it. **ComboBox is the
-   same class**: on a fresh 11.12.0 project the embedded 2.5.0-shaped template drifts ~3351
-   definition lines from the installed (newer) ComboBox, so the `112-combobox-…` bug-test
-   still reproduces 1 CE0463 — a large-version-jump definition restructure, not an
-   instance-applicability gap the editorConfig extractor addresses. Both fold into follow-up
-   (1) below. TreeNode's
-   remaining 3/7 skips are its "dynamic structure" guards (`transformGroupsIntoTabs`, nested
-   `advancedMode`/`headerType` ternaries, `e.hasChildren||hide([…children…])`) — the ones the
-   latest DW release expanded; a JS AST would be needed to lift them.
+   **RESOLVED — ComboBox definition drift (`#112`), two generic causes (`bf6c577`).** The
+   earlier "~3351-line ComboBox drift / large version jump" framing was an artifact of an
+   **ID-unmasked** diff. Re-measured with `$ID`/pointers masked, a ComboBox on a fresh 11.12.1
+   project (which ships ComboBox **2.5.0 — the same version as the embedded template**, so no
+   version jump) drifted only **243 definition lines**, from two generic causes augment didn't
+   yet cover:
+   1. **System-property order.** ComboBox declares `<systemProperty>` Label/Visibility/
+      Editability **inline mid-list** (its Editability group even mixes the systemProperty
+      ahead of a regular property). mxbuild emits the WidgetType's PropertyTypes in that
+      declared order and CE0463 checks it, but the `.mpk` parser split system properties into a
+      separate list and `reorderPropertyTypes` pushed them to the **end**. DataGrid2/Gallery
+      declare **no** inline system properties, so they were unaffected — precisely why they
+      passed and ComboBox didn't. Fixed by preserving the `.mpk`'s full declared order (regular
+      + system interleaved) in `mpk.WidgetDefinition.AllTopLevel` (built via a document-ordered
+      custom `UnmarshalXML` on `propertyGroup`) and ranking `reorderPropertyTypes` by it →
+      243 → 9 lines.
+   2. **`<returnType assignableTo="../staticAttribute"/>`.** ComboBox's `staticDataSourceValue`
+      expression derives its return type from another property; the parser read only
+      `<returnType type=…>` and emitted a null `ReturnType` where mxbuild emits
+      `WidgetReturnType{Type:None, AssignableTo}`. Fixed by parsing/emitting `assignableTo` →
+      9 → **0**.
+
+   After both (generic, no ComboBox-specific code) the emitted `CustomWidgetType` is
+   **byte-identical (ID-masked) to `mx update-widgets`** and `mx check` reports **0 errors** —
+   no `update-widgets` needed. The residual 210-line **Object** diff is pure WidgetValue
+   *ordering*, which Studio Pro tolerates (0 errors confirms it).
+
+   **Also RESOLVED on bundled DW — DropdownFilter (`ddf`).** The prior ~1529-line `ddf`
+   definition drift was measured against a *marketplace-swapped* Data Widgets 3.10.0. On the
+   **bundled** DW in 11.12.1 a DataGrid2 with a `dropdownfilter` now reports **0 CE0463** — the
+   system-property-order fix closes it there too. The 3.10.0-marketplace nested filter-options
+   `ObjectType` axis remains the only open definition-reconciliation follow-up (needs a project
+   with that exact package to re-measure). TreeNode's
+   remaining 3/7 visibility skips are its "dynamic structure" guards (`transformGroupsIntoTabs`,
+   nested `advancedMode`/`headerType` ternaries, `e.hasChildren||hide([…children…])`) — the ones
+   the latest DW release expanded; a JS AST would be needed to lift them.
 
    **Superseded options** (kept for the record): (c) v2-safe `update-widgets` via #764 — no
    longer needed for DataGrid2 (mxcli now closes it natively); still the fallback for widgets
@@ -457,17 +480,17 @@ regenerate gen from the target version's reflection-data.
 
    **Verified against `mdl-examples/` widget scripts.** `make check-mdl` is green for every
    widget script (the lone unrelated FAIL is `view-entity-derived-string-length.mdl`,
-   MDL031). Running the pluggable scripts through `mx check` on fresh 11.12.0 projects:
-   **8 of 9 report 0 CE0463** — `pluggable-smoke`, `189-datagrid2-column-textfilter`,
+   MDL031). Running the pluggable scripts through `mx check` on fresh 11.12.1 projects:
+   **all 9 report 0 CE0463** — `pluggable-smoke`, `189-datagrid2-column-textfilter`,
    `628-datagrid2-selection`, `datagrid2-custom-content-column`,
    `datagrid-numberfilter-array-marker`, `bug8-datagrid-gallery-sort-desc`,
-   `datagrid-columnwidth-manual-size`, `datagrid2-associated-attribute-column`. The 9th,
-   `112-combobox-enum-ce0463-widget-version`, reports 1 — the documented ComboBox version
-   drift above, not a regression from this work.
+   `datagrid-columnwidth-manual-size`, `datagrid2-associated-attribute-column`, and
+   `112-combobox-enum-ce0463-widget-version` (now closed by `bf6c577`).
 
-   Remaining (follow-ups, not blockers): (1) definition-drift reconciliation for large
-   version jumps — the Dropdown filter's nested object-list structure **and ComboBox's
-   2.5.0→newer restructure** (above); (2) a real JS AST to lift the compound/ternary and
+   Remaining (follow-ups, not blockers): (1) definition-drift reconciliation for the one
+   remaining axis — the Dropdown filter's nested object-list `ObjectType` structure against a
+   *marketplace-swapped* Data Widgets 3.10.0 (ComboBox's drift is now closed by `bf6c577`, and
+   `ddf` is clean on bundled DW); (2) a real JS AST to lift the compound/ternary and
    object-list-nested guards (incl.
    TreeNode's dynamic structures) the regex extractor skips; (3) the same rules could feed
    LLM "property cards"; (4) fold the matrix into `scripts/widget-version-matrix.sh` as a
