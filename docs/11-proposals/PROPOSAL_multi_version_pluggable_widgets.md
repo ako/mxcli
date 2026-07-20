@@ -338,12 +338,31 @@ regenerate gen from the target version's reflection-data.
    definition identical, only ~9 `textTemplate` default-templates differ, `update-widgets` →
    0. **Which textTemplates get a default template is config-dependent**: aria/status labels
    are always instantiated, but `clearSelectionButtonLabel` / `loadMoreButtonCaption` /
-   `singleSelectionColumnLabel` stay `null` because their feature is off — a distinction
-   mxbuild derives from the widget's **editor applicability logic**, not from anything in
-   `Datagrid.xml` (the property defs of the null-vs-populated ones are structurally
-   identical). Empirically: an "always-populate" rule closes 9→3 but over-populates the 3
-   feature-gated ones (still CE0463); a `Required`-gate closes 3→9 the other way. Neither
-   declarative rule matches, because the rule isn't declarative.
+   `singleSelectionColumnLabel` stay `null` because their feature is off. Empirically: an
+   "always-populate" rule closes 9→3 but over-populates the 3 feature-gated ones (still
+   CE0463); a `Required`-gate closes 3→9 the other way. Neither declarative rule matches,
+   because the rule isn't declarative.
+
+   **CONFIRMED mechanism — the widget's compiled `editorConfig.js` decides applicability.**
+   The `.mpk` ships `Datagrid.editorConfig.js` (16 KB) alongside `Datagrid.xml`. Its
+   `getProperties(values, defaultProperties)` function calls `hidePropertyIn` (24×) /
+   `hidePropertiesIn` (6×) / `changePropertyIn` conditionally on the *instance's* current
+   values. The exact hides for the three null properties are present verbatim:
+
+   ```js
+   "Multi"    !== r            && hidePropertiesIn(e, t, ["selectionCounterPosition","clearSelectionButtonLabel","enableSelectAll"])
+   "loadMore" !== e.pagination && hidePropertyIn(t, e, "loadMoreButtonCaption")
+                                  hidePropertyIn(e, t, "singleSelectionColumnLabel")   // conditional
+   ```
+
+   This maps 1:1 onto the measurements: our minimal grid has `Selection:None` (≠ "Multi") →
+   `clearSelectionButtonLabel` hidden → `null`; `Pagination:buttons` (≠ "loadMore") →
+   `loadMoreButtonCaption` hidden → `null`. The always-populated properties
+   (`selectRowLabel`, `cancelExportLabel`) appear **0×** in `editorConfig.js` — never hidden,
+   so their default is instantiated. **A hidden property does not get its default template
+   instantiated in the Object.** The applicability graph is imperative JS keyed on the
+   instance config, not declarative XML — which is why no `.mpk` parsing reproduces it, and
+   why the null-vs-populated property *definitions* in `Datagrid.xml` are byte-identical.
 
    **Object-from-definition rebuild — tried, REJECTED (regresses the common case).**
    Regenerating the whole `WidgetObject` from the reconciled definition (one WidgetValue per
@@ -355,13 +374,22 @@ regenerate gen from the target version's reflection-data.
    Reverted.
 
    **Path forward for the instance last-mile:**
-   - **(c) v2-safe `update-widgets` finish, on top of mxcli's correct definition.** The
-     applicability logic that decides instance defaults lives in the widget's compiled editor
-     code, which **mxbuild executes and mxcli (pure Go) cannot**. So the instance last-mile is
-     genuinely mxbuild's job: run its `update-widgets` to finalize instance defaults, made
-     v2-safe (bare `update-widgets` destroys MPRv2 — issue #763; **mendixlabs PR #764** fixes
-     it). This is *not* a retreat from the generic thesis — the definition is now fully
-     generic in mxcli; only the editor-logic-dependent instance defaults need mxbuild.
+   - **(c) v2-safe `update-widgets` finish, on top of mxcli's correct definition
+     (recommended).** The applicability logic that decides instance defaults is the widget's
+     compiled `editorConfig.js`, which **mxbuild executes (it embeds a JS runtime for widget
+     editors) and mxcli (pure Go) does not**. So the instance last-mile is genuinely
+     mxbuild's job: run its `update-widgets` to finalize instance defaults, made v2-safe
+     (bare `update-widgets` destroys MPRv2 — issue #763; **mendixlabs PR #764** fixes it).
+     This is *not* a retreat from the generic thesis — the definition is now fully generic in
+     mxcli; only the editor-logic-dependent instance defaults need mxbuild.
+   - **(d) Execute `editorConfig.js` in-process via a Go JS engine (research spike).** Now
+     that the mechanism is confirmed, a pure-Go path exists in principle: embed a JS
+     interpreter (`goja`), load each widget's `Datagrid.editorConfig.js`, and run
+     `getProperties(instanceValues, defaultProperties)` with a shim implementing the
+     widget-editor API (`hidePropertyIn`, `hidePropertiesIn`, `changePropertyIn`, …). The
+     resulting visibility set then drives which defaults are instantiated. Feasible but a
+     substantial subsystem, and it makes mxcli execute third-party widget JS; worthwhile only
+     if mxcli must author widgets with **no** mxbuild dependency. Defer behind (c).
    - **(b) Per-version templates** — rejected: doesn't scale and still wouldn't carry the
      config-conditional instance defaults.
 
