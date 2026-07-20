@@ -20,6 +20,7 @@ import (
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	"github.com/mendixlabs/mxcli/mdl/linter"
+	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/sdk/pages"
 )
 
@@ -60,6 +61,7 @@ func LoadWidgetRegistry(projectPath string) *WidgetRegistry {
 	}
 	if projectPath != "" {
 		_ = registry.LoadUserDefinitions(projectPath)
+		registry.projectPath = projectPath
 	}
 	return registry
 }
@@ -115,6 +117,7 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 		mapping := parentObjectLists[strings.ToUpper(w.Type)]
 		isObjectListItem := mapping != nil || isUniversalObjectListKeyword(w.Type)
 		out = append(out, validatePluggableWidgetProperties(w, registry, locationPrefix)...)
+		out = append(out, validateWidgetVisibility(w, registry, locationPrefix)...)
 		out = append(out, validateStaticWidget(w, locationPrefix)...)
 		// Unknown-property warning applies only to built-in widgets; pluggable
 		// widgets get the stricter def.json check (MDL-WIDGET01) above, and
@@ -131,6 +134,183 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 		}
 	}
 	return out
+}
+
+// validateWidgetVisibility warns (MDL-WIDGET10) when a property the user set on a
+// pluggable widget is hidden under that widget's current configuration — the
+// widget's editorConfig.js suppresses it, so Studio Pro ignores the written value.
+// Rules come from the widget's .def.json (propertyVisibility); for built-in
+// widgets whose def carries none they are lifted on the fly from the installed
+// .mpk's editorConfig.js (#574). Conservative by design: it only warns when the
+// property is explicitly set AND the hiding condition's value is determinable
+// from the MDL or a mapping default, so it never guesses.
+func validateWidgetVisibility(w *ast.WidgetV3, registry *WidgetRegistry, locationPrefix string) []linter.Violation {
+	def := lookupWidgetDef(w, registry)
+	if def == nil {
+		return nil
+	}
+	rules := def.PropertyVisibility
+	if len(rules) == 0 && registry != nil && registry.projectPath != "" {
+		rules = resolveWidgetVisibilityRules(registry.projectPath, def.WidgetID)
+	}
+	if len(rules) == 0 {
+		return nil
+	}
+	values, explicit := widgetValueMap(w, def)
+
+	var out []linter.Violation
+	for _, rule := range rules {
+		if rule.HiddenWhen == nil {
+			continue
+		}
+		if !explicit[strings.ToLower(rule.PropertyKey)] {
+			continue // user didn't set this property — nothing to warn about
+		}
+		condVal, known := values[strings.ToLower(rule.HiddenWhen.PropertyKey)]
+		if !known {
+			continue // condition value indeterminable — don't guess
+		}
+		if !rule.HiddenWhen.Hidden(map[string]string{rule.HiddenWhen.PropertyKey: condVal}) {
+			continue
+		}
+		out = append(out, linter.Violation{
+			RuleID:   "MDL-WIDGET10",
+			Severity: linter.SeverityWarning,
+			Message: fmt.Sprintf(
+				"%s: widget `%s` (%s) property `%s` is hidden when `%s` %s — the value will be ignored",
+				locationPrefix, w.Name, def.MDLName, rule.PropertyKey,
+				rule.HiddenWhen.PropertyKey, visibilityCondWord(rule.HiddenWhen),
+			),
+		})
+	}
+	return out
+}
+
+// widgetValueMap resolves a widget's current property values (keyed by
+// lowercased widget property key), and reports which were set explicitly in the
+// MDL (vs. filled from a mapping default). MDL keywords are resolved to widget
+// keys via the def's property mappings (source/aliases), plus any direct
+// key-named MDL property. Selection values are canonicalised (None/Single/Multi)
+// to match how editorConfig conditions compare them.
+func widgetValueMap(w *ast.WidgetV3, def *WidgetDefinition) (values map[string]string, explicit map[string]bool) {
+	values = map[string]string{}
+	explicit = map[string]bool{}
+
+	mappings := append([]PropertyMapping(nil), def.PropertyMappings...)
+	for _, m := range def.Modes {
+		mappings = append(mappings, m.PropertyMappings...)
+	}
+	for _, m := range mappings {
+		key := strings.ToLower(m.PropertyKey)
+		val, set := "", false
+		if m.Source != "" {
+			if v, ok := lookupWidgetProp(w, m.Source); ok {
+				val, set = v, true
+			}
+		}
+		if !set {
+			for _, a := range m.MdlAliases {
+				if v, ok := lookupWidgetProp(w, a); ok {
+					val, set = v, true
+					break
+				}
+			}
+		}
+		if !set {
+			if v, ok := lookupWidgetProp(w, m.PropertyKey); ok {
+				val, set = v, true
+			}
+		}
+		if set {
+			explicit[key] = true
+		} else if m.Default != "" {
+			val = m.Default
+		}
+		if val != "" {
+			if m.Operation == "selection" {
+				val = canonicalSelection(val)
+			}
+			values[key] = val
+		}
+	}
+	// Direct MDL properties named after a widget key (not covered by a mapping).
+	for k, raw := range w.Properties {
+		lk := strings.ToLower(k)
+		if _, ok := values[lk]; ok {
+			continue
+		}
+		if s := stringifyPropValue(raw); s != "" {
+			values[lk] = s
+			explicit[lk] = true
+		}
+	}
+	return values, explicit
+}
+
+// lookupWidgetProp reads a widget property from the MDL by name (case-insensitive)
+// as a string, reporting whether it was present.
+func lookupWidgetProp(w *ast.WidgetV3, name string) (string, bool) {
+	for k, v := range w.Properties {
+		if strings.EqualFold(k, name) {
+			return stringifyPropValue(v), true
+		}
+	}
+	return "", false
+}
+
+// stringifyPropValue renders an MDL property value as a plain string for
+// condition evaluation (strings, bools, ints).
+func stringifyPropValue(v any) string {
+	switch x := v.(type) {
+	case string:
+		return x
+	case bool:
+		if x {
+			return "true"
+		}
+		return "false"
+	case int:
+		return fmt.Sprintf("%d", x)
+	case int64:
+		return fmt.Sprintf("%d", x)
+	case float64:
+		return fmt.Sprintf("%g", x)
+	case nil:
+		return ""
+	default:
+		return fmt.Sprintf("%v", x)
+	}
+}
+
+// canonicalSelection normalises a selection value to the PascalCase form
+// (None/Single/Multi) editorConfig conditions compare against.
+func canonicalSelection(v string) string {
+	switch strings.ToLower(v) {
+	case "single":
+		return "Single"
+	case "multi", "multiple":
+		return "Multi"
+	case "none":
+		return "None"
+	}
+	return v
+}
+
+// visibilityCondWord renders a visibility condition's operator+value as English
+// for the MDL-WIDGET10 message.
+func visibilityCondWord(c *types.WidgetVisibilityCondition) string {
+	switch c.Operator {
+	case "eq":
+		return fmt.Sprintf("is %q", c.Value)
+	case "ne":
+		return fmt.Sprintf("is not %q", c.Value)
+	case "truthy":
+		return "is enabled"
+	case "falsy":
+		return "is disabled"
+	default:
+		return "matches"
+	}
 }
 
 // validateObjectListItemEnums flags an enumeration sub-property of an object-list

@@ -73,14 +73,26 @@ func resolveWidgetVisibilityRules(projectPath, widgetID string) []types.WidgetVi
 
 	var rules []types.WidgetVisibilityRule
 	if mpkPath, err := mpk.FindMPK(projectDir, widgetID); err == nil && mpkPath != "" {
-		if js, err := mpk.ReadEditorConfig(mpkPath, widgetID); err == nil && js != "" {
-			rules, _ = extractVisibilityRulesFromJS(js)
-		}
+		rules = extractVisibilityRulesFromMPK(mpkPath, widgetID)
 	}
 
 	visibilityCacheMu.Lock()
 	visibilityCache[key] = rules
 	visibilityCacheMu.Unlock()
+	return rules
+}
+
+// extractVisibilityRulesFromMPK reads a widget's editorConfig.js from its .mpk
+// and lifts its property-visibility rules. Returns nil when the widget ships no
+// editor config. Used both at build time (via resolveWidgetVisibilityRules) and
+// at .def.json generation time, so generated definitions carry the rules and the
+// hand-transcribed table can retire.
+func extractVisibilityRulesFromMPK(mpkPath, widgetID string) []types.WidgetVisibilityRule {
+	js, err := mpk.ReadEditorConfig(mpkPath, widgetID)
+	if err != nil || js == "" {
+		return nil
+	}
+	rules, _ := extractVisibilityRulesFromJS(js)
 	return rules
 }
 

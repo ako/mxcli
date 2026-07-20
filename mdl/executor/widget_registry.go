@@ -19,6 +19,7 @@ type WidgetRegistry struct {
 	byMDLName       map[string]*WidgetDefinition // keyed by uppercase MDLName
 	byWidgetID      map[string]*WidgetDefinition // keyed by widgetId
 	knownOperations map[string]bool              // operations accepted during validation
+	projectPath     string                       // set by LoadWidgetRegistry; lets validation resolve editorConfig visibility rules for built-in widgets whose .def.json carries none
 }
 
 // defaultKnownOperations is the set of operation names supported by the widget engine.
