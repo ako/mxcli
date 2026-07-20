@@ -8,34 +8,42 @@
 --   [CE0463] "The definition of this widget has changed. Update this widget
 --   by right-clicking it and selecting 'Update widget'…" at Combo box 'cbClass'.
 --
--- Root cause (refined):
+-- Root cause (RESOLVED):
 --   #112 originally blamed an incomplete template (58 PropertyTypes / 52
---   WidgetProperties). That is fixed — a combobox emitted against a project whose
---   installed com.mendix.widget.web.Combobox.mpk matches mxcli's embedded template
---   (Mendix 11.6 / widget 2.5.0) now passes `mx check` with 0 errors.
+--   WidgetProperties). That was fixed first.
 --
---   The RESIDUAL CE0463 is a widget-VERSION mismatch: mxcli emits the embedded
---   2.5.0-shaped PropertyTypes, but a project may have a NEWER combobox (e.g.
---   2.8.1) whose schema reorders / regroups properties. `augmentFromMPK` patches
---   presence + enum values from the project .mpk but cannot restructure the
---   2.5.0 baseline into the newer shape, and full generation-from-mpk is less
---   faithful still (fails even on a matching version).
+--   The residual CE0463 was NOT a version jump — a fresh 11.12.x project ships
+--   ComboBox 2.5.0, the same version as mxcli's embedded template — but two
+--   GENERIC definition-drift causes the augment reconciliation didn't yet cover:
 --
---   The DESIGNED remediation is `mx update-widgets`, which migrates the stored
---   widget to the installed version and clears CE0463. `mxcli docker build/check`
---   run it automatically — but it was crashing on a bare .mpr path
---   (AddProjectDirAsAllowedPath → ArgumentNullException), so the migration never
---   ran. That path-arg crash is fixed (docker: pass an absolute path).
+--   1. System-property ORDER. ComboBox declares <systemProperty> Label /
+--      Visibility / Editability INLINE in the middle of its property list (its
+--      Editability group even mixes the systemProperty ahead of a regular
+--      property). mxbuild emits the WidgetType's PropertyTypes in that declared
+--      order and CE0463 checks it, but the .mpk parser split system properties
+--      into a separate list and reorderPropertyTypes pushed them to the END.
+--      (DataGrid2 / Gallery declare no inline system properties, so they were
+--      unaffected — which is why they passed and ComboBox didn't.) Fixed by
+--      preserving the .mpk's full declared order (regular + system interleaved,
+--      mpk.WidgetDefinition.AllTopLevel) and reordering to it.
+--   2. <returnType assignableTo="../staticAttribute"/>. ComboBox's
+--      staticDataSourceValue expression derives its return type from another
+--      property; the parser read only <returnType type=...> and emitted a null
+--      ReturnType where mxbuild emits a WidgetReturnType{Type:None, AssignableTo}.
+--      Fixed by parsing assignableTo and emitting the return type.
 --
--- Verification:
---   - On a project whose combobox.mpk matches the template version, this script
---     passes `mx check` with 0 errors (the incomplete-template regression is gone).
---   - On a project with a newer combobox, `mxcli docker check -p app.mpr` now runs
---     update-widgets successfully and `mx check` reports 0 errors.
+--   Both fixes are generic (no ComboBox-specific code) and live in
+--   modelsdk/widgets/{mpk/mpk.go,augment.go}. After them the emitted
+--   CustomWidgetType is byte-identical (ID-masked) to `mx update-widgets` output.
+--
+-- Verification (Mendix 11.12.1, bundled ComboBox 2.5.0):
+--   - `mxcli exec … -p app.mpr` then `mx check` → 0 errors (was 1 CE0463 on cbClass).
+--   - Definition (WidgetType) diff vs `mx update-widgets` → 0 lines (ID-masked).
+--   - No regression: DataGrid2 / Gallery / filters (incl. DropdownFilter) stay at 0.
 --
 -- Usage:
 --   mxcli exec mdl-examples/bug-tests/112-combobox-enum-ce0463-widget-version.mdl -p app.mpr
---   mxcli docker check -p app.mpr      # runs update-widgets (now crash-free), then mx check
+--   mx check app.mpr        # expect 0 errors, no update-widgets needed
 -- ============================================================================
 
 create module CBBug112;

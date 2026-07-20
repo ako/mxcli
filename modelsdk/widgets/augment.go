@@ -226,7 +226,16 @@ func reorderPropertyTypes(tmplType map[string]any, def *mpk.WidgetDefinition) {
 	if !ok {
 		return
 	}
-	reorderObjectTypePropertyTypes(objType, def.Properties)
+	// Rank by the full declared order (regular + system properties interleaved) so
+	// system properties (Label/Visibility/Editability) land at their .mpk-declared
+	// position rather than being pushed to the end. Widgets that declare no inline
+	// system properties (DataGrid2, Gallery) have AllTopLevel == the regular list, so
+	// this is a no-op for them; ComboBox declares them mid-list, so it matters there.
+	order := def.AllTopLevel
+	if len(order) == 0 {
+		order = def.Properties
+	}
+	reorderObjectTypePropertyTypes(objType, order)
 }
 
 // reorderObjectTypePropertyTypes reorders one ObjectType's PropertyTypes to the given
@@ -393,8 +402,8 @@ func reconcileValueTypesFromMPK(tmpl *WidgetTemplate, byKey map[string]mpk.Prope
 								vt["ReturnType"] = nil
 							case "Expression":
 								vt["EnumerationValues"] = []any{float64(2)}
-								if pd.ReturnType != "" {
-									vt["ReturnType"] = buildReturnType(pd.ReturnType)
+								if pd.ReturnType != "" || pd.ReturnTypeAssignableTo != "" {
+									vt["ReturnType"] = buildReturnType(pd.ReturnType, pd.ReturnTypeAssignableTo)
 								} else {
 									vt["ReturnType"] = nil
 								}
@@ -479,13 +488,18 @@ func completeValueTypeEnvelope(node any) {
 }
 
 // buildReturnType builds a CustomWidgets$WidgetReturnType from a .mpk expression
-// property's declared <returnType type="..."/>. The placeholder $ID is remapped to a
-// fresh UUID by the loader's ID phase.
-func buildReturnType(typ string) map[string]any {
+// property's declared <returnType type="..."/> or <returnType assignableTo="..."/>.
+// When only assignableTo is declared (no concrete type), mxbuild emits Type "None"
+// with AssignableTo set. The placeholder $ID is remapped to a fresh UUID by the
+// loader's ID phase.
+func buildReturnType(typ, assignableTo string) map[string]any {
+	if typ == "" {
+		typ = "None"
+	}
 	return map[string]any{
 		"$ID":            placeholderID(),
 		"$Type":          "CustomWidgets$WidgetReturnType",
-		"AssignableTo":   "",
+		"AssignableTo":   assignableTo,
 		"EntityProperty": "",
 		"IsList":         false,
 		"Type":           typ,
