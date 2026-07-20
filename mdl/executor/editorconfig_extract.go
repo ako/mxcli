@@ -187,15 +187,25 @@ func hideTargetKeys(args string) (keys []string, nested bool) {
 	}
 }
 
+// nsPrefixRE matches the widget-editor namespace prefix before a hide call — the
+// minifier names it per widget (`_.`, `D.`, `M.`, `j.`, `A.`, …), so it must be
+// matched generically rather than hard-coded to `_.`.
+var nsPrefixRE = regexp.MustCompile(`[A-Za-z_$][\w$]*\.$`)
+
 // parseGuard reads the guard expression immediately preceding a hide call and
 // converts it to a WidgetVisibilityCondition. callStart points at the hide
 // function name; the connector just before it is `&&`, `||`, or `?`.
 func parseGuard(js string, callStart int) (types.WidgetVisibilityCondition, bool) {
-	// Strip an optional `_.` namespace prefix before the function name.
-	end := callStart
-	pre := strings.TrimRight(js[:end], " ")
-	if strings.HasSuffix(pre, "_.") {
-		pre = pre[:len(pre)-2]
+	pre := strings.TrimRight(js[:callStart], " ")
+	// Strip the widget-editor namespace prefix (any `<ident>.`, not just `_.`).
+	if loc := nsPrefixRE.FindStringIndex(pre); loc != nil {
+		pre = pre[:loc[0]]
+	}
+	pre = strings.TrimRight(pre, " ")
+	// Strip an optional grouping paren: `cond && ( hide(...), … )` groups several
+	// hides under one condition; the first hide sits right after the `(`.
+	if strings.HasSuffix(pre, "(") {
+		pre = strings.TrimRight(pre[:len(pre)-1], " ")
 	}
 	// Identify the connector.
 	var falsy bool // || connector or !prefix ⇒ hide when guard is falsy
@@ -211,6 +221,7 @@ func parseGuard(js string, callStart int) (types.WidgetVisibilityCondition, bool
 		return types.WidgetVisibilityCondition{}, false
 	}
 	guard, boundary := lastGuardExpr(pre)
+	guard = stripReturnPrefix(guard) // getProperties' first statement is `return <guard> && hide…`
 	if guard == "" {
 		return types.WidgetVisibilityCondition{}, false
 	}
@@ -228,6 +239,29 @@ func parseGuard(js string, callStart int) (types.WidgetVisibilityCondition, bool
 	}
 	aliases := enclosingAliases(js, callStart)
 	return guardToCondition(guard, falsy, aliases)
+}
+
+// stripReturnPrefix removes a leading `return` keyword from a guard expression.
+// A widget's getProperties body often starts `return <cond> && hide(…), …`, so
+// the first guard is prefixed with `return` (minified: `return"none"===…`).
+func stripReturnPrefix(g string) string {
+	g = strings.TrimSpace(g)
+	const kw = "return"
+	if strings.HasPrefix(g, kw) {
+		rest := g[len(kw):]
+		// Only strip when `return` is a standalone keyword, not the start of an
+		// identifier like `returnValue`.
+		if rest == "" || !isIdentByte(rest[0]) {
+			return strings.TrimSpace(rest)
+		}
+	}
+	return g
+}
+
+// isIdentByte reports whether b can appear in a JS identifier.
+func isIdentByte(b byte) bool {
+	return b == '_' || b == '$' ||
+		(b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9')
 }
 
 // lastGuardExpr returns the balanced expression ending at the end of `pre`,

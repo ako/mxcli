@@ -179,8 +179,9 @@ func (pb *pageBuilder) buildColumnSpecFromAST(child *ast.WidgetV3) (*backend.Dat
 	for _, grandchild := range child.Children {
 		if filterWidgetID := dataGridFilterWidgetID(grandchild.Type); filterWidgetID != "" {
 			fw, err := pb.widgetBackend.BuildFilterWidget(backend.FilterWidgetSpec{
-				WidgetID:   filterWidgetID,
-				FilterName: grandchild.Name,
+				WidgetID:        filterWidgetID,
+				FilterName:      grandchild.Name,
+				VisibilityRules: resolveWidgetVisibilityRules(pb.backend.Path(), filterWidgetID),
 			}, pb.backend.Path())
 			if err != nil {
 				return nil, mdlerrors.NewBackend("build column filter widget", err)

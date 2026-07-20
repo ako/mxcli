@@ -609,30 +609,42 @@ func (ob *Builder) EnsureRequiredObjectLists() {
 // just set from MDL.
 
 func (ob *Builder) ApplyPropertyVisibility(rules []types.WidgetVisibilityRule) {
+	ob.object = ApplyVisibilityRules(ob.object, ob.propertyTypeIDs, rules)
+}
+
+// ApplyVisibilityRules nulls the TextTemplate of any TextTemplate-typed property
+// the rules mark as hidden under the object's current configuration, returning
+// the updated object. It is the engine-agnostic form of ApplyPropertyVisibility
+// so build paths that construct a widget object without a full Builder (e.g. the
+// filter-widget build path) can apply the same #574 nulling. Non-TextTemplate
+// properties are left untouched — only the populated-vs-null ClientTemplate
+// choice triggers CE0463.
+func ApplyVisibilityRules(object bson.D, propertyTypeIDs map[string]pages.PropertyTypeIDEntry, rules []types.WidgetVisibilityRule) bson.D {
 	if len(rules) == 0 {
-		return
+		return object
 	}
-	values := ob.currentPrimitiveValues()
+	values := primitiveValuesOf(object, propertyTypeIDs)
 	for _, rule := range rules {
 		if !rule.HiddenWhen.Hidden(values) {
 			continue
 		}
-		entry, ok := ob.propertyTypeIDs[rule.PropertyKey]
+		entry, ok := propertyTypeIDs[rule.PropertyKey]
 		if !ok || entry.ValueType != "TextTemplate" {
 			continue
 		}
-		ob.object = updateWidgetPropertyValue(ob.object, ob.propertyTypeIDs, rule.PropertyKey, func(val bson.D) bson.D {
+		object = updateWidgetPropertyValue(object, propertyTypeIDs, rule.PropertyKey, func(val bson.D) bson.D {
 			return setBSONField(val, "TextTemplate", nil)
 		})
 	}
+	return object
 }
 
-// currentPrimitiveValues maps each known property key to its current
-// PrimitiveValue string in the assembled object (e.g. type → "expression",
-// customVisualization → "true"). Properties absent from the object map to "".
-func (ob *Builder) currentPrimitiveValues() map[string]string {
+// primitiveValuesOf maps each known property key to its current comparable value
+// string in the object (e.g. type → "expression", itemSelection → "Single").
+// Properties absent from the object map to "".
+func primitiveValuesOf(object bson.D, propertyTypeIDs map[string]pages.PropertyTypeIDEntry) map[string]string {
 	rawByID := make(map[string]bson.D)
-	for _, elem := range ob.object {
+	for _, elem := range object {
 		if elem.Key != "Properties" {
 			continue
 		}
@@ -655,8 +667,8 @@ func (ob *Builder) currentPrimitiveValues() map[string]string {
 		}
 	}
 
-	out := make(map[string]string, len(ob.propertyTypeIDs))
-	for key, entry := range ob.propertyTypeIDs {
+	out := make(map[string]string, len(propertyTypeIDs))
+	for key, entry := range propertyTypeIDs {
 		if val, ok := rawByID[strings.ReplaceAll(entry.PropertyTypeID, "-", "")]; ok {
 			out[key] = effectiveValue(val, entry.ValueType)
 		}
