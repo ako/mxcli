@@ -373,30 +373,56 @@ regenerate gen from the target version's reflection-data.
    available source for the no-drift case; a rebuild trades that away for an approximation.
    Reverted.
 
-   **Path forward for the instance last-mile:**
-   - **(c) v2-safe `update-widgets` finish, on top of mxcli's correct definition
-     (recommended).** The applicability logic that decides instance defaults is the widget's
-     compiled `editorConfig.js`, which **mxbuild executes (it embeds a JS runtime for widget
-     editors) and mxcli (pure Go) does not**. So the instance last-mile is genuinely
-     mxbuild's job: run its `update-widgets` to finalize instance defaults, made v2-safe
-     (bare `update-widgets` destroys MPRv2 — issue #763; **mendixlabs PR #764** fixes it).
-     This is *not* a retreat from the generic thesis — the definition is now fully generic in
-     mxcli; only the editor-logic-dependent instance defaults need mxbuild.
-   - **(d) Execute `editorConfig.js` in-process via a Go JS engine (research spike).** Now
-     that the mechanism is confirmed, a pure-Go path exists in principle: embed a JS
-     interpreter (`goja`), load each widget's `Datagrid.editorConfig.js`, and run
-     `getProperties(instanceValues, defaultProperties)` with a shim implementing the
-     widget-editor API (`hidePropertyIn`, `hidePropertiesIn`, `changePropertyIn`, …). The
-     resulting visibility set then drives which defaults are instantiated. Feasible but a
-     substantial subsystem, and it makes mxcli execute third-party widget JS; worthwhile only
-     if mxcli must author widgets with **no** mxbuild dependency. Defer behind (c).
-   - **(b) Per-version templates** — rejected: doesn't scale and still wouldn't carry the
-     config-conditional instance defaults.
+   **RESOLVED (instance side) — a static editorConfig extractor closes it, natively in
+   mxcli. No mxbuild / update-widgets dependency needed for DataGrid2.** The codebase
+   already had the scaffold — `WidgetVisibilityRule` + `Builder.ApplyPropertyVisibility`
+   (nulls a hidden textTemplate's ClientTemplate), fed by a *hand-transcribed*
+   `widgetVisibilityRules` table (VideoPlayer/Timeline only; the comment: "Until the JS
+   extractor lands (#574 Phase 2)"). The three landed commits automate that table and wire
+   it through:
 
-   Remaining: implement (c) (v2-safe `update-widgets` via #764) for the instance last-mile,
-   keep the committed definition reconciliation, and fold the matrix into
+   - **Extractor** (`4b8c4f5`, `mdl/executor/editorconfig_extract.go`) — a static analyzer
+     lifts the dominant `getProperties` idioms from the compiled `editorConfig.js`
+     (`"V"===/!==ref && hide`, `ref && hide`, `ref || hide`, `ref ? hide : …`) into
+     `WidgetVisibilityRule`s, with **scoped** alias resolution (`var r=e.itemSelection`) so
+     minified single-letter identifiers don't leak across functions, and a boundary check
+     that **skips compound/ternary-nested and object-list-nested guards** rather than emit a
+     partial (wrong) rule — degrading safely to "not hidden". Coverage on the real DW 3.10.0
+     `Datagrid.editorConfig.js`: **9/28 hide-calls lifted** (12 object-list-nested, 7
+     compound — safely skipped, honestly counted), including the three that drive #600.
+   - **Wiring** — built-in widgets (DataGrid2/Gallery), which the `.def.json` generator
+     skips, resolve rules on the fly from the project's installed `.mpk` editorConfig at
+     build time (`resolveWidgetVisibilityRules`); `ApplyPropertyVisibility` then nulls the
+     hidden textTemplates. Object-side textTemplate defaults are populated with the `.mpk`'s
+     shipped caption translations (fixes CE4899 required-textTemplate) and the visibility
+     pass nulls the hidden ones afterward.
+   - **Selection-value fix** (`666a65b`) — conditions keyed on a Selection-typed property
+     (`itemSelection` = None/Single/Multi) must read the WidgetValue's `Selection` field, not
+     `PrimitiveValue`; reading the wrong field mis-fired under `Selection:Single`.
+
+   **Result: DataGrid2 on Mendix 11.12.0 + Data Widgets 3.10.0 (the exact #600 stack) →
+   0 errors, minimal AND full (Selection:Single + column textfilters).** No regression on
+   bundled DW across 11.12.0 / 11.10.0 / 10.24.
+
+   **Phase 2 landed** (`458c52a`): extraction moved into `.def.json` **generation**
+   (generated defs now carry `propertyVisibility`, superseding the hand table), and the rules
+   are wired into **`check`** as **MDL-WIDGET10** — a config-aware warning when the user sets
+   a property the widget hides under the current config (e.g. `ClearSelectionButtonLabel`
+   with `Selection:None`). Conservative: only warns when the property is explicitly set and
+   the condition value is determinable.
+
+   **Superseded options** (kept for the record): (c) v2-safe `update-widgets` via #764 — no
+   longer needed for DataGrid2 (mxcli now closes it natively); still the fallback for widgets
+   whose editorConfig the static extractor can't fully lift. (d) in-process `goja` execution
+   — moot: static lifting suffices for the common cases *and* yields declarative rules that
+   `check`/lint/an LLM can consume, which JS execution wouldn't. (b) per-version templates —
+   rejected.
+
+   Remaining (follow-ups, not blockers): the extractor covers the dominant idioms only — a
+   real JS AST would lift the compound/ternary and object-list-nested guards too; the same
+   rules could feed LLM "property cards"; and the matrix should fold into
    `scripts/widget-version-matrix.sh` as a standing gate (feasible now — `mxcli marketplace
-   download` fetches any widget version) asserting *bundled*-DW authoring stays at 0 CE0463.
+   download` fetches any widget version) asserting DataGrid2 across DW versions stays at 0.
 
    **Also noted (dirty-template audit):** `datagrid.json`'s Object carries a configured
    delete `Forms$ActionButton` (`Forms$DeleteClientAction` + `Atlas_Core.Atlas.trash-can`)
