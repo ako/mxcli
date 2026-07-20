@@ -183,6 +183,17 @@ func AugmentTemplate(tmpl *WidgetTemplate, def *mpk.WidgetDefinition) error {
 	// enum options but not the rest of each matched PropertyType's definition.
 	reconcilePropertyMetadata(tmpl.Type, mpkPropDefsByKey(def))
 
+	// NOTE: reconciling further ValueType scalars (Required, AllowedTypes, IsList) from
+	// the .mpk was evaluated and rejected — see the DataGrid2@3.10.0 investigation in
+	// PROPOSAL_multi_version_pluggable_widgets.md (Open Question #1). On large version
+	// jumps the installed widget's WidgetType BSON carries mxbuild-computed fields that
+	// are absent from the widget XML source entirely (AllowUpload, DesignProperties,
+	// LabelTemplate) and a computed Required (the DW 3.10.0 XML declares 3 required="true"
+	// but mxbuild emits 54), so no parser/template augment can reproduce it. The only
+	// faithful remediation for large drift is mxbuild's own `update-widgets`; the augment
+	// reconciliations here (keys, enum options, metadata, order) close moderate drift
+	// (Gallery@10.24) but are structurally capped below the large-jump case.
+
 	// Reorder the top-level PropertyTypes to match the installed .mpk's declaration
 	// order. augment above adds/removes/reconciles by KEY but leaves the template's
 	// original order; when the installed widget reordered its properties across

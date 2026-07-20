@@ -307,21 +307,49 @@ regenerate gen from the target version's reflection-data.
    because that was a *small* version delta; a big jump exposes per-field schema evolution
    (`Type`, `Required`, `AllowedTypes`, `Translations`) that key-level augment never touches.
 
-   **Two paths to close the large-drift case (both now testable against real DW 3.10.0):**
-   - **(a) Full-`ValueType` augment** — for every matched key, overwrite the *entire*
-     `ValueType` (`Type`, `Required`, `AllowedTypes`, `DefaultValue`, `EnumerationValues`)
-     from the `.mpk`, not just today's few fields. The `.mpk` is the authoritative schema,
-     so this generalises to any version. Open risk: `AllowUpload` / `Translations` are not
-     obviously in the `.mpk` — but the tolerance spike measured `AllowUpload` presence/absence
-     as *tolerated*, so full-`ValueType` reconciliation of the `.mpk`-backed fields may reach
-     0 errors regardless. Recommended; validate directly on DW 3.10.0.
-   - **(b) Per-version templates** — extract a clean `datagrid-<ver>.json` per Data Widgets
-     release. Reliable but doesn't scale (3.11.2 already shipped); a fallback if (a) can't
-     reconcile the `.mpk`-absent fields.
+   **RESOLVED — path (a) is structurally impossible; only mxbuild can produce the
+   envelope.** Full end-to-end reproduction of the #600 stack (fresh 11.12.0 project, DW
+   3.10.0 swapped in over the bundled 3.4.0, DataGrid2 `dg` authored with the fixed binary,
+   isolated from the Atlas template pages) with an order-independent, `$ID`/`TypePointer`-masked
+   before/after-`update-widgets` subtree diff of `dg` alone shows the residual drift is
+   dominated by fields that **do not exist in the widget XML source at all**:
 
-   Remaining: pick (a)/(b), fold the whole matrix into `scripts/widget-version-matrix.sh`
-   as a standing gate (now feasible — `mxcli marketplace download` can fetch any widget
-   version for the fixture), and validate end-to-end on DW 3.10.0 (the reporter's exact case).
+   | Residual `dg` drift after augment | count | in `Datagrid.xml`? |
+   |---|---|---|
+   | `AllowUpload` (absent → `false`) | 105 | **no** — not in source |
+   | `Required` (`false` → `true`) | 54 | partially — XML has **3** `required="true"`, mxbuild emits **54** |
+   | `DesignProperties`, `LabelTemplate` | several | **no** — not in source |
+   | `ReturnType` (`null` → `{Type,IsList,…}`), `Type`, `DefaultValue` | ~30 | computed/partial |
+
+   The nested-column **PropertyKey sets are already identical** before/after (augment adds
+   every new 3.10.0 key — `exportType`, `exportNumberFormat`, `exportDateFormat`, … —
+   correctly). What augment *cannot* produce is the mxbuild-**computed** BSON envelope:
+   `AllowUpload`/`DesignProperties`/`LabelTemplate` appear **nowhere** in `Datagrid.xml`, and
+   `Required` is computed (3 declared vs 54 emitted). Since these fields are not derivable
+   from the `.mpk`, **no parser/template/augment approach — including path (a), full-`ValueType`
+   reconciliation — can ever reproduce a version-faithful `WidgetType`.** (A speculative
+   `reconcileValueTypeSchema` was implemented and reverted: setting `Required` from the XML
+   `required` attr would mis-set the 51 mxbuild-computed keys to `false`.) `update-widgets`
+   on the same copy takes `dg` from CE0463 → **0** — confirming only mxbuild owns the envelope.
+
+   **Revised path forward — delegate the envelope to mxbuild, made v2-safe (was path (d)):**
+   - **(c) v2-safe `update-widgets` as the CE0463 remediation.** The augment layer already
+     closes *moderate* drift (Gallery@10.24, bundled DW) and that stays. For *large* jumps,
+     the correct fix is to run mxbuild's own `update-widgets` — which is exactly what the
+     skills now route users to (`mxcli docker check`/`build`, post the earlier skill-guidance
+     fix). The remaining blocker is that bare `mx update-widgets` destroys MPRv2 (deletes
+     `mprcontents/`, converts to v1 — issue #763), which **mendixlabs PR #764** fixes.
+     Adopt/port #764 so `mxcli docker check`/`build` (and the warm local loop) can reconcile
+     widgets without downgrading the project. This is the only path that is faithful for
+     *arbitrary* widget versions, because only mxbuild computes the envelope.
+   - **(b) Per-version templates** — extract a clean `datagrid-<ver>.json` per Data Widgets
+     release. Rejected as a primary fix: doesn't scale (3.11.2 already shipped) and still
+     wouldn't carry the computed `Required`; kept only as a note.
+
+   Remaining: implement (c) (v2-safe `update-widgets` via #764), keep the moderate-drift
+   augment as-is, and fold the matrix into `scripts/widget-version-matrix.sh` as a standing
+   gate (feasible now — `mxcli marketplace download` fetches any widget version for the
+   fixture) asserting *bundled*-DW authoring stays at 0 CE0463.
 
    **Also noted (dirty-template audit):** `datagrid.json`'s Object carries a configured
    delete `Forms$ActionButton` (`Forms$DeleteClientAction` + `Atlas_Core.Atlas.trash-can`)
