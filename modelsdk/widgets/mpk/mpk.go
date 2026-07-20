@@ -27,8 +27,10 @@ type PropertyDef struct {
 	IsList       bool
 	IsSystem     bool          // true for <systemProperty> elements
 	DataSource   string        // dataSource attribute reference
+	ReturnType   string        // for expression properties: the <returnType type="..."/> Mendix type
 	AllowedTypes []string      // for attribute properties: Mendix type names ("String", "Decimal", etc.)
 	EnumValues   []EnumValue   // for enumeration properties: the declared options (key + caption)
+	Translations []Translation // widget-shipped caption/template translations (<translations>)
 	Children     []PropertyDef // nested properties for object-type properties
 }
 
@@ -36,6 +38,12 @@ type PropertyDef struct {
 type EnumValue struct {
 	Key     string
 	Caption string
+}
+
+// Translation is one localized caption/template string of a widget property.
+type Translation struct {
+	Lang string
+	Text string
 }
 
 // WidgetDefinition holds the parsed definition of a pluggable widget from an .mpk file.
@@ -114,8 +122,22 @@ type xmlProperty struct {
 	Description    string             `xml:"description"`
 	AttributeTypes []xmlAttributeType `xml:"attributeTypes>attributeType"`
 	EnumValues     []xmlEnumValue     `xml:"enumerationValues>enumerationValue"`
+	ReturnType     xmlReturnType      `xml:"returnType"`
+	Translations   []xmlTranslation   `xml:"translations>translation"`
 	// Nested properties for object type
 	NestedProps []xmlPropGroup `xml:"properties>propertyGroup"`
+}
+
+// xmlReturnType represents <returnType type="..."/> on an expression property.
+type xmlReturnType struct {
+	Type string `xml:"type,attr"`
+}
+
+// xmlTranslation represents <translation lang="...">Text</translation> — a widget-shipped
+// caption/template translation.
+type xmlTranslation struct {
+	Lang string `xml:"lang,attr"`
+	Text string `xml:",chardata"`
 }
 
 // xmlEnumValue represents <enumerationValue key="...">Caption</enumerationValue>.
@@ -266,18 +288,25 @@ func walkPropertyGroup(pg xmlPropGroup, parentCategory string, def *WidgetDefini
 			Caption:      p.Caption,
 			Description:  p.Description,
 			Category:     category,
-			Required:     p.Required == "true",
+			// Mendix pluggable-widget spec: `required` defaults to true when the
+			// attribute is absent (mxbuild's update-widgets emits Required=true for
+			// every property that omits required=, e.g. DataGrid2 showContentAs). Only
+			// an explicit required="false" is optional. Defaulting missing→false here
+			// caused within-key CE0463 drift on augment-added keys (issue #600).
+			Required:     p.Required != "false",
 			DefaultValue: p.DefaultValue,
 			IsList:       p.IsList == "true",
 			DataSource:   p.DataSource,
+			ReturnType:   p.ReturnType.Type,
 			AllowedTypes: allowedTypes,
 			EnumValues:   enumValues,
+			Translations: toTranslations(p.Translations),
 		}
 
 		// Parse nested properties for object-type properties
 		if p.Type == "object" && len(p.NestedProps) > 0 {
 			for _, npg := range p.NestedProps {
-				collectNestedProperties(npg, &prop)
+				collectNestedProperties(npg, &prop, "")
 			}
 		}
 
@@ -300,8 +329,17 @@ func walkPropertyGroup(pg xmlPropGroup, parentCategory string, def *WidgetDefini
 }
 
 // collectNestedProperties extracts child properties from nested propertyGroups
-// within an object-type property and appends them to the parent PropertyDef.
-func collectNestedProperties(pg xmlPropGroup, parent *PropertyDef) {
+// within an object-type property and appends them to the parent PropertyDef. The
+// property group's caption chain becomes each child's Category (joined with "::",
+// mirroring walkPropertyGroup) — mxbuild derives nested categories the same way, so a
+// missing category here is a within-key CE0463 drift on augment-added nested props.
+func collectNestedProperties(pg xmlPropGroup, parent *PropertyDef, parentCategory string) {
+	category := pg.Caption
+	if parentCategory != "" && category != "" {
+		category = parentCategory + "::" + category
+	} else if parentCategory != "" {
+		category = parentCategory
+	}
 	for _, p := range pg.Properties {
 		var allowedTypes []string
 		for _, at := range p.AttributeTypes {
@@ -318,25 +356,49 @@ func collectNestedProperties(pg xmlPropGroup, parent *PropertyDef) {
 			Type:         p.Type,
 			Caption:      p.Caption,
 			Description:  p.Description,
-			Required:     p.Required == "true",
+			Category:     category,
+			// Mendix pluggable-widget spec: `required` defaults to true when the
+			// attribute is absent (mxbuild's update-widgets emits Required=true for
+			// every property that omits required=, e.g. DataGrid2 showContentAs). Only
+			// an explicit required="false" is optional. Defaulting missing→false here
+			// caused within-key CE0463 drift on augment-added keys (issue #600).
+			Required:     p.Required != "false",
 			DefaultValue: p.DefaultValue,
 			IsList:       p.IsList == "true",
 			DataSource:   p.DataSource,
+			ReturnType:   p.ReturnType.Type,
 			AllowedTypes: allowedTypes,
 			EnumValues:   enumValues,
+			Translations: toTranslations(p.Translations),
 		}
 		// Nested object-type properties can themselves contain object lists.
 		if p.Type == "object" && len(p.NestedProps) > 0 {
 			for _, npg := range p.NestedProps {
-				collectNestedProperties(npg, &child)
+				collectNestedProperties(npg, &child, "")
 			}
 		}
 		parent.Children = append(parent.Children, child)
 	}
 
 	for _, sub := range pg.SubGroups {
-		collectNestedProperties(sub, parent)
+		collectNestedProperties(sub, parent, category)
 	}
+}
+
+// toTranslations converts parsed <translation> XML elements to Translation records,
+// trimming caption whitespace (the XML pretty-prints chardata with indentation).
+func toTranslations(xts []xmlTranslation) []Translation {
+	if len(xts) == 0 {
+		return nil
+	}
+	out := make([]Translation, 0, len(xts))
+	for _, xt := range xts {
+		if xt.Lang == "" {
+			continue
+		}
+		out = append(out, Translation{Lang: xt.Lang, Text: strings.TrimSpace(xt.Text)})
+	}
+	return out
 }
 
 // FindMPK looks in the project's widgets/ directory for an .mpk matching the widgetID.
