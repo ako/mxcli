@@ -257,10 +257,11 @@ regenerate gen from the target version's reflection-data.
      a `Category` rename (`General::Pagination`→`General::Items`), a `Caption` change.
      `reconcilePropertyMetadata` now overwrites Category/Caption/DefaultValue from the
      `.mpk` for every matched key. Verified: after it, **every Gallery@10.24
-     PropertyType matches `update-widgets`**; no regression on 11.12. This is the
-     likely complete fix for the #600 DataGrid2 case (its drift is PropertyType
-     metadata). *(modelsdk engine; the legacy sdk `augment` lacks even
-     `reconcileEnumValues` and is behind — consolidate per item 3 above.)*
+     PropertyType matches `update-widgets`**; no regression on 11.12. (An earlier draft
+     claimed this was "the likely complete fix for #600" — **disproven**; see the
+     large-drift measurement below, which shows the #600 DataGrid2 case needs more.)
+     *(modelsdk engine; the legacy sdk `augment` lacks even `reconcileEnumValues` and is
+     behind — consolidate per item 3 above.)*
    - **Axis 2 — datasource structure + PropertyType order. FIXED (`10b5bcf`).**
      Gallery@10.24 *additionally* drifted two ways: (a) mxcli emitted `Forms$GridSortBar`
      without `SortItems` and `CustomWidgets$CustomWidgetXPathSource` without
@@ -273,15 +274,54 @@ regenerate gen from the target version's reflection-data.
      `reorderPropertyTypes` now sorts the Type's PropertyTypes to the `.mpk` declaration
      order (refs are by `$ID`, so it's safe).
 
-   **Result: Gallery@10.24 now passes `mx check` with 0 errors and NO `update-widgets`.**
-   Full regression clean — DataGrid2 (attribute + filter + custom-content) and Gallery
-   both 0 errors on 10.24 / 11.10 / 11.12.0 / 11.12.1. All three axes (metadata, datasource,
-   order) are the general within-key/order drift that any object-list widget hits when its
-   installed version moves past the 11.6 template — including the #600 DataGrid2 case.
-   *(modelsdk engine; the legacy sdk `augment` remains behind — consolidate per item 3.)*
-   Remaining: fold these into `scripts/widget-version-matrix.sh` as a standing gate; and
-   direct end-to-end validation of the #600 DataGrid2 case awaits a project with Data
-   Widgets 3.10.0.
+   **Result (moderate drift): Gallery@10.24 passes `mx check` with 0 errors and NO
+   `update-widgets`.** Regression clean — DataGrid2 (attribute + filter + custom-content)
+   and Gallery both 0 errors on 10.24 / 11.10 / 11.12.0 / 11.12.1 with the *bundled*
+   Data Widgets. *(modelsdk engine; the legacy sdk `augment` remains behind — item 3.)*
+
+   **The three axes are necessary but NOT sufficient for large version jumps — measured
+   against the #600 reporter's exact stack.** Downloaded Data Widgets **3.10.0** from the
+   marketplace, swapped it into a Mendix 11.12.0 project (over the bundled 3.4.0), and
+   authored a DataGrid2 with the fixed binary: **still CE0463.** Isolating that one grid
+   from the Atlas template pages (which legitimately drift and are a separate "update
+   widgets" concern), the installed 3.10.0 schema differs from the 11.6-era template in
+   **far more than the three axes reconcile** — an aggregated field diff over the
+   `CustomWidgetType`:
+
+   | Differing `ValueType` field | # properties |
+   |---|---|
+   | `AllowUpload` (null vs false) | 79 |
+   | `Type` (property type changed) | 15 |
+   | `Translations` | 14 |
+   | `DefaultValue` | 13 |
+   | `Required` | 7 |
+   | `EnumerationValues` | 7 |
+   | `AllowedTypes` | 4 |
+   | + `Category`, `Description`, `ReturnType`, nested `ObjectType.PropertyTypes` | |
+
+   So **augment's key-presence + metadata/enum/order reconciliation scales to a *moderate*
+   drift (Gallery@10.24: Category + one DefaultValue + order + datasource) but not to a
+   *large* one (DataGrid2 11.6-era → 3.10.0).** This directly disproves the earlier
+   working assumption that Axis 1 alone would close #600. The Phase-1 measurement that
+   "augment already delivers version-correct schemas (56=56 for ComboBox 2.4.3)" held only
+   because that was a *small* version delta; a big jump exposes per-field schema evolution
+   (`Type`, `Required`, `AllowedTypes`, `Translations`) that key-level augment never touches.
+
+   **Two paths to close the large-drift case (both now testable against real DW 3.10.0):**
+   - **(a) Full-`ValueType` augment** — for every matched key, overwrite the *entire*
+     `ValueType` (`Type`, `Required`, `AllowedTypes`, `DefaultValue`, `EnumerationValues`)
+     from the `.mpk`, not just today's few fields. The `.mpk` is the authoritative schema,
+     so this generalises to any version. Open risk: `AllowUpload` / `Translations` are not
+     obviously in the `.mpk` — but the tolerance spike measured `AllowUpload` presence/absence
+     as *tolerated*, so full-`ValueType` reconciliation of the `.mpk`-backed fields may reach
+     0 errors regardless. Recommended; validate directly on DW 3.10.0.
+   - **(b) Per-version templates** — extract a clean `datagrid-<ver>.json` per Data Widgets
+     release. Reliable but doesn't scale (3.11.2 already shipped); a fallback if (a) can't
+     reconcile the `.mpk`-absent fields.
+
+   Remaining: pick (a)/(b), fold the whole matrix into `scripts/widget-version-matrix.sh`
+   as a standing gate (now feasible — `mxcli marketplace download` can fetch any widget
+   version for the fixture), and validate end-to-end on DW 3.10.0 (the reporter's exact case).
 
    **Also noted (dirty-template audit):** `datagrid.json`'s Object carries a configured
    delete `Forms$ActionButton` (`Forms$DeleteClientAction` + `Atlas_Core.Atlas.trash-can`)
