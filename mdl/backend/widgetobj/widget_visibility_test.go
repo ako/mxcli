@@ -102,6 +102,84 @@ func TestApplyPropertyVisibility(t *testing.T) {
 	})
 }
 
+// TestApplyPropertyVisibility_SelectionTypedCondition locks in the fix for a
+// visibility condition keyed on a Selection-typed property (e.g. DataGrid2
+// itemSelection = None/Single/Multi): its value lives in the WidgetValue's
+// `Selection` field, not `PrimitiveValue`. Reading the wrong field made the
+// condition see "" and mis-fire (#574: singleSelectionColumnLabel was nulled
+// even under Selection:Single).
+func TestApplyPropertyVisibility_SelectionTypedCondition(t *testing.T) {
+	const (
+		selID  = "44444444-4444-4444-4444-444444444444" // Selection "itemSelection"
+		lblID  = "55555555-5555-5555-5555-555555555555" // TextTemplate "singleSelectionColumnLabel"
+		tmplTy = "Forms$ClientTemplate"
+	)
+	populated := bson.D{{Key: "$Type", Value: tmplTy}}
+
+	build := func(selectionValue string) *Builder {
+		return &Builder{
+			object: bson.D{{Key: "Properties", Value: bson.A{
+				int32(2),
+				bson.D{
+					{Key: "$Type", Value: "CustomWidgets$WidgetProperty"},
+					{Key: "TypePointer", Value: types.UUIDToBlob(selID)},
+					{Key: "Value", Value: bson.D{
+						{Key: "$Type", Value: "CustomWidgets$WidgetValue"},
+						{Key: "PrimitiveValue", Value: ""}, // selection value is NOT here
+						{Key: "Selection", Value: selectionValue},
+					}},
+				},
+				bson.D{
+					{Key: "$Type", Value: "CustomWidgets$WidgetProperty"},
+					{Key: "TypePointer", Value: types.UUIDToBlob(lblID)},
+					{Key: "Value", Value: bson.D{
+						{Key: "$Type", Value: "CustomWidgets$WidgetValue"},
+						{Key: "TextTemplate", Value: populated},
+					}},
+				},
+			}}},
+			propertyTypeIDs: map[string]pages.PropertyTypeIDEntry{
+				"itemSelection":              {PropertyTypeID: selID, ValueType: "Selection"},
+				"singleSelectionColumnLabel": {PropertyTypeID: lblID, ValueType: "TextTemplate"},
+			},
+		}
+	}
+	rules := []types.WidgetVisibilityRule{{
+		PropertyKey: "singleSelectionColumnLabel",
+		HiddenWhen:  &types.WidgetVisibilityCondition{PropertyKey: "itemSelection", Operator: "ne", Value: "Single"},
+	}}
+	tt := func(ob *Builder) any {
+		for _, elem := range ob.object {
+			if elem.Key != "Properties" {
+				continue
+			}
+			for _, item := range elem.Value.(bson.A) {
+				prop, ok := item.(bson.D)
+				if !ok || propertyTypePointerID(prop) != normalizeID(lblID) {
+					continue
+				}
+				return findField(t, findField(t, prop, "Value").(bson.D), "TextTemplate")
+			}
+		}
+		return "not-found"
+	}
+
+	t.Run("Single → visible → preserved", func(t *testing.T) {
+		ob := build("Single")
+		ob.ApplyPropertyVisibility(rules)
+		if tt(ob) == nil {
+			t.Error("singleSelectionColumnLabel nulled under Selection:Single (Selection field not read)")
+		}
+	})
+	t.Run("None → hidden → nulled", func(t *testing.T) {
+		ob := build("None")
+		ob.ApplyPropertyVisibility(rules)
+		if tt(ob) != nil {
+			t.Error("singleSelectionColumnLabel not nulled under Selection:None")
+		}
+	})
+}
+
 func normalizeID(id string) string {
 	out := make([]byte, 0, len(id))
 	for i := 0; i < len(id); i++ {
