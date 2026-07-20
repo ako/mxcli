@@ -44,6 +44,27 @@ var (
 	visibilityCacheMu sync.Mutex
 )
 
+// WidgetVisibilityRules returns the editorConfig-derived property-visibility rules
+// for a widget installed in the given project (nil when the .mpk or its editor
+// config can't be found). Exported for the `mxcli widget describe` command, which
+// surfaces the dynamic property rules mxcli discovered for a project's widget.
+func WidgetVisibilityRules(projectPath, widgetID string) []types.WidgetVisibilityRule {
+	return resolveWidgetVisibilityRules(projectPath, widgetID)
+}
+
+// ExtractWidgetVisibilityStats lifts a widget's editorConfig visibility rules from
+// a specific .mpk path and also returns the extractor's coverage stats (how many
+// hide-calls were recognized vs skipped). Exported for `mxcli widget describe` to
+// report extraction coverage.
+func ExtractWidgetVisibilityStats(mpkPath, widgetID string) ([]types.WidgetVisibilityRule, int, int) {
+	js, err := mpk.ReadEditorConfig(mpkPath, widgetID)
+	if err != nil || js == "" {
+		return nil, 0, 0
+	}
+	rules, stats := extractVisibilityRulesFromJS(js)
+	return rules, stats.Recognized, stats.TotalHideCalls
+}
+
 // resolveWidgetVisibilityRules returns the property-visibility rules for a
 // widget, lifted from its installed .mpk's editorConfig.js. Used to enrich
 // built-in widget definitions (DataGrid2, Gallery, …) — which the .def.json
