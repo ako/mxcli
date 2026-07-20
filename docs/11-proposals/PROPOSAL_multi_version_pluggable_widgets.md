@@ -307,49 +307,68 @@ regenerate gen from the target version's reflection-data.
    because that was a *small* version delta; a big jump exposes per-field schema evolution
    (`Type`, `Required`, `AllowedTypes`, `Translations`) that key-level augment never touches.
 
-   **RESOLVED — path (a) is structurally impossible; only mxbuild can produce the
-   envelope.** Full end-to-end reproduction of the #600 stack (fresh 11.12.0 project, DW
-   3.10.0 swapped in over the bundled 3.4.0, DataGrid2 `dg` authored with the fixed binary,
-   isolated from the Atlas template pages) with an order-independent, `$ID`/`TypePointer`-masked
-   before/after-`update-widgets` subtree diff of `dg` alone shows the residual drift is
-   dominated by fields that **do not exist in the widget XML source at all**:
+   **RESOLVED (definition side) — the `WidgetType` IS generically reproducible; an
+   earlier "only mxbuild can produce the envelope" conclusion was WRONG.** `update-widgets`
+   is fully generic (no per-widget knowledge), so everything it emits is derivable from the
+   package + the generic metamodel/spec defaults — the "not in `Datagrid.xml`" fields are
+   generic defaults, not widget-specific computation:
+   - `AllowUpload` (on **all 105** ValueTypes) is a generic `WidgetValueType` metamodel
+     default (`false`) — emitted for every ValueType, widget-agnostic.
+   - `Required` "computed 3→54" is just the **pluggable-widget spec default**: `required`
+     defaults to **true** when the attribute is absent. The `.mpk` parser had the wrong
+     default (missing→false); fixed.
+   - `Type`/`DefaultValue` drift was augment cloning new keys from **wrong-typed exemplars**
+     (our bug), plus stale template values — fixed by reconciling each matched ValueType's
+     `Type`/`Required`/`DefaultValue`/`AllowedTypes`/`IsList`/`ReturnType`/`Translations`
+     from the `.mpk` and normalizing the mutually-exclusive type-specific fields.
+   - `Translations`/`ReturnType`/nested `Category`/nested order — all parsed from the
+     widget XML (`<translations>`, `<returnType>`, propertyGroup captions) and emitted.
 
-   | Residual `dg` drift after augment | count | in `Datagrid.xml`? |
-   |---|---|---|
-   | `AllowUpload` (absent → `false`) | 105 | **no** — not in source |
-   | `Required` (`false` → `true`) | 54 | partially — XML has **3** `required="true"`, mxbuild emits **54** |
-   | `DesignProperties`, `LabelTemplate` | several | **no** — not in source |
-   | `ReturnType` (`null` → `{Type,IsList,…}`), `Type`, `DefaultValue` | ~30 | computed/partial |
+   **Committed (`c7fe714`): the emitted `CustomWidgetType` is byte-identical (canonical,
+   `$ID`/`TypePointer`-masked) to `update-widgets` output for the #600 stack (DW 3.10.0 /
+   Mendix 11.12.0) — definition diff 326 → 0 — with no regression on bundled DW across
+   11.12.0 / 11.10.0 / 10.24.** The generic-reconciliation thesis holds for the definition.
 
-   The nested-column **PropertyKey sets are already identical** before/after (augment adds
-   every new 3.10.0 key — `exportType`, `exportNumberFormat`, `exportDateFormat`, … —
-   correctly). What augment *cannot* produce is the mxbuild-**computed** BSON envelope:
-   `AllowUpload`/`DesignProperties`/`LabelTemplate` appear **nowhere** in `Datagrid.xml`, and
-   `Required` is computed (3 declared vs 54 emitted). Since these fields are not derivable
-   from the `.mpk`, **no parser/template/augment approach — including path (a), full-`ValueType`
-   reconciliation — can ever reproduce a version-faithful `WidgetType`.** (A speculative
-   `reconcileValueTypeSchema` was implemented and reverted: setting `Required` from the XML
-   `required` attr would mis-set the 51 mxbuild-computed keys to `false`.) `update-widgets`
-   on the same copy takes `dg` from CE0463 → **0** — confirming only mxbuild owns the envelope.
+   **NOT resolved (instance side) — the last-mile Object default-template instantiation is
+   config-conditional applicability that lives in the widget's editor code, not the
+   declarative package.** With the definition matching, the residual CE0463 is entirely in
+   the `WidgetObject`: a handful of `textTemplate` properties whose default template
+   (`Forms$ClientTemplate` with the shipped caption translations) mxbuild instantiates in
+   the instance. Even a **minimal** DataGrid2 (Selection:None, one column) reproduces it —
+   definition identical, only ~9 `textTemplate` default-templates differ, `update-widgets` →
+   0. **Which textTemplates get a default template is config-dependent**: aria/status labels
+   are always instantiated, but `clearSelectionButtonLabel` / `loadMoreButtonCaption` /
+   `singleSelectionColumnLabel` stay `null` because their feature is off — a distinction
+   mxbuild derives from the widget's **editor applicability logic**, not from anything in
+   `Datagrid.xml` (the property defs of the null-vs-populated ones are structurally
+   identical). Empirically: an "always-populate" rule closes 9→3 but over-populates the 3
+   feature-gated ones (still CE0463); a `Required`-gate closes 3→9 the other way. Neither
+   declarative rule matches, because the rule isn't declarative.
 
-   **Revised path forward — delegate the envelope to mxbuild, made v2-safe (was path (d)):**
-   - **(c) v2-safe `update-widgets` as the CE0463 remediation.** The augment layer already
-     closes *moderate* drift (Gallery@10.24, bundled DW) and that stays. For *large* jumps,
-     the correct fix is to run mxbuild's own `update-widgets` — which is exactly what the
-     skills now route users to (`mxcli docker check`/`build`, post the earlier skill-guidance
-     fix). The remaining blocker is that bare `mx update-widgets` destroys MPRv2 (deletes
-     `mprcontents/`, converts to v1 — issue #763), which **mendixlabs PR #764** fixes.
-     Adopt/port #764 so `mxcli docker check`/`build` (and the warm local loop) can reconcile
-     widgets without downgrading the project. This is the only path that is faithful for
-     *arbitrary* widget versions, because only mxbuild computes the envelope.
-   - **(b) Per-version templates** — extract a clean `datagrid-<ver>.json` per Data Widgets
-     release. Rejected as a primary fix: doesn't scale (3.11.2 already shipped) and still
-     wouldn't carry the computed `Required`; kept only as a note.
+   **Object-from-definition rebuild — tried, REJECTED (regresses the common case).**
+   Regenerating the whole `WidgetObject` from the reconciled definition (one WidgetValue per
+   PropertyType, defaults built from each ValueType) makes the count match (127=127) and is
+   architecturally clean, but it **discards the byte-exact extracted template Object** — and
+   because it can't replicate the editor-applicability rule, it **regressed bundled DataGrid2
+   from 0 → 1 CE0463 on both 11.12.0 and 10.24**. The extracted template Object is the best
+   available source for the no-drift case; a rebuild trades that away for an approximation.
+   Reverted.
 
-   Remaining: implement (c) (v2-safe `update-widgets` via #764), keep the moderate-drift
-   augment as-is, and fold the matrix into `scripts/widget-version-matrix.sh` as a standing
-   gate (feasible now — `mxcli marketplace download` fetches any widget version for the
-   fixture) asserting *bundled*-DW authoring stays at 0 CE0463.
+   **Path forward for the instance last-mile:**
+   - **(c) v2-safe `update-widgets` finish, on top of mxcli's correct definition.** The
+     applicability logic that decides instance defaults lives in the widget's compiled editor
+     code, which **mxbuild executes and mxcli (pure Go) cannot**. So the instance last-mile is
+     genuinely mxbuild's job: run its `update-widgets` to finalize instance defaults, made
+     v2-safe (bare `update-widgets` destroys MPRv2 — issue #763; **mendixlabs PR #764** fixes
+     it). This is *not* a retreat from the generic thesis — the definition is now fully
+     generic in mxcli; only the editor-logic-dependent instance defaults need mxbuild.
+   - **(b) Per-version templates** — rejected: doesn't scale and still wouldn't carry the
+     config-conditional instance defaults.
+
+   Remaining: implement (c) (v2-safe `update-widgets` via #764) for the instance last-mile,
+   keep the committed definition reconciliation, and fold the matrix into
+   `scripts/widget-version-matrix.sh` as a standing gate (feasible now — `mxcli marketplace
+   download` fetches any widget version) asserting *bundled*-DW authoring stays at 0 CE0463.
 
    **Also noted (dirty-template audit):** `datagrid.json`'s Object carries a configured
    delete `Forms$ActionButton` (`Forms$DeleteClientAction` + `Atlas_Core.Atlas.trash-can`)
