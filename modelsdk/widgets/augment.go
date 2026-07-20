@@ -183,16 +183,26 @@ func AugmentTemplate(tmpl *WidgetTemplate, def *mpk.WidgetDefinition) error {
 	// enum options but not the rest of each matched PropertyType's definition.
 	reconcilePropertyMetadata(tmpl.Type, mpkPropDefsByKey(def))
 
-	// NOTE: reconciling further ValueType scalars (Required, AllowedTypes, IsList) from
-	// the .mpk was evaluated and rejected — see the DataGrid2@3.10.0 investigation in
-	// PROPOSAL_multi_version_pluggable_widgets.md (Open Question #1). On large version
-	// jumps the installed widget's WidgetType BSON carries mxbuild-computed fields that
-	// are absent from the widget XML source entirely (AllowUpload, DesignProperties,
-	// LabelTemplate) and a computed Required (the DW 3.10.0 XML declares 3 required="true"
-	// but mxbuild emits 54), so no parser/template augment can reproduce it. The only
-	// faithful remediation for large drift is mxbuild's own `update-widgets`; the augment
-	// reconciliations here (keys, enum options, metadata, order) close moderate drift
-	// (Gallery@10.24) but are structurally capped below the large-jump case.
+	// Reconcile the schema-derived scalar fields of each matched PropertyType's ValueType
+	// against the .mpk — Type, Required, DefaultValue, AllowedTypes, IsList,
+	// DataSourceProperty — and, where the Type changes, reset the corresponding Object
+	// WidgetValue so it stays consistent with the schema. This closes the large-version
+	// -jump within-key drift behind issue #600 (DataGrid2 11.6-era template → Data Widgets
+	// 3.10.0). update-widgets is fully generic (it has no widget-specific knowledge), so
+	// everything it produces is derivable from the widget package + the generic metamodel
+	// defaults — nothing here is hardcoded per widget. Confirmed empirically against the
+	// #600 stack: after this reconciliation the Type/DefaultValue drift reconciles to zero
+	// and Required matches the spec default (absent→true, fixed in the mpk parser).
+	reconcileValueTypesFromMPK(tmpl, mpkPropDefsByKey(def))
+
+	// Emit the generic WidgetValueType envelope fields Studio Pro's current metamodel
+	// always serializes but that an older extracted template predates — today AllowUpload
+	// (default false, present on every ValueType in mxbuild output). These are generic
+	// metamodel defaults, not widget-specific, so they are added to every ValueType that
+	// lacks them regardless of key. Missing envelope fields are a within-key definition
+	// mismatch → CE0463 on large version jumps (issue #600: DW 3.10.0 emits AllowUpload
+	// on all 105 DataGrid2 ValueTypes; the 11.6-era template has none).
+	completeValueTypeEnvelope(tmpl.Type)
 
 	// Reorder the top-level PropertyTypes to match the installed .mpk's declaration
 	// order. augment above adds/removes/reconciles by KEY but leaves the template's
@@ -216,13 +226,28 @@ func reorderPropertyTypes(tmplType map[string]any, def *mpk.WidgetDefinition) {
 	if !ok {
 		return
 	}
+	reorderObjectTypePropertyTypes(objType, def.Properties)
+}
+
+// reorderObjectTypePropertyTypes reorders one ObjectType's PropertyTypes to the given
+// .mpk property order, then recurses into each object-list property's nested ObjectType
+// using that property's children order. Leading array markers keep their position; keys
+// the .mpk does not declare are kept after the declared ones (stable sort). Nested order
+// matters as much as top-level: an object-list column whose child PropertyTypes are in the
+// template's old order (not the installed widget's) is a within-key definition mismatch →
+// CE0463 (issue #600: DataGrid2 3.10.0 reordered/added the column export* properties).
+func reorderObjectTypePropertyTypes(objType map[string]any, props []mpk.PropertyDef) {
 	propTypes, ok := getArrayField(objType, "PropertyTypes")
 	if !ok {
 		return
 	}
-	order := make(map[string]int, len(def.Properties))
-	for i, p := range def.Properties {
+	order := make(map[string]int, len(props))
+	childrenByKey := make(map[string][]mpk.PropertyDef)
+	for i, p := range props {
 		order[p.Key] = i
+		if len(p.Children) > 0 {
+			childrenByKey[p.Key] = p.Children
+		}
 	}
 	rank := func(pt any) int {
 		m, ok := pt.(map[string]any)
@@ -239,6 +264,28 @@ func reorderPropertyTypes(tmplType map[string]any, def *mpk.WidgetDefinition) {
 		return rank(propTypes[i]) < rank(propTypes[j])
 	})
 	setArrayField(objType, "PropertyTypes", propTypes)
+
+	// Recurse into nested ObjectTypes of object-list properties.
+	for _, pt := range propTypes {
+		m, ok := pt.(map[string]any)
+		if !ok {
+			continue
+		}
+		key, _ := m["PropertyKey"].(string)
+		kids, ok := childrenByKey[key]
+		if !ok {
+			continue
+		}
+		vt, ok := getMapField(m, "ValueType")
+		if !ok {
+			continue
+		}
+		nestedObjType, ok := getMapField(vt, "ObjectType")
+		if !ok {
+			continue
+		}
+		reorderObjectTypePropertyTypes(nestedObjType, kids)
+	}
 }
 
 // mpkPropDefsByKey indexes a widget's PropertyDefs by key, across both top-level and
@@ -275,6 +322,9 @@ func reconcilePropertyMetadata(node any, byKey map[string]mpk.PropertyDef) {
 					if pd.Caption != "" {
 						v["Caption"] = pd.Caption
 					}
+					if pd.Description != "" {
+						v["Description"] = pd.Description
+					}
 					if pd.DefaultValue != "" {
 						if vt, ok := v["ValueType"].(map[string]any); ok {
 							vt["DefaultValue"] = pd.DefaultValue
@@ -291,6 +341,182 @@ func reconcilePropertyMetadata(node any, byKey map[string]mpk.PropertyDef) {
 			reconcilePropertyMetadata(item, byKey)
 		}
 	}
+}
+
+// reconcileValueTypesFromMPK overwrites the schema-derived scalar fields of every
+// matched PropertyType's ValueType from the .mpk (Type, Required, DefaultValue,
+// AllowedTypes, IsList, DataSourceProperty), and — because an in-place Type change would
+// otherwise leave the Object's WidgetValue shaped for the old type (the Object↔schema
+// inconsistency that triggers CE0463) — resets each affected Object WidgetValue.
+//
+// The .mpk is the authoritative schema for a freshly-created instance; mxbuild's generic
+// update-widgets derives exactly these values from the same package. DefaultValue is set
+// unconditionally (including to "" when the .mpk omits it) so a stale template default —
+// e.g. a value the installed widget no longer defines — is cleared, not preserved.
+func reconcileValueTypesFromMPK(tmpl *WidgetTemplate, byKey map[string]mpk.PropertyDef) {
+	// PropertyType $IDs whose Type changed → their Object WidgetValue must be reset.
+	changedTypeIDs := map[string]mpk.PropertyDef{}
+
+	var walk func(any)
+	walk = func(node any) {
+		switch v := node.(type) {
+		case map[string]any:
+			if v["$Type"] == "CustomWidgets$WidgetPropertyType" {
+				if key, _ := v["PropertyKey"].(string); key != "" {
+					if pd, ok := byKey[key]; ok {
+						if vt, ok := v["ValueType"].(map[string]any); ok {
+							bsonType := xmlTypeToBSONType(pd.Type)
+							if bsonType != "" {
+								if old, _ := vt["Type"].(string); old != bsonType {
+									if id, _ := v["$ID"].(string); id != "" {
+										changedTypeIDs[id] = pd
+									}
+								}
+								vt["Type"] = bsonType
+							}
+							vt["Required"] = pd.Required
+							vt["IsList"] = pd.IsList
+							vt["DefaultValue"] = pd.DefaultValue
+							vt["AllowedTypes"] = buildAllowedTypesArray(pd.AllowedTypes)
+							vt["DataSourceProperty"] = pd.DataSource
+							// Normalize the mutually-exclusive type-specific fields to the
+							// authoritative .mpk type. A ValueType cloned from a wrong-typed
+							// exemplar (or whose Type changed across widget versions) otherwise
+							// keeps stale fields that don't apply to its current type — e.g. a
+							// TextTemplate carrying EnumerationValues from an Enumeration
+							// exemplar, or a Widgets property carrying a cloned ReturnType.
+							// mxbuild emits these empty for the non-matching type, so a
+							// leftover is a within-key definition mismatch → CE0463.
+							switch bsonType {
+							case "Enumeration":
+								vt["EnumerationValues"] = buildEnumValuesArray(pd.EnumValues)
+								vt["ReturnType"] = nil
+							case "Expression":
+								vt["EnumerationValues"] = []any{float64(2)}
+								if pd.ReturnType != "" {
+									vt["ReturnType"] = buildReturnType(pd.ReturnType)
+								} else {
+									vt["ReturnType"] = nil
+								}
+							default:
+								vt["EnumerationValues"] = []any{float64(2)}
+								vt["ReturnType"] = nil
+							}
+							// Widget-shipped caption/template translations (from the .mpk
+							// <translations>), emitted into the definition as a
+							// WidgetTranslation list. Absent here → CE0463 on widgets that
+							// ship localized captions (DataGrid2 nl_NL).
+							if len(pd.Translations) > 0 {
+								vt["Translations"] = buildTranslationsArray(pd.Translations)
+							}
+						}
+					}
+				}
+			}
+			for _, val := range v {
+				walk(val)
+			}
+		case []any:
+			for _, item := range v {
+				walk(item)
+			}
+		}
+	}
+	walk(tmpl.Type)
+
+	if len(changedTypeIDs) == 0 {
+		return
+	}
+	// Reset each Object WidgetValue whose PropertyType's Type changed, so the Object
+	// matches the reconciled schema. The WidgetProperty's TypePointer references the
+	// PropertyType $ID (IDs are remapped later, so they still match at this stage).
+	var resetWalk func(any)
+	resetWalk = func(node any) {
+		switch v := node.(type) {
+		case map[string]any:
+			if v["$Type"] == "CustomWidgets$WidgetProperty" {
+				if tp, _ := v["TypePointer"].(string); tp != "" {
+					if pd, ok := changedTypeIDs[tp]; ok {
+						if val, ok := v["Value"].(map[string]any); ok {
+							resetPropertyValue(val, pd)
+						}
+					}
+				}
+			}
+			for _, child := range v {
+				resetWalk(child)
+			}
+		case []any:
+			for _, item := range v {
+				resetWalk(item)
+			}
+		}
+	}
+	resetWalk(tmpl.Object)
+}
+
+// completeValueTypeEnvelope walks a widget Type and ensures every WidgetValueType carries
+// the generic metamodel envelope fields Studio Pro's current version always serializes but
+// an older extracted template may predate. These are widget-agnostic defaults (mxbuild
+// emits them on every ValueType regardless of widget), so they are added wherever absent
+// and never overwrite an explicit value.
+func completeValueTypeEnvelope(node any) {
+	switch v := node.(type) {
+	case map[string]any:
+		if v["$Type"] == "CustomWidgets$WidgetValueType" {
+			if _, ok := v["AllowUpload"]; !ok {
+				v["AllowUpload"] = false
+			}
+		}
+		for _, val := range v {
+			completeValueTypeEnvelope(val)
+		}
+	case []any:
+		for _, item := range v {
+			completeValueTypeEnvelope(item)
+		}
+	}
+}
+
+// buildReturnType builds a CustomWidgets$WidgetReturnType from a .mpk expression
+// property's declared <returnType type="..."/>. The placeholder $ID is remapped to a
+// fresh UUID by the loader's ID phase.
+func buildReturnType(typ string) map[string]any {
+	return map[string]any{
+		"$ID":            placeholderID(),
+		"$Type":          "CustomWidgets$WidgetReturnType",
+		"AssignableTo":   "",
+		"EntityProperty": "",
+		"IsList":         false,
+		"Type":           typ,
+	}
+}
+
+// buildTranslationsArray builds a ValueType.Translations list (leading Mendix array
+// marker 2 followed by CustomWidgets$WidgetTranslation entries) from a .mpk property's
+// declared <translations>. Placeholder $IDs are remapped by the loader's ID phase.
+func buildTranslationsArray(trans []mpk.Translation) []any {
+	arr := []any{float64(2)}
+	for _, t := range trans {
+		arr = append(arr, map[string]any{
+			"$ID":          placeholderID(),
+			"$Type":        "CustomWidgets$WidgetTranslation",
+			"LanguageCode": t.Lang,
+			"Text":         t.Text,
+		})
+	}
+	return arr
+}
+
+// buildAllowedTypesArray builds a ValueType.AllowedTypes list (leading Mendix array
+// marker 1 followed by the allowed Mendix type names) from a .mpk property's declared
+// attributeTypes. Mirrors the construction in createDefaultValueType.
+func buildAllowedTypesArray(types []string) []any {
+	arr := []any{float64(1)}
+	for _, t := range types {
+		arr = append(arr, t)
+	}
+	return arr
 }
 
 // mpkEnumValuesByKey indexes a widget's enumeration option sets by property key,

@@ -82,6 +82,70 @@ func TestReconcilePropertyMetadata_LeavesUnknownKeys(t *testing.T) {
 	}
 }
 
+// TestReconcileValueTypesFromMPK verifies the schema-derived ValueType reconciliation
+// that closes the large-version-jump within-key CE0463 (issue #600 / DataGrid2@3.10.0):
+// a Type change (from a wrong-typed exemplar clone) rewrites the ValueType Type AND
+// resets the matching Object WidgetValue; the mutually-exclusive type-specific fields are
+// normalized to the .mpk type (EnumerationValues cleared on a non-enum, ReturnType built
+// only for Expression and cleared otherwise).
+func TestReconcileValueTypesFromMPK(t *testing.T) {
+	pt := func(id, key, vtType string, extra map[string]any) map[string]any {
+		vt := map[string]any{"$Type": "CustomWidgets$WidgetValueType", "Type": vtType}
+		for k, v := range extra {
+			vt[k] = v
+		}
+		return map[string]any{"$Type": "CustomWidgets$WidgetPropertyType", "$ID": id, "PropertyKey": key, "ValueType": vt}
+	}
+	tmpl := &WidgetTemplate{
+		Type: map[string]any{"ObjectType": map[string]any{"PropertyTypes": []any{float64(2),
+			// stale Enumeration clone for a key that is really a textTemplate
+			pt("pt1", "lbl", "Enumeration", map[string]any{"EnumerationValues": []any{float64(2),
+				map[string]any{"$Type": "CustomWidgets$WidgetEnumerationValue", "_Key": "none", "Caption": "None"}}}),
+			pt("pt2", "expr", "Expression", map[string]any{"ReturnType": nil}),
+			// stale ReturnType on a widgets-typed property
+			pt("pt3", "pag", "Widgets", map[string]any{"ReturnType": map[string]any{"$Type": "CustomWidgets$WidgetReturnType", "Type": "String"}}),
+		}}},
+		Object: map[string]any{"Properties": []any{float64(2),
+			map[string]any{"$Type": "CustomWidgets$WidgetProperty", "TypePointer": "pt1",
+				"Value": map[string]any{"$Type": "CustomWidgets$WidgetValue", "PrimitiveValue": "none", "TextTemplate": nil}},
+		}},
+	}
+	byKey := map[string]mpk.PropertyDef{
+		"lbl":  {Key: "lbl", Type: "textTemplate"},
+		"expr": {Key: "expr", Type: "expression", ReturnType: "String"},
+		"pag":  {Key: "pag", Type: "widgets"},
+	}
+	reconcileValueTypesFromMPK(tmpl, byKey)
+
+	pts := tmpl.Type["ObjectType"].(map[string]any)["PropertyTypes"].([]any)
+	vtOf := func(i int) map[string]any { return pts[i].(map[string]any)["ValueType"].(map[string]any) }
+
+	// lbl: retyped to TextTemplate, enum cleared to the empty [2] marker.
+	if got := vtOf(1)["Type"]; got != "TextTemplate" {
+		t.Errorf("lbl Type = %v, want TextTemplate", got)
+	}
+	if ev, _ := vtOf(1)["EnumerationValues"].([]any); len(ev) != 1 {
+		t.Errorf("lbl EnumerationValues = %v, want empty [2] marker", vtOf(1)["EnumerationValues"])
+	}
+	// lbl Object value reset: TextTemplate structure present, PrimitiveValue cleared.
+	objVal := tmpl.Object["Properties"].([]any)[1].(map[string]any)["Value"].(map[string]any)
+	if objVal["TextTemplate"] == nil {
+		t.Errorf("lbl Object value not reset: TextTemplate still nil after retype")
+	}
+	if objVal["PrimitiveValue"] != "" {
+		t.Errorf("lbl Object PrimitiveValue = %v, want cleared", objVal["PrimitiveValue"])
+	}
+	// expr: ReturnType built for Expression.
+	rt, ok := vtOf(2)["ReturnType"].(map[string]any)
+	if !ok || rt["Type"] != "String" {
+		t.Errorf("expr ReturnType = %v, want WidgetReturnType{Type:String}", vtOf(2)["ReturnType"])
+	}
+	// pag: stale ReturnType cleared on a non-Expression type.
+	if got := vtOf(3)["ReturnType"]; got != nil {
+		t.Errorf("pag ReturnType = %v, want nil (widgets type)", got)
+	}
+}
+
 // TestReorderPropertyTypes verifies the top-level PropertyTypes are reordered to the
 // installed .mpk's declaration order (leading array marker preserved, keys absent from
 // the .mpk kept after the declared ones), closing the order axis of the object-list
