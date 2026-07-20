@@ -453,8 +453,17 @@ func (e *PluggableWidgetEngine) Build(def *WidgetDefinition, w *ast.WidgetV3) (*
 	// 4.10 Apply property-visibility rules: a TextTemplate property that the
 	// widget's editorConfig.js hides under the current configuration must emit
 	// TextTemplate: null, not the template's populated default (CE0463, #574).
-	if len(def.PropertyVisibility) > 0 {
-		builder.ApplyPropertyVisibility(def.PropertyVisibility)
+	// Rules come from the .def.json (hand-authored/generated); when it carries
+	// none — as for built-in widgets like DataGrid2, which the .def.json
+	// generator skips — lift them on the fly from the installed .mpk's
+	// editorConfig.js (#574 Phase 2), so version-specific applicability is
+	// honoured without a hand-maintained table.
+	visibility := def.PropertyVisibility
+	if len(visibility) == 0 {
+		visibility = resolveWidgetVisibilityRules(e.pageBuilder.getProjectPath(), def.WidgetID)
+	}
+	if len(visibility) > 0 {
+		builder.ApplyPropertyVisibility(visibility)
 	}
 
 	// 5. Build CustomWidget
