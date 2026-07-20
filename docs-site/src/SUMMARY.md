@@ -332,6 +332,7 @@
 
 - [Capabilities Overview](reference/capabilities.md)
 - [Customizing AI Generation](guides/customizing-ai.md)
+- [Pluggable Widgets Across Versions](guides/pluggable-widgets.md)
 - [Marketplace Content](guides/marketplace.md)
 
 ---
