@@ -114,3 +114,37 @@ func TestExtractVisibility_SkipsNested(t *testing.T) {
 		t.Error("expected the nested hide to be counted as skipped")
 	}
 }
+
+// TestExtractVisibility_NamespaceAndReturn covers the guard forms the filter /
+// Gallery / TreeNode editorConfigs use that a `_.`-only, no-`return` parser missed:
+// arbitrary namespace prefixes (D./M./j.), a leading `return`, grouping parens
+// `cond&&(hide,…)`, and `||` falsy guards.
+func TestExtractVisibility_NamespaceAndReturn(t *testing.T) {
+	cases := []struct {
+		name, js, key, condKey, op, val string
+	}{
+		{"return + || falsy, namespace j.", `f=function(e,t){return e.adjustable||j.hidePropertyIn(t,e,"screenReaderButtonCaption")}`,
+			"screenReaderButtonCaption", "adjustable", "falsy", ""},
+		{"eq && namespace j.", `f=function(e,t){x,"auto"===e.attrChoice&&j.hidePropertyIn(t,e,"attributes")}`,
+			"attributes", "attrChoice", "eq", "auto"},
+		{"return + eq, minified no space, namespace D.", `f=function(e,t){return"none"===e.showEmptyPlaceholder&&D.hidePropertyIn(t,e,"emptyPlaceholder")}`,
+			"emptyPlaceholder", "showEmptyPlaceholder", "eq", "none"},
+		{"grouping paren cond&&(hide,…), namespace D.", `f=function(e,t){y,"None"===e.itemSelection&&(D.hidePropertyIn(t,e,"autoSelect"),D.hidePropertyIn(t,e,"x"))}`,
+			"autoSelect", "itemSelection", "eq", "None"},
+		{"ternary truthy, namespace M.", `f=function(e,t){z,e.customVisualization?M.hidePropertiesIn(t,e,["title"]):null}`,
+			"title", "customVisualization", "truthy", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			rules, _ := extractVisibilityRulesFromJS(c.js)
+			r := findRule(rules, c.key)
+			if r == nil || r.HiddenWhen == nil {
+				t.Fatalf("no rule for %s (rules=%+v)", c.key, rules)
+			}
+			if r.HiddenWhen.PropertyKey != c.condKey || r.HiddenWhen.Operator != c.op || r.HiddenWhen.Value != c.val {
+				t.Errorf("%s: got {%s %s %q}, want {%s %s %q}", c.key,
+					r.HiddenWhen.PropertyKey, r.HiddenWhen.Operator, r.HiddenWhen.Value, c.condKey, c.op, c.val)
+			}
+		})
+	}
+}

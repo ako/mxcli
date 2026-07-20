@@ -402,6 +402,12 @@ type DataGridColumnSpec struct {
 type FilterWidgetSpec struct {
 	WidgetID   string // e.g. pages.WidgetIDDataGridTextFilter
 	FilterName string // widget name
+	// VisibilityRules are the widget's editorConfig-derived property-visibility
+	// rules (#574). A filter is built with its default configuration, so any
+	// TextTemplate the widget hides in that state must be nulled to avoid CE0463;
+	// the executor resolves these from the installed .mpk and the backend applies
+	// them via widgetobj.ApplyVisibilityRules.
+	VisibilityRules []types.WidgetVisibilityRule
 }
 
 // WidgetBuilderBackend provides pluggable widget construction capabilities.
