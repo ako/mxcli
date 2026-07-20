@@ -92,6 +92,13 @@ func RefreshWidgetDefinitions(projectPath string, force bool, output io.Writer) 
 			}
 
 			defJSON := GenerateDefJSON(mpkDef, mdlName)
+			// Lift property-visibility rules from the widget's editorConfig.js
+			// (#574 Phase 2) so the generated .def.json carries the version-
+			// specific applicability logic — superseding the hand-transcribed
+			// table for any widget whose editor config we can parse.
+			if rules := extractVisibilityRulesFromMPK(mpkPath, mpkDef.ID); len(rules) > 0 {
+				defJSON.PropertyVisibility = rules
+			}
 			freshData, err := json.MarshalIndent(defJSON, "", "  ")
 			if err != nil {
 				log.Printf("warning: skipping %s: %v", mpkDef.ID, err)

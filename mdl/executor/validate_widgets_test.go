@@ -8,6 +8,7 @@ import (
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	"github.com/mendixlabs/mxcli/mdl/linter"
+	"github.com/mendixlabs/mxcli/mdl/types"
 )
 
 // Issue #650 — MDL-WIDGET04 flags a dynamictext whose template references a {N}
@@ -194,5 +195,46 @@ func TestValidateObjectListItemEnums(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestValidateWidgetVisibility checks the #574 config-aware property check
+// (MDL-WIDGET10): a property the user sets that the widget hides under the
+// current configuration is flagged, while the same property under a config that
+// shows it is not. Uses a DataGrid-like def with a selection-mapped condition.
+func TestValidateWidgetVisibility(t *testing.T) {
+	def := &WidgetDefinition{
+		WidgetID: "com.mendix.widget.web.datagrid.Datagrid",
+		MDLName:  "DATAGRID",
+		PropertyMappings: []PropertyMapping{
+			{PropertyKey: "itemSelection", Source: "Selection", Operation: "selection"},
+		},
+		PropertyVisibility: []types.WidgetVisibilityRule{
+			{PropertyKey: "clearSelectionButtonLabel", HiddenWhen: &types.WidgetVisibilityCondition{
+				PropertyKey: "itemSelection", Operator: "ne", Value: "Multi",
+			}},
+		},
+	}
+	registry := &WidgetRegistry{byMDLName: map[string]*WidgetDefinition{"DATAGRID": def}}
+
+	widget := func(selection string) *ast.WidgetV3 {
+		return &ast.WidgetV3{Type: "datagrid", Name: "dg", Properties: map[string]any{
+			"Selection":                 selection,
+			"ClearSelectionButtonLabel": "Clear it",
+		}}
+	}
+
+	// None → clearSelectionButtonLabel hidden → warn.
+	if v := validateWidgetVisibility(widget("None"), registry, "page P"); len(v) != 1 || v[0].RuleID != "MDL-WIDGET10" {
+		t.Errorf("Selection:None → got %d violations %+v, want 1 MDL-WIDGET10", len(v), v)
+	}
+	// Multi → visible → no warning.
+	if v := validateWidgetVisibility(widget("Multi"), registry, "page P"); len(v) != 0 {
+		t.Errorf("Selection:Multi → got %d violations %+v, want 0 (property is visible)", len(v), v)
+	}
+	// Property not set → no warning even under hiding config.
+	notSet := &ast.WidgetV3{Type: "datagrid", Name: "dg", Properties: map[string]any{"Selection": "None"}}
+	if v := validateWidgetVisibility(notSet, registry, "page P"); len(v) != 0 {
+		t.Errorf("unset property → got %d violations, want 0", len(v))
 	}
 }
