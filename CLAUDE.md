@@ -417,7 +417,7 @@ go build -o bin/mxcli ./cmd/mxcli
 | **Diff local** | `mxcli diff-local -p app.mpr --ref head` | Git diff for MPR v2 projects |
 | **Diff revisions** | `mxcli diff-local -p app.mpr --ref main..feature` | Compare two arbitrary git revisions |
 | **OQL** | `mxcli oql -p app.mpr "select ..."` | Query running Mendix runtime |
-| **Widgets** | `show widgets`, `update widgets set ...` | Widget discovery and bulk updates (experimental) |
+| **Widgets** | `show widgets`, `update widgets set ...`, `mxcli widget describe <id>` | Widget discovery, bulk updates (experimental), and inspecting a widget's discovered properties + dynamic rules |
 | **External SQL** | `sql connect`, `sql <alias> select ...`, `mxcli sql` | Direct SQL queries against PostgreSQL, Oracle, SQL Server (credential isolation) |
 | **Data import** | `import from <alias> query '...' into Module.Entity map (...)` | Import from external DB into Mendix app PostgreSQL (batch insert with ID generation) |
 | **Connector gen** | `sql <alias> generate connector into <module> [tables (...)] [views (...)] [exec]` | Auto-generate Database Connector MDL from discovered schema |
