@@ -838,6 +838,7 @@ set title = 'New Title';
 -- Insert widgets
 insert after widgetName { <widgets> };
 insert before widgetName { <widgets> };
+insert into containerName { <widgets> };   -- append as the container's last child
 
 -- Remove widgets
 drop widget name1, name2;

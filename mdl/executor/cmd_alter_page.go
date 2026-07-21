@@ -190,8 +190,14 @@ func applyInsertWidgetMutator(ctx *ExecContext, mutator backend.PageMutator, op 
 		return mutator.InsertColumns(op.Target.Widget, op.Target.Column, backend.InsertPosition(op.Position), specs)
 	}
 
-	// Find entity context from enclosing DataView/DataGrid/ListView for regular widget insert.
+	// Find entity context for the new widgets. For INSERT BEFORE/AFTER the target
+	// is a sibling, so use its enclosing container's context; for INSERT INTO the
+	// target IS the container, so the children take the target's own context (e.g.
+	// a dataview's entity).
 	entityCtx := mutator.EnclosingEntity(op.Target.Widget)
+	if strings.EqualFold(op.Position, "INTO") {
+		entityCtx = mutator.EnclosingEntityForChildren(op.Target.Widget)
+	}
 
 	// Build new widgets from AST
 	widgets, err := buildWidgetsFromAST(ctx, op.Widgets, moduleName, moduleID, entityCtx, mutator)

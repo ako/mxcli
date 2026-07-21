@@ -131,6 +131,19 @@ alter page AlterPg.Product_Overview {
   }
 };
 
+-- MARK: AP02b — INSERT INTO a container (append as last child)
+
+-- ============================================================================
+-- AP02b: INSERT INTO — append widgets as a container's children. This is the
+-- only way to fill an EMPTY container (here, the `divider` just created above).
+-- ============================================================================
+
+alter page AlterPg.Product_Overview {
+  insert into divider {
+    dynamictext dividerNote (Content: 'Catalog below', RenderMode: paragraph)
+  }
+};
+
 -- MARK: AP03 — INSERT a DataGrid2 with initial columns
 
 -- ============================================================================

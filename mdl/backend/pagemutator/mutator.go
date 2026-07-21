@@ -184,6 +184,21 @@ func (m *Mutator) InsertWidget(widgetRef string, columnRef string, position back
 		return fmt.Errorf("serialize widgets: %w", err)
 	}
 
+	// INSERT INTO: append the widgets as children of the target container itself
+	// (its `Widgets` array), rather than as siblings in the target's parent array.
+	// Enables inserting into an empty container or as a container's last child.
+	if strings.EqualFold(string(position), "into") {
+		newContainer, err := appendChildrenToContainer(result.widget, widgetRef, newBsonWidgets)
+		if err != nil {
+			return err
+		}
+		// Write the (possibly reallocated — an empty container gains a new Widgets
+		// field) container doc back into its parent slot.
+		result.parentArr[result.index] = newContainer
+		bsonnav.DSetArray(result.parentDoc, result.parentKey, result.parentArr)
+		return nil
+	}
+
 	insertIdx := result.index
 	if strings.EqualFold(string(position), "after") {
 		insertIdx = result.index + 1
@@ -196,6 +211,78 @@ func (m *Mutator) InsertWidget(widgetRef string, columnRef string, position back
 
 	bsonnav.DSetArray(result.parentDoc, result.parentKey, newArr)
 	return nil
+}
+
+// insertIntoContainer appends widgets as the last children of a container widget
+// (its `Widgets` array). Simple containers (Pages$DivContainer, Forms$Container,
+// DataView, GroupBox, ScrollContainer, …) keep their children in a single
+// `Widgets` list. LayoutGrid (Rows/Columns) and TabContainer (TabPages) have no
+// single child list, so INSERT INTO can't target them directly — the caller is
+// told to insert relative to a widget inside the target column/tab instead.
+// appendChildrenToContainer appends widgets to a container's `Widgets` list and
+// returns the (possibly reallocated) container doc. An empty container omits the
+// Widgets field entirely, so it is added — which grows the bson.D slice, hence the
+// caller must store the returned doc back into its parent slot.
+func appendChildrenToContainer(container bson.D, widgetRef string, newBsonWidgets []any) (bson.D, error) {
+	if !containerAcceptsWidgets(container) {
+		typeName := bsonnav.DGetString(container, "$Type")
+		return nil, fmt.Errorf("cannot INSERT INTO %q (%s): it is not a simple container — "+
+			"use INSERT BEFORE/AFTER a widget inside the target column or tab instead", widgetRef, typeName)
+	}
+	// Append after any existing children, preserving the Mendix list marker (a
+	// leading int32). An empty container omits the Widgets field, so create it with
+	// the default marker (2) that Mendix uses for widget lists.
+	raw := bsonnav.ToBsonA(bsonnav.DGet(container, "Widgets"))
+	var out bson.A
+	switch {
+	case len(raw) > 0 && isListMarker(raw[0]):
+		out = append(out, raw...) // marker + existing children
+		out = append(out, newBsonWidgets...)
+	case len(raw) == 0:
+		out = append(out, int32(2)) // fresh (empty container): Mendix widget-list marker
+		out = append(out, newBsonWidgets...)
+	default:
+		out = append(out, raw...) // children without a marker (unusual): keep as-is
+		out = append(out, newBsonWidgets...)
+	}
+	// DSet updates an existing field in place; if Widgets is absent (empty
+	// container), append the field, growing the slice.
+	if bsonnav.DSet(container, "Widgets", out) {
+		return container, nil
+	}
+	return append(container, bson.E{Key: "Widgets", Value: out}), nil
+}
+
+// isListMarker reports whether a value is a Mendix list-version marker (a leading int).
+func isListMarker(v any) bool {
+	switch v.(type) {
+	case int32, int:
+		return true
+	}
+	return false
+}
+
+// containerAcceptsWidgets reports whether a widget keeps its children in a single
+// `Widgets` list that INSERT INTO can append to. A container that currently holds
+// children always has the field; an empty one omits it, so recognise the common
+// simple-container types by $Type. LayoutGrid (Rows/Columns) and TabContainer
+// (TabPages) are intentionally excluded — they have no single child list.
+func containerAcceptsWidgets(container bson.D) bool {
+	for _, e := range container {
+		if e.Key == "Widgets" {
+			return true
+		}
+	}
+	switch bsonnav.DGetString(container, "$Type") {
+	case "Forms$DivContainer",
+		"Forms$Container",
+		"Forms$DataView",
+		"Forms$GroupBox",
+		"Forms$ScrollContainerRegion",
+		"Forms$Section":
+		return true
+	}
+	return false
 }
 
 func (m *Mutator) DropWidget(refs []backend.WidgetRef) error {
