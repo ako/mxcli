@@ -5,6 +5,7 @@ package executor
 import (
 	"fmt"
 	"log"
+	"regexp"
 	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
@@ -663,9 +664,11 @@ func (pb *pageBuilder) buildDataSourceV3(ds *ast.DataSourceV3) (pages.DataSource
 			EntityName: ds.Reference,
 		}
 
-		// Handle WHERE clause
+		// Handle WHERE clause. Expand association-only paths to the Assoc/Entity/Assoc
+		// form Mendix requires (see expandXPathAssociationPath), so the shorthand
+		// `[Mod.Assoc1/Mod.Assoc2 = $x]` doesn't trip CE1613 at build time.
 		if ds.Where != "" {
-			dbSource.XPathConstraint = ds.Where
+			dbSource.XPathConstraint = pb.expandXPathAssociationPath(ds.Where, ds.Reference)
 		}
 
 		// Handle ORDER BY
@@ -787,6 +790,59 @@ func (pb *pageBuilder) buildDataSourceV3(ds *ast.DataSourceV3) (pages.DataSource
 //
 // Convention (per CLAUDE.md): ParentID = FROM entity, ChildID = TO entity.
 // For `Module.OrderLine_Order` (`FROM OrderLine TO Order`), context=Order → dest=OrderLine (parent side).
+// xpathAssocRunRe matches a run of two or more slash-joined qualified names
+// (Module.Name/Module.Name[/...]) — an association/entity path. Single qualified
+// names (one-hop `[Mod.Assoc = $x]`) and unqualified attribute steps (`Mod.Assoc/Attr`)
+// don't match, so they're never rewritten.
+var xpathAssocRunRe = regexp.MustCompile(`[A-Za-z_]\w*\.[A-Za-z_]\w*(?:/[A-Za-z_]\w*\.[A-Za-z_]\w*)+`)
+
+// expandXPathAssociationPath rewrites an XPath constraint so that consecutive
+// association segments get the intermediate entity Mendix requires between them:
+// `[Mod.Assoc1/Mod.Assoc2 = $x]` → `[Mod.Assoc1/Mod.Entity/Mod.Assoc2 = $x]`. Without
+// this, mxbuild reads the second association as an entity and fails with CE1613
+// ("selected entity ... no longer exists").
+//
+// The rewrite is safe by construction: it only touches runs of slash-joined qualified
+// names anchored at an association from the datasource entity, and inserts an entity
+// only between two segments that both resolve as associations. The already-correct
+// full form (where the middle segment is an entity, not an association), single-hop
+// constraints, attribute paths, and anything unresolvable are returned verbatim.
+func (pb *pageBuilder) expandXPathAssociationPath(constraint, contextEntity string) string {
+	if contextEntity == "" || !strings.Contains(constraint, "/") {
+		return constraint
+	}
+	return xpathAssocRunRe.ReplaceAllStringFunc(constraint, func(run string) string {
+		segs := strings.Split(run, "/")
+		// Only expand a run that starts with an association reachable from the
+		// datasource entity; otherwise leave it untouched (it may be an unrelated
+		// qualified path we don't understand).
+		if pb.resolveAssociationDestination(segs[0], contextEntity) == "" {
+			return run
+		}
+		out := make([]string, 0, len(segs)*2)
+		ctx := contextEntity
+		for i, seg := range segs {
+			dest := pb.resolveAssociationDestination(seg, ctx)
+			out = append(out, seg)
+			if dest == "" {
+				// Not an association from here — treat as an entity segment.
+				ctx = seg
+				continue
+			}
+			// Association: if the next segment is also an association (i.e. the
+			// intermediate entity was omitted), insert the destination entity.
+			if i+1 < len(segs) {
+				next := segs[i+1]
+				if next != dest && pb.resolveAssociationDestination(next, dest) != "" {
+					out = append(out, dest)
+				}
+			}
+			ctx = dest
+		}
+		return strings.Join(out, "/")
+	})
+}
+
 func (pb *pageBuilder) resolveAssociationDestination(assocQN, contextEntity string) string {
 	if assocQN == "" {
 		return ""
