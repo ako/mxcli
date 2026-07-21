@@ -1291,9 +1291,14 @@ func createDefaultWidgetValue(entry pages.PropertyTypeIDEntry) bson.D {
 			textTemplate = createDefaultClientTemplateBSON(primitiveVal)
 		}
 	case "String":
-		if primitiveVal == "" {
-			primitiveVal = " "
-		}
+		// Leave an unset String property empty (its schema default, "") — do NOT
+		// manufacture a single space. Studio Pro stores "" here, and some widgets
+		// (chart series `customSeriesOptions`, `customLayout`, `customConfigurations`)
+		// feed the value straight to a client-side JSON.parse whose empty-guard is
+		// `value !== "" ? value : "{}"`; a lone space passes that guard and makes
+		// the widget throw `JSON.parse(" ")` → "Unexpected end of JSON input" at
+		// render time (object-list-item path only; the top-level path already
+		// leaves it empty).
 	}
 
 	return bson.D{
