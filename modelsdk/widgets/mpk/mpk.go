@@ -17,17 +17,19 @@ import (
 
 // PropertyDef describes a single property from a widget XML definition.
 type PropertyDef struct {
-	Key          string // e.g. "staticDataSourceCaption"
-	Type         string // XML type: "attribute", "expression", "textTemplate", "widgets", etc.
-	Caption      string
-	Description  string
-	Category     string // from enclosing propertyGroup captions, joined with "::"
-	Required     bool
-	DefaultValue string // for enumeration/boolean/integer types
-	IsList       bool
-	IsSystem     bool   // true for <systemProperty> elements
-	DataSource   string // dataSource attribute reference
-	ReturnType   string // for expression properties: the <returnType type="..."/> Mendix type
+	Key            string // e.g. "staticDataSourceCaption"
+	Type           string // XML type: "attribute", "expression", "textTemplate", "widgets", etc.
+	Caption        string
+	Description    string
+	Category       string // from enclosing propertyGroup captions, joined with "::"
+	Required       bool
+	DefaultValue   string // for enumeration/boolean/integer types
+	IsList         bool
+	Multiline      bool     // for string/textTemplate: multiline="true"
+	SelectionTypes []string // for selection properties: <selectionType name="..."/>
+	IsSystem       bool     // true for <systemProperty> elements
+	DataSource     string   // dataSource attribute reference
+	ReturnType     string   // for expression properties: the <returnType type="..."/> Mendix type
 	// ReturnTypeAssignableTo is the <returnType assignableTo="..."/> reference (e.g.
 	// "../staticAttribute"), when the expression's return type is derived from another
 	// property rather than a concrete type. mxbuild emits Type "None" with this set.
@@ -94,17 +96,19 @@ type xmlWidgetFile struct {
 
 // xmlWidget represents <widget> root element in widget XML.
 type xmlWidget struct {
-	ID                 string         `xml:"id,attr"`
-	PluginWidget       string         `xml:"pluginWidget,attr"`
-	OfflineCapable     string         `xml:"offlineCapable,attr"`
-	NeedsEntityContext string         `xml:"needsEntityContext,attr"`
-	SupportedPlatform  string         `xml:"supportedPlatform,attr"`
-	HelpURL            string         `xml:"helpUrl,attr"`
-	StudioCategory     string         `xml:"studioCategory,attr"`
-	StudioProCategory  string         `xml:"studioProCategory,attr"`
-	Name               string         `xml:"name"`
-	Description        string         `xml:"description"`
-	PropertyGroups     []xmlPropGroup `xml:"properties>propertyGroup"`
+	ID                 string `xml:"id,attr"`
+	PluginWidget       string `xml:"pluginWidget,attr"`
+	OfflineCapable     string `xml:"offlineCapable,attr"`
+	NeedsEntityContext string `xml:"needsEntityContext,attr"`
+	SupportedPlatform  string `xml:"supportedPlatform,attr"`
+	// helpUrl, studioCategory, studioProCategory are child ELEMENTS in Mendix
+	// widget XML (e.g. <studioProCategory>Charts</studioProCategory>), not attributes.
+	HelpURL           string         `xml:"helpUrl"`
+	StudioCategory    string         `xml:"studioCategory"`
+	StudioProCategory string         `xml:"studioProCategory"`
+	Name              string         `xml:"name"`
+	Description       string         `xml:"description"`
+	PropertyGroups    []xmlPropGroup `xml:"properties>propertyGroup"`
 }
 
 // xmlPropGroup represents <propertyGroup caption="..."> element.
@@ -198,15 +202,22 @@ type xmlProperty struct {
 	DefaultValue   string             `xml:"defaultValue,attr"`
 	Required       string             `xml:"required,attr"`
 	IsList         string             `xml:"isList,attr"`
+	Multiline      string             `xml:"multiline,attr"`
 	DataSource     string             `xml:"dataSource,attr"`
 	Caption        string             `xml:"caption"`
 	Description    string             `xml:"description"`
 	AttributeTypes []xmlAttributeType `xml:"attributeTypes>attributeType"`
 	EnumValues     []xmlEnumValue     `xml:"enumerationValues>enumerationValue"`
+	SelectionTypes []xmlSelectionType `xml:"selectionTypes>selectionType"`
 	ReturnType     xmlReturnType      `xml:"returnType"`
 	Translations   []xmlTranslation   `xml:"translations>translation"`
 	// Nested properties for object type
 	NestedProps []xmlPropGroup `xml:"properties>propertyGroup"`
+}
+
+// xmlSelectionType represents <selectionType name="..."/> on a selection property.
+type xmlSelectionType struct {
+	Name string `xml:"name,attr"`
 }
 
 // xmlReturnType represents <returnType type="..."/> or
@@ -382,6 +393,8 @@ func walkPropertyGroup(pg xmlPropGroup, parentCategory string, def *WidgetDefini
 			Required:               p.Required != "false",
 			DefaultValue:           p.DefaultValue,
 			IsList:                 p.IsList == "true",
+			Multiline:              p.Multiline == "true",
+			SelectionTypes:         toSelectionTypes(p.SelectionTypes),
 			DataSource:             p.DataSource,
 			ReturnType:             p.ReturnType.Type,
 			ReturnTypeAssignableTo: p.ReturnType.AssignableTo,
@@ -452,6 +465,8 @@ func collectNestedProperties(pg xmlPropGroup, parent *PropertyDef, parentCategor
 			Required:               p.Required != "false",
 			DefaultValue:           p.DefaultValue,
 			IsList:                 p.IsList == "true",
+			Multiline:              p.Multiline == "true",
+			SelectionTypes:         toSelectionTypes(p.SelectionTypes),
 			DataSource:             p.DataSource,
 			ReturnType:             p.ReturnType.Type,
 			ReturnTypeAssignableTo: p.ReturnType.AssignableTo,
@@ -471,6 +486,21 @@ func collectNestedProperties(pg xmlPropGroup, parent *PropertyDef, parentCategor
 	for _, sub := range pg.SubGroups {
 		collectNestedProperties(sub, parent, category)
 	}
+}
+
+// toSelectionTypes converts parsed <selectionType> XML elements to a name list
+// (e.g. ["None","Single"]), the ValueType.SelectionTypes a selection property carries.
+func toSelectionTypes(xs []xmlSelectionType) []string {
+	if len(xs) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(xs))
+	for _, x := range xs {
+		if x.Name != "" {
+			out = append(out, x.Name)
+		}
+	}
+	return out
 }
 
 // toTranslations converts parsed <translation> XML elements to Translation records,
@@ -721,7 +751,7 @@ func buildDefinition(widget *xmlWidget, version string) *WidgetDefinition {
 		byKey[def.Properties[i].Key] = &def.Properties[i]
 	}
 	for _, pg := range widget.PropertyGroups {
-		collectTopLevelOrder(pg, def, byKey)
+		collectTopLevelOrder(pg, "", def, byKey)
 	}
 	return def
 }
@@ -732,7 +762,13 @@ func buildDefinition(widget *xmlWidget, version string) *WidgetDefinition {
 // PropertyDef (via byKey); system entries are recorded as Key + IsSystem. It does
 // not descend into an object property's nested properties — only the top-level
 // PropertyType order is reproduced here.
-func collectTopLevelOrder(pg xmlPropGroup, def *WidgetDefinition, byKey map[string]*PropertyDef) {
+func collectTopLevelOrder(pg xmlPropGroup, parentCategory string, def *WidgetDefinition, byKey map[string]*PropertyDef) {
+	category := pg.Caption
+	if parentCategory != "" && category != "" {
+		category = parentCategory + "::" + category
+	} else if parentCategory != "" {
+		category = parentCategory
+	}
 	for _, c := range pg.Children {
 		switch {
 		case c.Property != nil:
@@ -740,9 +776,12 @@ func collectTopLevelOrder(pg xmlPropGroup, def *WidgetDefinition, byKey map[stri
 				def.AllTopLevel = append(def.AllTopLevel, *pd)
 			}
 		case c.SystemProp != nil:
-			def.AllTopLevel = append(def.AllTopLevel, PropertyDef{Key: c.SystemProp.Key, IsSystem: true})
+			// Category is the enclosing group chain (e.g. "General::Common"),
+			// mirroring walkPropertyGroup; GenerateFromMPK emits it on the System
+			// PropertyType so a generated widget matches mxbuild's definition.
+			def.AllTopLevel = append(def.AllTopLevel, PropertyDef{Key: c.SystemProp.Key, IsSystem: true, Category: category})
 		case c.SubGroup != nil:
-			collectTopLevelOrder(*c.SubGroup, def, byKey)
+			collectTopLevelOrder(*c.SubGroup, category, def, byKey)
 		}
 	}
 }
