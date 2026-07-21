@@ -66,7 +66,11 @@ const defaultSlotContainer = "template"
 //	    TreeNode `headerCaption`, and Timeline `title`/`description` are authorable
 //	    instead of being silently dropped (MDL-WIDGET01). Bump forces existing
 //	    projects to regenerate their widget defs with the new mappings.
-const WidgetDefGeneratorVersion = 11
+//	12 — merge the hand-authored property-visibility fallback with the
+//	    editorConfig-extracted rules instead of overwriting, so compound/ternary
+//	    guards the static extractor skips (e.g. Timeline title/description hidden
+//	    when customVisualization) still null their hidden textTemplates (CE0463).
+const WidgetDefGeneratorVersion = 12
 
 // WidgetDefinition describes how to construct a pluggable widget from MDL syntax.
 // Loaded from embedded JSON definition files (*.def.json).

@@ -94,10 +94,13 @@ func RefreshWidgetDefinitions(projectPath string, force bool, output io.Writer) 
 			defJSON := GenerateDefJSON(mpkDef, mdlName)
 			// Lift property-visibility rules from the widget's editorConfig.js
 			// (#574 Phase 2) so the generated .def.json carries the version-
-			// specific applicability logic — superseding the hand-transcribed
-			// table for any widget whose editor config we can parse.
+			// specific applicability logic. Merge with the hand-transcribed table
+			// rather than replace it: the static extractor skips compound/ternary
+			// guards (e.g. Timeline's `customVisualization ? hide([title,...])`),
+			// so the hand-authored fallback fills the keys the extractor misses.
+			// Extracted rules win on conflict (they're version-specific).
 			if rules := extractVisibilityRulesFromMPK(mpkPath, mpkDef.ID); len(rules) > 0 {
-				defJSON.PropertyVisibility = rules
+				defJSON.PropertyVisibility = mergeVisibilityRules(rules, widgetVisibilityRules[mpkDef.ID])
 			}
 			freshData, err := json.MarshalIndent(defJSON, "", "  ")
 			if err != nil {
@@ -340,6 +343,28 @@ func GenerateDefJSON(mpkDef *mpk.WidgetDefinition, mdlName string) *WidgetDefini
 //	  "expression"===e.type && hidePropertiesIn(["videoUrl","posterUrl"])
 //	Timeline (editorConfig.js):
 //	  e.customVisualization ? hidePropertiesIn(["title","description","icon","timeIndication",...]) : ...
+// mergeVisibilityRules returns the extracted rules plus any hand-authored fallback
+// rules whose PropertyKey the extractor did not cover. Extracted rules are
+// version-specific (lifted from the installed .mpk's editorConfig.js) and win on
+// conflict; the fallback fills the compound/ternary guards the static extractor
+// skips (e.g. Timeline `title`/`description` hidden when `customVisualization`).
+func mergeVisibilityRules(extracted, fallback []types.WidgetVisibilityRule) []types.WidgetVisibilityRule {
+	if len(fallback) == 0 {
+		return extracted
+	}
+	covered := make(map[string]bool, len(extracted))
+	for _, r := range extracted {
+		covered[r.PropertyKey] = true
+	}
+	merged := extracted
+	for _, r := range fallback {
+		if !covered[r.PropertyKey] {
+			merged = append(merged, r)
+		}
+	}
+	return merged
+}
+
 var widgetVisibilityRules = map[string][]types.WidgetVisibilityRule{
 	"com.mendix.widget.web.videoplayer.VideoPlayer": {
 		{PropertyKey: "videoUrl", HiddenWhen: &types.WidgetVisibilityCondition{PropertyKey: "type", Operator: "eq", Value: "expression"}},
