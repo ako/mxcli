@@ -1249,7 +1249,17 @@ func (e *PluggableWidgetEngine) applyChildSlots(builder backend.WidgetObjectBuil
 			continue
 		}
 		lowerType := strings.ToLower(child.Type)
-		if slot, ok := slotContainers[lowerType]; ok {
+		slot, ok := slotContainers[lowerType]
+		if !ok && lowerType == "container" {
+			// Support the natural `container <slotName> { ... }` authoring form
+			// (e.g. TreeNode `container children`, Timeline `container customTitle`)
+			// by routing the container to the slot whose keyword matches its NAME.
+			// The bare-keyword form (`children { ... }`, gallery `template tpl1 { ... }`)
+			// still matches by Type above. This mirrors the object-list item-slot
+			// matcher, which already routes by the container's name.
+			slot, ok = slotContainers[strings.ToLower(child.Name)]
+		}
+		if ok {
 			for _, slotChild := range child.Children {
 				widget, err := e.pageBuilder.buildWidgetV3(slotChild)
 				if err != nil {

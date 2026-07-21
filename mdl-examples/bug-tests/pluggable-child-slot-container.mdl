@@ -1,0 +1,50 @@
+-- ============================================================================
+-- Bug: pluggable widget child-slot dropped when authored as `container <slot>`
+-- ============================================================================
+--
+-- Symptom:
+--   A TreeNode authored with `container children { ... }` (or Timeline
+--   `container customTitle { ... }`) persisted with NO child content — the
+--   nested widgets were silently discarded. describe page showed only the
+--   scalar props; the slot was empty.
+--
+-- Root cause:
+--   applyChildSlots matched a child block to a slot by the child's Type
+--   (lowercased) against the slot keyword. The natural authoring form
+--   `container children { ... }` has Type "container" and Name "children", so it
+--   never matched the "children" slot and fell through to the discarded default
+--   widgets. Only the bare-keyword form (`children { ... }`) matched.
+--
+-- Fix:
+--   Route a `container <slotName> { ... }` to the slot whose keyword matches the
+--   container's NAME (mirroring the object-list item-slot matcher). The
+--   bare-keyword form still matches by Type.
+--
+-- Verify:
+--   mxcli exec mdl-examples/bug-tests/pluggable-child-slot-container.mdl -p app.mpr
+--   mx check app.mpr    # 0 errors; the treeChildText dynamictext persists in the
+--                       # TreeNode `children` slot (MPR v2 preserved)
+-- Requires: TreeNode .mpk installed in the project's widgets/.
+-- ============================================================================
+
+create module ChildSlot;
+/
+create entity ChildSlot.DemoItem (
+  Title: String,
+  Score: Integer
+);
+/
+create or replace page ChildSlot.Home ( layout: Atlas_Core.Atlas_Default ) {
+  pluggablewidget 'com.mendix.widget.web.treenode.TreeNode' treeNested (
+    datasource: database from ChildSlot.DemoItem,
+    headerType: 'text',
+    headerCaption: '{Title}',
+    hasChildren: true,
+    startExpanded: true,
+    showIcon: 'left'
+  ) {
+    container children {
+      dynamictext treeChildText (content: 'Score: {1}', contentparams: [{1} = Score])
+    }
+  }
+}
