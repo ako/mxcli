@@ -808,6 +808,42 @@ func chartSeriesTextTemplateVisible(ip ItemPropertyMapping, dataSetMode string, 
 	return true
 }
 
+// chartSeriesTextTemplateHiddenByItemConfig reports whether a chart-series
+// textTemplate sub-property is hidden by the widget's editorConfig based on OTHER
+// item-level property values (beyond the dataSet gate). These mirror the
+// `hideNestedPropertiesIn` rules in the chart editorConfig.js:
+//
+//	markerColor  visible only when lineStyle == "lineWithMarkers"  (default "line")
+//	fillColor    visible only when enableFillArea is truthy          (default true)
+//
+// Without this, a hidden sub-property's empty-ClientTemplate default (which
+// chartSeriesTextTemplateVisible would otherwise emit) trips CE0463 — e.g.
+// markerColor on a default "line" TimeSeries/LineChart series. Absent keys use the
+// schema default.
+func chartSeriesTextTemplateHiddenByItemConfig(propertyKey string, itemConfig map[string]string) bool {
+	switch propertyKey {
+	case "markerColor":
+		lineStyle := itemConfig["lineStyle"]
+		if lineStyle == "" {
+			lineStyle = "line"
+		}
+		return lineStyle != "lineWithMarkers"
+	case "fillColor":
+		enableFillArea := itemConfig["enableFillArea"]
+		if enableFillArea == "" {
+			enableFillArea = "true" // schema default
+		}
+		return !isTruthyPrimitive(enableFillArea)
+	}
+	return false
+}
+
+// isTruthyPrimitive reports whether a primitive string value is truthy (non-empty,
+// not "false"/"0"). Mirrors the editorConfig's boolean gate semantics.
+func isTruthyPrimitive(v string) bool {
+	return v != "" && v != "false" && v != "0"
+}
+
 // seriesDataSourceMatchesMode reports whether a chart-series datasource property
 // key (staticDataSource / dynamicDataSource) is the one active for the given
 // dataSet mode — used to route the friendly `DataSource:` alias. Chart series (9a).
@@ -843,6 +879,17 @@ func (e *PluggableWidgetEngine) buildObjectListItem(mapping *ObjectListMapping, 
 	if v, ok := lookupProperty(child.Properties, "dataSet"); ok {
 		if s := stringifyAny(v); s != "" {
 			itemDataSetMode = s
+		}
+	}
+
+	// itemConfig holds the user-set item-level values that gate the visibility of
+	// OTHER sub-properties in the widget's editorConfig (chart series: lineStyle
+	// gates markerColor, enableFillArea gates fillColor). Absent keys fall back to
+	// the schema default inside chartSeriesTextTemplateHiddenByItemConfig.
+	itemConfig := map[string]string{}
+	for _, key := range []string{"lineStyle", "enableFillArea"} {
+		if v, ok := lookupProperty(child.Properties, key); ok {
+			itemConfig[key] = stringifyAny(v)
 		}
 	}
 
@@ -934,7 +981,8 @@ func (e *PluggableWidgetEngine) buildObjectListItem(mapping *ObjectListMapping, 
 			// gate + dataSource binding. Scoped to chart series so non-chart
 			// object lists (Accordion groups, DataGrid columns) are untouched. (9a)
 			if ip.Operation == "texttemplate" && isChartSeriesContainer(mapping.MDLContainer) &&
-				chartSeriesTextTemplateVisible(ip, itemDataSetMode, prebuiltDataSources) {
+				chartSeriesTextTemplateVisible(ip, itemDataSetMode, prebuiltDataSources) &&
+				!chartSeriesTextTemplateHiddenByItemConfig(ip.PropertyKey, itemConfig) {
 				spec.Properties = append(spec.Properties, backend.ObjectListItemProperty{
 					PropertyKey:   ip.PropertyKey,
 					Operation:     "texttemplate",
