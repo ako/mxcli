@@ -1,0 +1,56 @@
+-- ============================================================================
+-- Bug: Chart widgets (Pie / Column / …) trip CE0463 in MPR v2 projects
+-- ============================================================================
+--
+-- Symptom:
+--   A PieChart or ColumnChart authored via MDL persisted its series properties
+--   correctly but every instance failed `mx check` with:
+--     [CE0463] "The definition of this widget has changed. Update this widget…"
+--   The only thing that cleared it was `mx update-widgets`, which downgrades an
+--   MPR v2 project to v1 (drops mprcontents/). So charts could not ship in v2.
+--   By contrast the Image widget (which has an embedded template) authored cleanly.
+--
+-- Root cause:
+--   Charts have no embedded template, so they are built by GenerateFromMPK. That
+--   path (a) omitted the widget's declared <systemProperty> entries (Name,
+--   TabIndex, Visibility) that mxbuild emits into the WidgetType; (b) left each
+--   ValueType's schema-derived fields (enum option sets, expression returnType,
+--   selectionTypes, multiline) empty; and (c) parsed helpUrl/studioCategory as XML
+--   attributes when Mendix declares them as elements. All three are checked by
+--   CE0463, so the generated WidgetType drifted from the installed widget.
+--
+-- Fix:
+--   GenerateFromMPK now emits system PropertyTypes in their declared position and
+--   runs the same .mpk reconciliation augment uses on template-based widgets; the
+--   .mpk parser reads helpUrl/studioCategory as elements and parses multiline +
+--   <selectionType>. Result: the emitted WidgetType is byte-identical to
+--   update-widgets output — no CE0463, MPR v2 preserved.
+--
+-- Verify:
+--   mxcli exec mdl-examples/bug-tests/chart-widget-ce0463-v2.mdl -p app.mpr
+--   mx check app.mpr    # 0 errors (v2 preserved)
+-- Requires: Charts .mpk installed in the project's widgets/.
+-- ============================================================================
+
+create module ChartBug;
+/
+create entity ChartBug.Sales ( Region: String, Total: Decimal );
+/
+create or replace page ChartBug.Home ( layout: Atlas_Core.Atlas_Default ) {
+  -- Pie chart: single implicit series (widget-level DataSource/ValueAttribute).
+  pluggablewidget 'com.mendix.widget.web.piechart.PieChart' pie1 (
+    DataSource: database from ChartBug.Sales,
+    ValueAttribute: Total,
+    SeriesName: 'Sales by Region'
+  )
+  -- Column chart: an explicit `series` object-list.
+  pluggablewidget 'com.mendix.widget.web.columnchart.ColumnChart' col1 {
+    series s (
+      DataSet: 'static',
+      DataSource: database from ChartBug.Sales,
+      StaticXAttribute: Region,
+      StaticYAttribute: Total,
+      StaticName: 'Revenue'
+    )
+  }
+}
