@@ -1,0 +1,41 @@
+-- ============================================================================
+-- Bug: chart series customSeriesOptions emitted as " " → runtime JSON.parse error
+-- ============================================================================
+--
+-- Symptom:
+--   A ColumnChart (or any chart with a `series`/`line` object-list) passed
+--   `mx check` (0 errors) but failed to RENDER at runtime with a client-side
+--   `JSON.parse('Unexpected end of JSON input')` in the chart render path. A Pie
+--   chart over the same data (widget-level datasource, no series object-list)
+--   rendered fine.
+--
+-- Root cause:
+--   The object-list-item builder emitted an unset String property as a single
+--   space " " (not ""). The chart client feeds customSeriesOptions /
+--   customLayout / customConfigurations straight to JSON.parse with an empty-guard
+--   `value !== "" ? value : "{}"`. A lone space passes that guard, so the client
+--   runs `JSON.parse(" ")` and throws. (mx check does not execute the client, so
+--   it stayed green.) The top-level string path already emitted "".
+--
+-- Fix:
+--   createDefaultWidgetValue (object-list-item path) leaves an unset String empty,
+--   matching Studio Pro and the top-level path, so the client's empty-guard turns
+--   it into "{}".
+--
+-- Verify:
+--   mxcli exec mdl-examples/bug-tests/chart-series-customseriesoptions-json.mdl -p app.mpr
+--   # the series' customSeriesOptions is now "" (was " "); the ColumnChart renders.
+--   mx check app.mpr    # still 0 errors
+-- Requires: Charts .mpk installed in the project's widgets/.
+-- ============================================================================
+
+create module ColJSON;
+/
+create entity ColJSON.Sales ( Region: String, Total: Decimal );
+/
+create or replace page ColJSON.Home ( layout: Atlas_Core.Atlas_Default ) {
+  pluggablewidget 'com.mendix.widget.web.columnchart.ColumnChart' col1 {
+    series s ( dataSet: static, staticDataSource: database from ColJSON.Sales,
+               staticXAttribute: Region, staticYAttribute: Total, staticName: 'Revenue' )
+  }
+}
