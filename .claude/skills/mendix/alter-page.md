@@ -134,9 +134,21 @@ insert after txtName {
 insert before btnSave {
   actionbutton btnPreview (caption: 'Preview', action: microflow Module.ACT_Preview)
 }
+
+-- Insert INTO a container — append as its last child (works on an EMPTY container)
+insert into ctnToolbar {
+  actionbutton btnNew (caption: 'New', action: nothing, buttonstyle: primary)
+}
 ```
 
 Inserted widgets use the same syntax as `create page`. Multiple widgets can be inserted in a single block.
+
+`insert into <container>` appends as the last child of the named container — the
+only way to fill an **empty** container, and handy for adding to a container/dataview
+without needing a sibling to anchor to. Widgets inserted into a dataview take that
+dataview's entity as their context. Supported on simple containers (container,
+dataview, groupbox, scroll-container region); for a layout grid or tab container,
+insert relative to a widget inside the target column/tab instead.
 
 ### DROP - Remove Widgets
 

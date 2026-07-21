@@ -50,10 +50,10 @@ type SetPropertyOp struct {
 
 func (s *SetPropertyOp) isAlterPageOperation() {}
 
-// InsertWidgetOp represents: INSERT AFTER/BEFORE widgetRef { widgets }
+// InsertWidgetOp represents: INSERT AFTER/BEFORE/INTO widgetRef { widgets }
 type InsertWidgetOp struct {
-	Position string    // "AFTER" or "BEFORE"
-	Target   WidgetRef // widget/column to insert relative to
+	Position string    // "AFTER", "BEFORE", or "INTO" (append as children of the container)
+	Target   WidgetRef // widget to insert relative to, or container to insert into
 	Widgets  []*WidgetV3
 }
 

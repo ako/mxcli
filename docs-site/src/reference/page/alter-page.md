@@ -29,6 +29,9 @@ SET 'propertyName' = value ON widgetName;
 INSERT BEFORE widgetName { widget_definitions };
 INSERT AFTER widgetName { widget_definitions };
 
+-- Insert widgets as the last children of a container
+INSERT INTO containerName { widget_definitions };
+
 -- Remove widgets
 DROP WIDGET widgetName1, widgetName2;
 
@@ -67,6 +70,12 @@ For pluggable widget properties, use quoted property names (e.g., `'showLabel'`)
 ### INSERT BEFORE / INSERT AFTER
 
 Inserts new widgets immediately before or after a named widget within its parent container. The new widgets use the same syntax as in `CREATE PAGE`.
+
+### INSERT INTO
+
+Appends new widgets as the **last children** of a named container. This is the only way to fill an **empty** container, and the natural way to add a widget to a container or data view without needing a sibling to anchor to. Widgets inserted into a data view take that data view's entity as their context.
+
+Supported on simple containers (container/DivContainer, data view, group box, scroll-container region). A layout grid (rows/columns) and tab container have no single child list — insert relative to a widget inside the target column or tab instead.
 
 ### DROP WIDGET
 

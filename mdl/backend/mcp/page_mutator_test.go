@@ -67,6 +67,22 @@ func TestPageMutator_InsertAfterBefore(t *testing.T) {
 	}
 }
 
+func TestPageMutator_InsertInto(t *testing.T) {
+	m := newTestMutator()
+	// INSERT INTO appends as the last child of the container itself (dv), not a sibling.
+	if err := m.InsertWidget("dv", "", backend.InsertPosition("INTO"), []pages.Widget{dynText("t2")}); err != nil {
+		t.Fatal(err)
+	}
+	if got := dvChildNames(m); len(got) != 2 || got[0] != "t1" || got[1] != "t2" {
+		t.Fatalf("after INTO insert: %v (want [t1 t2])", got)
+	}
+	// Inserting into a non-container (the DynamicText t1) is a clear error.
+	err := m.InsertWidget("t1", "", backend.InsertPosition("INTO"), []pages.Widget{dynText("x")})
+	if err == nil || !strings.Contains(err.Error(), "INSERT INTO") {
+		t.Fatalf("expected INSERT INTO error for non-container, got %v", err)
+	}
+}
+
 func TestPageMutator_ReplaceAndDrop(t *testing.T) {
 	m := newTestMutator()
 	_ = m.InsertWidget("t1", "", backend.InsertPosition("AFTER"), []pages.Widget{dynText("t2")})

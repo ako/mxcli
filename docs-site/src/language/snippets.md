@@ -97,6 +97,9 @@ ALTER SNIPPET MyModule.CustomerCard {
   SET Caption = 'View Details' ON btnEdit;
   INSERT AFTER txtEmail {
     DYNAMICTEXT txtPhone (Content: '{1}', Attribute: Phone)
+  };
+  INSERT INTO ctnActions {   -- append as the container's last child
+    ACTIONBUTTON btnMore (Caption: 'More', Action: NOTHING)
   }
 };
 ```

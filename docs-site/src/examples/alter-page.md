@@ -20,6 +20,18 @@ ALTER PAGE CRM.Customer_Edit {
 };
 ```
 
+## Add a Widget Into a Container
+
+Use `INSERT INTO` to append a widget as a container's last child — the only way to fill an empty container.
+
+```sql
+ALTER PAGE CRM.Customer_Overview {
+  INSERT INTO ctnToolbar {
+    ACTIONBUTTON btnNew (Caption: 'New Customer', Action: NOTHING, ButtonStyle: Primary)
+  }
+};
+```
+
 ## Remove Widgets
 
 ```sql

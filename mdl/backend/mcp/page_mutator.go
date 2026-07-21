@@ -260,13 +260,23 @@ func (m *mcpPageMutator) InsertWidget(widgetRef string, columnRef string, positi
 	if columnRef != "" {
 		return fmt.Errorf("inserting into a column (%s.%s) is not yet supported by the MCP backend", widgetRef, columnRef)
 	}
-	parent, key, idx, _, ok := findWidget(m.content, widgetRef)
+	parent, key, idx, widget, ok := findWidget(m.content, widgetRef)
 	if !ok {
 		return fmt.Errorf("widget %q not found", widgetRef)
 	}
 	mapped, err := m.backend.mapPageWidgets(widgets)
 	if err != nil {
 		return err
+	}
+	// INSERT INTO: append as children of the target container itself.
+	if strings.EqualFold(string(position), "into") {
+		if _, hasChildren := widget["widgets"]; !hasChildren {
+			return fmt.Errorf("cannot INSERT INTO %q (%v): it has no direct child list — "+
+				"use INSERT BEFORE/AFTER a widget inside the target column or tab instead", widgetRef, widget["$Type"])
+		}
+		children, _ := widget["widgets"].([]any)
+		widget["widgets"] = append(append([]any{}, children...), mapped...)
+		return nil
 	}
 	arr, _ := parent[key].([]any)
 	at := idx

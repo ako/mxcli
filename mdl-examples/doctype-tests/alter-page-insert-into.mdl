@@ -1,0 +1,50 @@
+-- ============================================================================
+-- ALTER PAGE — INSERT INTO <container>
+-- ============================================================================
+-- INSERT INTO appends widgets as the LAST children of a named container, rather
+-- than as a sibling before/after another widget. This is the only way to fill an
+-- EMPTY container, and the natural way to add a widget to a container/dataview
+-- without needing a sibling to anchor to.
+--
+--   insert into <container> { <widgets> }
+--
+-- Simple containers are supported (container/DivContainer, dataview, groupbox,
+-- scroll-container region). For a layout grid or tab container, insert relative to
+-- a widget inside the target column/tab instead.
+-- ============================================================================
+
+create module AlterInto;
+/
+create entity AlterInto.Item ( Title: String, Status: String );
+/
+create or replace page AlterInto.Home ( layout: Atlas_Core.Atlas_Default ) {
+  container ctnEmpty (class: 'toolbar') { }
+  container ctnBody (class: 'body') {
+    dynamictext dtExisting (content: 'Existing content')
+  }
+}
+/
+create or replace page AlterInto.Detail ( params: { $Item: AlterInto.Item }, layout: Atlas_Core.Atlas_Default ) {
+  dataview dv (datasource: $Item) { }
+}
+/
+-- Fill an empty container.
+alter page AlterInto.Home {
+  insert into ctnEmpty {
+    actionbutton btnNew (caption: 'New', action: nothing, buttonstyle: primary)
+  }
+}
+/
+-- Append as the last child of a container that already has widgets.
+alter page AlterInto.Home {
+  insert into ctnBody {
+    pluggablewidget 'com.mendix.widget.custom.badge.Badge' bdgStatus (type: 'badge', value: 'Active')
+  }
+}
+/
+-- Insert a data-bound widget into a dataview — the children take the dataview's entity.
+alter page AlterInto.Detail {
+  insert into dv {
+    dynamictext dtTitle (content: '{1}', contentparams: [{1} = Title], rendermode: H1)
+  }
+}
