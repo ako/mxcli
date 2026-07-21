@@ -1,0 +1,56 @@
+-- ============================================================================
+-- Bug: multi-hop association XPath in a datasource trips CE1613
+-- ============================================================================
+--
+-- Symptom (from a Travel itinerary project):
+--   A Timeline over Activities constrained to a Trip two associations away:
+--     datasource: database from Travel.Activity
+--                 where [Travel.Day_Activity/Travel.Trip_Day = $Trip]
+--   failed `mx check` / the deploy build with:
+--     [CE1613] "The selected entity 'Travel.Trip_Day' no longer exists."
+--   mxbuild read the second association segment as an ENTITY.
+--
+-- Root cause:
+--   Mendix XPath requires the intermediate entity between two association hops
+--   — `[Assoc1/Entity/Assoc2 = $x]`. The MDL shorthand `[Assoc1/Assoc2 = $x]`
+--   (natural, and what an LLM emits) omits it, and mxcli stored the constraint
+--   verbatim, so mxbuild couldn't resolve the second hop.
+--
+-- Fix:
+--   buildDataSourceV3 now expands consecutive association segments, inserting the
+--   intermediate entity (resolved from each association's target). The full form,
+--   single-hop constraints, and attribute paths are left verbatim, so it never
+--   corrupts a valid constraint.
+--
+-- Verify:
+--   mxcli exec mdl-examples/bug-tests/xpath-assoc-path-expansion.mdl -p app.mpr
+--   mx check app.mpr    # 0 errors — the two-hop path resolves
+-- ============================================================================
+
+create module Travel;
+/
+create entity Travel.Trip ( Title: String );
+create entity Travel.Day ( DayNumber: Integer );
+create entity Travel.Activity ( Name: String, StartTime: DateTime );
+/
+-- Day belongs to Trip; Activity belongs to Day.
+create association Travel.Trip_Day from Travel.Day to Travel.Trip;
+create association Travel.Day_Activity from Travel.Activity to Travel.Day;
+/
+create or replace page Travel.Trip_Detail (
+  params: { $Trip: Travel.Trip },
+  layout: Atlas_Core.Atlas_Default
+) {
+  -- one-hop reverse association (already worked; must stay working)
+  pluggablewidget 'com.mendix.widget.web.treenode.TreeNode' tnDays (
+    datasource: database from Travel.Day where [Travel.Trip_Day = $Trip] sort by DayNumber asc,
+    headerType: 'text', headerCaption: 'Day {DayNumber}', hasChildren: false, showIcon: 'left'
+  )
+  -- two-hop reverse association shorthand — expanded to Assoc/Entity/Assoc.
+  pluggablewidget 'com.mendix.widget.web.timeline.Timeline' tlTrip (
+    datasource: database from Travel.Activity where [Travel.Day_Activity/Travel.Trip_Day = $Trip] sort by StartTime asc,
+    title: '{Name}',
+    groupEvents: false,
+    customVisualization: false
+  )
+}
