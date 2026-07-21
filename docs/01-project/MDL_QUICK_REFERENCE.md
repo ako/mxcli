@@ -982,6 +982,7 @@ Modify an existing page or snippet's widget tree in-place without full `create o
 | Widget dynamic classes | `set DynamicClasses = 'expr' on widgetName` | Runtime-computed classes on a widget — the surgical alternative to a bulk `update widgets` |
 | Insert after | `insert after widgetName { widgets }` | Add widgets after target |
 | Insert before | `insert before widgetName { widgets }` | Add widgets before target |
+| Insert into | `insert into containerName { widgets }` | Append as the container's last child (fills an empty container; dataview children take its entity) |
 | Drop widgets | `drop widget name1, name2` | Remove widgets by name |
 | Replace widget | `replace widgetName with { widgets }` | Replace widget subtree |
 | Pluggable prop | `set 'showLabel' = false on cbStatus` | Quoted name for pluggable widgets |

@@ -145,6 +145,8 @@ func (b *Builder) buildAlterPageInsert(ctx *parser.AlterPageInsertContext) *ast.
 		op.Position = "AFTER"
 	} else if ctx.BEFORE() != nil {
 		op.Position = "BEFORE"
+	} else if ctx.INTO() != nil {
+		op.Position = "INTO"
 	}
 
 	if wr := ctx.WidgetRef(); wr != nil {

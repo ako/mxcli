@@ -110,7 +110,16 @@ ALTER PAGE Module.EditPage {
     ACTIONBUTTON btnPreview (Caption: 'Preview', Action: MICROFLOW Module.ACT_Preview)
   }
 };
+
+-- Insert INTO a container — append as its last child (works on an empty container)
+ALTER PAGE Module.EditPage {
+  INSERT INTO ctnToolbar {
+    ACTIONBUTTON btnNew (Caption: 'New', Action: NOTHING, ButtonStyle: Primary)
+  }
+};
 ```
+
+`INSERT INTO <container>` appends widgets as the container's last children — the only way to fill an **empty** container, and handy for adding to a container or data view without a sibling to anchor to. Widgets inserted into a data view take that data view's entity. Supported on simple containers; for a layout grid or tab container, insert relative to a widget inside the target column/tab instead.
 
 The inserted widgets use the same syntax as in `CREATE PAGE`. Multiple widgets can be inserted in a single block.
 

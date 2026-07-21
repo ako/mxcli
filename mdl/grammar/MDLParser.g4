@@ -255,6 +255,7 @@ alterPageAssignment
 alterPageInsert
     : INSERT AFTER widgetRef LBRACE pageBodyV3 RBRACE
     | INSERT BEFORE widgetRef LBRACE pageBodyV3 RBRACE
+    | INSERT INTO widgetRef LBRACE pageBodyV3 RBRACE   // append as children of a container
     ;
 
 alterPageDrop

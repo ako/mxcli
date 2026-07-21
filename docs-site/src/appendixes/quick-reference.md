@@ -421,6 +421,7 @@ Modify an existing page or snippet's widget tree in-place without full `CREATE O
 | Page-level set | `SET Title = 'New Title'` | No ON clause for page properties |
 | Insert after | `INSERT AFTER widgetName { widgets }` | Add widgets after target |
 | Insert before | `INSERT BEFORE widgetName { widgets }` | Add widgets before target |
+| Insert into | `INSERT INTO containerName { widgets }` | Append as the container's last child (fills an empty container) |
 | Drop widgets | `DROP WIDGET name1, name2` | Remove widgets by name |
 | Replace widget | `REPLACE widgetName WITH { widgets }` | Replace widget subtree |
 | Pluggable prop | `SET 'showLabel' = false ON cbStatus` | Quoted name for pluggable widgets |

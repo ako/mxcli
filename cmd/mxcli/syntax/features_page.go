@@ -89,7 +89,7 @@ func init() {
 			"set property", "insert widget", "drop widget", "replace widget",
 			"popup width", "popup height", "popup resizable",
 		},
-		Syntax:  "ALTER PAGE Module.Name {\n  SET property = value ON widgetName;\n  SET (prop1 = val1, prop2 = val2) ON widgetName;\n  SET Title = 'New Title';  -- page-level (case-sensitive)\n  SET Class = 'css-class';  -- page-level CSS class / style\n  SET Style = 'css: rule';\n  SET PopupWidth = 800;     -- page-level pop-up dimensions\n  SET PopupHeight = 480;\n  SET PopupResizable = true;\n  INSERT AFTER widgetName { <widgets> };\n  INSERT BEFORE widgetName { <widgets> };\n  DROP WIDGET name1, name2;\n  REPLACE widgetName WITH { <widgets> };\n};",
+		Syntax:  "ALTER PAGE Module.Name {\n  SET property = value ON widgetName;\n  SET (prop1 = val1, prop2 = val2) ON widgetName;\n  SET Title = 'New Title';  -- page-level (case-sensitive)\n  SET Class = 'css-class';  -- page-level CSS class / style\n  SET Style = 'css: rule';\n  SET PopupWidth = 800;     -- page-level pop-up dimensions\n  SET PopupHeight = 480;\n  SET PopupResizable = true;\n  INSERT AFTER widgetName { <widgets> };\n  INSERT BEFORE widgetName { <widgets> };\n  INSERT INTO containerName { <widgets> };\n  DROP WIDGET name1, name2;\n  REPLACE widgetName WITH { <widgets> };\n};",
 		Example: "ALTER PAGE Module.EditPage {\n  SET (Caption = 'Save & Close', ButtonStyle = Success) ON btnSave;\n  INSERT AFTER txtName {\n    TEXTBOX txtMiddleName (Label: 'Middle Name', Binds: MiddleName)\n  };\n  DROP WIDGET txtUnused;\n};",
 		SeeAlso: []string{"page.create", "page.show", "snippet.alter"},
 	})
@@ -152,7 +152,7 @@ func init() {
 		Keywords: []string{
 			"alter snippet", "modify snippet", "update snippet",
 		},
-		Syntax:  "ALTER SNIPPET Module.Name {\n  SET property = value ON widgetName;\n  INSERT AFTER widgetName { <widgets> };\n  INSERT BEFORE widgetName { <widgets> };\n  DROP WIDGET name1, name2;\n  REPLACE widgetName WITH { <widgets> };\n};",
+		Syntax:  "ALTER SNIPPET Module.Name {\n  SET property = value ON widgetName;\n  INSERT AFTER widgetName { <widgets> };\n  INSERT BEFORE widgetName { <widgets> };\n  INSERT INTO containerName { <widgets> };\n  DROP WIDGET name1, name2;\n  REPLACE widgetName WITH { <widgets> };\n};",
 		Example: "ALTER SNIPPET Module.NavSnippet {\n  REPLACE navItem1 WITH {\n    ACTIONBUTTON btnHome (Caption: 'Home', Action: SHOW_PAGE Module.HomePage)\n  };\n  DROP WIDGET txtOldField;\n  INSERT AFTER txtName {\n    TEXTBOX txtNewField (Label: 'New Field', Binds: NewAttr)\n  };\n};",
 		SeeAlso: []string{"snippet", "page.alter"},
 	})
