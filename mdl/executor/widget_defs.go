@@ -276,20 +276,23 @@ func GenerateDefJSON(mpkDef *mpk.WidgetDefinition, mdlName string) *WidgetDefini
 				MdlAliases:  propertyAliases[mpkDef.ID][p.Key],
 			})
 		case "textTemplate":
-			// Top-level texttemplate properties are normally skipped (complex
-			// type). Emit one only when an MDL alias is registered — i.e. it's a
-			// required widget-level caption we know how to author (e.g. a
-			// PieChart's `seriesName` ← `SeriesName`). This keeps the broad
-			// "skip texttemplate" default while enabling the few that matter.
-			if aliases := propertyAliases[mpkDef.ID][p.Key]; len(aliases) > 0 {
-				def.PropertyMappings = append(def.PropertyMappings, PropertyMapping{
-					PropertyKey: p.Key,
-					Source:      "TextTemplate",
-					Operation:   "texttemplate",
-					Description: p.Description,
-					MdlAliases:  aliases,
-				})
-			}
+			// Emit a mapping for every top-level texttemplate property so its
+			// content is authorable by the property's own MDL name (e.g. Badge
+			// `value`, TreeNode `headerCaption`, Timeline `title`/`description`).
+			// Previously these were skipped unless a hand-registered alias existed,
+			// which silently dropped the caption (MDL-WIDGET01). The engine keeps
+			// the template's default ClientTemplate when the property is left unset
+			// (see applyOperation "texttemplate"), so emitting the mapping never
+			// nulls a default — it only enables authoring. Registered aliases (e.g.
+			// PieChart `seriesName` ← `SeriesName`) are still carried for widgets
+			// that expose a friendlier MDL keyword.
+			def.PropertyMappings = append(def.PropertyMappings, PropertyMapping{
+				PropertyKey: p.Key,
+				Source:      "TextTemplate",
+				Operation:   "texttemplate",
+				Description: p.Description,
+				MdlAliases:  propertyAliases[mpkDef.ID][p.Key],
+			})
 		case "association":
 			assocMappings = append(assocMappings, PropertyMapping{
 				PropertyKey: p.Key,

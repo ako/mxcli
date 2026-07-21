@@ -1,0 +1,69 @@
+-- ============================================================================
+-- Bug: textTemplate content silently dropped for generated-def pluggable widgets
+-- ============================================================================
+--
+-- Symptom:
+--   Authoring a Badge `value`, TreeNode `headerCaption`, or Timeline
+--   `title`/`description`/`timeIndication` (all textTemplate properties) via MDL
+--   left the caption empty on the persisted widget:
+--     - `describe page` showed the instance with no such property
+--     - `mxcli check` reported MDL-WIDGET01 "widget X has no property <key>"
+--
+-- Root cause:
+--   GenerateDefJSON emitted a texttemplate PropertyMapping only when a friendly
+--   MDL alias was hand-registered (propertyAliases, PieChart/HeatMap only). Every
+--   other top-level textTemplate was skipped, so the writer had no mapping to
+--   read the caption from the MDL and dropped it.
+--
+-- Fix:
+--   Emit a texttemplate mapping for EVERY top-level textTemplate property (keyed
+--   by the property's own name, so it's authorable as `value:`/`title:`/…), and
+--   have the engine keep the template's default ClientTemplate when the property
+--   is left unset (so emitting the mapping never nulls a default caption).
+--
+-- Verify:
+--   mxcli exec mdl-examples/bug-tests/pluggable-texttemplate-content.mdl -p app.mpr
+--   mxcli check ... -p app.mpr        # no MDL-WIDGET01 for value/headerCaption/title
+--   mx check app.mpr                  # 0 errors (v2 preserved)
+-- Requires: Badge / TreeNode / Timeline .mpk installed in the project's widgets/.
+-- ============================================================================
+
+create module TTContent;
+/
+create entity TTContent.DemoItem (
+  Title: String,
+  Description: String,
+  Status: String
+);
+/
+-- Timeline: title / description are textTemplate captions (default visualization).
+create or replace page TTContent.Home ( layout: Atlas_Core.Atlas_Default ) {
+  pluggablewidget 'com.mendix.widget.web.timeline.Timeline' tl (
+    datasource: database from TTContent.DemoItem,
+    title: '{Title}',
+    description: '{Description}',
+    groupEvents: false,
+    customVisualization: false
+  )
+  -- TreeNode: headerCaption is a textTemplate.
+  pluggablewidget 'com.mendix.widget.web.treenode.TreeNode' tn (
+    datasource: database from TTContent.DemoItem,
+    headerType: 'text',
+    headerCaption: '{Title}',
+    hasChildren: false,
+    showIcon: 'no'
+  )
+}
+/
+-- Badge: value is a textTemplate (rendered inside a data view context).
+create or replace page TTContent.Detail (
+  params: { $Item: TTContent.DemoItem },
+  layout: Atlas_Core.Atlas_Default
+) {
+  dataview dv (DataSource: $Item) {
+    pluggablewidget 'com.mendix.widget.custom.badge.Badge' bdg (
+      type: 'badge',
+      value: '{Status}'
+    )
+  }
+}
