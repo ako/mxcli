@@ -385,8 +385,10 @@ func reconcileValueTypesFromMPK(tmpl *WidgetTemplate, byKey map[string]mpk.Prope
 							}
 							vt["Required"] = pd.Required
 							vt["IsList"] = pd.IsList
+							vt["Multiline"] = pd.Multiline
 							vt["DefaultValue"] = pd.DefaultValue
 							vt["AllowedTypes"] = buildAllowedTypesArray(pd.AllowedTypes)
+							vt["SelectionTypes"] = buildSelectionTypesArray(pd.SelectionTypes)
 							vt["DataSourceProperty"] = pd.DataSource
 							// Normalize the mutually-exclusive type-specific fields to the
 							// authoritative .mpk type. A ValueType cloned from a wrong-typed
@@ -529,6 +531,18 @@ func buildAllowedTypesArray(types []string) []any {
 	arr := []any{float64(1)}
 	for _, t := range types {
 		arr = append(arr, t)
+	}
+	return arr
+}
+
+// buildSelectionTypesArray builds a ValueType.SelectionTypes list (leading Mendix
+// array marker 1 followed by the selection type names, e.g. "None"/"Single") from a
+// .mpk selection property's declared <selectionType> elements. Empty (marker only)
+// when the property declares none.
+func buildSelectionTypesArray(names []string) []any {
+	arr := []any{float64(1)}
+	for _, n := range names {
+		arr = append(arr, n)
 	}
 	return arr
 }

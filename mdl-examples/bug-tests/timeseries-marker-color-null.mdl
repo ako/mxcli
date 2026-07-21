@@ -1,0 +1,45 @@
+-- ============================================================================
+-- Bug: TimeSeries/LineChart series markerColor emitted as empty ClientTemplate
+-- ============================================================================
+--
+-- Symptom:
+--   A TimeSeries (or LineChart) with a default `line` series failed mx check:
+--     [CE0463] "The definition of this widget has changed…" at Time series
+--   The series' `markerColor` textTemplate was serialized as an empty
+--   Forms$ClientTemplate, but Studio Pro stores it as null when markers are off.
+--
+-- Root cause:
+--   A chart-series textTemplate that is VISIBLE serializes as an empty
+--   ClientTemplate; one that is HIDDEN must be null. chartSeriesTextTemplateVisible
+--   honored only the dataSet (static/dynamic) gate — it missed the item-level
+--   editorConfig gates: `markerColor` is hidden unless lineStyle == "lineWithMarkers"
+--   (default "line"), and `fillColor` is hidden unless enableFillArea is truthy.
+--
+-- Fix:
+--   chartSeriesTextTemplateHiddenByItemConfig nulls markerColor / fillColor when the
+--   item's lineStyle / enableFillArea hides them, mirroring the widget's
+--   editorConfig hideNestedPropertiesIn rules.
+--
+-- Verify:
+--   mxcli exec mdl-examples/bug-tests/timeseries-marker-color-null.mdl -p app.mpr
+--   mx check app.mpr    # 0 errors — markerColor null on the default line series
+-- Requires: Charts .mpk installed in the project's widgets/.
+-- ============================================================================
+
+create module TSMarker;
+/
+create entity TSMarker.Sale ( SaleDate: DateTime, Total: Decimal );
+/
+create or replace page TSMarker.Home ( layout: Atlas_Core.Atlas_Default ) {
+  -- default line style: markerColor is hidden -> must be null (not empty ClientTemplate)
+  pluggablewidget 'com.mendix.widget.web.timeseries.TimeSeries' tsPlain {
+    line lRev ( DataSet: 'static', DataSource: database from TSMarker.Sale,
+                StaticXAttribute: SaleDate, StaticYAttribute: Total, StaticName: 'Revenue' )
+  }
+  -- lineWithMarkers: markerColor is visible -> empty ClientTemplate is correct
+  pluggablewidget 'com.mendix.widget.web.timeseries.TimeSeries' tsMarkers {
+    line lRev2 ( DataSet: 'static', lineStyle: 'lineWithMarkers',
+                 DataSource: database from TSMarker.Sale,
+                 StaticXAttribute: SaleDate, StaticYAttribute: Total, StaticName: 'Revenue' )
+  }
+}

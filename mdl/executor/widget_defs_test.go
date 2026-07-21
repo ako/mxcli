@@ -138,12 +138,43 @@ func TestGenerateDefJSON_SkipsComplexTypes(t *testing.T) {
 
 	def := GenerateDefJSON(mpkDef, "COMPLEX")
 
-	// Complex types should be skipped
-	if len(def.PropertyMappings) != 0 {
-		t.Errorf("PropertyMappings count = %d, want 0 (complex types should be skipped)", len(def.PropertyMappings))
+	// textTemplate now always yields a mapping (so captions like Badge `value`
+	// are authorable); the other complex types (action/expression/icon/non-list
+	// object) are still skipped. So exactly one mapping — the texttemplate — is
+	// expected.
+	if len(def.PropertyMappings) != 1 {
+		t.Fatalf("PropertyMappings count = %d, want 1 (only the texttemplate maps; action/expression/icon/object skipped)", len(def.PropertyMappings))
+	}
+	tt := def.PropertyMappings[0]
+	if tt.PropertyKey != "myTemplate" || tt.Operation != "texttemplate" {
+		t.Errorf("mapping = {%s %s}, want {myTemplate texttemplate}", tt.PropertyKey, tt.Operation)
 	}
 	if len(def.ChildSlots) != 0 {
 		t.Errorf("ChildSlots count = %d, want 0", len(def.ChildSlots))
+	}
+}
+
+// Every top-level texttemplate property yields an authorable mapping, keyed by
+// its own property name, regardless of whether a friendly alias is registered.
+// Regression guard for the Badge `value` / TreeNode `headerCaption` / Timeline
+// `title` drop (MDL-WIDGET01).
+func TestGenerateDefJSON_TextTemplatesAlwaysMapped(t *testing.T) {
+	mpkDef := &mpk.WidgetDefinition{
+		ID:   "com.mendix.widget.custom.badge.Badge",
+		Name: "Badge",
+		Properties: []mpk.PropertyDef{
+			{Key: "type", Type: "enumeration", DefaultValue: "badge"},
+			{Key: "value", Type: "textTemplate"},
+			{Key: "onClick", Type: "action"},
+		},
+	}
+	def := GenerateDefJSON(mpkDef, "BADGE")
+	m := findMapping(def.PropertyMappings, "value")
+	if m == nil {
+		t.Fatal("value (textTemplate) has no mapping — it would be dropped (MDL-WIDGET01)")
+	}
+	if m.Operation != "texttemplate" || m.Source != "TextTemplate" {
+		t.Errorf("value mapping = {op=%s src=%s}, want {texttemplate TextTemplate}", m.Operation, m.Source)
 	}
 }
 

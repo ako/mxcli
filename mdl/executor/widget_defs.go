@@ -94,10 +94,13 @@ func RefreshWidgetDefinitions(projectPath string, force bool, output io.Writer) 
 			defJSON := GenerateDefJSON(mpkDef, mdlName)
 			// Lift property-visibility rules from the widget's editorConfig.js
 			// (#574 Phase 2) so the generated .def.json carries the version-
-			// specific applicability logic — superseding the hand-transcribed
-			// table for any widget whose editor config we can parse.
+			// specific applicability logic. Merge with the hand-transcribed table
+			// rather than replace it: the static extractor skips compound/ternary
+			// guards (e.g. Timeline's `customVisualization ? hide([title,...])`),
+			// so the hand-authored fallback fills the keys the extractor misses.
+			// Extracted rules win on conflict (they're version-specific).
 			if rules := extractVisibilityRulesFromMPK(mpkPath, mpkDef.ID); len(rules) > 0 {
-				defJSON.PropertyVisibility = rules
+				defJSON.PropertyVisibility = mergeVisibilityRules(rules, widgetVisibilityRules[mpkDef.ID])
 			}
 			freshData, err := json.MarshalIndent(defJSON, "", "  ")
 			if err != nil {
@@ -276,20 +279,23 @@ func GenerateDefJSON(mpkDef *mpk.WidgetDefinition, mdlName string) *WidgetDefini
 				MdlAliases:  propertyAliases[mpkDef.ID][p.Key],
 			})
 		case "textTemplate":
-			// Top-level texttemplate properties are normally skipped (complex
-			// type). Emit one only when an MDL alias is registered — i.e. it's a
-			// required widget-level caption we know how to author (e.g. a
-			// PieChart's `seriesName` ← `SeriesName`). This keeps the broad
-			// "skip texttemplate" default while enabling the few that matter.
-			if aliases := propertyAliases[mpkDef.ID][p.Key]; len(aliases) > 0 {
-				def.PropertyMappings = append(def.PropertyMappings, PropertyMapping{
-					PropertyKey: p.Key,
-					Source:      "TextTemplate",
-					Operation:   "texttemplate",
-					Description: p.Description,
-					MdlAliases:  aliases,
-				})
-			}
+			// Emit a mapping for every top-level texttemplate property so its
+			// content is authorable by the property's own MDL name (e.g. Badge
+			// `value`, TreeNode `headerCaption`, Timeline `title`/`description`).
+			// Previously these were skipped unless a hand-registered alias existed,
+			// which silently dropped the caption (MDL-WIDGET01). The engine keeps
+			// the template's default ClientTemplate when the property is left unset
+			// (see applyOperation "texttemplate"), so emitting the mapping never
+			// nulls a default — it only enables authoring. Registered aliases (e.g.
+			// PieChart `seriesName` ← `SeriesName`) are still carried for widgets
+			// that expose a friendlier MDL keyword.
+			def.PropertyMappings = append(def.PropertyMappings, PropertyMapping{
+				PropertyKey: p.Key,
+				Source:      "TextTemplate",
+				Operation:   "texttemplate",
+				Description: p.Description,
+				MdlAliases:  propertyAliases[mpkDef.ID][p.Key],
+			})
 		case "association":
 			assocMappings = append(assocMappings, PropertyMapping{
 				PropertyKey: p.Key,
@@ -337,6 +343,28 @@ func GenerateDefJSON(mpkDef *mpk.WidgetDefinition, mdlName string) *WidgetDefini
 //	  "expression"===e.type && hidePropertiesIn(["videoUrl","posterUrl"])
 //	Timeline (editorConfig.js):
 //	  e.customVisualization ? hidePropertiesIn(["title","description","icon","timeIndication",...]) : ...
+// mergeVisibilityRules returns the extracted rules plus any hand-authored fallback
+// rules whose PropertyKey the extractor did not cover. Extracted rules are
+// version-specific (lifted from the installed .mpk's editorConfig.js) and win on
+// conflict; the fallback fills the compound/ternary guards the static extractor
+// skips (e.g. Timeline `title`/`description` hidden when `customVisualization`).
+func mergeVisibilityRules(extracted, fallback []types.WidgetVisibilityRule) []types.WidgetVisibilityRule {
+	if len(fallback) == 0 {
+		return extracted
+	}
+	covered := make(map[string]bool, len(extracted))
+	for _, r := range extracted {
+		covered[r.PropertyKey] = true
+	}
+	merged := extracted
+	for _, r := range fallback {
+		if !covered[r.PropertyKey] {
+			merged = append(merged, r)
+		}
+	}
+	return merged
+}
+
 var widgetVisibilityRules = map[string][]types.WidgetVisibilityRule{
 	"com.mendix.widget.web.videoplayer.VideoPlayer": {
 		{PropertyKey: "videoUrl", HiddenWhen: &types.WidgetVisibilityCondition{PropertyKey: "type", Operator: "eq", Value: "expression"}},

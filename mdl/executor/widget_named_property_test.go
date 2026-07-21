@@ -73,9 +73,9 @@ func TestResolveMapping_NamedTextTemplate(t *testing.T) {
 	}
 }
 
-// GenerateDefJSON emits the widget-level aliases and the seriesName texttemplate
-// mapping (only because it has a registered alias — other texttemplates stay
-// skipped).
+// GenerateDefJSON emits the widget-level aliases; the aliased seriesName carries
+// its friendly MDL keyword, and an unaliased texttemplate still gets a mapping
+// (authorable by its own property name) — it just has no alias.
 func TestGenerateDefJSON_PieChartNamedProperties(t *testing.T) {
 	mpkDef := &mpk.WidgetDefinition{
 		ID:   "com.mendix.widget.web.piechart.PieChart",
@@ -84,7 +84,7 @@ func TestGenerateDefJSON_PieChartNamedProperties(t *testing.T) {
 			{Key: "seriesDataSource", Type: "datasource"},
 			{Key: "seriesValueAttribute", Type: "attribute"},
 			{Key: "seriesName", Type: "textTemplate"},
-			{Key: "otherTemplate", Type: "textTemplate"}, // no alias → skipped
+			{Key: "otherTemplate", Type: "textTemplate"}, // no alias → still mapped, just aliasless
 		},
 	}
 	def := GenerateDefJSON(mpkDef, "PIECHART")
@@ -99,7 +99,13 @@ func TestGenerateDefJSON_PieChartNamedProperties(t *testing.T) {
 	if !ok || sn.Operation != "texttemplate" || len(sn.MdlAliases) != 1 || sn.MdlAliases[0] != "SeriesName" {
 		t.Errorf("seriesName mapping = %+v, want texttemplate with [SeriesName]", sn)
 	}
-	if _, ok := byKey["otherTemplate"]; ok {
-		t.Error("otherTemplate (no alias) should stay skipped")
+	// An unaliased texttemplate is now still emitted (authorable by its own name),
+	// carrying no MDL alias.
+	ot, ok := byKey["otherTemplate"]
+	if !ok || ot.Operation != "texttemplate" {
+		t.Errorf("otherTemplate mapping = %+v, want a texttemplate mapping", ot)
+	}
+	if len(ot.MdlAliases) != 0 {
+		t.Errorf("otherTemplate aliases = %v, want none", ot.MdlAliases)
 	}
 }
