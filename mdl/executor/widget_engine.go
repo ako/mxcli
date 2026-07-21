@@ -61,7 +61,12 @@ const defaultSlotContainer = "template"
 //	10 — widget-level named-property aliases + emitted `seriesName` texttemplate
 //	    for PieChart/HeatMap (item 1b): `ValueAttribute`→`seriesValueAttribute`,
 //	    `SeriesName`→`seriesName`. Bump forces regeneration to carry the aliases.
-const WidgetDefGeneratorVersion = 10
+//	11 — emit a texttemplate PropertyMapping for EVERY top-level texttemplate
+//	    property (not just hand-aliased ones), so captions like Badge `value`,
+//	    TreeNode `headerCaption`, and Timeline `title`/`description` are authorable
+//	    instead of being silently dropped (MDL-WIDGET01). Bump forces existing
+//	    projects to regenerate their widget defs with the new mappings.
+const WidgetDefGeneratorVersion = 11
 
 // WidgetDefinition describes how to construct a pluggable widget from MDL syntax.
 // Loaded from embedded JSON definition files (*.def.json).
@@ -500,6 +505,15 @@ func (e *PluggableWidgetEngine) applyOperation(builder backend.WidgetObjectBuild
 	case "widgets":
 		// ctx doesn't carry child widgets for this path — handled by applyChildSlots
 	case "texttemplate":
+		// No MDL value provided: keep the template's default ClientTemplate
+		// (the widget's shipped caption, or null where the widget's editorConfig
+		// hides it) rather than overwriting it with an empty template. This lets
+		// GenerateDefJSON emit a mapping for every texttemplate property (so any
+		// caption is authorable) without nulling the defaults of the ones the user
+		// leaves unset.
+		if ctx.PrimitiveVal == "" {
+			return nil
+		}
 		// A `{AttrName}` placeholder needs ClientTemplate parameters resolved
 		// against the entity context — plain SetTextTemplate would emit the
 		// braces literally, which Studio Pro's translatable-text parser rejects
