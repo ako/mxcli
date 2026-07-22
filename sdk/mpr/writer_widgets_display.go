@@ -81,22 +81,7 @@ func serializeGallery(g *pages.Gallery) bson.D {
 	}
 	// Fallback: provide empty ListViewXPathSource to prevent Studio Pro crash
 	if dataSource == nil {
-		dataSource = bson.D{
-			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
-			{Key: "$Type", Value: "Forms$ListViewXPathSource"},
-			{Key: "EntityRef", Value: nil},
-			{Key: "Search", Value: bson.D{
-				{Key: "$ID", Value: idToBsonBinary(generateUUID())},
-				{Key: "$Type", Value: "Forms$ListViewSearch"},
-				{Key: "Paths", Value: bson.A{int32(3)}},
-			}},
-			{Key: "Sort", Value: bson.D{
-				{Key: "$ID", Value: idToBsonBinary(generateUUID())},
-				{Key: "$Type", Value: "Forms$ListViewSort"},
-				{Key: "Paths", Value: bson.A{int32(3)}},
-			}},
-			{Key: "XPathConstraint", Value: ""},
-		}
+		dataSource = emptyListViewXPathSource()
 	}
 
 	// Build content widgets
@@ -144,22 +129,7 @@ func serializeListView(lv *pages.ListView) bson.D {
 	}
 	// Fallback: provide empty ListViewXPathSource to prevent Studio Pro crash
 	if dataSource == nil {
-		dataSource = bson.D{
-			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
-			{Key: "$Type", Value: "Forms$ListViewXPathSource"},
-			{Key: "EntityRef", Value: nil},
-			{Key: "Search", Value: bson.D{
-				{Key: "$ID", Value: idToBsonBinary(generateUUID())},
-				{Key: "$Type", Value: "Forms$ListViewSearch"},
-				{Key: "Paths", Value: bson.A{int32(3)}},
-			}},
-			{Key: "Sort", Value: bson.D{
-				{Key: "$ID", Value: idToBsonBinary(generateUUID())},
-				{Key: "$Type", Value: "Forms$ListViewSort"},
-				{Key: "Paths", Value: bson.A{int32(3)}},
-			}},
-			{Key: "XPathConstraint", Value: ""},
-		}
+		dataSource = emptyListViewXPathSource()
 	}
 
 	// Build content widgets
@@ -207,6 +177,31 @@ func serializeListView(lv *pages.ListView) bson.D {
 	return doc
 }
 
+// emptyListViewXPathSource is the fallback empty database source used when a
+// ListView (or Gallery-as-ListView) has no datasource yet. It must carry the same
+// metamodel-valid shape as a populated source — a Forms$GridSortBar with SortItems
+// and a Forms$ListViewSearch with SearchRefs — so the Mendix client can read
+// .length of those lists instead of crashing on an absent/misnamed array.
+func emptyListViewXPathSource() bson.D {
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+		{Key: "$Type", Value: "Forms$ListViewXPathSource"},
+		{Key: "ForceFullObjects", Value: false},
+		{Key: "EntityRef", Value: nil},
+		{Key: "SortBar", Value: bson.D{
+			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+			{Key: "$Type", Value: "Forms$GridSortBar"},
+			{Key: "SortItems", Value: bson.A{int32(2)}},
+		}},
+		{Key: "Search", Value: bson.D{
+			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+			{Key: "$Type", Value: "Forms$ListViewSearch"},
+			{Key: "SearchRefs", Value: bson.A{int32(3)}},
+		}},
+		{Key: "XPathConstraint", Value: ""},
+	}
+}
+
 // serializeListViewDataSource serializes a datasource for ListView widgets.
 // Supports DatabaseSource (XPath), MicroflowSource, NanoflowSource, and AssociationSource.
 func serializeListViewDataSource(ds pages.DataSource) bson.D {
@@ -225,19 +220,41 @@ func serializeListViewDataSource(ds pages.DataSource) bson.D {
 				{Key: "Entity", Value: d.EntityName},
 			}
 		}
+		// Sorting lives on a Forms$GridSortBar / Forms$GridSortItem list (SortItems),
+		// exactly like the pluggable CustomWidgetXPathSource — NOT a Forms$ListViewSort.
+		// ListViewXPathSource has no `Sort` property; emitting one (and a `Paths` key on
+		// Search) produced a datasource whose client model omitted the arrays the Mendix
+		// client reads .length of, crashing retrieveByXPath/processResult. Mirror the
+		// GridSortBar shape and use the metamodel's SearchRefs list (searchPaths was
+		// removed in 7.11.0).
+		sortItems := bson.A{int32(2)} // typed-array marker, matches Studio Pro even when empty
+		for _, sort := range d.Sorting {
+			sortItems = append(sortItems, bson.D{
+				{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+				{Key: "$Type", Value: "Forms$GridSortItem"},
+				{Key: "AttributeRef", Value: bson.D{
+					{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+					{Key: "$Type", Value: "DomainModels$AttributeRef"},
+					{Key: "Attribute", Value: sort.AttributePath},
+					{Key: "EntityRef", Value: nil},
+				}},
+				{Key: "SortDirection", Value: string(sort.Direction)},
+			})
+		}
 		return bson.D{
 			{Key: "$ID", Value: idToBsonBinary(string(d.ID))},
 			{Key: "$Type", Value: "Forms$ListViewXPathSource"},
+			{Key: "ForceFullObjects", Value: false},
 			{Key: "EntityRef", Value: entityRef},
+			{Key: "SortBar", Value: bson.D{
+				{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+				{Key: "$Type", Value: "Forms$GridSortBar"},
+				{Key: "SortItems", Value: sortItems},
+			}},
 			{Key: "Search", Value: bson.D{
 				{Key: "$ID", Value: idToBsonBinary(generateUUID())},
 				{Key: "$Type", Value: "Forms$ListViewSearch"},
-				{Key: "Paths", Value: bson.A{int32(3)}},
-			}},
-			{Key: "Sort", Value: bson.D{
-				{Key: "$ID", Value: idToBsonBinary(generateUUID())},
-				{Key: "$Type", Value: "Forms$ListViewSort"},
-				{Key: "Paths", Value: bson.A{int32(3)}},
+				{Key: "SearchRefs", Value: bson.A{int32(3)}},
 			}},
 			{Key: "XPathConstraint", Value: d.XPathConstraint},
 		}
