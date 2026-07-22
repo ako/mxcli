@@ -1,0 +1,49 @@
+-- ============================================================================
+-- Native ListView `database` source crashes the browser client at runtime
+-- ============================================================================
+--
+-- Symptom (before fix): a page with a native LISTVIEW over a `database from`
+-- (XPath) datasource passes `mx check` but crashes the Mendix browser client on
+-- load, redirecting to the login page:
+--
+--   TypeError: Cannot read properties of undefined (reading 'length')
+--     at processResult
+--     at retrieveByXPath
+--
+-- Root cause: the serialized `Forms$ListViewXPathSource` omitted the arrays the
+-- client reads `.length` of.
+--   * Codec (default engine): `Forms$ListViewSearch` was emitted without its
+--     `SearchRefs` list — the codec drops an empty, never-Set PartList unless the
+--     type is registered in RegisterTypeDefaults (as Forms$GridSortBar.SortItems
+--     already was, but Forms$ListViewSearch was not).
+--   * Legacy engine: emitted a bogus `Forms$ListViewSort` + a `Paths` key
+--     (renamed to `SearchRefs` in Mendix 7.11.0) and NO `Forms$GridSortBar` at
+--     all.
+--
+-- The pluggable Gallery/DataGrid2 database source was already correct
+-- (CustomWidgetXPathSource + GridSortBar, no Search) — this bug is specific to
+-- the native ListView.
+--
+-- Fix:
+--   * mdl/backend/modelsdk/widget_write.go — register
+--     RegisterTypeDefaults("Forms$ListViewSearch", {MandatoryLists: ["SearchRefs"]})
+--   * sdk/mpr/writer_widgets_display.go — serializeListViewDataSource +
+--     emptyListViewXPathSource emit Forms$GridSortBar/SortItems and
+--     Forms$ListViewSearch/SearchRefs (no Sort/Paths).
+--
+-- Verify: exec against an 11.x app, then `mx check` = 0 errors and the page
+-- loads in the browser without the JS crash.
+-- ============================================================================
+
+create entity MyFirstModule.Trip (
+  Name: string(200)
+);
+
+create page MyFirstModule.LvSearchRefs (
+  Title: 'ListView database source',
+  Layout: Atlas_Core.Atlas_Default
+) {
+  listview lvTrips (datasource: database from MyFirstModule.Trip sort by Name asc) {
+    dynamictext dtName (content: '{1}', contentparams: [{1} = Name])
+  }
+}
