@@ -187,6 +187,43 @@ func pingTCP(hostPort string, timeout time.Duration) error {
 	return nil
 }
 
+// checkTargetPortsFree refuses to boot when any of the loop's ports is already
+// answering, which almost always means a previous `mxcli run --local` (or a
+// stray mxbuild --serve / runtime) is still alive. Without this guard the boot
+// "succeeds" against the stale process: the readiness probes only check that the
+// port answers (StartServe.waitReady / runtime waitAdminReady), so mxcli adopts
+// the old serve/runtime, the fresh JVM that failed to bind is torn down by
+// defer, and the old process keeps serving stale output — reading exactly like a
+// stale cache. Refusing with an actionable message turns that silent failure
+// into a clear one. We only *detect* here (never kill): reaping someone else's
+// process is the user's call.
+func checkTargetPortsFree(o LocalRunOptions) error {
+	host := "127.0.0.1"
+	type p struct {
+		port int
+		role string
+		flag string
+	}
+	for _, c := range []p{
+		{o.AppPort, "app", "--app-port"},
+		{o.AdminPort, "admin API", "--admin-port"},
+		{o.ServePort, "mxbuild serve", "--serve-port"},
+	} {
+		hostPort := fmt.Sprintf("%s:%d", host, c.port)
+		if err := pingTCP(hostPort, 500*time.Millisecond); err == nil {
+			return fmt.Errorf("port %d (%s) is already in use — a previous 'mxcli run --local' "+
+				"or a stray mxbuild --serve/runtime is likely still serving on it.\n"+
+				"  A stale process is silently adopted otherwise, so edits appear to do nothing (looks like a stale cache — it isn't).\n"+
+				"  Free the ports, then retry:\n"+
+				"    pgrep -af 'mxbuild --serve|runtimelauncher|mxcli run'   # find them\n"+
+				"    kill <pid>                                             # stop each; confirm with: curl -s -o /dev/null -w '%%{http_code}' http://%s:%d  (want 000)\n"+
+				"  Or run on different ports with %s (and --admin-port/--serve-port).",
+				c.port, c.role, host, o.AppPort, c.flag)
+		}
+	}
+	return nil
+}
+
 // webClientSourceMTime returns the newest mtime of the browser-client *source*
 // under <deployDir>/web, excluding the rollup output (dist/) and the build log.
 // A page/widget/theme edit bumps it (and needs a client re-bundle); a
@@ -238,12 +275,64 @@ func projectSourceMTime(projectPath string) time.Time {
 	return newest
 }
 
+// themeSourceMTime returns the newest mtime of the app's *theme source* — the
+// SCSS/CSS/JS the designer edits under theme/ (app-level: main.scss,
+// custom-variables.scss, …) and themesource/<module>/web/ (per-module). These
+// live outside the .mpr/mprcontents tree, so projectSourceMTime never sees them;
+// without this a theme edit triggers no rebuild even under --watch, and the app
+// keeps serving the old styles (the "SCSS cache" symptom — really a missing
+// watch). mxbuild --serve recompiles the theme on the next /build, so surfacing
+// the edit as a change signal is all that's needed. Walk is mtime-polling (same
+// as projectSourceMTime), so it is reliable on container filesystems where
+// inotify is not — no watcher fd involved.
+func themeSourceMTime(projectPath string) time.Time {
+	dir := filepath.Dir(projectPath)
+	var newest time.Time
+	for _, sub := range []string{"theme", "themesource"} {
+		root := filepath.Join(dir, sub)
+		_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return nil
+			}
+			switch strings.ToLower(filepath.Ext(path)) {
+			case ".scss", ".css", ".js", ".json":
+				if info, err := d.Info(); err == nil && info.ModTime().After(newest) {
+					newest = info.ModTime()
+				}
+			}
+			return nil
+		})
+	}
+	return newest
+}
+
+// sourceMTime is the combined --watch change signal: the newer of the model
+// source (projectSourceMTime) and the theme source (themeSourceMTime). Either a
+// model edit or a theme edit re-triggers the build.
+func sourceMTime(projectPath string) time.Time {
+	m := projectSourceMTime(projectPath)
+	if t := themeSourceMTime(projectPath); t.After(m) {
+		return t
+	}
+	return m
+}
+
 // RunLocal boots the warm local dev loop: resolve tooling, start mxbuild --serve
 // and a standalone runtime, do the first build+apply, then (with Watch) rebuild
 // and hot-apply on every project change until interrupted.
 func RunLocal(opts LocalRunOptions) error {
 	opts.applyDefaults()
 	w, stderr := opts.Stdout, opts.Stderr
+
+	// 0. Refuse fast if the loop's ports are already taken (a stale run/serve/
+	// runtime). Skipped for SetupOnly, which never boots a server. This is the
+	// single-instance guard: without it a stale process is silently adopted and
+	// keeps serving old output.
+	if !opts.SetupOnly {
+		if err := checkTargetPortsFree(opts); err != nil {
+			return err
+		}
+	}
 
 	// 1. Detect the project's Mendix version.
 	fmt.Fprintln(w, "Detecting project version...")
@@ -526,8 +615,12 @@ func watchAndApply(opts LocalRunOptions, serve *ServeServer, rt *LocalRuntime, w
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(sigCh)
 
-	fmt.Fprintln(w, "Watching for changes (Ctrl-C to stop)...")
-	last := projectSourceMTime(opts.ProjectPath)
+	fmt.Fprintln(w, "Watching model + theme source for changes (serving build #1; Ctrl-C to stop)...")
+	last := sourceMTime(opts.ProjectPath)
+	// gen is the served build generation — a monotonic counter surfaced on every
+	// apply so "did my change take?" is answerable from the log without guessing.
+	// The initial boot build is generation 1.
+	gen := 1
 	ticker := time.NewTicker(opts.PollInterval)
 	defer ticker.Stop()
 
@@ -537,12 +630,13 @@ func watchAndApply(opts LocalRunOptions, serve *ServeServer, rt *LocalRuntime, w
 			fmt.Fprintln(w, "\nShutting down...")
 			return nil
 		case <-ticker.C:
-			now := projectSourceMTime(opts.ProjectPath)
+			now := sourceMTime(opts.ProjectPath)
 			if !now.After(last) {
 				continue
 			}
 			last = now
-			fmt.Fprintln(w, "Change detected, rebuilding...")
+			gen++
+			fmt.Fprintf(w, "Change detected, rebuilding (build #%d)...\n", gen)
 			start := time.Now()
 
 			// Capture the client-bundle generation and the web-source mtime before
@@ -584,13 +678,13 @@ func watchAndApply(opts LocalRunOptions, serve *ServeServer, rt *LocalRuntime, w
 			}
 			client := ""
 			if bundled {
-				client = ", client re-bundled"
+				client = fmt.Sprintf(", client re-bundled (gen %d)", watcher.Generation())
 			}
-			fmt.Fprintf(w, "  applied via %s in %s%s -> %s\n", action, time.Since(start).Round(time.Millisecond), client, rt.AppURL())
+			fmt.Fprintf(w, "  build #%d applied via %s in %s%s -> %s\n", gen, action, time.Since(start).Round(time.Millisecond), client, rt.AppURL())
 			maybeScreenshot(opts, rt)
 			// Refresh the baseline AFTER the apply so an edit made mid-build is
 			// still caught on the next tick.
-			last = projectSourceMTime(opts.ProjectPath)
+			last = sourceMTime(opts.ProjectPath)
 		}
 	}
 }
