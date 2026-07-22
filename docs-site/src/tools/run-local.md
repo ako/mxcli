@@ -78,12 +78,66 @@ so structural changes need a restart; behavioural changes do not.
 
 ## The change signal
 
-`--watch` watches the model **source** — the `.mpr` file and the `mprcontents/`
-document tree (v2) — not the whole project dir. This is deliberate: the serve/mxbuild
+`--watch` watches two **source** trees and rebuilds when either changes:
+
+- the **model source** — the `.mpr` file and the `mprcontents/` document tree (v2); and
+- the **theme source** — `theme/` (app-level `main.scss`, `custom-variables.scss`, …)
+  and `themesource/<module>/web/` (per-module SCSS/CSS/JS).
+
+It does **not** watch the whole project dir. This is deliberate: the serve/mxbuild
 build rewrites `deployment/`, `theme-cache/`, and `.mendix-cache/` on every run, and
 screenshots land in `.mxcli/`; watching only the source keeps that build-output churn
-from re-triggering the loop. The intended cycle: an agent (or you) edits the model
-with `mxcli exec`/MDL, and the running `run --local` picks it up and hot-applies it.
+from re-triggering the loop. Both signals are **mtime polling** (default 1 s), so they
+work on container filesystems where inotify does not fire — no watcher fd is involved.
+
+Each applied change is logged with a **build generation** counter (`build #2`,
+`build #3`, …; the boot build is `#1`), so "did my change take?" is answerable from
+the log instead of guessed.
+
+The intended cycle: an agent (or you) edits the model with `mxcli exec`/MDL — or edits
+a theme `.scss` — and the running `run --local` picks it up and hot-applies it.
+
+## Editing themes (SCSS): rebuild, don't clear caches
+
+A theme edit (e.g. `theme/web/main.scss`) needs a **rebuild**, not a cache-clear.
+`mxbuild --serve` recompiles the theme on its next `/build`, and that recompile
+correctly picks up SCSS **content** changes — there is no incremental-theme cache to
+clear (verified: one `/build` after an `main.scss` content edit changes
+`theme-cache/web/theme.compiled.css`). So:
+
+- **With `--watch`** — just save the `.scss`; the theme source is watched and the loop
+  rebuilds and hot-applies automatically.
+- **Without `--watch`** — nothing watches anything, so a save changes nothing in the
+  running app. Trigger a rebuild: restart `run --local`, or use `--watch`.
+
+Do **not** `rm -rf theme-cache/ .mendix-cache/ deployment/` — clearing caches is a red
+herring. If a theme edit "won't show up", the cause is that no rebuild ran (Problem
+above) or a **stale process is still serving** (below), never a stale compiled-CSS
+cache.
+
+## "My edit didn't show up" — it's usually a stale process, not a cache
+
+`run --local` refuses to boot if its ports (`8080` app, `8090` admin, `6543` serve)
+are already answering — because a previous `run --local` (or a stray `mxbuild --serve`
+/ runtime) left alive would otherwise be **silently adopted**: the startup readiness
+probes only check that the port answers, so a fresh run would attach to the old
+process and keep serving old output. That reads exactly like a stale cache but is a
+stale **process**.
+
+If you started `run --local` in the background and the wrapping shell exited non-zero
+(e.g. a chained `sleep`/`curl` that failed), the `run --local` process can die while
+its `mxbuild --serve` + runtime keep serving on `:8080`. Launch `run --local` as the
+**sole** command in its own invocation — don't chain a `sleep`/status check after it in
+the same shell — and poll separately. To recover from a stale process:
+
+```bash
+pgrep -af 'mxbuild --serve|runtimelauncher|mxcli run'   # find them
+kill <pid>                                              # stop each
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080  # want 000 (port free)
+```
+
+Then start `run --local` again. Or run on different ports with `--app-port` /
+`--admin-port` / `--serve-port`.
 
 ## Pages render in the browser
 

@@ -48,6 +48,18 @@ func init() {
 	codec.RegisterTypeDefaults("Forms$GridSortBar", codec.TypeDefaults{
 		MandatoryListMarkers: map[string]int32{"SortItems": 2},
 	})
+	// A native ListView's Search (Forms$ListViewSearch) always carries a (usually
+	// empty) SearchRefs list — Studio Pro serializes it even with search disabled.
+	// The codec encoder omits an empty, never-Set PartList on a freshly-created
+	// element, so without this default listViewSourceToGen emits the Search node as
+	// {$ID,$Type} only, with SearchRefs absent. The Mendix client reads
+	// search.searchRefs.length; a missing list surfaces as undefined and throws
+	// "Cannot read properties of undefined (reading 'length')" in
+	// retrieveByXPath/processResult once search is exercised. (searchPaths was
+	// removed in 7.11.0; searchRefs is the valid list on 11.x.)
+	codec.RegisterTypeDefaults("Forms$ListViewSearch", codec.TypeDefaults{
+		MandatoryLists: []string{"SearchRefs"},
+	})
 	// LayoutGrid and its rows carry a null ConditionalVisibilitySettings; the grid,
 	// rows, and columns all use the typed-array marker 2 in their parent lists.
 	for _, t := range []string{"Forms$LayoutGrid", "Forms$LayoutGridRow"} {
