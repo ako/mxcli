@@ -68,8 +68,40 @@ mxcli run --local -p app.mpr --watch
 mxcli exec add-page.mdl -p app.mpr
 ```
 
-`--watch` observes the project directory (MPR v1 and v2 layouts), ignoring
-`deployment/`, `.git`, and `node_modules`.
+`--watch` observes two source trees and rebuilds when either changes: the **model
+source** (`.mpr` + `mprcontents/`, v1 and v2 layouts) and the **theme source**
+(`theme/` and `themesource/<module>/web/` — SCSS/CSS/JS). It ignores build output
+(`deployment/`, `theme-cache/`, `.mendix-cache/`, `.mxcli/`). Both signals are mtime
+polling, so they work on container filesystems where inotify is silent. Each apply is
+logged with a build-generation counter (`build #2`, …) so you can confirm a change
+landed.
+
+## Editing themes (SCSS) — rebuild, never clear caches
+
+A theme edit (`theme/web/main.scss`, module SCSS) needs a **rebuild**, not a
+cache-clear. With `--watch`, just save the `.scss` — the theme source is watched and
+the loop rebuilds and hot-applies. Without `--watch`, nothing is watched, so the save
+does nothing until you restart `run --local` (or re-run with `--watch`). `mxbuild
+--serve` recompiles the theme on its next build and correctly picks up SCSS content
+changes, so **never** `rm -rf theme-cache/ .mendix-cache/ deployment/` — clearing
+caches is a red herring.
+
+## "My edit didn't show up" — stale process, not stale cache
+
+`run --local` refuses to boot when its ports (8080/8090/6543) are already answering,
+because a leftover `run --local` / `mxbuild --serve` / runtime would otherwise be
+silently adopted and keep serving old output (it looks like a cache but is a stale
+**process**). If a background `run --local` died while its serve+runtime kept serving,
+recover with:
+
+```bash
+pgrep -af 'mxbuild --serve|runtimelauncher|mxcli run'   # find them
+kill <pid>                                              # stop each
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080  # want 000
+```
+
+Launch `run --local` as the **sole** command in its invocation (don't chain a trailing
+`sleep`/`curl` whose non-zero exit can kill the backgrounded run); poll separately.
 
 ## Flags
 
