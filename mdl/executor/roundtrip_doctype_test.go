@@ -117,15 +117,29 @@ var scriptModuleDeps = map[string][]moduleDep{
 // not actionable on this branch.
 var scriptSkipList = map[string]string{}
 
-// scriptKnownCEErrors lists CE error codes that are expected for specific scripts.
-// These are syntax showcase scripts that intentionally omit entities, constants,
-// headers etc. that full validation requires.
+// scriptKnownCEErrors lists CE error codes (or, where an error carries no CE
+// code, a distinctive substring of its message) that are expected for specific
+// scripts. These are syntax showcase scripts that intentionally omit entities,
+// constants, headers etc. that full validation requires. Matched by substring
+// against each `[error]` line (see allErrorsKnown).
 var scriptKnownCEErrors = map[string][]string{
 	"03-page-examples.mdl": {
 		"CE3637", // Data view listen to gallery in sibling layout-grid column — Mendix scoping limitation
 	},
 	"06b-soap-examples.mdl": {
 		"CE1613", // Dangling service/mapping refs — no web service defined in the test project
+	},
+	"17-custom-widget-examples.mdl": {
+		// The IMAGE showcases author bare/default (static-image-mode) Image
+		// widgets to demonstrate the IMAGE keyword's basic/dimensions/onclick
+		// syntax. MDL's image widget exposes no property to bind a static image
+		// resource (only imageUrl mode), so a default Image is legitimately
+		// "No image selected." — exactly what a freshly-dropped Image shows in
+		// Studio Pro until you pick one. Not an mxcli defect: the widget BSON is
+		// valid. It previously passed only because a stale
+		// `Atlas_Core.Content.Mendix` template default masked it — that default
+		// caused CE0463 and was removed in the Image CE0463 fix (549c44f).
+		"No image selected.",
 	},
 }
 
