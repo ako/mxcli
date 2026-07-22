@@ -3,9 +3,12 @@
 package docker
 
 import (
+	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -240,5 +243,82 @@ func TestPageLabel(t *testing.T) {
 	}
 	if pageLabel("/p/x") != "/p/x" {
 		t.Errorf("pageLabel(/p/x) = %q", pageLabel("/p/x"))
+	}
+}
+
+func TestThemeSourceMTime_WatchesThemeAndThemesource(t *testing.T) {
+	dir := t.TempDir()
+	mpr := filepath.Join(dir, "App.mpr")
+	if err := os.WriteFile(mpr, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// App-level theme and a per-module theme source.
+	themeMain := filepath.Join(dir, "theme", "web", "main.scss")
+	moduleScss := filepath.Join(dir, "themesource", "travel", "web", "main.scss")
+	for _, f := range []string{themeMain, moduleScss} {
+		_ = os.MkdirAll(filepath.Dir(f), 0o755)
+		if err := os.WriteFile(f, []byte("// scss"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	base := themeSourceMTime(mpr)
+	if base.IsZero() {
+		t.Fatal("expected a non-zero theme source mtime")
+	}
+
+	// Editing the app-level main.scss MUST advance the signal.
+	future := time.Now().Add(time.Hour)
+	_ = os.Chtimes(themeMain, future, future)
+	if !themeSourceMTime(mpr).After(base) {
+		t.Error("theme/web/main.scss change should advance the theme signal")
+	}
+
+	// Editing a per-module theme source MUST advance the signal too.
+	base2 := themeSourceMTime(mpr)
+	future2 := time.Now().Add(2 * time.Hour)
+	_ = os.Chtimes(moduleScss, future2, future2)
+	if !themeSourceMTime(mpr).After(base2) {
+		t.Error("themesource/<module>/web/main.scss change should advance the theme signal")
+	}
+
+	// sourceMTime combines model + theme: a theme edit advances the combined signal
+	// even when the model is untouched (the core of the Problem-3 fix).
+	combinedBase := sourceMTime(mpr)
+	future3 := time.Now().Add(3 * time.Hour)
+	_ = os.Chtimes(themeMain, future3, future3)
+	if !sourceMTime(mpr).After(combinedBase) {
+		t.Error("a theme-only edit should advance the combined watch signal")
+	}
+}
+
+func TestCheckTargetPortsFree(t *testing.T) {
+	// A run whose ports are all free must pass.
+	opts := LocalRunOptions{}
+	opts.applyDefaults()
+	// Move ports to almost-certainly-free high values so a real serve/8080 on the
+	// box doesn't make the test flaky.
+	opts.AppPort, opts.AdminPort, opts.ServePort = 5, 6, 7 // privileged/unused; nothing listens
+	if err := checkTargetPortsFree(opts); err != nil {
+		t.Errorf("expected free ports to pass, got: %v", err)
+	}
+
+	// Occupy a port, point AppPort at it, and expect a refusal that names it.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+	busy := ln.Addr().(*net.TCPAddr).Port
+	opts.AppPort = busy
+	err = checkTargetPortsFree(opts)
+	if err == nil {
+		t.Fatalf("expected refusal when port %d is occupied", busy)
+	}
+	if want := fmt.Sprintf("port %d", busy); !strings.Contains(err.Error(), want) {
+		t.Errorf("error should name the busy port %q; got: %v", want, err)
+	}
+	if !strings.Contains(err.Error(), "already in use") {
+		t.Errorf("error should explain the port is in use; got: %v", err)
 	}
 }
