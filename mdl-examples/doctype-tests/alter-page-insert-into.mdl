@@ -24,10 +24,6 @@ create or replace page AlterInto.Home ( layout: Atlas_Core.Atlas_Default ) {
   }
 }
 /
-create or replace page AlterInto.Detail ( params: { $Item: AlterInto.Item }, layout: Atlas_Core.Atlas_Default ) {
-  dataview dv (datasource: $Item) { }
-}
-/
 -- Fill an empty container.
 alter page AlterInto.Home {
   insert into ctnEmpty {
@@ -42,7 +38,15 @@ alter page AlterInto.Home {
   }
 }
 /
--- Insert a data-bound widget into a dataview — the children take the dataview's entity.
+-- Insert a data-bound widget into a dataview — the children take the dataview's
+-- entity. This case uses a page parameter, which requires Mendix 11.0+, so the
+-- page and its ALTER are version-gated; the rest of the INSERT INTO coverage
+-- (the two AlterInto.Home cases above) still runs on 10.x.
+-- @version: 11.0+
+create or replace page AlterInto.Detail ( params: { $Item: AlterInto.Item }, layout: Atlas_Core.Atlas_Default ) {
+  dataview dv (datasource: $Item) { }
+}
+/
 alter page AlterInto.Detail {
   insert into dv {
     dynamictext dtTitle (content: '{1}', contentparams: [{1} = Title], rendermode: H1)
