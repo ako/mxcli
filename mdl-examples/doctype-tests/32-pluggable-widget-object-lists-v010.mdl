@@ -385,6 +385,12 @@ create page ObjListV10.P_OL08_LineChart (
 -- HeatMap's `scaleColors` object-list → the SCALECOLOR keyword. Each entry maps
 -- a value percentage to a colour; `ColorValue:` fills the schema's `colour`
 -- primitive (British spelling — the alias keeps the friendly MDL name).
+--
+-- HeatMap binds its data at the WIDGET level (no `series` object-list): the
+-- `DataSource:` + `ValueAttribute:` fill the schema's `Series`/`Value attribute`
+-- (both required — CE0642 without them), and `HorizontalAxisAttribute:` /
+-- `VerticalAxisAttribute:` pick the two category axes. The SCALECOLOR entries
+-- then layer the colour scale over that grid.
 
 create page ObjListV10.P_OL09_HeatMap (
   Title: 'Sales Heat Map',
@@ -394,7 +400,12 @@ create page ObjListV10.P_OL09_HeatMap (
   layoutgrid lg1 {
     row r1 {
       column c1 (DesktopWidth: 12) {
-        pluggablewidget 'com.mendix.widget.web.heatmap.HeatMap' heatMap1 {
+        pluggablewidget 'com.mendix.widget.web.heatmap.HeatMap' heatMap1 (
+          DataSource: database from ObjListV10.SalesData,
+          HorizontalAxisAttribute: Region,
+          VerticalAxisAttribute: PeriodLabel,
+          ValueAttribute: RevenueValue
+        ) {
           scalecolor scLow (ValuePercentage: 0, ColorValue: '#f7fbff')
           scalecolor scHigh (ValuePercentage: 100, ColorValue: '#08306b')
         }
