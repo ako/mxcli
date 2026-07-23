@@ -28,7 +28,7 @@ func TestProxyForURL(t *testing.T) {
 		url  string
 		want string
 	}{
-		{"https://hub.mxcli.org", "http://127.0.0.1:33451"},
+		{"https://hub.example.com", "http://127.0.0.1:33451"},
 		{"http://127.0.0.1:9500", ""},          // loopback → NO_PROXY
 		{"https://relay.internal.example", ""}, // suffix match in NO_PROXY
 		{"", ""},                               // no URL

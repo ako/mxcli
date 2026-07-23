@@ -15,7 +15,7 @@ func newTestServer(t *testing.T) (*Server, *Registry) {
 	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
 	reg := newTestRegistry(clk)
 	srv, err := NewServer(ServerOptions{
-		Domain:       "mxcli.org",
+		Domain:       "example.com",
 		Registry:     reg,
 		CertCacheDir: t.TempDir(),
 	})
@@ -34,7 +34,7 @@ func req(host, target string) *http.Request {
 func TestFront_HubHostServesAdmin(t *testing.T) {
 	srv, _ := newTestServer(t)
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, req("hub.mxcli.org", "/"))
+	srv.ServeHTTP(rec, req("hub.example.com", "/"))
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "mxcli tunnel-hub") {
 		t.Errorf("admin page: code=%d, body has hub title=%v", rec.Code, strings.Contains(rec.Body.String(), "mxcli tunnel-hub"))
 	}
@@ -44,7 +44,7 @@ func TestFront_HubHostAPI(t *testing.T) {
 	srv, reg := newTestServer(t)
 	reg.Register(RegisterRequest{Project: "App", Branch: "main"})
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, req("hub.mxcli.org", "/api/backends"))
+	srv.ServeHTTP(rec, req("hub.example.com", "/api/backends"))
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"project":"App"`) {
 		t.Errorf("api/backends: code=%d body=%s", rec.Code, rec.Body)
 	}
@@ -53,7 +53,7 @@ func TestFront_HubHostAPI(t *testing.T) {
 func TestFront_UnknownSubdomain(t *testing.T) {
 	srv, _ := newTestServer(t)
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, req("ghost.mxcli.org", "/"))
+	srv.ServeHTTP(rec, req("ghost.example.com", "/"))
 	if rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), "No preview") {
 		t.Errorf("unknown subdomain: code=%d body=%s", rec.Code, rec.Body)
 	}
@@ -64,7 +64,7 @@ func TestFront_RegisteredButOffline(t *testing.T) {
 	b, _ := reg.Register(RegisterRequest{Project: "App", Branch: "main"}) // subdomain "app"
 
 	rec := httptest.NewRecorder()
-	srv.ServeHTTP(rec, req("app.mxcli.org", "/"))
+	srv.ServeHTTP(rec, req("app.example.com", "/"))
 	// Registered but its reverse port has no tunnel -> the proxy error handler
 	// returns the offline page.
 	if rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "offline") {
@@ -83,11 +83,11 @@ func TestSubOf(t *testing.T) {
 		sub  string
 		ok   bool
 	}{
-		{"app.mxcli.org", "app", true},
-		{"my-app-feat.mxcli.org", "my-app-feat", true},
-		{"hub.mxcli.org", "hub", true}, // subOf is purely structural; routing handles hub separately
-		{"a.b.mxcli.org", "", false},   // multi-label not allowed
-		{"mxcli.org", "", false},
+		{"app.example.com", "app", true},
+		{"my-app-feat.example.com", "my-app-feat", true},
+		{"hub.example.com", "hub", true}, // subOf is purely structural; routing handles hub separately
+		{"a.b.example.com", "", false},   // multi-label not allowed
+		{"example.com", "", false},
 		{"evil.com", "", false},
 	}
 	for _, c := range cases {
@@ -100,9 +100,9 @@ func TestSubOf(t *testing.T) {
 
 func TestStripPort(t *testing.T) {
 	for in, want := range map[string]string{
-		"app.mxcli.org":      "app.mxcli.org",
-		"app.mxcli.org:443":  "app.mxcli.org",
-		"hub.mxcli.org:8443": "hub.mxcli.org",
+		"app.example.com":      "app.example.com",
+		"app.example.com:443":  "app.example.com",
+		"hub.example.com:8443": "hub.example.com",
 	} {
 		if got := stripPort(in); got != want {
 			t.Errorf("stripPort(%q) = %q, want %q", in, got, want)

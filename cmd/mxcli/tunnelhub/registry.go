@@ -74,7 +74,7 @@ type Registry struct {
 	byIdentity  map[string]*Backend
 	usedPorts   map[int]bool
 
-	domain    string // e.g. "mxcli.org"
+	domain    string // e.g. "example.com"
 	portBase  int    // first reverse port to allocate
 	portCount int    // number of reverse ports available
 	staleFor  time.Duration

@@ -52,10 +52,10 @@ func TestFront_ProxiesThroughTunnel(t *testing.T) {
 	backendPort := mustPort(t, backend.URL)
 
 	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
-	reg := NewRegistry(RegistryOptions{Domain: "mxcli.org", PortBase: freePort(t), PortCount: 20, Now: clk.now})
+	reg := NewRegistry(RegistryOptions{Domain: "example.com", PortBase: freePort(t), PortCount: 20, Now: clk.now})
 	chiselPort := freePort(t)
 	srv, err := NewServer(ServerOptions{
-		Domain:       "mxcli.org",
+		Domain:       "example.com",
 		Registry:     reg,
 		ChiselAddr:   "127.0.0.1:" + strconv.Itoa(chiselPort),
 		CertCacheDir: t.TempDir(),
@@ -90,12 +90,12 @@ func TestFront_ProxiesThroughTunnel(t *testing.T) {
 	}
 	defer client.Close()
 
-	// A request to app.mxcli.org must route through the tunnel to the backend.
+	// A request to app.example.com must route through the tunnel to the backend.
 	deadline := time.Now().Add(10 * time.Second)
 	var body string
 	for time.Now().Before(deadline) {
 		rec := httptest.NewRecorder()
-		srv.ServeHTTP(rec, req("app.mxcli.org", "/"))
+		srv.ServeHTTP(rec, req("app.example.com", "/"))
 		if rec.Code == http.StatusOK {
 			body = rec.Body.String()
 			break
@@ -105,7 +105,7 @@ func TestFront_ProxiesThroughTunnel(t *testing.T) {
 	if body == "" {
 		t.Fatal("no successful response through the tunnel within timeout")
 	}
-	if want := "TUNNELED host=app.mxcli.org"; body != want {
+	if want := "TUNNELED host=app.example.com"; body != want {
 		t.Errorf("through-tunnel body = %q, want %q (public Host must be preserved)", body, want)
 	}
 }

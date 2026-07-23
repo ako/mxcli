@@ -425,10 +425,10 @@ removes that unknown** and is cleaner AUP-wise for a pure relay.
 The load-bearing unknown (Open Q9 — does chisel's WebSocket tunnel survive the Claude
 Code **web** session's mandatory egress proxy?) is now **closed, positive**, tested
 live from a Claude Code web container against a **Scaleway VPS** relay on the
-registrant's own domain (`hub.mxcli.org`):
+registrant's own domain (`hub.example.com`):
 
 - **chisel client connected out through the egress proxy:**
-  `Connecting to wss://hub.mxcli.org:443 via http://127.0.0.1:33451 … Connected`.
+  `Connecting to wss://hub.example.com:443 via http://127.0.0.1:33451 … Connected`.
   The web session's proxy re-terminates TLS (MITM) and its README lists "WebSocket
   upgrades" under *not supported* — but chisel's upgrade **passed** on this path. The
   egress itself is open (arbitrary external hosts reachable); the proxy is not an
@@ -474,12 +474,12 @@ path):**
    `ApplicationRootUrl=localhost:8080` loads the index + client bundle, but the SPA's
    session/XAS calls and the `originURI` cookie misbehave across the origin mismatch.
    `run --local --hub` must boot the runtime with `ApplicationRootUrl` = the assigned
-   `https://<feature>.mxcli.org`, and the hub must serve each preview over **443 on a
+   `https://<feature>.example.com`, and the hub must serve each preview over **443 on a
    subdomain**, not a raw port.
 
 **Reference relay stood up for the test:** stock
-`chisel server --reverse --tls-domain hub.mxcli.org -p 443` on a Scaleway instance,
-`hub.mxcli.org` A → the instance IP, inbound 80+443 open. `mxcli tunnel-hub` is this
+`chisel server --reverse --tls-domain hub.example.com -p 443` on a Scaleway instance,
+`hub.example.com` A → the instance IP, inbound 80+443 open. `mxcli tunnel-hub` is this
 plus the registration API, wildcard-subdomain routing, and the admin overview.
 
 ### `mxcli tunnel-hub` (static) + `mxcli dev --hub` (dynamic)

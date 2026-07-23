@@ -40,7 +40,7 @@ type LocalRunOptions struct {
 	AdminPass string
 	// DB is the Postgres the runtime connects to (devcontainer defaults applied).
 	DB DBConfig
-	// Hub, when set, is the URL of an mxcli tunnel-hub (e.g. https://hub.mxcli.org).
+	// Hub, when set, is the URL of an mxcli tunnel-hub (e.g. https://hub.example.com).
 	// The app stays running here; a chisel client reverse-tunnels it out to the hub
 	// so it is reachable in a browser at the hub URL. Implies a local run. The
 	// runtime boots with ApplicationRootUrl = Hub so the SPA works under that origin.

@@ -127,9 +127,9 @@ func TestRuntimeConfigParams_ApplicationRootUrl(t *testing.T) {
 	}
 	// Present when serving behind a hub, so the SPA works under the public origin.
 	o := testLocalOpts()
-	o.ApplicationRootUrl = "https://hub.mxcli.org"
-	if got := runtimeConfigParams(o, nil)["ApplicationRootUrl"]; got != "https://hub.mxcli.org" {
-		t.Errorf("ApplicationRootUrl = %v, want https://hub.mxcli.org", got)
+	o.ApplicationRootUrl = "https://hub.example.com"
+	if got := runtimeConfigParams(o, nil)["ApplicationRootUrl"]; got != "https://hub.example.com" {
+		t.Errorf("ApplicationRootUrl = %v, want https://hub.example.com", got)
 	}
 }
 

@@ -25,7 +25,7 @@ const DefaultHubBackendPort = 9000
 // the hub's public URL. The app never leaves this machine — only live HTTP flows
 // through the tunnel.
 type TunnelOptions struct {
-	// HubURL is the tunnel-hub base URL, e.g. https://hub.mxcli.org. The chisel
+	// HubURL is the tunnel-hub base URL, e.g. https://hub.example.com. The chisel
 	// control connection dials it over 443.
 	HubURL string
 	// LocalPort is the local app port to expose (e.g. 8080).

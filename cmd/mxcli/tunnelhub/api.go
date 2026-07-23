@@ -12,7 +12,7 @@ import (
 type APIOptions struct {
 	Registry *Registry
 	// ControlURL is where the client points its chisel control connection
-	// (e.g. https://hub.mxcli.org). Returned in the registration response.
+	// (e.g. https://hub.example.com). Returned in the registration response.
 	ControlURL string
 	// TunnelAuth is the shared chisel auth ("user:pass") the client must use, if
 	// the hub's tunnel server requires one. Returned to the client.

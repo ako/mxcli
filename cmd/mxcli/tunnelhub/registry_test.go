@@ -15,7 +15,7 @@ func (c *fakeClock) add(d time.Duration) { c.t = c.t.Add(d) }
 
 func newTestRegistry(clk *fakeClock) *Registry {
 	return NewRegistry(RegistryOptions{
-		Domain:    "mxcli.org",
+		Domain:    "example.com",
 		PortBase:  9001,
 		PortCount: 5,
 		StaleFor:  45 * time.Second,
@@ -171,7 +171,7 @@ func TestList_Sorting(t *testing.T) {
 
 func TestPortExhaustion(t *testing.T) {
 	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
-	r := NewRegistry(RegistryOptions{Domain: "mxcli.org", PortBase: 9001, PortCount: 2, Now: clk.now})
+	r := NewRegistry(RegistryOptions{Domain: "example.com", PortBase: 9001, PortCount: 2, Now: clk.now})
 	if _, err := r.Register(RegisterRequest{Project: "A", Branch: "main"}); err != nil {
 		t.Fatal(err)
 	}

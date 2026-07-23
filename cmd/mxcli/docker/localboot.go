@@ -61,7 +61,7 @@ type LocalRuntimeOptions struct {
 	// DTAPMode is D/A/T/P (default "D").
 	DTAPMode string
 	// ApplicationRootUrl, when set, is the public URL the app is reached at
-	// (e.g. https://hub.mxcli.org). Mendix uses it for absolute-URL generation
+	// (e.g. https://hub.example.com). Mendix uses it for absolute-URL generation
 	// and to accept requests whose Host differs from the listen address — needed
 	// when the app is served through an external tunnel/reverse proxy rather than
 	// localhost. Empty for a plain local run.

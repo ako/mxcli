@@ -27,7 +27,7 @@ const (
 
 // ServerOptions configures the multi-tenant hub front.
 type ServerOptions struct {
-	// Domain is the wildcard base, e.g. "mxcli.org". App previews are served at
+	// Domain is the wildcard base, e.g. "example.com". App previews are served at
 	// <subdomain>.<Domain>.
 	Domain string
 	// HubHost is the control/admin/API host (default "hub."+Domain). Clients dial
@@ -148,7 +148,7 @@ func (s *Server) hostPolicy(_ context.Context, host string) error {
 }
 
 // subOf returns the subdomain label of host under Domain (e.g. "app" from
-// "app.mxcli.org"), and whether host is under Domain.
+// "app.example.com"), and whether host is under Domain.
 func (s *Server) subOf(host string) (string, bool) {
 	suffix := "." + s.opts.Domain
 	if !strings.HasSuffix(host, suffix) {

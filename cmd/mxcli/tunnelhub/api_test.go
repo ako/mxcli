@@ -17,7 +17,7 @@ func newTestAPI(t *testing.T, secret string) (*API, *Registry) {
 	reg := newTestRegistry(clk)
 	api := NewAPI(APIOptions{
 		Registry:       reg,
-		ControlURL:     "https://hub.mxcli.org",
+		ControlURL:     "https://hub.example.com",
 		RegisterSecret: secret,
 	})
 	return api, reg
@@ -47,10 +47,10 @@ func TestAPI_RegisterAndBackends(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatal(err)
 	}
-	if resp.URL != "https://myapp-feature-x.mxcli.org" {
+	if resp.URL != "https://myapp-feature-x.example.com" {
 		t.Errorf("url = %q", resp.URL)
 	}
-	if resp.ReversePort == 0 || resp.Token == "" || resp.ControlURL != "https://hub.mxcli.org" {
+	if resp.ReversePort == 0 || resp.Token == "" || resp.ControlURL != "https://hub.example.com" {
 		t.Errorf("incomplete response: %+v", resp)
 	}
 
