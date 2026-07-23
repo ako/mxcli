@@ -153,50 +153,41 @@ mxcli run --local -p app.mpr --watch --screenshot
 
 `--hub <url>` exposes the running app in a **browser at a public URL** without the app
 leaving this machine and without committing — for reviewing work-in-progress from a
-phone/tablet, or from an egress-only environment like Claude Code on the web.
+phone/tablet, or from an egress-only environment like Claude Code on the web. The app
+stays here; a **chisel reverse tunnel** dials *out* to a hub over 443 and the hub proxies
+browser requests back down it. Nothing is pushed — only live HTTP — and everything rides
+one 443 connection, so it works through an egress-only proxy.
+
+**You run your own hub — there is no hosted service.** Stand up `mxcli tunnel-hub` once on
+a host you control (a small VPS with a domain), then point apps at it.
 
 ```bash
-# on a small VPS with a public IP + domain (hub.mxcli.org -> it, ports 80+443 open):
-mxcli tunnel-hub --domain hub.mxcli.org --secret alice:s3cret
+# on your VPS: *.example.com + hub.example.com -> this host, inbound 80+443 open
+mxcli tunnel-hub --domain example.com --secret alice:s3cret
 
-# here, where the app runs:
-mxcli run --hub https://hub.mxcli.org --hub-secret alice:s3cret -p app.mpr
-#   -> boots the app locally and prints "Preview available at https://hub.mxcli.org"
+# where the app runs:
+mxcli run --hub https://hub.example.com --hub-secret alice:s3cret -p app.mpr
+#   -> registers and prints e.g. "Preview available at https://app.example.com"
 ```
 
-- The app stays here; a **chisel reverse tunnel** dials *out* to the hub over 443, and
-  the hub proxies browser requests back down it. Nothing is pushed — only live HTTP.
-  Everything rides one 443 connection, so it works through an egress-only proxy.
-- `--hub` **implies `--local`** and boots the runtime with `ApplicationRootUrl` set to
-  the hub URL, so the SPA/`originURI` work under the public origin.
-- Combine with `--watch` for the full loop: edit here → hot-apply → refresh the browser.
-- The control connection honours `NO_PROXY`: an external hub goes through the egress
-  proxy, a loopback hub connects directly.
+The hub is **multi-tenant**: it fronts many previews at per-preview subdomains
+(`<project>-<branch>.example.com`; `main`/`master` collapses to `<project>`) with a
+sortable overview at `https://hub.example.com/`. Each `run --hub` self-registers:
 
-### Multi-tenant hub (many previews at once)
-
-`mxcli tunnel-hub --domain mxcli.org` fronts **many** apps at per-preview subdomains
-over one 443 — across projects, solutions, branches, and worktrees — with a sortable
-overview at `https://hub.mxcli.org/`. Needs a wildcard `*.mxcli.org` A record; TLS is
-issued per subdomain on demand.
-
-Each `run --hub` self-registers and is served at its own subdomain:
-
-```bash
-mxcli run --hub https://hub.mxcli.org --hub-secret alice:s3cret \
-  --hub-solution CustomerPortal --hub-prefix acme -p Web.mpr
-#   -> https://acme-web-<branch>.mxcli.org   (main/master collapses to acme-web)
-```
-
-- **Project** and **branch** are auto-detected (`.mpr` name + git); override with
+- **Project** and **branch** auto-detect (`.mpr` name + git); override with
   `--hub-project` / `--hub-branch`. `--hub-worktree` distinguishes worktrees of one branch.
-- **`--hub-prefix`** namespaces the hostname (org/solution/team/env); **`--hub-solution`**
-  groups apps of one solution in the overview.
-- The overview shows availability (a reaped/idle container goes **stale**), and is
-  sortable by last-used / registered / project. Re-registering keeps a **stable URL**.
+- **`--hub-prefix`** namespaces the hostname (org/solution/team/env) →
+  `<prefix>-<project>-<branch>`; **`--hub-solution`** groups a solution's apps in the overview.
+- The overview shows availability (a reaped/idle container goes **stale**), sortable by
+  last-used / registered / project. Re-registering keeps a **stable URL**.
+- `--hub` **implies `--local`**, boots the runtime with `ApplicationRootUrl` set to the
+  assigned URL (so the SPA/`originURI` work), and the tunnel reconnects forever. Combine
+  with `--watch` for the full loop: edit here → hot-apply → refresh the browser.
 
-`mxcli tunnel-hub` is the static relay (one small VPS fronts your previews). Automatic
-Let's Encrypt for `--domain` (needs inbound 80+443).
+**Hub setup:** wildcard `*.example.com` A record (+ `hub.example.com`) → the VPS; inbound
+80+443 open (per-subdomain Let's Encrypt on demand). **Security:** this version uses one
+shared `--secret` and open registration, so keep the hub to people you trust and don't
+expose it publicly (per-tenant auth is a follow-up).
 
 ## Validation checklist
 

@@ -41,8 +41,8 @@ Examples:
   mxcli run --local -p app.mpr
   mxcli run --local -p app.mpr --watch
   mxcli run --local -p app.mpr --app-port 8081 --db-name myapp
-  mxcli run --hub https://hub.mxcli.org -p app.mpr            # browser preview
-  mxcli run --hub https://hub.mxcli.org --hub-secret u:pass -p app.mpr --watch
+  mxcli run --hub https://hub.example.com -p app.mpr            # browser preview
+  mxcli run --hub https://hub.example.com --hub-secret u:pass -p app.mpr --watch
 `,
 	Run: func(cmd *cobra.Command, args []string) {
 		local, _ := cmd.Flags().GetBool("local")
@@ -123,7 +123,7 @@ Examples:
 
 func init() {
 	runCmd.Flags().Bool("local", false, "Run locally without Docker (warm serve + standalone runtime)")
-	runCmd.Flags().String("hub", "", "Expose the running app in a browser via an mxcli tunnel-hub URL (e.g. https://hub.mxcli.org). Implies --local; the app stays local and is reverse-tunnelled out")
+	runCmd.Flags().String("hub", "", "Expose the running app in a browser via your own mxcli tunnel-hub URL (e.g. https://hub.example.com). Implies --local; the app stays local and is reverse-tunnelled out")
 	runCmd.Flags().String("hub-secret", "", "Shared auth secret for --hub (\"user:pass\"), matching the hub's --secret")
 	runCmd.Flags().String("hub-prefix", "", "Optional subdomain prefix on the hub (org/solution/team/env): <prefix>-<project>-<branch>")
 	runCmd.Flags().String("hub-project", "", "Project name for the hub subdomain + overview (default: the .mpr name)")

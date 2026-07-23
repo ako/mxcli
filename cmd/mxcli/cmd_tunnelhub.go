@@ -31,14 +31,21 @@ the hub host (hub.<domain>) serves the registration API, the admin overview, and
 the chisel control connection. Everything rides one 443 connection, so apps in
 egress-only environments (e.g. Claude Code on the web) can reverse-tunnel out.
 
+You run your own hub — there is no hosted service. Stand it up on a host you
+control (a small VPS with a domain).
+
 DNS: point a wildcard '*.<domain>' A record (and 'hub.<domain>') at this host.
 TLS is issued per subdomain via Let's Encrypt on demand (needs inbound 80+443).
 
-Example (on a VPS; *.mxcli.org -> this host, ports 80+443 open):
-  mxcli tunnel-hub --domain mxcli.org --secret alice:s3cret
+Security: set --secret and keep the hub to people you trust — this version uses a
+single shared secret and open registration, so anyone with it can register a
+preview (per-tenant auth is a follow-up). Don't expose it to the public.
+
+Example (on your own VPS; *.example.com -> this host, ports 80+443 open):
+  mxcli tunnel-hub --domain example.com --secret alice:s3cret
 
 Then, in each app's environment:
-  mxcli run --hub https://hub.mxcli.org --hub-secret alice:s3cret \
+  mxcli run --hub https://hub.example.com --hub-secret alice:s3cret \
     --hub-solution CustomerPortal -p app.mpr
 `,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -50,7 +57,7 @@ Then, in each app's environment:
 		certCache, _ := cmd.Flags().GetString("cert-cache")
 
 		if domain == "" {
-			fmt.Fprintln(os.Stderr, "Error: --domain is required (the wildcard base, e.g. mxcli.org)")
+			fmt.Fprintln(os.Stderr, "Error: --domain is required (the wildcard base, e.g. example.com)")
 			os.Exit(1)
 		}
 		if certCache == "" {
@@ -90,7 +97,7 @@ Then, in each app's environment:
 }
 
 func init() {
-	tunnelHubCmd.Flags().String("domain", "", "Wildcard base domain, e.g. mxcli.org (previews served at <sub>.<domain>)")
+	tunnelHubCmd.Flags().String("domain", "", "Wildcard base domain you control, e.g. example.com (previews served at <sub>.<domain>)")
 	tunnelHubCmd.Flags().String("hub-host", "", "Control/admin host (default hub.<domain>)")
 	tunnelHubCmd.Flags().String("secret", "", "Shared secret (\"user:pass\") apps present via --hub-secret; empty = open")
 	tunnelHubCmd.Flags().Int("port", 443, "HTTPS port to listen on")
