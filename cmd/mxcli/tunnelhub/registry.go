@@ -27,6 +27,7 @@ const (
 // the hub and served at its subdomain.
 type Backend struct {
 	ID          string `json:"id"`       // opaque token (auth for heartbeat/deregister + chisel)
+	Prefix      string `json:"prefix"`   // optional hostname namespace (org/solution/team/env)
 	Project     string `json:"project"`  // e.g. the .mpr name
 	Solution    string `json:"solution"` // optional grouping for multi-app solutions
 	Branch      string `json:"branch"`   // git branch
@@ -40,10 +41,10 @@ type Backend struct {
 	LastUsedAt   time.Time `json:"lastUsedAt"` // last browser request to the subdomain
 }
 
-// identity is the stable key for a preview across reconnects: same project +
-// branch + worktree + solution re-registers to the same slot (stable URL).
+// identity is the stable key for a preview across reconnects: same prefix +
+// project + branch + worktree + solution re-registers to the same slot (stable URL).
 func (b *Backend) identity() string {
-	return strings.Join([]string{b.Solution, b.Project, b.Branch, b.Worktree}, "\x00")
+	return strings.Join([]string{b.Prefix, b.Solution, b.Project, b.Branch, b.Worktree}, "\x00")
 }
 
 // BackendView is a Backend plus derived fields, for the API/admin page.
@@ -56,6 +57,7 @@ type BackendView struct {
 
 // RegisterRequest is the registration payload from `mxcli run --hub`.
 type RegisterRequest struct {
+	Prefix   string `json:"prefix"`
 	Project  string `json:"project"`
 	Solution string `json:"solution"`
 	Branch   string `json:"branch"`
@@ -132,6 +134,7 @@ func (r *Registry) Register(req RegisterRequest) (*Backend, error) {
 
 	now := r.now()
 	b := &Backend{
+		Prefix:   strings.TrimSpace(req.Prefix),
 		Project:  strings.TrimSpace(req.Project),
 		Solution: strings.TrimSpace(req.Solution),
 		Branch:   strings.TrimSpace(req.Branch),
@@ -149,7 +152,7 @@ func (r *Registry) Register(req RegisterRequest) (*Backend, error) {
 		return nil, err
 	}
 	b.ID = newToken()
-	b.Subdomain = r.allocSubdomainLocked(b.Project, b.Branch, b.Worktree)
+	b.Subdomain = r.allocSubdomainLocked(b.Prefix, b.Project, b.Branch, b.Worktree)
 	b.ReversePort = port
 	b.RegisteredAt = now
 	b.LastSeenAt = now
@@ -269,8 +272,8 @@ func (r *Registry) allocPortLocked() (int, error) {
 
 // allocSubdomainLocked returns a unique subdomain slug, disambiguating a
 // collision with the worktree name then a numeric suffix.
-func (r *Registry) allocSubdomainLocked(project, branch, worktree string) string {
-	base := baseSlug(project, branch)
+func (r *Registry) allocSubdomainLocked(prefix, project, branch, worktree string) string {
+	base := baseSlug(prefix, project, branch)
 	if _, taken := r.bySubdomain[base]; !taken {
 		return base
 	}

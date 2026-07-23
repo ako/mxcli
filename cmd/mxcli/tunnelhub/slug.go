@@ -28,23 +28,27 @@ func slugify(s string) string {
 	return strings.Trim(s, "-")
 }
 
-// baseSlug builds the preferred subdomain slug from a registration. The main /
-// master branch collapses to just the project (so a project's primary preview is
-// project.mxcli.org); other branches append the branch. Solution is a grouping
-// dimension in the overview, not part of the hostname.
-func baseSlug(project, branch string) string {
-	p := slugify(project)
-	b := slugify(branch)
-	switch {
-	case p == "" && b == "":
-		return "app"
-	case p == "":
-		return truncateLabel(b)
-	case b == "" || b == "main" || b == "master":
-		return truncateLabel(p)
-	default:
-		return truncateLabel(p + "-" + b)
+// baseSlug builds the preferred subdomain slug from a registration:
+// [prefix-]project[-branch]. The optional prefix namespaces the hostname
+// (organization, solution, team, env — whatever the client passes). The main /
+// master branch is dropped, so a project's primary preview is the clean
+// [prefix-]project; other branches append the branch. Solution is a grouping
+// dimension in the overview, not part of the hostname (unless passed as prefix).
+func baseSlug(prefix, project, branch string) string {
+	var parts []string
+	if pre := slugify(prefix); pre != "" {
+		parts = append(parts, pre)
 	}
+	if p := slugify(project); p != "" {
+		parts = append(parts, p)
+	}
+	if b := slugify(branch); b != "" && b != "main" && b != "master" {
+		parts = append(parts, b)
+	}
+	if len(parts) == 0 {
+		return "app"
+	}
+	return truncateLabel(strings.Join(parts, "-"))
 }
 
 // truncateLabel bounds a slug to a single DNS label, trimming any dash the cut

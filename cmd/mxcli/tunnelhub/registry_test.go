@@ -48,6 +48,27 @@ func TestRegister_AllocatesSubdomainAndPort(t *testing.T) {
 	}
 }
 
+func TestRegister_Prefix(t *testing.T) {
+	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+	r := newTestRegistry(clk)
+
+	// prefix namespaces the hostname: <prefix>-<project>[-<branch>].
+	a, _ := r.Register(RegisterRequest{Prefix: "AcmeCorp", Project: "Portal", Branch: "feature/x"})
+	if a.Subdomain != "acmecorp-portal-feature-x" {
+		t.Errorf("prefixed subdomain = %q, want acmecorp-portal-feature-x", a.Subdomain)
+	}
+	// main branch with a prefix -> <prefix>-<project>.
+	b, _ := r.Register(RegisterRequest{Prefix: "AcmeCorp", Project: "Portal", Branch: "main"})
+	if b.Subdomain != "acmecorp-portal" {
+		t.Errorf("prefixed main subdomain = %q, want acmecorp-portal", b.Subdomain)
+	}
+	// same project, different prefix -> distinct slot (prefix is part of identity).
+	c, _ := r.Register(RegisterRequest{Prefix: "Other", Project: "Portal", Branch: "main"})
+	if c.Subdomain != "other-portal" || c.ID == b.ID {
+		t.Errorf("different prefix should be a distinct backend: %q id=%s vs %s", c.Subdomain, c.ID, b.ID)
+	}
+}
+
 func TestRegister_SameIdentityIsStable(t *testing.T) {
 	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
 	r := newTestRegistry(clk)
