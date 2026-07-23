@@ -32,13 +32,32 @@ Requirements:
     already exist. Defaults: 127.0.0.1:5432, user 'mendix', db from the project
     name. Override with --db-host/--db-name/--db-user/--db-password.
 
+With --hub, the running app is exposed in a browser at a public URL through an
+mxcli tunnel-hub, without leaving this machine: a chisel client reverse-tunnels
+the local app out over 443, and the runtime boots with ApplicationRootUrl set to
+the hub URL so the app works under that origin. --hub implies --local.
+
 Examples:
   mxcli run --local -p app.mpr
   mxcli run --local -p app.mpr --watch
   mxcli run --local -p app.mpr --app-port 8081 --db-name myapp
+  mxcli run --hub https://hub.example.com -p app.mpr            # browser preview
+  mxcli run --hub https://hub.example.com --hub-secret u:pass -p app.mpr --watch
 `,
 	Run: func(cmd *cobra.Command, args []string) {
 		local, _ := cmd.Flags().GetBool("local")
+		hub, _ := cmd.Flags().GetString("hub")
+		hubSecret, _ := cmd.Flags().GetString("hub-secret")
+		hubPrefix, _ := cmd.Flags().GetString("hub-prefix")
+		hubProject, _ := cmd.Flags().GetString("hub-project")
+		hubSolution, _ := cmd.Flags().GetString("hub-solution")
+		hubBranch, _ := cmd.Flags().GetString("hub-branch")
+		hubWorktree, _ := cmd.Flags().GetString("hub-worktree")
+		// --hub is a cross-cutting ingress and implies the local serving path (the
+		// only serving mode wired today; a future PAD path will accept --hub too).
+		if hub != "" {
+			local = true
+		}
 		if !local {
 			fmt.Fprintln(os.Stderr, "Error: only --local is supported for now (use 'mxcli docker run' for the container workflow)")
 			os.Exit(1)
@@ -67,6 +86,13 @@ Examples:
 
 		opts := docker.LocalRunOptions{
 			ProjectPath:        projectPath,
+			Hub:                hub,
+			HubSecret:          hubSecret,
+			HubPrefix:          hubPrefix,
+			HubProject:         hubProject,
+			HubSolution:        hubSolution,
+			HubBranch:          hubBranch,
+			HubWorktree:        hubWorktree,
 			AppPort:            appPort,
 			AdminPort:          adminPort,
 			ServePort:          servePort,
@@ -97,6 +123,13 @@ Examples:
 
 func init() {
 	runCmd.Flags().Bool("local", false, "Run locally without Docker (warm serve + standalone runtime)")
+	runCmd.Flags().String("hub", "", "Expose the running app in a browser via your own mxcli tunnel-hub URL (e.g. https://hub.example.com). Implies --local; the app stays local and is reverse-tunnelled out")
+	runCmd.Flags().String("hub-secret", "", "Shared auth secret for --hub (\"user:pass\"), matching the hub's --secret")
+	runCmd.Flags().String("hub-prefix", "", "Optional subdomain prefix on the hub (org/solution/team/env): <prefix>-<project>-<branch>")
+	runCmd.Flags().String("hub-project", "", "Project name for the hub subdomain + overview (default: the .mpr name)")
+	runCmd.Flags().String("hub-solution", "", "Solution name to group this app under in the hub overview (multi-app solutions)")
+	runCmd.Flags().String("hub-branch", "", "Branch for the hub subdomain + overview (default: the git branch)")
+	runCmd.Flags().String("hub-worktree", "", "Worktree label to distinguish multiple worktrees of one branch")
 	runCmd.Flags().Bool("watch", false, "Rebuild and hot-apply on every project change")
 	runCmd.Flags().Bool("ensure-db", false, "Provision the local Postgres + app database if missing (fresh-session bootstrap)")
 	runCmd.Flags().Bool("setup", false, "Prepare prerequisites (cache MxBuild+runtime, ensure DB) and exit without booting — for a SessionStart hook")

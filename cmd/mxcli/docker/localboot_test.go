@@ -119,6 +119,20 @@ func TestRuntimeConfigParams_NilConstants(t *testing.T) {
 	}
 }
 
+func TestRuntimeConfigParams_ApplicationRootUrl(t *testing.T) {
+	// Absent by default (plain local run): the runtime derives it from the listen
+	// address, so we must not pin it.
+	if _, ok := runtimeConfigParams(testLocalOpts(), nil)["ApplicationRootUrl"]; ok {
+		t.Error("ApplicationRootUrl must be absent when not set")
+	}
+	// Present when serving behind a hub, so the SPA works under the public origin.
+	o := testLocalOpts()
+	o.ApplicationRootUrl = "https://hub.example.com"
+	if got := runtimeConfigParams(o, nil)["ApplicationRootUrl"]; got != "https://hub.example.com" {
+		t.Errorf("ApplicationRootUrl = %v, want https://hub.example.com", got)
+	}
+}
+
 func TestReadDeploymentConstants(t *testing.T) {
 	dir := t.TempDir()
 	modelDir := filepath.Join(dir, "model")

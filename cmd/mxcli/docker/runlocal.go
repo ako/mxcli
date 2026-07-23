@@ -40,6 +40,22 @@ type LocalRunOptions struct {
 	AdminPass string
 	// DB is the Postgres the runtime connects to (devcontainer defaults applied).
 	DB DBConfig
+	// Hub, when set, is the URL of an mxcli tunnel-hub (e.g. https://hub.example.com).
+	// The app stays running here; a chisel client reverse-tunnels it out to the hub
+	// so it is reachable in a browser at the hub URL. Implies a local run. The
+	// runtime boots with ApplicationRootUrl = Hub so the SPA works under that origin.
+	Hub string
+	// HubSecret is the shared auth secret for the hub ("user:pass"), matching the
+	// hub's --secret. Optional but recommended.
+	HubSecret string
+	// Hub identity (multi-tenant hub): these drive the assigned subdomain and the
+	// hub overview grouping. Blank Project/Branch are auto-detected from the .mpr
+	// name and git.
+	HubPrefix   string // optional hostname namespace (org/solution/team/env)
+	HubProject  string // override the auto-detected project name
+	HubSolution string // grouping for multi-app solutions
+	HubBranch   string // override the auto-detected git branch
+	HubWorktree string // distinguish worktrees of one branch
 	// Watch keeps running, rebuilding+applying on every project change.
 	Watch bool
 	// EnsureDB provisions the local Postgres + app database if missing (otherwise
@@ -420,17 +436,38 @@ func RunLocal(opts LocalRunOptions) error {
 		}
 	}
 
+	// 5c. With --hub, register with the hub first (before boot) so we know the
+	// assigned public URL — the runtime must boot with ApplicationRootUrl set to it
+	// (else the SPA/originURI misbehave across origins). A multi-tenant hub hands
+	// back a per-preview subdomain + reverse port; a single-app hub falls back to
+	// the hub URL itself.
+	var hubReg *HubRegistration
+	appRootURL := ""
+	if opts.Hub != "" {
+		meta := DetectHubMeta(opts.ProjectPath, HubMeta{
+			Prefix: opts.HubPrefix, Project: opts.HubProject, Solution: opts.HubSolution,
+			Branch: opts.HubBranch, Worktree: opts.HubWorktree,
+		})
+		fmt.Fprintf(w, "Registering with hub %s...\n", opts.Hub)
+		hubReg, err = RegisterWithHub(opts.Hub, opts.HubSecret, meta, opts.AppPort)
+		if err != nil {
+			return fmt.Errorf("hub registration: %w", err)
+		}
+		appRootURL = hubReg.URL
+	}
+
 	// 6. Boot the runtime against the fresh deployment.
 	rt, err := StartLocalRuntime(LocalRuntimeOptions{
 		DeployDir:   opts.DeployDir,
 		InstallPath: installPath,
 		// JavaHome left empty: StartLocalRuntime resolves JDK 21.
-		AppPort:   opts.AppPort,
-		AdminPort: opts.AdminPort,
-		AdminPass: opts.AdminPass,
-		DB:        opts.DB,
-		Stdout:    w,
-		Stderr:    stderr,
+		AppPort:            opts.AppPort,
+		AdminPort:          opts.AdminPort,
+		AdminPass:          opts.AdminPass,
+		ApplicationRootUrl: appRootURL,
+		DB:                 opts.DB,
+		Stdout:             w,
+		Stderr:             stderr,
 	})
 	if err != nil {
 		return err
@@ -438,6 +475,29 @@ func RunLocal(opts LocalRunOptions) error {
 	defer rt.Stop()
 
 	fmt.Fprintf(w, "\nApp is running at %s\n", rt.AppURL())
+
+	// 6a. With --hub, open a reverse tunnel so the app is reachable in a browser at
+	// its public URL, and heartbeat so it shows as available in the hub overview.
+	// The app stays here; only live HTTP flows through the tunnel (nothing pushed).
+	if hubReg != nil {
+		tunnel, err := StartTunnel(TunnelOptions{
+			HubURL:     hubReg.ControlURL,
+			LocalPort:  opts.AppPort,
+			RemotePort: hubReg.ReversePort,
+			Secret:     hubReg.TunnelAuth,
+			PublicURL:  hubReg.URL,
+			Stdout:     w,
+		})
+		if err != nil {
+			return fmt.Errorf("starting hub tunnel: %w", err)
+		}
+		defer tunnel.Stop()
+
+		hb := StartHeartbeat(hubReg)
+		defer hb.Stop()
+
+		fmt.Fprintf(w, "Preview available at %s\n", hubReg.URL)
+	}
 
 	// 6b. If screenshot auth was requested, log in once and reuse the session for
 	// every screenshot (pages behind login render authenticated).

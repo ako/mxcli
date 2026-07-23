@@ -107,7 +107,9 @@ Launch `run --local` as the **sole** command in its invocation (don't chain a tr
 
 | Flag | Default | Purpose |
 |------|---------|---------|
-| `--local` | — | Required; run without Docker |
+| `--local` | — | Required; run without Docker (implied by `--hub`) |
+| `--hub` | — | Expose the app in a browser at a tunnel-hub URL (see below) |
+| `--hub-secret` | — | Shared auth (`user:pass`) matching the hub's `--secret` |
 | `--watch` | off | Rebuild + hot-apply on each change |
 | `--ensure-db` | off | Provision local Postgres + app database if missing |
 | `--setup` | off | Cache MxBuild+runtime + ensure DB, then exit (SessionStart bring-up) |
@@ -146,6 +148,46 @@ mxcli run --local -p app.mpr --watch --screenshot
 - `--screenshot-user`/`--screenshot-password` log in once (Mendix form auth) and
   reuse the session, so pages behind login render authenticated. Best-effort: an
   anonymous app with no login form proceeds unauthenticated.
+
+## External browser preview (`--hub`)
+
+`--hub <url>` exposes the running app in a **browser at a public URL** without the app
+leaving this machine and without committing — for reviewing work-in-progress from a
+phone/tablet, or from an egress-only environment like Claude Code on the web. The app
+stays here; a **chisel reverse tunnel** dials *out* to a hub over 443 and the hub proxies
+browser requests back down it. Nothing is pushed — only live HTTP — and everything rides
+one 443 connection, so it works through an egress-only proxy.
+
+**You run your own hub — there is no hosted service.** Stand up `mxcli tunnel-hub` once on
+a host you control (a small VPS with a domain), then point apps at it.
+
+```bash
+# on your VPS: *.example.com + hub.example.com -> this host, inbound 80+443 open
+mxcli tunnel-hub --domain example.com --secret alice:s3cret
+
+# where the app runs:
+mxcli run --hub https://hub.example.com --hub-secret alice:s3cret -p app.mpr
+#   -> registers and prints e.g. "Preview available at https://app.example.com"
+```
+
+The hub is **multi-tenant**: it fronts many previews at per-preview subdomains
+(`<project>-<branch>.example.com`; `main`/`master` collapses to `<project>`) with a
+sortable overview at `https://hub.example.com/`. Each `run --hub` self-registers:
+
+- **Project** and **branch** auto-detect (`.mpr` name + git); override with
+  `--hub-project` / `--hub-branch`. `--hub-worktree` distinguishes worktrees of one branch.
+- **`--hub-prefix`** namespaces the hostname (org/solution/team/env) →
+  `<prefix>-<project>-<branch>`; **`--hub-solution`** groups a solution's apps in the overview.
+- The overview shows availability (a reaped/idle container goes **stale**), sortable by
+  last-used / registered / project. Re-registering keeps a **stable URL**.
+- `--hub` **implies `--local`**, boots the runtime with `ApplicationRootUrl` set to the
+  assigned URL (so the SPA/`originURI` work), and the tunnel reconnects forever. Combine
+  with `--watch` for the full loop: edit here → hot-apply → refresh the browser.
+
+**Hub setup:** wildcard `*.example.com` A record (+ `hub.example.com`) → the VPS; inbound
+80+443 open (per-subdomain Let's Encrypt on demand). **Security:** this version uses one
+shared `--secret` and open registration, so keep the hub to people you trust and don't
+expose it publicly (per-tenant auth is a follow-up).
 
 ## Validation checklist
 

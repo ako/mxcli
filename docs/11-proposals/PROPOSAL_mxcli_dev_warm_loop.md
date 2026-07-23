@@ -303,7 +303,7 @@ mxcli dev push --to https://<name>-9000.app.github.dev --secret $TOKEN -p app.mp
 | **A. Push built deployment artifact over 443** (recommended) | ✅ | robust; runtime in a legit host; ~1–2 s + network |
 | B. Push MDL/model, build in the Preview container | ✅ | keeps a synced `.mpr` in the Preview container; heavier transfer for MPR v2 |
 | C. Git branch, Codespace pulls | ❌ | requires a commit — **rejected**, violates the core requirement |
-| D. Live tunnel (app stays in DEV, static relay forwards) | ✅ | **viable — chisel verified** (see § Scaling). Cleanest dev loop: hot-reload stays local, no artifact sync, and the relay is a generic static component. Caveat: the DEV runtime is ephemeral. **Preferred for the multi-container dev loop; A remains the durable/persistent-preview fallback.** |
+| D. Live tunnel (app stays in DEV, static relay forwards) | ✅ | **verified end-to-end 2026-07-23** — a real Mendix app in a Claude Code web container rendered in a browser via a Scaleway VPS relay over 443 (see § Scaling → *Verified end-to-end*). Cleanest dev loop: hot-reload stays local, no artifact sync, relay is a generic static component. Caveat: the DEV runtime is ephemeral. **Confirmed preferred for the multi-container dev loop; A remains the durable/persistent-preview fallback.** |
 
 ## Provisioning: from new Claude Code Web project to a running testable app
 
@@ -419,6 +419,68 @@ because it uses the system trust store, which already contains the agent CA (ngr
 failed only because it pins its own roots). The one hop not provable without a live
 host: the WebSocket upgrade through Codespaces' `app.github.dev` proxy — a **VPS relay
 removes that unknown** and is cleaner AUP-wise for a pure relay.
+
+### Verified end-to-end on real infrastructure (2026-07-23)
+
+The load-bearing unknown (Open Q9 — does chisel's WebSocket tunnel survive the Claude
+Code **web** session's mandatory egress proxy?) is now **closed, positive**, tested
+live from a Claude Code web container against a **Scaleway VPS** relay on the
+registrant's own domain (`hub.example.com`):
+
+- **chisel client connected out through the egress proxy:**
+  `Connecting to wss://hub.example.com:443 via http://127.0.0.1:33451 … Connected`.
+  The web session's proxy re-terminates TLS (MITM) and its README lists "WebSocket
+  upgrades" under *not supported* — but chisel's upgrade **passed** on this path. The
+  egress itself is open (arbitrary external hosts reachable); the proxy is not an
+  allowlist wall for this use.
+- **Full path proven:** a browser hitting the Scaleway relay on 443 rendered the
+  **homepage of a blank Mendix 11.12.1 app running inside the Claude container**
+  (`mxcli run --local` on `:8080`), reached over the reverse tunnel. Nothing was
+  pushed to the relay — only live HTTP flows through the tunnel (the app never leaves
+  the DEV container). This validates **Option D** (below) as the model for Claude Code
+  web, not just an option on paper.
+- The artifact-push coupling (Option A) was **also** verified locally the same session
+  (an independent Deploy build swapped into a running runtime + reload) — it remains
+  the durable/persistent-preview fallback, but Option D is confirmed preferred.
+
+**Command shape — `--hub` is a cross-cutting *ingress*, not a sub-feature of the local
+loop.** The external preview is a **shared `--hub <url>` flag**, **not** a new `mxcli
+dev` command (that name never shipped — see the slice-1 naming note above). Crucially it
+is **orthogonal to how the app is served**: the same flag attaches to the warm path
+(`mxcli run --local --hub <url>`) today and to the **PAD / container path
+(`mxcli docker run --hub <url>`) later**, both backed by **one internal
+tunnel/registration package**, so `tunnel-hub` fronts local and PAD runtimes
+identically. `mxcli run` already reserves non-`--local` modes — it errors today with an
+explicit pointer to `mxcli docker run` — which is exactly the seam this slots into. Keep
+`--local` as the mode selector (PAD is a real sibling mode), but let **`--hub` imply the
+local path** so bare `mxcli run --hub <url>` works for the common case. The only
+serving-path-specific piece is the `ApplicationRootUrl`/subdomain wiring below (each path
+owns its own runtime boot); the tunnel itself is generic.
+
+**Implementation gotchas found (must be encoded in `tunnel-hub` and the shared `--hub`
+path):**
+
+1. **chisel's default server port is `8080`, not `443`.** `--tls-domain` requires the
+   server on 443 (`-p 443`) or Let's Encrypt never provisions and 443 resets mid-TLS.
+2. **The chisel client must be handed the proxy explicitly** — `--proxy $HTTPS_PROXY`
+   (a hand-rolled Go dialer does not auto-read the env; without it the client tries a
+   direct connection the sandbox blocks). `run --local --hub` must read `HTTPS_PROXY`
+   from the environment and pass it through.
+3. **DNS + port 80 are the only real setup blockers:** the relay's subdomain needs an
+   A record, and inbound **80** must be open for the ACME challenge (in addition to
+   443). Egress from the sandbox is otherwise unrestricted.
+4. **`ApplicationRootUrl` + subdomain-over-443 is required for a *correct* preview.**
+   Reaching the runtime as `hub:8099` while it booted with
+   `ApplicationRootUrl=localhost:8080` loads the index + client bundle, but the SPA's
+   session/XAS calls and the `originURI` cookie misbehave across the origin mismatch.
+   `run --local --hub` must boot the runtime with `ApplicationRootUrl` = the assigned
+   `https://<feature>.example.com`, and the hub must serve each preview over **443 on a
+   subdomain**, not a raw port.
+
+**Reference relay stood up for the test:** stock
+`chisel server --reverse --tls-domain hub.example.com -p 443` on a Scaleway instance,
+`hub.example.com` A → the instance IP, inbound 80+443 open. `mxcli tunnel-hub` is this
+plus the registration API, wildcard-subdomain routing, and the admin overview.
 
 ### `mxcli tunnel-hub` (static) + `mxcli dev --hub` (dynamic)
 
@@ -537,8 +599,8 @@ builds on the previous.
 |---|-------|----------|------------|-------------|
 | 1 | **Warm local loop** — shipped as `mxcli run --local [--watch]` (serve daemon + M2EE admin client + `restartRequired` branching; + client bundling & Playwright screenshots) | Docker-free ~1 s edit→test loop, locally | nothing new | ✅ **shipped** |
 | 2 | **Provisioning** — `run --local --ensure-db` (DB) + `run --local --setup` (non-blocking bring-up) + `mxcli init` SessionStart hook + bootstrap prompt template | a fresh Claude Code Web session comes up testable; iPad-native start | slice 1 | ✅ **shipped** |
-| 3 | **Single-app external preview** — `mxcli dev serve` + chisel client → one static relay + `ApplicationRootUrl` wiring | a shareable live preview URL (the iPad two-container flow) | slice 1 | medium / medium — the `app.github.dev` WebSocket hop is unverified (a VPS relay avoids it) |
-| 4 | **Tunnel hub** — `mxcli tunnel-hub` + `mxcli dev --hub` + registration API + admin overview | many dev containers behind one ingress; fleet overview + per-container change lists | slice 3 | large / higher — a product in its own right, with a multi-tenant auth surface |
+| 3 | **Single-app external preview** — `mxcli run --hub <url>` (embedded chisel client, proxy honouring `NO_PROXY`, `ApplicationRootUrl` boot wiring) + `mxcli tunnel-hub` (embedded chisel server, autocert, single-443 `--backend`) | a shareable live preview URL (the iPad two-container flow) | slice 1 | ✅ **shipped** (2026-07-23) — code + in-process tunnel test + local end-to-end boot; Mendix renders through the hub's Host-rewriting backend, no shim needed. External E2E against the Scaleway hub is the remaining confirmation |
+| 4 | **Tunnel hub** — `mxcli tunnel-hub` (multi-tenant) + `mxcli run --hub` registration + admin overview | many dev containers behind one ingress; per-preview subdomains across projects/solutions/branches/worktrees; sortable overview with availability | slice 3 | ✅ **built** (2026-07-23) — registry + registration API + single-443 host-routing front with per-subdomain autocert + sortable admin page + client registration; unit + in-process tunnel integration tests. External E2E against the Scaleway hub (wildcard DNS) is the remaining confirmation; deeper multi-tenant auth (per-container tokens, admin auth) is a follow-on |
 
 Recommended sequencing: **1 → 2** delivers the complete solo dev experience (Scenario A
 plus provisioning) with no external moving parts, and can ship first. **3** adds external
@@ -608,10 +670,13 @@ should front slice 1's build on every iteration, so most errors never reach even
 8. **Change-summary source & cadence.** `mxcli diff-local` (git baseline) vs a running
    MDL-statement log — which is the better per-container "changes" feed for the admin
    page, and how often to push it (every reload vs periodic)?
-9. **WebSocket through `app.github.dev` unverified.** chisel's reverse tunnel is proven
-   through the sandbox egress + MITM, but not through a live Codespace forward. Verify
-   on a real Codespace, or default the hub to a VPS (also the cleaner AUP posture for a
-   pure relay).
+9. **WebSocket through the egress proxy — RESOLVED (2026-07-23).** chisel's reverse
+   tunnel is now **verified live** out through the Claude Code **web** session's
+   mandatory MITM egress proxy to a **Scaleway VPS** relay on 443, with a real Mendix
+   app rendering through it (see § Scaling → *Verified end-to-end*). The hub defaults to
+   a VPS (not a Codespace), which also sidesteps the never-tested `app.github.dev` hop
+   and is the cleaner AUP posture. Remaining sub-item: confirm the same over a Codespace
+   forward *if* that host is ever wanted — not needed for the VPS path.
 10. **Fleet lifecycle.** TTL/heartbeat-timeout cleanup of dead containers, port/subdomain
     reclamation, and what the admin page shows for a container whose sandbox was reaped
     (the ephemeral-runtime reality observed this session).

@@ -60,6 +60,12 @@ type LocalRuntimeOptions struct {
 	ListenAddr string
 	// DTAPMode is D/A/T/P (default "D").
 	DTAPMode string
+	// ApplicationRootUrl, when set, is the public URL the app is reached at
+	// (e.g. https://hub.example.com). Mendix uses it for absolute-URL generation
+	// and to accept requests whose Host differs from the listen address — needed
+	// when the app is served through an external tunnel/reverse proxy rather than
+	// localhost. Empty for a plain local run.
+	ApplicationRootUrl string
 	// DB is the database the runtime connects to.
 	DB DBConfig
 	// ReadyTimeout bounds how long StartLocalRuntime waits for the admin API
@@ -139,7 +145,7 @@ func runtimeConfigParams(o LocalRuntimeOptions, constants map[string]string) map
 	if constants == nil {
 		constants = map[string]string{}
 	}
-	return map[string]any{
+	params := map[string]any{
 		"BasePath":           o.DeployDir,
 		"RuntimePath":        o.runtimeDir(),
 		"DTAPMode":           o.DTAPMode,
@@ -150,6 +156,12 @@ func runtimeConfigParams(o LocalRuntimeOptions, constants map[string]string) map
 		"DatabasePassword":   o.DB.Password,
 		"MicroflowConstants": constants,
 	}
+	// Only set ApplicationRootUrl when the app is served behind an external URL;
+	// on a plain local run the runtime defaults it from the listen address.
+	if o.ApplicationRootUrl != "" {
+		params["ApplicationRootUrl"] = o.ApplicationRootUrl
+	}
+	return params
 }
 
 // deploymentConfig mirrors the parts of <deployDir>/model/config.json mxbuild
