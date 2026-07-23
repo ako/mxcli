@@ -173,8 +173,30 @@ mxcli run --hub https://hub.mxcli.org --hub-secret alice:s3cret -p app.mpr
 - The control connection honours `NO_PROXY`: an external hub goes through the egress
   proxy, a loopback hub connects directly.
 
-`mxcli tunnel-hub` is the static relay (one small VPS fronts your previews). It uses
-automatic Let's Encrypt for `--domain` (needs inbound 80+443), or `--tls-cert`/`--tls-key`.
+### Multi-tenant hub (many previews at once)
+
+`mxcli tunnel-hub --domain mxcli.org` fronts **many** apps at per-preview subdomains
+over one 443 — across projects, solutions, branches, and worktrees — with a sortable
+overview at `https://hub.mxcli.org/`. Needs a wildcard `*.mxcli.org` A record; TLS is
+issued per subdomain on demand.
+
+Each `run --hub` self-registers and is served at its own subdomain:
+
+```bash
+mxcli run --hub https://hub.mxcli.org --hub-secret alice:s3cret \
+  --hub-solution CustomerPortal --hub-prefix acme -p Web.mpr
+#   -> https://acme-web-<branch>.mxcli.org   (main/master collapses to acme-web)
+```
+
+- **Project** and **branch** are auto-detected (`.mpr` name + git); override with
+  `--hub-project` / `--hub-branch`. `--hub-worktree` distinguishes worktrees of one branch.
+- **`--hub-prefix`** namespaces the hostname (org/solution/team/env); **`--hub-solution`**
+  groups apps of one solution in the overview.
+- The overview shows availability (a reaped/idle container goes **stale**), and is
+  sortable by last-used / registered / project. Re-registering keeps a **stable URL**.
+
+`mxcli tunnel-hub` is the static relay (one small VPS fronts your previews). Automatic
+Let's Encrypt for `--domain` (needs inbound 80+443).
 
 ## Validation checklist
 
