@@ -213,6 +213,21 @@ func (s *Server) Start(ctx context.Context, httpsAddr, httpAddr string) error {
 	httpSrv := &http.Server{Addr: httpAddr, Handler: s.manager.HTTPHandler(redirectToHTTPS()), ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = httpSrv.ListenAndServe() }()
 
+	// Periodically trigger a reap so expired backends free their ports even when
+	// nobody loads the admin page (List reaps as a side effect).
+	reaper := time.NewTicker(30 * time.Second)
+	defer reaper.Stop()
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-reaper.C:
+				s.reg.List("")
+			}
+		}
+	}()
+
 	errc := make(chan error, 1)
 	go func() { errc <- s.http.ListenAndServeTLS("", "") }()
 

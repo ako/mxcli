@@ -48,6 +48,11 @@ Examples:
 		local, _ := cmd.Flags().GetBool("local")
 		hub, _ := cmd.Flags().GetString("hub")
 		hubSecret, _ := cmd.Flags().GetString("hub-secret")
+		hubPrefix, _ := cmd.Flags().GetString("hub-prefix")
+		hubProject, _ := cmd.Flags().GetString("hub-project")
+		hubSolution, _ := cmd.Flags().GetString("hub-solution")
+		hubBranch, _ := cmd.Flags().GetString("hub-branch")
+		hubWorktree, _ := cmd.Flags().GetString("hub-worktree")
 		// --hub is a cross-cutting ingress and implies the local serving path (the
 		// only serving mode wired today; a future PAD path will accept --hub too).
 		if hub != "" {
@@ -83,6 +88,11 @@ Examples:
 			ProjectPath:        projectPath,
 			Hub:                hub,
 			HubSecret:          hubSecret,
+			HubPrefix:          hubPrefix,
+			HubProject:         hubProject,
+			HubSolution:        hubSolution,
+			HubBranch:          hubBranch,
+			HubWorktree:        hubWorktree,
 			AppPort:            appPort,
 			AdminPort:          adminPort,
 			ServePort:          servePort,
@@ -115,6 +125,11 @@ func init() {
 	runCmd.Flags().Bool("local", false, "Run locally without Docker (warm serve + standalone runtime)")
 	runCmd.Flags().String("hub", "", "Expose the running app in a browser via an mxcli tunnel-hub URL (e.g. https://hub.mxcli.org). Implies --local; the app stays local and is reverse-tunnelled out")
 	runCmd.Flags().String("hub-secret", "", "Shared auth secret for --hub (\"user:pass\"), matching the hub's --secret")
+	runCmd.Flags().String("hub-prefix", "", "Optional subdomain prefix on the hub (org/solution/team/env): <prefix>-<project>-<branch>")
+	runCmd.Flags().String("hub-project", "", "Project name for the hub subdomain + overview (default: the .mpr name)")
+	runCmd.Flags().String("hub-solution", "", "Solution name to group this app under in the hub overview (multi-app solutions)")
+	runCmd.Flags().String("hub-branch", "", "Branch for the hub subdomain + overview (default: the git branch)")
+	runCmd.Flags().String("hub-worktree", "", "Worktree label to distinguish multiple worktrees of one branch")
 	runCmd.Flags().Bool("watch", false, "Rebuild and hot-apply on every project change")
 	runCmd.Flags().Bool("ensure-db", false, "Provision the local Postgres + app database if missing (fresh-session bootstrap)")
 	runCmd.Flags().Bool("setup", false, "Prepare prerequisites (cache MxBuild+runtime, ensure DB) and exit without booting — for a SessionStart hook")

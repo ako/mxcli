@@ -7,119 +7,94 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"strconv"
+	"path/filepath"
 	"syscall"
 
-	chserver "github.com/jpillora/chisel/server"
-	"github.com/mendixlabs/mxcli/cmd/mxcli/docker"
+	"github.com/mendixlabs/mxcli/cmd/mxcli/tunnelhub"
 	"github.com/spf13/cobra"
 )
 
-// tunnelHubCmd is the static ingress relay. It runs on a host with a public IP
-// and domain (e.g. a small VPS) and fronts a locally-running mxcli app: the app
-// stays in its own (possibly egress-only) environment and reverse-tunnels out to
-// this hub over 443; browsers reach it at the hub's URL. Nothing is pushed here —
-// only live HTTP flows through the tunnel.
-//
-// Slice 1 fronts a single app. Multi-tenant registration (a /register API that
-// allocates per-container subdomains + tokens) and the admin overview are a
-// follow-on (see PROPOSAL_mxcli_dev_warm_loop.md § Scaling).
+// tunnelHubCmd runs the multi-tenant ingress relay. It fronts many locally-running
+// Mendix apps — across projects, solutions, branches, and worktrees — each at its
+// own <subdomain>.<domain> over a single 443 connection, with a registration API
+// and an admin overview at the hub host. Apps stay in their own (possibly
+// egress-only) environments and reverse-tunnel out; nothing is pushed here.
 var tunnelHubCmd = &cobra.Command{
 	Use:   "tunnel-hub",
-	Short: "Static ingress relay that fronts a locally-running mxcli app at a public URL",
-	Long: `Run a static ingress relay that exposes a locally-running Mendix app
-(started elsewhere with 'mxcli run --hub <this-url>') in a browser at this host's
-public URL.
+	Short: "Multi-tenant ingress relay: front many locally-running mxcli apps at per-preview subdomains",
+	Long: `Run the static ingress relay that exposes locally-running Mendix apps
+(started elsewhere with 'mxcli run --hub <this-url>') in a browser.
 
-It embeds a chisel reverse-tunnel server: the app's environment dials in over 443
-and reverse-tunnels its local port here; every non-tunnel HTTP request to this
-host is proxied down that tunnel to the app. Everything rides a single 443
-connection, so it works from egress-only environments (e.g. Claude Code on the
-web).
+Each app self-registers and is served at its own subdomain
+(<project>-<branch>.<domain>, or <prefix>-<project>-<branch> with --hub-prefix);
+the hub host (hub.<domain>) serves the registration API, the admin overview, and
+the chisel control connection. Everything rides one 443 connection, so apps in
+egress-only environments (e.g. Claude Code on the web) can reverse-tunnel out.
 
-TLS: pass --domain for automatic Let's Encrypt (the host must be reachable on 80
-and 443 for the ACME challenge), or --tls-cert/--tls-key for an existing
-certificate.
+DNS: point a wildcard '*.<domain>' A record (and 'hub.<domain>') at this host.
+TLS is issued per subdomain via Let's Encrypt on demand (needs inbound 80+443).
 
-Example (on a VPS with hub.mxcli.org -> this host, ports 80+443 open):
-  mxcli tunnel-hub --domain hub.mxcli.org --secret myuser:mypass
+Example (on a VPS; *.mxcli.org -> this host, ports 80+443 open):
+  mxcli tunnel-hub --domain mxcli.org --secret alice:s3cret
 
-Then, in the app's environment:
-  mxcli run --hub https://hub.mxcli.org --hub-secret myuser:mypass -p app.mpr
+Then, in each app's environment:
+  mxcli run --hub https://hub.mxcli.org --hub-secret alice:s3cret \
+    --hub-solution CustomerPortal -p app.mpr
 `,
 	Run: func(cmd *cobra.Command, args []string) {
 		domain, _ := cmd.Flags().GetString("domain")
+		hubHost, _ := cmd.Flags().GetString("hub-host")
 		secret, _ := cmd.Flags().GetString("secret")
-		port, _ := cmd.Flags().GetInt("port")
-		backendPort, _ := cmd.Flags().GetInt("backend-port")
-		tlsKey, _ := cmd.Flags().GetString("tls-key")
-		tlsCert, _ := cmd.Flags().GetString("tls-cert")
-		host, _ := cmd.Flags().GetString("host")
+		httpsPort, _ := cmd.Flags().GetInt("port")
+		httpPort, _ := cmd.Flags().GetInt("http-port")
+		certCache, _ := cmd.Flags().GetString("cert-cache")
 
-		hasCert := tlsKey != "" && tlsCert != ""
-		if domain == "" && !hasCert {
-			fmt.Fprintln(os.Stderr, "Error: --domain (automatic Let's Encrypt) or both --tls-cert and --tls-key are required")
+		if domain == "" {
+			fmt.Fprintln(os.Stderr, "Error: --domain is required (the wildcard base, e.g. mxcli.org)")
 			os.Exit(1)
 		}
-
-		cfg := &chserver.Config{
-			Reverse: true,
-			Auth:    secret,
-			// Proxy is chisel's HTTP backend: non-tunnel requests are reverse-proxied
-			// here, which is the reverse-tunnel listener the app dials into.
-			Proxy: fmt.Sprintf("http://127.0.0.1:%d", backendPort),
-			TLS: chserver.TLSConfig{
-				Key:  tlsKey,
-				Cert: tlsCert,
-			},
-		}
-		if domain != "" {
-			cfg.TLS.Domains = []string{domain}
+		if certCache == "" {
+			home, _ := os.UserHomeDir()
+			certCache = filepath.Join(home, ".mxcli", "hub-certs")
 		}
 
-		srv, err := chserver.NewServer(cfg)
+		reg := tunnelhub.NewRegistry(tunnelhub.RegistryOptions{Domain: domain})
+		srv, err := tunnelhub.NewServer(tunnelhub.ServerOptions{
+			Domain:         domain,
+			HubHost:        hubHost,
+			Registry:       reg,
+			TunnelAuth:     secret,
+			RegisterSecret: secret,
+			CertCacheDir:   certCache,
+		})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: configuring tunnel-hub: %v\n", err)
 			os.Exit(1)
 		}
 
+		host := hubHost
+		if host == "" {
+			host = "hub." + domain
+		}
+		fmt.Printf("mxcli tunnel-hub: serving *.%s (control/admin at https://%s) on :%d\n", domain, host, httpsPort)
+		fmt.Printf("  admin overview: https://%s/\n", host)
+
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 
-		if domain != "" {
-			fmt.Printf("mxcli tunnel-hub: fronting https://%s on %s:%d (reverse port %d)\n", domain, host, port, backendPort)
-			fmt.Printf("  app connects with: mxcli run --hub https://%s%s -p app.mpr\n", domain, secretHint(secret))
-		} else {
-			fmt.Printf("mxcli tunnel-hub: listening on %s:%d (reverse port %d)\n", host, port, backendPort)
-		}
-
-		if err := srv.StartContext(ctx, host, strconv.Itoa(port)); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: starting tunnel-hub: %v\n", err)
-			os.Exit(1)
-		}
-		if err := srv.Wait(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: tunnel-hub stopped: %v\n", err)
+		if err := srv.Start(ctx, fmt.Sprintf(":%d", httpsPort), fmt.Sprintf(":%d", httpPort)); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: tunnel-hub: %v\n", err)
 			os.Exit(1)
 		}
 	},
 }
 
-// secretHint renders " --hub-secret <secret>" for the copy-paste hint, or "" when
-// no secret is set.
-func secretHint(secret string) string {
-	if secret == "" {
-		return ""
-	}
-	return " --hub-secret " + secret
-}
-
 func init() {
-	tunnelHubCmd.Flags().String("domain", "", "Domain for automatic Let's Encrypt TLS (e.g. hub.mxcli.org); host must be reachable on 80+443")
-	tunnelHubCmd.Flags().String("secret", "", "Shared auth secret (\"user:pass\") the app must present via --hub-secret")
-	tunnelHubCmd.Flags().Int("port", 443, "Public port to listen on")
-	tunnelHubCmd.Flags().Int("backend-port", docker.DefaultHubBackendPort, "Reverse-tunnel port the app dials into (must match the app side; default 9000)")
-	tunnelHubCmd.Flags().String("tls-cert", "", "TLS certificate file (instead of --domain autocert)")
-	tunnelHubCmd.Flags().String("tls-key", "", "TLS key file (instead of --domain autocert)")
-	tunnelHubCmd.Flags().String("host", "0.0.0.0", "Address to bind")
+	tunnelHubCmd.Flags().String("domain", "", "Wildcard base domain, e.g. mxcli.org (previews served at <sub>.<domain>)")
+	tunnelHubCmd.Flags().String("hub-host", "", "Control/admin host (default hub.<domain>)")
+	tunnelHubCmd.Flags().String("secret", "", "Shared secret (\"user:pass\") apps present via --hub-secret; empty = open")
+	tunnelHubCmd.Flags().Int("port", 443, "HTTPS port to listen on")
+	tunnelHubCmd.Flags().Int("http-port", 80, "HTTP port for ACME challenges + http->https redirect")
+	tunnelHubCmd.Flags().String("cert-cache", "", "Directory for Let's Encrypt certificates (default ~/.mxcli/hub-certs)")
 	rootCmd.AddCommand(tunnelHubCmd)
 }

@@ -41,6 +41,9 @@ type TunnelOptions struct {
 	// set; it defaults from HTTPS_PROXY/https_proxy in the environment. chisel does
 	// not read the proxy env itself, so we pass it explicitly.
 	Proxy string
+	// PublicURL is the browser-facing URL the app is served at (an assigned
+	// subdomain on a multi-tenant hub). Defaults to HubURL when empty.
+	PublicURL string
 	// Stdout receives progress messages (default os.Stdout).
 	Stdout io.Writer
 }
@@ -114,12 +117,16 @@ func StartTunnel(o TunnelOptions) (*Tunnel, error) {
 		return nil, fmt.Errorf("starting tunnel: %w", err)
 	}
 
-	t := &Tunnel{client: c, cancel: cancel, publicURL: strings.TrimRight(o.HubURL, "/")}
-	if o.Proxy != "" {
-		fmt.Fprintf(o.Stdout, "Tunnel: exposing local :%d at %s (via proxy)\n", o.LocalPort, t.publicURL)
-	} else {
-		fmt.Fprintf(o.Stdout, "Tunnel: exposing local :%d at %s\n", o.LocalPort, t.publicURL)
+	public := o.PublicURL
+	if public == "" {
+		public = o.HubURL
 	}
+	t := &Tunnel{client: c, cancel: cancel, publicURL: strings.TrimRight(public, "/")}
+	via := ""
+	if o.Proxy != "" {
+		via = " (via proxy)"
+	}
+	fmt.Fprintf(o.Stdout, "Tunnel: exposing local :%d at %s%s\n", o.LocalPort, t.publicURL, via)
 	return t, nil
 }
 
