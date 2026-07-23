@@ -140,6 +140,14 @@ mxcli run --local -p app.mpr --watch --screenshot   # hot-reload + auto screensh
 
 `mxcli run --local` keeps `mxbuild --serve` and a standalone runtime hot: a page/microflow edit is hot-applied in seconds (a hot `reload_model`, or a restart + DDL for entity changes), and `--screenshot` captures each page with Playwright. See **[Local Dev Loop](https://mendixlabs.github.io/mxcli/tools/run-local.html)**.
 
+Add `--hub` to preview the running app **in a browser at a public URL** — the app stays local and reverse-tunnels out over a single 443 connection, so it works even from egress-only environments (e.g. Claude Code on the web):
+
+```bash
+mxcli run --hub https://hub.example.com -p app.mpr        # -> a shareable preview URL
+```
+
+`mxcli tunnel-hub --domain example.com` is the static relay you run once on a small VPS; it can front many previews at per-subdomain hosts across projects, solutions, branches, and worktrees, with a sortable availability overview at `hub.example.com/`. See **[Local Dev Loop → External browser preview](https://mendixlabs.github.io/mxcli/tools/run-local.html)**.
+
 ### Existing project
 
 For an existing Mendix project, use `mxcli init` to add AI tooling and a Dev Container:
