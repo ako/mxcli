@@ -104,6 +104,7 @@ func StartTunnel(o TunnelOptions) (*Tunnel, error) {
 		Auth:             o.Secret,
 		Remotes:          []string{remote},
 		KeepAlive:        25 * time.Second,
+		MaxRetryCount:    -1, // retry forever: survive a hub restart or network blip
 		MaxRetryInterval: 30 * time.Second,
 	}
 	c, err := chclient.NewClient(cfg)
