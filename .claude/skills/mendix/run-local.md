@@ -107,7 +107,9 @@ Launch `run --local` as the **sole** command in its invocation (don't chain a tr
 
 | Flag | Default | Purpose |
 |------|---------|---------|
-| `--local` | — | Required; run without Docker |
+| `--local` | — | Required; run without Docker (implied by `--hub`) |
+| `--hub` | — | Expose the app in a browser at a tunnel-hub URL (see below) |
+| `--hub-secret` | — | Shared auth (`user:pass`) matching the hub's `--secret` |
 | `--watch` | off | Rebuild + hot-apply on each change |
 | `--ensure-db` | off | Provision local Postgres + app database if missing |
 | `--setup` | off | Cache MxBuild+runtime + ensure DB, then exit (SessionStart bring-up) |
@@ -146,6 +148,33 @@ mxcli run --local -p app.mpr --watch --screenshot
 - `--screenshot-user`/`--screenshot-password` log in once (Mendix form auth) and
   reuse the session, so pages behind login render authenticated. Best-effort: an
   anonymous app with no login form proceeds unauthenticated.
+
+## External browser preview (`--hub`)
+
+`--hub <url>` exposes the running app in a **browser at a public URL** without the app
+leaving this machine and without committing — for reviewing work-in-progress from a
+phone/tablet, or from an egress-only environment like Claude Code on the web.
+
+```bash
+# on a small VPS with a public IP + domain (hub.mxcli.org -> it, ports 80+443 open):
+mxcli tunnel-hub --domain hub.mxcli.org --secret alice:s3cret
+
+# here, where the app runs:
+mxcli run --hub https://hub.mxcli.org --hub-secret alice:s3cret -p app.mpr
+#   -> boots the app locally and prints "Preview available at https://hub.mxcli.org"
+```
+
+- The app stays here; a **chisel reverse tunnel** dials *out* to the hub over 443, and
+  the hub proxies browser requests back down it. Nothing is pushed — only live HTTP.
+  Everything rides one 443 connection, so it works through an egress-only proxy.
+- `--hub` **implies `--local`** and boots the runtime with `ApplicationRootUrl` set to
+  the hub URL, so the SPA/`originURI` work under the public origin.
+- Combine with `--watch` for the full loop: edit here → hot-apply → refresh the browser.
+- The control connection honours `NO_PROXY`: an external hub goes through the egress
+  proxy, a loopback hub connects directly.
+
+`mxcli tunnel-hub` is the static relay (one small VPS fronts your previews). It uses
+automatic Let's Encrypt for `--domain` (needs inbound 80+443), or `--tls-cert`/`--tls-key`.
 
 ## Validation checklist
 
