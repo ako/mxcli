@@ -40,6 +40,14 @@ type LocalRunOptions struct {
 	AdminPass string
 	// DB is the Postgres the runtime connects to (devcontainer defaults applied).
 	DB DBConfig
+	// Hub, when set, is the URL of an mxcli tunnel-hub (e.g. https://hub.mxcli.org).
+	// The app stays running here; a chisel client reverse-tunnels it out to the hub
+	// so it is reachable in a browser at the hub URL. Implies a local run. The
+	// runtime boots with ApplicationRootUrl = Hub so the SPA works under that origin.
+	Hub string
+	// HubSecret is the shared auth secret for the hub ("user:pass"), matching the
+	// hub's --secret. Optional but recommended.
+	HubSecret string
 	// Watch keeps running, rebuilding+applying on every project change.
 	Watch bool
 	// EnsureDB provisions the local Postgres + app database if missing (otherwise
@@ -420,17 +428,20 @@ func RunLocal(opts LocalRunOptions) error {
 		}
 	}
 
-	// 6. Boot the runtime against the fresh deployment.
+	// 6. Boot the runtime against the fresh deployment. With --hub, the app is
+	// reached at the hub's public URL, so the runtime must boot with
+	// ApplicationRootUrl set to it (else the SPA/originURI misbehave across origins).
 	rt, err := StartLocalRuntime(LocalRuntimeOptions{
 		DeployDir:   opts.DeployDir,
 		InstallPath: installPath,
 		// JavaHome left empty: StartLocalRuntime resolves JDK 21.
-		AppPort:   opts.AppPort,
-		AdminPort: opts.AdminPort,
-		AdminPass: opts.AdminPass,
-		DB:        opts.DB,
-		Stdout:    w,
-		Stderr:    stderr,
+		AppPort:            opts.AppPort,
+		AdminPort:          opts.AdminPort,
+		AdminPass:          opts.AdminPass,
+		ApplicationRootUrl: opts.Hub,
+		DB:                 opts.DB,
+		Stdout:             w,
+		Stderr:             stderr,
 	})
 	if err != nil {
 		return err
@@ -438,6 +449,23 @@ func RunLocal(opts LocalRunOptions) error {
 	defer rt.Stop()
 
 	fmt.Fprintf(w, "\nApp is running at %s\n", rt.AppURL())
+
+	// 6a. With --hub, open a reverse tunnel so the app is reachable in a browser at
+	// the hub's public URL. The app stays here; only live HTTP flows through the
+	// tunnel (nothing is pushed to the hub).
+	if opts.Hub != "" {
+		tunnel, err := StartTunnel(TunnelOptions{
+			HubURL:    opts.Hub,
+			LocalPort: opts.AppPort,
+			Secret:    opts.HubSecret,
+			Stdout:    w,
+		})
+		if err != nil {
+			return fmt.Errorf("starting hub tunnel: %w", err)
+		}
+		defer tunnel.Stop()
+		fmt.Fprintf(w, "Preview available at %s\n", tunnel.PublicURL())
+	}
 
 	// 6b. If screenshot auth was requested, log in once and reuse the session for
 	// every screenshot (pages behind login render authenticated).
