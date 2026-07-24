@@ -148,6 +148,7 @@ func StartWebClientWatch(opts WebClientOptions) (*WebClientWatcher, error) {
 		"CHOKIDAR_INTERVAL=300",
 		"MX_WEB_CLIENT_BUILD_LOG="+filepath.Join(opts.DeployDir, "log", "web-client-build.log"),
 	)
+	setProcessGroup(cmd) // reap any node child on Stop so a rebuild can't be orphaned
 	log := &syncBuffer{}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -276,13 +277,13 @@ func (wc *WebClientWatcher) Stop() error {
 	if wc.cmd == nil || wc.cmd.Process == nil {
 		return nil
 	}
-	_ = wc.cmd.Process.Signal(syscall.SIGTERM)
+	_ = signalProcessGroup(wc.cmd.Process, syscall.SIGTERM)
 	done := make(chan error, 1)
 	go func() { done <- wc.cmd.Wait() }()
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		_ = wc.cmd.Process.Kill()
+		_ = killProcessGroup(wc.cmd.Process)
 		<-done
 	}
 	return nil

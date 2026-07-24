@@ -139,6 +139,7 @@ func StartServe(opts ServeOptions) (*ServeServer, error) {
 		fmt.Sprintf("--java-exe-path=%s", javaExe),
 	)
 	PrepareMxCommand(cmd) // FreeType LD_PRELOAD workaround
+	setProcessGroup(cmd)  // reap the JVM grandchild on Stop (mxbuild is a wrapper)
 	log := &syncBuffer{}
 	cmd.Stdout = log
 	cmd.Stderr = log
@@ -227,13 +228,13 @@ func (s *ServeServer) Stop() error {
 	if s.cmd == nil || s.cmd.Process == nil {
 		return nil
 	}
-	_ = s.cmd.Process.Signal(syscall.SIGTERM)
+	_ = signalProcessGroup(s.cmd.Process, syscall.SIGTERM)
 	done := make(chan error, 1)
 	go func() { done <- s.cmd.Wait() }()
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		_ = s.cmd.Process.Kill()
+		_ = killProcessGroup(s.cmd.Process)
 		<-done
 	}
 	return nil
