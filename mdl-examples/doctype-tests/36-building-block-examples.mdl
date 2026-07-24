@@ -17,13 +17,21 @@
 
 -- MARK: List building blocks
 
--- List every building block in the project.
+-- List every building block in the project (empty on a project with none).
 show building blocks;
 
 -- Filter building blocks by module.
 show building blocks in MyModule;
 
 -- MARK: Describe a building block
-
--- Describe a single building block (header comment + widget tree).
-describe building block MyModule.LoginForm;
+--
+-- DESCRIBE prints a header comment + the widget tree. It is NOT exercised here
+-- because it errors on a project that has no such block ("building block not
+-- found"), and a fresh test project ships none. Against a project that contains
+-- building blocks, run e.g.:
+--
+--   describe building block Atlas_Web_Content.HelloWorld;
+--
+-- You can also query them from the catalog:
+--
+--   select QualifiedName, Platform, Category from CATALOG.building_blocks;
