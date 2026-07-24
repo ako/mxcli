@@ -222,6 +222,67 @@ func (b *Builder) buildSnippets() error {
 	return nil
 }
 
+// buildBuildingBlocks populates building_blocks_data. Building blocks are
+// read-only copy-templates (deep-copied onto pages with no live link), so —
+// unlike snippets — their widgets are NOT emitted into widgets_data for
+// cross-reference; only a WidgetCount is recorded. The widget count is read from
+// the raw unit's top-level Widgets array (same shape as a snippet), so it is
+// only available in full mode.
+func (b *Builder) buildBuildingBlocks() error {
+	blocks, err := b.reader.ListBuildingBlocks()
+	if err != nil {
+		return err
+	}
+
+	stmt, err := b.tx.Prepare(`
+		INSERT INTO building_blocks_data (Id, Name, QualifiedName, ModuleName, Folder, Description,
+			DisplayName, Platform, Category, WidgetCount,
+			ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	projectID, snapshotID := b.snapshotMeta()
+
+	count := 0
+	for _, bb := range blocks {
+		moduleID := b.hierarchy.findModuleID(bb.ContainerID)
+		moduleName := b.hierarchy.getModuleName(moduleID)
+		qualifiedName := moduleName + "." + bb.Name
+		folder := b.hierarchy.buildFolderPath(bb.ContainerID)
+
+		widgetCount := 0
+		if b.fullMode {
+			if rawData, _ := b.reader.GetRawUnit(bb.ID); rawData != nil {
+				widgetCount = len(extractSnippetWidgets(rawData))
+			}
+		}
+
+		if _, err := stmt.Exec(
+			string(bb.ID),
+			bb.Name,
+			qualifiedName,
+			moduleName,
+			folder,
+			bb.Documentation,
+			bb.DisplayName,
+			bb.Platform,
+			bb.TemplateCategory,
+			widgetCount,
+			projectID, snapshotID,
+		); err != nil {
+			return err
+		}
+		count++
+	}
+
+	b.report("Building blocks", count)
+	return nil
+}
+
 // rawWidgetInfo represents a widget extracted from raw BSON data.
 type rawWidgetInfo struct {
 	ID           string
