@@ -365,7 +365,7 @@ func (r *Reader) parseBuildingBlock(unitID, containerID string, contents []byte)
 
 	bb := &pages.BuildingBlock{}
 	bb.ID = model.ID(unitID)
-	bb.TypeName = "Forms$BuildingBlock"
+	bb.TypeName = "Pages$BuildingBlock"
 	bb.ContainerID = model.ID(containerID)
 
 	if name, ok := raw["Name"].(string); ok {
@@ -373,6 +373,15 @@ func (r *Reader) parseBuildingBlock(unitID, containerID string, contents []byte)
 	}
 	if doc, ok := raw["Documentation"].(string); ok {
 		bb.Documentation = doc
+	}
+	if displayName, ok := raw["DisplayName"].(string); ok {
+		bb.DisplayName = displayName
+	}
+	if platform, ok := raw["Platform"].(string); ok {
+		bb.Platform = platform
+	}
+	if category, ok := raw["TemplateCategory"].(string); ok {
+		bb.TemplateCategory = category
 	}
 
 	return bb, nil

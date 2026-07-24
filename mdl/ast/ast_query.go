@@ -100,6 +100,7 @@ const (
 	ShowKnowledgeBases        // SHOW KNOWLEDGE BASES [IN module] (agent-editor KB documents)
 	ShowConsumedMCPServices   // SHOW CONSUMED MCP SERVICES [IN module] (agent-editor MCP documents)
 	ShowJarDependencies       // LIST JAR DEPENDENCIES [IN module]
+	ShowBuildingBlocks        // SHOW BUILDING BLOCKS [IN module]
 )
 
 // String returns the human-readable name of the show object type.
@@ -239,6 +240,8 @@ func (t ShowObjectType) String() string {
 		return "CONSUMED MCP SERVICES"
 	case ShowJarDependencies:
 		return "JAR DEPENDENCIES"
+	case ShowBuildingBlocks:
+		return "BUILDING BLOCKS"
 	default:
 		return "UNKNOWN"
 	}
@@ -323,6 +326,7 @@ const (
 	DescribeKnowledgeBase        // DESCRIBE KNOWLEDGE BASE Module.Name (agent-editor KB document)
 	DescribeConsumedMCPService   // DESCRIBE CONSUMED MCP SERVICE Module.Name (agent-editor MCP document)
 	DescribeJarDependency        // DESCRIBE JAR DEPENDENCY ModuleName 'group:artifact'
+	DescribeBuildingBlock        // DESCRIBE BUILDING BLOCK Module.Name
 	DescribeAuto                 // DESCRIBE Module.Name — type auto-detected at execution time
 )
 
@@ -409,6 +413,8 @@ func (t DescribeObjectType) String() string {
 		return "CONSUMED MCP SERVICE"
 	case DescribeJarDependency:
 		return "JAR DEPENDENCY"
+	case DescribeBuildingBlock:
+		return "BUILDING BLOCK"
 	case DescribeAuto:
 		return "AUTO"
 	default:

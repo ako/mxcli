@@ -1,0 +1,29 @@
+-- ============================================================================
+-- Building Block Examples - Read-Only Discovery (SHOW / DESCRIBE)
+-- ============================================================================
+--
+-- Building blocks are read-only in MDL. They can be listed and described, but
+-- not created, altered, or dropped. DESCRIBE output is informational (a comment
+-- header plus the widget tree), not a re-executable CREATE statement.
+--
+-- Usage:
+--   1. Connect to a project that contains building blocks
+--   2. Execute: EXECUTE SCRIPT 'examples/36-building-block-examples.mdl';
+--
+-- NOTE: These statements require a project that actually contains building
+-- blocks to return rows; they are always syntax-checkable with `mxcli check`.
+--
+-- ============================================================================
+
+-- MARK: List building blocks
+
+-- List every building block in the project.
+show building blocks;
+
+-- Filter building blocks by module.
+show building blocks in MyModule;
+
+-- MARK: Describe a building block
+
+-- Describe a single building block (header comment + widget tree).
+describe building block MyModule.LoginForm;
