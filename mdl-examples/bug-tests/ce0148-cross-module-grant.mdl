@@ -1,0 +1,46 @@
+-- @version: 10.0+
+-- ============================================================================
+-- CE0148 — cross-module document-access grant.
+--
+-- Document access (page / microflow / nanoflow / published OData|REST service
+-- AllowedModuleRoles) may only reference the document's OWN module roles.
+-- Studio Pro's role picker only offers the containing module's roles, so a
+-- cross-module reference builds with CE0148 "reselect roles" — even though the
+-- reference is otherwise well-formed.
+--
+-- Before the fix, `grant view on page A.Page to B.Role` passed `mxcli check`
+-- and `exec` (validateModuleRole only checks the role exists in ITS module),
+-- then failed the Mendix build with an opaque CE0148. The grant path now
+-- pre-rejects a cross-module role with an actionable error.
+--
+-- Fix: checkDocumentAccessRolesSameModule (mdl/executor/cmd_security_defaults.go)
+-- wired into the 5 grant handlers in mdl/executor/cmd_security_write.go.
+-- ============================================================================
+
+create module Alpha;
+create module Beta;
+
+create module role Alpha.User    description 'Alpha module user';
+create module role Beta.Manager   description 'Beta module manager';
+
+create page Alpha.Overview (
+  title: 'Overview'
+) {
+  layoutgrid g1 {
+    row r1 {
+      column c1 (desktopwidth: 12) {
+        dynamictext txt1 (content: 'Overview', rendermode: H2)
+      }
+    }
+  }
+}
+
+-- CORRECT: grant the page its OWN module's role. Passes check + build.
+grant view on page Alpha.Overview to Alpha.User;
+
+-- WRONG (do NOT uncomment): a cross-module role is rejected by the CE0148 guard.
+-- The build would otherwise fail with CE0148 "reselect roles".
+--   grant view on page Alpha.Overview to Beta.Manager;
+--
+-- To give a Beta-scoped user access, add an Alpha module role and map the Beta
+-- user role to it, then grant the Alpha role above.

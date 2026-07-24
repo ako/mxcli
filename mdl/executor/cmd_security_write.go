@@ -590,6 +590,11 @@ func execGrantMicroflowAccess(ctx *ExecContext, s *ast.GrantMicroflowAccessStmt)
 			continue
 		}
 
+		// Reject cross-module role grants before they reach the model (CE0148 guard).
+		if err := checkDocumentAccessRolesSameModule("microflow", modName, mf.Name, s.Roles); err != nil {
+			return err
+		}
+
 		// Validate all roles exist
 		for _, role := range s.Roles {
 			if err := validateModuleRole(ctx, role); err != nil {
@@ -707,6 +712,11 @@ func execGrantNanoflowAccess(ctx *ExecContext, s *ast.GrantNanoflowAccessStmt) e
 			continue
 		}
 
+		// Reject cross-module role grants before they reach the model (CE0148 guard).
+		if err := checkDocumentAccessRolesSameModule("nanoflow", modName, nf.Name, s.Roles); err != nil {
+			return err
+		}
+
 		for _, role := range s.Roles {
 			if err := validateModuleRole(ctx, role); err != nil {
 				return err
@@ -818,6 +828,11 @@ func execGrantPageAccess(ctx *ExecContext, s *ast.GrantPageAccessStmt) error {
 		modName := h.GetModuleName(modID)
 		if modName != s.Page.Module || pg.Name != s.Page.Name {
 			continue
+		}
+
+		// Reject cross-module role grants before they reach the model (CE0148 guard).
+		if err := checkDocumentAccessRolesSameModule("page", modName, pg.Name, s.Roles); err != nil {
+			return err
 		}
 
 		// Validate all roles exist
@@ -1165,6 +1180,11 @@ func execGrantODataServiceAccess(ctx *ExecContext, s *ast.GrantODataServiceAcces
 			continue
 		}
 
+		// Reject cross-module role grants before they reach the model (CE0148 guard).
+		if err := checkDocumentAccessRolesSameModule("OData service", modName, svc.Name, s.Roles); err != nil {
+			return err
+		}
+
 		// Validate all roles exist
 		for _, role := range s.Roles {
 			if err := validateModuleRole(ctx, role); err != nil {
@@ -1290,6 +1310,11 @@ func execGrantPublishedRestServiceAccess(ctx *ExecContext, s *ast.GrantPublished
 		modName := h.GetModuleName(modID)
 		if modName != s.Service.Module || svc.Name != s.Service.Name {
 			continue
+		}
+
+		// Reject cross-module role grants before they reach the model (CE0148 guard).
+		if err := checkDocumentAccessRolesSameModule("published REST service", modName, svc.Name, s.Roles); err != nil {
+			return err
 		}
 
 		// Validate all roles exist
