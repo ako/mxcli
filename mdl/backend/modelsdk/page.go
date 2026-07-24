@@ -93,6 +93,30 @@ func (b *Backend) ListSnippets() ([]*pages.Snippet, error) {
 	return out, nil
 }
 
+// ListBuildingBlocks reads Pages$BuildingBlock units. Read-only: the codec engine
+// lists them (name + scalar metadata) so SHOW / DESCRIBE BUILDING BLOCK work on
+// this engine too; the widget tree is read separately via GetRawUnit (shared).
+func (b *Backend) ListBuildingBlocks() ([]*pages.BuildingBlock, error) {
+	units, err := mprread.ListUnitsWithContainer[*genPg.BuildingBlock](b.reader)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*pages.BuildingBlock, 0, len(units))
+	for _, u := range units {
+		bb := &pages.BuildingBlock{
+			ContainerID:      u.ContainerID,
+			Name:             u.Element.Name(),
+			Documentation:    u.Element.Documentation(),
+			DisplayName:      u.Element.DisplayName(),
+			Platform:         u.Element.Platform(),
+			TemplateCategory: u.Element.TemplateCategory(),
+		}
+		bb.ID = model.ID(u.Element.ID())
+		out = append(out, bb)
+	}
+	return out, nil
+}
+
 func pageFromGen(p *genPg.Page, containerID model.ID) *pages.Page {
 	out := &pages.Page{
 		ContainerID: containerID,
