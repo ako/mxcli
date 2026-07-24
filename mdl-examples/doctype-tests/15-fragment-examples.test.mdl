@@ -12,6 +12,8 @@
 --   USE FRAGMENT Name                       - Insert widgets inline
 --   USE FRAGMENT Name AS prefix_            - Insert with name prefix
 --   USE FRAGMENT Name { widgets }           - Fill the fragment's content slot
+--   DEFINE FRAGMENT Name($d: datasource, $a: action) - Typed parameters (experimental)
+--   USE FRAGMENT Name ($d: database E, $a: microflow M) - Supply parameter values
 --   SHOW FRAGMENTS                          - List defined fragments
 --   DESCRIBE FRAGMENT Name                  - Show fragment definition
 --
@@ -187,66 +189,15 @@ create page FragTest.P003_Order_Form
   }
 };
 
--- MARK: Content Slots
+-- MARK: Content Slots & Bindings
 
 -- ============================================================================
--- LEVEL 5b: Content Slots — Fragments That Wrap Arbitrary Content
+-- Content slots, parameter bindings, and building-block rebind overrides now
+-- live in focused, CI-checked standalone examples:
+--   * 15b-fragment-slots-examples.mdl     — DEFINE FRAGMENT … SLOT, USE FRAGMENT { … }
+--   * 15c-fragment-bindings-examples.mdl   — ($data: datasource, $onEdit: action) params
+--                                            and USE BUILDING BLOCK (datasource:/action:)
 -- ============================================================================
-
-/**
- * A plain fragment substitutes a FIXED widget group. A content slot lets a
- * fragment WRAP arbitrary caller-supplied content: declare a `slot` where the
- * caller's widgets should land, then fill it with `use fragment X { … }`.
- *
- * This is the Atlas card idiom — one reusable "card" shell reused around any
- * body, without copy-pasting the wrapper markup on every page.
- *
- * The slot name is optional and defaults to "content"; a fragment supports a
- * single slot.
- */
-define fragment Card as {
-  container cardWrap (class: 'card', designproperties: ['Card style': on]) {
-    container cardBody (class: 'card-body') {
-      slot content
-    }
-  }
-};
-
-/**
- * Fill the Card slot with page-specific content. The two dynamictext widgets
- * are spliced in where the slot marker sits (inside cardBody).
- */
-create page FragTest.P005b_Slot_Card
-(
-  title: 'Slot Card',
-  layout: Atlas_Core.Atlas_Default,
-  url: 'frag_005b_slot_card'
-)
-{
-  use fragment Card {
-    dynamictext cardTitle (content: 'Welcome', rendermode: H2)
-    dynamictext cardText (content: 'Any widgets can go inside the reusable Card shell.')
-  }
-};
-
--- The slot marker is gone after expansion; the page shows cardWrap > cardBody
--- > cardTitle, cardText.
-describe page FragTest.P005b_Slot_Card;
-
-/**
- * A slotted fragment may also be used with NO payload — the slot simply expands
- * to nothing, giving an empty card shell.
- */
-create page FragTest.P005c_Empty_Card
-(
-  title: 'Empty Card',
-  layout: Atlas_Core.Atlas_Default,
-  url: 'frag_005c_empty_card'
-)
-{
-  use fragment Card
-};
-
 -- MARK: Multiple Pages
 
 -- ============================================================================
@@ -259,12 +210,16 @@ create page FragTest.P005c_Empty_Card
  */
 create page FragTest.P004_Customer_New
 (
+  params: { $Customer: FragTest.Customer },
   title: 'New Customer',
   layout: Atlas_Core.Atlas_Default,
   url: 'frag_004_customer_new'
 )
 {
-  dataview dvCustomer (datasource: database FragTest.Customer) {
+  -- A data view shows ONE object, so it binds a page parameter (or a microflow
+  -- source), never a raw database query. The new Customer is passed in by the
+  -- microflow that opens this page.
+  dataview dvCustomer (datasource: $Customer) {
     use fragment CustomerFields
     use fragment SaveCancelFooter
   }

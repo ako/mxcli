@@ -422,6 +422,9 @@ var staticWidgetKnownProps = func() map[string]bool {
 		"Size", "Sortable", "TabletColumns", "WidthUnit", "WrapText", "Name",
 		// button icon-collection reference (issue #602)
 		"Icon",
+		// fragment / building-block sentinel-internal keys (USE_FRAGMENT /
+		// USE_BUILDING_BLOCK), consumed by the expander, never serialized
+		"Args", "DataSourceOverride", "ActionOverride",
 	}
 	m := make(map[string]bool, len(names))
 	for _, n := range names {

@@ -262,6 +262,35 @@ Use `as prefix_` when the wrapper's *own* widget names would collide across uses
 (the payload keeps the names you give it). For a fixed, content-invariant group
 (a footer, a button pair) a plain slotless fragment is still the right tool.
 
+**Binding data and behaviour (experimental).** A slot varies *what widgets* go
+inside; typed **parameters** vary *which entity* and *which microflow*. Declare a
+`datasource` and/or `action` parameter and the card becomes a real component:
+
+```mdl
+define fragment EntityCard($data: datasource, $onOpen: action) as {
+  container card1 (designproperties: ['Card style': on]) {
+    listview lv (datasource: $data) {
+      slot content
+      actionbutton open (caption: 'Open', action: $onOpen, buttonstyle: primary)
+    }
+  }
+};
+use fragment EntityCard ($data: database Sales.Order, $onOpen: microflow Sales.Open) {
+  dynamictext cardTitle (content: 'Orders', rendermode: H4, class: 'card-title')
+}
+```
+
+Atlas **building blocks** can't declare params, but `use building block` takes
+rebind overrides that rewrite the block's outermost datasource / first button:
+
+```mdl
+use building block Atlas_Web_Content.List_Cards
+  (datasource: database Sales.Order, action: microflow Sales.Open) as orders_;
+```
+
+For a binding the override rule can't reach, copy the block in (`as prefix_`) and
+`alter page … set datasource/action on prefix_widget`.
+
 ### Worked example — `Pageheader`
 
 `describe building block Atlas_Web_Content.Pageheader`:

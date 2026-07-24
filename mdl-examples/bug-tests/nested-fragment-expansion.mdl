@@ -1,0 +1,53 @@
+-- Bug: a USE FRAGMENT / USE BUILDING BLOCK nested inside a container (not at the
+-- page-body top level) was not expanded — exec failed with
+-- "unsupported widget type: USE_FRAGMENT". expandFragments only ran on the
+-- top-level widget list; container/layout children were built without expansion.
+--
+-- Fix: expandFragments recurses into every widget's children, so fragments,
+-- content slots, and building blocks work inside any container/layout/dataview.
+--
+-- Verify: mxcli check passes; exec + mx check = 0 on a real 11.12.1 project.
+
+create module NestFrag;
+
+@position(100,100)
+create persistent entity NestFrag.Order (
+  OrderNumber: string(50) not null
+);
+
+-- A slotted card shell reused inside a layout container.
+define fragment Card as {
+  container cardWrap (class: 'card', designproperties: ['Card style': on]) {
+    container cardBody (class: 'card-body') {
+      slot content
+    }
+  }
+};
+
+create page NestFrag.NestedCards
+(
+  title: 'Nested Cards',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'nestfrag_cards'
+)
+{
+  -- The cards are NESTED inside a layoutgrid column, not at the top level.
+  layoutgrid lg {
+    row r {
+      column colA (desktopwidth: 6) {
+        use fragment Card as left_ {
+          dynamictext leftTitle (content: 'Customers', rendermode: H4)
+        }
+      }
+      column colB (desktopwidth: 6) {
+        use fragment Card as right_ {
+          datagrid ordGrid (datasource: database NestFrag.Order) {
+            column colNum (attribute: OrderNumber, caption: 'Order #')
+          }
+        }
+      }
+    }
+  }
+};
+
+describe page NestFrag.NestedCards;

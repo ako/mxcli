@@ -104,6 +104,49 @@ Rules (v1):
 > subtree, scalar params (`define fragment F($label, $attr) as …`) are a planned
 > v1.1 follow-up; today use a slot plus a one-line value fill.
 
+### Parameter bindings — datasource & action (experimental)
+
+The content slot varies *structure* (which widgets). Typed **parameters** vary
+*data* and *behavior*: a fragment can declare a `datasource` and/or an `action`
+parameter, reference it with `$name` in a datasource/action position, and receive
+its value at the use site. This turns a shell into a real reusable component —
+one panel bound to a different entity and a different handler per use.
+
+```mdl
+define fragment DataPanel($data: datasource, $onEdit: action) as {
+  container panelWrap (class: 'card') {
+    listview lvItems (datasource: $data) {
+      slot content
+      actionbutton btnEdit (caption: 'Edit', action: $onEdit, buttonstyle: primary)
+    }
+  }
+};
+
+create page Module.Orders (title: 'Orders', layout: Atlas_Core.Atlas_Default) {
+  use fragment DataPanel ($data: database Module.Order, $onEdit: microflow Module.EditOrder) {
+    dynamictext panelHeading (content: 'Orders', rendermode: H4)
+  }
+};
+```
+
+Rules:
+- Param kinds are `datasource` (`$var` / `database E` / `$currentObject/Assoc` / `microflow M`) and `action` (a microflow / nanoflow / `save_changes` / `show_page` / …).
+- Every declared parameter must be supplied; unknown args and type mismatches are errors.
+- Values substitute at expansion — `describe page` shows the concrete datasource/action, no `$param`.
+
+**Building blocks** can't declare params (they're authored in Studio Pro), but a
+`use building block` accepts **rebind overrides** that rewrite the block's
+outermost datasource and/or its first button after the copy:
+
+```mdl
+use building block Atlas_Web_Content.List_Cards
+  (datasource: database Module.Order, action: microflow Module.OpenOrder) as orders_;
+```
+
+Binding-point rule (prototype): datasource → the first widget carrying a
+datasource; action → the first button widget. For anything more specific, copy
+the block in with `as prefix_` and use `alter page … set … on prefix_widget`.
+
 ### SHOW FRAGMENTS
 
 ```mdl

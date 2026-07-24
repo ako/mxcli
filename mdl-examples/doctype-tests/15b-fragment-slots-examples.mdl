@@ -1,0 +1,127 @@
+-- ============================================================================
+-- Fragment Content Slots — Reusable Shells That Wrap Arbitrary Content
+-- ============================================================================
+--
+-- A plain fragment substitutes a FIXED widget group. A content SLOT lets a
+-- fragment WRAP arbitrary caller-supplied content — a reusable shell (a card,
+-- panel, or section) whose body varies per use. This is the Atlas card idiom:
+-- one card wrapper reused around any body.
+--
+--   DEFINE FRAGMENT Name AS { <wrapper> SLOT [name] <wrapper> };
+--   USE FRAGMENT Name { <payload widgets> }       -- fill the slot
+--   USE FRAGMENT Name                              -- empty slot (valid)
+--
+-- Rules:
+--   * The slot name is optional and defaults to "content"; one slot per fragment.
+--   * A payload supplied to a fragment with NO slot is an error.
+--   * The payload is deep-cloned; `AS prefix_` renames the wrapper's own widgets,
+--     not the caller's payload.
+--   * Slots resolve at expansion — DESCRIBE PAGE shows the fully-wrapped tree
+--     (no slot marker) and there are no BSON/round-trip surprises.
+-- ============================================================================
+
+-- MARK: Setup
+
+create module SlotTest;
+
+@position(100,100)
+create persistent entity SlotTest.Order (
+  OrderNumber: string(50) not null,
+  TotalAmount: decimal
+);
+
+-- MARK: Basic Slot
+
+-- ============================================================================
+-- LEVEL 1: A Card Shell With a Content Slot
+-- ============================================================================
+
+/**
+ * The reusable Atlas card shell. `slot content` marks where each page's
+ * widgets are spliced in.
+ */
+define fragment Card as {
+  container cardWrap (class: 'card', designproperties: ['Card style': on]) {
+    container cardBody (class: 'card-body') {
+      slot content
+    }
+  }
+};
+
+/**
+ * Fill the slot with page-specific content. The two widgets land inside cardBody.
+ */
+create page SlotTest.P001_Slot_Card
+(
+  title: 'Slot Card',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'slot_001_card'
+)
+{
+  use fragment Card {
+    dynamictext cardHeading (content: 'Welcome', rendermode: H2)
+    dynamictext cardText (content: 'Any widgets can go inside the reusable Card shell')
+  }
+};
+
+-- MARK: Empty Slot
+
+-- ============================================================================
+-- LEVEL 2: Empty Slot — a Bare Shell
+-- ============================================================================
+
+-- A slotted fragment used with NO payload expands the slot to nothing.
+create page SlotTest.P002_Empty_Card
+(
+  title: 'Empty Card',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'slot_002_empty'
+)
+{
+  use fragment Card
+};
+
+-- MARK: Slot + Prefix
+
+-- ============================================================================
+-- LEVEL 3: Reusing a Shell Twice With a Prefix
+-- ============================================================================
+
+-- `AS prefix_` renames the wrapper's OWN widgets (cardWrap, cardBody), so the
+-- same shell can appear twice on one page. The payload keeps its own names.
+create page SlotTest.P003_Dual_Cards
+(
+  title: 'Dual Cards',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'slot_003_dual'
+)
+{
+  container page1 (class: 'flex-column') {
+    use fragment Card as left_ {
+      dynamictext leftTitle (content: 'Customers', rendermode: H4, class: 'card-title')
+    }
+    use fragment Card as right_ {
+      dynamictext rightTitle (content: 'Orders', rendermode: H4, class: 'card-title')
+      datagrid ordGrid (datasource: database SlotTest.Order) {
+        column colNum (attribute: OrderNumber, caption: 'Order #')
+        column colTotal (attribute: TotalAmount, caption: 'Total')
+      }
+    }
+  }
+};
+
+-- Verify the slot expanded (cardWrap > cardBody > payload; no slot marker).
+describe page SlotTest.P001_Slot_Card;
+
+-- ============================================================================
+-- Summary
+-- ============================================================================
+--
+--   DEFINE FRAGMENT Name AS { … SLOT [name] … };   -- declare a content slot
+--   USE FRAGMENT Name { widgets }                  -- fill it
+--   USE FRAGMENT Name                              -- empty shell
+--   USE FRAGMENT Name AS prefix_ { widgets }       -- reuse; prefix the wrapper
+--
+-- For binding a fragment's datasource / action handler, see
+-- 15c-fragment-bindings-examples.mdl. For the full fragment feature set
+-- (define/use/prefix/nested/snippets/ALTER), see 15-fragment-examples.test.mdl.

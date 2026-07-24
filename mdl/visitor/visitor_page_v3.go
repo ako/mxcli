@@ -433,6 +433,9 @@ func buildUseFragmentRef(ctx *parser.UseFragmentRefContext, b *Builder) *ast.Wid
 	if len(ids) > 1 {
 		w.Properties["Prefix"] = identifierOrKeywordText(ids[1]) // Optional prefix
 	}
+	if args := buildFragmentArgs(ctx.FragmentArgs()); len(args) > 0 {
+		w.Properties["Args"] = args
+	}
 	if payload := ctx.UseFragmentPayload(); payload != nil {
 		if pc, ok := payload.(*parser.UseFragmentPayloadContext); ok {
 			w.Children = buildPageBodyV3(pc.PageBodyV3(), b)
@@ -476,6 +479,22 @@ func buildUseBuildingBlockRef(ctx *parser.UseBuildingBlockRefContext) *ast.Widge
 	w.Properties["Prefix"] = ""
 	if idk := ctx.IdentifierOrKeyword(); idk != nil {
 		w.Properties["Prefix"] = identifierOrKeywordText(idk) // Optional prefix
+	}
+	// Optional rebind overrides: (datasource: <ds>, action: <action>).
+	if ov := ctx.BlockOverrides(); ov != nil {
+		if oc, ok := ov.(*parser.BlockOverridesContext); ok {
+			for _, o := range oc.AllBlockOverride() {
+				bo, ok := o.(*parser.BlockOverrideContext)
+				if !ok {
+					continue
+				}
+				if ds := bo.DataSourceExprV3(); ds != nil {
+					w.Properties["DataSourceOverride"] = buildDataSourceV3(ds)
+				} else if act := bo.ActionExprV3(); act != nil {
+					w.Properties["ActionOverride"] = buildActionV3(act)
+				}
+			}
+		}
 	}
 	return w
 }
@@ -892,7 +911,11 @@ func buildActionV3(ctx parser.IActionExprV3Context) *ast.ActionV3 {
 	actCtx := ctx.(*parser.ActionExprV3Context)
 	action := &ast.ActionV3{}
 
-	if actCtx.SAVE_CHANGES() != nil {
+	if v := actCtx.VARIABLE(); v != nil {
+		// $handler — a fragment action parameter; resolved at expansion.
+		action.Type = "param"
+		action.Target = strings.TrimPrefix(v.GetText(), "$")
+	} else if actCtx.SAVE_CHANGES() != nil {
 		action.Type = "save"
 		action.ClosePage = actCtx.CLOSE_PAGE() != nil
 	} else if actCtx.CANCEL_CHANGES() != nil {
@@ -1459,16 +1482,81 @@ func buildWidgetBodyV3(ctx parser.IWidgetBodyV3Context, b *Builder) []*ast.Widge
 	return nil
 }
 
-// ExitDefineFragmentStatement handles DEFINE FRAGMENT Name AS { widgets }.
+// ExitDefineFragmentStatement handles DEFINE FRAGMENT Name [(params)] AS { widgets }.
 func (b *Builder) ExitDefineFragmentStatement(ctx *parser.DefineFragmentStatementContext) {
 	stmt := &ast.DefineFragmentStmt{}
 	if iok := ctx.IdentifierOrKeyword(); iok != nil {
 		stmt.Name = identifierOrKeywordText(iok)
 	}
+	stmt.Params = buildFragmentParams(ctx.FragmentParams())
 	if bodyCtx := ctx.PageBodyV3(); bodyCtx != nil {
 		stmt.Widgets = buildPageBodyV3(bodyCtx, b)
 	}
 	b.statements = append(b.statements, stmt)
+}
+
+// buildFragmentParams extracts a fragment's typed parameter declarations.
+func buildFragmentParams(ctx parser.IFragmentParamsContext) []ast.FragmentParam {
+	if ctx == nil {
+		return nil
+	}
+	pc, ok := ctx.(*parser.FragmentParamsContext)
+	if !ok {
+		return nil
+	}
+	var out []ast.FragmentParam
+	for _, p := range pc.AllFragmentParam() {
+		param, ok := p.(*parser.FragmentParamContext)
+		if !ok {
+			continue
+		}
+		fp := ast.FragmentParam{Kind: "datasource"}
+		if v := param.VARIABLE(); v != nil {
+			fp.Name = strings.TrimPrefix(v.GetText(), "$")
+		}
+		if t := param.FragmentParamType(); t != nil {
+			if tc, ok := t.(*parser.FragmentParamTypeContext); ok && tc.ACTION() != nil {
+				fp.Kind = "action"
+			}
+		}
+		out = append(out, fp)
+	}
+	return out
+}
+
+// buildFragmentArgs extracts the values supplied at a `use fragment` site. Each
+// value parses as either a datasource or an action (they overlap on
+// microflow/nanoflow); the executor picks by the parameter's declared kind.
+func buildFragmentArgs(ctx parser.IFragmentArgsContext) []ast.FragmentArg {
+	if ctx == nil {
+		return nil
+	}
+	ac, ok := ctx.(*parser.FragmentArgsContext)
+	if !ok {
+		return nil
+	}
+	var out []ast.FragmentArg
+	for _, a := range ac.AllFragmentArg() {
+		argCtx, ok := a.(*parser.FragmentArgContext)
+		if !ok {
+			continue
+		}
+		arg := ast.FragmentArg{}
+		if v := argCtx.VARIABLE(); v != nil {
+			arg.Name = strings.TrimPrefix(v.GetText(), "$")
+		}
+		if val := argCtx.FragmentArgValue(); val != nil {
+			if vc, ok := val.(*parser.FragmentArgValueContext); ok {
+				if ds := vc.DataSourceExprV3(); ds != nil {
+					arg.DataSource = buildDataSourceV3(ds)
+				} else if act := vc.ActionExprV3(); act != nil {
+					arg.Action = buildActionV3(act)
+				}
+			}
+		}
+		out = append(out, arg)
+	}
+	return out
 }
 
 // xpathExprToString converts an AST Expression to a properly formatted XPath expression string.

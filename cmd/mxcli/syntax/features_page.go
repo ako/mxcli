@@ -191,9 +191,9 @@ func init() {
 			"fragment", "fragments", "reusable widgets", "define fragment",
 			"use fragment", "template", "script scope",
 		},
-		Syntax:  "DEFINE FRAGMENT Name AS { <widgets> };\nDEFINE FRAGMENT Name AS { <widgets> SLOT [name] <widgets> };\nUSE FRAGMENT Name [AS prefix_];\nUSE FRAGMENT Name [AS prefix_] { <payload widgets> };\nSHOW FRAGMENTS;\nDESCRIBE FRAGMENT Name;\nDESCRIBE FRAGMENT FROM PAGE Module.Page WIDGET widgetName;",
+		Syntax:  "DEFINE FRAGMENT Name AS { <widgets> };\nDEFINE FRAGMENT Name AS { <widgets> SLOT [name] <widgets> };\nDEFINE FRAGMENT Name ($d: datasource, $a: action) AS { <widgets> };\nUSE FRAGMENT Name [(args)] [AS prefix_];\nUSE FRAGMENT Name [(args)] [AS prefix_] { <payload widgets> };\nSHOW FRAGMENTS;\nDESCRIBE FRAGMENT Name;\nDESCRIBE FRAGMENT FROM PAGE Module.Page WIDGET widgetName;",
 		Example: "DEFINE FRAGMENT SaveCancelFooter AS {\n  FOOTER footer1 {\n    ACTIONBUTTON btnSave (Caption: 'Save', Action: SAVE_CHANGES, ButtonStyle: Primary)\n    ACTIONBUTTON btnCancel (Caption: 'Cancel', Action: CANCEL_CHANGES)\n  }\n};\n\nCREATE PAGE Module.EditPage (...) {\n  DATAVIEW dv (DataSource: $Param) {\n    TEXTBOX txtName (Label: 'Name', Binds: Name)\n    USE FRAGMENT SaveCancelFooter\n  }\n};",
-		SeeAlso: []string{"fragment.define", "fragment.use", "fragment.slot", "snippet"},
+		SeeAlso: []string{"fragment.define", "fragment.use", "fragment.slot", "fragment.params", "snippet"},
 	})
 
 	Register(SyntaxFeature{
@@ -217,6 +217,18 @@ func init() {
 		Syntax:  "USE FRAGMENT Name\nUSE FRAGMENT Name AS prefix_\nUSE FRAGMENT Name [AS prefix_] { <payload widgets> }",
 		Example: "-- Basic usage\nCREATE PAGE Module.Page (...) {\n  DATAVIEW dv (DataSource: $Param) {\n    USE FRAGMENT FormFields\n    USE FRAGMENT SaveCancelFooter\n  }\n};\n\n-- With prefix to avoid name conflicts\nUSE FRAGMENT SaveCancelFooter AS order_\n-- Creates: order_footer1, order_btnSave, order_btnCancel\n\n-- Fill a fragment's content slot (see fragment.slot)\nUSE FRAGMENT Card {\n  DYNAMICTEXT cardHeading (Content: 'Welcome', RenderMode: H2)\n  DYNAMICTEXT cardText (Content: 'Wrapped content')\n}",
 		SeeAlso: []string{"fragment", "fragment.define", "fragment.slot"},
+	})
+
+	Register(SyntaxFeature{
+		Path:    "fragment.params",
+		Summary: "Fragment datasource/action parameters + building-block rebind overrides (experimental)",
+		Keywords: []string{
+			"fragment parameter", "fragment param", "datasource param", "action param",
+			"binding", "rebind", "building block override", "reusable component",
+		},
+		Syntax:  "-- Declare typed params, reference with $name in a datasource/action slot:\nDEFINE FRAGMENT Name ($data: datasource, $onEdit: action) AS { … };\n-- Supply values at the use site:\nUSE FRAGMENT Name ($data: <datasource>, $onEdit: <action>) [{ payload }]\n-- Building blocks: rebind the outermost datasource / first button:\nUSE BUILDING BLOCK Module.Block (datasource: <ds>, action: <action>) [AS prefix_]",
+		Example: "DEFINE FRAGMENT DataPanel ($data: datasource, $onEdit: action) AS {\n  CONTAINER panel (Class: 'card') {\n    LISTVIEW lv (DataSource: $data) {\n      SLOT content\n      ACTIONBUTTON edit (Caption: 'Edit', Action: $onEdit, ButtonStyle: Primary)\n    }\n  }\n};\n\nCREATE PAGE Module.Orders (Title: 'Orders', Layout: Atlas_Core.Atlas_Default) {\n  USE FRAGMENT DataPanel ($data: DATABASE Sales.Order, $onEdit: MICROFLOW Sales.Edit) {\n    DYNAMICTEXT heading (Content: 'Orders', RenderMode: H4)\n  }\n};\n\n-- Rebind a building block's datasource and primary button:\nUSE BUILDING BLOCK Atlas_Web_Content.List_Cards (datasource: DATABASE Sales.Order, action: MICROFLOW Sales.Open) AS orders_;\n\n-- Notes:\n--   * Param kinds: datasource | action. Every declared param must be supplied.\n--   * A microflow value parses as a datasource and is reinterpreted for an action param.\n--   * BB binding-point rule: datasource → first datasource widget; action → first button.",
+		SeeAlso: []string{"fragment", "fragment.slot", "fragment.use"},
 	})
 
 	Register(SyntaxFeature{

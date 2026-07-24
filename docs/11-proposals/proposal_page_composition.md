@@ -167,20 +167,59 @@ Semantics (v1):
 - Slots resolve entirely at fragment-expansion time — no BSON changes, and
   `describe page` shows the fully-expanded tree (the slot marker is gone).
 
-### Parameterized Fragments — Scalar Params (Future, v1.1)
+### Parameter Bindings — datasource & action (Prototype)
 
-A secondary enhancement is **scalar** value substitution — passing a label or
-attribute name into a fragment. Unlike a content slot, this varies leaf *values*
-rather than wrapping a subtree, so it's the lower-priority half:
+Beyond wrapping content, a reusable component must vary its **data** and
+**behavior**: which entity it shows, which microflow its buttons call. A fragment
+can declare typed `datasource` / `action` parameters, reference them with `$name`
+in a datasource/action position, and receive values at the use site:
+
+```sql
+define fragment DataPanel($data: datasource, $onEdit: action) as {
+  container panelWrap (class: 'card') {
+    listview lv (datasource: $data) {
+      slot content
+      actionbutton edit (caption: 'Edit', action: $onEdit, buttonstyle: primary)
+    }
+  }
+}
+
+use fragment DataPanel ($data: database Sales.Order, $onEdit: microflow Sales.Edit) {
+  dynamictext heading (content: 'Orders', rendermode: H4)
+}
+```
+
+Building blocks can't declare params (they're Studio-Pro-authored), so a
+`use building block` takes **rebind overrides** that rewrite the block's outermost
+datasource / first button after the copy:
+
+```sql
+use building block Atlas_Web_Content.List_Cards
+  (datasource: database Sales.Order, action: microflow Sales.Open) as orders_
+```
+
+Semantics: values substitute at expansion (no BSON changes; `describe` shows the
+concrete datasource/action); every declared param must be supplied; unknown args
+and type mismatches are errors. A microflow/nanoflow value parses as a datasource
+(grammar overlap) and is reinterpreted as a call action when the parameter's kind
+is `action`. **Binding-point rule for building blocks** (prototype): datasource →
+first widget carrying a datasource; action → first button widget. Anything more
+specific falls back to copy-in + `alter page … set … on prefix_widget`.
+
+**Open design points to firm up before promoting from prototype:** (1) validation
+timing — an abstract fragment's inner `attribute:` bindings can only be checked
+once `$data`'s entity is known, so `check` is currently permissive on unbound
+fragments; (2) building-block binding-point ambiguity when a block has more than
+one datasource or several buttons; (3) whether to add `attribute` and scalar
+`value` param kinds (the original "scalar params" idea, now the lowest-priority
+remainder).
+
+Original scalar-substitution sketch (subsumed by the above; kept for reference):
 
 ```sql
 define fragment FormField($label, $attr) as {
   textbox txt$attr (label: $label, attribute: $attr)
 }
-
--- Usage
-use fragment FormField('Customer Name', 'Name')
-use fragment FormField('Email Address', 'Email')
 ```
 
 ### Fragment Naming and Prefixes

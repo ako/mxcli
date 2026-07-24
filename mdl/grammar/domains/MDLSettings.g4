@@ -210,10 +210,27 @@ helpStatement
     ;
 
 /**
- * DEFINE FRAGMENT Name AS { widgets }
+ * DEFINE FRAGMENT Name [($p: datasource, $q: action)] AS { widgets }
+ *
+ * Optional typed parameters let a fragment bind a datasource or an action
+ * handler supplied by the caller (`use fragment Name ($p: $Data, $q: microflow M)`).
+ * References in the body use the bare `$p` form in a datasource/action position.
  */
 defineFragmentStatement
-    : DEFINE FRAGMENT identifierOrKeyword AS LBRACE pageBodyV3 RBRACE
+    : DEFINE FRAGMENT identifierOrKeyword fragmentParams? AS LBRACE pageBodyV3 RBRACE
+    ;
+
+fragmentParams
+    : LPAREN fragmentParam (COMMA fragmentParam)* RPAREN
+    ;
+
+fragmentParam
+    : VARIABLE COLON fragmentParamType
+    ;
+
+fragmentParamType
+    : DATASOURCE
+    | ACTION
     ;
 
 // =============================================================================

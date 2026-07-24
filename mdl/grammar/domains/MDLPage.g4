@@ -208,22 +208,51 @@ placeholderBlockV3
     : PLACEHOLDER identifierOrKeyword LBRACE (widgetV3 | useFragmentRef | useBuildingBlockRef)* RBRACE
     ;
 
-// USE FRAGMENT Name [AS prefix_] [ { payload widgets } ]
-// The optional brace block supplies the widgets that fill the fragment's content
-// slot (see slotMarkerV3). Without it, a slotted fragment expands with an empty
-// slot.
+// USE FRAGMENT Name [(args)] [AS prefix_] [ { payload widgets } ]
+// The optional arg list supplies values for the fragment's declared parameters
+// (datasource / action). The optional brace block supplies the widgets that fill
+// the fragment's content slot (see slotMarkerV3). Without it, a slotted fragment
+// expands with an empty slot.
 useFragmentRef
-    : USE FRAGMENT identifierOrKeyword (AS identifierOrKeyword)? useFragmentPayload?
+    : USE FRAGMENT identifierOrKeyword fragmentArgs? (AS identifierOrKeyword)? useFragmentPayload?
     ;
 
 useFragmentPayload
     : LBRACE pageBodyV3 RBRACE
     ;
 
-// USE BUILDING BLOCK Module.Name [AS prefix_]
-// Deep-copies the building block's widget tree into the page/container.
+// Fragment argument list: ($p: $Data, $q: microflow Module.Flow)
+fragmentArgs
+    : LPAREN fragmentArg (COMMA fragmentArg)* RPAREN
+    ;
+
+fragmentArg
+    : VARIABLE COLON fragmentArgValue
+    ;
+
+// A fragment arg value is either a datasource or an action. They overlap on
+// MICROFLOW/NANOFLOW; the executor disambiguates using the parameter's declared
+// kind.
+fragmentArgValue
+    : dataSourceExprV3
+    | actionExprV3
+    ;
+
+// USE BUILDING BLOCK Module.Name [(rebind overrides)] [AS prefix_]
+// Deep-copies the building block's widget tree into the page/container. The
+// optional override list rebinds the block's outermost datasource and/or primary
+// action to caller-supplied values after the copy.
 useBuildingBlockRef
-    : USE BUILDING BLOCK qualifiedName (AS identifierOrKeyword)?
+    : USE BUILDING BLOCK qualifiedName blockOverrides? (AS identifierOrKeyword)?
+    ;
+
+blockOverrides
+    : LPAREN blockOverride (COMMA blockOverride)* RPAREN
+    ;
+
+blockOverride
+    : DATASOURCE COLON dataSourceExprV3
+    | ACTION COLON actionExprV3
     ;
 
 // V3 Widget: WIDGET name (Props) { children }
@@ -386,7 +415,8 @@ associationPathV3
 
 // V3 Action expressions
 actionExprV3
-    : SAVE_CHANGES (CLOSE_PAGE)?                      // SAVE_CHANGES or SAVE_CHANGES CLOSE_PAGE
+    : VARIABLE                                        // $handler — a fragment action parameter (see fragmentParam)
+    | SAVE_CHANGES (CLOSE_PAGE)?                      // SAVE_CHANGES or SAVE_CHANGES CLOSE_PAGE
     | CANCEL_CHANGES (CLOSE_PAGE)?                    // CANCEL_CHANGES
     | CLOSE_PAGE                                      // CLOSE_PAGE
     | DELETE_OBJECT                                   // DELETE_OBJECT

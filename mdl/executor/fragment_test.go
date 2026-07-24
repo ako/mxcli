@@ -494,6 +494,155 @@ func TestExpandBareSlotErrors(t *testing.T) {
 	}
 }
 
+func paramFrag() *ast.DefineFragmentStmt {
+	return &ast.DefineFragmentStmt{
+		Name: "Panel",
+		Params: []ast.FragmentParam{
+			{Name: "data", Kind: "datasource"},
+			{Name: "onEdit", Kind: "action"},
+		},
+		Widgets: []*ast.WidgetV3{
+			{Type: "listview", Name: "lv", Properties: map[string]interface{}{
+				"DataSource": &ast.DataSourceV3{Type: "parameter", Reference: "$data"},
+			}, Children: []*ast.WidgetV3{
+				{Type: "actionbutton", Name: "b", Properties: map[string]interface{}{
+					"Action": &ast.ActionV3{Type: "param", Target: "onEdit"},
+				}},
+			}},
+		},
+	}
+}
+
+func TestSubstituteFragmentParams_Success(t *testing.T) {
+	frag := paramFrag()
+	pb := &pageBuilder{fragments: map[string]*ast.DefineFragmentStmt{"Panel": frag}}
+
+	w := &ast.WidgetV3{
+		Type: "USE_FRAGMENT", Name: "Panel", Properties: map[string]interface{}{
+			"Args": []ast.FragmentArg{
+				{Name: "data", DataSource: &ast.DataSourceV3{Type: "database", Reference: "Sales.Order"}},
+				// microflow supplied as a datasource (parse overlap) — must convert to an action.
+				{Name: "onEdit", DataSource: &ast.DataSourceV3{Type: "microflow", Reference: "Sales.Edit"}},
+			},
+		},
+	}
+	result, err := pb.expandIfFragment(w)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	lv := result[0]
+	ds := lv.Properties["DataSource"].(*ast.DataSourceV3)
+	if ds.Type != "database" || ds.Reference != "Sales.Order" {
+		t.Errorf("datasource not substituted: %+v", ds)
+	}
+	act := lv.Children[0].Properties["Action"].(*ast.ActionV3)
+	if act.Type != "microflow" || act.Target != "Sales.Edit" {
+		t.Errorf("action param not substituted/converted: %+v", act)
+	}
+	// The fragment definition must be untouched.
+	if frag.Widgets[0].Properties["DataSource"].(*ast.DataSourceV3).Reference != "$data" {
+		t.Error("fragment definition datasource was mutated")
+	}
+}
+
+func TestSubstituteFragmentParams_Errors(t *testing.T) {
+	frag := paramFrag()
+	pb := &pageBuilder{fragments: map[string]*ast.DefineFragmentStmt{"Panel": frag}}
+	mk := func(args []ast.FragmentArg) *ast.WidgetV3 {
+		return &ast.WidgetV3{Type: "USE_FRAGMENT", Name: "Panel", Properties: map[string]interface{}{"Args": args}}
+	}
+	cases := []struct {
+		name string
+		args []ast.FragmentArg
+		want string
+	}{
+		{"missing", []ast.FragmentArg{{Name: "data", DataSource: &ast.DataSourceV3{Type: "database"}}}, "missing argument for parameter $onEdit"},
+		{"unknown", []ast.FragmentArg{
+			{Name: "data", DataSource: &ast.DataSourceV3{Type: "database"}},
+			{Name: "onEdit", DataSource: &ast.DataSourceV3{Type: "microflow"}},
+			{Name: "bogus", DataSource: &ast.DataSourceV3{Type: "database"}},
+		}, "unknown argument $bogus"},
+		{"type-mismatch", []ast.FragmentArg{
+			{Name: "data", DataSource: &ast.DataSourceV3{Type: "database"}},
+			{Name: "onEdit", DataSource: &ast.DataSourceV3{Type: "database"}}, // database can't be an action
+		}, "expects an action"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := pb.expandIfFragment(mk(tc.args))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("expected error containing %q, got %v", tc.want, err)
+			}
+		})
+	}
+}
+
+func TestSubstituteFragmentParams_ArgsToNoParamFragment(t *testing.T) {
+	frag := &ast.DefineFragmentStmt{Name: "Plain", Widgets: []*ast.WidgetV3{{Type: "dynamictext", Name: "t", Properties: map[string]interface{}{}}}}
+	pb := &pageBuilder{fragments: map[string]*ast.DefineFragmentStmt{"Plain": frag}}
+	w := &ast.WidgetV3{Type: "USE_FRAGMENT", Name: "Plain", Properties: map[string]interface{}{
+		"Args": []ast.FragmentArg{{Name: "x", DataSource: &ast.DataSourceV3{Type: "database"}}},
+	}}
+	_, err := pb.expandIfFragment(w)
+	if err == nil || !strings.Contains(err.Error(), "declares no parameters") {
+		t.Errorf("expected no-parameters error, got %v", err)
+	}
+}
+
+func TestExpandFragments_NestedInsideContainer(t *testing.T) {
+	// A USE_FRAGMENT nested inside a container (not at the top level) must still
+	// expand — expandFragments recurses into children.
+	frag := &ast.DefineFragmentStmt{
+		Name:    "Btns",
+		Widgets: []*ast.WidgetV3{{Type: "actionbutton", Name: "a", Properties: map[string]interface{}{}}},
+	}
+	pb := &pageBuilder{fragments: map[string]*ast.DefineFragmentStmt{"Btns": frag}}
+
+	tree := []*ast.WidgetV3{
+		{Type: "container", Name: "box", Properties: map[string]interface{}{}, Children: []*ast.WidgetV3{
+			{Type: "USE_FRAGMENT", Name: "Btns", Properties: map[string]interface{}{"Prefix": "p_"}},
+		}},
+	}
+	out, err := pb.expandFragments(tree)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	box := out[0]
+	if len(box.Children) != 1 || box.Children[0].Type != "actionbutton" {
+		t.Fatalf("nested fragment not expanded: %+v", box.Children)
+	}
+	if box.Children[0].Name != "p_a" {
+		t.Errorf("prefix not applied to nested expansion: %q", box.Children[0].Name)
+	}
+}
+
+func TestRebindFirst_ButtonAndDatasource(t *testing.T) {
+	tree := []*ast.WidgetV3{
+		{Type: "container", Name: "c", Properties: map[string]interface{}{}, Children: []*ast.WidgetV3{
+			{Type: "gallery", Name: "g", Properties: map[string]interface{}{"DataSource": &ast.DataSourceV3{Type: "database", Reference: "Old"}}, Children: []*ast.WidgetV3{
+				{Type: "linkbutton", Name: "lb", Properties: map[string]interface{}{}}, // no Action yet
+			}},
+		}},
+	}
+	// datasource target = first widget carrying a datasource
+	if !rebindFirst(tree, func(w *ast.WidgetV3) bool { _, ok := w.Properties["DataSource"]; return ok },
+		func(w *ast.WidgetV3) {
+			w.Properties["DataSource"] = &ast.DataSourceV3{Type: "database", Reference: "New"}
+		}) {
+		t.Fatal("datasource rebind found no target")
+	}
+	if tree[0].Children[0].Properties["DataSource"].(*ast.DataSourceV3).Reference != "New" {
+		t.Error("datasource not rebound")
+	}
+	// action target = first button-type widget, even without an existing Action
+	if !rebindFirst(tree, isButtonWidget, func(w *ast.WidgetV3) { w.Properties["Action"] = &ast.ActionV3{Type: "microflow", Target: "M"} }) {
+		t.Fatal("action rebind found no button")
+	}
+	if tree[0].Children[0].Children[0].Properties["Action"].(*ast.ActionV3).Target != "M" {
+		t.Error("action not rebound onto the linkbutton")
+	}
+}
+
 func TestRoundtripDefineAndDescribe(t *testing.T) {
 	input := `define fragment Footer as {
 		footer f1 {

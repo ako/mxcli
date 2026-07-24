@@ -1,0 +1,109 @@
+-- ============================================================================
+-- Fragment Parameter Bindings + Building-Block Rebind Overrides (experimental)
+-- ============================================================================
+--
+-- A content SLOT varies a component's STRUCTURE (which widgets). Typed
+-- PARAMETERS vary its DATA and BEHAVIOR: which entity it shows, which microflow
+-- its buttons call. Together they turn a shell into a real reusable component.
+--
+--   DEFINE FRAGMENT Name ($data: datasource, $onEdit: action) AS { … $data … $onEdit … };
+--   USE FRAGMENT Name ($data: <datasource>, $onEdit: <action>) [{ payload }]
+--
+-- Param kinds:
+--   datasource — $var | DATABASE Entity | $currentObject/Assoc | MICROFLOW M
+--   action     — a microflow / nanoflow / SAVE_CHANGES / SHOW_PAGE / …
+--
+-- Rules:
+--   * Every declared parameter must be supplied; unknown args and type
+--     mismatches are errors.
+--   * A microflow value parses as a datasource (grammar overlap) and is
+--     reinterpreted as a call action when the parameter's kind is `action`.
+--   * Values substitute at expansion — DESCRIBE shows the concrete
+--     datasource/action, no $param, and there are no BSON changes.
+-- ============================================================================
+
+-- MARK: Setup
+
+create module BindTest;
+
+@position(100,100)
+create persistent entity BindTest.Order (
+  OrderNumber: string(50) not null,
+  TotalAmount: decimal
+);
+
+-- MARK: Datasource + Action Params
+
+-- ============================================================================
+-- LEVEL 1: A Panel Bound to a Datasource and an Action Handler
+-- ============================================================================
+
+/**
+ * A reusable list panel. `$data` binds the list's datasource; `$onEdit` binds
+ * the button's action. `slot content` still lets the caller inject a header.
+ */
+define fragment DataPanel($data: datasource, $onEdit: action) as {
+  container panelWrap (class: 'card') {
+    listview lvItems (datasource: $data) {
+      slot content
+      actionbutton btnEdit (caption: 'Edit', action: $onEdit, buttonstyle: primary)
+    }
+  }
+};
+
+/**
+ * Bind the panel to BindTest.Order and a save action. `describe page` shows the
+ * concrete `database from BindTest.Order` and `save_changes` — no $param.
+ */
+create page BindTest.P001_Bound_Panel
+(
+  title: 'Bound Panel',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'bind_001_panel'
+)
+{
+  use fragment DataPanel ($data: database BindTest.Order, $onEdit: save_changes) {
+    dynamictext panelHeading (content: 'Orders', rendermode: H4)
+  }
+};
+
+describe page BindTest.P001_Bound_Panel;
+
+-- MARK: Building-Block Rebind
+
+-- ============================================================================
+-- LEVEL 2: Building-Block Rebind Overrides
+-- ============================================================================
+
+-- A building block is copied whole; the optional override list rebinds the
+-- block's OUTERMOST datasource and/or its PRIMARY (first) button to caller
+-- values — the one-line form of copy-in-then-alter-page.
+--
+-- Binding-point rule (prototype):
+--   datasource → the first widget carrying a datasource
+--   action     → the first button widget (Atlas placeholder buttons ship with
+--                no action, so the target is matched by widget type)
+--
+-- Requires the Atlas_Web_Content module (present in every standard Mendix app).
+create page BindTest.P002_Rebound_Block
+(
+  title: 'Rebound Block',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'bind_002_block'
+)
+{
+  use building block Atlas_Web_Content.List_Cards
+    (datasource: database BindTest.Order) as orders_
+};
+
+-- ============================================================================
+-- Summary
+-- ============================================================================
+--
+--   DEFINE FRAGMENT Name ($d: datasource, $a: action) AS { … };
+--   USE FRAGMENT Name ($d: DATABASE E, $a: MICROFLOW M) { payload }
+--   USE BUILDING BLOCK Mod.Block (datasource: <ds>, action: <action>) AS prefix_
+--
+-- For a binding the building-block override rule can't reach, copy the block in
+-- with `AS prefix_` and use `ALTER PAGE … SET datasource/action ON prefix_widget`.
+-- For content slots alone, see 15b-fragment-slots-examples.mdl.
