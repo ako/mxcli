@@ -264,6 +264,7 @@ func (rt *LocalRuntime) spawnAndConfigure() error {
 	cmd.Dir = rt.opts.runtimeDir()
 	cmd.Env = localRuntimeEnv(rt.opts)
 	PrepareMxCommand(cmd) // FreeType LD_PRELOAD workaround, layered on cmd.Env
+	setProcessGroup(cmd)  // reap any JVM child on Stop so the port is freed
 	log := &syncBuffer{}
 	cmd.Stdout = log
 	cmd.Stderr = log
@@ -353,13 +354,13 @@ func (rt *LocalRuntime) stopProcess() error {
 	if rt.cmd == nil || rt.cmd.Process == nil {
 		return nil
 	}
-	_ = rt.cmd.Process.Signal(syscall.SIGTERM)
+	_ = signalProcessGroup(rt.cmd.Process, syscall.SIGTERM)
 	done := make(chan error, 1)
 	go func() { done <- rt.cmd.Wait() }()
 	select {
 	case <-done:
 	case <-time.After(8 * time.Second):
-		_ = rt.cmd.Process.Kill()
+		_ = killProcessGroup(rt.cmd.Process)
 		<-done
 	}
 	rt.cmd = nil
