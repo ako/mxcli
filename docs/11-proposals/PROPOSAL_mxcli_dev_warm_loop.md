@@ -599,18 +599,60 @@ builds on the previous.
 |---|-------|----------|------------|-------------|
 | 1 | **Warm local loop** — shipped as `mxcli run --local [--watch]` (serve daemon + M2EE admin client + `restartRequired` branching; + client bundling & Playwright screenshots) | Docker-free ~1 s edit→test loop, locally | nothing new | ✅ **shipped** |
 | 2 | **Provisioning** — `run --local --ensure-db` (DB) + `run --local --setup` (non-blocking bring-up) + `mxcli init` SessionStart hook + bootstrap prompt template | a fresh Claude Code Web session comes up testable; iPad-native start | slice 1 | ✅ **shipped** |
-| 3 | **Single-app external preview** — `mxcli run --hub <url>` (embedded chisel client, proxy honouring `NO_PROXY`, `ApplicationRootUrl` boot wiring) + `mxcli tunnel-hub` (embedded chisel server, autocert, single-443 `--backend`) | a shareable live preview URL (the iPad two-container flow) | slice 1 | ✅ **shipped** (2026-07-23) — code + in-process tunnel test + local end-to-end boot; Mendix renders through the hub's Host-rewriting backend, no shim needed. External E2E against the Scaleway hub is the remaining confirmation |
-| 4 | **Tunnel hub** — `mxcli tunnel-hub` (multi-tenant) + `mxcli run --hub` registration + admin overview | many dev containers behind one ingress; per-preview subdomains across projects/solutions/branches/worktrees; sortable overview with availability | slice 3 | ✅ **built** (2026-07-23) — registry + registration API + single-443 host-routing front with per-subdomain autocert + sortable admin page + client registration; unit + in-process tunnel integration tests. External E2E against the Scaleway hub (wildcard DNS) is the remaining confirmation; deeper multi-tenant auth (per-container tokens, admin auth) is a follow-on |
+| 3 | **Single-app external preview** — `mxcli run --hub <url>` (embedded chisel client, proxy honouring `NO_PROXY`, `ApplicationRootUrl` boot wiring) + `mxcli tunnel-hub` (embedded chisel server, autocert, single-443 `--backend`) | a shareable live preview URL (the iPad two-container flow) | slice 1 | ✅ **shipped** (2026-07-23) — code + in-process tunnel test + local end-to-end boot; Mendix renders through the hub's Host-rewriting backend, no shim needed. Verified live against a self-run VPS hub and merged (PR #11) |
+| 4 | **Tunnel hub** — `mxcli tunnel-hub` (multi-tenant) + `mxcli run --hub` registration + admin overview | many dev containers behind one ingress; per-preview subdomains across projects/solutions/branches/worktrees; sortable overview with availability | slice 3 | ✅ **shipped** (2026-07-23) — registry + registration API + single-443 host-routing front with per-subdomain autocert + sortable admin page + client registration; unit + in-process tunnel integration tests; verified live against a self-run VPS hub (wildcard DNS, per-subdomain autocert) and merged (PR #11). Deeper multi-tenant auth (per-container tokens, admin auth) is a follow-on |
+| 5 | **Multi-project solutions** — `mxcli run --solution` + a `mxcli.solution.yaml` manifest | boot several apps of one solution in a single container — each its own runtime + database, ports auto-allocated, all registered under one `--hub-solution` with sibling URLs wired from the hub | slice 4 | proposed — an orchestration layer over shipped primitives; see § Slice 5 below |
 
 Recommended sequencing: **1 → 2** delivers the complete solo dev experience (Scenario A
 plus provisioning) with no external moving parts, and can ship first. **3** adds external
 preview for a single app. **4** is the scale-out and deserves its own design/security
 review — build it only once 1–3 are proven. Slices 1–2 stand alone if the tunnel/hub work
-is deferred indefinitely.
+is deferred indefinitely. **5** is a pure orchestration layer on top of 4, for running the
+several apps of one solution together in a single container.
 
 Cross-cut: the instant `mxcli check` gate (`PROPOSAL_check_mxbuild_gap_heuristics.md`)
 should front slice 1's build on every iteration, so most errors never reach even the
 ~0.8 s warm build.
+
+## Slice 5: multi-project solutions in one container
+
+A multi-app **solution** — several Mendix apps that integrate (e.g. a web front end, an
+API app, an admin app) — can already run **side by side in one container** with today's
+primitives. Each `mxcli run --local` / `run --hub`:
+
+- takes its own `-p <path>` (projects live in subdirs of one repo, e.g. `apps/web/Web.mpr`);
+- **derives its own database name** from the project file (`Web.mpr` → `web`), so N apps
+  share one Postgres with distinct databases (`--ensure-db` creates each);
+- writes its own `deployment/` next to the `.mpr` (no collision);
+- accepts `--app-port` / `--admin-port` / `--serve-port`, so distinct port triples let N
+  runtimes coexist (the stale-port guard is per-triple);
+- registers under one `--hub-solution`, which the multi-tenant hub (slice 4) already
+  **groups** in the overview.
+
+So the capability exists; what's missing is **orchestration ergonomics** — today you
+hand-launch N processes with hand-picked ports. Slice 5 makes it one command:
+
+- **`mxcli.solution.yaml`** — a manifest at the repo root listing the projects (each a
+  path to its `.mpr` and an optional app name), the shared solution name + hub, and any
+  inter-app constant wiring (which constant on app A points at app B).
+- **`mxcli run --solution`** — reads the manifest, **auto-allocates** the port triples
+  (`8080/8090/6543`, `8081/8091/6544`, …), ensures each database, boots each app (in
+  parallel to hide cold-start), and — with `--hub` — registers each under the one
+  `--hub-solution`.
+- **Sibling URL wiring** — the hub hands each app a stable subdomain, so a constant like
+  `Web.ApiBaseUrl` resolves to `https://api-<branch>.<domain>` (for the browser / other
+  origins) or `http://127.0.0.1:<apiPort>` (intra-container); the manifest declares the
+  linkage and `run --solution` fills in the assigned ports/subdomains at boot.
+
+**Constraints** (see the coexistence analysis): the binding limit is **memory** — each app
+is a JVM runtime plus an in-memory `mxbuild --serve`, so a web container realistically
+holds a handful of small apps; larger solutions want a bigger container. And **inter-app
+integration** must be wired as above. Neither is a blocker — sizing + config, not new
+mechanics.
+
+This adds **no new runtime or hub machinery** — it is an orchestration layer over shipped
+primitives (`run --local`/`--hub`, per-project DB/deploy isolation, the hub's solution
+grouping), which is why it slots cleanly after slice 4.
 
 ## Version Compatibility
 
