@@ -24,6 +24,7 @@ showStatement
     | showOrList WORKFLOWS (IN (qualifiedName | IDENTIFIER))?
     | showOrList PAGES (IN (qualifiedName | IDENTIFIER))?
     | showOrList SNIPPETS (IN (qualifiedName | IDENTIFIER))?
+    | showOrList BUILDING BLOCKS (IN (qualifiedName | IDENTIFIER))?
     | showOrList ENUMERATIONS (IN (qualifiedName | IDENTIFIER))?
     | showOrList CONSTANTS (IN (qualifiedName | IDENTIFIER))?
     | showOrList CONSTANT VALUES (IN (qualifiedName | IDENTIFIER))?
@@ -139,6 +140,7 @@ describeStatement
     | DESCRIBE WORKFLOW qualifiedName
     | DESCRIBE PAGE qualifiedName
     | DESCRIBE SNIPPET qualifiedName
+    | DESCRIBE BUILDING BLOCK qualifiedName
     | DESCRIBE LAYOUT qualifiedName
     | DESCRIBE ENUMERATION qualifiedName
     | DESCRIBE CONSTANT qualifiedName

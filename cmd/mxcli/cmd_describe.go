@@ -37,6 +37,7 @@ Types:
   workflow         Describe a workflow
   page             Describe a page
   snippet          Describe a snippet
+  buildingblock    Describe a building block (read-only, also: "building block")
   layout           Describe a layout
   javaaction       Describe a java action
   jsonstructure    Describe a JSON structure (also: "json structure")
@@ -133,6 +134,8 @@ Example:
 			mdlCmd = fmt.Sprintf("DESCRIBE PAGE %s", name)
 		case "SNIPPET":
 			mdlCmd = fmt.Sprintf("DESCRIBE SNIPPET %s", name)
+		case "BUILDINGBLOCK", "BUILDING BLOCK":
+			mdlCmd = fmt.Sprintf("DESCRIBE BUILDING BLOCK %s", name)
 		case "LAYOUT":
 			mdlCmd = fmt.Sprintf("DESCRIBE LAYOUT %s", name)
 		case "MODULEROLE", "MODULE ROLE":
@@ -324,6 +327,8 @@ var unitTypeToDescribe = map[string]string{
 	"Microflows$Nanoflow":          "nanoflow",
 	"Forms$Page":                   "page",
 	"Forms$Snippet":                "snippet",
+	"Pages$BuildingBlock":          "buildingblock",
+	"Forms$BuildingBlock":          "buildingblock",
 	"Forms$Layout":                 "layout",
 	"Enumerations$Enumeration":     "enumeration",
 	"Constants$Constant":           "constant",

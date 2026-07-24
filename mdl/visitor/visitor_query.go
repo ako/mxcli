@@ -184,6 +184,16 @@ func (b *Builder) ExitShowStatement(ctx *parser.ShowStatementContext) {
 			}
 		}
 		b.statements = append(b.statements, stmt)
+	} else if ctx.BUILDING() != nil && ctx.BLOCKS() != nil {
+		stmt := &ast.ShowStmt{ObjectType: ast.ShowBuildingBlocks}
+		if ctx.IN() != nil {
+			if qn := ctx.QualifiedName(); qn != nil {
+				stmt.InModule = getQualifiedNameText(qn)
+			} else if id := ctx.IDENTIFIER(); id != nil {
+				stmt.InModule = id.GetText()
+			}
+		}
+		b.statements = append(b.statements, stmt)
 	} else if ctx.LAYOUTS() != nil {
 		stmt := &ast.ShowStmt{ObjectType: ast.ShowLayouts}
 		if ctx.IN() != nil {
@@ -970,6 +980,11 @@ func (b *Builder) ExitDescribeStatement(ctx *parser.DescribeStatementContext) {
 	} else if ctx.PAGE() != nil {
 		b.statements = append(b.statements, &ast.DescribeStmt{
 			ObjectType: ast.DescribePage,
+			Name:       name,
+		})
+	} else if ctx.BUILDING() != nil && ctx.BLOCK() != nil {
+		b.statements = append(b.statements, &ast.DescribeStmt{
+			ObjectType: ast.DescribeBuildingBlock,
 			Name:       name,
 		})
 	} else if ctx.SNIPPET() != nil {

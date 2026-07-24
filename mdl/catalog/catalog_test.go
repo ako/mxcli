@@ -531,7 +531,7 @@ func TestCreateTablesAreQueryable(t *testing.T) {
 	// Verify all core tables can be queried
 	coreTables := []string{
 		"modules", "entities", "attributes", "microflows",
-		"pages", "snippets", "layouts", "enumerations",
+		"pages", "snippets", "building_blocks", "layouts", "enumerations",
 		"java_actions", "projects", "snapshots", "catalog_meta",
 		"workflows", "odata_clients", "odata_services",
 		"business_event_services", "database_connections",

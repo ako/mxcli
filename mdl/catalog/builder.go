@@ -51,6 +51,7 @@ type CatalogReader interface {
 	ListPages() ([]*pages.Page, error)
 	ListLayouts() ([]*pages.Layout, error)
 	ListSnippets() ([]*pages.Snippet, error)
+	ListBuildingBlocks() ([]*pages.BuildingBlock, error)
 
 	// Workflows
 	ListWorkflows() ([]*workflows.Workflow, error)
@@ -415,6 +416,10 @@ func (b *Builder) Build(progress ProgressFunc) error {
 
 	if err := b.buildSnippets(); err != nil {
 		return fmt.Errorf("failed to build snippets: %w", err)
+	}
+
+	if err := b.buildBuildingBlocks(); err != nil {
+		return fmt.Errorf("failed to build building blocks: %w", err)
 	}
 
 	if err := b.buildLayouts(); err != nil {

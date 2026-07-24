@@ -211,6 +211,14 @@ func mkSnippet(containerID model.ID, name string) *pages.Snippet {
 	}
 }
 
+func mkBuildingBlock(containerID model.ID, name string) *pages.BuildingBlock {
+	return &pages.BuildingBlock{
+		BaseElement: model.BaseElement{ID: nextID("bb")},
+		ContainerID: containerID,
+		Name:        name,
+	}
+}
+
 func mkLayout(containerID model.ID, name string) *pages.Layout {
 	return &pages.Layout{
 		BaseElement: model.BaseElement{ID: nextID("lay")},

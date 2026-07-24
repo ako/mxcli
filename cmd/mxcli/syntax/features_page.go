@@ -168,6 +168,20 @@ func init() {
 		SeeAlso: []string{"snippet", "snippet.create"},
 	})
 
+	// ── Building Block ────────────────────────────────────────────────────
+
+	Register(SyntaxFeature{
+		Path:    "buildingblock.show",
+		Summary: "List and describe building blocks (read-only)",
+		Keywords: []string{
+			"show building blocks", "list building blocks", "describe building block",
+			"building block", "building blocks",
+		},
+		Syntax:  "SHOW BUILDING BLOCKS;\nSHOW BUILDING BLOCKS IN <module>;\nDESCRIBE BUILDING BLOCK Module.Name;",
+		Example: "SHOW BUILDING BLOCKS IN MyModule;\nDESCRIBE BUILDING BLOCK MyModule.LoginForm;",
+		SeeAlso: []string{"snippet.show", "page.show"},
+	})
+
 	// ── Fragment ──────────────────────────────────────────────────────────
 
 	Register(SyntaxFeature{

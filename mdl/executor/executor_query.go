@@ -37,6 +37,8 @@ func execShow(ctx *ExecContext, s *ast.ShowStmt) error {
 		return listPages(ctx, s.InModule)
 	case ast.ShowSnippets:
 		return listSnippets(ctx, s.InModule)
+	case ast.ShowBuildingBlocks:
+		return listBuildingBlocks(ctx, s.InModule)
 	case ast.ShowLayouts:
 		return listLayouts(ctx, s.InModule)
 	case ast.ShowJavaActions:
@@ -193,6 +195,8 @@ func execDescribe(ctx *ExecContext, s *ast.DescribeStmt) error {
 			return describePage(ctx, s.Name)
 		case ast.DescribeSnippet:
 			return describeSnippet(ctx, s.Name)
+		case ast.DescribeBuildingBlock:
+			return describeBuildingBlock(ctx, s.Name)
 		case ast.DescribeLayout:
 			return describeLayout(ctx, s.Name)
 		case ast.DescribeConstant:
@@ -282,6 +286,8 @@ func describeObjectTypeLabel(t ast.DescribeObjectType) string {
 		return "page"
 	case ast.DescribeSnippet:
 		return "snippet"
+	case ast.DescribeBuildingBlock:
+		return "buildingblock"
 	case ast.DescribeLayout:
 		return "layout"
 	case ast.DescribeConstant:

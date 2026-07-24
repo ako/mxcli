@@ -77,9 +77,16 @@ func (r *Reader) ListJavaScriptActions() ([]*types.JavaScriptAction, error) {
 
 // ListBuildingBlocks returns all building blocks in the project.
 func (r *Reader) ListBuildingBlocks() ([]*pages.BuildingBlock, error) {
-	units, err := r.listUnitsByType("Forms$BuildingBlock")
+	// Try Pages$BuildingBlock first (current storage name), then Forms$BuildingBlock (older versions)
+	units, err := r.listUnitsByType("Pages$BuildingBlock")
 	if err != nil {
 		return nil, err
+	}
+	if len(units) == 0 {
+		units, err = r.listUnitsByType("Forms$BuildingBlock")
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	var result []*pages.BuildingBlock

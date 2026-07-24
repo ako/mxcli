@@ -99,11 +99,14 @@ func (s *Snippet) GetContainerID() model.ID {
 // BuildingBlock represents a building block.
 type BuildingBlock struct {
 	model.BaseElement
-	ContainerID   model.ID `json:"containerId"`
-	Name          string   `json:"name"`
-	Documentation string   `json:"documentation,omitempty"`
-	Widget        Widget   `json:"widget,omitempty"`
-	TemplateID    string   `json:"templateId,omitempty"`
+	ContainerID      model.ID `json:"containerId"`
+	Name             string   `json:"name"`
+	Documentation    string   `json:"documentation,omitempty"`
+	DisplayName      string   `json:"displayName,omitempty"`
+	Platform         string   `json:"platform,omitempty"`
+	TemplateCategory string   `json:"templateCategory,omitempty"`
+	Widget           Widget   `json:"widget,omitempty"`
+	TemplateID       string   `json:"templateId,omitempty"`
 }
 
 // GetName returns the building block's name.

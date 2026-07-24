@@ -911,6 +911,15 @@ MDL uses explicit property declarations for pages:
 | Paging position | `PagingPosition: pos` | `datagrid dg (PagingPosition: both)` |
 | Paging buttons | `ShowPagingButtons: mode` | `datagrid dg (ShowPagingButtons: auto)` |
 
+**Snippets & Building Blocks (read-only discovery):**
+
+| Operation | Syntax | Notes |
+|-----------|--------|-------|
+| List snippets | `show snippets [in module];` | Editable via `create/alter snippet` |
+| Describe snippet | `describe snippet Module.Name;` | Round-trippable MDL output |
+| List building blocks | `show building blocks [in module];` | Read-only; cannot be authored via MDL |
+| Describe building block | `describe building block Module.Name;` | Informational (header comment + widget tree), not a `create` statement |
+
 **DataGrid Column Properties:**
 
 | Property | Values | Default | Example |

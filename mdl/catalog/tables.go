@@ -201,6 +201,23 @@ func (c *Catalog) createTables() error {
 		)`,
 		viewWithFullSnapshot("snippets"),
 
+		// building blocks (read-only reusable widget compositions)
+		`CREATE TABLE IF NOT EXISTS building_blocks_data (
+			Id TEXT PRIMARY KEY,
+			Name TEXT,
+			QualifiedName TEXT,
+			ModuleName TEXT,
+			Folder TEXT,
+			Description TEXT,
+			DisplayName TEXT,
+			Platform TEXT,
+			Category TEXT,
+			WidgetCount INTEGER DEFAULT 0,
+			ProjectId TEXT,
+			SnapshotId TEXT
+		)`,
+		viewWithFullSnapshot("building_blocks"),
+
 		// layouts
 		`CREATE TABLE IF NOT EXISTS layouts_data (
 			Id TEXT PRIMARY KEY,
