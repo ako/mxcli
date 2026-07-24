@@ -6,9 +6,39 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mendixlabs/mxcli/mdl/ast"
+	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/security"
 )
+
+// checkDocumentAccessRolesSameModule rejects granting a document (page,
+// microflow, nanoflow, or a published OData/REST service) access to a module role
+// from a different module than the document. Mendix stores document access as
+// references to the document's OWN module roles only — Studio Pro's role picker
+// only offers the containing module's roles — so a cross-module reference builds
+// with CE0148 ("reselect roles") even though it is otherwise well-formed. Without
+// this guard the grant writes an invalid reference that passes mxcli but fails the
+// Mendix build with an opaque error. The MOVE path enforces the same rule by
+// remapping to same-named target-module roles (see remapDocumentAccessRoles); on
+// an explicit GRANT we reject instead, so a wrong role or wrong document is not
+// silently substituted.
+//
+// docKind/docName are used only for the message; docModule is the document's module.
+func checkDocumentAccessRolesSameModule(docKind, docModule, docName string, roles []ast.QualifiedName) error {
+	for _, role := range roles {
+		if role.Module != docModule {
+			return mdlerrors.NewValidationf(
+				"cannot grant %s %s.%s access to %s.%s: a %s can only reference module roles from its own module %q "+
+					"(Mendix rejects a cross-module document role with CE0148 \"reselect roles\"). "+
+					"Grant a %s module role instead — e.g. %s.%s if it exists — and map the user role to it.",
+				docKind, docModule, docName, role.Module, role.Name,
+				docKind, docModule,
+				docModule, docModule, role.Name)
+		}
+	}
+	return nil
+}
 
 const (
 	autoDocumentRoleName        = "User"
