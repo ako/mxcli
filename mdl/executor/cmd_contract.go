@@ -1171,7 +1171,11 @@ func applyExternalEntityFields(
 		ent.Updatable = false
 		ent.SkipSupported = true
 		ent.TopSupported = true
-		ent.CreateChangeLocally = false
+		// CreateChangeLocally is deliberately NOT set. Unlike the capability flags
+		// above it cannot be derived from the service contract — it is a local
+		// modelling choice ("Allow creating and changing objects locally"), so
+		// stamping it here reset the user's setting on every re-import (#782). A
+		// newly-created entity arrives zero-valued, which is Mendix's default.
 		return
 	}
 
@@ -1188,6 +1192,8 @@ func applyExternalEntityFields(
 	ent.Updatable = false
 	ent.SkipSupported = false
 	ent.TopSupported = false
+	// An entity-type source has no CreateChangeLocally in storage (the writer does
+	// not emit one), so clear it when an entity is re-imported as a derived type.
 	ent.CreateChangeLocally = false
 }
 

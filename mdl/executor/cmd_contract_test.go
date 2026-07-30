@@ -159,3 +159,38 @@ func TestMendixAttrTypeToEdm(t *testing.T) {
 		}
 	}
 }
+
+// TestApplyExternalEntityFields_PreservesCreateChangeLocally is the re-import half
+// of mendixlabs/mxcli#782: "Allow creating and changing objects locally" is a local
+// modelling choice, not something the OData contract describes, so a re-import must
+// not reset it. The capability flags, which the contract *does* describe, are still
+// refreshed from the metadata.
+func TestApplyExternalEntityFields_PreservesCreateChangeLocally(t *testing.T) {
+	et := &types.EdmEntityType{Name: "Product"}
+	es := &types.EdmEntitySet{Name: "Products"}
+
+	// An entity the user had switched the flag on for, being re-imported.
+	existing := &domainmodel.Entity{CreateChangeLocally: true, Creatable: true}
+	applyExternalEntityFields(existing, et, true /*isTopLevel*/, "Svc.Sample", es, nil, nil)
+	if !existing.CreateChangeLocally {
+		t.Error("CreateChangeLocally reset by re-import, want it preserved (#782)")
+	}
+	if existing.Creatable {
+		t.Error("Creatable not refreshed from the contract (no InsertRestrictions ⇒ false)")
+	}
+
+	// A newly-imported entity defaults to off, matching Mendix.
+	fresh := &domainmodel.Entity{}
+	applyExternalEntityFields(fresh, et, true, "Svc.Sample", es, nil, nil)
+	if fresh.CreateChangeLocally {
+		t.Error("a newly imported entity defaulted to CreateChangeLocally = true")
+	}
+
+	// A derived/entity-type source has no such field in storage; clear it so a
+	// re-import that reclassifies an entity does not leave a stale value behind.
+	derived := &domainmodel.Entity{CreateChangeLocally: true}
+	applyExternalEntityFields(derived, et, false /*isTopLevel*/, "Svc.Sample", nil, nil, nil)
+	if derived.CreateChangeLocally {
+		t.Error("entity-type source kept CreateChangeLocally, want it cleared")
+	}
+}
