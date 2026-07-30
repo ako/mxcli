@@ -220,9 +220,12 @@ func extractDataGrid2DataSource(ctx *ExecContext, w map[string]any) *rawDataSour
 				return result
 			}
 		case "Forms$MicroflowSource":
-			microflow := extractString(ds["Microflow"])
-			if microflow != "" {
-				return &rawDataSource{Type: "microflow", Reference: microflow}
+			if mf := microflowSourceRef(ds); mf != "" {
+				return &rawDataSource{Type: "microflow", Reference: mf}
+			}
+		case "Forms$NanoflowSource":
+			if nf := nanoflowSourceRef(ds); nf != "" {
+				return &rawDataSource{Type: "nanoflow", Reference: nf}
 			}
 		case "Forms$EntityPathSource", "Forms$DataViewSource":
 			entityPath := extractString(ds["EntityPath"])
@@ -720,9 +723,12 @@ func extractGalleryDataSource(ctx *ExecContext, w map[string]any) *rawDataSource
 			return result
 		}
 	case "Forms$MicroflowSource":
-		microflow := extractString(ds["Microflow"])
-		if microflow != "" {
-			return &rawDataSource{Type: "microflow", Reference: microflow}
+		if mf := microflowSourceRef(ds); mf != "" {
+			return &rawDataSource{Type: "microflow", Reference: mf}
+		}
+	case "Forms$NanoflowSource":
+		if nf := nanoflowSourceRef(ds); nf != "" {
+			return &rawDataSource{Type: "nanoflow", Reference: nf}
 		}
 	case "Forms$EntityPathSource", "Forms$DataViewSource":
 		entityPath := extractString(ds["EntityPath"])
@@ -731,6 +737,34 @@ func extractGalleryDataSource(ctx *ExecContext, w map[string]any) *rawDataSource
 		}
 	}
 	return nil
+}
+
+// microflowSourceRef returns the microflow a Forms$MicroflowSource points at.
+//
+// Studio Pro and the codec engine store the name in the nested Forms$MicroflowSettings;
+// a top-level "Microflow" key is the legacy shape, still honoured so older files
+// round-trip. Reading only the top-level key made DESCRIBE PAGE drop a datagrid's
+// microflow datasource entirely (mendixlabs/mxcli#795), so every reader goes through
+// this helper rather than keeping its own copy of the lookup.
+func microflowSourceRef(ds map[string]any) string {
+	if mf := extractString(ds["Microflow"]); mf != "" {
+		return mf
+	}
+	if settings, ok := ds["MicroflowSettings"].(map[string]any); ok {
+		return extractString(settings["Microflow"])
+	}
+	return ""
+}
+
+// nanoflowSourceRef is the Forms$NanoflowSource counterpart of microflowSourceRef.
+func nanoflowSourceRef(ds map[string]any) string {
+	if nf := extractString(ds["Nanoflow"]); nf != "" {
+		return nf
+	}
+	if settings, ok := ds["NanoflowSettings"].(map[string]any); ok {
+		return extractString(settings["Nanoflow"])
+	}
+	return ""
 }
 
 // parseCustomWidgetDataSource parses datasource from CustomWidget property format.
@@ -767,20 +801,12 @@ func parseCustomWidgetDataSource(ctx *ExecContext, ds map[string]any) *rawDataSo
 		}
 		return result
 	case "Forms$MicroflowSource":
-		// Pluggable widgets use Forms$MicroflowSource with MicroflowSettings
-		if settings, ok := ds["MicroflowSettings"].(map[string]any); ok {
-			microflow := extractString(settings["Microflow"])
-			if microflow != "" {
-				return &rawDataSource{Type: "microflow", Reference: microflow}
-			}
+		if mf := microflowSourceRef(ds); mf != "" {
+			return &rawDataSource{Type: "microflow", Reference: mf}
 		}
 	case "Forms$NanoflowSource":
-		// Pluggable widgets use Forms$NanoflowSource with NanoflowSettings
-		if settings, ok := ds["NanoflowSettings"].(map[string]any); ok {
-			nanoflow := extractString(settings["Nanoflow"])
-			if nanoflow != "" {
-				return &rawDataSource{Type: "nanoflow", Reference: nanoflow}
-			}
+		if nf := nanoflowSourceRef(ds); nf != "" {
+			return &rawDataSource{Type: "nanoflow", Reference: nf}
 		}
 	case "CustomWidgets$CustomWidgetNanoflowSource":
 		nanoflow := extractString(ds["Nanoflow"])

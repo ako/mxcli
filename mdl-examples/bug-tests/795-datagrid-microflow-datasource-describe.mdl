@@ -1,0 +1,73 @@
+-- Bug #795: DESCRIBE PAGE drops a datagrid's microflow DataSource
+--
+-- Symptom: a DataGrid2 bound to a microflow described as `datagrid g1 {` with no
+-- DataSource at all, so re-applying the describe output recreated the grid with no
+-- data source. A database-bound grid described correctly, which is what made the
+-- loss look selective.
+--
+-- Root cause: a Forms$MicroflowSource stores the microflow name in the nested
+-- Forms$MicroflowSettings ("MicroflowSettings" -> "Microflow") — what the write path
+-- emits and what Studio Pro stores. extractDataGrid2DataSource looked up a top-level
+-- "Microflow" key, got "", and returned no data source. The describe formatter's
+-- `case "microflow"` branch was correct all along, so this was purely a read bug.
+--
+-- Fix: every datasource reader now goes through microflowSourceRef /
+-- nanoflowSourceRef (mdl/executor/cmd_pages_describe_pluggable.go), which read the
+-- nested settings and fall back to the legacy top-level key. The readers had four
+-- divergent copies of this lookup; two of them were wrong.
+--
+-- Manual verification (needs a project, so `make check-mdl` only syntax-checks this):
+--
+--   mxcli exec 795-datagrid-microflow-datasource-describe.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe page Issue795.Probe"
+--
+-- Expect `datagrid gMicroflow (DataSource: microflow Issue795.GetBuckets)` — before
+-- the fix the DataSource was absent. Feeding that describe output back through
+-- `mxcli exec` and describing again must produce identical output.
+
+create module Issue795;
+create module role Issue795.User;
+
+@position(100, 100)
+create persistent entity Issue795.Bucket (
+  BucketKey: string(200),
+  Size: integer
+);
+
+create microflow Issue795.GetBuckets ()
+returns list of Issue795.Bucket as $items
+begin
+  retrieve $items from Issue795.Bucket;
+  return $items;
+end;
+
+create or replace page Issue795.Probe (
+  Title: 'Probe',
+  Layout: Atlas_Core.Atlas_Default
+) {
+  -- The regression: a microflow-bound grid lost its DataSource on describe.
+  datagrid gMicroflow (datasource: microflow Issue795.GetBuckets) {
+    column colKey (attribute: BucketKey, caption: 'Key')
+  }
+
+  -- Control case: a database-bound grid always described correctly.
+  datagrid gDatabase (datasource: database from Issue795.Bucket) {
+    column colKey2 (attribute: BucketKey, caption: 'Key')
+  }
+}
+
+-- A gallery exercises the same reader from a different entry point; its legacy
+-- flat-shaped source was unreadable too.
+create or replace page Issue795.ProbeGallery (
+  Title: 'Probe Gallery',
+  Layout: Atlas_Core.Atlas_Default
+) {
+  gallery galMicroflow (datasource: microflow Issue795.GetBuckets) {
+    template template1 {
+      dynamictext txtKey (content: '{1}', contentparams: [{1} = BucketKey])
+    }
+  }
+}
+
+describe page Issue795.Probe;
+describe page Issue795.ProbeGallery;
