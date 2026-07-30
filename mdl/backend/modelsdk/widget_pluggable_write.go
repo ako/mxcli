@@ -3,8 +3,10 @@
 package modelsdkbackend
 
 import (
+	"errors"
 	"fmt"
 	"log"
+	"sync"
 
 	bsonv1 "go.mongodb.org/mongo-driver/bson"
 	bsonv2 "go.mongodb.org/mongo-driver/v2/bson"
@@ -96,6 +98,43 @@ func (b *Backend) BuildFilterWidget(spec backend.FilterWidgetSpec, projectPath s
 	}, nil
 }
 
+// Child-serialization failures cannot be returned: widgetobj.ChildSerializer
+// yields BSON only, and making it error-returning is the interface change the
+// TODO in mdl/backend/widgetobj/builder.go defers. Until then a failure is
+// recorded here and drained by the page/snippet write entry points, so an
+// unsupported construct fails the statement instead of being logged and dropped
+// while the write still reports success (ADR-0004: refuse, don't drop).
+//
+// Widget building is synchronous and engines run sequentially — the same
+// reasoning that makes widgetobj's package-level serializer hook safe — but the
+// mutex keeps this honest if that ever changes.
+var (
+	childSerializeMu   sync.Mutex
+	childSerializeErrs []error
+)
+
+// recordChildSerializeErr remembers a failure for the next drain. It is also
+// logged, since the log line is the only signal for callers that do not drain.
+func recordChildSerializeErr(err error) {
+	log.Printf("modelsdk: %v", err)
+	childSerializeMu.Lock()
+	defer childSerializeMu.Unlock()
+	childSerializeErrs = append(childSerializeErrs, err)
+}
+
+// takeChildSerializeErr returns the accumulated child-serialization failures as
+// one error and clears them. A nil return means the widget tree serialized whole.
+func takeChildSerializeErr() error {
+	childSerializeMu.Lock()
+	defer childSerializeMu.Unlock()
+	if len(childSerializeErrs) == 0 {
+		return nil
+	}
+	err := errors.Join(childSerializeErrs...)
+	childSerializeErrs = nil
+	return err
+}
+
 // codecChildSerializer implements widgetobj.ChildSerializer by routing child
 // content through the modelsdk codec converters, then bridging v2→v1 BSON.
 type codecChildSerializer struct{}
@@ -103,7 +142,7 @@ type codecChildSerializer struct{}
 func (codecChildSerializer) SerializeWidget(w pages.Widget) bsonv1.D {
 	el, err := widgetToGen(w)
 	if err != nil {
-		log.Printf("modelsdk: serialize child widget %T: %v", w, err)
+		recordChildSerializeErr(fmt.Errorf("serialize child widget %T: %w", w, err))
 		return nil
 	}
 	return genToV1BSON(el)
@@ -112,7 +151,7 @@ func (codecChildSerializer) SerializeWidget(w pages.Widget) bsonv1.D {
 func (codecChildSerializer) SerializeClientAction(a pages.ClientAction) bsonv1.D {
 	el, err := clientActionToGen(a)
 	if err != nil {
-		log.Printf("modelsdk: serialize client action %T: %v", a, err)
+		recordChildSerializeErr(fmt.Errorf("serialize client action %T: %w", a, err))
 		return nil
 	}
 	return genToV1BSON(el)
@@ -121,7 +160,7 @@ func (codecChildSerializer) SerializeClientAction(a pages.ClientAction) bsonv1.D
 func (codecChildSerializer) SerializeCustomWidgetDataSource(ds pages.DataSource) bsonv1.D {
 	el, err := customWidgetDataSourceToGen(ds)
 	if err != nil {
-		log.Printf("modelsdk: serialize custom widget data source %T: %v", ds, err)
+		recordChildSerializeErr(fmt.Errorf("serialize custom widget data source %T: %w", ds, err))
 		return nil
 	}
 	if el == nil {
@@ -135,7 +174,7 @@ func (codecChildSerializer) SerializeCustomWidgetDataSource(ds pages.DataSource)
 func genToV1BSON(el element.Element) bsonv1.D {
 	out, err := (&codec.Encoder{}).Encode(el)
 	if err != nil {
-		log.Printf("modelsdk: encode child element: %v", err)
+		recordChildSerializeErr(fmt.Errorf("encode child element %T: %w", el, err))
 		return nil
 	}
 	var d bsonv1.D

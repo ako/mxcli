@@ -27,6 +27,12 @@ func init() {
 // CreatePage inserts a new Forms$Page document unit (header, layout call, the
 // widget tree, parameters, and variables) via pageToGen.
 func (b *Backend) CreatePage(page *pages.Page) error {
+	// A pluggable widget's children are serialized while the executor builds the
+	// page, before this call; drain any failure so an unsupported construct fails
+	// the statement instead of silently landing as a widget with the piece missing.
+	if err := takeChildSerializeErr(); err != nil {
+		return fmt.Errorf("CreatePage: %w", err)
+	}
 	if page == nil {
 		return fmt.Errorf("CreatePage: nil page")
 	}
@@ -56,6 +62,12 @@ func (b *Backend) CreatePage(page *pages.Page) error {
 // full page (header + widget tree) and replace the existing unit. Serialization
 // is identical to CreatePage.
 func (b *Backend) UpdatePage(page *pages.Page) error {
+	// A pluggable widget's children are serialized while the executor builds the
+	// page, before this call; drain any failure so an unsupported construct fails
+	// the statement instead of silently landing as a widget with the piece missing.
+	if err := takeChildSerializeErr(); err != nil {
+		return fmt.Errorf("UpdatePage: %w", err)
+	}
 	if page == nil {
 		return fmt.Errorf("UpdatePage: nil page")
 	}

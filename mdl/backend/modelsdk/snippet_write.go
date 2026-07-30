@@ -7,9 +7,9 @@ import (
 
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/modelsdk/codec"
+	"github.com/mendixlabs/mxcli/modelsdk/element"
 	genDT "github.com/mendixlabs/mxcli/modelsdk/gen/datatypes"
 	genPg "github.com/mendixlabs/mxcli/modelsdk/gen/pages"
-	"github.com/mendixlabs/mxcli/modelsdk/element"
 	mmpr "github.com/mendixlabs/mxcli/modelsdk/mpr"
 	"github.com/mendixlabs/mxcli/sdk/pages"
 )
@@ -24,6 +24,12 @@ func init() {
 // CreateSnippet inserts a new Forms$Snippet document — a reusable widget tree with
 // its own parameters (entity-typed) and a flat Widgets list (no layout call).
 func (b *Backend) CreateSnippet(snippet *pages.Snippet) error {
+	// A pluggable widget's children are serialized while the executor builds the
+	// page, before this call; drain any failure so an unsupported construct fails
+	// the statement instead of silently landing as a widget with the piece missing.
+	if err := takeChildSerializeErr(); err != nil {
+		return fmt.Errorf("CreateSnippet: %w", err)
+	}
 	if snippet == nil {
 		return fmt.Errorf("CreateSnippet: nil snippet")
 	}
@@ -50,6 +56,12 @@ func (b *Backend) CreateSnippet(snippet *pages.Snippet) error {
 
 // UpdateSnippet rewrites a snippet document (CREATE OR REPLACE).
 func (b *Backend) UpdateSnippet(snippet *pages.Snippet) error {
+	// A pluggable widget's children are serialized while the executor builds the
+	// page, before this call; drain any failure so an unsupported construct fails
+	// the statement instead of silently landing as a widget with the piece missing.
+	if err := takeChildSerializeErr(); err != nil {
+		return fmt.Errorf("UpdateSnippet: %w", err)
+	}
 	if snippet == nil {
 		return fmt.Errorf("UpdateSnippet: nil snippet")
 	}
