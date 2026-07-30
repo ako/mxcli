@@ -6,6 +6,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -15,6 +17,13 @@ import (
 	"time"
 
 	"github.com/mendixlabs/mxcli/cmd/mxcli/docker"
+)
+
+const (
+	// mxTestModule is the module Run generates the test runner into.
+	mxTestModule = "MxTest"
+	// mxTestRunner is the generated after-startup microflow.
+	mxTestRunner = "MxTest.TestRunner"
 )
 
 // RunOptions configures the test runner.
@@ -94,9 +103,12 @@ func Run(opts RunOptions) (*SuiteResult, error) {
 
 	// Step 3: Save original settings and inject test runner
 	fmt.Fprintln(w, "Injecting test runner into project...")
-	origAfterStartup, err := getAfterStartup(opts.ProjectPath)
+	// Capture what cleanup will need to restore, before touching anything. This
+	// must succeed: without it cleanup cannot tell an existing MxTest module from
+	// the one it is about to create, nor restore the original after-startup.
+	state, err := captureProjectState(opts.ProjectPath)
 	if err != nil {
-		fmt.Fprintf(w, "  Warning: could not read original after-startup setting: %v\n", err)
+		return nil, fmt.Errorf("capturing project state: %w", err)
 	}
 
 	// Write the runner MDL to a temp file and execute it
@@ -118,28 +130,25 @@ func Run(opts RunOptions) (*SuiteResult, error) {
 		return nil, fmt.Errorf("injecting test runner: %w", err)
 	}
 
-	// Set security OFF for testing
-	if err := execMxcliCmd(opts.ProjectPath, "ALTER PROJECT SECURITY LEVEL OFF"); err != nil {
-		fmt.Fprintf(w, "  Warning: could not set security OFF: %v\n", err)
-	}
-
 	// Set after-startup microflow
-	if err := execMxcliCmd(opts.ProjectPath, "ALTER SETTINGS MODEL AfterStartupMicroflow = 'MxTest.TestRunner'"); err != nil {
-		return nil, fmt.Errorf("setting after-startup: %w", err)
+	for _, cmd := range setupCommands() {
+		if err := execMxcliCmd(opts.ProjectPath, cmd); err != nil {
+			return nil, fmt.Errorf("preparing project for the test run (%s): %w", cmd, err)
+		}
 	}
-	fmt.Fprintln(w, "  After-startup set to MxTest.TestRunner")
+	fmt.Fprintf(w, "  After-startup set to %s\n", mxTestRunner)
 
 	// Step 4: Build and restart
 	dockerDir := filepath.Join(filepath.Dir(opts.ProjectPath), ".docker")
 	if err := ensureDockerStack(opts.ProjectPath, dockerDir, w); err != nil {
-		cleanup(opts.ProjectPath, origAfterStartup, w)
+		reportCleanup(w, cleanup(opts.ProjectPath, state, w))
 		return nil, fmt.Errorf("docker init: %w", err)
 	}
 
 	if !opts.SkipBuild {
 		fmt.Fprintln(w, "Building project...")
 		if err := execMxcli(opts.ProjectPath, "docker", "build", "-p", opts.ProjectPath, "--skip-check"); err != nil {
-			cleanup(opts.ProjectPath, origAfterStartup, w)
+			reportCleanup(w, cleanup(opts.ProjectPath, state, w))
 			return nil, fmt.Errorf("docker build: %w", err)
 		}
 	}
@@ -149,7 +158,7 @@ func Run(opts RunOptions) (*SuiteResult, error) {
 	runCompose(dockerDir, "down")
 	// Start fresh
 	if err := runCompose(dockerDir, "up", "--detach", "--force-recreate"); err != nil {
-		cleanup(opts.ProjectPath, origAfterStartup, w)
+		reportCleanup(w, cleanup(opts.ProjectPath, state, w))
 		return nil, fmt.Errorf("docker up: %w", err)
 	}
 
@@ -157,7 +166,7 @@ func Run(opts RunOptions) (*SuiteResult, error) {
 	fmt.Fprintf(w, "Waiting for test execution (timeout: %s)...\n", timeout)
 	logOutput, err := captureRuntimeLogs(dockerDir, timeout, w, opts.Verbose)
 	if err != nil {
-		cleanup(opts.ProjectPath, origAfterStartup, w)
+		reportCleanup(w, cleanup(opts.ProjectPath, state, w))
 		return nil, fmt.Errorf("runtime execution: %w", err)
 	}
 
@@ -167,7 +176,8 @@ func Run(opts RunOptions) (*SuiteResult, error) {
 
 	// Step 7: Cleanup
 	fmt.Fprintln(w, "Cleaning up...")
-	cleanup(opts.ProjectPath, origAfterStartup, w)
+	cleanupErr := cleanup(opts.ProjectPath, state, w)
+	reportCleanup(w, cleanupErr)
 
 	// Step 8: Output results
 	PrintResults(w, result, opts.Color)
@@ -185,6 +195,11 @@ func Run(opts RunOptions) (*SuiteResult, error) {
 		fmt.Fprintf(w, "JUnit XML written to: %s\n", opts.JUnitOutput)
 	}
 
+	// A failed cleanup leaves the project modified, so the run must not be
+	// reported as clean even when every test passed.
+	if cleanupErr != nil {
+		return result, fmt.Errorf("cleanup failed, project left modified: %w", cleanupErr)
+	}
 	return result, nil
 }
 
@@ -254,6 +269,35 @@ func parseTestFiles(paths []string) (*TestSuite, error) {
 	return combined, nil
 }
 
+// projectState records what Run changed in the project, captured before the first
+// mutation so cleanup can put things back exactly rather than guessing.
+type projectState struct {
+	// afterStartup is the project's original after-startup microflow ("" = none).
+	afterStartup string
+	// createdMxTest reports whether Run created the MxTest module, i.e. it did not
+	// already exist. A pre-existing MxTest module belongs to the user and must
+	// survive cleanup with everything but the generated TestRunner intact.
+	createdMxTest bool
+}
+
+// captureProjectState reads everything cleanup needs to restore, before anything
+// is injected.
+func captureProjectState(projectPath string) (projectState, error) {
+	var st projectState
+	af, err := getAfterStartup(projectPath)
+	if err != nil {
+		return st, fmt.Errorf("reading after-startup setting: %w", err)
+	}
+	st.afterStartup = af
+
+	exists, err := moduleExists(projectPath, mxTestModule)
+	if err != nil {
+		return st, fmt.Errorf("listing modules: %w", err)
+	}
+	st.createdMxTest = !exists
+	return st, nil
+}
+
 // getAfterStartup reads the current after-startup microflow setting.
 func getAfterStartup(projectPath string) (string, error) {
 	mxcliPath, err := findMxcli()
@@ -268,46 +312,146 @@ func getAfterStartup(projectPath string) (string, error) {
 		return "", err
 	}
 
-	// Parse output for AfterStartupMicroflow
 	for _, line := range strings.Split(string(output), "\n") {
-		line = strings.TrimSpace(line)
 		if strings.Contains(line, "AfterStartupMicroflow") {
-			// Extract the value from: AfterStartupMicroflow = 'Module.Name'
-			parts := strings.SplitN(line, "=", 2)
-			if len(parts) == 2 {
-				val := strings.TrimSpace(parts[1])
-				val = strings.Trim(val, "'\"")
-				val = strings.TrimSuffix(val, ";")
-				val = strings.TrimSpace(val)
-				return val, nil
-			}
+			return parseSettingValue(line), nil
 		}
 	}
-
 	return "", nil
 }
 
-// cleanup restores original project settings after testing.
-func cleanup(projectPath, origAfterStartup string, w io.Writer) {
-	// Restore original after-startup
-	if origAfterStartup != "" {
-		cmd := fmt.Sprintf("ALTER SETTINGS MODEL AfterStartupMicroflow = '%s'", origAfterStartup)
-		if err := execMxcliCmd(projectPath, cmd); err != nil {
-			fmt.Fprintf(w, "  Warning: could not restore after-startup: %v\n", err)
+// parseSettingValue extracts the value from one DESCRIBE SETTINGS line, e.g.
+//
+//	AfterStartupMicroflow = 'Module.Name',
+//
+// DESCRIBE SETTINGS separates properties with commas and ends the statement with
+// a semicolon, so the trailing punctuation must come off *before* the quotes:
+// trimming quotes first stops at the comma and leaves `Module.Name',`, which was
+// then re-interpolated into unparseable MDL and silently failed to restore the
+// setting (mendixlabs/mxcli#803).
+func parseSettingValue(line string) string {
+	val := strings.TrimSpace(line)
+	if _, after, found := strings.Cut(val, "="); found {
+		val = after
+	}
+	val = strings.TrimSpace(val)
+	val = strings.TrimRight(val, ",;")
+	val = strings.TrimSpace(val)
+	return strings.Trim(val, "'\"")
+}
+
+// quoteMDLString renders a value as an MDL single-quoted literal. Mendix escapes
+// an embedded quote by doubling it; a qualified name should never contain one, but
+// emitting a broken literal is how #803 turned a parse slip into a mutated project.
+func quoteMDLString(v string) string {
+	return "'" + strings.ReplaceAll(v, "'", "''") + "'"
+}
+
+// moduleExists reports whether the project has a module with the given name.
+func moduleExists(projectPath, name string) (bool, error) {
+	mxcliPath, err := findMxcli()
+	if err != nil {
+		return false, err
+	}
+	cmd := exec.Command(mxcliPath, "-p", projectPath, "-c", "SHOW MODULES", "--json")
+	cmd.Env = append(os.Environ(), "MXCLI_QUIET=1")
+	output, err := cmd.Output()
+	if err != nil {
+		return false, err
+	}
+	var modules []struct {
+		Module string `json:"Module"`
+	}
+	if err := json.Unmarshal(output, &modules); err != nil {
+		return false, fmt.Errorf("parsing module list: %w", err)
+	}
+	for _, m := range modules {
+		if strings.EqualFold(m.Module, name) {
+			return true, nil
 		}
+	}
+	return false, nil
+}
+
+// setupCommands returns the MDL statements Run issues to put the project into its
+// testing state. The project's Security Level is deliberately absent: the
+// after-startup microflow runs in an administrative context and is not subject to
+// it, so forcing it OFF bought nothing — while breaking any project with a
+// published REST/OData service using custom authentication ("App security is off,
+// but custom authentication is enabled for this service"), and the restore
+// hardcoded PRODUCTION, silently changing projects that run at another level
+// (mendixlabs/mxcli#802).
+func setupCommands() []string {
+	return []string{
+		"ALTER SETTINGS MODEL AfterStartupMicroflow = " + quoteMDLString(mxTestRunner),
+	}
+}
+
+// cleanupCommands returns the MDL statements that put the project back the way it
+// was, in order. Kept separate from execution so the restore can be tested without
+// a project. mxTestPresent says whether the generated module is still there —
+// nothing is dropped when it is already gone, so a run that failed before the
+// injection landed does not report a spurious cleanup failure.
+func cleanupCommands(st projectState, mxTestPresent bool) []string {
+	// Restore the original after-startup microflow, or clear it if there was none.
+	restore := "ALTER SETTINGS MODEL AfterStartupMicroflow = ''"
+	if st.afterStartup != "" {
+		restore = "ALTER SETTINGS MODEL AfterStartupMicroflow = " + quoteMDLString(st.afterStartup)
+	}
+	cmds := []string{restore}
+	if !mxTestPresent {
+		return cmds
+	}
+
+	// Remove the generated runner. Drop the whole module only when Run created it;
+	// a pre-existing MxTest module is the user's, so only the generated microflow
+	// comes out of it.
+	if st.createdMxTest {
+		cmds = append(cmds, "DROP MODULE "+mxTestModule)
 	} else {
-		if err := execMxcliCmd(projectPath, "ALTER SETTINGS MODEL AfterStartupMicroflow = ''"); err != nil {
-			fmt.Fprintf(w, "  Warning: could not clear after-startup: %v\n", err)
+		cmds = append(cmds, "DROP MICROFLOW "+mxTestRunner)
+	}
+	return cmds
+}
+
+// cleanup restores the project to the state captured before injection and removes
+// the generated test runner.
+//
+// Every statement is attempted even if an earlier one fails, and the failures are
+// returned rather than printed as warnings: a half-restored project is left with
+// its after-startup pointing at a microflow this function is about to delete, and
+// that has to be loud (#803).
+func cleanup(projectPath string, st projectState, w io.Writer) error {
+	// Re-check rather than assume: on failure fall back to attempting the drop, so
+	// a genuine problem still surfaces instead of being skipped.
+	mxTestPresent := true
+	if exists, err := moduleExists(projectPath, mxTestModule); err == nil {
+		mxTestPresent = exists
+	}
+	if mxTestPresent && !st.createdMxTest {
+		fmt.Fprintf(w, "  %s module already existed; dropping only %s\n", mxTestModule, mxTestRunner)
+	}
+
+	var errs []error
+	for _, cmd := range cleanupCommands(st, mxTestPresent) {
+		if err := execMxcliCmd(projectPath, cmd); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", cmd, err))
 		}
 	}
-
-	// Restore security level
-	if err := execMxcliCmd(projectPath, "ALTER PROJECT SECURITY LEVEL PRODUCTION"); err != nil {
-		fmt.Fprintf(w, "  Warning: could not restore security: %v\n", err)
+	if len(errs) > 0 {
+		return errors.Join(errs...)
 	}
+	return nil
+}
 
-	// Drop the test runner microflow
-	execMxcliCmd(projectPath, "DROP MICROFLOW MxTest.TestRunner")
+// reportCleanup prints a cleanup failure prominently. The project is left mutated,
+// so this must not read as a passing run.
+func reportCleanup(w io.Writer, err error) {
+	if err == nil {
+		return
+	}
+	fmt.Fprintf(w, "\nERROR: cleanup failed — the project has been left modified:\n%v\n", err)
+	fmt.Fprintf(w, "Check the after-startup microflow and the %s module before committing.\n", mxTestModule)
 }
 
 // captureRuntimeLogs tails the docker compose logs, waiting for MXTEST:END or timeout.

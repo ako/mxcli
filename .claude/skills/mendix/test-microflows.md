@@ -110,12 +110,22 @@ mxcli test tests/ -p app.mpr --verbose
 The test runner uses the **after-startup microflow** pattern:
 
 1. Parses test files and extracts test blocks with annotations
-2. Generates a `MxTest.TestRunner` microflow with assertion logic
-3. Sets security OFF and after-startup to `MxTest.TestRunner`
+2. Records the project's current after-startup microflow, and whether an `MxTest`
+   module already exists
+3. Generates a `MxTest.TestRunner` microflow with assertion logic and points
+   after-startup at it
 4. Builds the project and restarts the Docker runtime
 5. Captures structured `MXTEST:` log lines for pass/fail
-6. Restores original security and after-startup settings
+6. Restores the original after-startup setting and removes the generated runner —
+   the whole `MxTest` module when the runner created it, otherwise just the
+   `TestRunner` microflow
 7. Outputs results (console, JUnit XML)
+
+The project's **Security Level is not modified**. The after-startup microflow runs
+in an administrative context and is not subject to it, and forcing it off breaks
+projects whose published REST/OData services use custom authentication. If a
+cleanup step fails the run reports an error and names what was left changed —
+the project is modified, so it must not read as a clean pass.
 
 ---
 
