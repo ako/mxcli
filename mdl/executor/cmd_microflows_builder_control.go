@@ -568,7 +568,7 @@ func (fb *flowBuilder) addLoopStatement(s *ast.LoopStmt) model.ID {
 	fb.pendingAnnotations = nil
 
 	// First, measure the loop body to determine size
-	bodyBounds := fb.measurer.measureStatements(s.Body)
+	bodyBounds := fb.measurer.measureStatementsSpan(s.Body)
 
 	// Calculate loop box size with padding
 	// Extra width for iterator icon and its label (100 pixels)
@@ -868,7 +868,7 @@ func (fb *flowBuilder) addWhileStatement(s *ast.WhileStmt) model.ID {
 	savedWhileAnnotations := fb.pendingAnnotations
 	fb.pendingAnnotations = nil
 
-	bodyBounds := fb.measurer.measureStatements(s.Body)
+	bodyBounds := fb.measurer.measureStatementsSpan(s.Body)
 
 	loopWidth := max(bodyBounds.Width+2*LoopPadding, MinLoopWidth)
 	loopHeight := max(bodyBounds.Height+2*LoopPadding, MinLoopHeight)

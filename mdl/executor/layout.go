@@ -74,6 +74,43 @@ func (m *layoutMeasurer) measureStatements(stmts []ast.MicroflowStatement) Bound
 	return Bounds{Width: totalWidth, Height: maxHeight}
 }
 
+// measureStatementsSpan returns the horizontal extent a statement run actually
+// occupies once laid out, for runs where that can be derived exactly.
+//
+// measureStatements sums every element's full width and adds HorizontalSpacing
+// between them. HorizontalSpacing is a centre-to-centre pitch — the builder does
+// `posX += spacing` and centres each activity on posX — so counting it *on top of*
+// each width over-measures a run of n simple activities by (n-1)*ActivityWidth.
+// Sizing a loop box from that left it far wider than its contents: 880px around
+// 440px of activities for a three-statement body (mendixlabs/mxcli#790).
+//
+// The correction applies only when every element is a simple activity, whose pitch
+// is exactly HorizontalSpacing. A compound element (IF/split, nested loop) advances
+// posX by geometry this function cannot reproduce without duplicating the builder —
+// guessing there under-sizes the box and pushes activities outside it, which is
+// worse than a box that is too wide. Such runs fall back to measureStatements.
+func (m *layoutMeasurer) measureStatementsSpan(stmts []ast.MicroflowStatement) Bounds {
+	count := 0
+	maxHeight := ActivityHeight
+	for _, stmt := range stmts {
+		b := m.measureStatement(stmt)
+		maxHeight = max(maxHeight, b.Height)
+		if b.Width == 0 {
+			continue
+		}
+		if b.Width != ActivityWidth {
+			return m.measureStatements(stmts) // compound element — cannot place exactly
+		}
+		count++
+	}
+	if count == 0 {
+		return Bounds{Width: 0, Height: maxHeight}
+	}
+	// n activities centred HorizontalSpacing apart span from the first centre minus
+	// half a width to the last centre plus half a width.
+	return Bounds{Width: (count-1)*HorizontalSpacing + ActivityWidth, Height: maxHeight}
+}
+
 // measureStatement calculates the bounds for a single statement
 func (m *layoutMeasurer) measureStatement(stmt ast.MicroflowStatement) Bounds {
 	switch s := stmt.(type) {
