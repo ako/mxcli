@@ -1,0 +1,60 @@
+-- Bug #791: a loop containing a split whose branch does `continue` produced a
+-- project Studio Pro could not open, while mxcli reported success:
+--
+--   System.Collections.Generic.KeyNotFoundException: The given key
+--   '806fca46-5c4b-46f8-a890-4d24dd29c24f' was not present in the dictionary.
+--
+-- Root cause: microflowObjectToGen (mdl/backend/modelsdk/microflow_write.go) had
+-- no case for Microflows$BreakEvent / Microflows$ContinueEvent, and its default
+-- branch returns nil. The event object was therefore dropped at serialization
+-- while the SequenceFlow pointing at it was written — leaving a
+-- DestinationPointer to a GUID that exists nowhere in the document, which is the
+-- key Studio Pro cannot resolve. The legacy engine (sdk/mpr/writer_microflow.go)
+-- serializes both, so this only affected the default (modelsdk) engine.
+--
+-- The identical bug had already been found and fixed for Microflows$ErrorEvent;
+-- break/continue were missed.
+--
+-- Verification without Studio Pro — every *Pointer in the written microflow must
+-- resolve to an object $ID in the same document:
+--
+--   mxcli exec 791-loop-continue-dangling-flow.mdl -p app.mpr
+--   mxcli bson dump -p app.mpr --type microflow --object Issue791.LoopSplitContinue
+--
+-- Before the fix the dump contained a SequenceFlow.DestinationPointer with no
+-- matching $ID, and no Microflows$ContinueEvent object at all.
+
+create module Issue791;
+create module role Issue791.User;
+
+@position(100, 100)
+create persistent entity Issue791.Contract (
+  Name: string(200),
+  Active: boolean
+);
+
+-- continue in the ELSE branch of a split inside a loop — the reported shape.
+create or modify microflow Issue791.LoopSplitContinue ($ContractList: list of Issue791.Contract)
+begin
+  loop $it in $ContractList
+  begin
+    if $it/Active then
+      log info node 'Issue791' 'active';
+    else
+      continue;
+    end if;
+  end loop;
+end;
+
+-- break has the same serialization gap and the same consequence.
+create or modify microflow Issue791.LoopSplitBreak ($ContractList: list of Issue791.Contract)
+begin
+  loop $it in $ContractList
+  begin
+    if $it/Active then
+      break;
+    else
+      log info node 'Issue791' 'inactive';
+    end if;
+  end loop;
+end;

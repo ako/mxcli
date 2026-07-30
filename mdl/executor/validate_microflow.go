@@ -299,21 +299,6 @@ func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 						stmt.ListVariable),
 					"Pass the list as a microflow parameter instead of creating an empty variable")
 			}
-			// Check: a `break` nested inside a conditional within a loop currently
-			// serializes a dangling sequence-flow reference, producing an UNLOADABLE
-			// .mpr — `mx check` crashes with an unhandled AggregateException
-			// ("key … not present in the dictionary") rather than an error. A break
-			// that is a direct child of the loop body serializes fine, but the useful
-			// form (`if <cond> then break`) is the broken one. Reject it with the
-			// guard-variable workaround until the flow serialization is fixed. (#52)
-			if loopBodyHasConditionalBreak(stmt.Body) {
-				v.addViolation("MDL051", linter.SeverityError,
-					"a `break` inside an if/case within a loop currently produces an unloadable model — "+
-						"`mx check` crashes with an unhandled exception (a dangling sequence-flow reference), "+
-						"not a normal error. (A break placed directly in the loop body serializes fine.)",
-					"Until the serialization is fixed, use a guard variable: "+
-						"`declare $Done Boolean = false;` then `loop … if not($Done) then … set $Done = true; end if; end loop`.")
-			}
 			v.loopDepth++
 			v.walkBody(stmt.Body)
 			v.loopDepth--
@@ -629,77 +614,6 @@ func (v *microflowValidator) checkAssociationObjectArgs(callee string, args []as
 					a.Name, microflowExprSource(a.Value), a.Name, a.Name))
 		}
 	}
-}
-
-// loopBodyHasConditionalBreak reports whether a `break` appears inside a
-// conditional (if / case / inheritance split) directly within this loop body — the
-// pattern that serializes a dangling reference and crashes `mx check` (#52). A
-// break that is a *direct* statement of the loop body is not flagged (it
-// serializes fine). Nested loops are not descended into: a break there belongs to
-// that loop and is validated when it is walked.
-func loopBodyHasConditionalBreak(stmts []ast.MicroflowStatement) bool {
-	for _, s := range stmts {
-		switch n := s.(type) {
-		case *ast.IfStmt:
-			if stmtsContainBreak(n.ThenBody) || stmtsContainBreak(n.ElseBody) {
-				return true
-			}
-		case *ast.EnumSplitStmt:
-			for _, c := range n.Cases {
-				if stmtsContainBreak(c.Body) {
-					return true
-				}
-			}
-			if stmtsContainBreak(n.ElseBody) {
-				return true
-			}
-		case *ast.InheritanceSplitStmt:
-			for _, c := range n.Cases {
-				if stmtsContainBreak(c.Body) {
-					return true
-				}
-			}
-			if stmtsContainBreak(n.ElseBody) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// stmtsContainBreak reports whether a `break` belonging to the enclosing loop
-// appears anywhere in these statements. Descends into conditionals but NOT into
-// nested loops (a nested loop traps its own break).
-func stmtsContainBreak(stmts []ast.MicroflowStatement) bool {
-	for _, s := range stmts {
-		switch n := s.(type) {
-		case *ast.BreakStmt:
-			return true
-		case *ast.IfStmt:
-			if stmtsContainBreak(n.ThenBody) || stmtsContainBreak(n.ElseBody) {
-				return true
-			}
-		case *ast.EnumSplitStmt:
-			for _, c := range n.Cases {
-				if stmtsContainBreak(c.Body) {
-					return true
-				}
-			}
-			if stmtsContainBreak(n.ElseBody) {
-				return true
-			}
-		case *ast.InheritanceSplitStmt:
-			for _, c := range n.Cases {
-				if stmtsContainBreak(c.Body) {
-					return true
-				}
-			}
-			if stmtsContainBreak(n.ElseBody) {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // exprIsAssociationObjectPath reports whether an expression is an attribute path

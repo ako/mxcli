@@ -161,37 +161,32 @@ func TestValidateMicroflow_AssociationObjectArg(t *testing.T) {
 	}
 }
 
-// TestValidateMicroflow_ConditionalBreak covers MDL051 (ledger #52): a `break`
-// nested inside a conditional within a loop serializes a dangling reference that
-// crashes `mx check` (unloadable model). A break directly in the loop body, or no
-// break, is fine.
-func TestValidateMicroflow_ConditionalBreak(t *testing.T) {
-	cases := []struct {
-		name    string
-		body    string
-		wantMDL bool
-	}{
-		{"break inside if in loop", "loop $R in $L begin if $R/Active then break; end if; end loop", true},
-		{"break inside nested if in loop", "loop $R in $L begin if $R/Active then if $R/Active then break; end if; end if; end loop", true},
-		{"break directly in loop is fine", "loop $R in $L begin break; end loop", false},
-		{"no break is fine", "loop $R in $L begin if $R/Active then set $x = 1; end if; end loop", false},
+// TestValidateMicroflow_ConditionalBreakAccepted: MDL051 rejected a `break` or
+// `continue` inside a conditional within a loop, because the write path dropped the
+// Break/Continue event and left a dangling sequence flow (ledger #52). That was an
+// interim guard "until the serialization is fixed" — it now is (mendixlabs/mxcli#791,
+// microflowObjectToGen), so the pattern must be accepted again rather than pushing
+// users to a guard variable. It also only ever covered `break`, which is why the
+// `continue` form reached users as a corrupt project.
+func TestValidateMicroflow_ConditionalBreakAccepted(t *testing.T) {
+	bodies := []string{
+		"loop $R in $L begin if $R/Active then break; end if; end loop",
+		"loop $R in $L begin if $R/Active then continue; end if; end loop",
+		"loop $R in $L begin if $R/Active then if $R/Active then break; end if; end if; end loop",
+		"loop $R in $L begin break; end loop",
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			src := "create microflow M.F ($L: list of M.R)\nreturns boolean\nbegin\n  " + tc.body + "\n  return true;\nend;"
+	for _, body := range bodies {
+		t.Run(body, func(t *testing.T) {
+			src := "create microflow M.F ($L: list of M.R)\nreturns boolean\nbegin\n  " + body + "\n  return true;\nend;"
 			prog, errs := visitor.Build(src)
 			if len(errs) > 0 {
 				t.Fatalf("parse errors: %v", errs)
 			}
 			mf := prog.Statements[0].(*ast.CreateMicroflowStmt)
-			var got bool
 			for _, vi := range ValidateMicroflow(mf) {
 				if vi.RuleID == "MDL051" {
-					got = true
+					t.Errorf("MDL051 still rejects a now-serializable pattern: %s", body)
 				}
-			}
-			if got != tc.wantMDL {
-				t.Errorf("MDL051 fired=%v, want %v (body: %q)", got, tc.wantMDL, tc.body)
 			}
 		})
 	}

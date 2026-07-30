@@ -265,6 +265,22 @@ func microflowObjectToGen(obj microflows.MicroflowObject) element.Element {
 		g.SetRelativeMiddlePoint(pointStr(o.Position))
 		g.SetSize(sizeStr(o.Size))
 		return g
+	case *microflows.BreakEvent:
+		// `break;` in a loop. Same hazard as ErrorEvent above: dropping it left the
+		// branch's SequenceFlow pointing at a non-existent object, so Studio Pro
+		// failed to open the project with KeyNotFoundException (#791).
+		g := genMf.NewBreakEvent()
+		g.SetID(element.ID(o.ID))
+		g.SetRelativeMiddlePoint(pointStr(o.Position))
+		g.SetSize(sizeStr(o.Size))
+		return g
+	case *microflows.ContinueEvent:
+		// `continue;` in a loop — see BreakEvent above.
+		g := genMf.NewContinueEvent()
+		g.SetID(element.ID(o.ID))
+		g.SetRelativeMiddlePoint(pointStr(o.Position))
+		g.SetSize(sizeStr(o.Size))
+		return g
 	case *microflows.ActionActivity:
 		g := genMf.NewActionActivity()
 		g.SetID(element.ID(o.ID))
