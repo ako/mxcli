@@ -7,6 +7,7 @@ import (
 
 	"github.com/mendixlabs/mxcli/modelsdk/element"
 	genDm "github.com/mendixlabs/mxcli/modelsdk/gen/domainmodels"
+	genRest "github.com/mendixlabs/mxcli/modelsdk/gen/rest"
 	genTexts "github.com/mendixlabs/mxcli/modelsdk/gen/texts"
 	"github.com/mendixlabs/mxcli/modelsdk/mprread"
 
@@ -160,14 +161,52 @@ func entityFromGen(e *genDm.Entity) *domainmodel.Entity {
 
 	out.Location = parseLocation(e.Location())
 
-	// View entities carry an OqlViewEntitySource referencing their source
-	// document by qualified name; surface it so read-modify-write paths (e.g.
-	// MOVE ENTITY, which must reparent the source doc) can see it.
-	if src, ok := e.Source().(*genDm.OqlViewEntitySource); ok {
+	// An entity's Source says where its data comes from. Surface each flavour so
+	// read-modify-write paths (MOVE ENTITY reparenting a source doc, ALTER ENTITY
+	// flipping a remote capability) can see it — without this an external entity
+	// reads back looking local, DESCRIBE EXTERNAL ENTITY rejects it, and an update
+	// rebuilds it with no source at all (mendixlabs/mxcli#782). Mirrors the legacy
+	// parser in sdk/mpr/parser_domainmodel.go.
+	switch src := e.Source().(type) {
+	case *genDm.OqlViewEntitySource:
 		out.Source = "DomainModels$OqlViewEntitySource"
 		out.SourceObjectID = model.ID(src.ID())
 		out.SourceDocumentRef = src.SourceDocumentQualifiedName()
 		out.OqlQuery = src.Oql()
+
+	case *genRest.ODataRemoteEntitySource:
+		// Top-level external entity: has its own entity set, so it carries the
+		// CRUD/paging capabilities and the local-changes flag.
+		out.Source = "Rest$ODataRemoteEntitySource"
+		out.SourceObjectID = model.ID(src.ID())
+		out.RemoteServiceName = src.SourceDocumentQualifiedName()
+		out.RemoteEntitySet = src.EntitySet()
+		out.RemoteEntityName = src.RemoteName()
+		out.Countable = src.Countable()
+		out.Creatable = src.Creatable()
+		out.Deletable = src.Deletable()
+		out.SkipSupported = src.SkipSupported()
+		out.TopSupported = src.TopSupported()
+		out.CreateChangeLocally = src.CreateChangeLocally()
+		out.RemoteKeyParts = odataKeyFromGen(src.Key())
+		// Updatable has no gen accessor because the storage type has no such
+		// field — updatability is per attribute (Rest$ODataMappedValue). The
+		// write path does not emit it either, so leaving it zero is symmetric.
+
+	case *genRest.ODataEntityTypeSource:
+		// Derived / abstract / contained target type: no entity set, no capabilities.
+		out.Source = "Rest$ODataEntityTypeSource"
+		out.SourceObjectID = model.ID(src.ID())
+		out.RemoteServiceName = src.SourceDocumentQualifiedName()
+		out.RemoteEntityName = src.EntityTypeName()
+		out.IsOpen = src.IsOpen()
+		out.RemoteKeyParts = odataKeyFromGen(src.Key())
+
+	case *genRest.ODataPrimitiveCollectionEntitySource:
+		// NPE generated for a Collection(Edm.*) property; carries only the service.
+		out.Source = "Rest$ODataPrimitiveCollectionEntitySource"
+		out.SourceObjectID = model.ID(src.ID())
+		out.RemoteServiceName = src.SourceDocumentQualifiedName()
 	}
 
 	for _, el := range e.AttributesItems() {
@@ -341,6 +380,32 @@ func indexFromGen(idx *genDm.Index) *domainmodel.Index {
 
 // attributeTypeFromGen is the reverse of attributeTypeToGen: a gen attribute-type
 // element back to a domainmodel.AttributeType (with Length / enumeration ref).
+// odataKeyFromGen converts a Rest$ODataKey to the semantic remote-key parts. The
+// inverse of odataKeyToGen in domainmodel_write.go.
+func odataKeyFromGen(key element.Element) []*domainmodel.RemoteKeyPart {
+	k, ok := key.(*genRest.ODataKey)
+	if !ok || k == nil {
+		return nil
+	}
+	var parts []*domainmodel.RemoteKeyPart
+	for _, el := range k.PartsItems() {
+		p, ok := el.(*genRest.ODataKeyPart)
+		if !ok {
+			continue
+		}
+		kp := &domainmodel.RemoteKeyPart{
+			Name:       p.EntityKeyPartName(),
+			RemoteName: p.Name(),
+			RemoteType: p.RemoteType(),
+		}
+		if t := p.Type(); t != nil {
+			kp.Type = attributeTypeFromGen(t)
+		}
+		parts = append(parts, kp)
+	}
+	return parts
+}
+
 func attributeTypeFromGen(t element.Element) domainmodel.AttributeType {
 	switch at := t.(type) {
 	case *genDm.StringAttributeType:

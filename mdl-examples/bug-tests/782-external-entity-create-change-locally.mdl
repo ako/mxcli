@@ -1,0 +1,59 @@
+-- Bug #782: External Entities — allow_create_change_locally doesn't work
+--
+-- Symptom: after importing entities from a consumed OData service, enabling
+-- "Allow creating and changing objects locally" left the flag at false.
+--
+-- Two independent causes, both fixed:
+--
+-- (1) READ. entityFromGen (mdl/backend/modelsdk/domainmodel.go) recognised only
+--     DomainModels$OqlViewEntitySource, so an OData external entity read back
+--     with an empty Source and every remote field zeroed. `describe external
+--     entity` rejected it outright ("is not an external entity (source: )"), and
+--     `alter entity … set allow_create_change_locally = true` wrote the flag onto
+--     a model that no longer knew the entity was external, so it was lost. The
+--     legacy engine parsed all three OData source flavours, so this was a
+--     modelsdk-engine gap — and modelsdk is the default engine.
+--
+-- (2) RE-IMPORT. applyExternalEntityFields (mdl/executor/cmd_contract.go) stamped
+--     CreateChangeLocally = false on every import, including updates of existing
+--     entities, so `create or modify external entities` reset whatever the user
+--     had set. Unlike Countable/Creatable/Deletable it cannot be derived from the
+--     service contract — it is a local modelling choice — so it is now left alone
+--     on the top-level branch.
+--
+-- Manual verification (needs a project; the metadata file ships with the repo):
+--
+--   cp mdl-examples/odata-local-metadata/sample-metadata.xml /path/to/app/
+--   mxcli exec 782-external-entity-create-change-locally.mdl -p app.mpr
+--
+-- Expect the final DESCRIBE to report `AllowCreateChangeLocally: Yes`. Before the
+-- fix the first DESCRIBE errored with "is not an external entity", and after the
+-- re-import the flag was back to No.
+--
+-- Adjust MetadataUrl below to wherever sample-metadata.xml sits.
+
+create module Issue782;
+create module role Issue782.User;
+
+create constant Issue782.SvcUrl
+  type string
+  default 'https://services.odata.org/V4/Northwind/Northwind.svc/';
+
+create odata client Issue782.Sample (
+  MetadataUrl: './mdl-examples/odata-local-metadata/sample-metadata.xml',
+  ServiceUrl: '@Issue782.SvcUrl'
+);
+
+create external entities from Issue782.Sample into Issue782;
+
+-- (1) The entity must read back as external at all.
+describe external entity Issue782.Products;
+
+-- The reported flow: turn the flag on, and it must stick.
+alter entity Issue782.Products set allow_create_change_locally = true;
+describe external entity Issue782.Products;
+
+-- (2) A re-import refreshes the contract-derived capabilities but must not reset
+-- the local-changes flag.
+create or modify external entities from Issue782.Sample into Issue782;
+describe external entity Issue782.Products;
