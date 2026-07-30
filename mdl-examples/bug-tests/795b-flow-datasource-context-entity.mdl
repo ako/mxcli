@@ -1,0 +1,73 @@
+-- Two follow-ups to #795, both found while verifying that fix.
+--
+-- (1) A nanoflow datasource on a pluggable widget was DROPPED AT WRITE TIME and
+--     the statement still reported success. The codec engine cannot represent a
+--     Forms$NanoflowSource yet and said so, but the error travelled through
+--     widgetobj.ChildSerializer — which returns BSON with no error channel — so
+--     it was logged and discarded while `exec` printed `Created page`. The grid
+--     landed with no data source at all.
+--
+--     Now the failure is recorded and drained by the page/snippet write entry
+--     points, so the statement fails with the actionable message instead
+--     (ADR-0004: refuse, don't drop). Authoring one still needs
+--     `MXCLI_ENGINE=legacy`, which does write it correctly.
+--
+-- (2) A data container bound to a microflow or nanoflow reported the FLOW as its
+--     context entity: `-- Context: $currentObject (Issue795b.GetBuckets)` rather
+--     than the entity the flow returns. The datasource reference was used
+--     verbatim, which is right for a database source and wrong for a flow source.
+--     The flow's return type is resolved now, falling back to the reference when
+--     the flow cannot be resolved or returns a scalar.
+--
+-- Manual verification (needs a project):
+--
+--   mxcli exec 795b-flow-datasource-context-entity.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe page Issue795b.Probe"
+--
+-- Expect `-- Context: $currentObject (Issue795b.Bucket)` under the grid — before
+-- the fix it named Issue795b.GetBuckets. For (1), adding a
+-- `datasource: nanoflow …` grid must now fail the statement rather than print
+-- `Created page`; see the commented-out block at the end.
+
+create module Issue795b;
+create module role Issue795b.User;
+
+@position(100, 100)
+create persistent entity Issue795b.Bucket (
+  BucketKey: string(200),
+  Size: integer
+);
+
+create microflow Issue795b.GetBuckets ()
+returns list of Issue795b.Bucket as $items
+begin
+  retrieve $items from Issue795b.Bucket;
+  return $items;
+end;
+
+create or replace page Issue795b.Probe (
+  Title: 'Probe',
+  Layout: Atlas_Core.Atlas_Default
+) {
+  -- The context comment under this grid must name Issue795b.Bucket, not the microflow.
+  datagrid gMicroflow (datasource: microflow Issue795b.GetBuckets) {
+    column colKey (attribute: BucketKey, caption: 'Key')
+  }
+}
+
+describe page Issue795b.Probe;
+
+-- (1) is a negative case and cannot live in a script that must pass `mxcli exec`.
+-- To reproduce by hand, add a nanoflow returning a list of Issue795b.Bucket and:
+--
+--   create or replace page Issue795b.NanoProbe (
+--     Title: 'Nano', Layout: Atlas_Core.Atlas_Default
+--   ) {
+--     datagrid gNano (datasource: nanoflow Issue795b.GetBucketsClient) {
+--       column colKey (attribute: BucketKey, caption: 'Key')
+--     }
+--   }
+--
+-- Before the fix: `Created page`, grid with no data source.
+-- After:          the statement fails, naming *pages.NanoflowSource and the
+--                 MXCLI_ENGINE=legacy workaround.

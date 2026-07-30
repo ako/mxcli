@@ -248,7 +248,7 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 	case "Forms$DataView", "Pages$DataView":
 		widget.DataSource = extractDataViewDataSource(ctx, w)
 		if widget.DataSource != nil && widget.DataSource.Reference != "" {
-			widget.EntityContext = widget.DataSource.Reference
+			widget.EntityContext = dataSourceEntityContext(ctx, widget.DataSource)
 		} else if inheritedCtx != "" {
 			widget.EntityContext = inheritedCtx
 		}
@@ -312,7 +312,7 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 			// showNumberOfRows: not yet fully supported in DataGrid2, skip to avoid CE0463
 			widget.Selection = extractGallerySelection(ctx, w)
 			if widget.DataSource != nil && widget.DataSource.Reference != "" {
-				widget.EntityContext = widget.DataSource.Reference
+				widget.EntityContext = dataSourceEntityContext(ctx, widget.DataSource)
 			} else if inheritedCtx != "" {
 				widget.EntityContext = inheritedCtx
 			}
@@ -330,7 +330,7 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 			widget.TabletColumns = extractCustomWidgetPropertyString(ctx, w, "tabletItems")
 			widget.PhoneColumns = extractCustomWidgetPropertyString(ctx, w, "phoneItems")
 			if widget.DataSource != nil && widget.DataSource.Reference != "" {
-				widget.EntityContext = widget.DataSource.Reference
+				widget.EntityContext = dataSourceEntityContext(ctx, widget.DataSource)
 			} else if inheritedCtx != "" {
 				widget.EntityContext = inheritedCtx
 			}
@@ -369,7 +369,7 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 	case "Forms$Gallery", "Pages$Gallery":
 		widget.DataSource = extractGalleryDataSource(ctx, w)
 		if widget.DataSource != nil && widget.DataSource.Reference != "" {
-			widget.EntityContext = widget.DataSource.Reference
+			widget.EntityContext = dataSourceEntityContext(ctx, widget.DataSource)
 		} else if inheritedCtx != "" {
 			widget.EntityContext = inheritedCtx
 		}
@@ -383,7 +383,7 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 	case "Forms$ListView", "Pages$ListView":
 		widget.DataSource = extractListViewDataSource(ctx, w)
 		if widget.DataSource != nil && widget.DataSource.Reference != "" {
-			widget.EntityContext = widget.DataSource.Reference
+			widget.EntityContext = dataSourceEntityContext(ctx, widget.DataSource)
 		} else if inheritedCtx != "" {
 			widget.EntityContext = inheritedCtx
 		}
