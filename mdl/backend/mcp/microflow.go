@@ -789,9 +789,9 @@ func memberChangeType(t microflows.MemberChangeType) string {
 // mfCommitType maps a CommitType onto the PED commit enum (Yes / YesWithoutEvents / No).
 func mfCommitType(c microflows.CommitType) string {
 	switch c {
-	case microflows.CommitTypeYes, microflows.CommitTypeYesWithEvents:
+	case microflows.CommitTypeYes:
 		return "Yes"
-	case microflows.CommitTypeNoEvent:
+	case microflows.CommitTypeYesWithoutEvents:
 		return "YesWithoutEvents"
 	default:
 		return "No"

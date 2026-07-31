@@ -91,11 +91,16 @@ const (
 // CommitType represents how objects are committed.
 type CommitType string
 
+// Mendix defines exactly three values (Microflows$Commit). "YesWithEvents" and
+// "NoEvent" were never among them — they matched nothing in a real project and
+// forced mfCommitType to translate CommitTypeNoEvent into "YesWithoutEvents" to
+// stay correct. The set below is the canonical one; see
+// modelsdk/gen/microflows/enums.go (CommitEnum) and
+// docs/05-mdl-specification/10-bson-mapping.md.
 const (
-	CommitTypeYes           CommitType = "Yes"
-	CommitTypeNo            CommitType = "No"
-	CommitTypeYesWithEvents CommitType = "YesWithEvents"
-	CommitTypeNoEvent       CommitType = "NoEvent"
+	CommitTypeYes              CommitType = "Yes"
+	CommitTypeYesWithoutEvents CommitType = "YesWithoutEvents"
+	CommitTypeNo               CommitType = "No"
 )
 
 // Retrieve Actions
