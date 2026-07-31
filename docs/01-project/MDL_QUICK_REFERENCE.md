@@ -270,8 +270,8 @@ it is for pages.
 | Entity declaration | `declare $entity Module.Entity;` | No AS keyword, no = empty |
 | List declaration | `declare $list list of Module.Entity = empty;` | |
 | Assignment | `set $Var = expression;` | Variable must be declared first |
-| Create object | `$Var = create Module.Entity (attr = value);` | |
-| Change object | `change $entity (attr = value) [refresh];` | `refresh` updates the changed object in the client |
+| Create object | `$Var = create Module.Entity (attr = value) [commit [without events]];` | `commit` = Commit Yes, `commit without events` = YesWithoutEvents; omitted = No (the default) |
+| Change object | `change $entity (attr = value) [commit [without events]] [refresh];` | `commit` as above, before `refresh`; `refresh` updates the changed object in the client |
 | Commit | `commit $entity [with events] [refresh];` | |
 | Delete | `delete $entity;` | |
 | Rollback | `rollback $entity [refresh];` | Reverts uncommitted changes |

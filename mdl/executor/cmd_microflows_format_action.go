@@ -19,6 +19,24 @@ import (
 
 // formatActivity formats a single microflow activity as an MDL statement.
 
+// commitModifier renders the Commit flag of a create/change activity as the MDL
+// modifier, or "" for Mendix's default (No) so the common case stays unwritten.
+// The leading space is included, since the caller appends it directly after the
+// member list.
+//
+// Before #779 this was never emitted: DESCRIBE could not distinguish a committing
+// create from a non-committing one, and re-executing its output cleared the flag.
+func commitModifier(c microflows.CommitType) string {
+	switch c {
+	case microflows.CommitTypeYes:
+		return " commit"
+	case microflows.CommitTypeYesWithoutEvents:
+		return " commit without events"
+	default:
+		return ""
+	}
+}
+
 // escapeExpressionValue escapes raw control characters inside string literals
 // of a Mendix expression value so it can be safely embedded in MDL output.
 // The lexer's STRING_LITERAL rule forbids raw \r and \n inside single-quoted
@@ -256,9 +274,9 @@ func formatAction(
 				}
 				members = append(members, fmt.Sprintf("%s = %s", memberName, escapeExpressionValue(m.Value)))
 			}
-			return fmt.Sprintf("$%s = create %s (%s);", outputVar, entityName, strings.Join(members, ", "))
+			return fmt.Sprintf("$%s = create %s (%s)%s;", outputVar, entityName, strings.Join(members, ", "), commitModifier(a.Commit))
 		}
-		return fmt.Sprintf("$%s = create %s;", outputVar, entityName)
+		return fmt.Sprintf("$%s = create %s%s;", outputVar, entityName, commitModifier(a.Commit))
 
 	case *microflows.ChangeObjectAction:
 		varName := a.ChangeVariable
@@ -287,14 +305,14 @@ func formatAction(
 				members = append(members, fmt.Sprintf("%s = %s", memberName, escapeExpressionValue(m.Value)))
 			}
 			if a.RefreshInClient {
-				return fmt.Sprintf("change $%s (%s) refresh;", varName, strings.Join(members, ", "))
+				return fmt.Sprintf("change $%s (%s)%s refresh;", varName, strings.Join(members, ", "), commitModifier(a.Commit))
 			}
-			return fmt.Sprintf("change $%s (%s);", varName, strings.Join(members, ", "))
+			return fmt.Sprintf("change $%s (%s)%s;", varName, strings.Join(members, ", "), commitModifier(a.Commit))
 		}
 		if a.RefreshInClient {
-			return fmt.Sprintf("change $%s refresh;", varName)
+			return fmt.Sprintf("change $%s%s refresh;", varName, commitModifier(a.Commit))
 		}
-		return fmt.Sprintf("change $%s;", varName)
+		return fmt.Sprintf("change $%s%s;", varName, commitModifier(a.Commit))
 
 	case *microflows.CommitObjectsAction:
 		varName := a.CommitVariable

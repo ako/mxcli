@@ -1,0 +1,75 @@
+-- Issue #779: the Commit flag on create/change activities.
+--
+-- Before this change MDL could not express the flag at all: the builder hardcoded
+-- Commit: No at both call sites, so every create/change authored through MDL was
+-- written as non-committing regardless of intent, and DESCRIBE MICROFLOW rendered a
+-- committing activity identically to a non-committing one. A describe → edit →
+-- re-exec round-trip therefore silently cleared commit boundaries — the
+-- object-orphaning failure mode the issue reports chasing in Studio Pro.
+--
+-- Three values, matching Mendix's Microflows$Commit enum:
+--
+--   (no modifier)           -> No               (the default, omitted from DESCRIBE)
+--   commit                  -> Yes
+--   commit without events   -> YesWithoutEvents
+--
+-- Verify the round-trip:
+--
+--   mxcli exec 779-commit-flag.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe microflow Issue779.CommitVariants"
+--
+-- The DESCRIBE output must carry the same modifiers as the source below, and be
+-- re-executable as-is.
+
+create module Issue779;
+create module role Issue779.User;
+
+@position(100, 100)
+create persistent entity Issue779.Order (
+  Number: string(50),
+  Status: string(20)
+);
+
+create microflow Issue779.CommitVariants ()
+returns boolean
+begin
+  -- Default: no modifier, Commit = No. Unchanged from before, so existing
+  -- scripts and existing DESCRIBE output are unaffected.
+  $Draft = create Issue779.Order (Number = 'ORD-0001', Status = 'Draft');
+
+  -- Commit = Yes. Enabling the flag is a one-word diff.
+  $Placed = create Issue779.Order (Number = 'ORD-0002', Status = 'Placed') commit;
+
+  -- Commit = YesWithoutEvents: persists without firing before/after commit events.
+  $Imported = create Issue779.Order (Number = 'ORD-0003', Status = 'Imported') commit without events;
+
+  -- No member list, still takes the modifier.
+  $Blank = create Issue779.Order commit;
+
+  -- change carries the same modifier, before the existing `refresh`.
+  change $Draft (Status = 'Confirmed') commit;
+  change $Placed (Status = 'Shipped') commit without events;
+  change $Imported (Status = 'Reconciled') commit refresh;
+
+  -- refresh alone still parses exactly as it did.
+  change $Blank (Status = 'Void') refresh;
+
+  return true;
+end;
+/
+
+-- The modifier must not be confused with the standalone COMMIT activity. These are
+-- two different things on adjacent lines; mandatory statement semicolons are what
+-- make them decidable.
+create microflow Issue779.ModifierVsActivity ()
+returns boolean
+begin
+  $A = create Issue779.Order (Number = 'ORD-0004');
+  commit $A;
+
+  $B = create Issue779.Order (Number = 'ORD-0005') commit;
+  commit $B with events;
+
+  return true;
+end;
+/
