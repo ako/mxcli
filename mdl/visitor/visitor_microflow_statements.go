@@ -998,12 +998,26 @@ func buildCreateObjectStatement(ctx parser.ICreateObjectStatementContext) *ast.C
 		stmt.Changes = buildMemberAssignmentList(memberList)
 	}
 
+	stmt.Commit = buildCommitClause(createCtx.CommitClause())
+
 	// Check for ON ERROR clause
 	if errClause := createCtx.OnErrorClause(); errClause != nil {
 		stmt.ErrorHandling = buildOnErrorClause(errClause)
 	}
 
 	return stmt
+}
+
+// buildCommitClause maps the optional COMMIT modifier on a create/change activity.
+// Grammar: COMMIT (WITHOUT EVENTS)?  — absent means Mendix's default, No.
+func buildCommitClause(ctx parser.ICommitClauseContext) ast.CommitFlag {
+	if ctx == nil {
+		return ast.CommitNo
+	}
+	if cc, ok := ctx.(*parser.CommitClauseContext); ok && cc.EVENTS() != nil {
+		return ast.CommitYesWithoutEvents
+	}
+	return ast.CommitYes
 }
 
 // buildChangeObjectStatement converts CHANGE statement context to ChangeObjectStmt.
@@ -1026,6 +1040,7 @@ func buildChangeObjectStatement(ctx parser.IChangeObjectStatementContext) *ast.C
 	if memberList := changeCtx.MemberAssignmentList(); memberList != nil {
 		stmt.Changes = buildMemberAssignmentList(memberList)
 	}
+	stmt.Commit = buildCommitClause(changeCtx.CommitClause())
 	stmt.RefreshInClient = changeCtx.REFRESH() != nil
 
 	return stmt

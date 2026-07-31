@@ -219,21 +219,34 @@ type ChangeItem struct {
 	Value     Expression // Value expression
 }
 
-// CreateObjectStmt represents: $Var = CREATE Entity (assignments) [ON ERROR ...]
+// CommitFlag is the Commit setting on a create/change activity, matching Mendix's
+// Microflows$Commit enum. The zero value is CommitNo, which is Mendix's default and
+// is therefore omitted from DESCRIBE output.
+type CommitFlag int
+
+const (
+	CommitNo               CommitFlag = iota // no COMMIT clause
+	CommitYes                                // COMMIT
+	CommitYesWithoutEvents                   // COMMIT WITHOUT EVENTS
+)
+
+// CreateObjectStmt represents: $Var = CREATE Entity (assignments) [COMMIT [WITHOUT EVENTS]] [ON ERROR ...]
 type CreateObjectStmt struct {
 	Variable      string               // Variable name (without $ prefix)
 	EntityType    QualifiedName        // Entity type
 	Changes       []ChangeItem         // SET assignments
+	Commit        CommitFlag           // Commit setting (default CommitNo)
 	ErrorHandling *ErrorHandlingClause // Optional ON ERROR clause
 	Annotations   *ActivityAnnotations // Optional @position, @caption, @color, @annotation
 }
 
 func (s *CreateObjectStmt) isMicroflowStatement() {}
 
-// ChangeObjectStmt represents: CHANGE $Var (assignments)
+// ChangeObjectStmt represents: CHANGE $Var (assignments) [COMMIT [WITHOUT EVENTS]] [REFRESH]
 type ChangeObjectStmt struct {
 	Variable        string               // Variable name
 	Changes         []ChangeItem         // SET assignments
+	Commit          CommitFlag           // Commit setting (default CommitNo)
 	RefreshInClient bool                 // Whether to refresh in client
 	Annotations     *ActivityAnnotations // Optional @position, @caption, @color, @annotation
 }

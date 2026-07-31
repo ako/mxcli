@@ -212,13 +212,27 @@ setStatement
     ;
 
 // $NewProduct = CREATE MfTest.Product (Name = $Name, Code = $Code);
+// $NewProduct = CREATE MfTest.Product (Name = $Name) COMMIT;
 createObjectStatement
-    : (VARIABLE EQUALS)? CREATE nonListDataType (LPAREN memberAssignmentList? RPAREN)? onErrorClause?
+    : (VARIABLE EQUALS)? CREATE nonListDataType (LPAREN memberAssignmentList? RPAREN)? commitClause? onErrorClause?
     ;
 
 // CHANGE $Product (Name = $NewName, ModifiedDate = [%CurrentDateTime%]);
+// CHANGE $Product (Name = $NewName) COMMIT WITHOUT EVENTS REFRESH;
 changeObjectStatement
-    : CHANGE VARIABLE (LPAREN memberAssignmentList? RPAREN)? REFRESH?
+    : CHANGE VARIABLE (LPAREN memberAssignmentList? RPAREN)? commitClause? REFRESH?
+    ;
+
+// The Commit flag on a create/change activity: Mendix's Microflows$Commit enum.
+// Absent = No (the default, so it is omitted from DESCRIBE output); COMMIT = Yes;
+// COMMIT WITHOUT EVENTS = YesWithoutEvents.
+//
+// This is a modifier, NOT the standalone `COMMIT $Var` activity (commitStatement).
+// The two are told apart by what follows: the activity always names a variable.
+// Because a body statement must be terminated (see microflowStatement), a stray
+// `commit $Other` on the next line cannot be absorbed into this clause.
+commitClause
+    : COMMIT (WITHOUT EVENTS)?
     ;
 
 // Shared by SET, LOOP, aggregate expressions, and validation feedback targets.
