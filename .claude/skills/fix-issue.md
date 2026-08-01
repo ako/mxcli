@@ -20,18 +20,31 @@ to the symptom table below, so the next similar issue costs fewer reads.
 6. After the fix: **add a new row** to the table if the symptom is not already covered.
    **Append it at the END of the table, never at the top.**
 
-> **Why the end matters.** Every bug fix touches this one file, and for a long time
-> new rows went in directly under the header. Two branches fixing two unrelated bugs
-> therefore inserted at the *same line*, and git cannot merge that — it is a conflict
-> by construction, not by bad luck. It cost five separate resolution rounds in one
-> week, and each round risks dropping someone's row.
+> **Conflicts are handled by git, not by where you insert.** Every bug fix touches
+> this one file, so two branches fixing unrelated bugs write to the same place and
+> git raises a conflict. That cost five resolution rounds in one week when rows went
+> in under the header — and moving them to the end did **not** fix it: both sides
+> still append to the same line, so the collision moved with the convention (PRs #76,
+> #77 and #78 all hit it).
 >
-> Appending puts each branch's insert at a different offset, which git merges without
-> help. The table is unordered — it is looked up by matching a symptom, not by
-> reading top to bottom — so position carries no meaning and appending costs nothing.
+> The actual fix is in `.gitattributes`:
 >
-> The rows above pre-date this convention and are left as they are; reordering them
-> would conflict with every open branch at once, which is the problem, not the fix.
+> ```
+> .claude/skills/fix-issue.md merge=union
+> ```
+>
+> git's built-in `union` driver keeps **both** sides of a conflicting hunk instead of
+> raising a conflict. Two fixes that each append a row now merge with no intervention
+> and both rows present. Nothing about where you insert matters for merging any more.
+>
+> Append at the end anyway, for a human reason: it keeps the diff of a fix readable
+> and the table roughly chronological. The table is looked up by matching a symptom,
+> not read top to bottom, so position carries no meaning.
+>
+> **One caveat.** `union` applies to the whole file, so two branches editing the same
+> *prose* line would silently keep both rather than conflict — a visible duplicated
+> line, not corruption. If that starts happening, split the table into its own file so
+> `union` covers only append-only content.
 
 ---
 
