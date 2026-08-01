@@ -438,11 +438,12 @@ func TestMapObjectTree_Loop(t *testing.T) {
 
 func TestMfCommitType(t *testing.T) {
 	cases := map[microflows.CommitType]string{
-		microflows.CommitTypeYes:           "Yes",
-		microflows.CommitTypeYesWithEvents: "Yes",
-		microflows.CommitTypeNoEvent:       "YesWithoutEvents",
-		microflows.CommitTypeNo:            "No",
-		microflows.CommitType(""):          "No",
+		microflows.CommitTypeYes:              "Yes",
+		microflows.CommitTypeYesWithoutEvents: "YesWithoutEvents",
+		microflows.CommitTypeNo:               "No",
+		// An unset flag is Mendix's default, No — the same as an unrecognised one.
+		microflows.CommitType(""):         "No",
+		microflows.CommitType("Nonsense"): "No",
 	}
 	for in, want := range cases {
 		if got := mfCommitType(in); got != want {

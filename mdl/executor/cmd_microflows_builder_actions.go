@@ -86,13 +86,27 @@ func (fb *flowBuilder) addChangeVariableAction(s *ast.MfSetStmt) model.ID {
 	return activity.ID
 }
 
+// commitTypeOf maps the AST's Commit modifier onto the stored Mendix enum. Both
+// create and change previously hardcoded CommitTypeNo, so any project authored or
+// round-tripped through MDL had its commit flags silently cleared (#779).
+func commitTypeOf(f ast.CommitFlag) microflows.CommitType {
+	switch f {
+	case ast.CommitYes:
+		return microflows.CommitTypeYes
+	case ast.CommitYesWithoutEvents:
+		return microflows.CommitTypeYesWithoutEvents
+	default:
+		return microflows.CommitTypeNo
+	}
+}
+
 // addCreateObjectAction creates a CREATE OBJECT statement.
 func (fb *flowBuilder) addCreateObjectAction(s *ast.CreateObjectStmt) model.ID {
 	action := &microflows.CreateObjectAction{
 		BaseElement:       model.BaseElement{ID: model.ID(types.GenerateID())},
 		ErrorHandlingType: fb.ehType(s.ErrorHandling),
 		OutputVariable:    s.Variable,
-		Commit:            microflows.CommitTypeNo,
+		Commit:            commitTypeOf(s.Commit),
 	}
 	// Set entity reference as qualified name (BY_NAME_REFERENCE)
 	entityQN := ""
@@ -238,7 +252,7 @@ func (fb *flowBuilder) addChangeObjectAction(s *ast.ChangeObjectStmt) model.ID {
 		BaseElement:       model.BaseElement{ID: model.ID(types.GenerateID())},
 		ErrorHandlingType: fb.ehType(nil),
 		ChangeVariable:    s.Variable,
-		Commit:            microflows.CommitTypeNo,
+		Commit:            commitTypeOf(s.Commit),
 		RefreshInClient:   s.RefreshInClient || len(s.Changes) == 0,
 	}
 

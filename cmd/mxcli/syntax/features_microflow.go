@@ -82,10 +82,10 @@ func init() {
 		Keywords: []string{
 			"create object", "change object", "commit", "rollback",
 			"delete", "save", "persist", "modify object",
-			"with events", "refresh",
+			"with events", "refresh", "commit flag", "without events",
 		},
-		Syntax:  "$Obj = CREATE Module.Entity (Attr = value);\nCHANGE $Obj (Attr = value);\nCOMMIT $Obj;\nCOMMIT $Obj WITH EVENTS;\nCOMMIT $Obj REFRESH;\nCOMMIT $Obj WITH EVENTS REFRESH;\nDELETE $Obj;\nROLLBACK $Obj;",
-		Example: "$NewOrder = CREATE MyModule.Order (\n  OrderNumber = 'ORD-001',\n  Quantity = $Quantity,\n  CreateDate = [%CurrentDateTime%]\n);\n\nCHANGE $NewOrder (MyModule.Order_Customer = $Customer);\nCOMMIT $NewOrder WITH EVENTS;\nDELETE $OldOrder;\nROLLBACK $DraftOrder;",
+		Syntax:  "$Obj = CREATE Module.Entity (Attr = value) [COMMIT [WITHOUT EVENTS]];\nCHANGE $Obj (Attr = value) [COMMIT [WITHOUT EVENTS]] [REFRESH];\nCOMMIT $Obj;\nCOMMIT $Obj WITH EVENTS;\nCOMMIT $Obj REFRESH;\nCOMMIT $Obj WITH EVENTS REFRESH;\nDELETE $Obj;\nROLLBACK $Obj;\n\n-- The COMMIT modifier on CREATE/CHANGE is the activity's Commit setting\n-- (omitted = No). The standalone COMMIT $Obj is a separate activity.",
+		Example: "$NewOrder = CREATE MyModule.Order (\n  OrderNumber = 'ORD-001',\n  Quantity = $Quantity,\n  CreateDate = [%CurrentDateTime%]\n) COMMIT;\n\nCHANGE $NewOrder (MyModule.Order_Customer = $Customer) COMMIT REFRESH;\nCHANGE $Draft (Status = 'Imported') COMMIT WITHOUT EVENTS;\nDELETE $OldOrder;\nROLLBACK $DraftOrder;",
 		SeeAlso: []string{"microflow.retrieve", "microflow.variables"},
 	})
 
