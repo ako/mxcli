@@ -1,53 +1,11 @@
-# Auto detect text files and perform LF normalization
-* text=auto
-
-# Source code
-*.go text eol=lf
-*.md text eol=lf
-*.json text eol=lf
-*.yml text eol=lf
-*.yaml text eol=lf
-*.toml text eol=lf
-*.sh text eol=lf
-*.bash text eol=lf
-*.star text eol=lf
-*.mdl text eol=lf
-*.txt text eol=lf
-
-# TypeScript/JavaScript
-*.ts text eol=lf
-*.js text eol=lf
-*.tsx text eol=lf
-*.jsx text eol=lf
-
-# ANTLR4 grammar
-*.g4 text eol=lf
-*.java text eol=lf
-
-# Makefiles
-Makefile text eol=lf
-*.mk text eol=lf
-
-# Docker
-Dockerfile text eol=lf
-*.dockerignore text eol=lf
-
-# Git
-.gitignore text eol=lf
-.gitattributes text eol=lf
-
-# Documentation
-*.typ text eol=lf
-
-# Binary files
-*.mpr binary
-*.mpk binary
-*.png binary
-*.jpg binary
-*.jpeg binary
-*.gif binary
-*.svg binary
-*.ico binary
-*.vsix binary
-*.cdx.json binary
-bun.lock binary
+# Append-only knowledge files use git's union merge driver.
+#
+# Every bug fix appends a row to the symptom table in fix-issue.md, so two
+# concurrent fixes always collide on the same line — five resolution rounds in
+# one week, and moving the insertion point from the top to the bottom of the
+# table did not help, because both sides still append to the same place.
+#
+# "union" tells git to keep BOTH sides of a conflicting hunk instead of raising
+# a conflict. That is exactly right for a file that is only ever appended to and
+# is looked up by matching a symptom, so row order carries no meaning.
+.claude/skills/fix-issue.md merge=union
