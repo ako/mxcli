@@ -545,3 +545,93 @@ end;`, mod, mod)); err != nil {
 		t.Errorf("expected ImpactMf in impact output:\n%s", output)
 	}
 }
+
+// TestCatalogRefs_PageActionButton773 covers mendixlabs/mxcli#773: a page and a
+// microflow reachable only through a page action button were invisible to the
+// reference graph. `show references` reported "(no references found)" for the
+// page and `show callers` "(no callers found)" for the microflow, even though a
+// button runs both on every click.
+//
+// The dangerous direction is the false negative: those two outputs are what a
+// developer reads before deleting a document as unreachable.
+//
+// Two independent defects, one per half. The page target lives under
+// Forms$FormSettings.Form and was never extracted at all; the microflow edge WAS
+// extracted (RefKind "action") but CALLERS filtered to RefKind "call" alone.
+func TestCatalogRefs_PageActionButton773(t *testing.T) {
+	env := setupTestEnv(t)
+	defer env.teardown()
+
+	mod := testModule
+
+	if err := env.executeMDL(fmt.Sprintf(
+		`create or modify persistent entity %s.BtnTaskGroup (Name: String(100));`, mod)); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.executeMDL(fmt.Sprintf(`create microflow %s.ACT_BtnCreateTaskGroup () returns Boolean
+begin
+  return true;
+end;`, mod)); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.executeMDL(fmt.Sprintf(`create page %s.BtnSelectCategory
+(
+  title: 'Select category',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  dynamictext txt1 (content: 'pick one')
+}`, mod)); err != nil {
+		t.Fatal(err)
+	}
+	// The two button actions from the issue: a compound create-then-show-page,
+	// and a direct microflow call.
+	if err := env.executeMDL(fmt.Sprintf(`create page %s.BtnHome
+(
+  title: 'Home',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  actionbutton btnNew (
+    caption: 'New',
+    action: create_object %s.BtnTaskGroup then show_page %s.BtnSelectCategory
+  )
+  actionbutton btnRun (
+    caption: 'Run',
+    action: microflow %s.ACT_BtnCreateTaskGroup
+  )
+}`, mod, mod, mod, mod)); err != nil {
+		t.Fatal(err)
+	}
+
+	buildCatalogFull(t, env)
+
+	// Half 1 — the page a button navigates to is a reference.
+	assertRefExists(t, env, mod+".BtnHome", mod+".BtnSelectCategory", "show_page")
+
+	env.output.Reset()
+	if err := env.executor.Execute(&ast.ShowStmt{
+		ObjectType: ast.ShowReferences,
+		Name:       parseQualifiedName(mod + ".BtnSelectCategory"),
+	}); err != nil {
+		t.Fatalf("show references failed: %v", err)
+	}
+	if out := env.output.String(); !strings.Contains(out, mod+".BtnHome") {
+		t.Errorf("show references missed the button that opens the page:\n%s", out)
+	}
+
+	// Half 2 — the microflow a button runs has a caller. The edge was already in
+	// refs as "action"; only CALLERS' RefKind filter hid it.
+	assertRefExists(t, env, mod+".BtnHome", mod+".ACT_BtnCreateTaskGroup", "action")
+
+	env.output.Reset()
+	if err := env.executor.Execute(&ast.ShowStmt{
+		ObjectType: ast.ShowCallers,
+		Name:       parseQualifiedName(mod + ".ACT_BtnCreateTaskGroup"),
+	}); err != nil {
+		t.Fatalf("show callers failed: %v", err)
+	}
+	if out := env.output.String(); !strings.Contains(out, mod+".BtnHome") {
+		t.Errorf("show callers missed the button that runs the microflow:\n%s", out)
+	}
+}

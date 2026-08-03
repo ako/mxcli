@@ -1,0 +1,69 @@
+-- Bug #773: refs/callers miss references created by a page action button's Action
+--
+-- Symptom: a page and a microflow reachable only through a button reported
+-- nothing at all:
+--
+--   References to Reminders.TaskGroup_SelectCategory   (no references found)
+--   Callers of Reminders.ACT_TemplateCategory_CreateTaskGroup   (no callers found)
+--
+-- These are FALSE NEGATIVES, which is the dangerous direction: "no callers
+-- found" is what a developer reads right before deleting a microflow that runs
+-- on every click of a button.
+--
+-- Two independent defects, one per half:
+--
+--   1. The page target was never extracted. A show-page action nests it under
+--      Forms$FormSettings.Form, and `scanWidgetOwnRefs` collected only Entity /
+--      Microflow / Nanoflow — there was no PageRef column to put it in either.
+--      A compound action carries BOTH, so collecting one is not enough:
+--        Forms$CreateObjectClientAction
+--          EntityRef.Entity   = Reminders.TaskGroup
+--          PageSettings.Form  = Reminders.TaskGroup_SelectCategory
+--
+--   2. The microflow edge WAS extracted — as RefKind "action" — but SHOW CALLERS
+--      / SHOW CALLEES filtered to RefKind "call" alone (microflow → microflow),
+--      so the row sat in the refs table unreported. `show references`, which does
+--      not filter, showed it all along; only callers/callees hid it.
+--
+-- Verify (after `refresh catalog full`):
+--   show references to R773.TaskGroup_SelectCategory  -> PAGE R773.Home / show_page
+--   show callers of R773.ACT_CreateTaskGroup          -> R773.Home
+
+create module R773;
+create persistent entity R773.TaskGroup ( Name: string(100) );
+
+create microflow R773.ACT_CreateTaskGroup()
+begin
+  $tg = create R773.TaskGroup ( Name = 'x' );
+end;
+
+-- Reachable ONLY from the button below — the page that read as dead code.
+create page R773.TaskGroup_SelectCategory
+(
+  title: 'Select category',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  dynamictext t1 (content: 'pick one')
+}
+
+create page R773.Home
+(
+  title: 'Home',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  actionbutton btnNew (
+    caption: 'New',
+    action: create_object R773.TaskGroup then show_page R773.TaskGroup_SelectCategory
+  )
+  actionbutton btnRun (
+    caption: 'Run',
+    action: microflow R773.ACT_CreateTaskGroup
+  )
+}
+
+refresh catalog full;
+
+show references to R773.TaskGroup_SelectCategory;
+show callers of R773.ACT_CreateTaskGroup;

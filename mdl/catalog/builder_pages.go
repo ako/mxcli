@@ -34,9 +34,9 @@ func (b *Builder) buildPages() error {
 	if b.fullMode {
 		widgetStmt, err = b.tx.Prepare(`
 			INSERT INTO widgets_data (Id, Name, WidgetType, ContainerId, ContainerQualifiedName, ContainerType,
-				ModuleName, Folder, EntityRef, AttributeRef, MicroflowRef, NanoflowRef, Description,
+				ModuleName, Folder, EntityRef, AttributeRef, MicroflowRef, NanoflowRef, PageRef, Description,
 				ProjectId, SnapshotId)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`)
 		if err != nil {
 			return err
@@ -114,6 +114,7 @@ func (b *Builder) buildPages() error {
 					w.AttributeRef,
 					w.MicroflowRef,
 					w.NanoflowRef,
+					w.PageRef,
 					"",
 					projectID, snapshotID,
 				); err != nil {
@@ -156,9 +157,9 @@ func (b *Builder) buildSnippets() error {
 	if b.fullMode {
 		widgetStmt, err = b.tx.Prepare(`
 			INSERT INTO widgets_data (Id, Name, WidgetType, ContainerId, ContainerQualifiedName, ContainerType,
-				ModuleName, Folder, EntityRef, AttributeRef, MicroflowRef, NanoflowRef, Description,
+				ModuleName, Folder, EntityRef, AttributeRef, MicroflowRef, NanoflowRef, PageRef, Description,
 				ProjectId, SnapshotId)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`)
 		if err != nil {
 			return err
@@ -205,7 +206,7 @@ func (b *Builder) buildSnippets() error {
 					w.ID, w.Name, w.WidgetType,
 					string(sn.ID), qualifiedName, "SNIPPET",
 					moduleName, folder,
-					w.EntityRef, w.AttributeRef, w.MicroflowRef, w.NanoflowRef, "",
+					w.EntityRef, w.AttributeRef, w.MicroflowRef, w.NanoflowRef, w.PageRef, "",
 					projectID, snapshotID,
 				); err != nil {
 					return fmt.Errorf("insert widget %s for snippet %s: %w", w.Name, qualifiedName, err)
@@ -292,6 +293,15 @@ type rawWidgetInfo struct {
 	AttributeRef string
 	MicroflowRef string // action/datasource microflow (Forms$MicroflowSettings.Microflow, …)
 	NanoflowRef  string // action/datasource nanoflow
+	PageRef      string // page opened by the widget's action (Forms$FormSettings.Form)
+}
+
+// widgetRefs are the documents a single widget references in its own BSON.
+type widgetRefs struct {
+	Entity    string
+	Microflow string
+	Nanoflow  string
+	Page      string
 }
 
 // widgetChildKeys are the keys under which a widget nests *other* widgets. The
@@ -301,13 +311,24 @@ var widgetChildKeys = map[string]bool{
 	"Widgets": true, "Rows": true, "FooterWidgets": true, "TabPages": true,
 }
 
-// scanWidgetOwnRefs collects the entity/microflow/nanoflow a widget references in
-// its own (non-child-widget) BSON — datasource entity, on-click microflow, etc.
+// scanWidgetOwnRefs collects the documents a widget references in its own
+// (non-child-widget) BSON — datasource entity, on-click microflow, target page.
 // Returns the lexicographically smallest match of each kind so the result is
 // deterministic regardless of BSON map iteration order; page-level dedup in the
 // refs projection makes the per-widget choice immaterial to the final graph.
-func scanWidgetOwnRefs(w map[string]any) (entity, microflow, nanoflow string) {
-	var ents, mfs, nfs []string
+//
+// The page target is stored under `Form` inside a Forms$FormSettings — the same
+// key a compound action uses alongside its EntityRef, e.g.
+//
+//	Forms$CreateObjectClientAction
+//	  EntityRef.Entity = "Reminders.TaskGroup"
+//	  PageSettings.Form = "Reminders.TaskGroup_SelectCategory"
+//
+// Collecting it is what makes a page reachable only from a button show up in
+// `show references` at all (mendixlabs/mxcli#773); before this, a page opened
+// exclusively from a button read as dead code.
+func scanWidgetOwnRefs(w map[string]any) widgetRefs {
+	var ents, mfs, nfs, pages []string
 	var walk func(v any)
 	walk = func(v any) {
 		switch x := v.(type) {
@@ -320,6 +341,9 @@ func scanWidgetOwnRefs(w map[string]any) (entity, microflow, nanoflow string) {
 			}
 			if s, ok := x["Nanoflow"].(string); ok && s != "" {
 				nfs = append(nfs, s)
+			}
+			if s, ok := x["Form"].(string); ok && s != "" {
+				pages = append(pages, s)
 			}
 			for k, val := range x {
 				if widgetChildKeys[k] {
@@ -346,7 +370,12 @@ func scanWidgetOwnRefs(w map[string]any) (entity, microflow, nanoflow string) {
 		}
 		return m
 	}
-	return min(ents), min(mfs), min(nfs)
+	return widgetRefs{
+		Entity:    min(ents),
+		Microflow: min(mfs),
+		Nanoflow:  min(nfs),
+		Page:      min(pages),
+	}
 }
 
 // extractLayoutRef extracts the layout reference from raw page BSON. Regular
@@ -461,7 +490,9 @@ func extractWidgetsRecursive(w map[string]any) []rawWidgetInfo {
 
 	// Extract datasource entity + action microflow/nanoflow references from this
 	// widget's own content (not its child widgets).
-	widget.EntityRef, widget.MicroflowRef, widget.NanoflowRef = scanWidgetOwnRefs(w)
+	refs := scanWidgetOwnRefs(w)
+	widget.EntityRef, widget.MicroflowRef, widget.NanoflowRef, widget.PageRef =
+		refs.Entity, refs.Microflow, refs.Nanoflow, refs.Page
 
 	// Index user-authored containers, but skip the synthetic
 	// "conditionalVisibilityWidget*" wrapper that mxcli / Studio Pro insert as a

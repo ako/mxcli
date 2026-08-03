@@ -392,6 +392,7 @@ func (c *Catalog) createTables() error {
 			AttributeRef TEXT,
 			MicroflowRef TEXT,
 			NanoflowRef TEXT,
+			PageRef TEXT,
 			Description TEXT,
 			ProjectId TEXT,
 			SnapshotId TEXT

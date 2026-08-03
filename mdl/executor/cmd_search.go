@@ -10,6 +10,16 @@ import (
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
 )
 
+// invocationKinds are the refs.RefKind values that mean "this source invokes that
+// target" — what CALLERS / CALLEES report.
+//
+// 'call' alone (microflow → microflow) was too narrow: a microflow invoked from a
+// page action button is stored as 'action', so `show callers` reported
+// "(no callers found)" for a microflow that a button runs on every click
+// (mendixlabs/mxcli#773). That false negative is the dangerous direction — it is
+// what someone reads before deleting a microflow as unreachable.
+const invocationKinds = "('call', 'action')"
+
 // execShowCallers handles SHOW CALLERS OF Module.Microflow [TRANSITIVE].
 func execShowCallers(ctx *ExecContext, s *ast.ShowStmt) error {
 	if s.Name == nil {
@@ -36,12 +46,12 @@ func execShowCallers(ctx *ExecContext, s *ast.ShowStmt) error {
 			with RECURSIVE callers_cte as (
 				select SourceName as Caller, 1 as Depth
 				from refs
-				where TargetName = ? and RefKind = 'call'
+				where TargetName = ? and RefKind in ` + invocationKinds + `
 				union all
 				select r.SourceName, c.Depth + 1
 				from refs r
 				join callers_cte c on r.TargetName = c.Caller
-				where r.RefKind = 'call' and c.Depth < 10
+				where r.RefKind in ` + invocationKinds + ` and c.Depth < 10
 			)
 			select distinct Caller, min(Depth) as Depth
 			from callers_cte
@@ -53,7 +63,7 @@ func execShowCallers(ctx *ExecContext, s *ast.ShowStmt) error {
 		query = `
 			select distinct SourceName as Caller, 1 as Depth
 			from refs
-			where TargetName = ? and RefKind = 'call'
+			where TargetName = ? and RefKind in ` + invocationKinds + `
 			ORDER by Caller
 		`
 	}
@@ -99,12 +109,12 @@ func execShowCallees(ctx *ExecContext, s *ast.ShowStmt) error {
 			with RECURSIVE callees_cte as (
 				select TargetName as Callee, 1 as Depth
 				from refs
-				where SourceName = ? and RefKind = 'call'
+				where SourceName = ? and RefKind in ` + invocationKinds + `
 				union all
 				select r.TargetName, c.Depth + 1
 				from refs r
 				join callees_cte c on r.SourceName = c.Callee
-				where r.RefKind = 'call' and c.Depth < 10
+				where r.RefKind in ` + invocationKinds + ` and c.Depth < 10
 			)
 			select distinct Callee, min(Depth) as Depth
 			from callees_cte
@@ -116,7 +126,7 @@ func execShowCallees(ctx *ExecContext, s *ast.ShowStmt) error {
 		query = `
 			select distinct TargetName as Callee, 1 as Depth
 			from refs
-			where SourceName = ? and RefKind = 'call'
+			where SourceName = ? and RefKind in ` + invocationKinds + `
 			ORDER by Callee
 		`
 	}

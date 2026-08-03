@@ -24,15 +24,15 @@ func TestScanWidgetOwnRefs(t *testing.T) {
 			},
 		},
 	}
-	ent, mf, nf := scanWidgetOwnRefs(dataView)
-	if ent != "Sales.Order" {
-		t.Errorf("entity = %q, want Sales.Order", ent)
+	refs := scanWidgetOwnRefs(dataView)
+	if refs.Entity != "Sales.Order" {
+		t.Errorf("entity = %q, want Sales.Order", refs.Entity)
 	}
-	if mf != "" {
-		t.Errorf("microflow = %q, want empty (child button's MF must not leak to parent)", mf)
+	if refs.Microflow != "" {
+		t.Errorf("microflow = %q, want empty (child button's MF must not leak to parent)", refs.Microflow)
 	}
-	if nf != "" {
-		t.Errorf("nanoflow = %q, want empty", nf)
+	if refs.Nanoflow != "" {
+		t.Errorf("nanoflow = %q, want empty", refs.Nanoflow)
 	}
 
 	// A button's own microflow + nanoflow.
@@ -41,8 +41,8 @@ func TestScanWidgetOwnRefs(t *testing.T) {
 		"Action": map[string]any{"Settings": map[string]any{"Microflow": "M.DoThing"}},
 		"Extra":  map[string]any{"Nanoflow": "M.DoNano"},
 	}
-	if _, mf, nf := scanWidgetOwnRefs(button); mf != "M.DoThing" || nf != "M.DoNano" {
-		t.Errorf("button refs = (%q,%q), want (M.DoThing, M.DoNano)", mf, nf)
+	if r := scanWidgetOwnRefs(button); r.Microflow != "M.DoThing" || r.Nanoflow != "M.DoNano" {
+		t.Errorf("button refs = (%q,%q), want (M.DoThing, M.DoNano)", r.Microflow, r.Nanoflow)
 	}
 
 	// Determinism: multiple microflows → the lexicographically smallest, stable
@@ -52,14 +52,14 @@ func TestScanWidgetOwnRefs(t *testing.T) {
 		"B": map[string]any{"Microflow": "M.Alpha"},
 	}
 	for range 5 {
-		if _, mf, _ := scanWidgetOwnRefs(multi); mf != "M.Alpha" {
-			t.Fatalf("non-deterministic microflow pick: got %q, want M.Alpha", mf)
+		if r := scanWidgetOwnRefs(multi); r.Microflow != "M.Alpha" {
+			t.Fatalf("non-deterministic microflow pick: got %q, want M.Alpha", r.Microflow)
 		}
 	}
 
 	// No refs.
-	if e, m, n := scanWidgetOwnRefs(map[string]any{"$Type": "Forms$Label"}); e != "" || m != "" || n != "" {
-		t.Errorf("expected no refs, got (%q,%q,%q)", e, m, n)
+	if r := (scanWidgetOwnRefs(map[string]any{"$Type": "Forms$Label"})); r != (widgetRefs{}) {
+		t.Errorf("expected no refs, got %+v", r)
 	}
 }
 
@@ -245,9 +245,9 @@ func TestExtractWidgetsRecursive(t *testing.T) {
 	t.Run("indexes a styled conditionalVisibilityWidget (not transparent)", func(t *testing.T) {
 		// If a wrapper-named container carries styling it is a real user widget.
 		w := map[string]any{
-			"$ID":       "div3",
-			"Name":      "conditionalVisibilityWidget9",
-			"$Type":     "Forms$DivContainer",
+			"$ID":        "div3",
+			"Name":       "conditionalVisibilityWidget9",
+			"$Type":      "Forms$DivContainer",
 			"Appearance": map[string]any{"Class": "card"},
 		}
 		got := extractWidgetsRecursive(w)
