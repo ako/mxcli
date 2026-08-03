@@ -7,12 +7,17 @@ package catalog
 //
 // History:
 //
+//	9 — widgets_data gained PageRef (the page a widget's action opens), so the
+//	    reference graph can record a page reachable only from a button
+//	    (mendixlabs/mxcli#773). A cache written before this carries a
+//	    widgets_data without the column: the INSERT would fail, and any query
+//	    naming PageRef errors "no such column".
 //	2 — split each domain table into <name>_data + <name> view that JOINs
 //	    snapshots, removing the denormalized ProjectName / SnapshotDate /
 //	    SnapshotSource / SourceId / SourceBranch / SourceRevision columns
 //	    from every row (issue #576).
 //	1 — initial flat schema with denormalized snapshot columns on every row.
-const CatalogSchemaVersion = "8"
+const CatalogSchemaVersion = "9"
 
 // MetaSchemaVersion is the catalog_meta key that records the schema version
 // the cache was built against.

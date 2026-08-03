@@ -775,3 +775,57 @@ func TestPartialViewsExposeSnapshotColumns(t *testing.T) {
 		t.Errorf("external_entities view unexpectedly exposes SourceBranch (drift from original schema)")
 	}
 }
+
+// TestWidgetsDataColumns pins the widgets_data column list.
+//
+// It exists because adding a column here is only half a change: a cache file on
+// disk keeps the table it was created with (createTables uses CREATE TABLE IF
+// NOT EXISTS), so a new column reaches existing users only when
+// CatalogSchemaVersion is bumped and migrateIfSchemaMismatch drops the old
+// shape. Adding PageRef for mendixlabs/mxcli#773 without the bump left
+// `show references` still reporting "(no references found)" on any project with
+// an existing catalog.db, and `select PageRef from CATALOG.widgets` failing with
+// "no such column" — the fix looked complete and shipped nothing.
+//
+// If this test fails because you changed the schema: update the list AND bump
+// CatalogSchemaVersion (with a line in its History comment).
+func TestWidgetsDataColumns(t *testing.T) {
+	cat, err := New()
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer cat.Close()
+
+	rows, err := cat.CatalogDB().Query(`PRAGMA table_info(widgets_data)`)
+	if err != nil {
+		t.Fatalf("table_info: %v", err)
+	}
+	defer rows.Close()
+
+	var got []string
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull, pk int
+		var dflt any
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &dflt, &pk); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		got = append(got, name)
+	}
+
+	want := []string{
+		"Id", "Name", "WidgetType", "ContainerId", "ContainerQualifiedName",
+		"ContainerType", "ModuleName", "Folder", "EntityRef", "AttributeRef",
+		"MicroflowRef", "NanoflowRef", "PageRef", "Description",
+		"ProjectId", "SnapshotId",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("widgets_data columns = %v, want %v\n(bump CatalogSchemaVersion when this changes)", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("column %d = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
