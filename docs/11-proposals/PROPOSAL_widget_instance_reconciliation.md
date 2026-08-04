@@ -69,6 +69,30 @@ are about the MDL `UPDATE WIDGETS SET … WHERE …` statement, which *sets prop
 values* the author chooses. This proposal *reconciles schema* the author does not
 choose. Different operation, and the naming must not collide — see Open Questions.
 
+## Related finding (2026-08-04): marketplace modules need the same primitive
+
+While investigating whether an installed marketplace module can be diffed against its
+published package
+([`PROPOSAL_marketplace_module_upgrade.md`](PROPOSAL_marketplace_module_upgrade.md)),
+the drift turned out to be **entirely** pluggable-widget BSON:
+
+| Module | Pages / pluggable widgets | Drift inside `CustomWidgets$` | Outside |
+|---|---|---|---|
+| Administration 4.3.2 | 9 pages | 15,041 paths | 0 |
+| WebActions 2.11.0 | none | 0 | 1 (`PackageId`, differs by construction) |
+
+An installed module is byte-identical to its version-converted package except inside
+widget subtrees — because those instances were reconciled against the *consuming
+project's* widget packages on import. That is this proposal's subject seen from the
+other side.
+
+The consequence for both: a way to ask *"does this stored widget instance match this
+installed package?"* is needed by `widget sync` (to decide what to reconcile) and by
+`marketplace diff` (to compare a widget subtree without drowning in envelope noise).
+It should be built once. Whichever of the two is implemented first should place it
+where the other can use it — a comparison entry point in `modelsdk/widgets` next to
+`AugmentTemplate` is the obvious home.
+
 ## BSON Structure
 
 No new document type. The operation rewrites two paired arrays inside every stored

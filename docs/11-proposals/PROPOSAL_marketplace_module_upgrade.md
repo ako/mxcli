@@ -133,7 +133,52 @@ A naive `mxcli marketplace diff` built on BSON comparison would therefore report
 module as heavily modified and be worse than useless. **This is the trap the proposal
 exists to document.**
 
+## Status update (2026-08-04) — the drift is entirely pluggable-widget BSON
+
+Measured after the first draft, and it **supersedes the DESCRIBE-based design below**.
+
+Attributing each differing path to the nearest enclosing `$Type` shows the 15,041
+differences are not spread through the module at all:
+
+| Module | Pages / pluggable widgets | Elements | Orphans | Drift inside `CustomWidgets$` | Outside |
+|---|---|---|---|---|---|
+| Administration 4.3.2 | 9 pages | 27 ↔ 27 | 0 | **15,041** | **0** |
+| WebActions 2.11.0 | none | 13 ↔ 13 | 0 | **0** | 1 |
+
+The two modules were chosen to make opposite predictions and both held. The single
+WebActions difference is `Projects$ModuleSettings/PackageId`, a per-install GUID that
+differs by construction.
+
+So the model is:
+
+> An installed marketplace module is **byte-identical** to its version-converted
+> package, except (a) `PackageId`, and (b) everything inside a `CustomWidgets$`
+> subtree — the pluggable-widget envelope, which is reconciled against the *consuming
+> project's* widget packages on import.
+
+Three consequences:
+
+1. **Drift detection can be structural after all.** For every element outside a
+   pluggable-widget subtree, a path-level comparison against the converted package is
+   already exact. The DESCRIBE-based design below is heavier than necessary.
+2. **Open question 2 dissolves.** DESCRIBE coverage no longer bounds the feature, and
+   with it the "not comparable" bucket and its honesty problem — for non-widget
+   elements. Only widget subtrees need special handling.
+3. **Open question 3 is answered: yes.** The drift is the same phenomenon as
+   mendixlabs/mxcli#716. The widget-aware comparison this needs is the same primitive
+   [`PROPOSAL_widget_instance_reconciliation.md`](PROPOSAL_widget_instance_reconciliation.md)
+   needs to decide whether a stored instance matches its installed package. Building
+   it once serves both.
+
+Revised design: compare structurally against the converted package; ignore
+`PackageId`; and inside `CustomWidgets$` subtrees defer to the shared
+widget-comparison primitive rather than comparing raw paths. The negative control in
+the test plan is unchanged and still leads — it is what produced this result.
+
 ## Design
+
+> Superseded by the status update above for the non-widget case; retained because the
+> reasoning still applies inside widget subtrees, where raw comparison does not work.
 
 ### Compare semantically, not structurally
 
@@ -255,19 +300,22 @@ The control from §3 is the primary test and it is fully reproducible:
 1. **Scratch-project conversion cost.** Each diff runs `mx convert` on a package
    (~seconds). Acceptable for an explicit command; too slow to run implicitly inside
    `mxcli check`. Should the converted package be cached under `~/.mxcli/`?
-2. **DESCRIBE coverage is the real bound.** Which document types in a typical
-   marketplace module lack DESCRIBE today? `Security$ModuleSecurity` and
-   `Projects$ModuleSettings` appeared in the §3 control and need checking. The answer
-   sizes the "not comparable" bucket and therefore the feature's honesty.
-3. **Is the widget-instance difference in §3 the same phenomenon as #716?** The
-   `TextTemplate`/`ClientTemplate` subtrees that differ are pluggable-widget envelope
-   fields. If the installed module's widget instances are reconciled against the
-   consuming project's widget packages on import, that connects this proposal to
+2. ~~**DESCRIBE coverage is the real bound.**~~ **Resolved** by the status update:
+   the comparison is structural outside widget subtrees, so DESCRIBE coverage does not
+   bound it.
+3. ~~**Is the widget-instance difference in §3 the same phenomenon as #716?**~~
+   **Resolved: yes.** All 15,041 differing paths are inside `CustomWidgets$` subtrees
+   and none outside. This proposal and
    [`PROPOSAL_widget_instance_reconciliation.md`](PROPOSAL_widget_instance_reconciliation.md)
-   and both may want the same comparison primitive.
+   want the same widget-comparison primitive; it should be built once, for both.
 4. **Modules with no recorded version.** `mx show-module-version` reports *"Module
    'DataWidgets' does not have a version"* while `mxcli show modules` reports
    `Marketplace v3.5.0` — they read different fields. mxcli has no writer for
    `AppStoreVersion`, so a hand-updated module cannot be recorded as such (FINDINGS
    #37). Should this proposal include `set module version`, or does that belong with
    phase 2?
+5. **Where does the shared widget primitive live?** It is needed by `widget sync` (to
+   decide whether a stored instance matches its package) and by this command (to
+   compare a widget subtree without drowning in envelope noise). Neither proposal owns
+   it. A `modelsdk/widgets` comparison entry point next to `AugmentTemplate` is the
+   obvious home, but that decision should be made when the first of the two is built.
