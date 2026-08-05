@@ -10,6 +10,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 
 	"github.com/mendixlabs/mxcli/mdl/bsonutil"
+	"github.com/mendixlabs/mxcli/mdl/types"
 )
 
 // widget_convert.go moves a stored widget subtree between the two representations the
@@ -106,4 +107,106 @@ func mapValueToWidgetBSON(key string, v any) any {
 // *Pointer references (TypePointer binds a WidgetProperty to its WidgetPropertyType).
 func isWidgetIDField(key string) bool {
 	return key == "$ID" || strings.HasSuffix(key, "Pointer")
+}
+
+// ensureUniqueWidgetIDs guarantees every $ID in a widget subtree is distinct.
+//
+// This is not defensive tidying — without it `mxcli widget sync` CORRUPTS the project.
+// AugmentTemplate adds a property to an object-list property (a DataGrid2 column set)
+// by giving every list entry a copy of the same constructed node. Those copies carry
+// the same placeholder ID, so remapping placeholder->UUID by VALUE assigns all of them
+// one UUID. The result loads and passes `mx check`, then fails at save time with
+//
+//	System.InvalidOperationException: Duplicate Guid in unit page template '...'
+//
+// and — because `mx update-widgets` collapses mprcontents/ BEFORE it fails to save —
+// leaves the project both flattened and unloadable ("Root unit not found"). Reported
+// against PR #89 on a real project; the template pipeline never hit it because a
+// template has exactly one list entry.
+//
+// Scoping matters. A TypePointer that repeats across list entries is CORRECT: every
+// column's WidgetProperty for a given key points at the one shared WidgetPropertyType.
+// So only $ID is made unique, and when an $ID is regenerated, references to it are
+// rewritten only within the same subtree — never across siblings.
+func ensureUniqueWidgetIDs(v any, seen map[string]bool) any {
+	return uniquifyIDs(v, seen, map[string]string{})
+}
+
+func uniquifyIDs(v any, seen map[string]bool, scope map[string]string) any {
+	switch t := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(t))
+		// The node's own $ID first, so children can be rewritten against it.
+		if id, ok := t["$ID"].(string); ok {
+			if seen[id] {
+				fresh := types.GenerateID()
+				scope[id] = fresh
+				out["$ID"] = fresh
+				seen[fresh] = true
+			} else {
+				seen[id] = true
+				out["$ID"] = id
+			}
+		}
+		for k, val := range t {
+			if k == "$ID" {
+				continue
+			}
+			if s, ok := val.(string); ok && isWidgetIDField(k) {
+				if fresh, remapped := scope[s]; remapped {
+					out[k] = fresh
+					continue
+				}
+				out[k] = s
+				continue
+			}
+			out[k] = uniquifyIDs(val, seen, scope)
+		}
+		return out
+	case []any:
+		out := make([]any, len(t))
+		for i, item := range t {
+			// Each list entry is its own reference scope: sibling entries legitimately
+			// share pointers to the schema, but must not share $IDs.
+			child := map[string]string{}
+			for k, val := range scope {
+				child[k] = val
+			}
+			out[i] = uniquifyIDs(item, seen, child)
+		}
+		return out
+	}
+	return v
+}
+
+// widgetIDsAreUnique reports the first $ID that occurs more than once in an encoded
+// unit — the check that must pass before anything is written to disk.
+func widgetIDsAreUnique(doc bson.D) (string, bool) {
+	seen := map[string]bool{}
+	var dup string
+	var walk func(any)
+	walk = func(v any) {
+		if dup != "" {
+			return
+		}
+		switch t := v.(type) {
+		case bson.D:
+			if id, ok := idOf(t); ok {
+				if seen[id] {
+					dup = id
+					return
+				}
+				seen[id] = true
+			}
+			for _, e := range t {
+				walk(e.Value)
+			}
+		case bson.A:
+			for _, item := range t {
+				walk(item)
+			}
+		}
+	}
+	walk(doc)
+	return dup, dup == ""
 }

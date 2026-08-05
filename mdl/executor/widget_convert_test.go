@@ -145,3 +145,112 @@ func TestWidgetRoundTripPreservesTypePointerBinding(t *testing.T) {
 		t.Errorf("pairing broken: $ID %s != TypePointer %s", gotID, gotPtr)
 	}
 }
+
+// AugmentTemplate adds a property to an object-list property (DataGrid2 columns) by
+// giving every list entry a copy of the same constructed node, so a placeholder that
+// appears once per entry must become a DIFFERENT id per entry. Remapping by value gave
+// them all one id, which Mendix accepts on load and on `mx check` and then rejects at
+// SAVE time with "Duplicate Guid in unit page template" — after `mx update-widgets` has
+// already collapsed mprcontents/, leaving the project flattened and unloadable.
+// Reported against PR #89; 18 units and 432 excess occurrences on the reference fixture.
+func TestEnsureUniqueWidgetIDsSeparatesListEntries(t *testing.T) {
+	// Three list entries that each carry a copy of the same node, all pointing at the
+	// one shared PropertyType — which is correct and must NOT be rewritten.
+	const sharedPT = "aaaaaaaaaaaa4aaaaaaaaaaaaaaaaaaa"
+	entry := func() map[string]any {
+		return map[string]any{
+			"$ID":         "bbbbbbbbbbbb4bbbbbbbbbbbbbbbbbbb",
+			"$Type":       "CustomWidgets$WidgetProperty",
+			"TypePointer": sharedPT,
+			"Value": map[string]any{
+				"$ID":   "cccccccccccc4ccccccccccccccccccc",
+				"$Type": "CustomWidgets$WidgetValue",
+			},
+		}
+	}
+	obj := map[string]any{
+		"$ID":   "dddddddddddd4ddddddddddddddddddd",
+		"$Type": "CustomWidgets$WidgetObject",
+		"Objects": []any{
+			float64(2),
+			map[string]any{"$ID": "e1", "Properties": []any{float64(2), entry()}},
+			map[string]any{"$ID": "e2", "Properties": []any{float64(2), entry()}},
+			map[string]any{"$ID": "e3", "Properties": []any{float64(2), entry()}},
+		},
+	}
+
+	out := ensureUniqueWidgetIDs(obj, map[string]bool{})
+
+	ids := map[string]int{}
+	pointers := map[string]int{}
+	var walk func(any)
+	walk = func(v any) {
+		switch n := v.(type) {
+		case map[string]any:
+			if id, ok := n["$ID"].(string); ok {
+				ids[id]++
+			}
+			if p, ok := n["TypePointer"].(string); ok {
+				pointers[p]++
+			}
+			for _, val := range n {
+				walk(val)
+			}
+		case []any:
+			for _, item := range n {
+				walk(item)
+			}
+		}
+	}
+	walk(out)
+
+	for id, n := range ids {
+		if n > 1 {
+			t.Errorf("$ID %q appears %d times — Mendix refuses to save a duplicate GUID", id, n)
+		}
+	}
+	// 1 object + 3 entries + 3 properties + 3 values = 10 distinct ids.
+	if len(ids) != 10 {
+		t.Errorf("got %d distinct $IDs, want 10", len(ids))
+	}
+	// The shared schema pointer is legitimately repeated and must survive untouched.
+	if pointers[sharedPT] != 3 {
+		t.Errorf("TypePointer to the shared PropertyType survived %d of 3 times (%v) — "+
+			"rewriting it would unbind each column from its schema", pointers[sharedPT], pointers)
+	}
+}
+
+// The test above exercises ensureUniqueWidgetIDs directly, so it passes even if the
+// call is removed from applyToWidget — it proves the function works, not that it is
+// wired in. widgetIDsAreUnique is the backstop that catches the wiring: it runs on the
+// encoded unit immediately before the write, and apply refuses rather than persisting
+// a document Mendix would accept now and reject at save time. Verified by deleting the
+// ensureUniqueWidgetIDs call and re-running the fixture, which then aborts with
+// "refusing to write" instead of corrupting the project.
+func TestWidgetIDsAreUniqueDetectsDuplicates(t *testing.T) {
+	dup := primitive.Binary{Subtype: 0x00, Data: bytes.Repeat([]byte{0x7C}, 16)}
+	other := primitive.Binary{Subtype: 0x00, Data: bytes.Repeat([]byte{0x2E}, 16)}
+
+	clean := bson.D{
+		{Key: "$ID", Value: dup},
+		{Key: "Widgets", Value: bson.A{bson.D{{Key: "$ID", Value: other}}}},
+	}
+	if _, ok := widgetIDsAreUnique(clean); !ok {
+		t.Error("reported a duplicate in a document that has none")
+	}
+
+	dirty := bson.D{
+		{Key: "$ID", Value: dup},
+		{Key: "Widgets", Value: bson.A{
+			bson.D{{Key: "$ID", Value: other}},
+			bson.D{{Key: "$ID", Value: dup}}, // same id as the root
+		}},
+	}
+	got, ok := widgetIDsAreUnique(dirty)
+	if ok {
+		t.Fatal("missed a duplicate GUID — this is the check that stops the project being corrupted")
+	}
+	if got == "" {
+		t.Error("did not name the offending id")
+	}
+}

@@ -35,6 +35,10 @@ not. Preview with --dry-run and verify with 'mx check' before relying on it.
 
 Applying currently requires MXCLI_ENGINE=legacy; --dry-run works on both engines.
 
+Every unit is checked for duplicate GUIDs before it is written, and the run aborts
+rather than persisting one: Mendix accepts a duplicate on load and on 'mx check',
+then refuses to save the project.
+
 mxcli writes a widget instance correctly for the package installed at authoring
 time. When that package is later upgraded, the stored instances go stale and
 Mendix reports CE0463 "the definition of this widget has changed" on each one.

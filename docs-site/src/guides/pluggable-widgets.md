@@ -196,6 +196,12 @@ that has not yet been identified keeps DataGrid2 and Gallery instances erroring.
 Preview with `--dry-run` and confirm with `mx check` before relying on it. Applying
 currently needs `MXCLI_ENGINE=legacy`; `--dry-run` works on either engine.
 
+Each unit is verified for duplicate GUIDs before being written, and the run aborts
+rather than writing one. This matters because Mendix validates GUID uniqueness only
+when *saving*: a duplicate loads fine and passes `mx check`, then breaks the next save
+— and `mx update-widgets` collapses `mprcontents/` before it discovers the problem,
+leaving the project both flattened and unloadable.
+
 ## Marketplace and custom widgets
 
 `mxcli widget describe -p app.mpr <widget-id>` works for **any** widget installed in the

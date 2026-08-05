@@ -123,7 +123,24 @@ func ApplyWidgetSync(b backend.RawUnitBackend, projectPath string, opts SyncOpti
 		if changed == 0 {
 			continue
 		}
-		encoded, err := bson.Marshal(out)
+
+		// Never write a unit carrying a duplicate GUID. Mendix accepts one on load and
+		// on `mx check`, then refuses to SAVE the project — and `mx update-widgets`
+		// collapses mprcontents/ before it discovers that, leaving the project both
+		// flattened and unloadable. A corruption that only surfaces later, after the
+		// safety net has been destroyed, has to be caught before it reaches disk.
+		outDoc, isDoc := out.(bson.D)
+		if !isDoc {
+			return nil, plan, fmt.Errorf("unit %s: reconciliation did not produce a document", unitID)
+		}
+		if dup, ok := widgetIDsAreUnique(outDoc); !ok {
+			return nil, plan, fmt.Errorf(
+				"unit %s (%s): reconciliation would write duplicate GUID %s — refusing to write, "+
+					"no changes have been made to this unit; please report this project shape",
+				unitID, bsonString(doc, "Name"), dup)
+		}
+
+		encoded, err := bson.Marshal(outDoc)
 		if err != nil {
 			return nil, plan, fmt.Errorf("encode unit %s: %w", unitID, err)
 		}
@@ -189,6 +206,14 @@ func applyToWidget(widget bson.D, def *mpk.WidgetDefinition) (bson.D, bool) {
 	}
 	newType := rewriteWidgetIDs(tmpl.Type, remap)
 	newObj := rewriteWidgetIDs(tmpl.Object, remap)
+
+	// Remapping by VALUE is not sufficient: AugmentTemplate gives every entry of an
+	// object-list property a copy of the same constructed node, so one placeholder
+	// becomes N nodes that would all receive the same UUID. See ensureUniqueWidgetIDs
+	// — this is the duplicate-Guid corruption reported against PR #89.
+	seen := map[string]bool{}
+	newType = ensureUniqueWidgetIDs(newType, seen)
+	newObj = ensureUniqueWidgetIDs(newObj, seen)
 
 	widget = setField(widget, "Type", mapToWidgetDoc(newType))
 	widget = setField(widget, "Object", mapToWidgetDoc(newObj))
