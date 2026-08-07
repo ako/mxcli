@@ -1,0 +1,63 @@
+-- ============================================================================
+-- Issue #851 — `alter page … set Editable = [expr]` produced an unopenable project
+-- ============================================================================
+--
+-- The ALTER path built the Forms$Conditional{Visibility,Editability}Settings node
+-- by hand and wrote `Attribute: null`. Attribute is a BY_NAME AttributeIdentifier,
+-- so its unset value is the empty string; a null fails the reader with
+--
+--   StorageLoadException: Conditional editability settings has an invalid value ''
+--   for property Attribute
+--
+-- The CREATE path already encoded it as "" (via the TypeDefaults in
+-- mdl/backend/modelsdk/widget_write.go), which is why a widget authored with
+-- CREATE loaded and the same widget authored with ALTER did not. Neither
+-- `mxcli check` nor `mx check` inspects the stored value, so both reported
+-- success on the broken project.
+--
+-- To verify in Studio Pro:
+--   1. Run this script.
+--   2. Open Bug851.PageAltered — it must open without a StorageLoadException,
+--      and txtAltered must show "Editable: conditional" with the expression.
+--   3. Compare against Bug851.PageCreated (same settings via CREATE): the two
+--      widgets' conditional settings must be structurally identical.
+--   4. mx check should report 0 errors.
+-- ============================================================================
+
+CREATE MODULE Bug851;
+
+CREATE OR MODIFY PERSISTENT ENTITY Bug851.Thing (
+  Slug: String(200)
+);
+
+-- Reference: the CREATE path, which was already correct.
+CREATE OR REPLACE PAGE Bug851.PageCreated (
+  Params: { $currentObject: Bug851.Thing },
+  Title: 'Conditional settings via CREATE',
+  Layout: Atlas_Core.Atlas_Default
+) {
+  dataview dv (datasource: $currentObject) {
+    textbox txtCreated (
+      label: 'Slug',
+      attribute: Slug,
+      editable: [$currentObject/Slug != ''],
+      visible: [$currentObject/Slug != '']
+    )
+  }
+}
+
+-- The regression: the same two settings applied through ALTER.
+CREATE OR REPLACE PAGE Bug851.PageAltered (
+  Params: { $currentObject: Bug851.Thing },
+  Title: 'Conditional settings via ALTER',
+  Layout: Atlas_Core.Atlas_Default
+) {
+  dataview dv (datasource: $currentObject) {
+    textbox txtAltered (label: 'Slug', attribute: Slug)
+  }
+}
+
+ALTER PAGE Bug851.PageAltered {
+  set Editable = [$currentObject/Slug != ''] on txtAltered;
+  set Visible = [$currentObject/Slug != ''] on txtAltered;
+};

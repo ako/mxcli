@@ -346,6 +346,80 @@ func TestSetWidgetProperty_VisibleExpression(t *testing.T) {
 	})
 }
 
+// lookupBsonKey reports a key's value AND whether the key is present, which
+// bsonnav.DGet cannot distinguish (an absent key and a stored null both read
+// back as nil). Presence is the thing under test here: Mendix fills an omitted
+// optional property on load, so "absent" and "null" fail differently.
+func lookupBsonKey(doc bson.D, key string) (any, bool) {
+	for _, e := range doc {
+		if e.Key == key {
+			return e.Value, true
+		}
+	}
+	return nil, false
+}
+
+// makeEditabilityWidget builds an input widget with null conditional
+// visibility/editability slots (as Studio Pro writes them when unset).
+func makeEditabilityWidget(name string) bson.D {
+	return bson.D{
+		{Key: "$Type", Value: "Forms$TextBox"},
+		{Key: "Name", Value: name},
+		{Key: "ConditionalVisibilitySettings", Value: nil},
+		{Key: "ConditionalEditabilitySettings", Value: nil},
+	}
+}
+
+// TestSetWidgetConditionalSetting_AttributeIsEmptyString locks in the fix for
+// issue #851: `alter page … set Editable = [expr]` produced a project Studio Pro
+// refused to load with StorageLoadException "Conditional editability settings has
+// an invalid value ” for property Attribute".
+//
+// Attribute is a BY_NAME AttributeIdentifier, so the absent value is the empty
+// string, not null — the CREATE path already encodes it that way via the
+// Forms$Conditional{Visibility,Editability}Settings TypeDefaults
+// (EmptyStringFields: Attribute, see mdl/backend/modelsdk/widget_write.go). The
+// ALTER path built the node by hand and wrote nil, so the same widget authored
+// through ALTER instead of CREATE was unloadable.
+func TestSetWidgetConditionalSetting_AttributeIsEmptyString(t *testing.T) {
+	cases := []struct {
+		prop  string // MDL property as the visitor delivers the [expr] form
+		field string // BSON slot it lands in
+	}{
+		{"EditableIf", "ConditionalEditabilitySettings"},
+		{"VisibleIf", "ConditionalVisibilitySettings"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.prop, func(t *testing.T) {
+			rawData := makeRawPage(makeEditabilityWidget("b1"))
+			m := &Mutator{rawData: rawData, widgetFinder: findBsonWidget}
+			expr := "$currentObject/Slug != ''"
+			if err := m.SetWidgetProperty("b1", tc.prop, expr); err != nil {
+				t.Fatalf("SetWidgetProperty(%s) failed: %v", tc.prop, err)
+			}
+			node := bsonnav.DGetDoc(findBsonWidget(rawData, "b1").widget, tc.field)
+			if node == nil {
+				t.Fatalf("expected a %s node", tc.field)
+			}
+			if got := bsonnav.DGetString(node, "Expression"); got != expr {
+				t.Errorf("Expression = %q, want %q", got, expr)
+			}
+			attr, ok := lookupBsonKey(node, "Attribute")
+			if !ok {
+				t.Fatal("Attribute key missing — Studio Pro requires the slot to be present")
+			}
+			if attr != any("") {
+				t.Errorf("Attribute = %#v, want %#v — a null here is not a valid "+
+					"AttributeIdentifier and Studio Pro refuses to load the page", attr, "")
+			}
+			// SourceVariable is a BY_ID reference and stays null when unset.
+			if sv, ok := lookupBsonKey(node, "SourceVariable"); !ok || sv != nil {
+				t.Errorf("SourceVariable = %#v (present=%v), want nil", sv, ok)
+			}
+		})
+	}
+}
+
 func TestSetWidgetProperty_ButtonStyle(t *testing.T) {
 	w1 := bson.D{
 		{Key: "$Type", Value: "Pages$ActionButton"},

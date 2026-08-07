@@ -2139,7 +2139,14 @@ func setWidgetConditionalSettingMut(widget bson.D, field, typeName, expression s
 	doc := bson.D{
 		{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
 		{Key: "$Type", Value: typeName},
-		{Key: "Attribute", Value: nil},
+		// Attribute is a BY_NAME AttributeIdentifier: unset is the empty string,
+		// NOT null. A null fails the reader with StorageLoadException "…has an
+		// invalid value '' for property Attribute" and the project will not open,
+		// while `mx check` still passes. The CREATE path encodes it the same way
+		// via the Forms$Conditional{Visibility,Editability}Settings TypeDefaults
+		// (mdl/backend/modelsdk/widget_write.go, EmptyStringFields); this ALTER
+		// path builds the node by hand and has to match. Issue #851.
+		{Key: "Attribute", Value: ""},
 		{Key: "Conditions", Value: bson.A{int32(3)}},
 		{Key: "Expression", Value: expression},
 	}
