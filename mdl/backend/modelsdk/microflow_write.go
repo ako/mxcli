@@ -543,6 +543,21 @@ func microflowActionToGen(action microflows.MicroflowAction) element.Element {
 		}
 		addPartList(g, "ParameterMappings", mappings)
 		return g
+	case *microflows.DownloadFileAction:
+		// DOWNLOAD FILE. Without this case the action fell through to
+		// `default: return nil` and the enclosing ActionActivity was written with
+		// no Action at all — `mxcli exec` reported "Created microflow" and only
+		// `mx check` noticed, as CE0008 "No action defined." (issue #850).
+		//
+		// The storage key is ShowFileInBrowser, not ShowInBrowser; the gen setter
+		// binds the right one (legacy's parseDownloadFileAction reads the wrong
+		// key — see TestActionFromGen_DownloadFile).
+		g := genMf.NewDownloadFileAction()
+		g.SetID(element.ID(a.ID))
+		g.SetErrorHandlingType(orDefault(string(a.ErrorHandlingType), "Rollback"))
+		g.SetFileDocumentVariableName(a.FileDocument)
+		g.SetShowFileInBrowser(a.ShowInBrowser)
+		return g
 	case *microflows.LogMessageAction:
 		g := genMf.NewLogMessageAction()
 		g.SetID(element.ID(a.ID))

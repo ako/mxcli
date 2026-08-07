@@ -1,0 +1,49 @@
+-- ============================================================================
+-- Issue #850 — `download file` parsed but never written to the project
+-- ============================================================================
+--
+-- `microflowActionToGen` (mdl/backend/modelsdk/microflow_write.go) switches on
+-- the semantic action type and had no `*microflows.DownloadFileAction` case, so
+-- the action fell through to `default: return nil` and the enclosing
+-- ActionActivity was written with no Action at all.
+--
+-- Everything either side of the writer was already in place — grammar, visitor,
+-- flow builder, read path and DESCRIBE formatter — so the statement was accepted
+-- at every stage that reports anything and vanished at the one stage that does
+-- not. `mxcli check` passed, `mxcli exec` printed "Created microflow", and only
+-- `mx check` noticed:
+--
+--   [error] [CE0008] "No action defined." at Action activity 'Activity'
+--
+-- To verify:
+--   1. Run this script.
+--   2. `mxcli describe microflow Bug850.ACT_Download` — the body must render
+--      `download file $Doc;`, NOT `-- Empty action`. Likewise
+--      `Bug850.ACT_DownloadInBrowser` must render `… show in browser;`.
+--   3. mx check should report 0 errors (CE0008 before the fix).
+--
+-- Note the storage key is ShowFileInBrowser, not ShowInBrowser.
+-- ============================================================================
+
+CREATE MODULE Bug850;
+
+CREATE OR MODIFY PERSISTENT ENTITY Bug850.Doc EXTENDS System.FileDocument (
+);
+
+CREATE OR MODIFY MICROFLOW Bug850.ACT_Download (
+  $Doc: Bug850.Doc
+)
+RETURNS Boolean
+BEGIN
+  download file $Doc;
+  return true;
+END;
+
+CREATE OR MODIFY MICROFLOW Bug850.ACT_DownloadInBrowser (
+  $Doc: Bug850.Doc
+)
+RETURNS Boolean
+BEGIN
+  download file $Doc show in browser;
+  return true;
+END;
