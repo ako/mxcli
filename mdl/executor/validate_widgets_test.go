@@ -154,6 +154,76 @@ func TestValidateStaticWidget_DataViewDatabaseSource(t *testing.T) {
 	}
 }
 
+// TestValidateStaticWidget_UnconsumableConditional — MDL-WIDGET19 is the safety
+// net asked for in issue #852: the grammar fix stops `Visible: [trim(…)]` from
+// falling through, but any FUTURE conditional expression the visitor cannot turn
+// into VisibleIf/EditableIf would land in the plain Visible/Editable slot as a
+// non-string, non-bool value, which the builder drops without a word. A dropped
+// Visible reads as "always visible", so the failure is invisible until someone
+// looks at the running app.
+//
+// Recognized static forms (bool, expression string) must NOT be flagged — they
+// are consumed by pages.StaticVisibleExpression.
+func TestValidateStaticWidget_UnconsumableConditional(t *testing.T) {
+	cases := []struct {
+		name   string
+		widget *ast.WidgetV3
+		want   bool // expect an MDL-WIDGET19 violation
+	}{
+		{
+			"unparsed bracket residue → flagged",
+			&ast.WidgetV3{Type: "dynamictext", Name: "a1", Properties: map[string]any{
+				"Visible": []any{"trim($currentObject/Slug)", "!=", "''"},
+			}},
+			true,
+		},
+		{
+			"unparsed Editable residue → flagged",
+			&ast.WidgetV3{Type: "textbox", Name: "b1", Properties: map[string]any{
+				"Editable": []any{"length($currentObject/Slug)", ">", "0"},
+			}},
+			true,
+		},
+		{
+			"routed to VisibleIf → not flagged",
+			&ast.WidgetV3{Type: "dynamictext", Name: "a2", Properties: map[string]any{
+				"VisibleIf": "trim($currentObject/Slug) != ''",
+			}},
+			false,
+		},
+		{
+			"static bool → not flagged",
+			&ast.WidgetV3{Type: "dynamictext", Name: "a3", Properties: map[string]any{"Visible": false}},
+			false,
+		},
+		{
+			"expression string → not flagged",
+			&ast.WidgetV3{Type: "dynamictext", Name: "a4", Properties: map[string]any{
+				"Visible": "$currentObject/Slug != ''",
+			}},
+			false,
+		},
+		{
+			"no visibility property → not flagged",
+			&ast.WidgetV3{Type: "dynamictext", Name: "a5", Properties: map[string]any{"Content": "x"}},
+			false,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := false
+			for _, v := range validateStaticWidget(c.widget, "page X") {
+				if v.RuleID == "MDL-WIDGET19" {
+					got = true
+				}
+			}
+			if got != c.want {
+				t.Errorf("MDL-WIDGET19 present = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
 // TestValidateWidgetExpressionAssociations — MDL-WIDGET13 flags an association
 // step inside an expression-typed widget property (DynamicClasses/VisibleIf/
 // EditableIf). Such expressions fail the build with CE0117; a data binding on the

@@ -152,13 +152,51 @@ xpathFunctionCall
     : xpathFunctionName LPAREN (xpathExpr (COMMA xpathExpr)*)? RPAREN
     ;
 
+/** Function name inside a bracketed [ … ] constraint.
+ *
+ * Any single word may name a function, exactly as any single word may be a name
+ * part (see xpathQualifiedName). The enumerated form this replaces listed only
+ * IDENTIFIER, HYPHENATED_ID, NOT, TRUE, FALSE and CONTAINS, so a call to a
+ * function whose name is also a lexer keyword — `trim(…)`, `length(…)` — never
+ * matched xpathFunctionCall. The enclosing `Visible: [...]` / `Editable: [...]`
+ * then failed to parse as an xpathConstraint and fell through to the generic
+ * property-value alternative, so the widget's whole conditional property was
+ * dropped without a diagnostic (a dropped Visible reads as "always visible" at
+ * runtime). Issue #852.
+ *
+ * The grammar deliberately does NOT enumerate a valid function set, because
+ * xpathConstraint serves TWO contexts with DIFFERENT ones:
+ *
+ *   - `Visible:` / `Editable:` — a Mendix *client expression*, where the string
+ *     functions apply: trim(), length(), toUpperCase(), find(), contains().
+ *   - a datasource `where` clause — real *XPath*, where the function set is
+ *     contains/starts-with/ends-with/string-length/not/true/false and the
+ *     *-from-dateTime family, `length()` means list length rather than character
+ *     count, and the aggregates (count/avg/min/max/sum) are Java-API-only.
+ *     `empty` and `NULL` are keywords here (`[Name = empty]`), never calls.
+ *     See docs.mendix.com/refguide/xpath-constraint-functions/ and
+ *     .../xpath-keywords-and-system-variables/.
+ *
+ * One rule cannot encode both sets, and guessing wrong rejects valid MDL. So the
+ * grammar accepts any name and lets mxbuild adjudicate semantics — it reports an
+ * unknown or wrong-context function as CE0117 against the real version's rules,
+ * which no table here could track. Verified on 11.6.6: in a widget conditional
+ * trim/length/find pass while count/empty give CE0117; in a `where` clause
+ * `[Name = empty]`, `[Name = NULL]`, not(), contains(), starts-with() and
+ * string-length() all pass.
+ *
+ * xpathWord is a negated token set, so it self-maintains as the lexer grows new
+ * keywords — an enumerated list would silently reacquire this bug with the next
+ * function name that gets promoted to a token. NOT is spelled out because
+ * xpathWord excludes it (it is an operator elsewhere in the expression grammar)
+ * while `not(…)` is a legitimate call.
+ *
+ * This cannot swallow a path: xpathFunctionCall requires an LPAREN after the
+ * name, and no xpathStepValue may be followed by one, so `empty` alone still
+ * parses as a word via xpathPath — which is what keeps `[Name = empty]` working. */
 xpathFunctionName
-    : IDENTIFIER
-    | HYPHENATED_ID
+    : xpathWord
     | NOT
-    | TRUE
-    | FALSE
-    | CONTAINS
     ;
 
 // =============================================================================

@@ -702,6 +702,54 @@ func violation18(locationPrefix string, w *ast.WidgetV3, msg string) linter.Viol
 // validateStaticWidget checks value-level constraints on built-in (non-pluggable)
 // widgets that the grammar can't express and that otherwise fail silently or at
 // build time rather than at `mxcli check` time.
+// validateConsumableConditional (MDL-WIDGET19) rejects a `Visible:` / `Editable:`
+// value that no builder can consume, so an expression the visitor failed to turn
+// into VisibleIf/EditableIf fails the command instead of vanishing from the page.
+//
+// The bracket form is routed to VisibleIf/EditableIf by the visitor; the plain
+// slot then holds only a static form, which pages.StaticVisibleExpression reads
+// from a bool or a string. Anything else is parse residue — the `[...]` matched
+// the generic property-value alternative rather than an xpathConstraint — and the
+// builder's `else if` simply doesn't fire. That is the silent-drop mechanism
+// behind issue #852, where `trim(…)`/`length(…)` were unparseable as conditional
+// expressions and the whole property disappeared; a missing Visible defaults to
+// "always visible", so nothing downstream could notice.
+//
+// The grammar fix removes the known trigger. This rule is the general guard: the
+// next function name promoted to a lexer token fails loudly here instead.
+func validateConsumableConditional(w *ast.WidgetV3, locationPrefix string) []linter.Violation {
+	var out []linter.Violation
+	for _, p := range []struct{ plain, routed string }{
+		{"Visible", "VisibleIf"},
+		{"Editable", "EditableIf"},
+	} {
+		if _, routed := w.Properties[p.routed]; routed {
+			continue
+		}
+		v, present := w.Properties[p.plain]
+		if !present || v == nil {
+			continue
+		}
+		switch v.(type) {
+		case bool, string:
+			continue // a static form StaticVisibleExpression consumes
+		}
+		out = append(out, linter.Violation{
+			RuleID:   "MDL-WIDGET19",
+			Severity: linter.SeverityError,
+			Message: fmt.Sprintf(
+				"%s: widget `%s` (%s) has a `%s` value that could not be parsed as a conditional expression "+
+					"and would be dropped on write (leaving the widget unconditionally %s) — "+
+					"check the expression inside `%s: [ ... ]`",
+				locationPrefix, w.Name, w.Type, strings.ToLower(p.plain),
+				map[string]string{"Visible": "visible", "Editable": "editable"}[p.plain],
+				strings.ToLower(p.plain),
+			),
+		})
+	}
+	return out
+}
+
 func validateStaticWidget(w *ast.WidgetV3, locationPrefix string) []linter.Violation {
 	var out []linter.Violation
 
@@ -741,6 +789,8 @@ func validateStaticWidget(w *ast.WidgetV3, locationPrefix string) []linter.Viola
 	if v := validateDynamicTextPlaceholders(w, locationPrefix); v != nil {
 		out = append(out, *v)
 	}
+
+	out = append(out, validateConsumableConditional(w, locationPrefix)...)
 
 	// A DataView cannot use a database data source — a data view shows one object,
 	// so Mendix offers only Context / Microflow / Nanoflow / Listen sources.

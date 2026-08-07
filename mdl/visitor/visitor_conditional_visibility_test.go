@@ -88,3 +88,63 @@ func TestConditionalVisibility_EnumLiteralPreserved(t *testing.T) {
 		t.Errorf("VisibleIf = %q, want %q", got, want)
 	}
 }
+
+// Issue #852 — a widget conditional expression that calls a function whose name
+// is also an MDL lexer keyword (trim, length, …) silently dropped the whole
+// property: `xpathFunctionName` only admitted IDENTIFIER/HYPHENATED_ID plus a
+// handful of keywords, so `trim(…)` never matched xpathFunctionCall and the
+// expression built to nothing. The property then vanished from the page, and a
+// dropped Visible defaults to "always visible" — a wrong-behaviour failure that
+// passed both `mxcli check` and `mx check`.
+//
+// Non-keyword function names (toUpperCase, isMatch) were never affected; they
+// are plain IDENTIFIERs. They are covered here so a future narrowing of the rule
+// cannot regress them silently.
+//
+// Scope: this asserts the PARSER builds the call and the property survives, not
+// that Mendix accepts the function. The two are deliberately separate — MDL does
+// not adjudicate Mendix expression semantics at the grammar layer. `count` and
+// `empty` are included because they are keyword tokens (the thing under test)
+// even though mxbuild rejects them in a client expression with CE0117: `empty`
+// is a literal (`$x != empty`), not a call. Verified against mxbuild 11.6.6,
+// where trim/length/find pass and count/empty do not. The shipped example
+// mdl-examples/bug-tests/852-conditional-keyword-functions.mdl uses only the
+// valid set so it stays `mx check`-clean.
+func TestConditionalVisibility_KeywordFunctionNames(t *testing.T) {
+	cases := []struct {
+		name string
+		expr string // what goes inside Visible: [ ... ]
+		want string
+	}{
+		{"trim", "trim($currentObject/Slug) != ''", "trim($currentObject/Slug) != ''"},
+		{"length", "length($currentObject/Slug) > 0", "length($currentObject/Slug) > 0"},
+		{"empty", "empty($currentObject/Slug)", "empty($currentObject/Slug)"},
+		{"count", "count($currentObject/Items) > 0", "count($currentObject/Items) > 0"},
+		{"find", "find($currentObject/Slug, 'x') >= 0", "find($currentObject/Slug, 'x') >= 0"},
+		// Already worked — guard against regressing them.
+		{"contains", "contains($currentObject/Slug, 'x')", "contains($currentObject/Slug, 'x')"},
+		{"toUpperCase", "toUpperCase($currentObject/Slug) != ''", "toUpperCase($currentObject/Slug) != ''"},
+		// A bare attribute inside a keyword-named call still gets rooted.
+		{"trim roots bare attr", "trim(Slug) != ''", "trim($currentObject/Slug) != ''"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			input := "CREATE PAGE M.P (Title: 'P') { CONTAINER ctn (Visible: [" + c.expr + "]) { DYNAMICTEXT t (Content: 'x') } };"
+			prog, errs := Build(input)
+			if len(errs) > 0 {
+				t.Fatalf("parse errors: %v", errs)
+			}
+			ctn := findWidgetV3(prog.Statements[0].(*ast.CreatePageStmtV3).Widgets, "ctn")
+			if ctn == nil {
+				t.Fatal("container ctn not found")
+			}
+			got, ok := ctn.Properties["VisibleIf"].(string)
+			if !ok {
+				t.Fatalf("VisibleIf missing entirely — the property was dropped (Properties: %v)", ctn.Properties)
+			}
+			if got != c.want {
+				t.Errorf("VisibleIf = %q, want %q", got, c.want)
+			}
+		})
+	}
+}

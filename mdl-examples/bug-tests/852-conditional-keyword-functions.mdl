@@ -1,0 +1,103 @@
+-- ============================================================================
+-- Issue #852 — `trim()` / `length()` in a widget conditional silently dropped it
+-- ============================================================================
+--
+-- `xpathFunctionName` admitted only IDENTIFIER, HYPHENATED_ID, NOT, TRUE, FALSE
+-- and CONTAINS, so a call to a function whose name is also an MDL lexer keyword
+-- never matched `xpathFunctionCall`. The enclosing `Visible: [...]` then failed
+-- to parse as an xpathConstraint, fell through to the generic property-value
+-- alternative, and the widget's whole conditional property was dropped — with no
+-- diagnostic from `mxcli check` or `mx check`.
+--
+-- A dropped Visible defaults to "always visible", so the only symptom was a
+-- widget that should have been hidden showing up in the running app.
+--
+-- toUpperCase / contains were never affected (plain IDENTIFIERs, and CONTAINS was
+-- listed) — they are included below so the two classes can be compared directly.
+--
+-- To verify:
+--   1. Run this script.
+--   2. `mxcli describe page Bug852.PageConditionals` — EVERY dynamictext must
+--      carry its Visible expression. Before the fix, tKeyword* lost theirs while
+--      tIdentifier* kept theirs.
+--   3. mx check should report 0 errors.
+--
+-- Only Mendix-valid client-expression functions appear below. `count(…)` and
+-- `empty(…)` are ALSO keyword tokens and now parse, but they are not client
+-- expression functions — `empty` is a literal (`$x != empty`), not a call — so
+-- mxbuild rejects them with CE0117. Before this fix they were silently dropped;
+-- now they fail loudly at `mx check`, which is the intended direction but is a
+-- visible behaviour change for anyone who had written one.
+-- ============================================================================
+
+CREATE MODULE Bug852;
+
+CREATE OR MODIFY PERSISTENT ENTITY Bug852.Thing (
+  Slug: String(200)
+);
+
+CREATE OR REPLACE PAGE Bug852.PageConditionals (
+  Params: { $currentObject: Bug852.Thing },
+  Title: 'Conditionals using keyword-named functions',
+  Layout: Atlas_Core.Atlas_Default
+) {
+  dataview dv (datasource: $currentObject) {
+    -- Keyword-named functions: these were the dropped ones.
+    dynamictext tKeywordTrim   (content: 'trim',   visible: [trim($currentObject/Slug) != ''])
+    dynamictext tKeywordLength (content: 'length', visible: [length($currentObject/Slug) > 0])
+    dynamictext tKeywordFind   (content: 'find',   visible: [find($currentObject/Slug, 'x') >= 0])
+
+    -- Identifier-named functions: these always worked. Guard against regressing them.
+    dynamictext tIdentifierUpper    (content: 'upper',    visible: [toUpperCase($currentObject/Slug) != ''])
+    dynamictext tIdentifierContains (content: 'contains', visible: [contains($currentObject/Slug, 'x')])
+
+    -- A bare attribute inside a keyword-named call is still rooted in the data
+    -- context, exactly as it is outside one.
+    textbox txtEditable (label: 'Slug', attribute: Slug, editable: [trim(Slug) != ''])
+  }
+}
+
+-- ============================================================================
+-- Runtime verification page (issue #852)
+-- ============================================================================
+--
+-- Slug is three spaces: non-empty as a raw string, empty once trimmed. That is
+-- what makes trim() observable rather than incidental — a widget whose Visible
+-- expression was dropped renders, because the Mendix default is "visible".
+--
+-- Boot with `mxcli run --local -p <project>.mpr` and open /p/verify852:
+--   TRIM_HIDDEN_MARKER    must NOT render  (trim('   ') = '' -> false)
+--   TRIM_VISIBLE_MARKER   must render      (negation of the above)
+--   LEN_HIDDEN_MARKER     must NOT render  (length(trim('   ')) = 0)
+--   NOTRIM_VISIBLE_MARKER must render      (control: '   ' != '' is true, so
+--                                           trim() genuinely changes the outcome)
+--   PAGE_RENDERED_BEACON  must render      (proves the page rendered at all)
+--
+-- Before the fix all five rendered. `mx check` reported 0 errors either way —
+-- a dropped property is still a valid model, which is why this needs a browser.
+-- ============================================================================
+
+CREATE OR MODIFY NON-PERSISTENT ENTITY Bug852.Probe (
+  Slug: String(200)
+);
+
+CREATE OR MODIFY MICROFLOW Bug852.DS_Probe ()
+RETURNS Bug852.Probe
+BEGIN
+  $p = create Bug852.Probe (Slug = '   ');
+  return $p;
+END;
+
+CREATE OR REPLACE PAGE Bug852.Verify (
+  Title: 'Verify 852',
+  Layout: Atlas_Core.Atlas_Default,
+  Url: 'verify852'
+) {
+  dataview dv (datasource: microflow Bug852.DS_Probe) {
+    dynamictext tTrimHidden    (content: 'TRIM_HIDDEN_MARKER',    visible: [trim($currentObject/Slug) != ''])
+    dynamictext tTrimVisible   (content: 'TRIM_VISIBLE_MARKER',   visible: [trim($currentObject/Slug) = ''])
+    dynamictext tLenHidden     (content: 'LEN_HIDDEN_MARKER',     visible: [length(trim($currentObject/Slug)) > 0])
+    dynamictext tNoTrimVisible (content: 'NOTRIM_VISIBLE_MARKER', visible: [$currentObject/Slug != ''])
+    dynamictext tBeacon        (content: 'PAGE_RENDERED_BEACON')
+  }
+}
