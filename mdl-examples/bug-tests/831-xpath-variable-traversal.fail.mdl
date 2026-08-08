@@ -1,0 +1,44 @@
+-- ============================================================================
+-- Issue #831 — RETRIEVE WHERE traversing an association from a variable
+-- ============================================================================
+--
+-- NEGATIVE TEST (.fail.mdl): `mxcli check` MUST reject this file. An
+-- unexpected pass means MDL055 has regressed.
+--
+-- `where [Name = $RefProduct/ZKT39.Product_Category/Name]` passed `mxcli check`
+-- and `mxcli exec`, then the build failed:
+--
+--   [error] [CE0161] "Error(s) in XPath constraint."
+--
+-- Mendix XPath reaches at most ONE hop off a variable. The boundary is narrower
+-- than "a qualified name after a variable" — verified against mxbuild 11.6.6:
+--
+--   $Var/Attr             VALID   the parameter's own attribute
+--   $Var/Mod.Assoc        VALID   one hop, the associated object
+--   $Var/Mod.Assoc/Attr   CE0161  two or more hops
+--
+-- so the rule keys on hop count. A rule that flagged any qualified segment
+-- would reject the middle form, which is valid.
+--
+-- There is no valid serialization of the two-hop form, which is why this is a
+-- rejection and not a writer fix: the constraint has to be restructured, and
+-- only the author knows which shape they meant. Both restructurings are in
+-- 831-xpath-variable-traversal-ok.mdl, which must PASS.
+-- ============================================================================
+
+CREATE MODULE Bug831;
+
+CREATE OR MODIFY PERSISTENT ENTITY Bug831.Category ( Name: String(50) );
+
+CREATE OR MODIFY PERSISTENT ENTITY Bug831.Product ( Code: String(50) );
+
+CREATE OR MODIFY ASSOCIATION Bug831.Product_Category
+  FROM Bug831.Product TO Bug831.Category TYPE Reference;
+
+CREATE OR MODIFY MICROFLOW Bug831.ACT_Find ($RefProduct: Bug831.Product)
+RETURNS list of Bug831.Category
+BEGIN
+  retrieve $Categories from Bug831.Category
+    where [Name = $RefProduct/Bug831.Product_Category/Name];
+  return $Categories;
+END;
