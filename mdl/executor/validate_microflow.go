@@ -162,9 +162,9 @@ func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 			v.walkBody(stmt.ThenBody)
 			v.walkBody(stmt.ElseBody)
 		case *ast.EnumSplitStmt:
-			// Mendix enumeration splits map to exclusive splits with one outgoing
-			// flow per enum value. Multiple values per branch and a default (else)
-			// flow are not supported — Studio Pro will reject both with CE errors.
+			// A Mendix enumeration split is an exclusive split that needs an
+			// outgoing flow for every enum value AND for (empty); a default flow
+			// is not offered. Verified on mxbuild 11.6.6.
 			if len(stmt.ElseBody) > 0 {
 				v.addViolation("MDL008", linter.SeverityError,
 					fmt.Sprintf("case statement on '$%s' has an else branch; "+
@@ -173,14 +173,14 @@ func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 						stmt.Variable),
 					"Add an explicit when branch for every enum value instead of using else")
 			}
+			// MDL009 used to error here on a branch listing more than one value,
+			// claiming Mendix required exactly one per branch. That was wrong —
+			// `when Open, Pending then` covering every value builds with 0 errors,
+			// and the write-microflows skill documents that form — so the rule
+			// rejected valid MDL. It is retired rather than repurposed; MDL056
+			// below checks what actually fails the build.
+			v.checkEnumSplitEmptyBranch(stmt)
 			for _, c := range stmt.Cases {
-				if len(c.Values) > 1 {
-					v.addViolation("MDL009", linter.SeverityError,
-						fmt.Sprintf("case statement on '$%s': when branch lists %d values (%s); "+
-							"Mendix enumeration splits require exactly one value per branch.",
-							stmt.Variable, len(c.Values), strings.Join(c.Values, ", ")),
-						"Split into separate when branches, one per enum value")
-				}
 				v.walkBody(c.Body)
 			}
 			v.walkBody(stmt.ElseBody)
@@ -1243,4 +1243,41 @@ func isEmptyMessage(expr ast.Expression) bool {
 		}
 	}
 	return false
+}
+
+// checkEnumSplitEmptyBranch (MDL056) flags an enumeration split with no
+// `(empty)` branch. A Mendix enum split needs an outgoing flow for every value
+// AND for the unset case; without one the build fails with
+//
+//	CE0079 "The '(empty)' condition value should be configured in properties
+//	        for an outgoing flow."
+//
+// Verified on mxbuild 11.6.6, and the requirement is universal — it holds even
+// when the split is on a `not null` enum attribute, so no nullability analysis
+// is needed and the check works from the statement alone.
+//
+// This replaces the retired MDL009, which asserted the opposite of what Mendix
+// does (see the EnumSplitStmt arm). A new ID was used rather than repurposing
+// MDL009 so that anything referring to the old number still refers to the old,
+// wrong meaning.
+//
+// Value coverage — every enum member having a branch, the other half of CE0079 —
+// is deliberately NOT checked here: it needs the enumeration's member list,
+// which means resolving the split variable's type against the script or the
+// project. ValidateMicroflow sees only one statement. Worth adding where that
+// context exists; guessing it here would trade one false positive for another.
+func (v *microflowValidator) checkEnumSplitEmptyBranch(stmt *ast.EnumSplitStmt) {
+	for _, c := range stmt.Cases {
+		for _, val := range c.Values {
+			if strings.EqualFold(strings.TrimSpace(val), "(empty)") {
+				return
+			}
+		}
+	}
+	v.addViolation("MDL056", linter.SeverityError,
+		fmt.Sprintf("case statement on '$%s' has no `(empty)` branch; a Mendix enumeration split needs an "+
+			"outgoing flow for the unset value too, so this builds as CE0079 \"The '(empty)' condition value "+
+			"should be configured in properties for an outgoing flow\"", stmt.Variable),
+		"Add a `when (empty) then …` branch. It is required even when the attribute is `not null`. "+
+			"A branch may list several values (`when Open, (empty) then …`) if they share a path.")
 }

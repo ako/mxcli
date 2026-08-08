@@ -108,20 +108,21 @@ end;`
 // TestValidateMicroflowRules_UnverifiedRulesNotPromoted pins the deliberate
 // narrowness of execEnforcedMicroflowRules.
 //
-// MDL009 ("enumeration splits require exactly one value per branch") fires in
-// `check` but is a FALSE POSITIVE: verified on mxbuild 11.6.6, a multi-value
-// branch that covers every enum value builds at 0 errors, and the shipped
-// write-microflows skill documents exactly that form. If it were promoted,
-// `exec` would refuse valid MDL — so this test fails the moment someone widens
-// the allowlist without checking the rule against a real build.
+// MDL008 is a CORRECT rule (mxbuild rejects `else` on an enum split with CE0079
+// per uncovered value plus CE0773) that is nonetheless not on the allowlist:
+// membership requires a verified construct, and correctness alone is not the
+// bar — every promoted rule becomes a hard write barrier. This test fails the
+// moment someone widens the allowlist wholesale.
 func TestValidateMicroflowRules_UnverifiedRulesNotPromoted(t *testing.T) {
 	src := `create microflow M.ACT ($S: Enumeration(M.Status)) returns String
 begin
   case $S
-    when Open, Pending then
+    when Open then
       return 'a';
-    when Closed then
+    when (empty) then
       return 'b';
+    else
+      return 'c';
   end case;
 end;`
 	prog, errs := visitor.Build(src)
@@ -130,19 +131,16 @@ end;`
 	}
 	stmt := prog.Statements[0].(*ast.CreateMicroflowStmt)
 
-	// check still reports it...
 	sawInCheck := false
 	for _, v := range ValidateMicroflow(stmt) {
-		if v.RuleID == "MDL009" {
+		if v.RuleID == "MDL008" {
 			sawInCheck = true
 		}
 	}
 	if !sawInCheck {
-		t.Skip("MDL009 no longer fires; if the rule was fixed or removed, drop this test")
+		t.Fatal("expected check to report MDL008 for an else branch on an enum split")
 	}
-	// ...but exec must not refuse to write it.
 	if err := validateMicroflowRules(stmt); err != nil {
-		t.Errorf("MDL009 is a false positive (a multi-value branch covering every enum value "+
-			"builds at 0 errors) and must not block exec, got: %v", err)
+		t.Errorf("MDL008 is not on the verified allowlist and must not block exec, got: %v", err)
 	}
 }

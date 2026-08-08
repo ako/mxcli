@@ -1,0 +1,59 @@
+-- ============================================================================
+-- MDL009 retired / MDL056 — the enum-split forms that must NOT be rejected
+-- ============================================================================
+--
+-- The negative half is mdl009-enum-split-empty-branch.fail.mdl.
+--
+-- Verified against mxbuild 11.6.6: this file builds with 0 errors, including
+-- the multi-value branch that the retired MDL009 used to reject.
+-- ============================================================================
+
+CREATE MODULE BugM9Ok;
+
+CREATE ENUMERATION BugM9Ok.Status (
+  Open caption 'Open',
+  Pending caption 'Pending',
+  Closed caption 'Closed'
+);
+
+-- A multi-value branch is valid — this is what MDL009 wrongly rejected.
+CREATE OR MODIFY MICROFLOW BugM9Ok.MultiValue ($Status: Enumeration(BugM9Ok.Status))
+RETURNS Boolean
+BEGIN
+  case $Status
+    when Open, Pending then
+      return true;
+    when Closed then
+      return false;
+    when (empty) then
+      return false;
+  end case;
+END;
+
+-- One value per branch is equally valid.
+CREATE OR MODIFY MICROFLOW BugM9Ok.OnePerBranch ($Status: Enumeration(BugM9Ok.Status))
+RETURNS Boolean
+BEGIN
+  case $Status
+    when Open then
+      return true;
+    when Pending then
+      return true;
+    when Closed then
+      return false;
+    when (empty) then
+      return false;
+  end case;
+END;
+
+-- `(empty)` may share a branch with real values.
+CREATE OR MODIFY MICROFLOW BugM9Ok.EmptySharesBranch ($Status: Enumeration(BugM9Ok.Status))
+RETURNS Boolean
+BEGIN
+  case $Status
+    when Open, Pending then
+      return true;
+    when Closed, (empty) then
+      return false;
+  end case;
+END;

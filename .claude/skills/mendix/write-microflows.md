@@ -421,14 +421,26 @@ Use `case` when a microflow branches on an enumeration value.
 case $Status
   when Open, Pending then
     return true;
-  when (empty) then
+  when Closed then
     return false;
-  else
+  when (empty) then
     return false;
 end case;
 ```
 
 `(empty)` represents an unset enumeration value. Multiple values can share one `when` branch by separating them with commas. Case values are bare identifiers — do **not** quote them.
+
+> **Every value needs a branch, including `(empty)` — and there is no `else`.**
+> A Mendix enum split is an exclusive split with one outgoing flow per condition
+> value, so an uncovered value fails the build with **CE0079** *"The 'X' condition
+> value should be configured in properties for an outgoing flow."* `mxcli check`
+> reports a missing `(empty)` branch as **MDL056**, and an `else` branch as
+> **MDL008** (an `else` does not stand in for the missing flows: mxbuild reports
+> CE0079 for each uncovered value *and* CE0773 on the else flow itself).
+>
+> The `(empty)` branch is required **even when the attribute is `not null`** —
+> verified on Mendix 11.6.6. If several values share a path, put them in one
+> branch (`when Open, Pending then`) rather than reaching for `else`.
 
 ### Type Split And Cast Statements
 

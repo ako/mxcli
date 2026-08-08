@@ -1,0 +1,43 @@
+-- ============================================================================
+-- MDL009 retired, MDL056 added — enum split branch rules
+-- ============================================================================
+--
+-- NEGATIVE TEST (.fail.mdl): `mxcli check` MUST reject this file.
+--
+-- MDL009 used to error on `when Open, Pending then`, claiming Mendix required
+-- exactly one value per branch. That was wrong — verified on mxbuild 11.6.6, a
+-- multi-value branch covering every value builds with 0 errors, and the shipped
+-- write-microflows skill documents that form. The rule rejected valid MDL, so
+-- it is retired.
+--
+-- What actually fails the build is a MISSING branch. An enum split is an
+-- exclusive split needing one outgoing flow per condition value:
+--
+--   [error] [CE0079] "The '(empty)' condition value should be configured in
+--                     properties for an outgoing flow."
+--
+-- MDL056 catches the `(empty)` case, which is universal and needs no knowledge
+-- of the enumeration's members — it holds even on a `not null` attribute.
+--
+-- The valid forms are in mdl009-enum-split-empty-branch-ok.mdl, which must PASS.
+-- ============================================================================
+
+CREATE MODULE BugM9;
+
+CREATE ENUMERATION BugM9.Status (
+  Open caption 'Open',
+  Pending caption 'Pending',
+  Closed caption 'Closed'
+);
+
+-- REJECTED (MDL056): every value is covered, but `(empty)` is not.
+CREATE OR MODIFY MICROFLOW BugM9.NoEmptyBranch ($Status: Enumeration(BugM9.Status))
+RETURNS Boolean
+BEGIN
+  case $Status
+    when Open, Pending then
+      return true;
+    when Closed then
+      return false;
+  end case;
+END;
