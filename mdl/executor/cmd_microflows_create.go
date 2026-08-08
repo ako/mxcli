@@ -42,6 +42,15 @@ func execCreateMicroflow(ctx *ExecContext, s *ast.CreateMicroflowStmt) error {
 		return mdlerrors.NewValidation("microflow name must not be empty")
 	}
 
+	// Refuse the XPath constraints Mendix rejects, before writing anything.
+	// `mxcli check` already reported these, but exec ran a different validator
+	// and wrote them anyway, so a script that skipped check produced a project
+	// the build fails on (issue #833). Same placement as the entity handler's
+	// ValidateEntity call.
+	if err := validateMicroflowRules(s); err != nil {
+		return err
+	}
+
 	// Find or auto-create module
 	module, err := findOrCreateModule(ctx, s.Name.Module)
 	if err != nil {
