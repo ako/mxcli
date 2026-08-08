@@ -450,6 +450,53 @@ func ValidateEntity(stmt *ast.CreateEntityStmt) []linter.Violation {
 	entityName := stmt.Name.String()
 	for _, attr := range stmt.Attributes {
 		violations = append(violations, validateEntityAttribute(attr, persistent, entityName)...)
+		if !persistent {
+			violations = append(violations, validateNPEValidationRules(attr, entityName)...)
+		}
+	}
+	return violations
+}
+
+// validateNPEValidationRules (MDL054) rejects a validation rule on a
+// non-persistable entity, which Mendix refuses with
+//
+//	CE0070 "Validations rules are not allowed on entity 'X', because it is
+//	        not persistable."
+//
+// `not null` and `unique` ARE validation rules: Studio Pro models "required"
+// and "uniqueness" as rules on the entity rather than as column constraints,
+// so both are rejected on an NPE. Verified against mxbuild 11.6.6 — `not null`
+// with a message, `not null` bare, and `unique` each produce CE0070; a plain
+// attribute does not. The message is optional and does not change the verdict,
+// so the bare form is flagged too. Issue #832.
+//
+// Only the CREATE path can run this: an `ALTER ENTITY … ADD ATTRIBUTE` does not
+// carry the entity's persistence kind, so ValidateAlterEntity cannot tell an NPE
+// from a persistent entity without a project. That is the same limitation
+// MDL020 has, for the same reason — see ValidateAlterEntity.
+func validateNPEValidationRules(attr ast.Attribute, entityName string) []linter.Violation {
+	var violations []linter.Violation
+	flag := func(constraint, mdl string) {
+		violations = append(violations, linter.Violation{
+			RuleID:   "MDL054",
+			Severity: linter.SeverityError,
+			Message: fmt.Sprintf(
+				"attribute '%s' declares `%s` on non-persistent entity %s — Mendix does not allow "+
+					"validation rules on a non-persistable entity (CE0070), and `%s` is a validation rule",
+				attr.Name, constraint, entityName, constraint),
+			Location: linter.Location{DocumentType: "entity", DocumentName: entityName},
+			Suggestion: fmt.Sprintf(
+				"Drop `%s` from the attribute, or make the entity persistent. To keep the check on a "+
+					"non-persistent entity, enforce it in the microflow that populates it "+
+					"(e.g. `if %s = empty then` … ) rather than declaring `%s`.",
+				mdl, attr.Name, mdl),
+		})
+	}
+	if attr.NotNull {
+		flag("not null", "not null")
+	}
+	if attr.Unique {
+		flag("unique", "unique")
 	}
 	return violations
 }

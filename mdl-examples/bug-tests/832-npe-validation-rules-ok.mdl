@@ -1,0 +1,24 @@
+-- ============================================================================
+-- Issue #832 — the forms MDL054 must NOT reject (positive half)
+-- ============================================================================
+--
+-- The negative half is 832-npe-validation-rules.fail.mdl. This file pins the
+-- other edge: MDL054 must not fire on a validation rule that is legitimately
+-- placed, or on a non-persistent entity that carries none.
+--
+-- Verified against mxbuild 11.6.6: this file builds with 0 errors.
+-- ============================================================================
+
+CREATE MODULE Bug832Ok;
+
+-- A PERSISTENT entity is exactly where validation rules belong.
+CREATE OR MODIFY PERSISTENT ENTITY Bug832Ok.P (
+  "Name": String(100) not null error 'Name is required',
+  "Code": String(50) unique error 'Code must be unique'
+);
+
+-- A non-persistent entity with no validation rule is fine.
+CREATE OR MODIFY NON-PERSISTENT ENTITY Bug832Ok.NpPlain (
+  "Name": String(100),
+  "Qty": Integer
+);

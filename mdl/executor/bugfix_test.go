@@ -906,3 +906,89 @@ func TestExprToStringNoSpaces(t *testing.T) {
 		})
 	}
 }
+
+// TestValidateEntityNPEValidationRules covers issue #832: Mendix refuses
+// validation rules on a non-persistable entity with
+//
+//	CE0070 "Validations rules are not allowed on entity 'X', because it is
+//	        not persistable."
+//
+// `not null` and `unique` ARE validation rules — Studio Pro models "required"
+// and "uniqueness" as rules on the entity, not as column constraints — so both
+// forms are rejected on an NPE. Verified against mxbuild 11.6.6: `not null`
+// with a message, `not null` bare, and `unique` each produce CE0070, while a
+// plain attribute does not. Before this rule `mxcli check` and `mxcli exec`
+// both accepted them and only a real build caught it.
+func TestValidateEntityNPEValidationRules(t *testing.T) {
+	cases := []struct {
+		name    string
+		input   string
+		wantFor []string // attribute names expected to be flagged
+	}{
+		{
+			"not null with message",
+			`create non-persistent entity Test.NP ( "Name" : String(100) not null error 'req' );`,
+			[]string{"Name"},
+		},
+		{
+			// The message is optional; the rule exists either way, so bare
+			// `not null` is rejected by Mendix just the same.
+			"not null bare",
+			`create non-persistent entity Test.NP ( "Name" : String(100) not null );`,
+			[]string{"Name"},
+		},
+		{
+			"unique",
+			`create non-persistent entity Test.NP ( "Code" : String(50) unique error 'dup' );`,
+			[]string{"Code"},
+		},
+		{
+			"both constraints on separate attributes",
+			`create non-persistent entity Test.NP ( "Name" : String(100) not null, "Code" : String(50) unique );`,
+			[]string{"Name", "Code"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			prog, errs := visitor.Build(c.input)
+			if len(errs) > 0 {
+				t.Fatalf("parse error: %v", errs[0])
+			}
+			stmt := prog.Statements[0].(*ast.CreateEntityStmt)
+			violations := ValidateEntity(stmt)
+			for _, attrName := range c.wantFor {
+				found := false
+				for _, v := range violations {
+					if v.RuleID == "MDL054" && strings.Contains(v.Message, "'"+attrName+"'") {
+						found = true
+					}
+				}
+				if !found {
+					t.Errorf("expected MDL054 for attribute %q (CE0070), got: %v", attrName, violations)
+				}
+			}
+		})
+	}
+}
+
+// A PERSISTENT entity may carry exactly the same constraints — that is where
+// validation rules belong — so the rule must not fire there. Nor should it fire
+// on an NPE attribute that carries no constraint.
+func TestValidateEntityValidationRulesAllowedWhenPersistent(t *testing.T) {
+	cases := []string{
+		`create persistent entity Test.P ( "Name" : String(100) not null error 'req', "Code" : String(50) unique );`,
+		`create non-persistent entity Test.NP ( "Name" : String(100), "Qty" : Integer );`,
+	}
+	for _, input := range cases {
+		prog, errs := visitor.Build(input)
+		if len(errs) > 0 {
+			t.Fatalf("parse error: %v", errs[0])
+		}
+		stmt := prog.Statements[0].(*ast.CreateEntityStmt)
+		for _, v := range ValidateEntity(stmt) {
+			if v.RuleID == "MDL054" {
+				t.Errorf("unexpected MDL054 on %q: %s", input, v.Message)
+			}
+		}
+	}
+}

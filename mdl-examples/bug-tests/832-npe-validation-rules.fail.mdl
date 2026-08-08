@@ -1,0 +1,36 @@
+-- ============================================================================
+-- Issue #832 — validation rules on a non-persistent entity were accepted
+-- ============================================================================
+--
+-- NEGATIVE TEST (.fail.mdl): `mxcli check` MUST reject this file. An
+-- unexpected pass means MDL054 has regressed.
+--
+-- Mendix refuses a validation rule on a non-persistable entity:
+--
+--   [error] [CE0070] "Validations rules are not allowed on entity 'X',
+--                     because it is not persistable."
+--
+-- `not null` and `unique` ARE validation rules — Studio Pro models "required"
+-- and "uniqueness" as rules on the entity, not as column constraints — so both
+-- are rejected on an NPE. `mxcli check` and `mxcli exec` both accepted them and
+-- only a real build caught it, which is the worst place to find out.
+--
+-- Verified against mxbuild 11.6.6: `not null` with a message, `not null` bare,
+-- and `unique` each produce CE0070; a plain attribute does not. The message is
+-- optional and does not change the verdict.
+--
+-- The accepted counterparts — the same constraints on a PERSISTENT entity, and
+-- an NPE with no constraint — are in 832-npe-validation-rules-ok.mdl, which
+-- must PASS. Together they pin both edges of the rule.
+--
+-- Only the CREATE path can catch this: an `ALTER ENTITY … ADD ATTRIBUTE` does
+-- not carry the entity's persistence kind, so it cannot be told apart from a
+-- persistent entity without a project. Same limitation as MDL020.
+-- ============================================================================
+
+CREATE MODULE Bug832;
+
+CREATE OR MODIFY NON-PERSISTENT ENTITY Bug832.Np (
+  "Name": String(100) not null error 'Name is required',
+  "Code": String(50) unique error 'Code must be unique'
+);
