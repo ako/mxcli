@@ -1,0 +1,56 @@
+-- ============================================================================
+-- Issue #831 — the forms MDL055 must NOT reject (positive half)
+-- ============================================================================
+--
+-- The negative half is 831-xpath-variable-traversal.fail.mdl. This file pins
+-- the other edge: the two restructurings MDL055's message recommends, plus the
+-- one-hop forms that are valid XPath and must not be flagged.
+--
+-- Verified against mxbuild 11.6.6: this file builds with 0 errors.
+-- ============================================================================
+
+CREATE MODULE Bug831Ok;
+
+CREATE OR MODIFY PERSISTENT ENTITY Bug831Ok.Category ( Name: String(50) );
+
+CREATE OR MODIFY PERSISTENT ENTITY Bug831Ok.Product ( Code: String(50) );
+
+CREATE OR MODIFY ASSOCIATION Bug831Ok.Product_Category
+  FROM Bug831Ok.Product TO Bug831Ok.Category TYPE Reference;
+
+-- Recommended form 1: retrieve the associated object first (one hop is a legal
+-- retrieve SOURCE), then constrain on that variable's own attribute.
+CREATE OR MODIFY MICROFLOW Bug831Ok.Form1 ($RefProduct: Bug831Ok.Product)
+RETURNS list of Bug831Ok.Category
+BEGIN
+  retrieve $Related from $RefProduct/Bug831Ok.Product_Category;
+  retrieve $Categories from Bug831Ok.Category where [Name = $Related/Name];
+  return $Categories;
+END;
+
+-- Recommended form 2: invert the constraint so the traversal starts at the
+-- entity being retrieved, which XPath does support.
+CREATE OR MODIFY MICROFLOW Bug831Ok.Form2 ($RefProduct: Bug831Ok.Product)
+RETURNS list of Bug831Ok.Category
+BEGIN
+  retrieve $Categories from Bug831Ok.Category
+    where [Bug831Ok.Product_Category/Bug831Ok.Product = $RefProduct];
+  return $Categories;
+END;
+
+-- One hop off a variable is valid and must not be flagged: an attribute…
+CREATE OR MODIFY MICROFLOW Bug831Ok.OneHopAttribute ($RefProduct: Bug831Ok.Product)
+RETURNS list of Bug831Ok.Category
+BEGIN
+  retrieve $Categories from Bug831Ok.Category where [Name = $RefProduct/Code];
+  return $Categories;
+END;
+
+-- …and the associated object itself.
+CREATE OR MODIFY MICROFLOW Bug831Ok.OneHopAssociation ($RefProduct: Bug831Ok.Product)
+RETURNS list of Bug831Ok.Product
+BEGIN
+  retrieve $Products from Bug831Ok.Product
+    where [Bug831Ok.Product_Category = $RefProduct/Bug831Ok.Product_Category];
+  return $Products;
+END;

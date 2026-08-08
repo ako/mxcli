@@ -265,6 +265,7 @@ func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 				xp := expressionToXPath(stmt.Where)
 				v.checkXPathAssociationEmpty(stmt.Variable, xp)
 				v.checkXPathIdConstraint(stmt.Variable, xp)
+				v.checkXPathVariableTraversal(stmt.Variable, xp)
 			}
 		case *ast.CallMicroflowStmt:
 			v.checkAssociationObjectArgs("microflow "+stmt.MicroflowName.String(), stmt.Arguments)
@@ -558,6 +559,43 @@ func (v *microflowValidator) checkXPathAssociationEmpty(variable, xpath string) 
 			fmt.Sprintf("retrieve '$%s' constraint tests association `%s = empty`, which Mendix XPath does not support "+
 				"(CE0161 \"Error(s) in XPath constraint\") — `= empty` works on attributes, not associations", variable, assoc),
 			fmt.Sprintf("Test for the absence of the associated object with negation: `[not(%s/<Module.TargetEntity>)]`.", assoc))
+	}
+}
+
+// xpathVarTraversalRe matches a path rooted at a $variable with TWO OR MORE
+// segments (`$P/Mod.Assoc/Name`). One segment is deliberately not matched: both
+// `$P/Code` (the parameter's own attribute) and `$P/Mod.Assoc` (one hop to the
+// associated object) are valid XPath. The boundary is the hop count, not whether
+// a segment is module-qualified — see checkXPathVariableTraversal.
+var xpathVarTraversalRe = regexp.MustCompile(`\$(\w+)((?:/[A-Za-z_][\w.]*){2,})`)
+
+// checkXPathVariableTraversal flags a retrieve constraint that traverses an
+// association FROM a variable (`[Name = $RefProduct/Mod.Product_Category/Name]`).
+// Mendix XPath reaches at most one hop off a variable, so this fails the build
+// with CE0161 while mxcli accepted it silently (issue #831).
+//
+// Verified against mxbuild 11.6.6 — the boundary is narrower than it looks:
+//
+//	$Var/Attr             VALID   a parameter's own attribute
+//	$Var/Mod.Assoc        VALID   one hop, the associated object
+//	$Var/Mod.Assoc/Attr   CE0161  two or more hops
+//
+// There is no valid serialization of the two-hop form, which is why this is a
+// rejection rather than a writer fix: the constraint has to be restructured, and
+// only the author knows which of the two shapes they meant.
+func (v *microflowValidator) checkXPathVariableTraversal(variable, xpath string) {
+	for _, m := range xpathVarTraversalRe.FindAllStringSubmatch(xpath, -1) {
+		root, path := m[1], "$"+m[1]+m[2]
+		segs := strings.Split(strings.TrimPrefix(m[2], "/"), "/")
+		firstHop, leaf := segs[0], segs[len(segs)-1]
+		v.addViolation("MDL055", linter.SeverityError,
+			fmt.Sprintf("retrieve '$%s' constraint traverses an association from a variable (`%s`), which Mendix XPath "+
+				"does not support (CE0161 \"Error(s) in XPath constraint\") — a constraint reaches at most one hop off a variable",
+				variable, path),
+			fmt.Sprintf("Retrieve the associated object first, then constrain on its own attribute: "+
+				"`retrieve $Related from $%s/%s;` and use `[%s = $Related/%s]`. Or invert the constraint so the "+
+				"traversal starts at the entity being retrieved: `[%s/<Module.Entity> = $%s]`. Both forms build clean.",
+				root, firstHop, leaf, leaf, firstHop, root))
 	}
 }
 
