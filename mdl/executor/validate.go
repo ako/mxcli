@@ -148,12 +148,19 @@ func (sc *scriptContext) allNames() []string {
 
 // annotateForwardRef checks if a failed statement's error references an object
 // that is defined later in the script. If so, it appends a hint to reorder.
-func annotateForwardRef(err error, _ ast.Statement, created, allDefined *scriptContext) error {
+func annotateForwardRef(err error, stmt ast.Statement, created, allDefined *scriptContext) error {
 	msg := err.Error()
+	// A statement's OWN name is "defined in the script but not yet created" at
+	// the moment it fails, so without this any validation error that names its
+	// own subject picked up the reorder hint — telling the author to move a
+	// statement before itself. Found via MDL054, whose message names the entity
+	// being created (#832).
+	self := newScriptContext()
+	self.collectSingle(stmt)
 	// Check each name that is defined in the script but not yet created.
 	for _, name := range allDefined.allNames() {
-		if created.has(name) {
-			continue // already created before this statement
+		if created.has(name) || self.has(name) {
+			continue // already created before this statement, or defined by it
 		}
 		if strings.Contains(msg, name) {
 			return fmt.Errorf("%w\n  hint: %s is defined later in this script — move its create statement before this one", err, name)
