@@ -175,3 +175,139 @@ func descendsFrom(id, ancestor string, parent map[string]string) bool {
 	}
 	return false
 }
+
+// ApplyIdentities writes recorded `GUID`s back onto a module's elements, matched
+// by path, and reports what it could not place.
+//
+// This is the transplant half of the update: after a module's documents are
+// replaced, every element that existed before must carry the `GUID` it had
+// before, or the runtime treats it as a new entity and drops the old table
+// (§8). Studio Pro does the same thing — its update renumbers all 94 `$ID`s and
+// preserves all 9 `GUID`s (§4).
+//
+// Elements with no recorded identity are left exactly as they are, with their
+// freshly minted `GUID`s: those are genuinely new in the target version, and a
+// new element must not inherit an old one's identity. Recorded paths that no
+// longer exist are returned as `missing` — an element the new version removed,
+// which is information the caller needs rather than an error here.
+//
+// The write is per unit and only for units that actually changed, so a module
+// whose identities all already match is not rewritten at all (ADR-0008).
+func ApplyIdentities(mprPath, moduleName string, ids Identities) (applied int, missing []string, err error) {
+	reader, err := modelsdk.Open(mprPath)
+	if err != nil {
+		return 0, nil, fmt.Errorf("open %s: %w", mprPath, err)
+	}
+	units, err := reader.ListUnits()
+	if err != nil {
+		reader.Close()
+		return 0, nil, fmt.Errorf("list units: %w", err)
+	}
+	inModule, err := unitsOfModule(reader, units, moduleName)
+	if err != nil {
+		reader.Close()
+		return 0, nil, err
+	}
+
+	placed := map[string]bool{}
+	type pending struct {
+		id       string
+		contents []byte
+	}
+	var writes []pending
+
+	for _, unitID := range inModule {
+		raw, rerr := reader.GetRawUnitBytes(model.ID(unitID))
+		if rerr != nil || len(raw) == 0 {
+			continue
+		}
+		var doc bson.D
+		if bson.Unmarshal(raw, &doc) != nil {
+			continue
+		}
+		n := applyIdentities(doc, nil, ids, placed)
+		if n == 0 {
+			continue
+		}
+		encoded, merr := bson.Marshal(doc)
+		if merr != nil {
+			reader.Close()
+			return 0, nil, fmt.Errorf("re-encode unit %s: %w", unitID, merr)
+		}
+		writes = append(writes, pending{unitID, encoded})
+		applied += n
+	}
+	reader.Close()
+
+	for _, p := range ids.Paths() {
+		if !placed[p] {
+			missing = append(missing, p)
+		}
+	}
+	if len(writes) == 0 {
+		return applied, missing, nil
+	}
+
+	writer, err := modelsdk.OpenForWriting(mprPath)
+	if err != nil {
+		return 0, nil, fmt.Errorf("open %s for writing: %w", mprPath, err)
+	}
+	defer writer.Close()
+	for _, w := range writes {
+		if err := writer.UpdateRawUnit(w.id, w.contents); err != nil {
+			return 0, nil, fmt.Errorf("write identities into unit %s: %w", w.id, err)
+		}
+	}
+	return applied, missing, nil
+}
+
+// applyIdentities rewrites GUIDs in place, returning how many it changed and
+// recording which recorded paths it found.
+func applyIdentities(v any, trail []string, ids Identities, placed map[string]bool) int {
+	changed := 0
+	switch t := v.(type) {
+	case bson.D:
+		name, _, hasGUID := nameAndGUID(t)
+		next := trail
+		if name != "" {
+			next = append(append([]string{}, trail...), name)
+			if hasGUID {
+				path := strings.Join(next, "/")
+				if want, ok := ids[path]; ok {
+					placed[path] = true
+					for i, e := range t {
+						if e.Key != "GUID" {
+							continue
+						}
+						b := e.Value.(primitive.Binary)
+						if !bytesEqual(b.Data, want) {
+							t[i].Value = primitive.Binary{Subtype: b.Subtype, Data: append([]byte{}, want...)}
+							changed++
+						}
+						break
+					}
+				}
+			}
+		}
+		for _, e := range t {
+			changed += applyIdentities(e.Value, next, ids, placed)
+		}
+	case bson.A:
+		for _, e := range t {
+			changed += applyIdentities(e, trail, ids, placed)
+		}
+	}
+	return changed
+}
+
+func bytesEqual(a, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}

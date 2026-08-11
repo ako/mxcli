@@ -99,3 +99,109 @@ func TestCaptureIdentities_RefusesAnUnknownModule(t *testing.T) {
 		t.Fatal("capturing identities for a module that does not exist must be an error")
 	}
 }
+
+// TestApplyIdentities_RestoresTheCapturedGUIDs is the round trip the update
+// rests on: capture from the copy that has the data, apply onto the copy that
+// replaced it, and every element must end up carrying the identity it had
+// before.
+//
+// The two projects here stand in for before-and-after an update. Mutating the
+// GUIDs first is what makes the assertion mean something — applying identities
+// that already match would pass whether or not the code did anything.
+func TestApplyIdentities_RestoresTheCapturedGUIDs(t *testing.T) {
+	original := copyFixture(t)
+	replaced := copyFixture(t)
+
+	before, err := CaptureIdentities(original, "Administration")
+	if err != nil {
+		t.Fatalf("capture: %v", err)
+	}
+
+	// Stand in for "the module was replaced": every identity is now different.
+	scrambled := Identities{}
+	for p, g := range before {
+		alt := append([]byte{}, g...)
+		alt[0] ^= 0xFF
+		scrambled[p] = alt
+	}
+	if _, _, err := ApplyIdentities(replaced, "Administration", scrambled); err != nil {
+		t.Fatalf("scramble: %v", err)
+	}
+	mid, err := CaptureIdentities(replaced, "Administration")
+	if err != nil {
+		t.Fatalf("capture after scramble: %v", err)
+	}
+	if bytesEqual(mid["Account"], before["Account"]) {
+		t.Fatal("the scramble did not take, so the restore below would prove nothing")
+	}
+
+	// Now the transplant.
+	applied, missing, err := ApplyIdentities(replaced, "Administration", before)
+	if err != nil {
+		t.Fatalf("ApplyIdentities: %v", err)
+	}
+	if applied != len(before) {
+		t.Errorf("applied %d of %d identities", applied, len(before))
+	}
+	if len(missing) != 0 {
+		t.Errorf("nothing should be missing between identical modules; got %v", missing)
+	}
+
+	after, err := CaptureIdentities(replaced, "Administration")
+	if err != nil {
+		t.Fatalf("capture after restore: %v", err)
+	}
+	for _, p := range before.Paths() {
+		if !bytesEqual(after[p], before[p]) {
+			t.Errorf("%s: identity not restored (%x vs %x)", p, after[p], before[p])
+		}
+	}
+}
+
+// TestApplyIdentities_ReportsWhatItCouldNotPlace — a recorded path that no
+// longer exists means the new version removed that element. The caller has to
+// know: its column is about to disappear, which is a data decision rather than
+// something to silently absorb.
+func TestApplyIdentities_ReportsWhatItCouldNotPlace(t *testing.T) {
+	mpr := copyFixture(t)
+	ids, err := CaptureIdentities(mpr, "Administration")
+	if err != nil {
+		t.Fatalf("capture: %v", err)
+	}
+	ids["Account/AttributeThatWasRemoved"] = make([]byte, 16)
+
+	_, missing, err := ApplyIdentities(mpr, "Administration", ids)
+	if err != nil {
+		t.Fatalf("ApplyIdentities: %v", err)
+	}
+	if len(missing) != 1 || missing[0] != "Account/AttributeThatWasRemoved" {
+		t.Errorf("missing = %v, want exactly the removed attribute", missing)
+	}
+}
+
+// TestApplyIdentities_LeavesNewElementsAlone — an element with no recorded
+// identity is new in the target version and must keep its freshly minted GUID.
+// Inheriting an old one would make two elements the same entity to the runtime.
+func TestApplyIdentities_LeavesNewElementsAlone(t *testing.T) {
+	mpr := copyFixture(t)
+	full, err := CaptureIdentities(mpr, "Administration")
+	if err != nil {
+		t.Fatalf("capture: %v", err)
+	}
+
+	// Apply a map that knows about only one element.
+	partial := Identities{"Account": full["Account"]}
+	if _, _, err := ApplyIdentities(mpr, "Administration", partial); err != nil {
+		t.Fatalf("ApplyIdentities: %v", err)
+	}
+
+	after, err := CaptureIdentities(mpr, "Administration")
+	if err != nil {
+		t.Fatalf("capture: %v", err)
+	}
+	for _, p := range full.Paths() {
+		if !bytesEqual(after[p], full[p]) {
+			t.Errorf("%s changed, but only Account was in the map", p)
+		}
+	}
+}
