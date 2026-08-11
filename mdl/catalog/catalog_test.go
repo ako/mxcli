@@ -236,6 +236,7 @@ func TestObjectsView_IncludesNewDocumentTypes(t *testing.T) {
 		{"building_blocks", "BUILDING_BLOCK"},
 		{"icon_collections", "ICON_COLLECTION"},
 		{"menus", "MENU"},
+		{"page_templates", "PAGE_TEMPLATE"},
 		{"data_transformers", "DATA_TRANSFORMER"},
 		{"agents", "AGENT"},
 		{"ai_models", "AI_MODEL"},

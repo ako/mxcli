@@ -29,6 +29,14 @@ var notAutoDescribable = map[string]string{
 
 	// Project-level, not module-scoped documents.
 	"JAR_DEPENDENCY": "a build-time dependency coordinate, not a document",
+
+	// Indexed so a module's documents can be enumerated in full, but there is no
+	// DESCRIBE PAGE TEMPLATE handler and describing one as a page is what this
+	// type was just untangled from. Reporting it as un-describable is the honest
+	// answer; the previous behaviour emitted `create or modify page` with an
+	// empty body, which re-executed would create a page and which compared equal
+	// to every other template.
+	"PAGE_TEMPLATE": "no DESCRIBE handler; a template's content hangs off LayoutCall, which the page path does not read",
 }
 
 // objectTypesInView extracts the ObjectType literals the `objects` view can

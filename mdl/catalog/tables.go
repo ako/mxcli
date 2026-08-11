@@ -325,6 +325,23 @@ func (c *Catalog) createTables() error {
 		)`,
 		viewWithFullSnapshot("icon_collections"),
 
+		// page_templates (Forms$PageTemplate; the starting points Studio Pro's
+		// "new page" dialog offers). A separate table from pages: templates are a
+		// different document type whose content hangs off LayoutCall, and folding
+		// them into pages made every module that ships templates report pages it
+		// does not have.
+		`CREATE TABLE IF NOT EXISTS page_templates_data (
+			Id TEXT PRIMARY KEY,
+			Name TEXT,
+			QualifiedName TEXT,
+			ModuleName TEXT,
+			Folder TEXT,
+			Description TEXT,
+			ProjectId TEXT,
+			SnapshotId TEXT
+		)`,
+		viewWithFullSnapshot("page_templates"),
+
 		// menus (standalone Menus$MenuDocument; read-only reusable menus)
 		`CREATE TABLE IF NOT EXISTS menus_data (
 			Id TEXT PRIMARY KEY,
@@ -957,6 +974,10 @@ func (c *Catalog) createTables() error {
 			SELECT Id, 'MENU' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
 				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
 			FROM menus
+			UNION ALL
+			SELECT Id, 'PAGE_TEMPLATE' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
+				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
+			FROM page_templates
 			UNION ALL
 			SELECT Id, 'DATA_TRANSFORMER' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
 				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource

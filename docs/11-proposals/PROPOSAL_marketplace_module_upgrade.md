@@ -375,12 +375,26 @@ The remaining 4 are two genuine defects, both out of scope for this proposal:
 
 **Two gaps this measurement also exposed, which the differ must handle.**
 
-- **Page templates are conflated with pages.** All 46 `Forms$PageTemplate` units
-  report `ObjectType = PAGE` and describe as `create or modify page`. Harmless for
-  describe-to-describe comparison, since both sides conflate identically — but the
-  reported type is wrong, re-executing the output would create a Page rather than a
-  template, and `show modules` consequently reports Atlas_Web_Content as having 46
-  pages when it has zero.
+- **Page templates were conflated with pages** (closed 2026-08-11). All 46
+  `Forms$PageTemplate` units reported `ObjectType = PAGE` and described as
+  `create or modify page`, so `show modules` reported Atlas_Web_Content as having
+  46 pages when it has zero.
+
+  This was recorded here as "harmless for describe-to-describe comparison, since
+  both sides conflate identically". That was wrong, and the error was in the same
+  family as the security one above: the conflation was checked, the *content* was
+  not. A page template describes with an **empty body** — its widgets hang off
+  `LayoutCall`, and the page describe path reads `FormCall` — so those 46
+  elements compared on nothing but name, folder and CSS class. The differ was
+  reporting them unchanged without having looked inside them, which is precisely
+  the false negative the honesty rule exists to prevent, and it was hiding behind
+  a bug filed as cosmetic.
+
+  Cause: `listUnitsByType` matched on a type **prefix**, and `Forms$Page` is a
+  prefix of `Forms$PageTemplate`. Both engines now match exactly, templates are
+  indexed as their own `PAGE_TEMPLATE` catalog type, and — having no DESCRIBE
+  handler — they are reported **unknown**, which is the truthful version of what
+  the differ was already doing.
 - **Module roles were invisible** (closed 2026-08-11). This was originally recorded
   here as "module security is invisible", which was wrong and briefly made the
   security hole look like the largest risk in the proposal. Re-measured: three of the
@@ -506,10 +520,13 @@ written. Three prerequisites fall out of that measurement, in priority order:
 2. ~~**Fix import/export mapping describe.**~~ **Closed** — the cause was
    `moduleNameFor` reading a unit's direct container instead of walking to the
    enclosing module, so every foldered document missed.
-3. **Distinguish page templates from pages**, or accept and document the conflation.
-   The only one still open, and the least severe: both sides of a comparison conflate
-   identically, so it does not mislead the differ. It does make `show modules` report
-   46 pages for a module with none, which is worth fixing on its own terms.
+3. ~~**Distinguish page templates from pages**, or accept and document the
+   conflation.~~ **Closed 2026-08-11**, and it was not "the least severe" as
+   recorded — see the corrected finding above. `Forms$Page` being a prefix of
+   `Forms$PageTemplate` fed 46 templates into a prefix-matched page query; they
+   then described as pages with an empty body, so the differ judged them
+   unchanged without reading them. Templates are now their own catalog type and
+   report as unknown.
 
 Also closed since: the bare-DESCRIBE auto-detect gap (43 documents), and menu
 documents, which had no DESCRIBE at all and now have full CRUD. Bare-DESCRIBE
