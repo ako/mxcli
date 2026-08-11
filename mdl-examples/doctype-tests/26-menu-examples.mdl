@@ -1,0 +1,59 @@
+-- ============================================================================
+-- Menu Examples - MDL Syntax
+-- ============================================================================
+--
+-- A menu document (Menus$MenuDocument) is a standalone, reusable menu that a
+-- menu widget points at. Atlas_Core ships two of them, Phone_Menu and
+-- Tablet_Menu.
+--
+-- It is NOT the menu inside a navigation profile. The two are easy to confuse
+-- because both are built from the same Menus$MenuItem elements:
+--
+--   describe menu Atlas_Core.Phone_Menu;   -- this file: a standalone document
+--   show navigation menu;                  -- the menu inside a profile
+--
+-- Menus are READ-ONLY. Mendix offers no way to author a menu document outside
+-- Studio Pro, so there is deliberately no `create menu` / `alter menu` /
+-- `drop menu`. DESCRIBE output is informational and is not re-executable — it
+-- opens with a `-- Menu:` header saying so, in the same way DESCRIBE BUILDING
+-- BLOCK does.
+-- ============================================================================
+
+-- Describe a menu by naming the type explicitly.
+describe menu Atlas_Core.Phone_Menu;
+
+describe menu Atlas_Core.Tablet_Menu;
+
+-- The type can also be auto-detected, as for any other document type.
+describe Atlas_Core.Phone_Menu;
+
+-- ----------------------------------------------------------------------------
+-- Shape of the output
+-- ----------------------------------------------------------------------------
+--
+--   -- Menu: Atlas_Core.Phone_Menu (4 top-level item(s))
+--   -- Export level: Hidden
+--   -- Menus are read-only; they cannot be created via MDL.
+--   {
+--     menu item 'Home' page MyModule.Home_Web icon Atlas_Core.Atlas.home;
+--     menu item 'Rebuild' microflow Administration.Rebuild;
+--     menu 'Admin' (
+--       menu item 'Accounts' page Administration.Account_Overview;
+--     );
+--     menu item 'Settings';
+--   }
+--
+-- Items render with the same syntax navigation menus use, so the two read
+-- alike:
+--   * a leaf with a page target      -> menu item '<caption>' page <Module.Page>
+--   * a leaf with a microflow target -> menu item '<caption>' microflow <Module.MF>
+--   * a leaf with no action          -> menu item '<caption>'
+--   * a sub-menu                     -> menu '<caption>' ( ...nested items... )
+--
+-- An `icon` clause is emitted only for Forms$IconCollectionIcon, the one icon
+-- variant MDL can name. A glyph icon (numeric code) or an image icon is
+-- reported on its own comment line rather than dropped silently, so what is
+-- missing is visible:
+--
+--   -- icon a numeric glyph code (Forms$GlyphIcon) is not reproducible by MDL;
+--   -- set it in Studio Pro

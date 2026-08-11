@@ -26,6 +26,7 @@ var objectTypeToDescribeKind = map[string]ast.DescribeObjectType{
 	"PAGE":                   ast.DescribePage,
 	"SNIPPET":                ast.DescribeSnippet,
 	"BUILDING_BLOCK":         ast.DescribeBuildingBlock,
+	"MENU":                   ast.DescribeMenu,
 	"LAYOUT":                 ast.DescribeLayout,
 	"ENUMERATION":            ast.DescribeEnumeration,
 	"CONSTANT":               ast.DescribeConstant,

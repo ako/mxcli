@@ -182,6 +182,28 @@ func init() {
 		SeeAlso: []string{"snippet.show", "page.show"},
 	})
 
+	Register(SyntaxFeature{
+		Path:    "menu.describe",
+		Summary: "Describe a standalone menu document (read-only)",
+		Keywords: []string{
+			"describe menu", "menu", "menus", "menu document", "menu item",
+		},
+		Syntax: "DESCRIBE MENU Module.Name;",
+		Example: "DESCRIBE MENU Atlas_Core.Phone_Menu;\n\n" +
+			"-- Output is informational; menus cannot be authored via MDL:\n" +
+			"--   -- Menu: Atlas_Core.Phone_Menu (4 top-level item(s))\n" +
+			"--   {\n" +
+			"--     menu item 'Home' page MyModule.Home_Web icon Atlas_Core.Atlas.home;\n" +
+			"--     menu 'Admin' (\n" +
+			"--       menu item 'Accounts' page Administration.Account_Overview;\n" +
+			"--     );\n" +
+			"--   }\n\n" +
+			"-- A menu document is the reusable menu a menu widget points at. It is NOT\n" +
+			"-- the menu inside a navigation profile — for that use SHOW NAVIGATION MENU\n" +
+			"-- and ALTER NAVIGATION.",
+		SeeAlso: []string{"navigation", "page.show"},
+	})
+
 	// ── Fragment ──────────────────────────────────────────────────────────
 
 	Register(SyntaxFeature{

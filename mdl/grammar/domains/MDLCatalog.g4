@@ -146,6 +146,7 @@ describeStatement
     | DESCRIBE PAGE qualifiedName
     | DESCRIBE SNIPPET qualifiedName
     | DESCRIBE BUILDING BLOCK qualifiedName
+    | DESCRIBE MENU_KW qualifiedName
     | DESCRIBE LAYOUT qualifiedName
     | DESCRIBE ENUMERATION qualifiedName
     | DESCRIBE CONSTANT qualifiedName

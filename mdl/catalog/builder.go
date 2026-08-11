@@ -402,6 +402,10 @@ func (b *Builder) Build(progress ProgressFunc) error {
 		return fmt.Errorf("failed to build icon collections: %w", err)
 	}
 
+	if err := b.buildSimpleNamedDocs("Menus$MenuDocument", "menus", "Menus"); err != nil {
+		return fmt.Errorf("failed to build menus: %w", err)
+	}
+
 	if err := b.buildSimpleNamedDocs("DataTransformers$DataTransformer", "data_transformers", "Data Transformers"); err != nil {
 		return fmt.Errorf("failed to build data transformers: %w", err)
 	}

@@ -484,6 +484,11 @@ func (unsupportedBackend) GetMendixVersion() (r0 string, err1 error) {
 	return
 }
 
+func (unsupportedBackend) GetMenuDocumentByQualifiedName(_ string, _ string) (r0 *types.MenuDocument, err1 error) {
+	err1 = errUnsupported("GetMenuDocumentByQualifiedName")
+	return
+}
+
 func (unsupportedBackend) GetMicroflow(_ model.ID) (r0 *microflows.Microflow, err1 error) {
 	err1 = errUnsupported("GetMicroflow")
 	return
@@ -704,6 +709,11 @@ func (unsupportedBackend) ListJsonStructures() (r0 []*types.JsonStructure, err1 
 
 func (unsupportedBackend) ListLayouts() (r0 []*pages.Layout, err1 error) {
 	err1 = errUnsupported("ListLayouts")
+	return
+}
+
+func (unsupportedBackend) ListMenuDocuments() (r0 []*types.MenuDocument, err1 error) {
+	err1 = errUnsupported("ListMenuDocuments")
 	return
 }
 

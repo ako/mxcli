@@ -68,3 +68,39 @@ func TestByQualifiedNameRejectsWrongModule(t *testing.T) {
 		t.Error("expected an error for a mapping that lives in a different module, got nil")
 	}
 }
+
+// TestListMenuDocuments reads the standalone Menus$MenuDocument units from the
+// vendored fixture. Atlas_Core ships Phone_Menu and Tablet_Menu, both foldered,
+// so this also exercises the module-resolution walk above.
+func TestListMenuDocuments(t *testing.T) {
+	b := New()
+	if err := b.Connect(fixture); err != nil {
+		t.Fatalf("Connect(%s): %v", fixture, err)
+	}
+	t.Cleanup(func() { _ = b.Disconnect() })
+
+	all, err := b.ListMenuDocuments()
+	if err != nil {
+		t.Fatalf("ListMenuDocuments: %v", err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("got %d menu documents, want 2 (Phone_Menu, Tablet_Menu)", len(all))
+	}
+
+	md, err := b.GetMenuDocumentByQualifiedName("Atlas_Core", "Phone_Menu")
+	if err != nil {
+		t.Fatalf("GetMenuDocumentByQualifiedName: %v", err)
+	}
+	if len(md.Items) != 4 {
+		t.Fatalf("got %d top-level items, want 4", len(md.Items))
+	}
+	// Items must carry their caption and icon, not just exist — an item parsed
+	// into an empty struct would still satisfy a count assertion.
+	first := md.Items[0]
+	if first.Caption != "Home" {
+		t.Errorf("first item caption = %q, want Home", first.Caption)
+	}
+	if first.Icon != "Atlas_Core.Atlas_Filled.home" {
+		t.Errorf("first item icon = %q, want Atlas_Core.Atlas_Filled.home", first.Icon)
+	}
+}

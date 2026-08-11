@@ -871,3 +871,10 @@ func (b *MprBackend) useCallMicroflowActivityName() bool {
 func (b *MprBackend) SerializeWorkflowActivity(a workflows.WorkflowActivity) (any, error) {
 	return mpr.SerializeWorkflowActivity(a, b.useCallMicroflowActivityName()), nil
 }
+
+func (b *MprBackend) ListMenuDocuments() ([]*types.MenuDocument, error) {
+	return b.reader.ListMenuDocuments()
+}
+func (b *MprBackend) GetMenuDocumentByQualifiedName(moduleName, name string) (*types.MenuDocument, error) {
+	return b.reader.GetMenuDocumentByQualifiedName(moduleName, name)
+}

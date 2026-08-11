@@ -235,6 +235,7 @@ func TestObjectsView_IncludesNewDocumentTypes(t *testing.T) {
 		// view, so bare `DESCRIBE Module.Name` could not resolve them.
 		{"building_blocks", "BUILDING_BLOCK"},
 		{"icon_collections", "ICON_COLLECTION"},
+		{"menus", "MENU"},
 		{"data_transformers", "DATA_TRANSFORMER"},
 		{"agents", "AGENT"},
 		{"ai_models", "AI_MODEL"},

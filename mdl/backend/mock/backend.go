@@ -244,11 +244,14 @@ type MockBackend struct {
 	UpdateProjectSettingsFunc func(ps *model.ProjectSettings) error
 
 	// ImageBackend
-	ListImageCollectionsFunc  func() ([]*types.ImageCollection, error)
-	ListIconCollectionsFunc   func() ([]*types.IconCollection, error)
-	CreateImageCollectionFunc func(ic *types.ImageCollection) error
-	UpdateImageCollectionFunc func(ic *types.ImageCollection) error
-	DeleteImageCollectionFunc func(id string) error
+	ListImageCollectionsFunc func() ([]*types.ImageCollection, error)
+	ListIconCollectionsFunc  func() ([]*types.IconCollection, error)
+
+	ListMenuDocumentsFunc              func() ([]*types.MenuDocument, error)
+	GetMenuDocumentByQualifiedNameFunc func(moduleName, name string) (*types.MenuDocument, error)
+	CreateImageCollectionFunc          func(ic *types.ImageCollection) error
+	UpdateImageCollectionFunc          func(ic *types.ImageCollection) error
+	DeleteImageCollectionFunc          func(id string) error
 
 	// ScheduledEventBackend
 	ListScheduledEventsFunc func() ([]*model.ScheduledEvent, error)

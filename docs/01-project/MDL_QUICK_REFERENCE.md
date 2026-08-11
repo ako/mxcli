@@ -962,6 +962,8 @@ MDL uses explicit property declarations for pages:
 | Describe snippet | `describe snippet Module.Name;` | Round-trippable MDL output |
 | List building blocks | `show building blocks [in module];` | Read-only; cannot be authored via MDL |
 | Describe building block | `describe building block Module.Name;` | Informational (header comment + widget tree), not a `create` statement |
+| Describe menu | `describe menu Module.Name;` | Standalone `Menus$MenuDocument` (e.g. `Atlas_Core.Phone_Menu`), read-only. Not the navigation-profile menu — see `show navigation menu` |
+| Describe menu | `describe menu Module.Name;` | Standalone `Menus$MenuDocument` (e.g. `Atlas_Core.Phone_Menu`), read-only. Not the navigation-profile menu — see `show navigation menu` |
 
 **DataGrid Column Properties:**
 

@@ -3,6 +3,8 @@
 package mock
 
 import (
+	"fmt"
+
 	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
 )
@@ -26,4 +28,18 @@ func (m *MockBackend) UpdateNavigationProfile(navDocID model.ID, profileName str
 		return m.UpdateNavigationProfileFunc(navDocID, profileName, spec)
 	}
 	return nil
+}
+
+func (m *MockBackend) ListMenuDocuments() ([]*types.MenuDocument, error) {
+	if m.ListMenuDocumentsFunc != nil {
+		return m.ListMenuDocumentsFunc()
+	}
+	return nil, fmt.Errorf("MockBackend.ListMenuDocuments not configured")
+}
+
+func (m *MockBackend) GetMenuDocumentByQualifiedName(moduleName, name string) (*types.MenuDocument, error) {
+	if m.GetMenuDocumentByQualifiedNameFunc != nil {
+		return m.GetMenuDocumentByQualifiedNameFunc(moduleName, name)
+	}
+	return nil, fmt.Errorf("MockBackend.GetMenuDocumentByQualifiedName not configured")
 }

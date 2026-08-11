@@ -261,6 +261,8 @@ func execDescribe(ctx *ExecContext, s *ast.DescribeStmt) error {
 			return describeImportMapping(ctx, s.Name)
 		case ast.DescribeExportMapping:
 			return describeExportMapping(ctx, s.Name)
+		case ast.DescribeMenu:
+			return describeMenu(ctx, s.Name)
 		case ast.DescribeJarDependency:
 			return execDescribeJarDependency(ctx, s.Name.String(), s.Qualifier)
 		default:
@@ -352,6 +354,8 @@ func describeObjectTypeLabel(t ast.DescribeObjectType) string {
 		return "importmapping"
 	case ast.DescribeExportMapping:
 		return "exportmapping"
+	case ast.DescribeMenu:
+		return "menu"
 	default:
 		return "unknown"
 	}
