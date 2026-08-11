@@ -244,6 +244,33 @@ without guessing, run the new mxbuild's own migration over an old project
 (`mx convert -p -s <project>`) and diff the BSON: Mendix ships a one-time
 conversion per renamed property, so the converted document is authoritative.
 
+### A `GUID` Is the Database's Identity — Never Mint One for an Existing Element
+
+An element's `GUID` is not decorative and is not interchangeable with its `$ID`.
+The **runtime keys the database on it**: `mendixsystem$entity.id` and
+`mendixsystem$attribute.id` hold the model's `GUID` verbatim (byte-identical once
+the .NET field order is undone). Measured on Mendix 11.12.1 against a live
+PostgreSQL: changing **only** an entity's `GUID` — same name, same table name,
+same attributes — makes the runtime treat it as a different entity and **destroys
+its rows**. An unchanged reboot is the control, and preserves them. See
+[PROPOSAL_marketplace_module_upgrade.md §8](docs/11-proposals/PROPOSAL_marketplace_module_upgrade.md).
+
+Consequences for any write path:
+
+1. **Preserve the stored `GUID` when rewriting an existing element.** A codec that
+   mints a fresh one on rebuild silently drops a table's worth of production data
+   on the next deploy — a failure that no `mx check` and no build will catch,
+   because the model is perfectly valid. This is the same class as the identity
+   properties in `canon.identityFields` and belongs in that decision.
+2. **`$ID` renumbering is irrelevant to data safety** — the inverse of the natural
+   assumption. Studio Pro renumbers every `$ID` in a module on update (94 of 94)
+   and preserves every `GUID` (9 of 9), which is exactly why its update does not
+   lose data. `$ID` matters for *intra-unit pointer consistency* (see below);
+   `GUID` matters for the database.
+3. **A new element must get a fresh `GUID`**, and an element copied from another
+   model must not keep the source's — two elements sharing a `GUID` are one entity
+   as far as the runtime is concerned.
+
 ### Writes Are Conditional, and an `$ID` Is Never Renumbered In Place
 
 Storage does not write a unit whose new content is **semantically equal** to what

@@ -8,7 +8,7 @@ date: 2026-08-04
 
 **Status:** Draft
 **Date:** 2026-08-04 (initial), revised 2026-08-10 (Studio Pro update measured),
-2026-08-11 (DESCRIBE coverage measured — §7)
+2026-08-11 (DESCRIBE coverage measured — §7; `GUID` = database identity measured — §8)
 
 ## Revision 2026-08-10 — what Studio Pro actually does, measured
 
@@ -504,6 +504,62 @@ Administration — installed 4.3.2, latest 4.5.0
 
 No MDL syntax is added. This is a CLI-only, read-only command.
 
+### 8. What `GUID` is for: the database keys on it (measured 2026-08-11)
+
+§4 established that Studio Pro's update renumbers every `$ID` and preserves every
+`GUID`. That made `GUID` the *only* candidate carrier of database identity, but
+the proposal was careful to call it inference. It is now measured.
+
+**Method.** A blank Mendix 11.12.1 app with `Administration` 4.3.2, booted with
+`mxcli run --local` against a local PostgreSQL, so the runtime creates and then
+re-synchronises a real schema. The lever is one that Studio Pro does not expose
+and mxcli does: rewrite a single BSON value in the stored model and boot again.
+Nothing points *at* a `GUID` — it is not a pointer target — so changing it is a
+safe one-value edit, unlike renumbering an `$ID` (ADR-0008).
+
+**The runtime writes its own identity map.** `mendixsystem$entity` and
+`mendixsystem$attribute` record, per element, the id the database knows it by:
+
+```
+mendixsystem$entity     b16e49ea-91df-4caa-aed8-6ba4c4e133c5  Administration.Account  administration$account
+mendixsystem$attribute  aac00d66-7cc1-4def-a8d6-8b81fa1f5477  FullName
+```
+
+Those are the model's own `GUID`s. `Account` stores
+`ea 49 6e b1 df 91 aa 4c ae d8 6b a4 c4 e1 33 c5`, which is
+`b16e49ea-91df-4caa-aed8-6ba4c4e133c5` once the .NET field order is undone — and
+`FullName`'s decodes to `aac00d66-…` likewise. The mapping is byte-identical, not
+merely correlated. It is also the same `b16e49ea…` recorded in §4 on a different
+project at a different Mendix version, because the `GUID` is a property of the
+*published module*, stable across every project that installs it.
+
+**Changing only the `GUID` destroys the data.**
+
+| Run | Model change | `mendixsystem$entity.id` | `administration$account` |
+|---|---|---|---|
+| 1 | — (baseline) | `b16e49ea-…` | 1 row inserted |
+| 2 | `GUID` → `a0a1a2…` | `a3a2a1a0-…` | **0 rows** |
+| 3 | `GUID` restored | `b16e49ea-…` | table recreated, empty |
+| 4 | none (control) | `b16e49ea-…` | **row survives** |
+
+Run 2 changed nothing else — same entity name, same table name, same attributes —
+and the runtime treated it as a different entity. Run 4 is the control that makes
+run 2 readable: an unchanged reboot preserves the row, so the loss was caused by
+the identity change and not by restarting.
+
+**What this settles, and what it does not.** Studio Pro's update preserves exactly
+the identity the database keys on, so `$ID` renumbering — all 94 of them — is
+irrelevant to data safety. "A `GUID`-preserving replace is data-safe" is now a
+measured claim at the level of entity and attribute identity.
+
+It does **not** say the upgrade is harmless. An element the new version deletes
+still loses its column or table, which is a schema decision rather than an
+identity failure, and §4's destroyed local edit is untouched by any of this. Nor
+was the generated DDL read statement-by-statement: the runtime logs the count
+(596 commands cold, 38 on the identity change) but not the text at INFO. The
+outcome was measured instead, which is the stronger evidence for the question
+asked.
+
 ## Implementation Plan
 
 Phase 1 is the whole of this proposal; phase 2 is named only to show where it leads.
@@ -688,13 +744,10 @@ comparison never reads an `$ID` — but the fixture remains the end-to-end proof
    tracked the update correctly (`v4.3.2` → `v4.5.0`). It is a read-only oracle and
    does not remove the need for a writer, but `diff` can use it to cross-check the
    version a project claims.
-5. **What is `GUID` actually for?** *(new)* It is the one identity Studio Pro
-   preserves across a full renumber, which is strong circumstantial evidence it
-   carries the database mapping — but that is inference. The decisive check is to
-   build against a populated database before and after an update and compare the
-   generated DDL: additive means identity survived where it counts, a DROP/CREATE
-   on a module table means it did not. Until then, "the upgrade is data-safe" is a
-   model-level argument, not a measured one.
+5. ~~**What is `GUID` actually for?**~~ **Answered by measurement 2026-08-11 — see
+   §8.** It is the database's identity for an entity and for each of its
+   attributes. Changing only an entity's `GUID`, with its name, table name and
+   attributes untouched, destroys its data.
 6. **Does Studio Pro warn before discarding a local edit?** *(new)* §4 shows the
    edit is gone from the stored model, but a snapshot cannot see a dialog. This
    changes how the proposal should describe the status quo: "Studio Pro silently
