@@ -166,6 +166,58 @@ create or modify queue Ops.OrderProcessing ( Parallelism: '$MyModule.Workers' );
 drop queue Ops.Mail;
 ```
 
+## Scheduled Events
+
+Mendix's cron: run a microflow on a repeating schedule.
+
+| Statement | Syntax | Notes |
+|-----------|--------|-------|
+| Show scheduled events | `show scheduled events [in module];` (`list` too) | Repeat, microflow, enabled |
+| Describe scheduled event | `describe scheduled event Module.Name;` | Re-executable MDL |
+| Create scheduled event | `create [or modify] scheduled event Module.Name ( Microflow: ..., Repeat: ..., ... );` | |
+| Drop scheduled event | `drop scheduled event Module.Name;` | |
+
+`Microflow` and `Repeat` are always required. Each repeat takes **only** its own
+fields — anything else is refused by `mxcli check` (MDL-SCHED01) and by `exec`:
+
+| Repeat | Fields |
+|--------|--------|
+| `Minutely` | `Multiplier` |
+| `Hourly` | `Multiplier`, `MinuteOffset` |
+| `Daily` | `HourOfDay`, `MinuteOfHour` |
+| `Weekly` | `Weekdays`, `HourOfDay`, `MinuteOfHour` |
+| `MonthlyByDate` | `Multiplier`, `MonthOffset`, `DayOfMonth`, `HourOfDay`, `MinuteOfHour` |
+| `MonthlyByWeekday` | `Multiplier`, `MonthOffset`, `DaySelector`, `Weekday`, `HourOfDay`, `MinuteOfHour` |
+| `YearlyByDate` | `Month`, `DayOfMonth`, `HourOfDay`, `MinuteOfHour` |
+| `YearlyByWeekday` | `Month`, `DaySelector`, `Weekday`, `HourOfDay`, `MinuteOfHour` |
+
+Optional on any repeat: `Enabled` (default false), `OnOverlap`
+(`DelayNext` default / `SkipNext`), `TimeZone` (`UTC` default / `Server`),
+`StartDateTime` (RFC 3339), `Documentation`.
+
+`OnOverlap` is a scheduled event's own concurrency control — scheduled events do
+**not** go through a task queue.
+
+**Example:**
+```sql
+create scheduled event Ops.NightlyCleanup (
+  Microflow: Ops.SE_Cleanup,
+  Repeat: Daily,
+  HourOfDay: 4,
+  MinuteOfHour: 0,
+  TimeZone: Server,
+  Enabled: true
+);
+
+create scheduled event Ops.WeeklyReport (
+  Microflow: Ops.SE_Report,
+  Repeat: Weekly,
+  Weekdays: 'Monday, Friday',
+  HourOfDay: 9,
+  MinuteOfHour: 30
+);
+```
+
 ## OData Clients, Services & External Entities
 
 | Statement | Syntax | Notes |

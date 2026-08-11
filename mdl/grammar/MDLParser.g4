@@ -116,6 +116,7 @@ createStatement
       | createDemoUserStatement
       | createImageCollectionStatement
       | createQueueStatement
+      | createScheduledEventStatement
       | createJsonStructureStatement
       | createImportMappingStatement
       | createExportMappingStatement
@@ -311,6 +312,7 @@ dropStatement
     | DROP MODULE qualifiedName
     | DROP NOTEBOOK qualifiedName
     | DROP QUEUE qualifiedName
+    | DROP SCHEDULED EVENT qualifiedName
     | DROP JAVA ACTION qualifiedName
     | DROP JAVASCRIPT ACTION qualifiedName
     | DROP INDEX qualifiedName ON qualifiedName

@@ -219,6 +219,11 @@ func (unsupportedBackend) CreateQueue(_ *types.Queue) (err0 error) {
 	return
 }
 
+func (unsupportedBackend) CreateScheduledEvent(_ *model.ScheduledEvent) (err0 error) {
+	err0 = errUnsupported("CreateScheduledEvent")
+	return
+}
+
 func (unsupportedBackend) CreateSnippet(_ *pages.Snippet) (err0 error) {
 	err0 = errUnsupported("CreateSnippet")
 	return
@@ -396,6 +401,11 @@ func (unsupportedBackend) DeletePublishedRestService(_ model.ID) (err0 error) {
 
 func (unsupportedBackend) DeleteQueue(_ string) (err0 error) {
 	err0 = errUnsupported("DeleteQueue")
+	return
+}
+
+func (unsupportedBackend) DeleteScheduledEvent(_ string) (err0 error) {
+	err0 = errUnsupported("DeleteScheduledEvent")
 	return
 }
 
@@ -1204,6 +1214,11 @@ func (unsupportedBackend) UpdateQueue(_ *types.Queue) (err0 error) {
 
 func (unsupportedBackend) UpdateRawUnit(_ string, _ []uint8) (err0 error) {
 	err0 = errUnsupported("UpdateRawUnit")
+	return
+}
+
+func (unsupportedBackend) UpdateScheduledEvent(_ *model.ScheduledEvent) (err0 error) {
+	err0 = errUnsupported("UpdateScheduledEvent")
 	return
 }
 

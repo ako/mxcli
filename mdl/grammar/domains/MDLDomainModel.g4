@@ -355,6 +355,28 @@ queueProperty
     ;
 
 // =============================================================================
+// SCHEDULED EVENT CREATION
+// =============================================================================
+//
+// The repeat rule is a property (Repeat: Daily) plus the fields that rule uses,
+// rather than an English clause, because the eight ScheduledEvents$*Schedule
+// variants differ in WHICH fields they carry — a labelled property list keeps
+// the storage's own vocabulary and lets the executor reject a field that does
+// not belong to the chosen repeat.
+
+createScheduledEventStatement
+    : SCHEDULED EVENT qualifiedName scheduledEventBody?
+    ;
+
+scheduledEventBody
+    : LPAREN (scheduledEventProperty (COMMA scheduledEventProperty)* COMMA?)? RPAREN
+    ;
+
+scheduledEventProperty
+    : identifierOrKeyword COLON (qualifiedName | NUMBER_LITERAL | STRING_LITERAL | booleanLiteral | identifierOrKeyword)
+    ;
+
+// =============================================================================
 // IMAGE COLLECTION CREATION
 // =============================================================================
 

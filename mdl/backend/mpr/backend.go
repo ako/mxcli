@@ -729,6 +729,15 @@ func (b *MprBackend) ListScheduledEvents() ([]*model.ScheduledEvent, error) {
 func (b *MprBackend) GetScheduledEvent(id model.ID) (*model.ScheduledEvent, error) {
 	return b.reader.GetScheduledEvent(id)
 }
+func (b *MprBackend) CreateScheduledEvent(ev *model.ScheduledEvent) error {
+	return b.writer.CreateScheduledEvent(ev)
+}
+func (b *MprBackend) UpdateScheduledEvent(ev *model.ScheduledEvent) error {
+	return b.writer.UpdateScheduledEvent(ev)
+}
+func (b *MprBackend) DeleteScheduledEvent(id string) error {
+	return b.writer.DeleteScheduledEvent(id)
+}
 
 // ---------------------------------------------------------------------------
 // RenameBackend

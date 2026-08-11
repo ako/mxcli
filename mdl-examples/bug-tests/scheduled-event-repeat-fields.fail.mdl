@@ -1,0 +1,25 @@
+-- Scheduled event: a field from the wrong Repeat must be rejected by `check`.
+--
+-- NEGATIVE TEST (.fail.mdl) — EXPECTED to fail `mxcli check`.
+-- `make check-mdl` inverts the exit code for .fail.mdl files: an unexpected
+-- pass would be reported as a regression of the MDL-SCHED01 rule.
+--
+-- The eight ScheduledEvents$*Schedule variants differ in WHICH fields they
+-- carry, not just in their values. A DaySchedule has no Multiplier, so writing
+-- one would put a property on the node that the type does not declare — the
+-- shape that mxbuild accepts and Studio Pro cannot open
+-- (System.InvalidOperationException at MprProperty).
+--
+-- The rule runs in the no-project pass, so a plain `mxcli check` catches it —
+-- it is decidable from the statement alone, and exec calls the same function,
+-- so check and exec cannot drift.
+--
+-- Correct form: drop Multiplier (Daily takes HourOfDay and MinuteOfHour), or
+-- switch to a Repeat that has one.
+
+create scheduled event Ops.Bad (
+  Microflow: Ops.SE_Cleanup,
+  Repeat: Daily,
+  Multiplier: 3,
+  HourOfDay: 4
+);

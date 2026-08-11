@@ -96,4 +96,7 @@ type QueueBackend interface {
 type ScheduledEventBackend interface {
 	ListScheduledEvents() ([]*model.ScheduledEvent, error)
 	GetScheduledEvent(id model.ID) (*model.ScheduledEvent, error)
+	CreateScheduledEvent(ev *model.ScheduledEvent) error
+	UpdateScheduledEvent(ev *model.ScheduledEvent) error
+	DeleteScheduledEvent(id string) error
 }

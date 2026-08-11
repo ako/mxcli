@@ -833,6 +833,10 @@ func (b *Builder) ExitDropStatement(ctx *parser.DropStatementContext) {
 		b.statements = append(b.statements, &ast.DropQueueStmt{
 			Name: buildQualifiedName(names[0]),
 		})
+	} else if ctx.SCHEDULED() != nil && ctx.EVENT() != nil {
+		b.statements = append(b.statements, &ast.DropScheduledEventStmt{
+			Name: buildQualifiedName(names[0]),
+		})
 	} else if ctx.MODEL() != nil {
 		b.statements = append(b.statements, &ast.DropModelStmt{
 			Name: buildQualifiedName(names[0]),

@@ -36,6 +36,7 @@ showStatement
     | showOrList LAYOUTS (IN (qualifiedName | IDENTIFIER))?
     | showOrList NOTEBOOKS (IN (qualifiedName | IDENTIFIER))?
     | showOrList QUEUES (IN (qualifiedName | IDENTIFIER))?
+    | showOrList SCHEDULED EVENTS (IN (qualifiedName | IDENTIFIER))?
     | showOrList JAVA ACTIONS (IN (qualifiedName | IDENTIFIER))?
     | showOrList JAVASCRIPT ACTIONS (IN (qualifiedName | IDENTIFIER))?
     | showOrList IMAGE COLLECTION (IN (qualifiedName | IDENTIFIER))?
@@ -164,6 +165,7 @@ describeStatement
     | DESCRIBE CATALOG DOT (catalogTableName)  // DESCRIBE CATALOG.ENTITIES
     | DESCRIBE BUSINESS EVENT SERVICE qualifiedName  // DESCRIBE BUSINESS EVENT SERVICE Module.Name
     | DESCRIBE QUEUE qualifiedName                     // DESCRIBE QUEUE Module.Name
+    | DESCRIBE SCHEDULED EVENT qualifiedName           // DESCRIBE SCHEDULED EVENT Module.Name
     | DESCRIBE DATABASE CONNECTION qualifiedName       // DESCRIBE DATABASE CONNECTION Module.Name
     | DESCRIBE SETTINGS (CONFIGURATION STRING_LITERAL)?  // DESCRIBE SETTINGS [CONFIGURATION 'Default']
     | DESCRIBE FRAGMENT FROM PAGE qualifiedName WIDGET identifierOrKeyword     // DESCRIBE FRAGMENT FROM PAGE Module.Page WIDGET name

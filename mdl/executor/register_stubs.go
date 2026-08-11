@@ -222,6 +222,21 @@ func registerQueueHandlers(r *Registry) {
 	})
 }
 
+func registerScheduledEventHandlers(r *Registry) {
+	r.Register(&ast.CreateScheduledEventStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execCreateScheduledEvent(ctx, stmt.(*ast.CreateScheduledEventStmt))
+	})
+	r.Register(&ast.DropScheduledEventStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execDropScheduledEvent(ctx, stmt.(*ast.DropScheduledEventStmt))
+	})
+	r.Register(&ast.ShowScheduledEventsStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execShowScheduledEvents(ctx, stmt.(*ast.ShowScheduledEventsStmt))
+	})
+	r.Register(&ast.DescribeScheduledEventStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execDescribeScheduledEvent(ctx, stmt.(*ast.DescribeScheduledEventStmt))
+	})
+}
+
 func registerImageHandlers(r *Registry) {
 	r.Register(&ast.CreateImageCollectionStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
 		return execCreateImageCollection(ctx, stmt.(*ast.CreateImageCollectionStmt))

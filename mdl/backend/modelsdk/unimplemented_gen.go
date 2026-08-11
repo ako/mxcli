@@ -184,6 +184,10 @@ func (unimplemented) CreateQueue(_ *types.Queue) error {
 	return errUnimplemented("CreateQueue")
 }
 
+func (unimplemented) CreateScheduledEvent(_ *model.ScheduledEvent) error {
+	return errUnimplemented("CreateScheduledEvent")
+}
+
 func (unimplemented) CreateSnippet(_ *pages.Snippet) error {
 	return errUnimplemented("CreateSnippet")
 }
@@ -327,6 +331,10 @@ func (unimplemented) DeletePublishedRestService(_ model.ID) error {
 
 func (unimplemented) DeleteQueue(_ string) error {
 	return errUnimplemented("DeleteQueue")
+}
+
+func (unimplemented) DeleteScheduledEvent(_ string) error {
+	return errUnimplemented("DeleteScheduledEvent")
 }
 
 func (unimplemented) DeleteSnippet(_ model.ID) error {
@@ -1080,6 +1088,10 @@ func (unimplemented) UpdateQueue(_ *types.Queue) error {
 
 func (unimplemented) UpdateRawUnit(_ string, _ []uint8) error {
 	return errUnimplemented("UpdateRawUnit")
+}
+
+func (unimplemented) UpdateScheduledEvent(_ *model.ScheduledEvent) error {
+	return errUnimplemented("UpdateScheduledEvent")
 }
 
 func (unimplemented) UpdateSnippet(_ *pages.Snippet) error {

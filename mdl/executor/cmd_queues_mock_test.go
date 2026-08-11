@@ -77,9 +77,9 @@ func TestCreateQueue_Mock_PassesParallelismThrough(t *testing.T) {
 
 	var created *types.Queue
 	mb := &mock.MockBackend{
-		IsConnectedFunc:     func() bool { return true },
-		ListQueuesFunc:      func() ([]*types.Queue, error) { return nil, nil },
-		ListModulesFunc:     func() ([]*model.Module, error) { return []*model.Module{mod}, nil },
+		IsConnectedFunc: func() bool { return true },
+		ListQueuesFunc:  func() ([]*types.Queue, error) { return nil, nil },
+		ListModulesFunc: func() ([]*model.Module, error) { return []*model.Module{mod}, nil },
 		CreateQueueFunc: func(q *types.Queue) error {
 			created = q
 			return nil
@@ -113,9 +113,9 @@ func TestCreateQueue_Mock_DuplicateWithoutOrModify(t *testing.T) {
 	withContainer(h, existing.ContainerID, mod.ID)
 
 	mb := &mock.MockBackend{
-		IsConnectedFunc:     func() bool { return true },
-		ListQueuesFunc:      func() ([]*types.Queue, error) { return []*types.Queue{existing}, nil },
-		ListModulesFunc:     func() ([]*model.Module, error) { return []*model.Module{mod}, nil },
+		IsConnectedFunc: func() bool { return true },
+		ListQueuesFunc:  func() ([]*types.Queue, error) { return []*types.Queue{existing}, nil },
+		ListModulesFunc: func() ([]*model.Module, error) { return []*model.Module{mod}, nil },
 		CreateQueueFunc: func(q *types.Queue) error {
 			t.Error("CreateQueue must not be called for a duplicate")
 			return nil
@@ -137,9 +137,9 @@ func TestCreateQueue_Mock_OrModifyUpdates(t *testing.T) {
 
 	var updated *types.Queue
 	mb := &mock.MockBackend{
-		IsConnectedFunc:     func() bool { return true },
-		ListQueuesFunc:      func() ([]*types.Queue, error) { return []*types.Queue{existing}, nil },
-		ListModulesFunc:     func() ([]*model.Module, error) { return []*model.Module{mod}, nil },
+		IsConnectedFunc: func() bool { return true },
+		ListQueuesFunc:  func() ([]*types.Queue, error) { return []*types.Queue{existing}, nil },
+		ListModulesFunc: func() ([]*model.Module, error) { return []*model.Module{mod}, nil },
 		UpdateQueueFunc: func(q *types.Queue) error {
 			updated = q
 			return nil

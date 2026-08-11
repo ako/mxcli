@@ -4,57 +4,10 @@ package modelsdkbackend
 
 import (
 	"testing"
+	"time"
 
 	"github.com/mendixlabs/mxcli/model"
-	genSched "github.com/mendixlabs/mxcli/modelsdk/gen/scheduledevents"
 )
-
-// TestScheduledEventFromGen guards the gen→semantic mapping the modelsdk read
-// relies on. (No committed fixture contains scheduled events, and modelsdk has no
-// scheduled-event write path, so the converter is exercised directly; the
-// List/Get plumbing reuses the ListUnitsWithContainer pattern covered by the
-// page/java reads.) The key mappings: MicroflowID carries the by-name microflow
-// reference (BSON "Microflow"), Interval narrows the int32 accessor to int.
-func TestScheduledEventFromGen(t *testing.T) {
-	g := genSched.NewScheduledEvent()
-	g.SetID("evt-1")
-	g.SetName("SE_Cleanup")
-	g.SetDocumentation("nightly cleanup")
-	g.SetMicroflowQualifiedName("MyModule.DoCleanup")
-	g.SetInterval(86400)
-	g.SetIntervalType("Day")
-	g.SetEnabled(true)
-
-	ev := scheduledEventFromGen(g, model.ID("mod-1"))
-
-	if ev.ID != "evt-1" {
-		t.Errorf("ID = %q, want evt-1", ev.ID)
-	}
-	if ev.ContainerID != "mod-1" {
-		t.Errorf("ContainerID = %q, want mod-1", ev.ContainerID)
-	}
-	if ev.TypeName != "ScheduledEvents$ScheduledEvent" {
-		t.Errorf("TypeName = %q", ev.TypeName)
-	}
-	if ev.Name != "SE_Cleanup" {
-		t.Errorf("Name = %q, want SE_Cleanup", ev.Name)
-	}
-	if ev.Documentation != "nightly cleanup" {
-		t.Errorf("Documentation = %q", ev.Documentation)
-	}
-	if ev.MicroflowID != "MyModule.DoCleanup" {
-		t.Errorf("MicroflowID = %q, want MyModule.DoCleanup", ev.MicroflowID)
-	}
-	if ev.Interval != 86400 {
-		t.Errorf("Interval = %d, want 86400", ev.Interval)
-	}
-	if ev.IntervalType != "Day" {
-		t.Errorf("IntervalType = %q, want Day", ev.IntervalType)
-	}
-	if !ev.Enabled {
-		t.Error("Enabled = false, want true")
-	}
-}
 
 // TestListScheduledEvents_Empty confirms the read returns an empty (not error)
 // result on a project with no scheduled events — the minimal fixture — so SHOW
@@ -73,4 +26,84 @@ func TestListScheduledEvents_Empty(t *testing.T) {
 	if len(events) != 0 {
 		t.Errorf("got %d scheduled events, want 0 (minimal fixture has none)", len(events))
 	}
+}
+
+// TestScheduledEventRoundTrip writes an event and reads it back through the real
+// backend. A round trip (rather than a reader-only test on hand-written BSON) is
+// what catches a reader keyed on different property names than the writer
+// produces — the failure mode recorded for the workflow-activity reads.
+func TestScheduledEventRoundTrip(t *testing.T) {
+	proj := copyFixture(t)
+	b := New()
+	if err := b.Connect(proj); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() { _ = b.Disconnect() })
+
+	mod, err := b.GetModuleByName("MyFirstModule")
+	if err != nil || mod == nil {
+		t.Fatalf("GetModuleByName: %v", err)
+	}
+	start := time.Date(2026, 1, 1, 4, 0, 0, 0, time.UTC)
+	want := &model.ScheduledEvent{
+		ContainerID:   mod.ID,
+		Name:          "ZzNightly",
+		Documentation: "nightly cleanup",
+		MicroflowID:   "MyFirstModule.DoCleanup",
+		StartDateTime: &start,
+		TimeZone:      "Server",
+		OnOverlap:     "SkipNext",
+		Interval:      1,
+		IntervalType:  "Day",
+		Enabled:       true,
+		Schedule: &model.Schedule{
+			Kind: model.ScheduleMonthWeekday, Multiplier: 3, MonthOffset: 2,
+			DaySelector: "Last", Weekday: "Friday", HourOfDay: 18, MinuteOfHour: 30,
+		},
+	}
+	if err := b.CreateScheduledEvent(want); err != nil {
+		t.Fatalf("CreateScheduledEvent: %v", err)
+	}
+
+	b2 := New()
+	if err := b2.Connect(proj); err != nil {
+		t.Fatalf("reconnect: %v", err)
+	}
+	t.Cleanup(func() { _ = b2.Disconnect() })
+
+	events, err := b2.ListScheduledEvents()
+	if err != nil {
+		t.Fatalf("ListScheduledEvents: %v", err)
+	}
+	for _, got := range events {
+		if got.Name != "ZzNightly" {
+			continue
+		}
+		if got.MicroflowID != want.MicroflowID {
+			t.Errorf("MicroflowID = %q", got.MicroflowID)
+		}
+		if got.Documentation != want.Documentation {
+			t.Errorf("Documentation = %q", got.Documentation)
+		}
+		if got.TimeZone != "Server" || got.OnOverlap != "SkipNext" {
+			t.Errorf("TimeZone/OnOverlap = %q/%q", got.TimeZone, got.OnOverlap)
+		}
+		if got.Interval != 1 || got.IntervalType != "Day" {
+			t.Errorf("legacy pair = %d/%q", got.Interval, got.IntervalType)
+		}
+		if !got.Enabled {
+			t.Error("Enabled did not round-trip")
+		}
+		if got.StartDateTime == nil || !got.StartDateTime.Equal(start) {
+			t.Errorf("StartDateTime = %v, want %v", got.StartDateTime, start)
+		}
+		if got.Schedule == nil {
+			t.Fatal("Schedule did not round-trip")
+		}
+		if *got.Schedule != *want.Schedule {
+			t.Errorf("Schedule = %+v, want %+v", *got.Schedule, *want.Schedule)
+		}
+		return
+	}
+	t.Fatalf("ZzNightly not found after create (got %d events)", len(events))
 }

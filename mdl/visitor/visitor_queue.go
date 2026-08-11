@@ -13,7 +13,7 @@ import (
 // CREATE [OR REPLACE|MODIFY] QUEUE Module.Name ( ... ).
 func (b *Builder) ExitCreateQueueStatement(ctx *parser.CreateQueueStatementContext) {
 	stmt := &ast.CreateQueueStmt{
-		Name:           buildQualifiedName(ctx.QualifiedName()),
+		Name:          buildQualifiedName(ctx.QualifiedName()),
 		Documentation: findDocCommentText(ctx),
 	}
 	if createStmt := findParentCreateStatement(ctx); createStmt != nil {
