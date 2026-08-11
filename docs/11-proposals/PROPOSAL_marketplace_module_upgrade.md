@@ -381,11 +381,21 @@ The remaining 4 are two genuine defects, both out of scope for this proposal:
   reported type is wrong, re-executing the output would create a Page rather than a
   template, and `show modules` consequently reports Atlas_Web_Content as having 46
   pages when it has zero.
-- **Module security is invisible.** `describe module Administration` emits exactly
-  `create module Administration;`; the 8 `Security$ModuleSecurity` units are not
-  reachable. A marketplace update routinely changes module roles, so by this
-  proposal's own honesty rule module security must be reported **unknown** until this
-  is closed. This is the largest remaining blind spot.
+- **Module roles were invisible** (closed 2026-08-11). This was originally recorded
+  here as "module security is invisible", which was wrong and briefly made the
+  security hole look like the largest risk in the proposal. Re-measured: three of the
+  four parts of module security were **already** in the describe surface —
+  entity access rules in `DESCRIBE ENTITY` (`grant <role> on <entity> (...) where
+  '<xpath>'`), page access in `DESCRIBE PAGE` (`grant view on page ...`), and
+  microflow access in `DESCRIBE MICROFLOW` (`grant execute on microflow ...`). Only
+  the module's **role list** was missing, because it lives in the module's own
+  `Security$ModuleSecurity` unit and belongs to no document. `DESCRIBE MODULE` now
+  emits it, sorted for stable comparison.
+
+  The original error came from grepping describe output for `role|access|allowed` —
+  a pattern that cannot match `grant view on page P to Administration.Administrator;`.
+  Absence of evidence from a search is not evidence of absence: check the emitter, or
+  grep for the statement you expect to see rather than for words describing it.
 
 Folders need no separate coverage: folder membership is captured inside each
 document's describe (`Folder: 'Phone/PageTemplates/Form'`), so a document moved
@@ -490,13 +500,22 @@ Phase 1 is the whole of this proposal; phase 2 is named only to show where it le
 documents in a seven-module marketplace project, so the design below is viable as
 written. Three prerequisites fall out of that measurement, in priority order:
 
-1. **Report module security as unknown** (or close the gap). `describe module` does
-   not reach `Security$ModuleSecurity`, and marketplace updates change module roles.
-   This is the one gap that can make the tool *wrong* rather than incomplete.
-2. **Fix import/export mapping describe** — 2 documents, currently erroring.
+1. ~~**Report module security as unknown** (or close the gap).~~ **Closed.** The gap
+   was narrower than first recorded — only the module role list, not module security
+   as a whole; see the correction above. `DESCRIBE MODULE` now emits roles.
+2. ~~**Fix import/export mapping describe.**~~ **Closed** — the cause was
+   `moduleNameFor` reading a unit's direct container instead of walking to the
+   enclosing module, so every foldered document missed.
 3. **Distinguish page templates from pages**, or accept and document the conflation.
+   The only one still open, and the least severe: both sides of a comparison conflate
+   identically, so it does not mislead the differ. It does make `show modules` report
+   46 pages for a module with none, which is worth fixing on its own terms.
 
-The bare-DESCRIBE auto-detect gap that §7 found (43 documents) is already closed.
+Also closed since: the bare-DESCRIBE auto-detect gap (43 documents), and menu
+documents, which had no DESCRIBE at all and now have full CRUD. Bare-DESCRIBE
+coverage over the fixture is 251/251.
+
+**Phase 1 is therefore unblocked.**
 
 | File | Change |
 |------|--------|

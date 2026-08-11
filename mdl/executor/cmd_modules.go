@@ -15,6 +15,7 @@ import (
 	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/domainmodel"
+	"github.com/mendixlabs/mxcli/sdk/security"
 )
 
 // execCreateModule handles CREATE MODULE statements.
@@ -600,6 +601,12 @@ func describeModule(ctx *ExecContext, moduleName string, withAll bool) error {
 
 	// Output basic CREATE MODULE statement
 	fmt.Fprintf(ctx.Output, "create module %s;\n", targetModule.Name)
+
+	// Module roles live in the module's own Security$ModuleSecurity unit rather
+	// than in any document, so a sweep that describes every document in a module
+	// still never reports them. Emitting them here is what lets a describe-based
+	// comparison see a marketplace update that adds, removes or renames a role.
+	describeModuleRoles(ctx, targetModule)
 
 	if !withAll {
 		fmt.Fprintln(ctx.Output, "/")
@@ -1203,3 +1210,30 @@ func jarDepIdxByCoord(deps []*types.JarDependency, coordinate string) int {
 }
 
 // Executor method wrappers for callers in unmigrated files.
+
+// describeModuleRoles emits the module's roles as re-executable statements.
+//
+// Failures are deliberately silent: DESCRIBE MODULE is useful without the roles,
+// and a backend that cannot read module security (the MCP backend, for one)
+// should not turn a working describe into an error.
+func describeModuleRoles(ctx *ExecContext, mod *model.Module) {
+	ms, err := ctx.Backend.GetModuleSecurity(mod.ID)
+	if err != nil || ms == nil || len(ms.ModuleRoles) == 0 {
+		return
+	}
+	// Sort so the output is stable: a differ comparing two describes must not see
+	// a change because the reader returned roles in a different order.
+	roles := append([]*security.ModuleRole(nil), ms.ModuleRoles...)
+	sort.Slice(roles, func(i, j int) bool { return roles[i].Name < roles[j].Name })
+
+	for _, r := range roles {
+		// Same shape DESCRIBE MODULE ROLE emits, so the two agree.
+		fmt.Fprintf(ctx.Output, "create module role %s.%s", mod.Name, r.Name)
+		if r.Description != "" {
+			// Double embedded quotes; a description containing one would
+			// otherwise terminate the literal and produce unparseable output.
+			fmt.Fprintf(ctx.Output, " description '%s'", strings.ReplaceAll(r.Description, "'", "''"))
+		}
+		fmt.Fprintln(ctx.Output, ";")
+	}
+}
