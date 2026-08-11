@@ -140,6 +140,25 @@ Comparison is on `DESCRIBE` output rather than raw storage: an *untouched* modul
 
 Requires the mxbuild toolchain for the project's Mendix version — `mxcli setup mxbuild -p app.mpr`. Building the reference at a *different* version is refused rather than warned about, because Mendix's own conversions would then show up as your edits.
 
+### Theme modules
+
+`mx module-import` refuses a theme module outright ("Importing theme module is not supported"), which would take Atlas_Core, Atlas_Web_Content and Conversational UI off the table. The refusal is gated on a single flag on the module document inside the package, so `diff` clears it on **its own throwaway copy** before importing — the published package and your project are untouched.
+
+Atlas modules are among the most-edited in real projects, so this matters more than the module count suggests:
+
+```text
+Atlas_Web_Content — installed 4.1.0 (Mendix 11.12.1)
+
+  No local modifications found, but 46 of 89 elements could not be read —
+  this is not a clean bill of health.
+
+  Not comparable (46) — reported as unknown, never as unchanged:
+    unknown   PAGE_TEMPLATE Blank (no DESCRIBE support for PAGE_TEMPLATE)
+    ...
+```
+
+The 46 are page templates, which have no `DESCRIBE` handler yet. They are reported rather than quietly counted as unchanged — see [`CATALOG.PAGE_TEMPLATES`](../tools/catalog-tables.md).
+
 ### What an upgrade would touch
 
 `--to` adds the other half of the question: what the module's author changed, and whether it collides with what you changed.

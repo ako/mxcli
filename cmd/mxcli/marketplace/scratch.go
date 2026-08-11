@@ -185,6 +185,13 @@ func PackageProject(ctx context.Context, mpkPath, mendixVersion, workDir string,
 		}
 	}
 
+	// mx refuses a theme module (Atlas_Core, Atlas_Web_Content, Conversational
+	// UI); makeImportable clears the flag that gates the refusal, on a copy.
+	importable, err := makeImportable(mpkPath, workDir)
+	if err != nil {
+		return "", err
+	}
+
 	// Deliberately NOT guarded against the MPR v2→v1 collapse that
 	// `marketplace install` refuses. This import rewrites the *reference*
 	// project — a scratch copy in a temp directory that is read once and
@@ -192,7 +199,7 @@ func PackageProject(ctx context.Context, mpkPath, mendixVersion, workDir string,
 	// evidence for the comparison design: the reference lands as v1 while the
 	// project under comparison stays v2, and the diff is still exact, because
 	// DESCRIBE output does not depend on how the model is stored.
-	imp := exec.CommandContext(ctx, mxPath, "module-import", mpkPath, mprPath)
+	imp := exec.CommandContext(ctx, mxPath, "module-import", importable, mprPath)
 	docker.PrepareMxCommand(imp)
 	if out, err := imp.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("mx module-import failed: %w\n%s", err, strings.TrimSpace(string(out)))
