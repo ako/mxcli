@@ -398,6 +398,10 @@ func (b *Builder) Build(progress ProgressFunc) error {
 		return fmt.Errorf("failed to build image collections: %w", err)
 	}
 
+	if err := b.buildSimpleNamedDocs("CustomIcons$CustomIconCollection", "icon_collections", "Icon Collections"); err != nil {
+		return fmt.Errorf("failed to build icon collections: %w", err)
+	}
+
 	if err := b.buildSimpleNamedDocs("DataTransformers$DataTransformer", "data_transformers", "Data Transformers"); err != nil {
 		return fmt.Errorf("failed to build data transformers: %w", err)
 	}

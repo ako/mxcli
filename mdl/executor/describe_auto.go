@@ -25,6 +25,7 @@ var objectTypeToDescribeKind = map[string]ast.DescribeObjectType{
 	"NANOFLOW":               ast.DescribeNanoflow,
 	"PAGE":                   ast.DescribePage,
 	"SNIPPET":                ast.DescribeSnippet,
+	"BUILDING_BLOCK":         ast.DescribeBuildingBlock,
 	"LAYOUT":                 ast.DescribeLayout,
 	"ENUMERATION":            ast.DescribeEnumeration,
 	"CONSTANT":               ast.DescribeConstant,

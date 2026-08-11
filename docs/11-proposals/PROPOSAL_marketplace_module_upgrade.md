@@ -7,7 +7,8 @@ date: 2026-08-04
 # Proposal: `mxcli marketplace diff` — detect local modification of an installed module
 
 **Status:** Draft
-**Date:** 2026-08-04 (initial), revised 2026-08-10 (Studio Pro update measured)
+**Date:** 2026-08-04 (initial), revised 2026-08-10 (Studio Pro update measured),
+2026-08-11 (DESCRIBE coverage measured — §7)
 
 ## Revision 2026-08-10 — what Studio Pro actually does, measured
 
@@ -323,6 +324,83 @@ siblings).
 This is the one piece of work both this proposal and script idempotence need, and
 neither can be finished well without it.
 
+> **Superseded in part (2026-08-11).** Script idempotence shipped *without* a stable
+> key for unnamed elements: `modelsdk/canon` sidesteps element matching entirely by
+> normalising each `$ID` to its index in a containment walk, so it never has to pair
+> two elements up (ADR-0008). The claim that neither could be finished without this
+> key held for the BSON-structural diff §4 was reasoning about; it does **not** bind
+> the design below, which compares DESCRIBE output rather than BSON structure and so
+> never keys an unnamed widget at all. The key problem is real but is now scoped to
+> anything wanting an element-level *structural* diff — not to `marketplace diff`.
+
+### 7. DESCRIBE coverage is sufficient, and was measured (2026-08-11)
+
+The design below is bounded by DESCRIBE coverage, and its honesty rule — an
+un-describable element must be reported **unknown**, never clean — is only affordable
+if the unknown bucket is small. That was unmeasured, so the whole proposal rested on
+an assumption. It has now been measured against `testdata/expr-checker/minimal.mpr`,
+which carries seven real marketplace modules with recorded `AppStoreVersion`s
+(Administration 4.3.2, Atlas_Core 4.1.3, Atlas_Web_Content 4.1.0, DataWidgets 3.5.0,
+FeedbackModule 4.0.2, NanoflowCommons 6.0.0, WebActions 2.11.0).
+
+**Method.** The denominator is the set of *named units read from the MPR itself* —
+369 units, 251 named documents after excluding 80 folders and the unnamed
+module-level units. It deliberately does **not** come from the catalog: the `objects`
+view indexes only describable types and `show modules` only has columns for types
+mxcli models, so either source reports 100% coverage by construction. Each document
+was then actually described, and the outcome recorded.
+
+**Result — 247 of 251 (98%) describable.**
+
+| | Docs | |
+|---|---|---|
+| Auto-detected by bare `describe Module.Name` | 204 → **247** | 81% → **98%** |
+| Reachable only by naming the type explicitly | 43 → **0** | |
+| Not describable at all | 4 | 2% |
+
+The 43 in the middle row were building blocks (40) and icon collections (3): both had
+working explicit handlers, but building blocks were never joined into the catalog's
+`objects` view and icon collections had no catalog table at all, so bare DESCRIBE
+reported them as not found. Fixed here — the second number in each row is post-fix,
+verified end-to-end on the same 251 documents, with no new name ambiguity. A drift
+test (`TestDescribeAutoCoversCatalogObjectTypes`) now fails when a type reaches the
+view without a describe kind.
+
+The remaining 4 are two genuine defects, both out of scope for this proposal:
+
+- **Import/export mapping describe is broken.** The catalog indexes both, but
+  `describe import mapping FeedbackModule.IMM_PostResponse` errors `not found`, and
+  naming the type explicitly does not help.
+- **Menu documents have no DESCRIBE at all** (2 in Atlas_Core). No grammar, no handler.
+
+**Two gaps this measurement also exposed, which the differ must handle.**
+
+- **Page templates are conflated with pages.** All 46 `Forms$PageTemplate` units
+  report `ObjectType = PAGE` and describe as `create or modify page`. Harmless for
+  describe-to-describe comparison, since both sides conflate identically — but the
+  reported type is wrong, re-executing the output would create a Page rather than a
+  template, and `show modules` consequently reports Atlas_Web_Content as having 46
+  pages when it has zero.
+- **Module security is invisible.** `describe module Administration` emits exactly
+  `create module Administration;`; the 8 `Security$ModuleSecurity` units are not
+  reachable. A marketplace update routinely changes module roles, so by this
+  proposal's own honesty rule module security must be reported **unknown** until this
+  is closed. This is the largest remaining blind spot.
+
+Folders need no separate coverage: folder membership is captured inside each
+document's describe (`Folder: 'Phone/PageTemplates/Form'`), so a document moved
+between folders by an upgrade is visible.
+
+**What this does not establish.** It measures *invocation success and non-trivial
+output* — not round-trip fidelity. A describe can succeed and silently drop a
+property, which is exactly what #812, #111 and #57/#58 were. So 98% is an **upper
+bound on what a differ can compare**, not evidence that the comparison is faithful;
+establishing that needs describe → execute → re-describe round-tripping, which is a
+separate and much larger exercise. Also: one project, and all seven modules are
+Mendix-authored — a third-party module may use document types absent here. Building
+blocks and icon collections describe read-only ("cannot be created via MDL"), which
+is fine for diff but blocks a Phase 2 *replace* of those two types.
+
 ## Design
 
 ### Compare semantically, not structurally
@@ -407,6 +485,18 @@ No MDL syntax is added. This is a CLI-only, read-only command.
 Phase 1 is the whole of this proposal; phase 2 is named only to show where it leads.
 
 ### Phase 1 — `marketplace diff` (read-only)
+
+§7 measured the risk this phase actually carries — DESCRIBE coverage — at 98% of the
+documents in a seven-module marketplace project, so the design below is viable as
+written. Three prerequisites fall out of that measurement, in priority order:
+
+1. **Report module security as unknown** (or close the gap). `describe module` does
+   not reach `Security$ModuleSecurity`, and marketplace updates change module roles.
+   This is the one gap that can make the tool *wrong* rather than incomplete.
+2. **Fix import/export mapping describe** — 2 documents, currently erroring.
+3. **Distinguish page templates from pages**, or accept and document the conflation.
+
+The bare-DESCRIBE auto-detect gap that §7 found (43 documents) is already closed.
 
 | File | Change |
 |------|--------|
