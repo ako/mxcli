@@ -183,8 +183,8 @@ func init() {
 	})
 
 	Register(SyntaxFeature{
-		Path:    "menu",
-		Summary: "Create, describe and drop standalone menu documents",
+		Path:    "navigation.menu-document",
+		Summary: "Create, describe and drop standalone menu documents (Menus$MenuDocument)",
 		Keywords: []string{
 			"create menu", "describe menu", "drop menu",
 			"menu", "menus", "menu document", "menu item",
@@ -213,7 +213,7 @@ func init() {
 			"--     expressed in MDL; DESCRIBE flags those rather than dropping them silently.\n" +
 			"--   * A page with required parameters cannot be opened from a menu item\n" +
 			"--     without an argument — Mendix reports CE1571.",
-		SeeAlso: []string{"navigation", "page.show"},
+		SeeAlso: []string{"navigation.create", "navigation.show", "page.show"},
 	})
 
 	// ── Fragment ──────────────────────────────────────────────────────────

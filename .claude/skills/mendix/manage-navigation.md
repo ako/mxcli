@@ -18,6 +18,7 @@ Use when the user asks to:
 - **Home Page** — The default page shown after login. Can be a PAGE or MICROFLOW.
 - **Role-Based Home Pages** — Override the default home page per user role (e.g., admins see a dashboard, users see a task list).
 - **Menu Items** — Hierarchical menu tree. Each item has a caption and optionally targets a PAGE or MICROFLOW. Sub-menus nest with `menu 'caption' (...)`.
+- **Menu Documents** — A *separate* document type (`Menus$MenuDocument`) holding a reusable menu that a menu widget points at, e.g. Atlas_Core's `Phone_Menu`. Not the same thing as a profile's menu, though both are built from the same items, so the item syntax is identical. Managed with `create/describe/drop menu` — see below.
 - **Login Page** — Custom login page (optional; Mendix provides a default).
 - **Not-Found Page** — Custom 404 page (optional).
 
@@ -244,6 +245,55 @@ create or replace navigation Responsive
   );
 ```
 
+## Menu Documents (standalone, reusable)
+
+A profile menu lives *inside* a navigation profile and is edited with
+`create or replace navigation`. A **menu document** is its own document, and a
+menu widget on a page points at it. Atlas_Core ships `Phone_Menu` and
+`Tablet_Menu`.
+
+Tell them apart by which command reads them:
+
+```sql
+show navigation menu;                    -- the menu inside each profile
+describe menu Atlas_Core.Phone_Menu;     -- a standalone menu document
+```
+
+Menu documents use the same item syntax as the profile `menu (...)` block:
+
+```sql
+create or modify menu MyModule.Main_Menu (
+  menu item 'Home' page MyModule.Home_Web icon Atlas_Core.Atlas.home;
+  menu item 'Run' microflow MyModule.DoThing;
+  menu 'Admin' (
+    menu item 'Accounts' page Administration.Account_Overview;
+  );
+  menu item 'Plain';
+);
+
+drop menu MyModule.Main_Menu;
+```
+
+`describe menu` emits a re-executable `create or modify` statement, so
+describe → edit → exec is the normal editing loop.
+
+**`or modify` replaces the whole item list.** An omitted item is a removed item,
+exactly as with `create or replace navigation`. The document's identity and
+export level are preserved, so menu widgets pointing at it keep working.
+
+### Gotchas
+
+- **A menu item cannot open a page that takes a required parameter.** There is
+  nowhere to supply the argument, and Mendix reports **CE1571** ("No argument has
+  been selected for parameter …") against `Menu item`. Point the item at a
+  parameterless page, or call a microflow that opens the page.
+- **Only icon-collection icons round-trip.** A glyph icon (numeric code) or an
+  image icon cannot be written by MDL; `describe` flags those on their own
+  comment line rather than dropping them silently, so re-running the output
+  loses that icon visibly.
+- **Authoring needs the default engine.** Under `MXCLI_ENGINE=legacy`,
+  create/modify/drop refuse rather than writing a differently-shaped document.
+
 ## Checklist
 
 - [ ] Profile name matches an existing profile (Responsive, Phone, Tablet, or a native profile)
@@ -254,3 +304,5 @@ create or replace navigation Responsive
 - [ ] `icon` is a qualified name (not a string); hyphenated segments are double-quoted
 - [ ] The icon exists — check with `describe icon collection Module.Name`, do not guess
 - [ ] Use `describe navigation` to verify changes after applying
+- [ ] For a **menu document**, confirm you want `create menu` and not a profile menu — `show navigation menu` vs `describe menu` tells them apart
+- [ ] No menu item targets a page with required parameters (CE1571)
