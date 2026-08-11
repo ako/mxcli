@@ -11,9 +11,41 @@
 -- the item syntax below is identical to the MENU (...) block of
 -- CREATE NAVIGATION:
 --
---   create or modify menu Atlas_Core.Phone_Menu ( ... );  -- this file
---   show navigation menu;                                 -- profile menu
+--   create or modify menu MenuTest.Main_Menu ( ... );  -- this file
+--   show navigation menu;                              -- profile menu
+--
+-- This script is self-contained: it creates the module, and the page and
+-- microflow the menu points at, so it runs against a fresh project.
 -- ============================================================================
+
+create module MenuTest;
+
+-- Targets for the menu items below. The page deliberately takes no parameters:
+-- a menu item has nowhere to supply an argument, so opening a parameterised
+-- page from one is rejected by Mendix with CE1571 (see Gotchas).
+create page MenuTest.Landing
+(
+  title: 'Landing',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'menutest_landing'
+)
+{
+  DYNAMICTEXT welcome (Content: 'Welcome', RenderMode: H2)
+}
+
+create page MenuTest.Reports
+(
+  title: 'Reports',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'menutest_reports'
+)
+{
+  DYNAMICTEXT heading (Content: 'Reports', RenderMode: H2)
+}
+
+create microflow MenuTest.Rebuild ()
+begin
+end;
 
 -- ----------------------------------------------------------------------------
 -- Create
@@ -25,11 +57,11 @@
 --   * sub-menu         -> menu '<caption>' ( ...nested items... )
 --
 -- ICON names an entry in an icon collection. It is optional on every form.
-create menu MyFirstModule.Main_Menu (
-  menu item 'Home' page MyFirstModule.Home_Web icon Atlas_Core.Atlas_Filled.home;
-  menu item 'Run' microflow MyFirstModule.MyFirstLogic;
+create menu MenuTest.Main_Menu (
+  menu item 'Home' page MenuTest.Landing icon Atlas_Core.Atlas_Filled.home;
+  menu item 'Rebuild' microflow MenuTest.Rebuild;
   menu 'Admin' (
-    menu item 'Accounts' page Administration.Account_Overview;
+    menu item 'Reports' page MenuTest.Reports;
   );
   menu item 'Plain';
 );
@@ -38,9 +70,9 @@ create menu MyFirstModule.Main_Menu (
 -- the list given is the document's complete contents, so an omitted item is a
 -- removed item. The document's identity and its export level are preserved, so
 -- menu widgets pointing at it keep working.
-create or modify menu MyFirstModule.Main_Menu (
-  menu item 'Home' page MyFirstModule.Home_Web icon Atlas_Core.Atlas_Filled.home;
-  menu item 'Run' microflow MyFirstModule.MyFirstLogic;
+create or modify menu MenuTest.Main_Menu (
+  menu item 'Home' page MenuTest.Landing icon Atlas_Core.Atlas_Filled.home;
+  menu item 'Rebuild' microflow MenuTest.Rebuild;
 );
 
 -- ----------------------------------------------------------------------------
@@ -48,15 +80,15 @@ create or modify menu MyFirstModule.Main_Menu (
 -- ----------------------------------------------------------------------------
 -- DESCRIBE emits a re-executable CREATE OR MODIFY statement, so
 -- describe -> exec -> describe is a fixed point.
-describe menu MyFirstModule.Main_Menu;
+describe menu MenuTest.Main_Menu;
 
 -- The type is auto-detected too, as for any other document type.
-describe MyFirstModule.Main_Menu;
+describe MenuTest.Main_Menu;
 
 -- ----------------------------------------------------------------------------
 -- Drop
 -- ----------------------------------------------------------------------------
-drop menu MyFirstModule.Main_Menu;
+drop menu MenuTest.Main_Menu;
 
 -- ----------------------------------------------------------------------------
 -- Gotchas
@@ -78,4 +110,5 @@ drop menu MyFirstModule.Main_Menu;
 --
 -- 3. Authoring requires the default (modelsdk) engine. Under
 --    MXCLI_ENGINE=legacy, create/modify/drop refuse rather than write a
---    differently-shaped document.
+--    differently-shaped document — which is why this script is skipped for the
+--    legacy engine in the doctype gate.
