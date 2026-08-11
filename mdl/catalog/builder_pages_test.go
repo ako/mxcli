@@ -245,9 +245,9 @@ func TestExtractWidgetsRecursive(t *testing.T) {
 	t.Run("indexes a styled conditionalVisibilityWidget (not transparent)", func(t *testing.T) {
 		// If a wrapper-named container carries styling it is a real user widget.
 		w := map[string]any{
-			"$ID":       "div3",
-			"Name":      "conditionalVisibilityWidget9",
-			"$Type":     "Forms$DivContainer",
+			"$ID":        "div3",
+			"Name":       "conditionalVisibilityWidget9",
+			"$Type":      "Forms$DivContainer",
 			"Appearance": map[string]any{"Class": "card"},
 		}
 		got := extractWidgetsRecursive(w)

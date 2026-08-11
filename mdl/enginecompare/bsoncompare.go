@@ -10,13 +10,13 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 
 	"github.com/mendixlabs/mxcli/modelsdk/codec"
-	genDm "github.com/mendixlabs/mxcli/modelsdk/gen/domainmodels"
 	genConst "github.com/mendixlabs/mxcli/modelsdk/gen/constants"
 	_ "github.com/mendixlabs/mxcli/modelsdk/gen/datatypes" // register DataTypes$* for constant decode
+	genDm "github.com/mendixlabs/mxcli/modelsdk/gen/domainmodels"
 	genEnum "github.com/mendixlabs/mxcli/modelsdk/gen/enumerations"
 	genMf "github.com/mendixlabs/mxcli/modelsdk/gen/microflows"
-	"github.com/mendixlabs/mxcli/modelsdk/mprread"
 	mmpr "github.com/mendixlabs/mxcli/modelsdk/mpr"
+	"github.com/mendixlabs/mxcli/modelsdk/mprread"
 )
 
 // MicroflowCanonBSON returns the canonicalized raw BSON of a named microflow unit

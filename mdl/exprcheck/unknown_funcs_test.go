@@ -11,10 +11,10 @@ func TestUnknownFunctionCalls(t *testing.T) {
 		wantSuggat string // expected suggestion (if any)
 	}{
 		{"randomInt(9)", "randomInt", "random"},
-		{"round(random() * 8)", "", ""},         // all known
-		{"toUpperCase($x)", "", ""},             // known
-		{"secondsBetween($a, $b)", "", ""},      // known
-		{"$a + length($s)", "", ""},             // known nested
+		{"round(random() * 8)", "", ""},    // all known
+		{"toUpperCase($x)", "", ""},        // known
+		{"secondsBetween($a, $b)", "", ""}, // known
+		{"$a + length($s)", "", ""},        // known nested
 		{"if $a then floor($b) else ceil($c)", "", ""},
 		{"totallyMadeUpFn($x)", "totallyMadeUpFn", ""}, // no close match
 	}
@@ -41,13 +41,13 @@ func TestSourceRejectedForIntegerTarget(t *testing.T) {
 		src  string
 		want bool
 	}{
-		{"$a div $b", true},                    // arithmetic Decimal
-		{"secondsBetween($d1, $d2)", true},     // Decimal-returning func
-		{"random()", true},                     // Decimal-returning func
-		{"round(random() * 8)", false},         // rounding → accepted
-		{"floor($a div $b)", false},            // rounding → accepted
-		{"$a + $b", false},                     // Integer arithmetic
-		{"length($s)", false},                  // Integer-returning func
+		{"$a div $b", true},                        // arithmetic Decimal
+		{"secondsBetween($d1, $d2)", true},         // Decimal-returning func
+		{"random()", true},                         // Decimal-returning func
+		{"round(random() * 8)", false},             // rounding → accepted
+		{"floor($a div $b)", false},                // rounding → accepted
+		{"$a + $b", false},                         // Integer arithmetic
+		{"length($s)", false},                      // Integer-returning func
 		{"calendarMonthsBetween($d1, $d2)", false}, // Integer-returning func
 		{"", false},
 	}
