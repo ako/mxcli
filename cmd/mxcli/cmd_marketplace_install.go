@@ -31,7 +31,13 @@ Install is type-aware:
 
 Updating a module that is already present is NOT done automatically: it could
 discard local edits and, for modules with persistent entities, change entity
-IDs (which loses data). Such updates are reported and left to Studio Pro.`,
+IDs (which loses data). Such updates are reported and left to Studio Pro.
+
+Module import into an MPR v2 project is refused. 'mx module-import' rewrites a
+v2 project as v1 — mprcontents/ is collapsed into a single binary .mpr — which
+loses the per-document files 'mxcli diff-local' and git review depend on, and
+the conversion is one-way. Import in Studio Pro, or pass --allow-format-change
+to accept it.`,
 	Example: `  mxcli marketplace install 20 -p app.mpr
   mxcli marketplace install 2888 --version 7.0.3 -p app.mpr`,
 	Args: cobra.ExactArgs(1),
@@ -42,6 +48,8 @@ func init() {
 	marketplaceInstallCmd.Flags().String("profile", "default", "credential profile")
 	marketplaceInstallCmd.Flags().StringP("project", "p", "", "path to the Mendix project (.mpr)")
 	marketplaceInstallCmd.Flags().String("version", "", "version number to install (default: latest)")
+	marketplaceInstallCmd.Flags().Bool("allow-format-change", false,
+		"permit the import to rewrite an MPR v2 project as v1 (one-way; loses mprcontents/)")
 	_ = marketplaceInstallCmd.MarkFlagRequired("project")
 
 	marketplaceCmd.AddCommand(marketplaceInstallCmd)
@@ -57,6 +65,7 @@ func runMarketplaceInstall(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("project not found: %s", mprPath)
 	}
 	versionNumber, _ := cmd.Flags().GetString("version")
+	allowFormatChange, _ := cmd.Flags().GetBool("allow-format-change")
 
 	client, err := newMarketplaceClient(cmd.Context(), cmd)
 	if err != nil {
@@ -86,7 +95,7 @@ func runMarketplaceInstall(cmd *cobra.Command, args []string) error {
 	case "widget":
 		return installWidget(cmd.Context(), client, version, projDir, out)
 	case "module":
-		return installModule(cmd.Context(), client, version, mprPath, out)
+		return installModule(cmd.Context(), client, version, mprPath, allowFormatChange, out)
 	default:
 		// Theme / Starter App / Sample / unknown: download + instruct rather
 		// than guess a placement we can't verify.
@@ -118,7 +127,7 @@ func installWidget(ctx context.Context, client *marketplace.Client, v *marketpla
 
 // installModule imports a module .mpk into the project, but only when the module
 // is not already present. An existing module is reported, not modified.
-func installModule(ctx context.Context, client *marketplace.Client, v *marketplace.Version, mprPath string, out io.Writer) error {
+func installModule(ctx context.Context, client *marketplace.Client, v *marketplace.Version, mprPath string, allowFormatChange bool, out io.Writer) error {
 	// Download to a temp .mpk so we can inspect it and hand it to mx.
 	tmpDir, err := os.MkdirTemp("", "mxcli-install-")
 	if err != nil {
@@ -153,6 +162,10 @@ func installModule(ctx context.Context, client *marketplace.Client, v *marketpla
 		return nil
 	}
 
+	if err := checkStorageFormatPreserved(mprPath, allowFormatChange); err != nil {
+		return err
+	}
+
 	mxPath, err := docker.ResolveMxForVersion("", mendixVer)
 	if err != nil {
 		return fmt.Errorf("locate mx for Mendix %s: %w\nhint: run 'mxcli setup mxbuild -p %s'", mendixVer, err, mprPath)
@@ -165,7 +178,61 @@ func installModule(ctx context.Context, client *marketplace.Client, v *marketpla
 		return fmt.Errorf("mx module-import failed: %w\n%s", runErr, strings.TrimSpace(string(combined)))
 	}
 	fmt.Fprintf(out, "Imported module %q version %s into %s\n", moduleName, v.VersionNumber, filepath.Base(mprPath))
+	reportFormatChange(mprPath, out)
 	return nil
+}
+
+// isMPRv2 reports whether the project at mprPath uses the MPR v2 storage format:
+// a small .mpr holding metadata beside an mprcontents/ tree of one .mxunit file
+// per document. The presence of that directory is how the readers themselves
+// decide, so this asks the same question they do rather than inventing a second
+// definition.
+func isMPRv2(mprPath string) bool {
+	stat, err := os.Stat(filepath.Join(filepath.Dir(mprPath), "mprcontents"))
+	return err == nil && stat.IsDir()
+}
+
+// checkStorageFormatPreserved refuses to import into an MPR v2 project.
+//
+// `mx module-import` rewrites a v2 project as v1: measured on a blank Mendix
+// 11.12.1 app, one import turned a 69 KB .mpr plus 341 .mxunit files into a
+// single 14 MB SQLite blob with no mprcontents/ and no _Transaction table, and
+// the same was observed independently on 11.13.0. It is a silent, one-way
+// conversion — `mx convert` targets Mendix versions rather than storage formats,
+// and there is no documented way back.
+//
+// That is not a cosmetic difference. The v2 layout is what makes the model
+// diffable and mergeable per document: it is what `mxcli diff-local` reads, and
+// what makes an idempotent re-run observable as "no files changed" (ADR-0008).
+// Collapsing it destroys the reviewable history of a repository, and the damage
+// lands on the user's real project rather than on a scratch copy.
+//
+// So this refuses by default rather than warning. The escape hatch exists
+// because the conversion is a legitimate choice for someone who does not keep
+// the model in git — but it has to be chosen, not discovered afterwards.
+func checkStorageFormatPreserved(mprPath string, allowed bool) error {
+	if allowed || !isMPRv2(mprPath) {
+		return nil
+	}
+	return fmt.Errorf(
+		"refusing to import: %s uses the MPR v2 storage format, and 'mx module-import' would rewrite it as v1.\n"+
+			"That collapses mprcontents/ into a single binary .mpr, which loses the per-document files\n"+
+			"'mxcli diff-local' and git-based review depend on. The conversion is one-way.\n"+
+			"\n"+
+			"  - Import the module in Studio Pro, which preserves the format; or\n"+
+			"  - pass --allow-format-change to accept the conversion to MPR v1.",
+		filepath.Base(mprPath))
+}
+
+// reportFormatChange states plainly what happened when the user opted in. An
+// accepted conversion is still worth naming — the project on disk no longer has
+// the shape its tooling expects.
+func reportFormatChange(mprPath string, out io.Writer) {
+	if isMPRv2(mprPath) {
+		return
+	}
+	fmt.Fprintln(out, "\nNote: the project is now MPR v1 — mprcontents/ is gone and the model is a single")
+	fmt.Fprintln(out, "binary .mpr. 'mxcli diff-local' and per-document git review no longer apply.")
 }
 
 // findModule reports whether a marketplace-sourced module of the given name is
