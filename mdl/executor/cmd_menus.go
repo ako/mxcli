@@ -8,6 +8,7 @@ import (
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
+	"github.com/mendixlabs/mxcli/mdl/types"
 )
 
 // describeMenu renders a standalone Menus$MenuDocument — the reusable menu a
@@ -15,11 +16,8 @@ import (
 // profile. Atlas_Core ships Phone_Menu and Tablet_Menu.
 //
 // The entries are ordinary Menus$MenuItem elements, so the tree is rendered by
-// printMenuMDL, the same renderer DESCRIBE NAVIGATION uses. Output is
-// deliberately not re-executable: Mendix offers no way to author a menu document
-// outside Studio Pro, so there is no CREATE MENU for it to round-trip into. That
-// is stated in the header rather than left for the reader to discover, following
-// the DESCRIBE BUILDING BLOCK precedent.
+// printMenuMDL, the same renderer DESCRIBE NAVIGATION uses — and the same syntax
+// CREATE MENU accepts, so the output round-trips.
 func describeMenu(ctx *ExecContext, name ast.QualifiedName) error {
 	if !ctx.Connected() {
 		return mdlerrors.NewNotConnected()
@@ -38,23 +36,107 @@ func describeMenu(ctx *ExecContext, name ast.QualifiedName) error {
 			strings.ReplaceAll(md.Documentation, "\n", "\n * "))
 	}
 
-	fmt.Fprintf(ctx.Output, "-- Menu: %s.%s (%d top-level item(s))\n",
-		name.Module, md.Name, len(md.Items))
-	if md.ExportLevel != "" {
-		fmt.Fprintf(ctx.Output, "-- Export level: %s\n", md.ExportLevel)
-	}
 	if md.Excluded {
 		fmt.Fprintln(ctx.Output, "-- Excluded from the project")
 	}
-	fmt.Fprintln(ctx.Output, "-- Menus are read-only; they cannot be created via MDL.")
 
-	if len(md.Items) == 0 {
-		fmt.Fprintln(ctx.Output, "{ }")
+	// Output is re-executable: the item syntax is the same one CREATE MENU
+	// accepts, so describe → exec → describe is a fixed point.
+	fmt.Fprintf(ctx.Output, "create or modify menu %s.%s (\n", name.Module, md.Name)
+	printMenuMDL(ctx.Output, md.Items, 1, "CREATE MENU")
+	fmt.Fprintln(ctx.Output, ");")
+	return nil
+}
+
+// execCreateMenu handles CREATE [OR MODIFY] MENU Module.Name ( items ).
+//
+// Like CREATE NAVIGATION, the item list is the document's complete contents, so
+// a modify replaces the items wholesale rather than merging. The existing
+// document's $ID is reused on modify, so references to the menu survive and the
+// unit is rewritten in place rather than replaced.
+func execCreateMenu(ctx *ExecContext, s *ast.CreateMenuStmt) error {
+	if !ctx.Connected() {
+		return mdlerrors.NewNotConnected()
+	}
+
+	mod, err := ctx.Backend.GetModuleByName(s.Name.Module)
+	if err != nil || mod == nil {
+		return mdlerrors.NewNotFound("module", s.Name.Module)
+	}
+
+	existing, _ := ctx.Backend.GetMenuDocumentByQualifiedName(s.Name.Module, s.Name.Name)
+	if existing != nil && !s.CreateOrModify {
+		return mdlerrors.NewAlreadyExists("menu", s.Name.String())
+	}
+
+	md := &types.MenuDocument{
+		Name:          s.Name.Name,
+		ContainerID:   mod.ID,
+		Documentation: s.Documentation,
+		Items:         menuItemsFromAST(s.Items),
+	}
+
+	if existing != nil {
+		// Preserve the document's identity and the properties MDL does not
+		// author, so a modify does not silently reset them.
+		md.ID = existing.ID
+		md.ContainerID = existing.ContainerID
+		md.ExportLevel = existing.ExportLevel
+		md.Excluded = existing.Excluded
+		if md.Documentation == "" {
+			md.Documentation = existing.Documentation
+		}
+		if err := ctx.Backend.UpdateMenuDocument(md); err != nil {
+			return mdlerrors.NewBackend("update menu", err)
+		}
+		fmt.Fprintf(ctx.Output, "Modified menu %s\n", s.Name.String())
 		return nil
 	}
 
-	fmt.Fprintln(ctx.Output, "{")
-	printMenuMDL(ctx.Output, md.Items, 1, "MDL")
-	fmt.Fprintln(ctx.Output, "}")
+	if err := ctx.Backend.CreateMenuDocument(md); err != nil {
+		return mdlerrors.NewBackend("create menu", err)
+	}
+	fmt.Fprintf(ctx.Output, "Created menu %s\n", s.Name.String())
 	return nil
+}
+
+// execDropMenu handles DROP MENU Module.Name.
+func execDropMenu(ctx *ExecContext, s *ast.DropMenuStmt) error {
+	if !ctx.Connected() {
+		return mdlerrors.NewNotConnected()
+	}
+	md, err := ctx.Backend.GetMenuDocumentByQualifiedName(s.Name.Module, s.Name.Name)
+	if err != nil || md == nil {
+		return mdlerrors.NewNotFound("menu", s.Name.String())
+	}
+	if err := ctx.Backend.DeleteMenuDocument(md.ID); err != nil {
+		return mdlerrors.NewBackend("drop menu", err)
+	}
+	fmt.Fprintf(ctx.Output, "Dropped menu %s\n", s.Name.String())
+	return nil
+}
+
+// menuItemsFromAST converts parsed menu items to the semantic model. The AST and
+// semantic shapes differ only in how the target is held (pointer vs string), so
+// this stays a direct mapping rather than acquiring behaviour.
+func menuItemsFromAST(defs []ast.NavMenuItemDef) []*types.NavMenuItem {
+	var out []*types.NavMenuItem
+	for _, d := range defs {
+		item := &types.NavMenuItem{Caption: d.Caption, Icon: d.Icon}
+		if d.Icon != "" {
+			item.IconType = "Forms$IconCollectionIcon"
+		}
+		if d.Page != nil {
+			item.Page = d.Page.String()
+			item.ActionType = "PageAction"
+		} else if d.Microflow != nil {
+			item.Microflow = d.Microflow.String()
+			item.ActionType = "MicroflowAction"
+		} else {
+			item.ActionType = "NoAction"
+		}
+		item.Items = menuItemsFromAST(d.Items)
+		out = append(out, item)
+	}
+	return out
 }

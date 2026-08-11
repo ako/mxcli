@@ -167,6 +167,8 @@ func allKnownStatements() []ast.Statement {
 		&ast.AlterModelStmt{},
 		&ast.AlterModuleJarDepStmt{},
 		&ast.AlterNavigationStmt{},
+		&ast.CreateMenuStmt{},
+		&ast.DropMenuStmt{},
 		&ast.AlterODataClientStmt{},
 		&ast.AlterODataServiceStmt{},
 		&ast.AlterPageStmt{},

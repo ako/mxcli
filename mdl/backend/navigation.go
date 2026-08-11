@@ -14,9 +14,10 @@ type NavigationBackend interface {
 	UpdateNavigationProfile(navDocID model.ID, profileName string, spec types.NavigationProfileSpec) error
 
 	// Menu documents are standalone reusable menus (Menus$MenuDocument), not
-	// the menu embedded in a navigation profile. They are read-only: Mendix
-	// offers no way to author one outside Studio Pro, so there is deliberately
-	// no Create/Update/Delete here.
+	// the menu embedded in a navigation profile.
 	ListMenuDocuments() ([]*types.MenuDocument, error)
 	GetMenuDocumentByQualifiedName(moduleName, name string) (*types.MenuDocument, error)
+	CreateMenuDocument(md *types.MenuDocument) error
+	UpdateMenuDocument(md *types.MenuDocument) error
+	DeleteMenuDocument(id model.ID) error
 }

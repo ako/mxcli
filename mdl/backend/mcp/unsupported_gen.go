@@ -184,6 +184,11 @@ func (unsupportedBackend) CreateLayout(_ *pages.Layout) (err0 error) {
 	return
 }
 
+func (unsupportedBackend) CreateMenuDocument(_ *types.MenuDocument) (err0 error) {
+	err0 = errUnsupported("CreateMenuDocument")
+	return
+}
+
 func (unsupportedBackend) CreateMicroflow(_ *microflows.Microflow) (err0 error) {
 	err0 = errUnsupported("CreateMicroflow")
 	return
@@ -351,6 +356,11 @@ func (unsupportedBackend) DeleteJsonStructure(_ string) (err0 error) {
 
 func (unsupportedBackend) DeleteLayout(_ model.ID) (err0 error) {
 	err0 = errUnsupported("DeleteLayout")
+	return
+}
+
+func (unsupportedBackend) DeleteMenuDocument(_ model.ID) (err0 error) {
+	err0 = errUnsupported("DeleteMenuDocument")
 	return
 }
 
@@ -1129,6 +1139,11 @@ func (unsupportedBackend) UpdateJsonStructure(_ *types.JsonStructure) (err0 erro
 
 func (unsupportedBackend) UpdateLayout(_ *pages.Layout) (err0 error) {
 	err0 = errUnsupported("UpdateLayout")
+	return
+}
+
+func (unsupportedBackend) UpdateMenuDocument(_ *types.MenuDocument) (err0 error) {
+	err0 = errUnsupported("UpdateMenuDocument")
 	return
 }
 

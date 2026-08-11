@@ -126,6 +126,7 @@ createStatement
       | createKnowledgeBaseStatement
       | createAgentStatement
       | createNanoflowStatement
+      | createMenuStatement
       )
     ;
 
@@ -297,6 +298,14 @@ navMenuItemDef
     | MENU_KW STRING_LITERAL (ICON qualifiedName)? LPAREN navMenuItemDef* RPAREN SEMICOLON?
     ;
 
+// A standalone menu document (Menus$MenuDocument) — the reusable menu a menu
+// widget points at, as opposed to the menu inside a navigation profile. Both are
+// built from the same items, so this reuses navMenuItemDef rather than defining a
+// second item syntax.
+createMenuStatement
+    : MENU_KW qualifiedName LPAREN navMenuItemDef* RPAREN
+    ;
+
 dropStatement
     : DROP ENTITY qualifiedName
     | DROP ASSOCIATION qualifiedName
@@ -306,6 +315,7 @@ dropStatement
     | DROP NANOFLOW qualifiedName
     | DROP PAGE qualifiedName
     | DROP SNIPPET qualifiedName
+    | DROP MENU_KW qualifiedName
     | DROP MODULE qualifiedName
     | DROP NOTEBOOK qualifiedName
     | DROP JAVA ACTION qualifiedName

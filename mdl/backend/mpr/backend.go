@@ -878,3 +878,17 @@ func (b *MprBackend) ListMenuDocuments() ([]*types.MenuDocument, error) {
 func (b *MprBackend) GetMenuDocumentByQualifiedName(moduleName, name string) (*types.MenuDocument, error) {
 	return b.reader.GetMenuDocumentByQualifiedName(moduleName, name)
 }
+
+// Menu-document writes are implemented on the modelsdk engine only. The legacy
+// writer builds menu items by hand with typed-array marker 1, which does not
+// match what Studio Pro stores in a menu document (3) — rather than ship a
+// second, differently-shaped writer, this refuses so the caller is told plainly.
+func (b *MprBackend) CreateMenuDocument(md *types.MenuDocument) error {
+	return errors.New("creating a menu requires the modelsdk engine — rerun without MXCLI_ENGINE=legacy")
+}
+func (b *MprBackend) UpdateMenuDocument(md *types.MenuDocument) error {
+	return errors.New("modifying a menu requires the modelsdk engine — rerun without MXCLI_ENGINE=legacy")
+}
+func (b *MprBackend) DeleteMenuDocument(id model.ID) error {
+	return errors.New("dropping a menu requires the modelsdk engine — rerun without MXCLI_ENGINE=legacy")
+}

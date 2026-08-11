@@ -43,3 +43,24 @@ func (m *MockBackend) GetMenuDocumentByQualifiedName(moduleName, name string) (*
 	}
 	return nil, fmt.Errorf("MockBackend.GetMenuDocumentByQualifiedName not configured")
 }
+
+func (m *MockBackend) CreateMenuDocument(md *types.MenuDocument) error {
+	if m.CreateMenuDocumentFunc != nil {
+		return m.CreateMenuDocumentFunc(md)
+	}
+	return fmt.Errorf("MockBackend.CreateMenuDocument not configured")
+}
+
+func (m *MockBackend) UpdateMenuDocument(md *types.MenuDocument) error {
+	if m.UpdateMenuDocumentFunc != nil {
+		return m.UpdateMenuDocumentFunc(md)
+	}
+	return fmt.Errorf("MockBackend.UpdateMenuDocument not configured")
+}
+
+func (m *MockBackend) DeleteMenuDocument(id model.ID) error {
+	if m.DeleteMenuDocumentFunc != nil {
+		return m.DeleteMenuDocumentFunc(id)
+	}
+	return fmt.Errorf("MockBackend.DeleteMenuDocument not configured")
+}
