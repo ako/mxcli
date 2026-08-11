@@ -51,6 +51,19 @@ var objectTypeToDescribeKind = map[string]ast.DescribeObjectType{
 	"CONSUMED_MCP_SERVICE":   ast.DescribeConsumedMCPService,
 }
 
+// DescribeKindFor maps a catalog `objects` view ObjectType to the DESCRIBE kind
+// that renders it, reporting false for a type with no describe handler.
+//
+// Exported so callers outside the executor (the marketplace differ, which walks
+// a whole module) resolve types through the same table bare DESCRIBE uses,
+// rather than keeping a fourth copy of this mapping. Three copies already exist
+// — this map, the catalog's objects view, and cmd/mxcli's own dispatch — and
+// they have drifted apart once each.
+func DescribeKindFor(objectType string) (ast.DescribeObjectType, bool) {
+	kind, ok := objectTypeToDescribeKind[objectType]
+	return kind, ok
+}
+
 // resolveDescribeAuto auto-detects the type of a bare `DESCRIBE Module.Name`
 // against the connected project. It builds (fast mode) the catalog if needed and
 // looks the qualified name up in the `objects` index — a complete index for every
