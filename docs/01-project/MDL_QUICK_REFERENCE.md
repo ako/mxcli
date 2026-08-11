@@ -1165,7 +1165,7 @@ CLI subcommand: `mxcli sql --driver postgres --dsn '...' "select 1"` (see `mxcli
 | Refresh with refs | `refresh catalog full;` | Include cross-references and source |
 | Show catalog tables | `show catalog tables;` | List available queryable tables |
 | Query catalog | `select ... from CATALOG.<table> [where ...];` | SQL against project metadata |
-| Show callers | `show callers of Module.Name;` | What calls this element |
+| Show callers | `show callers of Module.Name;` | What INVOKES this element: microflow call activities, page action buttons and other widget actions, calculated attributes, and navigation entries. A page counts as a caller of the microflow its button runs, and of the page that button opens |
 | Show callees | `show callees of Module.Name;` | What this element calls |
 | Show references | `show references of Module.Name;` | All references to/from |
 | Show impact | `show impact of Module.Name;` | Impact analysis |
@@ -1173,6 +1173,8 @@ CLI subcommand: `mxcli sql --driver postgres --dsn '...' "select 1"` (see `mxcli
 | Full-text search | `search '<keyword>';` | Search across all strings and source |
 
 Cross-reference commands require `refresh catalog full` to populate reference data.
+
+`show callers` covers invocation only. A document that merely *uses a type* — an entity as a page datasource, a microflow parameter, an entity's generalization — is not a caller of it; `show references to` lists those.
 
 ## Connection & Session
 
