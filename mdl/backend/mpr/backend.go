@@ -703,6 +703,23 @@ func (b *MprBackend) ListIconCollections() ([]*types.IconCollection, error) {
 }
 
 // ---------------------------------------------------------------------------
+// QueueBackend
+// ---------------------------------------------------------------------------
+
+func (b *MprBackend) ListQueues() ([]*types.Queue, error) {
+	return b.reader.ListQueues()
+}
+func (b *MprBackend) CreateQueue(q *types.Queue) error {
+	return b.writer.CreateQueue(q)
+}
+func (b *MprBackend) UpdateQueue(q *types.Queue) error {
+	return b.writer.UpdateQueue(q)
+}
+func (b *MprBackend) DeleteQueue(id string) error {
+	return b.writer.DeleteQueue(id)
+}
+
+// ---------------------------------------------------------------------------
 // ScheduledEventBackend
 // ---------------------------------------------------------------------------
 

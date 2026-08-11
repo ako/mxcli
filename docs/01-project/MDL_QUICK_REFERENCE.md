@@ -138,6 +138,34 @@ create constant MyModule.MaxRetries type integer default 3;
 create constant MyModule.EnableLogging type boolean default true;
 ```
 
+## Task Queues
+
+| Statement | Syntax | Notes |
+|-----------|--------|-------|
+| Show queues | `show queues [in module];` (`list queues` too) | Parallelism + cluster-wide flag |
+| Describe queue | `describe queue Module.Name;` | Re-executable MDL |
+| Create queue | `create [or modify] queue Module.Name ( Parallelism: 3, ClusterWide: true );` | Body optional; defaults `1` / `false` |
+| Drop queue | `drop queue Module.Name;` | |
+
+`Parallelism` is an **expression**, not a number — Mendix stores it as a string
+(`Queues$BasicQueueConfig.ParallelismExpression`). A bare integer is the common
+case; quote anything else.
+
+Binding a microflow **call** to a queue is not yet expressible in MDL. Because a
+rebuild would drop an existing binding, `create or replace|modify microflow` is
+**refused** when the stored microflow has a queued call — change those in Studio
+Pro. (Without the refusal the binding was written back as null and `mx check`
+stopped reporting CE1613, so the project looked healthy while the configuration
+was gone.)
+
+**Example:**
+```sql
+create queue Ops.OrderProcessing ( Parallelism: 3, ClusterWide: true );
+create queue Ops.Mail;
+create or modify queue Ops.OrderProcessing ( Parallelism: '$MyModule.Workers' );
+drop queue Ops.Mail;
+```
+
 ## OData Clients, Services & External Entities
 
 | Statement | Syntax | Notes |

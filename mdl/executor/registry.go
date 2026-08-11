@@ -38,6 +38,7 @@ func NewRegistry() *Registry {
 	registerSecurityHandlers(r)
 	registerNavigationHandlers(r)
 	registerImageHandlers(r)
+	registerQueueHandlers(r)
 	registerWorkflowHandlers(r)
 	registerBusinessEventHandlers(r)
 	registerSettingsHandlers(r)

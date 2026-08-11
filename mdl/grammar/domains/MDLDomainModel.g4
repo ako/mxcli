@@ -332,6 +332,29 @@ enumerationOption
     ;
 
 // =============================================================================
+// TASK QUEUE CREATION
+// =============================================================================
+
+/**
+ * CREATE [OR REPLACE|MODIFY] QUEUE Module.Name ( Parallelism: 3, ClusterWide: true );
+ *
+ * Parallelism is stored by Mendix as an EXPRESSION string
+ * (Queues$BasicQueueConfig.ParallelismExpression), so it accepts a number or a
+ * quoted expression.
+ */
+createQueueStatement
+    : QUEUE qualifiedName queueBody?
+    ;
+
+queueBody
+    : LPAREN (queueProperty (COMMA queueProperty)* COMMA?)? RPAREN
+    ;
+
+queueProperty
+    : identifierOrKeyword COLON (NUMBER_LITERAL | STRING_LITERAL | booleanLiteral | identifierOrKeyword)
+    ;
+
+// =============================================================================
 // IMAGE COLLECTION CREATION
 // =============================================================================
 

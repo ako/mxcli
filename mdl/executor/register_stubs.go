@@ -207,6 +207,21 @@ func registerNavigationHandlers(r *Registry) {
 	})
 }
 
+func registerQueueHandlers(r *Registry) {
+	r.Register(&ast.CreateQueueStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execCreateQueue(ctx, stmt.(*ast.CreateQueueStmt))
+	})
+	r.Register(&ast.DropQueueStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execDropQueue(ctx, stmt.(*ast.DropQueueStmt))
+	})
+	r.Register(&ast.ShowQueuesStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execShowQueues(ctx, stmt.(*ast.ShowQueuesStmt))
+	})
+	r.Register(&ast.DescribeQueueStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execDescribeQueue(ctx, stmt.(*ast.DescribeQueueStmt))
+	})
+}
+
 func registerImageHandlers(r *Registry) {
 	r.Register(&ast.CreateImageCollectionStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
 		return execCreateImageCollection(ctx, stmt.(*ast.CreateImageCollectionStmt))

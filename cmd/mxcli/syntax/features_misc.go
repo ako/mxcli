@@ -207,6 +207,52 @@ CREATE CONFIGURATION 'Production'
 		SeeAlso: []string{"settings.show"},
 	})
 
+	// ── Queues ──────────────────────────────────────────────────────────
+
+	Register(SyntaxFeature{
+		Path:    "queue",
+		Summary: "Task queues — bound concurrency for queued microflow calls",
+		Keywords: []string{
+			"queue", "queues", "task queue", "create queue", "drop queue",
+			"describe queue", "show queues", "parallelism", "cluster wide",
+			"background", "async microflow",
+		},
+		Syntax: `CREATE [OR MODIFY] QUEUE Module.Name [( <property>: <value>, ... )];
+SHOW QUEUES [IN <module>];
+LIST QUEUES [IN <module>];
+DESCRIBE QUEUE Module.Name;
+DROP QUEUE Module.Name;
+
+Properties:
+  Parallelism   how many tasks run at once. This is an EXPRESSION, not a
+                number — Mendix stores it as a string. A bare integer is the
+                common case; quote anything else. Defaults to 1.
+  ClusterWide   true = the limit applies across the cluster, false (default)
+                = per runtime instance.
+  Documentation free text.
+
+Binding a call to a queue is not yet expressible in MDL. Because a rebuild
+would drop an existing binding, mxcli REFUSES to CREATE OR REPLACE/MODIFY a
+microflow whose stored calls are queued — change those in Studio Pro.`,
+		Example: `CREATE QUEUE Ops.OrderProcessing (
+  Parallelism: 3,
+  ClusterWide: true
+);
+
+-- Defaults: parallelism 1, per-instance.
+CREATE QUEUE Ops.Mail;
+
+-- An expression is legal wherever a number is.
+CREATE OR MODIFY QUEUE Ops.OrderProcessing (
+  Parallelism: '$MyModule.Workers',
+  ClusterWide: true
+);
+
+SHOW QUEUES IN Ops;
+DESCRIBE QUEUE Ops.OrderProcessing;
+DROP QUEUE Ops.Mail;`,
+	})
+
 	// ── Structure ───────────────────────────────────────────────────────
 
 	Register(SyntaxFeature{

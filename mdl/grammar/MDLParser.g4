@@ -115,6 +115,7 @@ createStatement
       | createUserRoleStatement
       | createDemoUserStatement
       | createImageCollectionStatement
+      | createQueueStatement
       | createJsonStructureStatement
       | createImportMappingStatement
       | createExportMappingStatement
@@ -309,6 +310,7 @@ dropStatement
     | DROP SNIPPET qualifiedName
     | DROP MODULE qualifiedName
     | DROP NOTEBOOK qualifiedName
+    | DROP QUEUE qualifiedName
     | DROP JAVA ACTION qualifiedName
     | DROP JAVASCRIPT ACTION qualifiedName
     | DROP INDEX qualifiedName ON qualifiedName
