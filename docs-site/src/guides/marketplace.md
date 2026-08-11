@@ -76,9 +76,94 @@ In-place module updates are not applied automatically (they can discard local
 edits and change persistent-entity IDs, which loses data). Update via Studio Pro.
 ```
 
+Before you update in Studio Pro, the question worth answering is **whether anyone has edited the module since it was installed** — because the update will not ask. That is what `marketplace diff` is for; see below.
+
 Two reasons make automatic in-place module updates unsafe:
 
 1. **Local edits.** Teams sometimes modify a marketplace module after importing it; a blind re-import would discard those changes.
 2. **Persistent-entity IDs.** A fresh import assigns new entity `$ID`s. The runtime database keys data by entity ID, so re-importing a module with persistent entities would make the runtime treat them as *different* entities — **losing data**.
 
 Studio Pro's Marketplace **Update** performs an ID-preserving merge that the `mx` CLI does not expose, so module updates are left to Studio Pro for now.
+
+## Has this module been edited? (`marketplace diff`)
+
+Studio Pro's Marketplace **Update** replaces the module and discards local edits without asking. `marketplace diff` answers the question that decides whether that is safe:
+
+```bash
+# What have I changed in this module since installing it?
+mxcli marketplace diff 23513 -p app.mpr
+```
+
+```text
+Administration — installed 4.3.2 (Mendix 11.12.1)
+
+  Locally modified (1 of 21 elements):
+    changed   ENTITY Account
+```
+
+An untouched module reports how much was actually checked, not just a verdict:
+
+```text
+  No local modifications: 21 of 21 elements verified unchanged.
+```
+
+### What it does
+
+1. Reads which marketplace version each module in the project records. The project stores the marketplace **version UUID** per module, so the module and the exact release it came from are both identified without guessing — the listing name does not help here (content 23513 is listed as "Administration module" and installs a module called `Administration`; "Data Widgets" installs `DataWidgets`).
+2. Downloads that version's `.mpk` and imports it into a throwaway reference project built **at the project's own Mendix version**, so the package goes through the same conversion the installed copy did.
+3. Describes every element of the module on both sides and compares the descriptions.
+
+Comparison is on `DESCRIBE` output rather than raw storage: an *untouched* module differs from its own published package in thousands of BSON paths, because the installed copy carries subtrees the package does not.
+
+Requires the mxbuild toolchain for the project's Mendix version — `mxcli setup mxbuild -p app.mpr`. Building the reference at a *different* version is refused rather than warned about, because Mendix's own conversions would then show up as your edits.
+
+### What an upgrade would touch
+
+`--to` adds the other half of the question: what the module's author changed, and whether it collides with what you changed.
+
+```bash
+mxcli marketplace diff 23513 -p app.mpr --to 4.5.0
+```
+
+```text
+  Upgrading to 4.5.0 would touch 5 element(s), 1 of which you have modified:
+    CONFLICT  ENTITY Account
+
+  Studio Pro's update would discard those local edits without asking.
+```
+
+### In CI
+
+`--json` emits the machine-readable form, for a build gate that fails when a marketplace module has been edited:
+
+```bash
+mxcli marketplace diff 23513 -p app.mpr --json
+```
+
+```json
+{
+  "module": "Administration",
+  "installedVersion": "4.3.2",
+  "mendixVersion": "11.12.1",
+  "locallyModified": true,
+  "verified": true,
+  "modified": ["ENTITY Account"],
+  "unchangedCount": 20
+}
+```
+
+Read **both** `locallyModified` and `verified`. `verified: false` means at least one element could not be described, so "no modifications found" is not a conclusion you can act on — an element that cannot be read is reported as `unknown`, never as unchanged:
+
+```text
+  No local modifications found, but 1 of 21 elements could not be read —
+  this is not a clean bill of health.
+```
+
+### Flags
+
+| Flag | Purpose |
+|---|---|
+| `-p, --project` | The project holding the installed module (required). |
+| `--to <version>` | Also report what upgrading to this version would touch, and which of those you have modified. |
+| `--module <name>` | Name the module explicitly, when the project records no marketplace version for it (a hand-imported copy) or several modules match. |
+| `--json` | Emit JSON instead of text. |

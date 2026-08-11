@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	modelsdk "github.com/mendixlabs/mxcli"
@@ -52,6 +53,70 @@ func InstalledModule(mprPath, moduleName string) (appStoreVersion, mendixVersion
 		return m.AppStoreVersion, mendixVersion, nil
 	}
 	return "", mendixVersion, fmt.Errorf("module %q not found in %s", moduleName, filepath.Base(mprPath))
+}
+
+// ModuleForVersionIDs works out which module in a project came from a given
+// piece of marketplace content, and which published version it is.
+//
+// The name is not derivable from the marketplace listing — content 23513 is
+// listed as "Administration module" but installs a module called
+// "Administration", and "Data Widgets" installs "DataWidgets". The package
+// declares the name, but downloading a package to learn which module to compare
+// puts the download before the decision of *which version* to download.
+//
+// The project answers both questions without a network call. Each installed
+// module records `AppStoreGuid`, and that GUID is the marketplace **version**
+// UUID: in a blank 11.12.1 project, Administration carries
+// 2059615c-c6f1-4103-aedb-14820c077a1c, which is exactly content 23513's
+// version 4.3.2, and DataWidgets carries content 116540's version 3.5.0.
+//
+// Matching on the GUID rather than the version *number* is what makes this
+// sound. Version numbers collide across content — that same blank project has
+// Atlas_Web_Content at 4.1.0 and Administration's content has also published a
+// 4.1.0, so a number match picks two modules and cannot tell them apart. The
+// returned version ID is then used to fetch the exact package, so the
+// comparison never depends on parsing or matching a version string.
+func ModuleForVersionIDs(mprPath string, versionIDs []string) (moduleName, versionID string, err error) {
+	published := make(map[string]bool, len(versionIDs))
+	for _, id := range versionIDs {
+		if id != "" {
+			published[id] = true
+		}
+	}
+
+	reader, err := modelsdk.Open(mprPath)
+	if err != nil {
+		return "", "", fmt.Errorf("open %s: %w", mprPath, err)
+	}
+	defer reader.Close()
+
+	mods, err := reader.ListModules()
+	if err != nil {
+		return "", "", fmt.Errorf("list modules: %w", err)
+	}
+
+	type match struct{ name, id string }
+	var matches []match
+	for _, m := range mods {
+		if published[m.AppStoreGuid] {
+			matches = append(matches, match{m.Name, m.AppStoreGuid})
+		}
+	}
+	switch len(matches) {
+	case 1:
+		return matches[0].name, matches[0].id, nil
+	case 0:
+		return "", "", fmt.Errorf("no module in %s was installed from this marketplace content",
+			filepath.Base(mprPath))
+	default:
+		names := make([]string, 0, len(matches))
+		for _, m := range matches {
+			names = append(names, m.name)
+		}
+		sort.Strings(names)
+		return "", "", fmt.Errorf("several modules record a version of this content (%s), so the right one cannot be identified",
+			strings.Join(names, ", "))
+	}
 }
 
 // PackageProject builds a throwaway project containing nothing but the module
@@ -114,7 +179,7 @@ func PackageProject(ctx context.Context, mpkPath, mendixVersion, workDir string,
 	// unpicks the references the template set up (it reports e.g. "Removed
 	// Administration.User from 1 user role(s)"); leaving those dangling would
 	// give module-import an inconsistent model to write into.
-	if name, err := moduleNameInPackage(mpkPath); err == nil && name != "" {
+	if name, err := ModuleNameInPackage(mpkPath); err == nil && name != "" {
 		if err := dropModuleIfPresent(mprPath, name, newBackend); err != nil {
 			return "", err
 		}
@@ -178,14 +243,14 @@ func orUnknown(v string) string {
 	return v
 }
 
-// moduleNameInPackage reads the module name a .mpk declares. package.xml is the
+// ModuleNameInPackage reads the module name a .mpk declares. package.xml is the
 // manifest mx itself reads; note it carries no version — the AppStoreVersion a
 // project ends up with after `mx module-import` is the module's *internal*
 // version (set by its author), not the marketplace release number. Importing
 // Administration 4.3.2 stamps 2.0.1. That stamp never reaches DESCRIBE output,
 // so it does not affect the comparison, but it does mean the reference project's
 // recorded version is not evidence of which package was imported.
-func moduleNameInPackage(mpkPath string) (string, error) {
+func ModuleNameInPackage(mpkPath string) (string, error) {
 	zr, err := zip.OpenReader(mpkPath)
 	if err != nil {
 		return "", fmt.Errorf("open package %s: %w", filepath.Base(mpkPath), err)

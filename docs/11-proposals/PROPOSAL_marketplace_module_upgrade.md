@@ -519,12 +519,47 @@ coverage over the fixture is 251/251.
 
 | File | Change |
 |------|--------|
-| `cmd/mxcli/cmd_marketplace.go` | New `diff` subcommand: flags `--to`, `--format`, module-name resolution |
-| `cmd/mxcli/marketplace/compare.go` *(new)* | Orchestration: resolve installed version → download → convert → describe both sides → report |
-| `cmd/mxcli/marketplace/scratch.go` *(new)* | Build the scratch project at the consuming project's version; wraps `mx convert` on the `.mpk` |
-| `mdl/executor/` (describe paths) | Expose a programmatic "describe this element" entry point; today DESCRIBE is reachable only as a statement |
-| `mdl/backend/` | Interface method to enumerate a module's elements with name + `$Type` (the catalog has this; it needs a backend-level accessor) |
-| `docs-site/src/` | User-facing page for the command |
+| `cmd/mxcli/cmd_marketplace_diff.go` *(new)* | The `diff` subcommand: flags `--to`, `--module`, `--json`; module + version resolution |
+| `cmd/mxcli/marketplace/snapshot.go` *(new)* | Enumerate a module's elements from the catalog and capture DESCRIBE output for each |
+| `cmd/mxcli/marketplace/compare.go` *(new)* | Match two snapshots by name+type and classify each element |
+| `cmd/mxcli/marketplace/scratch.go` *(new)* | Build the reference project at the consuming project's version and import the `.mpk` into it |
+| `cmd/mxcli/marketplace/report.go` *(new)* | Human and JSON rendering, including the honesty rule |
+| `internal/marketplace/client.go` | Paginate `Versions` (see below) |
+| `docs-site/src/guides/marketplace.md` | User-facing documentation for the command |
+
+Two things the plan above got wrong, both found by running it:
+
+- **The scratch project is built with `mx create-project` + `mx module-import`,
+  not `mx convert` on the `.mpk`.** A blank project is not empty — it already
+  ships Administration, Atlas_Core, DataWidgets and friends — so the template's
+  copy is dropped through mxcli's own `DROP MODULE` before the package is
+  imported, or `module-import` refuses the name (exit 47).
+- **No new backend or executor entry point was needed.** The catalog's `objects`
+  view already enumerates a module's elements with name + type, and DESCRIBE is
+  reachable programmatically by executing an `ast.DescribeStmt` against an
+  executor writing to a buffer. Adding an interface method would have been a
+  second way to do the same thing.
+
+**How the module and its version are identified.** Each installed module records
+`AppStoreGuid`, and that GUID is the marketplace **version** UUID — a blank
+11.12.1 project carries `2059615c-…` for Administration, which is exactly
+content 23513's version 4.3.2, and `225ac9cf-…` for DataWidgets, content
+116540's version 3.5.0. Matching on it identifies both the module and the exact
+release with no network call and no guessing at the listing name (content 23513
+is listed as "Administration module" and installs `Administration`).
+
+Matching on the version *number* instead looks equivalent and is not: that same
+blank project has Atlas_Web_Content at 4.1.0 and Administration's content has
+also published a 4.1.0, so a number match selects two modules and cannot tell
+them apart. This was not reasoned out — it was the first real run of the
+command, which refused rather than guessing.
+
+**A latent bug this surfaced.** `/v1/content/{id}/versions` pages: it returns 10
+versions unpaged and caps `limit` at 20. `Client.Versions` asked once, so
+`marketplace versions` showed exactly ten of everything and an older installed
+version looked unpublished — Data Widgets has 131 releases and mxcli could see
+10. Fixed by walking pages until one comes back short; `marketplace
+versions`/`download`/`install` all benefit.
 
 ### Phase 2 — `marketplace update` (deferred, not proposed here)
 
@@ -581,6 +616,34 @@ The control from §3 is the primary test and it is fully reproducible:
 - Fixtures in `mdl-examples/bug-tests/` are not the right home; this needs an
   integration test under `-tags integration` because it shells out to `mx convert`
   and the marketplace API.
+
+### What has run (2026-08-11)
+
+Both controls pass, against real marketplace content rather than a fixture.
+
+- **Negative control.** `marketplace diff 23513 -p <blank 11.12.1 project>`:
+  *"No local modifications: 21 of 21 elements verified unchanged."* The
+  reference is downloaded, imported and described from scratch each run, so this
+  also demonstrates the build is reproducible — `TestPackageProject_ReferenceIsReproducibleAndDiffable`
+  asserts the same thing on two independently built references.
+- **Positive control.** One added attribute
+  (`alter entity Administration.Account add attribute LocalNote: String(100)`) →
+  *"Locally modified (1 of 21 elements): changed ENTITY Account"*, and nothing
+  else.
+- **Upgrade impact.** `--to 4.5.0` reports five elements touched by the author,
+  one of which (`ENTITY Account`) collides with the local edit. The control for
+  *that* is `--to 4.3.2` — upgrading to the version already installed — which
+  reports nothing touched, so the five are real author changes and not noise
+  from the reference-building path.
+- **Coverage honesty** is unit-tested rather than measured, because the fixture
+  module has no un-describable element: `TestDiffResult_UnknownIsNeverACleanBillOfHealth`
+  asserts an unknown element never renders as a clean verification, and fails
+  with exactly the dangerous output ("No local modifications: 1 of 2 elements
+  verified unchanged") when the branch that distinguishes the two is removed.
+
+Not yet run: the recorded `01-before` → `02-after` Studio Pro update pair. The
+renumbering assertion it exists to make is already covered in principle — the
+comparison never reads an `$ID` — but the fixture remains the end-to-end proof.
 
 ## Open Questions
 
