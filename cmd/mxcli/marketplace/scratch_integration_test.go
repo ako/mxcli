@@ -7,7 +7,9 @@ package marketplace
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mendixlabs/mxcli/cmd/mxcli/docker"
@@ -198,4 +200,81 @@ func TestPackageProject_ReferenceIsReproducibleAndDiffable(t *testing.T) {
 	if len(changed) != 1 || changed[0] != "ENTITY Account=modified" {
 		t.Errorf("expected exactly ENTITY Account=modified, got %v", changed)
 	}
+}
+
+// TestTransplantModule_ProducesAProjectMxbuildAccepts is the check the unit
+// tests cannot make.
+//
+// A transplant that round-trips through mxcli's own reader proves only that
+// mxcli agrees with itself. Units are copied verbatim with their unit IDs and
+// only the module unit is re-parented, so the failure mode to rule out is a
+// model that reads back fine and that mxbuild rejects — a dangling container, a
+// containment name Mendix does not expect, a duplicated identity.
+//
+// Measured on Mendix 11.12.1 with two blank projects: 28 units copied, and
+// `mx check` reports "The app contains: 0 errors."
+func TestTransplantModule_ProducesAProjectMxbuildAccepts(t *testing.T) {
+	const version = "11.12.1"
+	if !mxVersionAvailable(version) {
+		t.Skipf("mxbuild %s is not cached; run 'mxcli setup mxbuild --version %s'", version, version)
+	}
+	mxPath := docker.CachedMxPath(version)
+
+	ctx := context.Background()
+	source := blankProject(t, ctx, mxPath, "S")
+	target := blankProject(t, ctx, mxPath, "T")
+	const module = "Administration"
+
+	ids, err := CaptureIdentities(target, module)
+	if err != nil {
+		t.Fatalf("capture: %v", err)
+	}
+	execMDL(t, target, "drop module "+module+";")
+
+	copied, err := TransplantModule(source, target, module)
+	if err != nil {
+		t.Fatalf("TransplantModule: %v", err)
+	}
+	if copied == 0 {
+		t.Fatal("no units copied")
+	}
+	if _, _, err := ApplyIdentities(target, module, ids); err != nil {
+		t.Fatalf("ApplyIdentities: %v", err)
+	}
+
+	cmd := exec.CommandContext(ctx, mxPath, "check", "-p", target)
+	docker.PrepareMxCommand(cmd)
+	out, _ := cmd.CombinedOutput()
+	// mx check exits non-zero on any error, including the CE0462 widget errors a
+	// project without its widgets/ folder always produces, so the assertion is on
+	// the error count rather than the exit code.
+	if !strings.Contains(string(out), "The app contains: 0 errors") {
+		t.Errorf("mxbuild rejected the transplanted project:\n%s", tail(string(out), 30))
+	}
+	t.Logf("%d units transplanted, mx check clean", copied)
+}
+
+// blankProject creates a fresh project with mx and returns its .mpr path.
+func blankProject(t *testing.T, ctx context.Context, mxPath, name string) string {
+	t.Helper()
+	dir := shortTemp(t)
+	cmd := exec.CommandContext(ctx, mxPath, "create-project", "--app-name", name)
+	cmd.Dir = dir
+	docker.PrepareMxCommand(cmd)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("create-project: %v\n%s", err, out)
+	}
+	mpr, err := findScratchMpr(dir, name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return mpr
+}
+
+func tail(s string, lines int) string {
+	parts := strings.Split(strings.TrimSpace(s), "\n")
+	if len(parts) > lines {
+		parts = parts[len(parts)-lines:]
+	}
+	return strings.Join(parts, "\n")
 }

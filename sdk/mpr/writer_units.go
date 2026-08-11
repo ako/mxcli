@@ -198,6 +198,21 @@ func (w *Writer) updateUnit(unitID string, contents []byte) error {
 
 // UpdateRawUnit saves raw BSON bytes for a unit, bypassing deserialization.
 // Used by ALTER PAGE to modify the BSON widget tree directly.
+// AddRawUnit inserts a unit verbatim: same contents, same containment name, no
+// re-encoding. It is the primitive a module transplant is built from.
+//
+// Copying a unit wholesale is safe because element `$ID` pointers do not cross
+// unit boundaries — measured at 0 of 9,910 in a real project (PROPOSAL
+// marketplace_module_upgrade §4) — and cross-unit references are qualified-name
+// strings. Rewriting the contents, by contrast, would risk exactly the
+// intra-unit pointer inconsistency ADR-0008 forbids.
+//
+// The caller owns uniqueness of unitID. Inserting an ID the project already
+// holds is a caller error, not something this can repair.
+func (w *Writer) AddRawUnit(unitID, containerID, containmentName, unitType string, contents []byte) error {
+	return w.insertUnit(unitID, containerID, containmentName, unitType, contents)
+}
+
 func (w *Writer) UpdateRawUnit(unitID string, contents []byte) error {
 	return w.updateUnit(unitID, contents)
 }
