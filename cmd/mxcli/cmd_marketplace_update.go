@@ -258,10 +258,11 @@ func reportUpdate(out io.Writer, r *marketplace.UpdateResult) {
 	// the latter rewrites an MPR v2 project as v1 (measured on 11.12.1 — 200
 	// .mxunit files to 0, a 69 KB index to 14 MB), while docker check runs the
 	// same step under a storage-format snapshot (#808).
-	fmt.Fprintln(out, "\n  Next: resync widget definitions, or 'mx check' will report CE0463 on the")
-	fmt.Fprintln(out, "  new version's pages (this is expected after any headless module install):")
+	fmt.Fprintln(out, "\n  Next, repair what a headless update leaves behind (expected, not a fault):")
+	fmt.Fprintln(out, "      mxcli fix widgets -p <project.mpr>             # CE0463")
+	fmt.Fprintln(out, "      mxcli fix design-properties -p <project.mpr>   # CE6087")
+	fmt.Fprintln(out, "\n  Then validate and review:")
 	fmt.Fprintln(out, "      mxcli docker check -p <project.mpr>")
-	fmt.Fprintln(out, "\n  Then review what landed:")
 	fmt.Fprintln(out, "      mxcli diff-local -p <project.mpr>")
 }
 

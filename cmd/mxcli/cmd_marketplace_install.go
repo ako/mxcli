@@ -139,7 +139,7 @@ func installWidget(ctx context.Context, client *marketplace.Client, v *marketpla
 		return err
 	}
 	fmt.Fprintf(out, "Installed widget %s into %s\n", v.VersionNumber, dest)
-	fmt.Fprintln(out, "Run 'mxcli docker check -p <project.mpr>' (or reload in Studio Pro) to pick it up.")
+	fmt.Fprintln(out, "Run 'mxcli fix widgets -p <project.mpr>' (or reload in Studio Pro) to pick it up.")
 	return nil
 }
 
@@ -192,11 +192,13 @@ func installModule(ctx context.Context, client *marketplace.Client, v *marketpla
 			moduleName, v.VersionNumber, filepath.Base(mprPath))
 		fmt.Fprintf(out, "  %d units copied, %d bundled file(s) installed.\n",
 			res.UnitsCopied, len(res.FilesInstalled))
-		// 'mxcli docker check' resyncs widget definitions (clearing CE0463 on the
-		// module's pages) and restores the MPR v2 storage format afterwards; bare
-		// 'mx update-widgets' does the resync but leaves the project as v1.
-		fmt.Fprintln(out, "\n  Next: 'mxcli docker check -p <project.mpr>' (resyncs widget definitions,")
-		fmt.Fprintln(out, "  which a headless install leaves stale, and reports CE0463 until it runs).")
+		// A headless install leaves the model needing two repairs only Mendix's own
+		// tools can make (CE0463, CE6087). 'mxcli fix' runs them without the v2 ->
+		// v1 conversion the bare mx commands perform.
+		fmt.Fprintln(out, "\n  Next, repair what a headless install leaves for Studio Pro to finish:")
+		fmt.Fprintln(out, "      mxcli fix widgets -p <project.mpr>             # CE0463")
+		fmt.Fprintln(out, "      mxcli fix design-properties -p <project.mpr>   # CE6087")
+		fmt.Fprintln(out, "      mxcli docker check -p <project.mpr>")
 		return nil
 	}
 

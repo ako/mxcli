@@ -11,7 +11,7 @@ These are **CLI commands**, not MDL statements.
 - User asks whether a marketplace module has been edited locally, or what an upgrade would overwrite
 - User asks to download a specific `.mpk` (e.g. for CI, or to import in Studio Pro)
 - User asks which versions of a marketplace item are compatible with their Mendix version
-- User reports `CE0463` right after installing or updating a module
+- User reports `CE0463` or `CE6087` right after installing or updating a module
 
 ## Prerequisites: Authenticate
 
@@ -139,45 +139,51 @@ Dependencies include **widget content**, not only modules — `ConversationalUI`
 `Markdown viewer` (230248) and `Events` (224259) widget packages, which surface as
 `CE0462 "Could not find widget ... in the 'widgets' directory"`.
 
-## Step 4 — Resync widget definitions (required after any headless install)
+## Step 4 — Repair the model after the install (required, headless)
 
 ```bash
-mxcli docker check -p app.mpr
+mxcli fix widgets -p app.mpr             # clears CE0463
+mxcli fix design-properties -p app.mpr   # clears CE6087
+mxcli docker check -p app.mpr            # confirm
 ```
 
-A freshly installed or updated module's pages reference widget definitions the project has
-not resynced, so a check reports **CE0463** ("the definition of this widget has changed")
-until it is told to. Measured on Administration 4.3.2 → 4.5.0: 11 errors before the
-resync, 0 after. This is expected after any headless module install — it is **not** a
-mxcli defect, and it is not the CE0463 that `.claude/skills/diagnose-ce0463.md` is for.
+A headless install leaves two things for Mendix's own tools to finish, and **neither is
+an mxcli defect**:
 
-**Never run bare `mx update-widgets` on an MPR v2 project.** It performs the resync and
-converts the project to v1 in the process — measured on 11.12.1: 370 `.mxunit` files
-became 0, and a 69,632-byte index became 14,405,632 bytes. `mxcli docker check` runs the same
-`mx update-widgets` step with the v2 storage snapshotted and restored around it, so the
-check sees the resynced model and the project keeps its format.
+- **CE0463** "the definition of this widget has changed" — the project's stored widget
+  instances are older than the widget packages now sitting beside them. This is not the
+  CE0463 that `.claude/skills/diagnose-ce0463.md` is about.
+- **CE6087** "design properties have been renamed in your theme" — a module references
+  design properties an older Atlas spelled differently. Project-level: the location in the
+  check output is empty, so the message alone does not say which module caused it.
 
-The resync is therefore not *persisted*: the check passes, and the stored model still
-holds the pre-resync widget definitions, so a later `mx check` reports CE0463 again.
-To persist it, open the project in Studio Pro once and use **Update all widgets**.
-`mxcli widget sync -p app.mpr` is the headless equivalent, but is **partial** — on the
-reference fixture it clears 7 of 40.
+Measured end to end on a vanilla 11.12.1 app carrying the agent-editor stack: `mx check`
+reported **203 errors** (202 × CE0463 + 1 × CE6087) and **0** after the two commands, with
+the project still MPR v2 — 1,868 `.mxunit` files, a 249,856-byte index, before and after.
 
-### CE6087 has no headless fix today — know this before you promise one
+### Never run the bare `mx` commands on an MPR v2 project
 
-`CE6087 "Design properties have been renamed in your theme and need to be updated"` appears
-after installing modules that ship their own design properties. Mendix's fix is
-`mx rename-design-properties`, and it collapses MPR v2 exactly like `update-widgets` does —
-measured on 11.12.1: 1,866 `.mxunit` files → 0, a 249,856-byte index → 39,895,040 bytes,
-having renamed 149 design properties across 41 documents.
+`mx update-widgets` and `mx rename-design-properties` each do the repair **and** rewrite
+the project into the single-file v1 format. Measured on 11.12.1: `update-widgets` took 369
+`.mxunit` files to 0 and a 69,632-byte index to 14,405,632 bytes; `rename-design-properties`
+took 1,865 files to 0 and a 249,856-byte index to 39,895,040 bytes, while renaming 149
+design properties across 41 documents. The conversion is one-way.
 
-Unlike `update-widgets`, **mxcli has no protected path for it**: `docker check` does not run
-it, and snapshot-and-restore would not help anyway, because the renames have to *persist*
-where the widget resync does not. So on an MPR v2 project the choices are Studio Pro, or
-accepting the v1 conversion. Do not tell a user a headless fix exists.
+`mxcli fix …` runs the same tool, reads its result back out, restores the v2 storage, and
+writes the changed units into it. It reports the storage count before and after for exactly
+that reason — a collapse shows up there as a zero. Re-running is free: the second run
+reports 0 units changed (ADR-0008 elision), so the `.mpr` is left byte-identical.
 
-The error is project-level (its location in the check output is empty), so it cannot be
-traced to the module that caused it from the message alone.
+An MPR v1 project is passed straight through, since these tools write v1 natively.
+
+### Related commands, and when each is right
+
+| Command | Persists? | Use |
+|---|---|---|
+| `mxcli fix widgets` | **yes** | the fix — after any headless install |
+| `mxcli fix design-properties` | **yes** | the fix — after any headless install |
+| `mxcli docker check` | no | runs the widget resync under a snapshot so the *check* is not tripped by CE0463; the stored model stays stale |
+| `mxcli widget sync` | yes, partial | reconciles widget schemas in mxcli's own code; clears 7 of 40 on the reference fixture |
 
 ## Step 5 — Before updating: has the module been edited?
 
@@ -268,11 +274,13 @@ Flags: `-p/--project`, `--to <version>` (required), `--module <name>`,
 ### Afterwards
 
 ```bash
-mxcli docker check -p app.mpr     # resyncs widgets; expect 0 errors
-mxcli diff-local -p app.mpr       # review what landed, per document
+mxcli fix widgets -p app.mpr             # step 4 applies to updates too
+mxcli fix design-properties -p app.mpr
+mxcli docker check -p app.mpr            # expect 0 errors
+mxcli diff-local -p app.mpr              # review what landed, per document
 ```
 
-Measured after the resync: Administration 4.3.2 → 4.5.0 (28 units, 9 identities, 2 grants)
+Measured after the repair: Administration 4.3.2 → 4.5.0 (28 units, 9 identities, 2 grants)
 and DataWidgets 3.5.0 → 3.11.3 (49 files) both reach **0 errors**.
 
 ## Worked example: the agent-editor stack on a vanilla app
@@ -313,8 +321,10 @@ Four things this run established, none of them obvious from the command list:
    required 11.12.2 against an 11.12.1 project.
 3. **Two dependencies are widgets, and two more are modules the agent skill does not
    list** (CommunityCommons, and the widget packages). Let the check errors drive it.
-4. **The end state is 1 error, not 0** — CE6087, which has no headless fix (above). The
-   project stays MPR v2 throughout: 1,869 `.mxunit` files, a 249,856-byte index.
+4. **The install leaves the model needing repair, and step 4 is not optional.** A plain
+   `mx check` on the finished project reported 203 errors (202 × CE0463, 1 × CE6087);
+   `mxcli fix widgets` (62 units) and `mxcli fix design-properties` (42 units) took it to
+   **0**. The project stays MPR v2 throughout: 1,868 `.mxunit` files, a 249,856-byte index.
 
 The ids are a convenience, not an authority: confirm with `search`/`info` rather than
 trusting them from memory, and note that the listing name never matches the module name.

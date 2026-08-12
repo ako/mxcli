@@ -68,7 +68,7 @@ func TestSnapshotStorageFormat_RestoresV2AfterConversion(t *testing.T) {
 	snapshotGlob := filepath.Join(os.TempDir(), "mxcli-mpr-snapshot-*")
 	leakBefore, _ := filepath.Glob(snapshotGlob)
 
-	restore, err := snapshotStorageFormat(mprPath, contentsDir)
+	_, restore, err := snapshotStorageFormat(mprPath, contentsDir)
 	if err != nil {
 		t.Fatalf("snapshotStorageFormat: %v", err)
 	}

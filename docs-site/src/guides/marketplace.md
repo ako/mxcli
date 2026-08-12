@@ -167,21 +167,45 @@ Local edits are **not** preserved. `update` refuses when it finds any, `--save-e
 
 ### Afterwards
 
-Run `mxcli docker check -p <project.mpr>`, then `mxcli diff-local -p <project.mpr>`.
+```bash
+mxcli fix widgets -p app.mpr
+mxcli fix design-properties -p app.mpr
+mxcli docker check -p app.mpr
+mxcli diff-local -p app.mpr
+```
 
-A newer module's pages reference widget definitions the project has not resynced, so a check reports CE0463 until it is told to — measured on Administration 4.3.2 → 4.5.0: 11 errors before the resync, 0 after. This is expected after any headless module install, not a fault in the update. Measured after the resync, Administration 4.3.2 → 4.5.0 and DataWidgets 3.5.0 → 3.11.3 both reach **0 errors**.
+A headless install or update leaves two repairs for Mendix's own tools: **CE0463** (the project's stored widget instances are older than the widget packages beside them) and **CE6087** (a module references design properties an older Atlas spelled differently). Both are expected, not faults in the install. See [`mxcli fix`](#repairing-the-model-mxcli-fix) below.
 
-**Do not run bare `mx update-widgets` on an MPR v2 project.** It performs the resync but rewrites the project as v1 — measured on 11.12.1, 370 `.mxunit` files became 0 and a 69,632-byte index became 14,405,632 bytes. `mxcli docker check` runs the same `mx update-widgets` step with the v2 storage snapshotted and restored around it, so the check sees the resynced model and the project keeps its format.
+Measured: Administration 4.3.2 → 4.5.0 and DataWidgets 3.5.0 → 3.11.3 both reach **0 errors** afterwards.
 
-The consequence is that the resync is not *persisted*: the check passes, and the stored model still holds the pre-resync widget definitions, so a later `mx check` reports CE0463 again. Opening the project in Studio Pro once and using **Update all widgets** persists it in v2. `mxcli widget sync` is the headless equivalent but is partial — on the reference fixture it clears 7 of 40.
+## Repairing the model (`mxcli fix`)
 
-### CE6087 has no headless fix
+`mx update-widgets` and `mx rename-design-properties` each fix something only Mendix can fix, and each rewrites an MPR v2 project into the single-file v1 format while doing it. Measured on 11.12.1: `update-widgets` took 369 `.mxunit` files to 0 and a 69,632-byte index to 14,405,632 bytes; `rename-design-properties` took 1,865 files to 0 and a 249,856-byte index to 39,895,040 bytes, having renamed 149 design properties across 41 documents. The conversion is one-way.
 
-Installing modules that ship their own design properties can leave a project-level `CE6087` — "Design properties have been renamed in your theme and need to be updated". Mendix's fix is `mx rename-design-properties`, and it collapses MPR v2 the same way: measured on 11.12.1, 1,866 `.mxunit` files became 0 and a 249,856-byte index became 39,895,040 bytes, having renamed 149 design properties across 41 documents.
+```bash
+mxcli fix widgets -p app.mpr             # CE0463
+mxcli fix design-properties -p app.mpr   # CE6087
+```
 
-The snapshot-and-restore that protects `update-widgets` does not transfer here, because these renames have to persist where a widget resync does not. On an MPR v2 project the options today are Studio Pro, or accepting the conversion to v1.
+```text
+Updated design properties: 42 unit(s) changed.
+  Storage: 1868 .mxunit file(s), unchanged from 1868 before (MPR v2 preserved).
+```
 
-This is distinct from `CE6083`, which is a *missing* design-property declaration and is fixed by installing everything the package ships — something `install` and `update` already do.
+Each runs the same Mendix tool, reads every unit back out of the converted file, restores the v2 storage, and writes the changed units into it through mxcli's own writer. The storage count is printed before and after because that is where the failure this exists to prevent would show up — as a zero.
+
+Measured end to end on a vanilla 11.12.1 app carrying the agent-editor stack: `mx check` reported **203 errors** (202 × CE0463 + 1 × CE6087), and **0** after the two commands, with the project still MPR v2 (1,868 `.mxunit` files) — reproduced from a restored pre-fix snapshot.
+
+Re-running is free: a second run reports 0 units changed, because [idempotent writes](../internals/idempotent-writes.md) elide a unit whose content did not really change. An MPR v1 project is passed straight through, since these tools write v1 natively.
+
+| Command | Persists? | Use |
+|---|---|---|
+| `mxcli fix widgets` | **yes** | the fix — after any headless install |
+| `mxcli fix design-properties` | **yes** | the fix — after any headless install |
+| `mxcli docker check` | no | runs the widget resync under a snapshot so the *check* is not tripped by CE0463; the stored model stays stale |
+| `mxcli widget sync` | yes, partial | reconciles widget schemas in mxcli's own code; clears 7 of 40 on the reference fixture |
+
+CE6087 is distinct from `CE6083`, which is a *missing* design-property declaration and is fixed by installing everything the package ships — something `install` and `update` already do.
 
 `update` does **not** roll back. Work on a copy or have the project in version control.
 
