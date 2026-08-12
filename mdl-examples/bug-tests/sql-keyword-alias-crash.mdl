@@ -1,0 +1,40 @@
+-- `mxcli check` segfaulted on a one-line script — and the line came from
+-- mxcli's own documentation (`mxcli syntax sql` used `AS source`).
+--
+--   $ mxcli check script.mdl
+--   panic: runtime error: invalid memory address or nil pointer dereference
+--   [signal SIGSEGV: segmentation violation]
+--   ... visitor.(*Builder).ExitSqlDisconnect
+--
+-- Two defects:
+--
+-- 1. GRAMMAR. Every sqlStatement rule took a bare IDENTIFIER for the connection
+--    alias, driver and table name. `source` lexes as SOURCE_KW, so
+--    `SQL DISCONNECT source` matched no alternative. IMPORT FROM already used
+--    identifierOrKeyword for the very same alias, so `import from source ...`
+--    worked while `sql source select ...` did not.
+--
+-- 2. ROBUSTNESS. ANTLR error-recovers and keeps walking the tree, so the
+--    listener ran against a context whose IDENTIFIER() was nil, and
+--    `.GetText()` on it crashed the process. A malformed statement must be a
+--    reported error, never a crash — the sibling handlers guarded their
+--    children, this one did not.
+--
+-- Found by TestExamplesParse, the guard that checks every `mxcli syntax`
+-- example actually parses. The panic aborted the test binary, which had been
+-- masking ten further failures in entries sorted after "sql".
+
+SQL CONNECT postgres 'postgres://user:pass@localhost:5432/mydb' AS source;
+SQL source SHOW TABLES;
+SQL source DESCRIBE users;
+SQL source SELECT * FROM users WHERE active = true LIMIT 10;
+SQL CONNECTIONS;
+SQL DISCONNECT source;
+
+-- Other keywords that are natural connection/table names and were equally
+-- unusable before the fix.
+SQL DISCONNECT table;
+SQL DISCONNECT query;
+SQL DISCONNECT view;
+SQL DISCONNECT index;
+SQL DISCONNECT key;

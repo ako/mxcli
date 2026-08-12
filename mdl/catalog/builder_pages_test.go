@@ -24,7 +24,7 @@ func TestScanWidgetOwnRefs(t *testing.T) {
 			},
 		},
 	}
-	ent, mf, nf := scanWidgetOwnRefs(dataView)
+	ent, mf, nf, _ := scanWidgetOwnRefs(dataView)
 	if ent != "Sales.Order" {
 		t.Errorf("entity = %q, want Sales.Order", ent)
 	}
@@ -41,7 +41,7 @@ func TestScanWidgetOwnRefs(t *testing.T) {
 		"Action": map[string]any{"Settings": map[string]any{"Microflow": "M.DoThing"}},
 		"Extra":  map[string]any{"Nanoflow": "M.DoNano"},
 	}
-	if _, mf, nf := scanWidgetOwnRefs(button); mf != "M.DoThing" || nf != "M.DoNano" {
+	if _, mf, nf, _ := scanWidgetOwnRefs(button); mf != "M.DoThing" || nf != "M.DoNano" {
 		t.Errorf("button refs = (%q,%q), want (M.DoThing, M.DoNano)", mf, nf)
 	}
 
@@ -52,13 +52,13 @@ func TestScanWidgetOwnRefs(t *testing.T) {
 		"B": map[string]any{"Microflow": "M.Alpha"},
 	}
 	for range 5 {
-		if _, mf, _ := scanWidgetOwnRefs(multi); mf != "M.Alpha" {
+		if _, mf, _, _ := scanWidgetOwnRefs(multi); mf != "M.Alpha" {
 			t.Fatalf("non-deterministic microflow pick: got %q, want M.Alpha", mf)
 		}
 	}
 
 	// No refs.
-	if e, m, n := scanWidgetOwnRefs(map[string]any{"$Type": "Forms$Label"}); e != "" || m != "" || n != "" {
+	if e, m, n, p := scanWidgetOwnRefs(map[string]any{"$Type": "Forms$Label"}); e != "" || m != "" || n != "" || p != "" {
 		t.Errorf("expected no refs, got (%q,%q,%q)", e, m, n)
 	}
 }
@@ -555,5 +555,67 @@ func TestBytesToHex(t *testing.T) {
 				t.Errorf("bytesToHex(%v) = %q, want %q", tt.data, got, tt.want)
 			}
 		})
+	}
+}
+
+// upstream #773: a widget action that OPENS a page created no reference at all,
+// so a page reachable only from a button reported "(no callers found)" — a false
+// negative that reads as "safe to delete".
+//
+// The cause was one missing key. scanWidgetOwnRefs collected Entity, Microflow
+// and Nanoflow but not `Form`, which is where a page reference lives — "Form"
+// being Mendix's original word for a page, the same rename behind
+// ShowFormAction/CloseFormAction.
+func TestScanWidgetOwnRefs_PageReference(t *testing.T) {
+	// An action button that opens a page: `show_page Module.Target`.
+	showPage := map[string]any{
+		"$Type": "Forms$ActionButton",
+		"Action": map[string]any{
+			"$Type":        "Forms$ShowPageClientAction",
+			"PageSettings": map[string]any{"$Type": "Forms$PageSettings", "Form": "Sales.OrderDetail"},
+		},
+	}
+	if _, _, _, page := scanWidgetOwnRefs(showPage); page != "Sales.OrderDetail" {
+		t.Errorf("page = %q, want Sales.OrderDetail", page)
+	}
+
+	// The compound the issue reported — "create object … then open page" — is ONE
+	// action carrying BOTH an entity and a page. Collecting only the entity (which
+	// is what happened) still leaves the page with no inbound reference.
+	createThenShow := map[string]any{
+		"$Type": "Forms$ActionButton",
+		"Action": map[string]any{
+			"$Type":        "Forms$CreateObjectClientAction",
+			"Entity":       "Sales.Order",
+			"PageSettings": map[string]any{"$Type": "Forms$PageSettings", "Form": "Sales.OrderDetail"},
+		},
+	}
+	ent, _, _, page := scanWidgetOwnRefs(createThenShow)
+	if ent != "Sales.Order" {
+		t.Errorf("entity = %q, want Sales.Order", ent)
+	}
+	if page != "Sales.OrderDetail" {
+		t.Errorf("page = %q, want Sales.OrderDetail — the page half of "+
+			"'create object … then open page' is the reference the issue reported missing", page)
+	}
+
+	// A child widget's page must not be attributed to its parent, same as the
+	// existing microflow rule.
+	container := map[string]any{
+		"$Type": "Forms$DivContainer",
+		"Widgets": []any{
+			map[string]any{
+				"$Type":  "Forms$ActionButton",
+				"Action": map[string]any{"PageSettings": map[string]any{"Form": "Sales.ChildPage"}},
+			},
+		},
+	}
+	if _, _, _, page := scanWidgetOwnRefs(container); page != "" {
+		t.Errorf("page = %q, want empty — a child button's page must not leak to the container", page)
+	}
+
+	// A widget with no action references no page.
+	if _, _, _, page := scanWidgetOwnRefs(map[string]any{"$Type": "Forms$Label"}); page != "" {
+		t.Errorf("page = %q, want empty", page)
 	}
 }

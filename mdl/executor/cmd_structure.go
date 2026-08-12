@@ -9,6 +9,7 @@ import (
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
+	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/domainmodel"
 	"github.com/mendixlabs/mxcli/sdk/javaactions"
@@ -77,12 +78,13 @@ func structureDepth1JSON(ctx *ExecContext, modules []structureModule) error {
 	beServiceCounts := queryCountByModule(ctx, "business_event_services")
 	constantCounts := countByModuleFromBackend(ctx, "constants")
 	scheduledEventCounts := countByModuleFromBackend(ctx, "scheduled_events")
+	queueCounts := countByModuleFromBackend(ctx, "queues")
 
 	tr := &TableResult{
 		Columns: []string{
 			"Module", "Entities", "Enumerations", "Microflows", "Nanoflows",
 			"Workflows", "Pages", "Snippets", "JavaActions", "Constants",
-			"ScheduledEvents", "ODataClients", "ODataServices", "BusinessEventServices",
+			"ScheduledEvents", "Queues", "ODataClients", "ODataServices", "BusinessEventServices",
 		},
 	}
 	for _, m := range modules {
@@ -98,6 +100,7 @@ func structureDepth1JSON(ctx *ExecContext, modules []structureModule) error {
 			jaCounts[m.Name],
 			constantCounts[m.Name],
 			scheduledEventCounts[m.Name],
+			queueCounts[m.Name],
 			odataClientCounts[m.Name],
 			odataServiceCounts[m.Name],
 			beServiceCounts[m.Name],
@@ -198,6 +201,7 @@ func structureDepth1(ctx *ExecContext, modules []structureModule) error {
 	// Get constants and scheduled events from backend (no catalog tables)
 	constantCounts := countByModuleFromBackend(ctx, "constants")
 	scheduledEventCounts := countByModuleFromBackend(ctx, "scheduled_events")
+	queueCounts := countByModuleFromBackend(ctx, "queues")
 
 	// Calculate name column width for alignment
 	nameWidth := 0
@@ -239,6 +243,9 @@ func structureDepth1(ctx *ExecContext, modules []structureModule) error {
 		}
 		if c := scheduledEventCounts[m.Name]; c > 0 {
 			parts = append(parts, pluralize(c, "scheduled event", "scheduled events"))
+		}
+		if c := queueCounts[m.Name]; c > 0 {
+			parts = append(parts, pluralize(c, "queue", "queues"))
 		}
 		if c := odataClientCounts[m.Name]; c > 0 {
 			parts = append(parts, pluralize(c, "odata client", "odata clients"))
@@ -293,6 +300,14 @@ func countByModuleFromBackend(ctx *ExecContext, kind string) map[string]int {
 		if events, err := ctx.Backend.ListScheduledEvents(); err == nil {
 			for _, ev := range events {
 				modID := h.FindModuleID(ev.ContainerID)
+				modName := h.GetModuleName(modID)
+				counts[modName]++
+			}
+		}
+	case "queues":
+		if queues, err := ctx.Backend.ListQueues(); err == nil {
+			for _, q := range queues {
+				modID := h.FindModuleID(q.ContainerID)
 				modName := h.GetModuleName(modID)
 				counts[modName]++
 			}
@@ -372,6 +387,14 @@ func structureDepth2(ctx *ExecContext, modules []structureModule) error {
 		modID := h.FindModuleID(ev.ContainerID)
 		modName := h.GetModuleName(modID)
 		eventsByModule[modName] = append(eventsByModule[modName], ev)
+	}
+
+	allQueues, _ := ctx.Backend.ListQueues()
+	queuesByModule := make(map[string][]*types.Queue)
+	for _, q := range allQueues {
+		modID := h.FindModuleID(q.ContainerID)
+		modName := h.GetModuleName(modID)
+		queuesByModule[modName] = append(queuesByModule[modName], q)
 	}
 
 	// Load java actions for parameter types
@@ -457,6 +480,14 @@ func structureDepth2(ctx *ExecContext, modules []structureModule) error {
 			}
 		}
 
+		// Task Queues
+		if queues, ok := queuesByModule[m.Name]; ok {
+			sort.Slice(queues, func(i, j int) bool { return queues[i].Name < queues[j].Name })
+			for _, q := range queues {
+				fmt.Fprintf(ctx.Output, "  Queue %s.%s\n", m.Name, q.Name)
+			}
+		}
+
 		// OData Clients
 		structureODataClients(ctx, m.Name)
 
@@ -527,6 +558,14 @@ func structureDepth3(ctx *ExecContext, modules []structureModule) error {
 		modID := h.FindModuleID(ev.ContainerID)
 		modName := h.GetModuleName(modID)
 		eventsByModule[modName] = append(eventsByModule[modName], ev)
+	}
+
+	allQueues, _ := ctx.Backend.ListQueues()
+	queuesByModule := make(map[string][]*types.Queue)
+	for _, q := range allQueues {
+		modID := h.FindModuleID(q.ContainerID)
+		modName := h.GetModuleName(modID)
+		queuesByModule[modName] = append(queuesByModule[modName], q)
 	}
 
 	allJavaActions, _ := ctx.Backend.ListJavaActionsFull()
@@ -612,6 +651,14 @@ func structureDepth3(ctx *ExecContext, modules []structureModule) error {
 			sortScheduledEvents(events)
 			for _, ev := range events {
 				fmt.Fprintf(ctx.Output, "  ScheduledEvent %s.%s\n", m.Name, ev.Name)
+			}
+		}
+
+		// Task Queues
+		if queues, ok := queuesByModule[m.Name]; ok {
+			sort.Slice(queues, func(i, j int) bool { return queues[i].Name < queues[j].Name })
+			for _, q := range queues {
+				fmt.Fprintf(ctx.Output, "  Queue %s.%s\n", m.Name, q.Name)
 			}
 		}
 

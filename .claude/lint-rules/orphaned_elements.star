@@ -54,10 +54,13 @@ def check():
         # Get references to this microflow
         refs = refs_to(mf.qualified_name)
 
-        # Check if any reference is a call
+        # A scheduled event is an entry point: it runs the microflow without
+        # anything "calling" it, so a 'schedule' edge counts as a caller. Without
+        # this, a microflow that runs nightly in production was reported as
+        # orphaned — with the suggestion "Remove if unused".
         has_callers = False
         for ref in refs:
-            if ref.ref_kind == "call":
+            if ref.ref_kind == "call" or ref.ref_kind == "schedule":
                 has_callers = True
                 break
 

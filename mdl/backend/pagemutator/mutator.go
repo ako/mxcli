@@ -141,6 +141,43 @@ func (m *Mutator) SetWidgetDataSource(widgetRef string, ds pages.DataSource) err
 	return nil
 }
 
+// SetWidgetAction retargets the on-click action of an existing widget.
+//
+// The action is serialized through the same engine hook CREATE PAGE uses, so
+// every action form is available — not a subset maintained here. Before this,
+// changing a button's action meant REPLACEing the whole widget, which silently
+// drops any property the author did not restate.
+func (m *Mutator) SetWidgetAction(widgetRef string, action pages.ClientAction) error {
+	result := m.widgetFinder(m.rawData, widgetRef)
+	if result == nil {
+		return m.widgetNotFoundError(widgetRef)
+	}
+	// Refuse rather than write an Action onto something that has no such
+	// property: Studio Pro resolves every stored property against the type's
+	// property list and throws on one it does not know, while mxbuild's
+	// deserializer tolerates it — so a silent write here builds clean and fails
+	// to open.
+	if bsonnav.DGet(result.widget, "Action") == nil {
+		return fmt.Errorf("widget %q (%s) has no Action property — Action can only be set on a widget that "+
+			"performs an on-click action, such as a button or a clickable container",
+			widgetRef, widgetTypeName(result.widget))
+	}
+	serialized := m.deps.SerializeClientAction(action)
+	if serialized == nil {
+		return fmt.Errorf("unsupported action type %T", action)
+	}
+	bsonnav.DSet(result.widget, "Action", serialized)
+	return nil
+}
+
+// widgetTypeName reports a widget's $Type for error messages, or "unknown type".
+func widgetTypeName(widget bson.D) string {
+	if t, ok := bsonnav.DGet(widget, "$Type").(string); ok && t != "" {
+		return t
+	}
+	return "unknown type"
+}
+
 func (m *Mutator) SetColumnProperty(gridRef string, columnRef string, prop string, value any) error {
 	result, err := findBsonColumn(m.rawData, gridRef, columnRef, m.widgetFinder)
 	if err != nil {

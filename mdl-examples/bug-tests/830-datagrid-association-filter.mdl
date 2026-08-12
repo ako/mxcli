@@ -1,0 +1,71 @@
+-- ============================================================================
+-- Issue #830 — filtering a datagrid by an association
+-- ============================================================================
+--
+-- Reported: `column colCustomer (attribute: Order_Customer) { dropdownfilter … }`
+-- failed the build with
+--   [error] [CE1613] "The selected attribute 'ZKT38.Order.Order_Customer' no
+--                     longer exists." at Columns (1/1) of data grid 2 'dgOrders'
+-- and there was no MDL way to filter a grid by a reference at all.
+--
+-- Two separate things, and only one of them was fixable:
+--
+-- 1. `attribute: <association>` IS NOT REPRESENTABLE, so mxcli now REFUSES it at
+--    exec time (with both working forms in the message) instead of writing a
+--    dangling AttributeRef and letting mxbuild find out. Verified on 11.13.0:
+--      * `CustomWidgets$WidgetValue.AttributeRef` is typed `AttributeRef`, not the
+--        polymorphic `MemberRef`. Hand-patching a `DomainModels$AssociationRef`
+--        into it makes the project UNLOADABLE — `mx check` dies before validation
+--        with "Object of type 'AssociationRef' cannot be converted to type
+--        'AttributeRef'".
+--      * The WidgetValue has no association-valued property at all:
+--        Mendix.Modeler.WebUI.dll, which defines the type, contains no
+--        `AssociationRef` member.
+--    What made it look supported is the DataGrid column property declaring
+--    `<associationTypes>Reference/ReferenceSet</associationTypes>`. That is
+--    permission for the attribute PATH to TRAVERSE a reference, not to bind one.
+--    The refusal needs the domain model to tell an association from an attribute,
+--    so it fires on `exec`, not on a project-less `mxcli check`.
+--
+-- 2. The drop-down filter DOES have an association mode (`baseType: 'ref'`), and
+--    mxcli could not author it — every ref-mode property was unmapped, so
+--    `mxcli check` reported MDL-WIDGET01 "has no property `refEntity`" and exec
+--    dropped them. It is now a def.json mode, entered by giving the filter a
+--    `datasource:` — mirroring the ComboBox's association mode.
+--
+-- Both supported forms are below. Verified: `mx check` → 0 errors on 11.13.0,
+-- and `mx dump-mpr` shows baseType="ref", refEntity=IndirectEntityRef{steps:
+-- [Order_Customer → Customer]}, refOptions=XPathSource{Customer},
+-- refCaption=AttributeRef{ZKT38.Customer.Name}.
+-- ============================================================================
+
+create module ZKT38;
+/
+create entity ZKT38.Customer ( Name: String );
+create entity ZKT38.Order ( Number: String );
+create association ZKT38.Order_Customer from ZKT38.Order to ZKT38.Customer;
+/
+
+create or replace page ZKT38.OrderList
+( Title: 'Orders', Layout: Atlas_Core.Atlas_Default )
+{
+  datagrid dgOrders (datasource: database ZKT38.Order) {
+    column colNumber (attribute: Number, caption: 'Order')
+
+    -- (1) SHOW a value from the associated object: traverse the reference.
+    --     `attribute: Order_Customer` (the reference itself) is refused.
+    -- (2) FILTER by the reference: association mode. The filter's `datasource:`
+    --     is the OPTION list (Customer), not the grid's own datasource; the
+    --     filter still lives in the column it filters.
+    column colCustomer (attribute: Order_Customer/Name, caption: 'Customer') {
+      dropdownfilter ddfCustomer (
+        Association: ZKT38.Order_Customer,
+        datasource: database ZKT38.Customer,
+        CaptionAttribute: Name
+      )
+    }
+  }
+}
+/
+
+describe page ZKT38.OrderList;

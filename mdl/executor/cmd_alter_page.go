@@ -63,7 +63,7 @@ func execAlterPage(ctx *ExecContext, s *ast.AlterPageStmt) error {
 	for _, op := range s.Operations {
 		switch o := op.(type) {
 		case *ast.SetPropertyOp:
-			if err := applySetPropertyMutator(mutator, o); err != nil {
+			if err := applySetPropertyMutator(ctx, mutator, o, modName, containerID); err != nil {
 				return mdlerrors.NewBackend("set", err)
 			}
 		case *ast.InsertWidgetOp:
@@ -112,7 +112,7 @@ func execAlterPage(ctx *ExecContext, s *ast.AlterPageStmt) error {
 // SET property via mutator
 // ============================================================================
 
-func applySetPropertyMutator(mutator backend.PageMutator, op *ast.SetPropertyOp) error {
+func applySetPropertyMutator(ctx *ExecContext, mutator backend.PageMutator, op *ast.SetPropertyOp, moduleName string, moduleID model.ID) error {
 	// Sort property names for deterministic application order.
 	propNames := make([]string, 0, len(op.Properties))
 	for k := range op.Properties {
@@ -134,6 +134,16 @@ func applySetPropertyMutator(mutator backend.PageMutator, op *ast.SetPropertyOp)
 			}
 			if err := mutator.SetWidgetDataSource(op.Target.Widget, ds); err != nil {
 				return mdlerrors.NewBackend("set DataSource on "+op.Target.Name(), err)
+			}
+		} else if propName == "Action" {
+			// Action is a polymorphic node, not a scalar — it goes through the
+			// same builder CREATE PAGE uses rather than being written as a value.
+			action, err := convertASTAction(ctx, value, moduleName, moduleID)
+			if err != nil {
+				return err
+			}
+			if err := mutator.SetWidgetAction(op.Target.Widget, action); err != nil {
+				return mdlerrors.NewBackend("set Action on "+op.Target.Name(), err)
 			}
 		} else {
 			if err := mutator.SetWidgetProperty(op.Target.Widget, propName, value); err != nil {
@@ -175,6 +185,32 @@ func convertASTDataSource(value interface{}) (pages.DataSource, error) {
 				"use `replace <widget> with …` instead, which rebuilds the widget through the "+
 				"CREATE PAGE path and supports every datasource type", ds.Type))
 	}
+}
+
+// convertASTAction converts an AST action value to a pages.ClientAction.
+//
+// It delegates to the CREATE PAGE builder rather than reimplementing the switch,
+// so every action form is supported here the day it is supported there — the
+// alternative is the failure mode #855 documents for DataSource, where SET
+// carried a narrower vocabulary than REPLACE and each missing case surfaced as
+// its own bug report.
+func convertASTAction(ctx *ExecContext, value any, moduleName string, moduleID model.ID) (pages.ClientAction, error) {
+	action, ok := value.(*ast.ActionV3)
+	if !ok {
+		return nil, mdlerrors.NewValidation("Action value must be an action expression, " +
+			"for example `set Action = microflow Module.MF on btnSave`")
+	}
+	pb := &pageBuilder{
+		ctx:           ctx,
+		backend:       ctx.Backend,
+		moduleID:      moduleID,
+		moduleName:    moduleName,
+		execCache:     ctx.Cache,
+		fragments:     ctx.Fragments,
+		themeRegistry: ctx.GetThemeRegistry(),
+		widgetBackend: ctx.Backend,
+	}
+	return pb.buildClientActionV3(action)
 }
 
 // ============================================================================

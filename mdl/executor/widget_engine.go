@@ -659,6 +659,14 @@ func (e *PluggableWidgetEngine) resolveMapping(mapping PropertyMapping, w *ast.W
 			attr = w.GetAttribute()
 		}
 		if attr != "" {
+			// An association named where an attribute belongs cannot be stored;
+			// refuse it here rather than writing a dangling AttributeRef (#830).
+			if err := e.pageBuilder.rejectAssociationAsAttribute(
+				attr, e.pageBuilder.entityContext,
+				fmt.Sprintf("widget `%s` property `%s`", w.Name, mapping.PropertyKey),
+			); err != nil {
+				return nil, err
+			}
 			ctx.AttributePath = e.pageBuilder.resolveAttributePath(attr)
 		}
 
@@ -1073,6 +1081,14 @@ func (e *PluggableWidgetEngine) buildObjectListItem(mapping *ObjectListMapping, 
 				prop.AttributePath = finalQN
 				prop.AttributeRefSteps = steps
 			} else if e.pageBuilder.entityContext != "" {
+				// A bare ASSOCIATION name here is not representable — it would be
+				// written as an AttributeRef and fail CE1613 (issue #830).
+				if err := e.pageBuilder.rejectAssociationAsAttribute(
+					strVal, e.pageBuilder.entityContext,
+					fmt.Sprintf("%s `%s` property `%s`", mapping.MDLContainer, child.Name, ip.PropertyKey),
+				); err != nil {
+					return spec, err
+				}
 				prop.AttributePath = e.pageBuilder.resolveAttributePath(strVal)
 			} else {
 				prop.AttributePath = strVal

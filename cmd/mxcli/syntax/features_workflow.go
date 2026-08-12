@@ -70,8 +70,12 @@ func init() {
 			"decision", "conditional", "branch", "if", "condition",
 			"exclusive gateway", "XOR",
 		},
-		Syntax:  "DECISION ['<caption>'] [COMMENT '<text>']\n  OUTCOMES '<outcome>' { <activities> } ...;",
-		Example: "DECISION 'Check amount'\n  OUTCOMES 'Under 1000' { } 'Over 1000' {\n    USER TASK ManagerApproval 'Manager must approve'\n      OUTCOMES 'OK' { };\n  };",
+		// A decision outcome needs the arrow ('Under 1000' -> { }); a USER TASK
+		// outcome does not ('OK' { }). The two read alike but are separate
+		// grammar rules, so the arrow is easy to drop — this entry did, and
+		// taught the broken form until TestExamplesParse started checking it.
+		Syntax:  "DECISION ['<caption>'] [COMMENT '<text>']\n  OUTCOMES '<outcome>' -> { <activities> } ...;",
+		Example: "DECISION 'Check amount'\n  OUTCOMES\n    'Under 1000' -> { }\n    'Over 1000' -> {\n      USER TASK ManagerApproval 'Manager must approve'\n        OUTCOMES 'OK' { };\n    };",
 		SeeAlso: []string{"workflow.create", "workflow.parallel-split"},
 	})
 
@@ -153,8 +157,16 @@ func init() {
 			"alter workflow", "modify workflow", "update workflow",
 			"add activity", "drop activity", "replace activity",
 		},
-		Syntax:  "ALTER WORKFLOW Module.Name SET <property> = <value>;\nALTER WORKFLOW Module.Name INSERT <activity> [BEFORE|AFTER <name>];\nALTER WORKFLOW Module.Name DROP <activity-name>;\nALTER WORKFLOW Module.Name REPLACE <name> WITH <activity>;",
-		Example: "ALTER WORKFLOW HR.LeaveApproval SET DUE DATE = 'addDays([%CurrentDateTime%], 7)';\nALTER WORKFLOW HR.LeaveApproval INSERT\n  CALL MICROFLOW HR.NotifyHR\n  AFTER ReviewTask;",
+		// SET properties are keyword-led phrases, not `name = value` assignments:
+		// `SET DUE DATE '<expr>'`, `SET DISPLAY '<text>'`, `SET OVERVIEW PAGE
+		// Module.Page`. The `= ` this entry used to show does not parse.
+		// INSERT names the anchor first and the activity second — INSERT AFTER
+		// <name> <activity> — and there is no BEFORE. DROP and REPLACE take the
+		// ACTIVITY keyword. This entry previously showed the operand order
+		// reversed, advertised a BEFORE that does not exist, and omitted
+		// ACTIVITY, so none of it parsed.
+		Syntax:  "ALTER WORKFLOW Module.Name SET DISPLAY '<text>';\nALTER WORKFLOW Module.Name SET DUE DATE '<expression>';\nALTER WORKFLOW Module.Name SET OVERVIEW PAGE Module.Page;\nALTER WORKFLOW Module.Name SET ACTIVITY <name> <property>;\nALTER WORKFLOW Module.Name INSERT AFTER <name> <activity>;\nALTER WORKFLOW Module.Name DROP ACTIVITY <name>;\nALTER WORKFLOW Module.Name REPLACE ACTIVITY <name> WITH <activity>;\nALTER WORKFLOW Module.Name INSERT OUTCOME '<name>' ON <activity> { <activities> };\nALTER WORKFLOW Module.Name DROP OUTCOME '<name>' ON <activity>;",
+		Example: "ALTER WORKFLOW HR.LeaveApproval SET DUE DATE 'addDays([%CurrentDateTime%], 7)';\nALTER WORKFLOW HR.LeaveApproval INSERT AFTER ReviewTask\n  CALL MICROFLOW HR.NotifyHR;\nALTER WORKFLOW HR.LeaveApproval DROP ACTIVITY ObsoleteStep;",
 		SeeAlso: []string{"workflow.create", "workflow.drop"},
 	})
 }

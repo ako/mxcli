@@ -111,6 +111,15 @@ func (b *Builder) buildAlterPageAssignment(ctx *parser.AlterPageAssignmentContex
 		return "DataSource", buildDataSourceV3(dsCtx)
 	}
 
+	// Action = actionExprV3 — the same action grammar CREATE PAGE uses, so every
+	// form is available here (MICROFLOW/NANOFLOW with arguments, SHOW_PAGE,
+	// SAVE_CHANGES CLOSE_PAGE, CREATE_OBJECT … THEN …). Retargeting a button was
+	// previously only possible by REPLACEing the whole widget, which silently
+	// drops any property the author did not restate.
+	if acCtx := ctx.ActionExprV3(); acCtx != nil {
+		return "Action", buildActionV3(acCtx)
+	}
+
 	// Visible = [expr] / Editable = [expr] — conditional visibility/editability.
 	// Same context-rooting as CREATE PAGE (issue #627): bare attributes become
 	// $currentObject/Attr. Routed to VisibleIf/EditableIf so the mutator builds a

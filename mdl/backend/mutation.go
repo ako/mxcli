@@ -80,6 +80,10 @@ type PageMutator interface {
 	// SetWidgetDataSource sets the DataSource on the named widget.
 	SetWidgetDataSource(widgetRef string, ds pages.DataSource) error
 
+	// SetWidgetAction retargets the on-click action of the named widget.
+	// Refuses a widget that has no Action property.
+	SetWidgetAction(widgetRef string, action pages.ClientAction) error
+
 	// SetColumnProperty sets a property on a column within a grid widget.
 	SetColumnProperty(gridRef string, columnRef string, prop string, value any) error
 

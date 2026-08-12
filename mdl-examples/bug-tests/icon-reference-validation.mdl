@@ -1,0 +1,63 @@
+-- Icon references were never resolved: a typo passed `mxcli check` and first
+-- surfaced as a build error.
+--
+--   [error] [CE1613] "The selected custom icon
+--   'Atlas_Core.Atlas_Filled.no-such-icon' no longer exists." at Action button 'btnBad'
+--
+-- Reported as part of "`mxcli check` is insufficient validation — two
+-- build-blocking issues passed check cleanly and only surfaced at runtime".
+--
+-- The icon name was written straight through to BSON with nothing resolving it.
+-- `mxcli check … -p <project> --references` now resolves every icon reference
+-- against the project's icon collections, and distinguishes the two failures
+-- because they need different fixes:
+--
+--   * unknown icon in a known collection — names near matches, and points at
+--     `describe icon collection <name>` for the full list
+--   * unknown collection — lists the collections the project actually has,
+--     since the typo is usually there rather than in the icon
+--
+-- NOTE ON THIS FILE. The check needs `-p`: icon collections are documents in
+-- the project (a blank 11.13 app ships three, ~770 icons), so there is nothing
+-- to resolve against without one. `make check-mdl` runs `mxcli check` with no
+-- project, so this cannot be a `.fail.mdl` — a bad icon here would pass that
+-- run and be reported as a negative test unexpectedly passing. The icons below
+-- are therefore all valid; the rejection cases are covered by the unit tests in
+-- mdl/executor/validate_icon_refs_test.go.
+--
+-- To see the check reject a bad reference:
+--
+--   mxcli check <this file with 'pencil' changed to 'no-such-icon'> \
+--     -p app.mpr --references
+--
+-- Verified on Mendix 11.13.0: the bad reference is reported by `mxcli check`
+-- before any write, and the valid references below produce 0 errors under
+-- `mx check`.
+
+create module ICONREF;
+create module role ICONREF.User;
+
+create microflow ICONREF.ACT_Go () begin end;
+
+create page ICONREF.IconPage ( Title: 'Icons', Layout: 'Atlas_Core.Atlas_Default' ) {
+  container c1 {
+    -- Icon references resolve as Module.Collection.IconName.
+    actionbutton btnEdit (Caption: 'Edit', Action: MICROFLOW ICONREF.ACT_Go, Icon: 'Atlas_Core.Atlas_Filled.pencil')
+    actionbutton btnHome (Caption: 'Home', Action: MICROFLOW ICONREF.ACT_Go, Icon: 'Atlas_Core.Atlas.home')
+    -- Hyphenated Atlas names work too; only the navigation form needs quoting.
+    linkbutton lnkAdd (Caption: 'Add', Action: MICROFLOW ICONREF.ACT_Go, Icon: 'Atlas_Core.Atlas.add')
+    -- No icon at all is fine — the check only fires on a reference that is there.
+    actionbutton btnPlain (Caption: 'Plain', Action: MICROFLOW ICONREF.ACT_Go)
+  }
+};
+
+-- Icons in a navigation menu are resolved the same way, including sub-items.
+-- (Hyphenated names are double-quoted in this position: Atlas_Core.Atlas."shopping-cart")
+create or replace navigation Responsive
+  HOME PAGE ICONREF.IconPage
+  MENU (
+    MENU ITEM 'Home' PAGE ICONREF.IconPage ICON Atlas_Core.Atlas.home;
+    MENU 'Group' ICON Atlas_Core.Atlas."shopping-cart" (
+      MENU ITEM 'Edit' PAGE ICONREF.IconPage ICON Atlas_Core.Atlas_Filled.pencil;
+    );
+  );

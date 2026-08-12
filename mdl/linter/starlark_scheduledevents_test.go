@@ -40,62 +40,127 @@ func (m *minimalReader) ListScheduledEvents() ([]*model.ScheduledEvent, error) {
 	return nil, nil
 }
 
-// TestIntervalToSeconds is a white-box test; we call it via the exported
-// ScheduledEvents iterator rather than calling the unexported helper directly.
-// The expected IntervalSeconds values verify all multipliers and the unknown-type fallback.
-func TestIntervalToSeconds(t *testing.T) {
+// TestScheduleSeconds checks the interval a rule sees, exercised through the
+// exported ScheduledEvents iterator.
+//
+// It is derived from the Schedule child, NOT from the stored
+// Interval/IntervalType pair: Studio Pro writes that pair and does not keep it
+// in sync with Schedule — Workflow Commons 4.11.0 ships an event storing
+// 0/"Minute" beside a DaySchedule of 01:00 — so a rule keyed on the legacy pair
+// reads a daily job as firing every 0 seconds. TestScheduleSeconds_IgnoresStaleLegacyPair
+// below is that exact document.
+func TestScheduleSeconds(t *testing.T) {
 	tests := []struct {
-		interval     int
-		intervalType string
-		want         int
+		name  string
+		sched *model.Schedule
+		want  int
 	}{
-		{1, "Second", 1},
-		{2, "Minute", 120},
-		{3, "Hour", 10800},
-		{1, "Day", 86400},
-		{1, "Week", 604800},
-		{1, "Month", 2592000},
-		{1, "Year", 31536000},
-		{5, "Unknown", 0}, // unrecognised type → 0
-		{5, "", 0},        // empty type → 0
+		{"minutely x2", &model.Schedule{Kind: model.ScheduleMinute, Multiplier: 2}, 120},
+		{"hourly x3", &model.Schedule{Kind: model.ScheduleHour, Multiplier: 3}, 10800},
+		{"daily", &model.Schedule{Kind: model.ScheduleDay}, 86400},
+		{"weekly, one day", &model.Schedule{Kind: model.ScheduleWeek,
+			Weekdays: [7]bool{false, true, false, false, false, false, false}}, 604800},
+		// Two selected days means it fires twice a week.
+		{"weekly, two days", &model.Schedule{Kind: model.ScheduleWeek,
+			Weekdays: [7]bool{false, true, false, false, false, true, false}}, 302400},
+		{"monthly", &model.Schedule{Kind: model.ScheduleMonthDate, Multiplier: 1}, 2592000},
+		{"yearly", &model.Schedule{Kind: model.ScheduleYearDate}, 31536000},
+		// An unstated multiplier is 1, not 0 — a 0 would read as "never".
+		{"multiplier defaults to 1", &model.Schedule{Kind: model.ScheduleHour}, 3600},
+		{"no schedule", nil, 0},
 	}
 
-	containerID := model.ID("mod-1")
 	for _, tt := range tests {
-		reader := &minimalReader{
-			listScheduledEvents: func() ([]*model.ScheduledEvent, error) {
-				return []*model.ScheduledEvent{{
-					ContainerID:  containerID,
-					Name:         "SE",
-					Interval:     tt.interval,
-					IntervalType: tt.intervalType,
-					Enabled:      true,
-				}}, nil
-			},
-		}
+		t.Run(tt.name, func(t *testing.T) {
+			if got := scheduledEventInterval(t, &model.ScheduledEvent{
+				ContainerID: model.ID("mod-1"), Name: "SE", Schedule: tt.sched, Enabled: true,
+			}); got != tt.want {
+				t.Errorf("IntervalSeconds = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
 
-		cat, err := catalog.NewFromFile(filepath.Join(t.TempDir(), "cat.db"))
-		if err != nil {
-			t.Fatalf("NewFromFile: %v", err)
-		}
-		db := cat.CatalogDB()
-		if _, err := db.Exec(
-			`INSERT INTO modules_data (Id, Name, ProjectId, SnapshotId) VALUES (?,?,?,?)`,
-			string(containerID), "MyModule", "default", "s1",
-		); err != nil {
-			t.Fatalf("insert module: %v", err)
-		}
-		cat.Close()
+// TestScheduleSeconds_IgnoresStaleLegacyPair is the regression: this is the
+// Workflow Commons document, whose legacy pair disagrees with its Schedule.
+// Reading the pair gives 0; reading the Schedule gives a day.
+func TestScheduleSeconds_IgnoresStaleLegacyPair(t *testing.T) {
+	got := scheduledEventInterval(t, &model.ScheduledEvent{
+		ContainerID:  model.ID("mod-1"),
+		Name:         "SE_WorkflowAuditTrailRecord_CleanUp",
+		Interval:     0,
+		IntervalType: "Minute",
+		Schedule:     &model.Schedule{Kind: model.ScheduleDay, HourOfDay: 1},
+		Enabled:      false,
+	})
+	if got != 86400 {
+		t.Errorf("IntervalSeconds = %d, want 86400 — the legacy Interval/IntervalType pair must not be used", got)
+	}
+}
 
-		ctx := linter.NewLintContext(cat, reader)
-		var got int
-		for se := range ctx.ScheduledEvents() {
-			got = se.IntervalSeconds
+// TestScheduledEventExposesSchedule checks the fields a rule can branch on.
+func TestScheduledEventExposesSchedule(t *testing.T) {
+	reader := &minimalReader{
+		listScheduledEvents: func() ([]*model.ScheduledEvent, error) {
+			return []*model.ScheduledEvent{{
+				ContainerID: model.ID("mod-1"), Name: "SE",
+				Schedule:  &model.Schedule{Kind: model.ScheduleMonthWeekday, Multiplier: 3},
+				OnOverlap: "SkipNext", TimeZone: "Server", Enabled: true,
+			}}, nil
+		},
+	}
+	ctx := linter.NewLintContext(newSingleModuleCatalog(t, model.ID("mod-1")), reader)
+	found := false
+	for se := range ctx.ScheduledEvents() {
+		found = true
+		if se.Repeat != "MonthWeekday" {
+			t.Errorf("Repeat = %q", se.Repeat)
 		}
-		if got != tt.want {
-			t.Errorf("interval=%d type=%q: IntervalSeconds=%d, want %d", tt.interval, tt.intervalType, got, tt.want)
+		if se.OnOverlap != "SkipNext" {
+			t.Errorf("OnOverlap = %q", se.OnOverlap)
+		}
+		if se.TimeZone != "Server" {
+			t.Errorf("TimeZone = %q", se.TimeZone)
 		}
 	}
+	if !found {
+		t.Fatal("no scheduled event yielded")
+	}
+}
+
+// scheduledEventInterval runs one event through the iterator and returns the
+// interval a rule would see.
+func scheduledEventInterval(t *testing.T, ev *model.ScheduledEvent) int {
+	t.Helper()
+	reader := &minimalReader{
+		listScheduledEvents: func() ([]*model.ScheduledEvent, error) {
+			return []*model.ScheduledEvent{ev}, nil
+		},
+	}
+	ctx := linter.NewLintContext(newSingleModuleCatalog(t, ev.ContainerID), reader)
+	got := 0
+	for se := range ctx.ScheduledEvents() {
+		got = se.IntervalSeconds
+	}
+	return got
+}
+
+// newSingleModuleCatalog builds a catalog holding one module, so the iterator
+// can resolve the container to a module name.
+func newSingleModuleCatalog(t *testing.T, containerID model.ID) *catalog.Catalog {
+	t.Helper()
+	cat, err := catalog.NewFromFile(filepath.Join(t.TempDir(), "cat.db"))
+	if err != nil {
+		t.Fatalf("NewFromFile: %v", err)
+	}
+	if _, err := cat.CatalogDB().Exec(
+		`INSERT INTO modules_data (Id, Name, ProjectId, SnapshotId) VALUES (?,?,?,?)`,
+		string(containerID), "MyModule", "default", "s1",
+	); err != nil {
+		t.Fatalf("insert module: %v", err)
+	}
+	cat.Close()
+	return cat
 }
 
 func TestScheduledEvents_MicroflowNameResolution(t *testing.T) {
@@ -169,11 +234,10 @@ func TestScheduledEvents_ExcludedModules(t *testing.T) {
 	reader := &minimalReader{
 		listScheduledEvents: func() ([]*model.ScheduledEvent, error) {
 			return []*model.ScheduledEvent{{
-				ContainerID:  containerID,
-				Name:         "ExcludedSE",
-				Interval:     1,
-				IntervalType: "Day",
-				Enabled:      true,
+				ContainerID: containerID,
+				Name:        "ExcludedSE",
+				Schedule:    &model.Schedule{Kind: model.ScheduleDay},
+				Enabled:     true,
 			}}, nil
 		},
 	}
@@ -211,8 +275,8 @@ func TestScheduledEvents_IncludedModules(t *testing.T) {
 	reader := &minimalReader{
 		listScheduledEvents: func() ([]*model.ScheduledEvent, error) {
 			return []*model.ScheduledEvent{
-				{ContainerID: modA, Name: "SE_A", Interval: 1, IntervalType: "Hour", Enabled: true},
-				{ContainerID: modB, Name: "SE_B", Interval: 1, IntervalType: "Hour", Enabled: true},
+				{ContainerID: modA, Name: "SE_A", Schedule: &model.Schedule{Kind: model.ScheduleHour, Multiplier: 1}, Enabled: true},
+				{ContainerID: modB, Name: "SE_B", Schedule: &model.Schedule{Kind: model.ScheduleHour, Multiplier: 1}, Enabled: true},
 			}, nil
 		},
 	}
@@ -289,11 +353,15 @@ func TestStarlarkScheduledEventsBuiltin(t *testing.T) {
 	reader := &minimalReader{
 		listScheduledEvents: func() ([]*model.ScheduledEvent, error) {
 			return []*model.ScheduledEvent{{
-				ContainerID:  containerID,
-				Name:         "DailySE",
-				MicroflowID:  mfID,
+				ContainerID: containerID,
+				Name:        "DailySE",
+				MicroflowID: mfID,
+				// The interval a rule sees comes from Schedule. The legacy pair
+				// is left deliberately inconsistent here (it claims 2 days) to
+				// prove the builtin does not read it.
 				Interval:     2,
 				IntervalType: "Day",
+				Schedule:     &model.Schedule{Kind: model.ScheduleHour, Multiplier: 2},
 				Enabled:      true,
 			}}, nil
 		},
@@ -343,7 +411,7 @@ func TestStarlarkScheduledEventsBuiltin(t *testing.T) {
 	for _, want := range []string{
 		"se Billing.DailySE",
 		"mf Billing.SUB_DailyJob",
-		"secs 172800", // 2 * 86400
+		"secs 7200", // 2 hours, from the Schedule — NOT the 172800 the legacy pair implies
 		"enabled yes",
 	} {
 		if !strings.Contains(joined, want) {

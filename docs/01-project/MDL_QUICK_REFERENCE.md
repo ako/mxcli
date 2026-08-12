@@ -76,6 +76,8 @@ create persistent entity Module.Photo (
 | Drop enumeration | `drop enumeration Module.Name;` | |
 | Create association | `create [or modify] association Module.Name from Parent to Child type reference\|ReferenceSet [owner default\|both] [delete_behavior ...];` | OR MODIFY updates existing association in-place |
 | Drop association | `drop association Module.Name;` | |
+| Association line anchors | `@anchor(from: (0, 54), to: (100, 54))` above `create association …` | Where the connector attaches to each entity box, as a **percentage** of the box (0..100, whole numbers). `from` = the FROM entity's box, `to` = the TO entity's. Omitting an end preserves what is stored, so a `create or modify` about something else never flattens a hand-tuned line. Cross-module associations have no anchors — Mendix stores none |
+| Retune anchors in place | `alter association Module.Name set anchor from (50, 100) to (50, 0);` | `(0, 50)` left-middle, `(100, 50)` right-middle, `(50, 100)` bottom-centre. `describe association` re-emits a non-default pair as the same `@anchor(...)`, so describe → edit → exec round-trips |
 
 ## ALTER ENTITY
 
@@ -134,6 +136,86 @@ is refused on a private override, `show constant values` reports it as `(private
 create constant MyModule.ApiBaseUrl type string default 'https://api.example.com';
 create constant MyModule.MaxRetries type integer default 3;
 create constant MyModule.EnableLogging type boolean default true;
+```
+
+## Task Queues
+
+| Statement | Syntax | Notes |
+|-----------|--------|-------|
+| Show queues | `show queues [in module];` (`list queues` too) | Parallelism + cluster-wide flag |
+| Describe queue | `describe queue Module.Name;` | Re-executable MDL |
+| Create queue | `create [or modify] queue Module.Name ( Parallelism: 3, ClusterWide: true );` | Body optional; defaults `1` / `false` |
+| Drop queue | `drop queue Module.Name;` | |
+
+`Parallelism` is an **expression**, not a number — Mendix stores it as a string
+(`Queues$BasicQueueConfig.ParallelismExpression`). A bare integer is the common
+case; quote anything else.
+
+Binding a microflow **call** to a queue is not yet expressible in MDL. Because a
+rebuild would drop an existing binding, `create or replace|modify microflow` is
+**refused** when the stored microflow has a queued call — change those in Studio
+Pro. (Without the refusal the binding was written back as null and `mx check`
+stopped reporting CE1613, so the project looked healthy while the configuration
+was gone.)
+
+**Example:**
+```sql
+create queue Ops.OrderProcessing ( Parallelism: 3, ClusterWide: true );
+create queue Ops.Mail;
+create or modify queue Ops.OrderProcessing ( Parallelism: '$MyModule.Workers' );
+drop queue Ops.Mail;
+```
+
+## Scheduled Events
+
+Mendix's cron: run a microflow on a repeating schedule.
+
+| Statement | Syntax | Notes |
+|-----------|--------|-------|
+| Show scheduled events | `show scheduled events [in module];` (`list` too) | Repeat, microflow, enabled |
+| Describe scheduled event | `describe scheduled event Module.Name;` | Re-executable MDL |
+| Create scheduled event | `create [or modify] scheduled event Module.Name ( Microflow: ..., Repeat: ..., ... );` | |
+| Drop scheduled event | `drop scheduled event Module.Name;` | |
+
+`Microflow` and `Repeat` are always required. Each repeat takes **only** its own
+fields — anything else is refused by `mxcli check` (MDL-SCHED01) and by `exec`:
+
+| Repeat | Fields |
+|--------|--------|
+| `Minutely` | `Multiplier` |
+| `Hourly` | `Multiplier`, `MinuteOffset` |
+| `Daily` | `HourOfDay`, `MinuteOfHour` |
+| `Weekly` | `Weekdays`, `HourOfDay`, `MinuteOfHour` |
+| `MonthlyByDate` | `Multiplier`, `MonthOffset`, `DayOfMonth`, `HourOfDay`, `MinuteOfHour` |
+| `MonthlyByWeekday` | `Multiplier`, `MonthOffset`, `DaySelector`, `Weekday`, `HourOfDay`, `MinuteOfHour` |
+| `YearlyByDate` | `Month`, `DayOfMonth`, `HourOfDay`, `MinuteOfHour` |
+| `YearlyByWeekday` | `Month`, `DaySelector`, `Weekday`, `HourOfDay`, `MinuteOfHour` |
+
+Optional on any repeat: `Enabled` (default false), `OnOverlap`
+(`DelayNext` default / `SkipNext`), `TimeZone` (`UTC` default / `Server`),
+`StartDateTime` (RFC 3339), `Documentation`.
+
+`OnOverlap` is a scheduled event's own concurrency control — scheduled events do
+**not** go through a task queue.
+
+**Example:**
+```sql
+create scheduled event Ops.NightlyCleanup (
+  Microflow: Ops.SE_Cleanup,
+  Repeat: Daily,
+  HourOfDay: 4,
+  MinuteOfHour: 0,
+  TimeZone: Server,
+  Enabled: true
+);
+
+create scheduled event Ops.WeeklyReport (
+  Microflow: Ops.SE_Report,
+  Repeat: Weekly,
+  Weekdays: 'Monday, Friday',
+  HourOfDay: 9,
+  MinuteOfHour: 30
+);
 ```
 
 ## OData Clients, Services & External Entities
@@ -1026,6 +1108,18 @@ create page MyModule.Customer_Edit
 - Actions: `actionbutton`, `linkbutton`, `navigationlist`
 - Structure: `dataview`, `header`, `footer`, `controlbar`, `snippetcall`
 
+**Drop-down filter, association mode** — filter a datagrid by a reference instead of an attribute. Giving the filter a `datasource:` (the OPTION list) selects the mode; all three parts are required:
+```sql
+column colCustomer (attribute: Order_Customer/Name, caption: 'Customer') {
+  dropdownfilter ddfCustomer (
+    Association: Sales.Order_Customer,     -- the reference on the GRID entity
+    datasource: database Sales.Customer,   -- the option list (associated entity)
+    CaptionAttribute: Name                 -- what each option shows
+  )
+}
+```
+A column cannot bind the association itself: `column c (attribute: Order_Customer)` is refused, because Mendix has nowhere to store a reference in an attribute-typed widget property (the build fails CE1613). Traverse it (`attribute: Assoc/Attr`) to show a value; use the mode above to filter by it.
+
 **DynamicText parameter formatting** — append a `format (…)` block to a content parameter (the `format` keyword is required):
 ```sql
 dynamictext amt (content: '{1}', contentparams: [{1} = Amount format (decimalPrecision: 2, groupDigits: true)])
@@ -1157,7 +1251,7 @@ CLI subcommand: `mxcli sql --driver postgres --dsn '...' "select 1"` (see `mxcli
 | Refresh with refs | `refresh catalog full;` | Include cross-references and source |
 | Show catalog tables | `show catalog tables;` | List available queryable tables |
 | Query catalog | `select ... from CATALOG.<table> [where ...];` | SQL against project metadata |
-| Show callers | `show callers of Module.Name;` | What calls this element |
+| Show callers | `show callers of Module.Name;` | What INVOKES this element: microflow call activities, page action buttons and other widget actions, calculated attributes, and navigation entries. A page counts as a caller of the microflow its button runs, and of the page that button opens |
 | Show callees | `show callees of Module.Name;` | What this element calls |
 | Show references | `show references of Module.Name;` | All references to/from |
 | Show impact | `show impact of Module.Name;` | Impact analysis |
@@ -1165,6 +1259,8 @@ CLI subcommand: `mxcli sql --driver postgres --dsn '...' "select 1"` (see `mxcli
 | Full-text search | `search '<keyword>';` | Search across all strings and source |
 
 Cross-reference commands require `refresh catalog full` to populate reference data.
+
+`show callers` covers invocation only. A document that merely *uses a type* — an entity as a page datasource, a microflow parameter, an entity's generalization — is not a caller of it; `show references to` lists those.
 
 ## Connection & Session
 

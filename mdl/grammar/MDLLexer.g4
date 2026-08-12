@@ -354,6 +354,9 @@ READONLY: R E A D O N L Y;
 ATTRIBUTES: A T T R I B U T E S;
 FILTERTYPE: F I L T E R T Y P E;
 IMAGE: I M A G E;
+QUEUE: Q U E U E;
+QUEUES: Q U E U E S;
+SCHEDULED: S C H E D U L E D;
 COLLECTION: C O L L E C T I O N S?;   // accept singular + plural ("collection(s)")
 JAR: J A R;
 DEPENDENCY: D E P E N D E N C Y;

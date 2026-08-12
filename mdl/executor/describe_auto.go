@@ -27,6 +27,8 @@ var objectTypeToDescribeKind = map[string]ast.DescribeObjectType{
 	"SNIPPET":                ast.DescribeSnippet,
 	"BUILDING_BLOCK":         ast.DescribeBuildingBlock,
 	"MENU":                   ast.DescribeMenu,
+	"QUEUE":                  ast.DescribeQueue,
+	"SCHEDULED_EVENT":        ast.DescribeScheduledEvent,
 	"LAYOUT":                 ast.DescribeLayout,
 	"ENUMERATION":            ast.DescribeEnumeration,
 	"CONSTANT":               ast.DescribeConstant,

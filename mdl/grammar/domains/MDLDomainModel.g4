@@ -234,6 +234,15 @@ alterAssociationAction
     | SET OWNER (DEFAULT | BOTH)
     | SET STORAGE (COLUMN | TABLE)
     | SET COMMENT STRING_LITERAL
+    // Line anchors: where the connector attaches to each entity box, as a
+    // PERCENTAGE of the box (0..100). Both ends together — the pair is one
+    // visual decision, and `from`/`to` are the association's own words for its
+    // two ends. Mirrors `alter entity ... set position (x, y)`. (issue #872)
+    | SET ANCHOR FROM anchorPoint TO anchorPoint
+    ;
+
+anchorPoint
+    : LPAREN NUMBER_LITERAL COMMA NUMBER_LITERAL RPAREN
     ;
 
 alterEnumerationAction
@@ -320,6 +329,51 @@ enumerationOptions
 enumerationOption
     : COMMENT STRING_LITERAL
     | FOLDER STRING_LITERAL                 // place the enumeration in a module folder (Bug 12b)
+    ;
+
+// =============================================================================
+// TASK QUEUE CREATION
+// =============================================================================
+
+/**
+ * CREATE [OR REPLACE|MODIFY] QUEUE Module.Name ( Parallelism: 3, ClusterWide: true );
+ *
+ * Parallelism is stored by Mendix as an EXPRESSION string
+ * (Queues$BasicQueueConfig.ParallelismExpression), so it accepts a number or a
+ * quoted expression.
+ */
+createQueueStatement
+    : QUEUE qualifiedName queueBody?
+    ;
+
+queueBody
+    : LPAREN (queueProperty (COMMA queueProperty)* COMMA?)? RPAREN
+    ;
+
+queueProperty
+    : identifierOrKeyword COLON (NUMBER_LITERAL | STRING_LITERAL | booleanLiteral | identifierOrKeyword)
+    ;
+
+// =============================================================================
+// SCHEDULED EVENT CREATION
+// =============================================================================
+//
+// The repeat rule is a property (Repeat: Daily) plus the fields that rule uses,
+// rather than an English clause, because the eight ScheduledEvents$*Schedule
+// variants differ in WHICH fields they carry — a labelled property list keeps
+// the storage's own vocabulary and lets the executor reject a field that does
+// not belong to the chosen repeat.
+
+createScheduledEventStatement
+    : SCHEDULED EVENT qualifiedName scheduledEventBody?
+    ;
+
+scheduledEventBody
+    : LPAREN (scheduledEventProperty (COMMA scheduledEventProperty)* COMMA?)? RPAREN
+    ;
+
+scheduledEventProperty
+    : identifierOrKeyword COLON (qualifiedName | NUMBER_LITERAL | STRING_LITERAL | booleanLiteral | identifierOrKeyword)
     ;
 
 // =============================================================================

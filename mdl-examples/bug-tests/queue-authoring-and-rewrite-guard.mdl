@@ -1,0 +1,61 @@
+-- ============================================================================
+-- Task queues: authorable in MDL, and never silently dropped by a rewrite
+-- ============================================================================
+--
+-- Symptom (measured on Mendix 11.13):
+--   A microflow call bound to a task queue in Studio Pro stores a
+--   Queues$QueueSettings node on the call. `create or replace microflow` rebuilt
+--   the microflow and both engines wrote `QueueSettings: null` — the binding was
+--   gone. Nothing reported it. Worse, `mx check` went from
+--     [CE1613] "The selected task queue no longer exists"
+--   to 0 errors, because mxcli had deleted the configuration that the error was
+--   about. `describe microflow` never showed the binding either, so the loss was
+--   invisible from every angle.
+--
+-- Two root causes, two fixes:
+--   1. MDL could not author a queue at all, so a script could not restate one.
+--      CREATE/DROP/SHOW/DESCRIBE QUEUE now exist. The BSON is pinned against the
+--      four Studio Pro-authored queues in Mendix Business Events 3.12.1
+--      (Consumer_Queue, Consumer_Processor_Queue, Producer_Queue,
+--      Outbox_Cleanup_Queue), which agree exactly: Config is a
+--      Queues$BasicQueueConfig carrying ParallelismExpression as a STRING, with
+--      the int32 `Parallelism` absent in all four.
+--   2. MDL still cannot author a *queued call*. Until it can, rewriting a
+--      microflow that has one is refused rather than performed lossily
+--      (guard-don't-drop, ADR-0005).
+--
+-- Verify:
+--   mxcli exec mdl-examples/bug-tests/queue-authoring-and-rewrite-guard.mdl -p app.mpr
+--   mx check app.mpr    # 0 errors
+--   mxcli -p app.mpr -c "list queues"
+--   mxcli -p app.mpr -c "describe queue Ops.OrderProcessing"   # re-executable MDL
+-- ============================================================================
+
+create module Ops;
+/
+-- Parallelism is an EXPRESSION, not a number. A bare integer is the common case;
+-- quote anything else.
+create queue Ops.OrderProcessing (
+  Parallelism: 3,
+  ClusterWide: true
+);
+/
+-- No properties: the defaults ("1", not cluster-wide) match a queue created in
+-- Studio Pro with nothing changed.
+create queue Ops.Mail;
+/
+-- Re-running is idempotent with OR MODIFY, and the stored $ID is reused so any
+-- call already bound to the queue keeps pointing at it.
+create or modify queue Ops.OrderProcessing (
+  Parallelism: 8,
+  ClusterWide: true
+);
+/
+-- "queue" is a plausible attribute name; adding the keyword must not take it
+-- away (it is listed in the `keyword` rule, so it still parses as an identifier).
+create entity Ops.Job (
+  queue: String(100),
+  Status: String(50)
+);
+/
+drop queue Ops.Mail;

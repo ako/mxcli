@@ -466,6 +466,10 @@ func assocFromGen(a *genDm.Association) *domainmodel.Association {
 		Type:          domainmodel.AssociationType(a.Type()),
 		Owner:         domainmodel.AssociationOwner(a.Owner()),
 		StorageFormat: domainmodel.AssociationStorageFormat(a.StorageFormat()),
+		// Line anchors, for the same reason: assocToGen rebuilds the element from
+		// this struct, so anything not read here is destroyed on the next write.
+		ParentConnection: domainmodel.ParseConnectionPoint(a.ParentConnection()),
+		ChildConnection:  domainmodel.ParseConnectionPoint(a.ChildConnection()),
 	}
 	out.ID = model.ID(a.ID())
 	if db, ok := a.DeleteBehavior().(*genDm.AssociationDeleteBehavior); ok && db != nil {

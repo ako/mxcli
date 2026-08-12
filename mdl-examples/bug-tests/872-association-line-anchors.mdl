@@ -1,0 +1,105 @@
+-- ============================================================================
+-- Issue #872 — association line anchors survive an mxcli write
+-- ============================================================================
+--
+-- Reported as "line geometry is not exposed in DESCRIBE/CREATE ASSOCIATION".
+-- Investigating it turned up something worse than the missing feature: mxcli was
+-- not merely omitting the anchors, it was DESTROYING them.
+--
+-- `DomainModels$Association` carries `ParentConnection` / `ChildConnection` —
+-- where the connector attaches to the FROM and TO entity boxes — as the string
+-- "x;y". Both engines hardcoded "0;50" / "100;50" on every write and the parser
+-- never read them back, so because the writers rebuild the whole element, ANY
+-- association write reset them. Including a documentation-only one.
+--
+-- Measured on a blank Mendix 11.13 app, whose Studio-Pro-authored
+-- Administration.AccountPasswordData_Account stores 0;54 / 100;54:
+--
+--   statement                                    before        after
+--   alter entity … add attribute (unrelated)     0;54/100;54   0;54/100;54  (was fine)
+--   alter association … set comment              0;54/100;54   0;50/100;50  (destroyed)
+--   create or modify association …               0;54/100;54   0;50/100;50  (destroyed)
+--   …same, MXCLI_ENGINE=legacy                   0;54/100;54   0;50/100;50  (destroyed)
+--
+-- Now: read → write back verbatim (guard-don't-drop, ADR-0005), AUTHORABLE from
+-- MDL, and reported by DESCRIBE as the very syntax that authors them:
+--
+--   @anchor(from: (0, 54), to: (100, 54))
+--   create association Administration.AccountPasswordData_Account
+--   …
+--
+-- The syntax reuses the EXISTING `@anchor` annotation and its `from:`/`to:`
+-- parameters — the same annotation the microflow sequence-flow anchor uses,
+-- asking the same question, differing only in the value type. It needed no
+-- grammar rule: `annotation*` is generic across every CREATE statement,
+-- `annotationParamName` already admits FROM and TO, and `(x, y)` is the existing
+-- `annotationParenValue`. ALTER gets a clause mirroring
+-- `alter entity … set position (x, y)`.
+--
+-- Naming an end SETS it; not naming one PRESERVES what is stored. That
+-- asymmetry is the whole point: a `create or modify association` about the
+-- delete behaviour must not flatten a hand-tuned line.
+--
+-- The units are PERCENTAGES of the entity box, 0..100. Measured across 88
+-- coordinate pairs in four Studio-Pro-authored sources — a blank 11.13 app plus
+-- the Advanced Audit Trail Core 4.0.0, Email Connector 6.4.2 and Workflow
+-- Commons 4.11.0 marketplace modules:
+--
+--   x range 0..100, y range 0..100, nothing outside it
+--   85 of 88 pairs pin one coordinate to exactly 0 or 100 while the other
+--     varies — "which edge, and how far along it". The 3 exceptions are all
+--     y=99, a hair off the bottom edge.
+--   distinct x: 0 9 11 17 18 47 49 50 65 77 78 84 87 100
+--   distinct y: 0 16 19 33 38 51 52 53 54 59 60 67 69 76 85 99 100
+--
+-- Pixels is ruled out by the model itself: `DomainModels$EntityImpl` stores only
+-- `Location` (canvas pixels, e.g. "910;450") and NO size — the box's dimensions
+-- are computed by the editor from the name and attribute list. A pixel anchor
+-- would have nothing to measure against and would drift as attributes are added.
+--
+-- That is why the syntax takes NUMBERS. The pair is continuous, so the issue's
+-- proposed `@anchor(parent: bottom-left, child: top-right)` could not express
+-- the observed values; mxcli's own default 0;50 already differs from Studio
+-- Pro's 0;54 by four points. A non-integer coordinate is refused at check time,
+-- because Mendix's loader refuses to OPEN a project whose anchor is fractional.
+--
+-- Two more properties of the format, verified by hand-patching a project and
+-- running `mx check` on 11.13.0:
+--   * both components must be INTEGERS — "0.5;50" is rejected at LOAD with
+--     StorageLoadException, before any validation runs;
+--   * the LOADER does not range-check — "0;500" and "-20;50" load with 0 errors.
+--     Nothing Mendix writes is out of range, but a value that is must round-trip
+--     untouched rather than be clamped to something "sensible".
+--
+-- Not applicable to cross-module associations: `DomainModels$CrossAssociation`
+-- has no connection properties at all, and writing them there crashes Studio Pro
+-- (issue #50).
+--
+-- Verified on mxbuild 11.13.0: exec'd into a blank app this checks with 0
+-- errors, the stored pair is 11;99 / 9;0, `describe association` re-emits the
+-- annotation, and re-executing that describe output into a fresh project
+-- reproduces the same stored pair.
+-- ============================================================================
+
+@position(100, 100)
+create entity Anchors.Customer ( Name: String );
+@position(500, 300)
+create entity Anchors.Order ( Number: String );
+-- Authored anchors. These are real Studio Pro values (Workflow Commons
+-- Settings_Configuration): neither coordinate sits on an edge, which is exactly
+-- what a named-anchor vocabulary could not have expressed.
+@anchor(from: (11, 99), to: (9, 0))
+create association Anchors.Order_Customer
+  from Anchors.Order to Anchors.Customer;
+/
+
+-- The write that used to destroy the anchors. Says nothing about them, so they
+-- survive.
+alter association Anchors.Order_Customer set comment 'touched';
+/
+
+-- Retuning just the line, without restating the association.
+alter association Anchors.Order_Customer set anchor from (0, 54) to (100, 54);
+/
+
+describe association Anchors.Order_Customer;

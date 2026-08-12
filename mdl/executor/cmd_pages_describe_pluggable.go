@@ -101,8 +101,15 @@ func extractComboBoxDataSource(ctx *ExecContext, w map[string]any) *rawDataSourc
 	if sourceType != "association" {
 		return nil
 	}
+	return extractCustomWidgetPropertyDataSource(ctx, w, "optionsSourceAssociationDataSource")
+}
 
-	// Extract datasource from optionsSourceAssociationDataSource property
+// extractCustomWidgetPropertyDataSource reads the DataSource held by a named
+// pluggable-widget property. Used by the association modes, where the option
+// list lives on a mode-specific property rather than the widget's own
+// `datasource` (ComboBox `optionsSourceAssociationDataSource`, drop-down filter
+// `refOptions`).
+func extractCustomWidgetPropertyDataSource(ctx *ExecContext, w map[string]any, wantKey string) *rawDataSource {
 	obj, ok := w["Object"].(map[string]any)
 	if !ok {
 		return nil
@@ -110,7 +117,6 @@ func extractComboBoxDataSource(ctx *ExecContext, w map[string]any) *rawDataSourc
 
 	propTypeKeyMap := buildPropertyTypeKeyMap(w, false)
 
-	// Search through properties for optionsSourceAssociationDataSource
 	props := getBsonArrayElements(obj["Properties"])
 	for _, prop := range props {
 		propMap, ok := prop.(map[string]any)
@@ -118,8 +124,7 @@ func extractComboBoxDataSource(ctx *ExecContext, w map[string]any) *rawDataSourc
 			continue
 		}
 		typePointerID := extractBinaryID(propMap["TypePointer"])
-		propKey := propTypeKeyMap[typePointerID]
-		if propKey != "optionsSourceAssociationDataSource" {
+		if propTypeKeyMap[typePointerID] != wantKey {
 			continue
 		}
 		value, ok := propMap["Value"].(map[string]any)

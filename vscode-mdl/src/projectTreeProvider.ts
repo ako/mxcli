@@ -253,6 +253,8 @@ export class MendixProjectTreeProvider implements vscode.TreeDataProvider<Mendix
 				return new vscode.ThemeIcon('symbol-event');
 			case 'scheduledevent':
 				return new vscode.ThemeIcon('clock');
+			case 'queue':
+				return new vscode.ThemeIcon('list-ordered');
 			case 'buildingblock':
 				return new vscode.ThemeIcon('extensions');
 			case 'pagetemplate':

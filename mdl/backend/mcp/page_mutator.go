@@ -236,6 +236,15 @@ func (m *mcpPageMutator) EnclosingEntity(widgetRef string) string {
 
 // --- structural mutations ---
 
+// SetWidgetAction is refused rather than approximated: the pg LightPage does not
+// expose a widget's on-click action, so there is nothing here to write it to.
+// Guard-don't-drop (ADR-0005) — an op the storage cannot express is an error,
+// not a silent no-op that reports success.
+func (m *mcpPageMutator) SetWidgetAction(widgetRef string, action pages.ClientAction) error {
+	return fmt.Errorf("setting a widget action is not supported by the MCP backend "+
+		"(the pg LightPage does not expose widget actions) — widget %q", widgetRef)
+}
+
 func (m *mcpPageMutator) SetWidgetDataSource(widgetRef string, ds pages.DataSource) error {
 	_, _, _, w, ok := findWidget(m.content, widgetRef)
 	if !ok {

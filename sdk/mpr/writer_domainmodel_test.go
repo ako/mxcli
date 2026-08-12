@@ -202,3 +202,45 @@ func TestSerializeAssociation_HasConnectionFields(t *testing.T) {
 		t.Error("serializeAssociation must include ChildConnection")
 	}
 }
+
+// upstream #872: the legacy writer hardcoded the association's line anchors, so
+// running any association write on the legacy engine destroyed whatever the
+// developer had dragged the connector to in Studio Pro — exactly as the modelsdk
+// engine did. Both engines share the semantic model, so both had to change; a
+// fix in one is invisible to a user on the other (`--engine`/`MXCLI_ENGINE`).
+func TestSerializeAssociation_PreservesConnectionPoints(t *testing.T) {
+	base := func() *domainmodel.Association {
+		a := &domainmodel.Association{
+			Name:     "Child_Parent",
+			ParentID: "parent-entity-id",
+			ChildID:  "child-entity-id",
+			Type:     domainmodel.AssociationTypeReference,
+			Owner:    domainmodel.AssociationOwnerDefault,
+		}
+		a.ID = "test-assoc-id"
+		return a
+	}
+
+	// Nothing stored → mxcli's defaults, so a brand-new association still gets a
+	// sensible connector rather than one pinned to the box's top-left corner.
+	plain := dToM(serializeAssociation(base()))
+	if got := plain["ParentConnection"]; got != domainmodel.DefaultParentConnection {
+		t.Errorf("ParentConnection = %v, want the default %q", got, domainmodel.DefaultParentConnection)
+	}
+	if got := plain["ChildConnection"]; got != domainmodel.DefaultChildConnection {
+		t.Errorf("ChildConnection = %v, want the default %q", got, domainmodel.DefaultChildConnection)
+	}
+
+	// A read anchor goes back verbatim. {0,0} is included deliberately: it is a
+	// real anchor (top-left) and must not be mistaken for "unset".
+	tuned := base()
+	tuned.ParentConnection = &model.Point{X: 50, Y: 100}
+	tuned.ChildConnection = &model.Point{X: 0, Y: 0}
+	got := dToM(serializeAssociation(tuned))
+	if got["ParentConnection"] != "50;100" {
+		t.Errorf("ParentConnection = %v, want \"50;100\" — a hand-tuned anchor was reset", got["ParentConnection"])
+	}
+	if got["ChildConnection"] != "0;0" {
+		t.Errorf("ChildConnection = %v, want \"0;0\" — the zero point is a value, not an absence", got["ChildConnection"])
+	}
+}

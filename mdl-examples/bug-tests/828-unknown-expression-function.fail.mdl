@@ -1,0 +1,31 @@
+-- ============================================================================
+-- Issue #828 — `mxcli exec` wrote a microflow calling an unknown function
+-- ============================================================================
+--
+-- NEGATIVE TEST (.fail.mdl): `mxcli check` MUST reject this file. An
+-- unexpected pass means MDL044 has regressed.
+--
+-- `currentDeviceType()` is not a Mendix expression function. `check` reported
+-- MDL044 for it, but the rule was not on the exec allowlist, so `exec` wrote
+-- the microflow anyway and the failure surfaced only at build time:
+--
+--   [error] [CE0117] "Error(s) in expression."
+--                    at Create variable activity 'Create Boolean variable'
+--
+-- Verified against mxbuild 11.13.0: exec'd with the rule unenforced, the
+-- project checks with 1 error; with the rule enforced, exec refuses and the
+-- project stays at 0 errors.
+--
+-- The accepted counterpart is 828-object-state-functions-ok.mdl — three REAL
+-- built-ins that funcTable was missing, so MDL044 flagged them too. Promoting
+-- MDL044 to an exec barrier without adding them would have refused valid MDL,
+-- which is the MDL009 trap from #833. Both files must be kept in step.
+-- ============================================================================
+
+create microflow MyFirstModule.ACT_UnknownFunction ()
+returns boolean as $Result
+begin
+  declare $Result boolean = currentDeviceType() = 'Phone';
+  return $Result;
+end;
+/

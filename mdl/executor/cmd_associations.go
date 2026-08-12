@@ -104,6 +104,10 @@ func execCreateAssociation(ctx *ExecContext, s *ast.CreateAssociationStmt) error
 					if s.Comment != "" {
 						assoc.Documentation = s.Comment
 					}
+					// Anchors are applied only when the statement names them —
+					// silence preserves what is stored, so a `create or modify`
+					// that is not about layout does not flatten a hand-tuned line.
+					applyAnchors(assoc, s.FromAnchor, s.ToAnchor)
 					if err := ctx.Backend.UpdateDomainModel(dm); err != nil {
 						return mdlerrors.NewBackend("update association", err)
 					}
@@ -197,6 +201,7 @@ func execCreateAssociation(ctx *ExecContext, s *ast.CreateAssociationStmt) error
 				Type: deleteBehavior,
 			},
 		}
+		applyAnchors(assoc, s.FromAnchor, s.ToAnchor)
 		if err := ctx.Backend.CreateAssociation(dm.ID, assoc); err != nil {
 			return mdlerrors.NewBackend("create association", err)
 		}
@@ -249,6 +254,8 @@ func execAlterAssociation(ctx *ExecContext, s *ast.AlterAssociationStmt) error {
 				assoc.StorageFormat = domainmodel.AssociationStorageFormat(s.Storage.String())
 			case ast.AlterAssociationSetComment:
 				assoc.Documentation = s.Comment
+			case ast.AlterAssociationSetAnchor:
+				applyAnchors(assoc, s.FromAnchor, s.ToAnchor)
 			}
 			if err := ctx.Backend.UpdateDomainModel(dm); err != nil {
 				return mdlerrors.NewBackend("update association", err)
@@ -272,6 +279,13 @@ func execAlterAssociation(ctx *ExecContext, s *ast.AlterAssociationStmt) error {
 				ca.StorageFormat = domainmodel.AssociationStorageFormat(s.Storage.String())
 			case ast.AlterAssociationSetComment:
 				ca.Documentation = s.Comment
+			case ast.AlterAssociationSetAnchor:
+				// DomainModels$CrossAssociation has no connection properties at
+				// all, and writing them there crashes Studio Pro (#50) — so this
+				// is refused rather than silently ignored.
+				return mdlerrors.NewValidationf(
+					"association %s is cross-module, and Mendix stores no line anchors for those — "+
+						"the connector is routed automatically", s.Name.String())
 			}
 			if err := ctx.Backend.UpdateDomainModel(dm); err != nil {
 				return mdlerrors.NewBackend("update cross-module association", err)
@@ -519,6 +533,7 @@ func describeAssociation(ctx *ExecContext, name ast.QualifiedName) error {
 				fmt.Fprintf(ctx.Output, "/**\n * %s\n */\n", assoc.Documentation)
 			}
 
+			describeConnectionPoints(ctx, assoc)
 			fmt.Fprintf(ctx.Output, "create association %s.%s\n", module.Name, assoc.Name)
 			fmt.Fprintf(ctx.Output, "from %s to %s\n", fromEntity, toEntity)
 			formatAssocDetails(assoc.Type, assoc.Owner, assoc.StorageFormat, assoc.ChildDeleteBehavior)
@@ -546,6 +561,62 @@ func describeAssociation(ctx *ExecContext, name ast.QualifiedName) error {
 	}
 
 	return mdlerrors.NewNotFound("association", name.String())
+}
+
+// applyAnchors copies authored `@anchor(from: …, to: …)` / `SET ANCHOR` values
+// onto the association.
+//
+// An unnamed end is left alone rather than defaulted. That is what keeps a
+// hand-tuned line safe through a `create or modify association` whose subject is
+// the delete behaviour, and it is why the AST carries pointers: "not mentioned"
+// and "mentioned as (0, 0)" are different instructions, and (0, 0) is a real
+// anchor (the box's top-left). (issue #872)
+func applyAnchors(assoc *domainmodel.Association, from, to *ast.Position) {
+	if assoc == nil {
+		return
+	}
+	if from != nil {
+		assoc.ParentConnection = &model.Point{X: from.X, Y: from.Y}
+	}
+	if to != nil {
+		assoc.ChildConnection = &model.Point{X: to.X, Y: to.Y}
+	}
+}
+
+// describeConnectionPoints emits the association's line anchors — where the
+// connector attaches to the FROM and TO entity boxes in the domain model editor
+// — as the `@anchor(from: (x, y), to: (x, y))` annotation that authors them, so
+// a describe → edit → exec cycle round-trips the layout.
+//
+// The units are PERCENTAGES of the entity box, 0..100 — measured across 88
+// coordinate pairs in four Studio-Pro-authored sources (a blank 11.13 app plus
+// the Advanced Audit Trail Core, Email Connector and Workflow Commons modules):
+// nothing falls outside 0..100, and 85 of the 88 pin one coordinate to exactly 0
+// or 100 while the other varies, i.e. "which edge, and how far along it". Pixels
+// is ruled out by the model itself: `DomainModels$EntityImpl` stores only
+// `Location` and NO size, so the box's dimensions are computed from the name and
+// attribute list — a pixel anchor would have nothing to measure against and
+// would drift every time an attribute is added.
+//
+// The pair is CONTINUOUS, which is why the syntax takes numbers rather than the
+// eight named anchors the issue proposed: the observed x values are 0, 9, 11,
+// 17, 18, 47, 49, 50, 65, 77, 78, 84, 87, 100, and mxcli's own default 0;50
+// differs from Studio Pro's 0;54 by four points. (issue #872)
+//
+// Only non-default anchors print, so the common case — an association mxcli
+// created itself — describes exactly as before.
+func describeConnectionPoints(ctx *ExecContext, assoc *domainmodel.Association) {
+	parent := domainmodel.FormatConnectionPoint(assoc.ParentConnection, domainmodel.DefaultParentConnection)
+	child := domainmodel.FormatConnectionPoint(assoc.ChildConnection, domainmodel.DefaultChildConnection)
+	if parent == domainmodel.DefaultParentConnection && child == domainmodel.DefaultChildConnection {
+		return
+	}
+	from := domainmodel.ParseConnectionPoint(parent)
+	to := domainmodel.ParseConnectionPoint(child)
+	if from == nil || to == nil {
+		return
+	}
+	fmt.Fprintf(ctx.Output, "@anchor(from: (%d, %d), to: (%d, %d))\n", from.X, from.Y, to.X, to.Y)
 }
 
 // --- Executor method wrappers for callers not yet migrated ---

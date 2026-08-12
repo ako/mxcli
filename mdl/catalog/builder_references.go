@@ -32,6 +32,7 @@ const (
 	RefKindDelete     = "delete"     // Microflow deletes an entity object
 	RefKindCalculate  = "calculate"  // Calculated attribute uses a microflow
 	RefKindReturn     = "return"     // Microflow/nanoflow returns an entity type
+	RefKindSchedule   = "schedule"   // Scheduled event runs a microflow
 )
 
 // collectActionActivities returns all ActionActivity objects from an ObjectCollection,
@@ -366,6 +367,10 @@ func (b *Builder) buildReferences() error {
 			{"EntityRef", "ENTITY", RefKindDatasource},
 			{"MicroflowRef", "MICROFLOW", RefKindAction},
 			{"NanoflowRef", "NANOFLOW", RefKindAction},
+			// A widget action that opens a page. Without this row, a page reachable
+			// only from a button had no inbound reference and `show callers` /
+			// `show references` reported it as unused (issue #773).
+			{"PageRef", "PAGE", RefKindShowPage},
 		}
 		for _, p := range widgetProjections {
 			res, perr := b.tx.Exec(
@@ -477,8 +482,33 @@ func (b *Builder) buildReferences() error {
 		}
 	}
 
+	// Scheduled events run a microflow. Without this edge the microflow looks
+	// unreferenced: `show callers` reported none, GRAPH_DEAD_ASSETS listed it,
+	// and QUAL004 said "is not called from anywhere" with the suggestion
+	// "Remove if unused" — on a microflow that runs nightly in production.
+	refCount += b.extractScheduledEventRefs(stmt, projectID, snapshotID)
+
 	b.report("References", refCount)
 	return nil
+}
+
+// extractScheduledEventRefs emits one `schedule` edge per scheduled event, from
+// the event to the microflow it runs.
+//
+// The edges are collected by buildScheduledEvents, which runs earlier in the
+// same transaction.
+func (b *Builder) extractScheduledEventRefs(stmt *sql.Stmt, projectID, snapshotID string) int {
+	count := 0
+	for _, r := range b.scheduledEventRefs {
+		if _, err := stmt.Exec(
+			"SCHEDULED_EVENT", "", r.qualifiedName,
+			"MICROFLOW", "", r.microflow,
+			RefKindSchedule, r.moduleName, projectID, snapshotID,
+		); err == nil {
+			count++
+		}
+	}
+	return count
 }
 
 // extractMenuItemRefs extracts page and microflow references from menu items recursively.

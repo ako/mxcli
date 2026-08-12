@@ -437,6 +437,11 @@ func parseAssociation(raw map[string]any) *domainmodel.Association {
 	} else {
 		assoc.StorageFormat = domainmodel.StorageFormatTable
 	}
+	// The line anchors are read so the writer can put them back unchanged; every
+	// association write rebuilds the whole element, so a field not read here is
+	// a field destroyed on the next `alter association`. (issue #872)
+	assoc.ParentConnection = domainmodel.ParseConnectionPoint(extractString(raw["ParentConnection"]))
+	assoc.ChildConnection = domainmodel.ParseConnectionPoint(extractString(raw["ChildConnection"]))
 
 	// Parse delete behavior
 	if deleteBehaviorRaw, ok := raw["DeleteBehavior"].(map[string]any); ok {

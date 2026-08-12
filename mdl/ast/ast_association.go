@@ -109,6 +109,15 @@ type CreateAssociationStmt struct {
 	Documentation  string
 	Comment        string
 	CreateOrModify bool // true for CREATE OR MODIFY / CREATE OR REPLACE
+
+	// Line anchors from `@anchor(from: (x, y), to: (x, y))` — where the
+	// connector attaches to the FROM and TO entity boxes, as a PERCENTAGE of the
+	// box (0..100). nil means the statement said nothing, which preserves an
+	// existing anchor rather than resetting it. Reuses ast.Position because the
+	// shape is the same; the unit is not (an entity's @position is canvas
+	// pixels). (issue #872)
+	FromAnchor *Position
+	ToAnchor   *Position
 }
 
 func (s *CreateAssociationStmt) isStatement() {}
@@ -128,6 +137,7 @@ const (
 	AlterAssociationSetOwner
 	AlterAssociationSetComment
 	AlterAssociationSetStorage
+	AlterAssociationSetAnchor
 )
 
 // AlterAssociationStmt represents: ALTER ASSOCIATION Module.Name SET ...
@@ -138,6 +148,11 @@ type AlterAssociationStmt struct {
 	Owner          OwnerType
 	Storage        StorageType
 	Comment        string
+
+	// SET ANCHOR FROM (x, y) TO (x, y) — both ends are always given together,
+	// because the pair is one visual decision.
+	FromAnchor *Position
+	ToAnchor   *Position
 }
 
 func (s *AlterAssociationStmt) isStatement() {}

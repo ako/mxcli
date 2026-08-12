@@ -92,9 +92,9 @@ func init() {
 			"many-to-one", "many-to-many", "foreign key",
 			"owner", "delete behavior",
 		},
-		Syntax:  "CREATE [OR MODIFY] ASSOCIATION Module.Name\n  FROM Module.FromEntity TO Module.ToEntity\n  TYPE Reference|ReferenceSet\n  [OWNER Default|Both]\n  [DELETE_BEHAVIOR behavior]\n  [COMMENT 'text'];\nDROP ASSOCIATION Module.Name;\n\nOR MODIFY: updates type/owner/delete behavior in-place, preserves UUID.",
-		Example: "-- Many-to-one\nCREATE ASSOCIATION Shop.Order_Customer\n  FROM Shop.Order TO Shop.Customer\n  TYPE Reference\n  OWNER Default\n  DELETE_BEHAVIOR DELETE_BUT_KEEP_REFERENCES;\n\n-- Many-to-many\nCREATE ASSOCIATION Shop.Product_Tag\n  FROM Shop.Product TO Shop.Tag\n  TYPE ReferenceSet\n  OWNER Both;",
-		SeeAlso: []string{"domain-model.association.create", "domain-model.association.delete-behavior"},
+		Syntax:  "[@anchor(from: (x, y), to: (x, y))]\nCREATE [OR MODIFY] ASSOCIATION Module.Name\n  FROM Module.FromEntity TO Module.ToEntity\n  TYPE Reference|ReferenceSet\n  [OWNER Default|Both]\n  [DELETE_BEHAVIOR behavior]\n  [COMMENT 'text'];\nALTER ASSOCIATION Module.Name SET ANCHOR FROM (x, y) TO (x, y);\nDROP ASSOCIATION Module.Name;\n\nOR MODIFY: updates type/owner/delete behavior in-place, preserves UUID.\n\n@anchor sets the LINE ANCHORS — where the connector attaches to each entity box\nin the domain model editor — as a PERCENTAGE of the box (0..100, whole numbers).\n`from` is the FROM entity's box, `to` the TO entity's: (0, 50) is the middle of\nthe left edge, (100, 50) the right, (50, 100) the bottom centre. Omitting an end\nPRESERVES what is stored, so a CREATE OR MODIFY about something else never\nflattens a hand-tuned line. Cross-module associations have no anchors.",
+		Example: "-- Many-to-one\nCREATE ASSOCIATION Shop.Order_Customer\n  FROM Shop.Order TO Shop.Customer\n  TYPE Reference\n  OWNER Default\n  DELETE_BEHAVIOR DELETE_BUT_KEEP_REFERENCES;\n\n-- Many-to-many\nCREATE ASSOCIATION Shop.Product_Tag\n  FROM Shop.Product TO Shop.Tag\n  TYPE ReferenceSet\n  OWNER Both;\n\n-- Line leaving the bottom of Order and entering the top of Customer\n@anchor(from: (50, 100), to: (50, 0))\nCREATE ASSOCIATION Shop.Order_Customer\n  FROM Shop.Order TO Shop.Customer;\n\n-- Retune the line without restating the association\nALTER ASSOCIATION Shop.Order_Customer SET ANCHOR FROM (0, 54) TO (100, 54);",
+		SeeAlso: []string{"domain-model.association.create", "domain-model.association.anchor", "domain-model.association.delete-behavior"},
 	})
 
 	Register(SyntaxFeature{
@@ -108,6 +108,32 @@ func init() {
 		Syntax:  "CREATE [OR MODIFY] ASSOCIATION Module.AssociationName\n  FROM Module.FromEntity TO Module.ToEntity\n  TYPE Reference|ReferenceSet\n  [OWNER Default|Both]\n  [STORAGE COLUMN|TABLE]\n  [DELETE_BEHAVIOR behavior]\n  [COMMENT 'text'];\n\nDirection:\n  FROM = entity holding the FK (the \"many\" side)\n  TO   = entity being referenced (the \"one\" side)\n\nTypes:\n  Reference    = Many-to-one (FK column on FROM table)\n  ReferenceSet = Many-to-many (junction table)\n\nOR MODIFY: updates in-place, preserves UUID. Safe to re-run.",
 		Example: "-- Many-to-one with delete behavior\nCREATE ASSOCIATION Shop.Order_Customer\n  FROM Shop.Order TO Shop.Customer\n  TYPE Reference\n  OWNER Default\n  DELETE_BEHAVIOR PREVENT;\n\n-- Many-to-many\nCREATE ASSOCIATION Shop.Product_Tag\n  FROM Shop.Product TO Shop.Tag\n  TYPE ReferenceSet\n  OWNER Both;\n\n-- Idempotent update\nCREATE OR MODIFY ASSOCIATION Shop.Order_Customer\n  FROM Shop.Order TO Shop.Customer\n  TYPE Reference\n  OWNER Default\n  DELETE_BEHAVIOR CASCADE;",
 		SeeAlso: []string{"domain-model.association.delete-behavior", "domain-model.entity.create"},
+	})
+
+	Register(SyntaxFeature{
+		Path:    "domain-model.association.anchor",
+		Summary: "Line anchors: where an association's connector attaches to each entity box",
+		Keywords: []string{
+			"anchor", "line anchor", "connection point", "connector",
+			"diagram layout", "domain model layout", "set anchor",
+		},
+		Syntax: "@anchor(from: (x, y), to: (x, y))\nCREATE ASSOCIATION Module.Name FROM Module.From TO Module.To;\n\nALTER ASSOCIATION Module.Name SET ANCHOR FROM (x, y) TO (x, y);\n\n" +
+			"x and y are a PERCENTAGE of the entity box, 0..100, whole numbers:\n" +
+			"  (0, 50)    middle of the LEFT edge\n" +
+			"  (100, 50)  middle of the RIGHT edge\n" +
+			"  (50, 0)    TOP centre\n" +
+			"  (50, 100)  BOTTOM centre\n\n" +
+			"`from` is the anchor on the FROM entity's box, `to` on the TO entity's.\n" +
+			"Any point on the box is valid — the pair is continuous, not four sides.\n\n" +
+			"Omitting an end (or the whole annotation) PRESERVES what is stored, so a\n" +
+			"CREATE OR MODIFY about the delete behaviour never flattens a hand-tuned\n" +
+			"line. DESCRIBE ASSOCIATION re-emits a non-default pair as the same\n" +
+			"@anchor(...), so describe -> edit -> exec round-trips.\n\n" +
+			"A fractional coordinate is refused: Mendix stores two integers and its\n" +
+			"loader will not OPEN a project whose anchor is fractional.\n" +
+			"Cross-module associations have no anchors — Mendix stores none for them.",
+		Example: "-- Line leaving the bottom of Order, entering the top of Customer\n@anchor(from: (50, 100), to: (50, 0))\nCREATE ASSOCIATION Shop.Order_Customer\n  FROM Shop.Order TO Shop.Customer\n  TYPE Reference;\n\n-- Retune the line without restating the association\nALTER ASSOCIATION Shop.Order_Customer SET ANCHOR FROM (0, 54) TO (100, 54);\n\n-- Says nothing about anchors: whatever the line was dragged to survives\nCREATE OR MODIFY ASSOCIATION Shop.Order_Customer\n  FROM Shop.Order TO Shop.Customer\n  DELETE_BEHAVIOR CASCADE;",
+		SeeAlso: []string{"domain-model.association.create", "domain-model.entity"},
 	})
 
 	Register(SyntaxFeature{

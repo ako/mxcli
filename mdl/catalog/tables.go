@@ -355,6 +355,44 @@ func (c *Catalog) createTables() error {
 		)`,
 		viewWithFullSnapshot("menus"),
 
+		// scheduled_events — Mendix's cron. Repeat/RepeatDescription come from the
+		// Schedule child; IntervalSeconds is derived from it, NOT from the legacy
+		// Interval/IntervalType pair (Studio Pro does not keep those in sync).
+		`CREATE TABLE IF NOT EXISTS scheduled_events_data (
+			Id TEXT PRIMARY KEY,
+			Name TEXT,
+			QualifiedName TEXT,
+			ModuleName TEXT,
+			Folder TEXT,
+			Description TEXT,
+			Microflow TEXT,
+			Repeat TEXT,
+			RepeatDescription TEXT,
+			IntervalSeconds INTEGER,
+			Enabled INTEGER,
+			TimeZone TEXT,
+			OnOverlap TEXT,
+			ProjectId TEXT,
+			SnapshotId TEXT
+		)`,
+		viewWithFullSnapshot("scheduled_events"),
+
+		// queues — task queues (Queues$Queue). Parallelism is an expression
+		// string, not a number.
+		`CREATE TABLE IF NOT EXISTS queues_data (
+			Id TEXT PRIMARY KEY,
+			Name TEXT,
+			QualifiedName TEXT,
+			ModuleName TEXT,
+			Folder TEXT,
+			Description TEXT,
+			Parallelism TEXT,
+			ClusterWide INTEGER,
+			ProjectId TEXT,
+			SnapshotId TEXT
+		)`,
+		viewWithFullSnapshot("queues"),
+
 		// data_transformers
 		`CREATE TABLE IF NOT EXISTS data_transformers_data (
 			Id TEXT PRIMARY KEY,
@@ -459,6 +497,11 @@ func (c *Catalog) createTables() error {
 			AttributeRef TEXT,
 			MicroflowRef TEXT,
 			NanoflowRef TEXT,
+			-- The page a widget's action opens (show_page, and the page half of
+			-- "create object … then open page"). Without it a page reachable only
+			-- from a button had no inbound reference at all and read as dead code
+			-- (issue #773).
+			PageRef TEXT,
 			Description TEXT,
 			ProjectId TEXT,
 			SnapshotId TEXT
@@ -978,6 +1021,14 @@ func (c *Catalog) createTables() error {
 			SELECT Id, 'PAGE_TEMPLATE' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
 				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
 			FROM page_templates
+			UNION ALL
+			SELECT Id, 'SCHEDULED_EVENT' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
+				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
+			FROM scheduled_events
+			UNION ALL
+			SELECT Id, 'QUEUE' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
+				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
+			FROM queues
 			UNION ALL
 			SELECT Id, 'DATA_TRANSFORMER' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
 				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource

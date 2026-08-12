@@ -6,11 +6,10 @@ repo** in Claude Code Web and paste the prompt below; the agent asks you what th
 is, then provisions everything and commits the result so future sessions
 self-bootstrap.
 
-The interview comes first for a reason: the app name becomes the `.mpr` file name, the
-Studio Pro app name and the path baked into the SessionStart hook, so it is far cheaper
-to ask than to rename afterwards. The rest of the answers are the brief — they get
-written into the repo, so the session that resumes after an idle reap knows what it is
-building.
+The prompt itself is deliberately tiny — install mxcli, unpack its skills, hand over to
+the `bootstrap-app` skill. Everything with detail in it lives in that skill, which
+ships inside the binary, so the paste stays phone-sized and the procedure is versioned
+with mxcli instead of with whatever text someone copied months ago.
 
 Why a prompt instead of a GitHub template repo: the mobile "New repository" template
 dropdown shows only a small subset of templates, and a template repo needs per-Mendix-
@@ -20,46 +19,10 @@ can seed the model from a design prototype in the same session — nothing to ma
 ## The prompt
 
 ````text
-This is an empty repo. You are going to provision it as a Mendix app developed with
-mxcli — but first find out what the app is.
+This is an empty repo. Provision it as a Mendix app developed with mxcli.
 
-## Step 0 — interview me, and WAIT for my answers before running anything
-
-Ask all of these in ONE message, numbered, each with the default you would pick, so I
-can reply "defaults" or answer only the ones I care about. Do not start provisioning
-until I have replied.
-
-1. **One app, or a solution of several?** One Mendix app is the default. Say
-   "solution" if this is several apps in one repo — e.g. a backend that owns the data
-   and publishes OData/REST, and a frontend that consumes it. If so, ask for each
-   app's name and one line on what it owns, and follow the multi-app deltas below.
-2. **App name.** Becomes the `.mpr` file name, the app name in Studio Pro, and the
-   path in the session hook, so it is awkward to change later. One PascalCase word,
-   letters and digits only — `OrderPortal`, `FieldService`, `ClubAdmin`. Propose one
-   from my answer to Q3.
-3. **What is the app for?** One or two sentences: who uses it, and what it lets them
-   do. If my answer is vague ("a tool for work"), ask one follow-up — everything below
-   is derived from this.
-4. **What does it keep track of?** Three to six nouns that will become entities, and a
-   word on how they relate (e.g. "a Job has many Visits; each Visit has Photos"). For
-   a solution, also ask which app owns each noun.
-5. **Who logs in?** The user roles, and roughly what each may do (e.g. "Requester
-   creates and sees their own; Approver sees everything and approves").
-6. **Look and feel.** One of the bundled themes: `signal` (light, high contrast),
-   `ledger` (light, dense, data-heavy), `console` (dark), or `none` for stock Atlas.
-   Default `signal`.
-7. **Mendix version.** Default `11.13.0`.
-
-If I say "defaults" or ignore a question, choose something sensible for it, tell me
-what you chose in one line, and keep going — do not block on me twice.
-
-## Then provision
-
-Substitute my answers for `<AppName>`, `<version>` and `<theme>` throughout. For a
-solution, do steps 2–4 once per app and read "If this is a solution" first.
-
-1. Ensure `mxcli` is available. It should be pre-installed by the environment; if
-   not, download a prebuilt binary for your OS/arch and put it at `./mxcli`, e.g.:
+1. Make sure `mxcli` is available. The environment may already have it; if not,
+   download the prebuilt binary for your OS/arch and put it at `./mxcli`:
 
    ```bash
    curl -fsSL -o ./mxcli \
@@ -67,137 +30,49 @@ solution, do steps 2–4 once per app and read "If this is a solution" first.
    chmod +x ./mxcli
    ```
 
-   Use the **`nightly`** build: this is fast-moving alpha software and the warm-loop
-   commands used below (`run --local`, `--setup`, `--ensure-db`) land in `nightly`
-   before they appear in a tagged release. For a reproducible setup, pin a specific
-   release instead (`.../releases/download/vX.Y.Z/mxcli-<os>-<arch>`). Note: `go
-   install …@latest` does **not** work — the generated ANTLR parser isn't committed,
-   so use the prebuilt binary (a from-source build needs `make grammar`).
-2. Create the app, and put it at the **repo root** — that is where `.claude/` and the
-   `./mxcli` binary have to live for future sessions to self-bootstrap. `mxcli new`
-   refuses to write into a directory that is not empty, and a git repo always has
-   `.git`, so create it in a subfolder and move it up:
+2. Unpack the skills that ship inside it — this needs no project, so it works in an
+   empty repo:
 
    ```bash
-   ./mxcli new <AppName> --version <version> --theme <theme>
-   rm -f <AppName>/mxcli        # a hardlink to the ./mxcli you just ran; mv would
-                                # refuse it as "the same file"
-   shopt -s dotglob && mv <AppName>/* . && rmdir <AppName>
+   ./mxcli init --sync-skills
    ```
 
-   (Use `mxcli init` instead if an `.mpr` already exists.) `mxcli new` also runs
-   `mxcli init`, which writes `.claude/settings.json` with a SessionStart hook plus
-   the `.claude/bootstrap-mxcli.sh` it runs — check that the `.mpr` named in the
-   script is right after the move.
-3. Confirm the Claude tooling: `./mxcli init --tool claude` (idempotent — it is what
-   step 2 already ran, and re-running it is the cheapest way to be sure the hook,
-   skills and commands are in place).
-4. Bring prerequisites up: `./mxcli run --local --setup --ensure-db -p <AppName>.mpr`
-   (caches MxBuild + runtime, starts Postgres, creates the app database).
-5. Write the brief to `README.md` at the repo root: the app name(s), my answers to
-   Q3–Q5 in my words, and the theme and Mendix version you used. For a solution, say
-   which app owns what and how they talk to each other. This is what tells the next
-   session — after an idle reap, with none of this conversation — what it is building.
-   Keep it short enough that it stays true.
-6. Create a `FINDINGS.md` at the repo root and keep appending to it as you work.
-   Log anything surprising or broken: an mxcli command that errored, a workaround you
-   applied, a `mxcli check` that passed but a real `mx check` later flagged. Note the
-   Mendix + mxcli versions and how each finding was verified. This is durable context
-   for the next session, and the most useful thing to share back to improve mxcli.
-7. COMMIT everything now — `<AppName>.mpr`, `.devcontainer/`, `.claude/` (the
-   SessionStart hook **and** `.claude/bootstrap-mxcli.sh`), `README.md` and
-   `FINDINGS.md` — so that after idle reaping the next session bootstraps from files,
-   not from re-running this prompt. The `mxcli` binary itself stays git-ignored (~85
-   MB); the bootstrap script is what fetches it back into a fresh clone, so committing
-   the script is what makes the hook survive a reap.
-8. Boot and verify: `./mxcli run --local -p <AppName>.mpr` in the background, then
-   confirm the app answers HTTP 200 at http://localhost:8080/ and report.
-9. (Optional) For a browser preview from this cloud session, run
-   `./mxcli run --hub https://hub.mxcli.org -p <AppName>.mpr` and report the preview
-   URL it prints. This needs `MXCLI_HUB_KEY` set on the environment (see the workflow
-   page); without it, continue as a normal local run.
+3. Read `.ai-context/skills/bootstrap-app.md` and follow it end to end. It begins by
+   interviewing me about the app, so ask me those questions and wait for my answers
+   before running anything else.
 
-## If this is a solution (several apps in one repo)
-
-Each app is a full Mendix project — one `.mpr`, one runtime, one database. Same steps,
-with these deltas:
-
-- **Layout.** One subfolder per app, nothing at the repo root but `README.md`,
-  `FINDINGS.md` and `.claude/`. Run `mxcli new <AppName> --version <version> --theme
-  <theme>` once per app and leave each where it lands; do not move anything up.
-- **Ports.** Every app defaults to 8080/8090/6543 and they will collide. Give the
-  first app the defaults and the second `--app-port 8180 --admin-port 8190
-  --serve-port 6643`. Avoid 8081/8091/6544 — `mxcli test --local` uses those.
-- **Give each app its own hostname**, not just its own port. Cookies are keyed on
-  host name and **ignore the port**, so two apps on `localhost:8080` and
-  `localhost:8180` share one cookie jar: logging into one can silently replace the
-  other's `XASSESSIONID`. Two hostnames give two jars, and the differing ports do no
-  harm. Add them to `/etc/hosts` —
-
-  ```
-  127.0.0.1  backend.local frontend.local
-  ```
-
-  — and browse `http://backend.local:8080/` and `http://frontend.local:8180/`. The
-  runtime binds `127.0.0.1` and serves any `Host` you send it, and the client uses
-  relative URLs, so it works under any name that resolves to loopback. (`*.nip.io`
-  works too if you would rather not touch `/etc/hosts`; prefer `/etc/hosts` in a
-  locked-down container, where public wildcard DNS may not resolve — `localtest.me`
-  resolves to `::1` in some of them.)
-
-  Then record the name in each app's own configuration, so the runtime knows the URL
-  it is reached at and generates absolute URLs — OIDC/SAML redirect URIs, deep links
-  — against the host name rather than the listen address:
-
-  ```sql
-  alter settings configuration 'Default'
-    ApplicationRootUrl = 'http://backend.local:8080/';
-  ```
-
-  `run --local` picks that up at boot and prints which configuration it came from.
-  A blank app ships `http://localhost:8080/` there, and that stock loopback value is
-  deliberately ignored — otherwise every project would start advertising a URL, and
-  the wrong port under `--app-port`. Only a real host name is passed through.
-- **Databases** need no action: the name is derived from the `.mpr` file name, so
-  differently-named apps get different databases.
-- **The session hook.** `mxcli init` writes `.claude/settings.json` inside each app
-  folder, but Claude Code reads the one at the **repo root** — and it will not add a
-  second entry for you (it dedupes on the command, not on the project). Write the root
-  one yourself, one line per app, e.g.
-  `test -x backend/mxcli && (cd backend && ./mxcli run --local --setup --ensure-db -p Backend.mpr) || true`.
-  Verify it by checking that a fresh shell can boot each app.
-- **Previews.** Pass `--hub-solution <SolutionName>` to every `run --hub` so the apps
-  appear grouped in the hub overview instead of as unrelated previews.
-
-**Wire the integration in dependency order — the producer must be running first.**
-`CREATE ODATA CLIENT` fetches the `$metadata` at the moment you create it and caches
-it in the model; if the URL is unreachable it warns and leaves the client unvalidated,
-with no external entities to import. So: publish on the producer
-(`CREATE ODATA SERVICE … publish entity …`), boot it (`run --local`), and only then,
-on the consumer, `CREATE ODATA CLIENT … MetadataUrl: 'http://backend.local:8080/odata/…/$metadata'`
-followed by `CREATE EXTERNAL ENTITIES FROM …`. Use the hostname here too, so the
-cached contract and the constant below agree with what the browser sees. Point `ServiceUrl` at a **constant**
-(`ServiceUrl: @Module.SvcUrl`) so the address can be changed per environment without
-touching the model — it will not stay `localhost`. `mxcli syntax odata.publish` and
-`mxcli syntax odata.consume` have the full syntax; business events
-(`mxcli syntax business-events`) are the alternative when the link should be
-asynchronous.
-
-## Then propose the model — do not build it yet
-
-The blank template ships a `MyFirstModule`; the app's own work belongs in a module
-named after it. From the brief, propose in chat:
-
-- a module name, and the entities from Q4 with their attributes and associations
-- the user roles from Q5 and what each may read/write
-- the handful of pages that make it usable
-- for a solution: which app owns each entity, and what crosses the boundary — publish
-  only what the other app actually needs
-
-Show me that as MDL I can read, and wait for my go-ahead before executing it. If I
-gave you a design to work from, use it as the source of truth for the model and the
-pages: <paste or link a design here — otherwise ignore this line>.
+If I gave you a design to work from, use it as the source of truth for the model and
+the pages: <paste or link a design here — otherwise ignore this line>.
 ````
+
+That is the whole prompt. The procedure it used to spell out — the interview, the
+provisioning steps, the multi-app deltas, the model proposal — now lives in the
+**`bootstrap-app` skill**, which is embedded in the mxcli binary and unpacked by
+step 2. Two things follow: the prompt is short enough to paste from a phone, and the
+procedure is fixed by shipping a new mxcli rather than by asking everyone to re-paste
+a longer prompt.
+
+## What the skill does once it takes over
+
+1. **Interviews you** — one app or a solution, app name, what the app is for, what it
+   keeps track of, who logs in, theme, Mendix version. The app name comes first
+   because it becomes the `.mpr` file name, the Studio Pro app name and the path baked
+   into the SessionStart hook.
+2. **Provisions** — `mxcli new` into a subfolder and moves it to the repo root (the
+   root is where `.claude/` and `./mxcli` must live), `mxcli init --tool claude`, then
+   `run --local --setup --ensure-db` to cache MxBuild + runtime and create the
+   database.
+3. **Writes the brief** — `README.md` (what is being built, in your words) and
+   `FINDINGS.md` (anything surprising or broken, appended as work proceeds). These are
+   what an idle-reaped session reads to know what it is working on.
+4. **Commits, then boots and verifies** — HTTP 200 at `http://localhost:8080/`, plus
+   an optional `run --hub` preview URL.
+5. **Proposes the model in MDL and waits** — module, entities, roles, pages — before
+   building anything.
+
+For a solution repo it also covers the parts that bite: per-app ports, a hostname per
+app so the two apps do not share one cookie jar, the root SessionStart hook that
+`mxcli init` will not write for you, and wiring OData in dependency order.
 
 ## Which mxcli version gets installed
 
@@ -227,9 +102,10 @@ tag (latest is v0.16.0) **and** as a rolling `nightly` pre-release, with assets 
 
 ## Which Mendix version to ask for
 
-The prompt defaults to the newest version that has a published MxBuild — everything
-mxcli does starts with downloading it, so "supported" means "on the CDN". Check before
-bumping the default:
+The skill defaults to the newest version that has a published MxBuild — everything
+mxcli does starts with downloading it, so "supported" means "on the CDN". It runs this
+check itself when asked for a newer version, and it is the check to run before bumping
+the default:
 
 ```bash
 curl -sI -o /dev/null -w '%{http_code}\n' https://cdn.mendix.com/runtime/mxbuild-11.13.0.tar.gz   # 200
@@ -243,13 +119,16 @@ two runtimes to keep straight.
 
 ## Two rules that make this robust
 
-- **Committing the config (step 7) is mandatory.** The prompt is a *one-time seed*.
-  Its output — `.mpr` + `.devcontainer/` + `.claude/` with the SessionStart hook and
-  `bootstrap-mxcli.sh` — must be committed so the steady state is file-driven and
-  deterministic. After that, every new session runs the hook automatically; you never
-  re-paste the prompt. Miss the script and the hook has nothing to run after a reap.
-- **mxcli delivery is an environment concern, not the prompt's.** Step 1 is the fragile
-  part in a gated web session (a GitHub release `curl` may be blocked). The robust fix
+- **Committing the config is mandatory** (the skill's provisioning step 6). The prompt
+  is a *one-time seed*. Its output — `.mpr` + `.devcontainer/` + `.claude/` with the
+  SessionStart hook and `bootstrap-mxcli.sh` — must be committed so the steady state is
+  file-driven and deterministic. After that, every new session runs the hook
+  automatically; you never re-paste the prompt. Miss the script and the hook has
+  nothing to run after a reap.
+- **mxcli delivery is an environment concern, not the prompt's.** The download in
+  step 1 is the fragile part in a gated web session (a GitHub release `curl` may be
+  blocked), and it is the one thing that cannot move into the skill — the skill is
+  inside the binary. The robust fix
   is for the Claude Code Web **environment image / setup script to pre-install mxcli**
   (and pre-cache MxBuild + runtime); `go install` via `proxy.golang.org` is the fallback
   and needs mxcli published as a public Go module.

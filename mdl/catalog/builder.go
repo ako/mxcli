@@ -91,6 +91,11 @@ type Builder struct {
 	resolution      float64   // Leiden resolution for the graph-analysis pass
 	describeFunc    DescribeFunc
 
+	// Scheduled event → microflow edges, collected while cataloguing the events
+	// and emitted by buildReferences (a later pass). Carried on the Builder
+	// rather than re-queried because CatalogTx has no Query.
+	scheduledEventRefs []scheduledEventRef
+
 	// Built-in widget definitions supplied by the caller — used to populate
 	// the widget_definitions catalog table alongside project widgets/.
 	builtinWidgetMetas []WidgetDefinitionMeta
@@ -416,6 +421,14 @@ func (b *Builder) Build(progress ProgressFunc) error {
 
 	if err := b.buildSimpleNamedDocs("DataTransformers$DataTransformer", "data_transformers", "Data Transformers"); err != nil {
 		return fmt.Errorf("failed to build data transformers: %w", err)
+	}
+
+	if err := b.buildScheduledEvents(); err != nil {
+		return fmt.Errorf("failed to build scheduled events: %w", err)
+	}
+
+	if err := b.buildQueues(); err != nil {
+		return fmt.Errorf("failed to build queues: %w", err)
 	}
 
 	if err := b.buildAgentEditorDocs(); err != nil {

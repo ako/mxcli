@@ -277,6 +277,21 @@ Create a button with action binding:
 actionbutton widgetName (caption: 'Caption', action: ACTION_TYPE [, buttonstyle: style] [, icon: 'Module.IconCollection.IconName'])
 ```
 
+`icon:` names an icon inside an icon collection — `Module.Collection.IconName`,
+e.g. `'Atlas_Core.Atlas_Filled.pencil'`. Browse what a project has with
+`show icon collection` and `describe icon collection Atlas_Core.Atlas_Filled`.
+
+A wrong icon name is a **build error** (CE1613, *"The selected custom icon … no
+longer exists"*), so check it before building:
+
+```bash
+mxcli check script.mdl -p app.mpr --references
+```
+
+That resolves every icon reference against the project's collections and
+suggests near matches for a typo. It needs `-p` — the collections are documents
+in the project, so a plain `mxcli check` cannot see them.
+
 Use `linkbutton` instead of `actionbutton` for a button rendered as a link (same
 properties). Both accept an `icon:` — an **icon-collection** reference, e.g.
 `icon: 'Atlas_Core.Atlas_Filled.pencil'` (the modern Atlas icon set). The name
@@ -714,6 +729,26 @@ datefilter datefilter (attributes: [Module.Entity.CreateDate])
 ```sql
 dropdownfilter statusFilter (attributes: [Module.Entity.Status])
 ```
+
+Filter by an **association** instead of an attribute — the options are the
+associated objects. Giving the filter a `datasource:` (the OPTION list) selects
+this mode; all three parts are required:
+
+```sql
+column colCustomer (attribute: Order_Customer/Name, caption: 'Customer') {
+  dropdownfilter ddfCustomer (
+    Association: Sales.Order_Customer,          -- the reference on the GRID entity
+    datasource: database Sales.Customer,        -- the option list (associated entity)
+    CaptionAttribute: Name                      -- what each option shows
+  )
+}
+```
+
+> **A column cannot bind the association itself.** `column c (attribute: Order_Customer)`
+> is refused — Mendix has nowhere to store a reference in an attribute-typed widget
+> property, and writing one anyway fails the build with CE1613 *"The selected attribute
+> … no longer exists"*. To **show** a value from the associated object, traverse the
+> reference (`attribute: Order_Customer/Name`); to **filter** by it, use the mode above.
 
 ### NAVIGATIONLIST Widget
 

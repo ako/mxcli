@@ -3,9 +3,31 @@
   "mdlName": "DROPDOWNFILTER",
   "templateFile": "datagrid-dropdown-filter.json",
   "defaultEditable": "Always",
-  "propertyMappings": [
-    {"propertyKey": "attrChoice", "value": "auto", "operation": "primitive"},
-    {"propertyKey": "attributes", "source": "Attributes", "operation": "attributeObjects"},
-    {"propertyKey": "defaultFilter", "source": "FilterType", "operation": "primitive"}
+  "knownProperties": [
+    "refCaptionSource",
+    "refCaptionExp",
+    "refSearchAttr"
+  ],
+  "modes": [
+    {
+      "name": "association",
+      "condition": "hasDataSource",
+      "description": "Association mode — filter the grid by a reference (baseType 'ref'). The widget's `datasource:` is the OPTION list (the associated entity), not the grid's own datasource; `Association:` names the reference on the grid entity and `CaptionAttribute:` is what each option shows.",
+      "propertyMappings": [
+        {"propertyKey": "baseType", "value": "ref", "operation": "primitive"},
+        {"propertyKey": "refOptions", "source": "DataSource", "operation": "datasource"},
+        {"propertyKey": "refEntity", "source": "Association", "operation": "association"},
+        {"propertyKey": "refCaption", "source": "CaptionAttribute", "operation": "attribute"}
+      ]
+    },
+    {
+      "name": "default",
+      "description": "Attribute mode — filter on the column's own attribute.",
+      "propertyMappings": [
+        {"propertyKey": "attrChoice", "value": "auto", "operation": "primitive"},
+        {"propertyKey": "attributes", "source": "Attributes", "operation": "attributeObjects"},
+        {"propertyKey": "defaultFilter", "source": "FilterType", "operation": "primitive"}
+      ]
+    }
   ]
 }

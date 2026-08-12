@@ -59,6 +59,31 @@ begin
   return $L;
 end;`,
 		},
+		{
+			// MDL044 (#828): a call to a name Mendix has no built-in for.
+			// `currentDeviceType()` is CE0117 "Error(s) in expression." on
+			// mxbuild 11.13.0; before this rule was promoted, exec wrote the
+			// microflow and the failure surfaced only at build time.
+			name: "unknown expression function is rejected",
+			src: `create microflow M.ACT () returns Boolean
+begin
+  declare $Result boolean = currentDeviceType() = 'Phone';
+  return $Result;
+end;`,
+			wantErr: "MDL044",
+		},
+		{
+			// The counterpart that keeps the promotion honest: `isNew` is a real
+			// Mendix built-in (0 errors on 11.13.0) that funcTable was missing, so
+			// MDL044 flagged it. As a check-only rule that was a nuisance; as an
+			// exec barrier it would have refused valid MDL.
+			name: "isNew is a real built-in and is accepted",
+			src: `create microflow M.ACT ($Obj: M.Thing) returns Boolean
+begin
+  declare $Flag boolean = isNew($Obj);
+  return $Flag;
+end;`,
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

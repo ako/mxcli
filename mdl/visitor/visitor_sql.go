@@ -14,28 +14,47 @@ import (
 // SQL Statements (external database connectivity)
 // ----------------------------------------------------------------------------
 
+// sqlWords returns the identifierOrKeyword texts of a SQL statement context.
+//
+// ANTLR still walks the tree after a syntax error, so a listener can be handed a
+// context whose children are missing. Reading them through this helper (and
+// checking the count) keeps a malformed statement an error rather than a crash:
+// `SQL DISCONNECT source` used to segfault `mxcli check` on ctx.IDENTIFIER()
+// returning nil, because `source` lexes as SOURCE_KW and the rule wanted a bare
+// IDENTIFIER.
+func sqlWords(all []parser.IIdentifierOrKeywordContext) []string {
+	out := make([]string, 0, len(all))
+	for _, c := range all {
+		iok, ok := c.(*parser.IdentifierOrKeywordContext)
+		if !ok || iok == nil {
+			continue
+		}
+		out = append(out, identifierOrKeywordText(iok))
+	}
+	return out
+}
+
 // ExitSqlConnect handles SQL CONNECT <driver> '<dsn>' AS <alias>
 func (b *Builder) ExitSqlConnect(ctx *parser.SqlConnectContext) {
-	ids := ctx.AllIDENTIFIER()
-	if len(ids) < 2 {
+	words := sqlWords(ctx.AllIdentifierOrKeyword())
+	if len(words) < 2 || ctx.STRING_LITERAL() == nil {
 		return
 	}
-	driver := ids[0].GetText()
-	dsn := unquoteString(ctx.STRING_LITERAL().GetText())
-	alias := ids[1].GetText()
-
 	b.statements = append(b.statements, &ast.SQLConnectStmt{
-		Driver: driver,
-		DSN:    dsn,
-		Alias:  alias,
+		Driver: words[0],
+		DSN:    unquoteString(ctx.STRING_LITERAL().GetText()),
+		Alias:  words[1],
 	})
 }
 
 // ExitSqlDisconnect handles SQL DISCONNECT <alias>
 func (b *Builder) ExitSqlDisconnect(ctx *parser.SqlDisconnectContext) {
-	alias := ctx.IDENTIFIER().GetText()
+	words := sqlWords([]parser.IIdentifierOrKeywordContext{ctx.IdentifierOrKeyword()})
+	if len(words) < 1 {
+		return
+	}
 	b.statements = append(b.statements, &ast.SQLDisconnectStmt{
-		Alias: alias,
+		Alias: words[0],
 	})
 }
 
@@ -46,12 +65,12 @@ func (b *Builder) ExitSqlConnections(ctx *parser.SqlConnectionsContext) {
 
 // ExitSqlShowTables handles SQL <alias> SHOW TABLES|VIEWS|FUNCTIONS
 func (b *Builder) ExitSqlShowTables(ctx *parser.SqlShowTablesContext) {
-	ids := ctx.AllIDENTIFIER()
-	if len(ids) < 2 {
+	words := sqlWords(ctx.AllIdentifierOrKeyword())
+	if len(words) < 2 {
 		return
 	}
-	alias := ids[0].GetText()
-	target := strings.ToUpper(ids[1].GetText())
+	alias := words[0]
+	target := strings.ToUpper(words[1])
 
 	switch target {
 	case "VIEWS":
@@ -66,12 +85,12 @@ func (b *Builder) ExitSqlShowTables(ctx *parser.SqlShowTablesContext) {
 
 // ExitSqlDescribeTable handles SQL <alias> DESCRIBE <table>
 func (b *Builder) ExitSqlDescribeTable(ctx *parser.SqlDescribeTableContext) {
-	ids := ctx.AllIDENTIFIER()
-	if len(ids) < 2 {
+	words := sqlWords(ctx.AllIdentifierOrKeyword())
+	if len(words) < 2 {
 		return
 	}
-	alias := ids[0].GetText()
-	table := ids[1].GetText()
+	alias := words[0]
+	table := words[1]
 	b.statements = append(b.statements, &ast.SQLDescribeTableStmt{
 		Alias: alias,
 		Table: table,
@@ -161,14 +180,16 @@ func (b *Builder) ExitImportFromQuery(ctx *parser.ImportFromQueryContext) {
 
 // ExitSqlGenerateConnector handles SQL <alias> GENERATE CONNECTOR INTO <module> [TABLES (...)] [VIEWS (...)] [EXEC]
 func (b *Builder) ExitSqlGenerateConnector(ctx *parser.SqlGenerateConnectorContext) {
-	alias := ctx.IDENTIFIER().GetText()
-
+	// The alias is now the first identifierOrKeyword of the rule (it used to be a
+	// separate IDENTIFIER token), so the module is [1] and the table/view lists
+	// start at [2].
 	allIOK := ctx.AllIdentifierOrKeyword()
-	if len(allIOK) == 0 {
+	if len(allIOK) < 2 {
 		return
 	}
-	module := identifierOrKeywordText(allIOK[0])
-	rest := allIOK[1:]
+	alias := identifierOrKeywordText(allIOK[0])
+	module := identifierOrKeywordText(allIOK[1])
+	rest := allIOK[2:]
 
 	hasTables := ctx.TABLES() != nil
 	hasViews := ctx.VIEWS() != nil
@@ -214,11 +235,12 @@ func (b *Builder) ExitSqlGenerateConnector(ctx *parser.SqlGenerateConnectorConte
 
 // ExitSqlQuery handles SQL <alias> <raw-sql>
 func (b *Builder) ExitSqlQuery(ctx *parser.SqlQueryContext) {
-	alias := ctx.IDENTIFIER().GetText()
+	words := sqlWords([]parser.IIdentifierOrKeywordContext{ctx.IdentifierOrKeyword()})
 	passthrough := ctx.SqlPassthrough()
-	if passthrough == nil {
+	if len(words) < 1 || passthrough == nil {
 		return
 	}
+	alias := words[0]
 	query := getSpacedText(passthrough)
 	b.statements = append(b.statements, &ast.SQLQueryStmt{
 		Alias: alias,

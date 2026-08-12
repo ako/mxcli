@@ -72,12 +72,33 @@ set Title = 'New Page Title'
 set PopupWidth = 800
 set PopupHeight = 480
 set PopupResizable = true
+
+-- Retarget a button's on-click action. Any form `create page` accepts works
+-- here, including the combined ones.
+set Action = microflow Module.ACT_Other on btnSave
+set Action = SAVE_CHANGES CLOSE_PAGE on btnSave
+set Action = SHOW_PAGE Module.DetailPage on btnEdit
+
+-- Rebind a data-bound widget
+set DataSource = $OrderParam on dvOrder
+set DataSource = DATABASE Module.Order on dgOrders
 ```
+
+**Prefer `set Action` over `replace` when only the action changes.** `replace`
+rebuilds the widget from what the statement says, so any property you do not
+restate — `ButtonStyle`, `Class`, design properties, tooltip — is dropped. `set`
+edits the one property and leaves the rest of the widget alone.
+
+`set Action` is refused on a widget that has no action (a plain container, say),
+rather than writing a property the widget type does not define — Studio Pro
+refuses to open a document with an unknown property while MxBuild tolerates it,
+so a silent write would build cleanly and then fail to open.
 
 **Supported SET properties:**
 
 | Property | Widget Types | Value Type | Example |
 |----------|-------------|------------|---------|
+| `Action` | Widgets with an on-click action (ACTIONBUTTON, LINKBUTTON, clickable containers) | Any `create page` action expression | `set Action = microflow M.ACT_Go on btnSave` |
 | `caption` | ACTIONBUTTON, LINKBUTTON | String | `set caption = 'Submit' on btnSave` |
 | `content` | DYNAMICTEXT | String | `set content = 'New Heading' on txtTitle` |
 | `label` | TEXTBOX, TEXTAREA, DATEPICKER, COMBOBOX, CHECKBOX, RADIOBUTTONS | String | `set label = 'full Name' on txtName` |

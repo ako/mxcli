@@ -115,6 +115,8 @@ createStatement
       | createUserRoleStatement
       | createDemoUserStatement
       | createImageCollectionStatement
+      | createQueueStatement
+      | createScheduledEventStatement
       | createJsonStructureStatement
       | createImportMappingStatement
       | createExportMappingStatement
@@ -247,6 +249,7 @@ alterLayoutMapping
 
 alterPageAssignment
     : DATASOURCE EQUALS dataSourceExprV3               // DataSource = SELECTION widgetName
+    | ACTION EQUALS actionExprV3                       // Action = MICROFLOW Module.MF | SHOW_PAGE Module.Page | SAVE_CHANGES CLOSE_PAGE
     | VISIBLE EQUALS xpathConstraint                   // Visible = [Name != ''] (conditional visibility)
     | EDITABLE EQUALS xpathConstraint                  // Editable = [Status = 'Open'] (conditional editability)
     | identifierOrKeyword EQUALS propertyValueV3       // Caption = 'Save'
@@ -318,6 +321,8 @@ dropStatement
     | DROP MENU_KW qualifiedName
     | DROP MODULE qualifiedName
     | DROP NOTEBOOK qualifiedName
+    | DROP QUEUE qualifiedName
+    | DROP SCHEDULED EVENT qualifiedName
     | DROP JAVA ACTION qualifiedName
     | DROP JAVASCRIPT ACTION qualifiedName
     | DROP INDEX qualifiedName ON qualifiedName

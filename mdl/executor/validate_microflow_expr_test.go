@@ -50,6 +50,19 @@ func TestValidateMicroflow_UnknownFunction(t *testing.T) {
 		// flagged — previously only return/if/declare/set expressions were checked.
 		{"aggregate in create attr", `$r = create "M"."E" (Total = formatDecimal(sum($x), '0.00'));`, true, "aggregate activity"},
 		{"known func in create attr", `$r = create "M"."E" (Total = trim($x));`, false, ""},
+		// #828: the object-state predicates were missing from funcTable, so MDL044
+		// reported three real built-ins as hallucinated. Each builds at 0 errors on
+		// mxbuild 11.13.0. This matters more since MDL044 became exec-enforced —
+		// a false positive here refuses valid MDL rather than merely warning.
+		{"isNew is a real built-in", "declare $b Boolean = isNew($x);", false, ""},
+		{"isSynced is a real built-in", "declare $b Boolean = isSynced($x);", false, ""},
+		{"isSyncing is a real built-in", "declare $b Boolean = isSyncing($x);", false, ""},
+		// The control for the above: `trunc` looks like a sibling of round/floor/ceil
+		// and was even listed in roundingFuncs, but Mendix has no such function —
+		// `trunc($D)` is CE0117 on 11.13.0. Adding names to funcTable on resemblance
+		// is how a write barrier stops catching anything.
+		{"trunc is not a Mendix built-in", "declare $d Decimal = trunc($x);", true, ""},
+		{"currentDeviceType is not a Mendix built-in", "declare $b Boolean = currentDeviceType() = 'Phone';", true, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

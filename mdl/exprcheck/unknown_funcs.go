@@ -140,8 +140,13 @@ func levenshtein(a, b string) int {
 // roundingFuncs are the Decimal-returning built-ins whose result Mendix DOES
 // accept in an Integer/Long target (they yield a whole number). They must not be
 // flagged by SourceRejectedForIntegerTarget.
+//
+// `trunc` used to be listed here. Mendix has no such built-in — `trunc($D)`
+// fails the build with CE0117 on 11.13.0 — and listing it invited "fix" the
+// MDL044 report by adding it to funcTable, which would let the bad expression
+// through. MDL044 flags it, correctly.
 var roundingFuncs = map[string]bool{
-	"round": true, "floor": true, "ceil": true, "trunc": true,
+	"round": true, "floor": true, "ceil": true,
 }
 
 // SourceRejectedForIntegerTarget reports whether assigning src to an Integer/Long

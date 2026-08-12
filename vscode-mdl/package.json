@@ -152,7 +152,7 @@
         },
         {
           "command": "mendix.openElement",
-          "when": "view == mendixProjectTree && viewItem =~ /^(entity|microflow|nanoflow|page|snippet|enumeration|association|workflow|constant|layout|javaaction|javascriptaction|scheduledevent|buildingblock|pagetemplate|imagecollection|jsonstructure|importmapping|exportmapping|restclient|businesseventservice|databaseconnection|publishedrestservice|odataclient|odataservice|modulerole|userrole|projectsecurity|demouser|agent|aimodel|knowledgebase|consumedmcpservice|datatransformer)$/",
+          "when": "view == mendixProjectTree && viewItem =~ /^(entity|microflow|nanoflow|page|snippet|enumeration|association|workflow|constant|layout|javaaction|javascriptaction|scheduledevent|queue|buildingblock|pagetemplate|imagecollection|jsonstructure|importmapping|exportmapping|restclient|businesseventservice|databaseconnection|publishedrestservice|odataclient|odataservice|modulerole|userrole|projectsecurity|demouser|agent|aimodel|knowledgebase|consumedmcpservice|datatransformer)$/",
           "group": "mendix@6"
         },
         {

@@ -73,6 +73,17 @@ var funcTable = map[string]funcSig{
 	"getCaption": {args: []TypeKind{KindAny}, ret: KindString},
 	"getKey":     {args: []TypeKind{KindAny}, ret: KindString},
 
+	// Special checks — the object-state predicates. Each takes an object and
+	// returns Boolean; `isSynced`/`isSyncing` are offline-sync predicates and are
+	// nanoflow-only, but that is a context restriction, not an unknown name.
+	// All three were missing from this table, so MDL044 flagged them as
+	// hallucinated; each was built against mxbuild 11.13.0 at 0 errors before
+	// being added here (the table is the sole allow-list MDL044 consults, and
+	// MDL044 is now enforced on the exec path).
+	"isNew":     {args: []TypeKind{KindAny}, ret: KindBoolean},
+	"isSynced":  {args: []TypeKind{KindAny}, ret: KindBoolean},
+	"isSyncing": {args: []TypeKind{KindAny}, ret: KindBoolean},
+
 	// DateTime — construction
 	"currentDateTime": {args: []TypeKind{}, ret: KindDateTime},
 	// dateTime/dateTimeUTC(year, month, day [, hour, minute, second]) — 3 or 6 args

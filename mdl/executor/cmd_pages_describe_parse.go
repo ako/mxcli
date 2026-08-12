@@ -304,6 +304,17 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 				widget.CaptionAttribute = extractCustomWidgetPropertyAttributeRef(ctx, w, "optionsSourceAssociationCaptionAttribute")
 			}
 		}
+		// The drop-down filter's association mode is the same shape as the
+		// ComboBox's, on differently-named properties: `baseType` selects it and
+		// the reference is stored as an EntityRef, not an AttributeRef. Without
+		// this the filter described back as a bare `dropdownfilter name` and a
+		// describe→edit→exec cycle silently reverted it to attribute mode. (#830)
+		if widget.RenderMode == "dropdownfilter" &&
+			extractCustomWidgetPropertyString(ctx, w, "baseType") == "ref" {
+			widget.DataSource = extractCustomWidgetPropertyDataSource(ctx, w, "refOptions")
+			widget.Content = extractCustomWidgetPropertyAssociation(ctx, w, "refEntity")
+			widget.CaptionAttribute = extractCustomWidgetPropertyAttributeRef(ctx, w, "refCaption")
+		}
 		// For DataGrid2, also extract datasource, columns, CONTROLBAR widgets, paging, and selection
 		if widget.RenderMode == "datagrid2" {
 			widget.DataSource = extractDataGrid2DataSource(ctx, w)

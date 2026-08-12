@@ -111,6 +111,7 @@
 - [Business Events](language/business-events.md)
   - [Event Services](language/event-services.md)
   - [Publishing and Consuming Events](language/pub-sub-events.md)
+- [Scheduled Events and Task Queues](language/scheduled-events.md)
 - [Image Collections](language/image-collections.md)
 
 ---

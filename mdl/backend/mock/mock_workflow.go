@@ -123,3 +123,28 @@ func (m *MockBackend) GetScheduledEvent(id model.ID) (*model.ScheduledEvent, err
 	}
 	return nil, nil
 }
+
+// The write methods default to a descriptive error rather than nil so a test
+// that forgets to configure one fails on the missing stub instead of silently
+// reporting a write that never happened.
+
+func (m *MockBackend) CreateScheduledEvent(ev *model.ScheduledEvent) error {
+	if m.CreateScheduledEventFunc != nil {
+		return m.CreateScheduledEventFunc(ev)
+	}
+	return fmt.Errorf("MockBackend.CreateScheduledEvent not configured")
+}
+
+func (m *MockBackend) UpdateScheduledEvent(ev *model.ScheduledEvent) error {
+	if m.UpdateScheduledEventFunc != nil {
+		return m.UpdateScheduledEventFunc(ev)
+	}
+	return fmt.Errorf("MockBackend.UpdateScheduledEvent not configured")
+}
+
+func (m *MockBackend) DeleteScheduledEvent(id string) error {
+	if m.DeleteScheduledEventFunc != nil {
+		return m.DeleteScheduledEventFunc(id)
+	}
+	return fmt.Errorf("MockBackend.DeleteScheduledEvent not configured")
+}

@@ -1,0 +1,47 @@
+-- ============================================================================
+-- Issue #828 — the accepted counterpart: object-state predicates are real
+-- ============================================================================
+--
+-- POSITIVE TEST: `mxcli check` MUST accept this file.
+--
+-- MDL044's allow-list is exprcheck's funcTable, and the table was missing the
+-- three "special check" built-ins below, so `check` reported them as
+-- hallucinated functions. That was a nuisance while MDL044 was check-only;
+-- once the rule became an exec barrier (#828) it would have made `exec` REFUSE
+-- valid MDL — the same shape as the MDL009 false positive that kept the #833
+-- promotion narrow.
+--
+-- Each was built before being added to the table. Verified against mxbuild
+-- 11.13.0: this file exec'd into a blank 11.13 app checks with 0 errors.
+--
+-- `isSynced` / `isSyncing` are offline-sync predicates and are nanoflow-only;
+-- that is a context restriction, not an unknown name, so they live in the
+-- nanoflow here.
+--
+-- The rejected counterpart is 828-unknown-expression-function.fail.mdl.
+-- ============================================================================
+
+create persistent entity MyFirstModule.Thing (
+  Name: string(100)
+);
+/
+
+create microflow MyFirstModule.ACT_IsNew (
+  $Obj: MyFirstModule.Thing
+)
+returns boolean as $Flag
+begin
+  declare $Flag boolean = isNew($Obj);
+  return $Flag;
+end;
+/
+
+create nanoflow MyFirstModule.NF_SyncState (
+  $Obj: MyFirstModule.Thing
+)
+returns boolean as $Flag
+begin
+  declare $Flag boolean = isSynced($Obj) and isSyncing($Obj);
+  return $Flag;
+end;
+/

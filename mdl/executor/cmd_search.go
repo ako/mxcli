@@ -11,6 +11,57 @@ import (
 )
 
 // execShowCallers handles SHOW CALLERS OF Module.Microflow [TRANSITIVE].
+// callerRefKinds are the reference kinds that mean "this thing invokes the
+// target". `show callers` filtered on 'call' alone, which is the kind a MICROFLOW
+// activity produces — so a microflow called from a page action button (kind
+// 'action') reported "(no callers found)" even though the reference was sitting
+// in the refs table, and a page opened by a button or a menu was equally
+// invisible (issue #773).
+//
+// A false negative here reads as "nothing uses this", which is the answer
+// somebody acts on before deleting a document — so the set errs toward
+// including a kind rather than omitting it. 'schedule' is the same shape: a
+// microflow run only by a scheduled event reported "(no callers found)", was
+// listed in GRAPH_DEAD_ASSETS, and drew QUAL004 "is not called from anywhere"
+// with the suggestion "Remove if unused" — on a microflow that runs nightly.
+//
+// Deliberately excluded: 'datasource', 'parameter', 'return', 'retrieve',
+// 'create', 'change', 'delete', 'associate', 'generalize' and 'layout'. Those
+// are uses of a TYPE or a LAYOUT, not invocations, and folding them in would
+// make `show callers of <entity>` a synonym for `show references to`.
+var callerRefKinds = []string{
+	RefKindCallerCall,      // microflow/nanoflow call activity
+	RefKindCallerAction,    // widget action: button, on-change, on-click
+	RefKindCallerShowPage,  // microflow show-page activity, or a widget action opening a page
+	RefKindCallerCalculate, // calculated attribute
+	RefKindCallerHomePage,  // navigation
+	RefKindCallerLoginPage,
+	RefKindCallerMenuItem,
+	RefKindCallerSchedule, // scheduled event: the microflow it runs
+}
+
+// Kind literals, kept next to the set that uses them so the SQL below cannot
+// drift from mdl/catalog's constants unnoticed.
+const (
+	RefKindCallerCall      = "call"
+	RefKindCallerAction    = "action"
+	RefKindCallerShowPage  = "show_page"
+	RefKindCallerCalculate = "calculate"
+	RefKindCallerHomePage  = "home_page"
+	RefKindCallerLoginPage = "login_page"
+	RefKindCallerMenuItem  = "menu_item"
+	RefKindCallerSchedule  = "schedule"
+)
+
+// callerRefKindsSQL renders callerRefKinds as a SQL IN list.
+func callerRefKindsSQL() string {
+	quoted := make([]string, len(callerRefKinds))
+	for i, k := range callerRefKinds {
+		quoted[i] = "'" + k + "'"
+	}
+	return "(" + strings.Join(quoted, ", ") + ")"
+}
+
 func execShowCallers(ctx *ExecContext, s *ast.ShowStmt) error {
 	if s.Name == nil {
 		return mdlerrors.NewValidation("target name required for show callers")
@@ -36,12 +87,12 @@ func execShowCallers(ctx *ExecContext, s *ast.ShowStmt) error {
 			with RECURSIVE callers_cte as (
 				select SourceName as Caller, 1 as Depth
 				from refs
-				where TargetName = ? and RefKind = 'call'
+				where TargetName = ? and RefKind in ` + callerRefKindsSQL() + `
 				union all
 				select r.SourceName, c.Depth + 1
 				from refs r
 				join callers_cte c on r.TargetName = c.Caller
-				where r.RefKind = 'call' and c.Depth < 10
+				where r.RefKind in ` + callerRefKindsSQL() + ` and c.Depth < 10
 			)
 			select distinct Caller, min(Depth) as Depth
 			from callers_cte
@@ -53,7 +104,7 @@ func execShowCallers(ctx *ExecContext, s *ast.ShowStmt) error {
 		query = `
 			select distinct SourceName as Caller, 1 as Depth
 			from refs
-			where TargetName = ? and RefKind = 'call'
+			where TargetName = ? and RefKind in ` + callerRefKindsSQL() + `
 			ORDER by Caller
 		`
 	}

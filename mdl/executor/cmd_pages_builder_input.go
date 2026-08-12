@@ -123,6 +123,92 @@ func (pb *pageBuilder) entityAttributeOwners() (owners map[string]map[string]boo
 	return owners, parents, nil
 }
 
+// rejectAssociationAsAttribute refuses a widget property that is attribute-typed
+// but was given the name of an ASSOCIATION — `column c (attribute: Order_Customer)`.
+//
+// The reference cannot be represented. mxcli qualified the name like an attribute
+// and wrote `DomainModels$AttributeRef{Attribute: "Mod.Order.Order_Customer"}`, so
+// the build failed CE1613 "The selected attribute … no longer exists" — and there
+// is no correct BSON to write instead: `CustomWidgets$WidgetValue.AttributeRef` is
+// typed `AttributeRef`, not the polymorphic `MemberRef`. Storing an
+// `AssociationRef` there makes the project UNLOADABLE ("Object of type
+// 'AssociationRef' cannot be converted to type 'AttributeRef'"), and the WidgetValue
+// has no association-valued property at all — `Mendix.Modeler.WebUI.dll`, which
+// defines the type, carries no `AssociationRef` member.
+//
+// The DataGrid column's `<associationTypes>Reference/ReferenceSet</associationTypes>`
+// is what makes this look supported. It is not permission to bind the reference; it
+// is permission for the attribute PATH to traverse one — `attribute: Assoc/Attr`,
+// which mxcli already writes as an AttributeRef with association steps. (issue #830)
+//
+// where names the binding for the message (e.g. "column `colCustomer`").
+func (pb *pageBuilder) rejectAssociationAsAttribute(name, entityContext, where string) error {
+	// A path (`Assoc/Attr`) is the SUPPORTED form; a `$var` reference and an
+	// empty binding are not ours to judge here.
+	if name == "" || strings.ContainsAny(name, "/$") || entityContext == "" {
+		return nil
+	}
+	// Deciding attribute-vs-association needs the model; without one (no backend
+	// and nothing cached — a unit test building widgets in isolation) let the
+	// binding through rather than guessing, exactly as declaringEntityFor does.
+	if pb.backend == nil && (pb.execCache == nil || pb.execCache.domainModels == nil) {
+		return nil
+	}
+	name = storedSystemMemberName(name)
+	// A three-part name is already an explicit Module.Entity.Attribute.
+	if strings.Count(name, ".") >= 2 {
+		return nil
+	}
+	// An attribute wins: entity members share one namespace, so a name that
+	// resolves as an attribute anywhere in the generalization chain is not an
+	// association.
+	if _, ok := pb.declaringEntityFor(entityContext, name); ok {
+		return nil
+	}
+	assocQN := pb.resolveAssociationPathIn(name, entityContext)
+	fromEntity, toEntity, ok := pb.associationEndpoints(assocQN)
+	if !ok || !pb.entityInChain(entityContext, fromEntity) {
+		return nil
+	}
+	leaf := toEntity
+	if idx := strings.LastIndex(leaf, "."); idx >= 0 {
+		leaf = leaf[idx+1:]
+	}
+	return mdlerrors.NewValidationf(
+		"%s binds `%s`, which is an association (%s → %s), not an attribute — "+
+			"Mendix cannot store a reference in an attribute-typed widget property and the build fails "+
+			"CE1613 \"The selected attribute '%s.%s' no longer exists\". "+
+			"To SHOW a value from the associated object, traverse the reference: `attribute: %s/<Attr>` "+
+			"(e.g. `%s/Name`). To FILTER the grid by the reference, use the drop-down filter's association mode: "+
+			"`dropdownfilter f (Association: %s, datasource: database %s, CaptionAttribute: <Attr>)`",
+		where, name, fromEntity, toEntity, entityContext, name,
+		name, name, assocQN, toEntity)
+}
+
+// entityInChain reports whether want is entityQN or one of its ancestors, so a
+// member declared on a generalization still counts as reachable from the
+// specialization the widget is bound to.
+func (pb *pageBuilder) entityInChain(entityQN, want string) bool {
+	if want == "" {
+		return false
+	}
+	if entityQN == want {
+		return true
+	}
+	_, parents, err := pb.entityAttributeOwners()
+	if err != nil {
+		return false
+	}
+	seen := map[string]bool{}
+	for cur := entityQN; cur != "" && !seen[cur]; cur = parents[cur] {
+		seen[cur] = true
+		if cur == want {
+			return true
+		}
+	}
+	return false
+}
+
 // systemMemberBindingNames maps the name an audit member is DECLARED under to
 // the name Mendix actually stores it as.
 //

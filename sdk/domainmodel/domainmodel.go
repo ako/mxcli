@@ -328,16 +328,20 @@ type AttributeValue struct {
 // Association represents an association between entities.
 type Association struct {
 	model.BaseElement
-	ContainerID      model.ID                 `json:"containerId"`
-	Name             string                   `json:"name"`
-	Documentation    string                   `json:"documentation,omitempty"`
-	ParentID         model.ID                 `json:"parentId"`
-	ChildID          model.ID                 `json:"childId"`
-	Type             AssociationType          `json:"type"`
-	Owner            AssociationOwner         `json:"owner"`
-	StorageFormat    AssociationStorageFormat `json:"storageFormat,omitempty"`
-	ParentConnection model.Point              `json:"parentConnection,omitempty"`
-	ChildConnection  model.Point              `json:"childConnection,omitempty"`
+	ContainerID   model.ID                 `json:"containerId"`
+	Name          string                   `json:"name"`
+	Documentation string                   `json:"documentation,omitempty"`
+	ParentID      model.ID                 `json:"parentId"`
+	ChildID       model.ID                 `json:"childId"`
+	Type          AssociationType          `json:"type"`
+	Owner         AssociationOwner         `json:"owner"`
+	StorageFormat AssociationStorageFormat `json:"storageFormat,omitempty"`
+	// Line anchors in the domain model editor. Pointers because the zero Point
+	// is a legitimate anchor (top-left corner), so it cannot double as "unset";
+	// nil means nothing was stored and the writer uses DefaultParentConnection /
+	// DefaultChildConnection. See connection.go. (issue #872)
+	ParentConnection *model.Point `json:"parentConnection,omitempty"`
+	ChildConnection  *model.Point `json:"childConnection,omitempty"`
 
 	// Delete behavior
 	ParentDeleteBehavior *DeleteBehavior `json:"parentDeleteBehavior,omitempty"`

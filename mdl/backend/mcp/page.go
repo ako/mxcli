@@ -172,14 +172,36 @@ func pageParameters(params []*pages.PageParameter) []any {
 	return out
 }
 
+// pgTruncationSentinel is the placeholder Studio Pro substitutes for a node
+// deeper than pg_read_page's depth limit.
+const pgTruncationSentinel = "..."
+
+// pgReadFullDepth is the depth requested so pg_read_page returns a page whole.
+//
+// Studio Pro 11.13 added a `depth` argument that defaults to 4 and replaces
+// deeper nodes with pgTruncationSentinel. That default is far shallower than a
+// real page: an ordinary Atlas page read at depth 4 collapses to
+// {"widgets":[{"$Type":"Pages$Content","slot":"Main","widgets":["...","..."]}]}
+// — 1KB of a 32KB page. Since ALTER PAGE is read-modify-replace-whole-page, a
+// truncated read would be written straight back over the real content, so the
+// read must ask for the whole tree. Real pages nest far shallower than this
+// bound, and hasTruncationSentinel catches it if one ever does not.
+const pgReadFullDepth = 1000
+
 // pgReadPage reads a page's current high-level content tree via pg_read_page.
 // The result is the same LightPage shape pg_patch_page accepts, so it round-trips
 // for read-modify-write (ALTER PAGE).
 func (b *Backend) pgReadPage(moduleName, pageName string) (map[string]any, error) {
-	res, err := b.client.CallTool("pg_read_page", map[string]any{
+	args := map[string]any{
 		"moduleName": moduleName,
 		"pageName":   pageName,
-	})
+	}
+	// Only 11.13+ accepts `depth`; older servers declare the tool
+	// additionalProperties:false and would reject the whole call.
+	if b.client.SupportsToolArg("pg_read_page", "depth") {
+		args["depth"] = pgReadFullDepth
+	}
+	res, err := b.client.CallTool("pg_read_page", args)
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +213,46 @@ func (b *Backend) pgReadPage(moduleName, pageName string) (map[string]any, error
 	if err := json.Unmarshal([]byte(text), &content); err != nil {
 		return nil, fmt.Errorf("pg_read_page %s.%s: parsing content: %w", moduleName, pageName, err)
 	}
+	// Guard, don't drop (ADR-0005). A truncated read is unusable for
+	// read-modify-write: writing it back replaces real widgets with the
+	// sentinel. Refuse the read rather than let a partial page reach a write.
+	if hasTruncationSentinel(content) {
+		return nil, fmt.Errorf(
+			"pg_read_page %s.%s: Studio Pro returned a depth-truncated page (%q placeholders); "+
+				"mxcli cannot safely modify a page it cannot read whole. Modify this page in "+
+				"Studio Pro, and please report the page name — mxcli requests the full depth, "+
+				"so a truncated read means this Studio Pro version truncates in a way mxcli "+
+				"does not yet handle",
+			moduleName, pageName, pgTruncationSentinel)
+	}
 	return content, nil
+}
+
+// hasTruncationSentinel reports whether a LightPage carries a depth-truncation
+// placeholder, i.e. the string "..." standing where an element should be.
+//
+// It only matches the sentinel as an *array element*, which is where a dropped
+// widget lands. A "..." that is a property value (a caption or a title reading
+// "...") is legitimate page content and must not trip the guard.
+func hasTruncationSentinel(v any) bool {
+	switch t := v.(type) {
+	case map[string]any:
+		for _, e := range t {
+			if hasTruncationSentinel(e) {
+				return true
+			}
+		}
+	case []any:
+		for _, e := range t {
+			if s, ok := e.(string); ok && s == pgTruncationSentinel {
+				return true
+			}
+			if hasTruncationSentinel(e) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // pgWritePage writes a whole page (create or full overwrite) via pg_patch_page.

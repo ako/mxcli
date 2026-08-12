@@ -20,6 +20,7 @@ type MockPageMutator struct {
 	ContainerTypeFunc              func() backend.ContainerKind
 	SetWidgetPropertyFunc          func(widgetRef string, prop string, value any) error
 	SetWidgetDataSourceFunc        func(widgetRef string, ds pages.DataSource) error
+	SetWidgetActionFunc            func(widgetRef string, action pages.ClientAction) error
 	SetColumnPropertyFunc          func(gridRef string, columnRef string, prop string, value any) error
 	SetDesignPropertyFunc          func(widgetRef string, key string, valueType string, option string) error
 	RemoveDesignPropertyFunc       func(widgetRef string, key string) error
@@ -59,6 +60,13 @@ func (m *MockPageMutator) SetWidgetProperty(widgetRef string, prop string, value
 func (m *MockPageMutator) SetWidgetDataSource(widgetRef string, ds pages.DataSource) error {
 	if m.SetWidgetDataSourceFunc != nil {
 		return m.SetWidgetDataSourceFunc(widgetRef, ds)
+	}
+	return nil
+}
+
+func (m *MockPageMutator) SetWidgetAction(widgetRef string, action pages.ClientAction) error {
+	if m.SetWidgetActionFunc != nil {
+		return m.SetWidgetActionFunc(widgetRef, action)
 	}
 	return nil
 }

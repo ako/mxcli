@@ -1,0 +1,77 @@
+-- ALTER PAGE … SET Action = <action> ON <widget>
+--
+-- Reported from a contact-management app built with mxcli: "SET Action =
+-- MICROFLOW … fails in ALTER PAGE; use REPLACE instead".
+--
+-- It failed at the *parser*: `alterPageAssignment` special-cased DataSource,
+-- Visible and Editable and then fell through to `propertyValueV3`, which has no
+-- `microflow <name>` form. So the statement did not parse at all:
+--
+--   line 2:25 extraneous input 'M' expecting {DROP, ADD, SET, INSERT, REPLACE, '}'}
+--
+-- REPLACE is a poor substitute. It rebuilds the widget from what the statement
+-- says, so every property the author does not restate — ButtonStyle, Class,
+-- design properties, tooltip — is silently dropped. Retargeting one button
+-- should not require restating the button.
+--
+-- The rule now reuses actionExprV3, the same action grammar CREATE PAGE uses, so
+-- every action form works here on the day it works there rather than being a
+-- subset extended one bug report at a time. That is the lesson of #855, where
+-- `SET DataSource` carried a narrower vocabulary than REPLACE for the same
+-- reason.
+--
+-- Verified on Mendix 11.13.0: `mx check` reports 0 errors, and the sibling
+-- properties survive the retarget.
+
+create module PA;
+create module role PA.User;
+
+@position(100, 100)
+create persistent entity PA.Order ( Number: String(50) );
+
+create microflow PA.ACT_Save () begin end;
+create microflow PA.ACT_Other () begin end;
+
+create page PA.OrderPage ( Title: 'Order', Layout: 'Atlas_Core.Atlas_Default' ) {
+  container c1 {
+    actionbutton btnGo (
+      Caption: 'Go',
+      Action: MICROFLOW PA.ACT_Save,
+      ButtonStyle: Primary,
+      Class: 'my-css'
+    )
+  }
+};
+
+-- Retarget the action. ButtonStyle and Class must still be there afterwards —
+-- that is the difference from REPLACE.
+alter page PA.OrderPage {
+  set Action = microflow PA.ACT_Other on btnGo;
+};
+
+-- Every actionExprV3 form is available, including the combined ones. The close
+-- is a flag on the save action, not a separate action.
+alter page PA.OrderPage {
+  set Action = SAVE_CHANGES CLOSE_PAGE on btnGo;
+};
+
+alter page PA.OrderPage {
+  set Action = CANCEL_CHANGES CLOSE_PAGE on btnGo;
+};
+
+-- Not every action form is available on the default engine: OPEN_LINK maps to
+-- LinkClientAction, which the modelsdk codec does not serialize yet. That is a
+-- pre-existing engine gap, not a SET one — CREATE PAGE refuses it identically —
+-- and SET inherits the refusal rather than writing something broken:
+--
+--   Error: failed to set: failed to set Action on btnGo:
+--          unsupported action type *pages.LinkClientAction
+--
+-- Inheriting CREATE PAGE's capability, refusal included, is the point of
+-- delegating instead of maintaining a second switch.
+
+-- Settable alongside ordinary properties in one statement.
+alter page PA.OrderPage {
+  set (Caption = 'Save & Close', ButtonStyle = Success) on btnGo;
+  set Action = SAVE_CHANGES CLOSE_PAGE on btnGo;
+};

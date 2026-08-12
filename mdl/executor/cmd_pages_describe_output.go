@@ -673,8 +673,12 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			if w.Content != "" {
 				props = append(props, fmt.Sprintf("Attribute: %s", w.Content))
 			}
-			// Show DataSource and CaptionAttribute for ComboBox association mode
-			if w.DataSource != nil && widgetType == "combobox" {
+			// Show DataSource and CaptionAttribute for the association modes.
+			// The drop-down filter's ref mode has the same three parts as the
+			// ComboBox's (reference + option list + caption), so it re-emits
+			// through the same branch — without it the filter described back as a
+			// bare `dropdownfilter name` and the mode was lost on re-exec (#830).
+			if w.DataSource != nil && (widgetType == "combobox" || widgetType == "dropdownfilter") {
 				switch w.DataSource.Type {
 				case "database":
 					props = append(props, fmt.Sprintf("DataSource: database from %s", w.DataSource.Reference))

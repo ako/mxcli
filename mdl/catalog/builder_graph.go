@@ -15,6 +15,10 @@ import (
 var graphRefKinds = []string{
 	"call", "retrieve", "create", "change", "delete", "associate", "generalize",
 	"parameter", "return",
+	// A scheduled event is an entry point: the microflow it runs is reachable
+	// even though nothing calls it. Without this kind, GRAPH_DEAD_ASSETS reports
+	// every scheduled microflow as dead.
+	"schedule",
 }
 
 // betweennessNodeCap bounds the O(V*E) betweenness computation. Above it,

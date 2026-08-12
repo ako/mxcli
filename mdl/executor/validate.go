@@ -195,6 +195,10 @@ func validateProgram(ctx *ExecContext, prog *ast.Program) []error {
 		}
 	}
 	errors = append(errors, validateForwardPageRefs(ctx, prog)...)
+	// Resolve icon-collection references. Needs the project (the collections
+	// are documents in it), so it belongs here rather than in the no-project
+	// pass — MxBuild otherwise reports the typo as CE1613.
+	errors = append(errors, validateIconRefs(ctx, prog)...)
 	return errors
 }
 
@@ -988,6 +992,14 @@ var execEnforcedMicroflowRules = map[string]bool{
 	// mxbuild 11.13.0 — the same class of "check caught it, exec did not" gap
 	// that #833 was about.
 	"MDL057": true,
+	// MDL044: a call to a name that is not a Mendix expression function is
+	// CE0117 "Error(s) in expression." at build time, verified on mxbuild
+	// 11.13.0 with `currentDeviceType()` (issue #828). Promoting this rule means
+	// exprcheck's funcTable is now a write barrier, so a name missing from it
+	// blocks valid MDL rather than merely warning about it: three genuine
+	// built-ins (isNew/isSynced/isSyncing) were found missing and added — each
+	// built at 0 errors — before this line was added.
+	"MDL044": true,
 }
 
 // validateMicroflowRules runs the MDL0xx microflow rule set (ValidateMicroflow)

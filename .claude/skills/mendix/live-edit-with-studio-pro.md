@@ -40,21 +40,28 @@ Run a script the same way: `mxcli --mcp http://localhost/mcp --mcp-dial localhos
 
 ## What you can change via MCP — check first
 
-**What's authorable over MCP depends on the Studio Pro version**, because the
-underlying capability surface grows per release. Before generating MDL for live
-editing, ask the connected server what it supports — don't guess:
+**What's authorable over MCP depends on the Studio Pro version *and on this
+session*.** The capability surface changes per release, but it also depends on
+your Studio Pro preferences (some tools are togglable) and on which MCP servers
+you have connected to Studio Pro. So the answer is not derivable from a version
+number — ask the connected server, every session, before generating MDL:
 
 ```bash
 mxcli mcp capabilities -p /path/to/app.mpr --mcp http://localhost/mcp --mcp-dial localhost:7782
 ```
 
-It prints, for *this* server: what's authorable (modules, entities + ALTER,
+It prints, for *this session*: what's authorable (modules, entities + ALTER,
 associations, enumerations, constants, microflows, pages + ALTER PAGE, workflows,
-view entities, documents into folders), what's **not** (e.g. nanoflows, Java
-actions, business-event services, security, navigation, MOVE/re-parent, attribute
-type change — hard PED limits), and the live tool list. Treat anything reported as
-not authorable as off-limits over MCP — do it in Studio Pro or against the on-disk
-`.mpr` instead.
+navigation, entity access rules, documents into folders), what's **not** (e.g.
+nanoflows, Java actions, business-event services, view entities, security roles,
+MOVE/re-parent, attribute type change), and the live tool list. Treat anything
+reported as not authorable as off-limits over MCP — do it in Studio Pro or against
+the on-disk `.mpr` instead.
+
+A feature can also be reported unavailable because **this session** lacks a tool it
+needs, or because the tool probe did not answer; the report says which, and mxcli
+fails closed rather than assuming a tool is there. Quote the whole report in a bug
+report — a Studio Pro version number alone does not identify the surface you had.
 
 New modules and their dependents resolve within the same run, so
 `create module X; create enumeration X.Status (...)` works in one script. Place a
@@ -65,7 +72,11 @@ MOVE can't re-parent over MCP.
 
 The machine may run two MCP servers:
 
-- **Studio Pro built-in (port 7782)** — model authoring. **Use this by default.**
+- **Studio Pro built-in (port 7782 by default)** — model authoring. **Use this by
+  default.** From **11.13** Studio Pro **auto-selects a free port** when 7782 is
+  taken, so multiple instances can run side by side. The active port is shown in
+  Studio Pro's **status bar** (and set under Preferences > AI > MCP Server) — read
+  it there rather than assuming 7782, and pass it to `--mcp-dial`.
 - **Concord (port 7783)** — a temporary gap-filler with operational/refactor tools
   (`delete_document`, `save_all`, `run_app`, `check_model`). **Only** reach for
   Concord when the built-in server lacks the capability you need.

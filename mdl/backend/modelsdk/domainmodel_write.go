@@ -99,8 +99,11 @@ func assocToGen(a *domainmodel.Association) *genDm.Association {
 		sf = "Column"
 	}
 	out.SetStorageFormat(sf)
-	out.SetParentConnection("0;50")
-	out.SetChildConnection("100;50")
+	// Carry the stored line anchors rather than resetting them — assocToGen runs
+	// on every association write, so hardcoding here discarded whatever the
+	// developer had dragged the connector to in Studio Pro (issue #872).
+	out.SetParentConnection(domainmodel.FormatConnectionPoint(a.ParentConnection, domainmodel.DefaultParentConnection))
+	out.SetChildConnection(domainmodel.FormatConnectionPoint(a.ChildConnection, domainmodel.DefaultChildConnection))
 
 	db := genDm.NewAssociationDeleteBehavior()
 	parentDB, childDB := "DeleteMeButKeepReferences", "DeleteMeButKeepReferences"

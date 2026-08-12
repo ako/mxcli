@@ -99,7 +99,11 @@ so the next session self-bootstraps.
 paste. In short, the agent will:
 
 - ensure `mxcli` is available (pre-installed, or download the `nightly` binary);
-- `mxcli new App --version <X.Y.Z>` (or `mxcli init` if an `.mpr` already exists);
+- `mxcli init --sync-skills` — unpack the skills embedded in the binary, then follow
+  the **`bootstrap-app`** skill, which carries the rest of this list (the paste itself
+  is only those two steps plus "read the skill");
+- interview you about the app, then `mxcli new App --version <X.Y.Z>` (or `mxcli init`
+  if an `.mpr` already exists);
 - `mxcli init --tool claude` — adds a **SessionStart hook** so future sessions come
   back up automatically;
 - `mxcli run --local --setup --ensure-db` — cache MxBuild + runtime, start
