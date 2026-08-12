@@ -178,6 +178,23 @@ A headless install or update leaves two repairs for Mendix's own tools: **CE0463
 
 Measured: Administration 4.3.2 → 4.5.0 and DataWidgets 3.5.0 → 3.11.3 both reach **0 errors** afterwards.
 
+## Bundled widgets and install order
+
+A module package carries a copy of every widget its pages use, pinned at the module author's release time — and different modules pin different versions of the same widget. Atlas_Web_Content 4.3.0 ships five Data Widgets at 3.4.0 that DataWidgets 3.11.3 ships at 3.11.3.
+
+`install` and `update` keep the newer copy and say so:
+
+```text
+  Kept 5 newer widget(s) the package would have rolled back:
+    widgets/com.mendix.widget.web.Datagrid.mpk — kept 3.11.3, package ships 3.4.0
+```
+
+Without this, module install order silently decided which widget versions the project ended up with, and nothing reported it — an out-of-date widget is not a check error. A package that ships the same widget both as a `.mpk` and as an unpacked tree (FeedbackModule 5.0.0) installs only the `.mpk`.
+
+## When the installed version is no longer published
+
+`diff` and `update` both download the installed version to establish the local-edit baseline, so both fail when it has been unpublished — as NanoflowCommons 6.0.0 has, while a blank 11.13 app still ships it. `--force` does not help: it overrides a finding, and there is no finding to override. `mxcli marketplace update … --no-baseline` accepts that the question cannot be answered and updates anyway, discarding any local edits to that module without naming them.
+
 ## Repairing the model (`mxcli fix`)
 
 `mx update-widgets` and `mx rename-design-properties` each fix something only Mendix can fix, and each rewrites an MPR v2 project into the single-file v1 format while doing it. Measured on 11.12.1: `update-widgets` took 369 `.mxunit` files to 0 and a 69,632-byte index to 14,405,632 bytes; `rename-design-properties` took 1,865 files to 0 and a 249,856-byte index to 39,895,040 bytes, having renamed 149 design properties across 41 documents. The conversion is one-way.
