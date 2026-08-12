@@ -152,8 +152,17 @@ Examples:
 			trace = true // --trace-otlp implies --trace
 		}
 
+		// Constant values set per configuration are not in the deployment's
+		// config.json (mxbuild writes each constant's default there), so without
+		// this the app runs with defaults while the model says otherwise —
+		// silently. See runconstants.go.
+		configuration, _ := cmd.Flags().GetString("configuration")
+		overrides := constantOverridesFor(projectPath, configuration)
+		reportConstantOverrides(os.Stdout, overrides)
+
 		opts := docker.LocalRunOptions{
 			ProjectPath:        projectPath,
+			ConstantOverrides:  overrides.Values,
 			Hub:                hub,
 			HubSecret:          hubSecret,
 			HubKey:             hubKey,
@@ -232,6 +241,8 @@ Examples:
 }
 
 func init() {
+	runCmd.Flags().String("configuration", "",
+		"Which project configuration's constant values to run with (default: the only one, or \"Default\")")
 	runCmd.Flags().Bool("local", false, "Run locally without Docker (warm serve + standalone runtime)")
 	runCmd.Flags().String("hub", "", "Expose the running app in a browser via your own mxcli tunnel-hub URL (e.g. https://hub.example.com). Implies --local; the app stays local and is reverse-tunnelled out")
 	runCmd.Flags().String("hub-secret", "", "Shared auth secret for --hub (\"user:pass\"), matching the hub's --secret")

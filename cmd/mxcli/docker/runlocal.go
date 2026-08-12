@@ -44,6 +44,11 @@ type LocalAppInfo struct {
 type LocalRunOptions struct {
 	// ProjectPath is the .mpr file.
 	ProjectPath string
+	// ConstantOverrides are the constant values of the configuration this run
+	// represents (qualified name -> value), merged over the defaults mxbuild
+	// wrote into the deployment. Empty means "every constant keeps its default",
+	// which is what a local run always did before — see runconstants.go.
+	ConstantOverrides map[string]string
 	// DeployDir is where the serve Deploy target writes (default <projectDir>/deployment).
 	DeployDir string
 	// MxBuildPath overrides mxbuild resolution (optional).
@@ -728,6 +733,7 @@ func RunLocal(opts LocalRunOptions) error {
 		Trace:              opts.Trace,
 		TraceServiceName:   traceService,
 		TraceOTLPEndpoint:  opts.TraceOTLP,
+		ConstantOverrides:  opts.ConstantOverrides,
 		Env:                opts.Env,
 		Stdout:             w,
 		Stderr:             stderr,

@@ -400,3 +400,31 @@ secret registers it owner-less.
       and `.../dist/index.js` also returns `200` (client bundle served).
 - [ ] With `--watch`, editing a microflow logs `applied via reload`; adding an entity
       logs `applied via restart` and creates the table in Postgres.
+
+## Constant values come from a configuration
+
+`mxcli run --local` applies the constant values of the project configuration it
+is running, merged over each constant's default:
+
+```text
+Applying 1 constant value(s) from configuration "Default": Encryption.EncryptionKey
+```
+
+Before this they were ignored: mxbuild writes each constant's **default** into
+`deployment/model/config.json`, and that map is what the runtime is handed — so
+`alter settings constant … in configuration 'Default'` executed, round-tripped
+through `describe settings`, and did nothing. An app ran for hours with an empty
+encryption key while the model said otherwise.
+
+- `--configuration <name>` picks one. With several configurations and none named
+  `Default`, mxcli applies **none** and says so rather than guessing which
+  environment this run means.
+- A **private** override has no value in the model at all (the value lives on the
+  developer's workstation), so the default is used and the constant is named.
+- The line prints in every case, including "no overrides" — silence used to mean
+  "your override is in effect" when it was not.
+
+Setting a constant on a *running* app is a different mechanism: `MicroflowConstants`
+over the M2EE admin port, which is how Mendix Cloud injects per-environment values.
+Note that `--runtime-setting 'MicroflowConstants={…}'` **replaces** the whole map
+rather than merging into it, so it drops every constant it does not mention.

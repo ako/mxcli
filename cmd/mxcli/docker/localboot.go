@@ -71,6 +71,10 @@ type LocalRuntimeOptions struct {
 	// payload (e.g. "Metrics.Registries", "OpenTelemetry._RuntimeSpanFilters").
 	// Merged here because the admin action replaces rather than merges.
 	RuntimeSettings map[string]any
+	// ConstantOverrides are the running configuration's constant values,
+	// merged over the defaults mxbuild wrote into the deployment. See
+	// mergeConstantOverrides.
+	ConstantOverrides map[string]string
 	// Trace attaches the bundled OpenTelemetry Java agent to the runtime JVM
 	// (traces via the console exporter → the tee'd runtime log). The caller should
 	// also set OpenTelemetry._RuntimeSpanFilters via RuntimeSettings — unfiltered
@@ -325,6 +329,29 @@ func readDeploymentConstants(deployDir string) (map[string]string, error) {
 	return cfg.Constants, nil
 }
 
+// mergeConstantOverrides layers a configuration's constant values over the
+// defaults mxbuild resolved into the deployment.
+//
+// The merge direction is the whole point. config.json carries every constant's
+// *default*, which is what the runtime needs for the ones a configuration does
+// not override; the configuration's values win where both exist. Replacing the
+// map instead — the shape `--runtime-setting MicroflowConstants=…` has — drops
+// every constant the configuration is silent about, and the app 530s on the
+// first microflow that reads one.
+func mergeConstantOverrides(defaults, overrides map[string]string) map[string]string {
+	if len(overrides) == 0 {
+		return defaults
+	}
+	merged := make(map[string]string, len(defaults)+len(overrides))
+	for k, v := range defaults {
+		merged[k] = v
+	}
+	for k, v := range overrides {
+		merged[k] = v
+	}
+	return merged
+}
+
 // ensureDataDirs creates the data/{files,tmp,model-upload} directories the
 // runtime expects under the deployment dir. m2ee normally creates these; a bare
 // serve Deploy / unzipped .mda does not.
@@ -450,6 +477,7 @@ func (rt *LocalRuntime) spawnAndConfigure() error {
 	if err != nil {
 		return err
 	}
+	constants = mergeConstantOverrides(constants, rt.opts.ConstantOverrides)
 	if _, err := CallM2EE(rt.m2ee, "update_configuration", runtimeConfigParams(rt.opts, constants)); err != nil {
 		return fmt.Errorf("update_configuration: %w", err)
 	}

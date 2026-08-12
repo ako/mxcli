@@ -266,6 +266,14 @@ built **at the project's own Mendix version** (a mismatch is refused, not warned
 Mendix's own conversions would otherwise read as your edits), and compares `DESCRIBE`
 output on both sides.
 
+**A "modified" verdict now means the difference is real.** Some element types
+DESCRIBE renders imperfectly — a snippet whose body comes out `{ }`, a building
+block under "Building blocks are read-only; they cannot be created via MDL" — and
+two imperfect renderings can differ for reasons that have nothing to do with you.
+Those are reported `unknown`, never `changed`, and `--save-edits` refuses to write
+them: replaying `create or modify snippet X (Folder: 'Web') { }` would **empty**
+the snippet.
+
 **Read `verified`, not just `locallyModified`.** An element that cannot be described is
 reported as `unknown`, never as unchanged, and `verified: false` means "no modifications
 found" is not a conclusion:

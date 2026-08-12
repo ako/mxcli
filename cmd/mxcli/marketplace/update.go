@@ -40,6 +40,16 @@ func SaveEdits(dir string, rep *Report) (written []string, unsaved []string, err
 	for _, f := range rep.Findings {
 		switch f.Verdict {
 		case Modified, OnlyInstalled:
+			// An element whose DESCRIBE carries no replayable content must not be
+			// written out as something to replay. Saving `create or modify snippet
+			// X (Folder: 'Web') { }` and replaying it EMPTIES the snippet — the
+			// file reads as a rescue and is a deletion (FINDINGS §16). Modified
+			// findings are already filtered by Compare; OnlyInstalled ones reach
+			// here unchecked, so the same rule is applied to both.
+			if ok, why := (Element{MDL: f.InstalledMDL}).Conclusive(); !ok {
+				unsaved = append(unsaved, fmt.Sprintf("%s (%s)", f.Key, why))
+				continue
+			}
 			wanted = append(wanted, f)
 		case Unknown:
 			unsaved = append(unsaved, fmt.Sprintf("%s (%s)", f.Key, f.Reason))
