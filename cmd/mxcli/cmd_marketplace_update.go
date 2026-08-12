@@ -216,8 +216,8 @@ func reportUpdate(out io.Writer, r *marketplace.UpdateResult) {
 	fmt.Fprintf(out, "\n%s updated %s → %s\n", r.Module, r.FromVersion, r.ToVersion)
 	fmt.Fprintf(out, "  %d units copied, %d element identities preserved, %d role grant(s) restored.\n",
 		r.UnitsCopied, r.IdentitiesKept, r.GrantsRestored)
-	if len(r.WidgetsInstalled) > 0 {
-		fmt.Fprintf(out, "  %d widget package(s) replaced in widgets/.\n", len(r.WidgetsInstalled))
+	if len(r.FilesInstalled) > 0 {
+		fmt.Fprintf(out, "  %d bundled file(s) replaced (widgets, themesource, ...).\n", len(r.FilesInstalled))
 	}
 
 	if len(r.IdentitiesLost) > 0 {
@@ -242,12 +242,9 @@ func reportUpdate(out io.Writer, r *marketplace.UpdateResult) {
 	fmt.Fprintln(out, "\n  Next: resync widget definitions, or 'mx check' will report CE0463 on the")
 	fmt.Fprintln(out, "  new version's pages (this is expected after any headless module install):")
 	fmt.Fprintln(out, "      mx update-widgets <project.mpr>")
-	fmt.Fprintln(out, "\n  Then check the app. A newer module can need newer companions — measured on")
-	fmt.Fprintln(out, "  DataWidgets 3.11.3, whose widgets want design properties an older Atlas does")
-	fmt.Fprintln(out, "  not define (29 × CE6083). That is a dependency to resolve, not something")
-	fmt.Fprintln(out, "  this update can fix:")
+	fmt.Fprintln(out, "\n  Then validate and review:")
 	fmt.Fprintln(out, "      mxcli docker check -p <project.mpr>")
-	fmt.Fprintln(out, "\n  Review the change with 'mxcli diff-local'.")
+	fmt.Fprintln(out, "      mxcli diff-local -p <project.mpr>")
 }
 
 func init() {

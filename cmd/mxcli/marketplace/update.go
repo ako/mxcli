@@ -95,16 +95,16 @@ func safeFileName(k ElementKey) string {
 
 // UpdateResult is what an update did.
 type UpdateResult struct {
-	Module           string
-	FromVersion      string
-	ToVersion        string
-	UnitsCopied      int
-	IdentitiesKept   int
-	IdentitiesLost   []string
-	GrantsRestored   int
-	GrantsDropped    []string
-	WidgetsInstalled []string
-	ForcedOverEdits  []string
+	Module          string
+	FromVersion     string
+	ToVersion       string
+	UnitsCopied     int
+	IdentitiesKept  int
+	IdentitiesLost  []string
+	GrantsRestored  int
+	GrantsDropped   []string
+	FilesInstalled  []string
+	ForcedOverEdits []string
 }
 
 // PerformUpdate replaces an installed module with the copy in referenceMpr,
@@ -152,21 +152,21 @@ func PerformUpdate(mprPath, referenceMpr, targetMpk, moduleName, fromVersion, to
 	if err := StampMarketplaceVersion(mprPath, moduleName, toVersion, toVersionID); err != nil {
 		return nil, fmt.Errorf("record the installed version: %w", err)
 	}
-	widgets, err := InstallPackageWidgets(targetMpk, filepath.Dir(mprPath))
+	files, err := InstallPackageFiles(targetMpk, filepath.Dir(mprPath))
 	if err != nil {
-		return nil, fmt.Errorf("install the new version's widgets: %w", err)
+		return nil, fmt.Errorf("install the new version's bundled files: %w", err)
 	}
 
 	return &UpdateResult{
-		Module:           moduleName,
-		FromVersion:      fromVersion,
-		ToVersion:        toVersion,
-		UnitsCopied:      copied,
-		IdentitiesKept:   applied,
-		IdentitiesLost:   missing,
-		GrantsRestored:   restored,
-		GrantsDropped:    dropped,
-		WidgetsInstalled: widgets,
+		Module:         moduleName,
+		FromVersion:    fromVersion,
+		ToVersion:      toVersion,
+		UnitsCopied:    copied,
+		IdentitiesKept: applied,
+		IdentitiesLost: missing,
+		GrantsRestored: restored,
+		GrantsDropped:  dropped,
+		FilesInstalled: files,
 	}, nil
 }
 
@@ -250,20 +250,30 @@ func setBoolField(doc bson.D, key string, value bool) {
 	}
 }
 
-// InstallPackageWidgets copies a package's bundled widget .mpk files into the
-// project's widgets/ folder, and reports what it wrote.
+// InstallPackageFiles copies every non-model file a package ships into the
+// project, and reports what it wrote.
 //
-// A module update that moves only the model is wrong for any module shipping
-// widgets. Measured on DataWidgets 3.5.0 → 3.11.3: the model updated cleanly and
-// all ten widget binaries were still the old version, so the project claimed
-// 3.11.3 while running 3.5.0's widget code. Administration has no widgets, which
-// is exactly why the first end-to-end run did not catch it.
+// A module is not only its model. The .mpk carries widget binaries under
+// widgets/, styling and design-property declarations under themesource/, and
+// whatever else the module needs; only project.mpr and package.xml are
+// manifest rather than payload. An update that moves the model alone leaves all
+// of it at the old version.
 //
-// The files come from the package rather than from the reference project,
-// because the reference is a blank app plus the module and its widgets/ folder
-// therefore also holds the template's widgets — copying those would overwrite
-// widgets this update has nothing to do with.
-func InstallPackageWidgets(mpkPath, projectDir string) (written []string, err error) {
+// Both halves of that were measured on DataWidgets 3.5.0 → 3.11.3, one after the
+// other:
+//
+//   - all ten widget binaries stayed at 3.5.0 while the model said 3.11.3, so
+//     the app ran old widget code with new definitions;
+//   - and 29 × CE6083 ("design property not supported by your theme") persisted
+//     through `mx update-widgets` AND `mx rename-design-properties`, because the
+//     properties Gallery wants are declared in the module's *own*
+//     themesource/datawidgets/web/design-properties.json, which was still the
+//     3.5.0 copy.
+//
+// The second looked like a cross-module dependency on a newer Atlas. It was not.
+// Copying everything the package ships, rather than enumerating the directories
+// that seem to matter, is what stops there being a third instance.
+func InstallPackageFiles(mpkPath, projectDir string) (written []string, err error) {
 	zr, err := zip.OpenReader(mpkPath)
 	if err != nil {
 		return nil, fmt.Errorf("open package %s: %w", filepath.Base(mpkPath), err)
@@ -271,19 +281,25 @@ func InstallPackageWidgets(mpkPath, projectDir string) (written []string, err er
 	defer zr.Close()
 
 	for _, f := range zr.File {
-		if !strings.HasPrefix(f.Name, "widgets/") || f.FileInfo().IsDir() {
+		if f.FileInfo().IsDir() {
 			continue
 		}
-		base := filepath.Base(f.Name)
-		if base == "" || base == "." {
-			continue
+		switch f.Name {
+		case packageProjectEntry, "package.xml":
+			continue // the model and its manifest, handled by the transplant
 		}
-		dstDir := filepath.Join(projectDir, "widgets")
-		if err := os.MkdirAll(dstDir, 0o755); err != nil {
-			return written, fmt.Errorf("create widgets directory: %w", err)
+		// Refuse a path that escapes the project. Nothing in a Mendix package
+		// should contain "..", and honouring one would let a package write
+		// anywhere on disk.
+		clean := filepath.Clean(f.Name)
+		if strings.HasPrefix(clean, "..") || filepath.IsAbs(clean) {
+			return written, fmt.Errorf("package entry %q would write outside the project", f.Name)
 		}
-		dst := filepath.Join(dstDir, base)
 
+		dst := filepath.Join(projectDir, clean)
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			return written, fmt.Errorf("create %s: %w", filepath.Dir(dst), err)
+		}
 		rc, oerr := f.Open()
 		if oerr != nil {
 			return written, fmt.Errorf("read %s from the package: %w", f.Name, oerr)
@@ -296,7 +312,7 @@ func InstallPackageWidgets(mpkPath, projectDir string) (written []string, err er
 		if err := os.WriteFile(dst, body, 0o644); err != nil {
 			return written, fmt.Errorf("write %s: %w", dst, err)
 		}
-		written = append(written, base)
+		written = append(written, clean)
 	}
 	sort.Strings(written)
 	return written, nil

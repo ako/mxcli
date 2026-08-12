@@ -134,8 +134,10 @@ Administration updated 4.3.2 → 4.5.0
 
 - **Element identity.** The runtime keys entities and their attributes on the model's `GUID`, so a module whose documents are replaced without carrying the old GUIDs is a *different* module to the database and its tables are dropped on the next deploy. Studio Pro transplants them; so does this.
 - **Access.** A user role's grant of a module role lives in the project's security document, not the module, so removing the module takes the grants with it and putting it back does not return them.
+- **Everything else the package ships.** A module is not only its model: the `.mpk` carries widget binaries under `widgets/`, styling and design-property declarations under `themesource/`, and whatever else it needs. All of it is replaced — only `project.mpr` and `package.xml` are manifest rather than payload. DataWidgets 3.11.3 replaces 49 such files, and skipping them leaves the app running old widget code and reporting `CE6083` for design properties the module itself declares.
 
 It does not use `mx module-import`, which would rewrite an MPR v2 project as v1 and refuses theme modules. Units are copied with mxcli's own writer, so the project keeps its format.
+
 
 ### Local edits
 
@@ -147,6 +149,8 @@ Local edits are **not** preserved. `update` refuses when it finds any, `--save-e
 ### Afterwards
 
 Run `mx update-widgets <project.mpr>`. A newer module's pages reference widget definitions the project has not resynced, so `mx check` reports CE0463 until told to — measured on Administration 4.3.2 → 4.5.0: 11 errors before, 0 after. This is expected after any headless module install, not a fault in the update.
+
+Then `mxcli docker check -p <project.mpr>` and `mxcli diff-local -p <project.mpr>`. Measured after that resync: Administration 4.3.2 → 4.5.0 and DataWidgets 3.5.0 → 3.11.3 both reach **0 errors**.
 
 `update` does **not** roll back. Work on a copy or have the project in version control.
 
