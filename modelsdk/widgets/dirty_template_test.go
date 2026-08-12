@@ -168,7 +168,7 @@ func TestDirtyBindings_CleanIsClean(t *testing.T) {
 		"Properties": []any{float64(2), map[string]any{
 			"$Type": "CustomWidgets$WidgetProperty",
 			"Value": map[string]any{
-				"$Type":      "CustomWidgets$WidgetValue",
+				"$Type":        "CustomWidgets$WidgetValue",
 				"AttributeRef": nil,
 				"DataSource": map[string]any{ // empty source slot — legitimate on data widgets
 					"$Type":     "CustomWidgets$CustomWidgetXPathSource",

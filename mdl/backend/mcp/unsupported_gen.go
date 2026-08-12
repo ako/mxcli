@@ -184,6 +184,11 @@ func (unsupportedBackend) CreateLayout(_ *pages.Layout) (err0 error) {
 	return
 }
 
+func (unsupportedBackend) CreateMenuDocument(_ *types.MenuDocument) (err0 error) {
+	err0 = errUnsupported("CreateMenuDocument")
+	return
+}
+
 func (unsupportedBackend) CreateMicroflow(_ *microflows.Microflow) (err0 error) {
 	err0 = errUnsupported("CreateMicroflow")
 	return
@@ -364,6 +369,11 @@ func (unsupportedBackend) DeleteLayout(_ model.ID) (err0 error) {
 	return
 }
 
+func (unsupportedBackend) DeleteMenuDocument(_ model.ID) (err0 error) {
+	err0 = errUnsupported("DeleteMenuDocument")
+	return
+}
+
 func (unsupportedBackend) DeleteMicroflow(_ model.ID) (err0 error) {
 	err0 = errUnsupported("DeleteMicroflow")
 	return
@@ -501,6 +511,11 @@ func (unsupportedBackend) GetLayout(_ model.ID) (r0 *pages.Layout, err1 error) {
 
 func (unsupportedBackend) GetMendixVersion() (r0 string, err1 error) {
 	err1 = errUnsupported("GetMendixVersion")
+	return
+}
+
+func (unsupportedBackend) GetMenuDocumentByQualifiedName(_ string, _ string) (r0 *types.MenuDocument, err1 error) {
+	err1 = errUnsupported("GetMenuDocumentByQualifiedName")
 	return
 }
 
@@ -724,6 +739,11 @@ func (unsupportedBackend) ListJsonStructures() (r0 []*types.JsonStructure, err1 
 
 func (unsupportedBackend) ListLayouts() (r0 []*pages.Layout, err1 error) {
 	err1 = errUnsupported("ListLayouts")
+	return
+}
+
+func (unsupportedBackend) ListMenuDocuments() (r0 []*types.MenuDocument, err1 error) {
+	err1 = errUnsupported("ListMenuDocuments")
 	return
 }
 
@@ -1144,6 +1164,11 @@ func (unsupportedBackend) UpdateJsonStructure(_ *types.JsonStructure) (err0 erro
 
 func (unsupportedBackend) UpdateLayout(_ *pages.Layout) (err0 error) {
 	err0 = errUnsupported("UpdateLayout")
+	return
+}
+
+func (unsupportedBackend) UpdateMenuDocument(_ *types.MenuDocument) (err0 error) {
+	err0 = errUnsupported("UpdateMenuDocument")
 	return
 }
 

@@ -240,3 +240,36 @@ func TestDisplayName(t *testing.T) {
 		t.Errorf("DisplayName() = %q, want %q", got, "view entities")
 	}
 }
+
+// TestAgentDocumentsAreGated is the guard for the version gap reported in
+// mxcli-formula1 FINDINGS §53: `show features` listed nothing for agents or MCP,
+// so there was no checkFeature() gate and an older project got no actionable
+// error.
+//
+// This matters more than a normal version gate because nothing downstream
+// catches it. Agent Editor documents are stored as custom blobs, mxbuild does
+// not validate them (it contains no agent-editor strings at all), so an agent
+// authored against a pre-11.9 project builds green and simply cannot be opened.
+func TestAgentDocumentsAreGated(t *testing.T) {
+	reg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	docs := []string{"agent_model", "agent_knowledge_base", "agent_consumed_mcp_service", "agent"}
+	for _, name := range docs {
+		t.Run(name, func(t *testing.T) {
+			// Available on a project new enough for the agent editor...
+			if !reg.IsAvailable("agent_documents", name, SemVer{Major: 11, Minor: 9, Patch: 0}) {
+				t.Errorf("%s should be available on 11.9.0", name)
+			}
+			// ...and refused below it, which is the half that was missing.
+			if reg.IsAvailable("agent_documents", name, SemVer{Major: 11, Minor: 8, Patch: 0}) {
+				t.Errorf("%s must not be reported available on 11.8.0", name)
+			}
+			if reg.IsAvailable("agent_documents", name, SemVer{Major: 10, Minor: 24, Patch: 0}) {
+				t.Errorf("%s must not be reported available on 10.24.0", name)
+			}
+		})
+	}
+}

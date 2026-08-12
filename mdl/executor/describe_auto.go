@@ -25,6 +25,10 @@ var objectTypeToDescribeKind = map[string]ast.DescribeObjectType{
 	"NANOFLOW":               ast.DescribeNanoflow,
 	"PAGE":                   ast.DescribePage,
 	"SNIPPET":                ast.DescribeSnippet,
+	"BUILDING_BLOCK":         ast.DescribeBuildingBlock,
+	"MENU":                   ast.DescribeMenu,
+	"QUEUE":                  ast.DescribeQueue,
+	"SCHEDULED_EVENT":        ast.DescribeScheduledEvent,
 	"LAYOUT":                 ast.DescribeLayout,
 	"ENUMERATION":            ast.DescribeEnumeration,
 	"CONSTANT":               ast.DescribeConstant,
@@ -47,6 +51,19 @@ var objectTypeToDescribeKind = map[string]ast.DescribeObjectType{
 	"AI_MODEL":               ast.DescribeModel,
 	"KNOWLEDGE_BASE":         ast.DescribeKnowledgeBase,
 	"CONSUMED_MCP_SERVICE":   ast.DescribeConsumedMCPService,
+}
+
+// DescribeKindFor maps a catalog `objects` view ObjectType to the DESCRIBE kind
+// that renders it, reporting false for a type with no describe handler.
+//
+// Exported so callers outside the executor (the marketplace differ, which walks
+// a whole module) resolve types through the same table bare DESCRIBE uses,
+// rather than keeping a fourth copy of this mapping. Three copies already exist
+// — this map, the catalog's objects view, and cmd/mxcli's own dispatch — and
+// they have drifted apart once each.
+func DescribeKindFor(objectType string) (ast.DescribeObjectType, bool) {
+	kind, ok := objectTypeToDescribeKind[objectType]
+	return kind, ok
 }
 
 // resolveDescribeAuto auto-detects the type of a bare `DESCRIBE Module.Name`

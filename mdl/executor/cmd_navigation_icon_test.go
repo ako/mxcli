@@ -15,7 +15,7 @@ import (
 // menuMDL renders items through the DESCRIBE emitter.
 func menuMDL(items []*types.NavMenuItem) string {
 	var b bytes.Buffer
-	printMenuMDL(&b, items, 0)
+	printMenuMDL(&b, items, 0, "CREATE NAVIGATION")
 	return b.String()
 }
 

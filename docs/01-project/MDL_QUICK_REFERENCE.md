@@ -1044,6 +1044,12 @@ MDL uses explicit property declarations for pages:
 | Describe snippet | `describe snippet Module.Name;` | Round-trippable MDL output |
 | List building blocks | `show building blocks [in module];` | Read-only; cannot be authored via MDL |
 | Describe building block | `describe building block Module.Name;` | Informational (header comment + widget tree), not a `create` statement |
+| Create menu | `create [or modify] menu Module.Name ( <items> );` | Standalone `Menus$MenuDocument`. Full replacement: the item list is the document's complete contents |
+| Describe menu | `describe menu Module.Name;` | Round-trippable MDL. Not the navigation-profile menu — see `show navigation menu` |
+| Drop menu | `drop menu Module.Name;` | |
+| Create menu | `create [or modify] menu Module.Name ( <items> );` | Standalone `Menus$MenuDocument`. Full replacement: the item list is the document's complete contents |
+| Describe menu | `describe menu Module.Name;` | Round-trippable MDL. Not the navigation-profile menu — see `show navigation menu` |
+| Drop menu | `drop menu Module.Name;` | |
 
 **DataGrid Column Properties:**
 

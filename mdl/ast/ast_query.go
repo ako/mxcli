@@ -330,6 +330,9 @@ const (
 	DescribeConsumedMCPService   // DESCRIBE CONSUMED MCP SERVICE Module.Name (agent-editor MCP document)
 	DescribeJarDependency        // DESCRIBE JAR DEPENDENCY ModuleName 'group:artifact'
 	DescribeBuildingBlock        // DESCRIBE BUILDING BLOCK Module.Name
+	DescribeMenu                 // DESCRIBE MENU Module.Name (standalone Menus$MenuDocument)
+	DescribeQueue                // DESCRIBE QUEUE Module.Name
+	DescribeScheduledEvent       // DESCRIBE SCHEDULED EVENT Module.Name
 	DescribeAuto                 // DESCRIBE Module.Name — type auto-detected at execution time
 )
 
@@ -418,6 +421,8 @@ func (t DescribeObjectType) String() string {
 		return "JAR DEPENDENCY"
 	case DescribeBuildingBlock:
 		return "BUILDING BLOCK"
+	case DescribeMenu:
+		return "MENU"
 	case DescribeAuto:
 		return "AUTO"
 	default:

@@ -74,7 +74,7 @@ func runUpdateWidgets(mxPath, projectPath string, w, stderr io.Writer) (restore 
 		contentsDir := reader.ContentsDir()
 		reader.Close()
 		if isV2 {
-			snapRestore, snapErr := snapshotStorageFormat(projectPath, contentsDir)
+			_, snapRestore, snapErr := snapshotStorageFormat(projectPath, contentsDir)
 			if snapErr != nil {
 				// Can't protect the format — skip update-widgets rather than risk an
 				// unrecoverable v2 -> v1 conversion. A CE0463 false positive is the
@@ -103,22 +103,22 @@ func runUpdateWidgets(mxPath, projectPath string, w, stderr io.Writer) (restore 
 // restore function removes the temp directory and is safe to defer; it best-effort
 // restores and never panics. mprPath and contentsDir come from an mpr.Reader on a
 // project already known to be MPRv2.
-func snapshotStorageFormat(mprPath, contentsDir string) (restore func(), err error) {
+func snapshotStorageFormat(mprPath, contentsDir string) (dir string, restore func(), err error) {
 	tmp, err := os.MkdirTemp("", "mxcli-mpr-snapshot-*")
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 
 	mprBackup := filepath.Join(tmp, filepath.Base(mprPath))
 	if err := copyFile(mprPath, mprBackup); err != nil {
 		os.RemoveAll(tmp)
-		return nil, err
+		return "", nil, err
 	}
 
 	contentsBackup := filepath.Join(tmp, "mprcontents")
 	if err := copyDir(contentsDir, contentsBackup); err != nil {
 		os.RemoveAll(tmp)
-		return nil, err
+		return "", nil, err
 	}
 
 	restore = func() {
@@ -130,5 +130,5 @@ func snapshotStorageFormat(mprPath, contentsDir string) (restore func(), err err
 		_ = os.RemoveAll(contentsDir)
 		_ = copyDir(contentsBackup, contentsDir)
 	}
-	return restore, nil
+	return tmp, restore, nil
 }

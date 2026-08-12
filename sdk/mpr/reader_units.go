@@ -55,16 +55,29 @@ type rawUnit struct {
 	Contents        []byte
 }
 
-// listUnitsByType returns all units matching the given type prefix.
-func (r *Reader) listUnitsByType(typePrefix string) ([]rawUnit, error) {
+// listUnitsByType returns all units of exactly the given storage type. An empty
+// typeName returns every unit.
+//
+// The match is exact, and that is load-bearing rather than incidental: this used
+// to be a prefix match, and `Forms$Page` is a prefix of `Forms$PageTemplate`, so
+// ListPages swept in all 46 of Atlas_Web_Content's page templates. They then
+// described as pages with an empty body — the template's content hangs off
+// LayoutCall, which the page path does not read — so `show modules` reported 46
+// pages for a module with none, and anything comparing describe output judged a
+// template unchanged without having looked at it.
+//
+// Mendix storage names nest this way in general (`Forms$Page` /
+// `Forms$PageTemplate`), so a prefix match here is a trap for every future type,
+// not a one-off.
+func (r *Reader) listUnitsByType(typeName string) ([]rawUnit, error) {
 	if r.version == MPRVersionV2 {
-		return r.listUnitsByTypeV2(typePrefix)
+		return r.listUnitsByTypeV2(typeName)
 	}
-	return r.listUnitsByTypeV1(typePrefix)
+	return r.listUnitsByTypeV1(typeName)
 }
 
 // listUnitsByTypeV1 handles MPR v1 format (contents in database).
-func (r *Reader) listUnitsByTypeV1(typePrefix string) ([]rawUnit, error) {
+func (r *Reader) listUnitsByTypeV1(typeName string) ([]rawUnit, error) {
 	rows, err := r.db.Query(`
 		SELECT UnitID, ContainerID, ContainmentName, Contents
 		FROM Unit
@@ -84,13 +97,13 @@ func (r *Reader) listUnitsByTypeV1(typePrefix string) ([]rawUnit, error) {
 			return nil, fmt.Errorf("failed to scan unit row: %w", err)
 		}
 
-		typeName := getTypeFromContents(contents)
-		if typePrefix == "" || strings.HasPrefix(typeName, typePrefix) {
+		unitType := getTypeFromContents(contents)
+		if typeName == "" || unitType == typeName {
 			units = append(units, rawUnit{
 				ID:              blobToUUID(unitID),
 				ContainerID:     blobToUUID(containerID),
 				ContainmentName: containmentName,
-				Type:            typeName,
+				Type:            unitType,
 				Contents:        contents,
 			})
 		}
@@ -101,7 +114,7 @@ func (r *Reader) listUnitsByTypeV1(typePrefix string) ([]rawUnit, error) {
 
 // listUnitsByTypeV2 handles MPR v2 format (contents in mprcontents folder).
 // Uses caching to avoid reading every file for each query.
-func (r *Reader) listUnitsByTypeV2(typePrefix string) ([]rawUnit, error) {
+func (r *Reader) listUnitsByTypeV2(typeName string) ([]rawUnit, error) {
 	// Build cache if not valid
 	if !r.unitCacheValid {
 		if err := r.buildUnitCache(); err != nil {
@@ -112,7 +125,7 @@ func (r *Reader) listUnitsByTypeV2(typePrefix string) ([]rawUnit, error) {
 	// Filter by type using cache, only read contents for matching units
 	var units []rawUnit
 	for _, cu := range r.unitCache {
-		if typePrefix == "" || strings.HasPrefix(cu.Type, typePrefix) {
+		if typeName == "" || cu.Type == typeName {
 			// Read contents from mprcontents folder
 			// Note: cu.ID is already in the correct swapped format from blobToUUID
 			contents, err := r.readMprContents(cu.ID)

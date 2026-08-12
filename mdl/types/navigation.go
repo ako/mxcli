@@ -59,6 +59,26 @@ type NavMenuItem struct {
 	Items    []*NavMenuItem `json:"items,omitempty"`
 }
 
+// MenuDocument is a standalone `Menus$MenuDocument` — a reusable menu that menu
+// widgets point at, stored as its own document rather than inside a navigation
+// profile. Atlas_Core ships two of them (Phone_Menu, Tablet_Menu).
+//
+// Its entries are the same `Menus$MenuItem` elements a navigation profile holds,
+// so they are modelled as NavMenuItem rather than a parallel type — one item
+// shape, one parser, one renderer.
+type MenuDocument struct {
+	ID            model.ID       `json:"id"`
+	ContainerID   model.ID       `json:"containerId"`
+	Name          string         `json:"name"`
+	Documentation string         `json:"documentation,omitempty"`
+	ExportLevel   string         `json:"exportLevel,omitempty"`
+	Excluded      bool           `json:"excluded,omitempty"`
+	Items         []*NavMenuItem `json:"items,omitempty"`
+}
+
+// GetName returns the menu document's name.
+func (m *MenuDocument) GetName() string { return m.Name }
+
 // NavOfflineEntity declares offline sync rules for an entity.
 type NavOfflineEntity struct {
 	Entity     string `json:"entity"`

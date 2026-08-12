@@ -31,8 +31,11 @@ Common version gates:
 | REST query params | 11.0+ | Build query string manually in microflow |
 | DB runtime connection | 11.0+ | Hardcode connection in Database Connector config |
 | Design properties v3 | 11.0+ | Use Atlas v2 design properties |
+| Agent Editor documents (MODEL, KNOWLEDGE BASE, CONSUMED MCP SERVICE, AGENT) | 11.9+, plus the AgentEditorCommons module | None — call an LLM from a microflow via the OpenAI Connector instead |
 
 The executor will reject commands that target unavailable features with an actionable error — but checking upfront avoids wasted work.
+
+The agent doctypes are the row where checking upfront matters most: their documents are stored as **custom blobs**, so mxbuild validates nothing about them. On a project below 11.9 the build stays green and the fault appears only when Studio Pro opens the document. Every other row in this table is caught by `mx check` sooner or later; that one is not.
 
 ## Upgrade Planning
 

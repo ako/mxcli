@@ -312,6 +312,49 @@ func (c *Catalog) createTables() error {
 		)`,
 		viewWithFullSnapshot("image_collections"),
 
+		// icon_collections (custom icon sets; read-only, referenced by widgets)
+		`CREATE TABLE IF NOT EXISTS icon_collections_data (
+			Id TEXT PRIMARY KEY,
+			Name TEXT,
+			QualifiedName TEXT,
+			ModuleName TEXT,
+			Folder TEXT,
+			Description TEXT,
+			ProjectId TEXT,
+			SnapshotId TEXT
+		)`,
+		viewWithFullSnapshot("icon_collections"),
+
+		// page_templates (Forms$PageTemplate; the starting points Studio Pro's
+		// "new page" dialog offers). A separate table from pages: templates are a
+		// different document type whose content hangs off LayoutCall, and folding
+		// them into pages made every module that ships templates report pages it
+		// does not have.
+		`CREATE TABLE IF NOT EXISTS page_templates_data (
+			Id TEXT PRIMARY KEY,
+			Name TEXT,
+			QualifiedName TEXT,
+			ModuleName TEXT,
+			Folder TEXT,
+			Description TEXT,
+			ProjectId TEXT,
+			SnapshotId TEXT
+		)`,
+		viewWithFullSnapshot("page_templates"),
+
+		// menus (standalone Menus$MenuDocument; read-only reusable menus)
+		`CREATE TABLE IF NOT EXISTS menus_data (
+			Id TEXT PRIMARY KEY,
+			Name TEXT,
+			QualifiedName TEXT,
+			ModuleName TEXT,
+			Folder TEXT,
+			Description TEXT,
+			ProjectId TEXT,
+			SnapshotId TEXT
+		)`,
+		viewWithFullSnapshot("menus"),
+
 		// scheduled_events — Mendix's cron. Repeat/RepeatDescription come from the
 		// Schedule child; IntervalSeconds is derived from it, NOT from the legacy
 		// Interval/IntervalType pair (Studio Pro does not keep those in sync).
@@ -939,6 +982,10 @@ func (c *Catalog) createTables() error {
 				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
 			FROM snippets
 			UNION ALL
+			SELECT Id, 'BUILDING_BLOCK' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
+				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
+			FROM building_blocks
+			UNION ALL
 			SELECT Id, 'LAYOUT' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
 				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
 			FROM layouts
@@ -962,6 +1009,18 @@ func (c *Catalog) createTables() error {
 			SELECT Id, 'IMAGE_COLLECTION' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
 				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
 			FROM image_collections
+			UNION ALL
+			SELECT Id, 'ICON_COLLECTION' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
+				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
+			FROM icon_collections
+			UNION ALL
+			SELECT Id, 'MENU' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
+				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
+			FROM menus
+			UNION ALL
+			SELECT Id, 'PAGE_TEMPLATE' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
+				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
+			FROM page_templates
 			UNION ALL
 			SELECT Id, 'SCHEDULED_EVENT' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
 				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource

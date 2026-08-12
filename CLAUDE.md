@@ -244,6 +244,33 @@ without guessing, run the new mxbuild's own migration over an old project
 (`mx convert -p -s <project>`) and diff the BSON: Mendix ships a one-time
 conversion per renamed property, so the converted document is authoritative.
 
+### A `GUID` Is the Database's Identity — Never Mint One for an Existing Element
+
+An element's `GUID` is not decorative and is not interchangeable with its `$ID`.
+The **runtime keys the database on it**: `mendixsystem$entity.id` and
+`mendixsystem$attribute.id` hold the model's `GUID` verbatim (byte-identical once
+the .NET field order is undone). Measured on Mendix 11.12.1 against a live
+PostgreSQL: changing **only** an entity's `GUID` — same name, same table name,
+same attributes — makes the runtime treat it as a different entity and **destroys
+its rows**. An unchanged reboot is the control, and preserves them. See
+[PROPOSAL_marketplace_module_upgrade.md §8](docs/11-proposals/PROPOSAL_marketplace_module_upgrade.md).
+
+Consequences for any write path:
+
+1. **Preserve the stored `GUID` when rewriting an existing element.** A codec that
+   mints a fresh one on rebuild silently drops a table's worth of production data
+   on the next deploy — a failure that no `mx check` and no build will catch,
+   because the model is perfectly valid. This is the same class as the identity
+   properties in `canon.identityFields` and belongs in that decision.
+2. **`$ID` renumbering is irrelevant to data safety** — the inverse of the natural
+   assumption. Studio Pro renumbers every `$ID` in a module on update (94 of 94)
+   and preserves every `GUID` (9 of 9), which is exactly why its update does not
+   lose data. `$ID` matters for *intra-unit pointer consistency* (see below);
+   `GUID` matters for the database.
+3. **A new element must get a fresh `GUID`**, and an element copied from another
+   model must not keep the source's — two elements sharing a `GUID` are one entity
+   as far as the runtime is concerned.
+
 ### Writes Are Conditional, and an `$ID` Is Never Renumbered In Place
 
 Storage does not write a unit whose new content is **semantically equal** to what
@@ -545,6 +572,8 @@ go build -o bin/mxcli ./cmd/mxcli
 | **External SQL** | `sql connect`, `sql <alias> select ...`, `mxcli sql` | Direct SQL queries against PostgreSQL, Oracle, SQL Server (credential isolation) |
 | **Data import** | `import from <alias> query '...' into Module.Entity map (...)` | Import from external DB into Mendix app PostgreSQL (batch insert with ID generation) |
 | **Connector gen** | `sql <alias> generate connector into <module> [tables (...)] [views (...)] [exec]` | Auto-generate Database Connector MDL from discovered schema |
+| **Marketplace drift** | `mxcli marketplace diff <id> -p app.mpr [--to V] [--json]` | Which elements of an installed marketplace module have been edited locally, and what an upgrade would overwrite |
+| **Model repair** | `mxcli fix widgets`, `mxcli fix design-properties` | Runs `mx update-widgets` / `mx rename-design-properties` and **persists** the result without their MPR v2 → v1 collapse (harvest: let the tool convert, read the units back, restore v2, write the changed ones through mxcli's writer). Clears CE0463 / CE6087 after a headless install — measured 203 → 0 errors on a vanilla 11.12.1 app |
 | **Diagnostics** | `mxcli diag [--bundle]` | Session logs, version info, bug report bundles |
 | **New project** | `mxcli new <name> --version X.Y.Z [--output-dir dir] [--theme none]` | Downloads mxbuild, creates blank project, applies default styling, runs init, installs Linux mxcli for devcontainer |
 | **Default styling** | `mxcli theme list\|show\|apply\|remove` | Applies a built-in theme (signal/ledger/console) — files under `theme/` only, the model is never touched |
@@ -669,6 +698,7 @@ Full syntax tables for all MDL statements (microflows, pages, security, navigati
 - ALTER WORKFLOW (SET properties, INSERT/DROP/REPLACE activities, outcomes, paths, conditions, boundary events)
 - CALCULATED BY microflow syntax for calculated attributes
 - Image collections (SHOW/DESCRIBE/CREATE/DROP)
+- Menu documents (CREATE OR MODIFY/DESCRIBE/DROP MENU): standalone `Menus$MenuDocument`, the reusable menu a menu widget points at (Atlas_Core's `Phone_Menu`/`Tablet_Menu`) — **not** the menu inside a navigation profile, though both are built from the same items, so the item syntax is shared with `CREATE NAVIGATION`'s `MENU (...)` block. DESCRIBE is round-trippable. Written through gen+codec, which is load-bearing: Studio Pro's menu documents carry typed-array marker **3** on the item collection and each item's sub-items (the codec default), while the navigation writers hand-build items with marker **1** — unverified whether that is a latent navigation bug or a real difference, so navigation is left alone. Authoring is modelsdk-only; legacy refuses. Two traps: a menu item cannot open a page with required parameters (**CE1571**), and only `Forms$IconCollectionIcon` round-trips (glyph/image icons are flagged by DESCRIBE, not dropped silently)
 - Scheduled events — Mendix's cron (LIST/DESCRIBE/CREATE [OR MODIFY]/DROP). `Repeat:` names one of the eight `ScheduledEvents$*Schedule` variants and only that variant's fields are accepted; a field from another repeat is refused by `mxcli check` (MDL-SCHED01) and by exec, which call the same function. The document shape is pinned by re-serializing three whole Studio Pro-authored events (Workflow Commons 4.11.0, OIDC SSO 4.6.0, SAML 4.2.1) element by element — `modelsdk/gen` is **wrong** about two properties here: the integers are stored as int64 (gen says int32, the #585 mismatch) and `StartDateTime` is a BSON datetime (gen says string), so both engines share one raw-BSON codec in `mdl/scheduledevents`. `Interval`/`IntervalType` are legacy siblings of `Schedule` that Studio Pro writes and does not keep in sync — derived on CREATE, carried through untouched on MODIFY. Only the Day and Hour variants have a Studio Pro reference; the other six are metamodel-derived and verified to load. Both are in the catalog (`CATALOG.SCHEDULED_EVENTS`, `CATALOG.QUEUES`) and a scheduled event emits a `schedule` edge into `CATALOG.REFS` — without it a microflow run only by a scheduled event was reported as dead by `show callers`, `GRAPH_DEAD_ASSETS` and lint rule QUAL004. See `.claude/skills/mendix/scheduled-events-and-queues.md`
 - Task queues (LIST/DESCRIBE/CREATE [OR MODIFY]/DROP QUEUE). `Config.ParallelismExpression` is a **string** and the sibling int32 `Parallelism` is not written — matching all four Studio Pro queues in Business Events 3.12.1. Binding a *call* to a queue is not yet authorable, so `CREATE OR REPLACE|MODIFY MICROFLOW` is **refused** when the stored microflow has a queued call (guard-don't-drop, ADR-0005): the rebuild used to write `QueueSettings` back as null, which made `mx check` go from CE1613 to 0 errors by deleting the user's configuration
 - AI agent documents: Model, Knowledge Base, Consumed MCP Service, Agent (LIST/DESCRIBE/CREATE/DROP, with variables, tools, KB tools, dollar-quoted multi-line prompts; requires AgentEditorCommons module, Mendix 11.9+)
@@ -681,6 +711,7 @@ Full syntax tables for all MDL statements (microflows, pages, security, navigati
 - Platform authentication (`mxcli auth login/logout/status/list`) with PAT scheme for marketplace-api.mendix.com, marketplace.mendix.com, and catalog.mendix.com; credentials stored at ~/.mxcli/auth.json (mode 0600), MENDIX_PAT env override
 - Marketplace browsing (`mxcli marketplace search/info/versions`) with --min-mendix compatibility filtering
 - Marketplace download/install (`mxcli marketplace download/install`) — the content API now exposes a per-version downloadUrl (303→public CDN); install is type-aware (widget→widgets/, new module→`mx module-import`); existing-module updates are reported, not applied (entity-ID/local-edit safety — see PROPOSAL_marketplace_modules.md)
+- Marketplace drift detection (`mxcli marketplace diff <content-id> -p app.mpr [--to VERSION] [--json]`): reports **which elements of an installed marketplace module have been edited locally** — the question Studio Pro's Marketplace update never asks before replacing the module. The version's `.mpk` is downloaded and imported into a throwaway reference project built **at the consuming project's Mendix version** (a mismatch is refused, not warned about: Mendix's own conversions would read as user edits), then every element is described on both sides and the **DESCRIBE output** compared — not BSON, in which an *untouched* module differs from its own package in ~15,000 paths. `--to` adds what an upgrade would touch and which of those collide with local edits. Honesty rule: an element that cannot be described is reported **unknown, never unchanged**, and `verified:false` in the JSON means "no modifications found" is not a conclusion. Module + version are identified from the module's `AppStoreGuid`, which is the marketplace **version UUID** — matching on the version *number* is ambiguous (a blank project has Atlas_Web_Content 4.1.0 and Administration's content also published a 4.1.0). Measured on real content: Administration 4.3.2 in a blank 11.12.1 app → 21/21 unchanged; one added attribute → exactly `ENTITY Account`; `--to 4.3.2` (the installed version) touches nothing, which is the control for `--to 4.5.0`'s five. Package: `cmd/mxcli/marketplace/`. See `docs/11-proposals/PROPOSAL_marketplace_module_upgrade.md`
 
 **Not Yet Implemented:**
 - 47 of 52 metamodel domains (REST, etc.)

@@ -21,6 +21,16 @@ func execCreateConsumedMCPService(ctx *ExecContext, s *ast.CreateConsumedMCPServ
 		return mdlerrors.NewNotConnected()
 	}
 
+	// Agent Editor documents need Studio Pro 11.9+ and the AgentEditorCommons
+	// module. Nothing downstream catches an older project: the documents are
+	// custom blobs, so mxbuild does not validate them and the build stays green
+	// while Studio Pro cannot open the result.
+	if err := checkFeature(ctx, "agent_documents", "agent_consumed_mcp_service",
+		"create consumed mcp service",
+		"upgrade your project to Mendix 11.9+ and install the AgentEditorCommons module"); err != nil {
+		return err
+	}
+
 	existing := findAgentEditorConsumedMCPService(ctx, s.Name.Module, s.Name.Name)
 	if existing != nil && !s.CreateOrModify {
 		return mdlerrors.NewAlreadyExists("consumed mcp service", s.Name.String())
@@ -81,6 +91,16 @@ func execDropConsumedMCPService(ctx *ExecContext, s *ast.DropConsumedMCPServiceS
 func execCreateKnowledgeBase(ctx *ExecContext, s *ast.CreateKnowledgeBaseStmt) error {
 	if !ctx.Connected() {
 		return mdlerrors.NewNotConnected()
+	}
+
+	// Agent Editor documents need Studio Pro 11.9+ and the AgentEditorCommons
+	// module. Nothing downstream catches an older project: the documents are
+	// custom blobs, so mxbuild does not validate them and the build stays green
+	// while Studio Pro cannot open the result.
+	if err := checkFeature(ctx, "agent_documents", "agent_knowledge_base",
+		"create knowledge base",
+		"upgrade your project to Mendix 11.9+ and install the AgentEditorCommons module"); err != nil {
+		return err
 	}
 
 	existing := findAgentEditorKnowledgeBase(ctx, s.Name.Module, s.Name.Name)
@@ -160,6 +180,16 @@ func execDropKnowledgeBase(ctx *ExecContext, s *ast.DropKnowledgeBaseStmt) error
 func execCreateAgent(ctx *ExecContext, s *ast.CreateAgentStmt) error {
 	if !ctx.Connected() {
 		return mdlerrors.NewNotConnected()
+	}
+
+	// Agent Editor documents need Studio Pro 11.9+ and the AgentEditorCommons
+	// module. Nothing downstream catches an older project: the documents are
+	// custom blobs, so mxbuild does not validate them and the build stays green
+	// while Studio Pro cannot open the result.
+	if err := checkFeature(ctx, "agent_documents", "agent",
+		"create agent",
+		"upgrade your project to Mendix 11.9+ and install the AgentEditorCommons module"); err != nil {
+		return err
 	}
 
 	existingAgent := findAgentEditorAgent(ctx, s.Name.Module, s.Name.Name)

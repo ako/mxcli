@@ -1046,6 +1046,11 @@ func (b *Builder) ExitDescribeStatement(ctx *parser.DescribeStatementContext) {
 			ObjectType: ast.DescribeBuildingBlock,
 			Name:       name,
 		})
+	} else if ctx.MENU_KW() != nil {
+		b.statements = append(b.statements, &ast.DescribeStmt{
+			ObjectType: ast.DescribeMenu,
+			Name:       name,
+		})
 	} else if ctx.SNIPPET() != nil {
 		b.statements = append(b.statements, &ast.DescribeStmt{
 			ObjectType: ast.DescribeSnippet,

@@ -1,0 +1,114 @@
+-- ============================================================================
+-- Menu Examples - MDL Syntax
+-- ============================================================================
+--
+-- A menu document (Menus$MenuDocument) is a standalone, reusable menu that a
+-- menu widget points at. Atlas_Core ships two of them, Phone_Menu and
+-- Tablet_Menu, and Studio Pro creates them via Add > Menu.
+--
+-- It is NOT the menu inside a navigation profile. The two are easy to confuse
+-- because both are built from the same Menus$MenuItem elements — which is why
+-- the item syntax below is identical to the MENU (...) block of
+-- CREATE NAVIGATION:
+--
+--   create or modify menu MenuTest.Main_Menu ( ... );  -- this file
+--   show navigation menu;                              -- profile menu
+--
+-- This script is self-contained: it creates the module, and the page and
+-- microflow the menu points at, so it runs against a fresh project.
+-- ============================================================================
+
+create module MenuTest;
+
+-- Targets for the menu items below. The page deliberately takes no parameters:
+-- a menu item has nowhere to supply an argument, so opening a parameterised
+-- page from one is rejected by Mendix with CE1571 (see Gotchas).
+create page MenuTest.Landing
+(
+  title: 'Landing',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'menutest_landing'
+)
+{
+  DYNAMICTEXT welcome (Content: 'Welcome', RenderMode: H2)
+}
+
+create page MenuTest.Reports
+(
+  title: 'Reports',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'menutest_reports'
+)
+{
+  DYNAMICTEXT heading (Content: 'Reports', RenderMode: H2)
+}
+
+create microflow MenuTest.Rebuild ()
+begin
+end;
+
+-- ----------------------------------------------------------------------------
+-- Create
+-- ----------------------------------------------------------------------------
+-- Item forms:
+--   * page target      -> menu item '<caption>' page <Module.Page>
+--   * microflow target -> menu item '<caption>' microflow <Module.Microflow>
+--   * no action        -> menu item '<caption>'
+--   * sub-menu         -> menu '<caption>' ( ...nested items... )
+--
+-- ICON names an entry in an icon collection. It is optional on every form.
+create menu MenuTest.Main_Menu (
+  menu item 'Home' page MenuTest.Landing icon Atlas_Core.Atlas_Filled.home;
+  menu item 'Rebuild' microflow MenuTest.Rebuild;
+  menu 'Admin' (
+    menu item 'Reports' page MenuTest.Reports;
+  );
+  menu item 'Plain';
+);
+
+-- OR MODIFY replaces the item list wholesale, exactly like CREATE NAVIGATION:
+-- the list given is the document's complete contents, so an omitted item is a
+-- removed item. The document's identity and its export level are preserved, so
+-- menu widgets pointing at it keep working.
+create or modify menu MenuTest.Main_Menu (
+  menu item 'Home' page MenuTest.Landing icon Atlas_Core.Atlas_Filled.home;
+  menu item 'Rebuild' microflow MenuTest.Rebuild;
+);
+
+-- ----------------------------------------------------------------------------
+-- Describe
+-- ----------------------------------------------------------------------------
+-- DESCRIBE emits a re-executable CREATE OR MODIFY statement, so
+-- describe -> exec -> describe is a fixed point.
+describe menu MenuTest.Main_Menu;
+
+-- The type is auto-detected too, as for any other document type.
+describe MenuTest.Main_Menu;
+
+-- ----------------------------------------------------------------------------
+-- Drop
+-- ----------------------------------------------------------------------------
+drop menu MenuTest.Main_Menu;
+
+-- ----------------------------------------------------------------------------
+-- Gotchas
+-- ----------------------------------------------------------------------------
+--
+-- 1. A page with required parameters cannot be opened from a menu item without
+--    supplying an argument. Mendix rejects it with CE1571 ("No argument has been
+--    selected for parameter ..."), which `mx check` reports at "Menu item".
+--    Point the item at a parameterless page, or open the page from a microflow.
+--
+-- 2. Only Forms$IconCollectionIcon can be expressed by the ICON clause. A glyph
+--    icon (numeric code) or an image icon is reported by DESCRIBE on its own
+--    comment line rather than dropped silently:
+--
+--      -- icon a numeric glyph code (Forms$GlyphIcon) is not reproducible by
+--      -- CREATE MENU; set it in Studio Pro
+--
+--    Re-running such output therefore loses that icon — visibly, not silently.
+--
+-- 3. Authoring requires the default (modelsdk) engine. Under
+--    MXCLI_ENGINE=legacy, create/modify/drop refuse rather than write a
+--    differently-shaped document — which is why this script is skipped for the
+--    legacy engine in the doctype gate.

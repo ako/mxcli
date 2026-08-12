@@ -111,6 +111,28 @@ WHERE ModuleName = 'Sales'
 ORDER BY Name;
 ```
 
+Page **templates** are not pages and are not in this table — see
+`CATALOG.PAGE_TEMPLATES`.
+
+### CATALOG.PAGE_TEMPLATES
+
+The starting points Studio Pro's "new page" dialog offers (`Forms$PageTemplate`).
+A separate document type from pages: Atlas_Web_Content ships 46 templates and no
+pages at all.
+
+| Column | Description |
+|--------|-------------|
+| `Id` | Unique identifier |
+| `Name` | Template name |
+| `ModuleName` | Module containing the template |
+| `QualifiedName` | Full qualified name |
+| `Folder` | Folder path within the module |
+| `Description` | Documentation |
+
+There is no `DESCRIBE PAGE TEMPLATE`, so a template is indexed but not
+describable — tools that walk a module report it as *unknown*, never as
+unchanged.
+
 ### CATALOG.ACCESS_RULES
 
 Information about entity access rules (available after full refresh).
