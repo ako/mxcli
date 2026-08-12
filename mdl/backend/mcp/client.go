@@ -38,6 +38,12 @@ type Client struct {
 	// trace, when set, reports each CallTool invocation for --mcp-verbose /
 	// --mcp-trace. nil is a no-op (Tracer methods guard their receiver).
 	trace *backend.Tracer
+
+	// toolArgs caches the input-schema property names each tool advertises,
+	// keyed by tool name. Populated lazily by the first SupportsToolArg call.
+	// nil until probed; an empty (non-nil) map records a failed/empty probe so
+	// we do not re-probe on every call.
+	toolArgs map[string]map[string]bool
 }
 
 // ClientOptions configures a Client.
@@ -232,17 +238,49 @@ func (c *Client) ListTools() ([]string, error) {
 	}
 	var r struct {
 		Tools []struct {
-			Name string `json:"name"`
+			Name        string `json:"name"`
+			InputSchema struct {
+				Properties map[string]json.RawMessage `json:"properties"`
+			} `json:"inputSchema"`
 		} `json:"tools"`
 	}
 	if err := json.Unmarshal(res.Result, &r); err != nil {
 		return nil, fmt.Errorf("decode tools/list: %w", err)
 	}
 	names := make([]string, 0, len(r.Tools))
+	args := make(map[string]map[string]bool, len(r.Tools))
 	for _, t := range r.Tools {
 		names = append(names, t.Name)
+		props := make(map[string]bool, len(t.InputSchema.Properties))
+		for p := range t.InputSchema.Properties {
+			props[p] = true
+		}
+		args[t.Name] = props
 	}
+	c.toolArgs = args
 	return names, nil
+}
+
+// SupportsToolArg reports whether the connected server advertises an input
+// property named arg on the given tool. It answers from a tools/list probe
+// (cached for the session), because the tool schemas vary by Studio Pro release
+// while serverInfo.version stays frozen at 1.0.0 and so cannot discriminate
+// them — see docs/03-development/PED_MCP_CAPABILITIES.md.
+//
+// It reports false when the probe fails or the tool is absent. That is the safe
+// default: every argument this gates is one older servers reject outright
+// (their schemas are additionalProperties:false), so "unknown" must mean "do
+// not send". Callers must stay correct when it returns false.
+func (c *Client) SupportsToolArg(tool, arg string) bool {
+	if c.toolArgs == nil {
+		if _, err := c.ListTools(); err != nil {
+			// Record the failure so a broken/unsupported probe is not retried
+			// on every subsequent call.
+			c.toolArgs = map[string]map[string]bool{}
+			return false
+		}
+	}
+	return c.toolArgs[tool][arg]
 }
 
 func (c *Client) CallTool(name string, arguments any) (*ToolResult, error) {

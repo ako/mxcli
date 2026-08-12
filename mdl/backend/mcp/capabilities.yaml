@@ -1,54 +1,78 @@
-# PED (Studio Pro MCP server) authoring capabilities — the version-keyed table half
-# of the capability model (ADR-0004). Tool *presence* is NOT here; it comes from a
-# live tools/list probe. This file holds the facts that are not schema-discoverable:
-# which features are authorable, and the reasons the rest are not (PED's create
-# whitelist, behavioral quirks).
+# PED (Studio Pro MCP server) authoring capabilities — the table half of the
+# capability model (ADR-0006). This file holds ONLY what a live probe cannot
+# answer: which features mxcli can author, and why the rest are blocked (PED's
+# create whitelist, behavioural quirks).
 #
-# Keyed by MCP serverInfo.version. The baseline below is the first server (1.0.0,
-# shipped in Studio Pro 11.11). `available` means *the MCP backend can author it* —
-# both PED permits it AND mxcli has a create path. To lift a blocked feature, set
-# `available_since` to the MCP server version once BOTH hold (the loader flips it for
-# servers at or above that version, and both the agent report and the backend's gate
-# pick it up — they read this same table via `key`). Auditing entries is part of the
-# "onboarding a new version" procedure in docs/03-development/PED_MCP_CAPABILITIES.md.
+# Tool *presence* is NOT here and must never be added. Presence comes from the
+# live tools/list probe, because it varies with the user's Studio Pro preferences
+# (a togglable tool like oql_generate) and with the MCP servers they have
+# connected to Studio Pro — neither of which any version table can model.
+# See ADR-0006's Revision (2026-08-11).
 #
-# `key` is the stable machine identifier the backend gates on (canAuthor(key)); the
-# capability constants in capabilities.go must match these.
-
-baseline_server_version: "1.0.0"
+# Fields:
+#   key                    stable machine id the backend gates on (canAuthor(key));
+#                          the constants in capabilities.go must match these.
+#   available              authorable at baseline (Studio Pro 11.11 / the first MCP
+#                          server). True means BOTH PED permits it AND mxcli has a
+#                          create path — never flip it for one without the other.
+#   available_since_mendix the PROJECT's Mendix version from which it is authorable
+#                          ("11.12"). Keyed on the project version because MCP
+#                          serverInfo.version is frozen at 1.0.0 across 11.11/11.12/
+#                          11.13 and cannot discriminate releases.
+#   requires_tools         Studio Pro tools the feature needs. WHICH tools a feature
+#                          depends on is not observable, so it belongs here; WHETHER
+#                          they are present is answered only by the probe. A missing
+#                          tool (or a probe that did not answer) fails the feature
+#                          closed.
+#   note                   the reason, surfaced verbatim in the agent report and in
+#                          the backend's rejection message.
+#
+# Auditing entries is part of the "onboarding a new version" procedure in
+# docs/03-development/PED_MCP_CAPABILITIES.md.
 
 features:
   - key: modules
     feature: "Modules"
     available: true
+    requires_tools: [ped_create_module]
     note: "CREATE"
   - key: entities
     feature: "Entities"
     available: true
+    requires_tools: [ped_update_document]
     note: "CREATE/DROP (+ NOT NULL / UNIQUE validation rules on create); ALTER add/drop/rename attribute, entity & attribute documentation; attribute default values (Studio Pro 11.12+, via the value/defaultValue path-op); generalization (extends)"
   - key: associations
     feature: "Associations"
     available: true
+    requires_tools: [ped_update_document]
     note: "CREATE/DROP within a module"
   - key: enumerations
     feature: "Enumerations"
     available: true
+    requires_tools: [ped_create_document]
     note: "CREATE (DROP via Concord)"
   - key: constants
     feature: "Constants"
     available: true
+    requires_tools: [ped_update_document]
     note: "CREATE / CREATE OR MODIFY / DROP (String/Integer/Decimal/Boolean/DateTime)"
   - key: microflows
     feature: "Microflows"
     available: true
+    requires_tools: [ped_update_document]
     note: "CREATE (broad activity + control-flow coverage)"
   - key: pages
     feature: "Pages"
     available: true
+    # Pages are the one document type PED is forbidden for; they have their own
+    # tool pair. 11.12 replaced pg_write_page with pg_patch_page, so a session
+    # exposing neither cannot author pages at all.
+    requires_tools: [pg_read_page, pg_patch_page]
     note: "CREATE + ALTER (widget coverage grows per type); ALTER page-level SET Title (maps onto the pg LightPage's top-level title). Url and pop-up settings (PopupWidth/Height/Resizable/CloseAction) are NOT on the pg LightPage shape (schema is additionalProperties:false) — set them in Studio Pro"
   - key: workflows
     feature: "Workflows"
     available: true
+    requires_tools: [ped_update_document]
     note: "CREATE / CREATE OR REPLACE / DROP / ALTER (full, any nesting depth)"
   - key: view_entities
     feature: "View entities — CREATE"
@@ -57,6 +81,7 @@ features:
   - key: documents_into_folders
     feature: "Documents into folders"
     available: true
+    requires_tools: [ped_create_document]
     note: "create <doc> … folder 'A/B' (nested; folder auto-created)"
 
   # Gated create rejections — the backend checks these keys via canAuthor().
@@ -78,10 +103,12 @@ features:
   - key: navigation
     feature: "Navigation (web profile: home page, login/not-found page, menu tree)"
     available: true
+    requires_tools: [ped_update_document]
     note: "CREATE OR REPLACE NAVIGATION on a web profile, via generic ped_update_document path-ops on the project-level Navigation$NavigationDocument (menu items use Menus$MenuItem + Pages$*ClientAction; the menu is cleared then rebuilt). Native profiles (bottom-bar items, native home) and role-based home pages are not authored yet"
   - key: entity_access_rules
     feature: "Entity access rules (GRANT)"
     available: true
+    requires_tools: [ped_update_document]
     note: "GRANT a NEW entity access rule for an existing role — the rule lives on DomainModels$Entity.accessRules (the domain-model document PED authors), NOT the security document. ADD-only: PED refuses to remove DomainModels$AccessRule / DomainModels$MemberAccess, so REVOKE and replacing an existing rule in place are rejected (edit in Studio Pro). The referenced module role must already exist"
   - key: security_roles
     feature: "Security roles & settings — module roles, user roles, demo users, project security settings"

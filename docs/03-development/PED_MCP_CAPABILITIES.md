@@ -40,16 +40,25 @@ document is the MCP column's deep-dive.
 | ≤ 11.10    | **No**             | —            | —            | —        |
 | 11.11      | Yes                | `mendix-studio-pro` 1.0.0 | `2025-06-18` | 2026-06-05 |
 | 11.12      | Yes                | `mendix-studio-pro` 1.0.0 | `2025-06-18` | 2026-06-23 |
+| 11.13      | Yes                | `mendix-studio-pro` 1.0.0 | `2025-06-18` | 2026-08-11 |
 
-> **`serverInfo.version` is frozen at `1.0.0` across 11.11 and 11.12 even though the
-> tool surface and behaviour changed.** So the server version is **not** a reliable
-> discriminator between Studio Pro releases. The machine-readable
+> **`serverInfo.version` is frozen at `1.0.0` across 11.11, 11.12 **and 11.13** even
+> though the tool surface and behaviour changed in every one of them.** So the server
+> version is **not** a reliable discriminator between Studio Pro releases — three
+> releases in, treat this as settled rather than provisional. The machine-readable
 > [`capabilities.yaml`](../../mdl/backend/mcp/capabilities.yaml) keys `available_since`
 > on the server version and therefore **cannot express an 11.12-only capability** —
 > features that vary by Studio Pro version must be gated on the **project's Mendix
 > version** instead (e.g. `gateAttributeDefaults` → `ProjectVersion().IsAtLeast(11,12)`).
 > Until the table grows a Studio-Pro-version dimension, this per-version doc is the
-> source of truth for the 11.11→11.12 delta below.
+> source of truth for the 11.11→11.12 and 11.12→11.13 deltas below.
+>
+> **Gate a per-release *argument* on a live schema probe, not on any version.**
+> `Client.SupportsToolArg(tool, arg)` answers from a cached `tools/list` (which now
+> captures each tool's `inputSchema.properties`). Tool schemas are declared
+> `additionalProperties:false`, so sending an argument an older server does not know
+> fails the whole call — "unknown" must mean "do not send". This is what keeps
+> `pg_read_page`'s 11.13-only `depth` off 11.11/11.12 servers.
 
 `serverInfo.version` is the MCP server's own version, distinct from the Studio
 Pro version. The MCP server first appears in **11.11**; earlier versions have no
@@ -101,6 +110,65 @@ Tools already present in 11.11 and unchanged (do **not** re-add as "new"): `ped_
 
 **New authoring capability — entity access rules (implemented, `security.go`).** "Security" is two different things over PED. The security **documents** are sealed: `ped_read_document` on `Security$ProjectSecurity` and `Security$ModuleSecurity` both return **"Unknown document type"**, so **module roles, user roles, demo users, and project security settings cannot be authored over MCP**. But an entity's **access rules** are not in the security document — they live on `DomainModels$Entity.accessRules` (the domain-model document PED already authors). Verified live on 11.12: a rule's `moduleRoles`, per-member `attribute`/`association` refs, and access rights are the **same qualified names** mxcli already builds (`ExpenseApproval.Expense.Title`, `ExpenseApproval.Expense_Employee`, `ExpenseApproval.Manager`), so `EntityAccessRuleParams` maps 1:1 onto a `DomainModels$AccessRule` constructor `add`. The referenced module role must already exist. **Hard limit — PED is add/modify-only for access control:** `DomainModels$AccessRule` and `DomainModels$MemberAccess` can be `add`ed and their leaves `set`, but **never removed** ("Element of type … cannot be removed"). So mxcli can GRANT a new rule but **rejects** REVOKE and replacing an existing rule in place (it can't remove the old rule/members) — do those in Studio Pro. The executor builds the complete member-access list (every attribute + FROM-side associations + system owner/changedBy, per the CE0066 FROM-entity rule), so the `add` passes `ped_check_errors`.
 
+## 11.13 changes (delta vs 11.12)
+
+Captured live 2026-08-11 (`cmd/mcpprobe -method tools/list`, fixture
+`mdl/backend/mcp/testdata/tools-11.13.json`). Tool count stays 18, but the
+composition changed. **The 11.13 release notes announce none of the items in this
+section** — they cover only auto-port-selection, a status-bar port indicator, and
+four fixes to Studio Pro's MCP *client*. This is the second release in a row where
+the authoring surface moved silently (11.12 removed `pg_write_page`, #697), so the
+live probe — including **input schemas**, not just tool names — is the only
+trustworthy source.
+
+| Change | Tool | Effect on the backend |
+|--------|------|-----------------------|
+| **Removed** | `oql_generate` | Not used by the backend (LLM-backed; view entities are authored from user OQL verbatim). Its disappearance lines up with 11.13's new **"OQL Generation Toggle"** preference, so treat it as **configuration-dependent, not removed** — see the federation note below. |
+| **Added** | `mcp_mendix-marketplace_Component_GetComponentIDsByCriteria` | A **proxied** tool, not a Studio Pro one — see federation below. Not used by the backend. |
+| **Changed** | `pg_read_page` | **Breaking — was: ALTER PAGE broken on 11.13.** Gained `depth` (**default 4**) and `paths`; nodes below the limit become the literal string `"..."`. Fixed in `pgReadPage`: request `pgReadFullDepth` when the server advertises the argument, and refuse a read that still carries the sentinel. See the truncation note below. |
+| **Changed** | `ped_get_schema` | Gained `kind` (`constructor` \| `element`, default `constructor`), making explicit the two shapes the system prompt always described. **No backend change needed** — `ensureSchema` calls it only to satisfy PED's fetch-before-create contract and discards the body. |
+| **Changed** | `ped_update_document` | Description-only. Now states the rule mxcli's `navigation.go` discovered empirically: an element-valued property can be `set` **only while it is null/undefined**; a non-null one cannot be re-set. |
+| **Changed** | `ped_create_document` | Description-only (`documentContent`). Its text references a tool named `get_document_schema`, which does not exist in `tools/list` — an upstream naming slip, not a tool we are missing. |
+
+**Studio Pro now federates the MCP servers it is a client of.** The system prompt
+says it outright: *"Capabilities can be extended via MCP (Model Context Protocol)
+tools provided by the user. MCP tools are prefixed `mcp_{serverName}_{toolName}`."*
+The `mcp_mendix-marketplace_*` entry is the Marketplace MCP server re-exposed
+through Studio Pro's own server. Two consequences: the tool surface now varies
+**per user configuration** as well as per release, and `tools.listChanged: true`
+means it can change within a session. Combined with a togglable `oql_generate`,
+**tool presence must be probe-gated, never table-gated** — `capabilities.yaml` can
+describe what mxcli does with a tool, but not whether it is there.
+
+**Observed, and the reason this matters.** The *same* Studio Pro session reported
+**18 tools including `mcp_mendix-marketplace_*`, then 17 without it an hour later**,
+with no restart (2026-08-11). The federated tool comes and goes with Studio Pro's own
+client connection to the Marketplace server — the very thing 11.13's "repeated
+disconnect/reconnect" fix addresses. A table asserting that tool's presence would
+have been wrong within the hour. The fixture `testdata/tools-11.13.json` captures the
+18-tool state; treat its federated entry as a **sample, not a constant**, and do not
+write a test that asserts a federated tool is present.
+
+**Page reads are depth-truncated by default (the 11.13 regression).** Measured on
+`Administration.Account_Overview`: 32,594 bytes at full depth, **1,052 bytes** at
+the default, the entire widget tree collapsed to
+`{"widgets":[{"$Type":"Pages$Content","slot":"Main","widgets":["...","..."]}]}`.
+This is not an edge case — all three pages sampled from `PgTest` truncated too.
+Because ALTER PAGE is read-modify-**replace-whole-page**, the truncated read went
+back as the new page body; `pg_patch_page` **rejected** it (`PROP_NOT_PRIMITIVE:
+Property 'widgets' is not a primitive property`) and left the page intact, so the
+symptom was a broken ALTER PAGE rather than data loss. `CREATE PAGE` was never
+affected (it does not read). The fix has two halves, and the second is the durable
+one: `pgReadPage` asks for `pgReadFullDepth`, **and** `hasTruncationSentinel`
+refuses any read still carrying a placeholder, so the next change to the server's
+truncation default fails loudly instead of silently (ADR-0005 guard-don't-drop).
+The sentinel is matched only as an **array element** — a caption or title that
+legitimately reads `"..."` is real page content and must not trip the guard.
+
+**Unchanged gaps, re-verified live on 11.13:** still **no delete-document tool**,
+still **no save/flush tool**, reads still expose `$QualifiedName` but **not `$ID`**,
+and the security documents are still sealed.
+
 ## Capability gaps (11.11)
 
 These are the *absences* that bound what the backend can do. They are as
@@ -127,7 +195,24 @@ DNS-rebinding guard: the `/mcp` route requires HTTP `Host: localhost` (bare, no
 port). From a devcontainer:
 
 - Some sessions are reachable directly at `host.docker.internal:7782`.
-- Otherwise bridge on the **host**: `socat TCP4-LISTEN:7783,reuseaddr,fork 'TCP6:[::1]:7782'`, then dial `host.docker.internal:7783`.
+- Otherwise bridge on the **host**. Where `host.docker.internal` resolves to an
+  **IPv6** address (confirmed on the 11.13 Mac host: `fdc4:f303:9324::254`), a
+  `TCP4-LISTEN` bridge is not reachable from the container — the listener must
+  accept both families:
+
+  ```bash
+  socat TCP6-LISTEN:7790,reuseaddr,fork,ipv6only=0 'TCP6:[::1]:7782'
+  ```
+
+  Then dial `host.docker.internal:7790`. Quote the target: zsh glob-expands the
+  bare `[::1]` and fails with `no matches found`.
+
+**Finding the port on 11.13+.** Studio Pro now **auto-selects a free port** when the
+default is taken, and shows the active one in the **status bar** (Preferences > AI >
+MCP Server also configures it). There is no documented file or endpoint exposing it,
+so the port is a per-session lookup. A scan is a workable fallback — the server
+answers `initialize` with `serverInfo.name: mendix-studio-pro`, which identifies it
+unambiguously among other listeners.
 
 `cmd/mcpprobe` and the backend client pin the dial target while keeping the
 `Host` header `localhost` (`-url http://localhost/mcp -dial host.docker.internal:<port>`).
@@ -444,6 +529,14 @@ return a clear "not supported by the MCP backend" error via the generated
 
 ## Concord (optional second client — gap-filler)
 
+> **Concord is Windows-only — it does not run on macOS** (confirmed 2026-08-11 on
+> the 11.13 Mac host). On macOS every Concord-backed capability is simply absent,
+> so `DROP` of a standalone document (enumeration, microflow, page) has **no path
+> at all**: PED has no delete tool and Concord is the only gap-filler. `check_model`
+> is likewise unavailable; `ped_check_errors` remains for per-document validation.
+> This also means MCP-authored test documents cannot be cleaned up on macOS —
+> remove them in Studio Pro, or close without saving.
+
 Some deployments run a second MCP server, **Concord** (a Studio Pro extension;
 `concord-mcp`), alongside the built-in PED server. Concord is **not** an authoring
 server — it has none of the `ped_*`/`pg_*` create tools — but it provides
@@ -593,7 +686,13 @@ already removes entities/associations).
 1. Open a project in the new Studio Pro; establish transport (direct or socat).
 2. `go run ./cmd/mcpprobe -url http://localhost/mcp -dial host.docker.internal:<port> -method tools/list`
    → save to `mdl/backend/mcp/testdata/tools-<version>.json`.
-3. **Diff against the previous `tools.json`** — added/removed/renamed tools.
+3. **Diff against the previous `tools.json`** — added/removed/renamed tools, **and
+   each surviving tool's `inputSchema`**. A name-only diff is not enough: 11.13
+   changed no tool name mxcli calls, yet `pg_read_page` gained a `depth` argument
+   defaulting to 4 that broke ALTER PAGE. Treat a **new argument with a default**
+   as a behaviour change to the existing call, since the server applies it whether
+   or not the client knows about it. A new argument mxcli must send has to be gated
+   with `Client.SupportsToolArg` — never sent unconditionally.
 4. Update the **server identity** and **tool matrix** tables above (new column).
 5. Re-run the **capability gaps** checks — especially delete / save / modules /
    `$ID` exposure. Any gap that closed is a feature to build; note it here and

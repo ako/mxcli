@@ -63,6 +63,11 @@ type Backend struct {
 	// this session (the contract asks for a schema fetch before create/add).
 	schemaFetched map[string]bool
 
+	// capsCache memoizes the session's resolved capability set. Every authoring
+	// gate consults it and resolution costs a tools/list round-trip, so it is
+	// computed once per connection.
+	capsCache *Capabilities
+
 	// dirty holds module names whose live (in-memory) domain model has diverged
 	// from the on-disk .mpr because of writes this session. Reads of a dirty
 	// module are reconstructed from MCP instead of the stale local reader —
