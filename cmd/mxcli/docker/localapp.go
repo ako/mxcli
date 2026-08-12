@@ -171,7 +171,7 @@ func StartLocalApp(opts LocalAppOptions) (*LocalApp, error) {
 
 	// 3. Database.
 	if opts.EnsureDB {
-		if err := EnsureDatabase(opts.DB, w); err != nil {
+		if err := EnsureDatabase(&opts.DB, w); err != nil {
 			return nil, fmt.Errorf("ensuring database: %w", err)
 		}
 	} else if err := pingTCP(opts.DB.Host, 3*time.Second); err != nil {
