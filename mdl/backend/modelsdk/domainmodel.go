@@ -4,6 +4,7 @@ package modelsdkbackend
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/mendixlabs/mxcli/modelsdk/element"
 	genDm "github.com/mendixlabs/mxcli/modelsdk/gen/domainmodels"
@@ -354,17 +355,24 @@ func validationRuleFromGen(vr *genDm.ValidationRule) *domainmodel.ValidationRule
 }
 
 // ruleTypeFromGen maps a gen RuleInfo element back to the domainmodel rule-type
-// string (reverse of ruleInfoToGen, which today emits Unique/Required).
+// string.
+//
+// It reports the type it actually found rather than collapsing everything to
+// "Required". The old default did exactly that, and because ALTER ENTITY
+// round-trips an entity through this, a stored RegEx rule was READ as Required
+// and WRITTEN BACK as Required — the regex reference silently gone, the field
+// merely mandatory. Any type the writers cannot reproduce is refused at the
+// write, not quietly rewritten (see ruleInfoToGen).
 func ruleTypeFromGen(ri element.Element) string {
 	if ri == nil {
 		return "Required"
 	}
-	switch ri.TypeName() {
-	case "DomainModels$UniqueRuleInfo":
-		return "Unique"
-	default:
+	// "DomainModels$RegExRuleInfo" -> "RegEx"
+	name := strings.TrimSuffix(strings.TrimPrefix(ri.TypeName(), "DomainModels$"), "RuleInfo")
+	if name == "" {
 		return "Required"
 	}
+	return name
 }
 
 // textFromGen converts a gen Text (translations) back to a model.Text.

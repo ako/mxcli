@@ -49,6 +49,15 @@ func (w *Writer) CreateEntity(domainModelID model.ID, entity *domainmodel.Entity
 // UpdateEntity updates an existing entity.
 // domainModelID is the ID of the domain model itself (not the module ID).
 func (w *Writer) UpdateEntity(domainModelID model.ID, entity *domainmodel.Entity) error {
+	// Refuse rather than downgrade — see serializeRuleInfo.
+	if ruleType, ok := validationRulesAreReproducible(entity); !ok {
+		return fmt.Errorf(
+			"entity %s has a %s validation rule, which mxcli cannot rewrite without losing it — "+
+				"change this entity in Studio Pro, or remove the rule first.\n"+
+				"  (Rewriting would silently turn it into a Required rule: the constraint would be gone "+
+				"and the build would still pass.)",
+			entity.Name, ruleType)
+	}
 	dm, err := w.reader.GetDomainModelByID(domainModelID)
 	if err != nil {
 		return err
@@ -1322,10 +1331,18 @@ func serializeValidationRule(vr *domainmodel.ValidationRule, moduleName string, 
 	return doc
 }
 
+// serializeRuleInfo returns the RuleInfo child for a rule type, or nil for a
+// type this writer cannot reproduce.
+//
+// A nil return is a REFUSAL, not a default. The previous code fell back to
+// RequiredRuleInfo for anything it did not recognise, which made an entity
+// rewrite a silent downgrade: a RegEx rule came back as Required, the pattern
+// reference gone and the field merely mandatory, with mxbuild none the wiser
+// because both are valid rules. Callers must check reproducibleRuleType first.
 func serializeRuleInfo(ruleType string) bson.D {
 	// Use bson.D (ordered document) - Studio Pro uses $ID first, then $Type
 	switch ruleType {
-	case "Required":
+	case "Required", "":
 		return bson.D{
 			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
 			{Key: "$Type", Value: "DomainModels$RequiredRuleInfo"},
@@ -1336,12 +1353,24 @@ func serializeRuleInfo(ruleType string) bson.D {
 			{Key: "$Type", Value: "DomainModels$UniqueRuleInfo"},
 		}
 	default:
-		// Fallback to required
-		return bson.D{
-			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
-			{Key: "$Type", Value: "DomainModels$RequiredRuleInfo"},
+		return nil
+	}
+}
+
+// reproducibleRuleType reports whether this writer can serialize a rule type.
+func reproducibleRuleType(ruleType string) bool {
+	return serializeRuleInfo(ruleType) != nil
+}
+
+// validationRulesAreReproducible returns the first rule type this writer cannot
+// serialize, so the caller can refuse the write instead of downgrading it.
+func validationRulesAreReproducible(e *domainmodel.Entity) (string, bool) {
+	for _, vr := range e.ValidationRules {
+		if !reproducibleRuleType(vr.Type) {
+			return vr.Type, false
 		}
 	}
+	return "", true
 }
 
 func serializeText(text *model.Text) bson.D {

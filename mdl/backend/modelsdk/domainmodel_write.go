@@ -424,16 +424,46 @@ func validationRuleToGen(vr *domainmodel.ValidationRule, moduleName, entityName 
 	return out
 }
 
-// ruleInfoToGen maps a validation rule type to its RuleInfo element.
+// validationRulesAreReproducible reports the first stored validation rule this
+// writer cannot serialize, so the caller can refuse the write instead of
+// downgrading it. See ruleInfoToGen.
+func validationRulesAreReproducible(e *domainmodel.Entity) (string, bool) {
+	for _, vr := range e.ValidationRules {
+		if !reproducibleRuleType(vr.Type) {
+			return vr.Type, false
+		}
+	}
+	return "", true
+}
+
+// ruleInfoToGen maps a validation rule type to its RuleInfo element, or nil for
+// a type this writer cannot reproduce.
+//
+// A nil return is a REFUSAL, not a default. The previous code fell back to
+// RequiredRuleInfo, which turned every entity rewrite into a silent downgrade:
+// a RegEx rule came back as Required, the pattern reference gone and the field
+// merely mandatory, with mxbuild none the wiser because both are valid rules.
+//
+// RegEx and Range are not reproducible here because modelsdk/gen has the wrong
+// BSON key for the regex reference — it binds "RegularExpression" where every
+// Studio Pro document stores "RegExIdentifier" — so writing through gen would
+// emit a property Mendix does not have. Until that is corrected, preserving the
+// stored rule is the only non-destructive option.
 func ruleInfoToGen(ruleType string) element.Element {
 	switch ruleType {
 	case "Unique":
 		return genDm.NewUniqueRuleInfo()
-	case "Required":
+	case "Required", "":
 		return genDm.NewRequiredRuleInfo()
 	default:
-		return genDm.NewRequiredRuleInfo()
+		return nil
 	}
+}
+
+// reproducibleRuleTypes are the validation rule types this writer can serialize.
+// Everything else must be preserved rather than rewritten.
+func reproducibleRuleType(ruleType string) bool {
+	return ruleInfoToGen(ruleType) != nil
 }
 
 // textToGen converts a model.Text to a gen Texts$Text with sorted translations.

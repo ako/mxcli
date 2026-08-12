@@ -60,9 +60,23 @@ compile it.
 ## You cannot bind a regex to an attribute from MDL yet
 
 `create validation rule ... regex Attr ...` has grammar but **no
-implementation** — it parses and silently does nothing (this is true of every
-validation rule form, not just regex). Create the regex document with mxcli,
-then attach it to the attribute in Studio Pro.
+implementation** — it parses and silently does nothing (true of every validation
+rule form). Create the regex document with mxcli, then attach it to the attribute
+in Studio Pro.
+
+Required and Unique rules *are* authorable, as attribute constraints:
+
+```sql
+create entity Val.Person (
+  Email: String(200) not null error 'Email is required',
+  Code:  String(20)  unique error 'Code must be unique'
+);
+```
+
+Once an entity has a **RegEx or Range** rule, mxcli **refuses** to rewrite it
+(`alter entity`, `create or replace entity`) rather than silently turning it into
+a Required rule, which is what it used to do — the constraint would vanish and
+the build would still pass. Change such an entity in Studio Pro.
 
 ## Finding out who uses one
 
