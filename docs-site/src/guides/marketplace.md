@@ -61,11 +61,11 @@ mxcli marketplace install 2888 --version 7.0.3 -p app.mpr   # a module
 | Content type | What `install` does |
 |---|---|
 | **Widget** | Copies the `.mpk` into the project's `widgets/` folder (overwrites on update). Reload in Studio Pro or run `mx update-widgets` to pick it up. |
-| **Module** (new) | Imports it via `mx module-import` (requires a matching mxbuild — run `mxcli setup mxbuild -p app.mpr` if missing). **Refused on an MPR v2 project** — see below. |
+| **Module** (new) | Copies the module in with mxcli's own writer, preserving the project's MPR format, plus everything the package ships (widgets, themesource, ...). Requires a matching mxbuild — run `mxcli setup mxbuild -p app.mpr` if missing. |
 | **Module** (already present) | **Reported, not modified** — see below. |
 | Theme / Starter App / Sample | Downloaded to disk with import instructions (import via Studio Pro). |
 
-## Module import is refused on MPR v2 projects
+## Why installs do not use `mx module-import`
 
 `mx module-import` rewrites an MPR v2 project as v1. Measured on a blank Mendix 11.12.1 app, a single import turned a 69 KB `.mpr` plus 341 `.mxunit` files into one 14 MB SQLite blob with no `mprcontents/` — and the same was observed independently on 11.13.0, so it is not version-specific:
 
@@ -76,7 +76,9 @@ after    .mpr 14,295,040 bytes  +    0 .mxunit   tables: Unit, _MetaData
 
 That is not cosmetic. The v2 layout is what makes the model diffable and mergeable per document: it is what [`mxcli diff-local`](../tools/diff.md) reads, and what makes an idempotent re-run observable as "no files changed". The conversion is **one-way** — `mx convert` targets Mendix *versions*, not storage formats.
 
-So `install` refuses rather than warning:
+So `install` copies the module's units directly instead, which keeps the project in whatever format it already uses and also works for theme modules (`module-import` refuses those outright). Measured: CommunityCommons 11.5.1 into a vanilla 11.12.1 app — 128 units and 126 bundled files, `mprcontents/` grew from 369 to 497 `.mxunit` files, and `mx check` reports 0 errors.
+
+`--allow-format-change` selects the legacy `module-import` path, which still refuses to run silently:
 
 ```text
 refusing to import: app.mpr uses the MPR v2 storage format, and 'mx module-import'
@@ -86,7 +88,7 @@ would rewrite it as v1.
   - pass --allow-format-change to accept the conversion to MPR v1.
 ```
 
-Import the module in **Studio Pro**, which preserves the format. If your project is not kept in git and the v1 layout is fine, `--allow-format-change` accepts the conversion — and the command then states plainly that the project is now v1.
+If you take that route the command states plainly that the project is now v1.
 
 ## Updating an existing module
 

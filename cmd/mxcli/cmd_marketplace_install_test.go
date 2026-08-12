@@ -77,6 +77,10 @@ func TestModuleNameFromMpk_NoPackageXML(t *testing.T) {
 // TestCheckStorageFormatPreserved_RefusesV2 is the guard for the silent MPR
 // v2→v1 collapse.
 //
+// Still enforced, but no longer on the default path: a module install now copies
+// units with mxcli's own writer and preserves the format, so this guards only
+// the legacy --allow-format-change route through `mx module-import`.
+//
 // `mx module-import` rewrites a v2 project as v1: measured on a blank Mendix
 // 11.12.1 app, one import turned a 69 KB .mpr plus 341 .mxunit files into a
 // single 14 MB blob with no mprcontents/. That destroys the per-document files

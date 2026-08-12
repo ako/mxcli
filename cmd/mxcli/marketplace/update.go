@@ -317,3 +317,33 @@ func InstallPackageFiles(mpkPath, projectDir string) (written []string, err erro
 	sort.Strings(written)
 	return written, nil
 }
+
+// PerformInstall adds a module that is not yet in the project, copying it from
+// referenceMpr and installing everything the package ships.
+//
+// It is PerformUpdate without the parts that only make sense for a replace:
+// nothing to capture, nothing to drop. The reason it exists separately from
+// `mx module-import` is what makes it worth having — it preserves the project's
+// storage format, where module-import rewrites MPR v2 as v1, and it works for
+// theme modules, which module-import refuses outright.
+func PerformInstall(mprPath, referenceMpr, packageMpk, moduleName, version, versionID string,
+	newBackend func() backend.FullBackend) (*UpdateResult, error) {
+
+	copied, err := TransplantModule(referenceMpr, mprPath, moduleName)
+	if err != nil {
+		return nil, fmt.Errorf("copy the module in: %w", err)
+	}
+	if err := StampMarketplaceVersion(mprPath, moduleName, version, versionID); err != nil {
+		return nil, fmt.Errorf("record the installed version: %w", err)
+	}
+	files, err := InstallPackageFiles(packageMpk, filepath.Dir(mprPath))
+	if err != nil {
+		return nil, fmt.Errorf("install the package's bundled files: %w", err)
+	}
+	return &UpdateResult{
+		Module:         moduleName,
+		ToVersion:      version,
+		UnitsCopied:    copied,
+		FilesInstalled: files,
+	}, nil
+}

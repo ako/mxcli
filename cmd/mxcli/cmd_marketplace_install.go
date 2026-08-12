@@ -15,6 +15,7 @@ import (
 
 	modelsdk "github.com/mendixlabs/mxcli"
 	"github.com/mendixlabs/mxcli/cmd/mxcli/docker"
+	mp "github.com/mendixlabs/mxcli/cmd/mxcli/marketplace"
 	"github.com/mendixlabs/mxcli/internal/marketplace"
 	"github.com/spf13/cobra"
 )
@@ -26,18 +27,21 @@ var marketplaceInstallCmd = &cobra.Command{
 
 Install is type-aware:
   - Widget      copied into the project's widgets/ folder (overwrites on update)
-  - Module      imported via 'mx module-import' (new modules only)
+  - Module      copied in with mxcli's own writer (new modules only)
   - other types downloaded to disk with import instructions
 
 Updating a module that is already present is NOT done automatically: it could
 discard local edits and, for modules with persistent entities, change entity
 IDs (which loses data). Such updates are reported and left to Studio Pro.
 
-Module import into an MPR v2 project is refused. 'mx module-import' rewrites a
-v2 project as v1 — mprcontents/ is collapsed into a single binary .mpr — which
-loses the per-document files 'mxcli diff-local' and git review depend on, and
-the conversion is one-way. Import in Studio Pro, or pass --allow-format-change
-to accept it.`,
+A module is installed by copying its units with mxcli's own writer rather than
+by running 'mx module-import'. That preserves the project's storage format —
+module-import rewrites MPR v2 as v1, collapsing mprcontents/ into a single
+binary .mpr, one-way — and it works for theme modules, which module-import
+refuses outright. Everything the package ships (widgets, themesource, ...) is
+installed alongside the model.
+
+--allow-format-change selects the legacy module-import path instead.`,
 	Example: `  mxcli marketplace install 20 -p app.mpr
   mxcli marketplace install 2888 --version 7.0.3 -p app.mpr`,
 	Args: cobra.ExactArgs(1),
@@ -49,7 +53,7 @@ func init() {
 	marketplaceInstallCmd.Flags().StringP("project", "p", "", "path to the Mendix project (.mpr)")
 	marketplaceInstallCmd.Flags().String("version", "", "version number to install (default: latest)")
 	marketplaceInstallCmd.Flags().Bool("allow-format-change", false,
-		"permit the import to rewrite an MPR v2 project as v1 (one-way; loses mprcontents/)")
+		"use the legacy 'mx module-import' path, which rewrites an MPR v2 project as v1 (one-way)")
 	_ = marketplaceInstallCmd.MarkFlagRequired("project")
 
 	marketplaceCmd.AddCommand(marketplaceInstallCmd)
@@ -162,8 +166,20 @@ func installModule(ctx context.Context, client *marketplace.Client, v *marketpla
 		return nil
 	}
 
-	if err := checkStorageFormatPreserved(mprPath, allowFormatChange); err != nil {
-		return err
+	// Default path: copy the module in with mxcli's own writer, which preserves
+	// the project's storage format and works for theme modules. --allow-format-change
+	// selects the legacy `mx module-import`, which does neither.
+	if !allowFormatChange {
+		res, ierr := installByTransplant(ctx, mpkPath, mprPath, moduleName, mendixVer, v)
+		if ierr != nil {
+			return ierr
+		}
+		fmt.Fprintf(out, "Installed module %q version %s into %s\n",
+			moduleName, v.VersionNumber, filepath.Base(mprPath))
+		fmt.Fprintf(out, "  %d units copied, %d bundled file(s) installed.\n",
+			res.UnitsCopied, len(res.FilesInstalled))
+		fmt.Fprintln(out, "\n  Next: 'mx update-widgets <project.mpr>', then 'mxcli docker check -p <project.mpr>'.")
+		return nil
 	}
 
 	mxPath, err := docker.ResolveMxForVersion("", mendixVer)
@@ -180,6 +196,28 @@ func installModule(ctx context.Context, client *marketplace.Client, v *marketpla
 	fmt.Fprintf(out, "Imported module %q version %s into %s\n", moduleName, v.VersionNumber, filepath.Base(mprPath))
 	reportFormatChange(mprPath, out)
 	return nil
+}
+
+// installByTransplant builds a reference project from the package and copies the
+// module out of it, so the destination keeps its MPR format.
+func installByTransplant(ctx context.Context, mpkPath, mprPath, moduleName, mendixVer string,
+	v *marketplace.Version) (*mp.UpdateResult, error) {
+
+	work, err := os.MkdirTemp("", "mxinstall")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(work)
+
+	refDir := filepath.Join(work, "ref")
+	if err := os.MkdirAll(refDir, 0o755); err != nil {
+		return nil, err
+	}
+	refMpr, err := mp.PackageProject(ctx, mpkPath, mendixVer, refDir, newBackendFactory())
+	if err != nil {
+		return nil, fmt.Errorf("build a reference project from the package: %w", err)
+	}
+	return mp.PerformInstall(mprPath, refMpr, mpkPath, moduleName, v.VersionNumber, v.VersionID, newBackendFactory())
 }
 
 // isMPRv2 reports whether the project at mprPath uses the MPR v2 storage format:
