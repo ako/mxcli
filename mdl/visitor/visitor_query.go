@@ -204,6 +204,26 @@ func (b *Builder) ExitShowStatement(ctx *parser.ShowStatementContext) {
 			}
 		}
 		b.statements = append(b.statements, stmt)
+	} else if ctx.QUEUES() != nil {
+		stmt := &ast.ShowQueuesStmt{}
+		if ctx.IN() != nil {
+			if qn := ctx.QualifiedName(); qn != nil {
+				stmt.Module = getQualifiedNameText(qn)
+			} else if id := ctx.IDENTIFIER(); id != nil {
+				stmt.Module = id.GetText()
+			}
+		}
+		b.statements = append(b.statements, stmt)
+	} else if ctx.SCHEDULED() != nil && ctx.EVENTS() != nil {
+		stmt := &ast.ShowScheduledEventsStmt{}
+		if ctx.IN() != nil {
+			if qn := ctx.QualifiedName(); qn != nil {
+				stmt.Module = getQualifiedNameText(qn)
+			} else if id := ctx.IDENTIFIER(); id != nil {
+				stmt.Module = id.GetText()
+			}
+		}
+		b.statements = append(b.statements, stmt)
 	} else if ctx.LAYOUTS() != nil {
 		stmt := &ast.ShowStmt{ObjectType: ast.ShowLayouts}
 		if ctx.IN() != nil {
@@ -694,6 +714,22 @@ func (b *Builder) ExitCatalogSelectQuery(ctx *parser.CatalogSelectQueryContext) 
 
 // ExitDescribeStatement handles DESCRIBE ENTITY/ASSOCIATION/ENUMERATION/MODULE
 func (b *Builder) ExitDescribeStatement(ctx *parser.DescribeStatementContext) {
+	// DESCRIBE QUEUE Module.Name
+	if ctx.QUEUE() != nil {
+		if qn := ctx.QualifiedName(); qn != nil {
+			b.statements = append(b.statements, &ast.DescribeQueueStmt{Name: buildQualifiedName(qn)})
+		}
+		return
+	}
+
+	// DESCRIBE SCHEDULED EVENT Module.Name
+	if ctx.SCHEDULED() != nil && ctx.EVENT() != nil {
+		if qn := ctx.QualifiedName(); qn != nil {
+			b.statements = append(b.statements, &ast.DescribeScheduledEventStmt{Name: buildQualifiedName(qn)})
+		}
+		return
+	}
+
 	// Handle DESCRIBE MODULE ROLE (uses qualifiedName)
 	if ctx.MODULE() != nil && ctx.ROLE() != nil {
 		if qn := ctx.QualifiedName(); qn != nil {
@@ -1008,6 +1044,11 @@ func (b *Builder) ExitDescribeStatement(ctx *parser.DescribeStatementContext) {
 	} else if ctx.BUILDING() != nil && ctx.BLOCK() != nil {
 		b.statements = append(b.statements, &ast.DescribeStmt{
 			ObjectType: ast.DescribeBuildingBlock,
+			Name:       name,
+		})
+	} else if ctx.MENU_KW() != nil {
+		b.statements = append(b.statements, &ast.DescribeStmt{
+			ObjectType: ast.DescribeMenu,
 			Name:       name,
 		})
 	} else if ctx.SNIPPET() != nil {

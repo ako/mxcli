@@ -50,6 +50,13 @@ var engineScriptSkip = map[string]string{
 	// The legacy widget builder has no `barchart` pluggable-widget template, so
 	// page build fails ("template not found: barchart"). Passes on modelsdk.
 	"legacy/34-chart-widget-examples.mdl": "legacy widget builder lacks the barchart template (works on modelsdk); tracked",
+	// Menu-document authoring is modelsdk-only *by design*, not a gap: Studio Pro
+	// stores a menu document's item lists with typed-array marker 3, which the
+	// codec emits by default, while the legacy navigation writer hand-builds menu
+	// items with marker 1. Rather than ship a second writer of unverified shape,
+	// the legacy backend refuses create/modify/drop — so the script cannot pass
+	// there and the refusal is the intended behaviour.
+	"legacy/26-menu-examples.mdl": "menu authoring is modelsdk-only by design; the legacy backend refuses it",
 	// The legacy widget builder has no `linechart` template either, so the OL08
 	// LineChart object-list example (added in 6b837ad7) fails page build
 	// ("template not found: linechart"). Passes on modelsdk. Same class as the

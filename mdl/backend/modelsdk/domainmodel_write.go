@@ -459,11 +459,22 @@ func (b *Backend) moduleNameFor(unitID model.ID) string {
 	if err != nil {
 		return ""
 	}
+	parentOf := make(map[string]string, len(units))
 	for _, u := range units {
-		if u.ID == string(unitID) {
-			if mi, _ := b.reader.GetModule(u.ContainerID); mi != nil {
-				return mi.Name
-			}
+		parentOf[u.ID] = u.ContainerID
+	}
+
+	// A document is not necessarily a direct child of its module — Studio Pro
+	// nests documents in folders, and folders in folders, which is the norm in
+	// marketplace modules. So walk the containment chain up to the first
+	// enclosing module rather than reading only the immediate container.
+	// The project root is its own container, so stop on a self-reference as
+	// well as on a missing entry.
+	seen := make(map[string]bool, 8)
+	for id := parentOf[string(unitID)]; id != "" && !seen[id]; id = parentOf[id] {
+		seen[id] = true
+		if mi, _ := b.reader.GetModule(id); mi != nil {
+			return mi.Name
 		}
 	}
 	return ""

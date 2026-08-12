@@ -49,10 +49,18 @@ whatever happens to be cached.
 mxcli new PopupDemo --version 11.12.2 --output-dir /root/pd
 ```
 
-> **Trap: `PathTooLongException`.** Mendix's package extractor fails on deep paths.
-> A scratchpad path like
-> `/tmp/claude-.../<uuid>/scratchpad/proj` is already too long and
-> `mx create-project` dies. Use a short root (`/root/pd`). The same applies to Go
+> **Trap: `PathTooLongException`.** MxToolset refuses any full path over **259
+> characters** — its own Windows-compatibility limit, not the filesystem's — and
+> aborts extraction part way through, leaving ~259 files and no `.mpr`. With the
+> blank 11.13 template's longest relative path at 181 characters, the output
+> directory gets **77**. A scratchpad path like
+> `/tmp/claude-.../<uuid>/scratchpad/proj` blows that on its own.
+>
+> `mxcli new` handles this since #825 — it creates the project in a short staging
+> directory and moves it into place, so any depth works and a failure never leaves
+> partial output. It warns when the final path exceeds 259 that Studio Pro on
+> Windows may not open the project. **Calling `mx create-project` directly still
+> dies**, so keep using a short root (`/root/pd`) for that. The same applies to Go
 > tests: set `TMPDIR=/root/t` so `t.TempDir()` stays short, or the scaffolding fails
 > and the test **skips** — which is indistinguishable from passing.
 

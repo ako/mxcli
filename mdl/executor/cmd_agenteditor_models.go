@@ -136,6 +136,16 @@ func execCreateAgentEditorModel(ctx *ExecContext, s *ast.CreateModelStmt) error 
 		return mdlerrors.NewNotConnected()
 	}
 
+	// Agent Editor documents need Studio Pro 11.9+ and the AgentEditorCommons
+	// module. Nothing downstream catches an older project: the documents are
+	// custom blobs, so mxbuild does not validate them and the build stays green
+	// while Studio Pro cannot open the result.
+	if err := checkFeature(ctx, "agent_documents", "agent_model",
+		"create model",
+		"upgrade your project to Mendix 11.9+ and install the AgentEditorCommons module"); err != nil {
+		return err
+	}
+
 	existing := findAgentEditorModel(ctx, s.Name.Module, s.Name.Name)
 	if existing != nil && !s.CreateOrModify {
 		return mdlerrors.NewAlreadyExists("model", s.Name.String())

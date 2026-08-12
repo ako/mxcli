@@ -26,6 +26,14 @@ const (
 	// (End-of-catalog normally terminates the loop first: an offset past the
 	// end returns a short/empty page.)
 	maxSearchPages = 50
+	// versionPageSize is the server-side cap on the /v1/content/{id}/versions
+	// `limit` parameter: asking for more than 20 still returns 20, and asking
+	// for nothing at all returns 10.
+	versionPageSize = 20
+	// maxVersionPages bounds the version walk. The longest histories in the
+	// catalog today are well under a hundred releases, so this is a runaway
+	// guard rather than a real limit.
+	maxVersionPages = 25
 	// searchConcurrency bounds how many catalog pages are fetched in parallel
 	// during a deep keyword scan (the first page is always fetched alone so a
 	// common early match stays a single request).
@@ -211,12 +219,28 @@ func (c *Client) Get(ctx context.Context, contentID int) (*Content, error) {
 
 // Versions returns all published versions for a content item, ordered
 // newest first (per the API).
+//
+// The endpoint pages: it returns 10 versions when asked for none in particular
+// and caps `limit` at 20, so the versions a long-lived module was actually
+// installed from fall off the end. Data Widgets has 40+ published versions and
+// an unpaged call returns the newest 10 — which is why `marketplace versions`
+// used to show exactly ten of everything, and why looking up an older installed
+// version reported it as not published. Pages are walked until one comes back
+// short.
 func (c *Client) Versions(ctx context.Context, contentID int) (*VersionList, error) {
-	var out VersionList
-	if err := c.get(ctx, fmt.Sprintf("/v1/content/%d/versions", contentID), &out); err != nil {
-		return nil, err
+	var all VersionList
+	for offset := 0; offset < versionPageSize*maxVersionPages; offset += versionPageSize {
+		var page VersionList
+		path := fmt.Sprintf("/v1/content/%d/versions?limit=%d&offset=%d", contentID, versionPageSize, offset)
+		if err := c.get(ctx, path, &page); err != nil {
+			return nil, err
+		}
+		all.Items = append(all.Items, page.Items...)
+		if len(page.Items) < versionPageSize {
+			break
+		}
 	}
-	return &out, nil
+	return &all, nil
 }
 
 // Download streams the .mpk for the given version to dst and returns the

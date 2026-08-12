@@ -292,7 +292,7 @@ func outputNavigationProfile(ctx *ExecContext, p *types.NavigationProfile) {
 	// Menu items
 	if len(p.MenuItems) > 0 {
 		fmt.Fprintln(ctx.Output, "  menu (")
-		printMenuMDL(ctx.Output, p.MenuItems, 2)
+		printMenuMDL(ctx.Output, p.MenuItems, 2, "CREATE NAVIGATION")
 		fmt.Fprintln(ctx.Output, "  )")
 	}
 
@@ -344,15 +344,17 @@ func menuItemTarget(item *types.NavMenuItem) string {
 	return ""
 }
 
-// printMenuMDL prints menu items in MDL-style format.
-func printMenuMDL(w io.Writer, items []*types.NavMenuItem, depth int) {
+// printMenuMDL prints menu items in MDL-style format. reproducer names the
+// construct an icon note should point at — navigation menus are authored by
+// CREATE NAVIGATION, while a standalone menu document cannot be authored at all.
+func printMenuMDL(w io.Writer, items []*types.NavMenuItem, depth int, reproducer string) {
 	indent := strings.Repeat("  ", depth)
 	for _, item := range items {
 		icon := menuItemIconMDL(item)
 		if len(item.Items) > 0 {
 			// Sub-menu container
 			fmt.Fprintf(w, "%smenu '%s'%s (\n", indent, item.Caption, icon)
-			printMenuMDL(w, item.Items, depth+1)
+			printMenuMDL(w, item.Items, depth+1, reproducer)
 			fmt.Fprintf(w, "%s);\n", indent)
 		} else if item.Page != "" {
 			fmt.Fprintf(w, "%smenu item '%s' page %s%s;\n", indent, item.Caption, item.Page, icon)
@@ -361,7 +363,7 @@ func printMenuMDL(w io.Writer, items []*types.NavMenuItem, depth int) {
 		} else {
 			fmt.Fprintf(w, "%smenu item '%s'%s;\n", indent, item.Caption, icon)
 		}
-		if note := menuItemIconNote(item); note != "" {
+		if note := menuItemIconNote(item, reproducer); note != "" {
 			fmt.Fprintf(w, "%s%s\n", indent, note)
 		}
 	}
@@ -381,7 +383,7 @@ func menuItemIconMDL(item *types.NavMenuItem) string {
 // Forms$IconCollectionIcon; a glyph icon (numeric Code) or an image icon
 // (pointing into an image collection, not an icon collection) is a different
 // element and would have to be guessed at.
-func menuItemIconNote(item *types.NavMenuItem) string {
+func menuItemIconNote(item *types.NavMenuItem, reproducer string) string {
 	if item.IconType == "" || strings.HasSuffix(item.IconType, "IconCollectionIcon") {
 		return ""
 	}
@@ -389,6 +391,6 @@ func menuItemIconNote(item *types.NavMenuItem) string {
 	if target == "" {
 		target = "a numeric glyph code"
 	}
-	return fmt.Sprintf("-- icon %s (%s) is not reproducible by CREATE NAVIGATION; set it in Studio Pro",
-		target, item.IconType)
+	return fmt.Sprintf("-- icon %s (%s) is not reproducible by %s; set it in Studio Pro",
+		target, item.IconType, reproducer)
 }

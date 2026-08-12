@@ -31,3 +31,25 @@ type NavMenuItemDef struct {
 	Icon      string           // ICON 'Module.Collection.name', empty for none
 	Items     []NavMenuItemDef // Sub-items (for MENU 'caption' (...))
 }
+
+// CreateMenuStmt is `create [or modify] menu Module.Name ( <items> )` — a
+// standalone Menus$MenuDocument, not the menu inside a navigation profile.
+// Items reuse NavMenuItemDef so both constructs share one item syntax.
+//
+// Like CREATE NAVIGATION, this is a full replacement: the item list given is the
+// document's complete contents, so an omitted item is a removed item.
+type CreateMenuStmt struct {
+	Name           QualifiedName
+	Items          []NavMenuItemDef
+	CreateOrModify bool // CREATE OR MODIFY / OR REPLACE
+	Documentation  string
+}
+
+func (s *CreateMenuStmt) isStatement() {}
+
+// DropMenuStmt is `drop menu Module.Name`.
+type DropMenuStmt struct {
+	Name QualifiedName
+}
+
+func (s *DropMenuStmt) isStatement() {}

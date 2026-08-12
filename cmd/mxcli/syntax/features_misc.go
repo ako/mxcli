@@ -207,6 +207,135 @@ CREATE CONFIGURATION 'Production'
 		SeeAlso: []string{"settings.show"},
 	})
 
+	// ── Queues ──────────────────────────────────────────────────────────
+
+	Register(SyntaxFeature{
+		Path:    "queue",
+		Summary: "Task queues — bound concurrency for queued microflow calls",
+		Keywords: []string{
+			"queue", "queues", "task queue", "create queue", "drop queue",
+			"describe queue", "show queues", "parallelism", "cluster wide",
+			"background", "async microflow",
+		},
+		Syntax: `CREATE [OR MODIFY] QUEUE Module.Name [( <property>: <value>, ... )];
+SHOW QUEUES [IN <module>];
+LIST QUEUES [IN <module>];
+DESCRIBE QUEUE Module.Name;
+DROP QUEUE Module.Name;
+
+Properties:
+  Parallelism   how many tasks run at once. This is an EXPRESSION, not a
+                number — Mendix stores it as a string. A bare integer is the
+                common case; quote anything else. Defaults to 1.
+  ClusterWide   true = the limit applies across the cluster, false (default)
+                = per runtime instance.
+  Documentation free text.
+
+Binding a call to a queue is not yet expressible in MDL. Because a rebuild
+would drop an existing binding, mxcli REFUSES to CREATE OR REPLACE/MODIFY a
+microflow whose stored calls are queued — change those in Studio Pro.`,
+		Example: `CREATE QUEUE Ops.OrderProcessing (
+  Parallelism: 3,
+  ClusterWide: true
+);
+
+-- Defaults: parallelism 1, per-instance.
+CREATE QUEUE Ops.Mail;
+
+-- An expression is legal wherever a number is.
+CREATE OR MODIFY QUEUE Ops.OrderProcessing (
+  Parallelism: '$MyModule.Workers',
+  ClusterWide: true
+);
+
+SHOW QUEUES IN Ops;
+DESCRIBE QUEUE Ops.OrderProcessing;
+DROP QUEUE Ops.Mail;`,
+	})
+
+	// ── Scheduled events ────────────────────────────────────────────────
+
+	Register(SyntaxFeature{
+		Path:    "scheduled-event",
+		Summary: "Scheduled events — Mendix's cron: run a microflow on a repeating schedule",
+		Keywords: []string{
+			"scheduled event", "scheduled events", "schedule", "cron", "recurring",
+			"create scheduled event", "drop scheduled event", "describe scheduled event",
+			"repeat", "daily", "hourly", "weekly", "monthly", "yearly", "timer", "batch job",
+		},
+		Syntax: `CREATE [OR MODIFY] SCHEDULED EVENT Module.Name ( <property>: <value>, ... );
+SHOW SCHEDULED EVENTS [IN <module>];
+LIST SCHEDULED EVENTS [IN <module>];
+DESCRIBE SCHEDULED EVENT Module.Name;
+DROP SCHEDULED EVENT Module.Name;
+
+Always required:
+  Microflow     the microflow to run, as a qualified name
+  Repeat        which schedule to use (below)
+
+Each Repeat takes ONLY its own fields; anything else is refused:
+  Minutely          Multiplier
+  Hourly            Multiplier, MinuteOffset
+  Daily             HourOfDay, MinuteOfHour
+  Weekly            Weekdays, HourOfDay, MinuteOfHour
+  MonthlyByDate     Multiplier, MonthOffset, DayOfMonth, HourOfDay, MinuteOfHour
+  MonthlyByWeekday  Multiplier, MonthOffset, DaySelector, Weekday, HourOfDay, MinuteOfHour
+  YearlyByDate      Month, DayOfMonth, HourOfDay, MinuteOfHour
+  YearlyByWeekday   Month, DaySelector, Weekday, HourOfDay, MinuteOfHour
+
+  Weekdays is a quoted list: 'Monday, Friday'. DaySelector is First, Second,
+  Third, Fourth or Last. Weekday is Sunday..Saturday. Month and DayOfMonth are
+  numbers (1-12, 1-31). MonthOffset picks which month of a multi-month cycle
+  fires (0-based).
+
+Optional on any repeat:
+  Enabled       true or false (default false)
+  OnOverlap     DelayNext (default) or SkipNext — what happens when a run is
+                still going when the next one is due. This is a scheduled
+                event's own concurrency control; it does not use a task queue.
+  TimeZone      UTC (default) or Server
+  StartDateTime an RFC 3339 timestamp; the event does not run before it
+  Documentation free text`,
+		Example: `CREATE SCHEDULED EVENT Ops.NightlyCleanup (
+  Microflow: Ops.SE_Cleanup,
+  Repeat: Daily,
+  HourOfDay: 4,
+  MinuteOfHour: 0,
+  TimeZone: Server,
+  Enabled: true
+);
+
+CREATE SCHEDULED EVENT Ops.HourlyPing (
+  Microflow: Ops.SE_Ping,
+  Repeat: Hourly,
+  Multiplier: 2,
+  MinuteOffset: 23
+);
+
+CREATE SCHEDULED EVENT Ops.WeeklyReport (
+  Microflow: Ops.SE_Report,
+  Repeat: Weekly,
+  Weekdays: 'Monday, Friday',
+  HourOfDay: 9,
+  MinuteOfHour: 30
+);
+
+CREATE SCHEDULED EVENT Ops.QuarterEnd (
+  Microflow: Ops.SE_Close,
+  Repeat: MonthlyByWeekday,
+  Multiplier: 3,
+  MonthOffset: 2,
+  DaySelector: Last,
+  Weekday: Friday,
+  HourOfDay: 18
+);
+
+SHOW SCHEDULED EVENTS IN Ops;
+DESCRIBE SCHEDULED EVENT Ops.NightlyCleanup;
+DROP SCHEDULED EVENT Ops.HourlyPing;`,
+		SeeAlso: []string{"queue"},
+	})
+
 	// ── Structure ───────────────────────────────────────────────────────
 
 	Register(SyntaxFeature{

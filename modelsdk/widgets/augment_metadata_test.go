@@ -25,7 +25,7 @@ func TestReconcilePropertyMetadata(t *testing.T) {
 			map[string]any{
 				"$Type":       "CustomWidgets$WidgetPropertyType",
 				"PropertyKey": "pagingPosition",
-				"Category":    "General::Pagination",   // stale
+				"Category":    "General::Pagination",    // stale
 				"Caption":     "Position of pagination", // stale
 				"ValueType": map[string]any{
 					"$Type":        "CustomWidgets$WidgetValueType",

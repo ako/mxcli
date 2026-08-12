@@ -5,6 +5,7 @@ package mpr
 import (
 	"fmt"
 
+	"github.com/mendixlabs/mxcli/mdl/scheduledevents"
 	"github.com/mendixlabs/mxcli/model"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -175,38 +176,17 @@ func (r *Reader) parseScheduledEvent(unitID, containerID string, contents []byte
 		return nil, err
 	}
 
-	var raw map[string]any
+	var raw bson.M
 	if err := bson.Unmarshal(contents, &raw); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal BSON: %w", err)
 	}
 
-	event := &model.ScheduledEvent{}
-	event.ID = model.ID(unitID)
-	event.TypeName = "ScheduledEvents$ScheduledEvent"
-	event.ContainerID = model.ID(containerID)
-
-	if name, ok := raw["Name"].(string); ok {
-		event.Name = name
-	}
-	if doc, ok := raw["Documentation"].(string); ok {
-		event.Documentation = doc
-	}
-	if mfID, ok := raw["Microflow"].(string); ok {
-		event.MicroflowID = model.ID(mfID)
-	}
-	if enabled, ok := raw["Enabled"].(bool); ok {
-		event.Enabled = enabled
-	}
-	// Issue #585: Studio Pro stores Interval as BSON int64; extractInt
-	// also accepts int32/int/float64 emitted by other writers.
-	if _, ok := raw["Interval"]; ok {
-		event.Interval = extractInt(raw["Interval"])
-	}
-	if intervalType, ok := raw["IntervalType"].(string); ok {
-		event.IntervalType = intervalType
-	}
-
-	return event, nil
+	// Shared with the modelsdk engine so both read the same keys the shared
+	// writer produces — including the polymorphic Schedule child, which this
+	// parser used to drop, and StartDateTime, which Studio Pro stores as a BSON
+	// datetime. (Interval is int64 in Studio Pro documents; the codec accepts
+	// every numeric width — issue #585.)
+	return scheduledevents.Parse(raw, model.ID(unitID), model.ID(containerID)), nil
 }
 
 // resolveContents handles MPR v2 external file references.

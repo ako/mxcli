@@ -68,6 +68,18 @@ func TestSelectFromCatalog(t *testing.T) {
 		{"communities keyword table", "SELECT * FROM CATALOG.COMMUNITIES;"},
 		{"communities lowercase", "select * from catalog.communities;"},
 		{"communities with where", "SELECT AssetName FROM CATALOG.COMMUNITIES WHERE CommunityId = 1;"},
+		// Same trap, hit again when QUEUES became a lexer keyword (SHOW QUEUES):
+		// CATALOG.QUEUES stopped parsing and the SELECT produced no statement and
+		// no output — no error, just silence. Every new plural keyword that names
+		// a catalog table has to be added to catalogTableName.
+		{"queues keyword table", "SELECT * FROM CATALOG.QUEUES;"},
+		{"queues lowercase", "select * from catalog.queues;"},
+		{"queues with where", "SELECT Name FROM CATALOG.QUEUES WHERE ClusterWide = 1;"},
+		// SCHEDULED_EVENTS lexes as one IDENTIFIER (the underscore joins it), so
+		// the SCHEDULED keyword does not reach it — asserted so a future lexer
+		// change that splits it is caught here.
+		{"scheduled events table", "SELECT * FROM CATALOG.SCHEDULED_EVENTS;"},
+		{"scheduled events with where", "SELECT Name FROM CATALOG.SCHEDULED_EVENTS WHERE Enabled = 1;"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -84,8 +84,19 @@ type ImageBackend interface {
 	ListIconCollections() ([]*types.IconCollection, error)
 }
 
+// QueueBackend provides task queue (Queues$Queue) operations.
+type QueueBackend interface {
+	ListQueues() ([]*types.Queue, error)
+	CreateQueue(q *types.Queue) error
+	UpdateQueue(q *types.Queue) error
+	DeleteQueue(id string) error
+}
+
 // ScheduledEventBackend provides scheduled event operations.
 type ScheduledEventBackend interface {
 	ListScheduledEvents() ([]*model.ScheduledEvent, error)
 	GetScheduledEvent(id model.ID) (*model.ScheduledEvent, error)
+	CreateScheduledEvent(ev *model.ScheduledEvent) error
+	UpdateScheduledEvent(ev *model.ScheduledEvent) error
+	DeleteScheduledEvent(id string) error
 }

@@ -231,6 +231,12 @@ func TestObjectsView_IncludesNewDocumentTypes(t *testing.T) {
 	}{
 		{"javascript_actions", "JAVASCRIPT_ACTION"},
 		{"image_collections", "IMAGE_COLLECTION"},
+		// Both were built into their own tables but never joined to the objects
+		// view, so bare `DESCRIBE Module.Name` could not resolve them.
+		{"building_blocks", "BUILDING_BLOCK"},
+		{"icon_collections", "ICON_COLLECTION"},
+		{"menus", "MENU"},
+		{"page_templates", "PAGE_TEMPLATE"},
 		{"data_transformers", "DATA_TRANSFORMER"},
 		{"agents", "AGENT"},
 		{"ai_models", "AI_MODEL"},

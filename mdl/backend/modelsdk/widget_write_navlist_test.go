@@ -14,7 +14,7 @@ import (
 // TestNavListItemToGen_WritesNames guards ledger finding #24: the modelsdk
 // writer must emit the navigation item's Name and give the caption's generated
 // DynamicText a name — otherwise Studio Pro rejects the project with CE7247
-// "name cannot be empty" / CE0495 "duplicate name ''".
+// "name cannot be empty" / CE0495 "duplicate name ”".
 func TestNavListItemToGen_WritesNames(t *testing.T) {
 	item := &pages.NavigationListItem{
 		Name: "itemTransactions",

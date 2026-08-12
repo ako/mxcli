@@ -184,6 +184,11 @@ func (unsupportedBackend) CreateLayout(_ *pages.Layout) (err0 error) {
 	return
 }
 
+func (unsupportedBackend) CreateMenuDocument(_ *types.MenuDocument) (err0 error) {
+	err0 = errUnsupported("CreateMenuDocument")
+	return
+}
+
 func (unsupportedBackend) CreateMicroflow(_ *microflows.Microflow) (err0 error) {
 	err0 = errUnsupported("CreateMicroflow")
 	return
@@ -211,6 +216,16 @@ func (unsupportedBackend) CreatePublishedODataService(_ *model.PublishedODataSer
 
 func (unsupportedBackend) CreatePublishedRestService(_ *model.PublishedRestService) (err0 error) {
 	err0 = errUnsupported("CreatePublishedRestService")
+	return
+}
+
+func (unsupportedBackend) CreateQueue(_ *types.Queue) (err0 error) {
+	err0 = errUnsupported("CreateQueue")
+	return
+}
+
+func (unsupportedBackend) CreateScheduledEvent(_ *model.ScheduledEvent) (err0 error) {
+	err0 = errUnsupported("CreateScheduledEvent")
 	return
 }
 
@@ -354,6 +369,11 @@ func (unsupportedBackend) DeleteLayout(_ model.ID) (err0 error) {
 	return
 }
 
+func (unsupportedBackend) DeleteMenuDocument(_ model.ID) (err0 error) {
+	err0 = errUnsupported("DeleteMenuDocument")
+	return
+}
+
 func (unsupportedBackend) DeleteMicroflow(_ model.ID) (err0 error) {
 	err0 = errUnsupported("DeleteMicroflow")
 	return
@@ -386,6 +406,16 @@ func (unsupportedBackend) DeletePublishedODataService(_ model.ID) (err0 error) {
 
 func (unsupportedBackend) DeletePublishedRestService(_ model.ID) (err0 error) {
 	err0 = errUnsupported("DeletePublishedRestService")
+	return
+}
+
+func (unsupportedBackend) DeleteQueue(_ string) (err0 error) {
+	err0 = errUnsupported("DeleteQueue")
+	return
+}
+
+func (unsupportedBackend) DeleteScheduledEvent(_ string) (err0 error) {
+	err0 = errUnsupported("DeleteScheduledEvent")
 	return
 }
 
@@ -481,6 +511,11 @@ func (unsupportedBackend) GetLayout(_ model.ID) (r0 *pages.Layout, err1 error) {
 
 func (unsupportedBackend) GetMendixVersion() (r0 string, err1 error) {
 	err1 = errUnsupported("GetMendixVersion")
+	return
+}
+
+func (unsupportedBackend) GetMenuDocumentByQualifiedName(_ string, _ string) (r0 *types.MenuDocument, err1 error) {
+	err1 = errUnsupported("GetMenuDocumentByQualifiedName")
 	return
 }
 
@@ -707,6 +742,11 @@ func (unsupportedBackend) ListLayouts() (r0 []*pages.Layout, err1 error) {
 	return
 }
 
+func (unsupportedBackend) ListMenuDocuments() (r0 []*types.MenuDocument, err1 error) {
+	err1 = errUnsupported("ListMenuDocuments")
+	return
+}
+
 func (unsupportedBackend) ListMicroflows() (r0 []*microflows.Microflow, err1 error) {
 	err1 = errUnsupported("ListMicroflows")
 	return
@@ -754,6 +794,11 @@ func (unsupportedBackend) ListPublishedODataServices() (r0 []*model.PublishedODa
 
 func (unsupportedBackend) ListPublishedRestServices() (r0 []*model.PublishedRestService, err1 error) {
 	err1 = errUnsupported("ListPublishedRestServices")
+	return
+}
+
+func (unsupportedBackend) ListQueues() (r0 []*types.Queue, err1 error) {
+	err1 = errUnsupported("ListQueues")
 	return
 }
 
@@ -1122,6 +1167,11 @@ func (unsupportedBackend) UpdateLayout(_ *pages.Layout) (err0 error) {
 	return
 }
 
+func (unsupportedBackend) UpdateMenuDocument(_ *types.MenuDocument) (err0 error) {
+	err0 = errUnsupported("UpdateMenuDocument")
+	return
+}
+
 func (unsupportedBackend) UpdateMicroflow(_ *microflows.Microflow) (err0 error) {
 	err0 = errUnsupported("UpdateMicroflow")
 	return
@@ -1182,8 +1232,18 @@ func (unsupportedBackend) UpdateQualifiedNameInAllUnits(_ string, _ string) (r0 
 	return
 }
 
+func (unsupportedBackend) UpdateQueue(_ *types.Queue) (err0 error) {
+	err0 = errUnsupported("UpdateQueue")
+	return
+}
+
 func (unsupportedBackend) UpdateRawUnit(_ string, _ []uint8) (err0 error) {
 	err0 = errUnsupported("UpdateRawUnit")
+	return
+}
+
+func (unsupportedBackend) UpdateScheduledEvent(_ *model.ScheduledEvent) (err0 error) {
+	err0 = errUnsupported("UpdateScheduledEvent")
 	return
 }
 

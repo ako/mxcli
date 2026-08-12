@@ -216,6 +216,12 @@ Examples:
 		// operation, so the mapping would be dropped in silence (#843).
 		violations = append(violations, executor.ValidateRestClientMappings(prog)...)
 
+		// Flag a scheduled event whose Repeat and fields disagree (a Multiplier on
+		// a Daily repeat, an HourOfDay of 99). Decidable from the statement, so it
+		// runs here rather than at exec, where the script would already have
+		// passed check.
+		violations = append(violations, executor.ValidateScheduledEvents(prog)...)
+
 		if isStructured {
 			// Always emit structured output (even when clean)
 			formatter.Format(violations, os.Stderr)

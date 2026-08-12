@@ -1,0 +1,133 @@
+-- ============================================================================
+-- Scheduled events — all eight repeat variants
+-- ============================================================================
+--
+-- Mendix's cron. A scheduled event runs a microflow on a repeating schedule;
+-- the repeat rule is a ScheduledEvents$Schedule child with eight variants that
+-- differ in WHICH fields they carry, so MDL names the variant (Repeat) and then
+-- takes only that variant's fields. A field from another variant is refused —
+-- writing a merged field set produces a document mxbuild accepts and Studio Pro
+-- cannot open.
+--
+-- Scheduled events do NOT go through a task queue: OnOverlap
+-- (DelayNext | SkipNext) is their own concurrency control.
+--
+-- The document shape is pinned against four Studio Pro-authored events (Workflow
+-- Commons 4.11.0, OIDC SSO 4.6.0, SAML 4.2.1 ×2). Those cover Daily and Hourly;
+-- the other six variants are metamodel-derived and verified to load with 0
+-- errors from `mx check`.
+--
+-- Verify:
+--   mxcli exec mdl-examples/doctype-tests/scheduled-events.mdl -p app.mpr
+--   mx check app.mpr    # 0 errors
+--   mxcli -p app.mpr -c "list scheduled events"
+--   mxcli -p app.mpr -c "describe scheduled event Ops.NightlyCleanup"
+-- ============================================================================
+
+create module Ops;
+/
+create microflow Ops.SE_Cleanup()
+begin
+  return;
+end;
+/
+-- Daily: a fixed time of day, no multiplier (the variant has none).
+create scheduled event Ops.NightlyCleanup (
+  Microflow: Ops.SE_Cleanup,
+  Repeat: Daily,
+  HourOfDay: 4,
+  MinuteOfHour: 0,
+  TimeZone: Server,
+  Enabled: true,
+  StartDateTime: '2026-01-01T04:00:00Z'
+);
+/
+-- Hourly: every N hours, at a fixed minute past the hour.
+create scheduled event Ops.HourlyPing (
+  Microflow: Ops.SE_Cleanup,
+  Repeat: Hourly,
+  Multiplier: 2,
+  MinuteOffset: 23
+);
+/
+-- Minutely: the only field is the multiplier.
+create scheduled event Ops.EveryFiveMinutes (
+  Microflow: Ops.SE_Cleanup,
+  Repeat: Minutely,
+  Multiplier: 5
+);
+/
+-- Weekly: a day list plus a time. Weekday names are case-insensitive.
+create scheduled event Ops.WeeklyReport (
+  Microflow: Ops.SE_Cleanup,
+  Repeat: Weekly,
+  Weekdays: 'Monday, Friday',
+  HourOfDay: 9,
+  MinuteOfHour: 30
+);
+/
+-- MonthlyByDate: the Nth day of every M months.
+create scheduled event Ops.MidMonth (
+  Microflow: Ops.SE_Cleanup,
+  Repeat: MonthlyByDate,
+  Multiplier: 1,
+  DayOfMonth: 15,
+  HourOfDay: 2,
+  MinuteOfHour: 0
+);
+/
+-- MonthlyByWeekday: "the last Friday of every third month". MonthOffset picks
+-- which month of the three-month cycle fires (0-based).
+create scheduled event Ops.QuarterEnd (
+  Microflow: Ops.SE_Cleanup,
+  Repeat: MonthlyByWeekday,
+  Multiplier: 3,
+  MonthOffset: 2,
+  DaySelector: Last,
+  Weekday: Friday,
+  HourOfDay: 18,
+  MinuteOfHour: 0
+);
+/
+-- YearlyByDate: a calendar date. Month is 1-12.
+create scheduled event Ops.YearOpen (
+  Microflow: Ops.SE_Cleanup,
+  Repeat: YearlyByDate,
+  Month: 1,
+  DayOfMonth: 2,
+  HourOfDay: 8,
+  MinuteOfHour: 0
+);
+/
+-- YearlyByWeekday: "the first Monday of March".
+create scheduled event Ops.YearWeek (
+  Microflow: Ops.SE_Cleanup,
+  Repeat: YearlyByWeekday,
+  Month: 3,
+  DaySelector: First,
+  Weekday: Monday,
+  HourOfDay: 7,
+  MinuteOfHour: 15
+);
+/
+-- Re-running with OR MODIFY reuses the stored $ID and preserves the legacy
+-- Interval/IntervalType pair, which Studio Pro writes but does not keep in sync
+-- with Schedule and MDL cannot author.
+create or modify scheduled event Ops.NightlyCleanup (
+  Microflow: Ops.SE_Cleanup,
+  Repeat: Daily,
+  HourOfDay: 5,
+  MinuteOfHour: 0,
+  TimeZone: Server,
+  Enabled: true,
+  OnOverlap: SkipNext
+);
+/
+-- "scheduled" and "event" stay usable as ordinary names: both are in the
+-- grammar's `keyword` rule, so adding the tokens did not take them away.
+create entity Ops.Job (
+  scheduled: Boolean,
+  event: String(50)
+);
+/
+drop scheduled event Ops.EveryFiveMinutes;

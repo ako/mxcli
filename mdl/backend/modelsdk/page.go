@@ -17,6 +17,11 @@ import (
 // excluded, title, URL, parameter count — not the widget tree, so this stays
 // shallow. Widget-tree conversion (DESCRIBE PAGE / ALTER) is a later phase.
 
+// ListPages returns pages only. Page templates are a separate document type with
+// separate content (their widgets hang off LayoutCall, not FormCall) and are read
+// by ListPageTemplates — this used to include them, to match legacy's
+// prefix-matched `Forms$Page` query, which made `show modules` report 46 pages
+// for a module with none.
 func (b *Backend) ListPages() ([]*pages.Page, error) {
 	units, err := mprread.ListUnitsWithContainer[*genPg.Page](b.reader)
 	if err != nil {
@@ -26,26 +31,34 @@ func (b *Backend) ListPages() ([]*pages.Page, error) {
 	for _, u := range units {
 		out = append(out, pageFromGen(u.Element, u.ContainerID))
 	}
-	// Legacy ListPages calls listUnitsByType("Forms$Page"), which is
-	// prefix-matched and therefore also sweeps in Forms$PageTemplate units.
-	// Replicate that here so SHOW PAGES matches legacy. (The modelsdk reader
-	// is strict-typed, so we add templates explicitly.)
-	tmpls, err := mprread.ListUnitsWithContainer[*genPg.PageTemplate](b.reader)
+	return out, nil
+}
+
+// ListPageTemplates reads page template units. Like ListPages this is a header
+// read — name, module, documentation — matching what the legacy parser captures.
+// The template's content is deliberately not converted: it hangs off LayoutCall
+// rather than FormCall, nothing consumes it yet, and a half-converted tree would
+// compare equal to a different one.
+func (b *Backend) ListPageTemplates() ([]*pages.PageTemplate, error) {
+	units, err := mprread.ListUnitsWithContainer[*genPg.PageTemplate](b.reader)
 	if err != nil {
 		return nil, err
 	}
-	for _, u := range tmpls {
-		out = append(out, pageTemplateAsPage(u.Element, u.ContainerID))
+	out := make([]*pages.PageTemplate, 0, len(units))
+	for _, u := range units {
+		out = append(out, pageTemplateFromGen(u.Element, u.ContainerID))
 	}
 	return out, nil
 }
 
-// pageTemplateAsPage adapts a page template into the Page shape SHOW PAGES
-// expects. Templates carry only name + excluded; title/url/params stay zero,
-// matching legacy's prefix-match behaviour.
-func pageTemplateAsPage(pt *genPg.PageTemplate, containerID model.ID) *pages.Page {
-	out := &pages.Page{ContainerID: containerID, Name: pt.Name(), Excluded: pt.Excluded()}
+func pageTemplateFromGen(pt *genPg.PageTemplate, containerID model.ID) *pages.PageTemplate {
+	out := &pages.PageTemplate{
+		ContainerID:   containerID,
+		Name:          pt.Name(),
+		Documentation: pt.Documentation(),
+	}
 	out.ID = model.ID(pt.ID())
+	out.TypeName = "Forms$PageTemplate"
 	return out
 }
 

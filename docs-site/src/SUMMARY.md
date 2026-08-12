@@ -111,6 +111,7 @@
 - [Business Events](language/business-events.md)
   - [Event Services](language/event-services.md)
   - [Publishing and Consuming Events](language/pub-sub-events.md)
+- [Scheduled Events and Task Queues](language/scheduled-events.md)
 - [Image Collections](language/image-collections.md)
 
 ---
@@ -256,6 +257,7 @@
 - [Navigation Statements](reference/navigation/README.md)
   - [ALTER NAVIGATION](reference/navigation/alter-navigation.md)
   - [SHOW NAVIGATION](reference/navigation/show-navigation.md)
+  - [CREATE MENU](reference/navigation/menu.md)
 - [Workflow Statements](reference/workflow/README.md)
   - [CREATE WORKFLOW](reference/workflow/create-workflow.md)
   - [DROP WORKFLOW](reference/workflow/drop-workflow.md)

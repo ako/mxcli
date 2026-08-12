@@ -1010,3 +1010,62 @@ func parseJarDependencyExclusion(raw map[string]any) *types.JarDependencyExclusi
 		ArtifactID: extractString(raw["ArtifactId"]),
 	}
 }
+
+// ListMenuDocuments returns all standalone Menus$MenuDocument documents.
+//
+// A menu document holds its entries in a Menus$MenuItemCollection rather than
+// directly, but the entries themselves are ordinary Menus$MenuItem elements, so
+// the recursive conversion reuses parseNavMenuItem.
+func (r *Reader) ListMenuDocuments() ([]*types.MenuDocument, error) {
+	units, err := r.listUnitsByType("Menus$MenuDocument")
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*types.MenuDocument, 0, len(units))
+	for _, u := range units {
+		var raw map[string]any
+		if err := bson.Unmarshal(u.Contents, &raw); err != nil {
+			return nil, fmt.Errorf("failed to parse menu document %s: %w", u.ID, err)
+		}
+		md := &types.MenuDocument{
+			ID:            model.ID(u.ID),
+			ContainerID:   model.ID(u.ContainerID),
+			Name:          extractString(raw["Name"]),
+			Documentation: extractString(raw["Documentation"]),
+			ExportLevel:   extractString(raw["ExportLevel"]),
+		}
+		if b, ok := raw["Excluded"].(bool); ok {
+			md.Excluded = b
+		}
+		if coll, ok := raw["ItemCollection"].(map[string]any); ok {
+			for _, item := range extractBsonArray(coll["Items"]) {
+				if m, ok := item.(map[string]any); ok {
+					if mi := parseNavMenuItem(m); mi != nil {
+						md.Items = append(md.Items, mi)
+					}
+				}
+			}
+		}
+		result = append(result, md)
+	}
+	return result, nil
+}
+
+// GetMenuDocumentByQualifiedName finds a menu document by module + name.
+func (r *Reader) GetMenuDocumentByQualifiedName(moduleName, name string) (*types.MenuDocument, error) {
+	all, err := r.ListMenuDocuments()
+	if err != nil {
+		return nil, err
+	}
+	moduleMap, err := r.buildContainerModuleNameMap()
+	if err != nil {
+		return nil, err
+	}
+	for _, md := range all {
+		if md.Name == name && moduleMap[md.ContainerID] == moduleName {
+			return md, nil
+		}
+	}
+	return nil, fmt.Errorf("menu not found: %s.%s", moduleName, name)
+}

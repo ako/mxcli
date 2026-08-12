@@ -26,6 +26,7 @@ type FullBackend interface {
 	WorkflowBackend
 	SettingsBackend
 	ImageBackend
+	QueueBackend
 	ScheduledEventBackend
 	RenameBackend
 	RawUnitBackend

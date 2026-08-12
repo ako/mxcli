@@ -111,6 +111,28 @@ WHERE ModuleName = 'Sales'
 ORDER BY Name;
 ```
 
+Page **templates** are not pages and are not in this table — see
+`CATALOG.PAGE_TEMPLATES`.
+
+### CATALOG.PAGE_TEMPLATES
+
+The starting points Studio Pro's "new page" dialog offers (`Forms$PageTemplate`).
+A separate document type from pages: Atlas_Web_Content ships 46 templates and no
+pages at all.
+
+| Column | Description |
+|--------|-------------|
+| `Id` | Unique identifier |
+| `Name` | Template name |
+| `ModuleName` | Module containing the template |
+| `QualifiedName` | Full qualified name |
+| `Folder` | Folder path within the module |
+| `Description` | Documentation |
+
+There is no `DESCRIBE PAGE TEMPLATE`, so a template is indexed but not
+describable — tools that walk a module report it as *unknown*, never as
+unchanged.
+
 ### CATALOG.ACCESS_RULES
 
 Information about entity access rules (available after full refresh).
@@ -128,6 +150,62 @@ SELECT e.QualifiedName, ar.UserRole, ar.AllowRead, ar.AllowWrite
 FROM CATALOG.ACCESS_RULES ar
 JOIN CATALOG.ENTITIES e ON ar.EntityId = e.Id
 WHERE e.ModuleName = 'Sales';
+```
+
+### CATALOG.SCHEDULED_EVENTS
+
+Scheduled events — Mendix's cron.
+
+| Column | Description |
+|--------|-------------|
+| `Name`, `QualifiedName`, `ModuleName`, `Folder` | Identity |
+| `Microflow` | Qualified name of the microflow the event runs |
+| `Repeat` | Schedule variant: `Minute`, `Hour`, `Day`, `Week`, `MonthDate`, `MonthWeekday`, `YearDate`, `YearWeekday` |
+| `RepeatDescription` | The schedule as a phrase, e.g. `weekly Mon/Fri at 09:30` |
+| `IntervalSeconds` | Gap between runs, derived from the schedule |
+| `Enabled` | 1 if the event runs |
+| `TimeZone` | `UTC` or `Server` |
+| `OnOverlap` | `DelayNext` or `SkipNext` |
+
+`IntervalSeconds` comes from the schedule, **not** from the stored
+`Interval`/`IntervalType` pair. Those are a legacy sibling that Studio Pro writes
+and does not keep in sync — a shipped Mendix module stores `0`/`Minute` beside a
+daily schedule — so a query keyed on them would read a nightly job as firing
+every 0 seconds. Month and year figures are averages (30 and 365 days): the
+column is for thresholds and ordering, not calendar arithmetic.
+
+```sql
+-- Anything that fires more often than once a minute
+select QualifiedName, RepeatDescription, Microflow
+from CATALOG.SCHEDULED_EVENTS
+where Enabled = 1 and IntervalSeconds < 60;
+
+-- Scheduled events whose microflow no longer exists
+select se.QualifiedName, se.Microflow
+from CATALOG.SCHEDULED_EVENTS se
+left join CATALOG.MICROFLOWS m on m.QualifiedName = se.Microflow
+where m.Id is null;
+```
+
+A scheduled event also produces a `schedule` row in `CATALOG.REFS`, so
+`show callers of <microflow>` and the dead-asset analysis both see it. Without
+that edge a microflow run only by a scheduled event looked unreferenced.
+
+### CATALOG.QUEUES
+
+Task queues.
+
+| Column | Description |
+|--------|-------------|
+| `Name`, `QualifiedName`, `ModuleName`, `Folder` | Identity |
+| `Parallelism` | How many tasks run at once — an **expression string**, not a number |
+| `ClusterWide` | 1 if the limit applies across the cluster |
+
+`Parallelism` is stored as text because Mendix stores an expression: a query must
+not assume it parses as an integer.
+
+```sql
+select QualifiedName, Parallelism, ClusterWide from CATALOG.QUEUES;
 ```
 
 ## Graph-Analysis Tables

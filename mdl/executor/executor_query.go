@@ -199,6 +199,16 @@ func execDescribe(ctx *ExecContext, s *ast.DescribeStmt) error {
 			return describeSnippet(ctx, s.Name)
 		case ast.DescribeBuildingBlock:
 			return describeBuildingBlock(ctx, s.Name)
+		case ast.DescribeQueue:
+			// Queues and scheduled events carry their own statement types rather
+			// than a DescribeStmt kind, so bare `DESCRIBE Module.Name` reaches them
+			// by synthesizing one. Without this they are indexed in the catalog's
+			// objects view but unreachable without naming the type — the state
+			// BUILDING_BLOCK and ICON_COLLECTION were in when 43 of 251 documents
+			// in a marketplace project could not be described (see describe_auto.go).
+			return execDescribeQueue(ctx, &ast.DescribeQueueStmt{Name: s.Name})
+		case ast.DescribeScheduledEvent:
+			return execDescribeScheduledEvent(ctx, &ast.DescribeScheduledEventStmt{Name: s.Name})
 		case ast.DescribeLayout:
 			return describeLayout(ctx, s.Name)
 		case ast.DescribeConstant:
@@ -261,6 +271,8 @@ func execDescribe(ctx *ExecContext, s *ast.DescribeStmt) error {
 			return describeImportMapping(ctx, s.Name)
 		case ast.DescribeExportMapping:
 			return describeExportMapping(ctx, s.Name)
+		case ast.DescribeMenu:
+			return describeMenu(ctx, s.Name)
 		case ast.DescribeJarDependency:
 			return execDescribeJarDependency(ctx, s.Name.String(), s.Qualifier)
 		default:
@@ -352,6 +364,12 @@ func describeObjectTypeLabel(t ast.DescribeObjectType) string {
 		return "importmapping"
 	case ast.DescribeExportMapping:
 		return "exportmapping"
+	case ast.DescribeMenu:
+		return "menu"
+	case ast.DescribeQueue:
+		return "queue"
+	case ast.DescribeScheduledEvent:
+		return "scheduled event"
 	default:
 		return "unknown"
 	}

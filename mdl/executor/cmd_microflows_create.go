@@ -91,6 +91,14 @@ func execCreateMicroflow(ctx *ExecContext, s *ast.CreateMicroflowStmt) error {
 
 	// For CREATE OR REPLACE/MODIFY, reuse the existing ID to preserve references
 	qualifiedName := s.Name.Module + "." + s.Name.Name
+
+	// Refuse before writing if the stored microflow has a call bound to a task
+	// queue: the rebuild would null it out and nothing downstream would notice.
+	if existingID != "" {
+		if err := checkNoQueuedCalls(ctx, existingID, qualifiedName); err != nil {
+			return err
+		}
+	}
 	microflowID := model.ID(types.GenerateID())
 	if existingID != "" {
 		microflowID = existingID

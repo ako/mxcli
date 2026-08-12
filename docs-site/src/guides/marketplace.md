@@ -61,9 +61,51 @@ mxcli marketplace install 2888 --version 7.0.3 -p app.mpr   # a module
 | Content type | What `install` does |
 |---|---|
 | **Widget** | Copies the `.mpk` into the project's `widgets/` folder (overwrites on update). Reload in Studio Pro or run `mx update-widgets` to pick it up. |
-| **Module** (new) | Imports it via `mx module-import` (requires a matching mxbuild — run `mxcli setup mxbuild -p app.mpr` if missing). |
+| **Module** (new) | Copies the module in with mxcli's own writer, preserving the project's MPR format, plus everything the package ships (widgets, themesource, ...). Requires a matching mxbuild — run `mxcli setup mxbuild -p app.mpr` if missing. |
 | **Module** (already present) | **Reported, not modified** — see below. |
 | Theme / Starter App / Sample | Downloaded to disk with import instructions (import via Studio Pro). |
+
+### The latest version is often not installable
+
+New releases are published against the newest Studio Pro patch within days of it shipping, and `install` with no `--version` resolves to the latest — so on a project that is not on the very newest patch, the default is routinely the one version that cannot be imported. Measured on an 11.12.1 project: the latest release of all six agent-editor stack modules required 11.12.2, published five days earlier.
+
+`install` and `update` check the version's published minimum before downloading anything, and name the version to use instead:
+
+```text
+Agent Commons 4.2.0 requires Mendix 11.12.2, and the project is 11.12.1
+  hint: install --version 4.1.0 (the newest release built for 11.12.1 or older)
+```
+
+`mxcli marketplace versions <id>` shows the same information as a `MIN MENDIX` column.
+
+### Dependencies are not resolved
+
+`install` installs exactly the content you name. Its dependencies are neither fetched nor named — read the check errors after each install, which identify what is missing by qualified name. The error count is **not monotonic**, because each new module brings its own unmet dependencies: installing the agent-editor stack into a vanilla 11.12.1 app went 0 → 15 → 0 → 18 → 1 → 22 → 1 → 1. Dependencies include widget content as well as modules (`CE0462 "Could not find widget ..."`).
+
+## Why installs do not use `mx module-import`
+
+`mx module-import` rewrites an MPR v2 project as v1. Measured on a blank Mendix 11.12.1 app, a single import turned a 69 KB `.mpr` plus 341 `.mxunit` files into one 14 MB SQLite blob with no `mprcontents/` — and the same was observed independently on 11.13.0, so it is not version-specific:
+
+```text
+before   .mpr     69,632 bytes  +  341 .mxunit   tables: Unit, _MetaData, _Transaction
+after    .mpr 14,295,040 bytes  +    0 .mxunit   tables: Unit, _MetaData
+```
+
+That is not cosmetic. The v2 layout is what makes the model diffable and mergeable per document: it is what [`mxcli diff-local`](../tools/diff.md) reads, and what makes an idempotent re-run observable as "no files changed". The conversion is **one-way** — `mx convert` targets Mendix *versions*, not storage formats.
+
+So `install` copies the module's units directly instead, which keeps the project in whatever format it already uses and also works for theme modules (`module-import` refuses those outright). Measured: CommunityCommons 11.5.1 into a vanilla 11.12.1 app — 128 units and 126 bundled files, `mprcontents/` grew from 369 to 497 `.mxunit` files, and `mx check` reports 0 errors.
+
+`--allow-format-change` selects the legacy `module-import` path, which still refuses to run silently:
+
+```text
+refusing to import: app.mpr uses the MPR v2 storage format, and 'mx module-import'
+would rewrite it as v1.
+...
+  - Import the module in Studio Pro, which preserves the format; or
+  - pass --allow-format-change to accept the conversion to MPR v1.
+```
+
+If you take that route the command states plainly that the project is now v1.
 
 ## Updating an existing module
 
@@ -76,9 +118,195 @@ In-place module updates are not applied automatically (they can discard local
 edits and change persistent-entity IDs, which loses data). Update via Studio Pro.
 ```
 
+Before you update in Studio Pro, the question worth answering is **whether anyone has edited the module since it was installed** — because the update will not ask. That is what `marketplace diff` is for; see below.
+
 Two reasons make automatic in-place module updates unsafe:
 
 1. **Local edits.** Teams sometimes modify a marketplace module after importing it; a blind re-import would discard those changes.
 2. **Persistent-entity IDs.** A fresh import assigns new entity `$ID`s. The runtime database keys data by entity ID, so re-importing a module with persistent entities would make the runtime treat them as *different* entities — **losing data**.
 
 Studio Pro's Marketplace **Update** performs an ID-preserving merge that the `mx` CLI does not expose, so module updates are left to Studio Pro for now.
+
+## Updating a module (`marketplace update`)
+
+`update` replaces an installed module with another published version, preserving the two things a plain replace destroys.
+
+```bash
+# Refuses if you have edited the module, naming what it would discard
+mxcli marketplace update 23513 -p app.mpr --to 4.5.0
+
+# Park those edits as re-executable MDL, then update over them
+mxcli marketplace update 23513 -p app.mpr --to 4.5.0 --save-edits ./local-edits
+mxcli marketplace update 23513 -p app.mpr --to 4.5.0 --force
+mxcli exec ./local-edits/entity-Account.mdl -p app.mpr
+```
+
+```text
+Administration updated 4.3.2 → 4.5.0
+  28 units copied, 9 element identities preserved, 2 role grant(s) restored.
+
+  Removed in 4.5.0 (1) — their database columns or tables will go on the next deploy:
+    Account/MyLocalEdit
+```
+
+### What it preserves, and why
+
+- **Element identity.** The runtime keys entities and their attributes on the model's `GUID`, so a module whose documents are replaced without carrying the old GUIDs is a *different* module to the database and its tables are dropped on the next deploy. Studio Pro transplants them; so does this.
+- **Access.** A user role's grant of a module role lives in the project's security document, not the module, so removing the module takes the grants with it and putting it back does not return them.
+- **Everything else the package ships.** A module is not only its model: the `.mpk` carries widget binaries under `widgets/`, styling and design-property declarations under `themesource/`, and whatever else it needs. All of it is replaced — only `project.mpr` and `package.xml` are manifest rather than payload. DataWidgets 3.11.3 replaces 49 such files, and skipping them leaves the app running old widget code and reporting `CE6083` for design properties the module itself declares.
+
+It does not use `mx module-import`, which would rewrite an MPR v2 project as v1 and refuses theme modules. Units are copied with mxcli's own writer, so the project keeps its format.
+
+
+### Local edits
+
+Local edits are **not** preserved. `update` refuses when it finds any, `--save-edits` writes them out first, and `--force` proceeds. Two limits on the saved files:
+
+- They are the element's **resulting state, not a diff**, so replaying restores additions and changes but not removals.
+- An element that could not be described has nothing to save, and is reported rather than skipped.
+
+### Afterwards
+
+```bash
+mxcli fix widgets -p app.mpr
+mxcli fix design-properties -p app.mpr
+mxcli docker check -p app.mpr
+mxcli diff-local -p app.mpr
+```
+
+A headless install or update leaves two repairs for Mendix's own tools: **CE0463** (the project's stored widget instances are older than the widget packages beside them) and **CE6087** (a module references design properties an older Atlas spelled differently). Both are expected, not faults in the install. See [`mxcli fix`](#repairing-the-model-mxcli-fix) below.
+
+Measured: Administration 4.3.2 → 4.5.0 and DataWidgets 3.5.0 → 3.11.3 both reach **0 errors** afterwards.
+
+## Repairing the model (`mxcli fix`)
+
+`mx update-widgets` and `mx rename-design-properties` each fix something only Mendix can fix, and each rewrites an MPR v2 project into the single-file v1 format while doing it. Measured on 11.12.1: `update-widgets` took 369 `.mxunit` files to 0 and a 69,632-byte index to 14,405,632 bytes; `rename-design-properties` took 1,865 files to 0 and a 249,856-byte index to 39,895,040 bytes, having renamed 149 design properties across 41 documents. The conversion is one-way.
+
+```bash
+mxcli fix widgets -p app.mpr             # CE0463
+mxcli fix design-properties -p app.mpr   # CE6087
+```
+
+```text
+Updated design properties: 42 unit(s) changed.
+  Storage: 1868 .mxunit file(s), unchanged from 1868 before (MPR v2 preserved).
+```
+
+Each runs the same Mendix tool, reads every unit back out of the converted file, restores the v2 storage, and writes the changed units into it through mxcli's own writer. The storage count is printed before and after because that is where the failure this exists to prevent would show up — as a zero.
+
+Measured end to end on a vanilla 11.12.1 app carrying the agent-editor stack: `mx check` reported **203 errors** (202 × CE0463 + 1 × CE6087), and **0** after the two commands, with the project still MPR v2 (1,868 `.mxunit` files) — reproduced from a restored pre-fix snapshot.
+
+Re-running is free: a second run reports 0 units changed, because [idempotent writes](../internals/idempotent-writes.md) elide a unit whose content did not really change. An MPR v1 project is passed straight through, since these tools write v1 natively.
+
+| Command | Persists? | Use |
+|---|---|---|
+| `mxcli fix widgets` | **yes** | the fix — after any headless install |
+| `mxcli fix design-properties` | **yes** | the fix — after any headless install |
+| `mxcli docker check` | no | runs the widget resync under a snapshot so the *check* is not tripped by CE0463; the stored model stays stale |
+| `mxcli widget sync` | yes, partial | reconciles widget schemas in mxcli's own code; clears 7 of 40 on the reference fixture |
+
+CE6087 is distinct from `CE6083`, which is a *missing* design-property declaration and is fixed by installing everything the package ships — something `install` and `update` already do.
+
+`update` does **not** roll back. Work on a copy or have the project in version control.
+
+## Has this module been edited? (`marketplace diff`)
+
+Studio Pro's Marketplace **Update** replaces the module and discards local edits without asking. `marketplace diff` answers the question that decides whether that is safe:
+
+```bash
+# What have I changed in this module since installing it?
+mxcli marketplace diff 23513 -p app.mpr
+```
+
+```text
+Administration — installed 4.3.2 (Mendix 11.12.1)
+
+  Locally modified (1 of 21 elements):
+    changed   ENTITY Account
+```
+
+An untouched module reports how much was actually checked, not just a verdict:
+
+```text
+  No local modifications: 21 of 21 elements verified unchanged.
+```
+
+### What it does
+
+1. Reads which marketplace version each module in the project records. The project stores the marketplace **version UUID** per module, so the module and the exact release it came from are both identified without guessing — the listing name does not help here (content 23513 is listed as "Administration module" and installs a module called `Administration`; "Data Widgets" installs `DataWidgets`).
+2. Downloads that version's `.mpk` and imports it into a throwaway reference project built **at the project's own Mendix version**, so the package goes through the same conversion the installed copy did.
+3. Describes every element of the module on both sides and compares the descriptions.
+
+Comparison is on `DESCRIBE` output rather than raw storage: an *untouched* module differs from its own published package in thousands of BSON paths, because the installed copy carries subtrees the package does not.
+
+Requires the mxbuild toolchain for the project's Mendix version — `mxcli setup mxbuild -p app.mpr`. Building the reference at a *different* version is refused rather than warned about, because Mendix's own conversions would then show up as your edits.
+
+### Theme modules
+
+`mx module-import` refuses a theme module outright ("Importing theme module is not supported"), which would take Atlas_Core, Atlas_Web_Content and Conversational UI off the table. The refusal is gated on a single flag on the module document inside the package, so `diff` clears it on **its own throwaway copy** before importing — the published package and your project are untouched.
+
+Atlas modules are among the most-edited in real projects, so this matters more than the module count suggests:
+
+```text
+Atlas_Web_Content — installed 4.1.0 (Mendix 11.12.1)
+
+  No local modifications found, but 46 of 89 elements could not be read —
+  this is not a clean bill of health.
+
+  Not comparable (46) — reported as unknown, never as unchanged:
+    unknown   PAGE_TEMPLATE Blank (no DESCRIBE support for PAGE_TEMPLATE)
+    ...
+```
+
+The 46 are page templates, which have no `DESCRIBE` handler yet. They are reported rather than quietly counted as unchanged — see [`CATALOG.PAGE_TEMPLATES`](../tools/catalog-tables.md).
+
+### What an upgrade would touch
+
+`--to` adds the other half of the question: what the module's author changed, and whether it collides with what you changed.
+
+```bash
+mxcli marketplace diff 23513 -p app.mpr --to 4.5.0
+```
+
+```text
+  Upgrading to 4.5.0 would touch 5 element(s), 1 of which you have modified:
+    CONFLICT  ENTITY Account
+
+  Studio Pro's update would discard those local edits without asking.
+```
+
+### In CI
+
+`--json` emits the machine-readable form, for a build gate that fails when a marketplace module has been edited:
+
+```bash
+mxcli marketplace diff 23513 -p app.mpr --json
+```
+
+```json
+{
+  "module": "Administration",
+  "installedVersion": "4.3.2",
+  "mendixVersion": "11.12.1",
+  "locallyModified": true,
+  "verified": true,
+  "modified": ["ENTITY Account"],
+  "unchangedCount": 20
+}
+```
+
+Read **both** `locallyModified` and `verified`. `verified: false` means at least one element could not be described, so "no modifications found" is not a conclusion you can act on — an element that cannot be read is reported as `unknown`, never as unchanged:
+
+```text
+  No local modifications found, but 1 of 21 elements could not be read —
+  this is not a clean bill of health.
+```
+
+### Flags
+
+| Flag | Purpose |
+|---|---|
+| `-p, --project` | The project holding the installed module (required). |
+| `--to <version>` | Also report what upgrading to this version would touch, and which of those you have modified. |
+| `--module <name>` | Name the module explicitly, when the project records no marketplace version for it (a hand-imported copy) or several modules match. |
+| `--json` | Emit JSON instead of text. |

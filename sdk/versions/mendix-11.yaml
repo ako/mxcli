@@ -139,6 +139,24 @@ features:
     odata_client:
       min_version: "10.0.0"
 
+  agent_documents:
+    # Agent Editor documents (Model, Knowledge Base, Consumed MCP Service,
+    # Agent). Studio Pro's agent editor is an extension and the documents are
+    # stored as custom blobs, so mxbuild validates nothing about them -- these
+    # entries are the only version gate mxcli has.
+    agent_model:
+      min_version: "11.9.0"
+      mdl: "CREATE MODEL Module.Name (Provider: ..., Key: Module.ApiKey)"
+    agent_knowledge_base:
+      min_version: "11.9.0"
+      mdl: "CREATE KNOWLEDGE BASE Module.Name (Provider: ..., Key: Module.KBKey)"
+    agent_consumed_mcp_service:
+      min_version: "11.9.0"
+      mdl: "CREATE CONSUMED MCP SERVICE Module.Name (ProtocolVersion: ...)"
+    agent:
+      min_version: "11.9.0"
+      mdl: "CREATE AGENT Module.Name (UsageType: Task|Chat, Model: ..., SystemPrompt: '...')"
+
   workflows:
     basic:
       min_version: "9.0.0"

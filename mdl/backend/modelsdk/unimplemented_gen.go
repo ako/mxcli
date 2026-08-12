@@ -180,6 +180,14 @@ func (unimplemented) CreatePublishedRestService(_ *model.PublishedRestService) e
 	return errUnimplemented("CreatePublishedRestService")
 }
 
+func (unimplemented) CreateQueue(_ *types.Queue) error {
+	return errUnimplemented("CreateQueue")
+}
+
+func (unimplemented) CreateScheduledEvent(_ *model.ScheduledEvent) error {
+	return errUnimplemented("CreateScheduledEvent")
+}
+
 func (unimplemented) CreateSnippet(_ *pages.Snippet) error {
 	return errUnimplemented("CreateSnippet")
 }
@@ -319,6 +327,14 @@ func (unimplemented) DeletePublishedODataService(_ model.ID) error {
 
 func (unimplemented) DeletePublishedRestService(_ model.ID) error {
 	return errUnimplemented("DeletePublishedRestService")
+}
+
+func (unimplemented) DeleteQueue(_ string) error {
+	return errUnimplemented("DeleteQueue")
+}
+
+func (unimplemented) DeleteScheduledEvent(_ string) error {
+	return errUnimplemented("DeleteScheduledEvent")
 }
 
 func (unimplemented) DeleteSnippet(_ model.ID) error {
@@ -683,6 +699,11 @@ func (unimplemented) ListPublishedODataServices() ([]*model.PublishedODataServic
 func (unimplemented) ListPublishedRestServices() ([]*model.PublishedRestService, error) {
 	var r0 []*model.PublishedRestService
 	return r0, errUnimplemented("ListPublishedRestServices")
+}
+
+func (unimplemented) ListQueues() ([]*types.Queue, error) {
+	var r0 []*types.Queue
+	return r0, errUnimplemented("ListQueues")
 }
 
 func (unimplemented) ListRawUnits(_ string) ([]*types.RawUnitInfo, error) {
@@ -1061,8 +1082,16 @@ func (unimplemented) UpdateQualifiedNameInAllUnits(_ string, _ string) (int, err
 	return r0, errUnimplemented("UpdateQualifiedNameInAllUnits")
 }
 
+func (unimplemented) UpdateQueue(_ *types.Queue) error {
+	return errUnimplemented("UpdateQueue")
+}
+
 func (unimplemented) UpdateRawUnit(_ string, _ []uint8) error {
 	return errUnimplemented("UpdateRawUnit")
+}
+
+func (unimplemented) UpdateScheduledEvent(_ *model.ScheduledEvent) error {
+	return errUnimplemented("UpdateScheduledEvent")
 }
 
 func (unimplemented) UpdateSnippet(_ *pages.Snippet) error {

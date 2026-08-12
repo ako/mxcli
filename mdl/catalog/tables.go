@@ -312,6 +312,87 @@ func (c *Catalog) createTables() error {
 		)`,
 		viewWithFullSnapshot("image_collections"),
 
+		// icon_collections (custom icon sets; read-only, referenced by widgets)
+		`CREATE TABLE IF NOT EXISTS icon_collections_data (
+			Id TEXT PRIMARY KEY,
+			Name TEXT,
+			QualifiedName TEXT,
+			ModuleName TEXT,
+			Folder TEXT,
+			Description TEXT,
+			ProjectId TEXT,
+			SnapshotId TEXT
+		)`,
+		viewWithFullSnapshot("icon_collections"),
+
+		// page_templates (Forms$PageTemplate; the starting points Studio Pro's
+		// "new page" dialog offers). A separate table from pages: templates are a
+		// different document type whose content hangs off LayoutCall, and folding
+		// them into pages made every module that ships templates report pages it
+		// does not have.
+		`CREATE TABLE IF NOT EXISTS page_templates_data (
+			Id TEXT PRIMARY KEY,
+			Name TEXT,
+			QualifiedName TEXT,
+			ModuleName TEXT,
+			Folder TEXT,
+			Description TEXT,
+			ProjectId TEXT,
+			SnapshotId TEXT
+		)`,
+		viewWithFullSnapshot("page_templates"),
+
+		// menus (standalone Menus$MenuDocument; read-only reusable menus)
+		`CREATE TABLE IF NOT EXISTS menus_data (
+			Id TEXT PRIMARY KEY,
+			Name TEXT,
+			QualifiedName TEXT,
+			ModuleName TEXT,
+			Folder TEXT,
+			Description TEXT,
+			ProjectId TEXT,
+			SnapshotId TEXT
+		)`,
+		viewWithFullSnapshot("menus"),
+
+		// scheduled_events — Mendix's cron. Repeat/RepeatDescription come from the
+		// Schedule child; IntervalSeconds is derived from it, NOT from the legacy
+		// Interval/IntervalType pair (Studio Pro does not keep those in sync).
+		`CREATE TABLE IF NOT EXISTS scheduled_events_data (
+			Id TEXT PRIMARY KEY,
+			Name TEXT,
+			QualifiedName TEXT,
+			ModuleName TEXT,
+			Folder TEXT,
+			Description TEXT,
+			Microflow TEXT,
+			Repeat TEXT,
+			RepeatDescription TEXT,
+			IntervalSeconds INTEGER,
+			Enabled INTEGER,
+			TimeZone TEXT,
+			OnOverlap TEXT,
+			ProjectId TEXT,
+			SnapshotId TEXT
+		)`,
+		viewWithFullSnapshot("scheduled_events"),
+
+		// queues — task queues (Queues$Queue). Parallelism is an expression
+		// string, not a number.
+		`CREATE TABLE IF NOT EXISTS queues_data (
+			Id TEXT PRIMARY KEY,
+			Name TEXT,
+			QualifiedName TEXT,
+			ModuleName TEXT,
+			Folder TEXT,
+			Description TEXT,
+			Parallelism TEXT,
+			ClusterWide INTEGER,
+			ProjectId TEXT,
+			SnapshotId TEXT
+		)`,
+		viewWithFullSnapshot("queues"),
+
 		// data_transformers
 		`CREATE TABLE IF NOT EXISTS data_transformers_data (
 			Id TEXT PRIMARY KEY,
@@ -416,6 +497,11 @@ func (c *Catalog) createTables() error {
 			AttributeRef TEXT,
 			MicroflowRef TEXT,
 			NanoflowRef TEXT,
+			-- The page a widget's action opens (show_page, and the page half of
+			-- "create object … then open page"). Without it a page reachable only
+			-- from a button had no inbound reference at all and read as dead code
+			-- (issue #773).
+			PageRef TEXT,
 			Description TEXT,
 			ProjectId TEXT,
 			SnapshotId TEXT
@@ -896,6 +982,10 @@ func (c *Catalog) createTables() error {
 				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
 			FROM snippets
 			UNION ALL
+			SELECT Id, 'BUILDING_BLOCK' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
+				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
+			FROM building_blocks
+			UNION ALL
 			SELECT Id, 'LAYOUT' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
 				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
 			FROM layouts
@@ -919,6 +1009,26 @@ func (c *Catalog) createTables() error {
 			SELECT Id, 'IMAGE_COLLECTION' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
 				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
 			FROM image_collections
+			UNION ALL
+			SELECT Id, 'ICON_COLLECTION' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
+				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
+			FROM icon_collections
+			UNION ALL
+			SELECT Id, 'MENU' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
+				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
+			FROM menus
+			UNION ALL
+			SELECT Id, 'PAGE_TEMPLATE' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
+				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
+			FROM page_templates
+			UNION ALL
+			SELECT Id, 'SCHEDULED_EVENT' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
+				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
+			FROM scheduled_events
+			UNION ALL
+			SELECT Id, 'QUEUE' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
+				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
+			FROM queues
 			UNION ALL
 			SELECT Id, 'DATA_TRANSFORMER' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
 				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource

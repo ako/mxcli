@@ -47,6 +47,9 @@ Types:
   odataclient      Describe a consumed OData service
   odataservice     Describe a published OData service
   imagecollection  Describe an image collection (also: "image collection")
+  menu             Describe a standalone menu document
+  queue            Describe a task queue
+  scheduledevent   Describe a scheduled event (also: "scheduled event")
   businesseventservice  Describe a business event service (also: "business event service")
   databaseconnection    Describe a database connection (also: "database connection")
   agent            Describe an AI agent (also: "agent")
@@ -166,6 +169,12 @@ Example:
 			mdlCmd = fmt.Sprintf("DESCRIBE ODATA SERVICE %s", name)
 		case "IMAGECOLLECTION", "IMAGE COLLECTION":
 			mdlCmd = fmt.Sprintf("DESCRIBE IMAGE COLLECTION %s", name)
+		case "MENU":
+			mdlCmd = fmt.Sprintf("DESCRIBE MENU %s", name)
+		case "QUEUE":
+			mdlCmd = fmt.Sprintf("DESCRIBE QUEUE %s", name)
+		case "SCHEDULEDEVENT", "SCHEDULED EVENT":
+			mdlCmd = fmt.Sprintf("DESCRIBE SCHEDULED EVENT %s", name)
 		case "BUSINESSEVENTSERVICE", "BUSINESS EVENT SERVICE":
 			mdlCmd = fmt.Sprintf("DESCRIBE BUSINESS EVENT SERVICE %s", name)
 		case "DATABASECONNECTION", "DATABASE CONNECTION":
@@ -190,8 +199,8 @@ Example:
 			mdlCmd = "" // handled directly by format-specific path
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown type: %s\n", strings.Join(args[:len(args)-1], " "))
-			fmt.Fprintln(os.Stderr, "Valid types: module, entity, association, enumeration, constant, microflow, nanoflow, workflow, page, snippet, layout, javaaction, jsonstructure, importmapping, exportmapping, restclient, odataclient, odataservice, imagecollection, businesseventservice, databaseconnection, agent, aimodel, knowledgebase, consumedmcpservice, datatransformer, modulerole, userrole, projectsecurity, settings, demouser, navigation, systemoverview")
-			fmt.Fprintln(os.Stderr, "Multi-word types also accepted: json structure, import mapping, export mapping, rest client, image collection, business event service, agent, model, knowledge base, consumed mcp service, data transformer, etc.")
+			fmt.Fprintln(os.Stderr, "Valid types: module, entity, association, enumeration, constant, microflow, nanoflow, workflow, page, snippet, layout, javaaction, jsonstructure, importmapping, exportmapping, restclient, odataclient, odataservice, imagecollection, menu, queue, scheduledevent, businesseventservice, databaseconnection, agent, aimodel, knowledgebase, consumedmcpservice, datatransformer, modulerole, userrole, projectsecurity, settings, demouser, navigation, systemoverview")
+			fmt.Fprintln(os.Stderr, "Multi-word types also accepted: json structure, import mapping, export mapping, rest client, image collection, scheduled event, business event service, agent, model, knowledge base, consumed mcp service, data transformer, etc.")
 			os.Exit(1)
 		}
 
@@ -309,6 +318,7 @@ var objectTypeToDescribe = map[string]string{
 	"BUSINESS_EVENT_SERVICE": "businesseventservice",
 	"DATABASE_CONNECTION":    "databaseconnection",
 	"IMAGE_COLLECTION":       "imagecollection",
+	"MENU":                   "menu",
 	"DATA_TRANSFORMER":       "datatransformer",
 	"AGENT":                  "agent",
 	"AI_MODEL":               "model",
@@ -323,21 +333,24 @@ var objectTypeToDescribe = map[string]string{
 // types are listed (page templates, building blocks, rules, etc. are absent so
 // they don't resolve).
 var unitTypeToDescribe = map[string]string{
-	"Microflows$Microflow":         "microflow",
-	"Microflows$Nanoflow":          "nanoflow",
-	"Forms$Page":                   "page",
-	"Forms$Snippet":                "snippet",
-	"Pages$BuildingBlock":          "buildingblock",
-	"Forms$BuildingBlock":          "buildingblock",
-	"Forms$Layout":                 "layout",
-	"Enumerations$Enumeration":     "enumeration",
-	"Constants$Constant":           "constant",
-	"JavaActions$JavaAction":       "javaaction",
-	"JsonStructures$JsonStructure": "jsonstructure",
-	"ImportMappings$ImportMapping": "importmapping",
-	"ExportMappings$ExportMapping": "exportmapping",
-	"Images$ImageCollection":       "imagecollection",
-	"Workflows$Workflow":           "workflow",
+	"Microflows$Microflow":           "microflow",
+	"Microflows$Nanoflow":            "nanoflow",
+	"Forms$Page":                     "page",
+	"Forms$Snippet":                  "snippet",
+	"Pages$BuildingBlock":            "buildingblock",
+	"Forms$BuildingBlock":            "buildingblock",
+	"Forms$Layout":                   "layout",
+	"Enumerations$Enumeration":       "enumeration",
+	"Constants$Constant":             "constant",
+	"JavaActions$JavaAction":         "javaaction",
+	"JsonStructures$JsonStructure":   "jsonstructure",
+	"ImportMappings$ImportMapping":   "importmapping",
+	"ExportMappings$ExportMapping":   "exportmapping",
+	"Images$ImageCollection":         "imagecollection",
+	"Menus$MenuDocument":             "menu",
+	"Workflows$Workflow":             "workflow",
+	"Queues$Queue":                   "queue",
+	"ScheduledEvents$ScheduledEvent": "scheduledevent",
 }
 
 // resolveDescribeType auto-detects the `describe` type for a qualified document

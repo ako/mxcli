@@ -91,6 +91,11 @@ type Builder struct {
 	resolution      float64   // Leiden resolution for the graph-analysis pass
 	describeFunc    DescribeFunc
 
+	// Scheduled event → microflow edges, collected while cataloguing the events
+	// and emitted by buildReferences (a later pass). Carried on the Builder
+	// rather than re-queried because CatalogTx has no Query.
+	scheduledEventRefs []scheduledEventRef
+
 	// Built-in widget definitions supplied by the caller — used to populate
 	// the widget_definitions catalog table alongside project widgets/.
 	builtinWidgetMetas []WidgetDefinitionMeta
@@ -398,8 +403,32 @@ func (b *Builder) Build(progress ProgressFunc) error {
 		return fmt.Errorf("failed to build image collections: %w", err)
 	}
 
+	if err := b.buildSimpleNamedDocs("CustomIcons$CustomIconCollection", "icon_collections", "Icon Collections"); err != nil {
+		return fmt.Errorf("failed to build icon collections: %w", err)
+	}
+
+	if err := b.buildSimpleNamedDocs("Menus$MenuDocument", "menus", "Menus"); err != nil {
+		return fmt.Errorf("failed to build menus: %w", err)
+	}
+
+	// Page templates are indexed in their own right rather than as pages. They
+	// were previously swept into pages_data by a prefix-matched Forms$Page query;
+	// dropping them from the catalog entirely instead would make 46 documents in
+	// a stock Atlas project invisible to anything that enumerates a module.
+	if err := b.buildSimpleNamedDocs("Forms$PageTemplate", "page_templates", "Page Templates"); err != nil {
+		return fmt.Errorf("failed to build page templates: %w", err)
+	}
+
 	if err := b.buildSimpleNamedDocs("DataTransformers$DataTransformer", "data_transformers", "Data Transformers"); err != nil {
 		return fmt.Errorf("failed to build data transformers: %w", err)
+	}
+
+	if err := b.buildScheduledEvents(); err != nil {
+		return fmt.Errorf("failed to build scheduled events: %w", err)
+	}
+
+	if err := b.buildQueues(); err != nil {
+		return fmt.Errorf("failed to build queues: %w", err)
 	}
 
 	if err := b.buildAgentEditorDocs(); err != nil {

@@ -182,6 +182,40 @@ func init() {
 		SeeAlso: []string{"snippet.show", "page.show"},
 	})
 
+	Register(SyntaxFeature{
+		Path:    "navigation.menu-document",
+		Summary: "Create, describe and drop standalone menu documents (Menus$MenuDocument)",
+		Keywords: []string{
+			"create menu", "describe menu", "drop menu",
+			"menu", "menus", "menu document", "menu item",
+		},
+		Syntax: "CREATE [OR MODIFY] MENU Module.Name (\n" +
+			"  MENU ITEM '<caption>' [PAGE Module.Page | MICROFLOW Module.Flow] [ICON Module.Collection.name];\n" +
+			"  MENU '<caption>' [ICON Module.Collection.name] ( <nested items> );\n" +
+			");\n" +
+			"DESCRIBE MENU Module.Name;\n" +
+			"DROP MENU Module.Name;",
+		Example: "CREATE OR MODIFY MENU MyModule.Main_Menu (\n" +
+			"  menu item 'Home' page MyModule.Home_Web icon Atlas_Core.Atlas.home;\n" +
+			"  menu item 'Run' microflow MyModule.DoThing;\n" +
+			"  menu 'Admin' (\n" +
+			"    menu item 'Accounts' page Administration.Account_Overview;\n" +
+			"  );\n" +
+			"  menu item 'Plain';\n" +
+			");\n\n" +
+			"-- Notes:\n" +
+			"--   * A menu document is the reusable menu a menu widget points at. It is\n" +
+			"--     NOT the menu inside a navigation profile — for that use\n" +
+			"--     SHOW NAVIGATION MENU and ALTER NAVIGATION. Both use these same items.\n" +
+			"--   * OR MODIFY replaces the item list wholesale; an omitted item is removed.\n" +
+			"--     The document's identity and export level are preserved.\n" +
+			"--   * ICON names an icon collection entry. A glyph or image icon cannot be\n" +
+			"--     expressed in MDL; DESCRIBE flags those rather than dropping them silently.\n" +
+			"--   * A page with required parameters cannot be opened from a menu item\n" +
+			"--     without an argument — Mendix reports CE1571.",
+		SeeAlso: []string{"navigation.create", "navigation.show", "page.show"},
+	})
+
 	// ── Fragment ──────────────────────────────────────────────────────────
 
 	Register(SyntaxFeature{

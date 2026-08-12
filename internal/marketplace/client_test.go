@@ -413,6 +413,68 @@ func TestVersions_ParsesList(t *testing.T) {
 	}
 }
 
+// TestVersions_WalksEveryPage guards the pagination fix.
+//
+// The live endpoint returns 10 versions unpaged and caps `limit` at 20, so a
+// module with a long release history loses its older versions — including the
+// one a project was actually installed from, which then looks unpublished.
+// The mock reproduces that cap exactly: any limit above the page size is
+// clamped, so a client that asks once and trusts the answer fails here.
+func TestVersions_WalksEveryPage(t *testing.T) {
+	const total = 47
+	var requests int
+
+	client, _ := newMockServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/content/170/versions" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		requests++
+		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+		if limit <= 0 || limit > versionPageSize {
+			limit = versionPageSize // the server's own cap
+		}
+
+		var items []string
+		for i := offset; i < offset+limit && i < total; i++ {
+			items = append(items, fmt.Sprintf(`{"versionNumber":"1.0.%d","versionId":"id-%d"}`, i, i))
+		}
+		_, _ = fmt.Fprintf(w, `{"items":[%s]}`, strings.Join(items, ","))
+	})
+
+	got, err := client.Versions(context.Background(), 170)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Items) != total {
+		t.Fatalf("got %d versions over %d request(s), want all %d — older versions are being dropped",
+			len(got.Items), requests, total)
+	}
+	// Order must survive the walk: callers take the newest as "latest".
+	if got.Items[0].VersionNumber != "1.0.0" || got.Items[total-1].VersionNumber != fmt.Sprintf("1.0.%d", total-1) {
+		t.Errorf("pages were not concatenated in order: first=%q last=%q",
+			got.Items[0].VersionNumber, got.Items[total-1].VersionNumber)
+	}
+}
+
+// TestVersions_StopsOnAShortPage checks the walk terminates on the common case
+// of a content item with fewer versions than one page.
+func TestVersions_StopsOnAShortPage(t *testing.T) {
+	var requests int
+	client, _ := newMockServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		_, _ = w.Write([]byte(sampleVersions))
+	})
+
+	if _, err := client.Versions(context.Background(), 170); err != nil {
+		t.Fatal(err)
+	}
+	if requests != 1 {
+		t.Errorf("a short first page should end the walk; made %d requests", requests)
+	}
+}
+
 func TestGet_HTTPErrorIsReported(t *testing.T) {
 	client, _ := newMockServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)

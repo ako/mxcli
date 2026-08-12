@@ -38,6 +38,22 @@ create model Module.MyModel (
 );
 ```
 
+**`Provider` is free-form, and nothing validates it.** MDL passes the value
+straight through; `MxCloudGenAI` is only the default applied when you omit the
+property, not the only accepted value. `Provider: OpenAI` parses, writes, and
+round-trips through `describe model` — as does `Provider: TotallyMadeUp`.
+
+That means a typo is caught by **nothing** in the headless path. Agent Editor
+documents are stored as custom blobs, and mxbuild contains no agent-editor
+strings at all, so `mx check` and the build both stay green and the fault
+surfaces only when Studio Pro opens the document.
+
+mxcli deliberately does not enforce an allowlist, because the authoritative set
+of provider values is not available to it: the agent editor is a Studio Pro
+*extension*, its enum is not in `generated/metamodel` and not in mxbuild. Guessing
+a list risks rejecting a value Mendix accepts. **Take the value from a model
+document Studio Pro created**, rather than from memory or from this file.
+
 ### Knowledge Base
 
 ```sql

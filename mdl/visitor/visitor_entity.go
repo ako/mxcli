@@ -801,6 +801,10 @@ func (b *Builder) ExitDropStatement(ctx *parser.DropStatementContext) {
 		b.statements = append(b.statements, &ast.DropSnippetStmt{
 			Name: buildQualifiedName(names[0]),
 		})
+	} else if ctx.MENU_KW() != nil {
+		b.statements = append(b.statements, &ast.DropMenuStmt{
+			Name: buildQualifiedName(names[0]),
+		})
 	} else if ctx.JAVASCRIPT() != nil && ctx.ACTION() != nil {
 		b.statements = append(b.statements, &ast.DropJavaScriptActionStmt{
 			Name: buildQualifiedName(names[0]),
@@ -827,6 +831,14 @@ func (b *Builder) ExitDropStatement(ctx *parser.DropStatementContext) {
 		})
 	} else if ctx.IMAGE() != nil && ctx.COLLECTION() != nil {
 		b.statements = append(b.statements, &ast.DropImageCollectionStmt{
+			Name: buildQualifiedName(names[0]),
+		})
+	} else if ctx.QUEUE() != nil {
+		b.statements = append(b.statements, &ast.DropQueueStmt{
+			Name: buildQualifiedName(names[0]),
+		})
+	} else if ctx.SCHEDULED() != nil && ctx.EVENT() != nil {
+		b.statements = append(b.statements, &ast.DropScheduledEventStmt{
 			Name: buildQualifiedName(names[0]),
 		})
 	} else if ctx.MODEL() != nil {

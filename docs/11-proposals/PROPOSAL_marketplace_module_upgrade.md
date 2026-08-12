@@ -7,7 +7,8 @@ date: 2026-08-04
 # Proposal: `mxcli marketplace diff` — detect local modification of an installed module
 
 **Status:** Draft
-**Date:** 2026-08-04 (initial), revised 2026-08-10 (Studio Pro update measured)
+**Date:** 2026-08-04 (initial), revised 2026-08-10 (Studio Pro update measured),
+2026-08-11 (DESCRIBE coverage measured — §7; `GUID` = database identity measured — §8)
 
 ## Revision 2026-08-10 — what Studio Pro actually does, measured
 
@@ -323,6 +324,107 @@ siblings).
 This is the one piece of work both this proposal and script idempotence need, and
 neither can be finished well without it.
 
+> **Superseded in part (2026-08-11).** Script idempotence shipped *without* a stable
+> key for unnamed elements: `modelsdk/canon` sidesteps element matching entirely by
+> normalising each `$ID` to its index in a containment walk, so it never has to pair
+> two elements up (ADR-0008). The claim that neither could be finished without this
+> key held for the BSON-structural diff §4 was reasoning about; it does **not** bind
+> the design below, which compares DESCRIBE output rather than BSON structure and so
+> never keys an unnamed widget at all. The key problem is real but is now scoped to
+> anything wanting an element-level *structural* diff — not to `marketplace diff`.
+
+### 7. DESCRIBE coverage is sufficient, and was measured (2026-08-11)
+
+The design below is bounded by DESCRIBE coverage, and its honesty rule — an
+un-describable element must be reported **unknown**, never clean — is only affordable
+if the unknown bucket is small. That was unmeasured, so the whole proposal rested on
+an assumption. It has now been measured against `testdata/expr-checker/minimal.mpr`,
+which carries seven real marketplace modules with recorded `AppStoreVersion`s
+(Administration 4.3.2, Atlas_Core 4.1.3, Atlas_Web_Content 4.1.0, DataWidgets 3.5.0,
+FeedbackModule 4.0.2, NanoflowCommons 6.0.0, WebActions 2.11.0).
+
+**Method.** The denominator is the set of *named units read from the MPR itself* —
+369 units, 251 named documents after excluding 80 folders and the unnamed
+module-level units. It deliberately does **not** come from the catalog: the `objects`
+view indexes only describable types and `show modules` only has columns for types
+mxcli models, so either source reports 100% coverage by construction. Each document
+was then actually described, and the outcome recorded.
+
+**Result — 247 of 251 (98%) describable.**
+
+| | Docs | |
+|---|---|---|
+| Auto-detected by bare `describe Module.Name` | 204 → **247** | 81% → **98%** |
+| Reachable only by naming the type explicitly | 43 → **0** | |
+| Not describable at all | 4 | 2% |
+
+The 43 in the middle row were building blocks (40) and icon collections (3): both had
+working explicit handlers, but building blocks were never joined into the catalog's
+`objects` view and icon collections had no catalog table at all, so bare DESCRIBE
+reported them as not found. Fixed here — the second number in each row is post-fix,
+verified end-to-end on the same 251 documents, with no new name ambiguity. A drift
+test (`TestDescribeAutoCoversCatalogObjectTypes`) now fails when a type reaches the
+view without a describe kind.
+
+The remaining 4 are two genuine defects, both out of scope for this proposal:
+
+- **Import/export mapping describe is broken.** The catalog indexes both, but
+  `describe import mapping FeedbackModule.IMM_PostResponse` errors `not found`, and
+  naming the type explicitly does not help.
+- **Menu documents have no DESCRIBE at all** (2 in Atlas_Core). No grammar, no handler.
+
+**Two gaps this measurement also exposed, which the differ must handle.**
+
+- **Page templates were conflated with pages** (closed 2026-08-11). All 46
+  `Forms$PageTemplate` units reported `ObjectType = PAGE` and described as
+  `create or modify page`, so `show modules` reported Atlas_Web_Content as having
+  46 pages when it has zero.
+
+  This was recorded here as "harmless for describe-to-describe comparison, since
+  both sides conflate identically". That was wrong, and the error was in the same
+  family as the security one above: the conflation was checked, the *content* was
+  not. A page template describes with an **empty body** — its widgets hang off
+  `LayoutCall`, and the page describe path reads `FormCall` — so those 46
+  elements compared on nothing but name, folder and CSS class. The differ was
+  reporting them unchanged without having looked inside them, which is precisely
+  the false negative the honesty rule exists to prevent, and it was hiding behind
+  a bug filed as cosmetic.
+
+  Cause: `listUnitsByType` matched on a type **prefix**, and `Forms$Page` is a
+  prefix of `Forms$PageTemplate`. Both engines now match exactly, templates are
+  indexed as their own `PAGE_TEMPLATE` catalog type, and — having no DESCRIBE
+  handler — they are reported **unknown**, which is the truthful version of what
+  the differ was already doing.
+- **Module roles were invisible** (closed 2026-08-11). This was originally recorded
+  here as "module security is invisible", which was wrong and briefly made the
+  security hole look like the largest risk in the proposal. Re-measured: three of the
+  four parts of module security were **already** in the describe surface —
+  entity access rules in `DESCRIBE ENTITY` (`grant <role> on <entity> (...) where
+  '<xpath>'`), page access in `DESCRIBE PAGE` (`grant view on page ...`), and
+  microflow access in `DESCRIBE MICROFLOW` (`grant execute on microflow ...`). Only
+  the module's **role list** was missing, because it lives in the module's own
+  `Security$ModuleSecurity` unit and belongs to no document. `DESCRIBE MODULE` now
+  emits it, sorted for stable comparison.
+
+  The original error came from grepping describe output for `role|access|allowed` —
+  a pattern that cannot match `grant view on page P to Administration.Administrator;`.
+  Absence of evidence from a search is not evidence of absence: check the emitter, or
+  grep for the statement you expect to see rather than for words describing it.
+
+Folders need no separate coverage: folder membership is captured inside each
+document's describe (`Folder: 'Phone/PageTemplates/Form'`), so a document moved
+between folders by an upgrade is visible.
+
+**What this does not establish.** It measures *invocation success and non-trivial
+output* — not round-trip fidelity. A describe can succeed and silently drop a
+property, which is exactly what #812, #111 and #57/#58 were. So 98% is an **upper
+bound on what a differ can compare**, not evidence that the comparison is faithful;
+establishing that needs describe → execute → re-describe round-tripping, which is a
+separate and much larger exercise. Also: one project, and all seven modules are
+Mendix-authored — a third-party module may use document types absent here. Building
+blocks and icon collections describe read-only ("cannot be created via MDL"), which
+is fine for diff but blocks a Phase 2 *replace* of those two types.
+
 ## Design
 
 ### Compare semantically, not structurally
@@ -402,20 +504,135 @@ Administration — installed 4.3.2, latest 4.5.0
 
 No MDL syntax is added. This is a CLI-only, read-only command.
 
+### 8. What `GUID` is for: the database keys on it (measured 2026-08-11)
+
+§4 established that Studio Pro's update renumbers every `$ID` and preserves every
+`GUID`. That made `GUID` the *only* candidate carrier of database identity, but
+the proposal was careful to call it inference. It is now measured.
+
+**Method.** A blank Mendix 11.12.1 app with `Administration` 4.3.2, booted with
+`mxcli run --local` against a local PostgreSQL, so the runtime creates and then
+re-synchronises a real schema. The lever is one that Studio Pro does not expose
+and mxcli does: rewrite a single BSON value in the stored model and boot again.
+Nothing points *at* a `GUID` — it is not a pointer target — so changing it is a
+safe one-value edit, unlike renumbering an `$ID` (ADR-0008).
+
+**The runtime writes its own identity map.** `mendixsystem$entity` and
+`mendixsystem$attribute` record, per element, the id the database knows it by:
+
+```
+mendixsystem$entity     b16e49ea-91df-4caa-aed8-6ba4c4e133c5  Administration.Account  administration$account
+mendixsystem$attribute  aac00d66-7cc1-4def-a8d6-8b81fa1f5477  FullName
+```
+
+Those are the model's own `GUID`s. `Account` stores
+`ea 49 6e b1 df 91 aa 4c ae d8 6b a4 c4 e1 33 c5`, which is
+`b16e49ea-91df-4caa-aed8-6ba4c4e133c5` once the .NET field order is undone — and
+`FullName`'s decodes to `aac00d66-…` likewise. The mapping is byte-identical, not
+merely correlated. It is also the same `b16e49ea…` recorded in §4 on a different
+project at a different Mendix version, because the `GUID` is a property of the
+*published module*, stable across every project that installs it.
+
+**Changing only the `GUID` destroys the data.**
+
+| Run | Model change | `mendixsystem$entity.id` | `administration$account` |
+|---|---|---|---|
+| 1 | — (baseline) | `b16e49ea-…` | 1 row inserted |
+| 2 | `GUID` → `a0a1a2…` | `a3a2a1a0-…` | **0 rows** |
+| 3 | `GUID` restored | `b16e49ea-…` | table recreated, empty |
+| 4 | none (control) | `b16e49ea-…` | **row survives** |
+
+Run 2 changed nothing else — same entity name, same table name, same attributes —
+and the runtime treated it as a different entity. Run 4 is the control that makes
+run 2 readable: an unchanged reboot preserves the row, so the loss was caused by
+the identity change and not by restarting.
+
+**What this settles, and what it does not.** Studio Pro's update preserves exactly
+the identity the database keys on, so `$ID` renumbering — all 94 of them — is
+irrelevant to data safety. "A `GUID`-preserving replace is data-safe" is now a
+measured claim at the level of entity and attribute identity.
+
+It does **not** say the upgrade is harmless. An element the new version deletes
+still loses its column or table, which is a schema decision rather than an
+identity failure, and §4's destroyed local edit is untouched by any of this. Nor
+was the generated DDL read statement-by-statement: the runtime logs the count
+(596 commands cold, 38 on the identity change) but not the text at INFO. The
+outcome was measured instead, which is the stronger evidence for the question
+asked.
+
 ## Implementation Plan
 
 Phase 1 is the whole of this proposal; phase 2 is named only to show where it leads.
 
 ### Phase 1 — `marketplace diff` (read-only)
 
+§7 measured the risk this phase actually carries — DESCRIBE coverage — at 98% of the
+documents in a seven-module marketplace project, so the design below is viable as
+written. Three prerequisites fall out of that measurement, in priority order:
+
+1. ~~**Report module security as unknown** (or close the gap).~~ **Closed.** The gap
+   was narrower than first recorded — only the module role list, not module security
+   as a whole; see the correction above. `DESCRIBE MODULE` now emits roles.
+2. ~~**Fix import/export mapping describe.**~~ **Closed** — the cause was
+   `moduleNameFor` reading a unit's direct container instead of walking to the
+   enclosing module, so every foldered document missed.
+3. ~~**Distinguish page templates from pages**, or accept and document the
+   conflation.~~ **Closed 2026-08-11**, and it was not "the least severe" as
+   recorded — see the corrected finding above. `Forms$Page` being a prefix of
+   `Forms$PageTemplate` fed 46 templates into a prefix-matched page query; they
+   then described as pages with an empty body, so the differ judged them
+   unchanged without reading them. Templates are now their own catalog type and
+   report as unknown.
+
+Also closed since: the bare-DESCRIBE auto-detect gap (43 documents), and menu
+documents, which had no DESCRIBE at all and now have full CRUD. Bare-DESCRIBE
+coverage over the fixture is 251/251.
+
+**Phase 1 is therefore unblocked.**
+
 | File | Change |
 |------|--------|
-| `cmd/mxcli/cmd_marketplace.go` | New `diff` subcommand: flags `--to`, `--format`, module-name resolution |
-| `cmd/mxcli/marketplace/compare.go` *(new)* | Orchestration: resolve installed version → download → convert → describe both sides → report |
-| `cmd/mxcli/marketplace/scratch.go` *(new)* | Build the scratch project at the consuming project's version; wraps `mx convert` on the `.mpk` |
-| `mdl/executor/` (describe paths) | Expose a programmatic "describe this element" entry point; today DESCRIBE is reachable only as a statement |
-| `mdl/backend/` | Interface method to enumerate a module's elements with name + `$Type` (the catalog has this; it needs a backend-level accessor) |
-| `docs-site/src/` | User-facing page for the command |
+| `cmd/mxcli/cmd_marketplace_diff.go` *(new)* | The `diff` subcommand: flags `--to`, `--module`, `--json`; module + version resolution |
+| `cmd/mxcli/marketplace/snapshot.go` *(new)* | Enumerate a module's elements from the catalog and capture DESCRIBE output for each |
+| `cmd/mxcli/marketplace/compare.go` *(new)* | Match two snapshots by name+type and classify each element |
+| `cmd/mxcli/marketplace/scratch.go` *(new)* | Build the reference project at the consuming project's version and import the `.mpk` into it |
+| `cmd/mxcli/marketplace/report.go` *(new)* | Human and JSON rendering, including the honesty rule |
+| `internal/marketplace/client.go` | Paginate `Versions` (see below) |
+| `docs-site/src/guides/marketplace.md` | User-facing documentation for the command |
+
+Two things the plan above got wrong, both found by running it:
+
+- **The scratch project is built with `mx create-project` + `mx module-import`,
+  not `mx convert` on the `.mpk`.** A blank project is not empty — it already
+  ships Administration, Atlas_Core, DataWidgets and friends — so the template's
+  copy is dropped through mxcli's own `DROP MODULE` before the package is
+  imported, or `module-import` refuses the name (exit 47).
+- **No new backend or executor entry point was needed.** The catalog's `objects`
+  view already enumerates a module's elements with name + type, and DESCRIBE is
+  reachable programmatically by executing an `ast.DescribeStmt` against an
+  executor writing to a buffer. Adding an interface method would have been a
+  second way to do the same thing.
+
+**How the module and its version are identified.** Each installed module records
+`AppStoreGuid`, and that GUID is the marketplace **version** UUID — a blank
+11.12.1 project carries `2059615c-…` for Administration, which is exactly
+content 23513's version 4.3.2, and `225ac9cf-…` for DataWidgets, content
+116540's version 3.5.0. Matching on it identifies both the module and the exact
+release with no network call and no guessing at the listing name (content 23513
+is listed as "Administration module" and installs `Administration`).
+
+Matching on the version *number* instead looks equivalent and is not: that same
+blank project has Atlas_Web_Content at 4.1.0 and Administration's content has
+also published a 4.1.0, so a number match selects two modules and cannot tell
+them apart. This was not reasoned out — it was the first real run of the
+command, which refused rather than guessing.
+
+**A latent bug this surfaced.** `/v1/content/{id}/versions` pages: it returns 10
+versions unpaged and caps `limit` at 20. `Client.Versions` asked once, so
+`marketplace versions` showed exactly ten of everything and an older installed
+version looked unpublished — Data Widgets has 131 releases and mxcli could see
+10. Fixed by walking pages until one comes back short; `marketplace
+versions`/`download`/`install` all benefit.
 
 ### Phase 2 — `marketplace update` (deferred, not proposed here)
 
@@ -473,6 +690,34 @@ The control from §3 is the primary test and it is fully reproducible:
   integration test under `-tags integration` because it shells out to `mx convert`
   and the marketplace API.
 
+### What has run (2026-08-11)
+
+Both controls pass, against real marketplace content rather than a fixture.
+
+- **Negative control.** `marketplace diff 23513 -p <blank 11.12.1 project>`:
+  *"No local modifications: 21 of 21 elements verified unchanged."* The
+  reference is downloaded, imported and described from scratch each run, so this
+  also demonstrates the build is reproducible — `TestPackageProject_ReferenceIsReproducibleAndDiffable`
+  asserts the same thing on two independently built references.
+- **Positive control.** One added attribute
+  (`alter entity Administration.Account add attribute LocalNote: String(100)`) →
+  *"Locally modified (1 of 21 elements): changed ENTITY Account"*, and nothing
+  else.
+- **Upgrade impact.** `--to 4.5.0` reports five elements touched by the author,
+  one of which (`ENTITY Account`) collides with the local edit. The control for
+  *that* is `--to 4.3.2` — upgrading to the version already installed — which
+  reports nothing touched, so the five are real author changes and not noise
+  from the reference-building path.
+- **Coverage honesty** is unit-tested rather than measured, because the fixture
+  module has no un-describable element: `TestDiffResult_UnknownIsNeverACleanBillOfHealth`
+  asserts an unknown element never renders as a clean verification, and fails
+  with exactly the dangerous output ("No local modifications: 1 of 2 elements
+  verified unchanged") when the branch that distinguishes the two is removed.
+
+Not yet run: the recorded `01-before` → `02-after` Studio Pro update pair. The
+renumbering assertion it exists to make is already covered in principle — the
+comparison never reads an `$ID` — but the fixture remains the end-to-end proof.
+
 ## Open Questions
 
 1. **Scratch-project conversion cost.** Each diff runs `mx convert` on a package
@@ -499,13 +744,10 @@ The control from §3 is the primary test and it is fully reproducible:
    tracked the update correctly (`v4.3.2` → `v4.5.0`). It is a read-only oracle and
    does not remove the need for a writer, but `diff` can use it to cross-check the
    version a project claims.
-5. **What is `GUID` actually for?** *(new)* It is the one identity Studio Pro
-   preserves across a full renumber, which is strong circumstantial evidence it
-   carries the database mapping — but that is inference. The decisive check is to
-   build against a populated database before and after an update and compare the
-   generated DDL: additive means identity survived where it counts, a DROP/CREATE
-   on a module table means it did not. Until then, "the upgrade is data-safe" is a
-   model-level argument, not a measured one.
+5. ~~**What is `GUID` actually for?**~~ **Answered by measurement 2026-08-11 — see
+   §8.** It is the database's identity for an entity and for each of its
+   attributes. Changing only an entity's `GUID`, with its name, table name and
+   attributes untouched, destroys its data.
 6. **Does Studio Pro warn before discarding a local edit?** *(new)* §4 shows the
    edit is gone from the stored model, but a snapshot cannot see a dialog. This
    changes how the proposal should describe the status quo: "Studio Pro silently
