@@ -130,6 +130,62 @@ JOIN CATALOG.ENTITIES e ON ar.EntityId = e.Id
 WHERE e.ModuleName = 'Sales';
 ```
 
+### CATALOG.SCHEDULED_EVENTS
+
+Scheduled events — Mendix's cron.
+
+| Column | Description |
+|--------|-------------|
+| `Name`, `QualifiedName`, `ModuleName`, `Folder` | Identity |
+| `Microflow` | Qualified name of the microflow the event runs |
+| `Repeat` | Schedule variant: `Minute`, `Hour`, `Day`, `Week`, `MonthDate`, `MonthWeekday`, `YearDate`, `YearWeekday` |
+| `RepeatDescription` | The schedule as a phrase, e.g. `weekly Mon/Fri at 09:30` |
+| `IntervalSeconds` | Gap between runs, derived from the schedule |
+| `Enabled` | 1 if the event runs |
+| `TimeZone` | `UTC` or `Server` |
+| `OnOverlap` | `DelayNext` or `SkipNext` |
+
+`IntervalSeconds` comes from the schedule, **not** from the stored
+`Interval`/`IntervalType` pair. Those are a legacy sibling that Studio Pro writes
+and does not keep in sync — a shipped Mendix module stores `0`/`Minute` beside a
+daily schedule — so a query keyed on them would read a nightly job as firing
+every 0 seconds. Month and year figures are averages (30 and 365 days): the
+column is for thresholds and ordering, not calendar arithmetic.
+
+```sql
+-- Anything that fires more often than once a minute
+select QualifiedName, RepeatDescription, Microflow
+from CATALOG.SCHEDULED_EVENTS
+where Enabled = 1 and IntervalSeconds < 60;
+
+-- Scheduled events whose microflow no longer exists
+select se.QualifiedName, se.Microflow
+from CATALOG.SCHEDULED_EVENTS se
+left join CATALOG.MICROFLOWS m on m.QualifiedName = se.Microflow
+where m.Id is null;
+```
+
+A scheduled event also produces a `schedule` row in `CATALOG.REFS`, so
+`show callers of <microflow>` and the dead-asset analysis both see it. Without
+that edge a microflow run only by a scheduled event looked unreferenced.
+
+### CATALOG.QUEUES
+
+Task queues.
+
+| Column | Description |
+|--------|-------------|
+| `Name`, `QualifiedName`, `ModuleName`, `Folder` | Identity |
+| `Parallelism` | How many tasks run at once — an **expression string**, not a number |
+| `ClusterWide` | 1 if the limit applies across the cluster |
+
+`Parallelism` is stored as text because Mendix stores an expression: a query must
+not assume it parses as an integer.
+
+```sql
+select QualifiedName, Parallelism, ClusterWide from CATALOG.QUEUES;
+```
+
 ## Graph-Analysis Tables
 
 The dependency graph (`CATALOG.REFS`, full refresh) is analysed by a family of

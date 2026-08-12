@@ -814,30 +814,75 @@ func (ctx *LintContext) Snippets() iter.Seq[Snippet] {
 
 // ScheduledEvent represents a scheduled event document.
 type ScheduledEvent struct {
-	Name            string
-	QualifiedName   string
-	ModuleName      string
-	MicroflowName   string // qualified name of the microflow to execute
+	Name          string
+	QualifiedName string
+	ModuleName    string
+	MicroflowName string // qualified name of the microflow to execute
+	// IntervalSeconds is how often the event fires, derived from the Schedule
+	// child — NOT from the stored Interval/IntervalType pair, which Studio Pro
+	// writes and does not keep in sync with Schedule. Workflow Commons ships an
+	// event storing 0/"Minute" beside a DaySchedule of 01:00, so a rule keyed on
+	// the legacy pair would read it as "fires every 0 seconds".
 	IntervalSeconds int
-	Enabled         bool
+	// Repeat is the schedule variant (Minute, Hour, Day, Week, MonthDate,
+	// MonthWeekday, YearDate, YearWeekday); empty when the event has no
+	// Schedule child.
+	Repeat string
+	// OnOverlap is DelayNext or SkipNext — the event's own concurrency control.
+	OnOverlap string
+	TimeZone  string
+	Enabled   bool
 }
 
-// intervalToSeconds converts a Mendix interval value and type to seconds.
-// Returns 0 for unrecognised interval types (treated as "not convertible").
-func intervalToSeconds(interval int, intervalType string) int {
-	multipliers := map[string]int{
-		"Second": 1,
-		"Minute": 60,
-		"Hour":   3600,
-		"Day":    86400,
-		"Week":   604800,
-		"Month":  2592000,
-		"Year":   31536000,
+// scheduleSeconds is the gap between runs implied by a schedule.
+//
+// The month and year figures are averages (30 and 365 days): the value is for
+// thresholds and ordering ("anything that fires more often than a minute"), not
+// for calendar arithmetic.
+func scheduleSeconds(s *model.Schedule) int {
+	if s == nil {
+		return 0
 	}
-	if mult, ok := multipliers[intervalType]; ok {
-		return interval * mult
+	mult := s.Multiplier
+	if mult < 1 {
+		mult = 1
+	}
+	const day = 86400
+	switch s.Kind {
+	case model.ScheduleMinute:
+		return mult * 60
+	case model.ScheduleHour:
+		return mult * 3600
+	case model.ScheduleDay:
+		return day
+	case model.ScheduleWeek:
+		n := 0
+		for _, on := range s.Weekdays {
+			if on {
+				n++
+			}
+		}
+		if n == 0 {
+			return 7 * day
+		}
+		return (7 * day) / n
+	case model.ScheduleMonthDate, model.ScheduleMonthWeekday:
+		return mult * 30 * day
+	case model.ScheduleYearDate, model.ScheduleYearWeekday:
+		return 365 * day
 	}
 	return 0
+}
+
+// Queue represents a task queue document.
+type Queue struct {
+	Name          string
+	QualifiedName string
+	ModuleName    string
+	// Parallelism is an EXPRESSION, not a number — Mendix stores it as a string,
+	// so a rule must not assume it parses as an integer.
+	Parallelism string
+	ClusterWide bool
 }
 
 // ScheduledEvents returns an iterator over all scheduled events (excluding system modules).
@@ -889,12 +934,19 @@ func (ctx *LintContext) ScheduledEvents() iter.Seq[ScheduledEvent] {
 			if mfName == "" {
 				mfName = string(e.MicroflowID)
 			}
+			repeat := ""
+			if e.Schedule != nil {
+				repeat = string(e.Schedule.Kind)
+			}
 			se := ScheduledEvent{
 				Name:            e.Name,
 				QualifiedName:   moduleName + "." + e.Name,
 				ModuleName:      moduleName,
 				MicroflowName:   mfName,
-				IntervalSeconds: intervalToSeconds(e.Interval, e.IntervalType),
+				IntervalSeconds: scheduleSeconds(e.Schedule),
+				Repeat:          repeat,
+				OnOverlap:       e.OnOverlap,
+				TimeZone:        e.TimeZone,
 				Enabled:         e.Enabled,
 			}
 			if !yield(se) {
@@ -981,6 +1033,43 @@ type DatabaseConnection struct {
 }
 
 // DatabaseConnections returns an iterator over all database connections (excluding system modules).
+// Queues returns an iterator over all task queues (excluding platform modules).
+//
+// Backed by the catalog rather than the reader, so no LintReader change is
+// needed; the catalog is already built whenever rules run.
+func (ctx *LintContext) Queues() iter.Seq[Queue] {
+	return func(yield func(Queue) bool) {
+		rows, err := ctx.db.Query(fmt.Sprintf(`
+			SELECT q.Name, q.QualifiedName, q.ModuleName, q.Parallelism, q.ClusterWide
+			FROM queues q
+			LEFT JOIN modules m ON q.ModuleName = m.Name
+			WHERE %s
+			ORDER BY q.ModuleName, q.Name
+		`, notPlatformModule("m")))
+		if err != nil {
+			ctx.recordQueryError("Queues", err)
+			return
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var q Queue
+			var clusterWide int
+			if err := rows.Scan(&q.Name, &q.QualifiedName, &q.ModuleName, &q.Parallelism, &clusterWide); err != nil {
+				ctx.recordQueryError("Queues (row scan)", err)
+				continue
+			}
+			q.ClusterWide = clusterWide != 0
+			if ctx.IsExcluded(q.ModuleName) {
+				continue
+			}
+			if !yield(q) {
+				return
+			}
+		}
+	}
+}
+
 func (ctx *LintContext) DatabaseConnections() iter.Seq[DatabaseConnection] {
 	return func(yield func(DatabaseConnection) bool) {
 		rows, err := ctx.db.Query(fmt.Sprintf(`

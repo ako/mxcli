@@ -35,6 +35,8 @@ showStatement
     | showOrList CONSTANT VALUES (IN (qualifiedName | IDENTIFIER))?
     | showOrList LAYOUTS (IN (qualifiedName | IDENTIFIER))?
     | showOrList NOTEBOOKS (IN (qualifiedName | IDENTIFIER))?
+    | showOrList QUEUES (IN (qualifiedName | IDENTIFIER))?
+    | showOrList SCHEDULED EVENTS (IN (qualifiedName | IDENTIFIER))?
     | showOrList JAVA ACTIONS (IN (qualifiedName | IDENTIFIER))?
     | showOrList JAVASCRIPT ACTIONS (IN (qualifiedName | IDENTIFIER))?
     | showOrList IMAGE COLLECTION (IN (qualifiedName | IDENTIFIER))?
@@ -162,6 +164,8 @@ describeStatement
     | DESCRIBE STYLING ON (PAGE | SNIPPET) qualifiedName (WIDGET IDENTIFIER)?  // DESCRIBE STYLING ON PAGE Module.Page [WIDGET name]
     | DESCRIBE CATALOG DOT (catalogTableName)  // DESCRIBE CATALOG.ENTITIES
     | DESCRIBE BUSINESS EVENT SERVICE qualifiedName  // DESCRIBE BUSINESS EVENT SERVICE Module.Name
+    | DESCRIBE QUEUE qualifiedName                     // DESCRIBE QUEUE Module.Name
+    | DESCRIBE SCHEDULED EVENT qualifiedName           // DESCRIBE SCHEDULED EVENT Module.Name
     | DESCRIBE DATABASE CONNECTION qualifiedName       // DESCRIBE DATABASE CONNECTION Module.Name
     | DESCRIBE SETTINGS (CONFIGURATION STRING_LITERAL)?  // DESCRIBE SETTINGS [CONFIGURATION 'Default']
     | DESCRIBE FRAGMENT FROM PAGE qualifiedName WIDGET identifierOrKeyword     // DESCRIBE FRAGMENT FROM PAGE Module.Page WIDGET name
@@ -216,6 +220,7 @@ catalogTableName
     | CONSTANTS     // keyword token — must be listed explicitly
     | OBJECTS       // keyword token — must be listed explicitly
     | COMMUNITIES   // keyword token (SHOW COMMUNITIES) — must be listed explicitly for CATALOG.COMMUNITIES
+    | QUEUES        // keyword token (SHOW QUEUES) — must be listed explicitly for CATALOG.QUEUES
     | SOURCE_KW     // For CATALOG.SOURCE FTS table
     | ODATA         // For CATALOG.ODATA_CLIENTS and CATALOG.ODATA_SERVICES (via IDENTIFIER)
     | IDENTIFIER    // For tables like activities, xpath_expressions, projects, snapshots, refs, strings, odata_clients, odata_services, java_actions

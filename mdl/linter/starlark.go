@@ -326,6 +326,7 @@ func (r *StarlarkRule) buildPredeclared() starlark.StringDict {
 		"refs_from":             starlark.NewBuiltin("refs_from", r.builtinRefsFrom),
 		"attributes_for":        starlark.NewBuiltin("attributes_for", r.builtinAttributesFor),
 		"scheduled_events":      starlark.NewBuiltin("scheduled_events", r.builtinScheduledEvents),
+		"queues":                starlark.NewBuiltin("queues", r.builtinQueues),
 
 		// Graph-analysis facts (populated by `refresh catalog communities`).
 		"community_of":         starlark.NewBuiltin("community_of", r.builtinCommunityOf),
@@ -1016,12 +1017,40 @@ func databaseConnectionToStarlark(dc DatabaseConnection) starlark.Value {
 
 func scheduledEventToStarlark(se ScheduledEvent) starlark.Value {
 	return starlarkstruct.FromStringDict(starlark.String("scheduled_event"), starlark.StringDict{
-		"name":             starlark.String(se.Name),
-		"qualified_name":   starlark.String(se.QualifiedName),
-		"module_name":      starlark.String(se.ModuleName),
-		"microflow_name":   starlark.String(se.MicroflowName),
+		"name":           starlark.String(se.Name),
+		"qualified_name": starlark.String(se.QualifiedName),
+		"module_name":    starlark.String(se.ModuleName),
+		"microflow_name": starlark.String(se.MicroflowName),
+		// Derived from the Schedule child, not the legacy Interval/IntervalType
+		// pair — see ScheduledEvent.IntervalSeconds.
 		"interval_seconds": starlark.MakeInt(se.IntervalSeconds),
+		"repeat":           starlark.String(se.Repeat),
+		"on_overlap":       starlark.String(se.OnOverlap),
+		"time_zone":        starlark.String(se.TimeZone),
 		"enabled":          starlark.Bool(se.Enabled),
+	})
+}
+
+// builtinQueues returns all task queues.
+func (r *StarlarkRule) builtinQueues(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if r.ctx == nil {
+		return starlark.NewList(nil), nil
+	}
+	var result []starlark.Value
+	for q := range r.ctx.Queues() {
+		result = append(result, queueToStarlark(q))
+	}
+	return starlark.NewList(result), nil
+}
+
+func queueToStarlark(q Queue) starlark.Value {
+	return starlarkstruct.FromStringDict(starlark.String("queue"), starlark.StringDict{
+		"name":           starlark.String(q.Name),
+		"qualified_name": starlark.String(q.QualifiedName),
+		"module_name":    starlark.String(q.ModuleName),
+		// An EXPRESSION string, not a number.
+		"parallelism":  starlark.String(q.Parallelism),
+		"cluster_wide": starlark.Bool(q.ClusterWide),
 	})
 }
 

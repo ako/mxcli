@@ -244,6 +244,63 @@ func (r *RegularExpression) GetContainerID() ID {
 	return r.ContainerID
 }
 
+// ScheduleKind identifies which ScheduledEvents$*Schedule variant a schedule is.
+// The variants differ in which fields they carry, so the kind has to be decided
+// before any field is read or written — see Schedule.
+type ScheduleKind string
+
+const (
+	ScheduleMinute       ScheduleKind = "Minute"
+	ScheduleHour         ScheduleKind = "Hour"
+	ScheduleDay          ScheduleKind = "Day"
+	ScheduleWeek         ScheduleKind = "Week"
+	ScheduleMonthDate    ScheduleKind = "MonthDate"
+	ScheduleMonthWeekday ScheduleKind = "MonthWeekday"
+	ScheduleYearDate     ScheduleKind = "YearDate"
+	ScheduleYearWeekday  ScheduleKind = "YearWeekday"
+)
+
+// Schedule is the repeat rule of a scheduled event — the polymorphic
+// ScheduledEvents$Schedule child, flattened into one struct with Kind saying
+// which variant it is.
+//
+// It is flat rather than eight types because the fields overlap heavily and the
+// consumers (a formatter, a serializer, a describe) all switch on the kind
+// anyway. Only the fields listed for a kind are written; the rest are ignored:
+//
+//	Minute        Multiplier
+//	Hour          Multiplier, MinuteOffset
+//	Day           HourOfDay, MinuteOfHour
+//	Week          Weekdays, HourOfDay, MinuteOfHour
+//	MonthDate     Multiplier, MonthOffset, DayOfMonth, HourOfDay, MinuteOfHour
+//	MonthWeekday  Multiplier, MonthOffset, DaySelector, Weekday, HourOfDay, MinuteOfHour
+//	YearDate      Month, DayOfMonth, HourOfDay, MinuteOfHour
+//	YearWeekday   Month, DaySelector, Weekday, HourOfDay, MinuteOfHour
+type Schedule struct {
+	Kind ScheduleKind `json:"kind"`
+
+	// Multiplier is the repeat count ("every N minutes/hours/months").
+	// Day, Week and the two Year variants have no multiplier in the metamodel.
+	Multiplier int `json:"multiplier,omitempty"`
+	// MinuteOffset is the minute within the hour, for the Hour variant only.
+	MinuteOffset int `json:"minuteOffset,omitempty"`
+	// MonthOffset selects which month of a multi-month cycle fires.
+	MonthOffset int `json:"monthOffset,omitempty"`
+
+	HourOfDay    int `json:"hourOfDay,omitempty"`
+	MinuteOfHour int `json:"minuteOfHour,omitempty"`
+
+	// DayOfMonth is 1-31; Month is 1-12.
+	DayOfMonth int `json:"dayOfMonth,omitempty"`
+	Month      int `json:"month,omitempty"`
+
+	// Weekdays holds the seven per-day flags of the Week variant, Sunday first.
+	Weekdays [7]bool `json:"weekdays,omitempty"`
+	// DaySelector is First|Second|Third|Fourth|Last, Weekday is Sunday..Saturday.
+	DaySelector string `json:"daySelector,omitempty"`
+	Weekday     string `json:"weekday,omitempty"`
+}
+
 // ScheduledEvent represents a scheduled event.
 type ScheduledEvent struct {
 	BaseElement
@@ -256,6 +313,15 @@ type ScheduledEvent struct {
 	Interval      int        `json:"interval,omitempty"`
 	IntervalType  string     `json:"intervalType,omitempty"`
 	Enabled       bool       `json:"enabled"`
+	// Schedule is the repeat rule. Every Studio Pro-authored event carries one;
+	// nil means the document did not have the child.
+	Schedule *Schedule `json:"schedule,omitempty"`
+	// OnOverlap is SkipNext or DelayNext — what happens when a run is still
+	// going when the next one is due. This is a scheduled event's own
+	// concurrency control; it does not go through a task queue.
+	OnOverlap   string `json:"onOverlap,omitempty"`
+	ExportLevel string `json:"exportLevel,omitempty"`
+	Excluded    bool   `json:"excluded,omitempty"`
 }
 
 // GetName returns the scheduled event's name.

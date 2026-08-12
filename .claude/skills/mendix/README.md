@@ -23,6 +23,7 @@ Detailed syntax for each MDL document type:
 | [write-oql-queries.md](write-oql-queries.md) | OQL query syntax | Creating VIEW entities |
 | [create-page.md](create-page.md) | Page and widget syntax | Creating pages |
 | [fragments.md](fragments.md) | Fragment (reusable widget group) syntax | Reusing widget patterns across pages |
+| [scheduled-events-and-queues.md](scheduled-events-and-queues.md) | Scheduled event (cron) and task queue syntax | Running a microflow on a schedule; bounding background concurrency |
 
 ## Patterns (By Use Case)
 
@@ -92,6 +93,9 @@ Load skills based on the task:
 | "Create export mapping" | `json-structures-and-mappings.md` |
 | "Map JSON to entities" | `json-structures-and-mappings.md` |
 | "Seed/populate test data" | `demo-data.md` |
+| "Run a microflow nightly / hourly / on a schedule" | `scheduled-events-and-queues.md` |
+| "Add a cron job / batch job / recurring task" | `scheduled-events-and-queues.md` |
+| "Limit how many background tasks run at once" | `scheduled-events-and-queues.md` |
 | "Update widget properties" | `bulk-widget-updates.md` |
 | "Change widgets in bulk" | `bulk-widget-updates.md` |
 | "Reuse widgets across pages" | `fragments.md` |

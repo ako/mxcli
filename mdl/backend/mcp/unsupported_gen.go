@@ -214,6 +214,16 @@ func (unsupportedBackend) CreatePublishedRestService(_ *model.PublishedRestServi
 	return
 }
 
+func (unsupportedBackend) CreateQueue(_ *types.Queue) (err0 error) {
+	err0 = errUnsupported("CreateQueue")
+	return
+}
+
+func (unsupportedBackend) CreateScheduledEvent(_ *model.ScheduledEvent) (err0 error) {
+	err0 = errUnsupported("CreateScheduledEvent")
+	return
+}
+
 func (unsupportedBackend) CreateSnippet(_ *pages.Snippet) (err0 error) {
 	err0 = errUnsupported("CreateSnippet")
 	return
@@ -386,6 +396,16 @@ func (unsupportedBackend) DeletePublishedODataService(_ model.ID) (err0 error) {
 
 func (unsupportedBackend) DeletePublishedRestService(_ model.ID) (err0 error) {
 	err0 = errUnsupported("DeletePublishedRestService")
+	return
+}
+
+func (unsupportedBackend) DeleteQueue(_ string) (err0 error) {
+	err0 = errUnsupported("DeleteQueue")
+	return
+}
+
+func (unsupportedBackend) DeleteScheduledEvent(_ string) (err0 error) {
+	err0 = errUnsupported("DeleteScheduledEvent")
 	return
 }
 
@@ -754,6 +774,11 @@ func (unsupportedBackend) ListPublishedODataServices() (r0 []*model.PublishedODa
 
 func (unsupportedBackend) ListPublishedRestServices() (r0 []*model.PublishedRestService, err1 error) {
 	err1 = errUnsupported("ListPublishedRestServices")
+	return
+}
+
+func (unsupportedBackend) ListQueues() (r0 []*types.Queue, err1 error) {
+	err1 = errUnsupported("ListQueues")
 	return
 }
 
@@ -1182,8 +1207,18 @@ func (unsupportedBackend) UpdateQualifiedNameInAllUnits(_ string, _ string) (r0 
 	return
 }
 
+func (unsupportedBackend) UpdateQueue(_ *types.Queue) (err0 error) {
+	err0 = errUnsupported("UpdateQueue")
+	return
+}
+
 func (unsupportedBackend) UpdateRawUnit(_ string, _ []uint8) (err0 error) {
 	err0 = errUnsupported("UpdateRawUnit")
+	return
+}
+
+func (unsupportedBackend) UpdateScheduledEvent(_ *model.ScheduledEvent) (err0 error) {
+	err0 = errUnsupported("UpdateScheduledEvent")
 	return
 }
 

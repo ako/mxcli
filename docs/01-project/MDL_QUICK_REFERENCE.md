@@ -138,6 +138,86 @@ create constant MyModule.MaxRetries type integer default 3;
 create constant MyModule.EnableLogging type boolean default true;
 ```
 
+## Task Queues
+
+| Statement | Syntax | Notes |
+|-----------|--------|-------|
+| Show queues | `show queues [in module];` (`list queues` too) | Parallelism + cluster-wide flag |
+| Describe queue | `describe queue Module.Name;` | Re-executable MDL |
+| Create queue | `create [or modify] queue Module.Name ( Parallelism: 3, ClusterWide: true );` | Body optional; defaults `1` / `false` |
+| Drop queue | `drop queue Module.Name;` | |
+
+`Parallelism` is an **expression**, not a number — Mendix stores it as a string
+(`Queues$BasicQueueConfig.ParallelismExpression`). A bare integer is the common
+case; quote anything else.
+
+Binding a microflow **call** to a queue is not yet expressible in MDL. Because a
+rebuild would drop an existing binding, `create or replace|modify microflow` is
+**refused** when the stored microflow has a queued call — change those in Studio
+Pro. (Without the refusal the binding was written back as null and `mx check`
+stopped reporting CE1613, so the project looked healthy while the configuration
+was gone.)
+
+**Example:**
+```sql
+create queue Ops.OrderProcessing ( Parallelism: 3, ClusterWide: true );
+create queue Ops.Mail;
+create or modify queue Ops.OrderProcessing ( Parallelism: '$MyModule.Workers' );
+drop queue Ops.Mail;
+```
+
+## Scheduled Events
+
+Mendix's cron: run a microflow on a repeating schedule.
+
+| Statement | Syntax | Notes |
+|-----------|--------|-------|
+| Show scheduled events | `show scheduled events [in module];` (`list` too) | Repeat, microflow, enabled |
+| Describe scheduled event | `describe scheduled event Module.Name;` | Re-executable MDL |
+| Create scheduled event | `create [or modify] scheduled event Module.Name ( Microflow: ..., Repeat: ..., ... );` | |
+| Drop scheduled event | `drop scheduled event Module.Name;` | |
+
+`Microflow` and `Repeat` are always required. Each repeat takes **only** its own
+fields — anything else is refused by `mxcli check` (MDL-SCHED01) and by `exec`:
+
+| Repeat | Fields |
+|--------|--------|
+| `Minutely` | `Multiplier` |
+| `Hourly` | `Multiplier`, `MinuteOffset` |
+| `Daily` | `HourOfDay`, `MinuteOfHour` |
+| `Weekly` | `Weekdays`, `HourOfDay`, `MinuteOfHour` |
+| `MonthlyByDate` | `Multiplier`, `MonthOffset`, `DayOfMonth`, `HourOfDay`, `MinuteOfHour` |
+| `MonthlyByWeekday` | `Multiplier`, `MonthOffset`, `DaySelector`, `Weekday`, `HourOfDay`, `MinuteOfHour` |
+| `YearlyByDate` | `Month`, `DayOfMonth`, `HourOfDay`, `MinuteOfHour` |
+| `YearlyByWeekday` | `Month`, `DaySelector`, `Weekday`, `HourOfDay`, `MinuteOfHour` |
+
+Optional on any repeat: `Enabled` (default false), `OnOverlap`
+(`DelayNext` default / `SkipNext`), `TimeZone` (`UTC` default / `Server`),
+`StartDateTime` (RFC 3339), `Documentation`.
+
+`OnOverlap` is a scheduled event's own concurrency control — scheduled events do
+**not** go through a task queue.
+
+**Example:**
+```sql
+create scheduled event Ops.NightlyCleanup (
+  Microflow: Ops.SE_Cleanup,
+  Repeat: Daily,
+  HourOfDay: 4,
+  MinuteOfHour: 0,
+  TimeZone: Server,
+  Enabled: true
+);
+
+create scheduled event Ops.WeeklyReport (
+  Microflow: Ops.SE_Report,
+  Repeat: Weekly,
+  Weekdays: 'Monday, Friday',
+  HourOfDay: 9,
+  MinuteOfHour: 30
+);
+```
+
 ## OData Clients, Services & External Entities
 
 | Statement | Syntax | Notes |
