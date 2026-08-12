@@ -179,6 +179,28 @@ mxcli check script.mdl -p app.mpr --references
 - [ ] Enum values spelled exactly (`Server`, `DelayNext`, `Last`, `Monday`)
 - [ ] The target microflow exists and takes no parameters
 
+## Querying and Linting
+
+Both document types are in the catalog after `refresh catalog`:
+
+```sql
+-- Anything that fires more often than once a minute
+select QualifiedName, RepeatDescription, Microflow
+from CATALOG.SCHEDULED_EVENTS
+where Enabled = 1 and IntervalSeconds < 60;
+
+select QualifiedName, Parallelism, ClusterWide from CATALOG.QUEUES;
+```
+
+A scheduled event counts as a caller of the microflow it runs, so
+`show callers of Ops.SE_Cleanup` lists it and the lint rule for orphaned
+microflows (QUAL004) does not flag it. `IntervalSeconds` is derived from the
+schedule, not from the legacy `Interval`/`IntervalType` pair Mendix also stores.
+
+Starlark lint rules can iterate both: `scheduled_events()` yields
+`repeat`, `interval_seconds`, `on_overlap`, `time_zone`, `enabled`, and
+`microflow_name`; `queues()` yields `parallelism` (a string) and `cluster_wide`.
+
 ## Related
 
 - `mxcli syntax scheduled-event`, `mxcli syntax queue` — full syntax reference

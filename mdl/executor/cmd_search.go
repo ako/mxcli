@@ -20,7 +20,10 @@ import (
 //
 // A false negative here reads as "nothing uses this", which is the answer
 // somebody acts on before deleting a document — so the set errs toward
-// including a kind rather than omitting it.
+// including a kind rather than omitting it. 'schedule' is the same shape: a
+// microflow run only by a scheduled event reported "(no callers found)", was
+// listed in GRAPH_DEAD_ASSETS, and drew QUAL004 "is not called from anywhere"
+// with the suggestion "Remove if unused" — on a microflow that runs nightly.
 //
 // Deliberately excluded: 'datasource', 'parameter', 'return', 'retrieve',
 // 'create', 'change', 'delete', 'associate', 'generalize' and 'layout'. Those
@@ -34,6 +37,7 @@ var callerRefKinds = []string{
 	RefKindCallerHomePage,  // navigation
 	RefKindCallerLoginPage,
 	RefKindCallerMenuItem,
+	RefKindCallerSchedule, // scheduled event: the microflow it runs
 }
 
 // Kind literals, kept next to the set that uses them so the SQL below cannot
@@ -46,6 +50,7 @@ const (
 	RefKindCallerHomePage  = "home_page"
 	RefKindCallerLoginPage = "login_page"
 	RefKindCallerMenuItem  = "menu_item"
+	RefKindCallerSchedule  = "schedule"
 )
 
 // callerRefKindsSQL renders callerRefKinds as a SQL IN list.
