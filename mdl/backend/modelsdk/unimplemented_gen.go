@@ -156,6 +156,10 @@ func (unimplemented) CreateLayout(_ *pages.Layout) error {
 	return errUnimplemented("CreateLayout")
 }
 
+func (unimplemented) CreateMenuDocument(_ *types.MenuDocument) error {
+	return errUnimplemented("CreateMenuDocument")
+}
+
 func (unimplemented) CreateMicroflow(_ *microflows.Microflow) error {
 	return errUnimplemented("CreateMicroflow")
 }
@@ -182,6 +186,10 @@ func (unimplemented) CreatePublishedRestService(_ *model.PublishedRestService) e
 
 func (unimplemented) CreateQueue(_ *types.Queue) error {
 	return errUnimplemented("CreateQueue")
+}
+
+func (unimplemented) CreateRegularExpression(_ *model.RegularExpression) error {
+	return errUnimplemented("CreateRegularExpression")
 }
 
 func (unimplemented) CreateScheduledEvent(_ *model.ScheduledEvent) error {
@@ -301,6 +309,10 @@ func (unimplemented) DeleteLayout(_ model.ID) error {
 	return errUnimplemented("DeleteLayout")
 }
 
+func (unimplemented) DeleteMenuDocument(_ model.ID) error {
+	return errUnimplemented("DeleteMenuDocument")
+}
+
 func (unimplemented) DeleteMicroflow(_ model.ID) error {
 	return errUnimplemented("DeleteMicroflow")
 }
@@ -331,6 +343,10 @@ func (unimplemented) DeletePublishedRestService(_ model.ID) error {
 
 func (unimplemented) DeleteQueue(_ string) error {
 	return errUnimplemented("DeleteQueue")
+}
+
+func (unimplemented) DeleteRegularExpression(_ string) error {
+	return errUnimplemented("DeleteRegularExpression")
 }
 
 func (unimplemented) DeleteScheduledEvent(_ string) error {
@@ -425,6 +441,11 @@ func (unimplemented) GetLayout(_ model.ID) (*pages.Layout, error) {
 func (unimplemented) GetMendixVersion() (string, error) {
 	var r0 string
 	return r0, errUnimplemented("GetMendixVersion")
+}
+
+func (unimplemented) GetMenuDocumentByQualifiedName(_ string, _ string) (*types.MenuDocument, error) {
+	var r0 *types.MenuDocument
+	return r0, errUnimplemented("GetMenuDocumentByQualifiedName")
 }
 
 func (unimplemented) GetMicroflow(_ model.ID) (*microflows.Microflow, error) {
@@ -651,6 +672,11 @@ func (unimplemented) ListLayouts() ([]*pages.Layout, error) {
 	return r0, errUnimplemented("ListLayouts")
 }
 
+func (unimplemented) ListMenuDocuments() ([]*types.MenuDocument, error) {
+	var r0 []*types.MenuDocument
+	return r0, errUnimplemented("ListMenuDocuments")
+}
+
 func (unimplemented) ListMicroflows() ([]*microflows.Microflow, error) {
 	var r0 []*microflows.Microflow
 	return r0, errUnimplemented("ListMicroflows")
@@ -714,6 +740,11 @@ func (unimplemented) ListRawUnits(_ string) ([]*types.RawUnitInfo, error) {
 func (unimplemented) ListRawUnitsByType(_ string) ([]*types.RawUnit, error) {
 	var r0 []*types.RawUnit
 	return r0, errUnimplemented("ListRawUnitsByType")
+}
+
+func (unimplemented) ListRegularExpressions() ([]*model.RegularExpression, error) {
+	var r0 []*model.RegularExpression
+	return r0, errUnimplemented("ListRegularExpressions")
 }
 
 func (unimplemented) ListScheduledEvents() ([]*model.ScheduledEvent, error) {
@@ -1032,6 +1063,10 @@ func (unimplemented) UpdateLayout(_ *pages.Layout) error {
 	return errUnimplemented("UpdateLayout")
 }
 
+func (unimplemented) UpdateMenuDocument(_ *types.MenuDocument) error {
+	return errUnimplemented("UpdateMenuDocument")
+}
+
 func (unimplemented) UpdateMicroflow(_ *microflows.Microflow) error {
 	return errUnimplemented("UpdateMicroflow")
 }
@@ -1088,6 +1123,10 @@ func (unimplemented) UpdateQueue(_ *types.Queue) error {
 
 func (unimplemented) UpdateRawUnit(_ string, _ []uint8) error {
 	return errUnimplemented("UpdateRawUnit")
+}
+
+func (unimplemented) UpdateRegularExpression(_ *model.RegularExpression) error {
+	return errUnimplemented("UpdateRegularExpression")
 }
 
 func (unimplemented) UpdateScheduledEvent(_ *model.ScheduledEvent) error {

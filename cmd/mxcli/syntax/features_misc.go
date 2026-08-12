@@ -253,6 +253,62 @@ DESCRIBE QUEUE Ops.OrderProcessing;
 DROP QUEUE Ops.Mail;`,
 	})
 
+	// ── Regular expressions ─────────────────────────────────────────────
+
+	Register(SyntaxFeature{
+		Path:    "regular-expression",
+		Summary: "Regular expressions — named patterns shared by attribute validation rules",
+		Keywords: []string{
+			"regular expression", "regular expressions", "regex", "pattern", "validation",
+			"create regular expression", "drop regular expression", "describe regular expression",
+			"show regular expressions", "email regex", "match",
+		},
+		Syntax: `CREATE [OR MODIFY] REGULAR EXPRESSION Module.Name (
+  Expression: '<pattern>',
+  [Documentation: '<text>',]
+  [ExportLevel: Hidden|Public,]
+);
+
+SHOW REGULAR EXPRESSIONS [IN <module>];
+LIST REGULAR EXPRESSIONS [IN <module>];
+DESCRIBE REGULAR EXPRESSION Module.Name;
+DROP REGULAR EXPRESSION Module.Name;
+
+A regular expression is a DOCUMENT, not a string on a rule: Mendix stores an
+attribute validation rule's reference to it by qualified name, so one pattern is
+shared by every attribute that validates against it.
+
+Quoting: the pattern is a normal MDL string, so a single quote inside it is
+doubled ('^it''s$'). Backslashes are NOT escape characters — write the regex
+exactly as Mendix should see it.
+
+Mendix validates with .NET's regex engine, which accepts constructs Go does not
+(lookaround, backreferences). mxcli stores such a pattern unchanged and DESCRIBE
+notes that it could not verify it — it does not call it invalid.
+
+Binding a regex to an attribute is not yet expressible: CREATE VALIDATION RULE
+has grammar but no implementation, so it currently does nothing. Add the rule in
+Studio Pro.`,
+		Example: `CREATE REGULAR EXPRESSION Val.EmailAddress (
+  Expression: '\w+((-|\+|\.)\w+)*@\w+([\.-]?\w+)*(\.\w{2,})+',
+  Documentation: 'A, not too restrictive, email address regular expression'
+);
+
+CREATE REGULAR EXPRESSION Val.Identifier (
+  Expression: '^[a-zA-Z_]+[a-zA-Z0-9_]*$'
+);
+
+-- .NET lookbehind: legal in Mendix, not verifiable by mxcli
+CREATE REGULAR EXPRESSION Val.NoTrailingSlash ( Expression: '.*(?<!/)$' );
+
+SHOW REGULAR EXPRESSIONS IN Val;
+DESCRIBE REGULAR EXPRESSION Val.EmailAddress;
+DROP REGULAR EXPRESSION Val.Identifier;
+
+-- Which entities validate against a shared pattern
+SHOW REFERENCES TO Val.EmailAddress;`,
+	})
+
 	// ── Scheduled events ────────────────────────────────────────────────
 
 	Register(SyntaxFeature{

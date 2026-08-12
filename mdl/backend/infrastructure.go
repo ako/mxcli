@@ -92,6 +92,14 @@ type QueueBackend interface {
 	DeleteQueue(id string) error
 }
 
+// RegularExpressionBackend provides regular expression document operations.
+type RegularExpressionBackend interface {
+	ListRegularExpressions() ([]*model.RegularExpression, error)
+	CreateRegularExpression(re *model.RegularExpression) error
+	UpdateRegularExpression(re *model.RegularExpression) error
+	DeleteRegularExpression(id string) error
+}
+
 // ScheduledEventBackend provides scheduled event operations.
 type ScheduledEventBackend interface {
 	ListScheduledEvents() ([]*model.ScheduledEvent, error)

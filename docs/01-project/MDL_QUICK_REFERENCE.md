@@ -166,6 +166,47 @@ create or modify queue Ops.OrderProcessing ( Parallelism: '$MyModule.Workers' );
 drop queue Ops.Mail;
 ```
 
+## Regular Expressions
+
+Named patterns, shared by attribute validation rules.
+
+| Statement | Syntax | Notes |
+|-----------|--------|-------|
+| Show regular expressions | `show regular expressions [in module];` (`list` too) | Pattern + documentation |
+| Describe regular expression | `describe regular expression Module.Name;` | Re-executable MDL |
+| Create regular expression | `create [or modify] regular expression Module.Name ( Expression: '<pattern>' );` | `Expression` required |
+| Drop regular expression | `drop regular expression Module.Name;` | |
+
+A regex is a **document**, not a string on a rule: Mendix stores a validation
+rule's reference to it by qualified name, so one pattern is shared by every
+attribute that validates against it. `show references to <regex>` lists the
+entities that use it.
+
+The pattern is an ordinary MDL string, so a single quote inside it is doubled
+(`'^it''s$'`). Backslashes are **not** escape characters — write the regex
+exactly as Mendix should see it.
+
+Mendix validates with .NET's regex engine, which accepts constructs Go does not
+(lookaround, backreferences). mxcli stores such a pattern unchanged; `describe`
+notes that it could not verify it rather than calling it invalid.
+
+**Binding a regex to an attribute is not yet expressible.** `create validation
+rule` has grammar but no implementation — it currently parses and does nothing.
+Add the rule in Studio Pro.
+
+**Example:**
+```sql
+create regular expression Val.EmailAddress (
+  Expression: '\w+((-|\+|\.)\w+)*@\w+([\.-]?\w+)*(\.\w{2,})+',
+  Documentation: 'A, not too restrictive, email address regular expression'
+);
+
+-- .NET lookbehind: legal in Mendix, not verifiable by mxcli
+create regular expression Val.NoTrailingSlash ( Expression: '.*(?<!/)$' );
+
+show references to Val.EmailAddress;
+```
+
 ## Scheduled Events
 
 Mendix's cron: run a microflow on a repeating schedule.

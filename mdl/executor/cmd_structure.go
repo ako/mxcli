@@ -79,12 +79,13 @@ func structureDepth1JSON(ctx *ExecContext, modules []structureModule) error {
 	constantCounts := countByModuleFromBackend(ctx, "constants")
 	scheduledEventCounts := countByModuleFromBackend(ctx, "scheduled_events")
 	queueCounts := countByModuleFromBackend(ctx, "queues")
+	regexCounts := countByModuleFromBackend(ctx, "regular_expressions")
 
 	tr := &TableResult{
 		Columns: []string{
 			"Module", "Entities", "Enumerations", "Microflows", "Nanoflows",
 			"Workflows", "Pages", "Snippets", "JavaActions", "Constants",
-			"ScheduledEvents", "Queues", "ODataClients", "ODataServices", "BusinessEventServices",
+			"ScheduledEvents", "Queues", "RegularExpressions", "ODataClients", "ODataServices", "BusinessEventServices",
 		},
 	}
 	for _, m := range modules {
@@ -101,6 +102,7 @@ func structureDepth1JSON(ctx *ExecContext, modules []structureModule) error {
 			constantCounts[m.Name],
 			scheduledEventCounts[m.Name],
 			queueCounts[m.Name],
+			regexCounts[m.Name],
 			odataClientCounts[m.Name],
 			odataServiceCounts[m.Name],
 			beServiceCounts[m.Name],
@@ -202,6 +204,7 @@ func structureDepth1(ctx *ExecContext, modules []structureModule) error {
 	constantCounts := countByModuleFromBackend(ctx, "constants")
 	scheduledEventCounts := countByModuleFromBackend(ctx, "scheduled_events")
 	queueCounts := countByModuleFromBackend(ctx, "queues")
+	regexCounts := countByModuleFromBackend(ctx, "regular_expressions")
 
 	// Calculate name column width for alignment
 	nameWidth := 0
@@ -246,6 +249,9 @@ func structureDepth1(ctx *ExecContext, modules []structureModule) error {
 		}
 		if c := queueCounts[m.Name]; c > 0 {
 			parts = append(parts, pluralize(c, "queue", "queues"))
+		}
+		if c := regexCounts[m.Name]; c > 0 {
+			parts = append(parts, pluralize(c, "regular expression", "regular expressions"))
 		}
 		if c := odataClientCounts[m.Name]; c > 0 {
 			parts = append(parts, pluralize(c, "odata client", "odata clients"))
@@ -308,6 +314,14 @@ func countByModuleFromBackend(ctx *ExecContext, kind string) map[string]int {
 		if queues, err := ctx.Backend.ListQueues(); err == nil {
 			for _, q := range queues {
 				modID := h.FindModuleID(q.ContainerID)
+				modName := h.GetModuleName(modID)
+				counts[modName]++
+			}
+		}
+	case "regular_expressions":
+		if res, err := ctx.Backend.ListRegularExpressions(); err == nil {
+			for _, re := range res {
+				modID := h.FindModuleID(re.ContainerID)
 				modName := h.GetModuleName(modID)
 				counts[modName]++
 			}

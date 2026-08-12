@@ -355,6 +355,26 @@ queueProperty
     ;
 
 // =============================================================================
+// REGULAR EXPRESSION CREATION
+// =============================================================================
+//
+// A named regex document. Attribute validation rules reference it by qualified
+// name (DomainModels$RegExRuleInfo.RegExIdentifier), which is why it is a
+// document rather than a string on the rule.
+
+createRegularExpressionStatement
+    : REGULAR EXPRESSION qualifiedName regularExpressionBody?
+    ;
+
+regularExpressionBody
+    : LPAREN (regularExpressionProperty (COMMA regularExpressionProperty)* COMMA?)? RPAREN
+    ;
+
+regularExpressionProperty
+    : identifierOrKeyword COLON (STRING_LITERAL | booleanLiteral | identifierOrKeyword)
+    ;
+
+// =============================================================================
 // SCHEDULED EVENT CREATION
 // =============================================================================
 //

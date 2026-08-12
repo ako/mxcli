@@ -1,0 +1,59 @@
+-- ============================================================================
+-- Regular expressions — named patterns shared by validation rules
+-- ============================================================================
+--
+-- A Mendix regular expression is a DOCUMENT, not a string on a rule: an
+-- attribute validation rule stores a reference to it by qualified name
+-- (DomainModels$RegExRuleInfo.RegExIdentifier), so one pattern is shared by
+-- every attribute that validates against it.
+--
+-- The document shape is pinned against five Studio Pro-authored documents
+-- (Mendix Email Connector 6.4.2, Community Commons 11.5.1). The property key is
+-- the trap: modelsdk/gen binds the pattern to "RegEx", but every real document
+-- stores "Expression".
+--
+-- Verify:
+--   mxcli exec mdl-examples/doctype-tests/regular-expressions.mdl -p app.mpr
+--   mx check app.mpr    # 0 errors
+--   mxcli -p app.mpr -c "list regular expressions"
+--   mxcli -p app.mpr -c "describe regular expression Val.EmailAddress"
+-- ============================================================================
+
+create module Val;
+/
+-- Backslashes are NOT escape characters in an MDL string: write the regex
+-- exactly as Mendix should see it.
+create regular expression Val.EmailAddress (
+  Expression: '\w+((-|\+|\.)\w+)*@\w+([\.-]?\w+)*(\.\w{2,})+',
+  Documentation: 'A, not too restrictive, email address regular expression'
+);
+/
+create regular expression Val.Identifier (
+  Expression: '^[a-zA-Z_]+[a-zA-Z0-9_]*$',
+  Documentation: 'Alphanumeric and underscore, not starting with a number'
+);
+/
+-- .NET lookbehind. Legal in Mendix (this is the Email Connector's own pattern),
+-- but Go's RE2 cannot compile it — DESCRIBE says "not verifiable", not "invalid".
+create regular expression Val.NoTrailingSlash ( Expression: '.*(?<!/)$' );
+/
+-- A single quote inside the pattern is doubled, like any MDL string.
+create regular expression Val.Apostrophe ( Expression: '^it''s$' );
+/
+-- Re-running with OR MODIFY reuses the stored $ID, so a validation rule's
+-- by-name reference keeps pointing at the same document.
+create or modify regular expression Val.Identifier (
+  Expression: '^[a-zA-Z_][a-zA-Z0-9_]*$',
+  Documentation: 'Tightened: exactly one leading letter or underscore'
+);
+/
+-- "expression", "expressions" and "regular" stay usable as ordinary names:
+-- all three are in the grammar's `keyword` rule, so adding the tokens did not
+-- take them away.
+create entity Val.Rule (
+  expression: String(200),
+  regular: Boolean,
+  expressions: Integer
+);
+/
+drop regular expression Val.Apostrophe;

@@ -269,6 +269,8 @@ var mdlGeneratedKeywords = []protocol.CompletionItem{
 	{Label: "QUEUE", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
 	{Label: "QUEUES", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
 	{Label: "SCHEDULED", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
+	{Label: "REGULAR", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
+	{Label: "EXPRESSIONS", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
 	{Label: "JAR", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
 	{Label: "DEPENDENCY", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
 	{Label: "DEPENDENCIES", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},

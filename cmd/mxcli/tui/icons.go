@@ -33,9 +33,10 @@ var typeIconMap = map[string]string{
 	"imagecollection": "🖼️",
 
 	// Constants & events
-	"constant":       "π",
-	"scheduledevent": "⏰",
-	"queue":          "🧵",
+	"constant":          "π",
+	"scheduledevent":    "⏰",
+	"queue":             "🧵",
+	"regularexpression": "🔤",
 
 	// Actions
 	"javaaction":       "☕",
