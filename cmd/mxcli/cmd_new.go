@@ -28,6 +28,12 @@ This command performs the following steps:
   5. Runs one build so generated sources are settled (--skip-build to skip)
   6. Links this mxcli into the project (or downloads a Linux build on macOS/Windows)
 
+The project is created in a short temporary directory and moved into place, so
+--output-dir may be as deep as your filesystem allows and a failure never leaves
+partial output behind. Mendix tooling itself refuses paths over 259 characters,
+so a project deeper than that is created but reported as one Studio Pro on
+Windows may not open.
+
 Examples:
   mxcli new MyApp
   mxcli new MyApp --version 11.8.0
@@ -87,22 +93,47 @@ Examples:
 			os.Exit(1)
 		}
 
-		// Step 2: Create project
+		// Step 2: Create project.
+		//
+		// Created in a SHORT staging directory and moved into place afterwards.
+		// MxToolset refuses to extract past a 259-character full path and aborts
+		// PART WAY THROUGH when it hits that, so pointing it straight at a deep
+		// output directory left the user with a few hundred orphaned files and no
+		// .mpr (issue #825). Staging removes the limit from the equation entirely —
+		// the destination may be as deep as the filesystem allows — and means the
+		// destination is only ever written to after creation has succeeded.
 		fmt.Printf("\nStep 2/6: Creating Mendix project '%s'...\n", appName)
 		if err := os.MkdirAll(absDir, 0755); err != nil {
 			fmt.Fprintf(os.Stderr, "Error creating directory: %v\n", err)
 			os.Exit(1)
 		}
 
+		stageDir, cleanupStage, err := stagedProjectDirs()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		defer cleanupStage()
+
 		mxCmd := exec.Command(mxPath, "create-project", "--app-name", appName)
-		mxCmd.Dir = absDir
+		mxCmd.Dir = stageDir
 		mxCmd.Stdout = os.Stdout
 		mxCmd.Stderr = os.Stderr
 		docker.PrepareMxCommand(mxCmd)
 		if err := mxCmd.Run(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating project: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error creating project: %v\n", describeCreateProjectFailure(stageDir, err))
 			os.Exit(1)
 		}
+
+		// Measure the template's deepest path before moving, so the portability
+		// warning uses this version's real number rather than a constant that
+		// drifts (181 characters on 11.13.0, 182 on 11.12.0).
+		longest, longestPath := longestRelativePath(stageDir)
+		if err := moveProject(stageDir, absDir); err != nil {
+			fmt.Fprintf(os.Stderr, "Error moving project into place: %v\n", err)
+			os.Exit(1)
+		}
+		warnIfPathTooLongForStudioPro(os.Stdout, absDir, longest, longestPath)
 
 		// Clean up duplicate locale files that mx create-project generates.
 		// MxBuild's AtlasPlugin.LoadTranslations crashes with "An item with the same

@@ -416,6 +416,11 @@ func (c *Catalog) createTables() error {
 			AttributeRef TEXT,
 			MicroflowRef TEXT,
 			NanoflowRef TEXT,
+			-- The page a widget's action opens (show_page, and the page half of
+			-- "create object … then open page"). Without it a page reachable only
+			-- from a button had no inbound reference at all and read as dead code
+			-- (issue #773).
+			PageRef TEXT,
 			Description TEXT,
 			ProjectId TEXT,
 			SnapshotId TEXT
