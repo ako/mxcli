@@ -3,10 +3,13 @@
 package marketplace
 
 import (
+	"archive/zip"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	modelsdk "github.com/mendixlabs/mxcli"
@@ -92,15 +95,16 @@ func safeFileName(k ElementKey) string {
 
 // UpdateResult is what an update did.
 type UpdateResult struct {
-	Module          string
-	FromVersion     string
-	ToVersion       string
-	UnitsCopied     int
-	IdentitiesKept  int
-	IdentitiesLost  []string
-	GrantsRestored  int
-	GrantsDropped   []string
-	ForcedOverEdits []string
+	Module           string
+	FromVersion      string
+	ToVersion        string
+	UnitsCopied      int
+	IdentitiesKept   int
+	IdentitiesLost   []string
+	GrantsRestored   int
+	GrantsDropped    []string
+	WidgetsInstalled []string
+	ForcedOverEdits  []string
 }
 
 // PerformUpdate replaces an installed module with the copy in referenceMpr,
@@ -116,7 +120,7 @@ type UpdateResult struct {
 //
 // A failure partway leaves the project in a broken state. The caller must work
 // on a copy, or hold a backup: this does not roll back.
-func PerformUpdate(mprPath, referenceMpr, moduleName, fromVersion, toVersion, toVersionID string,
+func PerformUpdate(mprPath, referenceMpr, targetMpk, moduleName, fromVersion, toVersion, toVersionID string,
 	newBackend func() backend.FullBackend) (*UpdateResult, error) {
 
 	ids, err := CaptureIdentities(mprPath, moduleName)
@@ -148,16 +152,21 @@ func PerformUpdate(mprPath, referenceMpr, moduleName, fromVersion, toVersion, to
 	if err := StampMarketplaceVersion(mprPath, moduleName, toVersion, toVersionID); err != nil {
 		return nil, fmt.Errorf("record the installed version: %w", err)
 	}
+	widgets, err := InstallPackageWidgets(targetMpk, filepath.Dir(mprPath))
+	if err != nil {
+		return nil, fmt.Errorf("install the new version's widgets: %w", err)
+	}
 
 	return &UpdateResult{
-		Module:         moduleName,
-		FromVersion:    fromVersion,
-		ToVersion:      toVersion,
-		UnitsCopied:    copied,
-		IdentitiesKept: applied,
-		IdentitiesLost: missing,
-		GrantsRestored: restored,
-		GrantsDropped:  dropped,
+		Module:           moduleName,
+		FromVersion:      fromVersion,
+		ToVersion:        toVersion,
+		UnitsCopied:      copied,
+		IdentitiesKept:   applied,
+		IdentitiesLost:   missing,
+		GrantsRestored:   restored,
+		GrantsDropped:    dropped,
+		WidgetsInstalled: widgets,
 	}, nil
 }
 
@@ -239,4 +248,56 @@ func setBoolField(doc bson.D, key string, value bool) {
 			return
 		}
 	}
+}
+
+// InstallPackageWidgets copies a package's bundled widget .mpk files into the
+// project's widgets/ folder, and reports what it wrote.
+//
+// A module update that moves only the model is wrong for any module shipping
+// widgets. Measured on DataWidgets 3.5.0 → 3.11.3: the model updated cleanly and
+// all ten widget binaries were still the old version, so the project claimed
+// 3.11.3 while running 3.5.0's widget code. Administration has no widgets, which
+// is exactly why the first end-to-end run did not catch it.
+//
+// The files come from the package rather than from the reference project,
+// because the reference is a blank app plus the module and its widgets/ folder
+// therefore also holds the template's widgets — copying those would overwrite
+// widgets this update has nothing to do with.
+func InstallPackageWidgets(mpkPath, projectDir string) (written []string, err error) {
+	zr, err := zip.OpenReader(mpkPath)
+	if err != nil {
+		return nil, fmt.Errorf("open package %s: %w", filepath.Base(mpkPath), err)
+	}
+	defer zr.Close()
+
+	for _, f := range zr.File {
+		if !strings.HasPrefix(f.Name, "widgets/") || f.FileInfo().IsDir() {
+			continue
+		}
+		base := filepath.Base(f.Name)
+		if base == "" || base == "." {
+			continue
+		}
+		dstDir := filepath.Join(projectDir, "widgets")
+		if err := os.MkdirAll(dstDir, 0o755); err != nil {
+			return written, fmt.Errorf("create widgets directory: %w", err)
+		}
+		dst := filepath.Join(dstDir, base)
+
+		rc, oerr := f.Open()
+		if oerr != nil {
+			return written, fmt.Errorf("read %s from the package: %w", f.Name, oerr)
+		}
+		body, rerr := io.ReadAll(rc)
+		_ = rc.Close()
+		if rerr != nil {
+			return written, fmt.Errorf("read %s: %w", f.Name, rerr)
+		}
+		if err := os.WriteFile(dst, body, 0o644); err != nil {
+			return written, fmt.Errorf("write %s: %w", dst, err)
+		}
+		written = append(written, base)
+	}
+	sort.Strings(written)
+	return written, nil
 }

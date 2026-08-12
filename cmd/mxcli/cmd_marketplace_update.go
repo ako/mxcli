@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/mendixlabs/mxcli/cmd/mxcli/marketplace"
 	"github.com/mendixlabs/mxcli/internal/auth"
@@ -137,9 +138,13 @@ func runMarketplaceUpdate(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	// referenceFor downloaded the package into the work directory under this
+	// slot; the widgets are taken from it rather than from the reference project,
+	// whose widgets/ also holds the blank template's.
+	targetMpk := filepath.Join(work, "target.mpk")
 
 	fmt.Fprintf(out, "\nUpdating %s %s → %s...\n", moduleName, installedVersion, target)
-	res, err := marketplace.PerformUpdate(mprPath, targetRef, moduleName, installedVersion, target,
+	res, err := marketplace.PerformUpdate(mprPath, targetRef, targetMpk, moduleName, installedVersion, target,
 		targetVersion.VersionID, newBackendFactory())
 	if err != nil {
 		return fmt.Errorf("%w\n\nThe project may be mid-update — %s could be missing. Restore from version control",
@@ -211,6 +216,9 @@ func reportUpdate(out io.Writer, r *marketplace.UpdateResult) {
 	fmt.Fprintf(out, "\n%s updated %s → %s\n", r.Module, r.FromVersion, r.ToVersion)
 	fmt.Fprintf(out, "  %d units copied, %d element identities preserved, %d role grant(s) restored.\n",
 		r.UnitsCopied, r.IdentitiesKept, r.GrantsRestored)
+	if len(r.WidgetsInstalled) > 0 {
+		fmt.Fprintf(out, "  %d widget package(s) replaced in widgets/.\n", len(r.WidgetsInstalled))
+	}
 
 	if len(r.IdentitiesLost) > 0 {
 		fmt.Fprintf(out, "\n  Removed in %s (%d) — their database columns or tables will go on the next deploy:\n",
@@ -234,7 +242,12 @@ func reportUpdate(out io.Writer, r *marketplace.UpdateResult) {
 	fmt.Fprintln(out, "\n  Next: resync widget definitions, or 'mx check' will report CE0463 on the")
 	fmt.Fprintln(out, "  new version's pages (this is expected after any headless module install):")
 	fmt.Fprintln(out, "      mx update-widgets <project.mpr>")
-	fmt.Fprintln(out, "\n  Then review with 'mxcli diff-local' and validate with 'mxcli docker check'.")
+	fmt.Fprintln(out, "\n  Then check the app. A newer module can need newer companions — measured on")
+	fmt.Fprintln(out, "  DataWidgets 3.11.3, whose widgets want design properties an older Atlas does")
+	fmt.Fprintln(out, "  not define (29 × CE6083). That is a dependency to resolve, not something")
+	fmt.Fprintln(out, "  this update can fix:")
+	fmt.Fprintln(out, "      mxcli docker check -p <project.mpr>")
+	fmt.Fprintln(out, "\n  Review the change with 'mxcli diff-local'.")
 }
 
 func init() {
