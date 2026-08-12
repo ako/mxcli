@@ -57,3 +57,50 @@ func TestReadJavaActionByName_RoundTrip(t *testing.T) {
 		t.Errorf("return type = %T, want *BooleanType", got.ReturnType)
 	}
 }
+
+// A microflow-typed parameter — the shape MCPServer.AddTool's ExecutingMicroflow
+// and every other "register a callback" java action uses — read back as a String,
+// because codeActionBasicFromGen had no case for it and fell through to the
+// default. The microflow builder then authored the callback as a
+// BasicCodeActionParameterValue holding 'Module.MyFlow' as a literal instead of a
+// MicroflowParameterValue, and `mx check` reported CE0115. mxcli-chat FINDINGS §36.
+func TestReadJavaActionByName_MicroflowParameterType(t *testing.T) {
+	proj := copyFixture(t)
+	b := New()
+	if err := b.Connect(proj); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() { _ = b.Disconnect() })
+
+	mod, err := b.GetModuleByName("MyFirstModule")
+	if err != nil || mod == nil {
+		t.Fatalf("GetModuleByName: %v", err)
+	}
+	ja := &javaactions.JavaAction{
+		ContainerID: mod.ID,
+		Name:        "ZzRegisterTool",
+		Parameters: []*javaactions.JavaActionParameter{
+			{Name: "Name", IsRequired: true, ParameterType: &javaactions.StringType{}},
+			{Name: "ExecutingMicroflow", IsRequired: true, ParameterType: &javaactions.MicroflowType{}},
+		},
+	}
+	if err := b.CreateJavaAction(ja); err != nil {
+		t.Fatalf("CreateJavaAction: %v", err)
+	}
+
+	got, err := b.ReadJavaActionByName("MyFirstModule.ZzRegisterTool")
+	if err != nil {
+		t.Fatalf("ReadJavaActionByName: %v", err)
+	}
+	if len(got.Parameters) != 2 {
+		t.Fatalf("params = %d, want 2", len(got.Parameters))
+	}
+	if _, ok := got.Parameters[0].ParameterType.(*javaactions.StringType); !ok {
+		t.Errorf("param 0 type = %T, want *StringType", got.Parameters[0].ParameterType)
+	}
+	if _, ok := got.Parameters[1].ParameterType.(*javaactions.MicroflowType); !ok {
+		t.Fatalf("param 1 type = %T, want *MicroflowType — a microflow callback read back as this "+
+			"is what makes the caller author a literal string and fail CE0115",
+			got.Parameters[1].ParameterType)
+	}
+}
