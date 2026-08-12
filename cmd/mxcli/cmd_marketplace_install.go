@@ -46,6 +46,12 @@ installed alongside the model.
   mxcli marketplace install 2888 --version 7.0.3 -p app.mpr`,
 	Args: cobra.ExactArgs(1),
 	RunE: runMarketplaceInstall,
+	// A failed install/update/diff is a runtime failure, not a misuse of the
+	// command: printing the full flag list on top of the error buries it.
+	// SilenceErrors too, because main() already prints what Execute returns —
+	// without it every refusal is printed twice.
+	SilenceUsage:  true,
+	SilenceErrors: true,
 }
 
 func init() {
@@ -99,6 +105,14 @@ func runMarketplaceInstall(cmd *cobra.Command, args []string) error {
 	case "widget":
 		return installWidget(cmd.Context(), client, version, projDir, out)
 	case "module":
+		// Refuse a version the project's Mendix cannot import, before spending a
+		// download and a reference build on it. Only modules go through
+		// module-import, so only modules are gated here.
+		if projectVer := mendixVersionOf(mprPath); projectVer != "" {
+			if err := checkMendixCompatibility(version, verList.Items, projectVer, version.Name); err != nil {
+				return err
+			}
+		}
 		return installModule(cmd.Context(), client, version, mprPath, allowFormatChange, out)
 	default:
 		// Theme / Starter App / Sample / unknown: download + instruct rather

@@ -45,6 +45,12 @@ if a step fails partway, the module has already been removed.`,
   mxcli exec ./local-edits/entity-Account.mdl -p app.mpr`,
 	Args: cobra.ExactArgs(1),
 	RunE: runMarketplaceUpdate,
+	// A failed install/update/diff is a runtime failure, not a misuse of the
+	// command: printing the full flag list on top of the error buries it.
+	// SilenceErrors too, because main() already prints what Execute returns —
+	// without it every refusal is printed twice.
+	SilenceUsage:  true,
+	SilenceErrors: true,
 }
 
 func runMarketplaceUpdate(cmd *cobra.Command, args []string) error {
@@ -95,6 +101,14 @@ func runMarketplaceUpdate(cmd *cobra.Command, args []string) error {
 	if installedVersion == target {
 		fmt.Fprintf(out, "%s is already at %s; nothing to do.\n", moduleName, target)
 		return nil
+	}
+
+	// Refuse a target the project's Mendix cannot import, before building two
+	// reference projects to discover it from `mx module-import`'s exit code.
+	if tv, verr := pickVersion(versions.Items, "", target); verr == nil {
+		if err := checkMendixCompatibility(tv, versions.Items, mendixVersion, moduleName); err != nil {
+			return err
+		}
 	}
 
 	// Has anyone edited this module? Answering needs the version it was installed

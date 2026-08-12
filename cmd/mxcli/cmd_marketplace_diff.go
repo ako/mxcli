@@ -49,6 +49,12 @@ Requires the mxbuild toolchain for the project's Mendix version:
   mxcli marketplace diff 23513 -p app.mpr --json`,
 	Args: cobra.ExactArgs(1),
 	RunE: runMarketplaceDiff,
+	// A failed install/update/diff is a runtime failure, not a misuse of the
+	// command: printing the full flag list on top of the error buries it.
+	// SilenceErrors too, because main() already prints what Execute returns —
+	// without it every refusal is printed twice.
+	SilenceUsage:  true,
+	SilenceErrors: true,
 }
 
 func runMarketplaceDiff(cmd *cobra.Command, args []string) error {

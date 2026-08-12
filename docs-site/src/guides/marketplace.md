@@ -65,6 +65,23 @@ mxcli marketplace install 2888 --version 7.0.3 -p app.mpr   # a module
 | **Module** (already present) | **Reported, not modified** — see below. |
 | Theme / Starter App / Sample | Downloaded to disk with import instructions (import via Studio Pro). |
 
+### The latest version is often not installable
+
+New releases are published against the newest Studio Pro patch within days of it shipping, and `install` with no `--version` resolves to the latest — so on a project that is not on the very newest patch, the default is routinely the one version that cannot be imported. Measured on an 11.12.1 project: the latest release of all six agent-editor stack modules required 11.12.2, published five days earlier.
+
+`install` and `update` check the version's published minimum before downloading anything, and name the version to use instead:
+
+```text
+Agent Commons 4.2.0 requires Mendix 11.12.2, and the project is 11.12.1
+  hint: install --version 4.1.0 (the newest release built for 11.12.1 or older)
+```
+
+`mxcli marketplace versions <id>` shows the same information as a `MIN MENDIX` column.
+
+### Dependencies are not resolved
+
+`install` installs exactly the content you name. Its dependencies are neither fetched nor named — read the check errors after each install, which identify what is missing by qualified name. The error count is **not monotonic**, because each new module brings its own unmet dependencies: installing the agent-editor stack into a vanilla 11.12.1 app went 0 → 15 → 0 → 18 → 1 → 22 → 1 → 1. Dependencies include widget content as well as modules (`CE0462 "Could not find widget ..."`).
+
 ## Why installs do not use `mx module-import`
 
 `mx module-import` rewrites an MPR v2 project as v1. Measured on a blank Mendix 11.12.1 app, a single import turned a 69 KB `.mpr` plus 341 `.mxunit` files into one 14 MB SQLite blob with no `mprcontents/` — and the same was observed independently on 11.13.0, so it is not version-specific:
@@ -154,9 +171,17 @@ Run `mxcli docker check -p <project.mpr>`, then `mxcli diff-local -p <project.mp
 
 A newer module's pages reference widget definitions the project has not resynced, so a check reports CE0463 until it is told to — measured on Administration 4.3.2 → 4.5.0: 11 errors before the resync, 0 after. This is expected after any headless module install, not a fault in the update. Measured after the resync, Administration 4.3.2 → 4.5.0 and DataWidgets 3.5.0 → 3.11.3 both reach **0 errors**.
 
-**Do not run bare `mx update-widgets` on an MPR v2 project.** It performs the resync but rewrites the project as v1 — measured on 11.12.1, 200 `.mxunit` files became 0 and a 69,632-byte index became 14 MB. `mxcli docker check` runs the same `mx update-widgets` step with the v2 storage snapshotted and restored around it, so the check sees the resynced model and the project keeps its format.
+**Do not run bare `mx update-widgets` on an MPR v2 project.** It performs the resync but rewrites the project as v1 — measured on 11.12.1, 370 `.mxunit` files became 0 and a 69,632-byte index became 14,405,632 bytes. `mxcli docker check` runs the same `mx update-widgets` step with the v2 storage snapshotted and restored around it, so the check sees the resynced model and the project keeps its format.
 
 The consequence is that the resync is not *persisted*: the check passes, and the stored model still holds the pre-resync widget definitions, so a later `mx check` reports CE0463 again. Opening the project in Studio Pro once and using **Update all widgets** persists it in v2. `mxcli widget sync` is the headless equivalent but is partial — on the reference fixture it clears 7 of 40.
+
+### CE6087 has no headless fix
+
+Installing modules that ship their own design properties can leave a project-level `CE6087` — "Design properties have been renamed in your theme and need to be updated". Mendix's fix is `mx rename-design-properties`, and it collapses MPR v2 the same way: measured on 11.12.1, 1,866 `.mxunit` files became 0 and a 249,856-byte index became 39,895,040 bytes, having renamed 149 design properties across 41 documents.
+
+The snapshot-and-restore that protects `update-widgets` does not transfer here, because these renames have to persist where a widget resync does not. On an MPR v2 project the options today are Studio Pro, or accepting the conversion to v1.
+
+This is distinct from `CE6083`, which is a *missing* design-property declaration and is fixed by installing everything the package ships — something `install` and `update` already do.
 
 `update` does **not** roll back. Work on a copy or have the project in version control.
 

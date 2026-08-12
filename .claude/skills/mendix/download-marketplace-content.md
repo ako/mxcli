@@ -105,14 +105,39 @@ git diffs and mergeability with it. `mx module-import` also refuses theme module
 `module-import` path; without it, that path refuses to run on a v2 project rather than
 converting silently.
 
+### The latest version is usually NOT the one to install
+
+New releases are published against the newest Studio Pro patch within days of it shipping,
+and `install` with no `--version` resolves to the latest. On any project that is not on the
+very newest patch, the default is therefore routinely the one version that cannot be
+installed. Measured 2026-08-12 on an 11.12.1 project: the latest release of **all six**
+agent-stack modules required 11.12.2, published five days earlier.
+
+`install` and `update` refuse it up front and name the version to use instead:
+
+```text
+Agent Commons 4.2.0 requires Mendix 11.12.2, and the project is 11.12.1
+  hint: install --version 4.1.0 (the newest release built for 11.12.1 or older)
+```
+
+Run `mxcli marketplace versions <id>` first and read the `MIN MENDIX` column, or just act
+on the refusal.
+
 ### Dependencies are not resolved
 
-`install` installs exactly the content you name. A module whose dependencies are missing
-produces a large error count that only shrinks as you add them, and the count is **not
-monotonic** — adding a module can raise it before it falls (observed on a real agentic
-stack: 156 → 16 → 227 → 211 → 1 → 0). Install one module at a time, re-check after each,
-and read the remaining errors to find the next missing dependency rather than treating a
-rising count as a regression.
+`install` installs exactly the content you name, and its dependencies are neither fetched
+nor named. Read the check errors after each install — they identify what is missing by
+qualified name (`CommunityCommons.RandomHash`, `MCPClient.ConsumedMCPService`), which
+tells you the module to add next.
+
+The error count is **not monotonic**: adding a module can raise it before it falls, because
+a module brings its own unmet dependencies with it. Measured on a vanilla 11.12.1 app while
+installing the agent-editor stack: 0 → 15 → 0 → 18 → 1 → 22 → 1 → 1. A rising count is
+progress, not a regression.
+
+Dependencies include **widget content**, not only modules — `ConversationalUI` needs the
+`Markdown viewer` (230248) and `Events` (224259) widget packages, which surface as
+`CE0462 "Could not find widget ... in the 'widgets' directory"`.
 
 ## Step 4 — Resync widget definitions (required after any headless install)
 
@@ -127,8 +152,8 @@ resync, 0 after. This is expected after any headless module install — it is **
 mxcli defect, and it is not the CE0463 that `.claude/skills/diagnose-ce0463.md` is for.
 
 **Never run bare `mx update-widgets` on an MPR v2 project.** It performs the resync and
-converts the project to v1 in the process — measured on 11.12.1: 200 `.mxunit` files
-became 0, and a 69,632-byte index became 14 MB. `mxcli docker check` runs the same
+converts the project to v1 in the process — measured on 11.12.1: 370 `.mxunit` files
+became 0, and a 69,632-byte index became 14,405,632 bytes. `mxcli docker check` runs the same
 `mx update-widgets` step with the v2 storage snapshotted and restored around it, so the
 check sees the resynced model and the project keeps its format.
 
@@ -137,6 +162,22 @@ holds the pre-resync widget definitions, so a later `mx check` reports CE0463 ag
 To persist it, open the project in Studio Pro once and use **Update all widgets**.
 `mxcli widget sync -p app.mpr` is the headless equivalent, but is **partial** — on the
 reference fixture it clears 7 of 40.
+
+### CE6087 has no headless fix today — know this before you promise one
+
+`CE6087 "Design properties have been renamed in your theme and need to be updated"` appears
+after installing modules that ship their own design properties. Mendix's fix is
+`mx rename-design-properties`, and it collapses MPR v2 exactly like `update-widgets` does —
+measured on 11.12.1: 1,866 `.mxunit` files → 0, a 249,856-byte index → 39,895,040 bytes,
+having renamed 149 design properties across 41 documents.
+
+Unlike `update-widgets`, **mxcli has no protected path for it**: `docker check` does not run
+it, and snapshot-and-restore would not help anyway, because the renames have to *persist*
+where the widget resync does not. So on an MPR v2 project the choices are Studio Pro, or
+accepting the v1 conversion. Do not tell a user a headless fix exists.
+
+The error is project-level (its location in the check output is empty), so it cannot be
+traced to the module that caused it from the message alone.
 
 ## Step 5 — Before updating: has the module been edited?
 
@@ -236,34 +277,47 @@ and DataWidgets 3.5.0 → 3.11.3 (49 files) both reach **0 errors**.
 
 ## Worked example: the agent-editor stack on a vanilla app
 
-The seven modules in `.claude/skills/mendix/agents.md` must all be present before any
-`create agent` statement will build. Install them one at a time, checking between:
+Run end-to-end on 2026-08-12 against a fresh `mxcli new … --version 11.12.1` app. The
+modules in `.claude/skills/mendix/agents.md` must all be present before any `create agent`
+statement will build, and two of the dependencies are neither listed there nor modules.
 
-| Listing | Id | Module |
-|---|---|---|
-| GenAI Commons | 239448 | `GenAICommons` |
-| Mendix Cloud GenAI Connector | 239449 | `MxGenAIConnector` |
-| Agent Commons | 240371 | `AgentCommons` |
-| Agent Editor | 257918 | `AgentEditorCommons` |
-| MCP Client | 244893 | `MCPClient` |
-| Conversational UI | 239450 | `ConversationalUI` |
-| Encryption | 1011 | `Encryption` |
+| Step | Content | Id | `--version` | Units | Errors after check |
+|---|---|---|---|---|---|
+| 0 | *(vanilla app)* | — | — | 370 files | 0 |
+| 1 | GenAI Commons | 239448 | 7.1.1 | 214 | 15 — needs CommunityCommons |
+| 2 | Community Commons | 170 | latest | 128 | 0 |
+| 3 | Mendix Cloud GenAI Connector | 239449 | 7.1.0 | 223 | 18 — needs Encryption |
+| 4 | Encryption | 1011 | latest | 61 | 1 — CE6087 |
+| 5 | Agent Commons | 240371 | 4.1.0 | 385 | 22 — needs MCPClient + ConversationalUI |
+| 6 | MCP Client | 244893 | 4.1.0 | 82 | — |
+| 7 | Conversational UI | 239450 | 7.1.0 | 345 | 22 — CE0462, missing widgets |
+| 8 | Markdown viewer *(widget)* | 230248 | latest | — | — |
+| 9 | Events *(widget)* | 224259 | latest | — | 1 — CE6087 |
+| 10 | Agent Editor | 257918 | 2.1.0 | 58 | 1 — CE6087 |
 
 ```bash
-mxcli new MyAgentApp --version 11.12.1
-cd MyAgentApp
-for id in 239448 239449 240371 244893 239450 1011 257918; do
-  mxcli marketplace install "$id" -p MyAgentApp.mpr
-  mxcli docker check -p MyAgentApp.mpr | tail -3
-done
+mxcli new MyAgentApp --version 11.12.1 && cd MyAgentApp
+mxcli marketplace install 239448 --version 7.1.1 -p MyAgentApp.mpr
+mxcli docker check -p MyAgentApp.mpr        # read the errors; they name what is missing
+# ...repeat per row...
 ```
 
-Install `AgentEditorCommons` (257918) **last** — it depends transitively on the other six.
-Expect the error count to move non-monotonically until the last dependency lands.
+Then authoring works — `create constant` + `create model` + `create agent` executed and
+added 3 units, with `show features in agent_documents` reporting all four document types
+available on 11.12.1.
 
-The ids above were resolved with `mxcli marketplace search` and are a convenience, not an
-authority: confirm with `search`/`info` rather than trusting them from memory, and note
-that the listing name never matches the module name.
+Four things this run established, none of them obvious from the command list:
+
+1. **Install `AgentEditorCommons` last** — it depends transitively on the rest.
+2. **`--version` is mandatory in practice.** Every agent-stack module's latest release
+   required 11.12.2 against an 11.12.1 project.
+3. **Two dependencies are widgets, and two more are modules the agent skill does not
+   list** (CommunityCommons, and the widget packages). Let the check errors drive it.
+4. **The end state is 1 error, not 0** — CE6087, which has no headless fix (above). The
+   project stays MPR v2 throughout: 1,869 `.mxunit` files, a 249,856-byte index.
+
+The ids are a convenience, not an authority: confirm with `search`/`info` rather than
+trusting them from memory, and note that the listing name never matches the module name.
 
 ## Notes
 
