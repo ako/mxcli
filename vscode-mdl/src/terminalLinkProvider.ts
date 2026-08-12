@@ -23,6 +23,7 @@ const keywordToType: Record<string, string> = {
 	'JavaAction': 'javaaction',
 	'Constant': 'constant',
 	'ScheduledEvent': 'scheduledevent',
+	'Queue': 'queue',
 	'ODataClient': 'odataclient',
 	'ODataService': 'odataservice',
 };
