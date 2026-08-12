@@ -108,6 +108,48 @@ Two reasons make automatic in-place module updates unsafe:
 
 Studio Pro's Marketplace **Update** performs an ID-preserving merge that the `mx` CLI does not expose, so module updates are left to Studio Pro for now.
 
+## Updating a module (`marketplace update`)
+
+`update` replaces an installed module with another published version, preserving the two things a plain replace destroys.
+
+```bash
+# Refuses if you have edited the module, naming what it would discard
+mxcli marketplace update 23513 -p app.mpr --to 4.5.0
+
+# Park those edits as re-executable MDL, then update over them
+mxcli marketplace update 23513 -p app.mpr --to 4.5.0 --save-edits ./local-edits
+mxcli marketplace update 23513 -p app.mpr --to 4.5.0 --force
+mxcli exec ./local-edits/entity-Account.mdl -p app.mpr
+```
+
+```text
+Administration updated 4.3.2 → 4.5.0
+  28 units copied, 9 element identities preserved, 2 role grant(s) restored.
+
+  Removed in 4.5.0 (1) — their database columns or tables will go on the next deploy:
+    Account/MyLocalEdit
+```
+
+### What it preserves, and why
+
+- **Element identity.** The runtime keys entities and their attributes on the model's `GUID`, so a module whose documents are replaced without carrying the old GUIDs is a *different* module to the database and its tables are dropped on the next deploy. Studio Pro transplants them; so does this.
+- **Access.** A user role's grant of a module role lives in the project's security document, not the module, so removing the module takes the grants with it and putting it back does not return them.
+
+It does not use `mx module-import`, which would rewrite an MPR v2 project as v1 and refuses theme modules. Units are copied with mxcli's own writer, so the project keeps its format.
+
+### Local edits
+
+Local edits are **not** preserved. `update` refuses when it finds any, `--save-edits` writes them out first, and `--force` proceeds. Two limits on the saved files:
+
+- They are the element's **resulting state, not a diff**, so replaying restores additions and changes but not removals.
+- An element that could not be described has nothing to save, and is reported rather than skipped.
+
+### Afterwards
+
+Run `mx update-widgets <project.mpr>`. A newer module's pages reference widget definitions the project has not resynced, so `mx check` reports CE0463 until told to — measured on Administration 4.3.2 → 4.5.0: 11 errors before, 0 after. This is expected after any headless module install, not a fault in the update.
+
+`update` does **not** roll back. Work on a copy or have the project in version control.
+
 ## Has this module been edited? (`marketplace diff`)
 
 Studio Pro's Marketplace **Update** replaces the module and discards local edits without asking. `marketplace diff` answers the question that decides whether that is safe:
