@@ -366,6 +366,10 @@ func (b *Builder) buildReferences() error {
 			{"EntityRef", "ENTITY", RefKindDatasource},
 			{"MicroflowRef", "MICROFLOW", RefKindAction},
 			{"NanoflowRef", "NANOFLOW", RefKindAction},
+			// A widget action that opens a page. Without this row, a page reachable
+			// only from a button had no inbound reference and `show callers` /
+			// `show references` reported it as unused (issue #773).
+			{"PageRef", "PAGE", RefKindShowPage},
 		}
 		for _, p := range widgetProjections {
 			res, perr := b.tx.Exec(

@@ -21,6 +21,23 @@ concurrency:
   group: "pages"
   cancel-in-progress: false
 
+# Publishing is gated on the repository actually having a Pages site.
+#
+# A fork inherits this workflow but not the upstream Pages configuration, so
+# actions/deploy-pages fails there with a 404 that has nothing to do with the
+# change being pushed:
+#
+#   Failed to create deployment (status: 404) ... Ensure GitHub Pages has been
+#   enabled: https://github.com/<owner>/mxcli/settings/pages
+#
+# Every push to a fork's main therefore left a permanent red X, which is how a
+# real failure gets missed. The book is still BUILT on forks (and on pull
+# requests) — only the upload and deploy are skipped, so a docs change is still
+# proven to compile wherever it is pushed.
+#
+# A fork that wants to publish its own copy: enable Pages (Settings → Pages →
+# Source: GitHub Actions), then set the repository variable DEPLOY_DOCS=true
+# (Settings → Secrets and variables → Actions → Variables).
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -37,13 +54,19 @@ jobs:
         run: mdbook build docs-site
 
       - name: Upload artifact
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: >-
+          github.ref == 'refs/heads/main' && github.event_name == 'push'
+          && (github.event.repository.fork != true || vars.DEPLOY_DOCS == 'true')
         uses: actions/upload-pages-artifact@v5
         with:
           path: docs-site/book
 
   deploy:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # Same condition as the upload above: with no artifact there is nothing to
+    # deploy, and deploy-pages fails rather than no-ops when Pages is absent.
+    if: >-
+      github.ref == 'refs/heads/main' && github.event_name == 'push'
+      && (github.event.repository.fork != true || vars.DEPLOY_DOCS == 'true')
     needs: build
     runs-on: ubuntu-latest
     environment:
