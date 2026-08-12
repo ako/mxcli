@@ -150,9 +150,13 @@ Local edits are **not** preserved. `update` refuses when it finds any, `--save-e
 
 ### Afterwards
 
-Run `mx update-widgets <project.mpr>`. A newer module's pages reference widget definitions the project has not resynced, so `mx check` reports CE0463 until told to — measured on Administration 4.3.2 → 4.5.0: 11 errors before, 0 after. This is expected after any headless module install, not a fault in the update.
+Run `mxcli docker check -p <project.mpr>`, then `mxcli diff-local -p <project.mpr>`.
 
-Then `mxcli docker check -p <project.mpr>` and `mxcli diff-local -p <project.mpr>`. Measured after that resync: Administration 4.3.2 → 4.5.0 and DataWidgets 3.5.0 → 3.11.3 both reach **0 errors**.
+A newer module's pages reference widget definitions the project has not resynced, so a check reports CE0463 until it is told to — measured on Administration 4.3.2 → 4.5.0: 11 errors before the resync, 0 after. This is expected after any headless module install, not a fault in the update. Measured after the resync, Administration 4.3.2 → 4.5.0 and DataWidgets 3.5.0 → 3.11.3 both reach **0 errors**.
+
+**Do not run bare `mx update-widgets` on an MPR v2 project.** It performs the resync but rewrites the project as v1 — measured on 11.12.1, 200 `.mxunit` files became 0 and a 69,632-byte index became 14 MB. `mxcli docker check` runs the same `mx update-widgets` step with the v2 storage snapshotted and restored around it, so the check sees the resynced model and the project keeps its format.
+
+The consequence is that the resync is not *persisted*: the check passes, and the stored model still holds the pre-resync widget definitions, so a later `mx check` reports CE0463 again. Opening the project in Studio Pro once and using **Update all widgets** persists it in v2. `mxcli widget sync` is the headless equivalent but is partial — on the reference fixture it clears 7 of 40.
 
 `update` does **not** roll back. Work on a copy or have the project in version control.
 

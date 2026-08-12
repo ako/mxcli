@@ -125,7 +125,7 @@ func installWidget(ctx context.Context, client *marketplace.Client, v *marketpla
 		return err
 	}
 	fmt.Fprintf(out, "Installed widget %s into %s\n", v.VersionNumber, dest)
-	fmt.Fprintln(out, "Reload the project in Studio Pro (or run 'mx update-widgets') to pick it up.")
+	fmt.Fprintln(out, "Run 'mxcli docker check -p <project.mpr>' (or reload in Studio Pro) to pick it up.")
 	return nil
 }
 
@@ -178,7 +178,11 @@ func installModule(ctx context.Context, client *marketplace.Client, v *marketpla
 			moduleName, v.VersionNumber, filepath.Base(mprPath))
 		fmt.Fprintf(out, "  %d units copied, %d bundled file(s) installed.\n",
 			res.UnitsCopied, len(res.FilesInstalled))
-		fmt.Fprintln(out, "\n  Next: 'mx update-widgets <project.mpr>', then 'mxcli docker check -p <project.mpr>'.")
+		// 'mxcli docker check' resyncs widget definitions (clearing CE0463 on the
+		// module's pages) and restores the MPR v2 storage format afterwards; bare
+		// 'mx update-widgets' does the resync but leaves the project as v1.
+		fmt.Fprintln(out, "\n  Next: 'mxcli docker check -p <project.mpr>' (resyncs widget definitions,")
+		fmt.Fprintln(out, "  which a headless install leaves stale, and reports CE0463 until it runs).")
 		return nil
 	}
 

@@ -236,14 +236,18 @@ func reportUpdate(out io.Writer, r *marketplace.UpdateResult) {
 	}
 	// A newer module's pages reference widget definitions the project has not
 	// resynced, so `mx check` reports CE0463 until it is told to. Measured on
-	// Administration 4.3.2 → 4.5.0: 11 CE0463 errors, and 0 after update-widgets.
+	// Administration 4.3.2 → 4.5.0: 11 CE0463 errors, and 0 after the resync.
 	// Saying so here is the difference between a two-command fix and a day in
 	// diagnose-ce0463.md, which is where that error normally leads.
+	//
+	// The resync is named as `mxcli docker check`, not as bare `mx update-widgets`:
+	// the latter rewrites an MPR v2 project as v1 (measured on 11.12.1 — 200
+	// .mxunit files to 0, a 69 KB index to 14 MB), while docker check runs the
+	// same step under a storage-format snapshot (#808).
 	fmt.Fprintln(out, "\n  Next: resync widget definitions, or 'mx check' will report CE0463 on the")
 	fmt.Fprintln(out, "  new version's pages (this is expected after any headless module install):")
-	fmt.Fprintln(out, "      mx update-widgets <project.mpr>")
-	fmt.Fprintln(out, "\n  Then validate and review:")
 	fmt.Fprintln(out, "      mxcli docker check -p <project.mpr>")
+	fmt.Fprintln(out, "\n  Then review what landed:")
 	fmt.Fprintln(out, "      mxcli diff-local -p <project.mpr>")
 }
 
