@@ -416,4 +416,5 @@ func init() {
 	rootCmd.AddCommand(evalCmd)
 	rootCmd.AddCommand(tuiCmd)
 	rootCmd.AddCommand(fmtCmd)
+	rootCmd.AddCommand(constantCmd)
 }

@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mendixlabs/mxcli/cmd/mxcli/constantstore"
 	"github.com/mendixlabs/mxcli/mdl/backend"
 	"github.com/mendixlabs/mxcli/mdl/executor"
 	"github.com/mendixlabs/mxcli/model"
@@ -22,6 +23,7 @@ type constantLayer string
 
 const (
 	layerFlag          constantLayer = "--constant"
+	layerMachine       constantLayer = "this machine"
 	layerConfiguration constantLayer = "configuration"
 )
 
@@ -37,6 +39,7 @@ type constantChain struct {
 	Values        map[string]string        // constant qualified name -> value
 	From          map[string]constantLayer // and which layer set it
 	Private       []string                 // overrides whose value is not in the model
+	Stale         []string                 // machine-store entries naming no constant of this project
 	Note          string                   // why no configuration contributed
 }
 
@@ -73,7 +76,7 @@ func parseConstantFlags(flags []string) (map[string]string, error) {
 // ignores a MicroflowConstants entry that matches no constant, so a typo would
 // otherwise be accepted, reported as applied, and do nothing — the §33 failure
 // shape, reintroduced by the very flag meant to fix it.
-func resolveConstantChain(ps *model.ProjectSettings, want string, flags map[string]string, known map[string]bool) (constantChain, error) {
+func resolveConstantChain(ps *model.ProjectSettings, want string, flags, machine map[string]string, known map[string]bool) (constantChain, error) {
 	base := resolveConstantOverrides(ps, want)
 	chain := constantChain{
 		Configuration: base.Configuration,
@@ -101,17 +104,34 @@ func resolveConstantChain(ps *model.ProjectSettings, want string, flags map[stri
 			strings.Join(unknown, ", "))
 	}
 
+	// A constant the project no longer declares must not be applied from the
+	// machine store either — but a stale entry there is the user's own file, not
+	// a typo they can fix by rerunning, so it is skipped and named rather than
+	// refused. Refusing would make every run fail until the file was edited by
+	// hand, over a value the project stopped caring about.
+	var stale []string
+	for name, value := range machine {
+		if known != nil && !known[name] {
+			stale = append(stale, name)
+			continue
+		}
+		chain.Values[name] = value
+		chain.From[name] = layerMachine
+	}
+	sort.Strings(stale)
+	chain.Stale = stale
+
 	for name, value := range flags {
 		chain.Values[name] = value
 		chain.From[name] = layerFlag
 	}
-	// A flag overrides a private configuration value too, and then the default is
-	// NOT what runs — so the constant must stop being reported as private-and-
-	// defaulted, or the report contradicts what the app will do.
-	if len(flags) > 0 && len(chain.Private) > 0 {
+	// A value set above the configuration means the default is NOT what runs, so
+	// the constant must stop being reported as private-and-defaulted, or the
+	// report contradicts what the app is about to do.
+	if len(chain.Private) > 0 {
 		kept := chain.Private[:0]
 		for _, name := range chain.Private {
-			if _, overridden := flags[name]; !overridden {
+			if _, overridden := chain.Values[name]; !overridden {
 				kept = append(kept, name)
 			}
 		}
@@ -128,21 +148,49 @@ func resolveConstantChain(ps *model.ProjectSettings, want string, flags map[stri
 // named something specific, and applying it unvalidated (or dropping it
 // silently) are both worse than saying the project could not be read.
 func constantChainFor(projectPath, configuration string, flags map[string]string) (constantChain, error) {
+	// The machine store is read FIRST and its failure is always fatal. Unlike a
+	// project that cannot be read — where falling back to the defaults is what
+	// every earlier run did anyway — a store that exists and cannot be parsed
+	// means values the author deliberately set are about to be silently absent.
+	store, err := constantstore.Load(projectPath)
+	if err != nil {
+		return constantChain{}, err
+	}
+
+	defaults, err := projectConstantDefaults(projectPath)
+	if err != nil {
+		return unreadableProject(err, flags)
+	}
+	known := make(map[string]bool, len(defaults.defaults))
+	for name := range defaults.defaults {
+		known[name] = true
+	}
+	return resolveConstantChain(defaults.settings, configuration, flags, store.Constants, known)
+}
+
+// projectRead is what one open of the project yields: its settings and every
+// constant it declares, with each default value.
+type projectRead struct {
+	settings *model.ProjectSettings
+	defaults map[string]string // constant qualified name -> default value
+}
+
+func projectConstantDefaults(projectPath string) (projectRead, error) {
 	b := newBackendFactory()()
 	if err := b.Connect(projectPath); err != nil {
-		return unreadableProject(err, flags)
+		return projectRead{}, err
 	}
 	defer func() { _ = b.Disconnect() }()
 
 	ps, err := b.GetProjectSettings()
 	if err != nil {
-		return unreadableProject(err, flags)
+		return projectRead{}, err
 	}
-	known, err := knownConstantNames(b)
+	defaults, err := constantDefaults(b)
 	if err != nil {
-		return unreadableProject(err, flags)
+		return projectRead{}, err
 	}
-	return resolveConstantChain(ps, configuration, flags, known)
+	return projectRead{settings: ps, defaults: defaults}, nil
 }
 
 func unreadableProject(err error, flags map[string]string) (constantChain, error) {
@@ -156,10 +204,10 @@ func unreadableProject(err error, flags map[string]string) (constantChain, error
 	}, nil
 }
 
-// knownConstantNames returns the qualified names of every constant the project
-// declares. Folders do not appear in a qualified name, so the hierarchy is used
+// constantDefaults maps every constant the project declares to its default
+// value. Folders do not appear in a qualified name, so the hierarchy is used
 // only to find each constant's module.
-func knownConstantNames(b backend.FullBackend) (map[string]bool, error) {
+func constantDefaults(b backend.FullBackend) (map[string]string, error) {
 	constants, err := b.ListConstants()
 	if err != nil {
 		return nil, err
@@ -168,10 +216,10 @@ func knownConstantNames(b backend.FullBackend) (map[string]bool, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[string]bool, len(constants))
+	out := make(map[string]string, len(constants))
 	for _, c := range constants {
 		if module := h.GetModuleName(h.FindModuleID(c.ContainerID)); module != "" {
-			out[module+"."+c.Name] = true
+			out[module+"."+c.Name] = c.DefaultValue
 		}
 	}
 	return out, nil
@@ -211,5 +259,9 @@ func reportConstantChain(w io.Writer, c constantChain) {
 	if len(c.Private) > 0 {
 		fmt.Fprintf(w, "  %d override(s) are private, so their value is not in the model and the default is used:\n    %s\n",
 			len(c.Private), strings.Join(c.Private, "\n    "))
+	}
+	if len(c.Stale) > 0 {
+		fmt.Fprintf(w, "  %d value(s) in %s name no constant of this project and were skipped:\n    %s\n",
+			len(c.Stale), constantstore.FileName, strings.Join(c.Stale, "\n    "))
 	}
 }

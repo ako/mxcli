@@ -6,7 +6,7 @@ date: 2026-08-13
 
 # Proposal: Constant values — one precedence chain, and a slot for secrets
 
-**Status:** Accepted — slices 1 and 2 shipped; 3 and 4 open
+**Status:** Accepted — slices 1, 2 and 3 shipped; 4 open
 **Date:** 2026-08-13
 
 A Mendix constant has a value in four possible places, mxcli can write two of
@@ -220,7 +220,7 @@ Test: a `.test.mdl` asserting a constant, run under `--local` and under
 Refuses an unknown constant name rather than passing it through: a typo'd
 override is silently ignored by the runtime, which is the §33 shape again.
 
-### Slice 3 — layer 2, the machine store
+### Slice 3 — layer 2, the machine store — **shipped**
 
 | File | Change |
 |------|--------|

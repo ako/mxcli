@@ -52,7 +52,7 @@ func TestParseConstantFlags_RejectsMalformed(t *testing.T) {
 func TestResolveConstantChain_FlagWinsOverTheConfiguration(t *testing.T) {
 	ps := settingsWith(cfg("Default", shared("A.Key", "from-configuration"), shared("A.Url", "u")))
 
-	got, err := resolveConstantChain(ps, "", map[string]string{"A.Key": "from-the-flag"}, knownTwo)
+	got, err := resolveConstantChain(ps, "", map[string]string{"A.Key": "from-the-flag"}, nil, knownTwo)
 	if err != nil {
 		t.Fatalf("resolveConstantChain: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestResolveConstantChain_FlagWinsOverTheConfiguration(t *testing.T) {
 func TestResolveConstantChain_RefusesAnUnknownConstant(t *testing.T) {
 	ps := settingsWith(cfg("Default"))
 
-	_, err := resolveConstantChain(ps, "", map[string]string{"A.Keyy": "v"}, knownTwo)
+	_, err := resolveConstantChain(ps, "", map[string]string{"A.Keyy": "v"}, nil, knownTwo)
 	if err == nil {
 		t.Fatal("a constant that does not exist was accepted")
 	}
@@ -89,7 +89,7 @@ func TestResolveConstantChain_RefusesAnUnknownConstant(t *testing.T) {
 func TestResolveConstantChain_FlagOverridesAPrivateValueAndStopsReportingIt(t *testing.T) {
 	ps := settingsWith(cfg("Default", private("A.Key"), private("A.Url")))
 
-	got, err := resolveConstantChain(ps, "", map[string]string{"A.Key": "v"}, knownTwo)
+	got, err := resolveConstantChain(ps, "", map[string]string{"A.Key": "v"}, nil, knownTwo)
 	if err != nil {
 		t.Fatalf("resolveConstantChain: %v", err)
 	}
@@ -106,7 +106,7 @@ func TestResolveConstantChain_FlagOverridesAPrivateValueAndStopsReportingIt(t *t
 func TestResolveConstantChain_WithoutFlagsMatchesTheConfigurationResolution(t *testing.T) {
 	ps := settingsWith(cfg("Acceptance", shared("A.Key", "acc")), cfg("Production", shared("A.Key", "prod")))
 
-	got, err := resolveConstantChain(ps, "", nil, knownTwo)
+	got, err := resolveConstantChain(ps, "", nil, nil, knownTwo)
 	if err != nil {
 		t.Fatalf("resolveConstantChain: %v", err)
 	}
@@ -119,10 +119,10 @@ func TestResolveConstantChain_WithoutFlagsMatchesTheConfigurationResolution(t *t
 // all: the check is against what the project DECLARES, not against what some
 // configuration happens to override.
 func TestResolveConstantChain_ValidatesAgainstDeclaredConstantsNotOverrides(t *testing.T) {
-	if _, err := resolveConstantChain(&model.ProjectSettings{}, "", map[string]string{"A.Nope": "v"}, knownTwo); err == nil {
+	if _, err := resolveConstantChain(&model.ProjectSettings{}, "", map[string]string{"A.Nope": "v"}, nil, knownTwo); err == nil {
 		t.Error("an unknown constant was accepted because no configuration was present")
 	}
-	if _, err := resolveConstantChain(&model.ProjectSettings{}, "", map[string]string{"A.Key": "v"}, knownTwo); err != nil {
+	if _, err := resolveConstantChain(&model.ProjectSettings{}, "", map[string]string{"A.Key": "v"}, nil, knownTwo); err != nil {
 		t.Errorf("a declared constant was refused: %v", err)
 	}
 }
@@ -166,5 +166,80 @@ func TestReportConstantChain_NamesTheLayer(t *testing.T) {
 		if strings.Contains(out, secret) {
 			t.Errorf("the report printed the value %q; only names and layers belong here:\n%s", secret, out)
 		}
+	}
+}
+
+// Layer 2 — the machine store. It sits between --constant and the
+// configuration: higher than the shared value the team committed, lower than
+// what this invocation asked for.
+func TestResolveConstantChain_MachineStoreBeatsConfigurationAndLosesToFlag(t *testing.T) {
+	ps := settingsWith(cfg("Default", shared("A.Key", "shared"), shared("A.Url", "shared-url")))
+	machine := map[string]string{"A.Key": "machine", "A.Url": "machine-url"}
+
+	got, err := resolveConstantChain(ps, "", map[string]string{"A.Key": "flag"}, machine, knownTwo)
+	if err != nil {
+		t.Fatalf("resolveConstantChain: %v", err)
+	}
+	if got.Values["A.Key"] != "flag" || got.From["A.Key"] != layerFlag {
+		t.Errorf("A.Key = %q from %q, want the flag to win", got.Values["A.Key"], got.From["A.Key"])
+	}
+	if got.Values["A.Url"] != "machine-url" || got.From["A.Url"] != layerMachine {
+		t.Errorf("A.Url = %q from %q, want the machine store to beat the configuration",
+			got.Values["A.Url"], got.From["A.Url"])
+	}
+}
+
+// A stale machine entry is the user's own file, not a typo they can fix by
+// rerunning. Refusing would make every run fail until the file was hand-edited,
+// over a value the project stopped declaring — so it is skipped and named,
+// unlike a --constant flag, which IS refused.
+func TestResolveConstantChain_SkipsAndNamesAStaleMachineEntry(t *testing.T) {
+	machine := map[string]string{"A.Key": "v", "A.Removed": "old"}
+
+	got, err := resolveConstantChain(settingsWith(cfg("Default")), "", nil, machine, knownTwo)
+	if err != nil {
+		t.Fatalf("a stale machine entry should not fail the run: %v", err)
+	}
+	if got.Values["A.Key"] != "v" {
+		t.Errorf("the still-valid entry was dropped: %v", got.Values)
+	}
+	if _, applied := got.Values["A.Removed"]; applied {
+		t.Error("a value for a constant the project no longer declares was applied")
+	}
+	if len(got.Stale) != 1 || got.Stale[0] != "A.Removed" {
+		t.Errorf("Stale = %v, want it named so the user can clean it up", got.Stale)
+	}
+}
+
+// The private-override note must not survive ANY layer above it, not just a
+// flag: a machine value means the default is not what runs either.
+func TestResolveConstantChain_MachineValueAlsoClearsThePrivateNote(t *testing.T) {
+	ps := settingsWith(cfg("Default", private("A.Key"), private("A.Url")))
+
+	got, err := resolveConstantChain(ps, "", nil, map[string]string{"A.Key": "v"}, knownTwo)
+	if err != nil {
+		t.Fatalf("resolveConstantChain: %v", err)
+	}
+	if len(got.Private) != 1 || got.Private[0] != "A.Url" {
+		t.Errorf("Private = %v, want only the one no layer covered", got.Private)
+	}
+}
+
+func TestReportConstantChain_NamesTheMachineLayerAndStaleEntries(t *testing.T) {
+	var buf bytes.Buffer
+	reportConstantChain(&buf, constantChain{
+		Values: map[string]string{"A.Key": "SECRETVALUE"},
+		From:   map[string]constantLayer{"A.Key": layerMachine},
+		Stale:  []string{"A.Removed"},
+	})
+	out := buf.String()
+	if !strings.Contains(out, string(layerMachine)) {
+		t.Errorf("the machine layer is not named:\n%s", out)
+	}
+	if !strings.Contains(out, "A.Removed") {
+		t.Errorf("the stale entry is not reported:\n%s", out)
+	}
+	if strings.Contains(out, "SECRETVALUE") {
+		t.Errorf("the report printed a machine-local value:\n%s", out)
 	}
 }

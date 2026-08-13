@@ -40,7 +40,8 @@ uses**: the project configuration's shared overrides, layered over each
 constant's default. It prints what it applied before the run:
 
 ```
-Applying 1 constant value(s) from configuration "Default": MyModule.ApiKey
+Applying 1 constant value(s):
+  MyModule.ApiKey  configuration "Default"
 ```
 
 Pass `--configuration <name>` to pick one when the project has several and none
@@ -67,11 +68,22 @@ this was wired up, `--local` ran with each constant's *default* while `--attach`
 ran with the configuration's, so the same suite could pass one way and fail the
 other with nothing in the output to explain it.
 
-For a secret that has to **persist** across runs there is still nowhere safe: a
-constant's default and a shared configuration override are both committed, and
-Mendix's own private values are encrypted per user account by Studio Pro and
-unreachable headlessly. `--constant` covers the one-run case only. See
-`docs/11-proposals/PROPOSAL_constant_values.md`.
+For a secret that has to **persist** across runs, use the machine store:
+
+```bash
+mxcli constant set MyModule.ApiKey 'sk-live-...' -p app.mpr
+mxcli constant list -p app.mpr          # values from the store are masked
+mxcli constant unset MyModule.ApiKey -p app.mpr
+```
+
+It writes `<project>/.mxcli/constants.json` (mode 0600), adds `.mxcli/` to the
+project's `.gitignore` if missing, and then **asks git whether the path is
+really ignored** — refusing to write the value if it is not. It beats the
+configuration and loses to `--constant`.
+
+This is mxcli's own store, not Mendix's. Mendix's private configuration values
+are encrypted per user account by Studio Pro from 10.9, so nothing headless can
+read or write them. See `docs/11-proposals/PROPOSAL_constant_values.md`.
 
 ---
 
