@@ -304,13 +304,25 @@ func runtimeConfigParams(o LocalRuntimeOptions, constants map[string]string) map
 	// are all "Action not found" on 11.12.1 — so a caller cannot merge by
 	// reading first.
 	//
-	// Measured on 11.12.1, for anyone tempted to drive this API live: the
-	// runtime treats an update_configuration MicroflowConstants map as an
-	// overlay on the deployment defaults (constants omitted from the map still
-	// resolve), and the call is staged rather than applied — the running app
-	// keeps the old value until the next reload_model, while still answering
-	// result:0. A "set a constant on a running app" feature is therefore
-	// update_configuration + reload_model, verified by observation.
+	// Measured on 11.12.1, for anyone tempted to drive this API live. Both
+	// readings are from a microflow returning two constants over the test
+	// endpoint, so they are the app's own view rather than the API's:
+	//
+	//   - The call is STAGED, not applied. The running app keeps the old value
+	//     until the next reload_model, while update_configuration still answers
+	//     result:0. "Set a constant on a running app" is therefore the pair.
+	//   - MicroflowConstants MERGES onto the running configuration. A payload
+	//     carrying one constant left the other at the value an EARLIER
+	//     update_configuration had given it — not at its deployment default,
+	//     and not blank. Payload shape does not change this: params carrying
+	//     only MicroflowConstants behaved the same as the full boot config.
+	//
+	// The second point is disputed. mxcli-chat FINDINGS §57 reports the opposite
+	// on 11.13.0 — a partial map blanking every omitted constant — inferred from
+	// a downstream symptom rather than read back. It did not reproduce here on
+	// 11.12.1 in either payload shape. Do not rely on either behaviour: ApplyConstants
+	// sends the whole resolved chain, which is correct under both readings, and
+	// that is the reason this disagreement costs mxcli nothing.
 	for k, v := range o.RuntimeSettings {
 		params[k] = v
 	}
