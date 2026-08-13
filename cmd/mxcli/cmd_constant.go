@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/mendixlabs/mxcli/cmd/mxcli/constantstore"
+	"github.com/mendixlabs/mxcli/cmd/mxcli/docker"
 	"github.com/spf13/cobra"
 )
 
@@ -98,7 +99,61 @@ var constantSetCmd = &cobra.Command{
 					chain.Configuration, name)
 			}
 		}
+
+		applyIfAsked(cmd, projectPath, read, store.Constants)
 	},
+}
+
+// applyIfAsked pushes the resolved values into a running `mxcli run --local`
+// when --apply is set.
+//
+// Without it, the store is a boot-time layer only: an app already up keeps
+// serving the old value until someone restarts it. With it, the change lands in
+// about a second.
+//
+// Failure to apply is NOT failure to set. The value is already on disk and the
+// next boot will use it, so this reports and returns rather than exiting
+// non-zero — the alternative is a command that half-succeeded and looks like it
+// did nothing.
+func applyIfAsked(cmd *cobra.Command, projectPath string, read projectRead, machine map[string]string) {
+	apply, _ := cmd.Flags().GetBool("apply")
+	if !apply {
+		return
+	}
+	configuration, _ := cmd.Flags().GetString("configuration")
+
+	hs, err := readDevLoopHandshake(projectPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "\nThe value is saved, but not applied to a running app:\n  %v\n", err)
+		return
+	}
+	known := make(map[string]bool, len(read.defaults))
+	for n := range read.defaults {
+		known[n] = true
+	}
+	chain, err := resolveConstantChain(read.settings, configuration, nil, machine, known)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "\nThe value is saved, but not applied: %v\n", err)
+		return
+	}
+
+	fmt.Printf("\nApplying to the app on port %d (pid %d)...\n", hs.AppPort, hs.PID)
+	if err := docker.ApplyConstants(
+		docker.M2EEOptions{Host: "127.0.0.1", Port: hs.AdminPort, Token: hs.AdminPass, Direct: true},
+		hs.BootConfig, chain.Values,
+	); err != nil {
+		fmt.Fprintf(os.Stderr, "  the value is saved, but the running app still has the old one: %v\n", err)
+		return
+	}
+	fmt.Println("  configuration updated and model reloaded; the app is now serving the new value.")
+	// Said plainly because it cannot be checked from here. The M2EE admin API has
+	// no read-back — get_configuration, get_current_configuration, runtime_config
+	// and get_current_runtime_status are all "Action not found" on 11.12.1 — and
+	// update_configuration answers result:0 even when it changes nothing. So the
+	// two calls succeeding is the strongest evidence available, and the honest
+	// framing is to name what would actually confirm it.
+	fmt.Println("  (the admin API offers no way to read a constant back, so confirm from the app " +
+		"itself — a microflow that returns it, or the behaviour that depends on it.)")
 }
 
 var constantUnsetCmd = &cobra.Command{
@@ -122,6 +177,11 @@ var constantUnsetCmd = &cobra.Command{
 			exitf("%v", err)
 		}
 		fmt.Printf("Removed the machine-local value for %s; runs now use the configuration or the default.\n", name)
+
+		read, err := projectConstantDefaults(projectPath)
+		if err == nil {
+			applyIfAsked(cmd, projectPath, read, store.Constants)
+		}
 	},
 }
 
@@ -227,6 +287,12 @@ func exitf(format string, a ...any) {
 }
 
 func init() {
+	for _, c := range []*cobra.Command{constantSetCmd, constantUnsetCmd} {
+		c.Flags().Bool("apply", false,
+			"Also apply the change to a running 'mxcli run --local' (update_configuration + reload_model). Without this the value takes effect at the next boot")
+		c.Flags().String("configuration", "",
+			"With --apply, which configuration's values to resolve the rest of the chain against")
+	}
 	constantListCmd.Flags().String("configuration", "",
 		"Which configuration's values to resolve against (default: the only one, or \"Default\")")
 	constantListCmd.Flags().Bool("show-values", false,

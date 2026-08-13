@@ -81,6 +81,19 @@ project's `.gitignore` if missing, and then **asks git whether the path is
 really ignored** — refusing to write the value if it is not. It beats the
 configuration and loses to `--constant`.
 
+By default the new value takes effect at the next boot. Add `--apply` to push it
+into a `mxcli run --local` that is already up, without restarting it:
+
+```bash
+mxcli constant set MyModule.ApiKey 'sk-live-...' -p app.mpr --apply
+```
+
+That is two admin calls, not one: `update_configuration` is *staged* — the
+running app keeps its old values and the call still answers success — and only
+the following `reload_model` applies them. mxcli does both. It cannot confirm
+the result, because the admin API has no way to read a constant back, so it says
+so and points you at the app itself.
+
 This is mxcli's own store, not Mendix's. Mendix's private configuration values
 are encrypted per user account by Studio Pro from 10.9, so nothing headless can
 read or write them. See `docs/11-proposals/PROPOSAL_constant_values.md`.

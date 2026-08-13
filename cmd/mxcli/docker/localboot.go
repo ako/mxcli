@@ -117,6 +117,8 @@ type LocalRuntime struct {
 	logFile *os.File // open when RuntimeLogPath is set; runtime stdout/stderr tee
 	m2ee    M2EEOptions
 	ctrl    *RuntimeController
+	// bootConfig is the update_configuration payload sent at start; see BootConfig.
+	bootConfig map[string]any
 }
 
 func (o *LocalRuntimeOptions) applyDefaults() {
@@ -493,8 +495,58 @@ func (rt *LocalRuntime) spawnAndConfigure() error {
 		return err
 	}
 	constants = mergeConstantOverrides(constants, rt.opts.ConstantOverrides)
-	if _, err := CallM2EE(rt.m2ee, "update_configuration", runtimeConfigParams(rt.opts, constants)); err != nil {
+	// Kept so a LATER caller can re-send this exact payload with a different
+	// constants map. The admin action has no read-back, so the only way to change
+	// one setting without guessing at the rest is to have kept the rest.
+	rt.bootConfig = runtimeConfigParams(rt.opts, constants)
+	if _, err := CallM2EE(rt.m2ee, "update_configuration", rt.bootConfig); err != nil {
 		return fmt.Errorf("update_configuration: %w", err)
+	}
+	return nil
+}
+
+// BootConfig is the update_configuration payload this runtime was started with.
+//
+// It is what makes a live constant change possible from ANOTHER process: that
+// process cannot read the configuration back (the admin API has no such action),
+// so it re-sends this with MicroflowConstants replaced. See ApplyConstants.
+func (rt *LocalRuntime) BootConfig() map[string]any { return rt.bootConfig }
+
+// AdminOptions is how to reach this runtime's admin API.
+func (rt *LocalRuntime) AdminOptions() M2EEOptions { return rt.m2ee }
+
+// ApplyConstants changes a running app's constant values: it re-sends a boot
+// payload with MicroflowConstants replaced, then reloads the model.
+//
+// BOTH calls are required, and that is the whole reason this is a function
+// rather than a one-liner at the call site. Measured on 11.12.1:
+// update_configuration is STAGED — the running app keeps its old values and
+// still answers result:0 — and only the next reload_model applies them. Shipping
+// just the first call would produce a command that reports success and changes
+// nothing, which is the exact failure this feature exists to remove
+// (mxcli-chat FINDINGS §33).
+//
+// It re-sends the whole payload rather than MicroflowConstants alone because
+// the admin action offers no read-back to merge against: whatever is not sent is
+// simply not in the configuration afterwards.
+func ApplyConstants(m2ee M2EEOptions, bootConfig map[string]any, constants map[string]string) error {
+	if len(bootConfig) == 0 {
+		return fmt.Errorf("no boot configuration to re-send")
+	}
+	payload := make(map[string]any, len(bootConfig))
+	for k, v := range bootConfig {
+		payload[k] = v
+	}
+	if constants == nil {
+		constants = map[string]string{}
+	}
+	payload["MicroflowConstants"] = constants
+
+	if _, err := CallM2EE(m2ee, "update_configuration", payload); err != nil {
+		return fmt.Errorf("update_configuration: %w", err)
+	}
+	if _, err := CallM2EE(m2ee, "reload_model", nil); err != nil {
+		return fmt.Errorf("reload_model (the new values are staged but NOT in effect): %w", err)
 	}
 	return nil
 }

@@ -51,6 +51,11 @@ Highest layer wins:
 `mxcli constant list` shows the winner for each constant and which layer set it,
 masking machine-local values unless `--show-values` is passed.
 
+A machine-local value normally takes effect at the next boot. `mxcli constant
+set … --apply` pushes it into a `mxcli run --local` that is already up, as
+`update_configuration` followed by `reload_model` — both are needed, since the
+first call only stages the change.
+
 ## Basic Usage
 
 ```bash

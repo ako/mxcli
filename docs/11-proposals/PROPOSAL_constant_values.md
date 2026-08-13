@@ -6,7 +6,7 @@ date: 2026-08-13
 
 # Proposal: Constant values — one precedence chain, and a slot for secrets
 
-**Status:** Accepted — slices 1, 2 and 3 shipped; 4 open
+**Status:** Accepted — all four slices shipped
 **Date:** 2026-08-13
 
 A Mendix constant has a value in four possible places, mxcli can write two of
@@ -151,8 +151,13 @@ mxcli constant set MyModule.ApiKey 'sk-…' --local --apply
 ```
 
 writes layer 2 **and** applies it to a running dev loop, as
-`update_configuration` (full payload, constants overlaid) → `reload_model` →
-**verify by observation**. Verification is not optional: the admin API returned
+`update_configuration` (full payload, constants overlaid) → `reload_model`.
+**Correction, found while building it:** "verify by observation" is not
+achievable from outside the app. A constant's value is not exposed by any admin
+action, so mxcli cannot confirm the change — it performs both calls, reports
+exactly what it did, and names what *would* confirm it (a microflow that returns
+the constant). The original wording promised more than the API allows. The admin
+API returned
 success for the call that changed nothing, which is precisely the §33 shape.
 
 This only works where mxcli owns the boot payload (`run --local`), because the
@@ -231,7 +236,7 @@ override is silently ignored by the runtime, which is the §33 shape again.
 `constant set` refuses to write a name the project does not declare, and warns
 when the same constant also has a shared override, naming which one wins.
 
-### Slice 4 — `--apply` (the live path)
+### Slice 4 — `--apply` (the live path) — **shipped**
 
 | File | Change |
 |------|--------|

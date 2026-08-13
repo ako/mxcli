@@ -38,6 +38,11 @@ type LocalAppInfo struct {
 	AdminPort int
 	ServePort int
 	AdminPass string
+	// BootConfig is the update_configuration payload the runtime was started
+	// with. A caller wanting to change ONE setting on the running app re-sends
+	// this with that key replaced — the admin API has no read-back, so anything
+	// not re-sent is simply gone from the configuration.
+	BootConfig map[string]any
 }
 
 // LocalRunOptions configures RunLocal.
@@ -757,10 +762,11 @@ func RunLocal(opts LocalRunOptions) error {
 
 	if opts.OnReady != nil {
 		opts.OnReady(LocalAppInfo{
-			AppPort:   opts.AppPort,
-			AdminPort: opts.AdminPort,
-			ServePort: opts.ServePort,
-			AdminPass: opts.AdminPass,
+			AppPort:    opts.AppPort,
+			AdminPort:  opts.AdminPort,
+			ServePort:  opts.ServePort,
+			AdminPass:  opts.AdminPass,
+			BootConfig: rt.BootConfig(),
 		})
 	}
 

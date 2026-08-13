@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/mendixlabs/mxcli/cmd/mxcli/docker"
 	"github.com/mendixlabs/mxcli/cmd/mxcli/hubauth"
@@ -241,10 +242,34 @@ Examples:
 			}
 		}
 
+		// Publish the dev-loop handshake so another mxcli process can reach this
+		// app — `mxcli constant set --apply` needs the admin port and the payload
+		// the runtime was booted with. Chained rather than assigned, because
+		// --test-endpoint may already have installed an OnReady of its own.
+		previousOnReady := opts.OnReady
+		opts.OnReady = func(info docker.LocalAppInfo) {
+			if previousOnReady != nil {
+				previousOnReady(info)
+			}
+			if err := writeDevLoopHandshake(projectPath, devLoopHandshake{
+				Project:    projectPath,
+				PID:        os.Getpid(),
+				AppPort:    info.AppPort,
+				AdminPort:  info.AdminPort,
+				AdminPass:  info.AdminPass,
+				BootConfig: info.BootConfig,
+				Started:    time.Now(),
+			}); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: could not publish the dev-loop handshake: %v\n", err)
+			}
+		}
+		defer removeDevLoopHandshake(projectPath)
+
 		if err := docker.RunLocal(opts); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			// os.Exit skips deferred calls, so remove explicitly here.
 			hosted.Remove()
+			removeDevLoopHandshake(projectPath)
 			os.Exit(1)
 		}
 	},
