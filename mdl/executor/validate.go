@@ -26,6 +26,13 @@ type scriptContext struct {
 	nanoflows    map[string]bool // Nanoflows created (Module.Nanoflow)
 	pages        map[string]bool // Pages created (Module.Page)
 	snippets     map[string]bool // Snippets created (Module.Snippet)
+
+	// Java/JavaScript actions created in the script, mapped to their declared
+	// parameter names. A bool would be enough to stop the false "not found",
+	// but keeping the names means a call to a script-defined action still gets
+	// its parameters checked, exactly as a call to a stored one does.
+	javaActions       map[string][]string // Module.Action -> parameter names
+	javaScriptActions map[string][]string // Module.Action -> parameter names
 }
 
 // newScriptContext creates a new script context.
@@ -38,7 +45,20 @@ func newScriptContext() *scriptContext {
 		nanoflows:    make(map[string]bool),
 		pages:        make(map[string]bool),
 		snippets:     make(map[string]bool),
+
+		javaActions:       make(map[string][]string),
+		javaScriptActions: make(map[string][]string),
 	}
+}
+
+// codeActionParamNames returns the declared parameter names of a CREATE JAVA
+// ACTION / CREATE JAVASCRIPT ACTION statement, in declaration order.
+func codeActionParamNames(params []ast.JavaActionParam) []string {
+	names := make([]string, 0, len(params))
+	for _, p := range params {
+		names = append(names, p.Name)
+	}
+	return names
 }
 
 // collectDefinitions scans a program and collects all objects that will be created.
@@ -78,6 +98,14 @@ func (sc *scriptContext) collectDefinitions(prog *ast.Program) {
 		case *ast.CreateSnippetStmtV3:
 			if s.Name.Module != "" {
 				sc.snippets[s.Name.String()] = true
+			}
+		case *ast.CreateJavaActionStmt:
+			if s.Name.Module != "" {
+				sc.javaActions[s.Name.String()] = codeActionParamNames(s.Parameters)
+			}
+		case *ast.CreateJavaScriptActionStmt:
+			if s.Name.Module != "" {
+				sc.javaScriptActions[s.Name.String()] = codeActionParamNames(s.Parameters)
 			}
 		}
 	}
@@ -120,6 +148,14 @@ func (sc *scriptContext) collectSingle(stmt ast.Statement) {
 		if s.Name.Module != "" {
 			sc.snippets[s.Name.String()] = true
 		}
+	case *ast.CreateJavaActionStmt:
+		if s.Name.Module != "" {
+			sc.javaActions[s.Name.String()] = codeActionParamNames(s.Parameters)
+		}
+	case *ast.CreateJavaScriptActionStmt:
+		if s.Name.Module != "" {
+			sc.javaScriptActions[s.Name.String()] = codeActionParamNames(s.Parameters)
+		}
 	}
 }
 
@@ -142,6 +178,12 @@ func (sc *scriptContext) allNames() []string {
 		names = append(names, n)
 	}
 	for n := range sc.snippets {
+		names = append(names, n)
+	}
+	for n := range sc.javaActions {
+		names = append(names, n)
+	}
+	for n := range sc.javaScriptActions {
 		names = append(names, n)
 	}
 	return names
@@ -172,6 +214,12 @@ func annotateForwardRef(err error, stmt ast.Statement, created, allDefined *scri
 
 // has returns true if the name exists in any category.
 func (sc *scriptContext) has(name string) bool {
+	if _, ok := sc.javaActions[name]; ok {
+		return true
+	}
+	if _, ok := sc.javaScriptActions[name]; ok {
+		return true
+	}
 	return sc.modules[name] || sc.entities[name] || sc.enumerations[name] ||
 		sc.microflows[name] || sc.nanoflows[name] || sc.pages[name] || sc.snippets[name]
 }
@@ -607,6 +655,15 @@ func validateFlowBodyReferences(ctx *ExecContext, body []ast.MicroflowStatement,
 			if isBuiltinModuleEntity(qualifiedNameModule(ref.name)) {
 				continue
 			}
+			// An action created earlier in the same script is not in the
+			// project yet. Entities, microflows, pages and nanoflows were
+			// already exempt; java actions were not, so a script that created
+			// one and called it failed reference checking against its own
+			// output. mxcli-chat FINDINGS §37.
+			if declared, inScript := sc.javaActions[ref.name]; inScript {
+				errors = append(errors, validateCodeActionParams("java action", ref, declared)...)
+				continue
+			}
 			if !known[ref.name] {
 				errors = append(errors, fmt.Sprintf("java action not found: %s (referenced by call java action)", ref.name))
 				continue
@@ -625,6 +682,10 @@ func validateFlowBodyReferences(ctx *ExecContext, body []ast.MicroflowStatement,
 		known := buildJavaScriptActionQualifiedNames(ctx)
 		for _, ref := range refs.javaScriptActions {
 			if isBuiltinModuleEntity(qualifiedNameModule(ref.name)) {
+				continue
+			}
+			if declared, inScript := sc.javaScriptActions[ref.name]; inScript {
+				errors = append(errors, validateCodeActionParams("javascript action", ref, declared)...)
 				continue
 			}
 			if !known[ref.name] {

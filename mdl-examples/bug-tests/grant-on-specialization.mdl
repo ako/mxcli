@@ -1,0 +1,49 @@
+-- ============================================================================
+-- mxcli-chat FINDINGS §25 — GRANT on a specialization produced CE0066
+--
+-- A specialization has every member of its generalization, associations
+-- included, so its access rule needs an entry for each of them. The executor's
+-- grant walk collects them, but ReconcileMemberAccesses — which runs after
+-- every program and after every new association — recomputed the expected set
+-- from the entity's OWN attributes and the module's FROM-side associations
+-- only. The inherited association was therefore "stale" and deleted, one step
+-- after the GRANT that had just written it, and Mendix reported
+--
+--   CE0066  "Entity access is out of date."  at Domain model of module 'Spec25'
+--
+-- The reported case was OpenAIConnector's `OpenAIDeployedModel extends
+-- GenAICommons.DeployedModel`; this fixture reproduces it with no marketplace
+-- module at all, which is what showed the rule was wrong for ANY specialization.
+--
+-- Verify:
+--   mxcli exec mdl-examples/bug-tests/grant-on-specialization.mdl -p app.mpr
+--   mx check app.mpr        # 0 errors
+--   mxcli -p app.mpr -c "describe entity Spec25.Derived"
+--
+-- The three GRANTs together are the measurement:
+--   Base     — the control that checked clean before the fix
+--   Derived  — the failing case: must carry Base.Code AND Spec25.Base_Other
+--   Other    — the counter-control: the TO side of an OWNER Default association
+--              must NOT gain an entry (Mendix reports CE0066 for having one),
+--              so a walk that simply collected every association in the module
+--              would pass the first two and fail here
+-- ============================================================================
+
+create module Spec25;
+/
+
+create persistent entity Spec25.Base ( Code: String );
+create persistent entity Spec25.Other ( Label: String );
+create persistent entity Spec25.Derived extends Spec25.Base ( Extra: String );
+/
+
+create association Spec25.Base_Other from Spec25.Base to Spec25.Other;
+/
+
+create module role Spec25.User;
+/
+
+grant Spec25.User on Spec25.Base (read *, write *);
+grant Spec25.User on Spec25.Derived (read *, write *);
+grant Spec25.User on Spec25.Other (read *, write *);
+/

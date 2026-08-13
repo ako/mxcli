@@ -192,6 +192,7 @@ func installModule(ctx context.Context, client *marketplace.Client, v *marketpla
 			moduleName, v.VersionNumber, filepath.Base(mprPath))
 		fmt.Fprintf(out, "  %d units copied, %d bundled file(s) installed.\n",
 			res.UnitsCopied, len(res.FilesInstalled))
+		reportSkippedFiles(out, res.FilesSkipped)
 		// A headless install leaves the model needing two repairs only Mendix's own
 		// tools can make (CE0463, CE6087). 'mxcli fix' runs them without the v2 ->
 		// v1 conversion the bare mx commands perform.

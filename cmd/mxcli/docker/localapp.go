@@ -40,9 +40,40 @@ type LocalAppOptions struct {
 	// LocalRuntimeOptions.Env) — how a secret reaches the runtime without being
 	// written to disk.
 	Env []string
+	// ConstantOverrides are the constant values this run should use, layered over
+	// the defaults mxbuild wrote into deployment/model/config.json.
+	//
+	// A headless boot needs these for the same reason `run --local` does: the
+	// deployment carries only each constant's DEFAULT, so an app booted without
+	// them runs as if no configuration existed. Missing here, `mxcli test --local`
+	// ran a suite against different values than the same suite under `--attach`,
+	// which runs against an app `run --local` booted — silently, since a constant
+	// resolving to the wrong value is not an error. See
+	// docs/11-proposals/PROPOSAL_constant_values.md and mxcli-chat FINDINGS §33.
+	ConstantOverrides map[string]string
 	// Stdout/Stderr receive progress messages.
 	Stdout io.Writer
 	Stderr io.Writer
+}
+
+// runtimeOptions is the LocalAppOptions -> LocalRuntimeOptions mapping, split
+// out so the forwarding is assertable without booting anything. Every field the
+// runtime needs has to appear here; one omitted is invisible until an app runs
+// with the wrong configuration.
+func (o LocalAppOptions) runtimeOptions(installPath string) LocalRuntimeOptions {
+	return LocalRuntimeOptions{
+		DeployDir:         o.DeployDir,
+		InstallPath:       installPath,
+		AppPort:           o.AppPort,
+		AdminPort:         o.AdminPort,
+		AdminPass:         o.AdminPass,
+		DB:                o.DB,
+		RuntimeLogPath:    o.RuntimeLogPath,
+		Env:               o.Env,
+		ConstantOverrides: o.ConstantOverrides,
+		Stdout:            o.Stdout,
+		Stderr:            o.Stderr,
+	}
 }
 
 // LocalApp is a booted local app: an mxbuild serve server plus the standalone
@@ -177,18 +208,7 @@ func StartLocalApp(opts LocalAppOptions) (*LocalApp, error) {
 	}
 
 	// 5. Boot the runtime against the deployment.
-	rt, err := StartLocalRuntime(LocalRuntimeOptions{
-		DeployDir:      opts.DeployDir,
-		InstallPath:    installPath,
-		AppPort:        opts.AppPort,
-		AdminPort:      opts.AdminPort,
-		AdminPass:      opts.AdminPass,
-		DB:             opts.DB,
-		RuntimeLogPath: opts.RuntimeLogPath,
-		Env:            opts.Env,
-		Stdout:         opts.Stdout,
-		Stderr:         opts.Stderr,
-	})
+	rt, err := StartLocalRuntime(opts.runtimeOptions(installPath))
 	if err != nil {
 		app.Stop()
 		return nil, err

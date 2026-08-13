@@ -66,3 +66,51 @@ func TestUserRoleQuotingConsistency(t *testing.T) {
 		}
 	}
 }
+
+// TestLogEmptyTemplateParamsIsAnErrorNotAPanic guards FINDINGS §55: `log … with ()`
+// crashed mxcli with a nil dereference in buildTemplateParams.
+//
+// The grammar requires at least one templateParam, so ANTLR error-recovers by
+// producing a TemplateParamContext with no NUMBER_LITERAL — which the builder
+// dereferenced anyway. Every visitor that walks an error-recovered tree has this
+// shape available to it, so the guard belongs at the dereference, not in the
+// grammar: a malformed statement must come back as a parse error.
+func TestLogEmptyTemplateParamsIsAnErrorNotAPanic(t *testing.T) {
+	input := `create microflow M.LogEmpty ()
+begin
+  log 'hello' with ();
+end;`
+
+	_, errs := Build(input) // panicked before the fix
+	if len(errs) == 0 {
+		t.Fatal("expected a parse error for an empty `with ()` list, got none")
+	}
+}
+
+// TestLogTemplateParamsStillBuild is the control for the guard above: a well-formed
+// `with` list must still produce its parameters. A guard that skipped every param
+// would pass the panic test and silently drop the message's arguments.
+func TestLogTemplateParamsStillBuild(t *testing.T) {
+	input := `create microflow M.LogOne ()
+begin
+  log 'hello {1} and {2}' with ({1} = 'world', {2} = 'again');
+end;`
+
+	prog, errs := Build(input)
+	if len(errs) > 0 {
+		t.Fatalf("unexpected parse errors: %v", errs)
+	}
+	mf := prog.Statements[0].(*ast.CreateMicroflowStmt)
+	log, ok := mf.Body[0].(*ast.LogStmt)
+	if !ok {
+		t.Fatalf("first statement is %T, want *ast.LogStmt", mf.Body[0])
+	}
+	if len(log.Template) != 2 {
+		t.Fatalf("template params = %d, want 2", len(log.Template))
+	}
+	for i, want := range []int{1, 2} {
+		if log.Template[i].Index != want {
+			t.Errorf("param %d index = %d, want %d", i, log.Template[i].Index, want)
+		}
+	}
+}

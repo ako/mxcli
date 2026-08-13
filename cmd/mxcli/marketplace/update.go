@@ -40,6 +40,16 @@ func SaveEdits(dir string, rep *Report) (written []string, unsaved []string, err
 	for _, f := range rep.Findings {
 		switch f.Verdict {
 		case Modified, OnlyInstalled:
+			// An element whose DESCRIBE carries no replayable content must not be
+			// written out as something to replay. Saving `create or modify snippet
+			// X (Folder: 'Web') { }` and replaying it EMPTIES the snippet — the
+			// file reads as a rescue and is a deletion (FINDINGS §16). Modified
+			// findings are already filtered by Compare; OnlyInstalled ones reach
+			// here unchecked, so the same rule is applied to both.
+			if ok, why := (Element{MDL: f.InstalledMDL}).Conclusive(); !ok {
+				unsaved = append(unsaved, fmt.Sprintf("%s (%s)", f.Key, why))
+				continue
+			}
 			wanted = append(wanted, f)
 		case Unknown:
 			unsaved = append(unsaved, fmt.Sprintf("%s (%s)", f.Key, f.Reason))
@@ -95,16 +105,29 @@ func safeFileName(k ElementKey) string {
 
 // UpdateResult is what an update did.
 type UpdateResult struct {
-	Module          string
-	FromVersion     string
-	ToVersion       string
-	UnitsCopied     int
-	IdentitiesKept  int
-	IdentitiesLost  []string
-	GrantsRestored  int
-	GrantsDropped   []string
-	FilesInstalled  []string
+	Module         string
+	FromVersion    string
+	ToVersion      string
+	UnitsCopied    int
+	IdentitiesKept int
+	IdentitiesLost []string
+	GrantsRestored int
+	GrantsDropped  []string
+	FilesInstalled []string
+	// FilesSkipped records bundled files that were deliberately not installed:
+	// a widget older than the copy the project already has, or the unpacked twin
+	// of a widget the package also ships as a .mpk. Reported rather than silent —
+	// "the package wanted a different version" is the fact that was missing.
+	FilesSkipped    []SkippedFile
 	ForcedOverEdits []string
+}
+
+// SkippedFile is one bundled file InstallPackageFiles chose not to write.
+type SkippedFile struct {
+	Path    string
+	Reason  string
+	Kept    string // version left in place, for a version skip
+	Offered string // version the package carried
 }
 
 // PerformUpdate replaces an installed module with the copy in referenceMpr,
@@ -152,7 +175,7 @@ func PerformUpdate(mprPath, referenceMpr, targetMpk, moduleName, fromVersion, to
 	if err := StampMarketplaceVersion(mprPath, moduleName, toVersion, toVersionID); err != nil {
 		return nil, fmt.Errorf("record the installed version: %w", err)
 	}
-	files, err := InstallPackageFiles(targetMpk, filepath.Dir(mprPath))
+	files, skippedFiles, err := InstallPackageFiles(targetMpk, filepath.Dir(mprPath))
 	if err != nil {
 		return nil, fmt.Errorf("install the new version's bundled files: %w", err)
 	}
@@ -167,6 +190,7 @@ func PerformUpdate(mprPath, referenceMpr, targetMpk, moduleName, fromVersion, to
 		GrantsRestored: restored,
 		GrantsDropped:  dropped,
 		FilesInstalled: files,
+		FilesSkipped:   skippedFiles,
 	}, nil
 }
 
@@ -273,12 +297,26 @@ func setBoolField(doc bson.D, key string, value bool) {
 // The second looked like a cross-module dependency on a newer Atlas. It was not.
 // Copying everything the package ships, rather than enumerating the directories
 // that seem to matter, is what stops there being a third instance.
-func InstallPackageFiles(mpkPath, projectDir string) (written []string, err error) {
+// Two entries are deliberately not installed, both measured on real packages —
+// see widgetversion.go: a bundled widget older than the copy the project already
+// has (it would silently roll the project back), and the unpacked twin of a
+// widget the same package also ships as a .mpk. Both are returned in skipped
+// rather than dropped quietly, because "the package wanted a different version"
+// is exactly the thing that was invisible before.
+func InstallPackageFiles(mpkPath, projectDir string) (written []string, skipped []SkippedFile, err error) {
 	zr, err := zip.OpenReader(mpkPath)
 	if err != nil {
-		return nil, fmt.Errorf("open package %s: %w", filepath.Base(mpkPath), err)
+		return nil, nil, fmt.Errorf("open package %s: %w", filepath.Base(mpkPath), err)
 	}
 	defer zr.Close()
+
+	// Which unpacked trees duplicate a .mpk in this same package.
+	twins := map[string]string{}
+	for _, f := range zr.File {
+		if prefix := unpackedTwinOf(f.Name); prefix != "" {
+			twins[prefix] = f.Name
+		}
+	}
 
 	for _, f := range zr.File {
 		if f.FileInfo().IsDir() {
@@ -288,34 +326,66 @@ func InstallPackageFiles(mpkPath, projectDir string) (written []string, err erro
 		case packageProjectEntry, "package.xml":
 			continue // the model and its manifest, handled by the transplant
 		}
+		if twin, dup := duplicateOfPackagedWidget(f.Name, twins); dup {
+			skipped = append(skipped, SkippedFile{
+				Path:   f.Name,
+				Reason: "unpacked copy of " + twin + ", which this package also ships",
+			})
+			continue
+		}
 		// Refuse a path that escapes the project. Nothing in a Mendix package
 		// should contain "..", and honouring one would let a package write
 		// anywhere on disk.
 		clean := filepath.Clean(f.Name)
 		if strings.HasPrefix(clean, "..") || filepath.IsAbs(clean) {
-			return written, fmt.Errorf("package entry %q would write outside the project", f.Name)
+			return written, skipped, fmt.Errorf("package entry %q would write outside the project", f.Name)
 		}
 
 		dst := filepath.Join(projectDir, clean)
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-			return written, fmt.Errorf("create %s: %w", filepath.Dir(dst), err)
+			return written, skipped, fmt.Errorf("create %s: %w", filepath.Dir(dst), err)
 		}
 		rc, oerr := f.Open()
 		if oerr != nil {
-			return written, fmt.Errorf("read %s from the package: %w", f.Name, oerr)
+			return written, skipped, fmt.Errorf("read %s from the package: %w", f.Name, oerr)
 		}
 		body, rerr := io.ReadAll(rc)
 		_ = rc.Close()
 		if rerr != nil {
-			return written, fmt.Errorf("read %s: %w", f.Name, rerr)
+			return written, skipped, fmt.Errorf("read %s: %w", f.Name, rerr)
+		}
+		// A bundled widget never rolls back a newer copy already in the project.
+		if isWidgetPackage(f.Name) {
+			have, want := widgetVersionOnDisk(dst), widgetVersionInMpk(body)
+			if have != "" && want != "" && versionLess(want, have) {
+				skipped = append(skipped, SkippedFile{
+					Path:    clean,
+					Reason:  fmt.Sprintf("package ships %s, project already has %s", want, have),
+					Kept:    have,
+					Offered: want,
+				})
+				continue
+			}
 		}
 		if err := os.WriteFile(dst, body, 0o644); err != nil {
-			return written, fmt.Errorf("write %s: %w", dst, err)
+			return written, skipped, fmt.Errorf("write %s: %w", dst, err)
 		}
 		written = append(written, clean)
 	}
 	sort.Strings(written)
-	return written, nil
+	sort.Slice(skipped, func(i, j int) bool { return skipped[i].Path < skipped[j].Path })
+	return written, skipped, nil
+}
+
+// duplicateOfPackagedWidget reports whether an entry sits inside an unpacked
+// widget tree that the same package also ships as a .mpk.
+func duplicateOfPackagedWidget(name string, twins map[string]string) (string, bool) {
+	for prefix, mpk := range twins {
+		if strings.HasPrefix(name, prefix) {
+			return mpk, true
+		}
+	}
+	return "", false
 }
 
 // PerformInstall adds a module that is not yet in the project, copying it from
@@ -336,7 +406,7 @@ func PerformInstall(mprPath, referenceMpr, packageMpk, moduleName, version, vers
 	if err := StampMarketplaceVersion(mprPath, moduleName, version, versionID); err != nil {
 		return nil, fmt.Errorf("record the installed version: %w", err)
 	}
-	files, err := InstallPackageFiles(packageMpk, filepath.Dir(mprPath))
+	files, skippedFiles, err := InstallPackageFiles(packageMpk, filepath.Dir(mprPath))
 	if err != nil {
 		return nil, fmt.Errorf("install the package's bundled files: %w", err)
 	}
@@ -345,5 +415,6 @@ func PerformInstall(mprPath, referenceMpr, packageMpk, moduleName, version, vers
 		ToVersion:      version,
 		UnitsCopied:    copied,
 		FilesInstalled: files,
+		FilesSkipped:   skippedFiles,
 	}, nil
 }

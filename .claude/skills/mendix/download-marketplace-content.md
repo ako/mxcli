@@ -139,6 +139,61 @@ Dependencies include **widget content**, not only modules — `ConversationalUI`
 `Markdown viewer` (230248) and `Events` (224259) widget packages, which surface as
 `CE0462 "Could not find widget ... in the 'widgets' directory"`.
 
+### Module packages bundle their own widgets — install order used to matter
+
+A module's `.mpk` carries a copy of every widget its pages use, pinned to
+whatever its author had at release time, and different modules pin different
+versions of the **same** widget. Measured on the published packages:
+Atlas_Web_Content 4.3.0 ships five Data Widgets at **3.4.0** that DataWidgets
+3.11.3 ships at **3.11.3**.
+
+`install` and `update` never roll a widget back: a bundled copy older than the
+one in the project is kept out and reported.
+
+```text
+  Kept 5 newer widget(s) the package would have rolled back:
+    widgets/com.mendix.widget.web.Datagrid.mpk — kept 3.11.3, package ships 3.4.0
+    ...
+```
+
+Before this, updating modules in one order and then another silently downgraded
+widgets, and nothing surfaced it — an older widget is not a `mx check` error, so
+the app just ran old widget code. If you are on an older mxcli, check the
+versions by hand:
+
+```bash
+for f in widgets/*.mpk; do
+  printf "%-50s %s\n" "$(basename $f)" \
+    "$(unzip -p "$f" package.xml | grep -oP '<clientModule[^>]*version="\K[^"]+')"
+done
+```
+
+Read `<clientModule version>`, not the `<package version>` on the root element —
+that one is the manifest schema and is `1.0` for every widget ever published.
+
+A package that ships a widget **twice** (as a `.mpk` and as an unpacked tree —
+FeedbackModule 5.0.0 does) installs only the `.mpk`; the unpacked twin is skipped
+and reported.
+
+### When the installed version has been unpublished
+
+`update` and `diff` download the *installed* version to establish the "has anyone
+edited this?" baseline, so both fail when that version is gone from the
+marketplace. A blank 11.13 app ships NanoflowCommons 6.0.0 and the 6.x line now
+starts at 6.1.1, so the module most in need of updating is exactly the one whose
+baseline cannot be built.
+
+```text
+version "6.0.0" not found; run 'mxcli marketplace versions <id>' to list available versions
+  The installed version is the baseline for "has anyone edited this?", so it has to be
+  downloadable. It is not, and --force does not help: there is nothing to compare against.
+  hint: re-run with --no-baseline to update without that check (local edits are lost silently)
+```
+
+`--force` does not help — it overrides a *finding*, and here there is no finding.
+`--no-baseline` accepts that the question cannot be answered and updates anyway.
+Commit first: local edits to that module go without being named.
+
 ## Step 4 — Repair the model after the install (required, headless)
 
 ```bash
@@ -206,10 +261,28 @@ Administration — installed 4.3.2 (Mendix 11.12.1)
     CONFLICT  ENTITY Account
 ```
 
+**Tell the user the first one is slow.** Answering needs a reference project —
+a blank app with the published module imported — and `--to` needs two. Measured
+on Administration at 11.12.1: **~50s** the first time, **~13s** afterwards, once
+`~/.mxcli/marketplace-refs/` holds the blank app and the built references. Run
+`diff` before `update` rather than instead of it: the `update` reuses the base
+reference the `diff` just built, so the pair costs little more than the `diff`.
+
+Set `MXCLI_NO_REF_CACHE=1` if a result looks stale and you want to rule the
+cache out — it rebuilds everything without deleting the evidence.
+
 It downloads the installed version's `.mpk`, imports it into a throwaway reference project
 built **at the project's own Mendix version** (a mismatch is refused, not warned about —
 Mendix's own conversions would otherwise read as your edits), and compares `DESCRIBE`
 output on both sides.
+
+**A "modified" verdict now means the difference is real.** Some element types
+DESCRIBE renders imperfectly — a snippet whose body comes out `{ }`, a building
+block under "Building blocks are read-only; they cannot be created via MDL" — and
+two imperfect renderings can differ for reasons that have nothing to do with you.
+Those are reported `unknown`, never `changed`, and `--save-edits` refuses to write
+them: replaying `create or modify snippet X (Folder: 'Web') { }` would **empty**
+the snippet.
 
 **Read `verified`, not just `locallyModified`.** An element that cannot be described is
 reported as `unknown`, never as unchanged, and `verified: false` means "no modifications

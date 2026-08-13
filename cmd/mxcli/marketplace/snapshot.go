@@ -53,6 +53,60 @@ type Element struct {
 // Describable reports whether the element could be read at all.
 func (e Element) Describable() bool { return e.Err == "" }
 
+// Conclusive reports whether this element's DESCRIBE output is good enough to
+// carry a "you edited this" verdict.
+//
+// Describable() is not enough. Some types describe *successfully* into output
+// that says nothing about the element: a snippet whose body comes out as `{ }`,
+// a building block that renders under "-- Building blocks are read-only; they
+// cannot be created via MDL." Two such renderings can still differ — a resolved
+// name that resolves in one project and not the other is enough — and the
+// difference is then an artefact of DESCRIBE, not an edit.
+//
+// Reporting those as Modified is worse than reporting nothing: on an untouched
+// blank app, `diff` accused the user of editing an Atlas_Core snippet and an
+// Atlas_Web_Content building block, and `--save-edits` wrote MDL that would have
+// *emptied* the snippet if replayed (mxcli-chat FINDINGS §16). Unknown is the
+// honest verdict — `verified:false` already tells the caller that "no
+// modifications found" is not a conclusion.
+//
+// The two signals are deliberately about the *output*, not a list of types: a
+// type list goes stale the moment a describe handler improves, while "this text
+// contains nothing to compare" stays true by construction.
+func (e Element) Conclusive() (bool, string) {
+	if !e.Describable() {
+		return false, e.Err
+	}
+	if declaredReadOnly(e.MDL) {
+		return false, "DESCRIBE output is informational for this type, not re-executable MDL"
+	}
+	if emptyBody(e.MDL) {
+		return false, "DESCRIBE produced no body, so a difference here is not evidence of an edit"
+	}
+	return true, ""
+}
+
+// declaredReadOnly spots the comment a describe handler emits when its output
+// cannot be replayed. Matching the handler's own words keeps the two in step:
+// a handler that stops saying it is read-only has become authorable.
+func declaredReadOnly(mdl string) bool {
+	return strings.Contains(mdl, "read-only; they cannot be created via MDL")
+}
+
+// emptyBody reports whether a describe rendered a statement with nothing in it —
+// `… { }` or `… ( … );` with no inner lines. Such output is identical for an
+// element with content and one without, so it cannot distinguish them.
+func emptyBody(mdl string) bool {
+	trimmed := strings.TrimSpace(mdl)
+	if trimmed == "" {
+		return true
+	}
+	// A body was rendered but holds nothing: "{ }" or "{" immediately followed
+	// by "}".
+	compact := strings.Join(strings.Fields(trimmed), " ")
+	return strings.HasSuffix(compact, "{ }") || strings.HasSuffix(compact, "{}")
+}
+
 // Snapshot is the describable content of one module at one point in time.
 type Snapshot struct {
 	Module   string

@@ -1312,6 +1312,28 @@ New scripts should bind every parameter to a real expression. Use `empty`
 for a Java-action argument only when regenerating MDL from an existing project
 that already had an unbound parameter.
 
+## Microflow-Typed Java-Action Parameters
+
+Some Java actions take a **microflow** — a callback the action invokes later.
+`MCPServer.AddTool` (`ExecutingMicroflow`) and `MCPServer.CreateMCPServer`
+(`AuthenticationMicroflow`) are the ones you meet first. Pass the microflow's
+qualified name as a quoted string; mxcli resolves the parameter's declared type
+from the Java action and stores a microflow reference, not a string literal.
+
+```mdl
+$Tool = call java action MCPServer.AddTool(
+  McpServer          = $Server,
+  Name               = 'memory_add',
+  Description        = 'Stores a memory',
+  ExecutingMicroflow = 'MyModule.MF_MemoryAdd',
+  Schema             = ''
+);
+```
+
+`DESCRIBE JAVA ACTION` prints such a parameter's type as the bare word
+`Microflow` (`Nanoflow` for JavaScript actions), and that spelling is what
+`CREATE JAVA ACTION` accepts, so the round-trip is stable.
+
 ## Error Handling
 
 MDL supports error handling for activities that may fail (microflow calls, commits, external service calls, etc.).

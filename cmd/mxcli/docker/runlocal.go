@@ -38,12 +38,22 @@ type LocalAppInfo struct {
 	AdminPort int
 	ServePort int
 	AdminPass string
+	// BootConfig is the update_configuration payload the runtime was started
+	// with. A caller wanting to change ONE setting on the running app re-sends
+	// this with that key replaced — the admin API has no read-back, so anything
+	// not re-sent is simply gone from the configuration.
+	BootConfig map[string]any
 }
 
 // LocalRunOptions configures RunLocal.
 type LocalRunOptions struct {
 	// ProjectPath is the .mpr file.
 	ProjectPath string
+	// ConstantOverrides are the constant values of the configuration this run
+	// represents (qualified name -> value), merged over the defaults mxbuild
+	// wrote into the deployment. Empty means "every constant keeps its default",
+	// which is what a local run always did before — see runconstants.go.
+	ConstantOverrides map[string]string
 	// DeployDir is where the serve Deploy target writes (default <projectDir>/deployment).
 	DeployDir string
 	// MxBuildPath overrides mxbuild resolution (optional).
@@ -728,6 +738,7 @@ func RunLocal(opts LocalRunOptions) error {
 		Trace:              opts.Trace,
 		TraceServiceName:   traceService,
 		TraceOTLPEndpoint:  opts.TraceOTLP,
+		ConstantOverrides:  opts.ConstantOverrides,
 		Env:                opts.Env,
 		Stdout:             w,
 		Stderr:             stderr,
@@ -751,10 +762,11 @@ func RunLocal(opts LocalRunOptions) error {
 
 	if opts.OnReady != nil {
 		opts.OnReady(LocalAppInfo{
-			AppPort:   opts.AppPort,
-			AdminPort: opts.AdminPort,
-			ServePort: opts.ServePort,
-			AdminPass: opts.AdminPass,
+			AppPort:    opts.AppPort,
+			AdminPort:  opts.AdminPort,
+			ServePort:  opts.ServePort,
+			AdminPass:  opts.AdminPass,
+			BootConfig: rt.BootConfig(),
 		})
 	}
 

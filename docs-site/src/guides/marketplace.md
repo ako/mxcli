@@ -178,6 +178,73 @@ A headless install or update leaves two repairs for Mendix's own tools: **CE0463
 
 Measured: Administration 4.3.2 → 4.5.0 and DataWidgets 3.5.0 → 3.11.3 both reach **0 errors** afterwards.
 
+## Bundled widgets and install order
+
+A module package carries a copy of every widget its pages use, pinned at the module author's release time — and different modules pin different versions of the same widget. Atlas_Web_Content 4.3.0 ships five Data Widgets at 3.4.0 that DataWidgets 3.11.3 ships at 3.11.3.
+
+`install` and `update` keep the newer copy and say so:
+
+```text
+  Kept 5 newer widget(s) the package would have rolled back:
+    widgets/com.mendix.widget.web.Datagrid.mpk — kept 3.11.3, package ships 3.4.0
+```
+
+Without this, module install order silently decided which widget versions the project ended up with, and nothing reported it — an out-of-date widget is not a check error. A package that ships the same widget both as a `.mpk` and as an unpacked tree (FeedbackModule 5.0.0) installs only the `.mpk`.
+
+## When the installed version is no longer published
+
+`diff` and `update` both download the installed version to establish the local-edit baseline, so both fail when it has been unpublished — as NanoflowCommons 6.0.0 has, while a blank 11.13 app still ships it. `--force` does not help: it overrides a finding, and there is no finding to override. `mxcli marketplace update … --no-baseline` accepts that the question cannot be answered and updates anyway, discarding any local edits to that module without naming them.
+
+## Why `diff` and `update` are slow, and what is cached
+
+Both commands answer their question by building a **reference project**: a blank
+Mendix app of the consuming project's version with the published module imported
+into it, so the comparison runs against a real project rather than against a
+`.mpk`. That costs a download plus two `mx` invocations, and `update` builds
+two references — the installed version, to answer "has anyone edited this?", and
+the version being moved to.
+
+Two caches under `~/.mxcli/marketplace-refs/` keep that off the clock:
+
+| Cache | Keyed by | Saves |
+|---|---|---|
+| `blank/` | Mendix version | the `mx create-project` in **every** reference build |
+| `ref/` | published version UUID + Mendix version | the whole reference, on a repeat |
+
+Measured on Administration (content 23513, 4.3.2 → 4.5.0, Mendix 11.12.1):
+
+```text
+mxcli marketplace diff 23513 -p app.mpr --to 4.5.0
+
+  no cache      66s
+  cold cache    49s     (blank app built once, reused by the second reference)
+  warm          13s
+```
+
+The Mendix version is part of both keys, because a reference built at a
+different version reports Mendix's own conversions as local edits. An entry is
+only used once its completion marker is present and the project's version stamp
+has been re-checked on the way out, so a half-written or mislabelled entry is
+rebuilt rather than trusted.
+
+A reference is about 34 MB, so `ref/` keeps the 6 most recently used entries and
+evicts the rest — running out of disk part way through an update is worse than
+rebuilding one, because `update` does not roll back. `blank/` is not bounded: it
+holds one entry per Mendix version.
+
+```bash
+MXCLI_REF_CACHE_MAX=20 mxcli marketplace diff …   # keep more (0 = keep everything)
+MXCLI_NO_REF_CACHE=1   mxcli marketplace diff …   # build everything from scratch
+```
+
+Reach for `MXCLI_NO_REF_CACHE=1` before deleting anything: it answers "is this a
+stale-cache problem?" while leaving the evidence in place.
+
+Note that `--force` still builds the baseline. It is not wasted work — under
+`--force` the command prints the locally changed elements it is about to
+replace, and that list is the whole point of the check. Use `--no-baseline` when
+you genuinely want to skip it.
+
 ## Repairing the model (`mxcli fix`)
 
 `mx update-widgets` and `mx rename-design-properties` each fix something only Mendix can fix, and each rewrites an MPR v2 project into the single-file v1 format while doing it. Measured on 11.12.1: `update-widgets` took 369 `.mxunit` files to 0 and a 69,632-byte index to 14,405,632 bytes; `rename-design-properties` took 1,865 files to 0 and a 249,856-byte index to 39,895,040 bytes, having renamed 149 design properties across 41 documents. The conversion is one-way.

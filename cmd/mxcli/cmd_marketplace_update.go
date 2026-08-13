@@ -69,6 +69,7 @@ func runMarketplaceUpdate(cmd *cobra.Command, args []string) error {
 	moduleName, _ := cmd.Flags().GetString("module")
 	saveEdits, _ := cmd.Flags().GetString("save-edits")
 	force, _ := cmd.Flags().GetBool("force")
+	noBaseline, _ := cmd.Flags().GetBool("no-baseline")
 
 	ctx := cmd.Context()
 	out := cmd.OutOrStdout()
@@ -112,35 +113,46 @@ func runMarketplaceUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	// Has anyone edited this module? Answering needs the version it was installed
-	// from, built as a reference exactly as `marketplace diff` does.
-	base, err := pickVersion(versions.Items, installedVersionID, installedVersion)
-	if err != nil {
-		return err
-	}
-	baseRef, basePkgModule, err := referenceFor(ctx, client, base, mendixVersion, work, "base")
-	if err != nil {
-		return err
-	}
-	installed, err := marketplace.SnapshotModule(mprPath, moduleName, newBackendFactory())
-	if err != nil {
-		return fmt.Errorf("read %s from the project: %w", moduleName, err)
-	}
-	published, err := marketplace.SnapshotModule(baseRef, basePkgModule, newBackendFactory())
-	if err != nil {
-		return fmt.Errorf("read %s from its published package: %w", basePkgModule, err)
-	}
-	drift := marketplace.Compare(installed, published)
-
-	if saveEdits != "" {
-		written, unsaved, serr := marketplace.SaveEdits(saveEdits, drift)
-		if serr != nil {
-			return serr
+	// from, built as a reference exactly as `marketplace diff` does — which is
+	// impossible when that version has been unpublished. A blank 11.13 app ships
+	// NanoflowCommons 6.0.0 and the 6.x line now starts at 6.1.1, so the module
+	// that most needs updating is the one whose baseline cannot be built.
+	if noBaseline {
+		fmt.Fprintf(out, "\n--no-baseline: skipping the local-edit check for %s.\n", moduleName)
+		fmt.Fprintln(out, "  Any local edits to this module will be discarded without being named.")
+	} else {
+		base, berr := pickVersion(versions.Items, installedVersionID, installedVersion)
+		if berr != nil {
+			return fmt.Errorf("%w\n"+
+				"  The installed version is the baseline for \"has anyone edited this?\", so it has to be\n"+
+				"  downloadable. It is not, and --force does not help: there is nothing to compare against.\n"+
+				"  hint: re-run with --no-baseline to update without that check (local edits are lost silently)", berr)
 		}
-		reportSavedEdits(out, saveEdits, written, unsaved)
-	}
+		baseRef, basePkgModule, rerr := referenceFor(ctx, client, base, mendixVersion, work, "base")
+		if rerr != nil {
+			return rerr
+		}
+		installed, ierr := marketplace.SnapshotModule(mprPath, moduleName, newBackendFactory())
+		if ierr != nil {
+			return fmt.Errorf("read %s from the project: %w", moduleName, ierr)
+		}
+		published, perr := marketplace.SnapshotModule(baseRef, basePkgModule, newBackendFactory())
+		if perr != nil {
+			return fmt.Errorf("read %s from its published package: %w", basePkgModule, perr)
+		}
+		drift := marketplace.Compare(installed, published)
 
-	if err := gateOnLocalEdits(out, drift, force, saveEdits); err != nil {
-		return err
+		if saveEdits != "" {
+			written, unsaved, serr := marketplace.SaveEdits(saveEdits, drift)
+			if serr != nil {
+				return serr
+			}
+			reportSavedEdits(out, saveEdits, written, unsaved)
+		}
+
+		if gerr := gateOnLocalEdits(out, drift, force, saveEdits); gerr != nil {
+			return gerr
+		}
 	}
 
 	// Build the version being moved to, and replace.
@@ -233,6 +245,7 @@ func reportUpdate(out io.Writer, r *marketplace.UpdateResult) {
 	if len(r.FilesInstalled) > 0 {
 		fmt.Fprintf(out, "  %d bundled file(s) replaced (widgets, themesource, ...).\n", len(r.FilesInstalled))
 	}
+	reportSkippedFiles(out, r.FilesSkipped)
 
 	if len(r.IdentitiesLost) > 0 {
 		fmt.Fprintf(out, "\n  Removed in %s (%d) — their database columns or tables will go on the next deploy:\n",
@@ -272,7 +285,39 @@ func init() {
 	marketplaceUpdateCmd.Flags().String("module", "", "module name in the project, when it cannot be identified automatically")
 	marketplaceUpdateCmd.Flags().String("save-edits", "", "write locally changed elements to this directory as re-executable MDL")
 	marketplaceUpdateCmd.Flags().Bool("force", false, "update even though local edits will be discarded")
+	marketplaceUpdateCmd.Flags().Bool("no-baseline", false,
+		"update without checking for local edits, when the installed version is no longer published")
 	marketplaceUpdateCmd.Flags().String("profile", auth.ProfileDefault, "credential profile")
 
 	marketplaceCmd.AddCommand(marketplaceUpdateCmd)
+}
+
+// reportSkippedFiles names the bundled files that were deliberately not written.
+//
+// A module package pins its own copy of every widget its pages use, and
+// different modules pin different versions of the same widget — so installing
+// modules in one order and then another used to roll widgets backwards with no
+// sign that anything had happened (an older widget is not a check error). These
+// lines are what makes that visible.
+func reportSkippedFiles(out io.Writer, skipped []marketplace.SkippedFile) {
+	if len(skipped) == 0 {
+		return
+	}
+	var kept, dupes []marketplace.SkippedFile
+	for _, s := range skipped {
+		if s.Kept != "" {
+			kept = append(kept, s)
+		} else {
+			dupes = append(dupes, s)
+		}
+	}
+	if len(kept) > 0 {
+		fmt.Fprintf(out, "\n  Kept %d newer widget(s) the package would have rolled back:\n", len(kept))
+		for _, s := range kept {
+			fmt.Fprintf(out, "    %s — kept %s, package ships %s\n", s.Path, s.Kept, s.Offered)
+		}
+	}
+	for _, s := range dupes {
+		fmt.Fprintf(out, "  Skipped %s (%s).\n", s.Path, s.Reason)
+	}
 }

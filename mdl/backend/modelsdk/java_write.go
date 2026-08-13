@@ -268,6 +268,17 @@ func codeActionParamTypeToGen(t javaactions.CodeActionParameterType) element.Ele
 		assignID(e)
 		e.SetTypeParameterID(element.ID(v.TypeParameterID))
 		return e
+	case *javaactions.MicroflowType:
+		// Direct, not wrapped in a BasicParameterType — the shape Studio Pro
+		// stores (measured on MCP Server 5.1.0's AddTool.ExecutingMicroflow).
+		// Without this an update of a java action that has a microflow-typed
+		// parameter would rewrite it as a String. See codeActionBasicFromGen.
+		m := genJa.NewMicroflowJavaActionParameterType()
+		if v.ID != "" {
+			m.SetID(element.ID(v.ID))
+		}
+		assignID(m)
+		return m
 	default:
 		b := genCa.NewBasicParameterType()
 		assignID(b)
