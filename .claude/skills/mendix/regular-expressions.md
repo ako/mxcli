@@ -103,12 +103,15 @@ alter entity Val.Person modify attribute Email String(200)
 
 ### What still cannot be authored
 
-`MaxLength` and `EqualsTo` rules, and a **range bounded by another attribute**
-rather than a literal. mxcli **refuses** to rewrite an entity carrying one
-(`alter entity`, `create or replace entity`) rather than silently downgrading it
-to a Required rule, which is what it used to do — the constraint would vanish
-and the build would still pass. Change such an entity in Studio Pro. `describe
-entity` marks the rule with a comment instead of dropping it silently.
+A **range bounded by another attribute** rather than a literal cannot be
+*written* in MDL, but it does survive a rewrite untouched — `describe entity`
+marks it with a comment rather than rendering it as something it isn't. Add or
+change one in Studio Pro.
+
+`MaxLength` and `EqualsTo` rules cannot be represented at all. mxcli **refuses**
+to rewrite an entity carrying one (`alter entity`, `create or replace entity`)
+rather than silently downgrading it to a Required rule, which is what it used to
+do — the constraint would vanish and the build would still pass.
 
 ## Finding out who uses one
 

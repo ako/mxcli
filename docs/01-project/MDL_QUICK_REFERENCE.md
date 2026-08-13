@@ -222,9 +222,11 @@ create entity Shop.Product ( Email: String(200) not null error 'Required' );
 alter entity Shop.Product modify attribute Code String(20) unique error 'Unique';
 ```
 
-`MaxLength` and `EqualsTo` rules, and a range bounded by another *attribute*,
-cannot be authored. mxcli refuses to rewrite an entity carrying one rather than
-downgrading it to a Required rule; `describe entity` marks it with a comment.
+A range bounded by another *attribute* cannot be authored in MDL, but survives a
+rewrite untouched; `describe entity` marks it with a comment rather than
+rendering it wrong. `MaxLength` and `EqualsTo` cannot be represented at all —
+mxcli refuses to rewrite an entity carrying one rather than downgrading it to a
+Required rule.
 
 **Example:**
 ```sql
