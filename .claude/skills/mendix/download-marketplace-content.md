@@ -261,6 +261,16 @@ Administration — installed 4.3.2 (Mendix 11.12.1)
     CONFLICT  ENTITY Account
 ```
 
+**Tell the user the first one is slow.** Answering needs a reference project —
+a blank app with the published module imported — and `--to` needs two. Measured
+on Administration at 11.12.1: **~50s** the first time, **~13s** afterwards, once
+`~/.mxcli/marketplace-refs/` holds the blank app and the built references. Run
+`diff` before `update` rather than instead of it: the `update` reuses the base
+reference the `diff` just built, so the pair costs little more than the `diff`.
+
+Set `MXCLI_NO_REF_CACHE=1` if a result looks stale and you want to rule the
+cache out — it rebuilds everything without deleting the evidence.
+
 It downloads the installed version's `.mpk`, imports it into a throwaway reference project
 built **at the project's own Mendix version** (a mismatch is refused, not warned about —
 Mendix's own conversions would otherwise read as your edits), and compares `DESCRIBE`

@@ -205,20 +205,39 @@ func downloadVersion(ctx context.Context, client *mp.Client, v *mp.Version, work
 func referenceFor(ctx context.Context, client *mp.Client, v *mp.Version,
 	mendixVersion, work, slot string) (mprPath, pkgModule string, err error) {
 
-	mpkPath, err := downloadVersion(ctx, client, v, work, slot)
-	if err != nil {
+	refDir := filepath.Join(work, slot+"-ref")
+	if err := os.MkdirAll(refDir, 0o755); err != nil {
+		return "", "", err
+	}
+	mpkPath := filepath.Join(work, slot+".mpk")
+
+	// A reference is expensive (a download plus two ~10s mx invocations) and
+	// immutable, so the same published version is never built twice: `diff`
+	// followed by `update` needs the same base, and so does re-running either.
+	if cached := marketplace.CachedReference(v.VersionID, mendixVersion, refDir, mpkPath); cached != "" {
+		if pkgModule, err = marketplace.ModuleNameInPackage(mpkPath); err == nil {
+			return cached, pkgModule, nil
+		}
+		// The package came back unreadable, so the entry is not trustworthy.
+		// Fall through and rebuild rather than failing the command.
+		if err := os.RemoveAll(refDir); err == nil {
+			_ = os.MkdirAll(refDir, 0o755)
+		}
+	}
+
+	if _, err := downloadVersion(ctx, client, v, work, slot); err != nil {
 		return "", "", err
 	}
 	pkgModule, err = marketplace.ModuleNameInPackage(mpkPath)
 	if err != nil {
 		return "", "", err
 	}
-	refDir := filepath.Join(work, slot+"-ref")
-	if err := os.MkdirAll(refDir, 0o755); err != nil {
+	mprPath, err = marketplace.PackageProject(ctx, mpkPath, mendixVersion, refDir, newBackendFactory())
+	if err != nil {
 		return "", "", err
 	}
-	mprPath, err = marketplace.PackageProject(ctx, mpkPath, mendixVersion, refDir, newBackendFactory())
-	return mprPath, pkgModule, err
+	marketplace.CacheReference(v.VersionID, mendixVersion, refDir, mpkPath)
+	return mprPath, pkgModule, nil
 }
 
 // versionIDs projects the marketplace's version list to bare version UUIDs.
