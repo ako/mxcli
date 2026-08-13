@@ -408,7 +408,7 @@ it is for pages.
 | WHILE | `while condition begin ... end while;` | Condition-based loop |
 | Return | `return $value;` | Required at end of every flow path |
 | Execute DB query | `$Result = execute database query Module.Conn.Query;` | 3-part name; supports DYNAMIC, params, CONNECTION override |
-| Import mapping | `[$Var =] import from mapping Module.IMM($SourceVar);` | Apply import mapping to string variable |
+| Import mapping | `[$Var =] import from mapping Module.IMM($SourceVar) [all\|first\|limit <e> [offset <e>]];` | Apply import mapping to string variable. Trailing clause is Studio Pro's Range; omitted = infer from the mapping's root. `first` binds one OBJECT (`limit 1` is a one-element LIST). Mendix rejects `offset` on a non-list mapping (CE6100) |
 | Export mapping | `$Var = export to mapping Module.EMM($EntityVar);` | Apply export mapping to entity, returns string |
 | Error handling | `... on error continue\|rollback\|{ handler };` | Not supported on EXECUTE DATABASE QUERY |
 

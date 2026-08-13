@@ -489,9 +489,24 @@ func actionFromGen(el element.Element) microflows.MicroflowAction {
 		out.ID = model.ID(a.ID())
 		if rh, ok := a.Raw().Lookup("ResultHandling").DocumentOK(); ok {
 			if imc, ok := rh.Lookup("ImportMappingCall").DocumentOK(); ok {
-				h, force, _ := readMappingCall(rh, imc)
-				if !h.SingleObject && force {
+				h, force, vtType := readMappingCall(rh, imc)
+				// The stored VariableType is the authority on the result
+				// variable's cardinality, and it does NOT track the range:
+				// Mendix's own SUB_Feedback_PostToAppInsights stores
+				// ConstantRange{SingleObject:false} against an ObjectType. Only
+				// where no VariableType is stored does ForceSingleOccurrence
+				// stand in — and never for a bounded range, which is always a
+				// list, or a Custom range would read back as `first` and lose
+				// the limit. (issue #881)
+				switch vtType {
+				case "DataTypes$ObjectType":
 					h.SingleObject = true
+				case "DataTypes$ListType":
+					h.SingleObject = false
+				default:
+					if !h.SingleObject && force && h.LimitExpression == "" && h.OffsetExpression == "" {
+						h.SingleObject = true
+					}
 				}
 				out.ResultHandling = h
 			}
@@ -826,8 +841,20 @@ func readMappingCall(doc, imc bson.Raw) (h *microflows.ResultHandlingMapping, fo
 	h.MappingID = model.ID(mapping)
 	force, _ = imc.Lookup("ForceSingleOccurrence").BooleanOK()
 	h.ForceSingleOccurrence = &force
+	// The Range is polymorphic: a ConstantRange carries SingleObject (All/First)
+	// while a CustomRange carries the limit and offset expressions. Reading only
+	// SingleObject dropped the Custom setting entirely, so a describe→edit→exec
+	// cycle turned a bounded import into an unbounded one (issue #881).
 	if rng, ok := imc.Lookup("Range").DocumentOK(); ok {
-		if b, ok := rng.Lookup("SingleObject").BooleanOK(); ok {
+		if rawStr(rng, "$Type") == "Microflows$CustomRange" {
+			h.LimitExpression = rawStr(rng, "LimitExpression")
+			h.OffsetExpression = rawStr(rng, "OffsetExpression")
+		} else if b, ok := rng.Lookup("SingleObject").BooleanOK(); ok {
+			// SingleObject is the RANGE's own flag (All/First). It is only a
+			// fallback for the result variable's cardinality — where a
+			// VariableType is stored, that wins, because the two disagree in
+			// Mendix's own models (see RangeSingleObject).
+			h.RangeSingleObject = &b
 			h.SingleObject = b
 		}
 	}

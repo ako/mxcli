@@ -1,0 +1,90 @@
+-- Bug test for upstream issue #881: the import activity's Range.
+--
+-- Mendix stores the Range on the ImportMappingCall in two variants:
+--
+--   Microflows$ConstantRange{SingleObject}                     All / First
+--   Microflows$CustomRange{LimitExpression, OffsetExpression}  Custom
+--
+-- mxcli only ever wrote the first, and read only SingleObject, so:
+--   * "Custom" was not merely undescribed but UNREPRESENTABLE — a bounded
+--     import became unbounded the moment anything rewrote the activity;
+--   * DESCRIBE emitted no range at all, so all three settings round-tripped
+--     identically and describe -> edit -> exec silently changed the activity.
+--
+-- The trap the fix had to avoid: the Range and the RESULT VARIABLE's
+-- cardinality are SEPARATE axes. Conflating them writes a ListType against an
+-- object-rooted mapping, which mxbuild rejects with CE0243 ("the mapping used
+-- to return 'List of X' but now returns 'X'"). Mendix's own
+-- FeedbackModule.SUB_Feedback_PostToAppInsights is the proof: it stores
+-- ConstantRange{SingleObject:false} against an ObjectType variable.
+--
+-- Expected: `mx check` reports 0 errors, and re-describing each microflow
+-- reproduces the range verbatim. Verified on mxbuild 11.6.6, both engines.
+--
+-- NOTE on `offset`: Mendix rejects it with CE6100 ("This entity does not
+-- support offset") unless the mapping's root is a list — `limit` alone is
+-- accepted either way. The mapping below is object-rooted, so this file uses
+-- `limit` without `offset`; adding one is the way to reproduce CE6100.
+
+create json structure MyFirstModule.JSON_881
+snippet '{"items": [{"total": 5, "name": "a"}]}';
+
+create non-persistent entity MyFirstModule.Item881 ( Total: integer, Name: string );
+/
+create non-persistent entity MyFirstModule.Root881 ( Dummy: string );
+/
+create association MyFirstModule.Item881_Root881
+  from MyFirstModule.Item881 to MyFirstModule.Root881;
+/
+
+-- Object-rooted: the mapping returns ONE Root881 under every range.
+create import mapping MyFirstModule.IMM_881
+  with json structure MyFirstModule.JSON_881
+{
+  create MyFirstModule.Root881 {
+    create MyFirstModule.Item881_Root881/MyFirstModule.Item881 = items {
+      Total = total,
+      Name = name
+    }
+  }
+};
+/
+
+-- ALL: Studio Pro's default. The variable stays an OBJECT because the mapping
+-- is object-rooted — writing a list here is the CE0243 case.
+create microflow MyFirstModule.MF881_All ( $P: string )
+returns MyFirstModule.Root881 as $R
+begin
+  $R = import from mapping MyFirstModule.IMM_881($P) all;
+  return $R;
+end;
+/
+
+-- FIRST: the one form that also pins the variable to a single object.
+create microflow MyFirstModule.MF881_First ( $P: string )
+returns MyFirstModule.Root881 as $R
+begin
+  $R = import from mapping MyFirstModule.IMM_881($P) first;
+  return $R;
+end;
+/
+
+-- CUSTOM: selects Microflows$CustomRange. A range setting only — it does not
+-- change what the mapping returns.
+create microflow MyFirstModule.MF881_Custom ( $P: string )
+returns MyFirstModule.Root881 as $R
+begin
+  $R = import from mapping MyFirstModule.IMM_881($P) limit 10;
+  return $R;
+end;
+/
+
+-- Unauthored: keeps the pre-#881 inference, so every hand-written script that
+-- predates the syntax writes exactly what it always did.
+create microflow MyFirstModule.MF881_Inferred ( $P: string )
+returns MyFirstModule.Root881 as $R
+begin
+  $R = import from mapping MyFirstModule.IMM_881($P);
+  return $R;
+end;
+/
