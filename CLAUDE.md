@@ -187,7 +187,8 @@ For pluggable widgets (DataGrid2, ComboBox, Gallery, etc.), templates must inclu
 ### `modelsdk/gen` Binds Some Properties Under the Wrong BSON Key
 
 The storage-name table above is about `$Type`. The **same split exists per
-property**, and `modelsdk/gen` gets it wrong in ~80 places. Mendix's reflection
+property**, and `modelsdk/gen` gets it wrong in **102 properties across 65
+types** — the ledger is `modelsdk/gen/keyaudit_test.go`. Mendix's reflection
 data carries two names per property — an SDK `Name` and a BSON `StorageName` —
 and the in-repo generator (`cmd/codegen` → `generated/metamodel`) keeps them
 apart, tag from storage name:
@@ -202,7 +203,9 @@ The out-of-tree generator that produced `modelsdk/gen` kept only the SDK name.
 **`generated/metamodel` is therefore the arbiter when the two disagree** — it is
 generated from the same reflection data and has been right in every case checked
 against a real document (`RegularExpression.Expression`, `RegExRuleInfo.RegExIdentifier`,
-`Attribute.GUID`).
+`Attribute.GUID`). `TestGenPropertyKeysAgainstMetamodel` fails when a NEW
+mismatch appears (a re-vendored gen that dropped an override) or when a listed
+one is fixed without being struck off.
 
 `cmd/modelsdk-codegen` and `internal/codegen/supplements.json` — named in every
 gen file's `DO NOT EDIT` header — have **never existed in this repo**
