@@ -211,6 +211,40 @@ type ActivityAnnotations struct {
 	// populated on LoopStmt/WhileStmt.
 	IteratorAnchor *FlowAnchors
 	BodyTailAnchor *FlowAnchors
+
+	// Curve is the bezier geometry of the flow LEAVING this statement:
+	// @curve(from: (40, -90), to: (-40, 90)).
+	//
+	// Mendix stores no waypoints. A sequence flow's shape is two control
+	// vectors on its Microflows$BezierCurve line — the tangent handles at each
+	// end — so a hand-curved edge is a pair of (x, y) offsets, not a polyline.
+	// Both writers already emit them; before #884 nothing could set them, so
+	// they defaulted to "0;0" and any rewrite flattened a curve drawn in Studio
+	// Pro. (upstream #884)
+	Curve *FlowCurve
+
+	// InvalidCurves holds the raw text of any @curve parameter whose coordinates
+	// were not a whole-number (x, y) pair, so validation can refuse it rather
+	// than silently straightening the edge.
+	InvalidCurves []string
+
+	// UnknownNames holds annotation names the visitor did not recognise, in
+	// source order, so validation can refuse them.
+	//
+	// The visitor's switch has no default: an unrecognised name used to be
+	// dropped in silence, which is benign for an annotation mxcli does not
+	// implement (@size) and NOT benign for a typo of one it does — `@postion(10,
+	// 20)` passed `check` and silently discarded the layout the author asked
+	// for. Layout is the whole point of these annotations, so a name that does
+	// nothing has to say so. (upstream #884)
+	UnknownNames []string
+}
+
+// FlowCurve is the pair of bezier control vectors on a sequence flow. Either end
+// may be nil, which leaves that end straight.
+type FlowCurve struct {
+	From *Position // control vector at the origin end
+	To   *Position // control vector at the destination end
 }
 
 // ChangeItem represents a single assignment in CREATE/CHANGE: Attr = expr

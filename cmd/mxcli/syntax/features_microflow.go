@@ -181,6 +181,29 @@ func init() {
 	})
 
 	Register(SyntaxFeature{
+		Path:    "microflow.layout",
+		Summary: "Canvas layout annotations — @position, @anchor, @curve, @caption, @color",
+		Keywords: []string{
+			"position", "anchor", "curve", "layout", "canvas",
+			"annotation", "caption", "color", "excluded", "bezier",
+		},
+		Syntax: "@position(x, y)                       -- the activity's centre point\n" +
+			"@anchor(from: right, to: left)        -- which SIDE each end of the outgoing flow attaches to\n" +
+			"@curve(from: (40, -90), to: (-40, 90))  -- the flow's bezier control vectors\n" +
+			"@caption 'text'\n@color Green\n@annotation 'a note'\n@excluded\n\n" +
+			"An unrecognised @name is an error (MDL059): it would parse and do nothing,\n" +
+			"so a typo of @position would silently discard the layout.\n\n" +
+			"Mendix stores no waypoints — a flow's shape is two control vectors, each a\n" +
+			"pixel offset from its end of the line. (0, 0) at both ends is straight.\n" +
+			"Container Size is still computed, not authorable.",
+		Example: "create microflow MyModule.ACT_Flow ($In: String)\nreturns String as $Out\nbegin\n" +
+			"  @position(200, 100)\n  @anchor(from: bottom, to: top)\n" +
+			"  @curve(from: (40, -90), to: (-40, 90))\n  declare $Tmp String = $In;\n" +
+			"  @position(200, 300)\n  declare $Out String = $Tmp;\n  return $Out;\nend;",
+		SeeAlso: []string{"microflow", "microflow.create"},
+	})
+
+	Register(SyntaxFeature{
 		Path:    "microflow.mapping",
 		Summary: "IMPORT FROM MAPPING / EXPORT TO MAPPING, and the import Range (All/First/Custom)",
 		Keywords: []string{

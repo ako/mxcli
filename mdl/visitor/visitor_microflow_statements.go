@@ -3,6 +3,7 @@
 package visitor
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/antlr4-go/antlr/v4"
@@ -309,6 +310,24 @@ func extractMicroflowAnnotations(annotations []parser.IAnnotationContext) *ast.A
 				hasAny = true
 			}
 			seenActivityMetadata = true
+
+		case "curve":
+			// @curve(from: (40, -90), to: (-40, 90)) — the bezier control
+			// vectors of the flow LEAVING this statement. Needed no grammar
+			// change: `name: (x, y)` is already annotationParenValue, the same
+			// shape the association anchors use. (#884)
+			if params := ann.AnnotationParams(); params != nil {
+				parseCurveAnnotation(params.(*parser.AnnotationParamsContext), result)
+				hasAny = true
+			}
+			seenActivityMetadata = true
+
+		default:
+			// Record rather than drop. The grammar accepts any @name, so this
+			// arm catches both an annotation mxcli does not implement (@size)
+			// and — the reason it matters — a typo of one it does. (#884)
+			result.UnknownNames = append(result.UnknownNames, ann.AnnotationName().GetText())
+			hasAny = true
 		}
 	}
 
@@ -1623,4 +1642,69 @@ func buildReturnStatement(ctx parser.IReturnStatementContext) *ast.ReturnStmt {
 	}
 
 	return stmt
+}
+
+// parseCurveAnnotation populates result.Curve from @curve(from: (x, y), to: (x, y)).
+// Either end may be omitted, which leaves that end straight.
+func parseCurveAnnotation(params *parser.AnnotationParamsContext, result *ast.ActivityAnnotations) {
+	curve := &ast.FlowCurve{}
+	for _, p := range params.AllAnnotationParam() {
+		pCtx := p.(*parser.AnnotationParamContext)
+		nameCtx := pCtx.AnnotationParamName()
+		if nameCtx == nil {
+			result.InvalidCurves = append(result.InvalidCurves, strings.TrimSpace(pCtx.GetText()))
+			continue
+		}
+		pt, ok := annotationPointValue(pCtx)
+		if !ok {
+			result.InvalidCurves = append(result.InvalidCurves, strings.TrimSpace(pCtx.GetText()))
+			continue
+		}
+		switch strings.ToLower(nameCtx.GetText()) {
+		case "from":
+			curve.From = pt
+		case "to":
+			curve.To = pt
+		default:
+			result.InvalidCurves = append(result.InvalidCurves, strings.TrimSpace(pCtx.GetText()))
+		}
+	}
+	if curve.From != nil || curve.To != nil {
+		result.Curve = curve
+	}
+}
+
+// annotationPointValue reads a `(x, y)` parenthesised annotation value into a
+// Position. Reports false for any other shape — including a non-integer
+// coordinate, which the caller records so validation can refuse it.
+//
+// A free function rather than the Builder method the association anchors use
+// (annotationParenPoint), because extractMicroflowAnnotations has no Builder to
+// report through; the caller records the raw text on the AST instead.
+func annotationPointValue(paramCtx *parser.AnnotationParamContext) (*ast.Position, bool) {
+	paren := paramCtx.AnnotationParenValue()
+	if paren == nil {
+		return nil, false
+	}
+	inner := paren.(*parser.AnnotationParenValueContext).AnnotationParams()
+	if inner == nil {
+		return nil, false
+	}
+	coords := inner.(*parser.AnnotationParamsContext).AllAnnotationParam()
+	if len(coords) != 2 {
+		return nil, false
+	}
+	vals := make([]int, 0, 2)
+	for _, c := range coords {
+		cCtx := c.(*parser.AnnotationParamContext)
+		if cCtx.AnnotationParamName() != nil {
+			return nil, false // named, not a coordinate pair
+		}
+		v, err := strconv.Atoi(strings.TrimSpace(cCtx.GetText()))
+		if err != nil {
+			return nil, false
+		}
+		vals = append(vals, v)
+	}
+	return &ast.Position{X: vals[0], Y: vals[1]}, true
 }
