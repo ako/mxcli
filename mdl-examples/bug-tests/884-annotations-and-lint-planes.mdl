@@ -1,0 +1,80 @@
+-- Bug test for upstream issue #884 (two of the four reported problems).
+--
+-- 1. UNKNOWN ANNOTATIONS WERE SILENTLY DROPPED.
+--    The grammar accepts any @name and the visitor's switch had no default arm,
+--    so an unrecognised annotation parsed and did nothing. The reporter found
+--    this as "@size(600, 300) parses without error but produces no effect".
+--    The sharper case is a TYPO of an annotation that does work:
+--
+--      @postion(999, 111)   -- check passed; the position was discarded
+--
+--    Both are now MDL059 errors. Uncomment either line below to see it.
+--
+-- 2. MPR008 COMPARED NODES ACROSS DIFFERENT CANVASES.
+--    A LoopedActivity's children are positioned RELATIVE to the container, and
+--    the rule flattened them into the same list as the microflow's own canvas,
+--    so it reported overlaps that cannot happen on screen.
+--
+-- Expected: `mxcli check` passes on this file, and `mxcli lint` reports MPR008
+-- for MF_SamePlane ONLY — never for MF_CrossCanvas.
+--
+-- Verified on mxbuild 11.6.6.
+
+create module B884;
+/
+create non-persistent entity B884.Rec ( Nm: string(100) );
+/
+
+-- Cross-canvas: the outer node is at absolute (150,150); the loop child is at
+-- container-relative (141,130). Different planes — MPR008 must stay silent.
+create microflow B884.MF_CrossCanvas ( $Items: list of B884.Rec )
+returns boolean as $Ok
+begin
+  @position(150, 150)
+  declare $Outer string = 'x';
+  loop $it in $Items
+  begin
+    @position(141, 130)
+    declare $Inner string = 'y';
+  end loop;
+  declare $Ok boolean = true;
+  return $Ok;
+end;
+/
+
+-- Same canvas, 10px apart: MPR008 must STILL report this, or the scoping fix
+-- traded a false positive for a false negative.
+create microflow B884.MF_SamePlane ( $P: string )
+returns string as $R
+begin
+  @position(300, 200)
+  declare $A string = $P;
+  @position(310, 210)
+  declare $R string = $A;
+  return $R;
+end;
+/
+
+-- Every annotation mxcli implements, so the new rejection cannot fire on valid
+-- input (checked against 405 real MDL blocks in the skills and docs corpora).
+create microflow B884.MF_AllAnnotations ( $P: string )
+returns string as $R
+begin
+  @position(200, 100)
+  @caption 'Set it'
+  @color Green
+  declare $A string = $P;
+  @annotation 'a free note'
+  @position(360, 100)
+  @anchor(from: right, to: left)
+  declare $R string = $A;
+  return $R;
+end;
+/
+
+-- Rejected at check time (MDL059), so kept commented:
+--   @size(600, 300)      -- not implemented; container Size is still unauthorable
+--   @postion(999, 111)   -- typo of @position; used to discard the layout in silence
+--   @curve(from: (40, -90), to: (-40, 90))
+--       -- parses today, and is NOT implemented: a hand-curved edge's bezier
+--          control vectors are reset to "0;0" by any rewrite. Still open.

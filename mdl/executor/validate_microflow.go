@@ -142,6 +142,7 @@ func (v *microflowValidator) checkDuplicateLoopVariables(body []ast.MicroflowSta
 // walkBody recursively walks microflow body statements looking for per-statement issues.
 func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 	for _, s := range body {
+		v.checkUnknownAnnotations(s)
 		switch stmt := s.(type) {
 		case *ast.ValidationFeedbackStmt:
 			if isEmptyMessage(stmt.Message) {
@@ -1301,4 +1302,44 @@ func (v *microflowValidator) checkEnumSplitEmptyBranch(stmt *ast.EnumSplitStmt) 
 			"should be configured in properties for an outgoing flow\"", stmt.Variable),
 		"Add a `when (empty) then …` branch. It is required even when the attribute is `not null`. "+
 			"A branch may list several values (`when Open, (empty) then …`) if they share a path.")
+}
+
+// knownActivityAnnotations is the set the visitor implements. It is the visitor's
+// own switch arms, restated: the two are pinned together by
+// TestKnownAnnotationsMatchTheVisitor, because a name added to one and not the
+// other either rejects a valid annotation or silently drops an invalid one.
+var knownActivityAnnotations = map[string]bool{
+	"position":   true,
+	"caption":    true,
+	"color":      true,
+	"annotation": true,
+	"excluded":   true,
+	"anchor":     true,
+}
+
+// checkUnknownAnnotations rejects an @annotation name the visitor does not
+// implement.
+//
+// The grammar accepts any @name, and the visitor's switch had no default, so an
+// unrecognised one was dropped in silence. That is benign for an annotation mxcli
+// does not implement — @size(600, 300), which the #884 reporter found parsing
+// without effect — and NOT benign for a typo of one it does: `@postion(10, 20)`
+// passed `check` and discarded the layout the author asked for, on a workflow
+// whose entire point is scripted canvas layout.
+//
+// An error rather than a warning: the statement's meaning silently differs from
+// what was written, and warnings on a generated script are not read. (#884)
+func (v *microflowValidator) checkUnknownAnnotations(s ast.MicroflowStatement) {
+	ann := ast.StatementAnnotations(s)
+	if ann == nil {
+		return
+	}
+	for _, name := range ann.UnknownNames {
+		v.addViolation("MDL059", linter.SeverityError,
+			fmt.Sprintf("unknown annotation `@%s` — it parses but does nothing, so whatever it was "+
+				"meant to express is silently lost", name),
+			fmt.Sprintf("mxcli implements @position(x, y), @caption, @color, @annotation, @excluded and "+
+				"@anchor on a microflow statement. If `@%s` is a typo of one of those, correct it; "+
+				"container size and edge geometry are not authorable (upstream #884).", name))
+	}
 }

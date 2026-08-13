@@ -1061,6 +1061,9 @@ var execEnforcedMicroflowRules = map[string]bool{
 	// built-ins (isNew/isSynced/isSyncing) were found missing and added — each
 	// built at 0 errors — before this line was added.
 	"MDL044": true,
+	// #884: an unknown annotation is silently dropped, so exec must refuse it too —
+	// otherwise `check` catches the typo and the write that follows does not.
+	"MDL059": true,
 }
 
 // validateMicroflowRules runs the MDL0xx microflow rule set (ValidateMicroflow)

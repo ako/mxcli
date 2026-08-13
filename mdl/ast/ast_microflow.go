@@ -211,6 +211,17 @@ type ActivityAnnotations struct {
 	// populated on LoopStmt/WhileStmt.
 	IteratorAnchor *FlowAnchors
 	BodyTailAnchor *FlowAnchors
+
+	// UnknownNames holds annotation names the visitor did not recognise, in
+	// source order, so validation can refuse them.
+	//
+	// The visitor's switch has no default: an unrecognised name used to be
+	// dropped in silence, which is benign for an annotation mxcli does not
+	// implement (@size) and NOT benign for a typo of one it does — `@postion(10,
+	// 20)` passed `check` and silently discarded the layout the author asked
+	// for. Layout is the whole point of these annotations, so a name that does
+	// nothing has to say so. (upstream #884)
+	UnknownNames []string
 }
 
 // ChangeItem represents a single assignment in CREATE/CHANGE: Attr = expr

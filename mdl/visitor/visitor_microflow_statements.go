@@ -309,6 +309,13 @@ func extractMicroflowAnnotations(annotations []parser.IAnnotationContext) *ast.A
 				hasAny = true
 			}
 			seenActivityMetadata = true
+
+		default:
+			// Record rather than drop. The grammar accepts any @name, so this
+			// arm catches both an annotation mxcli does not implement (@size)
+			// and — the reason it matters — a typo of one it does. (#884)
+			result.UnknownNames = append(result.UnknownNames, ann.AnnotationName().GetText())
+			hasAny = true
 		}
 	}
 
