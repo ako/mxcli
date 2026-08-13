@@ -4,6 +4,7 @@ package executor
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
@@ -253,4 +254,43 @@ func TestCreateAssociation_AlreadyExists_NoOrModify(t *testing.T) {
 		Child:  ast.QualifiedName{Module: "MyModule", Name: "Customer"},
 	})
 	assertError(t, err)
+}
+
+// Creating an association reconciles every access rule in the module; dropping
+// one did not, so the MemberAccess entries that named it stayed behind and
+// Mendix rejected the model with CE1613 "The selected association 'X' no longer
+// exists" — on the entity that declared it and on every specialization of it.
+// Found while verifying mxcli-chat FINDINGS §25.
+func TestExecDropAssociation_ReconcilesAccessRules(t *testing.T) {
+	mod := mkModule("MyModule")
+	ent1 := mkEntity(mod.ID, "Order")
+	ent2 := mkEntity(mod.ID, "Customer")
+	assoc := mkAssociation(mod.ID, "Order_Customer", ent1.ID, ent2.ID)
+	dm := mkDomainModel(mod.ID, ent1, ent2)
+	dm.Associations = []*domainmodel.Association{assoc}
+
+	reconciled := ""
+	mb := &mock.MockBackend{
+		IsConnectedFunc:       func() bool { return true },
+		ListModulesFunc:       func() ([]*model.Module, error) { return []*model.Module{mod}, nil },
+		GetDomainModelFunc:    func(model.ID) (*domainmodel.DomainModel, error) { return dm, nil },
+		DeleteAssociationFunc: func(model.ID, model.ID) error { return nil },
+		ReconcileMemberAccessesFunc: func(_ model.ID, moduleName string) (int, error) {
+			reconciled = moduleName
+			return 1, nil
+		},
+	}
+
+	ctx, buf := newMockCtx(t, withBackend(mb))
+	if err := execDropAssociation(ctx, &ast.DropAssociationStmt{
+		Name: ast.QualifiedName{Module: "MyModule", Name: "Order_Customer"},
+	}); err != nil {
+		t.Fatalf("execDropAssociation: %v", err)
+	}
+	if reconciled != "MyModule" {
+		t.Fatalf("ReconcileMemberAccesses was not called for the module (got %q) — stale entries stay and the app fails CE1613", reconciled)
+	}
+	if !strings.Contains(buf.String(), "Reconciled 1 access rule(s)") {
+		t.Errorf("output does not report the reconcile: %q", buf.String())
+	}
 }

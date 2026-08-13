@@ -315,11 +315,27 @@ func execDropAssociation(ctx *ExecContext, s *ast.DropAssociationStmt) error {
 		return mdlerrors.NewBackend("get domain model", err)
 	}
 
+	// Dropping an association leaves a MemberAccess entry behind on every access
+	// rule that named it, which Mendix rejects with CE1613 "The selected
+	// association … no longer exists". Creating one already reconciles; dropping
+	// one has to as well, or the drop produces a model that will not build.
+	afterDrop := func() {
+		invalidateHierarchy(ctx)
+		invalidateDomainModelsCache(ctx)
+		if freshDM, err := ctx.Backend.GetDomainModel(module.ID); err == nil {
+			if count, err := ctx.Backend.ReconcileMemberAccesses(freshDM.ID, module.Name); err == nil && count > 0 {
+				fmt.Fprintf(ctx.Output, "Reconciled %d access rule(s) after dropping the association\n", count)
+			}
+		}
+		ctx.trackModifiedDomainModel(module.ID, module.Name)
+	}
+
 	for _, assoc := range dm.Associations {
 		if assoc.Name == s.Name.Name {
 			if err := ctx.Backend.DeleteAssociation(dm.ID, assoc.ID); err != nil {
 				return mdlerrors.NewBackend("delete association", err)
 			}
+			afterDrop()
 			fmt.Fprintf(ctx.Output, "Dropped association: %s\n", s.Name)
 			return nil
 		}
@@ -329,6 +345,7 @@ func execDropAssociation(ctx *ExecContext, s *ast.DropAssociationStmt) error {
 			if err := ctx.Backend.DeleteCrossAssociation(dm.ID, ca.ID); err != nil {
 				return mdlerrors.NewBackend("delete cross-module association", err)
 			}
+			afterDrop()
 			fmt.Fprintf(ctx.Output, "Dropped cross-module association: %s\n", s.Name)
 			return nil
 		}
