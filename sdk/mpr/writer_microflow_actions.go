@@ -1017,11 +1017,7 @@ func serializeRestResultHandling(rh microflows.ResultHandling, outputVar string)
 			{Key: "ForceSingleOccurrence", Value: forceSingleOccurrence},
 			{Key: "ObjectHandlingBackup", Value: "Create"},
 			{Key: "ParameterVariableName", Value: ""},
-			{Key: "Range", Value: bson.D{
-				{Key: "$ID", Value: idToBsonBinary(GenerateID())},
-				{Key: "$Type", Value: "Microflows$ConstantRange"},
-				{Key: "SingleObject", Value: h.SingleObject},
-			}},
+			{Key: "Range", Value: importMappingRange(h)},
 			{Key: "ReturnValueMapping", Value: string(h.MappingID)},
 		}
 		doc = append(doc, bson.E{Key: "ImportMappingCall", Value: importCall})
@@ -1469,11 +1465,7 @@ func serializeImportXmlAction(a *microflows.ImportXmlAction) bson.D {
 		{Key: "ForceSingleOccurrence", Value: forceSingleOccurrence},
 		{Key: "ObjectHandlingBackup", Value: "Create"},
 		{Key: "ParameterVariableName", Value: ""},
-		{Key: "Range", Value: bson.D{
-			{Key: "$ID", Value: idToBsonBinary(GenerateID())},
-			{Key: "$Type", Value: "Microflows$ConstantRange"},
-			{Key: "SingleObject", Value: a.ResultHandling.SingleObject},
-		}},
+		{Key: "Range", Value: importMappingRange(a.ResultHandling)},
 		{Key: "ReturnValueMapping", Value: string(a.ResultHandling.MappingID)},
 	}
 
@@ -1586,5 +1578,31 @@ func serializeExternalActionReturnType(kind string) bson.D {
 	return bson.D{
 		{Key: "$ID", Value: typeID},
 		{Key: "$Type", Value: bsonType},
+	}
+}
+
+// importMappingRange builds the Range child of a Microflows$ImportMappingCall.
+//
+// Mendix has two variants and mxcli only ever wrote the first, so the "Custom"
+// setting — a bounded list — was not merely undescribed but unrepresentable:
+//
+//	Microflows$ConstantRange{SingleObject}                 All (false) / First (true)
+//	Microflows$CustomRange{LimitExpression, OffsetExpression}   Custom
+//
+// A limit or an offset selects CustomRange; SingleObject has no meaning there,
+// because a bounded range is always a list. (issue #881)
+func importMappingRange(h *microflows.ResultHandlingMapping) bson.D {
+	if h.LimitExpression != "" || h.OffsetExpression != "" {
+		return bson.D{
+			{Key: "$ID", Value: idToBsonBinary(GenerateID())},
+			{Key: "$Type", Value: "Microflows$CustomRange"},
+			{Key: "LimitExpression", Value: h.LimitExpression},
+			{Key: "OffsetExpression", Value: h.OffsetExpression},
+		}
+	}
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(GenerateID())},
+		{Key: "$Type", Value: "Microflows$ConstantRange"},
+		{Key: "SingleObject", Value: microflows.RangeSingleObjectOf(h)},
 	}
 }

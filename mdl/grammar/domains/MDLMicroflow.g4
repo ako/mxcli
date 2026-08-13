@@ -633,7 +633,34 @@ sendRestRequestBodyClause
  */
 importFromMappingStatement
     : (VARIABLE EQUALS)? IMPORT FROM MAPPING qualifiedName LPAREN VARIABLE RPAREN
+      importMappingRange?
       onErrorClause?
+    ;
+
+/**
+ * How much of the mapping's result to bind — Mendix's "Range" on the import
+ * activity, stored as Microflows$ConstantRange{SingleObject} or
+ * Microflows$CustomRange{LimitExpression, OffsetExpression}.
+ *
+ *   (omitted)          infer from the mapping's own root shape, as mxcli
+ *                      always has — hand-written MDL keeps working unchanged
+ *   ALL                All — bind the whole list, explicitly
+ *   FIRST              First — bind ONE object, not a list
+ *   LIMIT e [OFFSET e] Custom — a bounded list
+ *
+ * DESCRIBE always emits one of the three, never nothing: an object-rooted
+ * mapping set to All is a real state (Studio Pro's own default — the blank
+ * app ships one), and the inference would turn it into First on re-exec.
+ *
+ * LIMIT/OFFSET mirror the RETRIEVE clause rather than inventing a second
+ * spelling for the same idea. FIRST is a separate word on purpose: `limit 1`
+ * is a LIST of one, while First binds a single OBJECT — different result
+ * variable types, so they cannot share syntax. (issue #881)
+ */
+importMappingRange
+    : ALL
+    | FIRST
+    | LIMIT limitExpr=expression (OFFSET offsetExpr=expression)?
     ;
 
 /**

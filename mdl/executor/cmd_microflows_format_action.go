@@ -1560,9 +1560,47 @@ func formatImportXmlAction(ctx *ExecContext, a *microflows.ImportXmlAction, enti
 	sb.WriteString(mappingName)
 	sb.WriteString("($")
 	sb.WriteString(a.XmlDocumentVariable)
-	sb.WriteString(");")
+	sb.WriteString(")")
+	sb.WriteString(formatImportMappingRange(a.ResultHandling))
+	sb.WriteString(";")
 
 	return sb.String()
+}
+
+// formatImportMappingRange renders the activity's Range — Studio Pro's
+// All / First / Custom setting.
+//
+// ALWAYS emits one of the three, never nothing. Omitting it would leave the
+// builder inferring cardinality from the mapping's root shape, and an
+// object-rooted mapping set to All is a real state that inference turns into
+// First — Studio Pro's own default, shipped in the blank app's
+// FeedbackModule.IMM_PostResponse. Before this, all three settings described
+// identically, so the describe→edit→exec cycle silently rewrote the activity.
+// (issue #881)
+func formatImportMappingRange(h *microflows.ResultHandlingMapping) string {
+	if h == nil {
+		return ""
+	}
+	if h.LimitExpression != "" || h.OffsetExpression != "" {
+		var sb strings.Builder
+		if h.LimitExpression != "" {
+			sb.WriteString(" limit ")
+			sb.WriteString(h.LimitExpression)
+		}
+		if h.OffsetExpression != "" {
+			sb.WriteString(" offset ")
+			sb.WriteString(h.OffsetExpression)
+		}
+		return sb.String()
+	}
+	// The RANGE's own flag, not the result variable's cardinality: the two
+	// disagree in Mendix's own models (ConstantRange{SingleObject:false} against
+	// an ObjectType variable), and printing the variable's would describe
+	// Studio Pro's "All" as `first`.
+	if microflows.RangeSingleObjectOf(h) {
+		return " first"
+	}
+	return " all"
 }
 
 // formatExportXmlAction formats an export mapping action as MDL.

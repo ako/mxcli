@@ -1471,6 +1471,43 @@ func (fb *flowBuilder) addImportFromMappingAction(s *ast.ImportFromMappingStmt) 
 		SingleObject:   true,
 	}
 
+	// The RANGE and the RESULT VARIABLE's type are two independent axes, and
+	// conflating them is what made the first attempt at this emit CE0243 ("the
+	// mapping used to return 'List of X' but now returns 'X'"):
+	//
+	//   Range          which part of the source is imported — the authored keyword
+	//   SingleObject   whether the bound variable is an object or a list — the
+	//                  MAPPING's own root cardinality, inferred below
+	//
+	// Mendix's own SUB_Feedback_PostToAppInsights proves they are separate: it
+	// stores ConstantRange{SingleObject:false} (i.e. "all") against an ObjectType
+	// variable, because its mapping is object-rooted. So ALL and LIMIT set only
+	// the range and leave the inference alone; only FIRST also pins the variable
+	// to a single object, which is exactly what "first" means. (issue #881)
+	if s.All {
+		f := false
+		resultHandling.RangeSingleObject = &f
+		resultHandling.ForceSingleOccurrence = &f
+	} else if s.First {
+		t := true
+		resultHandling.SingleObject = true
+		resultHandling.RangeSingleObject = &t
+		resultHandling.ForceSingleOccurrence = &t
+	} else if s.LimitExpr != nil || s.OffsetExpr != nil {
+		f := false
+		resultHandling.ForceSingleOccurrence = &f
+		if s.LimitExpr != nil {
+			resultHandling.LimitExpression = fb.exprToString(s.LimitExpr)
+		}
+		if s.OffsetExpr != nil {
+			resultHandling.OffsetExpression = fb.exprToString(s.OffsetExpr)
+		}
+	}
+	// Only FIRST overrides the mapping's cardinality; saying nothing leaves both
+	// axes to the inference, which is what keeps existing scripts writing what
+	// they always did.
+	rangeAuthored := s.First
+
 	// Determine single vs list and result entity from the import mapping.
 	// JSON structure check covers JSON-backed mappings; for XML schema or
 	// message-definition mappings JsonStructure is empty and the root
@@ -1483,7 +1520,7 @@ func (fb *flowBuilder) addImportFromMappingAction(s *ast.ImportFromMappingStmt) 
 				parts := strings.SplitN(im.JsonStructure, ".", 2)
 				if len(parts) == 2 {
 					if js, err := fb.backend.GetJsonStructureByQualifiedName(parts[0], parts[1]); err == nil && len(js.Elements) > 0 {
-						if js.Elements[0].ElementType == "Array" {
+						if js.Elements[0].ElementType == "Array" && !rangeAuthored {
 							resultHandling.SingleObject = false
 						}
 						resolved = true
@@ -1494,7 +1531,7 @@ func (fb *flowBuilder) addImportFromMappingAction(s *ast.ImportFromMappingStmt) 
 				// MaxOccurs > 1 or unbounded (-1) signals a list even when
 				// the kind is Object.
 				root := im.Elements[0]
-				if root.MaxOccurs == -1 || root.MaxOccurs > 1 {
+				if (root.MaxOccurs == -1 || root.MaxOccurs > 1) && !rangeAuthored {
 					resultHandling.SingleObject = false
 				}
 			}
