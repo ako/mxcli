@@ -10,6 +10,37 @@ A JSON structure defines the schema of a JSON payload. It stores a JSON snippet 
 ### Import Mappings
 An import mapping converts a JSON string into Mendix entity objects. It maps JSON fields to entity attributes.
 
+#### Two names per member: the raw key and the exposed name
+
+Every JSON structure element stores **both**, and for any lowercase-initial key
+they differ:
+
+| | Example | Used for |
+|---|---|---|
+| **Path** (raw JSON key) | `(Object)\|uuid` | what the **runtime** resolves by |
+| **ExposedName** (derived) | `Uuid` | what **Studio Pro displays** |
+
+Mendix derives the exposed name by capitalising the initial, and for an array's
+item object by suffixing `Item` — so `total` → `Total`, `camelCase` → `CamelCase`,
+`__Value` (array) → `__ValueItem` (its item). Keys already starting with an
+underscore are left alone: `__returnedCount` stays `__returnedCount`.
+
+This is **Mendix's own convention, not something mxcli does**. A blank app's
+Studio-Pro-authored `FeedbackModule.JSON_AppInsightsResponse` stores
+`ExposedName: "Uuid"` against `Path: "(Object)|uuid"`, and its `IMM_PostResponse`
+binds `JsonPath: "(Object)|uuid"`.
+
+Consequences worth knowing:
+
+- **Either spelling works in MDL.** `Total = total` and `Total = Total` produce the
+  same stored mapping. Write whichever you have.
+- **`DESCRIBE` emits the exposed name**, because that is the name Studio Pro shows.
+  A describe → edit → exec cycle is therefore lossless, but the text you get back
+  will not match the raw JSON keys you wrote.
+- **A member matching neither spelling is refused**, listing what would have
+  worked. It is never written with a guessed path: such a mapping passed
+  `mxcli check` and failed later in mxbuild (CE5015) or at runtime.
+
 #### Inherited attributes
 
 Mendix inheritance is multi-table: all of a parent's attributes are members of the

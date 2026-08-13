@@ -211,17 +211,20 @@ func execCreateExportMapping(ctx *ExecContext, s *ast.CreateExportMappingStmt) e
 		em.XmlSchema = s.SchemaRef.String()
 	}
 
-	// Build a path→element info map from the JSON structure for schema alignment.
-	jsElems := map[string]*types.JsonElement{}
+	// Index the JSON structure for schema alignment.
+	idx := newJSONSchemaIndex(nil)
 	if s.SchemaKind == "JSON_STRUCTURE" && s.SchemaRef.Module != "" {
 		if js, err2 := ctx.Backend.GetJsonStructureByQualifiedName(s.SchemaRef.Module, s.SchemaRef.Name); err2 == nil && js != nil {
-			buildJsonElementPathMap(js.Elements, jsElems)
+			idx = newJSONSchemaIndex(js.Elements)
 		}
 	}
 
 	// Build element tree from the AST definition, cloning JSON structure properties
 	if s.RootElement != nil {
-		root := buildExportMappingElementModel(s.Name.Module, s.RootElement, "", "(Object)", jsElems, ctx.Backend, true)
+		root, err := buildExportMappingElementModel(s.Name.Module, s.RootElement, "", "(Object)", idx, ctx.Backend, true)
+		if err != nil {
+			return mdlerrors.NewValidation(fmt.Sprintf("export mapping %s: %v", s.Name.String(), err))
+		}
 		em.Elements = append(em.Elements, root)
 	}
 
@@ -248,26 +251,40 @@ func execCreateExportMapping(ctx *ExecContext, s *ast.CreateExportMappingStmt) e
 
 // buildExportMappingElementModel converts an AST element definition to a model element.
 // It clones properties from the matching JSON structure element and adds mapping bindings.
-func buildExportMappingElementModel(moduleName string, def *ast.ExportMappingElementDef, parentEntity, parentPath string, jsElems map[string]*types.JsonElement, b backend.FullBackend, isRoot bool) *model.ExportMappingElement {
+func buildExportMappingElementModel(moduleName string, def *ast.ExportMappingElementDef, parentEntity, parentPath string, idx *jsonSchemaIndex, b backend.FullBackend, isRoot bool) (*model.ExportMappingElement, error) {
 	elem := &model.ExportMappingElement{
 		BaseElement: model.BaseElement{
 			ID: model.ID(types.GenerateID()),
 		},
 	}
 
-	// Determine lookup path
-	var lookupPath string
+	// Resolve the member against the JSON structure, accepting the raw JSON key
+	// or the exposed name. DESCRIBE emits the latter, so both have to work or
+	// mxcli's own output does not round-trip — re-executing it rewrote
+	// "(Object)|total" as "(Object)|Total". (issue #882)
+	var jsElem *types.JsonElement
+	lookupPath := parentPath + "|" + def.JsonName
 	if isRoot {
 		lookupPath = "(Object)"
+		jsElem = idx.byPath[lookupPath]
 	} else {
-		lookupPath = parentPath + "|" + def.JsonName
+		jsElem = idx.resolve(parentPath, def.JsonName)
 	}
 
-	// Clone properties from the matching JSON structure element
-	if jsElem, ok := jsElems[lookupPath]; ok {
+	if jsElem == nil && !isRoot {
+		known := idx.memberNames(parentPath)
+		if len(known) == 0 {
+			return nil, fmt.Errorf("%q is not a member of the JSON structure at %s, which has no members there",
+				def.JsonName, parentPath)
+		}
+		return nil, fmt.Errorf("%q is not a member of the JSON structure at %s; available: %s",
+			def.JsonName, parentPath, strings.Join(known, ", "))
+	}
+	if jsElem != nil {
 		elem.ExposedName = jsElem.ExposedName
 		elem.JsonPath = jsElem.Path
 		elem.MaxOccurs = jsElem.MaxOccurs
+		lookupPath = jsElem.Path
 	} else {
 		elem.ExposedName = def.JsonName
 		elem.JsonPath = lookupPath
@@ -294,7 +311,7 @@ func buildExportMappingElementModel(moduleName string, def *ast.ExportMappingEle
 		}
 
 		// Check if this is an array element in the JSON structure
-		if jsElem, ok := jsElems[lookupPath]; ok && jsElem.ElementType == "Array" {
+		if jsElem != nil && jsElem.ElementType == "Array" {
 			// Export arrays have two levels:
 			// 1. Array container: Kind=Array, entity=container entity, assoc to parent
 			// 2. Item object: Kind=Object, entity=item entity, assoc to container
@@ -331,7 +348,7 @@ func buildExportMappingElementModel(moduleName string, def *ast.ExportMappingEle
 					Association:    itemAssoc,
 					ObjectHandling: "Find",
 				}
-				if jsItem, ok2 := jsElems[itemPath]; ok2 {
+				if jsItem, ok2 := idx.byPath[itemPath]; ok2 {
 					itemElem.ExposedName = jsItem.ExposedName
 					itemElem.JsonPath = jsItem.Path
 					itemElem.MaxOccurs = jsItem.MaxOccurs
@@ -342,13 +359,21 @@ func buildExportMappingElementModel(moduleName string, def *ast.ExportMappingEle
 				}
 				// Item's children are the value elements
 				for _, valChild := range itemDef.Children {
-					itemElem.Children = append(itemElem.Children, buildExportMappingElementModel(moduleName, valChild, itemEntity, itemPath, jsElems, b, false))
+					c, err := buildExportMappingElementModel(moduleName, valChild, itemEntity, itemPath, idx, b, false)
+					if err != nil {
+						return nil, err
+					}
+					itemElem.Children = append(itemElem.Children, c)
 				}
 				elem.Children = append(elem.Children, itemElem)
 			} else {
 				// Fallback: treat children as direct item children (no intermediate entity)
 				for _, child := range def.Children {
-					elem.Children = append(elem.Children, buildExportMappingElementModel(moduleName, child, entity, itemPath, jsElems, b, false))
+					c, err := buildExportMappingElementModel(moduleName, child, entity, itemPath, idx, b, false)
+					if err != nil {
+						return nil, err
+					}
+					elem.Children = append(elem.Children, c)
 				}
 			}
 		} else {
@@ -357,7 +382,11 @@ func buildExportMappingElementModel(moduleName string, def *ast.ExportMappingEle
 			elem.Association = assoc
 			elem.ObjectHandling = handling
 			for _, child := range def.Children {
-				elem.Children = append(elem.Children, buildExportMappingElementModel(moduleName, child, entity, lookupPath, jsElems, b, false))
+				c, err := buildExportMappingElementModel(moduleName, child, entity, lookupPath, idx, b, false)
+				if err != nil {
+					return nil, err
+				}
+				elem.Children = append(elem.Children, c)
 			}
 		}
 	} else {
@@ -382,7 +411,7 @@ func buildExportMappingElementModel(moduleName string, def *ast.ExportMappingEle
 		// JsonPath already set from JSON structure clone above
 	}
 
-	return elem
+	return elem, nil
 }
 
 // execDropExportMapping deletes an export mapping.

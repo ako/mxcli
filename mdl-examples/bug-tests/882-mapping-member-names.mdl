@@ -1,0 +1,112 @@
+-- Bug test for upstream issue #882: JSON member names in import/export mappings.
+--
+-- A JSON structure element carries TWO names, and for any lowercase-initial key
+-- they differ:
+--
+--   Path         "(Object)|total"   the raw JSON key — what the RUNTIME resolves by
+--   ExposedName  "Total"            Mendix's derived name — what Studio Pro DISPLAYS
+--
+-- Both are Mendix's own. A blank app's Studio-Pro-authored
+-- FeedbackModule.JSON_AppInsightsResponse stores ExposedName "Uuid" against Path
+-- "(Object)|uuid", and its IMM_PostResponse binds JsonPath "(Object)|uuid". So
+-- the capitalisation DESCRIBE shows is faithful rendering, not corruption — the
+-- part of #882 reported as the bug is Mendix's own convention.
+--
+-- The real defect: mxcli's DESCRIBE prints the exposed name, but its builder
+-- resolved only raw JSON keys. Its own output therefore did not round-trip —
+-- re-executing a DESCRIBE FABRICATED a path from the exposed name:
+--
+--   (Object)|total                            ->  (Object)|Total
+--   (Object)|entityInstances|__Value|(Object)  ->  (Object)|EntityInstances|__ValueItem
+--
+-- The array's "|(Object)" item marker vanished entirely, and MaxOccurs went to 0.
+-- `mxcli check` passed; mxbuild reported CE5015. Export mappings had the same bug.
+--
+-- Expected now: both spellings resolve to the SAME stored path, `mx check`
+-- reports 0 errors, and re-executing DESCRIBE output is a no-op. A member that
+-- matches neither spelling is REFUSED at exec rather than written with an
+-- invented path.
+--
+-- Verified on mxbuild 11.6.6, both engines.
+
+create module B882;
+/
+create non-persistent entity B882.Root ( Total: integer, Camel: string(200) );
+/
+create non-persistent entity B882.Inner ( Cnt: integer );
+/
+create non-persistent entity B882.Item ( Nm: string(200) );
+/
+create association B882.Root_Inner from B882.Root to B882.Inner;
+/
+create association B882.Inner_Item from B882.Item to B882.Inner;
+/
+
+create json structure B882.JS
+  snippet $${ "total": 1, "camelCase": "x", "entityInstances": { "__returnedCount": 2, "__Value": [ { "name": "a" } ] } }$$;
+/
+
+-- Authored with the RAW JSON keys, as hand-written MDL spells them.
+create import mapping B882.IM_RawKeys with json structure B882.JS
+{
+  create B882.Root {
+    Total = total,
+    Camel = camelCase,
+    create B882.Root_Inner/B882.Inner = entityInstances {
+      Cnt = __returnedCount,
+      create B882.Inner_Item/B882.Item = __Value {
+        Nm = name
+      }
+    }
+  }
+};
+/
+
+-- Authored with the EXPOSED names, as `describe import mapping` emits them.
+-- Must produce byte-identical JsonPaths to IM_RawKeys — this is the statement
+-- that used to fabricate paths and fail CE5015.
+create import mapping B882.IM_ExposedNames with json structure B882.JS
+{
+  create B882.Root {
+    Total = Total,
+    Camel = CamelCase,
+    create B882.Root_Inner/B882.Inner = EntityInstances {
+      Cnt = __returnedCount,
+      create B882.Inner_Item/B882.Item = __ValueItem {
+        Nm = Name
+      }
+    }
+  }
+};
+/
+
+-- Export mappings carry the same two names and had the same defect.
+create non-persistent entity B882.ExRoot ( Total: integer, Camel: string(200) );
+/
+create json structure B882.JSX snippet '{ "total": 1, "camelCase": "x" }';
+/
+create export mapping B882.EM_RawKeys with json structure B882.JSX
+{
+  B882.ExRoot {
+    total = Total,
+    camelCase = Camel
+  }
+};
+/
+create export mapping B882.EM_ExposedNames with json structure B882.JSX
+{
+  B882.ExRoot {
+    Total = Total,
+    CamelCase = Camel
+  }
+};
+/
+
+-- A member matching neither spelling is refused at exec, naming both forms:
+--
+--   create import mapping B882.IM_Typo with json structure B882.JS
+--   { create B882.Root { Camel = camelCse } };
+--
+--   Error: import mapping B882.IM_Typo: "camelCse" is not a member of the JSON
+--   structure at (Object); available: total (or Total), camelCase (or CamelCase),
+--   entityInstances (or EntityInstances)
