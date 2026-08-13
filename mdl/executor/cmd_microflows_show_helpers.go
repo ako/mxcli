@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/mendixlabs/mxcli/model"
@@ -206,6 +207,67 @@ func emitAnchorAnnotationWithActivityMap(
 		return
 	}
 	*lines = append(*lines, indentStr+fmt.Sprintf("@anchor(%s)", strings.Join(parts, ", ")))
+}
+
+// emitCurveAnnotation emits @curve(...) for the bezier control vectors on the
+// flow LEAVING this activity.
+//
+// Without it the shape of a hand-curved edge does not round-trip: DESCRIBE was
+// identical before and after the curve was drawn, so re-executing the output
+// reset the line to "0;0" and flattened it. The vectors are stored as "x;y"
+// strings on the flow's Microflows$BezierCurve line; "0;0" is straight and is
+// omitted, so an untouched flow describes exactly as it did before. (#884)
+func emitCurveAnnotation(
+	obj microflows.MicroflowObject,
+	flowsByOrigin map[model.ID][]*microflows.SequenceFlow,
+	activityMap map[model.ID]microflows.MicroflowObject,
+	lines *[]string,
+	indentStr string,
+) {
+	outgoing := flowsByOrigin[obj.GetID()]
+	var flow *microflows.SequenceFlow
+	for _, f := range outgoing {
+		if isNonWritableLoopBodyTailFlow(obj.GetID(), f, activityMap) {
+			continue
+		}
+		flow = f
+		break
+	}
+	if flow == nil {
+		return
+	}
+	var parts []string
+	if p, ok := controlVectorPair(flow.OriginControlVector); ok {
+		parts = append(parts, "from: "+p)
+	}
+	if p, ok := controlVectorPair(flow.DestinationControlVector); ok {
+		parts = append(parts, "to: "+p)
+	}
+	if len(parts) == 0 {
+		return
+	}
+	*lines = append(*lines, indentStr+fmt.Sprintf("@curve(%s)", strings.Join(parts, ", ")))
+}
+
+// controlVectorPair renders a stored "x;y" control vector as "(x, y)", reporting
+// false for the straight-line default so an untouched edge emits nothing.
+func controlVectorPair(v string) (string, bool) {
+	if v == "" || v == "0;0" {
+		return "", false
+	}
+	x, y, found := strings.Cut(v, ";")
+	if !found {
+		return "", false
+	}
+	xi, errX := strconv.Atoi(strings.TrimSpace(x))
+	yi, errY := strconv.Atoi(strings.TrimSpace(y))
+	if errX != nil || errY != nil {
+		return "", false
+	}
+	if xi == 0 && yi == 0 {
+		return "", false
+	}
+	return fmt.Sprintf("(%d, %d)", xi, yi), true
 }
 
 func isNonWritableLoopBodyTailFlow(originID model.ID, flow *microflows.SequenceFlow, activityMap map[model.ID]microflows.MicroflowObject) bool {
@@ -479,6 +541,7 @@ func emitObjectAnnotations(
 		// The emitter sorts out the right form (simple / split / loop) based on
 		// the object type.
 		emitAnchorAnnotationWithActivityMap(obj, flowsByOrigin, flowsByDest, activityMap, lines, indentStr)
+		emitCurveAnnotation(obj, flowsByOrigin, activityMap, lines, indentStr)
 	}
 
 	if activity, ok := obj.(*microflows.ActionActivity); ok {

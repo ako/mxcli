@@ -75,6 +75,30 @@ end;
 -- Rejected at check time (MDL059), so kept commented:
 --   @size(600, 300)      -- not implemented; container Size is still unauthorable
 --   @postion(999, 111)   -- typo of @position; used to discard the layout in silence
---   @curve(from: (40, -90), to: (-40, 90))
---       -- parses today, and is NOT implemented: a hand-curved edge's bezier
---          control vectors are reset to "0;0" by any rewrite. Still open.
+
+-- 3. A HAND-CURVED EDGE WAS FLATTENED BY ANY REWRITE.
+--    Mendix stores no waypoints: a sequence flow's shape is two bezier control
+--    vectors on its Microflows$BezierCurve line. mxcli rebuilt every flow and
+--    defaulted them to "0;0", so re-running unchanged MDL straightened a curve
+--    drawn in Studio Pro — measured by patching "40;-90" into the stored line
+--    and re-executing, which returned "0;0".
+--
+--    @curve is now authorable and DESCRIBE emits it, so the shape round-trips.
+--    Needed no grammar change: `name: (x, y)` is the same shape the association
+--    anchors already use.
+--
+--    Expected: the flow leaving $A carries OriginControlVector "40;-90" and
+--    DestinationControlVector "-40;90"; every other flow stays "0;0"; and
+--    re-executing `describe microflow` output preserves both. 0 errors from
+--    mxbuild 11.6.6 on both engines.
+create microflow B884.MF_Curved ( $P: string )
+returns string as $R
+begin
+  @position(200, 100)
+  @curve(from: (40, -90), to: (-40, 90))
+  declare $A string = $P;
+  @position(520, 100)
+  declare $R string = $A;
+  return $R;
+end;
+/

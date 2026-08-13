@@ -1315,6 +1315,7 @@ var knownActivityAnnotations = map[string]bool{
 	"annotation": true,
 	"excluded":   true,
 	"anchor":     true,
+	"curve":      true,
 }
 
 // checkUnknownAnnotations rejects an @annotation name the visitor does not
@@ -1333,6 +1334,12 @@ func (v *microflowValidator) checkUnknownAnnotations(s ast.MicroflowStatement) {
 	ann := ast.StatementAnnotations(s)
 	if ann == nil {
 		return
+	}
+	for _, bad := range ann.InvalidCurves {
+		v.addViolation("MDL060", linter.SeverityError,
+			fmt.Sprintf("`@curve` parameter `%s` is not a whole-number (x, y) pair", bad),
+			"A sequence flow's shape is two bezier control vectors, each a pixel offset from its end "+
+				"of the line: `@curve(from: (40, -90), to: (-40, 90))`. Only `from:` and `to:` are accepted.")
 	}
 	for _, name := range ann.UnknownNames {
 		v.addViolation("MDL059", linter.SeverityError,

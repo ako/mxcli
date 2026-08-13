@@ -4,6 +4,8 @@
 package executor
 
 import (
+	"fmt"
+
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
@@ -135,6 +137,9 @@ func (fb *flowBuilder) mergeStatementAnnotations(stmt ast.MicroflowStatement) {
 	if ann.Anchor != nil {
 		fb.pendingAnnotations.Anchor = ann.Anchor
 	}
+	if ann.Curve != nil {
+		fb.pendingAnnotations.Curve = ann.Curve
+	}
 	if ann.TrueBranchAnchor != nil {
 		fb.pendingAnnotations.TrueBranchAnchor = ann.TrueBranchAnchor
 	}
@@ -208,8 +213,46 @@ func (fb *flowBuilder) applyPendingAnnotations(activityID model.ID) {
 	if activityID == "" || fb.pendingAnnotations == nil {
 		return
 	}
+	// Record the curve against the ACTIVITY, and apply it to that activity's
+	// outgoing flows in one pass once the graph is complete (applyFlowCurves).
+	//
+	// The alternative — threading it alongside the anchor — would mean touching
+	// every one of the seven-odd sites that create a flow (previousStmtAnchor,
+	// nextFlowAnchor, the branch and loop variants), and missing one would
+	// silently straighten that edge. This hook already runs at every activity,
+	// so there is exactly one place to get right. (#884)
+	if c := fb.pendingAnnotations.Curve; c != nil {
+		if fb.curveByOrigin == nil {
+			fb.curveByOrigin = map[model.ID]*ast.FlowCurve{}
+		}
+		fb.curveByOrigin[activityID] = c
+	}
 	fb.applyAnnotations(activityID, fb.pendingAnnotations)
 	fb.pendingAnnotations = nil
+}
+
+// applyFlowCurves stamps each recorded @curve onto the flows leaving that
+// activity. Runs once, after the graph is built.
+//
+// A statement with several outgoing flows (a split) applies the same curve to
+// all of them; @anchor's per-branch form has no curve equivalent yet, and
+// silently curving only one branch would be worse than curving both.
+func (fb *flowBuilder) applyFlowCurves() {
+	if len(fb.curveByOrigin) == 0 {
+		return
+	}
+	for _, f := range fb.flows {
+		c, ok := fb.curveByOrigin[f.OriginID]
+		if !ok || c == nil {
+			continue
+		}
+		if c.From != nil {
+			f.OriginControlVector = fmt.Sprintf("%d;%d", c.From.X, c.From.Y)
+		}
+		if c.To != nil {
+			f.DestinationControlVector = fmt.Sprintf("%d;%d", c.To.X, c.To.Y)
+		}
+	}
 }
 
 // addEndEventWithReturn creates an EndEvent with the specified return value.

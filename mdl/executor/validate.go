@@ -1064,6 +1064,7 @@ var execEnforcedMicroflowRules = map[string]bool{
 	// #884: an unknown annotation is silently dropped, so exec must refuse it too —
 	// otherwise `check` catches the typo and the write that follows does not.
 	"MDL059": true,
+	"MDL060": true,
 }
 
 // validateMicroflowRules runs the MDL0xx microflow rule set (ValidateMicroflow)
