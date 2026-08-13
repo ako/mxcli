@@ -247,15 +247,57 @@ mxbuild is downloaded per version by `mxcli setup mxbuild`. Measured on a blank
 | **ledgered types (of 65) present** | **21** |
 
 Those 21 can be checked against real bytes **today, on Linux, in CI, with no
-licence and no network**. Marketplace modules extend this much further and are
-already used this way — the regular-expression codec is pinned against five
-Studio Pro documents from Email Connector 6.4.2 and Community Commons 11.5.1,
-and the scheduled-event codec against three from Workflow Commons, OIDC SSO and
-SAML.
+licence and no network**. That is the floor, not the ceiling.
 
 Caveat on the 21: a `$Type` appearing in a corpus does not guarantee the
 specific mismatched **property** appears in it, so 21 is an upper bound on what
-is immediately checkable. Determining the real figure is the first task in §6.
+a blank app can immediately settle. Determining the real figure is the first
+task in §6.
+
+### 4A.3 Richer corpora: marketplace modules, and whole sample apps
+
+A blank app is thin by construction — it instantiates almost no microflow
+activities, no workflows, no REST, no mappings, which is exactly where the long
+tail of the ledger lives (`Microflows$ImportMappingCall`, `Rest$ODataRemoteEntitySource`,
+`WebServices$PublishedParameter`, …). Three sources extend it, in increasing
+order of coverage:
+
+1. **Marketplace modules** — already the established method. The
+   regular-expression codec is pinned against five Studio Pro documents from
+   Email Connector 6.4.2 and Community Commons 11.5.1; the scheduled-event codec
+   against three from Workflow Commons 4.11.0, OIDC SSO 4.6.0 and SAML 4.2.1.
+   `marketplace/scratch.go` already builds a throwaway project at a chosen
+   Mendix version and imports a package into it, so the harness exists.
+
+2. **Sample apps and industry templates.** The marketplace publishes whole
+   applications, not just modules — `marketplace.Content.Type` already carries
+   `"Starter App"` alongside `"Module"`, `"Widget"` and `"Theme"`. These are far
+   more complete than anything assembled from modules: real pages, workflows,
+   microflow activity variety, integrations, security — authored by Mendix, in
+   Studio Pro, and maintained per release.
+
+   The likely mechanism is direct: `mx create-project` takes a **template
+   `.mpk` as its positional argument**, which is how the Blank template is
+   applied, so a starter-app package plausibly expands into a full project with
+   one command and no Studio Pro. **This is untested** — mxbuild ships no
+   template `.mpk` to try it against offline, and `mxcli marketplace install`
+   deliberately does not auto-install this content type today
+   (`cmd_marketplace_install.go` downloads it and says "import it via Studio
+   Pro" rather than guessing a placement it cannot verify). Confirming it is a
+   one-command experiment for anyone with marketplace credentials.
+
+3. **Any real project a contributor already has.** The corpus checker should
+   take a path, so a contributor can point it at their own app and contribute
+   findings without shipping the app.
+
+The constraint on 1 and 2 is **credentials**: marketplace access goes through a
+PAT (`mxcli auth login`), so these cannot run in an unauthenticated CI job. The
+practical split is therefore a **two-tier corpus** — the blank-app tier runs
+everywhere on every commit, and the marketplace tier runs where credentials
+exist and contributes findings that are then pinned into tests as embedded
+fixtures, exactly as the regex and scheduled-event codecs already do. Pinning
+the findings, rather than depending on the download, is what keeps the evidence
+reproducible for contributors who have no marketplace account.
 
 ## 5. Decision
 
@@ -299,10 +341,21 @@ closed-source artefact.
    free, licence-clean, CI-able evidence, and gives the ledger a second source
    that is not `generated/metamodel`. *Cheapest step with the highest
    information gain.*
-2. **Extend the corpus with marketplace modules.** `mxcli marketplace download`
-   + import into a throwaway reference project is already the method used for
-   regular expressions and scheduled events, and `marketplace diff` already
-   builds such a project. This reaches types a blank app never instantiates.
+2. **Extend the corpus with marketplace content**, in two steps because the
+   second is unproven:
+   - **Modules**, via the existing `marketplace/scratch.go` path — the method
+     already used for regular expressions and scheduled events.
+   - **Sample apps / industry templates**, which are far more complete and are
+     the best available proxy for a real application's type coverage. First
+     confirm that a `"Starter App"` package expands via
+     `mx create-project <template.mpk>`; if it does, one download yields more
+     ledger coverage than every module combined, and `mxcli marketplace install`
+     gains a real branch for a content type it currently declines to place.
+
+   Both tiers need a marketplace PAT, so their findings must be **pinned as
+   embedded fixtures** (the regex/scheduled-event pattern) rather than
+   re-downloaded per run — otherwise the evidence is unavailable to any
+   contributor without an account.
 3. **Promote the audit to a build-time gate.** `keyaudit_test.go` already runs
    in `go test`; the remaining work is deciding whether a new mismatch fails CI
    hard, and re-pointing its expected side at corpus evidence where step 1 or 2
