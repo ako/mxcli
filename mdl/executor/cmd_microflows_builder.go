@@ -46,7 +46,11 @@ type flowBuilder struct {
 	// continues) so the continuing branch's @anchor survives to the actual
 	// splitID→nextActivity flow — which is emitted one iteration later by the
 	// outer loop, not by addIfStatement.
-	nextFlowAnchor       *ast.FlowAnchors
+	nextFlowAnchor *ast.FlowAnchors
+	// curveByOrigin holds each statement's @curve keyed by the activity it was
+	// written on, applied to that activity's outgoing flows by applyFlowCurves
+	// once the graph is complete. (#884)
+	curveByOrigin        map[model.ID]*ast.FlowCurve
 	backend              backend.FullBackend          // For looking up page/microflow references
 	hierarchy            *ContainerHierarchy          // For resolving container IDs to module names
 	pendingAnnotations   *ast.ActivityAnnotations     // Pending annotations to attach to next activity

@@ -117,15 +117,19 @@ func safeKey(s string) string {
 
 // defaultRefCacheEntries bounds the finished-reference cache.
 //
-// An entry is a whole Mendix project: 34 MB measured for Administration, the
-// smallest module in a blank app. Updating six modules builds twelve references,
-// so an unbounded cache is ~400 MB of a container that may have 2 GB free — and
-// running out of disk mid-update is a far worse outcome than rebuilding a
-// reference, because `marketplace update` does not roll back.
+// An entry is the model alone (see isModelFile) — 14 MB measured for
+// Administration at 11.12.1, against 34 MB for the whole reference project.
+// Twelve is what a six-module update sweep builds, base and target each, so the
+// default holds a whole sweep at ~170 MB and the `update` that follows a `diff`
+// still hits.
 //
-// The blank-project cache is deliberately NOT bounded: it holds one entry per
-// Mendix version, and it is the one that pays off on every single build.
-const defaultRefCacheEntries = 6
+// It is bounded at all because running out of disk part way through an update is
+// a far worse outcome than rebuilding a reference: `marketplace update` does not
+// roll back, so a failed write leaves the module already dropped.
+//
+// The blank-project cache is deliberately NOT bounded: one entry per Mendix
+// version, and it is the one that pays off on every single build.
+const defaultRefCacheEntries = 12
 
 // refCacheMaxEntries reads the bound, honouring MXCLI_REF_CACHE_MAX. 0 disables
 // pruning for anyone with disk to spare.
@@ -253,12 +257,56 @@ func publishToCache(buildDir, cacheDir string) error {
 	return nil
 }
 
+// isModelFile reports whether a path inside a reference project is part of the
+// MODEL, which is the only thing a cached reference is ever read for.
+//
+// A reference project is a whole blank Mendix app, and most of it is bulk that
+// nothing here touches. Measured on Administration at 11.12.1, a 34 MB entry:
+//
+//	PackageRef.mpr      14 MB   read
+//	widgets/           9.6 MB   never read
+//	themesource/       6.4 MB   never read
+//	theme-cache/       2.1 MB   never read (compiled CSS)
+//	javascriptsource/  1.6 MB   never read
+//
+// Both consumers take the .mpr and nothing beside it: SnapshotModule opens it,
+// and PerformUpdate takes the reference's model from it while taking the
+// module's bundled widgets from the .mpk — deliberately, because the reference
+// project's widgets/ also holds the blank template's copies.
+//
+// THIS IS A CONSTRAINT ON FUTURE CHANGES. A cached reference is model-only, so
+// anything that starts reading a sibling directory of the reference .mpr will
+// see it on a cache miss and not on a hit — a difference that shows up as
+// findings that come and go. Extend this filter in the same commit, or store
+// the whole tree again.
+//
+// mprcontents/ is kept even though `mx module-import` always collapses the
+// reference to MPR v1: the cost is nothing when it is absent, and the failure if
+// that ever changes is an unreadable model rather than a slower run.
+func isModelFile(rel string) bool {
+	if rel == "mprcontents" || strings.HasPrefix(rel, "mprcontents"+string(filepath.Separator)) {
+		return true
+	}
+	return !strings.ContainsRune(rel, filepath.Separator) && strings.HasSuffix(rel, ".mpr")
+}
+
 // copyTree copies a directory tree. Used both to seed a build from the cache and
 // to hand a caller its own copy, so the cached tree is never the one written to.
 //
 // Symlinks are copied as symlinks; a Mendix project has none, and following them
 // would let a crafted package escape the destination.
 func copyTree(src, dst string) error {
+	return copyTreeFiltered(src, dst, nil)
+}
+
+// copyTreeModelOnly copies just the model, for the finished-reference cache.
+// The blank-project cache deliberately does NOT use this: a blank app is the
+// input to `mx module-import`, which reads the whole tree.
+func copyTreeModelOnly(src, dst string) error {
+	return copyTreeFiltered(src, dst, isModelFile)
+}
+
+func copyTreeFiltered(src, dst string, keep func(rel string) bool) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -272,6 +320,12 @@ func copyTree(src, dst string) error {
 		}
 		// The marker is cache bookkeeping and has no business in a project tree.
 		if rel == completeMarker {
+			return nil
+		}
+		if keep != nil && !keep(rel) {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		target := filepath.Join(dst, rel)

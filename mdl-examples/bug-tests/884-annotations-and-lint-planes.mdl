@@ -1,0 +1,131 @@
+-- Bug test for upstream issue #884 (two of the four reported problems).
+--
+-- 1. UNKNOWN ANNOTATIONS WERE SILENTLY DROPPED.
+--    The grammar accepts any @name and the visitor's switch had no default arm,
+--    so an unrecognised annotation parsed and did nothing. The reporter found
+--    this as "@size(600, 300) parses without error but produces no effect".
+--    The sharper case is a TYPO of an annotation that does work:
+--
+--      @postion(999, 111)   -- check passed; the position was discarded
+--
+--    Both are now MDL059 errors. Uncomment either line below to see it.
+--
+-- 2. MPR008 COMPARED NODES ACROSS DIFFERENT CANVASES.
+--    A LoopedActivity's children are positioned RELATIVE to the container, and
+--    the rule flattened them into the same list as the microflow's own canvas,
+--    so it reported overlaps that cannot happen on screen.
+--
+-- Expected: `mxcli check` passes on this file, and `mxcli lint` reports MPR008
+-- for MF_SamePlane ONLY — never for MF_CrossCanvas.
+--
+-- Verified on mxbuild 11.6.6.
+
+create module B884;
+/
+create non-persistent entity B884.Rec ( Nm: string(100) );
+/
+
+-- Cross-canvas: the outer node is at absolute (150,150); the loop child is at
+-- container-relative (141,130). Different planes — MPR008 must stay silent.
+create microflow B884.MF_CrossCanvas ( $Items: list of B884.Rec )
+returns boolean as $Ok
+begin
+  @position(150, 150)
+  declare $Outer string = 'x';
+  loop $it in $Items
+  begin
+    @position(141, 130)
+    declare $Inner string = 'y';
+  end loop;
+  declare $Ok boolean = true;
+  return $Ok;
+end;
+/
+
+-- Same canvas, 10px apart: MPR008 must STILL report this, or the scoping fix
+-- traded a false positive for a false negative.
+create microflow B884.MF_SamePlane ( $P: string )
+returns string as $R
+begin
+  @position(300, 200)
+  declare $A string = $P;
+  @position(310, 210)
+  declare $R string = $A;
+  return $R;
+end;
+/
+
+-- Every annotation mxcli implements, so the new rejection cannot fire on valid
+-- input (checked against 405 real MDL blocks in the skills and docs corpora).
+create microflow B884.MF_AllAnnotations ( $P: string )
+returns string as $R
+begin
+  @position(200, 100)
+  @caption 'Set it'
+  @color Green
+  declare $A string = $P;
+  @annotation 'a free note'
+  @position(360, 100)
+  @anchor(from: right, to: left)
+  declare $R string = $A;
+  return $R;
+end;
+/
+
+-- Rejected at check time (MDL059), so kept commented:
+--   @size(600, 300)      -- not implemented; container Size is still unauthorable
+--   @postion(999, 111)   -- typo of @position; used to discard the layout in silence
+
+-- 3. A HAND-CURVED EDGE WAS FLATTENED BY ANY REWRITE.
+--    Mendix stores no waypoints: a sequence flow's shape is two bezier control
+--    vectors on its Microflows$BezierCurve line. mxcli rebuilt every flow and
+--    defaulted them to "0;0", so re-running unchanged MDL straightened a curve
+--    drawn in Studio Pro — measured by patching "40;-90" into the stored line
+--    and re-executing, which returned "0;0".
+--
+--    @curve is now authorable and DESCRIBE emits it, so the shape round-trips.
+--    Needed no grammar change: `name: (x, y)` is the same shape the association
+--    anchors already use.
+--
+--    Expected: the flow leaving $A carries OriginControlVector "40;-90" and
+--    DestinationControlVector "-40;90"; every other flow stays "0;0"; and
+--    re-executing `describe microflow` output preserves both. 0 errors from
+--    mxbuild 11.6.6 on both engines.
+create microflow B884.MF_Curved ( $P: string )
+returns string as $R
+begin
+  @position(200, 100)
+  @curve(from: (40, -90), to: (-40, 90))
+  declare $A string = $P;
+  @position(520, 100)
+  declare $R string = $A;
+  return $R;
+end;
+/
+
+-- 4. THE IMPLICIT MERGE THAT CLOSES A SPLIT WAS UNADDRESSABLE.
+--    The statement's own @position belongs to the SPLIT, so the end-if join was
+--    placed by the layout pass alone and routinely landed on a neighbouring
+--    activity. @merge(x, y) positions it, and DESCRIBE emits it so the position
+--    survives a rewrite — without the emit half the layout pass just recomputes
+--    it on the next exec.
+--
+--    Expected: the ExclusiveMerge is stored at 900;400, `mx check` reports 0
+--    errors, and re-executing `describe microflow` output keeps it there.
+create microflow B884.MF_Merge ( $P: string )
+returns string as $R
+begin
+  @position(200, 200)
+  @merge(900, 400)
+  if $P = 'a' then
+    @position(400, 120)
+    declare $X string = 'x';
+  else
+    @position(400, 280)
+    declare $Y string = 'y';
+  end if;
+  @position(690, 200)
+  declare $R string = $P;
+  return $R;
+end;
+/

@@ -181,6 +181,11 @@ func (fb *flowBuilder) buildFlowGraph(stmts []ast.MicroflowStatement, returns *a
 		fb.terminatePendingErrorHandlersAtEnd(returns)
 	}
 
+	// Stamp @curve onto each annotated activity's outgoing flows. Done once here,
+	// after every flow exists, rather than at the seven-odd sites that create
+	// one. (#884)
+	fb.applyFlowCurves()
+
 	return &microflows.MicroflowObjectCollection{
 		BaseElement:     model.BaseElement{ID: model.ID(types.GenerateID())},
 		Objects:         fb.objects,

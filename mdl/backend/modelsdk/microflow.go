@@ -181,6 +181,13 @@ func flowsFromGen(items []element.Element) []*microflows.SequenceFlow {
 			IsErrorHandler:             g.IsErrorHandler(),
 			CaseValue:                  caseValueFromGen(g),
 		}
+		// The line's bezier control vectors — the edge's hand-drawn shape. Read
+		// them, or DESCRIBE cannot emit @curve and the next exec straightens the
+		// edge back to "0;0". The legacy parser has always read them. (#884)
+		if line, ok := g.Line().(*genMf.BezierCurve); ok && line != nil {
+			f.OriginControlVector = line.OriginControlVector()
+			f.DestinationControlVector = line.DestinationControlVector()
+		}
 		f.ID = model.ID(g.ID())
 		flows = append(flows, f)
 	}

@@ -345,13 +345,14 @@ func (fb *flowBuilder) addEnumSplit(s *ast.EnumSplitStmt) model.ID {
 		branchWidth = HorizontalSpacing / 2
 	}
 	mergeX := splitX + SplitWidth + HorizontalSpacing/2 + branchWidth + HorizontalSpacing/2
+	mergeX, mergeY := mergePosition(s.Annotations, mergeX, centerY)
 	var merge *microflows.ExclusiveMerge
 	ensureMerge := func() *microflows.ExclusiveMerge {
 		if merge == nil {
 			merge = &microflows.ExclusiveMerge{
 				BaseMicroflowObject: microflows.BaseMicroflowObject{
 					BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
-					Position:    model.Point{X: mergeX, Y: centerY},
+					Position:    model.Point{X: mergeX, Y: mergeY},
 					Size:        model.Size{Width: MergeSize, Height: MergeSize},
 				},
 			}
@@ -514,6 +515,7 @@ func (fb *flowBuilder) addStructuredInheritanceSplit(s *ast.InheritanceSplitStmt
 	}
 	branchStartX := splitX + ActivityWidth + HorizontalSpacing/2
 	mergeX := branchStartX + branchWidth + HorizontalSpacing/2
+	mergeX, mergeY := mergePosition(s.Annotations, mergeX, centerY)
 
 	type branchTail struct {
 		id        model.ID
@@ -625,7 +627,7 @@ func (fb *flowBuilder) addStructuredInheritanceSplit(s *ast.InheritanceSplitStmt
 		merge := &microflows.ExclusiveMerge{
 			BaseMicroflowObject: microflows.BaseMicroflowObject{
 				BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
-				Position:    model.Point{X: mergeX, Y: centerY},
+				Position:    model.Point{X: mergeX, Y: mergeY},
 				Size:        model.Size{Width: MergeSize, Height: MergeSize},
 			},
 		}

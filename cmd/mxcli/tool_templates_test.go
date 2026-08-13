@@ -69,6 +69,23 @@ func TestGenerateDockerfile_Podman(t *testing.T) {
 	}
 }
 
+// TestGenerateDockerfile_PostgresServer guards the database prerequisite of
+// `mxcli run --local`: --ensure-db starts a local PostgreSQL service and creates
+// the role + database via a `sudo -u postgres` superuser, neither of which exists
+// when only postgresql-client is installed. The client alone is easy to mistake
+// for enough, so assert the server package specifically.
+func TestGenerateDockerfile_PostgresServer(t *testing.T) {
+	for _, runtime := range []string{"docker", "podman"} {
+		df := generateDockerfile("MyApp", "App.mpr", runtime)
+		if !strings.Contains(df, "postgresql \\") {
+			t.Errorf("%s Dockerfile must install the postgresql SERVER package, not just postgresql-client — 'run --local --ensure-db' cannot provision a database without it", runtime)
+		}
+		if !strings.Contains(df, "postgresql-client") {
+			t.Errorf("%s Dockerfile should keep postgresql-client (psql is used to probe and provision)", runtime)
+		}
+	}
+}
+
 // TestGenerateDockerfile_PlaywrightArm64 guards the arm64 Playwright provisioning
 // fix: browsers must be installed via @playwright/cli's bundled playwright-core
 // (not a transient "npx playwright"), into a world-readable shared cache, with a
