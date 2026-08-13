@@ -217,3 +217,45 @@ func TestImportMappingDoesNotCloneTheSnippetSampleValue(t *testing.T) {
 		t.Errorf("JsonPath = %q, want (Object)|total", got)
 	}
 }
+
+// `create import mapping X { ... }` with no `with json structure` clause is legal
+// MDL, and an XML-schema or message-definition mapping resolves no JSON elements
+// either. There is nothing to contradict a member name in those cases, so it
+// must be taken at face value.
+//
+// The first cut of the refusal did not check this and broke eight schema-less
+// round-trip tests — the refusal has to be scoped to "a schema exists and does
+// not contain this name", not "I could not resolve this name".
+func TestMappingsWithoutASchemaAcceptAnyMemberName(t *testing.T) {
+	empty := newJSONSchemaIndex(nil)
+	if empty.resolvable() {
+		t.Fatal("an index built from no elements must not be treated as a schema to validate against")
+	}
+
+	root, err := buildImportMappingElementModel("B", &ast.ImportMappingElementDef{
+		Entity: "B.Pet",
+		Children: []*ast.ImportMappingElementDef{
+			{Attribute: "PetId", JsonName: "id", IsKey: true},
+			{Attribute: "Name", JsonName: "name"},
+		},
+	}, "", "(Object)", nil, empty, true)
+	if err != nil {
+		t.Fatalf("a schema-less mapping must build, got: %v", err)
+	}
+	if len(root.Children) != 2 {
+		t.Fatalf("expected 2 children, got %d", len(root.Children))
+	}
+	// With nothing to clone from, the authored name is both the exposed name and
+	// the path segment — the pre-#882 behaviour, unchanged.
+	if got := root.Children[0].JsonPath; got != "(Object)|id" {
+		t.Errorf("JsonPath = %q, want (Object)|id", got)
+	}
+	if got := root.Children[0].ExposedName; got != "id" {
+		t.Errorf("ExposedName = %q, want id", got)
+	}
+
+	// A loaded schema is still validated.
+	if !jsonStructureFixture().resolvable() {
+		t.Error("an index built from real elements must be treated as a schema")
+	}
+}

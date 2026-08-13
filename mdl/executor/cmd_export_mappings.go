@@ -271,7 +271,7 @@ func buildExportMappingElementModel(moduleName string, def *ast.ExportMappingEle
 		jsElem = idx.resolve(parentPath, def.JsonName)
 	}
 
-	if jsElem == nil && !isRoot {
+	if jsElem == nil && !isRoot && idx.resolvable() {
 		known := idx.memberNames(parentPath)
 		if len(known) == 0 {
 			return nil, fmt.Errorf("%q is not a member of the JSON structure at %s, which has no members there",

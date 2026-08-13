@@ -287,7 +287,7 @@ func buildImportMappingElementModel(moduleName string, def *ast.ImportMappingEle
 	// resolves to nothing is REFUSED, never given a made-up path: the fabricated
 	// path passed `mxcli check` and surfaced only later — in mxbuild as CE5015,
 	// or at runtime as an unresolvable mapping. (#882)
-	if jsElem == nil && !isRoot {
+	if jsElem == nil && !isRoot && idx.resolvable() {
 		known := idx.memberNames(parentPath)
 		if len(known) == 0 {
 			return nil, fmt.Errorf("%q is not a member of the JSON structure at %s, which has no members there",
@@ -475,6 +475,16 @@ func (i *jsonSchemaIndex) resolve(parentPath, name string) *types.JsonElement {
 	}
 	return nil
 }
+
+// resolvable reports whether a JSON structure was actually loaded.
+//
+// `create import mapping X { ... }` with no `with json structure` clause is
+// legal MDL, and an XML-schema or message-definition mapping resolves no JSON
+// elements either. There is nothing to validate a member against in those cases,
+// so names must be taken at face value — refusing them broke eight round-trip
+// tests that create schema-less mappings. The refusal only applies where a
+// schema exists to contradict the name. (issue #882)
+func (i *jsonSchemaIndex) resolvable() bool { return len(i.byPath) > 0 }
 
 // memberNames lists the spellings that would have resolved under parentPath, so a
 // rejection can name them instead of leaving the author to guess.
