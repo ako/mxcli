@@ -243,6 +243,27 @@ func registerScheduledEventHandlers(r *Registry) {
 	})
 }
 
+func registerValidationRuleHandlers(r *Registry) {
+	r.Register(&ast.CreateValidationRuleStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execCreateValidationRule(ctx, stmt.(*ast.CreateValidationRuleStmt))
+	})
+}
+
+func registerRegularExpressionHandlers(r *Registry) {
+	r.Register(&ast.CreateRegularExpressionStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execCreateRegularExpression(ctx, stmt.(*ast.CreateRegularExpressionStmt))
+	})
+	r.Register(&ast.DropRegularExpressionStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execDropRegularExpression(ctx, stmt.(*ast.DropRegularExpressionStmt))
+	})
+	r.Register(&ast.ShowRegularExpressionsStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execShowRegularExpressions(ctx, stmt.(*ast.ShowRegularExpressionsStmt))
+	})
+	r.Register(&ast.DescribeRegularExpressionStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execDescribeRegularExpression(ctx, stmt.(*ast.DescribeRegularExpressionStmt))
+	})
+}
+
 func registerImageHandlers(r *Registry) {
 	r.Register(&ast.CreateImageCollectionStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
 		return execCreateImageCollection(ctx, stmt.(*ast.CreateImageCollectionStmt))

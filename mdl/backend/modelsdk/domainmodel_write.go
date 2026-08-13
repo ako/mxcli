@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mendixlabs/mxcli/generated/metamodel"
 	"github.com/mendixlabs/mxcli/modelsdk/codec"
 	"github.com/mendixlabs/mxcli/modelsdk/element"
 	genDm "github.com/mendixlabs/mxcli/modelsdk/gen/domainmodels"
@@ -420,20 +421,116 @@ func validationRuleToGen(vr *domainmodel.ValidationRule, moduleName, entityName 
 	if vr.ErrorMessage != nil && len(vr.ErrorMessage.Translations) > 0 {
 		out.SetErrorMessage(textToGen(vr.ErrorMessage))
 	}
-	out.SetRuleInfo(ruleInfoToGen(vr.Type))
+	out.SetRuleInfo(ruleInfoToGen(vr))
 	return out
 }
 
-// ruleInfoToGen maps a validation rule type to its RuleInfo element.
-func ruleInfoToGen(ruleType string) element.Element {
-	switch ruleType {
+// validationRulesAreReproducible reports the first stored validation rule this
+// writer cannot serialize, so the caller can refuse the write instead of
+// downgrading it. See ruleInfoToGen.
+func validationRulesAreReproducible(e *domainmodel.Entity) (string, bool) {
+	for _, vr := range e.ValidationRules {
+		if !reproducibleRule(vr) {
+			return vr.Type, false
+		}
+	}
+	return "", true
+}
+
+// ruleInfoToGen builds the RuleInfo element for a validation rule, or nil for
+// one this writer cannot reproduce.
+//
+// A nil return is a REFUSAL, not a default. The previous code fell back to
+// RequiredRuleInfo, which turned every entity rewrite into a silent downgrade:
+// a RegEx rule came back as Required, the pattern reference gone and the field
+// merely mandatory, with mxbuild none the wiser because both are valid rules.
+//
+// It takes the whole rule rather than its type, because the type alone does not
+// determine the document: a RegEx rule is its reference and a Range rule is its
+// bounds. Writing the bare RuleInfo for either would produce a rule Mendix
+// accepts and that constrains nothing — the same silent downgrade wearing the
+// right type name. So a rule whose payload did not survive the read is refused
+// as firmly as a type this writer does not know.
+func ruleInfoToGen(vr *domainmodel.ValidationRule) element.Element {
+	if vr == nil {
+		return nil
+	}
+	switch vr.Type {
 	case "Unique":
 		return genDm.NewUniqueRuleInfo()
-	case "Required":
+	case "Required", "":
 		return genDm.NewRequiredRuleInfo()
+
+	case "RegEx":
+		// Writable only since the RegExIdentifier storage-name override in
+		// modelsdk/gen — before it, this emitted a key Mendix does not read.
+		info, ok := vr.Rule.(*domainmodel.RegexValidationRuleInfo)
+		if !ok || info.RegularExpressionQualifiedName == "" {
+			return nil
+		}
+		out := genDm.NewRegExRuleInfo()
+		out.SetRegularExpressionQualifiedName(info.RegularExpressionQualifiedName)
+		return out
+
+	case "Range":
+		info, ok := vr.Rule.(*domainmodel.RangeValidationRuleInfo)
+		if !ok {
+			return nil
+		}
+		typeOfRange, ok := rangeKind(info)
+		if !ok {
+			return nil
+		}
+		out := genDm.NewRangeRuleInfo()
+		out.SetTypeOfRange(typeOfRange)
+		out.SetUseMinValue(info.UseMinValue)
+		out.SetUseMaxValue(info.UseMaxValue)
+		if info.MinValue != nil {
+			out.SetMinValue(*info.MinValue)
+		}
+		if info.MaxValue != nil {
+			out.SetMaxValue(*info.MaxValue)
+		}
+		// A bound may point at another attribute instead of a literal. MDL
+		// cannot author that, but a stored rule must survive the rewrite.
+		if info.MinAttributeQualifiedName != "" {
+			out.SetMinAttributeQualifiedName(info.MinAttributeQualifiedName)
+		}
+		if info.MaxAttributeQualifiedName != "" {
+			out.SetMaxAttributeQualifiedName(info.MaxAttributeQualifiedName)
+		}
+		return out
+
 	default:
-		return genDm.NewRequiredRuleInfo()
+		// MaxLength and EqualsTo. Neither is authorable in MDL, so one only
+		// reaches here through a read-modify-write, and neither survives the
+		// read — the model carries no payload type for them. (EqualsTo would
+		// also need a gen storage-name override: it binds "EqualsToValue"
+		// where Studio Pro stores "value".)
+		return nil
 	}
+}
+
+// rangeKind derives the TypeOfRange enum from which bounds are in use. Mendix
+// has exactly three values and no strict inequality, so a range using neither
+// bound has no representation and is refused.
+func rangeKind(info *domainmodel.RangeValidationRuleInfo) (string, bool) {
+	switch {
+	case info.UseMinValue && info.UseMaxValue:
+		return string(metamodel.DomainModelsTypeOfRangeBetween), true
+	case info.UseMinValue:
+		return string(metamodel.DomainModelsTypeOfRangeGreaterThanOrEqualTo), true
+	case info.UseMaxValue:
+		return string(metamodel.DomainModelsTypeOfRangeSmallerThanOrEqualTo), true
+	default:
+		return "", false
+	}
+}
+
+// reproducibleRule reports whether this writer can serialize a validation rule.
+// Everything else must be preserved rather than rewritten.
+func reproducibleRule(vr *domainmodel.ValidationRule) bool {
+	return ruleInfoToGen(vr) != nil
 }
 
 // textToGen converts a model.Text to a gen Texts$Text with sorted translations.

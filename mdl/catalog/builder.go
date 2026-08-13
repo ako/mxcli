@@ -96,6 +96,10 @@ type Builder struct {
 	// rather than re-queried because CatalogTx has no Query.
 	scheduledEventRefs []scheduledEventRef
 
+	// Entity → regular-expression edges from attribute validation rules,
+	// collected while cataloguing regexes and emitted by buildReferences.
+	regexRuleRefs []regexRuleRef
+
 	// Built-in widget definitions supplied by the caller — used to populate
 	// the widget_definitions catalog table alongside project widgets/.
 	builtinWidgetMetas []WidgetDefinitionMeta
@@ -429,6 +433,10 @@ func (b *Builder) Build(progress ProgressFunc) error {
 
 	if err := b.buildQueues(); err != nil {
 		return fmt.Errorf("failed to build queues: %w", err)
+	}
+
+	if err := b.buildRegularExpressions(); err != nil {
+		return fmt.Errorf("failed to build regular expressions: %w", err)
 	}
 
 	if err := b.buildAgentEditorDocs(); err != nil {

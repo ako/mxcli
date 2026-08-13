@@ -33,6 +33,7 @@ const (
 	RefKindCalculate  = "calculate"  // Calculated attribute uses a microflow
 	RefKindReturn     = "return"     // Microflow/nanoflow returns an entity type
 	RefKindSchedule   = "schedule"   // Scheduled event runs a microflow
+	RefKindValidate   = "validate"   // Attribute validation rule uses a regular expression
 )
 
 // collectActionActivities returns all ActionActivity objects from an ObjectCollection,
@@ -488,6 +489,11 @@ func (b *Builder) buildReferences() error {
 	// "Remove if unused" — on a microflow that runs nightly in production.
 	refCount += b.extractScheduledEventRefs(stmt, projectID, snapshotID)
 
+	// Attribute validation rules use a named regular expression, so
+	// `show references to <regex>` can answer which entities depend on a shared
+	// pattern.
+	refCount += b.extractRegexRuleRefs(stmt, projectID, snapshotID)
+
 	b.report("References", refCount)
 	return nil
 }
@@ -497,6 +503,22 @@ func (b *Builder) buildReferences() error {
 //
 // The edges are collected by buildScheduledEvents, which runs earlier in the
 // same transaction.
+// extractRegexRuleRefs emits one `validate` edge per attribute validation rule
+// that uses a regular expression, from the entity to the regex document.
+func (b *Builder) extractRegexRuleRefs(stmt *sql.Stmt, projectID, snapshotID string) int {
+	count := 0
+	for _, r := range b.regexRuleRefs {
+		if _, err := stmt.Exec(
+			"ENTITY", "", r.entityQualifiedName,
+			"REGULAR_EXPRESSION", "", r.regexQualifiedName,
+			RefKindValidate, r.moduleName, projectID, snapshotID,
+		); err == nil {
+			count++
+		}
+	}
+	return count
+}
+
 func (b *Builder) extractScheduledEventRefs(stmt *sql.Stmt, projectID, snapshotID string) int {
 	count := 0
 	for _, r := range b.scheduledEventRefs {

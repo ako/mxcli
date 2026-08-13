@@ -224,6 +224,16 @@ func (b *Builder) ExitShowStatement(ctx *parser.ShowStatementContext) {
 			}
 		}
 		b.statements = append(b.statements, stmt)
+	} else if ctx.REGULAR() != nil && ctx.EXPRESSIONS() != nil {
+		stmt := &ast.ShowRegularExpressionsStmt{}
+		if ctx.IN() != nil {
+			if qn := ctx.QualifiedName(); qn != nil {
+				stmt.Module = getQualifiedNameText(qn)
+			} else if id := ctx.IDENTIFIER(); id != nil {
+				stmt.Module = id.GetText()
+			}
+		}
+		b.statements = append(b.statements, stmt)
 	} else if ctx.LAYOUTS() != nil {
 		stmt := &ast.ShowStmt{ObjectType: ast.ShowLayouts}
 		if ctx.IN() != nil {
@@ -726,6 +736,14 @@ func (b *Builder) ExitDescribeStatement(ctx *parser.DescribeStatementContext) {
 	if ctx.SCHEDULED() != nil && ctx.EVENT() != nil {
 		if qn := ctx.QualifiedName(); qn != nil {
 			b.statements = append(b.statements, &ast.DescribeScheduledEventStmt{Name: buildQualifiedName(qn)})
+		}
+		return
+	}
+
+	// DESCRIBE REGULAR EXPRESSION Module.Name
+	if ctx.REGULAR() != nil && ctx.EXPRESSION() != nil {
+		if qn := ctx.QualifiedName(); qn != nil {
+			b.statements = append(b.statements, &ast.DescribeRegularExpressionStmt{Name: buildQualifiedName(qn)})
 		}
 		return
 	}

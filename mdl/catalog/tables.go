@@ -377,6 +377,22 @@ func (c *Catalog) createTables() error {
 		)`,
 		viewWithFullSnapshot("scheduled_events"),
 
+		// regular_expressions — named patterns referenced by attribute
+		// validation rules (DomainModels$RegExRuleInfo.RegExIdentifier).
+		`CREATE TABLE IF NOT EXISTS regular_expressions_data (
+			Id TEXT PRIMARY KEY,
+			Name TEXT,
+			QualifiedName TEXT,
+			ModuleName TEXT,
+			Folder TEXT,
+			Description TEXT,
+			Expression TEXT,
+			ExportLevel TEXT,
+			ProjectId TEXT,
+			SnapshotId TEXT
+		)`,
+		viewWithFullSnapshot("regular_expressions"),
+
 		// queues — task queues (Queues$Queue). Parallelism is an expression
 		// string, not a number.
 		`CREATE TABLE IF NOT EXISTS queues_data (
@@ -1029,6 +1045,10 @@ func (c *Catalog) createTables() error {
 			SELECT Id, 'QUEUE' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
 				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
 			FROM queues
+			UNION ALL
+			SELECT Id, 'REGULAR_EXPRESSION' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
+				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
+			FROM regular_expressions
 			UNION ALL
 			SELECT Id, 'DATA_TRANSFORMER' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
 				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource

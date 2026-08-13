@@ -4,6 +4,7 @@ package modelsdkbackend
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/mendixlabs/mxcli/modelsdk/element"
 	genDm "github.com/mendixlabs/mxcli/modelsdk/gen/domainmodels"
@@ -350,21 +351,72 @@ func validationRuleFromGen(vr *genDm.ValidationRule) *domainmodel.ValidationRule
 	if txt, ok := vr.ErrorMessage().(*genTexts.Text); ok {
 		out.ErrorMessage = textFromGen(txt)
 	}
+	out.Rule = ruleInfoFromGen(vr.RuleInfo())
 	return out
 }
 
+// ruleInfoFromGen carries the rule's payload back onto the model, so a
+// read-modify-write can rebuild it. Without this the reader reported the right
+// TYPE and dropped everything that made the rule mean something, and the writer
+// then had no choice but to refuse (see ruleInfoToGen).
+//
+// A type with no case here reads as a nil payload, which the writer treats as a
+// refusal — the safe direction.
+func ruleInfoFromGen(ri element.Element) domainmodel.ValidationRuleInfo {
+	switch info := ri.(type) {
+	case *genDm.RegExRuleInfo:
+		out := &domainmodel.RegexValidationRuleInfo{
+			RegularExpressionQualifiedName: info.RegularExpressionQualifiedName(),
+		}
+		out.ID = model.ID(info.ID())
+		return out
+	case *genDm.RangeRuleInfo:
+		out := &domainmodel.RangeValidationRuleInfo{
+			UseMinValue:               info.UseMinValue(),
+			UseMaxValue:               info.UseMaxValue(),
+			MinAttributeQualifiedName: info.MinAttributeQualifiedName(),
+			MaxAttributeQualifiedName: info.MaxAttributeQualifiedName(),
+		}
+		if v := info.MinValue(); v != "" {
+			out.MinValue = &v
+		}
+		if v := info.MaxValue(); v != "" {
+			out.MaxValue = &v
+		}
+		out.ID = model.ID(info.ID())
+		return out
+	case *genDm.RequiredRuleInfo:
+		out := &domainmodel.RequiredValidationRuleInfo{}
+		out.ID = model.ID(info.ID())
+		return out
+	case *genDm.UniqueRuleInfo:
+		out := &domainmodel.UniqueValidationRuleInfo{}
+		out.ID = model.ID(info.ID())
+		return out
+	default:
+		return nil
+	}
+}
+
 // ruleTypeFromGen maps a gen RuleInfo element back to the domainmodel rule-type
-// string (reverse of ruleInfoToGen, which today emits Unique/Required).
+// string.
+//
+// It reports the type it actually found rather than collapsing everything to
+// "Required". The old default did exactly that, and because ALTER ENTITY
+// round-trips an entity through this, a stored RegEx rule was READ as Required
+// and WRITTEN BACK as Required — the regex reference silently gone, the field
+// merely mandatory. Any type the writers cannot reproduce is refused at the
+// write, not quietly rewritten (see ruleInfoToGen).
 func ruleTypeFromGen(ri element.Element) string {
 	if ri == nil {
 		return "Required"
 	}
-	switch ri.TypeName() {
-	case "DomainModels$UniqueRuleInfo":
-		return "Unique"
-	default:
+	// "DomainModels$RegExRuleInfo" -> "RegEx"
+	name := strings.TrimSuffix(strings.TrimPrefix(ri.TypeName(), "DomainModels$"), "RuleInfo")
+	if name == "" {
 		return "Required"
 	}
+	return name
 }
 
 // textFromGen converts a gen Text (translations) back to a model.Text.

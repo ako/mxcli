@@ -225,13 +225,23 @@ func (v *EnumerationValue) GetName() string {
 	return v.Name
 }
 
-// RegularExpression represents a regular expression constraint.
+// RegularExpression represents a named regex document
+// (RegularExpressions$RegularExpression).
+//
+// It is a document rather than a string on a validation rule because Mendix
+// stores the rule's reference by qualified name
+// (DomainModels$RegExRuleInfo.RegExIdentifier), so one pattern is shared by
+// every attribute that validates against it.
 type RegularExpression struct {
 	BaseElement
 	ContainerID   ID     `json:"containerId"`
 	Name          string `json:"name"`
 	Documentation string `json:"documentation,omitempty"`
-	Expression    string `json:"expression"`
+	// Expression is the pattern. Mendix stores it under the BSON key
+	// "Expression" — NOT "RegEx", which is what modelsdk/gen binds.
+	Expression  string `json:"expression"`
+	ExportLevel string `json:"exportLevel,omitempty"`
+	Excluded    bool   `json:"excluded,omitempty"`
 }
 
 // GetName returns the regular expression's name.

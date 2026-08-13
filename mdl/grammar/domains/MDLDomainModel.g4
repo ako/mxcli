@@ -355,6 +355,26 @@ queueProperty
     ;
 
 // =============================================================================
+// REGULAR EXPRESSION CREATION
+// =============================================================================
+//
+// A named regex document. Attribute validation rules reference it by qualified
+// name (DomainModels$RegExRuleInfo.RegExIdentifier), which is why it is a
+// document rather than a string on the rule.
+
+createRegularExpressionStatement
+    : REGULAR EXPRESSION qualifiedName regularExpressionBody?
+    ;
+
+regularExpressionBody
+    : LPAREN (regularExpressionProperty (COMMA regularExpressionProperty)* COMMA?)? RPAREN
+    ;
+
+regularExpressionProperty
+    : identifierOrKeyword COLON (STRING_LITERAL | booleanLiteral | identifierOrKeyword)
+    ;
+
+// =============================================================================
 // SCHEDULED EVENT CREATION
 // =============================================================================
 //
@@ -505,41 +525,47 @@ exportMappingChild
 // VALIDATION RULE CREATION
 // =============================================================================
 
+// A validation rule constrains ONE attribute, and Mendix stores it anonymously
+// on the entity — there is no rule name to give, so the statement names its
+// target instead:
+//
+//   create validation rule for Shop.Product.Email
+//       regex Shop.EmailPattern
+//       feedback 'Enter a valid email address';
+//
+//   create validation rule for Shop.Booking.Guests
+//       range from 1 to 100
+//       feedback 'Between 1 and 100 guests are allowed';
+//
+// Only the two constraints nothing else can express are here. Required and
+// Unique are already authorable as attribute constraints (`not null error '…'`
+// / `unique error '…'` on CREATE ENTITY and ALTER ENTITY), and a second path to
+// the same rule would drift from the first; the executor points at that syntax
+// rather than accepting a duplicate spelling.
+//
+// This rule previously existed with an unimplementable shape (an EXPRESSION
+// form Mendix has no rule type for, an inline regex literal where Mendix stores
+// a reference to a RegularExpression document, and strict < / > bounds Mendix
+// cannot represent). It had no visitor and no handler, so every form parsed and
+// silently did nothing — nothing can depend on the old spelling.
 createValidationRuleStatement
-    : VALIDATION RULE qualifiedName
-      FOR qualifiedName
-      validationRuleBody
+    : VALIDATION RULE FOR qualifiedName
+      validationRuleConstraint
+      FEEDBACK STRING_LITERAL
     ;
 
-validationRuleBody
-    : EXPRESSION expression FEEDBACK STRING_LITERAL
-    | REQUIRED attributeReference FEEDBACK STRING_LITERAL
-    | UNIQUE attributeReferenceList FEEDBACK STRING_LITERAL
-    | RANGE attributeReference rangeConstraint FEEDBACK STRING_LITERAL
-    | REGEX attributeReference STRING_LITERAL FEEDBACK STRING_LITERAL
+validationRuleConstraint
+    : REGEX qualifiedName
+    | RANGE validationRuleRange
     ;
 
-rangeConstraint
-    : BETWEEN literal AND literal
-    | LESS_THAN literal
-    | LESS_THAN_OR_EQUAL literal
-    | GREATER_THAN literal
-    | GREATER_THAN_OR_EQUAL literal
-    ;
-
-attributeReference
-    : attributeRefSegment (SLASH attributeRefSegment)*
-    ;
-
-// One segment of an attribute reference. Accepts a quoted identifier so a
-// segment that is a reserved word can be escaped, e.g. "Order"/Status.
-attributeRefSegment
-    : IDENTIFIER
-    | QUOTED_IDENTIFIER
-    ;
-
-attributeReferenceList
-    : attributeReference (COMMA attributeReference)*
+// Mendix has exactly three range kinds and no strict inequality, so the bounds
+// are spelled inclusively and map one-to-one:
+//   from X to Y -> Between, from X -> GreaterThanOrEqualTo, to Y -> SmallerThanOrEqualTo
+validationRuleRange
+    : FROM literal TO literal
+    | FROM literal
+    | TO literal
     ;
 
 // =============================================================================

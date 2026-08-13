@@ -740,6 +740,23 @@ func (b *MprBackend) DeleteScheduledEvent(id string) error {
 }
 
 // ---------------------------------------------------------------------------
+// RegularExpressionBackend
+// ---------------------------------------------------------------------------
+
+func (b *MprBackend) ListRegularExpressions() ([]*model.RegularExpression, error) {
+	return b.reader.ListRegularExpressions()
+}
+func (b *MprBackend) CreateRegularExpression(re *model.RegularExpression) error {
+	return b.writer.CreateRegularExpression(re)
+}
+func (b *MprBackend) UpdateRegularExpression(re *model.RegularExpression) error {
+	return b.writer.UpdateRegularExpression(re)
+}
+func (b *MprBackend) DeleteRegularExpression(id string) error {
+	return b.writer.DeleteRegularExpression(id)
+}
+
+// ---------------------------------------------------------------------------
 // RenameBackend
 // ---------------------------------------------------------------------------
 

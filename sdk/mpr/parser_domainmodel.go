@@ -657,6 +657,7 @@ func parseValidationRule(raw map[string]any) *domainmodel.ValidationRule {
 	if ruleInfo, ok := raw["RuleInfo"].(map[string]any); ok {
 		ruleType := extractString(ruleInfo["$Type"])
 		rule.Type = normalizeValidationRuleType(ruleType)
+		rule.Rule = parseValidationRuleInfo(rule.Type, ruleInfo)
 	}
 
 	// Parse error message from "Message" field (not "ErrorMessage")
@@ -668,6 +669,60 @@ func parseValidationRule(raw map[string]any) *domainmodel.ValidationRule {
 	}
 
 	return rule
+}
+
+// parseValidationRuleInfo carries the rule's payload onto the model so a
+// read-modify-write can rebuild it.
+//
+// Without this the reader reported the right TYPE and dropped everything that
+// made the rule mean something, which is half of the silent RegEx→Required
+// downgrade (the writer's fallback was the other half). A type with no case
+// here yields a nil payload, which the writer treats as a refusal — the safe
+// direction.
+//
+// The BSON keys are the STORAGE names, which differ from the SDK names for the
+// regex reference: Studio Pro stores "RegExIdentifier", not "RegularExpression"
+// (see CLAUDE.md, "modelsdk/gen Binds Some Properties Under the Wrong BSON Key").
+func parseValidationRuleInfo(ruleType string, raw map[string]any) domainmodel.ValidationRuleInfo {
+	switch ruleType {
+	case "RegEx":
+		info := &domainmodel.RegexValidationRuleInfo{
+			RegularExpressionQualifiedName: extractString(raw["RegExIdentifier"]),
+		}
+		info.ID = model.ID(extractBsonID(raw["$ID"]))
+		return info
+
+	case "Range":
+		info := &domainmodel.RangeValidationRuleInfo{
+			UseMinValue:               extractBool(raw["UseMinValue"], false),
+			UseMaxValue:               extractBool(raw["UseMaxValue"], false),
+			MinAttributeQualifiedName: extractString(raw["MinAttribute"]),
+			MaxAttributeQualifiedName: extractString(raw["MaxAttribute"]),
+		}
+		if v := extractString(raw["MinValue"]); v != "" {
+			info.MinValue = &v
+		}
+		if v := extractString(raw["MaxValue"]); v != "" {
+			info.MaxValue = &v
+		}
+		info.ID = model.ID(extractBsonID(raw["$ID"]))
+		return info
+
+	case "Required", "":
+		info := &domainmodel.RequiredValidationRuleInfo{}
+		info.ID = model.ID(extractBsonID(raw["$ID"]))
+		return info
+
+	case "Unique":
+		info := &domainmodel.UniqueValidationRuleInfo{}
+		info.ID = model.ID(extractBsonID(raw["$ID"]))
+		return info
+
+	default:
+		// MaxLength, EqualsTo — no model payload type, so the writer refuses to
+		// rewrite an entity carrying one rather than downgrading it.
+		return nil
+	}
 }
 
 // normalizeValidationRuleType converts BSON type names to simple rule types.

@@ -224,6 +224,11 @@ func (unsupportedBackend) CreateQueue(_ *types.Queue) (err0 error) {
 	return
 }
 
+func (unsupportedBackend) CreateRegularExpression(_ *model.RegularExpression) (err0 error) {
+	err0 = errUnsupported("CreateRegularExpression")
+	return
+}
+
 func (unsupportedBackend) CreateScheduledEvent(_ *model.ScheduledEvent) (err0 error) {
 	err0 = errUnsupported("CreateScheduledEvent")
 	return
@@ -411,6 +416,11 @@ func (unsupportedBackend) DeletePublishedRestService(_ model.ID) (err0 error) {
 
 func (unsupportedBackend) DeleteQueue(_ string) (err0 error) {
 	err0 = errUnsupported("DeleteQueue")
+	return
+}
+
+func (unsupportedBackend) DeleteRegularExpression(_ string) (err0 error) {
+	err0 = errUnsupported("DeleteRegularExpression")
 	return
 }
 
@@ -809,6 +819,11 @@ func (unsupportedBackend) ListRawUnits(_ string) (r0 []*types.RawUnitInfo, err1 
 
 func (unsupportedBackend) ListRawUnitsByType(_ string) (r0 []*types.RawUnit, err1 error) {
 	err1 = errUnsupported("ListRawUnitsByType")
+	return
+}
+
+func (unsupportedBackend) ListRegularExpressions() (r0 []*model.RegularExpression, err1 error) {
+	err1 = errUnsupported("ListRegularExpressions")
 	return
 }
 
@@ -1239,6 +1254,11 @@ func (unsupportedBackend) UpdateQueue(_ *types.Queue) (err0 error) {
 
 func (unsupportedBackend) UpdateRawUnit(_ string, _ []uint8) (err0 error) {
 	err0 = errUnsupported("UpdateRawUnit")
+	return
+}
+
+func (unsupportedBackend) UpdateRegularExpression(_ *model.RegularExpression) (err0 error) {
+	err0 = errUnsupported("UpdateRegularExpression")
 	return
 }
 

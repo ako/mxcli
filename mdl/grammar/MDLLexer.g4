@@ -358,6 +358,8 @@ IMAGE: I M A G E;
 QUEUE: Q U E U E;
 QUEUES: Q U E U E S;
 SCHEDULED: S C H E D U L E D;
+REGULAR: R E G U L A R;
+EXPRESSIONS: E X P R E S S I O N S;
 COLLECTION: C O L L E C T I O N S?;   // accept singular + plural ("collection(s)")
 JAR: J A R;
 DEPENDENCY: D E P E N D E N C Y;

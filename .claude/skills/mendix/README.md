@@ -24,6 +24,7 @@ Detailed syntax for each MDL document type:
 | [create-page.md](create-page.md) | Page and widget syntax | Creating pages |
 | [fragments.md](fragments.md) | Fragment (reusable widget group) syntax | Reusing widget patterns across pages |
 | [scheduled-events-and-queues.md](scheduled-events-and-queues.md) | Scheduled event (cron) and task queue syntax | Running a microflow on a schedule; bounding background concurrency |
+| [regular-expressions.md](regular-expressions.md) | Named validation patterns | Adding an email/phone/identifier regex; changing a shared pattern |
 
 ## Patterns (By Use Case)
 
@@ -96,6 +97,7 @@ Load skills based on the task:
 | "Run a microflow nightly / hourly / on a schedule" | `scheduled-events-and-queues.md` |
 | "Add a cron job / batch job / recurring task" | `scheduled-events-and-queues.md` |
 | "Limit how many background tasks run at once" | `scheduled-events-and-queues.md` |
+| "Add a validation pattern / email regex" | `regular-expressions.md` |
 | "Update widget properties" | `bulk-widget-updates.md` |
 | "Change widgets in bulk" | `bulk-widget-updates.md` |
 | "Reuse widgets across pages" | `fragments.md` |

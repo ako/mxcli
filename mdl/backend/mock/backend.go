@@ -269,6 +269,12 @@ type MockBackend struct {
 	UpdateScheduledEventFunc func(ev *model.ScheduledEvent) error
 	DeleteScheduledEventFunc func(id string) error
 
+	// RegularExpressionBackend
+	ListRegularExpressionsFunc  func() ([]*model.RegularExpression, error)
+	CreateRegularExpressionFunc func(re *model.RegularExpression) error
+	UpdateRegularExpressionFunc func(re *model.RegularExpression) error
+	DeleteRegularExpressionFunc func(id string) error
+
 	// RenameBackend
 	UpdateQualifiedNameInAllUnitsFunc func(oldName, newName string) (int, error)
 	RenameReferencesFunc              func(oldName, newName string, dryRun bool) ([]types.RenameHit, error)
