@@ -10,6 +10,37 @@ A JSON structure defines the schema of a JSON payload. It stores a JSON snippet 
 ### Import Mappings
 An import mapping converts a JSON string into Mendix entity objects. It maps JSON fields to entity attributes.
 
+#### Two names per member: the raw key and the exposed name
+
+Every JSON structure element stores **both**, and for any lowercase-initial key
+they differ:
+
+| | Example | Used for |
+|---|---|---|
+| **Path** (raw JSON key) | `(Object)\|uuid` | what the **runtime** resolves by |
+| **ExposedName** (derived) | `Uuid` | what **Studio Pro displays** |
+
+Mendix derives the exposed name by capitalising the initial, and for an array's
+item object by suffixing `Item` — so `total` → `Total`, `camelCase` → `CamelCase`,
+`__Value` (array) → `__ValueItem` (its item). Keys already starting with an
+underscore are left alone: `__returnedCount` stays `__returnedCount`.
+
+This is **Mendix's own convention, not something mxcli does**. A blank app's
+Studio-Pro-authored `FeedbackModule.JSON_AppInsightsResponse` stores
+`ExposedName: "Uuid"` against `Path: "(Object)|uuid"`, and its `IMM_PostResponse`
+binds `JsonPath: "(Object)|uuid"`.
+
+Consequences worth knowing:
+
+- **Either spelling works in MDL.** `Total = total` and `Total = Total` produce the
+  same stored mapping. Write whichever you have.
+- **`DESCRIBE` emits the exposed name**, because that is the name Studio Pro shows.
+  A describe → edit → exec cycle is therefore lossless, but the text you get back
+  will not match the raw JSON keys you wrote.
+- **A member matching neither spelling is refused**, listing what would have
+  worked. It is never written with a guessed path: such a mapping passed
+  `mxcli check` and failed later in mxbuild (CE5015) or at runtime.
+
 #### Inherited attributes
 
 Mendix inheritance is multi-table: all of a parent's attributes are members of the
@@ -303,6 +334,32 @@ $PetResponse = import from mapping Module.IMM_Pet($JsonContent);
 -- Without result variable (persistent entities, stores to DB)
 import from mapping Module.IMM_Pet($JsonContent);
 ```
+
+#### Range — how much of the result to bind
+
+Optional trailing clause, matching Studio Pro's **All / First / Custom** setting
+on the activity. Omit it and mxcli infers from the mapping's own root shape, as
+it always has.
+
+```sql
+$Pets = import from mapping Module.IMM_Pets($Json) all;            -- All (the default)
+$Pet  = import from mapping Module.IMM_Pets($Json) first;          -- First: ONE object
+$Page = import from mapping Module.IMM_Pets($Json) limit 10;       -- Custom
+$Page = import from mapping Module.IMM_Pets($Json) limit 10 offset 5;
+```
+
+`first` is a separate word from `limit 1` on purpose: `limit 1` is a *list* of
+one, `first` binds a single *object*, so the result variable's type differs.
+
+Two things the range does **not** do:
+
+- **It does not change what the mapping returns.** An object-rooted mapping
+  binds an object under every range — `all` on one is Studio Pro's own default,
+  and the blank app ships one (`FeedbackModule.SUB_Feedback_PostToAppInsights`).
+  Only `first` narrows a list mapping to a single object.
+- **`offset` is not accepted everywhere.** Mendix rejects it with
+  **CE6100** ("This entity does not support offset") unless the mapping's root
+  is a list; `limit` alone is fine either way. Verified on mxbuild 11.6.6.
 
 ### Export to Mapping (entity → JSON)
 

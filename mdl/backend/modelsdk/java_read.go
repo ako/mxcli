@@ -132,6 +132,20 @@ func codeActionParamTypeFromGen(el element.Element) javaactions.CodeActionParame
 // directly-typed element) to the semantic parameter type.
 func codeActionBasicFromGen(el element.Element) javaactions.CodeActionParameterType {
 	switch t := el.(type) {
+	// A microflow-typed parameter (a java action that takes a microflow to call
+	// back into — MCPServer.AddTool's ExecutingMicroflow, and every "register a
+	// handler" action). Missing here, it fell through to the default and read
+	// back as a String, so the microflow builder authored a
+	// BasicCodeActionParameterValue holding the microflow's name as a literal
+	// and `mx check` reported CE0115. mxcli-chat FINDINGS §36.
+	case *genJa.MicroflowJavaActionParameterType:
+		m := &javaactions.MicroflowType{}
+		m.ID = model.ID(t.ID())
+		return m
+	case *genJa.MicroflowParameterType:
+		m := &javaactions.MicroflowType{}
+		m.ID = model.ID(t.ID())
+		return m
 	case *genCa.EnumerationType:
 		return &javaactions.EnumerationType{Enumeration: t.EnumerationQualifiedName()}
 	case *genCa.ConcreteEntityType:

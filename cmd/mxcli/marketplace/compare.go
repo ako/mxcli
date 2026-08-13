@@ -128,8 +128,19 @@ func classify(k ElementKey, inst, pkg Element, hasInst, hasPkg bool) Finding {
 	if !inst.Describable() || !pkg.Describable() {
 		return Finding{Key: k, Verdict: Unknown, Reason: unknownReason(inst, pkg)}
 	}
+	// Identical text is solid evidence of "unchanged" whatever the type, so this
+	// is checked before asking whether the output is conclusive — otherwise every
+	// building block in Atlas would be reported as unknown for no reason.
 	if inst.MDL == pkg.MDL {
 		return Finding{Key: k, Verdict: Unchanged}
+	}
+	// They differ — but a difference is only evidence of an edit if the output
+	// could carry one. See Element.Conclusive.
+	if ok, why := inst.Conclusive(); !ok {
+		return Finding{Key: k, Verdict: Unknown, Reason: why}
+	}
+	if ok, why := pkg.Conclusive(); !ok {
+		return Finding{Key: k, Verdict: Unknown, Reason: why}
 	}
 	return Finding{Key: k, Verdict: Modified, InstalledMDL: inst.MDL, PackageMDL: pkg.MDL}
 }

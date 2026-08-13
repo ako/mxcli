@@ -226,7 +226,9 @@ func buildExportChild(ctx *parser.ExportMappingChildContext) *ast.ExportMappingE
 }
 
 // buildImportFromMappingStatement builds an ImportFromMappingStmt from the grammar context.
-// Grammar: (VARIABLE EQUALS)? IMPORT FROM MAPPING qualifiedName LPAREN VARIABLE RPAREN onErrorClause?
+// Grammar: (VARIABLE EQUALS)? IMPORT FROM MAPPING qualifiedName LPAREN VARIABLE RPAREN
+//
+//	importMappingRange? onErrorClause?
 func buildImportFromMappingStatement(ctx antlr.ParserRuleContext) ast.MicroflowStatement {
 	c := ctx.(*parser.ImportFromMappingStatementContext)
 	stmt := &ast.ImportFromMappingStmt{
@@ -239,6 +241,24 @@ func buildImportFromMappingStatement(ctx antlr.ParserRuleContext) ast.MicroflowS
 		stmt.SourceVariable = strings.TrimPrefix(vars[1].GetText(), "$")
 	} else if len(vars) >= 1 {
 		stmt.SourceVariable = strings.TrimPrefix(vars[0].GetText(), "$")
+	}
+
+	// Range: FIRST, or LIMIT/OFFSET. Absent means "All", which leaves the builder
+	// inferring cardinality from the mapping's root shape as it always has. (#881)
+	if r := c.ImportMappingRange(); r != nil {
+		rc := r.(*parser.ImportMappingRangeContext)
+		if rc.ALL() != nil {
+			stmt.All = true
+		}
+		if rc.FIRST() != nil {
+			stmt.First = true
+		}
+		if e := rc.GetLimitExpr(); e != nil {
+			stmt.LimitExpr = buildExpression(e)
+		}
+		if e := rc.GetOffsetExpr(); e != nil {
+			stmt.OffsetExpr = buildExpression(e)
+		}
 	}
 
 	if ec := c.OnErrorClause(); ec != nil {

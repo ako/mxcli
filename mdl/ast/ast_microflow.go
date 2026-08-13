@@ -838,6 +838,21 @@ type ImportFromMappingStmt struct {
 	SourceVariable string               // Input string variable (without $)
 	ErrorHandling  *ErrorHandlingClause // Optional ON ERROR clause
 	Annotations    *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+
+	// Range — how much of the mapping's result to bind. Mendix stores this on
+	// the ImportMappingCall as ConstantRange{SingleObject} or
+	// CustomRange{LimitExpression, OffsetExpression}; before #881 MDL could say
+	// none of it, so all three settings described identically and a
+	// describe→edit→exec cycle silently changed the activity's meaning.
+	//
+	// All fields unset = the range was not authored, and the builder keeps
+	// inferring cardinality from the mapping's own root shape, as it always has.
+	// DESCRIBE always emits one of All/First/Limit so a round trip cannot fall
+	// back on that inference and change the activity's meaning.
+	All        bool       // ALL   — bind the whole list, explicitly
+	First      bool       // FIRST — bind ONE object rather than a list
+	LimitExpr  Expression // LIMIT <expr>  — Custom range
+	OffsetExpr Expression // OFFSET <expr> — Custom range
 }
 
 func (s *ImportFromMappingStmt) isMicroflowStatement() {}

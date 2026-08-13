@@ -400,3 +400,43 @@ secret registers it owner-less.
       and `.../dist/index.js` also returns `200` (client bundle served).
 - [ ] With `--watch`, editing a microflow logs `applied via reload`; adding an entity
       logs `applied via restart` and creates the table in Postgres.
+
+## Constant values come from a configuration
+
+`mxcli run --local` applies the constant values of the project configuration it
+is running, merged over each constant's default:
+
+```text
+Applying 1 constant value(s):
+  Encryption.EncryptionKey  configuration "Default"
+```
+
+Before this they were ignored: mxbuild writes each constant's **default** into
+`deployment/model/config.json`, and that map is what the runtime is handed — so
+`alter settings constant … in configuration 'Default'` executed, round-tripped
+through `describe settings`, and did nothing. An app ran for hours with an empty
+encryption key while the model said otherwise.
+
+- `--configuration <name>` picks one. With several configurations and none named
+  `Default`, mxcli applies **none** and says so rather than guessing which
+  environment this run means.
+- A **private** override has no value in the model at all (the value lives on the
+  developer's workstation), so the default is used and the constant is named.
+- The line prints in every case, including "no overrides" — silence used to mean
+  "your override is in effect" when it was not.
+- `--constant Module.Name=value` (repeatable) sets a value for **this run only**.
+  It wins over the configuration, is never written to the project, and is
+  reported as coming from `--constant` so the output says which layer won. A
+  constant the project does not declare is refused before the app boots: the
+  runtime ignores a value for a constant that does not exist, so a typo would
+  otherwise be reported as applied and do nothing.
+
+Setting a constant on an app that is *already running* is a different mechanism
+again: `MicroflowConstants` over the M2EE admin port, which is how Mendix Cloud
+injects per-environment values. Measured on 11.12.1, `update_configuration` is
+**staged rather than applied** — the running app keeps the old value until the
+next `reload_model`, while the call answers `result:0` — and the admin API has no
+read-back to check against. Do not reach for
+`--runtime-setting 'MicroflowConstants={…}'`: it replaces the map mxcli built
+rather than adding to it, and at boot there is nothing to fall back on for
+`BasePath`/`DatabaseName`. Use `--constant`.

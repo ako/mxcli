@@ -33,6 +33,71 @@ mxcli test tests/ -p app.mpr             # Docker
 same project while the tests run — the tests never write into the database you
 are looking at in the browser. The database is created on first use.
 
+### Constants
+
+A `--local` run boots the app with the **same constant values `mxcli run --local`
+uses**: the project configuration's shared overrides, layered over each
+constant's default. It prints what it applied before the run:
+
+```
+Applying 1 constant value(s):
+  MyModule.ApiKey  configuration "Default"
+```
+
+Pass `--configuration <name>` to pick one when the project has several and none
+is called `Default` (it refuses to guess rather than run production's values by
+accident). `--attach` takes neither flag: it runs against an app someone else
+booted and inherits **that app's** constants.
+
+To set a value for one run without touching the project, use `--constant`
+(repeatable). It wins over the configuration and is never written to the model:
+
+```bash
+mxcli test tests/ -p app.mpr --local --constant MyModule.ApiKey=sk-test-123
+```
+
+A name the project does not declare is **refused**, before anything boots — the
+runtime silently ignores a value for a constant that does not exist, so a typo
+would otherwise be reported as applied and do nothing.
+
+The value is visible in shell history and in `ps`. That is fine for a throwaway
+test value and wrong for a real secret.
+
+This is worth knowing when a test asserts on something a constant feeds. Before
+this was wired up, `--local` ran with each constant's *default* while `--attach`
+ran with the configuration's, so the same suite could pass one way and fail the
+other with nothing in the output to explain it.
+
+For a secret that has to **persist** across runs, use the machine store:
+
+```bash
+mxcli constant set MyModule.ApiKey 'sk-live-...' -p app.mpr
+mxcli constant list -p app.mpr          # values from the store are masked
+mxcli constant unset MyModule.ApiKey -p app.mpr
+```
+
+It writes `<project>/.mxcli/constants.json` (mode 0600), adds `.mxcli/` to the
+project's `.gitignore` if missing, and then **asks git whether the path is
+really ignored** — refusing to write the value if it is not. It beats the
+configuration and loses to `--constant`.
+
+By default the new value takes effect at the next boot. Add `--apply` to push it
+into a `mxcli run --local` that is already up, without restarting it:
+
+```bash
+mxcli constant set MyModule.ApiKey 'sk-live-...' -p app.mpr --apply
+```
+
+That is two admin calls, not one: `update_configuration` is *staged* — the
+running app keeps its old values and the call still answers success — and only
+the following `reload_model` applies them. mxcli does both. It cannot confirm
+the result, because the admin API has no way to read a constant back, so it says
+so and points you at the app itself.
+
+This is mxcli's own store, not Mendix's. Mendix's private configuration values
+are encrypted per user account by Studio Pro from 10.9, so nothing headless can
+read or write them. See `docs/11-proposals/PROPOSAL_constant_values.md`.
+
 ---
 
 ## Test File Formats

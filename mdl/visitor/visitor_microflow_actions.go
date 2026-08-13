@@ -83,8 +83,16 @@ func buildTemplateParams(ctx parser.ITemplateParamsContext) []ast.TemplateParam 
 	allParams := paramsCtx.AllTemplateParam()
 	for i, param := range allParams {
 		paramCtx := param.(*parser.TemplateParamContext)
-		indexStr := paramCtx.NUMBER_LITERAL().GetText()
-		index, _ := strconv.Atoi(indexStr)
+		// The grammar requires at least one parameter, so `with ()` does not
+		// parse — but ANTLR error-recovers by handing the walker a templateParam
+		// with no index token rather than by skipping the rule. The syntax error
+		// is already reported; dereferencing here killed the whole process
+		// instead of failing the one statement (FINDINGS §55).
+		numTok := paramCtx.NUMBER_LITERAL()
+		if numTok == nil {
+			continue
+		}
+		index, _ := strconv.Atoi(numTok.GetText())
 
 		var tp ast.TemplateParam
 		tp.Index = index

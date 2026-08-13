@@ -1,0 +1,55 @@
+-- ============================================================================
+-- mxcli-chat FINDINGS §36 / §37 — java actions with a microflow parameter
+--
+-- §36  A java action parameter of type Microflow (MCPServer.AddTool's
+--      ExecutingMicroflow, and every other "register a callback" action) read
+--      back from the model as a String, so the microflow builder authored the
+--      callback as Microflows$BasicCodeActionParameterValue holding
+--      'Module.MyFlow' as a literal instead of Microflows$MicroflowParameterValue.
+--      Mendix reported CE0115.
+--
+-- §37  `mxcli check --references` reported "java action not found" for an action
+--      created earlier in the SAME script. Entities, microflows, pages and
+--      nanoflows were exempt; java actions were not.
+--
+-- Verify:
+--   mxcli check mdl-examples/bug-tests/javaaction-microflow-parameter.mdl \
+--       -p app.mpr --references     # §37 — must pass, no "not found"
+--   mxcli exec  ... -p app.mpr
+--   mx check app.mpr                # §36 — 0 errors, no CE0115
+--   mxcli -p app.mpr -c "describe java action Callbacks.RegisterTool"
+--                                   #      -> "ExecutingMicroflow: Microflow"
+-- ============================================================================
+
+create module Callbacks;
+/
+
+-- The parameter type is the bare word `Microflow`; that is also what DESCRIBE
+-- prints, so this file is what a describe/re-execute round-trip produces.
+create java action Callbacks.RegisterTool(
+    ToolName: String not null,
+    ExecutingMicroflow: Microflow not null
+) returns Boolean
+as $$
+    return true;
+$$;
+/
+
+create microflow Callbacks.MF_Tool (Input: String)
+returns string
+begin
+  return $Input;
+end;
+/
+
+-- §37: RegisterTool is two statements old and not in the project yet.
+-- §36: ExecutingMicroflow must serialize as MicroflowParameterValue.
+create microflow Callbacks.MF_Register ()
+returns boolean
+begin
+  $Registered = call java action Callbacks.RegisterTool(
+    ToolName = 'echo',
+    ExecutingMicroflow = 'Callbacks.MF_Tool');
+  return $Registered;
+end;
+/

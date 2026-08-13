@@ -201,7 +201,11 @@ func importValueElementToGen(id string, elem *model.ImportMappingElement, parent
 	addInt32(g, "MinOccurs", int32(elem.MinOccurs))
 	addInt32(g, "MaxOccurs", int32(elem.MaxOccurs))
 	addBool(g, "Nillable", elem.Nillable)
-	addBool(g, "IsDefaultType", false)
+	// IsDefaultType is NOT written here: it belongs to the OBJECT element type
+	// only. The generated metamodel declares it on Import/ExportObjectMappingElement
+	// and on neither ValueMappingElement, and Studio Pro's own mappings in a blank
+	// app carry it on the object element alone. A property the type does not own is
+	// the shape mxbuild accepts and Studio Pro refuses to open. (issue #882)
 	addStr(g, "ElementType", "Value")
 	addStr(g, "Documentation", "")
 	addStr(g, "Converter", "")
@@ -366,7 +370,11 @@ func exportValueElementToGen(id string, elem *model.ExportMappingElement, parent
 	// structure also wrote 0 for every element (#841).
 	addInt32(g, "MaxOccurs", int32(elem.MaxOccurs))
 	addBool(g, "Nillable", true)
-	addBool(g, "IsDefaultType", false)
+	// IsDefaultType is NOT written here: it belongs to the OBJECT element type
+	// only. The generated metamodel declares it on Import/ExportObjectMappingElement
+	// and on neither ValueMappingElement, and Studio Pro's own mappings in a blank
+	// app carry it on the object element alone. A property the type does not own is
+	// the shape mxbuild accepts and Studio Pro refuses to open. (issue #882)
 	addStr(g, "ElementType", "Value")
 	addStr(g, "Documentation", "")
 	addStr(g, "Converter", "")

@@ -220,17 +220,21 @@ func execCreateImportMapping(ctx *ExecContext, s *ast.CreateImportMappingStmt) e
 		im.XmlSchema = s.SchemaRef.String()
 	}
 
-	// Build path→JsonElement map from JSON structure — mapping elements clone from this
-	jsElementsByPath := map[string]*types.JsonElement{}
+	// Index the JSON structure — mapping elements clone their names, path and
+	// occurrence bounds from it.
+	idx := newJSONSchemaIndex(nil)
 	if s.SchemaKind == "JSON_STRUCTURE" && s.SchemaRef.Module != "" {
 		if js, err2 := ctx.Backend.GetJsonStructureByQualifiedName(s.SchemaRef.Module, s.SchemaRef.Name); err2 == nil && js != nil {
-			buildJsonElementPathMap(js.Elements, jsElementsByPath)
+			idx = newJSONSchemaIndex(js.Elements)
 		}
 	}
 
 	// Build element tree from the AST definition, cloning JSON structure properties
 	if s.RootElement != nil {
-		root := buildImportMappingElementModel(s.Name.Module, s.RootElement, "", "(Object)", ctx.Backend, jsElementsByPath, true)
+		root, err := buildImportMappingElementModel(s.Name.Module, s.RootElement, "", "(Object)", ctx.Backend, idx, true)
+		if err != nil {
+			return mdlerrors.NewValidation(fmt.Sprintf("import mapping %s: %v", s.Name.String(), err))
+		}
 		im.Elements = append(im.Elements, root)
 	}
 
@@ -259,33 +263,58 @@ func execCreateImportMapping(ctx *ExecContext, s *ast.CreateImportMappingStmt) e
 // It clones properties from the matching JSON structure element (ExposedName, JsonPath,
 // MaxOccurs, ElementType, etc.) and adds mapping-specific bindings (Entity, Attribute,
 // Association, ObjectHandling).
-func buildImportMappingElementModel(moduleName string, def *ast.ImportMappingElementDef, parentEntity, parentPath string, b backend.FullBackend, jsElems map[string]*types.JsonElement, isRoot bool) *model.ImportMappingElement {
+func buildImportMappingElementModel(moduleName string, def *ast.ImportMappingElementDef, parentEntity, parentPath string, b backend.FullBackend, idx *jsonSchemaIndex, isRoot bool) (*model.ImportMappingElement, error) {
 	elem := &model.ImportMappingElement{
 		BaseElement: model.BaseElement{
 			ID: model.ID(types.GenerateID()),
 		},
 	}
 
-	// Determine lookup path in JSON structure
-	var lookupPath string
-	if isRoot {
+	// Resolve the member against the JSON structure. The authored name may be
+	// the raw JSON key or the exposed name — DESCRIBE emits the latter, so both
+	// have to work or mxcli's own output does not round-trip. (#882)
+	var jsElem *types.JsonElement
+	lookupPath := parentPath + "|" + def.JsonName
+	switch {
+	case isRoot:
 		lookupPath = "(Object)"
-	} else {
-		lookupPath = parentPath + "|" + def.JsonName
+		jsElem = idx.byPath[lookupPath]
+	default:
+		jsElem = idx.resolve(parentPath, def.JsonName)
 	}
 
-	// Clone properties from the matching JSON structure element
-	if jsElem, ok := jsElems[lookupPath]; ok {
+	// Clone properties from the matching JSON structure element. A member that
+	// resolves to nothing is REFUSED, never given a made-up path: the fabricated
+	// path passed `mxcli check` and surfaced only later — in mxbuild as CE5015,
+	// or at runtime as an unresolvable mapping. (#882)
+	if jsElem == nil && !isRoot && idx.resolvable() {
+		known := idx.memberNames(parentPath)
+		if len(known) == 0 {
+			return nil, fmt.Errorf("%q is not a member of the JSON structure at %s, which has no members there",
+				def.JsonName, parentPath)
+		}
+		return nil, fmt.Errorf("%q is not a member of the JSON structure at %s; available: %s",
+			def.JsonName, parentPath, strings.Join(known, ", "))
+	}
+	if jsElem != nil {
 		elem.ExposedName = jsElem.ExposedName
 		elem.JsonPath = jsElem.Path
 		elem.MinOccurs = jsElem.MinOccurs
 		elem.MaxOccurs = jsElem.MaxOccurs
 		elem.Nillable = jsElem.Nillable
-		elem.OriginalValue = jsElem.OriginalValue
+		// OriginalValue is deliberately NOT cloned. It is the sample value parsed
+		// out of the JSON structure's snippet ("42", "\"Widget\""), and it belongs
+		// to the STRUCTURE — Studio Pro leaves it empty on every mapping element.
+		// Measured across the two Studio-Pro-authored mappings a blank app ships
+		// (FeedbackModule's IMM_PostResponse and EMM_PostFeedback, ~15 value
+		// elements between them): all "", while their structures carry 17 non-empty
+		// samples. Copying the sample in makes an mxcli-written mapping differ from
+		// a Studio-Pro-written one over the same structure. (issue #882)
 		elem.FractionDigits = jsElem.FractionDigits
 		elem.TotalDigits = jsElem.TotalDigits
 		elem.MaxLength = jsElem.MaxLength
 	} else {
+		// Root only, and only when the structure could not be read at all.
 		elem.ExposedName = def.JsonName
 		elem.JsonPath = lookupPath
 		elem.Nillable = true
@@ -319,10 +348,10 @@ func buildImportMappingElementModel(moduleName string, def *ast.ImportMappingEle
 
 		// For arrays: skip the container, use the item path directly.
 		// Studio Pro represents arrays as a single ObjectMappingElement at the |(Object) item path.
-		childPath := lookupPath
-		if jsElem, ok := jsElems[lookupPath]; ok && jsElem.ElementType == "Array" {
-			itemPath := lookupPath + "|(Object)"
-			if jsItem, ok2 := jsElems[itemPath]; ok2 {
+		childPath := elem.JsonPath
+		if jsElem != nil && jsElem.ElementType == "Array" {
+			itemPath := jsElem.Path + "|(Object)"
+			if jsItem, ok2 := idx.byPath[itemPath]; ok2 {
 				elem.ExposedName = jsItem.ExposedName
 				elem.JsonPath = jsItem.Path
 				elem.MinOccurs = jsItem.MinOccurs
@@ -333,7 +362,11 @@ func buildImportMappingElementModel(moduleName string, def *ast.ImportMappingEle
 		}
 
 		for _, child := range def.Children {
-			elem.Children = append(elem.Children, buildImportMappingElementModel(moduleName, child, entity, childPath, b, jsElems, false))
+			c, err := buildImportMappingElementModel(moduleName, child, entity, childPath, b, idx, false)
+			if err != nil {
+				return nil, err
+			}
+			elem.Children = append(elem.Children, c)
 		}
 	} else {
 		// Value mapping — bind to attribute
@@ -357,7 +390,7 @@ func buildImportMappingElementModel(moduleName string, def *ast.ImportMappingEle
 		elem.Attribute = attr
 	}
 
-	return elem
+	return elem, nil
 }
 
 // buildJsonElementPathMap recursively builds a map from JSON path → JsonElement.
@@ -369,6 +402,106 @@ func buildJsonElementPathMap(elems []*types.JsonElement, m map[string]*types.Jso
 		m[e.Path] = e
 		buildJsonElementPathMap(e.Children, m)
 	}
+}
+
+// jsonSchemaIndex resolves a member named in MDL to its JSON structure element.
+//
+// A JSON structure element carries TWO names, and they routinely differ:
+//
+//	Path         "(Object)|uuid"   the raw JSON key — what the RUNTIME resolves by
+//	ExposedName  "Uuid"            Mendix's derived name — what Studio Pro DISPLAYS
+//
+// Mendix derives ExposedName by capitalising the initial (and, for an array's
+// item object, by suffixing "Item"), so the two diverge for any lowercase-initial
+// key. Both are stored, by Studio Pro too — the blank app's own
+// FeedbackModule.JSON_AppInsightsResponse holds ExposedName "Uuid" against Path
+// "(Object)|uuid".
+//
+// DESCRIBE prints ExposedName (it is the name Studio Pro shows), so mxcli's own
+// output names members the raw-key lookup could not find. Re-executing a DESCRIBE
+// therefore FABRICATED a path from the exposed name — "(Object)|Uuid", and for an
+// array the "|(Object)" item marker vanished entirely — producing a mapping that
+// resolves against nothing at runtime. Accepting both spellings is what makes
+// DESCRIBE round-trip. (issue #882)
+type jsonSchemaIndex struct {
+	byPath   map[string]*types.JsonElement
+	children map[string][]*types.JsonElement // parent path → children, in order
+}
+
+func newJSONSchemaIndex(elems []*types.JsonElement) *jsonSchemaIndex {
+	idx := &jsonSchemaIndex{
+		byPath:   map[string]*types.JsonElement{},
+		children: map[string][]*types.JsonElement{},
+	}
+	idx.add("", elems)
+	return idx
+}
+
+func (i *jsonSchemaIndex) add(parentPath string, elems []*types.JsonElement) {
+	for _, e := range elems {
+		if e == nil {
+			continue
+		}
+		i.byPath[e.Path] = e
+		i.children[parentPath] = append(i.children[parentPath], e)
+		i.add(e.Path, e.Children)
+	}
+}
+
+// resolve finds the element a member name refers to under parentPath, accepting
+// the raw JSON key or the exposed name. For an array addressed by its ITEM's
+// exposed name ("__ValueItem"), it returns the ARRAY element, so the caller's
+// array branch still takes the "|(Object)" step to the item.
+//
+// Returns nil when the name matches nothing — the caller must refuse rather than
+// invent a path. A fabricated path passes `mxcli check` and only fails later, in
+// mxbuild as CE5015 or, worse, at runtime.
+func (i *jsonSchemaIndex) resolve(parentPath, name string) *types.JsonElement {
+	if e, ok := i.byPath[parentPath+"|"+name]; ok {
+		return e
+	}
+	for _, c := range i.children[parentPath] {
+		if c.ExposedName == name {
+			return c
+		}
+	}
+	for _, c := range i.children[parentPath] {
+		if c.ElementType != "Array" {
+			continue
+		}
+		if item, ok := i.byPath[c.Path+"|(Object)"]; ok && item.ExposedName == name {
+			return c
+		}
+	}
+	return nil
+}
+
+// resolvable reports whether a JSON structure was actually loaded.
+//
+// `create import mapping X { ... }` with no `with json structure` clause is
+// legal MDL, and an XML-schema or message-definition mapping resolves no JSON
+// elements either. There is nothing to validate a member against in those cases,
+// so names must be taken at face value — refusing them broke eight round-trip
+// tests that create schema-less mappings. The refusal only applies where a
+// schema exists to contradict the name. (issue #882)
+func (i *jsonSchemaIndex) resolvable() bool { return len(i.byPath) > 0 }
+
+// memberNames lists the spellings that would have resolved under parentPath, so a
+// rejection can name them instead of leaving the author to guess.
+func (i *jsonSchemaIndex) memberNames(parentPath string) []string {
+	var out []string
+	for _, c := range i.children[parentPath] {
+		raw := c.Path
+		if idx := strings.LastIndex(raw, "|"); idx >= 0 {
+			raw = raw[idx+1:]
+		}
+		if c.ExposedName != "" && c.ExposedName != raw {
+			out = append(out, fmt.Sprintf("%s (or %s)", raw, c.ExposedName))
+			continue
+		}
+		out = append(out, raw)
+	}
+	return out
 }
 
 // resolveAttributeType looks up the data type of an entity attribute from the project.

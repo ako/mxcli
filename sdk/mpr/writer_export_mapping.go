@@ -170,7 +170,11 @@ func serializeExportValueElement(id string, elem *model.ExportMappingElement, pa
 		// JSON structure also wrote 0 for every element (#841).
 		{Key: "MaxOccurs", Value: int32(elem.MaxOccurs)},
 		{Key: "Nillable", Value: true},
-		{Key: "IsDefaultType", Value: false},
+		// IsDefaultType is NOT written here: it belongs to the OBJECT element type
+		// only. The generated metamodel declares it on Import/ExportObjectMappingElement
+		// and on neither ValueMappingElement, and Studio Pro's own mappings in a blank
+		// app carry it on the object element alone. A property the type does not own is
+		// the shape mxbuild accepts and Studio Pro refuses to open. (issue #882)
 		{Key: "ElementType", Value: "Value"},
 		{Key: "Documentation", Value: ""},
 		{Key: "Converter", Value: ""},

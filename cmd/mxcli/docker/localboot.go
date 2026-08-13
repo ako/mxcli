@@ -71,6 +71,10 @@ type LocalRuntimeOptions struct {
 	// payload (e.g. "Metrics.Registries", "OpenTelemetry._RuntimeSpanFilters").
 	// Merged here because the admin action replaces rather than merges.
 	RuntimeSettings map[string]any
+	// ConstantOverrides are the running configuration's constant values,
+	// merged over the defaults mxbuild wrote into the deployment. See
+	// mergeConstantOverrides.
+	ConstantOverrides map[string]string
 	// Trace attaches the bundled OpenTelemetry Java agent to the runtime JVM
 	// (traces via the console exporter → the tee'd runtime log). The caller should
 	// also set OpenTelemetry._RuntimeSpanFilters via RuntimeSettings — unfiltered
@@ -113,6 +117,8 @@ type LocalRuntime struct {
 	logFile *os.File // open when RuntimeLogPath is set; runtime stdout/stderr tee
 	m2ee    M2EEOptions
 	ctrl    *RuntimeController
+	// bootConfig is the update_configuration payload sent at start; see BootConfig.
+	bootConfig map[string]any
 }
 
 func (o *LocalRuntimeOptions) applyDefaults() {
@@ -286,10 +292,37 @@ func runtimeConfigParams(o LocalRuntimeOptions, constants map[string]string) map
 		params["ApplicationRootUrl"] = o.ApplicationRootUrl
 	}
 	// Overlay extra runtime settings (e.g. Metrics.Registries,
-	// OpenTelemetry._RuntimeSpanFilters) into this SAME payload. The admin
-	// update_configuration action REPLACES rather than merges and has no
-	// read-back, so merging here — into mxcli's single boot call — is the only
-	// safe way to add settings without clobbering the DB/BasePath config.
+	// OpenTelemetry._RuntimeSpanFilters) into this SAME payload, because the
+	// map below overwrites by key: a caller passing
+	// `--runtime-setting MicroflowConstants=…` replaces the constants map built
+	// above rather than adding to it, and at boot there is nothing to fall back
+	// on for BasePath/DatabaseName (they are not in config.json). Folding
+	// everything into mxcli's single boot call is what keeps that safe.
+	//
+	// The admin action also has no read-back — get_configuration,
+	// get_current_configuration, runtime_config and get_current_runtime_status
+	// are all "Action not found" on 11.12.1 — so a caller cannot merge by
+	// reading first.
+	//
+	// Measured on 11.12.1, for anyone tempted to drive this API live. Both
+	// readings are from a microflow returning two constants over the test
+	// endpoint, so they are the app's own view rather than the API's:
+	//
+	//   - The call is STAGED, not applied. The running app keeps the old value
+	//     until the next reload_model, while update_configuration still answers
+	//     result:0. "Set a constant on a running app" is therefore the pair.
+	//   - MicroflowConstants MERGES onto the running configuration. A payload
+	//     carrying one constant left the other at the value an EARLIER
+	//     update_configuration had given it — not at its deployment default,
+	//     and not blank. Payload shape does not change this: params carrying
+	//     only MicroflowConstants behaved the same as the full boot config.
+	//
+	// The second point is disputed. mxcli-chat FINDINGS §57 reports the opposite
+	// on 11.13.0 — a partial map blanking every omitted constant — inferred from
+	// a downstream symptom rather than read back. It did not reproduce here on
+	// 11.12.1 in either payload shape. Do not rely on either behaviour: ApplyConstants
+	// sends the whole resolved chain, which is correct under both readings, and
+	// that is the reason this disagreement costs mxcli nothing.
 	for k, v := range o.RuntimeSettings {
 		params[k] = v
 	}
@@ -323,6 +356,29 @@ func readDeploymentConstants(deployDir string) (map[string]string, error) {
 		return map[string]string{}, nil
 	}
 	return cfg.Constants, nil
+}
+
+// mergeConstantOverrides layers a configuration's constant values over the
+// defaults mxbuild resolved into the deployment.
+//
+// The merge direction is the whole point. config.json carries every constant's
+// *default*, which is what the runtime needs for the ones a configuration does
+// not override; the configuration's values win where both exist. Replacing the
+// map instead — the shape `--runtime-setting MicroflowConstants=…` has — drops
+// every constant the configuration is silent about, and the app 530s on the
+// first microflow that reads one.
+func mergeConstantOverrides(defaults, overrides map[string]string) map[string]string {
+	if len(overrides) == 0 {
+		return defaults
+	}
+	merged := make(map[string]string, len(defaults)+len(overrides))
+	for k, v := range defaults {
+		merged[k] = v
+	}
+	for k, v := range overrides {
+		merged[k] = v
+	}
+	return merged
 }
 
 // ensureDataDirs creates the data/{files,tmp,model-upload} directories the
@@ -450,8 +506,59 @@ func (rt *LocalRuntime) spawnAndConfigure() error {
 	if err != nil {
 		return err
 	}
-	if _, err := CallM2EE(rt.m2ee, "update_configuration", runtimeConfigParams(rt.opts, constants)); err != nil {
+	constants = mergeConstantOverrides(constants, rt.opts.ConstantOverrides)
+	// Kept so a LATER caller can re-send this exact payload with a different
+	// constants map. The admin action has no read-back, so the only way to change
+	// one setting without guessing at the rest is to have kept the rest.
+	rt.bootConfig = runtimeConfigParams(rt.opts, constants)
+	if _, err := CallM2EE(rt.m2ee, "update_configuration", rt.bootConfig); err != nil {
 		return fmt.Errorf("update_configuration: %w", err)
+	}
+	return nil
+}
+
+// BootConfig is the update_configuration payload this runtime was started with.
+//
+// It is what makes a live constant change possible from ANOTHER process: that
+// process cannot read the configuration back (the admin API has no such action),
+// so it re-sends this with MicroflowConstants replaced. See ApplyConstants.
+func (rt *LocalRuntime) BootConfig() map[string]any { return rt.bootConfig }
+
+// AdminOptions is how to reach this runtime's admin API.
+func (rt *LocalRuntime) AdminOptions() M2EEOptions { return rt.m2ee }
+
+// ApplyConstants changes a running app's constant values: it re-sends a boot
+// payload with MicroflowConstants replaced, then reloads the model.
+//
+// BOTH calls are required, and that is the whole reason this is a function
+// rather than a one-liner at the call site. Measured on 11.12.1:
+// update_configuration is STAGED — the running app keeps its old values and
+// still answers result:0 — and only the next reload_model applies them. Shipping
+// just the first call would produce a command that reports success and changes
+// nothing, which is the exact failure this feature exists to remove
+// (mxcli-chat FINDINGS §33).
+//
+// It re-sends the whole payload rather than MicroflowConstants alone because
+// the admin action offers no read-back to merge against: whatever is not sent is
+// simply not in the configuration afterwards.
+func ApplyConstants(m2ee M2EEOptions, bootConfig map[string]any, constants map[string]string) error {
+	if len(bootConfig) == 0 {
+		return fmt.Errorf("no boot configuration to re-send")
+	}
+	payload := make(map[string]any, len(bootConfig))
+	for k, v := range bootConfig {
+		payload[k] = v
+	}
+	if constants == nil {
+		constants = map[string]string{}
+	}
+	payload["MicroflowConstants"] = constants
+
+	if _, err := CallM2EE(m2ee, "update_configuration", payload); err != nil {
+		return fmt.Errorf("update_configuration: %w", err)
+	}
+	if _, err := CallM2EE(m2ee, "reload_model", nil); err != nil {
+		return fmt.Errorf("reload_model (the new values are staged but NOT in effect): %w", err)
 	}
 	return nil
 }

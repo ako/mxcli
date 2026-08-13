@@ -634,13 +634,27 @@ func parseResultHandling(raw map[string]any, handlingType string) microflows.Res
 			result.MappingID = model.ID(mappingRef)
 			forceSingleOccurrence := extractBool(call["ForceSingleOccurrence"], false)
 			result.ForceSingleOccurrence = &forceSingleOccurrence
+			// The Range is polymorphic: a ConstantRange carries SingleObject
+			// (All/First) while a CustomRange carries the limit and offset
+			// expressions. Reading only SingleObject dropped the Custom setting
+			// entirely, so a describe→edit→exec cycle turned a bounded import
+			// into an unbounded one (issue #881).
 			if rangeMap := toMap(call["Range"]); rangeMap != nil {
-				result.SingleObject = extractBool(rangeMap["SingleObject"], false)
+				switch extractString(rangeMap["$Type"]) {
+				case "Microflows$CustomRange":
+					result.LimitExpression = extractString(rangeMap["LimitExpression"])
+					result.OffsetExpression = extractString(rangeMap["OffsetExpression"])
+				default:
+					result.SingleObject = extractBool(rangeMap["SingleObject"], false)
+				}
 			}
 		}
 		if varType := toMap(raw["VariableType"]); varType != nil {
 			result.ResultEntityID = model.ID(extractString(varType["Entity"]))
-			if extractString(varType["$Type"]) == "DataTypes$ObjectType" {
+			// A bounded range is a LIST, so an ObjectType variable cannot make it
+			// single — without this guard a CustomRange read back as First.
+			if extractString(varType["$Type"]) == "DataTypes$ObjectType" &&
+				result.LimitExpression == "" && result.OffsetExpression == "" {
 				result.SingleObject = true
 			}
 		}
@@ -746,16 +760,43 @@ func parseImportXmlAction(raw map[string]any) *microflows.ImportXmlAction {
 			}
 			forceSingleOccurrence := extractBool(call["ForceSingleOccurrence"], false)
 			handling.ForceSingleOccurrence = &forceSingleOccurrence
+			// The Range is polymorphic — a ConstantRange carries SingleObject
+			// (Studio Pro's All/First), a CustomRange the limit and offset
+			// expressions. Reading only SingleObject dropped Custom entirely, so
+			// describe→edit→exec turned a bounded import unbounded. (issue #881)
 			if rangeMap := toMap(call["Range"]); rangeMap != nil {
-				handling.SingleObject = extractBool(rangeMap["SingleObject"], false)
+				switch extractString(rangeMap["$Type"]) {
+				case "Microflows$CustomRange":
+					handling.LimitExpression = extractString(rangeMap["LimitExpression"])
+					handling.OffsetExpression = extractString(rangeMap["OffsetExpression"])
+				default:
+					single := extractBool(rangeMap["SingleObject"], false)
+					handling.RangeSingleObject = &single
+					handling.SingleObject = single
+				}
 			}
-			// Older XML import mappings may omit Range and encode single-object
-			// handling only through ForceSingleOccurrence. REST result handling
-			// stores Range consistently, so this compatibility fallback stays
-			// XML-specific.
-			if !handling.SingleObject {
-				handling.SingleObject = forceSingleOccurrence
+			// The result variable's cardinality is the stored VariableType where
+			// there is one; it does NOT track the range (Mendix's own
+			// SUB_Feedback_PostToAppInsights pairs ConstantRange{SingleObject:false}
+			// with an ObjectType). Only otherwise does ForceSingleOccurrence stand
+			// in — and never for a bounded range, which is always a list, or a
+			// Custom range reads back as First and loses the limit.
+			switch extractString(toMap(rh["VariableType"])["$Type"]) {
+			case "DataTypes$ObjectType":
+				handling.SingleObject = true
+			case "DataTypes$ListType":
+				handling.SingleObject = false
+			default:
+				if !handling.SingleObject && handling.LimitExpression == "" && handling.OffsetExpression == "" {
+					handling.SingleObject = forceSingleOccurrence
+				}
 			}
+		}
+		// The writer stores VariableType on the ResultHandling, not on the
+		// ImportMappingCall, so the lookup above finds nothing on anything mxcli or
+		// Studio Pro writes — leaving the result entity empty.
+		if varType := toMap(rh["VariableType"]); varType != nil && handling.ResultEntityID == "" {
+			handling.ResultEntityID = model.ID(extractString(varType["Entity"]))
 		}
 		action.ResultHandling = handling
 	}

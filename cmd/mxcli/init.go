@@ -572,6 +572,14 @@ Container Runtime:
 			} else {
 				fmt.Println("\nCreated .gitignore")
 			}
+		} else if mprFile != "" {
+			// A project that already has a .gitignore keeps it — but .mxcli/ has to
+			// be in there regardless, because it holds machine-local constant values
+			// (which may be secrets), the run/test handshake and its token, and
+			// runtime logs. Only the create-if-missing branch above covered it.
+			if _, err := ensureStoreIgnored(filepath.Join(absDir, mprFile)); err != nil {
+				fmt.Fprintf(os.Stderr, "  Warning: could not ensure .mxcli/ is git-ignored: %v\n", err)
+			}
 		}
 
 		// Create .playwright/cli.config.json for playwright-cli

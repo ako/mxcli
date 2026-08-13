@@ -512,6 +512,19 @@ func astDataTypeToJavaActionParamType(dt ast.DataType) javaactions.CodeActionPar
 				Enumeration: dt.EnumRef.Module + "." + dt.EnumRef.Name,
 			}
 		}
+		// `Microflow` / `Nanoflow` are what DESCRIBE prints for a callback
+		// parameter (MCPServer.AddTool's ExecutingMicroflow, and every other
+		// "register a handler" action). The parser cannot tell a bare name from
+		// an entity, so without this the DESCRIBE output round-tripped into an
+		// entity type with an empty module — `.Microflow`. Only the unqualified
+		// name is treated this way; a real `Module.Microflow` entity is not.
+		if bare := bareDataTypeName(dt); bare == "Microflow" || bare == "Nanoflow" {
+			id := model.ID(types.GenerateID())
+			if bare == "Nanoflow" {
+				return &javaactions.NanoflowType{BaseElement: model.BaseElement{ID: id}}
+			}
+			return &javaactions.MicroflowType{BaseElement: model.BaseElement{ID: id}}
+		}
 		entityName := ""
 		if dt.EntityRef != nil {
 			entityName = dt.EntityRef.Module + "." + dt.EntityRef.Name
@@ -546,6 +559,18 @@ func astDataTypeToJavaActionParamType(dt ast.DataType) javaactions.CodeActionPar
 			},
 		}
 	}
+}
+
+// bareDataTypeName returns the name of an unqualified entity/enumeration data
+// type (no module part), or "" when the type is qualified or absent.
+func bareDataTypeName(dt ast.DataType) string {
+	switch {
+	case dt.EntityRef != nil && dt.EntityRef.Module == "":
+		return dt.EntityRef.Name
+	case dt.EnumRef != nil && dt.EnumRef.Module == "":
+		return dt.EnumRef.Name
+	}
+	return ""
 }
 
 // astDataTypeToJavaActionReturnType converts an AST DataType to a Java action return type.

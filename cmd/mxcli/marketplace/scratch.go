@@ -142,15 +142,11 @@ func PackageProject(ctx context.Context, mpkPath, mendixVersion, workDir string,
 			"hint: run 'mxcli setup mxbuild --version %s'", mendixVersion, err, mendixVersion)
 	}
 
-	const appName = "PackageRef"
-	create := exec.CommandContext(ctx, mxPath, "create-project", "--app-name", appName)
-	create.Dir = workDir
-	docker.PrepareMxCommand(create)
-	if out, err := create.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("mx create-project failed: %w\n%s", err, strings.TrimSpace(string(out)))
+	if err := blankProjectInto(ctx, mxPath, mendixVersion, workDir); err != nil {
+		return "", err
 	}
 
-	mprPath, err := findScratchMpr(workDir, appName)
+	mprPath, err := findScratchMpr(workDir, blankAppName)
 	if err != nil {
 		return "", err
 	}
@@ -205,6 +201,175 @@ func PackageProject(ctx context.Context, mpkPath, mendixVersion, workDir string,
 		return "", fmt.Errorf("mx module-import failed: %w\n%s", err, strings.TrimSpace(string(out)))
 	}
 	return mprPath, nil
+}
+
+// blankAppName is what every reference project is created as. It is fixed
+// rather than per-run so a cached blank tree can be reused verbatim.
+const blankAppName = "PackageRef"
+
+// blankProjectInto puts a pristine blank Mendix project into workDir, from the
+// cache when one is there and from `mx create-project` when not.
+//
+// `mx create-project` is the single most expensive step in building a reference
+// (~12s of ~25s) and its result depends on nothing but the Mendix version, so a
+// run updating six modules paid for twelve identical blank apps. The version
+// stamp is verified BEFORE anything is cached, so a cache entry can never carry
+// the wrong version — which matters more than the time, because comparing across
+// versions reports Mendix's own conversions as user edits.
+func blankProjectInto(ctx context.Context, mxPath, mendixVersion, workDir string) error {
+	cacheDir, cerr := blankCacheDir(mendixVersion)
+	if cerr == nil && cacheReady(cacheDir) {
+		if err := copyTree(cacheDir, workDir); err == nil {
+			return nil
+		}
+		// A cache entry that cannot be copied is not worth diagnosing: drop it and
+		// build. Serving a partial project would surface as bogus diff findings.
+		_ = os.RemoveAll(cacheDir)
+	}
+
+	create := exec.CommandContext(ctx, mxPath, "create-project", "--app-name", blankAppName)
+	create.Dir = workDir
+	docker.PrepareMxCommand(create)
+	if out, err := create.CombinedOutput(); err != nil {
+		return fmt.Errorf("mx create-project failed: %w\n%s", err, strings.TrimSpace(string(out)))
+	}
+	if cerr != nil {
+		return nil
+	}
+
+	// Verify before caching, not after serving. A blank app stamped with the
+	// wrong version (ResolveMxForVersion falls back to any cached mxbuild) must
+	// not become the entry every later run trusts.
+	mprPath, err := findScratchMpr(workDir, blankAppName)
+	if err != nil {
+		return err
+	}
+	if err := verifyProjectVersion(mprPath, mendixVersion); err != nil {
+		return err
+	}
+	cacheBlankProject(workDir, cacheDir)
+	return nil
+}
+
+// cacheBlankProject copies a just-built blank project into the cache. Failure is
+// silent by design: the caller already has a working project in workDir, and a
+// cache that cannot be written is a slow tool, not a broken one.
+//
+// It copies rather than moves because workDir is what the caller goes on to use.
+// The copy lands beside the cache entry and is renamed in, so a process killed
+// mid-copy leaves a stray directory rather than a half-entry.
+func cacheBlankProject(workDir, cacheDir string) {
+	if refCacheDisabled() {
+		return
+	}
+	staging, err := os.MkdirTemp(filepath.Dir(cacheDir), "building-")
+	if err != nil {
+		if err := os.MkdirAll(filepath.Dir(cacheDir), 0o755); err != nil {
+			return
+		}
+		if staging, err = os.MkdirTemp(filepath.Dir(cacheDir), "building-"); err != nil {
+			return
+		}
+	}
+	if err := copyTree(workDir, staging); err != nil {
+		_ = os.RemoveAll(staging)
+		return
+	}
+	if err := publishToCache(staging, cacheDir); err != nil {
+		_ = os.RemoveAll(staging)
+	}
+}
+
+// A cache entry holds both halves of a reference, because both are needed and
+// re-downloading one to serve the other would give back most of the saving:
+//
+//	<entry>/.mxcli-complete   written last; its absence means "rebuild"
+//	<entry>/package.mpk       the published package
+//	<entry>/project/          the reference project built from it
+//
+// The package is kept because `marketplace update` takes the module's bundled
+// widgets from the .mpk rather than from the reference project, whose widgets/
+// also holds the blank template's.
+const (
+	entryProject = "project"
+	entryPackage = "package.mpk"
+)
+
+// CachedReference restores a previously built reference for this published
+// version: the project tree into destDir, the package to mpkDest. It returns the
+// path to the reference .mpr, or "" when there is no usable entry.
+//
+// Callers get a copy. PerformUpdate and SnapshotModule only read, but handing
+// out the cached tree itself would let one careless writer poison every later
+// run — the cost of being wrong here is silent, wrong diff findings.
+func CachedReference(versionID, mendixVersion, destDir, mpkDest string) string {
+	if versionID == "" {
+		return ""
+	}
+	cacheDir, err := refCacheDir(versionID, mendixVersion)
+	if err != nil || !cacheReady(cacheDir) {
+		return ""
+	}
+	drop := func() string {
+		// An entry that cannot be served is dropped rather than diagnosed: it will
+		// be rebuilt on this very run, and a partial reference reads as local edits.
+		_ = os.RemoveAll(cacheDir)
+		return ""
+	}
+
+	if err := copyTree(filepath.Join(cacheDir, entryProject), destDir); err != nil {
+		return drop()
+	}
+	if err := copyFile(filepath.Join(cacheDir, entryPackage), mpkDest, 0o644); err != nil {
+		return drop()
+	}
+	mprPath, err := findScratchMpr(destDir, blankAppName)
+	if err != nil {
+		return drop()
+	}
+	// The stamp is re-checked on the way out, not only on the way in. An entry
+	// written by an older mxcli, or before this guard was tightened, is dropped
+	// rather than trusted — the comparison's whole validity rests on it.
+	if err := verifyProjectVersion(mprPath, mendixVersion); err != nil {
+		return drop()
+	}
+	touchEntry(cacheDir)
+	return mprPath
+}
+
+// CacheReference stores a finished reference so the next `diff` or `update` of
+// the same published version skips the download and both mx invocations.
+//
+// Failures are silent for the same reason as cacheBlankProject: the caller
+// already has what it needs, and a cache that cannot be written makes the tool
+// slow, not wrong.
+func CacheReference(versionID, mendixVersion, refDir, mpkPath string) {
+	if versionID == "" || refCacheDisabled() {
+		return
+	}
+	cacheDir, err := refCacheDir(versionID, mendixVersion)
+	if err != nil || os.MkdirAll(filepath.Dir(cacheDir), 0o755) != nil {
+		return
+	}
+	staging, err := os.MkdirTemp(filepath.Dir(cacheDir), "building-")
+	if err != nil {
+		return
+	}
+	if err := copyTree(refDir, filepath.Join(staging, entryProject)); err != nil {
+		_ = os.RemoveAll(staging)
+		return
+	}
+	if err := copyFile(mpkPath, filepath.Join(staging, entryPackage), 0o644); err != nil {
+		_ = os.RemoveAll(staging)
+		return
+	}
+	if err := publishToCache(staging, cacheDir); err != nil {
+		_ = os.RemoveAll(staging)
+		return
+	}
+	// Prune after publishing, not before: the entry just written is the newest,
+	// so it survives its own prune, and a bound of 1 still works.
+	pruneRefCache(refCacheMaxEntries())
 }
 
 // findScratchMpr locates the project mx just created. The name follows

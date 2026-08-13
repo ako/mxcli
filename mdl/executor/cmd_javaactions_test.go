@@ -360,3 +360,38 @@ func TestEntityTypeCodeActionParameterValue_Fields(t *testing.T) {
 		t.Errorf("got %q", v.Entity)
 	}
 }
+
+// A callback parameter is printed by DESCRIBE as the bare word `Microflow`
+// (`Nanoflow` for JavaScript actions). The parser cannot tell a bare name from an
+// entity, so re-executing that output used to create an entity-typed parameter
+// with an empty module — DESCRIBE then printed `.Microflow` and the round-trip
+// was lost. mxcli-chat FINDINGS §36.
+func TestAstDataTypeToJavaActionParamType_BareMicroflowAndNanoflow(t *testing.T) {
+	bare := func(name string) ast.DataType {
+		return ast.DataType{Kind: ast.TypeEnumeration, EnumRef: &ast.QualifiedName{Name: name}}
+	}
+
+	if got := astDataTypeToJavaActionParamType(bare("Microflow")); !isType[*javaactions.MicroflowType](got) {
+		t.Errorf("Microflow -> %T, want *MicroflowType", got)
+	}
+	if got := astDataTypeToJavaActionParamType(bare("Nanoflow")); !isType[*javaactions.NanoflowType](got) {
+		t.Errorf("Nanoflow -> %T, want *NanoflowType", got)
+	}
+
+	// A qualified entity that happens to be named Microflow is still an entity —
+	// the special case is only for the unqualified word.
+	qualified := ast.DataType{
+		Kind:      ast.TypeEntity,
+		EntityRef: &ast.QualifiedName{Module: "MyModule", Name: "Microflow"},
+	}
+	ent, ok := astDataTypeToJavaActionParamType(qualified).(*javaactions.EntityType)
+	if !ok || ent.Entity != "MyModule.Microflow" {
+		t.Errorf("MyModule.Microflow -> %#v, want EntityType{MyModule.Microflow}",
+			astDataTypeToJavaActionParamType(qualified))
+	}
+}
+
+func isType[T any](v any) bool {
+	_, ok := v.(T)
+	return ok
+}

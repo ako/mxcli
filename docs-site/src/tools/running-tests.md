@@ -12,6 +12,18 @@ and **Docker is only needed for the first**:
   (8081/8091) and its own `<project>_test` database, so a `mxcli run --local`
   dev loop can keep serving the same project while tests run.
 
+A `--local` run boots the app with the same **constant values** `mxcli run --local`
+uses — the project configuration's shared overrides layered over each constant's
+default — and prints what it applied. Use `--configuration <name>` to choose
+between several, and `--constant Module.Name=value` (repeatable) to set one for
+this run only — it wins over everything and is never written anywhere. For a
+value that should persist on this machine without being committed, use
+`mxcli constant set` (see [Constant values](#constant-values) below). A constant
+the project does not declare is refused before anything boots. `--attach` takes
+none of these, since it inherits the constants of the app it attaches to. This
+matters whenever a test asserts on something a constant feeds: the two modes
+used to disagree silently.
+
 `--local` also downloads what it needs on first use. To pre-cache it:
 
 ```bash
@@ -24,6 +36,25 @@ The `mx` binary, when you need it directly:
 |-------------|------|
 | Dev container | `~/.mxcli/mxbuild/{version}/modeler/mx` |
 | Repository | `reference/mxbuild/modeler/mx` |
+
+## Constant values
+
+Highest layer wins:
+
+| Layer | Set with | In git? |
+|---|---|---|
+| this run | `--constant Module.Name=value` | no |
+| this machine | `mxcli constant set Module.Name value` | no — gitignored, 0600 |
+| this configuration | `alter settings constant … in configuration 'X'` | yes |
+| default | `create constant … default '…'` | yes |
+
+`mxcli constant list` shows the winner for each constant and which layer set it,
+masking machine-local values unless `--show-values` is passed.
+
+A machine-local value normally takes effect at the next boot. `mxcli constant
+set … --apply` pushes it into a `mxcli run --local` that is already up, as
+`update_configuration` followed by `reload_model` — both are needed, since the
+first call only stages the change.
 
 ## Basic Usage
 

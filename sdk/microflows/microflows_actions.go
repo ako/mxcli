@@ -864,6 +864,24 @@ type ResultHandlingMapping struct {
 	ResultVariable        string   `json:"resultVariable,omitempty"`
 	SingleObject          bool     `json:"singleObject,omitempty"` // true when mapping returns a single object (not a list)
 	ForceSingleOccurrence *bool    `json:"forceSingleOccurrence,omitempty"`
+
+	// RangeSingleObject is the RANGE's own First flag, independent of
+	// SingleObject (which decides the result VARIABLE's type). The two are
+	// separate axes in Mendix: the blank app's FeedbackModule ships an activity
+	// with Range=ConstantRange{SingleObject:false} — "All" — bound to an
+	// ObjectType variable, because the mapping itself returns one object.
+	// Conflating them makes an explicit All on such a mapping write a ListType
+	// variable, which mxbuild rejects with CE0243. nil = follow SingleObject,
+	// which is what every caller did before #881.
+	RangeSingleObject *bool `json:"rangeSingleObject,omitempty"`
+
+	// Custom range. When either is set the activity stores a
+	// Microflows$CustomRange instead of a ConstantRange — the "Custom" setting in
+	// Studio Pro's Range dropdown, which mxcli could not represent at all before
+	// #881 (it always wrote a ConstantRange, so a limit was unauthorable rather
+	// than merely undescribed).
+	LimitExpression  string `json:"limitExpression,omitempty"`
+	OffsetExpression string `json:"offsetExpression,omitempty"`
 }
 
 func (ResultHandlingMapping) isResultHandling() {}
@@ -1215,3 +1233,16 @@ type UnsupportedAction struct {
 }
 
 func (UnsupportedAction) isMicroflowAction() {}
+
+// RangeSingleObjectOf returns the ConstantRange.SingleObject value to store:
+// the explicit range flag when set, otherwise the result-variable flag, which is
+// what every caller relied on before the two axes were separated. (issue #881)
+func RangeSingleObjectOf(h *ResultHandlingMapping) bool {
+	if h == nil {
+		return false
+	}
+	if h.RangeSingleObject != nil {
+		return *h.RangeSingleObject
+	}
+	return h.SingleObject
+}

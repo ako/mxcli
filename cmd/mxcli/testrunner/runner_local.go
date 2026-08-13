@@ -34,27 +34,14 @@ func runLocalAndCapture(opts RunOptions, timeout time.Duration, w io.Writer) (st
 	offset := fileSize(logPath)
 
 	fmt.Fprintln(w, "Starting local runtime (no Docker)...")
-	app, err := docker.StartLocalApp(docker.LocalAppOptions{
-		ProjectPath: opts.ProjectPath,
-		AppPort:     localTestAppPort,
-		AdminPort:   localTestAdminPort,
-		ServePort:   localTestServePort,
-		DB: docker.DBConfig{
-			Name: docker.DeriveDBName(opts.ProjectPath) + localTestDBSuffix,
-		},
-		EnsureDB:  true,
-		SkipBuild: opts.SkipBuild,
-		// The runner reports through an after-startup microflow, so its LOG output
-		// is produced DURING the start action — before the runtime's own log
-		// subscriber is attached. What carries it is the JVM console tee, which is
-		// live from spawn. Verified on 11.12.1; registering the subscriber early
-		// instead is not an option, the runtime rejects it pre-start with a
-		// LoggingException. If a future runtime stops echoing to the console the
-		// failure is loud, not silent: unseen tests are reported as errors.
-		RuntimeLogPath: logPath,
-		Stdout:         w,
-		Stderr:         w,
-	})
+	// The runner reports through an after-startup microflow, so its LOG output is
+	// produced DURING the start action — before the runtime's own log subscriber
+	// is attached. What carries it is the JVM console tee, which is live from
+	// spawn. Verified on 11.12.1; registering the subscriber early instead is not
+	// an option, the runtime rejects it pre-start with a LoggingException. If a
+	// future runtime stops echoing to the console the failure is loud, not
+	// silent: unseen tests are reported as errors.
+	app, err := docker.StartLocalApp(localAppOptions(opts, logPath, nil, w))
 	if err != nil {
 		// A failing test IS a failed boot: the generated runner returns false, so
 		// the runtime's after-startup action fails and `start` reports an error.
