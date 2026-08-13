@@ -209,6 +209,8 @@ func execDescribe(ctx *ExecContext, s *ast.DescribeStmt) error {
 			return execDescribeQueue(ctx, &ast.DescribeQueueStmt{Name: s.Name})
 		case ast.DescribeScheduledEvent:
 			return execDescribeScheduledEvent(ctx, &ast.DescribeScheduledEventStmt{Name: s.Name})
+		case ast.DescribeRegularExpression:
+			return execDescribeRegularExpression(ctx, &ast.DescribeRegularExpressionStmt{Name: s.Name})
 		case ast.DescribeLayout:
 			return describeLayout(ctx, s.Name)
 		case ast.DescribeConstant:
@@ -370,6 +372,8 @@ func describeObjectTypeLabel(t ast.DescribeObjectType) string {
 		return "queue"
 	case ast.DescribeScheduledEvent:
 		return "scheduled event"
+	case ast.DescribeRegularExpression:
+		return "regular expression"
 	default:
 		return "unknown"
 	}

@@ -333,6 +333,7 @@ const (
 	DescribeMenu                 // DESCRIBE MENU Module.Name (standalone Menus$MenuDocument)
 	DescribeQueue                // DESCRIBE QUEUE Module.Name
 	DescribeScheduledEvent       // DESCRIBE SCHEDULED EVENT Module.Name
+	DescribeRegularExpression    // DESCRIBE REGULAR EXPRESSION Module.Name
 	DescribeAuto                 // DESCRIBE Module.Name — type auto-detected at execution time
 )
 

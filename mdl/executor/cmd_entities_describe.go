@@ -419,6 +419,10 @@ func describeEntity(ctx *ExecContext, name ast.QualifiedName) error {
 
 			fmt.Fprintln(ctx.Output, ";")
 
+			// RegEx and Range rules are standalone statements, not attribute
+			// constraints like Required/Unique above, so they follow the entity.
+			outputEntityValidationRules(ctx, entity, name.Module, name.Name, attrNames)
+
 			// Output access rule GRANT statements
 			outputEntityAccessGrants(ctx, entity, name.Module, name.Name)
 

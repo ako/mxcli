@@ -841,6 +841,10 @@ func (b *Builder) ExitDropStatement(ctx *parser.DropStatementContext) {
 		b.statements = append(b.statements, &ast.DropScheduledEventStmt{
 			Name: buildQualifiedName(names[0]),
 		})
+	} else if ctx.REGULAR() != nil && ctx.EXPRESSION() != nil {
+		b.statements = append(b.statements, &ast.DropRegularExpressionStmt{
+			Name: buildQualifiedName(names[0]),
+		})
 	} else if ctx.MODEL() != nil {
 		b.statements = append(b.statements, &ast.DropModelStmt{
 			Name: buildQualifiedName(names[0]),

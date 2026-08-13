@@ -166,6 +166,81 @@ create or modify queue Ops.OrderProcessing ( Parallelism: '$MyModule.Workers' );
 drop queue Ops.Mail;
 ```
 
+## Regular Expressions
+
+Named patterns, shared by attribute validation rules.
+
+| Statement | Syntax | Notes |
+|-----------|--------|-------|
+| Show regular expressions | `show regular expressions [in module];` (`list` too) | Pattern + documentation |
+| Describe regular expression | `describe regular expression Module.Name;` | Re-executable MDL |
+| Create regular expression | `create [or modify] regular expression Module.Name ( Expression: '<pattern>' );` | `Expression` required |
+| Drop regular expression | `drop regular expression Module.Name;` | |
+
+A regex is a **document**, not a string on a rule: Mendix stores a validation
+rule's reference to it by qualified name, so one pattern is shared by every
+attribute that validates against it. `show references to <regex>` lists the
+entities that use it.
+
+The pattern is an ordinary MDL string, so a single quote inside it is doubled
+(`'^it''s$'`). Backslashes are **not** escape characters — write the regex
+exactly as Mendix should see it.
+
+Mendix validates with .NET's regex engine, which accepts constructs Go does not
+(lookaround, backreferences). mxcli stores such a pattern unchanged; `describe`
+notes that it could not verify it rather than calling it invalid.
+
+Bind a pattern to an attribute with `create validation rule` — see below.
+
+## Validation Rules
+
+Constrain a single attribute. The rule is anonymous and lives on the entity, so
+the statement names the **attribute**, not the rule.
+
+| Statement | Syntax | Notes |
+|-----------|--------|-------|
+| Create regex rule | `create validation rule for Module.Entity.Attribute regex Module.Pattern feedback '<msg>';` | Pattern must already exist |
+| Create range rule | `create validation rule for Module.Entity.Attribute range from <lit> to <lit> feedback '<msg>';` | Bounds inclusive |
+| Lower bound only | `... range from <lit> ...` | Mendix `GreaterThanOrEqualTo` |
+| Upper bound only | `... range to <lit> ...` | Mendix `SmallerThanOrEqualTo` |
+
+Mendix has **no strict `<` or `>`**, so there is no exclusive form.
+
+Re-running a rule replaces the one of the **same type** on that attribute and
+leaves the others alone — an attribute can carry a Required rule and a RegEx
+rule at once.
+
+`regex` takes the **qualified name of a regular expression document**, never an
+inline pattern. A name that does not resolve is refused, because Mendix stores
+the reference by name and the build would otherwise report CE0135 "No regular
+expression specified".
+
+**Required and Unique are attribute constraints, not this statement:**
+
+```sql
+create entity Shop.Product ( Email: String(200) not null error 'Required' );
+alter entity Shop.Product modify attribute Code String(20) unique error 'Unique';
+```
+
+A range bounded by another *attribute* cannot be authored in MDL, but survives a
+rewrite untouched; `describe entity` marks it with a comment rather than
+rendering it wrong. `MaxLength` and `EqualsTo` cannot be represented at all —
+mxcli refuses to rewrite an entity carrying one rather than downgrading it to a
+Required rule.
+
+**Example:**
+```sql
+create regular expression Val.EmailAddress (
+  Expression: '\w+((-|\+|\.)\w+)*@\w+([\.-]?\w+)*(\.\w{2,})+',
+  Documentation: 'A, not too restrictive, email address regular expression'
+);
+
+-- .NET lookbehind: legal in Mendix, not verifiable by mxcli
+create regular expression Val.NoTrailingSlash ( Expression: '.*(?<!/)$' );
+
+show references to Val.EmailAddress;
+```
+
 ## Scheduled Events
 
 Mendix's cron: run a microflow on a repeating schedule.

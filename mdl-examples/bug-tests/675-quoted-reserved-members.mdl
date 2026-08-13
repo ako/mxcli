@@ -17,5 +17,23 @@ grant MyMod.Administrator on MyMod.SalesOrder (
   write ("Order")
 );
 
-create validation rule MyMod.OrderRequiresOrder for MyMod.SalesOrder
-  required "Order" feedback 'Order number is required';
+-- The validation-rule half was written against the pre-2026-08 statement shape
+-- (`create validation rule <name> for <entity> required <attr> feedback '…'`),
+-- which was replaced when CREATE VALIDATION RULE gained an implementation: the
+-- rule is anonymous in Mendix, so the statement now names the ATTRIBUTE, and
+-- Required moved to the attribute constraint that already expressed it. Both
+-- replacements below still put a quoted reserved word in the position #675 is
+-- about.
+
+create entity MyMod.SalesOrder (
+  "Order": String(20) not null error 'Order number is required',
+  "Status": String(20)
+);
+
+create regular expression MyMod.OrderNumber (
+  Expression: '^[0-9]+$'
+);
+
+create validation rule for MyMod.SalesOrder."Order"
+  regex MyMod.OrderNumber
+  feedback 'Order number must be numeric';

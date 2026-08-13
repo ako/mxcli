@@ -28,6 +28,7 @@ type FullBackend interface {
 	ImageBackend
 	QueueBackend
 	ScheduledEventBackend
+	RegularExpressionBackend
 	RenameBackend
 	RawUnitBackend
 	MetadataBackend

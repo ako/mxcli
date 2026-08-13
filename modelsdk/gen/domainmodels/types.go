@@ -2885,7 +2885,8 @@ func (o *RegExRuleInfo) SetRegularExpressionQualifiedName(v string) {
 
 // InitFromRaw populates lazy-decoded property holders from raw BSON.
 func (o *RegExRuleInfo) InitFromRaw(raw bson.Raw) {
-	if val, err := raw.LookupErr("RegularExpression"); err == nil {
+	// STORAGE-NAME OVERRIDE: see initRegExRuleInfo. Key is "RegExIdentifier".
+	if val, err := raw.LookupErr("RegExIdentifier"); err == nil {
 		if s, ok := val.StringValueOK(); ok {
 			o.regularExpression.SetFromDecode(s)
 		}
@@ -4442,7 +4443,15 @@ func NewRangeRuleInfo() *RangeRuleInfo {
 func initRegExRuleInfo() *RegExRuleInfo {
 	o := &RegExRuleInfo{}
 	o.SetTypeName("DomainModels$RegExRuleInfo")
-	o.regularExpression = property.NewByNameRef[element.Element]("RegularExpression", "RegularExpressions$RegularExpression")
+	// STORAGE-NAME OVERRIDE: BSON key is "RegExIdentifier", not the SDK name
+	// "RegularExpression". The reflection data carries both and cmd/codegen keeps
+	// them apart — generated/metamodel has
+	//     RegularExpression model.QualifiedName `json:"regExIdentifier,omitempty"`
+	// where the tag is the storage name. This generator kept only the SDK name.
+	// Permanent fix belongs in supplements.json; patched here like the
+	// EntityEvent Type / EventHandler Events overrides. Must match the
+	// InitFromRaw decode key.
+	o.regularExpression = property.NewByNameRef[element.Element]("RegExIdentifier", "RegularExpressions$RegularExpression")
 	o.regularExpression.Bind(&o.Base, 0)
 	o.SetProperties([]element.Property{o.regularExpression})
 	return o

@@ -98,6 +98,18 @@ func (b *Backend) DeleteAttribute(domainModelID, entityID, attrID model.ID) erro
 // original raw bytes. Mirrors legacy UpdateEntity (full re-serialize of the
 // replaced entity, siblings untouched).
 func (b *Backend) UpdateEntity(domainModelID model.ID, entity *domainmodel.Entity) error {
+	// Refuse rather than downgrade: a validation rule type this writer cannot
+	// reproduce (RegEx, Range) used to come back as Required, silently dropping
+	// the pattern reference — and mxbuild reports nothing, because a Required
+	// rule is perfectly valid (guard-don't-drop, ADR-0005).
+	if ruleType, ok := validationRulesAreReproducible(entity); !ok {
+		return fmt.Errorf(
+			"entity %s has a %s validation rule, which mxcli cannot rewrite without losing it — "+
+				"change this entity in Studio Pro, or remove the rule first.\n"+
+				"  (Rewriting would silently turn it into a Required rule: the constraint would be gone "+
+				"and the build would still pass.)",
+			entity.Name, ruleType)
+	}
 	if entity == nil {
 		return fmt.Errorf("UpdateEntity: nil entity")
 	}
