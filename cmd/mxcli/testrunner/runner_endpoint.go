@@ -25,23 +25,10 @@ func bootForTests(opts RunOptions, token string, timeout time.Duration, w io.Wri
 	logPath := filepath.Join(filepath.Dir(opts.ProjectPath), ".mxcli", "test-runtime.log")
 
 	fmt.Fprintln(w, "Starting local runtime (no Docker)...")
-	app, err := docker.StartLocalApp(docker.LocalAppOptions{
-		ProjectPath: opts.ProjectPath,
-		AppPort:     localTestAppPort,
-		AdminPort:   localTestAdminPort,
-		ServePort:   localTestServePort,
-		DB: docker.DBConfig{
-			Name: docker.DeriveDBName(opts.ProjectPath) + localTestDBSuffix,
-		},
-		EnsureDB:  true,
-		SkipBuild: opts.SkipBuild,
-		// The token reaches the runtime through its environment and is never
-		// written to the project. See endpointTokenEnv.
-		Env:            []string{endpointTokenEnv + "=" + token},
-		RuntimeLogPath: logPath,
-		Stdout:         w,
-		Stderr:         w,
-	})
+	// The token reaches the runtime through its environment and is never written
+	// to the project. See endpointTokenEnv.
+	app, err := docker.StartLocalApp(
+		localAppOptions(opts, logPath, []string{endpointTokenEnv + "=" + token}, w))
 	if err != nil {
 		// Unlike the after-startup path, a boot failure here is never a test
 		// result — no test has run yet. It is always a real error.

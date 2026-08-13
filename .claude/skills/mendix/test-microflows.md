@@ -33,6 +33,32 @@ mxcli test tests/ -p app.mpr             # Docker
 same project while the tests run — the tests never write into the database you
 are looking at in the browser. The database is created on first use.
 
+### Constants
+
+A `--local` run boots the app with the **same constant values `mxcli run --local`
+uses**: the project configuration's shared overrides, layered over each
+constant's default. It prints what it applied before the run:
+
+```
+Applying 1 constant value(s) from configuration "Default": MyModule.ApiKey
+```
+
+Pass `--configuration <name>` to pick one when the project has several and none
+is called `Default` (it refuses to guess rather than run production's values by
+accident). `--attach` takes no `--configuration`: it runs against an app someone
+else booted and inherits **that app's** constants.
+
+This is worth knowing when a test asserts on something a constant feeds. Before
+this was wired up, `--local` ran with each constant's *default* while `--attach`
+ran with the configuration's, so the same suite could pass one way and fail the
+other with nothing in the output to explain it.
+
+A value that must not reach version control has nowhere safe to live yet — a
+constant's default and a shared configuration override are both committed, and
+Mendix's own private values are encrypted per user account by Studio Pro and
+unreachable headlessly. See
+`docs/11-proposals/PROPOSAL_constant_values.md`.
+
 ---
 
 ## Test File Formats

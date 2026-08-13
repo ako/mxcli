@@ -43,3 +43,36 @@ func TestMergeConstantOverrides_NoOverrides(t *testing.T) {
 		t.Errorf("got %v, want the defaults unchanged", got)
 	}
 }
+
+// StartLocalApp is the headless boot behind `mxcli test --local`. Its options
+// have to reach LocalRuntimeOptions or the app runs with each constant's
+// default while `--attach` runs with the configuration's — the divergence in
+// docs/11-proposals/PROPOSAL_constant_values.md slice 1.
+func TestLocalAppOptions_ForwardsToTheRuntime(t *testing.T) {
+	opts := LocalAppOptions{
+		DeployDir:         "/tmp/app/deployment",
+		AppPort:           8081,
+		AdminPort:         8091,
+		AdminPass:         "pass",
+		DB:                DBConfig{Name: "app_test"},
+		RuntimeLogPath:    "/tmp/app/.mxcli/test-runtime.log",
+		Env:               []string{"MXCLI_TEST_TOKEN=tok"},
+		ConstantOverrides: map[string]string{"MyModule.ApiKey": "v"},
+	}
+
+	rt := opts.runtimeOptions("/install/path")
+
+	if rt.ConstantOverrides["MyModule.ApiKey"] != "v" {
+		t.Fatalf("ConstantOverrides = %v, want the value to reach the runtime", rt.ConstantOverrides)
+	}
+	// The fields that were already forwarded stay forwarded: this mapping is the
+	// single place a runtime option can be dropped without anything failing.
+	if rt.DeployDir != opts.DeployDir || rt.AppPort != opts.AppPort || rt.AdminPort != opts.AdminPort ||
+		rt.AdminPass != opts.AdminPass || rt.DB.Name != opts.DB.Name ||
+		rt.RuntimeLogPath != opts.RuntimeLogPath || len(rt.Env) != 1 {
+		t.Errorf("a field was dropped in the mapping: %+v", rt)
+	}
+	if rt.InstallPath != "/install/path" {
+		t.Errorf("InstallPath = %q", rt.InstallPath)
+	}
+}

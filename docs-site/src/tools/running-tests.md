@@ -12,6 +12,13 @@ and **Docker is only needed for the first**:
   (8081/8091) and its own `<project>_test` database, so a `mxcli run --local`
   dev loop can keep serving the same project while tests run.
 
+A `--local` run boots the app with the same **constant values** `mxcli run --local`
+uses — the project configuration's shared overrides layered over each constant's
+default — and prints what it applied. Use `--configuration <name>` to choose
+between several; `--attach` takes none, since it inherits the constants of the app
+it attaches to. This matters whenever a test asserts on something a constant
+feeds: the two modes used to disagree silently.
+
 `--local` also downloads what it needs on first use. To pre-cache it:
 
 ```bash

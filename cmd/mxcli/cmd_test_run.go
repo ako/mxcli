@@ -134,6 +134,7 @@ Examples:
 		watch, _ := cmd.Flags().GetBool("watch")
 		attach, _ := cmd.Flags().GetBool("attach")
 		skipAppStartup, _ := cmd.Flags().GetBool("skip-app-startup")
+		configuration, _ := cmd.Flags().GetString("configuration")
 		verbose, _ := cmd.Flags().GetBool("verbose")
 		color, _ := cmd.Flags().GetBool("color")
 		timeoutStr, _ := cmd.Flags().GetString("timeout")
@@ -176,6 +177,16 @@ Examples:
 			Color:          color,
 			Stdout:         os.Stdout,
 			Stderr:         os.Stderr,
+		}
+
+		// Only a --local run boots an app of its own, so only it decides which
+		// constants that app runs with. --attach inherits the constants of the app
+		// it attaches to, and the Docker path configures the container — reporting
+		// a resolution neither of them uses would be a lie in the output.
+		if local && !attach {
+			overrides := constantOverridesFor(projectPath, configuration)
+			reportConstantOverrides(os.Stdout, overrides)
+			opts.ConstantOverrides = overrides.Values
 		}
 
 		result, err := testrunner.Run(opts)

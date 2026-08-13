@@ -68,6 +68,16 @@ type RunOptions struct {
 	// counts.
 	SkipAppStartup bool
 
+	// ConstantOverrides are the constant values the app should run with, layered
+	// over the defaults in the deployment. Resolved by the caller from the
+	// project's configuration (and, in future, the higher layers of
+	// docs/11-proposals/PROPOSAL_constant_values.md) so the runner stays a
+	// carrier rather than a second place that decides precedence.
+	//
+	// Only --local uses these: --attach runs against an app someone else booted
+	// and inherits ITS constants, and the Docker path configures the container.
+	ConstantOverrides map[string]string
+
 	// Timeout for runtime startup and test execution.
 	Timeout time.Duration
 
