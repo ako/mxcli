@@ -10,6 +10,11 @@ date: 2026-08-13
 **Date:** 2026-08-13
 **Author:** Generated with Claude Code
 
+**Constraint set by the maintainer (2026-08-13):** the reflection data is an
+internal closed-source Mendix library, so it is unusable as a dependency for an
+open-source project regardless of technical fit. §4A is the licence-clean
+replacement.
+
 This closes the last open Phase-0 item of
 [`docs/plans/2026-06-05-adopt-modelsdk-engine.md`](../plans/2026-06-05-adopt-modelsdk-engine.md)
 §4 — *"Vendor engalar codegen + `TypeVersionInfo` type-level bound fix — ⏳ todo"* —
@@ -165,8 +170,92 @@ Both generators are unrunnable here today.
 public, downloads cleanly, and is exactly the source that lacks storage names.
 Pulling it on every Mendix release would keep gen current and keep it wrong.
 
-Establishing the provenance of `reflection-data` is therefore the crux, and it
-is the one genuinely open question in this proposal.
+### 4.1 Reflection data is disqualified on licence, not availability
+
+`reference/mendixmodellib/` is an **internal, closed-source Mendix library**. Even
+where a copy exists, building mxcli's correctness on it would mean the project
+could only be developed by people holding that artefact — which is
+disqualifying for an open-source community regardless of the technical fit.
+
+This proposal therefore does **not** recommend vendoring it, and the
+"`generated/metamodel` is the arbiter" rule should be treated as a **transitional**
+position: it is the best evidence currently in the tree (and it produced the
+three confirmed fixes), but it rests on an input we cannot refresh or
+redistribute, and it is pinned at 11.6.0.
+
+## 4A. The replacement: derive storage names from documents, not from reflection data
+
+Documents beat reflection data — that is already this repository's own rule,
+proven three times (CLAUDE.md, "when gen and an observed document disagree, the
+document wins"). Storage names are directly observable in Studio Pro's own
+serializer output, which is stronger evidence than any type table and is not
+encumbered.
+
+### 4A.1 What the Studio Pro MCP server can and cannot do here
+
+`ped_get_schema` is keyed by BSON `$Type` (`{"types":["DomainModels$Entity"]}`)
+and knows types PED cannot even read as documents — security elements, per
+`PED_MCP_CAPABILITIES.md`. mxcli already calls it, purely to satisfy PED's
+fetch-before-create contract, and **discards the body**.
+
+It is nonetheless unlikely to answer the storage-name question, because **PED
+speaks a Studio-Pro-facing vocabulary, not the storage one**. The clearest
+evidence is mxcli's own PED wire format:
+
+```go
+// mdl/backend/mcp/domainmodel.go
+type pedAttribute struct {
+	SType           string `json:"$Type"`
+	Name            string `json:"name"`
+	Type            string `json:"type"`   // storage key is "NewType"
+	EnumerationName string `json:"enumerationName,omitempty"`
+	Value           any    `json:"value,omitempty"`
+}
+```
+
+`Attribute`'s type child is stored as **`NewType`** (see `modelsdk/codec/decoder.go`'s
+`fieldAliases`), and in storage it is a child ELEMENT
+(`DomainModels$StringAttributeType`), not the string `"String"` PED accepts.
+So PED is a projection, not the storage shape. **This is inference from the wire
+format, not a measurement** — confirming it needs one `ped_get_schema` call
+against a live Studio Pro with the body kept, which is cheap and worth doing
+before relying on either answer.
+
+The valuable MCP capability is therefore not the schema but the **round trip**:
+drive Studio Pro to author a construct via `ped_create_document` /
+`ped_update_document`, then read the resulting `.mxunit`. That automates the
+manual loop CLAUDE.md already prescribes ("ask the user to create a working
+example in Mendix Studio Pro so you can compare the generated BSON"), and the
+bytes it yields are authoritative by construction and correct for whichever
+Studio Pro version is attached.
+
+Its limits are real: it needs Windows/macOS plus an installed Studio Pro, so it
+is a developer-loop tool and not a CI step; it can only observe constructs PED
+is permitted to author; and it observes only properties actually **present** in
+a document, so an unset optional property stays invisible.
+
+### 4A.2 Most of it needs no Studio Pro at all
+
+A project created by `mx create-project` is already Studio Pro output, and
+mxbuild is downloaded per version by `mxcli setup mxbuild`. Measured on a blank
+11.13.0 project:
+
+| | count |
+|---|---|
+| `.mxunit` documents | 369 |
+| distinct storage `$Type`s | 242 |
+| **ledgered types (of 65) present** | **21** |
+
+Those 21 can be checked against real bytes **today, on Linux, in CI, with no
+licence and no network**. Marketplace modules extend this much further and are
+already used this way — the regular-expression codec is pinned against five
+Studio Pro documents from Email Connector 6.4.2 and Community Commons 11.5.1,
+and the scheduled-event codec against three from Workflow Commons, OIDC SSO and
+SAML.
+
+Caveat on the 21: a `$Type` appearing in a corpus does not guarantee the
+specific mismatched **property** appears in it, so 21 is an upper bound on what
+is immediately checkable. Determining the real figure is the first task in §6.
 
 ## 5. Decision
 
@@ -200,28 +289,41 @@ evidence that a key is right.
 
 ## 6. Proposed sequence
 
-Ordered by dependency; each step is worth doing on its own.
+Ordered by dependency; each step is worth doing on its own. No step requires a
+closed-source artefact.
 
-1. **Establish `reflection-data` provenance.** Where does
-   `reference/mendixmodellib/` come from, is redistribution permitted, and how
-   large is it? Until this is answered, neither generator can be run here and
-   `generated/metamodel` cannot be refreshed off 11.6.0. *Blocks 2 and 4.*
-2. **Vendor the reflection data** (just `reflection-data/`, not the mxbuild
-   binaries also under `/reference/`), and add a `make` target to refresh it.
-   This alone makes `generated/metamodel` regenerable and the CLAUDE.md arbiter
-   claim verifiable.
+1. **Corpus-check the ledger.** Build a blank project per supported Mendix
+   version with the mxbuild we already download, walk every `.mxunit`, and
+   record the property keys actually observed per `$Type`. Compare against
+   `keyaudit_test.go`. This confirms or refutes up to 21 of the 65 entries from
+   free, licence-clean, CI-able evidence, and gives the ledger a second source
+   that is not `generated/metamodel`. *Cheapest step with the highest
+   information gain.*
+2. **Extend the corpus with marketplace modules.** `mxcli marketplace download`
+   + import into a throwaway reference project is already the method used for
+   regular expressions and scheduled events, and `marketplace diff` already
+   builds such a project. This reaches types a blank app never instantiates.
 3. **Promote the audit to a build-time gate.** `keyaudit_test.go` already runs
-   in `go test`; the remaining work is deciding whether a new mismatch should
-   fail CI hard. Cheap, and independent of 1.
-4. **Then, optionally, emit the codec shape from our own generator.** A second
-   emitter on `cmd/codegen` would make all 102 correct *by construction* rather
-   than by an override table, and would fold in the `TypeVersionInfo` type-level
-   bound fix. This is the largest item by far: the emitter must reproduce the
-   codec registrations (`TypeDefaults`, list markers) and the existing hand
-   overrides. Do not start it before 1–3, and not before spot-checking more of
-   the 102 against real documents — three confirmed out of 102 is thin support
-   for a wholesale regeneration.
-5. **Report upstream.** The ledger is a concrete bug list against Mendix's own
+   in `go test`; the remaining work is deciding whether a new mismatch fails CI
+   hard, and re-pointing its expected side at corpus evidence where step 1 or 2
+   supplies it. Independent of everything else.
+4. **Confirm what `ped_get_schema` actually returns** — one call against a live
+   Studio Pro, body kept, for a type where SDK and storage names differ
+   (`DomainModels$Attribute` is the sharpest: `type` vs `NewType`). If it does
+   carry storage names, it becomes a per-version type-wide source and steps 1–2
+   become a cross-check rather than the primary. If it does not, record that and
+   close the question.
+5. **Then, optionally, an MCP-driven authoring harness.** Drive Studio Pro to
+   create a construct and diff the resulting BSON, automating CLAUDE.md's manual
+   "ask the user to build it in Studio Pro" loop. Developer-loop only — it needs
+   Studio Pro on Windows/macOS, so it cannot be a build step.
+6. **Emit the codec shape from our own generator — only if an open input exists.**
+   A second emitter on `cmd/codegen` would make all 102 correct by construction
+   and fold in the `TypeVersionInfo` type-level bound fix. It is the largest item
+   by far, and it is **blocked on having a licence-clean, complete type source**;
+   steps 1–4 decide whether one exists. Do not start it on the strength of three
+   confirmed properties out of 102.
+7. **Report upstream.** The ledger is a concrete bug list against Mendix's own
    SDK-to-storage mapping, and the real fix belongs in the generator, wherever
    it is maintained.
 
@@ -233,13 +335,19 @@ Ordered by dependency; each step is worth doing on its own.
 
 ## 8. Open questions
 
-1. **`reflection-data` provenance and licence.** The blocker in §4.
-2. **Can it be extracted from the modeler assemblies?** That would give us the
-   input per Mendix version from a distribution we already download, which would
-   be the ideal outcome — and would also settle ADR-0008's note that
-   `IsIdentifier` is only available there.
-3. **How many of the remaining 102 matter?** A cheap first pass: intersect the
-   ledger with the `$Type`s mxcli actually writes.
-4. **Should the audit compare against a Studio Pro document corpus** rather than
-   `generated/metamodel`, given §3's staleness caveat? Marketplace modules are
-   already used this way for scheduled events and regular expressions.
+1. **Does `ped_get_schema` carry storage names?** §4A.1 argues it does not, from
+   PED's wire format, but that is inference. One call settles it. If it does,
+   it is the per-version, licence-clean, type-complete source this whole problem
+   wants — so it is worth answering early even though the argument runs against
+   it.
+2. **Is there any other licence-clean, type-complete source?** The metamodel does
+   live in the modeler assemblies (ADR-0008 notes `IsIdentifier` is reachable
+   only there) inside a distribution we already download per version. Whether
+   reflection over those assemblies is permissible, and practical from Go, is
+   unexamined.
+3. **How many of the 102 matter?** A cheap first pass: intersect the ledger with
+   the `$Type`s mxcli actually writes. A wrong key on a type nothing writes
+   costs nothing.
+4. **What is the real corpus coverage?** §4A.2 measures 21 of 65 ledgered types
+   present in a blank 11.13 project, but presence of a `$Type` does not imply
+   presence of the mismatched property. Step 1 of §6 produces the true figure.
