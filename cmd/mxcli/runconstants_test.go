@@ -8,7 +8,6 @@
 package main
 
 import (
-	"bytes"
 	"strings"
 	"testing"
 
@@ -101,23 +100,5 @@ func TestResolveConstantOverrides_SkipsPrivateOverridesAndNamesThem(t *testing.T
 func TestResolveConstantOverrides_ProjectWithNoConfigurations(t *testing.T) {
 	if got := resolveConstantOverrides(&model.ProjectSettings{}, ""); len(got.Values) != 0 || got.Note == "" {
 		t.Errorf("got %+v, want no values and a reason", got)
-	}
-}
-
-// Silence used to mean "your override is in effect" when it was not. Every
-// outcome has to print something.
-func TestReportConstantOverrides_SaysSomethingInEveryCase(t *testing.T) {
-	cases := []constantOverrides{
-		{Configuration: "Default", Values: map[string]string{"A.B": "v"}},
-		{Configuration: "Default", Values: map[string]string{}},
-		{Values: map[string]string{}, Note: "the project has no configurations"},
-		{Configuration: "Default", Values: map[string]string{}, Private: []string{"A.P"}},
-	}
-	for i, c := range cases {
-		var buf bytes.Buffer
-		reportConstantOverrides(&buf, c)
-		if strings.TrimSpace(buf.String()) == "" {
-			t.Errorf("case %d printed nothing: %+v", i, c)
-		}
 	}
 }

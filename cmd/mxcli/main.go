@@ -376,6 +376,7 @@ func init() {
 	testRunCmd.Flags().Bool("skip-app-startup", false, "With --local, do not run the project's own after-startup microflow during the test run (it runs by default, so tests see the app as it really boots)")
 	testRunCmd.Flags().Bool("attach", false, "Run against an app already started with 'mxcli run --local --test-endpoint' instead of booting one (tests hit that app's database)")
 	testRunCmd.Flags().String("configuration", "", "With --local, which project configuration's constant values to run the tests with (default: the only one, or \"Default\") — the same resolution 'mxcli run --local' uses, so a suite sees the same constants either way")
+	testRunCmd.Flags().StringArray("constant", nil, "With --local, set a constant for THIS RUN only: Module.Name=value (repeatable). Never written to the project. The value is visible in shell history and in `ps` — for a value that must not be, see docs/11-proposals/PROPOSAL_constant_values.md")
 	testRunCmd.Flags().BoolP("verbose", "v", false, "Show all runtime log output")
 	testRunCmd.Flags().BoolP("color", "", false, "Use colored output")
 	testRunCmd.Flags().StringP("timeout", "t", "5m", "Timeout for runtime startup and test execution")

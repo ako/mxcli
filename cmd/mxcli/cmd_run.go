@@ -157,8 +157,18 @@ Examples:
 		// this the app runs with defaults while the model says otherwise —
 		// silently. See runconstants.go.
 		configuration, _ := cmd.Flags().GetString("configuration")
-		overrides := constantOverridesFor(projectPath, configuration)
-		reportConstantOverrides(os.Stdout, overrides)
+		constantArgs, _ := cmd.Flags().GetStringArray("constant")
+		constantFlags, err := parseConstantFlags(constantArgs)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		overrides, err := constantChainFor(projectPath, configuration, constantFlags)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		reportConstantChain(os.Stdout, overrides)
 
 		opts := docker.LocalRunOptions{
 			ProjectPath:        projectPath,
@@ -243,6 +253,8 @@ Examples:
 func init() {
 	runCmd.Flags().String("configuration", "",
 		"Which project configuration's constant values to run with (default: the only one, or \"Default\")")
+	runCmd.Flags().StringArray("constant", nil,
+		"Set a constant for THIS RUN only: Module.Name=value (repeatable). Wins over the configuration and is never written to the project. The value is visible in shell history and in `ps` — see docs/11-proposals/PROPOSAL_constant_values.md")
 	runCmd.Flags().Bool("local", false, "Run locally without Docker (warm serve + standalone runtime)")
 	runCmd.Flags().String("hub", "", "Expose the running app in a browser via your own mxcli tunnel-hub URL (e.g. https://hub.example.com). Implies --local; the app stays local and is reverse-tunnelled out")
 	runCmd.Flags().String("hub-secret", "", "Shared auth secret for --hub (\"user:pass\"), matching the hub's --secret")

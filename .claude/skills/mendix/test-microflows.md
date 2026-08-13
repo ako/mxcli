@@ -45,18 +45,32 @@ Applying 1 constant value(s) from configuration "Default": MyModule.ApiKey
 
 Pass `--configuration <name>` to pick one when the project has several and none
 is called `Default` (it refuses to guess rather than run production's values by
-accident). `--attach` takes no `--configuration`: it runs against an app someone
-else booted and inherits **that app's** constants.
+accident). `--attach` takes neither flag: it runs against an app someone else
+booted and inherits **that app's** constants.
+
+To set a value for one run without touching the project, use `--constant`
+(repeatable). It wins over the configuration and is never written to the model:
+
+```bash
+mxcli test tests/ -p app.mpr --local --constant MyModule.ApiKey=sk-test-123
+```
+
+A name the project does not declare is **refused**, before anything boots — the
+runtime silently ignores a value for a constant that does not exist, so a typo
+would otherwise be reported as applied and do nothing.
+
+The value is visible in shell history and in `ps`. That is fine for a throwaway
+test value and wrong for a real secret.
 
 This is worth knowing when a test asserts on something a constant feeds. Before
 this was wired up, `--local` ran with each constant's *default* while `--attach`
 ran with the configuration's, so the same suite could pass one way and fail the
 other with nothing in the output to explain it.
 
-A value that must not reach version control has nowhere safe to live yet — a
+For a secret that has to **persist** across runs there is still nowhere safe: a
 constant's default and a shared configuration override are both committed, and
 Mendix's own private values are encrypted per user account by Studio Pro and
-unreachable headlessly. See
+unreachable headlessly. `--constant` covers the one-run case only. See
 `docs/11-proposals/PROPOSAL_constant_values.md`.
 
 ---

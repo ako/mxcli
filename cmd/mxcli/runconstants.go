@@ -4,29 +4,12 @@ package main
 
 import (
 	"fmt"
-	"io"
+
 	"sort"
 	"strings"
 
 	"github.com/mendixlabs/mxcli/model"
 )
-
-// constantOverridesFor reads the running configuration's constant values from a
-// project. A project that cannot be read yields no overrides and a note — a run
-// must not be blocked by this, since every run before it applied none.
-func constantOverridesFor(projectPath, configuration string) constantOverrides {
-	b := newBackendFactory()()
-	if err := b.Connect(projectPath); err != nil {
-		return constantOverrides{Values: map[string]string{}, Note: "could not read the project's settings: " + err.Error()}
-	}
-	defer func() { _ = b.Disconnect() }()
-
-	ps, err := b.GetProjectSettings()
-	if err != nil {
-		return constantOverrides{Values: map[string]string{}, Note: "could not read the project's settings: " + err.Error()}
-	}
-	return resolveConstantOverrides(ps, configuration)
-}
 
 // Constant values set per *configuration* never reached a locally-run app.
 //
@@ -125,30 +108,4 @@ func configurationNames(cfgs []*model.ServerConfiguration) string {
 	}
 	sort.Strings(names)
 	return strings.Join(names, ", ")
-}
-
-// reportConstantOverrides says what will be applied before the app boots.
-//
-// It prints even when nothing is applied. The failure this fixes was invisible
-// precisely because the run said nothing about constants either way, so silence
-// has to stop meaning "your override is in effect".
-func reportConstantOverrides(w io.Writer, o constantOverrides) {
-	switch {
-	case len(o.Values) > 0:
-		names := make([]string, 0, len(o.Values))
-		for k := range o.Values {
-			names = append(names, k)
-		}
-		sort.Strings(names)
-		fmt.Fprintf(w, "Applying %d constant value(s) from configuration %q: %s\n",
-			len(names), o.Configuration, strings.Join(names, ", "))
-	case o.Configuration != "":
-		fmt.Fprintf(w, "Configuration %q sets no constant values; using each constant's default.\n", o.Configuration)
-	case o.Note != "":
-		fmt.Fprintf(w, "Using each constant's default value (%s).\n", o.Note)
-	}
-	if len(o.Private) > 0 {
-		fmt.Fprintf(w, "  %d override(s) are private, so their value is not in the model and the default is used:\n    %s\n",
-			len(o.Private), strings.Join(o.Private, "\n    "))
-	}
 }

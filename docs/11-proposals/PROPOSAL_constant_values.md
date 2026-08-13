@@ -1,12 +1,12 @@
 ---
 title: Constant values — one precedence chain, and a slot for secrets
-status: proposed
+status: accepted
 date: 2026-08-13
 ---
 
 # Proposal: Constant values — one precedence chain, and a slot for secrets
 
-**Status:** Proposed
+**Status:** Accepted — slices 1 and 2 shipped; 3 and 4 open
 **Date:** 2026-08-13
 
 A Mendix constant has a value in four possible places, mxcli can write two of
@@ -196,7 +196,7 @@ machine", and a machine runs one thing at a time. If that proves wrong, a
 
 Four slices, each independently shippable and independently verifiable.
 
-### Slice 1 — close the `test --local` gap (bug fix)
+### Slice 1 — close the `test --local` gap (bug fix) — **shipped**
 
 The smallest correct change, and the one with a user-visible bug behind it.
 
@@ -209,7 +209,7 @@ The smallest correct change, and the one with a user-visible bug behind it.
 Test: a `.test.mdl` asserting a constant, run under `--local` and under
 `--attach` against the same project, must agree. That test fails today.
 
-### Slice 2 — layer 1, `--constant Module.Name=value`
+### Slice 2 — layer 1, `--constant Module.Name=value` — **shipped**
 
 | File | Change |
 |------|--------|

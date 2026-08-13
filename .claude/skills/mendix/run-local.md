@@ -407,7 +407,8 @@ secret registers it owner-less.
 is running, merged over each constant's default:
 
 ```text
-Applying 1 constant value(s) from configuration "Default": Encryption.EncryptionKey
+Applying 1 constant value(s):
+  Encryption.EncryptionKey  configuration "Default"
 ```
 
 Before this they were ignored: mxbuild writes each constant's **default** into
@@ -423,8 +424,19 @@ encryption key while the model said otherwise.
   developer's workstation), so the default is used and the constant is named.
 - The line prints in every case, including "no overrides" — silence used to mean
   "your override is in effect" when it was not.
+- `--constant Module.Name=value` (repeatable) sets a value for **this run only**.
+  It wins over the configuration, is never written to the project, and is
+  reported as coming from `--constant` so the output says which layer won. A
+  constant the project does not declare is refused before the app boots: the
+  runtime ignores a value for a constant that does not exist, so a typo would
+  otherwise be reported as applied and do nothing.
 
-Setting a constant on a *running* app is a different mechanism: `MicroflowConstants`
-over the M2EE admin port, which is how Mendix Cloud injects per-environment values.
-Note that `--runtime-setting 'MicroflowConstants={…}'` **replaces** the whole map
-rather than merging into it, so it drops every constant it does not mention.
+Setting a constant on an app that is *already running* is a different mechanism
+again: `MicroflowConstants` over the M2EE admin port, which is how Mendix Cloud
+injects per-environment values. Measured on 11.12.1, `update_configuration` is
+**staged rather than applied** — the running app keeps the old value until the
+next `reload_model`, while the call answers `result:0` — and the admin API has no
+read-back to check against. Do not reach for
+`--runtime-setting 'MicroflowConstants={…}'`: it replaces the map mxcli built
+rather than adding to it, and at boot there is nothing to fall back on for
+`BasePath`/`DatabaseName`. Use `--constant`.
