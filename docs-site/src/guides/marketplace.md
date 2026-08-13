@@ -206,10 +206,10 @@ the version being moved to.
 
 Two caches under `~/.mxcli/marketplace-refs/` keep that off the clock:
 
-| Cache | Keyed by | Saves |
-|---|---|---|
-| `blank/` | Mendix version | the `mx create-project` in **every** reference build |
-| `ref/` | published version UUID + Mendix version | the whole reference, on a repeat |
+| Cache | Keyed by | Holds | Saves |
+|---|---|---|---|
+| `blank/` | Mendix version | a whole blank app (~37 MB) | the `mx create-project` in **every** reference build |
+| `ref/` | published version UUID + Mendix version | the model only (~14 MB) | the whole reference, on a repeat |
 
 Measured on Administration (content 23513, 4.3.2 → 4.5.0, Mendix 11.12.1):
 
@@ -217,9 +217,16 @@ Measured on Administration (content 23513, 4.3.2 → 4.5.0, Mendix 11.12.1):
 mxcli marketplace diff 23513 -p app.mpr --to 4.5.0
 
   no cache      66s
-  cold cache    49s     (blank app built once, reused by the second reference)
-  warm          13s
+  cold cache    47s     (blank app built once, reused by the second reference)
+  warm           9s
 ```
+
+A `ref/` entry stores the `.mpr` (and `mprcontents/`) and nothing else. A
+reference project is a whole blank Mendix app, but only its model is ever read —
+`widgets/`, `themesource/`, `theme-cache/` and `javascriptsource/` account for
+20 MB of 34 MB and are never opened, because an update takes the module's
+bundled files from the `.mpk` rather than from the reference. Storing the model
+alone made entries 58% smaller and warm runs faster, since less is copied.
 
 The Mendix version is part of both keys, because a reference built at a
 different version reports Mendix's own conversions as local edits. An entry is
@@ -227,10 +234,12 @@ only used once its completion marker is present and the project's version stamp
 has been re-checked on the way out, so a half-written or mislabelled entry is
 rebuilt rather than trusted.
 
-A reference is about 34 MB, so `ref/` keeps the 6 most recently used entries and
-evicts the rest — running out of disk part way through an update is worse than
-rebuilding one, because `update` does not roll back. `blank/` is not bounded: it
-holds one entry per Mendix version.
+`ref/` keeps the 12 most recently used entries and evicts the rest — twelve is
+what a six-module update sweep builds, so a whole sweep stays cached at ~170 MB.
+It is bounded at all because running out of disk part way through an update is
+worse than rebuilding an entry: `update` does not roll back, so a failed write
+leaves the module already dropped. `blank/` is not bounded — one entry per
+Mendix version.
 
 ```bash
 MXCLI_REF_CACHE_MAX=20 mxcli marketplace diff …   # keep more (0 = keep everything)

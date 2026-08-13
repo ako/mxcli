@@ -355,7 +355,9 @@ func CacheReference(versionID, mendixVersion, refDir, mpkPath string) {
 	if err != nil {
 		return
 	}
-	if err := copyTree(refDir, filepath.Join(staging, entryProject)); err != nil {
+	// Model only: see isModelFile for what is dropped, why nothing reads it, and
+	// what that constrains.
+	if err := copyTreeModelOnly(refDir, filepath.Join(staging, entryProject)); err != nil {
 		_ = os.RemoveAll(staging)
 		return
 	}
