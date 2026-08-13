@@ -273,3 +273,47 @@ func TestPruneDisabledByZero(t *testing.T) {
 		t.Errorf("a malformed bound gave %d, want the default %d", got, defaultRefCacheEntries)
 	}
 }
+
+// TestModelOnlyCopyKeepsWhatIsRead pins the filter that makes a reference entry
+// ~14 MB instead of ~34 MB. The .mpr and mprcontents/ are the model; everything
+// else in a reference project is bulk nothing reads.
+//
+// The negative half matters as much as the positive: if widgets/ started being
+// copied again the cache would quietly double in size, and if the .mpr stopped
+// being copied every hit would serve an unreadable reference.
+func TestModelOnlyCopyKeepsWhatIsRead(t *testing.T) {
+	src, dst := t.TempDir(), filepath.Join(t.TempDir(), "out")
+
+	mustWrite(t, filepath.Join(src, "PackageRef.mpr"), "model")
+	mustWrite(t, filepath.Join(src, "mprcontents", "nested", "unit.mxunit"), "unit")
+	mustWrite(t, filepath.Join(src, "widgets", "big.mpk"), "bulk")
+	mustWrite(t, filepath.Join(src, "themesource", "atlas", "style.scss"), "bulk")
+	mustWrite(t, filepath.Join(src, "theme-cache", "compiled.css"), "bulk")
+	mustWrite(t, filepath.Join(src, "javascriptsource", "a.js"), "bulk")
+
+	if err := copyTreeModelOnly(src, dst); err != nil {
+		t.Fatalf("copyTreeModelOnly: %v", err)
+	}
+
+	if got := readFile(t, filepath.Join(dst, "PackageRef.mpr")); got != "model" {
+		t.Errorf(".mpr = %q, want %q — a served entry would be unreadable", got, "model")
+	}
+	if got := readFile(t, filepath.Join(dst, "mprcontents", "nested", "unit.mxunit")); got != "unit" {
+		t.Errorf("mprcontents unit = %q, want %q", got, "unit")
+	}
+	for _, bulk := range []string{"widgets", "themesource", "theme-cache", "javascriptsource"} {
+		if _, err := os.Stat(filepath.Join(dst, bulk)); !os.IsNotExist(err) {
+			t.Errorf("%s/ was copied into the cache entry; nothing reads it", bulk)
+		}
+	}
+
+	// And the unfiltered copy still takes everything — it is what seeds a blank
+	// project, which mx module-import reads in full.
+	full := filepath.Join(t.TempDir(), "full")
+	if err := copyTree(src, full); err != nil {
+		t.Fatalf("copyTree: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(full, "widgets", "big.mpk")); err != nil {
+		t.Error("the unfiltered copy dropped widgets/; a blank project needs its whole tree")
+	}
+}

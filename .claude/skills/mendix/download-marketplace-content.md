@@ -263,7 +263,7 @@ Administration — installed 4.3.2 (Mendix 11.12.1)
 
 **Tell the user the first one is slow.** Answering needs a reference project —
 a blank app with the published module imported — and `--to` needs two. Measured
-on Administration at 11.12.1: **~50s** the first time, **~13s** afterwards, once
+on Administration at 11.12.1: **~47s** the first time, **~9s** afterwards, once
 `~/.mxcli/marketplace-refs/` holds the blank app and the built references. Run
 `diff` before `update` rather than instead of it: the `update` reuses the base
 reference the `diff` just built, so the pair costs little more than the `diff`.
