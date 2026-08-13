@@ -199,13 +199,20 @@ RegularExpression model.QualifiedName `json:"regExIdentifier,omitempty"`
 //   ^ SDK name                                ^ storage name
 ```
 
-The out-of-tree generator that produced `modelsdk/gen` kept only the SDK name.
-**`generated/metamodel` is therefore the arbiter when the two disagree** — it is
-generated from the same reflection data and has been right in every case checked
-against a real document (`RegularExpression.Expression`, `RegExRuleInfo.RegExIdentifier`,
-`Attribute.GUID`). `TestGenPropertyKeysAgainstMetamodel` fails when a NEW
-mismatch appears (a re-vendored gen that dropped an override) or when a listed
-one is fixed without being struck off.
+The generator behind `modelsdk/gen` reads a **different input** — the TypeScript
+SDK's compiled JS, which does not contain storage names at all (measured:
+`regExIdentifier` occurs 0 times in `mendixmodelsdk` 4.114.0) — and patches them
+back via a hand-maintained `PropertyKeyOverrides` table.
+
+**`generated/metamodel` is therefore the arbiter when the two disagree**, with
+one caveat: it is a **snapshot of 11.6.0** (see its header), so it is sound for
+the properties it contains but says nothing about ones introduced later — for
+those, get a real document. It has been right in every case checked that way
+(`RegularExpression.Expression`, `RegExRuleInfo.RegExIdentifier`, `Attribute.GUID`).
+`TestGenPropertyKeysAgainstMetamodel` fails when a NEW mismatch appears (a
+re-vendored gen that dropped an override) or when a listed one is fixed without
+being struck off. Why the generator is not simply brought in-tree, and what it
+would take: [PROPOSAL_codegen_ownership.md](docs/11-proposals/PROPOSAL_codegen_ownership.md).
 
 `cmd/modelsdk-codegen` and `internal/codegen/supplements.json` — named in every
 gen file's `DO NOT EDIT` header — have **never existed in this repo**

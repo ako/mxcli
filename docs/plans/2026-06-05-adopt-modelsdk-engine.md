@@ -251,7 +251,7 @@ No forced early v2 migration.
 | Vendor `modelsdk/` + `unitstore` + read fixture; `mongo-driver/v2` coexists | ✅ done | `b1536ba7` |
 | Java-action `mdl/types` reconciliation (alias re-export; fixes 3 pkgs) | ✅ done | `b1536ba7` |
 | `MXCLI_ENGINE` / `--engine` selection seam (legacy wired; modelsdk/compare fail-fast) | ✅ done | `1e8ec679` |
-| Vendor engalar codegen + `TypeVersionInfo` type-level bound fix | ⏳ todo | — |
+| Vendor engalar codegen + `TypeVersionInfo` type-level bound fix | ❌ **decided against vendoring** | [PROPOSAL_codegen_ownership.md](../11-proposals/PROPOSAL_codegen_ownership.md) — its input (the TypeScript SDK) has no storage names, so regenerating reintroduces 102 wrong BSON keys. Hand overrides + `keyaudit_test.go` ledger instead; `TypeVersionInfo` fix still open |
 | Comparison harness — **read side** (`mdl/enginecompare` + `make engine-diff`) | ✅ done | `6a1fd4e2` |
 | Comparison harness — write/BSON side (port `cmd_bson_dump`/`cmd_bson_compare`, ID-canonicalizer) | ⏳ Phase-2-gated on the modelsdk write path | — |
 
