@@ -302,7 +302,14 @@ func buildImportMappingElementModel(moduleName string, def *ast.ImportMappingEle
 		elem.MinOccurs = jsElem.MinOccurs
 		elem.MaxOccurs = jsElem.MaxOccurs
 		elem.Nillable = jsElem.Nillable
-		elem.OriginalValue = jsElem.OriginalValue
+		// OriginalValue is deliberately NOT cloned. It is the sample value parsed
+		// out of the JSON structure's snippet ("42", "\"Widget\""), and it belongs
+		// to the STRUCTURE — Studio Pro leaves it empty on every mapping element.
+		// Measured across the two Studio-Pro-authored mappings a blank app ships
+		// (FeedbackModule's IMM_PostResponse and EMM_PostFeedback, ~15 value
+		// elements between them): all "", while their structures carry 17 non-empty
+		// samples. Copying the sample in makes an mxcli-written mapping differ from
+		// a Studio-Pro-written one over the same structure. (issue #882)
 		elem.FractionDigits = jsElem.FractionDigits
 		elem.TotalDigits = jsElem.TotalDigits
 		elem.MaxLength = jsElem.MaxLength

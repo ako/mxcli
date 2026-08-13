@@ -177,3 +177,43 @@ func TestImportMappingRefusesAnUnknownMember(t *testing.T) {
 		}
 	}
 }
+
+// The JSON structure's OriginalValue is the SAMPLE parsed out of the snippet
+// ("42", "\"Widget\""). It belongs to the structure, and Studio Pro leaves it
+// empty on every mapping element: measured across the two Studio-Pro-authored
+// mappings a blank app ships (FeedbackModule's IMM_PostResponse and
+// EMM_PostFeedback, ~15 value elements), all "" — while their structures carry
+// 17 non-empty samples.
+//
+// mxcli cloned it in, so an mxcli-written mapping differed from a
+// Studio-Pro-written one over the same structure by the snippet's example data.
+// That difference is exactly what a reporter comparing the two would see.
+func TestImportMappingDoesNotCloneTheSnippetSampleValue(t *testing.T) {
+	idx := newJSONSchemaIndex([]*types.JsonElement{{
+		ExposedName: "Root", Path: "(Object)", ElementType: "Object", MinOccurs: 1, MaxOccurs: 1,
+		Children: []*types.JsonElement{{
+			ExposedName: "Total", Path: "(Object)|total", ElementType: "Value",
+			MaxOccurs: 1, OriginalValue: "42",
+		}},
+	}})
+
+	root, err := buildImportMappingElementModel("B", &ast.ImportMappingElementDef{
+		Entity:   "B.Root",
+		Children: []*ast.ImportMappingElementDef{{Attribute: "Total", JsonName: "total"}},
+	}, "", "(Object)", nil, idx, true)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+
+	if len(root.Children) != 1 {
+		t.Fatalf("expected one child, got %d", len(root.Children))
+	}
+	if got := root.Children[0].OriginalValue; got != "" {
+		t.Errorf("OriginalValue = %q, want empty — the snippet's sample value belongs to the "+
+			"JSON structure, and Studio Pro leaves it off the mapping element", got)
+	}
+	// The clone itself must still happen: the path is the whole point.
+	if got := root.Children[0].JsonPath; got != "(Object)|total" {
+		t.Errorf("JsonPath = %q, want (Object)|total", got)
+	}
+}
