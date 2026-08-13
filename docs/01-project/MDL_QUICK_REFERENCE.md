@@ -190,9 +190,41 @@ Mendix validates with .NET's regex engine, which accepts constructs Go does not
 (lookaround, backreferences). mxcli stores such a pattern unchanged; `describe`
 notes that it could not verify it rather than calling it invalid.
 
-**Binding a regex to an attribute is not yet expressible.** `create validation
-rule` has grammar but no implementation — it currently parses and does nothing.
-Add the rule in Studio Pro.
+Bind a pattern to an attribute with `create validation rule` — see below.
+
+## Validation Rules
+
+Constrain a single attribute. The rule is anonymous and lives on the entity, so
+the statement names the **attribute**, not the rule.
+
+| Statement | Syntax | Notes |
+|-----------|--------|-------|
+| Create regex rule | `create validation rule for Module.Entity.Attribute regex Module.Pattern feedback '<msg>';` | Pattern must already exist |
+| Create range rule | `create validation rule for Module.Entity.Attribute range from <lit> to <lit> feedback '<msg>';` | Bounds inclusive |
+| Lower bound only | `... range from <lit> ...` | Mendix `GreaterThanOrEqualTo` |
+| Upper bound only | `... range to <lit> ...` | Mendix `SmallerThanOrEqualTo` |
+
+Mendix has **no strict `<` or `>`**, so there is no exclusive form.
+
+Re-running a rule replaces the one of the **same type** on that attribute and
+leaves the others alone — an attribute can carry a Required rule and a RegEx
+rule at once.
+
+`regex` takes the **qualified name of a regular expression document**, never an
+inline pattern. A name that does not resolve is refused, because Mendix stores
+the reference by name and the build would otherwise report CE0135 "No regular
+expression specified".
+
+**Required and Unique are attribute constraints, not this statement:**
+
+```sql
+create entity Shop.Product ( Email: String(200) not null error 'Required' );
+alter entity Shop.Product modify attribute Code String(20) unique error 'Unique';
+```
+
+`MaxLength` and `EqualsTo` rules, and a range bounded by another *attribute*,
+cannot be authored. mxcli refuses to rewrite an entity carrying one rather than
+downgrading it to a Required rule; `describe entity` marks it with a comment.
 
 **Example:**
 ```sql

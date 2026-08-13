@@ -496,20 +496,33 @@ type ValidationRuleInfo interface {
 }
 
 // RangeValidationRuleInfo represents a range validation.
+//
+// A bound is either a literal (MinValue/MaxValue) or another attribute of the
+// same entity (MinAttributeQualifiedName/MaxAttributeQualifiedName) — Mendix
+// stores both, and a reader that carried only the literals would silently drop
+// an attribute-bounded rule on the next rewrite. MDL can only author literal
+// bounds; the attribute fields exist so a stored rule survives a round trip.
 type RangeValidationRuleInfo struct {
 	model.BaseElement
-	MinValue    *string `json:"minValue,omitempty"`
-	MaxValue    *string `json:"maxValue,omitempty"`
-	UseMinValue bool    `json:"useMinValue"`
-	UseMaxValue bool    `json:"useMaxValue"`
+	MinValue                  *string `json:"minValue,omitempty"`
+	MaxValue                  *string `json:"maxValue,omitempty"`
+	UseMinValue               bool    `json:"useMinValue"`
+	UseMaxValue               bool    `json:"useMaxValue"`
+	MinAttributeQualifiedName string  `json:"minAttribute,omitempty"`
+	MaxAttributeQualifiedName string  `json:"maxAttribute,omitempty"`
 }
 
 func (RangeValidationRuleInfo) isValidationRuleInfo() {}
 
 // RegexValidationRuleInfo represents a regex validation.
+//
+// The rule points at a RegularExpressions$RegularExpression document by
+// QUALIFIED NAME, not by ID — Mendix stores it as a by-name reference under the
+// key "RegExIdentifier". (This field used to be a model.ID, which no reader
+// ever populated.)
 type RegexValidationRuleInfo struct {
 	model.BaseElement
-	RegularExpressionID model.ID `json:"regularExpressionId"`
+	RegularExpressionQualifiedName string `json:"regularExpression"`
 }
 
 func (RegexValidationRuleInfo) isValidationRuleInfo() {}

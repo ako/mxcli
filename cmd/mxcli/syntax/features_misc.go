@@ -286,9 +286,8 @@ Mendix validates with .NET's regex engine, which accepts constructs Go does not
 (lookaround, backreferences). mxcli stores such a pattern unchanged and DESCRIBE
 notes that it could not verify it — it does not call it invalid.
 
-Binding a regex to an attribute is not yet expressible: CREATE VALIDATION RULE
-has grammar but no implementation, so it currently does nothing. Add the rule in
-Studio Pro.`,
+Bind a pattern to an attribute with CREATE VALIDATION RULE — see
+'mxcli syntax validation-rule'.`,
 		Example: `CREATE REGULAR EXPRESSION Val.EmailAddress (
   Expression: '\w+((-|\+|\.)\w+)*@\w+([\.-]?\w+)*(\.\w{2,})+',
   Documentation: 'A, not too restrictive, email address regular expression'
@@ -307,6 +306,63 @@ DROP REGULAR EXPRESSION Val.Identifier;
 
 -- Which entities validate against a shared pattern
 SHOW REFERENCES TO Val.EmailAddress;`,
+	})
+
+	// ── Validation rules ────────────────────────────────────────────────
+
+	Register(SyntaxFeature{
+		Path:    "validation-rule",
+		Summary: "Validation rules — constrain an attribute with a pattern or a range",
+		Keywords: []string{
+			"validation rule", "validation rules", "validate", "constraint",
+			"create validation rule", "regex rule", "range rule",
+			"required", "unique", "not null", "feedback",
+		},
+		Syntax: `CREATE VALIDATION RULE FOR Module.Entity.Attribute
+  REGEX Module.PatternName
+  FEEDBACK '<message>';
+
+CREATE VALIDATION RULE FOR Module.Entity.Attribute
+  RANGE FROM <literal> TO <literal>
+  FEEDBACK '<message>';
+
+The bounds are inclusive and either may be omitted:
+  RANGE FROM 1 TO 100   between 1 and 100
+  RANGE FROM 1          1 or more
+  RANGE TO 100          100 or less
+Mendix has no strict < or >, so there is no exclusive form.
+
+A validation rule is anonymous and lives on the ENTITY, keyed by the attribute
+it constrains — so the statement names the attribute, not the rule. Re-running
+it replaces the rule of the SAME type on that attribute and leaves the others
+alone, so an attribute can carry a Required and a RegEx rule at once.
+
+REGEX takes the qualified name of a REGULAR EXPRESSION document, never an inline
+pattern — create the pattern first. A name that does not resolve is refused
+here, because Mendix stores the reference by name and would otherwise report
+CE0135 "No regular expression specified" at build time.
+
+REQUIRED and UNIQUE rules are written as attribute constraints instead, on
+CREATE ENTITY or ALTER ENTITY:
+  ALTER ENTITY Shop.Product MODIFY ATTRIBUTE Email string(200)
+    NOT NULL ERROR 'Email is required';
+  ALTER ENTITY Shop.Product MODIFY ATTRIBUTE Code string(20)
+    UNIQUE ERROR 'Code must be unique';`,
+		Example: `CREATE REGULAR EXPRESSION Shop.EmailPattern (
+  Expression: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
+);
+
+CREATE VALIDATION RULE FOR Shop.Customer.Email
+  REGEX Shop.EmailPattern
+  FEEDBACK 'Enter a valid email address';
+
+CREATE VALIDATION RULE FOR Shop.Booking.Guests
+  RANGE FROM 1 TO 100
+  FEEDBACK 'Between 1 and 100 guests are allowed';
+
+CREATE VALIDATION RULE FOR Shop.Product.Price
+  RANGE FROM 0
+  FEEDBACK 'Price cannot be negative';`,
 	})
 
 	// ── Scheduled events ────────────────────────────────────────────────

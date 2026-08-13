@@ -211,6 +211,7 @@ func allKnownStatements() []ast.Statement {
 		&ast.CreateQueueStmt{},
 		&ast.CreateRegularExpressionStmt{},
 		&ast.CreateScheduledEventStmt{},
+		&ast.CreateValidationRuleStmt{},
 		&ast.CreateRestClientStmt{},
 		&ast.CreateSnippetStmtV3{},
 		&ast.CreateUserRoleStmt{},

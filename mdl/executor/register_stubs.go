@@ -243,6 +243,12 @@ func registerScheduledEventHandlers(r *Registry) {
 	})
 }
 
+func registerValidationRuleHandlers(r *Registry) {
+	r.Register(&ast.CreateValidationRuleStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execCreateValidationRule(ctx, stmt.(*ast.CreateValidationRuleStmt))
+	})
+}
+
 func registerRegularExpressionHandlers(r *Registry) {
 	r.Register(&ast.CreateRegularExpressionStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
 		return execCreateRegularExpression(ctx, stmt.(*ast.CreateRegularExpressionStmt))

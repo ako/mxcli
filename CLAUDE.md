@@ -184,6 +184,48 @@ For pluggable widgets (DataGrid2, ComboBox, Gallery, etc.), templates must inclu
 
 **CE0463 "widget definition changed" error**: This error occurs when the Object's property structure doesn't match the Type's PropertyTypes. Always extract templates from Studio Pro-created widgets, not programmatically generated ones. See `sdk/widgets/templates/README.md` for details. For debugging CE0463 and other BSON issues, follow the workflow in `.claude/skills/debug-bson.md`.
 
+### `modelsdk/gen` Binds Some Properties Under the Wrong BSON Key
+
+The storage-name table above is about `$Type`. The **same split exists per
+property**, and `modelsdk/gen` gets it wrong in ~80 places. Mendix's reflection
+data carries two names per property — an SDK `Name` and a BSON `StorageName` —
+and the in-repo generator (`cmd/codegen` → `generated/metamodel`) keeps them
+apart, tag from storage name:
+
+```go
+// generated/metamodel/types.go — correct
+RegularExpression model.QualifiedName `json:"regExIdentifier,omitempty"`
+//   ^ SDK name                                ^ storage name
+```
+
+The out-of-tree generator that produced `modelsdk/gen` kept only the SDK name.
+**`generated/metamodel` is therefore the arbiter when the two disagree** — it is
+generated from the same reflection data and has been right in every case checked
+against a real document (`RegularExpression.Expression`, `RegExRuleInfo.RegExIdentifier`,
+`Attribute.GUID`).
+
+`cmd/modelsdk-codegen` and `internal/codegen/supplements.json` — named in every
+gen file's `DO NOT EDIT` header — have **never existed in this repo**
+(`git log --all` is empty for both), and `/reference/` is gitignored, so the
+generator's input is absent too. gen is vendored output that cannot be
+regenerated here; see `docs/plans/2026-06-05-adopt-modelsdk-engine.md` §4, where
+"vendor engalar codegen" is still an open Phase-0 item.
+
+So the fix for a wrong key is a **hand-applied override in the `init<Type>`
+function**, commented in the house style (grep `STORAGE-NAME OVERRIDE` for the
+four precedents). Two rules:
+
+1. **Patch both sides.** The encode key (`init<Type>`) and the decode key
+   (`InitFromRaw`) are separate literals. Patching one gives a document that
+   writes one key and reads another — which the entity-rewrite guard then
+   refuses, so the symptom is a puzzling refusal rather than a wrong file.
+2. **`gofmt` the file**, or `TestGeneratedCodeIsFormatted` fails.
+
+Not every wrong key is worth patching — leave the ones nothing writes, and note
+why. `mx check` is a weak signal here either way: it caught the RegEx one
+(CE0135) but tolerates unknown properties in general, and Studio Pro is stricter
+than mxbuild.
+
 ### TypeEnumeration vs TypeEntity Ambiguity
 
 The MDL visitor (`buildDataType` in `visitor_helpers.go`) cannot distinguish between entity types and enumeration types for bare qualified names like `Module.EntityName`. Both parse as `ast.TypeEnumeration` with `EnumRef` set. Code that consumes data types must handle `TypeEnumeration` alongside `TypeEntity` and use `EnumRef` as a fallback for the entity name.
@@ -699,7 +741,8 @@ Full syntax tables for all MDL statements (microflows, pages, security, navigati
 - CALCULATED BY microflow syntax for calculated attributes
 - Image collections (SHOW/DESCRIBE/CREATE/DROP)
 - Menu documents (CREATE OR MODIFY/DESCRIBE/DROP MENU): standalone `Menus$MenuDocument`, the reusable menu a menu widget points at (Atlas_Core's `Phone_Menu`/`Tablet_Menu`) — **not** the menu inside a navigation profile, though both are built from the same items, so the item syntax is shared with `CREATE NAVIGATION`'s `MENU (...)` block. DESCRIBE is round-trippable. Written through gen+codec, which is load-bearing: Studio Pro's menu documents carry typed-array marker **3** on the item collection and each item's sub-items (the codec default), while the navigation writers hand-build items with marker **1** — unverified whether that is a latent navigation bug or a real difference, so navigation is left alone. Authoring is modelsdk-only; legacy refuses. Two traps: a menu item cannot open a page with required parameters (**CE1571**), and only `Forms$IconCollectionIcon` round-trips (glyph/image icons are flagged by DESCRIBE, not dropped silently)
-- Regular expressions (LIST/DESCRIBE/CREATE [OR MODIFY]/DROP REGULAR EXPRESSION): named patterns that attribute validation rules reference **by qualified name**, which is why they are documents. `modelsdk/gen` is **wrong** about the pattern's key — it binds `RegEx` where every Studio Pro document stores `Expression` (`generated/metamodel` agrees with the documents), so both engines share one raw-BSON codec in `mdl/regularexpressions`; a reader keyed on gen's name returns an empty pattern for every real document. Pinned against five Studio Pro-authored documents (Email Connector 6.4.2, Community Commons 11.5.1). Mendix validates with .NET's engine, so a pattern Go's RE2 cannot compile (lookaround — the Email Connector ships one) is stored unchanged and reported "not verifiable", never "invalid". A `validate` edge into `CATALOG.REFS` makes `show references to <regex>` list the entities using it. **Binding a regex to an attribute is still not authorable**: `create validation rule` has grammar but no AST, visitor or handler, so it parses and silently does nothing (all forms). Required/Unique rules ARE authorable, via the `not null error '…'` / `unique error '…'` attribute constraints. Rewriting an entity that has a **RegEx or Range** rule is now **refused** on both engines rather than silently downgrading it to Required — a matched pair of read/write fallbacks made that round trip lossy and `mx check` stayed green, because a Required rule is valid
+- Regular expressions (LIST/DESCRIBE/CREATE [OR MODIFY]/DROP REGULAR EXPRESSION): named patterns that attribute validation rules reference **by qualified name**, which is why they are documents. `modelsdk/gen` is **wrong** about the pattern's key — it binds `RegEx` where every Studio Pro document stores `Expression` (`generated/metamodel` agrees with the documents), so both engines share one raw-BSON codec in `mdl/regularexpressions`; a reader keyed on gen's name returns an empty pattern for every real document. Pinned against five Studio Pro-authored documents (Email Connector 6.4.2, Community Commons 11.5.1). Mendix validates with .NET's engine, so a pattern Go's RE2 cannot compile (lookaround — the Email Connector ships one) is stored unchanged and reported "not verifiable", never "invalid". A `validate` edge into `CATALOG.REFS` makes `show references to <regex>` list the entities using it
+- Validation rules (CREATE VALIDATION RULE): binds a **regex** or a **range** to one attribute — `create validation rule for Mod.Entity.Attr regex Mod.Pattern feedback '…'`. The rule is anonymous and entity-scoped, so the statement names the attribute; re-running it replaces the rule of the same type and leaves the attribute's others alone. Unlocked by a `STORAGE-NAME OVERRIDE` in `modelsdk/gen`: it bound `RegularExpression` where Studio Pro stores `RegExIdentifier`, and the control (same script, key reverted) fails **CE0135 "No regular expression specified"** while the fixed one is 0 errors on mxbuild 11.13 with `RegExIdentifier` on disk. Range bounds are inclusive and map to Mendix's only three kinds (`from X to Y`/`from X`/`to Y` → Between/GreaterThanOrEqualTo/SmallerThanOrEqualTo); there is no strict `<`/`>`, and the old grammar's forms for it — plus an EXPRESSION rule type Mendix does not have and an inline regex literal — were removed, having never had a visitor or handler. Required/Unique stay attribute constraints (`not null error '…'` / `unique error '…'`), not a second spelling here. Rewriting an entity carrying a rule this writer cannot reproduce — **MaxLength, EqualsTo, or a range bounded by another attribute** — is **refused** on both engines rather than silently downgraded to Required; that round trip was lossy and `mx check` stayed green, because a Required rule is valid. The reader now carries each rule's payload (`ruleInfoFromGen`), which is what makes the refusal narrow instead of covering all of RegEx and Range
 - Scheduled events — Mendix's cron (LIST/DESCRIBE/CREATE [OR MODIFY]/DROP). `Repeat:` names one of the eight `ScheduledEvents$*Schedule` variants and only that variant's fields are accepted; a field from another repeat is refused by `mxcli check` (MDL-SCHED01) and by exec, which call the same function. The document shape is pinned by re-serializing three whole Studio Pro-authored events (Workflow Commons 4.11.0, OIDC SSO 4.6.0, SAML 4.2.1) element by element — `modelsdk/gen` is **wrong** about two properties here: the integers are stored as int64 (gen says int32, the #585 mismatch) and `StartDateTime` is a BSON datetime (gen says string), so both engines share one raw-BSON codec in `mdl/scheduledevents`. `Interval`/`IntervalType` are legacy siblings of `Schedule` that Studio Pro writes and does not keep in sync — derived on CREATE, carried through untouched on MODIFY. Only the Day and Hour variants have a Studio Pro reference; the other six are metamodel-derived and verified to load. Both are in the catalog (`CATALOG.SCHEDULED_EVENTS`, `CATALOG.QUEUES`) and a scheduled event emits a `schedule` edge into `CATALOG.REFS` — without it a microflow run only by a scheduled event was reported as dead by `show callers`, `GRAPH_DEAD_ASSETS` and lint rule QUAL004. See `.claude/skills/mendix/scheduled-events-and-queues.md`
 - Task queues (LIST/DESCRIBE/CREATE [OR MODIFY]/DROP QUEUE). `Config.ParallelismExpression` is a **string** and the sibling int32 `Parallelism` is not written — matching all four Studio Pro queues in Business Events 3.12.1. Binding a *call* to a queue is not yet authorable, so `CREATE OR REPLACE|MODIFY MICROFLOW` is **refused** when the stored microflow has a queued call (guard-don't-drop, ADR-0005): the rebuild used to write `QueueSettings` back as null, which made `mx check` go from CE1613 to 0 errors by deleting the user's configuration
 - AI agent documents: Model, Knowledge Base, Consumed MCP Service, Agent (LIST/DESCRIBE/CREATE/DROP, with variables, tools, KB tools, dollar-quoted multi-line prompts; requires AgentEditorCommons module, Mendix 11.9+)

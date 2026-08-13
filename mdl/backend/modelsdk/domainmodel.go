@@ -351,7 +351,51 @@ func validationRuleFromGen(vr *genDm.ValidationRule) *domainmodel.ValidationRule
 	if txt, ok := vr.ErrorMessage().(*genTexts.Text); ok {
 		out.ErrorMessage = textFromGen(txt)
 	}
+	out.Rule = ruleInfoFromGen(vr.RuleInfo())
 	return out
+}
+
+// ruleInfoFromGen carries the rule's payload back onto the model, so a
+// read-modify-write can rebuild it. Without this the reader reported the right
+// TYPE and dropped everything that made the rule mean something, and the writer
+// then had no choice but to refuse (see ruleInfoToGen).
+//
+// A type with no case here reads as a nil payload, which the writer treats as a
+// refusal — the safe direction.
+func ruleInfoFromGen(ri element.Element) domainmodel.ValidationRuleInfo {
+	switch info := ri.(type) {
+	case *genDm.RegExRuleInfo:
+		out := &domainmodel.RegexValidationRuleInfo{
+			RegularExpressionQualifiedName: info.RegularExpressionQualifiedName(),
+		}
+		out.ID = model.ID(info.ID())
+		return out
+	case *genDm.RangeRuleInfo:
+		out := &domainmodel.RangeValidationRuleInfo{
+			UseMinValue:               info.UseMinValue(),
+			UseMaxValue:               info.UseMaxValue(),
+			MinAttributeQualifiedName: info.MinAttributeQualifiedName(),
+			MaxAttributeQualifiedName: info.MaxAttributeQualifiedName(),
+		}
+		if v := info.MinValue(); v != "" {
+			out.MinValue = &v
+		}
+		if v := info.MaxValue(); v != "" {
+			out.MaxValue = &v
+		}
+		out.ID = model.ID(info.ID())
+		return out
+	case *genDm.RequiredRuleInfo:
+		out := &domainmodel.RequiredValidationRuleInfo{}
+		out.ID = model.ID(info.ID())
+		return out
+	case *genDm.UniqueRuleInfo:
+		out := &domainmodel.UniqueValidationRuleInfo{}
+		out.ID = model.ID(info.ID())
+		return out
+	default:
+		return nil
+	}
 }
 
 // ruleTypeFromGen maps a gen RuleInfo element back to the domainmodel rule-type

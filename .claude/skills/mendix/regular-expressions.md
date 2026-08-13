@@ -57,26 +57,58 @@ mxcli stores such a pattern unchanged and `describe` adds:
 That is a note, not an error. Do not "fix" a pattern because mxcli could not
 compile it.
 
-## You cannot bind a regex to an attribute from MDL yet
+## Binding a regex to an attribute
 
-`create validation rule ... regex Attr ...` has grammar but **no
-implementation** — it parses and silently does nothing (true of every validation
-rule form). Create the regex document with mxcli, then attach it to the attribute
-in Studio Pro.
+The pattern is a document; the binding is a **validation rule** on the entity:
 
-Required and Unique rules *are* authorable, as attribute constraints:
+```sql
+create regular expression Val.EmailAddress (
+  Expression: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
+);
+
+create validation rule for Val.Person.Email
+  regex Val.EmailAddress
+  feedback 'Enter a valid email address';
+```
+
+Create the pattern first. The rule stores a **reference by qualified name**, so
+a name that does not resolve is refused up front — otherwise the build reports
+`CE0135 "No regular expression specified"` and the attribute is unconstrained.
+
+Ranges use the same statement. Bounds are inclusive and either may be omitted;
+Mendix has no strict `<` or `>`, so there is no exclusive form:
+
+```sql
+create validation rule for Val.Booking.Guests range from 1 to 100 feedback '…';
+create validation rule for Val.Product.Price  range from 0        feedback '…';
+create validation rule for Val.Order.Discount range to 100        feedback '…';
+```
+
+Re-running a rule replaces the one of the **same type** on that attribute and
+leaves the others alone, so an attribute can carry a Required rule and a RegEx
+rule at once.
+
+Required and Unique are **not** written with this statement — they are attribute
+constraints:
 
 ```sql
 create entity Val.Person (
   Email: String(200) not null error 'Email is required',
   Code:  String(20)  unique error 'Code must be unique'
 );
+
+alter entity Val.Person modify attribute Email String(200)
+  not null error 'Email is required';
 ```
 
-Once an entity has a **RegEx or Range** rule, mxcli **refuses** to rewrite it
-(`alter entity`, `create or replace entity`) rather than silently turning it into
-a Required rule, which is what it used to do — the constraint would vanish and
-the build would still pass. Change such an entity in Studio Pro.
+### What still cannot be authored
+
+`MaxLength` and `EqualsTo` rules, and a **range bounded by another attribute**
+rather than a literal. mxcli **refuses** to rewrite an entity carrying one
+(`alter entity`, `create or replace entity`) rather than silently downgrading it
+to a Required rule, which is what it used to do — the constraint would vanish
+and the build would still pass. Change such an entity in Studio Pro. `describe
+entity` marks the rule with a comment instead of dropping it silently.
 
 ## Finding out who uses one
 
@@ -99,9 +131,12 @@ select QualifiedName, Expression from CATALOG.REGULAR_EXPRESSIONS;
 | Single quote left undoubled | Parse error | `'^it''s$'` |
 | Omitting `Expression` | `has no Expression` | It is required |
 | Treating the Go note as an error | A valid .NET pattern gets rewritten | The note means "not verified", not "invalid" |
-| Expecting `create validation rule` to work | It reports nothing and writes nothing | Attach the regex in Studio Pro |
+| Inline pattern in a rule (`regex '^a+$'`) | Parse error | The rule takes a document name: `regex Val.MyPattern` |
+| Rule created before the pattern | "regular expression not found" | `create regular expression` first |
+| Expecting `range > 0` | Parse error | Mendix has only inclusive bounds: `range from 0` |
 
 ## Related
 
 - `mxcli syntax regular-expression` — full syntax reference
+- `mxcli syntax validation-rule` — binding a pattern or a range to an attribute
 - `mdl-entities.md` — attributes and validation
