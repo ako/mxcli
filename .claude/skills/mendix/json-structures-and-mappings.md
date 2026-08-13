@@ -304,6 +304,32 @@ $PetResponse = import from mapping Module.IMM_Pet($JsonContent);
 import from mapping Module.IMM_Pet($JsonContent);
 ```
 
+#### Range — how much of the result to bind
+
+Optional trailing clause, matching Studio Pro's **All / First / Custom** setting
+on the activity. Omit it and mxcli infers from the mapping's own root shape, as
+it always has.
+
+```sql
+$Pets = import from mapping Module.IMM_Pets($Json) all;            -- All (the default)
+$Pet  = import from mapping Module.IMM_Pets($Json) first;          -- First: ONE object
+$Page = import from mapping Module.IMM_Pets($Json) limit 10;       -- Custom
+$Page = import from mapping Module.IMM_Pets($Json) limit 10 offset 5;
+```
+
+`first` is a separate word from `limit 1` on purpose: `limit 1` is a *list* of
+one, `first` binds a single *object*, so the result variable's type differs.
+
+Two things the range does **not** do:
+
+- **It does not change what the mapping returns.** An object-rooted mapping
+  binds an object under every range — `all` on one is Studio Pro's own default,
+  and the blank app ships one (`FeedbackModule.SUB_Feedback_PostToAppInsights`).
+  Only `first` narrows a list mapping to a single object.
+- **`offset` is not accepted everywhere.** Mendix rejects it with
+  **CE6100** ("This entity does not support offset") unless the mapping's root
+  is a list; `limit` alone is fine either way. Verified on mxbuild 11.6.6.
+
 ### Export to Mapping (entity → JSON)
 
 ```sql

@@ -179,4 +179,28 @@ func init() {
 		Example: "VALIDATION FEEDBACK $Order/Quantity MESSAGE 'Quantity must be positive';\nVALIDATION FEEDBACK $Customer/Email MESSAGE '{1} is not valid'\n  OBJECTS [$Customer/Email];",
 		SeeAlso: []string{"microflow.error-handling"},
 	})
+
+	Register(SyntaxFeature{
+		Path:    "microflow.mapping",
+		Summary: "IMPORT FROM MAPPING / EXPORT TO MAPPING, and the import Range (All/First/Custom)",
+		Keywords: []string{
+			"import from mapping", "export to mapping", "import mapping activity",
+			"range", "all", "first", "limit", "offset", "single object",
+		},
+		Syntax: "[$Var =] IMPORT FROM MAPPING Module.IMM ($SourceVar) [<range>];\n" +
+			"$Var = EXPORT TO MAPPING Module.EMM ($EntityVar);\n\n" +
+			"<range> — Studio Pro's Range on the import activity:\n" +
+			"  ALL                          bind the whole result\n" +
+			"  FIRST                        bind ONE object (not a one-element list)\n" +
+			"  LIMIT <expr> [OFFSET <expr>] a bounded list\n\n" +
+			"Omit it and the cardinality is inferred from the mapping's root shape.\n" +
+			"The range does not change WHAT the mapping returns: an object-rooted\n" +
+			"mapping binds an object under ALL too (Studio Pro's own default).\n" +
+			"Mendix rejects OFFSET on a non-list mapping with CE6100.",
+		Example: "$Pets  = import from mapping Shop.IMM_Pets($Json) all;\n" +
+			"$Pet   = import from mapping Shop.IMM_Pets($Json) first;\n" +
+			"$Page  = import from mapping Shop.IMM_Pets($Json) limit 10 offset 5;\n" +
+			"$Json2 = export to mapping Shop.EMM_Pet($Pet);",
+		SeeAlso: []string{"import-mapping", "export-mapping", "json-structure"},
+	})
 }

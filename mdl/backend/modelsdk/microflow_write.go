@@ -814,6 +814,34 @@ func microflowActionToGen(action microflows.MicroflowAction) element.Element {
 	}
 }
 
+// importMappingRangeToGen builds the Range child of a Microflows$ImportMappingCall.
+//
+// Mendix has two variants and mxcli only ever wrote the first, so Studio Pro's
+// "Custom" setting was unrepresentable rather than merely undescribed:
+//
+//	Microflows$ConstantRange{SingleObject}                     All (false) / First (true)
+//	Microflows$CustomRange{LimitExpression, OffsetExpression}  Custom
+//
+// A limit or an offset selects CustomRange; SingleObject has no meaning there,
+// because a bounded range is always a list.
+//
+// Shared because the ImportMappingCall is built at THREE sites in this engine —
+// importXmlActionToGen (the `import from mapping` statement), the
+// ResultHandlingMapping case (REST result handling), and the legacy writer's own
+// copy. Fixing one and not the others is how a limit reached the model and was
+// still written as a ConstantRange. (issue #881)
+func importMappingRangeToGen(h *microflows.ResultHandlingMapping) *element.Base {
+	if h.LimitExpression != "" || h.OffsetExpression != "" {
+		rng := newElem("Microflows$CustomRange", "")
+		addStr(rng, "LimitExpression", h.LimitExpression)
+		addStr(rng, "OffsetExpression", h.OffsetExpression)
+		return rng
+	}
+	rng := newElem("Microflows$ConstantRange", "")
+	addBool(rng, "SingleObject", microflows.RangeSingleObjectOf(h))
+	return rng
+}
+
 // importXmlActionToGen builds a Microflows$ImportXmlAction ("import from mapping").
 // Mirrors serializeImportXmlAction field-for-field, including the ImportMappingCall
 // sub-element (ReturnValueMapping key) and the Object/List VariableType.
@@ -837,9 +865,7 @@ func importXmlActionToGen(a *microflows.ImportXmlAction) element.Element {
 	addBool(imc, "ForceSingleOccurrence", forceSingle)
 	addStr(imc, "ObjectHandlingBackup", "Create")
 	addStr(imc, "ParameterVariableName", "")
-	rng := newElem("Microflows$ConstantRange", "")
-	addBool(rng, "SingleObject", rh.SingleObject)
-	addPart(imc, "Range", rng)
+	addPart(imc, "Range", importMappingRangeToGen(rh))
 	addStr(imc, "ReturnValueMapping", string(rh.MappingID))
 
 	var vt *element.Base
@@ -1533,9 +1559,7 @@ func restResultHandlingToGen(rh microflows.ResultHandling, outputVar string) ele
 		addBool(imc, "ForceSingleOccurrence", forceSingle)
 		addStr(imc, "ObjectHandlingBackup", "Create")
 		addStr(imc, "ParameterVariableName", "")
-		rng := newElem("Microflows$ConstantRange", "")
-		addBool(rng, "SingleObject", h.SingleObject)
-		addPart(imc, "Range", rng)
+		addPart(imc, "Range", importMappingRangeToGen(h))
 		addStr(imc, "ReturnValueMapping", string(h.MappingID))
 		addPart(e, "ImportMappingCall", imc)
 		var vt *element.Base
