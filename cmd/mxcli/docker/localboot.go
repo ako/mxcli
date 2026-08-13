@@ -290,10 +290,25 @@ func runtimeConfigParams(o LocalRuntimeOptions, constants map[string]string) map
 		params["ApplicationRootUrl"] = o.ApplicationRootUrl
 	}
 	// Overlay extra runtime settings (e.g. Metrics.Registries,
-	// OpenTelemetry._RuntimeSpanFilters) into this SAME payload. The admin
-	// update_configuration action REPLACES rather than merges and has no
-	// read-back, so merging here — into mxcli's single boot call — is the only
-	// safe way to add settings without clobbering the DB/BasePath config.
+	// OpenTelemetry._RuntimeSpanFilters) into this SAME payload, because the
+	// map below overwrites by key: a caller passing
+	// `--runtime-setting MicroflowConstants=…` replaces the constants map built
+	// above rather than adding to it, and at boot there is nothing to fall back
+	// on for BasePath/DatabaseName (they are not in config.json). Folding
+	// everything into mxcli's single boot call is what keeps that safe.
+	//
+	// The admin action also has no read-back — get_configuration,
+	// get_current_configuration, runtime_config and get_current_runtime_status
+	// are all "Action not found" on 11.12.1 — so a caller cannot merge by
+	// reading first.
+	//
+	// Measured on 11.12.1, for anyone tempted to drive this API live: the
+	// runtime treats an update_configuration MicroflowConstants map as an
+	// overlay on the deployment defaults (constants omitted from the map still
+	// resolve), and the call is staged rather than applied — the running app
+	// keeps the old value until the next reload_model, while still answering
+	// result:0. A "set a constant on a running app" feature is therefore
+	// update_configuration + reload_model, verified by observation.
 	for k, v := range o.RuntimeSettings {
 		params[k] = v
 	}
