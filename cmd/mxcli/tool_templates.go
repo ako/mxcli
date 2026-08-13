@@ -352,7 +352,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 	return `FROM mcr.microsoft.com/devcontainers/base:bookworm
 
-# Install Adoptium JDK 21 (required by MxBuild), Node.js 22, and utility tools
+# Install Adoptium JDK 21 (required by MxBuild), Node.js 22, and utility tools.
+#
+# The postgresql SERVER (not just -client) is required: the standalone runtime
+# 'mxcli run --local' boots needs a real database, and 'mxcli run --local
+# --ensure-db' provisions it in-container by starting the local service and
+# creating the role + database through a 'sudo -u postgres' superuser. With only
+# postgresql-client installed there is no service to start and no superuser, so
+# --ensure-db fails on a fresh container.
 RUN apt-get update && apt-get install -y --no-install-recommends wget apt-transport-https gpg ca-certificates curl && \
     wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --dearmor -o /etc/apt/keyrings/adoptium.gpg && \
     echo "deb [signed-by=/etc/apt/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb bookworm main" > /etc/apt/sources.list.d/adoptium.list && \
@@ -361,6 +368,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends wget apt-transp
     apt-get install -y --no-install-recommends \
        temurin-21-jdk \
        nodejs \
+       postgresql \
        postgresql-client \
        kafkacat \
     && apt-get clean \
