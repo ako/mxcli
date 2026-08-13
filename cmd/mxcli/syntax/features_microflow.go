@@ -190,12 +190,14 @@ func init() {
 		Syntax: "@position(x, y)                       -- the activity's centre point\n" +
 			"@anchor(from: right, to: left)        -- which SIDE each end of the outgoing flow attaches to\n" +
 			"@curve(from: (40, -90), to: (-40, 90))  -- the flow's bezier control vectors\n" +
+			"@merge(x, y)                          -- the implicit merge that closes a split\n" +
 			"@caption 'text'\n@color Green\n@annotation 'a note'\n@excluded\n\n" +
 			"An unrecognised @name is an error (MDL059): it would parse and do nothing,\n" +
 			"so a typo of @position would silently discard the layout.\n\n" +
 			"Mendix stores no waypoints — a flow's shape is two control vectors, each a\n" +
 			"pixel offset from its end of the line. (0, 0) at both ends is straight.\n" +
-			"Container Size is still computed, not authorable.",
+			"@position on a split belongs to the SPLIT, so its end-if join has its own\n" +
+			"annotation. Container Size is still computed, not authorable.",
 		Example: "create microflow MyModule.ACT_Flow ($In: String)\nreturns String as $Out\nbegin\n" +
 			"  @position(200, 100)\n  @anchor(from: bottom, to: top)\n" +
 			"  @curve(from: (40, -90), to: (-40, 90))\n  declare $Tmp String = $In;\n" +

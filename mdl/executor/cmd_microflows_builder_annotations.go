@@ -140,6 +140,9 @@ func (fb *flowBuilder) mergeStatementAnnotations(stmt ast.MicroflowStatement) {
 	if ann.Curve != nil {
 		fb.pendingAnnotations.Curve = ann.Curve
 	}
+	if ann.Merge != nil {
+		fb.pendingAnnotations.Merge = ann.Merge
+	}
 	if ann.TrueBranchAnchor != nil {
 		fb.pendingAnnotations.TrueBranchAnchor = ann.TrueBranchAnchor
 	}
@@ -229,6 +232,20 @@ func (fb *flowBuilder) applyPendingAnnotations(activityID model.ID) {
 	}
 	fb.applyAnnotations(activityID, fb.pendingAnnotations)
 	fb.pendingAnnotations = nil
+}
+
+// mergePosition returns where a split's implicit merge node goes: the @merge(x,
+// y) the statement asked for, or the computed fallback.
+//
+// The statement's own @position belongs to the SPLIT, which is why the merge
+// needs a separate annotation. Every site that creates a merge for a split reads
+// through here, so the override cannot be honoured at one and ignored at
+// another. (#884)
+func mergePosition(ann *ast.ActivityAnnotations, computedX, computedY int) (int, int) {
+	if ann == nil || ann.Merge == nil {
+		return computedX, computedY
+	}
+	return ann.Merge.X, ann.Merge.Y
 }
 
 // applyFlowCurves stamps each recorded @curve onto the flows leaving that
