@@ -1316,6 +1316,7 @@ var knownActivityAnnotations = map[string]bool{
 	"excluded":   true,
 	"anchor":     true,
 	"curve":      true,
+	"merge":      true,
 }
 
 // checkUnknownAnnotations rejects an @annotation name the visitor does not

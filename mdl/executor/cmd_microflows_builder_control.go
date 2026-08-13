@@ -126,10 +126,11 @@ func (fb *flowBuilder) addIfStatement(s *ast.IfStmt) model.ID {
 
 	var mergeID model.ID
 	if needMerge {
+		mergeX, mergeY := mergePosition(s.Annotations, mergeX, centerY)
 		merge := &microflows.ExclusiveMerge{
 			BaseMicroflowObject: microflows.BaseMicroflowObject{
 				BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
-				Position:    model.Point{X: mergeX, Y: centerY},
+				Position:    model.Point{X: mergeX, Y: mergeY},
 				Size:        model.Size{Width: MergeSize, Height: MergeSize},
 			},
 		}

@@ -249,6 +249,109 @@ func emitCurveAnnotation(
 	*lines = append(*lines, indentStr+fmt.Sprintf("@curve(%s)", strings.Join(parts, ", ")))
 }
 
+// emitMergeAnnotation emits @merge(x, y) for the implicit merge node that closes
+// a split.
+//
+// Without it the merge position does not round-trip: the layout pass recomputes
+// it on the next exec, so a merge moved off a neighbour goes straight back on
+// top of it. The split's own @position belongs to the split, hence a separate
+// annotation.
+//
+// The merge is found by walking forward from EVERY branch of the split and
+// taking the first node reachable from all of them that is an ExclusiveMerge.
+// The describer's own split→merge map is not in scope at this call site, and
+// threading it here would mean touching ten-plus call sites of
+// emitObjectAnnotations — the multi-site change that silently skips one. Both
+// inputs this needs are already parameters. (upstream #884)
+func emitMergeAnnotation(
+	obj microflows.MicroflowObject,
+	flowsByOrigin map[model.ID][]*microflows.SequenceFlow,
+	activityMap map[model.ID]microflows.MicroflowObject,
+	lines *[]string,
+	indentStr string,
+) {
+	if activityMap == nil {
+		return
+	}
+	switch obj.(type) {
+	case *microflows.ExclusiveSplit, *microflows.InheritanceSplit:
+	default:
+		return
+	}
+	merge := commonMergeAfter(obj.GetID(), flowsByOrigin, activityMap)
+	if merge == nil {
+		return
+	}
+	p := merge.GetPosition()
+	*lines = append(*lines, indentStr+fmt.Sprintf("@merge(%d, %d)", p.X, p.Y))
+}
+
+// commonMergeAfter returns the nearest ExclusiveMerge reachable from every
+// outgoing branch of splitID, or nil when the branches do not rejoin (each
+// returns, say).
+//
+// Bounded: a microflow canvas is small, but a retry loop makes the flow graph
+// cyclic, so the walk carries a visited set per branch and a hard node cap.
+func commonMergeAfter(
+	splitID model.ID,
+	flowsByOrigin map[model.ID][]*microflows.SequenceFlow,
+	activityMap map[model.ID]microflows.MicroflowObject,
+) microflows.MicroflowObject {
+	const maxNodes = 500
+
+	branches := flowsByOrigin[splitID]
+	if len(branches) < 2 {
+		return nil
+	}
+
+	// Merges reachable from one branch, in breadth-first order.
+	reachable := func(start model.ID) []model.ID {
+		var order []model.ID
+		seen := map[model.ID]bool{splitID: true}
+		queue := []model.ID{start}
+		for len(queue) > 0 && len(seen) < maxNodes {
+			id := queue[0]
+			queue = queue[1:]
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
+			if _, isMerge := activityMap[id].(*microflows.ExclusiveMerge); isMerge {
+				order = append(order, id)
+			}
+			for _, f := range flowsByOrigin[id] {
+				if !seen[f.DestinationID] {
+					queue = append(queue, f.DestinationID)
+				}
+			}
+		}
+		return order
+	}
+
+	first := reachable(branches[0].DestinationID)
+	if len(first) == 0 {
+		return nil
+	}
+	inAll := map[model.ID]int{}
+	for _, id := range first {
+		inAll[id] = 1
+	}
+	for _, b := range branches[1:] {
+		for _, id := range reachable(b.DestinationID) {
+			if inAll[id] > 0 {
+				inAll[id]++
+			}
+		}
+	}
+	// Preserve the first branch's breadth-first order, so "nearest" wins.
+	for _, id := range first {
+		if inAll[id] == len(branches) {
+			return activityMap[id]
+		}
+	}
+	return nil
+}
+
 // controlVectorPair renders a stored "x;y" control vector as "(x, y)", reporting
 // false for the straight-line default so an untouched edge emits nothing.
 func controlVectorPair(v string) (string, bool) {
@@ -542,6 +645,7 @@ func emitObjectAnnotations(
 		// the object type.
 		emitAnchorAnnotationWithActivityMap(obj, flowsByOrigin, flowsByDest, activityMap, lines, indentStr)
 		emitCurveAnnotation(obj, flowsByOrigin, activityMap, lines, indentStr)
+		emitMergeAnnotation(obj, flowsByOrigin, activityMap, lines, indentStr)
 	}
 
 	if activity, ok := obj.(*microflows.ActionActivity); ok {

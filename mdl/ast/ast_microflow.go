@@ -223,6 +223,14 @@ type ActivityAnnotations struct {
 	// Pro. (upstream #884)
 	Curve *FlowCurve
 
+	// Merge positions the implicit merge node that closes a split — the end-if
+	// join, or an enum/inheritance split's rejoin: @merge(x, y).
+	//
+	// The statement's own @position belongs to the SPLIT, so the merge needs its
+	// own annotation. Before #884 it was placed by the layout pass alone and was
+	// unaddressable, and it routinely landed on top of a neighbouring activity.
+	Merge *Position
+
 	// InvalidCurves holds the raw text of any @curve parameter whose coordinates
 	// were not a whole-number (x, y) pair, so validation can refuse it rather
 	// than silently straightening the edge.

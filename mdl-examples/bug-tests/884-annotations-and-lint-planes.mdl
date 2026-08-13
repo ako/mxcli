@@ -102,3 +102,30 @@ begin
   return $R;
 end;
 /
+
+-- 4. THE IMPLICIT MERGE THAT CLOSES A SPLIT WAS UNADDRESSABLE.
+--    The statement's own @position belongs to the SPLIT, so the end-if join was
+--    placed by the layout pass alone and routinely landed on a neighbouring
+--    activity. @merge(x, y) positions it, and DESCRIBE emits it so the position
+--    survives a rewrite — without the emit half the layout pass just recomputes
+--    it on the next exec.
+--
+--    Expected: the ExclusiveMerge is stored at 900;400, `mx check` reports 0
+--    errors, and re-executing `describe microflow` output keeps it there.
+create microflow B884.MF_Merge ( $P: string )
+returns string as $R
+begin
+  @position(200, 200)
+  @merge(900, 400)
+  if $P = 'a' then
+    @position(400, 120)
+    declare $X string = 'x';
+  else
+    @position(400, 280)
+    declare $Y string = 'y';
+  end if;
+  @position(690, 200)
+  declare $R string = $P;
+  return $R;
+end;
+/
