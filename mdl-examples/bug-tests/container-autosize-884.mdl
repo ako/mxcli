@@ -1,0 +1,59 @@
+-- upstream #884 problem 1: a LoopedActivity's Size is a function of statement
+-- count alone -- child positions, including explicit @position, have no effect.
+--
+-- Measured on Mendix 11.6.6 (mxcli bcc3406): A, B and C all produce Size
+-- 480;160 while their contents span 160px, 500px and 10px respectively. In B
+-- both children sit outside the box (interior x in [0,480], children at 1500
+-- and 2000) and `mx check` reports no additional error.
+--
+-- See docs/11-proposals/PROPOSAL_container_autosize.md
+
+CREATE ENTITY MyFirstModule.SzItem (
+  Name: String(100)
+);
+
+-- A: default child placement
+CREATE MICROFLOW MyFirstModule.MF_SizeA ()
+BEGIN
+  RETRIEVE $Items FROM MyFirstModule.SzItem;
+  LOOP $Item IN $Items BEGIN
+    LOG INFO 'one';
+    LOG INFO 'two';
+  END LOOP;
+END;
+
+-- B: identical body, children pushed far outside the box
+CREATE MICROFLOW MyFirstModule.MF_SizeB ()
+BEGIN
+  RETRIEVE $Items FROM MyFirstModule.SzItem;
+  LOOP $Item IN $Items BEGIN
+    @position(1500, 60)
+    LOG INFO 'one';
+    @position(2000, 60)
+    LOG INFO 'two';
+  END LOOP;
+END;
+
+-- C: identical body, children pulled tightly together
+CREATE MICROFLOW MyFirstModule.MF_SizeC ()
+BEGIN
+  RETRIEVE $Items FROM MyFirstModule.SzItem;
+  LOOP $Item IN $Items BEGIN
+    @position(160, 60)
+    LOG INFO 'one';
+    @position(170, 60)
+    LOG INFO 'two';
+  END LOOP;
+END;
+
+-- D: control -- only the statement count differs from A, and only D resizes
+CREATE MICROFLOW MyFirstModule.MF_SizeD ()
+BEGIN
+  RETRIEVE $Items FROM MyFirstModule.SzItem;
+  LOOP $Item IN $Items BEGIN
+    LOG INFO 'one';
+    LOG INFO 'two';
+    LOG INFO 'three';
+    LOG INFO 'four';
+  END LOOP;
+END;
