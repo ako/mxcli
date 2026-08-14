@@ -6,6 +6,27 @@ permissions:
   contents: read
 
 jobs:
+  # The tunnel seam has a !linux half (stub + its tests) that the ubuntu job can
+  # only compile, never run. This job actually executes it on real Windows and
+  # macOS runners, so "--hub fails with an actionable message" is a tested claim
+  # rather than a cross-compile that type-checked. See ADR-0009.
+  #
+  # Neither package depends on the generated ANTLR parser, so this needs no
+  # grammar step and stays fast.
+  tunnel-seam-cross-platform:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.26.6'
+      - name: Test the tunnel seam
+        run: go test ./cmd/mxcli/docker/... ./cmd/mxcli/tunnelhub/...
+
   build-and-test:
     runs-on: ubuntu-latest
     steps:
@@ -28,6 +49,13 @@ jobs:
         run: make build
       - name: Test
         run: make test
+      - name: Check tunnel stays Linux-only
+        # The embedded tunnel (chisel) must never reach the Windows/macOS builds —
+        # it gets mxcli flagged by Defender and enterprise EDR on managed corporate
+        # endpoints, which is most of our audience. See ADR-0009. The script also
+        # asserts a positive control (chisel IS in the linux graph) so it cannot
+        # pass vacuously.
+        run: ./scripts/check-tunnel-deps.sh
       - name: Check MDL example scripts
         # Single source of truth: `make check-mdl` covers BOTH doctype-tests/ and
         # bug-tests/ (skipping *.test.mdl, inverting *.fail.mdl negative tests, and

@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
+//go:build linux
+
+// This end-to-end test drives a real chisel client against the embedded control
+// server, so it lives with the Linux-only implementation. See ADR-0009.
+
 package tunnelhub
 
 import (
@@ -57,17 +62,17 @@ func TestFront_ProxiesThroughTunnel(t *testing.T) {
 	srv, err := NewServer(ServerOptions{
 		Domain:       "example.com",
 		Registry:     reg,
-		ChiselAddr:   "127.0.0.1:" + strconv.Itoa(chiselPort),
+		ControlAddr:  "127.0.0.1:" + strconv.Itoa(chiselPort),
 		CertCacheDir: t.TempDir(),
 	})
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
 	// Start just the embedded chisel server (Start() would also bind TLS).
-	if err := srv.chisel.Start("127.0.0.1", strconv.Itoa(chiselPort)); err != nil {
+	if err := srv.control.Start("127.0.0.1", strconv.Itoa(chiselPort)); err != nil {
 		t.Fatalf("chisel start: %v", err)
 	}
-	defer srv.chisel.Close()
+	defer srv.control.Close()
 
 	// Register the preview -> assigned reverse port.
 	b, err := reg.Register(RegisterRequest{Project: "App", Branch: "main", AppPort: backendPort})
