@@ -86,6 +86,7 @@ var mdlGeneratedKeywords = []protocol.CompletionItem{
 	{Label: "FROM", Kind: protocol.CompletionItemKindKeyword, Detail: "Query keyword"},
 	{Label: "WHERE", Kind: protocol.CompletionItemKindKeyword, Detail: "Query keyword"},
 	{Label: "HAVING", Kind: protocol.CompletionItemKindKeyword, Detail: "Query keyword"},
+	{Label: "FIRST", Kind: protocol.CompletionItemKindKeyword, Detail: "Query keyword"},
 	{Label: "OFFSET", Kind: protocol.CompletionItemKindKeyword, Detail: "Query keyword"},
 	{Label: "LIMIT", Kind: protocol.CompletionItemKindKeyword, Detail: "Query keyword"},
 	{Label: "AS", Kind: protocol.CompletionItemKindKeyword, Detail: "Query keyword"},
