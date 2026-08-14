@@ -3,6 +3,7 @@
 package widgetobj
 
 import (
+	"fmt"
 	"testing"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -188,4 +189,105 @@ func normalizeID(id string) string {
 		}
 	}
 	return string(out)
+}
+
+// TestVisibleConditionalTextTemplateGetsEmptyTemplate is the other half of #574,
+// and the half that made an authored ProgressCircle `showLabel: true` fail
+// CE0463: a CONDITIONAL TextTemplate that is currently VISIBLE must carry an
+// empty ClientTemplate, not null. Null and empty are each invalid in the other's
+// state, so nulling hidden ones was only ever half the rule.
+//
+// A property with no visibility rule is deliberately left alone: Studio Pro's
+// convention for an unset TextTemplate is not uniform (a DataGrid custom-content
+// column stores null for `tooltip` and an empty template for `exportValue`), so
+// filling every unset one would trade this bug for its mirror image.
+func TestVisibleConditionalTextTemplateGetsEmptyTemplate(t *testing.T) {
+	const (
+		gateID      = "44444444-4444-4444-4444-444444444444" // boolean "showLabel"
+		labelTextID = "55555555-5555-5555-5555-555555555555" // TextTemplate "labelText" (conditional)
+		unrelatedID = "66666666-6666-6666-6666-666666666666" // TextTemplate "caption" (no rule)
+	)
+
+	mkProp := func(id, primitiveVal string, tt any) bson.D {
+		return bson.D{
+			{Key: "$Type", Value: "CustomWidgets$WidgetProperty"},
+			{Key: "TypePointer", Value: types.UUIDToBlob(id)},
+			{Key: "Value", Value: bson.D{
+				{Key: "$Type", Value: "CustomWidgets$WidgetValue"},
+				{Key: "PrimitiveValue", Value: primitiveVal},
+				{Key: "TextTemplate", Value: tt},
+			}},
+		}
+	}
+	ids := map[string]pages.PropertyTypeIDEntry{
+		"showLabel": {PropertyTypeID: gateID, ValueType: "Boolean"},
+		"labelText": {PropertyTypeID: labelTextID, ValueType: "TextTemplate"},
+		"caption":   {PropertyTypeID: unrelatedID, ValueType: "TextTemplate"},
+	}
+	rules := []types.WidgetVisibilityRule{{
+		PropertyKey: "labelText",
+		HiddenWhen:  &types.WidgetVisibilityCondition{PropertyKey: "showLabel", Operator: "falsy"},
+	}}
+
+	object := func(gate string) bson.D {
+		return bson.D{{Key: "Properties", Value: bson.A{
+			int32(2),
+			mkProp(gateID, gate, nil),
+			mkProp(labelTextID, "", nil),
+			mkProp(unrelatedID, "", nil),
+		}}}
+	}
+
+	// Gate on: labelText is visible, so its absent template must be filled.
+	got := ApplyVisibilityRules(object("true"), ids, rules)
+	if tt := templateOf(t, got, labelTextID); tt == nil {
+		t.Error("a VISIBLE conditional TextTemplate was left null; Mendix rejects that with CE0463")
+	}
+	// The property with no rule keeps its null — the conventions differ per widget.
+	if tt := templateOf(t, got, unrelatedID); tt != nil {
+		t.Error("a TextTemplate with no visibility rule was filled in; only conditional ones are touched")
+	}
+
+	// Gate off: labelText is hidden, so it must be null (the original #574 half).
+	got = ApplyVisibilityRules(object("false"), ids, rules)
+	if tt := templateOf(t, got, labelTextID); tt != nil {
+		t.Error("a HIDDEN conditional TextTemplate was filled in; #574 requires null")
+	}
+}
+
+// templateOf returns the TextTemplate value of the property pointing at id.
+func templateOf(t *testing.T, object bson.D, id string) any {
+	t.Helper()
+	want := types.UUIDToBlob(id)
+	for _, elem := range object {
+		if elem.Key != "Properties" {
+			continue
+		}
+		for _, item := range elem.Value.(bson.A) {
+			prop, ok := item.(bson.D)
+			if !ok {
+				continue
+			}
+			var matches bool
+			for _, e := range prop {
+				if e.Key == "TypePointer" && fmt.Sprint(e.Value) == fmt.Sprint(want) {
+					matches = true
+				}
+			}
+			if !matches {
+				continue
+			}
+			for _, e := range prop {
+				if e.Key != "Value" {
+					continue
+				}
+				for _, v := range e.Value.(bson.D) {
+					if v.Key == "TextTemplate" {
+						return v.Value
+					}
+				}
+			}
+		}
+	}
+	return nil
 }

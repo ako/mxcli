@@ -16,12 +16,11 @@
 -- must appear in the description, or re-executing it silently turns the
 -- property off.
 --
--- SEPARATE DEFECT, deliberately not exercised here: giving a property in a
--- CONDITIONALLY SHOWN group a non-default value makes mx check report CE0463 —
--- ProgressCircle's `showLabel: true` or `labelType: 'percentage'` both do it,
--- with no DESCRIBE involved, while the same widget's General-group properties
--- take non-default values happily. Keep this example to defaults in that group
--- so it isolates the DESCRIBE round trip.
+-- The conditional group is exercised on purpose. `showLabel: true` moves
+-- `labelText` from hidden to visible, and a visible TextTemplate must carry an
+-- empty ClientTemplate rather than null — the other half of #574. Both this and
+-- `labelType: 'percentage'` used to write a widget Mendix rejects with CE0463,
+-- with no DESCRIBE involved.
 
 create or replace page MyFirstModule.BT_PluggableRoundTrip (
   title: 'Pluggable widget round trip',
@@ -33,7 +32,8 @@ create or replace page MyFirstModule.BT_PluggableRoundTrip (
     staticCurrentValue: 42,
     staticMinValue: 0,
     staticMaxValue: 100,
-    showLabel: false
+    showLabel: true,
+    labelType: 'percentage'
   )
 }
 /
