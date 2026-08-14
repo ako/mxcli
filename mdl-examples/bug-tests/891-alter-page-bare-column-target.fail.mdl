@@ -1,0 +1,48 @@
+-- upstream #891 (3a/3b) — ALTER PAGE INSERT/REPLACE with a BARE DataGrid2
+-- column name corrupted the page.
+--
+-- Setup (a plain TOP-LEVEL DataGrid2 — nesting in a pluggable widget is NOT
+-- required, contrary to the issue's framing):
+--
+--   create entity P91.SyncConfig ( ModelName: String(100), RecordCount: Integer,
+--                                  PageSize: Integer, NextRunAt: DateTime );
+--   create page P91.SyncConfiguration_Overview
+--     ( Title: 'Sync config', Layout: Atlas_Core.Atlas_Default )
+--   { DATAGRID grid1 (DataSource: DATABASE P91.SyncConfig) {
+--       COLUMN ModelName   (Attribute: ModelName,   Caption: 'Model')
+--       COLUMN RecordCount (Attribute: RecordCount, Caption: 'Records')
+--       COLUMN PageSize    (Attribute: PageSize,    Caption: 'Page size')
+--       COLUMN NextRunAt   (Attribute: NextRunAt,   Caption: 'Next run')
+--   } }
+--
+-- Before the fix BOTH statements below reported "Altered page" and left a
+-- project mxbuild could not even LOAD:
+--
+--   ERROR: System.InvalidCastException: Unable to cast object of type
+--   'Mendix.Modeler.WebUI.Forms.Widgets.LayoutWidgets.DivContainers.DivContainer'
+--   to type 'Mendix.Modeler.WebUI.Forms.Widgets.CustomWidgets.WidgetObject'
+--
+-- Cause: WidgetRef treats only a DOTTED name as a column, so a bare `NextRunAt`
+-- gives Widget="NextRunAt", Column="" and IsColumn() == false. The op skipped
+-- the InsertColumns/ReplaceColumn paths (which work) and took the generic
+-- widget path, which built the COLUMN as a layout container and wrote it into
+-- the grid's column list. findBsonWidget recurses into pluggable internals, so
+-- the bare name DID resolve — to the column — which is why nothing refused.
+--
+-- DESCRIBE PAGE masked it by skipping the malformed node: REPLACE looked like a
+-- clean deletion, INSERT looked like a harmless no-op. Neither was.
+--
+-- This file is expected to FAIL — the refusal is the fix. The qualified forms
+-- `grid1.NextRunAt` / `grid1.PageSize` work and are what to use instead.
+
+ALTER PAGE P91.SyncConfiguration_Overview {
+  REPLACE NextRunAt WITH {
+    COLUMN NextRunAt (Attribute: NextRunAt, Caption: 'Next run')
+  };
+};
+
+ALTER PAGE P91.SyncConfiguration_Overview {
+  INSERT AFTER PageSize {
+    COLUMN NewCol (Attribute: RecordCount, Caption: 'Inserted')
+  };
+};

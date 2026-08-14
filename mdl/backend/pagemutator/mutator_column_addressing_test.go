@@ -180,3 +180,63 @@ func TestColumnMatchCount_CrossGrid(t *testing.T) {
 		t.Errorf("missing name: count = %d, want 0", n)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// #891: a bare DataGrid2 column name resolves through findBsonWidget, so
+// INSERT/REPLACE took the generic widget path and wrote a layout container into
+// the grid's column list — a project mxbuild could not load. Refuse instead.
+//
+// These go through ReplaceWidget/InsertWidget rather than calling the helper
+// directly, so deleting either call site fails the test. A direct-call test
+// would prove the helper works and nothing about the wiring (#884).
+// ---------------------------------------------------------------------------
+
+func columnNodeFinder(t *testing.T) widgetFinder {
+	t.Helper()
+	col := bson.D{
+		{Key: "$Type", Value: objectListItemType},
+		{Key: "Name", Value: "NextRunAt"},
+	}
+	return func(_ bson.D, name string) *bsonWidgetResult {
+		if name == "NextRunAt" {
+			return &bsonWidgetResult{widget: col}
+		}
+		return nil
+	}
+}
+
+func TestReplaceWidget_RefusesBareColumnTarget(t *testing.T) {
+	m := &Mutator{rawData: bson.D{}, widgetFinder: columnNodeFinder(t)}
+	err := m.ReplaceWidget("NextRunAt", "", nil)
+	if err == nil {
+		t.Fatal("ReplaceWidget accepted a bare column target — this is the #891 corruption path")
+	}
+	if !strings.Contains(err.Error(), "gridName.NextRunAt") {
+		t.Errorf("error should name the qualified form, got: %v", err)
+	}
+}
+
+func TestInsertWidget_RefusesBareColumnTarget(t *testing.T) {
+	m := &Mutator{rawData: bson.D{}, widgetFinder: columnNodeFinder(t)}
+	err := m.InsertWidget("NextRunAt", "", "AFTER", nil)
+	if err == nil {
+		t.Fatal("InsertWidget accepted a bare column target — this is the #891 corruption path")
+	}
+	if !strings.Contains(err.Error(), "gridName.NextRunAt") {
+		t.Errorf("error should name the qualified form, got: %v", err)
+	}
+}
+
+// A real widget must not trip the guard, or every ordinary REPLACE would break.
+// The two tests above already prove the call sites are wired; this pins the
+// discriminator itself.
+func TestObjectListItemGuard_IgnoresRealWidgets(t *testing.T) {
+	w := &bsonWidgetResult{widget: bson.D{{Key: "$Type", Value: "Forms$TextBox"}, {Key: "Name", Value: "txtName"}}}
+	if err := refuseObjectListItemTarget(w, "txtName"); err != nil {
+		t.Fatalf("guard wrongly refused a real widget: %v", err)
+	}
+	pluggable := &bsonWidgetResult{widget: bson.D{{Key: "$Type", Value: "CustomWidgets$CustomWidget"}, {Key: "Name", Value: "grid1"}}}
+	if err := refuseObjectListItemTarget(pluggable, "grid1"); err != nil {
+		t.Fatalf("guard wrongly refused a pluggable widget: %v", err)
+	}
+}
