@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Go toolchain 1.26.5 → 1.26.6** for GO-2026-6218 (`net/url`), GO-2026-6090 (`crypto/tls`), GO-2026-6089 (`net/http`), GO-2026-6088 (`encoding/xml`), GO-2026-5972 (`encoding/asn1`) and GO-2026-5026 (`net/http`, via `golang.org/x/net/idna`). All six are standard-library advisories fixed in go1.26.6; no mxcli code changed. Bumped in `go.mod` and in all three workflows (`push-test`, `release`, `nightly`) together, so released binaries are not still linked against the vulnerable standard library.
+
 ## [0.17.0] - 2026-08-10
 
 Headline: **A full Mendix build-and-test loop that fits on an iPad** — you can now design, build, run, observe, and debug a multi-app Mendix solution end-to-end from Claude Code on the web, on a phone or tablet, with no local IDE. Two capabilities make it possible: an **external browser preview** that reverse-tunnels a locally-running app out to a public URL from an egress-only container, and a **short agentic feedback loop** — a warm Docker-free runtime, sub-second microflow unit tests, live log/metric/trace observation, and a name-based microflow debugger — so an agent gets an answer in seconds instead of a build round-trip.
