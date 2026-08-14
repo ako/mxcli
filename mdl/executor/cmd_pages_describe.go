@@ -652,6 +652,12 @@ type rawExplicitProp struct {
 	Key   string
 	Value string // attribute short name or primitive value
 	IsRef bool   // true if this is an attribute reference, false for primitive
+	// ValueType is the property's DECLARED type from the widget package
+	// ("String", "Boolean", "Integer", "Enumeration", ...), and is what decides
+	// whether the emitted value is quoted. The value's own shape cannot: a
+	// String property holding "30" or "true" still has to come back quoted.
+	// Empty when the widget's schema is not in the document (ledger #104).
+	ValueType string
 }
 
 // rawDesignProp represents a parsed design property from BSON.

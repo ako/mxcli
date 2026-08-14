@@ -638,19 +638,66 @@ func ApplyVisibilityRules(object bson.D, propertyTypeIDs map[string]pages.Proper
 		return object
 	}
 	values := primitiveValuesOf(object, propertyTypeIDs)
+
+	// Both directions, because null and empty are each invalid in the other's
+	// state. #574 covered hidden→null; a VISIBLE TextTemplate left null is the
+	// other half, and it is what made an authored ProgressCircle `showLabel:
+	// true` fail CE0463: `labelText` is visible whenever `labelType` is "text"
+	// (its default), and mxcli stored null where Mendix stores an empty
+	// ClientTemplate. Confirmed by handing the failing project to Mendix's own
+	// `mx update-widgets`, whose reconciliation writes exactly that template and
+	// changes nothing else of substance (ledger #104 follow-on).
+	//
+	// Only properties the widget's schema declares CONDITIONAL are touched. A
+	// TextTemplate with no rule is left exactly as it was: Studio Pro's
+	// convention for an unset one is not uniform — a DataGrid custom-content
+	// column stores null for `tooltip` and an empty ClientTemplate for
+	// `exportValue` — so filling every unset template would trade this bug for
+	// its mirror image. Those per-column conventions live in
+	// emptyClientTemplateRules and are reached by a different path.
+	hidden := make(map[string]bool, len(rules))
+	conditional := make([]string, 0, len(rules))
 	for _, rule := range rules {
-		if !rule.HiddenWhen.Hidden(values) {
-			continue
-		}
 		entry, ok := propertyTypeIDs[rule.PropertyKey]
 		if !ok || entry.ValueType != "TextTemplate" {
 			continue
 		}
-		object = updateWidgetPropertyValue(object, propertyTypeIDs, rule.PropertyKey, func(val bson.D) bson.D {
-			return setBSONField(val, "TextTemplate", nil)
+		if _, seen := hidden[rule.PropertyKey]; !seen {
+			conditional = append(conditional, rule.PropertyKey)
+			hidden[rule.PropertyKey] = false
+		}
+		// Several rules may govern one property; any one of them hiding it wins.
+		if rule.HiddenWhen.Hidden(values) {
+			hidden[rule.PropertyKey] = true
+		}
+	}
+	// Sorted, because the object is serialized and map order is not stable.
+	sort.Strings(conditional)
+
+	for _, key := range conditional {
+		isHidden := hidden[key]
+		object = updateWidgetPropertyValue(object, propertyTypeIDs, key, func(val bson.D) bson.D {
+			if isHidden {
+				return setBSONField(val, "TextTemplate", nil)
+			}
+			// Never clobber real content — only fill in the absent template.
+			if bsonFieldIsNil(val, "TextTemplate") {
+				return setBSONField(val, "TextTemplate", BuildEmptyClientTemplate())
+			}
+			return val
 		})
 	}
 	return object
+}
+
+// bsonFieldIsNil reports whether a field is absent or explicitly nil.
+func bsonFieldIsNil(val bson.D, field string) bool {
+	for _, elem := range val {
+		if elem.Key == field {
+			return elem.Value == nil
+		}
+	}
+	return true
 }
 
 // primitiveValuesOf maps each known property key to its current comparable value
