@@ -322,10 +322,18 @@ which makes it look like a change you just made broke authentication.
 
 ## External browser preview (`--hub`)
 
+> **Linux builds only.** `--hub` and `mxcli tunnel-hub` ship in the **Linux** build
+> only. The tunnel embeds a general-purpose tunnelling tool that gets the Windows
+> and macOS binaries flagged by Defender and enterprise EDR for a capability they
+> can never use, so it is left out of them. On Windows/macOS the commands exist and
+> show help, but fail with an explanatory message — run mxcli inside the project's
+> devcontainer (where the warm loop already runs) to use `--hub`. See
+> [ADR-0009](https://github.com/mendixlabs/mxcli/blob/main/docs/13-decisions/0009-tunnel-is-linux-only.md).
+
 `--hub <url>` exposes the running app in a **browser at a public URL** without the app
 leaving this machine and without committing — for reviewing work-in-progress from a
 phone/tablet, or from an egress-only environment like Claude Code on the web. The app
-stays here; a **chisel reverse tunnel** dials *out* to a hub over 443 and the hub proxies
+stays here; a **reverse tunnel** dials *out* to a hub over 443 and the hub proxies
 browser requests back down it. Nothing is pushed — only live HTTP — and everything rides
 one 443 connection, so it works through an egress-only proxy.
 

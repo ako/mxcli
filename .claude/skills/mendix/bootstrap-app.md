@@ -121,7 +121,9 @@ drop the `./` if it came pre-installed on `PATH`.
 8. **(Optional) browser preview from a cloud session:**
    `./mxcli run --hub https://hub.mxcli.org -p <AppName>.mpr`, and report the preview
    URL it prints. Needs `MXCLI_HUB_KEY` on the environment; without it, continue as a
-   normal local run.
+   normal local run. `--hub` ships in the **Linux** build only (a cloud session is a
+   Linux container, so it works there); on a native Windows/macOS mxcli it fails with
+   an explanatory message — continue as a normal local run.
 
 ---
 

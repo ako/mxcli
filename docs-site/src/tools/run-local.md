@@ -151,10 +151,33 @@ the file. Use `--runtime-log <path>` to relocate it or `--runtime-log -` to turn
 
 ## External browser preview (`--hub`)
 
+> **Linux builds only.** `--hub` and `mxcli tunnel-hub` are available in the
+> **Linux** build of mxcli only.
+>
+> The tunnel exists to get a preview *out of a Linux container*, which is the only
+> place it ever ran. Shipping it in the Windows and macOS binaries meant those
+> binaries embedded a general-purpose tunnelling tool they could never use — and
+> endpoint security noticed: Microsoft Defender flagged the Windows binary, and
+> enterprise EDR (Defender for Endpoint, CrowdStrike, SentinelOne) flags this class
+> of payload harder still. That blocked mxcli on exactly the managed corporate
+> laptops most Mendix developers work on.
+>
+> So it is built for Linux only. On Windows and macOS the commands still exist and
+> still show help, but fail with a message pointing you here. To use `--hub`, run
+> mxcli **inside the project's devcontainer** (or any Linux container) — which is
+> where the warm loop already runs. Everything else in `mxcli run --local` is
+> unaffected.
+>
+> We deliberately did **not** hide the dependency to dodge the scanners; that would
+> be dishonest and would make the binary less trustworthy, not more. The fix is not
+> shipping the capability where it is not used. See
+> [ADR-0009](https://github.com/mendixlabs/mxcli/blob/main/docs/13-decisions/0009-tunnel-is-linux-only.md).
+
+
 `--hub <url>` makes the running app reachable **in a browser at a public URL** — without
 the app leaving this machine and without committing. It's for reviewing work-in-progress
 from a phone or tablet, or from an egress-only environment such as Claude Code on the web.
-The app stays local and a **chisel reverse tunnel** dials *out* to a hub over 443; the hub
+The app stays local and a **reverse tunnel** dials *out* to a hub over 443; the hub
 proxies browser requests back down the tunnel. Nothing is pushed — only live HTTP — and
 because everything rides a single 443 connection, it works even from an egress-only proxy.
 
