@@ -238,6 +238,26 @@ func parseGuard(js string, callStart int) (types.WidgetVisibilityCondition, bool
 	case strings.HasSuffix(pre, "||"):
 		pre = pre[:len(pre)-2]
 		falsy = true
+	case strings.HasSuffix(pre, ":"):
+		// The ELSE branch of a ternary: `cond ? (…hides…) : hide(…)`. The hide
+		// fires when cond is falsy, and cond is not the text next to the `:` —
+		// it sits before the matching `?`, past the whole then-branch.
+		//
+		// ProgressCircle 3.3.2 is the case that made this matter:
+		//
+		//	return e.showLabel
+		//	  ? ("text" !== e.labelType && hidePropertyIn(t,e,"labelText"))
+		//	  : hidePropertiesIn(t,e,["customLabel","labelText","labelType"])
+		//
+		// Without this branch only the inner `!==` rule was seen, so labelText
+		// read as VISIBLE whenever labelType was "text" — its default — even
+		// with showLabel false. See the CE0463 that produced (ledger #104).
+		cond, ok := ternaryCondition(pre[:len(pre)-1])
+		if !ok {
+			return types.WidgetVisibilityCondition{}, false
+		}
+		pre = cond
+		falsy = true
 	default:
 		return types.WidgetVisibilityCondition{}, false
 	}
@@ -260,6 +280,70 @@ func parseGuard(js string, callStart int) (types.WidgetVisibilityCondition, bool
 	}
 	aliases := enclosingAliases(js, callStart)
 	return guardToCondition(guard, falsy, aliases)
+}
+
+// ternaryCondition returns the text preceding the `?` that matches a trailing
+// `:`, i.e. the condition of the ternary whose else-branch is about to start.
+//
+// It walks backwards balancing brackets, and counts nested ternaries: every
+// further `:` seen at depth 0 needs its own `?` before the one we want. A `?`
+// that never arrives means this `:` was not a ternary at all (a label, or an
+// object literal key), and the caller emits no rule — which is the safe
+// direction, since a wrong rule hides a property the user set.
+func ternaryCondition(pre string) (string, bool) {
+	depth, pending := 0, 0
+	for i := len(pre) - 1; i >= 0; i-- {
+		switch pre[i] {
+		case ')', ']', '}':
+			depth++
+		case '(', '[', '{':
+			if depth == 0 {
+				return "", false // ran out of enclosing expression
+			}
+			depth--
+		case ':':
+			if depth == 0 {
+				pending++
+			}
+		case '?':
+			if depth == 0 {
+				if pending == 0 {
+					return trailingExpr(pre[:i]), true
+				}
+				pending--
+			}
+		}
+	}
+	return "", false
+}
+
+// trailingExpr returns the last expression in s, bounded by a statement
+// separator. The ternary is usually not the first thing in its function —
+// ProgressCircle's is preceded by a whole `switch` — and returning everything
+// back to the start hands the caller a fragment with an unbalanced `}` that no
+// guard parser can read.
+func trailingExpr(s string) string {
+	depth := 0
+	for i := len(s) - 1; i >= 0; i-- {
+		switch s[i] {
+		case ')', ']':
+			depth++
+		case '(', '[':
+			if depth == 0 {
+				return strings.TrimSpace(s[i+1:])
+			}
+			depth--
+		case '}', '{', ';', ',':
+			// A brace at depth 0 closes or opens a preceding BLOCK, so the
+			// expression starts after it. Braces are not counted as nesting here
+			// for that reason — an object literal inside the condition would be
+			// bounded by its own parens.
+			if depth == 0 {
+				return strings.TrimSpace(s[i+1:])
+			}
+		}
+	}
+	return strings.TrimSpace(s)
 }
 
 // stripReturnPrefix removes a leading `return` keyword from a guard expression.

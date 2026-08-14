@@ -148,3 +148,71 @@ func TestExtractVisibility_NamespaceAndReturn(t *testing.T) {
 		})
 	}
 }
+
+// TestTernaryElseBranchHideRule covers the `cond ? (…) : hidePropertiesIn([…])`
+// shape, where the hide fires when the condition is FALSY and the condition sits
+// before the matching `?`, past the whole then-branch.
+//
+// The snippet is ProgressCircle 3.3.2's real getProperties, minified, INCLUDING
+// the switch statement that precedes the ternary. That preamble is not
+// decoration: a first attempt at this walked back past the `?` to the start of
+// the function and handed the guard parser a fragment with an unbalanced `}`,
+// which parsed to nothing and looked exactly like "unsupported shape".
+//
+// Without the rule, labelText read as visible whenever labelType was "text" —
+// its default — even with showLabel false, and the widget failed CE0463 either
+// way round (ledger #104 follow-on).
+func TestTernaryElseBranchHideRule(t *testing.T) {
+	js := `function getProperties(e,t,r){` +
+		`switch(e.type){case"dynamic":a.hidePropertiesIn(t,e,[].concat(n(b.static),n(b.expression)));break;` +
+		`case"static":a.hidePropertiesIn(t,e,[].concat(n(b.dynamic),n(b.expression)));break;` +
+		`case"expression":a.hidePropertiesIn(t,e,[].concat(n(b.static),n(b.dynamic)))}` +
+		`return e.showLabel?("custom"!==e.labelType&&a.hidePropertyIn(t,e,"customLabel"),` +
+		`"text"!==e.labelType&&a.hidePropertyIn(t,e,"labelText")):` +
+		`a.hidePropertiesIn(t,e,["customLabel","labelText","labelType"]),t}`
+
+	rules, _ := extractVisibilityRulesFromJS(js)
+
+	want := map[string]bool{"customLabel": false, "labelText": false, "labelType": false}
+	for _, r := range rules {
+		if r.HiddenWhen != nil && r.HiddenWhen.PropertyKey == "showLabel" && r.HiddenWhen.Operator == "falsy" {
+			if _, ok := want[r.PropertyKey]; ok {
+				want[r.PropertyKey] = true
+			}
+		}
+	}
+	for key, found := range want {
+		if !found {
+			t.Errorf("missing rule: %s hidden when showLabel is falsy", key)
+		}
+	}
+
+	// The then-branch rule must survive too — a property can carry several rules,
+	// and labelText is hidden by EITHER gate.
+	var sawInner bool
+	for _, r := range rules {
+		if r.PropertyKey == "labelText" && r.HiddenWhen != nil &&
+			r.HiddenWhen.PropertyKey == "labelType" && r.HiddenWhen.Operator == "ne" &&
+			r.HiddenWhen.Value == "text" {
+			sawInner = true
+		}
+	}
+	if !sawInner {
+		t.Error("the inner `\"text\" !== labelType` rule was lost")
+	}
+}
+
+// TestTernaryConditionRejectsNonTernaryColon checks the safe direction: a `:`
+// that is not a ternary (an object literal, a label) must yield no rule rather
+// than a guessed one, since a wrong rule hides a property the user set.
+func TestTernaryConditionRejectsNonTernaryColon(t *testing.T) {
+	for _, s := range []string{`{foo:`, `return{a:1,b:`, ``} {
+		if got, ok := ternaryCondition(s); ok {
+			t.Errorf("ternaryCondition(%q) = %q, true; want no match", s, got)
+		}
+	}
+	// And a real ternary is still found, past a nested one.
+	if got, ok := ternaryCondition(`x?a?b:c:`[:len(`x?a?b:c:`)-1]); !ok || got != "x" {
+		t.Errorf("nested ternary: got %q, %v; want %q, true", got, ok, "x")
+	}
+}

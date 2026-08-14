@@ -1,0 +1,39 @@
+-- Ledger #104: DESCRIBE PAGE must round-trip a pluggable widget.
+--
+-- Before the fix, describing this page emitted every property with no quotes
+-- (a JSON `spec: {"a": 1}` broke the re-parse at its first brace) and dropped
+-- every boolean, so the description could not be fed back through `exec`.
+--
+-- Verify:
+--   mxcli exec pluggable-describe-roundtrip.mdl -p app.mpr
+--   mxcli -p app.mpr -c "DESCRIBE PAGE MyFirstModule.BT_PluggableRoundTrip" \
+--     | sed -n '/^create or modify page/,$p' > rt.mdl
+--   mxcli check rt.mdl                     # passes; before the fix it did not parse
+--   mxcli exec rt.mdl -p app.mpr           # and re-describing is byte-identical
+--   mx check app.mpr                       # 0 errors
+--
+-- The boolean is the half a quoting-only fix would have missed: `showLabel`
+-- must appear in the description, or re-executing it silently turns the
+-- property off.
+--
+-- The conditional group is exercised on purpose. `showLabel: true` moves
+-- `labelText` from hidden to visible, and a visible TextTemplate must carry an
+-- empty ClientTemplate rather than null — the other half of #574. Both this and
+-- `labelType: 'percentage'` used to write a widget Mendix rejects with CE0463,
+-- with no DESCRIBE involved.
+
+create or replace page MyFirstModule.BT_PluggableRoundTrip (
+  title: 'Pluggable widget round trip',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'bt_pluggable_roundtrip'
+) {
+  pluggablewidget 'com.mendix.widget.custom.progresscircle.ProgressCircle' pwRoundTrip (
+    type: 'static',
+    staticCurrentValue: 42,
+    staticMinValue: 0,
+    staticMaxValue: 100,
+    showLabel: true,
+    labelType: 'percentage'
+  )
+}
+/
