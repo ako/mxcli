@@ -41,6 +41,45 @@ func buildPropertyTypeKeyMap(w map[string]any, withFallback bool) map[string]str
 	return propTypeKeyMap
 }
 
+// buildPropertyValueTypeMap maps a PropertyType's $ID to its DECLARED value
+// type ("String", "Boolean", "Integer", "Enumeration", ...).
+//
+// It walks the same PropertyTypes array as buildPropertyTypeKeyMap, which reads
+// only the key and throws the type away. The type is what tells DESCRIBE
+// whether to quote a value; the value's own shape cannot, because a String
+// property holding "30" is indistinguishable from an Integer holding 30 once it
+// is a string in BSON (ledger #104).
+//
+// An absent entry is not an error — a document whose widget schema is missing
+// still describes, with the emitter falling back to the value's shape.
+func buildPropertyValueTypeMap(w map[string]any) map[string]string {
+	out := make(map[string]string)
+	widgetType, ok := w["Type"].(map[string]any)
+	if !ok {
+		return out
+	}
+	objType, ok := widgetType["ObjectType"].(map[string]any)
+	if !ok {
+		return out
+	}
+	for _, pt := range getBsonArrayElements(objType["PropertyTypes"]) {
+		ptMap, ok := pt.(map[string]any)
+		if !ok {
+			continue
+		}
+		id := extractBinaryID(ptMap["$ID"])
+		if id == "" {
+			continue
+		}
+		if vt, ok := ptMap["ValueType"].(map[string]any); ok {
+			if t := extractString(vt["Type"]); t != "" {
+				out[id] = t
+			}
+		}
+	}
+	return out
+}
+
 // extractCustomWidgetAttribute extracts the attribute from a CustomWidget (e.g., ComboBox).
 // Specifically looks for attributeAssociation or attributeEnumeration properties by key,
 // avoiding false matches from other properties that also have AttributeRef (e.g., CaptionAttribute).
@@ -1191,6 +1230,7 @@ func extractExplicitProperties(ctx *ExecContext, w map[string]any) []rawExplicit
 	if len(propTypeKeyMap) == 0 {
 		return nil
 	}
+	valueTypes := buildPropertyValueTypeMap(w)
 
 	var result []rawExplicitProp
 	props := getBsonArrayElements(obj["Properties"])
@@ -1221,15 +1261,17 @@ func extractExplicitProperties(ctx *ExecContext, w map[string]any) []rawExplicit
 			}
 		}
 
-		// Check for non-default PrimitiveValue
+		// Check for a PrimitiveValue.
+		//
+		// Booleans used to be dropped here as "common defaults". They are not:
+		// a widget's default may be either, the document only stores what the
+		// author set, and discarding one made DESCRIBE emit a page whose
+		// re-execution silently turned the property off (ledger #104).
 		if pv := extractString(value["PrimitiveValue"]); pv != "" {
-			// Skip common defaults
-			if pv == "true" || pv == "false" {
-				continue
-			}
 			result = append(result, rawExplicitProp{
-				Key:   propKey,
-				Value: pv,
+				Key:       propKey,
+				Value:     pv,
+				ValueType: valueTypes[typePointerID],
 			})
 		}
 	}

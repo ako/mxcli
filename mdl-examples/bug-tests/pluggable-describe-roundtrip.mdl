@@ -1,0 +1,39 @@
+-- Ledger #104: DESCRIBE PAGE must round-trip a pluggable widget.
+--
+-- Before the fix, describing this page emitted every property with no quotes
+-- (a JSON `spec: {"a": 1}` broke the re-parse at its first brace) and dropped
+-- every boolean, so the description could not be fed back through `exec`.
+--
+-- Verify:
+--   mxcli exec pluggable-describe-roundtrip.mdl -p app.mpr
+--   mxcli -p app.mpr -c "DESCRIBE PAGE MyFirstModule.BT_PluggableRoundTrip" \
+--     | sed -n '/^create or modify page/,$p' > rt.mdl
+--   mxcli check rt.mdl                     # passes; before the fix it did not parse
+--   mxcli exec rt.mdl -p app.mpr           # and re-describing is byte-identical
+--   mx check app.mpr                       # 0 errors
+--
+-- The boolean is the half a quoting-only fix would have missed: `showLabel`
+-- must appear in the description, or re-executing it silently turns the
+-- property off.
+--
+-- SEPARATE DEFECT, deliberately not exercised here: giving a property in a
+-- CONDITIONALLY SHOWN group a non-default value makes mx check report CE0463 —
+-- ProgressCircle's `showLabel: true` or `labelType: 'percentage'` both do it,
+-- with no DESCRIBE involved, while the same widget's General-group properties
+-- take non-default values happily. Keep this example to defaults in that group
+-- so it isolates the DESCRIBE round trip.
+
+create or replace page MyFirstModule.BT_PluggableRoundTrip (
+  title: 'Pluggable widget round trip',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'bt_pluggable_roundtrip'
+) {
+  pluggablewidget 'com.mendix.widget.custom.progresscircle.ProgressCircle' pwRoundTrip (
+    type: 'static',
+    staticCurrentValue: 42,
+    staticMinValue: 0,
+    staticMaxValue: 100,
+    showLabel: false
+  )
+}
+/

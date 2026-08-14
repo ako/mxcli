@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/mendixlabs/mxcli/model"
@@ -24,6 +25,76 @@ func mdlQuote(s string) string {
 		"'", "''",
 	).Replace(s)
 	return "'" + escaped + "'"
+}
+
+// explicitPropValue renders a pluggable widget's property value as MDL.
+//
+// Every value used to be emitted raw, so a string lost its quotes and a JSON
+// spec broke the re-parse at its first '{' — which took any page carrying a
+// pluggable widget out of the DESCRIBE-edit-CREATE OR REPLACE workflow that
+// mxcli itself documents (ledger #104).
+//
+// The DECLARED type decides, not the value's shape: a String property holding
+// "30" or "true" must still come back quoted, or re-executing it writes a
+// number where the author wrote text. Where no type is declared — the widget's
+// schema is not in the document — the shape is the only signal left, and the
+// fallback quotes anything that is not plainly a number or boolean, because an
+// unquoted arbitrary string may not parse at all while a quoted literal still
+// round-trips as text.
+func explicitPropValue(p rawExplicitProp) string {
+	if p.IsRef {
+		return p.Value // an attribute name is an identifier, never a literal
+	}
+	switch p.ValueType {
+	case "Boolean", "Integer", "Decimal":
+		return p.Value
+	case "":
+		if isBareLiteral(p.Value) {
+			return p.Value
+		}
+		return mdlQuote(p.Value)
+	default:
+		return mdlQuote(p.Value)
+	}
+}
+
+// isBareLiteral reports whether a value can be emitted without quotes when the
+// property's declared type is unknown: a boolean, or a plain decimal number.
+func isBareLiteral(s string) bool {
+	if s == "true" || s == "false" {
+		return true
+	}
+	if _, err := strconv.ParseFloat(s, 64); err == nil {
+		// ParseFloat also accepts "NaN", "Inf" and hex/exponent forms, none of
+		// which is a number an MDL author would have written; require the text
+		// to be made only of digits, one sign and one point.
+		return looksNumeric(s)
+	}
+	return false
+}
+
+func looksNumeric(s string) bool {
+	if s == "" {
+		return false
+	}
+	body := strings.TrimPrefix(strings.TrimPrefix(s, "-"), "+")
+	if body == "" {
+		return false
+	}
+	dots := 0
+	for _, r := range body {
+		switch {
+		case r >= '0' && r <= '9':
+		case r == '.':
+			dots++
+			if dots > 1 {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return body != "."
 }
 
 // appendDataGridPagingProps appends non-default paging properties for DataGrid2.
@@ -628,7 +699,7 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 				props = append(props, fmt.Sprintf("Label: %s", mdlQuote(w.Caption)))
 			}
 			for _, ep := range w.ExplicitProperties {
-				props = append(props, fmt.Sprintf("%s: %s", ep.Key, ep.Value))
+				props = append(props, fmt.Sprintf("%s: %s", ep.Key, explicitPropValue(ep)))
 			}
 			// onClick action (ledger #67 — reported on CustomChart)
 			if w.OnClick != "" {
