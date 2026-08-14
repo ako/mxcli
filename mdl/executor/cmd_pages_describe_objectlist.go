@@ -18,6 +18,11 @@ type rawObjectList struct {
 type rawObjectListItem struct {
 	Props      []rawExplicitProp
 	DataSource *rawDataSource
+	// Children are the widgets nested in a Widgets-typed sub-property of the
+	// item — an Accordion group's `content` / `headerContent` slot. Without
+	// these an accordion described as an empty group, and re-executing that
+	// description deleted whatever was inside it (#891).
+	Children []rawWidget
 }
 
 // extractObjectLists reconstructs every object-list property of a pluggable
@@ -67,7 +72,7 @@ func extractObjectLists(ctx *ExecContext, w map[string]any) []rawObjectList {
 				continue
 			}
 			item := extractObjectListItem(ctx, om, nestedMap)
-			if len(item.Props) > 0 || item.DataSource != nil {
+			if len(item.Props) > 0 || item.DataSource != nil || len(item.Children) > 0 {
 				items = append(items, item)
 			}
 		}
@@ -147,6 +152,19 @@ func extractObjectListItem(ctx *ExecContext, itemObj map[string]any, nestedMap m
 		if ds, ok := value["DataSource"].(map[string]any); ok && ds != nil {
 			if rds := parseCustomWidgetDataSource(ctx, ds); rds != nil && rds.Reference != "" {
 				item.DataSource = rds
+			}
+			continue
+		}
+		// Child widgets (an Accordion group's `content` slot). A Widgets-typed
+		// sub-property holds a widget tree, not a scalar, so it is parsed with the
+		// same recursion the rest of DESCRIBE uses rather than stringified (#891).
+		if childElems := getBsonArrayElements(value["Widgets"]); len(childElems) > 0 {
+			for _, ce := range childElems {
+				cm, ok := ce.(map[string]any)
+				if !ok {
+					continue
+				}
+				item.Children = append(item.Children, parseRawWidget(ctx, cm)...)
 			}
 			continue
 		}
