@@ -914,12 +914,31 @@ func parseRange(raw map[string]any) *microflows.Range {
 
 	switch typeName {
 	case "Microflows$ConstantRange":
+		// MEASURED (Mendix 11.13.0, ako/TestApp MyFirstModule.RetrieveExamples —
+		// three retrieves, one per UI option):
+		//
+		//   All     ConstantRange{SingleObject:false}
+		//   First   ConstantRange{SingleObject:true}
+		//   Custom  CustomRange{LimitExpression, OffsetExpression}
+		//
+		// So a ConstantRange carries ONLY SingleObject, exactly as
+		// generated/metamodel and modelsdk/gen declare it, and the Limit/Offset
+		// read below has never been observed to fire. It is kept as tolerance
+		// for formats we have not sampled (no pre-11 document has been checked),
+		// NOT because Studio Pro is known to write that shape — an earlier
+		// comment here asserted it did, which is false for 11.13 and nearly cost
+		// a phantom bug report against the other engine.
+		//
+		// The engines differ on this input and that is deliberate: modelsdk's
+		// rangeFromGen cannot read it at all, because gen binds only
+		// SingleObject on ConstantRange. If a real document ever turns up with
+		// Limit on a ConstantRange, that asymmetry becomes a data-loss bug and
+		// gen needs a property override — see CLAUDE.md on gen's wrong keys.
 		r.Limit = extractString(raw["LimitExpression"])
 		r.Offset = extractString(raw["OffsetExpression"])
 		if singleObject := extractBool(raw["SingleObject"], false); singleObject {
 			r.RangeType = microflows.RangeTypeFirst
 		} else if r.Limit != "" || r.Offset != "" {
-			// Studio Pro stores custom ranges as ConstantRange with LimitExpression/OffsetExpression
 			r.RangeType = microflows.RangeTypeCustom
 		} else {
 			r.RangeType = microflows.RangeTypeAll
