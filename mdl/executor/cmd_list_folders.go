@@ -229,6 +229,34 @@ func documentsByContainer(ctx *ExecContext, h *ContainerHierarchy) map[model.ID]
 			put("ScheduledEvent", x.Name, x.ContainerID)
 		}
 	}
+	// #892: these five were missing, which is why the folder holding Mendix's
+	// own FeedbackModule mappings rendered as `[0]` while holding four
+	// documents — and an empty count is what made dropping it look safe.
+	if v, err := ctx.Backend.ListJsonStructures(); err == nil {
+		for _, x := range v {
+			put("JsonStructure", x.Name, x.ContainerID)
+		}
+	}
+	if v, err := ctx.Backend.ListImportMappings(); err == nil {
+		for _, x := range v {
+			put("ImportMapping", x.Name, x.ContainerID)
+		}
+	}
+	if v, err := ctx.Backend.ListExportMappings(); err == nil {
+		for _, x := range v {
+			put("ExportMapping", x.Name, x.ContainerID)
+		}
+	}
+	if v, err := ctx.Backend.ListRegularExpressions(); err == nil {
+		for _, x := range v {
+			put("RegularExpression", x.Name, x.ContainerID)
+		}
+	}
+	if v, err := ctx.Backend.ListImageCollections(); err == nil {
+		for _, x := range v {
+			put("ImageCollection", x.Name, x.ContainerID)
+		}
+	}
 	return out
 }
 

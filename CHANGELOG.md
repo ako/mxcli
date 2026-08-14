@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`DROP FOLDER` no longer orphans the documents inside it** (#892) — the command's contract ("the folder must be empty") existed only in a comment; nothing checked, so dropping a populated folder left every document pointing at a container that no longer existed. Nothing was deleted: the documents were **orphaned**, losing their module qualification (`FeedbackModule.IMM_PostResponse` → `.IMM_PostResponse`) so nothing could resolve them and mxbuild reported CE1613. Reproduced on a *stock* blank app, where `FeedbackModule/Private/Resources/Mappings` holds four documents. The drop is now refused, naming what is inside. The guard reads the type-agnostic unit list rather than the per-kind document lists, so it cannot inherit the blind spot that caused the bug, and it fails closed when contents cannot be determined.
+- **`LIST FOLDERS` counts mappings, JSON structures, regular expressions and image collections** (#892) — these five kinds were missing from the per-kind listing, so a folder holding them rendered as `[0]`. That empty count is what made dropping the folder look safe.
+
 ### Changed
 
 - **Go toolchain 1.26.5 → 1.26.6** for GO-2026-6218 (`net/url`), GO-2026-6090 (`crypto/tls`), GO-2026-6089 (`net/http`), GO-2026-6088 (`encoding/xml`), GO-2026-5972 (`encoding/asn1`) and GO-2026-5026 (`net/http`, via `golang.org/x/net/idna`). All six are standard-library advisories fixed in go1.26.6; no mxcli code changed. Bumped in `go.mod` and in all three workflows (`push-test`, `release`, `nightly`) together, so released binaries are not still linked against the vulnerable standard library.
