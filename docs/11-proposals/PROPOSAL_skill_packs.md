@@ -1,6 +1,6 @@
 ---
 title: Skill packs — shipping a skill that carries more than prose
-status: proposed
+status: partial
 date: 2026-08-15
 related:
   - cmd/mxcli/skills_content.go
@@ -129,6 +129,44 @@ already: generated regions are digest-fenced, and a block carrying local edits i
 Packs reuse it. `mxcli skill upgrade` reports what it refused and why; it never
 silently reverts a spec the user tuned.
 
+### The namespace has to be right before the build
+
+A pluggable widget's id (`acme.widget.web.vegachart.VegaChart`) is its identity.
+Two apps whose widgets share an id are two apps claiming the same widget, and the
+symptom is not a build error — it is a widget resolving to somebody else's build.
+
+So the widget source ships with **placeholders**, not a real namespace, and
+`skill add` substitutes the destination project's:
+
+| File | Carries |
+|---|---|
+| `widget/package.json` | `packagePath`, and the build's `projectPath` |
+| `widget/src/package.xml` | the client-module file path |
+| `widget/src/VegaChart.xml` | the widget id |
+
+Three properties make a missed substitution impossible rather than unlikely:
+
+1. **Placeholders, not a real namespace.** Leaving the harvested project's name
+   in place means a bug ships *their* namespace silently; an unsubstituted
+   `{{NAMESPACE}}` fails loudly.
+2. **A whitelist, not a scan.** Only files named in `rewrite.files` are touched.
+   A pack ships megabytes of built JS and spec JSON, and a blind replace is how a
+   spec containing brace syntax quietly becomes something else.
+3. **Drift in either direction is an error** — a declared file with no token
+   (the file changed under the manifest) and a declared file the pack does not
+   ship both refuse the install.
+
+`skill upgrade` re-substitutes what the install recorded in `pack.lock.yaml`
+rather than re-deriving. Re-deriving would change the id when the project is
+renamed, and a changed widget id is every page pointing at a widget that no
+longer exists under that name.
+
+**Widgets ship as source, not as a built `.mpk`.** The built package is 3.1 MB of
+bundled Vega, which has no business in a source repo or in the mxcli binary; and
+the namespace has to be right *before* the build, so shipping a prebuilt package
+would mean rewriting paths inside a zip and hoping, where rewriting source is the
+path the ledger verified.
+
 ### Manifest
 
 ```yaml
@@ -161,13 +199,10 @@ mxcli init --with <pack>[,<pack>]    # at project creation
 
 ## What this does not solve
 
-**Project-neutrality of the ledger's packs.** Both reference `Ledger.*` entity
-names, and `mendix-vega-charts` ships a widget under `ledger.widget.web.vegachart`
-with re-namespacing steps written out in `references/install.md`. Vendoring them
-as-is would hand every project the ledger's namespace. Either the widget is
-re-published under a neutral namespace before it is vendored, or the rename is
-automated as part of `skill add`. This is a prerequisite for the vega pack
-specifically, not for the mechanism.
+**Prose still names the project the packs came from.** The widget source is
+placeholdered and guarded by a test, and the specs are the ledger's own sample
+data, which is fine. But `references/*.md` still uses `Ledger.*` entity names in
+its examples. That is illustrative rather than load-bearing, and left alone.
 
 **Verifying a pack in CI.** `mendix-vega-charts` ships a Node checker and seven
 specs; `mendix-bulk-oql-dml` ships an MDL file that `make check-skill-mdl` should
@@ -181,7 +216,8 @@ pack that rots.
 | 1 | Embed + recursive sync + relative-path write + prune. One pack fixture, no CLI surface. Proves the mechanism carries nested non-Markdown assets through `init`. |
 | 2 | `pack.yaml`, version gating, `mxcli skill list/add/remove/upgrade`, digest-fenced local-edit refusal. |
 | 3 | Vendor `mendix-bulk-oql-dml` (no widget, so no namespace question), wire its MDL into `make check-skill-mdl`. |
-| 4 | Vendor `mendix-vega-charts` once the widget namespace is settled; run `check-spec.mjs` over the shipped specs in CI. |
+| 4 | Vendor `mendix-vega-charts` with install-time namespace substitution. |
+| 5 | Run `check-spec.mjs` over the shipped specs in CI. |
 
 Slice 1 is worth landing on its own: it removes the silent-flattening hazard in
 the write path whether or not any pack ever ships.

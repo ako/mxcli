@@ -40,8 +40,13 @@ deliberately.
    code, runnable in seconds.
 5. **Failure modes, symptoms first.** Every entry one that actually happened.
 6. **Keep it project-neutral.** A pack carrying one project's module or widget
-   namespace hands that namespace to everyone who installs it. Use a placeholder
-   (`MyModule`) or automate the rename.
+   namespace hands that namespace to everyone who installs it.
+
+   For a **widget**, ship the source with `{{NAMESPACE}}` / `{{NAMESPACE_PATH}}`
+   placeholders and list the files under `rewrite.files`; `mxcli skill add`
+   substitutes the destination project's namespace, and `TestVendoredPacks*`
+   fails the build if a real one is left in. For **MDL**, use a placeholder
+   module name (`MyModule`) the user replaces.
 7. **Any `mdl/*.mdl` is checked by `make check-skill-mdl`.** A pack whose own MDL
    is never checked is a pack that rots.
 

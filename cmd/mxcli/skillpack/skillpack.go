@@ -29,6 +29,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -37,6 +38,22 @@ import (
 
 // ManifestName is the per-pack manifest, read from the pack root.
 const ManifestName = "pack.yaml"
+
+// LockName records the values substituted into an installed pack.
+//
+// It exists so `skill upgrade` re-substitutes what the install chose rather than
+// re-deriving it. Re-deriving would silently change a widget's namespace when
+// the project is renamed or upgraded from a different directory — and a changed
+// widget id is not a build error, it is every page in the app pointing at a
+// widget that no longer exists under that name.
+const LockName = "pack.lock.yaml"
+
+// Lock is the on-disk record of an install.
+type Lock struct {
+	Pack    string            `yaml:"pack"`
+	Version string            `yaml:"version"`
+	Vars    map[string]string `yaml:"vars"`
+}
 
 // Manifest describes a pack. Only Name is required; everything else is optional
 // so that a pack can be added before its install story is settled.
@@ -48,6 +65,17 @@ type Manifest struct {
 	Source           string   `yaml:"source"`
 	Installs         Installs `yaml:"installs"`
 	Verify           string   `yaml:"verify"`
+	Rewrite          Rewrite  `yaml:"rewrite"`
+}
+
+// Rewrite names the files whose placeholders are substituted at install time.
+//
+// Only the listed files are touched. That is a deliberate whitelist rather than
+// a scan: a pack ships megabytes of built JavaScript and spec JSON, and a
+// blind search-and-replace across all of it is how a chart spec containing the
+// literal text of a token quietly becomes something else.
+type Rewrite struct {
+	Files []string `yaml:"files"`
 }
 
 // Installs lists what a pack does to a project beyond copying its own files.
@@ -68,6 +96,60 @@ type Pack struct {
 // WritesToModel reports whether installing this pack fully (with --apply) would
 // modify the .mpr. Callers use it to decide whether to demand confirmation.
 func (p Pack) WritesToModel() bool { return len(p.Installs.MDL) > 0 }
+
+// NeedsNamespace reports whether this pack carries files to substitute, and so
+// cannot be installed without knowing the destination project.
+func (p Pack) NeedsNamespace() bool { return len(p.Rewrite.Files) > 0 }
+
+// Options carries what a pack needs to know about the destination.
+type Options struct {
+	// Vars are substituted into Rewrite.Files as {{NAME}}.
+	Vars map[string]string
+}
+
+// tokenPattern matches an unsubstituted placeholder.
+var tokenPattern = regexp.MustCompile(`\{\{[A-Z_]+\}\}`)
+
+// substitute replaces every {{TOKEN}} in content, and refuses to return a file
+// that still carries one.
+//
+// The refusal is the point of the whole mechanism. A pluggable widget's id is
+// its identity: shipping one project's namespace to another means two apps
+// claiming the same widget, and the symptom is not a build error but a widget
+// that resolves to somebody else's build. A missed substitution has to be
+// impossible, not unlikely — so an unknown token is an error, and so is a
+// declared file that turns out to carry no token at all, which means the pack
+// drifted away from its manifest.
+func substitute(rel string, content []byte, vars map[string]string) ([]byte, error) {
+	if !tokenPattern.Match(content) {
+		return nil, fmt.Errorf("%s is listed under rewrite.files but carries no {{TOKEN}}; "+
+			"either the file changed or the manifest is stale", rel)
+	}
+	var missing []string
+	out := tokenPattern.ReplaceAllFunc(content, func(tok []byte) []byte {
+		name := string(tok[2 : len(tok)-2])
+		if v, ok := vars[name]; ok {
+			return []byte(v)
+		}
+		missing = append(missing, name)
+		return tok
+	})
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		return nil, fmt.Errorf("%s: no value for %s", rel, strings.Join(uniq(missing), ", "))
+	}
+	return out, nil
+}
+
+func uniq(in []string) []string {
+	var out []string
+	for i, s := range in {
+		if i == 0 || s != in[i-1] {
+			out = append(out, s)
+		}
+	}
+	return out
+}
 
 // List returns every pack in the FS, sorted by name. A directory without a
 // readable manifest is an error rather than a skip: a pack that silently does
@@ -130,12 +212,36 @@ func (r Result) Changed() bool { return len(r.Written) > 0 || len(r.Pruned) > 0 
 //
 // destDir is the skills directory of the target project (e.g. .claude/skills).
 func Install(fsys fs.FS, name, destDir string) (Result, error) {
+	return InstallWith(fsys, name, destDir, Options{})
+}
+
+// InstallWith is Install with destination-specific values substituted into the
+// pack's declared rewrite files.
+func InstallWith(fsys fs.FS, name, destDir string, opts Options) (Result, error) {
 	pack, err := Load(fsys, name)
 	if err != nil {
 		return Result{}, err
 	}
 	res := Result{Pack: pack.Name}
 	target := filepath.Join(destDir, pack.Name)
+
+	// The lock is written by the install, not shipped by the pack, so it must
+	// survive the prune that removes everything the pack no longer ships.
+	shippedExtra := map[string]bool{LockName: true}
+
+	rewrites := map[string]bool{}
+	for _, f := range pack.Rewrite.Files {
+		rewrites[filepath.ToSlash(f)] = true
+	}
+	if len(rewrites) > 0 && len(opts.Vars) == 0 {
+		// Fall back to what a previous install recorded, so `skill upgrade`
+		// keeps the namespace it already has.
+		if prev, err := ReadLock(destDir, name); err == nil && len(prev.Vars) > 0 {
+			opts.Vars = prev.Vars
+		} else {
+			return res, fmt.Errorf("pack %q needs destination values (namespace) before it can be installed", name)
+		}
+	}
 
 	shipped := map[string]bool{}
 
@@ -158,6 +264,13 @@ func Install(fsys fs.FS, name, destDir string) (Result, error) {
 		if err != nil {
 			return err
 		}
+		if rewrites[rel] {
+			want, err = substitute(rel, want, opts.Vars)
+			if err != nil {
+				return err
+			}
+			delete(rewrites, rel)
+		}
 		dst := filepath.Join(target, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			return err
@@ -174,6 +287,27 @@ func Install(fsys fs.FS, name, destDir string) (Result, error) {
 	})
 	if err != nil {
 		return res, fmt.Errorf("installing pack %q: %w", name, err)
+	}
+	// A manifest naming a file the pack does not ship is a stale manifest, and
+	// the file it meant to rewrite would have gone out untouched.
+	if len(rewrites) > 0 {
+		var left []string
+		for f := range rewrites {
+			left = append(left, f)
+		}
+		sort.Strings(left)
+		return res, fmt.Errorf("pack %q: rewrite.files names %s, which the pack does not ship",
+			name, strings.Join(left, ", "))
+	}
+
+	for k := range shippedExtra {
+		shipped[k] = true
+	}
+
+	if len(opts.Vars) > 0 {
+		if err := writeLock(target, Lock{Pack: pack.Name, Version: pack.Version, Vars: opts.Vars}); err != nil {
+			return res, err
+		}
 	}
 
 	pruned, err := prune(target, shipped)
@@ -305,4 +439,32 @@ func Installed(destDir string) ([]string, error) {
 	}
 	sort.Strings(names)
 	return names, nil
+}
+
+// writeLock records what was substituted, so a later upgrade repeats it.
+func writeLock(target string, l Lock) error {
+	raw, err := yaml.Marshal(l)
+	if err != nil {
+		return err
+	}
+	header := []byte("# Written by `mxcli skill add`. Records the values substituted into this\n" +
+		"# install so `mxcli skill upgrade` repeats them rather than re-deriving —\n" +
+		"# a changed widget id would orphan every page that references it.\n")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(target, LockName), append(header, raw...), 0o644)
+}
+
+// ReadLock returns what a previous install recorded for this pack.
+func ReadLock(destDir, name string) (Lock, error) {
+	raw, err := os.ReadFile(filepath.Join(destDir, name, LockName))
+	if err != nil {
+		return Lock{}, err
+	}
+	var l Lock
+	if err := yaml.Unmarshal(raw, &l); err != nil {
+		return Lock{}, err
+	}
+	return l, nil
 }

@@ -13,7 +13,11 @@ import (
 	"github.com/mendixlabs/mxcli/cmd/mxcli/skillpack"
 )
 
-var skillPackDir string
+var (
+	skillPackDir       string
+	skillPackNamespace string
+	skillPackProject   string
+)
 
 // packsFS returns the embedded packs rooted at the pack directory, so callers
 // see `<pack>/SKILL.md` rather than `skillpacks/<pack>/SKILL.md`.
@@ -105,7 +109,32 @@ var skillAddCmd = &cobra.Command{
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}
-		res, err := skillpack.Install(fsys, pack.Name, dir)
+		opts := skillpack.Options{}
+		var ns string
+		if pack.NeedsNamespace() {
+			ns, err = resolveNamespace()
+			if err != nil {
+				return err
+			}
+			// The widget source lands in <dir>/<pack>/widget/, so the build's
+			// output target is relative to there.
+			//
+			// Both sides are made absolute first. filepath.Rel refuses to mix a
+			// relative and an absolute path, and the fallback is an ABSOLUTE
+			// projectPath baked into a package.json that gets committed — which
+			// works on exactly one machine and fails silently everywhere else.
+			widgetDir, err1 := filepath.Abs(filepath.Join(dir, pack.Name, "widget"))
+			projDir, err2 := filepath.Abs(projectDirForPack())
+			rel := projDir
+			if err1 == nil && err2 == nil {
+				if r, relErr := filepath.Rel(widgetDir, projDir); relErr == nil {
+					rel = r
+				}
+			}
+			opts.Vars = skillpack.Vars(ns, filepath.ToSlash(rel))
+		}
+
+		res, err := skillpack.InstallWith(fsys, pack.Name, dir, opts)
 		if err != nil {
 			return err
 		}
@@ -120,6 +149,21 @@ var skillAddCmd = &cobra.Command{
 				fmt.Printf(", %d removed (no longer shipped)", len(res.Pruned))
 			}
 			fmt.Println()
+		}
+
+		if ns != "" {
+			fmt.Printf("\nNamespace: %s\n", ns)
+			fmt.Printf("  widget id: %s\n", skillpack.WidgetID(ns, "vegachart.VegaChart"))
+			fmt.Println("  Set before the build, so the id is right the first time a page references it.")
+			fmt.Println("  Renaming later means re-applying every page that carries the widget.")
+			fmt.Printf("\nBuild it:\n  cd %s && npm ci && npm run build\n",
+				filepath.Join(dir, pack.Name, "widget"))
+			fmt.Println("  The .mpk lands in the project's widgets/ — commit it, or every other")
+			fmt.Println("  clone of the repo references a widget nobody has.")
+			// Without this, the first page authored against the widget fails with
+			// "no definition for widget ...", which reads as a packaging problem
+			// rather than a step nobody was told about.
+			fmt.Println("\nThen let mxcli see it:\n  mxcli widget init -p <app>.mpr")
 		}
 
 		// Copying the pack never touches the model. Anything that would is
@@ -202,6 +246,47 @@ var skillUpgradeCmd = &cobra.Command{
 func init() {
 	skillCmd.PersistentFlags().StringVar(&skillPackDir, "dir", "",
 		"Install packs here instead of ./.claude/skills")
+	skillAddCmd.Flags().StringVar(&skillPackNamespace, "namespace", "",
+		"Widget namespace for packs that ship a widget (default: derived from the project name)")
+	skillAddCmd.Flags().StringVarP(&skillPackProject, "project", "p", "",
+		"Path to the .mpr the pack is being installed for")
 	skillCmd.AddCommand(skillListCmd, skillAddCmd, skillRemoveCmd, skillUpgradeCmd)
 	rootCmd.AddCommand(skillCmd)
+}
+
+// resolveNamespace decides the widget namespace for a pack that ships one.
+//
+// Explicit --namespace wins. Otherwise it comes from the project name, which is
+// a default rather than something to apply silently — the caller prints it, so a
+// project called App1112 does not quietly become the vendor prefix of a widget
+// that ends up somewhere else.
+func resolveNamespace() (string, error) {
+	if skillPackNamespace != "" {
+		return skillpack.NormalizeNamespace(skillPackNamespace)
+	}
+	mpr := skillPackProject
+	if mpr == "" {
+		mpr = findMprFile(".")
+	}
+	if mpr == "" {
+		return "", fmt.Errorf("this pack ships a widget, whose id must carry your namespace.\n" +
+			"No .mpr found here to derive one from — pass --namespace acme (or -p <app>.mpr)")
+	}
+	return skillpack.NamespaceFromProject(mpr)
+}
+
+// projectDirForPack is the directory the built widget package should land in,
+// which is the directory holding the .mpr.
+func projectDirForPack() string {
+	mpr := skillPackProject
+	if mpr == "" {
+		mpr = findMprFile(".")
+	}
+	if mpr == "" {
+		return "."
+	}
+	if abs, err := filepath.Abs(filepath.Dir(mpr)); err == nil {
+		return abs
+	}
+	return filepath.Dir(mpr)
 }
