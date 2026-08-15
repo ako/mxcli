@@ -21,6 +21,18 @@ import (
 //go:embed skills/*.md
 var skillsFS embed.FS
 
+// Embed skill packs from the synced directory — skills that carry assets, not
+// just prose (references/, specs/, scripts/, mdl/).
+//
+// `all:` is load-bearing rather than defensive. A plain go:embed of a directory
+// skips `_`- and `.`-prefixed files, and cmd/mxcli/theme/assets.go carries the
+// same prefix for exactly this reason: `_partial.scss` is how SCSS spells a
+// partial, and the theme package lost them once already. A pack is just as
+// likely to ship a `_helper.mjs` or an `.eslintrc`.
+//
+//go:embed all:skillpacks
+var skillPacksFS embed.FS
+
 // Embed all command files from the synced directory
 //
 //go:embed commands/*.md

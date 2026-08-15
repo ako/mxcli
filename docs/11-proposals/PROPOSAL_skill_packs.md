@@ -1,0 +1,187 @@
+---
+title: Skill packs — shipping a skill that carries more than prose
+status: proposed
+date: 2026-08-15
+related:
+  - cmd/mxcli/skills_content.go
+  - cmd/mxcli/init.go
+  - cmd/mxcli/init_skills_sync.go
+  - cmd/mxcli/theme/assets.go
+  - docs/13-decisions/0005-semantic-model-interface-currency.md
+---
+
+# Skill packs — shipping a skill that carries more than prose
+
+## Problem
+
+mxcli ships 65 skills today and every one of them is a single Markdown file. That
+was never a design decision; it is what the mechanism can carry.
+
+The [mxcli-ledger](https://github.com/ako/mxcli-ledger) project has produced two
+blocks that do not fit:
+
+| Pack | Carries |
+|---|---|
+| `mendix-vega-charts` | `SKILL.md`, 3 `references/*.md`, 7 spec templates with sample data (`specs/*.json`), a headless checker (`scripts/check-spec.mjs` + `package.json`) |
+| `mendix-bulk-oql-dml` | `SKILL.md`, 2 `references/*.md`, an MDL file applying three Java actions (`mdl/oql-dml-actions.mdl`) |
+
+Both exist for the same reason: the block is **easier for a coding agent than for
+a person in Studio Pro** — a large JSON specification, a Java action that has to
+be written and compiled. The agent absorbs the awkward part once, and the pack is
+what stops it rediscovering the awkward part every time.
+
+A third is wanted (`mendix-odata-pushdown`, Java actions that push `$filter` /
+`$orderby` / `$top` / `$skip` into database-connector SQL) and there will be more.
+Skills that carry assets is the general shape, not a special case for these two.
+
+### mxcli cannot ship any of it
+
+Four independent places block it, and each fails differently:
+
+| Layer | Today | Failure |
+|---|---|---|
+| Embed | `//go:embed skills/*.md` | Flat glob, `.md` only. `.json`, `.mjs`, `.mdl` and subdirectories are not in the binary at all |
+| Sync | `for f in .claude/skills/mendix/*.md` (Makefile) | Flat copy; nothing below the top level is seen |
+| Write | 3 loops, `filepath.Join(dir, d.Name())` | **Basename.** Nesting is flattened, so `references/install.md` and `specs/install.md` would silently overwrite each other |
+| Refresh | `syncAIContextSkills`: `if e.IsDir() { continue }` | Directory skills are skipped by `--sync-skills`, so a pack would never follow a binary upgrade — the bug fixed for flat skills in mxcli-todo #114 |
+
+The write layer is the one to watch. It does not error on a nested pack; it
+produces a plausible-looking directory with files missing or overwritten. That is
+the failure mode this repo keeps meeting and keeps writing down: *the tool
+accepting something it does not implement is worse than rejecting it*, because
+every check comes back green.
+
+## What a pack is, and why it is not just a bigger skill
+
+**Packs are opt-in; skills are not.** This is the load-bearing distinction and it
+belongs in the mechanism rather than in documentation.
+
+The 65 current skills are pure prose. Writing them into every project is free and
+reversible — worst case an agent reads a page it did not need.
+
+A pack is not free:
+
+- `mendix-vega-charts` requires **installing a custom pluggable widget** into the
+  project, and re-namespacing it away from the ledger's `ledger.widget.web.*`.
+- `mendix-bulk-oql-dml` **applies three Java actions to the model** via MDL, which
+  is a model write with a build cost and a review surface.
+
+Writing either into every `mxcli init` would be wrong. So a pack is an
+**installable unit with a manifest**, and `mxcli init` keeps shipping exactly the
+prose skills it ships today unless asked otherwise.
+
+## Design
+
+### Source of truth: vendored
+
+Packs live in the mxcli repo and ship inside the binary, the same as skills,
+commands and lint rules do now. Versioned with the binary, works offline, no
+trust or caching questions. A third-party pack arrives as a PR.
+
+A fetch/registry model was considered and rejected **for now**: it adds network,
+provenance and cache-invalidation concerns to solve a problem nobody has yet
+(there are three packs, all in-house). The manifest below is deliberately
+sufficient for a fetched pack, so this does not foreclose it.
+
+### Layout
+
+```
+.claude/skills/packs/<pack-name>/     source of truth, edited here
+  pack.yaml                           manifest
+  SKILL.md                            frontmatter name + description
+  references/*.md                     loaded on demand
+  specs/*.json  scripts/*  mdl/*.mdl  assets
+```
+
+Synced by `make sync-skill-packs` into `cmd/mxcli/skillpacks/` for embedding, the
+same build-time flow the flat skills already use. **Edit the source, never the
+embed dir.**
+
+### The four mechanism changes
+
+1. **`//go:embed all:skillpacks`.** The `all:` prefix is load-bearing, not
+   defensive: a plain `go:embed` of a directory skips `_`- and `.`-prefixed files.
+   `cmd/mxcli/theme/assets.go` carries the same prefix for exactly this reason —
+   `_partial.scss` is how SCSS spells a partial, and the theme package lost them
+   once already. A pack is just as likely to carry a `_helper.mjs` or a
+   `.eslintrc`.
+
+2. **Recursive sync.** `cp -R` preserving structure, with the existing
+   `copy-if-changed` discipline so unchanged files do not invalidate the build
+   cache.
+
+3. **Write by relative path.** Strip the embed root, keep the remainder, create
+   parents. The three near-duplicate walk loops in `init.go` (`.ai-context/`,
+   `.opencode/`, `.vibe/`) collapse into one projector with per-agent targets;
+   they have already drifted apart once.
+
+4. **Prune on refresh.** Today's sync overwrites but never deletes. A pack that
+   drops an asset in v2 would leave the v1 file behind forever, and a stale spec
+   template is worse than a missing one because it looks current.
+
+### Local edits are refused, not overwritten
+
+A pack writes files into a project the user then owns. `theme/` solved this
+already: generated regions are digest-fenced, and a block carrying local edits is
+**refused rather than overwritten** — guard-don't-drop, the same principle as
+[ADR-0005](../13-decisions/0005-semantic-model-interface-currency.md).
+
+Packs reuse it. `mxcli skill upgrade` reports what it refused and why; it never
+silently reverts a spec the user tuned.
+
+### Manifest
+
+```yaml
+name: mendix-vega-charts
+version: 1.0.0
+description: ...                    # mirrors SKILL.md frontmatter
+min_mendix_version: 10.18.0         # gates on the project, per sdk/versions/*.yaml
+installs:
+  widgets: [VegaChart.mpk]          # copied into widgets/
+  mdl: [mdl/oql-dml-actions.mdl]    # applied to the model, requires --apply
+verify: scripts/check-spec.mjs      # exit code, runnable in seconds
+```
+
+`min_mendix_version` uses the existing version registry rather than inventing a
+second gate. `installs.mdl` is the part that writes to the model, so it is
+explicit and separately confirmable — installing a pack must never modify the
+model as a side effect of copying documentation.
+
+### Commands
+
+```
+mxcli skill list                     # available packs + what is installed here
+mxcli skill add <pack> [--apply]     # copy assets; --apply runs installs.mdl
+mxcli skill remove <pack>
+mxcli skill upgrade [<pack>]         # re-sync, prune, refuse locally-edited files
+mxcli init --with <pack>[,<pack>]    # at project creation
+```
+
+`mxcli init` with no `--with` behaves exactly as today.
+
+## What this does not solve
+
+**Project-neutrality of the ledger's packs.** Both reference `Ledger.*` entity
+names, and `mendix-vega-charts` ships a widget under `ledger.widget.web.vegachart`
+with re-namespacing steps written out in `references/install.md`. Vendoring them
+as-is would hand every project the ledger's namespace. Either the widget is
+re-published under a neutral namespace before it is vendored, or the rename is
+automated as part of `skill add`. This is a prerequisite for the vega pack
+specifically, not for the mechanism.
+
+**Verifying a pack in CI.** `mendix-vega-charts` ships a Node checker and seven
+specs; `mendix-bulk-oql-dml` ships an MDL file that `make check-skill-mdl` should
+be checking. Neither runs today. A pack whose own verifier is not run in CI is a
+pack that rots.
+
+## Plan
+
+| Slice | Content |
+|---|---|
+| 1 | Embed + recursive sync + relative-path write + prune. One pack fixture, no CLI surface. Proves the mechanism carries nested non-Markdown assets through `init`. |
+| 2 | `pack.yaml`, version gating, `mxcli skill list/add/remove/upgrade`, digest-fenced local-edit refusal. |
+| 3 | Vendor `mendix-bulk-oql-dml` (no widget, so no namespace question), wire its MDL into `make check-skill-mdl`. |
+| 4 | Vendor `mendix-vega-charts` once the widget namespace is settled; run `check-spec.mjs` over the shipped specs in CI. |
+
+Slice 1 is worth landing on its own: it removes the silent-flattening hazard in
+the write path whether or not any pack ever ships.
