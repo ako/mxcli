@@ -162,21 +162,29 @@ func buildAdditiveExpression(ctx parser.IAdditiveExpressionContext) ast.Expressi
 	// Build first operand
 	result := buildMultiplicativeExpression(multExprs[0])
 
-	// Get operators (PLUS and MINUS tokens)
-	plusTokens := addCtx.AllPLUS()
-	minusTokens := addCtx.AllMINUS()
-
-	// Reconstruct the sequence of operators
-	// This is a simplified approach - for complex expressions we'd need to track token positions
-	opIndex := 0
-	for i := 1; i < len(multExprs); i++ {
-		op := "+"
-		if opIndex < len(plusTokens) {
-			op = "+"
-		} else if opIndex-len(plusTokens) < len(minusTokens) {
-			op = "-"
+	// Get operators from children in order, exactly as buildMultiplicativeExpression
+	// does below. Reading AllPLUS() and AllMINUS() as two separate lists loses the
+	// order they were written in: every `+` floats ahead of every `-`, so
+	// `$A - $B + 1` is REBUILT as `$A + $B - 1` and stored that way. The app then
+	// computes the swapped value while mxcli check, mx check and the build all stay
+	// green, because the corrupted expression is perfectly valid. (ledger #105)
+	var operators []string
+	for _, child := range addCtx.GetChildren() {
+		if term, ok := child.(antlr.TerminalNode); ok {
+			switch term.GetSymbol().GetTokenType() {
+			case parser.MDLParserPLUS:
+				operators = append(operators, "+")
+			case parser.MDLParserMINUS:
+				operators = append(operators, "-")
+			}
 		}
-		opIndex++
+	}
+
+	for i := 1; i < len(multExprs); i++ {
+		op := "+" // default
+		if i-1 < len(operators) {
+			op = operators[i-1]
+		}
 
 		result = &ast.BinaryExpr{
 			Left:     result,
