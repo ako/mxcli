@@ -176,6 +176,13 @@ engine-diff: grammar
 # `mxcli check` (the script reproduces a symptom that a new validation
 # rule rejects). The runner inverts the exit code for these: an unexpected
 # pass is treated as a regression of the rule.
+#
+# `check` runs here WITHOUT a project, so only CHECK-TIME rules can be tested
+# this way. A guard living in the executor or a backend needs a model before it
+# can decide anything, so its repro is valid MDL, `check` exits 0, and naming
+# that file .fail.mdl reports "negative test unexpectedly passed" — a working
+# rule made to look regressed (#891, #892). Keep those repros as plain .mdl and
+# cover the guard with a unit test.
 check-mdl: build
 	@FAILED=0; \
 	for f in mdl-examples/doctype-tests/*.mdl mdl-examples/bug-tests/*.mdl; do \
