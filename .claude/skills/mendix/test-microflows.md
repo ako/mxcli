@@ -152,11 +152,57 @@ The markdown format turns your tests into living documentation.
 | Tag | Purpose | Example |
 |-----|---------|---------|
 | `@test` | Test name (required) | `@test string concatenation` |
-| `@expect` | Assert variable value | `@expect $result = 'John Doe'` |
-| `@expect` | Assert entity attribute | `@expect $product/Name = 'TestProduct'` |
+| `@expect` | Assert a Mendix condition | `@expect $result = 'John Doe'` |
+| `@expect` | Assert an entity attribute | `@expect $product/Name = 'TestProduct'` |
+| `@expect` | Assert with a built-in | `@expect length($result) = 81` |
 | `@verify` | OQL post-condition | `@verify select count(*) from Mod.E where Code = 'X' = 1` |
 | `@throws` | Expect error | `@throws 'validation failed'` |
 | `@cleanup` | Rollback strategy | `@cleanup rollback` (default) or `@cleanup none` |
+
+### `@expect` — any Mendix condition, and nothing it cannot evaluate
+
+An `@expect` is **a Mendix expression that must evaluate to true**, not a fixed
+`$var = value` shape. Anything the Mendix expression engine accepts works:
+
+```mdl
+@expect $result = 'John Doe'                       -- equality
+@expect $product/Name != 'Widget'                  -- inequality (<> also accepted)
+@expect length($result) = 81                       -- built-in functions
+@expect find($result, '0') >= 0                    -- any comparison operator
+@expect substring($result, 0, 9) = substring($result, 9, 18)
+@expect find($result, '0') >= 0 and $count > 3     -- and / or / not(...)
+@expect $status = MyModule.Status.Open             -- enumeration values
+```
+
+`<>` is accepted in the annotation and rewritten to `!=` on the way to the
+model, because Mendix's expression engine rejects the `<>` spelling (CE0117).
+
+**An assertion the runner cannot compile is an ERROR, never a pass.** Unknown
+functions, wrong arity, unbalanced parentheses and expressions that evaluate to
+a value rather than a condition are all rejected by name:
+
+```
+ERROR  a self-evident falsehood
+       @expect randomInt($result) = 1: randomInt() is not a Mendix expression
+       function at column 1 ("randomInt")
+```
+
+This is the one rule the annotation is built around. A test framework that
+cannot evaluate an assertion has exactly one safe behaviour, and passing is not
+it — an earlier version matched only `$var = <literal>` and silently discarded
+every other line, so `@expect 1 = 2` reported PASS.
+
+**A failure reports what came back**, not just what was wanted, whenever the
+observed value's type is pinned down by the assertion itself:
+
+```
+FAIL  the board is 81 squares
+      expected length($result) = 81, actual: 27
+```
+
+The value is omitted rather than guessed when neither side of the comparison
+establishes a type (`@expect $a = $b`), because Mendix's expression engine is
+typed and a wrong guess would break the build instead of the test.
 
 ### `@cleanup` — what happens to a test's data
 

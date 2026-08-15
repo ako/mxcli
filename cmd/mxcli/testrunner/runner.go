@@ -375,10 +375,11 @@ func ListTests(files []string, w io.Writer) error {
 	fmt.Fprintf(w, "Found %d test(s):\n", len(suite.Tests))
 	for _, tc := range suite.Tests {
 		fmt.Fprintf(w, "  %s: %s\n", tc.ID, tc.Name)
-		if len(tc.Expects) > 0 {
-			for _, exp := range tc.Expects {
-				fmt.Fprintf(w, "    @expect %s %s %s\n", exp.Variable, exp.Operator, exp.Value)
-			}
+		for _, exp := range tc.Expects {
+			fmt.Fprintf(w, "    @expect %s\n", exp.Raw)
+		}
+		for _, e := range tc.ExpectErrors {
+			fmt.Fprintf(w, "    ERROR: %s\n", e)
 		}
 		if tc.Throws != "" {
 			fmt.Fprintf(w, "    @throws '%s'\n", tc.Throws)

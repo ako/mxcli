@@ -15,23 +15,21 @@ import (
 
 // TestCase represents a single test extracted from a test file.
 type TestCase struct {
-	ID         string   // Generated test ID (test_1, test_2, ...)
-	Name       string   // From @test annotation
-	MDL        string   // Raw MDL statements for this test block
-	Expects    []Expect // @expect assertions
-	Verify     []string // @verify OQL queries
-	Setup      string   // @setup block reference
-	Cleanup    string   // @cleanup strategy ("rollback" or "none")
-	Throws     string   // @throws expected error message
-	SourceFile string   // Original file path
-	Line       int      // Line number in source file
-}
-
-// Expect represents an @expect assertion.
-type Expect struct {
-	Variable string // $var or $var/Attr
-	Operator string // "=" or "<>"
-	Value    string // Expected value as string literal
+	ID      string   // Generated test ID (test_1, test_2, ...)
+	Name    string   // From @test annotation
+	MDL     string   // Raw MDL statements for this test block
+	Expects []Expect // @expect assertions
+	// ExpectErrors holds one message per @expect the runner could not compile
+	// into an assertion. A test carrying any of these is reported as an ERROR
+	// and never run: an assertion that cannot be evaluated must not be able to
+	// report a pass.
+	ExpectErrors []string
+	Verify       []string // @verify OQL queries
+	Setup        string   // @setup block reference
+	Cleanup      string   // @cleanup strategy ("rollback" or "none")
+	Throws       string   // @throws expected error message
+	SourceFile   string   // Original file path
+	Line         int      // Line number in source file
 }
 
 // TestSuite represents a collection of tests from one or more files.
@@ -140,16 +138,17 @@ func parseMDLTests(content string, sourcePath string) ([]TestCase, error) {
 
 		testID := fmt.Sprintf("test_%d", i+1)
 		tests = append(tests, TestCase{
-			ID:         testID,
-			Name:       annotations.Test,
-			MDL:        strings.TrimSpace(body),
-			Expects:    annotations.Expects,
-			Verify:     annotations.Verify,
-			Setup:      annotations.Setup,
-			Cleanup:    annotations.Cleanup,
-			Throws:     annotations.Throws,
-			SourceFile: sourcePath,
-			Line:       line,
+			ID:           testID,
+			Name:         annotations.Test,
+			MDL:          strings.TrimSpace(body),
+			Expects:      annotations.Expects,
+			ExpectErrors: annotations.ExpectErrors,
+			Verify:       annotations.Verify,
+			Setup:        annotations.Setup,
+			Cleanup:      annotations.Cleanup,
+			Throws:       annotations.Throws,
+			SourceFile:   sourcePath,
+			Line:         line,
 		})
 	}
 
@@ -202,16 +201,17 @@ func parseMarkdownTests(content string, sourcePath string) ([]TestCase, error) {
 				}
 
 				tests = append(tests, TestCase{
-					ID:         testID,
-					Name:       name,
-					MDL:        strings.TrimSpace(body),
-					Expects:    annotations.Expects,
-					Verify:     annotations.Verify,
-					Setup:      annotations.Setup,
-					Cleanup:    annotations.Cleanup,
-					Throws:     annotations.Throws,
-					SourceFile: sourcePath,
-					Line:       blockStart,
+					ID:           testID,
+					Name:         name,
+					MDL:          strings.TrimSpace(body),
+					Expects:      annotations.Expects,
+					ExpectErrors: annotations.ExpectErrors,
+					Verify:       annotations.Verify,
+					Setup:        annotations.Setup,
+					Cleanup:      annotations.Cleanup,
+					Throws:       annotations.Throws,
+					SourceFile:   sourcePath,
+					Line:         blockStart,
 				})
 			} else {
 				blockLines = append(blockLines, line)
@@ -279,16 +279,22 @@ func extractDocAndBody(block string, fullContent string) (string, string, int) {
 
 // annotations holds parsed javadoc annotations for a test block.
 type annotations struct {
-	Test    string
-	Expects []Expect
-	Verify  []string
-	Setup   string
-	Cleanup string
-	Throws  string
+	Test         string
+	Expects      []Expect
+	ExpectErrors []string
+	Verify       []string
+	Setup        string
+	Cleanup      string
+	Throws       string
 }
 
 var (
-	expectPattern  = regexp.MustCompile(`@expect\s+(\$\S+)\s*(=|<>)\s*(.+)`)
+	// expectPattern captures the whole annotation body rather than a fixed
+	// operand/operator/operand shape. Matching a shape is what made this silent:
+	// a line the pattern did not fit produced no assertion at all, and a test
+	// with no assertions passes. Everything after @expect is now handed to
+	// ParseExpect, which either compiles it or reports why it could not.
+	expectPattern  = regexp.MustCompile(`@expect\s+(.+)`)
 	verifyPattern  = regexp.MustCompile(`@verify\s+(.+)`)
 	testPattern    = regexp.MustCompile(`@test\s+(.+)`)
 	setupPattern   = regexp.MustCompile(`@setup\s+(\S+)`)
@@ -318,11 +324,12 @@ func parseAnnotations(doc string) annotations {
 			a.Test = strings.TrimSpace(m[1])
 		}
 		if m := expectPattern.FindStringSubmatch(line); m != nil {
-			a.Expects = append(a.Expects, Expect{
-				Variable: strings.TrimSpace(m[1]),
-				Operator: strings.TrimSpace(m[2]),
-				Value:    strings.TrimSpace(m[3]),
-			})
+			exp, err := ParseExpect(m[1])
+			if err != nil {
+				a.ExpectErrors = append(a.ExpectErrors, err.Error())
+			} else {
+				a.Expects = append(a.Expects, exp)
+			}
 		}
 		if m := verifyPattern.FindStringSubmatch(line); m != nil {
 			a.Verify = append(a.Verify, strings.TrimSpace(m[1]))

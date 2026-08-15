@@ -25,17 +25,11 @@ func TestParseAnnotations(t *testing.T) {
 	if len(a.Expects) != 2 {
 		t.Fatalf("Expects count: got %d, want 2", len(a.Expects))
 	}
-	if a.Expects[0].Variable != "$result" {
-		t.Errorf("Expect[0] variable: got %q, want %q", a.Expects[0].Variable, "$result")
+	if a.Expects[0].Condition != "$result = 'John Doe'" {
+		t.Errorf("Expect[0] condition: got %q, want %q", a.Expects[0].Condition, "$result = 'John Doe'")
 	}
-	if a.Expects[0].Operator != "=" {
-		t.Errorf("Expect[0] operator: got %q, want %q", a.Expects[0].Operator, "=")
-	}
-	if a.Expects[0].Value != "'John Doe'" {
-		t.Errorf("Expect[0] value: got %q, want %q", a.Expects[0].Value, "'John Doe'")
-	}
-	if a.Expects[1].Variable != "$product/Name" {
-		t.Errorf("Expect[1] variable: got %q, want %q", a.Expects[1].Variable, "$product/Name")
+	if a.Expects[1].Condition != "$product/Name = 'TestProduct'" {
+		t.Errorf("Expect[1] condition: got %q, want %q", a.Expects[1].Condition, "$product/Name = 'TestProduct'")
 	}
 	if len(a.Verify) != 1 {
 		t.Fatalf("Verify count: got %d, want 1", len(a.Verify))
@@ -161,7 +155,7 @@ func TestGenerateTestRunner(t *testing.T) {
 				Name: "Hello World",
 				MDL:  "$result = CALL MICROFLOW MfTest.M001_HelloWorld();",
 				Expects: []Expect{
-					{Variable: "$result", Operator: "=", Value: "true"},
+					expectOf("$result = true"),
 				},
 			},
 			{
@@ -169,7 +163,7 @@ func TestGenerateTestRunner(t *testing.T) {
 				Name: "String concat",
 				MDL:  "$result = CALL MICROFLOW MfTest.M003(FirstName = 'John', LastName = 'Doe');",
 				Expects: []Expect{
-					{Variable: "$result", Operator: "=", Value: "'John Doe'"},
+					expectOf("$result = 'John Doe'"),
 				},
 			},
 		},
