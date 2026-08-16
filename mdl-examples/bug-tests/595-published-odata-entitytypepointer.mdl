@@ -21,7 +21,7 @@ create persistent entity bug595.Customer (
 );
 
 create odata service bug595.CustomerAPI (
-  path: '/odata/customers',
+  path: 'odata/customers/',
   version: '1.0.0',
   ODataVersion: OData4,
   namespace: 'bug595.Customers'
