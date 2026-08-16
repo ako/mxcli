@@ -363,6 +363,38 @@ disable identity preservation. **Any test asserting "nothing changed" must inclu
 the control run with it set** — otherwise the test passes against a build that
 never had the fix, which is exactly how PR #125 shipped green.
 
+### The Tunnel Is Linux-Only, On Purpose — Do Not "Restore" It
+
+`mxcli run --hub` and `mxcli tunnel-hub` embed [chisel](https://github.com/jpillora/chisel),
+a dual-use tunnelling tool that appears in threat intelligence as a pivoting
+component. Shipping it in the Windows and macOS binaries — where the tunnel can
+never run — got them flagged by Defender (`Trojan:Script/Sabsik.EN.A!ml`) and
+denied by enterprise EDR, which blocks mxcli for corporate Mendix developers on
+managed endpoints. It is now built **for Linux only**. See
+[ADR-0009](docs/13-decisions/0009-tunnel-is-linux-only.md).
+
+This looks like a portability gap and is not one. Making the tunnel cross-platform
+again re-introduces the detection for the large majority of downloads.
+
+- **All chisel imports live behind two seams**, one interface each:
+  `tunnelConn` / `startTunnel` (`cmd/mxcli/docker/tunnel_linux.go` + `tunnel_other.go`)
+  and `controlServer` / `newControlServer` (`cmd/mxcli/tunnelhub/control_linux.go`
+  + `control_other.go`). Adding a chisel import anywhere else is the mistake the
+  guard exists to catch.
+- **`scripts/check-tunnel-deps.sh` (CI, and `make check-tunnel-deps`) fails the
+  build** if chisel or its tunnelling-specific dependencies — the SSH/websocket/
+  socks stack included, which is how it would come back without the word "chisel"
+  appearing — reach a windows/darwin dependency graph. It asserts a positive
+  control first (chisel *is* in the linux graph), so it cannot pass vacuously.
+- **The hub seam is at `Start`, not construction**, so the portable front
+  (registry, API, auth, routing) stays testable on every platform.
+- **Never obfuscate, pack, or rename to evade detection.** That is attacker
+  tradecraft and makes things strictly worse. The only legitimate fix is not
+  shipping the capability where it is unused. Code signing does **not** substitute:
+  a signed binary containing chisel is still flagged behaviourally.
+- Do not conflate this with #185 (`Wacatac.C!ml`), which was a genuine generic
+  Go-binary false positive with a different remedy.
+
 ### Theme Files: Where SCSS Actually Compiles
 
 Styling written to the wrong place fails **silently** — the build succeeds and the

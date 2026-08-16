@@ -4,6 +4,7 @@ package tunnelhub
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"html"
 	"net/http"
@@ -12,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	chserver "github.com/jpillora/chisel/server"
 	"golang.org/x/crypto/acme/autocert"
 
 	"github.com/mendixlabs/mxcli/cmd/mxcli/tunnelhub/audit"
@@ -33,19 +33,19 @@ type ServerOptions struct {
 	// <subdomain>.<Domain>.
 	Domain string
 	// HubHost is the control/admin/API host (default "hub."+Domain). Clients dial
-	// their chisel control connection here and the admin page lives here.
+	// their tunnel control connection here and the admin page lives here.
 	HubHost string
 	// Registry is the shared backend store.
 	Registry *Registry
-	// TunnelAuth is the shared chisel auth ("user:pass"); empty disables auth.
+	// TunnelAuth is the shared tunnel auth ("user:pass"); empty disables auth.
 	TunnelAuth string
 	// RegisterSecret optionally gates /api/register (matched against X-Hub-Secret).
 	RegisterSecret string
 	// CertCacheDir is the autocert certificate cache directory.
 	CertCacheDir string
-	// chiselAddr is the internal address the embedded chisel control server binds
+	// ControlAddr is the internal address the embedded tunnel control server binds
 	// (default 127.0.0.1:8100). Not public — the front proxies the WS here.
-	ChiselAddr string
+	ControlAddr string
 	// Auth, when enabled, adds the GitHub OAuth viewer plane: /auth/* on the hub
 	// host, a session cookie, backend-list filtering, and (when RequireAuth) an
 	// owner check on preview + admin access. Nil / open mode preserves today's
@@ -59,25 +59,58 @@ type ServerOptions struct {
 	KeysFile string
 }
 
-// Server is the running multi-tenant hub: one embedded chisel reverse server
-// (fanning in all client tunnels) behind a single-443 TLS front that routes by
-// Host — the hub host to the admin/API/chisel-control, each preview subdomain to
-// its tunnel.
+// ErrHubUnsupported is what Server.Start returns on a build that ships without
+// the tunnel (everything but Linux — see control_other.go and ADR-0009). It is a
+// single value so the early flag check in `mxcli tunnel-hub` and the run-time
+// failure say exactly the same thing.
+var ErrHubUnsupported = errors.New(
+	"mxcli tunnel-hub is only available in Linux builds of mxcli\n\n" +
+		"The hub embeds a reverse-tunnel server, which ships only in the Linux build\n" +
+		"because that is the only place it runs: the hub is a daemon you deploy on a\n" +
+		"host, and the previews it fronts are tunnelled out of Linux containers.\n" +
+		"Windows and macOS builds leave it out deliberately.\n\n" +
+		"Run the hub on a Linux host (or in any Linux container) with the linux-amd64\n" +
+		"or linux-arm64 binary from the releases page.\n\n" +
+		"See https://mendixlabs.github.io/mxcli/tools/run-local.html")
+
+// HubSupported reports whether this build can run a tunnel hub. Callers use it to
+// reject `tunnel-hub` during flag validation, before touching cert caches or key
+// stores on disk.
+func HubSupported() bool { return hubSupported }
+
+// controlServer is the platform half of the hub: the embedded reverse-tunnel
+// control server that every client tunnel fans in to. It ships only in the Linux
+// build (control_linux.go); control_other.go refuses to construct one. Keeping it
+// to this two-method interface is what stops build tags spreading through the
+// package — the registry, API, auth, admin and TLS front are all portable.
+type controlServer interface {
+	// Start binds the control server on host:port. It is loopback-only; the TLS
+	// front proxies the control WebSocket to it.
+	Start(host, port string) error
+	// Close stops the control server.
+	Close() error
+}
+
+// Server is the running multi-tenant hub: one embedded reverse-tunnel control
+// server (fanning in all client tunnels) behind a single-443 TLS front that
+// routes by Host — the hub host to the admin/API/tunnel-control, each preview
+// subdomain to its tunnel.
 type Server struct {
 	opts    ServerOptions
 	reg     *Registry
-	chisel  *chserver.Server
+	control controlServer
 	manager *autocert.Manager
 	http    *http.Server
 	apiMux  *http.ServeMux
 	admin   http.Handler
 
-	chiselProxy *httputil.ReverseProxy // -> internal chisel control (WS)
-	appProxy    *httputil.ReverseProxy // -> 127.0.0.1:<reversePort> (per request)
+	controlProxy *httputil.ReverseProxy // -> internal tunnel control (WS)
+	appProxy     *httputil.ReverseProxy // -> 127.0.0.1:<reversePort> (per request)
 }
 
-// NewServer wires the registry, API, admin page, embedded chisel server, and the
-// TLS front. Call Start to listen.
+// NewServer wires the registry, API, admin page, embedded control server, and
+// the TLS front. Call Start to listen; on a build without the tunnel it is Start
+// that returns ErrHubUnsupported.
 func NewServer(o ServerOptions) (*Server, error) {
 	if o.Domain == "" {
 		return nil, fmt.Errorf("Domain is required")
@@ -85,16 +118,16 @@ func NewServer(o ServerOptions) (*Server, error) {
 	if o.HubHost == "" {
 		o.HubHost = "hub." + o.Domain
 	}
-	if o.ChiselAddr == "" {
-		o.ChiselAddr = "127.0.0.1:8100"
+	if o.ControlAddr == "" {
+		o.ControlAddr = "127.0.0.1:8100"
 	}
 	if o.Registry == nil {
 		return nil, fmt.Errorf("Registry is required")
 	}
 
-	chisel, err := chserver.NewServer(&chserver.Config{Reverse: true, Auth: o.TunnelAuth})
+	control, err := newControlServer(o.TunnelAuth)
 	if err != nil {
-		return nil, fmt.Errorf("chisel server: %w", err)
+		return nil, err
 	}
 
 	// A shared key store backs /api/keys + X-Hub-Key registration (only reachable
@@ -120,17 +153,18 @@ func NewServer(o ServerOptions) (*Server, error) {
 	api.Mount(apiMux)
 
 	s := &Server{
-		opts:   o,
-		reg:    o.Registry,
-		chisel: chisel,
-		apiMux: apiMux,
-		admin:  NewAdmin(o.Registry),
+		opts:    o,
+		reg:     o.Registry,
+		control: control,
+		apiMux:  apiMux,
+		admin:   NewAdmin(o.Registry),
 	}
 
-	// Front proxies: chisel control (WS) to the internal chisel server, and app
-	// traffic to the per-request reverse port (Host preserved as the public host).
-	chiselURL := &url.URL{Scheme: "http", Host: o.ChiselAddr}
-	s.chiselProxy = httputil.NewSingleHostReverseProxy(chiselURL)
+	// Front proxies: the tunnel control connection (WS) to the internal control
+	// server, and app traffic to the per-request reverse port (Host preserved as
+	// the public host).
+	controlProxyURL := &url.URL{Scheme: "http", Host: o.ControlAddr}
+	s.controlProxy = httputil.NewSingleHostReverseProxy(controlProxyURL)
 
 	s.appProxy = &httputil.ReverseProxy{
 		Director: func(req *http.Request) {
@@ -187,14 +221,14 @@ func (s *Server) subOf(host string) (string, bool) {
 	return sub, true
 }
 
-// ServeHTTP routes by Host: the hub host serves chisel control (WS upgrade),
+// ServeHTTP routes by Host: the hub host serves tunnel control (WS upgrade),
 // the API, and the admin page; a preview subdomain proxies to its tunnel.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	host := stripPort(r.Host)
 	switch {
 	case host == s.opts.HubHost:
 		if isWebSocketUpgrade(r) {
-			s.chiselProxy.ServeHTTP(w, r) // chisel client control connection
+			s.controlProxy.ServeHTTP(w, r) // tunnel client control connection
 			return
 		}
 		if strings.HasPrefix(r.URL.Path, "/api/") {
@@ -239,12 +273,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Start binds the internal chisel server and the public TLS front (443), plus an
+// Start binds the internal control server and the public TLS front (443), plus an
 // HTTP :80 listener for ACME challenges and http->https redirects. It blocks
 // until ctx is cancelled.
 func (s *Server) Start(ctx context.Context, httpsAddr, httpAddr string) error {
-	if err := s.chisel.Start("127.0.0.1", portOf(s.opts.ChiselAddr)); err != nil {
-		return fmt.Errorf("starting chisel: %w", err)
+	if err := s.control.Start("127.0.0.1", portOf(s.opts.ControlAddr)); err != nil {
+		return fmt.Errorf("starting tunnel control server: %w", err)
 	}
 
 	s.http = &http.Server{
@@ -282,11 +316,11 @@ func (s *Server) Start(ctx context.Context, httpsAddr, httpAddr string) error {
 		defer cancel()
 		_ = s.http.Shutdown(shutCtx)
 		_ = httpSrv.Shutdown(shutCtx)
-		_ = s.chisel.Close()
+		_ = s.control.Close()
 		return nil
 	case err := <-errc:
 		_ = httpSrv.Close()
-		_ = s.chisel.Close()
+		_ = s.control.Close()
 		return err
 	}
 }

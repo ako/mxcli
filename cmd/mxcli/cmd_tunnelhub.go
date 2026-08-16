@@ -30,8 +30,12 @@ var tunnelHubCmd = &cobra.Command{
 Each app self-registers and is served at its own subdomain
 (<project>-<branch>.<domain>, or <prefix>-<project>-<branch> with --hub-prefix);
 the hub host (hub.<domain>) serves the registration API, the admin overview, and
-the chisel control connection. Everything rides one 443 connection, so apps in
+the tunnel control connection. Everything rides one 443 connection, so apps in
 egress-only environments (e.g. Claude Code on the web) can reverse-tunnel out.
+
+The hub is available in the Linux build only — it is a daemon you deploy on a
+host, and the tunnel it embeds is left out of the Windows and macOS binaries so
+they are not flagged by endpoint security for a capability they never use.
 
 You run your own hub — there is no hosted service. Stand it up on a host you
 control (a small VPS with a domain).
@@ -59,6 +63,13 @@ Then, in each app's environment:
     --hub-solution CustomerPortal -p app.mpr
 `,
 	Run: func(cmd *cobra.Command, args []string) {
+		// Fail before touching cert caches, key stores or session files: on a build
+		// without the tunnel (everything but Linux — ADR-0009) the hub can never
+		// serve, so it should not create state on the way to finding that out.
+		if !tunnelhub.HubSupported() {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", tunnelhub.ErrHubUnsupported)
+			os.Exit(1)
+		}
 		domain, _ := cmd.Flags().GetString("domain")
 		hubHost, _ := cmd.Flags().GetString("hub-host")
 		secret, _ := cmd.Flags().GetString("secret")

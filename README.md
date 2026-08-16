@@ -158,6 +158,8 @@ mxcli run --hub https://hub.example.com -p app.mpr        # -> a shareable previ
 
 `mxcli tunnel-hub --domain example.com` is the static relay you run once on a small VPS; it can front many previews at per-subdomain hosts across projects, solutions, branches, and worktrees, with a sortable availability overview at `hub.example.com/`. See **[Local Dev Loop → External browser preview](https://mendixlabs.github.io/mxcli/tools/run-local.html)**.
 
+> **`--hub` and `tunnel-hub` are Linux-only.** The tunnel exists to get a preview out of a Linux container — the only place it ever ran — so it is built for Linux alone. Embedding a general-purpose tunnelling tool in the Windows and macOS binaries, which can never use it, got them flagged by Microsoft Defender and enterprise EDR, blocking mxcli on the managed corporate laptops most Mendix developers work on. On those platforms the commands still exist and show help, but fail with an explanatory message; run mxcli inside the project's devcontainer to use `--hub`. Everything else in `mxcli run --local` is unaffected. We did **not** obfuscate the dependency to dodge the scanners — the fix is not shipping the capability where it is unused. Rationale: [ADR-0009](docs/13-decisions/0009-tunnel-is-linux-only.md).
+
 ### Existing project
 
 For an existing Mendix project, use `mxcli init` to add AI tooling and a Dev Container:
