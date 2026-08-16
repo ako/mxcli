@@ -102,6 +102,7 @@ This preserves the audit trail.
 | [0006](0006-mcp-capability-model.md) | Version-aware MCP capability model | Proposed |
 | [0007](0007-mcp-read-model-session-overlay.md) | MCP backend read model — disk base with session overlay | Proposed |
 | [0008](0008-identity-and-idempotence.md) | Skip unchanged writes; never renumber element IDs in place | Accepted |
+| [0009](0009-tunnel-is-linux-only.md) | The embedded tunnel ships in Linux builds only | Accepted |
 
 ## Candidates to back-fill
 

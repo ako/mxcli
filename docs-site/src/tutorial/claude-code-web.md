@@ -158,6 +158,10 @@ mxcli run --hub https://hub.mxcli.org -p App.mpr     # prints a shareable previe
 `--hub` implies `--local`, so you get the warm loop *and* a public preview URL in
 one command — edit here, hot-apply, refresh the tab.
 
+> `--hub` ships in the **Linux** build only, and a Claude Code web session is a
+> Linux container, so it works here. It is the native Windows/macOS installs that
+> leave the tunnel out — see [Linux builds only](../tools/run-local.md#external-browser-preview---hub).
+
 See [mxcli run --local](../tools/run-local.md) for `--watch`, `--ensure-db`,
 `--setup`, the screenshot flags, and the full `--hub` reference.
 

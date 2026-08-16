@@ -6,6 +6,51 @@ permissions:
   contents: read
 
 jobs:
+  # The tunnel seam has a !linux half (stub + its tests) that the ubuntu job can
+  # only compile, never run. This job actually executes it on real Windows and
+  # macOS runners, so "--hub fails with an actionable message" is a tested claim
+  # rather than a cross-compile that type-checked. See ADR-0009.
+  #
+  # Neither package depends on the generated ANTLR parser, so this needs no
+  # grammar step and stays fast.
+  tunnel-seam-cross-platform:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.26.6'
+      - name: Test the tunnel seam
+        shell: bash
+        # Scoped with -run to the seam's own tests. The full test binaries are still
+        # COMPILED for this platform, so a Windows/macOS build break is still caught;
+        # only the !linux stub behaviour is executed.
+        #
+        # Running the whole packages here fails on Windows for reasons that predate
+        # this change and are unrelated to the tunnel: several tests assert POSIX file
+        # modes (0600) that Windows does not implement — os.Chmod only toggles the
+        # read-only bit, so Stat reports 666 — plus one path-separator assumption.
+        # Tracked separately in #897; widening this job is that issue's job, not this
+        # one's.
+        #
+        # -run can pass vacuously if the tests are renamed or deleted, so assert that
+        # the expected number actually ran.
+        run: |
+          out=$(go test -v -count=1 -run 'Unsupported' ./cmd/mxcli/docker/... ./cmd/mxcli/tunnelhub/...)
+          echo "$out"
+          n=$(printf '%s\n' "$out" | grep -c '^--- PASS: Test.*Unsupported' || true)
+          echo "seam tests executed: $n"
+          if [ "$n" -lt 4 ]; then
+            echo "FAIL: expected at least 4 tunnel-seam tests to run, -run matched $n."
+            echo "      The !linux stubs in cmd/mxcli/docker and cmd/mxcli/tunnelhub"
+            echo "      must each keep a test whose name contains 'Unsupported'."
+            exit 1
+          fi
+
   build-and-test:
     runs-on: ubuntu-latest
     steps:
@@ -28,6 +73,13 @@ jobs:
         run: make build
       - name: Test
         run: make test
+      - name: Check tunnel stays Linux-only
+        # The embedded tunnel (chisel) must never reach the Windows/macOS builds —
+        # it gets mxcli flagged by Defender and enterprise EDR on managed corporate
+        # endpoints, which is most of our audience. See ADR-0009. The script also
+        # asserts a positive control (chisel IS in the linux graph) so it cannot
+        # pass vacuously.
+        run: ./scripts/check-tunnel-deps.sh
       - name: Check MDL example scripts
         # Single source of truth: `make check-mdl` covers BOTH doctype-tests/ and
         # bug-tests/ (skipping *.test.mdl, inverting *.fail.mdl negative tests, and

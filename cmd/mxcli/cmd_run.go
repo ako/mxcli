@@ -37,9 +37,15 @@ Requirements:
     name. Override with --db-host/--db-name/--db-user/--db-password.
 
 With --hub, the running app is exposed in a browser at a public URL through an
-mxcli tunnel-hub, without leaving this machine: a chisel client reverse-tunnels
+mxcli tunnel-hub, without leaving this machine: a tunnel client reverse-tunnels
 the local app out over 443, and the runtime boots with ApplicationRootUrl set to
 the hub URL so the app works under that origin. --hub implies --local.
+
+--hub is available in the Linux build only. The tunnel exists to get a preview
+out of a Linux container, so shipping it in the Windows and macOS binaries would
+only get them flagged by endpoint security for a capability they never use. On
+those platforms --hub fails with an explanatory message; run mxcli inside the
+project's devcontainer to use it.
 
 The Mendix runtime log — server-side stack traces and your microflow LOG
 output — is written to <projectDir>/.mxcli/runtime.log so a server-side error
@@ -103,6 +109,13 @@ Examples:
 		// only serving mode wired today; a future PAD path will accept --hub too).
 		hubKey := ""
 		if hub != "" {
+			// Fail here rather than after booting the app: on a build without the
+			// tunnel (everything but Linux — ADR-0009) --hub can never succeed, and
+			// the user should learn that before waiting out a runtime start.
+			if !docker.TunnelSupported() {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", docker.ErrTunnelUnsupported)
+				os.Exit(1)
+			}
 			local = true
 			// Present a per-user hub API key to an authenticated hub (MXCLI_HUB_KEY
 			// env → ~/.mxcli/auth.json). Empty for open hubs; the shared --hub-secret
