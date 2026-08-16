@@ -61,6 +61,11 @@ func TestVendoredPacksLoad(t *testing.T) {
 					t.Errorf("installs.mdl names %s, which is not shipped: %v", m, err)
 				}
 			}
+			for _, j := range p.Installs.Java {
+				if _, err := fs.Stat(fsys, p.Dir+"/"+j); err != nil {
+					t.Errorf("installs.java names %s, which is not shipped: %v", j, err)
+				}
+			}
 		})
 	}
 }

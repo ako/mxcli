@@ -17,6 +17,7 @@ var (
 	skillPackDir       string
 	skillPackNamespace string
 	skillPackProject   string
+	skillPackModule    string
 )
 
 // packsFS returns the embedded packs rooted at the pack directory, so callers
@@ -109,8 +110,27 @@ var skillAddCmd = &cobra.Command{
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}
-		opts := skillpack.Options{}
-		var ns string
+		opts := skillpack.Options{Vars: map[string]string{}}
+		var ns, mod string
+
+		// A pack that places Java needs the owning Mendix module before
+		// anything is written: the module name is baked into every `package`
+		// line, and a class placed under the wrong one does not compile.
+		if pack.NeedsModule() {
+			if skillPackModule == "" {
+				return fmt.Errorf("pack %q places Java into a Mendix module, whose name every\n"+
+					"`package` line carries. Pass --module (e.g. --module ODataPushdown)", pack.Name)
+			}
+			vars, err := skillpack.ModuleVars(skillPackModule)
+			if err != nil {
+				return err
+			}
+			for k, v := range vars {
+				opts.Vars[k] = v
+			}
+			mod = vars["MODULE"]
+		}
+
 		if pack.NeedsNamespace() {
 			ns, err = resolveNamespace()
 			if err != nil {
@@ -131,7 +151,12 @@ var skillAddCmd = &cobra.Command{
 					rel = r
 				}
 			}
-			opts.Vars = skillpack.Vars(ns, filepath.ToSlash(rel))
+			for k, v := range skillpack.Vars(ns, filepath.ToSlash(rel)) {
+				opts.Vars[k] = v
+			}
+		}
+		if len(opts.Vars) == 0 {
+			opts.Vars = nil // let the lock supply them on an upgrade
 		}
 
 		res, err := skillpack.InstallWith(fsys, pack.Name, dir, opts)
@@ -166,6 +191,33 @@ var skillAddCmd = &cobra.Command{
 			fmt.Println("\nThen let mxcli see it:\n  mxcli widget init -p <app>.mpr")
 		}
 
+		if mod != "" {
+			jres, err := skillpack.InstallJava(fsys, pack.Name, projectDirForPack(), opts)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("\nModule: %s\n", mod)
+			switch {
+			case len(jres.Written) > 0:
+				fmt.Printf("  %d Java file(s) placed in %s/\n", len(jres.Written), jres.Dest)
+			case len(jres.Skipped) > 0 && len(jres.Refused) == 0:
+				fmt.Printf("  %s/ is already up to date\n", jres.Dest)
+			}
+			// Refusing is the whole point of the guard, so it is reported first
+			// and by name — a count alone leaves the reader unable to act.
+			if len(jres.Refused) > 0 {
+				fmt.Printf("  REFUSED (present and different, left alone):\n")
+				for _, f := range jres.Refused {
+					fmt.Printf("    %s\n", filepath.Join(jres.Dest, f))
+				}
+				fmt.Println("  Compare and delete the ones you want replaced, then re-run.")
+			}
+			if len(jres.Excluded) > 0 {
+				fmt.Printf("  %d action class(es) not placed — mxcli generates those from the MDL\n",
+					len(jres.Excluded))
+			}
+		}
+
 		// Copying the pack never touches the model. Anything that would is
 		// reported as a next step the user runs deliberately — a documentation
 		// install that silently added Java actions to the .mpr would be exactly
@@ -176,7 +228,12 @@ var skillAddCmd = &cobra.Command{
 				fmt.Printf("  review then apply:  mxcli exec %s -p <app>.mpr\n",
 					filepath.Join(dir, pack.Name, filepath.FromSlash(m)))
 			}
-			fmt.Println("  (the MDL uses a MyModule placeholder — set the target module first)")
+			// Only true of a pack whose MDL was NOT substituted. Saying it of
+			// one that just had its real module name written in sends the
+			// reader looking for a placeholder that is not there.
+			if !mdlWasSubstituted(pack) {
+				fmt.Println("  (the MDL uses a MyModule placeholder — set the target module first)")
+			}
 		}
 		return nil
 	},
@@ -250,6 +307,8 @@ func init() {
 		"Widget namespace for packs that ship a widget (default: derived from the project name)")
 	skillAddCmd.Flags().StringVarP(&skillPackProject, "project", "p", "",
 		"Path to the .mpr the pack is being installed for")
+	skillAddCmd.Flags().StringVar(&skillPackModule, "module", "",
+		"Mendix module that will own a pack's Java (e.g. ODataPushdown)")
 	skillCmd.AddCommand(skillListCmd, skillAddCmd, skillRemoveCmd, skillUpgradeCmd)
 	rootCmd.AddCommand(skillCmd)
 }
@@ -289,4 +348,17 @@ func projectDirForPack() string {
 		return abs
 	}
 	return filepath.Dir(mpr)
+}
+
+// mdlWasSubstituted reports whether the pack's MDL carries tokens the install
+// filled in, which decides whether the reader still has a placeholder to edit.
+func mdlWasSubstituted(pack skillpack.Pack) bool {
+	for _, m := range pack.Installs.MDL {
+		for _, r := range pack.Rewrite.Files {
+			if filepath.ToSlash(r) == filepath.ToSlash(m) {
+				return true
+			}
+		}
+	}
+	return false
 }
