@@ -102,6 +102,9 @@ Examples:
   # Output JUnit XML for CI
   mxcli test tests/ -p app.mpr --junit results.xml
 
+  # Fail the run on any test that asserts nothing
+  mxcli test tests/ -p app.mpr --local --require-assertions
+
   # List tests without executing
   mxcli test tests/ -p app.mpr --list
 
@@ -128,6 +131,7 @@ Examples:
 		projectPath, _ := cmd.Flags().GetString("project")
 		list, _ := cmd.Flags().GetBool("list")
 		junitOutput, _ := cmd.Flags().GetString("junit")
+		requireAssertions, _ := cmd.Flags().GetBool("require-assertions")
 		skipBuild, _ := cmd.Flags().GetBool("skip-build")
 		local, _ := cmd.Flags().GetBool("local")
 		legacyRunner, _ := cmd.Flags().GetBool("legacy-runner")
@@ -164,20 +168,21 @@ Examples:
 		}
 
 		opts := testrunner.RunOptions{
-			ProjectPath:    projectPath,
-			TestFiles:      resolveTestPaths(args, projectPath),
-			SkipBuild:      skipBuild,
-			Local:          local,
-			LegacyRunner:   legacyRunner,
-			Watch:          watch,
-			Attach:         attach,
-			SkipAppStartup: skipAppStartup,
-			Timeout:        timeout,
-			JUnitOutput:    junitOutput,
-			Verbose:        verbose,
-			Color:          color,
-			Stdout:         os.Stdout,
-			Stderr:         os.Stderr,
+			ProjectPath:       projectPath,
+			TestFiles:         resolveTestPaths(args, projectPath),
+			SkipBuild:         skipBuild,
+			Local:             local,
+			LegacyRunner:      legacyRunner,
+			Watch:             watch,
+			Attach:            attach,
+			SkipAppStartup:    skipAppStartup,
+			Timeout:           timeout,
+			JUnitOutput:       junitOutput,
+			RequireAssertions: requireAssertions,
+			Verbose:           verbose,
+			Color:             color,
+			Stdout:            os.Stdout,
+			Stderr:            os.Stderr,
 		}
 
 		// Only a --local run boots an app of its own, so only it decides which

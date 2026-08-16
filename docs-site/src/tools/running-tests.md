@@ -162,6 +162,36 @@ pins down its type (`@expect $a = $b`, where both sides are variables). Mendix's
 expression engine is typed, and a wrong guess would fail the build rather than
 the test.
 
+### A test that asserts nothing, and `@verify`
+
+Every result line reports what the test actually checked:
+
+```
+  PASS  the board is 81 squares (6ms, 2 assertions)
+  FAIL  the mix keeps the shared block (8ms, 1 assertion)
+         expected length($result) = 81, actual: 27
+  PASS  asserts nothing at all (4ms, no assertions)
+------------------------------------------------------------
+1 test(s) asserted nothing beyond "did not throw". Run with
+--require-assertions to make that an error.
+```
+
+A test with no `@expect` and no `@throws` is a smoke test — it reports only that
+the body did not throw. It still passes, because that is a legitimate thing to
+write; what it may not do is look the same as a test with six assertions.
+`--require-assertions` makes every vacuous test an ERROR for projects that want
+CI to enforce it.
+
+`@verify` was documented as an OQL post-condition and **is not implemented** —
+it is parsed and evaluated by nothing, so a test whose only assertion was a
+`@verify` asserted nothing. It is now rejected with an error pointing at
+`@expect`. To check a database post-condition, return the value from the
+microflow under test and assert on it, or query the app with `mxcli oql`.
+
+The JUnit report (`--junit`) carries the assertion count as a
+`<property name="assertions">` on each case, and `classname`/`file` identify the
+source test file so a failure in a multi-file run says where it lives.
+
 ### The app's own after-startup microflow
 
 Boot registers the endpoint and then runs the project's own after-startup

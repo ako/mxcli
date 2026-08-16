@@ -32,7 +32,7 @@ func GenerateTestRunner(suite *TestSuite) string {
 		// A test whose @expect did not compile gets no block. The runner reports
 		// it as an ERROR from the parse message; running it would report a pass
 		// for an assertion that was never made.
-		if len(tc.ExpectErrors) > 0 {
+		if len(tc.AssertionErrors) > 0 {
 			continue
 		}
 		writeTestBlock(&b, tc, i)

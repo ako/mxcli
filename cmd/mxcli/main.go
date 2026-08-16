@@ -369,6 +369,8 @@ func init() {
 	// Test command flags
 	testRunCmd.Flags().BoolP("list", "l", false, "List tests without executing")
 	testRunCmd.Flags().StringP("junit", "j", "", "Write JUnit XML results to file")
+	testRunCmd.Flags().Bool("require-assertions", false,
+		"Report a test that asserts nothing as an ERROR instead of a pass")
 	testRunCmd.Flags().BoolP("skip-build", "s", false, "Skip build step (reuse existing deployment)")
 	testRunCmd.Flags().Bool("local", false, "Run on mxcli's local runtime instead of Docker (no daemon needed)")
 	testRunCmd.Flags().Bool("legacy-runner", false, "With --local, run tests from the after-startup microflow and parse the log, instead of over the test endpoint")
