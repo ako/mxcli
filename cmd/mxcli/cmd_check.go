@@ -199,6 +199,13 @@ Examples:
 		// Mendix refuses to build (CE0333).
 		violations = append(violations, executor.ValidateODataAuth(prog)...)
 
+		// Flag two service shapes mxbuild rejects — a Path that breaks its
+		// slash rules, and the PublishAssociations mode whose name invites
+		// exactly the wrong value. A Path with no slash at all is the reason
+		// this is worth a check: mxbuild throws out of its own validator with
+		// no error code, so there is nothing to look up.
+		violations = append(violations, executor.ValidateODataServiceShape(prog)...)
+
 		// Flag a page whose widgets point at a page created further down the same
 		// script. `exec` resolves page references in statement order and is not
 		// transactional, so this fails after earlier statements are already

@@ -471,8 +471,32 @@ Two things worth knowing before you write this:
   takes no parameters at all. `SkipSupported: No` and `TopSupported: No` turn
   off `$skip` and `$top` the same way. All three default to Yes.
 
-`PublishAssociations` must stay at its default (Yes) here: a non-persistable
-entity cannot publish its ID, so object-id mode can never build for it.
+`PublishAssociations` must stay at its default (Yes) — and not only here.
+
+**It is not a yes/no, it is a two-value representation.** Studio Pro's own labels
+for it are "As a link (recommended)" (Yes) and "As an associated object id" (No).
+So `PublishAssociations: No` does not mean "this service publishes no
+associations"; it selects the legacy representation, which requires the system
+`ID` attribute published as the key. MDL cannot publish the system ID (CE1613),
+so `No` cannot build from a script.
+
+That holds even when the service publishes no associations at all, and even for
+a persistable entity with a perfectly good key of its own. Measured on Mendix
+11.13, both arms of the same service:
+
+| | `mx check` |
+|---|---|
+| `PublishAssociations: No` | **CE7375** "Attribute ID … must be published and be the key when associations are exposed as an associated object id" |
+| `PublishAssociations: Yes` | 0 errors |
+
+The error names a concept the script never mentions, which is why this costs
+hours rather than minutes. `mxcli check` now warns (MDL-ODATA06).
+
+**`Path` has two rules and one trap.** No leading slash (CE6550), and it must end
+with a single slash (CE6552). A path with **no slash at all** is the trap: mxbuild
+throws `System.ArgumentOutOfRangeException` out of its own validator, with no
+error code, no element name and no line, which reads as a corrupt project. Use
+`'odata/thing/'`. `mxcli check` catches all three (MDL-ODATA05).
 
 ## HTTP Status Codes and Errors: What Each Capability Can Do
 
