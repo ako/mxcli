@@ -46,6 +46,7 @@ mdl/grammar/parser/
 *.tar
 *.tgz
 cmd/mxcli/skills/
+cmd/mxcli/skillpacks/
 cmd/mxcli/commands/
 cmd/mxcli/lint-rules/
 cmd/mxcli/changelog.md

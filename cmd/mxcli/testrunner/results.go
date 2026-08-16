@@ -74,6 +74,22 @@ func (sr *SuiteResult) FailCount() int {
 	return n
 }
 
+// ErrorCount returns the number of tests that did not reach a verdict — an
+// uncompilable @expect, a missing microflow, a failed request.
+//
+// It is reported separately from FailCount in the summary line. A suite whose
+// output cannot distinguish "this assertion is false" from "this assertion was
+// never evaluated" is how the silent-pass defect stayed invisible for weeks.
+func (sr *SuiteResult) ErrorCount() int {
+	n := 0
+	for _, t := range sr.Tests {
+		if t.Status == StatusError {
+			n++
+		}
+	}
+	return n
+}
+
 // SkipCount returns the number of skipped tests.
 func (sr *SuiteResult) SkipCount() int {
 	n := 0
@@ -210,6 +226,13 @@ func ParseLogResults(logReader io.Reader, suite *TestSuite) *SuiteResult {
 
 	// Collect results in test order
 	for _, tc := range suite.Tests {
+		// A test whose @expect did not compile was never generated, so the log
+		// has nothing to say about it. Report the parse error rather than the
+		// generic "not executed".
+		if res, bad := expectErrorResult(tc); bad {
+			result.Tests = append(result.Tests, res)
+			continue
+		}
 		if r, ok := resultMap[tc.ID]; ok {
 			// Use the original test name if available
 			if tc.Name != "" {
@@ -265,8 +288,13 @@ func PrintResults(w io.Writer, result *SuiteResult, color bool) {
 	}
 
 	fmt.Fprintf(w, "%s\n", strings.Repeat("-", 60))
-	fmt.Fprintf(w, "Total: %d  Passed: %d  Failed: %d  Skipped: %d",
-		len(result.Tests), result.PassCount(), result.FailCount(), result.SkipCount())
+	errors := result.ErrorCount()
+	fmt.Fprintf(w, "Total: %d  Passed: %d  Failed: %d",
+		len(result.Tests), result.PassCount(), result.FailCount()-errors)
+	if errors > 0 {
+		fmt.Fprintf(w, "  Errors: %d", errors)
+	}
+	fmt.Fprintf(w, "  Skipped: %d", result.SkipCount())
 	if result.Duration > 0 {
 		fmt.Fprintf(w, "  Time: %s", result.Duration.Round(time.Millisecond))
 	}
@@ -285,4 +313,25 @@ func PrintResults(w io.Writer, result *SuiteResult, color bool) {
 			fmt.Fprintf(w, "Some tests failed.\n")
 		}
 	}
+}
+
+// expectErrorResult turns a test whose @expect could not be compiled into an
+// ERROR result.
+//
+// This is the fail-closed rule the whole @expect pipeline is built around: an
+// assertion the runner cannot evaluate must never be able to report a pass. The
+// previous implementation dropped such a line during parsing, and a test with no
+// assertions left passes as long as it does not throw — so a suite could report
+// green while asserting nothing. ERROR is counted with the failures, so the run's
+// exit code is non-zero.
+func expectErrorResult(tc TestCase) (TestResult, bool) {
+	if len(tc.ExpectErrors) == 0 {
+		return TestResult{}, false
+	}
+	return TestResult{
+		ID:      tc.ID,
+		Name:    tc.Name,
+		Status:  StatusError,
+		Message: strings.Join(tc.ExpectErrors, "; "),
+	}, true
 }
