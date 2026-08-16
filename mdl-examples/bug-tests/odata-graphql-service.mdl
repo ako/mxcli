@@ -30,6 +30,12 @@
 --       by more than just case."
 --     Hence `as 'MonthCategories'` below. The rule only appears once GraphQL is
 --     on, so a service that built yesterday can fail on the day it is enabled.
+--  3. PublishAssociations MUST be Yes. GraphQL has no representation for an
+--     associated object id, so Mendix refuses the pair:
+--       [error] [CE8055] "A service that supports GraphQL must publish
+--       associations as a link."
+--     mxcli refuses it before writing, since nothing else the author does can
+--     make that combination build.
 
 create or replace non-persistent entity MyFirstModule.VMonthCategory (
   Period:   string(7),

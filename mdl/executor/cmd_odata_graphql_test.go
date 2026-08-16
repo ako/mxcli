@@ -96,3 +96,27 @@ func TestSupportsGraphQLIsAKnownProperty(t *testing.T) {
 		t.Errorf("SupportsGraphQL missing from knownODataServiceProps: %v", knownODataServiceProps)
 	}
 }
+
+// TestGraphQLRefusesObjectIdAssociations — Mendix rejects the pair outright:
+// CE8055 "A service that supports GraphQL must publish associations as a link."
+// GraphQL has no representation for an associated object id.
+//
+// Refused at execute rather than warned about, because unlike
+// PublishAssociations: No on its own — a legitimate mode for a service whose
+// key is arranged in Studio Pro — this combination can never build, whatever
+// else the author does. Measured on 11.13 against a real OQL view entity: the
+// same service is 0 errors with Yes, and CE7375 + CE8055 with No.
+func TestGraphQLRefusesObjectIdAssociations(t *testing.T) {
+	stmt := parseService(t, `create odata service M.Api (
+  Path: 'odata/charts/', ServiceName: 'Api', Namespace: 'M.Charts',
+  Version: '1.0.0', ODataVersion: OData4,
+  PublishAssociations: No, SupportsGraphQL: Yes
+) { publish entity M.Row as 'Rows' expose ( K (KEY) ) }
+/`)
+	if !stmt.SupportsGraphQL || stmt.PublishAssociations || !stmt.PublishAssociationsSet {
+		t.Fatalf("fixture did not parse as GraphQL+object-id: graphql=%v assoc=%v set=%v",
+			stmt.SupportsGraphQL, stmt.PublishAssociations, stmt.PublishAssociationsSet)
+	}
+	// The executor refuses this pair before writing; see createODataService.
+	// Pinned here so the fixture that triggers it cannot drift silently.
+}

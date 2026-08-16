@@ -1344,6 +1344,19 @@ func createODataService(ctx *ExecContext, stmt *ast.CreateODataServiceStmt) erro
 	// does not have is not a build error, it is a document Studio Pro refuses to
 	// open (InvalidOperationException at MprProperty.cs). Only checked when the
 	// author asked for it, so nothing changes for the services that do not.
+	// GraphQL has no representation for an associated object id, so Mendix
+	// refuses the combination outright: CE8055 "A service that supports GraphQL
+	// must publish associations as a link." Refused here rather than warned
+	// about, because unlike PublishAssociations: No on its own — which is a
+	// legitimate mode for a service whose key is arranged in Studio Pro — this
+	// pair can never build, whatever else the author does.
+	if stmt.SupportsGraphQL && stmt.PublishAssociationsSet && !stmt.PublishAssociations {
+		return mdlerrors.NewValidation(
+			"SupportsGraphQL: Yes with PublishAssociations: No cannot build — a GraphQL service " +
+				"must publish associations as a link (CE8055). Remove PublishAssociations to take " +
+				"the default (Yes), or drop SupportsGraphQL.")
+	}
+
 	if stmt.SupportsGraphQL {
 		if err := checkFeature(ctx, "integration", "odata_graphql",
 			"SupportsGraphQL on a published OData service",

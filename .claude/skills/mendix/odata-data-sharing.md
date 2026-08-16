@@ -615,6 +615,10 @@ Three things that only bite once GraphQL is on:
   which OData accepts and GraphQL rejects. A service that built yesterday can
   fail on the day it is enabled. Give the set its own name:
   `publish entity Fin.VMonthCategory as 'MonthCategories'`.
+- **`PublishAssociations` must be Yes.** GraphQL has no representation for an
+  associated object id, so Mendix refuses the pair: CE8055 "A service that
+  supports GraphQL must publish associations as a link." mxcli refuses it before
+  writing, since no other change can make it build.
 - **Mendix 10.14+**, where it arrived as an experimental feature. mxcli refuses
   the statement on an older project rather than writing a property that version's
   metamodel does not have — an unknown property is not a build error, it is a
