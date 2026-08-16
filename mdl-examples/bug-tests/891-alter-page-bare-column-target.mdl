@@ -1,0 +1,62 @@
+-- upstream #891 (3a/3b) — ALTER PAGE INSERT/REPLACE with a BARE DataGrid2
+-- column name corrupted the page.
+--
+-- Setup (a plain TOP-LEVEL DataGrid2 — nesting in a pluggable widget is NOT
+-- required, contrary to the issue's framing):
+--
+--   create entity P91.SyncConfig ( ModelName: String(100), RecordCount: Integer,
+--                                  PageSize: Integer, NextRunAt: DateTime );
+--   create page P91.SyncConfiguration_Overview
+--     ( Title: 'Sync config', Layout: Atlas_Core.Atlas_Default )
+--   { DATAGRID grid1 (DataSource: DATABASE P91.SyncConfig) {
+--       COLUMN ModelName   (Attribute: ModelName,   Caption: 'Model')
+--       COLUMN RecordCount (Attribute: RecordCount, Caption: 'Records')
+--       COLUMN PageSize    (Attribute: PageSize,    Caption: 'Page size')
+--       COLUMN NextRunAt   (Attribute: NextRunAt,   Caption: 'Next run')
+--   } }
+--
+-- Before the fix BOTH statements below reported "Altered page" and left a
+-- project mxbuild could not even LOAD:
+--
+--   ERROR: System.InvalidCastException: Unable to cast object of type
+--   'Mendix.Modeler.WebUI.Forms.Widgets.LayoutWidgets.DivContainers.DivContainer'
+--   to type 'Mendix.Modeler.WebUI.Forms.Widgets.CustomWidgets.WidgetObject'
+--
+-- Cause: WidgetRef treats only a DOTTED name as a column, so a bare `NextRunAt`
+-- gives Widget="NextRunAt", Column="" and IsColumn() == false. The op skipped
+-- the InsertColumns/ReplaceColumn paths (which work) and took the generic
+-- widget path, which built the COLUMN as a layout container and wrote it into
+-- the grid's column list. findBsonWidget recurses into pluggable internals, so
+-- the bare name DID resolve — to the column — which is why nothing refused.
+--
+-- DESCRIBE PAGE masked it by skipping the malformed node: REPLACE looked like a
+-- clean deletion, INSERT looked like a harmless no-op. Neither was.
+--
+-- Both statements below are REFUSED once applied to a project — that refusal is
+-- the fix. The qualified forms `grid1.NextRunAt` / `grid1.PageSize` work and are
+-- what to use instead.
+--
+-- NOT a `.fail.mdl`, deliberately. That suffix means "must fail `mxcli check`",
+-- and the harness in `make check-mdl` runs `mxcli check <file>` with **no
+-- project**. This guard is exec-time and project-dependent: the statements below
+-- are valid MDL, and whether they are safe can only be decided against a real
+-- model. So `check` exits 0 and a `.fail.mdl` here reports
+-- "negative test unexpectedly passed" — the rule looking regressed when it is
+-- working. The refusal itself is covered by unit tests; this file is the repro
+-- you run by hand, against a project.
+--
+--   mxcli exec 891-alter-page-bare-column-target.mdl -p <app>.mpr   # refused
+--
+-- Unit coverage: mdl/backend/pagemutator/mutator_column_addressing_test.go
+
+ALTER PAGE P91.SyncConfiguration_Overview {
+  REPLACE NextRunAt WITH {
+    COLUMN NextRunAt (Attribute: NextRunAt, Caption: 'Next run')
+  };
+};
+
+ALTER PAGE P91.SyncConfiguration_Overview {
+  INSERT AFTER PageSize {
+    COLUMN NewCol (Attribute: RecordCount, Caption: 'Inserted')
+  };
+};

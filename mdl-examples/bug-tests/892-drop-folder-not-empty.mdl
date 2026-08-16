@@ -1,0 +1,41 @@
+-- upstream #892 — DROP FOLDER orphaned every document inside the folder.
+--
+-- Reproduces on a STOCK blank app: FeedbackModule ships a folder
+-- `Private/Resources/Mappings` holding four documents (two JSON structures,
+-- one import mapping, one export mapping).
+--
+-- Before the fix:
+--   * `LIST FOLDERS` rendered that folder as `[0]` — documentsByContainer named
+--     twelve document kinds and mappings/JSON structures were not among them.
+--   * `DROP FOLDER` reported success. Its doc comment claimed "the folder must
+--     be empty", but nothing checked.
+--   * Nothing was deleted. Every document inside lost its module containment:
+--     `FeedbackModule.IMM_PostResponse` became `.IMM_PostResponse`, so nothing
+--     could resolve it and `mx check` reported:
+--       [error] [CE1613] "The selected import mapping
+--                'FeedbackModule.IMM_PostResponse' no longer exists."
+--       [error] [CE1613] "The selected export mapping
+--                'FeedbackModule.EXM_PostFeedback' no longer exists."
+--
+-- After the fix the DROP is refused and the four documents are untouched. That
+-- refusal is the fix.
+--
+-- NOT a `.fail.mdl`, deliberately. That suffix means "must fail `mxcli check`",
+-- and the harness in `make check-mdl` runs `mxcli check <file>` with **no
+-- project**. This guard is exec-time and project-dependent: the statements below
+-- are valid MDL, and whether they are safe can only be decided against a real
+-- model. So `check` exits 0 and a `.fail.mdl` here reports
+-- "negative test unexpectedly passed" — the rule looking regressed when it is
+-- working. The refusal itself is covered by unit tests; this file is the repro
+-- you run by hand, against a project.
+--
+--   mxcli exec 892-drop-folder-not-empty.mdl -p <blank app>.mpr
+--   mx check <blank app>.mpr        # 0 errors, documents intact
+--
+-- Unit coverage: mdl/executor/cmd_folders_mock_test.go
+--
+-- Run `list folders in FeedbackModule` first: the folder must report [4], not
+-- [0]. A [0] there is the listing half of this bug and makes the drop below
+-- look safe.
+
+drop folder 'Private/Resources/Mappings' in FeedbackModule;

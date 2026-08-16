@@ -1,0 +1,53 @@
+-- upstream #891 (1) — DESCRIBE PAGE rendered an Accordion group EMPTY.
+--
+-- Reproduces on a stock blank app: the Accordion widget ships in every Mendix
+-- project (widgets/com.mendix.widget.web.Accordion.mpk), so no marketplace
+-- install is needed.
+--
+-- Before the fix, describing this page emitted the group with its own
+-- properties and NOTHING else:
+--
+--   pluggablewidget 'com.mendix.widget.web.accordion.Accordion' acc1 (...) {
+--     group group1 (HeaderRenderMode: 'text', ...)
+--   }
+--
+-- The grid was genuinely in the model (a CustomWidgets$CustomWidget of type
+-- com.mendix.widget.web.datagrid.Datagrid, with its AttributeRefs), so a
+-- describe -> exec round-trip silently DELETED it.
+--
+-- Cause: an object-list item (Accordion group, PopupMenu basicItem) can hold
+-- child widgets in a Widgets-typed sub-property (`content`), but
+-- extractObjectListItem read only scalar sub-properties, and the emitter always
+-- closed an item with "\n" so children had nowhere to go.
+--
+-- Verify:
+--   mxcli exec 891-accordion-group-nested-widgets.mdl -p app.mpr
+--   mxcli -p app.mpr -c "DESCRIBE PAGE A91.AccPage"   # the datagrid must appear
+--                                                     # INSIDE group group1
+--   -- and the description must round-trip:
+--   mxcli -p app.mpr -c "DESCRIBE PAGE A91.AccPage" \
+--     | sed -n '/^create or modify page/,/^}/p' > rt.mdl
+--   mxcli check rt.mdl                                # passes
+--   mxcli exec rt.mdl -p app.mpr                      # grid still there
+--
+-- NOTE: authoring an Accordion through the generic PLUGGABLEWIDGET path
+-- currently also raises CE0463 on the widget itself. That is a separate,
+-- pre-existing authoring gap (the widget object does not match the Accordion's
+-- PropertyTypes) — it is present before and after this fix, and the reporter's
+-- own page was authored in Studio Pro, where it does not occur.
+
+create module A91;
+/
+create entity A91.Item ( Name: String(100), Qty: Integer );
+/
+create page A91.AccPage ( Title: 'Acc', Layout: Atlas_Core.Atlas_Default )
+{
+  PLUGGABLEWIDGET 'com.mendix.widget.web.accordion.Accordion' acc1 {
+    GROUP g1 (Caption: 'Group one') {
+      DATAGRID grid1 (DataSource: DATABASE A91.Item) {
+        COLUMN Name (Attribute: Name, Caption: 'Name')
+        COLUMN Qty (Attribute: Qty, Caption: 'Qty')
+      }
+    }
+  }
+}

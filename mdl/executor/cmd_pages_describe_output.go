@@ -730,6 +730,17 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 								itemProps = append(itemProps, fmt.Sprintf("%s: %s", p.Key, mdlQuote(p.Value)))
 							}
 						}
+						// An item holding child widgets (an Accordion group's `content`
+						// slot) needs a body, or the children have nowhere to go and the
+						// description silently drops them on re-exec (#891).
+						if len(item.Children) > 0 {
+							formatWidgetProps(ctx.Output, childPrefix, itemHeader, itemProps, " {\n")
+							for _, child := range item.Children {
+								outputWidgetMDLV3(ctx, child, indent+2)
+							}
+							fmt.Fprintf(ctx.Output, "%s}\n", childPrefix)
+							continue
+						}
 						formatWidgetProps(ctx.Output, childPrefix, itemHeader, itemProps, "\n")
 					}
 				}

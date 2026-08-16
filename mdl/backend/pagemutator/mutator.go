@@ -219,6 +219,41 @@ func (m *Mutator) findStyleableWidget(widgetRef string) (bson.D, error) {
 	return result.widget, nil
 }
 
+// objectListItemType is the $Type of an object-list item — a DataGrid2 column,
+// an Accordion group, a PopupMenu basicItem. These live inside a pluggable
+// widget's property tree, not in a Widgets array, and the generic widget
+// insert/replace path cannot write one.
+const objectListItemType = "CustomWidgets$WidgetObject"
+
+// refuseObjectListItemTarget refuses an INSERT/REPLACE whose bare target resolved
+// to an object-list item rather than a widget (#891).
+//
+// findBsonWidget recurses into a pluggable widget's internals, so a bare
+// `NextRunAt` DOES resolve — to the grid column of that name. The op then took
+// the generic widget path, which built the replacement as a layout container and
+// wrote it into the grid's column list. Both INSERT and REPLACE reported success
+// while leaving a project mxbuild could not even load:
+//
+//	System.InvalidCastException: Unable to cast object of type
+//	'...LayoutWidgets.DivContainers.DivContainer' to type '...CustomWidgets.WidgetObject'
+//
+// DESCRIBE PAGE skipped the malformed node, which is why this looked like a
+// clean deletion (REPLACE) or a no-op (INSERT).
+//
+// The dotted form `grid.column` routes to ReplaceColumn/InsertColumns and works,
+// so this refuses and names that form rather than guessing which grid was meant.
+// Guessing is what produced the invalid document.
+func refuseObjectListItemTarget(result *bsonWidgetResult, name string) error {
+	if result == nil || bsonnav.DGetString(result.widget, "$Type") != objectListItemType {
+		return nil
+	}
+	return fmt.Errorf(
+		"%q is a DataGrid2 column, not a widget — qualify it as `gridName.%s` so the column "+
+			"path is used. Addressing it bare writes into the grid's column list as a layout "+
+			"container, leaving a project Studio Pro cannot open",
+		name, name)
+}
+
 func (m *Mutator) InsertWidget(widgetRef string, columnRef string, position backend.InsertPosition, widgets []pages.Widget) error {
 	var result *bsonWidgetResult
 	if columnRef != "" {
@@ -231,6 +266,9 @@ func (m *Mutator) InsertWidget(widgetRef string, columnRef string, position back
 		result = m.widgetFinder(m.rawData, widgetRef)
 		if result == nil {
 			return m.widgetNotFoundError(widgetRef)
+		}
+		if err := refuseObjectListItemTarget(result, widgetRef); err != nil {
+			return err
 		}
 		if n := m.columnMatchCount(widgetRef); n > 1 {
 			return columnAmbiguityError(widgetRef, n)
@@ -383,6 +421,9 @@ func (m *Mutator) ReplaceWidget(widgetRef string, columnRef string, widgets []pa
 		result = m.widgetFinder(m.rawData, widgetRef)
 		if result == nil {
 			return m.widgetNotFoundError(widgetRef)
+		}
+		if err := refuseObjectListItemTarget(result, widgetRef); err != nil {
+			return err
 		}
 		if n := m.columnMatchCount(widgetRef); n > 1 {
 			return columnAmbiguityError(widgetRef, n)

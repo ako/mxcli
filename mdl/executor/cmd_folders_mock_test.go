@@ -188,3 +188,96 @@ func TestMoveFolder_ToFolder(t *testing.T) {
 	}
 	assertContainsStr(t, buf.String(), "Moved folder")
 }
+
+// ---------------------------------------------------------------------------
+// execDropFolder — emptiness guard (#892)
+//
+// The guard reads ListUnits, not the per-kind lists LIST FOLDERS renders from.
+// That is the whole point: the hand-maintained list in documentsByContainer is
+// what under-counted the folder to [0] and made the drop look safe, so a guard
+// built on the same list would inherit the same blind spot.
+// ---------------------------------------------------------------------------
+
+// dropFolderBackend wires a module, one folder, and whatever units the caller
+// wants inside it.
+func dropFolderBackend(mod *model.Module, folderID model.ID, units []*types.UnitInfo, deleted *bool) *mock.MockBackend {
+	return &mock.MockBackend{
+		IsConnectedFunc: func() bool { return true },
+		ListModulesFunc: func() ([]*model.Module, error) { return []*model.Module{mod}, nil },
+		ListFoldersFunc: func() ([]*types.FolderInfo, error) {
+			return []*types.FolderInfo{{ID: folderID, ContainerID: mod.ID, Name: "Resources"}}, nil
+		},
+		ListUnitsFunc:    func() ([]*types.UnitInfo, error) { return units, nil },
+		DeleteFolderFunc: func(id model.ID) error { *deleted = true; return nil },
+	}
+}
+
+// A JSON structure is exactly the case from #892: LIST FOLDERS cannot name it,
+// so the folder rendered as [0] while holding a document.
+func TestDropFolder_RefusesFolderHoldingDocumentOfAnUnlistedKind(t *testing.T) {
+	mod := mkModule("MyModule")
+	folderID := nextID("folder")
+	deleted := false
+	units := []*types.UnitInfo{
+		{ID: nextID("unit"), ContainerID: folderID, Type: "JsonStructures$JsonStructure"},
+	}
+	ctx, _ := newMockCtx(t, withBackend(dropFolderBackend(mod, folderID, units, &deleted)), withHierarchy(mkHierarchy(mod)))
+
+	err := execDropFolder(ctx, &ast.DropFolderStmt{FolderPath: "Resources", Module: "MyModule"})
+	assertError(t, err)
+	assertContainsStr(t, err.Error(), "not empty")
+	if deleted {
+		t.Error("DeleteFolder was called on a folder holding a document — this is the #892 data-loss path")
+	}
+}
+
+func TestDropFolder_RefusesFolderWithSubfolder(t *testing.T) {
+	mod := mkModule("MyModule")
+	folderID := nextID("folder")
+	deleted := false
+	units := []*types.UnitInfo{
+		{ID: nextID("unit"), ContainerID: folderID, Type: "Projects$Folder"},
+	}
+	ctx, _ := newMockCtx(t, withBackend(dropFolderBackend(mod, folderID, units, &deleted)), withHierarchy(mkHierarchy(mod)))
+
+	err := execDropFolder(ctx, &ast.DropFolderStmt{FolderPath: "Resources", Module: "MyModule"})
+	assertError(t, err)
+	assertContainsStr(t, err.Error(), "not empty")
+	if deleted {
+		t.Error("DeleteFolder was called on a folder holding a sub-folder")
+	}
+}
+
+// Units elsewhere in the project must not block the drop.
+func TestDropFolder_AllowsEmptyFolderWithUnitsElsewhere(t *testing.T) {
+	mod := mkModule("MyModule")
+	folderID := nextID("folder")
+	deleted := false
+	units := []*types.UnitInfo{
+		{ID: nextID("unit"), ContainerID: mod.ID, Type: "JsonStructures$JsonStructure"},
+		{ID: folderID, ContainerID: mod.ID, Type: "Projects$Folder"},
+	}
+	ctx, _ := newMockCtx(t, withBackend(dropFolderBackend(mod, folderID, units, &deleted)), withHierarchy(mkHierarchy(mod)))
+
+	assertNoError(t, execDropFolder(ctx, &ast.DropFolderStmt{FolderPath: "Resources", Module: "MyModule"}))
+	if !deleted {
+		t.Error("an empty folder should still be droppable")
+	}
+}
+
+// Fail closed. For a destructive op, "I could not check" must never mean "go
+// ahead" — that is precisely how #892 destroyed containment.
+func TestDropFolder_RefusesWhenContentsCannotBeDetermined(t *testing.T) {
+	mod := mkModule("MyModule")
+	folderID := nextID("folder")
+	deleted := false
+	mb := dropFolderBackend(mod, folderID, nil, &deleted)
+	mb.ListUnitsFunc = func() ([]*types.UnitInfo, error) { return nil, fmt.Errorf("backend says no") }
+	ctx, _ := newMockCtx(t, withBackend(mb), withHierarchy(mkHierarchy(mod)))
+
+	err := execDropFolder(ctx, &ast.DropFolderStmt{FolderPath: "Resources", Module: "MyModule"})
+	assertError(t, err)
+	if deleted {
+		t.Error("DeleteFolder was called without being able to confirm the folder was empty")
+	}
+}

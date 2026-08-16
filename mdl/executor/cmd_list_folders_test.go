@@ -108,3 +108,41 @@ func foldersFixture(t *testing.T) (*ExecContext, *bytes.Buffer) {
 	ctx, buf := newMockCtx(t, withBackend(mb))
 	return ctx, buf
 }
+
+// #892: the folder holding Mendix's own FeedbackModule mappings rendered as
+// `[0]` because documentsByContainer named twelve document kinds and mappings
+// and JSON structures were not among them. That empty count is what made
+// dropping the folder look safe.
+func TestListFolders_CountsMappingsAndJsonStructures(t *testing.T) {
+	mod := mkModule("Fb")
+	mappings := &types.FolderInfo{ID: "f-map", ContainerID: mod.ID, Name: "Mappings"}
+
+	mb := &mock.MockBackend{
+		IsConnectedFunc: func() bool { return true },
+		ListModulesFunc: func() ([]*model.Module, error) { return []*model.Module{mod}, nil },
+		ListFoldersFunc: func() ([]*types.FolderInfo, error) {
+			return []*types.FolderInfo{mappings}, nil
+		},
+		ListUnitsFunc: func() ([]*types.UnitInfo, error) { return nil, nil },
+		ListJsonStructuresFunc: func() ([]*types.JsonStructure, error) {
+			return []*types.JsonStructure{{Name: "JSON_Response", ContainerID: mappings.ID}}, nil
+		},
+		ListImportMappingsFunc: func() ([]*model.ImportMapping, error) {
+			return []*model.ImportMapping{{Name: "IMM_PostResponse", ContainerID: mappings.ID}}, nil
+		},
+		ListExportMappingsFunc: func() ([]*model.ExportMapping, error) {
+			return []*model.ExportMapping{{Name: "EXM_PostFeedback", ContainerID: mappings.ID}}, nil
+		},
+	}
+
+	ctx, buf := newMockCtx(t, withBackend(mb))
+	assertNoError(t, listFolders(ctx, &ast.ShowStmt{ObjectType: ast.ShowFolders, InModule: "Fb"}))
+	out := buf.String()
+
+	if strings.Contains(out, "Mappings  [0]") {
+		t.Errorf("folder still reports [0] while holding three documents — this is the count that made #892 look safe:\n%s", out)
+	}
+	assertContainsStr(t, out, "JsonStructure JSON_Response")
+	assertContainsStr(t, out, "ImportMapping IMM_PostResponse")
+	assertContainsStr(t, out, "ExportMapping EXM_PostFeedback")
+}
