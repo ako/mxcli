@@ -49,7 +49,7 @@ func TestGenerateTestRunner_ParsesWhenTestUsesChangeAndListOps(t *testing.T) {
 					"$count = CALL MICROFLOW MfTest.M051_AggregateCount(ProductList = $filtered);",
 				}, "\n"),
 				Expects: []Expect{
-					{Variable: "$count", Operator: "=", Value: "1"},
+					expectOf("$count = 1"),
 				},
 			},
 		},
@@ -81,7 +81,7 @@ func TestGenerateTestRunner_RenamesAllAssignmentsInTestBlock(t *testing.T) {
 					"ADD $product TO $list;",
 				}, "\n"),
 				Expects: []Expect{
-					{Variable: "$result", Operator: "=", Value: "true"},
+					expectOf("$result = true"),
 				},
 			},
 		},

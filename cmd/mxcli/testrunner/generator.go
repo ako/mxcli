@@ -29,6 +29,12 @@ func GenerateTestRunner(suite *TestSuite) string {
 	b.WriteString("\n")
 
 	for i, tc := range suite.Tests {
+		// A test whose @expect did not compile gets no block. The runner reports
+		// it as an ERROR from the parse message; running it would report a pass
+		// for an assertion that was never made.
+		if len(tc.ExpectErrors) > 0 {
+			continue
+		}
 		writeTestBlock(&b, tc, i)
 		b.WriteString("\n")
 	}
@@ -111,42 +117,31 @@ func writeThrowsTestBlock(b *strings.Builder, tc TestCase, suffix string) {
 }
 
 // writeExpectAssertion generates an IF/ELSE check for a single @expect assertion.
-// Uses compound condition with AND to guard against checking after exception.
-// Only uses = operator (not <>) since <> causes Mendix expression errors.
+//
+// The condition is the author's own expression, guarded by $TestFailed so an
+// assertion is not evaluated after the body already threw. `<>` never reaches
+// the model: ParseExpect rewrites it to `!=`, which is the spelling Mendix
+// accepts — the branch-swapping this function used to do was a workaround for
+// emitting `<>` verbatim.
+//
+// Unlike the endpoint generator this path reports failures through the log
+// protocol, whose message is a single log line, so the observed value is
+// concatenated into that line rather than into a returned verdict.
 func writeExpectAssertion(b *strings.Builder, testID string, exp Expect) {
-	varRef := exp.Variable
-	value := exp.Value
+	passCondition := fmt.Sprintf("$TestFailed = false and (%s)", exp.Condition)
+	failMsg := "MXTEST:FAIL:" + testID + ":Expected " + exp.Raw
 
-	var passCondition string
-	if exp.Operator == "=" {
-		passCondition = fmt.Sprintf("$TestFailed = false and %s = %s", varRef, value)
+	b.WriteString(fmt.Sprintf("  IF %s THEN\n", passCondition))
+	b.WriteString(fmt.Sprintf("    LOG INFO NODE 'MXTEST' 'MXTEST:PASS:%s';\n", escapeMDLString(testID)))
+	b.WriteString("  ELSE\n")
+	if exp.Actual == "" {
+		b.WriteString(fmt.Sprintf("    LOG ERROR NODE 'MXTEST' '%s';\n", escapeMDLString(failMsg)))
 	} else {
-		// For != assertions, invert: pass when values differ
-		passCondition = fmt.Sprintf("$TestFailed = false and %s = %s", varRef, value)
-		// Actually this needs to FAIL when equal — swap PASS/FAIL below
+		b.WriteString(fmt.Sprintf("    LOG ERROR NODE 'MXTEST' '%s' + %s;\n",
+			escapeMDLString(failMsg+", actual: "), exp.Actual))
 	}
-
-	if exp.Operator == "=" {
-		b.WriteString(fmt.Sprintf("  IF %s THEN\n", passCondition))
-		b.WriteString(fmt.Sprintf("    LOG INFO NODE 'MXTEST' 'MXTEST:PASS:%s';\n", escapeMDLString(testID)))
-		b.WriteString("  ELSE\n")
-		failMsg := fmt.Sprintf("Expected %s %s %s", varRef, exp.Operator, value)
-		b.WriteString(fmt.Sprintf("    LOG ERROR NODE 'MXTEST' 'MXTEST:FAIL:%s:%s';\n",
-			escapeMDLString(testID), escapeMDLString(failMsg)))
-		b.WriteString("    SET $AllPassed = false;\n")
-		b.WriteString("  END IF;\n")
-	} else {
-		// != operator: pass when NOT equal, fail when equal
-		condition := fmt.Sprintf("$TestFailed = false and %s = %s", varRef, value)
-		b.WriteString(fmt.Sprintf("  IF %s THEN\n", condition))
-		failMsg := fmt.Sprintf("Expected %s %s %s", varRef, exp.Operator, value)
-		b.WriteString(fmt.Sprintf("    LOG ERROR NODE 'MXTEST' 'MXTEST:FAIL:%s:%s';\n",
-			escapeMDLString(testID), escapeMDLString(failMsg)))
-		b.WriteString("    SET $AllPassed = false;\n")
-		b.WriteString("  ELSE\n")
-		b.WriteString(fmt.Sprintf("    LOG INFO NODE 'MXTEST' 'MXTEST:PASS:%s';\n", escapeMDLString(testID)))
-		b.WriteString("  END IF;\n")
-	}
+	b.WriteString("    SET $AllPassed = false;\n")
+	b.WriteString("  END IF;\n")
 }
 
 // varPattern matches $VariableName in MDL ($ followed by word characters).
@@ -187,18 +182,23 @@ func renameVariables(mdl string, names map[string]bool, suffix string) string {
 }
 
 // renameExpect applies variable renaming to an Expect assertion.
+//
+// The monolithic runner compiles every test into one microflow, so `$result` in
+// test 1 and `$result` in test 2 have to be told apart. Renaming runs over the
+// rendered condition and the actual-value expression, which is why both are kept
+// as text rather than as a tree.
 func renameExpect(exp Expect, names map[string]bool, suffix string) Expect {
+	rename := func(src string) string {
+		return varPattern.ReplaceAllStringFunc(src, func(match string) string {
+			if names[match[1:]] {
+				return match + suffix
+			}
+			return match
+		})
+	}
 	renamed := exp
-
-	// Rename the variable reference (e.g., "$result" -> "$result_1" or "$product/Name" -> "$product_1/Name")
-	renamed.Variable = varPattern.ReplaceAllStringFunc(exp.Variable, func(match string) string {
-		name := match[1:]
-		if names[name] {
-			return "$" + name + suffix
-		}
-		return match
-	})
-
+	renamed.Condition = rename(exp.Condition)
+	renamed.Actual = rename(exp.Actual)
 	return renamed
 }
 

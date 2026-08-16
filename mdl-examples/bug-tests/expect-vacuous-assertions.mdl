@@ -1,0 +1,190 @@
+-- FINDINGS #46 (mxcli-sudoku): `mxcli test` silently passed any @expect it could
+-- not evaluate.
+--
+-- The runner matched one assertion shape with a regular expression:
+--
+--   @expect\s+(\$\S+)\s*(=|<>)\s*(.+)
+--
+-- A line that did not fit produced no assertion at all — not a warning, not an
+-- error, nothing — and a test with zero assertions passes as long as its body
+-- does not throw. So this reported PASS:
+--
+--   /**
+--    * @test a self-evident falsehood
+--    * @expect 1 = 2
+--    */
+--   $result = CALL MICROFLOW MyModule.Anything();
+--
+-- and so did `length($result) = 999`, `find($result, 'Z') >= 0` with the needle
+-- absent, `substring($result, 0, 1) = 'Z'`, and `$result != <the true value>`.
+-- In the reporting project 16 of 22 tests asserted nothing beyond "did not
+-- throw", and the suite had said 22/22 at every commit. That is the worst
+-- failure mode a test framework has: it does not cost you time, it certifies
+-- unverified work as verified.
+--
+-- The defect was never the narrow support — it was the silence. An @expect the
+-- runner cannot compile is now an ERROR against that test, the test is not
+-- generated at all, and ERROR counts with the failures so the run exits
+-- non-zero. Everything Mendix's expression engine can evaluate is now accepted:
+-- built-ins, every comparison operator, and/or/not.
+--
+-- This script is the model-side half of the repro. It creates the microflows the
+-- generated tests would produce for each assertion shape in the finding's table,
+-- so `mx check` can confirm the emitted expressions are valid Mendix. Run:
+--
+--   mxcli exec mdl-examples/bug-tests/expect-vacuous-assertions.mdl -p app.mpr
+--   mxcli docker check -p app.mpr        -- expect 0 errors
+--
+-- The Go-side half is TestExpectCanariesAreEvaluated in
+-- cmd/mxcli/testrunner/expect_test.go: stub ParseExpect back to the old regex
+-- and every canary below returns an empty condition again.
+--
+-- Two facts measured against mxbuild 11.6.6 while fixing this, both of which the
+-- generated MDL depends on:
+--
+--   * `<>` really is rejected — CE0117 "Error(s) in expression" — so rewriting
+--     it to `!=` is load-bearing, not a style choice.
+--   * a wrongly typed comparison really is caught (`$result = 3` on a String is
+--     CE0117), which is what makes a 0-error run on the shapes below evidence
+--     rather than an absence of checking.
+
+CREATE MODULE MxExpectRepro;
+
+-- Each microflow below is one row of the finding's "which shapes are real"
+-- table, in the form the test runner generates: assert, and on failure report
+-- both the expectation and the value that came back.
+
+CREATE OR REPLACE MICROFLOW MxExpectRepro.Canary_Equality ()
+RETURNS String AS $Verdict
+BEGIN
+  DECLARE $Verdict String = 'PASS';
+  DECLARE $result String = 'x';
+  IF $result = 'John' THEN
+  ELSE
+    SET $Verdict = 'FAIL:expected $result = ''John'', actual: ' + $result;
+  END IF;
+  RETURN $Verdict;
+END;
+/
+
+-- `<>` in the annotation, `!=` in the model. The other spelling is CE0117.
+CREATE OR REPLACE MICROFLOW MxExpectRepro.Canary_Inequality ()
+RETURNS String AS $Verdict
+BEGIN
+  DECLARE $Verdict String = 'PASS';
+  DECLARE $result String = 'x';
+  IF $result != 'John' THEN
+  ELSE
+    SET $Verdict = 'FAIL:expected $result <> ''John'', actual: ' + $result;
+  END IF;
+  RETURN $Verdict;
+END;
+/
+
+-- length() returns Integer, so the observed value is wrapped in toString().
+CREATE OR REPLACE MICROFLOW MxExpectRepro.Canary_Length ()
+RETURNS String AS $Verdict
+BEGIN
+  DECLARE $Verdict String = 'PASS';
+  DECLARE $result String = 'x';
+  IF length($result) = 81 THEN
+  ELSE
+    SET $Verdict = 'FAIL:expected length($result) = 81, actual: ' + toString(length($result));
+  END IF;
+  RETURN $Verdict;
+END;
+/
+
+CREATE OR REPLACE MICROFLOW MxExpectRepro.Canary_Find ()
+RETURNS String AS $Verdict
+BEGIN
+  DECLARE $Verdict String = 'PASS';
+  DECLARE $result String = 'x';
+  IF find($result, '0') >= 0 THEN
+  ELSE
+    SET $Verdict = 'FAIL:expected find($result, ''0'') >= 0, actual: ' + toString(find($result, '0'));
+  END IF;
+  RETURN $Verdict;
+END;
+/
+
+-- substring() returns String, so no wrapping. The observed side is the left one.
+CREATE OR REPLACE MICROFLOW MxExpectRepro.Canary_Substring ()
+RETURNS String AS $Verdict
+BEGIN
+  DECLARE $Verdict String = 'PASS';
+  DECLARE $result String = 'x';
+  IF substring($result, 0, 1) = substring($result, 1, 2) THEN
+  ELSE
+    SET $Verdict = 'FAIL:expected substring($result, 0, 1) = substring($result, 1, 2), actual: ' + substring($result, 0, 1);
+  END IF;
+  RETURN $Verdict;
+END;
+/
+
+-- The contradiction from the finding: it passed as one expression, and must not.
+CREATE OR REPLACE MICROFLOW MxExpectRepro.Canary_Contradiction ()
+RETURNS String AS $Verdict
+BEGIN
+  DECLARE $Verdict String = 'PASS';
+  DECLARE $result String = 'x';
+  IF find($result, '0') >= 0 and find($result, '0') < 0 THEN
+  ELSE
+    SET $Verdict = 'FAIL:expected find($result, ''0'') >= 0 and find($result, ''0'') < 0';
+  END IF;
+  RETURN $Verdict;
+END;
+/
+
+-- Neither side is observed, so no actual value is reported.
+CREATE OR REPLACE MICROFLOW MxExpectRepro.Canary_Falsehood ()
+RETURNS String AS $Verdict
+BEGIN
+  DECLARE $Verdict String = 'PASS';
+  IF 1 = 2 THEN
+  ELSE
+    SET $Verdict = 'FAIL:expected 1 = 2';
+  END IF;
+  RETURN $Verdict;
+END;
+/
+
+-- A Boolean literal on the right pins the left side's type.
+CREATE OR REPLACE MICROFLOW MxExpectRepro.Canary_Boolean ()
+RETURNS String AS $Verdict
+BEGIN
+  DECLARE $Verdict String = 'PASS';
+  DECLARE $done Boolean = true;
+  IF $done = true THEN
+  ELSE
+    SET $Verdict = 'FAIL:expected $done = true, actual: ' + toString($done);
+  END IF;
+  RETURN $Verdict;
+END;
+/
+
+CREATE OR REPLACE MICROFLOW MxExpectRepro.Canary_Not ()
+RETURNS String AS $Verdict
+BEGIN
+  DECLARE $Verdict String = 'PASS';
+  DECLARE $done Boolean = true;
+  IF not($done) THEN
+  ELSE
+    SET $Verdict = 'FAIL:expected not($done)';
+  END IF;
+  RETURN $Verdict;
+END;
+/
+
+CREATE OR REPLACE MICROFLOW MxExpectRepro.Canary_NestedCalls ()
+RETURNS String AS $Verdict
+BEGIN
+  DECLARE $Verdict String = 'PASS';
+  DECLARE $result String = 'x';
+  IF trim(toUpperCase($result)) != 'X' THEN
+  ELSE
+    SET $Verdict = 'FAIL:expected trim(toUpperCase($result)) != ''X'', actual: ' + trim(toUpperCase($result));
+  END IF;
+  RETURN $Verdict;
+END;
+/

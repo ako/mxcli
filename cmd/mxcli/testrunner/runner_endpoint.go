@@ -120,6 +120,11 @@ func runSuite(client *endpointClient, suite *TestSuite, opts RunOptions, w io.Wr
 	leaked := 0
 
 	for _, tc := range suite.Tests {
+		if res, bad := expectErrorResult(tc); bad {
+			result.Tests = append(result.Tests, res)
+			continue
+		}
+
 		flow := testFlowName(tc)
 		if !present[flow] {
 			result.Tests = append(result.Tests, TestResult{

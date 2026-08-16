@@ -118,6 +118,50 @@ every request must present that token, non-loopback callers are refused, and it
 will only ever invoke the generated `MxTest.Test_*` microflows. The token is
 never written into your project.
 
+### `@expect`: what an assertion may say, and what happens when it cannot
+
+An `@expect` is a **Mendix expression that must evaluate to true**. Any
+expression the Mendix engine accepts works — built-in functions, every
+comparison operator, `and` / `or` / `not(...)`, attribute paths and enumeration
+values:
+
+```mdl
+/**
+ * @test the dealt board is a full grid with blanks
+ * @expect length($result) = 81
+ * @expect find($result, '0') >= 0
+ * @expect substring($result, 0, 9) != substring($result, 9, 18)
+ */
+$result = CALL MICROFLOW Sudoku.SUB_BlankSquares(Grid = $solved);
+/
+```
+
+`<>` is accepted and rewritten to `!=`, which is the spelling Mendix's
+expression engine accepts — `<>` fails the build with CE0117.
+
+**An assertion the runner cannot compile is an ERROR, not a pass.** Unknown
+functions, wrong arity, unbalanced parentheses, and expressions that produce a
+value rather than a condition are each reported against the test that carries
+them, and an ERROR counts with the failures, so the run exits non-zero:
+
+```
+ERROR  a self-evident falsehood
+       @expect randomInt($result) = 1: randomInt() is not a Mendix expression
+       function at column 1 ("randomInt")
+```
+
+A failing assertion reports **what came back**, not only what was wanted:
+
+```
+FAIL  the board is 81 squares
+      expected length($result) = 81, actual: 27
+```
+
+The observed value is omitted rather than guessed when nothing in the assertion
+pins down its type (`@expect $a = $b`, where both sides are variables). Mendix's
+expression engine is typed, and a wrong guess would fail the build rather than
+the test.
+
 ### The app's own after-startup microflow
 
 Boot registers the endpoint and then runs the project's own after-startup
