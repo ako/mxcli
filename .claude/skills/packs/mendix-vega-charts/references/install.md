@@ -54,6 +54,18 @@ build's `projectPath` relative to where the source went, so there is nothing to
 copy. Verified end to end on a Mendix 11.12.1 app: every path inside the built
 package is under the new namespace, and so is the id in `VegaChart.xml`.
 
+`npm ci`, not `npm install`, and the pack ships the `package-lock.json` that
+makes it work. The three direct dependencies are pinned exactly, but their
+transitive tree is not, so without a lock the build drifts — and the way that
+surfaces is a compile error in somebody else's project, months later, from a
+package nobody chose to upgrade.
+
+Substitution cannot desync the lock: the tokens live in `packagePath` and
+`config.projectPath`, and npm's lockfile records only `name`, `version`,
+`license`, `dependencies` and `devDependencies` for the root package. `npm ci`
+is run against the *substituted* tree in CI-equivalent conditions before each
+release of this pack, not against the pristine one.
+
 ## 3a. Let mxcli discover it
 
 ```bash
