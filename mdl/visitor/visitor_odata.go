@@ -124,6 +124,9 @@ func (b *Builder) ExitCreateODataServiceStatement(ctx *parser.CreateODataService
 		case "publishassociations":
 			stmt.PublishAssociations = strings.EqualFold(value, "true") || strings.EqualFold(value, "yes")
 			stmt.PublishAssociationsSet = true
+		case "supportsgraphql":
+			stmt.SupportsGraphQL = strings.EqualFold(value, "true") || strings.EqualFold(value, "yes")
+			stmt.SupportsGraphQLSet = true
 		case "folder":
 			stmt.Folder = value
 		default:

@@ -344,6 +344,11 @@ func outputPublishedODataServiceMDL(ctx *ExecContext, svc *model.PublishedODataS
 	if svc.PublishAssociations {
 		props = append(props, "  PublishAssociations: Yes")
 	}
+	// Only emitted when on: false is what every service was before the property
+	// existed, so printing it on each of them would be noise in every describe.
+	if svc.SupportsGraphQL {
+		props = append(props, "  SupportsGraphQL: Yes")
+	}
 	fmt.Fprintln(ctx.Output, strings.Join(props, ",\n"))
 
 	fmt.Fprintln(ctx.Output, ")")
@@ -1335,6 +1340,19 @@ func createODataService(ctx *ExecContext, stmt *ast.CreateODataServiceStmt) erro
 		return mdlerrors.NewValidation("module name required: use create odata service Module.Name (...)")
 	}
 
+	// Gate before the write, not after: a property the project's Mendix version
+	// does not have is not a build error, it is a document Studio Pro refuses to
+	// open (InvalidOperationException at MprProperty.cs). Only checked when the
+	// author asked for it, so nothing changes for the services that do not.
+	if stmt.SupportsGraphQL {
+		if err := checkFeature(ctx, "integration", "odata_graphql",
+			"SupportsGraphQL on a published OData service",
+			"Publishing a service as GraphQL as well arrived in Studio Pro 10.14. "+
+				"Remove SupportsGraphQL to publish OData only."); err != nil {
+			return err
+		}
+	}
+
 	module, err := findModule(ctx, stmt.Name.Module)
 	if err != nil {
 		return err
@@ -1379,6 +1397,9 @@ func createODataService(ctx *ExecContext, stmt *ast.CreateODataServiceStmt) erro
 					}
 					if stmt.PublishAssociationsSet {
 						svc.PublishAssociations = stmt.PublishAssociations
+					}
+					if stmt.SupportsGraphQLSet {
+						svc.SupportsGraphQL = stmt.SupportsGraphQL
 					}
 					if len(stmt.Microflows) > 0 {
 						published, mfErr := astMicroflowDefsToModel(ctx, stmt.Microflows)
@@ -1473,6 +1494,7 @@ func createODataService(ctx *ExecContext, stmt *ast.CreateODataServiceStmt) erro
 		Summary:             stmt.Summary,
 		Description:         stmt.Description,
 		PublishAssociations: publishAssociationsFor(stmt),
+		SupportsGraphQL:     stmt.SupportsGraphQL,
 		AuthenticationTypes: stmt.AuthenticationTypes,
 		AuthMicroflow:       stmt.AuthMicroflow,
 	}
@@ -1555,6 +1577,8 @@ func alterODataService(ctx *ExecContext, stmt *ast.AlterODataServiceStmt) error 
 					svc.Description = strVal
 				case "publishassociations":
 					svc.PublishAssociations = strings.EqualFold(strVal, "true") || strings.EqualFold(strVal, "yes")
+				case "supportsgraphql":
+					svc.SupportsGraphQL = strings.EqualFold(strVal, "true") || strings.EqualFold(strVal, "yes")
 				default:
 					return mdlerrors.NewUnsupported(fmt.Sprintf("unknown OData service property: %s", key))
 				}

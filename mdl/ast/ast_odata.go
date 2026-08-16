@@ -101,7 +101,14 @@ type CreateODataServiceStmt struct {
 	// author's choice and is written as given.
 	PublishAssociations    bool
 	PublishAssociationsSet bool
-	AuthenticationTypes    []string
+	// SupportsGraphQL publishes the same resources over GraphQL too. Unlike
+	// PublishAssociations there is no useful default to infer: false is what
+	// every service was before, so an unset value is left alone rather than
+	// opted in. Set records whether the author said anything, which is what
+	// keeps `alter` from turning it off on a service that had it on.
+	SupportsGraphQL     bool
+	SupportsGraphQLSet  bool
+	AuthenticationTypes []string
 	// AuthMicroflow is the microflow named by `authentication microflow X`.
 	// Custom authentication is the only method that carries a target, and
 	// Mendix rejects the service without one (CE0333 "Please select a microflow

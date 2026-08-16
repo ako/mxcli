@@ -239,6 +239,7 @@ func publishedODataServiceToGen(svc *model.PublishedODataService) element.Elemen
 	addStr(g, "Summary", svc.Summary)
 	addStr(g, "Description", svc.Description)
 	addBool(g, "PublishAssociations", svc.PublishAssociations)
+	addBool(g, "SupportsGraphQL", svc.SupportsGraphQL)
 	addBool(g, "UseGeneralization", svc.UseGeneralization)
 	addStr(g, "AuthenticationMicroflow", svc.AuthMicroflow)
 	// AllowedModuleRoles is written unconditionally, marker 1, matching

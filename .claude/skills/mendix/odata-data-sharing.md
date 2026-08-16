@@ -576,6 +576,53 @@ throws `System.ArgumentOutOfRangeException` out of its own validator, with no
 error code, no element name and no line, which reads as a corrupt project. Use
 `'odata/thing/'`. `mxcli check` catches all three (MDL-ODATA05).
 
+## Also Publishing as GraphQL
+
+`SupportsGraphQL: Yes` makes the same service answer GraphQL as well as OData.
+One boolean; the OData surface is untouched.
+
+```sql
+create odata service Fin.ChartApi (
+  path: 'odata/charts/', ServiceName: 'ChartApi', Namespace: 'Fin.Charts',
+  version: '1.0.0', ODataVersion: OData4,
+  SupportsGraphQL: Yes
+) { ... }
+```
+
+**The GraphQL endpoint is the service location itself** — there is no `/graphql`
+path. Clients `POST` a query to the same URL that serves OData:
+
+```
+GET  /odata/charts/$metadata     -> the OData contract
+POST /odata/charts/              -> {"query":"{ monthCategories { period } }"}
+```
+
+Verified against a running Mendix 11.13 app:
+
+| request | response |
+|---|---|
+| `POST` `{ __schema { queryType { name } } }` | `{"data":{"__schema":{"queryType":{"name":"Query"}}}}` |
+| `POST` `{ monthCategories { period category total } }` | `{"data":{"monthCategories":[]}}` |
+
+Three things that only bite once GraphQL is on:
+
+- **Query field names are camelCased.** `Period` in the model is `period` in a
+  query; asking for `Total` returns 400
+  `{"errors":[{"message":"Field 'Total' not found"}]}`. The OData names are
+  unchanged, so the two surfaces spell the same attribute differently.
+- **Exposed names must be unique beyond case (CE2881).** Publishing an entity
+  without `as '...'` gives the entity type and the entity set the same name,
+  which OData accepts and GraphQL rejects. A service that built yesterday can
+  fail on the day it is enabled. Give the set its own name:
+  `publish entity Fin.VMonthCategory as 'MonthCategories'`.
+- **Mendix 10.14+**, where it arrived as an experimental feature. mxcli refuses
+  the statement on an older project rather than writing a property that version's
+  metamodel does not have — an unknown property is not a build error, it is a
+  document Studio Pro will not open.
+
+GraphQL here is not as complete as the OData surface — it is a second way to read
+the same published resources, which some widgets and clients prefer.
+
 ## HTTP Status Codes and Errors: What Each Capability Can Do
 
 **The read path and the write path have different powers, and the difference is

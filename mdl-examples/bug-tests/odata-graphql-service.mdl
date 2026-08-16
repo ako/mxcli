@@ -1,0 +1,66 @@
+-- Publishing the same resources over GraphQL as well as OData.
+--
+-- One boolean: `SupportsGraphQL: Yes`. The OData surface is unchanged, and the
+-- GraphQL endpoint is the SAME location — clients POST a query to it rather
+-- than GET a resource path. Introduced in Studio Pro 10.14 (experimental), so
+-- mxcli gates it: on an older project the CREATE is refused rather than writing
+-- a property that version's metamodel does not have, which is what makes Studio
+-- Pro refuse to open a document.
+--
+-- Verified against a RUNNING Mendix 11.13 app (`mxcli run --local`), not just
+-- against the build:
+--
+--   GET  /odata/charts/$metadata                     -> 200 (OData intact)
+--   POST /odata/charts/  {"query":"{ __schema { queryType { name } } }"}
+--        -> {"data": {"__schema": {"queryType": {"name": "Query"}}}}
+--   POST /odata/charts/  {"query":"{ monthCategories { period category total } }"}
+--        -> {"data":{"monthCategories":[]}}
+--
+-- (The list is empty because the read microflow below returns an empty list.)
+--
+-- Two things the OData path never makes you think about:
+--
+--  1. GraphQL field names are CAMELCASED. `Period` is `period` in a query, and
+--     asking for `Total` is a 400: {"errors":[{"message":"Field 'Total' not found"}]}
+--  2. Exposed names must be unique beyond case (CE2881). Publishing an entity
+--     without `as '...'` gives the type and the set the same name, which OData
+--     accepts and GraphQL does not:
+--       [error] [CE2881] "Exposed name 'VMonthCategory' occurs more than once in
+--       this service. GraphQL services must use unique exposed names that differ
+--       by more than just case."
+--     Hence `as 'MonthCategories'` below. The rule only appears once GraphQL is
+--     on, so a service that built yesterday can fail on the day it is enabled.
+
+create or replace non-persistent entity MyFirstModule.VMonthCategory (
+  Period:   string(7),
+  Category: string(60),
+  Total:    decimal
+);
+
+create or replace microflow MyFirstModule.Read_MonthCategory ()
+  returns List of MyFirstModule.VMonthCategory as $Rows
+begin
+  $Rows = create list of MyFirstModule.VMonthCategory;
+  return $Rows;
+end;
+
+create or replace odata service MyFirstModule.ChartApi (
+  Path: 'odata/charts/',
+  ServiceName: 'ChartApi',
+  Namespace: 'MyFirstModule.Charts',
+  Version: '1.0.0',
+  ODataVersion: OData4,
+  PublishAssociations: Yes,
+  SupportsGraphQL: Yes
+) {
+  publish entity MyFirstModule.VMonthCategory as 'MonthCategories' (
+    ReadMode: microflow MyFirstModule.Read_MonthCategory,
+    Countable: No
+  )
+  expose (
+    Period (KEY, Filterable, Sortable),
+    Category (KEY, Filterable, Sortable),
+    Total (Filterable, Sortable)
+  )
+}
+/
