@@ -37,7 +37,7 @@ func GenerateTestFlows(suite *TestSuite) string {
 		// A test with an uncompilable @expect gets no microflow. The runner
 		// reports it as an ERROR from the parse message, which is more useful
 		// than a microflow that runs and cannot assert anything.
-		if len(tc.ExpectErrors) > 0 {
+		if len(tc.AssertionErrors) > 0 {
 			continue
 		}
 		writeTestFlow(&b, tc)

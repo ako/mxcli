@@ -184,9 +184,9 @@ func TestExpectActualValueIsTypeSafe(t *testing.T) {
 	}
 }
 
-// TestParseAnnotationsRecordsExpectErrors pins that a bad @expect survives as an
+// TestParseAnnotationsRecordsAssertionErrors pins that a bad @expect survives as an
 // error on the test rather than vanishing.
-func TestParseAnnotationsRecordsExpectErrors(t *testing.T) {
+func TestParseAnnotationsRecordsAssertionErrors(t *testing.T) {
 	doc := `/**
  * @test broken
  * @expect randomInt($result) = 1
@@ -196,11 +196,11 @@ func TestParseAnnotationsRecordsExpectErrors(t *testing.T) {
 	if len(a.Expects) != 1 {
 		t.Errorf("Expects: got %d, want 1", len(a.Expects))
 	}
-	if len(a.ExpectErrors) != 1 {
-		t.Fatalf("ExpectErrors: got %d, want 1", len(a.ExpectErrors))
+	if len(a.AssertionErrors) != 1 {
+		t.Fatalf("AssertionErrors: got %d, want 1", len(a.AssertionErrors))
 	}
-	if !strings.Contains(a.ExpectErrors[0], "randomInt") {
-		t.Errorf("ExpectErrors[0] = %q, want it to name the function", a.ExpectErrors[0])
+	if !strings.Contains(a.AssertionErrors[0], "randomInt") {
+		t.Errorf("AssertionErrors[0] = %q, want it to name the function", a.AssertionErrors[0])
 	}
 }
 
@@ -209,10 +209,10 @@ func TestParseAnnotationsRecordsExpectErrors(t *testing.T) {
 // FailCount counts, so the run's exit code is non-zero.
 func TestUncompilableExpectIsAnErrorNotAPass(t *testing.T) {
 	tc := TestCase{
-		ID:           "test_1",
-		Name:         "broken",
-		MDL:          "$result = CALL MICROFLOW M.Anything();",
-		ExpectErrors: []string{"@expect randomInt($result) = 1: randomInt() is not a Mendix expression function"},
+		ID:              "test_1",
+		Name:            "broken",
+		MDL:             "$result = CALL MICROFLOW M.Anything();",
+		AssertionErrors: []string{"@expect randomInt($result) = 1: randomInt() is not a Mendix expression function"},
 	}
 	suite := &TestSuite{Name: "s", Tests: []TestCase{tc}}
 
@@ -223,9 +223,9 @@ func TestUncompilableExpectIsAnErrorNotAPass(t *testing.T) {
 		t.Errorf("a test with an uncompilable @expect was generated into the runner:\n%s", mdl)
 	}
 
-	res, bad := expectErrorResult(tc)
+	res, bad := assertionErrorResult(tc)
 	if !bad {
-		t.Fatal("expectErrorResult did not flag the test")
+		t.Fatal("assertionErrorResult did not flag the test")
 	}
 	if res.Status != StatusError {
 		t.Errorf("status = %v, want ERROR", res.Status)

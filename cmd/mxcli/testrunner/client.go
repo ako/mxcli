@@ -159,11 +159,8 @@ func (c *endpointClient) waitReady(timeout time.Duration) error {
 // (StatusError — the test did not reach a verdict), or the verdict came back in
 // a shape this runner does not recognise.
 func toResult(tc TestCase, rr *runResponse) TestResult {
-	res := TestResult{
-		ID:       tc.ID,
-		Name:     tc.Name,
-		Duration: time.Duration(rr.DurationMicros) * time.Microsecond,
-	}
+	res := newResult(tc)
+	res.Duration = time.Duration(rr.DurationMicros) * time.Microsecond
 	switch {
 	case !rr.OK:
 		res.Status = StatusError
