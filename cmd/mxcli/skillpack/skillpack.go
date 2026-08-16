@@ -85,6 +85,19 @@ type Rewrite struct {
 type Installs struct {
 	Widgets []string `yaml:"widgets"`
 	MDL     []string `yaml:"mdl"`
+
+	// Java names directories of plain Java the pack must place in the project's
+	// javasource/ tree. It is the one target that writes OUTSIDE the pack's own
+	// directory, because a helper class only compiles where the module expects
+	// it — everything else a pack ships is documentation the reader opens where
+	// it lands.
+	//
+	// This exists because MDL cannot author a standalone class: a Java action
+	// body is a method body, with no class declaration and no imports. A pack
+	// whose actions delegate into helper classes can otherwise ship only the
+	// prose telling somebody to copy a directory by hand, which is the manual
+	// step the pack existed to remove.
+	Java []string `yaml:"java"`
 }
 
 // Pack is a manifest plus the directory it was read from.
@@ -97,9 +110,18 @@ type Pack struct {
 // modify the .mpr. Callers use it to decide whether to demand confirmation.
 func (p Pack) WritesToModel() bool { return len(p.Installs.MDL) > 0 }
 
-// NeedsNamespace reports whether this pack carries files to substitute, and so
-// cannot be installed without knowing the destination project.
-func (p Pack) NeedsNamespace() bool { return len(p.Rewrite.Files) > 0 }
+// NeedsNamespace reports whether this pack ships a widget, whose id must carry
+// the destination project's namespace.
+//
+// Keyed on the widget, not on rewrite.files: a pack can have plenty to
+// substitute and no widget at all — the Java pack tokenises eight files and
+// wants a MODULE, never a NAMESPACE. Asking for the wrong one is not a harmless
+// extra prompt; it invites an answer that then goes nowhere.
+func (p Pack) NeedsNamespace() bool { return len(p.Installs.Widgets) > 0 }
+
+// NeedsModule reports whether this pack places Java, which cannot be done
+// without knowing the Mendix module that will own it.
+func (p Pack) NeedsModule() bool { return len(p.Installs.Java) > 0 }
 
 // Options carries what a pack needs to know about the destination.
 type Options struct {

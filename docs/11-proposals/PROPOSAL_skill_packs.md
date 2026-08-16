@@ -167,6 +167,35 @@ the namespace has to be right *before* the build, so shipping a prebuilt package
 would mean rewriting paths inside a zip and hoping, where rewriting source is the
 path the ledger verified.
 
+### A pack can place Java, and only Java, outside its own directory
+
+`installs.java` is the third target and the only one that writes outside
+`.claude/skills/<pack>/`. That is not a convenience: MDL cannot author a
+standalone class — `createJavaActionStatement` accepts a **method body**, no
+class declaration and no imports — so a pack whose actions delegate into helper
+classes could ship only prose telling somebody to copy a directory by hand,
+which is the manual step packs exist to remove.
+
+A Java `package` is a class's identity exactly as a widget id is, so it reuses
+the substitution machinery unchanged: `{{MODULE}}` and `{{MODULE_PATH}}`,
+declared in `rewrite.files`, supplied by `--module`.
+
+Three rules, each of which had a wrong default available:
+
+1. **`java/actions/` is not placed.** mxcli writes those classes itself from the
+   MDL, so placing the pack's copies means two sources of truth for the same
+   files and applying the MDL overwrites them immediately. They stay in the pack
+   to be read.
+2. **An existing file that differs is refused, never overwritten** — guard-don't-drop
+   ([ADR-0005](../13-decisions/0005-semantic-model-interface-currency.md)). A
+   locally fixed helper and a stale copy are indistinguishable from here, and
+   silently replacing somebody's edited parser is not a trade to make on their
+   behalf. The refusal names the files.
+3. **A namespace is a widget question, a module is a Java one.** `NeedsNamespace`
+   keys on `installs.widgets`, not on `rewrite.files` — the Java pack tokenises
+   eight files and wants a `MODULE`, never a `NAMESPACE`. Asking for the wrong
+   one invites an answer that then goes nowhere.
+
 ### Manifest
 
 ```yaml
@@ -218,6 +247,7 @@ pack that rots.
 | 3 | Vendor `mendix-bulk-oql-dml` (no widget, so no namespace question), wire its MDL into `make check-skill-mdl`. |
 | 4 | Vendor `mendix-vega-charts` with install-time namespace substitution. |
 | 5 | Run `check-spec.mjs` over the shipped specs in CI. |
+| 6 | `installs.java` + vendor `mendix-odata-pushdown`, the third pack. |
 
 Slice 1 is worth landing on its own: it removes the silent-flattening hazard in
 the write path whether or not any pack ever ships.

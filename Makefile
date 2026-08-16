@@ -237,9 +237,18 @@ check-skill-mdl: build
 	@# The script above checks fenced blocks in markdown. A pack also ships real
 	@# .mdl files, which it does not see — and a pack whose own MDL is never
 	@# checked is a pack that rots.
+	@#
+	@# Checked AFTER substitution, because that is the only form anyone runs. A
+	@# pack's MDL may carry {{MODULE}} placeholders, which are not valid MDL and
+	@# never reach a project un-substituted; checking the raw file would fail on
+	@# every tokenised pack and tempt whoever hit it to drop the check instead.
 	@for f in .claude/skills/packs/*/mdl/*.mdl; do \
 		[ -e "$$f" ] || continue; \
-		./$(BUILD_DIR)/$(BINARY_NAME) check "$$f" >/dev/null || { echo "FAILED: $$f"; exit 1; }; \
+		tmp=$$(mktemp /tmp/skillmdl-XXXXXX.mdl); \
+		sed -e 's/{{MODULE_PATH}}/mymodule/g' -e 's/{{MODULE}}/MyModule/g' \
+		    -e 's/{{NAMESPACE_PATH}}/acme/g' -e 's/{{NAMESPACE}}/acme/g' "$$f" > "$$tmp"; \
+		./$(BUILD_DIR)/$(BINARY_NAME) check "$$tmp" >/dev/null || { echo "FAILED: $$f"; rm -f "$$tmp"; exit 1; }; \
+		rm -f "$$tmp"; \
 		echo "  ok $$f"; \
 	done
 	@./scripts/check-skill-mdl.sh ./$(BUILD_DIR)/$(BINARY_NAME) docs-site/src
