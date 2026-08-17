@@ -116,6 +116,61 @@ already intended for the catalog `refs` consumer), not microflow-coupled.
 
 ---
 
+## Fourth consumer: attribute rename
+
+`alter entity Mod.Ent rename attribute Old to New` rewrites every reference
+Mendix stores *as a reference* — a create/change member, a page attribute
+widget, a validation or access rule — because those hold the fully qualified
+name as a string and a string scan finds them. It cannot touch the two places an
+attribute is named in **free text**, and those are exactly the two this proposal
+learns to read:
+
+| Shape | Example | Why a string scan cannot do it |
+|-------|---------|-------------------------------|
+| Expression | `$Order/Status` | The bare segment is only an attribute of `Mod.Order` if `$Order` is typed — the scope walker's job |
+| XPath constraint | `[Status = 'Open']`, `[Mod.A_B/Mod.B/Status = …]` | The bare step belongs to the constraint's *target* entity, or to the entity the association hops reach |
+
+mxbuild reports the leftovers as **CE0117** and **CE0161** (measured on 11.13.0),
+so the rename tells the user they exist rather than reading as complete — but a
+rename that half-renames is the weakest form of the feature. This consumer is
+what finishes it. Origin: mendixlabs/mxcli#910.
+
+**Two asymmetries worth knowing before scheduling it.**
+
+*The XPath half is nearly there and does not need the type system.* A
+constraint's target entity is known **structurally** — a retrieve names its
+entity, a page datasource names its entity, an access rule belongs to one — so a
+top-level bare step needs no inference at all. The round trip already exists and
+already ships: `visitor.ParseXPathConstraint` → typed `XPathPathExpr` →
+`expressionToXPath`, with `visitor.SplitXPathPredicateGroups` for the sibling
+groups Mendix concatenates and a verbatim pass-through on any group that will not
+parse (#772). `enrichXPathConstraintForDescribe` is the working precedent: it
+already walks a constraint resolving bare attribute names against a known entity,
+for enum enrichment. Only the **multi-hop association path** needs this
+proposal's resolver, to answer "which entity does this hop land on".
+
+*The expression half is genuinely step 1.* Stored expressions come back from BSON
+as raw strings, so this is the one place the dormant `exprcheck` lexer/parser is
+in the hot path rather than the `mdl/ast` nodes the visitor produces; then the
+scope walker types `$Var`, and `ModelResolver` walks the path segments.
+
+**One thing that does not transfer: the failure mode inverts.** For checking,
+unresolved → `KindUnknown` → *catch less, never false-positive*, and § 4 is right
+to call that correct for an advisory gate. A **mutating** consumer cannot inherit
+it: unresolved must mean **do not rewrite, and report the occurrence**. Silently
+rewriting an occurrence whose type could not be established corrupts a model that
+was valid — strictly worse than today's honest half-rename. So the resolver needs
+to return *unresolved* distinguishably from *resolved to something else*, which is
+a constraint on the interface, not on the callers. (This is the same
+guard-don't-drop stance as [ADR-0005](../13-decisions/0005-semantic-model-interface-currency.md).)
+
+Sequencing follows from the asymmetry: the XPath half is shippable **before**
+step 1 lands, against structural entity knowledge alone, with multi-hop paths
+reported-not-rewritten until the resolver exists. The expression half waits for
+step 1.
+
+---
+
 ## Background: Mendix Type System
 
 Mendix expressions use these types:

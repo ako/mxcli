@@ -21,7 +21,7 @@ A safe RENAME command that automatically updates all references would be a signi
 
 | Operation | Status |
 |-----------|--------|
-| `alter entity ... rename attribute Old to New` | Works |
+| `alter entity ... rename attribute Old to New` | Works, and updates stored references. Free-text uses (expressions, XPath) are excluded — see Scope Exclusions |
 | `alter enumeration ... rename value Old to New` | Works |
 | `rename entity Module.Old to New` | Grammar only, not implemented |
 | `rename module Old to New` | Grammar only, not implemented |
@@ -235,6 +235,7 @@ Renaming an entity changes the proxy class name in `javasource/<module>/proxies/
 
 ## Scope Exclusions
 
+- **Attribute names in expressions and XPath constraints**: `$Order/Status` and `[Status = 'Open']` name an attribute in **free text**, where the bare name is only resolvable from the type of what precedes it — so the qualified-name scanner this proposal is built on cannot see them. `alter entity … rename attribute` rewrites every *stored* reference and says plainly that it leaves these; mxbuild reports them as CE0117 / CE0161. Closing the gap needs the resolution machinery in [`PROPOSAL_expression_type_checking.md`](PROPOSAL_expression_type_checking.md) (§ Fourth consumer), which also records why a *mutating* consumer must fail differently from a checking one. Origin: mendixlabs/mxcli#910
 - **Java source file updates**: Out of scope — rename produces correct MPR but Java files need manual update
 - **Widget property string references**: Pluggable widget properties may contain entity/attribute names as strings — these are not updatable without widget-specific knowledge
 - **Git history**: Rename doesn't create a git rename operation — it modifies files in place
