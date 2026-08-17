@@ -49,6 +49,8 @@ builds the invocation for a resource backed by a stored routine.
 |---|---|---|
 | `FilterSql` | splice | `" WHERE …"`, or empty |
 | `OrderBySql` | splice | `" ORDER BY … LIMIT n OFFSET m"` |
+| `SelectSql` | splice | `" a, b, c"` for `$select`, or empty for all columns |
+| `SelectedColumns` | bind | the same columns as exposed names |
 | `Key` | bind | the key the client is re-reading one row by; empty for a collection |
 | `Top`, `Skip` | bind | the page, already clamped to `MaxTop` |
 | `SortColumn1/2`, `SortDirection1/2` | bind | the sort, as exposed names and `A`/`D` |
@@ -140,3 +142,66 @@ and four Java actions. Without it the pack only copies its own files.
 | `references/patterns.md` | splice and bind end to end, and the sortable-fixed-statement `CASE` |
 | `references/failure-modes.md` | what breaks, symptom first |
 | `references/packaging-gap.md` | why this pack does not install, and how to apply it by hand |
+
+## `$select` narrows the read, it does not fix the answer
+
+`SelectSql` is the one option here that is an optimisation rather than a
+correction, and it is worth knowing which before spending time on it.
+
+Mendix applies `$select` to the response **itself** — measured on 11.13, on a
+microflow-backed resource as much as on a database read — so the client already
+receives only the fields it asked for whatever the microflow does. What pushing
+it down saves is *reading* columns nobody will look at: real time over a wide
+CSV through a columnar reader, nothing at all over a narrow table.
+
+The consumer drives it. An external entity with attributes removed sends a
+narrower `$select`, because it has nowhere to put what it dropped — so the
+projection is negotiated end to end without either side arranging it.
+
+Splice it after `SELECT`, and keep your own list when it is empty:
+
+```sql
+SELECT {{SelectSql or your full list}} FROM read_csv_auto(?) AS t
+{{FilterSql}}{{OrderBySql}}
+```
+
+Three behaviours worth relying on:
+
+- **The key is always projected**, even when `$select` omits it. It costs one
+  column and stops a caller that dedupes, associates or re-reads by key from
+  losing the value it does that with. The client still sees only what it asked
+  for, because Mendix projects the response.
+- **An unknown column is rejected, not skipped.** A wrong sort order is
+  cosmetic and is ignored; a dropped projection is not — answering with a null
+  where data was expected is the same "200 and wrong" this component exists to
+  prevent.
+- **Sort columns are not forced into the projection.** `ORDER BY` may name a
+  column the `SELECT` list omits; that is ordinary SQL, and adding them would
+  defeat the narrowing.
+
+### What is still not translated
+
+`$expand` is **not** supported, and is rejected rather than ignored when
+`RejectUnsupported` is on. It is a different kind of work from everything else
+here: not a projection but a join producing a nested object graph, which the
+microflow would have to build as associated Mendix objects, with nested options
+(`$expand=X($filter=…;$top=3)`) multiplying the surface. `$search`, `$apply` and
+the lambda operators (`any`/`all`) are unhandled for the same reason — each is a
+new grammar rather than a new clause.
+
+## Checking it without an app
+
+```bash
+mkdir -p /tmp/pc/odatapushdown
+sed -e 's/{{MODULE_PATH}}/odatapushdown/g' -e 's/{{MODULE}}/ODataPushdown/g' \
+    java/ODataQueryParser.java > /tmp/pc/odatapushdown/ODataQueryParser.java
+javac -d /tmp/pc /tmp/pc/odatapushdown/ODataQueryParser.java scripts/ParserCheck.java
+java -cp /tmp/pc ParserCheck
+```
+
+`ParserCheck` exits non-zero on the first failure and prints what it expected.
+It covers the projection, the filter grammar's quoting of numeric columns, the
+sort terms, the `MaxTop` clamp, `$count`, and that an unreadable filter is
+rejected rather than dropped. A dialect regression here is invisible to
+`mx check` and to every test that needs an app, which is why it is worth a
+second.

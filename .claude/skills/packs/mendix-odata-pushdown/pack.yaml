@@ -65,4 +65,10 @@ installs:
   java:
     - java
 
+# A self-check that needs no Mendix runtime. ODataQueryParser takes no Mendix
+# types in its signature, so a dialect or grammar regression is checkable in a
+# second — where every other test of this component needs an app, a database
+# and a request. Substitute the tokens, javac, run; non-zero on failure.
+verify: scripts/ParserCheck.java
+
 source: https://github.com/ako/mxcli-formula1/tree/main/model/odatapushdown
