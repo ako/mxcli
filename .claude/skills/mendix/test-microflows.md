@@ -159,6 +159,25 @@ The markdown format turns your tests into living documentation.
 | `@throws` | Expect error | `@throws 'validation failed'` |
 | `@cleanup` | Rollback strategy | `@cleanup rollback` (default) or `@cleanup none` |
 
+### A test run leaves the project byte-identical
+
+`mxcli test` injects an `MxTest` module, builds, runs, and takes the injection
+back out. When cleanup succeeds the project file is restored **byte-for-byte**,
+so `git status` is clean afterwards and a CI step of the form "run the tests,
+then assert the tree is clean" holds.
+
+This needs saying because restoring the *model* is not enough. Every unit write
+stamps a fresh UUID into the `.mpr`'s `_Transaction` bookkeeping row, and the
+inject/remove cycle relays SQLite's pages, so the file differs even once its
+content matches again. Version control compares bytes, and a `.mpr` diff is
+opaque — there is no cheap way to tell a bookkeeping GUID from a real model edit,
+which is what made the spurious modification expensive rather than merely untidy.
+
+The restore is declined, deliberately, when **cleanup failed** or when the
+`mprcontents/` tree changed during the run. In both cases the project is not in
+the state the snapshot describes, and putting the old file back would turn a
+visible, harmless discrepancy into an invisible, misleading one.
+
 ### `@expect` — any Mendix condition, and nothing it cannot evaluate
 
 An `@expect` is **a Mendix expression that must evaluate to true**, not a fixed

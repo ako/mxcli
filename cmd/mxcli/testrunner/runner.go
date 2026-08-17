@@ -263,6 +263,7 @@ func runEndpoint(opts RunOptions, suite *TestSuite, timeout time.Duration, w io.
 		fmt.Fprintln(w, "Cleaning up...")
 		cleanupErr := cleanupEndpoint(opts.ProjectPath, state, cleanupSuite, w)
 		removeGeneratedJavaSource(opts.ProjectPath, w)
+		restoreProjectFile(state, cleanupErr, w)
 		reportCleanup(w, cleanupErr)
 		if cleanupErr == nil {
 			fmt.Fprintln(w, "  project restored")
@@ -351,7 +352,9 @@ func runAfterStartup(opts RunOptions, suite *TestSuite, timeout time.Duration, w
 		logOutput, err = runDockerAndCapture(opts, timeout, w)
 	}
 	if err != nil {
-		reportCleanup(w, cleanup(opts.ProjectPath, state, w))
+		cleanupErr := cleanup(opts.ProjectPath, state, w)
+		restoreProjectFile(state, cleanupErr, w)
+		reportCleanup(w, cleanupErr)
 		return nil, err
 	}
 
@@ -360,6 +363,7 @@ func runAfterStartup(opts RunOptions, suite *TestSuite, timeout time.Duration, w
 
 	fmt.Fprintln(w, "Cleaning up...")
 	cleanupErr := cleanup(opts.ProjectPath, state, w)
+	restoreProjectFile(state, cleanupErr, w)
 	reportCleanup(w, cleanupErr)
 
 	PrintResults(w, result, opts.Color)
@@ -466,6 +470,11 @@ func parseTestFiles(paths []string) (*TestSuite, error) {
 // projectState records what Run changed in the project, captured before the first
 // mutation so cleanup can put things back exactly rather than guessing.
 type projectState struct {
+	// snapshot is the project file as it was before anything was injected,
+	// restored on the way out so a run that changes nothing leaves it
+	// byte-identical.
+	snapshot projectSnapshot
+
 	// afterStartup is the project's original after-startup microflow ("" = none).
 	afterStartup string
 	// createdMxTest reports whether Run created the MxTest module, i.e. it did not
@@ -489,7 +498,18 @@ func captureProjectState(projectPath string) (projectState, error) {
 		return st, fmt.Errorf("listing modules: %w", err)
 	}
 	st.createdMxTest = !exists
+
+	st.snapshot = takeProjectSnapshot(projectPath)
 	return st, nil
+}
+
+// restoreProjectFile puts the .mpr back byte-for-byte once cleanup has genuinely
+// undone every injection, so a test run is a no-op on disk. See projectSnapshot
+// for why restoring the model's content is not enough on its own.
+func restoreProjectFile(st projectState, cleanupErr error, w io.Writer) {
+	if err := st.snapshot.restore(cleanupErr == nil); err != nil {
+		fmt.Fprintf(w, "  note: could not restore the project file: %v\n", err)
+	}
 }
 
 // getAfterStartup reads the current after-startup microflow setting.

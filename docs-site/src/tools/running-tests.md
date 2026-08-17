@@ -118,6 +118,22 @@ every request must present that token, non-loopback callers are refused, and it
 will only ever invoke the generated `MxTest.Test_*` microflows. The token is
 never written into your project.
 
+### A run leaves the project byte-identical
+
+`mxcli test` injects an `MxTest` module, builds, runs, and removes it again. When
+cleanup succeeds the `.mpr` is restored **byte-for-byte**, so `git status` is
+clean after a run and a "run the tests, then assert the tree is clean" CI step
+holds.
+
+Restoring the model is not enough on its own: every unit write stamps a fresh
+UUID into the `.mpr`'s `_Transaction` row, and the inject/remove cycle relays
+SQLite's pages, so the file differs even once its content matches. Version
+control compares bytes, and a `.mpr` diff is opaque.
+
+The restore is declined when cleanup failed, or when the `mprcontents/` tree
+changed during the run — in both cases the project is not in the state the
+snapshot describes, and putting the old file back would hide that.
+
 ### `@expect`: what an assertion may say, and what happens when it cannot
 
 An `@expect` is a **Mendix expression that must evaluate to true**. Any

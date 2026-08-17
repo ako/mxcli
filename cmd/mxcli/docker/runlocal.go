@@ -1094,6 +1094,39 @@ func ensureClientServed(deployDir, appURL, mxbuildPath string, out io.Writer) er
 	return nil
 }
 
+// sourceSettleWindow is how long the model source must stop changing before a
+// rebuild starts. Two poll intervals: long enough that the gaps between an
+// exec's individual unit writes do not read as "finished", short enough that a
+// single editor save still rebuilds promptly.
+const sourceSettleWindow = 2
+
+// settleSource waits until the model source stops changing, and returns the
+// mtime it settled at (or the zero time if interrupted).
+//
+// The wait is unbounded on purpose: a long exec is exactly the case this exists
+// for, and rebuilding a project mid-write is worse than rebuilding it late. It
+// returns as soon as the source has been quiet for sourceSettleWindow polls, so
+// an ordinary single-file save costs one extra poll.
+func settleSource(projectPath string, seen time.Time, poll time.Duration, sigCh <-chan os.Signal) time.Time {
+	quiet := 0
+	for {
+		select {
+		case <-sigCh:
+			return time.Time{}
+		case <-time.After(poll):
+		}
+		now := sourceMTime(projectPath)
+		if now.After(seen) {
+			seen = now
+			quiet = 0
+			continue
+		}
+		if quiet++; quiet >= sourceSettleWindow {
+			return seen
+		}
+	}
+}
+
 // watchAndApply polls the project for changes and applies each rebuild until the
 // user interrupts (Ctrl-C). StartLocalRuntime already resolved the JVM; here we
 // only rebuild via serve and let the RuntimeController decide reload vs restart.
@@ -1122,6 +1155,23 @@ func watchAndApply(opts LocalRunOptions, serve *ServeServer, rt *LocalRuntime, w
 			now := sourceMTime(opts.ProjectPath)
 			if !now.After(last) {
 				continue
+			}
+			// Wait for the writer to finish before reading the model.
+			//
+			// An `mxcli exec` of a real script rewrites the .mpr and many
+			// mprcontents/*.mxunit files over several seconds. Building on the
+			// first mtime bump deploys whatever happens to be on disk at that
+			// instant — a half-applied model — and the escape hatch used to be
+			// "run the script again". Byte-idempotent exec closed that: the
+			// second run writes nothing, so nothing re-triggers the watcher and
+			// the stale build is what you are left with, with no way out the tool
+			// offers. Settling first means the watcher can only ever observe a
+			// model that has stopped changing.
+			now = settleSource(opts.ProjectPath, now, opts.PollInterval, sigCh)
+			if now.IsZero() {
+				// Interrupted while settling.
+				fmt.Fprintln(w, "\nShutting down...")
+				return nil
 			}
 			last = now
 			gen++

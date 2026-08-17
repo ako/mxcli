@@ -101,6 +101,33 @@ $cf-over: rgb(168, 50, 30);
 background-color: rgba($cf-over, 0.1);
 ```
 
+## `--watch` waits for a write to finish before it builds
+
+The watcher polls the model source and rebuilds when it changes — but it does
+**not** rebuild the instant it sees the first change. It waits for the source to
+stop moving first.
+
+That matters because an `mxcli exec` of a real script rewrites the `.mpr` and
+many `mprcontents/*.mxunit` files over several seconds. Building on the first
+change deploys whatever is on disk at that instant: a **half-applied model**,
+which looks like an ordinary stale build until you notice the app is missing
+things the script definitely created.
+
+The escape hatch that used to cover this — "just run the script again" — stopped
+working when `exec` became byte-idempotent. A re-run of an already-applied script
+writes nothing, so nothing re-triggers the watcher, and the stale build is what
+you are left with. Waiting for the write to settle is what makes that
+unreachable rather than merely unlikely.
+
+Practical consequences:
+
+- A rebuild starts a couple of poll intervals after your last change, not
+  immediately. A single editor save is unaffected in practice.
+- A long `exec` produces **one** build, of the finished model, instead of a
+  build of the first file it happened to touch.
+- If you ever do need to force a rebuild without changing anything, `touch` the
+  `.mpr` — the watcher keys on mtime, so that re-triggers it.
+
 ## "My edit didn't show up" — stale process, not stale cache
 
 `run --local` refuses to boot when its ports (8080/8090/6543) are already answering,

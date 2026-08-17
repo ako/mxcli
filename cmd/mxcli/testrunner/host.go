@@ -115,5 +115,8 @@ func (h *HostedEndpoint) Remove() {
 		return
 	}
 	removeGeneratedJavaSource(h.projectPath, h.out)
+	// Only past the error return above, so this never claims a project is
+	// unchanged while an injection is still in it.
+	restoreProjectFile(h.state, nil, h.out)
 	fmt.Fprintln(h.out, "  test endpoint removed; project restored")
 }
