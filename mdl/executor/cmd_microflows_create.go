@@ -95,7 +95,7 @@ func execCreateMicroflow(ctx *ExecContext, s *ast.CreateMicroflowStmt) error {
 	// Refuse before writing if the stored microflow has a call bound to a task
 	// queue: the rebuild would null it out and nothing downstream would notice.
 	if existingID != "" {
-		if err := checkNoQueuedCalls(ctx, existingID, qualifiedName); err != nil {
+		if err := checkNoQueuedCalls(ctx, existingID, qualifiedName, s); err != nil {
 			return err
 		}
 	}

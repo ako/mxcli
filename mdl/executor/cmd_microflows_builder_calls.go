@@ -109,6 +109,54 @@ func (fb *flowBuilder) addLogMessageAction(s *ast.LogStmt) model.ID {
 }
 
 // addCallMicroflowAction creates a CALL MICROFLOW statement.
+// buildQueueSettings resolves an `IN QUEUE Module.Name` clause into the
+// Queues$QueueSettings element that binds a call activity to a task queue.
+//
+// The queue must exist: mxbuild reports CE1613 ("The selected task queue … no
+// longer exists") on the call activity otherwise, and that error names the
+// activity rather than the script, which makes a typo here expensive to trace.
+//
+// `what` names the statement in the error (e.g. "CALL MICROFLOW").
+func (fb *flowBuilder) buildQueueSettings(q *ast.QualifiedName, what string) *microflows.QueueSettings {
+	if q == nil {
+		return nil
+	}
+	qn := q.Module + "." + q.Name
+	if !fb.queueExists(q.Module, q.Name) {
+		fb.addError("%s ... IN QUEUE '%s': task queue not found in the project (create it with `CREATE QUEUE %s (Parallelism: 1)`)", what, qn, qn)
+	}
+	return &microflows.QueueSettings{
+		BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
+		Queue:       qn,
+	}
+}
+
+// queueExists reports whether a Queues$Queue with the given module-qualified
+// name is in the project. A backend that cannot answer is treated as "exists",
+// matching microflowExists — this check exists to catch typos, not to be the
+// last line of defence.
+func (fb *flowBuilder) queueExists(moduleName, name string) bool {
+	if fb.backend == nil {
+		return true
+	}
+	queues, err := fb.backend.ListQueues()
+	if err != nil {
+		return true
+	}
+	for _, q := range queues {
+		if !strings.EqualFold(q.Name, name) {
+			continue
+		}
+		if fb.hierarchy == nil {
+			return true
+		}
+		if strings.EqualFold(fb.hierarchy.GetModuleName(fb.hierarchy.FindModuleID(q.ContainerID)), moduleName) {
+			return true
+		}
+	}
+	return false
+}
+
 func (fb *flowBuilder) addCallMicroflowAction(s *ast.CallMicroflowStmt) model.ID {
 	mfQN := s.MicroflowName.Module + "." + s.MicroflowName.Name
 
@@ -134,6 +182,7 @@ func (fb *flowBuilder) addCallMicroflowAction(s *ast.CallMicroflowStmt) model.ID
 		BaseElement:       model.BaseElement{ID: model.ID(types.GenerateID())},
 		Microflow:         mfQN,
 		ParameterMappings: mappings,
+		QueueSettings:     fb.buildQueueSettings(s.Queue, "CALL MICROFLOW"),
 	}
 	action := &microflows.MicroflowCallAction{
 		BaseElement:        model.BaseElement{ID: model.ID(types.GenerateID())},
@@ -350,6 +399,7 @@ func (fb *flowBuilder) addCallJavaActionAction(s *ast.CallJavaActionStmt) model.
 		ErrorHandlingType:  fb.ehType(s.ErrorHandling),
 		JavaAction:         actionQN,
 		ParameterMappings:  mappings,
+		QueueSettings:      fb.buildQueueSettings(s.Queue, "CALL JAVA ACTION"),
 		ResultVariableName: s.OutputVariable,
 		UseReturnVariable:  s.OutputVariable != "",
 	}

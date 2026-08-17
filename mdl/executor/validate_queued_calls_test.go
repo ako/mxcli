@@ -85,7 +85,7 @@ func TestCheckNoQueuedCalls_Refuses(t *testing.T) {
 	}
 	ctx, _ := newMockCtx(t, withBackend(mb))
 
-	err := checkNoQueuedCalls(ctx, "mf-1", "Q.ACT_Caller")
+	err := checkNoQueuedCalls(ctx, "mf-1", "Q.ACT_Caller", nil)
 	if err == nil {
 		t.Fatal("expected a refusal for a microflow with a queued call")
 	}
@@ -105,7 +105,7 @@ func TestCheckNoQueuedCalls_AllowsUnqueued(t *testing.T) {
 		},
 	}
 	ctx, _ := newMockCtx(t, withBackend(mb))
-	if err := checkNoQueuedCalls(ctx, "mf-1", "Q.ACT_Caller"); err != nil {
+	if err := checkNoQueuedCalls(ctx, "mf-1", "Q.ACT_Caller", nil); err != nil {
 		t.Fatalf("unqueued microflow must still be rewritable: %v", err)
 	}
 }
@@ -114,7 +114,7 @@ func TestCheckNoQueuedCalls_AllowsUnqueued(t *testing.T) {
 // own errors, and failing here would block writes for an unrelated reason.
 func TestCheckNoQueuedCalls_UnreadableUnitDoesNotBlock(t *testing.T) {
 	ctx, _ := newMockCtx(t) // default mock: GetRawUnit is not configured, so it errors
-	if err := checkNoQueuedCalls(ctx, "mf-1", "Q.ACT_Caller"); err != nil {
+	if err := checkNoQueuedCalls(ctx, "mf-1", "Q.ACT_Caller", nil); err != nil {
 		t.Fatalf("unreadable unit must not block the write: %v", err)
 	}
 }
@@ -156,5 +156,109 @@ func TestCreateOrModifyMicroflow_RefusesQueuedCall(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "Q.MyQueue") {
 		t.Errorf("error should name the queue that would be lost:\n%s", err)
+	}
+}
+
+// `IN QUEUE` makes the binding authorable, so the guard changes shape: a script
+// that restates every stored queue is the normal way to edit a microflow with a
+// queued call and must go through. Before the clause existed, every such rewrite
+// was refused because there was nothing to restate it with.
+func TestCheckNoQueuedCalls_AllowsWhenScriptRestatesQueue(t *testing.T) {
+	mb := &mock.MockBackend{
+		IsConnectedFunc: func() bool { return true },
+		GetRawUnitFunc: func(id model.ID) (map[string]any, error) {
+			return storedCall(map[string]any{"Queue": "Q.MyQueue"}, nil), nil
+		},
+	}
+	ctx, _ := newMockCtx(t, withBackend(mb))
+
+	restating := &ast.CreateMicroflowStmt{
+		Name: ast.QualifiedName{Module: "Q", Name: "ACT_Caller"},
+		Body: []ast.MicroflowStatement{
+			&ast.CallMicroflowStmt{
+				MicroflowName: ast.QualifiedName{Module: "Q", Name: "Target"},
+				Queue:         &ast.QualifiedName{Module: "Q", Name: "MyQueue"},
+			},
+		},
+	}
+	if err := checkNoQueuedCalls(ctx, "mf-1", "Q.ACT_Caller", restating); err != nil {
+		t.Fatalf("a script that restates the queue must be allowed: %v", err)
+	}
+
+	// Dropping it is still refused, and the message must name the clause that
+	// fixes it — the whole point of the guard is that the loss is invisible.
+	dropping := &ast.CreateMicroflowStmt{
+		Name: ast.QualifiedName{Module: "Q", Name: "ACT_Caller"},
+		Body: []ast.MicroflowStatement{
+			&ast.CallMicroflowStmt{MicroflowName: ast.QualifiedName{Module: "Q", Name: "Target"}},
+		},
+	}
+	err := checkNoQueuedCalls(ctx, "mf-1", "Q.ACT_Caller", dropping)
+	if err == nil {
+		t.Fatal("a rewrite that drops the binding must still be refused")
+	}
+	for _, want := range []string{"Q.MyQueue", "IN QUEUE"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error message missing %q:\n%s", want, err.Error())
+		}
+	}
+}
+
+// A call nested inside IF/LOOP/error-handler bodies still counts as restating.
+// The walk is reflective precisely so a newly added nesting cannot silently stop
+// being searched — a hand-written switch would.
+func TestAuthoredQueueTargets_FindsNestedCalls(t *testing.T) {
+	stmt := &ast.CreateMicroflowStmt{
+		Body: []ast.MicroflowStatement{
+			&ast.IfStmt{
+				ThenBody: []ast.MicroflowStatement{
+					&ast.LoopStmt{
+						Body: []ast.MicroflowStatement{
+							&ast.CallJavaActionStmt{
+								ActionName: ast.QualifiedName{Module: "Q", Name: "Work"},
+								Queue:      &ast.QualifiedName{Module: "Q", Name: "Deep"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	got := authoredQueueTargets(stmt)
+	if !got["q.deep"] {
+		t.Fatalf("nested IN QUEUE not found: %v", got)
+	}
+}
+
+// A stored retry policy has no MDL spelling, so restating the queue is not
+// enough — the rewrite would reset the retry. That must still refuse.
+func TestCheckNoQueuedCalls_RefusesStoredRetry(t *testing.T) {
+	mb := &mock.MockBackend{
+		IsConnectedFunc: func() bool { return true },
+		GetRawUnitFunc: func(id model.ID) (map[string]any, error) {
+			return storedCall(map[string]any{
+				"$Type": "Queues$QueueSettings",
+				"Queue": "Q.MyQueue",
+				"Retry": map[string]any{"$Type": "Queues$QueueFixedRetry", "Retries": 3},
+			}, nil), nil
+		},
+	}
+	ctx, _ := newMockCtx(t, withBackend(mb))
+
+	restating := &ast.CreateMicroflowStmt{
+		Name: ast.QualifiedName{Module: "Q", Name: "ACT_Caller"},
+		Body: []ast.MicroflowStatement{
+			&ast.CallMicroflowStmt{
+				MicroflowName: ast.QualifiedName{Module: "Q", Name: "Target"},
+				Queue:         &ast.QualifiedName{Module: "Q", Name: "MyQueue"},
+			},
+		},
+	}
+	err := checkNoQueuedCalls(ctx, "mf-1", "Q.ACT_Caller", restating)
+	if err == nil {
+		t.Fatal("a stored retry policy must refuse the rewrite even when the queue is restated")
+	}
+	if !strings.Contains(err.Error(), "retry") {
+		t.Errorf("error should name the retry:\n%s", err.Error())
 	}
 }

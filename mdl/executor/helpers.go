@@ -406,6 +406,25 @@ func buildMicroflowQualifiedNames(ctx *ExecContext) map[string]bool {
 	return result
 }
 
+// buildQueueQualifiedNames returns the set of task queue qualified names in the
+// project, lower-cased — Mendix name resolution is case-insensitive and the
+// caller compares an author-written name against it.
+func buildQueueQualifiedNames(ctx *ExecContext) map[string]bool {
+	result := make(map[string]bool)
+	h, err := getHierarchy(ctx)
+	if err != nil {
+		return result
+	}
+	queues, err := ctx.Backend.ListQueues()
+	if err != nil {
+		return result
+	}
+	for _, q := range queues {
+		result[strings.ToLower(h.GetQualifiedName(q.ContainerID, q.Name))] = true
+	}
+	return result
+}
+
 // buildNanoflowQualifiedNames returns a set of all nanoflow qualified names in the project.
 func buildNanoflowQualifiedNames(ctx *ExecContext) map[string]bool {
 	result := make(map[string]bool)

@@ -360,6 +360,25 @@ func appendSourceExpressionSuffix(
 	return &ast.SourceExpr{Expression: innerExpr, Source: source + suffix}
 }
 
+// buildQueueClause converts an `IN QUEUE Module.Name` clause into a qualified
+// name, or returns nil when the call is not queued. Shared by CALL MICROFLOW and
+// CALL JAVA ACTION — the only two activities Mendix can run on a task queue.
+func buildQueueClause(ctx parser.IQueueClauseContext) *ast.QualifiedName {
+	if ctx == nil {
+		return nil
+	}
+	qc, ok := ctx.(*parser.QueueClauseContext)
+	if !ok {
+		return nil
+	}
+	qn := qc.QualifiedName()
+	if qn == nil {
+		return nil
+	}
+	name := buildQualifiedName(qn)
+	return &name
+}
+
 // buildCallMicroflowStatement converts CALL MICROFLOW statement context to CallMicroflowStmt.
 // Grammar: (VARIABLE EQUALS)? CALL MICROFLOW qualifiedName LPAREN callArgumentList? RPAREN
 func buildCallMicroflowStatement(ctx parser.ICallMicroflowStatementContext) *ast.CallMicroflowStmt {
@@ -384,6 +403,9 @@ func buildCallMicroflowStatement(ctx parser.ICallMicroflowStatementContext) *ast
 	if argList := callCtx.CallArgumentList(); argList != nil {
 		stmt.Arguments = buildCallArgumentList(argList)
 	}
+
+	// IN QUEUE Module.Name — runs the call on a task queue.
+	stmt.Queue = buildQueueClause(callCtx.QueueClause())
 
 	// Check for ON ERROR clause
 	if errClause := callCtx.OnErrorClause(); errClause != nil {
@@ -450,6 +472,9 @@ func buildCallJavaActionStatement(ctx parser.ICallJavaActionStatementContext) *a
 	if argList := callCtx.CallArgumentList(); argList != nil {
 		stmt.Arguments = buildCallArgumentList(argList)
 	}
+
+	// IN QUEUE Module.Name — runs the call on a task queue.
+	stmt.Queue = buildQueueClause(callCtx.QueueClause())
 
 	// Check for ON ERROR clause
 	if errClause := callCtx.OnErrorClause(); errClause != nil {

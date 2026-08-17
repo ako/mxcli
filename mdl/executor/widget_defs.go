@@ -564,8 +564,18 @@ var propertyAliases = map[string]map[string][]string{
 // today are wired: `onClick` → the widget's Action property, `onChange` →
 // OnChange. Other action slots (e.g. DataGrid2 `onSelectionChange`) have no MDL
 // surface yet, so they return "" and no mapping is emitted.
+// Mendix's own pluggable widgets suffix their action slots — the Combobox names
+// its on-change slot `onChangeEvent`, not `onChange` — so the bare key is not
+// enough. One `Event`/`Action` suffix is stripped before matching (ledger #14).
+// The stripping is deliberately narrow: a Combobox also carries
+// `onChangeFilterInputEvent` and `onChangeDatabaseEvent`, which are separate
+// properties with no MDL surface and must stay unmapped, or one `OnChange:`
+// would write three different actions.
 func actionSourceForKey(key string) string {
-	switch strings.ToLower(key) {
+	k := strings.ToLower(key)
+	k = strings.TrimSuffix(k, "event")
+	k = strings.TrimSuffix(k, "action")
+	switch k {
 	case "onclick":
 		return "OnClick"
 	case "onchange":

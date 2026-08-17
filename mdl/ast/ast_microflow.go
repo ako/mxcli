@@ -438,6 +438,7 @@ type CallMicroflowStmt struct {
 	OutputVariable string               // Optional output variable
 	MicroflowName  QualifiedName        // Microflow to call
 	Arguments      []CallArgument       // Arguments
+	Queue          *QualifiedName       // Optional IN QUEUE clause (task queue to run the call on)
 	ErrorHandling  *ErrorHandlingClause // Optional ON ERROR clause
 	Annotations    *ActivityAnnotations // Optional @position, @caption, @color, @annotation
 }
@@ -460,6 +461,7 @@ type CallJavaActionStmt struct {
 	OutputVariable string               // Optional output variable
 	ActionName     QualifiedName        // Java action name
 	Arguments      []CallArgument       // Arguments
+	Queue          *QualifiedName       // Optional IN QUEUE clause (task queue to run the call on)
 	ErrorHandling  *ErrorHandlingClause // Optional ON ERROR clause
 	Annotations    *ActivityAnnotations // Optional @position, @caption, @color, @annotation
 }

@@ -356,7 +356,14 @@ logTemplateParam: templateParam;
 
 // $Result = CALL MICROFLOW MfTest.M001_HelloWorld(); or CALL MICROFLOW MfTest.M001_HelloWorld();
 callMicroflowStatement
-    : (VARIABLE EQUALS)? CALL MICROFLOW qualifiedName LPAREN callArgumentList? RPAREN onErrorClause?
+    : (VARIABLE EQUALS)? CALL MICROFLOW qualifiedName LPAREN callArgumentList? RPAREN queueClause? onErrorClause?
+    ;
+
+// IN QUEUE Module.QueueName — runs the call on a task queue (Queues$QueueSettings
+// on the call activity). Valid on CALL MICROFLOW and CALL JAVA ACTION only;
+// Mendix has no queued nanoflow or JavaScript action.
+queueClause
+    : IN QUEUE qualifiedName
     ;
 
 callNanoflowStatement
@@ -365,7 +372,7 @@ callNanoflowStatement
 
 // $Result = CALL JAVA ACTION CustomActivities.ExecuteOQL(OqlStatement = '...');
 callJavaActionStatement
-    : (VARIABLE EQUALS)? CALL JAVA ACTION qualifiedName LPAREN callArgumentList? RPAREN onErrorClause?
+    : (VARIABLE EQUALS)? CALL JAVA ACTION qualifiedName LPAREN callArgumentList? RPAREN queueClause? onErrorClause?
     ;
 
 // $Result = CALL JAVASCRIPT ACTION Module.JSAction(Param = 'value');

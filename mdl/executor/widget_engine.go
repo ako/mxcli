@@ -79,7 +79,12 @@ const defaultSlotContainer = "template"
 //	    in the generated def, so the checker warns "recognized but not persisted"
 //	    instead of silently dropping or falsely rejecting it (general guard for the
 //	    ledger #67 class). Bump forces regeneration to carry the new field.
-const WidgetDefGeneratorVersion = 14
+//	15 — match an action slot after stripping one `Event`/`Action` suffix, so
+//	    Mendix's own suffixed slots map (Combobox `onChangeEvent`). Version 13
+//	    matched the bare keys only, so `OnChange:` on a combobox emitted no
+//	    mapping and was dropped with no error (FINDINGS #14). Bump forces
+//	    regeneration so existing projects pick up the suffixed slots.
+const WidgetDefGeneratorVersion = 15
 
 // WidgetDefinition describes how to construct a pluggable widget from MDL syntax.
 // Loaded from embedded JSON definition files (*.def.json).
