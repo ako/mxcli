@@ -9,6 +9,28 @@ This skill ensures MDL scripts are validated before presenting them to users or 
 - Executing MDL scripts via `mxcli exec`
 - Committing MDL files to version control
 
+## `exec` refuses what `check` rejects
+
+`mxcli exec` runs the same semantic checks before writing anything. A script whose
+checks report an **error** is not executed at all — nothing is written — because
+`exec` applies statements one at a time and cannot roll back, so a known-bad
+script would leave the model partly updated. Warnings are printed and do not stop
+the run.
+
+```bash
+mxcli exec script.mdl -p app.mpr              # checked, then applied
+mxcli exec script.mdl -p app.mpr --no-check   # applied regardless
+```
+
+This does **not** replace running `check` yourself. `check` is faster, needs no
+write connection, and reports the warnings worth reading before you commit to a
+run. What the gate guarantees is narrower and still valuable: a script that slips
+past you cannot half-apply.
+
+It also does not mean the script is *correct*. `mxcli check` validates MDL syntax
+and mxcli's own rules; it does not validate the Mendix model. Run
+`mx check` (or `mxcli docker check -p app.mpr`) after applying a slice.
+
 ## Pre-Flight Validation Checklist
 
 Before writing any MDL, verify these requirements:
