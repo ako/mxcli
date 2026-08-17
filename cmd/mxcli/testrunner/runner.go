@@ -165,7 +165,28 @@ func Run(opts RunOptions) (*SuiteResult, error) {
 	if opts.Local && !opts.LegacyRunner {
 		return runEndpoint(opts, suite, timeout, w)
 	}
+	// @verify needs a seam after each test's call, and a reachable admin API to
+	// query — neither of which the after-startup runner has: its tests execute
+	// during boot and its results are recovered from the log. Refuse rather than
+	// run the suite with those assertions quietly skipped.
+	if err := rejectVerifyOnLegacyRunner(suite); err != nil {
+		return nil, err
+	}
 	return runAfterStartup(opts, suite, timeout, w)
+}
+
+// rejectVerifyOnLegacyRunner refuses a suite the after-startup runner cannot
+// fully evaluate.
+func rejectVerifyOnLegacyRunner(suite *TestSuite) error {
+	for _, tc := range suite.Tests {
+		if len(tc.Verify) > 0 {
+			return fmt.Errorf(
+				"test %q uses @verify, which the after-startup runner cannot evaluate: "+
+					"its tests run during boot, so there is no point at which to query the app. "+
+					"Run with --local (the default test endpoint) or --attach", tc.Name)
+		}
+	}
+	return nil
 }
 
 // validateOptions rejects combinations that cannot work, with a message that
@@ -384,6 +405,9 @@ func ListTests(files []string, w io.Writer) error {
 		fmt.Fprintf(w, "  %s: %s\n", tc.ID, tc.Name)
 		for _, exp := range tc.Expects {
 			fmt.Fprintf(w, "    @expect %s\n", exp.Raw)
+		}
+		for _, v := range tc.Verify {
+			fmt.Fprintf(w, "    @verify %s\n", v.Raw)
 		}
 		if tc.Throws != "" {
 			fmt.Fprintf(w, "    @throws '%s'\n", tc.Throws)
