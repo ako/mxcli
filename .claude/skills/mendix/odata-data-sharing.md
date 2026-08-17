@@ -539,6 +539,37 @@ filtering push down to it — a chart or grid can page a large resource with
 nothing hand-written. That is the whole capability the `mendix-odata-pushdown`
 pack exists to recreate.
 
+**Which options a read microflow actually has to implement — measured, and not
+all-or-nothing.** The same view served both ways on 11.13, three rows behind
+each:
+
+| option | database read | read microflow |
+|---|---|---|
+| `$select` | applied | **applied** — Mendix projects the response either way |
+| `$filter` | applied | **200, unfiltered** |
+| `$orderby` | applied | **200, unsorted** |
+| `$top` / `$skip` | applied | **200, full set** |
+| `$count` | applied | needs `System.ODataResponse` (CE6962) |
+
+Two things follow that "Mendix applies none of them" gets wrong:
+
+- **`$select` is not the microflow's correctness problem.** The client already
+  receives only the fields it asked for. And the consumer drives it: removing
+  attributes from an external entity narrows the `$select` it sends, because the
+  external entity has nowhere to put what it dropped. So pushing `$select` into
+  the source query is a *cost* optimisation — fewer columns read at the source —
+  never a fix for wrong output.
+- **Declaring the capability is what turns a safe refusal into a silent lie.**
+  With `Filterable`/`Sortable` *not* declared, Mendix rejects the request:
+  `400 "Property 'Category' is non-filterable."` Declare them — which you must,
+  or no client can filter at all — and the identical request becomes 200 with
+  every row. The declaration is a promise Mendix enforces at the boundary and
+  does not keep for you.
+
+That second one is the sharpest statement of why this work exists: the failure
+is *created by* promising the capability, and the microflow is the only place
+left to keep the promise.
+
 The pack is for the case a view cannot cover: **the data is not in this app's
 database at all**, so there is no table for a view to select from and a read
 microflow is the only way to produce the rows. Mendix then applies nothing to
