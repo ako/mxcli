@@ -84,13 +84,24 @@ Push the commit and tag together:
 git push origin main --follow-tags
 ```
 
+**Pushing the tag publishes the release.** `.github/workflows/release.yml` fires on
+any `v*` tag, builds the six platform binaries and calls `softprops/action-gh-release`
+with `generate_release_notes: true` — so within a few minutes the release exists,
+public, with the binaries attached and a body that is exactly the flat PR dump this
+skill tells you not to ship. That is expected; step 3 replaces the body. Do not
+try to beat the workflow by creating the release first, and do not delete and
+recreate it — that would drop the assets it uploaded.
+
 ---
 
-## 3. Create the GitHub release (curated body + auto tail)
+## 3. Replace the generated body (curated body + auto tail)
 
-Do **not** use the web "Generate release notes" button. Run this block — it
+The release already exists (see above) with GitHub's generated notes. Step 3
+**overwrites that body** with the curated one — same thing the web "Generate
+release notes" button would produce, replaced for the same reason. Run this block
+once the release workflow has finished (`gh run list --workflow=release.yml`); it
 extracts the CHANGELOG section, appends the New Contributors block and a Full
-Changelog compare link, and creates the release:
+Changelog compare link, and edits the release in place:
 
 ```bash
 VER=v0.15.0          # this release
@@ -116,11 +127,18 @@ NEWC=$(gh api "repos/$REPO/releases/generate-notes" \
   echo "**Full Changelog**: https://github.com/$REPO/compare/$PREV...$VER"
 } >> "$BODY"
 
-gh release create "$VER" --title "$VER" --notes-file "$BODY"
+gh release edit "$VER" --notes-file "$BODY"
 rm -f "$BODY"
 ```
 
-Verify the rendered body on the releases page, then you're done.
+Verify the rendered body on the releases page, and check the six binaries are
+attached (`gh release view "$VER" --json assets -q '.assets[].name'`), then you're
+done. `gh release edit` touches only the notes — the tag and the uploaded assets
+are left alone.
+
+If the workflow failed and no release exists, the same `$BODY` works with
+`gh release create "$VER" --title "$VER" --notes-file "$BODY"`, but fix the
+workflow instead of hand-uploading binaries.
 
 ---
 
@@ -131,5 +149,6 @@ Verify the rendered body on the releases page, then you're done.
 - [ ] Entries use the bold-lead-in → em-dash style; related fixes grouped; `(#NNN)` refs
 - [ ] `make build && make test && make lint` pass
 - [ ] Commit `docs(changelog): release vX.Y.Z` + annotated tag on `main`
-- [ ] `git push origin main --follow-tags`
-- [ ] GitHub release created from the CHANGELOG section (not the web generator), with the auto tail
+- [ ] `git push origin main --follow-tags` — this publishes the release; the workflow's generated body is replaced in the next step
+- [ ] Release workflow finished green and attached six binaries
+- [ ] Release body overwritten with the CHANGELOG section (`gh release edit`, not the web generator), with the auto tail
