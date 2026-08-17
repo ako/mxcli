@@ -170,12 +170,23 @@ type CustomWidget struct {
 }
 
 // PropertyTypeIDEntry holds the IDs for a property type from a cloned widget.
+// PropertyTranslation is one widget-shipped translation of a property's
+// default text.
+type PropertyTranslation struct {
+	LanguageCode string
+	Text         string
+}
+
 type PropertyTypeIDEntry struct {
 	PropertyTypeID string
 	ValueTypeID    string
 	DefaultValue   string // Default value from the template's ValueType
 	ValueType      string // Type of value (Boolean, Integer, String, DataSource, etc.)
 	Required       bool   // Whether this property is required
+	// DefaultTranslations are the widget-shipped <translations> for this
+	// property. A required TextTemplate the author leaves unset serializes with
+	// this text — null is CE0463, empty is CE4899 (#891).
+	DefaultTranslations []PropertyTranslation
 	// For object list properties (IsList=true with ObjectType), these hold nested IDs
 	ObjectTypeID      string                         // ID of the nested ObjectType (for object lists like columns)
 	NestedPropertyIDs map[string]PropertyTypeIDEntry // Property IDs within the nested ObjectType
