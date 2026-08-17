@@ -205,6 +205,7 @@ alterEntityAction
     | MODIFY COLUMN attributeName COLON? dataType attributeConstraint*
     | DROP ATTRIBUTE ifExists? attributeName
     | DROP COLUMN ifExists? attributeName
+    | DROP DEFAULT ON ATTRIBUTE attributeName   // clear an attribute's default value
     | SET DOCUMENTATION STRING_LITERAL
     | SET COMMENT STRING_LITERAL
     | SET POSITION LPAREN NUMBER_LITERAL COMMA NUMBER_LITERAL RPAREN

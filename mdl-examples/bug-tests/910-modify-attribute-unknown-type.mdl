@@ -1,0 +1,61 @@
+-- ============================================================================
+-- Bug 910: MODIFY ATTRIBUTE with an unrecognised type corrupted the project
+-- ============================================================================
+-- https://github.com/mendixlabs/mxcli/issues/910
+--
+-- Reported as: `ALTER ENTITY … MODIFY ATTRIBUTE UserID SET DEFAULT NULL`
+-- silently turned an Integer attribute into an Enumeration.
+--
+-- MODIFY ATTRIBUTE always takes a type, and the grammar's last dataType
+-- alternative is a bare qualified name (an entity reference), so `SET` was read
+-- as the type and `DEFAULT NULL` as a constraint. The executor then wrote an
+-- EnumerationAttributeType with no enumeration behind it — and the result was
+-- not merely wrong, it was unloadable. Before the fix, `mx check` died before
+-- running any validation:
+--
+--   System.ArgumentNullException: Value cannot be null. (Parameter 'value')
+--     at EnumerationAttributeType.set_EnumerationId
+--
+-- CREATE ENTITY has rejected the same mistake since #552; MODIFY ATTRIBUTE
+-- never got the guard.
+--
+-- Run:  mxcli exec 910-modify-attribute-unknown-type.mdl -p app.mpr
+-- Then: mx check the project — it must load and report 0 errors.
+-- ============================================================================
+
+create module Bug910;
+
+create persistent entity Bug910.OdooSession (
+  UserID: integer default 7,
+  Note: string(200)
+);
+/
+
+-- ----------------------------------------------------------------------------
+-- The regression. Both of these must now be REFUSED, leaving UserID an Integer.
+-- Uncomment either one to confirm; both used to succeed and corrupt the project.
+-- ----------------------------------------------------------------------------
+
+-- The reported spelling — `set` lands in the type position:
+-- alter entity Bug910.OdooSession modify attribute UserID set default null;
+
+-- The same defect reached by an ordinary typo:
+-- alter entity Bug910.OdooSession modify attribute UserID Integr;
+
+-- Expected error for either:
+--   Error: attribute 'UserID': unknown type 'set' — not a primitive, enumeration, or entity
+--     MODIFY ATTRIBUTE always takes a type, so a clause it does not recognise is read as one.
+--     To clear a default value:      ALTER ENTITY … DROP DEFAULT ON ATTRIBUTE UserID;
+--     To change the type:            ALTER ENTITY … MODIFY ATTRIBUTE UserID <Type>;
+
+-- ----------------------------------------------------------------------------
+-- What the reporter actually wanted: clear the default, keep the type.
+-- ----------------------------------------------------------------------------
+alter entity Bug910.OdooSession drop default on attribute UserID;
+
+-- UserID is now `Integer` with no default. A genuine retype still works:
+alter entity Bug910.OdooSession modify attribute UserID long;
+
+-- Verify:
+--   describe entity Bug910.OdooSession;
+--   -> UserID: Long        (no default, no enumeration)

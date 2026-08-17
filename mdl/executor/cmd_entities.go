@@ -155,25 +155,10 @@ func execCreateEntity(ctx *ExecContext, s *ast.CreateEntityStmt) error {
 	}
 
 	// Validate TypeEnumeration attribute refs before writing anything.
-	// The visitor uses TypeEnumeration for both enum and entity type references
-	// (TypeEnumeration vs TypeEntity ambiguity). Accept the ref when it resolves
-	// to either a known enumeration or a known entity; reject unknown names fast
-	// so typos don't silently produce corrupt models.
 	for _, a := range s.Attributes {
-		if a.Type.Kind != ast.TypeEnumeration || a.Type.EnumRef == nil {
-			continue
+		if err := validateAttributeTypeRef(ctx, a.Name, a.Type); err != nil {
+			return err
 		}
-		refModule := a.Type.EnumRef.Module
-		refName := a.Type.EnumRef.Name
-		if findEnumeration(ctx, refModule, refName) != nil {
-			continue
-		}
-		if _, err := findEntity(ctx, refModule, refName); err == nil {
-			continue
-		}
-		return mdlerrors.NewValidationf(
-			"attribute '%s': unknown type '%s' — not a primitive, enumeration, or entity",
-			a.Name, a.Type.EnumRef.String())
 	}
 
 	// Create attributes and build name-to-ID map for validation rules and indexes
@@ -842,10 +827,48 @@ func execAlterEntity(ctx *ExecContext, s *ast.AlterEntityStmt) error {
 		invalidateDomainModelsCache(ctx)
 		fmt.Fprintf(ctx.Output, "Renamed attribute '%s' to '%s' on entity %s\n", s.AttributeName, s.NewName, s.Name)
 
+	case ast.AlterEntityDropDefault:
+		// Clearing a default is its own operation because MODIFY ATTRIBUTE cannot
+		// express it: that form always takes a type, and its type slot accepts a
+		// bare qualified name, so `MODIFY ATTRIBUTE X SET DEFAULT NULL` read SET
+		// as the type and wrote an unloadable project (#910).
+		found := false
+		for _, attr := range entity.Attributes {
+			if attr.Name != s.AttributeName {
+				continue
+			}
+			// Only the stored default goes. A CalculatedValue is not a default —
+			// dropping it would silently turn a calculated attribute into a plain
+			// one, which is a different operation the user did not ask for.
+			if attr.Value != nil && attr.Value.Type == "CalculatedValue" {
+				return mdlerrors.NewValidationf(
+					"attribute '%s' is calculated, not defaulted — DROP DEFAULT does not apply "+
+						"(use MODIFY ATTRIBUTE to change how it is computed)", s.AttributeName)
+			}
+			attr.Value = nil
+			found = true
+			break
+		}
+		if !found {
+			return mdlerrors.NewNotFoundMsg("attribute", s.AttributeName,
+				fmt.Sprintf("attribute '%s' not found on entity %s", s.AttributeName, s.Name))
+		}
+		if err := ctx.Backend.UpdateEntity(dm.ID, entity); err != nil {
+			return mdlerrors.NewBackend("drop default", err)
+		}
+		invalidateHierarchy(ctx)
+		invalidateDomainModelsCache(ctx)
+		fmt.Fprintf(ctx.Output, "Dropped default value on attribute '%s' of entity %s\n", s.AttributeName, s.Name)
+
 	case ast.AlterEntityModifyAttribute:
 		// CALCULATED attributes are only supported on persistent entities
 		if s.Calculated && !entity.Persistable {
 			return mdlerrors.NewValidationf("attribute '%s': calculated attributes are only supported on persistent entities", s.AttributeName)
+		}
+		// Reject a type that resolves to nothing BEFORE touching the attribute.
+		// Writing one produces a .mpr Mendix cannot load at all (#910).
+		if err := validateModifyAttributeTypeRef(ctx, s.AttributeName, s.DataType); err != nil {
+			return err
 		}
 		found := false
 		for _, attr := range entity.Attributes {
