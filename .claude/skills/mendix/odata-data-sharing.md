@@ -511,6 +511,101 @@ That is also why the key needs `unique error '…'` on the attribute — see the
 CE6624 note below. Both halves of the same idea: the value identifies one row,
 and keeps identifying it.
 
+### A view entity read from the database gets the query options for free
+
+**This decides whether you need any pushdown machinery at all**, so check it
+before reaching for Java.
+
+A published resource has an `Action`: *Read from database*, or a read microflow.
+The difference is not a detail:
+
+| Action | `$filter` `$orderby` `$top` `$skip` `$count` |
+|---|---|
+| **Read from database** (a view entity, or a persistable one) | **Mendix applies them** — they reach the database |
+| Read microflow | Mendix applies **none** of them; whatever the microflow returns is what the client gets |
+
+Measured on 11.13 against a running app — an OQL view over four rows aggregating
+to three, published with `Action: Read from database` and no Java anywhere:
+
+```
+$top=1                       -> 1 row, not 3
+$count=true&$top=1           -> "@odata.count": 3, one row returned
+$filter=Category eq 'Rent'   -> only the Rent row
+$orderby=Total desc&$skip=1  -> [400, 250]   (1500 correctly skipped)
+```
+
+So for a **view entity**, aggregation happens in the database and paging and
+filtering push down to it — a chart or grid can page a large resource with
+nothing hand-written. That is the whole capability the `mendix-odata-pushdown`
+pack exists to recreate.
+
+**Which options a read microflow actually has to implement — measured, and not
+all-or-nothing.** The same view served both ways on 11.13, three rows behind
+each:
+
+| option | database read | read microflow |
+|---|---|---|
+| `$select` | applied | **applied** — Mendix projects the response either way |
+| `$filter` | applied | **200, unfiltered** |
+| `$orderby` | applied | **200, unsorted** |
+| `$top` / `$skip` | applied | **200, full set** |
+| `$count` | applied | needs `System.ODataResponse` (CE6962) |
+
+Two things follow that "Mendix applies none of them" gets wrong:
+
+- **`$select` is not the microflow's correctness problem.** The client already
+  receives only the fields it asked for. And the consumer drives it: removing
+  attributes from an external entity narrows the `$select` it sends, because the
+  external entity has nowhere to put what it dropped. So pushing `$select` into
+  the source query is a *cost* optimisation — fewer columns read at the source —
+  never a fix for wrong output.
+- **Declaring the capability is what turns a safe refusal into a silent lie.**
+  With `Filterable`/`Sortable` *not* declared, Mendix rejects the request:
+  `400 "Property 'Category' is non-filterable."` Declare them — which you must,
+  or no client can filter at all — and the identical request becomes 200 with
+  every row. The declaration is a promise Mendix enforces at the boundary and
+  does not keep for you.
+
+That second one is the sharpest statement of why this work exists: the failure
+is *created by* promising the capability, and the microflow is the only place
+left to keep the promise.
+
+The pack is for the case a view cannot cover: **the data is not in this app's
+database at all**, so there is no table for a view to select from and a read
+microflow is the only way to produce the rows. Mendix then applies nothing to
+them — a `?$top=5` that quietly returns all 917 rows.
+
+Its motivating shape is two apps, and the topology is what makes the pushdown
+load-bearing rather than an optimisation:
+
+```
+frontend app  --- external entities / OData --->  backend app
+(grid, chart)                                     (no data of its own)
+                                                        |
+                                          external database connector
+                                                        |
+                                                  DuckDB over CSV
+```
+
+The frontend's grid pages and filters by generating `$top` / `$skip` /
+`$filter` — it has no other vocabulary, because external entities *are* OData.
+The backend's read microflow has to translate those options into the SQL it
+sends through the connector. Without that translation the frontend's paging
+still looks correct while every page drags the whole file across, and nothing
+in either app reports a problem.
+
+Two consequences worth holding on to:
+
+- **A view entity is not an option here**, so "prefer the view" is not advice
+  that applies. The question is only whether *this app* owns the data.
+- **The consumer's capability flags must match the service.** An external
+  entity generated with `TopSupported`/`SkipSupported` that the service does
+  not honour is CE6630 in the consuming app — the two ends of this contract
+  are checked against each other.
+
+If the resource *is* backed by this app's own tables, prefer a view entity and
+skip the machinery entirely.
+
 ### An aggregate view's key is its grain
 
 A summary resource — an OQL view entity, or a non-persistable row filled by a
@@ -533,6 +628,7 @@ Measured on Mendix 11.13, each row a separate build:
 |---|---|
 | single key attribute, persistable, no `unique` rule | **CE6624** — add one |
 | single key attribute, persistable, `unique error '…'` | 0 errors |
+| **single key attribute, VIEW entity, no `unique` rule** | **0 errors** |
 | **composite key, `OData3`** | **CE7238** "You can only have more than one key attribute when the OData version is 4" |
 | composite key, `OData4`, persistable, no `unique` rules | 0 errors |
 | **composite key, `OData4`, non-persistable, no `unique` rules** | **0 errors** |
@@ -547,6 +643,13 @@ Two consequences worth holding on to:
   *single*-attribute key, where one attribute has to be unique by itself —
   which is exactly the case a grain is not. So the CE6624 hurdle disappears
   the moment the key is honest about being multi-column.
+- **CE6624 does not apply to a view entity at all.** A view can carry a
+  *single*-attribute key with no validation rule and build cleanly — confirmed
+  against a Studio Pro service publishing a view keyed on one column. So if the
+  view already has a naturally unique column (an id carried through from the
+  source data, not the platform's object id), key on that and skip the grain.
+  Reach for the grain when no single column identifies a row — which is the
+  normal case for an aggregate.
 
 ```sql
 create non-persistent entity Fin.VMonthCategory (
