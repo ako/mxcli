@@ -1001,10 +1001,14 @@ type ModelSettings struct {
 	JavaVersion                        string `json:"javaVersion,omitempty"`
 	RoundingMode                       string `json:"roundingMode,omitempty"`
 	ScheduledEventTimeZoneCode         string `json:"scheduledEventTimeZoneCode,omitempty"`
+	DefaultTimeZoneCode                string `json:"defaultTimeZoneCode,omitempty"`
 	FirstDayOfWeek                     string `json:"firstDayOfWeek,omitempty"`
 	DecimalScale                       int    `json:"decimalScale,omitempty"`
 	EnableDataStorageOptimisticLocking bool   `json:"enableDataStorageOptimisticLocking"`
 	UseDatabaseForeignKeyConstraints   bool   `json:"useDatabaseForeignKeyConstraints"`
+	UseOQLVersion2                     bool   `json:"useOQLVersion2"`
+	UseSystemContextForBackgroundTasks bool   `json:"useSystemContextForBackgroundTasks"`
+	SslCertificateAlgorithm            string `json:"sslCertificateAlgorithm,omitempty"`
 }
 
 // ConventionSettings represents Settings$ConventionSettings.

@@ -86,18 +86,5 @@ func (b *Backend) UpdateProjectSettings(ps *model.ProjectSettings) error {
 }
 
 func overlayModelSettings(ms *model.ModelSettings, raw map[string]any) map[string]any {
-	raw["AfterStartupMicroflow"] = ms.AfterStartupMicroflow
-	raw["BeforeShutdownMicroflow"] = ms.BeforeShutdownMicroflow
-	raw["HealthCheckMicroflow"] = ms.HealthCheckMicroflow
-	raw["AllowUserMultipleSessions"] = ms.AllowUserMultipleSessions
-	raw["HashAlgorithm"] = ms.HashAlgorithm
-	raw["BcryptCost"] = settingsoverlay.SafeInt64(ms.BcryptCost)
-	settingsoverlay.SetJavaVersion(raw, ms.JavaVersion)
-	raw["RoundingMode"] = ms.RoundingMode
-	raw["ScheduledEventTimeZoneCode"] = ms.ScheduledEventTimeZoneCode
-	raw["FirstDayOfWeek"] = ms.FirstDayOfWeek
-	raw["DecimalScale"] = settingsoverlay.SafeInt64(ms.DecimalScale)
-	raw["EnableDataStorageOptimisticLocking"] = ms.EnableDataStorageOptimisticLocking
-	raw["UseDatabaseForeignKeyConstraints"] = ms.UseDatabaseForeignKeyConstraints
-	return raw
+	return settingsoverlay.SetModelSettings(ms, raw)
 }
