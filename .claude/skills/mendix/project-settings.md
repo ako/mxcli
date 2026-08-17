@@ -34,8 +34,26 @@ alter settings model JavaVersion = 'Java21';  -- or '21'; see note below
 alter settings model RoundingMode = 'HalfUp';
 alter settings model AllowUserMultipleSessions = true;
 alter settings model ScheduledEventTimeZoneCode = 'Etc/UTC';
+alter settings model DefaultTimeZoneCode = 'Europe/Amsterdam';
+alter settings model FirstDayOfWeek = 'Monday';       -- Default, Monday..Sunday
+alter settings model DecimalScale = 8;
 alter settings model EnableDataStorageOptimisticLocking = true;
+alter settings model UseDatabaseForeignKeyConstraints = true;
+alter settings model UseOQLVersion2 = true;
+alter settings model SslCertificateAlgorithm = 'PKIX';   -- PKIX or SunX509
 ```
+
+**Not every project stores every setting.** Mendix adds model settings over time —
+a blank 9.24 project stores 12 of them, a blank 11.13 project stores 17. mxcli
+refuses an `alter` naming one the project does not store rather than introducing
+it, because Studio Pro refuses to open a model carrying a property its type does
+not define (and `mx check` does *not* catch that). `describe settings` emits only
+what the project actually stores, so its output always replays.
+
+**`UseSystemContextForBackgroundTasks` is read but not writable.** Mendix withdrew
+it: `mx check` on 11.13 rejects a project holding `true` with
+**CE9436** *"The project setting 'System context tasks' is not supported anymore."*
+mxcli preserves whatever the project stores and offers no way to change it.
 
 **Optimistic locking** is App Settings → Runtime → *Optimistic locking* in Studio
 Pro. With it on, the runtime tracks an `MxObjectVersion` on every persistable
@@ -83,9 +101,14 @@ alter settings configuration 'Default'
 ```
 
 `HttpPortNumber`, `ServerPortNumber`, `BcryptCost`, `DefaultTaskParallelism` and
-`WorkflowEngineParallelism` are Integer-typed, and `AllowUserMultipleSessions` and
-`EnableDataStorageOptimisticLocking` are
-Boolean. An unparseable value is rejected by `mxcli check` (MDL-SET01 / MDL-SET02)
+`WorkflowEngineParallelism` and `DecimalScale` are Integer-typed;
+`AllowUserMultipleSessions`, `EnableDataStorageOptimisticLocking`,
+`UseDatabaseForeignKeyConstraints` and `UseOQLVersion2` are Boolean; `FirstDayOfWeek`
+and `SslCertificateAlgorithm` are enumerations, matched case-insensitively and
+stored in Mendix's own spelling (MDL-SET03 rejects a non-member rather than writing
+it through — an unresolvable enum value is what makes Studio Pro throw
+"Sequence contains no matching element").
+An unparseable value is rejected by `mxcli check` (MDL-SET01 / MDL-SET02)
 and by the write itself — it is no longer silently ignored. Quoted numbers are
 fine: `HttpPortNumber = '8080'` and `HttpPortNumber = 8080` are equivalent.
 

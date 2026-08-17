@@ -210,6 +210,86 @@ func JavaVersionValue(key, v string) string {
 	return "Java" + major
 }
 
+// ModelSettingsKeys names every Settings$ModelSettings property mxcli parses and
+// writes back, in the order DESCRIBE emits them. Which of these a document
+// actually carries depends on the Mendix version — a blank 9.24 project stores 12
+// of them, a blank 11.13 project stores 17 — so the overlay is presence-gated (see
+// SetModelSettings) and callers must not assume any particular key exists.
+var ModelSettingsKeys = []string{
+	"AfterStartupMicroflow",
+	"BeforeShutdownMicroflow",
+	"HealthCheckMicroflow",
+	"AllowUserMultipleSessions",
+	"HashAlgorithm",
+	"BcryptCost",
+	"JavaVersion", // stored as JavaVersion or JavaMajorVersion; see JavaVersionKey
+	"RoundingMode",
+	"ScheduledEventTimeZoneCode",
+	"DefaultTimeZoneCode",
+	"FirstDayOfWeek",
+	"DecimalScale",
+	"EnableDataStorageOptimisticLocking",
+	"UseDatabaseForeignKeyConstraints",
+	"UseOQLVersion2",
+	"UseSystemContextForBackgroundTasks",
+	"SslCertificateAlgorithm",
+}
+
+// Has reports whether a raw BSON part carries a property at all. An absent
+// optional property is not the same as one holding a zero value: Mendix fills it
+// in from the type's default on load, so "absent" means "this version's default",
+// not "false" or "0".
+func Has(raw map[string]any, key string) bool {
+	_, ok := raw[key]
+	return ok
+}
+
+// setIfPresent writes a property back only if the stored document already carries
+// it. Introducing one it does not carry is the mendixlabs/mxcli#759 failure shape:
+// Studio Pro resolves every stored property against the type's property list and
+// throws "Sequence contains no matching element" on one the type does not define,
+// while mxbuild's deserializer tolerates it — so the build is not a safety net.
+//
+// Measured: before this gate, `alter settings model BcryptCost = 11` against a
+// Mendix 9.24 project introduced DecimalScale = 0 and
+// UseDatabaseForeignKeyConstraints = false, neither of which that version stores.
+// Both were also wrong as values — 11.13 defaults them to 8 and true — so an
+// unrelated one-line statement silently changed two other settings.
+func setIfPresent(raw map[string]any, key string, v any) {
+	if Has(raw, key) {
+		raw[key] = v
+	}
+}
+
+// SetModelSettings overlays parsed model settings onto the Settings$ModelSettings
+// part they were read from. Shared by both write engines so the two cannot drift
+// (the codec engine in mdl/backend/modelsdk and the legacy engine in sdk/mpr).
+//
+// Every property is presence-gated. A stored part always carries the core ones, so
+// the gate is invisible there; it is load-bearing for the version-variable tail.
+// The executor refuses an ALTER naming a property the document does not carry, so
+// the gate never turns a user's request into a silent no-op.
+func SetModelSettings(ms *model.ModelSettings, raw map[string]any) map[string]any {
+	setIfPresent(raw, "AfterStartupMicroflow", ms.AfterStartupMicroflow)
+	setIfPresent(raw, "BeforeShutdownMicroflow", ms.BeforeShutdownMicroflow)
+	setIfPresent(raw, "HealthCheckMicroflow", ms.HealthCheckMicroflow)
+	setIfPresent(raw, "AllowUserMultipleSessions", ms.AllowUserMultipleSessions)
+	setIfPresent(raw, "HashAlgorithm", ms.HashAlgorithm)
+	setIfPresent(raw, "BcryptCost", SafeInt64(ms.BcryptCost))
+	SetJavaVersion(raw, ms.JavaVersion) // already presence-gated, and key-aware
+	setIfPresent(raw, "RoundingMode", ms.RoundingMode)
+	setIfPresent(raw, "ScheduledEventTimeZoneCode", ms.ScheduledEventTimeZoneCode)
+	setIfPresent(raw, "DefaultTimeZoneCode", ms.DefaultTimeZoneCode)
+	setIfPresent(raw, "FirstDayOfWeek", ms.FirstDayOfWeek)
+	setIfPresent(raw, "DecimalScale", SafeInt64(ms.DecimalScale))
+	setIfPresent(raw, "EnableDataStorageOptimisticLocking", ms.EnableDataStorageOptimisticLocking)
+	setIfPresent(raw, "UseDatabaseForeignKeyConstraints", ms.UseDatabaseForeignKeyConstraints)
+	setIfPresent(raw, "UseOQLVersion2", ms.UseOQLVersion2)
+	setIfPresent(raw, "UseSystemContextForBackgroundTasks", ms.UseSystemContextForBackgroundTasks)
+	setIfPresent(raw, "SslCertificateAlgorithm", ms.SslCertificateAlgorithm)
+	return raw
+}
+
 // ConstantValues rebuilds a configuration's ConstantValues list, updating each
 // override in the slot it is already stored in so its value shape survives.
 // Studio Pro and mxbuild only read the nested SharedOrPrivateValue; a flat "Value"

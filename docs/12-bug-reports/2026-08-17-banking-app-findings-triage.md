@@ -370,12 +370,56 @@ The unknown-key error now lists the accepted keys. The report tried
 and got a bare `unknown model setting` each time; the first of those now answers
 with the real name.
 
+**The sibling settings are now exposed too**, in the same shape: `FirstDayOfWeek`,
+`DecimalScale`, `DefaultTimeZoneCode`, `UseDatabaseForeignKeyConstraints`,
+`UseOQLVersion2` and `SslCertificateAlgorithm`. The two enumeration-typed ones are
+canonicalised against `generated/metamodel` and a non-member is refused
+(MDL-SET03) rather than written through — an enum value the metamodel cannot
+resolve is what makes Studio Pro throw "Sequence contains no matching element".
+
+`UseSystemContextForBackgroundTasks` is deliberately **read-only**. `mx check` on
+11.13 rejects a project holding `true` with **CE9436** *"The project setting
+'System context tasks' is not supported anymore"* — its only legal value on a
+current version is its default, so an ALTER could only ever produce a project that
+does not build. mxcli preserves whatever is stored and offers no way to change it.
+Found by running `mx check` after the change; nothing else would have caught it.
+
 Still on the "needs Studio Pro" list and **not** addressed here: strict mode
 (SEC005), which the report also flags and which weakens XPath constraint
-enforcement (CVE-2023-23835). Worth checking whether it is equally reachable —
-`Settings$ModelSettings` on 11.13 also carries `UseSystemContextForBackgroundTasks`,
-`UseOQLVersion2`, `UseDatabaseForeignKeyConstraints`, `DecimalScale`,
-`FirstDayOfWeek` and `SslCertificateAlgorithm`, none of which MDL exposes either.
+enforcement (CVE-2023-23835).
+
+### 10b. NEW, found while doing the above: writes leaked properties across versions
+
+Not in the report. Exposing the sibling settings meant checking whether the
+overlay was safe, and it was not.
+
+**A blank Mendix 9.24 project stores 12 model settings; a blank 11.13 stores 17.**
+Both engines' overlays wrote all of their known properties unconditionally, so on
+a 9.24 project:
+
+```
+alter settings model BcryptCost = 11
+```
+
+…also introduced `DecimalScale = 0` and `UseDatabaseForeignKeyConstraints = false`,
+neither of which that version stores. Both were wrong as values too (11.13 defaults
+them to 8 and `true`), so one unrelated one-line statement silently changed two
+other settings. And a property the type may not define is the #759 shape: Studio Pro
+resolves every stored property against the type's property list and throws
+"Sequence contains no matching element", while mxbuild loads it happily — so the
+build is not a safety net.
+
+Fixed by making the overlay **presence-gated** (`settingsoverlay.SetModelSettings`,
+now shared by both engines rather than duplicated, as `Configurations` already was),
+with the executor refusing an ALTER naming a property the stored document does not
+carry so the gate never becomes a silent no-op, and `DESCRIBE SETTINGS` emitting
+only stored properties so its output still replays on both versions.
+
+Measured: a 9.24 project keeps exactly its 12 keys through a write; an 11.13
+project takes all six new settings with `mx check` at 0 errors; both projects'
+describe output replays; re-running is byte-identical with `MXCLI_ALWAYS_WRITE=1`
+as the control. The regression test reproduces the exact symptom when the guard is
+stubbed out.
 
 Same list, not investigated here: strict mode (SEC005), which the report also
 flags as Studio-Pro-only and which weakens XPath constraint enforcement
