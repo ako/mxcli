@@ -231,6 +231,18 @@ var modelSettingKeys = []string{
 	"SslCertificateAlgorithm",
 }
 
+// isKnownModelSetting reports whether ALTER SETTINGS MODEL has a case for a key.
+// Kept beside modelSettingKeys so the membership test and the "valid keys" list
+// in the error can never disagree.
+func isKnownModelSetting(key string) bool {
+	for _, k := range modelSettingKeys {
+		if k == key {
+			return true
+		}
+	}
+	return false
+}
+
 // firstDayOfWeekValues and sslCertificateAlgorithmValues are the members of the
 // corresponding Mendix enumerations as Studio Pro spells them in BSON. Passing an
 // unrecognised string through is the mendixlabs/mxcli#759 shape: the metamodel
@@ -332,6 +344,17 @@ func alterSettings(ctx *ExecContext, stmt *ast.AlterSettingsStmt) error {
 		storedModel := storedModelSettings(ps)
 		for key, val := range stmt.Properties {
 			valStr := settingsValueToString(val)
+			// Order matters: a key mxcli does not know at all is a different
+			// problem from a real key this Mendix version does not store, and the
+			// presence check cannot tell them apart. Running it first answered a
+			// typo with "this project does not store NotARealSetting … upgrade the
+			// project", sending the reader after a version problem that does not
+			// exist instead of at the misspelling in front of them.
+			if !isKnownModelSetting(key) {
+				return mdlerrors.NewUnsupported(fmt.Sprintf(
+					"unknown model setting: %s\n  valid keys: %s",
+					key, strings.Join(modelSettingKeys, ", ")))
+			}
 			// The overlay will not introduce a property the stored document does
 			// not carry, so refuse here rather than reporting a success that
 			// changes nothing.
