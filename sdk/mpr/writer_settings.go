@@ -86,22 +86,12 @@ func (w *Writer) serializeProjectSettings(ps *model.ProjectSettings) ([]byte, er
 	return marshalUnitIDFirst(doc)
 }
 
-// serializeModelSettings updates the raw BSON map with modified model settings fields.
+// serializeModelSettings overlays the modified model settings onto the raw BSON
+// part. The overlay is shared with the codec engine so the two write paths cannot
+// drift (see mdl/settingsoverlay), and is presence-gated so a write never
+// introduces a property this Mendix version does not store.
 func serializeModelSettings(ms *model.ModelSettings, raw map[string]any) map[string]any {
-	raw["AfterStartupMicroflow"] = ms.AfterStartupMicroflow
-	raw["BeforeShutdownMicroflow"] = ms.BeforeShutdownMicroflow
-	raw["HealthCheckMicroflow"] = ms.HealthCheckMicroflow
-	raw["AllowUserMultipleSessions"] = ms.AllowUserMultipleSessions
-	raw["HashAlgorithm"] = ms.HashAlgorithm
-	raw["BcryptCost"] = safeInt64(ms.BcryptCost)
-	settingsoverlay.SetJavaVersion(raw, ms.JavaVersion)
-	raw["RoundingMode"] = ms.RoundingMode
-	raw["ScheduledEventTimeZoneCode"] = ms.ScheduledEventTimeZoneCode
-	raw["FirstDayOfWeek"] = ms.FirstDayOfWeek
-	raw["DecimalScale"] = safeInt64(ms.DecimalScale)
-	raw["EnableDataStorageOptimisticLocking"] = ms.EnableDataStorageOptimisticLocking
-	raw["UseDatabaseForeignKeyConstraints"] = ms.UseDatabaseForeignKeyConstraints
-	return raw
+	return settingsoverlay.SetModelSettings(ms, raw)
 }
 
 // serializeConfigurationSettings overlays the modified configuration settings onto

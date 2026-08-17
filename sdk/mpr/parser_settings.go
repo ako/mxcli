@@ -159,10 +159,19 @@ func parseModelSettings(raw map[string]any) *model.ModelSettings {
 	ms.JavaVersion = settingsoverlay.JavaVersion(raw)
 	ms.RoundingMode = extractString(raw["RoundingMode"])
 	ms.ScheduledEventTimeZoneCode = extractString(raw["ScheduledEventTimeZoneCode"])
+	ms.DefaultTimeZoneCode = extractString(raw["DefaultTimeZoneCode"])
 	ms.FirstDayOfWeek = extractString(raw["FirstDayOfWeek"])
 	ms.DecimalScale = extractInt(raw["DecimalScale"])
 	ms.EnableDataStorageOptimisticLocking = extractBool(raw["EnableDataStorageOptimisticLocking"], false)
-	ms.UseDatabaseForeignKeyConstraints = extractBool(raw["UseDatabaseForeignKeyConstraints"], false)
+	// The defaults below are only reached when the key is absent, which happens on
+	// older Mendix versions that do not store the property (a blank 9.24 project
+	// has none of UseOQLVersion2 / UseDatabaseForeignKeyConstraints / DecimalScale /
+	// SslCertificateAlgorithm). The overlay is presence-gated, so a value read from
+	// a default here is never written back — see settingsoverlay.SetModelSettings.
+	ms.UseDatabaseForeignKeyConstraints = extractBool(raw["UseDatabaseForeignKeyConstraints"], true)
+	ms.UseOQLVersion2 = extractBool(raw["UseOQLVersion2"], true)
+	ms.UseSystemContextForBackgroundTasks = extractBool(raw["UseSystemContextForBackgroundTasks"], false)
+	ms.SslCertificateAlgorithm = extractString(raw["SslCertificateAlgorithm"])
 	return ms
 }
 

@@ -1,0 +1,60 @@
+-- ============================================================================
+-- #907 — the CASE spellings that genuinely do NOT work
+-- ============================================================================
+--
+-- NEGATIVE TEST (.fail.mdl): `mxcli check` MUST reject this file.
+--
+-- The companion 907-case-enum-split-is-supported.mdl pins the working form.
+-- This file pins the three spellings the docs used to imply were the whole
+-- story ("CASE not supported"), so the correction cannot drift back:
+--
+--   1. quoted string values  — `when 'Active' then`
+--      parse error: extraneous input ''Active'' expecting …
+--   2. qualified values      — `when Bug907.Status.Open then`
+--      parse error: mismatched input '.' expecting {THEN, ','}
+--   3. an `AS` alias         — `case $Order/Status as s`
+--      parse error: mismatched input 'as' expecting WHEN
+--
+-- (`else` is the fourth invalid form — it parses but is rejected as MDL008.
+-- It is already covered by mdl009-enum-split-empty-branch.fail.mdl.)
+--
+-- The first statement alone is enough to fail the file; the rest document the
+-- other two spellings in the same place.
+
+CREATE OR MODIFY ENUMERATION Bug907.Status (
+  Open 'Open',
+  Closed 'Closed'
+);
+
+CREATE OR MODIFY MICROFLOW Bug907.QuotedValues ($Order: Bug907.Order)
+RETURNS Boolean
+BEGIN
+  case $Order/Status
+    when 'Open' then
+      return true;
+    when (empty) then
+      return false;
+  end case;
+END;
+
+CREATE OR MODIFY MICROFLOW Bug907.QualifiedValues ($Order: Bug907.Order)
+RETURNS Boolean
+BEGIN
+  case $Order/Status
+    when Bug907.Status.Open then
+      return true;
+    when (empty) then
+      return false;
+  end case;
+END;
+
+CREATE OR MODIFY MICROFLOW Bug907.AliasClause ($Order: Bug907.Order)
+RETURNS Boolean
+BEGIN
+  case $Order/Status as s
+    when Open then
+      return true;
+    when (empty) then
+      return false;
+  end case;
+END;

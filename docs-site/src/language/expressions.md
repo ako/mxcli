@@ -170,13 +170,28 @@ IF $Order/Status = Sales.OrderStatus.Confirmed THEN
 END IF;
 ```
 
-Alternatively, enumeration values can be referenced as plain strings when the context is unambiguous:
+A plain string is accepted where the slot is already typed as the enumeration — a
+`CREATE`/`CHANGE` member value, an attribute `DEFAULT`, and an XPath constraint (enums
+are stored as strings at the database level):
 
 ```sql
 $Order = CREATE Sales.Order (
   Status = 'Draft'
 );
 ```
+
+**It is not accepted in an expression.** Comparing an enumeration to a string, or
+concatenating one into a string, fails the build with **CE0117** *"Error(s) in
+expression"* — and `mxcli check` does not catch it, so the build is where you find out:
+
+```sql
+IF $Order/Status = 'Draft' THEN ...              -- CE0117
+LOG WARNING 'Status: ' + $Order/Status;          -- CE0117
+IF $Order/Status = Sales.OrderStatus.Draft THEN ...        -- correct
+LOG WARNING 'Status: ' + getCaption($Order/Status);        -- correct
+```
+
+The qualified form works in every context, so prefer it throughout.
 
 ## Expression Contexts
 
@@ -185,9 +200,9 @@ Expressions appear in several places within microflow activities:
 ### In Conditions (IF, WHILE, WHERE)
 
 ```sql
-IF $Order/TotalAmount > 0 AND $Order/Status != 'Cancelled' THEN ...
+IF $Order/TotalAmount > 0 AND $Order/Status != Sales.OrderStatus.Cancelled THEN ...
 WHILE $Counter < $MaxRetries BEGIN ... END WHILE;
-RETRIEVE $Active FROM Sales.Order WHERE Status = 'Active';
+RETRIEVE $Active FROM Sales.Order WHERE Status = 'Active';   -- XPath: string is correct here
 ```
 
 ### In Attribute Assignments (CREATE, CHANGE)

@@ -213,6 +213,10 @@ func convertPropTypeIDs(src map[string]types.PropertyTypeIDEntry) map[string]pag
 			Required:       v.Required,
 			ObjectTypeID:   v.ObjectTypeID,
 		}
+		for _, t := range v.DefaultTranslations {
+			entry.DefaultTranslations = append(entry.DefaultTranslations,
+				pages.PropertyTranslation{LanguageCode: t.LanguageCode, Text: t.Text})
+		}
 		if len(v.NestedPropertyIDs) > 0 {
 			entry.NestedPropertyIDs = convertPropTypeIDs(v.NestedPropertyIDs)
 			entry.NestedKeyOrder = append([]string(nil), v.NestedKeyOrder...)

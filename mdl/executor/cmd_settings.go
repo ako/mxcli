@@ -11,6 +11,7 @@ import (
 	"github.com/mendixlabs/mxcli/generated/metamodel"
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
+	"github.com/mendixlabs/mxcli/mdl/settingsoverlay"
 	"github.com/mendixlabs/mxcli/model"
 )
 
@@ -116,24 +117,50 @@ func describeSettings(ctx *ExecContext, configName string) error {
 	// Model settings
 	if ps.Model != nil {
 		ms := ps.Model
+		// Emit only the properties this project's Mendix version actually stores,
+		// so the output replays: the executor refuses an ALTER naming one the
+		// document does not carry (see refuseIfNotStored), and the versions differ
+		// by five properties between 9.24 and 11.13.
+		stored := storedModelSettings(ps)
 		var parts []string
-		if ms.AfterStartupMicroflow != "" {
-			parts = append(parts, fmt.Sprintf("  AfterStartupMicroflow = '%s'", ms.AfterStartupMicroflow))
+		// add emits a property only if this project's Mendix version stores it, so
+		// the output replays: the executor refuses an ALTER naming a property the
+		// document does not carry (refuseIfNotStored), and the set differs by five
+		// properties between a blank 9.24 and a blank 11.13 project.
+		add := func(key, format string, args ...any) {
+			if stored != nil && !settingsoverlay.Has(stored, key) {
+				return
+			}
+			parts = append(parts, "  "+fmt.Sprintf(format, args...))
 		}
-		if ms.BeforeShutdownMicroflow != "" {
-			parts = append(parts, fmt.Sprintf("  BeforeShutdownMicroflow = '%s'", ms.BeforeShutdownMicroflow))
+		// addIfSet additionally skips a property holding no value, so a blank
+		// project's describe output is not a wall of empty strings.
+		addIfSet := func(key, format string, v string) {
+			if v != "" {
+				add(key, format, v)
+			}
 		}
-		if ms.HealthCheckMicroflow != "" {
-			parts = append(parts, fmt.Sprintf("  HealthCheckMicroflow = '%s'", ms.HealthCheckMicroflow))
+
+		addIfSet("AfterStartupMicroflow", "AfterStartupMicroflow = '%s'", ms.AfterStartupMicroflow)
+		addIfSet("BeforeShutdownMicroflow", "BeforeShutdownMicroflow = '%s'", ms.BeforeShutdownMicroflow)
+		addIfSet("HealthCheckMicroflow", "HealthCheckMicroflow = '%s'", ms.HealthCheckMicroflow)
+		add("HashAlgorithm", "HashAlgorithm = '%s'", ms.HashAlgorithm)
+		add("BcryptCost", "BcryptCost = %d", ms.BcryptCost)
+		// JavaVersion is stored under either JavaVersion or JavaMajorVersion; emit it
+		// when the document carries whichever spelling, in mxcli's single input name.
+		if settingsoverlay.JavaVersionKey(stored) != "" || stored == nil {
+			parts = append(parts, fmt.Sprintf("  JavaVersion = '%s'", ms.JavaVersion))
 		}
-		parts = append(parts, fmt.Sprintf("  HashAlgorithm = '%s'", ms.HashAlgorithm))
-		parts = append(parts, fmt.Sprintf("  BcryptCost = %d", ms.BcryptCost))
-		parts = append(parts, fmt.Sprintf("  JavaVersion = '%s'", ms.JavaVersion))
-		parts = append(parts, fmt.Sprintf("  RoundingMode = '%s'", ms.RoundingMode))
-		parts = append(parts, fmt.Sprintf("  AllowUserMultipleSessions = %t", ms.AllowUserMultipleSessions))
-		if ms.ScheduledEventTimeZoneCode != "" {
-			parts = append(parts, fmt.Sprintf("  ScheduledEventTimeZoneCode = '%s'", ms.ScheduledEventTimeZoneCode))
-		}
+		add("RoundingMode", "RoundingMode = '%s'", ms.RoundingMode)
+		add("AllowUserMultipleSessions", "AllowUserMultipleSessions = %t", ms.AllowUserMultipleSessions)
+		add("EnableDataStorageOptimisticLocking", "EnableDataStorageOptimisticLocking = %t", ms.EnableDataStorageOptimisticLocking)
+		add("UseDatabaseForeignKeyConstraints", "UseDatabaseForeignKeyConstraints = %t", ms.UseDatabaseForeignKeyConstraints)
+		add("UseOQLVersion2", "UseOQLVersion2 = %t", ms.UseOQLVersion2)
+		add("DecimalScale", "DecimalScale = %d", ms.DecimalScale)
+		addIfSet("FirstDayOfWeek", "FirstDayOfWeek = '%s'", ms.FirstDayOfWeek)
+		addIfSet("SslCertificateAlgorithm", "SslCertificateAlgorithm = '%s'", ms.SslCertificateAlgorithm)
+		addIfSet("ScheduledEventTimeZoneCode", "ScheduledEventTimeZoneCode = '%s'", ms.ScheduledEventTimeZoneCode)
+		addIfSet("DefaultTimeZoneCode", "DefaultTimeZoneCode = '%s'", ms.DefaultTimeZoneCode)
 		fmt.Fprintf(ctx.Output, "alter settings model\n%s;\n\n", strings.Join(parts, ",\n"))
 	}
 
@@ -170,6 +197,121 @@ func describeSettings(ctx *ExecContext, configName string) error {
 	return nil
 }
 
+// modelSettingKeys names every property the ALTER SETTINGS MODEL switch below
+// assigns, so an unknown key can be rejected with a list of what would have
+// worked. A bare "unknown model setting" sent the mxcli-banking app through
+// three wrong guesses at the optimistic-locking property without ever naming the
+// real one.
+//
+// Hand-maintained alongside the switch: add a case, add it here.
+// TestModelSettingKeys_AllAccepted fails when a listed key is not accepted.
+//
+// Deliberately absent: UseSystemContextForBackgroundTasks. The property is still
+// stored, and mxcli reads and round-trips it, but Mendix has withdrawn it —
+// `mx check` on 11.13 rejects a project holding true with
+// CE9436 "The project setting 'System context tasks' is not supported anymore."
+// Its only legal value on a current version is its default, so an ALTER for it
+// could only ever produce a project that does not build.
+var modelSettingKeys = []string{
+	"AfterStartupMicroflow",
+	"BeforeShutdownMicroflow",
+	"HealthCheckMicroflow",
+	"HashAlgorithm",
+	"BcryptCost",
+	"JavaVersion",
+	"RoundingMode",
+	"AllowUserMultipleSessions",
+	"ScheduledEventTimeZoneCode",
+	"DefaultTimeZoneCode",
+	"FirstDayOfWeek",
+	"DecimalScale",
+	"EnableDataStorageOptimisticLocking",
+	"UseDatabaseForeignKeyConstraints",
+	"UseOQLVersion2",
+	"SslCertificateAlgorithm",
+}
+
+// firstDayOfWeekValues and sslCertificateAlgorithmValues are the members of the
+// corresponding Mendix enumerations as Studio Pro spells them in BSON. Passing an
+// unrecognised string through is the mendixlabs/mxcli#759 shape: the metamodel
+// cannot resolve it and Studio Pro throws "Sequence contains no matching element",
+// while mxbuild loads the project fine.
+//
+// generated/metamodel is a snapshot of Mendix 11.6, so a member added in a later
+// version would be rejected here. That is the safer direction — the error names
+// what is accepted, so an over-strict refusal is obvious rather than silent.
+var firstDayOfWeekValues = []string{
+	string(metamodel.SettingsFirstDayOfWeekDefault),
+	string(metamodel.SettingsFirstDayOfWeekMonday),
+	string(metamodel.SettingsFirstDayOfWeekTuesday),
+	string(metamodel.SettingsFirstDayOfWeekWednesday),
+	string(metamodel.SettingsFirstDayOfWeekThursday),
+	string(metamodel.SettingsFirstDayOfWeekFriday),
+	string(metamodel.SettingsFirstDayOfWeekSaturday),
+	string(metamodel.SettingsFirstDayOfWeekSunday),
+}
+
+var sslCertificateAlgorithmValues = []string{
+	string(metamodel.SettingsSslCertificateAlgorithmPKIX),
+	string(metamodel.SettingsSslCertificateAlgorithmSunX509),
+}
+
+// settingsEnumValues maps "<section>/<key>" to the enumeration members accepted for
+// it, for the properties validated as settingsKindEnum.
+var settingsEnumValues = map[string][]string{
+	"model/FirstDayOfWeek":          firstDayOfWeekValues,
+	"model/SslCertificateAlgorithm": sslCertificateAlgorithmValues,
+}
+
+// settingsEnum canonicalises an enumeration-typed settings value to the member
+// Mendix stores, matching case-insensitively. Anything unrecognised is rejected
+// rather than written through — same contract as settingsDatabaseType.
+func settingsEnum(key, valStr string, members []string) (string, error) {
+	want := strings.TrimSpace(valStr)
+	for _, m := range members {
+		if strings.EqualFold(m, want) {
+			return m, nil
+		}
+	}
+	return "", mdlerrors.NewValidationf("%s must be one of %s, got %q",
+		key, strings.Join(members, ", "), valStr)
+}
+
+// storedModelSettings returns the raw Settings$ModelSettings part, so the handler
+// can tell "this project does not store that property" from "that property is
+// false". Returns nil when the part is not in RawParts.
+func storedModelSettings(ps *model.ProjectSettings) map[string]any {
+	for _, part := range ps.RawParts {
+		if t, _ := part["$Type"].(string); t == "Settings$ModelSettings" {
+			return part
+		}
+	}
+	return nil
+}
+
+// refuseIfNotStored rejects an ALTER naming a property this project's Mendix
+// version does not store. The overlay is presence-gated (it will not introduce a
+// property the type may not define), so without this check the statement would
+// report success and change nothing — the silent no-op shape of #805.
+//
+// JavaVersion is exempt: it is stored under either JavaVersion or
+// JavaMajorVersion, and settingsoverlay.JavaVersionKey resolves which.
+func refuseIfNotStored(raw map[string]any, key string) error {
+	if raw == nil || key == "JavaVersion" {
+		return nil
+	}
+	if settingsoverlay.Has(raw, key) {
+		return nil
+	}
+	return mdlerrors.NewUnsupported(fmt.Sprintf(
+		"this project does not store the model setting %s\n"+
+			"  Mendix adds model settings over time — a blank 9.24 project stores 12 of them, "+
+			"a blank 11.13 project stores 17.\n"+
+			"  mxcli will not introduce a property the project's Mendix version may not define: "+
+			"Studio Pro refuses to open a model carrying one, and mxbuild does not catch it.\n"+
+			"  hint: set it in Studio Pro once, or upgrade the project", key))
+}
+
 // alterSettings modifies project settings based on ALTER SETTINGS statement.
 func alterSettings(ctx *ExecContext, stmt *ast.AlterSettingsStmt) error {
 	if !ctx.ConnectedForWrite() {
@@ -187,8 +329,15 @@ func alterSettings(ctx *ExecContext, stmt *ast.AlterSettingsStmt) error {
 		if ps.Model == nil {
 			return mdlerrors.NewNotFound("settings section", "model")
 		}
+		storedModel := storedModelSettings(ps)
 		for key, val := range stmt.Properties {
 			valStr := settingsValueToString(val)
+			// The overlay will not introduce a property the stored document does
+			// not carry, so refuse here rather than reporting a success that
+			// changes nothing.
+			if err := refuseIfNotStored(storedModel, key); err != nil {
+				return err
+			}
 			switch key {
 			case "AfterStartupMicroflow":
 				ps.Model.AfterStartupMicroflow = valStr
@@ -216,8 +365,56 @@ func alterSettings(ctx *ExecContext, stmt *ast.AlterSettingsStmt) error {
 				ps.Model.AllowUserMultipleSessions = v
 			case "ScheduledEventTimeZoneCode":
 				ps.Model.ScheduledEventTimeZoneCode = valStr
+			case "EnableDataStorageOptimisticLocking":
+				// Mendix's App Settings → Runtime → "Optimistic locking". With it
+				// on, the runtime tracks an MxObjectVersion per persistable entity
+				// and a commit whose version no longer matches the database throws
+				// ConcurrentModificationRuntimeException — the mitigation for a
+				// read-then-write race (check balance, then write it) inside a
+				// microflow, which the transaction alone does not make serialisable.
+				// It detects rather than retries: the handler must catch, reload,
+				// re-apply and re-commit.
+				v, err := settingsBool(key, valStr)
+				if err != nil {
+					return err
+				}
+				ps.Model.EnableDataStorageOptimisticLocking = v
+			case "DefaultTimeZoneCode":
+				ps.Model.DefaultTimeZoneCode = valStr
+			case "FirstDayOfWeek":
+				v, err := settingsEnum(key, valStr, firstDayOfWeekValues)
+				if err != nil {
+					return err
+				}
+				ps.Model.FirstDayOfWeek = v
+			case "SslCertificateAlgorithm":
+				v, err := settingsEnum(key, valStr, sslCertificateAlgorithmValues)
+				if err != nil {
+					return err
+				}
+				ps.Model.SslCertificateAlgorithm = v
+			case "DecimalScale":
+				v, err := settingsInt(key, valStr)
+				if err != nil {
+					return err
+				}
+				ps.Model.DecimalScale = v
+			case "UseDatabaseForeignKeyConstraints":
+				v, err := settingsBool(key, valStr)
+				if err != nil {
+					return err
+				}
+				ps.Model.UseDatabaseForeignKeyConstraints = v
+			case "UseOQLVersion2":
+				v, err := settingsBool(key, valStr)
+				if err != nil {
+					return err
+				}
+				ps.Model.UseOQLVersion2 = v
 			default:
-				return mdlerrors.NewUnsupported("unknown model setting: " + key)
+				return mdlerrors.NewUnsupported(fmt.Sprintf(
+					"unknown model setting: %s\n  valid keys: %s",
+					key, strings.Join(modelSettingKeys, ", ")))
 			}
 		}
 

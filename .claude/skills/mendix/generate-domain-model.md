@@ -993,6 +993,15 @@ alter entity Module.Customer
 
 **Supported operations:** ADD ATTRIBUTE, RENAME ATTRIBUTE, MODIFY ATTRIBUTE (type + `NULLABLE`/`NOT NULL`/`UNIQUE`/`DEFAULT` constraints), DROP ATTRIBUTE, SET DOCUMENTATION, SET COMMENT, ADD INDEX, DROP INDEX, SET POSITION.
 
+> **`MODIFY ATTRIBUTE` always takes a type** — restate it even when you only want
+> to change a constraint. Its type slot accepts a bare qualified name, so a
+> clause written in the type position is read as a type name:
+> `MODIFY ATTRIBUTE X SET DEFAULT 0` treats `SET` as the type. mxcli now refuses
+> that; before it did, the statement rewrote the attribute to an enumeration and
+> produced a project Mendix could not open (#910).
+>
+> To clear a default value use **`DROP DEFAULT ON ATTRIBUTE <name>`**.
+
 ### Entity Positioning Guidelines
 
 When creating or repositioning entities, follow these layout rules for readable domain models:

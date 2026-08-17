@@ -70,6 +70,7 @@ const (
 	AlterEntityAddEventHandler                                  // ADD EVENT HANDLER ON BEFORE/AFTER CREATE/COMMIT/DELETE/ROLLBACK CALL Mod.MF
 	AlterEntityDropEventHandler                                 // DROP EVENT HANDLER ON BEFORE/AFTER CREATE/COMMIT/DELETE/ROLLBACK
 	AlterEntitySetAllowCreateChangeLocally                      // SET ALLOW_CREATE_CHANGE_LOCALLY = true/false
+	AlterEntityDropDefault                                      // DROP DEFAULT ON ATTRIBUTE — clear a default value
 )
 
 // EventHandlerDef represents an event handler in CREATE/ALTER ENTITY syntax.

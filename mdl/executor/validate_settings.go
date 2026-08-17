@@ -19,6 +19,9 @@ const (
 	settingsKindInt settingsValueKind = iota
 	settingsKindBool
 	settingsKindDatabaseType
+	// settingsKindEnum covers any other enumeration-typed property; its accepted
+	// members are looked up per section/key in settingsEnumValues.
+	settingsKindEnum
 )
 
 // typedSettingsKeys maps a lower-cased ALTER SETTINGS section to the properties
@@ -27,8 +30,14 @@ const (
 // fails if the two drift apart.
 var typedSettingsKeys = map[string]map[string]settingsValueKind{
 	"model": {
-		"BcryptCost":                settingsKindInt,
-		"AllowUserMultipleSessions": settingsKindBool,
+		"BcryptCost":                         settingsKindInt,
+		"DecimalScale":                       settingsKindInt,
+		"AllowUserMultipleSessions":          settingsKindBool,
+		"EnableDataStorageOptimisticLocking": settingsKindBool,
+		"UseDatabaseForeignKeyConstraints":   settingsKindBool,
+		"UseOQLVersion2":                     settingsKindBool,
+		"FirstDayOfWeek":                     settingsKindEnum,
+		"SslCertificateAlgorithm":            settingsKindEnum,
 	},
 	"workflows": {
 		"DefaultTaskParallelism":    settingsKindInt,
@@ -49,18 +58,18 @@ func ValidateSettings(stmt *ast.AlterSettingsStmt) []linter.Violation {
 	if !ok {
 		return nil
 	}
-	return validateTypedSettings(keys, stmt.Properties,
+	return validateTypedSettings(strings.ToLower(stmt.Section), keys, stmt.Properties,
 		"alter settings "+strings.ToLower(stmt.Section))
 }
 
 // ValidateCreateConfiguration reports the same for CREATE CONFIGURATION, which
 // accepts the configuration properties directly.
 func ValidateCreateConfiguration(stmt *ast.CreateConfigurationStmt) []linter.Violation {
-	return validateTypedSettings(typedSettingsKeys["configuration"], stmt.Properties,
+	return validateTypedSettings("configuration", typedSettingsKeys["configuration"], stmt.Properties,
 		fmt.Sprintf("create configuration '%s'", stmt.Name))
 }
 
-func validateTypedSettings(keys map[string]settingsValueKind, props map[string]any, what string) []linter.Violation {
+func validateTypedSettings(section string, keys map[string]settingsValueKind, props map[string]any, what string) []linter.Violation {
 	if len(keys) == 0 || len(props) == 0 {
 		return nil
 	}
@@ -110,6 +119,18 @@ func validateTypedSettings(keys map[string]settingsValueKind, props map[string]a
 					Message: fmt.Sprintf("%s: %s must be a Mendix database type, got %q",
 						what, key, valStr),
 					Suggestion: fmt.Sprintf("Use one of: %s.", strings.Join(databaseTypes, ", ")),
+				})
+			}
+		case settingsKindEnum:
+			members := settingsEnumValues[section+"/"+key]
+			if _, err := settingsEnum(key, valStr, members); err != nil {
+				out = append(out, linter.Violation{
+					RuleID:   "MDL-SET03",
+					Severity: linter.SeverityError,
+					Location: loc,
+					Message: fmt.Sprintf("%s: %s must be one of %s, got %q",
+						what, key, strings.Join(members, ", "), valStr),
+					Suggestion: fmt.Sprintf("Use one of: %s.", strings.Join(members, ", ")),
 				})
 			}
 		}
