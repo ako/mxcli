@@ -351,3 +351,51 @@ func TestAlterSettingsModel_WithdrawnSettingSurvivesOtherWrites(t *testing.T) {
 		t.Errorf("BcryptCost = %d, want 13", written.Model.BcryptCost)
 	}
 }
+
+// TestAlterSettingsModel_UnknownKeyNamesItself: an unknown key and a real key
+// this Mendix version does not store are different problems with different
+// fixes, and the presence check cannot tell them apart. Running the presence
+// check first answered a typo with "this project does not store
+// NotARealSetting … upgrade the project", pointing at a version problem that
+// does not exist.
+func TestAlterSettingsModel_UnknownKeyNamesItself(t *testing.T) {
+	var written *model.ProjectSettings
+	ctx, _ := newMockCtx(t, withBackend(modelSettingsBackend(&written, "BcryptCost")))
+
+	err := alterSettings(ctx, &ast.AlterSettingsStmt{
+		Section:    "model",
+		Properties: map[string]any{"NotARealSetting": "true"},
+	})
+	if err == nil {
+		t.Fatal("expected a refusal for an unknown model setting")
+	}
+	if !strings.Contains(err.Error(), "unknown model setting") {
+		t.Errorf("error should say the key is unknown, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "valid keys") {
+		t.Errorf("error should list the valid keys, got: %v", err)
+	}
+	if strings.Contains(err.Error(), "does not store") {
+		t.Errorf("error blames the project's Mendix version for a key that does not exist: %v", err)
+	}
+	if written != nil {
+		t.Error("a refused statement must not write")
+	}
+}
+
+// The version-specific message must still be reachable for a real key.
+func TestAlterSettingsModel_KnownKeyStillReportsVersionGap(t *testing.T) {
+	var written *model.ProjectSettings
+	ctx, _ := newMockCtx(t, withBackend(modelSettingsBackend(&written, "BcryptCost")))
+
+	err := alterSettings(ctx, &ast.AlterSettingsStmt{
+		Section:    "model",
+		Properties: map[string]any{"UseOQLVersion2": "true"},
+	})
+	if err == nil {
+		t.Fatal("expected a refusal: this project does not store UseOQLVersion2")
+	}
+	if !strings.Contains(err.Error(), "does not store") {
+		t.Errorf("a real key absent from the document should get the version message, got: %v", err)
+	}
+}
