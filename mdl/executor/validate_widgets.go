@@ -998,8 +998,8 @@ func validatePluggableWidgetProperties(w *ast.WidgetV3, registry *WidgetRegistry
 				RuleID:   "MDL-WIDGET01",
 				Severity: linter.SeverityError,
 				Message: fmt.Sprintf(
-					"%s: widget `%s` (%s) property `%s` is the widget's internal name for an action slot and is not written from MDL — use `%s:` instead (e.g. `%s: MICROFLOW Module.ACT_Name(...)`)",
-					locationPrefix, w.Name, def.MDLName, key, src, src,
+					"%s: widget `%s` (%s) property `%s` is the widget's internal storage name and is not written from MDL — use `%s:` instead",
+					locationPrefix, w.Name, def.MDLName, key, src,
 				),
 			})
 			continue
@@ -1053,10 +1053,29 @@ func validatePluggableWidgetProperties(w *ast.WidgetV3, registry *WidgetRegistry
 // silent-drop class FINDINGS #14 was about. It is reported by
 // actionStorageKeys() instead, with the spelling that works.
 func addMappingNames(add func(string), m PropertyMapping) {
-	if m.Operation != "action" {
+	if !readsFixedASTSlot(m.Operation) {
 		add(m.PropertyKey)
 	}
 	add(m.Source)
+}
+
+// readsFixedASTSlot reports whether an operation's value is resolved from a
+// dedicated AST accessor rather than from a property looked up by name.
+//
+// resolveMapping switches on the mapping's Source, and for these operations it
+// reads a fixed slot — `w.GetOnChange()` for an action, the association binding
+// for an association — so a script naming the widget's own storage key is
+// accepted by check and written by nothing.
+//
+// Measured on a Combobox against Mendix 11.13, which is why this is a list of
+// two rather than "every operation with a Source": `attributeAssociation:` does
+// not persist while `Association:` does, and `onChangeEvent:` does not persist
+// while `OnChange:` does — but `optionsSourceAssociationCaptionAttribute:` DOES
+// persist, so excluding every storage key would reject working syntax. Add an
+// operation here only after checking the written document, not from the shape of
+// the mapping.
+func readsFixedASTSlot(op string) bool {
+	return op == "action" || op == "association"
 }
 
 // actionStorageKeys maps each action mapping's storage key to the MDL name that
@@ -1066,7 +1085,7 @@ func actionStorageKeys(def *WidgetDefinition) map[string]string {
 	out := make(map[string]string)
 	collect := func(ms []PropertyMapping) {
 		for _, m := range ms {
-			if m.Operation == "action" && m.PropertyKey != "" && m.Source != "" {
+			if readsFixedASTSlot(m.Operation) && m.PropertyKey != "" && m.Source != "" {
 				out[strings.ToLower(m.PropertyKey)] = m.Source
 			}
 		}

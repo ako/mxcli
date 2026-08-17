@@ -129,3 +129,27 @@ func TestCombobox_OnChangeMappedInBothModes(t *testing.T) {
 		})
 	}
 }
+
+// TestReadsFixedASTSlot_MeasuredOperations pins the exclusion list to what was
+// measured on a real Combobox, not to the shape of the mapping.
+//
+// The tempting rule — "any mapping whose PropertyKey differs from its Source" —
+// is wrong and would reject working syntax: on Mendix 11.13,
+// `optionsSourceAssociationCaptionAttribute:` persists even though its MDL name
+// is `CaptionAttribute`, while `attributeAssociation:` and `onChangeEvent:` do
+// not. Only the two operations that resolve from a dedicated AST accessor are
+// excluded.
+func TestReadsFixedASTSlot_MeasuredOperations(t *testing.T) {
+	excluded := map[string]bool{"action": true, "association": true}
+	for _, op := range []string{
+		"action", "association",
+		"attribute", "primitive", "datasource", "texttemplate",
+		"selection", "widgets", "attributeObjects", "expression",
+	} {
+		if got := readsFixedASTSlot(op); got != excluded[op] {
+			t.Errorf("readsFixedASTSlot(%q) = %v, want %v — "+
+				"an operation belongs here only once the written document shows "+
+				"its storage key is dropped", op, got, excluded[op])
+		}
+	}
+}

@@ -783,6 +783,12 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 					props = append(props, fmt.Sprintf("CaptionAttribute: %s", w.CaptionAttribute))
 				}
 			}
+			// A pluggable widget's on-change action (ComboBox `onChangeEvent`).
+			// Emitted for the same reason as the built-in inputs above: without
+			// it a describe→edit→exec cycle silently drops the action.
+			if w.OnChange != "" {
+				props = append(props, fmt.Sprintf("OnChange: %s", w.OnChange))
+			}
 			// Show filter attributes for filter widgets
 			if len(w.FilterAttributes) > 0 {
 				props = append(props, fmt.Sprintf("Attributes: [%s]", strings.Join(w.FilterAttributes, ", ")))

@@ -307,6 +307,16 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 				widget.Content = extractCustomWidgetPropertyAssociation(ctx, w, "attributeAssociation")
 				widget.CaptionAttribute = extractCustomWidgetPropertyAttributeRef(ctx, w, "optionsSourceAssociationCaptionAttribute")
 			}
+			// The on-change action, in BOTH modes — the def maps `onChangeEvent`
+			// in each, and modes are exclusive. Read outside the DataSource
+			// branch so an enumeration-mode ComboBox keeps its action too.
+			//
+			// Without this the write path stored the action correctly and
+			// describe simply never emitted it, so a describe→edit→exec cycle
+			// deleted it: measured 1 Forms$MicroflowAction → 0, while the
+			// datepicker beside it survived. Same shape as the DataGrid2
+			// `onClick` round trip below (ledger #67).
+			widget.OnChange = renderClientActionMDL(ctx, customWidgetPropertyActionMap(ctx, w, "onChangeEvent"))
 		}
 		// The drop-down filter's association mode is the same shape as the
 		// ComboBox's, on differently-named properties: `baseType` selects it and
