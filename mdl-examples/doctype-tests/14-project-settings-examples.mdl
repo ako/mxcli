@@ -51,6 +51,25 @@ alter settings model
   BcryptCost = 12,
   AllowUserMultipleSessions = true;
 
+/**
+ * Example 1.4: Enable optimistic locking
+ *
+ * Studio Pro calls this App Settings -> Runtime -> "Optimistic locking". The
+ * runtime then tracks an MxObjectVersion per persistable entity, and a commit
+ * whose version no longer matches the database throws
+ * ConcurrentModificationRuntimeException.
+ *
+ * Turn it on when a microflow reads a value, decides on it, and writes it back
+ * -- "check the balance, then debit it". A microflow is one transaction, so each
+ * run is atomic, but that does not make two concurrent runs serialisable: both
+ * can pass the check and the second overwrites the first. With this on, the
+ * second commit fails and its microflow rolls back instead of overdrawing.
+ *
+ * It detects rather than retries -- the handler must catch, reload the object,
+ * re-apply and re-commit.
+ */
+alter settings model EnableDataStorageOptimisticLocking = true;
+
 -- MARK: Configuration Settings
 
 -- ============================================================================

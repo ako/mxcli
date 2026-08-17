@@ -131,6 +131,7 @@ func describeSettings(ctx *ExecContext, configName string) error {
 		parts = append(parts, fmt.Sprintf("  JavaVersion = '%s'", ms.JavaVersion))
 		parts = append(parts, fmt.Sprintf("  RoundingMode = '%s'", ms.RoundingMode))
 		parts = append(parts, fmt.Sprintf("  AllowUserMultipleSessions = %t", ms.AllowUserMultipleSessions))
+		parts = append(parts, fmt.Sprintf("  EnableDataStorageOptimisticLocking = %t", ms.EnableDataStorageOptimisticLocking))
 		if ms.ScheduledEventTimeZoneCode != "" {
 			parts = append(parts, fmt.Sprintf("  ScheduledEventTimeZoneCode = '%s'", ms.ScheduledEventTimeZoneCode))
 		}
@@ -168,6 +169,27 @@ func describeSettings(ctx *ExecContext, configName string) error {
 	}
 
 	return nil
+}
+
+// modelSettingKeys names every property the ALTER SETTINGS MODEL switch below
+// assigns, so an unknown key can be rejected with a list of what would have
+// worked. A bare "unknown model setting" sent the mxcli-banking app through
+// three wrong guesses at the optimistic-locking property without ever naming the
+// real one.
+//
+// Hand-maintained alongside the switch: add a case, add it here.
+// TestModelSettingKeys_AllAccepted fails when a listed key is not accepted.
+var modelSettingKeys = []string{
+	"AfterStartupMicroflow",
+	"BeforeShutdownMicroflow",
+	"HealthCheckMicroflow",
+	"HashAlgorithm",
+	"BcryptCost",
+	"JavaVersion",
+	"RoundingMode",
+	"AllowUserMultipleSessions",
+	"ScheduledEventTimeZoneCode",
+	"EnableDataStorageOptimisticLocking",
 }
 
 // alterSettings modifies project settings based on ALTER SETTINGS statement.
@@ -216,8 +238,24 @@ func alterSettings(ctx *ExecContext, stmt *ast.AlterSettingsStmt) error {
 				ps.Model.AllowUserMultipleSessions = v
 			case "ScheduledEventTimeZoneCode":
 				ps.Model.ScheduledEventTimeZoneCode = valStr
+			case "EnableDataStorageOptimisticLocking":
+				// Mendix's App Settings → Runtime → "Optimistic locking". With it
+				// on, the runtime tracks an MxObjectVersion per persistable entity
+				// and a commit whose version no longer matches the database throws
+				// ConcurrentModificationRuntimeException — the mitigation for a
+				// read-then-write race (check balance, then write it) inside a
+				// microflow, which the transaction alone does not make serialisable.
+				// It detects rather than retries: the handler must catch, reload,
+				// re-apply and re-commit.
+				v, err := settingsBool(key, valStr)
+				if err != nil {
+					return err
+				}
+				ps.Model.EnableDataStorageOptimisticLocking = v
 			default:
-				return mdlerrors.NewUnsupported("unknown model setting: " + key)
+				return mdlerrors.NewUnsupported(fmt.Sprintf(
+					"unknown model setting: %s\n  valid keys: %s",
+					key, strings.Join(modelSettingKeys, ", ")))
 			}
 		}
 

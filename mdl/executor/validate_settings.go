@@ -27,8 +27,9 @@ const (
 // fails if the two drift apart.
 var typedSettingsKeys = map[string]map[string]settingsValueKind{
 	"model": {
-		"BcryptCost":                settingsKindInt,
-		"AllowUserMultipleSessions": settingsKindBool,
+		"BcryptCost":                         settingsKindInt,
+		"AllowUserMultipleSessions":          settingsKindBool,
+		"EnableDataStorageOptimisticLocking": settingsKindBool,
 	},
 	"workflows": {
 		"DefaultTaskParallelism":    settingsKindInt,

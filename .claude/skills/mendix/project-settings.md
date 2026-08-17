@@ -34,7 +34,26 @@ alter settings model JavaVersion = 'Java21';  -- or '21'; see note below
 alter settings model RoundingMode = 'HalfUp';
 alter settings model AllowUserMultipleSessions = true;
 alter settings model ScheduledEventTimeZoneCode = 'Etc/UTC';
+alter settings model EnableDataStorageOptimisticLocking = true;
 ```
+
+**Optimistic locking** is App Settings → Runtime → *Optimistic locking* in Studio
+Pro. With it on, the runtime tracks an `MxObjectVersion` on every persistable
+entity and a commit whose version no longer matches the database throws
+`ConcurrentModificationRuntimeException`.
+
+Reach for it when a microflow reads a value, decides on it, and writes it back —
+the classic "check the balance, then debit it" shape. A microflow is one
+transaction, so each run is *atomic*, but that does not make two concurrent runs
+*serialisable*: both can pass the check and the second overwrites the first. With
+optimistic locking on, the second commit fails and its whole microflow rolls back
+instead of silently overdrawing the account.
+
+It **detects, it does not retry.** Mendix's guidance is that the handler must
+catch the exception, *reload* the object, re-apply and re-commit — "trying to
+commit the same object without reloading always results in an optimistic locking
+error." Without that the user sees a failure rather than a transfer that works.
+The money is safe either way, which is the half that matters.
 
 **JavaVersion spelling.** Mendix renamed this property between versions: up to 11.6
 it stores `JavaVersion` = `'Java21'`, from 11.12 it stores `JavaMajorVersion` =
@@ -64,7 +83,8 @@ alter settings configuration 'Default'
 ```
 
 `HttpPortNumber`, `ServerPortNumber`, `BcryptCost`, `DefaultTaskParallelism` and
-`WorkflowEngineParallelism` are Integer-typed, and `AllowUserMultipleSessions` is
+`WorkflowEngineParallelism` are Integer-typed, and `AllowUserMultipleSessions` and
+`EnableDataStorageOptimisticLocking` are
 Boolean. An unparseable value is rejected by `mxcli check` (MDL-SET01 / MDL-SET02)
 and by the write itself — it is no longer silently ignored. Quoted numbers are
 fine: `HttpPortNumber = '8080'` and `HttpPortNumber = 8080` are equivalent.

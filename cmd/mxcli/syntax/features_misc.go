@@ -180,6 +180,7 @@ DISCONNECT;`,
 			"alter settings", "modify settings", "change settings",
 			"after startup", "before shutdown", "hash algorithm",
 			"database type", "constant override", "language",
+			"optimistic locking", "concurrency", "lost update",
 		},
 		Syntax: `ALTER SETTINGS MODEL <key> = <value>;
 ALTER SETTINGS CONFIGURATION '<name>' <key> = <value>, ...;
@@ -191,6 +192,7 @@ CREATE CONFIGURATION '<name>' [<key> = <value>, ...];
 DROP CONFIGURATION '<name>';`,
 		Example: `ALTER SETTINGS MODEL AfterStartupMicroflow = 'Module.MF_Startup';
 ALTER SETTINGS MODEL HashAlgorithm = 'BCrypt';
+ALTER SETTINGS MODEL EnableDataStorageOptimisticLocking = true;
 ALTER SETTINGS CONFIGURATION 'Default'
   DatabaseType = 'PostgreSql',
   DatabaseUrl = 'localhost:5432',
@@ -203,7 +205,16 @@ CREATE CONFIGURATION 'Production'
 
 -- DatabaseType must be a Mendix database type:
 --   Db2, Hsqldb, MySql, Oracle, PostgreSql, SapHana, SqlServer
--- (matched case-insensitively and stored in the spelling above).`,
+-- (matched case-insensitively and stored in the spelling above).
+
+-- MODEL accepts these keys (an unknown one is refused and lists them):
+--   AfterStartupMicroflow, BeforeShutdownMicroflow, HealthCheckMicroflow,
+--   HashAlgorithm, BcryptCost, JavaVersion, RoundingMode,
+--   AllowUserMultipleSessions, ScheduledEventTimeZoneCode,
+--   EnableDataStorageOptimisticLocking
+-- EnableDataStorageOptimisticLocking is Studio Pro's App Settings → Runtime →
+-- "Optimistic locking": it makes a stale commit fail instead of silently
+-- overwriting, which is the fix for a read-then-write race in a microflow.`,
 		SeeAlso: []string{"settings.show"},
 	})
 

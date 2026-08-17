@@ -29,7 +29,7 @@ project. Claims that could not be measured here say so, and say why.
 | 7 | ComboBox rejects `onChangeEvent` | **Confirmed gap** | yes |
 | 8 | `mxcli exec` applies scripts `mxcli check` rejects | **Confirmed gap** | yes |
 | 9 | `mxcli check` does not validate `ALTER SETTINGS MODEL` keys | **Confirmed** | yes |
-| 10 | Optimistic locking not settable from MDL | **Confirmed gap** | yes (key identified) |
+| 10 | Optimistic locking not settable from MDL | **Fixed** — see below | yes (key identified) |
 | 11 | `DROP USER ROLE` leaves demo users dangling | **Confirmed defect** | yes |
 | 12 | `SHOW MESSAGE` clause-order error is misleading | **Confirmed UX defect** | yes |
 | 13 | `ALTER MODULE/PAGE SET DOCUMENTATION` is a parse error | **Confirmed gap** | yes |
@@ -338,13 +338,44 @@ grammar accepts any identifier there. The reporter's summary is the right one:
 "check passed" means the text parses, not that the statement means anything.
 `check` should validate settings keys against the same table `exec` uses.
 
-**#10 confirmed, and the key is identifiable.** The report's correction is
-accurate — Mendix *does* ship optimistic locking as an app setting, and it is
-exactly the mitigation for the read-then-write balance race the app documents.
+**#10 fixed.** The report's correction is accurate — Mendix *does* ship optimistic
+locking as an app setting, and it is exactly the mitigation for the read-then-write
+balance race the app documents.
+
 The stored property is `EnableDataStorageOptimisticLocking` on
-`Settings$ModelSettings` (read directly out of a project's BSON while triaging
-this). Adding it to the accepted model settings is small, and it takes an item
-off the "needs Studio Pro" list for a security-relevant setting.
+`Settings$ModelSettings`, verified against Studio-Pro-created projects on **both**
+9.24 and **11.13.0**. Unlike `JavaVersion` → `JavaMajorVersion` (which did rename
+between 11.6 and 11.12, exactly as CLAUDE.md warns) this key did not move, so one
+spelling is correct for every version mxcli supports.
+
+Every layer except one was already in place — `model.ModelSettings` carried the
+field, and both engines read and wrote it (`sdk/mpr/parser_settings.go:164`,
+`writer_settings.go:102`, `mdl/backend/modelsdk/settings_{read,write}.go`). The
+only thing missing was the executor's assignment case, so the property was
+round-tripped faithfully on every write while being unreachable from MDL.
+
+```
+alter settings model EnableDataStorageOptimisticLocking = true;
+```
+
+Measured on the 11.13.0 project: the key lands in the BSON as
+`"EnableDataStorageOptimisticLocking": true`, `JavaMajorVersion` is preserved
+untouched beside it, `mx check` reports **0 errors**, re-running the statement
+leaves the `.mpr` byte-identical (with `MXCLI_ALWAYS_WRITE=1` as the control run
+that does churn), and a non-boolean value is refused by `mxcli check` (MDL-SET02)
+and by the write.
+
+The unknown-key error now lists the accepted keys. The report tried
+`OptimisticLocking`, `UseOptimisticLocking` and `EnableOptimisticLocking` in turn
+and got a bare `unknown model setting` each time; the first of those now answers
+with the real name.
+
+Still on the "needs Studio Pro" list and **not** addressed here: strict mode
+(SEC005), which the report also flags and which weakens XPath constraint
+enforcement (CVE-2023-23835). Worth checking whether it is equally reachable —
+`Settings$ModelSettings` on 11.13 also carries `UseSystemContextForBackgroundTasks`,
+`UseOQLVersion2`, `UseDatabaseForeignKeyConstraints`, `DecimalScale`,
+`FirstDayOfWeek` and `SslCertificateAlgorithm`, none of which MDL exposes either.
 
 Same list, not investigated here: strict mode (SEC005), which the report also
 flags as Studio-Pro-only and which weakens XPath constraint enforcement
@@ -414,9 +445,11 @@ success line); `CREATE OR MODIFY` does not prune members the OQL no longer
 produces (CE6770 until DROP + recreate); pass-through columns inherit the source
 length and `cast()` is not in the grammar.
 
-**Status: not reproduced.** View entities require Mendix 10.18+ and the only
-projects in this checkout are 9.24; no mxbuild is cached in this environment, so
-creating an 11.x project was out of scope for a triage pass.
+**Status: not yet reproduced.** View entities require Mendix 10.18+ and the only
+projects in this checkout were 9.24 at triage time. An 11.13.0 project now exists
+for this (`mxcli new --version 11.13.0`, mxbuild cached at
+`/root/.mxcli/mxbuild/11.13.0`), so the reproduction is no longer blocked — it
+just has not been run.
 
 Reading the code does *not* obviously support the claim — the read path parses
 `Source` (`parser_domainmodel.go:105`), `isViewEntity` is used in validation,
@@ -494,4 +527,4 @@ four stale tests during a regression run.
 5. **#6/#6b** — three documented spellings of `NON-PERSISTENT`, two of which do
    not parse, one of which ships to every user project.
 6. **#14** — reproduce on 11.13 before designing anything.
-7. **#2, #9, #10, #11, #12, #13** — individually small.
+7. **#2, #9, #11, #12, #13** — individually small. (**#10 is done.**)
