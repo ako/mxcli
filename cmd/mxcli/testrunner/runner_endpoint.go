@@ -120,14 +120,21 @@ func runSuite(client *endpointClient, suite *TestSuite, opts RunOptions, w io.Wr
 	leaked := 0
 
 	for _, tc := range suite.Tests {
+		if res, bad := assertionErrorResult(tc); bad {
+			result.Tests = append(result.Tests, res)
+			continue
+		}
+		if res, bad := vacuousResult(tc, opts.RequireAssertions); bad {
+			result.Tests = append(result.Tests, res)
+			continue
+		}
+
 		flow := testFlowName(tc)
 		if !present[flow] {
-			result.Tests = append(result.Tests, TestResult{
-				ID:      tc.ID,
-				Name:    tc.Name,
-				Status:  StatusError,
-				Message: fmt.Sprintf("microflow %s was not created — the test body may not have compiled", flow),
-			})
+			res := newResult(tc)
+			res.Status = StatusError
+			res.Message = fmt.Sprintf("microflow %s was not created — the test body may not have compiled", flow)
+			result.Tests = append(result.Tests, res)
 			continue
 		}
 
@@ -136,12 +143,10 @@ func runSuite(client *endpointClient, suite *TestSuite, opts RunOptions, w io.Wr
 		if err != nil {
 			// A transport failure is not a verdict. Report it against this test
 			// and keep going; if the runtime died the rest will say so too.
-			result.Tests = append(result.Tests, TestResult{
-				ID:      tc.ID,
-				Name:    tc.Name,
-				Status:  StatusError,
-				Message: fmt.Sprintf("calling the test endpoint: %v", err),
-			})
+			res := newResult(tc)
+			res.Status = StatusError
+			res.Message = fmt.Sprintf("calling the test endpoint: %v", err)
+			result.Tests = append(result.Tests, res)
 			continue
 		}
 

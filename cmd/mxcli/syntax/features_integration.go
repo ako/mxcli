@@ -74,6 +74,8 @@ func init() {
 			"authentication", "page size", "servicename", "publishassociations",
 			"readmode microflow", "non-persistable", "countable", "skipsupported",
 			"topsupported",
+			"graphql",
+			"supportsgraphql",
 		},
 		Syntax: "CREATE [OR MODIFY] ODATA SERVICE Module.Name (\n" +
 			"  path: 'odata/customers/',           -- no leading slash; trailing slash required\n" +
@@ -81,7 +83,12 @@ func init() {
 			"  ODataVersion: OData4,\n" +
 			"  namespace: 'Module.Customers',\n" +
 			"  ServiceName: 'CustomerApi',        -- optional; defaults to the document name\n" +
-			"  PublishAssociations: Yes           -- optional; default Yes (associations as links)\n" +
+			"  PublishAssociations: Yes,          -- optional; default Yes (associations as links)\n" +
+			"  SupportsGraphQL: Yes               -- optional; also answer GraphQL at the SAME\n" +
+			"                                     -- location (POST a query). Mendix 10.14+.\n" +
+			"                                     -- Exposed names must then be unique beyond\n" +
+			"                                     -- case (CE2881), and query fields are\n" +
+			"                                     -- camelCased: Period -> period\n" +
 			")\n" +
 			"authentication basic, session\n" +
 			"-- or, for custom authentication (no per-request password hash):\n" +

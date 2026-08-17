@@ -1,0 +1,59 @@
+-- FINDINGS #46 follow-up: a test that asserts nothing must say so.
+--
+-- The first fix stopped an @expect from being silently dropped. This file is the
+-- residual case: a test can still assert nothing by simply not carrying an
+-- @expect, and before this change its PASS line was indistinguishable from a
+-- test with six real assertions. After the @expect fix, deleting the assertion
+-- is the cheapest way back to a green suite — which must not read as a repair.
+--
+-- No project is needed to see it:
+--
+--   mxcli test mdl-examples/bug-tests/expect-vacuous-assertions.test.mdl --list
+--
+-- Expected output — three tests, three different things to say about them:
+--
+--   test_1: asserts two things
+--     @expect length($result) = 81
+--     @expect find($result, '0') >= 0
+--   test_2: asserts nothing at all
+--     (no assertions — this test can only report that the body did not throw)
+--   test_3: believes it asserts something
+--     ERROR: @verify ...: @verify is not implemented — no runner evaluates it,
+--            so it would assert nothing. ...
+--
+-- A run reports the same three states, and summarises the vacuous ones:
+--
+--   PASS  asserts two things (6ms, 2 assertions)
+--   PASS  asserts nothing at all (4ms, no assertions)
+--   ERROR believes it asserts something
+--   1 test(s) asserted nothing beyond "did not throw". Run with
+--   --require-assertions to make that an error.
+--
+-- test_2 still passes by default: a smoke test is a legitimate thing to write.
+-- --require-assertions turns it into an ERROR for a project that has decided
+-- otherwise. test_3 is an error either way — @verify was documented as an OQL
+-- post-condition and is evaluated by nothing, which is the same defect as a
+-- dropped @expect wearing a different annotation.
+--
+-- The microflows referenced below do not need to exist for --list.
+
+/**
+ * @test asserts two things
+ * @expect length($result) = 81
+ * @expect find($result, '0') >= 0
+ */
+$result = CALL MICROFLOW MyModule.Deal();
+/
+
+/**
+ * @test asserts nothing at all
+ */
+$result = CALL MICROFLOW MyModule.Deal();
+/
+
+/**
+ * @test believes it asserts something
+ * @verify select count(*) from MyModule.Board where Code = 'X' = 1
+ */
+$result = CALL MICROFLOW MyModule.Deal();
+/

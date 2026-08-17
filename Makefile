@@ -35,7 +35,7 @@ GO_BUILD_FLAGS = -trimpath
 # Clean version for VS Code extension (must be valid semver: major.minor.patch)
 VSCE_VERSION = $(shell echo "$(VERSION)" | sed 's/^v//; s/-.*//' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$$' || echo "0.0.0")
 
-.PHONY: build build-debug size release clean test engine-diff test-mdl check-mdl check-skill-mdl check-tunnel-deps check-widget-versions grammar completions sync-skills sync-commands sync-lint-rules sync-changelog sync-all docs documentation docs-site docs-serve vscode-ext vscode-install source-tree sbom sbom-report lint lint-go lint-ts fmt vet
+.PHONY: build build-debug size release clean test engine-diff test-mdl check-mdl check-skill-mdl check-tunnel-deps check-widget-versions grammar completions sync-skills sync-skill-packs sync-commands sync-lint-rules sync-changelog sync-all docs documentation docs-site docs-serve vscode-ext vscode-install source-tree sbom sbom-report lint lint-go lint-ts fmt vet
 
 # Helper: copy file only if content differs (avoids mtime updates that invalidate go build cache)
 # Usage: $(call copy-if-changed,src,dst)
@@ -53,6 +53,14 @@ sync-skills:
 		fi; \
 	done; \
 	if [ $$changed -gt 0 ]; then echo "Synced $$changed skill file(s)"; fi
+
+# Sync skill packs from .claude/skills/packs to cmd/mxcli/skillpacks for embedding.
+# Recursive, unlike sync-skills: a pack is a directory tree and flattening it
+# would silently collide same-named files in different subdirectories.
+sync-skill-packs:
+	@mkdir -p cmd/mxcli/skillpacks
+	@rsync -a --delete --exclude='.DS_Store' .claude/skills/packs/ cmd/mxcli/skillpacks/ 2>/dev/null \
+		|| { rm -rf cmd/mxcli/skillpacks && mkdir -p cmd/mxcli/skillpacks && cp -R .claude/skills/packs/. cmd/mxcli/skillpacks/; }
 
 # Sync commands from .claude/commands/mendix to cmd/mxcli/commands for embedding
 sync-commands:
@@ -94,7 +102,7 @@ sync-changelog:
 	$(call copy-if-changed,CHANGELOG.md,cmd/mxcli/changelog.md)
 
 # Sync skills, commands, lint rules, and changelog
-sync-all: sync-skills sync-commands sync-lint-rules sync-vsix sync-changelog
+sync-all: sync-skills sync-skill-packs sync-commands sync-lint-rules sync-vsix sync-changelog
 
 # Generate LSP completion items from grammar (only rewrites file if content changed)
 completions:
@@ -176,6 +184,13 @@ engine-diff: grammar
 # `mxcli check` (the script reproduces a symptom that a new validation
 # rule rejects). The runner inverts the exit code for these: an unexpected
 # pass is treated as a regression of the rule.
+#
+# `check` runs here WITHOUT a project, so only CHECK-TIME rules can be tested
+# this way. A guard living in the executor or a backend needs a model before it
+# can decide anything, so its repro is valid MDL, `check` exits 0, and naming
+# that file .fail.mdl reports "negative test unexpectedly passed" — a working
+# rule made to look regressed (#891, #892). Keep those repros as plain .mdl and
+# cover the guard with a unit test.
 check-mdl: build
 	@FAILED=0; \
 	for f in mdl-examples/doctype-tests/*.mdl mdl-examples/bug-tests/*.mdl; do \
@@ -218,6 +233,24 @@ check-mdl: build
 # ENTITY `ADD (attr)` instead of `ADD ATTRIBUTE attr: type`) can't drift into docs.
 check-skill-mdl: build
 	@./scripts/check-skill-mdl.sh ./$(BUILD_DIR)/$(BINARY_NAME) .claude/skills/mendix
+	@./scripts/check-skill-mdl.sh ./$(BUILD_DIR)/$(BINARY_NAME) .claude/skills/packs
+	@# The script above checks fenced blocks in markdown. A pack also ships real
+	@# .mdl files, which it does not see — and a pack whose own MDL is never
+	@# checked is a pack that rots.
+	@#
+	@# Checked AFTER substitution, because that is the only form anyone runs. A
+	@# pack's MDL may carry {{MODULE}} placeholders, which are not valid MDL and
+	@# never reach a project un-substituted; checking the raw file would fail on
+	@# every tokenised pack and tempt whoever hit it to drop the check instead.
+	@for f in .claude/skills/packs/*/mdl/*.mdl; do \
+		[ -e "$$f" ] || continue; \
+		tmp=$$(mktemp /tmp/skillmdl-XXXXXX.mdl); \
+		sed -e 's/{{MODULE_PATH}}/mymodule/g' -e 's/{{MODULE}}/MyModule/g' \
+		    -e 's/{{NAMESPACE_PATH}}/acme/g' -e 's/{{NAMESPACE}}/acme/g' "$$f" > "$$tmp"; \
+		./$(BUILD_DIR)/$(BINARY_NAME) check "$$tmp" >/dev/null || { echo "FAILED: $$f"; rm -f "$$tmp"; exit 1; }; \
+		rm -f "$$tmp"; \
+		echo "  ok $$f"; \
+	done
 	@./scripts/check-skill-mdl.sh ./$(BUILD_DIR)/$(BINARY_NAME) docs-site/src
 
 # Guard: the embedded tunnel (chisel) must stay out of the Windows/macOS builds.

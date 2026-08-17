@@ -38,9 +38,9 @@ func TestGenerateTestFlowsNoVariableRenaming(t *testing.T) {
 	suite := &TestSuite{
 		Tests: []TestCase{
 			{ID: "test_1", Name: "a", MDL: "$result = CALL MICROFLOW Mod.A();",
-				Expects: []Expect{{Variable: "$result", Operator: "=", Value: "'x'"}}},
+				Expects: []Expect{expectOf("$result = 'x'")}},
 			{ID: "test_2", Name: "b", MDL: "$result = CALL MICROFLOW Mod.B();",
-				Expects: []Expect{{Variable: "$result", Operator: "=", Value: "'y'"}}},
+				Expects: []Expect{expectOf("$result = 'y'")}},
 		},
 	}
 	mdl := GenerateTestFlows(suite)
@@ -56,7 +56,7 @@ func TestGenerateTestFlowsNoVariableRenaming(t *testing.T) {
 func TestGenerateTestFlowsExpectAssertion(t *testing.T) {
 	suite := &TestSuite{Tests: []TestCase{{
 		ID: "test_1", Name: "equality", MDL: "$r = CALL MICROFLOW Mod.A();",
-		Expects: []Expect{{Variable: "$r", Operator: "=", Value: "'John'"}},
+		Expects: []Expect{expectOf("$r = 'John'")},
 	}}}
 	mdl := GenerateTestFlows(suite)
 
@@ -68,21 +68,23 @@ func TestGenerateTestFlowsExpectAssertion(t *testing.T) {
 	}
 }
 
-// TestGenerateTestFlowsNotEqualIsCompiledAsEquality pins the inherited
-// constraint: `<>` produced Mendix expression errors, so it must never reach the
-// model — a <> expectation is the same equality with the branches swapped.
-func TestGenerateTestFlowsNotEqualIsCompiledAsEquality(t *testing.T) {
+// TestGenerateTestFlowsNotEqualIsRewritten pins the inherited constraint and the
+// way it is now met. `<>` still must never reach the model — Mendix's expression
+// engine rejects that spelling — but the branch-swapping workaround is gone:
+// ParseExpect rewrites the operator to `!=`, so the condition is emitted as
+// written and every other operator can be too.
+func TestGenerateTestFlowsNotEqualIsRewritten(t *testing.T) {
 	suite := &TestSuite{Tests: []TestCase{{
 		ID: "test_1", Name: "inequality", MDL: "$r = CALL MICROFLOW Mod.A();",
-		Expects: []Expect{{Variable: "$r", Operator: "<>", Value: "'John'"}},
+		Expects: []Expect{expectOf("$r <> 'John'")},
 	}}}
 	mdl := GenerateTestFlows(suite)
 
 	if strings.Contains(mdl, "$r <> 'John'") {
 		t.Error("the <> operator reached the generated Mendix expression")
 	}
-	if !strings.Contains(mdl, "IF $r = 'John' THEN") {
-		t.Errorf("<> was not compiled as a swapped equality:\n%s", mdl)
+	if !strings.Contains(mdl, "IF $r != 'John' THEN") {
+		t.Errorf("<> was not rewritten to !=:\n%s", mdl)
 	}
 }
 

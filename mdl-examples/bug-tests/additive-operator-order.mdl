@@ -1,0 +1,54 @@
+-- ledger #105 — an additive chain must be stored with its operators in the
+-- order they were written.
+--
+-- buildAdditiveExpression read the `+` and `-` tokens as two separate lists and
+-- emitted every plus before every minus, so `$A - $B + 1` was rebuilt as
+-- `$A + $B - 1` and written to the .mxunit that way. The ledger's app rendered
+-- "48620 months" for a span of 20, because 24320 + 24301 - 1 is what the runtime
+-- was actually given.
+--
+-- What makes it worth an example rather than only a unit test: every layer
+-- downstream is happy. `mxcli check` passes, `mx check` reports 0 errors, the
+-- build succeeds and the microflow runs. The rewritten expression is valid — it
+-- is simply not the one anyone wrote. So the check is not "does this apply
+-- cleanly" but "does DESCRIBE give back what went in":
+--
+--   mxcli exec mdl-examples/bug-tests/additive-operator-order.mdl -p app.mpr
+--   mxcli -p app.mpr -c "DESCRIBE MICROFLOW MyFirstModule.ACT_AdditiveOrder"
+--
+-- Every `$R = ...` line below must come back verbatim. Before the fix, four of
+-- them did not.
+
+create or replace microflow MyFirstModule.ACT_AdditiveOrder ($A: integer, $B: integer, $C: integer)
+returns integer as $R
+begin
+  declare $R integer = 0;
+
+  -- These two were never affected: a single operator has no order to lose.
+  $R = $A - $B;
+  $R = $A + $B;
+
+  -- The bug. A `-` written before a `+` came back with the two exchanged.
+  $R = $A - $B + 1;
+  $R = $A - $B + $C;
+  $R = $A - $B + $C - 2;
+  $R = 1 - $A + $B;
+
+  -- These survived it, and are here as the control. An all-minus chain has no
+  -- plus to float ahead, and `+` before `-` is already the order the broken
+  -- code emitted — so a test built only from the failing cases above would
+  -- have passed against an implementation that sorted the other way round.
+  $R = $A - $B - 1;
+  $R = $A + $B - 1;
+  $R = $A + $B + $C;
+
+  -- Multiplication binds tighter, so it never joins the additive chain. This
+  -- one was always correct and stays correct.
+  $R = $A - $B * 2;
+
+  -- A parenthesised subtraction is its own chain, likewise unaffected.
+  $R = $A - ($B - 1);
+
+  return $R;
+end;
+/

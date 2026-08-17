@@ -305,6 +305,7 @@ create scheduled event Ops.WeeklyReport (
 | Show OData services | `show odata services [in module];` | Published OData services |
 | Describe OData service | `describe odata service Module.Name;` | Full MDL output |
 | Create OData service | `create [or modify] odata service Module.Name (...) authentication ... { publish entity ... };` | |
+| Publish as GraphQL too | `create odata service Module.Name (SupportsGraphQL: Yes) {...};` | Mendix 10.14+. Same location, clients POST a query. Exposed names must be unique beyond case (CE2881); query fields are camelCased |
 | Alter OData service | `alter odata service Module.Name set key = value;` | |
 | Drop OData service | `drop odata service Module.Name;` | |
 | Show external entities | `show external entities [in module];` | OData-backed entities |

@@ -84,6 +84,13 @@ type RunOptions struct {
 	// JUnitOutput is the path for JUnit XML output (empty = no file output).
 	JUnitOutput string
 
+	// RequireAssertions turns a test that asserts nothing into an ERROR.
+	//
+	// Off by default: a smoke test — "this microflow runs without throwing" — is
+	// a legitimate thing to write. The summary line reports vacuous tests either
+	// way; this is for a project that has decided every test must assert.
+	RequireAssertions bool
+
 	// Verbose shows all runtime log output.
 	Verbose bool
 
@@ -375,16 +382,17 @@ func ListTests(files []string, w io.Writer) error {
 	fmt.Fprintf(w, "Found %d test(s):\n", len(suite.Tests))
 	for _, tc := range suite.Tests {
 		fmt.Fprintf(w, "  %s: %s\n", tc.ID, tc.Name)
-		if len(tc.Expects) > 0 {
-			for _, exp := range tc.Expects {
-				fmt.Fprintf(w, "    @expect %s %s %s\n", exp.Variable, exp.Operator, exp.Value)
-			}
+		for _, exp := range tc.Expects {
+			fmt.Fprintf(w, "    @expect %s\n", exp.Raw)
 		}
 		if tc.Throws != "" {
 			fmt.Fprintf(w, "    @throws '%s'\n", tc.Throws)
 		}
-		for _, v := range tc.Verify {
-			fmt.Fprintf(w, "    @verify %s\n", v)
+		for _, e := range tc.AssertionErrors {
+			fmt.Fprintf(w, "    ERROR: %s\n", e)
+		}
+		if tc.AssertionCount() == 0 && len(tc.AssertionErrors) == 0 {
+			fmt.Fprintf(w, "    (no assertions — this test can only report that the body did not throw)\n")
 		}
 	}
 	return nil

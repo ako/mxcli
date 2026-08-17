@@ -1,0 +1,55 @@
+-- ledger #113 — a published OData service failed to build with CE7375:
+--
+--   [error] [CE7375] "Attribute ID for entity 'Ledger.VMonthCategory' must be
+--   published and be the key when associations are exposed as an associated
+--   object id."
+--
+-- The reported cause was a missing mxcli property — an "association
+-- representation" setting the service supposedly needs. There is no such
+-- property: the word "Representation" appears nowhere in the Mendix Model SDK
+-- (4.114.0, the latest published) and nowhere in Mendix 11.13's own metamodel
+-- assemblies.
+--
+-- `PublishAssociations` IS the representation. Studio Pro's two labels for it,
+-- read out of Mendix.Modeler.Localization.dll, are "As a link (recommended)"
+-- and "As an associated object id" — true and false. Measured on 11.13 against
+-- a blank app, both arms, same service:
+--
+--   PublishAssociations: No   ->  CE7375, publishing no associations at all
+--   PublishAssociations: Yes  ->  0 errors
+--
+-- So the name invites exactly the wrong value: a service with no associations
+-- reads `No` as obviously correct, and gets an error naming a concept the
+-- script never mentions. MDL-ODATA06 says so at check time.
+--
+-- The same probe found a second shape mxcli writes happily. mxbuild wants a
+-- location with no leading slash that ends in a single slash; with NO slash at
+-- all its own validator throws instead of reporting anything:
+--
+--   Path 'cat'         ->  ERROR: System.ArgumentOutOfRangeException  (no code)
+--   Path '/cat/'       ->  CE6550 "The path should not start with a slash."
+--   Path 'odata/cat'   ->  CE6552 "The location should end with a single slash."
+--   Path 'odata/cat/'  ->  0 errors
+--
+-- MDL-ODATA05 catches all three before the build.
+--
+--   mxcli check ledger-113-odata-service-shape.mdl   # clean; this is the good shape
+--   mx check <app>.mpr                               # 0 errors
+
+create or replace entity MyFirstModule.Cat (
+  Label: string(100) unique error 'must be unique'
+);
+
+create or replace odata service MyFirstModule.Svc (
+  Path: 'odata/cat/',
+  ServiceName: 'cat',
+  Namespace: 'cat',
+  Version: '1.0.0',
+  ODataVersion: V4,
+  PublishAssociations: Yes
+) {
+  publish entity MyFirstModule.Cat expose (
+    Label (KEY, Filterable, Sortable)
+  )
+}
+/

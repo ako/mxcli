@@ -15,23 +15,34 @@ import (
 
 // TestCase represents a single test extracted from a test file.
 type TestCase struct {
-	ID         string   // Generated test ID (test_1, test_2, ...)
-	Name       string   // From @test annotation
-	MDL        string   // Raw MDL statements for this test block
-	Expects    []Expect // @expect assertions
-	Verify     []string // @verify OQL queries
-	Setup      string   // @setup block reference
-	Cleanup    string   // @cleanup strategy ("rollback" or "none")
-	Throws     string   // @throws expected error message
-	SourceFile string   // Original file path
-	Line       int      // Line number in source file
+	ID      string   // Generated test ID (test_1, test_2, ...)
+	Name    string   // From @test annotation
+	MDL     string   // Raw MDL statements for this test block
+	Expects []Expect // @expect assertions
+	// AssertionErrors holds one message per annotation that claims to assert
+	// something and cannot. A test carrying any of these is reported as an ERROR
+	// and never run: an assertion that cannot be evaluated must not be able to
+	// report a pass.
+	AssertionErrors []string
+	Verify          []string // @verify OQL queries
+	Setup           string   // @setup block reference
+	Cleanup         string   // @cleanup strategy ("rollback" or "none")
+	Throws          string   // @throws expected error message
+	SourceFile      string   // Original file path
+	Line            int      // Line number in source file
 }
 
-// Expect represents an @expect assertion.
-type Expect struct {
-	Variable string // $var or $var/Attr
-	Operator string // "=" or "<>"
-	Value    string // Expected value as string literal
+// AssertionCount reports how many assertions the test actually makes.
+//
+// @expect and @throws each assert something a runner evaluates. @verify does
+// not — it is parsed and never executed, which is why it is rejected at parse
+// time rather than counted here.
+func (tc TestCase) AssertionCount() int {
+	n := len(tc.Expects)
+	if tc.Throws != "" {
+		n++
+	}
+	return n
 }
 
 // TestSuite represents a collection of tests from one or more files.
@@ -140,16 +151,17 @@ func parseMDLTests(content string, sourcePath string) ([]TestCase, error) {
 
 		testID := fmt.Sprintf("test_%d", i+1)
 		tests = append(tests, TestCase{
-			ID:         testID,
-			Name:       annotations.Test,
-			MDL:        strings.TrimSpace(body),
-			Expects:    annotations.Expects,
-			Verify:     annotations.Verify,
-			Setup:      annotations.Setup,
-			Cleanup:    annotations.Cleanup,
-			Throws:     annotations.Throws,
-			SourceFile: sourcePath,
-			Line:       line,
+			ID:              testID,
+			Name:            annotations.Test,
+			MDL:             strings.TrimSpace(body),
+			Expects:         annotations.Expects,
+			AssertionErrors: annotations.AssertionErrors,
+			Verify:          annotations.Verify,
+			Setup:           annotations.Setup,
+			Cleanup:         annotations.Cleanup,
+			Throws:          annotations.Throws,
+			SourceFile:      sourcePath,
+			Line:            line,
 		})
 	}
 
@@ -202,16 +214,17 @@ func parseMarkdownTests(content string, sourcePath string) ([]TestCase, error) {
 				}
 
 				tests = append(tests, TestCase{
-					ID:         testID,
-					Name:       name,
-					MDL:        strings.TrimSpace(body),
-					Expects:    annotations.Expects,
-					Verify:     annotations.Verify,
-					Setup:      annotations.Setup,
-					Cleanup:    annotations.Cleanup,
-					Throws:     annotations.Throws,
-					SourceFile: sourcePath,
-					Line:       blockStart,
+					ID:              testID,
+					Name:            name,
+					MDL:             strings.TrimSpace(body),
+					Expects:         annotations.Expects,
+					AssertionErrors: annotations.AssertionErrors,
+					Verify:          annotations.Verify,
+					Setup:           annotations.Setup,
+					Cleanup:         annotations.Cleanup,
+					Throws:          annotations.Throws,
+					SourceFile:      sourcePath,
+					Line:            blockStart,
 				})
 			} else {
 				blockLines = append(blockLines, line)
@@ -279,16 +292,22 @@ func extractDocAndBody(block string, fullContent string) (string, string, int) {
 
 // annotations holds parsed javadoc annotations for a test block.
 type annotations struct {
-	Test    string
-	Expects []Expect
-	Verify  []string
-	Setup   string
-	Cleanup string
-	Throws  string
+	Test            string
+	Expects         []Expect
+	AssertionErrors []string
+	Verify          []string
+	Setup           string
+	Cleanup         string
+	Throws          string
 }
 
 var (
-	expectPattern  = regexp.MustCompile(`@expect\s+(\$\S+)\s*(=|<>)\s*(.+)`)
+	// expectPattern captures the whole annotation body rather than a fixed
+	// operand/operator/operand shape. Matching a shape is what made this silent:
+	// a line the pattern did not fit produced no assertion at all, and a test
+	// with no assertions passes. Everything after @expect is now handed to
+	// ParseExpect, which either compiles it or reports why it could not.
+	expectPattern  = regexp.MustCompile(`@expect\s+(.+)`)
 	verifyPattern  = regexp.MustCompile(`@verify\s+(.+)`)
 	testPattern    = regexp.MustCompile(`@test\s+(.+)`)
 	setupPattern   = regexp.MustCompile(`@setup\s+(\S+)`)
@@ -318,14 +337,25 @@ func parseAnnotations(doc string) annotations {
 			a.Test = strings.TrimSpace(m[1])
 		}
 		if m := expectPattern.FindStringSubmatch(line); m != nil {
-			a.Expects = append(a.Expects, Expect{
-				Variable: strings.TrimSpace(m[1]),
-				Operator: strings.TrimSpace(m[2]),
-				Value:    strings.TrimSpace(m[3]),
-			})
+			exp, err := ParseExpect(m[1])
+			if err != nil {
+				a.AssertionErrors = append(a.AssertionErrors, err.Error())
+			} else {
+				a.Expects = append(a.Expects, exp)
+			}
 		}
 		if m := verifyPattern.FindStringSubmatch(line); m != nil {
+			// @verify is parsed here, listed by --list, and read by nothing
+			// else — no runner has ever executed one. A documented annotation
+			// that looks like an assertion and asserts nothing is the same
+			// defect as the @expect shapes that used to be dropped, so it gets
+			// the same answer: an error, not silence. When it is implemented,
+			// this branch becomes the OQL post-condition it claims to be.
 			a.Verify = append(a.Verify, strings.TrimSpace(m[1]))
+			a.AssertionErrors = append(a.AssertionErrors, fmt.Sprintf(
+				"@verify %s: @verify is not implemented — no runner evaluates it, "+
+					"so it would assert nothing. Assert on the microflow's own "+
+					"result with @expect instead", strings.TrimSpace(m[1])))
 		}
 		if m := setupPattern.FindStringSubmatch(line); m != nil {
 			a.Setup = strings.TrimSpace(m[1])

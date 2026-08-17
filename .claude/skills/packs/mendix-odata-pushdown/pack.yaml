@@ -1,0 +1,74 @@
+# Skill pack manifest. See docs/11-proposals/PROPOSAL_skill_packs.md.
+#
+# This is the third pack the proposal asks for, and the one that needed a
+# target the mechanism did not have. `installs.java` now exists; the history of
+# why is in references/packaging-gap.md.
+name: mendix-odata-pushdown
+version: 1.0.0
+description: >-
+  Push OData query options into the SQL of a resource served by a read
+  microflow. Mendix applies none of $filter, $orderby, $top, $skip, $count or
+  the key lookup to a non-persistable resource, and answers 200 with the wrong
+  rows. Four Java actions that parse the request URI into bound values and SQL
+  fragments, across five dialects.
+
+# EXECUTE DATABASE QUERY with a runtime connection override, which is what a
+# pushed-down statement runs through. The parser itself is plain Java and works
+# further back, but a project that cannot execute the SQL has no use for it.
+min_mendix_version: 11.0.0
+
+# A Java class's package IS its identity, exactly as a widget id is. Two
+# projects whose classes share a package are two projects claiming the same
+# class, and the symptom is a compile error in somebody else's module. So the
+# source ships with placeholders rather than this project's names, and
+# `mxcli skill add` substitutes the destination module's:
+#
+#   {{MODULE}}       the Mendix module name       e.g. ODataPushdown
+#   {{MODULE_PATH}}  its javasource package       e.g. odatapushdown
+#
+# Every shipped file is declared. The MDL carries both tokens — {{MODULE}} in
+# the model names, {{MODULE_PATH}} inside the Java action bodies, which is the
+# one place both appear in the same statement.
+rewrite:
+  files:
+    - mdl/module.mdl
+    - java/ODataQueryParser.java
+    - java/QueryObject.java
+    - java/RoutineCall.java
+    - java/actions/Parse.java
+    - java/actions/Key.java
+    - java/actions/FilterNumber.java
+    - java/actions/CallStatement.java
+
+installs:
+  # Applying this writes a module, an entity, a module role and four Java
+  # actions, so it is never a side effect of copying documentation: `skill add`
+  # copies, and only `--apply` executes.
+  mdl:
+    - mdl/module.mdl
+
+  # The four action bodies in the MDL are two-line delegations into 882 lines
+  # of helper classes, and MDL cannot author a standalone class — a Java action
+  # body is a method body, no class declaration, no imports. Without a way to
+  # place those helpers the pack would ship an MDL that cannot compile and a
+  # reader would still copy a directory by hand, which is the manual step the
+  # pack exists to remove.
+  #
+  # Placed into javasource/{{MODULE_PATH}}/, preserving subdirectories, EXCEPT
+  # java/actions/: mxcli writes those four classes itself from the MDL, so
+  # placing the pack's copies too would mean two sources of truth for the same
+  # files and applying the MDL would immediately overwrite them. They stay in
+  # the pack directory to be read.
+  #
+  # An existing file that differs is refused, never overwritten — a locally
+  # fixed helper and a stale copy look identical from here.
+  java:
+    - java
+
+# A self-check that needs no Mendix runtime. ODataQueryParser takes no Mendix
+# types in its signature, so a dialect or grammar regression is checkable in a
+# second — where every other test of this component needs an app, a database
+# and a request. Substitute the tokens, javac, run; non-zero on failure.
+verify: scripts/ParserCheck.java
+
+source: https://github.com/ako/mxcli-formula1/tree/main/model/odatapushdown

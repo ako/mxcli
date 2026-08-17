@@ -601,14 +601,31 @@ Flags:
                       With --local, do not run the project's own
                       after-startup microflow (it runs by default)
       --legacy-runner With --local: use the old after-startup runner
+      --require-assertions
+                      Report a test that asserts nothing as an ERROR
   -v, --verbose       Show runtime log lines
   -t, --timeout DUR   Runtime startup timeout (default: 5m)
 
 Annotations:
   @test <name>              Test name (required)
-  @expect $var = value      Assert variable equals value
-  @expect $obj/Attr = val   Assert entity attribute
+  @expect <condition>       A Mendix expression that must evaluate to true.
+                            Any expression the engine accepts works:
+                              $result = 'John Doe'
+                              $product/Name != 'Widget'   (<> is accepted too)
+                              length($result) = 81
+                              find($result, '0') >= 0
+                              substring($r, 0, 9) = substring($r, 9, 18)
+                              find($r, '0') >= 0 and $count > 3
+                            An assertion the runner cannot compile — unknown
+                            function, wrong arity, or an expression that
+                            yields a value rather than a condition — is an
+                            ERROR against that test, never a pass. A failure
+                            reports the observed value alongside the
+                            expectation whenever the assertion pins its type.
   @throws 'message'         Expect error
+  @verify <oql>             NOT IMPLEMENTED — rejected as an error. Nothing
+                            evaluates it, so it would assert nothing. Return
+                            the value from the microflow and use @expect.
   @cleanup rollback|none    What happens to the test's database writes.
                             rollback (the default) wraps the test in a
                             transaction and rolls it back, so nothing it
@@ -634,6 +651,7 @@ Cost of a run:
 /**
  * @test String concatenation
  * @expect $result = 'John Doe'
+ * @expect length($result) = 8
  */
 $result = CALL MICROFLOW MyModule.ConcatNames(
   FirstName = 'John', LastName = 'Doe'

@@ -29,7 +29,7 @@ import (
 var (
 	knownODataServiceProps = []string{
 		"Path", "Version", "ODataVersion", "Namespace", "ServiceName",
-		"Summary", "Description", "PublishAssociations", "Folder",
+		"Summary", "Description", "PublishAssociations", "SupportsGraphQL", "Folder",
 	}
 	knownPublishEntityProps = []string{
 		"ReadMode", "InsertMode", "UpdateMode", "DeleteMode", "UsePaging", "PageSize",

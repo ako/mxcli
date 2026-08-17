@@ -17,6 +17,26 @@ type TestResult struct {
 	Status   TestStatus    // Pass, Fail, Skip, Error
 	Message  string        // Failure/skip message
 	Duration time.Duration // Execution time
+	// Assertions is how many assertions the test made. A PASS with zero of them
+	// says only that the body did not throw, and the output has to make that
+	// visible — a suite whose green cannot be told apart from a vacuous one is
+	// the failure this whole area exists to prevent.
+	Assertions int
+	// SourceFile is the test file the case came from, so a multi-file run's
+	// report can say where a failure lives.
+	SourceFile string
+}
+
+// newResult starts a result from its test case, carrying across everything the
+// case already knows. Every construction site goes through this, so a new field
+// on TestResult cannot be populated in one path and silently missing in another.
+func newResult(tc TestCase) TestResult {
+	return TestResult{
+		ID:         tc.ID,
+		Name:       tc.Name,
+		Assertions: tc.AssertionCount(),
+		SourceFile: tc.SourceFile,
+	}
 }
 
 // TestStatus represents the outcome status of a test.
@@ -68,6 +88,58 @@ func (sr *SuiteResult) FailCount() int {
 	n := 0
 	for _, t := range sr.Tests {
 		if t.Status == StatusFail || t.Status == StatusError {
+			n++
+		}
+	}
+	return n
+}
+
+// resultNote renders the parenthetical after a test's name: how long it took and
+// how much it actually asserted.
+//
+// The assertion count is here rather than buried in a --verbose mode because the
+// whole lesson of the silent-pass defect is that a suite's ordinary output has to
+// distinguish a test that asserted from one that did not.
+func resultNote(t TestResult) string {
+	var parts []string
+	if t.Duration > 0 {
+		parts = append(parts, t.Duration.Round(time.Millisecond).String())
+	}
+	switch {
+	case t.Status == StatusSkip || t.Status == StatusError:
+		// Neither reached its assertions, so a count would say nothing.
+	case t.Assertions == 0:
+		parts = append(parts, "no assertions")
+	case t.Assertions == 1:
+		parts = append(parts, "1 assertion")
+	default:
+		parts = append(parts, fmt.Sprintf("%d assertions", t.Assertions))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// VacuousCount returns the number of tests that reached a verdict without
+// asserting anything — a pass that means only "the body did not throw".
+func (sr *SuiteResult) VacuousCount() int {
+	n := 0
+	for _, t := range sr.Tests {
+		if t.Assertions == 0 && (t.Status == StatusPass || t.Status == StatusFail) {
+			n++
+		}
+	}
+	return n
+}
+
+// ErrorCount returns the number of tests that did not reach a verdict — an
+// uncompilable @expect, a missing microflow, a failed request.
+//
+// It is reported separately from FailCount in the summary line. A suite whose
+// output cannot distinguish "this assertion is false" from "this assertion was
+// never evaluated" is how the silent-pass defect stayed invisible for weeks.
+func (sr *SuiteResult) ErrorCount() int {
+	n := 0
+	for _, t := range sr.Tests {
+		if t.Status == StatusError {
 			n++
 		}
 	}
@@ -210,20 +282,31 @@ func ParseLogResults(logReader io.Reader, suite *TestSuite) *SuiteResult {
 
 	// Collect results in test order
 	for _, tc := range suite.Tests {
+		// A test whose @expect did not compile was never generated, so the log
+		// has nothing to say about it. Report the parse error rather than the
+		// generic "not executed".
+		if res, bad := assertionErrorResult(tc); bad {
+			result.Tests = append(result.Tests, res)
+			continue
+		}
 		if r, ok := resultMap[tc.ID]; ok {
-			// Use the original test name if available
-			if tc.Name != "" {
-				r.Name = tc.Name
+			// The log carries a status and a duration; everything else is known
+			// from the test case and is stamped on here so this path reports the
+			// same fields as the endpoint path.
+			res := newResult(tc)
+			if tc.Name == "" {
+				res.Name = r.Name
 			}
-			result.Tests = append(result.Tests, *r)
+			res.Status = r.Status
+			res.Message = r.Message
+			res.Duration = r.Duration
+			result.Tests = append(result.Tests, res)
 		} else {
 			// Test was not executed — mark as error
-			result.Tests = append(result.Tests, TestResult{
-				ID:      tc.ID,
-				Name:    tc.Name,
-				Status:  StatusError,
-				Message: "Test was not executed (runtime may have crashed before reaching it)",
-			})
+			res := newResult(tc)
+			res.Status = StatusError
+			res.Message = "Test was not executed (runtime may have crashed before reaching it)"
+			result.Tests = append(result.Tests, res)
 		}
 	}
 
@@ -254,8 +337,8 @@ func PrintResults(w io.Writer, result *SuiteResult, color bool) {
 		}
 
 		fmt.Fprintf(w, "  %s  %s", statusStr, t.Name)
-		if t.Duration > 0 {
-			fmt.Fprintf(w, " (%s)", t.Duration.Round(time.Millisecond))
+		if note := resultNote(t); note != "" {
+			fmt.Fprintf(w, " (%s)", note)
 		}
 		fmt.Fprintln(w)
 
@@ -264,9 +347,23 @@ func PrintResults(w io.Writer, result *SuiteResult, color bool) {
 		}
 	}
 
+	// A vacuous test is not a failure, but it must never be silent: after the
+	// @expect fix the cheapest way back to a green suite is to delete the
+	// assertion, and that must not look like a repair.
+	if n := result.VacuousCount(); n > 0 {
+		fmt.Fprintf(w, "%s\n", strings.Repeat("-", 60))
+		fmt.Fprintf(w, "%d test(s) asserted nothing beyond \"did not throw\". "+
+			"Run with --require-assertions to make that an error.\n", n)
+	}
+
 	fmt.Fprintf(w, "%s\n", strings.Repeat("-", 60))
-	fmt.Fprintf(w, "Total: %d  Passed: %d  Failed: %d  Skipped: %d",
-		len(result.Tests), result.PassCount(), result.FailCount(), result.SkipCount())
+	errors := result.ErrorCount()
+	fmt.Fprintf(w, "Total: %d  Passed: %d  Failed: %d",
+		len(result.Tests), result.PassCount(), result.FailCount()-errors)
+	if errors > 0 {
+		fmt.Fprintf(w, "  Errors: %d", errors)
+	}
+	fmt.Fprintf(w, "  Skipped: %d", result.SkipCount())
 	if result.Duration > 0 {
 		fmt.Fprintf(w, "  Time: %s", result.Duration.Round(time.Millisecond))
 	}
@@ -285,4 +382,42 @@ func PrintResults(w io.Writer, result *SuiteResult, color bool) {
 			fmt.Fprintf(w, "Some tests failed.\n")
 		}
 	}
+}
+
+// assertionErrorResult turns a test whose assertions could not be compiled into
+// an ERROR result.
+//
+// This is the fail-closed rule the whole annotation pipeline is built around: an
+// assertion the runner cannot evaluate must never be able to report a pass. The
+// original implementation dropped such a line during parsing, and a test with no
+// assertions left passes as long as it does not throw — so a suite could report
+// green while asserting nothing. ERROR is counted with the failures, so the run's
+// exit code is non-zero.
+func assertionErrorResult(tc TestCase) (TestResult, bool) {
+	if len(tc.AssertionErrors) == 0 {
+		return TestResult{}, false
+	}
+	res := newResult(tc)
+	res.Status = StatusError
+	res.Message = strings.Join(tc.AssertionErrors, "; ")
+	return res, true
+}
+
+// vacuousResult turns a test that asserts nothing into an ERROR, but only when
+// the run asked for that.
+//
+// It is opt-in because a smoke test — "this microflow runs without throwing" —
+// is a legitimate thing to write, and is documented as such. What is not
+// legitimate is a suite in which nobody can tell the two apart, and the summary
+// line handles that unconditionally. This flag is for a project that has decided
+// every test must assert.
+func vacuousResult(tc TestCase, require bool) (TestResult, bool) {
+	if !require || tc.AssertionCount() > 0 {
+		return TestResult{}, false
+	}
+	res := newResult(tc)
+	res.Status = StatusError
+	res.Message = "the test has no assertions — it can only report that the body did not throw " +
+		"(add an @expect, or drop --require-assertions)"
+	return res, true
 }

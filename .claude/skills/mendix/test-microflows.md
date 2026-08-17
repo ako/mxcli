@@ -152,11 +152,100 @@ The markdown format turns your tests into living documentation.
 | Tag | Purpose | Example |
 |-----|---------|---------|
 | `@test` | Test name (required) | `@test string concatenation` |
-| `@expect` | Assert variable value | `@expect $result = 'John Doe'` |
-| `@expect` | Assert entity attribute | `@expect $product/Name = 'TestProduct'` |
-| `@verify` | OQL post-condition | `@verify select count(*) from Mod.E where Code = 'X' = 1` |
+| `@expect` | Assert a Mendix condition | `@expect $result = 'John Doe'` |
+| `@expect` | Assert an entity attribute | `@expect $product/Name = 'TestProduct'` |
+| `@expect` | Assert with a built-in | `@expect length($result) = 81` |
+| `@verify` | **Not implemented** — rejected as an error | see below |
 | `@throws` | Expect error | `@throws 'validation failed'` |
 | `@cleanup` | Rollback strategy | `@cleanup rollback` (default) or `@cleanup none` |
+
+### `@expect` — any Mendix condition, and nothing it cannot evaluate
+
+An `@expect` is **a Mendix expression that must evaluate to true**, not a fixed
+`$var = value` shape. Anything the Mendix expression engine accepts works:
+
+```mdl
+@expect $result = 'John Doe'                       -- equality
+@expect $product/Name != 'Widget'                  -- inequality (<> also accepted)
+@expect length($result) = 81                       -- built-in functions
+@expect find($result, '0') >= 0                    -- any comparison operator
+@expect substring($result, 0, 9) = substring($result, 9, 18)
+@expect find($result, '0') >= 0 and $count > 3     -- and / or / not(...)
+@expect $status = MyModule.Status.Open             -- enumeration values
+```
+
+`<>` is accepted in the annotation and rewritten to `!=` on the way to the
+model, because Mendix's expression engine rejects the `<>` spelling (CE0117).
+
+**An assertion the runner cannot compile is an ERROR, never a pass.** Unknown
+functions, wrong arity, unbalanced parentheses and expressions that evaluate to
+a value rather than a condition are all rejected by name:
+
+```
+ERROR  a self-evident falsehood
+       @expect randomInt($result) = 1: randomInt() is not a Mendix expression
+       function at column 1 ("randomInt")
+```
+
+This is the one rule the annotation is built around. A test framework that
+cannot evaluate an assertion has exactly one safe behaviour, and passing is not
+it — an earlier version matched only `$var = <literal>` and silently discarded
+every other line, so `@expect 1 = 2` reported PASS.
+
+**A failure reports what came back**, not just what was wanted, whenever the
+observed value's type is pinned down by the assertion itself:
+
+```
+FAIL  the board is 81 squares
+      expected length($result) = 81, actual: 27
+```
+
+The value is omitted rather than guessed when neither side of the comparison
+establishes a type (`@expect $a = $b`), because Mendix's expression engine is
+typed and a wrong guess would break the build instead of the test.
+
+### `@verify` is not implemented, and says so
+
+`@verify` was documented here as an OQL post-condition. It is parsed and **no
+runner has ever evaluated one**, so a test whose only assertion was a `@verify`
+asserted nothing. It is now rejected:
+
+```
+ERROR  writes a row
+       @verify select count(*) …: @verify is not implemented — no runner
+       evaluates it, so it would assert nothing. Assert on the microflow's own
+       result with @expect instead
+```
+
+That is the same rule as for an uncompilable `@expect`, applied to the same
+class of problem: an annotation that looks like an assertion and is silently
+ignored is worse than one that is missing. To check a database post-condition
+today, have the microflow under test return the value and assert on it with
+`@expect`, or query the app separately with `mxcli oql`.
+
+### A test that asserts nothing says so
+
+Every result line carries what the test actually checked, and a run that
+contains a vacuous test calls it out:
+
+```
+  PASS  the board is 81 squares (6ms, 2 assertions)
+  PASS  asserts nothing at all (4ms, no assertions)
+------------------------------------------------------------
+1 test(s) asserted nothing beyond "did not throw". Run with
+--require-assertions to make that an error.
+```
+
+A test with no `@expect` and no `@throws` is a **smoke test** — it reports only
+that the body did not throw. That is a legitimate thing to write, so it still
+passes by default. What it may not do is look identical to a test with six
+assertions: after `@expect` started failing closed, the cheapest way back to a
+green suite is to delete the assertion, and that must not read as a repair.
+
+`--require-assertions` turns every vacuous test into an ERROR, for a project
+that has decided each test must assert. The JUnit report carries the count as a
+`<property name="assertions">` per case, and `classname` now identifies the
+source file, so a failure in a multi-file run says where it lives.
 
 ### `@cleanup` — what happens to a test's data
 
