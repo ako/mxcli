@@ -624,6 +624,45 @@ Three things that only bite once GraphQL is on:
   metamodel does not have — an unknown property is not a build error, it is a
   document Studio Pro will not open.
 
+### What GraphQL actually covers, measured
+
+The GraphQL surface is narrower than the OData one, and the gaps are not
+documented next to the checkbox. Introspected and exercised on 11.13, on a
+resource published over both at once:
+
+| OData | GraphQL |
+|---|---|
+| `$select` | **inherent** — you name the fields, that *is* the projection |
+| `$top` | `first: Int` |
+| `$skip` | `offset: Int` |
+| `$orderby` | `orderBy: [{field: ASC\|DESC}]` |
+| key lookup `Set(K='v')` | a singular field: `vMonthCategory(period: "…", category: "…")` |
+| **`$filter`** | **absent** |
+| **`$count`** | **absent** |
+| `$expand` | not measured here (the probe has no associations) |
+
+The whole schema for a one-entity service is nine types — `Query`,
+`SortOrder`, the entity, its order input, and the scalars. There is no filter
+type, no where type and no count type in it.
+
+Two traps, both measured:
+
+- **`orderBy` must be a LIST.** `orderBy: {total: DESC}` fails with
+  `Incorrect value for orderBy`, while `orderBy: [{total: DESC}]` works — and
+  introspection advertises the argument as a bare input object
+  (`VMonthCategoryOrderInput`), not a list, so the schema and the parser
+  disagree. The error does not mention it.
+- **An unknown argument is silently ignored.** `monthCategories(where: {…})`
+  and even `monthCategories(bogusArgument: 42)` both return **200 with the
+  full result set** rather than an error. A client that assumes a filter
+  argument exists gets every row and no warning — the same "200 with the wrong
+  rows" failure the pushdown pack was written about, in a different surface.
+
+So: **paging and sorting are safe over GraphQL; filtering is not there.** A
+widget that needs server-side filtering has to use the OData surface, and a
+resource where the client filters is a reason to keep OData even when GraphQL
+is enabled.
+
 GraphQL here is not as complete as the OData surface — it is a second way to read
 the same published resources, which some widgets and clients prefer.
 
