@@ -64,6 +64,17 @@ func attach(opts RunOptions, w io.Writer) (*attachedApp, error) {
 // since both produce the same deployment from the same source.
 func (a *attachedApp) endpoint() *endpointClient { return a.client }
 
+// adminOptions reaches the attached app's admin API — the same plane
+// applyModelChange drives, and where @verify's OQL runs.
+func (a *attachedApp) adminOptions() docker.M2EEOptions {
+	return docker.M2EEOptions{
+		Host:   "127.0.0.1",
+		Port:   a.hs.AdminPort,
+		Token:  a.hs.AdminPass,
+		Direct: true,
+	}
+}
+
 func (a *attachedApp) applyModelChange(projectPath string) (string, error) {
 	build, err := a.serve.Build(docker.BuildRequest{Target: docker.TargetDeploy, ProjectFilePath: projectPath})
 	if err != nil {
@@ -134,7 +145,7 @@ func runAttached(opts RunOptions, suite *TestSuite, timeout time.Duration, w io.
 		return runAttachedWatch(opts, app, suite, timeout, w, finish, func(s *TestSuite) { injected = s })
 	}
 
-	result, err := runSuite(app.client, suite, opts, w)
+	result, err := runSuite(app.client, app.adminOptions(), suite, opts, w)
 	if err != nil {
 		return finish(nil, err)
 	}

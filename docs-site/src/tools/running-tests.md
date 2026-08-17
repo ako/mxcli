@@ -182,15 +182,63 @@ write; what it may not do is look the same as a test with six assertions.
 `--require-assertions` makes every vacuous test an ERROR for projects that want
 CI to enforce it.
 
-`@verify` was documented as an OQL post-condition and **is not implemented** —
-it is parsed and evaluated by nothing, so a test whose only assertion was a
-`@verify` asserted nothing. It is now rejected with an error pointing at
-`@expect`. To check a database post-condition, return the value from the
-microflow under test and assert on it, or query the app with `mxcli oql`.
+`@verify` asserts on the database instead of the return value — see below.
 
 The JUnit report (`--junit`) carries the assertion count as a
 `<property name="assertions">` on each case, and `classname`/`file` identify the
 source test file so a failure in a multi-file run says where it lives.
+
+### `@verify`: asserting on what the microflow wrote
+
+`@expect` sees only what a microflow returned. Most Mendix microflows are side
+effects, so `@verify` is how you assert on the rows one left behind — an OQL
+query, a comparison, and the value it must satisfy:
+
+```mdl
+/**
+ * @test dealing a board writes 81 cells
+ * @cleanup none
+ * @expect $result = 'ok'
+ * @verify select count(*) as n from Sudoku.Cell = 81
+ * @verify select count(*) as n from Sudoku.Cell where Value = 0 > 0
+ */
+$result = CALL MICROFLOW Sudoku.ACT_DealGame();
+/
+```
+
+The query runs after the microflow returns, over the same admin API `mxcli oql`
+uses. Three rules follow, each enforced rather than left to trip you up:
+
+- **`@cleanup none` is required.** `rollback` is the default and undoes the
+  test's writes before the query could see them, so a `@verify` on a rollback
+  test is refused rather than run against the pre-test state.
+- **The query must return exactly one row and one column** — aggregate it, or
+  select one attribute of one row. Picking a cell out of a table would be a
+  guess.
+- **The expected value is a literal**: a number, a quoted string, `true`/`false`
+  or `empty`. It is split off at the last comparison operator outside quotes and
+  parentheses, so a `where Value = 5` inside the query is left alone.
+- **Every selected column needs a name.** Mendix's OQL rejects a bare
+  `select count(*)` with *"All OQL select columns must have a name"* — write
+  `select count(*) as n`.
+
+Operators are `=`, `!=` (`<>` accepted), `<`, `<=`, `>`, `>=`; numbers compare
+numerically even though the runtime returns them as strings.
+
+A `@verify` that cannot be evaluated — unknown entity, malformed OQL, a
+non-scalar result, or something that was never a query — is an **ERROR**, never
+a pass. A false one fails with the value that came back:
+
+```
+FAIL   dealing a board writes 81 cells
+       expected select count(*) as n from Sudoku.Cell = 81, actual: 27
+ERROR  cells exist for a game that does not
+       @verify select count(*) as n from Sudoku.NoSuch = 1: OQL error: Unknown entity
+```
+
+`@verify` needs the test endpoint, so it works under `--local` and `--attach`.
+The Docker / `--legacy-runner` path refuses a suite that uses it: its tests run
+during boot, so there is no point at which to query the app.
 
 ### The app's own after-startup microflow
 
