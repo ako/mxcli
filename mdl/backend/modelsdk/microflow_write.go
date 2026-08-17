@@ -57,6 +57,14 @@ func init() {
 	codec.RegisterTypeDefaults("Microflows$JavaActionCallAction", codec.TypeDefaults{
 		NullFields: []string{"QueueSettings"},
 	})
+	// A QueueSettings written by `IN QUEUE` names the queue and configures no
+	// retry. Retry (Queues$QueueFixedRetry / Queues$QueueExponentialRetry) has no
+	// MDL surface; serializing it as null mirrors how the call itself serializes
+	// an absent QueueSettings. A stored retry is never overwritten by this —
+	// checkNoQueuedCalls refuses the rewrite instead (guard-don't-drop).
+	codec.RegisterTypeDefaults("Queues$QueueSettings", codec.TypeDefaults{
+		NullFields: []string{"Retry"},
+	})
 	codec.RegisterListMarker("Microflows$JavaActionParameterMapping", 2)
 	codec.RegisterTypeDefaults("Microflows$TypedTemplate", codec.TypeDefaults{
 		MandatoryListMarkers: map[string]int32{"Arguments": 2},
@@ -480,6 +488,9 @@ func microflowActionToGen(action microflows.MicroflowAction) element.Element {
 				m.SetArgument(pm.Argument)
 				mc.AddParameterMappings(m)
 			}
+			if qs := queueSettingsToGen(a.MicroflowCall.QueueSettings); qs != nil {
+				mc.SetQueueSettings(qs)
+			}
 			g.SetMicroflowCall(mc)
 		}
 		g.SetOutputVariableName(a.ResultVariableName) // BSON key "ResultVariableName"
@@ -544,6 +555,9 @@ func microflowActionToGen(action microflows.MicroflowAction) element.Element {
 			mappings = append(mappings, m)
 		}
 		addPartList(g, "ParameterMappings", mappings)
+		if qs := queueSettingsToGen(a.QueueSettings); qs != nil {
+			addPart(g, "QueueSettings", qs)
+		}
 		return g
 	case *microflows.JavaScriptActionCallAction:
 		// Built directly like JavaActionCallAction: the JS action call binds
@@ -948,6 +962,24 @@ func codeActionParameterValueToGen(v microflows.CodeActionParameterValue) elemen
 		return g
 	}
 	return nil
+}
+
+// queueSettingsToGen builds the Queues$QueueSettings child that binds a call
+// activity to a task queue. Returns nil for an unqueued call, so the call's
+// registered NullFields default writes QueueSettings: null as before.
+//
+// Only the QueueSettings element is written — NOT the call's sibling `Queue`
+// string. gen carries a `Queue` ByNameRef on both call types, but
+// generated/metamodel (the arbiter) has neither, and measured on 11.13 a call
+// carrying only `Queue` is inert: mx check does not read it. Writing both would
+// mean two places to keep in sync, one of which nothing consumes.
+func queueSettingsToGen(qs *microflows.QueueSettings) element.Element {
+	if qs == nil || qs.Queue == "" {
+		return nil
+	}
+	g := newElem("Queues$QueueSettings", string(qs.ID))
+	addStr(g, "Queue", qs.Queue)
+	return g
 }
 
 func newElem(typeName, id string) *element.Base {

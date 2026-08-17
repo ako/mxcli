@@ -4,52 +4,127 @@ package executor
 
 import (
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 
+	"github.com/mendixlabs/mxcli/mdl/ast"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
 	"github.com/mendixlabs/mxcli/model"
 )
 
-// checkNoQueuedCalls refuses to rewrite a microflow that has a call bound to a
-// task queue, because the rewrite would silently drop that binding.
+// checkNoQueuedCalls refuses a microflow rewrite that would silently drop a
+// call's task-queue binding.
 //
-// A CREATE OR REPLACE/MODIFY rebuilds the microflow from the statement, and both
-// engines hardcode QueueSettings to null on a call — correct for a newly
-// authored call, wrong for one that was already queued:
+// A CREATE OR REPLACE/MODIFY rebuilds the microflow from the statement, so any
+// binding the script does not restate is gone. Nothing signals the loss
+// afterwards: measured on Mendix 11.13, with the binding present `mx check`
+// reports CE1613 ("The selected task queue … no longer exists") on the call
+// activity; after a dropping rewrite it reports 0 errors. So mxcli "fixes" the
+// build by deleting the user's configuration, and the project then looks
+// healthy (guard-don't-drop, ADR-0005).
 //
-//	codec.RegisterTypeDefaults("Microflows$MicroflowCall", codec.TypeDefaults{
-//	    NullFields: []string{"QueueSettings"}, ...
+// `IN QUEUE` makes the binding authorable, so a script that restates every
+// stored queue is allowed through — that is the normal way to edit a microflow
+// with a queued call. Two things still refuse:
 //
-// Nothing signals the loss afterwards. Measured on Mendix 11.13: with the
-// binding present `mx check` reports CE1613 ("The selected task queue … no
-// longer exists") on the call activity; after the rewrite it reports 0 errors.
-// So mxcli "fixes" the build by deleting the user's configuration, and the
-// project then looks healthy.
-//
-// MDL cannot yet author a queued call, so the binding cannot be restated in the
-// script either — refusing is the only option that does not lose data
-// (guard-don't-drop, ADR-0005). Remove this guard when `in queue` exists and the
-// rebuild carries the binding through.
-func checkNoQueuedCalls(ctx *ExecContext, microflowID model.ID, qualifiedName string) error {
+//   - A stored queue the new script does not name. Restating some and dropping
+//     others is far more likely a mistake than an intent.
+//   - A stored QueueSettings carrying a Retry (Queues$QueueFixedRetry /
+//     Queues$QueueExponentialRetry). MDL has no syntax for a retry policy, so
+//     the rewrite cannot preserve one, and re-running an "unchanged" script
+//     would quietly reset it.
+func checkNoQueuedCalls(ctx *ExecContext, microflowID model.ID, qualifiedName string, stmt *ast.CreateMicroflowStmt) error {
 	raw, err := ctx.Backend.GetRawUnit(microflowID)
 	if err != nil {
 		// Unreadable stored unit is not this guard's business; the rewrite path
 		// reports its own errors.
 		return nil
 	}
-	queues := queuedCallTargets(raw)
-	if len(queues) == 0 {
+	stored := queuedCallTargets(raw)
+	if len(stored) == 0 {
 		return nil
 	}
-	sort.Strings(queues)
+
+	if retries := storedQueueRetries(raw); len(retries) > 0 {
+		sort.Strings(retries)
+		return mdlerrors.NewUnsupported(fmt.Sprintf(
+			"microflow %s has %d queued call(s) with a retry policy (%s), and MDL cannot express one — "+
+				"rewriting the microflow would reset it.\n"+
+				"  Change the microflow in Studio Pro, or remove the retry from the call first.",
+			qualifiedName, len(retries), strings.Join(retries, ", ")))
+	}
+
+	restated := authoredQueueTargets(stmt)
+	var lost []string
+	for _, q := range stored {
+		if !restated[strings.ToLower(q)] {
+			lost = append(lost, q)
+		}
+	}
+	if len(lost) == 0 {
+		return nil
+	}
+	sort.Strings(lost)
 	return mdlerrors.NewUnsupported(fmt.Sprintf(
-		"microflow %s has %d call(s) bound to a task queue (%s), and rewriting it would silently "+
-			"drop that binding — MDL cannot express a queued call yet, so the queue cannot be restated "+
-			"in this script.\n"+
-			"  Change the microflow in Studio Pro, or remove the task queue from the call first "+
-			"(the binding lives on the call activity, not the microflow).",
-		qualifiedName, len(queues), strings.Join(queues, ", ")))
+		"microflow %s has %d call(s) bound to a task queue that this script does not restate (%s), "+
+			"and rewriting it would silently drop the binding.\n"+
+			"  Add the queue to the call — `CALL MICROFLOW Mod.Target(...) IN QUEUE %s` (same clause on "+
+			"CALL JAVA ACTION) — or change the microflow in Studio Pro.",
+		qualifiedName, len(lost), strings.Join(lost, ", "), lost[0]))
+}
+
+// authoredQueueTargets returns the lower-cased queue names the incoming
+// statement binds calls to, found by walking the whole statement tree — call
+// statements nest inside IF / LOOP / error handlers, and a hand-written switch
+// over statement types silently misses whichever nesting was added last.
+func authoredQueueTargets(stmt *ast.CreateMicroflowStmt) map[string]bool {
+	out := map[string]bool{}
+	if stmt == nil {
+		return out
+	}
+	collectAuthoredQueues(reflect.ValueOf(stmt), out, map[uintptr]bool{})
+	return out
+}
+
+func collectAuthoredQueues(v reflect.Value, out map[string]bool, seen map[uintptr]bool) {
+	switch v.Kind() {
+	case reflect.Ptr, reflect.Interface:
+		if v.IsNil() {
+			return
+		}
+		if v.Kind() == reflect.Ptr {
+			if seen[v.Pointer()] {
+				return
+			}
+			seen[v.Pointer()] = true
+			switch s := v.Interface().(type) {
+			case *ast.CallMicroflowStmt:
+				addQueueName(s.Queue, out)
+			case *ast.CallJavaActionStmt:
+				addQueueName(s.Queue, out)
+			}
+		}
+		collectAuthoredQueues(v.Elem(), out, seen)
+	case reflect.Slice, reflect.Array:
+		for i := 0; i < v.Len(); i++ {
+			collectAuthoredQueues(v.Index(i), out, seen)
+		}
+	case reflect.Struct:
+		for i := 0; i < v.NumField(); i++ {
+			if v.Type().Field(i).PkgPath != "" {
+				continue // unexported
+			}
+			collectAuthoredQueues(v.Field(i), out, seen)
+		}
+	}
+}
+
+func addQueueName(q *ast.QualifiedName, out map[string]bool) {
+	if q == nil {
+		return
+	}
+	out[strings.ToLower(q.Module+"."+q.Name)] = true
 }
 
 // queuedCallTargets walks a stored microflow document and returns the queue
@@ -81,6 +156,33 @@ func queuedCallTargets(v any) []string {
 	case []any:
 		for _, el := range t {
 			out = append(out, queuedCallTargets(el)...)
+		}
+	}
+	return dedupeStrings(out)
+}
+
+// storedQueueRetries returns the queue names whose QueueSettings carries a retry
+// policy. `IN QUEUE` writes Retry as null, so a non-null one can only have come
+// from Studio Pro and has no MDL spelling.
+func storedQueueRetries(v any) []string {
+	var out []string
+	switch t := v.(type) {
+	case map[string]any:
+		if qs, ok := t["QueueSettings"].(map[string]any); ok && qs != nil {
+			if retry, ok := qs["Retry"]; ok && retry != nil {
+				name, _ := qs["Queue"].(string)
+				if name == "" {
+					name = "(unnamed queue)"
+				}
+				out = append(out, name)
+			}
+		}
+		for _, val := range t {
+			out = append(out, storedQueueRetries(val)...)
+		}
+	case []any:
+		for _, el := range t {
+			out = append(out, storedQueueRetries(el)...)
 		}
 	}
 	return dedupeStrings(out)

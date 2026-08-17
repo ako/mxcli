@@ -148,12 +148,12 @@ func init() {
 		Path:    "microflow.call",
 		Summary: "Call microflows and Java actions with parameters",
 		Keywords: []string{
-			"call microflow", "call java action", "invoke",
+			"call microflow", "call java action", "invoke", "in queue", "queued call", "background execution",
 			"sub-microflow", "java action", "parameter passing",
 		},
-		Syntax:  "$Result = CALL MICROFLOW Module.Name (Param = value);\n$Result = CALL JAVA ACTION Module.Name (Param = value);",
-		Example: "$IsValid = CALL MICROFLOW MyModule.ValidateOrder (\n  Order = $NewOrder\n);\n\n$Token = CALL JAVA ACTION MyModule.GenerateToken (\n  UserId = $User/Id\n);",
-		SeeAlso: []string{"java-action", "microflow.create"},
+		Syntax:  "$Result = CALL MICROFLOW Module.Name (Param = value) [IN QUEUE Module.Queue];\n$Result = CALL JAVA ACTION Module.Name (Param = value) [IN QUEUE Module.Queue];",
+		Example: "$IsValid = CALL MICROFLOW MyModule.ValidateOrder (\n  Order = $NewOrder\n);\n\n$Token = CALL JAVA ACTION MyModule.GenerateToken (\n  UserId = $User/Id\n);\n\n-- Run the call on a task queue (background execution). The queue must\n-- exist; a queued CALL JAVA ACTION must return Nothing, or the build fails\n-- with CE7038.\nCALL MICROFLOW MyModule.ACT_Refresh () IN QUEUE MyModule.RefreshQueue;\nCALL JAVA ACTION MyModule.RefreshData (Url = $Url) IN QUEUE MyModule.RefreshQueue;",
+		SeeAlso: []string{"java-action", "microflow.create", "queue"},
 	})
 
 	Register(SyntaxFeature{

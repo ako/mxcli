@@ -626,6 +626,15 @@ func validateFlowBodyReferences(ctx *ExecContext, body []ast.MicroflowStatement,
 		}
 	}
 
+	if len(refs.queues) > 0 {
+		known := buildQueueQualifiedNames(ctx)
+		for _, ref := range refs.queues {
+			if !known[strings.ToLower(ref)] {
+				errors = append(errors, fmt.Sprintf("task queue not found: %s (referenced by in queue)", ref))
+			}
+		}
+	}
+
 	if len(refs.microflows) > 0 {
 		known := buildMicroflowQualifiedNames(ctx)
 		for _, ref := range refs.microflows {
@@ -825,6 +834,7 @@ type flowRefCollector struct {
 	javaScriptActions []codeActionCallRef
 	entities          []entityRef
 	retrieves         []retrieveConstraintRef
+	queues            []string
 }
 
 // codeActionCallRef is a Java / JavaScript action call: the action's qualified
@@ -900,10 +910,20 @@ type retrieveConstraintRef struct {
 	constraint string // bracketed XPath constraint, e.g. "[System.owner = '[%CurrentUser%]']"
 }
 
+// addQueue records an `IN QUEUE Module.Name` target. A queue that does not exist
+// builds a dangling reference that only fails at build time, as CE1613 on the
+// call activity rather than on the script — so it is worth catching in
+// `check --references`.
+func (c *flowRefCollector) addQueue(q *ast.QualifiedName) {
+	if q != nil && q.Module != "" {
+		c.queues = append(c.queues, q.Module+"."+q.Name)
+	}
+}
+
 func (c *flowRefCollector) empty() bool {
 	return len(c.pages) == 0 && len(c.microflows) == 0 && len(c.nanoflows) == 0 &&
 		len(c.javaActions) == 0 && len(c.javaScriptActions) == 0 && len(c.entities) == 0 &&
-		len(c.retrieves) == 0
+		len(c.retrieves) == 0 && len(c.queues) == 0
 }
 
 func (c *flowRefCollector) collectFromStatements(stmts []ast.MicroflowStatement) {
@@ -917,6 +937,7 @@ func (c *flowRefCollector) collectFromStatements(stmts []ast.MicroflowStatement)
 			if s.MicroflowName.Module != "" {
 				c.microflows = append(c.microflows, s.MicroflowName.String())
 			}
+			c.addQueue(s.Queue)
 		case *ast.CallNanoflowStmt:
 			if s.NanoflowName.Module != "" {
 				c.nanoflows = append(c.nanoflows, s.NanoflowName.String())
@@ -927,6 +948,7 @@ func (c *flowRefCollector) collectFromStatements(stmts []ast.MicroflowStatement)
 					name: s.ActionName.String(), argNames: callArgNames(s.Arguments),
 				})
 			}
+			c.addQueue(s.Queue)
 		case *ast.CallJavaScriptActionStmt:
 			if s.ActionName.Module != "" {
 				c.javaScriptActions = append(c.javaScriptActions, codeActionCallRef{

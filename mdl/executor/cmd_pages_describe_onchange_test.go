@@ -14,8 +14,8 @@ import (
 // described as if it did not. That makes DESCRIBE unable to confirm its own
 // round trip for these five widgets.
 func TestParseRawWidget_OnChangeOnEveryInputWidget(t *testing.T) {
-// `dropdown` is absent: DESCRIBE has no Forms$DropDown case at all, which is a
-// separate gap from this one and is left alone here.
+	// `dropdown` is absent: DESCRIBE has no Forms$DropDown case at all, which is a
+	// separate gap from this one and is left alone here.
 	types := map[string]string{
 		"textbox":      "Forms$TextBox",
 		"textarea":     "Forms$TextArea",

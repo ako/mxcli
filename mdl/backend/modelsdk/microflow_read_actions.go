@@ -135,6 +135,7 @@ func actionFromGen(el element.Element) microflows.MicroflowAction {
 					call.ParameterMappings = append(call.ParameterMappings, m)
 				}
 			}
+			call.QueueSettings = queueSettingsFromRaw(mc.Raw())
 			out.MicroflowCall = call
 		}
 		return out
@@ -291,6 +292,7 @@ func actionFromGen(el element.Element) microflows.MicroflowAction {
 		if b, ok := raw.Lookup("UseReturnVariable").BooleanOK(); ok {
 			out.UseReturnVariable = b
 		}
+		out.QueueSettings = queueSettingsFromRaw(raw)
 		if arr, ok := raw.Lookup("ParameterMappings").ArrayOK(); ok {
 			vals, _ := arr.Values()
 			for _, v := range vals {
@@ -1121,4 +1123,20 @@ func rawDocElements(raw bson.Raw, key string) []bson.Raw {
 		}
 	}
 	return out
+}
+
+// queueSettingsFromRaw reads a call's Queues$QueueSettings child back into the
+// semantic model. Retry is carried as raw storage rather than decoded: MDL
+// cannot author one, and the rewrite guard needs to know it is there so it can
+// refuse rather than drop it (guard-don't-drop, ADR-0005).
+func queueSettingsFromRaw(raw bson.Raw) *microflows.QueueSettings {
+	doc, ok := raw.Lookup("QueueSettings").DocumentOK()
+	if !ok {
+		return nil
+	}
+	qs := &microflows.QueueSettings{Queue: rawStr(doc, "Queue")}
+	if v, err := doc.LookupErr("Retry"); err == nil && v.Type != bson.TypeNull {
+		qs.Retry = v
+	}
+	return qs
 }

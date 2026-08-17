@@ -1013,7 +1013,18 @@ call microflow Module.SendNotification(message = $message);
 
 -- Call with error handling
 $Result = call microflow Module.ExternalService(data = $data) on error continue;
+
+-- Run the call on a task queue (background execution). The clause goes after
+-- the arguments and before any ON ERROR, and works on CALL JAVA ACTION too.
+call microflow Module.ACT_Refresh() in queue Module.RefreshQueue;
+call java action Module.RefreshData(Url = $Url) in queue Module.RefreshQueue;
 ```
+
+**Queued calls** — the queue must already exist (`create queue Module.RefreshQueue
+(Parallelism: 2)`), and a queued **Java action must `returns void`** or the build
+fails with CE7038. Rewriting a microflow that has a queued call must restate the
+`in queue` clause; a rewrite that omits it is refused rather than silently
+dropping the binding. See `.claude/skills/mendix/scheduled-events-and-queues.md`.
 
 ### ❌ INCORRECT Syntax
 

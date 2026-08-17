@@ -1,0 +1,67 @@
+-- ============================================================================
+-- Queued calls — IN QUEUE on CALL MICROFLOW and CALL JAVA ACTION
+-- ============================================================================
+--
+-- A task queue runs a call in the background with bounded concurrency. In
+-- Mendix it is a property of the CALL ACTIVITY, not a separate construct, and
+-- it applies to exactly two activities: Call microflow and Call Java action.
+-- `IN QUEUE Module.Queue` is that property.
+--
+-- What is actually written is a `Queues$QueueSettings` child on the call. The
+-- call's sibling `Queue` string (which modelsdk/gen exposes and
+-- generated/metamodel does not) is NOT written: measured on 11.13, a call
+-- carrying only `Queue` is inert — mx check does not read it.
+--
+-- Two traps, both verified on mxbuild 11.13.0:
+--
+--   1. A queued CALL JAVA ACTION must return Nothing. Anything else is
+--      CE7038 "A Java action used for background execution must have a return
+--      type of 'Nothing'." mxcli's default return type for CREATE JAVA ACTION
+--      is Boolean, so `returns void` is required here, not optional.
+--   2. The queue must exist. A missing one is CE1613 on the CALL ACTIVITY —
+--      it names the activity, not the script — so `mxcli check --references`
+--      resolves the name first and reports it against the statement.
+--
+-- Rewriting a microflow that already has a queued call must RESTATE the queue.
+-- A CREATE OR MODIFY that omits it is refused rather than silently dropping the
+-- binding (guard-don't-drop, ADR-0005); before `IN QUEUE` existed there was no
+-- way to restate it, so every such rewrite was refused. A stored retry policy
+-- has no MDL spelling and is still refused.
+--
+-- Verify:
+--   mxcli exec mdl-examples/doctype-tests/queued-calls.mdl -p app.mpr
+--   mx check app.mpr    # 0 errors
+--   mxcli -p app.mpr -c "describe microflow Ops.ACT_Enqueue"   # shows IN QUEUE
+--   mxcli -p app.mpr -c "drop queue Ops.RefreshQueue"
+--   mx check app.mpr    # CE1613 on the call activity — proves it is read
+-- ============================================================================
+
+create module Ops;
+/
+create queue Ops.RefreshQueue (Parallelism: 2, ClusterWide: true);
+/
+create microflow Ops.ACT_Work ($Note: String)
+begin
+  log info node 'Ops' 'working';
+end;
+/
+-- A queued Java action must return Nothing (CE7038 otherwise).
+create java action Ops.RefreshData(Url: string not null) returns void
+as $$
+return;
+$$;
+/
+create or modify microflow Ops.ACT_Enqueue ()
+begin
+  -- Both call activities take the same clause, in the same position:
+  -- after the argument list, before any ON ERROR.
+  call microflow Ops.ACT_Work(Note = 'queued') in queue Ops.RefreshQueue;
+  call java action Ops.RefreshData(Url = 'https://example.org') in queue Ops.RefreshQueue;
+end;
+/
+-- An unqueued call is unchanged: no QueueSettings is written at all, which is
+-- what Studio Pro stores and what every existing microflow round-trips as.
+create or modify microflow Ops.ACT_Direct ()
+begin
+  call microflow Ops.ACT_Work(Note = 'inline');
+end;

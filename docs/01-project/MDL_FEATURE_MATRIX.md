@@ -179,6 +179,7 @@ live distinction is **MPR vs MCP**.
 | **Navigation** | Y | Y | Y | - | - | Y | 11 | N | Y | Y | Y | Y | Y | N | N | Y | N |
 | **Business Events** | Y | Y | Y | N | Y | N | 13 | N | Y | N | Y | N | Y | N | Y | Y | N |
 | **Project Settings** | Y | Y | - | - | - | Y | N | N | Y | Y | Y | N | Y | N | N | Y | P |
+| **Task Queues** | Y | Y | Y | Y | Y | N | 21 | Y | Y | N | N | Y | Y | N | Y | Y | N |
 
 ## Security Features
 
@@ -358,7 +359,6 @@ Document types that exist in Mendix but have no MDL support:
 | **Module settings** | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | Module-level configuration |
 | **Image collection** | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | Image document collections |
 | **Icon collection** | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | Icon/glyph collections |
-| **Task queue** | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | Background task queue config |
 | **Rules** | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | Microflow rules (decision logic) |
 | **Regular expressions** | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | Reusable regex definitions |
 | **Scheduled events** | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | Timer-triggered microflows |
