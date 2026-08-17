@@ -511,6 +511,41 @@ That is also why the key needs `unique error '…'` on the attribute — see the
 CE6624 note below. Both halves of the same idea: the value identifies one row,
 and keeps identifying it.
 
+### A view entity read from the database gets the query options for free
+
+**This decides whether you need any pushdown machinery at all**, so check it
+before reaching for Java.
+
+A published resource has an `Action`: *Read from database*, or a read microflow.
+The difference is not a detail:
+
+| Action | `$filter` `$orderby` `$top` `$skip` `$count` |
+|---|---|
+| **Read from database** (a view entity, or a persistable one) | **Mendix applies them** — they reach the database |
+| Read microflow | Mendix applies **none** of them; whatever the microflow returns is what the client gets |
+
+Measured on 11.13 against a running app — an OQL view over four rows aggregating
+to three, published with `Action: Read from database` and no Java anywhere:
+
+```
+$top=1                       -> 1 row, not 3
+$count=true&$top=1           -> "@odata.count": 3, one row returned
+$filter=Category eq 'Rent'   -> only the Rent row
+$orderby=Total desc&$skip=1  -> [400, 250]   (1500 correctly skipped)
+```
+
+So for a **view entity**, aggregation happens in the database and paging and
+filtering push down to it — a chart or grid can page a large resource with
+nothing hand-written. That is the whole capability the `mendix-odata-pushdown`
+pack exists to recreate.
+
+The pack is for the case a view cannot cover: a resource with **no table
+behind it** — a warehouse view over another system, a stored procedure, a CSV
+through a connector — where a read microflow is the only way to produce the
+rows, and Mendix then applies nothing to them (a `?$top=5` that quietly returns
+all 917 rows). If a view entity can express the resource, prefer it and skip
+the machinery.
+
 ### An aggregate view's key is its grain
 
 A summary resource — an OQL view entity, or a non-persistable row filled by a
