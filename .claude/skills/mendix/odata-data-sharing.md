@@ -539,12 +539,41 @@ filtering push down to it — a chart or grid can page a large resource with
 nothing hand-written. That is the whole capability the `mendix-odata-pushdown`
 pack exists to recreate.
 
-The pack is for the case a view cannot cover: a resource with **no table
-behind it** — a warehouse view over another system, a stored procedure, a CSV
-through a connector — where a read microflow is the only way to produce the
-rows, and Mendix then applies nothing to them (a `?$top=5` that quietly returns
-all 917 rows). If a view entity can express the resource, prefer it and skip
-the machinery.
+The pack is for the case a view cannot cover: **the data is not in this app's
+database at all**, so there is no table for a view to select from and a read
+microflow is the only way to produce the rows. Mendix then applies nothing to
+them — a `?$top=5` that quietly returns all 917 rows.
+
+Its motivating shape is two apps, and the topology is what makes the pushdown
+load-bearing rather than an optimisation:
+
+```
+frontend app  --- external entities / OData --->  backend app
+(grid, chart)                                     (no data of its own)
+                                                        |
+                                          external database connector
+                                                        |
+                                                  DuckDB over CSV
+```
+
+The frontend's grid pages and filters by generating `$top` / `$skip` /
+`$filter` — it has no other vocabulary, because external entities *are* OData.
+The backend's read microflow has to translate those options into the SQL it
+sends through the connector. Without that translation the frontend's paging
+still looks correct while every page drags the whole file across, and nothing
+in either app reports a problem.
+
+Two consequences worth holding on to:
+
+- **A view entity is not an option here**, so "prefer the view" is not advice
+  that applies. The question is only whether *this app* owns the data.
+- **The consumer's capability flags must match the service.** An external
+  entity generated with `TopSupported`/`SkipSupported` that the service does
+  not honour is CE6630 in the consuming app — the two ends of this contract
+  are checked against each other.
+
+If the resource *is* backed by this app's own tables, prefer a view entity and
+skip the machinery entirely.
 
 ### An aggregate view's key is its grain
 
