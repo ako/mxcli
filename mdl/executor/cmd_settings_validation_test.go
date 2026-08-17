@@ -390,6 +390,14 @@ func TestTypedSettingsKeys_MatchExecutor(t *testing.T) {
 					good = "true"
 				case settingsKindDatabaseType:
 					good = "PostgreSql"
+				case settingsKindEnum:
+					// The first member of the property's own enumeration; the
+					// table has no single valid value across enum-typed keys.
+					members := settingsEnumValues[section+"/"+key]
+					if len(members) == 0 {
+						t.Fatalf("%s/%s is settingsKindEnum but has no members in settingsEnumValues", section, key)
+					}
+					good = members[0]
 				}
 				if got := ValidateSettings(&ast.AlterSettingsStmt{
 					Section:    section,

@@ -41,6 +41,7 @@ Change the type or constraints of an existing attribute with `MODIFY ATTRIBUTE`:
 
 ```sql
 ALTER ENTITY Sales.Customer MODIFY ATTRIBUTE Name: String(400) NOT NULL;
+```
 
 **The type is not optional.** `MODIFY ATTRIBUTE` always parses a type, and its
 type slot accepts a bare qualified name (an entity or enumeration reference), so
@@ -69,7 +70,6 @@ ALTER ENTITY Sales.Customer DROP DEFAULT ON ATTRIBUTE Discount;
 Clearing a default that is already absent is a no-op, not an error. A
 *calculated* attribute is refused rather than silently converted to a plain
 stored one — that is a different change.
-```
 
 ## RENAME Attributes
 
@@ -78,6 +78,20 @@ Rename an attribute with `RENAME ATTRIBUTE`:
 ```sql
 ALTER ENTITY Sales.Customer RENAME ATTRIBUTE Phone TO PhoneNumber;
 ```
+
+Every reference stored *as* a reference follows the rename — microflow create and
+change members, page attribute widgets, and the entity's own validation and
+access rules — and the command reports how many documents it updated.
+
+XPath constraints follow too — `[Phone = '06-1234']` and paths that reach the
+entity through an association alike — because a constraint's target entity is
+known from where it is stored. Another entity's attribute of the same name is
+left alone, and any constraint that cannot be resolved is reported rather than
+rewritten.
+
+Microflow expressions (`$Customer/Phone`) are **not** rewritten: a bare name
+there is only resolvable from the type of what precedes it. `mx check` reports
+those as CE0117, so build after renaming an attribute used in one.
 
 ## ADD INDEX
 

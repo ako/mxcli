@@ -125,7 +125,7 @@ These constructs will cause parse errors:
 
 | Unsupported | Use Instead |
 |-------------|-------------|
-| `CASE ... WHEN ... END CASE` | Nested `IF ... ELSE ... END IF` |
+| `CASE ... WHEN 'String' ... ELSE ...` | Bare enum values, one branch per value including `(empty)` — `CASE` itself IS supported for enum splits |
 | `TRY ... CATCH ... END TRY` | `ON ERROR { ... }` blocks on specific activities |
 
 ## Boolean Attributes Must Have Defaults

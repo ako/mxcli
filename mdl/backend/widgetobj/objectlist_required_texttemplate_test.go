@@ -10,8 +10,9 @@
 // declare object lists with texttemplate items.
 //
 // Both weaker forms were measured and rejected:
-//   null           -> CE0463 "the definition of this widget has changed"
-//   empty template -> CE4899 "Property 'Groups/1/Text' is required"
+//
+//	null           -> CE0463 "the definition of this widget has changed"
+//	empty template -> CE4899 "Property 'Groups/1/Text' is required"
 //
 // Only the widget's own shipped translations satisfy both, which is what
 // `mx update-widgets` writes.

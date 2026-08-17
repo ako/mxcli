@@ -520,7 +520,7 @@ func generateClaudeMD(projectName, mprFile string) string {
 	w("|-----------|--------|\n")
 	w("| Variable declaration (primitive only) | " + bt + "DECLARE $Var Type = value;" + bt + " |\n")
 	w("| Assignment | " + bt + "SET $Var = expression;" + bt + " |\n")
-	w("| Enum split (CASE) | " + bt + "CASE $Var/Attr AS x WHEN Enum.Value THEN ... END CASE" + bt + " |\n")
+	w("| Enum split (CASE) | " + bt + "CASE $Var/Attr WHEN Value[, Value] THEN ... WHEN (empty) THEN ... END CASE;" + bt + " (bare enum values, no `ELSE`, no alias) |\n")
 	w("| Create object | " + bt + "$Var = CREATE Module.Entity (Attr = value);" + bt + " |\n")
 	w("| Change object | " + bt + "CHANGE $Entity (Attr = value);" + bt + " |\n")
 	w("| Commit | " + bt + "COMMIT $Entity [WITH EVENTS] [REFRESH];" + bt + " |\n")
