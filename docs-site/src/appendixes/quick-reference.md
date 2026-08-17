@@ -175,7 +175,7 @@ AUTHENTICATION Basic, Session
 
 | Unsupported | Use Instead | Notes |
 |-------------|-------------|-------|
-| `CASE ... WHEN ... END CASE` | Nested `IF ... ELSE ... END IF` | Switch not implemented |
+| `CASE ... WHEN 'String' ... ELSE ...` | Bare enum values, one branch per value | `CASE` itself IS supported for **enum splits**; what fails is quoted/qualified values, an `ELSE` branch (MDL008), and an `AS` alias |
 | `TRY ... CATCH ... END TRY` | `ON ERROR { ... }` blocks | Use error handlers on specific activities |
 
 **Notes:**

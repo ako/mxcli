@@ -46,7 +46,7 @@ Before writing any MDL, verify these requirements:
 **NOT Supported (will cause errors):**
 - `set $var = call microflow ...` - Use `$var = call microflow ...` (no SET)
 - `while ... end while` - Use `loop` with lists
-- `case ... when ... end case` - Use nested `if`
+- `case ... when 'String' ...` - Case values are bare enum identifiers, never quoted or qualified; `case ... when Value then ... end case;` itself IS supported (enum splits only), and takes no `else` (MDL008) and no `AS` alias
 - `TRY ... CATCH` - Use `on error` blocks
 - `break` / `continue` - Not implemented
 - `commit message 'text'` - Not in current grammar (session command only)

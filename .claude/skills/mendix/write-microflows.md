@@ -406,6 +406,35 @@ end if;
 -- IF $Task/Status = 'Completed' THEN  -- INCORRECT!
 ```
 
+Putting an enumeration **into** a string is the same mistake — concatenating it
+directly is rejected, so render it first with `getCaption()` (the caption) or
+`toString()` (the value name):
+
+```mdl
+-- CORRECT
+log warning 'Unexpected status: ' + getCaption($Order/Status);
+
+-- WRONG
+log warning 'Unexpected status: ' + $Order/Status;
+```
+
+**Where the string form is and is not accepted** (verified against mxbuild 11.13.0 —
+one microflow per row, `mx check` read per construct):
+
+| Context | `'Draft'` | Note |
+|---------|-----------|------|
+| Comparison in a decision — `if $O/Status = 'Draft'` | ❌ **CE0117** | The one that bites |
+| Concatenation — `'x' + $O/Status` | ❌ **CE0117** | Use `getCaption()` / `toString()` |
+| `change $O (Status = 'Draft')` | ✅ accepted | Slot is already enum-typed |
+| `create M.E (Status = 'Draft')` | ✅ accepted | Same |
+| Attribute `DEFAULT 'Draft'` | ✅ accepted | Documented as the legacy form |
+| XPath constraint `[Status = 'Draft']` | ✅ accepted | Enums are strings at DB level |
+
+`mxcli check` does **not** flag the two failing rows (it does not type expressions —
+see `docs/11-proposals/PROPOSAL_expression_type_checking.md`), so a script can pass
+`check` and fail the build. The qualified form is valid in every row above: use it
+everywhere and the distinction never has to be remembered.
+
 **Checking for empty enumeration:**
 ```mdl
 if $entity/status = empty then
@@ -1444,27 +1473,45 @@ begin
 end loop;
 ```
 
-### CASE/SWITCH Statement
+### CASE with string values, `else`, or an alias
+
+`case … end case` **is supported** — see [CASE Statements (Enum Split)](#case-statements-enum-split)
+above for the correct form. What is not supported is the SQL-flavoured spelling of
+it: quoted values, an `else` fallback, and an `AS` alias all fail.
 
 ```mdl
--- WRONG: CASE/SWITCH not supported
-case $status
+-- WRONG: case values are not string literals (parse error)
+case $Order/Status
   when 'Active' then set $Result = 1;
-  when 'Inactive' then set $Result = 2;
+end case;
+
+-- WRONG: case values are not qualified (parse error)
+case $Order/Status
+  when MyModule.Status.Active then set $Result = 1;
+end case;
+
+-- WRONG: no AS alias (parse error: mismatched input 'as' expecting WHEN)
+case $Order/Status as s
+  when Active then set $Result = 1;
+end case;
+
+-- WRONG: no else branch (MDL008 → mxbuild CE0079 + CE0773)
+case $Order/Status
+  when Active then set $Result = 1;
   else set $Result = 0;
 end case;
 
--- CORRECT: Use nested IF statements
-if $status = 'Active' then
-  set $Result = 1;
-else
-  if $status = 'Inactive' then
-    set $Result = 2;
-  else
-    set $Result = 0;
-  end if;
-end if;
+-- CORRECT: bare enum values, one branch per value, including (empty)
+case $Order/Status
+  when Active then set $Result = 1;
+  when Inactive then set $Result = 2;
+  when (empty) then set $Result = 0;
+end case;
 ```
+
+An enum split is the *only* thing `case` does — it branches on an enumeration, not
+on arbitrary expressions. For anything else (a string comparison, a numeric range),
+use nested `if … else … end if`.
 
 ### TRY/CATCH Block
 
