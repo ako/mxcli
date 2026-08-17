@@ -28,7 +28,11 @@ The `DROP ATTRIBUTE` operation removes an attribute by name. Dropping an attribu
 
 The `MODIFY ATTRIBUTE` operation changes the type or constraints of an existing attribute. The attribute name must already exist in the entity. The full attribute definition (type and constraints) replaces the current one.
 
-The `RENAME ATTRIBUTE` operation changes an attribute's name. This updates references within the entity but does not automatically update microflows, pages, or access rules that reference the old name.
+The `RENAME ATTRIBUTE` operation changes an attribute's name and rewrites every reference Mendix stores as a reference — microflow create and change activity members, page attribute widgets, and the entity's own validation and access rules — reporting how many documents it touched. Renaming onto a name the entity already uses is refused.
+
+XPath constraints are rewritten too, even though they name the attribute as a bare step. Each constraint's target entity is known from where it is stored — a retrieve names its entity, a widget data source names its entity, an access rule lives inside one — and every further hop is an association or entity named in the path, so `[Phone = '...']` and `[Sales.Order_Customer/Sales.Customer/Phone = '...']` both follow the rename while another entity's identically-named attribute does not. A constraint mxcli cannot resolve is listed in a warning and left exactly as it was.
+
+One kind of use is **not** rewritten: microflow expressions (`$obj/Phone`), where a bare name is only resolvable from the type of what precedes it. The command prints a note saying so, and `mx check` reports the leftovers as CE0117.
 
 The `ADD INDEX` and `DROP INDEX` operations manage database indexes. `ADD INDEX` takes an optional index name followed by one or more columns, each with an optional `ASC` or `DESC` sort direction; `DROP INDEX` takes the index name.
 
@@ -126,7 +130,7 @@ ALTER ENTITY Sales.Customer
 ## Notes
 
 - Each `ALTER ENTITY` statement performs a single operation. Chain multiple statements for multiple changes.
-- `RENAME` does not update references in microflows, pages, or access rules. Update those separately or use `SHOW IMPACT OF` to find affected elements.
+- `RENAME ATTRIBUTE` updates references in microflows, pages and access rules, and rewrites XPath constraints. It does not rewrite microflow expressions (`$obj/Attr`); use `SHOW IMPACT OF` to find the documents to check, or build and read the CE0117s.
 - `DROP` removes the attribute's validation rules and index entries automatically.
 
 ## See Also

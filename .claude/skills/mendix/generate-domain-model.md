@@ -950,7 +950,12 @@ alter entity Module.Order
   add attribute VATRate: decimal
   add attribute VATAmount: decimal;
 
--- Rename an attribute (preserves data)
+-- Rename an attribute (preserves data). Every stored reference follows it:
+-- microflow create/change members, page attribute widgets, validation rules,
+-- access rules -- and XPath constraints too ([CreatedDate > ...]), including
+-- ones that reach the entity through an association. Microflow expressions
+-- ($Order/CreatedDate) are NOT rewritten -- mxbuild reports those as CE0117,
+-- so build afterwards.
 alter entity Module.Order
   rename attribute CreatedDate to OrderDate;
 
