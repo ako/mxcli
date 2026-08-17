@@ -406,6 +406,35 @@ end if;
 -- IF $Task/Status = 'Completed' THEN  -- INCORRECT!
 ```
 
+Putting an enumeration **into** a string is the same mistake — concatenating it
+directly is rejected, so render it first with `getCaption()` (the caption) or
+`toString()` (the value name):
+
+```mdl
+-- CORRECT
+log warning 'Unexpected status: ' + getCaption($Order/Status);
+
+-- WRONG
+log warning 'Unexpected status: ' + $Order/Status;
+```
+
+**Where the string form is and is not accepted** (verified against mxbuild 11.13.0 —
+one microflow per row, `mx check` read per construct):
+
+| Context | `'Draft'` | Note |
+|---------|-----------|------|
+| Comparison in a decision — `if $O/Status = 'Draft'` | ❌ **CE0117** | The one that bites |
+| Concatenation — `'x' + $O/Status` | ❌ **CE0117** | Use `getCaption()` / `toString()` |
+| `change $O (Status = 'Draft')` | ✅ accepted | Slot is already enum-typed |
+| `create M.E (Status = 'Draft')` | ✅ accepted | Same |
+| Attribute `DEFAULT 'Draft'` | ✅ accepted | Documented as the legacy form |
+| XPath constraint `[Status = 'Draft']` | ✅ accepted | Enums are strings at DB level |
+
+`mxcli check` does **not** flag the two failing rows (it does not type expressions —
+see `docs/11-proposals/PROPOSAL_expression_type_checking.md`), so a script can pass
+`check` and fail the build. The qualified form is valid in every row above: use it
+everywhere and the distinction never has to be remembered.
+
 **Checking for empty enumeration:**
 ```mdl
 if $entity/status = empty then

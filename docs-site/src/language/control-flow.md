@@ -31,20 +31,51 @@ blocks. (To branch on an **enumeration**, use [CASE (Enum Split)](#case-enum-spl
 instead — it maps to a Mendix enum split rather than a chain of decisions.)
 
 ```sql
-IF $Order/Status = 'Draft' THEN
-  CHANGE $Order (Status = 'Submitted');
+IF $Order/TotalAmount > 10000 THEN
+  CHANGE $Order (DiscountPercentage = 15);
 ELSE
-  IF $Order/Status = 'Submitted' THEN
-    CHANGE $Order (Status = 'Approved');
+  IF $Order/TotalAmount > 5000 THEN
+    CHANGE $Order (DiscountPercentage = 10);
   ELSE
-    IF $Order/Status = 'Approved' THEN
-      CHANGE $Order (Status = 'Shipped');
+    IF $Order/TotalAmount > 1000 THEN
+      CHANGE $Order (DiscountPercentage = 5);
     ELSE
-      LOG WARNING 'Unexpected order status: ' + $Order/Status;
+      CHANGE $Order (DiscountPercentage = 0);
     END IF;
   END IF;
 END IF;
 ```
+
+### Comparing Enumerations
+
+An enumeration is compared against its **qualified value**, never a string literal.
+A string literal here fails the build with **CE0117** *"Error(s) in expression"* —
+`mxcli check` does not catch it (see
+[expression type checking](https://github.com/mendixlabs/mxcli/blob/main/docs/11-proposals/PROPOSAL_expression_type_checking.md)),
+so the first sign is a failed build.
+
+```sql
+-- CORRECT
+IF $Order/Status = Sales.OrderStatus.Draft THEN ... END IF;
+
+-- WRONG: CE0117 "Error(s) in expression."
+IF $Order/Status = 'Draft' THEN ... END IF;
+```
+
+The same applies to putting an enumeration into a string — concatenating it directly
+is CE0117, so render it first:
+
+```sql
+-- CORRECT
+LOG WARNING 'Unexpected status: ' + getCaption($Order/Status);
+
+-- WRONG: CE0117
+LOG WARNING 'Unexpected status: ' + $Order/Status;
+```
+
+The string form **is** accepted outside comparisons — in a `CREATE`/`CHANGE` member
+value, an attribute `DEFAULT`, and an XPath constraint (where enums live as strings at
+the database level). The qualified form works everywhere, so prefer it.
 
 ### Complex Conditions
 
