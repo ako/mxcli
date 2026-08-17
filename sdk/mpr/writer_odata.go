@@ -312,6 +312,7 @@ func (w *Writer) serializePublishedODataService(svc *model.PublishedODataService
 		{Key: "Summary", Value: svc.Summary},
 		{Key: "Description", Value: svc.Description},
 		{Key: "PublishAssociations", Value: svc.PublishAssociations},
+		{Key: "SupportsGraphQL", Value: svc.SupportsGraphQL},
 		{Key: "UseGeneralization", Value: svc.UseGeneralization},
 		{Key: "AuthenticationMicroflow", Value: svc.AuthMicroflow},
 		{Key: "AllowedModuleRoles", Value: allowedRoles},

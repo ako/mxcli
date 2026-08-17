@@ -498,17 +498,20 @@ func (s *ConsumedODataService) GetContainerID() ID {
 // PublishedODataService represents a published OData service.
 type PublishedODataService struct {
 	BaseElement
-	ContainerID         ID                     `json:"containerId"`
-	Name                string                 `json:"name"`
-	Documentation       string                 `json:"documentation,omitempty"`
-	Path                string                 `json:"path,omitempty"`
-	Namespace           string                 `json:"namespace,omitempty"`
-	ServiceName         string                 `json:"serviceName,omitempty"`
-	Version             string                 `json:"version,omitempty"`
-	ODataVersion        string                 `json:"odataVersion,omitempty"`
-	Summary             string                 `json:"summary,omitempty"`
-	Description         string                 `json:"description,omitempty"`
-	PublishAssociations bool                   `json:"publishAssociations,omitempty"`
+	ContainerID         ID     `json:"containerId"`
+	Name                string `json:"name"`
+	Documentation       string `json:"documentation,omitempty"`
+	Path                string `json:"path,omitempty"`
+	Namespace           string `json:"namespace,omitempty"`
+	ServiceName         string `json:"serviceName,omitempty"`
+	Version             string `json:"version,omitempty"`
+	ODataVersion        string `json:"odataVersion,omitempty"`
+	Summary             string `json:"summary,omitempty"`
+	Description         string `json:"description,omitempty"`
+	PublishAssociations bool   `json:"publishAssociations,omitempty"`
+	// SupportsGraphQL publishes the same resources over GraphQL as well as
+	// OData. One boolean, one extra endpoint; the OData surface is unchanged.
+	SupportsGraphQL     bool                   `json:"supportsGraphQL,omitempty"`
 	UseGeneralization   bool                   `json:"useGeneralization,omitempty"`
 	AuthenticationTypes []string               `json:"authenticationTypes,omitempty"`
 	AuthMicroflow       string                 `json:"authMicroflow,omitempty"`

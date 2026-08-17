@@ -135,6 +135,7 @@ func (r *Reader) parsePublishedODataService(unitID, containerID string, contents
 	svc.Summary = extractString(raw["Summary"])
 	svc.Description = extractString(raw["Description"])
 	svc.PublishAssociations = extractBool(raw["PublishAssociations"], false)
+	svc.SupportsGraphQL = extractBool(raw["SupportsGraphQL"], false)
 	svc.UseGeneralization = extractBool(raw["UseGeneralization"], false)
 	svc.Excluded = extractBool(raw["Excluded"], false)
 	svc.AuthMicroflow = extractString(raw["AuthenticationMicroflow"])

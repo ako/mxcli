@@ -145,6 +145,21 @@ features:
       mdl: "CREATE BUSINESS EVENT SERVICE Module.Name ..."
     odata_client:
       min_version: "10.0.0"
+    odata_graphql:
+      # A published OData service can also answer GraphQL — one boolean, same
+      # resources, an extra endpoint. Introduced in Studio Pro 10.14 as an
+      # EXPERIMENTAL feature: "Studio Pro now supports publishing GraphQL
+      # services. When you enable this setting, you can specify that a published
+      # OData service supports GraphQL, resulting in a service that supports both
+      # OData and GraphQL." (release notes, 10.14)
+      #
+      # The floor is documentary, not measured: the Mendix CDN no longer serves
+      # any 10.x mxbuild from here, so the earliest assembly available to check
+      # is 11.x. It matters because writing a property a version does not have
+      # is what makes Studio Pro refuse to open the document, so the gate is a
+      # real guard rather than a nicety.
+      min_version: "10.14.0"
+      mdl: "CREATE ODATA SERVICE Module.Name (SupportsGraphQL: Yes) ..."
 
   workflows:
     basic:
