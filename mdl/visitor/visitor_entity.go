@@ -614,6 +614,17 @@ func (b *Builder) ExitAlterEntityAction(ctx *parser.AlterEntityActionContext) {
 				return
 			}
 
+			// DROP DEFAULT ON ATTRIBUTE — checked before DROP ATTRIBUTE, which
+			// also matches DROP + ATTRIBUTE and would otherwise swallow it.
+			if ctx.DROP() != nil && ctx.DEFAULT() != nil && ctx.ATTRIBUTE() != nil && len(attrNames) >= 1 {
+				b.statements = append(b.statements, &ast.AlterEntityStmt{
+					Name:          name,
+					Operation:     ast.AlterEntityDropDefault,
+					AttributeName: attributeNameText(attrNames[0]),
+				})
+				return
+			}
+
 			// DROP ATTRIBUTE / DROP COLUMN
 			if ctx.DROP() != nil && (ctx.ATTRIBUTE() != nil || ctx.COLUMN() != nil) && len(attrNames) >= 1 {
 				b.statements = append(b.statements, &ast.AlterEntityStmt{
