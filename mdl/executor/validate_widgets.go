@@ -959,6 +959,7 @@ func validatePluggableWidgetProperties(w *ast.WidgetV3, registry *WidgetRegistry
 	}
 	allowed, knownKeys := allowedWidgetProperties(def)
 	dsKeys := datasourceTypedKeys(def)
+	actionKeys := actionStorageKeys(def)
 	knownUnmapped := knownUnmappedProperties(def, allowed)
 
 	var out []linter.Violation
@@ -985,6 +986,20 @@ func validatePluggableWidgetProperties(w *ast.WidgetV3, registry *WidgetRegistry
 				Message: fmt.Sprintf(
 					"%s: widget `%s` (%s) property `%s` is datasource-typed — provide it via the widget `datasource:` clause (e.g. `datasource: database Module.Entity`); a value written as `%s: …` is not persisted",
 					locationPrefix, w.Name, def.MDLName, key, key,
+				),
+			})
+			continue
+		}
+
+		// An action slot's storage key is not the MDL spelling — name the one
+		// that is, rather than leaving the author to guess from a fuzzy match.
+		if src, ok := actionKeys[lower]; ok {
+			out = append(out, linter.Violation{
+				RuleID:   "MDL-WIDGET01",
+				Severity: linter.SeverityError,
+				Message: fmt.Sprintf(
+					"%s: widget `%s` (%s) property `%s` is the widget's internal name for an action slot and is not written from MDL — use `%s:` instead (e.g. `%s: MICROFLOW Module.ACT_Name(...)`)",
+					locationPrefix, w.Name, def.MDLName, key, src, src,
 				),
 			})
 			continue
@@ -1028,6 +1043,41 @@ func validatePluggableWidgetProperties(w *ast.WidgetV3, registry *WidgetRegistry
 
 // datasourceTypedKeys returns the lowercased propertyKeys whose def.json mapping
 // has operation "datasource" (across the top-level mappings and every mode).
+// addMappingNames records the MDL names a PropertyMapping is authorable under.
+//
+// For most operations that is both the widget's own storage key and the engine's
+// source name. An `action` mapping is the exception: resolveMapping reads the
+// fixed AST slot (`w.GetAction()` / `w.GetOnChange()`), so ONLY the source name
+// (`Action`/`OnClick`/`OnChange`) reaches the writer. Allowing the storage key
+// would accept `onChangeEvent: …` on a Combobox and drop it on write — the
+// silent-drop class FINDINGS #14 was about. It is reported by
+// actionStorageKeys() instead, with the spelling that works.
+func addMappingNames(add func(string), m PropertyMapping) {
+	if m.Operation != "action" {
+		add(m.PropertyKey)
+	}
+	add(m.Source)
+}
+
+// actionStorageKeys maps each action mapping's storage key to the MDL name that
+// actually writes it, so the validator can say "use OnChange" rather than only
+// "unknown property".
+func actionStorageKeys(def *WidgetDefinition) map[string]string {
+	out := make(map[string]string)
+	collect := func(ms []PropertyMapping) {
+		for _, m := range ms {
+			if m.Operation == "action" && m.PropertyKey != "" && m.Source != "" {
+				out[strings.ToLower(m.PropertyKey)] = m.Source
+			}
+		}
+	}
+	collect(def.PropertyMappings)
+	for _, mode := range def.Modes {
+		collect(mode.PropertyMappings)
+	}
+	return out
+}
+
 // These must be authored via the widget `datasource:` clause, not by name.
 func datasourceTypedKeys(def *WidgetDefinition) map[string]bool {
 	out := make(map[string]bool)
@@ -1107,8 +1157,7 @@ func allowedWidgetProperties(def *WidgetDefinition) (map[string]bool, []string) 
 	}
 
 	for _, m := range def.PropertyMappings {
-		add(m.PropertyKey)
-		add(m.Source)
+		addMappingNames(add, m)
 	}
 	for _, m := range def.ChildSlots {
 		add(m.PropertyKey)
@@ -1118,8 +1167,7 @@ func allowedWidgetProperties(def *WidgetDefinition) (map[string]bool, []string) 
 	}
 	for _, mode := range def.Modes {
 		for _, m := range mode.PropertyMappings {
-			add(m.PropertyKey)
-			add(m.Source)
+			addMappingNames(add, m)
 		}
 		for _, m := range mode.ChildSlots {
 			add(m.PropertyKey)

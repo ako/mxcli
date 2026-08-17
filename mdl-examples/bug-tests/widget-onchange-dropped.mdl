@@ -35,15 +35,28 @@
 --
 -- Verify:
 --   mxcli exec mdl-examples/bug-tests/widget-onchange-dropped.mdl -p app.mpr
+--   mx check app.mpr    # 0 errors
 --   mxcli -p app.mpr -c "describe page Ctrl.ControlPanel"
---   -> every control below must show its `OnChange:`.
+--   -> each of the five BUILT-IN controls shows its `OnChange:`. The combobox
+--      does not: DESCRIBE renders pluggable widgets through a different path
+--      that does not read action slots (a separate, pre-existing gap). For it,
+--      count the stored actions instead — the page unit carries SIX
+--      `Forms$MicroflowAction` nodes, one per control.
 -- ============================================================================
 
 create module Ctrl;
 /
+-- radiobuttons and combobox bind an ENUMERATION, not a String — CE2421 /
+-- CE7247 otherwise. Only the widget's binding is picky; the OnChange behaviour
+-- under test is the same either way.
+create enumeration Ctrl.TopicKind (
+  Income 'Income',
+  Health 'Health'
+);
+/
 create non-persistent entity Ctrl.Filter (
   Enabled: Boolean,
-  Topic: String,
+  Topic: Ctrl.TopicKind,
   Notes: String,
   AsOf: DateTime
 );
@@ -51,6 +64,15 @@ create non-persistent entity Ctrl.Filter (
 create microflow Ctrl.ACT_Apply ($Filter: Ctrl.Filter)
 begin
   change $Filter (Notes = 'applied') refresh;
+end;
+/
+-- The data view's own source: parameterless, returns the object the controls
+-- bind to. ACT_Apply cannot serve here — it takes a parameter and returns
+-- nothing (CE1571 + CE0552).
+create microflow Ctrl.DS_Filter () returns Ctrl.Filter as $Filter
+begin
+  $Filter = create Ctrl.Filter (Topic = Ctrl.TopicKind.Income, Enabled = false);
+  return $Filter;
 end;
 /
 -- Each control below carries an OnChange. Before the fix only a `textbox` kept
@@ -61,9 +83,9 @@ create or replace page Ctrl.ControlPanel (
   layoutgrid lgMain {
     row rowMain {
       column colMain (desktopwidth: autofill) {
-        dataview dvFilter (datasource: microflow Ctrl.ACT_Apply) {
-          textbox txtTopic (
-            Label: 'Topic', Attribute: Topic,
+        dataview dvFilter (datasource: microflow Ctrl.DS_Filter) {
+          textbox txtNotesShort (
+            Label: 'Notes (short)', Attribute: Notes,
             OnChange: MICROFLOW Ctrl.ACT_Apply(Filter: $currentObject)
           )
           textarea taNotes (
