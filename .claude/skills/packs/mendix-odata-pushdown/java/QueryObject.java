@@ -16,7 +16,7 @@ import com.mendix.systemwideinterfaces.core.IMendixObject;
 public final class QueryObject {
 
     /** The entity this component publishes its answer as. */
-    public static final String ENTITY = "ODataPushdown.Query";
+    public static final String ENTITY = "{{MODULE}}.Query";
 
     private QueryObject() {
     }
@@ -53,6 +53,8 @@ public final class QueryObject {
         o.setValue(context, "Top", r.top);
         o.setValue(context, "Skip", r.skip);
         o.setValue(context, "WantsCount", r.wantsCount);
+        o.setValue(context, "SelectSql", r.selectSql);
+        o.setValue(context, "SelectedColumns", r.selectedColumns);
         o.setValue(context, "SortColumn1", r.sortColumn1);
         o.setValue(context, "SortDirection1", r.sortDirection1);
         o.setValue(context, "SortColumn2", r.sortColumn2);

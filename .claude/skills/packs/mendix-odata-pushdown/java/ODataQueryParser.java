@@ -76,6 +76,13 @@ public final class ODataQueryParser {
         public String sortDirection1 = "A";
         public String sortColumn2 = "";
         public String sortDirection2 = "A";
+        /**
+         * " a, b, c" — the columns to project, or "" when the client asked for
+         * everything and the caller should use its own full list.
+         */
+        public String selectSql = "";
+        /** The exposed names projected, comma-separated, for callers that bind. */
+        public String selectedColumns = "";
         /** True when the request asked for something untranslatable. */
         public boolean rejected;
         public String rejectReason = "";
@@ -155,6 +162,13 @@ public final class ODataQueryParser {
             r.sortDirection2 = terms.get(1)[1];
         }
         r.orderBySql = orderBySql(terms, cols, defaultOrderBy, d, r.top, r.skip);
+
+        try {
+            selectInto(r, trim(opts.get("$select")), cols, keyField);
+        } catch (IllegalArgumentException e) {
+            r.rejected = true;
+            r.rejectReason = e.getMessage();
+        }
         return r;
     }
 
@@ -396,6 +410,83 @@ public final class ODataQueryParser {
     }
 
     // ---------------------------------------------------------------- order
+
+    /**
+     * Narrows the projection to what {@code $select} asked for.
+     *
+     * <p>Unlike the other options this one is <em>not</em> a correctness fix.
+     * Mendix applies {@code $select} to the response itself, on a
+     * microflow-backed resource as much as on a database read — measured on
+     * 11.13 — so the client already receives only the fields it asked for
+     * whatever this does. What it saves is reading columns nobody will look at,
+     * which is worth real time when the source is a columnar reader over a wide
+     * CSV and worth nothing when it is a narrow table. The consumer drives it:
+     * an external entity with attributes removed sends a narrower
+     * {@code $select}, because it has nowhere to put what it dropped.
+     *
+     * <p>Three decisions, none of them obvious:
+     *
+     * <ul>
+     * <li><b>An unknown name is rejected, not skipped.</b> A wrong sort order is
+     *     cosmetic and {@link #sortTerms} ignores what it cannot place; a
+     *     dropped projection is not. Silently omitting a column the client
+     *     asked for answers with a null where data was expected, which is the
+     *     same "200 and wrong" this component exists to prevent. Mendix
+     *     normally rejects an unpublished name before the microflow is reached,
+     *     so this is the belt to that braces.
+     * <li><b>The key is always projected.</b> It costs one column and it stops
+     *     a caller that dedupes, associates or re-reads by key from silently
+     *     losing the value it does that with. A client asking for one field
+     *     still gets one field: Mendix projects the response.
+     * <li><b>Sort columns are not forced in.</b> {@code ORDER BY} may name a
+     *     column the SELECT list omits — that is ordinary SQL — and adding them
+     *     would defeat the point of narrowing. It matters only if a caller
+     *     wraps this in a subquery or a DISTINCT, which the splice form does
+     *     not.
+     * </ul>
+     */
+    private static void selectInto(Result r, String select, Map<String, Column> cols,
+                                   String keyField) {
+        if (select.isEmpty() || "*".equals(select)) {
+            return; // the client wants everything; the caller keeps its own list
+        }
+        Map<String, String> chosen = new LinkedHashMap<>(); // exposed -> sql
+        for (String raw : select.split(",")) {
+            String name = raw.trim();
+            if (name.isEmpty()) {
+                continue;
+            }
+            Column c = cols.get(name.toLowerCase());
+            if (c == null) {
+                throw new IllegalArgumentException("$select names " + name
+                        + ", which is not a column of this resource");
+            }
+            chosen.put(name, c.sql);
+        }
+        if (chosen.isEmpty()) {
+            return;
+        }
+        String key = trim(keyField);
+        if (!key.isEmpty() && !chosen.containsKey(key)) {
+            Column kc = cols.get(key.toLowerCase());
+            if (kc != null) {
+                chosen.put(key, kc.sql);
+            }
+        }
+
+        StringBuilder sql = new StringBuilder();
+        StringBuilder names = new StringBuilder();
+        for (Map.Entry<String, String> e : chosen.entrySet()) {
+            if (sql.length() > 0) {
+                sql.append(",");
+                names.append(",");
+            }
+            sql.append(" ").append(e.getValue());
+            names.append(e.getKey());
+        }
+        r.selectSql = sql.toString();
+        r.selectedColumns = names.toString();
+    }
 
     private static List<String[]> sortTerms(String orderby, Map<String, Column> cols) {
         List<String[]> out = new ArrayList<>();

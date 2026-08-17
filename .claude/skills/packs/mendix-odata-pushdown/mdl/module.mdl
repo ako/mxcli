@@ -97,6 +97,20 @@ create or modify non-persistent entity {{MODULE}}.Query (
   FilterSql: String(4000),
   /** " ORDER BY … LIMIT n OFFSET m", for callers that build their own SQL. */
   OrderBySql: String(2000),
+  /**
+   * " a, b, c" — the columns $select asked for, or empty for all of them.
+   *
+   * Splice it after SELECT. Empty means the client wants everything, so keep
+   * your own list rather than emitting nothing.
+   *
+   * This one saves work, it does not fix output: Mendix applies $select to the
+   * response itself even on a microflow-backed resource, so the client already
+   * sees only what it asked for. Narrowing the source query is worth real time
+   * over a wide CSV and nothing over a narrow table.
+   */
+  SelectSql: String(4000),
+  /** The same columns as exposed names, for callers that bind. */
+  SelectedColumns: String(2000),
   /** The key the client is re-reading one row by; empty for a collection. */
   Key: String(200),
   /** Page size, already clamped to the resource's MaxTop. */
