@@ -837,6 +837,14 @@ func execAlterEntity(ctx *ExecContext, s *ast.AlterEntityStmt) error {
 			return mdlerrors.NewNotFoundMsg("attribute", s.AttributeName, fmt.Sprintf("attribute '%s' not found on entity %s", s.AttributeName, s.Name))
 		}
 		target.Name = s.NewName
+		// The entity's own access and validation rules hold the attribute's
+		// qualified name as a string, so they have to move with it *in the model*
+		// — not merely in the BSON the reference scan rewrites afterwards.
+		// Leaving them to the scan produced a duplicate member: UpdateEntity saw
+		// an attribute with no matching MemberAccess and added one, and the scan
+		// then renamed the stale entry into a second copy of it. mxbuild caught
+		// that as CE0066 "Entity access is out of date".
+		renameAttributeInEntityRules(entity, s.Name.String(), s.AttributeName, s.NewName)
 		if err := ctx.Backend.UpdateEntity(dm.ID, entity); err != nil {
 			return mdlerrors.NewBackend("rename attribute", err)
 		}
@@ -859,21 +867,32 @@ func execAlterEntity(ctx *ExecContext, s *ast.AlterEntityStmt) error {
 			return mdlerrors.NewBackend("update attribute references", err)
 		}
 
+		// XPath constraints name the attribute as a bare step, so the scan above
+		// cannot see them. They are resolvable without any type inference — a
+		// constraint's target entity is known structurally and every further hop
+		// is named in the path — so they are rewritten here rather than left for
+		// the user. See mdl/xpathrefs for why the edit is textual and what it
+		// refuses to touch.
+		xres, err := renameAttributeInXPath(ctx, s.Name.String(), string(dm.ID), s.Name.Name, s.AttributeName, s.NewName)
+		if err != nil {
+			return mdlerrors.NewBackend("update attribute references in XPath constraints", err)
+		}
+
 		invalidateHierarchy(ctx)
 		invalidateDomainModelsCache(ctx)
 		fmt.Fprintf(ctx.Output, "Renamed attribute '%s' to '%s' on entity %s\n", s.AttributeName, s.NewName, s.Name)
 		if n := totalRefCount(hits); n > 0 {
 			fmt.Fprintf(ctx.Output, "Updated %d reference(s) in %d document(s)\n", n, len(hits))
 		}
-		// The scan above rewrites every reference Mendix stores *as a reference*.
-		// It cannot rewrite the two places an attribute is named in free text —
-		// microflow expressions ($obj/Attr) and XPath constraints ([Attr = …]) —
-		// because a bare name there is only resolvable with the type of what
-		// precedes it. mxbuild does report them (CE0117 / CE0161), so say so
-		// rather than let a half-done rename look finished.
+		reportXPathRename(ctx, xres)
+		// Microflow expressions ($obj/Attr) are the one place left. A bare name
+		// there is only resolvable from the type of what precedes it, which needs
+		// the resolver in PROPOSAL_expression_type_checking; mxbuild reports the
+		// leftovers as CE0117, so say so rather than let a half-done rename look
+		// finished.
 		fmt.Fprintf(ctx.Output,
-			"Note: uses in expressions ($obj/%s) and XPath constraints are stored as text "+
-				"and were not rewritten — run 'mxcli docker check' to find them.\n",
+			"Note: uses in microflow expressions ($obj/%s) are stored as text and were "+
+				"not rewritten — run 'mxcli docker check' to find them.\n",
 			s.AttributeName)
 
 	case ast.AlterEntityModifyAttribute:

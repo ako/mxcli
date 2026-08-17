@@ -115,21 +115,27 @@ func TestAlterEntityRenameAttributeReportsReferenceCount(t *testing.T) {
 	}
 }
 
-// TestAlterEntityRenameAttributeWarnsAboutTextUses pins that the rename says
-// what it did NOT do. Expressions and XPath constraints name an attribute in
-// free text, where a bare name is only resolvable from the type of what precedes
-// it, so the reference scan leaves them alone — and mxbuild then reports them as
-// CE0117 / CE0161. A rename that reports only its successes reads as complete.
-func TestAlterEntityRenameAttributeWarnsAboutTextUses(t *testing.T) {
+// TestAlterEntityRenameAttributeWarnsAboutExpressions pins that the rename says
+// what it did NOT do. Microflow expressions name an attribute in free text,
+// where a bare name is only resolvable from the type of what precedes it, so the
+// reference scan leaves them alone and mxbuild reports them as CE0117. A rename
+// that reports only its successes reads as complete.
+//
+// It must not also claim that about XPath constraints, which are rewritten — a
+// warning that names something already handled trains the reader to ignore it.
+func TestAlterEntityRenameAttributeWarnsAboutExpressions(t *testing.T) {
 	ctx, _, _ := renameAttrTestCtx(t, 0, "PuzzleNo")
 
 	assertNoError(t, execAlterEntity(ctx, renameAttrStmt("PuzzleNo", "PuzzleNumber")))
 
 	out := ctx.Output.(interface{ String() string }).String()
-	for _, want := range []string{"expressions", "XPath", "PuzzleNo"} {
+	for _, want := range []string{"expressions", "PuzzleNo"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the rename does not mention %q in its note about text uses, got: %q", want, out)
 		}
+	}
+	if strings.Contains(out, "XPath constraints are stored as text") {
+		t.Errorf("the note still claims XPath constraints are not rewritten, got: %q", out)
 	}
 }
 

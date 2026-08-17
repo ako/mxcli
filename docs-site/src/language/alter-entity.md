@@ -55,10 +55,15 @@ Every reference stored *as* a reference follows the rename — microflow create 
 change members, page attribute widgets, and the entity's own validation and
 access rules — and the command reports how many documents it updated.
 
-Expressions (`$Customer/Phone`) and XPath constraints (`[Phone = '06-1234']`)
-are stored as free text and are **not** rewritten: a bare name there is only
-resolvable from the type of what precedes it. `mx check` reports those as CE0117
-and CE0161, so build after renaming an attribute used in either.
+XPath constraints follow too — `[Phone = '06-1234']` and paths that reach the
+entity through an association alike — because a constraint's target entity is
+known from where it is stored. Another entity's attribute of the same name is
+left alone, and any constraint that cannot be resolved is reported rather than
+rewritten.
+
+Microflow expressions (`$Customer/Phone`) are **not** rewritten: a bare name
+there is only resolvable from the type of what precedes it. `mx check` reports
+those as CE0117, so build after renaming an attribute used in one.
 
 ## ADD INDEX
 

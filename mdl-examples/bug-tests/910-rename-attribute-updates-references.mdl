@@ -28,10 +28,11 @@
 --   model second would re-serialize it from the parsed entity and undo the
 --   scan's edits there (which is where a validation rule's reference lives).
 --
---   Uses inside expressions ($obj/Attr) and XPath constraints ([Attr = ...])
---   are free text and are still NOT rewritten — a bare name there is only
+--   XPath constraints are handled separately, by mdl/xpathrefs — see
+--   910-rename-attribute-xpath-constraints.mdl. Uses inside microflow
+--   expressions ($obj/Attr) are still NOT rewritten: a bare name there is only
 --   resolvable from the type of what precedes it. The rename says so, and
---   mxbuild reports them as CE0117 / CE0161.
+--   mxbuild reports them as CE0117.
 --
 -- Verify:
 --   mxcli exec mdl-examples/bug-tests/910-rename-attribute-updates-references.mdl -p app.mpr

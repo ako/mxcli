@@ -88,7 +88,7 @@ Modifies an existing entity without full replacement.
 | Add attributes | `alter entity Module.Name add (attr: type [constraints]);` | One or more attributes |
 | Drop attributes | `alter entity Module.Name drop (AttrName, ...);` | |
 | Modify attributes | `alter entity Module.Name modify (attr: NewType [constraints]);` | Change type/constraints |
-| Rename attribute | `alter entity Module.Name rename attribute OldName to NewName;` | Also rewrites stored references (microflow members, page widgets, validation/access rules). Expressions and XPath constraints are free text and are **not** rewritten |
+| Rename attribute | `alter entity Module.Name rename attribute OldName to NewName;` | Also rewrites stored references (microflow members, page widgets, validation/access rules) and XPath constraints. Microflow expressions are free text and are **not** rewritten |
 | Add index | `alter entity Module.Name add index [name] [on] (Col1 [asc\|desc], ...);` | `on` is optional (SQL-like) |
 | Drop index | `alter entity Module.Name drop index (Col1, ...);` | |
 | Add event handler | `alter entity Module.Name add event handler on before commit call Mod.MF($currentObject) [raise error];` | `($currentObject)` or `()`, RAISE ERROR only on BEFORE |
