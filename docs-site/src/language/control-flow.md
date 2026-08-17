@@ -26,7 +26,9 @@ END IF;
 
 ### Nested IF
 
-Since MDL does not support `CASE`/`WHEN` (switch statements), use nested `IF...ELSE` blocks:
+For multi-way branching on anything other than an enumeration, use nested `IF...ELSE`
+blocks. (To branch on an **enumeration**, use [CASE (Enum Split)](#case-enum-split)
+instead — it maps to a Mendix enum split rather than a chain of decisions.)
 
 ```sql
 IF $Order/Status = 'Draft' THEN
@@ -178,13 +180,42 @@ COMMIT $Order WITH EVENTS ON ERROR ROLLBACK;
 
 > **Note:** `ON ERROR` is not supported on `EXECUTE DATABASE QUERY` activities.
 
+## CASE (Enum Split)
+
+`CASE` branches on an **enumeration** and compiles to a Mendix enum split. It is not a
+general-purpose switch: the source is an enum attribute or variable, and the values are
+bare enum member names.
+
+```sql
+CASE $Order/Status
+  WHEN Draft, Submitted THEN
+    LOG INFO 'Not shipped yet';
+  WHEN Approved THEN
+    LOG INFO 'Ready to ship';
+  WHEN Shipped, (empty) THEN
+    LOG INFO 'Nothing to do';
+END CASE;
+```
+
+Rules, each of which `mxcli check` enforces:
+
+| Rule | Why |
+|------|-----|
+| Values are **bare identifiers** — not `'Quoted'`, not `Module.Enum.Value` | Parse error otherwise |
+| One branch per enum value, **including `(empty)`** | A missing `(empty)` is **MDL056**; mxbuild reports **CE0079** for any uncovered value. Required even when the attribute is `not null` |
+| **No `ELSE`** | **MDL008**. An enum split is exclusive with one outgoing flow per value; mxbuild reports CE0079 per uncovered value *and* CE0773 on the else flow |
+| **No `AS` alias** | Parse error: `mismatched input 'as' expecting WHEN` |
+
+Several values may share a branch (`WHEN Draft, Submitted THEN …`). `CASE` works in
+nanoflows on the same terms.
+
 ## Unsupported Control Flow
 
 The following constructs are **not** supported in MDL and will cause parse errors:
 
 | Unsupported | Use Instead |
 |-------------|-------------|
-| `CASE ... WHEN ... END CASE` | Nested `IF ... ELSE ... END IF` |
+| `CASE ... WHEN 'String' ... ELSE ...` | Bare enum values and a branch per value — see [CASE (Enum Split)](#case-enum-split); `CASE` itself is supported |
 | `TRY ... CATCH ... END TRY` | `ON ERROR { ... }` blocks on individual activities |
 
 ## Complete Example

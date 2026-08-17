@@ -1444,27 +1444,45 @@ begin
 end loop;
 ```
 
-### CASE/SWITCH Statement
+### CASE with string values, `else`, or an alias
+
+`case … end case` **is supported** — see [CASE Statements (Enum Split)](#case-statements-enum-split)
+above for the correct form. What is not supported is the SQL-flavoured spelling of
+it: quoted values, an `else` fallback, and an `AS` alias all fail.
 
 ```mdl
--- WRONG: CASE/SWITCH not supported
-case $status
+-- WRONG: case values are not string literals (parse error)
+case $Order/Status
   when 'Active' then set $Result = 1;
-  when 'Inactive' then set $Result = 2;
+end case;
+
+-- WRONG: case values are not qualified (parse error)
+case $Order/Status
+  when MyModule.Status.Active then set $Result = 1;
+end case;
+
+-- WRONG: no AS alias (parse error: mismatched input 'as' expecting WHEN)
+case $Order/Status as s
+  when Active then set $Result = 1;
+end case;
+
+-- WRONG: no else branch (MDL008 → mxbuild CE0079 + CE0773)
+case $Order/Status
+  when Active then set $Result = 1;
   else set $Result = 0;
 end case;
 
--- CORRECT: Use nested IF statements
-if $status = 'Active' then
-  set $Result = 1;
-else
-  if $status = 'Inactive' then
-    set $Result = 2;
-  else
-    set $Result = 0;
-  end if;
-end if;
+-- CORRECT: bare enum values, one branch per value, including (empty)
+case $Order/Status
+  when Active then set $Result = 1;
+  when Inactive then set $Result = 2;
+  when (empty) then set $Result = 0;
+end case;
 ```
+
+An enum split is the *only* thing `case` does — it branches on an enumeration, not
+on arbitrary expressions. For anything else (a string comparison, a numeric range),
+use nested `if … else … end if`.
 
 ### TRY/CATCH Block
 
