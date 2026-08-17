@@ -180,6 +180,21 @@ live distinction is **MPR vs MCP**.
 | **Business Events** | Y | Y | Y | N | Y | N | 13 | N | Y | N | Y | N | Y | N | Y | Y | N |
 | **Project Settings** | Y | Y | - | - | - | Y | N | N | Y | Y | Y | N | Y | N | N | Y | P |
 | **Task Queues** | Y | Y | Y | Y | Y | N | 21 | Y | Y | N | N | Y | Y | N | Y | Y | N |
+| **Scheduled Events** | Y | Y | Y | Y | Y | N | 21 | Y | Y | Y | N | Y | Y | N | Y | Y | N |
+| **Database Connections** | Y | Y | Y | Y | Y | N | 05 | Y | Y | N | N | Y | Y | N | Y | Y | N |
+| **Regular Expressions** | Y | Y | Y | Y | Y | N | N | Y | Y | Y | N | N | Y | N | Y | Y | N |
+| **Validation Rules** | - | Y | Y | - | - | Y | N | Y | N | Y | N | N | Y | N | N | Y | N |
+| **Menus** | - | Y | Y | Y | Y | N | N | Y | N | N | N | N | Y | N | N | Y | N |
+| **Image Collections** | Y | Y | Y | N | Y | N | N | Y | N | N | N | N | Y | N | Y | Y | N |
+| **JavaScript Actions** | Y | Y | Y | N | Y | N | N | Y | Y | Y | N | N | Y | N | Y | N | N |
+| **Published REST Services** | Y | Y | Y | Y | Y | N | N | N | Y | N | P | N | Y | N | N | Y | N |
+| **REST Clients** | Y | Y | Y | Y | Y | Y | 06 | Y | Y | P | Y | Y | Y | N | Y | Y | N |
+| **Import Mappings** | Y | Y | Y | N | Y | N | 06 | Y | N | N | P | Y | N | N | N | Y | N |
+| **Export Mappings** | Y | Y | Y | N | Y | N | 06 | Y | N | N | P | Y | N | N | N | Y | N |
+| **JSON Structures** | Y | Y | Y | Y | Y | N | 20 | Y | N | N | P | N | N | N | N | N | N |
+| **Workflows** | Y | Y | Y | N | Y | Y | N | Y | Y | Y | N | Y | Y | N | N | Y | N |
+| **AI Agent documents** | Y | Y | Y | N | Y | N | N | Y | N | N | N | Y | Y | N | Y | Y | N |
+| **Pluggable widgets** | Y | Y | Y | - | Y | Y | 03 | Y | N | N | P | Y | Y | N | N | Y | N |
 
 ## Security Features
 
@@ -333,36 +348,41 @@ Not yet implemented:
 - **Call graphs** — `show context of` / `show callers of` as directed graphs
 - **Module overview** — Combined ER + dependency diagram
 
-### Not Yet Implemented
+### Partially Implemented
 
-Document types that exist in Mendix but have no MDL support:
+Features with an MDL surface that does not yet cover the whole document type.
 
 | Feature | SHOW | DESCRIBE | CREATE | OR MODIFY | DROP | ALTER | Examples | Tests | Catalog | REFS | LSP | Skills | Help | Viz | REPL | Syntax | Starlark | Notes |
 |---------|------|----------|--------|-----------|------|-------|----------|-------|---------|------|-----|--------|------|-----|------|--------|----------|-------|
 | **Microflow activities** | - | - | P | - | - | - | 02 | Y | P | P | P | Y | Y | - | - | - | P | 60+ activities supported; some edge cases missing |
-| **Building blocks** | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | Reusable page building blocks |
-| **Styling** | P | Y | P | N | N | Y | Y | Y | N | N | N | P | N | P | N | N | N | Class/Style/DesignProperties on widgets via ALTER STYLING (#631); full theme system not yet |
-| **Extensions** | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | Mendix extensions / add-ons |
-| **Custom JS actions** | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | JavaScript actions for nanoflows |
-| **Custom widgets** | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | Pluggable widget packages |
-| **REST publish** | Y | Y | Y | N | Y | N | N | N | Y | N | P | N | Y | N | N | Y | N | Published REST services (CREATE/DROP/SHOW/DESCRIBE) |
-| **REST consume (v2)** | N | N | N | N | N | N | 06 | N | N | N | N | Y | N | N | N | N | N | Consumed REST services; partial grammar exists |
-| **Web service publish** | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | Published SOAP web services |
-| **Web service consume** | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | Consumed SOAP web services |
-| **Ext. DB connector** | N | N | N | N | N | N | 05 | N | N | N | N | Y | N | N | N | N | N | External database connections |
-| **Import mappings** | Y | Y | Y | N | Y | N | 06 | Y | N | N | P | Y | N | N | N | Y | N | JSON import mappings with v2 syntax |
-| **Export mappings** | Y | Y | Y | N | Y | N | 06 | Y | N | N | P | Y | N | N | N | Y | N | JSON export mappings with v2 syntax |
-| **JSON transformations** | Y | Y | Y | Y | Y | N | 20 | Y | N | N | P | N | N | N | N | N | N | JSON structure definitions |
-| **Message definitions** | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | Message definition documents |
-| **XML schemas** | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | Imported XML schema documents |
-| **Workflows** | Y | Y | Y | N | Y | N | N | N | Y | Y | N | N | Y | N | N | N | N | SHOW/DESCRIBE/CREATE/DROP implemented; GRANT/REVOKE removed (workflows lack AllowedModuleRoles) |
-| **Module settings** | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | Module-level configuration |
-| **Image collection** | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | Image document collections |
-| **Icon collection** | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | Icon/glyph collections |
-| **Rules** | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | Microflow rules (decision logic) |
-| **Regular expressions** | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | Reusable regex definitions |
-| **Scheduled events** | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | Timer-triggered microflows |
-| **Data importer** | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N | Excel/CSV data import documents |
+| **Styling** | P | Y | P | N | N | Y | Y | Y | N | N | N | P | N | P | N | N | N | Class/Style/DesignProperties on widgets via ALTER STYLING (#631); `mxcli theme` covers the file side, the full theme system is not modelled |
+| **Icon collections** | Y | Y | N | N | N | N | N | Y | N | N | N | Y | Y | N | Y | Y | N | **Read-only by design** — collections ship with Atlas/the theme; DESCRIBE lists each icon's reference form for use in a widget's `icon:` |
+| **Module settings** | - | - | - | - | - | Y | N | Y | N | N | N | Y | Y | N | N | Y | N | `ALTER MODULE … ADD JAR DEPENDENCY` + `mxcli sync-java-deps`; other module-level settings are not modelled |
+| **REST consume** | Y | Y | Y | Y | Y | Y | 06 | Y | Y | P | Y | Y | Y | N | Y | Y | N | Consumed REST services via `CREATE REST CLIENT`; OpenAPI-driven generation is partial |
+
+### Not Yet Implemented
+
+Document types that exist in Mendix and have **no** MDL surface at all.
+
+| Feature | Notes |
+|---------|-------|
+| **Microflow rules** (`Microflows$Rule`) | Reusable decision logic called from a microflow. Not to be confused with `CREATE VALIDATION RULE`, which is an attribute constraint and *is* supported |
+| **Message definitions** (`MessageDefinitions$MessageDefinitionCollection`) | Message definition documents |
+| **XML schemas** | Imported XSD documents |
+| **Web service publish / consume** | SOAP. `CALL WEB SERVICE` exists in microflows for a stored service; the service documents themselves are not authorable |
+| **Data importer** | Excel/CSV import documents |
+| **Building blocks** | Reusable page building blocks |
+| **Extensions** | Mendix extensions / add-ons |
+| **Custom widget packages** | Authoring a `.mpk`. Note this is NOT "using a pluggable widget on a page", which is supported — see **Pluggable widgets** above |
+| **System text collections** (`Texts$SystemTextCollection`) | Translatable system text |
+
+> **Keeping this honest.** Every row above was checked against the grammar's
+> statement rules and `mxcli syntax`, not against memory: a row claiming a gap
+> that has since been filled is worse than no table, because it sends people to
+> Studio Pro for work mxcli can do. FINDINGS #20 in `ako/mxcli-owid` is the
+> worked example — the External Database Connector was recorded here as
+> unsupported long after `CREATE DATABASE CONNECTION` shipped, and a reader
+> designed around a blocker that no longer existed.
 
 ## Checklist for New Features
 

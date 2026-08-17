@@ -197,7 +197,7 @@ func snippet(label, insertText, detail string) protocol.CompletionItem {
 var mdlCreateSnippets = []protocol.CompletionItem{
 	snippet("CREATE ENTITY", "CREATE ENTITY ${1:Module}.${2:EntityName}\n(\n\t${3:AttributeName} : ${4:String}\n);", "Create a new entity"),
 	snippet("CREATE PERSISTENT ENTITY", "CREATE PERSISTENT ENTITY ${1:Module}.${2:EntityName}\n(\n\t${3:AttributeName} : ${4:String}\n);", "Create a persistent entity"),
-	snippet("CREATE NON_PERSISTENT ENTITY", "CREATE NON_PERSISTENT ENTITY ${1:Module}.${2:EntityName}\n(\n\t${3:AttributeName} : ${4:String}\n);", "Create a non-persistent entity"),
+	snippet("CREATE NON-PERSISTENT ENTITY", "CREATE NON-PERSISTENT ENTITY ${1:Module}.${2:EntityName}\n(\n\t${3:AttributeName} : ${4:String}\n);", "Create a non-persistent entity"),
 	snippet("CREATE MICROFLOW", "CREATE MICROFLOW ${1:Module}.${2:MicroflowName}\nBEGIN\n\t$0\nEND;", "Create a new microflow"),
 	snippet("CREATE MICROFLOW (with params)", "CREATE MICROFLOW ${1:Module}.${2:MicroflowName}\n(\n\t$$${3:Param}: ${4:Module.Entity}\n)\nRETURNS ${5:Boolean} AS $$${6:Result}\nBEGIN\n\t$0\nEND;", "Create microflow with parameters"),
 	snippet("CREATE NANOFLOW", "CREATE NANOFLOW ${1:Module}.${2:NanoflowName}\nBEGIN\n\t$0\nEND;", "Create a new nanoflow"),

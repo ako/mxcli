@@ -42,15 +42,17 @@ describe json structure Module.JSON_MyStructure;
 Derive one entity per JSON object type. Name them after what they represent (not after JSON keys).
 
 ```sql
-create entity Module.MyRootObject (NON_PERSISTENT)
-  stringField   : string
-  intField      : integer
-  decimalField  : decimal
-  boolField     : boolean default false;
+create non-persistent entity Module.MyRootObject (
+  stringField   : string,
+  intField      : integer,
+  decimalField  : decimal,
+  boolField     : boolean default false
+);
 
-create entity Module.MyNestedObject (NON_PERSISTENT)
-  name : string
-  code : string;
+create non-persistent entity Module.MyNestedObject (
+  name : string,
+  code : string
+);
 
 create association Module.MyRootObject_MyNestedObject
   from Module.MyRootObject
@@ -61,7 +63,9 @@ create association Module.MyRootObject_MyNestedObject
 - All string fields: bare `string` (no length — unlimited)
 - All number fields: `integer`, `decimal`, or `long` — remove defaults for optional fields
 - Boolean fields **require** `default true|false`
-- `NON_PERSISTENT` — these entities are not stored in the database
+- `non-persistent` — these entities are not stored in the database. The keyword is
+  **hyphenated and goes before `entity`**: `create non-persistent entity Mod.X (...)`.
+  `NON_PERSISTENT`, and a `(NON_PERSISTENT)` inside the body, are both parse errors
 - One association per parent→child relationship; name it `Parent_Child`
 
 ---
@@ -188,21 +192,23 @@ create json structure Integrations.JSON_BibleVerse
   snippet '{"translation":{"identifier":"web","name":"World English Bible","language":"English","language_code":"eng","license":"Public Domain"},"random_verse":{"book_id":"1SA","book":"1 Samuel","chapter":17,"verse":49,"text":"David put his hand in his bag, took a stone, and slung it."}}';
 
 -- Step 2: Entities
-create entity Integrations.BibleApiResponse (NON_PERSISTENT);
+create non-persistent entity Integrations.BibleApiResponse ();
 
-create entity Integrations.BibleTranslation (NON_PERSISTENT)
-  identifier    : string
-  name          : string
-  language      : string
-  language_code : string
-  license       : string;
+create non-persistent entity Integrations.BibleTranslation (
+  identifier    : string,
+  name          : string,
+  language      : string,
+  language_code : string,
+  license       : string
+);
 
-create entity Integrations.BibleVerse (NON_PERSISTENT)
-  book_id : string
-  book    : string
-  chapter : integer
-  verse   : integer
-  text    : string;
+create non-persistent entity Integrations.BibleVerse (
+  book_id : string,
+  book    : string,
+  chapter : integer,
+  verse   : integer,
+  text    : string
+);
 
 create association Integrations.BibleApiResponse_BibleTranslation
   from Integrations.BibleApiResponse
