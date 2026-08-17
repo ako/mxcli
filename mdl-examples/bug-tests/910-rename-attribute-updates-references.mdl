@@ -1,0 +1,66 @@
+-- ============================================================================
+-- Bug #910 (problem 2): RENAME ATTRIBUTE left every reference dangling
+-- ============================================================================
+--
+-- Symptom:
+--   alter entity App.Person rename attribute LastName to Surname;
+--   reported success, and then `mx check` failed the app:
+--     [CE1613] "The selected attribute 'App.Person.LastName' no longer exists."
+--       at Create object activity 'Create Person (FirstName, LastName)'
+--   ...once per create/change member, page attribute widget, validation rule
+--   and access rule that named the attribute. Measured on a Mendix 11.13.0
+--   project: 0 errors before the rename, 3 after running this script against the
+--   pre-fix build (2 microflow members + the "required" validation rule), 0 with
+--   the fix. Studio Pro could still open the app, which is what made it look fine.
+--
+-- Root cause:
+--   The ALTER ENTITY handler renamed the attribute inside the domain model and
+--   stopped there. Every other place Mendix stores an attribute reference keeps
+--   the fully qualified name as a STRING ("App.Person.LastName"), so none of
+--   them followed. `mxcli rename` already had the project-wide reference
+--   scanner for entities, enumerations, associations and modules — attributes
+--   were simply never wired to it.
+--
+-- Fix:
+--   The handler now calls RenameReferences(Mod.Ent.Old → Mod.Ent.New) and
+--   reports the count. The scan runs AFTER UpdateEntity on purpose: it is a
+--   raw-BSON pass over every unit including the domain model, and writing the
+--   model second would re-serialize it from the parsed entity and undo the
+--   scan's edits there (which is where a validation rule's reference lives).
+--
+--   Uses inside expressions ($obj/Attr) and XPath constraints ([Attr = ...])
+--   are free text and are still NOT rewritten — a bare name there is only
+--   resolvable from the type of what precedes it. The rename says so, and
+--   mxbuild reports them as CE0117 / CE0161.
+--
+-- Verify:
+--   mxcli exec mdl-examples/bug-tests/910-rename-attribute-updates-references.mdl -p app.mpr
+--   mx check app.mpr    # 0 errors — before the fix, 3x CE1613
+-- ============================================================================
+
+create module RenameRefs;
+/
+create persistent entity RenameRefs.Person (
+  FirstName: String(100),
+  LastName: String(100) not null error 'required'
+);
+/
+-- A create and a change activity, each naming the attribute by qualified name.
+create or replace microflow RenameRefs.ACT_MakePerson ()
+begin
+  $P = create RenameRefs.Person (
+    FirstName = 'Ada',
+    LastName = 'Lovelace'
+  );
+  commit $P;
+  change $P (LastName = 'King');
+end;
+/
+-- The rename must carry all of it: both microflow members and the entity's own
+-- "required" validation rule, which stores "RenameRefs.Person.LastName".
+alter entity RenameRefs.Person rename attribute LastName to Surname;
+/
+-- Renaming onto a name the entity already uses is refused rather than creating
+-- two attributes that no reference can tell apart.
+-- alter entity RenameRefs.Person rename attribute Surname to FirstName;
+--   → attribute 'FirstName' already exists on entity RenameRefs.Person

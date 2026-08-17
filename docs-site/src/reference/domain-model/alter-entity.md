@@ -28,7 +28,9 @@ The `DROP ATTRIBUTE` operation removes an attribute by name. Dropping an attribu
 
 The `MODIFY ATTRIBUTE` operation changes the type or constraints of an existing attribute. The attribute name must already exist in the entity. The full attribute definition (type and constraints) replaces the current one.
 
-The `RENAME ATTRIBUTE` operation changes an attribute's name. This updates references within the entity but does not automatically update microflows, pages, or access rules that reference the old name.
+The `RENAME ATTRIBUTE` operation changes an attribute's name and rewrites every reference Mendix stores as a reference — microflow create and change activity members, page attribute widgets, and the entity's own validation and access rules — reporting how many documents it touched. Renaming onto a name the entity already uses is refused.
+
+Two kinds of use are **not** rewritten, because Mendix stores them as free text in which a bare attribute name is only resolvable from the type of whatever precedes it: microflow expressions (`$obj/Phone`) and XPath constraints (`[Phone = '...']`). The command prints a note saying so; `mx check` reports those as CE0117 and CE0161 respectively, so run a build after renaming an attribute that appears in either.
 
 The `ADD INDEX` and `DROP INDEX` operations manage database indexes. `ADD INDEX` takes an optional index name followed by one or more columns, each with an optional `ASC` or `DESC` sort direction; `DROP INDEX` takes the index name.
 

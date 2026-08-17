@@ -824,23 +824,57 @@ func execAlterEntity(ctx *ExecContext, s *ast.AlterEntityStmt) error {
 		fmt.Fprintf(ctx.Output, "Added attribute '%s' to entity %s\n", a.Name, s.Name)
 
 	case ast.AlterEntityRenameAttribute:
-		found := false
+		var target *domainmodel.Attribute
 		for _, attr := range entity.Attributes {
-			if attr.Name == s.AttributeName {
-				attr.Name = s.NewName
-				found = true
-				break
+			switch attr.Name {
+			case s.AttributeName:
+				target = attr
+			case s.NewName:
+				return mdlerrors.NewValidationf("attribute '%s' already exists on entity %s", s.NewName, s.Name)
 			}
 		}
-		if !found {
+		if target == nil {
 			return mdlerrors.NewNotFoundMsg("attribute", s.AttributeName, fmt.Sprintf("attribute '%s' not found on entity %s", s.AttributeName, s.Name))
 		}
+		target.Name = s.NewName
 		if err := ctx.Backend.UpdateEntity(dm.ID, entity); err != nil {
 			return mdlerrors.NewBackend("rename attribute", err)
 		}
+
+		// Everything that points at an attribute — a create/change activity's
+		// member, a page's attribute widget, the entity's own validation and
+		// access rules — stores the fully qualified name as a string. Renaming
+		// only the domain model leaves every one of them dangling, which mxbuild
+		// reports as CE1613 "The selected attribute 'Mod.Entity.Old' no longer
+		// exists." (#910). The scan runs *after* UpdateEntity on purpose: it is a
+		// raw-BSON pass over every unit including the domain model, and writing
+		// the model afterwards would re-serialize it from the parsed entity and
+		// undo the scan's edits there.
+		hits, err := ctx.Backend.RenameReferences(
+			s.Name.String()+"."+s.AttributeName,
+			s.Name.String()+"."+s.NewName,
+			false,
+		)
+		if err != nil {
+			return mdlerrors.NewBackend("update attribute references", err)
+		}
+
 		invalidateHierarchy(ctx)
 		invalidateDomainModelsCache(ctx)
 		fmt.Fprintf(ctx.Output, "Renamed attribute '%s' to '%s' on entity %s\n", s.AttributeName, s.NewName, s.Name)
+		if n := totalRefCount(hits); n > 0 {
+			fmt.Fprintf(ctx.Output, "Updated %d reference(s) in %d document(s)\n", n, len(hits))
+		}
+		// The scan above rewrites every reference Mendix stores *as a reference*.
+		// It cannot rewrite the two places an attribute is named in free text —
+		// microflow expressions ($obj/Attr) and XPath constraints ([Attr = …]) —
+		// because a bare name there is only resolvable with the type of what
+		// precedes it. mxbuild does report them (CE0117 / CE0161), so say so
+		// rather than let a half-done rename look finished.
+		fmt.Fprintf(ctx.Output,
+			"Note: uses in expressions ($obj/%s) and XPath constraints are stored as text "+
+				"and were not rewritten — run 'mxcli docker check' to find them.\n",
+			s.AttributeName)
 
 	case ast.AlterEntityModifyAttribute:
 		// CALCULATED attributes are only supported on persistent entities
