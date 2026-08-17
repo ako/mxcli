@@ -268,17 +268,20 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 	case "Forms$TextArea", "Pages$TextArea":
 		widget.Caption = extractLabelText(ctx, w)
 		widget.Content = extractAttributeRef(ctx, w)
+		widget.OnChange = extractOnChangeAction(ctx, w)
 		return []rawWidget{widget}
 
 	case "Forms$DatePicker", "Pages$DatePicker":
 		widget.Caption = extractLabelText(ctx, w)
 		widget.Content = extractAttributeRef(ctx, w)
+		widget.OnChange = extractOnChangeAction(ctx, w)
 		return []rawWidget{widget}
 
 	case "Forms$RadioButtons", "Pages$RadioButtons", "Forms$RadioButtonGroup", "Pages$RadioButtonGroup":
 		widget.Type = "Forms$RadioButtons" // Normalize type
 		widget.Caption = extractLabelText(ctx, w)
 		widget.Content = extractAttributeRef(ctx, w)
+		widget.OnChange = extractOnChangeAction(ctx, w)
 		return []rawWidget{widget}
 
 	case "Forms$CheckBox", "Pages$CheckBox":
@@ -287,6 +290,7 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 		widget.Editable = extractEditable(ctx, w)
 		widget.ReadOnlyStyle = extractReadOnlyStyle(ctx, w)
 		widget.ShowLabel = extractShowLabel(ctx, w)
+		widget.OnChange = extractOnChangeAction(ctx, w)
 		return []rawWidget{widget}
 
 	case "CustomWidgets$CustomWidget":

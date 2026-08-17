@@ -461,6 +461,9 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 		if w.Content != "" {
 			props = append(props, fmt.Sprintf("Attribute: %s", w.Content))
 		}
+		if w.OnChange != "" {
+			props = append(props, fmt.Sprintf("OnChange: %s", w.OnChange))
+		}
 		props = appendAppearanceProps(props, w)
 		formatWidgetProps(ctx.Output, prefix, header, props, "\n")
 
@@ -473,6 +476,9 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 		if w.Content != "" {
 			props = append(props, fmt.Sprintf("Attribute: %s", w.Content))
 		}
+		if w.OnChange != "" {
+			props = append(props, fmt.Sprintf("OnChange: %s", w.OnChange))
+		}
 		props = appendAppearanceProps(props, w)
 		formatWidgetProps(ctx.Output, prefix, header, props, "\n")
 
@@ -484,6 +490,9 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 		}
 		if w.Content != "" {
 			props = append(props, fmt.Sprintf("Attribute: %s", w.Content))
+		}
+		if w.OnChange != "" {
+			props = append(props, fmt.Sprintf("OnChange: %s", w.OnChange))
 		}
 		props = appendAppearanceProps(props, w)
 		formatWidgetProps(ctx.Output, prefix, header, props, "\n")
@@ -508,6 +517,9 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 		// Show ShowLabel if false (not showing label)
 		if !w.ShowLabel {
 			props = append(props, "ShowLabel: No")
+		}
+		if w.OnChange != "" {
+			props = append(props, fmt.Sprintf("OnChange: %s", w.OnChange))
 		}
 		props = appendAppearanceProps(props, w)
 		formatWidgetProps(ctx.Output, prefix, header, props, "\n")
