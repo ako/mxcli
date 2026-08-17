@@ -533,6 +533,7 @@ Measured on Mendix 11.13, each row a separate build:
 |---|---|
 | single key attribute, persistable, no `unique` rule | **CE6624** — add one |
 | single key attribute, persistable, `unique error '…'` | 0 errors |
+| **single key attribute, VIEW entity, no `unique` rule** | **0 errors** |
 | **composite key, `OData3`** | **CE7238** "You can only have more than one key attribute when the OData version is 4" |
 | composite key, `OData4`, persistable, no `unique` rules | 0 errors |
 | **composite key, `OData4`, non-persistable, no `unique` rules** | **0 errors** |
@@ -547,6 +548,13 @@ Two consequences worth holding on to:
   *single*-attribute key, where one attribute has to be unique by itself —
   which is exactly the case a grain is not. So the CE6624 hurdle disappears
   the moment the key is honest about being multi-column.
+- **CE6624 does not apply to a view entity at all.** A view can carry a
+  *single*-attribute key with no validation rule and build cleanly — confirmed
+  against a Studio Pro service publishing a view keyed on one column. So if the
+  view already has a naturally unique column (an id carried through from the
+  source data, not the platform's object id), key on that and skip the grain.
+  Reach for the grain when no single column identifies a row — which is the
+  normal case for an aggregate.
 
 ```sql
 create non-persistent entity Fin.VMonthCategory (
