@@ -643,9 +643,14 @@ Annotations:
                             reports the observed value alongside the
                             expectation whenever the assertion pins its type.
   @throws 'message'         Expect error
-  @verify <oql>             NOT IMPLEMENTED — rejected as an error. Nothing
-                            evaluates it, so it would assert nothing. Return
-                            the value from the microflow and use @expect.
+  @verify <oql> <op> <lit>  Assert on the DATABASE after the microflow ran:
+                              @verify select count(*) as n from Mod.Cell = 81
+                              @verify select count(*) as n from Mod.Cell > 0
+                            The query must return one row and one column, and
+                            the test needs @cleanup none — rollback would undo
+                            the writes before the query could see them. An
+                            unevaluatable @verify is an ERROR, never a pass.
+                            --local / --attach only.
   @cleanup rollback|none    What happens to the test's database writes.
                             rollback (the default) wraps the test in a
                             transaction and rolls it back, so nothing it

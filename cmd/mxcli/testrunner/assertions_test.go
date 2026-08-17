@@ -22,9 +22,8 @@ func TestAssertionCountIsReported(t *testing.T) {
 		{"two expects", TestCase{Expects: []Expect{expectOf("$a = 1"), expectOf("$b = 2")}}, 2},
 		{"throws is an assertion", TestCase{Throws: "boom"}, 1},
 		{"nothing at all", TestCase{}, 0},
-		// @verify is parsed and never executed, so it asserts nothing and must
-		// not be counted as if it did.
-		{"verify does not count", TestCase{Verify: []string{"select 1 = 1"}}, 0},
+		// @verify is evaluated now, so it counts.
+		{"verify counts", TestCase{Verify: []Verify{{Raw: "select count(*) from Mod.E = 1"}}}, 1},
 	}
 	for _, c := range cases {
 		if got := c.tc.AssertionCount(); got != c.want {
@@ -72,25 +71,6 @@ func TestRequireAssertionsMakesVacuousTestsErrors(t *testing.T) {
 	}
 	if !strings.Contains(res.Message, "no assertions") {
 		t.Errorf("message = %q, want it to say the test asserts nothing", res.Message)
-	}
-}
-
-// TestVerifyIsRejectedRatherThanIgnored. @verify is documented in the skill's
-// annotation table as an OQL post-condition, is parsed into the TestCase, and is
-// then read by nothing but `--list`. That is exactly the shape of the defect
-// this whole change exists to remove: an annotation that looks like an assertion
-// and asserts nothing. Until it is implemented it must be an error.
-func TestVerifyIsRejectedRatherThanIgnored(t *testing.T) {
-	doc := `/**
- * @test writes a row
- * @verify select count(*) from Mod.E where Code = 'X' = 1
- */`
-	a := parseAnnotations(doc)
-	if len(a.AssertionErrors) != 1 {
-		t.Fatalf("AssertionErrors: got %d, want 1 — @verify was silently ignored", len(a.AssertionErrors))
-	}
-	if !strings.Contains(a.AssertionErrors[0], "@verify") {
-		t.Errorf("AssertionErrors[0] = %q, want it to name @verify", a.AssertionErrors[0])
 	}
 }
 
