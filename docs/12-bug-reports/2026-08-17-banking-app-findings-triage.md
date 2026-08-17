@@ -33,7 +33,7 @@ project. Claims that could not be measured here say so, and say why.
 | 11 | `DROP USER ROLE` leaves demo users dangling | **Confirmed defect** | yes |
 | 12 | `SHOW MESSAGE` clause-order error is misleading | **Confirmed UX defect** | yes |
 | 13 | `ALTER MODULE/PAGE SET DOCUMENTATION` is a parse error | **Confirmed gap** | yes |
-| 14 | OQL view entities are write-only in MDL | **Not reproduced here** — needs 11.x | no |
+| 14 | OQL view entities are write-only in MDL | **Refuted** — measured on 11.13, every operation works | n/a |
 | — | Everything else (Mendix platform behaviour) | **Correct, not our bug** | n/a |
 
 ---
@@ -477,7 +477,66 @@ complaint: mxcli's own linter raises a finding mxcli gives you no way to fix.
 
 ---
 
-## 14. OQL view entities — reported, not reproduced here
+## 14. OQL view entities — REPRODUCED AND REFUTED
+
+**Update, same day.** mxbuild 11.13.0 is now cached, so this was tested properly on
+a real Mendix 11.13 project rather than reasoned about. **The finding does not
+reproduce. Every operation it reports as impossible works on current main**, and
+the resulting project builds clean.
+
+Test: a module with two persistent entities and an association, a view entity over
+a join with `sum()`/`GROUP BY`, a module role granted read on it, and a microflow
+returning a list of it.
+
+| Reported as | Measured on 11.13 / main |
+|---|---|
+| `SHOW ENTITIES IN <mod>` does not list it | **Lists it**, `Type: View` |
+| `GRANT … ON <view>` → `entity not found` | **Granted**, `read *` |
+| `RETURNS LIST OF <view>` → `entity not found for return type` | **Microflow created** |
+| `--` comments in the OQL body fail the parse | **Parses**, and `exec` creates the view |
+| `CREATE OR MODIFY` does not prune dropped members (CE6770) | **Prunes**; add-then-remove cycle → 0 errors |
+| — | `DESCRIBE ENTITY` round-trips the view and its OQL |
+| — | **`mx check`: 0 errors** with the whole chain wired up |
+
+No fix landed in the window that would explain it: the only comment-handling fix
+(`cd2ac98`, comments inside expressions) is from 2026-08-09, six days *before* the
+reporter's nightly, and the two view-entity commits dated 2026-08-17 are OData
+pushdown work that does not touch these paths.
+
+The likeliest explanation is in the reporter's own notes. They record that a
+"0 errors" build was reported for **a view that had been dropped and never
+recreated** — and if the view entity is not in the model, then `entity not found`
+from `GRANT` and from `RETURNS LIST OF`, plus its absence from `SHOW ENTITIES`, are
+all *correct* answers rather than three separate bugs. One missing document
+explains the whole finding. That cannot be proven from here, but it fits every
+symptom, and nothing else does.
+
+**This matters beyond the triage:** the conclusion "a view entity cannot feed a
+page written with mxcli" is what killed the reporter's dashboard design and pushed
+it onto N+1 non-persistent `DashboardCard` objects. It is worth revisiting — as is
+`DS_AdminSummary`'s six-queries-in-six-counts, which the report itself calls the
+strongest remaining case for a view.
+
+### What is real in this area
+
+- **A view entity requires `UseOQLVersion2 = true`.** Otherwise the build fails
+  **CE6779** *"View Entity 'X' is only allowed in the domain model when 'OQL
+  version 2' is set to 'Yes' in the runtime settings."* Found by accident: the
+  earlier settings work had flipped it off on the test project. Until finding #10's
+  change, **that setting was not reachable from MDL at all** — so a project with it
+  off could not be made to accept a view entity without Studio Pro. Worth stating
+  in the skill, because the error names the runtime setting rather than anything
+  the author wrote.
+- **`cast()` cannot narrow a length.** The report says `cast()` "is not in the MDL
+  grammar"; that is not quite right. `cast(c.Name as String)` parses;
+  `cast(c.Name as String(200))` does not. So the underlying limitation is real — a
+  pass-through `String(unlimited)` column still cannot be narrowed — but the gap is
+  a missing length argument on an existing function, not a missing function.
+- **Associations to a view entity** are still unauthorable from MDL (CE6771 for an
+  explicit one; Mendix's own route is to select the associated object's `.ID`).
+  Untested here, and independent of the above.
+
+## 14b. Original triage note (superseded by the measurement above)
 
 **Reported:** slice 6, as the headline finding that killed the dashboard design.
 mxcli can CREATE a view entity and Mendix accepts it (0 errors), after which MDL
@@ -570,5 +629,12 @@ four stale tests during a regression run.
    harmful: CONV010's 11 false positives buried 2 real findings.
 5. **#6/#6b** — three documented spellings of `NON-PERSISTENT`, two of which do
    not parse, one of which ships to every user project.
-6. **#14** — reproduce on 11.13 before designing anything.
-7. **#2, #9, #11, #12, #13** — individually small. (**#10 is done.**)
+6. **#2, #9, #11, #12, #13** — individually small.
+
+**Done since this document was written:**
+
+- **#10** — optimistic locking and its five sibling settings, plus the
+  cross-version property leak (10b) found while checking that the additions were
+  safe.
+- **#14** — reproduced on a real Mendix 11.13 project and **refuted**; the
+  dashboard design it blocked is worth revisiting.
