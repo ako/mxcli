@@ -441,7 +441,7 @@ it is for pages.
 
 | Statement | Syntax | Notes |
 |-----------|--------|-------|
-| Variable declaration | `declare $Var type = value;` | Primitives: String, Integer, Boolean, Decimal, DateTime |
+| Variable declaration | `declare $Var type = value;` | Primitives: String, Integer, Boolean, Decimal, DateTime. The value is **required** — Mendix has no uninitialized variable and a bare `declare` is CE0038 / MDL061. Lists (MDL040) and objects (MDL043) cannot be declared at all |
 | Entity declaration | `declare $entity Module.Entity;` | No AS keyword, no = empty |
 | List declaration | `declare $list list of Module.Entity = empty;` | |
 | Assignment | `set $Var = expression;` | Variable must be declared first |
@@ -482,9 +482,9 @@ it is for pages.
 | Enum split | `case $Var when Value then ... end case;` | Enumeration decision branches. Bare enum values (never quoted or qualified), one branch per value **including `(empty)`** (MDL056), no `else` (MDL008), no `AS` alias |
 | Type split | `split type $Var case Module.Entity ... end split;` | Runtime specialization branches |
 | Cast | `cast $SpecificVar;` | Downcast inside a type split branch |
-| LOOP | `loop $item in $list begin ... end loop;` | FOR EACH over list |
+| LOOP | `loop $item in $list begin ... end loop;` | FOR EACH over list. No `return` inside — an End event cannot sit in a loop (CE0068 / MDL062); use `break` and return after the loop |
 | WHILE | `while condition begin ... end while;` | Condition-based loop |
-| Return | `return $value;` | Required at end of every flow path |
+| Return | `return $value;` | Required at end of every flow path, and never inside a loop (MDL062) |
 | Execute DB query | `$Result = execute database query Module.Conn.Query;` | 3-part name; supports DYNAMIC, params, CONNECTION override |
 | Import mapping | `[$Var =] import from mapping Module.IMM($SourceVar) [all\|first\|limit <e> [offset <e>]];` | Apply import mapping to string variable. Trailing clause is Studio Pro's Range; omitted = infer from the mapping's root. `first` binds one OBJECT (`limit 1` is a one-element LIST). Mendix rejects `offset` on a non-list mapping (CE6100) |
 | Export mapping | `$Var = export to mapping Module.EMM($EntityVar);` | Apply export mapping to entity, returns string |

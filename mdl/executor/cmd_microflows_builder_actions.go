@@ -1101,7 +1101,11 @@ func (fb *flowBuilder) addListOperationAction(s *ast.ListOperationStmt) model.ID
 	// a declared String variable, Mendix requires a Change Variable action
 	// carrying the string expression — a List operation activity on strings fails
 	// the build (CE0023/CE0097/CE0111). Ledger findings #53 (contains) and #63 (find).
-	if fb.declaredVars != nil && fb.declaredVars[s.InputVariable] == "String" {
+	//
+	// The operation test is shared with MDL063, which must not report the
+	// CE0111 this rewrite exists to avoid — see stringOverloadedListOp.
+	if fb.declaredVars != nil && fb.declaredVars[s.InputVariable] == "String" &&
+		stringOverloadedListOp(s.Operation) {
 		switch s.Operation {
 		case ast.ListOpContains:
 			return fb.addChangeVariableAction(&ast.MfSetStmt{
