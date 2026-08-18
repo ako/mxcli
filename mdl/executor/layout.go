@@ -11,6 +11,8 @@ package executor
 
 import (
 	"github.com/mendixlabs/mxcli/mdl/ast"
+	"github.com/mendixlabs/mxcli/model"
+	"github.com/mendixlabs/mxcli/sdk/microflows"
 )
 
 // Layout constants
@@ -284,3 +286,60 @@ const (
 	AnchorBottom = 2
 	AnchorLeft   = 3
 )
+
+// containerBounds returns the bounding box actually occupied by a container's
+// children, in the container's own coordinate space. Each object contributes
+// Position ± Size/2, since a Mendix position is the element's centre.
+func containerBounds(objects []microflows.MicroflowObject) (minX, minY, maxX, maxY int, n int) {
+	for _, o := range objects {
+		if o == nil {
+			continue
+		}
+		p := o.GetPosition()
+		var sz model.Size
+		if withSize, ok := o.(interface{ GetSize() model.Size }); ok {
+			sz = withSize.GetSize()
+		}
+		l, t := p.X-sz.Width/2, p.Y-sz.Height/2
+		r, b := p.X+sz.Width/2, p.Y+sz.Height/2
+		if n == 0 {
+			minX, minY, maxX, maxY = l, t, r, b
+		} else {
+			minX, minY = min(minX, l), min(minY, t)
+			maxX, maxY = max(maxX, r), max(maxY, b)
+		}
+		n++
+	}
+	return
+}
+
+// fitContainerSize sizes a container box to the children it actually holds
+// (mendixlabs/mxcli#884 problem 1).
+//
+// The box used to come from measureStatementsSpan — a pre-pass over the AST run
+// BEFORE the body was built — so it was a function of statement COUNT alone.
+// Varying only the children's positions left it unchanged: two activities at
+// x=150/310, at x=1500/2000 and at x=160/170 all produced 480;160, and in the
+// second case both children sat entirely outside their own container. The model
+// carries no geometry rules, so `mx check` reports nothing.
+//
+// Sizing happens AFTER the body is built, which is what makes an explicit
+// `@position` on a child effective. Nesting falls out of the recursion: an inner
+// loop is sized when its own addLoopStatement returns, so by the time the outer
+// container measures it, its Size is already correct.
+//
+// The children are NOT translated. Their positions round-trip through DESCRIBE
+// as `@position`, so moving them would make a describe→exec cycle produce
+// different coordinates than it read — and under ADR-0008 that turns an
+// otherwise-quiet re-run into a write. The box grows to fit the contents
+// instead, which is also what a hand-laid-out loop needs.
+func fitContainerSize(objects []microflows.MicroflowObject, leftInset, minWidth, minHeight int) (width, height int) {
+	_, _, maxX, maxY, n := containerBounds(objects)
+	if n == 0 {
+		return minWidth, minHeight
+	}
+	width = max(maxX+LoopPadding, minWidth)
+	height = max(maxY+LoopPadding, minHeight)
+	_ = leftInset
+	return width, height
+}

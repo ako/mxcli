@@ -267,7 +267,14 @@ func execCreateMicroflow(ctx *ExecContext, s *ast.CreateMicroflowStmt) error {
 	restServices, _ := loadRestServices(ctx)
 
 	builder := &flowBuilder{
-		posX:         200,
+		// Carry over the StartEvent position of the microflow being replaced.
+		// The start has no MDL statement to annotate and DESCRIBE cannot emit
+		// it, so a rebuild would otherwise move a hand-laid-out one to the
+		// derived spot — a Studio Pro flow's 145;200 became 100;200 on a
+		// describe→exec round-trip, the only coordinate in it that did not
+		// survive. Preserved the way the folder and allowed roles already are.
+		startPosition: storedStartPosition(ctx, existingID),
+		posX:          200,
 		posY:         200,
 		baseY:        200, // Base Y for happy path
 		spacing:      HorizontalSpacing,
@@ -311,5 +318,26 @@ func execCreateMicroflow(ctx *ExecContext, s *ast.CreateMicroflowStmt) error {
 
 	// Invalidate hierarchy cache so the new microflow's container is visible
 	invalidateHierarchy(ctx)
+	return nil
+}
+
+// storedStartPosition reads the StartEvent position off the microflow being
+// replaced, or nil for a fresh CREATE (where the position is derived from the
+// first annotated activity). Best-effort: a backend that cannot read the flow
+// yields the derived placement rather than failing the statement.
+func storedStartPosition(ctx *ExecContext, existingID model.ID) *model.Point {
+	if existingID == "" || ctx.Backend == nil {
+		return nil
+	}
+	mf, err := ctx.Backend.GetMicroflow(existingID)
+	if err != nil || mf == nil || mf.ObjectCollection == nil {
+		return nil
+	}
+	for _, o := range mf.ObjectCollection.Objects {
+		if se, ok := o.(*microflows.StartEvent); ok {
+			p := se.GetPosition()
+			return &p
+		}
+	}
 	return nil
 }

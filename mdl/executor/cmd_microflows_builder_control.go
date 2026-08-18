@@ -656,6 +656,16 @@ func (fb *flowBuilder) addLoopStatement(s *ast.LoopStmt) model.ID {
 		loopBuilder.flows = append(loopBuilder.flows, newHorizontalFlowWithCase(lastBodyID, continueID, pendingCase))
 	}
 
+	// Size the box from the children that were actually built, not from the
+	// statement count measured before the body existed (#884 problem 1). Recompute
+	// the centre too: the width just changed under it.
+	loopWidth, loopHeight = fitContainerSize(loopBuilder.objects, innerStartX, MinLoopWidth, MinLoopHeight)
+	loopCenterX = loopLeftX + loopWidth/2
+	if s.Annotations != nil && s.Annotations.Position != nil {
+		loopCenterX = s.Annotations.Position.X
+		loopLeftX = loopCenterX - loopWidth/2
+	}
+
 	// Create LoopedActivity with calculated size
 	// Position is the CENTER point (RelativeMiddlePoint in Mendix)
 	loop := &microflows.LoopedActivity{
@@ -940,6 +950,14 @@ func (fb *flowBuilder) addWhileStatement(s *ast.WhileStmt) model.ID {
 	}
 
 	whileExpr := fb.exprToString(s.Condition)
+
+	// Size from the built children, as addLoopStatement does (#884 problem 1).
+	loopWidth, loopHeight = fitContainerSize(loopBuilder.objects, innerStartX, MinLoopWidth, MinLoopHeight)
+	loopCenterX = loopLeftX + loopWidth/2
+	if s.Annotations != nil && s.Annotations.Position != nil {
+		loopCenterX = s.Annotations.Position.X
+		loopLeftX = loopCenterX - loopWidth/2
+	}
 
 	loop := &microflows.LoopedActivity{
 		BaseMicroflowObject: microflows.BaseMicroflowObject{
