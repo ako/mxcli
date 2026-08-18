@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A microflow's StartEvent no longer moves on a describe→exec round-trip** — the start has no MDL statement to annotate and `DESCRIBE` cannot emit its position, so the builder always derived one (first annotated activity minus one spacing unit). A Studio-Pro-authored flow whose start sat at `145;200` came back at `100;200` — the only coordinate in it that did not survive. The position is now carried over from the microflow being replaced, the way the folder and allowed module roles already are; a fresh `CREATE` still derives it.
+
 ### Added
 
 - **`MPR011` — loop child containment** — a new lint rule flagging a microflow activity positioned outside the loop container that holds it. This is the only automated check for the condition: the Mendix model carries no geometry rules, so such a flow passes `mx check` with zero errors and builds and runs normally, it is just drawn wrong when opened. It catches the condition however it arrives — a project written by an older mxcli, hand-edited in Studio Pro, or a future layout regression. Nested loops are checked in their own coordinate space, and an unpositioned child at the origin is skipped rather than flagged.
