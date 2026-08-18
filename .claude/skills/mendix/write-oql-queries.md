@@ -194,6 +194,38 @@ from Finance.Transaction as t
 ORDER by OrderYear desc
 ```
 
+### 6b. ORDER BY DESC on a nullable column puts the nulls FIRST
+
+`ORDER BY <attribute> DESC` does **not** give you the newest rows when some rows
+leave that attribute empty. Mendix emits the ordering with no null placement, so
+the database default applies — on PostgreSQL, `DESC` means **NULLS FIRST**.
+
+```sql
+-- ❌ MISLEADING - the empty rows come back first, so a top-N is not the top N
+select g.Label as Label from Sudoku.Game as g
+order by g.DealtAt desc
+limit 5
+
+-- ✅ CORRECT when the attribute is optional
+select g.Label as Label from Sudoku.Game as g
+order by g.DealtAt desc nulls last
+limit 5
+```
+
+This is worth knowing because it does not look like a null problem. The result is
+**stable across runs**, so it reads as "the ordering is being ignored" rather than
+"the sort key is empty for some rows" — and the natural next step, falling back to
+`order by id desc`, answers a different question (insertion order, which only
+matches recency when nothing backdates a row).
+
+Check before concluding anything:
+`select count(*) as n from Sudoku.Game where DealtAt = empty`.
+
+Measured on Mendix 11.13.0 / PostgreSQL: with values present, `ORDER BY` on a
+DateTime is emitted to the database correctly and orders correctly. Null placement
+is database-specific (SQL Server and Oracle differ), so being explicit is also the
+portable choice.
+
 ### 7. Operators (Use != not <>)
 ```sql
 -- ❌ WRONG - <> causes errors in Mendix
