@@ -34,7 +34,12 @@ showStatement
     | showOrList CONSTANTS (IN (qualifiedName | IDENTIFIER))?
     | showOrList CONSTANT VALUES (IN (qualifiedName | IDENTIFIER))?
     | showOrList LAYOUTS (IN (qualifiedName | IDENTIFIER))?
-    | showOrList NOTEBOOKS (IN (qualifiedName | IDENTIFIER))?
+    // NOTEBOOKS deliberately absent: the notebook grammar (createNotebookStatement,
+    // notebookPage, alterNotebookAction) has no AST, visitor, executor or backend
+    // behind it, so `show notebooks` parsed to nothing and exited 0 printing
+    // nothing — which reads as "this project has no notebooks". An unimplemented
+    // command must fail loudly; restore this alternative together with a visitor
+    // branch, not before.
     | showOrList QUEUES (IN (qualifiedName | IDENTIFIER))?
     | showOrList SCHEDULED EVENTS (IN (qualifiedName | IDENTIFIER))?
     | showOrList REGULAR EXPRESSIONS (IN (qualifiedName | IDENTIFIER))?

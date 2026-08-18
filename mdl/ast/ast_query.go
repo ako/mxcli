@@ -102,6 +102,7 @@ const (
 	ShowConsumedMCPServices   // SHOW CONSUMED MCP SERVICES [IN module] (agent-editor MCP documents)
 	ShowJarDependencies       // LIST JAR DEPENDENCIES [IN module]
 	ShowBuildingBlocks        // SHOW BUILDING BLOCKS [IN module]
+	ShowConnections           // SHOW CONNECTIONS (open external SQL connections in this session)
 )
 
 // String returns the human-readable name of the show object type.
@@ -245,6 +246,8 @@ func (t ShowObjectType) String() string {
 		return "JAR DEPENDENCIES"
 	case ShowBuildingBlocks:
 		return "BUILDING BLOCKS"
+	case ShowConnections:
+		return "CONNECTIONS"
 	default:
 		return "UNKNOWN"
 	}

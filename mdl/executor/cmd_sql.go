@@ -269,3 +269,27 @@ func execSQLDescribeTable(ctx *ExecContext, s *ast.SQLDescribeTableStmt) error {
 }
 
 // Executor wrappers for unmigrated callers.
+
+// listOpenSQLConnections handles SHOW CONNECTIONS: the external SQL connections
+// open in this session, as opened by SQL CONNECT.
+//
+// Distinct from SHOW DATABASE CONNECTIONS, which lists the DatabaseConnector
+// documents stored in the project. These are live session state and vanish with
+// the process.
+func listOpenSQLConnections(ctx *ExecContext) error {
+	conns := ensureSQLManager(ctx).List()
+
+	if len(conns) == 0 && ctx.Format != FormatJSON {
+		fmt.Fprintln(ctx.Output, "No open SQL connections. Open one with: sql connect <driver> '<dsn>' as <alias>")
+		return nil
+	}
+
+	tr := &TableResult{
+		Columns: []string{"Alias", "Driver"},
+		Summary: fmt.Sprintf("(%d open connection(s))", len(conns)),
+	}
+	for _, c := range conns {
+		tr.Rows = append(tr.Rows, []any{c.Alias, string(c.Driver)})
+	}
+	return writeResult(ctx, tr)
+}
