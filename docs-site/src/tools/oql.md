@@ -35,6 +35,41 @@ mxcli oql -p app.mpr "SELECT o.OrderNumber, c.Name FROM Sales.Order o JOIN Sales
 mxcli oql -p app.mpr "SELECT COUNT(*) FROM Sales.Customer"
 ```
 
+## `ORDER BY` and null values
+
+`ORDER BY <attribute> DESC` on an attribute that some rows leave empty does **not**
+return the newest rows first. Mendix emits the ordering to the database without a
+null placement, so the database's default applies — and on PostgreSQL, `DESC`
+means **NULLS FIRST**:
+
+```sql
+-- what Mendix sends for `ORDER BY DealtAt DESC LIMIT 3`
+SELECT "sales$game"."label" AS "label"
+FROM "sales$game"
+ORDER BY "sales$game"."dealtat" DESC
+LIMIT $1
+```
+
+With two null `DealtAt` rows in the table, that returns both nulls and then one
+real row — so "give me the most recent 3" silently answers with rows that are not
+recent, **stably** across runs. The stability is what makes it convincing and
+wrong: a degenerate sort key is every bit as repeatable as a correct one.
+
+Two things follow:
+
+- **Check for nulls before concluding the ordering is broken.**
+  `SELECT count(*) AS n FROM Sales.Game WHERE DealtAt = empty` settles it in one
+  query. Measured on Mendix 11.13.0 against PostgreSQL, `ORDER BY` on a DateTime
+  is passed through correctly and orders correctly when the values are present —
+  it is not ignored.
+- **Add `NULLS LAST` when the attribute is optional**, rather than falling back to
+  ordering by `id`. Ordering by `id` answers a different question (insertion
+  order), which happens to agree with recency only when nothing backdates a row.
+
+Null placement is database-specific — SQL Server and Oracle differ from
+PostgreSQL — so a query relying on the default behaves differently per
+environment. Being explicit is the portable choice.
+
 ## Difference from Catalog Queries
 
 | Feature | OQL (`mxcli oql`) | Catalog (`SELECT FROM CATALOG.*`) |
