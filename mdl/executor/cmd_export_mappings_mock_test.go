@@ -86,7 +86,8 @@ func TestDescribeExportMapping_Mock(t *testing.T) {
 
 	ctx, buf := newMockCtx(t, withBackend(mb), withHierarchy(h))
 	assertNoError(t, describeExportMapping(ctx, ast.QualifiedName{Module: "Integration", Name: "ExportOrders"}))
-	assertContainsStr(t, buf.String(), "create export mapping")
+	// Re-runnable header, as for import mappings (#915).
+	assertContainsStr(t, buf.String(), "create or modify export mapping")
 }
 
 func TestDescribeExportMapping_NotFound(t *testing.T) {

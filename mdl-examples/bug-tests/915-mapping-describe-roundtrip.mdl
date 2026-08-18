@@ -1,0 +1,80 @@
+-- ============================================================================
+-- #915 — DESCRIBE of a mapping reproduces the script that produced it
+-- ============================================================================
+--
+-- POSITIVE TEST: `mxcli check` MUST accept this file. It also builds at 0
+-- errors on mxbuild 11.13.0, and is a DESCRIBE fixed point: exec it, describe
+-- both mappings, and the output is this file's mapping bodies verbatim.
+--
+-- DESCRIBE used to print Mendix's derived ExposedName instead of the JSON key,
+-- so its own output no longer matched the input:
+--
+--   Total = total          ->  Total = Total
+--   CamelCase = camelCase  ->  CamelCase = CamelCase
+--   ... = item             ->  ... = ItemItem      (array item object)
+--   LineId = id            ->  LineId = _id        (Id is reserved)
+--
+-- Two things are NOT bugs here, and were left alone:
+--
+--   * The capitalisation itself. Mendix derives ExposedName by capitalising the
+--     initial, and Studio Pro stores it that way too — a blank app's own
+--     FeedbackModule JSON structure holds ExposedName "Uuid" against JsonPath
+--     "(Object)|uuid". Rewriting ExposedName would diverge from Studio Pro.
+--   * The stored mapping. JsonPath preserved the original keys all along, and
+--     re-executing the old DESCRIBE output rebuilt identical paths (the
+--     jsonSchemaIndex accepts either spelling since #882). The defect was that
+--     the TEXT differed, which made every script-vs-describe diff noise.
+--
+-- The second half of the fix is the header: DESCRIBE emitted a bare
+-- `create import mapping`, so re-running its output against the project it came
+-- from failed with "import mapping already exists". It now emits
+-- `create or modify`, which is what makes the round trip actually runnable.
+--
+-- Export mappings had both defects identically; the issue only reported import.
+
+create or modify json structure Bug915.JSON_Payload snippet $${
+  "total": 3,
+  "camelCase": "x",
+  "item": [
+    {
+      "id": 1,
+      "label": "a"
+    }
+  ]
+}$$;
+
+create or modify persistent entity Bug915.Payload (
+  "Total": Integer,
+  "CamelCase": String(50)
+);
+
+create or modify persistent entity Bug915.Line (
+  "LineId": Integer,
+  "Label": String(50)
+);
+
+create or modify association Bug915.Line_Payload from Bug915.Line to Bug915.Payload;
+
+-- Every member below is a lowercase-initial JSON key, and one is an array whose
+-- item object Mendix names "ItemItem". DESCRIBE must give these names back.
+create or modify import mapping Bug915.IMM_Payload
+  with json structure Bug915.JSON_Payload
+{
+  create Bug915.Payload {
+    Total = total,
+    CamelCase = camelCase,
+    create Bug915.Line_Payload/Bug915.Line = item {
+      LineId = id,
+      Label = label
+    }
+  }
+};
+
+create or modify export mapping Bug915.EMM_Payload
+  with json structure Bug915.JSON_Payload
+{
+  Bug915.Payload {
+    total = Total,
+    camelCase = CamelCase
+  }
+};

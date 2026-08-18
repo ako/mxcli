@@ -86,7 +86,9 @@ func TestDescribeImportMapping_Mock(t *testing.T) {
 
 	ctx, buf := newMockCtx(t, withBackend(mb), withHierarchy(h))
 	assertNoError(t, describeImportMapping(ctx, ast.QualifiedName{Module: "Integration", Name: "ImportOrders"}))
-	assertContainsStr(t, buf.String(), "create import mapping")
+	// DESCRIBE emits a re-runnable header: the bare `create` form failed with
+	// "import mapping already exists" against the project it was read from (#915).
+	assertContainsStr(t, buf.String(), "create or modify import mapping")
 }
 
 func TestDescribeImportMapping_NotFound(t *testing.T) {
