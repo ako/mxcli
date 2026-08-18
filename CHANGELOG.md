@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A loop's box is sized from its contents, not from a statement count** (#884 problem 1) — `LOOP`/`WHILE` containers took their `Size` from a pre-pass over the AST run before the body was built, so it depended only on how many statements were inside. Two activities at x=150/310, at x=1500/2000 and at x=160/170 all produced `480;160`, and in the second case both children sat entirely outside their own container with `mx check` reporting nothing. The box is now derived from the real child bounding box after the body exists, which also makes an explicit `@position` on a loop child effective. Nested loops size bottom-up. Children are not moved: their positions round-trip through `DESCRIBE`, so the box grows to fit them rather than the contents being translated to fit the box.
+
+### Fixed
+
 - **Authoring a pluggable widget with an object list no longer raises CE0463** (#891) — an object-list item's *required* TextTemplate that the author left unset was written as `null`, so a freshly authored Accordion failed "the definition of this widget has changed" against the very package it was built from. The empty-ClientTemplate convention was a hardcoded table covering only DataGrid columns; required-ness now comes from the widget's own PropertyTypes, and the property is serialized with the widget's shipped translations — the same text `mx update-widgets` writes. Both weaker forms were measured and rejected: `null` is CE0463 and an empty template is CE4899. Optional TextTemplates keep their null, which is what Studio Pro stores.
 
 - **`DESCRIBE PAGE` no longer renders an Accordion group empty** (#891) — an object-list item's child widgets (the group's `content` slot) were never read, and the emitter had no body to put them in, so a group holding a DataGrid2 described as a bare `group group1 (…)` and a describe→exec round-trip silently deleted the grid. Both halves are fixed, and the description now re-parses with the nested widgets intact. Applies to any pluggable widget's object-list items, not just Accordion.

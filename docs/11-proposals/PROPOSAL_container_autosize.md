@@ -1,6 +1,6 @@
 ---
 title: Size containers from their contents, not from a statement count
-status: draft
+status: accepted
 ---
 
 # Proposal: Size containers from their contents, not from a statement count
@@ -126,6 +126,43 @@ relative to the container, so (a) matches the storage model; (b) would leave two
 adjacent children obeying different origins, which is unexplainable in a doc and
 unpredictable in a diff. Whichever is chosen, it belongs in
 `.claude/skills/mendix/` alongside the `@position` reference.
+
+## Outcome — shipped
+
+Implemented for `LOOP` and `WHILE`: the box is sized from the children that were
+actually built (`fitContainerSize`), after the body exists rather than from a
+pre-pass over the AST. Measured on the four cases above, which previously all
+reported `480;160` except D:
+
+| | children (X) | before | after |
+|---|---|---|---|
+| A | 150, 310 | `480;160` | `420;160` |
+| B | `@position` 1500, 2000 | `480;160` | `2110;140` |
+| C | `@position` 160, 170 | `480;160` | `280;140` |
+| D | 150 … 630 | `800;160` | `740;160` |
+
+Nesting needed no extra work: an inner loop is sized when its own
+`addLoopStatement` returns, so the outer container measures a correct inner box
+(verified — inner `580;160`, outer `1320;260`).
+
+### One deliberate divergence: the body is NOT translated
+
+The plan above called for "build-first / size-after / **translate-once**". The
+translation step was dropped, and the recommendation on `@position` semantics
+(container-relative, translated) is superseded by it.
+
+A child's position round-trips through `DESCRIBE` as `@position`. Translating the
+body would therefore make a describe→exec cycle store *different* coordinates
+than it read — and under [ADR-0008](../13-decisions/0008-identity-and-idempotence.md)
+that converts an otherwise-quiet re-run into a write. Growing the box to fit the
+contents achieves the same containment without moving anything the author placed,
+which is also what a hand-laid-out loop needs. Verified: a loop with
+`@position(300,90)` / `@position(700,90)` round-trips byte-identically, and
+re-running a script is a no-op (with the `MXCLI_ALWAYS_WRITE=1` control confirming
+the comparison detects writes).
+
+Still open from this proposal: the **MPR009** containment lint rule, and the
+`@size` escape hatch (still rejected by MDL059).
 
 ## Non-goals
 
