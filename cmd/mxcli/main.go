@@ -312,7 +312,7 @@ func init() {
 	rootCmd.Flags().StringP("command", "c", "", "Execute MDL command(s) and exit")
 
 	// Check command flags
-	checkCmd.Flags().BoolP("references", "r", false, "Validate references against the project")
+	checkCmd.Flags().BoolP("references", "r", false, "Validate references against the project (implied by -p; kept for compatibility)")
 	checkCmd.Flags().String("format", "text", "Output format: text, json, sarif")
 	checkCmd.Flags().Bool("post-migration", false, "Scan the project for legacy native widgets that survived a Mendix upgrade (requires -p)")
 

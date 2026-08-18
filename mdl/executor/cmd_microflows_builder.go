@@ -57,7 +57,7 @@ type flowBuilder struct {
 	// without this a describe→exec round-trip silently moved it (a Studio Pro
 	// flow's 145;200 became 100;200). Nil on a fresh CREATE, where the position
 	// is derived from the first annotated activity as before.
-	startPosition *model.Point
+	startPosition        *model.Point
 	backend              backend.FullBackend          // For looking up page/microflow references
 	hierarchy            *ContainerHierarchy          // For resolving container IDs to module names
 	pendingAnnotations   *ast.ActivityAnnotations     // Pending annotations to attach to next activity
