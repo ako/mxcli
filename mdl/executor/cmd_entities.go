@@ -227,16 +227,9 @@ func execCreateEntity(ctx *ExecContext, s *ast.CreateEntityStmt) error {
 
 		// Value type: CALCULATED or DEFAULT
 		if a.Calculated {
-			attrValue := &domainmodel.AttributeValue{
-				Type: "CalculatedValue",
-			}
-			if a.CalculatedMicroflow != nil {
-				mfID, err := resolveMicroflowByName(ctx, a.CalculatedMicroflow.String())
-				if err != nil {
-					return mdlerrors.NewBackend(fmt.Sprintf("attribute '%s'", a.Name), err)
-				}
-				attrValue.MicroflowID = mfID
-				attrValue.MicroflowName = a.CalculatedMicroflow.String()
+			attrValue, err := resolveCalculatedValue(ctx, a.CalculatedMicroflow, s.Name.String(), a.Name, a.Type)
+			if err != nil {
+				return err
 			}
 			attr.Value = attrValue
 		} else if a.HasDefault {
@@ -745,16 +738,9 @@ func execAlterEntity(ctx *ExecContext, s *ast.AlterEntityStmt) error {
 		}
 		attr.ID = attrID
 		if a.Calculated {
-			attrValue := &domainmodel.AttributeValue{
-				Type: "CalculatedValue",
-			}
-			if a.CalculatedMicroflow != nil {
-				mfID, err := resolveMicroflowByName(ctx, a.CalculatedMicroflow.String())
-				if err != nil {
-					return mdlerrors.NewBackend(fmt.Sprintf("attribute '%s'", a.Name), err)
-				}
-				attrValue.MicroflowID = mfID
-				attrValue.MicroflowName = a.CalculatedMicroflow.String()
+			attrValue, err := resolveCalculatedValue(ctx, a.CalculatedMicroflow, s.Name.String(), a.Name, a.Type)
+			if err != nil {
+				return err
 			}
 			attr.Value = attrValue
 		} else if a.HasDefault {
@@ -928,16 +914,9 @@ func execAlterEntity(ctx *ExecContext, s *ast.AlterEntityStmt) error {
 			if attr.Name == s.AttributeName {
 				attr.Type = convertDataType(s.DataType)
 				if s.Calculated {
-					attrValue := &domainmodel.AttributeValue{
-						Type: "CalculatedValue",
-					}
-					if s.CalculatedMicroflow != nil {
-						mfID, err := resolveMicroflowByName(ctx, s.CalculatedMicroflow.String())
-						if err != nil {
-							return mdlerrors.NewBackend(fmt.Sprintf("attribute '%s'", s.AttributeName), err)
-						}
-						attrValue.MicroflowID = mfID
-						attrValue.MicroflowName = s.CalculatedMicroflow.String()
+					attrValue, err := resolveCalculatedValue(ctx, s.CalculatedMicroflow, s.Name.String(), s.AttributeName, s.DataType)
+					if err != nil {
+						return err
 					}
 					attr.Value = attrValue
 				}

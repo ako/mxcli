@@ -322,7 +322,10 @@ type AttributeValue struct {
 	DefaultValue  string   `json:"defaultValue,omitempty"`
 	MicroflowID   model.ID `json:"microflowId,omitempty"`
 	MicroflowName string   `json:"microflowName,omitempty"` // Qualified name (e.g. "Module.Microflow") — BSON stores ByNameReference as string
-	ViewReference string   `json:"viewReference,omitempty"` // OQL column reference for view entity attributes
+	// PassEntity is DomainModels$CalculatedValue.PassEntity: whether the
+	// calculation microflow receives the owning entity as its parameter (#917).
+	PassEntity    bool   `json:"passEntity,omitempty"`
+	ViewReference string `json:"viewReference,omitempty"` // OQL column reference for view entity attributes
 }
 
 // Association represents an association between entities.
