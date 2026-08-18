@@ -108,7 +108,9 @@ func TestRestResultHandling_ObjectTypeIsSingle(t *testing.T) {
 			{Key: "Entity", Value: "Sprintr.UserProfileResponse"},
 		}},
 	})
-	h, ok := restResultHandlingFromRaw(doc).(*microflows.ResultHandlingMapping)
+	// "Mapping" is the discriminator Mendix stores for this shape; the
+	// ImportMappingCall branch is taken before it is consulted either way.
+	h, ok := restResultHandlingFromRaw(doc, "Mapping").(*microflows.ResultHandlingMapping)
 	if !ok {
 		t.Fatalf("restResultHandlingFromRaw → not a mapping handling")
 	}

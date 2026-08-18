@@ -875,6 +875,20 @@ type ResultHandlingHttpResponse struct {
 
 func (ResultHandlingHttpResponse) isResultHandling() {}
 
+// ResultHandlingFileDocument stores the response in a file document.
+//
+// EntityRef is always a SPECIALIZATION of System.FileDocument, never the base:
+// Mendix rejects `System.FileDocument` itself as a return type with CE0362,
+// while CE1540 permits FileDocument to be specialized (unlike HttpResponse,
+// which cannot be — so there is no matching field on ResultHandlingHttpResponse).
+type ResultHandlingFileDocument struct {
+	model.BaseElement
+	VariableName string `json:"variableName,omitempty"`
+	EntityRef    string `json:"entityRef,omitempty"` // qualified name, e.g. MyModule.MyFile
+}
+
+func (ResultHandlingFileDocument) isResultHandling() {}
+
 // ResultHandlingMapping uses an import mapping.
 type ResultHandlingMapping struct {
 	model.BaseElement

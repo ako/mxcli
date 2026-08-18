@@ -297,6 +297,9 @@ func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 			v.checkAssociationObjectArgs("microflow "+stmt.MicroflowName.String(), stmt.Arguments)
 		case *ast.CallNanoflowStmt:
 			v.checkAssociationObjectArgs("nanoflow "+stmt.NanoflowName.String(), stmt.Arguments)
+		case *ast.RestCallStmt:
+			// #922: `returns Module.Entity` must name a FileDocument specialization.
+			v.checkRestFileDocumentResult(stmt)
 		case *ast.LoopStmt:
 			// Check: @caption on a loop is silently dropped — Mendix for-loops
 			// have no caption (Microflows$LoopedActivity has no Caption
