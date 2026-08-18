@@ -600,6 +600,21 @@ func attributeToGen(a *domainmodel.Attribute, isExternal bool) *genDm.Attribute 
 		vv := genDm.NewOqlViewValue()
 		vv.SetReference(a.Value.ViewReference)
 		out.SetValue(vv)
+	case a.Value != nil && a.Value.Type == "CalculatedValue":
+		// Calculated attribute: the value is computed by a microflow, not stored.
+		// Without this arm the attribute fell through to the default StoredValue
+		// below, so `calculated by` parsed, validated and reported success while
+		// the binding never reached the model — an attribute that stays empty at
+		// runtime, in a project that builds at 0 errors (#917). The legacy
+		// serializer had the arm; the default engine did not.
+		//
+		// Microflow is a ByNameReference (gen binds the "Microflow" key to the
+		// qualified name), and PassEntity says whether the microflow takes the
+		// owning entity as its parameter.
+		cv := genDm.NewCalculatedValue()
+		cv.SetMicroflowQualifiedName(a.Value.MicroflowName)
+		cv.SetPassEntity(a.Value.PassEntity)
+		out.SetValue(cv)
 	case isExternal && a.IsPrimitiveCollection:
 		// The single attribute of a primitive-collection NPE (e.g. TripTag.Tag) is
 		// backed by a Rest$ODataMappedPrimitiveCollectionValue (issue #718).

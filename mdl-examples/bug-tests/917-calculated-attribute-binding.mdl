@@ -1,0 +1,67 @@
+-- ============================================================================
+-- #917 — `calculated by` reaches the model, and the signature is checked
+-- ============================================================================
+--
+-- POSITIVE TEST: `mxcli check` MUST accept this file, and every statement below
+-- is verified to build at 0 errors on mxbuild 11.13.0.
+--
+-- The binding used to be discarded on the DEFAULT engine: attributeToGen had no
+-- CalculatedValue arm, so the attribute fell through to the default StoredValue.
+-- `mxcli check` passed, exec reported "Added attribute", the microflow name
+-- appeared nowhere in the domain model unit, and `mx check` reported 0 errors —
+-- the attribute simply stayed empty at runtime. The legacy engine wrote it
+-- correctly all along, which is why the feature looked implemented.
+--
+-- Measured per shape (one project each, `mxcli docker check` read per shape):
+--
+--   microflow takes the owning entity   -> PassEntity=true,  0 errors
+--   microflow takes no parameter        -> PassEntity=false, 0 errors
+--   microflow takes a DIFFERENT entity  -> CE7247 "Microflow parameter 'Other'
+--                                          should be of type MyFirstModule.Order."
+--   microflow returns String, attr Int  -> CE7247 "Microflow return type should
+--                                          be Integer/Long."
+--   microflow returns Long, attr Int    -> 0 errors (one family)
+--
+-- The last row is why the return-type check is not a strict equality: Mendix's
+-- own message says "Integer/Long", and a strict rule refused valid MDL.
+--
+-- The two CE7247 shapes are now refused by exec before anything is written, so
+-- they cannot appear in this file; the refusals are pinned in
+-- mdl/executor/calculated_attributes_test.go instead.
+
+CREATE OR MODIFY PERSISTENT ENTITY Bug917.Order (
+  "Reference": String(50)
+);
+
+-- Takes the owning entity: stored with PassEntity = true.
+CREATE OR MODIFY MICROFLOW Bug917.CalcWithEntity ($Order: Bug917.Order)
+RETURNS Integer
+BEGIN
+  return 42;
+END;
+
+-- Takes nothing: stored with PassEntity = false. Both are valid Mendix.
+CREATE OR MODIFY MICROFLOW Bug917.CalcNoParam ()
+RETURNS Integer
+BEGIN
+  return 7;
+END;
+
+-- Returns Long for an Integer attribute — accepted, Integer and Long are one
+-- family for this check.
+CREATE OR MODIFY MICROFLOW Bug917.CalcLong ($Order: Bug917.Order)
+RETURNS Long
+BEGIN
+  return 42;
+END;
+
+-- The ALTER path (the shape reported in the issue).
+ALTER ENTITY Bug917.Order ADD ATTRIBUTE "TotalA": Integer CALCULATED BY Bug917.CalcWithEntity;
+ALTER ENTITY Bug917.Order ADD ATTRIBUTE "TotalB": Integer CALCULATED BY Bug917.CalcNoParam;
+ALTER ENTITY Bug917.Order ADD ATTRIBUTE "TotalC": Integer CALCULATED BY Bug917.CalcLong;
+
+-- The CREATE path: the same binding declared inline on a new entity.
+CREATE OR MODIFY PERSISTENT ENTITY Bug917.Invoice (
+  "Number": String(20),
+  "Amount": Integer CALCULATED BY Bug917.CalcNoParam
+);
