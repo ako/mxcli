@@ -695,10 +695,25 @@ refactors (`mprrepos`/`mxgraph`). Cherry-pickable like the modelsdk engine.
 superseding "Phase 1 — Type infrastructure" above, which `exprcheck` already
 delivers):
 
-1. Provide our-catalog-backed `CatalogReader` + `SlotResolver` implementations and
-   finish Tier-2 depth (attribute types, microflow return types) — the
-   `AttributePathExpr → KindUnknown` gap.
-2. Wire the `exprcheck` adapters into **our** `mxcli check` / `validate` path.
+1. ~~Provide our-catalog-backed `CatalogReader`~~ **done** — `mdl/exprcatalog`,
+   a memoized index over the catalog. It needed three catalog additions first
+   (`attributes_data.EnumerationQualifiedName`, `enumeration_values_data`,
+   `microflow_parameters_data`): the seam had no implementation *and* three of
+   its five lookups had no data. Still open: **Tier-2 depth** — `inferKind`
+   returns `KindUnknown` for `AttributePathExpr`, so `$obj/Attr` resolves to
+   nothing and only slot-qualified positions (a create/change member, where the
+   adapter builds `CreateItem.Value:Entity.Attr`) reach the catalog. That is what
+   makes `if $obj/Status = 'Open'` still pass. Closing it needs the var→entity
+   scope: `exprcheck.Scope` speaks `TypeKind` only, so it cannot carry "$P is
+   Mod.Person" — the adapter already computes that map (`buildVarEntityScope`)
+   and has nowhere to put it.
+2. ~~Wire the `exprcheck` adapters into **our** `mxcli check` / `validate` path~~
+   **done** — `Executor.TypeCheckProgram`, called by `mxcli check --references`.
+   Two things were wrong in the ported adapter and are worth knowing before
+   wiring the LSP to it: `exprSource` read only `ast.SourceExpr` (the visitor
+   attaches one to some slots and not others, so most expressions were invisible
+   — now injectable via `WithSourceFunc`), and the variable scope it builds is
+   never passed into the parse `Context`.
 3. **Phase 3 LSP** — still to-do; the `Context`-based design makes it
    straightforward (run with `Scope` only for the inline, project-less path).
 4. Decide the cosmetics: keep `exprcheck`'s `E0xx` codes (faithful port) vs remap
