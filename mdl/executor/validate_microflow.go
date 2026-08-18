@@ -72,8 +72,16 @@ func (v *microflowValidator) validate(body []ast.MicroflowStatement) {
 	v.emptyListVars = make(map[string]bool)
 	v.walkBody(body)
 
-	// Check 5: missing RETURN on non-void microflow paths
-	if v.returnType != nil && v.returnType.Type.Kind != ast.TypeVoid {
+	// Check 5: missing RETURN on non-void microflow paths.
+	//
+	// `RETURNS T AS $Var` is exempt: buildFlowGraph sets the final EndEvent's
+	// ReturnValue to "$"+Var whenever the AS clause is present, so the return is
+	// synthesized whether or not the body spells one out — the whole point of the
+	// clause. Demanding an explicit RETURN on top of it flagged the documented
+	// idiom as broken, and once `exec` began refusing scripts whose checks report
+	// an error, that false positive blocked seven shipped examples from running.
+	// Verified on mxbuild 11.13.0: such a microflow builds with 0 errors.
+	if v.returnType != nil && v.returnType.Type.Kind != ast.TypeVoid && v.returnType.Variable == "" {
 		if !bodyReturns(body) {
 			v.addViolation("MDL003", linter.SeverityError,
 				fmt.Sprintf("microflow returns %s but not all code paths have a return statement",

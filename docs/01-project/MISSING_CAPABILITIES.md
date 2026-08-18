@@ -1,5 +1,22 @@
 # Missing Capabilities Analysis
 
+> **Dated survey — not the current status.** This is a point-in-time gap
+> analysis run against **Mendix 11.6.3** projects. Its *measurement* — how many
+> documents of each type real apps contain — is what makes it worth keeping, and
+> that has not changed. Its *conclusions* have: **11 of the 13 document types
+> below are now supported.**
+>
+> For what mxcli can do today, the canonical source is
+> [MDL_FEATURE_MATRIX.md](MDL_FEATURE_MATRIX.md), and the authority behind both
+> is the grammar's statement rules plus `mxcli syntax`. Do not answer "can mxcli
+> do X?" from this file. FINDINGS #20 in `ako/mxcli-owid` is what that costs: a
+> reader grepped this document, found `DatabaseConnector$DatabaseConnection`
+> listed as "listing only", and designed a whole workaround around a blocker
+> that `CREATE DATABASE CONNECTION` had already removed. Every claim in it was
+> checkable in about five minutes.
+>
+> Status column added and verified against the grammar; last checked 2026-08-17.
+
 Based on investigation of three real-world Mendix 11.6.3 projects:
 - **EnquiriesManagement** (28 modules, AI agent app with workflows)
 - **Evora-FactoryManagement** (39 modules, industrial IoT app with REST/OData/workflows)
@@ -7,22 +24,22 @@ Based on investigation of three real-world Mendix 11.6.3 projects:
 
 ## Summary: Unsupported Document Types Across All Projects
 
-| Document Type ($Type) | EM | FM | LPI | Total | Priority |
-|----------------------|----|----|-----|-------|----------|
-| `workflows$workflow` | 12 | 1 | 0 | **13** | **High** |
-| `JsonStructures$JsonStructure` | 23 | 42 | 38 | **103** | Medium |
-| `ImportMappings$ImportMapping` | 22 | 35 | 33 | **90** | Medium |
-| `ExportMappings$ExportMapping` | 19 | 31 | 24 | **74** | Medium |
-| `microflows$rule` | 15 | 28 | 12 | **55** | Medium |
-| `MessageDefinitions$MessageDefinitionCollection` | 12 | 11 | 10 | **33** | Low |
-| `rest$PublishedRestService` | 2 | 7 | 8 | **17** | **High** |
-| `RegularExpressions$RegularExpression` | 8 | 4 | 4 | **16** | Low |
-| `CustomIcons$CustomIconCollection` | 5 | 2 | 3 | **10** | Low |
-| `Menus$MenuDocument` | 3 | 2 | 2 | **7** | Low |
-| `Queues$Queue` | 2 | 2 | 1 | **5** | Low |
-| `Texts$SystemTextCollection` | 1 | 1 | 1 | **3** | Low |
-| `rest$ConsumedRestService` | 0 | 2 | 0 | **2** | Medium |
-| `DatabaseConnector$DatabaseConnection` | 0 | 1 | 0 | **1** | Low |
+| Document Type ($Type) | EM | FM | LPI | Total | Priority (then) | Status today |
+|----------------------|----|----|-----|-------|-----------------|--------------|
+| `workflows$workflow` | 12 | 1 | 0 | **13** | **High** | **Supported** |
+| `JsonStructures$JsonStructure` | 23 | 42 | 38 | **103** | Medium | **Supported** |
+| `ImportMappings$ImportMapping` | 22 | 35 | 33 | **90** | Medium | **Supported** |
+| `ExportMappings$ExportMapping` | 19 | 31 | 24 | **74** | Medium | **Supported** |
+| `microflows$rule` | 15 | 28 | 12 | **55** | Medium | Still missing |
+| `MessageDefinitions$MessageDefinitionCollection` | 12 | 11 | 10 | **33** | Low | Still missing |
+| `rest$PublishedRestService` | 2 | 7 | 8 | **17** | **High** | **Supported** |
+| `RegularExpressions$RegularExpression` | 8 | 4 | 4 | **16** | Low | **Supported** |
+| `CustomIcons$CustomIconCollection` | 5 | 2 | 3 | **10** | Low | Read-only (by design) |
+| `Menus$MenuDocument` | 3 | 2 | 2 | **7** | Low | **Supported** |
+| `Queues$Queue` | 2 | 2 | 1 | **5** | Low | **Supported** (+ `IN QUEUE` on calls) |
+| `Texts$SystemTextCollection` | 1 | 1 | 1 | **3** | Low | Still missing |
+| `rest$ConsumedRestService` | 0 | 2 | 0 | **2** | Medium | **Supported** (REST clients) |
+| `DatabaseConnector$DatabaseConnection` | 0 | 1 | 0 | **1** | Low | **Supported** |
 
 EM = EnquiriesManagement, FM = FactoryManagement, LPI = LatoProductInventory
 
@@ -32,6 +49,8 @@ EM = EnquiriesManagement, FM = FactoryManagement, LPI = LatoProductInventory
 
 #### 1. Workflows (`workflows$workflow`) - 13 documents
 
+> **Status: supported.** `CREATE`/`ALTER`/`DROP`/`DESCRIBE WORKFLOW`, all activity types. See `mxcli syntax workflow`.
+
 **Impact**: Core Mendix feature for business process automation. Used heavily in the EnquiriesManagement project for agent-orchestrated enquiry handling.
 
 **What's needed**: Full proposal in [PROPOSAL_workflow_support.md](PROPOSAL_workflow_support.md).
@@ -39,6 +58,8 @@ EM = EnquiriesManagement, FM = FactoryManagement, LPI = LatoProductInventory
 **Summary**: BSON parser, Reader methods, SHOW/DESCRIBE commands, catalog table, cross-references. The workflow domain has 14 concrete activity types and multiple polymorphic hierarchies.
 
 #### 2. Published REST Services (`rest$PublishedRestService`) - 17 documents
+
+> **Status: supported.** `CREATE [OR REPLACE]`/`DROP`/`SHOW`/`DESCRIBE PUBLISHED REST SERVICE`, with resources, operations and path params.
 
 **Impact**: Published REST services are a primary integration mechanism in Mendix. FactoryManagement exposes 7 REST services (oauth2, discovery, TCSSO, ViewerService, etc.), LatoProductInventory exposes 8.
 
@@ -55,6 +76,8 @@ EM = EnquiriesManagement, FM = FactoryManagement, LPI = LatoProductInventory
 
 #### 3. JSON Structures (`JsonStructures$JsonStructure`) - 103 documents
 
+> **Status: supported.** `CREATE JSON STRUCTURE … SNIPPET '<json>'` infers the structure.
+
 **Impact**: JSON structures define schemas used by import/export mappings for REST/JSON data transformations. Very common in integration-heavy apps.
 
 **What's needed**:
@@ -66,6 +89,8 @@ EM = EnquiriesManagement, FM = FactoryManagement, LPI = LatoProductInventory
 **Complexity**: Low-Medium. JSON structures are relatively simple documents containing a JSON schema definition.
 
 #### 4. Import/Export Mappings (90 + 74 = 164 documents)
+
+> **Status: supported.** `CREATE IMPORT MAPPING` / `CREATE EXPORT MAPPING` (v2 syntax).
 
 **Impact**: Mappings define how JSON/XML data is transformed to/from Mendix objects. Critical for REST integration. Always paired with JSON structures.
 
@@ -80,6 +105,8 @@ EM = EnquiriesManagement, FM = FactoryManagement, LPI = LatoProductInventory
 
 #### 5. Rules (`microflows$rule`) - 55 documents
 
+> **Status: still missing.** Note `CREATE VALIDATION RULE` *is* supported — that is an attribute constraint, a different document type from `Microflows$Rule`.
+
 **Impact**: Rules are a special microflow subtype used for entity validation. Currently parsed as regular microflows but not distinguished.
 
 **What's needed**:
@@ -91,6 +118,8 @@ EM = EnquiriesManagement, FM = FactoryManagement, LPI = LatoProductInventory
 **Complexity**: Low. Rules use the same BSON format as microflows. The main change is distinguishing them in listing/catalog.
 
 #### 6. Consumed REST Services (`rest$ConsumedRestService`) - 2 documents
+
+> **Status: supported** via `CREATE REST CLIENT` (see `mxcli syntax rest`). OpenAPI-driven generation is partial.
 
 **Impact**: Different from consumed OData services (which are already supported). These are plain REST API integrations.
 
@@ -106,6 +135,8 @@ EM = EnquiriesManagement, FM = FactoryManagement, LPI = LatoProductInventory
 
 #### 7. Message Definitions (`MessageDefinitions$MessageDefinitionCollection`) - 33 documents
 
+> **Status: still missing.**
+
 **Impact**: Message definitions describe the structure of messages used by published services. Related to REST/SOAP operations.
 
 **What's needed**: BSON parser, Reader methods, SHOW command.
@@ -113,6 +144,8 @@ EM = EnquiriesManagement, FM = FactoryManagement, LPI = LatoProductInventory
 **Complexity**: Medium (large documents, avg 132KB in FactoryManagement).
 
 #### 8. Regular Expressions (`RegularExpressions$RegularExpression`) - 16 documents
+
+> **Status: supported.** `CREATE [OR MODIFY] REGULAR EXPRESSION`, and `CREATE VALIDATION RULE … REGEX` binds one to an attribute.
 
 **Impact**: Named regex patterns referenced by validation rules. Minimal.
 
@@ -122,6 +155,8 @@ EM = EnquiriesManagement, FM = FactoryManagement, LPI = LatoProductInventory
 
 #### 9. Custom Icons (`CustomIcons$CustomIconCollection`) - 10 documents
 
+> **Status: read-only, by design.** Icon collections ship with Atlas/the theme; `SHOW`/`DESCRIBE ICON COLLECTION` lists each icon's reference form for a widget's `icon:`. Authoring one is not planned.
+
 **Impact**: Icon collections for use in the UI. Binary content, not useful for code analysis.
 
 **What's needed**: Reader listing only (for completeness). No describe/MDL needed.
@@ -129,6 +164,8 @@ EM = EnquiriesManagement, FM = FactoryManagement, LPI = LatoProductInventory
 **Complexity**: Very low (listing only).
 
 #### 10. Menus (`Menus$MenuDocument`) - 7 documents
+
+> **Status: supported.** `CREATE OR MODIFY`/`DESCRIBE`/`DROP MENU`, round-trippable.
 
 **Impact**: Menu configurations (separate from navigation). Rarely used directly.
 
@@ -138,6 +175,8 @@ EM = EnquiriesManagement, FM = FactoryManagement, LPI = LatoProductInventory
 
 #### 11. Queues (`Queues$Queue`) - 5 documents
 
+> **Status: supported.** `CREATE [OR MODIFY] QUEUE`, and a call is bound to one with `CALL MICROFLOW … IN QUEUE Module.Queue` (same clause on `CALL JAVA ACTION`).
+
 **Impact**: Task queue definitions for asynchronous processing. Lightweight documents.
 
 **What's needed**: BSON parser (Name, Module), Reader methods, SHOW command, catalog table.
@@ -145,6 +184,8 @@ EM = EnquiriesManagement, FM = FactoryManagement, LPI = LatoProductInventory
 **Complexity**: Very low.
 
 #### 12. System Texts (`Texts$SystemTextCollection`) - 3 documents
+
+> **Status: still missing.**
 
 **Impact**: Translation/localization texts. One per project.
 
@@ -154,6 +195,8 @@ EM = EnquiriesManagement, FM = FactoryManagement, LPI = LatoProductInventory
 
 #### 13. Database Connections (`DatabaseConnector$DatabaseConnection`) - 1 document
 
+> **Status: supported.** `CREATE [OR MODIFY] DATABASE CONNECTION` with queries, parameters and `RETURNS … MAP (…)`; `EXECUTE DATABASE QUERY` calls one from a microflow. Use type `'BYOD'` for a JDBC driver Mendix has no entry for. See `mxcli syntax database-connection`.
+
 **Impact**: External database connection configuration. Only in FactoryManagement.
 
 **What's needed**: Reader listing, basic SHOW command.
@@ -162,25 +205,32 @@ EM = EnquiriesManagement, FM = FactoryManagement, LPI = LatoProductInventory
 
 ## Recommended Implementation Order
 
+> **This plan has been executed.** Kept for the record; ~~struck~~ items shipped.
+> What is left is items 2, 10 and 13 — see the summary table's Status column.
+
 ### Sprint 1: High-Impact Read-Only
-1. **Workflows** (Phase 1 from workflow proposal) - highest value, complex
-2. **Rules** - low effort, completes microflow domain
-3. **Published REST Services** - high value for integration projects
+1. ~~**Workflows**~~ — shipped (authorable, not read-only: CREATE/ALTER/DROP)
+2. **Rules** — *still open*, low effort, completes the microflow domain
+3. ~~**Published REST Services**~~ — shipped
 
 ### Sprint 2: Integration Support
-4. **JSON Structures** - prerequisite for mappings
-5. **Import Mappings** - completes REST integration chain
-6. **Export Mappings** - completes REST integration chain
-7. **Consumed REST Services** - completes REST support
+4. ~~**JSON Structures**~~ — shipped
+5. ~~**Import Mappings**~~ — shipped
+6. ~~**Export Mappings**~~ — shipped
+7. ~~**Consumed REST Services**~~ — shipped as REST clients
 
 ### Sprint 3: Completeness
-8. **Queues** - simple, useful for async patterns
-9. **Regular Expressions** - simple
-10. **Message Definitions** - completes service descriptions
-11. **Menus** - listing only
-12. **Custom Icons** - listing only
-13. **System Texts** - listing only
-14. **Database Connections** - listing only
+8. ~~**Queues**~~ — shipped, and a call binds to one with `IN QUEUE`
+9. ~~**Regular Expressions**~~ — shipped, plus `CREATE VALIDATION RULE`
+10. **Message Definitions** — *still open*
+11. ~~**Menus**~~ — shipped as full authoring, not listing only
+12. ~~**Custom Icons**~~ — shipped as SHOW/DESCRIBE; authoring is not planned
+13. **System Texts** — *still open*
+14. ~~**Database Connections**~~ — shipped as full authoring, not listing only
+
+Note how often "listing only" in the original plan became full authoring. That
+is the specific way this document goes stale: the estimate of *how much* would
+be built was as wrong as the timing, and always in the same direction.
 
 ## Impact on Catalog Coverage
 

@@ -615,11 +615,52 @@ func (b *Backend) ListDatabaseConnections() ([]*model.DatabaseConnection, error)
 			}
 			dq.ID = model.ID(q.ID())
 			dq.TypeName = "DatabaseConnector$DatabaseQuery"
+			dq.TableMappings = tableMappingsFromGen(q)
 			conn.Queries = append(conn.Queries, dq)
 		}
 		out = append(out, conn)
 	}
 	return out, nil
+}
+
+// tableMappingsFromGen reads a query's TableMappings back into the semantic
+// model — the entity a query returns and its column→attribute mapping.
+//
+// Without this the DESCRIBE renderer's `returns`/`map (…)` block was dead code
+// on this engine (it only ever saw an empty slice), so `describe database
+// connection` emitted a query with no return entity and no mapping, and a
+// describe → exec round trip dropped both. The legacy reader has always
+// populated it, which is why the round-trip test — pinned to legacy — stayed
+// green.
+func tableMappingsFromGen(q *genDb.DatabaseQuery) []*model.DatabaseTableMapping {
+	var out []*model.DatabaseTableMapping
+	for _, el := range q.TableMappingsItems() {
+		tm, ok := el.(*genDb.TableMapping)
+		if !ok {
+			continue
+		}
+		m := &model.DatabaseTableMapping{
+			Entity:    tm.EntityQualifiedName(),
+			TableName: tm.TableName(),
+		}
+		m.ID = model.ID(tm.ID())
+		m.TypeName = "DatabaseConnector$TableMapping"
+		for _, cEl := range tm.ColumnsItems() {
+			c, ok := cEl.(*genDb.ColumnMapping)
+			if !ok {
+				continue
+			}
+			cm := &model.DatabaseColumnMapping{
+				Attribute:  c.AttributeQualifiedName(),
+				ColumnName: c.ColumnName(),
+			}
+			cm.ID = model.ID(c.ID())
+			cm.TypeName = "DatabaseConnector$ColumnMapping"
+			m.Columns = append(m.Columns, cm)
+		}
+		out = append(out, m)
+	}
+	return out
 }
 
 // firstNonEmpty returns the first non-empty string in vals, or "".

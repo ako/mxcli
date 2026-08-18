@@ -301,6 +301,112 @@ func init() {
 		SeeAlso: []string{"sql"},
 	})
 
+	// ── External database connector ───────────────────────────────────
+
+	Register(SyntaxFeature{
+		Path:    "database-connection",
+		Summary: "External Database Connector — query another database from a microflow",
+		Keywords: []string{
+			"database connection", "database connections", "external database",
+			"create database connection", "drop database connection",
+			"describe database connection", "show database connections",
+			"jdbc", "byod", "database connector", "execute database query",
+			"postgresql", "mysql", "oracle", "snowflake", "sql server",
+		},
+		Syntax: `CREATE [OR MODIFY] DATABASE CONNECTION Module.Name
+  TYPE '<type>'
+  CONNECTION STRING @Module.UrlConstant
+  USERNAME @Module.UserConstant
+  PASSWORD @Module.PasswordConstant
+[BEGIN
+  QUERY <QueryName>
+    SQL $$<sql>$$
+    [PARAMETER <name>: <Type> [DEFAULT '<value>' | NULL]]
+    [RETURNS Module.Entity
+      [MAP ( <column> AS <Attribute>, ... )]]
+  ;
+END];
+
+SHOW DATABASE CONNECTIONS [IN <module>];
+DESCRIBE DATABASE CONNECTION Module.Name;
+DROP DATABASE CONNECTION Module.Name;
+
+Calling a query from a microflow:
+  EXECUTE DATABASE QUERY Module.Connection.QueryName (...);
+
+TYPE is one of Studio Pro's entries — 'MSSQL', 'MySQL', 'Oracle',
+'PostgreSQL', 'Snowflake' — or 'BYOD' ("bring your own driver"), which skips
+the driver-presence check and takes the connection string verbatim. Use BYOD
+for any JDBC driver Mendix has no entry for; put the driver on the classpath
+with ALTER MODULE ... ADD JAR DEPENDENCY + mxcli sync-java-deps. An
+unrecognised type is reported by MDL-DB01 — mxbuild does not check it, so the
+build stays green and the connection simply does not work.
+
+Three traps:
+
+  1. CONNECTION STRING / USERNAME / PASSWORD must reference CONSTANTS
+     (@Module.Name), not literals. A literal produces a project Studio Pro
+     cannot open at all: StorageLoadException "is not a valid
+     ConstantIdentifier". mxcli catches it (MDL058); mxbuild does not, so the
+     build is green.
+  2. USERNAME and PASSWORD must be given even when the driver needs neither.
+     Omitting them writes an empty constant reference, the build stays green,
+     and the query fails only at run time with "Could not find value for
+     constant ''".
+  3. A named type needs its JDBC driver declared on the module, or the build
+     fails with CE5278 ("The PostgreSQL JDBC driver (org.postgresql:postgresql)
+     is missing from the module settings"). Unlike the first two, this one is
+     caught at build time:
+
+       ALTER MODULE Ops ADD JAR DEPENDENCY (
+         group = 'org.postgresql', artifact = 'postgresql',
+         version = '42.7.4', included = true
+       );
+
+     then run: mxcli sync-java-deps -p app.mpr — to put it on the classpath —
+     declaring without syncing gives a green build and a
+     ClassNotFoundException. BYOD skips this check, which is the point of it.
+
+The connector runtime is part of the platform — no marketplace module is
+needed in the project.`,
+		Example: `-- The three constants the connection points at.
+CREATE CONSTANT Ops.DbUrl  TYPE String DEFAULT 'jdbc:postgresql://localhost:5432/erp';
+CREATE CONSTANT Ops.DbUser TYPE String DEFAULT 'reader';
+CREATE CONSTANT Ops.DbPass TYPE String DEFAULT '';
+
+CREATE NON-PERSISTENT ENTITY Ops.EmployeeRow (
+  EmployeeId: Integer,
+  Name: String(100)
+);
+
+CREATE DATABASE CONNECTION Ops.Erp
+  TYPE 'PostgreSQL'
+  CONNECTION STRING @Ops.DbUrl
+  USERNAME @Ops.DbUser
+  PASSWORD @Ops.DbPass
+BEGIN
+  QUERY GetEmployees
+    SQL $$SELECT id, name FROM employees WHERE dept = {dept}$$
+    PARAMETER dept: String DEFAULT 'sales'
+    RETURNS Ops.EmployeeRow
+    MAP (
+      id AS EmployeeId,
+      name AS Name
+    )
+  ;
+END;
+
+-- A named type needs its driver declared, or the build fails with CE5278.
+ALTER MODULE Ops ADD JAR DEPENDENCY (
+  group = 'org.postgresql', artifact = 'postgresql',
+  version = '42.7.4', included = true
+);
+
+SHOW DATABASE CONNECTIONS IN Ops;
+DESCRIBE DATABASE CONNECTION Ops.Erp;`,
+		SeeAlso: []string{"integration", "sql", "microflow.call"},
+	})
+
 	// ── Business Events ───────────────────────────────────────────────
 
 	Register(SyntaxFeature{

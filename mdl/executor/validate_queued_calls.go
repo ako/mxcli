@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 
+	"go.mongodb.org/mongo-driver/bson"
+
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
 	"github.com/mendixlabs/mxcli/model"
@@ -130,6 +132,14 @@ func addQueueName(q *ast.QualifiedName, out map[string]bool) {
 // queuedCallTargets walks a stored microflow document and returns the queue
 // bound to each call that has one.
 //
+// Arrays are matched as BOTH []any and bson.A. The two engines' readers return
+// different shapes for the same document — modelsdk yields []interface{},
+// the legacy mpr reader yields bson.A — and bson.A is a NAMED slice type, so
+// `case []any` silently does not match it. Missing that case made this guard a
+// no-op on `--engine legacy`: the walk never descended into
+// ObjectCollection.Objects, found no queued calls, and let the rewrite drop the
+// binding (see TestQueuedCallTargets_HandlesBsonArrays).
+//
 // The binding that matters is QueueSettings — a Queues$QueueSettings node whose
 // own Queue property names the queue. The call's top-level Queue property is
 // also read, because it is in the metamodel, but on its own it is inert:
@@ -157,6 +167,10 @@ func queuedCallTargets(v any) []string {
 		for _, el := range t {
 			out = append(out, queuedCallTargets(el)...)
 		}
+	case bson.A:
+		for _, el := range t {
+			out = append(out, queuedCallTargets(el)...)
+		}
 	}
 	return dedupeStrings(out)
 }
@@ -181,6 +195,10 @@ func storedQueueRetries(v any) []string {
 			out = append(out, storedQueueRetries(val)...)
 		}
 	case []any:
+		for _, el := range t {
+			out = append(out, storedQueueRetries(el)...)
+		}
+	case bson.A:
 		for _, el := range t {
 			out = append(out, storedQueueRetries(el)...)
 		}

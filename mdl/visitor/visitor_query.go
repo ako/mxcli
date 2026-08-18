@@ -184,6 +184,28 @@ func (b *Builder) ExitShowStatement(ctx *parser.ShowStatementContext) {
 			}
 		}
 		b.statements = append(b.statements, stmt)
+	} else if ctx.PAGE() != nil {
+		// `SHOW PAGE Module.Page` (singular) is an alias for DESCRIBE PAGE, the
+		// same way SHOW ENTITY / SHOW ASSOCIATION read as their describe. The
+		// grammar alternative existed with no visitor branch, so the statement
+		// parsed to nothing and the command exited 0 printing nothing — which
+		// reads as "this page is empty", not "this command does nothing".
+		if qn := ctx.QualifiedName(); qn != nil {
+			b.statements = append(b.statements, &ast.DescribeStmt{
+				ObjectType: ast.DescribePage,
+				Name:       buildQualifiedName(qn),
+			})
+		}
+	} else if ctx.CONNECTIONS() != nil && ctx.DATABASE() == nil {
+		// SHOW CONNECTIONS lists the external SQL connections open in this
+		// session (sql.Manager). The grammar alternative had no visitor branch,
+		// so it parsed to nothing and printed nothing — indistinguishable from
+		// "no connections are open", which is a plausible and wrong answer.
+		//
+		// The DATABASE() guard is load-bearing: `SHOW DATABASE CONNECTIONS`
+		// also matches CONNECTIONS(), so without it this branch swallows the
+		// stored-document listing and answers it with live session state.
+		b.statements = append(b.statements, &ast.ShowStmt{ObjectType: ast.ShowConnections})
 	} else if ctx.SNIPPETS() != nil {
 		stmt := &ast.ShowStmt{ObjectType: ast.ShowSnippets}
 		if ctx.IN() != nil {

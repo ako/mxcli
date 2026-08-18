@@ -1,6 +1,6 @@
 /**
  * MDL Page Grammar — pages, snippets, shared page/snippet rules, xpath expressions,
- * page V3 syntax, notebooks.
+ * page V3 syntax.
  */
 parser grammar MDLPage;
 
@@ -575,24 +575,3 @@ widgetBodyV3
     : LBRACE pageBodyV3 RBRACE
     ;
 
-// =============================================================================
-// NOTEBOOK CREATION
-// =============================================================================
-
-createNotebookStatement
-    : NOTEBOOK qualifiedName
-      notebookOptions?
-      BEGIN notebookPage* END
-    ;
-
-notebookOptions
-    : notebookOption+
-    ;
-
-notebookOption
-    : COMMENT STRING_LITERAL
-    ;
-
-notebookPage
-    : PAGE qualifiedName (CAPTION STRING_LITERAL)?
-    ;
