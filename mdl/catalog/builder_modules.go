@@ -4,6 +4,7 @@ package catalog
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/mendixlabs/mxcli/sdk/domainmodel"
@@ -80,9 +81,9 @@ func (b *Builder) buildEntities() error {
 
 	attrStmt, err := b.tx.Prepare(`
 		INSERT INTO attributes_data (Id, Name, EntityId, EntityQualifiedName, ModuleName,
-			DataType, Length, IsUnique, IsRequired, DefaultValue, IsCalculated, Description,
-			ProjectId, SnapshotId)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			DataType, EnumerationQualifiedName, Length, IsUnique, IsRequired, DefaultValue,
+			IsCalculated, Description, ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return err
@@ -175,12 +176,20 @@ func (b *Builder) buildEntities() error {
 			// Insert attributes
 			for _, attr := range entity.Attributes {
 				dataType := ""
+				enumQN := ""
 				length := 0
 				if attr.Type != nil {
 					dataType = attr.Type.GetTypeName()
 					// Try to get length for string types
 					if st, ok := attr.Type.(*domainmodel.StringAttributeType); ok {
 						length = st.Length
+					}
+					// GetTypeName is the bare kind, so an enumeration attribute
+					// reports only "Enumeration". Which enumeration is a separate
+					// column; without it nothing downstream can check a value
+					// against the cases.
+					if et, ok := attr.Type.(*domainmodel.EnumerationAttributeType); ok {
+						enumQN = et.EnumerationRef
 					}
 				}
 
@@ -210,6 +219,7 @@ func (b *Builder) buildEntities() error {
 					qualifiedName,
 					moduleName,
 					dataType,
+					enumQN,
 					length,
 					isUnique,
 					isRequired,
@@ -258,7 +268,18 @@ func (b *Builder) buildEnumerations() error {
 	}
 	defer stmt.Close()
 
+	valueStmt, err := b.tx.Prepare(`
+		INSERT INTO enumeration_values_data (Id, EnumerationId, EnumerationQualifiedName,
+			ModuleName, Name, Caption, Ordinal, ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return err
+	}
+	defer valueStmt.Close()
+
 	projectID, snapshotID := b.snapshotMeta()
+	valueCount := 0
 
 	for _, enum := range enums {
 		// Get module name using hierarchy
@@ -286,9 +307,52 @@ func (b *Builder) buildEnumerations() error {
 		if err != nil {
 			return err
 		}
+
+		for i, v := range enum.Values {
+			// A value's Id is not always populated on read, and the pair
+			// (enumeration, name) is what identifies it anyway — a synthetic key
+			// keeps the row insertable either way.
+			id := string(v.ID)
+			if id == "" {
+				id = string(enum.ID) + "/" + v.Name
+			}
+			caption := ""
+			if v.Caption != nil {
+				// Any translation is better than none for a display caption, and
+				// nothing downstream keys off it — the checker matches on Name.
+				caption = v.Caption.GetTranslation("en_US")
+				if caption == "" {
+					// Fall back to some other language rather than storing
+					// nothing, but pick it deterministically: iterating the map
+					// directly would make the catalog row vary run to run.
+					langs := make([]string, 0, len(v.Caption.Translations))
+					for lang := range v.Caption.Translations {
+						langs = append(langs, lang)
+					}
+					sort.Strings(langs)
+					if len(langs) > 0 {
+						caption = v.Caption.Translations[langs[0]]
+					}
+				}
+			}
+			if _, err := valueStmt.Exec(
+				id,
+				string(enum.ID),
+				qualifiedName,
+				moduleName,
+				v.Name,
+				caption,
+				i,
+				projectID, snapshotID,
+			); err != nil {
+				return err
+			}
+			valueCount++
+		}
 	}
 
 	b.report("Enumerations", len(enums))
+	b.report("Enumeration values", valueCount)
 	return nil
 }
 
