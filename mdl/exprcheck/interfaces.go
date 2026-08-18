@@ -18,9 +18,10 @@ type Context struct {
 	Line      int
 	Column    int
 
-	Scope   Scope
-	Catalog CatalogReader // nil → semantic checks disabled
-	Slots   SlotResolver  // nil → slot-kind checks disabled
+	Scope    Scope
+	Catalog  CatalogReader // nil → semantic checks disabled
+	Slots    SlotResolver  // nil → slot-kind checks disabled
+	Entities EntityScope   // nil → attribute paths stay KindUnknown
 }
 
 // IsSemanticEnabled reports whether Catalog and Slots are both wired so that
@@ -65,6 +66,28 @@ type CatalogReader interface {
 
 type Scope interface {
 	Lookup(name string) (TypeKind, bool)
+}
+
+// EntityScope resolves the object side of an expression: which entity a
+// variable holds, and where an association leads from there.
+//
+// It is separate from Scope because Scope speaks TypeKind, which can say "$P is
+// an Object" but not *which* entity — and without that, `$P/Status` cannot be
+// resolved to an attribute at all. Keeping it out of CatalogReader too: the
+// variable half is per-microflow rather than per-project, and leaving
+// CatalogReader's shape untouched keeps it re-syncable from the upstream fork.
+//
+// A nil Context.Entities is the pre-existing behaviour: attribute paths infer
+// KindUnknown and every rule that depends on them stays quiet.
+type EntityScope interface {
+	// VariableEntity returns the qualified entity name a variable holds. The
+	// name is passed without the leading '$'.
+	VariableEntity(name string) (string, bool)
+	// AssociationTarget returns the entity at the other end of association
+	// assocQN traversed from fromEntityQN, and whether assocQN is an
+	// association at all. Both directions resolve — a Mendix expression can
+	// follow an association from either end.
+	AssociationTarget(assocQN, fromEntityQN string) (string, bool)
 }
 
 type SlotConstraint struct {

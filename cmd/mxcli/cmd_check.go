@@ -28,7 +28,18 @@ that are created within the script itself. For example, if your script creates
 a module "MyModule" and then creates entities in it, no error will be reported
 for the module reference.
 
-Output includes structured rule IDs (MDL prefix) for each validation issue.
+Given a project it also type-checks the expressions in the script's microflows
+and nanoflows: comparing an enumeration attribute to a string literal (in a
+create/change member, or in a condition such as: if $obj/Status = 'Open'),
+operand and argument type mismatches, and the like. Attribute paths resolve
+through associations too, so $Order/Sales.Order_Customer/Name is typed.
+These need the project to answer what an attribute's type is and which values an
+enumeration has, which is why they need -p. They report under exprcheck's own
+E0xx codes, and — like every other check here — only an error severity fails the
+run.
+
+Output includes structured rule IDs (MDL prefix for reference and script rules,
+E0xx for expression type rules) for each validation issue.
 
 Use --post-migration to scan an existing project (independent of the script)
 for legacy native widgets that have pluggable replacements — Studio Pro does
@@ -38,7 +49,7 @@ Examples:
   # Check syntax only (no project needed)
   mxcli check script.mdl
 
-  # Check syntax and resolve references against a project
+  # Check syntax, resolve references, and type-check expressions
   mxcli check script.mdl -p app.mpr
 
   # Scan the project for legacy native widgets after a Mendix upgrade
@@ -185,6 +196,34 @@ Examples:
 			}
 			if !isStructured {
 				fmt.Printf("✓ All references valid\n")
+			}
+
+			// Expression type checking is the catalog-backed tier: the rules that
+			// need an attribute's type, an enumeration's cases or a microflow's
+			// return type. It runs here rather than in the unconditional pass
+			// because those answers only exist once a project is connected, and
+			// after the reference check because a script naming things that do
+			// not exist has a more basic problem than a mistyped operand — and
+			// because building the catalog for a run that already failed is
+			// wasted work.
+			//
+			// Like every other violation this command emits, only an error
+			// severity fails the run. Warnings and hints are advice, and a
+			// checker whose first outing turns advice into a broken build is a
+			// checker people turn off.
+			typeViolations := exec.TypeCheckProgram(prog)
+			if len(typeViolations) > 0 {
+				if isStructured {
+					formatter.Format(typeViolations, os.Stderr)
+				} else {
+					fmt.Fprintln(os.Stderr)
+					formatter.Format(typeViolations, os.Stderr)
+				}
+				if linter.Summarize(typeViolations).Errors > 0 {
+					os.Exit(1)
+				}
+			} else if !isStructured {
+				fmt.Printf("✓ Expression types OK\n")
 			}
 		}
 

@@ -512,6 +512,43 @@ for screenshotting the running app. Iterate ②–④ per screen until it matche
 
 ---
 
+## Never put a grid on a Mendix widget's own class
+
+A layout that should be two columns comes out as one, and the CSS is right — it
+is on the wrong element. Mendix wraps a repeating widget's children in an
+intermediate element, so `display: grid` on the widget's own class has exactly
+**one** grid item and every card stacks:
+
+```
+div.mx-listview.my-cards   [689x2054] display=grid    <- the class you wrote
+  ul.                      [334x2038] display=block   <- ONE child
+    li.mx-name-index-0     [334x526]                  <- the things you meant to lay out
+```
+
+A data view does the same with `.mx-dataview-content`. One project hit this
+twice in two different widgets before naming the rule (mxcli-owid, findings #15
+and #41).
+
+Put the grid on the element that actually holds the repeated children:
+
+```scss
+/* list view */
+.my-cards > ul                { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.my-cards > ul > li           { min-width: 0; }
+
+/* data view */
+.my-page > .mx-dataview-content { display: grid; grid-template-columns: 240px 1fr; }
+```
+
+`min-width: 0` on the child matters: a grid item defaults to `min-width: auto`,
+so a wide table or a long unbroken string inside a card pushes the column past
+its track instead of scrolling within it.
+
+**How to find the right element** rather than guess: run the app, inspect the
+widget, and walk down from the class you wrote until you reach the element with
+one child per row. `mxcli run --local --screenshot` plus the browser inspector
+settles it in one pass — see `.claude/skills/verify-in-runtime.md`.
+
 ## Gotchas (learned building this app)
 
 - **Never put `Style:` (inline style) on a `DYNAMICTEXT`** — it crashes MxBuild with a

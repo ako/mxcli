@@ -695,10 +695,41 @@ refactors (`mprrepos`/`mxgraph`). Cherry-pickable like the modelsdk engine.
 superseding "Phase 1 — Type infrastructure" above, which `exprcheck` already
 delivers):
 
-1. Provide our-catalog-backed `CatalogReader` + `SlotResolver` implementations and
-   finish Tier-2 depth (attribute types, microflow return types) — the
-   `AttributePathExpr → KindUnknown` gap.
-2. Wire the `exprcheck` adapters into **our** `mxcli check` / `validate` path.
+1. ~~Provide our-catalog-backed `CatalogReader`~~ **done** — `mdl/exprcatalog`,
+   a memoized index over the catalog. It needed three catalog additions first
+   (`attributes_data.EnumerationQualifiedName`, `enumeration_values_data`,
+   `microflow_parameters_data`): the seam had no implementation *and* three of
+   its five lookups had no data. Still open: **Tier-2 depth** — `inferKind`
+   returns `KindUnknown` for `AttributePathExpr`, so `$obj/Attr` resolves to
+   nothing and only slot-qualified positions (a create/change member, where the
+   adapter builds `CreateItem.Value:Entity.Attr`) reach the catalog. That is what
+   makes `if $obj/Status = 'Open'` still pass. **Also done** — an `EntityScope`
+   seam (`VariableEntity` + `AssociationTarget`) sits beside `Scope` rather than
+   inside it, because `Scope` speaks `TypeKind` and cannot carry "$P is
+   Mod.Person"; `CatalogReader`'s shape is left untouched so it stays
+   re-syncable. `inferKind` now resolves an attribute path, including multi-hop
+   ones — a Mendix expression, unlike XPath, does not name the intermediate
+   entity, so each hop resolves through the association index. Two further gaps
+   closed on the way: the adapter's variable→entity map was computed and never
+   handed to the checker, and it covered only body-introduced variables, never
+   **parameters** — the ordinary case.
+
+   `if $obj/Status = 'Open'` needed one more thing than resolution: E001 fired
+   only from a **slot** (`CreateItem.Value:Entity.Attr`), which exists for an
+   assignment and not for a comparison. A comparison-side detection now emits the
+   same code and message from the other operand's resolved type — one defect
+   should not have two names depending on where it was spotted.
+
+   Still open: a **terminal association** step (`$Order/Mod.Order_Lines`) types
+   to unknown rather than Object or List, because which one depends on the
+   association's kind and direction and guessing would cost false positives.
+2. ~~Wire the `exprcheck` adapters into **our** `mxcli check` / `validate` path~~
+   **done** — `Executor.TypeCheckProgram`, called by `mxcli check --references`.
+   Two things were wrong in the ported adapter and are worth knowing before
+   wiring the LSP to it: `exprSource` read only `ast.SourceExpr` (the visitor
+   attaches one to some slots and not others, so most expressions were invisible
+   — now injectable via `WithSourceFunc`), and the variable scope it builds is
+   never passed into the parse `Context`.
 3. **Phase 3 LSP** — still to-do; the `Context`-based design makes it
    straightforward (run with `Scope` only for the inline, project-less path).
 4. Decide the cosmetics: keep `exprcheck`'s `E0xx` codes (faithful port) vs remap

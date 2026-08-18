@@ -55,7 +55,7 @@ builds the invocation for a resource backed by a stored routine.
 | `Top`, `Skip` | bind | the page, already clamped to `MaxTop` |
 | `SortColumn1/2`, `SortDirection1/2` | bind | the sort, as exposed names and `A`/`D` |
 | `WantsCount` | both | `$count=true` — the client wants the size of the set |
-| `Rejected`, `RejectReason` | both | the request asked for something untranslatable |
+| `Rejected`, `RejectReason` | bind | the request asked for something untranslatable. Only a **bind** caller sees these: with `RejectUnsupported = true` (what a splice caller passes) `Parse` throws instead of returning, so a splice caller always has `Rejected = false` |
 
 ## Two ways to spend it
 

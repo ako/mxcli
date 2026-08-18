@@ -34,6 +34,16 @@ func (b *Builder) buildMicroflows() error {
 	}
 	defer mfStmt.Close()
 
+	paramStmt, err := b.tx.Prepare(`
+		INSERT INTO microflow_parameters_data (Id, MicroflowId, MicroflowQualifiedName,
+			ModuleName, Name, ParameterType, Description, Ordinal, ProjectId, SnapshotId)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return err
+	}
+	defer paramStmt.Close()
+
 	// Prepare activity statement only in full mode
 	var actStmt *sql.Stmt
 	if b.fullMode {
@@ -53,6 +63,37 @@ func (b *Builder) buildMicroflows() error {
 
 	mfCount := 0
 	nfCount := 0
+	paramCount := 0
+
+	// insertParams writes one row per parameter. Microflows and nanoflows share
+	// it: both carry []*MicroflowParameter and both land in microflows_data, so
+	// splitting them here would only invite the two paths to drift.
+	insertParams := func(flowID, qualifiedName, moduleName string, params []*microflows.MicroflowParameter) error {
+		for i, prm := range params {
+			if prm == nil {
+				continue
+			}
+			id := string(prm.ID)
+			if id == "" {
+				id = flowID + "/" + prm.Name
+			}
+			if _, err := paramStmt.Exec(
+				id,
+				flowID,
+				qualifiedName,
+				moduleName,
+				prm.Name,
+				getDataTypeName(prm.Type),
+				prm.Documentation,
+				i,
+				projectID, snapshotID,
+			); err != nil {
+				return err
+			}
+			paramCount++
+		}
+		return nil
+	}
 	actCount := 0
 
 	// Process microflows
@@ -90,6 +131,9 @@ func (b *Builder) buildMicroflows() error {
 			projectID, snapshotID,
 		)
 		if err != nil {
+			return err
+		}
+		if err := insertParams(string(mf.ID), qualifiedName, moduleName, mf.Parameters); err != nil {
 			return err
 		}
 		mfCount++
@@ -181,6 +225,9 @@ func (b *Builder) buildMicroflows() error {
 		if err != nil {
 			return err
 		}
+		if err := insertParams(string(nf.ID), qualifiedName, moduleName, nf.Parameters); err != nil {
+			return err
+		}
 		nfCount++
 
 		// Insert activities only in full mode
@@ -236,6 +283,7 @@ func (b *Builder) buildMicroflows() error {
 
 	b.report("Microflows", mfCount)
 	b.report("Nanoflows", nfCount)
+	b.report("Flow parameters", paramCount)
 	if b.fullMode {
 		b.report("Activities", actCount)
 	}
