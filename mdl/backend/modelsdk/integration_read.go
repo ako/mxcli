@@ -616,11 +616,42 @@ func (b *Backend) ListDatabaseConnections() ([]*model.DatabaseConnection, error)
 			dq.ID = model.ID(q.ID())
 			dq.TypeName = "DatabaseConnector$DatabaseQuery"
 			dq.TableMappings = tableMappingsFromGen(q)
+			dq.Parameters = queryParametersFromGen(q)
 			conn.Queries = append(conn.Queries, dq)
 		}
 		out = append(out, conn)
 	}
 	return out, nil
+}
+
+// queryParametersFromGen reads a query's Parameters back into the semantic
+// model. Sibling of tableMappingsFromGen and missed for the same reason: the
+// DESCRIBE renderer emits `parameter <name>: <Type> [default …]` from this
+// slice, so leaving it empty made `describe database connection` drop every
+// parameter on this engine while the legacy reader showed them. A describe →
+// exec round trip then produced a query with no parameters at all.
+func queryParametersFromGen(q *genDb.DatabaseQuery) []*model.DatabaseQueryParameter {
+	var out []*model.DatabaseQueryParameter
+	for _, el := range q.ParametersItems() {
+		p, ok := el.(*genDb.QueryParameter)
+		if !ok {
+			continue
+		}
+		param := &model.DatabaseQueryParameter{
+			ParameterName:         p.ParameterName(),
+			DefaultValue:          p.DefaultValue(),
+			EmptyValueBecomesNull: p.EmptyValueBecomesNull(),
+		}
+		param.ID = model.ID(p.ID())
+		param.TypeName = "DatabaseConnector$QueryParameter"
+		// DataType is a child element whose $Type carries the type
+		// (DataTypes$StringType, …) — the same string the legacy reader lifts.
+		if dt := p.DataType(); dt != nil {
+			param.DataType = dt.TypeName()
+		}
+		out = append(out, param)
+	}
+	return out
 }
 
 // tableMappingsFromGen reads a query's TableMappings back into the semantic
