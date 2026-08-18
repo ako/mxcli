@@ -275,15 +275,15 @@ func execCreateMicroflow(ctx *ExecContext, s *ast.CreateMicroflowStmt) error {
 		// survive. Preserved the way the folder and allowed roles already are.
 		startPosition: storedStartPosition(ctx, existingID),
 		posX:          200,
-		posY:         200,
-		baseY:        200, // Base Y for happy path
-		spacing:      HorizontalSpacing,
-		varTypes:     varTypes,
-		declaredVars: declaredVars,
-		measurer:     &layoutMeasurer{varTypes: varTypes},
-		backend:      ctx.Backend,
-		hierarchy:    hierarchy,
-		restServices: restServices,
+		posY:          200,
+		baseY:         200, // Base Y for happy path
+		spacing:       HorizontalSpacing,
+		varTypes:      varTypes,
+		declaredVars:  declaredVars,
+		measurer:      &layoutMeasurer{varTypes: varTypes},
+		backend:       ctx.Backend,
+		hierarchy:     hierarchy,
+		restServices:  restServices,
 	}
 
 	mf.ObjectCollection = builder.buildFlowGraph(s.Body, s.ReturnType)
