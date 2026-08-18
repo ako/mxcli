@@ -31,6 +31,24 @@ It also does not mean the script is *correct*. `mxcli check` validates MDL synta
 and mxcli's own rules; it does not validate the Mendix model. Run
 `mx check` (or `mxcli docker check -p app.mpr`) after applying a slice.
 
+### `-p` resolves references — there is no separate opt-in
+
+`mxcli check script.mdl` alone checks syntax and the semantic rules that need no
+model. **Pass `-p` and it also resolves every reference** — modules, entities,
+pages, microflows and icons — against that project:
+
+```bash
+mxcli check script.mdl                 # syntax + model-free rules
+mxcli check script.mdl -p app.mpr      # ... and every reference resolved
+```
+
+`--references` is implied by `-p` and is kept only so existing scripts keep
+working. It used to be required, which meant `mxcli check script.mdl -p app.mpr`
+printed an unqualified `Check passed!` having resolved nothing — a misspelled
+icon or entity sailed through a command that had been handed the project. A run
+without a project now says what it did not check, so a pass is never read as
+more than it is.
+
 ## Pre-Flight Validation Checklist
 
 Before writing any MDL, verify these requirements:
@@ -136,6 +154,25 @@ Run `mxcli syntax keywords` for the full list of 320+ reserved keywords.
 | `microflow not found` | Referenced before created | Move microflow definition earlier or check spelling |
 | `page not found` | Page doesn't exist | Check qualified name with `--references` |
 | `entity not found` | Typo or wrong module | Use fully qualified name |
+
+## Two rules that only real validation used to catch
+
+Both are decidable from the MDL alone and now fail `check`, because a project
+found them the hard way — four scripts passed `check` with 0 errors, executed
+cleanly, and `mx check` then reported them:
+
+| Rule | MxBuild | What it catches |
+|---|---|---|
+| `MDL-SEC20` | CE0156 | `CREATE USER ROLE` with no **System** module role — nobody holding it can sign in or read System entities. Add `System.User`. |
+| `MDL-PAGE20` | CE5601 | A page with **parameters and a `Url`** where the URL has no segment for a parameter. Mendix binds each parameter from the URL, so the page cannot be opened by link. |
+
+`MDL-PAGE20` accepts an attribute path in the segment (`url: 'p006/{Customer/Name}'`),
+which is the usual shape — it matches the segment's leading name, not the whole
+segment.
+
+**`check` is still necessary, not sufficient.** Run `mx check` (or
+`mxcli docker check`) after every `exec`; these two rules narrow the gap, they do
+not close it.
 
 ## Validation Workflow
 

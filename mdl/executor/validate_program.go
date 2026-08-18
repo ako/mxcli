@@ -38,6 +38,14 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 		if alterStmt, ok := stmt.(*ast.AlterEntityStmt); ok {
 			violations = append(violations, ValidateAlterEntity(alterStmt)...)
 		}
+		// A user role with no System module role cannot sign in (CE0156).
+		if roleStmt, ok := stmt.(*ast.CreateUserRoleStmt); ok {
+			violations = append(violations, ValidateUserRoleSystemModuleRole(roleStmt)...)
+		}
+		// A page with parameters and a Url must name each parameter in it (CE5601).
+		if pageStmt, ok := stmt.(*ast.CreatePageStmtV3); ok {
+			violations = append(violations, ValidatePageURLParameters(pageStmt)...)
+		}
 		// Check microflow body for common issues
 		if mfStmt, ok := stmt.(*ast.CreateMicroflowStmt); ok {
 			violations = append(violations, ValidateMicroflow(mfStmt)...)

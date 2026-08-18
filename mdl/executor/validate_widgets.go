@@ -131,8 +131,9 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 		}
 		if mapping != nil {
 			out = append(out, validateObjectListItemEnums(w, mapping, locationPrefix)...)
-			out = append(out, validateDataGrid2ColumnName(w, mapping, locationPrefix)...)
 		}
+		// Reported once per grid, not once per column — see the rule's comment.
+		out = append(out, validateDataGrid2ColumnNames(w, locationPrefix)...)
 		if len(w.Children) > 0 {
 			out = append(out, validateWidgetTreeIn(w.Children, registry, locationPrefix, objectListMappingSet(def))...)
 		}
@@ -1269,8 +1270,8 @@ func min3(a, b, c int) int {
 	return c
 }
 
-// validateDataGrid2ColumnName warns (MDL-WIDGET16) that the name written on a
-// pluggable DataGrid 2 column is discarded, and says what the column will
+// validateDataGrid2ColumnNames warns (MDL-WIDGET16) that the names written on a
+// pluggable DataGrid 2's columns are discarded, and says what each column will
 // actually be addressable as.
 //
 // Mendix stores no name on a DataGrid 2 column. Its schema has no name or
@@ -1284,29 +1285,43 @@ func min3(a, b, c int) int {
 // The consequence is not obvious from the MDL. An author who wrote `colLabel`
 // reaches for `ALTER PAGE … ON dg1.colLabel` and gets "column not found" for a
 // column they just named, while `describe page` shows a name they never wrote.
-// This warns at the point the name is written rather than leaving them to
-// discover it from the far end.
+//
+// **One violation per grid, listing its columns.** The first version emitted one
+// per column, which a real project (mxcli-dbreplication, finding F6) reported as
+// 44 infos saying the same thing. It is one fact about the grid; repeating it
+// per column buries the rest of the report without adding information.
 //
 // It warns rather than rejects: the name is harmless, it reads as documentation
 // in the source, and rejecting it would break every existing script — mxcli's
 // own doctype tests name every column. What the author needs is to know which
 // name addresses it.
-func validateDataGrid2ColumnName(w *ast.WidgetV3, mapping *ObjectListMapping, locationPrefix string) []linter.Violation {
-	if mapping == nil || !strings.EqualFold(w.Type, "COLUMN") || w.Name == "" {
+func validateDataGrid2ColumnNames(grid *ast.WidgetV3, locationPrefix string) []linter.Violation {
+	if grid == nil || !strings.EqualFold(grid.Type, "DATAGRID") {
 		return nil
 	}
-	addressable := derivedDataGrid2ColumnName(w)
-	if addressable == "" || strings.EqualFold(addressable, w.Name) {
+	var renamed []string
+	for _, child := range grid.Children {
+		if child == nil || !strings.EqualFold(child.Type, "COLUMN") || child.Name == "" {
+			continue
+		}
+		addressable := derivedDataGrid2ColumnName(child)
+		if addressable == "" || strings.EqualFold(addressable, child.Name) {
+			continue
+		}
+		renamed = append(renamed, fmt.Sprintf("%s → %s", child.Name, addressable))
+	}
+	if len(renamed) == 0 {
 		return nil
 	}
 	return []linter.Violation{{
 		RuleID:   "MDL-WIDGET16",
 		Severity: linter.SeverityInfo,
 		Message: fmt.Sprintf(
-			"%s: DataGrid 2 stores no column name, so %q is dropped on write. The column is "+
-				"addressed as %q (attribute columns key on the bound attribute, others on the "+
-				"caption) — use `ON <grid>.%s` in ALTER PAGE, and expect DESCRIBE to show that name.",
-			locationPrefix, w.Name, addressable, addressable),
+			"%s: DataGrid 2 stores no column names, so the names on %s are dropped on write. "+
+				"Address these columns by their derived name in ALTER PAGE (attribute columns "+
+				"key on the bound attribute, others on the caption), and expect DESCRIBE to "+
+				"show it: %s.",
+			locationPrefix, grid.Name, strings.Join(renamed, ", ")),
 	}}
 }
 

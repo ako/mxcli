@@ -194,18 +194,39 @@ func (c *Client) fetchPages(ctx context.Context, startPage, n int) ([][]Content,
 // filterItems returns items whose name or publisher contains query
 // (case-insensitive substring match).
 func filterItems(items []Content, query string) []Content {
-	q := strings.ToLower(query)
+	q := normalizeSearchTerm(query)
 	var matched []Content
 	for _, item := range items {
 		name := ""
 		if item.LatestVersion != nil {
-			name = strings.ToLower(item.LatestVersion.Name)
+			name = normalizeSearchTerm(item.LatestVersion.Name)
 		}
-		if strings.Contains(name, q) || strings.Contains(strings.ToLower(item.Publisher), q) {
+		if strings.Contains(name, q) || strings.Contains(normalizeSearchTerm(item.Publisher), q) {
 			matched = append(matched, item)
 		}
 	}
 	return matched
+}
+
+// normalizeSearchTerm folds case and drops the separators that differ between
+// how content is packaged and how it is written down.
+//
+// The API exposes only the packaged name — `Content` carries no display name —
+// and packaged names have no spaces. So searching for the module as it is
+// written everywhere, "Database Replication", matched nothing while
+// "replication" found it. Someone who types the name they were given should not
+// have to guess that the space is the problem.
+func normalizeSearchTerm(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range strings.ToLower(s) {
+		switch r {
+		case ' ', '-', '_', '.', '\t':
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 // Get returns the full detail for a single content item by ID.
