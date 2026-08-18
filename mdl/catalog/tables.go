@@ -7,6 +7,13 @@ package catalog
 //
 // History:
 //
+//	10 — the three lookups expression type checking needs and the catalog could
+//	    not answer: attributes_data.EnumerationQualifiedName (DataType says only
+//	    "Enumeration", losing which one), enumeration_values_data (the table
+//	    stored ValueCount but not the values), and microflow_parameters_data
+//	    (likewise ParameterCount but not the parameters). Without the bump a
+//	    cached catalog answers "unknown" for every one, which the checker reads
+//	    as "cannot tell" and silently skips — a green run that checked nothing.
 //	9 — java_action_parameters_data + view: a Java action's parameters, each
 //	    with its own Description. Without the bump a cached catalog silently
 //	    reports zero parameters, so QUAL002 would under-report rather than
@@ -16,7 +23,7 @@ package catalog
 //	    SnapshotSource / SourceId / SourceBranch / SourceRevision columns
 //	    from every row (issue #576).
 //	1 — initial flat schema with denormalized snapshot columns on every row.
-const CatalogSchemaVersion = "9"
+const CatalogSchemaVersion = "10"
 
 // MetaSchemaVersion is the catalog_meta key that records the schema version
 // the cache was built against.
@@ -137,6 +144,11 @@ func (c *Catalog) createTables() error {
 			EntityQualifiedName TEXT,
 			ModuleName TEXT,
 			DataType TEXT,
+			-- DataType is the bare kind ("Enumeration"), so the enum's identity
+			-- needs its own column. Kept separate rather than folded into
+			-- DataType as "Enumeration:QN" because existing queries and lint
+			-- rules match DataType by equality.
+			EnumerationQualifiedName TEXT,
 			Length INTEGER,
 			IsUnique INTEGER DEFAULT 0,
 			IsRequired INTEGER DEFAULT 0,
@@ -170,6 +182,26 @@ func (c *Catalog) createTables() error {
 		// nanoflows view (filtered subset of microflows view)
 		`CREATE VIEW IF NOT EXISTS nanoflows AS
 			SELECT * FROM microflows WHERE MicroflowType = 'NANOFLOW'`,
+
+		// microflow_parameters: one row per parameter, for microflows and
+		// nanoflows alike. microflows_data carries only ParameterCount, so a
+		// caller could see that a flow takes three arguments but not what they
+		// are — which is what typing a CALL's arguments requires. ParameterType
+		// uses the same encoding as microflows_data.ReturnType ("String",
+		// "Object:Mod.Entity", "Enumeration:Mod.Enum", …).
+		`CREATE TABLE IF NOT EXISTS microflow_parameters_data (
+			Id TEXT PRIMARY KEY,
+			MicroflowId TEXT,
+			MicroflowQualifiedName TEXT,
+			ModuleName TEXT,
+			Name TEXT,
+			ParameterType TEXT,
+			Description TEXT,
+			Ordinal INTEGER DEFAULT 0,
+			ProjectId TEXT,
+			SnapshotId TEXT
+		)`,
+		viewWithFullSnapshot("microflow_parameters"),
 
 		// pages
 		`CREATE TABLE IF NOT EXISTS pages_data (
@@ -249,6 +281,23 @@ func (c *Catalog) createTables() error {
 			SnapshotId TEXT
 		)`,
 		viewWithFullSnapshot("enumerations"),
+
+		// enumeration_values: one row per value. enumerations_data carries only
+		// ValueCount, which cannot answer "is 'Open' a case of this enum" —
+		// the check behind the most common expression bug (comparing an enum
+		// attribute to a string literal).
+		`CREATE TABLE IF NOT EXISTS enumeration_values_data (
+			Id TEXT PRIMARY KEY,
+			EnumerationId TEXT,
+			EnumerationQualifiedName TEXT,
+			ModuleName TEXT,
+			Name TEXT,
+			Caption TEXT,
+			Ordinal INTEGER DEFAULT 0,
+			ProjectId TEXT,
+			SnapshotId TEXT
+		)`,
+		viewWithFullSnapshot("enumeration_values"),
 
 		// java_actions
 		`CREATE TABLE IF NOT EXISTS java_actions_data (
@@ -1180,6 +1229,8 @@ func (c *Catalog) createTables() error {
 		`CREATE INDEX IF NOT EXISTS idx_refs_kind ON refs(RefKind)`,
 		`CREATE INDEX IF NOT EXISTS idx_attributes_entity ON attributes_data(EntityId)`,
 		`CREATE INDEX IF NOT EXISTS idx_attributes_entity_qname ON attributes_data(EntityQualifiedName)`,
+		`CREATE INDEX IF NOT EXISTS idx_enum_values_enum ON enumeration_values_data(EnumerationQualifiedName)`,
+		`CREATE INDEX IF NOT EXISTS idx_microflow_params_flow ON microflow_parameters_data(MicroflowQualifiedName)`,
 		`CREATE INDEX IF NOT EXISTS idx_java_actions_name ON java_actions_data(Name)`,
 		`CREATE INDEX IF NOT EXISTS idx_java_actions_module ON java_actions_data(ModuleName)`,
 		`CREATE INDEX IF NOT EXISTS idx_odata_clients_name ON odata_clients_data(Name)`,

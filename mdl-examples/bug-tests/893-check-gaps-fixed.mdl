@@ -1,0 +1,60 @@
+-- ============================================================================
+-- Bug #893 (items 1, 2 and 6): the passing counterpart
+-- ============================================================================
+--
+-- The three fixes MDL061/MDL062/MDL063 suggest, written out. Each was measured
+-- on mxbuild 11.6.6 to take the app back to its 1-error baseline, so this file
+-- is the evidence that the rules point at something that actually works rather
+-- than merely refusing the original.
+--
+-- Usage:
+--   mxcli check mdl-examples/bug-tests/893-check-gaps-fixed.mdl     # passes
+--   mxcli exec  mdl-examples/bug-tests/893-check-gaps-fixed.mdl -p app.mpr
+--   mx check app.mpr   # no new errors
+--
+-- The failing counterpart is 893-check-gaps-ce0038-ce0068-ce0111.fail.mdl.
+-- ============================================================================
+
+create module BugTest893Fixed;
+
+create entity BugTest893Fixed.Part (
+  Name : string
+);
+/
+
+create microflow BugTest893Fixed.Helper ()
+returns string
+begin
+  return 'hello';
+end;
+/
+
+-- Item 1 fixed: give the variable a starting value. Mendix has no
+-- uninitialized variable — every one is created with a value.
+create microflow BugTest893Fixed.ZZ_ProbeA ()
+begin
+  declare $X string = '';
+  log info node 'x' 'y';
+end;
+/
+
+-- Item 2 fixed: `break` leaves the loop without placing an End event in it.
+-- To return a value, assign it inside the loop and return once after it.
+create microflow BugTest893Fixed.ZZ_ProbeB ()
+begin
+  retrieve $PartList from BugTest893Fixed.Part;
+  loop $Part in $PartList
+  begin
+    break;
+  end loop;
+end;
+/
+
+-- Item 6 fixed: drop the declare. The call activity creates '$Session' itself;
+-- there is no form in which it writes into an existing variable.
+create microflow BugTest893Fixed.ZZ_ProbeD ()
+begin
+  $Session = call microflow BugTest893Fixed.Helper();
+  log info node 'x' $Session;
+end;
+/

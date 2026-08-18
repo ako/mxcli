@@ -132,6 +132,8 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 		if mapping != nil {
 			out = append(out, validateObjectListItemEnums(w, mapping, locationPrefix)...)
 		}
+		// Reported once per grid, not once per column — see the rule's comment.
+		out = append(out, validateDataGrid2ColumnNames(w, locationPrefix)...)
 		if len(w.Children) > 0 {
 			out = append(out, validateWidgetTreeIn(w.Children, registry, locationPrefix, objectListMappingSet(def))...)
 		}
@@ -969,6 +971,21 @@ func validatePluggableWidgetProperties(w *ast.WidgetV3, registry *WidgetRegistry
 		// dedicated path rather than via propertyMappings. Accept them
 		// universally so the validator doesn't false-positive on legitimate
 		// MDL idioms like `Label: 'X'` on widgets whose def.json omits it.
+		// A builtin name the engine has no route for on *this* widget is worse
+		// than an unknown one: it is accepted here, dropped on write, and shows
+		// up as a required-property error from MxBuild with nothing pointing at
+		// the cause.
+		if right, wrong := misusedBuiltinProperty(def.WidgetID, key); wrong {
+			out = append(out, linter.Violation{
+				RuleID:   "MDL-WIDGET17",
+				Severity: linter.SeverityError,
+				Message: fmt.Sprintf(
+					"%s: widget `%s` (%s) has no `%s` property — the value is dropped on write and "+
+						"MxBuild then reports the property as missing. Use `%s:` instead",
+					locationPrefix, w.Name, def.MDLName, key, right),
+			})
+			continue
+		}
 		if isBuiltinPropName(key) {
 			continue
 		}
@@ -1266,4 +1283,127 @@ func min3(a, b, c int) int {
 		return b
 	}
 	return c
+}
+
+// validateDataGrid2ColumnNames warns (MDL-WIDGET16) that the names written on a
+// pluggable DataGrid 2's columns are discarded, and says what each column will
+// actually be addressable as.
+//
+// Mendix stores no name on a DataGrid 2 column. Its schema has no name or
+// identifier key at column level — the only human-facing label is `header`, the
+// caption — so the name in `column colLabel (attribute: Label, …)` reaches
+// DataGridColumnSpec, which has no field for it, and is dropped. Everything
+// downstream then addresses the column by a *derived* name: the bound attribute
+// for an attribute column, the sanitized caption otherwise, `colN` as a last
+// resort.
+//
+// The consequence is not obvious from the MDL. An author who wrote `colLabel`
+// reaches for `ALTER PAGE … ON dg1.colLabel` and gets "column not found" for a
+// column they just named, while `describe page` shows a name they never wrote.
+//
+// **One violation per grid, listing its columns.** The first version emitted one
+// per column, which a real project (mxcli-dbreplication, finding F6) reported as
+// 44 infos saying the same thing. It is one fact about the grid; repeating it
+// per column buries the rest of the report without adding information.
+//
+// It warns rather than rejects: the name is harmless, it reads as documentation
+// in the source, and rejecting it would break every existing script — mxcli's
+// own doctype tests name every column. What the author needs is to know which
+// name addresses it.
+func validateDataGrid2ColumnNames(grid *ast.WidgetV3, locationPrefix string) []linter.Violation {
+	if grid == nil || !strings.EqualFold(grid.Type, "DATAGRID") {
+		return nil
+	}
+	var renamed []string
+	for _, child := range grid.Children {
+		if child == nil || !strings.EqualFold(child.Type, "COLUMN") || child.Name == "" {
+			continue
+		}
+		addressable := derivedDataGrid2ColumnName(child)
+		if addressable == "" || strings.EqualFold(addressable, child.Name) {
+			continue
+		}
+		renamed = append(renamed, fmt.Sprintf("%s → %s", child.Name, addressable))
+	}
+	if len(renamed) == 0 {
+		return nil
+	}
+	return []linter.Violation{{
+		RuleID:   "MDL-WIDGET16",
+		Severity: linter.SeverityInfo,
+		Message: fmt.Sprintf(
+			"%s: DataGrid 2 stores no column names, so the names on %s are dropped on write. "+
+				"Address these columns by their derived name in ALTER PAGE (attribute columns "+
+				"key on the bound attribute, others on the caption), and expect DESCRIBE to "+
+				"show it: %s.",
+			locationPrefix, grid.Name, strings.Join(renamed, ", ")),
+	}}
+}
+
+// derivedDataGrid2ColumnName mirrors the name derivation the writer and the page
+// mutator apply, so the warning names the same string ALTER will accept.
+// Deliberately conservative: when it cannot tell (no attribute, no caption — the
+// colN case, which depends on position) it returns "" and nothing is reported,
+// because a wrong name in the message would be worse than none.
+func derivedDataGrid2ColumnName(w *ast.WidgetV3) string {
+	if attr := w.GetAttribute(); attr != "" {
+		parts := strings.Split(attr, ".")
+		return parts[len(parts)-1]
+	}
+	if caption := w.GetCaption(); caption != "" {
+		sanitized := strings.Map(func(r rune) rune {
+			if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' {
+				return r
+			}
+			return '_'
+		}, caption)
+		return strings.Trim(sanitized, "_")
+	}
+	return ""
+}
+
+// builtinPropertyMisuse names builtin MDL properties that are wrong on a
+// specific widget, and the one that is right.
+//
+// isBuiltinPropName accepts Label/Caption/Class/… on every widget, deliberately:
+// the engine routes them through dedicated paths rather than through a def's
+// propertyMappings, so validating them against the def would false-positive on
+// ordinary MDL. The cost is that a builtin the engine does *not* route for a
+// given widget is accepted and silently dropped.
+//
+// That bit a real project: `combobox cb (Association: …, Caption: Name)` passes
+// `check`, executes, loses the caption, and fails the build with
+//
+//	[error] [CE0642] "Property 'Caption' is required." at Combo box 'cb'
+//
+// The working spelling is `CaptionAttribute:`, which round-trips — so the author
+// was one property name away and concluded the feature was unusable
+// (mxcli-owid, finding #38).
+//
+// This is an explicit list rather than something inferred. Whether a builtin is
+// routed for a widget lives in the engine's own dispatch, not in the .def.json —
+// the combobox def declares optionsSourceAssociationCaption{Type,Expression} and
+// nothing called `Caption` — so inferring it would mean reimplementing that
+// dispatch here and getting it wrong in the other direction. Add a row when a
+// case is measured, and cite the build error in the commit.
+var builtinPropertyMisuse = map[string]map[string]string{
+	"com.mendix.widget.web.combobox.Combobox": {
+		"Caption": "CaptionAttribute",
+	},
+}
+
+// misusedBuiltinProperty reports the right property name when key is a builtin
+// that this widget does not route, matching case-insensitively the way the rest
+// of the property lookup does.
+func misusedBuiltinProperty(widgetID, key string) (string, bool) {
+	byName, ok := builtinPropertyMisuse[widgetID]
+	if !ok {
+		return "", false
+	}
+	for wrong, right := range byName {
+		if strings.EqualFold(wrong, key) {
+			return right, true
+		}
+	}
+	return "", false
 }

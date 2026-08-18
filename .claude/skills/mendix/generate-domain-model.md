@@ -488,6 +488,28 @@ create persistent entity Module.OrderLine (
 - `calculated Module.Microflow` — also valid (`by` keyword is optional)
 - `calculated` — bare form, marks as calculated but requires manual microflow binding in Studio Pro
 
+**The microflow's signature is checked, and mxcli refuses a mismatch before
+writing** — Mendix reports these as **CE7247** at build time (verified on 11.13.0):
+
+| Microflow | Result |
+|-----------|--------|
+| takes the owning entity (`$Order: Module.Order`) | ✅ stored with `PassEntity = true` |
+| takes **no** parameter | ✅ stored with `PassEntity = false` — equally valid |
+| takes a *different* entity | ❌ refused: CE7247 *"Microflow parameter 'X' should be of type Module.Order."* |
+| takes two or more parameters | ❌ refused |
+| returns the wrong type | ❌ refused: CE7247 *"Microflow return type should be …"* |
+| returns `Long` for an `integer` attribute (or vice versa) | ✅ accepted — Integer and Long are one family here |
+
+A microflow **created earlier in the same script** cannot be inspected yet, so
+its signature is not checked; the build has the last word on those.
+
+> **Before mxcli 0.17 the binding was silently discarded** on the default
+> engine: the attribute was written as an ordinary stored value, `mx check`
+> reported 0 errors, and the attribute stayed empty at runtime (#917). If you
+> have attributes that were declared `calculated by` and never calculated, they
+> need re-running through a current mxcli — re-executing the same statement is
+> enough.
+
 ### Data Types
 
 | Type | Example | Description |

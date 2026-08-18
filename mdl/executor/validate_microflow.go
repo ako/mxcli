@@ -37,6 +37,8 @@ func ValidateMicroflow(stmt *ast.CreateMicroflowStmt) []linter.Violation {
 					p.Type.EntityRef.Name, p.Type.EntityRef.Name))
 		}
 	}
+	v.params = stmt.Parameters
+	v.excluded = stmt.Excluded
 	v.validate(stmt.Body)
 	return v.violations
 }
@@ -51,6 +53,12 @@ type microflowValidator struct {
 	// varKinds maps in-scope variable names (params + declared) to their kind,
 	// used to detect assigning a Decimal expression to an Integer/Long target.
 	varKinds map[string]exprcheck.TypeKind
+	// params is the microflow's parameter list. A parameter occupies the same
+	// flat variable namespace as every activity output (MDL063).
+	params []ast.MicroflowParam
+	// excluded marks an @excluded document. mxbuild does not check one, so the
+	// #893 rules stand down for it — see skipCEGapRules.
+	excluded bool
 }
 
 func (v *microflowValidator) addViolation(ruleID string, severity linter.Severity, message, suggestion string) {
@@ -101,6 +109,11 @@ func (v *microflowValidator) validate(body []ast.MicroflowStatement) {
 	// variables are only VISIBLE inside its body, so using one after the loop
 	// is CE0108.
 	v.checkLoopScoping(body)
+
+	// #893: three constructs that passed check and exec and were then rejected
+	// by the build. See validate_microflow_ce_gaps.go for the measurements.
+	v.checkReturnInLoop(body)
+	v.checkDuplicateVariableNames(v.params, body)
 }
 
 // checkDuplicateLoopVariables flags a loop iterator name used by more than one
@@ -253,6 +266,8 @@ func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 					v.checkNumericAssignment("$"+stmt.Variable, k, stmt.InitialValue)
 				}
 			}
+			// #893 item 1: a Create Variable activity requires a value (CE0038).
+			v.checkDeclareHasValue(stmt)
 			v.checkExprFunctions(fmt.Sprintf("declare '$%s'", stmt.Variable), stmt.InitialValue)
 			v.checkDivisionSlash(fmt.Sprintf("declare '$%s'", stmt.Variable), stmt.InitialValue)
 			v.checkDateTimeLiterals(fmt.Sprintf("declare '$%s'", stmt.Variable), stmt.InitialValue)

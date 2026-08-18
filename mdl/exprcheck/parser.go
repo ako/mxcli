@@ -120,9 +120,69 @@ func parseCmp(s *Stream, ctx Context) (RobustExpr, []Hint) {
 	if op == "" {
 		return left, hints
 	}
-	s.Consume()
+	opTok := s.Consume()
 	right, h := parseAdd(s, ctx)
-	return &BinExpr{Op: op, L: left, R: right}, append(hints, h...)
+	hints = append(hints, h...)
+	if op == "=" || op == "!=" {
+		hints = append(hints, checkEnumComparedToString(left, right, ctx, opTok)...)
+	}
+	return &BinExpr{Op: op, L: left, R: right}, hints
+}
+
+// checkEnumComparedToString emits E001 for `$obj/EnumAttr = 'Value'`.
+//
+// This is the same defect checkStringLitVsSlot reports, found a different way.
+// That one keys off the *slot* — a create or change member names its attribute,
+// so the enum is known before the value is read — which covers assignment and
+// nothing else. A comparison has no slot: the only thing that says "this is an
+// enumeration" is the other operand, which means resolving an attribute path.
+// It is the shape the proposal opens with (`if $Order/Status = 'Open'`) and the
+// one a person actually writes.
+//
+// Same code and message as the slot form on purpose: one defect should not have
+// two names depending on where it was spotted.
+func checkEnumComparedToString(left, right RobustExpr, ctx Context, opTok Token) []Hint {
+	lit, path := pairEnumPathWithStringLit(left, right)
+	if lit == nil || path == nil {
+		return nil
+	}
+	enumQN, ok := attributePathEnumQN(path, ctx)
+	if !ok {
+		return nil
+	}
+	vals, _ := ctx.Catalog.EnumCases(enumQN)
+	return []Hint{{
+		Code:     "E001",
+		Slug:     "enum-string-mismatch",
+		Severity: hints.SeverityError,
+		Where:    hintsLocation(ctx, opTok.Pos),
+		YouWrote: "'" + lit.Value + "'",
+		Problem: "Comparing or assigning an Enumeration attribute against " +
+			"a string literal. In Mendix expressions, enumeration values " +
+			"must be written as Module.Enum.Value, never as a quoted string.",
+		Fix: enumQN + "." + lit.Value,
+		Reference: &hints.Reference{
+			Enum:          enumQN,
+			EnumValues:    vals,
+			AttributeName: path.Path[len(path.Path)-1],
+		},
+	}}
+}
+
+// pairEnumPathWithStringLit returns the operands when one side is a string
+// literal and the other an attribute path, in either order.
+func pairEnumPathWithStringLit(left, right RobustExpr) (*StringLit, *AttributePathExpr) {
+	if lit, ok := left.(*StringLit); ok {
+		if path, ok := right.(*AttributePathExpr); ok {
+			return lit, path
+		}
+	}
+	if lit, ok := right.(*StringLit); ok {
+		if path, ok := left.(*AttributePathExpr); ok {
+			return lit, path
+		}
+	}
+	return nil, nil
 }
 
 func parseAdd(s *Stream, ctx Context) (RobustExpr, []Hint) {
@@ -521,10 +581,68 @@ func inferKind(e RobustExpr, ctx Context) TypeKind {
 		return KindUnknown
 	case *TokenExpr:
 		return KindString
-	case *AttributePathExpr, *QNameExpr, *ConstantRef, *RecoveredExpr:
+	case *AttributePathExpr:
+		return attributePathKind(n, ctx)
+	case *QNameExpr, *ConstantRef, *RecoveredExpr:
 		return KindUnknown
 	}
 	return KindUnknown
+}
+
+// attributePathKind resolves `$Var/Attr` and `$Var/Mod.Assoc/Attr` to the kind
+// of the attribute they land on.
+//
+// Both seams must be present: Entities to type the variable and follow the
+// association hops, Catalog to answer what the terminal attribute is. Anything
+// unresolvable returns KindUnknown, which suppresses the rule that asked —
+// catching less rather than guessing.
+func attributePathKind(n *AttributePathExpr, ctx Context) TypeKind {
+	entity, ok := pathTargetEntity(n, ctx)
+	if !ok {
+		return KindUnknown
+	}
+	kind, ok := ctx.Catalog.AttributeKind(entity, n.Path[len(n.Path)-1])
+	if !ok {
+		return KindUnknown
+	}
+	return kind
+}
+
+// pathTargetEntity walks everything before the final segment and returns the
+// entity that segment is a member of.
+func pathTargetEntity(n *AttributePathExpr, ctx Context) (string, bool) {
+	if ctx.Entities == nil || ctx.Catalog == nil || n == nil || len(n.Path) == 0 {
+		return "", false
+	}
+	cur, ok := ctx.Entities.VariableEntity(n.Variable)
+	if !ok || cur == "" {
+		return "", false
+	}
+	// Every segment but the last is an association hop. Unlike XPath, a Mendix
+	// expression does not name the intermediate entity, so each one has to be
+	// resolved rather than read off the path.
+	for _, seg := range n.Path[:len(n.Path)-1] {
+		next, ok := ctx.Entities.AssociationTarget(seg, cur)
+		if !ok {
+			return "", false
+		}
+		cur = next
+	}
+	return cur, true
+}
+
+// attributePathEnumQN returns the enumeration a path lands on, when it lands on
+// an enumeration attribute.
+func attributePathEnumQN(n *AttributePathExpr, ctx Context) (string, bool) {
+	entity, ok := pathTargetEntity(n, ctx)
+	if !ok {
+		return "", false
+	}
+	attr := n.Path[len(n.Path)-1]
+	if kind, ok := ctx.Catalog.AttributeKind(entity, attr); !ok || kind != KindEnumeration {
+		return "", false
+	}
+	return ctx.Catalog.AttributeEnumQN(entity, attr)
 }
 
 // checkBoolOperand emits E009 when expr's inferred kind is known and non-Boolean.

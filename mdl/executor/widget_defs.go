@@ -496,46 +496,13 @@ var itemSlotAcceptedChildTypes = map[string]map[string]map[string][]string{
 	},
 }
 
-// itemPropertyAliases lists alternative MDL property names that should
-// resolve to a given schema property on an object-list item. Keyed by
-// (widgetID, objectListPropertyKey, itemPropertyKey).
+// itemPropertyAliases is the shared alias table in mdl/types.
 //
-// Example: a DataGrid column's `Caption: '...'` in MDL fills the schema's
-// `header` property. Without the alias, the engine looks up `header` in
-// the AST property bag and finds nothing — the caption is silently dropped.
-//
-// Aliases here capture conventions from the historical keyword path; when
-// the keyword path is retired (v0.12.0 Phase 4) this stays as the single
-// source of truth.
-var itemPropertyAliases = map[string]map[string]map[string][]string{
-	"com.mendix.widget.web.datagrid.Datagrid": {
-		"columns": {
-			"header":      {"Caption"},
-			"dynamicText": {"Content"},
-			// MDL `ColumnWidth: manual` fills the schema's `width` enum. The
-			// keyword path mapped this (`colPropString(..., "ColumnWidth")`);
-			// without the alias the engine leaves width at its `autoFill`
-			// default, so a `Size:` value becomes invalid (size only applies
-			// when width=manual) and Studio Pro flags CE0463.
-			"width": {"ColumnWidth"},
-			// MDL `DynamicCellClass: '<expr>'` fills the schema's `columnClass`
-			// expression (a per-cell dynamic CSS class). Without the alias the
-			// engine looks up `columnClass` in the AST property bag, finds
-			// nothing, and writes an empty expression — the class is silently
-			// dropped. Bug 10a.
-			"columnClass": {"DynamicCellClass"},
-		},
-	},
-	"com.mendix.widget.web.heatmap.HeatMap": {
-		"scaleColors": {
-			// MDL `ColorValue: '#rrggbb'` fills the schema's `colour` primitive
-			// (British spelling). Without the alias the engine looks up `colour`,
-			// doesn't find `ColorValue`, and the scale colour is silently dropped
-			// on write. Same class as `columnClass` (Bug 10a).
-			"colour": {"ColorValue"},
-		},
-	},
-}
+// It used to be declared here as a literal, with the page mutator keeping a
+// second hand-written copy for the ALTER path. The two drifted — see
+// types.ItemPropertyAliases — so the table moved to a package both can import
+// and this is now a reference, not a duplicate.
+var itemPropertyAliases = types.ItemPropertyAliases
 
 // propertyAliases lists alternative MDL names for a widget's TOP-LEVEL properties
 // (not object-list items — those use itemPropertyAliases). Needed where a widget

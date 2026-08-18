@@ -103,7 +103,7 @@ func describeImportMapping(ctx *ExecContext, name ast.QualifiedName) error {
 	modID := h.FindModuleID(im.ContainerID)
 	moduleName := h.GetModuleName(modID)
 
-	fmt.Fprintf(ctx.Output, "create import mapping %s.%s\n", moduleName, im.Name)
+	fmt.Fprintf(ctx.Output, "create or modify import mapping %s.%s\n", moduleName, im.Name)
 
 	if im.JsonStructure != "" {
 		fmt.Fprintf(ctx.Output, "  with json structure %s\n", im.JsonStructure)
@@ -153,11 +153,11 @@ func printImportMappingElement(w io.Writer, elem *model.ImportMappingElement, de
 			assoc := elem.Association
 			entity := elem.Entity
 			if assoc == "" && entity == "" {
-				fmt.Fprintf(w, "%s%s . = %s", indent, handling, elem.ExposedName)
+				fmt.Fprintf(w, "%s%s . = %s", indent, handling, mappingMemberName(elem.JsonPath, elem.ExposedName))
 			} else if assoc == "" {
-				fmt.Fprintf(w, "%s%s ./%s = %s", indent, handling, entity, elem.ExposedName)
+				fmt.Fprintf(w, "%s%s ./%s = %s", indent, handling, entity, mappingMemberName(elem.JsonPath, elem.ExposedName))
 			} else {
-				fmt.Fprintf(w, "%s%s %s/%s = %s", indent, handling, assoc, entity, elem.ExposedName)
+				fmt.Fprintf(w, "%s%s %s/%s = %s", indent, handling, assoc, entity, mappingMemberName(elem.JsonPath, elem.ExposedName))
 			}
 			if len(elem.Children) > 0 {
 				fmt.Fprintln(w, " {")
@@ -185,8 +185,41 @@ func printImportMappingElement(w io.Writer, elem *model.ImportMappingElement, de
 		if elem.IsKey {
 			keyStr = " key"
 		}
-		fmt.Fprintf(w, "%s%s = %s%s", indent, attrName, elem.ExposedName, keyStr)
+		fmt.Fprintf(w, "%s%s = %s%s", indent, attrName, mappingMemberName(elem.JsonPath, elem.ExposedName), keyStr)
 	}
+}
+
+// mappingMemberName is the JSON member name DESCRIBE should print for a mapping
+// element: the raw key taken from its JsonPath, not the derived ExposedName.
+//
+// The two differ for any lowercase-initial key, because Mendix derives
+// ExposedName by capitalising the initial (and suffixing "Item" for an array's
+// item object) — Studio Pro does the same, so the stored ExposedName is correct
+// and is deliberately left alone. But printing it made DESCRIBE output that no
+// longer matched the script that produced it: `Total = total` came back as
+// `Total = Total`, `= item` as `= ItemItem`, `LineId = id` as `LineId = _id`.
+// The mapping those re-execute to is identical (jsonSchemaIndex.resolve accepts
+// either spelling since #882), but a diff of script vs DESCRIBE was pure noise.
+//
+// The raw key is also the index's FIRST lookup, so printing it cannot regress
+// that resolution. Elements with no JsonPath — an XML-schema or
+// message-definition mapping — keep the exposed name, which is all they have.
+// (issue #915)
+func mappingMemberName(jsonPath, exposedName string) string {
+	if jsonPath == "" {
+		return exposedName
+	}
+	// An array's item object is addressed by the ARRAY's key: the mapping element
+	// sits at "(Object)|item|(Object)" and the script wrote "item".
+	trimmed := strings.TrimSuffix(jsonPath, "|(Object)")
+	i := strings.LastIndex(trimmed, "|")
+	if i < 0 {
+		return exposedName
+	}
+	if name := trimmed[i+1:]; name != "" && name != "(Object)" {
+		return name
+	}
+	return exposedName
 }
 
 // execCreateImportMapping creates a new import mapping.
