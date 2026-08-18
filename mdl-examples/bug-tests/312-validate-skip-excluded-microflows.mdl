@@ -44,7 +44,6 @@ end;
 create microflow BugTest312.MF_ExcludedWithBrokenCall ()
 returns string as $msg
 begin
-  declare $msg string = empty;
   $msg = call microflow BugTest312.NoSuchTarget();
   return $msg;
 end;
@@ -56,7 +55,6 @@ end;
 create microflow BugTest312.MF_IncludedValid ()
 returns string as $msg
 begin
-  declare $msg string = empty;
   $msg = call microflow BugTest312.MF_RealTarget();
   return $msg;
 end;
