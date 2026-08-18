@@ -163,8 +163,16 @@ cleanly, and `mx check` then reported them:
 
 | Rule | MxBuild | What it catches |
 |---|---|---|
-| `MDL-SEC20` | CE0156 | `CREATE USER ROLE` with no **System** module role — nobody holding it can sign in or read System entities. Add `System.User`. |
+| `MDL-SEC20` | CE0156 | `CREATE USER ROLE` with no **System** module role — nobody holding it can sign in or read System entities. Add `System.User`. **Warning by default, error when the script enables security** (see below). |
 | `MDL-PAGE20` | CE5601 | A page with **parameters and a `Url`** where the URL has no segment for a parameter. Mendix binds each parameter from the URL, so the page cannot be opened by link. |
+
+`MDL-SEC20`'s severity follows the security level, because the underlying error
+does. Measured on Mendix 11.13: the same role is **CE0156 at security level
+Prototype and no error at all at level Off**, where roles are stored but not
+validated. A blank project ships `Off`. So the rule warns by default and is an
+error only when the script itself contains `ALTER PROJECT SECURITY LEVEL` set to
+something other than `Off` — at which point the author has said which world they
+are in.
 
 `MDL-PAGE20` accepts an attribute path in the segment (`url: 'p006/{Customer/Name}'`),
 which is the usual shape — it matches the segment's leading name, not the whole

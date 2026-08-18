@@ -23,10 +23,19 @@ const systemModuleName = "System"
 // role built only from application module roles.
 //
 // A user role with no System module role cannot sign in or touch System
-// entities, so the app is unusable for anyone holding only that role. The
-// remedy is always the same — add System.User — which is why this is worth
-// saying at authoring time rather than after a build.
-func ValidateUserRoleSystemModuleRole(stmt *ast.CreateUserRoleStmt) []linter.Violation {
+// entities, so the app is unusable for anyone holding only that role.
+//
+// **It is an error only when security is on.** Measured on Mendix 11.13: the
+// same role is CE0156 at security level Prototype and *no error at all* at
+// level Off, where roles are stored but not validated. A blank project ships
+// Off, so reporting this as an error unconditionally fails scripts that are
+// perfectly valid for the project they target — it broke two of mxcli's own
+// examples, which is how the over-reach was caught.
+//
+// So: an error when the script itself turns security on, because then the author
+// has said which world they are in; a warning otherwise, since the script may
+// well be applied to a project that has it on and the advice still holds.
+func ValidateUserRoleSystemModuleRole(stmt *ast.CreateUserRoleStmt, securityEnabled bool) []linter.Violation {
 	if stmt == nil || len(stmt.ModuleRoles) == 0 {
 		// A role with no module roles at all is a different (and legitimate)
 		// thing — a placeholder to be extended later by ALTER USER ROLE.
@@ -37,15 +46,36 @@ func ValidateUserRoleSystemModuleRole(stmt *ast.CreateUserRoleStmt) []linter.Vio
 			return nil
 		}
 	}
+	severity := linter.SeverityWarning
+	when := "if this project has security enabled, "
+	if securityEnabled {
+		severity = linter.SeverityError
+		when = "this script enables security, so "
+	}
 	return []linter.Violation{{
 		RuleID:   "MDL-SEC20",
-		Severity: linter.SeverityError,
+		Severity: severity,
 		Message: fmt.Sprintf(
-			"user role %q has no System module role, so nobody holding it can sign in or read "+
-				"System entities (MxBuild reports this as CE0156). Add System.User: "+
-				"CREATE USER ROLE %s (%s, System.User)",
-			stmt.Name, stmt.Name, joinQualified(stmt.ModuleRoles)),
+			"user role %q has no System module role — %snobody holding it can sign in or read "+
+				"System entities (MxBuild reports this as CE0156 once security is on; at security "+
+				"level Off it is not flagged). Add System.User: CREATE USER ROLE %s (%s, System.User)",
+			stmt.Name, when, stmt.Name, joinQualified(stmt.ModuleRoles)),
 	}}
+}
+
+// programEnablesSecurity reports whether the script sets a project security
+// level other than Off — the condition that makes CE0156 real.
+func programEnablesSecurity(prog *ast.Program) bool {
+	for _, stmt := range prog.Statements {
+		s, ok := stmt.(*ast.AlterProjectSecurityStmt)
+		if !ok {
+			continue
+		}
+		if s.SecurityLevel != "" && !strings.EqualFold(s.SecurityLevel, "Off") {
+			return true
+		}
+	}
+	return false
 }
 
 func joinQualified(names []ast.QualifiedName) string {

@@ -25,6 +25,7 @@ import (
 func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 	// Statement-level checks that need no project connection.
 	var violations []linter.Violation
+	securityEnabled := programEnablesSecurity(prog)
 	for _, stmt := range prog.Statements {
 		// Check enumeration values for reserved words
 		if enumStmt, ok := stmt.(*ast.CreateEnumerationStmt); ok {
@@ -38,9 +39,10 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 		if alterStmt, ok := stmt.(*ast.AlterEntityStmt); ok {
 			violations = append(violations, ValidateAlterEntity(alterStmt)...)
 		}
-		// A user role with no System module role cannot sign in (CE0156).
+		// A user role with no System module role cannot sign in (CE0156) — but
+		// only once security is on, which the script may say itself.
 		if roleStmt, ok := stmt.(*ast.CreateUserRoleStmt); ok {
-			violations = append(violations, ValidateUserRoleSystemModuleRole(roleStmt)...)
+			violations = append(violations, ValidateUserRoleSystemModuleRole(roleStmt, securityEnabled)...)
 		}
 		// A page with parameters and a Url must name each parameter in it (CE5601).
 		if pageStmt, ok := stmt.(*ast.CreatePageStmtV3); ok {

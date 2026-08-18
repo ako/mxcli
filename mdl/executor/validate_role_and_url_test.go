@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
+	"github.com/mendixlabs/mxcli/mdl/linter"
 )
 
 func qn(module, name string) ast.QualifiedName {
@@ -22,7 +23,7 @@ func TestUserRoleWithoutSystemRoleIsAnError(t *testing.T) {
 		Name:        "Evaluator",
 		ModuleRoles: []ast.QualifiedName{qn("ReplicationLab", "Evaluator")},
 	}
-	v := ValidateUserRoleSystemModuleRole(stmt)
+	v := ValidateUserRoleSystemModuleRole(stmt, true)
 	if len(v) != 1 {
 		t.Fatalf("violations = %d, want 1", len(v))
 	}
@@ -45,7 +46,7 @@ func TestUserRoleWithSystemRoleIsAccepted(t *testing.T) {
 				qn("ReplicationLab", "Evaluator"), qn(sys, "User"),
 			},
 		}
-		if v := ValidateUserRoleSystemModuleRole(stmt); len(v) != 0 {
+		if v := ValidateUserRoleSystemModuleRole(stmt, true); len(v) != 0 {
 			t.Errorf("%s.User rejected: %s", sys, v[0].Message)
 		}
 	}
@@ -54,7 +55,7 @@ func TestUserRoleWithSystemRoleIsAccepted(t *testing.T) {
 // TestUserRoleWithNoModuleRolesIsNotFlagged — a role declared empty and extended
 // later by ALTER USER ROLE is a legitimate shape, not a missing System role.
 func TestUserRoleWithNoModuleRolesIsNotFlagged(t *testing.T) {
-	if v := ValidateUserRoleSystemModuleRole(&ast.CreateUserRoleStmt{Name: "Placeholder"}); len(v) != 0 {
+	if v := ValidateUserRoleSystemModuleRole(&ast.CreateUserRoleStmt{Name: "Placeholder"}, true); len(v) != 0 {
 		t.Errorf("an empty role was flagged: %s", v[0].Message)
 	}
 }
@@ -159,5 +160,59 @@ func TestURLBindsParameterFormats(t *testing.T) {
 		if got := urlBindsParameter(c.url, c.param); got != c.want {
 			t.Errorf("urlBindsParameter(%q, %q) = %v, want %v", c.url, c.param, got, c.want)
 		}
+	}
+}
+
+// TestUserRoleSeverityFollowsSecurityLevel pins the measurement behind MDL-SEC20.
+//
+// On Mendix 11.13 the same role is CE0156 at security level Prototype and *no
+// error at all* at level Off, where roles are stored but not validated. A blank
+// project ships Off, so reporting it as an error unconditionally fails scripts
+// that are correct for the project they target — it broke two of mxcli's own
+// examples in CI, which is how the over-reach was caught.
+func TestUserRoleSeverityFollowsSecurityLevel(t *testing.T) {
+	stmt := &ast.CreateUserRoleStmt{
+		Name:        "Evaluator",
+		ModuleRoles: []ast.QualifiedName{qn("Lab", "Evaluator")},
+	}
+
+	warn := ValidateUserRoleSystemModuleRole(stmt, false)
+	if len(warn) != 1 || warn[0].Severity != linter.SeverityWarning {
+		t.Fatalf("without security enabled: got %d violations, severity %v; want 1 warning",
+			len(warn), warn[0].Severity)
+	}
+	if !strings.Contains(warn[0].Message, "security level Off it is not flagged") {
+		t.Errorf("warning does not explain when it applies:\n%s", warn[0].Message)
+	}
+
+	err := ValidateUserRoleSystemModuleRole(stmt, true)
+	if len(err) != 1 || err[0].Severity != linter.SeverityError {
+		t.Fatalf("with security enabled: got %d violations, severity %v; want 1 error",
+			len(err), err[0].Severity)
+	}
+}
+
+// TestProgramEnablesSecurity — the escalation condition is the script saying so.
+func TestProgramEnablesSecurity(t *testing.T) {
+	cases := []struct {
+		level string
+		want  bool
+	}{
+		{"PROTOTYPE", true},
+		{"Production", true},
+		{"OFF", false},
+		{"off", false},
+		{"", false},
+	}
+	for _, c := range cases {
+		prog := &ast.Program{Statements: []ast.Statement{
+			&ast.AlterProjectSecurityStmt{SecurityLevel: c.level},
+		}}
+		if got := programEnablesSecurity(prog); got != c.want {
+			t.Errorf("level %q: programEnablesSecurity = %v, want %v", c.level, got, c.want)
+		}
+	}
+	if programEnablesSecurity(&ast.Program{}) {
+		t.Error("an empty program was read as enabling security")
 	}
 }
