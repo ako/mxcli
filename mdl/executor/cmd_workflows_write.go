@@ -53,19 +53,25 @@ func execCreateWorkflow(ctx *ExecContext, s *ast.CreateWorkflowStmt) error {
 	}
 
 	var existingID model.ID
-	for _, existing := range existingWorkflows {
-		modID := h.FindModuleID(existing.ContainerID)
-		modName := h.GetModuleName(modID)
-		if modName == s.Name.Module && existing.Name == s.Name.Name {
-			if !s.CreateOrModify {
-				return mdlerrors.NewAlreadyExistsMsg("workflow", s.Name.Module+"."+s.Name.Name, "workflow '"+s.Name.Module+"."+s.Name.Name+"' already exists (use create or modify to overwrite)")
-			}
-			existingID = existing.ID
-			break
+	// Excluded is model state, not script state, and a module may hold an
+	// excluded twin of this name — target the live workflow and carry its
+	// exclusion forward (#914).
+	existingExcluded := false
+	if existing, ok := pickLive(existingWorkflows,
+		func(w *workflows.Workflow) bool {
+			return h.GetModuleName(h.FindModuleID(w.ContainerID)) == s.Name.Module && w.Name == s.Name.Name
+		},
+		func(w *workflows.Workflow) bool { return w.Excluded },
+	); ok {
+		if !s.CreateOrModify {
+			return mdlerrors.NewAlreadyExistsMsg("workflow", s.Name.Module+"."+s.Name.Name, "workflow '"+s.Name.Module+"."+s.Name.Name+"' already exists (use create or modify to overwrite)")
 		}
+		existingID = existing.ID
+		existingExcluded = existing.Excluded
 	}
 
 	wf := &workflows.Workflow{}
+	wf.Excluded = existingExcluded
 	wf.ContainerID = module.ID
 	wf.Name = s.Name.Name
 	wf.Documentation = s.Documentation

@@ -217,6 +217,10 @@ func execCreateJsonStructure(ctx *ExecContext, s *ast.CreateJsonStructureStmt) e
 		JsonSnippet:   types.PrettyPrintJSON(s.JsonSnippet),
 		Elements:      elements,
 	}
+	if existing != nil {
+		// Excluded is model state, not script state (#914).
+		js.Excluded = existing.Excluded
+	}
 
 	if existing != nil {
 		js.ID = existing.ID

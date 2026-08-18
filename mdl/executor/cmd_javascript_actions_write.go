@@ -48,15 +48,19 @@ func execCreateJavaScriptAction(ctx *ExecContext, s *ast.CreateJavaScriptActionS
 		return mdlerrors.NewBackend("list javascript actions", err)
 	}
 	var existingID model.ID
-	for _, ex := range existing {
-		exModName := h.GetModuleName(h.FindModuleID(ex.ContainerID))
-		if exModName == s.Name.Module && ex.Name == s.Name.Name {
-			if !s.CreateOrModify {
-				return mdlerrors.NewAlreadyExists("javascript action", s.Name.Module+"."+s.Name.Name)
-			}
-			existingID = ex.ID
-			break
+	// Target the live action and carry its exclusion forward (#914).
+	existingExcluded := false
+	if ex, ok := pickLive(existing,
+		func(a *types.JavaScriptAction) bool {
+			return h.GetModuleName(h.FindModuleID(a.ContainerID)) == s.Name.Module && a.Name == s.Name.Name
+		},
+		func(a *types.JavaScriptAction) bool { return a.Excluded },
+	); ok {
+		if !s.CreateOrModify {
+			return mdlerrors.NewAlreadyExists("javascript action", s.Name.Module+"."+s.Name.Name)
 		}
+		existingID = ex.ID
+		existingExcluded = ex.Excluded
 	}
 
 	newID := model.ID(types.GenerateID())
@@ -69,6 +73,7 @@ func execCreateJavaScriptAction(ctx *ExecContext, s *ast.CreateJavaScriptActionS
 		ContainerID:             containerID,
 		Name:                    s.Name.Name,
 		Documentation:           s.Documentation,
+		Excluded:                existingExcluded,
 		ExportLevel:             "Public",
 		ActionDefaultReturnName: "ReturnValueName",
 		Platform:                platformOrDefault(s.Platform),

@@ -72,6 +72,10 @@ func (r *Reader) parseSnippet(unitID, containerID string, contents []byte) (*pag
 	if doc, ok := raw["Documentation"].(string); ok {
 		snippet.Documentation = doc
 	}
+	// Excluded must survive read→rebuild→write (#914).
+	if excl, ok := raw["Excluded"].(bool); ok {
+		snippet.Excluded = excl
+	}
 	if entityID := extractID(raw["Entity"]); entityID != "" {
 		snippet.EntityID = model.ID(entityID)
 	}
@@ -150,6 +154,11 @@ func (r *Reader) parseJavaAction(unitID, containerID string, contents []byte) (*
 	}
 	if doc, ok := raw["Documentation"].(string); ok {
 		ja.Documentation = doc
+	}
+	// Excluded must survive read→rebuild→write; defaulting it to false
+	// un-excludes the document on the next CREATE OR MODIFY (#914).
+	if excl, ok := raw["Excluded"].(bool); ok {
+		ja.Excluded = excl
 	}
 
 	return ja, nil

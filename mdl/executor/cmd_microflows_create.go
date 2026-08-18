@@ -72,21 +72,30 @@ func execCreateMicroflow(ctx *ExecContext, s *ast.CreateMicroflowStmt) error {
 	var existingContainerID model.ID
 	var existingAllowedRoles []model.ID
 	preserveAllowedRoles := false
+	// Excluded is model state, not script state: an absent @excluded must not
+	// clear a stored exclusion (#914).
+	existingExcluded := false
 	existingMicroflows, err := ctx.Backend.ListMicroflows()
 	if err != nil {
 		return mdlerrors.NewBackend("check existing microflows", err)
 	}
-	for _, existing := range existingMicroflows {
-		if existing.Name == s.Name.Name && getModuleID(ctx, existing.ContainerID) == module.ID {
-			if !s.CreateOrModify {
-				return mdlerrors.NewAlreadyExistsMsg("microflow", s.Name.Module+"."+s.Name.Name, "microflow '"+s.Name.Module+"."+s.Name.Name+"' already exists (use create or modify to overwrite)")
-			}
-			existingID = existing.ID
-			existingContainerID = existing.ContainerID
-			existingAllowedRoles = cloneRoleIDs(existing.AllowedModuleRoles)
-			preserveAllowedRoles = true
-			break
+	// A module may hold several microflows with this name as long as all but one
+	// are excluded, so target the live one rather than whichever comes first
+	// (#914).
+	if existing, ok := pickLive(existingMicroflows,
+		func(m *microflows.Microflow) bool {
+			return m.Name == s.Name.Name && getModuleID(ctx, m.ContainerID) == module.ID
+		},
+		func(m *microflows.Microflow) bool { return m.Excluded },
+	); ok {
+		if !s.CreateOrModify {
+			return mdlerrors.NewAlreadyExistsMsg("microflow", s.Name.Module+"."+s.Name.Name, "microflow '"+s.Name.Module+"."+s.Name.Name+"' already exists (use create or modify to overwrite)")
 		}
+		existingID = existing.ID
+		existingContainerID = existing.ContainerID
+		existingAllowedRoles = cloneRoleIDs(existing.AllowedModuleRoles)
+		preserveAllowedRoles = true
+		existingExcluded = existing.Excluded
 	}
 
 	// For CREATE OR REPLACE/MODIFY, reuse the existing ID to preserve references
@@ -132,7 +141,7 @@ func execCreateMicroflow(ctx *ExecContext, s *ast.CreateMicroflowStmt) error {
 		Documentation:            s.Documentation,
 		AllowConcurrentExecution: true, // Default: allow concurrent execution
 		MarkAsUsed:               false,
-		Excluded:                 s.Excluded,
+		Excluded:                 s.Excluded || existingExcluded,
 	}
 	if preserveAllowedRoles {
 		mf.AllowedModuleRoles = existingAllowedRoles

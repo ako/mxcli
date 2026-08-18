@@ -75,14 +75,15 @@ func (b *Backend) DeleteEnumeration(id model.ID) error {
 	return b.writer.DeleteUnit(string(id))
 }
 
-// enumToGen builds a gen Enumeration from the model. Excluded=false and
-// ExportLevel="Hidden" mirror the legacy serializer; RemoteSource (null) comes
-// from the registered default.
+// enumToGen builds a gen Enumeration from the model. ExportLevel="Hidden"
+// mirrors the legacy serializer; RemoteSource (null) comes from the registered
+// default. Excluded is carried from the model — hardcoding false here made a
+// CREATE OR MODIFY silently un-exclude the document (#914).
 func enumToGen(enum *model.Enumeration) *genEnum.Enumeration {
 	out := genEnum.NewEnumeration()
 	out.SetName(enum.Name)
 	out.SetDocumentation(enum.Documentation)
-	out.SetExcluded(false)
+	out.SetExcluded(enum.Excluded)
 	out.SetExportLevel("Hidden")
 	for _, v := range enum.Values {
 		out.AddValues(enumValueToGen(v))

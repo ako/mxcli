@@ -185,6 +185,8 @@ func execCreateAgentEditorModel(ctx *ExecContext, s *ast.CreateModelStmt) error 
 
 	if existing != nil {
 		m.ID = existing.ID
+		// Excluded is model state, not script state (#914).
+		m.Excluded = existing.Excluded
 		if err := ctx.Backend.UpdateAgentEditorModel(m); err != nil {
 			return mdlerrors.NewBackend("update model", err)
 		}

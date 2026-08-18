@@ -47,7 +47,10 @@ type ImageCollection struct {
 	Name          string   `json:"name"`
 	ExportLevel   string   `json:"exportLevel,omitempty"`
 	Documentation string   `json:"documentation,omitempty"`
-	Images        []Image  `json:"images,omitempty"`
+	// Excluded mirrors Studio Pro's "Exclude from project". Reads must supply
+	// it so a rewrite can carry it forward instead of clearing it (#914).
+	Excluded bool    `json:"excluded,omitempty"`
+	Images   []Image `json:"images,omitempty"`
 }
 
 // GetName returns the image collection's name.
