@@ -34,9 +34,14 @@ Consequences worth knowing:
 
 - **Either spelling works in MDL.** `Total = total` and `Total = Total` produce the
   same stored mapping. Write whichever you have.
-- **`DESCRIBE` emits the exposed name**, because that is the name Studio Pro shows.
-  A describe → edit → exec cycle is therefore lossless, but the text you get back
-  will not match the raw JSON keys you wrote.
+- **`DESCRIBE` emits the raw JSON key**, so its output reproduces the script that
+  produced the mapping — `Total = total` comes back as `Total = total`, and an
+  array binding as `= item` rather than `= ItemItem`. It also emits
+  `create or modify`, so the output re-runs against the project it was read from.
+  (Until #915 it printed the exposed name and a bare `create`: the text differed
+  from the input, making every script-vs-describe diff noise, and re-running it
+  failed with "import mapping already exists". The stored mapping was correct
+  either way.)
 - **A member matching neither spelling is refused**, listing what would have
   worked. It is never written with a guessed path: such a mapping passed
   `mxcli check` and failed later in mxbuild (CE5015) or at runtime.
