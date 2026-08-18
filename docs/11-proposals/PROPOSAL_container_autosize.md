@@ -161,8 +161,11 @@ which is also what a hand-laid-out loop needs. Verified: a loop with
 re-running a script is a no-op (with the `MXCLI_ALWAYS_WRITE=1` control confirming
 the comparison detects writes).
 
-Still open from this proposal: the **MPR009** containment lint rule, and the
-`@size` escape hatch (still rejected by MDL059).
+Also shipped: the containment lint rule, as **MPR011** — MPR009 and MPR010 were
+already taken (gallery selection listener, dataview layout grid), so the ID named
+below was wrong.
+
+Still open from this proposal: the `@size` escape hatch (still rejected by MDL059).
 
 ## Non-goals
 
@@ -215,11 +218,13 @@ project is exactly the kind of thing that gets reported as a new bug.
   contents — and not merely pass against fixed code.
 - **`mx check`** on every fixture, both engines.
 
-### Candidate lint rule: MPR009
+### Candidate lint rule: MPR011 (shipped)
 
 The measurement above shows `mx check` is blind to this. A rule
 *"every child of a `LoopedActivity` lies within its parent's box"* would have
 caught the entire class from the outside, and would keep catching it if a future
 layout change reintroduces it. It sits naturally beside MPR008 (which, after the
 #884 work, already partitions objects by canvas and therefore has the container
-geometry in hand). Proposed as a follow-up, not part of this change.
+geometry in hand). Shipped as MPR011: verified to fire on a project built by a
+pre-fix binary — where `mx check` reports nothing — and silent on the fixed
+output, the stock blank app and a nested-loop project.

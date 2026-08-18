@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`MPR011` — loop child containment** — a new lint rule flagging a microflow activity positioned outside the loop container that holds it. This is the only automated check for the condition: the Mendix model carries no geometry rules, so such a flow passes `mx check` with zero errors and builds and runs normally, it is just drawn wrong when opened. It catches the condition however it arrives — a project written by an older mxcli, hand-edited in Studio Pro, or a future layout regression. Nested loops are checked in their own coordinate space, and an unpositioned child at the origin is skipped rather than flagged.
+
 ### Fixed
 
 - **A loop's box is sized from its contents, not from a statement count** (#884 problem 1) — `LOOP`/`WHILE` containers took their `Size` from a pre-pass over the AST run before the body was built, so it depended only on how many statements were inside. Two activities at x=150/310, at x=1500/2000 and at x=160/170 all produced `480;160`, and in the second case both children sat entirely outside their own container with `mx check` reporting nothing. The box is now derived from the real child bounding box after the body exists, which also makes an explicit `@position` on a loop child effective. Nested loops size bottom-up. Children are not moved: their positions round-trip through `DESCRIBE`, so the box grows to fit them rather than the contents being translated to fit the box.
