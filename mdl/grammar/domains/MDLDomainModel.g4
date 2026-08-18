@@ -193,7 +193,7 @@ deleteBehavior
     ;
 
 // =============================================================================
-// ALTER ENTITY / ASSOCIATION / ENUMERATION / NOTEBOOK ACTIONS
+// ALTER ENTITY / ASSOCIATION / ENUMERATION ACTIONS
 // =============================================================================
 
 alterEntityAction
@@ -251,12 +251,6 @@ alterEnumerationAction
     | RENAME VALUE IDENTIFIER TO IDENTIFIER
     | MODIFY VALUE IDENTIFIER CAPTION STRING_LITERAL
     | DROP VALUE IDENTIFIER
-    | SET COMMENT STRING_LITERAL
-    ;
-
-alterNotebookAction
-    : ADD PAGE qualifiedName (POSITION NUMBER_LITERAL)?
-    | DROP PAGE qualifiedName
     | SET COMMENT STRING_LITERAL
     ;
 
