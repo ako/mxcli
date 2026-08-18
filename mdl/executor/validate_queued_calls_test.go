@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"go.mongodb.org/mongo-driver/bson"
+
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	"github.com/mendixlabs/mxcli/mdl/backend/mock"
 	"github.com/mendixlabs/mxcli/model"
@@ -260,5 +262,62 @@ func TestCheckNoQueuedCalls_RefusesStoredRetry(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "retry") {
 		t.Errorf("error should name the retry:\n%s", err.Error())
+	}
+}
+
+// TestQueuedCallTargets_HandlesBsonArrays is the engine-parity guard.
+//
+// The two backends hand GetRawUnit back in different shapes: the modelsdk
+// reader yields `[]interface{}` for arrays, the legacy (mpr) reader yields
+// `bson.A`. `bson.A` is a NAMED slice type, so `case []any:` does not match it
+// — the walk never descended into ObjectCollection.Objects under legacy, found
+// no queued calls, and let the rewrite through.
+//
+// The consequence was the exact data loss this guard exists to prevent, still
+// live on `--engine legacy`: measured on 11.13, a Studio-Pro-made queue binding
+// was silently dropped by `CREATE OR REPLACE MICROFLOW`, and `mx check` went
+// quiet because the configuration its CE1613 referred to had been deleted.
+func TestQueuedCallTargets_HandlesBsonArrays(t *testing.T) {
+	call := map[string]any{
+		"$Type":     "Microflows$MicroflowCall",
+		"Microflow": "Q.Target",
+		"QueueSettings": map[string]any{
+			"$Type": "Queues$QueueSettings",
+			"Queue": "Q.MyQueue",
+		},
+	}
+	activity := map[string]any{"$Type": "Microflows$ActionActivity", "Action": call}
+
+	// Same document, the two shapes the two readers produce.
+	shapes := map[string]any{
+		"modelsdk ([]any)": map[string]any{
+			"ObjectCollection": map[string]any{"Objects": []any{activity}},
+		},
+		"legacy (bson.A)": map[string]any{
+			"ObjectCollection": map[string]any{"Objects": bson.A{activity}},
+		},
+	}
+
+	for name, doc := range shapes {
+		t.Run(name, func(t *testing.T) {
+			got := queuedCallTargets(doc)
+			if len(got) != 1 || got[0] != "Q.MyQueue" {
+				t.Fatalf("queuedCallTargets = %v, want [Q.MyQueue] — a rewrite would "+
+					"silently drop the binding on this engine", got)
+			}
+		})
+	}
+}
+
+// The retry walk shares the traversal and so shares the blind spot.
+func TestStoredQueueRetries_HandlesBsonArrays(t *testing.T) {
+	doc := map[string]any{"Objects": bson.A{map[string]any{
+		"QueueSettings": map[string]any{
+			"Queue": "Q.MyQueue",
+			"Retry": map[string]any{"$Type": "Queues$QueueFixedRetry", "Retries": 3},
+		},
+	}}}
+	if got := storedQueueRetries(doc); len(got) != 1 {
+		t.Fatalf("storedQueueRetries = %v, want [Q.MyQueue]", got)
 	}
 }
