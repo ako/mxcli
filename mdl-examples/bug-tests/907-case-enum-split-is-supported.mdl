@@ -1,0 +1,65 @@
+-- ============================================================================
+-- #907 — CASE / enum split IS supported (documentation contradicted itself)
+-- ============================================================================
+--
+-- POSITIVE TEST: `mxcli check` MUST accept this file.
+--
+-- Six doc surfaces claimed "CASE/SWITCH not supported — use nested IF", while
+-- write-microflows.md documented the working form two sections earlier and
+-- the generated project CLAUDE.md gave a third shape (`AS x` + `Enum.Value`)
+-- that parses in neither. An agent reading top-to-bottom wrote a CASE split,
+-- then hit "not supported" later and burned a validation cycle undoing it.
+--
+-- This fixture pins the forms the docs now promise. The invalid spellings are
+-- pinned separately in 907-case-enum-split-invalid-forms.fail.mdl.
+
+CREATE OR MODIFY ENUMERATION Bug907.Status (
+  Open 'Open',
+  Pending 'Pending',
+  Closed 'Closed'
+);
+
+CREATE OR MODIFY PERSISTENT ENTITY Bug907.Order (
+  "Reference": String(50),
+  "Status": Enumeration(Bug907.Status)
+);
+
+-- Source is a variable; one branch per value; several values share a branch.
+CREATE OR MODIFY MICROFLOW Bug907.SplitOnVariable ($Status: Enumeration(Bug907.Status))
+RETURNS Boolean
+BEGIN
+  case $Status
+    when Open, Pending then
+      return true;
+    when Closed then
+      return false;
+    when (empty) then
+      return false;
+  end case;
+END;
+
+-- Source is an attribute path; `(empty)` shares a branch with a real value.
+CREATE OR MODIFY MICROFLOW Bug907.SplitOnAttributePath ($Order: Bug907.Order)
+RETURNS String
+BEGIN
+  case $Order/Status
+    when Open then
+      return 'open';
+    when Pending, Closed then
+      return 'other';
+    when (empty) then
+      return 'unset';
+  end case;
+END;
+
+-- Nanoflows take CASE on the same terms.
+CREATE OR MODIFY NANOFLOW Bug907.SplitInNanoflow ($Status: Enumeration(Bug907.Status))
+RETURNS Boolean
+BEGIN
+  case $Status
+    when Open, Pending then
+      return true;
+    when Closed, (empty) then
+      return false;
+  end case;
+END;

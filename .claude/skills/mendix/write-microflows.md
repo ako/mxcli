@@ -77,6 +77,39 @@ begin
 end;
 ```
 
+### `@excluded` — documents excluded from the project
+
+`@excluded` before a `create microflow` marks the document **"Exclude from project"**
+(the same checkbox Studio Pro offers). The document stays in the `.mpr`, does not
+build, and `show microflows` reports it in the `Excluded` column.
+
+```mdl
+@excluded
+create microflow MyModule.LegacyCalc ()
+returns Integer
+begin
+  return 7;
+end;
+```
+
+Two rules follow, and both are enforced rather than documented-and-hoped:
+
+- **An absent `@excluded` never un-excludes.** It means "the script does not say",
+  not "make this active" — so re-running a `create or modify` you wrote before the
+  document was excluded leaves the exclusion alone. Un-exclude in Studio Pro.
+  (Before #914 the rewrite cleared it, which is how a valid project ended up
+  failing **CE0122** — see the next rule.)
+- **A name is not unique when a twin is excluded.** Mendix allows two documents of
+  the same name in one module as long as at most one is active — verified on
+  11.13.0: the excluded pair builds at 0 errors, the same pair both active is
+  `[error] CE0122 "Duplicate document name"`. `create or modify`, `describe` and
+  the other by-name lookups therefore target the **live** document; the excluded
+  twin is neither rewritten nor deleted.
+
+The same applies to every document type that carries the flag — nanoflows, pages,
+snippets, enumerations, queues, workflows, Java/JavaScript actions, mappings, JSON
+structures, REST/OData services, image collections and the agent documents.
+
 ### FOLDER Option
 
 Place microflows in folders for organization:
@@ -405,6 +438,35 @@ end if;
 -- WRONG: Do NOT use string literals
 -- IF $Task/Status = 'Completed' THEN  -- INCORRECT!
 ```
+
+Putting an enumeration **into** a string is the same mistake — concatenating it
+directly is rejected, so render it first with `getCaption()` (the caption) or
+`toString()` (the value name):
+
+```mdl
+-- CORRECT
+log warning 'Unexpected status: ' + getCaption($Order/Status);
+
+-- WRONG
+log warning 'Unexpected status: ' + $Order/Status;
+```
+
+**Where the string form is and is not accepted** (verified against mxbuild 11.13.0 —
+one microflow per row, `mx check` read per construct):
+
+| Context | `'Draft'` | Note |
+|---------|-----------|------|
+| Comparison in a decision — `if $O/Status = 'Draft'` | ❌ **CE0117** | The one that bites |
+| Concatenation — `'x' + $O/Status` | ❌ **CE0117** | Use `getCaption()` / `toString()` |
+| `change $O (Status = 'Draft')` | ✅ accepted | Slot is already enum-typed |
+| `create M.E (Status = 'Draft')` | ✅ accepted | Same |
+| Attribute `DEFAULT 'Draft'` | ✅ accepted | Documented as the legacy form |
+| XPath constraint `[Status = 'Draft']` | ✅ accepted | Enums are strings at DB level |
+
+`mxcli check` does **not** flag the two failing rows (it does not type expressions —
+see `docs/11-proposals/PROPOSAL_expression_type_checking.md`), so a script can pass
+`check` and fail the build. The qualified form is valid in every row above: use it
+everywhere and the distinction never has to be remembered.
 
 **Checking for empty enumeration:**
 ```mdl
@@ -1013,7 +1075,18 @@ call microflow Module.SendNotification(message = $message);
 
 -- Call with error handling
 $Result = call microflow Module.ExternalService(data = $data) on error continue;
+
+-- Run the call on a task queue (background execution). The clause goes after
+-- the arguments and before any ON ERROR, and works on CALL JAVA ACTION too.
+call microflow Module.ACT_Refresh() in queue Module.RefreshQueue;
+call java action Module.RefreshData(Url = $Url) in queue Module.RefreshQueue;
 ```
+
+**Queued calls** — the queue must already exist (`create queue Module.RefreshQueue
+(Parallelism: 2)`), and a queued **Java action must `returns void`** or the build
+fails with CE7038. Rewriting a microflow that has a queued call must restate the
+`in queue` clause; a rewrite that omits it is refused rather than silently
+dropping the binding. See `.claude/skills/mendix/scheduled-events-and-queues.md`.
 
 ### ❌ INCORRECT Syntax
 
@@ -1444,27 +1517,45 @@ begin
 end loop;
 ```
 
-### CASE/SWITCH Statement
+### CASE with string values, `else`, or an alias
+
+`case … end case` **is supported** — see [CASE Statements (Enum Split)](#case-statements-enum-split)
+above for the correct form. What is not supported is the SQL-flavoured spelling of
+it: quoted values, an `else` fallback, and an `AS` alias all fail.
 
 ```mdl
--- WRONG: CASE/SWITCH not supported
-case $status
+-- WRONG: case values are not string literals (parse error)
+case $Order/Status
   when 'Active' then set $Result = 1;
-  when 'Inactive' then set $Result = 2;
+end case;
+
+-- WRONG: case values are not qualified (parse error)
+case $Order/Status
+  when MyModule.Status.Active then set $Result = 1;
+end case;
+
+-- WRONG: no AS alias (parse error: mismatched input 'as' expecting WHEN)
+case $Order/Status as s
+  when Active then set $Result = 1;
+end case;
+
+-- WRONG: no else branch (MDL008 → mxbuild CE0079 + CE0773)
+case $Order/Status
+  when Active then set $Result = 1;
   else set $Result = 0;
 end case;
 
--- CORRECT: Use nested IF statements
-if $status = 'Active' then
-  set $Result = 1;
-else
-  if $status = 'Inactive' then
-    set $Result = 2;
-  else
-    set $Result = 0;
-  end if;
-end if;
+-- CORRECT: bare enum values, one branch per value, including (empty)
+case $Order/Status
+  when Active then set $Result = 1;
+  when Inactive then set $Result = 2;
+  when (empty) then set $Result = 0;
+end case;
 ```
+
+An enum split is the *only* thing `case` does — it branches on an enumeration, not
+on arbitrary expressions. For anything else (a string comparison, a numeric range),
+use nested `if … else … end if`.
 
 ### TRY/CATCH Block
 

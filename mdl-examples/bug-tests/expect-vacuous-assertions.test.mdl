@@ -18,8 +18,8 @@
 --   test_2: asserts nothing at all
 --     (no assertions — this test can only report that the body did not throw)
 --   test_3: believes it asserts something
---     ERROR: @verify ...: @verify is not implemented — no runner evaluates it,
---            so it would assert nothing. ...
+--     ERROR: @verify ...: this test uses @cleanup rollback (the default), so
+--            its writes are undone before the query runs ...
 --
 -- A run reports the same three states, and summarises the vacuous ones:
 --
@@ -31,9 +31,8 @@
 --
 -- test_2 still passes by default: a smoke test is a legitimate thing to write.
 -- --require-assertions turns it into an ERROR for a project that has decided
--- otherwise. test_3 is an error either way — @verify was documented as an OQL
--- post-condition and is evaluated by nothing, which is the same defect as a
--- dropped @expect wearing a different annotation.
+-- otherwise. test_3 is an error because its @verify sits on a test using the
+-- rollback default — see the @verify section below.
 --
 -- The microflows referenced below do not need to exist for --list.
 
@@ -53,7 +52,64 @@ $result = CALL MICROFLOW MyModule.Deal();
 
 /**
  * @test believes it asserts something
- * @verify select count(*) from MyModule.Board where Code = 'X' = 1
+ * @verify select count(*) as n from MyModule.Board where Code = 'X' = 1
+ */
+$result = CALL MICROFLOW MyModule.Deal();
+/
+
+-- ---------------------------------------------------------------------------
+-- FINDINGS #48: `@verify` was the same defect in the other annotation.
+--
+-- Before it was implemented, no OQL — well-formed or not, true or not, against a
+-- real entity or an invented one — could make a @verify fail. It was parsed into
+-- the TestCase and read by nothing but --list.
+--
+-- The rows below are the reporter's canaries. `--list` alone shows which are
+-- rejected before anything runs; a real run (needs a project and --local) shows
+-- the rest fail or error against the app.
+--
+--   mxcli test mdl-examples/bug-tests/expect-vacuous-assertions.test.mdl --list
+--
+-- @cleanup none is not decoration: rollback is the default and would undo the
+-- writes before the query could see them, so a @verify on a rollback test is
+-- refused rather than quietly asserting against the pre-test state — which is
+-- test_v5 below.
+
+/**
+ * @test verify asserts on rows the microflow wrote
+ * @cleanup none
+ * @verify select count(*) as n from MyModule.Cell = 81
+ */
+$result = CALL MICROFLOW MyModule.Deal();
+/
+
+/**
+ * @test verify must fail on a false claim
+ * @cleanup none
+ * @verify select count(*) as n from MyModule.Cell = 999999
+ */
+$result = CALL MICROFLOW MyModule.Deal();
+/
+
+/**
+ * @test verify must error on an unknown entity
+ * @cleanup none
+ * @verify select count(*) as n from MyModule.NoSuchEntity = 1
+ */
+$result = CALL MICROFLOW MyModule.Deal();
+/
+
+/**
+ * @test verify must error on something that was never a query
+ * @cleanup none
+ * @verify this is not a query
+ */
+$result = CALL MICROFLOW MyModule.Deal();
+/
+
+/**
+ * @test verify under the rollback default is refused
+ * @verify select count(*) as n from MyModule.Cell = 81
  */
 $result = CALL MICROFLOW MyModule.Deal();
 /

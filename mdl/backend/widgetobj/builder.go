@@ -293,6 +293,8 @@ func buildObjectListItemBSON(widgetID, listPropertyKey string, parentEntry pages
 			prop = buildItemChildWidgetsProperty(nestedEntry, childWidgets)
 		case shouldEmitEmptyClientTemplate(widgetID, listPropertyKey, k, itemKind):
 			prop = buildEmptyClientTemplateProperty(nestedEntry)
+		case isUnsetRequiredTextTemplate(nestedEntry):
+			prop = buildDefaultTextClientTemplateProperty(nestedEntry)
 		default:
 			prop = createDefaultWidgetProperty(nestedEntry)
 		}
@@ -374,6 +376,80 @@ var emptyClientTemplateRules = map[string]map[string]map[objectListItemKind]map[
 			},
 		},
 	},
+}
+
+// isUnsetRequiredTextTemplate reports whether an object-list item sub-property
+// is a REQUIRED TextTemplate the author did not set (#891).
+//
+// This generalises emptyClientTemplateRules, which is a hardcoded table covering
+// only DataGrid columns; every other object-list widget fell through it to a
+// null. In a stock blank app an Accordion group (required `headerText`) and a
+// Pop-up menu basic item (required `caption`) both raised CE0463, and thirteen
+// shipped widgets declare object lists with texttemplate items.
+//
+// Required-ness comes from the widget's own PropertyTypes, so this needs no
+// per-widget table and cannot go stale against a package upgrade. Note the
+// widget XML schema defaults `required` to TRUE when the attribute is absent —
+// exactly the Accordion's headerText — so a parser reading a missing attribute
+// as false silently disables this (mpk.go encodes the default as
+// `Required: p.Required != "false"`).
+func isUnsetRequiredTextTemplate(e pages.PropertyTypeIDEntry) bool {
+	return e.Required && strings.EqualFold(e.ValueType, "TextTemplate")
+}
+
+// buildDefaultTextClientTemplateProperty emits a required TextTemplate carrying
+// the widget's shipped default text.
+//
+// Both weaker forms fail, which is why this is not simply the empty builder:
+// TextTemplate=null is CE0463 "the definition of this widget has changed", and
+// an EMPTY Forms$ClientTemplate is CE4899 "Property 'Groups/1/Text' is
+// required". Populating from the ValueType's Translations is what
+// `mx update-widgets` itself writes (the Accordion's headerText ships
+// 'Header'/'Koptekst'). With no shipped translations there is nothing better to
+// write than the empty template.
+func buildDefaultTextClientTemplateProperty(entry pages.PropertyTypeIDEntry) bson.D {
+	if len(entry.DefaultTranslations) == 0 {
+		return buildEmptyClientTemplateProperty(entry)
+	}
+	value := createDefaultWidgetValue(entry)
+	value = setBSONField(value, "TextTemplate", buildClientTemplateWithTranslations(entry.DefaultTranslations))
+	return bson.D{
+		{Key: "$ID", Value: types.UUIDToBlob(types.GenerateID())},
+		{Key: "$Type", Value: "CustomWidgets$WidgetProperty"},
+		{Key: "TypePointer", Value: types.UUIDToBlob(entry.PropertyTypeID)},
+		{Key: "Value", Value: value},
+	}
+}
+
+// buildClientTemplateWithTranslations mirrors BuildEmptyClientTemplate but fills
+// Template.Items with one Texts$Translation per shipped language. The Fallback
+// stays empty and Parameters keeps marker 2 — the shape `mx update-widgets`
+// produces.
+func buildClientTemplateWithTranslations(translations []pages.PropertyTranslation) bson.D {
+	items := bson.A{int32(3)}
+	for _, t := range translations {
+		items = append(items, bson.D{
+			{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
+			{Key: "$Type", Value: "Texts$Translation"},
+			{Key: "LanguageCode", Value: t.LanguageCode},
+			{Key: "Text", Value: t.Text},
+		})
+	}
+	return bson.D{
+		{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
+		{Key: "$Type", Value: "Forms$ClientTemplate"},
+		{Key: "Fallback", Value: bson.D{
+			{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
+			{Key: "$Type", Value: "Texts$Text"},
+			{Key: "Items", Value: bson.A{int32(3)}},
+		}},
+		{Key: "Parameters", Value: bson.A{int32(2)}},
+		{Key: "Template", Value: bson.D{
+			{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
+			{Key: "$Type", Value: "Texts$Text"},
+			{Key: "Items", Value: items},
+		}},
+	}
 }
 
 // shouldEmitEmptyClientTemplate returns true when an unset TextTemplate-typed

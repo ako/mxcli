@@ -134,6 +134,7 @@ Examples:
 			rules.NewWeakPasswordPolicyRule(),
 			rules.NewDemoUsersActiveRule(),
 			rules.NewOverlappingActivitiesRule(), // MPR008 - requires BSON inspection
+			rules.NewLoopChildContainmentRule(), // MPR011 - requires BSON inspection
 			rules.NewNoCommitInLoopRule(),        // CONV011-CONV014 - require BSON inspection
 			rules.NewExclusiveSplitCaptionRule(),
 			rules.NewErrorHandlingOnCallsRule(),

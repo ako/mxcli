@@ -49,10 +49,17 @@ func (fb *flowBuilder) buildFlowGraph(stmts []ast.MicroflowStatement, returns *a
 	}
 
 	// Create StartEvent - Position is the CENTER point (RelativeMiddlePoint in Mendix)
+	// A position carried over from the microflow being replaced wins: the start
+	// has no statement to annotate, so a rebuild would otherwise move a
+	// hand-laid-out one to the derived spot.
+	startX, startY := fb.posX, fb.posY
+	if fb.startPosition != nil {
+		startX, startY = fb.startPosition.X, fb.startPosition.Y
+	}
 	startEvent := &microflows.StartEvent{
 		BaseMicroflowObject: microflows.BaseMicroflowObject{
 			BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
-			Position:    model.Point{X: fb.posX, Y: fb.posY},
+			Position:    model.Point{X: startX, Y: startY},
 			Size:        model.Size{Width: EventSize, Height: EventSize},
 		},
 	}

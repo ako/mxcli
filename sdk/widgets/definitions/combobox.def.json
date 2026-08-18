@@ -18,14 +18,16 @@
         {"propertyKey": "optionsSourceType", "value": "association", "operation": "primitive"},
         {"propertyKey": "optionsSourceAssociationDataSource", "source": "DataSource", "operation": "datasource"},
         {"propertyKey": "attributeAssociation", "source": "Association", "operation": "association"},
-        {"propertyKey": "optionsSourceAssociationCaptionAttribute", "source": "CaptionAttribute", "operation": "attribute"}
+        {"propertyKey": "optionsSourceAssociationCaptionAttribute", "source": "CaptionAttribute", "operation": "attribute"},
+        {"propertyKey": "onChangeEvent", "source": "OnChange", "operation": "action"}
       ]
     },
     {
       "name": "default",
       "description": "Enumeration mode",
       "propertyMappings": [
-        {"propertyKey": "attributeEnumeration", "source": "Attribute", "operation": "attribute"}
+        {"propertyKey": "attributeEnumeration", "source": "Attribute", "operation": "attribute"},
+        {"propertyKey": "onChangeEvent", "source": "OnChange", "operation": "action"}
       ]
     }
   ]

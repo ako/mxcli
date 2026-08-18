@@ -67,18 +67,21 @@ func ExecuteOQL(opts OQLOptions, query string) (*OQLResult, error) {
 
 	// Mendix 11.11+ serves OQL preview as a REST endpoint
 	// (POST /dev/preview_execute_oql with the params as the body, returning
-	// {"data":[...]} directly). Try it first; on older runtimes it 404s and we
-	// fall back to the legacy M2EE action (POST / with {"action","params"}).
+	// {"data":[...]} directly). Try it first and fall back to the legacy M2EE
+	// action (POST / with {"action","params"}) when it is not there.
+	//
+	// "Not there" has two shapes, and only one of them is an HTTP 404. A runtime
+	// older than 11.11 has no /dev/ route at all, so the admin API dispatches the
+	// POST as an ordinary admin request, finds no "action" field in the body, and
+	// answers **200** with {"result":<non-zero>,"message":"Action not found"}.
+	// Treating only the 404 as absence meant the legacy action — which works
+	// perfectly on those runtimes — was never tried, so `mxcli oql` failed on
+	// every Mendix before 11.11 with a message telling the user to upgrade mxcli.
+	// Measured against 11.6.6: the dev path returns that 200, and the legacy
+	// action answers the same query.
 	raw, err := previewOQLDev(m2eeOpts, params)
 	if errors.Is(err, errDevEndpointNotFound) {
-		resp, lerr := CallM2EE(m2eeOpts, "preview_execute_oql", params)
-		if lerr != nil {
-			return nil, lerr
-		}
-		if errMsg := resp.M2EEError(); errMsg != "" {
-			return nil, fmt.Errorf("OQL error: %s", errMsg)
-		}
-		return parseOQLFeedback(resp.RawFeedback)
+		return legacyOQL(m2eeOpts, params)
 	}
 	if err != nil {
 		return nil, err
@@ -87,11 +90,43 @@ func ExecuteOQL(opts OQLOptions, query string) (*OQLResult, error) {
 	// The dev endpoint reports query failures as HTTP 200 with an {"error":"..."}
 	// body (no "data"), so a bad query must be surfaced here rather than parsed
 	// as an empty result.
-	if errMsg := oqlDevError(raw); errMsg != "" {
+	errMsg, absent := oqlDevErrorKind(raw)
+	if absent {
+		// The dev route is not mounted, so the legacy action is the real attempt
+		// and its answer is the one that matters — including when it is an error.
+		// Reporting the dev route's "Action not found" instead would blame the
+		// transport for a query the runtime rejected on its merits: an unknown
+		// entity would come back as "upgrade mxcli", which is neither true nor
+		// actionable.
+		res, lerr := legacyOQL(m2eeOpts, params)
+		if lerr == nil {
+			return res, nil
+		}
+		// Unless the legacy action is missing too — then the live-preview
+		// servlets really are absent, and the dev message carries the hint that
+		// says so.
+		if !strings.Contains(strings.ToLower(lerr.Error()), "action not found") {
+			return nil, lerr
+		}
+	}
+	if errMsg != "" {
 		return nil, fmt.Errorf("OQL error: %s", errMsg)
 	}
 
 	return parseOQLFeedback(raw)
+}
+
+// legacyOQL runs the query through the M2EE admin action, which is how every
+// runtime before 11.11 serves OQL preview.
+func legacyOQL(opts M2EEOptions, params map[string]any) (*OQLResult, error) {
+	resp, err := CallM2EE(opts, "preview_execute_oql", params)
+	if err != nil {
+		return nil, err
+	}
+	if errMsg := resp.M2EEError(); errMsg != "" {
+		return nil, fmt.Errorf("OQL error: %s", errMsg)
+	}
+	return parseOQLFeedback(resp.RawFeedback)
 }
 
 // oqlDevError returns the message from a dev-endpoint error response, or "" when
@@ -104,8 +139,16 @@ func ExecuteOQL(opts OQLOptions, query string) (*OQLResult, error) {
 //     "data" and no "result"; without this check these would be silently parsed
 //     as 0 rows.
 func oqlDevError(raw json.RawMessage) string {
+	msg, _ := oqlDevErrorKind(raw)
+	return msg
+}
+
+// oqlDevErrorKind is oqlDevError plus whether the response means the /dev/ route
+// is not mounted at all — the admin dispatcher's "Action not found", which is
+// the signal to try the legacy action rather than to give up.
+func oqlDevErrorKind(raw json.RawMessage) (string, bool) {
 	if len(raw) == 0 {
-		return ""
+		return "", false
 	}
 	var env struct {
 		Error   string          `json:"error"`
@@ -114,16 +157,17 @@ func oqlDevError(raw json.RawMessage) string {
 		Data    json.RawMessage `json:"data"`
 	}
 	if err := json.Unmarshal(raw, &env); err != nil {
-		return ""
+		return "", false
 	}
 	if env.Error != "" {
-		return env.Error
+		return env.Error, false
 	}
 	if len(env.Data) == 0 && env.Result != nil && *env.Result != 0 {
 		msg := env.Message
 		if msg == "" {
 			msg = fmt.Sprintf("runtime returned result %d", *env.Result)
 		}
+		absent := strings.Contains(strings.ToLower(msg), "action not found")
 		// "Action not found" means the OQL preview servlet isn't mounted — the app
 		// must be started with the live-preview dev flags (mxcli docker does this).
 		// A common cause is a stale docker-compose.yml: `mxcli docker init` skips an
@@ -134,9 +178,9 @@ func oqlDevError(raw json.RawMessage) string {
 				" If it was started with `mxcli run --local`, upgrade mxcli to a build that boots the local runtime with live preview (nightly-93 and earlier do not)." +
 				" If it runs under docker and your .docker/ predates this fix, regenerate it with `mxcli docker init --force`, then `mxcli docker build && mxcli docker up`."
 		}
-		return msg
+		return msg, absent
 	}
-	return ""
+	return "", false
 }
 
 // parseOQLFeedback extracts OQL results from the raw M2EE feedback JSON,
@@ -146,12 +190,25 @@ func parseOQLFeedback(rawFeedback json.RawMessage) (*OQLResult, error) {
 		return &OQLResult{}, nil
 	}
 
-	// Parse the feedback to extract the data field as raw JSON
+	// Parse the feedback to extract the data field as raw JSON.
+	//
+	// The error field matters as much as the data one: the legacy admin action
+	// reports a bad query as {"feedback":{"error":"..."},"result":0} — inside the
+	// feedback, with a **successful** result code. M2EEError() keys off the
+	// result, so it says nothing, and without this check the error body parses as
+	// an empty result and a rejected query is reported as "0 rows". Measured
+	// against 11.6.6: `select count(*)` without an alias comes back exactly that
+	// way ("All OQL select columns must have a name").
 	var envelope struct {
-		Data json.RawMessage `json:"data"`
+		Data  json.RawMessage `json:"data"`
+		Error string          `json:"error"`
 	}
 	if err := json.Unmarshal(rawFeedback, &envelope); err != nil {
 		return nil, fmt.Errorf("parsing feedback: %w", err)
+	}
+
+	if envelope.Error != "" {
+		return nil, fmt.Errorf("OQL error: %s", envelope.Error)
 	}
 
 	if len(envelope.Data) == 0 {

@@ -24,7 +24,7 @@ type TestCase struct {
 	// and never run: an assertion that cannot be evaluated must not be able to
 	// report a pass.
 	AssertionErrors []string
-	Verify          []string // @verify OQL queries
+	Verify          []Verify // @verify OQL post-conditions
 	Setup           string   // @setup block reference
 	Cleanup         string   // @cleanup strategy ("rollback" or "none")
 	Throws          string   // @throws expected error message
@@ -34,11 +34,11 @@ type TestCase struct {
 
 // AssertionCount reports how many assertions the test actually makes.
 //
-// @expect and @throws each assert something a runner evaluates. @verify does
-// not — it is parsed and never executed, which is why it is rejected at parse
-// time rather than counted here.
+// @expect, @verify and @throws each assert something a runner evaluates. An
+// annotation that is parsed and never executed must not be counted here — that
+// is what made @verify look like an assertion while asserting nothing.
 func (tc TestCase) AssertionCount() int {
-	n := len(tc.Expects)
+	n := len(tc.Expects) + len(tc.Verify)
 	if tc.Throws != "" {
 		n++
 	}
@@ -295,7 +295,7 @@ type annotations struct {
 	Test            string
 	Expects         []Expect
 	AssertionErrors []string
-	Verify          []string
+	Verify          []Verify
 	Setup           string
 	Cleanup         string
 	Throws          string
@@ -345,17 +345,12 @@ func parseAnnotations(doc string) annotations {
 			}
 		}
 		if m := verifyPattern.FindStringSubmatch(line); m != nil {
-			// @verify is parsed here, listed by --list, and read by nothing
-			// else — no runner has ever executed one. A documented annotation
-			// that looks like an assertion and asserts nothing is the same
-			// defect as the @expect shapes that used to be dropped, so it gets
-			// the same answer: an error, not silence. When it is implemented,
-			// this branch becomes the OQL post-condition it claims to be.
-			a.Verify = append(a.Verify, strings.TrimSpace(m[1]))
-			a.AssertionErrors = append(a.AssertionErrors, fmt.Sprintf(
-				"@verify %s: @verify is not implemented — no runner evaluates it, "+
-					"so it would assert nothing. Assert on the microflow's own "+
-					"result with @expect instead", strings.TrimSpace(m[1])))
+			v, err := ParseVerify(m[1])
+			if err != nil {
+				a.AssertionErrors = append(a.AssertionErrors, err.Error())
+			} else {
+				a.Verify = append(a.Verify, v)
+			}
 		}
 		if m := setupPattern.FindStringSubmatch(line); m != nil {
 			a.Setup = strings.TrimSpace(m[1])
@@ -368,5 +363,26 @@ func parseAnnotations(doc string) annotations {
 		}
 	}
 
+	checkVerifyCleanup(&a)
 	return a
+}
+
+// checkVerifyCleanup refuses a @verify on a test whose writes are rolled back.
+//
+// @verify asserts on rows the microflow wrote, and @cleanup rollback — the
+// default — undoes them when the call returns, before anything can look. The
+// query would run against the pre-test state and report a confident wrong
+// answer, which is the failure mode this annotation is being fixed for. So it is
+// refused, with the one-line change that makes it work.
+func checkVerifyCleanup(a *annotations) {
+	if len(a.Verify) == 0 || a.Cleanup != CleanupRollback {
+		return
+	}
+	for _, v := range a.Verify {
+		a.AssertionErrors = append(a.AssertionErrors, fmt.Sprintf(
+			"@verify %s: this test uses @cleanup rollback (the default), so its writes are "+
+				"undone before the query runs and it would assert against the pre-test "+
+				"state. Add @cleanup none to the test", v.Raw))
+	}
+	a.Verify = nil
 }

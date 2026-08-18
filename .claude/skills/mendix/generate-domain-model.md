@@ -950,7 +950,12 @@ alter entity Module.Order
   add attribute VATRate: decimal
   add attribute VATAmount: decimal;
 
--- Rename an attribute (preserves data)
+-- Rename an attribute (preserves data). Every stored reference follows it:
+-- microflow create/change members, page attribute widgets, validation rules,
+-- access rules -- and XPath constraints too ([CreatedDate > ...]), including
+-- ones that reach the entity through an association. Microflow expressions
+-- ($Order/CreatedDate) are NOT rewritten -- mxbuild reports those as CE0117,
+-- so build afterwards.
 alter entity Module.Order
   rename attribute CreatedDate to OrderDate;
 
@@ -987,6 +992,15 @@ alter entity Module.Customer
 ```
 
 **Supported operations:** ADD ATTRIBUTE, RENAME ATTRIBUTE, MODIFY ATTRIBUTE (type + `NULLABLE`/`NOT NULL`/`UNIQUE`/`DEFAULT` constraints), DROP ATTRIBUTE, SET DOCUMENTATION, SET COMMENT, ADD INDEX, DROP INDEX, SET POSITION.
+
+> **`MODIFY ATTRIBUTE` always takes a type** — restate it even when you only want
+> to change a constraint. Its type slot accepts a bare qualified name, so a
+> clause written in the type position is read as a type name:
+> `MODIFY ATTRIBUTE X SET DEFAULT 0` treats `SET` as the type. mxcli now refuses
+> that; before it did, the statement rewrote the attribute to an enumeration and
+> produced a project Mendix could not open (#910).
+>
+> To clear a default value use **`DROP DEFAULT ON ATTRIBUTE <name>`**.
 
 ### Entity Positioning Guidelines
 

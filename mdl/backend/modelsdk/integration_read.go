@@ -615,11 +615,83 @@ func (b *Backend) ListDatabaseConnections() ([]*model.DatabaseConnection, error)
 			}
 			dq.ID = model.ID(q.ID())
 			dq.TypeName = "DatabaseConnector$DatabaseQuery"
+			dq.TableMappings = tableMappingsFromGen(q)
+			dq.Parameters = queryParametersFromGen(q)
 			conn.Queries = append(conn.Queries, dq)
 		}
 		out = append(out, conn)
 	}
 	return out, nil
+}
+
+// queryParametersFromGen reads a query's Parameters back into the semantic
+// model. Sibling of tableMappingsFromGen and missed for the same reason: the
+// DESCRIBE renderer emits `parameter <name>: <Type> [default …]` from this
+// slice, so leaving it empty made `describe database connection` drop every
+// parameter on this engine while the legacy reader showed them. A describe →
+// exec round trip then produced a query with no parameters at all.
+func queryParametersFromGen(q *genDb.DatabaseQuery) []*model.DatabaseQueryParameter {
+	var out []*model.DatabaseQueryParameter
+	for _, el := range q.ParametersItems() {
+		p, ok := el.(*genDb.QueryParameter)
+		if !ok {
+			continue
+		}
+		param := &model.DatabaseQueryParameter{
+			ParameterName:         p.ParameterName(),
+			DefaultValue:          p.DefaultValue(),
+			EmptyValueBecomesNull: p.EmptyValueBecomesNull(),
+		}
+		param.ID = model.ID(p.ID())
+		param.TypeName = "DatabaseConnector$QueryParameter"
+		// DataType is a child element whose $Type carries the type
+		// (DataTypes$StringType, …) — the same string the legacy reader lifts.
+		if dt := p.DataType(); dt != nil {
+			param.DataType = dt.TypeName()
+		}
+		out = append(out, param)
+	}
+	return out
+}
+
+// tableMappingsFromGen reads a query's TableMappings back into the semantic
+// model — the entity a query returns and its column→attribute mapping.
+//
+// Without this the DESCRIBE renderer's `returns`/`map (…)` block was dead code
+// on this engine (it only ever saw an empty slice), so `describe database
+// connection` emitted a query with no return entity and no mapping, and a
+// describe → exec round trip dropped both. The legacy reader has always
+// populated it, which is why the round-trip test — pinned to legacy — stayed
+// green.
+func tableMappingsFromGen(q *genDb.DatabaseQuery) []*model.DatabaseTableMapping {
+	var out []*model.DatabaseTableMapping
+	for _, el := range q.TableMappingsItems() {
+		tm, ok := el.(*genDb.TableMapping)
+		if !ok {
+			continue
+		}
+		m := &model.DatabaseTableMapping{
+			Entity:    tm.EntityQualifiedName(),
+			TableName: tm.TableName(),
+		}
+		m.ID = model.ID(tm.ID())
+		m.TypeName = "DatabaseConnector$TableMapping"
+		for _, cEl := range tm.ColumnsItems() {
+			c, ok := cEl.(*genDb.ColumnMapping)
+			if !ok {
+				continue
+			}
+			cm := &model.DatabaseColumnMapping{
+				Attribute:  c.AttributeQualifiedName(),
+				ColumnName: c.ColumnName(),
+			}
+			cm.ID = model.ID(c.ID())
+			cm.TypeName = "DatabaseConnector$ColumnMapping"
+			m.Columns = append(m.Columns, cm)
+		}
+		out = append(out, m)
+	}
+	return out
 }
 
 // firstNonEmpty returns the first non-empty string in vals, or "".

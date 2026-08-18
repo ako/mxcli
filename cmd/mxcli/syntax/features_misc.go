@@ -180,6 +180,7 @@ DISCONNECT;`,
 			"alter settings", "modify settings", "change settings",
 			"after startup", "before shutdown", "hash algorithm",
 			"database type", "constant override", "language",
+			"optimistic locking", "concurrency", "lost update",
 		},
 		Syntax: `ALTER SETTINGS MODEL <key> = <value>;
 ALTER SETTINGS CONFIGURATION '<name>' <key> = <value>, ...;
@@ -191,6 +192,7 @@ CREATE CONFIGURATION '<name>' [<key> = <value>, ...];
 DROP CONFIGURATION '<name>';`,
 		Example: `ALTER SETTINGS MODEL AfterStartupMicroflow = 'Module.MF_Startup';
 ALTER SETTINGS MODEL HashAlgorithm = 'BCrypt';
+ALTER SETTINGS MODEL EnableDataStorageOptimisticLocking = true;
 ALTER SETTINGS CONFIGURATION 'Default'
   DatabaseType = 'PostgreSql',
   DatabaseUrl = 'localhost:5432',
@@ -203,7 +205,25 @@ CREATE CONFIGURATION 'Production'
 
 -- DatabaseType must be a Mendix database type:
 --   Db2, Hsqldb, MySql, Oracle, PostgreSql, SapHana, SqlServer
--- (matched case-insensitively and stored in the spelling above).`,
+-- (matched case-insensitively and stored in the spelling above).
+
+-- MODEL accepts these keys (an unknown one is refused and lists them):
+--   AfterStartupMicroflow, BeforeShutdownMicroflow, HealthCheckMicroflow,
+--   HashAlgorithm, BcryptCost, JavaVersion, RoundingMode,
+--   AllowUserMultipleSessions, ScheduledEventTimeZoneCode, DefaultTimeZoneCode,
+--   FirstDayOfWeek, DecimalScale, EnableDataStorageOptimisticLocking,
+--   UseDatabaseForeignKeyConstraints, UseOQLVersion2, SslCertificateAlgorithm
+--
+-- EnableDataStorageOptimisticLocking is Studio Pro's App Settings → Runtime →
+-- "Optimistic locking": it makes a stale commit fail instead of silently
+-- overwriting, which is the fix for a read-then-write race in a microflow.
+-- FirstDayOfWeek is Default or Monday..Sunday; SslCertificateAlgorithm is
+-- PKIX or SunX509. Both are matched case-insensitively.
+--
+-- Which of these a project stores depends on its Mendix version (a blank 9.24
+-- project has 12, a blank 11.13 has 17). An ALTER naming one the project does
+-- not store is refused rather than introducing it, and DESCRIBE SETTINGS emits
+-- only the stored ones so its output always replays.`,
 		SeeAlso: []string{"settings.show"},
 	})
 
@@ -231,9 +251,14 @@ Properties:
                 = per runtime instance.
   Documentation free text.
 
-Binding a call to a queue is not yet expressible in MDL. Because a rebuild
-would drop an existing binding, mxcli REFUSES to CREATE OR REPLACE/MODIFY a
-microflow whose stored calls are queued — change those in Studio Pro.`,
+Bind a call to a queue with the IN QUEUE clause on CALL MICROFLOW or
+CALL JAVA ACTION (see: mxcli syntax microflow.call):
+
+  CALL MICROFLOW Ops.ACT_Process(Order = $Order) IN QUEUE Ops.OrderProcessing;
+
+A rewrite that does NOT restate a stored binding is refused, because it would
+drop it silently. A retry policy on a queued call has no MDL spelling and is
+also refused rather than reset — change those in Studio Pro.`,
 		Example: `CREATE QUEUE Ops.OrderProcessing (
   Parallelism: 3,
   ClusterWide: true
@@ -247,6 +272,12 @@ CREATE OR MODIFY QUEUE Ops.OrderProcessing (
   Parallelism: '$MyModule.Workers',
   ClusterWide: true
 );
+
+-- Bind a call to it. A queued Java action must return Nothing (CE7038).
+CREATE OR MODIFY MICROFLOW Ops.ACT_Enqueue ()
+BEGIN
+  CALL MICROFLOW Ops.ACT_Process(Order = $Order) IN QUEUE Ops.OrderProcessing;
+END;
 
 SHOW QUEUES IN Ops;
 DESCRIBE QUEUE Ops.OrderProcessing;
@@ -623,9 +654,14 @@ Annotations:
                             reports the observed value alongside the
                             expectation whenever the assertion pins its type.
   @throws 'message'         Expect error
-  @verify <oql>             NOT IMPLEMENTED — rejected as an error. Nothing
-                            evaluates it, so it would assert nothing. Return
-                            the value from the microflow and use @expect.
+  @verify <oql> <op> <lit>  Assert on the DATABASE after the microflow ran:
+                              @verify select count(*) as n from Mod.Cell = 81
+                              @verify select count(*) as n from Mod.Cell > 0
+                            The query must return one row and one column, and
+                            the test needs @cleanup none — rollback would undo
+                            the writes before the query could see them. An
+                            unevaluatable @verify is an ERROR, never a pass.
+                            --local / --attach only.
   @cleanup rollback|none    What happens to the test's database writes.
                             rollback (the default) wraps the test in a
                             transaction and rolls it back, so nothing it

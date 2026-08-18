@@ -199,6 +199,10 @@ func execCreateExportMapping(ctx *ExecContext, s *ast.CreateExportMappingStmt) e
 		ExportLevel:     "Hidden",
 		NullValueOption: s.NullValueOption,
 	}
+	if existing != nil {
+		// Excluded is model state, not script state (#914).
+		em.Excluded = existing.Excluded
+	}
 	if em.NullValueOption == "" {
 		em.NullValueOption = "LeaveOutElement"
 	}

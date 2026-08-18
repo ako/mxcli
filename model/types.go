@@ -196,10 +196,14 @@ func (c *Constant) GetContainerID() ID {
 // Enumeration represents an enumeration type.
 type Enumeration struct {
 	BaseElement
-	ContainerID   ID                 `json:"containerId"`
-	Name          string             `json:"name"`
-	Documentation string             `json:"documentation,omitempty"`
-	Values        []EnumerationValue `json:"values,omitempty"`
+	ContainerID   ID     `json:"containerId"`
+	Name          string `json:"name"`
+	Documentation string `json:"documentation,omitempty"`
+	// Excluded mirrors Studio Pro's "Exclude from project". It is model state
+	// that MDL cannot express for an enumeration, so every write path must
+	// carry the stored value rather than default it to false (#914).
+	Excluded bool               `json:"excluded,omitempty"`
+	Values   []EnumerationValue `json:"values,omitempty"`
 }
 
 // GetName returns the enumeration's name.
@@ -1001,10 +1005,14 @@ type ModelSettings struct {
 	JavaVersion                        string `json:"javaVersion,omitempty"`
 	RoundingMode                       string `json:"roundingMode,omitempty"`
 	ScheduledEventTimeZoneCode         string `json:"scheduledEventTimeZoneCode,omitempty"`
+	DefaultTimeZoneCode                string `json:"defaultTimeZoneCode,omitempty"`
 	FirstDayOfWeek                     string `json:"firstDayOfWeek,omitempty"`
 	DecimalScale                       int    `json:"decimalScale,omitempty"`
 	EnableDataStorageOptimisticLocking bool   `json:"enableDataStorageOptimisticLocking"`
 	UseDatabaseForeignKeyConstraints   bool   `json:"useDatabaseForeignKeyConstraints"`
+	UseOQLVersion2                     bool   `json:"useOQLVersion2"`
+	UseSystemContextForBackgroundTasks bool   `json:"useSystemContextForBackgroundTasks"`
+	SslCertificateAlgorithm            string `json:"sslCertificateAlgorithm,omitempty"`
 }
 
 // ConventionSettings represents Settings$ConventionSettings.

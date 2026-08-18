@@ -165,10 +165,14 @@ func modelSettingsFromGen(p *genSet.RuntimeSettings) *model.ModelSettings {
 		JavaVersion:                        javaVersionOf(p),
 		RoundingMode:                       p.RoundingMode(),
 		ScheduledEventTimeZoneCode:         p.ScheduledEventTimeZoneCode(),
+		DefaultTimeZoneCode:                p.DefaultTimeZoneCode(),
 		FirstDayOfWeek:                     p.FirstDayOfWeek(),
 		DecimalScale:                       int(p.DecimalScale()),
 		EnableDataStorageOptimisticLocking: p.EnableDataStorageOptimisticLocking(),
 		UseDatabaseForeignKeyConstraints:   p.UseDatabaseForeignKeyConstraints(),
+		UseOQLVersion2:                     p.UseOQLVersion2(),
+		UseSystemContextForBackgroundTasks: p.UseSystemContextForBackgroundTasks(),
+		SslCertificateAlgorithm:            p.SslCertificateAlgorithm(),
 	}
 	setBase(&ms.BaseElement, p, "Settings$ModelSettings")
 	return ms

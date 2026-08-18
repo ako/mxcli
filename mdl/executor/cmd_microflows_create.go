@@ -72,21 +72,30 @@ func execCreateMicroflow(ctx *ExecContext, s *ast.CreateMicroflowStmt) error {
 	var existingContainerID model.ID
 	var existingAllowedRoles []model.ID
 	preserveAllowedRoles := false
+	// Excluded is model state, not script state: an absent @excluded must not
+	// clear a stored exclusion (#914).
+	existingExcluded := false
 	existingMicroflows, err := ctx.Backend.ListMicroflows()
 	if err != nil {
 		return mdlerrors.NewBackend("check existing microflows", err)
 	}
-	for _, existing := range existingMicroflows {
-		if existing.Name == s.Name.Name && getModuleID(ctx, existing.ContainerID) == module.ID {
-			if !s.CreateOrModify {
-				return mdlerrors.NewAlreadyExistsMsg("microflow", s.Name.Module+"."+s.Name.Name, "microflow '"+s.Name.Module+"."+s.Name.Name+"' already exists (use create or modify to overwrite)")
-			}
-			existingID = existing.ID
-			existingContainerID = existing.ContainerID
-			existingAllowedRoles = cloneRoleIDs(existing.AllowedModuleRoles)
-			preserveAllowedRoles = true
-			break
+	// A module may hold several microflows with this name as long as all but one
+	// are excluded, so target the live one rather than whichever comes first
+	// (#914).
+	if existing, ok := pickLive(existingMicroflows,
+		func(m *microflows.Microflow) bool {
+			return m.Name == s.Name.Name && getModuleID(ctx, m.ContainerID) == module.ID
+		},
+		func(m *microflows.Microflow) bool { return m.Excluded },
+	); ok {
+		if !s.CreateOrModify {
+			return mdlerrors.NewAlreadyExistsMsg("microflow", s.Name.Module+"."+s.Name.Name, "microflow '"+s.Name.Module+"."+s.Name.Name+"' already exists (use create or modify to overwrite)")
 		}
+		existingID = existing.ID
+		existingContainerID = existing.ContainerID
+		existingAllowedRoles = cloneRoleIDs(existing.AllowedModuleRoles)
+		preserveAllowedRoles = true
+		existingExcluded = existing.Excluded
 	}
 
 	// For CREATE OR REPLACE/MODIFY, reuse the existing ID to preserve references
@@ -95,7 +104,7 @@ func execCreateMicroflow(ctx *ExecContext, s *ast.CreateMicroflowStmt) error {
 	// Refuse before writing if the stored microflow has a call bound to a task
 	// queue: the rebuild would null it out and nothing downstream would notice.
 	if existingID != "" {
-		if err := checkNoQueuedCalls(ctx, existingID, qualifiedName); err != nil {
+		if err := checkNoQueuedCalls(ctx, existingID, qualifiedName, s); err != nil {
 			return err
 		}
 	}
@@ -132,7 +141,7 @@ func execCreateMicroflow(ctx *ExecContext, s *ast.CreateMicroflowStmt) error {
 		Documentation:            s.Documentation,
 		AllowConcurrentExecution: true, // Default: allow concurrent execution
 		MarkAsUsed:               false,
-		Excluded:                 s.Excluded,
+		Excluded:                 s.Excluded || existingExcluded,
 	}
 	if preserveAllowedRoles {
 		mf.AllowedModuleRoles = existingAllowedRoles
@@ -258,7 +267,14 @@ func execCreateMicroflow(ctx *ExecContext, s *ast.CreateMicroflowStmt) error {
 	restServices, _ := loadRestServices(ctx)
 
 	builder := &flowBuilder{
-		posX:         200,
+		// Carry over the StartEvent position of the microflow being replaced.
+		// The start has no MDL statement to annotate and DESCRIBE cannot emit
+		// it, so a rebuild would otherwise move a hand-laid-out one to the
+		// derived spot — a Studio Pro flow's 145;200 became 100;200 on a
+		// describe→exec round-trip, the only coordinate in it that did not
+		// survive. Preserved the way the folder and allowed roles already are.
+		startPosition: storedStartPosition(ctx, existingID),
+		posX:          200,
 		posY:         200,
 		baseY:        200, // Base Y for happy path
 		spacing:      HorizontalSpacing,
@@ -302,5 +318,26 @@ func execCreateMicroflow(ctx *ExecContext, s *ast.CreateMicroflowStmt) error {
 
 	// Invalidate hierarchy cache so the new microflow's container is visible
 	invalidateHierarchy(ctx)
+	return nil
+}
+
+// storedStartPosition reads the StartEvent position off the microflow being
+// replaced, or nil for a fresh CREATE (where the position is derived from the
+// first annotated activity). Best-effort: a backend that cannot read the flow
+// yields the derived placement rather than failing the statement.
+func storedStartPosition(ctx *ExecContext, existingID model.ID) *model.Point {
+	if existingID == "" || ctx.Backend == nil {
+		return nil
+	}
+	mf, err := ctx.Backend.GetMicroflow(existingID)
+	if err != nil || mf == nil || mf.ObjectCollection == nil {
+		return nil
+	}
+	for _, o := range mf.ObjectCollection.Objects {
+		if se, ok := o.(*microflows.StartEvent); ok {
+			p := se.GetPosition()
+			return &p
+		}
+	}
 	return nil
 }

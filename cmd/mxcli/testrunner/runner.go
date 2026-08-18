@@ -165,7 +165,28 @@ func Run(opts RunOptions) (*SuiteResult, error) {
 	if opts.Local && !opts.LegacyRunner {
 		return runEndpoint(opts, suite, timeout, w)
 	}
+	// @verify needs a seam after each test's call, and a reachable admin API to
+	// query — neither of which the after-startup runner has: its tests execute
+	// during boot and its results are recovered from the log. Refuse rather than
+	// run the suite with those assertions quietly skipped.
+	if err := rejectVerifyOnLegacyRunner(suite); err != nil {
+		return nil, err
+	}
 	return runAfterStartup(opts, suite, timeout, w)
+}
+
+// rejectVerifyOnLegacyRunner refuses a suite the after-startup runner cannot
+// fully evaluate.
+func rejectVerifyOnLegacyRunner(suite *TestSuite) error {
+	for _, tc := range suite.Tests {
+		if len(tc.Verify) > 0 {
+			return fmt.Errorf(
+				"test %q uses @verify, which the after-startup runner cannot evaluate: "+
+					"its tests run during boot, so there is no point at which to query the app. "+
+					"Run with --local (the default test endpoint) or --attach", tc.Name)
+		}
+	}
+	return nil
 }
 
 // validateOptions rejects combinations that cannot work, with a message that
@@ -242,6 +263,7 @@ func runEndpoint(opts RunOptions, suite *TestSuite, timeout time.Duration, w io.
 		fmt.Fprintln(w, "Cleaning up...")
 		cleanupErr := cleanupEndpoint(opts.ProjectPath, state, cleanupSuite, w)
 		removeGeneratedJavaSource(opts.ProjectPath, w)
+		restoreProjectFile(state, cleanupErr, w)
 		reportCleanup(w, cleanupErr)
 		if cleanupErr == nil {
 			fmt.Fprintln(w, "  project restored")
@@ -330,7 +352,9 @@ func runAfterStartup(opts RunOptions, suite *TestSuite, timeout time.Duration, w
 		logOutput, err = runDockerAndCapture(opts, timeout, w)
 	}
 	if err != nil {
-		reportCleanup(w, cleanup(opts.ProjectPath, state, w))
+		cleanupErr := cleanup(opts.ProjectPath, state, w)
+		restoreProjectFile(state, cleanupErr, w)
+		reportCleanup(w, cleanupErr)
 		return nil, err
 	}
 
@@ -339,6 +363,7 @@ func runAfterStartup(opts RunOptions, suite *TestSuite, timeout time.Duration, w
 
 	fmt.Fprintln(w, "Cleaning up...")
 	cleanupErr := cleanup(opts.ProjectPath, state, w)
+	restoreProjectFile(state, cleanupErr, w)
 	reportCleanup(w, cleanupErr)
 
 	PrintResults(w, result, opts.Color)
@@ -384,6 +409,9 @@ func ListTests(files []string, w io.Writer) error {
 		fmt.Fprintf(w, "  %s: %s\n", tc.ID, tc.Name)
 		for _, exp := range tc.Expects {
 			fmt.Fprintf(w, "    @expect %s\n", exp.Raw)
+		}
+		for _, v := range tc.Verify {
+			fmt.Fprintf(w, "    @verify %s\n", v.Raw)
 		}
 		if tc.Throws != "" {
 			fmt.Fprintf(w, "    @throws '%s'\n", tc.Throws)
@@ -442,6 +470,11 @@ func parseTestFiles(paths []string) (*TestSuite, error) {
 // projectState records what Run changed in the project, captured before the first
 // mutation so cleanup can put things back exactly rather than guessing.
 type projectState struct {
+	// snapshot is the project file as it was before anything was injected,
+	// restored on the way out so a run that changes nothing leaves it
+	// byte-identical.
+	snapshot projectSnapshot
+
 	// afterStartup is the project's original after-startup microflow ("" = none).
 	afterStartup string
 	// createdMxTest reports whether Run created the MxTest module, i.e. it did not
@@ -465,7 +498,18 @@ func captureProjectState(projectPath string) (projectState, error) {
 		return st, fmt.Errorf("listing modules: %w", err)
 	}
 	st.createdMxTest = !exists
+
+	st.snapshot = takeProjectSnapshot(projectPath)
 	return st, nil
+}
+
+// restoreProjectFile puts the .mpr back byte-for-byte once cleanup has genuinely
+// undone every injection, so a test run is a no-op on disk. See projectSnapshot
+// for why restoring the model's content is not enough on its own.
+func restoreProjectFile(st projectState, cleanupErr error, w io.Writer) {
+	if err := st.snapshot.restore(cleanupErr == nil); err != nil {
+		fmt.Fprintf(w, "  note: could not restore the project file: %v\n", err)
+	}
 }
 
 // getAfterStartup reads the current after-startup microflow setting.

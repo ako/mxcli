@@ -43,6 +43,34 @@ Change the type or constraints of an existing attribute with `MODIFY ATTRIBUTE`:
 ALTER ENTITY Sales.Customer MODIFY ATTRIBUTE Name: String(400) NOT NULL;
 ```
 
+**The type is not optional.** `MODIFY ATTRIBUTE` always parses a type, and its
+type slot accepts a bare qualified name (an entity or enumeration reference), so
+a clause written where the type belongs is read *as* the type:
+
+```mdl
+-- WRONG: `SET` is read as the type name, not as a keyword
+ALTER ENTITY Sales.Customer MODIFY ATTRIBUTE Discount SET DEFAULT 0;
+
+-- Right: restate the type
+ALTER ENTITY Sales.Customer MODIFY ATTRIBUTE Discount Decimal DEFAULT 0;
+```
+
+mxcli refuses the first form and names the alternatives. Before it did, that
+statement silently rewrote the attribute to an enumeration and produced a
+project Mendix could not open ([#910](https://github.com/mendixlabs/mxcli/issues/910)).
+
+### Clearing a default
+
+`DROP DEFAULT` removes a default value without touching the type:
+
+```mdl
+ALTER ENTITY Sales.Customer DROP DEFAULT ON ATTRIBUTE Discount;
+```
+
+Clearing a default that is already absent is a no-op, not an error. A
+*calculated* attribute is refused rather than silently converted to a plain
+stored one — that is a different change.
+
 ## RENAME Attributes
 
 Rename an attribute with `RENAME ATTRIBUTE`:
@@ -50,6 +78,20 @@ Rename an attribute with `RENAME ATTRIBUTE`:
 ```sql
 ALTER ENTITY Sales.Customer RENAME ATTRIBUTE Phone TO PhoneNumber;
 ```
+
+Every reference stored *as* a reference follows the rename — microflow create and
+change members, page attribute widgets, and the entity's own validation and
+access rules — and the command reports how many documents it updated.
+
+XPath constraints follow too — `[Phone = '06-1234']` and paths that reach the
+entity through an association alike — because a constraint's target entity is
+known from where it is stored. Another entity's attribute of the same name is
+left alone, and any constraint that cannot be resolved is reported rather than
+rewritten.
+
+Microflow expressions (`$Customer/Phone`) are **not** rewritten: a bare name
+there is only resolvable from the type of what precedes it. `mx check` reports
+those as CE0117, so build after renaming an attribute used in one.
 
 ## ADD INDEX
 
@@ -137,6 +179,7 @@ ALTER ENTITY <Module>.<Entity> ADD ATTRIBUTE <name>: <type> [constraints];
 ALTER ENTITY <Module>.<Entity> DROP ATTRIBUTE <name>;
 
 ALTER ENTITY <Module>.<Entity> MODIFY ATTRIBUTE <name>: <type> [constraints];
+ALTER ENTITY <Module>.<Entity> DROP DEFAULT ON ATTRIBUTE <name>;
 
 ALTER ENTITY <Module>.<Entity> RENAME ATTRIBUTE <old-name> TO <new-name>;
 

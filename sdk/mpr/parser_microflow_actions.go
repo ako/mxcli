@@ -61,6 +61,7 @@ func parseMicroflowCallAction(raw map[string]any) *microflows.MicroflowCallActio
 				}
 			}
 		}
+		call.QueueSettings = parseQueueSettings(mfCall)
 		action.MicroflowCall = call
 	}
 
@@ -102,6 +103,7 @@ func parseJavaActionCallAction(raw map[string]any) *microflows.JavaActionCallAct
 	action.ID = model.ID(extractBsonID(raw["$ID"]))
 	action.ErrorHandlingType = microflows.ErrorHandlingType(extractString(raw["ErrorHandlingType"]))
 	action.JavaAction = extractString(raw["JavaAction"])
+	action.QueueSettings = parseQueueSettings(raw)
 	action.ResultVariableName = extractString(raw["ResultVariableName"])
 	action.UseReturnVariable = extractBool(raw["UseReturnVariable"], false)
 
@@ -835,4 +837,22 @@ func parseExportXmlAction(raw map[string]any) *microflows.ExportXmlAction {
 	}
 
 	return action
+}
+
+// parseQueueSettings reads a call's Queues$QueueSettings child — the binding to
+// a task queue. Without it the legacy engine's DESCRIBE rendered a queued call
+// as an ordinary one, so a describe → exec round trip dropped the binding and
+// nothing on this engine could see it (FINDINGS #25's "describe showing nothing
+// is not evidence of nothing").
+func parseQueueSettings(raw map[string]any) *microflows.QueueSettings {
+	qs, ok := raw["QueueSettings"].(map[string]any)
+	if !ok || qs == nil {
+		return nil
+	}
+	out := &microflows.QueueSettings{Queue: extractString(qs["Queue"])}
+	out.ID = model.ID(extractBsonID(qs["$ID"]))
+	if retry, ok := qs["Retry"]; ok && retry != nil {
+		out.Retry = retry
+	}
+	return out
 }

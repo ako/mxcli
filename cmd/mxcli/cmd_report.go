@@ -100,6 +100,7 @@ Examples:
 
 		// MPR008 - requires BSON inspection
 		lint.AddRule(rules.NewOverlappingActivitiesRule())
+		lint.AddRule(rules.NewLoopChildContainmentRule())
 
 		// Convention rules (CONV011-CONV014)
 		lint.AddRule(rules.NewNoCommitInLoopRule())

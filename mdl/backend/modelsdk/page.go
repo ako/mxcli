@@ -84,7 +84,7 @@ func (b *Backend) ListSnippets() ([]*pages.Snippet, error) {
 	}
 	out := make([]*pages.Snippet, 0, len(units))
 	for _, u := range units {
-		s := &pages.Snippet{ContainerID: u.ContainerID, Name: u.Element.Name()}
+		s := &pages.Snippet{ContainerID: u.ContainerID, Name: u.Element.Name(), Excluded: u.Element.Excluded()}
 		s.ID = model.ID(u.Element.ID())
 		// Populate declared parameters — the page builder reads these to validate
 		// and wire SNIPPETCALL argument mappings (without them every parameterised

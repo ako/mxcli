@@ -121,6 +121,7 @@ func convertJavaActionSlice(in []*mpr.JavaAction, err error) ([]*types.JavaActio
 			ContainerID:   ja.ContainerID,
 			Name:          ja.Name,
 			Documentation: ja.Documentation,
+			Excluded:      ja.Excluded,
 		}
 	}
 	return out, nil
@@ -388,6 +389,7 @@ func convertImageCollection(in *mpr.ImageCollection) *types.ImageCollection {
 		Name:          in.Name,
 		ExportLevel:   in.ExportLevel,
 		Documentation: in.Documentation,
+		Excluded:      in.Excluded,
 	}
 	if in.Images != nil {
 		ic.Images = make([]types.Image, len(in.Images))

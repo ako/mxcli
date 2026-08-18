@@ -8,6 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A microflow's StartEvent no longer moves on a describe→exec round-trip** — the start has no MDL statement to annotate and `DESCRIBE` cannot emit its position, so the builder always derived one (first annotated activity minus one spacing unit). A Studio-Pro-authored flow whose start sat at `145;200` came back at `100;200` — the only coordinate in it that did not survive. The position is now carried over from the microflow being replaced, the way the folder and allowed module roles already are; a fresh `CREATE` still derives it.
+
+### Added
+
+- **`MPR011` — loop child containment** — a new lint rule flagging a microflow activity positioned outside the loop container that holds it. This is the only automated check for the condition: the Mendix model carries no geometry rules, so such a flow passes `mx check` with zero errors and builds and runs normally, it is just drawn wrong when opened. It catches the condition however it arrives — a project written by an older mxcli, hand-edited in Studio Pro, or a future layout regression. Nested loops are checked in their own coordinate space, and an unpositioned child at the origin is skipped rather than flagged.
+
+### Fixed
+
+- **A loop's box is sized from its contents, not from a statement count** (#884 problem 1) — `LOOP`/`WHILE` containers took their `Size` from a pre-pass over the AST run before the body was built, so it depended only on how many statements were inside. Two activities at x=150/310, at x=1500/2000 and at x=160/170 all produced `480;160`, and in the second case both children sat entirely outside their own container with `mx check` reporting nothing. The box is now derived from the real child bounding box after the body exists, which also makes an explicit `@position` on a loop child effective. Nested loops size bottom-up. Children are not moved: their positions round-trip through `DESCRIBE`, so the box grows to fit them rather than the contents being translated to fit the box.
+
+### Fixed
+
+- **Authoring a pluggable widget with an object list no longer raises CE0463** (#891) — an object-list item's *required* TextTemplate that the author left unset was written as `null`, so a freshly authored Accordion failed "the definition of this widget has changed" against the very package it was built from. The empty-ClientTemplate convention was a hardcoded table covering only DataGrid columns; required-ness now comes from the widget's own PropertyTypes, and the property is serialized with the widget's shipped translations — the same text `mx update-widgets` writes. Both weaker forms were measured and rejected: `null` is CE0463 and an empty template is CE4899. Optional TextTemplates keep their null, which is what Studio Pro stores.
+
 - **`DESCRIBE PAGE` no longer renders an Accordion group empty** (#891) — an object-list item's child widgets (the group's `content` slot) were never read, and the emitter had no body to put them in, so a group holding a DataGrid2 described as a bare `group group1 (…)` and a describe→exec round-trip silently deleted the grid. Both halves are fixed, and the description now re-parses with the nested widgets intact. Applies to any pluggable widget's object-list items, not just Accordion.
 
 - **`ALTER PAGE INSERT`/`REPLACE` no longer corrupts a page when a DataGrid2 column is named without its grid** (#891) — `REPLACE NextRunAt WITH { COLUMN … }` reported success while writing a layout container into the grid's column list, leaving a project Studio Pro and mxbuild could not **load** (`InvalidCastException: DivContainer → WidgetObject`). `DESCRIBE PAGE` skipped the malformed node, so REPLACE looked like a clean deletion and INSERT like a harmless no-op; both were corruption, and neither required the grid to be nested in a pluggable widget. A bare name that resolves to an object-list item is now refused, naming the qualified `grid.column` form — which always worked and is unaffected.

@@ -96,7 +96,9 @@ func snippetToGen(s *pages.Snippet) (*genPg.Snippet, error) {
 	out := genPg.NewSnippet()
 	out.SetName(s.Name)
 	out.SetDocumentation(s.Documentation)
-	out.SetExcluded(false)
+	// Carry the stored exclusion: hardcoding false silently un-excluded the
+	// document on every rewrite (#914).
+	out.SetExcluded(s.Excluded)
 	out.SetExportLevel("Hidden")
 	out.SetCanvasWidth(800)
 	out.SetCanvasHeight(600)

@@ -1,0 +1,71 @@
+-- ============================================================================
+-- #914 — an excluded document survives a rewrite, and a name is not unique
+-- ============================================================================
+--
+-- POSITIVE TEST: `mxcli check` MUST accept this file.
+--
+-- Studio Pro can "Exclude from project" any document, and Mendix then allows a
+-- second document of the SAME NAME in the same module. Measured on 11.13.0:
+--
+--   two microflows named MyFirstModule.Calc, one Excluded  -> mx check 0 errors
+--   the same pair with both active                         -> [error] CE0122
+--                                        "Duplicate document name 'MyFirstModule.Calc'."
+--
+-- So exclusion is exactly what makes the duplicate legal, and two things follow
+-- for every by-name lookup and every rewrite:
+--
+--   1. A name is not a unique key. `create or replace` used to edit whichever
+--      document came first, which could be the excluded one — the live
+--      microflow kept its old body and the script appeared to do nothing.
+--   2. `Excluded` is model state, not script state. The rebuild wrote the AST
+--      default (false), so the excluded twin became active and the project went
+--      from 0 errors to CE0122 — unbuildable, from a statement that never
+--      mentioned exclusion.
+--
+-- Both are fixed for every document type that carries the flag. The regression
+-- guards live in Go (mdl/executor/excluded_docs_test.go), because `mxcli check`
+-- cannot see project state and the duplicate only exists inside a real .mpr.
+--
+-- What this fixture pins is the SYNTAX half: @excluded is an annotation mxcli
+-- both writes and round-trips through DESCRIBE, which is what makes an excluded
+-- document expressible in MDL at all. Verified end to end against a real
+-- project (exec -> show microflows reports Excluded=true -> describe re-emits
+-- the annotation).
+
+CREATE OR MODIFY ENUMERATION Bug914.Status ( Open 'Open', Closed 'Closed' );
+
+-- An excluded microflow: still part of the .mpr, not part of the app.
+@excluded
+CREATE OR MODIFY MICROFLOW Bug914.LegacyCalc ()
+RETURNS Integer
+BEGIN
+  return 7;
+END;
+
+-- The live microflow. In a real project these two may share a name; MDL cannot
+-- author that pair (it would be ambiguous by name), which is why the ordering
+-- and preservation rules are enforced in the executor rather than here.
+CREATE OR MODIFY MICROFLOW Bug914.Calc ()
+RETURNS Integer
+BEGIN
+  return 1;
+END;
+
+-- Re-running this statement must not clear the exclusion above: an absent
+-- @excluded means "the script does not say", never "make it active".
+@excluded
+CREATE OR MODIFY MICROFLOW Bug914.LegacyCalc ()
+RETURNS Integer
+BEGIN
+  return 8;
+END;
+
+@excluded
+create or modify page Bug914.LegacyPage
+(
+  title: 'Legacy',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  -- empty
+}

@@ -100,7 +100,6 @@ createStatement
       | createSnippetStatement
       | createEnumerationStatement
       | createValidationRuleStatement
-      | createNotebookStatement
       | createDatabaseConnectionStatement
       | createConstantStatement
       | createRestClientStatement
@@ -137,7 +136,6 @@ alterStatement
     : ALTER ENTITY qualifiedName alterEntityAction (COMMA? alterEntityAction)*
     | ALTER ASSOCIATION qualifiedName alterAssociationAction+
     | ALTER ENUMERATION qualifiedName alterEnumerationAction+
-    | ALTER NOTEBOOK qualifiedName alterNotebookAction+
     | ALTER ODATA CLIENT qualifiedName SET odataAlterAssignment (COMMA odataAlterAssignment)*
     | ALTER ODATA SERVICE qualifiedName SET odataAlterAssignment (COMMA odataAlterAssignment)*
     | ALTER STYLING ON (PAGE | SNIPPET) qualifiedName WIDGET IDENTIFIER alterStylingAction+
@@ -321,7 +319,6 @@ dropStatement
     | DROP SNIPPET qualifiedName
     | DROP MENU_KW qualifiedName
     | DROP MODULE qualifiedName
-    | DROP NOTEBOOK qualifiedName
     | DROP QUEUE qualifiedName
     | DROP SCHEDULED EVENT qualifiedName
     | DROP REGULAR EXPRESSION qualifiedName

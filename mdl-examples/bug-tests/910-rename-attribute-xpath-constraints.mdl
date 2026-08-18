@@ -1,0 +1,60 @@
+-- ============================================================================
+-- Bug #910 (problem 2, XPath half): RENAME ATTRIBUTE left XPath constraints
+-- ============================================================================
+--
+-- Symptom:
+--   After the qualified-name half of the fix, a rename still broke every XPath
+--   constraint naming the attribute:
+--     [error] [CE0161] "Error(s) in XPath constraint."
+--       at Retrieve object(s) activity 'Retrieve list of Person from database'
+--   XPath names an attribute as a BARE step — `[FirstName = 'Ada']` — so the
+--   string scan that fixes "Mod.Entity.Attr" references cannot see it, and a
+--   scan for the bare name would rewrite string literals, function names, and
+--   other entities' identically-named attributes.
+--
+-- Fix (mdl/xpathrefs):
+--   Each constraint's target entity is known STRUCTURALLY — a retrieve names
+--   its entity, a widget data source names its entity, an access rule lives
+--   inside one — so no type inference is needed. Every further hop is an
+--   association or entity named in the path itself. The rewrite resolves each
+--   bare step to its owning entity, then edits ONE identifier token, leaving
+--   every other byte alone (re-rendering the parsed tree would churn spacing
+--   in constraints the rename has no business touching).
+--
+--   Anything it cannot resolve is reported and left untouched, never guessed.
+--
+-- Verify:
+--   mxcli exec mdl-examples/bug-tests/910-rename-attribute-xpath-constraints.mdl -p app.mpr
+--   mx check app.mpr    # 0 errors — before the fix, 3x CE0161
+-- ============================================================================
+
+create module XPathRn;
+/
+create persistent entity XPathRn.Person ( FirstName: String(100), LastName: String(100) );
+-- Order carries an attribute of the SAME name. It must not move.
+create persistent entity XPathRn.Order ( FirstName: String(100), Total: Decimal );
+/
+create association XPathRn.Order_Person from XPathRn.Order to XPathRn.Person;
+/
+create or replace microflow XPathRn.ACT_FindPeople ()
+begin
+  -- (1) bare step on the renamed entity itself
+  retrieve $People from XPathRn.Person where [FirstName = 'Ada'];
+  -- (2) the same name on a DIFFERENT entity — must survive the rename
+  retrieve $Orders from XPathRn.Order where [FirstName = 'Ada'];
+  -- (3) reached through an association hop: the constraint belongs to Order,
+  --     and only the hop to Person makes the bare step ours
+  retrieve $Theirs from XPathRn.Order
+    where [XPathRn.Order_Person/XPathRn.Person/FirstName = 'Ada'];
+end;
+/
+create module role XPathRn.User;
+grant XPathRn.User on XPathRn.Person (read *) where '[FirstName != '''']';
+/
+alter entity XPathRn.Person rename attribute FirstName to GivenName;
+/
+-- Expected afterwards (describe entity / describe microflow):
+--   (1) [GivenName = 'Ada']
+--   (2) [FirstName = 'Ada']                        <- untouched, it is Order's
+--   (3) [XPathRn.Order_Person/XPathRn.Person/GivenName = 'Ada']
+--   access rule: [GivenName != '']

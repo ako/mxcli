@@ -1,0 +1,73 @@
+-- ============================================================================
+-- Enum vs. string literal — which contexts mxbuild accepts
+-- ============================================================================
+--
+-- POSITIVE TEST: `mxcli check` MUST accept this file. Every statement below is
+-- also verified to build clean.
+--
+-- The docs disagreed about this: the skills said "NEVER use a string literal
+-- for an enumeration", while docs-site used `Status = 'Draft'` in a dozen
+-- CREATE/CHANGE examples and called it "referencing plain strings when the
+-- context is unambiguous". Both were half right, so a reader could not tell
+-- which of their own statements were wrong.
+--
+-- Settled on a real project (mxcli new EP --version 11.13.0, one microflow per
+-- construct, `mxcli docker check` read per construct):
+--
+--   if $O/Status = 'Draft' then …        -> [error] CE0117 "Error(s) in expression."
+--   log warning 'x: ' + $O/Status;       -> [error] CE0117 "Error(s) in expression."
+--   change $O (Status = 'Submitted');    -> clean
+--   create M.E (Status = 'Draft');       -> clean
+--   "Status": Enumeration(…) DEFAULT 'Draft'  -> clean
+--   retrieve … where [Status = 'Draft']  -> clean
+--   getCaption($O/Status) / toString($O/Status) in a concat -> clean
+--
+-- So the string form is accepted wherever the slot is ALREADY enum-typed, and
+-- rejected in an expression, where it is a String compared to an Enumeration.
+-- `mxcli check` catches neither failing form — it does not type expressions
+-- (docs/11-proposals/PROPOSAL_expression_type_checking.md) — which is why this
+-- fixture carries the verdicts in comments rather than as a .fail.mdl.
+--
+-- This file pins the ACCEPTED forms, so the failing-form fix is never "widened"
+-- into rewriting the clean ones.
+
+CREATE OR MODIFY ENUMERATION EnumCtx.OrderStatus (
+  Draft 'Draft',
+  Submitted 'Submitted',
+  Approved 'Approved'
+);
+
+-- DEFAULT with a string literal: accepted (the legacy form).
+CREATE OR MODIFY PERSISTENT ENTITY EnumCtx.Order (
+  "Reference": String(50),
+  "Status": Enumeration(EnumCtx.OrderStatus) DEFAULT 'Draft'
+);
+
+-- CREATE and CHANGE member values: the slot is enum-typed, string accepted.
+CREATE OR MODIFY MICROFLOW EnumCtx.AssignWithString ()
+RETURNS Boolean
+BEGIN
+  $New = create EnumCtx.Order (Reference = 'R1', Status = 'Draft');
+  change $New (Status = 'Submitted');
+  return true;
+END;
+
+-- XPath constraint: enums are strings at the database level.
+CREATE OR MODIFY MICROFLOW EnumCtx.RetrieveWithString ()
+RETURNS Boolean
+BEGIN
+  retrieve $Orders from EnumCtx.Order where [Status = 'Draft'];
+  return true;
+END;
+
+-- Comparison and concatenation: qualified value, and getCaption() for the string.
+CREATE OR MODIFY MICROFLOW EnumCtx.CompareQualified ($Order: EnumCtx.Order)
+RETURNS Boolean
+BEGIN
+  if $Order/Status = EnumCtx.OrderStatus.Draft then
+    change $Order (Status = EnumCtx.OrderStatus.Submitted);
+    return true;
+  end if;
+  log warning 'Unexpected status: ' + getCaption($Order/Status);
+  return false;
+END;

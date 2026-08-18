@@ -580,10 +580,14 @@ func formatAction(
 			paramStr = strings.Join(params, ", ")
 		}
 
-		if a.UseReturnVariable && a.ResultVariableName != "" {
-			return fmt.Sprintf("$%s = call microflow %s(%s);", a.ResultVariableName, mfName, paramStr)
+		queue := ""
+		if a.MicroflowCall != nil {
+			queue = queueClauseMDL(a.MicroflowCall.QueueSettings)
 		}
-		return fmt.Sprintf("call microflow %s(%s);", mfName, paramStr)
+		if a.UseReturnVariable && a.ResultVariableName != "" {
+			return fmt.Sprintf("$%s = call microflow %s(%s)%s;", a.ResultVariableName, mfName, paramStr, queue)
+		}
+		return fmt.Sprintf("call microflow %s(%s)%s;", mfName, paramStr, queue)
 
 	case *microflows.NanoflowCallAction:
 		nfName := ""
@@ -663,10 +667,11 @@ func formatAction(
 			paramStr = strings.Join(params, ", ")
 		}
 
+		queue := queueClauseMDL(a.QueueSettings)
 		if a.UseReturnVariable && a.ResultVariableName != "" {
-			return fmt.Sprintf("$%s = call java action %s(%s);", a.ResultVariableName, javaActionName, paramStr)
+			return fmt.Sprintf("$%s = call java action %s(%s)%s;", a.ResultVariableName, javaActionName, paramStr, queue)
 		}
-		return fmt.Sprintf("call java action %s(%s);", javaActionName, paramStr)
+		return fmt.Sprintf("call java action %s(%s)%s;", javaActionName, paramStr, queue)
 
 	case *microflows.CallExternalAction:
 		serviceName := a.ConsumedODataService
@@ -1972,4 +1977,14 @@ func enrichXPathGroup(group string, enumAttrs map[string]string) string {
 		return group
 	}
 	return "[" + xpathExprToMDLString(enrichXPathExprWithEnums(expr, enumAttrs)) + "]"
+}
+
+// queueClauseMDL renders the `IN QUEUE Module.Name` clause of a queued call, or
+// "" for an unqueued one. A DESCRIBE that omitted it would emit a script whose
+// re-execution silently unqueues the call.
+func queueClauseMDL(qs *microflows.QueueSettings) string {
+	if qs == nil || qs.Queue == "" {
+		return ""
+	}
+	return " in queue " + qs.Queue
 }

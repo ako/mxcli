@@ -193,7 +193,7 @@ deleteBehavior
     ;
 
 // =============================================================================
-// ALTER ENTITY / ASSOCIATION / ENUMERATION / NOTEBOOK ACTIONS
+// ALTER ENTITY / ASSOCIATION / ENUMERATION ACTIONS
 // =============================================================================
 
 alterEntityAction
@@ -205,6 +205,7 @@ alterEntityAction
     | MODIFY COLUMN attributeName COLON? dataType attributeConstraint*
     | DROP ATTRIBUTE ifExists? attributeName
     | DROP COLUMN ifExists? attributeName
+    | DROP DEFAULT ON ATTRIBUTE attributeName   // clear an attribute's default value
     | SET DOCUMENTATION STRING_LITERAL
     | SET COMMENT STRING_LITERAL
     | SET POSITION LPAREN NUMBER_LITERAL COMMA NUMBER_LITERAL RPAREN
@@ -250,12 +251,6 @@ alterEnumerationAction
     | RENAME VALUE IDENTIFIER TO IDENTIFIER
     | MODIFY VALUE IDENTIFIER CAPTION STRING_LITERAL
     | DROP VALUE IDENTIFIER
-    | SET COMMENT STRING_LITERAL
-    ;
-
-alterNotebookAction
-    : ADD PAGE qualifiedName (POSITION NUMBER_LITERAL)?
-    | DROP PAGE qualifiedName
     | SET COMMENT STRING_LITERAL
     ;
 

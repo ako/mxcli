@@ -155,25 +155,10 @@ func execCreateEntity(ctx *ExecContext, s *ast.CreateEntityStmt) error {
 	}
 
 	// Validate TypeEnumeration attribute refs before writing anything.
-	// The visitor uses TypeEnumeration for both enum and entity type references
-	// (TypeEnumeration vs TypeEntity ambiguity). Accept the ref when it resolves
-	// to either a known enumeration or a known entity; reject unknown names fast
-	// so typos don't silently produce corrupt models.
 	for _, a := range s.Attributes {
-		if a.Type.Kind != ast.TypeEnumeration || a.Type.EnumRef == nil {
-			continue
+		if err := validateAttributeTypeRef(ctx, a.Name, a.Type); err != nil {
+			return err
 		}
-		refModule := a.Type.EnumRef.Module
-		refName := a.Type.EnumRef.Name
-		if findEnumeration(ctx, refModule, refName) != nil {
-			continue
-		}
-		if _, err := findEntity(ctx, refModule, refName); err == nil {
-			continue
-		}
-		return mdlerrors.NewValidationf(
-			"attribute '%s': unknown type '%s' — not a primitive, enumeration, or entity",
-			a.Name, a.Type.EnumRef.String())
 	}
 
 	// Create attributes and build name-to-ID map for validation rules and indexes
@@ -824,28 +809,119 @@ func execAlterEntity(ctx *ExecContext, s *ast.AlterEntityStmt) error {
 		fmt.Fprintf(ctx.Output, "Added attribute '%s' to entity %s\n", a.Name, s.Name)
 
 	case ast.AlterEntityRenameAttribute:
-		found := false
+		var target *domainmodel.Attribute
 		for _, attr := range entity.Attributes {
-			if attr.Name == s.AttributeName {
-				attr.Name = s.NewName
-				found = true
-				break
+			switch attr.Name {
+			case s.AttributeName:
+				target = attr
+			case s.NewName:
+				return mdlerrors.NewValidationf("attribute '%s' already exists on entity %s", s.NewName, s.Name)
 			}
 		}
-		if !found {
+		if target == nil {
 			return mdlerrors.NewNotFoundMsg("attribute", s.AttributeName, fmt.Sprintf("attribute '%s' not found on entity %s", s.AttributeName, s.Name))
 		}
+		target.Name = s.NewName
+		// The entity's own access and validation rules hold the attribute's
+		// qualified name as a string, so they have to move with it *in the model*
+		// — not merely in the BSON the reference scan rewrites afterwards.
+		// Leaving them to the scan produced a duplicate member: UpdateEntity saw
+		// an attribute with no matching MemberAccess and added one, and the scan
+		// then renamed the stale entry into a second copy of it. mxbuild caught
+		// that as CE0066 "Entity access is out of date".
+		renameAttributeInEntityRules(entity, s.Name.String(), s.AttributeName, s.NewName)
 		if err := ctx.Backend.UpdateEntity(dm.ID, entity); err != nil {
 			return mdlerrors.NewBackend("rename attribute", err)
 		}
+
+		// Everything that points at an attribute — a create/change activity's
+		// member, a page's attribute widget, the entity's own validation and
+		// access rules — stores the fully qualified name as a string. Renaming
+		// only the domain model leaves every one of them dangling, which mxbuild
+		// reports as CE1613 "The selected attribute 'Mod.Entity.Old' no longer
+		// exists." (#910). The scan runs *after* UpdateEntity on purpose: it is a
+		// raw-BSON pass over every unit including the domain model, and writing
+		// the model afterwards would re-serialize it from the parsed entity and
+		// undo the scan's edits there.
+		hits, err := ctx.Backend.RenameReferences(
+			s.Name.String()+"."+s.AttributeName,
+			s.Name.String()+"."+s.NewName,
+			false,
+		)
+		if err != nil {
+			return mdlerrors.NewBackend("update attribute references", err)
+		}
+
+		// XPath constraints name the attribute as a bare step, so the scan above
+		// cannot see them. They are resolvable without any type inference — a
+		// constraint's target entity is known structurally and every further hop
+		// is named in the path — so they are rewritten here rather than left for
+		// the user. See mdl/xpathrefs for why the edit is textual and what it
+		// refuses to touch.
+		xres, err := renameAttributeInXPath(ctx, s.Name.String(), string(dm.ID), s.Name.Name, s.AttributeName, s.NewName)
+		if err != nil {
+			return mdlerrors.NewBackend("update attribute references in XPath constraints", err)
+		}
+
 		invalidateHierarchy(ctx)
 		invalidateDomainModelsCache(ctx)
 		fmt.Fprintf(ctx.Output, "Renamed attribute '%s' to '%s' on entity %s\n", s.AttributeName, s.NewName, s.Name)
+		if n := totalRefCount(hits); n > 0 {
+			fmt.Fprintf(ctx.Output, "Updated %d reference(s) in %d document(s)\n", n, len(hits))
+		}
+		reportXPathRename(ctx, xres)
+		// Microflow expressions ($obj/Attr) are the one place left. A bare name
+		// there is only resolvable from the type of what precedes it, which needs
+		// the resolver in PROPOSAL_expression_type_checking; mxbuild reports the
+		// leftovers as CE0117, so say so rather than let a half-done rename look
+		// finished.
+		fmt.Fprintf(ctx.Output,
+			"Note: uses in microflow expressions ($obj/%s) are stored as text and were "+
+				"not rewritten — run 'mxcli docker check' to find them.\n",
+			s.AttributeName)
+
+	case ast.AlterEntityDropDefault:
+		// Clearing a default is its own operation because MODIFY ATTRIBUTE cannot
+		// express it: that form always takes a type, and its type slot accepts a
+		// bare qualified name, so `MODIFY ATTRIBUTE X SET DEFAULT NULL` read SET
+		// as the type and wrote an unloadable project (#910).
+		found := false
+		for _, attr := range entity.Attributes {
+			if attr.Name != s.AttributeName {
+				continue
+			}
+			// Only the stored default goes. A CalculatedValue is not a default —
+			// dropping it would silently turn a calculated attribute into a plain
+			// one, which is a different operation the user did not ask for.
+			if attr.Value != nil && attr.Value.Type == "CalculatedValue" {
+				return mdlerrors.NewValidationf(
+					"attribute '%s' is calculated, not defaulted — DROP DEFAULT does not apply "+
+						"(use MODIFY ATTRIBUTE to change how it is computed)", s.AttributeName)
+			}
+			attr.Value = nil
+			found = true
+			break
+		}
+		if !found {
+			return mdlerrors.NewNotFoundMsg("attribute", s.AttributeName,
+				fmt.Sprintf("attribute '%s' not found on entity %s", s.AttributeName, s.Name))
+		}
+		if err := ctx.Backend.UpdateEntity(dm.ID, entity); err != nil {
+			return mdlerrors.NewBackend("drop default", err)
+		}
+		invalidateHierarchy(ctx)
+		invalidateDomainModelsCache(ctx)
+		fmt.Fprintf(ctx.Output, "Dropped default value on attribute '%s' of entity %s\n", s.AttributeName, s.Name)
 
 	case ast.AlterEntityModifyAttribute:
 		// CALCULATED attributes are only supported on persistent entities
 		if s.Calculated && !entity.Persistable {
 			return mdlerrors.NewValidationf("attribute '%s': calculated attributes are only supported on persistent entities", s.AttributeName)
+		}
+		// Reject a type that resolves to nothing BEFORE touching the attribute.
+		// Writing one produces a .mpr Mendix cannot load at all (#910).
+		if err := validateModifyAttributeTypeRef(ctx, s.AttributeName, s.DataType); err != nil {
+			return err
 		}
 		found := false
 		for _, attr := range entity.Attributes {

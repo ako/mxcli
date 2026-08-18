@@ -242,7 +242,7 @@ func serializeMicroflowAction(action microflows.MicroflowAction) bson.D {
 			} else {
 				mfCall = append(mfCall, bson.E{Key: "ParameterMappings", Value: bson.A{int32(2)}}) // Empty array with marker
 			}
-			mfCall = append(mfCall, bson.E{Key: "QueueSettings", Value: nil})
+			mfCall = append(mfCall, bson.E{Key: "QueueSettings", Value: serializeQueueSettings(a.MicroflowCall.QueueSettings)})
 			doc = append(doc, bson.E{Key: "MicroflowCall", Value: mfCall})
 		}
 		doc = append(doc,
@@ -292,7 +292,7 @@ func serializeMicroflowAction(action microflows.MicroflowAction) bson.D {
 			{Key: "$Type", Value: "Microflows$JavaActionCallAction"},
 			{Key: "ErrorHandlingType", Value: stringOrDefault(string(a.ErrorHandlingType), "Rollback")},
 			{Key: "JavaAction", Value: a.JavaAction},
-			{Key: "QueueSettings", Value: nil},
+			{Key: "QueueSettings", Value: serializeQueueSettings(a.QueueSettings)},
 			{Key: "ResultVariableName", Value: a.ResultVariableName},
 			{Key: "UseReturnVariable", Value: a.UseReturnVariable},
 		}
@@ -1604,5 +1604,21 @@ func importMappingRange(h *microflows.ResultHandlingMapping) bson.D {
 		{Key: "$ID", Value: idToBsonBinary(GenerateID())},
 		{Key: "$Type", Value: "Microflows$ConstantRange"},
 		{Key: "SingleObject", Value: microflows.RangeSingleObjectOf(h)},
+	}
+}
+
+// serializeQueueSettings renders the Queues$QueueSettings child that binds a call
+// activity to a task queue, or nil for an unqueued call (which is what Studio Pro
+// stores). Retry has no MDL surface and is always null here; a stored retry is
+// never overwritten, because checkNoQueuedCalls refuses the rewrite instead.
+func serializeQueueSettings(qs *microflows.QueueSettings) any {
+	if qs == nil || qs.Queue == "" {
+		return nil
+	}
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(string(qs.ID))},
+		{Key: "$Type", Value: "Queues$QueueSettings"},
+		{Key: "Queue", Value: qs.Queue},
+		{Key: "Retry", Value: nil},
 	}
 }

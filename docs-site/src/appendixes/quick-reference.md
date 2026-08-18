@@ -44,7 +44,7 @@ Modifies an existing entity without full replacement.
 | Add attribute | `ALTER ENTITY Module.Name ADD ATTRIBUTE Attr: Type [constraints];` | One action per statement |
 | Drop attribute | `ALTER ENTITY Module.Name DROP ATTRIBUTE AttrName;` | |
 | Modify attribute | `ALTER ENTITY Module.Name MODIFY ATTRIBUTE Attr: NewType [constraints];` | Change type/constraints |
-| Rename attribute | `ALTER ENTITY Module.Name RENAME ATTRIBUTE OldName TO NewName;` | |
+| Rename attribute | `ALTER ENTITY Module.Name RENAME ATTRIBUTE OldName TO NewName;` | Also rewrites stored references and XPath constraints; microflow expressions are not rewritten |
 | Add index | `ALTER ENTITY Module.Name ADD INDEX [IdxName] (Col1 [ASC\|DESC], ...);` | Name optional |
 | Drop index | `ALTER ENTITY Module.Name DROP INDEX IdxName;` | By index name |
 | Set documentation | `ALTER ENTITY Module.Name SET DOCUMENTATION 'text';` | |
@@ -175,7 +175,7 @@ AUTHENTICATION Basic, Session
 
 | Unsupported | Use Instead | Notes |
 |-------------|-------------|-------|
-| `CASE ... WHEN ... END CASE` | Nested `IF ... ELSE ... END IF` | Switch not implemented |
+| `CASE ... WHEN 'String' ... ELSE ...` | Bare enum values, one branch per value | `CASE` itself IS supported for **enum splits**; what fails is quoted/qualified values, an `ELSE` branch (MDL008), and an `AS` alias |
 | `TRY ... CATCH ... END TRY` | `ON ERROR { ... }` blocks | Use error handlers on specific activities |
 
 **Notes:**

@@ -197,8 +197,8 @@ CREATE MICROFLOW Sales.ACT_ApproveOrder
     (DECLARE $Order: Sales.Order)
     RETURN Boolean
 BEGIN
-    IF $Order/Status = 'Pending' THEN
-        CHANGE $Order (Status = 'Approved');
+    IF $Order/Status = Sales.OrderStatus.Pending THEN
+        CHANGE $Order (Status = Sales.OrderStatus.Approved);
         COMMIT $Order WITH EVENTS;
         LOG INFO NODE 'OrderProcessing' 'Order approved';
         RETURN true;

@@ -88,7 +88,7 @@ Modifies an existing entity without full replacement.
 | Add attributes | `alter entity Module.Name add (attr: type [constraints]);` | One or more attributes |
 | Drop attributes | `alter entity Module.Name drop (AttrName, ...);` | |
 | Modify attributes | `alter entity Module.Name modify (attr: NewType [constraints]);` | Change type/constraints |
-| Rename attribute | `alter entity Module.Name rename OldName to NewName;` | |
+| Rename attribute | `alter entity Module.Name rename attribute OldName to NewName;` | Also rewrites stored references (microflow members, page widgets, validation/access rules) and XPath constraints. Microflow expressions are free text and are **not** rewritten |
 | Add index | `alter entity Module.Name add index [name] [on] (Col1 [asc\|desc], ...);` | `on` is optional (SQL-like) |
 | Drop index | `alter entity Module.Name drop index (Col1, ...);` | |
 | Add event handler | `alter entity Module.Name add event handler on before commit call Mod.MF($currentObject) [raise error];` | `($currentObject)` or `()`, RAISE ERROR only on BEFORE |
@@ -454,6 +454,8 @@ it is for pages.
 | Retrieve (Assoc) | `retrieve $list from $Parent/Module.AssocName;` | Retrieve by association |
 | Add to list | `add expression to $list;` | Also accepts existing `add $item to $list;` form |
 | Call microflow | `$Result = call microflow Module.Name (Param = $value);` | |
+| Call microflow on a queue | `call microflow Module.Name (Param = $value) in queue Module.Queue;` | Background execution; the queue must exist (CE1613) |
+| Call Java action on a queue | `call java action Module.Name (Param = $value) in queue Module.Queue;` | The Java action must `returns void`, else CE7038 |
 | Call nanoflow | `$Result = call nanoflow Module.Name (Param = $value);` | |
 | Call JS action | `$Result = call javascript action Module.Name (Param = $value);` | JavaScript action (nanoflow/microflow) |
 | Call Java action | `$Result = call java action Module.Name (Param = $value);` | Java action (microflow only) |
@@ -477,7 +479,7 @@ it is for pages.
 | Annotation | `@annotation 'text'` | Visual note attached to next activity |
 | Free annotation | `@annotation 'text'` before `@position(...)` | Free-floating visual note preserved by order |
 | IF | `if condition then ... [else ...] end if;` | |
-| Enum split | `case $Var when Value then ... end case;` | Enumeration decision branches |
+| Enum split | `case $Var when Value then ... end case;` | Enumeration decision branches. Bare enum values (never quoted or qualified), one branch per value **including `(empty)`** (MDL056), no `else` (MDL008), no `AS` alias |
 | Type split | `split type $Var case Module.Entity ... end split;` | Runtime specialization branches |
 | Cast | `cast $SpecificVar;` | Downcast inside a type split branch |
 | LOOP | `loop $item in $list begin ... end loop;` | FOR EACH over list |
@@ -492,7 +494,7 @@ it is for pages.
 
 | Unsupported | Use Instead | Notes |
 |-------------|-------------|-------|
-| `case ... when ... end case` | Nested `if ... else ... end if` | Switch not implemented |
+| `case ... when 'String' ... else ...` | Bare enum values, one branch per value | `case` itself IS supported for **enum splits** (see above); what fails is quoted/qualified values, an `else` branch, and an `AS` alias |
 | `TRY ... CATCH ... end TRY` | `on error { ... }` blocks | Use error handlers on specific activities |
 
 **Notes:**

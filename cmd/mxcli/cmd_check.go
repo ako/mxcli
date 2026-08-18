@@ -7,7 +7,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/mendixlabs/mxcli/mdl/ast"
 	"github.com/mendixlabs/mxcli/mdl/executor"
 	"github.com/mendixlabs/mxcli/mdl/linter"
 	"github.com/mendixlabs/mxcli/mdl/visitor"
@@ -105,129 +104,10 @@ Examples:
 			fmt.Printf("✓ Syntax OK (%d statements)\n", len(prog.Statements))
 		}
 
-		// Validate statements (doesn't require project connection)
-		var violations []linter.Violation
-		for _, stmt := range prog.Statements {
-			// Check enumeration values for reserved words
-			if enumStmt, ok := stmt.(*ast.CreateEnumerationStmt); ok {
-				violations = append(violations, executor.ValidateEnumeration(enumStmt)...)
-			}
-			// Check entity attributes for reserved system names
-			if entityStmt, ok := stmt.(*ast.CreateEntityStmt); ok {
-				violations = append(violations, executor.ValidateEntity(entityStmt)...)
-			}
-			// Apply the same per-attribute checks to ALTER ENTITY ADD ATTRIBUTE
-			if alterStmt, ok := stmt.(*ast.AlterEntityStmt); ok {
-				violations = append(violations, executor.ValidateAlterEntity(alterStmt)...)
-			}
-			// Check microflow body for common issues
-			if mfStmt, ok := stmt.(*ast.CreateMicroflowStmt); ok {
-				violations = append(violations, executor.ValidateMicroflow(mfStmt)...)
-			}
-			// Check workflow for constructs MxBuild rejects (missing page,
-			// single-outcome-with-activities, invalid decision outcome names)
-			if wfStmt, ok := stmt.(*ast.CreateWorkflowStmt); ok {
-				violations = append(violations, executor.ValidateWorkflow(wfStmt)...)
-			}
-			// Check GRANT for member rights Mendix cannot store
-			if grantStmt, ok := stmt.(*ast.GrantEntityAccessStmt); ok {
-				violations = append(violations, executor.ValidateGrantEntityAccess(grantStmt)...)
-			}
-			// Check typed ALTER SETTINGS / CREATE CONFIGURATION property values
-			if setStmt, ok := stmt.(*ast.AlterSettingsStmt); ok {
-				violations = append(violations, executor.ValidateSettings(setStmt)...)
-			}
-			if cfgStmt, ok := stmt.(*ast.CreateConfigurationStmt); ok {
-				violations = append(violations, executor.ValidateCreateConfiguration(cfgStmt)...)
-			}
-			// Check database connection credentials: a literal where Mendix
-			// stores a constant reference writes an UNOPENABLE project.
-			if dbStmt, ok := stmt.(*ast.CreateDatabaseConnectionStmt); ok {
-				violations = append(violations, executor.ValidateDatabaseConnection(dbStmt)...)
-			}
-			// Check view entity OQL
-			if viewStmt, ok := stmt.(*ast.CreateViewEntityStmt); ok {
-				if viewStmt.Query.RawQuery != "" {
-					violations = append(violations, executor.ValidateOQLSyntax(viewStmt.Query.RawQuery)...)
-					violations = append(violations, executor.ValidateOQLTypes(viewStmt.Query.RawQuery, viewStmt.Attributes)...)
-				}
-			}
-		}
-
-		// Check for intra-script duplicate definitions (CREATE X … CREATE X without DROP)
-		violations = append(violations, executor.CheckScriptDuplicates(prog)...)
-
-		// Validate design properties against the project's theme registry
-		// (themesource design-properties.json) — flags unknown keys and invalid
-		// option values, listing the allowed values. Only runs with --project.
-		violations = append(violations, executor.ValidateDesignProperties(prog, projectPath)...)
-
-		// Validate pluggable widget properties against widget definitions —
-		// catches typos in property keys before MxBuild does. Uses built-in
-		// definitions alone when no project is given; with --project, also
-		// loads project-installed .def.json files for full coverage.
-		violations = append(violations, executor.ValidateWidgetProperties(prog, projectPath)...)
-
-		// Warn (MPR010) when an edit/new form (a parameter-bound DataView) is not
-		// wrapped in a layout grid — its label/input widths only render correctly
-		// inside a layoutgrid. Same rule as the MPR010 lint rule, surfaced at
-		// authoring time on the AST.
-		violations = append(violations, executor.ValidatePageLayoutGrid(prog)...)
-
-		// Flag control-bar buttons that pass $currentObject — a control bar is
-		// not row-scoped, so the argument is unbound (CE1571) at build time.
-		violations = append(violations, executor.ValidatePageButtonContext(prog)...)
-
-		// Flag a database-connection TYPE Studio Pro does not offer. mxcli writes
-		// the string through and mxbuild does not check it, so a wrong value
-		// builds green and simply does not connect.
-		violations = append(violations, executor.ValidateDatabaseConnectionType(prog)...)
-
-		// Flag OData property names nothing below will act on. The grammar takes
-		// any `name: value` pair, so a typo used to be discarded in silence and
-		// the model quietly lacked what the author asked for.
-		violations = append(violations, executor.ValidateODataProperties(prog)...)
-
-		// Flag a microflow-backed OData resource whose read microflow cannot keep
-		// the promises the service makes for it. A read microflow has no
-		// System.HttpResponse parameter, so it cannot answer 400 — its contract
-		// has to be declared correctly up front, and nothing else checks that.
-		violations = append(violations, executor.ValidateODataReadContract(prog)...)
-
-		// Flag `authentication microflow` with no microflow named. The grammar
-		// makes the name optional, so this parses and executes into a service
-		// Mendix refuses to build (CE0333).
-		violations = append(violations, executor.ValidateODataAuth(prog)...)
-
-		// Flag two service shapes mxbuild rejects — a Path that breaks its
-		// slash rules, and the PublishAssociations mode whose name invites
-		// exactly the wrong value. A Path with no slash at all is the reason
-		// this is worth a check: mxbuild throws out of its own validator with
-		// no error code, so there is nothing to look up.
-		violations = append(violations, executor.ValidateODataServiceShape(prog)...)
-
-		// Flag a page whose widgets point at a page created further down the same
-		// script. `exec` resolves page references in statement order and is not
-		// transactional, so this fails after earlier statements are already
-		// written. --references catches it too, but the ordering needs no project
-		// when the target is created by a plain CREATE (#9).
-		violations = append(violations, executor.ValidateScriptPageOrder(prog)...)
-
-		// Flag a document-access GRANT naming a role from another module — Mendix
-		// rejects it with CE0148. Needs no project, so it runs here rather than
-		// under --references, where it would only fire with -p (#836).
-		violations = append(violations, executor.ValidateGrantRoles(prog)...)
-
-		// Flag a REST client operation whose Body/Response mapping clause has no
-		// `{ ... }` body — Mendix cannot reference a mapping document from an
-		// operation, so the mapping would be dropped in silence (#843).
-		violations = append(violations, executor.ValidateRestClientMappings(prog)...)
-
-		// Flag a scheduled event whose Repeat and fields disagree (a Multiplier on
-		// a Daily repeat, an HourOfDay of 99). Decidable from the statement, so it
-		// runs here rather than at exec, where the script would already have
-		// passed check.
-		violations = append(violations, executor.ValidateScheduledEvents(prog)...)
+		// Every semantic check lives in executor.ValidateProgram, so `mxcli exec`
+		// refuses exactly what `mxcli check` reports. Adding a check there gives
+		// both commands it at once.
+		violations := executor.ValidateProgram(prog, projectPath)
 
 		if isStructured {
 			// Always emit structured output (even when clean)

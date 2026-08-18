@@ -6,8 +6,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -604,4 +607,76 @@ func indexOf(s, sub string) int {
 		}
 	}
 	return -1
+}
+
+// TestParseOQLFeedbackSurfacesAQueryError pins that a rejected query is an error
+// rather than an empty result.
+//
+// The legacy admin action reports a bad query inside the feedback with a
+// successful result code, so M2EEError() says nothing about it. Parsing that
+// body as data reported "0 rows" for a query the runtime refused — a wrong
+// answer delivered as a benign one.
+func TestParseOQLFeedbackSurfacesAQueryError(t *testing.T) {
+	raw := []byte(`{"error":"All OQL select columns must have a name"}`)
+	res, err := parseOQLFeedback(raw)
+	if err == nil {
+		t.Fatalf("a rejected query parsed as a result: %+v", res)
+	}
+	if !strings.Contains(err.Error(), "must have a name") {
+		t.Errorf("error = %v, want the runtime's message", err)
+	}
+}
+
+// TestOQLDevErrorKindDetectsAnAbsentRoute pins the fallback signal. A runtime
+// older than 11.11 has no /dev/ route, so the admin API dispatches the POST as
+// an ordinary request and answers 200 with "Action not found" — not a 404. Only
+// treating the 404 as absence meant the legacy action, which works on those
+// runtimes, was never tried.
+func TestOQLDevErrorKindDetectsAnAbsentRoute(t *testing.T) {
+	msg, absent := oqlDevErrorKind([]byte(`{"result":1,"message":"Action not found."}`))
+	if !absent {
+		t.Errorf("Action not found was not recognised as an absent route (msg=%q)", msg)
+	}
+	if _, absent := oqlDevErrorKind([]byte(`{"error":"syntax error near FROM"}`)); absent {
+		t.Error("a query error was mistaken for an absent route")
+	}
+	if _, absent := oqlDevErrorKind([]byte(`{"data":[{"c":"1"}]}`)); absent {
+		t.Error("a successful result was mistaken for an absent route")
+	}
+}
+
+// TestExecuteOQLPrefersTheLegacyError pins which of two failures is reported.
+//
+// When the /dev/ route is absent the legacy action is the real attempt, so its
+// error is the informative one. Reporting the dev route's "Action not found"
+// instead blames the transport for a query the runtime rejected on its merits —
+// an unknown entity would come back as "upgrade mxcli".
+func TestExecuteOQLPrefersTheLegacyError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasPrefix(r.URL.Path, "/dev/") {
+			// Pre-11.11: no /dev/ route, dispatched as an ordinary admin request.
+			fmt.Fprint(w, `{"result":1,"message":"Action not found."}`)
+			return
+		}
+		fmt.Fprint(w, `{"feedback":{"error":"Unknown entity Mod.NoSuch"},"result":0}`)
+	}))
+	defer srv.Close()
+
+	u, _ := url.Parse(srv.URL)
+	port, _ := strconv.Atoi(u.Port())
+	_, err := ExecuteOQL(OQLOptions{
+		Host: u.Hostname(), Port: port, Direct: true,
+		Stdout: io.Discard, Stderr: io.Discard,
+	}, "select count(*) as n from Mod.NoSuch")
+
+	if err == nil {
+		t.Fatal("a rejected query returned a result")
+	}
+	if !strings.Contains(err.Error(), "Unknown entity") {
+		t.Errorf("error = %v, want the runtime's own message", err)
+	}
+	if strings.Contains(err.Error(), "upgrade mxcli") {
+		t.Errorf("the transport hint masked the query error: %v", err)
+	}
 }

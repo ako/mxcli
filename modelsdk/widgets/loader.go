@@ -571,6 +571,7 @@ func extractNestedPropertyTypes(val any, idMapping map[string]string, nestedProp
 					// Extract DefaultValue, Type, and Required from nested ValueType
 					var nestedDefaultValue, nestedValueType string
 					var nestedRequired bool
+					var nestedTranslations []types.PropertyTranslation
 					if vtVal, ok := propType["ValueType"]; ok {
 						if vt, ok := vtVal.(map[string]any); ok {
 							if dv, ok := vt["DefaultValue"].(string); ok {
@@ -582,6 +583,9 @@ func extractNestedPropertyTypes(val any, idMapping map[string]string, nestedProp
 							if r, ok := vt["Required"].(bool); ok {
 								nestedRequired = r
 							}
+							// Widget-shipped default text. A required TextTemplate
+							// must serialize with it, not empty and not null (#891).
+							nestedTranslations = readPropertyTranslations(vt["Translations"])
 						}
 					}
 
@@ -594,11 +598,12 @@ func extractNestedPropertyTypes(val any, idMapping map[string]string, nestedProp
 							*nestedKeyOrder = append(*nestedKeyOrder, propKey)
 						}
 						nestedPropertyIDs[propKey] = PropertyTypeIDEntry{
-							PropertyTypeID: propTypeID,
-							ValueTypeID:    valueTypeID,
-							DefaultValue:   nestedDefaultValue,
-							ValueType:      nestedValueType,
-							Required:       nestedRequired,
+							PropertyTypeID:      propTypeID,
+							ValueTypeID:         valueTypeID,
+							DefaultValue:        nestedDefaultValue,
+							ValueType:           nestedValueType,
+							Required:            nestedRequired,
+							DefaultTranslations: nestedTranslations,
 						}
 					}
 				}
@@ -1071,4 +1076,29 @@ func ListAvailableTemplates() []string {
 		result = append(result, widgetID)
 	}
 	return result
+}
+
+// readPropertyTranslations reads a template ValueType's widget-shipped
+// Translations array (marker-prefixed CustomWidgets$WidgetTranslation entries)
+// into the property entry. Used to serialize a required TextTemplate the author
+// left unset — see types.PropertyTypeIDEntry.DefaultTranslations (#891).
+func readPropertyTranslations(v any) []types.PropertyTranslation {
+	arr, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	var out []types.PropertyTranslation
+	for _, e := range arr {
+		m, ok := e.(map[string]any)
+		if !ok {
+			continue
+		}
+		lang, _ := m["LanguageCode"].(string)
+		if lang == "" {
+			continue
+		}
+		text, _ := m["Text"].(string)
+		out = append(out, types.PropertyTranslation{LanguageCode: lang, Text: text})
+	}
+	return out
 }

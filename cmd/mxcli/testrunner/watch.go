@@ -74,7 +74,7 @@ func watchLoop(opts RunOptions, target testTarget, suite *TestSuite, w io.Writer
 
 	for {
 		gen++
-		result, err := runSuite(target.endpoint(), injected, opts, w)
+		result, err := runSuite(target.endpoint(), target.adminOptions(), injected, opts, w)
 		if err != nil {
 			// The endpoint stopped answering — the runtime is probably gone, and
 			// nothing further will work. Bail rather than spin.
