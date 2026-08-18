@@ -57,6 +57,8 @@ type Reader struct {
 	enumCase map[string][]string
 	mfReturn map[string]exprcheck.TypeKind
 	mfParam  map[string]exprcheck.TypeKind
+	// assoc maps an association's qualified name to its two ends, FROM first.
+	assoc map[string][2]string
 }
 
 var _ exprcheck.CatalogReader = (*Reader)(nil)
@@ -77,9 +79,11 @@ func Load(db Querier) (*Reader, error) {
 		enumCase: map[string][]string{},
 		mfReturn: map[string]exprcheck.TypeKind{},
 		mfParam:  map[string]exprcheck.TypeKind{},
+		assoc:    map[string][2]string{},
 	}
 	for _, load := range []func(Querier) error{
 		r.loadAttributes, r.loadEnumValues, r.loadMicroflows, r.loadParameters,
+		r.loadAssociations,
 	} {
 		if err := load(db); err != nil {
 			return nil, err
@@ -175,6 +179,48 @@ func (r *Reader) loadParameters(db Querier) error {
 		}
 	}
 	return rows.Err()
+}
+
+func (r *Reader) loadAssociations(db Querier) error {
+	rows, err := db.Query(`SELECT QualifiedName, FromEntity, ToEntity FROM associations`)
+	if err != nil {
+		return missingTableOK(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var qn, from, to sql.NullString
+		if err := rows.Scan(&qn, &from, &to); err != nil {
+			return err
+		}
+		// An end that is not recorded leaves the association out entirely, so a
+		// path through it reads as unresolved rather than half-resolved.
+		if qn.String == "" || from.String == "" || to.String == "" {
+			continue
+		}
+		r.assoc[qn.String] = [2]string{from.String, to.String}
+	}
+	return rows.Err()
+}
+
+// AssociationTarget returns the entity at the other end of an association.
+//
+// Both directions resolve: a Mendix expression follows an association from its
+// FROM end and from its TO end alike, and the path looks the same either way.
+// The signature matches xpathrefs.Model so the two resolvers can converge.
+func (r *Reader) AssociationTarget(assocQN, fromEntityQN string) (string, bool) {
+	ends, ok := r.assoc[assocQN]
+	if !ok || fromEntityQN == "" {
+		return "", false
+	}
+	switch fromEntityQN {
+	case ends[0]:
+		return ends[1], true
+	case ends[1]:
+		return ends[0], true
+	}
+	// A self-association resolves above; anything else means the path does not
+	// start where it claims to.
+	return "", false
 }
 
 // AttributeKind returns the kind of Module.Entity.Attr.
