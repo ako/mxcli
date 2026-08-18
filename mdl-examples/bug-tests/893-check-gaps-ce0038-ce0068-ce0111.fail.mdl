@@ -1,0 +1,66 @@
+-- ============================================================================
+-- Bug #893 (items 1, 2 and 6): constructs that passed check AND exec, and were
+-- then rejected by the build
+-- ============================================================================
+--
+-- Symptom (before fix): this file reported `✓ Syntax OK`, `mxcli exec` wrote
+--   all of it, and the defect surfaced only when a human opened Studio Pro's
+--   Errors pane. Reproduced on mxbuild 11.6.6 against an app whose baseline is
+--   1 error: executing this script took it to 4.
+--
+--     CE0038  "The 'Value' property is required."        at ZZ_ProbeA
+--     CE0068  "End events cannot be placed inside a loop." at ZZ_ProbeB
+--     CE0111  "Duplicate variable name 'Session'."       at ZZ_ProbeD
+--
+-- After fix: MDL061, MDL062 and MDL063 report all three, and because they are
+--   error severity `exec` refuses the script with nothing written.
+--
+-- Usage (this file is expected to FAIL — .fail.mdl):
+--   mxcli check mdl-examples/bug-tests/893-check-gaps-ce0038-ce0068-ce0111.fail.mdl
+--   Expect exactly three errors: MDL061, MDL062, MDL063.
+--
+-- The passing counterpart is 893-check-gaps-fixed.mdl, whose three fixes were
+-- each measured to take the same app back to its 1-error baseline.
+-- ============================================================================
+
+create module BugTest893;
+
+create entity BugTest893.Part (
+  Name : string
+);
+/
+
+create microflow BugTest893.Helper ()
+returns string
+begin
+  return 'hello';
+end;
+/
+
+-- Item 1: a Create Variable activity requires a value (CE0038).
+create microflow BugTest893.ZZ_ProbeA ()
+begin
+  declare $X string;
+  log info node 'x' 'y';
+end;
+/
+
+-- Item 2: a return builds an End event, which cannot sit inside a loop (CE0068).
+create microflow BugTest893.ZZ_ProbeB ()
+begin
+  retrieve $PartList from BugTest893.Part;
+  loop $Part in $PartList
+  begin
+    return;
+  end loop;
+end;
+/
+
+-- Item 6: the call creates its OWN output variable, so the declare collides
+-- with it (CE0111). A microflow's variable names are unique flow-wide.
+create microflow BugTest893.ZZ_ProbeD ()
+begin
+  declare $Session string = '';
+  $Session = call microflow BugTest893.Helper();
+end;
+/
