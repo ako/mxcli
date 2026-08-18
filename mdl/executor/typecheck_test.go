@@ -43,6 +43,9 @@ func typeCheckFixture(t *testing.T) *Executor {
 		Title: String(100),
 		Status: Enumeration(MyFirstModule.OrderStatus)
 	);`)
+	run(t, exec, `CREATE PERSISTENT ENTITY MyFirstModule.Reporter (Email: String(200));`)
+	run(t, exec, `CREATE ASSOCIATION MyFirstModule.Ticket_Reporter
+		FROM MyFirstModule.Ticket TO MyFirstModule.Reporter;`)
 	return exec
 }
 
@@ -176,5 +179,111 @@ func TestTypeCheckProgramWithoutAConnectionIsSilent(t *testing.T) {
 	}
 	if got := exec.TypeCheckProgram(nil); got != nil {
 		t.Errorf("a nil program reported %+v", got)
+	}
+}
+
+// TestTypeCheckProgramResolvesAttributePaths is the Tier-2 case: `$T/Status`
+// has no slot naming its attribute, so the only way to know it is an
+// enumeration is to type the variable and look the attribute up. inferKind
+// returned KindUnknown for every attribute path until this landed, which is why
+// the shape the proposal opens with went uncaught.
+func TestTypeCheckProgramResolvesAttributePaths(t *testing.T) {
+	exec := typeCheckFixture(t)
+
+	got := typeCheck(t, exec, `
+CREATE OR REPLACE MICROFLOW MyFirstModule.ACT_Path ($T: MyFirstModule.Ticket)
+BEGIN
+  IF $T/Status = 'Open' THEN
+    LOG 'open';
+  END IF;
+END;
+`)
+
+	if len(got) != 1 {
+		t.Fatalf("got %d violations, want 1: %+v", len(got), got)
+	}
+	if got[0].RuleID != "E001" {
+		t.Errorf("rule is %q, want E001", got[0].RuleID)
+	}
+	if !strings.Contains(got[0].Suggestion, "MyFirstModule.OrderStatus.Open") {
+		t.Errorf("suggestion is %q, want the qualified enum value", got[0].Suggestion)
+	}
+}
+
+// TestTypeCheckProgramTypesAParameter pins the half of the scope that was
+// missing entirely: buildVarEntityScope walks only the body, so a variable the
+// microflow takes as a parameter — the ordinary case — was never typed.
+func TestTypeCheckProgramTypesAParameter(t *testing.T) {
+	exec := typeCheckFixture(t)
+
+	// The variable is introduced by RETRIEVE rather than by a parameter, which
+	// buildVarEntityScope already covered; this is the control for the pair.
+	fromBody := typeCheck(t, exec, `
+CREATE OR REPLACE MICROFLOW MyFirstModule.ACT_Body ()
+BEGIN
+  RETRIEVE $T FROM MyFirstModule.Ticket;
+  IF $T/Status = 'Open' THEN
+    LOG 'x';
+  END IF;
+END;
+`)
+	if len(fromBody) != 1 {
+		t.Errorf("a RETRIEVE-introduced variable was not typed: %+v", fromBody)
+	}
+
+	fromParam := typeCheck(t, exec, `
+CREATE OR REPLACE MICROFLOW MyFirstModule.ACT_Param ($T: MyFirstModule.Ticket)
+BEGIN
+  IF $T/Status = 'Open' THEN
+    LOG 'x';
+  END IF;
+END;
+`)
+	if len(fromParam) != 1 {
+		t.Errorf("a parameter-introduced variable was not typed: %+v", fromParam)
+	}
+}
+
+// TestTypeCheckProgramFollowsAnAssociation pins the multi-hop path. A Mendix
+// expression does not name the intermediate entity the way XPath does, so each
+// hop has to be resolved rather than read off the path.
+func TestTypeCheckProgramFollowsAnAssociation(t *testing.T) {
+	exec := typeCheckFixture(t)
+
+	got := typeCheck(t, exec, `
+CREATE OR REPLACE MICROFLOW MyFirstModule.ACT_Hop ($T: MyFirstModule.Ticket)
+BEGIN
+  DECLARE $Label String = 'to: ' + $T/MyFirstModule.Ticket_Reporter/Email;
+  DECLARE $Bad String = 'status: ' + $T/Status;
+END;
+`)
+
+	// Email is a String, so concatenating it is fine and must stay quiet; Status
+	// is an Enumeration, which Mendix will not concatenate.
+	if len(got) != 1 {
+		t.Fatalf("got %d violations, want only the Enumeration concat: %+v", len(got), got)
+	}
+	if got[0].RuleID != "E004" {
+		t.Errorf("rule is %q, want E004", got[0].RuleID)
+	}
+}
+
+// TestTypeCheckProgramLeavesUnresolvableVariablesAlone pins the failure
+// direction end to end. $currentUser is a platform variable the scope does not
+// know, and a real project is full of them.
+func TestTypeCheckProgramLeavesUnresolvableVariablesAlone(t *testing.T) {
+	exec := typeCheckFixture(t)
+
+	got := typeCheck(t, exec, `
+CREATE OR REPLACE MICROFLOW MyFirstModule.ACT_Unknown ()
+BEGIN
+  IF $currentUser/Name = 'Ada' THEN
+    LOG 'x';
+  END IF;
+END;
+`)
+
+	if len(got) != 0 {
+		t.Errorf("an untypeable variable produced %+v", got)
 	}
 }

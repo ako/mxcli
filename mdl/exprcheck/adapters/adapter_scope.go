@@ -2,7 +2,12 @@
 
 package adapters
 
-import "github.com/mendixlabs/mxcli/mdl/ast"
+import (
+	"strings"
+
+	"github.com/mendixlabs/mxcli/mdl/ast"
+	"github.com/mendixlabs/mxcli/mdl/exprcheck"
+)
 
 // buildVarEntityScope walks a microflow body and records every variable
 // known to hold an entity instance, mapping varName → entity QN.
@@ -39,4 +44,57 @@ func buildVarEntityScope(body []ast.MicroflowStatement) map[string]string {
 	}
 	walk(body)
 	return scope
+}
+
+// entityScope adapts a variable→entity map plus an association resolver to
+// exprcheck.EntityScope, which is what lets `$Order/Customer/Name` be typed.
+type entityScope struct {
+	vars  map[string]string
+	assoc associationResolver
+}
+
+// associationResolver is the association half of the model. exprcatalog.Reader
+// satisfies it, and so does mdl/xpathrefs' Model — the two resolvers answer the
+// same question and the signature is deliberately shared.
+type associationResolver interface {
+	AssociationTarget(assocQN, fromEntityQN string) (string, bool)
+}
+
+var _ exprcheck.EntityScope = entityScope{}
+
+func (e entityScope) VariableEntity(name string) (string, bool) {
+	qn, ok := e.vars[strings.TrimPrefix(name, "$")]
+	return qn, ok && qn != ""
+}
+
+func (e entityScope) AssociationTarget(assocQN, fromEntityQN string) (string, bool) {
+	if e.assoc == nil {
+		return "", false
+	}
+	return e.assoc.AssociationTarget(assocQN, fromEntityQN)
+}
+
+// addParamEntities records the entity a parameter holds.
+//
+// buildVarEntityScope walks only the body, so it sees a variable a CREATE or
+// RETRIEVE introduced and misses every parameter — and a microflow that takes
+// its object as a parameter is the ordinary case, not an edge one.
+//
+// The visitor cannot tell `$P: Mod.Person` from an enumeration-typed parameter:
+// a bare qualified name parses as TypeEnumeration with EnumRef set (see
+// CLAUDE.md). Both spellings are recorded rather than guessed between — a name
+// that turns out to be an enumeration simply resolves no attributes, so the
+// wrong guess costs nothing.
+func addParamEntities(scope map[string]string, params []ast.MicroflowParam) {
+	for _, p := range params {
+		if p.Name == "" {
+			continue
+		}
+		switch {
+		case p.Type.EntityRef != nil:
+			scope[p.Name] = p.Type.EntityRef.String()
+		case p.Type.Kind == ast.TypeEnumeration && p.Type.EnumRef != nil:
+			scope[p.Name] = p.Type.EnumRef.String()
+		}
+	}
 }

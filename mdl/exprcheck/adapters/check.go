@@ -16,6 +16,11 @@ type CheckAdapter struct {
 	slots   exprcheck.SlotResolver
 	catalog exprcheck.CatalogReader
 	source  func(ast.Expression) string
+	// assoc is the catalog when it can also answer association questions; the
+	// interface does not require it, so this is nil for a reader that cannot.
+	assoc associationResolver
+	// entities is set for the duration of one flow's walk.
+	entities exprcheck.EntityScope
 }
 
 // Option configures a CheckAdapter.
@@ -45,6 +50,11 @@ func NewCheckAdapter(cat exprcheck.CatalogReader, opts ...Option) *CheckAdapter 
 		catalog: cat,
 		source:  exprSource,
 	}
+	// Association traversal is optional: CatalogReader does not require it, so a
+	// reader that cannot answer it simply leaves multi-hop paths unresolved.
+	if ar, ok := cat.(associationResolver); ok {
+		c.assoc = ar
+	}
 	for _, opt := range opts {
 		opt(c)
 	}
@@ -60,7 +70,7 @@ func (c *CheckAdapter) CheckMicroflow(stmt *ast.CreateMicroflowStmt) *Result {
 	if stmt == nil {
 		return r
 	}
-	c.walkBody(stmt.Body, stmt.Name.String(), r)
+	c.walkFlow(stmt.Body, stmt.Parameters, stmt.Name.String(), r)
 	return r
 }
 
@@ -76,12 +86,21 @@ func (c *CheckAdapter) CheckNanoflow(stmt *ast.CreateNanoflowStmt) *Result {
 	if stmt == nil {
 		return r
 	}
-	c.walkBody(stmt.Body, stmt.Name.String(), r)
+	c.walkFlow(stmt.Body, stmt.Parameters, stmt.Name.String(), r)
 	return r
 }
 
-func (c *CheckAdapter) walkBody(body []ast.MicroflowStatement, mf string, r *Result) {
+// walkFlow checks one flow's expressions with its variables typed.
+//
+// The variable→entity map used to be built here and used only to label a
+// CHANGE's slot path; it was never handed to the checker, so `$obj/Attr` had
+// nothing to resolve against and every rule that depends on an attribute path
+// stayed quiet. It is now also the EntityScope for the whole walk.
+func (c *CheckAdapter) walkFlow(body []ast.MicroflowStatement, params []ast.MicroflowParam, mf string, r *Result) {
 	scope := buildVarEntityScope(body)
+	addParamEntities(scope, params)
+	c.entities = entityScope{vars: scope, assoc: c.assoc}
+	defer func() { c.entities = nil }()
 	c.walkBodyWithScope(body, mf, scope, r)
 }
 
@@ -145,6 +164,7 @@ func (c *CheckAdapter) checkExpr(expr ast.Expression, slot, mf string, r *Result
 		Microflow: mf,
 		Slots:     c.slots,
 		Catalog:   c.catalog,
+		Entities:  c.entities,
 	})
 	r.Hints = append(r.Hints, hints...)
 }

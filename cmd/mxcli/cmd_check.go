@@ -29,11 +29,14 @@ a module "MyModule" and then creates entities in it, no error will be reported
 for the module reference.
 
 Given a project it also type-checks the expressions in the script's microflows
-and nanoflows: comparing an enumeration attribute to a string literal, operand
-and argument type mismatches, and the like. These need the project to answer
-what an attribute's type is and which values an enumeration has, which is why
-they need -p. They report under exprcheck's own E0xx codes, and — like every
-other check here — only an error severity fails the run.
+and nanoflows: comparing an enumeration attribute to a string literal (in a
+create/change member, or in a condition such as: if $obj/Status = 'Open'),
+operand and argument type mismatches, and the like. Attribute paths resolve
+through associations too, so $Order/Sales.Order_Customer/Name is typed.
+These need the project to answer what an attribute's type is and which values an
+enumeration has, which is why they need -p. They report under exprcheck's own
+E0xx codes, and — like every other check here — only an error severity fails the
+run.
 
 Output includes structured rule IDs (MDL prefix for reference and script rules,
 E0xx for expression type rules) for each validation issue.

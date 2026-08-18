@@ -51,6 +51,10 @@ func seeded(t *testing.T) *Reader {
 	      VALUES ('p1', 'Shop.ACT_Total', 'Order', 'Object:Shop.Order', 0),
 	             ('p2', 'Shop.ACT_Total', 'Discount', 'Decimal', 1)`)
 
+	exec(`INSERT INTO associations_data (Id, QualifiedName, FromEntity, ToEntity)
+	      VALUES ('as1', 'Shop.Order_Customer', 'Shop.Order', 'Shop.Customer'),
+	             ('as2', 'Shop.Broken', 'Shop.Order', '')`)
+
 	r, err := Load(db)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -202,5 +206,35 @@ func TestLoadOnEmptyCatalogIsNotAnError(t *testing.T) {
 func TestLoadRejectsANilCatalog(t *testing.T) {
 	if _, err := Load(nil); err == nil {
 		t.Error("Load(nil) succeeded; a nil catalog would silently disable every check")
+	}
+}
+
+// TestAssociationTarget pins the hop resolution an expression needs. Unlike
+// XPath, `$Order/Shop.Order_Customer/Name` does not name the intermediate
+// entity, so the association is the only thing that says where the path lands.
+func TestAssociationTarget(t *testing.T) {
+	r := seeded(t)
+	tests := []struct {
+		assoc, from, want string
+		ok                bool
+	}{
+		{"Shop.Order_Customer", "Shop.Order", "Shop.Customer", true},
+		// Either end: a Mendix expression follows an association both ways and
+		// the path looks identical.
+		{"Shop.Order_Customer", "Shop.Customer", "Shop.Order", true},
+		// Starting somewhere the association does not touch is not a hop.
+		{"Shop.Order_Customer", "Shop.Elsewhere", "", false},
+		{"Shop.Order_Customer", "", "", false},
+		{"Shop.Nope", "Shop.Order", "", false},
+		// An association with an unrecorded end is left out entirely rather
+		// than resolving to half an answer.
+		{"Shop.Broken", "Shop.Order", "", false},
+	}
+	for _, tc := range tests {
+		got, ok := r.AssociationTarget(tc.assoc, tc.from)
+		if got != tc.want || ok != tc.ok {
+			t.Errorf("AssociationTarget(%q, %q) = (%q, %v), want (%q, %v)",
+				tc.assoc, tc.from, got, ok, tc.want, tc.ok)
+		}
 	}
 }
