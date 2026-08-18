@@ -195,6 +195,7 @@ live distinction is **MPR vs MCP**.
 | **Workflows** | Y | Y | Y | N | Y | Y | N | Y | Y | Y | N | Y | Y | N | N | Y | N |
 | **AI Agent documents** | Y | Y | Y | N | Y | N | N | Y | N | N | N | Y | Y | N | Y | Y | N |
 | **Pluggable widgets** | Y | Y | Y | - | Y | Y | 03 | Y | N | N | P | Y | Y | N | N | Y | N |
+| **Data Transformers** | Y | Y | Y | N | Y | N | N | Y | N | N | N | N | Y | N | Y | Y | N |
 
 ## Security Features
 
@@ -359,6 +360,7 @@ Features with an MDL surface that does not yet cover the whole document type.
 | **Icon collections** | Y | Y | N | N | N | N | N | Y | N | N | N | Y | Y | N | Y | Y | N | **Read-only by design** — collections ship with Atlas/the theme; DESCRIBE lists each icon's reference form for use in a widget's `icon:` |
 | **Module settings** | - | - | - | - | - | Y | N | Y | N | N | N | Y | Y | N | N | Y | N | `ALTER MODULE … ADD JAR DEPENDENCY` + `mxcli sync-java-deps`; other module-level settings are not modelled |
 | **REST consume** | Y | Y | Y | Y | Y | Y | 06 | Y | Y | P | Y | Y | Y | N | Y | Y | N | Consumed REST services via `CREATE REST CLIENT`; OpenAPI-driven generation is partial |
+| **Building blocks** | Y | N | N | N | N | N | N | Y | N | N | N | N | Y | N | Y | Y | N | **Read-only** — `show building blocks`; authoring one is not supported |
 
 ### Not Yet Implemented
 
@@ -371,10 +373,13 @@ Document types that exist in Mendix and have **no** MDL surface at all.
 | **XML schemas** | Imported XSD documents |
 | **Web service publish / consume** | SOAP. `CALL WEB SERVICE` exists in microflows for a stored service; the service documents themselves are not authorable |
 | **Data importer** | Excel/CSV import documents |
-| **Building blocks** | Reusable page building blocks |
 | **Extensions** | Mendix extensions / add-ons |
 | **Custom widget packages** | Authoring a `.mpk`. Note this is NOT "using a pluggable widget on a page", which is supported — see **Pluggable widgets** above |
 | **System text collections** (`Texts$SystemTextCollection`) | Translatable system text |
+| **Data sets** | Dataset documents (reporting) |
+| **Page templates** | Reusable page starting points offered by Studio Pro's New Page dialog |
+| **ML model mappings** | Mapping a model to entities for the ML Kit |
+| **Change data capture services** (beta) | CDC service documents |
 
 > **Keeping this honest.** Every row above was checked against the grammar's
 > statement rules and `mxcli syntax`, not against memory: a row claiming a gap
@@ -383,31 +388,13 @@ Document types that exist in Mendix and have **no** MDL surface at all.
 > worked example — the External Database Connector was recorded here as
 > unsupported long after `CREATE DATABASE CONNECTION` shipped, and a reader
 > designed around a blocker that no longer existed.
-
-## Checklist for New Features
-
-When adding a new MDL document type, ensure all dimensions are covered:
-
-- [ ] **Grammar** — Add tokens to `MDLLexer.g4`, rules to `MDLParser.g4`, regenerate parser
-- [ ] **AST** — Add statement types in `mdl/ast/` (Show, Describe, Create, Drop)
-- [ ] **Visitor** — Add listener methods in `mdl/visitor/` to build AST from parse tree
-- [ ] **Executor** — Add execution handlers in `mdl/executor/`
-  - [ ] SHOW handler (list all, filter by module)
-  - [ ] DESCRIBE handler (output MDL format)
-  - [ ] CREATE handler (with OR MODIFY support)
-  - [ ] DROP handler
-  - [ ] ALTER handler (if applicable)
-- [ ] **Catalog** — Add table in `mdl/catalog/tables.go` and builder in `builder_modules.go`
-- [ ] **REFS** — Track cross-references in `refs` table for impact analysis
-- [ ] **LSP** — Add completions in `cmd/mxcli/lsp_completions_gen.go`, hover/definition in `lsp.go`
-- [ ] **REPL** — Add autocomplete entries in `mdl/repl/repl.go` (prefix completer) and `mdl/executor/autocomplete.go` (dynamic name completions)
-- [ ] **Syntax** — Add help topic file in `cmd/mxcli/help_topics/<topic>.txt` and register in `cmd/mxcli/help.go`
-- [ ] **Starlark** — Expose query function in `mdl/linter/starlark.go` (e.g., `my_types()`) and conversion in `context.go`
-- [ ] **Help** — Document in `cmd/mxcli/help.go`
-- [ ] **CLAUDE.md** — Add to syntax quick reference
-- [ ] **Examples** — Create `mdl-examples/doctype-tests/NN-<feature>-examples.mdl`
-- [ ] **Tests** — Add roundtrip tests in `mdl/executor/roundtrip_test.go`
-- [ ] **Skills** — Create or update skill file in `cmd/mxcli/skills/`
-- [ ] **VS Code** — Ensure syntax highlighting covers new keywords in `vscode-mdl/`
-- [ ] **Viz** — Add Mermaid diagram generator in `mdl/executor/cmd_mermaid.go` (if visual representation is useful)
-- [ ] **Init docs** — Update generated CLAUDE.md template in `cmd/mxcli/init.go`
+>
+> **Where the list of rows comes from matters as much as their values.** This
+> table is enumerated from **Studio Pro's own `Add other` menu** — the full set
+> of document types the product offers — and not from inverting what mxcli
+> happens to support. Inverting mxcli can only rediscover gaps someone already
+> wrote down; enumerating the product finds the ones nobody has thought about.
+> Doing that pass is what surfaced **data sets, page templates, ML model
+> mappings and change-data-capture services**, none of which appeared in any
+> mxcli document before. Re-run it against the menu when onboarding a new
+> Mendix major.
