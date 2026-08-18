@@ -59,8 +59,15 @@ time it is asked for anyway, so the requirement is doing you a favour.
 **An untranslated filter, on a splice caller that passed `RejectUnsupported = false`.**
 
 The splice caller's `WHERE` *is* `FilterSql`. If the filter could not be
-translated and was dropped, there is no `WHERE`. Pass `true`: `Rejected` comes
-back set, and the caller is expected to fail the request.
+translated and was dropped, there is no `WHERE` — every row in the table, under
+a 200, in answer to a request for a handful.
+
+Pass `true`. `Parse` then **throws** rather than returning a Query, so the
+request becomes a 500 with the reason in the runtime log. Do not write a
+microflow branch on `Rejected` for this: a splice caller that receives a Query
+at all always has `Rejected = false`, so the branch is dead code (mxcli-owid,
+finding #30). Reading `Rejected` is for a **bind** caller, which passes `false`
+and does get a Query back.
 
 `$orderby` is the one thing dropped rather than rejected. A wrong order is
 cosmetic; a wrong row count is not.

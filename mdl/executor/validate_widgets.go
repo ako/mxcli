@@ -971,6 +971,21 @@ func validatePluggableWidgetProperties(w *ast.WidgetV3, registry *WidgetRegistry
 		// dedicated path rather than via propertyMappings. Accept them
 		// universally so the validator doesn't false-positive on legitimate
 		// MDL idioms like `Label: 'X'` on widgets whose def.json omits it.
+		// A builtin name the engine has no route for on *this* widget is worse
+		// than an unknown one: it is accepted here, dropped on write, and shows
+		// up as a required-property error from MxBuild with nothing pointing at
+		// the cause.
+		if right, wrong := misusedBuiltinProperty(def.WidgetID, key); wrong {
+			out = append(out, linter.Violation{
+				RuleID:   "MDL-WIDGET17",
+				Severity: linter.SeverityError,
+				Message: fmt.Sprintf(
+					"%s: widget `%s` (%s) has no `%s` property — the value is dropped on write and "+
+						"MxBuild then reports the property as missing. Use `%s:` instead",
+					locationPrefix, w.Name, def.MDLName, key, right),
+			})
+			continue
+		}
 		if isBuiltinPropName(key) {
 			continue
 		}
@@ -1345,4 +1360,50 @@ func derivedDataGrid2ColumnName(w *ast.WidgetV3) string {
 		return strings.Trim(sanitized, "_")
 	}
 	return ""
+}
+
+// builtinPropertyMisuse names builtin MDL properties that are wrong on a
+// specific widget, and the one that is right.
+//
+// isBuiltinPropName accepts Label/Caption/Class/… on every widget, deliberately:
+// the engine routes them through dedicated paths rather than through a def's
+// propertyMappings, so validating them against the def would false-positive on
+// ordinary MDL. The cost is that a builtin the engine does *not* route for a
+// given widget is accepted and silently dropped.
+//
+// That bit a real project: `combobox cb (Association: …, Caption: Name)` passes
+// `check`, executes, loses the caption, and fails the build with
+//
+//	[error] [CE0642] "Property 'Caption' is required." at Combo box 'cb'
+//
+// The working spelling is `CaptionAttribute:`, which round-trips — so the author
+// was one property name away and concluded the feature was unusable
+// (mxcli-owid, finding #38).
+//
+// This is an explicit list rather than something inferred. Whether a builtin is
+// routed for a widget lives in the engine's own dispatch, not in the .def.json —
+// the combobox def declares optionsSourceAssociationCaption{Type,Expression} and
+// nothing called `Caption` — so inferring it would mean reimplementing that
+// dispatch here and getting it wrong in the other direction. Add a row when a
+// case is measured, and cite the build error in the commit.
+var builtinPropertyMisuse = map[string]map[string]string{
+	"com.mendix.widget.web.combobox.Combobox": {
+		"Caption": "CaptionAttribute",
+	},
+}
+
+// misusedBuiltinProperty reports the right property name when key is a builtin
+// that this widget does not route, matching case-insensitively the way the rest
+// of the property lookup does.
+func misusedBuiltinProperty(widgetID, key string) (string, bool) {
+	byName, ok := builtinPropertyMisuse[widgetID]
+	if !ok {
+		return "", false
+	}
+	for wrong, right := range byName {
+		if strings.EqualFold(wrong, key) {
+			return right, true
+		}
+	}
+	return "", false
 }
