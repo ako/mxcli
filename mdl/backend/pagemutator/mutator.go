@@ -5,6 +5,7 @@ package pagemutator
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -108,7 +109,7 @@ func (m *Mutator) SetWidgetProperty(widgetRef string, prop string, value any) er
 		if n := m.columnMatchCount(widgetRef); n > 1 {
 			return columnAmbiguityError(widgetRef, n)
 		}
-		return setColumnPropertyMut(result.widget, result.colPropKeys, prop, value)
+		return setColumnPropertyMut(result.widget, result.colPropKeys, result.colPropKinds, prop, value)
 	}
 	return setRawWidgetPropertyMut(result.widget, prop, value)
 }
@@ -183,7 +184,7 @@ func (m *Mutator) SetColumnProperty(gridRef string, columnRef string, prop strin
 	if err != nil {
 		return err
 	}
-	return setColumnPropertyMut(result.widget, result.colPropKeys, prop, value)
+	return setColumnPropertyMut(result.widget, result.colPropKeys, result.colPropKinds, prop, value)
 }
 
 func (m *Mutator) SetDesignProperty(widgetRef, key, valueType, option string) error {
@@ -1016,6 +1017,10 @@ type bsonWidgetResult struct {
 	parentDoc   bson.D
 	index       int
 	colPropKeys map[string]string
+	// colPropKinds maps the same TypePointer ids to the value kind the schema
+	// declares (Expression, TextTemplate, Boolean, …). Without it a setter
+	// cannot tell which field of a WidgetValue to write — see columnValueField.
+	colPropKinds map[string]string
 }
 
 // widgetFinder is a function type for locating widgets in a raw BSON tree.
@@ -1158,7 +1163,7 @@ func findInWidgetChildren(wDoc bson.D, widgetName string) *bsonWidgetResult {
 				if valDoc == nil {
 					break
 				}
-				colPropKeyMap := buildColumnPropKeyMap(wDoc, typePointerID)
+				colPropKeyMap, colPropKindMap := buildColumnPropKeyMap(wDoc, typePointerID)
 				columns := bsonnav.DGetArrayElements(bsonnav.DGet(valDoc, "Objects"))
 				for i, colItem := range columns {
 					colDoc, ok := colItem.(bson.D)
@@ -1167,12 +1172,13 @@ func findInWidgetChildren(wDoc bson.D, widgetName string) *bsonWidgetResult {
 					}
 					if deriveColumnNameBson(colDoc, colPropKeyMap, i) == widgetName {
 						return &bsonWidgetResult{
-							widget:      colDoc,
-							parentArr:   columns,
-							parentKey:   "Objects",
-							parentDoc:   valDoc,
-							index:       i,
-							colPropKeys: colPropKeyMap,
+							widget:       colDoc,
+							parentArr:    columns,
+							parentKey:    "Objects",
+							parentDoc:    valDoc,
+							index:        i,
+							colPropKeys:  colPropKeyMap,
+							colPropKinds: colPropKindMap,
 						}
 					}
 					// Descend into the column's OWN content widgets. A column
@@ -1256,7 +1262,7 @@ func findBsonColumn(rawData bson.D, gridName, columnName string, find widgetFind
 			return nil, fmt.Errorf("column %q on grid %q not found", columnName, gridName)
 		}
 
-		colPropKeyMap := buildColumnPropKeyMap(gridResult.widget, typePointerID)
+		colPropKeyMap, colPropKindMap := buildColumnPropKeyMap(gridResult.widget, typePointerID)
 
 		columns := bsonnav.DGetArrayElements(bsonnav.DGet(valDoc, "Objects"))
 		var matches []*bsonWidgetResult
@@ -1270,12 +1276,13 @@ func findBsonColumn(rawData bson.D, gridName, columnName string, find widgetFind
 			available = append(available, derived)
 			if derived == columnName {
 				matches = append(matches, &bsonWidgetResult{
-					widget:      colDoc,
-					parentArr:   columns,
-					parentKey:   "Objects",
-					parentDoc:   valDoc,
-					index:       i,
-					colPropKeys: colPropKeyMap,
+					widget:       colDoc,
+					parentArr:    columns,
+					parentKey:    "Objects",
+					parentDoc:    valDoc,
+					index:        i,
+					colPropKeys:  colPropKeyMap,
+					colPropKinds: colPropKindMap,
 				})
 			}
 		}
@@ -1367,7 +1374,7 @@ func gridColumnNames(wDoc bson.D) []string {
 		if valDoc == nil {
 			return nil
 		}
-		colPropKeyMap := buildColumnPropKeyMap(wDoc, typePointerID)
+		colPropKeyMap, _ := buildColumnPropKeyMap(wDoc, typePointerID)
 		var names []string
 		for i, colItem := range bsonnav.DGetArrayElements(bsonnav.DGet(valDoc, "Objects")) {
 			if colDoc, ok := colItem.(bson.D); ok {
@@ -1446,15 +1453,16 @@ func buildPropKeyMap(widgetDoc bson.D) map[string]string {
 }
 
 // buildColumnPropKeyMap builds a TypePointer ID -> PropertyKey map for column properties.
-func buildColumnPropKeyMap(widgetDoc bson.D, columnsTypePointerID string) map[string]string {
+func buildColumnPropKeyMap(widgetDoc bson.D, columnsTypePointerID string) (map[string]string, map[string]string) {
 	m := make(map[string]string)
+	kinds := make(map[string]string)
 	widgetType := bsonnav.DGetDoc(widgetDoc, "Type")
 	if widgetType == nil {
-		return m
+		return m, kinds
 	}
 	objType := bsonnav.DGetDoc(widgetType, "ObjectType")
 	if objType == nil {
-		return m
+		return m, kinds
 	}
 	for _, pt := range bsonnav.DGetArrayElements(bsonnav.DGet(objType, "PropertyTypes")) {
 		ptDoc, ok := pt.(bson.D)
@@ -1467,11 +1475,11 @@ func buildColumnPropKeyMap(widgetDoc bson.D, columnsTypePointerID string) map[st
 		}
 		valType := bsonnav.DGetDoc(ptDoc, "ValueType")
 		if valType == nil {
-			return m
+			return m, kinds
 		}
 		colObjType := bsonnav.DGetDoc(valType, "ObjectType")
 		if colObjType == nil {
-			return m
+			return m, kinds
 		}
 		for _, cpt := range bsonnav.DGetArrayElements(bsonnav.DGet(colObjType, "PropertyTypes")) {
 			cptDoc, ok := cpt.(bson.D)
@@ -1482,11 +1490,14 @@ func buildColumnPropKeyMap(widgetDoc bson.D, columnsTypePointerID string) map[st
 			cid := bsonnav.ExtractBinaryIDFromDoc(bsonnav.DGet(cptDoc, "$ID"))
 			if key != "" && cid != "" {
 				m[cid] = key
+				if cvt := bsonnav.DGetDoc(cptDoc, "ValueType"); cvt != nil {
+					kinds[cid] = bsonnav.DGetString(cvt, "Type")
+				}
 			}
 		}
-		return m
+		return m, kinds
 	}
-	return m
+	return m, kinds
 }
 
 // deriveColumnNameBson derives a column name from its BSON WidgetObject.
@@ -1966,7 +1977,7 @@ func collectWidgetScopeInChildren(wDoc bson.D, scope map[string]model.ID) {
 				if valDoc == nil {
 					break
 				}
-				colPropKeyMap := buildColumnPropKeyMap(wDoc, typePointerID)
+				colPropKeyMap, _ := buildColumnPropKeyMap(wDoc, typePointerID)
 				columns := bsonnav.DGetArrayElements(bsonnav.DGet(valDoc, "Objects"))
 				for i, colItem := range columns {
 					colDoc, ok := colItem.(bson.D)
@@ -1991,41 +2002,93 @@ func collectWidgetScopeInChildren(wDoc bson.D, scope map[string]model.ID) {
 // Property setting helpers
 // ---------------------------------------------------------------------------
 
-// columnPropertyAliases maps user-facing property names to internal column property keys.
-// MDL lookup is case-insensitive (see columnPropertyAliasesCI below); the values
-// here are the BSON-internal PropertyKeys defined by the DataGrid2 widget schema
-// and must stay case-sensitive.
-var columnPropertyAliases = map[string]string{
-	"Caption":       "header",
-	"Attribute":     "attribute",
-	"Visible":       "visible",
-	"Alignment":     "alignment",
-	"WrapText":      "wrapText",
-	"Sortable":      "sortable",
-	"Resizable":     "resizable",
-	"Draggable":     "draggable",
-	"Hidable":       "hidable",
-	"ColumnWidth":   "width",
-	"Size":          "size",
-	"ShowContentAs": "showContentAs",
-	"ColumnClass":   "columnClass",
-	"Tooltip":       "tooltip",
+// resolveColumnPropertyKey maps a user-facing MDL property name onto the schema
+// key the column document actually declares.
+//
+// It resolves against the keys in propKeyMap — read from the widget's own Type
+// document — rather than a hand-written list. That is the whole point: the list
+// this replaced was a second copy of the create path's alias table, and the two
+// drifted (mendixlabs/mxcli#919). Matching what the document declares means a
+// property the create path can write is one ALTER can write, by construction.
+//
+// Two ways to match, in order: the schema key itself, case-insensitively
+// (`Sortable` → `sortable`), then the genuine renames in types.ItemPropertyAliases
+// (`DynamicCellClass` → `columnClass`).
+func resolveColumnPropertyKey(propName string, propKeyMap map[string]string) string {
+	want := strings.ToLower(propName)
+
+	declared := make(map[string]bool, len(propKeyMap))
+	for _, key := range propKeyMap {
+		declared[key] = true
+		if strings.EqualFold(key, propName) {
+			return key
+		}
+	}
+
+	for schemaKey, aliases := range types.ItemPropertyAliasesFor(types.DataGridWidgetID, types.DataGridColumnsKey) {
+		if !declared[schemaKey] {
+			continue
+		}
+		for _, alias := range aliases {
+			if strings.ToLower(alias) == want {
+				return schemaKey
+			}
+		}
+	}
+	return ""
 }
 
-// columnPropertyAliasesCI is a lowercase-keyed view of columnPropertyAliases
-// used for case-insensitive MDL lookup (set caption = … vs set Caption = …).
-var columnPropertyAliasesCI = func() map[string]string {
-	m := make(map[string]string, len(columnPropertyAliases))
-	for k, v := range columnPropertyAliases {
-		m[strings.ToLower(k)] = v
+// settableColumnProperties lists what ALTER can set on this column, for an error
+// message. Derived from the document, so it is accurate for the widget version
+// actually installed rather than for the one mxcli was built against.
+func settableColumnProperties(propKeyMap map[string]string) string {
+	seen := make(map[string]bool, len(propKeyMap))
+	names := make([]string, 0, len(propKeyMap))
+	for _, key := range propKeyMap {
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		names = append(names, key)
 	}
-	return m
-}()
+	sort.Strings(names)
+	return strings.Join(names, ", ")
+}
 
-func setColumnPropertyMut(colDoc bson.D, propKeyMap map[string]string, propName string, value any) error {
-	internalKey := columnPropertyAliasesCI[strings.ToLower(propName)]
+// columnValueField decides which field of a WidgetValue a property's value
+// belongs in, from the value kind the widget schema declares for it.
+//
+// This has to come from the schema and cannot be inferred from the stored
+// document: a WidgetValue carries *every* field at once — Expression,
+// PrimitiveValue, TextTemplate, AttributeRef and the rest — with the unused ones
+// empty. So "which key is present" says nothing, and the previous code, which
+// always wrote PrimitiveValue, silently put expression values in the wrong field.
+// `SET DynamicCellClass` and `SET Visible` both reported success, wrote a value
+// Studio Pro does not read, did not survive a DESCRIBE round trip, and left
+// `mx check` at 0 errors.
+//
+// The second return reports whether the kind is settable at all. Attribute,
+// datasource, action and widget-valued properties need a structured value, not a
+// string, so ALTER refuses them rather than writing a plausible-looking wrong one.
+func columnValueField(kind string) (string, bool) {
+	switch kind {
+	case "Expression":
+		return "Expression", true
+	case "TextTemplate":
+		return "TextTemplate", true
+	case "Attribute", "Association", "DataSource", "Action", "Widgets", "Object", "Form", "Image", "Icon", "Microflow", "Nanoflow", "Selection":
+		return "", false
+	default:
+		// Boolean, String, Integer, Decimal, Enumeration, … — the primitives.
+		return "PrimitiveValue", true
+	}
+}
+
+func setColumnPropertyMut(colDoc bson.D, propKeyMap map[string]string, propKindMap map[string]string, propName string, value any) error {
+	internalKey := resolveColumnPropertyKey(propName, propKeyMap)
 	if internalKey == "" {
-		internalKey = propName
+		return fmt.Errorf("column property %q not found — settable column properties on this grid are: %s",
+			propName, settableColumnProperties(propKeyMap))
 	}
 
 	props := bsonnav.DGetArrayElements(bsonnav.DGet(colDoc, "Properties"))
@@ -2035,27 +2098,37 @@ func setColumnPropertyMut(colDoc bson.D, propKeyMap map[string]string, propName 
 			continue
 		}
 		typePointerID := bsonnav.ExtractBinaryIDFromDoc(bsonnav.DGet(propDoc, "TypePointer"))
-		propKey := propKeyMap[typePointerID]
-		if propKey != internalKey {
+		if propKeyMap[typePointerID] != internalKey {
 			continue
 		}
 		valDoc := bsonnav.DGetDoc(propDoc, "Value")
 		if valDoc == nil {
 			return fmt.Errorf("column property %q has no Value", propName)
 		}
-		strVal := fmt.Sprintf("%v", value)
-		// TextTemplate-valued properties (header, tooltip) store the text inside
-		// a nested Forms$ClientTemplate → Texts$Text → Items[Translation].Text.
-		if textTemplate := bsonnav.DGetDoc(valDoc, "TextTemplate"); textTemplate != nil {
-			if updateClientTemplateText(textTemplate, strVal) {
-				return nil
-			}
+
+		field, settable := columnValueField(propKindMap[typePointerID])
+		if !settable {
+			return fmt.Errorf(
+				"column property %q holds a value of kind %s, which ALTER cannot set from a plain value — "+
+					"rewrite the column with CREATE OR REPLACE PAGE instead",
+				propName, propKindMap[typePointerID])
 		}
-		// Primitive-valued properties (sortable, visible, alignment, etc.)
-		bsonnav.DSet(valDoc, "PrimitiveValue", strVal)
+
+		strVal := fmt.Sprintf("%v", value)
+		if field == "TextTemplate" {
+			// The text lives inside Forms$ClientTemplate → Texts$Text →
+			// Items[Translation].Text, not in the field itself.
+			if textTemplate := bsonnav.DGetDoc(valDoc, "TextTemplate"); textTemplate != nil {
+				if updateClientTemplateText(textTemplate, strVal) {
+					return nil
+				}
+			}
+			return fmt.Errorf("column property %q has no text template to update", propName)
+		}
+		bsonnav.DSet(valDoc, field, strVal)
 		return nil
 	}
-	return fmt.Errorf("column property %q not found", propName)
+	return fmt.Errorf("column property %q not found on this column", propName)
 }
 
 // updateClientTemplateText replaces the Template.Items[*].Text of a
