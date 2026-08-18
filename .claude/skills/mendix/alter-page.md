@@ -358,6 +358,63 @@ alter page MyModule.Customer_Edit {
 };
 ```
 
+## DataGrid 2 columns: how to address them, and what you can set
+
+**Mendix stores no column name.** A DataGrid 2 column's schema has no name or
+identifier key — the only human-facing label is its caption — so the name you
+write in MDL is dropped:
+
+```mdl
+create or replace page Mod.P (...) {
+  datagrid dg1 (datasource: database Mod.Item) {
+    column colLabel (attribute: Label, caption: 'The Label')   -- "colLabel" is not stored
+  }
+};
+```
+
+`describe page` shows that column as `Label`, and that is the name `ALTER PAGE`
+answers to:
+
+```mdl
+alter page Mod.P { SET Caption = 'Renamed' ON dg1.colLabel }   -- WRONG: column not found
+alter page Mod.P { SET Caption = 'Renamed' ON dg1.Label }      -- correct
+```
+
+The derived name is, in order: **the bound attribute's short name**, else the
+**sanitized caption**, else **`colN`** by position. `mxcli check` reports
+**MDL-WIDGET16** when the name you wrote differs from the one that will address
+the column, so you find out at authoring time rather than from a failed ALTER.
+
+Two columns that derive the same name are ambiguous and ALTER refuses rather than
+picking one — give them distinct captions.
+
+### Setting column properties
+
+Property names resolve against the keys the installed widget declares, so both
+the schema key and mxcli's MDL alias work (`DynamicCellClass` and `ColumnClass`
+both reach `columnClass`). An unknown name lists what *is* settable on that grid.
+
+**Expression-valued properties take a Mendix expression, not a literal.**
+`DynamicCellClass` and `Visible` are expressions, so a literal CSS class has to be
+a quoted string *inside* the expression — doubled quotes in MDL:
+
+```mdl
+-- WRONG: the expression becomes a bare identifier, mxbuild reports CE0117
+alter page Mod.P { SET DynamicCellClass = 'highlight' ON dg1.Label }
+
+-- correct: the expression is the string literal 'highlight'
+alter page Mod.P { SET DynamicCellClass = '''highlight''' ON dg1.Label }
+```
+
+This applies equally to `create page`; the two paths behave identically. A bare
+identifier is not a valid Mendix expression, and mxbuild reports CE0117 against
+the column.
+
+Properties holding a **structured** value — `attribute`, `filter`, `content`,
+actions — cannot be set by ALTER at all. It refuses them and points at
+`create or replace page`, rather than writing a string where Mendix expects a
+reference.
+
 ## Common Mistakes
 
 | Mistake | Fix |

@@ -131,6 +131,7 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 		}
 		if mapping != nil {
 			out = append(out, validateObjectListItemEnums(w, mapping, locationPrefix)...)
+			out = append(out, validateDataGrid2ColumnName(w, mapping, locationPrefix)...)
 		}
 		if len(w.Children) > 0 {
 			out = append(out, validateWidgetTreeIn(w.Children, registry, locationPrefix, objectListMappingSet(def))...)
@@ -1266,4 +1267,67 @@ func min3(a, b, c int) int {
 		return b
 	}
 	return c
+}
+
+// validateDataGrid2ColumnName warns (MDL-WIDGET16) that the name written on a
+// pluggable DataGrid 2 column is discarded, and says what the column will
+// actually be addressable as.
+//
+// Mendix stores no name on a DataGrid 2 column. Its schema has no name or
+// identifier key at column level — the only human-facing label is `header`, the
+// caption — so the name in `column colLabel (attribute: Label, …)` reaches
+// DataGridColumnSpec, which has no field for it, and is dropped. Everything
+// downstream then addresses the column by a *derived* name: the bound attribute
+// for an attribute column, the sanitized caption otherwise, `colN` as a last
+// resort.
+//
+// The consequence is not obvious from the MDL. An author who wrote `colLabel`
+// reaches for `ALTER PAGE … ON dg1.colLabel` and gets "column not found" for a
+// column they just named, while `describe page` shows a name they never wrote.
+// This warns at the point the name is written rather than leaving them to
+// discover it from the far end.
+//
+// It warns rather than rejects: the name is harmless, it reads as documentation
+// in the source, and rejecting it would break every existing script — mxcli's
+// own doctype tests name every column. What the author needs is to know which
+// name addresses it.
+func validateDataGrid2ColumnName(w *ast.WidgetV3, mapping *ObjectListMapping, locationPrefix string) []linter.Violation {
+	if mapping == nil || !strings.EqualFold(w.Type, "COLUMN") || w.Name == "" {
+		return nil
+	}
+	addressable := derivedDataGrid2ColumnName(w)
+	if addressable == "" || strings.EqualFold(addressable, w.Name) {
+		return nil
+	}
+	return []linter.Violation{{
+		RuleID:   "MDL-WIDGET16",
+		Severity: linter.SeverityInfo,
+		Message: fmt.Sprintf(
+			"%s: DataGrid 2 stores no column name, so %q is dropped on write. The column is "+
+				"addressed as %q (attribute columns key on the bound attribute, others on the "+
+				"caption) — use `ON <grid>.%s` in ALTER PAGE, and expect DESCRIBE to show that name.",
+			locationPrefix, w.Name, addressable, addressable),
+	}}
+}
+
+// derivedDataGrid2ColumnName mirrors the name derivation the writer and the page
+// mutator apply, so the warning names the same string ALTER will accept.
+// Deliberately conservative: when it cannot tell (no attribute, no caption — the
+// colN case, which depends on position) it returns "" and nothing is reported,
+// because a wrong name in the message would be worse than none.
+func derivedDataGrid2ColumnName(w *ast.WidgetV3) string {
+	if attr := w.GetAttribute(); attr != "" {
+		parts := strings.Split(attr, ".")
+		return parts[len(parts)-1]
+	}
+	if caption := w.GetCaption(); caption != "" {
+		sanitized := strings.Map(func(r rune) rune {
+			if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' {
+				return r
+			}
+			return '_'
+		}, caption)
+		return strings.Trim(sanitized, "_")
+	}
+	return ""
 }
