@@ -27,14 +27,16 @@ func findQueue(ctx *ExecContext, moduleName, name string) *types.Queue {
 	if err != nil {
 		return nil
 	}
-	for _, q := range queues {
-		if !strings.EqualFold(q.Name, name) {
-			continue
-		}
-		mod := h.GetModuleName(h.FindModuleID(q.ContainerID))
-		if strings.EqualFold(mod, moduleName) {
-			return q
-		}
+	// Prefer the live queue: a module may hold an excluded twin of this name
+	// (#914), and the app only has the active one.
+	if q, ok := pickLive(queues,
+		func(q *types.Queue) bool {
+			return strings.EqualFold(q.Name, name) &&
+				strings.EqualFold(h.GetModuleName(h.FindModuleID(q.ContainerID)), moduleName)
+		},
+		func(q *types.Queue) bool { return q.Excluded },
+	); ok {
+		return q
 	}
 	return nil
 }
@@ -74,6 +76,10 @@ func execCreateQueue(ctx *ExecContext, s *ast.CreateQueueStmt) error {
 
 	if existing != nil {
 		q.ID = existing.ID
+		// Excluded is model state, not script state: a rewrite must not clear a
+		// stored exclusion (#914). MDL cannot express it for a queue, so the
+		// stored value is always the one that survives.
+		q.Excluded = existing.Excluded
 		if err := ctx.Backend.UpdateQueue(q); err != nil {
 			return mdlerrors.NewBackend("update queue", err)
 		}

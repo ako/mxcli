@@ -131,6 +131,10 @@ func execCreateDataTransformer(ctx *ExecContext, s *ast.CreateDataTransformerStm
 		SourceType:  s.SourceType,
 		SourceJSON:  s.SourceJSON,
 	}
+	if existing != nil {
+		// Excluded is model state, not script state (#914).
+		dt.Excluded = existing.Excluded
+	}
 
 	for _, step := range s.Steps {
 		dt.Steps = append(dt.Steps, &model.DataTransformerStep{
@@ -172,12 +176,15 @@ func findDataTransformer(ctx *ExecContext, moduleName, name string) (*model.Data
 	if err != nil {
 		return nil, ""
 	}
-	for _, dt := range transformers {
-		modID := h.FindModuleID(dt.ContainerID)
-		modName := h.GetModuleName(modID)
-		if strings.EqualFold(modName, moduleName) && strings.EqualFold(dt.Name, name) {
-			return dt, dt.ID
-		}
+	// Prefer the live transformer over an excluded twin of the same name (#914).
+	if dt, ok := pickLive(transformers,
+		func(dt *model.DataTransformer) bool {
+			return strings.EqualFold(h.GetModuleName(h.FindModuleID(dt.ContainerID)), moduleName) &&
+				strings.EqualFold(dt.Name, name)
+		},
+		func(dt *model.DataTransformer) bool { return dt.Excluded },
+	); ok {
+		return dt, dt.ID
 	}
 	return nil, ""
 }

@@ -279,16 +279,20 @@ func createBusinessEventService(ctx *ExecContext, stmt *ast.CreateBusinessEventS
 	}
 
 	var existingID model.ID
-	for _, existing := range existingServices {
-		existModID := h.FindModuleID(existing.ContainerID)
-		existModName := h.GetModuleName(existModID)
-		if strings.EqualFold(existModName, moduleName) && strings.EqualFold(existing.Name, stmt.Name.Name) {
-			if !stmt.CreateOrModify {
-				return mdlerrors.NewAlreadyExistsMsg("business event service", moduleName+"."+stmt.Name.Name, fmt.Sprintf("business event service already exists: %s.%s (use create or modify to update)", moduleName, stmt.Name.Name))
-			}
-			existingID = existing.ID
-			break
+	// Target the live service and carry its exclusion forward (#914).
+	existingExcluded := false
+	if existing, ok := pickLive(existingServices,
+		func(svc *model.BusinessEventService) bool {
+			return strings.EqualFold(h.GetModuleName(h.FindModuleID(svc.ContainerID)), moduleName) &&
+				strings.EqualFold(svc.Name, stmt.Name.Name)
+		},
+		func(svc *model.BusinessEventService) bool { return svc.Excluded },
+	); ok {
+		if !stmt.CreateOrModify {
+			return mdlerrors.NewAlreadyExistsMsg("business event service", moduleName+"."+stmt.Name.Name, fmt.Sprintf("business event service already exists: %s.%s (use create or modify to update)", moduleName, stmt.Name.Name))
 		}
+		existingID = existing.ID
+		existingExcluded = existing.Excluded
 	}
 
 	// Resolve folder if specified
@@ -307,6 +311,7 @@ func createBusinessEventService(ctx *ExecContext, stmt *ast.CreateBusinessEventS
 		Name:          stmt.Name.Name,
 		Documentation: stmt.Documentation,
 		ExportLevel:   "Hidden",
+		Excluded:      existingExcluded,
 	}
 	if existingID != "" {
 		svc.ID = existingID

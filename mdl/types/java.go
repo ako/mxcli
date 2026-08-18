@@ -12,6 +12,9 @@ type JavaAction struct {
 	ContainerID   model.ID `json:"containerId"`
 	Name          string   `json:"name"`
 	Documentation string   `json:"documentation,omitempty"`
+	// Excluded mirrors Studio Pro's "Exclude from project". Reads must supply
+	// it so a rewrite can carry it forward instead of clearing it (#914).
+	Excluded bool `json:"excluded,omitempty"`
 }
 
 // GetName returns the Java action's name.

@@ -32,16 +32,21 @@ func createDatabaseConnection(ctx *ExecContext, stmt *ast.CreateDatabaseConnecti
 	h, _ := getHierarchy(ctx)
 
 	var existingConnID model.ID
-	for _, ex := range existing {
-		modID := h.FindModuleID(ex.ContainerID)
-		modName := h.GetModuleName(modID)
-		if strings.EqualFold(modName, stmt.Name.Module) && strings.EqualFold(ex.Name, stmt.Name.Name) {
-			if stmt.CreateOrModify {
-				existingConnID = ex.ID
-			} else {
-				return mdlerrors.NewAlreadyExistsMsg("database connection", modName+"."+ex.Name, fmt.Sprintf("database connection already exists: %s.%s (use create or modify to update)", modName, ex.Name))
-			}
+	// Target the live connection and carry its exclusion forward (#914).
+	existingExcluded := false
+	if ex, ok := pickLive(existing,
+		func(c *model.DatabaseConnection) bool {
+			return strings.EqualFold(h.GetModuleName(h.FindModuleID(c.ContainerID)), stmt.Name.Module) &&
+				strings.EqualFold(c.Name, stmt.Name.Name)
+		},
+		func(c *model.DatabaseConnection) bool { return c.Excluded },
+	); ok {
+		if !stmt.CreateOrModify {
+			modName := h.GetModuleName(h.FindModuleID(ex.ContainerID))
+			return mdlerrors.NewAlreadyExistsMsg("database connection", modName+"."+ex.Name, fmt.Sprintf("database connection already exists: %s.%s (use create or modify to update)", modName, ex.Name))
 		}
+		existingConnID = ex.ID
+		existingExcluded = ex.Excluded
 	}
 
 	// A literal where Mendix stores a ConstantIdentifier writes a project that
@@ -76,6 +81,7 @@ func createDatabaseConnection(ctx *ExecContext, stmt *ast.CreateDatabaseConnecti
 		UserName:             userName,
 		Password:             password,
 		ExportLevel:          "Hidden",
+		Excluded:             existingExcluded,
 	}
 
 	// Build queries

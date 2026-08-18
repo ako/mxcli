@@ -78,6 +78,9 @@ func execCreateEnumeration(ctx *ExecContext, s *ast.CreateEnumerationStmt) error
 		// In-place update: preserve the existing UUID so BSON git-diff sees a
 		// modification rather than a delete+insert pair.
 		enum.ID = existingEnum.ID
+		// Excluded is model state, not script state: MDL cannot express it for
+		// an enumeration, so the stored value is the one that survives (#914).
+		enum.Excluded = existingEnum.Excluded
 		if err := ctx.Backend.UpdateEnumeration(enum); err != nil {
 			return mdlerrors.NewBackend("update enumeration", err)
 		}
@@ -110,12 +113,15 @@ func findEnumeration(ctx *ExecContext, moduleName, enumName string) *model.Enume
 		return nil
 	}
 
-	for _, enum := range enums {
-		modID := h.FindModuleID(enum.ContainerID)
-		modName := h.GetModuleName(modID)
-		if enum.Name == enumName && modName == moduleName {
-			return enum
-		}
+	// Prefer the live enumeration: a module may hold an excluded twin of this
+	// name (#914), and the app only has the active one.
+	if enum, ok := pickLive(enums,
+		func(e *model.Enumeration) bool {
+			return e.Name == enumName && h.GetModuleName(h.FindModuleID(e.ContainerID)) == moduleName
+		},
+		func(e *model.Enumeration) bool { return e.Excluded },
+	); ok {
+		return enum
 	}
 	return nil
 }

@@ -46,6 +46,8 @@ func execCreateImageCollection(ctx *ExecContext, s *ast.CreateImageCollectionStm
 	}
 	if existing != nil {
 		ic.ID = existing.ID
+		// Excluded is model state, not script state (#914).
+		ic.Excluded = existing.Excluded
 	}
 
 	// Load image files

@@ -211,6 +211,10 @@ func execCreateImportMapping(ctx *ExecContext, s *ast.CreateImportMappingStmt) e
 		Name:        s.Name.Name,
 		ExportLevel: "Hidden",
 	}
+	if existing != nil {
+		// Excluded is model state, not script state (#914).
+		im.Excluded = existing.Excluded
+	}
 
 	// Set schema source reference
 	switch s.SchemaKind {

@@ -33,6 +33,11 @@ func (r *Reader) parseEnumeration(unitID, containerID string, contents []byte) (
 	if doc, ok := raw["Documentation"].(string); ok {
 		enum.Documentation = doc
 	}
+	// Excluded must survive a read→rebuild→write cycle; defaulting it to false
+	// un-excludes the document on the next CREATE OR MODIFY (#914).
+	if excl, ok := raw["Excluded"].(bool); ok {
+		enum.Excluded = excl
+	}
 
 	// Parse values - array may start with a version number, skip non-map elements
 	if values, ok := raw["Values"].(bson.A); ok {

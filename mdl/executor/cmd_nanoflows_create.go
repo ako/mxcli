@@ -48,21 +48,29 @@ func execCreateNanoflow(ctx *ExecContext, s *ast.CreateNanoflowStmt) error {
 	var existingContainerID model.ID
 	var existingAllowedRoles []model.ID
 	preserveAllowedRoles := false
+	// Excluded is model state, not script state: an absent @excluded must not
+	// clear a stored exclusion (#914).
+	existingExcluded := false
 	existingNanoflows, err := ctx.Backend.ListNanoflows()
 	if err != nil {
 		return mdlerrors.NewBackend("check existing nanoflows", err)
 	}
-	for _, existing := range existingNanoflows {
-		if existing.Name == s.Name.Name && getModuleID(ctx, existing.ContainerID) == module.ID {
-			if !s.CreateOrModify {
-				return mdlerrors.NewAlreadyExistsMsg("nanoflow", s.Name.Module+"."+s.Name.Name, "nanoflow '"+s.Name.Module+"."+s.Name.Name+"' already exists (use create or modify to overwrite)")
-			}
-			existingID = existing.ID
-			existingContainerID = existing.ContainerID
-			existingAllowedRoles = cloneRoleIDs(existing.AllowedModuleRoles)
-			preserveAllowedRoles = true
-			break
+	// A module may hold several nanoflows with this name as long as all but one
+	// are excluded, so target the live one rather than whichever comes first.
+	if existing, ok := pickLive(existingNanoflows,
+		func(n *microflows.Nanoflow) bool {
+			return n.Name == s.Name.Name && getModuleID(ctx, n.ContainerID) == module.ID
+		},
+		func(n *microflows.Nanoflow) bool { return n.Excluded },
+	); ok {
+		if !s.CreateOrModify {
+			return mdlerrors.NewAlreadyExistsMsg("nanoflow", s.Name.Module+"."+s.Name.Name, "nanoflow '"+s.Name.Module+"."+s.Name.Name+"' already exists (use create or modify to overwrite)")
 		}
+		existingID = existing.ID
+		existingContainerID = existing.ContainerID
+		existingAllowedRoles = cloneRoleIDs(existing.AllowedModuleRoles)
+		preserveAllowedRoles = true
+		existingExcluded = existing.Excluded
 	}
 
 	// For CREATE OR REPLACE/MODIFY, reuse the existing ID to preserve references
@@ -93,7 +101,7 @@ func execCreateNanoflow(ctx *ExecContext, s *ast.CreateNanoflowStmt) error {
 		Name:          s.Name.Name,
 		Documentation: s.Documentation,
 		MarkAsUsed:    false,
-		Excluded:      s.Excluded,
+		Excluded:      s.Excluded || existingExcluded,
 	}
 	if preserveAllowedRoles {
 		nf.AllowedModuleRoles = existingAllowedRoles

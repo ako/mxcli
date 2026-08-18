@@ -319,16 +319,19 @@ func execCreateJavaAction(ctx *ExecContext, s *ast.CreateJavaActionStmt) error {
 		return mdlerrors.NewBackend("list java actions", err)
 	}
 	var existingJAID model.ID
-	for _, existing := range jas {
-		existingModID := h.FindModuleID(existing.ContainerID)
-		existingModName := h.GetModuleName(existingModID)
-		if existingModName == s.Name.Module && existing.Name == s.Name.Name {
-			if !s.CreateOrModify {
-				return mdlerrors.NewAlreadyExists("java action", s.Name.Module+"."+s.Name.Name)
-			}
-			existingJAID = existing.ID
-			break
+	// Target the live action and carry its exclusion forward (#914).
+	existingExcluded := false
+	if existing, ok := pickLive(jas,
+		func(ja *types.JavaAction) bool {
+			return h.GetModuleName(h.FindModuleID(ja.ContainerID)) == s.Name.Module && ja.Name == s.Name.Name
+		},
+		func(ja *types.JavaAction) bool { return ja.Excluded },
+	); ok {
+		if !s.CreateOrModify {
+			return mdlerrors.NewAlreadyExists("java action", s.Name.Module+"."+s.Name.Name)
 		}
+		existingJAID = existing.ID
+		existingExcluded = existing.Excluded
 	}
 
 	newID := model.ID(types.GenerateID())
@@ -342,6 +345,7 @@ func execCreateJavaAction(ctx *ExecContext, s *ast.CreateJavaActionStmt) error {
 			ID:       newID,
 			TypeName: "JavaActions$JavaAction",
 		},
+		Excluded:      existingExcluded,
 		ContainerID:   containerID,
 		Name:          s.Name.Name,
 		Documentation: s.Documentation,

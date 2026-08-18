@@ -8,6 +8,7 @@ import (
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
 	"github.com/mendixlabs/mxcli/model"
+	"github.com/mendixlabs/mxcli/sdk/pages"
 )
 
 // ============================================================================
@@ -41,19 +42,43 @@ func execCreatePageV3(ctx *ExecContext, s *ast.CreatePageStmtV3) error {
 	var pagesToDelete []model.ID
 	var existingAllowedRoles []model.ID
 	preserveAllowedRoles := false
+	// Mendix allows several pages in one module to share a name as long as all
+	// but one are excluded, so the replace set is the LIVE pages only. An
+	// excluded twin is a different document that the app does not render: it is
+	// neither rewritten nor deleted here, and its exclusion is carried forward
+	// when it is the only match (#914).
+	existingExcluded := false
+	var excludedMatches []*pages.Page
+	matches := 0
 	for _, p := range existingPages {
 		modID := getModuleID(ctx, p.ContainerID)
 		modName := getModuleName(ctx, modID)
-		if modName == s.Name.Module && p.Name == s.Name.Name {
-			if !s.IsReplace && !s.IsModify && len(pagesToDelete) == 0 {
-				return mdlerrors.NewAlreadyExists("page", s.Name.String())
-			}
-			if len(pagesToDelete) == 0 {
-				existingAllowedRoles = cloneRoleIDs(p.AllowedRoles)
-				preserveAllowedRoles = true
-			}
-			pagesToDelete = append(pagesToDelete, p.ID)
+		if modName != s.Name.Module || p.Name != s.Name.Name {
+			continue
 		}
+		matches++
+		if !s.IsReplace && !s.IsModify && matches == 1 {
+			return mdlerrors.NewAlreadyExists("page", s.Name.String())
+		}
+		if p.Excluded {
+			excludedMatches = append(excludedMatches, p)
+			continue
+		}
+		if len(pagesToDelete) == 0 {
+			existingAllowedRoles = cloneRoleIDs(p.AllowedRoles)
+			preserveAllowedRoles = true
+		}
+		pagesToDelete = append(pagesToDelete, p.ID)
+	}
+	if len(pagesToDelete) == 0 && len(excludedMatches) > 0 {
+		// Every page with this name is excluded: rewrite the first of them in
+		// place and keep it excluded, rather than adding an active page the
+		// script never asked to un-exclude.
+		p := excludedMatches[0]
+		existingAllowedRoles = cloneRoleIDs(p.AllowedRoles)
+		preserveAllowedRoles = true
+		existingExcluded = true
+		pagesToDelete = append(pagesToDelete, p.ID)
 	}
 
 	// Build the page BEFORE deleting the old one (atomic: if build fails, old page is preserved)
@@ -75,6 +100,7 @@ func execCreatePageV3(ctx *ExecContext, s *ast.CreatePageStmtV3) error {
 	if err != nil {
 		return mdlerrors.NewBackend("build page", err)
 	}
+	page.Excluded = page.Excluded || existingExcluded
 	if preserveAllowedRoles {
 		page.AllowedRoles = existingAllowedRoles
 	} else if len(page.AllowedRoles) == 0 {
@@ -126,15 +152,31 @@ func execCreateSnippetV3(ctx *ExecContext, s *ast.CreateSnippetStmtV3) error {
 	// Check if snippet already exists - collect ALL duplicates
 	existingSnippets, _ := ctx.Backend.ListSnippets()
 	var snippetsToDelete []model.ID
+	// As for pages: an excluded twin of this name is a separate document that
+	// Mendix allows, so it is neither replaced nor deleted, and an exclusion is
+	// carried forward when every match is excluded (#914).
+	existingExcluded := false
+	var excludedSnippets []*pages.Snippet
+	matches := 0
 	for _, snip := range existingSnippets {
 		modID := getModuleID(ctx, snip.ContainerID)
 		modName := getModuleName(ctx, modID)
-		if modName == s.Name.Module && snip.Name == s.Name.Name {
-			if !s.IsReplace && !s.IsModify && len(snippetsToDelete) == 0 {
-				return mdlerrors.NewAlreadyExists("snippet", s.Name.String())
-			}
-			snippetsToDelete = append(snippetsToDelete, snip.ID)
+		if modName != s.Name.Module || snip.Name != s.Name.Name {
+			continue
 		}
+		matches++
+		if !s.IsReplace && !s.IsModify && matches == 1 {
+			return mdlerrors.NewAlreadyExists("snippet", s.Name.String())
+		}
+		if snip.Excluded {
+			excludedSnippets = append(excludedSnippets, snip)
+			continue
+		}
+		snippetsToDelete = append(snippetsToDelete, snip.ID)
+	}
+	if len(snippetsToDelete) == 0 && len(excludedSnippets) > 0 {
+		existingExcluded = true
+		snippetsToDelete = append(snippetsToDelete, excludedSnippets[0].ID)
 	}
 
 	// Build the snippet BEFORE deleting the old one (atomic: if build fails, old snippet is preserved)
@@ -156,6 +198,7 @@ func execCreateSnippetV3(ctx *ExecContext, s *ast.CreateSnippetStmtV3) error {
 	if err != nil {
 		return mdlerrors.NewBackend("build snippet", err)
 	}
+	snippet.Excluded = snippet.Excluded || existingExcluded
 
 	// Delete old snippets only after successful build
 	for _, id := range snippetsToDelete {
