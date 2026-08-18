@@ -77,13 +77,16 @@ const (
 // Snippet represents a reusable page snippet.
 type Snippet struct {
 	model.BaseElement
-	ContainerID   model.ID            `json:"containerId"`
-	Name          string              `json:"name"`
-	Documentation string              `json:"documentation,omitempty"`
-	EntityID      model.ID            `json:"entityId,omitempty"`
-	Parameters    []*SnippetParameter `json:"parameters,omitempty"`
-	Variables     []*LocalVariable    `json:"variables,omitempty"`
-	Widgets       []Widget            `json:"widgets,omitempty"`
+	ContainerID   model.ID `json:"containerId"`
+	Name          string   `json:"name"`
+	Documentation string   `json:"documentation,omitempty"`
+	// Excluded mirrors Studio Pro's "Exclude from project". Reads must supply
+	// it so a rewrite can carry it forward instead of clearing it (#914).
+	Excluded   bool                `json:"excluded,omitempty"`
+	EntityID   model.ID            `json:"entityId,omitempty"`
+	Parameters []*SnippetParameter `json:"parameters,omitempty"`
+	Variables  []*LocalVariable    `json:"variables,omitempty"`
+	Widgets    []Widget            `json:"widgets,omitempty"`
 }
 
 // GetName returns the snippet's name.

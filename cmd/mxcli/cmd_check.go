@@ -18,21 +18,22 @@ var checkCmd = &cobra.Command{
 	Short: "Check an MDL script for errors without executing it",
 	Long: `Check an MDL script file for syntax errors and optionally validate references.
 
-By default, only checks syntax (parsing). Use --references to also validate
-that all referenced modules, entities, etc. exist in the project.
+Without a project it checks syntax and the semantic rules that need no model.
+Pass -p and it also resolves every reference — modules, entities, pages,
+microflows and icons — against that project; --references is implied by -p and
+is kept only for compatibility.
 
 Reference validation is smart: it automatically skips references to objects
 that are created within the script itself. For example, if your script creates
 a module "MyModule" and then creates entities in it, no error will be reported
 for the module reference.
 
---references also type-checks the expressions in the script's microflows and
-nanoflows against the project: comparing an enumeration attribute to a string
-literal, operand and argument type mismatches, and the like. These need the
-project to answer what an attribute's type is and which values an enumeration
-has, which is why they run only with --references. They report under exprcheck's
-own E0xx codes, and — like every other check here — only an error severity fails
-the run.
+Given a project it also type-checks the expressions in the script's microflows
+and nanoflows: comparing an enumeration attribute to a string literal, operand
+and argument type mismatches, and the like. These need the project to answer
+what an attribute's type is and which values an enumeration has, which is why
+they need -p. They report under exprcheck's own E0xx codes, and — like every
+other check here — only an error severity fails the run.
 
 Output includes structured rule IDs (MDL prefix for reference and script rules,
 E0xx for expression type rules) for each validation issue.
@@ -45,8 +46,8 @@ Examples:
   # Check syntax only (no project needed)
   mxcli check script.mdl
 
-  # Check syntax, validate references, and type-check expressions
-  mxcli check script.mdl -p app.mpr --references
+  # Check syntax, resolve references, and type-check expressions
+  mxcli check script.mdl -p app.mpr
 
   # Scan the project for legacy native widgets after a Mendix upgrade
   mxcli check script.mdl -p app.mpr --post-migration
@@ -62,7 +63,14 @@ Examples:
 	Run: func(cmd *cobra.Command, args []string) {
 		filePath := args[0]
 		projectPath, _ := cmd.Flags().GetString("project")
+		// A project makes reference resolution possible, so it runs. It used to
+		// need --references as well, which meant `mxcli check script.mdl -p
+		// app.mpr` printed an unqualified "Check passed!" having resolved
+		// nothing — icons, entity and page references all silently unchecked.
+		// Someone who hands the command a project has said what they want; the
+		// flag stays accepted so existing invocations and scripts keep working.
 		checkRefs, _ := cmd.Flags().GetBool("references")
+		checkRefs = checkRefs || projectPath != ""
 		postMigration, _ := cmd.Flags().GetBool("post-migration")
 		format := resolveFormat(cmd, "text")
 		isStructured := format != "" && format != "text"
@@ -251,6 +259,15 @@ Examples:
 
 		if !isStructured {
 			fmt.Println("\nCheck passed!")
+			// Qualify the verdict when nothing was resolved against a model. A
+			// bare "Check passed!" reads as more than it is: without a project
+			// no icon, entity, page or microflow name in the script has been
+			// looked up, and those are exactly what this command gets reached
+			// for. Saying so beats leaving the reader to infer it.
+			if !checkRefs {
+				fmt.Println("  (no project given — icon, entity, page and microflow references were")
+				fmt.Println("   not resolved; re-run with -p <project.mpr> for full coverage)")
+			}
 		}
 	},
 }

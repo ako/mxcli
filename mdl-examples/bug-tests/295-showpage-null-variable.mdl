@@ -20,7 +20,9 @@ create persistent entity bug295.Product (
 -- Target page that accepts an entity parameter.
 CREATE PAGE bug295.Product_Detail (
   Title: 'Product Detail',
-  Url: 'Product_Detail',
+  -- The URL needs a segment per page parameter or MxBuild reports CE5601
+  -- (flagged by MDL-PAGE20); this page takes $Product.
+  Url: 'Product_Detail/{Product}',
   layout: Atlas_Core.Atlas_Default,
   Params: { $Product: bug295.Product }
 ) {

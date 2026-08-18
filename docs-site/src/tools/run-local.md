@@ -274,6 +274,18 @@ the log instead of guessed.
 The intended cycle: an agent (or you) edits the model with `mxcli exec`/MDL — or edits
 a theme `.scss` — and the running `run --local` picks it up and hot-applies it.
 
+**A rebuild starts once the source stops changing, not on the first change.** An
+`mxcli exec` of a real script rewrites the `.mpr` and many `mprcontents/*.mxunit` files
+over several seconds; building on the first change would deploy whatever was on disk at
+that instant — a half-applied model. The watcher therefore waits for a couple of quiet
+polls before it builds, so a long `exec` produces one build of the finished model
+rather than a build of the first file it touched.
+
+This matters more than it used to. The old escape hatch was "run the script again", and
+byte-idempotent `exec` closed it: re-running an already-applied script writes nothing,
+so nothing re-triggers the watcher and the stale build has no way out. If you do need to
+force a rebuild without changing anything, `touch` the `.mpr` — the signal is mtime.
+
 ## Editing themes (SCSS): rebuild, don't clear caches
 
 A theme edit (e.g. `theme/web/main.scss`) needs a **rebuild**, not a cache-clear.

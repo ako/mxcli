@@ -155,9 +155,28 @@ The markdown format turns your tests into living documentation.
 | `@expect` | Assert a Mendix condition | `@expect $result = 'John Doe'` |
 | `@expect` | Assert an entity attribute | `@expect $product/Name = 'TestProduct'` |
 | `@expect` | Assert with a built-in | `@expect length($result) = 81` |
-| `@verify` | **Not implemented** — rejected as an error | see below |
+| `@verify` | OQL post-condition on the database | `@verify select count(*) as n from Mod.E = 1` |
 | `@throws` | Expect error | `@throws 'validation failed'` |
 | `@cleanup` | Rollback strategy | `@cleanup rollback` (default) or `@cleanup none` |
+
+### A test run leaves the project byte-identical
+
+`mxcli test` injects an `MxTest` module, builds, runs, and takes the injection
+back out. When cleanup succeeds the project file is restored **byte-for-byte**,
+so `git status` is clean afterwards and a CI step of the form "run the tests,
+then assert the tree is clean" holds.
+
+This needs saying because restoring the *model* is not enough. Every unit write
+stamps a fresh UUID into the `.mpr`'s `_Transaction` bookkeeping row, and the
+inject/remove cycle relays SQLite's pages, so the file differs even once its
+content matches again. Version control compares bytes, and a `.mpr` diff is
+opaque — there is no cheap way to tell a bookkeeping GUID from a real model edit,
+which is what made the spurious modification expensive rather than merely untidy.
+
+The restore is declined, deliberately, when **cleanup failed** or when the
+`mprcontents/` tree changed during the run. In both cases the project is not in
+the state the snapshot describes, and putting the old file back would turn a
+visible, harmless discrepancy into an invisible, misleading one.
 
 ### `@expect` — any Mendix condition, and nothing it cannot evaluate
 
@@ -204,24 +223,62 @@ The value is omitted rather than guessed when neither side of the comparison
 establishes a type (`@expect $a = $b`), because Mendix's expression engine is
 typed and a wrong guess would break the build instead of the test.
 
-### `@verify` is not implemented, and says so
+### `@verify` — asserting on what the microflow wrote
 
-`@verify` was documented here as an OQL post-condition. It is parsed and **no
-runner has ever evaluated one**, so a test whose only assertion was a `@verify`
-asserted nothing. It is now rejected:
+`@expect` can only see what a microflow **returned**. Most Mendix microflows are
+side effects, so `@verify` is how you assert on the rows one left behind: an OQL
+query, a comparison, and the value it must satisfy.
+
+```mdl
+/**
+ * @test dealing a board writes 81 cells
+ * @cleanup none
+ * @expect $result = 'ok'
+ * @verify select count(*) as n from Sudoku.Cell = 81
+ * @verify select count(*) as n from Sudoku.Cell where Value = 0 > 0
+ */
+$result = CALL MICROFLOW Sudoku.ACT_DealGame();
+/
+```
+
+The query runs against the app **after** the microflow returns, over the same
+admin API `mxcli oql` uses. Three rules follow from that, and each is enforced
+rather than left to trip you up:
+
+- **`@cleanup none` is required.** `rollback` is the default, and it undoes the
+  test's writes before the query could see them — so a `@verify` on a rollback
+  test is **refused**, not run against the pre-test state.
+- **The query must return exactly one row and one column.** Comparing a table to
+  a literal would mean guessing which cell was meant. Aggregate it
+  (`select count(*)`), or select one attribute of one row.
+- **The expected value is a literal** — a number, a quoted string, `true`/`false`
+  or `empty`. It is split off at the **last** comparison operator outside quotes
+  and parentheses, so a `where Value = 5` in the query is left alone.
+- **Every selected column needs a name.** Mendix's OQL rejects a bare
+  `select count(*)` with *"All OQL select columns must have a name"*, so write
+  `select count(*) as n`. That comes back as an ERROR, not a pass.
+
+Operators: `=`, `!=` (`<>` accepted), `<`, `<=`, `>`, `>=`. Numbers compare
+numerically even though the runtime returns them as strings.
+
+**A `@verify` that cannot be evaluated is an ERROR, never a pass** — an unknown
+entity, malformed OQL, a non-scalar result, or something that was never a query:
 
 ```
-ERROR  writes a row
-       @verify select count(*) …: @verify is not implemented — no runner
-       evaluates it, so it would assert nothing. Assert on the microflow's own
-       result with @expect instead
+ERROR  dealing a board writes 81 cells
+       @verify select count(*) as n from Sudoku.NoSuch = 1: OQL error: Unknown entity
 ```
 
-That is the same rule as for an uncompilable `@expect`, applied to the same
-class of problem: an annotation that looks like an assertion and is silently
-ignored is worse than one that is missing. To check a database post-condition
-today, have the microflow under test return the value and assert on it with
-`@expect`, or query the app separately with `mxcli oql`.
+and a false one fails with the value that came back:
+
+```
+FAIL  dealing a board writes 81 cells
+      expected select count(*) as n from Sudoku.Cell = 81, actual: 27
+```
+
+`@verify` needs the test endpoint, so it runs under `--local` (the default) and
+`--attach`. The Docker / `--legacy-runner` path **refuses** a suite using it:
+its tests execute during boot, so there is no point at which to query the app.
 
 ### A test that asserts nothing says so
 

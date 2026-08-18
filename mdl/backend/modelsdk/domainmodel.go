@@ -263,6 +263,16 @@ func attributeFromGen(a *genDm.Attribute) *domainmodel.Attribute {
 	switch v := a.Value().(type) {
 	case *genDm.StoredValue:
 		attr.Value = &domainmodel.AttributeValue{DefaultValue: v.DefaultValue()}
+	case *genDm.CalculatedValue:
+		// Reading the binding back is what makes a read-modify-write safe: without
+		// it every calculated attribute comes back as a plain value and the
+		// writer's CalculatedValue arm never fires, so an unrelated ALTER on the
+		// same entity silently converts the attribute to a stored one (#917).
+		attr.Value = &domainmodel.AttributeValue{
+			Type:          "CalculatedValue",
+			MicroflowName: v.MicroflowQualifiedName(),
+			PassEntity:    v.PassEntity(),
+		}
 	case *genDm.OqlViewValue:
 		// View-entity attribute: the OQL column reference must survive a
 		// read-modify-write (e.g. MOVE ENTITY) or the view goes out of sync (CE6770).

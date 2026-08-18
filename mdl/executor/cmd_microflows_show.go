@@ -215,15 +215,14 @@ func describeMicroflow(ctx *ExecContext, name ast.QualifiedName) error {
 		}
 	}
 
-	var targetMf *microflows.Microflow
-	for _, mf := range allMicroflows {
-		modID := h.FindModuleID(mf.ContainerID)
-		modName := h.GetModuleName(modID)
-		if modName == name.Module && mf.Name == name.Name {
-			targetMf = mf
-			break
-		}
-	}
+	// Describe the live microflow: a module may hold an excluded twin of this
+	// name, and describing that one shows a body the app does not run (#914).
+	targetMf, _ := pickLive(allMicroflows,
+		func(mf *microflows.Microflow) bool {
+			return h.GetModuleName(h.FindModuleID(mf.ContainerID)) == name.Module && mf.Name == name.Name
+		},
+		func(mf *microflows.Microflow) bool { return mf.Excluded },
+	)
 
 	if targetMf == nil {
 		return mdlerrors.NewNotFound("microflow", name.String())
@@ -365,15 +364,13 @@ func describeNanoflow(ctx *ExecContext, name ast.QualifiedName) error {
 		microflowNames[nf.ID] = h.GetQualifiedName(nf.ContainerID, nf.Name)
 	}
 
-	var targetNf *microflows.Nanoflow
-	for _, nf := range allNanoflows {
-		modID := h.FindModuleID(nf.ContainerID)
-		modName := h.GetModuleName(modID)
-		if modName == name.Module && nf.Name == name.Name {
-			targetNf = nf
-			break
-		}
-	}
+	// Describe the live nanoflow, not an excluded twin of the same name (#914).
+	targetNf, _ := pickLive(allNanoflows,
+		func(nf *microflows.Nanoflow) bool {
+			return h.GetModuleName(h.FindModuleID(nf.ContainerID)) == name.Module && nf.Name == name.Name
+		},
+		func(nf *microflows.Nanoflow) bool { return nf.Excluded },
+	)
 
 	if targetNf == nil {
 		return mdlerrors.NewNotFound("nanoflow", name.String())
@@ -484,15 +481,14 @@ func describeMicroflowToString(ctx *ExecContext, name ast.QualifiedName) (string
 		microflowNames[mf.ID] = h.GetQualifiedName(mf.ContainerID, mf.Name)
 	}
 
-	var targetMf *microflows.Microflow
-	for _, mf := range allMicroflows {
-		modID := h.FindModuleID(mf.ContainerID)
-		modName := h.GetModuleName(modID)
-		if modName == name.Module && mf.Name == name.Name {
-			targetMf = mf
-			break
-		}
-	}
+	// Describe the live microflow: a module may hold an excluded twin of this
+	// name, and describing that one shows a body the app does not run (#914).
+	targetMf, _ := pickLive(allMicroflows,
+		func(mf *microflows.Microflow) bool {
+			return h.GetModuleName(h.FindModuleID(mf.ContainerID)) == name.Module && mf.Name == name.Name
+		},
+		func(mf *microflows.Microflow) bool { return mf.Excluded },
+	)
 
 	if targetMf == nil {
 		return "", nil, mdlerrors.NewNotFound("microflow", name.String())
@@ -540,15 +536,13 @@ func describeNanoflowToString(ctx *ExecContext, name ast.QualifiedName) (string,
 		microflowNames[nf.ID] = h.GetQualifiedName(nf.ContainerID, nf.Name)
 	}
 
-	var targetNf *microflows.Nanoflow
-	for _, nf := range allNanoflows {
-		modID := h.FindModuleID(nf.ContainerID)
-		modName := h.GetModuleName(modID)
-		if modName == name.Module && nf.Name == name.Name {
-			targetNf = nf
-			break
-		}
-	}
+	// Describe the live nanoflow, not an excluded twin of the same name (#914).
+	targetNf, _ := pickLive(allNanoflows,
+		func(nf *microflows.Nanoflow) bool {
+			return h.GetModuleName(h.FindModuleID(nf.ContainerID)) == name.Module && nf.Name == name.Name
+		},
+		func(nf *microflows.Nanoflow) bool { return nf.Excluded },
+	)
 
 	if targetNf == nil {
 		return "", nil, mdlerrors.NewNotFound("nanoflow", name.String())

@@ -132,6 +132,8 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 		if mapping != nil {
 			out = append(out, validateObjectListItemEnums(w, mapping, locationPrefix)...)
 		}
+		// Reported once per grid, not once per column — see the rule's comment.
+		out = append(out, validateDataGrid2ColumnNames(w, locationPrefix)...)
 		if len(w.Children) > 0 {
 			out = append(out, validateWidgetTreeIn(w.Children, registry, locationPrefix, objectListMappingSet(def))...)
 		}
@@ -959,6 +961,7 @@ func validatePluggableWidgetProperties(w *ast.WidgetV3, registry *WidgetRegistry
 	}
 	allowed, knownKeys := allowedWidgetProperties(def)
 	dsKeys := datasourceTypedKeys(def)
+	actionKeys := actionStorageKeys(def)
 	knownUnmapped := knownUnmappedProperties(def, allowed)
 
 	var out []linter.Violation
@@ -985,6 +988,20 @@ func validatePluggableWidgetProperties(w *ast.WidgetV3, registry *WidgetRegistry
 				Message: fmt.Sprintf(
 					"%s: widget `%s` (%s) property `%s` is datasource-typed — provide it via the widget `datasource:` clause (e.g. `datasource: database Module.Entity`); a value written as `%s: …` is not persisted",
 					locationPrefix, w.Name, def.MDLName, key, key,
+				),
+			})
+			continue
+		}
+
+		// An action slot's storage key is not the MDL spelling — name the one
+		// that is, rather than leaving the author to guess from a fuzzy match.
+		if src, ok := actionKeys[lower]; ok {
+			out = append(out, linter.Violation{
+				RuleID:   "MDL-WIDGET01",
+				Severity: linter.SeverityError,
+				Message: fmt.Sprintf(
+					"%s: widget `%s` (%s) property `%s` is the widget's internal storage name and is not written from MDL — use `%s:` instead",
+					locationPrefix, w.Name, def.MDLName, key, src,
 				),
 			})
 			continue
@@ -1028,6 +1045,60 @@ func validatePluggableWidgetProperties(w *ast.WidgetV3, registry *WidgetRegistry
 
 // datasourceTypedKeys returns the lowercased propertyKeys whose def.json mapping
 // has operation "datasource" (across the top-level mappings and every mode).
+// addMappingNames records the MDL names a PropertyMapping is authorable under.
+//
+// For most operations that is both the widget's own storage key and the engine's
+// source name. An `action` mapping is the exception: resolveMapping reads the
+// fixed AST slot (`w.GetAction()` / `w.GetOnChange()`), so ONLY the source name
+// (`Action`/`OnClick`/`OnChange`) reaches the writer. Allowing the storage key
+// would accept `onChangeEvent: …` on a Combobox and drop it on write — the
+// silent-drop class FINDINGS #14 was about. It is reported by
+// actionStorageKeys() instead, with the spelling that works.
+func addMappingNames(add func(string), m PropertyMapping) {
+	if !readsFixedASTSlot(m.Operation) {
+		add(m.PropertyKey)
+	}
+	add(m.Source)
+}
+
+// readsFixedASTSlot reports whether an operation's value is resolved from a
+// dedicated AST accessor rather than from a property looked up by name.
+//
+// resolveMapping switches on the mapping's Source, and for these operations it
+// reads a fixed slot — `w.GetOnChange()` for an action, the association binding
+// for an association — so a script naming the widget's own storage key is
+// accepted by check and written by nothing.
+//
+// Measured on a Combobox against Mendix 11.13, which is why this is a list of
+// two rather than "every operation with a Source": `attributeAssociation:` does
+// not persist while `Association:` does, and `onChangeEvent:` does not persist
+// while `OnChange:` does — but `optionsSourceAssociationCaptionAttribute:` DOES
+// persist, so excluding every storage key would reject working syntax. Add an
+// operation here only after checking the written document, not from the shape of
+// the mapping.
+func readsFixedASTSlot(op string) bool {
+	return op == "action" || op == "association"
+}
+
+// actionStorageKeys maps each action mapping's storage key to the MDL name that
+// actually writes it, so the validator can say "use OnChange" rather than only
+// "unknown property".
+func actionStorageKeys(def *WidgetDefinition) map[string]string {
+	out := make(map[string]string)
+	collect := func(ms []PropertyMapping) {
+		for _, m := range ms {
+			if readsFixedASTSlot(m.Operation) && m.PropertyKey != "" && m.Source != "" {
+				out[strings.ToLower(m.PropertyKey)] = m.Source
+			}
+		}
+	}
+	collect(def.PropertyMappings)
+	for _, mode := range def.Modes {
+		collect(mode.PropertyMappings)
+	}
+	return out
+}
+
 // These must be authored via the widget `datasource:` clause, not by name.
 func datasourceTypedKeys(def *WidgetDefinition) map[string]bool {
 	out := make(map[string]bool)
@@ -1107,8 +1178,7 @@ func allowedWidgetProperties(def *WidgetDefinition) (map[string]bool, []string) 
 	}
 
 	for _, m := range def.PropertyMappings {
-		add(m.PropertyKey)
-		add(m.Source)
+		addMappingNames(add, m)
 	}
 	for _, m := range def.ChildSlots {
 		add(m.PropertyKey)
@@ -1118,8 +1188,7 @@ func allowedWidgetProperties(def *WidgetDefinition) (map[string]bool, []string) 
 	}
 	for _, mode := range def.Modes {
 		for _, m := range mode.PropertyMappings {
-			add(m.PropertyKey)
-			add(m.Source)
+			addMappingNames(add, m)
 		}
 		for _, m := range mode.ChildSlots {
 			add(m.PropertyKey)
@@ -1199,4 +1268,81 @@ func min3(a, b, c int) int {
 		return b
 	}
 	return c
+}
+
+// validateDataGrid2ColumnNames warns (MDL-WIDGET16) that the names written on a
+// pluggable DataGrid 2's columns are discarded, and says what each column will
+// actually be addressable as.
+//
+// Mendix stores no name on a DataGrid 2 column. Its schema has no name or
+// identifier key at column level — the only human-facing label is `header`, the
+// caption — so the name in `column colLabel (attribute: Label, …)` reaches
+// DataGridColumnSpec, which has no field for it, and is dropped. Everything
+// downstream then addresses the column by a *derived* name: the bound attribute
+// for an attribute column, the sanitized caption otherwise, `colN` as a last
+// resort.
+//
+// The consequence is not obvious from the MDL. An author who wrote `colLabel`
+// reaches for `ALTER PAGE … ON dg1.colLabel` and gets "column not found" for a
+// column they just named, while `describe page` shows a name they never wrote.
+//
+// **One violation per grid, listing its columns.** The first version emitted one
+// per column, which a real project (mxcli-dbreplication, finding F6) reported as
+// 44 infos saying the same thing. It is one fact about the grid; repeating it
+// per column buries the rest of the report without adding information.
+//
+// It warns rather than rejects: the name is harmless, it reads as documentation
+// in the source, and rejecting it would break every existing script — mxcli's
+// own doctype tests name every column. What the author needs is to know which
+// name addresses it.
+func validateDataGrid2ColumnNames(grid *ast.WidgetV3, locationPrefix string) []linter.Violation {
+	if grid == nil || !strings.EqualFold(grid.Type, "DATAGRID") {
+		return nil
+	}
+	var renamed []string
+	for _, child := range grid.Children {
+		if child == nil || !strings.EqualFold(child.Type, "COLUMN") || child.Name == "" {
+			continue
+		}
+		addressable := derivedDataGrid2ColumnName(child)
+		if addressable == "" || strings.EqualFold(addressable, child.Name) {
+			continue
+		}
+		renamed = append(renamed, fmt.Sprintf("%s → %s", child.Name, addressable))
+	}
+	if len(renamed) == 0 {
+		return nil
+	}
+	return []linter.Violation{{
+		RuleID:   "MDL-WIDGET16",
+		Severity: linter.SeverityInfo,
+		Message: fmt.Sprintf(
+			"%s: DataGrid 2 stores no column names, so the names on %s are dropped on write. "+
+				"Address these columns by their derived name in ALTER PAGE (attribute columns "+
+				"key on the bound attribute, others on the caption), and expect DESCRIBE to "+
+				"show it: %s.",
+			locationPrefix, grid.Name, strings.Join(renamed, ", ")),
+	}}
+}
+
+// derivedDataGrid2ColumnName mirrors the name derivation the writer and the page
+// mutator apply, so the warning names the same string ALTER will accept.
+// Deliberately conservative: when it cannot tell (no attribute, no caption — the
+// colN case, which depends on position) it returns "" and nothing is reported,
+// because a wrong name in the message would be worse than none.
+func derivedDataGrid2ColumnName(w *ast.WidgetV3) string {
+	if attr := w.GetAttribute(); attr != "" {
+		parts := strings.Split(attr, ".")
+		return parts[len(parts)-1]
+	}
+	if caption := w.GetCaption(); caption != "" {
+		sanitized := strings.Map(func(r rune) rune {
+			if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' {
+				return r
+			}
+			return '_'
+		}, caption)
+		return strings.Trim(sanitized, "_")
+	}
+	return ""
 }

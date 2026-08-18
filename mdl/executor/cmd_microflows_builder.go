@@ -50,7 +50,14 @@ type flowBuilder struct {
 	// curveByOrigin holds each statement's @curve keyed by the activity it was
 	// written on, applied to that activity's outgoing flows by applyFlowCurves
 	// once the graph is complete. (#884)
-	curveByOrigin        map[model.ID]*ast.FlowCurve
+	curveByOrigin map[model.ID]*ast.FlowCurve
+	// startPosition is the StartEvent position read off the microflow being
+	// REPLACED, carried over so a hand-laid-out start survives the rebuild. The
+	// start has no MDL statement to annotate and DESCRIBE cannot emit it, so
+	// without this a describe→exec round-trip silently moved it (a Studio Pro
+	// flow's 145;200 became 100;200). Nil on a fresh CREATE, where the position
+	// is derived from the first annotated activity as before.
+	startPosition        *model.Point
 	backend              backend.FullBackend          // For looking up page/microflow references
 	hierarchy            *ContainerHierarchy          // For resolving container IDs to module names
 	pendingAnnotations   *ast.ActivityAnnotations     // Pending annotations to attach to next activity

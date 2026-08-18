@@ -25,6 +25,7 @@ func (b *Backend) ListJavaActions() ([]*types.JavaAction, error) {
 			ContainerID:   u.ContainerID,
 			Name:          u.Element.Name(),
 			Documentation: u.Element.Documentation(),
+			Excluded:      u.Element.Excluded(),
 		}
 		ja.ID = model.ID(u.Element.ID())
 		out = append(out, ja)

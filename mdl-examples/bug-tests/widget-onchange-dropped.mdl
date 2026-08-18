@@ -1,0 +1,117 @@
+-- ============================================================================
+-- OnChange was silently dropped on every input widget except textbox
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   `OnChange: MICROFLOW Mod.ACT_Apply(...)` on a checkbox, radiobuttons,
+--   combobox, dropdown, textarea or datepicker parsed cleanly, `mxcli check`
+--   passed, and `exec` reported success — but the property was never written.
+--   `describe page` showed the widget with its Label and Attribute and no
+--   OnChange, and in the browser clicking the control produced zero /xas/
+--   requests: no server round-trip at all. `textbox` and `actionbutton` kept
+--   their actions, which is what made the drop look like a page-level problem
+--   rather than a per-widget one.
+--
+-- Root cause (three layers, each independently sufficient):
+--   1. The page builder read `w.GetOnChange()` in `buildTextBoxV3` only. The
+--      other five builders never looked at the property, so it died between the
+--      AST and the model.
+--   2. The legacy writer hardcoded `serializeClientAction(nil)` for TextArea,
+--      DatePicker, CheckBox, RadioButtons and DropDown, so even a populated
+--      OnChangeAction would not have reached BSON under `--engine legacy`.
+--   3. For pluggable widgets, `actionSourceForKey` matched only the bare keys
+--      `onClick`/`onChange`. Mendix's Combobox names its slot `onChangeEvent`,
+--      so no action mapping was emitted for it at all — and the shipped
+--      combobox.def.json (which overrides any .mpk-derived one) had none either.
+--
+-- After fix:
+--   All six input widgets route OnChange through `applyOnChangeV3`; the legacy
+--   writer serializes the real action; `actionSourceForKey` strips one
+--   Event/Action suffix (narrowly — Combobox's `onChangeFilterInputEvent` and
+--   `onChangeDatabaseEvent` stay unmapped); and combobox.def.json maps
+--   `onChangeEvent` in BOTH modes, since modes are exclusive.
+--   DESCRIBE also reads and renders OnChange for textarea / datepicker /
+--   checkbox / radiobuttons, so the round trip can confirm itself.
+--
+-- Verify:
+--   mxcli exec mdl-examples/bug-tests/widget-onchange-dropped.mdl -p app.mpr
+--   mx check app.mpr    # 0 errors
+--   mxcli -p app.mpr -c "describe page Ctrl.ControlPanel"
+--   -> each of the five BUILT-IN controls shows its `OnChange:`. The combobox
+--      does not: DESCRIBE renders pluggable widgets through a different path
+--      that does not read action slots (a separate, pre-existing gap). For it,
+--      count the stored actions instead — the page unit carries SIX
+--      `Forms$MicroflowAction` nodes, one per control.
+-- ============================================================================
+
+create module Ctrl;
+/
+-- radiobuttons and combobox bind an ENUMERATION, not a String — CE2421 /
+-- CE7247 otherwise. Only the widget's binding is picky; the OnChange behaviour
+-- under test is the same either way.
+create enumeration Ctrl.TopicKind (
+  Income 'Income',
+  Health 'Health'
+);
+/
+create non-persistent entity Ctrl.Filter (
+  Enabled: Boolean,
+  Topic: Ctrl.TopicKind,
+  Notes: String,
+  AsOf: DateTime
+);
+/
+create microflow Ctrl.ACT_Apply ($Filter: Ctrl.Filter)
+begin
+  change $Filter (Notes = 'applied') refresh;
+end;
+/
+-- The data view's own source: parameterless, returns the object the controls
+-- bind to. ACT_Apply cannot serve here — it takes a parameter and returns
+-- nothing (CE1571 + CE0552).
+create microflow Ctrl.DS_Filter () returns Ctrl.Filter as $Filter
+begin
+  $Filter = create Ctrl.Filter (Topic = Ctrl.TopicKind.Income, Enabled = false);
+  return $Filter;
+end;
+/
+-- Each control below carries an OnChange. Before the fix only a `textbox` kept
+-- it; the other five wrote nothing and the page still built green.
+create or replace page Ctrl.ControlPanel (
+  layout: Atlas_Core.Atlas_Default
+) {
+  layoutgrid lgMain {
+    row rowMain {
+      column colMain (desktopwidth: autofill) {
+        dataview dvFilter (datasource: microflow Ctrl.DS_Filter) {
+          textbox txtNotesShort (
+            Label: 'Notes (short)', Attribute: Notes,
+            OnChange: MICROFLOW Ctrl.ACT_Apply(Filter: $currentObject)
+          )
+          textarea taNotes (
+            Label: 'Notes', Attribute: Notes,
+            OnChange: MICROFLOW Ctrl.ACT_Apply(Filter: $currentObject)
+          )
+          datepicker dpAsOf (
+            Label: 'As of', Attribute: AsOf,
+            OnChange: MICROFLOW Ctrl.ACT_Apply(Filter: $currentObject)
+          )
+          checkbox cbEnabled (
+            Label: 'Enabled', Attribute: Enabled,
+            OnChange: MICROFLOW Ctrl.ACT_Apply(Filter: $currentObject)
+          )
+          radiobuttons rbTopic (
+            Label: 'Topic', Attribute: Topic,
+            OnChange: MICROFLOW Ctrl.ACT_Apply(Filter: $currentObject)
+          )
+          -- The pluggable case, and the one originally reported. Its slot is named
+          -- `onChangeEvent`, not `onChange`, which is why it needed a fix of its own.
+          combobox cboTopic (
+            Label: 'Topic', Attribute: Topic,
+            OnChange: MICROFLOW Ctrl.ACT_Apply(Filter: $currentObject)
+          )
+        }
+      }
+    }
+  }
+}

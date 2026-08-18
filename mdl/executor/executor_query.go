@@ -121,6 +121,8 @@ func execShow(ctx *ExecContext, s *ast.ShowStmt) error {
 		return listFragments(ctx)
 	case ast.ShowDatabaseConnections:
 		return listDatabaseConnections(ctx, s.InModule)
+	case ast.ShowConnections:
+		return listOpenSQLConnections(ctx)
 	case ast.ShowImageCollections:
 		return listImageCollections(ctx, s.InModule)
 	case ast.ShowIconCollections:

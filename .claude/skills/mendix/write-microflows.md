@@ -77,6 +77,39 @@ begin
 end;
 ```
 
+### `@excluded` — documents excluded from the project
+
+`@excluded` before a `create microflow` marks the document **"Exclude from project"**
+(the same checkbox Studio Pro offers). The document stays in the `.mpr`, does not
+build, and `show microflows` reports it in the `Excluded` column.
+
+```mdl
+@excluded
+create microflow MyModule.LegacyCalc ()
+returns Integer
+begin
+  return 7;
+end;
+```
+
+Two rules follow, and both are enforced rather than documented-and-hoped:
+
+- **An absent `@excluded` never un-excludes.** It means "the script does not say",
+  not "make this active" — so re-running a `create or modify` you wrote before the
+  document was excluded leaves the exclusion alone. Un-exclude in Studio Pro.
+  (Before #914 the rewrite cleared it, which is how a valid project ended up
+  failing **CE0122** — see the next rule.)
+- **A name is not unique when a twin is excluded.** Mendix allows two documents of
+  the same name in one module as long as at most one is active — verified on
+  11.13.0: the excluded pair builds at 0 errors, the same pair both active is
+  `[error] CE0122 "Duplicate document name"`. `create or modify`, `describe` and
+  the other by-name lookups therefore target the **live** document; the excluded
+  twin is neither rewritten nor deleted.
+
+The same applies to every document type that carries the flag — nanoflows, pages,
+snippets, enumerations, queues, workflows, Java/JavaScript actions, mappings, JSON
+structures, REST/OData services, image collections and the agent documents.
+
 ### FOLDER Option
 
 Place microflows in folders for organization:
@@ -179,6 +212,9 @@ declare $ProductList list of Test.Product = empty;  -- use a parameter, retrieve
 
 -- WRONG: Using AS keyword (not supported in mxcli)
 declare $Product as Test.Product;  -- ERROR: parse error
+
+-- WRONG: No value (CE0038, MDL061)
+declare $X string;  -- a Create Variable activity requires a value
 
 -- WRONG: Missing type
 declare $Counter = 0;  -- Type inference not always supported
@@ -356,6 +392,65 @@ end;
 ```
 
 **Note**: Parameters are automatically declared by the parameter list. The `returns type as $Var` syntax names the return variable but does NOT declare it - you must still use `declare $Var type = value;` if you want to use SET on it.
+
+### 8. RETURN Inside a Loop
+
+**Error**: CE0068 - "End events cannot be placed inside a loop." (MDL062)
+
+A `return` builds an End event, and Mendix does not allow one inside a loop —
+whether the return sits in the loop body directly or inside a branch within it.
+
+❌ **INCORRECT:**
+```mdl
+loop $Part in $PartList
+begin
+  if $Part/IsMatch then
+    return true;   -- End event inside the loop
+  end if;
+end loop;
+```
+
+✅ **CORRECT** — leave the loop with `break`, and return once after it:
+```mdl
+declare $Found boolean = false;
+loop $Part in $PartList
+begin
+  if $Part/IsMatch then
+    set $Found = true;
+    break;
+  end if;
+end loop;
+return $Found;
+```
+
+### 9. Two Activities Creating the Same Variable
+
+**Error**: CE0111 - "Duplicate variable name 'X'." (MDL063)
+
+A microflow's variable names are unique **flow-wide**. Branches and loop bodies
+do not open a scope, and parameters and loop iterators share the same namespace.
+The trap is that every activity with an output **creates** its variable — there
+is no form in which a call, a retrieve, an aggregate or an import mapping writes
+into one that already exists.
+
+❌ **INCORRECT:**
+```mdl
+declare $Session string = '';
+$Session = call microflow Mod.Login();   -- the call creates $Session too
+```
+
+✅ **CORRECT** — let the activity create it:
+```mdl
+$Session = call microflow Mod.Login();
+```
+
+Assigning to an existing variable is fine, because `set` is a *Change Variable*
+activity and creates nothing:
+
+```mdl
+declare $Session string = '';
+set $Session = 'anonymous';   -- valid, any number of times
+```
 
 ## Control Flow
 
@@ -1042,7 +1137,18 @@ call microflow Module.SendNotification(message = $message);
 
 -- Call with error handling
 $Result = call microflow Module.ExternalService(data = $data) on error continue;
+
+-- Run the call on a task queue (background execution). The clause goes after
+-- the arguments and before any ON ERROR, and works on CALL JAVA ACTION too.
+call microflow Module.ACT_Refresh() in queue Module.RefreshQueue;
+call java action Module.RefreshData(Url = $Url) in queue Module.RefreshQueue;
 ```
+
+**Queued calls** — the queue must already exist (`create queue Module.RefreshQueue
+(Parallelism: 2)`), and a queued **Java action must `returns void`** or the build
+fails with CE7038. Rewriting a microflow that has a queued call must restate the
+`in queue` clause; a rewrite that omits it is refused rather than silently
+dropping the binding. See `.claude/skills/mendix/scheduled-events-and-queues.md`.
 
 ### ❌ INCORRECT Syntax
 

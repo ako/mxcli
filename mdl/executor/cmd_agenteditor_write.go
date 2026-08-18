@@ -53,6 +53,8 @@ func execCreateConsumedMCPService(ctx *ExecContext, s *ast.CreateConsumedMCPServ
 
 	if existing != nil {
 		c.ID = existing.ID
+		// Excluded is model state, not script state (#914).
+		c.Excluded = existing.Excluded
 		if err := ctx.Backend.UpdateAgentEditorConsumedMCPService(c); err != nil {
 			return mdlerrors.NewBackend("update consumed mcp service", err)
 		}
@@ -142,6 +144,8 @@ func execCreateKnowledgeBase(ctx *ExecContext, s *ast.CreateKnowledgeBaseStmt) e
 
 	if existing != nil {
 		k.ID = existing.ID
+		// Excluded is model state, not script state (#914).
+		k.Excluded = existing.Excluded
 		if err := ctx.Backend.UpdateAgentEditorKnowledgeBase(k); err != nil {
 			return mdlerrors.NewBackend("update knowledge base", err)
 		}
@@ -291,6 +295,8 @@ func execCreateAgent(ctx *ExecContext, s *ast.CreateAgentStmt) error {
 
 	if existingAgent != nil {
 		a.ID = existingAgent.ID
+		// Excluded is model state, not script state (#914).
+		a.Excluded = existingAgent.Excluded
 		if err := ctx.Backend.UpdateAgentEditorAgent(a); err != nil {
 			return mdlerrors.NewBackend("update agent", err)
 		}

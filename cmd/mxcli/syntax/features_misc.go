@@ -251,9 +251,14 @@ Properties:
                 = per runtime instance.
   Documentation free text.
 
-Binding a call to a queue is not yet expressible in MDL. Because a rebuild
-would drop an existing binding, mxcli REFUSES to CREATE OR REPLACE/MODIFY a
-microflow whose stored calls are queued — change those in Studio Pro.`,
+Bind a call to a queue with the IN QUEUE clause on CALL MICROFLOW or
+CALL JAVA ACTION (see: mxcli syntax microflow.call):
+
+  CALL MICROFLOW Ops.ACT_Process(Order = $Order) IN QUEUE Ops.OrderProcessing;
+
+A rewrite that does NOT restate a stored binding is refused, because it would
+drop it silently. A retry policy on a queued call has no MDL spelling and is
+also refused rather than reset — change those in Studio Pro.`,
 		Example: `CREATE QUEUE Ops.OrderProcessing (
   Parallelism: 3,
   ClusterWide: true
@@ -267,6 +272,12 @@ CREATE OR MODIFY QUEUE Ops.OrderProcessing (
   Parallelism: '$MyModule.Workers',
   ClusterWide: true
 );
+
+-- Bind a call to it. A queued Java action must return Nothing (CE7038).
+CREATE OR MODIFY MICROFLOW Ops.ACT_Enqueue ()
+BEGIN
+  CALL MICROFLOW Ops.ACT_Process(Order = $Order) IN QUEUE Ops.OrderProcessing;
+END;
 
 SHOW QUEUES IN Ops;
 DESCRIBE QUEUE Ops.OrderProcessing;
@@ -643,9 +654,14 @@ Annotations:
                             reports the observed value alongside the
                             expectation whenever the assertion pins its type.
   @throws 'message'         Expect error
-  @verify <oql>             NOT IMPLEMENTED — rejected as an error. Nothing
-                            evaluates it, so it would assert nothing. Return
-                            the value from the microflow and use @expect.
+  @verify <oql> <op> <lit>  Assert on the DATABASE after the microflow ran:
+                              @verify select count(*) as n from Mod.Cell = 81
+                              @verify select count(*) as n from Mod.Cell > 0
+                            The query must return one row and one column, and
+                            the test needs @cleanup none — rollback would undo
+                            the writes before the query could see them. An
+                            unevaluatable @verify is an ERROR, never a pass.
+                            --local / --attach only.
   @cleanup rollback|none    What happens to the test's database writes.
                             rollback (the default) wraps the test in a
                             transaction and rolls it back, so nothing it

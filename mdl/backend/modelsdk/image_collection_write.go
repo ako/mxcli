@@ -36,6 +36,7 @@ func (b *Backend) ListImageCollections() ([]*types.ImageCollection, error) {
 		ic.Name, _ = doc["Name"].(string)
 		ic.Documentation, _ = doc["Documentation"].(string)
 		ic.ExportLevel, _ = doc["ExportLevel"].(string)
+		ic.Excluded, _ = doc["Excluded"].(bool)
 		if arr, ok := doc["Images"].(bson.A); ok {
 			for _, el := range arr {
 				imgDoc, ok := el.(bson.M)
@@ -129,7 +130,7 @@ func serializeImageCollection(ic *types.ImageCollection) ([]byte, error) {
 		{Key: "$ID", Value: bsonutil.IDToBsonBinary(string(ic.ID))},
 		{Key: "$Type", Value: "Images$ImageCollection"},
 		{Key: "Documentation", Value: ic.Documentation},
-		{Key: "Excluded", Value: false},
+		{Key: "Excluded", Value: ic.Excluded},
 		{Key: "ExportLevel", Value: ic.ExportLevel},
 		{Key: "Images", Value: images},
 		{Key: "Name", Value: ic.Name},

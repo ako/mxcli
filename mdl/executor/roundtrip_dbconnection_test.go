@@ -8,8 +8,20 @@ import (
 	"testing"
 )
 
+// The round trip runs on BOTH engines. It used to run only on legacy (the
+// setupTestEnv default), which is why the modelsdk reader never reading
+// TableMappings stayed invisible: `describe database connection` on the DEFAULT
+// engine emitted a query with no `returns`/`map`, so a describe → exec cycle
+// silently dropped the entity binding and the column mapping, while this test
+// stayed green. Measured on 11.13: legacy renders the clause, modelsdk did not.
 func TestRoundtripDatabaseConnection_Simple(t *testing.T) {
-	env := setupTestEnv(t)
+	for _, eng := range gateEngines {
+		t.Run(eng.name, func(t *testing.T) { testRoundtripDatabaseConnectionSimple(t, eng) })
+	}
+}
+
+func testRoundtripDatabaseConnectionSimple(t *testing.T, eng gateEngine) {
+	env := setupTestEnvWithBackend(t, eng.factory)
 	defer env.teardown()
 
 	connName := testModule + ".TestDatabase"

@@ -34,7 +34,6 @@ showStatement
     | showOrList CONSTANTS (IN (qualifiedName | IDENTIFIER))?
     | showOrList CONSTANT VALUES (IN (qualifiedName | IDENTIFIER))?
     | showOrList LAYOUTS (IN (qualifiedName | IDENTIFIER))?
-    | showOrList NOTEBOOKS (IN (qualifiedName | IDENTIFIER))?
     | showOrList QUEUES (IN (qualifiedName | IDENTIFIER))?
     | showOrList SCHEDULED EVENTS (IN (qualifiedName | IDENTIFIER))?
     | showOrList REGULAR EXPRESSIONS (IN (qualifiedName | IDENTIFIER))?

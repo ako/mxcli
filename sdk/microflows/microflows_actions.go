@@ -552,6 +552,24 @@ type MicroflowCall struct {
 	model.BaseElement
 	Microflow         string                           `json:"microflow,omitempty"` // Qualified name string
 	ParameterMappings []*MicroflowCallParameterMapping `json:"parameterMappings,omitempty"`
+	QueueSettings     *QueueSettings                   `json:"queueSettings,omitempty"`
+}
+
+// QueueSettings binds a call activity to a task queue (Queues$QueueSettings).
+//
+// The load-bearing property is this element, NOT the call's sibling `Queue`
+// string: measured on Mendix 11.13, a call carrying only `Queue` with
+// QueueSettings null draws no complaint from mx check at all, while one carrying
+// QueueSettings does (CE1613 when the named queue is missing). `generated/metamodel`
+// — the arbiter — has no top-level `Queue` on either call type, only this.
+//
+// Retry is a Queues$QueueRetry (fixed or exponential) that MDL cannot author.
+// It is carried as raw storage so a rewrite preserves whatever Studio Pro wrote
+// rather than silently dropping it (guard-don't-drop, ADR-0005).
+type QueueSettings struct {
+	model.BaseElement
+	Queue string `json:"queue,omitempty"` // Qualified name of the Queues$Queue
+	Retry any    `json:"retry,omitempty"` // Opaque Queues$QueueRetry, preserved verbatim
 }
 
 // MicroflowCallParameterMapping maps a parameter to an argument.
@@ -567,6 +585,7 @@ type JavaActionCallAction struct {
 	ErrorHandlingType  ErrorHandlingType             `json:"errorHandlingType,omitempty"`
 	JavaAction         string                        `json:"javaAction,omitempty"` // Qualified name string
 	ParameterMappings  []*JavaActionParameterMapping `json:"parameterMappings,omitempty"`
+	QueueSettings      *QueueSettings                `json:"queueSettings,omitempty"`
 	ResultVariableName string                        `json:"resultVariableName,omitempty"`
 	UseReturnVariable  bool                          `json:"useReturnVariable"`
 }

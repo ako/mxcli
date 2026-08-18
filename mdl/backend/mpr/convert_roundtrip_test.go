@@ -610,8 +610,10 @@ func TestFieldCountDrift(t *testing.T) {
 	assertFieldCount(t, "types.RawUnitInfo", types.RawUnitInfo{}, 5)
 	assertFieldCount(t, "mpr.RawCustomWidgetType", mpr.RawCustomWidgetType{}, 6)
 	assertFieldCount(t, "types.RawCustomWidgetType", types.RawCustomWidgetType{}, 6)
-	assertFieldCount(t, "mpr.JavaAction", mpr.JavaAction{}, 4)
-	assertFieldCount(t, "types.JavaAction", types.JavaAction{}, 4)
+	// +1 each for Excluded (#914): reads must carry it so a rewrite does not
+	// clear the document's "Exclude from project" flag.
+	assertFieldCount(t, "mpr.JavaAction", mpr.JavaAction{}, 5)
+	assertFieldCount(t, "types.JavaAction", types.JavaAction{}, 5)
 	assertFieldCount(t, "mpr.JavaScriptAction", mpr.JavaScriptAction{}, 12)
 	assertFieldCount(t, "types.JavaScriptAction", types.JavaScriptAction{}, 12)
 	assertFieldCount(t, "mpr.NavigationDocument", mpr.NavigationDocument{}, 4)
@@ -620,8 +622,8 @@ func TestFieldCountDrift(t *testing.T) {
 	assertFieldCount(t, "types.JsonStructure", types.JsonStructure{}, 8)
 	assertFieldCount(t, "mpr.JsonElement", mpr.JsonElement{}, 14)
 	assertFieldCount(t, "types.JsonElement", types.JsonElement{}, 14)
-	assertFieldCount(t, "mpr.ImageCollection", mpr.ImageCollection{}, 6)
-	assertFieldCount(t, "types.ImageCollection", types.ImageCollection{}, 6)
+	assertFieldCount(t, "mpr.ImageCollection", mpr.ImageCollection{}, 7)
+	assertFieldCount(t, "types.ImageCollection", types.ImageCollection{}, 7)
 	assertFieldCount(t, "mpr.EntityMemberAccess", mpr.EntityMemberAccess{}, 3)
 	assertFieldCount(t, "types.EntityMemberAccess", types.EntityMemberAccess{}, 3)
 	assertFieldCount(t, "mpr.EntityAccessRevocation", mpr.EntityAccessRevocation{}, 6)

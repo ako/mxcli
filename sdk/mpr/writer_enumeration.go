@@ -130,7 +130,7 @@ func (w *Writer) serializeEnumeration(enum *model.Enumeration) ([]byte, error) {
 		{Key: "$Type", Value: "Enumerations$Enumeration"},
 		{Key: "Name", Value: enum.Name},
 		{Key: "Documentation", Value: enum.Documentation},
-		{Key: "Excluded", Value: false},
+		{Key: "Excluded", Value: enum.Excluded},
 		{Key: "ExportLevel", Value: "Hidden"},
 		{Key: "RemoteSource", Value: nil},
 		{Key: "Values", Value: values},

@@ -6,7 +6,7 @@ Use this skill when the user wants to:
 - Run a microflow on a schedule ("every night at 4", "hourly", "cron", "batch job")
 - Inspect or change an existing scheduled event
 - Limit how many background tasks run at once (a task queue)
-- Understand why `mxcli` refuses to rewrite a microflow that has a queued call
+- Run a microflow or Java action call on a queue (`IN QUEUE`)
 
 **These two features are unrelated.** A scheduled event does **not** go through a
 task queue. Its own concurrency control is `OnOverlap`.
@@ -116,7 +116,8 @@ create scheduled event Ops.QuarterEnd (
 
 ## Task Queues
 
-A task queue bounds how many queued microflow calls run at once.
+A task queue bounds how many queued calls run at once. Binding a call to it
+is a separate step — see [`IN QUEUE`](#binding-a-call-to-a-queue--in-queue).
 
 ```sql
 list queues;
@@ -147,22 +148,80 @@ thing and an arbitrary expression is legal.
 | `HourOfDay: 24` | `it must be between 0 and 23` | Hours are 0–23; midnight is `0` |
 | Expecting a queue to throttle a scheduled event | Nothing changes | They are unrelated — use `OnOverlap` |
 
-## Rewriting a Microflow with a Queued Call Is Refused
+## Binding a Call to a Queue — `IN QUEUE`
 
-MDL cannot yet author a *queued call* — the binding lives on the call activity
-inside a microflow, not on the queue. So `create or replace|modify microflow` is
-refused when the stored microflow has one:
+The queue document only *defines* the concurrency limit. What actually runs work
+in the background is the binding on the **call activity**, and Mendix allows it
+on exactly two: *Call microflow* and *Call Java action*. In MDL that is a
+trailing `in queue` clause, in the same position on both — after the argument
+list, before any `on error`:
+
+```sql
+create or modify microflow Ops.ACT_Enqueue ()
+begin
+  call microflow Ops.ACT_Process(Order = $Order) in queue Ops.OrderProcessing;
+  call java action Ops.RefreshData(Url = $Url)   in queue Ops.OrderProcessing;
+end;
+```
+
+`describe microflow` renders the clause back, so the binding round-trips.
+
+### Two traps, both verified on mxbuild 11.13.0
+
+**A queued Java action must return Nothing.** Anything else fails the build with
+**CE7038** *"A Java action used for background execution must have a return type
+of 'Nothing'."* mxcli's default return type for `create java action` is
+**Boolean**, so `returns void` is required, not optional:
+
+```sql
+create java action Ops.RefreshData(Url: string not null) returns void
+as $$ return; $$;
+```
+
+**The queue must exist.** A missing one is **CE1613** *"The selected task queue
+… no longer exists"*, reported against the **call activity** — it names the
+activity, not the script, so a typo is expensive to trace from the build log.
+`mxcli check --references` resolves the name first and reports it against the
+statement instead.
+
+That CE1613 is also the proof the binding is real: drop the queue on a project
+mxcli wrote and the error appears, naming both the queue and the activity.
+
+### A Rewrite Must Restate the Queue
+
+`create or replace|modify microflow` rebuilds the microflow from the statement,
+so a binding the script does not restate is gone. mxcli refuses rather than drop
+it:
 
 ```
-Error: microflow Ops.ACT_Caller has 1 call(s) bound to a task queue (Ops.MyQueue),
-and rewriting it would silently drop that binding
+Error: microflow Ops.ACT_Caller has 1 call(s) bound to a task queue that this
+script does not restate (Ops.MyQueue), and rewriting it would silently drop the
+binding.
 ```
 
-This is deliberate. Change that microflow in Studio Pro, or remove the task queue
-from the call first. Without the refusal the binding was written back as null and
-the project then looked *healthier* than before — `mx check` stopped reporting
-`CE1613 "The selected task queue no longer exists"`, because the configuration
-the error was about had been deleted.
+Add `in queue Ops.MyQueue` to the call and the rewrite goes through. Without the
+refusal the binding was written back as null and the project then looked
+*healthier* than before — `mx check` stopped reporting CE1613, because the
+configuration the error was about had been deleted.
+
+One thing is still refused: a **retry policy** on a queued call
+(`Queues$QueueFixedRetry` / `Queues$QueueExponentialRetry`). MDL has no syntax
+for it, so a rewrite cannot preserve it — change that microflow in Studio Pro.
+
+### When a Java Action Is the Better Tool
+
+The activity property gives queueing and nothing else. The runtime API, reachable
+from a Java action, gives queueing *and* retry, and can queue a Java action
+directly with no wrapper microflow:
+
+```java
+Core.userActionCall("Ops.RefreshData")
+    .withParams(url)
+    .withExponentialRetry(5, Duration.ofSeconds(2), Duration.ofMinutes(2))
+    .executeInBackground(ctx, "Ops.OrderProcessing");
+```
+
+Use `Core.microflowCall(...)` when the unit of work really is a microflow.
 
 ## Validation Checklist
 

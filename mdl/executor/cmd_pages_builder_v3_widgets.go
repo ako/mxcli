@@ -309,6 +309,26 @@ func (pb *pageBuilder) buildListViewV3(w *ast.WidgetV3) (*pages.ListView, error)
 	return lv, nil
 }
 
+// applyOnChangeV3 resolves a widget's `OnChange:` client action into dst.
+//
+// Every input widget carrying an OnChangeAction must call this. Before ledger
+// #14 only `buildTextBoxV3` read GetOnChange(), so an OnChange authored on a
+// checkbox / radiobuttons / dropdown / textarea / datepicker parsed, checked and
+// executed clean while the property was dropped between the AST and the model —
+// the control rendered correctly and produced no server round-trip at all.
+func (pb *pageBuilder) applyOnChangeV3(w *ast.WidgetV3, dst *pages.ClientAction) error {
+	action := w.GetOnChange()
+	if action == nil {
+		return nil
+	}
+	act, err := pb.buildClientActionV3(action)
+	if err != nil {
+		return err
+	}
+	*dst = act
+	return nil
+}
+
 func (pb *pageBuilder) buildTextBoxV3(w *ast.WidgetV3) (*pages.TextBox, error) {
 	tb := &pages.TextBox{
 		BaseWidget: pages.BaseWidget{
@@ -342,12 +362,8 @@ func (pb *pageBuilder) buildTextBoxV3(w *ast.WidgetV3) (*pages.TextBox, error) {
 	}
 
 	// Handle OnChange (the "On change" client action)
-	if action := w.GetOnChange(); action != nil {
-		act, err := pb.buildClientActionV3(action)
-		if err != nil {
-			return nil, err
-		}
-		tb.OnChangeAction = act
+	if err := pb.applyOnChangeV3(w, &tb.OnChangeAction); err != nil {
+		return nil, err
 	}
 
 	if err := pb.registerWidgetName(w.Name, tb.ID); err != nil {
@@ -378,6 +394,11 @@ func (pb *pageBuilder) buildTextAreaV3(w *ast.WidgetV3) (*pages.TextArea, error)
 		ta.Label = label
 	}
 
+	// Handle OnChange (the "On change" client action)
+	if err := pb.applyOnChangeV3(w, &ta.OnChangeAction); err != nil {
+		return nil, err
+	}
+
 	if err := pb.registerWidgetName(w.Name, ta.ID); err != nil {
 		return nil, err
 	}
@@ -404,6 +425,11 @@ func (pb *pageBuilder) buildDatePickerV3(w *ast.WidgetV3) (*pages.DatePicker, er
 	// Handle Label
 	if label := w.GetLabel(); label != "" {
 		dp.Label = label
+	}
+
+	// Handle OnChange (the "On change" client action)
+	if err := pb.applyOnChangeV3(w, &dp.OnChangeAction); err != nil {
+		return nil, err
 	}
 
 	if err := pb.registerWidgetName(w.Name, dp.ID); err != nil {
@@ -434,6 +460,11 @@ func (pb *pageBuilder) buildDropdownV3(w *ast.WidgetV3) (*pages.DropDown, error)
 		dd.Label = label
 	}
 
+	// Handle OnChange (the "On change" client action)
+	if err := pb.applyOnChangeV3(w, &dd.OnChangeAction); err != nil {
+		return nil, err
+	}
+
 	if err := pb.registerWidgetName(w.Name, dd.ID); err != nil {
 		return nil, err
 	}
@@ -462,6 +493,11 @@ func (pb *pageBuilder) buildCheckBoxV3(w *ast.WidgetV3) (*pages.CheckBox, error)
 		cb.Label = label
 	}
 
+	// Handle OnChange (the "On change" client action)
+	if err := pb.applyOnChangeV3(w, &cb.OnChangeAction); err != nil {
+		return nil, err
+	}
+
 	if err := pb.registerWidgetName(w.Name, cb.ID); err != nil {
 		return nil, err
 	}
@@ -485,6 +521,11 @@ func (pb *pageBuilder) buildRadioButtonsV3(w *ast.WidgetV3) (*pages.RadioButtons
 	// Get attribute path from Attribute property
 	if attr := w.GetAttribute(); attr != "" {
 		rb.AttributePath = pb.resolveAttributePath(attr)
+	}
+
+	// Handle OnChange (the "On change" client action)
+	if err := pb.applyOnChangeV3(w, &rb.OnChangeAction); err != nil {
+		return nil, err
 	}
 
 	if err := pb.registerWidgetName(w.Name, rb.ID); err != nil {
