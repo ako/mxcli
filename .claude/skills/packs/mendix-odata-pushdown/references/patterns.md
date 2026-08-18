@@ -19,16 +19,33 @@ $Q = CALL JAVA ACTION {{MODULE}}.Parse(
   KeyField          = 'driverId',
   RejectUnsupported = true);
 
-IF $Q/Rejected THEN
-  -- fail the request; do not answer it with unfiltered rows
-END
-
 DECLARE $Sql String = 'SELECT d.* FROM drivers d' + $Q/FilterSql + $Q/OrderBySql;
 ```
 
 **Splice callers should pass `RejectUnsupported = true`.** Their `WHERE` *is*
 `FilterSql`, so an untranslated filter means no `WHERE` at all — every row in
 the table, under a 200, in answer to a request for a handful.
+
+**Do not write `IF $Q/Rejected THEN` in a splice caller — the branch cannot
+run.** With `RejectUnsupported = true`, `Parse` throws before it builds the
+Query:
+
+```java
+if (r.rejected && Boolean.TRUE.equals(rejectUnsupported)) {
+    throw new IllegalArgumentException("cannot translate OData query: " + r.rejectReason);
+}
+IMendixObject o = Core.instantiate(context, ENTITY);   // never reached when rejected
+```
+
+So a microflow that receives a `Query` at all always has `Rejected = false`. The
+untranslatable request has already become a 500 with the reason in the runtime
+log — which is the honest answer, and is why the throw is there. A guard
+microflow written for that branch never executes; one project wrote and then
+deleted a Java action for exactly this (mxcli-owid, finding #30).
+
+`Rejected` / `RejectReason` are still worth reading — by a **bind** caller
+(`RejectUnsupported = false`), which does receive a Query and needs to log the
+filter it was never going to apply.
 
 ---
 
