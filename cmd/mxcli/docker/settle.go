@@ -42,7 +42,7 @@ func SettleGeneratedSources(projectPath, mxPath, version string, w io.Writer) er
 	cmd := exec.Command(mxbuildPath,
 		"--target=deploy",
 		fmt.Sprintf("--java-home=%s", javaHome),
-		fmt.Sprintf("--java-exe-path=%s", filepath.Join(javaHome, "bin", "java")),
+		fmt.Sprintf("--java-exe-path=%s", JavaExePath(javaHome)),
 		projectPath,
 	)
 	cmd.Dir = filepath.Dir(projectPath)

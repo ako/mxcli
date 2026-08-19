@@ -161,7 +161,7 @@ func Build(opts BuildOptions) error {
 	fmt.Fprintf(w, "Running MxBuild (target=portable-app-package)...\n")
 	fmt.Fprintf(w, "  Output: %s\n", outputDir)
 
-	javaExePath := filepath.Join(javaHome, "bin", "java")
+	javaExePath := JavaExePath(javaHome)
 
 	cmd := exec.Command(mxbuildPath,
 		"--target=portable-app-package",

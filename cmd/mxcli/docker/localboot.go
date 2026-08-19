@@ -459,7 +459,7 @@ func StartLocalRuntime(opts LocalRuntimeOptions) (*LocalRuntime, error) {
 // configuration up to but not including start. It is used both for the initial
 // boot and for a restart (config is per-process and must be re-applied).
 func (rt *LocalRuntime) spawnAndConfigure() error {
-	javaExe := filepath.Join(rt.opts.JavaHome, "bin", "java")
+	javaExe := JavaExePath(rt.opts.JavaHome)
 	cmd := exec.Command(javaExe, rt.opts.jvmArgs()...)
 	cmd.Dir = rt.opts.runtimeDir()
 	cmd.Env = localRuntimeEnv(rt.opts)
