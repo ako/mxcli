@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **The Mendix 10.24 nightly is green again** — `14-project-settings-examples.mdl` set `DecimalScale`, which 10.24 does not have, so `TestMxCheck_DoctypeScripts` failed on that matrix entry on both engines while passing on every 11.x. Measured against blank projects: 10.24 stores 11 model settings, 11.6.6 stores 12, and `DecimalScale` is the only difference — each of the other five settings in that statement is accepted on 10.24 on its own. mxcli's refusal was correct (Studio Pro will not open a model carrying a property its version does not define, and mxbuild does not catch it); the example simply was not version-gated, and because the refusal covers the whole statement, one unsupported setting took five portable ones down with it. It is now its own `-- @version: 11.0+` section.
+
+  A new guard, `TestDoctypeScriptsParseAfterVersionFiltering`, filters every doctype script for each nightly matrix version and asserts the result still parses. It needs no mxbuild, so a mis-gated script fails in seconds on push rather than hours later in a single nightly job. Writing it surfaced the trap that makes this easy to get wrong: a `/** */` block is a *documentation* comment bound to the statement after it, so gating the statement while leaving its comment outside the section orphans the comment and the script stops parsing — reported at the *next* statement, tens of lines away, which reads like an unrelated syntax error.
+
 - **A microflow's StartEvent no longer moves on a describe→exec round-trip** — the start has no MDL statement to annotate and `DESCRIBE` cannot emit its position, so the builder always derived one (first annotated activity minus one spacing unit). A Studio-Pro-authored flow whose start sat at `145;200` came back at `100;200` — the only coordinate in it that did not survive. The position is now carried over from the microflow being replaced, the way the folder and allowed module roles already are; a fresh `CREATE` still derives it.
 
 ### Added
