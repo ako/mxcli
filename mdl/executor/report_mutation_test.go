@@ -128,3 +128,24 @@ func TestReportMutationIgnoresEarlierStatements(t *testing.T) {
 		t.Errorf("reported %q — earlier statements' writes were counted against this one", got)
 	}
 }
+
+// TestReportMutationCountsWritesOutsideUnitStorage pins the case that made this
+// helper wrong on its first outing. A code action's body does not live in its
+// unit — the unit carries the signature, the source lives in
+// javascriptsource/<module>/actions/<name>.js — so editing only the body elides
+// the unit write. Judging on unit writes alone called that "Unchanged" while the
+// user's edit had just landed in a file, which is a worse lie than the one this
+// helper was written to fix.
+func TestReportMutationCountsWritesOutsideUnitStorage(t *testing.T) {
+	ctx, mb, out := reportCtx(t)
+
+	// Unit write offered and elided (the signature did not change), source file
+	// written (the body did).
+	mb.offer(1, 0)
+	mb.offer(1, 1)
+	ctx.ReportMutation("Modified", "javascript action: %s", "MxCore.JS_LoadAiAdvisor")
+
+	if got := out.String(); got != "Modified javascript action: MxCore.JS_LoadAiAdvisor\n" {
+		t.Errorf("reported %q — a body-only edit must not read as unchanged", got)
+	}
+}

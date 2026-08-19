@@ -40,6 +40,12 @@ type Backend struct {
 	reader *mmpr.Reader
 	writer *mmpr.Writer
 	path   string
+
+	// fileWrites counts writes that do not go through unit storage — the
+	// generated .java/.js source of a code action, whose body lives in
+	// javasource/ or javascriptsource/ rather than in its unit. They are folded
+	// into WriteStats so a body-only edit is not reported as "Unchanged".
+	fileWrites backend.WriteStats
 }
 
 // New constructs a modelsdk backend.
@@ -60,10 +66,21 @@ func errUnimplemented(method string) error {
 // the connection open for both reads.
 func (b *Backend) WriteStats() backend.WriteStats {
 	if b.writer == nil {
-		return backend.WriteStats{}
+		return b.fileWrites
 	}
 	offered, written := b.writer.WriteStats()
-	return backend.WriteStats{Offered: offered, Written: written}
+	return backend.WriteStats{
+		Offered: offered + b.fileWrites.Offered,
+		Written: written + b.fileWrites.Written,
+	}
+}
+
+// noteFileWrite records a non-unit write and whether it changed anything.
+func (b *Backend) noteFileWrite(changed bool) {
+	b.fileWrites.Offered++
+	if changed {
+		b.fileWrites.Written++
+	}
 }
 
 // --- ConnectionBackend ---

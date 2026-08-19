@@ -34,19 +34,22 @@ func idToBsonBinary(id string) primitive.Binary {
 type Writer struct {
 	reader *Reader
 
-	// unitsOffered / unitsWritten count what reached updateUnit and how much of
-	// it survived no-op elision (ADR-0008). The executor reads them to tell
-	// "Modified X" from "Modified nothing, X was already in sync" — without
-	// them, re-running a script that changes nothing still announces a write for
-	// every statement, which is how the churn in #910 was misdiagnosed.
-	unitsOffered int
-	unitsWritten int
+	// writesOffered / writesLanded count what this session tried to persist and
+	// how much of it was not skipped as a no-op (ADR-0008). Both unit writes and
+	// generated source files count: a code action's body lives in
+	// javascriptsource/ rather than in its unit, so counting units alone would
+	// call a body-only edit unchanged. The executor reads these to tell
+	// "Modified X" from "X was already in sync" — without them, re-running a
+	// script that changes nothing still announces a write for every statement,
+	// which is how the churn in #910 was misdiagnosed.
+	writesOffered int
+	writesLanded  int
 }
 
-// WriteStats reports how many unit writes this session offered to storage and
-// how many were not elided as no-ops.
+// WriteStats reports how many writes this session offered to storage and how
+// many of them actually changed something.
 func (w *Writer) WriteStats() (offered, written int) {
-	return w.unitsOffered, w.unitsWritten
+	return w.writesOffered, w.writesLanded
 }
 
 // NewWriter creates a new writer from a reader opened in read-write mode.

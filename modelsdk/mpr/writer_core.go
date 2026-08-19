@@ -43,19 +43,20 @@ type Writer struct {
 	// want to batch many unit updates into a single transaction.
 	sessionBuf func(unitID string, contents []byte) error
 
-	// unitsOffered / unitsWritten count what reached reconcileWithStored and how
+	// writesOffered / writesLanded count what reached reconcileWithStored and how
 	// much of it survived no-op elision (ADR-0008). The executor reads them to
-	// tell "Modified X" from "Modified nothing, X was already in sync" — without
-	// them, re-running a script that changes nothing still announces a write for
-	// every statement, which is how the churn in #910 was misdiagnosed.
-	unitsOffered int
-	unitsWritten int
+	// tell "Modified X" from "X was already in sync" — without them, re-running a
+	// script that changes nothing still announces a write for every statement,
+	// which is how the churn in #910 was misdiagnosed. The backend adds its own
+	// non-unit writes (generated .java/.js source) to this total.
+	writesOffered int
+	writesLanded  int
 }
 
 // WriteStats reports how many unit writes this session offered to storage and
 // how many were not elided as no-ops.
 func (w *Writer) WriteStats() (offered, written int) {
-	return w.unitsOffered, w.unitsWritten
+	return w.writesOffered, w.writesLanded
 }
 
 // SetSessionBuf installs a callback that intercepts every updateUnit call.
@@ -543,15 +544,15 @@ func (w *Writer) updateUnit(unitID string, contents []byte) error {
 // reconcileWithStored applies the shared no-op-elision policy (canon.Reconcile,
 // ADR-0008 decision 1) to a write against this project.
 func (w *Writer) reconcileWithStored(unitID string, contents []byte) (out []byte, unchanged bool) {
-	w.unitsOffered++
+	w.writesOffered++
 	stored, err := w.reader.GetRawUnitBytes(unitID)
 	if err != nil {
-		w.unitsWritten++
+		w.writesLanded++
 		return contents, false // new unit, or unreadable — write it
 	}
 	out, unchanged = canon.Reconcile(contents, stored)
 	if !unchanged {
-		w.unitsWritten++
+		w.writesLanded++
 	}
 	return out, unchanged
 }

@@ -99,10 +99,18 @@ func (w *Writer) WriteJavaSourceFile(moduleName, actionName string, javaCode str
 	// Generate Java source (shared with the modelsdk engine)
 	source := javaactions.GenerateSource(moduleName, actionName, javaCode, params, returnType, extraImports, extraCode)
 
-	// Write the file
+	// Write the file, unless it already says exactly this. The counters feed the
+	// executor's "Modified" vs "Unchanged" reporting: a code action's body lives
+	// here rather than in its unit, so judging the statement on unit writes alone
+	// would call a body-only edit unchanged.
 	filePath := filepath.Join(javaDir, actionName+".java")
-	if err := os.WriteFile(filePath, []byte(source), 0644); err != nil {
+	w.writesOffered++
+	changed, err := javaactions.WriteSourceIfChanged(filePath, source)
+	if err != nil {
 		return fmt.Errorf("failed to write Java source file: %w", err)
+	}
+	if changed {
+		w.writesLanded++
 	}
 
 	return nil
