@@ -1,0 +1,49 @@
+-- ============================================================================
+-- Issue #927: the two nested-member shapes Mendix rejects
+-- ============================================================================
+--
+-- Both are refused by `mxcli exec` rather than written, because each produces a
+-- model that is valid MDL, passes `mxcli check`, and fails only in the build.
+-- Each refusal below was measured on mxbuild 11.13 by patching the path into a
+-- stored mapping and running `mx check`.
+--
+--   1. An EXPORT mapping reaching a nested member.
+--      CE5015 "There is no child mapping matching schema element '(Object)'"
+--      Three-way control: the same collapsed member in an IMPORT mapping is 0
+--      errors, and the same export mapping with only top-level members is 0
+--      errors. An export has to produce the intermediate node, so something
+--      must map it -- give `customer` its own element with an association.
+--
+--   2. An import member whose path crosses a 0..* element.
+--      CE0256 "Between value mapping 'sku' and parent element '(Object)' is a
+--              schema element with wrong occurrence (0..*)"
+--      A value cannot be pulled through many items, so an array level needs its
+--      own entity regardless.
+--
+-- Usage (this file is expected to FAIL -- .fail.mdl):
+--   mxcli exec mdl-examples/bug-tests/927-mapping-nested-member-path.fail.mdl -p app.mpr
+--   Expect a refusal naming CE5015 or CE0256; nothing is written.
+--
+-- Requires the module from 927-mapping-nested-member-path.mdl.
+-- ============================================================================
+
+-- (1) export mapping cannot collapse levels
+create or modify export mapping BugTest927.EMM_Collapsed
+  with json structure BugTest927.JSON_Order
+{
+  BugTest927.Order {
+    orderId       = OrderId,
+    customer/name = CustomerName
+  }
+};
+/
+
+-- (2) an import member cannot cross an array
+create or modify import mapping BugTest927.IMM_AcrossArray
+  with json structure BugTest927.JSON_Order
+{
+  create BugTest927.Order {
+    CustomerName = items/sku
+  }
+};
+/

@@ -114,7 +114,7 @@ func describeImportMapping(ctx *ExecContext, name ast.QualifiedName) error {
 	if len(im.Elements) > 0 {
 		fmt.Fprintln(ctx.Output, "{")
 		for _, elem := range im.Elements {
-			printImportMappingElement(ctx.Output, elem, 1, true)
+			printImportMappingElement(ctx.Output, elem, 1, true, "")
 			fmt.Fprintln(ctx.Output)
 		}
 		fmt.Fprintln(ctx.Output, "};")
@@ -134,7 +134,7 @@ func handlingKeyword(handling string) string {
 	}
 }
 
-func printImportMappingElement(w io.Writer, elem *model.ImportMappingElement, depth int, isRoot bool) {
+func printImportMappingElement(w io.Writer, elem *model.ImportMappingElement, depth int, isRoot bool, parentPath string) {
 	indent := strings.Repeat("  ", depth)
 	if elem.Kind == "Object" {
 		handling := handlingKeyword(elem.ObjectHandling)
@@ -153,11 +153,11 @@ func printImportMappingElement(w io.Writer, elem *model.ImportMappingElement, de
 			assoc := elem.Association
 			entity := elem.Entity
 			if assoc == "" && entity == "" {
-				fmt.Fprintf(w, "%s%s . = %s", indent, handling, mappingMemberName(elem.JsonPath, elem.ExposedName))
+				fmt.Fprintf(w, "%s%s . = %s", indent, handling, mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName))
 			} else if assoc == "" {
-				fmt.Fprintf(w, "%s%s ./%s = %s", indent, handling, entity, mappingMemberName(elem.JsonPath, elem.ExposedName))
+				fmt.Fprintf(w, "%s%s ./%s = %s", indent, handling, entity, mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName))
 			} else {
-				fmt.Fprintf(w, "%s%s %s/%s = %s", indent, handling, assoc, entity, mappingMemberName(elem.JsonPath, elem.ExposedName))
+				fmt.Fprintf(w, "%s%s %s/%s = %s", indent, handling, assoc, entity, mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName))
 			}
 			if len(elem.Children) > 0 {
 				fmt.Fprintln(w, " {")
@@ -165,7 +165,7 @@ func printImportMappingElement(w io.Writer, elem *model.ImportMappingElement, de
 		}
 		if len(elem.Children) > 0 {
 			for i, child := range elem.Children {
-				printImportMappingElement(w, child, depth+1, false)
+				printImportMappingElement(w, child, depth+1, false, elem.JsonPath)
 				if i < len(elem.Children)-1 {
 					fmt.Fprintln(w, ",")
 				} else {
@@ -185,12 +185,12 @@ func printImportMappingElement(w io.Writer, elem *model.ImportMappingElement, de
 		if elem.IsKey {
 			keyStr = " key"
 		}
-		fmt.Fprintf(w, "%s%s = %s%s", indent, attrName, mappingMemberName(elem.JsonPath, elem.ExposedName), keyStr)
+		fmt.Fprintf(w, "%s%s = %s%s", indent, attrName, mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName), keyStr)
 	}
 }
 
-// mappingMemberName is the JSON member name DESCRIBE should print for a mapping
-// element: the raw key taken from its JsonPath, not the derived ExposedName.
+// mappingMemberName is the JSON member DESCRIBE should print for a mapping
+// element: the raw key(s) taken from its JsonPath, not the derived ExposedName.
 //
 // The two differ for any lowercase-initial key, because Mendix derives
 // ExposedName by capitalising the initial (and suffixing "Item" for an array's
@@ -205,13 +205,32 @@ func printImportMappingElement(w io.Writer, elem *model.ImportMappingElement, de
 // that resolution. Elements with no JsonPath — an XML-schema or
 // message-definition mapping — keep the exposed name, which is all they have.
 // (issue #915)
-func mappingMemberName(jsonPath, exposedName string) string {
+//
+// The member is rendered RELATIVE to the enclosing object element rather than as
+// its last segment alone. For a direct child the two are the same, but Studio
+// Pro can bind a leaf several levels below the object element it belongs to,
+// with no entity for the levels in between: a value element at
+// "(Object)|customer|name" under an object element at "(Object)". Printing only
+// "name" dropped the intermediate levels, so DESCRIBE reported a mapping the
+// project did not contain and its own output no longer re-executed —
+// `"name" is not a member of the JSON structure at (Object)`. (issue #927)
+func mappingMemberName(parentPath, jsonPath, exposedName string) string {
 	if jsonPath == "" {
 		return exposedName
 	}
 	// An array's item object is addressed by the ARRAY's key: the mapping element
 	// sits at "(Object)|item|(Object)" and the script wrote "item".
 	trimmed := strings.TrimSuffix(jsonPath, "|(Object)")
+
+	// The parent path is used verbatim: for an array, the object element's own
+	// JsonPath is already the ITEM path ("…|items|(Object)"), so trimming the
+	// marker off it made a child of that item render as "(Object)/sku".
+	if parentPath != "" {
+		if rel := strings.TrimPrefix(trimmed, parentPath+"|"); rel != trimmed && rel != "" {
+			return strings.ReplaceAll(rel, "|", "/")
+		}
+	}
+
 	i := strings.LastIndex(trimmed, "|")
 	if i < 0 {
 		return exposedName
@@ -317,7 +336,15 @@ func buildImportMappingElementModel(moduleName string, def *ast.ImportMappingEle
 		lookupPath = "(Object)"
 		jsElem = idx.byPath[lookupPath]
 	default:
-		jsElem = idx.resolve(parentPath, def.JsonName)
+		var arrayLevel *types.JsonElement
+		jsElem, arrayLevel = idx.resolvePath(parentPath, def.JsonName)
+		if arrayLevel != nil {
+			return nil, fmt.Errorf("%q passes through %q, which occurs 0..* — a value cannot be pulled "+
+				"through many items, and mxbuild rejects it with CE0256 (\"a schema element with wrong "+
+				"occurrence\" between the value mapping and its parent). Give %q its own element with an "+
+				"association: create Assoc/Module.Entity = %s { ... }",
+				def.JsonName, arrayLevel.ExposedName, arrayLevel.ExposedName, arrayLevel.ExposedName)
+		}
 	}
 
 	// Clone properties from the matching JSON structure element. A member that
@@ -493,6 +520,37 @@ func (i *jsonSchemaIndex) add(parentPath string, elems []*types.JsonElement) {
 // Returns nil when the name matches nothing — the caller must refuse rather than
 // invent a path. A fabricated path passes `mxcli check` and only fails later, in
 // mxbuild as CE5015 or, worse, at runtime.
+// resolvePath resolves a `/`-separated member path under parentPath, one segment
+// at a time so every step keeps resolve's tolerance for the raw key or the
+// exposed name.
+//
+// A single segment is the ordinary direct-child case. Several segments reach a
+// leaf BELOW the enclosing object element with no entity for the levels in
+// between — the shape Studio Pro produces when a nested leaf is ticked without
+// its parents, stored as one multi-segment JsonPath. Measured on mxbuild 11.13:
+// a value element at "(Object)|customer|name" under an object element at
+// "(Object)", with nothing mapped for "customer", builds at 0 errors.
+//
+// An intermediate ARRAY is refused by the caller: measured, mxbuild rejects a
+// value element whose path crosses a 0..* element with CE0256, so many items
+// genuinely cannot collapse into one value.
+func (i *jsonSchemaIndex) resolvePath(parentPath, path string) (*types.JsonElement, *types.JsonElement) {
+	segments := strings.Split(path, "/")
+	current := parentPath
+	var elem *types.JsonElement
+	for n, seg := range segments {
+		elem = i.resolve(current, seg)
+		if elem == nil {
+			return nil, nil
+		}
+		if n < len(segments)-1 && elem.ElementType == "Array" {
+			return nil, elem // caller reports which level is the array
+		}
+		current = elem.Path
+	}
+	return elem, nil
+}
+
 func (i *jsonSchemaIndex) resolve(parentPath, name string) *types.JsonElement {
 	if e, ok := i.byPath[parentPath+"|"+name]; ok {
 		return e

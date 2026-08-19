@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Import mappings can reach a nested leaf without an entity per level** (#927) — `Attr = customer/contact/email` binds a value several levels below the object element it belongs to, which is the shape Studio Pro produces when you tick a nested leaf without ticking its parents: one entity, values pulled from several depths. Previously MDL had no way to write it, so every object level in a response became an entity whose only content was an association — one generated endpoint added 21 entities, almost all pass-throughs.
+
+  Two shapes are refused rather than written, each measured on mxbuild 11.13 rather than assumed: an **export** mapping cannot collapse levels (**CE5015** — it has to produce the intermediate node; the same member in an import mapping builds at 0 errors, and the same export mapping with only top-level members builds at 0 errors), and an import member cannot cross a `0..*` element (**CE0256** "a schema element with wrong occurrence"). Both refusals name the build error they prevent.
+
+### Fixed
+
+- **`DESCRIBE` no longer mis-reads a mapping that binds a nested leaf** (#927) — value elements were printed as the last segment of their JsonPath alone, so a project holding `(Object)|customer|name` described as `CustomerName = name`. That is a description of a model that does not exist, and re-executing mxcli's own output failed with `"name" is not a member of the JSON structure at (Object)`. Members are now rendered relative to the enclosing object element, on both engines and for both mapping kinds. Nothing was ever corrupted — the #882 guard refused the bad re-execution — but the description was wrong.
+
+
 ### Fixed
 
 - **A microflow's StartEvent no longer moves on a describe→exec round-trip** — the start has no MDL statement to annotate and `DESCRIBE` cannot emit its position, so the builder always derived one (first annotated activity minus one spacing unit). A Studio-Pro-authored flow whose start sat at `145;200` came back at `100;200` — the only coordinate in it that did not survive. The position is now carried over from the microflow being replaced, the way the folder and allowed module roles already are; a fresh `CREATE` still derives it.

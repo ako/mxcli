@@ -990,7 +990,7 @@ source json '{"latitude": 51.9, "current": {"temp": 12.8}}'
 |-----------|--------|-------|
 | Show mappings | `show import mappings [in module];` | List all or filter by module |
 | Describe mapping | `describe import mapping Module.Name;` | Re-executable CREATE statement |
-| Create mapping | See below | Assignment syntax: `attr = jsonField` |
+| Create mapping | See below | Assignment syntax: `attr = jsonField`, or `attr = a/b/c` to reach a nested leaf with **no entity per level** — the shape Studio Pro produces. The path may not cross a `0..*` element (CE0256) |
 | Create or modify | `create or modify import mapping Module.Name ...;` | Updates existing mapping, preserves UUID |
 | Drop mapping | `drop import mapping Module.Name;` | |
 
@@ -1022,7 +1022,7 @@ create Module.OrderResponse_CustomerInfo/Module.CustomerInfo = customer {
 |-----------|--------|-------|
 | Show mappings | `show export mappings [in module];` | List all or filter by module |
 | Describe mapping | `describe export mapping Module.Name;` | Re-executable CREATE statement |
-| Create mapping | See below | Assignment syntax: `jsonField = attr` |
+| Create mapping | See below | Assignment syntax: `jsonField = attr`. **No nested `a/b/c` form**: an export has to produce the intermediate node, so Mendix rejects a collapsed member with CE5015 — give it its own element |
 | Create or modify | `create or modify export mapping Module.Name ...;` | Updates existing mapping, preserves UUID |
 | Drop mapping | `drop export mapping Module.Name;` | |
 
