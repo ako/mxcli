@@ -40,6 +40,33 @@ microflow. mxcli carries the stored value onto the rebuilt document instead of
 minting a new one, so re-running a script does not renumber operations in your
 deployed model.
 
+## A changed document only shows what changed
+
+Skipping the write answers "nothing changed". When something *did* change, the
+document is still rebuilt from scratch — so without further care, a one-line edit
+lands as a wholesale replacement. Editing a single argument of a single
+JavaScript action call used to re-mint **36 of a nanoflow's 37** element
+identities; the same edit to a microflow re-minted 21 of 22. Studio Pro's changes
+view and `git diff` both key on those identities, so a two-line change read as
+"the whole document was replaced". It was also cumulative: changing a value and
+changing it back produced a semantically identical document that shared none of
+its element IDs with the original.
+
+mxcli now matches the rebuilt document against the stored one element by element
+— by shape, and by name where there is one — and puts the stored `$ID` back on
+every element that still corresponds, rewriting each pointer to it in the same
+pass. On the case above the diff is now the one changed line, all 37 identities
+kept, and a change plus its revert returns to the original bytes exactly.
+
+Inserting or deleting an activity mints IDs only for the elements that are
+genuinely new; the rest of the flow keeps its identities rather than shifting
+onto its neighbours'.
+
+Element IDs are *not* the database's identity — a `GUID` is, and that has always
+been carried through. See [the note in
+CLAUDE.md](https://github.com/ako/mxcli/blob/main/CLAUDE.md) on why the two must
+not be confused.
+
 ## Both engines, every write path
 
 The policy lives in one place (`modelsdk/canon`) and is applied at the single
@@ -75,9 +102,18 @@ Two cautions, both of which produce a meaningless zero:
 - **Make sure the script is actually re-runnable.** A script containing
   `create module` or `create enumeration` fails on the second run and writes
   nothing, so the diff is empty for the wrong reason. Check the run's output.
-- **Run the control.** Repeat with `MXCLI_ALWAYS_WRITE=1` and confirm the diff is
-  *non-empty*. If it is empty too, your measurement cannot detect churn and the
-  clean result proves nothing.
+- **Run the control** — and note that it is a control on *mtimes*, not on
+  content. Since identities are carried, `MXCLI_ALWAYS_WRITE=1` produces the same
+  **bytes**; what it changes is that the files are rewritten at all. Compare
+  `stat -c %y` instead of `sha256sum` and confirm the timestamps *do* move. If
+  they do not, nothing ran and the clean result proves nothing.
+
+  ```bash
+  find mprcontents -name '*.mxunit' | sort | xargs stat -c '%Y %n' > t-before.txt
+  MXCLI_ALWAYS_WRITE=1 mxcli exec script.mdl -p app.mpr
+  find mprcontents -name '*.mxunit' | sort | xargs stat -c '%Y %n' > t-after.txt
+  diff t-before.txt t-after.txt    # expect output — writes landed
+  ```
 
 For a per-unit view of what would be skipped, `scripts/mprsnapshot -canon` emits
 canonical digests keyed by unit id.

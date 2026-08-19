@@ -334,6 +334,16 @@ so comparing bytes would skip nothing. The policy lives in `modelsdk/canon`
 `modelsdk/mpr/writer_core.go` (`updateUnit` *and* `WriteTransaction.WriteUnit` —
 `codec.Store` reaches storage through the latter) and `sdk/mpr/writer_units.go`.
 
+When something *has* changed, `Reconcile` still does not let the rebuild's fresh
+`$ID`s reach disk: `canon.TransplantIDs` matches the incoming document against the
+stored one element by element (by `$Type` and shape, by `Name` where there is one,
+LCS-anchored within each list) and puts the **stored** `$ID` back on every element
+that still corresponds. Without it a one-argument edit re-minted 36 of a nanoflow's
+37 element identities and Studio Pro painted the whole document as changed (#910).
+Its correctness bar is lower than it looks and worth knowing: a *wrong* match only
+makes a diff bigger, because every reference is rewritten with the element — the
+one real failure is two elements sharing an `$ID`, which `dropCollisions` guards.
+
 Three rules follow, and each has already been violated once:
 
 1. **Never rewrite an element `$ID` without rewriting every reference to it in the
@@ -341,7 +351,10 @@ Three rules follow, and each has already been violated once:
    `ChildProperty`, so a containment walk traverses the whole document and never
    sees one. PR #125 renumbered IDs this way and made projects unopenable
    (`KeyNotFoundException` at `ResolvePostponedProperties`). A unit is rewritten
-   wholesale or not at all.
+   wholesale or not at all. The transplant obeys this by substituting over *every*
+   16-byte binary in the document rather than a maintained list of pointer
+   properties — any occurrence of one of the document's element IDs is a reference
+   by definition, the same insight the canonical form rests on.
 2. **Adding a write path means wiring it to `canon.Reconcile`.** A new choke point
    that writes directly will silently churn while everything else is quiet — the
    worst kind of inconsistency, because the diff blames the wrong change.
@@ -360,8 +373,14 @@ qualified name breaks that assumption and invalidates the argument in ADR-0008.
 
 `MXCLI_ALWAYS_WRITE=1` forces every write to land, for bisecting. It does not
 disable identity preservation. **Any test asserting "nothing changed" must include
-the control run with it set** — otherwise the test passes against a build that
-never had the fix, which is exactly how PR #125 shipped green.
+a control** — otherwise the test passes against a build that never had the fix,
+which is exactly how PR #125 shipped green. Note what the control can now be:
+since identities are carried, a forced write of an in-sync unit produces the
+**same bytes**, so "flip `MXCLI_ALWAYS_WRITE` and watch the content change" no
+longer distinguishes anything (measured: same sha, mtime moves). Control on the
+**rebuild** instead — encode the document twice and show the raw codec output
+differs (`TestRebuildChurnsSubElementIDs`) — or, from the shell, on **mtimes**
+rather than hashes.
 
 ### The Tunnel Is Linux-Only, On Purpose — Do Not "Restore" It
 
@@ -750,7 +769,7 @@ Full syntax tables for all MDL statements (microflows, pages, security, navigati
 **Implemented:**
 - Default styling + runtime theme switching (`mxcli theme list/show/apply/remove/switcher`, `mxcli new --theme`): three embedded themes (**signal** light-first, **ledger** light-first, **console** dark-first), each a palette in `theme/web/custom-variables.scss` + a shared Atlas wiring partial + a theme partial imported from `theme/web/main.scss` (which compiles last), plus vendored fonts. **No model changes**, so it hot-applies under `run --local --watch` and cannot affect a build. Generated regions are digest-fenced: a block carrying local edits is refused rather than overwritten. Applying a theme removes the previous one. `--variant auto` (default) ships both palettes — the app follows `prefers-color-scheme` before first paint and honours a `theme-light`/`theme-dark` class on `<html>`; `light`/`dark` bakes one. `theme switcher install` is the only part that writes to the model (JS actions + a nanoflow for a toggle button). Package: `cmd/mxcli/theme/`. See `docs/11-proposals/PROPOSAL_default_styling.md`
 - MPR v1/v2 reading and writing
-- Idempotent writes (ADR-0008): a unit whose new content is semantically equal to what is stored is **not written**, so re-running an MDL script against an in-sync project leaves the `.mpr` and `mprcontents/` byte-identical and Studio Pro shows no version-control changes. Comparison is on a canonical form (element `$ID`s normalised away — a rebuild mints them randomly, so byte comparison would skip nothing); `Microflows$Microflow.StableId` is carried from the stored document rather than re-minted, because the build derives every client-callable microflow's operation id from it. One policy in `modelsdk/canon`, called from both engines' write choke points. `MXCLI_ALWAYS_WRITE=1` disables elision (not preservation) for bisecting. See `docs-site/src/internals/idempotent-writes.md`
+- Idempotent writes (ADR-0008): a unit whose new content is semantically equal to what is stored is **not written**, so re-running an MDL script against an in-sync project leaves the `.mpr` and `mprcontents/` byte-identical and Studio Pro shows no version-control changes. Comparison is on a canonical form (element `$ID`s normalised away — a rebuild mints them randomly, so byte comparison would skip nothing); `Microflows$Microflow.StableId` is carried from the stored document rather than re-minted, because the build derives every client-callable microflow's operation id from it. When a write **does** land, `canon.TransplantIDs` matches the rebuild against the stored document and reuses its element `$ID`s (rewriting every pointer in the same pass), so a changed document's diff is the change rather than a wholesale replacement — measured on #910's nanoflow: 1 of 37 identities survived an argument edit before, 37 of 37 after, and a change plus its revert returns to the original bytes. Inserting or deleting an activity mints IDs only for the genuinely new elements. One policy in `modelsdk/canon`, called from both engines' write choke points. `MXCLI_ALWAYS_WRITE=1` disables elision (not preservation) for bisecting — which means it no longer changes the resulting bytes, only the mtimes. See `docs-site/src/internals/idempotent-writes.md`
 - Domain model (entities, attributes, associations)
 - ALTER ENTITY (add/rename/modify/drop attributes, indexes, documentation)
 - Microflows/Nanoflows with 60+ activity types, JavaScript action calls, nanoflow validation parity
