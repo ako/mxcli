@@ -253,7 +253,7 @@ func execCreatePublishedRestService(ctx *ExecContext, s *ast.CreatePublishedRest
 			return mdlerrors.NewBackend("update published rest service", err)
 		}
 		if !ctx.Quiet {
-			fmt.Fprintf(ctx.Output, "Modified published rest service %s.%s\n", s.Name.Module, s.Name.Name)
+			ctx.ReportMutation("Modified", "published rest service %s.%s", s.Name.Module, s.Name.Name)
 		}
 	} else {
 		if err := ctx.Backend.CreatePublishedRestService(svc); err != nil {

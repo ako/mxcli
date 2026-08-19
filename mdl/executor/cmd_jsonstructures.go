@@ -227,7 +227,7 @@ func execCreateJsonStructure(ctx *ExecContext, s *ast.CreateJsonStructureStmt) e
 		if err := ctx.Backend.UpdateJsonStructure(js); err != nil {
 			return mdlerrors.NewBackend("update json structure", err)
 		}
-		fmt.Fprintf(ctx.Output, "Modified json structure: %s\n", s.Name)
+		ctx.ReportMutation("Modified", "json structure: %s", s.Name)
 	} else {
 		if err := ctx.Backend.CreateJsonStructure(js); err != nil {
 			return mdlerrors.NewBackend("create json structure", err)

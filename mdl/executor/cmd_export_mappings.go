@@ -238,7 +238,7 @@ func execCreateExportMapping(ctx *ExecContext, s *ast.CreateExportMappingStmt) e
 			return mdlerrors.NewBackend("update export mapping", err)
 		}
 		if !ctx.Quiet {
-			fmt.Fprintf(ctx.Output, "Modified export mapping %s.%s\n", s.Name.Module, s.Name.Name)
+			ctx.ReportMutation("Modified", "export mapping %s.%s", s.Name.Module, s.Name.Name)
 		}
 		return nil
 	}

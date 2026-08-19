@@ -300,7 +300,7 @@ func execCreateImportMapping(ctx *ExecContext, s *ast.CreateImportMappingStmt) e
 			return mdlerrors.NewBackend("update import mapping", err)
 		}
 		if !ctx.Quiet {
-			fmt.Fprintf(ctx.Output, "Modified import mapping %s.%s\n", s.Name.Module, s.Name.Name)
+			ctx.ReportMutation("Modified", "import mapping %s.%s", s.Name.Module, s.Name.Name)
 		}
 		return nil
 	}

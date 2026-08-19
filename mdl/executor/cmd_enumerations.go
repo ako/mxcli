@@ -85,7 +85,7 @@ func execCreateEnumeration(ctx *ExecContext, s *ast.CreateEnumerationStmt) error
 			return mdlerrors.NewBackend("update enumeration", err)
 		}
 		invalidateHierarchy(ctx)
-		fmt.Fprintf(ctx.Output, "Modified enumeration: %s\n", s.Name)
+		ctx.ReportMutation("Modified", "enumeration: %s", s.Name)
 		return nil
 	}
 

@@ -142,8 +142,13 @@ func (w *Writer) WriteJavaScriptSourceFile(moduleName, actionName string, jsCode
 		return fmt.Errorf("failed to create javascriptsource directory: %w", err)
 	}
 	source := javaactions.GenerateJavaScriptSource(actionName, jsCode, params, returnType)
-	if err := os.WriteFile(filepath.Join(dir, actionName+".js"), []byte(source), 0o644); err != nil {
+	w.writesOffered++
+	changed, err := javaactions.WriteSourceIfChanged(filepath.Join(dir, actionName+".js"), source)
+	if err != nil {
 		return fmt.Errorf("failed to write JavaScript source file: %w", err)
+	}
+	if changed {
+		w.writesLanded++
 	}
 	return nil
 }

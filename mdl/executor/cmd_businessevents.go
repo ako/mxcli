@@ -375,7 +375,7 @@ func createBusinessEventService(ctx *ExecContext, stmt *ast.CreateBusinessEventS
 		if err := ctx.Backend.UpdateBusinessEventService(svc); err != nil {
 			return mdlerrors.NewBackend("update business event service", err)
 		}
-		fmt.Fprintf(ctx.Output, "Modified business event service: %s.%s\n", moduleName, stmt.Name.Name)
+		ctx.ReportMutation("Modified", "business event service: %s.%s", moduleName, stmt.Name.Name)
 	} else {
 		if err := ctx.Backend.CreateBusinessEventService(svc); err != nil {
 			return mdlerrors.NewBackend("create business event service", err)

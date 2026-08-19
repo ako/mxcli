@@ -300,7 +300,7 @@ func createConstant(ctx *ExecContext, stmt *ast.CreateConstantStmt) error {
 						return mdlerrors.NewBackend("update constant", err)
 					}
 					invalidateHierarchy(ctx)
-					fmt.Fprintf(ctx.Output, "Modified constant: %s.%s\n", modName, c.Name)
+					ctx.ReportMutation("Modified", "constant: %s.%s", modName, c.Name)
 					return nil
 				}
 				return mdlerrors.NewAlreadyExistsMsg("constant", modName+"."+c.Name, fmt.Sprintf("constant already exists: %s.%s (use create or modify to update)", modName, c.Name))

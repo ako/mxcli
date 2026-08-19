@@ -7,6 +7,9 @@ import (
 	"testing"
 
 	"github.com/mendixlabs/mxcli/model"
+	"github.com/mendixlabs/mxcli/modelsdk/canon"
+	"github.com/mendixlabs/mxcli/modelsdk/codec"
+	"github.com/mendixlabs/mxcli/modelsdk/element"
 	mmpr "github.com/mendixlabs/mxcli/modelsdk/mpr"
 	"github.com/mendixlabs/mxcli/sdk/microflows"
 	"go.mongodb.org/mongo-driver/bson"
@@ -127,11 +130,68 @@ func TestWriteMicroflowTwice_SecondWriteIsElided(t *testing.T) {
 	}
 }
 
-// TestWriteMicroflowTwice_ControlChurnsWhenElisionOff proves the elision is what
-// stopped the churn, rather than the rebuild happening to be byte-stable on its
-// own. Without this control the test above would pass against a build that never
-// had the fix — which is exactly how PR #125 shipped green.
-func TestWriteMicroflowTwice_ControlChurnsWhenElisionOff(t *testing.T) {
+// rebuildMicroflow returns the bytes the codec produces for mf — the write path
+// of UpdateMicroflow up to but not including storage, so the rebuild can be
+// observed before Reconcile has had a chance to normalise it.
+func rebuildMicroflow(t *testing.T, proj string, mf *microflows.Microflow) []byte {
+	t.Helper()
+	b := New()
+	if err := b.Connect(proj); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer b.Disconnect()
+
+	gm := microflowToGen(mf, b.majorVersion())
+	gm.SetID(element.ID(mf.ID))
+	assignMicroflowIDs(gm)
+	contents, err := (&codec.Encoder{}).Encode(gm)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	return contents
+}
+
+// TestRebuildChurnsSubElementIDs is the control both storage tests rest on: the
+// rebuild really is a function of the script *and a random source*, so a test
+// showing stable stored bytes is showing the mechanism working rather than a
+// rebuild that was byte-stable all along. Without this, the tests here would
+// pass against a build that never had either fix — which is how PR #125 shipped
+// green.
+func TestRebuildChurnsSubElementIDs(t *testing.T) {
+	proj := copyFixture(t)
+	mf := aMicroflow(t, proj)
+
+	first := rebuildMicroflow(t, proj, mf)
+	second := rebuildMicroflow(t, proj, mf)
+
+	if bytes.Equal(first, second) {
+		t.Fatal("two rebuilds of the same microflow produced identical bytes — the fixture " +
+			"cannot demonstrate either mechanism, so pick one whose rebuild mints sub-element IDs")
+	}
+	// Two things are re-minted per rebuild and they are handled by different
+	// mechanisms: StableId, a top-level identity field CarryIdentity copies over,
+	// and every sub-element $ID, which the transplant matches up. Carrying the
+	// first leaves exactly the second, which is what the storage tests above
+	// depend on being there.
+	eq, err := canon.Equal(canon.CarryIdentity(second, first), first)
+	if err != nil {
+		t.Fatalf("canon.Equal: %v", err)
+	}
+	if !eq {
+		t.Fatal("with StableId carried, the two rebuilds still differ by more than their " +
+			"choice of element IDs — this control is measuring some other instability")
+	}
+}
+
+// TestWriteMicroflowTwice_ForcedWritesStayByteStable is ADR-0008's other half —
+// carrying the stored element $IDs onto a write that lands. Elision is turned
+// off, so both writes really do reach storage; the bytes are identical anyway
+// because the second write inherits the ids the first one left behind.
+//
+// The same mechanism is what keeps a *changed* document's diff down to what
+// changed: without it, editing one argument of one activity re-minted 36 of a
+// nanoflow's 37 element identities.
+func TestWriteMicroflowTwice_ForcedWritesStayByteStable(t *testing.T) {
 	t.Setenv("MXCLI_ALWAYS_WRITE", "1")
 	proj := copyFixture(t)
 	mf := aMicroflow(t, proj)
@@ -142,9 +202,42 @@ func TestWriteMicroflowTwice_ControlChurnsWhenElisionOff(t *testing.T) {
 	writeMicroflow(t, proj, mf)
 	second := storedUnit(t, proj, mf.ID)
 
-	if bytes.Equal(first, second) {
-		t.Fatal("with elision disabled the rebuild was already byte-stable, so the elision test " +
-			"proves nothing — the rebuild must be re-minting sub-element IDs for this to be a real control")
+	if !bytes.Equal(first, second) {
+		t.Errorf("a forced rewrite of an unchanged microflow (%q) changed its stored bytes: "+
+			"%d -> %d; stored element identities were not carried onto the rebuild",
+			mf.Name, len(first), len(second))
+	}
+}
+
+// TestWriteStatsSeeTheElision wires the executor's "Modified …" vs "Unchanged …"
+// reporting to something real. The counter has to move for the *offer* and stay
+// put for the *write*, because that difference is the only evidence the executor
+// has that a write was skipped — a counter that merely tracked calls would let
+// the console keep claiming writes that never happened (#910).
+func TestWriteStatsSeeTheElision(t *testing.T) {
+	proj := copyFixture(t)
+	mf := aMicroflow(t, proj)
+	writeMicroflow(t, proj, mf) // first write lands; second is the one measured
+
+	b := New()
+	if err := b.Connect(proj); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer b.Disconnect()
+
+	before := b.WriteStats()
+	if err := b.UpdateMicroflow(mf); err != nil {
+		t.Fatalf("UpdateMicroflow: %v", err)
+	}
+	after := b.WriteStats()
+
+	if after.Offered <= before.Offered {
+		t.Errorf("Offered %d -> %d: the write never reached storage's elision check",
+			before.Offered, after.Offered)
+	}
+	if after.Written != before.Written {
+		t.Errorf("Written %d -> %d: an unchanged microflow was counted as written",
+			before.Written, after.Written)
 	}
 }
 
