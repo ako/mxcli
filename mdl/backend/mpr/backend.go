@@ -24,6 +24,7 @@ import (
 
 var _ backend.FullBackend = (*MprBackend)(nil)
 var _ linter.LintReader = (*MprBackend)(nil)
+var _ backend.WriteStatsReporter = (*MprBackend)(nil)
 
 // MprBackend implements backend.FullBackend by delegating to mpr.Reader
 // and mpr.Writer.
@@ -53,6 +54,18 @@ func Wrap(writer *mpr.Writer, path string) *MprBackend {
 		writer: writer,
 		path:   path,
 	}
+}
+
+// WriteStats reports how many unit writes reached storage versus how many were
+// elided as no-ops (ADR-0008). Zero before Connect, and after Disconnect the
+// writer is gone with its counters — a caller sampling across a statement holds
+// the connection open for both reads.
+func (b *MprBackend) WriteStats() backend.WriteStats {
+	if b.writer == nil {
+		return backend.WriteStats{}
+	}
+	offered, written := b.writer.WriteStats()
+	return backend.WriteStats{Offered: offered, Written: written}
 }
 
 // ---------------------------------------------------------------------------

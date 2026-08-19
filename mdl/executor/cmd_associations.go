@@ -114,7 +114,7 @@ func execCreateAssociation(ctx *ExecContext, s *ast.CreateAssociationStmt) error
 					invalidateHierarchy(ctx)
 					invalidateDomainModelsCache(ctx)
 					ctx.trackModifiedDomainModel(module.ID, module.Name)
-					fmt.Fprintf(ctx.Output, "Modified association: %s\n", s.Name)
+					ctx.ReportMutation("Modified", "association: %s", s.Name)
 					return nil
 				}
 			}
@@ -136,7 +136,7 @@ func execCreateAssociation(ctx *ExecContext, s *ast.CreateAssociationStmt) error
 					invalidateHierarchy(ctx)
 					invalidateDomainModelsCache(ctx)
 					ctx.trackModifiedDomainModel(module.ID, module.Name)
-					fmt.Fprintf(ctx.Output, "Modified association: %s\n", s.Name)
+					ctx.ReportMutation("Modified", "association: %s", s.Name)
 					return nil
 				}
 			}

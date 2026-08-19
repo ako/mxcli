@@ -157,7 +157,7 @@ func execCreateJavaScriptAction(ctx *ExecContext, s *ast.CreateJavaScriptActionS
 
 	ctx.InvalidateCache()
 	if existingID != "" {
-		fmt.Fprintf(ctx.Output, "Modified javascript action: %s.%s\n", s.Name.Module, s.Name.Name)
+		ctx.ReportMutation("Modified", "javascript action: %s.%s", s.Name.Module, s.Name.Name)
 	} else {
 		fmt.Fprintf(ctx.Output, "Created javascript action: %s.%s\n", s.Name.Module, s.Name.Name)
 	}

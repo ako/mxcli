@@ -76,7 +76,7 @@ func execCreateImageCollection(ctx *ExecContext, s *ast.CreateImageCollectionStm
 		if err := ctx.Backend.UpdateImageCollection(ic); err != nil {
 			return mdlerrors.NewBackend("update image collection", err)
 		}
-		fmt.Fprintf(ctx.Output, "Modified image collection: %s\n", s.Name)
+		ctx.ReportMutation("Modified", "image collection: %s", s.Name)
 	} else {
 		if err := ctx.Backend.CreateImageCollection(ic); err != nil {
 			return mdlerrors.NewBackend("create image collection", err)

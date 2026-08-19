@@ -469,8 +469,22 @@ importMappingChild
     : importMappingObjectHandling qualifiedName SLASH qualifiedName EQUALS identifierOrKeyword
       LBRACE importMappingChild (COMMA importMappingChild)* RBRACE       // nested object with children
     | importMappingObjectHandling qualifiedName SLASH qualifiedName EQUALS identifierOrKeyword  // leaf object
-    | identifierOrKeyword EQUALS qualifiedName LPAREN identifierOrKeyword RPAREN  // value transform: Attr = Module.MF(jsonField)
-    | identifierOrKeyword EQUALS identifierOrKeyword KEY?                         // value: Attr = jsonField [KEY]
+    | identifierOrKeyword EQUALS qualifiedName LPAREN jsonMemberPath RPAREN  // value transform: Attr = Module.MF(jsonField)
+    | identifierOrKeyword EQUALS jsonMemberPath KEY?                         // value: Attr = a/b/c [KEY]
+    ;
+
+/**
+ * A JSON member, addressed from the enclosing object element. A single name is
+ * a direct child; `a/b/c` reaches a leaf several levels down WITHOUT an entity
+ * for the levels in between — the shape Studio Pro produces when you tick a
+ * nested leaf without ticking its parents.
+ *
+ * Stored as Mendix's own pipe-separated JsonPath ("(Object)|a|b|c"); `/` is the
+ * MDL spelling because `|` reads badly here and `/` on this side of `=` cannot
+ * collide with the association form on the other side.
+ */
+jsonMemberPath
+    : identifierOrKeyword (SLASH identifierOrKeyword)*
     ;
 
 importMappingObjectHandling
@@ -513,7 +527,7 @@ exportMappingChild
     : qualifiedName SLASH qualifiedName AS identifierOrKeyword
       LBRACE exportMappingChild (COMMA exportMappingChild)* RBRACE       // nested object with children
     | qualifiedName SLASH qualifiedName AS identifierOrKeyword            // leaf object
-    | identifierOrKeyword EQUALS identifierOrKeyword                      // value: jsonField = Attr
+    | jsonMemberPath EQUALS identifierOrKeyword                           // value: a/b/c = Attr
     ;
 
 // =============================================================================

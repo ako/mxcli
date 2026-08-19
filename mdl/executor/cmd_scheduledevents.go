@@ -122,7 +122,7 @@ func execCreateScheduledEvent(ctx *ExecContext, s *ast.CreateScheduledEventStmt)
 		if err := ctx.Backend.UpdateScheduledEvent(ev); err != nil {
 			return mdlerrors.NewBackend("update scheduled event", err)
 		}
-		fmt.Fprintf(ctx.Output, "Modified scheduled event: %s\n", s.Name.String())
+		ctx.ReportMutation("Modified", "scheduled event: %s", s.Name.String())
 		return nil
 	}
 	if err := ctx.Backend.CreateScheduledEvent(ev); err != nil {

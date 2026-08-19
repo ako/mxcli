@@ -88,6 +88,12 @@ type ExecContext struct {
 	// empty EndEvent in a value-returning microflow, where bare `return;` is invalid.
 	DescribingMicroflowHasReturnValue bool
 
+	// lastWriteStats is the storage write watermark as of the previous
+	// ReportMutation call (or of this context's construction, i.e. the start of
+	// the statement). Its only use is telling "Modified X" from "X was already
+	// in sync"; see report_mutation.go.
+	lastWriteStats backend.WriteStats
+
 	// ScriptDepth tracks the current EXECUTE SCRIPT nesting level.
 	// Incremented on each recursive call; execExecuteScript rejects calls
 	// that exceed maxScriptDepth to prevent infinite self-referencing scripts.

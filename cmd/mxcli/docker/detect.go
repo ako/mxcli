@@ -324,7 +324,19 @@ func resolveJDK21() (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("JDK 21 not found; set JAVA_HOME or install JDK 21")
+	// Name what was searched. "JDK 21 not found" alone sent a Windows user
+	// hunting through mxcli's source for the detection logic; the list makes it
+	// obvious whether their JDK simply sits somewhere unlisted.
+	searched := jdkSearchPaths()
+	msg := "JDK 21 not found"
+	if jh := os.Getenv("JAVA_HOME"); jh != "" {
+		msg += fmt.Sprintf("\n  JAVA_HOME is set to %s but is not a JDK 21 (java -version reports %s)", jh, javaVersionString(jh))
+	}
+	if len(searched) > 0 {
+		msg += "\n  Searched: " + strings.Join(searched, ", ")
+	}
+	msg += "\n  Install Eclipse Temurin JDK 21 (what Mendix Studio Pro itself uses), or set JAVA_HOME to one."
+	return "", fmt.Errorf("%s", msg)
 }
 
 // resolveMacOSJavaHome uses /usr/libexec/java_home to find a JDK 21 on macOS.
@@ -337,8 +349,20 @@ func resolveMacOSJavaHome() (string, error) {
 }
 
 // jdkSearchPaths returns OS-specific glob patterns for JDK installations.
-func jdkSearchPaths() []string {
-	switch runtime.GOOS {
+func jdkSearchPaths() []string { return jdkSearchPathsFor(runtime.GOOS) }
+
+// jdkSearchPathsFor is jdkSearchPaths with the OS injected, so the Windows list
+// is assertable from a Linux runner — nothing in CI executes Windows code, which
+// is how the java.exe suffix stayed broken.
+//
+// Studio Pro does not ship a JDK of its own to point at: Mendix's install guide
+// lists "Eclipse Temurin JDK 21 (x64 or ARM64)" as the prerequisite and installs
+// it if absent, so the Temurin location below IS Studio Pro's JDK. (Its Gradle
+// 8.5 does live with Studio Pro — "extracted to the parent directory of the
+// folder where Studio Pro is installed (usually C:\Program Files\Mendix)" —
+// but mxbuild invokes that itself; mxcli never calls gradle.)
+func jdkSearchPathsFor(goos string) []string {
+	switch goos {
 	case "windows":
 		var paths []string
 		for _, dir := range windowsProgramDirs() {
@@ -346,6 +370,14 @@ func jdkSearchPaths() []string {
 				filepath.Join(dir, "Eclipse Adoptium", "jdk-21*"),
 				filepath.Join(dir, "Java", "jdk-21*"),
 				filepath.Join(dir, "Microsoft", "jdk-21*"),
+			)
+		}
+		// Per-user installs (winget and the Temurin MSI both offer one) land
+		// outside Program Files, where nothing above would find them.
+		if local := os.Getenv("LOCALAPPDATA"); local != "" {
+			paths = append(paths,
+				filepath.Join(local, "Programs", "Eclipse Adoptium", "jdk-21*"),
+				filepath.Join(local, "Programs", "Microsoft", "jdk-21*"),
 			)
 		}
 		return paths
@@ -364,10 +396,7 @@ func jdkSearchPaths() []string {
 
 // isJDK21 checks if the given JAVA_HOME points to a JDK 21 installation.
 func isJDK21(javaHome string) bool {
-	javaBin := filepath.Join(javaHome, "bin", "java")
-	if runtime.GOOS == "windows" {
-		javaBin += ".exe"
-	}
+	javaBin := JavaExePath(javaHome)
 	if _, err := os.Stat(javaBin); err != nil {
 		return false
 	}
@@ -384,7 +413,7 @@ var jdk21VersionRegex = regexp.MustCompile(`version "21[\.\s"]`)
 
 // javaVersionString runs java -version and returns the output for diagnostics.
 func javaVersionString(javaHome string) string {
-	javaBin := filepath.Join(javaHome, "bin", "java")
+	javaBin := JavaExePath(javaHome)
 	out, err := exec.Command(javaBin, "-version").CombinedOutput()
 	if err != nil {
 		return "(unknown)"

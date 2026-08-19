@@ -90,6 +90,7 @@ func (e *Executor) newExecContext(ctx context.Context) *ExecContext {
 	return &ExecContext{
 		Context:          ctx,
 		Backend:          e.backend,
+		lastWriteStats:   currentWriteStats(e.backend),
 		Output:           e.output,
 		Format:           e.format,
 		Quiet:            e.quiet,

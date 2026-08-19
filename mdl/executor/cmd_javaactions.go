@@ -449,7 +449,7 @@ func execCreateJavaAction(ctx *ExecContext, s *ast.CreateJavaActionStmt) error {
 	ctx.InvalidateCache()
 
 	if existingJAID != "" {
-		fmt.Fprintf(ctx.Output, "Modified java action: %s.%s\n", s.Name.Module, s.Name.Name)
+		ctx.ReportMutation("Modified", "java action: %s.%s", s.Name.Module, s.Name.Name)
 	} else {
 		fmt.Fprintf(ctx.Output, "Created java action: %s.%s\n", s.Name.Module, s.Name.Name)
 	}
