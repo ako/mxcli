@@ -141,6 +141,14 @@ revoke view on page MyModule.Customer_Overview from MyModule.User;
 ### Entity Access (CRUD)
 
 GRANT is **additive** — it merges with existing access, never removes permissions.
+Rights rank `None < ReadOnly < ReadWrite` and a merge takes the higher, so use
+`revoke` to take access away; a narrower `grant` will not do it.
+
+A rule is identified by its role set **and** its `where` constraint. Two grants
+with the same constraint update one rule; with different constraints they make
+two, which Mendix combines at runtime (a role's access is the union of every rule
+naming it). So adding a `where` to an existing grant creates a second rule — it
+does not narrow the first.
 
 ```sql
 -- Full access (all CRUD + all members)
