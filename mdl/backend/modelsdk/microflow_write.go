@@ -1461,16 +1461,7 @@ func restCallActionToGen(a *microflows.RestCallAction) element.Element {
 			addPart(e, "RequestHandling", rh)
 		}
 	}
-	// The discriminator must agree with the sub-element. It was hardcoded to
-	// "Custom", which is wrong for a binary body: Studio Pro writes "Binary"
-	// alongside Microflows$BinaryRequestHandling. Only the Binary case is
-	// derived here — the others are left as they were, because no Studio Pro
-	// reference has been measured for them and they work today.
-	requestHandlingType := "Custom"
-	if _, ok := a.RequestHandling.(*microflows.BinaryRequestHandling); ok {
-		requestHandlingType = "Binary"
-	}
-	addStr(e, "RequestHandlingType", requestHandlingType)
+	addStr(e, "RequestHandlingType", requestHandlingTypeOf(a.RequestHandling))
 	addStr(e, "RequestProxyType", "DefaultProxy")
 	resultHandlingType := "String"
 	if a.ResultHandling != nil {
@@ -1544,6 +1535,29 @@ func stringTemplateElem(text string, params []string) element.Element {
 
 // restRequestHandlingToGen builds a REST RequestHandling sub-element. Mirrors
 // serializeRestRequestHandling (Custom/Mapping/Simple).
+// requestHandlingTypeOf is the action-level discriminator that must agree with
+// the RequestHandling sub-element. It was hardcoded to "Custom" in both engines
+// regardless of the handler, so an export-mapping body claimed to be a custom
+// template.
+//
+// Measured against Studio Pro microflows (ako/TestApp, 11.13.0): Custom,
+// Mapping, FormData and Binary each pair with the matching sub-element. Simple
+// follows the same name rule but has no measured reference.
+func requestHandlingTypeOf(rh microflows.RequestHandling) string {
+	switch rh.(type) {
+	case *microflows.MappingRequestHandling:
+		return "Mapping"
+	case *microflows.BinaryRequestHandling:
+		return "Binary"
+	case *microflows.FormDataRequestHandling:
+		return "FormData"
+	case *microflows.SimpleRequestHandling:
+		return "Simple"
+	default:
+		return "Custom"
+	}
+}
+
 func restRequestHandlingToGen(rh microflows.RequestHandling) element.Element {
 	switch h := rh.(type) {
 	case *microflows.CustomRequestHandling:
@@ -1553,8 +1567,14 @@ func restRequestHandlingToGen(rh microflows.RequestHandling) element.Element {
 	case *microflows.MappingRequestHandling:
 		e := newElem("Microflows$MappingRequestHandling", string(h.ID))
 		addStr(e, "MappingId", string(h.MappingID))
-		addStr(e, "ContentType", h.ContentType)
-		addStr(e, "ParameterVariable", h.ParameterVariable)
+		// generated/metamodel gives this type exactly three properties:
+		// contentType (Json|Xml), mappingId, mappingVariableName. mxcli wrote
+		// "ParameterVariable" — a key the type does not own, which mxbuild
+		// tolerates and Studio Pro refuses to open — and left ContentType empty,
+		// which is not a member of the enum. Studio Pro writes
+		// {ContentType: "Json", MappingVariableName: "<var>"}.
+		addStr(e, "ContentType", orDefault(h.ContentType, "Json"))
+		addStr(e, "MappingVariableName", h.ParameterVariable)
 		return e
 	case *microflows.BinaryRequestHandling:
 		e := newElem("Microflows$BinaryRequestHandling", string(h.ID))
