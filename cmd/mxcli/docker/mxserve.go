@@ -112,6 +112,12 @@ func StartServe(opts ServeOptions) (*ServeServer, error) {
 	if err := verifyMxBuildCache(mxbuildPath); err != nil {
 		return nil, err
 	}
+	// The cache can hold a binary for another OS — the CDN only ships Linux, and
+	// Windows keeps one deliberately for Docker builds. Exec'ing it produces a
+	// bare "exec format error" naming neither cause nor remedy (#916).
+	if err := verifyRunsHere(mxbuildPath); err != nil {
+		return nil, err
+	}
 
 	javaHome := opts.JavaHome
 	if javaHome == "" {

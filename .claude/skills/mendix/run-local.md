@@ -58,6 +58,25 @@ association catalog only at startup; behavioural changes are hot-reloaded.
     createdb -h 127.0.0.1 -U mendix "$(basename app.mpr .mpr | tr '[:upper:]' '[:lower:]')"
     ```
 
+### Which mxbuild the loop uses
+
+- **Linux** — the CDN download cached at `~/.mxcli/mxbuild/<version>/`, as before.
+- **macOS / Windows** — **Studio Pro's bundled mxbuild**, resolved before the cache.
+  The Mendix CDN publishes **Linux archives only** (the URL varies by architecture,
+  not by OS), so a cached download on a Mac is a Linux `aarch64` ELF — the arch
+  matches, which is why it looks fine until exec.
+- `--mxbuild-path` overrides both, and is now honoured by the local loop (it used
+  to be documented and ignored — #916).
+
+If nothing runnable is found, the command says so up front instead of failing with
+`fork/exec …: exec format error`:
+
+```
+mxbuild from the Mendix CDN is a Linux binary and cannot run natively on darwin
+  Install Mendix Studio Pro 11.12.0 and use its bundled mx …
+  Or point mxcli at it explicitly with --mxbuild-path.
+```
+
 ## The intended loop
 
 ```bash
