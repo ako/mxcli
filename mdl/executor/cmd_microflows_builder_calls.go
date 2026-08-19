@@ -1562,6 +1562,21 @@ func (fb *flowBuilder) addImportFromMappingAction(s *ast.ImportFromMappingStmt) 
 		if s.OffsetExpr != nil {
 			resultHandling.OffsetExpression = fb.exprToString(s.OffsetExpr)
 		}
+	} else {
+		// No range keyword: the range is ALL, written explicitly. Leaving both
+		// pointers nil let them fall back to SingleObject — true for an
+		// object-rooted mapping — which stores Studio Pro's FIRST. That builds
+		// cleanly (mx check: 0 errors) and then throws at import time:
+		//
+		//	MicroflowException: key not found: Path(QName(None,),None,)
+		//	  at ...importer.mapping.MappingCache.storeValueMappingElement
+		//
+		// Studio Pro writes both flags false for a plain single-object import and
+		// expresses "one object" solely through VariableType=ObjectType. Only the
+		// RANGE is set here; the cardinality inference below is untouched.
+		f := false
+		resultHandling.RangeSingleObject = &f
+		resultHandling.ForceSingleOccurrence = &f
 	}
 	// Only FIRST overrides the mapping's cardinality; saying nothing leaves both
 	// axes to the inference, which is what keeps existing scripts writing what

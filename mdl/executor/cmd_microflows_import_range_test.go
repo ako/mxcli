@@ -115,19 +115,23 @@ func TestImportRange_LimitIsARangeNotACardinality(t *testing.T) {
 	}
 }
 
-// Saying nothing must keep writing what mxcli always wrote: cardinality inferred
-// from the mapping's root, range mirroring it. Every hand-written script that
-// predates the syntax depends on this.
-func TestImportRange_UnauthoredKeepsTheOldInference(t *testing.T) {
+// Saying nothing must keep the CARDINALITY inference: inferred from the
+// mapping's root. Every hand-written script that predates the syntax depends on
+// this, and it is unchanged.
+//
+// What did change: the range is now written explicitly as All rather than left
+// nil to fall back to the cardinality. This test previously asserted that
+// fallback (RangeSingleObject == nil), which was the defect — for an
+// object-rooted mapping it stored First and the runtime threw `key not found:
+// Path(QName(None,),None,)`. It only passed because it exercised the
+// list-rooted case, where the fallback is false either way and so harmless.
+func TestImportRange_UnauthoredKeepsTheCardinalityInference(t *testing.T) {
 	h := buildImportRange(t, true, &ast.ImportFromMappingStmt{})
-	if h.RangeSingleObject != nil {
-		t.Errorf("RangeSingleObject = %v, want nil (unauthored)", *h.RangeSingleObject)
-	}
 	if h.SingleObject {
 		t.Error("SingleObject = true, want false — a list-rooted mapping still infers a list")
 	}
 	if microflows.RangeSingleObjectOf(h) {
-		t.Error("the stored range must fall back to the inferred cardinality when unauthored")
+		t.Error("range SingleObject = true, want false — an unauthored range is All")
 	}
 }
 
@@ -167,5 +171,39 @@ func TestFormatImportMappingRange(t *testing.T) {
 	}
 	if got := formatImportMappingRange(nil); got != "" {
 		t.Errorf("nil handling = %q, want empty", got)
+	}
+}
+
+// upstream: `import from mapping M.IMM($json)` with no range keyword produced a
+// document the RUNTIME refuses, while mx check reported 0 errors:
+//
+//	MicroflowException: key not found: Path(QName(None,),None,)
+//	  at com.mendix.integration.importer.mapping.MappingCache.storeValueMappingElement
+//
+// Unauthored set NEITHER range pointer, so both ForceSingleOccurrence and
+// ConstantRange.SingleObject fell back to h.SingleObject — true for an
+// object-rooted mapping. Studio Pro writes BOTH false there and expresses "one
+// object" purely through VariableType=ObjectType; SingleObject=true means
+// "First" (take one of a list), which is a different activity.
+//
+// Measured against a Studio Pro-authored app on 11.13.0: in one boot, `all`
+// imported and the bare form threw, over the same mapping and the same JSON.
+func TestImportRange_UnauthoredObjectRootedWritesAllNotFirst(t *testing.T) {
+	h := buildImportRange(t, false, &ast.ImportFromMappingStmt{})
+
+	if microflows.RangeSingleObjectOf(h) {
+		t.Error("range SingleObject = true, want false — an unauthored range is All, " +
+			"not First; First makes the runtime resolve an occurrence path and fail " +
+			"with `key not found: Path(QName(None,),None,)`")
+	}
+	if h.ForceSingleOccurrence == nil || *h.ForceSingleOccurrence {
+		t.Errorf("ForceSingleOccurrence = %v, want explicit false (Studio Pro's shape)",
+			h.ForceSingleOccurrence)
+	}
+	// The cardinality axis is untouched: an object-rooted mapping still binds an
+	// OBJECT, or mxbuild rejects the list with CE0243.
+	if !h.SingleObject {
+		t.Error("SingleObject = false, want true — the object-rooted mapping still " +
+			"binds an object; only the RANGE changed")
 	}
 }
