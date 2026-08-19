@@ -255,25 +255,54 @@ func refuseObjectListItemTarget(result *bsonWidgetResult, name string) error {
 		name, name)
 }
 
+// refuseWidgetsAtColumnTarget refuses an INSERT/REPLACE that would write plain
+// widgets into a pluggable widget's object list (#935).
+//
+// This is the other half of #891, reached by the form that fix pointed authors
+// at. A `grid.column` target resolves to a CustomWidgets$WidgetObject, and the
+// executor routes it to InsertColumns/ReplaceColumn only when the body is
+// entirely `column …` blocks. Any other body — a container, a text, a button —
+// fell through to the generic widget path and was serialized into the grid's
+// column list, producing the same document the loader cannot read:
+//
+//	System.InvalidCastException: Unable to cast object of type
+//	'...LayoutWidgets.DivContainers.DivContainer' to type '...CustomWidgets.WidgetObject'
+//
+// So the guard cannot key on the *target* alone, the way #891's does — the
+// target is legitimate here. What is wrong is the pairing: widgets reaching a
+// path that only object-list items may enter. Refusing at the point of that
+// pairing covers INSERT (before/after/into) and REPLACE at once.
+//
+// A cell's contents are still editable: #834 made the widgets inside a
+// customContent column addressable by their own names, which is the form the
+// message names.
+func refuseWidgetsAtColumnTarget(gridRef, columnRef string) error {
+	return fmt.Errorf(
+		"%s.%s is a DataGrid2 column, so only a `column …` block may be written there — "+
+			"a widget put in the grid's column list leaves a project Studio Pro cannot open. "+
+			"To edit the cell's contents instead, target the widget inside it by its own name "+
+			"(for example `insert into <containerName> { … }`); `describe page` lists them",
+		gridRef, columnRef)
+}
+
 func (m *Mutator) InsertWidget(widgetRef string, columnRef string, position backend.InsertPosition, widgets []pages.Widget) error {
-	var result *bsonWidgetResult
 	if columnRef != "" {
-		r, err := findBsonColumn(m.rawData, widgetRef, columnRef, m.widgetFinder)
-		if err != nil {
+		// Resolve first, so a mistyped column still reports "not found" (with the
+		// available names) rather than the refusal below.
+		if _, err := findBsonColumn(m.rawData, widgetRef, columnRef, m.widgetFinder); err != nil {
 			return err
 		}
-		result = r
-	} else {
-		result = m.widgetFinder(m.rawData, widgetRef)
-		if result == nil {
-			return m.widgetNotFoundError(widgetRef)
-		}
-		if err := refuseObjectListItemTarget(result, widgetRef); err != nil {
-			return err
-		}
-		if n := m.columnMatchCount(widgetRef); n > 1 {
-			return columnAmbiguityError(widgetRef, n)
-		}
+		return refuseWidgetsAtColumnTarget(widgetRef, columnRef)
+	}
+	result := m.widgetFinder(m.rawData, widgetRef)
+	if result == nil {
+		return m.widgetNotFoundError(widgetRef)
+	}
+	if err := refuseObjectListItemTarget(result, widgetRef); err != nil {
+		return err
+	}
+	if n := m.columnMatchCount(widgetRef); n > 1 {
+		return columnAmbiguityError(widgetRef, n)
 	}
 
 	// Serialize widgets
@@ -411,24 +440,23 @@ func (m *Mutator) DropWidget(refs []backend.WidgetRef) error {
 }
 
 func (m *Mutator) ReplaceWidget(widgetRef string, columnRef string, widgets []pages.Widget) error {
-	var result *bsonWidgetResult
 	if columnRef != "" {
-		r, err := findBsonColumn(m.rawData, widgetRef, columnRef, m.widgetFinder)
-		if err != nil {
+		// Resolve first, so a mistyped column still reports "not found" (with the
+		// available names) rather than the refusal below.
+		if _, err := findBsonColumn(m.rawData, widgetRef, columnRef, m.widgetFinder); err != nil {
 			return err
 		}
-		result = r
-	} else {
-		result = m.widgetFinder(m.rawData, widgetRef)
-		if result == nil {
-			return m.widgetNotFoundError(widgetRef)
-		}
-		if err := refuseObjectListItemTarget(result, widgetRef); err != nil {
-			return err
-		}
-		if n := m.columnMatchCount(widgetRef); n > 1 {
-			return columnAmbiguityError(widgetRef, n)
-		}
+		return refuseWidgetsAtColumnTarget(widgetRef, columnRef)
+	}
+	result := m.widgetFinder(m.rawData, widgetRef)
+	if result == nil {
+		return m.widgetNotFoundError(widgetRef)
+	}
+	if err := refuseObjectListItemTarget(result, widgetRef); err != nil {
+		return err
+	}
+	if n := m.columnMatchCount(widgetRef); n > 1 {
+		return columnAmbiguityError(widgetRef, n)
 	}
 
 	newBsonWidgets, err := m.serializeWidgets(widgets)
@@ -944,6 +972,20 @@ func (m *Mutator) EnclosingEntityForChildren(widgetRef string) string {
 	return findEnclosingEntityContext(m.rawData, widgetRef)
 }
 
+// widgetOwnEntity returns the entity a widget contributes to its descendants,
+// whatever kind of widget it is. A plain Forms$ container keeps its source at
+// the top level; a pluggable one (DataGrid2, Gallery) keeps it in
+// Object.Properties under the schema's "datasource" key. EnclosingEntityForChildren
+// already consulted both, but the recursive walk consulted only the first, so a
+// widget nested under a pluggable list inherited the PAGE's context instead of
+// the list's.
+func widgetOwnEntity(wDoc bson.D) string {
+	if ent := extractEntityFromDataSource(wDoc); ent != "" {
+		return ent
+	}
+	return extractPluggableDataSourceEntity(wDoc)
+}
+
 // extractPluggableDataSourceEntity walks a CustomWidget's Object.Properties[]
 // looking for a "datasource" property and returns the EntityRef.Entity if any.
 func extractPluggableDataSourceEntity(widgetDoc bson.D) string {
@@ -972,10 +1014,8 @@ func extractPluggableDataSourceEntity(widgetDoc bson.D) string {
 		if dsDoc == nil {
 			continue
 		}
-		if entityRef := bsonnav.DGetDoc(dsDoc, "EntityRef"); entityRef != nil {
-			if entity := bsonnav.DGetString(entityRef, "Entity"); entity != "" {
-				return entity
-			}
+		if entity := entityFromEntityRef(bsonnav.DGetDoc(dsDoc, "EntityRef")); entity != "" {
+			return entity
 		}
 	}
 	return ""
@@ -1610,7 +1650,7 @@ func findEntityContextInWidgets(parentDoc bson.D, key string, widgetName string,
 			return currentEntity
 		}
 		entityCtx := currentEntity
-		if ent := extractEntityFromDataSource(wDoc); ent != "" {
+		if ent := widgetOwnEntity(wDoc); ent != "" {
 			entityCtx = ent
 		}
 		if ctx := findEntityContextInChildren(wDoc, widgetName, entityCtx); ctx != "" {
@@ -1671,9 +1711,45 @@ func findEntityContextInChildren(wDoc bson.D, widgetName string, currentEntity s
 				if !ok {
 					continue
 				}
-				if valDoc := bsonnav.DGetDoc(propDoc, "Value"); valDoc != nil {
-					if ctx := findEntityContextInWidgets(valDoc, "Widgets", widgetName, currentEntity); ctx != "" {
-						return ctx
+				valDoc := bsonnav.DGetDoc(propDoc, "Value")
+				if valDoc == nil {
+					continue
+				}
+				if ctx := findEntityContextInWidgets(valDoc, "Widgets", widgetName, currentEntity); ctx != "" {
+					return ctx
+				}
+				// One level deeper: an object-list item (a DataGrid2 column, an
+				// Accordion group, a PopupMenu item) is a WidgetObject of its own,
+				// and its widgets hang off ITS properties — Objects[].Properties[]
+				// .Value.Widgets. The loop above only reaches the grid's own widget
+				// properties, so a customContent cell was invisible to this walk and
+				// everything inside it reported no enclosing entity. That is the
+				// same descent findInWidgetChildren gained in #834; here it was
+				// still missing, so ALTER PAGE could FIND those widgets but built
+				// their bindings with an empty entity context — an association path
+				// in ContentParams then landed in the document as a literal
+				// attribute name (CE1613, #935).
+				//
+				// Deliberately keyed on the BSON shape rather than on the schema's
+				// "columns" property key: the same nesting carries every pluggable
+				// object list, and reading the key would tie the walk to one widget.
+				for _, item := range bsonnav.DGetArrayElements(bsonnav.DGet(valDoc, "Objects")) {
+					itemDoc, ok := item.(bson.D)
+					if !ok {
+						continue
+					}
+					for _, itemProp := range bsonnav.DGetArrayElements(bsonnav.DGet(itemDoc, "Properties")) {
+						itemPropDoc, ok := itemProp.(bson.D)
+						if !ok {
+							continue
+						}
+						itemValDoc := bsonnav.DGetDoc(itemPropDoc, "Value")
+						if itemValDoc == nil {
+							continue
+						}
+						if ctx := findEntityContextInWidgets(itemValDoc, "Widgets", widgetName, currentEntity); ctx != "" {
+							return ctx
+						}
 					}
 				}
 			}
@@ -1791,26 +1867,28 @@ func findNearestDSInChildren(wDoc bson.D, widgetName string, curDS bson.D) (bson
 }
 
 func extractEntityFromDataSource(wDoc bson.D) string {
-	ds := bsonnav.DGetDoc(wDoc, "DataSource")
-	if ds == nil {
+	return entityFromEntityRef(bsonnav.DGetDoc(bsonnav.DGetDoc(wDoc, "DataSource"), "EntityRef"))
+}
+
+// entityFromEntityRef resolves a datasource's EntityRef to an entity name,
+// covering both shapes Mendix stores. Shared by the plain-widget and pluggable
+// readers: the pluggable one handled only the direct form, so an
+// association-bound DataGrid2/Gallery reported no entity at all.
+func entityFromEntityRef(entityRef bson.D) string {
+	if entityRef == nil {
 		return ""
 	}
-	if entityRef := bsonnav.DGetDoc(ds, "EntityRef"); entityRef != nil {
-		// DirectEntityRef (database source): the entity is named directly.
-		if entity := bsonnav.DGetString(entityRef, "Entity"); entity != "" {
-			return entity
-		}
-		// IndirectEntityRef (association source, e.g. a ListView bound
-		// `from association`): the destination entity lives on the LAST
-		// EntityRefStep, not at EntityRef.Entity. Without this, descending into
-		// an association-bound list left the context entity unchanged, so a
-		// bare attribute inserted via ALTER PAGE resolved against the wrong
-		// (outer) entity and failed the build with CE1613 (FINDINGS #55).
-		if entity := lastStepDestinationEntity(entityRef); entity != "" {
-			return entity
-		}
+	// DirectEntityRef (database source): the entity is named directly.
+	if entity := bsonnav.DGetString(entityRef, "Entity"); entity != "" {
+		return entity
 	}
-	return ""
+	// IndirectEntityRef (association source, e.g. a ListView bound
+	// `from association`): the destination entity lives on the LAST
+	// EntityRefStep, not at EntityRef.Entity. Without this, descending into
+	// an association-bound list left the context entity unchanged, so a
+	// bare attribute inserted via ALTER PAGE resolved against the wrong
+	// (outer) entity and failed the build with CE1613 (FINDINGS #55).
+	return lastStepDestinationEntity(entityRef)
 }
 
 // lastStepDestinationEntity returns the DestinationEntity of the final
