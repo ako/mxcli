@@ -77,6 +77,19 @@ mxbuild from the Mendix CDN is a Linux binary and cannot run natively on darwin
   Or point mxcli at it explicitly with --mxbuild-path.
 ```
 
+### Windows and macOS toolchain
+
+- **JDK 21** — Mendix Studio Pro does not bundle one; its installer puts **Eclipse
+  Temurin JDK 21** in the usual place, which is where mxcli looks (`Eclipse
+  Adoptium` / `Java` / `Microsoft` under both Program Files, plus the per-user
+  `%LOCALAPPDATA%\Programs\…` installs winget produces). `JAVA_HOME` wins over all
+  of them. When nothing is found the error now lists every location it searched.
+- **Gradle** — bundled inside mxbuild (`modeler/tools/gradle`) and invoked by
+  mxbuild, not by mxcli. Studio Pro extracts its own copy to the parent of its
+  install directory (usually `C:\Program Files\Mendix`). A "Gradle not found"
+  from a local run therefore points at an incomplete or foreign mxbuild bundle —
+  check which mxbuild was resolved before looking for a system Gradle.
+
 ## The intended loop
 
 ```bash

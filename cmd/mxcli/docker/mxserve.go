@@ -127,7 +127,7 @@ func StartServe(opts ServeOptions) (*ServeServer, error) {
 		}
 		javaHome = jh
 	}
-	javaExe := filepath.Join(javaHome, "bin", "java")
+	javaExe := JavaExePath(javaHome)
 
 	host := opts.Host
 	if host == "" {
