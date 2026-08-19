@@ -117,6 +117,10 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 		mapping := parentObjectLists[strings.ToUpper(w.Type)]
 		isObjectListItem := mapping != nil || isUniversalObjectListKeyword(w.Type)
 		out = append(out, validatePluggableWidgetProperties(w, registry, locationPrefix)...)
+		// #928: contentparams with no `{N}` placeholder to consume them.
+		if lookupWidgetDef(w, registry) != nil {
+			out = append(out, validatePluggableContentParams(w, locationPrefix)...)
+		}
 		out = append(out, validateWidgetVisibility(w, registry, locationPrefix)...)
 		out = append(out, validateStaticWidget(w, locationPrefix)...)
 		out = append(out, validateDynamicTextFormatting(w, locationPrefix)...)
@@ -128,6 +132,10 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 		def := lookupWidgetDef(w, registry)
 		if def == nil && !isObjectListItem {
 			out = append(out, validateStaticWidgetUnknownProps(w, locationPrefix)...)
+			// #928: `editable:` on a widget Mendix gives no editability — same
+			// "silently dropped on write" family, but the flat property
+			// allow-list cannot see it because it is type-agnostic.
+			out = append(out, validateWidgetEditability(w, locationPrefix)...)
 		}
 		if mapping != nil {
 			out = append(out, validateObjectListItemEnums(w, mapping, locationPrefix)...)

@@ -8,6 +8,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A pluggable widget's text template no longer drops its `contentparams`** (#928) — `imageUrl: '{1}', contentparams: [{1} = PictureUrl]` on an Image widget stored a template with an **empty** parameter list, and mxbuild rejected it with `CE0720` ("place holder index 1 is greater than 0, the number of parameter(s)") on the **first write** — no describe round-trip needed. The engine took the parameters path only for mxcli's `{AttrName}` convenience spelling, so Mendix's own numeric `{1}` form had no route. Both spellings now reach the same stored shape; a `dynamictext` with identical syntax was the control that localised it to the pluggable path.
+
+### Added
+
+- **`MDL-WIDGET20` — `editable:` on a widget that has no editability** (#928) — accepted on any widget and silently dropped, so a button bound this way passed check, passed the build, and stayed enabled: a silent functional failure rather than a caught error. It cannot be implemented as asked. Measured against `generated/metamodel`, exactly **11** Pages types carry `Editability`/`ConditionalEditabilitySettings` — ten input widgets plus DataView — and **none** of the fourteen button types does; a button has conditional *visibility*, not editability. So mxcli reports it instead, naming visibility as the alternative. Both spellings are caught: `editable: 'x'` and the bracket form `editable: [expr]`, which is the one that genuinely works on inputs and would be the more surprising silent drop. A test pins the list against the metamodel so it cannot drift.
+
+- **`MDL-WIDGET21` — `contentparams` with no placeholder to consume them** — the residue of the fix above: parameters supplied where no property text carries a `{1}`-style placeholder have nothing to attach to and are dropped on write. Previously silent.
+
+  Root cause of both reports is one thing: the allow-lists behind MDL-WIDGET01 and MDL-WIDGET07 are widget-type **agnostic**. `isBuiltinPropName` is a single flat list holding both `ContentParams` and `Editable`; it answers "is this a real MDL property name anywhere", and both validators read it as "is this valid on this widget".
+
+
+### Fixed
+
 - **The Mendix 10.24 nightly is green again** — `14-project-settings-examples.mdl` set `DecimalScale`, which 10.24 does not have, so `TestMxCheck_DoctypeScripts` failed on that matrix entry on both engines while passing on every 11.x. Measured against blank projects: 10.24 stores 11 model settings, 11.6.6 stores 12, and `DecimalScale` is the only difference — each of the other five settings in that statement is accepted on 10.24 on its own. mxcli's refusal was correct (Studio Pro will not open a model carrying a property its version does not define, and mxbuild does not catch it); the example simply was not version-gated, and because the refusal covers the whole statement, one unsupported setting took five portable ones down with it. It is now its own `-- @version: 11.0+` section.
 
   A new guard, `TestDoctypeScriptsParseAfterVersionFiltering`, filters every doctype script for each nightly matrix version and asserts the result still parses. It needs no mxbuild, so a mis-gated script fails in seconds on push rather than hours later in a single nightly job. Writing it surfaced the trap that makes this easy to get wrong: a `/** */` block is a *documentation* comment bound to the statement after it, so gating the statement while leaving its comment outside the section orphans the comment and the script stops parsing — reported at the *next* statement, tens of lines away, which reads like an unrelated syntax error.

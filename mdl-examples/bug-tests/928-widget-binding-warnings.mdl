@@ -1,0 +1,50 @@
+-- ============================================================================
+-- Issue #928: the two bindings mxcli now WARNS about instead of dropping
+-- ============================================================================
+--
+-- This is a plain .mdl, not a .fail.mdl, on purpose. Both rules are WARNINGS,
+-- so `mxcli check` still exits 0 — naming it .fail.mdl would report "negative
+-- test unexpectedly passed" and make a working rule look regressed (the trap
+-- the Makefile documents above check-mdl). The rules themselves are covered by
+-- unit tests in mdl/executor/widget_binding_gaps_928_test.go.
+--
+-- Running `mxcli check` on this file should report:
+--
+--   MDL-WIDGET20  editable on a button — Mendix models editability on INPUT
+--                 widgets only. Measured against generated/metamodel: exactly
+--                 eleven Pages types carry Editability /
+--                 ConditionalEditabilitySettings (ten input widgets plus
+--                 DataView) and none of the fourteen button types does. So this
+--                 cannot be implemented; a button gets conditional VISIBILITY.
+--                 Both spellings are caught — `editable: 'x'` and the bracket
+--                 form `editable: [expr]`, which is the one that works on inputs
+--                 and so would be the more surprising silent drop.
+--
+--   MDL-WIDGET21  contentparams with no `{1}`-style placeholder to consume them.
+--                 The residue of fixing bug 1: the parameters have nothing to
+--                 attach to and are dropped on write.
+--
+-- Requires the module from 928-widget-binding-gaps.mdl.
+-- ============================================================================
+
+create or modify page BugTest928.Warnings (
+  Title: 'Warnings',
+  Layout: Atlas_Core.Atlas_Default
+)
+{
+  LISTVIEW lv (DataSource: DATABASE BugTest928.Product) {
+
+    -- MDL-WIDGET20: the reported form.
+    ACTIONBUTTON btnPlain ( Caption: 'Go', Action: NOTHING, editable: 'false' )
+
+    -- MDL-WIDGET20: the bracket form, which DOES work on an input widget.
+    ACTIONBUTTON btnBracket ( Caption: 'Go2', Action: NOTHING, editable: [false] )
+
+    -- MDL-WIDGET21: parameters with no placeholder to fill.
+    PLUGGABLEWIDGET 'com.mendix.widget.web.image.Image' imgNoPlaceholder (
+      datasource: imageUrl,
+      imageUrl: 'static.png', contentparams: [{1} = PictureUrl]
+    )
+  }
+}
+/
