@@ -284,11 +284,7 @@ func buildExportMappingElementModel(moduleName string, def *ast.ExportMappingEle
 		// Refused here rather than written, because the model would be valid MDL,
 		// pass `mxcli check`, and fail only in the build. (issue #927)
 		if strings.Contains(def.JsonName, "/") {
-			return nil, fmt.Errorf("export mapping member %q: an export mapping cannot reach a nested "+
-				"member directly — Mendix rejects it with CE5015 because the intermediate object has "+
-				"nothing producing it. Give %q its own element: Association/Module.Entity as %s { ... }. "+
-				"(Collapsing levels this way works for IMPORT mappings, which only read.)",
-				def.JsonName, strings.Split(def.JsonName, "/")[0], strings.Split(def.JsonName, "/")[0])
+			return nil, nestedExportMemberError(def.JsonName)
 		}
 		jsElem = idx.resolve(parentPath, def.JsonName)
 	}
@@ -458,4 +454,15 @@ func execDropExportMapping(ctx *ExecContext, s *ast.DropExportMappingStmt) error
 		fmt.Fprintf(ctx.Output, "Dropped export mapping %s.%s\n", s.Name.Module, s.Name.Name)
 	}
 	return nil
+}
+
+// nestedExportMemberError is shared by the check-time guard and the executor so
+// the author sees one message wherever the statement is stopped.
+func nestedExportMemberError(member string) error {
+	level := strings.Split(member, "/")[0]
+	return mdlerrors.NewValidationf("export mapping member %q: an export mapping cannot reach a nested "+
+		"member directly — Mendix rejects it with CE5015 because the intermediate object has nothing "+
+		"producing it. Give %q its own element: Association/Module.Entity as %s { ... }. "+
+		"(Collapsing levels this way works for IMPORT mappings, which only read.)",
+		member, level, level)
 }
