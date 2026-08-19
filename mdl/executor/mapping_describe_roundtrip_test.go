@@ -15,23 +15,26 @@ import (
 // The array case is the one that produced "ItemItem": the mapping element sits
 // at the item object, but the script addressed the ARRAY.
 func TestMappingMemberName(t *testing.T) {
+	// parentPath is the enclosing object element's path (#927); these are all
+	// direct children, where the member is a single segment either way.
 	cases := []struct {
-		name     string
-		jsonPath string
-		exposed  string
-		want     string
+		name       string
+		parentPath string
+		jsonPath   string
+		exposed    string
+		want       string
 	}{
-		{"value under root", "(Object)|total", "Total", "total"},
-		{"camelCase preserved", "(Object)|camelCase", "CamelCase", "camelCase"},
-		{"array item object uses the array's key", "(Object)|item|(Object)", "ItemItem", "item"},
-		{"value inside an array item", "(Object)|item|(Object)|id", "_id", "id"},
-		{"no JsonPath falls back (XML / message mapping)", "", "Total", "Total"},
-		{"root has no member name", "(Object)", "JsonObject", "JsonObject"},
+		{"value under root", "(Object)", "(Object)|total", "Total", "total"},
+		{"camelCase preserved", "(Object)", "(Object)|camelCase", "CamelCase", "camelCase"},
+		{"array item object uses the array's key", "(Object)", "(Object)|item|(Object)", "ItemItem", "item"},
+		{"value inside an array item", "(Object)|item|(Object)", "(Object)|item|(Object)|id", "_id", "id"},
+		{"no JsonPath falls back (XML / message mapping)", "(Object)", "", "Total", "Total"},
+		{"root has no member name", "", "(Object)", "JsonObject", "JsonObject"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := mappingMemberName(c.jsonPath, c.exposed); got != c.want {
-				t.Errorf("mappingMemberName(%q, %q) = %q, want %q", c.jsonPath, c.exposed, got, c.want)
+			if got := mappingMemberName(c.parentPath, c.jsonPath, c.exposed); got != c.want {
+				t.Errorf("mappingMemberName(%q, %q, %q) = %q, want %q", c.parentPath, c.jsonPath, c.exposed, got, c.want)
 			}
 		})
 	}

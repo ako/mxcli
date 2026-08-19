@@ -118,7 +118,7 @@ func describeExportMapping(ctx *ExecContext, name ast.QualifiedName) error {
 	if len(em.Elements) > 0 {
 		fmt.Fprintln(ctx.Output, "{")
 		for _, elem := range em.Elements {
-			printExportMappingElement(ctx.Output, elem, 1, true)
+			printExportMappingElement(ctx.Output, elem, 1, true, "")
 			fmt.Fprintln(ctx.Output)
 		}
 		fmt.Fprintln(ctx.Output, "};")
@@ -126,7 +126,7 @@ func describeExportMapping(ctx *ExecContext, name ast.QualifiedName) error {
 	return nil
 }
 
-func printExportMappingElement(w io.Writer, elem *model.ExportMappingElement, depth int, isRoot bool) {
+func printExportMappingElement(w io.Writer, elem *model.ExportMappingElement, depth int, isRoot bool, parentPath string) {
 	indent := strings.Repeat("  ", depth)
 	if elem.Kind == "Object" {
 		if isRoot {
@@ -144,11 +144,11 @@ func printExportMappingElement(w io.Writer, elem *model.ExportMappingElement, de
 			assoc := elem.Association
 			entity := elem.Entity
 			if assoc == "" && entity == "" {
-				fmt.Fprintf(w, "%s. as %s", indent, mappingMemberName(elem.JsonPath, elem.ExposedName))
+				fmt.Fprintf(w, "%s. as %s", indent, mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName))
 			} else if assoc == "" {
-				fmt.Fprintf(w, "%s./%s as %s", indent, entity, mappingMemberName(elem.JsonPath, elem.ExposedName))
+				fmt.Fprintf(w, "%s./%s as %s", indent, entity, mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName))
 			} else {
-				fmt.Fprintf(w, "%s%s/%s as %s", indent, assoc, entity, mappingMemberName(elem.JsonPath, elem.ExposedName))
+				fmt.Fprintf(w, "%s%s/%s as %s", indent, assoc, entity, mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName))
 			}
 			if len(elem.Children) > 0 {
 				fmt.Fprintln(w, " {")
@@ -156,7 +156,7 @@ func printExportMappingElement(w io.Writer, elem *model.ExportMappingElement, de
 		}
 		if len(elem.Children) > 0 {
 			for i, child := range elem.Children {
-				printExportMappingElement(w, child, depth+1, false)
+				printExportMappingElement(w, child, depth+1, false, elem.JsonPath)
 				if i < len(elem.Children)-1 {
 					fmt.Fprintln(w, ",")
 				} else {
@@ -172,7 +172,7 @@ func printExportMappingElement(w io.Writer, elem *model.ExportMappingElement, de
 		if parts := strings.Split(attrName, "."); len(parts) == 3 {
 			attrName = parts[2]
 		}
-		fmt.Fprintf(w, "%s%s = %s", indent, mappingMemberName(elem.JsonPath, elem.ExposedName), attrName)
+		fmt.Fprintf(w, "%s%s = %s", indent, mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName), attrName)
 	}
 }
 
@@ -272,6 +272,20 @@ func buildExportMappingElementModel(moduleName string, def *ast.ExportMappingEle
 		lookupPath = "(Object)"
 		jsElem = idx.byPath[lookupPath]
 	} else {
+		// An EXPORT mapping cannot collapse levels the way an import mapping can.
+		// Measured on mxbuild 11.13 with a three-way control: an import mapping
+		// binding "(Object)|customer|name" under an object element at "(Object)"
+		// builds at 0 errors, an export mapping over the same structure mapping
+		// only top-level fields builds at 0 errors, and the same export mapping
+		// with the collapsed member is CE5015 "There is no child mapping matching
+		// schema element". That follows from what the two do: an export mapping
+		// has to PRODUCE the customer node, so something must map it.
+		//
+		// Refused here rather than written, because the model would be valid MDL,
+		// pass `mxcli check`, and fail only in the build. (issue #927)
+		if strings.Contains(def.JsonName, "/") {
+			return nil, nestedExportMemberError(def.JsonName)
+		}
 		jsElem = idx.resolve(parentPath, def.JsonName)
 	}
 
@@ -440,4 +454,15 @@ func execDropExportMapping(ctx *ExecContext, s *ast.DropExportMappingStmt) error
 		fmt.Fprintf(ctx.Output, "Dropped export mapping %s.%s\n", s.Name.Module, s.Name.Name)
 	}
 	return nil
+}
+
+// nestedExportMemberError is shared by the check-time guard and the executor so
+// the author sees one message wherever the statement is stopped.
+func nestedExportMemberError(member string) error {
+	level := strings.Split(member, "/")[0]
+	return mdlerrors.NewValidationf("export mapping member %q: an export mapping cannot reach a nested "+
+		"member directly — Mendix rejects it with CE5015 because the intermediate object has nothing "+
+		"producing it. Give %q its own element: Association/Module.Entity as %s { ... }. "+
+		"(Collapsing levels this way works for IMPORT mappings, which only read.)",
+		member, level, level)
 }
