@@ -455,6 +455,16 @@ func (e *PluggableWidgetEngine) Build(def *WidgetDefinition, w *ast.WidgetV3) (*
 		case "Expression":
 			builder.SetExpression(propName, strVal)
 		case "TextTemplate":
+			// `contentparams:` supplies the parameters for a `{1}`-style template.
+			// Without this branch the numeric spelling had no route on a pluggable
+			// widget — the template was written with an empty parameter list and
+			// mxbuild answered CE0720. The named `{AttrName}` spelling keeps its
+			// own path, which derives parameters from the entity context. (#928)
+			if params := e.pageBuilder.buildClientTemplateParams(w.GetContentParams()); len(params) > 0 &&
+				numericTemplatePlaceholderRe.MatchString(strVal) {
+				builder.SetTextTemplateWithClientParams(propName, strVal, params)
+				break
+			}
 			entityCtx := e.pageBuilder.entityContext
 			builder.SetTextTemplateWithParams(propName, strVal, entityCtx)
 		case "Attribute":
@@ -1471,6 +1481,11 @@ func (e *PluggableWidgetEngine) applyChildSlots(builder backend.WidgetObjectBuil
 // isBuiltinPropName returns true for property names that are handled by
 // dedicated MDL keywords (DataSource, Attribute, etc.) rather than by
 // the explicit property pass.
+// numericTemplatePlaceholderRe matches Mendix's own `{1}` placeholder form, the
+// one that needs explicit ClientTemplate parameters. `{AttrName}` is mxcli's
+// convenience spelling and is resolved separately against the entity context.
+var numericTemplatePlaceholderRe = regexp.MustCompile(`\{[0-9]+\}`)
+
 func isBuiltinPropName(name string) bool {
 	switch name {
 	case "DataSource", "Attribute", "Label", "Caption", "Action",

@@ -317,6 +317,13 @@ type WidgetObjectBuilder interface {
 	SetChildWidgets(propertyKey string, children []pages.Widget)
 	SetTextTemplate(propertyKey string, text string)
 	SetTextTemplateWithParams(propertyKey string, text string, entityContext string)
+	// SetTextTemplateWithClientParams sets a text template whose `{1}`-style
+	// placeholders are backed by parameters the AUTHOR supplied (MDL
+	// `contentparams:`), rather than derived from `{AttrName}` placeholders
+	// against the entity context. Both spellings reach the same stored shape;
+	// without this one a pluggable widget's `{1}` template was written with an
+	// empty parameter list, which mxbuild rejects with CE0720 (#928).
+	SetTextTemplateWithClientParams(propertyKey string, text string, params []*pages.ClientTemplateParameter)
 	SetAction(propertyKey string, action pages.ClientAction)
 	SetAttributeObjects(propertyKey string, attributePaths []string)
 

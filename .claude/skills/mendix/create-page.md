@@ -846,6 +846,45 @@ alter page Mod.Home {
 
 For theme images, use paths relative to `theme/web/` (e.g., `img/logo.svg` → `theme/web/img/logo.svg`).
 
+**A per-row image URL comes from the entity, two ways.** `imageUrl` is a text
+template, so it takes either spelling:
+
+```sql
+-- named placeholder: shortest form for a single attribute
+pluggablewidget 'com.mendix.widget.web.image.Image' cardImage (
+  datasource: imageUrl, imageUrl: '{PictureUrl}'
+)
+
+-- numbered placeholders + contentparams: needed for several values, or a format block
+pluggablewidget 'com.mendix.widget.web.image.Image' cardImage (
+  datasource: imageUrl,
+  imageUrl: '{1}/{2}', contentparams: [{1} = BaseUrl, {2} = PictureUrl]
+)
+```
+
+Every `{N}` must have a matching parameter — Mendix rejects a shortfall with
+`CE0720` ("place holder index N is greater than …, the number of parameter(s)").
+Parameters with no `{N}` to fill are reported by MDL-WIDGET21 rather than
+dropped in silence.
+
+### Buttons Have Visibility, Not Editability
+
+`editable:` only exists on **input** widgets — Mendix gives exactly eleven page
+widgets an editability setting (textbox, textarea, checkbox, datepicker,
+dropdown, radiobuttons, referenceselector, inputreferencesetselector,
+filemanager, imageuploader, and dataview). No button of any kind has one, so
+`editable:` on a button is reported by MDL-WIDGET20 and does nothing.
+
+To disable a button conditionally, hide it instead — buttons do support
+conditional visibility — or put the condition in the microflow it calls:
+
+```sql
+actionbutton btnSubmit (
+  caption: 'Submit', action: microflow Mod.ACT_Submit,
+  visible: [$currentObject/Status = Mod.Status.Draft]
+)
+```
+
 ### CONTAINER / CUSTOMCONTAINER Widgets
 
 Generic container for grouping widgets. `customcontainer` is an alias for `container` (both map to `Forms$DivContainer`):
