@@ -1,0 +1,90 @@
+-- Bug test: `import from mapping` with NO range keyword built a document the
+-- Mendix RUNTIME refuses, while every static check passed.
+--
+--   com.mendix.modules.microflowengine.MicroflowException:
+--     key not found: Path(QName(None,),None,)
+--     at com.mendix.integration.importer.mapping.MappingCache.storeValueMappingElement
+--
+-- WHY NO CHECK CAUGHT IT: the model is valid. `mxcli check` passes, `mx check`
+-- reports 0 errors, mxbuild builds. The failure happens only when the activity
+-- actually runs, and the repo had no runtime coverage of import mappings at all
+-- — every existing mapping test stops at `mx check`.
+--
+-- ROOT CAUSE: the Range and the result variable's cardinality are two axes
+-- (issue #881). An unauthored range set NEITHER pointer, so both
+-- ForceSingleOccurrence and ConstantRange.SingleObject fell back to
+-- SingleObject — true for an object-rooted mapping — which is Studio Pro's
+-- FIRST ("take one of a list"), not a single-object import. Studio Pro writes
+-- both flags FALSE and expresses "one object" solely through
+-- VariableType=ObjectType.
+--
+-- MEASURED: against a Studio Pro-authored app on 11.13.0, in a single boot over
+-- the same mapping and the same JSON, `... all` imported and the bare form threw.
+-- Studio Pro's own microflow (ako/TestApp) stores ForceSingleOccurrence=false,
+-- ConstantRange{SingleObject:false}, VariableType=ObjectType.
+--
+-- To verify at runtime (not just check):
+--   mxcli run --local -p app.mpr        # wire ACT_ImportFlat to after-startup
+-- and confirm the log shows the imported value instead of the exception above.
+
+create module ImportSingle;
+
+create non-persistent entity ImportSingle.Item (
+  Title: string,
+  Qty: string
+);
+
+create json structure ImportSingle.JSON_Item
+  snippet '{"title": "hello", "qty": "3"}';
+
+create import mapping ImportSingle.IMM_Item
+  with json structure ImportSingle.JSON_Item
+{
+  create ImportSingle.Item {
+    Title = title,
+    Qty = qty
+  }
+};
+
+-- The regression: no range keyword. Must store ConstantRange{SingleObject:false}
+-- and ForceSingleOccurrence=false against an ObjectType variable.
+create microflow ImportSingle.ACT_ImportFlat ()
+returns string as $out
+begin
+  declare $out string = 'EMPTY';
+  declare $Json string = '{"title": "hello", "qty": "3"}';
+  $Item = import from mapping ImportSingle.IMM_Item($Json);
+  if $Item != empty then
+    set $out = $Item/Title;
+  end if;
+  return $out;
+end;
+/
+
+-- The control that always worked: an explicit range. If this one passes at
+-- runtime and the bare form above does not, the regression is back.
+create microflow ImportSingle.ACT_ImportAll ()
+returns string as $out
+begin
+  declare $out string = 'EMPTY';
+  declare $Json string = '{"title": "hello", "qty": "3"}';
+  $Items = import from mapping ImportSingle.IMM_Item($Json) all;
+  set $out = 'ok';
+  return $out;
+end;
+/
+
+-- `first` keeps Studio Pro's First semantics — both flags true — and is
+-- deliberately NOT changed by the fix.
+create microflow ImportSingle.ACT_ImportFirst ()
+returns string as $out
+begin
+  declare $out string = 'EMPTY';
+  declare $Json string = '{"title": "hello", "qty": "3"}';
+  $One = import from mapping ImportSingle.IMM_Item($Json) first;
+  set $out = 'ok';
+  return $out;
+end;
+/
+
+describe microflow ImportSingle.ACT_ImportFlat;
