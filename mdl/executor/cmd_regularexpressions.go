@@ -78,7 +78,7 @@ func execCreateRegularExpression(ctx *ExecContext, s *ast.CreateRegularExpressio
 		if err := ctx.Backend.UpdateRegularExpression(re); err != nil {
 			return mdlerrors.NewBackend("update regular expression", err)
 		}
-		fmt.Fprintf(ctx.Output, "Modified regular expression: %s\n", s.Name.String())
+		ctx.ReportMutation("Modified", "regular expression: %s", s.Name.String())
 		return nil
 	}
 	if err := ctx.Backend.CreateRegularExpression(re); err != nil {

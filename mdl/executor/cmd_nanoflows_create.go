@@ -262,7 +262,7 @@ func execCreateNanoflow(ctx *ExecContext, s *ast.CreateNanoflowStmt) error {
 		if err := ctx.Backend.UpdateNanoflow(nf); err != nil {
 			return mdlerrors.NewBackend("update nanoflow", err)
 		}
-		fmt.Fprintf(ctx.Output, "Replaced nanoflow: %s.%s\n", s.Name.Module, s.Name.Name)
+		ctx.ReportMutation("Replaced", "nanoflow: %s.%s", s.Name.Module, s.Name.Name)
 	} else {
 		if err := ctx.Backend.CreateNanoflow(nf); err != nil {
 			return mdlerrors.NewBackend("create nanoflow", err)

@@ -304,7 +304,7 @@ func execCreateMicroflow(ctx *ExecContext, s *ast.CreateMicroflowStmt) error {
 		if err := ctx.Backend.UpdateMicroflow(mf); err != nil {
 			return mdlerrors.NewBackend("update microflow", err)
 		}
-		fmt.Fprintf(ctx.Output, "Replaced microflow: %s.%s\n", s.Name.Module, s.Name.Name)
+		ctx.ReportMutation("Replaced", "microflow: %s.%s", s.Name.Module, s.Name.Name)
 	} else {
 		if err := ctx.Backend.CreateMicroflow(mf); err != nil {
 			return mdlerrors.NewBackend("create microflow", err)

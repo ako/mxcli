@@ -191,7 +191,7 @@ func execCreateAgentEditorModel(ctx *ExecContext, s *ast.CreateModelStmt) error 
 			return mdlerrors.NewBackend("update model", err)
 		}
 		invalidateHierarchy(ctx)
-		fmt.Fprintf(ctx.Output, "Modified model: %s\n", s.Name)
+		ctx.ReportMutation("Modified", "model: %s", s.Name)
 		return nil
 	}
 

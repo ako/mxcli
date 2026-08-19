@@ -891,7 +891,7 @@ func execCreateExternalEntity(ctx *ExecContext, s *ast.CreateExternalEntityStmt)
 		if err := ctx.Backend.UpdateEntity(dm.ID, existingEntity); err != nil {
 			return mdlerrors.NewBackend("update external entity", err)
 		}
-		fmt.Fprintf(ctx.Output, "Modified external entity: %s.%s\n", s.Name.Module, s.Name.Name)
+		ctx.ReportMutation("Modified", "external entity: %s.%s", s.Name.Module, s.Name.Name)
 		return nil
 	}
 
@@ -1052,7 +1052,7 @@ func createODataClient(ctx *ExecContext, stmt *ast.CreateODataClientStmt) error 
 						return mdlerrors.NewBackend("update OData client", err)
 					}
 					invalidateHierarchy(ctx)
-					fmt.Fprintf(ctx.Output, "Modified OData client: %s.%s\n", modName, svc.Name)
+					ctx.ReportMutation("Modified", "OData client: %s.%s", modName, svc.Name)
 					return nil
 				}
 				return mdlerrors.NewAlreadyExistsMsg("OData client", modName+"."+svc.Name, fmt.Sprintf("OData client already exists: %s.%s (use create or modify to update)", modName, svc.Name))
@@ -1466,7 +1466,7 @@ func createODataService(ctx *ExecContext, stmt *ast.CreateODataServiceStmt) erro
 						return mdlerrors.NewBackend("update OData service", err)
 					}
 					invalidateHierarchy(ctx)
-					fmt.Fprintf(ctx.Output, "Modified OData service: %s.%s\n", modName, svc.Name)
+					ctx.ReportMutation("Modified", "OData service: %s.%s", modName, svc.Name)
 					return nil
 				}
 				return mdlerrors.NewAlreadyExistsMsg("OData service", modName+"."+svc.Name, fmt.Sprintf("OData service already exists: %s.%s (use create or modify to update)", modName, svc.Name))

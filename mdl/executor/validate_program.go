@@ -146,6 +146,12 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 	// under --references, where it would only fire with -p (#836).
 	violations = append(violations, ValidateGrantRoles(prog)...)
 
+	// Flag an export mapping value whose member is a nested path — an export has
+	// to produce the intermediate node, so Mendix rejects it with CE5015. The
+	// answer is in the statement, so it runs here rather than under --references
+	// (#927).
+	violations = append(violations, ValidateExportMappingMembers(prog)...)
+
 	// Flag a REST client operation whose Body/Response mapping clause has no
 	// `{ ... }` body — Mendix cannot reference a mapping document from an
 	// operation, so the mapping would be dropped in silence (#843).

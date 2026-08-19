@@ -89,7 +89,7 @@ func execCreateMenu(ctx *ExecContext, s *ast.CreateMenuStmt) error {
 		if err := ctx.Backend.UpdateMenuDocument(md); err != nil {
 			return mdlerrors.NewBackend("update menu", err)
 		}
-		fmt.Fprintf(ctx.Output, "Modified menu %s\n", s.Name.String())
+		ctx.ReportMutation("Modified", "menu %s", s.Name.String())
 		return nil
 	}
 

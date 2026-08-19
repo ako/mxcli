@@ -1,0 +1,70 @@
+-- #910 — a one-line change must not re-mint every element identity.
+--
+-- Reported as "Studio Pro shows the entire nanoflow as changed": editing one
+-- argument of one JavaScript action call rewrote 36 of the nanoflow's 37 element
+-- $IDs, so version control painted the whole document as replaced. The same
+-- one-literal change to a microflow rewrote 21 of its 22.
+--
+-- Elision (ADR-0008) never covered this: it only skips a write when *nothing*
+-- changed. What was missing was carrying the stored $IDs onto a write that lands.
+--
+-- How to use this file. Run it once to settle the project, then run it again
+-- with the marked line changed, and compare the element identities of
+-- Bug910.ONL_Advisor before and after:
+--
+--   mxcli exec mdl-examples/bug-tests/910-rewrite-preserves-element-identities.mdl -p app.mpr
+--   # ... edit the CHANGE ME line below ...
+--   mxcli exec mdl-examples/bug-tests/910-rewrite-preserves-element-identities.mdl -p app.mpr
+--
+-- Expected: every $ID in the nanoflow's .mxunit survives, and the BSON diff is
+-- the changed argument alone. Re-running it unchanged reports
+-- "Unchanged nanoflow: Bug910.ONL_Advisor" and does not touch the file.
+
+CREATE MODULE Bug910;
+
+@position(100, 100)
+CREATE OR MODIFY PERSISTENT ENTITY Bug910."Brand" (
+  "Name": String(100)
+);
+
+@position(400, 100)
+CREATE OR MODIFY NON-PERSISTENT ENTITY Bug910."Settings" (
+  "ApiUrl": String(500),
+  "AccentColour": String(50)
+);
+
+CREATE OR MODIFY MICROFLOW Bug910."SUB_AdvisorSettings" (
+  $Brand: Bug910.Brand
+)
+RETURNS Bug910.Settings AS $Config
+BEGIN
+  $Config = CREATE Bug910."Settings" (
+    "ApiUrl" = 'https://advisor.example.com/api',
+    "AccentColour" = '#94fc1c'
+  );
+  RETURN $Config;
+END;
+/
+
+CREATE OR MODIFY JAVASCRIPT ACTION Bug910."JS_LoadAdvisor" (
+  "apiUrl": String,
+  "accentColour": String
+)
+RETURNS Void
+PLATFORM All
+AS $$
+    console.log("advisor", apiUrl, accentColour);
+$$;
+
+CREATE OR MODIFY NANOFLOW Bug910."ONL_Advisor" (
+  $Brand: Bug910.Brand
+)
+BEGIN
+  $Config = CALL MICROFLOW Bug910."SUB_AdvisorSettings" ("Brand" = $Brand);
+  $Result = CALL JAVASCRIPT ACTION Bug910."JS_LoadAdvisor" (
+    "apiUrl" = $Config/"ApiUrl",
+    -- CHANGE ME: swap for $Brand/"Name" and re-run. Every other element of the
+    -- nanoflow must keep its $ID.
+    "accentColour" = $Config/"AccentColour"
+  );
+END;

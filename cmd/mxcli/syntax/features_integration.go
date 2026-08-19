@@ -588,13 +588,21 @@ DESCRIBE DATABASE CONNECTION Ops.Erp;`,
 		Syntax: "SHOW IMPORT MAPPINGS [IN Module];\nDESCRIBE IMPORT MAPPING Module.Name;\n" +
 			"CREATE [OR MODIFY] IMPORT MAPPING Module.Name\n  WITH JSON STRUCTURE Module.JsonStruct\n{\n" +
 			"  create|find|find or create Module.Entity {\n    Attr = jsonField [KEY],\n" +
+			"    Attr = a/b/c,\n" +
 			"    Assoc/Module.Child = nestedKey { ... }\n  }\n};\nDROP IMPORT MAPPING Module.Name;\n\n" +
 			"OR MODIFY: updates mapping in-place, preserves UUID.\n\n" +
+			"Nested members (Attr = a/b/c):\n" +
+			"  Reaches a leaf several levels down with NO entity for the levels in\n" +
+			"  between — the shape Studio Pro produces when you tick a nested leaf\n" +
+			"  without ticking its parents. One entity, values from several depths.\n" +
+			"  Use Assoc/Module.Child = key { ... } instead when you WANT an entity\n" +
+			"  per level. The path may not cross a 0..* element: many items cannot\n" +
+			"  collapse into one value, and mxbuild rejects it with CE0256.\n\n" +
 			"Inherited attributes:\n" +
 			"  An entity mapped with EXTENDS can map its inherited attributes too —\n" +
 			"  name them exactly like its own. mxcli resolves each to the entity that\n" +
 			"  declares it, which is what Studio Pro needs to show the field mapped.",
-		Example: "CREATE IMPORT MAPPING Shop.IMM_Order\n  WITH JSON STRUCTURE Shop.JSON_Order\n{\n  create Shop.Order {\n    OrderId = orderId KEY,\n    TotalAmount = total\n  }\n};\n\n-- Idempotent update\nCREATE OR MODIFY IMPORT MAPPING Shop.IMM_Order\n  WITH JSON STRUCTURE Shop.JSON_Order\n{\n  find or create Shop.Order {\n    OrderId = orderId KEY,\n    TotalAmount = total,\n    Status = status\n  }\n};",
+		Example: "CREATE IMPORT MAPPING Shop.IMM_Order\n  WITH JSON STRUCTURE Shop.JSON_Order\n{\n  create Shop.Order {\n    OrderId = orderId KEY,\n    TotalAmount = total,\n    -- a leaf two levels down, without entities for customer/contact\n    Email = customer/contact/email\n  }\n};\n\n-- Idempotent update\nCREATE OR MODIFY IMPORT MAPPING Shop.IMM_Order\n  WITH JSON STRUCTURE Shop.JSON_Order\n{\n  find or create Shop.Order {\n    OrderId = orderId KEY,\n    TotalAmount = total,\n    Status = status\n  }\n};",
 		SeeAlso: []string{"export-mapping", "json-structure"},
 	})
 
@@ -606,7 +614,13 @@ DESCRIBE DATABASE CONNECTION Ops.Erp;`,
 			"show export mappings", "describe export mapping",
 			"with json structure", "null values", "as jsonKey",
 		},
-		Syntax:  "SHOW EXPORT MAPPINGS [IN Module];\nDESCRIBE EXPORT MAPPING Module.Name;\nCREATE [OR MODIFY] EXPORT MAPPING Module.Name\n  WITH JSON STRUCTURE Module.JsonStruct\n  [NULL VALUES LeaveOutElement|SendAsNil]\n{\n  Module.Entity {\n    jsonField = Attr,\n    Assoc/Module.Child AS nestedKey { ... }\n  }\n};\nDROP EXPORT MAPPING Module.Name;\n\nOR MODIFY: updates mapping in-place, preserves UUID.",
+		Syntax: "SHOW EXPORT MAPPINGS [IN Module];\nDESCRIBE EXPORT MAPPING Module.Name;\nCREATE [OR MODIFY] EXPORT MAPPING Module.Name\n  WITH JSON STRUCTURE Module.JsonStruct\n  [NULL VALUES LeaveOutElement|SendAsNil]\n{\n  Module.Entity {\n    jsonField = Attr,\n    Assoc/Module.Child AS nestedKey { ... }\n  }\n};\nDROP EXPORT MAPPING Module.Name;\n\nOR MODIFY: updates mapping in-place, preserves UUID.\n\n" +
+			"No nested-member form:\n" +
+			"  An import mapping can write `Attr = a/b/c` to reach a leaf without an\n" +
+			"  entity per level. An export mapping cannot: it has to PRODUCE the\n" +
+			"  intermediate node, so Mendix rejects a collapsed member with CE5015\n" +
+			"  (\"no child mapping matching schema element\"). Give the level its own\n" +
+			"  element: Assoc/Module.Child AS key { ... }.",
 		Example: "CREATE EXPORT MAPPING Shop.EMM_Order\n  WITH JSON STRUCTURE Shop.JSON_Order\n  NULL VALUES LeaveOutElement\n{\n  Shop.Order {\n    orderId = OrderId,\n    total = TotalAmount\n  }\n};\n\n-- Idempotent update\nCREATE OR MODIFY EXPORT MAPPING Shop.EMM_Order\n  WITH JSON STRUCTURE Shop.JSON_Order\n{\n  Shop.Order {\n    orderId = OrderId,\n    total = TotalAmount,\n    status = Status\n  }\n};",
 		SeeAlso: []string{"import-mapping", "json-structure"},
 	})

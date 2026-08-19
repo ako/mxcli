@@ -88,9 +88,8 @@ func buildImportChild(ctx *parser.ImportMappingChildContext) *ast.ImportMappingE
 		}
 
 		// JSON key after EQUALS
-		allIdent := ctx.AllIdentifierOrKeyword()
-		if len(allIdent) >= 1 {
-			elem.JsonName = identifierOrKeywordText(allIdent[0])
+		if id := ctx.IdentifierOrKeyword(); id != nil {
+			elem.JsonName = identifierOrKeywordText(id)
 		}
 
 		// Nested children
@@ -99,27 +98,21 @@ func buildImportChild(ctx *parser.ImportMappingChildContext) *ast.ImportMappingE
 			elem.Children = append(elem.Children, child)
 		}
 	} else if ctx.LPAREN() != nil {
-		// Value transform: attr = Module.MF(jsonField)
-		allIdent := ctx.AllIdentifierOrKeyword()
-		if len(allIdent) >= 1 {
-			elem.Attribute = identifierOrKeywordText(allIdent[0])
+		// Value transform: attr = Module.MF(a/b/c)
+		if id := ctx.IdentifierOrKeyword(); id != nil {
+			elem.Attribute = identifierOrKeywordText(id)
 		}
 		allQN := ctx.AllQualifiedName()
 		if len(allQN) >= 1 {
 			elem.Converter = buildQualifiedName(allQN[0]).String()
 		}
-		if len(allIdent) >= 2 {
-			elem.ConverterParam = identifierOrKeywordText(allIdent[1])
-		}
+		elem.ConverterParam = jsonMemberPathText(ctx.JsonMemberPath())
 	} else {
-		// Value assignment: attr = jsonField KEY?
-		allIdent := ctx.AllIdentifierOrKeyword()
-		if len(allIdent) >= 1 {
-			elem.Attribute = identifierOrKeywordText(allIdent[0])
+		// Value assignment: attr = a/b/c KEY?
+		if id := ctx.IdentifierOrKeyword(); id != nil {
+			elem.Attribute = identifierOrKeywordText(id)
 		}
-		if len(allIdent) >= 2 {
-			elem.JsonName = identifierOrKeywordText(allIdent[1])
-		}
+		elem.JsonName = jsonMemberPathText(ctx.JsonMemberPath())
 		if ctx.KEY() != nil {
 			elem.IsKey = true
 		}
@@ -201,9 +194,8 @@ func buildExportChild(ctx *parser.ExportMappingChildContext) *ast.ExportMappingE
 		elem.Entity = buildQualifiedName(allQN[1]).String()
 
 		// JSON key after AS
-		allIdent := ctx.AllIdentifierOrKeyword()
-		if len(allIdent) >= 1 {
-			elem.JsonName = identifierOrKeywordText(allIdent[0].(*parser.IdentifierOrKeywordContext))
+		if id := ctx.IdentifierOrKeyword(); id != nil {
+			elem.JsonName = identifierOrKeywordText(id.(*parser.IdentifierOrKeywordContext))
 		}
 
 		// Nested children
@@ -212,13 +204,10 @@ func buildExportChild(ctx *parser.ExportMappingChildContext) *ast.ExportMappingE
 			elem.Children = append(elem.Children, child)
 		}
 	} else {
-		// Value mapping: jsonField = Attr
-		allIdent := ctx.AllIdentifierOrKeyword()
-		if len(allIdent) >= 1 {
-			elem.JsonName = identifierOrKeywordText(allIdent[0].(*parser.IdentifierOrKeywordContext))
-		}
-		if len(allIdent) >= 2 {
-			elem.Attribute = identifierOrKeywordText(allIdent[1].(*parser.IdentifierOrKeywordContext))
+		// Value mapping: a/b/c = Attr
+		elem.JsonName = jsonMemberPathText(ctx.JsonMemberPath())
+		if id := ctx.IdentifierOrKeyword(); id != nil {
+			elem.Attribute = identifierOrKeywordText(id.(*parser.IdentifierOrKeywordContext))
 		}
 	}
 
@@ -323,4 +312,24 @@ func extractObjectHandling(ctx *parser.ImportMappingObjectHandlingContext) strin
 		return "Find"
 	}
 	return "Create"
+}
+
+// jsonMemberPathText renders a jsonMemberPath as the `/`-separated string the
+// AST carries. A single segment is the ordinary direct-child case; several
+// segments reach a leaf below the enclosing object element without an entity
+// for the levels in between (issue #927). The executor translates `/` to
+// Mendix's `|` when resolving against the JSON structure.
+func jsonMemberPathText(ctx parser.IJsonMemberPathContext) string {
+	if ctx == nil {
+		return ""
+	}
+	pathCtx, ok := ctx.(*parser.JsonMemberPathContext)
+	if !ok {
+		return ""
+	}
+	var segments []string
+	for _, seg := range pathCtx.AllIdentifierOrKeyword() {
+		segments = append(segments, identifierOrKeywordText(seg))
+	}
+	return strings.Join(segments, "/")
 }

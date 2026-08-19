@@ -40,6 +40,13 @@ func Reconcile(contents, stored []byte) (out []byte, unchanged bool) {
 	// is a change to the app rather than a debugging aid.
 	contents = CarryIdentity(contents, stored)
 
+	// The same reasoning one level down, for the writes that do land: a rebuild
+	// mints a fresh $ID for every sub-element, so a two-line change reads in
+	// version control as a whole-document replacement. TransplantIDs puts the
+	// stored ids back on the elements that still correspond, rewriting every
+	// reference with them.
+	contents = TransplantIDs(contents, stored)
+
 	if alwaysWrite() {
 		return contents, false
 	}
