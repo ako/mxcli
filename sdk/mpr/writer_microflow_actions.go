@@ -714,6 +714,8 @@ func serializeRestCallAction(a *microflows.RestCallAction) bson.D {
 			resultHandlingType = "HttpResponse"
 		case *microflows.ResultHandlingMapping:
 			resultHandlingType = "Mapping"
+		case *microflows.ResultHandlingFileDocument:
+			resultHandlingType = "FileDocument"
 		case *microflows.ResultHandlingNone:
 			resultHandlingType = "None"
 		}
@@ -1055,6 +1057,23 @@ func serializeRestResultHandling(rh microflows.ResultHandling, outputVar string)
 				{Key: "$ID", Value: idToBsonBinary(GenerateID())},
 				{Key: "$Type", Value: "DataTypes$ObjectType"},
 				{Key: "Entity", Value: "System.HttpResponse"},
+			}},
+		}
+
+	case *microflows.ResultHandlingFileDocument:
+		// Same shape as HttpResponse, but the entity is authored rather than
+		// fixed: it is always a System.FileDocument specialization (CE0362
+		// rejects the base). Issue #922.
+		return bson.D{
+			{Key: "$ID", Value: idToBsonBinary(string(h.ID))},
+			{Key: "$Type", Value: "Microflows$ResultHandling"},
+			{Key: "Bind", Value: outputVar != ""},
+			{Key: "ImportMappingCall", Value: nil},
+			{Key: "ResultVariableName", Value: outputVar},
+			{Key: "VariableType", Value: bson.D{
+				{Key: "$ID", Value: idToBsonBinary(GenerateID())},
+				{Key: "$Type", Value: "DataTypes$ObjectType"},
+				{Key: "Entity", Value: h.EntityRef},
 			}},
 		}
 

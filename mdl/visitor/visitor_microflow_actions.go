@@ -1529,6 +1529,13 @@ func buildRestCallStatement(ctx parser.IRestCallStatementContext) *ast.RestCallS
 			}
 		} else if returnsCtx.NONE() != nil || returnsCtx.NOTHING() != nil {
 			result.Type = ast.RestResultNone
+		} else if qns := returnsCtx.AllQualifiedName(); len(qns) == 1 {
+			// `returns Module.Entity` — store the response in a file document.
+			// Reached only after the keyword alternatives, so a bare entity name
+			// can never shadow `String` / `response` / `none` / `nothing`, each
+			// of which is its own token.
+			result.Type = ast.RestResultFileDocument
+			result.ResultEntity = buildQualifiedName(qns[0])
 		}
 
 		stmt.Result = result

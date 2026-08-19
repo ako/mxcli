@@ -194,7 +194,43 @@ func init() {
 		},
 		Syntax:  "SHOW REST CLIENTS [IN Module];\nSHOW PUBLISHED REST SERVICES [IN Module];\nDESCRIBE REST CLIENT Module.Name;\nDESCRIBE PUBLISHED REST SERVICE Module.Name;",
 		Example: "SHOW REST CLIENTS;\nDESCRIBE REST CLIENT MyModule.PetStoreAPI;\nSHOW PUBLISHED REST SERVICES IN MyModule;",
-		SeeAlso: []string{"rest.consumed", "rest.published", "integration"},
+		SeeAlso: []string{"rest.call", "rest.consumed", "rest.published", "integration"},
+	})
+
+	Register(SyntaxFeature{
+		Path:    "rest.call",
+		Summary: "REST CALL activity inside a microflow, and its five RETURNS forms",
+		Keywords: []string{
+			"rest call", "call rest service", "http get", "http post",
+			"returns response", "returns string", "returns mapping",
+			"file document", "filedocument", "download", "httpresponse",
+		},
+		Syntax: "[$Var =] REST CALL GET|POST|PUT|PATCH|DELETE '<url>' [WITH ({1} = expr, ...)]\n" +
+			"  [HEADER 'Name' = expr]\n" +
+			"  [AUTH BASIC $user PASSWORD $pass]\n" +
+			"  [BODY ...]\n" +
+			"  [TIMEOUT expr]\n" +
+			"  RETURNS <one of>;\n\n" +
+			"RETURNS String                          -- the response body as a string\n" +
+			"RETURNS response                        -- the whole System.HttpResponse object\n" +
+			"RETURNS Module.MyFile                   -- store the body in a file document\n" +
+			"RETURNS MAPPING Module.IMM AS Module.E  -- apply an import mapping (single object)\n" +
+			"RETURNS MAPPING Module.IMM AS LIST OF Module.E\n" +
+			"RETURNS NONE | NOTHING                  -- ignore the response\n\n" +
+			"-- The file document form takes a SPECIALIZATION of System.FileDocument.\n" +
+			"-- Mendix rejects the base type as a return type (CE0362), and MDL064\n" +
+			"-- reports that before the write. There is no matching form for an\n" +
+			"-- HttpResponse specialization because Mendix does not allow one\n" +
+			"-- (CE1540) — `RETURNS response` already names the only type it can be.",
+		Example: "create persistent entity MyModule.MyFile extends System.FileDocument ();\n\n" +
+			"create microflow MyModule.ACT_Download ($Location: String)\n" +
+			"begin\n" +
+			"  $file = rest call get '{1}' with ({1} = $Location)\n" +
+			"    header 'Accept' = 'application/octet-stream'\n" +
+			"    timeout 300\n" +
+			"    returns MyModule.MyFile;\n" +
+			"end;",
+		SeeAlso: []string{"rest", "rest.consumed", "microflow"},
 	})
 
 	Register(SyntaxFeature{

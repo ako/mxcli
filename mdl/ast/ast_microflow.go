@@ -823,13 +823,17 @@ const (
 	RestResultResponse                       // Return HttpResponse object
 	RestResultMapping                        // Use import mapping
 	RestResultNone                           // Ignore response
+	// RestResultFileDocument stores the response in a file document. Mendix
+	// requires a SPECIALIZATION here: `System.FileDocument` itself is rejected
+	// as a return type with CE0362, so ResultEntity always names a subclass.
+	RestResultFileDocument
 )
 
 // RestResult represents the response handling configuration.
 type RestResult struct {
 	Type         RestResultType // Result type
 	MappingName  QualifiedName  // Import mapping name (for Mapping type)
-	ResultEntity QualifiedName  // Result entity type (for Mapping type)
+	ResultEntity QualifiedName  // Result entity type (for Mapping and FileDocument types)
 	// IsList distinguishes `as Module.Entity` (single object) from
 	// `as list of Module.Entity` (list). Studio Pro stores this on the
 	// microflow's ImportMappingCall (Range.SingleObject /

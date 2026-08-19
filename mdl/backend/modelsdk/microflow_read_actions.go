@@ -328,7 +328,7 @@ func actionFromGen(el element.Element) microflows.MicroflowAction {
 			out.RequestHandling = restRequestHandlingFromRaw(rh)
 		}
 		if rh, ok := raw.Lookup("ResultHandling").DocumentOK(); ok {
-			out.ResultHandling = restResultHandlingFromRaw(rh)
+			out.ResultHandling = restResultHandlingFromRaw(rh, rawStr(raw, "ResultHandlingType"))
 		}
 		return out
 
@@ -788,10 +788,18 @@ func restRequestHandlingFromRaw(doc bson.Raw) microflows.RequestHandling {
 }
 
 // restResultHandlingFromRaw reconstructs a REST call's result handling. A Mapping
-// result carries an ImportMappingCall; the other variants discriminate on the
-// VariableType ($Type Void → Nothing, ObjectType System.HttpResponse → response,
-// else String). Inverse of restResultHandlingToGen.
-func restResultHandlingFromRaw(doc bson.Raw) microflows.ResultHandling {
+// result carries an ImportMappingCall; the rest are told apart by Mendix's own
+// ResultHandlingType discriminator, falling back to the VariableType when that
+// property is absent (it is omitempty, so a Studio Pro document need not carry
+// it). Inverse of restResultHandlingToGen.
+//
+// The fallback must distinguish FileDocument from HttpResponse by entity name,
+// because both are stored as DataTypes$ObjectType. Reading it as "anything that
+// is not literally System.HttpResponse is a String" was issue #922: a REST call
+// storing into a file document described as `returns String`, and a describe →
+// exec round trip rewrote the stored type from FileDocument to String — with
+// mxbuild still reporting zero errors, so nothing downstream noticed.
+func restResultHandlingFromRaw(doc bson.Raw, handlingType string) microflows.ResultHandling {
 	id := model.ID(rawStr(doc, "$ID"))
 	resultVar := rawStr(doc, "ResultVariableName")
 	if imc, ok := doc.Lookup("ImportMappingCall").DocumentOK(); ok {
@@ -811,11 +819,17 @@ func restResultHandlingFromRaw(doc bson.Raw) microflows.ResultHandling {
 		entity = rawStr(vt, "Entity")
 	}
 	switch {
-	case vtType == "DataTypes$VoidType":
+	case handlingType == "FileDocument" ||
+		(handlingType == "" && vtType == "DataTypes$ObjectType" && entity != "" && entity != "System.HttpResponse"):
+		h := &microflows.ResultHandlingFileDocument{VariableName: resultVar, EntityRef: entity}
+		h.ID = id
+		return h
+	case handlingType == "None" || vtType == "DataTypes$VoidType":
 		h := &microflows.ResultHandlingNone{}
 		h.ID = id
 		return h
-	case vtType == "DataTypes$ObjectType" && entity == "System.HttpResponse":
+	case handlingType == "HttpResponse" ||
+		(handlingType == "" && vtType == "DataTypes$ObjectType" && entity == "System.HttpResponse"):
 		h := &microflows.ResultHandlingHttpResponse{VariableName: resultVar}
 		h.ID = id
 		return h

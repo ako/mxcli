@@ -1208,6 +1208,16 @@ func (fb *flowBuilder) addRestCallAction(s *ast.RestCallStmt) model.ID {
 			BaseElement:  model.BaseElement{ID: model.ID(types.GenerateID())},
 			VariableName: s.OutputVariable,
 		}
+	case ast.RestResultFileDocument:
+		// `returns Module.Entity` — store the response in a file document. The
+		// entity is always a System.FileDocument specialization; the base type
+		// is rejected by Mendix as a return type (CE0362), which checkRestCall
+		// reports before the write. Issue #922.
+		resultHandling = &microflows.ResultHandlingFileDocument{
+			BaseElement:  model.BaseElement{ID: model.ID(types.GenerateID())},
+			VariableName: s.OutputVariable,
+			EntityRef:    s.Result.ResultEntity.String(),
+		}
 	case ast.RestResultMapping:
 		mappingQN := s.Result.MappingName.Module + "." + s.Result.MappingName.Name
 		entityQN := s.Result.ResultEntity.Module + "." + s.Result.ResultEntity.Name

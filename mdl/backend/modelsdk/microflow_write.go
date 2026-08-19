@@ -1473,6 +1473,8 @@ func restCallActionToGen(a *microflows.RestCallAction) element.Element {
 			resultHandlingType = "HttpResponse"
 		case *microflows.ResultHandlingMapping:
 			resultHandlingType = "Mapping"
+		case *microflows.ResultHandlingFileDocument:
+			resultHandlingType = "FileDocument"
 		case *microflows.ResultHandlingNone:
 			resultHandlingType = "None"
 		}
@@ -1570,6 +1572,14 @@ func restResultHandlingToGen(rh microflows.ResultHandling, outputVar string) ele
 		addStr(e, "ResultVariableName", outputVar)
 		vt := newElem("DataTypes$ObjectType", "")
 		addStr(vt, "Entity", "System.HttpResponse")
+		addPart(e, "VariableType", vt)
+		return e
+	case *microflows.ResultHandlingFileDocument:
+		e := newElem("Microflows$ResultHandling", string(h.ID))
+		addBool(e, "Bind", outputVar != "")
+		addStr(e, "ResultVariableName", outputVar)
+		vt := newElem("DataTypes$ObjectType", "")
+		addStr(vt, "Entity", h.EntityRef)
 		addPart(e, "VariableType", vt)
 		return e
 	case *microflows.ResultHandlingNone:

@@ -1242,6 +1242,19 @@ func extractFieldName(attribute, association string) string {
 	return parts[len(parts)-1]
 }
 
+// unsupportedRestResult renders a result handling mxcli cannot express as MDL.
+//
+// It deliberately produces something the parser REJECTS. A describe whose output
+// silently means something else is worse than one that fails: the previous
+// behaviour rendered any unrecognised handling as `returns String`, so a
+// describe → exec round trip rewrote a FileDocument result into a String one and
+// mxbuild still reported zero errors (#922). Anything that reaches this is a gap
+// in the reader, and the text names it so the report says which.
+func unsupportedRestResult(what string) string {
+	return fmt.Sprintf("<<unsupported result handling: %s — please report this "+
+		"with the microflow name at https://github.com/mendixlabs/mxcli/issues>>", what)
+}
+
 // formatRestCallAction formats a REST call action as MDL.
 func formatRestCallAction(ctx *ExecContext, a *microflows.RestCallAction) string {
 	var sb strings.Builder
@@ -1256,6 +1269,8 @@ func formatRestCallAction(ctx *ExecContext, a *microflows.RestCallAction) string
 			outputVar = rh.VariableName
 		case *microflows.ResultHandlingMapping:
 			outputVar = rh.ResultVariable
+		case *microflows.ResultHandlingFileDocument:
+			outputVar = rh.VariableName
 		}
 	}
 	if outputVar != "" {
@@ -1384,13 +1399,25 @@ func formatRestCallAction(ctx *ExecContext, a *microflows.RestCallAction) string
 				}
 				sb.WriteString(string(rh.ResultEntityID))
 			}
+		case *microflows.ResultHandlingFileDocument:
+			// A file document result is always bound to a System.FileDocument
+			// specialization, so the entity is the whole clause. Rendering this
+			// as "String" was #922: the description round-tripped into a model
+			// whose activity returned a string instead of a file, and mxbuild
+			// reported nothing.
+			sb.WriteString(rh.EntityRef)
 		case *microflows.ResultHandlingNone:
 			sb.WriteString("Nothing")
 		default:
-			sb.WriteString("String")
+			// Refuse rather than guess. The previous "String" fallback here and
+			// below is what turned an unread result handling into a silent
+			// retyping of the activity (#922); an unknown one is a gap in the
+			// reader, and saying so is the only outcome that cannot corrupt a
+			// round trip.
+			sb.WriteString(unsupportedRestResult(fmt.Sprintf("%T", rh)))
 		}
 	} else {
-		sb.WriteString("String")
+		sb.WriteString(unsupportedRestResult("no result handling"))
 	}
 
 	// Note: Error handling suffix is added at the activity level, not here

@@ -611,6 +611,7 @@ restCallReturnsClause
     | RETURNS MAPPING qualifiedName AS qualifiedName            // Import mapping → single object
     | RETURNS NONE                                              // Ignore response
     | RETURNS NOTHING                                           // Ignore response (alias)
+    | RETURNS qualifiedName                                     // Store in file document (a System.FileDocument specialization)
     ;
 
 /**
