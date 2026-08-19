@@ -1,0 +1,39 @@
+-- Negative test: `Body: file from $Doc` must be REFUSED (MDL-REST02).
+--
+-- It used to be accepted and silently degraded. Both engines folded FILE into
+-- the TEMPLATE branch and wrote a Rest$StringBody holding the EXPRESSION TEXT,
+-- so the request sent the four bytes `$Doc` instead of the document:
+--
+--   Content-Length: 4
+--   data:application/octet-stream;base64,JERvYw==   ->  b'$Doc'
+--
+-- measured against httpbingo with an 8090-byte PNG. `mxcli check` passed,
+-- `mx check` reported 0 errors, and the call returned HTTP 200 — every signal
+-- said success while the payload was wrong.
+--
+-- There is no correct type to write instead: Mendix's 11.13 metamodel has
+-- exactly three request-body types (Rest$JsonBody, Rest$StringBody,
+-- Rest$ImplicitMappingBody) and none is binary, so binary upload is not
+-- expressible in MDL. Refusing is the fix; a Java action is the route.
+--
+-- Writer sites that produced the bad document:
+--   mdl/backend/modelsdk/consumed_rest_write.go  (default engine)
+--   sdk/mpr/writer_rest.go                       (legacy engine)
+
+create module FileBody;
+
+create entity FileBody.Upload extends System.FileDocument (
+  Caption: string
+);
+
+create rest client FileBody.RC_Upload (
+  BaseUrl: 'https://httpbingo.org',
+  Authentication: NONE
+)
+{
+  OPERATION PostFile {
+    Method: POST,
+    Path: '/post',
+    Body: FILE FROM $Doc
+  }
+};
