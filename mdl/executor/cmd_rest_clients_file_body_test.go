@@ -19,7 +19,8 @@ import (
 // request-body types (Rest$JsonBody, Rest$StringBody, Rest$ImplicitMappingBody)
 // and none of them is binary. So the fix is to REFUSE the clause, the way
 // MDL-REST01 refuses a mapping document in an inline mapping, rather than
-// degrade it to something that looks like it works.
+// degrade it to something that looks like it works — and point at the
+// microflow REST CALL activity, which does carry a binary body.
 func TestBuildRestClientOperation_RefusesFileRequestBody(t *testing.T) {
 	_, err := buildRestClientOperation(&ast.RestOperationDef{
 		Name:         "Upload",
@@ -29,7 +30,10 @@ func TestBuildRestClientOperation_RefusesFileRequestBody(t *testing.T) {
 	if err == nil {
 		t.Fatal("a file request body must be refused: writing it sends the expression text, not the file")
 	}
-	for _, want := range []string{"binary", "$Doc", "Java action"} {
+	// The message must point at the route that WORKS. Binary POST is expressible
+	// on the microflow REST CALL activity (Microflows$BinaryRequestHandling);
+	// only the consumed client document has nowhere to put it.
+	for _, want := range []string{"binary", "$Doc", "rest call post", "body binary"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error should mention %q, got:\n%v", want, err)
 		}

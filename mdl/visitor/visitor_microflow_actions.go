@@ -1467,7 +1467,15 @@ func buildRestCallStatement(ctx parser.IRestCallStatementContext) *ast.RestCallS
 		bodyCtx := bodyClause.(*parser.RestCallBodyClauseContext)
 		body := &ast.RestBody{}
 
-		if bodyCtx.MAPPING() != nil {
+		if bodyCtx.BINARY_TYPE() != nil {
+			// Binary body: BODY BINARY <expression>. Studio Pro stores the
+			// expression that yields the bytes — a FileDocument's Contents
+			// member, e.g. `$Doc/Contents` — as Microflows$BinaryRequestHandling.
+			body.Type = ast.RestBodyBinary
+			if expr := bodyCtx.Expression(); expr != nil {
+				body.Template = buildSourceExpression(expr)
+			}
+		} else if bodyCtx.MAPPING() != nil {
 			// Export mapping: BODY MAPPING QualifiedName FROM $Variable
 			body.Type = ast.RestBodyMapping
 			if qn := bodyCtx.QualifiedName(); qn != nil {

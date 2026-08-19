@@ -591,9 +591,10 @@ func checkFileRequestBody(opDef *ast.RestOperationDef) error {
 			"  Rest$ImplicitMappingBody, so a file document has nowhere to go. mxcli used to\n"+
 			"  write a string body holding the literal text %q, which sends %d bytes and\n"+
 			"  still returns 200.\n"+
-			"  Send binary with a Java action instead, or post the file's contents as a\n"+
-			"  string/JSON body if the endpoint accepts that.",
-		target, target, len(target))
+			"  Binary POST lives on the microflow activity, not the client document:\n"+
+			"    rest call post '<url>' header 'ContentType' = '<type>' body binary %s/Contents\n"+
+			"  (Microflows$BinaryRequestHandling — the shape Studio Pro writes).",
+		target, target, len(target), target)
 }
 
 // convertMappingEntries converts AST RestMappingEntry slices to model RestResponseMapping slices.

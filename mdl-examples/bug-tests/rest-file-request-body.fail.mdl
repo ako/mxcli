@@ -13,8 +13,13 @@
 --
 -- There is no correct type to write instead: Mendix's 11.13 metamodel has
 -- exactly three request-body types (Rest$JsonBody, Rest$StringBody,
--- Rest$ImplicitMappingBody) and none is binary, so binary upload is not
--- expressible in MDL. Refusing is the fix; a Java action is the route.
+-- Rest$ImplicitMappingBody) and none is binary. Refusing is the fix.
+--
+-- Binary POST is expressible, just not here: it lives on the microflow REST
+-- CALL activity as Microflows$BinaryRequestHandling, which is what Studio Pro
+-- writes. See mdl-examples/bug-tests/rest-binary-post.mdl.
+--     rest call post '<url>' header 'ContentType' = '<type>'
+--       body binary $Doc/Contents returns response;
 --
 -- Writer sites that produced the bad document:
 --   mdl/backend/modelsdk/consumed_rest_write.go  (default engine)

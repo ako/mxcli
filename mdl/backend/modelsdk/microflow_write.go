@@ -1461,7 +1461,16 @@ func restCallActionToGen(a *microflows.RestCallAction) element.Element {
 			addPart(e, "RequestHandling", rh)
 		}
 	}
-	addStr(e, "RequestHandlingType", "Custom")
+	// The discriminator must agree with the sub-element. It was hardcoded to
+	// "Custom", which is wrong for a binary body: Studio Pro writes "Binary"
+	// alongside Microflows$BinaryRequestHandling. Only the Binary case is
+	// derived here — the others are left as they were, because no Studio Pro
+	// reference has been measured for them and they work today.
+	requestHandlingType := "Custom"
+	if _, ok := a.RequestHandling.(*microflows.BinaryRequestHandling); ok {
+		requestHandlingType = "Binary"
+	}
+	addStr(e, "RequestHandlingType", requestHandlingType)
 	addStr(e, "RequestProxyType", "DefaultProxy")
 	resultHandlingType := "String"
 	if a.ResultHandling != nil {
@@ -1546,6 +1555,10 @@ func restRequestHandlingToGen(rh microflows.RequestHandling) element.Element {
 		addStr(e, "MappingId", string(h.MappingID))
 		addStr(e, "ContentType", h.ContentType)
 		addStr(e, "ParameterVariable", h.ParameterVariable)
+		return e
+	case *microflows.BinaryRequestHandling:
+		e := newElem("Microflows$BinaryRequestHandling", string(h.ID))
+		addStr(e, "Expression", h.Expression)
 		return e
 	case *microflows.SimpleRequestHandling:
 		return newElem("Microflows$SimpleRequestHandling", string(h.ID))

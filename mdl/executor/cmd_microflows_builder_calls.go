@@ -1169,6 +1169,14 @@ func (fb *flowBuilder) addRestCallAction(s *ast.RestCallStmt) model.ID {
 				Template:       template,
 				TemplateParams: templateParams,
 			}
+		case ast.RestBodyBinary:
+			// Binary body — the raw bytes the expression yields. Studio Pro stores
+			// a FileDocument's Contents member here (`$Doc/Contents`), and the
+			// action's RequestHandlingType becomes "Binary".
+			requestHandling = &microflows.BinaryRequestHandling{
+				BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
+				Expression:  fb.exprToString(s.Body.Template),
+			}
 		case ast.RestBodyMapping:
 			// Export mapping
 			mappingQN := s.Body.MappingName.Module + "." + s.Body.MappingName.Name

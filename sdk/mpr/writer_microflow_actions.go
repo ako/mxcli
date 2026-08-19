@@ -697,9 +697,16 @@ func serializeRestCallAction(a *microflows.RestCallAction) bson.D {
 		doc = append(doc, bson.E{Key: "RequestHandling", Value: serializeRestRequestHandling(a.RequestHandling)})
 	}
 
-	// RequestHandlingType and RequestProxyType are at action level
+	// RequestHandlingType and RequestProxyType are at action level. The type must
+	// agree with the sub-element: it was hardcoded to "Custom", which is wrong for
+	// a binary body. Only the Binary case is derived — the others are unchanged,
+	// having no measured Studio Pro reference.
+	requestHandlingType := "Custom"
+	if _, ok := a.RequestHandling.(*microflows.BinaryRequestHandling); ok {
+		requestHandlingType = "Binary"
+	}
 	doc = append(doc,
-		bson.E{Key: "RequestHandlingType", Value: "Custom"},
+		bson.E{Key: "RequestHandlingType", Value: requestHandlingType},
 		bson.E{Key: "RequestProxyType", Value: "DefaultProxy"},
 	)
 
@@ -907,6 +914,15 @@ func serializeRestOperationCallAction(a *microflows.RestOperationCallAction) bso
 // serializeRestRequestHandling serializes RequestHandling to BSON.
 func serializeRestRequestHandling(rh microflows.RequestHandling) bson.D {
 	switch h := rh.(type) {
+	case *microflows.BinaryRequestHandling:
+		// Binary request body. Studio Pro stores the expression yielding the
+		// bytes — a FileDocument's Contents member — and pairs it with an
+		// action-level RequestHandlingType of "Binary".
+		return bson.D{
+			{Key: "$ID", Value: idToBsonBinary(GenerateID())},
+			{Key: "$Type", Value: "Microflows$BinaryRequestHandling"},
+			{Key: "Expression", Value: h.Expression},
+		}
 	case *microflows.CustomRequestHandling:
 		doc := bson.D{
 			{Key: "$ID", Value: idToBsonBinary(string(h.ID))},

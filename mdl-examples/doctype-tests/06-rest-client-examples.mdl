@@ -380,9 +380,10 @@ create rest client RestTest.RC014_JsonBodyAPI (
 -- `mx check` 0 errors. It is now refused as MDL-REST02.
 --
 -- Mendix has no binary request body: a consumed operation stores one of
--- Rest$JsonBody, Rest$StringBody or Rest$ImplicitMappingBody. Upload binary
--- from a Java action, or send the contents as a string/JSON body if the
--- endpoint accepts that.
+-- Rest$JsonBody, Rest$StringBody or Rest$ImplicitMappingBody. Binary POST is
+-- done from a microflow instead, which does have a binary request body:
+--   rest call post '<url>' header 'ContentType' = '<type>'
+--     body binary $Doc/Contents returns response;
 --
 -- Downloading is unaffected — `response: file as $Doc` works.
 
@@ -570,9 +571,9 @@ create rest client RestTest.RC018_PetStoreAPI (
     response: none
   }
 
-  -- Upload pet image: NOT expressible. `body: file from $ImageFile` is refused
-  -- as MDL-REST02 — Mendix has no binary request body, and mxcli used to send
-  -- the expression text instead of the file. Use a Java action.
+  -- Upload pet image: not expressible HERE. `body: file from $ImageFile` is
+  -- refused as MDL-REST02 — a consumed operation has no binary request body.
+  -- Use a microflow: `rest call post ... body binary $ImageFile/Contents`.
 };
 
 -- ============================================================================
