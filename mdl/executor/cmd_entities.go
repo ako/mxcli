@@ -381,7 +381,7 @@ func execCreateEntity(ctx *ExecContext, s *ast.CreateEntityStmt) error {
 		// Invalidate caches so updated entity is visible
 		invalidateHierarchy(ctx)
 		invalidateDomainModelsCache(ctx)
-		fmt.Fprintf(ctx.Output, "Modified entity: %s\n", s.Name)
+		ctx.ReportMutation("Modified", "entity: %s", s.Name)
 	} else {
 		// Create new entity
 		if err := ctx.Backend.CreateEntity(dm.ID, entity); err != nil {
@@ -642,7 +642,7 @@ func execCreateViewEntity(ctx *ExecContext, s *ast.CreateViewEntityStmt) error {
 		// Invalidate caches so updated entity is visible
 		invalidateHierarchy(ctx)
 		invalidateDomainModelsCache(ctx)
-		fmt.Fprintf(ctx.Output, "Modified view entity: %s\n", s.Name)
+		ctx.ReportMutation("Modified", "view entity: %s", s.Name)
 	} else {
 		// Create new entity
 		if err := ctx.Backend.CreateEntity(dm.ID, entity); err != nil {
@@ -950,7 +950,7 @@ func execAlterEntity(ctx *ExecContext, s *ast.AlterEntityStmt) error {
 		}
 		invalidateHierarchy(ctx)
 		invalidateDomainModelsCache(ctx)
-		fmt.Fprintf(ctx.Output, "Modified attribute '%s' on entity %s\n", s.AttributeName, s.Name)
+		ctx.ReportMutation("Modified", "attribute '%s' on entity %s", s.AttributeName, s.Name)
 
 	case ast.AlterEntityDropAttribute:
 		// System attribute pseudo-names: drop by clearing entity flags

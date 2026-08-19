@@ -141,12 +141,14 @@ func (w *Writer) updateUnit(unitID string, contents []byte) error {
 	// modelsdk engine's policy rather than reimplementing it. The two engines
 	// must agree here: which one ran is an --engine flag, not something a user
 	// should be able to see in their diff.
+	w.unitsOffered++
 	if stored, err := w.reader.GetRawUnitBytes(model.ID(unitID)); err == nil {
 		var unchanged bool
 		if contents, unchanged = canon.Reconcile(contents, stored); unchanged {
 			return nil
 		}
 	}
+	w.unitsWritten++
 
 	// Convert UUID string to 16-byte blob
 	unitIDBlob := uuidToBlob(unitID)

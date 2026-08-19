@@ -83,7 +83,7 @@ func execCreateQueue(ctx *ExecContext, s *ast.CreateQueueStmt) error {
 		if err := ctx.Backend.UpdateQueue(q); err != nil {
 			return mdlerrors.NewBackend("update queue", err)
 		}
-		fmt.Fprintf(ctx.Output, "Modified queue: %s\n", s.Name.String())
+		ctx.ReportMutation("Modified", "queue: %s", s.Name.String())
 		return nil
 	}
 	if err := ctx.Backend.CreateQueue(q); err != nil {

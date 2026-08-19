@@ -33,6 +33,20 @@ func idToBsonBinary(id string) primitive.Binary {
 // Writer provides methods to write Mendix project files.
 type Writer struct {
 	reader *Reader
+
+	// unitsOffered / unitsWritten count what reached updateUnit and how much of
+	// it survived no-op elision (ADR-0008). The executor reads them to tell
+	// "Modified X" from "Modified nothing, X was already in sync" — without
+	// them, re-running a script that changes nothing still announces a write for
+	// every statement, which is how the churn in #910 was misdiagnosed.
+	unitsOffered int
+	unitsWritten int
+}
+
+// WriteStats reports how many unit writes this session offered to storage and
+// how many were not elided as no-ops.
+func (w *Writer) WriteStats() (offered, written int) {
+	return w.unitsOffered, w.unitsWritten
 }
 
 // NewWriter creates a new writer from a reader opened in read-write mode.

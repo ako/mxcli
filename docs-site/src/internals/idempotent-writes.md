@@ -115,6 +115,9 @@ Two cautions, both of which produce a meaningless zero:
   diff t-before.txt t-after.txt    # expect output — writes landed
   ```
 
+The console tells you the same thing, per document: a statement whose write was
+skipped reports `Unchanged nanoflow: …` rather than `Replaced nanoflow: …`.
+
 For a per-unit view of what would be skipped, `scripts/mprsnapshot -canon` emits
 canonical digests keyed by unit id.
 
