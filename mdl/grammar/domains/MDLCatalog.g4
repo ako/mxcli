@@ -70,6 +70,12 @@ showStatement
     | showOrList USER ROLES
     | showOrList DEMO USERS
     | showOrList ACCESS ON qualifiedName
+    // ENTITY is spelled out as well as implied by the bare form above: every
+    // other document kind names itself here, and the generated project CLAUDE.md
+    // documents `SHOW ACCESS ON MICROFLOW|PAGE|ENTITY`. Without this alternative
+    // `ENTITY` is swallowed by qualifiedName (it is in the `keyword` rule), so
+    // the statement ends at `ENTITY` and the real name is extraneous input.
+    | showOrList ACCESS ON ENTITY qualifiedName
     | showOrList ACCESS ON MICROFLOW qualifiedName
     | showOrList ACCESS ON PAGE qualifiedName
     | showOrList ACCESS ON WORKFLOW qualifiedName

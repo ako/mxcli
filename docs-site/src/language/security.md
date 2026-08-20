@@ -42,7 +42,8 @@ SHOW USER ROLES;
 -- Access rules
 SHOW ACCESS ON MICROFLOW Shop.ACT_ProcessOrder;
 SHOW ACCESS ON PAGE Shop.Order_Edit;
-SHOW ACCESS ON Shop.Customer;
+SHOW ACCESS ON ENTITY Shop.Customer;
+SHOW ACCESS ON Shop.Customer;         -- a bare name means the entity
 
 -- Full matrix
 SHOW SECURITY MATRIX;
