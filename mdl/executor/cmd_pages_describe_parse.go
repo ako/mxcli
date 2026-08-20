@@ -600,50 +600,9 @@ func extractDataViewDataSource(ctx *ExecContext, w map[string]any) *rawDataSourc
 	if !ok {
 		return nil
 	}
-
-	dsType, _ := ds["$Type"].(string)
-
-	switch dsType {
-	case "Forms$MicroflowSource":
-		if mf := microflowSourceRef(ds); mf != "" {
-			return &rawDataSource{Type: "microflow", Reference: mf}
-		}
-	case "Forms$NanoflowSource":
-		if nf := nanoflowSourceRef(ds); nf != "" {
-			return &rawDataSource{Type: "nanoflow", Reference: nf}
-		}
-	case "Forms$DataViewSource":
-		// "Data from context over an association" — the DataViewSource carries an
-		// IndirectEntityRef navigating the association. Reconstruct $ctx/Assoc.
-		if path, ctx := associationSourcePath(ds); path != "" {
-			return &rawDataSource{Type: "association", Reference: path, ContextVariable: ctx}
-		}
-		// Plain context source — extract the page parameter from SourceVariable.
-		if srcVar, ok := ds["SourceVariable"].(map[string]any); ok {
-			if paramName, ok := srcVar["PageParameter"].(string); ok && paramName != "" {
-				return &rawDataSource{Type: "parameter", Reference: paramName}
-			}
-		}
-	case "Forms$DatabaseSource":
-		// Database/XPath source - for now just note it's a database source
-		return &rawDataSource{Type: "database", Reference: ""}
-	case "Forms$ListenTargetSource":
-		// Master-detail binding: DataView listens to a selection-aware container
-		// (Gallery/ListView/DataGrid) by widget name.
-		if target, ok := ds["ListenTarget"].(string); ok && target != "" {
-			return &rawDataSource{Type: "selection", Reference: target}
-		}
-	case "Forms$AssociationSource":
-		if path, ctx := associationSourcePath(ds); path != "" {
-			return &rawDataSource{Type: "association", Reference: path, ContextVariable: ctx}
-		}
-	}
-
-	return nil
+	return parseDataSource(ds)
 }
 
-// extractDataViewLabelWidth reads the DataView LabelWidth as an int. Returns
-// -1 when absent so callers can omit the property from output.
 func extractDataViewLabelWidth(w map[string]any) int {
 	v, ok := w["LabelWidth"]
 	if !ok {
@@ -827,58 +786,9 @@ func extractListViewDataSource(ctx *ExecContext, w map[string]any) *rawDataSourc
 	if !ok || ds == nil {
 		return nil
 	}
-
-	dsType := extractString(ds["$Type"])
-	switch dsType {
-	case "Forms$ListViewXPathSource":
-		result := &rawDataSource{Type: "database"}
-		entityRef, ok := ds["EntityRef"].(map[string]any)
-		if ok && entityRef != nil {
-			result.Reference = extractString(entityRef["Entity"])
-		}
-		result.XPathConstraint = extractString(ds["XPathConstraint"])
-		// Extract sorting from Sort field
-		if sortObj, ok := ds["Sort"].(map[string]any); ok {
-			sortPaths := getBsonArrayElements(sortObj["Paths"])
-			for _, item := range sortPaths {
-				sortItem, ok := item.(map[string]any)
-				if !ok {
-					continue
-				}
-				col := rawSortColumn{Order: "asc"}
-				if attrRef, ok := sortItem["AttributeRef"].(map[string]any); ok {
-					col.Attribute = shortAttributeName(extractString(attrRef["Attribute"]))
-				}
-				sortOrder := gridSortDirection(sortItem)
-				if sortOrder == "Descending" {
-					col.Order = "desc"
-				}
-				if col.Attribute != "" {
-					result.SortColumns = append(result.SortColumns, col)
-				}
-			}
-		}
-		if result.Reference != "" {
-			return result
-		}
-	case "Forms$MicroflowSource":
-		if mf := microflowSourceRef(ds); mf != "" {
-			return &rawDataSource{Type: "microflow", Reference: mf}
-		}
-	case "Forms$NanoflowSource":
-		nanoflow := nanoflowSourceRef(ds)
-		if nanoflow != "" {
-			return &rawDataSource{Type: "nanoflow", Reference: nanoflow}
-		}
-	case "Forms$AssociationSource":
-		if path, ctx := associationSourcePath(ds); path != "" {
-			return &rawDataSource{Type: "association", Reference: path, ContextVariable: ctx}
-		}
-	}
-	return nil
+	return parseDataSource(ds)
 }
 
-// extractSnippetRef extracts the snippet reference from a SnippetCallWidget.
 func extractSnippetRef(ctx *ExecContext, w map[string]any) string {
 	// First try the FormCall.Form path (used for BY_NAME_REFERENCE)
 	if formCall, ok := w["FormCall"].(map[string]any); ok {

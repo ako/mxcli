@@ -1,0 +1,103 @@
+-- Issue #941: DESCRIBE PAGE emitted invalid MDL for non-database datasources.
+--
+-- Three defects, one cause: the datasource switch was copied per widget family
+-- (five copies on the read side, six on the write side) and the copies drifted.
+--
+--   1. A chart series bound to a MICROFLOW described as
+--      `DataSource: database from Module.TheMicroflow`, because the object-list
+--      item emitter had no type switch at all. Re-executing that reported
+--      "entity not found: Module.TheMicroflow".
+--   2. A pluggable list whose datasource carried no entity described as
+--      `DataSource: database from ` — an empty slot, which the parser reads as
+--      an entity called "from" ("entity not found: from").
+--   3. A GALLERY bound over an association lost its datasource entirely, while
+--      a LISTVIEW bound the same way kept it. Silent loss, not a parse error.
+--
+-- Run, then `describe page` each page below and re-run `mxcli check` on the
+-- output: every datasource must come back with the kind it went in with.
+
+create module Bug941;
+/
+
+create entity Bug941.Item ( Title: string(200), Qty: integer );
+/
+
+create entity Bug941.Bucket ( Label: string(100) );
+/
+
+create association Bug941.Item_Bucket from Bug941.Item to Bug941.Bucket;
+/
+
+create microflow Bug941.DS_GetItems ()
+returns list of Bug941.Item as $Items
+begin
+  retrieve $Items from Bug941.Item;
+  return $Items;
+end;
+/
+
+-- Defect 3: the gallery's association source used to be dropped on describe,
+-- the listview's survived. Both are in one page so the asymmetry is visible.
+create or modify page Bug941.PgContext
+  ( Title: 'Context sources', Layout: Atlas_Core.PopupLayout,
+    Params: { $Bucket: Bug941.Bucket } )
+{
+  dataview dvBucket (DataSource: $Bucket) {
+    listview lvAssoc (DataSource: $currentObject/Bug941.Item_Bucket) {
+      textbox tbA (Label: 'Title', Attribute: Title)
+    }
+    gallery gAssoc (DataSource: $currentObject/Bug941.Item_Bucket) {
+      textbox tbB (Label: 'Title', Attribute: Title)
+    }
+  }
+};
+/
+
+-- Defect 1: the second series is bound to a microflow. Before the fix DESCRIBE
+-- rendered BOTH series as `database from`, and the microflow one then failed
+-- reference validation as a missing entity.
+create or modify page Bug941.PgChart
+  ( Title: 'Chart sources', Layout: Atlas_Core.Atlas_Default )
+{
+  pluggablewidget 'com.mendix.widget.web.barchart.BarChart' chart1 {
+    series sDb (
+      DataSet: 'static',
+      DataSource: database from Bug941.Item,
+      StaticXAttribute: Title,
+      StaticYAttribute: Qty,
+      StaticName: 'From database'
+    )
+    series sMf (
+      DataSet: 'static',
+      DataSource: microflow Bug941.DS_GetItems,
+      StaticXAttribute: Title,
+      StaticYAttribute: Qty,
+      StaticName: 'From microflow'
+    )
+  }
+};
+/
+
+-- The kinds that always worked, kept as the control: a fix that broke these
+-- while fixing the others would not be a fix.
+create or modify page Bug941.PgOther
+  ( Title: 'Other sources', Layout: Atlas_Core.Atlas_Default )
+{
+  gallery gDb (DataSource: database from Bug941.Item) {
+    textbox tbC (Label: 'Title', Attribute: Title)
+  }
+  gallery gMf (DataSource: microflow Bug941.DS_GetItems) {
+    textbox tbD (Label: 'Title', Attribute: Title)
+  }
+  dataview dvSel (DataSource: selection gDb) {
+    textbox tbE (Label: 'Title', Attribute: Title)
+  }
+};
+/
+
+describe page Bug941.PgContext;
+/
+describe page Bug941.PgChart;
+/
+describe page Bug941.PgOther;
+/
