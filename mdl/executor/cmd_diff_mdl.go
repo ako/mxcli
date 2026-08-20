@@ -431,18 +431,21 @@ func microflowStatementToMDL(ctx *ExecContext, stmt ast.MicroflowStatement, inde
 		}
 		lines = append(lines, indentStr+"end if;")
 
+	// Branch bodies render at indent+2, one level in from their `when` at
+	// indent+1. Both splits rendered them at indent+1 — the same column as the
+	// branch keyword — which is unreadable once anything nests (#913).
 	case *ast.EnumSplitStmt:
 		lines = append(lines, fmt.Sprintf("%scase $%s", indentStr, s.Variable))
 		for _, c := range s.Cases {
 			lines = append(lines, fmt.Sprintf("%s  when %s then", indentStr, formatEnumSplitCaseValues(enumSplitCaseValues(c))))
 			for _, caseStmt := range c.Body {
-				lines = append(lines, microflowStatementToMDL(ctx, caseStmt, indent+1)...)
+				lines = append(lines, microflowStatementToMDL(ctx, caseStmt, indent+2)...)
 			}
 		}
 		if len(s.ElseBody) > 0 {
 			lines = append(lines, indentStr+"  else")
 			for _, elseStmt := range s.ElseBody {
-				lines = append(lines, microflowStatementToMDL(ctx, elseStmt, indent+1)...)
+				lines = append(lines, microflowStatementToMDL(ctx, elseStmt, indent+2)...)
 			}
 		}
 		lines = append(lines, indentStr+"end case;")
@@ -450,15 +453,16 @@ func microflowStatementToMDL(ctx *ExecContext, stmt ast.MicroflowStatement, inde
 	case *ast.InheritanceSplitStmt:
 		lines = append(lines, fmt.Sprintf("%ssplit type $%s", indentStr, s.Variable))
 		for _, c := range s.Cases {
-			lines = append(lines, fmt.Sprintf("%scase %s", indentStr, c.Entity.String()))
+			lines = append(lines, fmt.Sprintf("%s  when %s then", indentStr, c.Entity.String()))
 			for _, caseStmt := range c.Body {
-				lines = append(lines, microflowStatementToMDL(ctx, caseStmt, indent+1)...)
+				lines = append(lines, microflowStatementToMDL(ctx, caseStmt, indent+2)...)
 			}
 		}
 		if len(s.ElseBody) > 0 {
-			lines = append(lines, indentStr+"else")
+			// Mendix's `(empty)` flow (null object), not a default branch.
+			lines = append(lines, indentStr+"  when (empty) then")
 			for _, elseStmt := range s.ElseBody {
-				lines = append(lines, microflowStatementToMDL(ctx, elseStmt, indent+1)...)
+				lines = append(lines, microflowStatementToMDL(ctx, elseStmt, indent+2)...)
 			}
 		}
 		lines = append(lines, indentStr+"end split;")

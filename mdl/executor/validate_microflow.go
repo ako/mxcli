@@ -207,6 +207,7 @@ func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 			}
 			v.walkBody(stmt.ElseBody)
 		case *ast.InheritanceSplitStmt:
+			v.checkInheritanceSplitSpelling(stmt)
 			for _, c := range stmt.Cases {
 				v.walkBody(c.Body)
 			}
@@ -1328,6 +1329,40 @@ func (v *microflowValidator) checkEnumSplitEmptyBranch(stmt *ast.EnumSplitStmt) 
 			"should be configured in properties for an outgoing flow\"", stmt.Variable),
 		"Add a `when (empty) then …` branch. It is required even when the attribute is `not null`. "+
 			"A branch may list several values (`when Open, (empty) then …`) if they share a path.")
+}
+
+// checkInheritanceSplitSpelling warns on the pre-#913 spelling of a type split.
+//
+// `case X <body>` used `case` to introduce a BRANCH, while the enumeration
+// split (`case $x when V then`) and the caseExpression in MDLSettings.g4 use it
+// to introduce the SUBJECT. Two of the three agreed; the type split was the
+// outlier, so the word meant two things depending on the statement.
+//
+// `else` is the worse half. It is not a default branch: it is Mendix's
+// `(empty)` outgoing flow, taken when the object is NULL. Measured on mxbuild
+// 11.13.0, a split with one `case` and an `else` still fails CE0090 demanding a
+// flow for every other subtype AND for the base entity — so the `else`
+// contributes nothing to type coverage, which is exactly what its name promises.
+//
+// A warning, not an error: both spellings build the identical flow, and scripts
+// in the wild use the old one. Nothing downstream of this function may branch on
+// the spelling flags.
+func (v *microflowValidator) checkInheritanceSplitSpelling(stmt *ast.InheritanceSplitStmt) {
+	if stmt.LegacyCaseKeyword {
+		v.addViolation("MDL065", linter.SeverityWarning,
+			fmt.Sprintf("split type '$%s' uses the legacy `case <Entity>` branch spelling; "+
+				"`case` introduces the subject in every other MDL statement (`case $x when V then`), "+
+				"not a branch", stmt.Variable),
+			"Write `when Module.Entity then …` instead. Both build the identical flow.")
+	}
+	if stmt.LegacyElseKeyword {
+		v.addViolation("MDL065", linter.SeverityWarning,
+			fmt.Sprintf("split type '$%s' uses `else`, which reads as a default branch and is not one: "+
+				"it is Mendix's `(empty)` flow, taken when the object is null. Mendix still requires an "+
+				"outgoing flow for every subtype and for the base entity (CE0090)", stmt.Variable),
+			"Write `when (empty) then …` instead — same flow, accurate name. "+
+				"To handle unmatched types, add a `when <BaseEntity> then …` branch.")
+	}
 }
 
 // knownActivityAnnotations is the set the visitor implements. It is the visitor's

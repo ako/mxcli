@@ -1,0 +1,53 @@
+-- ============================================================================
+-- #913 — the pre-unification type split spelling still parses
+-- ============================================================================
+--
+-- POSITIVE TEST: `mxcli check` MUST accept this file. It warns MDL065 twice
+-- (once for the `case` branches, once for `else`) and must NOT error — scripts
+-- in the wild use this spelling, and both spellings build the identical flow.
+--
+-- Pinned separately from the current spelling so that "we kept the old form
+-- working" is a claim with a test behind it rather than an intention.
+--
+-- The equivalence itself is pinned in Go:
+--   mdl/visitor  — TestInheritanceSplit_BothSpellingsProduceTheSameAST
+--   mdl/executor — TestMDL065_DoesNotBlockExecution
+
+CREATE MODULE Bug913L;
+
+CREATE OR MODIFY PERSISTENT ENTITY Bug913L.Animal ( "Name": String(50) );
+CREATE OR MODIFY PERSISTENT ENTITY Bug913L.Dog GENERALIZATION Bug913L.Animal ();
+CREATE OR MODIFY PERSISTENT ENTITY Bug913L.Cat GENERALIZATION Bug913L.Animal ();
+
+CREATE OR MODIFY MICROFLOW Bug913L.OnType ($Animal: Bug913L.Animal)
+RETURNS String
+BEGIN
+  split type $Animal
+    case Bug913L.Dog
+      return 'woof';
+    case Bug913L.Cat
+      return 'meow';
+    case Bug913L.Animal
+      return 'generic';
+    else
+      return 'no animal';
+  end split;
+END;
+
+-- Mixing the two spellings in one statement also parses. Nothing depends on
+-- it, but a grammar change making the alternatives mutually exclusive would
+-- reject scripts mid-migration.
+CREATE OR MODIFY MICROFLOW Bug913L.MixedSpelling ($Animal: Bug913L.Animal)
+RETURNS String
+BEGIN
+  split type $Animal
+    case Bug913L.Dog
+      return 'woof';
+    when Bug913L.Cat then
+      return 'meow';
+    when Bug913L.Animal then
+      return 'generic';
+    when (empty) then
+      return 'no animal';
+  end split;
+END;

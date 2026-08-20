@@ -1,0 +1,58 @@
+-- ============================================================================
+-- #913 — `when (empty) then` is the NULL-object branch, not a default
+-- ============================================================================
+--
+-- POSITIVE TEST: `mxcli check` MUST accept this file.
+--
+-- The single most misleading thing about the old `split type ... else` spelling
+-- was that `else` reads as "any other type" and is not that. It maps to
+-- Mendix's `(empty)` outgoing flow, taken when the object is NULL. Renaming it
+-- to `when (empty) then` (MDL065 warns on the old name) makes the branch say
+-- what it does.
+--
+-- MEASURED on mxbuild 11.13.0, three-entity hierarchy, one case plus an else:
+--
+--   split type $Animal
+--     case Zoo.Dog   return 'dog';
+--     else           return 'other';
+--   end split;
+--
+--   [error] [CE0090] "The 'Zoo.Animal' value should be configured for an outgoing flow."
+--   [error] [CE0090] "The 'Zoo.Cat' value should be configured for an outgoing flow."
+--   The app contains: 2 errors.
+--
+-- The CONTROL is the point: give every type its own branch, KEEP the empty
+-- branch, and it is 0 errors. So the empty branch contributes nothing to type
+-- coverage — which is exactly what its name now promises. Without that second
+-- run the CE0090s read as an unrelated coverage bug.
+--
+-- Removing the empty branch is not the fix either: it is CE0089 "The '(empty)'
+-- value should be configured for an outgoing flow". mxcli's builder emits the
+-- flow unconditionally for that reason, so MDL cannot express a split without
+-- one, and DESCRIBE suppresses it only when its body is empty.
+--
+-- To handle "any subtype I did not name", branch on the BASE entity — that is
+-- what `when Zoo.Animal then` does below.
+
+CREATE MODULE Bug913E;
+
+CREATE OR MODIFY PERSISTENT ENTITY Bug913E.Animal ( "Name": String(50) );
+CREATE OR MODIFY PERSISTENT ENTITY Bug913E.Dog GENERALIZATION Bug913E.Animal ();
+CREATE OR MODIFY PERSISTENT ENTITY Bug913E.Cat GENERALIZATION Bug913E.Animal ();
+
+CREATE OR MODIFY MICROFLOW Bug913E.EveryBranchCovered ($Animal: Bug913E.Animal)
+RETURNS String
+BEGIN
+  split type $Animal
+    when Bug913E.Dog then
+      return 'dog';
+    when Bug913E.Cat then
+      return 'cat';
+    -- The base entity: this is the "none of the more specific ones" branch.
+    when Bug913E.Animal then
+      return 'some other animal';
+    -- NOT a default. Taken only when $Animal is null.
+    when (empty) then
+      return 'no animal at all';
+  end split;
+END;
