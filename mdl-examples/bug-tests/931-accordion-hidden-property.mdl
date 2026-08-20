@@ -1,0 +1,149 @@
+-- ============================================================================
+-- Issue mendixlabs/mxcli#931 — a hidden pluggable-widget property fails the build
+-- ============================================================================
+--
+-- A pluggable widget's compiled editorConfig.js can HIDE a property under some
+-- configurations of the same widget, and mxbuild evaluates that logic: a hidden
+-- property must hold its DEFAULT value. A non-default one is CE0463 "the
+-- definition of this widget has changed", which fails `mx check` and makes
+-- `mx create-module-package` refuse the entire module.
+--
+-- The reporter's Accordion (verbatim from the issue) is that shape:
+--
+--   PLUGGABLEWIDGET 'com.mendix.widget.web.accordion.Accordion' accordion1 (
+--     advancedMode: false, collapsible: false, ...
+--   ) {
+--     GROUP group1 (..., InitialCollapsedState: 'expanded',
+--                        InitiallyCollapsed: 'false')
+--   }
+--
+-- With `collapsible: false` the widget hides its whole State group, so both
+-- values are non-defaults on hidden properties. Measured on mxbuild 11.13.0
+-- against a blank app — one property changed per run, everything else at its
+-- default:
+--
+--   collapsible: false + InitialCollapsedState: 'expanded'  → CE0463
+--   collapsible: false + InitiallyCollapsed: 'false'        → CE0463
+--   collapsible: false + expandBehavior: multipleExpanded   → CE0463
+--   collapsible: false + animate: false                     → CE0463
+--   collapsible: TRUE  + every one of those values          → 0 errors
+--   collapsible: false + every value left at its default    → 0 errors
+--
+-- So the widget IS authorable; the combination is not. Before the fix mxcli
+-- emitted four MDL-WIDGET10 warnings — all on properties the script had left at
+-- their defaults, i.e. all harmless — and said nothing about the two that break
+-- the build.
+--
+-- Verify (needs -p: the rules are lifted from the project's installed .mpk, so a
+-- project-less `mxcli check` cannot see them):
+--
+--   mxcli check 931-accordion-hidden-property.mdl -p app.mpr
+--     → the two commented-out statements below each report MDL-WIDGET10 as an
+--       ERROR naming the property and its default
+--   mxcli exec 931-accordion-hidden-property.mdl -p app.mpr
+--   mx check app.mpr                      # 0 errors
+--   mx create-module-package app.mpr M931 # Export successful
+-- ============================================================================
+
+create module M931;
+/
+
+-- The reporter's page, corrected: `collapsible: true` shows the State group, so
+-- the same group values are legal. This is the statement that must execute and
+-- build cleanly.
+create or modify page M931.AccordionOK (
+  Title: 'Accordion',
+  Layout: Atlas_Core.Atlas_Default
+)
+{
+  PLUGGABLEWIDGET 'com.mendix.widget.web.accordion.Accordion' accordion1 (
+    advancedMode: false, collapsible: true, expandBehavior: singleExpanded,
+    animate: true, showIcon: right, animateIcon: true
+  ) {
+    GROUP group1 (HeaderRenderMode: 'text', HeaderText: 'Odoo Connector',
+                  HeaderHeading: 'headingThree', Visible: 'true',
+                  LoadContent: 'always', InitialCollapsedState: 'expanded',
+                  InitiallyCollapsed: 'true')
+  }
+}
+/
+
+-- The failing shapes, kept as documentation. Uncomment either one and re-run
+-- `mxcli check ... -p app.mpr` to see the error; `mx check` reports CE0463 on
+-- the same widget.
+--
+-- (1) hidden by a WIDGET property — `collapsible` is off:
+--
+-- create or modify page M931.AccordionCE0463 ( Title: 'x', Layout: Atlas_Core.Atlas_Default ) {
+--   PLUGGABLEWIDGET 'com.mendix.widget.web.accordion.Accordion' accordion1 (
+--     advancedMode: false, collapsible: false, expandBehavior: singleExpanded,
+--     animate: true, showIcon: right, animateIcon: true
+--   ) {
+--     GROUP group1 (HeaderRenderMode: 'text', HeaderText: 'Odoo Connector',
+--                   HeaderHeading: 'headingThree', Visible: 'true',
+--                   LoadContent: 'always', InitialCollapsedState: 'expanded',
+--                   InitiallyCollapsed: 'false')
+--   }
+-- }
+--
+-- (2) hidden by the GROUP's OWN property — `initiallyCollapsed` applies only
+--     while `initialCollapsedState` is 'dynamic', so a non-default value here is
+--     CE0463 even with `collapsible: true`:
+--
+-- create or modify page M931.AccordionItemScope ( Title: 'x', Layout: Atlas_Core.Atlas_Default ) {
+--   PLUGGABLEWIDGET 'com.mendix.widget.web.accordion.Accordion' accordion1 (
+--     advancedMode: false, collapsible: true, expandBehavior: singleExpanded,
+--     animate: true, showIcon: right, animateIcon: true
+--   ) {
+--     GROUP group1 (HeaderRenderMode: 'text', HeaderText: 'H',
+--                   HeaderHeading: 'headingThree', Visible: 'true',
+--                   LoadContent: 'always', InitialCollapsedState: 'expanded',
+--                   InitiallyCollapsed: 'false')
+--   }
+-- }
+
+-- ----------------------------------------------------------------------------
+-- The headline crash of #931, which the Accordion did not cause.
+--
+-- `mx create-module-package` aborted on any module mxcli created, with
+--
+--   Exception occurred: Unable to cast object of type
+--   'Newtonsoft.Json.Linq.JValue' to type 'Newtonsoft.Json.Linq.JObject'
+--      at MprProperty.Init → MprUnit.get_Contents → MprDocumentHasher.Write
+--
+-- while `mx check` reported 0 errors. `Forms$Page.AllowedModuleRoles` was written
+-- with typed-array marker 3; the marker tells Mendix's reader what the entries
+-- are, and the entries are qualified-name STRINGS. An empty list never crashed —
+-- which is why it took a page carrying a role, and `create module` grants one.
+--
+-- Creating the module above is therefore already the reproduction. The check is
+-- the export, not the build:
+--
+--   mx check app.mpr                        # 0 errors, before AND after
+--   mx create-module-package app.mpr M931   # crashed before, exports after
+-- ----------------------------------------------------------------------------
+
+-- Second half of the same issue: a design property set through ALTER STYLING on
+-- a widget mxcli itself created used to report success and store nothing. The
+-- widget carried no `Appearance.DesignProperties` array, and `bsonnav.DSet`
+-- cannot add an absent key — so the write silently did nothing.
+--
+-- After the fix `describe page M931.StylingOK` shows
+-- `layoutgrid lg1 (DesignProperties: ['Row gap': 'Large'])`.
+create or modify page M931.StylingOK (
+  Title: 'Styling',
+  Layout: Atlas_Core.Atlas_Default
+)
+{
+  LAYOUTGRID lg1 {
+    ROW r1 {
+      COLUMN c1 (DesktopWidth: AutoFill) {
+        DYNAMICTEXT t1 (Content: 'design property target', RenderMode: P)
+      }
+    }
+  }
+}
+/
+
+ALTER STYLING ON PAGE M931.StylingOK WIDGET lg1
+  SET 'Row gap' = 'Large';

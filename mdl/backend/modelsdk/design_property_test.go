@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"testing"
 
+	"go.mongodb.org/mongo-driver/bson"
+
 	"github.com/mendixlabs/mxcli/modelsdk/codec"
 	"github.com/mendixlabs/mxcli/sdk/pages"
 )
@@ -53,5 +55,31 @@ func TestAppearanceDynamicClasses(t *testing.T) {
 	}
 	if !bytes.Contains(out, []byte(expr)) {
 		t.Errorf("encoded appearance missing DynamicClasses expression %q\nBSON: %x", expr, out)
+	}
+}
+
+// Studio Pro writes a DesignProperties list on every Forms$Appearance, empty ones
+// included (measured: 16 of 16 pages in a blank 11.13 app, and the list `mx
+// update-widgets` writes back into an mxcli-authored page). The codec omits an
+// empty, never-appended PartList, so mxcli's widgets carried no DesignProperties
+// key at all — which is also why ALTER STYLING's design-property write was a
+// silent no-op: bsonnav.DSet cannot add a key that is not there. (upstream #931)
+func TestAppearanceAlwaysEmitsDesignProperties(t *testing.T) {
+	out, err := (&codec.Encoder{}).Encode(newAppearance("card", "", "", nil))
+	if err != nil {
+		t.Fatalf("encode appearance: %v", err)
+	}
+
+	var doc bson.D
+	if err := bson.Unmarshal(out, &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	val, ok := lookupKey(doc, "DesignProperties")
+	if !ok {
+		t.Fatalf("no DesignProperties key on an appearance with none set: %v", doc)
+	}
+	arr, ok := val.(bson.A)
+	if !ok || len(arr) != 1 || arr[0] != int32(3) {
+		t.Errorf("DesignProperties = %v, want the empty typed-array marker [3]", val)
 	}
 }

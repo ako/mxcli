@@ -520,18 +520,59 @@ func TestDSetArray_PreservesMarker(t *testing.T) {
 	}
 }
 
-func TestDSetArray_NoMarker(t *testing.T) {
+// A Mendix array's first entry is its typed-array marker. With no marker to
+// preserve, writing the elements bare produces a list whose first ENTRY the
+// reader takes as the marker — measured on mxbuild 11.13, a DesignProperties
+// array written that way makes the project fail to load ("Type
+// OptionDesignPropertyValue does not contain a constructor with a parameter of
+// type Appearance") and create-module-package die with "Unknown export error".
+// So DSetArray refuses instead of writing, and says so (upstream #931).
+func TestDSetArray_NoMarker_Refuses(t *testing.T) {
 	parent := bson.D{
 		{Key: "Widgets", Value: bson.A{"a", "b"}},
 	}
-	bsonnav.DSetArray(parent, "Widgets", []any{"x"})
+	if bsonnav.DSetArray(parent, "Widgets", []any{"x"}) {
+		t.Error("DSetArray reported success with no marker to write")
+	}
 
 	result := bsonnav.ToBsonA(bsonnav.DGet(parent, "Widgets"))
-	if len(result) != 1 {
-		t.Fatalf("Expected 1 element, got %d", len(result))
+	if len(result) != 2 || result[0] != "a" || result[1] != "b" {
+		t.Errorf("refused write must leave the value untouched, got %v", result)
 	}
-	if result[0] != "x" {
-		t.Errorf("Expected [x], got %v", result)
+}
+
+// DSetArrayIn is the caller-supplies-the-marker form, and the one that can CREATE
+// the property: DSet cannot add a key to a bson.D held by value, so the grown
+// child has to be written back into its parent.
+func TestDSetArrayIn_CreatesWithMarker(t *testing.T) {
+	widget := bson.D{
+		{Key: "Appearance", Value: bson.D{{Key: "Class", Value: ""}}},
+	}
+	if !bsonnav.DSetArrayIn(widget, "Appearance", "DesignProperties", []any{"entry"}, 3) {
+		t.Fatal("DSetArrayIn reported failure on a widget that has an Appearance")
+	}
+
+	appearance := bsonnav.DGetDoc(widget, "Appearance")
+	result := bsonnav.ToBsonA(bsonnav.DGet(appearance, "DesignProperties"))
+	if len(result) != 2 || result[0] != int32(3) || result[1] != "entry" {
+		t.Errorf("got %v, want [3 entry]", result)
+	}
+}
+
+// An existing marker wins over the caller's default: the stored document is the
+// authority on how its own list is versioned.
+func TestDSetArrayIn_PreservesExistingMarker(t *testing.T) {
+	widget := bson.D{
+		{Key: "Appearance", Value: bson.D{{Key: "DesignProperties", Value: bson.A{int32(2)}}}},
+	}
+	if !bsonnav.DSetArrayIn(widget, "Appearance", "DesignProperties", []any{"entry"}, 3) {
+		t.Fatal("DSetArrayIn reported failure")
+	}
+
+	appearance := bsonnav.DGetDoc(widget, "Appearance")
+	result := bsonnav.ToBsonA(bsonnav.DGet(appearance, "DesignProperties"))
+	if len(result) != 2 || result[0] != int32(2) {
+		t.Errorf("got %v, want the stored marker 2 preserved", result)
 	}
 }
 
