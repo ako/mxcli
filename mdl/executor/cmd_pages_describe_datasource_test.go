@@ -135,13 +135,16 @@ func TestDataSourceExprKeepsTheType(t *testing.T) {
 		"association": {
 			&rawDataSource{Type: "association", Reference: "Mod.Item_Bucket"}, "$currentObject/Mod.Item_Bucket",
 		},
+		// Bracketed, not bare: the emitter always uses the grammar's
+		// xpathConstraint production, because it cannot tell which constraints
+		// also happen to be valid MDL expressions (mxcli-formula1 §57.1).
 		"database with where and sort": {
 			&rawDataSource{
 				Type: "database", Reference: "Mod.Item",
 				XPathConstraint: "[IsActive = true]",
 				SortColumns:     []rawSortColumn{{Attribute: "Name", Order: "asc"}},
 			},
-			"database from Mod.Item where IsActive = true sort by Name asc",
+			"database from Mod.Item where [IsActive = true] sort by Name asc",
 		},
 	}
 	for name, tc := range cases {
@@ -195,5 +198,62 @@ func TestParseSortColumnsAcceptsBothStoredShapes(t *testing.T) {
 	}
 	if len(paths) != 1 || paths[0].Attribute != "Name" || paths[0].Order != "desc" {
 		t.Errorf("Sort.Paths shape gave %+v", paths)
+	}
+}
+
+// TestXPathConstraintClauseParses covers the regression in mxcli-formula1 §57.1.
+//
+// Restoring the WHERE clause (defect 4 of #941) collided with an older gap:
+// the constraint was emitted raw, so a stored XPath containing a predicate —
+// `System.grantableRoles[reversed()]/…`, which stock Administration.Account_New
+// carries — produced MDL that no longer parsed. The page describing clean
+// BEFORE the fix and failing after is the worst shape a fix can have.
+//
+// The emitted form is always the grammar's own `xpathConstraint` production
+// (bracketed), never a bare expression. The bare form parses only for simple
+// comparisons, and "does this particular XPath happen to be a valid MDL
+// expression" is not a question the emitter can answer — while a bracketed
+// group is accepted for every constraint.
+func TestXPathConstraintClauseParses(t *testing.T) {
+	cases := map[string]string{
+		"simple comparison":  "Qty > 5",
+		"already bracketed":  "[Qty > 5]",
+		"inner predicate":    "[System.grantableRoles[reversed()]/System.UserRole/System.UserRoles = '[%CurrentUser%]']",
+		"two groups":         "[Active = true][Qty > 5]",
+		"bracket in literal": "[Name = 'a]b']",
+	}
+	for name, stored := range cases {
+		t.Run(name, func(t *testing.T) {
+			got := xpathConstraintClause(stored)
+			if got == "" {
+				t.Fatalf("rendered nothing for %q", stored)
+			}
+			if !strings.HasPrefix(got, "[") || !strings.HasSuffix(got, "]") {
+				t.Errorf("rendered %q — want bracketed groups the page grammar accepts", got)
+			}
+		})
+	}
+}
+
+// TestXPathConstraintClauseKeepsGroupsIntact pins the trap the old code fell
+// into: it stripped the outer brackets by looking at the first and last byte,
+// so `[a][b]` became `a][b`. That is the same mangling #772 fixed for the
+// microflow emitter, which is why this reuses that fix's splitter rather than
+// keeping a second, simpler copy of the logic.
+func TestXPathConstraintClauseKeepsGroupsIntact(t *testing.T) {
+	got := xpathConstraintClause("[Active = true][Qty > 5]")
+	if strings.Contains(got, "a][b") || strings.Count(got, "[") != 2 {
+		t.Errorf("rendered %q — want both predicate groups preserved", got)
+	}
+}
+
+// TestXPathConstraintClauseIgnoresBlank guards mxcli-formula1 §57.3: the old
+// guard was `strings.Trim(s, "")`, whose empty cutset trims nothing, so a
+// whitespace-only constraint passed the != "" test and emitted a bare `where`.
+func TestXPathConstraintClauseIgnoresBlank(t *testing.T) {
+	for _, blank := range []string{"", "   ", "\t\n"} {
+		if got := xpathConstraintClause(blank); got != "" {
+			t.Errorf("xpathConstraintClause(%q) = %q, want empty", blank, got)
+		}
 	}
 }

@@ -21,6 +21,7 @@ package executor
 
 import (
 	"fmt"
+	"github.com/mendixlabs/mxcli/mdl/visitor"
 	"strings"
 )
 
@@ -217,11 +218,8 @@ func dataSourceExpr(ds *rawDataSource) string {
 			return ""
 		}
 		expr := "database from " + ds.Reference
-		if xpath := strings.Trim(ds.XPathConstraint, ""); xpath != "" {
-			if len(xpath) >= 2 && xpath[0] == '[' && xpath[len(xpath)-1] == ']' {
-				xpath = xpath[1 : len(xpath)-1]
-			}
-			expr += " where " + xpath
+		if clause := xpathConstraintClause(ds.XPathConstraint); clause != "" {
+			expr += " where " + clause
 		}
 		if len(ds.SortColumns) > 0 {
 			parts := make([]string, 0, len(ds.SortColumns))
@@ -301,4 +299,33 @@ func appendDataSourceProp(props []string, ds *rawDataSource) []string {
 		return append(props, comment)
 	}
 	return props
+}
+
+// xpathConstraintClause renders a stored XPath constraint as the MDL the page
+// grammar accepts after WHERE, or "" when there is no constraint.
+//
+// Always the bracketed `xpathConstraint` production, never a bare expression.
+// The grammar takes either, and the bare form reads more nicely — but it only
+// parses for simple comparisons, and whether a given XPath happens to also be a
+// valid MDL expression is not a question this emitter can answer. Emitting it
+// raw is what turned stock Administration.Account_New from describing cleanly
+// into describing to MDL that does not parse: its constraint carries an inner
+// predicate (`System.grantableRoles[reversed()]/…`), and the `[` ends the
+// expression parse (mxcli-formula1 §57.1). A bracketed group is accepted for
+// every constraint, so the emitter does not have to be right about which is
+// which.
+//
+// Splitting goes through the same quote- and nesting-aware helper the microflow
+// emitter uses (#772) rather than a second copy: the previous code here took
+// the outer brackets off by testing the first and last byte, which turns
+// `[a][b]` into the mangled `a][b`.
+func xpathConstraintClause(constraint string) string {
+	xpath := strings.TrimSpace(constraint)
+	if xpath == "" {
+		return ""
+	}
+	if groups := visitor.SplitXPathPredicateGroups(xpath); len(groups) > 0 {
+		return strings.Join(groups, " ")
+	}
+	return "[" + xpath + "]"
 }
