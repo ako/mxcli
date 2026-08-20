@@ -506,6 +506,11 @@ type rawDataSource struct {
 	XPathConstraint string          // XPath constraint (WHERE clause)
 	SortColumns     []rawSortColumn // Multiple sort columns
 	ContextVariable string          // association source: context variable name (empty → $currentObject)
+	// Unsupported carries the stored $Type of a datasource that has no MDL
+	// spelling. Set instead of guessing a Type: describe reports it as a
+	// comment, so the binding is visible in the output without producing a
+	// statement that cannot be re-executed (#941).
+	Unsupported string
 }
 
 // associationSourcePath reconstructs the association navigation of a
