@@ -400,20 +400,7 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 	case "Forms$DataView", "Pages$DataView":
 		header := fmt.Sprintf("dataview %s", mdlIdent(w.Name))
 		props := []string{}
-		if w.DataSource != nil {
-			switch w.DataSource.Type {
-			case "microflow":
-				props = append(props, fmt.Sprintf("DataSource: microflow %s", w.DataSource.Reference))
-			case "nanoflow":
-				props = append(props, fmt.Sprintf("DataSource: nanoflow %s", w.DataSource.Reference))
-			case "parameter":
-				props = append(props, fmt.Sprintf("DataSource: $%s", w.DataSource.Reference))
-			case "selection":
-				props = append(props, fmt.Sprintf("DataSource: selection %s", mdlIdent(w.DataSource.Reference)))
-			case "association":
-				props = append(props, fmt.Sprintf("DataSource: %s", associationDataSourceExpr(w.DataSource)))
-			}
-		}
+		props = appendDataSourceProp(props, w.DataSource)
 		switch {
 		case w.LabelWidth == 0:
 			props = append(props, "FormOrientation: Vertical")
@@ -533,33 +520,7 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 		if widgetType == "datagrid2" && (w.DataSource != nil || len(w.DataGridColumns) > 0) {
 			header := fmt.Sprintf("datagrid %s", mdlIdent(w.Name))
 			props := []string{}
-			if w.DataSource != nil {
-				switch w.DataSource.Type {
-				case "database":
-					dsVal := fmt.Sprintf("database from %s", w.DataSource.Reference)
-					if w.DataSource.XPathConstraint != "" {
-						xpath := w.DataSource.XPathConstraint
-						if len(xpath) >= 2 && xpath[0] == '[' && xpath[len(xpath)-1] == ']' {
-							xpath = xpath[1 : len(xpath)-1]
-						}
-						dsVal += fmt.Sprintf(" where %s", xpath)
-					}
-					if len(w.DataSource.SortColumns) > 0 {
-						var sortParts []string
-						for _, col := range w.DataSource.SortColumns {
-							sortParts = append(sortParts, col.Attribute+" "+col.Order)
-						}
-						dsVal += fmt.Sprintf(" sort by %s", strings.Join(sortParts, ", "))
-					}
-					props = append(props, fmt.Sprintf("DataSource: %s", dsVal))
-				case "microflow":
-					props = append(props, fmt.Sprintf("DataSource: microflow %s", w.DataSource.Reference))
-				case "nanoflow":
-					props = append(props, fmt.Sprintf("DataSource: nanoflow %s", w.DataSource.Reference))
-				case "parameter":
-					props = append(props, fmt.Sprintf("DataSource: %s", w.DataSource.Reference))
-				}
-			}
+			props = appendDataSourceProp(props, w.DataSource)
 			// Add selection mode if specified
 			if w.Selection != "" {
 				props = append(props, fmt.Sprintf("Selection: %s", w.Selection))
@@ -597,32 +558,7 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			// Handle Gallery specially with datasource, selection, filter and content widgets
 			header := fmt.Sprintf("gallery %s", mdlIdent(w.Name))
 			props := []string{}
-			if w.DataSource != nil {
-				switch w.DataSource.Type {
-				case "database":
-					dsVal := fmt.Sprintf("database from %s", w.DataSource.Reference)
-					if w.DataSource.XPathConstraint != "" {
-						xpath := w.DataSource.XPathConstraint
-						if len(xpath) >= 2 && xpath[0] == '[' && xpath[len(xpath)-1] == ']' {
-							xpath = xpath[1 : len(xpath)-1]
-						}
-						dsVal += fmt.Sprintf(" where %s", xpath)
-					}
-					// Add SORT BY if present
-					if len(w.DataSource.SortColumns) > 0 {
-						var sortParts []string
-						for _, col := range w.DataSource.SortColumns {
-							sortParts = append(sortParts, col.Attribute+" "+col.Order)
-						}
-						dsVal += fmt.Sprintf(" sort by %s", strings.Join(sortParts, ", "))
-					}
-					props = append(props, fmt.Sprintf("DataSource: %s", dsVal))
-				case "microflow":
-					props = append(props, fmt.Sprintf("DataSource: microflow %s", w.DataSource.Reference))
-				case "nanoflow":
-					props = append(props, fmt.Sprintf("DataSource: nanoflow %s", w.DataSource.Reference))
-				}
-			}
+			props = appendDataSourceProp(props, w.DataSource)
 			// Add column counts if non-default
 			if w.DesktopColumns != "" && w.DesktopColumns != "1" {
 				props = append(props, fmt.Sprintf("DesktopColumns: %s", w.DesktopColumns))
@@ -728,13 +664,11 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 					for i, item := range ol.Items {
 						itemHeader := fmt.Sprintf("%s %s", ol.Keyword, mdlIdent(fmt.Sprintf("%s%d", ol.Keyword, i+1)))
 						itemProps := []string{}
-						if item.DataSource != nil && item.DataSource.Reference != "" {
-							dsExpr := fmt.Sprintf("DataSource: database from %s", item.DataSource.Reference)
-							if item.DataSource.XPathConstraint != "" {
-								dsExpr += fmt.Sprintf(" where %s", item.DataSource.XPathConstraint)
-							}
-							itemProps = append(itemProps, dsExpr)
-						}
+						// An object-list item's datasource goes through the same
+						// renderer as a widget's. This site used to have no type
+						// switch at all, so a chart series bound to a microflow
+						// described as `database from Module.TheMicroflow` (#941).
+						itemProps = appendDataSourceProp(itemProps, item.DataSource)
 						for _, p := range item.Props {
 							if p.IsRef {
 								itemProps = append(itemProps, fmt.Sprintf("%s: %s", p.Key, p.Value))
@@ -773,12 +707,7 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			// through the same branch — without it the filter described back as a
 			// bare `dropdownfilter name` and the mode was lost on re-exec (#830).
 			if w.DataSource != nil && (widgetType == "combobox" || widgetType == "dropdownfilter") {
-				switch w.DataSource.Type {
-				case "database":
-					props = append(props, fmt.Sprintf("DataSource: database from %s", w.DataSource.Reference))
-				case "microflow":
-					props = append(props, fmt.Sprintf("DataSource: microflow %s", w.DataSource.Reference))
-				}
+				props = appendDataSourceProp(props, w.DataSource)
 				if w.CaptionAttribute != "" {
 					props = append(props, fmt.Sprintf("CaptionAttribute: %s", w.CaptionAttribute))
 				}
@@ -826,31 +755,7 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 	case "Forms$Gallery", "Pages$Gallery":
 		header := fmt.Sprintf("gallery %s", mdlIdent(w.Name))
 		props := []string{}
-		if w.DataSource != nil {
-			switch w.DataSource.Type {
-			case "database":
-				dsVal := fmt.Sprintf("database from %s", w.DataSource.Reference)
-				if w.DataSource.XPathConstraint != "" {
-					xpath := w.DataSource.XPathConstraint
-					if len(xpath) >= 2 && xpath[0] == '[' && xpath[len(xpath)-1] == ']' {
-						xpath = xpath[1 : len(xpath)-1]
-					}
-					dsVal += fmt.Sprintf(" where %s", xpath)
-				}
-				if len(w.DataSource.SortColumns) > 0 {
-					var sortParts []string
-					for _, col := range w.DataSource.SortColumns {
-						sortParts = append(sortParts, col.Attribute+" "+col.Order)
-					}
-					dsVal += fmt.Sprintf(" sort by %s", strings.Join(sortParts, ", "))
-				}
-				props = append(props, fmt.Sprintf("DataSource: %s", dsVal))
-			case "microflow":
-				props = append(props, fmt.Sprintf("DataSource: microflow %s", w.DataSource.Reference))
-			case "parameter":
-				props = append(props, fmt.Sprintf("DataSource: %s", w.DataSource.Reference))
-			}
-		}
+		props = appendDataSourceProp(props, w.DataSource)
 		props = appendAppearanceProps(props, w)
 		if len(w.Children) > 0 {
 			formatWidgetProps(ctx.Output, prefix, header, props, " {\n")
@@ -883,28 +788,7 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 		// ListView (also used for Gallery serialization)
 		header := fmt.Sprintf("listview %s", mdlIdent(w.Name))
 		props := []string{}
-		if w.DataSource != nil {
-			switch w.DataSource.Type {
-			case "database":
-				dsVal := fmt.Sprintf("database from %s", w.DataSource.Reference)
-				if w.DataSource.XPathConstraint != "" {
-					xpath := w.DataSource.XPathConstraint
-					if len(xpath) >= 2 && xpath[0] == '[' && xpath[len(xpath)-1] == ']' {
-						xpath = xpath[1 : len(xpath)-1]
-					}
-					dsVal += fmt.Sprintf(" where %s", xpath)
-				}
-				props = append(props, fmt.Sprintf("DataSource: %s", dsVal))
-			case "microflow":
-				props = append(props, fmt.Sprintf("DataSource: microflow %s", w.DataSource.Reference))
-			case "nanoflow":
-				props = append(props, fmt.Sprintf("DataSource: nanoflow %s", w.DataSource.Reference))
-			case "parameter":
-				props = append(props, fmt.Sprintf("DataSource: %s", w.DataSource.Reference))
-			case "association":
-				props = append(props, fmt.Sprintf("DataSource: %s", associationDataSourceExpr(w.DataSource)))
-			}
-		}
+		props = appendDataSourceProp(props, w.DataSource)
 		// Emit a non-default PageSize so it round-trips (Studio Pro's default is 20).
 		if w.PageSize != "" && w.PageSize != "20" {
 			props = append(props, fmt.Sprintf("PageSize: %s", w.PageSize))
