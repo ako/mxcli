@@ -633,6 +633,11 @@ type rawWidget struct {
 	// TabControl parsing — preserves the original tab page name/caption so
 	// DESCRIBE output shows which tab each nested widget belongs to).
 	TabCaption string
+	// Specialization is the entity a List View template renders. Set only on the
+	// synthetic wrappers parseListViewContent emits for Forms$ListViewTemplate,
+	// which is the same shape as TabCaption above: a container with no name, whose
+	// identity is a single field DESCRIBE has to put back.
+	Specialization string
 	// Conditional visibility/editability
 	VisibleIf  string // Expression from ConditionalVisibilitySettings
 	EditableIf string // Expression from ConditionalEditabilitySettings

@@ -81,6 +81,13 @@ type WidgetV3 struct {
 	Name       string         // Required widget name
 	Properties map[string]any // All properties as key-value pairs
 	Children   []*WidgetV3    // Child widgets
+
+	// Specialization is the entity a List View template renders, set only for
+	// `template for Module.Entity { ... }`. It is a separate field rather than a
+	// Property because it identifies the template — a Forms$ListViewTemplate has
+	// no name, and carries nothing but this entity and its widgets. Empty for
+	// every other widget, including a Gallery's named `template <name>` slot.
+	Specialization string
 }
 
 // DataSourceV3 represents a V3 datasource expression.

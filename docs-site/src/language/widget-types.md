@@ -156,6 +156,41 @@ LISTVIEW lvProducts (DataSource: DATABASE MyModule.Product) {
 }
 ```
 
+#### Specialization templates
+
+When the list view's entity is a **generalization**, it can render a different
+body per specialization. A template is identified by the entity it renders — it
+has no name, hence `TEMPLATE FOR <entity>`:
+
+```sql
+LISTVIEW vehicleListView (DataSource: DATABASE Pages.Vehicle) {
+  -- the default body, used for an object no template matches
+  DYNAMICTEXT defaultVehicle (Content: '{1} {2}', ContentParams: [{1} = Brand, {2} = Model])
+
+  TEMPLATE FOR Pages.Bus {
+    DYNAMICTEXT busLabel (Content: 'Bus, capacity {1}', ContentParams: [{1} = PassengerCapacity])
+  }
+  TEMPLATE FOR Pages.Truck {
+    DYNAMICTEXT truckLabel (Content: 'Truck, max load {1} kg', ContentParams: [{1} = MaxLoadKg])
+  }
+}
+```
+
+Widgets written directly in the list view body are the default rendering.
+Templates keep their **source order**: Mendix stores and matches in that order,
+so it is authored rather than derived, and `DESCRIBE PAGE` emits them as stored.
+
+Inside a template the context object is the specialization, so an attribute only
+that specialization has still resolves — `PassengerCapacity` above exists on
+`Pages.Bus`, not on `Pages.Vehicle`.
+
+The entity must be the list view's entity or a specialization of it, and there
+may be at most one template per entity; both are refused rather than written,
+because a template that cannot match never renders.
+
+> A Gallery's `TEMPLATE <name>` is a different construct — a named content slot,
+> not a per-specialization body.
+
 ### GALLERY
 
 A pluggable widget that displays items in a card/grid layout:

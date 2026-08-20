@@ -15633,7 +15633,8 @@ func (o *ListViewTemplate) RemoveWidgets(index int) {
 
 // InitFromRaw populates lazy-decoded property holders from raw BSON.
 func (o *ListViewTemplate) InitFromRaw(raw bson.Raw) {
-	if val, err := raw.LookupErr("Specialization"); err == nil {
+	// STORAGE-NAME OVERRIDE: see initListViewTemplate. Key is "Entity".
+	if val, err := raw.LookupErr("Entity"); err == nil {
 		if s, ok := val.StringValueOK(); ok {
 			o.specialization.SetFromDecode(s)
 		}
@@ -30486,7 +30487,14 @@ func NewListViewSearch() *ListViewSearch {
 func initListViewTemplate() *ListViewTemplate {
 	o := &ListViewTemplate{}
 	o.SetTypeName("Forms$ListViewTemplate")
-	o.specialization = property.NewByNameRef[element.Element]("Specialization", "DomainModels$Entity")
+	// STORAGE-NAME OVERRIDE: BSON key is "Entity", not the SDK name
+	// "Specialization". generated/metamodel agrees —
+	//     Specialization model.QualifiedName `json:"entity"`
+	// where the tag is the storage name — and all four templates in the
+	// Vehicle_Overview page of ako/TestApp (Mendix 10.24, Studio Pro authored)
+	// store {$ID, $Type, Entity, Widgets}. This generator kept only the SDK name.
+	// Must match the InitFromRaw decode key.
+	o.specialization = property.NewByNameRef[element.Element]("Entity", "DomainModels$Entity")
 	o.specialization.Bind(&o.Base, 0)
 	o.widget = property.NewPart[element.Element]("Widget")
 	o.widget.Bind(&o.Base, 1)

@@ -274,12 +274,14 @@ func (pb *pageBuilder) buildListViewV3(w *ast.WidgetV3) (*pages.ListView, error)
 	}
 
 	// Handle DataSource
+	var listEntity string
 	if ds := w.GetDataSource(); ds != nil {
 		dataSource, entityName, err := pb.buildDataSourceV3(ds)
 		if err != nil {
 			return nil, mdlerrors.NewBackend("build datasource", err)
 		}
 		lv.DataSource = dataSource
+		listEntity = entityName
 
 		// Save and restore entity context so nested containers work correctly
 		oldContext := pb.entityContext
@@ -297,16 +299,86 @@ func (pb *pageBuilder) buildListViewV3(w *ast.WidgetV3) (*pages.ListView, error)
 		return nil, err
 	}
 
-	// Build template widgets
+	// Split the body: `template for Module.Entity { ... }` blocks become
+	// specialization templates, everything else is the list view's own body (the
+	// default rendering, which Mendix uses for an object no template matches).
+	// The BSON keeps the two in separate arrays and so do we.
+	seen := make(map[string]bool, len(w.Children))
 	for _, child := range w.Children {
+		if child.Specialization == "" {
+			widget, err := pb.buildWidgetV3(child)
+			if err != nil {
+				return nil, err
+			}
+			lv.Widgets = append(lv.Widgets, widget)
+			continue
+		}
+		tpl, err := pb.buildListViewTemplateV3(child, w.Name, listEntity, seen)
+		if err != nil {
+			return nil, err
+		}
+		lv.Templates = append(lv.Templates, tpl)
+	}
+
+	return lv, nil
+}
+
+// buildListViewTemplateV3 builds one `template for Module.Entity { ... }` block.
+//
+// Source order is preserved: Mendix stores templates in an ordered array and the
+// order is authored, not derived — the four templates on ako/TestApp's
+// Vehicle_Overview are Bus, Truck, Car, SUV, which is neither alphabetical nor
+// domain-model order.
+func (pb *pageBuilder) buildListViewTemplateV3(w *ast.WidgetV3, listViewName, listEntity string, seen map[string]bool) (*pages.ListViewTemplate, error) {
+	spec := w.Specialization
+
+	if seen[spec] {
+		return nil, mdlerrors.NewValidation(fmt.Sprintf(
+			"list view %s has more than one template for %s — a list view renders at most "+
+				"one template per specialization", listViewName, spec))
+	}
+	seen[spec] = true
+
+	// The specialization must actually be one: Mendix matches a template against
+	// the object's type, so a template for an unrelated entity can never render.
+	// listEntity is empty when the datasource could not be resolved to an entity,
+	// and an unresolvable datasource is already reported elsewhere — do not
+	// report it a second time as a bogus specialization error.
+	if listEntity != "" && !pb.entityIsOrDescendsFrom(spec, listEntity) {
+		return nil, mdlerrors.NewValidation(fmt.Sprintf(
+			"template for %s in list view %s: %s is not %s or a specialization of it, "+
+				"so the template can never match an object the list view shows",
+			spec, listViewName, spec, listEntity))
+	}
+
+	tpl := &pages.ListViewTemplate{
+		BaseElement: model.BaseElement{
+			ID:       model.ID(types.GenerateID()),
+			TypeName: "Forms$ListViewTemplate",
+		},
+		Specialization: spec,
+	}
+
+	// Inside the template the context object IS the specialization, so an
+	// attribute the specialization adds resolves here even though it does not
+	// exist on the list view's own entity.
+	oldContext := pb.entityContext
+	pb.entityContext = spec
+	defer func() { pb.entityContext = oldContext }()
+
+	for _, child := range w.Children {
+		if child.Specialization != "" {
+			return nil, mdlerrors.NewValidation(fmt.Sprintf(
+				"template for %s in list view %s contains a nested `template for %s` — "+
+					"list view templates cannot nest", spec, listViewName, child.Specialization))
+		}
 		widget, err := pb.buildWidgetV3(child)
 		if err != nil {
 			return nil, err
 		}
-		lv.Widgets = append(lv.Widgets, widget)
+		tpl.Widgets = append(tpl.Widgets, widget)
 	}
-
-	return lv, nil
+	return tpl, nil
 }
 
 // applyOnChangeV3 resolves a widget's `OnChange:` client action into dst.

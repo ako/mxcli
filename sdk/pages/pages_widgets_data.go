@@ -65,10 +65,17 @@ type ListView struct {
 	Templates   []*ListViewTemplate `json:"templates,omitempty"`
 }
 
-// ListViewTemplate represents a template in a list view.
+// ListViewTemplate represents a template in a list view: the body rendered for
+// one specialization of the list view's entity.
+//
+// The tag is the STORAGE name, matching generated/metamodel — Mendix's SDK name
+// for this property is Specialization but every Studio Pro document stores it
+// under "Entity". A template carries nothing else: Studio Pro writes exactly
+// {$ID, $Type, Entity, Widgets}.
 type ListViewTemplate struct {
 	model.BaseElement
-	Widgets []Widget `json:"widgets,omitempty"`
+	Specialization string   `json:"entity,omitempty"`
+	Widgets        []Widget `json:"widgets,omitempty"`
 }
 
 // TemplateGrid represents a template grid widget.

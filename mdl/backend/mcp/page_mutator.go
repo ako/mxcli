@@ -482,6 +482,15 @@ func (m *mcpPageMutator) InsertColumns(gridRef, afterColumnRef string, _ backend
 	return fmt.Errorf("inserting columns into %s is not yet supported by the MCP backend", gridRef)
 }
 
+func (m *mcpPageMutator) InsertListViewTemplates(listViewRef string, _ []*pages.ListViewTemplate) error {
+	return fmt.Errorf("adding specialization templates to %s is not yet supported by the MCP backend", listViewRef)
+}
+
+func (m *mcpPageMutator) DropListViewTemplate(listViewRef, specialization string) error {
+	return fmt.Errorf("dropping the %s template from %s is not yet supported by the MCP backend",
+		specialization, listViewRef)
+}
+
 func (m *mcpPageMutator) ReplaceColumn(gridRef, columnRef string, _ []*backend.DataGridColumnSpec) error {
 	return fmt.Errorf("replacing column %s.%s is not yet supported by the MCP backend", gridRef, columnRef)
 }

@@ -301,6 +301,14 @@ type rawWidgetInfo struct {
 // references (each child is visited separately by extractWidgetsRecursive).
 var widgetChildKeys = map[string]bool{
 	"Widgets": true, "Rows": true, "FooterWidgets": true, "TabPages": true,
+	// A List View's specialization templates. Missing here, the list view's own
+	// scan descended into them and collected each template's Entity — then
+	// returned the lexicographically smallest candidate, so a specialization
+	// sorting before the list view's real datasource silently replaced it. The
+	// widgets table recorded the wrong entity for the list view, decided by
+	// alphabetical accident. Each template is indexed as a container in its own
+	// right instead (see extractWidgetsRecursive). Issue #940.
+	"Templates": true,
 }
 
 // scanWidgetOwnRefs collects the entity/microflow/nanoflow a widget references in
@@ -506,6 +514,22 @@ func extractWidgetsRecursive(w map[string]any) []rawWidgetInfo {
 					}
 				}
 			}
+		}
+	}
+
+	// Handle List View specialization templates. A template is not a widget, but
+	// it is a container that carries its own entity — the specialization it
+	// renders — so it is walked as one: the row it produces holds that entity,
+	// and its children are indexed like any other nested widgets.
+	//
+	// Without this, every widget inside a template was absent from the index, and
+	// because the refs projection is built from the widgets table, an entity used
+	// only inside a template reported 0 pages and 0 widgets — so anything using
+	// reference counts to decide "unused, safe to delete" would delete a document
+	// in active use. Issue #940.
+	for _, tpl := range getBsonArrayElements(w["Templates"]) {
+		if tplMap, ok := tpl.(map[string]any); ok {
+			result = append(result, extractWidgetsRecursive(tplMap)...)
 		}
 	}
 

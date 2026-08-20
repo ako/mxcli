@@ -1,0 +1,128 @@
+-- List View specialization templates (issue mendixlabs/mxcli#940)
+--
+-- A List View over a generalization can render a different body per
+-- specialization. Studio Pro stores these as Forms$ListViewTemplate elements in
+-- a Templates array, alongside — not inside — the list view's own Widgets.
+--
+-- Before this syntax existed there was no way to author one, and no way to READ
+-- one either: DESCRIBE PAGE dropped them silently, so a describe → exec round
+-- trip destroyed them. Measured on ako/TestApp's Pages.Vehicle_Overview:
+-- 4 templates before, 0 after, with `mx check` reporting 0 errors both times.
+--
+-- Run:
+--   mxcli exec mdl-examples/doctype-tests/29-listview-specialization-templates.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe page Vehicles.Vehicle_Overview"
+--
+-- The describe output re-executes to the same document, templates included.
+
+create or modify entity Vehicles.Vehicle (
+    Brand: String(100),
+    Model: String(100),
+    Year: Integer
+);
+
+create or modify entity Vehicles.Bus extends Vehicles.Vehicle (
+    PassengerCapacity: Integer,
+    RouteNumber: String(20)
+);
+
+create or modify entity Vehicles.Truck extends Vehicles.Vehicle (
+    MaxLoadKg: Integer,
+    HasTrailer: Boolean
+);
+
+create or modify entity Vehicles.Car extends Vehicles.Vehicle (
+    NumberOfDoors: Integer
+);
+
+create or modify page Vehicles.Vehicle_Overview (
+    Title: 'Vehicle Overview',
+    Layout: Atlas_Core.Atlas_Default
+) {
+    listview vehicleListView (DataSource: database from Vehicles.Vehicle) {
+        -- The default body: what a Vehicle that is none of the specializations
+        -- below renders as. This is the list view's own Widgets array.
+        dynamictext defaultVehicle (
+            Content: '{1} {2} ({3})',
+            ContentParams: [{1} = Brand, {2} = Model, {3} = Year]
+        )
+
+        -- One body per specialization. The template has no name — the entity it
+        -- renders is what identifies it. Order is preserved as written, because
+        -- Mendix stores and matches in that order.
+        --
+        -- Note each template reads attributes that exist ONLY on its own
+        -- specialization: inside a template the context object is that entity.
+        template for Vehicles.Bus {
+            dynamictext busLabel (
+                Content: 'Bus {1} - capacity {2}, route {3}',
+                ContentParams: [{1} = Brand, {2} = PassengerCapacity, {3} = RouteNumber]
+            )
+        }
+        template for Vehicles.Truck {
+            dynamictext truckLabel (
+                Content: 'Truck {1} - max load {2} kg, trailer: {3}',
+                ContentParams: [{1} = Brand, {2} = MaxLoadKg, {3} = HasTrailer]
+            )
+        }
+        template for Vehicles.Car {
+            dynamictext carLabel (
+                Content: 'Car {1} - {2} doors',
+                ContentParams: [{1} = Brand, {2} = NumberOfDoors]
+            )
+        }
+    }
+};
+
+-- ALTER PAGE: adding a template reuses INSERT INTO with the same block, so a
+-- template has one spelling everywhere. Removing one needs its own form, because
+-- a template has no name to put in a widget ref.
+
+create or modify entity Vehicles.Motorcycle extends Vehicles.Vehicle (
+    HasSidecar: Boolean
+);
+
+alter page Vehicles.Vehicle_Overview {
+    insert into vehicleListView {
+        template for Vehicles.Motorcycle {
+            dynamictext mcLabel (
+                Content: 'Motorcycle {1} - sidecar: {2}',
+                ContentParams: [{1} = Brand, {2} = HasSidecar]
+            )
+        }
+    };
+    drop template for Vehicles.Car in vehicleListView
+};
+
+-- Naming the list view in the drop is required, not optional: one page can hold
+-- two list views with a template for the same entity.
+--
+-- Most template edits need none of this. Widgets inside a template are ordinary
+-- named widgets, so this works with no new syntax and lands in the right
+-- template:
+--
+--   alter page Vehicles.Vehicle_Overview {
+--       set Content = 'Bus {1}' on busLabel
+--   };
+
+-- Refused, each with a message naming the problem:
+--
+--   template for Vehicles.Unrelated { ... }
+--     -> is not Vehicles.Vehicle or a specialization of it, so the template can
+--        never match an object the list view shows
+--
+--   two `template for Vehicles.Bus` blocks in one list view
+--     -> more than one template for Vehicles.Bus
+--
+--   a `template for` nested inside another
+--     -> list view templates cannot nest
+--
+--   insert before/after a template
+--     -> only INSERT INTO: templates are not siblings of the list view's body
+--
+--   templates mixed with ordinary widgets in one INSERT
+--     -> they go to different places (Templates vs the default body)
+--
+--   drop template for an entity with no template
+--     -> names the templates that ARE there, rather than dropping nothing and
+--        reporting success
