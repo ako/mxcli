@@ -26,7 +26,52 @@ func init() {
 			"-- Both reuse the existing element's ID, so references from other\n" +
 			"-- documents survive.",
 		Example: "CREATE OR REPLACE MICROFLOW MyModule.ACT_Recalculate ()\nBEGIN\n  RETURN;\nEND;\n\nCREATE OR MODIFY PERSISTENT ENTITY MyModule.Customer (\n  Name: String(200)\n);",
-		SeeAlso: []string{"microflow", "domain-model.entity", "page"},
+		SeeAlso: []string{"microflow", "domain-model.entity", "page", "document-folder"},
+	})
+
+	// The folder clause is the other cross-cutting CREATE modifier, and gets one
+	// topic for the same reason OR MODIFY does: it applies to every document
+	// type, so documenting it in all 27 places would guarantee 27 chances to
+	// drift.
+	Register(SyntaxFeature{
+		Path:    "document-folder",
+		Summary: "FOLDER — placing a document in a module folder as you create it",
+		Keywords: []string{
+			"folder", "folder clause", "place document", "module folder",
+			"create in folder", "organise", "organize", "subfolder",
+			"folder on create", "folder ignored", "document did not move",
+		},
+		Syntax: "-- Every document type takes a folder clause on CREATE. Where it goes\n" +
+			"-- depends on the statement's shape:\n" +
+			"--   Pages, snippets       Folder: 'path'   a property, inside the parentheses\n" +
+			"--   Microflows, nanoflows FOLDER 'path'    a keyword, before BEGIN\n" +
+			"--   Everything else       FOLDER 'path'    a keyword, after the qualified name\n" +
+			"--\n" +
+			"-- Missing folders in the path are created. Nested paths use '/'.\n" +
+			"--\n" +
+			"-- On CREATE OR MODIFY the clause MOVES an existing document. Omitting it\n" +
+			"-- leaves placement alone — it never returns a document to the module\n" +
+			"-- root — so adding a folder to an existing script is safe, and removing\n" +
+			"-- one is a no-op. DESCRIBE emits the clause, so a description replays\n" +
+			"-- into the same folder.\n" +
+			"--\n" +
+			"-- To move a document without rewriting it, use MOVE.",
+		Example: "CREATE QUEUE MyModule.Q_Orders FOLDER 'Private/Queues' ( Parallelism: 3 );\n\n" +
+			"CREATE IMPORT MAPPING MyModule.IMM_Order FOLDER 'Private/Import mappings'\n" +
+			"  WITH JSON STRUCTURE MyModule.JSON_Order {\n" +
+			"    CREATE MyModule.Order { Id = id }\n" +
+			"  };\n\n" +
+			"CREATE PAGE MyModule.OrderList\n" +
+			"  (\n" +
+			"    Title: 'Orders',\n" +
+			"    Folder: 'Orders',\n" +
+			"    Layout: Atlas_Core.Atlas_Default\n" +
+			"  )\n" +
+			"  {\n" +
+			"    DYNAMICTEXT txtHeading (Content: 'Orders')\n" +
+			"  };\n\n" +
+			"CREATE OR MODIFY MICROFLOW MyModule.ACT_Sync ()\nFOLDER 'Private/Jobs'\nBEGIN\n  RETURN;\nEND;",
+		SeeAlso: []string{"move", "folders", "create-modifiers"},
 	})
 
 	// ── Connection ──────────────────────────────────────────────────────
@@ -237,7 +282,7 @@ CREATE CONFIGURATION 'Production'
 			"describe queue", "show queues", "parallelism", "cluster wide",
 			"background", "async microflow",
 		},
-		Syntax: `CREATE [OR MODIFY] QUEUE Module.Name [( <property>: <value>, ... )];
+		Syntax: `CREATE [OR MODIFY] QUEUE Module.Name [FOLDER 'path'] [( <property>: <value>, ... )];
 SHOW QUEUES [IN <module>];
 LIST QUEUES [IN <module>];
 DESCRIBE QUEUE Module.Name;
@@ -294,7 +339,7 @@ DROP QUEUE Ops.Mail;`,
 			"create regular expression", "drop regular expression", "describe regular expression",
 			"show regular expressions", "email regex", "match",
 		},
-		Syntax: `CREATE [OR MODIFY] REGULAR EXPRESSION Module.Name (
+		Syntax: `CREATE [OR MODIFY] REGULAR EXPRESSION Module.Name [FOLDER 'path'] (
   Expression: '<pattern>',
   [Documentation: '<text>',]
   [ExportLevel: Hidden|Public,]
@@ -406,7 +451,7 @@ CREATE VALIDATION RULE FOR Shop.Product.Price
 			"create scheduled event", "drop scheduled event", "describe scheduled event",
 			"repeat", "daily", "hourly", "weekly", "monthly", "yearly", "timer", "batch job",
 		},
-		Syntax: `CREATE [OR MODIFY] SCHEDULED EVENT Module.Name ( <property>: <value>, ... );
+		Syntax: `CREATE [OR MODIFY] SCHEDULED EVENT Module.Name [FOLDER 'path'] ( <property>: <value>, ... );
 SHOW SCHEDULED EVENTS [IN <module>];
 LIST SCHEDULED EVENTS [IN <module>];
 DESCRIBE SCHEDULED EVENT Module.Name;
@@ -514,10 +559,21 @@ SHOW STRUCTURE DEPTH 1 ALL;`,
 			"move", "relocate", "folder", "cross-module move",
 			"move page", "move microflow", "move entity",
 			"move folder", "drop folder",
+			"move import mapping", "move export mapping", "move json structure",
+			"move queue", "move workflow", "move menu", "move layout",
 		},
 		Syntax: `MOVE <doctype> Module.Name TO FOLDER 'Path';
--- doctype: PAGE | MICROFLOW | NANOFLOW | SNIPPET | ENUMERATION | CONSTANT
---        | DATABASE CONNECTION | JAVA ACTION | ODATA SERVICE | ENTITY | FOLDER
+-- doctype: every top-level document, spelled as DESCRIBE spells it —
+--   PAGE | SNIPPET | BUILDING BLOCK | LAYOUT | MENU
+--   MICROFLOW | NANOFLOW | WORKFLOW | QUEUE | SCHEDULED EVENT
+--   ENUMERATION | CONSTANT | REGULAR EXPRESSION
+--   JSON STRUCTURE | IMPORT MAPPING | EXPORT MAPPING
+--   JAVA ACTION | JAVASCRIPT ACTION | DATABASE CONNECTION | DATA TRANSFORMER
+--   IMAGE COLLECTION | ICON COLLECTION
+--   REST CLIENT | PUBLISHED REST SERVICE | ODATA CLIENT | ODATA SERVICE
+--   BUSINESS EVENT SERVICE
+--   MODEL | AGENT | KNOWLEDGE BASE | CONSUMED MCP SERVICE
+-- plus ENTITY (moves between domain models) and FOLDER (moves a folder).
 MOVE <doctype> Module.Name TO TargetModule;
 MOVE <doctype> OldModule.Name TO FOLDER 'Path' IN NewModule;
 MOVE FOLDER Module.FolderName TO FOLDER 'Path';
@@ -531,10 +587,22 @@ MOVE MICROFLOW MyModule.ACT_ProcessOrder TO FOLDER 'Orders/Processing';
 -- Move entity to different module
 MOVE ENTITY OldModule.Customer TO NewModule;
 
--- Java actions and published OData services have no folder clause on CREATE,
--- so MOVE is the only way to place them
+-- Many doctypes have no folder clause on CREATE, so MOVE is the only way to
+-- place them
 MOVE JAVA ACTION MyModule.ODataQuery TO FOLDER 'Support';
 MOVE ODATA SERVICE MyModule.PublicApi TO FOLDER 'Api/Published';
+MOVE IMPORT MAPPING MyModule.IMM_Order TO FOLDER 'Private/Import mappings';
+MOVE JSON STRUCTURE MyModule.JSON_Order TO FOLDER 'Private/JSON structures';
+
+-- A FOLDER clause on CREATE OR MODIFY moves an existing document too, so a
+-- script can place a document without a separate MOVE. Every doctype accepts
+-- one; on most it goes straight after the qualified name
+CREATE OR MODIFY JSON STRUCTURE MyModule.JSON_Order
+  FOLDER 'Private/JSON structures'
+  SNIPPET '{"id": 1}';
+CREATE QUEUE MyModule.Q_Orders FOLDER 'Private/Queues' ( Parallelism: 3 );
+CREATE IMPORT MAPPING MyModule.IMM_Order FOLDER 'Private/Import mappings'
+  WITH JSON STRUCTURE MyModule.JSON_Order { CREATE MyModule.Order { Id = id } };
 
 -- Check impact before cross-module move
 SHOW IMPACT OF OldModule.CustomerPage;

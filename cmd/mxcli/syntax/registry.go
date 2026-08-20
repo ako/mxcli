@@ -53,6 +53,12 @@ var topicAliases = map[string]string{
 	"snippets":   "snippet",
 	"fragments":  "fragment",
 	"workflows":  "workflow",
+	// Folder aliases — "folder" is the word a user reaches for whether they
+	// mean placing a document (document-folder) or listing the layout (folders),
+	// and the placement question is the far more common one.
+	"folder":           "document-folder",
+	"document-folders": "document-folder",
+	"list-folders":     "folders",
 	// Variant aliases
 	"nav":                "navigation",
 	"project-settings":   "settings",

@@ -189,7 +189,7 @@ func init() {
 			"create menu", "describe menu", "drop menu",
 			"menu", "menus", "menu document", "menu item",
 		},
-		Syntax: "CREATE [OR MODIFY] MENU Module.Name (\n" +
+		Syntax: "CREATE [OR MODIFY] MENU Module.Name [FOLDER 'path'] (\n" +
 			"  MENU ITEM '<caption>' [PAGE Module.Page | MICROFLOW Module.Flow] [ICON Module.Collection.name];\n" +
 			"  MENU '<caption>' [ICON Module.Collection.name] ( <nested items> );\n" +
 			");\n" +

@@ -305,7 +305,7 @@ navMenuItemDef
 // built from the same items, so this reuses navMenuItemDef rather than defining a
 // second item syntax.
 createMenuStatement
-    : MENU_KW qualifiedName LPAREN navMenuItemDef* RPAREN
+    : MENU_KW qualifiedName (FOLDER STRING_LITERAL)? LPAREN navMenuItemDef* RPAREN
     ;
 
 dropStatement
@@ -380,13 +380,68 @@ renameTarget
  * ```mdl
  * MOVE ENUMERATION MyModule.OrderStatus TO OtherModule;
  * ```
+ *
+ * @example Move an import mapping or JSON structure
+ * ```mdl
+ * MOVE IMPORT MAPPING MyModule.IMM_Order TO FOLDER 'Private/Import mappings';
+ * MOVE JSON STRUCTURE MyModule.JSON_Order TO FOLDER 'Private/JSON structures';
+ * ```
  */
 moveStatement
-    : MOVE (PAGE | MICROFLOW | SNIPPET | NANOFLOW | ENUMERATION | CONSTANT | DATABASE CONNECTION | JAVA ACTION | ODATA SERVICE) qualifiedName TO FOLDER STRING_LITERAL (IN (qualifiedName | IDENTIFIER))?
-    | MOVE (PAGE | MICROFLOW | SNIPPET | NANOFLOW | ENUMERATION | CONSTANT | DATABASE CONNECTION | JAVA ACTION | ODATA SERVICE) qualifiedName TO (qualifiedName | IDENTIFIER)
+    : MOVE moveDocumentType qualifiedName TO FOLDER STRING_LITERAL (IN (qualifiedName | IDENTIFIER))?
+    | MOVE moveDocumentType qualifiedName TO (qualifiedName | IDENTIFIER)
     | MOVE ENTITY qualifiedName TO (qualifiedName | IDENTIFIER)
     | MOVE FOLDER qualifiedName TO FOLDER STRING_LITERAL (IN (qualifiedName | IDENTIFIER))?
     | MOVE FOLDER qualifiedName TO (qualifiedName | IDENTIFIER)
+    ;
+
+/**
+ * The document types MOVE accepts — every top-level document, spelled as
+ * DESCRIBE spells it.
+ *
+ * This is a rule rather than an inline alternation so that MOVE FOLDER can be
+ * told from a document move by ONE check (`moveDocumentType` present or not)
+ * instead of by a hand-maintained negation of every doctype keyword. That
+ * negation is the trap mxcli-formula1 #32 flagged: each keyword added to the
+ * move rule had to be added to the folder discriminator too, and forgetting one
+ * silently turns `MOVE FOLDER …` into a document move.
+ *
+ * ENTITY is deliberately absent: an entity is not a unit, it lives inside a
+ * domain model, and its move converts associations rather than reparenting a
+ * row — so it keeps its own alternative and its own handler.
+ */
+moveDocumentType
+    : PAGE
+    | MICROFLOW
+    | NANOFLOW
+    | SNIPPET
+    | BUILDING BLOCK
+    | LAYOUT
+    | MENU_KW
+    | ENUMERATION
+    | CONSTANT
+    | WORKFLOW
+    | QUEUE
+    | SCHEDULED EVENT
+    | REGULAR EXPRESSION
+    | JSON STRUCTURE
+    | IMPORT MAPPING
+    | EXPORT MAPPING
+    | JAVA ACTION
+    | JAVASCRIPT ACTION
+    | DATABASE CONNECTION
+    | DATA TRANSFORMER
+    | IMAGE COLLECTION
+    | ICON COLLECTION
+    | REST CLIENT
+    | PUBLISHED REST SERVICE
+    | ODATA CLIENT
+    | ODATA SERVICE
+    | BUSINESS EVENT SERVICE
+    | MODEL
+    | AGENT
+    | KNOWLEDGE BASE
+    | CONSUMED MCP SERVICE
     ;
 
 // =============================================================================

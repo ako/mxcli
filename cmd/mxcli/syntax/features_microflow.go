@@ -79,7 +79,37 @@ func init() {
 		},
 		Syntax:  "IF condition THEN\n  ...\nELSIF condition THEN\n  ...\nELSE\n  ...\nEND IF;\n\nLOOP $Item IN $List BEGIN ... END LOOP;\nWHILE condition BEGIN ... END WHILE;\nRETURN $Value;\nRETURN empty;",
 		Example: "IF $Customer = empty THEN\n  LOG ERROR NODE 'Svc' 'Not found';\n  RETURN empty;\nELSIF $Customer/Active = false THEN\n  LOG WARNING 'Inactive customer';\nELSE\n  CHANGE $Customer (LastAccess = [%CurrentDateTime%]);\nEND IF;\n\nLOOP $Item IN $OrderLines BEGIN\n  COMMIT $Item;\nEND LOOP;",
-		SeeAlso: []string{"microflow.variables", "microflow.error-handling"},
+		SeeAlso: []string{"microflow.variables", "microflow.error-handling", "microflow.splits"},
+	})
+
+	Register(SyntaxFeature{
+		Path:    "microflow.splits",
+		Summary: "CASE (enum split) and SPLIT TYPE (object type split)",
+		Keywords: []string{
+			"case", "when", "then", "end case", "enum split", "enumeration split",
+			"split type", "end split", "type split", "inheritance split",
+			"specialization", "cast", "empty", "switch", "decision",
+		},
+		Syntax: "CASE $EnumVarOrAttr                  -- branches on an ENUMERATION\n" +
+			"  WHEN Value1, Value2 THEN\n" +
+			"    ...\n" +
+			"  WHEN (empty) THEN                  -- required (MDL056 / CE0079)\n" +
+			"    ...\n" +
+			"END CASE;                            -- no ELSE (MDL008)\n\n" +
+			"SPLIT TYPE $ObjectVar                -- branches on the RUNTIME TYPE\n" +
+			"  WHEN Module.Specialization THEN\n" +
+			"    CAST $Specific;\n" +
+			"    ...\n" +
+			"  WHEN Module.BaseEntity THEN        -- required too (CE0090)\n" +
+			"    ...\n" +
+			"  WHEN (empty) THEN                  -- the NULL-object branch, not a default\n" +
+			"    ...\n" +
+			"END SPLIT;\n\n" +
+			"Both take `WHEN ... THEN` branches. `SPLIT TYPE` needs one per subtype AND\n" +
+			"the base entity; its `(empty)` branch is the null object and covers no type.\n" +
+			"Legacy `CASE Module.Entity` / `ELSE` inside SPLIT TYPE still parse (MDL065).",
+		Example: "CASE $Order/Status\n  WHEN Draft, Submitted THEN\n    LOG INFO 'Not shipped yet';\n  WHEN Approved THEN\n    LOG INFO 'Ready to ship';\n  WHEN (empty) THEN\n    LOG INFO 'No status';\nEND CASE;\n\nSPLIT TYPE $Animal\n  WHEN Zoo.Dog THEN\n    LOG INFO 'woof';\n  WHEN Zoo.Cat THEN\n    LOG INFO 'meow';\n  WHEN Zoo.Animal THEN\n    LOG INFO 'some other animal';\n  WHEN (empty) THEN\n    LOG INFO 'no animal at all';\nEND SPLIT;",
+		SeeAlso: []string{"microflow.control-flow", "microflow.variables"},
 	})
 
 	Register(SyntaxFeature{

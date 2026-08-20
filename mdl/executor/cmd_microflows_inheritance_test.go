@@ -111,9 +111,11 @@ func TestTraverseFlow_InheritanceSplit(t *testing.T) {
 	e.traverseFlow(mkID("split"), activityMap, flowsByOrigin, splitMergeMap, visited, entityNames, nil, &lines, 1, nil, 0, nil)
 
 	assertLineContains(t, lines, "split type $Input")
-	assertLineContains(t, lines, "case Sample.SpecializedInput")
+	assertLineContains(t, lines, "when Sample.SpecializedInput then")
 	assertLineContains(t, lines, "cast $SpecificInput;")
-	assertLineContains(t, lines, "else")
+	// The empty branch is spelled for what it is — Mendix's `(empty)` flow, a
+	// null object — not `else`, which read as a default branch (#913).
+	assertLineContains(t, lines, "when (empty) then")
 	assertLineContains(t, lines, "end split;")
 }
 
@@ -140,8 +142,8 @@ func TestTraverseFlow_InheritanceSplitPreservesExplicitCaseOrder(t *testing.T) {
 	e.traverseFlow(mkID("split"), activityMap, flowsByOrigin, splitMergeMap, visited, nil, nil, &lines, 1, nil, 0, nil)
 
 	out := strings.Join(lines, "\n")
-	accountIdx := strings.Index(out, "case Sample.Account")
-	userIdx := strings.Index(out, "case Sample.User")
+	accountIdx := strings.Index(out, "when Sample.Account then")
+	userIdx := strings.Index(out, "when Sample.User then")
 	if accountIdx == -1 || userIdx == -1 {
 		t.Fatalf("missing expected cases:\n%s", out)
 	}

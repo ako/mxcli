@@ -48,6 +48,9 @@ func execCreatePageV3(ctx *ExecContext, s *ast.CreatePageStmtV3) error {
 	// neither rewritten nor deleted here, and its exclusion is carried forward
 	// when it is the only match (#914).
 	existingExcluded := false
+	// Where the page being rewritten currently sits, so a statement that says
+	// nothing about folders leaves it there (#932).
+	var existingContainerID model.ID
 	var excludedMatches []*pages.Page
 	matches := 0
 	for _, p := range existingPages {
@@ -67,6 +70,7 @@ func execCreatePageV3(ctx *ExecContext, s *ast.CreatePageStmtV3) error {
 		if len(pagesToDelete) == 0 {
 			existingAllowedRoles = cloneRoleIDs(p.AllowedRoles)
 			preserveAllowedRoles = true
+			existingContainerID = p.ContainerID
 		}
 		pagesToDelete = append(pagesToDelete, p.ID)
 	}
@@ -78,6 +82,7 @@ func execCreatePageV3(ctx *ExecContext, s *ast.CreatePageStmtV3) error {
 		existingAllowedRoles = cloneRoleIDs(p.AllowedRoles)
 		preserveAllowedRoles = true
 		existingExcluded = true
+		existingContainerID = p.ContainerID
 		pagesToDelete = append(pagesToDelete, p.ID)
 	}
 
@@ -111,8 +116,14 @@ func execCreatePageV3(ctx *ExecContext, s *ast.CreatePageStmtV3) error {
 	if len(pagesToDelete) > 0 {
 		// Reuse first existing page's UUID to avoid git delete+add (which crashes Studio Pro RevStatusCache)
 		page.ID = pagesToDelete[0]
+		if s.Folder == "" {
+			page.ContainerID = existingContainerID
+		}
 		if err := ctx.Backend.UpdatePage(page); err != nil {
 			return mdlerrors.NewBackend("update page", err)
+		}
+		if _, err := applyDocumentFolder(ctx, page.ID, existingContainerID, page.ContainerID); err != nil {
+			return err
 		}
 		// Delete any additional duplicates
 		for _, id := range pagesToDelete[1:] {
@@ -168,6 +179,12 @@ func execCreateSnippetV3(ctx *ExecContext, s *ast.CreateSnippetStmtV3) error {
 	// Mendix allows, so it is neither replaced nor deleted, and an exclusion is
 	// carried forward when every match is excluded (#914).
 	existingExcluded := false
+	// Where the snippet being replaced currently sits. A snippet is rewritten
+	// as delete+create, so unlike the Update* doctypes its container really is
+	// re-applied on every statement — leaving this unset filed a foldered
+	// snippet back into the module root whenever a script that says nothing
+	// about folders was re-run (#932).
+	var existingContainerID model.ID
 	var excludedSnippets []*pages.Snippet
 	matches := 0
 	for _, snip := range existingSnippets {
@@ -184,10 +201,14 @@ func execCreateSnippetV3(ctx *ExecContext, s *ast.CreateSnippetStmtV3) error {
 			excludedSnippets = append(excludedSnippets, snip)
 			continue
 		}
+		if len(snippetsToDelete) == 0 {
+			existingContainerID = snip.ContainerID
+		}
 		snippetsToDelete = append(snippetsToDelete, snip.ID)
 	}
 	if len(snippetsToDelete) == 0 && len(excludedSnippets) > 0 {
 		existingExcluded = true
+		existingContainerID = excludedSnippets[0].ContainerID
 		snippetsToDelete = append(snippetsToDelete, excludedSnippets[0].ID)
 	}
 
@@ -211,6 +232,9 @@ func execCreateSnippetV3(ctx *ExecContext, s *ast.CreateSnippetStmtV3) error {
 		return mdlerrors.NewBackend("build snippet", err)
 	}
 	snippet.Excluded = snippet.Excluded || existingExcluded
+	if s.Folder == "" && existingContainerID != "" {
+		snippet.ContainerID = existingContainerID
+	}
 
 	// Delete old snippets only after successful build
 	for _, id := range snippetsToDelete {

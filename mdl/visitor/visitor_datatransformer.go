@@ -25,9 +25,14 @@ func (b *Builder) ExitCreateDataTransformerStatement(ctx *parser.CreateDataTrans
 		stmt.SourceType = "XML"
 	}
 
-	// Source content — the STRING_LITERAL after JSON/XML
-	if sl := ctx.STRING_LITERAL(); sl != nil {
-		stmt.SourceJSON = unquoteString(sl.GetText())
+	// Source content and folder are read by grammar label: the rule now has two
+	// direct STRING_LITERALs, so an index would depend on whether a folder was
+	// given.
+	if tok := ctx.GetSource(); tok != nil {
+		stmt.SourceJSON = unquoteString(tok.GetText())
+	}
+	if tok := ctx.GetFolder(); tok != nil {
+		stmt.Folder = unquoteString(tok.GetText())
 	}
 
 	// Steps

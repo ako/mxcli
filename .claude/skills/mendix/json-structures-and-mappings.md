@@ -598,6 +598,29 @@ end;
 
 ---
 
+## Placing Documents in Folders
+
+Every one of these documents takes a `folder` clause on `create`, straight after
+the qualified name. Missing folders in the path are created:
+
+```mdl
+create json structure Sales.JSON_Order folder 'Private/JSON structures'
+  snippet '{"id": 1, "total": 9.99}';
+
+create import mapping Sales.IMM_Order folder 'Private/Import mappings'
+  with json structure Sales.JSON_Order
+{
+  create Sales.Order { OrderId = id, Total = total }
+};
+```
+
+On `create or modify` the clause **moves** an existing document. Omitting it
+leaves placement alone — it never returns a document to the module root — so
+adding a folder to an existing script is safe and removing one is a no-op.
+`describe` emits the clause, so a description replays into the same folder.
+
+See `organize-project.md` for `move` and the full folder story.
+
 ## Common Mistakes
 
 | Mistake | Fix |

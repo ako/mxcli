@@ -9,6 +9,7 @@ import (
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
 	"github.com/mendixlabs/mxcli/mdl/types"
+	"github.com/mendixlabs/mxcli/model"
 )
 
 // describeMenu renders a standalone Menus$MenuDocument — the reusable menu a
@@ -42,7 +43,7 @@ func describeMenu(ctx *ExecContext, name ast.QualifiedName) error {
 
 	// Output is re-executable: the item syntax is the same one CREATE MENU
 	// accepts, so describe → exec → describe is a fixed point.
-	fmt.Fprintf(ctx.Output, "create or modify menu %s.%s (\n", name.Module, md.Name)
+	fmt.Fprintf(ctx.Output, "create or modify menu %s.%s%s (\n", name.Module, md.Name, describeFolderClause(ctx, md.ContainerID))
 	printMenuMDL(ctx.Output, md.Items, 1, "CREATE MENU")
 	fmt.Fprintln(ctx.Output, ");")
 	return nil
@@ -69,9 +70,18 @@ func execCreateMenu(ctx *ExecContext, s *ast.CreateMenuStmt) error {
 		return mdlerrors.NewAlreadyExists("menu", s.Name.String())
 	}
 
+	var existingContainer model.ID
+	if existing != nil {
+		existingContainer = existing.ContainerID
+	}
+	containerID, err := containerForDocument(ctx, mod.ID, s.Folder, existingContainer)
+	if err != nil {
+		return err
+	}
+
 	md := &types.MenuDocument{
 		Name:          s.Name.Name,
-		ContainerID:   mod.ID,
+		ContainerID:   containerID,
 		Documentation: s.Documentation,
 		Items:         menuItemsFromAST(s.Items),
 	}
@@ -80,7 +90,6 @@ func execCreateMenu(ctx *ExecContext, s *ast.CreateMenuStmt) error {
 		// Preserve the document's identity and the properties MDL does not
 		// author, so a modify does not silently reset them.
 		md.ID = existing.ID
-		md.ContainerID = existing.ContainerID
 		md.ExportLevel = existing.ExportLevel
 		md.Excluded = existing.Excluded
 		if md.Documentation == "" {
@@ -88,6 +97,9 @@ func execCreateMenu(ctx *ExecContext, s *ast.CreateMenuStmt) error {
 		}
 		if err := ctx.Backend.UpdateMenuDocument(md); err != nil {
 			return mdlerrors.NewBackend("update menu", err)
+		}
+		if _, err := applyDocumentFolder(ctx, md.ID, existingContainer, containerID); err != nil {
+			return err
 		}
 		ctx.ReportMutation("Modified", "menu %s", s.Name.String())
 		return nil

@@ -1,0 +1,57 @@
+-- upstream #925 — `SHOW ACCESS ON ENTITY Mod.Entity` was a parse error, while
+-- the MICROFLOW and PAGE spellings parsed.
+--
+--   $ mxcli -p app.mpr -c "SHOW ACCESS ON ENTITY eShop.CatalogBrand"
+--   Parse error: line 1:60 extraneous input '.' expecting the start of a statement
+--
+-- Cause: ENTITY is in the grammar's `keyword` rule, so it is a legal
+-- identifierOrKeyword. `showOrList ACCESS ON qualifiedName` therefore matched
+-- the word ENTITY as the whole name, the statement ended there, and the real
+-- qualified name became extraneous input. (The reported column is offset by the
+-- `CONNECT LOCAL '<path>'; ` prefix `-p` prepends to a `-c` string — 27 in the
+-- script itself.)
+--
+-- The command has always existed: the bare form below is the same statement and
+-- the same handler. Only the explicit spelling — the one the CLAUDE.md written
+-- by `mxcli init` documents, `SHOW ACCESS ON MICROFLOW|PAGE|ENTITY Mod.Name` —
+-- was unreachable.
+--
+-- Found while fixing it, and fixed with it: `SHOW ACCESS ON PAGE` PARSED but
+-- answered the wrong question. The singular `SHOW PAGE` → DESCRIBE PAGE alias
+-- branch sits ~200 lines earlier in the visitor and matched first, so the
+-- command printed the page's entire definition instead of its allowed module
+-- roles. That is why the issue reports the PAGE variant as working.
+--
+-- Run against any project with a persistent entity and a page (names below are
+-- from a blank app + Administration). All five must answer in kind:
+--
+--   mxcli -p <app>.mpr -c "SHOW ACCESS ON ENTITY Administration.Account"
+--     → Access rules for Administration.Account: …
+--   mxcli -p <app>.mpr -c "SHOW ACCESS ON PAGE Administration.Account_Overview"
+--     → Allowed module roles for Administration.Account_Overview: …
+--
+-- Unit coverage: mdl/visitor/visitor_show_access_test.go
+
+-- The regression: this line is the whole issue.
+show access on entity Administration.Account;
+/
+
+-- Its synonym, which always worked. The two must print the same report.
+show access on Administration.Account;
+/
+
+-- LIST is the other half of showOrList, so it must reach the same statement.
+list access on entity Administration.Account;
+/
+
+-- The second defect: this printed the page's widget tree before the fix.
+show access on page Administration.Account_Overview;
+/
+
+-- Controls — the guards must not steal the plain spellings, which still
+-- describe the document rather than reporting access.
+show entity Administration.Account;
+/
+
+show page Administration.Account_Overview;
+/

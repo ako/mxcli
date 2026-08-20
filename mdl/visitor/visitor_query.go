@@ -78,7 +78,12 @@ func (b *Builder) ExitShowStatement(ctx *parser.ShowStatementContext) {
 			}
 		}
 		b.statements = append(b.statements, stmt)
-	} else if ctx.ENTITY() != nil {
+	} else if ctx.ENTITY() != nil && ctx.ACCESS() == nil {
+		// SHOW ENTITY Module.Entity. The ACCESS guard is load-bearing: this
+		// branch runs long before the ACCESS one below, so without it
+		// `SHOW ACCESS ON ENTITY Module.Entity` would answer with the entity's
+		// definition instead of its access rules — a wrong answer rather than an
+		// error, which is the harder kind to notice.
 		if qn := ctx.QualifiedName(); qn != nil {
 			name := buildQualifiedName(qn)
 			b.statements = append(b.statements, &ast.ShowStmt{
@@ -184,12 +189,18 @@ func (b *Builder) ExitShowStatement(ctx *parser.ShowStatementContext) {
 			}
 		}
 		b.statements = append(b.statements, stmt)
-	} else if ctx.PAGE() != nil {
+	} else if ctx.PAGE() != nil && ctx.ACCESS() == nil {
 		// `SHOW PAGE Module.Page` (singular) is an alias for DESCRIBE PAGE, the
 		// same way SHOW ENTITY / SHOW ASSOCIATION read as their describe. The
 		// grammar alternative existed with no visitor branch, so the statement
 		// parsed to nothing and the command exited 0 printing nothing — which
 		// reads as "this page is empty", not "this command does nothing".
+		//
+		// The ACCESS guard is the sibling of the one on the ENTITY branch above:
+		// this branch sits ~200 lines before the ACCESS one, so without it
+		// `SHOW ACCESS ON PAGE Module.Page` printed the page's whole definition
+		// instead of its allowed roles. Found by the #925 test sweep — the
+		// spelling parsed, which is why it was reported as working.
 		if qn := ctx.QualifiedName(); qn != nil {
 			b.statements = append(b.statements, &ast.DescribeStmt{
 				ObjectType: ast.DescribePage,
@@ -399,7 +410,9 @@ func (b *Builder) ExitShowStatement(ctx *parser.ShowStatementContext) {
 		// SHOW DEMO USERS
 		b.statements = append(b.statements, &ast.ShowStmt{ObjectType: ast.ShowDemoUsers})
 	} else if ctx.ACCESS() != nil {
-		// SHOW ACCESS ON [MICROFLOW|PAGE|WORKFLOW|NANOFLOW] Module.Entity
+		// SHOW ACCESS ON [ENTITY|MICROFLOW|PAGE|WORKFLOW|NANOFLOW] Module.Name.
+		// A bare name and an explicit ENTITY both fall through to ShowAccessOn,
+		// which reports entity access rules.
 		if qn := ctx.QualifiedName(); qn != nil {
 			name := buildQualifiedName(qn)
 			if ctx.MICROFLOW() != nil {

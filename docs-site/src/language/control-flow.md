@@ -240,6 +240,42 @@ Rules, each of which `mxcli check` enforces:
 Several values may share a branch (`WHEN Draft, Submitted THEN …`). `CASE` works in
 nanoflows on the same terms.
 
+## SPLIT TYPE (Object Type Split)
+
+`SPLIT TYPE` branches on an object's **runtime specialization** and compiles to a Mendix
+object type decision. Branches use the same `WHEN … THEN` shape as [CASE](#case-enum-split),
+so the two splits differ only in what they branch on.
+
+```sql
+SPLIT TYPE $Animal
+  WHEN Zoo.Dog THEN
+    CAST $Dog;
+    LOG INFO 'woof';
+  WHEN Zoo.Cat THEN
+    LOG INFO 'meow';
+  WHEN Zoo.Animal THEN
+    LOG INFO 'some other animal';
+  WHEN (empty) THEN
+    LOG INFO 'no animal at all';
+END SPLIT;
+```
+
+Use `CAST` inside a branch to bind the specialized variable its body needs.
+
+| Rule | Why |
+|------|-----|
+| A branch for **every** subtype **and** the base entity | mxbuild reports **CE0090** *"The 'X' value should be configured for an outgoing flow"* for each type with no branch. The base entity is what covers "none of the more specific ones" |
+| `WHEN (empty) THEN` is the **null-object** branch, not a default | It is taken when the variable is empty. It does **not** cover unnamed types — measured on 11.13.0, one named type plus an empty branch still gives CE0090 for every other type. Branch on the base entity for that |
+| The empty branch cannot be omitted | **CE0089**. mxcli emits the flow unconditionally, so MDL cannot express a split without one |
+| A non-void microflow needs a `RETURN` after `END SPLIT;` | Branches converge on a merge that continues to the end event — otherwise **MDL003** and **CE0067** |
+
+The pre-#913 spelling — `CASE Zoo.Dog` for a branch and `ELSE` for the empty one — still
+parses and builds the identical flow, but warns **MDL065**. It was replaced because `CASE`
+introduced a *branch* here while introducing the *subject* in `CASE $x WHEN v THEN`, and
+because `ELSE` reads as a default branch and never was one.
+
+`SPLIT TYPE` works in nanoflows on the same terms.
+
 ## Unsupported Control Flow
 
 The following constructs are **not** supported in MDL and will cause parse errors:

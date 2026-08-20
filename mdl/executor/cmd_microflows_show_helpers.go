@@ -1571,13 +1571,17 @@ func emitEnumSplitStatement(
 		branches = append(branches, enumBranch{values: []string{caseValue}, flow: flow})
 	}
 
+	// Bodies traverse at indent+2, one level in from their `when` at indent+1.
+	// They used to traverse at indent+1 — the SAME column as the `when` — which
+	// made a nested `if`'s `else` land exactly where a reader expects a branch
+	// keyword, in output where an `else` on a `case` is an MDL008 error (#913).
 	for _, branch := range branches {
 		*lines = append(*lines, indentStr+"  when "+formatEnumSplitCaseValues(branch.values)+" then")
-		traverseFlowUntilMerge(ctx, branch.flow.DestinationID, mergeID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, cloneVisited(visited), entityNames, microflowNames, lines, indent+1, sourceMap, headerLineCount, annotationsByTarget)
+		traverseFlowUntilMerge(ctx, branch.flow.DestinationID, mergeID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, cloneVisited(visited), entityNames, microflowNames, lines, indent+2, sourceMap, headerLineCount, annotationsByTarget)
 	}
 	if elseFlow != nil {
 		*lines = append(*lines, indentStr+"  else")
-		traverseFlowUntilMerge(ctx, elseFlow.DestinationID, mergeID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, cloneVisited(visited), entityNames, microflowNames, lines, indent+1, sourceMap, headerLineCount, annotationsByTarget)
+		traverseFlowUntilMerge(ctx, elseFlow.DestinationID, mergeID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, cloneVisited(visited), entityNames, microflowNames, lines, indent+2, sourceMap, headerLineCount, annotationsByTarget)
 	}
 
 	*lines = append(*lines, indentStr+"end case;")
@@ -1623,13 +1627,13 @@ func emitInheritanceSplitStatement(
 			elseFlow = flow
 			continue
 		}
-		*lines = append(*lines, indentStr+"case "+caseName)
-		traverseFlowUntilMerge(ctx, flow.DestinationID, branchStopID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, cloneVisited(visited), entityNames, microflowNames, lines, indent+1, sourceMap, headerLineCount, annotationsByTarget)
+		*lines = append(*lines, indentStr+"  when "+caseName+" then")
+		traverseFlowUntilMerge(ctx, flow.DestinationID, branchStopID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, cloneVisited(visited), entityNames, microflowNames, lines, indent+2, sourceMap, headerLineCount, annotationsByTarget)
 	}
 	if elseFlow != nil {
 		elseLineIdx := len(*lines)
-		*lines = append(*lines, indentStr+"else")
-		traverseFlowUntilMerge(ctx, elseFlow.DestinationID, branchStopID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, cloneVisited(visited), entityNames, microflowNames, lines, indent+1, sourceMap, headerLineCount, annotationsByTarget)
+		*lines = append(*lines, indentStr+"  when (empty) then")
+		traverseFlowUntilMerge(ctx, elseFlow.DestinationID, branchStopID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, cloneVisited(visited), entityNames, microflowNames, lines, indent+2, sourceMap, headerLineCount, annotationsByTarget)
 		// Remove an empty else block, as the if/else emitters above do. On an
 		// object-type decision this flow is the `(empty)` case (for a null
 		// object), which the builder emits unconditionally — CE0089 without it —
