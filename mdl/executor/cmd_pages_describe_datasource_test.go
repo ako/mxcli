@@ -257,3 +257,117 @@ func TestXPathConstraintClauseIgnoresBlank(t *testing.T) {
 		}
 	}
 }
+
+// TestDataSourceArgsRoundTrip covers mxcli-formula1 §57.2.
+//
+// A microflow used as a widget datasource needs an argument for every
+// parameter, exactly as a call action does — #835 fixed the write side. DESCRIBE
+// never read them back, so `microflow Mod.DS(Race: $Race)` described as
+// `microflow Mod.DS`, and replaying that description produced
+//
+//	[error] [CE1571] "No argument has been selected for parameter 'Race' …"
+//
+// which is the very error #835 fixed. The loss predates #941; the old code
+// printed the whole line wrong, so it hid behind a larger bug.
+func TestDataSourceArgsRoundTrip(t *testing.T) {
+	ds := map[string]any{
+		"$Type": "Forms$MicroflowSource",
+		"MicroflowSettings": map[string]any{
+			"Microflow": "Mod.DS_Filtered",
+			// Stored qualified — <MicroflowQName>.<ParameterName> — and in
+			// order. Verified against a real unit rather than inferred.
+			"ParameterMappings": []any{
+				int32(3),
+				map[string]any{"Parameter": "Mod.DS_Filtered.Term", "Expression": "$Term"},
+				map[string]any{"Parameter": "Mod.DS_Filtered.Limit", "Expression": "10"},
+			},
+		},
+	}
+	got := parseDataSource(ds)
+	if got == nil {
+		t.Fatal("datasource not read at all")
+	}
+	if len(got.Args) != 2 {
+		t.Fatalf("read %d arguments, want 2 (%+v)", len(got.Args), got.Args)
+	}
+	// The qualified prefix is storage's, not MDL's: the clause names the
+	// parameter, not the microflow it belongs to.
+	if got.Args[0].Name != "Term" || got.Args[0].Value != "$Term" {
+		t.Errorf("first arg = %+v, want {Term $Term}", got.Args[0])
+	}
+	if got.Args[1].Name != "Limit" || got.Args[1].Value != "10" {
+		t.Errorf("second arg = %+v, want {Limit 10}", got.Args[1])
+	}
+
+	want := "microflow Mod.DS_Filtered(Term: $Term, Limit: 10)"
+	if expr := dataSourceExpr(got); expr != want {
+		t.Errorf("rendered %q, want %q", expr, want)
+	}
+}
+
+// TestDataSourceArgsOmittedWhenThereAreNone pins that a parameterless microflow
+// keeps its bare form. The grammar makes the argument list optional, and
+// emitting `microflow Mod.DS()` for a flow that takes nothing would be noise at
+// best — and is not what the previous output looked like, so every existing
+// description would churn.
+func TestDataSourceArgsOmittedWhenThereAreNone(t *testing.T) {
+	for name, ds := range map[string]map[string]any{
+		"no settings":  {"$Type": "Forms$MicroflowSource", "Microflow": "Mod.DS"},
+		"empty list":   {"$Type": "Forms$MicroflowSource", "MicroflowSettings": map[string]any{"Microflow": "Mod.DS", "ParameterMappings": []any{int32(3)}}},
+		"nil mappings": {"$Type": "Forms$MicroflowSource", "MicroflowSettings": map[string]any{"Microflow": "Mod.DS", "ParameterMappings": nil}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := parseDataSource(ds)
+			if got == nil {
+				t.Fatal("datasource not read")
+			}
+			if expr := dataSourceExpr(got); expr != "microflow Mod.DS" {
+				t.Errorf("rendered %q, want the bare form", expr)
+			}
+		})
+	}
+}
+
+// TestDataSourceArgsNanoflow pins the sibling shape: a nanoflow source stores
+// its arguments under NanoflowSettings, and losing them there fails the build
+// the same way.
+func TestDataSourceArgsNanoflow(t *testing.T) {
+	ds := map[string]any{
+		"$Type": "Forms$NanoflowSource",
+		"NanoflowSettings": map[string]any{
+			"Nanoflow": "Mod.NF_Rows",
+			"ParameterMappings": []any{
+				int32(3),
+				map[string]any{"Parameter": "Mod.NF_Rows.Ctx", "Expression": "$currentObject"},
+			},
+		},
+	}
+	got := parseDataSource(ds)
+	if got == nil {
+		t.Fatal("nanoflow datasource not read")
+	}
+	want := "nanoflow Mod.NF_Rows(Ctx: $currentObject)"
+	if expr := dataSourceExpr(got); expr != want {
+		t.Errorf("rendered %q, want %q", expr, want)
+	}
+}
+
+// TestDataSourceArgsUnqualifiedParameter guards the prefix strip. The stored
+// name is qualified by the flow it belongs to, but a document that stores it
+// bare must not have its first character eaten by a blind prefix trim.
+func TestDataSourceArgsUnqualifiedParameter(t *testing.T) {
+	ds := map[string]any{
+		"$Type": "Forms$MicroflowSource",
+		"MicroflowSettings": map[string]any{
+			"Microflow":         "Mod.DS",
+			"ParameterMappings": []any{int32(3), map[string]any{"Parameter": "Term", "Expression": "$Term"}},
+		},
+	}
+	got := parseDataSource(ds)
+	if got == nil || len(got.Args) != 1 {
+		t.Fatalf("read %+v", got)
+	}
+	if got.Args[0].Name != "Term" {
+		t.Errorf("parameter name = %q, want Term", got.Args[0].Name)
+	}
+}

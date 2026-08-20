@@ -81,11 +81,11 @@ func parseDataSource(ds map[string]any) *rawDataSource {
 	switch {
 	case dsType == dsTypeMicroflow:
 		if mf := microflowSourceRef(ds); mf != "" {
-			return &rawDataSource{Type: "microflow", Reference: mf}
+			return &rawDataSource{Type: "microflow", Reference: mf, Args: flowSourceArgs(ds, "MicroflowSettings", mf)}
 		}
 	case dsType == dsTypeNanoflow:
 		if nf := nanoflowSourceRef(ds); nf != "" {
-			return &rawDataSource{Type: "nanoflow", Reference: nf}
+			return &rawDataSource{Type: "nanoflow", Reference: nf, Args: flowSourceArgs(ds, "NanoflowSettings", nf)}
 		}
 	case dsType == dsTypeCustomNanoflow:
 		if nf := extractString(ds["Nanoflow"]); nf != "" {
@@ -233,7 +233,15 @@ func dataSourceExpr(ds *rawDataSource) string {
 		if ds.Reference == "" {
 			return ""
 		}
-		return ds.Type + " " + ds.Reference
+		expr := ds.Type + " " + ds.Reference
+		if len(ds.Args) > 0 {
+			parts := make([]string, 0, len(ds.Args))
+			for _, arg := range ds.Args {
+				parts = append(parts, arg.Name+": "+arg.Value)
+			}
+			expr += "(" + strings.Join(parts, ", ") + ")"
+		}
+		return expr
 	case "parameter":
 		if ds.Reference == "" {
 			return ""
@@ -328,4 +336,49 @@ func xpathConstraintClause(constraint string) string {
 		return strings.Join(groups, " ")
 	}
 	return "[" + xpath + "]"
+}
+
+// flowSourceArgs reads the argument bindings of a microflow or nanoflow
+// datasource from its settings sub-document.
+//
+// Storage qualifies each parameter with the flow it belongs to
+// ("Mod.DS_Filtered.Term"), while MDL names the parameter alone — the flow is
+// already on the left of the parentheses. The prefix is stripped by matching
+// the flow's own qualified name rather than by cutting at the last dot, so a
+// document that stores the name bare is left alone instead of losing its first
+// segment.
+//
+// The bound value lives in Expression for both a variable reference ($Term) and
+// a literal (10); Variable is the older spelling and is honoured when present.
+// A parameterless flow yields nil, which the renderer emits without parentheses
+// — the grammar makes the list optional, and adding empty parens would churn
+// every existing description.
+func flowSourceArgs(ds map[string]any, settingsKey, flowName string) []rawDataSourceArg {
+	settings, ok := ds[settingsKey].(map[string]any)
+	if !ok || settings == nil {
+		return nil
+	}
+	var out []rawDataSourceArg
+	for _, item := range getBsonArrayElements(settings["ParameterMappings"]) {
+		mapping, ok := item.(map[string]any)
+		if !ok || mapping == nil {
+			continue
+		}
+		name := strings.TrimPrefix(extractString(mapping["Parameter"]), flowName+".")
+		if name == "" {
+			continue
+		}
+		value := extractString(mapping["Expression"])
+		if value == "" {
+			value = extractString(mapping["Variable"])
+		}
+		if value == "" {
+			// A parameter with no bound value is what CE1571 is about. There is
+			// nothing to reproduce, and inventing one would be worse than
+			// leaving the gap the model already has.
+			continue
+		}
+		out = append(out, rawDataSourceArg{Name: name, Value: value})
+	}
+	return out
 }
