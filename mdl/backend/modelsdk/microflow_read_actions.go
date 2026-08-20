@@ -761,6 +761,14 @@ func restRequestHandlingFromRaw(doc bson.Raw) microflows.RequestHandling {
 			h.Template, h.TemplateParams = stringTemplateFromRaw(t)
 		}
 		return h
+	case "Microflows$BinaryRequestHandling":
+		// Binary request body — the expression yielding the bytes, stored as
+		// source text (Studio Pro writes a FileDocument's Contents member,
+		// e.g. `$Doc/Contents`). Without this case DESCRIBE dropped the body
+		// silently and the round trip produced a request with no payload.
+		h := &microflows.BinaryRequestHandling{Expression: rawStr(doc, "Expression")}
+		h.ID = id
+		return h
 	case "Microflows$MappingRequestHandling":
 		// The export-mapping source variable is stored under "MappingVariableName"
 		// (same key ExportXmlAction uses), not "ParameterVariable". Reading the

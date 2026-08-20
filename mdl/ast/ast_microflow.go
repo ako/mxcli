@@ -804,11 +804,15 @@ const (
 	RestBodyNone    RestBodyType = iota // No body
 	RestBodyCustom                      // Custom body template
 	RestBodyMapping                     // Export mapping
+	RestBodyBinary                      // Binary body: the raw bytes of an expression
 )
 
 // RestBody represents the request body configuration.
 type RestBody struct {
-	Type           RestBodyType    // Body type
+	Type RestBodyType // Body type
+	// Template is the body template for Custom, and for Binary the expression
+	// yielding the bytes to send — Studio Pro stores a FileDocument's Contents
+	// member there, e.g. `$Doc/Contents`.
 	Template       Expression      // Body template (for Custom type)
 	TemplateParams []TemplateParam // Template parameters for placeholders
 	MappingName    QualifiedName   // Export mapping name (for Mapping type)

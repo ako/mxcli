@@ -372,19 +372,30 @@ create rest client RestTest.RC014_JsonBodyAPI (
 };
 
 -- ============================================================================
--- Level 6.2: File Upload
+-- Level 6.2: File Upload — NOT SUPPORTED, and this example used to lie
 -- ============================================================================
+--
+-- `body: file from $Doc` was accepted here and sent the literal text `$Doc`.
+-- Measured against httpbingo: Content-Length 4 for an 8090-byte PNG, HTTP 200,
+-- `mx check` 0 errors. It is now refused as MDL-REST02.
+--
+-- Mendix has no binary request body: a consumed operation stores one of
+-- Rest$JsonBody, Rest$StringBody or Rest$ImplicitMappingBody. Binary POST is
+-- done from a microflow instead, which does have a binary request body:
+--   rest call post '<url>' header 'ContentType' = '<type>'
+--     body binary $Doc/Contents returns response;
+--
+-- Downloading is unaffected — `response: file as $Doc` works.
 
-create rest client RestTest.RC015_FileUploadAPI (
+create rest client RestTest.RC015_FileDownloadAPI (
   BaseUrl: 'https://httpbin.org',
   authentication: none
 )
 {
-  operation UploadFile {
-    method: post,
-    path: '/post',
-    body: file from $FileDocument,
-    response: json as $UploadResult
+  operation DownloadFile {
+    method: get,
+    path: '/image/png',
+    response: file as $Downloaded
   }
 };
 
@@ -560,17 +571,9 @@ create rest client RestTest.RC018_PetStoreAPI (
     response: none
   }
 
-  /**
-   * Upload pet image
-   * @param petId The pet to associate the image with
-   */
-  operation UploadImage {
-    method: post,
-    path: '/pet/{petId}/uploadImage',
-    parameters: ($petId: integer),
-    body: file from $ImageFile,
-    response: json as $UploadResult
-  }
+  -- Upload pet image: not expressible HERE. `body: file from $ImageFile` is
+  -- refused as MDL-REST02 — a consumed operation has no binary request body.
+  -- Use a microflow: `rest call post ... body binary $ImageFile/Contents`.
 };
 
 -- ============================================================================
