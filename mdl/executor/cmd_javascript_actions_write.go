@@ -48,6 +48,7 @@ func execCreateJavaScriptAction(ctx *ExecContext, s *ast.CreateJavaScriptActionS
 		return mdlerrors.NewBackend("list javascript actions", err)
 	}
 	var existingID model.ID
+	var existingContainer model.ID
 	// Target the live action and carry its exclusion forward (#914).
 	existingExcluded := false
 	if ex, ok := pickLive(existing,
@@ -61,6 +62,13 @@ func execCreateJavaScriptAction(ctx *ExecContext, s *ast.CreateJavaScriptActionS
 		}
 		existingID = ex.ID
 		existingExcluded = ex.Excluded
+		existingContainer = ex.ContainerID
+	}
+
+	moduleID := containerID
+	containerID, err = containerForDocument(ctx, moduleID, s.Folder, existingContainer)
+	if err != nil {
+		return err
 	}
 
 	newID := model.ID(types.GenerateID())
@@ -144,6 +152,9 @@ func execCreateJavaScriptAction(ctx *ExecContext, s *ast.CreateJavaScriptActionS
 	if existingID != "" {
 		if err := ctx.Backend.UpdateJavaScriptAction(jsa); err != nil {
 			return mdlerrors.NewBackend("update javascript action", err)
+		}
+		if _, err := applyDocumentFolder(ctx, jsa.ID, existingContainer, containerID); err != nil {
+			return err
 		}
 	} else {
 		if err := ctx.Backend.CreateJavaScriptAction(jsa); err != nil {

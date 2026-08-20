@@ -1051,6 +1051,13 @@ func createODataClient(ctx *ExecContext, stmt *ast.CreateODataClientStmt) error 
 					if err := ctx.Backend.UpdateConsumedODataService(svc); err != nil {
 						return mdlerrors.NewBackend("update OData client", err)
 					}
+					target, terr := resolveRequestedFolder(ctx, module.ID, stmt.Folder)
+					if terr != nil {
+						return terr
+					}
+					if _, err := applyDocumentFolder(ctx, svc.ID, svc.ContainerID, target); err != nil {
+						return err
+					}
 					invalidateHierarchy(ctx)
 					ctx.ReportMutation("Modified", "OData client: %s.%s", modName, svc.Name)
 					return nil
@@ -1464,6 +1471,13 @@ func createODataService(ctx *ExecContext, stmt *ast.CreateODataServiceStmt) erro
 					}
 					if err := ctx.Backend.UpdatePublishedODataService(svc); err != nil {
 						return mdlerrors.NewBackend("update OData service", err)
+					}
+					target, terr := resolveRequestedFolder(ctx, module.ID, stmt.Folder)
+					if terr != nil {
+						return terr
+					}
+					if _, err := applyDocumentFolder(ctx, svc.ID, svc.ContainerID, target); err != nil {
+						return err
 					}
 					invalidateHierarchy(ctx)
 					ctx.ReportMutation("Modified", "OData service: %s.%s", modName, svc.Name)

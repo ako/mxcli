@@ -79,7 +79,7 @@ func describeAgentEditorConsumedMCPService(ctx *ExecContext, name ast.QualifiedN
 		fmt.Fprintf(ctx.Output, "/**\n * %s\n */\n", c.Documentation)
 	}
 
-	fmt.Fprintf(ctx.Output, "create consumed mcp service %s (\n", qualifiedName)
+	fmt.Fprintf(ctx.Output, "create consumed mcp service %s%s (\n", qualifiedName, describeFolderClause(ctx, c.ContainerID))
 
 	var lines []string
 	if c.ProtocolVersion != "" {

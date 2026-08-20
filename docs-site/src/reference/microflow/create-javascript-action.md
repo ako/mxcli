@@ -3,7 +3,7 @@
 ## Synopsis
 
 ```sql
-CREATE [ OR MODIFY ] JAVASCRIPT ACTION module.Name ( parameters )
+CREATE [ OR MODIFY ] JAVASCRIPT ACTION module.Name [ FOLDER 'folder_path' ] ( parameters )
     RETURNS type
     [ EXPOSED AS 'caption' IN 'category' ]
     [ PLATFORM Web | Native | Hybrid | All ]
@@ -46,6 +46,9 @@ toolbox under the given category.
 
 `module.Name`
 :   The qualified name of the JavaScript action.
+
+`FOLDER 'folder_path'`
+:   Optional. Places the document in the named module folder, creating missing folders in the path. On `CREATE OR MODIFY` this **moves** an existing document; omitting the clause leaves placement alone rather than returning the document to the module root. See [MOVE](../organization/move.md).
 
 `parameters`
 :   Comma-separated parameter declarations (name, colon, type). Supported types:

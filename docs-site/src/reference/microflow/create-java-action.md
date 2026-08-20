@@ -3,7 +3,7 @@
 ## Synopsis
 
 ```sql
-CREATE [ OR MODIFY ] JAVA ACTION module.Name ( parameters )
+CREATE [ OR MODIFY ] JAVA ACTION module.Name [ FOLDER 'folder_path' ] ( parameters )
     RETURNS type
     [ EXPOSED AS 'caption' IN 'category' ]
     AS $$ java_code $$
@@ -33,6 +33,9 @@ The optional `EXPOSED AS` clause makes the action visible in the Studio Pro tool
 
 `module.Name`
 :   The qualified name of the Java action.
+
+`FOLDER 'folder_path'`
+:   Optional. Places the document in the named module folder, creating missing folders in the path. On `CREATE OR MODIFY` this **moves** an existing document; omitting the clause leaves placement alone rather than returning the document to the module root. See [MOVE](../organization/move.md).
 
 `parameters`
 :   Comma-separated parameter declarations. Each parameter has a name, colon, and type. Supported types:

@@ -18,6 +18,7 @@ package ast
 //	};
 type CreateImportMappingStmt struct {
 	Name           QualifiedName
+	Folder         string        // Folder path within module (empty = leave placement alone)
 	SchemaKind     string        // "JSON_STRUCTURE" or "XML_SCHEMA" or ""
 	SchemaRef      QualifiedName // qualified name of the schema source
 	RootElement    *ImportMappingElementDef
@@ -69,6 +70,7 @@ type ImportMappingElementDef struct {
 //	};
 type CreateExportMappingStmt struct {
 	Name            QualifiedName
+	Folder          string        // Folder path within module (empty = leave placement alone)
 	SchemaKind      string        // "JSON_STRUCTURE" or "XML_SCHEMA" or ""
 	SchemaRef       QualifiedName // qualified name of the schema source
 	NullValueOption string        // "LeaveOutElement" or "SendAsNil" (default: "LeaveOutElement")

@@ -37,6 +37,7 @@ createNanoflowStatement
  */
 createJavaActionStatement
     : JAVA ACTION qualifiedName
+      (FOLDER STRING_LITERAL)?
       LPAREN javaActionParameterList? RPAREN
       javaActionReturnType?
       javaActionExposedClause?
@@ -66,6 +67,7 @@ javaActionExposedClause
  */
 createJavaScriptActionStatement
     : JAVASCRIPT ACTION qualifiedName
+      (FOLDER STRING_LITERAL)?
       LPAREN javaActionParameterList? RPAREN
       javaActionReturnType?
       javaActionExposedClause?

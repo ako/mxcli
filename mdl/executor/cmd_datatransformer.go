@@ -76,7 +76,7 @@ func describeDataTransformer(ctx *ExecContext, name ast.QualifiedName) error {
 		w := ctx.Output
 
 		// Emit re-executable MDL
-		fmt.Fprintf(w, "create data transformer %s.%s\n", modName, dt.Name)
+		fmt.Fprintf(w, "create data transformer %s.%s%s\n", modName, dt.Name, describeFolderClause(ctx, dt.ContainerID))
 
 		// Source — collapse newlines into spaces for single-line string
 		sourceContent := strings.ReplaceAll(dt.SourceJSON, "\n", " ")
@@ -125,8 +125,17 @@ func execCreateDataTransformer(ctx *ExecContext, s *ast.CreateDataTransformerStm
 		return mdlerrors.NewNotFound("module", s.Name.Module)
 	}
 
+	var existingContainer model.ID
+	if existing != nil {
+		existingContainer = existing.ContainerID
+	}
+	containerID, err := containerForDocument(ctx, module.ID, s.Folder, existingContainer)
+	if err != nil {
+		return err
+	}
+
 	dt := &model.DataTransformer{
-		ContainerID: module.ID,
+		ContainerID: containerID,
 		Name:        s.Name.Name,
 		SourceType:  s.SourceType,
 		SourceJSON:  s.SourceJSON,
@@ -147,6 +156,9 @@ func execCreateDataTransformer(ctx *ExecContext, s *ast.CreateDataTransformerStm
 		dt.ID = existingID
 		if err := ctx.Backend.UpdateDataTransformer(dt); err != nil {
 			return mdlerrors.NewBackend("update data transformer", err)
+		}
+		if _, err := applyDocumentFolder(ctx, dt.ID, existingContainer, containerID); err != nil {
+			return err
 		}
 		if !ctx.Quiet {
 			ctx.ReportMutation("Modified", "data transformer: %s.%s (%d steps)",

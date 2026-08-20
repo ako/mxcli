@@ -474,6 +474,11 @@ func (unsupportedBackend) FindCustomWidgetType(_ string) (r0 *types.RawCustomWid
 	return
 }
 
+func (unsupportedBackend) FindDocumentUnit(_ string, _ string) (r0 *types.DocumentUnit, err1 error) {
+	err1 = errUnsupported("FindDocumentUnit")
+	return
+}
+
 func (unsupportedBackend) FindViewEntitySourceDocumentID(_ string, _ string) (r0 model.ID, err1 error) {
 	err1 = errUnsupported("FindViewEntitySourceDocumentID")
 	return
@@ -692,6 +697,11 @@ func (unsupportedBackend) ListDatabaseConnections() (r0 []*model.DatabaseConnect
 	return
 }
 
+func (unsupportedBackend) ListDocumentUnits() (r0 []*types.DocumentUnit, err1 error) {
+	err1 = errUnsupported("ListDocumentUnits")
+	return
+}
+
 func (unsupportedBackend) ListDomainModels() (r0 []*domainmodel.DomainModel, err1 error) {
 	err1 = errUnsupported("ListDomainModels")
 	return
@@ -859,6 +869,11 @@ func (unsupportedBackend) MoveConstant(_ *model.Constant) (err0 error) {
 
 func (unsupportedBackend) MoveDatabaseConnection(_ *model.DatabaseConnection) (err0 error) {
 	err0 = errUnsupported("MoveDatabaseConnection")
+	return
+}
+
+func (unsupportedBackend) MoveDocument(_ model.ID, _ model.ID) (err0 error) {
+	err0 = errUnsupported("MoveDocument")
 	return
 }
 

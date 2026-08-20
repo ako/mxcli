@@ -249,8 +249,14 @@ func execCreatePublishedRestService(ctx *ExecContext, s *ast.CreatePublishedRest
 	}
 
 	if existing != nil {
+		if s.Folder == "" {
+			svc.ContainerID = existing.ContainerID
+		}
 		if err := ctx.Backend.UpdatePublishedRestService(svc); err != nil {
 			return mdlerrors.NewBackend("update published rest service", err)
+		}
+		if _, err := applyDocumentFolder(ctx, svc.ID, existing.ContainerID, svc.ContainerID); err != nil {
+			return err
 		}
 		if !ctx.Quiet {
 			ctx.ReportMutation("Modified", "published rest service %s.%s", s.Name.Module, s.Name.Name)

@@ -4,6 +4,7 @@
 
 ```sql
 CREATE [ OR MODIFY ] IMPORT MAPPING module.Name
+    [ FOLDER 'folder_path' ]
     [ WITH JSON STRUCTURE module.JsonStructure ]
     [ WITH XML SCHEMA module.XmlSchema ]
 {
@@ -54,6 +55,9 @@ If `OR MODIFY` is specified and the mapping already exists, it is updated in pla
 
 `module.Name`
 :   The qualified name of the import mapping.
+
+`FOLDER 'folder_path'`
+:   Optional. Places the document in the named module folder, creating missing folders in the path. On `CREATE OR MODIFY` this **moves** an existing document; omitting the clause leaves placement alone rather than returning the document to the module root. See [MOVE](../organization/move.md).
 
 `WITH JSON STRUCTURE module.JsonStructure`
 :   Associates the mapping with the named JSON structure. The structure defines the JSON shape.

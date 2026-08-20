@@ -14,12 +14,13 @@ options { tokenVocab = MDLLexer; }
  */
 createWorkflowStatement
     : WORKFLOW qualifiedName
+      (FOLDER folder=STRING_LITERAL)?
       (PARAMETER VARIABLE COLON qualifiedName)?
-      (DISPLAY STRING_LITERAL)?
-      (DESCRIPTION STRING_LITERAL)?
+      (DISPLAY display=STRING_LITERAL)?
+      (DESCRIPTION description=STRING_LITERAL)?
       (EXPORT LEVEL (IDENTIFIER | API))?
       (OVERVIEW PAGE qualifiedName)?
-      (DUE DATE_TYPE STRING_LITERAL)?
+      (DUE DATE_TYPE dueDate=STRING_LITERAL)?
       BEGIN workflowBody END WORKFLOW SEMICOLON? SLASH?
     ;
 

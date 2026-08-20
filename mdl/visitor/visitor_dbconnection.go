@@ -16,6 +16,9 @@ func (b *Builder) ExitCreateDatabaseConnectionStatement(ctx *parser.CreateDataba
 	stmt := &ast.CreateDatabaseConnectionStmt{
 		Name: buildQualifiedName(ctx.QualifiedName()),
 	}
+	if lit := ctx.STRING_LITERAL(); lit != nil {
+		stmt.Folder = unquoteString(lit.GetText())
+	}
 
 	// Parse options
 	for _, optCtx := range ctx.AllDatabaseConnectionOption() {
