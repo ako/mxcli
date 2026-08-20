@@ -84,7 +84,14 @@ const defaultSlotContainer = "template"
 //	    matched the bare keys only, so `OnChange:` on a combobox emitted no
 //	    mapping and was dropped with no error (FINDINGS #14). Bump forces
 //	    regeneration so existing projects pick up the suffixed slots.
-const WidgetDefGeneratorVersion = 15
+//	16 — lift the object-list-nested hide rules from editorConfig.js, and fix the
+//	    polarity of a comparison guard read from a `||` connector or a ternary's
+//	    else branch (it was recorded as `eq` where the code means `ne`). Without
+//	    the nested rules an Accordion group's `initialCollapsedState` could be set
+//	    to a value the widget hides, which mxbuild rejects with CE0463 and which
+//	    makes `mx create-module-package` refuse the module (upstream #931). Bump
+//	    forces existing projects to regenerate their defs with both.
+const WidgetDefGeneratorVersion = 16
 
 // WidgetDefinition describes how to construct a pluggable widget from MDL syntax.
 // Loaded from embedded JSON definition files (*.def.json).
