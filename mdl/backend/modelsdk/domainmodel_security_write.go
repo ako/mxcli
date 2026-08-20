@@ -37,36 +37,75 @@ func (b *Backend) AddEntityAccessRule(p backend.EntityAccessRuleParams) error {
 		return fmt.Errorf("AddEntityAccessRule: entity not found: %s", p.EntityName)
 	}
 
-	// Upsert: reuse an existing rule whose module-role set matches (keeps its ID
-	// stable so references stay valid), else add a fresh rule.
+	// Upsert: reuse the rule with the same module-role set AND the same XPath
+	// constraint (keeps its ID stable so references stay valid), else add a fresh
+	// rule.
+	//
+	// The constraint is part of the key because Mendix treats several rules
+	// naming one module role as legitimate and combines their rights ("Rules are
+	// additive", refguide/access-rules) — that is how row-level security is
+	// normally written. Matching on the role set alone collapsed two such rules
+	// into one and destroyed the first, silently (mendixlabs/mxcli#936). An empty
+	// constraint is a value in the key, not a wildcard: an unconstrained rule and
+	// a constrained one for the same role are distinct rules.
 	var rule *genDm.AccessRule
 	for _, el := range ent.AccessRulesItems() {
-		if r, ok := el.(*genDm.AccessRule); ok && sameStringSet(r.ModuleRolesQualifiedNames(), p.RoleNames) {
+		r, ok := el.(*genDm.AccessRule)
+		if ok && sameStringSet(r.ModuleRolesQualifiedNames(), p.RoleNames) &&
+			r.XPathConstraint() == p.XPathConstraint {
 			rule = r
 			break
 		}
 	}
-	if rule == nil {
-		rule = genDm.NewAccessRule()
-		assignID(rule)
-		ent.AddAccessRules(rule)
-	} else {
+
+	// Everything the matched rule already grants, so the write below widens it
+	// rather than replacing it. GRANT is additive by contract; narrowing is what
+	// REVOKE is for. Rebuilding from the statement alone was #936: the executor
+	// emits an entry for every member of the entity, unnamed ones at the rule's
+	// default, so each GRANT used to reset every member it did not mention.
+	prior := map[string]string{}
+	var priorCreate, priorDelete bool
+	priorDefault := ""
+	if rule != nil {
+		for _, mel := range rule.MemberAccessesItems() {
+			ma, ok := mel.(*genDm.MemberAccess)
+			if !ok {
+				continue
+			}
+			ref := ma.AttributeQualifiedName()
+			if ref == "" {
+				ref = ma.AssociationQualifiedName()
+			}
+			if ref != "" {
+				prior[ref] = ma.AccessRights()
+			}
+		}
+		priorCreate, priorDelete = rule.AllowCreate(), rule.AllowDelete()
+		priorDefault = rule.DefaultMemberAccessRights()
 		for i := len(rule.MemberAccessesItems()) - 1; i >= 0; i-- {
 			rule.RemoveMemberAccesses(i)
 		}
+	} else {
+		rule = genDm.NewAccessRule()
+		assignID(rule)
+		ent.AddAccessRules(rule)
 	}
 
 	rule.SetModuleRolesQualifiedNames(p.RoleNames)
-	rule.SetAllowCreate(p.AllowCreate)
-	rule.SetAllowDelete(p.AllowDelete)
-	if p.DefaultMemberAccess != "" {
-		rule.SetDefaultMemberAccessRights(p.DefaultMemberAccess)
+	rule.SetAllowCreate(p.AllowCreate || priorCreate)
+	rule.SetAllowDelete(p.AllowDelete || priorDelete)
+	if def := types.HigherAccessRights(p.DefaultMemberAccess, priorDefault); def != "" {
+		rule.SetDefaultMemberAccessRights(def)
 	}
 	rule.SetXPathConstraint(p.XPathConstraint)
 	for _, ma := range p.MemberAccesses {
 		m := genDm.NewMemberAccess()
 		assignID(m)
-		m.SetAccessRights(ma.AccessRights)
+		ref := ma.AttributeRef
+		if ref == "" {
+			ref = ma.AssociationRef
+		}
+		m.SetAccessRights(types.HigherAccessRights(ma.AccessRights, prior[ref]))
 		if ma.AttributeRef != "" {
 			m.SetAttributeQualifiedName(ma.AttributeRef)
 		}

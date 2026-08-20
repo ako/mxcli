@@ -1,0 +1,95 @@
+-- ============================================================================
+-- Issue #936: GRANT shrank an access rule instead of widening it
+-- ============================================================================
+--
+-- Reported as "GRANT ... WHERE overwrites instead of merging the attribute
+-- list (silent security regression)". Both halves of that title needed
+-- correcting, and the second one matters for anyone re-testing it:
+--
+--   * WHERE is NOT the trigger. The same loss happened with no WHERE at all,
+--     and with `READ *`. A fix scoped to the constrained path would have left
+--     most of the bug in place. Sections 1 and 2 below are the same scenario
+--     with and without a constraint.
+--
+--   * The attribute list was not the only casualty. AllowCreate, AllowDelete
+--     and the rule's default rights went the same way, so
+--     `(CREATE, DELETE, READ *, WRITE *)` followed by `(READ (Name))` left a
+--     rule granting read on one attribute. Section 3.
+--
+-- Cause: the upsert rebuilt the matched rule's MemberAccesses from the current
+-- statement alone. The executor emits an entry for EVERY member of the entity
+-- -- the ones the statement does not name at the rule's default, normally
+-- "None" -- so each GRANT reset every member it did not mention. The legacy
+-- engine has merged additively since it shipped (sdk/mpr.mergeAccessRule); the
+-- codec engine, which is the default, never did. That makes it an engine
+-- regression rather than a longstanding gap, and it is why the documented
+-- contract ("GRANT is additive -- it merges with existing access, never
+-- removes permissions") held on one engine and not the other.
+--
+-- A second defect surfaced while measuring the first: the upsert matched a
+-- stored rule on its module-role set ALONE, ignoring the XPath constraint.
+-- Mendix combines the rights of every rule naming a given module role ("Rules
+-- are additive", refguide/access-rules), so two constraints for one role are
+-- two legitimate rules -- the ordinary way to write row-level security. mxcli
+-- folded the second onto the first and overwrote its constraint. Section 4.
+--
+-- Rights merge on the lattice None < ReadOnly < ReadWrite, so a merge only ever
+-- widens. Narrowing is REVOKE's job, which is what makes the two commands
+-- inverses instead of two spellings of "set".
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/936-grant-additive-merge.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe entity BugTest936.Customer"
+--   mx check app.mpr   # 0 errors, including the two-rule form in section 4
+--
+-- Expected after running (order of members follows the entity):
+--   grant BugTest936.Viewer on BugTest936.Customer (read (Name, Email, Phone));
+--   grant BugTest936.Reader on BugTest936.Customer (read (Name, Email, Phone))
+--     where '[Name != $currentUser/Name]';
+--   grant BugTest936.Admin  on BugTest936.Customer (create, delete, read *, write *);
+--   grant BugTest936.Scoped on BugTest936.Customer (read (Name))  where '[Name = 'a']';
+--   grant BugTest936.Scoped on BugTest936.Customer (read (Email)) where '[Name = 'b']';
+-- ============================================================================
+
+create module BugTest936;
+
+create persistent entity BugTest936.Customer (
+  Name: string(200),
+  Email: string(200),
+  Phone: string(50)
+);
+/
+
+create module role BugTest936.Viewer;
+create module role BugTest936.Reader;
+create module role BugTest936.Admin;
+create module role BugTest936.Scoped;
+
+-- 1. The reported scenario, unconstrained. Before the fix the second statement
+--    left the rule reading `(Phone)` -- Name and Email silently revoked.
+grant BugTest936.Viewer on BugTest936.Customer (read (Name, Email));
+grant BugTest936.Viewer on BugTest936.Customer (read (Phone));
+
+-- 2. The same thing with the WHERE clause the issue was filed against. It fails
+--    and passes together with section 1; the constraint never mattered.
+grant BugTest936.Reader on BugTest936.Customer (read (Name, Email))
+  where '[Name != $currentUser/Name]';
+grant BugTest936.Reader on BugTest936.Customer (read (Phone))
+  where '[Name != $currentUser/Name]';
+
+-- 3. Structural permissions. The narrow re-grant must not revoke create, delete
+--    or the rule's ReadWrite default -- it used to drop all three.
+grant BugTest936.Admin on BugTest936.Customer (create, delete, read *, write *);
+grant BugTest936.Admin on BugTest936.Customer (read (Name));
+
+-- 4. Two constraints for one role are two rules, not one. Before the fix the
+--    second statement overwrote the first rule's constraint AND its members,
+--    leaving a single rule -- the pattern was simply not expressible in MDL.
+--    mx check accepts the result: Mendix combines the two at runtime.
+grant BugTest936.Scoped on BugTest936.Customer (read (Name))  where '[Name = ''a'']';
+grant BugTest936.Scoped on BugTest936.Customer (read (Email)) where '[Name = ''b'']';
+
+-- 5. Re-running a statement must not accumulate rules. The constraint is part
+--    of the match key, so a repeat lands on its own rule and this file stays
+--    idempotent under `mxcli exec` (ADR-0008).
+grant BugTest936.Scoped on BugTest936.Customer (read (Name))  where '[Name = ''a'']';

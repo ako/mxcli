@@ -128,6 +128,32 @@ type EntityMemberAccess struct {
 	AccessRights   string
 }
 
+// AccessRightsLevel ranks Mendix member access rights so a GRANT can take the
+// higher of two values. GRANT is documented as additive — it widens access and
+// never removes it — so re-granting one member must not downgrade another
+// (mendixlabs/mxcli#936). Narrowing is REVOKE's job.
+//
+// Anything unrecognised (including the empty string, which is how an unset
+// DefaultMemberAccessRights reads) ranks lowest, so it never wins a merge.
+func AccessRightsLevel(s string) int {
+	switch s {
+	case "ReadWrite":
+		return 2
+	case "ReadOnly":
+		return 1
+	default:
+		return 0
+	}
+}
+
+// HigherAccessRights returns whichever of a and b grants more.
+func HigherAccessRights(a, b string) string {
+	if AccessRightsLevel(a) >= AccessRightsLevel(b) {
+		return a
+	}
+	return b
+}
+
 // EntityAccessRevocation describes which entity access to revoke.
 type EntityAccessRevocation struct {
 	RevokeCreate       bool
