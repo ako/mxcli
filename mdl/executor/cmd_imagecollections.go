@@ -12,6 +12,7 @@ import (
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
 	"github.com/mendixlabs/mxcli/mdl/types"
+	"github.com/mendixlabs/mxcli/model"
 )
 
 // execCreateImageCollection handles CREATE IMAGE COLLECTION statements.
@@ -32,9 +33,13 @@ func execCreateImageCollection(ctx *ExecContext, s *ast.CreateImageCollectionStm
 		return mdlerrors.NewAlreadyExists("image collection", s.Name.Module+"."+s.Name.Name)
 	}
 
-	containerID := module.ID
+	var existingContainer model.ID
 	if existing != nil {
-		containerID = existing.ContainerID
+		existingContainer = existing.ContainerID
+	}
+	containerID, err := containerForDocument(ctx, module.ID, s.Folder, existingContainer)
+	if err != nil {
+		return err
 	}
 
 	// Build ImageCollection
@@ -75,6 +80,9 @@ func execCreateImageCollection(ctx *ExecContext, s *ast.CreateImageCollectionStm
 	if existing != nil {
 		if err := ctx.Backend.UpdateImageCollection(ic); err != nil {
 			return mdlerrors.NewBackend("update image collection", err)
+		}
+		if _, err := applyDocumentFolder(ctx, ic.ID, existingContainer, containerID); err != nil {
+			return err
 		}
 		ctx.ReportMutation("Modified", "image collection: %s", s.Name)
 	} else {
@@ -134,7 +142,7 @@ func describeImageCollection(ctx *ExecContext, name ast.QualifiedName) error {
 	qualifiedName := fmt.Sprintf("%s.%s", modName, ic.Name)
 
 	if len(ic.Images) == 0 {
-		fmt.Fprintf(ctx.Output, "create or modify image collection %s", qualifiedName)
+		fmt.Fprintf(ctx.Output, "create or modify image collection %s%s", qualifiedName, describeFolderClause(ctx, ic.ContainerID))
 		if exportLevel != "Hidden" {
 			fmt.Fprintf(ctx.Output, " export level '%s'", exportLevel)
 		}
@@ -149,7 +157,7 @@ func describeImageCollection(ctx *ExecContext, name ast.QualifiedName) error {
 		return mdlerrors.NewBackend("create preview directory", err)
 	}
 
-	fmt.Fprintf(ctx.Output, "create or modify image collection %s", qualifiedName)
+	fmt.Fprintf(ctx.Output, "create or modify image collection %s%s", qualifiedName, describeFolderClause(ctx, ic.ContainerID))
 	if exportLevel != "Hidden" {
 		fmt.Fprintf(ctx.Output, " export level '%s'", exportLevel)
 	}

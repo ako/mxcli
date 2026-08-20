@@ -227,6 +227,9 @@ func execCreateJsonStructure(ctx *ExecContext, s *ast.CreateJsonStructureStmt) e
 		if err := ctx.Backend.UpdateJsonStructure(js); err != nil {
 			return mdlerrors.NewBackend("update json structure", err)
 		}
+		if _, err := applyDocumentFolder(ctx, js.ID, existing.ContainerID, containerID); err != nil {
+			return err
+		}
 		ctx.ReportMutation("Modified", "json structure: %s", s.Name)
 	} else {
 		if err := ctx.Backend.CreateJsonStructure(js); err != nil {

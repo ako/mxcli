@@ -81,8 +81,19 @@ func execCreateEnumeration(ctx *ExecContext, s *ast.CreateEnumerationStmt) error
 		// Excluded is model state, not script state: MDL cannot express it for
 		// an enumeration, so the stored value is the one that survives (#914).
 		enum.Excluded = existingEnum.Excluded
+		// Placement is model state too when the statement is silent about it.
+		if s.Folder == "" {
+			enum.ContainerID = existingEnum.ContainerID
+		}
 		if err := ctx.Backend.UpdateEnumeration(enum); err != nil {
 			return mdlerrors.NewBackend("update enumeration", err)
+		}
+		target, terr := resolveRequestedFolder(ctx, module.ID, s.Folder)
+		if terr != nil {
+			return terr
+		}
+		if _, err := applyDocumentFolder(ctx, enum.ID, existingEnum.ContainerID, target); err != nil {
+			return err
 		}
 		invalidateHierarchy(ctx)
 		ctx.ReportMutation("Modified", "enumeration: %s", s.Name)

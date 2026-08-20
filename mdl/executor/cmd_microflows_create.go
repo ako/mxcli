@@ -310,6 +310,9 @@ func execCreateMicroflow(ctx *ExecContext, s *ast.CreateMicroflowStmt) error {
 		if err := ctx.Backend.UpdateMicroflow(mf); err != nil {
 			return mdlerrors.NewBackend("update microflow", err)
 		}
+		if _, err := applyDocumentFolder(ctx, mf.ID, existingContainerID, containerID); err != nil {
+			return err
+		}
 		ctx.ReportMutation("Replaced", "microflow: %s.%s", s.Name.Module, s.Name.Name)
 	} else {
 		if err := ctx.Backend.CreateMicroflow(mf); err != nil {

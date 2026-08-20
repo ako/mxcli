@@ -3,6 +3,7 @@
 package mpr
 
 import (
+	"bytes"
 	"fmt"
 	"sort"
 	"strings"
@@ -351,12 +352,25 @@ func (w *Writer) MoveUnitByID(unitID string, newContainerID string) error {
 	return w.moveUnitByID(unitID, newContainerID)
 }
 
+// Counted in WriteStats and elided when the unit already sits in that
+// container, for the reasons on the modelsdk engine's MoveUnit: a move changes
+// placement without changing contents, so it is invisible to both halves of
+// ADR-0008 unless the row update accounts for itself.
 func (w *Writer) moveUnitByID(unitID string, newContainerID string) error {
+	w.writesOffered++
 	unitIDBlob := uuidToBlob(unitID)
 	containerIDBlob := uuidToBlob(newContainerID)
 
+	var stored []byte
+	if err := w.reader.db.QueryRow(`SELECT ContainerID FROM Unit WHERE UnitID = ?`, unitIDBlob).Scan(&stored); err == nil {
+		if bytes.Equal(stored, containerIDBlob) {
+			return nil
+		}
+	}
+
 	_, err := w.reader.db.Exec(`UPDATE Unit SET ContainerID = ? WHERE UnitID = ?`, containerIDBlob, unitIDBlob)
 	if err == nil {
+		w.writesLanded++
 		w.reader.InvalidateCache()
 	}
 	return err

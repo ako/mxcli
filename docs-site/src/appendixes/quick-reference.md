@@ -188,7 +188,10 @@ AUTHENTICATION Basic, Session
 |-----------|--------|-------|
 | Microflow folder | `FOLDER 'path'` (before BEGIN) | `CREATE MICROFLOW ... FOLDER 'ACT' BEGIN ... END;` |
 | Page folder | `Folder: 'path'` (in properties) | `CREATE PAGE ... (Folder: 'Pages/Detail') { ... }` |
-| Move to folder | `MOVE PAGE\|MICROFLOW\|SNIPPET\|NANOFLOW\|ENUMERATION Module.Name TO FOLDER 'path';` | Folders created automatically |
+| Move to folder | `MOVE <doctype> Module.Name TO FOLDER 'path';` | Folders created automatically. Any top-level doctype, spelled as `DESCRIBE` spells it |
+| Move a mapping / structure | `MOVE IMPORT MAPPING\|EXPORT MAPPING\|JSON STRUCTURE Module.Name TO FOLDER 'path';` | |
+| Place while creating | `CREATE <doctype> Module.Name FOLDER 'path' ...` | Every doctype. Pages/snippets use `Folder: 'path'` as a property; microflows/nanoflows a keyword before `BEGIN` |
+| Place an existing document | `CREATE OR MODIFY ... FOLDER 'path' ...` | Moves it; omitting the clause leaves placement alone |
 | Move to module root | `MOVE PAGE Module.Name TO Module;` | Removes from folder |
 | Move across modules | `MOVE PAGE Old.Name TO NewModule;` | **Breaks by-name references** -- use `LIST IMPACT OF` first |
 | Move to folder in other module | `MOVE PAGE Old.Name TO FOLDER 'path' IN NewModule;` | |
@@ -204,7 +207,7 @@ Nested folders use `/` separator: `'Parent/Child/Grandchild'`. Missing folders a
 | List module roles | `LIST MODULE ROLES [IN Module];` | All roles or filtered by module |
 | List user roles | `LIST USER ROLES;` | Project-level user roles |
 | List demo users | `LIST DEMO USERS;` | Configured demo users |
-| List access on element | `LIST ACCESS ON MICROFLOW\|PAGE\|Entity Mod.Name;` | Which roles can access |
+| List access on element | `LIST ACCESS ON [ENTITY\|MICROFLOW\|PAGE\|NANOFLOW] Mod.Name;` | Which roles can access; a bare name means the entity |
 | List security matrix | `LIST SECURITY MATRIX [IN Module];` | Full access overview |
 | Create module role | `CREATE MODULE ROLE Mod.Role [DESCRIPTION 'text'];` | |
 | Drop module role | `DROP MODULE ROLE Mod.Role;` | |

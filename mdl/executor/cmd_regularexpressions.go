@@ -64,8 +64,17 @@ func execCreateRegularExpression(ctx *ExecContext, s *ast.CreateRegularExpressio
 		return mdlerrors.NewAlreadyExists("regular expression", s.Name.String())
 	}
 
+	var existingContainer model.ID
+	if existing != nil {
+		existingContainer = existing.ContainerID
+	}
+	containerID, err := containerForDocument(ctx, module.ID, s.Folder, existingContainer)
+	if err != nil {
+		return err
+	}
+
 	re := &model.RegularExpression{
-		ContainerID:   module.ID,
+		ContainerID:   containerID,
 		Name:          s.Name.Name,
 		Documentation: s.Documentation,
 		Expression:    s.Expression,
@@ -73,10 +82,12 @@ func execCreateRegularExpression(ctx *ExecContext, s *ast.CreateRegularExpressio
 	}
 	if existing != nil {
 		re.ID = existing.ID
-		re.ContainerID = existing.ContainerID
 		re.Excluded = existing.Excluded
 		if err := ctx.Backend.UpdateRegularExpression(re); err != nil {
 			return mdlerrors.NewBackend("update regular expression", err)
+		}
+		if _, err := applyDocumentFolder(ctx, re.ID, existingContainer, containerID); err != nil {
+			return err
 		}
 		ctx.ReportMutation("Modified", "regular expression: %s", s.Name.String())
 		return nil
@@ -183,7 +194,7 @@ func execDescribeRegularExpression(ctx *ExecContext, s *ast.DescribeRegularExpre
 	if re.Documentation != "" {
 		fmt.Fprintf(ctx.Output, "/**\n * %s\n */\n", re.Documentation)
 	}
-	fmt.Fprintf(ctx.Output, "create or modify regular expression %s (\n", s.Name.String())
+	fmt.Fprintf(ctx.Output, "create or modify regular expression %s%s (\n", s.Name.String(), describeFolderClause(ctx, re.ContainerID))
 	fmt.Fprintf(ctx.Output, "  Expression: '%s',\n", strings.ReplaceAll(re.Expression, "'", "''"))
 	if re.ExportLevel != "" && re.ExportLevel != "Hidden" {
 		fmt.Fprintf(ctx.Output, "  ExportLevel: %s,\n", re.ExportLevel)

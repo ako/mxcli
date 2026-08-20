@@ -9,6 +9,7 @@ import (
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
+	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/agenteditor"
 )
 
@@ -41,8 +42,17 @@ func execCreateConsumedMCPService(ctx *ExecContext, s *ast.CreateConsumedMCPServ
 		return err
 	}
 
+	var existingContainerC model.ID
+	if existing != nil {
+		existingContainerC = existing.ContainerID
+	}
+	containerIDC, err := containerForDocument(ctx, module.ID, s.Folder, existingContainerC)
+	if err != nil {
+		return err
+	}
+
 	c := &agenteditor.ConsumedMCPService{
-		ContainerID:              module.ID,
+		ContainerID:              containerIDC,
 		Name:                     s.Name.Name,
 		Documentation:            s.OuterDocumentation,
 		ProtocolVersion:          s.ProtocolVersion,
@@ -59,6 +69,9 @@ func execCreateConsumedMCPService(ctx *ExecContext, s *ast.CreateConsumedMCPServ
 			return mdlerrors.NewBackend("update consumed mcp service", err)
 		}
 		invalidateHierarchy(ctx)
+		if _, err := applyDocumentFolder(ctx, c.ID, existingContainerC, containerIDC); err != nil {
+			return err
+		}
 		ctx.ReportMutation("Modified", "consumed mcp service: %s", s.Name)
 		return nil
 	}
@@ -128,8 +141,17 @@ func execCreateKnowledgeBase(ctx *ExecContext, s *ast.CreateKnowledgeBaseStmt) e
 		provider = "MxCloudGenAI"
 	}
 
+	var existingContainerK model.ID
+	if existing != nil {
+		existingContainerK = existing.ContainerID
+	}
+	containerIDK, err := containerForDocument(ctx, module.ID, s.Folder, existingContainerK)
+	if err != nil {
+		return err
+	}
+
 	k := &agenteditor.KnowledgeBase{
-		ContainerID:      module.ID,
+		ContainerID:      containerIDK,
 		Name:             s.Name.Name,
 		Documentation:    s.Documentation,
 		Provider:         provider,
@@ -150,6 +172,9 @@ func execCreateKnowledgeBase(ctx *ExecContext, s *ast.CreateKnowledgeBaseStmt) e
 			return mdlerrors.NewBackend("update knowledge base", err)
 		}
 		invalidateHierarchy(ctx)
+		if _, err := applyDocumentFolder(ctx, k.ID, existingContainerK, containerIDK); err != nil {
+			return err
+		}
 		ctx.ReportMutation("Modified", "knowledge base: %s", s.Name)
 		return nil
 	}
@@ -206,8 +231,17 @@ func execCreateAgent(ctx *ExecContext, s *ast.CreateAgentStmt) error {
 		return err
 	}
 
+	var existingContainerA model.ID
+	if existingAgent != nil {
+		existingContainerA = existingAgent.ContainerID
+	}
+	containerIDA, err := containerForDocument(ctx, module.ID, s.Folder, existingContainerA)
+	if err != nil {
+		return err
+	}
+
 	a := &agenteditor.Agent{
-		ContainerID:   module.ID,
+		ContainerID:   containerIDA,
 		Name:          s.Name.Name,
 		Documentation: s.Documentation,
 		Description:   s.Description,
@@ -301,6 +335,9 @@ func execCreateAgent(ctx *ExecContext, s *ast.CreateAgentStmt) error {
 			return mdlerrors.NewBackend("update agent", err)
 		}
 		invalidateHierarchy(ctx)
+		if _, err := applyDocumentFolder(ctx, a.ID, existingContainerA, containerIDA); err != nil {
+			return err
+		}
 		ctx.ReportMutation("Modified", "agent: %s", s.Name)
 		return nil
 	}

@@ -8,6 +8,7 @@ package ast
 //	  Expression: '^[a-z]+$'
 //	);
 type CreateRegularExpressionStmt struct {
+	Folder        string // Folder path within module (empty = leave placement alone)
 	Name          QualifiedName
 	Documentation string
 	// Expression is the pattern, as written (unquoted).

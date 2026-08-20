@@ -13,6 +13,7 @@ import (
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
+	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/agenteditor"
 )
 
@@ -86,7 +87,7 @@ func describeAgentEditorModel(ctx *ExecContext, name ast.QualifiedName) error {
 		fmt.Fprintf(ctx.Output, "/**\n * %s\n */\n", m.Documentation)
 	}
 
-	fmt.Fprintf(ctx.Output, "create model %s (\n", qualifiedName)
+	fmt.Fprintf(ctx.Output, "create model %s%s (\n", qualifiedName, describeFolderClause(ctx, m.ContainerID))
 
 	// Emit properties in stable order. User-set properties (Provider, Key)
 	// come first; Portal-populated metadata comes last and only if non-empty.
@@ -169,8 +170,17 @@ func execCreateAgentEditorModel(ctx *ExecContext, s *ast.CreateModelStmt) error 
 		provider = "MxCloudGenAI"
 	}
 
+	var existingContainerM model.ID
+	if existing != nil {
+		existingContainerM = existing.ContainerID
+	}
+	containerIDM, err := containerForDocument(ctx, module.ID, s.Folder, existingContainerM)
+	if err != nil {
+		return err
+	}
+
 	m := &agenteditor.Model{
-		ContainerID:   module.ID,
+		ContainerID:   containerIDM,
 		Name:          s.Name.Name,
 		Documentation: s.Documentation,
 		Provider:      provider,
@@ -191,6 +201,9 @@ func execCreateAgentEditorModel(ctx *ExecContext, s *ast.CreateModelStmt) error 
 			return mdlerrors.NewBackend("update model", err)
 		}
 		invalidateHierarchy(ctx)
+		if _, err := applyDocumentFolder(ctx, m.ID, existingContainerM, containerIDM); err != nil {
+			return err
+		}
 		ctx.ReportMutation("Modified", "model: %s", s.Name)
 		return nil
 	}

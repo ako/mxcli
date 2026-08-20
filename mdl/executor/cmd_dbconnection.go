@@ -32,6 +32,7 @@ func createDatabaseConnection(ctx *ExecContext, stmt *ast.CreateDatabaseConnecti
 	h, _ := getHierarchy(ctx)
 
 	var existingConnID model.ID
+	var existingContainer model.ID
 	// Target the live connection and carry its exclusion forward (#914).
 	existingExcluded := false
 	if ex, ok := pickLive(existing,
@@ -47,6 +48,7 @@ func createDatabaseConnection(ctx *ExecContext, stmt *ast.CreateDatabaseConnecti
 		}
 		existingConnID = ex.ID
 		existingExcluded = ex.Excluded
+		existingContainer = ex.ContainerID
 	}
 
 	// A literal where Mendix stores a ConstantIdentifier writes a project that
@@ -72,8 +74,13 @@ func createDatabaseConnection(ctx *ExecContext, stmt *ast.CreateDatabaseConnecti
 		connInputValue = resolveConstantDefault(ctx, connStr)
 	}
 
+	containerID, err := containerForDocument(ctx, module.ID, stmt.Folder, existingContainer)
+	if err != nil {
+		return err
+	}
+
 	conn := &model.DatabaseConnection{
-		ContainerID:          module.ID,
+		ContainerID:          containerID,
 		Name:                 stmt.Name.Name,
 		DatabaseType:         stmt.DatabaseType,
 		ConnectionString:     connStr,
@@ -133,6 +140,9 @@ func createDatabaseConnection(ctx *ExecContext, stmt *ast.CreateDatabaseConnecti
 		conn.ID = existingConnID
 		if err := ctx.Backend.UpdateDatabaseConnection(conn); err != nil {
 			return mdlerrors.NewBackend("update database connection", err)
+		}
+		if _, err := applyDocumentFolder(ctx, conn.ID, existingContainer, containerID); err != nil {
+			return err
 		}
 		invalidateHierarchy(ctx)
 		ctx.ReportMutation("Modified", "database connection: %s.%s", stmt.Name.Module, stmt.Name.Name)
@@ -227,7 +237,7 @@ func describeDatabaseConnection(ctx *ExecContext, name ast.QualifiedName) error 
 
 // outputDatabaseConnectionMDL outputs a database connection definition in MDL format.
 func outputDatabaseConnectionMDL(ctx *ExecContext, conn *model.DatabaseConnection, moduleName string) error {
-	fmt.Fprintf(ctx.Output, "create database connection %s.%s\n", moduleName, conn.Name)
+	fmt.Fprintf(ctx.Output, "create database connection %s.%s%s\n", moduleName, conn.Name, describeFolderClause(ctx, conn.ContainerID))
 	fmt.Fprintf(ctx.Output, "type '%s'\n", conn.DatabaseType)
 
 	// Connection string

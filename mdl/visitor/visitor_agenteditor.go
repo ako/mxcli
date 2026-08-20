@@ -19,6 +19,9 @@ func (b *Builder) ExitCreateModelStatement(ctx *parser.CreateModelStatementConte
 		Name: buildQualifiedName(ctx.QualifiedName()),
 	}
 	stmt.Documentation = findDocCommentText(ctx)
+	if lit := ctx.STRING_LITERAL(); lit != nil {
+		stmt.Folder = unquoteString(lit.GetText())
+	}
 
 	for _, p := range ctx.AllModelProperty() {
 		propCtx := p.(*parser.ModelPropertyContext)
@@ -156,6 +159,9 @@ func (b *Builder) ExitCreateConsumedMCPServiceStatement(ctx *parser.CreateConsum
 		Name: buildQualifiedName(ctx.QualifiedName()),
 	}
 	stmt.OuterDocumentation = findDocCommentText(ctx)
+	if lit := ctx.STRING_LITERAL(); lit != nil {
+		stmt.Folder = unquoteString(lit.GetText())
+	}
 
 	props := parseModelProps(ctx.AllModelProperty())
 	stmt.ProtocolVersion = props["protocolversion"]
@@ -179,6 +185,9 @@ func (b *Builder) ExitCreateKnowledgeBaseStatement(ctx *parser.CreateKnowledgeBa
 		Name: buildQualifiedName(ctx.QualifiedName()),
 	}
 	stmt.Documentation = findDocCommentText(ctx)
+	if lit := ctx.STRING_LITERAL(); lit != nil {
+		stmt.Folder = unquoteString(lit.GetText())
+	}
 
 	props := parseModelProps(ctx.AllModelProperty())
 	stmt.Provider = props["provider"]
@@ -207,6 +216,9 @@ func (b *Builder) ExitCreateAgentStatement(ctx *parser.CreateAgentStatementConte
 		Name: buildQualifiedName(ctx.QualifiedName()),
 	}
 	stmt.Documentation = findDocCommentText(ctx)
+	if lit := ctx.STRING_LITERAL(); lit != nil {
+		stmt.Folder = unquoteString(lit.GetText())
+	}
 
 	props := parseModelProps(ctx.AllModelProperty())
 	stmt.UsageType = props["usagetype"]

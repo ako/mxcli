@@ -281,6 +281,9 @@ func createBusinessEventService(ctx *ExecContext, stmt *ast.CreateBusinessEventS
 	var existingID model.ID
 	// Target the live service and carry its exclusion forward (#914).
 	existingExcluded := false
+	// Placement is carried forward the same way when the statement is silent
+	// about folders (#932).
+	var existingContainerID model.ID
 	if existing, ok := pickLive(existingServices,
 		func(svc *model.BusinessEventService) bool {
 			return strings.EqualFold(h.GetModuleName(h.FindModuleID(svc.ContainerID)), moduleName) &&
@@ -293,6 +296,7 @@ func createBusinessEventService(ctx *ExecContext, stmt *ast.CreateBusinessEventS
 		}
 		existingID = existing.ID
 		existingExcluded = existing.Excluded
+		existingContainerID = existing.ContainerID
 	}
 
 	// Resolve folder if specified
@@ -372,8 +376,14 @@ func createBusinessEventService(ctx *ExecContext, stmt *ast.CreateBusinessEventS
 
 	// Write to project
 	if existingID != "" {
+		if stmt.Folder == "" {
+			svc.ContainerID = existingContainerID
+		}
 		if err := ctx.Backend.UpdateBusinessEventService(svc); err != nil {
 			return mdlerrors.NewBackend("update business event service", err)
+		}
+		if _, err := applyDocumentFolder(ctx, svc.ID, existingContainerID, svc.ContainerID); err != nil {
+			return err
 		}
 		ctx.ReportMutation("Modified", "business event service: %s.%s", moduleName, stmt.Name.Name)
 	} else {
