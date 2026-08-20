@@ -123,11 +123,23 @@ type InheritanceSplitCase struct {
 }
 
 // InheritanceSplitStmt represents: SPLIT TYPE $Var ... END SPLIT
+//
+// ElseBody is Mendix's `(empty)` outgoing flow — the branch taken when the
+// object is NULL. It is NOT a default for unmatched types: mxbuild demands a
+// flow for every subtype and for the base entity regardless (CE0090), and
+// omitting this one is CE0089. It is spelled `when (empty) then`; `else` is
+// the legacy spelling that reads as a default and is not one (mxcli #913).
 type InheritanceSplitStmt struct {
 	Variable    string // Variable name without $ prefix
 	Cases       []InheritanceSplitCase
 	ElseBody    []MicroflowStatement
 	Annotations *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+
+	// Which spelling the source used, for the MDL065 deprecation warning only.
+	// Both build the identical flow, so nothing downstream of the validator
+	// may branch on these.
+	LegacyCaseKeyword bool // at least one branch used `case X` instead of `when X then`
+	LegacyElseKeyword bool // the empty branch used `else` instead of `when (empty) then`
 }
 
 func (s *EnumSplitStmt) isMicroflowStatement()        {}

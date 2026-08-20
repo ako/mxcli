@@ -665,13 +665,22 @@ func buildInheritanceSplitStatement(ctx parser.IInheritanceSplitStatementContext
 	}
 	for _, caseCtx := range splitCtx.AllInheritanceSplitCase() {
 		c := caseCtx.(*parser.InheritanceSplitCaseContext)
+		// `case X <body>` and `when X then <body>` are the same branch; only
+		// the spelling differs, and it is recorded for MDL065.
+		if c.CASE() != nil {
+			stmt.LegacyCaseKeyword = true
+		}
 		stmt.Cases = append(stmt.Cases, ast.InheritanceSplitCase{
 			Entity: buildQualifiedName(c.QualifiedName()),
 			Body:   buildMicroflowBody(c.MicroflowBody()),
 		})
 	}
-	if splitCtx.ELSE() != nil {
-		stmt.ElseBody = buildMicroflowBody(splitCtx.MicroflowBody())
+	if elseCtx := splitCtx.InheritanceSplitElse(); elseCtx != nil {
+		e := elseCtx.(*parser.InheritanceSplitElseContext)
+		if e.ELSE() != nil {
+			stmt.LegacyElseKeyword = true
+		}
+		stmt.ElseBody = buildMicroflowBody(e.MicroflowBody())
 	}
 	return stmt
 }
