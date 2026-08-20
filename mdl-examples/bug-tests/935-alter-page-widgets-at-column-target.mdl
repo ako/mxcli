@@ -1,0 +1,56 @@
+-- upstream #935 (defect 1) — ALTER PAGE INSERT/REPLACE at a DOTTED DataGrid2
+-- column target, with a body that is NOT a `column …` block.
+--
+-- This is the other half of #891, reached by the form #891's refusal points
+-- authors at. `grid1.OrderNo` is a legitimate target; what is wrong is the
+-- pairing. The executor routes an all-columns body to InsertColumns /
+-- ReplaceColumn; anything else fell through to the generic widget path and was
+-- serialized into the grid's COLUMN list, leaving a project mxbuild cannot LOAD:
+--
+--   ERROR: System.InvalidCastException: Unable to cast object of type
+--   'Mendix.Modeler.WebUI.Forms.Widgets.LayoutWidgets.DivContainers.DivContainer'
+--   to type 'Mendix.Modeler.WebUI.Forms.Widgets.CustomWidgets.WidgetObject'
+--
+-- Measured on Mendix 10.24.20.105674: before the fix `mxcli exec` printed
+-- "Altered page" and `mx check` then aborted with the exception above, before
+-- reaching a single check. After the fix the statement is refused and the
+-- project still checks at 0 errors.
+--
+-- Setup (any DataGrid2 will do; `grid1.OrderNo` is the derived column name):
+--
+--   create or modify persistent entity Sample.Order ( OrderNo: String(50) );
+--   create or replace page Sample.Order_Overview
+--     ( Title: 'Orders', Layout: Atlas_Core.Atlas_Default )
+--   { datagrid grid1 (datasource: database from Sample.Order) {
+--       column colNo (caption: 'Order', attribute: OrderNo)
+--   } }
+--
+-- Both statements below are REFUSED once applied to a project — that refusal is
+-- the fix. To add a column, give the body a `column …` block. To edit a
+-- customContent cell's contents, address the widget inside it by its own name
+-- (#834 made those reachable), e.g. `insert into ctnCust { … }`.
+--
+-- NOT a `.fail.mdl`, for the reason spelled out in
+-- 891-alter-page-bare-column-target.mdl: the guard is exec-time and
+-- project-dependent, while that suffix means "must fail `mxcli check`" with no
+-- project. `check` exits 0 here, which the harness would read as a regression.
+--
+--   mxcli exec 935-alter-page-widgets-at-column-target.mdl -p <app>.mpr  # refused
+--
+-- Unit coverage: mdl/backend/pagemutator/mutator_column_addressing_test.go
+
+ALTER PAGE Sample.Order_Overview {
+  INSERT AFTER grid1.OrderNo {
+    CONTAINER ctnStray {
+      DYNAMICTEXT txtStray (Content: '!')
+    }
+  }
+};
+
+ALTER PAGE Sample.Order_Overview {
+  REPLACE grid1.OrderNo WITH {
+    CONTAINER ctnStray2 {
+      DYNAMICTEXT txtStray2 (Content: '!')
+    }
+  }
+};

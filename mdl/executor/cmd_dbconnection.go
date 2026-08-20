@@ -135,7 +135,7 @@ func createDatabaseConnection(ctx *ExecContext, stmt *ast.CreateDatabaseConnecti
 			return mdlerrors.NewBackend("update database connection", err)
 		}
 		invalidateHierarchy(ctx)
-		fmt.Fprintf(ctx.Output, "Modified database connection: %s.%s\n", stmt.Name.Module, stmt.Name.Name)
+		ctx.ReportMutation("Modified", "database connection: %s.%s", stmt.Name.Module, stmt.Name.Name)
 		return nil
 	}
 

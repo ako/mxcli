@@ -1,0 +1,64 @@
+-- ============================================================================
+-- Issue #927: reaching a nested JSON leaf without an entity per level
+-- ============================================================================
+--
+-- Studio Pro can bind a leaf several levels below the object element it belongs
+-- to: tick a nested leaf without ticking its parents and it is offered on the
+-- nearest object element you kept. Mendix stores that as ONE multi-segment
+-- JsonPath -- "(Object)|customer|name" on a value element whose parent object
+-- element is at "(Object)", with nothing mapped for "customer".
+--
+-- Before the fix, MDL could not express it (`extraneous input '/'`) and, worse,
+-- DESCRIBE mis-read it: only the last segment was printed, so a project holding
+-- the collapsed shape described as `CustomerName = name` and re-executing that
+-- failed with `"name" is not a member of the JSON structure at (Object)`.
+--
+-- Measured on mxbuild 11.13: the collapsed IMPORT mapping below builds at 0
+-- errors. See 927-mapping-nested-member-path.fail.mdl for the two shapes Mendix
+-- rejects, which mxcli now refuses instead of writing.
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/927-mapping-nested-member-path.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe import mapping BugTest927.IMM_Order"
+--   -- must print `customer/name` and `customer/contact/email`, not `name`/`email`
+--   mx check app.mpr   # no new errors
+-- ============================================================================
+
+create module BugTest927;
+
+create json structure BugTest927.JSON_Order
+snippet '{"orderId": 100, "customer": {"name": "Alice", "contact": {"email": "a@b.c"}}, "items": [{"sku": "A1"}]}';
+/
+
+create non-persistent entity BugTest927.Order (
+  OrderId: integer,
+  CustomerName: string,
+  Email: string
+);
+/
+
+-- One entity, values pulled from three depths. Without the `/` form this needs
+-- an entity for `customer` AND one for `contact`, each holding nothing but an
+-- association, purely so the mapping can reach the leaf.
+create or modify import mapping BugTest927.IMM_Order
+  with json structure BugTest927.JSON_Order
+{
+  create BugTest927.Order {
+    OrderId       = orderId,
+    CustomerName  = customer/name,
+    Email         = customer/contact/email
+  }
+};
+/
+
+-- Control: an export mapping over the same structure. Collapsing is an IMPORT
+-- capability only -- an export mapping has to PRODUCE the customer node, so
+-- Mendix requires something mapping it (CE5015). Top-level members are fine.
+create or modify export mapping BugTest927.EMM_Order
+  with json structure BugTest927.JSON_Order
+{
+  BugTest927.Order {
+    orderId = OrderId
+  }
+};
+/

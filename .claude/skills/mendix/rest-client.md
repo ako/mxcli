@@ -112,6 +112,23 @@ body: mapping Module.RequestEntity {
 }
 ```
 
+**There is no binary/file body here.** A consumed operation's body is one of
+`Rest$JsonBody`, `Rest$StringBody` or `Rest$ImplicitMappingBody`, so a file
+document has nowhere to go. `body: file from $Doc` is refused as **MDL-REST02**
+— it used to be written as a string body holding the literal text `$Doc`, which
+returns HTTP 200 with a 4-byte payload.
+
+Upload binary from a **microflow** instead, which does have a binary body:
+
+```sql
+rest call post 'https://api.example.com/upload'
+  header 'ContentType' = 'application/pdf'
+  body binary $Doc/Contents
+  returns response;
+```
+
+`response: file as $Doc` on an operation is unaffected — downloads work.
+
 ### Response Types
 
 ```sql

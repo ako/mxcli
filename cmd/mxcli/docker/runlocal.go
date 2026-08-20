@@ -575,7 +575,10 @@ func RunLocal(opts LocalRunOptions) error {
 
 	// 2. Ensure mxbuild + runtime are cached, and linked for the serve javac step.
 	fmt.Fprintln(w, "Ensuring MxBuild and runtime are available...")
-	mxbuildPath, err := DownloadMxBuild(version, w)
+	// Resolve what this host can actually execute: Studio Pro before the cache
+	// on macOS/Windows, and honour --mxbuild-path, which the local path used to
+	// ignore (#916).
+	mxbuildPath, err := ResolveMxBuildForLocal(opts.MxBuildPath, version, w)
 	if err != nil {
 		return fmt.Errorf("setting up mxbuild: %w", err)
 	}

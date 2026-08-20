@@ -58,6 +58,38 @@ association catalog only at startup; behavioural changes are hot-reloaded.
     createdb -h 127.0.0.1 -U mendix "$(basename app.mpr .mpr | tr '[:upper:]' '[:lower:]')"
     ```
 
+### Which mxbuild the loop uses
+
+- **Linux** — the CDN download cached at `~/.mxcli/mxbuild/<version>/`, as before.
+- **macOS / Windows** — **Studio Pro's bundled mxbuild**, resolved before the cache.
+  The Mendix CDN publishes **Linux archives only** (the URL varies by architecture,
+  not by OS), so a cached download on a Mac is a Linux `aarch64` ELF — the arch
+  matches, which is why it looks fine until exec.
+- `--mxbuild-path` overrides both, and is now honoured by the local loop (it used
+  to be documented and ignored — #916).
+
+If nothing runnable is found, the command says so up front instead of failing with
+`fork/exec …: exec format error`:
+
+```
+mxbuild from the Mendix CDN is a Linux binary and cannot run natively on darwin
+  Install Mendix Studio Pro 11.12.0 and use its bundled mx …
+  Or point mxcli at it explicitly with --mxbuild-path.
+```
+
+### Windows and macOS toolchain
+
+- **JDK 21** — Mendix Studio Pro does not bundle one; its installer puts **Eclipse
+  Temurin JDK 21** in the usual place, which is where mxcli looks (`Eclipse
+  Adoptium` / `Java` / `Microsoft` under both Program Files, plus the per-user
+  `%LOCALAPPDATA%\Programs\…` installs winget produces). `JAVA_HOME` wins over all
+  of them. When nothing is found the error now lists every location it searched.
+- **Gradle** — bundled inside mxbuild (`modeler/tools/gradle`) and invoked by
+  mxbuild, not by mxcli. Studio Pro extracts its own copy to the parent of its
+  install directory (usually `C:\Program Files\Mendix`). A "Gradle not found"
+  from a local run therefore points at an incomplete or foreign mxbuild bundle —
+  check which mxbuild was resolved before looking for a system Gradle.
+
 ## The intended loop
 
 ```bash

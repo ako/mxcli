@@ -804,11 +804,15 @@ const (
 	RestBodyNone    RestBodyType = iota // No body
 	RestBodyCustom                      // Custom body template
 	RestBodyMapping                     // Export mapping
+	RestBodyBinary                      // Binary body: the raw bytes of an expression
 )
 
 // RestBody represents the request body configuration.
 type RestBody struct {
-	Type           RestBodyType    // Body type
+	Type RestBodyType // Body type
+	// Template is the body template for Custom, and for Binary the expression
+	// yielding the bytes to send — Studio Pro stores a FileDocument's Contents
+	// member there, e.g. `$Doc/Contents`.
 	Template       Expression      // Body template (for Custom type)
 	TemplateParams []TemplateParam // Template parameters for placeholders
 	MappingName    QualifiedName   // Export mapping name (for Mapping type)
@@ -823,13 +827,17 @@ const (
 	RestResultResponse                       // Return HttpResponse object
 	RestResultMapping                        // Use import mapping
 	RestResultNone                           // Ignore response
+	// RestResultFileDocument stores the response in a file document. Mendix
+	// requires a SPECIALIZATION here: `System.FileDocument` itself is rejected
+	// as a return type with CE0362, so ResultEntity always names a subclass.
+	RestResultFileDocument
 )
 
 // RestResult represents the response handling configuration.
 type RestResult struct {
 	Type         RestResultType // Result type
 	MappingName  QualifiedName  // Import mapping name (for Mapping type)
-	ResultEntity QualifiedName  // Result entity type (for Mapping type)
+	ResultEntity QualifiedName  // Result entity type (for Mapping and FileDocument types)
 	// IsList distinguishes `as Module.Entity` (single object) from
 	// `as list of Module.Entity` (list). Studio Pro stores this on the
 	// microflow's ImportMappingCall (Range.SingleObject /

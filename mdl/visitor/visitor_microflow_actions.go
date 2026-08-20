@@ -1467,7 +1467,15 @@ func buildRestCallStatement(ctx parser.IRestCallStatementContext) *ast.RestCallS
 		bodyCtx := bodyClause.(*parser.RestCallBodyClauseContext)
 		body := &ast.RestBody{}
 
-		if bodyCtx.MAPPING() != nil {
+		if bodyCtx.BINARY_TYPE() != nil {
+			// Binary body: BODY BINARY <expression>. Studio Pro stores the
+			// expression that yields the bytes — a FileDocument's Contents
+			// member, e.g. `$Doc/Contents` — as Microflows$BinaryRequestHandling.
+			body.Type = ast.RestBodyBinary
+			if expr := bodyCtx.Expression(); expr != nil {
+				body.Template = buildSourceExpression(expr)
+			}
+		} else if bodyCtx.MAPPING() != nil {
 			// Export mapping: BODY MAPPING QualifiedName FROM $Variable
 			body.Type = ast.RestBodyMapping
 			if qn := bodyCtx.QualifiedName(); qn != nil {
@@ -1529,6 +1537,13 @@ func buildRestCallStatement(ctx parser.IRestCallStatementContext) *ast.RestCallS
 			}
 		} else if returnsCtx.NONE() != nil || returnsCtx.NOTHING() != nil {
 			result.Type = ast.RestResultNone
+		} else if qns := returnsCtx.AllQualifiedName(); len(qns) == 1 {
+			// `returns Module.Entity` — store the response in a file document.
+			// Reached only after the keyword alternatives, so a bare entity name
+			// can never shadow `String` / `response` / `none` / `nothing`, each
+			// of which is its own token.
+			result.Type = ast.RestResultFileDocument
+			result.ResultEntity = buildQualifiedName(qns[0])
 		}
 
 		stmt.Result = result

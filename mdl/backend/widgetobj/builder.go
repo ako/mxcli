@@ -193,6 +193,32 @@ func (ob *Builder) SetTextTemplateWithParams(propertyKey string, text string, en
 	})
 }
 
+// SetTextTemplateWithClientParams sets a text template from author-supplied
+// parameters (MDL `contentparams:`), for a `{1}`-style template.
+//
+// SetTextTemplateWithParams derives parameters by matching `{AttrName}` against
+// the entity context; that covers the named spelling but leaves the numeric one
+// with no route, so a pluggable widget's `imageUrl: '{1}', contentparams: [...]`
+// was stored with Parameters=[2] (empty) and mxbuild answered CE0720 "Place
+// holder index 1 is greater than 0, the number of parameter(s)". (#928)
+func (ob *Builder) SetTextTemplateWithClientParams(propertyKey string, text string, params []*pages.ClientTemplateParameter) {
+	if text == "" {
+		return
+	}
+	tmpl := BuildClientTemplateWithTextAndParams(text, params)
+	ob.object = updateWidgetPropertyValue(ob.object, ob.propertyTypeIDs, propertyKey, func(val bson.D) bson.D {
+		result := make(bson.D, 0, len(val))
+		for _, elem := range val {
+			if elem.Key == "TextTemplate" {
+				result = append(result, bson.E{Key: "TextTemplate", Value: tmpl})
+			} else {
+				result = append(result, elem)
+			}
+		}
+		return result
+	})
+}
+
 func (ob *Builder) SetAction(propertyKey string, action pages.ClientAction) {
 	if action == nil {
 		return

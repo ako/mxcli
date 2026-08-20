@@ -1,0 +1,71 @@
+-- ============================================================================
+-- Bug #922: REST call storing its response in a file document
+-- ============================================================================
+--
+-- Symptom (before fix): a "Call REST service" activity configured to store the
+--   response in a file document was described as `returns String`, and the
+--   describe → exec round trip then WROTE that back — retyping the activity
+--   from FileDocument to String. Measured on mxbuild 11.6.6:
+--
+--     stored before:  ResultHandlingType = FileDocument
+--                     VariableType       = ObjectType(MyModule.MyFile)
+--     stored after:   ResultHandlingType = String
+--                     VariableType       = StringType
+--     mx check:       unchanged — only the project's pre-existing baseline error
+--
+--   So the corruption was silent: valid model, green build, wrong behaviour at
+--   runtime. On the legacy engine the output variable was lost as well, because
+--   the unread result handling took the `$var =` fallback down with it.
+--
+-- Root cause: MDL had no syntax for it, the semantic model had no FileDocument
+--   variant, and both readers fell through to String — the legacy parser had no
+--   `FileDocument` case at all, and the modelsdk reader read the entity out of
+--   VariableType and then discarded it, keeping only a literal match on
+--   System.HttpResponse.
+--
+-- After fix: `returns Module.Entity` is the file document form, round-trips on
+--   both engines, and an unreadable result handling now renders as text the
+--   parser REJECTS instead of a plausible `returns String`.
+--
+-- Note on the other half of the report: `returns response` was NOT a defect. It
+--   round-trips losslessly, and Mendix does not allow HttpResponse to be
+--   specialized (CE1540 lists only User, FileDocument, Image and Paging), so
+--   `response` already names the only type such a result can have.
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/922-rest-call-returns-file-document.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe microflow BugTest922.ACT_DownloadFile"
+--   -- the describe must say `returns BugTest922.MyFile`, never `returns String`
+--   mx check app.mpr   # no new errors
+-- ============================================================================
+
+create module BugTest922;
+
+-- Mendix rejects the BASE System.FileDocument as a REST return type (CE0362),
+-- so a specialization is mandatory. FileDocument is one of the four System
+-- entities that may be specialized (CE1540: User, FileDocument, Image, Paging).
+create or modify persistent entity BugTest922.MyFile extends System.FileDocument ();
+/
+
+create or modify microflow BugTest922.ACT_DownloadFile (
+  $Location: String
+)
+begin
+  $fileResponseGet = rest call get '{1}' with ({1} = $Location)
+    header 'Accept' = 'application/octet-stream'
+    timeout 300
+    returns BugTest922.MyFile;
+end;
+/
+
+-- Control: the HttpResponse form, unchanged by this fix and verified to
+-- round-trip losslessly both before and after it.
+create or modify microflow BugTest922.ACT_FetchResponse (
+  $Location: String
+)
+begin
+  $httpResponseGet = rest call get '{1}' with ({1} = $Location)
+    timeout 300
+    returns response;
+end;
+/

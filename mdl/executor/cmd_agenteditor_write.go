@@ -59,7 +59,7 @@ func execCreateConsumedMCPService(ctx *ExecContext, s *ast.CreateConsumedMCPServ
 			return mdlerrors.NewBackend("update consumed mcp service", err)
 		}
 		invalidateHierarchy(ctx)
-		fmt.Fprintf(ctx.Output, "Modified consumed mcp service: %s\n", s.Name)
+		ctx.ReportMutation("Modified", "consumed mcp service: %s", s.Name)
 		return nil
 	}
 
@@ -150,7 +150,7 @@ func execCreateKnowledgeBase(ctx *ExecContext, s *ast.CreateKnowledgeBaseStmt) e
 			return mdlerrors.NewBackend("update knowledge base", err)
 		}
 		invalidateHierarchy(ctx)
-		fmt.Fprintf(ctx.Output, "Modified knowledge base: %s\n", s.Name)
+		ctx.ReportMutation("Modified", "knowledge base: %s", s.Name)
 		return nil
 	}
 
@@ -301,7 +301,7 @@ func execCreateAgent(ctx *ExecContext, s *ast.CreateAgentStmt) error {
 			return mdlerrors.NewBackend("update agent", err)
 		}
 		invalidateHierarchy(ctx)
-		fmt.Fprintf(ctx.Output, "Modified agent: %s\n", s.Name)
+		ctx.ReportMutation("Modified", "agent: %s", s.Name)
 		return nil
 	}
 

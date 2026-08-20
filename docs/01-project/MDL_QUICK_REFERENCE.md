@@ -462,7 +462,9 @@ it is for pages.
 | Call web service | `$Result = call web service Module.Service operation OperationName;` | Legacy SOAP; quoted refs are fallback for dangling raw IDs |
 | Call web service raw | `$Result = call web service raw 'base64-bson';` | Escape hatch for byte-for-byte legacy SOAP round-trip |
 | REST call (string) | `$Var = rest call get '<url>' returns string;` | Body as string |
-| REST call (response) | `$Var = rest call get '<url>' returns response;` | `System.HttpResponse` object |
+| REST call (response) | `$Var = rest call get '<url>' returns response;` | `System.HttpResponse` object. There is no specialization form — Mendix does not allow HttpResponse to be specialized (CE1540) |
+| REST call (file document) | `$Var = rest call get '<url>' returns Module.MyFile;` | Stores the body in a file document. Must be a **specialization** of `System.FileDocument` — the base type is rejected as a return type (CE0362 / MDL064) |
+| REST call (binary body) | `rest call post '<url>' header 'ContentType' = 'application/pdf' body binary $Doc/Contents returns response;` | Uploads raw bytes (`Microflows$BinaryRequestHandling`). The expression is the FileDocument's **Contents member**, not the document. A consumed REST **client document** has no binary body — `Body: FILE FROM $Doc` there is refused as MDL-REST02 |
 | REST call (mapping single) | `$Var = rest call get '<url>' returns mapping Module.IMM as Module.Entity;` | Single object — Studio Pro emits `ForceSingleOccurrence=true` |
 | REST call (mapping list) | `$Var = rest call get '<url>' returns mapping Module.IMM as list of Module.Entity;` | List result |
 | REST call (none) | `rest call get '<url>' returns nothing;` | Discard response |
@@ -989,7 +991,7 @@ source json '{"latitude": 51.9, "current": {"temp": 12.8}}'
 |-----------|--------|-------|
 | Show mappings | `show import mappings [in module];` | List all or filter by module |
 | Describe mapping | `describe import mapping Module.Name;` | Re-executable CREATE statement |
-| Create mapping | See below | Assignment syntax: `attr = jsonField` |
+| Create mapping | See below | Assignment syntax: `attr = jsonField`, or `attr = a/b/c` to reach a nested leaf with **no entity per level** — the shape Studio Pro produces. The path may not cross a `0..*` element (CE0256) |
 | Create or modify | `create or modify import mapping Module.Name ...;` | Updates existing mapping, preserves UUID |
 | Drop mapping | `drop import mapping Module.Name;` | |
 
@@ -1021,7 +1023,7 @@ create Module.OrderResponse_CustomerInfo/Module.CustomerInfo = customer {
 |-----------|--------|-------|
 | Show mappings | `show export mappings [in module];` | List all or filter by module |
 | Describe mapping | `describe export mapping Module.Name;` | Re-executable CREATE statement |
-| Create mapping | See below | Assignment syntax: `jsonField = attr` |
+| Create mapping | See below | Assignment syntax: `jsonField = attr`. **No nested `a/b/c` form**: an export has to produce the intermediate node, so Mendix rejects a collapsed member with CE5015 — give it its own element |
 | Create or modify | `create or modify export mapping Module.Name ...;` | Updates existing mapping, preserves UUID |
 | Drop mapping | `drop export mapping Module.Name;` | |
 

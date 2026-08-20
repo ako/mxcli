@@ -184,6 +184,60 @@ end;
 
 ---
 
+## Step 6 — Sending a Request Body (Optional)
+
+Everything above receives data. To send it, an inline `REST CALL` takes one of
+four body forms:
+
+```sql
+-- 1. String template with placeholders
+body '{{"name": "{1}", "qty": {2}}' with ({1} = $Name, {2} = toString($Qty))
+
+-- 2. An expression that already yields the payload
+body $JsonPayload
+
+-- 3. An export mapping (entity -> JSON)
+body mapping Module.EMM_Item from $Item
+
+-- 4. Raw bytes — a file document's CONTENTS member
+body binary $Doc/Contents
+```
+
+### Uploading a file
+
+The expression is the file document's `Contents` **member**, not the document,
+and the content type goes on a header — the body clause carries only the bytes:
+
+```sql
+create or modify microflow Module.POST_Document_Upload (
+  $Doc: Module.UploadedFile
+)
+returns boolean as $Ok
+begin
+  declare $Ok boolean = false;
+  $Response = rest call post 'https://api.example.com/documents'
+    header 'ContentType' = 'application/pdf'
+    body binary $Doc/Contents
+    timeout 300
+    returns response;
+  set $Ok = $Response/StatusCode = 200;
+  return $Ok;
+end;
+/
+```
+
+`$Doc` must be a specialization of `System.FileDocument`. Downloading is the
+mirror image — `returns Module.UploadedFile` stores the response body in a new
+file document.
+
+**A consumed REST CLIENT document cannot do this.** Its body is one of
+`Rest$JsonBody`, `Rest$StringBody` or `Rest$ImplicitMappingBody` — all textual —
+so `Body: file from $Doc` in a `create rest client` operation is refused as
+**MDL-REST02**. Binary uploads belong in a microflow. (`Response: file as $Doc`
+on an operation is fine; downloads work either way.)
+
+---
+
 ## Complete Example — Bible Verse API
 
 ```sql
@@ -271,6 +325,8 @@ end;
 | StartEvent behind first activities | Default posX=200 vs @position(-5,...) | Fixed: executor pre-scans for first @position and shifts StartEvent left |
 | `TypeCacheUnknownTypeException` | Wrong BSON `$type` names | `ImportMappings$ObjectMappingElement` / `ImportMappings$ValueMappingElement` (no `import` prefix) |
 | Attribute not found in Studio Pro | Attribute not fully qualified | Must be `Module.Entity.AttributeName` in the BSON |
+| `CE0117 "Error(s) in expression."` at the end event after a REST call | `returns response` binds a `System.HttpResponse`, so returning it from a `returns string` microflow is a type error | Match the microflow's return type to what you do with the response — e.g. `returns boolean` and `set $Ok = $Response/StatusCode = 200` |
+| Upload returns HTTP 200 but the server received a few bytes | `Body: file from $Doc` on a REST CLIENT document used to be written as the literal text `$Doc` | Now refused as MDL-REST02 — upload from a microflow with `body binary $Doc/Contents` |
 
 ---
 

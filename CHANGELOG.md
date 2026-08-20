@@ -6,7 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Import mappings can reach a nested leaf without an entity per level** (#927) — `Attr = customer/contact/email` binds a value several levels below the object element it belongs to, which is the shape Studio Pro produces when you tick a nested leaf without ticking its parents: one entity, values pulled from several depths. Previously MDL had no way to write it, so every object level in a response became an entity whose only content was an association — one generated endpoint added 21 entities, almost all pass-throughs.
+
+  Two shapes are refused rather than written, each measured on mxbuild 11.13 rather than assumed: an **export** mapping cannot collapse levels (**CE5015** — it has to produce the intermediate node; the same member in an import mapping builds at 0 errors, and the same export mapping with only top-level members builds at 0 errors), and an import member cannot cross a `0..*` element (**CE0256** "a schema element with wrong occurrence"). Both refusals name the build error they prevent.
+
 ### Fixed
+
+- **`DESCRIBE` no longer mis-reads a mapping that binds a nested leaf** (#927) — value elements were printed as the last segment of their JsonPath alone, so a project holding `(Object)|customer|name` described as `CustomerName = name`. That is a description of a model that does not exist, and re-executing mxcli's own output failed with `"name" is not a member of the JSON structure at (Object)`. Members are now rendered relative to the enclosing object element, on both engines and for both mapping kinds. Nothing was ever corrupted — the #882 guard refused the bad re-execution — but the description was wrong.
+
+
+### Fixed
+
+- **A pluggable widget's text template no longer drops its `contentparams`** (#928) — `imageUrl: '{1}', contentparams: [{1} = PictureUrl]` on an Image widget stored a template with an **empty** parameter list, and mxbuild rejected it with `CE0720` ("place holder index 1 is greater than 0, the number of parameter(s)") on the **first write** — no describe round-trip needed. The engine took the parameters path only for mxcli's `{AttrName}` convenience spelling, so Mendix's own numeric `{1}` form had no route. Both spellings now reach the same stored shape; a `dynamictext` with identical syntax was the control that localised it to the pluggable path.
+
+### Added
+
+- **`MDL-WIDGET20` — `editable:` on a widget that has no editability** (#928) — accepted on any widget and silently dropped, so a button bound this way passed check, passed the build, and stayed enabled: a silent functional failure rather than a caught error. It cannot be implemented as asked. Measured against `generated/metamodel`, exactly **11** Pages types carry `Editability`/`ConditionalEditabilitySettings` — ten input widgets plus DataView — and **none** of the fourteen button types does; a button has conditional *visibility*, not editability. So mxcli reports it instead, naming visibility as the alternative. Both spellings are caught: `editable: 'x'` and the bracket form `editable: [expr]`, which is the one that genuinely works on inputs and would be the more surprising silent drop. A test pins the list against the metamodel so it cannot drift.
+
+- **`MDL-WIDGET21` — `contentparams` with no placeholder to consume them** — the residue of the fix above: parameters supplied where no property text carries a `{1}`-style placeholder have nothing to attach to and are dropped on write. Previously silent.
+
+  Root cause of both reports is one thing: the allow-lists behind MDL-WIDGET01 and MDL-WIDGET07 are widget-type **agnostic**. `isBuiltinPropName` is a single flat list holding both `ContentParams` and `Editable`; it answers "is this a real MDL property name anywhere", and both validators read it as "is this valid on this widget".
+
+
+### Fixed
+
+- **The Mendix 10.24 nightly is green again** — `14-project-settings-examples.mdl` set `DecimalScale`, which 10.24 does not have, so `TestMxCheck_DoctypeScripts` failed on that matrix entry on both engines while passing on every 11.x. Measured against blank projects: 10.24 stores 11 model settings, 11.6.6 stores 12, and `DecimalScale` is the only difference — each of the other five settings in that statement is accepted on 10.24 on its own. mxcli's refusal was correct (Studio Pro will not open a model carrying a property its version does not define, and mxbuild does not catch it); the example simply was not version-gated, and because the refusal covers the whole statement, one unsupported setting took five portable ones down with it. It is now its own `-- @version: 11.0+` section.
+
+  A new guard, `TestDoctypeScriptsParseAfterVersionFiltering`, filters every doctype script for each nightly matrix version and asserts the result still parses. It needs no mxbuild, so a mis-gated script fails in seconds on push rather than hours later in a single nightly job. Writing it surfaced the trap that makes this easy to get wrong: a `/** */` block is a *documentation* comment bound to the statement after it, so gating the statement while leaving its comment outside the section orphans the comment and the script stops parsing — reported at the *next* statement, tens of lines away, which reads like an unrelated syntax error.
 
 - **A microflow's StartEvent no longer moves on a describe→exec round-trip** — the start has no MDL statement to annotate and `DESCRIBE` cannot emit its position, so the builder always derived one (first annotated activity minus one spacing unit). A Studio-Pro-authored flow whose start sat at `145;200` came back at `100;200` — the only coordinate in it that did not survive. The position is now carried over from the microflow being replaced, the way the folder and allowed module roles already are; a fresh `CREATE` still derives it.
 
@@ -28,6 +56,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **`DROP FOLDER` no longer orphans the documents inside it** (#892) — the command's contract ("the folder must be empty") existed only in a comment; nothing checked, so dropping a populated folder left every document pointing at a container that no longer existed. Nothing was deleted: the documents were **orphaned**, losing their module qualification (`FeedbackModule.IMM_PostResponse` → `.IMM_PostResponse`) so nothing could resolve them and mxbuild reported CE1613. Reproduced on a *stock* blank app, where `FeedbackModule/Private/Resources/Mappings` holds four documents. The drop is now refused, naming what is inside. The guard reads the type-agnostic unit list rather than the per-kind document lists, so it cannot inherit the blind spot that caused the bug, and it fails closed when contents cannot be determined.
 - **`LIST FOLDERS` counts mappings, JSON structures, regular expressions and image collections** (#892) — these five kinds were missing from the per-kind listing, so a folder holding them rendered as `[0]`. That empty count is what made dropping the folder look safe.
+
+### Added
+
+- **`MDL-FLOW01` — a microflow whose branches cannot be described faithfully** (#923) — `DESCRIBE MICROFLOW` renders control flow as nested `IF/THEN/ELSE`, which only works when the graph is properly nested. A Mendix microflow is an arbitrary graph, and when a branch re-enters a sibling branch's path there is no nesting that means the same thing — the describer emitted one anyway, silently. On the reported graph the log activity ran on `¬c1 ∨ c2` and was described as `c1 ∧ c2`; with the reporter's actual expressions the original **always** logs and the description **never** does, so re-executing it produced the opposite program.
+
+  The new rule reports such microflows, and `DESCRIBE` now emits a `-- WARNING:` comment naming the decision's canvas position and refusing the round trip, rather than handing back MDL that means something else. Detection is by post-dominance in the new `mdl/microflowgraph` package — deliberately independent of the describer's own merge search, since mxcli has two of those and they disagree on exactly these graphs (which is also why the regenerated diagram came back tangled: the emitted `@merge` lands before an activity that structurally follows it). Findings are split into *recombinable* (the branches share one suffix, so the conditions can usually be folded into one decision by hand) and *interleaved* (genuinely crossed — not expressible without duplicating an activity or adding a helper variable, so it is refused rather than rewritten).
+
+  This is the detector only. Rendering these graphs faithfully needs a label form, designed in [PROPOSAL_structured_microflow_description.md](docs/11-proposals/PROPOSAL_structured_microflow_description.md) and gated on prevalence data this rule exists to collect. The rule is deliberately **not** part of `mxcli report`'s score: the model is valid and builds cleanly, and what fails is mxcli's ability to describe it.
+
+### Fixed
+
+- **`GRANT` widens an access rule again instead of shrinking it** (#936) — re-granting a role on an entity rebuilt the rule from that one statement, so anything an earlier `GRANT` had allowed came back `None`: `(READ (Name, Email))` followed by `(READ (Phone))` left a rule reading `Phone` alone. Structural rights went the same way, which the report did not mention — `(CREATE, DELETE, READ *, WRITE *)` followed by a narrow re-grant lost create, delete and every write right. Nothing was said at any point: no error, no warning, no diff.
+
+  The reported trigger was wrong in a way that matters for re-testing: `WHERE` is **not** required. The same loss reproduces with no constraint at all and with `READ *`, so a fix aimed at the constrained path would have satisfied the repro and left most of the bug. The legacy engine has merged additively since it shipped, so this was a regression in the codec engine — the default — rather than a longstanding gap, and it is why the documented contract ("GRANT is additive … never removes permissions") held on one engine and not the other. Rights merge on `None < ReadOnly < ReadWrite`, so a merge only ever widens; narrowing stays `REVOKE`'s job.
+
+- **Two XPath constraints for one role are two access rules again** (#936) — the rule upsert matched on the module-role set alone and ignored `XPathConstraint`, so `GRANT … WHERE 'A'` followed by `GRANT … WHERE 'B'` folded the second onto the first and overwrote its constraint, destroying a rule with no warning. Mendix combines the rights of every rule naming a given module role ("Rules are additive", refguide/access-rules), making one rule per constraint the ordinary way to write row-level security — a pattern MDL could not previously express. The constraint is now part of the match key on **both** engines, with the empty constraint treated as a value rather than a wildcard, so a constrained and an unconstrained rule coexist and re-running a script stays idempotent. `mx check` accepts the result at 0 errors.
+
+  Consequently the `Result:` line after a `GRANT` now reports the rule the statement actually touched, rather than the first rule mentioning that role.
 
 ## [0.18.0] - 2026-08-14
 

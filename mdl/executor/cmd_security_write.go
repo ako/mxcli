@@ -68,7 +68,7 @@ func execCreateModuleRole(ctx *ExecContext, s *ast.CreateModuleRoleStmt) error {
 				return mdlerrors.NewBackend("modify module role", err)
 			}
 			if !ctx.Quiet {
-				fmt.Fprintf(ctx.Output, "Modified module role: %s.%s\n", s.Name.Module, s.Name.Name)
+				ctx.ReportMutation("Modified", "module role: %s.%s", s.Name.Module, s.Name.Name)
 			}
 			return nil
 		}
@@ -228,7 +228,7 @@ func execCreateUserRole(ctx *ExecContext, s *ast.CreateUserRoleStmt) error {
 			if err := ctx.Backend.AlterUserRoleModuleRoles(ps.ID, s.Name, true, moduleRoleNames); err != nil {
 				return mdlerrors.NewBackend("update user role", err)
 			}
-			fmt.Fprintf(ctx.Output, "Modified user role: %s\n", s.Name)
+			ctx.ReportMutation("Modified", "user role: %s", s.Name)
 			return nil
 		}
 	}
@@ -559,7 +559,7 @@ func execGrantEntityAccess(ctx *ExecContext, s *ast.GrantEntityAccessStmt) error
 	ctx.trackModifiedDomainModel(module.ID, module.Name)
 	fmt.Fprintf(ctx.Output, "Granted access on %s.%s to %s\n", s.Entity.Module, s.Entity.Name, strings.Join(roleNames, ", "))
 	if !ctx.Quiet {
-		fmt.Fprint(ctx.Output, formatAccessRuleResult(ctx, s.Entity.Module, s.Entity.Name, roleNames))
+		fmt.Fprint(ctx.Output, formatAccessRuleResult(ctx, s.Entity.Module, s.Entity.Name, roleNames, s.XPathConstraint, false))
 	}
 	return nil
 }
@@ -635,7 +635,7 @@ func execRevokeEntityAccess(ctx *ExecContext, s *ast.RevokeEntityAccessStmt) err
 		} else {
 			fmt.Fprintf(ctx.Output, "Revoked partial access on %s.%s from %s\n", s.Entity.Module, s.Entity.Name, strings.Join(roleNames, ", "))
 			if !ctx.Quiet {
-				fmt.Fprint(ctx.Output, formatAccessRuleResult(ctx, s.Entity.Module, s.Entity.Name, roleNames))
+				fmt.Fprint(ctx.Output, formatAccessRuleResult(ctx, s.Entity.Module, s.Entity.Name, roleNames, "", true))
 			}
 		}
 	} else {
@@ -1146,7 +1146,7 @@ func execCreateDemoUser(ctx *ExecContext, s *ast.CreateDemoUserStmt) error {
 			if err := ctx.Backend.AddDemoUser(ps.ID, s.UserName, s.Password, entity, mergedRoles); err != nil {
 				return mdlerrors.NewBackend("update demo user", err)
 			}
-			fmt.Fprintf(ctx.Output, "Modified demo user: %s\n", s.UserName)
+			ctx.ReportMutation("Modified", "demo user: %s", s.UserName)
 			return nil
 		}
 	}

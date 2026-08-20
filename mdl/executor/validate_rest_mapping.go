@@ -29,17 +29,27 @@ func ValidateRestClientMappings(prog *ast.Program) []linter.Violation {
 			continue
 		}
 		for _, opDef := range createStmt.Operations {
-			err := checkInlineMappingBody(opDef)
-			if err == nil {
-				continue
+			if err := checkInlineMappingBody(opDef); err != nil {
+				out = append(out, linter.Violation{
+					RuleID:   "MDL-REST01",
+					Severity: linter.SeverityError,
+					Message:  "operation \"" + opDef.Name + "\": " + err.Error(),
+					Suggestion: "List the JSON fields inline. A consumed REST operation stores its mapping on the " +
+						"operation itself, so an existing import/export mapping document cannot be referenced here.",
+				})
 			}
-			out = append(out, linter.Violation{
-				RuleID:   "MDL-REST01",
-				Severity: linter.SeverityError,
-				Message:  "operation \"" + opDef.Name + "\": " + err.Error(),
-				Suggestion: "List the JSON fields inline. A consumed REST operation stores its mapping on the " +
-					"operation itself, so an existing import/export mapping document cannot be referenced here.",
-			})
+			// MDL-REST02: a file request body has no representation in Mendix and
+			// used to be downgraded to a string body holding the expression text,
+			// which returns 200 with the wrong payload.
+			if err := checkFileRequestBody(opDef); err != nil {
+				out = append(out, linter.Violation{
+					RuleID:   "MDL-REST02",
+					Severity: linter.SeverityError,
+					Message:  "operation \"" + opDef.Name + "\": " + err.Error(),
+					Suggestion: "Upload binary from a Java action. Mendix's consumed REST operation has no " +
+						"binary request body, so there is no syntax here that would send the file.",
+				})
+			}
 		}
 	}
 	return out

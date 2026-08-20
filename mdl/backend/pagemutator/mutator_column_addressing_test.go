@@ -8,7 +8,18 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+
+	"github.com/mendixlabs/mxcli/mdl/backend"
+	"github.com/mendixlabs/mxcli/sdk/pages"
 )
+
+func backendInsertPosition(p string) backend.InsertPosition { return backend.InsertPosition(p) }
+
+// plainWidgets is the body that must be refused at a column target: an ordinary
+// layout container, which is what the reported statement carried.
+func plainWidgets() []pages.Widget {
+	return []pages.Widget{&pages.Container{BaseWidget: pages.BaseWidget{Name: "ctnStray"}}}
+}
 
 // ---------------------------------------------------------------------------
 // Ledger #78: DataGrid2 column addressing — reject ambiguous ON, and list the
@@ -224,6 +235,63 @@ func TestInsertWidget_RefusesBareColumnTarget(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "gridName.NextRunAt") {
 		t.Errorf("error should name the qualified form, got: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #935: the other half of #891. A DOTTED `grid.column` target is legitimate —
+// it is the form #891 tells authors to use — but only a `column …` body may be
+// written there. The executor routes an all-columns body to
+// InsertColumns/ReplaceColumn; anything else reached these two and was
+// serialized into the grid's column list, producing the same unloadable
+// document (InvalidCastException: DivContainer -> WidgetObject).
+//
+// Driven through the exported methods for the same reason as the #891 pair: a
+// direct call on the helper would prove nothing about the wiring.
+// ---------------------------------------------------------------------------
+
+func columnGridMutator() *Mutator {
+	grid := buildGridWithColumns([]map[string]string{
+		{"attr": "M.E.Merchant"},
+		{"caption": "Amount"},
+	})
+	return &Mutator{rawData: bson.D{}, widgetFinder: gridFinder(grid)}
+}
+
+func TestInsertWidget_RefusesPlainWidgetsAtColumnTarget(t *testing.T) {
+	for _, position := range []string{"AFTER", "BEFORE", "INTO"} {
+		m := columnGridMutator()
+		err := m.InsertWidget("dg", "Merchant", backendInsertPosition(position), plainWidgets())
+		if err == nil {
+			t.Fatalf("INSERT %s dg.Merchant accepted a non-column body — this is the #935 corruption path", position)
+		}
+		if !strings.Contains(err.Error(), "dg.Merchant") || !strings.Contains(err.Error(), "column") {
+			t.Errorf("INSERT %s: error should name the column target, got: %v", position, err)
+		}
+	}
+}
+
+func TestReplaceWidget_RefusesPlainWidgetsAtColumnTarget(t *testing.T) {
+	m := columnGridMutator()
+	err := m.ReplaceWidget("dg", "Merchant", plainWidgets())
+	if err == nil {
+		t.Fatal("REPLACE dg.Merchant accepted a non-column body — this is the #935 corruption path")
+	}
+	if !strings.Contains(err.Error(), "dg.Merchant") {
+		t.Errorf("error should name the column target, got: %v", err)
+	}
+}
+
+// A mistyped column must still report "not found" with the available names —
+// the refusal is about the body, so it must not swallow the more useful error.
+func TestInsertWidget_ColumnTargetMissReportsNotFound(t *testing.T) {
+	m := columnGridMutator()
+	err := m.InsertWidget("dg", "Nonexistent", "AFTER", plainWidgets())
+	if err == nil {
+		t.Fatal("expected an error for a column that does not exist")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("a missing column should report not-found, got: %v", err)
 	}
 }
 

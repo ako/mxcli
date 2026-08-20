@@ -194,7 +194,45 @@ func init() {
 		},
 		Syntax:  "SHOW REST CLIENTS [IN Module];\nSHOW PUBLISHED REST SERVICES [IN Module];\nDESCRIBE REST CLIENT Module.Name;\nDESCRIBE PUBLISHED REST SERVICE Module.Name;",
 		Example: "SHOW REST CLIENTS;\nDESCRIBE REST CLIENT MyModule.PetStoreAPI;\nSHOW PUBLISHED REST SERVICES IN MyModule;",
-		SeeAlso: []string{"rest.consumed", "rest.published", "integration"},
+		SeeAlso: []string{"rest.call", "rest.consumed", "rest.published", "integration"},
+	})
+
+	Register(SyntaxFeature{
+		Path:    "rest.call",
+		Summary: "REST CALL activity inside a microflow, and its five RETURNS forms",
+		Keywords: []string{
+			"rest call", "call rest service", "http get", "http post",
+			"returns response", "returns string", "returns mapping",
+			"file document", "filedocument", "download", "httpresponse",
+			"body binary", "binary", "upload", "post binary",
+		},
+		Syntax: "[$Var =] REST CALL GET|POST|PUT|PATCH|DELETE '<url>' [WITH ({1} = expr, ...)]\n" +
+			"  [HEADER 'Name' = expr]\n" +
+			"  [AUTH BASIC $user PASSWORD $pass]\n" +
+			"  [BODY '<template>' [WITH ({1} = expr)] | BODY <expr> | BODY BINARY <expr>\n" +
+			"   | BODY MAPPING Module.EMM FROM $var]\n" +
+			"  [TIMEOUT expr]\n" +
+			"  RETURNS <one of>;\n\n" +
+			"RETURNS String                          -- the response body as a string\n" +
+			"RETURNS response                        -- the whole System.HttpResponse object\n" +
+			"RETURNS Module.MyFile                   -- store the body in a file document\n" +
+			"RETURNS MAPPING Module.IMM AS Module.E  -- apply an import mapping (single object)\n" +
+			"RETURNS MAPPING Module.IMM AS LIST OF Module.E\n" +
+			"RETURNS NONE | NOTHING                  -- ignore the response\n\n" +
+			"-- The file document form takes a SPECIALIZATION of System.FileDocument.\n" +
+			"-- Mendix rejects the base type as a return type (CE0362), and MDL064\n" +
+			"-- reports that before the write. There is no matching form for an\n" +
+			"-- HttpResponse specialization because Mendix does not allow one\n" +
+			"-- (CE1540) — `RETURNS response` already names the only type it can be.",
+		Example: "create persistent entity MyModule.MyFile extends System.FileDocument ();\n\n" +
+			"create microflow MyModule.ACT_Download ($Location: String)\n" +
+			"begin\n" +
+			"  $file = rest call get '{1}' with ({1} = $Location)\n" +
+			"    header 'Accept' = 'application/octet-stream'\n" +
+			"    timeout 300\n" +
+			"    returns MyModule.MyFile;\n" +
+			"end;",
+		SeeAlso: []string{"rest", "rest.consumed", "microflow"},
 	})
 
 	Register(SyntaxFeature{
@@ -206,7 +244,7 @@ func init() {
 			"body", "response", "mapping", "authentication",
 			"json structure", "import mapping", "export mapping",
 		},
-		Syntax:  "CREATE [OR MODIFY] REST CLIENT Module.Name (\n  BaseUrl: 'https://...',\n  Authentication: NONE | BASIC (...)\n)\n{\n  OPERATION Name {\n    Method: GET|POST|PUT|DELETE|PATCH,\n    Path: '/path/{param}',\n    Parameters: ($param: Type),\n    Query: ($param: Type),\n    Headers: ('Key' = 'Value'),\n    Timeout: 30,\n    Body: JSON FROM $var | MAPPING Entity { jsonField = Attribute, ... },\n    Response: JSON AS $var | MAPPING Entity { Attribute = jsonField, ... }\n  }\n};\n\n-- MAPPING takes a target ENTITY plus a body listing the JSON fields; Mendix\n-- stores it inline on the operation. An existing import/export mapping\n-- document cannot be referenced here (rejected as MDL-REST01).",
+		Syntax:  "CREATE [OR MODIFY] REST CLIENT Module.Name (\n  BaseUrl: 'https://...',\n  Authentication: NONE | BASIC (...)\n)\n{\n  OPERATION Name {\n    Method: GET|POST|PUT|DELETE|PATCH,\n    Path: '/path/{param}',\n    Parameters: ($param: Type),\n    Query: ($param: Type),\n    Headers: ('Key' = 'Value'),\n    Timeout: 30,\n    Body: JSON FROM $var | MAPPING Entity { jsonField = Attribute, ... },\n    Response: JSON AS $var | MAPPING Entity { Attribute = jsonField, ... }\n  }\n};\n\n-- MAPPING takes a target ENTITY plus a body listing the JSON fields; Mendix\n-- stores it inline on the operation. An existing import/export mapping\n-- document cannot be referenced here (rejected as MDL-REST01).\n-- There is no FILE request body: Mendix's consumed operation stores one of\n-- Rest$JsonBody, Rest$StringBody or Rest$ImplicitMappingBody, so a file\n-- document has nowhere to go. `Body: FILE FROM $Doc` is rejected as\n-- MDL-REST02 rather than sent as the literal text \"$Doc\" (it used to be,\n-- returning 200 with a 4-byte payload). Binary POST lives on the\n-- microflow activity: `rest call post '<url>' body binary $Doc/Contents`.\n-- `Response: FILE AS $Doc` is unaffected — downloads work.",
 		Example: "CREATE REST CLIENT Module.PetStore (\n  BaseUrl: 'https://petstore.example.com/api',\n  Authentication: NONE\n)\n{\n  OPERATION GetPet {\n    Method: GET,\n    Path: '/pets/{id}',\n    Parameters: ($id: String),\n    Query: ($verbose: String),\n    Response: MAPPING Module.Pet {\n      Name = name,\n      Status = status\n    }\n  }\n};",
 		SeeAlso: []string{"rest", "rest.published"},
 	})
@@ -552,13 +590,21 @@ DESCRIBE DATABASE CONNECTION Ops.Erp;`,
 		Syntax: "SHOW IMPORT MAPPINGS [IN Module];\nDESCRIBE IMPORT MAPPING Module.Name;\n" +
 			"CREATE [OR MODIFY] IMPORT MAPPING Module.Name\n  WITH JSON STRUCTURE Module.JsonStruct\n{\n" +
 			"  create|find|find or create Module.Entity {\n    Attr = jsonField [KEY],\n" +
+			"    Attr = a/b/c,\n" +
 			"    Assoc/Module.Child = nestedKey { ... }\n  }\n};\nDROP IMPORT MAPPING Module.Name;\n\n" +
 			"OR MODIFY: updates mapping in-place, preserves UUID.\n\n" +
+			"Nested members (Attr = a/b/c):\n" +
+			"  Reaches a leaf several levels down with NO entity for the levels in\n" +
+			"  between — the shape Studio Pro produces when you tick a nested leaf\n" +
+			"  without ticking its parents. One entity, values from several depths.\n" +
+			"  Use Assoc/Module.Child = key { ... } instead when you WANT an entity\n" +
+			"  per level. The path may not cross a 0..* element: many items cannot\n" +
+			"  collapse into one value, and mxbuild rejects it with CE0256.\n\n" +
 			"Inherited attributes:\n" +
 			"  An entity mapped with EXTENDS can map its inherited attributes too —\n" +
 			"  name them exactly like its own. mxcli resolves each to the entity that\n" +
 			"  declares it, which is what Studio Pro needs to show the field mapped.",
-		Example: "CREATE IMPORT MAPPING Shop.IMM_Order\n  WITH JSON STRUCTURE Shop.JSON_Order\n{\n  create Shop.Order {\n    OrderId = orderId KEY,\n    TotalAmount = total\n  }\n};\n\n-- Idempotent update\nCREATE OR MODIFY IMPORT MAPPING Shop.IMM_Order\n  WITH JSON STRUCTURE Shop.JSON_Order\n{\n  find or create Shop.Order {\n    OrderId = orderId KEY,\n    TotalAmount = total,\n    Status = status\n  }\n};",
+		Example: "CREATE IMPORT MAPPING Shop.IMM_Order\n  WITH JSON STRUCTURE Shop.JSON_Order\n{\n  create Shop.Order {\n    OrderId = orderId KEY,\n    TotalAmount = total,\n    -- a leaf two levels down, without entities for customer/contact\n    Email = customer/contact/email\n  }\n};\n\n-- Idempotent update\nCREATE OR MODIFY IMPORT MAPPING Shop.IMM_Order\n  WITH JSON STRUCTURE Shop.JSON_Order\n{\n  find or create Shop.Order {\n    OrderId = orderId KEY,\n    TotalAmount = total,\n    Status = status\n  }\n};",
 		SeeAlso: []string{"export-mapping", "json-structure"},
 	})
 
@@ -570,7 +616,13 @@ DESCRIBE DATABASE CONNECTION Ops.Erp;`,
 			"show export mappings", "describe export mapping",
 			"with json structure", "null values", "as jsonKey",
 		},
-		Syntax:  "SHOW EXPORT MAPPINGS [IN Module];\nDESCRIBE EXPORT MAPPING Module.Name;\nCREATE [OR MODIFY] EXPORT MAPPING Module.Name\n  WITH JSON STRUCTURE Module.JsonStruct\n  [NULL VALUES LeaveOutElement|SendAsNil]\n{\n  Module.Entity {\n    jsonField = Attr,\n    Assoc/Module.Child AS nestedKey { ... }\n  }\n};\nDROP EXPORT MAPPING Module.Name;\n\nOR MODIFY: updates mapping in-place, preserves UUID.",
+		Syntax: "SHOW EXPORT MAPPINGS [IN Module];\nDESCRIBE EXPORT MAPPING Module.Name;\nCREATE [OR MODIFY] EXPORT MAPPING Module.Name\n  WITH JSON STRUCTURE Module.JsonStruct\n  [NULL VALUES LeaveOutElement|SendAsNil]\n{\n  Module.Entity {\n    jsonField = Attr,\n    Assoc/Module.Child AS nestedKey { ... }\n  }\n};\nDROP EXPORT MAPPING Module.Name;\n\nOR MODIFY: updates mapping in-place, preserves UUID.\n\n" +
+			"No nested-member form:\n" +
+			"  An import mapping can write `Attr = a/b/c` to reach a leaf without an\n" +
+			"  entity per level. An export mapping cannot: it has to PRODUCE the\n" +
+			"  intermediate node, so Mendix rejects a collapsed member with CE5015\n" +
+			"  (\"no child mapping matching schema element\"). Give the level its own\n" +
+			"  element: Assoc/Module.Child AS key { ... }.",
 		Example: "CREATE EXPORT MAPPING Shop.EMM_Order\n  WITH JSON STRUCTURE Shop.JSON_Order\n  NULL VALUES LeaveOutElement\n{\n  Shop.Order {\n    orderId = OrderId,\n    total = TotalAmount\n  }\n};\n\n-- Idempotent update\nCREATE OR MODIFY EXPORT MAPPING Shop.EMM_Order\n  WITH JSON STRUCTURE Shop.JSON_Order\n{\n  Shop.Order {\n    orderId = OrderId,\n    total = TotalAmount,\n    status = Status\n  }\n};",
 		SeeAlso: []string{"import-mapping", "json-structure"},
 	})

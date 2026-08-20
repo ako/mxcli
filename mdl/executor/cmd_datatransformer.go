@@ -149,7 +149,7 @@ func execCreateDataTransformer(ctx *ExecContext, s *ast.CreateDataTransformerStm
 			return mdlerrors.NewBackend("update data transformer", err)
 		}
 		if !ctx.Quiet {
-			fmt.Fprintf(ctx.Output, "Modified data transformer: %s.%s (%d steps)\n",
+			ctx.ReportMutation("Modified", "data transformer: %s.%s (%d steps)",
 				s.Name.Module, s.Name.Name, len(dt.Steps))
 		}
 		return nil

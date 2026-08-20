@@ -132,7 +132,19 @@ func execCreatePageV3(ctx *ExecContext, s *ast.CreatePageStmtV3) error {
 	// Invalidate hierarchy cache so the new page's container is visible
 	invalidateHierarchy(ctx)
 
-	fmt.Fprintf(ctx.Output, "Created page %s\n", s.Name.String())
+	// "Created" was printed for the replace path too, so re-running a script
+	// against an unchanged page claimed to have created it every time. Duplicate
+	// pages of the same name are deleted above, and a delete is a real change
+	// that unit-write counting does not see — so only a plain one-for-one
+	// replacement is eligible to be reported as unchanged.
+	switch {
+	case len(pagesToDelete) == 1:
+		ctx.ReportMutation("Replaced", "page %s", s.Name.String())
+	case len(pagesToDelete) > 1:
+		fmt.Fprintf(ctx.Output, "Replaced page %s\n", s.Name.String())
+	default:
+		fmt.Fprintf(ctx.Output, "Created page %s\n", s.Name.String())
+	}
 	return nil
 }
 

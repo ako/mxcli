@@ -1,0 +1,41 @@
+-- ============================================================================
+-- Bug #922 companion: the two REST file-document result types MDL064 refuses
+-- ============================================================================
+--
+-- Both are rejected before `exec` writes anything.
+--
+--   1. The BASE System.FileDocument. Mendix does not allow it as a return type:
+--      measured on mxbuild 11.6.6 as
+--        CE0362 "System entity 'System.FileDocument' is not allowed as a return
+--                type." at Call REST service activity
+--      A specialization is required — see 922-rest-call-returns-file-document.mdl.
+--
+--   2. An unqualified entity name, which is indistinguishable from a typo and is
+--      MDL008 everywhere else in the language.
+--
+-- Usage (this file is expected to FAIL — .fail.mdl):
+--   mxcli check mdl-examples/bug-tests/922-rest-call-base-filedocument.fail.mdl
+--   Expect two MDL064 errors.
+-- ============================================================================
+
+create module BugTest922Fail;
+
+-- (1) the base type
+create microflow BugTest922Fail.ACT_BaseType (
+  $Location: String
+)
+begin
+  $file = rest call get '{1}' with ({1} = $Location)
+    returns System.FileDocument;
+end;
+/
+
+-- (2) no module prefix
+create microflow BugTest922Fail.ACT_Unqualified (
+  $Location: String
+)
+begin
+  $file = rest call get '{1}' with ({1} = $Location)
+    returns MyFile;
+end;
+/

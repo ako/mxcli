@@ -623,6 +623,20 @@ func parseResultHandling(raw map[string]any, handlingType string) microflows.Res
 		result.ID = model.ID(extractBsonID(raw["$ID"]))
 		result.VariableName = extractString(raw["ResultVariableName"])
 		return result
+	case "FileDocument":
+		// The entity lives in VariableType and is always a specialization of
+		// System.FileDocument — the base is rejected as a return type (CE0362).
+		// Without this case the whole handling read back as nil, which the
+		// describer rendered as `returns String` while also losing the output
+		// variable, so a describe → exec round trip silently retyped the
+		// activity and still built clean. Issue #922.
+		result := &microflows.ResultHandlingFileDocument{}
+		result.ID = model.ID(extractBsonID(raw["$ID"]))
+		result.VariableName = extractString(raw["ResultVariableName"])
+		if varType := toMap(raw["VariableType"]); varType != nil {
+			result.EntityRef = extractString(varType["Entity"])
+		}
+		return result
 	case "Mapping":
 		result := &microflows.ResultHandlingMapping{}
 		result.ID = model.ID(extractBsonID(raw["$ID"]))

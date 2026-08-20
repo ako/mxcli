@@ -172,7 +172,9 @@ func (b *Backend) WriteJavaScriptSourceFile(moduleName, actionName string, jsCod
 		return fmt.Errorf("WriteJavaScriptSourceFile: create dir: %w", err)
 	}
 	source := javaactions.GenerateJavaScriptSource(actionName, jsCode, params, returnType)
-	if err := os.WriteFile(filepath.Join(dir, actionName+".js"), []byte(source), 0o644); err != nil {
+	changed, err := javaactions.WriteSourceIfChanged(filepath.Join(dir, actionName+".js"), source)
+	b.noteFileWrite(changed)
+	if err != nil {
 		return fmt.Errorf("WriteJavaScriptSourceFile: write: %w", err)
 	}
 	return nil

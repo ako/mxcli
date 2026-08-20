@@ -1,0 +1,69 @@
+-- ============================================================================
+-- Issue #928: two widget property bindings that passed check and wrote nothing
+-- ============================================================================
+--
+-- Bug 1 -- a pluggable widget's text-template property dropped its parameters.
+--
+--   `imageUrl: '{1}', contentparams: [{1} = PictureUrl]` stored a template with
+--   an EMPTY parameter list, and mxbuild answered
+--     CE0720 "Place holder index 1 is greater than 0, the number of
+--             parameter(s)." at Image 'cardImage'
+--   on the FIRST write -- no describe round-trip needed. A `dynamictext` with
+--   the same syntax stored Parameters=[2, {ClientTemplateParameter}], which is
+--   the control that located it: only the pluggable path was affected.
+--
+--   Cause: the engine took the parameters path only for mxcli's `{AttrName}`
+--   convenience spelling, so Mendix's own numeric `{1}` form had no route.
+--   Both spellings now reach the same stored shape; this file proves it by
+--   using them side by side over the same attribute.
+--
+-- Bug 2 -- `editable:` on a button did nothing, and nothing said so.
+--
+--   See 928-widget-binding-warnings.mdl. Mendix models editability on INPUT
+--   widgets only: exactly eleven Pages types carry Editability /
+--   ConditionalEditabilitySettings, and not one of the fourteen button types
+--   does. So it cannot be implemented -- it is reported instead (MDL-WIDGET20).
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/928-widget-binding-gaps.mdl -p app.mpr
+--   mx check app.mpr   # no new errors -- CE0720 is gone
+-- ============================================================================
+
+create module BugTest928;
+
+create persistent entity BugTest928.Product (
+  Name: string(200),
+  PictureUrl: string(500)
+);
+/
+
+create or modify page BugTest928.Catalogue (
+  Title: 'Catalogue',
+  Layout: Atlas_Core.Atlas_Default
+)
+{
+  LISTVIEW lv (DataSource: DATABASE BugTest928.Product) {
+
+    -- The control: a built-in widget with the same syntax. This always worked,
+    -- and is what showed the defect was specific to the pluggable path.
+    DYNAMICTEXT dt ( Content: '{1}', ContentParams: [{1} = PictureUrl] )
+
+    -- Bug 1, the reported form: numeric placeholder + explicit contentparams.
+    PLUGGABLEWIDGET 'com.mendix.widget.web.image.Image' cardImage (
+      datasource: imageUrl,
+      imageUrl: '{1}', contentparams: [{1} = PictureUrl]
+    )
+
+    -- The same binding in the `{AttrName}` spelling, which already worked and
+    -- keeps working. Both store one parameter bound to Product.PictureUrl.
+    PLUGGABLEWIDGET 'com.mendix.widget.web.image.Image' cardImage2 (
+      datasource: imageUrl,
+      imageUrl: '{PictureUrl}'
+    )
+
+    -- Editability on a widget that HAS it stays clean (MDL-WIDGET20 must not
+    -- fire here, or the documented idiom would be flagged).
+    TEXTBOX tbName ( Attribute: Name, editable: [false] )
+  }
+}
+/

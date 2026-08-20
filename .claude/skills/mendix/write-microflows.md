@@ -1383,6 +1383,17 @@ $response = rest call post 'https://api.example.com/items'
     returns string
     on error continue;
 
+-- POST a BINARY body (upload a file document's contents)
+-- The expression is the FileDocument's Contents MEMBER, not the document
+-- itself, and the content type goes on a header. A consumed REST CLIENT
+-- document has no binary body — `Body: file from $Doc` there is refused as
+-- MDL-REST02 — so binary uploads belong here.
+$response = rest call post 'https://api.example.com/upload'
+    header 'ContentType' = 'application/pdf'
+    body binary $Doc/Contents
+    timeout 300
+    returns response;
+
 -- GET with URL template parameters
 $response = rest call get 'https://api.example.com/users/{1}' with (
     {1} = toString($UserId)
@@ -1411,6 +1422,27 @@ rest call delete 'https://api.example.com/items/{1}' with (
 - `returns response` — returns `System.HttpResponse` object
 - `returns mapping Module.ImportMapping as Module.Entity` — single object result
 - `returns mapping Module.ImportMapping as list of Module.Entity` — list result
+- `returns Module.MyFile` — store the body in a **file document**
+
+**The file document form takes a specialization, never `System.FileDocument`
+itself.** Mendix rejects the base type as a return type with `CE0362`, and
+MDL064 reports it before the write. Create one first:
+
+```mdl
+create persistent entity MyModule.MyFile extends System.FileDocument ();
+
+create microflow MyModule.ACT_Download ($Location: String)
+begin
+  $file = rest call get '{1}' with ({1} = $Location)
+    header 'Accept' = 'application/octet-stream'
+    timeout 300
+    returns MyModule.MyFile;
+end;
+```
+
+There is **no** equivalent for an HttpResponse specialization: Mendix allows only
+`User`, `FileDocument`, `Image` and `Paging` to be specialized (`CE1540`), so
+`returns response` already names the only type that result can have.
 
 **Pick `as` vs `as list of` based on the call site, not the mapping shape.** The same import mapping can yield either a single object or a list — Studio Pro stores the cardinality on the microflow's `ImportMappingCall` (`Range.SingleObject` + `ForceSingleOccurrence`). Use `as Module.Entity` when the response is a single object (the mapping may still be list-typed; Studio Pro binds the first item). Use `as list of Module.Entity` when the response should bind a list. Mismatching the cardinality with the surrounding code produces `mx check` `CE0117` at the End event or `CE0013` / `CE0100` on downstream loop / aggregate / list-operation activities.
 

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/bsonutil"
+	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -75,6 +76,17 @@ func setBsonField(doc bson.D, key string, value any) bson.D {
 		}
 	}
 	return append(doc, bson.E{Key: key, Value: value})
+}
+
+// bsonStringField returns a top-level string field of a document, or "" when the
+// field is absent (which is how an unconstrained access rule reads).
+func bsonStringField(doc bson.D, key string) string {
+	for _, elem := range doc {
+		if elem.Key == key {
+			return bsonutil.String(elem.Value, key)
+		}
+	}
+	return ""
 }
 
 // getBsonArray returns the Mendix-style array for a field (skipping the int32 marker).
@@ -630,7 +642,16 @@ func (w *Writer) AddEntityAccessRule(unitID model.ID, entityName string, roleNam
 				accessRules = bson.A{int32(3)} // storageListType 3
 			}
 
-			// Check for existing rule with same AllowedModuleRoles — upsert
+			// Check for an existing rule with the same AllowedModuleRoles AND the
+			// same XPathConstraint — upsert.
+			//
+			// The constraint belongs in the key because Mendix combines the rights
+			// of every rule naming a given module role ("Rules are additive",
+			// refguide/access-rules), so two constraints for one role are two
+			// legitimate rules. Matching on roles alone folded the second GRANT
+			// onto the first rule and overwrote its constraint, destroying it
+			// silently (mendixlabs/mxcli#936). An empty constraint is a value
+			// here, not a wildcard.
 			existingIdx := -1
 			existingID := ""
 			for ri, ruleItem := range accessRules {
@@ -638,7 +659,8 @@ func (w *Writer) AddEntityAccessRule(unitID model.ID, entityName string, roleNam
 				if !ok {
 					continue
 				}
-				if rolesMatch(ruleDoc, roleNames) {
+				if rolesMatch(ruleDoc, roleNames) &&
+					bsonStringField(ruleDoc, "XPathConstraint") == xpathConstraint {
 					existingIdx = ri
 					// Preserve the existing rule's $ID
 					for _, rf := range ruleDoc {
@@ -734,15 +756,11 @@ func rolesMatch(ruleDoc bson.D, roleNames []string) bool {
 
 // accessRightsLevel returns a numeric level for access rights comparison.
 // None=0 < ReadOnly=1 < ReadWrite=2.
+// accessRightsLevel ranks member access rights. The lattice is shared with the
+// codec engine (mdl/types) so the two cannot drift: both merge a GRANT by taking
+// the higher of the stored and incoming rights.
 func accessRightsLevel(s string) int {
-	switch s {
-	case "ReadWrite":
-		return 2
-	case "ReadOnly":
-		return 1
-	default:
-		return 0
-	}
+	return types.AccessRightsLevel(s)
 }
 
 // mergeAccessRule merges a new access rule into an existing one additively.
@@ -783,7 +801,7 @@ func mergeAccessRule(existing, newRule bson.D) bson.D {
 
 	// Extract existing AllowCreate/AllowDelete and DefaultMemberAccessRights
 	var existCreate, existDelete bool
-	var existDefault, existXPath string
+	var existDefault string
 	for _, f := range existing {
 		switch f.Key {
 		case "AllowCreate":
@@ -792,8 +810,6 @@ func mergeAccessRule(existing, newRule bson.D) bson.D {
 			existDelete = bsonutil.Bool(f.Value, "AllowDelete")
 		case "DefaultMemberAccessRights":
 			existDefault = bsonutil.String(f.Value, "DefaultMemberAccessRights")
-		case "XPathConstraint":
-			existXPath = bsonutil.String(f.Value, "XPathConstraint")
 		}
 	}
 
@@ -811,11 +827,12 @@ func mergeAccessRule(existing, newRule bson.D) bson.D {
 			if accessRightsLevel(existDefault) > accessRightsLevel(newVal) {
 				newRule[i].Value = existDefault
 			}
-		case "XPathConstraint":
-			newVal := bsonutil.String(f.Value, "XPathConstraint")
-			if newVal == "" && existXPath != "" {
-				newRule[i].Value = existXPath
-			}
+		// XPathConstraint is not merged: it is part of the key that selected this
+		// rule, so the stored and incoming values are equal by construction. It
+		// used to be inherited from the stored rule when the new GRANT had no
+		// WHERE, which quietly constrained access the user had asked to be
+		// unconstrained; such a GRANT now matches (or creates) the unconstrained
+		// rule instead.
 		case "MemberAccesses":
 			arr, ok := f.Value.(bson.A)
 			if !ok {

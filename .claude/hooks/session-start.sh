@@ -20,12 +20,47 @@ set -euo pipefail
 ANTLR_VERSION='4.13.2'
 ANTLR_TOOLS_VERSION='0.2.2'
 
+cd "${CLAUDE_PROJECT_DIR:-$(dirname "$0")/../..}" 2>/dev/null || exit 0
+
+# 0. Is this checkout what the session thinks it is?
+#
+# The container is ephemeral: it is re-cloned when reprovisioned, so commits made
+# earlier in a session can be absent from the working copy while still present on
+# the remote. That happened twice in one session, and the second time it was
+# misread as a code bug — a grammar rule "missing" from the tree had in fact been
+# committed and pushed hours earlier, and the binary under test was built from
+# the rolled-back tree.
+#
+# Only speaks when the branch is actually behind its own remote, so a healthy
+# start stays silent. Runs before the remote-only exit below because a stale
+# checkout is worth knowing about on any machine.
+_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+if [ -n "${_branch:-}" ] && [ "${_branch}" != "HEAD" ]; then
+  timeout 15 git fetch -q origin "${_branch}" >/dev/null 2>&1 || true
+  if git rev-parse --verify -q "origin/${_branch}" >/dev/null 2>&1; then
+    _behind=$(git rev-list --count "HEAD..origin/${_branch}" 2>/dev/null || echo 0)
+    if [ "${_behind}" -gt 0 ]; then
+      echo "WARNING: HEAD is ${_behind} commit(s) behind origin/${_branch}."
+      echo "  This checkout may be a fresh clone that is missing work pushed earlier."
+      echo "  Reconcile before building or testing:  git log --oneline origin/${_branch}"
+    fi
+  fi
+fi
+
+# The binary carries the commit it was built from (Makefile -X main.Version), so
+# a mismatch means any behaviour observed through bin/mxcli is from other code.
+if [ -x bin/mxcli ]; then
+  _built=$(bin/mxcli --version 2>/dev/null | grep -oE '[0-9a-f]{7,}' | head -1 || true)
+  _head=$(git rev-parse --short HEAD 2>/dev/null || true)
+  if [ -n "${_built:-}" ] && [ -n "${_head:-}" ] && [ "${_built}" != "${_head}" ]; then
+    echo "NOTE: bin/mxcli was built from ${_built}, HEAD is ${_head} — run 'make build' before testing."
+  fi
+fi
+
 # Local (devcontainer / laptop) setups already have these via the Dockerfile.
 if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   exit 0
 fi
-
-cd "${CLAUDE_PROJECT_DIR:-$(dirname "$0")/../..}"
 
 # 1. ANTLR4 — required by `make grammar`, which `make build` always runs.
 if ! command -v antlr4 >/dev/null 2>&1; then

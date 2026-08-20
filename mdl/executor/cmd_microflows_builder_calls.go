@@ -1169,6 +1169,14 @@ func (fb *flowBuilder) addRestCallAction(s *ast.RestCallStmt) model.ID {
 				Template:       template,
 				TemplateParams: templateParams,
 			}
+		case ast.RestBodyBinary:
+			// Binary body — the raw bytes the expression yields. Studio Pro stores
+			// a FileDocument's Contents member here (`$Doc/Contents`), and the
+			// action's RequestHandlingType becomes "Binary".
+			requestHandling = &microflows.BinaryRequestHandling{
+				BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
+				Expression:  fb.exprToString(s.Body.Template),
+			}
 		case ast.RestBodyMapping:
 			// Export mapping
 			mappingQN := s.Body.MappingName.Module + "." + s.Body.MappingName.Name
@@ -1207,6 +1215,16 @@ func (fb *flowBuilder) addRestCallAction(s *ast.RestCallStmt) model.ID {
 		resultHandling = &microflows.ResultHandlingHttpResponse{
 			BaseElement:  model.BaseElement{ID: model.ID(types.GenerateID())},
 			VariableName: s.OutputVariable,
+		}
+	case ast.RestResultFileDocument:
+		// `returns Module.Entity` — store the response in a file document. The
+		// entity is always a System.FileDocument specialization; the base type
+		// is rejected by Mendix as a return type (CE0362), which checkRestCall
+		// reports before the write. Issue #922.
+		resultHandling = &microflows.ResultHandlingFileDocument{
+			BaseElement:  model.BaseElement{ID: model.ID(types.GenerateID())},
+			VariableName: s.OutputVariable,
+			EntityRef:    s.Result.ResultEntity.String(),
 		}
 	case ast.RestResultMapping:
 		mappingQN := s.Result.MappingName.Module + "." + s.Result.MappingName.Name
@@ -1552,6 +1570,21 @@ func (fb *flowBuilder) addImportFromMappingAction(s *ast.ImportFromMappingStmt) 
 		if s.OffsetExpr != nil {
 			resultHandling.OffsetExpression = fb.exprToString(s.OffsetExpr)
 		}
+	} else {
+		// No range keyword: the range is ALL, written explicitly. Leaving both
+		// pointers nil let them fall back to SingleObject — true for an
+		// object-rooted mapping — which stores Studio Pro's FIRST. That builds
+		// cleanly (mx check: 0 errors) and then throws at import time:
+		//
+		//	MicroflowException: key not found: Path(QName(None,),None,)
+		//	  at ...importer.mapping.MappingCache.storeValueMappingElement
+		//
+		// Studio Pro writes both flags false for a plain single-object import and
+		// expresses "one object" solely through VariableType=ObjectType. Only the
+		// RANGE is set here; the cardinality inference below is untouched.
+		f := false
+		resultHandling.RangeSingleObject = &f
+		resultHandling.ForceSingleOccurrence = &f
 	}
 	// Only FIRST overrides the mapping's cardinality; saying nothing leaves both
 	// axes to the inference, which is what keeps existing scripts writing what

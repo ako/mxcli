@@ -1,0 +1,39 @@
+-- ============================================================================
+-- Issue #927: an export mapping cannot reach a nested member
+-- ============================================================================
+--
+-- Refused rather than written, because it would otherwise be valid MDL that
+-- passes `mxcli check` and fails only in the build:
+--
+--   CE5015 "There is no child mapping matching schema element '(Object)'"
+--
+-- Measured on mxbuild 11.13 with a three-way control: the same collapsed member
+-- in an IMPORT mapping is 0 errors, and the same export mapping with only
+-- top-level members is 0 errors. An export mapping has to PRODUCE the
+-- intermediate node, so something must map it -- give `customer` its own
+-- element with an association.
+--
+-- The OTHER refused shape is not here, deliberately. An import member whose
+-- path crosses a 0..* element is CE0256 ("Between value mapping 'sku' and parent
+-- element '(Object)' is a schema element with wrong occurrence"), but deciding
+-- that needs the project's JSON structure, so `mxcli check` cannot reach it and
+-- naming such a repro .fail.mdl reports "negative test unexpectedly passed" --
+-- a working rule made to look regressed. It is covered by the array case in
+-- TestJSONSchemaIndex_ResolvePath instead, which is what the Makefile's note
+-- above check-mdl asks for.
+--
+-- Usage (this file is expected to FAIL -- .fail.mdl):
+--   mxcli check mdl-examples/bug-tests/927-mapping-nested-member-path.fail.mdl
+--   Expect the CE5015 refusal; no project needed.
+-- ============================================================================
+
+-- (1) export mapping cannot collapse levels
+create or modify export mapping BugTest927.EMM_Collapsed
+  with json structure BugTest927.JSON_Order
+{
+  BugTest927.Order {
+    orderId       = OrderId,
+    customer/name = CustomerName
+  }
+};
+/
