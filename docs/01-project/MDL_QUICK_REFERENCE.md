@@ -1218,6 +1218,22 @@ that order, so it is authored, not derived.
 view's entity or a specialization of it, and at most one template per entity is
 allowed. Inside a template the context object is the specialization, so an
 attribute only that specialization has still resolves.
+
+Editing them with `alter page` — adding reuses `insert into` with the same block;
+removing needs its own form, because a template has no name:
+
+```sql
+alter page Pages.Vehicle_Overview {
+  insert into vehicleListView {
+    template for Pages.Motorcycle { dynamictext mcLabel (Content: 'M') }
+  };
+  drop template for Pages.SUV in vehicleListView
+};
+```
+
+Naming the list view in the `drop` is required: one page can hold two list views
+with a template for the same entity. Widgets inside a template are ordinary named
+widgets, so `set … on busLabel` and `insert after busLabel { … }` need nothing new.
 - Actions: `actionbutton`, `linkbutton`, `navigationlist`
 - Structure: `dataview`, `header`, `footer`, `controlbar`, `snippetcall`
 

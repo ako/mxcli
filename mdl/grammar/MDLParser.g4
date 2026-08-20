@@ -230,6 +230,7 @@ alterPageOperation
     : alterPageSet SEMICOLON?
     | alterPageInsert SEMICOLON?
     | alterPageDrop SEMICOLON?
+    | alterPageDropTemplate SEMICOLON?
     | alterPageReplace SEMICOLON?
     | alterPageAddVariable SEMICOLON?
     | alterPageDropVariable SEMICOLON?
@@ -263,6 +264,20 @@ alterPageInsert
 
 alterPageDrop
     : DROP WIDGET widgetRef (COMMA widgetRef)*
+    ;
+
+// DROP TEMPLATE FOR Module.Specialization IN listViewName
+//
+// A List View specialization template has no name — the entity it renders is
+// what identifies it — so it cannot be reached through widgetRef like every
+// other DROP target. Naming the list view is required, not optional: one page
+// can hold two list views with a template for the same entity.
+//
+// There is no matching INSERT TEMPLATE. Adding one is
+// `INSERT INTO <listview> { template for Module.Entity { ... } }`, which reuses
+// the same block as CREATE PAGE, so a template has one spelling everywhere.
+alterPageDropTemplate
+    : DROP TEMPLATE FOR qualifiedName IN widgetRef
     ;
 
 alterPageReplace

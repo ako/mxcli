@@ -112,3 +112,64 @@ create page P.G (Title: 'G') {
 			"not a specialization template", tmpl.Specialization)
 	}
 }
+
+// TestAlterPageDropTemplateParses pins the ALTER PAGE half. A template has no
+// name, so it cannot be reached through widgetRef like every other DROP target —
+// it is addressed by the entity it renders plus the list view holding it, since
+// one page can carry two list views with a template for the same entity.
+func TestAlterPageDropTemplateParses(t *testing.T) {
+	prog, errs := Build(`ALTER PAGE Pages.Vehicle_Overview {
+		DROP TEMPLATE FOR Pages.SUV IN vehicleListView
+	};`)
+	if len(errs) > 0 {
+		for _, err := range errs {
+			t.Errorf("parse error: %v", err)
+		}
+		t.FailNow()
+	}
+	stmt, ok := prog.Statements[0].(*ast.AlterPageStmt)
+	if !ok {
+		t.Fatalf("expected AlterPageStmt, got %T", prog.Statements[0])
+	}
+	if len(stmt.Operations) != 1 {
+		t.Fatalf("expected 1 operation, got %d", len(stmt.Operations))
+	}
+	op, ok := stmt.Operations[0].(*ast.DropListViewTemplateOp)
+	if !ok {
+		t.Fatalf("expected DropListViewTemplateOp, got %T", stmt.Operations[0])
+	}
+	if op.Specialization != "Pages.SUV" {
+		t.Errorf("Specialization = %q, want Pages.SUV", op.Specialization)
+	}
+	if op.ListView != "vehicleListView" {
+		t.Errorf("ListView = %q, want vehicleListView", op.ListView)
+	}
+}
+
+// TestAlterPageInsertTemplateParses pins that adding a template reuses INSERT
+// INTO with the same `template for` block CREATE PAGE uses — one spelling of a
+// template everywhere, rather than a second INSERT TEMPLATE form.
+func TestAlterPageInsertTemplateParses(t *testing.T) {
+	prog, errs := Build(`ALTER PAGE Pages.Vehicle_Overview {
+		INSERT INTO vehicleListView {
+			template for Pages.Motorcycle { dynamictext mcLabel (Content: 'm') }
+		}
+	};`)
+	if len(errs) > 0 {
+		for _, err := range errs {
+			t.Errorf("parse error: %v", err)
+		}
+		t.FailNow()
+	}
+	stmt := prog.Statements[0].(*ast.AlterPageStmt)
+	op, ok := stmt.Operations[0].(*ast.InsertWidgetOp)
+	if !ok {
+		t.Fatalf("expected InsertWidgetOp, got %T", stmt.Operations[0])
+	}
+	if len(op.Widgets) != 1 {
+		t.Fatalf("expected 1 inserted node, got %d", len(op.Widgets))
+	}
+	if got := op.Widgets[0].Specialization; got != "Pages.Motorcycle" {
+		t.Errorf("Specialization = %q, want Pages.Motorcycle", got)
+	}
+}

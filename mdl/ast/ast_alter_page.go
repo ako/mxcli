@@ -66,6 +66,19 @@ type DropWidgetOp struct {
 
 func (s *DropWidgetOp) isAlterPageOperation() {}
 
+// DropListViewTemplateOp represents:
+// DROP TEMPLATE FOR Module.Specialization IN listViewName
+//
+// A List View specialization template has no name, so it is addressed by the
+// entity it renders plus the list view holding it — a page can carry two list
+// views with a template for the same entity.
+type DropListViewTemplateOp struct {
+	Specialization string
+	ListView       string
+}
+
+func (s *DropListViewTemplateOp) isAlterPageOperation() {}
+
 // ReplaceWidgetOp represents: REPLACE widgetRef WITH { widgets }
 type ReplaceWidgetOp struct {
 	Target     WidgetRef

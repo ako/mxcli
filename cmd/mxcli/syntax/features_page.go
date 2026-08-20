@@ -65,7 +65,18 @@ func init() {
 			"  - the entity must be the list view's entity or a specialization of it\n" +
 			"  - at most one template per entity\n" +
 			"  - templates keep their source order, which is the order Mendix stores and matches in\n" +
-			"  - inside a template the context object is the specialization, so its own attributes resolve",
+			"  - inside a template the context object is the specialization, so its own attributes resolve\n\n" +
+			"ALTER PAGE — adding one reuses INSERT INTO with the same block, so a template has one\n" +
+			"spelling everywhere. Removing one needs its own form, because a template has no name:\n\n" +
+			"ALTER PAGE Module.Page {\n" +
+			"  INSERT INTO listViewName { TEMPLATE FOR Module.Specialization { ...widgets... } };\n" +
+			"  DROP TEMPLATE FOR Module.Specialization IN listViewName;\n" +
+			"};\n\n" +
+			"Naming the list view in DROP is required, not optional: one page can hold two list views\n" +
+			"with a template for the same entity. To change what a template renders, edit the widgets\n" +
+			"inside it by name (SET / INSERT AFTER) — they are ordinary widgets. To replace a whole\n" +
+			"template, DROP it and INSERT the new one in the same ALTER block; operations apply in\n" +
+			"order.",
 		Example: "LISTVIEW vehicleListView (DataSource: DATABASE Pages.Vehicle) {\n" +
 			"  DYNAMICTEXT defaultVehicle (Content: '{1} {2}', ContentParams: [{1} = Brand, {2} = Model])\n" +
 			"  TEMPLATE FOR Pages.Bus {\n" +
@@ -122,8 +133,9 @@ func init() {
 			"alter page", "modify page", "update page",
 			"set property", "insert widget", "drop widget", "replace widget",
 			"popup width", "popup height", "popup resizable",
+			"drop template", "insert template", "list view template",
 		},
-		Syntax:  "ALTER PAGE Module.Name {\n  SET property = value ON widgetName;\n  SET Action = MICROFLOW Module.MF ON btnSave;   -- any CREATE PAGE action form\n  SET DataSource = $Param ON dvOrder;\n  SET (prop1 = val1, prop2 = val2) ON widgetName;\n  SET Title = 'New Title';  -- page-level (case-sensitive)\n  SET Class = 'css-class';  -- page-level CSS class / style\n  SET Style = 'css: rule';\n  SET PopupWidth = 800;     -- page-level pop-up dimensions\n  SET PopupHeight = 480;\n  SET PopupResizable = true;\n  INSERT AFTER widgetName { <widgets> };\n  INSERT BEFORE widgetName { <widgets> };\n  INSERT INTO containerName { <widgets> };\n  DROP WIDGET name1, name2;\n  REPLACE widgetName WITH { <widgets> };\n};",
+		Syntax:  "ALTER PAGE Module.Name {\n  SET property = value ON widgetName;\n  SET Action = MICROFLOW Module.MF ON btnSave;   -- any CREATE PAGE action form\n  SET DataSource = $Param ON dvOrder;\n  SET (prop1 = val1, prop2 = val2) ON widgetName;\n  SET Title = 'New Title';  -- page-level (case-sensitive)\n  SET Class = 'css-class';  -- page-level CSS class / style\n  SET Style = 'css: rule';\n  SET PopupWidth = 800;     -- page-level pop-up dimensions\n  SET PopupHeight = 480;\n  SET PopupResizable = true;\n  INSERT AFTER widgetName { <widgets> };\n  INSERT BEFORE widgetName { <widgets> };\n  INSERT INTO containerName { <widgets> };\n  DROP WIDGET name1, name2;\n  DROP TEMPLATE FOR Module.Specialization IN listViewName;\n  REPLACE widgetName WITH { <widgets> };\n};",
 		Example: "ALTER PAGE Module.EditPage {\n  SET (Caption = 'Save & Close', ButtonStyle = Success) ON btnSave;\n  INSERT AFTER txtName {\n    TEXTBOX txtMiddleName (Label: 'Middle Name', Attribute: MiddleName)\n  };\n  DROP WIDGET txtUnused;\n};",
 		SeeAlso: []string{"page.create", "page.show", "snippet.alter"},
 	})
