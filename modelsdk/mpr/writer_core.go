@@ -578,13 +578,36 @@ func (w *Writer) DeleteUnit(unitID string) error {
 // MoveUnit reparents a unit to a new container (used by MOVE for top-level
 // documents like enumerations/constants/microflows). The container lives in the
 // Unit table; contents files are keyed by UnitID, so only the row changes.
+//
+// Counted in WriteStats like any other write, and elided when the unit is
+// already in that container. Both matter: a move is the one mutation that
+// changes a document's placement without changing a byte of its contents, so
+// without the count ReportMutation calls a real move "Unchanged", and without
+// the elision re-running an already-applied script dirties the .mpr — the two
+// halves of ADR-0008's guarantee, applied to the row instead of the blob.
 func (w *Writer) MoveUnit(unitID, newContainerID string) error {
+	w.writesOffered++
+	target := uuidToBlob(newContainerID)
+	if stored, err := w.containerOfUnit(unitID); err == nil && bytes.Equal(stored, target) {
+		return nil
+	}
 	_, err := w.reader.db.Exec(`UPDATE Unit SET ContainerID = ? WHERE UnitID = ?`,
-		uuidToBlob(newContainerID), uuidToBlob(unitID))
+		target, uuidToBlob(unitID))
 	if err == nil {
+		w.writesLanded++
 		w.reader.InvalidateCache()
 	}
 	return err
+}
+
+// containerOfUnit reads a unit's stored ContainerID blob. Compared as bytes
+// rather than as a formatted UUID so the check cannot disagree with the write
+// about spelling or byte order.
+func (w *Writer) containerOfUnit(unitID string) ([]byte, error) {
+	var stored []byte
+	err := w.reader.db.QueryRow(`SELECT ContainerID FROM Unit WHERE UnitID = ?`,
+		uuidToBlob(unitID)).Scan(&stored)
+	return stored, err
 }
 
 func (w *Writer) deleteUnit(unitID string) error {

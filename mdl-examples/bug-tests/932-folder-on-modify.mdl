@@ -1,0 +1,74 @@
+-- Issue #932: a FOLDER clause on a document that already exists was accepted,
+-- reported as a success, and silently dropped.
+--
+-- The placement lives in the unit's containment row, not in the document's
+-- contents, and every Update* rewrites contents only — so this was true of
+-- EVERY doctype with a FOLDER clause, not just the JSON structures reported.
+-- `resolveFolder` still ran, so the folder was created: the model was left with
+-- a new empty folder and the document exactly where it started.
+--
+-- Run twice. The second run must report every statement as "Unchanged" and
+-- leave the .mpr byte-identical (ADR-0008) — a move to the container a document
+-- already occupies is not a write.
+
+create module Bug932;
+/
+
+-- Everything is created at the module root first, so the folder clauses below
+-- are genuinely moves rather than initial placements.
+create or modify json structure Bug932.JSON_Example
+  snippet '{"result": [{"id": 1}]}';
+/
+
+create or modify microflow Bug932.ACT_Example()
+returns boolean as $ok
+begin
+  declare $ok boolean = true;
+  return $ok;
+end;
+/
+
+create or modify enumeration Bug932.ENUM_Example (Draft 'Draft', Published 'Published');
+/
+
+create or modify constant Bug932.CONST_Example type string default 'x';
+/
+
+-- Now file each one away. Before the fix every one of these printed a success
+-- and moved nothing.
+create or modify json structure Bug932.JSON_Example
+  folder 'Private/JSON Structures'
+  snippet '{"result": [{"id": 1}]}';
+/
+
+create or modify microflow Bug932.ACT_Example()
+returns boolean as $ok
+folder 'Private/Microflows'
+begin
+  declare $ok boolean = true;
+  return $ok;
+end;
+/
+
+create or modify enumeration Bug932.ENUM_Example (Draft 'Draft', Published 'Published')
+  folder 'Private';
+/
+
+create or modify constant Bug932.CONST_Example type string default 'x'
+  folder 'Private';
+/
+
+-- Expected layout: nothing left at the module root, and no empty folders.
+show folders in Bug932;
+/
+
+-- The control for the fix, and the one that decides whether it is a fix or a
+-- new bug: a statement that says nothing about folders must leave placement
+-- alone. If this filed JSON_Example back into the module root, every
+-- CREATE OR MODIFY in every existing script would unfile its document.
+create or modify json structure Bug932.JSON_Example
+  snippet '{"result": [{"id": 1}, {"id": 2}]}';
+/
+
+show folders in Bug932;
+/
