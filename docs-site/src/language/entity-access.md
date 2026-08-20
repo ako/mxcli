@@ -76,6 +76,28 @@ GRANT Shop.User ON Shop.Customer (WRITE (Email));
 -- Result: READ (Name, Notes), WRITE (Email)
 ```
 
+Merging only ever widens access — rights rank `None < ReadOnly < ReadWrite`, and a
+GRANT takes whichever is higher. To take access away, use [REVOKE](#revoke-on-entities);
+that is what makes the two commands inverses rather than two spellings of "set".
+
+### One Rule per Constraint
+
+The constraint is part of a rule's identity. Two GRANTs for the same role with the
+**same** `WHERE` update one rule; with **different** constraints they produce two,
+which is how row-level security is normally written:
+
+```sql
+-- Two separate rules for one role
+GRANT Shop.User ON Shop.Order (READ *) WHERE '[Status = ''Open'']';
+GRANT Shop.User ON Shop.Order (READ (Total)) WHERE '[Owner = $currentUser]';
+```
+
+Mendix combines them at runtime: a role's effective access is the union of every
+rule naming it. An unconstrained rule is distinct from a constrained one, so
+adding a `WHERE` to an existing GRANT creates a second rule rather than narrowing
+the first — and because a rule is matched on its constraint, re-running a script
+updates the same rules instead of accumulating new ones.
+
 ### Multiple Roles on the Same Entity
 
 Each GRANT creates a separate access rule. An entity can have rules for multiple roles:

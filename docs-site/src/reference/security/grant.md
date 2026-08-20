@@ -22,7 +22,9 @@ Grants access rights to module roles. There are four forms of the GRANT statemen
 
 ### Entity Access
 
-The entity access form creates or updates an access rule on an entity for a given module role. **GRANT is additive**: if the role already has an access rule on the entity, the new rights are merged with existing ones. Existing permissions are never downgraded by a GRANT.
+The entity access form creates or updates an access rule on an entity for a given module role. **GRANT is additive**: if the role already has an access rule on the entity, the new rights are merged with existing ones. Existing permissions are never downgraded by a GRANT — use [REVOKE](revoke.md) to take access away.
+
+A rule is identified by its role set **and** its `WHERE` constraint, so two GRANTs with different constraints produce two rules rather than overwriting one another. Mendix combines them: a role's effective access is the union of every rule naming it.
 
 Entity access rules control:
 - **CREATE** -- whether the role can create new instances

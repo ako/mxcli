@@ -32,6 +32,7 @@ The **lint rules** below run with `mxcli lint`. There is also a separate group o
 | **CONV012** | Exclusive split captions -- Checks that decision branches have meaningful captions |
 | **CONV013** | Error handling on external calls -- Ensures external service calls have error handling |
 | **CONV014** | No continue error handling -- Warns against using CONTINUE error handling without logging |
+| **MDL-FLOW01** | Un-describable branch structure -- Decision branches that re-enter each other's paths, so `DESCRIBE MICROFLOW` cannot render them as nested `IF`s without changing what they mean |
 
 ## Running Built-in Rules
 

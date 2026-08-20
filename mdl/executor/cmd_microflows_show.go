@@ -10,6 +10,7 @@ import (
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
+	"github.com/mendixlabs/mxcli/mdl/microflowgraph"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/microflows"
 )
@@ -758,6 +759,7 @@ func formatMicroflowActivities(
 
 	var lines []string
 	lines = append(lines, duplicateOutputVariableWarnings(mf.ObjectCollection)...)
+	lines = append(lines, irreducibleGraphWarnings(mf.ObjectCollection)...)
 
 	// Sort flows by OriginConnectionIndex for each origin
 	for originID := range flowsByOrigin {
@@ -993,6 +995,7 @@ func formatMicroflowActivitiesWithSourceMap(
 
 	var lines []string
 	lines = append(lines, duplicateOutputVariableWarnings(mf.ObjectCollection)...)
+	lines = append(lines, irreducibleGraphWarnings(mf.ObjectCollection)...)
 
 	for originID := range flowsByOrigin {
 		flows := flowsByOrigin[originID]
@@ -1307,3 +1310,41 @@ func isSplitJoinCandidate(obj microflows.MicroflowObject) bool {
 }
 
 // --- Executor method wrappers for callers in unmigrated code ---
+
+// irreducibleGraphWarnings flags a microflow whose branch structure this
+// describer cannot render faithfully.
+//
+// MDL's IF/THEN/ELSE is a single-entry/single-exit block; a Mendix microflow is
+// an arbitrary graph. When a branch re-enters a sibling branch's path there is no
+// nesting that means the same thing, and the traversal below emits one anyway —
+// on the graph in mendixlabs/mxcli#923 the description was the exact inverse of
+// the original (it always logged; the description never did).
+//
+// Until the label form lands (see PROPOSAL_structured_microflow_description.md)
+// the honest thing is to say so in the output rather than hand back MDL that
+// silently means something else. It follows the `-- WARNING:` convention
+// duplicateOutputVariableWarnings established, so it survives copy/paste of the
+// description as a comment.
+func irreducibleGraphWarnings(oc *microflows.MicroflowObjectCollection) []string {
+	if oc == nil {
+		return nil
+	}
+	var out []string
+	for _, f := range microflowgraph.Analyze(oc.Objects, oc.Flows) {
+		pos := ""
+		if f.Split != nil {
+			p := f.Split.GetPosition()
+			pos = fmt.Sprintf(" at (%d, %d)", p.X, p.Y)
+		}
+		detail := "the branches rejoin early, so a path that enters the shared part first is not represented"
+		if f.Class == microflowgraph.Interleaved {
+			detail = fmt.Sprintf("the branches cross at %d separate points", len(f.Entries))
+		}
+		out = append(out, fmt.Sprintf(
+			"-- WARNING: the decision%s has %d branches that do not nest - %s. "+
+				"This description is NOT equivalent to the microflow and must not be re-executed over it; "+
+				"edit it in Studio Pro instead (mxcli #923, %s)",
+			pos, f.BranchCount, detail, f.Class))
+	}
+	return out
+}
