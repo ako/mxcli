@@ -204,7 +204,7 @@ Nested folders use `/` separator: `'Parent/Child/Grandchild'`. Missing folders a
 | List module roles | `LIST MODULE ROLES [IN Module];` | All roles or filtered by module |
 | List user roles | `LIST USER ROLES;` | Project-level user roles |
 | List demo users | `LIST DEMO USERS;` | Configured demo users |
-| List access on element | `LIST ACCESS ON MICROFLOW\|PAGE\|Entity Mod.Name;` | Which roles can access |
+| List access on element | `LIST ACCESS ON [ENTITY\|MICROFLOW\|PAGE\|NANOFLOW] Mod.Name;` | Which roles can access; a bare name means the entity |
 | List security matrix | `LIST SECURITY MATRIX [IN Module];` | Full access overview |
 | Create module role | `CREATE MODULE ROLE Mod.Role [DESCRIPTION 'text'];` | |
 | Drop module role | `DROP MODULE ROLE Mod.Role;` | |
