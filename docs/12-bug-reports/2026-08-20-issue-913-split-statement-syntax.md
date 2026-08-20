@@ -3,7 +3,7 @@
 - **Reported**: 2026-08-17 by @mkrouwel, against mxcli v0.18
 - **Investigated**: 2026-08-20, against `766cdf6` (also reproduced on `c134251`)
 - **Upstream**: [mendixlabs/mxcli#913](https://github.com/mendixlabs/mxcli/issues/913)
-- **Proposal**: [PROPOSAL_split_statement_syntax_alignment.md](../11-proposals/PROPOSAL_split_statement_syntax_alignment.md)
+- **Proposal**: [PROPOSAL_split_statement_syntax_alignment.md](../11-proposals/archive/PROPOSAL_split_statement_syntax_alignment.md) — **implemented**
 
 ## What was reported
 
@@ -244,11 +244,33 @@ Two notes for whoever owns #923:
 | `.claude/skills/mendix/write-microflows.md` | `split type` example puts `case` flush with `split type`, matching the buggy emitter rather than `if`. |
 | `docs/01-project/MDL_QUICK_REFERENCE.md` | Type split row says "Runtime specialization branches" with no mention of what `else` means. |
 
-## Suggested fixes
+## Resolution
 
-Findings 1 and 3 are a language change and are carried by
-[PROPOSAL_split_statement_syntax_alignment.md](../11-proposals/PROPOSAL_split_statement_syntax_alignment.md).
+All three findings are fixed. The type split now takes the enumeration split's
+branch syntax:
 
-Finding 2 is self-contained — two indentation arguments in
-`cmd_microflows_show_helpers.go`, no grammar change, no existing test to update
-— and can land independently of the proposal.
+```mdl
+split type $Animal
+  when Zoo.Dog then      …
+  when Zoo.Animal then   …
+  when (empty) then      …   -- what `else` always was: the null-object flow
+end split;
+```
+
+| Finding | Fix |
+|---|---|
+| 1 — `else` means `(empty)` | Branch renamed to `when (empty) then`, which says what it does. `else` still parses and warns **MDL065**, whose message states the `(empty)`/null semantics and the CE0090 consequence rather than reading as a rename. |
+| 2 — indentation | Branch bodies now render one level in from their branch keyword, in **both** splits and in **both** emitters (`cmd_microflows_show_helpers.go` for DESCRIBE, `cmd_diff_mdl.go` for diff — the second had the identical bug and was found only by grepping for the pattern). |
+| 3 — `case` overloaded | `case` now introduces a subject everywhere and never a branch. |
+
+The old spelling is kept indefinitely: scripts in the wild use it, and both
+spellings build the identical flow — measured by describing two projects built
+from the two spellings and diffing (identical), with `mx check` 0 errors on each.
+
+**Controls.** The indentation test was run against reverted emitters and fails
+with the reported symptom (`branch body indent = 4, want 6`) before passing
+after. The three DESCRIBE tests that pinned the old spelling failed on the
+change and were updated deliberately rather than loosened.
+
+Not taken: `switch` (rejected, see the proposal), `case type` as a replacement
+for `split type`, multi-value type branches, and `else` as an enum-split alias.

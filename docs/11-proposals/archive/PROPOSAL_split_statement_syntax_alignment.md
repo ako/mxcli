@@ -1,7 +1,8 @@
 ---
 title: Align the two microflow split statements on one branch syntax
-status: proposed
+status: done
 date: 2026-08-20
+shipped-in: unreleased
 related:
   - mendixlabs/mxcli#913
   - docs/12-bug-reports/2026-08-20-issue-913-split-statement-syntax.md
@@ -11,6 +12,14 @@ related:
 ---
 
 # Proposal: Align the two microflow split statements on one branch syntax
+
+> **Implemented.** The type split now takes `when <Entity> then` branches and a
+> `when (empty) then` empty branch, matching the enumeration split. The legacy
+> `case`/`else` spelling still parses and warns **MDL065**; both spellings are
+> pinned to produce the same AST (`TestInheritanceSplit_BothSpellingsProduceTheSameAST`)
+> and were measured to describe identically. Branch-body indentation was fixed in
+> both emitters and in both splits. Open questions 1, 2 and 4 below were **not**
+> taken and remain open.
 
 ## Problem Statement
 

@@ -571,18 +571,32 @@ end case;
 Use `split type` when a microflow branches on an object's runtime specialization.
 Use `cast` inside a type branch to create the specialized variable used by the branch body.
 
+Branches are `when <Entity> then`, the same as an enumeration split — one
+statement, two subjects.
+
 ```mdl
 declare $IsSpecialized boolean = false;
 split type $Input
-case Sample.SpecializedInput
-  cast $SpecificInput;
-  set $IsSpecialized = true;
-case Sample.BaseInput
+  when Sample.SpecializedInput then
+    cast $SpecificInput;
+    set $IsSpecialized = true;
+  when Sample.BaseInput then
+  when (empty) then
 end split;
 return $IsSpecialized;
 ```
 
-`case` values are qualified entity names.
+Branch values are qualified entity names.
+
+> **`when (empty) then` is the null-object branch, not a default.** It is
+> Mendix's `(empty)` outgoing flow, taken when the split variable is empty. It
+> does **not** cover types you did not name — see the CE0090 note below.
+>
+> **The older spelling still works.** `case Sample.SpecializedInput` (no `then`)
+> and `else` for the empty branch parse and build the identical flow, but warn
+> **MDL065**. `case` introduced a *branch* here while introducing the *subject*
+> in `case $x when V then` and in expressions, so the word meant two things
+> (mxcli #913); `else` read as a default and never was one.
 
 > **Every type needs a branch — including the base entity.** An object-type
 > decision gets one outgoing flow per listed type, and a type with no flow fails
@@ -590,10 +604,15 @@ return $IsSpecialized;
 > flow."* The base entity (the split variable's own type) counts: `case
 > Sample.BaseInput` above is what covers "it is not any of the specializations".
 >
-> **`else` does not stand in for the base-type case.** It is accepted — it
-> serializes as `Microflows$NoCase` — but it does not satisfy coverage, so
-> `case Spec` + `else` still fails CE0090. Once every type has a branch, `else`
-> is redundant. Verified on Mendix 11.6.6 and 11.13.0.
+> **The `(empty)` branch does not stand in for the base-type case.** It is
+> accepted — it serializes as `Microflows$NoCase` — but it does not satisfy
+> coverage, so one named type plus `when (empty) then` still fails CE0090.
+> Measured on 11.13.0: `when Zoo.Dog then` + an empty branch gives CE0090 for
+> `Zoo.Cat` **and** `Zoo.Animal`; branch on every type, keep the empty branch,
+> and it is 0 errors. Verified on Mendix 11.6.6 and 11.13.0.
+>
+> You cannot drop the empty branch either — that is **CE0089**. mxcli emits the
+> flow unconditionally for that reason.
 >
 > **The split needs somewhere to go afterwards.** Branch bodies converge on a
 > merge that continues to the microflow's end event, so a non-void microflow
