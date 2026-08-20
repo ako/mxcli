@@ -32,6 +32,7 @@ Built-in rules check for:
   - Entity access rules (SEC001) - persistent entities need access rules
   - Password policy (SEC002) - password minimum length should be 8+
   - Demo users (SEC003) - demo users should be off at Production security
+  - Un-describable branch structure (MDL-FLOW01) - decision branches that do not nest, so DESCRIBE cannot render them faithfully
 
 Bundled Starlark rules (in .claude/lint-rules/):
   Security:
@@ -139,6 +140,7 @@ Examples:
 			rules.NewExclusiveSplitCaptionRule(),
 			rules.NewErrorHandlingOnCallsRule(),
 			rules.NewNoContinueErrorHandlingRule(),
+			rules.NewIrreducibleFlowGraphRule(), // MDL-FLOW01 - graph structure vs MDL nesting
 		}
 		lintRulesDir := filepath.Join(projectDir, ".claude", "lint-rules")
 		if starlarkRules, err := linter.LoadStarlarkRulesFromDir(lintRulesDir); err == nil {

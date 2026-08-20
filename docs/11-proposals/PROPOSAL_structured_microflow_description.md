@@ -234,7 +234,7 @@ total, or dropped.
 
 ## Implementation Plan
 
-### Phase 0 — the detector, shipped first (gates everything else)
+### Phase 0 — the detector, shipped first (gates everything else) — **DONE**
 
 Nothing can choose a rendering mode without knowing whether a graph is nested, and
 **no decision about how much machinery Modes 2 and 3 deserve should be made
@@ -288,7 +288,20 @@ Until this is measured, Modes 2 and 3 are **unscheduled**.
 | `docs-site/src/`, `.claude/skills/write-microflows.md` | User docs for the label form and when it appears |
 
 Phase 0 is independently shippable and is the fix for #923 on its own: it turns a
-silent semantic inversion into a named refusal.
+silent semantic inversion into a named refusal. **Shipped**: `mdl/microflowgraph`
+(post-dominance, branch-body overlap, recombinable/interleaved classification),
+lint rule `MDL-FLOW01`, and a `-- WARNING:` line from `DESCRIBE MICROFLOW`.
+
+Two deviations from the plan above, both deliberate:
+
+- **The detector does not reuse `collectReachableDistances`.** Reusing the
+  describer's join search would have inherited whichever of its two
+  implementations is wrong on precisely the graphs being detected. Post-dominance
+  is self-contained, so a describer/detector disagreement is a signal. The
+  package also cannot live in `mdl/executor`, which already imports `mdl/linter`.
+- **The rule is not registered in `mxcli report`.** That report is a scored
+  best-practices grade; the model here is valid and builds cleanly, so docking a
+  project's score for an mxcli limitation would be wrong.
 
 ## Version Compatibility
 
