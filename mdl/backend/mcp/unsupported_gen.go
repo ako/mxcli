@@ -697,6 +697,11 @@ func (unsupportedBackend) ListDatabaseConnections() (r0 []*model.DatabaseConnect
 	return
 }
 
+func (unsupportedBackend) ListDocumentUnits() (r0 []*types.DocumentUnit, err1 error) {
+	err1 = errUnsupported("ListDocumentUnits")
+	return
+}
+
 func (unsupportedBackend) ListDomainModels() (r0 []*domainmodel.DomainModel, err1 error) {
 	err1 = errUnsupported("ListDomainModels")
 	return

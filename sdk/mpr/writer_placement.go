@@ -43,12 +43,42 @@ func (w *Writer) FindDocumentUnit(moduleName, name string) (*types.DocumentUnit,
 	}
 	containers := buildContainerSet(w.reader, moduleID)
 
+	var found *types.DocumentUnit
+	err = w.eachDocumentUnit(func(doc *types.DocumentUnit) bool {
+		if doc.Name != name || !containers[string(doc.ContainerID)] {
+			return true
+		}
+		found = doc
+		return false
+	})
+	if err != nil {
+		return nil, fmt.Errorf("FindDocumentUnit: %w", err)
+	}
+	return found, nil
+}
+
+// ListDocumentUnits returns every top-level document in the project.
+func (w *Writer) ListDocumentUnits() ([]*types.DocumentUnit, error) {
+	var out []*types.DocumentUnit
+	if err := w.eachDocumentUnit(func(doc *types.DocumentUnit) bool {
+		out = append(out, doc)
+		return true
+	}); err != nil {
+		return nil, fmt.Errorf("ListDocumentUnits: %w", err)
+	}
+	return out, nil
+}
+
+// eachDocumentUnit walks every "Documents" unit, decoding just enough of each
+// to name it, and stops early when visit returns false. A unit whose contents
+// will not decode is skipped rather than failing the whole walk.
+func (w *Writer) eachDocumentUnit(visit func(*types.DocumentUnit) bool) error {
 	units, err := w.reader.listUnitsByType("")
 	if err != nil {
-		return nil, fmt.Errorf("FindDocumentUnit: list units: %w", err)
+		return fmt.Errorf("list units: %w", err)
 	}
 	for _, unit := range units {
-		if unit.ContainmentName != "Documents" || !containers[unit.ContainerID] {
+		if unit.ContainmentName != "Documents" {
 			continue
 		}
 		contents, err := w.reader.resolveContents(unit.ID, unit.Contents)
@@ -59,25 +89,27 @@ func (w *Writer) FindDocumentUnit(moduleName, name string) (*types.DocumentUnit,
 		if err := bson.Unmarshal(contents, &raw); err != nil {
 			continue
 		}
-		matched := false
+		name := ""
 		for _, elem := range raw {
 			if elem.Key == "Name" {
-				if s, ok := elem.Value.(string); ok && s == name {
-					matched = true
+				if s, ok := elem.Value.(string); ok {
+					name = s
 				}
 				break
 			}
 		}
-		if !matched {
+		if name == "" {
 			continue
 		}
-		return &types.DocumentUnit{
+		if !visit(&types.DocumentUnit{
 			ID:          model.ID(unit.ID),
 			ContainerID: model.ID(unit.ContainerID),
 			Name:        name,
 			Type:        unit.Type,
 			Kind:        types.DocumentKind(unit.Type),
-		}, nil
+		}) {
+			return nil
+		}
 	}
-	return nil, nil
+	return nil
 }

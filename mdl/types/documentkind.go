@@ -20,9 +20,15 @@ var documentKindOverrides = map[string]string{
 	"Rest$ConsumedRestService":               "rest client",
 	"Rest$PublishedRestService":              "published rest service",
 	"CustomBlobDocuments$CustomBlobDocument": "agent document",
-	"Forms$BuildingBlock":                    "building block",
 	"CustomIcons$CustomIconCollection":       "icon collection",
 	"DatabaseConnector$DatabaseConnection":   "database connection",
+	// The camel-case split cannot know that "OData" and "JavaScript" are each
+	// one word, so it produces "consumed o data service" and "java script
+	// action". These are the derivation's blind spot, not a vocabulary
+	// difference.
+	"Rest$ConsumedODataService":          "odata client",
+	"ODataPublish$PublishedODataService": "odata service",
+	"JavaScriptActions$JavaScriptAction": "javascript action",
 }
 
 // DocumentKind renders a unit's stored $Type as the noun mxcli uses for it —

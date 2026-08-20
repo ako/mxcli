@@ -39,4 +39,14 @@ type DocumentPlacementBackend interface {
 	// moduleName, wherever it sits in that module's folder tree, or nil when
 	// there is no such document.
 	FindDocumentUnit(moduleName, name string) (*types.DocumentUnit, error)
+
+	// ListDocumentUnits returns every top-level document in the project with
+	// its container, name and type.
+	//
+	// Type-agnostic for the same reason as FindDocumentUnit, and it matters
+	// most here: a folder listing built from per-kind list calls can only show
+	// the kinds someone remembered to add, and an under-count is what made
+	// dropping a non-empty folder look safe in #892. This one cannot miss a
+	// kind, because it never asks what kind anything is.
+	ListDocumentUnits() ([]*types.DocumentUnit, error)
 }

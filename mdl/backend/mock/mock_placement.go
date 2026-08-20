@@ -29,3 +29,13 @@ func (m *MockBackend) FindDocumentUnit(moduleName, name string) (*types.Document
 	}
 	return nil, nil
 }
+
+// ListDocumentUnits returns nothing by default. An empty project is the honest
+// default for a mock: it makes a folder listing show only what the test set up
+// through the typed list functions, rather than inventing documents.
+func (m *MockBackend) ListDocumentUnits() ([]*types.DocumentUnit, error) {
+	if m.ListDocumentUnitsFunc != nil {
+		return m.ListDocumentUnitsFunc()
+	}
+	return nil, nil
+}

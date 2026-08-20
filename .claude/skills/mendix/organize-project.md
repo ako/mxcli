@@ -202,25 +202,45 @@ move page OldModule.CustomerPage to NewModule;
 
 ## Supported Document Types
 
-| Document Type | FOLDER on Create | MOVE Command |
-|---------------|-----------------|--------------|
-| Page          | `folder: 'path'` (property) | `move page ...` |
-| Microflow     | `folder 'path'` (keyword) | `move microflow ...` |
-| Nanoflow      | `folder 'path'` (keyword) | `move nanoflow ...` |
-| Snippet       | `folder: 'path'` (property) | `move snippet ...` |
-| Enumeration   | N/A | `move enumeration ...` |
-| Constant      | N/A | `move constant ...` |
-| Database connection | N/A | `move database connection ...` |
-| Java action   | N/A | `move java action ...` |
-| OData service (published) | N/A | `move odata service ...` |
-| Entity        | N/A | `move entity ...` (module only, no folders) |
+`move` accepts **every top-level document type**, spelled the way `describe`
+spells it:
 
-**Java actions and published OData services have no folder clause on `create`**, so
-`move` is the only way to place them — before this they were stuck at the module
-root forever. Both are plain document units, so the move is model-level only: it
-changes containment and nothing else.
+| Group | Types |
+|-------|-------|
+| Pages | `page`, `snippet`, `building block`, `layout`, `menu` |
+| Logic | `microflow`, `nanoflow`, `workflow`, `queue`, `scheduled event` |
+| Domain | `enumeration`, `constant`, `regular expression` |
+| Mappings | `json structure`, `import mapping`, `export mapping` |
+| Code | `java action`, `javascript action`, `database connection`, `data transformer` |
+| Resources | `image collection`, `icon collection` |
+| Integration | `rest client`, `published rest service`, `odata client`, `odata service`, `business event service` |
+| AI | `model`, `agent`, `knowledge base`, `consumed mcp service` |
 
-**Note:** Pages and snippets use property syntax (`folder: 'path'` inside parentheses). Microflows and nanoflows use keyword syntax (`folder 'path'` before `begin`). Entities are embedded in domain models and can only be moved to a different module (no folder support).
+`move entity` is the exception: an entity lives inside a domain model, so it
+moves between **modules** only, never into a folder.
+
+If the named document turns out to be a different type, the statement is refused
+and the error names what it really is — `move queue Mod.JSON_Order` reports that
+`Mod.JSON_Order` is a json structure.
+
+### FOLDER on Create
+
+Only some types take a folder clause when you create them:
+
+| Document Type | FOLDER on Create |
+|---------------|-----------------|
+| Page, Snippet | `folder: 'path'` (property, inside the parentheses) |
+| Microflow, Nanoflow | `folder 'path'` (keyword, before `begin`) |
+| Enumeration, Constant | `folder 'path'` (keyword, after the definition) |
+| JSON structure | `folder 'path'` (keyword) |
+| Rest client, published rest service, odata client/service, business event service | `folder 'path'` (keyword) |
+| Everything else | none — use `move` |
+
+**A folder clause on `create or modify` moves an existing document.** It used to
+be silently ignored: the statement reported success, the folder was created, and
+the document stayed where it was (#932). Omitting the clause leaves placement
+alone — it never returns a document to the module root — so adding a folder to a
+script is safe and removing it is a no-op.
 
 ## Example: Reorganize a Module
 

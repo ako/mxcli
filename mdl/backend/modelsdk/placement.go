@@ -50,12 +50,48 @@ func (b *Backend) FindDocumentUnit(moduleName, name string) (*types.DocumentUnit
 	}
 	containers := b.containerSetForModule(moduleID)
 
+	var found *types.DocumentUnit
+	err = b.eachDocumentUnit(func(doc *types.DocumentUnit) bool {
+		if doc.Name != name || !containers[string(doc.ContainerID)] {
+			return true
+		}
+		found = doc
+		return false
+	})
+	if err != nil {
+		return nil, fmt.Errorf("FindDocumentUnit: %w", err)
+	}
+	return found, nil
+}
+
+// ListDocumentUnits returns every top-level document in the project.
+func (b *Backend) ListDocumentUnits() ([]*types.DocumentUnit, error) {
+	if b.reader == nil {
+		return nil, fmt.Errorf("ListDocumentUnits: not connected")
+	}
+	var out []*types.DocumentUnit
+	if err := b.eachDocumentUnit(func(doc *types.DocumentUnit) bool {
+		out = append(out, doc)
+		return true
+	}); err != nil {
+		return nil, fmt.Errorf("ListDocumentUnits: %w", err)
+	}
+	return out, nil
+}
+
+// eachDocumentUnit walks every "Documents" unit, decoding just enough of each
+// to name it, and stops early when visit returns false.
+//
+// A unit whose contents will not decode is skipped rather than failing the
+// walk: a listing missing one unreadable document is more useful than no
+// listing, and the alternative would let one damaged unit hide a whole project.
+func (b *Backend) eachDocumentUnit(visit func(*types.DocumentUnit) bool) error {
 	units, err := b.reader.ListUnits()
 	if err != nil {
-		return nil, fmt.Errorf("FindDocumentUnit: list units: %w", err)
+		return fmt.Errorf("list units: %w", err)
 	}
 	for _, u := range units {
-		if u.ContainmentName != "Documents" || !containers[u.ContainerID] {
+		if u.ContainmentName != "Documents" {
 			continue
 		}
 		raw, err := b.reader.GetRawUnitBytes(u.ID)
@@ -66,16 +102,19 @@ func (b *Backend) FindDocumentUnit(moduleName, name string) (*types.DocumentUnit
 		if err := bson.Unmarshal(raw, &doc); err != nil {
 			continue
 		}
-		if docNameOf(doc) != name {
+		name := docNameOf(doc)
+		if name == "" {
 			continue
 		}
-		return &types.DocumentUnit{
+		if !visit(&types.DocumentUnit{
 			ID:          model.ID(u.ID),
 			ContainerID: model.ID(u.ContainerID),
 			Name:        name,
 			Type:        u.Type,
 			Kind:        types.DocumentKind(u.Type),
-		}, nil
+		}) {
+			return nil
+		}
 	}
-	return nil, nil
+	return nil
 }

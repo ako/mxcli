@@ -151,3 +151,51 @@ show folders in FolderTest;
 list folders;
 
 drop module FolderTest;
+
+-- ---------------------------------------------------------------------------
+-- #932: MOVE accepts every top-level document type, and a FOLDER clause on
+-- CREATE OR MODIFY places an existing document.
+-- ---------------------------------------------------------------------------
+
+create module FolderMove932;
+/
+
+create entity FolderMove932.Order (
+  OrderId: integer,
+  OrderName: string(200)
+);
+/
+
+create json structure FolderMove932.JSON_Order
+  snippet '{"id": 1, "name": "Widget"}';
+/
+
+create import mapping FolderMove932.IMM_Order
+  with json structure FolderMove932.JSON_Order
+{
+  create FolderMove932.Order {
+    OrderId = id,
+    OrderName = name
+  }
+};
+/
+
+-- Doctypes that MOVE could not name before: the statement was a parse error
+-- ("no viable alternative at input 'MOVEIMPORT'").
+move json structure FolderMove932.JSON_Order to folder 'Private/JSON structures';
+/
+move import mapping FolderMove932.IMM_Order to folder 'Private/Import mappings';
+/
+
+-- A folder clause on CREATE OR MODIFY is the other way to place a document,
+-- and re-running it must be a no-op rather than a second move.
+create or modify json structure FolderMove932.JSON_Order
+  folder 'Private/JSON structures'
+  snippet '{"id": 1, "name": "Widget"}';
+/
+
+show folders in FolderMove932;
+/
+
+drop module FolderMove932;
+/

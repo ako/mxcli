@@ -512,7 +512,9 @@ it is for pages.
 | Page folder | `folder: 'path'` (in properties) | `create page ... (folder: 'pages/Detail') { ... }` |
 | Drop folder | `drop folder 'path' in module;` | Folder must be empty |
 | Move folder | `move folder Module.FolderName to folder 'path';` | Target folders auto-created |
-| Move to folder | `move page\|microflow\|snippet\|nanoflow\|enumeration Module.Name to folder 'path';` | Folders created automatically |
+| Move to folder | `move <doctype> Module.Name to folder 'path';` | Folders created automatically. Any top-level doctype, spelled as `describe` spells it |
+| Move a mapping / structure | `move import mapping\|export mapping\|json structure Module.Name to folder 'path';` | |
+| Place while creating | `create or modify ... folder 'path' ...` | Moves an existing document too; omitting it leaves placement alone |
 | Move to module root | `move page Module.Name to module;` | Removes from folder |
 | Move across modules | `move page Old.Name to NewModule;` | **Breaks by-name references** — use `show impact of` first |
 | Move to folder in other module | `move page Old.Name to folder 'path' in NewModule;` | |

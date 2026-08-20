@@ -514,10 +514,21 @@ SHOW STRUCTURE DEPTH 1 ALL;`,
 			"move", "relocate", "folder", "cross-module move",
 			"move page", "move microflow", "move entity",
 			"move folder", "drop folder",
+			"move import mapping", "move export mapping", "move json structure",
+			"move queue", "move workflow", "move menu", "move layout",
 		},
 		Syntax: `MOVE <doctype> Module.Name TO FOLDER 'Path';
--- doctype: PAGE | MICROFLOW | NANOFLOW | SNIPPET | ENUMERATION | CONSTANT
---        | DATABASE CONNECTION | JAVA ACTION | ODATA SERVICE | ENTITY | FOLDER
+-- doctype: every top-level document, spelled as DESCRIBE spells it —
+--   PAGE | SNIPPET | BUILDING BLOCK | LAYOUT | MENU
+--   MICROFLOW | NANOFLOW | WORKFLOW | QUEUE | SCHEDULED EVENT
+--   ENUMERATION | CONSTANT | REGULAR EXPRESSION
+--   JSON STRUCTURE | IMPORT MAPPING | EXPORT MAPPING
+--   JAVA ACTION | JAVASCRIPT ACTION | DATABASE CONNECTION | DATA TRANSFORMER
+--   IMAGE COLLECTION | ICON COLLECTION
+--   REST CLIENT | PUBLISHED REST SERVICE | ODATA CLIENT | ODATA SERVICE
+--   BUSINESS EVENT SERVICE
+--   MODEL | AGENT | KNOWLEDGE BASE | CONSUMED MCP SERVICE
+-- plus ENTITY (moves between domain models) and FOLDER (moves a folder).
 MOVE <doctype> Module.Name TO TargetModule;
 MOVE <doctype> OldModule.Name TO FOLDER 'Path' IN NewModule;
 MOVE FOLDER Module.FolderName TO FOLDER 'Path';
@@ -531,10 +542,18 @@ MOVE MICROFLOW MyModule.ACT_ProcessOrder TO FOLDER 'Orders/Processing';
 -- Move entity to different module
 MOVE ENTITY OldModule.Customer TO NewModule;
 
--- Java actions and published OData services have no folder clause on CREATE,
--- so MOVE is the only way to place them
+-- Many doctypes have no folder clause on CREATE, so MOVE is the only way to
+-- place them
 MOVE JAVA ACTION MyModule.ODataQuery TO FOLDER 'Support';
 MOVE ODATA SERVICE MyModule.PublicApi TO FOLDER 'Api/Published';
+MOVE IMPORT MAPPING MyModule.IMM_Order TO FOLDER 'Private/Import mappings';
+MOVE JSON STRUCTURE MyModule.JSON_Order TO FOLDER 'Private/JSON structures';
+
+-- A FOLDER clause on CREATE OR MODIFY moves an existing document too, so a
+-- script can place a document without a separate MOVE
+CREATE OR MODIFY JSON STRUCTURE MyModule.JSON_Order
+  FOLDER 'Private/JSON structures'
+  SNIPPET '{"id": 1}';
 
 -- Check impact before cross-module move
 SHOW IMPACT OF OldModule.CustomerPage;

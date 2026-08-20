@@ -166,6 +166,10 @@ func (b *MprBackend) FindDocumentUnit(moduleName, name string) (*types.DocumentU
 	return b.writer.FindDocumentUnit(moduleName, name)
 }
 
+func (b *MprBackend) ListDocumentUnits() ([]*types.DocumentUnit, error) {
+	return b.writer.ListDocumentUnits()
+}
+
 // ---------------------------------------------------------------------------
 // DomainModelBackend
 // ---------------------------------------------------------------------------
