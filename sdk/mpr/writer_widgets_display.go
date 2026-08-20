@@ -147,9 +147,13 @@ func serializeListView(lv *pages.ListView) bson.D {
 					templateWidgets = append(templateWidgets, serializeWidget(w))
 				}
 			}
+			// Key order and names match Studio Pro's own documents: $ID, $Type,
+			// Entity, Widgets. "Entity" is the storage name of the SDK's
+			// Specialization property — see pages.ListViewTemplate.
 			template := bson.D{
 				{Key: "$ID", Value: idToBsonBinary(string(t.ID))},
 				{Key: "$Type", Value: "Forms$ListViewTemplate"},
+				{Key: "Entity", Value: t.Specialization},
 				{Key: "Widgets", Value: templateWidgets},
 			}
 			templates = append(templates, template)

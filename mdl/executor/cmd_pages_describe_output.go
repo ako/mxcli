@@ -872,6 +872,16 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 		props = appendAppearanceProps(props, w)
 		formatWidgetProps(ctx.Output, prefix, header, props, "\n")
 
+	case "Forms$ListViewTemplate":
+		// A List View specialization template. It has no name — the entity it
+		// renders is what identifies it — so the header is `template for <Entity>`
+		// rather than the `template <name>` a Gallery content slot uses.
+		fmt.Fprintf(ctx.Output, "%stemplate for %s {\n", prefix, w.Specialization)
+		for _, child := range w.Children {
+			outputWidgetMDLV3(ctx, child, indent+1)
+		}
+		fmt.Fprintf(ctx.Output, "%s}\n", prefix)
+
 	case "Footer":
 		fmt.Fprintf(ctx.Output, "%sfooter %s {\n", prefix, mdlIdent(w.Name))
 		for _, child := range w.Children {

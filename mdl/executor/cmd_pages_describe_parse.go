@@ -773,17 +773,50 @@ func parseListViewContent(ctx *ExecContext, w map[string]any, entityContext ...s
 	if len(entityContext) > 0 {
 		entCtx = entityContext[0]
 	}
-	widgets := getBsonArrayElements(w["Widgets"])
-	if widgets == nil {
-		return nil
-	}
 	var result []rawWidget
-	for _, wgt := range widgets {
+	for _, wgt := range getBsonArrayElements(w["Widgets"]) {
 		wgtMap, ok := wgt.(map[string]any)
 		if !ok {
 			continue
 		}
 		result = append(result, parseRawWidget(ctx, wgtMap, entCtx)...)
+	}
+	result = append(result, parseListViewTemplates(ctx, w)...)
+	return result
+}
+
+// parseListViewTemplates reads a List View's specialization templates — the
+// per-specialization bodies Studio Pro stores in a Templates array, alongside
+// (not inside) the list view's own Widgets.
+//
+// Nothing read this array before, so a template's entire contents were absent
+// from DESCRIBE with no warning, and SEARCH inherited the blind spot because the
+// catalog's source table is built from DESCRIBE output. Order is preserved: it is
+// authored, not derived. Issue #940.
+func parseListViewTemplates(ctx *ExecContext, w map[string]any) []rawWidget {
+	var result []rawWidget
+	for _, tpl := range getBsonArrayElements(w["Templates"]) {
+		tplMap, ok := tpl.(map[string]any)
+		if !ok {
+			continue
+		}
+		// Inside a template the context object is the specialization, so an
+		// attribute it adds resolves even though the list view's own entity
+		// does not have it.
+		spec := extractString(tplMap["Entity"])
+		wrapper := rawWidget{
+			Type:           "Forms$ListViewTemplate",
+			Specialization: spec,
+			EntityContext:  spec,
+		}
+		for _, wgt := range getBsonArrayElements(tplMap["Widgets"]) {
+			wgtMap, ok := wgt.(map[string]any)
+			if !ok {
+				continue
+			}
+			wrapper.Children = append(wrapper.Children, parseRawWidget(ctx, wgtMap, spec)...)
+		}
+		result = append(result, wrapper)
 	}
 	return result
 }

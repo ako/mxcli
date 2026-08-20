@@ -1190,6 +1190,34 @@ create page MyModule.Customer_Edit
 - Layout: `layoutgrid`, `row`, `column`, `container`, `customcontainer`
 - Input: `textbox`, `textarea`, `checkbox`, `radiobuttons`, `datepicker`, `combobox`
 - Display: `dynamictext`, `datagrid`, `gallery`, `listview`, `image`, `staticimage`, `dynamicimage`
+
+### List View specialization templates
+
+A List View over a generalization can render a different body per specialization.
+The template is identified by the **entity** it renders — it has no name:
+
+```sql
+listview vehicleListView (DataSource: database from Pages.Vehicle) {
+  dynamictext defaultVehicle (Content: '{1}', ContentParams: [{1} = Brand])
+
+  template for Pages.Bus {
+    dynamictext busLabel (Content: 'Bus, capacity {1}', ContentParams: [{1} = PassengerCapacity])
+  }
+  template for Pages.Truck {
+    dynamictext truckLabel (Content: 'Truck, max load {1} kg', ContentParams: [{1} = MaxLoadKg])
+  }
+}
+```
+
+Widgets in the list view body are the **default** rendering, used for an object no
+template matches. Templates keep their source order — Mendix stores and matches in
+that order, so it is authored, not derived.
+
+`template for Module.Entity` is not the same statement as a Gallery's
+`template <name>`, which is a named content slot. The entity must be the list
+view's entity or a specialization of it, and at most one template per entity is
+allowed. Inside a template the context object is the specialization, so an
+attribute only that specialization has still resolves.
 - Actions: `actionbutton`, `linkbutton`, `navigationlist`
 - Structure: `dataview`, `header`, `footer`, `controlbar`, `snippetcall`
 

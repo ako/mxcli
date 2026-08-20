@@ -578,6 +578,7 @@ func widgetToGen(w pages.Widget) (element.Element, error) {
 		for _, t := range x.Templates {
 			tg := genPg.NewListViewTemplate()
 			assignID(tg)
+			tg.SetSpecializationQualifiedName(t.Specialization)
 			for _, w := range t.Widgets {
 				wg, err := widgetToGen(w)
 				if err != nil {
