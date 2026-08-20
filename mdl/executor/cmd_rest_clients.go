@@ -442,6 +442,9 @@ func buildRestClientOperation(opDef *ast.RestOperationDef) (*model.RestClientOpe
 	if err := checkInlineMappingBody(opDef); err != nil {
 		return nil, err
 	}
+	if err := checkFileRequestBody(opDef); err != nil {
+		return nil, err
+	}
 	// model.RestClientOperation documents BodyType/ResponseType as upper-case
 	// tokens ("JSON", "EXPORT_MAPPING", "MAPPING", ...) and every consumer
 	// compares against that spelling — the serializers in both engines, and the
@@ -550,6 +553,48 @@ func checkInlineMappingBody(opDef *ast.RestOperationDef) error {
 			m.clause, m.def.Entity.String(), m.syntax)
 	}
 	return nil
+}
+
+// checkFileRequestBody rejects `Body: file from $Doc`.
+//
+// Mendix has no binary request body. The 11.13 metamodel offers exactly three
+// implementations of a consumed operation's request body — Rest$JsonBody,
+// Rest$StringBody and Rest$ImplicitMappingBody — so there is nowhere for a file
+// document to go. Both serializers folded FILE into the TEMPLATE branch and
+// wrote a Rest$StringBody holding the *expression text*, which meant the
+// request sent the four bytes `$Doc` in place of the document:
+//
+//	Content-Length: 4
+//	data:application/octet-stream;base64,JERvYw==   ->  b'$Doc'
+//
+// measured against httpbingo with an 8090-byte PNG. `mxcli check` passed,
+// `mx check` reported 0 errors and the call returned 200 — nothing anywhere
+// said the payload was wrong.
+//
+// Refusing is the fix, not writing a different type: there is no correct type to
+// write, and a silent downgrade that returns 200 is worse than an error. Binary
+// upload needs a Java action.
+//
+// The RESPONSE side is deliberately untouched: `Response: file as $Doc`
+// downloads correctly.
+func checkFileRequestBody(opDef *ast.RestOperationDef) error {
+	if !strings.EqualFold(opDef.BodyType, "FILE") {
+		return nil
+	}
+	target := opDef.BodyVariable
+	if target == "" {
+		target = "$Doc"
+	}
+	return fmt.Errorf(
+		"Body: file from %s cannot be stored — Mendix has no binary request body.\n"+
+			"  A consumed REST operation's body is one of Rest$JsonBody, Rest$StringBody or\n"+
+			"  Rest$ImplicitMappingBody, so a file document has nowhere to go. mxcli used to\n"+
+			"  write a string body holding the literal text %q, which sends %d bytes and\n"+
+			"  still returns 200.\n"+
+			"  Binary POST lives on the microflow activity, not the client document:\n"+
+			"    rest call post '<url>' header 'ContentType' = '<type>' body binary %s/Contents\n"+
+			"  (Microflows$BinaryRequestHandling — the shape Studio Pro writes).",
+		target, target, len(target), target)
 }
 
 // convertMappingEntries converts AST RestMappingEntry slices to model RestResponseMapping slices.

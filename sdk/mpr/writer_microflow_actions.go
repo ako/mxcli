@@ -697,9 +697,13 @@ func serializeRestCallAction(a *microflows.RestCallAction) bson.D {
 		doc = append(doc, bson.E{Key: "RequestHandling", Value: serializeRestRequestHandling(a.RequestHandling)})
 	}
 
-	// RequestHandlingType and RequestProxyType are at action level
+	// RequestHandlingType and RequestProxyType are at action level. The type must
+	// agree with the sub-element: it was hardcoded to "Custom", which is wrong for
+	// a binary body. Only the Binary case is derived — the others are unchanged,
+	// having no measured Studio Pro reference.
+	requestHandlingType := restRequestHandlingTypeOf(a.RequestHandling)
 	doc = append(doc,
-		bson.E{Key: "RequestHandlingType", Value: "Custom"},
+		bson.E{Key: "RequestHandlingType", Value: requestHandlingType},
 		bson.E{Key: "RequestProxyType", Value: "DefaultProxy"},
 	)
 
@@ -905,8 +909,36 @@ func serializeRestOperationCallAction(a *microflows.RestOperationCallAction) bso
 }
 
 // serializeRestRequestHandling serializes RequestHandling to BSON.
+// restRequestHandlingTypeOf is the action-level discriminator, which must agree
+// with the RequestHandling sub-element. Measured against Studio Pro microflows
+// (ako/TestApp, 11.13.0); Simple follows the same name rule but has no measured
+// reference. Mirrors requestHandlingTypeOf in the modelsdk engine.
+func restRequestHandlingTypeOf(rh microflows.RequestHandling) string {
+	switch rh.(type) {
+	case *microflows.MappingRequestHandling:
+		return "Mapping"
+	case *microflows.BinaryRequestHandling:
+		return "Binary"
+	case *microflows.FormDataRequestHandling:
+		return "FormData"
+	case *microflows.SimpleRequestHandling:
+		return "Simple"
+	default:
+		return "Custom"
+	}
+}
+
 func serializeRestRequestHandling(rh microflows.RequestHandling) bson.D {
 	switch h := rh.(type) {
+	case *microflows.BinaryRequestHandling:
+		// Binary request body. Studio Pro stores the expression yielding the
+		// bytes — a FileDocument's Contents member — and pairs it with an
+		// action-level RequestHandlingType of "Binary".
+		return bson.D{
+			{Key: "$ID", Value: idToBsonBinary(GenerateID())},
+			{Key: "$Type", Value: "Microflows$BinaryRequestHandling"},
+			{Key: "Expression", Value: h.Expression},
+		}
 	case *microflows.CustomRequestHandling:
 		doc := bson.D{
 			{Key: "$ID", Value: idToBsonBinary(string(h.ID))},
@@ -938,12 +970,21 @@ func serializeRestRequestHandling(rh microflows.RequestHandling) bson.D {
 		return doc
 
 	case *microflows.MappingRequestHandling:
+		// generated/metamodel gives this type exactly three properties:
+		// contentType (Json|Xml), mappingId, mappingVariableName.
+		// "ParameterVariable" is not one of them — an unknown property is the
+		// shape mxbuild tolerates and Studio Pro refuses to open — and an empty
+		// ContentType is not a member of the enum.
+		contentType := h.ContentType
+		if contentType == "" {
+			contentType = "Json"
+		}
 		return bson.D{
 			{Key: "$ID", Value: idToBsonBinary(string(h.ID))},
 			{Key: "$Type", Value: "Microflows$MappingRequestHandling"},
 			{Key: "MappingId", Value: idToBsonBinary(string(h.MappingID))},
-			{Key: "ContentType", Value: h.ContentType},
-			{Key: "ParameterVariable", Value: h.ParameterVariable},
+			{Key: "ContentType", Value: contentType},
+			{Key: "MappingVariableName", Value: h.ParameterVariable},
 		}
 
 	case *microflows.SimpleRequestHandling:

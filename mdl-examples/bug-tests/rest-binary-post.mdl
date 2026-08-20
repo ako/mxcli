@@ -1,0 +1,45 @@
+-- Binary POST: `rest call ... body binary <expression>`.
+--
+-- Mendix models a binary request body on the microflow REST CALL activity, as
+-- Microflows$BinaryRequestHandling with an action-level RequestHandlingType of
+-- "Binary". It is NOT on the consumed REST client document, whose three body
+-- types (Rest$JsonBody, Rest$StringBody, Rest$ImplicitMappingBody) have no
+-- binary form — `Body: file from $Doc` there is refused as MDL-REST02, and see
+-- rest-file-request-body.fail.mdl for what it used to do instead.
+--
+-- The expression is the FileDocument's Contents MEMBER, not the document:
+-- Studio Pro stores `$FirstFileDoc/Contents`. It is written and described as
+-- source text; quoting it would send the path as a string literal.
+--
+-- Pinned against a Studio Pro-authored microflow (ako/TestApp, Mendix 11.13.0).
+-- Re-executing mxcli's DESCRIBE of that microflow reproduces Studio Pro's BSON
+-- exactly — same RequestHandlingType, same sub-element, same expression — and
+-- mxbuild reports 0 errors.
+--
+-- Before this, mxcli could PARSE the shape but neither write nor describe it,
+-- so a Studio Pro binary POST described as a REST call with no body at all and
+-- re-executing that output produced a request that sent nothing.
+
+create module BinaryPost;
+
+create entity BinaryPost.Upload extends System.FileDocument (
+  Caption: string
+);
+
+-- The content type belongs on a header; the body clause carries only the bytes.
+create microflow BinaryPost.ACT_PostBinary ()
+begin
+  retrieve $Doc from BinaryPost.Upload
+    limit 1;
+  rest call post 'https://httpbingo.org/post'
+    header 'ContentType' = 'application/pdf'
+    body binary $Doc/Contents
+    timeout 300
+    returns response;
+  return;
+end;
+/
+
+-- Round-trip: DESCRIBE must emit the body clause, or re-executing its own
+-- output silently drops the payload.
+describe microflow BinaryPost.ACT_PostBinary;
