@@ -2158,13 +2158,19 @@ func (pb *pageBuilder) expandBuildingBlockRef(w *ast.WidgetV3) ([]*ast.WidgetV3,
 	}
 
 	// Apply optional rebind overrides. Binding-point rule (prototype): the
-	// override rewrites the FIRST widget in pre-order that carries a datasource /
-	// an action — the block's outermost datasource and primary action.
+	// override rewrites the FIRST widget in pre-order that CAN carry a datasource
+	// / an action — the block's outermost datasource and primary action.
+	//
+	// Can, not does. A reusable block is a template: its datasource is unbound
+	// and its buttons have no action, so neither property is present in the
+	// rendered MDL. The action override already matched by widget type for that
+	// reason; the datasource override matched on an existing DataSource property
+	// and only worked because an unbound datasource used to render as the
+	// malformed `DataSource: database from ,` — the very output #941 fixed.
 	if ds, ok := w.Properties["DataSourceOverride"].(*ast.DataSourceV3); ok && ds != nil {
 		// Datasource target: the first widget that already carries a datasource
 		// (a block's outermost list/grid/dataview always emits one).
-		hit := rebindFirst(widgets,
-			func(t *ast.WidgetV3) bool { _, has := t.Properties["DataSource"]; return has },
+		hit := rebindFirst(widgets, isDataSourceWidget,
 			func(t *ast.WidgetV3) { t.Properties["DataSource"] = ds })
 		if !hit {
 			return nil, mdlerrors.NewValidation(fmt.Sprintf(
@@ -2186,6 +2192,18 @@ func (pb *pageBuilder) expandBuildingBlockRef(w *ast.WidgetV3) ([]*ast.WidgetV3,
 }
 
 // isButtonWidget reports whether a widget is an action-capable button.
+// isDataSourceWidget reports whether a widget is one that takes a datasource,
+// whether or not it currently carries one. The list is the data containers a
+// building block can be built around; anything else in a block is layout or a
+// leaf.
+func isDataSourceWidget(w *ast.WidgetV3) bool {
+	switch strings.ToLower(w.Type) {
+	case "gallery", "listview", "datagrid", "datagrid2", "dataview", "templategrid", "referenceselector":
+		return true
+	}
+	return false
+}
+
 func isButtonWidget(w *ast.WidgetV3) bool {
 	switch strings.ToLower(w.Type) {
 	case "actionbutton", "linkbutton", "button":
