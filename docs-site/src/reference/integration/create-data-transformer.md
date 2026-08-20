@@ -4,6 +4,7 @@
 
 ```sql
 CREATE [ OR MODIFY ] DATA TRANSFORMER module.Name
+    [ FOLDER 'folder_path' ]
     SOURCE { JSON | XML } 'sample'
 {
     { JSLT | XSLT } 'transformation';
@@ -36,6 +37,9 @@ The `SOURCE` clause provides a representative input document. Mendix uses it to 
 
 `module.Name`
 :   The qualified name of the data transformer.
+
+`FOLDER 'folder_path'`
+:   Optional. Places the document in the named module folder, creating missing folders in the path. On `CREATE OR MODIFY` this **moves** an existing document; omitting the clause leaves placement alone rather than returning the document to the module root. See [MOVE](../organization/move.md).
 
 `SOURCE JSON 'sample'`
 :   A representative JSON input document. Multi-line samples can use `$$...$$` quoting.

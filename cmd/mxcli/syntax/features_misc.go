@@ -26,7 +26,52 @@ func init() {
 			"-- Both reuse the existing element's ID, so references from other\n" +
 			"-- documents survive.",
 		Example: "CREATE OR REPLACE MICROFLOW MyModule.ACT_Recalculate ()\nBEGIN\n  RETURN;\nEND;\n\nCREATE OR MODIFY PERSISTENT ENTITY MyModule.Customer (\n  Name: String(200)\n);",
-		SeeAlso: []string{"microflow", "domain-model.entity", "page"},
+		SeeAlso: []string{"microflow", "domain-model.entity", "page", "document-folder"},
+	})
+
+	// The folder clause is the other cross-cutting CREATE modifier, and gets one
+	// topic for the same reason OR MODIFY does: it applies to every document
+	// type, so documenting it in all 27 places would guarantee 27 chances to
+	// drift.
+	Register(SyntaxFeature{
+		Path:    "document-folder",
+		Summary: "FOLDER — placing a document in a module folder as you create it",
+		Keywords: []string{
+			"folder", "folder clause", "place document", "module folder",
+			"create in folder", "organise", "organize", "subfolder",
+			"folder on create", "folder ignored", "document did not move",
+		},
+		Syntax: "-- Every document type takes a folder clause on CREATE. Where it goes\n" +
+			"-- depends on the statement's shape:\n" +
+			"--   Pages, snippets       Folder: 'path'   a property, inside the parentheses\n" +
+			"--   Microflows, nanoflows FOLDER 'path'    a keyword, before BEGIN\n" +
+			"--   Everything else       FOLDER 'path'    a keyword, after the qualified name\n" +
+			"--\n" +
+			"-- Missing folders in the path are created. Nested paths use '/'.\n" +
+			"--\n" +
+			"-- On CREATE OR MODIFY the clause MOVES an existing document. Omitting it\n" +
+			"-- leaves placement alone — it never returns a document to the module\n" +
+			"-- root — so adding a folder to an existing script is safe, and removing\n" +
+			"-- one is a no-op. DESCRIBE emits the clause, so a description replays\n" +
+			"-- into the same folder.\n" +
+			"--\n" +
+			"-- To move a document without rewriting it, use MOVE.",
+		Example: "CREATE QUEUE MyModule.Q_Orders FOLDER 'Private/Queues' ( Parallelism: 3 );\n\n" +
+			"CREATE IMPORT MAPPING MyModule.IMM_Order FOLDER 'Private/Import mappings'\n" +
+			"  WITH JSON STRUCTURE MyModule.JSON_Order {\n" +
+			"    CREATE MyModule.Order { Id = id }\n" +
+			"  };\n\n" +
+			"CREATE PAGE MyModule.OrderList\n" +
+			"  (\n" +
+			"    Title: 'Orders',\n" +
+			"    Folder: 'Orders',\n" +
+			"    Layout: Atlas_Core.Atlas_Default\n" +
+			"  )\n" +
+			"  {\n" +
+			"    DYNAMICTEXT txtHeading (Content: 'Orders')\n" +
+			"  };\n\n" +
+			"CREATE OR MODIFY MICROFLOW MyModule.ACT_Sync ()\nFOLDER 'Private/Jobs'\nBEGIN\n  RETURN;\nEND;",
+		SeeAlso: []string{"move", "folders", "create-modifiers"},
 	})
 
 	// ── Connection ──────────────────────────────────────────────────────
@@ -237,7 +282,7 @@ CREATE CONFIGURATION 'Production'
 			"describe queue", "show queues", "parallelism", "cluster wide",
 			"background", "async microflow",
 		},
-		Syntax: `CREATE [OR MODIFY] QUEUE Module.Name [( <property>: <value>, ... )];
+		Syntax: `CREATE [OR MODIFY] QUEUE Module.Name [FOLDER 'path'] [( <property>: <value>, ... )];
 SHOW QUEUES [IN <module>];
 LIST QUEUES [IN <module>];
 DESCRIBE QUEUE Module.Name;
@@ -294,7 +339,7 @@ DROP QUEUE Ops.Mail;`,
 			"create regular expression", "drop regular expression", "describe regular expression",
 			"show regular expressions", "email regex", "match",
 		},
-		Syntax: `CREATE [OR MODIFY] REGULAR EXPRESSION Module.Name (
+		Syntax: `CREATE [OR MODIFY] REGULAR EXPRESSION Module.Name [FOLDER 'path'] (
   Expression: '<pattern>',
   [Documentation: '<text>',]
   [ExportLevel: Hidden|Public,]
@@ -406,7 +451,7 @@ CREATE VALIDATION RULE FOR Shop.Product.Price
 			"create scheduled event", "drop scheduled event", "describe scheduled event",
 			"repeat", "daily", "hourly", "weekly", "monthly", "yearly", "timer", "batch job",
 		},
-		Syntax: `CREATE [OR MODIFY] SCHEDULED EVENT Module.Name ( <property>: <value>, ... );
+		Syntax: `CREATE [OR MODIFY] SCHEDULED EVENT Module.Name [FOLDER 'path'] ( <property>: <value>, ... );
 SHOW SCHEDULED EVENTS [IN <module>];
 LIST SCHEDULED EVENTS [IN <module>];
 DESCRIBE SCHEDULED EVENT Module.Name;

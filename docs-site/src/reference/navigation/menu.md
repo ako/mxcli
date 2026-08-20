@@ -3,7 +3,7 @@
 ## Synopsis
 
 ```sql
-CREATE [ OR MODIFY ] MENU module.name ( menu_item [ menu_item ... ] )
+CREATE [ OR MODIFY ] MENU module.name [ FOLDER 'folder_path' ] ( menu_item [ menu_item ... ] )
 DESCRIBE MENU module.name
 DROP MENU module.name
 ```
@@ -47,6 +47,9 @@ a fixed point.
 
 `module.name`
 :   Qualified name of the menu document.
+
+`FOLDER 'folder_path'`
+:   Optional. Places the document in the named module folder, creating missing folders in the path. On `CREATE OR MODIFY` this **moves** an existing document; omitting the clause leaves placement alone rather than returning the document to the module root. See [MOVE](../organization/move.md).
 
 `'caption'`
 :   The item's label, in single quotes.
