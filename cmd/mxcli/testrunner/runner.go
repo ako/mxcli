@@ -359,7 +359,7 @@ func runAfterStartup(opts RunOptions, suite *TestSuite, timeout time.Duration, w
 	}
 
 	fmt.Fprintln(w, "Parsing test results...")
-	result := ParseLogResults(strings.NewReader(logOutput), suite)
+	result := ParseLogResults(strings.NewReader(logOutput), suite, opts.RequireAssertions)
 
 	fmt.Fprintln(w, "Cleaning up...")
 	cleanupErr := cleanup(opts.ProjectPath, state, w)

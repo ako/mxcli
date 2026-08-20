@@ -34,6 +34,20 @@
 -- otherwise. test_3 is an error because its @verify sits on a test using the
 -- rollback default — see the @verify section below.
 --
+-- ISSUE #926 -- and it has to be an ERROR on EVERY runner.
+--
+-- --require-assertions was honoured only by the endpoint runner, so the two
+-- commands below disagreed about the same file: the first errored on test_2, the
+-- second exited 0. Whether a test is vacuous is a property of the parsed test
+-- case, so both must agree.
+--
+--   mxcli test <this file> -p app.mpr --local --require-assertions   # errored
+--   mxcli test <this file> -p app.mpr         --require-assertions   # exited 0
+--
+-- Not reproducible from MDL alone: the defect is in which runner reads the flag,
+-- not in anything the script can say. The unit control is
+-- TestRequireAssertionsIsHonouredOnTheLogRunner.
+--
 -- The microflows referenced below do not need to exist for --list.
 
 /**

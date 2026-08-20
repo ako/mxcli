@@ -129,11 +129,7 @@ func runSuite(client *endpointClient, admin docker.M2EEOptions, suite *TestSuite
 	leaked := 0
 
 	for _, tc := range suite.Tests {
-		if res, bad := assertionErrorResult(tc); bad {
-			result.Tests = append(result.Tests, res)
-			continue
-		}
-		if res, bad := vacuousResult(tc, opts.RequireAssertions); bad {
+		if res, bad := preRunResult(tc, opts.RequireAssertions); bad {
 			result.Tests = append(result.Tests, res)
 			continue
 		}

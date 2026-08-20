@@ -31,7 +31,7 @@ Core: Successfully ran after-startup-action.
 		},
 	}
 
-	result := ParseLogResults(strings.NewReader(logs), suite)
+	result := ParseLogResults(strings.NewReader(logs), suite, false)
 
 	if len(result.Tests) != 3 {
 		t.Fatalf("Result count: got %d, want 3", len(result.Tests))
@@ -78,7 +78,7 @@ MXTEST: MXTEST:PASS:test_2
 		},
 	}
 
-	result := ParseLogResults(strings.NewReader(logs), suite)
+	result := ParseLogResults(strings.NewReader(logs), suite, false)
 
 	if result.Tests[2].Status != StatusError {
 		t.Errorf("Test 3 status: got %v, want ERROR (not executed)", result.Tests[2].Status)

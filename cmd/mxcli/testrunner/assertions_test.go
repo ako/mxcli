@@ -3,6 +3,9 @@
 package testrunner
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -93,5 +96,93 @@ func TestJUnitCarriesSourceFileAndAssertions(t *testing.T) {
 	if !strings.Contains(out, `<property name="assertions" value="2">`) &&
 		!strings.Contains(out, `<property name="assertions" value="2"></property>`) {
 		t.Errorf("assertion count missing from the JUnit report:\n%s", out)
+	}
+}
+
+// TestRequireAssertionsIsHonouredOnTheLogRunner is the regression test for #926.
+//
+// --require-assertions was registered on `mxcli test` globally but consulted in
+// exactly one place — the endpoint runner's loop. The Docker path (and
+// `--local --legacy-runner`) assembles its results from the runtime log in
+// ParseLogResults, which had no parameter through which the flag could reach it,
+// so `mxcli test tests/ -p app.mpr --require-assertions` — the command in the
+// issue, note the absent --local — accepted the flag and exited 0 on a suite
+// that asserted nothing.
+//
+// Whether a test is vacuous is a property of the *parsed* test case, known
+// before any runner starts. No runner has an excuse for not knowing it, which is
+// why this is implemented on the log path rather than refused there the way
+// @verify is (that one genuinely cannot be evaluated during boot).
+func TestRequireAssertionsIsHonouredOnTheLogRunner(t *testing.T) {
+	// One test that asserts nothing, which the runtime log reports as a pass.
+	newSuite := func() *TestSuite {
+		return &TestSuite{Name: "s", Tests: []TestCase{
+			{ID: "test_1", Name: "asserts nothing", SourceFile: "a.test.mdl"},
+		}}
+	}
+	const log = "MXTEST: MXTEST:START:\n" +
+		"MXTEST: MXTEST:RUN:test_1:asserts nothing\n" +
+		"MXTEST: MXTEST:PASS:test_1\n" +
+		"MXTEST: MXTEST:END:\n"
+
+	// Off by default: a smoke test is legitimate.
+	off := ParseLogResults(strings.NewReader(log), newSuite(), false)
+	if got := off.Tests[0].Status; got != StatusPass {
+		t.Errorf("without --require-assertions: status = %v, want PASS", got)
+	}
+	if !off.AllPassed() {
+		t.Error("without --require-assertions the suite should still pass")
+	}
+
+	on := ParseLogResults(strings.NewReader(log), newSuite(), true)
+	if got := on.Tests[0].Status; got != StatusError {
+		t.Errorf("with --require-assertions: status = %v, want ERROR "+
+			"(the flag is a silent no-op on this runner — issue #926)", got)
+	}
+	if on.ErrorCount() != 1 {
+		t.Errorf("ErrorCount() = %d, want 1", on.ErrorCount())
+	}
+	if on.AllPassed() {
+		t.Error("with --require-assertions the suite must not report all-passed")
+	}
+	if msg := on.Tests[0].Message; !strings.Contains(msg, "no assertions") {
+		t.Errorf("message = %q, want it to say the test asserts nothing", msg)
+	}
+}
+
+// TestPreRunVerdictsHaveOneCallSite is the structural half of the #926 fix.
+//
+// The bug was not that vacuousResult was wrong — its unit test passed all along,
+// because it exercised the helper and not any runner. The bug was that one of
+// the two result-assembly loops called it and the other did not. Pinning the
+// helpers to a single call site is what stops a third verdict (or a third
+// runner) from reintroducing the same asymmetry.
+func TestPreRunVerdictsHaveOneCallSite(t *testing.T) {
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, helper := range []string{"assertionErrorResult(", "vacuousResult("} {
+		var callers []string
+		for _, f := range files {
+			if strings.HasSuffix(f, "_test.go") {
+				continue
+			}
+			src, err := os.ReadFile(f)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i, line := range strings.Split(string(src), "\n") {
+				if !strings.Contains(line, helper) || strings.Contains(line, "func "+helper[:len(helper)-1]) {
+					continue
+				}
+				callers = append(callers, fmt.Sprintf("%s:%d", f, i+1))
+			}
+		}
+		if len(callers) != 1 {
+			t.Errorf("%s has %d call sites %v, want exactly 1 (preRunResult) — "+
+				"a pre-run verdict reachable from one runner and not the other is issue #926",
+				helper, len(callers), callers)
+		}
 	}
 }
