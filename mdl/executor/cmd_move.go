@@ -90,7 +90,14 @@ func execMove(ctx *ExecContext, s *ast.MoveStmt) error {
 			return err
 		}
 	default:
-		return mdlerrors.NewUnsupported("unsupported document type: " + string(s.DocumentType))
+		// Every remaining doctype is a plain top-level document, and a move is
+		// one containment row — so they share a handler instead of each needing
+		// a list call and a finder written for it. The typed cases above are the
+		// ones whose move does extra work (access-role remapping, reference
+		// rewriting); this is everything else, including doctypes added later.
+		if err := moveDocumentUnit(ctx, s.DocumentType, s.Name, targetContainerID); err != nil {
+			return err
+		}
 	}
 
 	// For cross-module moves, update all BY_NAME references throughout the project

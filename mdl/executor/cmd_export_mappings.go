@@ -104,6 +104,11 @@ func describeExportMapping(ctx *ExecContext, name ast.QualifiedName) error {
 	moduleName := h.GetModuleName(modID)
 
 	fmt.Fprintf(ctx.Output, "create or modify export mapping %s.%s\n", moduleName, em.Name)
+	// Without this the description round-trips to the module root: replaying
+	// it in a fresh project would recreate the mapping unfiled (#932).
+	if folderPath := h.BuildFolderPath(em.ContainerID); folderPath != "" {
+		fmt.Fprintf(ctx.Output, "  folder '%s'\n", folderPath)
+	}
 
 	if em.JsonStructure != "" {
 		fmt.Fprintf(ctx.Output, "  with json structure %s\n", em.JsonStructure)
@@ -191,7 +196,18 @@ func execCreateExportMapping(ctx *ExecContext, s *ast.CreateExportMappingStmt) e
 	if err != nil {
 		return mdlerrors.NewNotFound("module", s.Name.Module)
 	}
-	containerID := module.ID
+	// A folder clause places the mapping; without one a new mapping goes to the
+	// module root and an existing one stays where it is (#932).
+	containerID, err := resolveRequestedFolder(ctx, module.ID, s.Folder)
+	if err != nil {
+		return err
+	}
+	if containerID == "" {
+		containerID = module.ID
+		if existing != nil {
+			containerID = existing.ContainerID
+		}
+	}
 
 	em := &model.ExportMapping{
 		ContainerID:     containerID,
@@ -237,6 +253,9 @@ func execCreateExportMapping(ctx *ExecContext, s *ast.CreateExportMappingStmt) e
 		if err := ctx.Backend.UpdateExportMapping(em); err != nil {
 			return mdlerrors.NewBackend("update export mapping", err)
 		}
+		if _, err := applyDocumentFolder(ctx, em.ID, existing.ContainerID, containerID); err != nil {
+			return err
+		}
 		if !ctx.Quiet {
 			ctx.ReportMutation("Modified", "export mapping %s.%s", s.Name.Module, s.Name.Name)
 		}
@@ -246,6 +265,7 @@ func execCreateExportMapping(ctx *ExecContext, s *ast.CreateExportMappingStmt) e
 	if err := ctx.Backend.CreateExportMapping(em); err != nil {
 		return mdlerrors.NewBackend("create export mapping", err)
 	}
+	invalidateHierarchy(ctx)
 
 	if !ctx.Quiet {
 		fmt.Fprintf(ctx.Output, "Created export mapping %s.%s\n", s.Name.Module, s.Name.Name)

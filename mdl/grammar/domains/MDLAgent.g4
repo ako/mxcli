@@ -16,6 +16,7 @@ options { tokenVocab = MDLLexer; }
 // );
 createModelStatement
     : MODEL qualifiedName
+      (FOLDER STRING_LITERAL)?
       LPAREN modelProperty (COMMA modelProperty)* RPAREN
     ;
 
@@ -48,6 +49,7 @@ variableDef
 // );
 createConsumedMCPServiceStatement
     : CONSUMED MCP SERVICE qualifiedName
+      (FOLDER STRING_LITERAL)?
       LPAREN modelProperty (COMMA modelProperty)* RPAREN
     ;
 
@@ -60,6 +62,7 @@ createConsumedMCPServiceStatement
 // );
 createKnowledgeBaseStatement
     : KNOWLEDGE BASE qualifiedName
+      (FOLDER STRING_LITERAL)?
       LPAREN modelProperty (COMMA modelProperty)* RPAREN
     ;
 
@@ -76,6 +79,7 @@ createKnowledgeBaseStatement
 // ;
 createAgentStatement
     : AGENT qualifiedName
+      (FOLDER STRING_LITERAL)?
       LPAREN modelProperty (COMMA modelProperty)* RPAREN
       agentBody?
     ;

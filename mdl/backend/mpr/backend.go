@@ -155,6 +155,22 @@ func (b *MprBackend) MoveFolder(id model.ID, newContainerID model.ID) error {
 }
 
 // ---------------------------------------------------------------------------
+// DocumentPlacementBackend
+// ---------------------------------------------------------------------------
+
+func (b *MprBackend) MoveDocument(unitID, containerID model.ID) error {
+	return b.writer.MoveDocument(unitID, containerID)
+}
+
+func (b *MprBackend) FindDocumentUnit(moduleName, name string) (*types.DocumentUnit, error) {
+	return b.writer.FindDocumentUnit(moduleName, name)
+}
+
+func (b *MprBackend) ListDocumentUnits() ([]*types.DocumentUnit, error) {
+	return b.writer.ListDocumentUnits()
+}
+
+// ---------------------------------------------------------------------------
 // DomainModelBackend
 // ---------------------------------------------------------------------------
 

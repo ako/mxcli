@@ -257,7 +257,52 @@ func documentsByContainer(ctx *ExecContext, h *ContainerHierarchy) map[model.ID]
 			put("ImageCollection", x.Name, x.ContainerID)
 		}
 	}
+
+	// Everything above is a hand-maintained list of document kinds, and #892 is
+	// what that costs: five kinds were missing, so a folder holding four
+	// documents rendered as `[0]` and dropping it looked safe. Adding the
+	// missing five did not fix the shape of the problem — layouts, menus,
+	// JavaScript actions and building blocks were still absent, and #932 made
+	// all of them movable, so a move you could not see was a move you could not
+	// check.
+	//
+	// So the list is now a source of good LABELS, not the source of truth for
+	// what exists. This pass walks the unit table, which cannot omit a kind
+	// because it never asks what kind anything is, and fills in every document
+	// the typed calls did not already account for. A kind added to Mendix
+	// tomorrow appears here without anyone editing this function.
+	if units, err := ctx.Backend.ListDocumentUnits(); err == nil {
+		seen := make(map[model.ID]map[string]bool, len(out))
+		for container, docs := range out {
+			names := make(map[string]bool, len(docs))
+			for _, d := range docs {
+				names[d.Name] = true
+			}
+			seen[container] = names
+		}
+		for _, u := range units {
+			if seen[u.ContainerID][u.Name] {
+				continue
+			}
+			put(documentKindLabel(u.Kind), u.Name, u.ContainerID)
+		}
+	}
 	return out
+}
+
+// documentKindLabel renders a derived kind ("json structure") in the CamelCase
+// style the typed entries above use ("JsonStructure"), so one listing does not
+// mix two spellings of the same idea.
+func documentKindLabel(kind string) string {
+	var b strings.Builder
+	for _, word := range strings.Fields(kind) {
+		b.WriteString(strings.ToUpper(word[:1]))
+		b.WriteString(word[1:])
+	}
+	if b.Len() == 0 {
+		return "Document"
+	}
+	return b.String()
 }
 
 // modulesInScope returns the modules the listing covers.

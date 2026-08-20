@@ -16,6 +16,7 @@ package ast
 //	  [, DeepLinkURL: '...']
 //	);
 type CreateModelStmt struct {
+	Folder         string // Folder path within module (empty = leave placement alone)
 	Name           QualifiedName
 	Documentation  string
 	Provider       string         // "MxCloudGenAI" by default
@@ -55,6 +56,7 @@ func (s *AlterModelStmt) isStatement() {}
 //	  Documentation: '...'
 //	);
 type CreateConsumedMCPServiceStmt struct {
+	Folder                   string // Folder path within module (empty = leave placement alone)
 	Name                     QualifiedName
 	OuterDocumentation       string // /** ... */ doc comment
 	ProtocolVersion          string
@@ -89,6 +91,7 @@ func (s *AlterConsumedMCPServiceStmt) isStatement() {}
 //	  Key: Module.SomeConstant
 //	);
 type CreateKnowledgeBaseStmt struct {
+	Folder           string // Folder path within module (empty = leave placement alone)
 	Name             QualifiedName
 	Documentation    string
 	Provider         string
@@ -122,6 +125,7 @@ func (s *AlterKnowledgeBaseStmt) isStatement() {}
 
 // CreateAgentStmt represents CREATE AGENT Module.Name (...) [{ body }].
 type CreateAgentStmt struct {
+	Folder         string // Folder path within module (empty = leave placement alone)
 	Name           QualifiedName
 	Documentation  string
 	UsageType      string // "Task" or "Conversational"

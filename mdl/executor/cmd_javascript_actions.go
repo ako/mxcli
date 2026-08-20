@@ -100,6 +100,7 @@ func describeJavaScriptAction(ctx *ExecContext, name ast.QualifiedName) error {
 		}
 		sb.WriteString(">")
 	}
+	sb.WriteString(describeFolderClause(ctx, jsa.ContainerID))
 	sb.WriteString("(")
 
 	// Parameters

@@ -17,6 +17,9 @@ func (b *Builder) ExitCreateJavaActionStatement(ctx *parser.CreateJavaActionStat
 	if qn := ctx.QualifiedName(); qn != nil {
 		stmt.Name = buildQualifiedName(qn)
 	}
+	if lit := ctx.STRING_LITERAL(); lit != nil {
+		stmt.Folder = unquoteString(lit.GetText())
+	}
 
 	// Get parameters
 	if paramList := ctx.JavaActionParameterList(); paramList != nil {
@@ -112,6 +115,9 @@ func (b *Builder) ExitCreateJavaScriptActionStatement(ctx *parser.CreateJavaScri
 
 	if qn := ctx.QualifiedName(); qn != nil {
 		stmt.Name = buildQualifiedName(qn)
+	}
+	if lit := ctx.STRING_LITERAL(); lit != nil {
+		stmt.Folder = unquoteString(lit.GetText())
 	}
 
 	if paramList := ctx.JavaActionParameterList(); paramList != nil {

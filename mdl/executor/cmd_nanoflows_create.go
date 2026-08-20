@@ -262,6 +262,9 @@ func execCreateNanoflow(ctx *ExecContext, s *ast.CreateNanoflowStmt) error {
 		if err := ctx.Backend.UpdateNanoflow(nf); err != nil {
 			return mdlerrors.NewBackend("update nanoflow", err)
 		}
+		if _, err := applyDocumentFolder(ctx, nf.ID, existingContainerID, containerID); err != nil {
+			return err
+		}
 		ctx.ReportMutation("Replaced", "nanoflow: %s.%s", s.Name.Module, s.Name.Name)
 	} else {
 		if err := ctx.Backend.CreateNanoflow(nf); err != nil {
