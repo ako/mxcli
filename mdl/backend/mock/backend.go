@@ -54,6 +54,11 @@ type MockBackend struct {
 	DeleteFolderFunc func(id model.ID) error
 	MoveFolderFunc   func(id model.ID, newContainerID model.ID) error
 
+	// DocumentPlacementBackend
+	MoveDocumentFunc      func(unitID, containerID model.ID) error
+	FindDocumentUnitFunc  func(moduleName, name string) (*types.DocumentUnit, error)
+	ListDocumentUnitsFunc func() ([]*types.DocumentUnit, error)
+
 	// DomainModelBackend
 	ListDomainModelsFunc                       func() ([]*domainmodel.DomainModel, error)
 	GetDomainModelFunc                         func(moduleID model.ID) (*domainmodel.DomainModel, error)

@@ -1,0 +1,75 @@
+-- ============================================================================
+-- #913 — the type split uses the same branch syntax as the enum split
+-- ============================================================================
+--
+-- POSITIVE TEST: `mxcli check` MUST accept this file with no warnings.
+--
+-- Before #913 the two multi-way splits shared nothing. `case` introduced the
+-- SUBJECT in an enum split (and in MDL's caseExpression) but a BRANCH in a type
+-- split, so the word meant two things depending on the statement. The legacy
+-- spelling still parses — see 913-split-type-legacy-syntax.mdl — but warns
+-- MDL065, so it is kept out of this file.
+--
+-- Read the two microflows below side by side: one statement, two subjects.
+
+CREATE MODULE Bug913;
+
+CREATE OR MODIFY ENUMERATION Bug913.Status (
+  Open 'Open',
+  Pending 'Pending',
+  Closed 'Closed'
+);
+
+CREATE OR MODIFY PERSISTENT ENTITY Bug913.Animal ( "Name": String(50) );
+CREATE OR MODIFY PERSISTENT ENTITY Bug913.Dog GENERALIZATION Bug913.Animal ();
+CREATE OR MODIFY PERSISTENT ENTITY Bug913.Cat GENERALIZATION Bug913.Animal ();
+
+-- Enumeration split: unchanged by #913, shown here as the shape being matched.
+CREATE OR MODIFY MICROFLOW Bug913.OnStatus ($Status: Enumeration(Bug913.Status))
+RETURNS String
+BEGIN
+  case $Status
+    when Open, Pending then
+      return 'active';
+    when Closed then
+      return 'done';
+    when (empty) then
+      return 'unset';
+  end case;
+END;
+
+-- Type split: same `when ... then` branches, same `when (empty) then`.
+--
+-- Every concrete subtype AND the base entity needs its own branch — Mendix
+-- fails the build with CE0090 otherwise. The `(empty)` branch does NOT cover
+-- them; see 913-split-type-empty-is-not-a-default.mdl.
+CREATE OR MODIFY MICROFLOW Bug913.OnType ($Animal: Bug913.Animal)
+RETURNS String
+BEGIN
+  split type $Animal
+    when Bug913.Dog then
+      return 'woof';
+    when Bug913.Cat then
+      return 'meow';
+    when Bug913.Animal then
+      return 'generic';
+    when (empty) then
+      return 'no animal';
+  end split;
+END;
+
+-- Nanoflows take the same form.
+CREATE OR MODIFY NANOFLOW Bug913.OnTypeInNanoflow ($Animal: Bug913.Animal)
+RETURNS String
+BEGIN
+  split type $Animal
+    when Bug913.Dog then
+      return 'woof';
+    when Bug913.Cat then
+      return 'meow';
+    when Bug913.Animal then
+      return 'generic';
+    when (empty) then
+      return 'no animal';
+  end split;
+END;

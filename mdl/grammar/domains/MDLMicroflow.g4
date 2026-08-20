@@ -37,6 +37,7 @@ createNanoflowStatement
  */
 createJavaActionStatement
     : JAVA ACTION qualifiedName
+      (FOLDER STRING_LITERAL)?
       LPAREN javaActionParameterList? RPAREN
       javaActionReturnType?
       javaActionExposedClause?
@@ -66,6 +67,7 @@ javaActionExposedClause
  */
 createJavaScriptActionStatement
     : JAVASCRIPT ACTION qualifiedName
+      (FOLDER STRING_LITERAL)?
       LPAREN javaActionParameterList? RPAREN
       javaActionReturnType?
       javaActionExposedClause?
@@ -200,13 +202,28 @@ enumSplitCaseValue
     | LPAREN EMPTY RPAREN
     ;
 
+// Branch keyword is `when ... then`, matching caseStatement above and the
+// caseExpression in MDLSettings.g4 — `case` used to introduce a BRANCH here
+// while introducing the SUBJECT in those two, so the word meant two things
+// (mxcli #913). The `case`/`else` spelling still parses: scripts in the wild
+// use it, and both spellings build the identical flow. MDL065 warns.
 inheritanceSplitStatement
     : SPLIT TYPE VARIABLE
-      (inheritanceSplitCase+ (ELSE microflowBody)? END SPLIT)?
+      (inheritanceSplitCase+ inheritanceSplitElse? END SPLIT)?
     ;
 
 inheritanceSplitCase
-    : CASE qualifiedName microflowBody
+    : CASE qualifiedName microflowBody       // legacy spelling, warns MDL065
+    | WHEN qualifiedName THEN microflowBody
+    ;
+
+// The last branch is Mendix's `(empty)` outgoing flow — taken when the object
+// is NULL, not when no case matched. `else` is the legacy spelling and reads
+// as a default, which it is not: mxbuild still demands a flow for every
+// subtype and for the base entity (CE0090) when an `else` is present.
+inheritanceSplitElse
+    : ELSE microflowBody                          // legacy spelling, warns MDL065
+    | WHEN LPAREN EMPTY RPAREN THEN microflowBody
     ;
 
 castObjectStatement

@@ -6,6 +6,7 @@ package ast
 //
 //	CREATE [OR REPLACE|MODIFY] QUEUE Module.Name ( Parallelism: 3, ClusterWide: true );
 type CreateQueueStmt struct {
+	Folder        string // Folder path within module (empty = leave placement alone)
 	Name          QualifiedName
 	Documentation string
 	// Parallelism is kept as written. Mendix stores it as an expression string

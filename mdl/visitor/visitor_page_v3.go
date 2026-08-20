@@ -511,6 +511,20 @@ func buildWidgetV3(ctx parser.IWidgetV3Context, b *Builder) *ast.WidgetV3 {
 		Children:   []*ast.WidgetV3{},
 	}
 
+	// A List View specialization template: `template for Module.Entity { ... }`.
+	// It has no name — the entity is what identifies it — so this returns before
+	// the name lookup below, which would otherwise find nothing.
+	if wCtx.FOR() != nil && wCtx.TEMPLATE() != nil {
+		widget.Type = "template"
+		if qn := wCtx.QualifiedName(); qn != nil {
+			widget.Specialization = qn.GetText()
+		}
+		if bodyCtx := wCtx.WidgetBodyV3(); bodyCtx != nil {
+			widget.Children = buildWidgetBodyV3(bodyCtx, b)
+		}
+		return widget
+	}
+
 	// Get widget type
 	if wCtx.PLUGGABLEWIDGET() != nil {
 		widget.Type = "pluggablewidget"

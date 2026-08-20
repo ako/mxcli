@@ -186,6 +186,9 @@ func describeWorkflowToString(ctx *ExecContext, name ast.QualifiedName) (string,
 	lines = append(lines, "")
 
 	lines = append(lines, fmt.Sprintf("create workflow %s", qualifiedName))
+	if clause := describeFolderClause(ctx, targetWf.ContainerID); clause != "" {
+		lines = append(lines, "  "+strings.TrimSpace(clause))
+	}
 
 	// Context parameter
 	if targetWf.Parameter != nil && targetWf.Parameter.EntityRef != "" {

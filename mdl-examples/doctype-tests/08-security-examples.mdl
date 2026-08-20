@@ -150,8 +150,12 @@ show access on microflow SecTest.ACT_Customer_Create;
 show access on page SecTest.Customer_Overview;
 /
 
--- Show access rules on a specific entity (CRUD permissions)
+-- Show access rules on a specific entity (CRUD permissions). The bare name and
+-- the explicit ENTITY spelling are synonyms; #925 had only the bare one.
 show access on SecTest.Customer;
+/
+
+show access on entity SecTest.Customer;
 /
 
 -- ============================================================================

@@ -335,6 +335,10 @@ func createRestClient(ctx *ExecContext, stmt *ast.CreateRestClientStmt) error {
 	}
 
 	var preservedID model.ID
+	// Where the service currently sits. A rest client is rewritten as
+	// delete+create, so its container is re-applied on every statement and an
+	// unset value files a foldered service back into the module root (#932).
+	var preservedContainerID model.ID
 	wasModified := false
 	for _, existing := range existingServices {
 		existModID := h.FindModuleID(existing.ContainerID)
@@ -343,6 +347,7 @@ func createRestClient(ctx *ExecContext, stmt *ast.CreateRestClientStmt) error {
 			if stmt.CreateOrModify {
 				// Preserve the existing ID so SEND REST REQUEST references stay valid after replace.
 				preservedID = existing.ID
+				preservedContainerID = existing.ContainerID
 				wasModified = true
 				if err := ctx.Backend.DeleteConsumedRestService(existing.ID); err != nil {
 					return mdlerrors.NewBackend("delete existing rest client", err)
@@ -353,7 +358,7 @@ func createRestClient(ctx *ExecContext, stmt *ast.CreateRestClientStmt) error {
 		}
 	}
 
-	// Resolve folder if specified
+	// Resolve folder if specified, else keep where the service already was.
 	containerID := module.ID
 	if stmt.Folder != "" {
 		folderID, err := resolveFolder(ctx, module.ID, stmt.Folder)
@@ -361,6 +366,8 @@ func createRestClient(ctx *ExecContext, stmt *ast.CreateRestClientStmt) error {
 			return mdlerrors.NewBackend(fmt.Sprintf("resolve folder '%s'", stmt.Folder), err)
 		}
 		containerID = folderID
+	} else if preservedContainerID != "" {
+		containerID = preservedContainerID
 	}
 
 	// Build the model from AST
@@ -799,8 +806,13 @@ func createRestClientFromSpec(ctx *ExecContext, stmt *ast.CreateRestClientStmt) 
 		existModName := h.GetModuleName(existModID)
 		if strings.EqualFold(existModName, moduleName) && strings.EqualFold(existing.Name, stmt.Name.Name) {
 			if stmt.CreateOrModify {
-				// Reuse the existing ID so microflow references stay valid.
+				// Reuse the existing ID so microflow references stay valid, and
+				// its container so a spec re-import does not file the service
+				// back into the module root (#932).
 				svc.ID = existing.ID
+				if stmt.Folder == "" {
+					svc.ContainerID = existing.ContainerID
+				}
 				openAPIWasModified = true
 				if err := ctx.Backend.DeleteConsumedRestService(existing.ID); err != nil {
 					return mdlerrors.NewBackend("delete existing rest client", err)

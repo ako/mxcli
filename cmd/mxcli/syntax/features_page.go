@@ -38,10 +38,55 @@ func init() {
 			"combobox", "checkbox", "radiobuttons", "actionbutton",
 			"dynamictext", "snippetcall", "navigationlist",
 			"column", "row", "footer", "header", "controlbar",
+			"template", "specialization", "list view template",
 		},
-		Syntax:  "-- Containers\nLAYOUTGRID name { ROW r { COLUMN c (DesktopWidth: 6) { ... } } }\nCONTAINER name (Class: 'cls') { ... }\nCONTAINER name (OnClick: MICROFLOW Module.MF) { ... }   -- clickable container\n\n-- Data widgets\nDATAVIEW name (DataSource: $Param) { ... FOOTER f { ... } }\nDATAGRID name (DataSource: DATABASE Module.Entity) { COLUMN c (Attribute: A) }\nGALLERY name (DataSource: DATABASE Module.Entity, DesktopColumns: 3) { ... }\nLISTVIEW name (DataSource: DATABASE Module.Entity) { ... }\n\n-- Inputs\nTEXTBOX name (Label: 'L', Attribute: Attr)\nTEXTAREA | DATEPICKER | COMBOBOX | CHECKBOX | RADIOBUTTONS\n\n-- Actions\nACTIONBUTTON name (Caption: 'C', Action: SAVE_CHANGES, ButtonStyle: Primary)\n\n-- Display\nDYNAMICTEXT name (Content: 'Hello, {1}!', ContentParams: [{1} = Name])",
+		Syntax:  "-- Containers\nLAYOUTGRID name { ROW r { COLUMN c (DesktopWidth: 6) { ... } } }\nCONTAINER name (Class: 'cls') { ... }\nCONTAINER name (OnClick: MICROFLOW Module.MF) { ... }   -- clickable container\n\n-- Data widgets\nDATAVIEW name (DataSource: $Param) { ... FOOTER f { ... } }\nDATAGRID name (DataSource: DATABASE Module.Entity) { COLUMN c (Attribute: A) }\nGALLERY name (DataSource: DATABASE Module.Entity, DesktopColumns: 3) { ... }\nLISTVIEW name (DataSource: DATABASE Module.Entity) { ... }\nLISTVIEW name (...) { ... TEMPLATE FOR Module.Specialization { ... } }\n\n-- Inputs\nTEXTBOX name (Label: 'L', Attribute: Attr)\nTEXTAREA | DATEPICKER | COMBOBOX | CHECKBOX | RADIOBUTTONS\n\n-- Actions\nACTIONBUTTON name (Caption: 'C', Action: SAVE_CHANGES, ButtonStyle: Primary)\n\n-- Display\nDYNAMICTEXT name (Content: 'Hello, {1}!', ContentParams: [{1} = Name])",
 		Example: "DATAVIEW dvCustomer (DataSource: $Customer) {\n  TEXTBOX txtName (Label: 'Name', Attribute: Name)\n  COMBOBOX cbStatus (Label: 'Status', Attribute: Status)\n  FOOTER footer1 {\n    ACTIONBUTTON btnSave (Caption: 'Save', Action: SAVE_CHANGES, ButtonStyle: Primary)\n    ACTIONBUTTON btnCancel (Caption: 'Cancel', Action: CANCEL_CHANGES)\n  }\n}",
 		SeeAlso: []string{"page.create", "page.datasource"},
+	})
+
+	Register(SyntaxFeature{
+		Path:    "page.listview-template",
+		Summary: "List View specialization templates: one body per specialization",
+		Keywords: []string{
+			"template", "listview template", "list view template", "specialization",
+			"generalization", "inheritance", "template for", "per type",
+		},
+		Syntax: "LISTVIEW name (DataSource: DATABASE Module.Base) {\n" +
+			"  ...widgets...                          -- the default body, used when no template matches\n" +
+			"  TEMPLATE FOR Module.Specialization {   -- one body per specialization\n" +
+			"    ...widgets...\n" +
+			"  }\n" +
+			"}\n\n" +
+			"A template is identified by the entity it renders, not by a name — that is why it is\n" +
+			"TEMPLATE FOR Module.Entity and not TEMPLATE name. (A Gallery's TEMPLATE name is a\n" +
+			"different thing: a named content slot.)\n\n" +
+			"Rules:\n" +
+			"  - the entity must be the list view's entity or a specialization of it\n" +
+			"  - at most one template per entity\n" +
+			"  - templates keep their source order, which is the order Mendix stores and matches in\n" +
+			"  - inside a template the context object is the specialization, so its own attributes resolve\n\n" +
+			"ALTER PAGE — adding one reuses INSERT INTO with the same block, so a template has one\n" +
+			"spelling everywhere. Removing one needs its own form, because a template has no name:\n\n" +
+			"ALTER PAGE Module.Page {\n" +
+			"  INSERT INTO listViewName { TEMPLATE FOR Module.Specialization { ...widgets... } };\n" +
+			"  DROP TEMPLATE FOR Module.Specialization IN listViewName;\n" +
+			"};\n\n" +
+			"Naming the list view in DROP is required, not optional: one page can hold two list views\n" +
+			"with a template for the same entity. To change what a template renders, edit the widgets\n" +
+			"inside it by name (SET / INSERT AFTER) — they are ordinary widgets. To replace a whole\n" +
+			"template, DROP it and INSERT the new one in the same ALTER block; operations apply in\n" +
+			"order.",
+		Example: "LISTVIEW vehicleListView (DataSource: DATABASE Pages.Vehicle) {\n" +
+			"  DYNAMICTEXT defaultVehicle (Content: '{1} {2}', ContentParams: [{1} = Brand, {2} = Model])\n" +
+			"  TEMPLATE FOR Pages.Bus {\n" +
+			"    DYNAMICTEXT busLabel (Content: 'Bus, capacity {1}', ContentParams: [{1} = PassengerCapacity])\n" +
+			"  }\n" +
+			"  TEMPLATE FOR Pages.Truck {\n" +
+			"    DYNAMICTEXT truckLabel (Content: 'Truck, max load {1} kg', ContentParams: [{1} = MaxLoadKg])\n" +
+			"  }\n" +
+			"}",
+		SeeAlso: []string{"page.widgets", "page.datasource"},
 	})
 
 	Register(SyntaxFeature{
@@ -88,8 +133,9 @@ func init() {
 			"alter page", "modify page", "update page",
 			"set property", "insert widget", "drop widget", "replace widget",
 			"popup width", "popup height", "popup resizable",
+			"drop template", "insert template", "list view template",
 		},
-		Syntax:  "ALTER PAGE Module.Name {\n  SET property = value ON widgetName;\n  SET Action = MICROFLOW Module.MF ON btnSave;   -- any CREATE PAGE action form\n  SET DataSource = $Param ON dvOrder;\n  SET (prop1 = val1, prop2 = val2) ON widgetName;\n  SET Title = 'New Title';  -- page-level (case-sensitive)\n  SET Class = 'css-class';  -- page-level CSS class / style\n  SET Style = 'css: rule';\n  SET PopupWidth = 800;     -- page-level pop-up dimensions\n  SET PopupHeight = 480;\n  SET PopupResizable = true;\n  INSERT AFTER widgetName { <widgets> };\n  INSERT BEFORE widgetName { <widgets> };\n  INSERT INTO containerName { <widgets> };\n  DROP WIDGET name1, name2;\n  REPLACE widgetName WITH { <widgets> };\n};",
+		Syntax:  "ALTER PAGE Module.Name {\n  SET property = value ON widgetName;\n  SET Action = MICROFLOW Module.MF ON btnSave;   -- any CREATE PAGE action form\n  SET DataSource = $Param ON dvOrder;\n  SET (prop1 = val1, prop2 = val2) ON widgetName;\n  SET Title = 'New Title';  -- page-level (case-sensitive)\n  SET Class = 'css-class';  -- page-level CSS class / style\n  SET Style = 'css: rule';\n  SET PopupWidth = 800;     -- page-level pop-up dimensions\n  SET PopupHeight = 480;\n  SET PopupResizable = true;\n  INSERT AFTER widgetName { <widgets> };\n  INSERT BEFORE widgetName { <widgets> };\n  INSERT INTO containerName { <widgets> };\n  DROP WIDGET name1, name2;\n  DROP TEMPLATE FOR Module.Specialization IN listViewName;\n  REPLACE widgetName WITH { <widgets> };\n};",
 		Example: "ALTER PAGE Module.EditPage {\n  SET (Caption = 'Save & Close', ButtonStyle = Success) ON btnSave;\n  INSERT AFTER txtName {\n    TEXTBOX txtMiddleName (Label: 'Middle Name', Attribute: MiddleName)\n  };\n  DROP WIDGET txtUnused;\n};",
 		SeeAlso: []string{"page.create", "page.show", "snippet.alter"},
 	})
@@ -189,7 +235,7 @@ func init() {
 			"create menu", "describe menu", "drop menu",
 			"menu", "menus", "menu document", "menu item",
 		},
-		Syntax: "CREATE [OR MODIFY] MENU Module.Name (\n" +
+		Syntax: "CREATE [OR MODIFY] MENU Module.Name [FOLDER 'path'] (\n" +
 			"  MENU ITEM '<caption>' [PAGE Module.Page | MICROFLOW Module.Flow] [ICON Module.Collection.name];\n" +
 			"  MENU '<caption>' [ICON Module.Collection.name] ( <nested items> );\n" +
 			");\n" +

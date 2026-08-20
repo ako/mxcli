@@ -26,7 +26,7 @@ The optional `CUSTOM_NAME_MAP` clause overrides the attribute names generated fr
 :   The qualified name of the JSON structure.
 
 `FOLDER 'folder/path'`
-:   Optional. Places the document in the specified Studio Pro folder (forward-slash separated).
+:   Optional. Places the document in the specified Studio Pro folder (forward-slash separated), creating missing folders in the path. On `CREATE OR MODIFY` this **moves** an existing document; omitting the clause leaves placement alone rather than returning the document to the module root. See [MOVE](../organization/move.md).
 
 `COMMENT 'description'`
 :   Optional. A description for the JSON structure document.

@@ -35,6 +35,8 @@ func (b *Builder) exitAlterPageStatement(ctx *parser.AlterStatementContext) {
 			stmt.Operations = append(stmt.Operations, b.buildAlterPageInsert(insertCtx.(*parser.AlterPageInsertContext)))
 		} else if dropCtx := op.AlterPageDrop(); dropCtx != nil {
 			stmt.Operations = append(stmt.Operations, b.buildAlterPageDrop(dropCtx.(*parser.AlterPageDropContext)))
+		} else if dropTplCtx := op.AlterPageDropTemplate(); dropTplCtx != nil {
+			stmt.Operations = append(stmt.Operations, b.buildAlterPageDropTemplate(dropTplCtx.(*parser.AlterPageDropTemplateContext)))
 		} else if replaceCtx := op.AlterPageReplace(); replaceCtx != nil {
 			stmt.Operations = append(stmt.Operations, b.buildAlterPageReplace(replaceCtx.(*parser.AlterPageReplaceContext)))
 		} else if addVarCtx := op.AlterPageAddVariable(); addVarCtx != nil {
@@ -45,6 +47,19 @@ func (b *Builder) exitAlterPageStatement(ctx *parser.AlterStatementContext) {
 	}
 
 	b.statements = append(b.statements, stmt)
+}
+
+// buildAlterPageDropTemplate builds a DropListViewTemplateOp:
+// DROP TEMPLATE FOR Module.Specialization IN listViewName
+func (b *Builder) buildAlterPageDropTemplate(ctx *parser.AlterPageDropTemplateContext) ast.AlterPageOperation {
+	op := &ast.DropListViewTemplateOp{}
+	if qn := ctx.QualifiedName(); qn != nil {
+		op.Specialization = qn.GetText()
+	}
+	if wr := ctx.WidgetRef(); wr != nil {
+		op.ListView = buildWidgetRef(wr).Widget
+	}
+	return op
 }
 
 // buildAlterPageSet builds a SetPropertyOp or SetLayoutOp from the parse tree.

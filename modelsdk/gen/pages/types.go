@@ -15633,7 +15633,8 @@ func (o *ListViewTemplate) RemoveWidgets(index int) {
 
 // InitFromRaw populates lazy-decoded property holders from raw BSON.
 func (o *ListViewTemplate) InitFromRaw(raw bson.Raw) {
-	if val, err := raw.LookupErr("Specialization"); err == nil {
+	// STORAGE-NAME OVERRIDE: see initListViewTemplate. Key is "Entity".
+	if val, err := raw.LookupErr("Entity"); err == nil {
 		if s, ok := val.StringValueOK(); ok {
 			o.specialization.SetFromDecode(s)
 		}
@@ -30486,7 +30487,14 @@ func NewListViewSearch() *ListViewSearch {
 func initListViewTemplate() *ListViewTemplate {
 	o := &ListViewTemplate{}
 	o.SetTypeName("Forms$ListViewTemplate")
-	o.specialization = property.NewByNameRef[element.Element]("Specialization", "DomainModels$Entity")
+	// STORAGE-NAME OVERRIDE: BSON key is "Entity", not the SDK name
+	// "Specialization". generated/metamodel agrees —
+	//     Specialization model.QualifiedName `json:"entity"`
+	// where the tag is the storage name — and all four templates in the
+	// Vehicle_Overview page of ako/TestApp (Mendix 10.24, Studio Pro authored)
+	// store {$ID, $Type, Entity, Widgets}. This generator kept only the SDK name.
+	// Must match the InitFromRaw decode key.
+	o.specialization = property.NewByNameRef[element.Element]("Entity", "DomainModels$Entity")
 	o.specialization.Bind(&o.Base, 0)
 	o.widget = property.NewPart[element.Element]("Widget")
 	o.widget.Bind(&o.Base, 1)
@@ -31543,7 +31551,20 @@ func initPage() *Page {
 	o.style.Bind(&o.Base, 10)
 	o.appearance = property.NewPart[element.Element]("Appearance")
 	o.appearance.Bind(&o.Base, 11)
-	o.allowedRoles = property.NewByNameRefListV3[element.Element]("AllowedModuleRoles", "Security$ModuleRole") // STORAGE-NAME OVERRIDE: real BSON key is AllowedModuleRoles
+	// STORAGE-NAME OVERRIDE: real BSON key is AllowedModuleRoles.
+	// LIST-MARKER OVERRIDE: version 1, not 3. Studio Pro writes marker 1 on every
+	// page of a blank 11.13 app (16 of 16, empty lists included), and marker 3 with
+	// a NON-EMPTY role list is what makes `mx create-module-package` abort with
+	// "Unable to cast object of type 'Newtonsoft.Json.Linq.JValue' to type
+	// 'Newtonsoft.Json.Linq.JObject'" in MprDocumentHasher — the marker tells the
+	// reader what the entries are, and the entries here are qualified-name STRINGS.
+	// The empty case never crashed because there was nothing to mis-cast, which is
+	// why only a module with a page carrying a role hit it (upstream #931).
+	// The comment on NewByNameRefListV3 claims marker 1 raises CE0557: measured on
+	// 11.13 at security Off, Prototype AND Production, marker 1 with a role set is
+	// 0 errors and exports; marker 3 is 0 errors and crashes the exporter. The
+	// legacy engine (sdk/mpr/writer_security.go) has always written 1.
+	o.allowedRoles = property.NewByNameRefList[element.Element]("AllowedModuleRoles", "Security$ModuleRole")
 	o.allowedRoles.Bind(&o.Base, 12)
 	o.popupCloseAction = property.NewPrimitive[string]("PopupCloseAction", property.DecodeString)
 	o.popupCloseAction.Bind(&o.Base, 13)

@@ -348,6 +348,40 @@ actionbutton btnNew (caption: 'New', action: create_object Module.Product then s
 **Using `$currentObject`:**
 Use `$currentObject` inside DATAGRID, LISTVIEW, or GALLERY columns to reference the current row's object. This is typically used in columns with `ShowContentAs: customContent` for action buttons.
 
+### LISTVIEW Specialization Templates
+
+A List View over a **generalization** can render a different body per
+specialization. The template is identified by the entity it renders — it has no
+name, which is why the keyword takes `for` and a qualified entity:
+
+```sql
+listview vehicleListView (datasource: database from Pages.Vehicle) {
+  -- the default body: used for an object no template matches
+  dynamictext defaultVehicle (content: '{1} {2}', contentparams: [{1} = Brand, {2} = Model])
+
+  template for Pages.Bus {
+    dynamictext busLabel (content: 'Bus, capacity {1}', contentparams: [{1} = PassengerCapacity])
+  }
+  template for Pages.Truck {
+    dynamictext truckLabel (content: 'Truck, max load {1} kg', contentparams: [{1} = MaxLoadKg])
+  }
+}
+```
+
+Rules:
+
+- The entity must be the list view's entity **or a specialization of it**. A
+  template for an unrelated entity can never match, so it is refused.
+- **At most one template per entity.**
+- Templates keep their **source order** — Mendix stores and matches in that
+  order, so it is authored, not derived, and DESCRIBE emits them as stored.
+- Inside a template the context object **is the specialization**, so an
+  attribute only that specialization has resolves there (`PassengerCapacity` on
+  `Pages.Bus` above, which `Pages.Vehicle` does not have).
+
+Do not confuse this with a **Gallery's** `template <name>`, which is a named
+content slot, not a per-specialization body.
+
 ### LINKBUTTON Widget
 
 Similar to ActionButton but rendered as link:

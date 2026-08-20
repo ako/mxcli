@@ -123,6 +123,21 @@ type PageMutator interface {
 	// Columns are serialized as CustomWidgets$WidgetObject, not as form widgets.
 	InsertColumns(gridRef string, afterColumnRef string, position InsertPosition, columns []*DataGridColumnSpec) error
 
+	// InsertListViewTemplates appends specialization templates to a List View.
+	//
+	// Templates live in the list view's Templates array, NOT in its Widgets array
+	// (which holds the default body), and a Forms$ListViewTemplate is not a
+	// widget — the same reason DataGrid2 columns get their own method above.
+	// Routing them through InsertWidget would append a non-widget to the widget
+	// list, which Studio Pro cannot open.
+	InsertListViewTemplates(listViewRef string, templates []*pages.ListViewTemplate) error
+
+	// DropListViewTemplate removes the template rendering the given
+	// specialization from a List View. A template has no name, so it is addressed
+	// by entity. Returns an error naming the templates that ARE present when the
+	// entity does not match one — silently dropping nothing would read as success.
+	DropListViewTemplate(listViewRef string, specialization string) error
+
 	// ReplaceColumn replaces a single DataGrid2 column with new columns.
 	// Columns are serialized as CustomWidgets$WidgetObject, not as form widgets.
 	ReplaceColumn(gridRef string, columnRef string, columns []*DataGridColumnSpec) error

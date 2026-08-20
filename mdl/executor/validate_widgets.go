@@ -97,7 +97,7 @@ func ValidateWidgetPropertiesForStatement(stmt ast.Statement, registry *WidgetRe
 // validateWidgetTree recursively walks the AST widget tree and validates
 // pluggable widgets it encounters.
 func validateWidgetTree(widgets []*ast.WidgetV3, registry *WidgetRegistry, locationPrefix string) []linter.Violation {
-	return validateWidgetTreeIn(widgets, registry, locationPrefix, nil)
+	return validateWidgetTreeIn(widgets, registry, locationPrefix, nil, nil)
 }
 
 // validateWidgetTreeIn is validateWidgetTree with the *parent* widget's
@@ -108,7 +108,7 @@ func validateWidgetTree(widgets []*ast.WidgetV3, registry *WidgetRegistry, locat
 // must be exempt from the MDL-WIDGET07 "unrecognized property, silently dropped"
 // warning. When the parent mapping is known, the child's enumeration
 // sub-properties are validated against their member keys (MDL-WIDGET08). (9a)
-func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, locationPrefix string, parentObjectLists map[string]*ObjectListMapping) []linter.Violation {
+func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, locationPrefix string, parentObjectLists map[string]*ObjectListMapping, parent *ast.WidgetV3) []linter.Violation {
 	var out []linter.Violation
 	for _, w := range widgets {
 		if w == nil {
@@ -139,11 +139,14 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 		}
 		if mapping != nil {
 			out = append(out, validateObjectListItemEnums(w, mapping, locationPrefix)...)
+			// #931: a sub-property the widget's editorConfig hides must hold its
+			// default; a non-default value there is CE0463.
+			out = append(out, validateWidgetItemVisibility(parent, w, mapping, registry, locationPrefix)...)
 		}
 		// Reported once per grid, not once per column — see the rule's comment.
 		out = append(out, validateDataGrid2ColumnNames(w, locationPrefix)...)
 		if len(w.Children) > 0 {
-			out = append(out, validateWidgetTreeIn(w.Children, registry, locationPrefix, objectListMappingSet(def))...)
+			out = append(out, validateWidgetTreeIn(w.Children, registry, locationPrefix, objectListMappingSet(def), w)...)
 		}
 	}
 	out = append(out, validateConsecutiveDynamicText(widgets, locationPrefix)...)
@@ -247,9 +250,11 @@ func validateConsecutiveDynamicText(siblings []*ast.WidgetV3, locationPrefix str
 	return nil
 }
 
-// validateWidgetVisibility warns (MDL-WIDGET10) when a property the user set on a
-// pluggable widget is hidden under that widget's current configuration — the
-// widget's editorConfig.js suppresses it, so Studio Pro ignores the written value.
+// validateWidgetVisibility flags (MDL-WIDGET10) a property the user set on a
+// pluggable widget that is hidden under that widget's current configuration — the
+// widget's editorConfig.js suppresses it. A value equal to the property's default
+// is merely ignored (warning); a non-default one is CE0463 and fails the build
+// (error) — see hiddenPropertySeverity.
 // Rules come from the widget's .def.json (propertyVisibility); for built-in
 // widgets whose def carries none they are lifted on the fly from the installed
 // .mpk's editorConfig.js (#574). Conservative by design: it only warns when the
@@ -260,18 +265,18 @@ func validateWidgetVisibility(w *ast.WidgetV3, registry *WidgetRegistry, locatio
 	if def == nil {
 		return nil
 	}
-	rules := def.PropertyVisibility
-	if len(rules) == 0 && registry != nil && registry.projectPath != "" {
-		rules = resolveWidgetVisibilityRules(registry.projectPath, def.WidgetID)
-	}
+	rules := visibilityRulesFor(def, registry)
 	if len(rules) == 0 {
 		return nil
 	}
 	values, explicit := widgetValueMap(w, def)
+	defaults := widgetPropertyDefaults(registryProjectPath(registry), def.WidgetID)
 
 	var out []linter.Violation
 	for _, rule := range rules {
-		if rule.HiddenWhen == nil {
+		// A nested rule is about a property of an object-list ITEM, not of the
+		// widget — validateWidgetItemVisibility evaluates those, against the item.
+		if rule.Nested() || rule.HiddenWhen == nil {
 			continue
 		}
 		if !explicit[strings.ToLower(rule.PropertyKey)] {
@@ -284,15 +289,9 @@ func validateWidgetVisibility(w *ast.WidgetV3, registry *WidgetRegistry, locatio
 		if !rule.HiddenWhen.Hidden(map[string]string{rule.HiddenWhen.PropertyKey: condVal}) {
 			continue
 		}
-		out = append(out, linter.Violation{
-			RuleID:   "MDL-WIDGET10",
-			Severity: linter.SeverityWarning,
-			Message: fmt.Sprintf(
-				"%s: widget `%s` (%s) property `%s` is hidden when `%s` %s — the value will be ignored",
-				locationPrefix, w.Name, def.MDLName, rule.PropertyKey,
-				rule.HiddenWhen.PropertyKey, visibilityCondWord(rule.HiddenWhen),
-			),
-		})
+		out = append(out, hiddenPropertyViolation(locationPrefix, w.Name, def.MDLName, "", rule,
+			values[strings.ToLower(rule.PropertyKey)],
+			declaredDefault(defaults, def.PropertyMappings, nil, "", rule.PropertyKey)))
 	}
 	return out
 }

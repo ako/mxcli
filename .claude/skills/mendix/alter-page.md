@@ -55,6 +55,46 @@ For changes that should be applied across **many pages** (e.g., "add `Class='car
 
 ## Operations
 
+### List View Specialization Templates
+
+A List View template has no name, so it cannot be reached by a widget ref like
+every other target. Adding one reuses `INSERT INTO` with the same
+`template for` block `create page` uses — a template has one spelling
+everywhere. Removing one has its own form:
+
+```sql
+alter page Pages.Vehicle_Overview {
+  insert into vehicleListView {
+    template for Pages.Motorcycle {
+      dynamictext mcLabel (content: 'Motorcycle {1}', contentparams: [{1} = Brand])
+    }
+  };
+  drop template for Pages.SUV in vehicleListView
+};
+```
+
+Naming the list view in the `drop` is required, not optional: one page can hold
+two list views with a template for the same entity.
+
+Most template edits need none of this. The widgets **inside** a template are
+ordinary named widgets, so `set content = '…' on busLabel` and
+`insert after busLabel { … }` already work and land in the right template. To
+replace a whole template, `drop` it and `insert` the new one in the same block —
+operations apply in order.
+
+Refused, each naming the problem:
+
+- `insert before` / `insert after` a template — templates are not siblings of the
+  widgets in the list view's body, so only `insert into` makes sense.
+- mixing `template for …` blocks with ordinary widgets in one `insert` — they go
+  to different places (the Templates array and the default body). Use two inserts.
+- a template for an entity that is not the list view's entity or a specialization
+  of it — it could never match an object the list view shows.
+- a second template for an entity that already has one.
+- `drop template for` an entity with no template — the error names the ones that
+  are there, because dropping nothing and reporting success is how a typo becomes
+  a silent no-op.
+
 ### SET - Modify Widget Properties
 
 ```sql

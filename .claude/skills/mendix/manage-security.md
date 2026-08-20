@@ -38,7 +38,8 @@ show demo users;
 -- Access on specific elements
 show access on microflow MyModule.ProcessOrder;
 show access on page MyModule.CustomerOverview;
-show access on MyModule.Customer;
+show access on entity MyModule.Customer;
+show access on MyModule.Customer;        -- a bare name means the entity
 
 -- Full security matrix
 show security matrix;

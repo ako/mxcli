@@ -22,6 +22,9 @@ func (b *Builder) ExitCreateScheduledEventStatement(ctx *parser.CreateScheduledE
 		Name:          buildQualifiedName(ctx.QualifiedName()),
 		Documentation: findDocCommentText(ctx),
 	}
+	if lit := ctx.STRING_LITERAL(); lit != nil {
+		stmt.Folder = unquoteString(lit.GetText())
+	}
 	if createStmt := findParentCreateStatement(ctx); createStmt != nil {
 		if createStmt.OR() != nil && (createStmt.MODIFY() != nil || createStmt.REPLACE() != nil) {
 			stmt.CreateOrModify = true

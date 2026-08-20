@@ -1579,10 +1579,10 @@ func TestTraverseFlow_InheritanceSplitOmitsEmptyElse(t *testing.T) {
 		return strings.Join(lines, "\n")
 	}
 
-	if out := run(true); strings.Contains(out, "else") {
-		t.Errorf("DESCRIBE invented an `else` for the (empty) flow with no body:\n%s", out)
+	if out := run(true); strings.Contains(out, "(empty)") {
+		t.Errorf("DESCRIBE invented an empty branch for the (empty) flow with no body:\n%s", out)
 	}
-	if out := run(false); !strings.Contains(out, "else") {
-		t.Errorf("an else WITH a body must still render:\n%s", out)
+	if out := run(false); !strings.Contains(out, "when (empty) then") {
+		t.Errorf("an (empty) branch WITH a body must still render:\n%s", out)
 	}
 }

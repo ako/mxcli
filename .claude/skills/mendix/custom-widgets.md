@@ -89,6 +89,11 @@ pluggablewidget 'com.mendix.widget.web.barchart.BarChart' chart1 {
 }
 ```
 
+A series datasource takes any of the usual kinds — `database from …`,
+`microflow …`, `nanoflow …`, `$Param`, `selection …` — not just `database`.
+(Before #941 `describe page` rendered every series datasource as `database
+from`, so a microflow-backed series described back as a missing entity.)
+
 **Pie / HeatMap bind at the WIDGET level** (no series block). Both need `DataSource:`
 + `ValueAttribute:`; Pie also needs a required `SeriesName:`; HeatMap adds `scalecolor` items:
 

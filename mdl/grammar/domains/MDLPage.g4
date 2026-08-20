@@ -305,7 +305,17 @@ blockOverride
 // after a reserved keyword (e.g. "List", "Column") can be expressed. DESCRIBE
 // emits the quoted form for such names so its output re-parses. See issue #619.
 widgetV3
-    : widgetTypeV3 (IDENTIFIER | QUOTED_IDENTIFIER | keyword) widgetPropertiesV3? widgetBodyV3?
+    // A List View specialization template: one body per specialization of the
+    // list view's entity. It carries an entity, not a name — Studio Pro stores
+    // Forms$ListViewTemplate with exactly {Entity, Widgets}.
+    //
+    // FIRST alternative on purpose. FOR is in the `keyword` rule, so without the
+    // ordering `template for Pages.Bus { }` could be read as a TEMPLATE widget
+    // named "for". A Gallery content slot named `for` must now be quoted
+    // (`template "for" { }`), the same escape hatch reserved names already use
+    // (issue #619).
+    : TEMPLATE FOR qualifiedName widgetBodyV3
+    | widgetTypeV3 (IDENTIFIER | QUOTED_IDENTIFIER | keyword) widgetPropertiesV3? widgetBodyV3?
     | PLUGGABLEWIDGET STRING_LITERAL (IDENTIFIER | QUOTED_IDENTIFIER | keyword) widgetPropertiesV3? widgetBodyV3?  // PLUGGABLEWIDGET 'widget.id' name
     | CUSTOMWIDGET STRING_LITERAL (IDENTIFIER | QUOTED_IDENTIFIER | keyword) widgetPropertiesV3? widgetBodyV3?     // CUSTOMWIDGET 'widget.id' name (legacy)
     ;

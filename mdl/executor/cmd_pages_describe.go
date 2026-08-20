@@ -506,6 +506,24 @@ type rawDataSource struct {
 	XPathConstraint string          // XPath constraint (WHERE clause)
 	SortColumns     []rawSortColumn // Multiple sort columns
 	ContextVariable string          // association source: context variable name (empty → $currentObject)
+	// Args carries a flow datasource's argument bindings, in stored order. A
+	// microflow used as a datasource needs an argument for every parameter,
+	// exactly as a call action does (#835) — describing it without them yields
+	// MDL that rebuilds into CE1571 (mxcli-formula1 §57.2).
+	Args []rawDataSourceArg
+	// Unsupported carries the stored $Type of a datasource that has no MDL
+	// spelling. Set instead of guessing a Type: describe reports it as a
+	// comment, so the binding is visible in the output without producing a
+	// statement that cannot be re-executed (#941).
+	Unsupported string
+}
+
+// rawDataSourceArg is one argument bound to a flow datasource's parameter.
+// Name is the bare parameter name; storage qualifies it with the flow it
+// belongs to, which MDL does not repeat.
+type rawDataSourceArg struct {
+	Name  string
+	Value string
 }
 
 // associationSourcePath reconstructs the association navigation of a
@@ -615,6 +633,11 @@ type rawWidget struct {
 	// TabControl parsing — preserves the original tab page name/caption so
 	// DESCRIBE output shows which tab each nested widget belongs to).
 	TabCaption string
+	// Specialization is the entity a List View template renders. Set only on the
+	// synthetic wrappers parseListViewContent emits for Forms$ListViewTemplate,
+	// which is the same shape as TabCaption above: a container with no name, whose
+	// identity is a single field DESCRIBE has to put back.
+	Specialization string
 	// Conditional visibility/editability
 	VisibleIf  string // Expression from ConditionalVisibilitySettings
 	EditableIf string // Expression from ConditionalEditabilitySettings

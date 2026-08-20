@@ -144,7 +144,7 @@ create constant MyModule.EnableLogging type boolean default true;
 |-----------|--------|-------|
 | Show queues | `show queues [in module];` (`list queues` too) | Parallelism + cluster-wide flag |
 | Describe queue | `describe queue Module.Name;` | Re-executable MDL |
-| Create queue | `create [or modify] queue Module.Name ( Parallelism: 3, ClusterWide: true );` | Body optional; defaults `1` / `false` |
+| Create queue | `create [or modify] queue Module.Name [folder 'path'] ( Parallelism: 3, ClusterWide: true );` | Body optional; defaults `1` / `false` |
 | Drop queue | `drop queue Module.Name;` | |
 
 `Parallelism` is an **expression**, not a number — Mendix stores it as a string
@@ -174,7 +174,7 @@ Named patterns, shared by attribute validation rules.
 |-----------|--------|-------|
 | Show regular expressions | `show regular expressions [in module];` (`list` too) | Pattern + documentation |
 | Describe regular expression | `describe regular expression Module.Name;` | Re-executable MDL |
-| Create regular expression | `create [or modify] regular expression Module.Name ( Expression: '<pattern>' );` | `Expression` required |
+| Create regular expression | `create [or modify] regular expression Module.Name [folder 'path'] ( Expression: '<pattern>' );` | `Expression` required |
 | Drop regular expression | `drop regular expression Module.Name;` | |
 
 A regex is a **document**, not a string on a rule: Mendix stores a validation
@@ -249,7 +249,7 @@ Mendix's cron: run a microflow on a repeating schedule.
 |-----------|--------|-------|
 | Show scheduled events | `show scheduled events [in module];` (`list` too) | Repeat, microflow, enabled |
 | Describe scheduled event | `describe scheduled event Module.Name;` | Re-executable MDL |
-| Create scheduled event | `create [or modify] scheduled event Module.Name ( Microflow: ..., Repeat: ..., ... );` | |
+| Create scheduled event | `create [or modify] scheduled event Module.Name [folder 'path'] ( Microflow: ..., Repeat: ..., ... );` | |
 | Drop scheduled event | `drop scheduled event Module.Name;` | |
 
 `Microflow` and `Repeat` are always required. Each repeat takes **only** its own
@@ -482,7 +482,7 @@ it is for pages.
 | Free annotation | `@annotation 'text'` before `@position(...)` | Free-floating visual note preserved by order |
 | IF | `if condition then ... [else ...] end if;` | |
 | Enum split | `case $Var when Value then ... end case;` | Enumeration decision branches. Bare enum values (never quoted or qualified), one branch per value **including `(empty)`** (MDL056), no `else` (MDL008), no `AS` alias |
-| Type split | `split type $Var case Module.Entity ... end split;` | Runtime specialization branches |
+| Type split | `split type $Var when Module.Entity then ... when (empty) then ... end split;` | Runtime specialization branches. Same `when ... then` shape as the enum split. Needs a branch per subtype **and** the base entity (CE0090); `when (empty) then` is the **null-object** flow, not a default, and cannot be omitted (CE0089). Legacy `case Module.Entity` / `else` still parse (MDL065 warns) |
 | Cast | `cast $SpecificVar;` | Downcast inside a type split branch |
 | LOOP | `loop $item in $list begin ... end loop;` | FOR EACH over list. No `return` inside — an End event cannot sit in a loop (CE0068 / MDL062); use `break` and return after the loop |
 | WHILE | `while condition begin ... end while;` | Condition-based loop |
@@ -512,7 +512,10 @@ it is for pages.
 | Page folder | `folder: 'path'` (in properties) | `create page ... (folder: 'pages/Detail') { ... }` |
 | Drop folder | `drop folder 'path' in module;` | Folder must be empty |
 | Move folder | `move folder Module.FolderName to folder 'path';` | Target folders auto-created |
-| Move to folder | `move page\|microflow\|snippet\|nanoflow\|enumeration Module.Name to folder 'path';` | Folders created automatically |
+| Move to folder | `move <doctype> Module.Name to folder 'path';` | Folders created automatically. Any top-level doctype, spelled as `describe` spells it |
+| Move a mapping / structure | `move import mapping\|export mapping\|json structure Module.Name to folder 'path';` | |
+| Place while creating | `create <doctype> Module.Name folder 'path' ...` | Every doctype. Pages/snippets use `folder: 'path'` as a property; microflows/nanoflows a keyword before `begin` |
+| Place an existing document | `create or modify ... folder 'path' ...` | Moves it; omitting the clause leaves placement alone |
 | Move to module root | `move page Module.Name to module;` | Removes from folder |
 | Move across modules | `move page Old.Name to NewModule;` | **Breaks by-name references** — use `show impact of` first |
 | Move to folder in other module | `move page Old.Name to folder 'path' in NewModule;` | |
@@ -555,7 +558,7 @@ Nested folders use `/` separator: `'Parent/Child/Grandchild'`. Missing folders a
 |-----------|--------|-------|
 | Show workflows | `show workflows [in module];` | List all or filter by module |
 | Describe workflow | `describe workflow Module.Name;` | Full MDL output |
-| Create workflow | `create [or modify] workflow Module.Name parameter $Ctx: Module.Entity begin ... end workflow;` | See activity types below |
+| Create workflow | `create [or modify] workflow Module.Name [folder 'path'] parameter $Ctx: Module.Entity begin ... end workflow;` | See activity types below |
 | Drop workflow | `drop workflow Module.Name;` | |
 
 **Workflow Activity Types:**
@@ -814,7 +817,7 @@ Respond in {{Language}}.$$,
 |-----------|--------|-------|
 | Show collections | `show image collection [in module];` | List all or filter by module |
 | Describe collection | `describe image collection Module.Name;` | Full MDL output with embedded images |
-| Create collection | `create image collection Module.Name [export level 'Hidden'\|'Public'] [comment 'text'] [(image Name from file 'path', ...)];` | With or without images |
+| Create collection | `create image collection Module.Name [folder 'path'] [export level 'Hidden'\|'Public'] [comment 'text'] [(image Name from file 'path', ...)];` | With or without images |
 | Create or modify | `create or modify image collection Module.Name [...];` | Preserves UUID — preferred for AI agents |
 | Drop collection | `drop image collection Module.Name;` | Removes collection and all embedded images |
 
@@ -993,6 +996,7 @@ source json '{"latitude": 51.9, "current": {"temp": 12.8}}'
 | Describe mapping | `describe import mapping Module.Name;` | Re-executable CREATE statement |
 | Create mapping | See below | Assignment syntax: `attr = jsonField`, or `attr = a/b/c` to reach a nested leaf with **no entity per level** — the shape Studio Pro produces. The path may not cross a `0..*` element (CE0256) |
 | Create or modify | `create or modify import mapping Module.Name ...;` | Updates existing mapping, preserves UUID |
+| Place in a folder | `create [or modify] import mapping Module.Name folder 'path' ...;` | Clause goes after the name. On `or modify` it **moves** the mapping; omitting it leaves placement alone |
 | Drop mapping | `drop import mapping Module.Name;` | |
 
 ```sql
@@ -1025,6 +1029,7 @@ create Module.OrderResponse_CustomerInfo/Module.CustomerInfo = customer {
 | Describe mapping | `describe export mapping Module.Name;` | Re-executable CREATE statement |
 | Create mapping | See below | Assignment syntax: `jsonField = attr`. **No nested `a/b/c` form**: an export has to produce the intermediate node, so Mendix rejects a collapsed member with CE5015 — give it its own element |
 | Create or modify | `create or modify export mapping Module.Name ...;` | Updates existing mapping, preserves UUID |
+| Place in a folder | `create [or modify] export mapping Module.Name folder 'path' ...;` | Clause goes after the name. On `or modify` it **moves** the mapping; omitting it leaves placement alone |
 | Drop mapping | `drop export mapping Module.Name;` | |
 
 ```sql
@@ -1054,7 +1059,7 @@ Module.OrderResponse_CustomerInfo/Module.CustomerInfo as customer {
 |-----------|--------|-------|
 | Show Java actions | `show java actions [in module];` | List all or filtered by module |
 | Describe Java action | `describe java action Module.Name;` | Full MDL output with signature |
-| Create Java action | `create [or modify] java action Module.Name(params) returns type as $$ ... $$;` | OR MODIFY updates signature/body, preserves UUID |
+| Create Java action | `create [or modify] java action Module.Name [folder 'path'](params) returns type as $$ ... $$;` | OR MODIFY updates signature/body, preserves UUID |
 | Create with type params | `create java action Module.Name(EntityType: entity <pEntity>, Obj: pEntity) ...;` | Generic type parameters |
 | Create exposed action | `... exposed as 'caption' in 'Category' as $$ ... $$;` | Toolbox-visible in Studio Pro |
 | Rename Java action | `rename java action Module.Old to New;` | Renames BSON unit and .java source file |
@@ -1064,7 +1069,7 @@ Module.OrderResponse_CustomerInfo/Module.CustomerInfo as customer {
 | Empty argument | `call java action Module.Name(Param = empty);` | Unbound code-action parameter preserved as empty mapping |
 | Show JavaScript actions | `show javascript actions [in module];` | List all or filtered by module |
 | Describe JavaScript action | `describe javascript action Module.Name;` | Re-executable MDL with signature + body |
-| Create JavaScript action | `create [or modify] javascript action Module.Name(params) returns type [platform Web] as $$ ... $$;` | Writes the unit + `javascriptsource/<Module>/actions/<Name>.js`; OR MODIFY preserves UUID |
+| Create JavaScript action | `create [or modify] javascript action Module.Name [folder 'path'](params) returns type [platform Web] as $$ ... $$;` | Writes the unit + `javascriptsource/<Module>/actions/<Name>.js`; OR MODIFY preserves UUID |
 | Create exposed/native | `... exposed as 'caption' in 'Category' platform Native as $$ ... $$;` | `platform` is Web (default), Native, Hybrid, or All |
 | Drop JavaScript action | `drop javascript action Module.Name;` | Deletes MPR unit and .js source file |
 | Call from nanoflow | `$Result = call javascript action Module.Name(Param = value);` | Inside a nanoflow |
@@ -1124,10 +1129,10 @@ MDL uses explicit property declarations for pages:
 | Describe snippet | `describe snippet Module.Name;` | Round-trippable MDL output |
 | List building blocks | `show building blocks [in module];` | Read-only; cannot be authored via MDL |
 | Describe building block | `describe building block Module.Name;` | Informational (header comment + widget tree), not a `create` statement |
-| Create menu | `create [or modify] menu Module.Name ( <items> );` | Standalone `Menus$MenuDocument`. Full replacement: the item list is the document's complete contents |
+| Create menu | `create [or modify] menu Module.Name [folder 'path'] ( <items> );` | Standalone `Menus$MenuDocument`. Full replacement: the item list is the document's complete contents |
 | Describe menu | `describe menu Module.Name;` | Round-trippable MDL. Not the navigation-profile menu — see `show navigation menu` |
 | Drop menu | `drop menu Module.Name;` | |
-| Create menu | `create [or modify] menu Module.Name ( <items> );` | Standalone `Menus$MenuDocument`. Full replacement: the item list is the document's complete contents |
+| Create menu | `create [or modify] menu Module.Name [folder 'path'] ( <items> );` | Standalone `Menus$MenuDocument`. Full replacement: the item list is the document's complete contents |
 | Describe menu | `describe menu Module.Name;` | Round-trippable MDL. Not the navigation-profile menu — see `show navigation menu` |
 | Drop menu | `drop menu Module.Name;` | |
 
@@ -1185,6 +1190,50 @@ create page MyModule.Customer_Edit
 - Layout: `layoutgrid`, `row`, `column`, `container`, `customcontainer`
 - Input: `textbox`, `textarea`, `checkbox`, `radiobuttons`, `datepicker`, `combobox`
 - Display: `dynamictext`, `datagrid`, `gallery`, `listview`, `image`, `staticimage`, `dynamicimage`
+
+### List View specialization templates
+
+A List View over a generalization can render a different body per specialization.
+The template is identified by the **entity** it renders — it has no name:
+
+```sql
+listview vehicleListView (DataSource: database from Pages.Vehicle) {
+  dynamictext defaultVehicle (Content: '{1}', ContentParams: [{1} = Brand])
+
+  template for Pages.Bus {
+    dynamictext busLabel (Content: 'Bus, capacity {1}', ContentParams: [{1} = PassengerCapacity])
+  }
+  template for Pages.Truck {
+    dynamictext truckLabel (Content: 'Truck, max load {1} kg', ContentParams: [{1} = MaxLoadKg])
+  }
+}
+```
+
+Widgets in the list view body are the **default** rendering, used for an object no
+template matches. Templates keep their source order — Mendix stores and matches in
+that order, so it is authored, not derived.
+
+`template for Module.Entity` is not the same statement as a Gallery's
+`template <name>`, which is a named content slot. The entity must be the list
+view's entity or a specialization of it, and at most one template per entity is
+allowed. Inside a template the context object is the specialization, so an
+attribute only that specialization has still resolves.
+
+Editing them with `alter page` — adding reuses `insert into` with the same block;
+removing needs its own form, because a template has no name:
+
+```sql
+alter page Pages.Vehicle_Overview {
+  insert into vehicleListView {
+    template for Pages.Motorcycle { dynamictext mcLabel (Content: 'M') }
+  };
+  drop template for Pages.SUV in vehicleListView
+};
+```
+
+Naming the list view in the `drop` is required: one page can hold two list views
+with a template for the same entity. Widgets inside a template are ordinary named
+widgets, so `set … on busLabel` and `insert after busLabel { … }` need nothing new.
 - Actions: `actionbutton`, `linkbutton`, `navigationlist`
 - Structure: `dataview`, `header`, `footer`, `controlbar`, `snippetcall`
 

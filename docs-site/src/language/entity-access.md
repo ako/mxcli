@@ -138,7 +138,8 @@ A full `REVOKE` (without rights list) removes the entire access rule. A partial 
 ## Viewing Entity Access
 
 ```sql
--- See which roles have access to an entity
+-- See which roles have access to an entity (the two spellings are synonyms)
+SHOW ACCESS ON ENTITY Shop.Customer;
 SHOW ACCESS ON Shop.Customer;
 
 -- Full matrix across a module

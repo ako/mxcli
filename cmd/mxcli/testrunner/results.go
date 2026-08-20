@@ -164,7 +164,17 @@ func (sr *SuiteResult) AllPassed() bool {
 
 // ParseLogResults parses structured MXTEST: log lines from runtime output
 // and matches them to the test suite's test cases.
-func ParseLogResults(logReader io.Reader, suite *TestSuite) *SuiteResult {
+// ParseLogResults assembles a suite result from the runtime log the
+// after-startup runner leaves behind (the Docker path, and --local
+// --legacy-runner).
+//
+// requireAssertions is threaded in rather than applied by the caller afterwards
+// because the pre-run verdicts have to be decided in the same place as the
+// log-derived ones: a test that is an ERROR before it runs must not also pick up
+// a PASS from the log. It reached this function late — it was honoured only by
+// the endpoint runner, so `mxcli test -p app.mpr --require-assertions` without
+// --local accepted the flag and did nothing (issue #926).
+func ParseLogResults(logReader io.Reader, suite *TestSuite, requireAssertions bool) *SuiteResult {
 	result := &SuiteResult{
 		Name:    suite.Name,
 		Started: time.Now(),
@@ -282,10 +292,11 @@ func ParseLogResults(logReader io.Reader, suite *TestSuite) *SuiteResult {
 
 	// Collect results in test order
 	for _, tc := range suite.Tests {
-		// A test whose @expect did not compile was never generated, so the log
-		// has nothing to say about it. Report the parse error rather than the
-		// generic "not executed".
-		if res, bad := assertionErrorResult(tc); bad {
+		// Verdicts that are settled before the test runs. A test whose @expect
+		// did not compile was never generated, so the log has nothing to say
+		// about it; report the parse error rather than the generic "not
+		// executed". Same for a vacuous test under --require-assertions.
+		if res, bad := preRunResult(tc, requireAssertions); bad {
 			result.Tests = append(result.Tests, res)
 			continue
 		}
@@ -420,4 +431,20 @@ func vacuousResult(tc TestCase, require bool) (TestResult, bool) {
 	res.Message = "the test has no assertions — it can only report that the body did not throw " +
 		"(add an @expect, or drop --require-assertions)"
 	return res, true
+}
+
+// preRunResult returns the verdict a test earns before it is executed at all —
+// the ones that depend only on the parsed test case, never on the run.
+//
+// Both result-assembly loops go through here, and TestPreRunVerdictsHaveOneCallSite
+// pins that they are its only callers. That is the actual fix for #926: the
+// helpers below were correct and unit-tested throughout, but only the endpoint
+// runner called vacuousResult, so --require-assertions was silently inert on the
+// log runner. A verdict reachable from one runner and not the other is the
+// defect; a single call site is what prevents the next one.
+func preRunResult(tc TestCase, requireAssertions bool) (TestResult, bool) {
+	if res, bad := assertionErrorResult(tc); bad {
+		return res, true
+	}
+	return vacuousResult(tc, requireAssertions)
 }

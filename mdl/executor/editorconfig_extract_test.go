@@ -102,16 +102,33 @@ func TestExtractVisibility_ScopedAlias(t *testing.T) {
 	}
 }
 
-// TestExtractVisibility_SkipsNested confirms object-list-nested hides
-// (hidePropertyIn(...,"columns",n,"key")) are not lifted as top-level rules.
-func TestExtractVisibility_SkipsNested(t *testing.T) {
+// TestExtractVisibility_NestedIsScopedToItsList confirms an object-list-nested
+// hide (hidePropertyIn(...,"columns",n,"key")) is lifted as a NESTED rule and
+// never as a top-level one: `sortable` is a property of a column, not of the
+// grid, so a consumer evaluating it against the grid would read an absent key.
+//
+// The rules used to be skipped entirely (#574 Phase 1), which is what let an
+// Accordion group carry a value its widget hides all the way to a CE0463 that
+// only `mx create-module-package` reported (upstream #931).
+func TestExtractVisibility_NestedIsScopedToItsList(t *testing.T) {
 	js := `g=function(e,t){e.columns.forEach(function(r,n){e.columnsSortable||_.hidePropertyIn(t,e,"columns",n,"sortable")})}`
-	rules, stats := extractVisibilityRulesFromJS(js)
-	if findRule(rules, "sortable") != nil {
+	rules, _ := extractVisibilityRulesFromJS(js)
+	if findRule(rules, "sortable") != nil && findRule(rules, "sortable").ListPropertyKey == "" {
 		t.Error("nested column hide must not produce a top-level rule")
 	}
-	if stats.SkippedNested == 0 {
-		t.Error("expected the nested hide to be counted as skipped")
+	r := findRule(rules, "sortable")
+	if r == nil {
+		t.Fatalf("nested column hide not lifted at all; got %+v", rules)
+	}
+	if r.ListPropertyKey != "columns" {
+		t.Errorf("listPropertyKey = %q, want columns", r.ListPropertyKey)
+	}
+	if r.HiddenWhen == nil || r.HiddenWhen.PropertyKey != "columnsSortable" || r.HiddenWhen.Operator != "falsy" {
+		t.Errorf("condition = %+v, want columnsSortable falsy", r.HiddenWhen)
+	}
+	// `columnsSortable` is read off the GRID, so the condition stays widget-scoped.
+	if r.HiddenWhen.Scope != "" {
+		t.Errorf("scope = %q, want widget scope", r.HiddenWhen.Scope)
 	}
 }
 
