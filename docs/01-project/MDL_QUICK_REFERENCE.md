@@ -464,6 +464,7 @@ it is for pages.
 | REST call (string) | `$Var = rest call get '<url>' returns string;` | Body as string |
 | REST call (response) | `$Var = rest call get '<url>' returns response;` | `System.HttpResponse` object. There is no specialization form — Mendix does not allow HttpResponse to be specialized (CE1540) |
 | REST call (file document) | `$Var = rest call get '<url>' returns Module.MyFile;` | Stores the body in a file document. Must be a **specialization** of `System.FileDocument` — the base type is rejected as a return type (CE0362 / MDL064) |
+| REST call (binary body) | `rest call post '<url>' header 'ContentType' = 'application/pdf' body binary $Doc/Contents returns response;` | Uploads raw bytes (`Microflows$BinaryRequestHandling`). The expression is the FileDocument's **Contents member**, not the document. A consumed REST **client document** has no binary body — `Body: FILE FROM $Doc` there is refused as MDL-REST02 |
 | REST call (mapping single) | `$Var = rest call get '<url>' returns mapping Module.IMM as Module.Entity;` | Single object — Studio Pro emits `ForceSingleOccurrence=true` |
 | REST call (mapping list) | `$Var = rest call get '<url>' returns mapping Module.IMM as list of Module.Entity;` | List result |
 | REST call (none) | `rest call get '<url>' returns nothing;` | Discard response |

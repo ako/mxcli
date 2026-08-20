@@ -60,6 +60,41 @@ END;
 /
 ```
 
+## POST a Binary Body (File Upload)
+
+Mendix models a binary request body on the **REST CALL activity**, not on a
+consumed REST client document. The expression is the file document's `Contents`
+member, and the content type goes on a header.
+
+```sql
+CREATE MICROFLOW Integration.UploadDocument (
+  $Doc: Integration.UploadedFile
+)
+RETURNS Boolean AS $Ok
+BEGIN
+  DECLARE $Ok Boolean = false;
+  $Response = REST CALL POST 'https://api.example.com/documents'
+    HEADER 'ContentType' = 'application/pdf'
+    BODY BINARY $Doc/Contents
+    TIMEOUT 300
+    RETURNS response;
+  SET $Ok = $Response/StatusCode = 200;
+  RETURN $Ok;
+END;
+/
+```
+
+`RETURNS response` binds a `System.HttpResponse`, so the microflow's own return
+type must match what you do with it — returning `$Response` from a
+`RETURNS String` microflow is `CE0117` at the end event.
+
+`$Doc` must be a specialization of `System.FileDocument`.
+
+A consumed REST **client document** has no binary body — its three body types
+(`Rest$JsonBody`, `Rest$StringBody`, `Rest$ImplicitMappingBody`) are all textual
+— so `Body: file from $Doc` in a `CREATE REST CLIENT` operation is refused as
+**MDL-REST02**. Downloading is unaffected: `Response: file as $Doc` works.
+
 ## Basic Authentication
 
 ```sql

@@ -593,7 +593,8 @@ restCallAuthClause
 
 // BODY 'template' [WITH params] or BODY MAPPING Name FROM $var
 restCallBodyClause
-    : BODY STRING_LITERAL templateParams?                    // Custom body template
+    : BODY BINARY_TYPE expression                            // Binary body (a FileDocument's Contents)
+    | BODY STRING_LITERAL templateParams?                    // Custom body template
     | BODY expression templateParams?                        // Expression body
     | BODY MAPPING qualifiedName FROM VARIABLE               // Export mapping
     ;

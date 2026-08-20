@@ -1356,6 +1356,14 @@ func formatRestCallAction(ctx *ExecContext, a *microflows.RestCallAction) string
 					sb.WriteString(")")
 				}
 			}
+		case *microflows.BinaryRequestHandling:
+			// The expression is stored as source text (`$Doc/Contents`), so it is
+			// emitted verbatim — quoting it would make the round trip send the
+			// path as a string literal.
+			if rh.Expression != "" {
+				sb.WriteString("\n    body binary ")
+				sb.WriteString(rh.Expression)
+			}
 		case *microflows.MappingRequestHandling:
 			if rh.MappingID != "" {
 				sb.WriteString("\n    body mapping ")

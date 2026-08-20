@@ -107,6 +107,12 @@ func execCreateMicroflow(ctx *ExecContext, s *ast.CreateMicroflowStmt) error {
 		if err := checkNoQueuedCalls(ctx, existingID, qualifiedName, s); err != nil {
 			return err
 		}
+		// Same reasoning for a REST body the writer cannot express: the rebuild
+		// would drop it, DESCRIBE would not show it missing, and the app would
+		// still build.
+		if err := checkNoUnwritableRestBody(ctx, existingID, qualifiedName); err != nil {
+			return err
+		}
 	}
 	microflowID := model.ID(types.GenerateID())
 	if existingID != "" {

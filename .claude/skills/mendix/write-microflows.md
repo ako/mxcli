@@ -1383,6 +1383,17 @@ $response = rest call post 'https://api.example.com/items'
     returns string
     on error continue;
 
+-- POST a BINARY body (upload a file document's contents)
+-- The expression is the FileDocument's Contents MEMBER, not the document
+-- itself, and the content type goes on a header. A consumed REST CLIENT
+-- document has no binary body — `Body: file from $Doc` there is refused as
+-- MDL-REST02 — so binary uploads belong here.
+$response = rest call post 'https://api.example.com/upload'
+    header 'ContentType' = 'application/pdf'
+    body binary $Doc/Contents
+    timeout 300
+    returns response;
+
 -- GET with URL template parameters
 $response = rest call get 'https://api.example.com/users/{1}' with (
     {1} = toString($UserId)
