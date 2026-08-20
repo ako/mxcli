@@ -145,10 +145,25 @@ func init() {
 	})
 	codec.RegisterListMarker("Forms$TextBox", 2)
 	// Pluggable widget container: null visibility/editability slots; marker 2.
+	// LabelTemplate is null too — Studio Pro writes the key on every CustomWidget,
+	// mxcli omitted it. Measured by handing an mxcli-authored Accordion page to
+	// `mx update-widgets` and diffing the unit it wrote back (upstream #931).
 	codec.RegisterTypeDefaults("CustomWidgets$CustomWidget", codec.TypeDefaults{
-		NullFields: []string{"ConditionalVisibilitySettings", "ConditionalEditabilitySettings"},
+		NullFields: []string{
+			"ConditionalVisibilitySettings", "ConditionalEditabilitySettings",
+			"LabelTemplate",
+		},
 	})
 	codec.RegisterListMarker("CustomWidgets$CustomWidget", 2)
+	// Every Forms$Appearance carries a DesignProperties list, emitted as the empty
+	// typed-array marker [3] when the widget has no design properties. The codec
+	// omits an empty, never-appended PartList, so an mxcli-authored widget had no
+	// DesignProperties key at all — which is also what made ALTER STYLING's design
+	// property write a silent no-op (bsonnav.DSet cannot add an absent key).
+	// Same measurement as above (upstream #931).
+	codec.RegisterTypeDefaults("Forms$Appearance", codec.TypeDefaults{
+		MandatoryLists: []string{"DesignProperties"},
+	})
 	// RadioButtonGroup (the MDL `radiobuttons` widget): same null-slot set as TextBox.
 	codec.RegisterTypeDefaults("Forms$RadioButtonGroup", codec.TypeDefaults{
 		NullFields: []string{
