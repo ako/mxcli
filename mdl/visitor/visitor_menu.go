@@ -19,6 +19,9 @@ func (b *Builder) ExitCreateMenuStatement(ctx *parser.CreateMenuStatementContext
 	}
 
 	stmt := &ast.CreateMenuStmt{Name: buildQualifiedName(qn)}
+	if lit := ctx.STRING_LITERAL(); lit != nil {
+		stmt.Folder = unquoteString(lit.GetText())
+	}
 	for _, itemCtx := range ctx.AllNavMenuItemDef() {
 		stmt.Items = append(stmt.Items, buildNavMenuItemDef(itemCtx))
 	}

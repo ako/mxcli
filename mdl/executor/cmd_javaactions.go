@@ -92,6 +92,7 @@ func describeJavaAction(ctx *ExecContext, name ast.QualifiedName) error {
 	// Build CREATE JAVA ACTION statement
 	sb.WriteString("create java action ")
 	sb.WriteString(qualifiedName)
+	sb.WriteString(describeFolderClause(ctx, ja.ContainerID))
 	sb.WriteString("(")
 
 	// Parameters — one per line when descriptions are present
@@ -319,6 +320,7 @@ func execCreateJavaAction(ctx *ExecContext, s *ast.CreateJavaActionStmt) error {
 		return mdlerrors.NewBackend("list java actions", err)
 	}
 	var existingJAID model.ID
+	var existingContainer model.ID
 	// Target the live action and carry its exclusion forward (#914).
 	existingExcluded := false
 	if existing, ok := pickLive(jas,
@@ -332,6 +334,13 @@ func execCreateJavaAction(ctx *ExecContext, s *ast.CreateJavaActionStmt) error {
 		}
 		existingJAID = existing.ID
 		existingExcluded = existing.Excluded
+		existingContainer = existing.ContainerID
+	}
+
+	moduleID := containerID
+	containerID, err = containerForDocument(ctx, moduleID, s.Folder, existingContainer)
+	if err != nil {
+		return err
 	}
 
 	newID := model.ID(types.GenerateID())
@@ -431,6 +440,9 @@ func execCreateJavaAction(ctx *ExecContext, s *ast.CreateJavaActionStmt) error {
 	if existingJAID != "" {
 		if err := ctx.Backend.UpdateJavaAction(ja); err != nil {
 			return mdlerrors.NewBackend("update java action", err)
+		}
+		if _, err := applyDocumentFolder(ctx, ja.ID, existingContainer, containerID); err != nil {
+			return err
 		}
 	} else {
 		if err := ctx.Backend.CreateJavaAction(ja); err != nil {

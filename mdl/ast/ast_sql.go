@@ -104,6 +104,7 @@ type DatabaseQueryParamDef struct {
 
 // CreateDatabaseConnectionStmt represents: CREATE DATABASE CONNECTION Module.Name ...
 type CreateDatabaseConnectionStmt struct {
+	Folder                string // Folder path within module (empty = leave placement alone)
 	Name                  QualifiedName
 	DatabaseType          string // "PostgreSQL", "MSSQL", "Oracle"
 	ConnectionString      string // constant ref or string literal for connection string

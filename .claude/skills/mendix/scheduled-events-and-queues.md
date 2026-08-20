@@ -223,6 +223,20 @@ Core.userActionCall("Ops.RefreshData")
 
 Use `Core.microflowCall(...)` when the unit of work really is a microflow.
 
+## Placing Them in Folders
+
+Both take a `folder` clause on `create`, straight after the qualified name:
+
+```mdl
+create scheduled event Ops.SE_Nightly folder 'Private/Scheduled events'
+  ( Microflow: Ops.ACT_Nightly, Repeat: Day, StartDateTime: '2026-01-01T02:00:00Z' );
+
+create queue Ops.Q_Imports folder 'Private/Queues' ( Parallelism: 3 );
+```
+
+On `create or modify` the clause moves an existing document; omitting it leaves
+placement alone. See `organize-project.md`.
+
 ## Validation Checklist
 
 Before presenting a script:

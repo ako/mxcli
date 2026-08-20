@@ -32,7 +32,7 @@ func init() {
 			"create workflow", "new workflow", "define workflow",
 			"parameter", "overview page", "due date",
 		},
-		Syntax:  "CREATE [OR MODIFY] WORKFLOW Module.Name\n  PARAMETER $Context: Module.Entity\n  [OVERVIEW PAGE Module.OverviewPage]\n  [DUE DATE '<expression>']\nBEGIN\n  <activities>\nEND WORKFLOW;",
+		Syntax:  "CREATE [OR MODIFY] WORKFLOW Module.Name\n  [FOLDER 'path']\n  PARAMETER $Context: Module.Entity\n  [OVERVIEW PAGE Module.OverviewPage]\n  [DUE DATE '<expression>']\nBEGIN\n  <activities>\nEND WORKFLOW;",
 		Example: "CREATE WORKFLOW Module.ApprovalFlow\n  PARAMETER $Context: Module.Request\n  OVERVIEW PAGE Module.WF_Overview\nBEGIN\n  USER TASK ReviewTask 'Review the request'\n    PAGE Module.ReviewPage\n    OUTCOMES 'Approve' { } 'Reject' { };\nEND WORKFLOW;",
 		SeeAlso: []string{"workflow.user-task", "workflow.decision", "workflow.drop"},
 	})

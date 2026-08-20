@@ -13,6 +13,9 @@ func (b *Builder) ExitCreateImageCollectionStatement(ctx *parser.CreateImageColl
 		Name:        buildQualifiedName(ctx.QualifiedName()),
 		ExportLevel: "Hidden",
 	}
+	if lit := ctx.STRING_LITERAL(); lit != nil {
+		stmt.Folder = unquoteString(lit.GetText())
+	}
 
 	// Extract /** ... */ doc comment (same as other create statements)
 	stmt.Comment = findDocCommentText(ctx)

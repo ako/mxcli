@@ -12,6 +12,7 @@ options { tokenVocab = MDLLexer; }
 
 createDatabaseConnectionStatement
     : DATABASE CONNECTION qualifiedName
+      (FOLDER STRING_LITERAL)?
       databaseConnectionOption+
       (BEGIN databaseQuery* END)?
     ;

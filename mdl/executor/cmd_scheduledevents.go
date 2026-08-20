@@ -110,10 +110,17 @@ func execCreateScheduledEvent(ctx *ExecContext, s *ast.CreateScheduledEventStmt)
 	if err != nil {
 		return err
 	}
-	ev.ContainerID = module.ID
+	var existingContainer model.ID
+	if existing != nil {
+		existingContainer = existing.ContainerID
+	}
+	containerID, err := containerForDocument(ctx, module.ID, s.Folder, existingContainer)
+	if err != nil {
+		return err
+	}
+	ev.ContainerID = containerID
 	if existing != nil {
 		ev.ID = existing.ID
-		ev.ContainerID = existing.ContainerID
 		// Interval/IntervalType are legacy siblings of Schedule that Studio Pro
 		// writes but does not keep in sync, and MDL has no syntax for them.
 		// Carry the stored values so a modify does not invent new ones.
@@ -121,6 +128,9 @@ func execCreateScheduledEvent(ctx *ExecContext, s *ast.CreateScheduledEventStmt)
 		ev.IntervalType = existing.IntervalType
 		if err := ctx.Backend.UpdateScheduledEvent(ev); err != nil {
 			return mdlerrors.NewBackend("update scheduled event", err)
+		}
+		if _, err := applyDocumentFolder(ctx, ev.ID, existingContainer, containerID); err != nil {
+			return err
 		}
 		ctx.ReportMutation("Modified", "scheduled event: %s", s.Name.String())
 		return nil
@@ -517,7 +527,7 @@ func execDescribeScheduledEvent(ctx *ExecContext, s *ast.DescribeScheduledEventS
 	if ev.Documentation != "" {
 		fmt.Fprintf(ctx.Output, "/**\n * %s\n */\n", ev.Documentation)
 	}
-	fmt.Fprintf(ctx.Output, "create or modify scheduled event %s (\n", s.Name.String())
+	fmt.Fprintf(ctx.Output, "create or modify scheduled event %s%s (\n", s.Name.String(), describeFolderClause(ctx, ev.ContainerID))
 	fmt.Fprintf(ctx.Output, "  Microflow: %s,\n", ev.MicroflowID)
 	for _, line := range describeScheduleProperties(ev.Schedule) {
 		fmt.Fprintf(ctx.Output, "  %s,\n", line)

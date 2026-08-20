@@ -21,7 +21,7 @@ Everything mxcli can do, organized by use case.
 | Full-text search | `SEARCH 'keyword'` | Across all strings and source |
 | Show languages | `LIST LANGUAGES` | All languages in the project |
 | Show project security | `LIST PROJECT SECURITY` | Security overview |
-| Show access rules | `LIST ACCESS ON Module.Entity` | Entity/microflow/page access |
+| Show access rules | `LIST ACCESS ON [ENTITY] Module.Name` | Entity/microflow/page/nanoflow access |
 | Show settings | `LIST SETTINGS` | Project-level settings |
 
 ## Write: Create and modify documents

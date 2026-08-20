@@ -3,6 +3,7 @@
 package visitor
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -962,13 +963,15 @@ func (b *Builder) ExitMoveStatement(ctx *parser.MoveStatementContext) {
 		return
 	}
 
-	// Handle MOVE FOLDER separately — different AST type
-	// MOVE FOLDER is identified by having FOLDER as the first token after MOVE (no document type keyword)
-	if len(ctx.AllFOLDER()) > 0 && ctx.PAGE() == nil && ctx.MICROFLOW() == nil &&
-		ctx.SNIPPET() == nil && ctx.NANOFLOW() == nil && ctx.ENTITY() == nil &&
-		ctx.ENUMERATION() == nil && ctx.CONSTANT() == nil && ctx.DATABASE() == nil &&
-		ctx.JAVA() == nil && ctx.ODATA() == nil {
-		b.exitMoveFolderStatement(ctx, names)
+	// MOVE FOLDER is a different AST type, and is told apart by the ABSENCE of a
+	// doctype. That is one check because moveDocumentType is a grammar rule: the
+	// discriminator used to be a hand-written negation of every doctype keyword,
+	// so every doctype added to MOVE had to be added here too or a folder move
+	// silently started parsing as a document move (mxcli-formula1 #32).
+	if ctx.MoveDocumentType() == nil && ctx.ENTITY() == nil {
+		if len(ctx.AllFOLDER()) > 0 {
+			b.exitMoveFolderStatement(ctx, names)
+		}
 		return
 	}
 
@@ -976,27 +979,18 @@ func (b *Builder) ExitMoveStatement(ctx *parser.MoveStatementContext) {
 		Name: buildQualifiedName(names[0]),
 	}
 
-	// Determine document type
-	if ctx.PAGE() != nil {
-		stmt.DocumentType = ast.DocumentTypePage
-	} else if ctx.MICROFLOW() != nil {
-		stmt.DocumentType = ast.DocumentTypeMicroflow
-	} else if ctx.SNIPPET() != nil {
-		stmt.DocumentType = ast.DocumentTypeSnippet
-	} else if ctx.NANOFLOW() != nil {
-		stmt.DocumentType = ast.DocumentTypeNanoflow
-	} else if ctx.ENTITY() != nil {
+	if ctx.ENTITY() != nil {
 		stmt.DocumentType = ast.DocumentTypeEntity
-	} else if ctx.ENUMERATION() != nil {
-		stmt.DocumentType = ast.DocumentTypeEnumeration
-	} else if ctx.CONSTANT() != nil {
-		stmt.DocumentType = ast.DocumentTypeConstant
-	} else if ctx.DATABASE() != nil {
-		stmt.DocumentType = ast.DocumentTypeDatabaseConnection
-	} else if ctx.JAVA() != nil {
-		stmt.DocumentType = ast.DocumentTypeJavaAction
-	} else if ctx.ODATA() != nil {
-		stmt.DocumentType = ast.DocumentTypeODataService
+	} else {
+		docType, ok := moveDocumentTypeFor(ctx.MoveDocumentType().GetText())
+		if !ok {
+			// A doctype in the grammar with no AST constant would otherwise move
+			// whatever the name resolved to under an empty type. Refuse loudly:
+			// the grammar and this table are meant to be added to together.
+			b.addError(fmt.Errorf("MOVE does not support document type %q", ctx.MoveDocumentType().GetText()))
+			return
+		}
+		stmt.DocumentType = docType
 	}
 
 	// Parse folder path if specified
@@ -1049,3 +1043,14 @@ func (b *Builder) exitMoveFolderStatement(ctx *parser.MoveStatementContext, name
 // ----------------------------------------------------------------------------
 
 // ExitCreateAssociationStatement is called when exiting the createAssociationStatement production.
+
+// moveDocumentTypeFor maps a moveDocumentType rule's text to its AST constant.
+//
+// The table lives in the ast package because the executor reads it too: it has
+// to decide whether the document it found is the kind the statement named, and
+// a second copy of the doctype list is exactly how the MOVE FOLDER
+// discriminator drifted out of step with the grammar before.
+func moveDocumentTypeFor(ruleText string) (ast.DocumentType, bool) {
+	docType, ok := ast.MoveDocumentTypeByKeyword[strings.ToUpper(ruleText)]
+	return docType, ok
+}
