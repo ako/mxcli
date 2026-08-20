@@ -43,9 +43,15 @@ func NewByNameRefList[T element.Element](name, targetType string) *ByNameRefList
 }
 
 // NewByNameRefListV3 creates a ByNameRefList with BSON version marker int32(3).
-// Required for AllowedRoles on Forms$Page (document-level access control).
-// Mendix Studio Pro uses version 3 for page AllowedRoles; using version 1 causes
-// CE0557 ("At least one allowed role must be selected") even when roles are set.
+//
+// NOT for AllowedRoles on Forms$Page, despite what this comment used to say. The
+// claim that marker 1 raises CE0557 there does not reproduce: measured on mxbuild
+// 11.13 at security Off, Prototype and Production, a page with marker 1 and a
+// role set is 0 errors and exports cleanly, while marker 3 is 0 errors and aborts
+// `mx create-module-package` in MprDocumentHasher with "Unable to cast object of
+// type 'Newtonsoft.Json.Linq.JValue' to type 'Newtonsoft.Json.Linq.JObject'".
+// Studio Pro writes marker 1 on all 16 pages of a blank app, empty lists included.
+// See the LIST-MARKER OVERRIDE in gen/pages initPage (upstream #931).
 func NewByNameRefListV3[T element.Element](name, targetType string) *ByNameRefList[T] {
 	return &ByNameRefList[T]{propertyBase: propertyBase{name: name}, targetType: targetType, versionMarker: 3}
 }

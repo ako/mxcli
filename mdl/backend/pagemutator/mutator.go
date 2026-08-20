@@ -2545,8 +2545,7 @@ func setDesignPropertyMut(widget bson.D, key, valueType, option string) error {
 			continue
 		}
 		bsonnav.DSet(entry, "Value", buildDesignPropertyValueDoc(valueType, option))
-		bsonnav.DSetArray(appearance, "DesignProperties", elements)
-		return nil
+		return writeDesignProperties(widget, key, elements)
 	}
 
 	entry := bson.D{
@@ -2555,7 +2554,25 @@ func setDesignPropertyMut(widget bson.D, key, valueType, option string) error {
 		{Key: "Key", Value: key},
 		{Key: "Value", Value: buildDesignPropertyValueDoc(valueType, option)},
 	}
-	bsonnav.DSetArray(appearance, "DesignProperties", append(elements, entry))
+	return writeDesignProperties(widget, key, append(elements, entry))
+}
+
+// designPropertiesMarker is the typed-array marker Studio Pro writes on a
+// Forms$Appearance's DesignProperties list — measured on every page of a blank
+// 11.13 app, empty lists included.
+const designPropertiesMarker = 3
+
+// writeDesignProperties stores the widget's design-property entries, creating the
+// Appearance.DesignProperties array when the widget does not carry one yet.
+//
+// It goes through DSetArrayIn rather than DSetArray because a widget mxcli
+// authored may have no DesignProperties key at all, and DSet cannot add one: the
+// write was a silent no-op while ALTER STYLING still reported success
+// (upstream #931).
+func writeDesignProperties(widget bson.D, key string, elements []any) error {
+	if !bsonnav.DSetArrayIn(widget, "Appearance", "DesignProperties", elements, designPropertiesMarker) {
+		return fmt.Errorf("could not store design property %q on this widget", key)
+	}
 	return nil
 }
 
@@ -2573,8 +2590,7 @@ func removeDesignPropertyMut(widget bson.D, key string) error {
 		}
 		kept = append(kept, el)
 	}
-	bsonnav.DSetArray(appearance, "DesignProperties", kept)
-	return nil
+	return writeDesignProperties(widget, key, kept)
 }
 
 // clearDesignPropertiesMut removes all design properties from the widget,
@@ -2584,8 +2600,7 @@ func clearDesignPropertiesMut(widget bson.D) error {
 	if appearance == nil {
 		return nil
 	}
-	bsonnav.DSetArray(appearance, "DesignProperties", nil)
-	return nil
+	return writeDesignProperties(widget, "", nil)
 }
 
 // buildDesignPropertyValueDoc builds the typed Value sub-document for a design

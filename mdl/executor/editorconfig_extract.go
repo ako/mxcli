@@ -19,14 +19,15 @@ import (
 type editorConfigExtractStats struct {
 	TotalHideCalls int // hidePropertyIn + hidePropertiesIn call sites seen
 	Recognized     int // lifted into a top-level WidgetVisibilityRule
-	SkippedNested  int // object-list-nested (e.g. hidePropertyIn(...,"columns",n,"key"))
+	SkippedNested  int // object-list-nested hide whose guard could not be lifted
 	SkippedComplex int // ternary/compound guard, or an alias we couldn't resolve
 }
 
-// hideCallRE locates a hidePropertyIn / hidePropertiesIn call and captures its
-// (balanced-enough) argument list. hideNestedPropertiesIn is deliberately not
-// matched — it only ever targets object-list items (Phase 2).
-var hideCallRE = regexp.MustCompile(`hidePropert(?:y|ies)In\(`)
+// hideCallRE locates a hidePropertyIn / hidePropertiesIn / hideNestedPropertiesIn
+// call and captures its (balanced-enough) argument list. All three are matched:
+// the nested forms target object-list items, which is where the Accordion hides
+// the group properties that make an authored widget fail CE0463 (upstream #931).
+var hideCallRE = regexp.MustCompile(`hide(?:Property|Properties|NestedProperties)In\(`)
 
 // aliasAssignRE finds `IDENT=OBJ.PROP` (a `var x=e.selection`-style alias).
 // Resolution is scoped to the enclosing function body (see enclosingAliases),
@@ -140,40 +141,55 @@ func extractVisibilityRulesFromJS(js string) ([]types.WidgetVisibilityRule, edit
 			stats.SkippedComplex++
 			continue
 		}
-		keys, nested := hideTargetKeys(args)
-		if nested {
-			stats.SkippedNested++
-			continue
-		}
-		if len(keys) == 0 {
+		listKey, keys, ok := hideTargetKeys(args)
+		if !ok || len(keys) == 0 {
 			stats.SkippedComplex++
 			continue
 		}
-		cond, ok := parseGuard(js, callStart)
+		// A nested hide sits inside the list's `forEach(function(item, i){…})`, so
+		// a guard reading `item.<prop>` is about the ITEM, not the widget.
+		itemIdent := ""
+		if listKey != "" {
+			itemIdent = enclosingForEachParam(js, callStart)
+		}
+		cond, ok := parseGuard(js, callStart, itemIdent)
 		if !ok {
-			stats.SkippedComplex++
+			if listKey != "" {
+				stats.SkippedNested++
+			} else {
+				stats.SkippedComplex++
+			}
 			continue
 		}
 		stats.Recognized++
 		for _, key := range keys {
-			sig := key + "\x00" + cond.PropertyKey + cond.Operator + cond.Value
+			sig := listKey + "\x00" + key + "\x00" + cond.PropertyKey + cond.Operator + cond.Value + cond.Scope
 			if seen[sig] {
 				continue
 			}
 			seen[sig] = true
 			c := cond // copy per rule
-			rules = append(rules, types.WidgetVisibilityRule{PropertyKey: key, HiddenWhen: &c})
+			rules = append(rules, types.WidgetVisibilityRule{
+				PropertyKey:     key,
+				ListPropertyKey: listKey,
+				HiddenWhen:      &c,
+			})
 		}
 	}
 	return rules, stats
 }
 
-// hideTargetKeys returns the property key(s) a hide call targets and whether the
-// call is object-list-nested (which we skip). A top-level hidePropertyIn has a
-// single string arg (the key); a top-level hidePropertiesIn has one array of
-// string keys. A `"columns"`/`"..."`-prefixed string arg followed by more args
-// marks the nested form.
-func hideTargetKeys(args string) (keys []string, nested bool) {
+// hideTargetKeys returns the object-list property a hide call targets (empty for
+// a top-level hide) and the property key(s) it hides.
+//
+//	hidePropertyIn(t, e, "key")                        → "",       ["key"]
+//	hidePropertiesIn(t, e, ["a","b"])                  → "",       ["a","b"]
+//	hidePropertyIn(t, e, "groups", i, "key")           → "groups", ["key"]
+//	hideNestedPropertiesIn(t, e, "groups", i, ["a"])   → "groups", ["a"]
+//
+// ok is false for a shape it does not recognize; the caller counts it as skipped
+// and emits no rule, which degrades to "not hidden".
+func hideTargetKeys(args string) (listKey string, keys []string, ok bool) {
 	parts := splitTopLevelCommas(args)
 	// Collect string-literal positional args and any array literal.
 	var stringArgs []string
@@ -191,21 +207,80 @@ func hideTargetKeys(args string) (keys []string, nested bool) {
 		}
 	}
 	if len(arrayKeys) > 0 {
-		// hidePropertiesIn(obj, obj, [keys]) — nested if a leading string arg
-		// (e.g. "columns") also appears.
-		if len(stringArgs) > 0 {
-			return nil, true
+		switch len(stringArgs) {
+		case 0:
+			return "", arrayKeys, true // hidePropertiesIn(obj, obj, [keys])
+		case 1:
+			return stringArgs[0], arrayKeys, true // hideNestedPropertiesIn(…, "groups", i, [keys])
+		default:
+			return "", nil, false
 		}
-		return arrayKeys, false
 	}
 	switch len(stringArgs) {
 	case 1:
-		return stringArgs, false // hidePropertyIn(obj, obj, "key")
-	case 0:
-		return nil, false
+		return "", stringArgs, true // hidePropertyIn(obj, obj, "key")
+	case 2:
+		return stringArgs[0], stringArgs[1:], true // hidePropertyIn(…, "groups", i, "key")
 	default:
-		return nil, true // "columns","key" etc. — nested
+		return "", nil, false
 	}
+}
+
+// forEachParamRE matches the callback parameter list of a `.forEach(function(a,b){`
+// immediately before an enclosing block brace. The extra `\(*` is load-bearing:
+// the Accordion Mendix ships is compiled as `forEach((function(n,o){…}))`, and
+// without it the regex reads `function` itself as the parameter name — which
+// scoped every nested condition to the widget and dropped the group's own
+// `initialCollapsedState` guard on the floor.
+var forEachParamRE = regexp.MustCompile(`forEach\(\s*\(*\s*(?:function\b\s*)?\(\s*([A-Za-z_$][\w$]*)`)
+
+// enclosingForEachParam returns the name of the first parameter of the
+// `.forEach(function(item, index){…})` callback whose body encloses pos, or ""
+// when pos is not inside one.
+//
+// It matters because a nested hide's guard can read either object: the Accordion
+// writes `"dynamic" !== item.initialCollapsedState && hide(…, "initiallyCollapsed")`
+// (an ITEM property) in the same callback as
+// `(…) && widget.collapsible || hideNested(…)` (a WIDGET property). Without the
+// distinction the two conditions are indistinguishable once resolveRef has
+// dropped the base identifier.
+func enclosingForEachParam(js string, pos int) string {
+	for i := 0; i < 8; i++ { // bounded: a hide is never nested this deep
+		open := enclosingOpener(js, pos)
+		if open < 0 {
+			return ""
+		}
+		if js[open] == '{' {
+			// Look just before the brace for the callback's parameter list.
+			start := open - 80
+			if start < 0 {
+				start = 0
+			}
+			if m := forEachParamRE.FindStringSubmatch(js[start:open]); m != nil && m[1] != "function" {
+				return m[1]
+			}
+		}
+		pos = open
+	}
+	return ""
+}
+
+// enclosingOpener returns the index of the nearest unbalanced opening bracket
+// before pos, or -1 when there is none.
+func enclosingOpener(js string, pos int) int {
+	depth := 0
+	for i := pos - 1; i >= 0; i-- {
+		switch js[i] {
+		case '}', ')', ']':
+			depth++
+		case '{', '(', '[':
+			if depth == 0 {
+				return i
+			}
+			depth--
+		}
+	}
+	return -1
 }
 
 // nsPrefixRE matches the widget-editor namespace prefix before a hide call — the
@@ -216,7 +291,7 @@ var nsPrefixRE = regexp.MustCompile(`[A-Za-z_$][\w$]*\.$`)
 // parseGuard reads the guard expression immediately preceding a hide call and
 // converts it to a WidgetVisibilityCondition. callStart points at the hide
 // function name; the connector just before it is `&&`, `||`, or `?`.
-func parseGuard(js string, callStart int) (types.WidgetVisibilityCondition, bool) {
+func parseGuard(js string, callStart int, itemIdent string) (types.WidgetVisibilityCondition, bool) {
 	pre := strings.TrimRight(js[:callStart], " ")
 	// Strip the widget-editor namespace prefix (any `<ident>.`, not just `_.`).
 	if loc := nsPrefixRE.FindStringIndex(pre); loc != nil {
@@ -268,18 +343,35 @@ func parseGuard(js string, callStart int) (types.WidgetVisibilityCondition, bool
 	}
 	// Skip guards nested inside a larger expression. A clean statement-level guard
 	// is bounded by a statement separator (`,`, `;`, `{`, or start-of-input); a
-	// boundary of `(`/`?`/`:`/`&`/`|` means the guard is one operand of a compound
+	// boundary of `(`/`?`/`:`/`|` means the guard is one operand of a compound
 	// or ternary condition (e.g. `"web"===r ? (e.advanced || hide(...))`), of which
 	// we'd capture only a fragment — producing a WRONG rule that over-fires. Better
 	// to emit no rule (→ "not hidden" → template default), which is safe.
+	//
+	// `&` is the one compound boundary that is safe, and only for the `||`
+	// connector: in `X && Y || hide`, the hide fires when `X && Y` is falsy, and
+	// `Y` falsy is sufficient for that WHATEVER X is. So "hide when Y falsy" is
+	// implied by the code rather than guessed — it may miss the case where X
+	// alone is falsy, never fire where the widget would not hide. This is the
+	// Accordion's shape, and the reason its group properties went unflagged:
+	//
+	//	(e.advancedMode || "web" !== platform) && e.collapsible
+	//	  || hideNestedPropertiesIn(t, e, "groups", i, ["initialCollapsedState", …])
+	//
+	// The `&&` connector gets no such rule: there, hiding needs BOTH operands
+	// truthy, which a single condition cannot express.
 	switch boundary {
 	case 0, ',', ';', '{':
 		// clean
+	case '&':
+		if !falsy {
+			return types.WidgetVisibilityCondition{}, false
+		}
 	default:
 		return types.WidgetVisibilityCondition{}, false
 	}
 	aliases := enclosingAliases(js, callStart)
-	return guardToCondition(guard, falsy, aliases)
+	return guardToCondition(guard, falsy, aliases, itemIdent)
 }
 
 // ternaryCondition returns the text preceding the `?` that matches a trailing
@@ -409,29 +501,45 @@ var (
 
 // guardToCondition parses a single guard expression into a visibility
 // condition, resolving a bare identifier through the scope's alias map.
-func guardToCondition(guard string, falsy bool, aliases map[string]string) (types.WidgetVisibilityCondition, bool) {
+func guardToCondition(guard string, falsy bool, aliases map[string]string, itemIdent string) (types.WidgetVisibilityCondition, bool) {
+	// A comparison guard obeys the connector's polarity just as a bare reference
+	// does: with `||`, or in a ternary's ELSE branch, the hide fires when the
+	// comparison is FALSE, so `===` becomes "not equal" and `!==` becomes
+	// "equal". The Accordion is where this shows:
+	//
+	//	"text" === item.headerRenderMode
+	//	  ? (hide(…, "headerContent"), …)
+	//	  : (hide(…, "headerText"), hide(…, "headerHeading"))
+	//
+	// headerContent is hidden when the mode IS "text"; headerText when it is NOT.
+	// Reading both as `eq` marks headerText hidden in exactly the configuration
+	// where it is the property being used.
+	eqOp, neOp := "eq", "ne"
+	if falsy {
+		eqOp, neOp = "ne", "eq"
+	}
 	// "V" === ref  /  ref === "V"
 	if m := eqCmpRE.FindStringSubmatch(guard); m != nil {
-		if key, ok := resolveRef(m[2], aliases); ok {
-			return types.WidgetVisibilityCondition{PropertyKey: key, Operator: "eq", Value: m[1]}, true
+		if key, scope, ok := resolveRef(m[2], aliases, itemIdent); ok {
+			return types.WidgetVisibilityCondition{PropertyKey: key, Operator: eqOp, Value: m[1], Scope: scope}, true
 		}
 		return types.WidgetVisibilityCondition{}, false
 	}
 	if m := eqCmpRE2.FindStringSubmatch(guard); m != nil {
-		if key, ok := resolveRef(m[1], aliases); ok {
-			return types.WidgetVisibilityCondition{PropertyKey: key, Operator: "eq", Value: m[2]}, true
+		if key, scope, ok := resolveRef(m[1], aliases, itemIdent); ok {
+			return types.WidgetVisibilityCondition{PropertyKey: key, Operator: eqOp, Value: m[2], Scope: scope}, true
 		}
 		return types.WidgetVisibilityCondition{}, false
 	}
 	if m := neCmpRE.FindStringSubmatch(guard); m != nil {
-		if key, ok := resolveRef(m[2], aliases); ok {
-			return types.WidgetVisibilityCondition{PropertyKey: key, Operator: "ne", Value: m[1]}, true
+		if key, scope, ok := resolveRef(m[2], aliases, itemIdent); ok {
+			return types.WidgetVisibilityCondition{PropertyKey: key, Operator: neOp, Value: m[1], Scope: scope}, true
 		}
 		return types.WidgetVisibilityCondition{}, false
 	}
 	if m := neCmpRE2.FindStringSubmatch(guard); m != nil {
-		if key, ok := resolveRef(m[1], aliases); ok {
-			return types.WidgetVisibilityCondition{PropertyKey: key, Operator: "ne", Value: m[2]}, true
+		if key, scope, ok := resolveRef(m[1], aliases, itemIdent); ok {
+			return types.WidgetVisibilityCondition{PropertyKey: key, Operator: neOp, Value: m[2], Scope: scope}, true
 		}
 		return types.WidgetVisibilityCondition{}, false
 	}
@@ -441,7 +549,7 @@ func guardToCondition(guard string, falsy bool, aliases map[string]string) (type
 	//   !ref && hide  → hide when ref falsy
 	//   ref ? hide:…  → hide when ref truthy
 	if m := refRE.FindStringSubmatch(guard); m != nil {
-		key, ok := resolveRef(m[2], aliases)
+		key, scope, ok := resolveRef(m[2], aliases, itemIdent)
 		if !ok {
 			return types.WidgetVisibilityCondition{}, false
 		}
@@ -451,22 +559,30 @@ func guardToCondition(guard string, falsy bool, aliases map[string]string) (type
 		if wantFalsy {
 			op = "falsy"
 		}
-		return types.WidgetVisibilityCondition{PropertyKey: key, Operator: op}, true
+		return types.WidgetVisibilityCondition{PropertyKey: key, Operator: op, Scope: scope}, true
 	}
 	return types.WidgetVisibilityCondition{}, false
 }
 
-// resolveRef turns a guard reference into a widget property key: `obj.prop`
-// yields `prop`; a bare identifier is looked up in the scope alias map. A bare
-// identifier with no alias (e.g. a computed local) is unresolvable.
-func resolveRef(ref string, aliases map[string]string) (string, bool) {
+// resolveRef turns a guard reference into a property key and the scope that key
+// belongs to: `obj.prop` yields `prop`; a bare identifier is looked up in the
+// scope alias map. A bare identifier with no alias (e.g. a computed local) is
+// unresolvable.
+//
+// When itemIdent is non-empty (the hide is inside that object list's forEach
+// callback) a reference based on it is scoped to the list ITEM; everything else
+// is a property of the widget.
+func resolveRef(ref string, aliases map[string]string, itemIdent string) (key, scope string, ok bool) {
 	if i := strings.LastIndexByte(ref, '.'); i >= 0 {
-		return ref[i+1:], true
+		if itemIdent != "" && ref[:i] == itemIdent {
+			return ref[i+1:], types.ConditionScopeItem, true
+		}
+		return ref[i+1:], "", true
 	}
 	if key, ok := aliases[ref]; ok {
-		return key, true
+		return key, "", true
 	}
-	return "", false
+	return "", "", false
 }
 
 // enclosingAliases returns the `ident → property` aliases declared in the
