@@ -15,6 +15,7 @@ import (
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
 	"github.com/mendixlabs/mxcli/mdl/types"
+	"github.com/mendixlabs/mxcli/model"
 )
 
 // findQueue returns the queue with the given module-qualified name, or nil.
@@ -60,9 +61,13 @@ func execCreateQueue(ctx *ExecContext, s *ast.CreateQueueStmt) error {
 		return mdlerrors.NewAlreadyExists("queue", s.Name.String())
 	}
 
-	containerID := module.ID
+	var existingContainer model.ID
 	if existing != nil {
-		containerID = existing.ContainerID
+		existingContainer = existing.ContainerID
+	}
+	containerID, err := containerForDocument(ctx, module.ID, s.Folder, existingContainer)
+	if err != nil {
+		return err
 	}
 
 	q := &types.Queue{
@@ -82,6 +87,9 @@ func execCreateQueue(ctx *ExecContext, s *ast.CreateQueueStmt) error {
 		q.Excluded = existing.Excluded
 		if err := ctx.Backend.UpdateQueue(q); err != nil {
 			return mdlerrors.NewBackend("update queue", err)
+		}
+		if _, err := applyDocumentFolder(ctx, q.ID, existingContainer, containerID); err != nil {
+			return err
 		}
 		ctx.ReportMutation("Modified", "queue: %s", s.Name.String())
 		return nil
@@ -165,7 +173,7 @@ func execDescribeQueue(ctx *ExecContext, s *ast.DescribeQueueStmt) error {
 	if q.Documentation != "" {
 		fmt.Fprintf(ctx.Output, "/**\n * %s\n */\n", q.Documentation)
 	}
-	fmt.Fprintf(ctx.Output, "create or modify queue %s (\n", s.Name.String())
+	fmt.Fprintf(ctx.Output, "create or modify queue %s%s (\n", s.Name.String(), describeFolderClause(ctx, q.ContainerID))
 	// Parallelism is an expression string; quote it unless it is a plain integer,
 	// so an expression survives the round-trip.
 	fmt.Fprintf(ctx.Output, "  Parallelism: %s,\n", formatParallelism(q.Parallelism))

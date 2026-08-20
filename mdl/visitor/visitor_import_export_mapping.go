@@ -15,6 +15,9 @@ func (b *Builder) ExitCreateImportMappingStatement(ctx *parser.CreateImportMappi
 	stmt := &ast.CreateImportMappingStmt{
 		Name: buildQualifiedName(ctx.QualifiedName()),
 	}
+	if lit := ctx.STRING_LITERAL(); lit != nil {
+		stmt.Folder = unquoteString(lit.GetText())
+	}
 
 	// Parse WITH clause
 	if wc := ctx.ImportMappingWithClause(); wc != nil {
@@ -125,6 +128,9 @@ func buildImportChild(ctx *parser.ImportMappingChildContext) *ast.ImportMappingE
 func (b *Builder) ExitCreateExportMappingStatement(ctx *parser.CreateExportMappingStatementContext) {
 	stmt := &ast.CreateExportMappingStmt{
 		Name: buildQualifiedName(ctx.QualifiedName()),
+	}
+	if lit := ctx.STRING_LITERAL(); lit != nil {
+		stmt.Folder = unquoteString(lit.GetText())
 	}
 
 	// Parse WITH clause

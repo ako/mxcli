@@ -550,10 +550,14 @@ MOVE IMPORT MAPPING MyModule.IMM_Order TO FOLDER 'Private/Import mappings';
 MOVE JSON STRUCTURE MyModule.JSON_Order TO FOLDER 'Private/JSON structures';
 
 -- A FOLDER clause on CREATE OR MODIFY moves an existing document too, so a
--- script can place a document without a separate MOVE
+-- script can place a document without a separate MOVE. Every doctype accepts
+-- one; on most it goes straight after the qualified name
 CREATE OR MODIFY JSON STRUCTURE MyModule.JSON_Order
   FOLDER 'Private/JSON structures'
   SNIPPET '{"id": 1}';
+CREATE QUEUE MyModule.Q_Orders FOLDER 'Private/Queues' ( Parallelism: 3 );
+CREATE IMPORT MAPPING MyModule.IMM_Order FOLDER 'Private/Import mappings'
+  WITH JSON STRUCTURE MyModule.JSON_Order { CREATE MyModule.Order { Id = id } };
 
 -- Check impact before cross-module move
 SHOW IMPACT OF OldModule.CustomerPage;

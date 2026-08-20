@@ -53,6 +53,7 @@ func execCreateWorkflow(ctx *ExecContext, s *ast.CreateWorkflowStmt) error {
 	}
 
 	var existingID model.ID
+	var existingContainer model.ID
 	// Excluded is model state, not script state, and a module may hold an
 	// excluded twin of this name — target the live workflow and carry its
 	// exclusion forward (#914).
@@ -68,11 +69,17 @@ func execCreateWorkflow(ctx *ExecContext, s *ast.CreateWorkflowStmt) error {
 		}
 		existingID = existing.ID
 		existingExcluded = existing.Excluded
+		existingContainer = existing.ContainerID
+	}
+
+	containerID, err := containerForDocument(ctx, module.ID, s.Folder, existingContainer)
+	if err != nil {
+		return err
 	}
 
 	wf := &workflows.Workflow{}
 	wf.Excluded = existingExcluded
-	wf.ContainerID = module.ID
+	wf.ContainerID = containerID
 	wf.Name = s.Name.Name
 	wf.Documentation = s.Documentation
 
@@ -137,6 +144,9 @@ func execCreateWorkflow(ctx *ExecContext, s *ast.CreateWorkflowStmt) error {
 		wf.ID = existingID
 		if err := ctx.Backend.UpdateWorkflow(wf); err != nil {
 			return mdlerrors.NewBackend("update workflow", err)
+		}
+		if _, err := applyDocumentFolder(ctx, wf.ID, existingContainer, containerID); err != nil {
+			return err
 		}
 	} else {
 		if err := ctx.Backend.CreateWorkflow(wf); err != nil {

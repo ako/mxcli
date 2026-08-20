@@ -225,22 +225,35 @@ and the error names what it really is — `move queue Mod.JSON_Order` reports th
 
 ### FOLDER on Create
 
-Only some types take a folder clause when you create them:
+Every document type takes a folder clause on `create`, so a document can be
+placed in the statement that creates it rather than in a separate `move`. Where
+the clause goes depends on the statement's shape:
 
 | Document Type | FOLDER on Create |
 |---------------|-----------------|
-| Page, Snippet | `folder: 'path'` (property, inside the parentheses) |
-| Microflow, Nanoflow | `folder 'path'` (keyword, before `begin`) |
-| Enumeration, Constant | `folder 'path'` (keyword, after the definition) |
-| JSON structure | `folder 'path'` (keyword) |
-| Rest client, published rest service, odata client/service, business event service | `folder 'path'` (keyword) |
-| Everything else | none — use `move` |
+| Page, Snippet | `folder: 'path'` — a property, inside the parentheses |
+| Microflow, Nanoflow | `folder 'path'` — a keyword, before `begin` |
+| Enumeration, Constant | `folder 'path'` — a keyword, after the definition |
+| Everything else | `folder 'path'` — a keyword, straight after the qualified name |
+
+```mdl
+create import mapping CRM.IMM_Order folder 'Private/Import mappings'
+  with json structure CRM.JSON_Order { create CRM.Order { Id = id } };
+
+create queue CRM.Q_Orders folder 'Private/Queues' ( Parallelism: 3 );
+
+create java action CRM.JA_Sync folder 'Private/Java' () returns string
+  as $$return null;$$;
+```
 
 **A folder clause on `create or modify` moves an existing document.** It used to
 be silently ignored: the statement reported success, the folder was created, and
 the document stayed where it was (#932). Omitting the clause leaves placement
 alone — it never returns a document to the module root — so adding a folder to a
 script is safe and removing it is a no-op.
+
+`describe` emits the clause, so a description replays into the same folder
+rather than into the module root.
 
 ## Example: Reorganize a Module
 

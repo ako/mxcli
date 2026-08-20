@@ -88,18 +88,27 @@ MOVE JSON STRUCTURE MyModule.JSON_Order TO FOLDER 'Private/JSON structures';
 
 ### Place a document while creating it
 
-A `FOLDER` clause applies to an existing document too, so re-running a script
-that gained a folder clause files the document rather than leaving it where it
-was:
+Every document type takes a `FOLDER` clause on `CREATE`, so a document can be
+placed by the statement that creates it. On pages and snippets it is a property
+(`Folder: 'path'`); on microflows and nanoflows a keyword before `BEGIN`; on
+everything else a keyword straight after the qualified name:
 
 ```sql
 CREATE OR MODIFY JSON STRUCTURE MyModule.JSON_Order
   FOLDER 'Private/JSON structures'
   SNIPPET '{"id": 1}';
+
+CREATE QUEUE MyModule.Q_Orders FOLDER 'Private/Queues' ( Parallelism: 3 );
+
+CREATE JAVA ACTION MyModule.JA_Sync FOLDER 'Private/Java' ()
+  RETURNS String AS $$return null;$$;
 ```
 
-Omitting the clause leaves the document where it is; it never returns it to the
-module root.
+The clause applies to an existing document too, so re-running a script that
+gained one files the document rather than leaving it where it was. Omitting the
+clause leaves the document where it is; it never returns it to the module root.
+
+`DESCRIBE` emits the clause, so a description replays into the same folder.
 
 ### Move a folder
 

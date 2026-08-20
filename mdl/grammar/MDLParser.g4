@@ -305,7 +305,7 @@ navMenuItemDef
 // built from the same items, so this reuses navMenuItemDef rather than defining a
 // second item syntax.
 createMenuStatement
-    : MENU_KW qualifiedName LPAREN navMenuItemDef* RPAREN
+    : MENU_KW qualifiedName (FOLDER STRING_LITERAL)? LPAREN navMenuItemDef* RPAREN
     ;
 
 dropStatement

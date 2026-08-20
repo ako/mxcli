@@ -338,7 +338,7 @@ enumerationOption
  * quoted expression.
  */
 createQueueStatement
-    : QUEUE qualifiedName queueBody?
+    : QUEUE qualifiedName (FOLDER STRING_LITERAL)? queueBody?
     ;
 
 queueBody
@@ -358,7 +358,7 @@ queueProperty
 // document rather than a string on the rule.
 
 createRegularExpressionStatement
-    : REGULAR EXPRESSION qualifiedName regularExpressionBody?
+    : REGULAR EXPRESSION qualifiedName (FOLDER STRING_LITERAL)? regularExpressionBody?
     ;
 
 regularExpressionBody
@@ -380,7 +380,7 @@ regularExpressionProperty
 // not belong to the chosen repeat.
 
 createScheduledEventStatement
-    : SCHEDULED EVENT qualifiedName scheduledEventBody?
+    : SCHEDULED EVENT qualifiedName (FOLDER STRING_LITERAL)? scheduledEventBody?
     ;
 
 scheduledEventBody
@@ -396,7 +396,7 @@ scheduledEventProperty
 // =============================================================================
 
 createImageCollectionStatement
-    : IMAGE COLLECTION qualifiedName imageCollectionOptions? imageCollectionBody?
+    : IMAGE COLLECTION qualifiedName (FOLDER STRING_LITERAL)? imageCollectionOptions? imageCollectionBody?
     ;
 
 imageCollectionOptions
@@ -441,6 +441,7 @@ customNameMapping
 
 /**
  * CREATE IMPORT MAPPING Module.Name
+ *   FOLDER 'Private/Import mappings'
  *   WITH JSON STRUCTURE Module.JsonStructure
  * {
  *   CREATE Module.Entity {
@@ -451,6 +452,7 @@ customNameMapping
  */
 createImportMappingStatement
     : IMPORT MAPPING qualifiedName
+      (FOLDER STRING_LITERAL)?
       importMappingWithClause?
       LBRACE importMappingRootElement RBRACE
     ;
@@ -495,6 +497,7 @@ importMappingObjectHandling
 
 /**
  * CREATE EXPORT MAPPING Module.Name
+ *   FOLDER 'Private/Export mappings'
  *   WITH JSON STRUCTURE Module.JsonStructure
  * {
  *   Module.Entity {
@@ -504,6 +507,7 @@ importMappingObjectHandling
  */
 createExportMappingStatement
     : EXPORT MAPPING qualifiedName
+      (FOLDER STRING_LITERAL)?
       exportMappingWithClause?
       exportMappingNullValuesClause?
       LBRACE exportMappingRootElement RBRACE
@@ -619,7 +623,8 @@ createIndexStatement
  */
 createDataTransformerStatement
     : DATA TRANSFORMER qualifiedName
-      SOURCE_KW (JSON | XML) STRING_LITERAL
+      (FOLDER folder=STRING_LITERAL)?
+      SOURCE_KW (JSON | XML) source=STRING_LITERAL
       LBRACE dataTransformerStep* RBRACE
     ;
 

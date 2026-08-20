@@ -16,6 +16,8 @@
 package executor
 
 import (
+	"strings"
+
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
 	"github.com/mendixlabs/mxcli/model"
 )
@@ -39,6 +41,51 @@ func resolveRequestedFolder(ctx *ExecContext, moduleID model.ID, folder string) 
 		return "", mdlerrors.NewBackend("resolve folder "+folder, err)
 	}
 	return id, nil
+}
+
+// describeFolderClause renders a document's placement as the MDL clause that
+// would reproduce it, or "" when the document sits at the module root.
+//
+// DESCRIBE output is advertised as re-executable, so a description that omits
+// the folder does not round-trip: replaying it in a fresh project recreates the
+// document unfiled. Returned with a leading space so a caller can append it to
+// the name without deciding whether one is needed.
+//
+// Best-effort in the same way the rest of DESCRIBE is: a hierarchy that cannot
+// resolve the container yields no clause rather than a wrong one.
+func describeFolderClause(ctx *ExecContext, containerID model.ID) string {
+	h, err := getHierarchy(ctx)
+	if err != nil || h == nil {
+		return ""
+	}
+	path := h.BuildFolderPath(containerID)
+	if path == "" {
+		return ""
+	}
+	return " folder '" + strings.ReplaceAll(path, "'", "''") + "'"
+}
+
+// containerForDocument picks the container a CREATE OR MODIFY should use, in
+// the order that makes both a create and a modify behave sensibly: the folder
+// the statement named, else where the document already sits, else the module
+// root.
+//
+// The middle term is the one worth stating out loud. It means a statement that
+// says nothing about folders is silent about placement rather than asserting
+// the module root — which matters for the doctypes rewritten as delete+create,
+// where the container really is re-applied on every statement.
+func containerForDocument(ctx *ExecContext, moduleID model.ID, folder string, existing model.ID) (model.ID, error) {
+	target, err := resolveRequestedFolder(ctx, moduleID, folder)
+	if err != nil {
+		return "", err
+	}
+	if target != "" {
+		return target, nil
+	}
+	if existing != "" {
+		return existing, nil
+	}
+	return moduleID, nil
 }
 
 // applyDocumentFolder moves an existing document to the container a CREATE OR

@@ -29,20 +29,19 @@ func (b *Builder) ExitCreateWorkflowStatement(ctx *parser.CreateWorkflowStatemen
 		}
 	}
 
-	// Parse DISPLAY, DESCRIPTION, EXPORT LEVEL, DUE DATE using positional STRING_LITERAL indexing
-	allStrings := ctx.AllSTRING_LITERAL()
-	stringIdx := 0
-
-	// DISPLAY 'text'
-	if ctx.DISPLAY() != nil && stringIdx < len(allStrings) {
-		stmt.DisplayName = unquoteString(allStrings[stringIdx].GetText())
-		stringIdx++
+	// Each optional string clause is read by its grammar LABEL, not by counting
+	// STRING_LITERALs. The positional version worked only while the clauses
+	// happened to be the rule's only strings: adding the FOLDER clause would
+	// have made allStrings[0] the folder path whenever one was given, so a
+	// foldered workflow would have silently taken its display name from it.
+	if tok := ctx.GetFolder(); tok != nil {
+		stmt.Folder = unquoteString(tok.GetText())
 	}
-
-	// DESCRIPTION 'text'
-	if ctx.DESCRIPTION() != nil && stringIdx < len(allStrings) {
-		stmt.Description = unquoteString(allStrings[stringIdx].GetText())
-		stringIdx++
+	if tok := ctx.GetDisplay(); tok != nil {
+		stmt.DisplayName = unquoteString(tok.GetText())
+	}
+	if tok := ctx.GetDescription(); tok != nil {
+		stmt.Description = unquoteString(tok.GetText())
 	}
 
 	// EXPORT LEVEL (Identifier | API)
@@ -71,11 +70,9 @@ func (b *Builder) ExitCreateWorkflowStatement(ctx *parser.CreateWorkflowStatemen
 	_ = overviewPageIdx
 
 	// Parse DUE DATE 'expression'
-	if ctx.DUE() != nil && stringIdx < len(allStrings) {
-		stmt.DueDate = unquoteString(allStrings[stringIdx].GetText())
-		stringIdx++
+	if tok := ctx.GetDueDate(); tok != nil {
+		stmt.DueDate = unquoteString(tok.GetText())
 	}
-	_ = stringIdx
 
 	// Parse CREATE OR MODIFY
 	createStmt := findParentCreateStatement(ctx)

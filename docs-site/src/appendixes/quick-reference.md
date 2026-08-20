@@ -190,7 +190,8 @@ AUTHENTICATION Basic, Session
 | Page folder | `Folder: 'path'` (in properties) | `CREATE PAGE ... (Folder: 'Pages/Detail') { ... }` |
 | Move to folder | `MOVE <doctype> Module.Name TO FOLDER 'path';` | Folders created automatically. Any top-level doctype, spelled as `DESCRIBE` spells it |
 | Move a mapping / structure | `MOVE IMPORT MAPPING\|EXPORT MAPPING\|JSON STRUCTURE Module.Name TO FOLDER 'path';` | |
-| Place while creating | `CREATE OR MODIFY ... FOLDER 'path' ...` | Moves an existing document too; omitting it leaves placement alone |
+| Place while creating | `CREATE <doctype> Module.Name FOLDER 'path' ...` | Every doctype. Pages/snippets use `Folder: 'path'` as a property; microflows/nanoflows a keyword before `BEGIN` |
+| Place an existing document | `CREATE OR MODIFY ... FOLDER 'path' ...` | Moves it; omitting the clause leaves placement alone |
 | Move to module root | `MOVE PAGE Module.Name TO Module;` | Removes from folder |
 | Move across modules | `MOVE PAGE Old.Name TO NewModule;` | **Breaks by-name references** -- use `LIST IMPACT OF` first |
 | Move to folder in other module | `MOVE PAGE Old.Name TO FOLDER 'path' IN NewModule;` | |

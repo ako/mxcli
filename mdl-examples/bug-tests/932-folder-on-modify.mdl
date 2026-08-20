@@ -59,6 +59,18 @@ create or modify constant Bug932.CONST_Example type string default 'x'
 /
 
 -- Expected layout: nothing left at the module root, and no empty folders.
+-- Doctypes that had no folder clause at all before #932: they could only ever
+-- be created at the module root, and MOVE did not name them either.
+create queue Bug932.Q_Example folder 'Private/Queues' ( Parallelism: 3 );
+/
+
+create regular expression Bug932.RE_Digits folder 'Private/Patterns' ( Expression: '[0-9]+' );
+/
+
+create java action Bug932.JA_Example folder 'Private/Java' ()
+  returns string as $$return null;$$;
+/
+
 show folders in Bug932;
 /
 
