@@ -117,7 +117,9 @@ var knownWrongKeys = []keyMismatch{
 	{"Microflows$ListRange", "ListVariableName", "ListName"},
 	{"Microflows$MappingRequestHandling", "Mapping", "MappingId"},
 	{"Microflows$MappingRequestHandling", "MappingArgumentVariableName", "MappingVariableName"},
-	{"Microflows$RuleCall", "Rule", "Microflow"},
+	// {"Microflows$RuleCall", "Rule", "Microflow"} — FIXED (#939): a rule split
+	// wrote the reference under "Rule", which Mendix never reads, so the decision
+	// lost its condition (CE0080). Overridden in initRuleCall + InitFromRaw.
 	{"Microflows$Sort", "ListVariableName", "ListName"},
 	{"Microflows$Sort", "SortItemList", "Sortings"},
 	{"Microflows$Subtract", "ListVariableName", "ListName"},

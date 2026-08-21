@@ -1,0 +1,74 @@
+-- ============================================================================
+-- Issue mendixlabs/mxcli#939 — a decision that calls a rule lost its Condition
+-- ============================================================================
+--
+-- `if Module.SomeRule(param = $x) then` is stored as a Microflows$ExclusiveSplit
+-- whose SplitCondition is a Microflows$RuleSplitCondition wrapping a RuleCall.
+-- The modelsdk engine (the default) had no case for it: splitConditionToGen
+-- returned nil and the caller skipped SetSplitCondition, so the decision was
+-- written with no Condition at all.
+--
+-- Measured on mxbuild 11.13.0, one variable per run:
+--
+--   default engine        → [CE0080] "The 'Condition' property is required."
+--                           at Decision 'Sample.Rule_IsActive(IsActive = $IsActive)'
+--   MXCLI_ENGINE=legacy   → 0 errors          (the control: same script, same project)
+--   after the fix         → 0 errors, and the written BSON matches legacy's
+--
+-- It was silent because the READ side had been implemented (#723): DESCRIBE
+-- rendered `if true then` while the Decision's caption still showed the call, so
+-- the round-trip produced MDL that looked right. Re-applying an identical
+-- statement over a Studio Pro-authored (or legacy-written) microflow therefore
+-- turned a clean project into a broken one — the reporter's sequence.
+--
+-- Second half of the same defect: modelsdk/gen binds Microflows$RuleCall.Rule to
+-- the BSON key "Rule", but Mendix stores it as "Microflow" (rules share the
+-- microflow namespace). Fixing only the missing case would have produced the same
+-- CE0080 for a different reason. See the STORAGE-NAME OVERRIDE in initRuleCall.
+--
+-- ----------------------------------------------------------------------------
+-- Running this example
+--
+-- MDL cannot author rules, and no module in a blank Mendix 11 app ships one, so
+-- the reproduction needs a rule created in Studio Pro (a Boolean parameter
+-- `IsActive`, returning `$IsActive`) named Sample.Rule_IsActive. With that in
+-- place:
+--
+--   mxcli exec 939-rule-split-condition.mdl -p app.mpr
+--   mx check app.mpr                                  # 0 errors
+--   mxcli -p app.mpr -c "describe microflow Sample.MF_UseRule"
+--                                                     # `if Sample.Rule_IsActive(...)`,
+--                                                     # not `if true`
+--   mxcli exec 939-rule-split-condition.mdl -p app.mpr # "Unchanged microflow" — the
+--                                                     # re-apply is now elided
+--
+-- The MDL below is deliberately left executable rather than commented out: it
+-- parses without a project, so `make check-mdl` covers the grammar path, and it
+-- is the exact statement that reproduced the failure.
+-- ============================================================================
+
+create or modify microflow Sample.MF_UseRule ($IsActive: Boolean)
+begin
+  if Sample.Rule_IsActive(IsActive = $IsActive) then
+    return;
+  else
+    return;
+  end if;
+end
+/
+
+-- ----------------------------------------------------------------------------
+-- NOT fixed here, and reported separately on the issue:
+--
+--   * A rule call in an EXPRESSION position — `declare $Active Boolean =
+--     Sample.Rule_IsActive(IsActive = $IsActive);` — is [CE0117] "Error(s) in
+--     expression." on BOTH engines. Mendix has no expression syntax for calling a
+--     rule; only a decision can. mxcli should refuse the statement rather than
+--     write the literal text.
+--   * `mxcli check -p` false-positives on the WORKING form above: mdl/exprcheck
+--     does not model a qualified call, so it reports "Unexpected token after
+--     expression … glued keywords such as 'emptyor'" with an empty location.
+--   * Rules are not catalog objects and an ExclusiveSplit is not walked for
+--     references, so `show callers of Sample.Rule_IsActive` finds nothing even
+--     with the condition correctly stored.
+-- ----------------------------------------------------------------------------
