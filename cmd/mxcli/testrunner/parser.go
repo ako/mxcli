@@ -433,12 +433,19 @@ var (
 	// a line the pattern did not fit produced no assertion at all, and a test
 	// with no assertions passes. Everything after @expect is now handed to
 	// ParseExpect, which either compiles it or reports why it could not.
-	expectPattern  = regexp.MustCompile(`@expect\s+(.+)`)
-	verifyPattern  = regexp.MustCompile(`@verify\s+(.+)`)
-	testPattern    = regexp.MustCompile(`@test\s+(.+)`)
-	setupPattern   = regexp.MustCompile(`@setup\s+(\S+)`)
-	cleanupPattern = regexp.MustCompile(`@cleanup\s+(\S+)`)
-	throwsPattern  = regexp.MustCompile(`@throws\s+'([^']*)'`)
+	//
+	// Every pattern is anchored to the start of the line, because an annotation
+	// is a javadoc tag and a tag opens its line. Matching one anywhere turned
+	// prose that quotes a tag into a real annotation: writing "`@expect $x = 1`
+	// in a sentence" gave the test an assertion nobody wrote, and "@cleanup none
+	// would apply here" changed the cleanup strategy. The leading `*` and its
+	// indentation are stripped before these run.
+	expectPattern  = regexp.MustCompile(`^@expect\s+(.+)`)
+	verifyPattern  = regexp.MustCompile(`^@verify\s+(.+)`)
+	testPattern    = regexp.MustCompile(`^@test\s+(.+)`)
+	setupPattern   = regexp.MustCompile(`^@setup\s+(\S+)`)
+	cleanupPattern = regexp.MustCompile(`^@cleanup\s+(\S+)`)
+	throwsPattern  = regexp.MustCompile(`^@throws\s+'([^']*)'`)
 )
 
 // parseAnnotations extracts test annotations from a javadoc comment.

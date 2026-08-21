@@ -170,6 +170,11 @@ The markdown format turns your tests into living documentation.
 | `@throws` | Expect error | `@throws 'validation failed'` |
 | `@cleanup` | Rollback strategy | `@cleanup rollback` (default) or `@cleanup none` |
 
+A tag is read only when it **opens its line** (after the javadoc `*` and its
+indentation). Quoting one inside a sentence — ``a test with `@expect $x = 1`
+asserts …`` — is documentation, not an annotation, so a doc comment can explain
+itself without giving the test assertions nobody wrote.
+
 ### A test run leaves the project byte-identical
 
 `mxcli test` injects an `MxTest` module, builds, runs, and takes the injection
@@ -654,6 +659,7 @@ Use `@throws` to verify that a microflow raises an error:
 call microflow Sales.ValidateOrder(Total = -1);
 /
 ```
+
 
 ---
 
