@@ -91,14 +91,36 @@ func init() {
 
 	Register(SyntaxFeature{
 		Path:    "security.project-security",
-		Summary: "Set project security level and demo user toggle",
+		Summary: "Set project security level, demo user and guest access toggles",
 		Keywords: []string{
 			"project security", "security level", "prototype",
 			"production", "off",
 		},
 		Syntax:  "ALTER PROJECT SECURITY LEVEL OFF|PROTOTYPE|PRODUCTION;\nALTER PROJECT SECURITY DEMO USERS ON|OFF;",
 		Example: "ALTER PROJECT SECURITY LEVEL PRODUCTION;\nALTER PROJECT SECURITY DEMO USERS OFF;",
-		SeeAlso: []string{"security.demo-user"},
+		SeeAlso: []string{"security.demo-user", "security.guest-access"},
+	})
+
+	Register(SyntaxFeature{
+		Path:    "security.guest-access",
+		Summary: "Enable anonymous (guest) access and pick the role anonymous visitors get",
+		Keywords: []string{
+			"guest access", "anonymous", "anonymous users", "public",
+			"unauthenticated", "guest user role", "CE0133",
+		},
+		Syntax: "ALTER PROJECT SECURITY GUEST ACCESS ON ROLE <UserRole>;\n" +
+			"ALTER PROJECT SECURITY GUEST ACCESS ON;   -- only when a role is already configured\n" +
+			"ALTER PROJECT SECURITY GUEST ACCESS OFF;  -- keeps the stored role\n" +
+			"\n" +
+			"-- The role is what anonymous visitors get, so its entity access IS the app's\n" +
+			"-- public surface. Mendix requires one: guest access with no role fails the\n" +
+			"-- build (CE0133), so ON is refused unless a role is given or already stored.\n" +
+			"-- Mendix does not check the role exists, so mxcli does — an unknown role\n" +
+			"-- would build cleanly and leave visitors with nothing.",
+		Example: "CREATE USER ROLE Anonymous (Shop.Viewer, System.User);\n" +
+			"ALTER PROJECT SECURITY GUEST ACCESS ON ROLE Anonymous;\n" +
+			"GRANT Anonymous ON Shop.Product (read *);",
+		SeeAlso: []string{"security.user-role", "security.project-security"},
 	})
 
 	Register(SyntaxFeature{

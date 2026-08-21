@@ -77,9 +77,13 @@ func writeTestBlock(b *strings.Builder, tc TestCase, index int) {
 	// Generate assertion checks for @expect (with renamed variables)
 	// Use flat IF blocks (no nesting) to avoid Mendix end-event issues
 	if len(tc.Expects) > 0 {
-		for _, exp := range tc.Expects {
-			renamedExp := renameExpect(exp, varNames, suffix)
-			writeExpectAssertion(b, tc.ID, renamedExp)
+		renamed := make([]Expect, len(tc.Expects))
+		for i, exp := range tc.Expects {
+			renamed[i] = renameExpect(exp, varNames, suffix)
+		}
+		writeExpectAggregates(b, "  ", renamed)
+		for _, exp := range renamed {
+			writeExpectAssertion(b, tc.ID, exp)
 		}
 	} else if tc.Throws == "" {
 		// No expectations — just check it didn't throw
@@ -188,9 +192,23 @@ func renameVariables(mdl string, names map[string]bool, suffix string) string {
 // rendered condition and the actual-value expression, which is why both are kept
 // as text rather than as a tree.
 func renameExpect(exp Expect, names map[string]bool, suffix string) Expect {
+	// An aggregate's own variable is generated, so it is not in the body's name
+	// set — but it is declared inside this one shared microflow, so two tests
+	// counting a list of the same name would declare it twice. It is renamed
+	// with everything else.
+	all := names
+	if len(exp.Aggregates) > 0 {
+		all = make(map[string]bool, len(names)+len(exp.Aggregates))
+		for n := range names {
+			all[n] = true
+		}
+		for _, agg := range exp.Aggregates {
+			all[strings.TrimPrefix(agg.Var, "$")] = true
+		}
+	}
 	rename := func(src string) string {
 		return varPattern.ReplaceAllStringFunc(src, func(match string) string {
-			if names[match[1:]] {
+			if all[match[1:]] {
 				return match + suffix
 			}
 			return match
@@ -199,6 +217,16 @@ func renameExpect(exp Expect, names map[string]bool, suffix string) Expect {
 	renamed := exp
 	renamed.Condition = rename(exp.Condition)
 	renamed.Actual = rename(exp.Actual)
+	if len(exp.Aggregates) > 0 {
+		renamed.Aggregates = make([]ExpectAggregate, len(exp.Aggregates))
+		for i, agg := range exp.Aggregates {
+			renamed.Aggregates[i] = ExpectAggregate{
+				Var:  rename(agg.Var),
+				Op:   agg.Op,
+				List: rename(agg.List),
+			}
+		}
+	}
 	return renamed
 }
 

@@ -262,6 +262,43 @@ alter project security demo users on;
 alter project security demo users off;
 ```
 
+### Guest (Anonymous) Access
+
+Anonymous access is what makes part of an app public — a product catalogue anyone
+can browse without signing in. It is one flag plus a user role, and the role is
+the important half: **whatever that role can read is the app's public surface.**
+
+```sql
+-- The role anonymous visitors are given. System.User is what lets an
+-- unauthenticated session exist at all.
+create user role Anonymous (Shop.Viewer, System.User);
+
+alter project security guest access on role Anonymous;
+
+-- Now grant exactly what should be public — and nothing else.
+grant Anonymous on Shop.Product (read *);
+
+-- Re-enabling later does not need the role retyped; the stored one is used.
+alter project security guest access off;
+alter project security guest access on;
+```
+
+Three things worth knowing:
+
+- **The role is mandatory.** Mendix fails the build with **CE0133** ("No user role
+  for anonymous users selected even though the feature anonymous users is
+  enabled") when access is on with no role. `guest access on` is refused unless a
+  role is given or one is already stored.
+- **Mendix does not check the role exists**, so mxcli does. A misspelled role
+  would otherwise build with zero errors and leave anonymous visitors with no
+  access at all — a broken public site that passes every check.
+- **`off` keeps the stored role**, so toggling access while testing does not lose
+  it. Guest access off with a role set is valid Mendix.
+
+Review anonymous entity access the way lint rule **SEC004** asks you to: any
+unconstrained `read *` granted to the anonymous role is readable by the whole
+internet (DIVD-2022-00019). Add an XPath constraint or do not grant it.
+
 ### Demo Users
 
 ```sql
