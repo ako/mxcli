@@ -497,7 +497,30 @@ func parseAnnotations(doc string) annotations {
 	}
 
 	checkVerifyCleanup(&a)
+	checkThrowsExpect(&a)
 	return a
+}
+
+// checkThrowsExpect refuses an @expect on a test that expects an exception.
+//
+// @throws replaces the body's normal outcome: both generators emit the
+// throws-shaped microflow, in which the verdict starts as a failure and only the
+// error handler can clear it, and neither emits the @expect checks at all. The
+// assertion was therefore never evaluated — while AssertionCount still counted
+// it, so the test reported making two assertions and made one. Asserting on a
+// return value the body was expected not to produce cannot be made to work, so
+// it is refused rather than quietly ignored.
+func checkThrowsExpect(a *annotations) {
+	if a.Throws == "" || len(a.Expects) == 0 {
+		return
+	}
+	for _, exp := range a.Expects {
+		a.AssertionErrors = append(a.AssertionErrors, fmt.Sprintf(
+			"@expect %s: this test also has @throws, so the body is expected to fail and "+
+				"this assertion is never evaluated. Drop one of the two — assert on the "+
+				"error with @throws, or on the result with @expect", exp.Raw))
+	}
+	a.Expects = nil
 }
 
 // checkVerifyCleanup refuses a @verify on a test whose writes are rolled back.

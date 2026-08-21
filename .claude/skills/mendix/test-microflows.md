@@ -660,6 +660,12 @@ call microflow Sales.ValidateOrder(Total = -1);
 /
 ```
 
+`@throws` and `@expect` cannot be combined. A `@throws` test compiles to a
+different shape — the verdict starts as a failure and only the error handler
+clears it — and the `@expect` checks are not emitted into it at all, so the
+assertion was counted and never evaluated. There is nothing to assert on either
+way: the body was expected not to produce a result. Assert on the error with
+`@throws`, or on the result with `@expect`.
 
 ---
 
