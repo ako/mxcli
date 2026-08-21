@@ -1,0 +1,73 @@
+/**
+ * The setup annotation, end to end: a fixture microflow called before each test.
+ *
+ * This header declares a fixture for every test in the file. It is the shape
+ * that makes the annotation worth more than `call microflow X;` at the top of
+ * each body — one declaration instead of copy-paste — and it is only readable
+ * because a header comment stopped being swallowed by the first test (#927).
+ *
+ * A header may carry only this annotation. The four that describe one test's
+ * execution -- the assertion tags, the expected-error tag and the cleanup tag --
+ * are refused here by name.
+ *
+ * (Sample output below is written without the leading @, deliberately: a tag is
+ * read wherever it opens a line, so spelling one out in prose would give this
+ * file annotations nobody wrote.)
+ *
+ * No project is needed to see what the annotation resolved to:
+ *
+ *   mxcli test mdl-examples/doctype-tests/setup-annotation.test.mdl --list
+ *
+ *   Found 4 test(s):
+ *     test_1: the file fixture applies with nothing else
+ *       setup MyModule.ACT_SeedCatalog
+ *       expect count($Brands) >= 1
+ *     test_2: a test composes its own fixture after the file's
+ *       setup MyModule.ACT_SeedCatalog
+ *       setup MyModule.ACT_SeedOneBrand
+ *       ...
+ *
+ * @setup MyModule.ACT_SeedCatalog
+ */
+
+/**
+ * @test the file fixture applies with nothing else
+ * @cleanup none
+ * @expect count($Brands) >= 1
+ */
+retrieve $Brands from MyModule.CatalogBrand;
+/
+
+/**
+ * The file's fixtures run first: they are the broader precondition, and a
+ * test's own setup may build on them. Repeating the annotation is how two
+ * fixtures compose.
+ *
+ * @test a test composes its own fixture after the file's
+ * @setup MyModule.ACT_SeedOneBrand
+ * @cleanup none
+ * @expect count($Brands) >= 2
+ */
+retrieve $Brands from MyModule.CatalogBrand;
+/
+
+/**
+ * The fixture runs inside the test's transaction, so the @cleanup rollback
+ * default undoes it along with everything the test wrote — which is what lets
+ * every test start from the same state.
+ *
+ * @test the fixture is rolled back with the test
+ * @expect count($Brands) >= 1
+ */
+retrieve $Brands from MyModule.CatalogBrand;
+/
+
+/**
+ * A @throws test keeps its fixture: the seed is not the thing expected to
+ * throw, and it runs before the verdict is pre-set to a failure.
+ *
+ * @test a test expecting an error still gets its fixture
+ * @throws 'validation failed'
+ */
+call microflow MyModule.ACT_SubmitEmptyOrder();
+/

@@ -1,12 +1,12 @@
 ---
 title: "@setup for mxcli test"
-status: draft
+status: done
 date: 2026-08-21
 ---
 
 # Proposal: `@setup` — give a test the state it needs, and say so
 
-**Status:** Draft
+**Status:** Done — implemented, minus the pre-flight validation (open question 4, declined)
 **Date:** 2026-08-21
 
 ## Problem Statement
@@ -106,7 +106,7 @@ CREATE OR REPLACE MICROFLOW MxTest.Test_test_1 ()
 RETURNS String AS $Verdict
 BEGIN
   DECLARE $Verdict String = 'PASS';
-  $mxtest_setup_1 = CALL MICROFLOW eShop.ACT_SeedCatalog() ON ERROR {
+  CALL MICROFLOW eShop.ACT_SeedCatalog() ON ERROR {
     SET $Verdict = 'SETUP:eShop.ACT_SeedCatalog';
     RETURN $Verdict;
   };
@@ -131,9 +131,12 @@ BEGIN
   mismatches caused by one broken seed is the failure mode this annotation exists
   to prevent. The verdict protocol gains a third prefix (`SETUP:`) alongside
   `PASS` and `FAIL:`.
-- **An unresolvable microflow is refused before the run**, by name. Fail-closed,
-  as with every other annotation in this package: a `@setup` naming a microflow
-  that does not exist must not produce a run that quietly did no setup.
+- **An unresolvable microflow is refused, by name, before anything runs.**
+  Fail-closed, as with every other annotation in this package: a `@setup` naming
+  a microflow that does not exist must not produce a run that quietly did no
+  setup. This falls out of injection — the generated flows go in through `mxcli
+  exec`, whose check names the missing microflow and writes nothing — so it needs
+  no pre-flight of its own.
 - **`--list` shows it**, so `mxcli test <file> --list` says what a test depends on
   without booting anything.
 
@@ -168,21 +171,22 @@ and the first two are the whole feature.
 | `cmd/mxcli/testrunner/parser.go` | `Setup` becomes `[]string` (repeatable); `setupPattern` already anchored; merge the file header's setups ahead of each test's |
 | `cmd/mxcli/testrunner/parser.go` | Header annotations: a leading doc comment with no `@test` currently yields no test and is discarded — keep its annotations as file-level defaults. #927's `scanDocComments` already isolates the header, which is what makes this cheap |
 | `cmd/mxcli/testrunner/generator_endpoint.go` | Emit the setup calls at the top of `writeExpectFlowBody` / `writeThrowsFlowBody`, each with an `ON ERROR` handler setting the `SETUP:` verdict and returning |
-| `cmd/mxcli/testrunner/generator.go` | Same for the monolithic runner, with the per-test variable suffix (`$mxtest_setup_1_3`). It reports over the log protocol rather than a returned verdict, so a setup failure emits a new `MXTEST:ERROR:` line — added to the marker list `ParseLogResults` scans, which today knows only START/RUN/PASS/FAIL/SKIP/END |
+| `cmd/mxcli/testrunner/generator.go` | Same for the monolithic runner — no variable suffix is needed after all, since a fixture call binds nothing. It reports over the log protocol rather than a returned verdict, so a setup failure emits a new `MXTEST:ERROR:` line — added to the marker list `ParseLogResults` scans, which today knows only START/RUN/PASS/FAIL/SKIP/END |
 | `cmd/mxcli/testrunner/generator_endpoint.go` | `verdictSetupPrefix` beside `verdictPass` / `verdictFailPrefix` |
 | `cmd/mxcli/testrunner/client.go` | `toResult` maps a `SETUP:` verdict to `StatusError` with the microflow named — a fourth arm on the switch that already tells "the test failed" from "the microflow threw". Its `default` reports an unrecognised verdict, so an unhandled `SETUP:` would error rather than pass, which is the right way round to get this wrong |
 | `cmd/mxcli/testrunner/results.go` | Nothing: `StatusError` is already counted with the failures |
-| `cmd/mxcli/testrunner/runner.go` | Validate the generated flows with `mxcli check … --references` before `exec`, so an unknown `@setup` microflow is named before the app boots |
+| ~~`cmd/mxcli/testrunner/runner.go`~~ | ~~Validate the generated flows with `mxcli check … --references` before `exec`~~ — **not implemented** (open question 4). An unknown `@setup` microflow is caught by `mxcli exec`'s own check when the flows are injected, which names it; the whole-script pre-flight would have refused suites for unrelated references |
 | `cmd/mxcli/testrunner/runner.go` | `--list` prints each test's setups |
 | `.claude/skills/mendix/test-microflows.md`, `docs-site/src/tools/test-annotations.md` | Document the annotation, the ordering, and the ERROR-not-FAIL rule |
 | `mdl-examples/doctype-tests/` | A `.test.mdl` exercising file-level and per-test setup |
 
-The validation step is the one with a blast radius: `--references` resolves
-*every* reference in the generated flows, not just the setups, so a test body
-that names something the project does not have would start being refused before
-the run instead of failing during it. That is an improvement, and it is also a
-behaviour change that can turn a suite red on upgrade. It should land as its own
-commit, after the feature, so it can be reverted alone.
+The validation step was the one with a blast radius — `--references` resolves
+*every* reference in the generated flows, not just the setups — and it was
+dropped from the implementation for that reason. It is not needed for the
+failure it was meant to catch: injecting the generated flows already runs
+`mxcli exec`, whose own check names an unresolvable microflow and refuses to
+write, so an unknown `@setup` still cannot produce a run that quietly did no
+setup.
 
 ## Version Compatibility
 

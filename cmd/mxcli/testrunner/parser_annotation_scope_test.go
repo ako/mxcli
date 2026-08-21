@@ -62,8 +62,8 @@ func TestParseAnnotationsReadsTagsThatOpenTheirLine(t *testing.T) {
 	if a.Cleanup != CleanupNone {
 		t.Errorf("Cleanup = %q, want none", a.Cleanup)
 	}
-	if a.Setup != "seed" {
-		t.Errorf("Setup = %q, want seed", a.Setup)
+	if len(a.Setups) != 1 || a.Setups[0] != "seed" {
+		t.Errorf("Setups = %v, want [seed]", a.Setups)
 	}
 }
 

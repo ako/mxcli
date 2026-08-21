@@ -199,7 +199,7 @@ func ParseLogResults(logReader io.Reader, suite *TestSuite, requireAssertions bo
 		// "MXTEST:" is the log node and the second is our protocol prefix.
 		// We search for specific protocol actions to avoid matching the log node.
 		protocol := ""
-		for _, action := range []string{"MXTEST:START:", "MXTEST:RUN:", "MXTEST:PASS:", "MXTEST:FAIL:", "MXTEST:SKIP:", "MXTEST:END:"} {
+		for _, action := range []string{"MXTEST:START:", "MXTEST:RUN:", "MXTEST:PASS:", "MXTEST:FAIL:", "MXTEST:ERROR:", "MXTEST:SKIP:", "MXTEST:END:"} {
 			if idx := strings.Index(line, action); idx >= 0 {
 				protocol = line[idx:]
 				break
@@ -264,6 +264,26 @@ func ParseLogResults(logReader io.Reader, suite *TestSuite, requireAssertions bo
 					ID:      id,
 					Name:    id,
 					Status:  StatusFail,
+					Message: msg,
+				}
+			}
+
+		case "ERROR":
+			// A setup that threw: the test never ran, so it is neither a pass nor
+			// a failure. Only the monolithic runner reports this way — the
+			// endpoint carries the same outcome back as a SETUP verdict.
+			msg := ""
+			if len(parts) >= 4 {
+				msg = parts[3]
+			}
+			if r, ok := resultMap[id]; ok {
+				r.Status = StatusError
+				r.Message = msg
+			} else {
+				resultMap[id] = &TestResult{
+					ID:      id,
+					Name:    id,
+					Status:  StatusError,
 					Message: msg,
 				}
 			}

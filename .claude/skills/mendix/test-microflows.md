@@ -126,7 +126,8 @@ $result = call microflow MyModule.Multiply(A = 10, B = 5);
 
 **A file may open with a header comment**, in either spelling — a `/** … */`
 block or `--` lines — and it does not become part of the first test. The test's
-own doc comment is the last one above its statements.
+own doc comment is the last one above its statements. A `/** … */` header may
+carry `@setup`, which then applies to every test in the file.
 
 **One `@test` per block.** The `/` is what ends a test, so leaving it out puts
 two tests in one block; that is refused by name rather than resolved, because
@@ -168,6 +169,7 @@ The markdown format turns your tests into living documentation.
 | `@expect` | Assert with a built-in | `@expect length($result) = 81` |
 | `@verify` | OQL post-condition on the database | `@verify select count(*) as n from Mod.E = 1` |
 | `@throws` | Expect error | `@throws 'validation failed'` |
+| `@setup` | Microflow to run first | `@setup MyModule.ACT_SeedCustomers` |
 | `@cleanup` | Rollback strategy | `@cleanup rollback` (default) or `@cleanup none` |
 
 A tag is read only when it **opens its line** (after the javadoc `*` and its
@@ -271,6 +273,52 @@ The refusal matters more than the convenience: before it, a count assertion was
 dropped during parsing, and a test with no assertions left passes as long as its
 body does not throw — so `@expect count($Brands) = 999` reported PASS against an
 empty table (#927).
+
+### `@setup` — the state a test needs before it runs
+
+`@setup` names a **microflow** to call before the test's own statements. A
+fixture in a Mendix app is a microflow, so there is nothing to declare:
+
+```mdl
+/**
+ * @test the seed microflow writes five brands
+ * @setup eShop.ACT_SeedCatalog
+ * @cleanup none
+ * @expect count($Brands) = 5
+ */
+retrieve $Brands from eShop.CatalogBrand;
+/
+```
+
+Repeat it to compose fixtures; they run in the order written. Declare it **once
+in the file's header comment** and every test in the file gets it, with the
+file's fixtures running before a test's own:
+
+```mdl
+/**
+ * Seeds every test below.
+ * @setup eShop.ACT_SeedCatalog
+ */
+```
+
+The header is the file's first doc comment when it carries no `@test`. It may
+only carry `@setup` — `@expect`, `@verify`, `@throws` and `@cleanup` describe one
+test's execution, so a header carrying one is refused by name rather than
+silently ignored.
+
+Two consequences worth knowing:
+
+- **The setup runs inside the test's transaction.** Under the `@cleanup
+  rollback` default it is undone with the test, so every test starts from the
+  same state — which is what makes a fixture worth having. Under `@cleanup none`
+  it persists like everything else that test writes.
+- **A failing setup is an ERROR, not a FAIL**, naming the microflow. The test
+  never ran, so it neither passed nor failed, and a suite full of assertion
+  mismatches caused by one broken seed is exactly what this prevents.
+
+`@setup` calls a microflow with no arguments; a fixture that needs arguments
+gets a wrapper microflow. There is no `@teardown` — `@cleanup rollback` is the
+teardown.
 
 ### `@verify` — asserting on what the microflow wrote
 
