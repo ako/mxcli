@@ -640,6 +640,7 @@ func (m *mcpWorkflowMutator) qn() string { return m.moduleName + "." + m.workflo
 type activityRefMatch struct {
 	arrayPath string
 	index     int
+	name      string // the activity's own name (activityRef may be its caption)
 }
 
 // wfLocation is a resolved activity location together with the set of every
@@ -649,6 +650,7 @@ type wfLocation struct {
 	arrayPath string // PED path of the activities array holding the match
 	index     int    // the match's index within that array
 	actPath   string // full PED path to the matched activity element
+	name      string // the matched activity's own name (ref may be its caption)
 	taken     map[string]bool
 }
 
@@ -679,6 +681,7 @@ func (m *mcpWorkflowMutator) resolve(ref string, atPos int) (wfLocation, error) 
 		arrayPath: pick.arrayPath,
 		index:     pick.index,
 		actPath:   fmt.Sprintf("%s/%d", pick.arrayPath, pick.index),
+		name:      pick.name,
 		taken:     taken,
 	}, nil
 }
@@ -701,7 +704,7 @@ func (m *mcpWorkflowMutator) searchActivities(arrayPath, ref string, matches *[]
 			taken[name] = true
 		}
 		if mapString(a, "name") == ref || mapString(a, "caption") == ref {
-			*matches = append(*matches, activityRefMatch{arrayPath: arrayPath, index: i})
+			*matches = append(*matches, activityRefMatch{arrayPath: arrayPath, index: i, name: mapString(a, "name")})
 		}
 		actPath := fmt.Sprintf("%s/%d", arrayPath, i)
 		for _, sub := range m.subFlowArrays(actPath, mapString(a, "$Type")) {
@@ -876,10 +879,11 @@ func (m *mcpWorkflowMutator) ReplaceActivity(activityRef string, atPos int, acti
 		return err
 	}
 	arrayPath, idx := loc.arrayPath, loc.index
-	// The replaced activity's own name stays in the taken set: PED applies the
-	// remove and the adds in one call, and it is the outgoing name that Studio
-	// Pro still has on screen. Re-inserting under the same name therefore yields
-	// name_2 — the same conservative choice the file backends make.
+	// Free the outgoing activity's name before deduplicating: the remove and the
+	// adds go to PED in one call, so the replaced activity is gone by the time
+	// any name is resolved, and a replacement reusing its name is the ordinary
+	// in-place edit rather than a collision (issue #944).
+	delete(loc.taken, loc.name)
 	wfnames.Dedup(activities, loc.taken)
 	mapped := make([]map[string]any, 0, len(activities))
 	for _, a := range activities {
