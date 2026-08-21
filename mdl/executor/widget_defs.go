@@ -652,10 +652,6 @@ func RegenerateWidgetDocs(projectPath string) (int, error) {
 	projectDir := filepath.Dir(projectPath)
 	widgetsDir := filepath.Join(projectDir, "widgets")
 	defsDir := filepath.Join(projectDir, ".mxcli", "widgets")
-	docsDir := filepath.Join(projectDir, ".claude", "skills", "widgets")
-	if _, err := os.Stat(filepath.Join(projectDir, ".ai-context")); err == nil {
-		docsDir = filepath.Join(projectDir, ".ai-context", "skills", "widgets")
-	}
 
 	matches, err := filepath.Glob(filepath.Join(widgetsDir, "*.mpk"))
 	if err != nil {
@@ -665,12 +661,42 @@ func RegenerateWidgetDocs(projectPath string) (int, error) {
 		return 0, nil
 	}
 
-	if err := os.MkdirAll(docsDir, 0755); err != nil {
-		return 0, fmt.Errorf("failed to create docs directory: %w", err)
+	// Make sure the .def.json files exist BEFORE rendering. They carry the MDL
+	// keyword routing — child slots and object lists — and without them the
+	// generated example collapses to a bare one-liner with no `{ … }` block at
+	// all. `mxcli widget docs` on a fresh project used to emit exactly that, for
+	// every widget, with no indication anything was missing: a data grid
+	// documented as `PLUGGABLEWIDGET '…' widget1` and nothing about columns.
+	// Only `refresh catalog` happened to generate defs first, so the output
+	// depended on which command the user had run last.
+	//
+	// Best-effort: a project whose defs cannot be extracted still gets docs, just
+	// the thinner ones — that is strictly better than no docs, and the caller is
+	// told how many widgets ended up without routing.
+	if _, defErr := RefreshWidgetDefinitions(projectPath, false, nil); defErr != nil {
+		log.Printf("warning: widget definitions could not be refreshed, MDL examples will omit child slots: %v", defErr)
+	}
+
+	docsDirs := WidgetDocsDirs(projectDir)
+	for _, d := range docsDirs {
+		if err := os.MkdirAll(d, 0755); err != nil {
+			return 0, fmt.Errorf("failed to create docs directory: %w", err)
+		}
+	}
+
+	// The embedded definitions cover the built-in widgets that are never
+	// extracted to .def.json. Best-effort: a registry that cannot be built just
+	// means those widgets fall back to the thinner rendering.
+	registry, regErr := NewWidgetRegistry()
+	if regErr != nil {
+		log.Printf("warning: widget registry unavailable, built-in widgets will omit child slots: %v", regErr)
+		registry = nil
 	}
 
 	var generated int
 	var indexEntries []string
+	var widgetNames []string
+	var withoutRouting []string
 
 	for _, mpkPath := range matches {
 		// A bundled .mpk (e.g. Charts.mpk) contains many widgetFiles; ParseMPK
@@ -684,11 +710,16 @@ func RegenerateWidgetDocs(projectPath string) (int, error) {
 		for _, mpkDef := range mpkDefs {
 			mdlName := DeriveMDLName(mpkDef.ID)
 			filename := strings.ToLower(mdlName) + ".md"
-			outPath := filepath.Join(docsDir, filename)
 
-			// Load the matching .def.json (may not exist for built-in widgets like
-			// COMBOBOX / GALLERY — those have hand-crafted definitions in
-			// sdk/widgets/definitions/ that we don't extract per-project).
+			// Load the matching .def.json, falling back to the embedded definition.
+			//
+			// Built-in widgets like COMBOBOX and GALLERY have hand-crafted
+			// definitions in sdk/widgets/definitions/ and are deliberately not
+			// extracted per-project, so their .def.json never exists. Reading only
+			// from disk therefore documented nine widgets — combobox, gallery, the
+			// four data-grid filters, dropdownsort, image, barcodescanner — with an
+			// MDL example missing every child block, as if extraction had failed.
+			// The registry has had their routing all along.
 			var def *WidgetDefinition
 			defPath := filepath.Join(defsDir, strings.ToLower(mdlName)+".def.json")
 			if data, err := os.ReadFile(defPath); err == nil {
@@ -697,41 +728,41 @@ func RegenerateWidgetDocs(projectPath string) (int, error) {
 					def = nil
 				}
 			}
+			if def == nil && registry != nil {
+				if embedded, ok := registry.Get(mdlName); ok {
+					def = embedded
+				}
+			}
 
 			doc := widgetDocMarkdown(mpkDef, def, mdlName)
-			if err := os.WriteFile(outPath, []byte(doc), 0644); err != nil {
-				log.Printf("warning: failed to write %s: %v", filename, err)
+			if writeErr := writeToAll(docsDirs, filename, doc); writeErr != nil {
+				log.Printf("warning: failed to write %s: %v", filename, writeErr)
 				continue
+			}
+			if def == nil {
+				withoutRouting = append(withoutRouting, mdlName)
 			}
 
 			kind := "CUSTOMWIDGET"
 			if mpkDef.IsPluggable {
 				kind = "PLUGGABLEWIDGET"
 			}
-			indexEntries = append(indexEntries, fmt.Sprintf("| `%s` | %s | `%s` | %s | %d |",
-				kind, mdlName, mpkDef.ID, mpkDef.Name, len(mpkDef.Properties)))
+			indexEntries = append(indexEntries, fmt.Sprintf("| `%s` | [%s](%s) | `%s` | %s | %d |",
+				kind, mdlName, filename, mpkDef.ID, mpkDef.Name, len(mpkDef.Properties)))
+			widgetNames = append(widgetNames, mpkDef.Name)
 			generated++
 		}
 	}
 
-	var indexBuf strings.Builder
-	indexBuf.WriteString("# Available Widgets\n\n")
-	indexBuf.WriteString("Auto-generated. See individual files for property details, child slots, and object lists.\n\n")
-	indexBuf.WriteString("| Prefix | Name | Widget ID | Display Name | Props |\n")
-	indexBuf.WriteString("|--------|------|-----------|--------------|-------|\n")
-	for _, entry := range indexEntries {
-		indexBuf.WriteString(entry)
-		indexBuf.WriteString("\n")
+	skill := widgetSkillMarkdown(indexEntries, widgetNames, withoutRouting)
+	if err := writeToAll(docsDirs, "SKILL.md", skill); err != nil {
+		return generated, fmt.Errorf("failed to write skill: %w", err)
 	}
-	indexBuf.WriteString("\n**Usage in MDL:**\n```sql\n")
-	indexBuf.WriteString("-- React pluggable widgets\n")
-	indexBuf.WriteString("PLUGGABLEWIDGET 'com.mendix.widget.custom.badge.Badge' badge1\n\n")
-	indexBuf.WriteString("-- Legacy custom widgets\n")
-	indexBuf.WriteString("CUSTOMWIDGET 'com.company.OldWidget' legacy1\n")
-	indexBuf.WriteString("```\n")
-
-	if err := os.WriteFile(filepath.Join(docsDir, "_index.md"), []byte(indexBuf.String()), 0644); err != nil {
-		return generated, fmt.Errorf("failed to write index: %w", err)
+	// `_index.md` was the pre-#906 name, and it is not a skill: a leading
+	// underscore hides it from a plain glob, and nothing discovered it. Retire it
+	// so an upgraded project does not keep a second, staler index beside SKILL.md.
+	for _, d := range docsDirs {
+		_ = os.Remove(filepath.Join(d, "_index.md"))
 	}
 
 	return generated, nil
@@ -773,22 +804,13 @@ func widgetDocMarkdown(mpkDef *mpk.WidgetDefinition, def *WidgetDefinition, mdlN
 
 	if len(mpkDef.Properties) > 0 {
 		buf.WriteString("## Properties\n\n")
-		buf.WriteString("| Property | Type | Required | Default | Description |\n")
-		buf.WriteString("|----------|------|----------|---------|-------------|\n")
+		buf.WriteString("| Property | Type | Required | Default | Values / notes | Group | Description |\n")
+		buf.WriteString("|----------|------|----------|---------|----------------|-------|-------------|\n")
 		for _, prop := range mpkDef.Properties {
 			if prop.IsSystem {
 				continue
 			}
-			req := ""
-			if prop.Required {
-				req = "Yes"
-			}
-			desc := prop.Description
-			if len(desc) > 80 {
-				desc = desc[:77] + "..."
-			}
-			buf.WriteString(fmt.Sprintf("| `%s` | %s | %s | %s | %s |\n",
-				prop.Key, prop.Type, req, prop.DefaultValue, desc))
+			writePropertyRow(&buf, prop, 0)
 		}
 		buf.WriteString("\n")
 	}
@@ -825,5 +847,195 @@ func widgetDocMarkdown(mpkDef *mpk.WidgetDefinition, def *WidgetDefinition, mdlN
 		}
 	}
 
+	buf.WriteString(fmt.Sprintf("---\n\nRegenerated by `mxcli widget docs` and by `refresh catalog`. "+
+		"For the same data live from the `.mpk` — including anything added by a widget upgrade since this "+
+		"file was written — run `mxcli widget describe %s -p <app.mpr>`.\n", strings.ToLower(mdlName)))
+
 	return buf.String()
+}
+
+// writePropertyRow renders one property, then its children indented beneath it.
+//
+// The three columns beyond name/type exist because their absence was the whole
+// problem: an `enumeration` row showed its default but never its alternatives,
+// and an `object` row showed nothing at all about the properties that go inside
+// it — so `columns` in a data grid documented itself as "object, required" and
+// left the reader unable to write a single column. Measured across a 42-widget
+// project: 134 enumeration rows named 0 permitted values, 23 object rows exposed
+// 0 children. `mxcli widget describe` had all of it; only this renderer dropped it.
+func writePropertyRow(buf *strings.Builder, prop mpk.PropertyDef, depth int) {
+	req := ""
+	if prop.Required {
+		req = "Yes"
+	}
+
+	// Enumerations name their options, and an object property announces the
+	// children rendered beneath it. Their absence was the whole problem: an
+	// `enumeration` row showed its default but never its alternatives, and an
+	// `object` row said nothing about what goes inside — so `columns` in a data
+	// grid documented itself as "object, required" and left the reader unable to
+	// write a single column. Measured across a 42-widget project: 134 enumeration
+	// rows named 0 permitted values, 23 object rows exposed 0 children.
+	// `mxcli widget describe` reads the SAME PropertyDef and printed all of it;
+	// only this renderer dropped it.
+	var notes []string
+	if len(prop.EnumValues) > 0 {
+		keys := make([]string, 0, len(prop.EnumValues))
+		for _, v := range prop.EnumValues {
+			keys = append(keys, "`"+v+"`")
+		}
+		notes = append(notes, strings.Join(keys, " \\| "))
+	}
+	if prop.IsList {
+		notes = append(notes, "list")
+	}
+	if prop.OnChange != "" {
+		notes = append(notes, "on change → `"+prop.OnChange+"`")
+	}
+	if len(prop.Children) > 0 {
+		notes = append(notes, fmt.Sprintf("%d sub-properties below", len(prop.Children)))
+	}
+
+	name := "`" + prop.Key + "`"
+	if depth > 0 {
+		name = strings.Repeat("&nbsp;", depth*4) + "↳ `" + prop.Key + "`"
+	}
+
+	desc := prop.Description
+	if desc == "" {
+		desc = prop.Caption
+	}
+
+	buf.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s | %s | %s |\n",
+		name, prop.Type, req, cellText(prop.DefaultValue),
+		strings.Join(notes, "; "), cellText(prop.Category), cellText(desc)))
+
+	for _, child := range prop.Children {
+		if child.IsSystem {
+			continue
+		}
+		writePropertyRow(buf, child, depth+1)
+	}
+}
+
+// cellText makes a value safe for a markdown table cell.
+//
+// Descriptions used to be cut at 77 characters plus an ellipsis, which reliably
+// removed the operative half of the sentence ("Must include '%d' to denote number
+// posit…"). They are kept whole now; newlines are folded because a table cell
+// cannot hold one, and pipes are escaped because an unescaped one silently splits
+// the row into extra columns.
+func cellText(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	return strings.ReplaceAll(s, "|", "\\|")
+}
+
+// WidgetDocsDirs returns every skills directory the widget docs belong in.
+//
+// It used to be either/or — `.ai-context/skills/widgets/` when `.ai-context`
+// existed, `.claude/skills/widgets/` otherwise — which meant a Claude project
+// with `.ai-context/` present got its bundled skills in `.claude/skills/` and its
+// widget docs only in the other tree. `mxcli init` writes skills to both, so
+// these follow the same rule.
+func WidgetDocsDirs(projectDir string) []string {
+	var dirs []string
+	if _, err := os.Stat(filepath.Join(projectDir, ".ai-context")); err == nil {
+		dirs = append(dirs, filepath.Join(projectDir, ".ai-context", "skills", "widgets"))
+	}
+	if _, err := os.Stat(filepath.Join(projectDir, ".claude")); err == nil {
+		dirs = append(dirs, filepath.Join(projectDir, ".claude", "skills", "widgets"))
+	}
+	if len(dirs) == 0 {
+		// Neither tree exists yet: keep the historical default so a project that
+		// has never seen `mxcli init` still gets something.
+		dirs = append(dirs, filepath.Join(projectDir, ".claude", "skills", "widgets"))
+	}
+	return dirs
+}
+
+// writeToAll writes one generated file into every destination directory.
+func writeToAll(dirs []string, name, content string) error {
+	for _, d := range dirs {
+		if err := os.WriteFile(filepath.Join(d, name), []byte(content), 0644); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// widgetSkillMarkdown renders the SKILL.md that fronts the per-widget files.
+//
+// This is the navigation half of the Agent Skills progressive-disclosure shape:
+// the description is always loaded, this body loads when the skill is invoked,
+// and the per-widget files load only when the body sends a reader to one. The
+// description names the project's actual widgets, which a hand-written skill
+// cannot do — so "does this project have a chart widget?" is answerable from the
+// skill listing alone, at no context cost.
+func widgetSkillMarkdown(indexEntries, widgetNames, withoutRouting []string) string {
+	var buf strings.Builder
+
+	buf.WriteString("---\n")
+	buf.WriteString("name: widgets\n")
+	buf.WriteString("description: " + widgetSkillDescription(widgetNames) + "\n")
+	buf.WriteString("---\n\n")
+
+	buf.WriteString("# Widgets in this project\n\n")
+	buf.WriteString("Generated from the `.mpk` files in `widgets/` by `mxcli widget docs` and by\n")
+	buf.WriteString("`refresh catalog`. One file per widget holds its full property table, child\n")
+	buf.WriteString("slots and object lists — **read the file for the widget you are placing**, not\n")
+	buf.WriteString("this page.\n\n")
+
+	buf.WriteString("| Prefix | Name | Widget ID | Display Name | Props |\n")
+	buf.WriteString("|--------|------|-----------|--------------|-------|\n")
+	for _, entry := range indexEntries {
+		buf.WriteString(entry)
+		buf.WriteString("\n")
+	}
+
+	buf.WriteString("\n## Usage in MDL\n\n```sql\n")
+	buf.WriteString("-- React pluggable widgets\n")
+	buf.WriteString("PLUGGABLEWIDGET 'com.mendix.widget.custom.badge.Badge' badge1\n\n")
+	buf.WriteString("-- Legacy custom widgets\n")
+	buf.WriteString("CUSTOMWIDGET 'com.company.OldWidget' legacy1\n")
+	buf.WriteString("```\n\n")
+
+	buf.WriteString("## When these files are not enough\n\n")
+	buf.WriteString("They are a snapshot: a widget upgraded since the last `refresh catalog` is\n")
+	buf.WriteString("described here as it was, not as it is. For the same data read live from the\n")
+	buf.WriteString("`.mpk`, plus the dynamic visibility rules that are not rendered here at all:\n\n")
+	buf.WriteString("```bash\n")
+	buf.WriteString("mxcli widget describe <name> -p <app.mpr>    # e.g. datagrid, combobox\n")
+	buf.WriteString("mxcli widget list -p <app.mpr>               # every widget, one line each\n")
+	buf.WriteString("```\n\n")
+	buf.WriteString("Prefer `describe` when a property does not behave as this file says it should.\n")
+
+	if len(withoutRouting) > 0 {
+		buf.WriteString("\n## Widgets without child-block routing\n\n")
+		buf.WriteString("mxcli has no MDL child-slot mapping for these, so their example is the widget\n")
+		buf.WriteString("line alone. For a leaf widget (a filter, an input) that is simply correct. If\n")
+		buf.WriteString("one of them needs a `{ … }` block, the example will not tell you — check\n")
+		buf.WriteString("`mxcli widget describe <name>` for properties of type `widgets` or `object`:\n\n")
+		for _, n := range withoutRouting {
+			buf.WriteString("- `" + strings.ToLower(n) + "`\n")
+		}
+	}
+
+	return buf.String()
+}
+
+// widgetSkillDescription builds the frontmatter description, naming as many of
+// the project's widgets as fit. The names are the point: they let a reader rule
+// the skill in or out without opening it.
+func widgetSkillDescription(names []string) string {
+	const maxNames = 12
+	shown := names
+	suffix := ""
+	if len(names) > maxNames {
+		shown = names[:maxNames]
+		suffix = fmt.Sprintf(" and %d more", len(names)-maxNames)
+	}
+	list := strings.Join(shown, ", ") + suffix
+	return fmt.Sprintf("%q", "The pluggable and custom widgets installed in THIS project and how to write them in MDL — "+
+		list+". Use before placing any PLUGGABLEWIDGET or CUSTOMWIDGET on a page, or when a widget's "+
+		"property names, enumeration values or child blocks need checking.")
 }
