@@ -160,11 +160,34 @@ surface (insert path, drop path, insert condition, boundary events).
 ## DESCRIBE round-trip
 
 `DESCRIBE WORKFLOW Module.Name` emits **executable, re-runnable** MDL — user
-tasks, decisions, splits, jump-to targets, and wait activities all come back as
-statements (not comments). You can learn the exact syntax by describing a
-Studio-Pro-authored workflow, and `describe → drop → exec` reproduces a workflow
-that builds. (The implicit start/end activities are omitted, as they are
-re-synthesised on create.)
+tasks, decisions, splits, jump-to targets, wait activities and boundary events
+all come back as statements (not comments). You can learn the exact syntax by
+describing a Studio-Pro-authored workflow, and `describe → drop → exec`
+reproduces a workflow that builds. (The implicit start/end activities are
+omitted, as they are re-synthesised on create.)
+
+**What DESCRIBE still cannot see: event sub-processes.** mxcli has no model for
+them at all, so they do not appear in the output and cannot be written from MDL.
+A workflow that has one can only be edited in Studio Pro or through
+`ALTER WORKFLOW` (below) — never with `CREATE OR REPLACE`.
+
+## Rewriting an existing workflow
+
+`CREATE OR REPLACE|MODIFY WORKFLOW` **rebuilds the workflow from the statement**,
+so anything the script does not restate is deleted — including each boundary
+event's whole handler flow. This is the failure that costs real work: it is not
+reported by `mx check` afterwards, because the result is a perfectly valid
+workflow that simply no longer does what it did.
+
+mxcli refuses the two cases where that would lose something:
+
+- a stored **event sub-process** — MDL cannot express one, so the rewrite is
+  refused outright;
+- **more stored boundary events than the statement declares** — restate them and
+  the rewrite proceeds, which is what `describe workflow` now emits for you.
+
+The safe way to change one activity in a workflow carrying hand-placed structure
+is `ALTER WORKFLOW`, which mutates in place and touches nothing else.
 
 ## Microflow statements for workflow tasks
 
