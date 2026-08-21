@@ -84,6 +84,12 @@ func execCreateWorkflow(ctx *ExecContext, s *ast.CreateWorkflowStmt) error {
 		existingID = existing.ID
 		existingExcluded = existing.Excluded
 		existingContainer = existing.ContainerID
+
+		// Refuse a rewrite that would delete a stored construct this statement
+		// does not restate (guard-don't-drop, ADR-0005) — issue #948.
+		if err := checkNoDroppedWorkflowConstructs(ctx, existingID, s.Name.String(), s); err != nil {
+			return err
+		}
 	}
 
 	containerID, err := containerForDocument(ctx, module.ID, s.Folder, existingContainer)
