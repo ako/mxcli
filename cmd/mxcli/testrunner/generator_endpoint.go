@@ -14,6 +14,11 @@ import (
 const (
 	verdictPass       = "PASS"
 	verdictFailPrefix = "FAIL:"
+	// verdictSetupPrefix is followed by the setup microflow that threw. It is a
+	// third outcome on purpose: the test never ran, so it neither passed nor
+	// failed, and reporting a broken fixture as a FAIL blames the code under
+	// test for it.
+	verdictSetupPrefix = "SETUP:"
 )
 
 // GenerateTestFlows returns the MDL declaring one microflow per test case.
@@ -54,6 +59,10 @@ func writeTestFlow(b *strings.Builder, tc TestCase) {
 	b.WriteString("BEGIN\n")
 	fmt.Fprintf(b, "  DECLARE $Verdict String = '%s';\n", verdictPass)
 
+	// Before the body, and before a @throws test pre-sets its failing verdict:
+	// the fixture is not the thing expected to throw.
+	writeSetupCalls(b, tc)
+
 	if tc.Throws != "" {
 		writeThrowsFlowBody(b, tc)
 	} else {
@@ -63,6 +72,22 @@ func writeTestFlow(b *strings.Builder, tc TestCase) {
 	b.WriteString("  RETURN $Verdict;\n")
 	b.WriteString("END;\n")
 	b.WriteString("/\n")
+}
+
+// writeSetupCalls writes the @setup microflow calls that precede a test's body.
+//
+// Each is a plain call — a fixture is a microflow, so there is nothing to
+// resolve and nothing to declare — with a handler that returns the SETUP verdict
+// and stops. Continuing into a test whose preconditions were not established
+// produces an assertion failure that says nothing about the code under test.
+func writeSetupCalls(b *strings.Builder, tc TestCase) {
+	for _, flow := range tc.Setups {
+		fmt.Fprintf(b, "  CALL MICROFLOW %s() ON ERROR {\n", flow)
+		fmt.Fprintf(b, "    SET $Verdict = '%s';\n",
+			escapeMDLString(verdictSetupPrefix+flow))
+		b.WriteString("    RETURN $Verdict;\n")
+		b.WriteString("  };\n")
+	}
 }
 
 // writeExpectFlowBody writes the body of a normal test: run the MDL, then check

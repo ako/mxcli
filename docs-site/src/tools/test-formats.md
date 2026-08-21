@@ -38,7 +38,9 @@ silent:
 
 - **A file may open with a header comment** — a `/** … */` block or `--` lines —
   and it is not part of the first test. The test's own doc comment is the last
-  one above its statements.
+  one above its statements. A `/** … */` header may carry
+  [`@setup`](test-annotations.md#setup), which then applies to every test in the
+  file.
 - **One `@test` per block.** Because the `/` is what ends a test, omitting it
   merges two tests into one. That is refused by name rather than resolved, since
   either resolution runs one of the two and drops the other.

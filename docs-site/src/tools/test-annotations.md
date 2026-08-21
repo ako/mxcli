@@ -21,6 +21,7 @@ $result = call microflow Sudoku.ACT_DealGame();
 | `@expect <condition>` | A Mendix expression over the body's variables that must be true. Repeatable. |
 | `@verify <oql> <op> <value>` | An OQL post-condition on the database. Repeatable. |
 | `@throws '<message>'` | The body is expected to raise an error. |
+| `@setup <Module.Microflow>` | A microflow to call before the body. Repeatable. |
 | `@cleanup rollback\|none` | Whether the test's writes survive it. `rollback` is the default. |
 
 A tag is read only when it **opens its line** (after the javadoc `*` and its
@@ -117,6 +118,45 @@ test.
 $result = call microflow Sales.ACT_Submit(Order = $empty);
 /
 ```
+
+## `@setup`
+
+Names a **microflow** to call before the test's own statements — a fixture in a
+Mendix app is a microflow, so there is nothing to declare:
+
+```mdl
+/**
+ * @test the seed microflow writes five brands
+ * @setup eShop.ACT_SeedCatalog
+ * @cleanup none
+ * @expect count($Brands) = 5
+ */
+retrieve $Brands from eShop.CatalogBrand;
+/
+```
+
+Repeat it to compose fixtures; they run in the order written. Declare it once in
+the file's header comment and every test in the file gets it, the file's
+fixtures first:
+
+```mdl
+/**
+ * Seeds every test below.
+ * @setup eShop.ACT_SeedCatalog
+ */
+```
+
+A header may carry only `@setup`. `@expect`, `@verify`, `@throws` and `@cleanup`
+describe one test's execution, so a header carrying one is refused by name.
+
+The setup runs **inside the test's transaction**, so under the `@cleanup
+rollback` default it is undone with the test and every test starts from the same
+state. A failing setup is an **ERROR** naming the microflow, not a FAIL: the test
+never ran, and a broken fixture should not read as a broken feature.
+
+`@setup` calls a microflow with no arguments — a fixture that needs arguments
+gets a wrapper microflow. There is no `@teardown`; `@cleanup rollback` is the
+teardown.
 
 ## `@cleanup`
 

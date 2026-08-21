@@ -55,6 +55,7 @@ func writeTestBlock(b *strings.Builder, tc TestCase, index int) {
 	b.WriteString(fmt.Sprintf("  LOG INFO NODE 'MXTEST' 'MXTEST:RUN:%s:%s';\n",
 		escapeMDLString(tc.ID), escapeMDLString(tc.Name)))
 	b.WriteString("  SET $TestFailed = false;\n")
+	writeSetupBlock(b, tc)
 
 	if tc.Throws != "" {
 		writeThrowsTestBlock(b, tc, suffix)
@@ -90,6 +91,25 @@ func writeTestBlock(b *strings.Builder, tc TestCase, index int) {
 		b.WriteString("  IF $TestFailed = false THEN\n")
 		b.WriteString(fmt.Sprintf("    LOG INFO NODE 'MXTEST' 'MXTEST:PASS:%s';\n", escapeMDLString(tc.ID)))
 		b.WriteString("  END IF;\n")
+	}
+}
+
+// writeSetupBlock writes a test's @setup calls into the monolithic runner.
+//
+// The counterpart of writeSetupCalls, differing only in how it reports: this
+// runner has no returned verdict to carry an outcome, so a failed setup goes out
+// as an ERROR line on the log protocol. It ends the runner flow the same way a
+// throwing test body does — that is this runner's existing behaviour, and one of
+// the reasons the endpoint runner exists.
+func writeSetupBlock(b *strings.Builder, tc TestCase) {
+	for _, flow := range tc.Setups {
+		fmt.Fprintf(b, "  CALL MICROFLOW %s() ON ERROR {\n", flow)
+		fmt.Fprintf(b, "    LOG ERROR NODE 'MXTEST' 'MXTEST:ERROR:%s:Setup failed: %s';\n",
+			escapeMDLString(tc.ID), escapeMDLString(flow))
+		b.WriteString("    SET $TestFailed = true;\n")
+		b.WriteString("    SET $AllPassed = false;\n")
+		b.WriteString("    RETURN $AllPassed;\n")
+		b.WriteString("  };\n")
 	}
 }
 

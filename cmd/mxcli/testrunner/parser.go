@@ -25,11 +25,13 @@ type TestCase struct {
 	// report a pass.
 	AssertionErrors []string
 	Verify          []Verify // @verify OQL post-conditions
-	Setup           string   // @setup block reference
-	Cleanup         string   // @cleanup strategy ("rollback" or "none")
-	Throws          string   // @throws expected error message
-	SourceFile      string   // Original file path
-	Line            int      // Line number in source file
+	// Setups are the microflows called before the test's own statements, in
+	// order: the file header's first, then the test's own. See writeSetupCalls.
+	Setups     []string
+	Cleanup    string // @cleanup strategy ("rollback" or "none")
+	Throws     string // @throws expected error message
+	SourceFile string // Original file path
+	Line       int    // Line number in source file
 }
 
 // AssertionCount reports how many assertions the test actually makes.
@@ -126,6 +128,11 @@ func parseMDLTests(content string, sourcePath string) ([]TestCase, error) {
 	blocks := splitTestBlocks(content)
 	var tests []TestCase
 
+	fileSetups, err := headerSetups(content)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", sourcePath, err)
+	}
+
 	for _, block := range blocks {
 		// Extract javadoc comment and MDL body
 		doc, body, line, err := extractDocAndBody(block)
@@ -158,11 +165,13 @@ func parseMDLTests(content string, sourcePath string) ([]TestCase, error) {
 			Expects:         annotations.Expects,
 			AssertionErrors: annotations.AssertionErrors,
 			Verify:          annotations.Verify,
-			Setup:           annotations.Setup,
-			Cleanup:         annotations.Cleanup,
-			Throws:          annotations.Throws,
-			SourceFile:      sourcePath,
-			Line:            line,
+			// The file's fixtures run before the test's own: they are the
+			// broader precondition, and a test's own setup may build on them.
+			Setups:     append(append([]string{}, fileSetups...), annotations.Setups...),
+			Cleanup:    annotations.Cleanup,
+			Throws:     annotations.Throws,
+			SourceFile: sourcePath,
+			Line:       line,
 		})
 	}
 
@@ -224,7 +233,7 @@ func parseMarkdownTests(content string, sourcePath string) ([]TestCase, error) {
 					Expects:         annotations.Expects,
 					AssertionErrors: annotations.AssertionErrors,
 					Verify:          annotations.Verify,
-					Setup:           annotations.Setup,
+					Setups:          annotations.Setups,
 					Cleanup:         annotations.Cleanup,
 					Throws:          annotations.Throws,
 					SourceFile:      sourcePath,
@@ -237,6 +246,52 @@ func parseMarkdownTests(content string, sourcePath string) ([]TestCase, error) {
 	}
 
 	return tests, nil
+}
+
+// headerSetups returns the @setup microflows declared in the file's header
+// comment, which apply to every test in the file.
+//
+// The header is the file's first javadoc comment when it carries no @test. That
+// is the one shape a header can have: it may sit in its own '/'-terminated
+// chunk, or share a chunk with the first test (there is no '/' between them),
+// and this reads the same thing either way.
+//
+// Declaring a fixture once for a file is what the annotation is for — otherwise
+// it says no more than `call microflow X;` at the top of each body. But a header
+// can only carry what a file-wide default can honour: @cleanup, @expect, @verify
+// and @throws each describe one test's execution, and silently ignoring them
+// here would be the same absent-annotation bug @setup is being fixed for.
+func headerSetups(content string) ([]string, error) {
+	docs := scanDocComments(content, 1)
+	if len(docs) == 0 {
+		return nil, nil
+	}
+	a := parseAnnotations(docs[0].Text)
+	if a.Test != "" {
+		// The first comment is a test's own, so the file has no header.
+		return nil, nil
+	}
+
+	var offending []string
+	if len(a.Expects) > 0 || len(a.AssertionErrors) > 0 {
+		offending = append(offending, "@expect")
+	}
+	if len(a.Verify) > 0 {
+		offending = append(offending, "@verify")
+	}
+	if a.Throws != "" {
+		offending = append(offending, "@throws")
+	}
+	if a.cleanupSet {
+		offending = append(offending, "@cleanup")
+	}
+	if len(offending) > 0 {
+		return nil, fmt.Errorf(
+			"the file header comment carries %s, which describes one test's execution and "+
+				"cannot be a file-wide default — move it into that test's own doc comment "+
+				"(a header may carry @setup)", strings.Join(offending, ", "))
+	}
+	return a.Setups, nil
 }
 
 // testBlock is one '/'-separated chunk of a test file, with the line its first
@@ -422,9 +477,12 @@ type annotations struct {
 	Expects         []Expect
 	AssertionErrors []string
 	Verify          []Verify
-	Setup           string
+	Setups          []string
 	Cleanup         string
-	Throws          string
+	// cleanupSet records whether @cleanup was written, which the default value
+	// of Cleanup cannot express. Only the file-header check needs it.
+	cleanupSet bool
+	Throws     string
 }
 
 var (
@@ -486,10 +544,11 @@ func parseAnnotations(doc string) annotations {
 			}
 		}
 		if m := setupPattern.FindStringSubmatch(line); m != nil {
-			a.Setup = strings.TrimSpace(m[1])
+			a.Setups = append(a.Setups, strings.TrimSpace(m[1]))
 		}
 		if m := cleanupPattern.FindStringSubmatch(line); m != nil {
 			a.Cleanup = strings.TrimSpace(m[1])
+			a.cleanupSet = true
 		}
 		if m := throwsPattern.FindStringSubmatch(line); m != nil {
 			a.Throws = m[1]
