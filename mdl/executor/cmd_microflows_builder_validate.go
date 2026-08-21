@@ -383,3 +383,11 @@ func (fb *flowBuilder) validateOutputVariable(varName, statement string) {
 		fb.addError("duplicate variable name '$%s' — %s output variable is already declared in this scope (CE0111)", varName, statement)
 	}
 }
+
+// ValidateRuleBody validates a rule body for semantic errors (undeclared
+// variables and the like) without building objects — the check-command
+// counterpart of ValidateMicroflowBody. What a rule may not *contain* is a
+// separate question, answered by validateRule.
+func ValidateRuleBody(s *ast.CreateRuleStmt) []string {
+	return validateFlowBody(s.Parameters, s.Body)
+}

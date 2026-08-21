@@ -100,6 +100,12 @@ func registerMicroflowAndNanoflowHandlers(r *Registry) {
 	r.Register(&ast.DropNanoflowStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
 		return execDropNanoflow(ctx, stmt.(*ast.DropNanoflowStmt))
 	})
+	r.Register(&ast.CreateRuleStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execCreateRule(ctx, stmt.(*ast.CreateRuleStmt))
+	})
+	r.Register(&ast.DropRuleStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execDropRule(ctx, stmt.(*ast.DropRuleStmt))
+	})
 }
 
 func registerPageHandlers(r *Registry) {

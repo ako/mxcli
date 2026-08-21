@@ -75,14 +75,28 @@ func (n *Nanoflow) GetContainerID() model.ID {
 	return n.ContainerID
 }
 
-// Rule represents a rule in the Mendix model.
+// Rule represents a rule (Microflows$Rule) in the Mendix model — Mendix's own
+// reference calls it "a special kind of microflow" that returns a Boolean or an
+// enumeration and may only be used from a decision.
+//
+// The fields are the ten properties a rule document stores, measured against two
+// Studio Pro-authored rules (ako/TestApp, Mendix 11.13.0). A rule is a microflow
+// minus nine properties, and the nine are the ones a rule has no concept of:
+// AllowedModuleRoles (a rule is not independently callable, so there is nothing
+// to grant), the concurrency group, Url/UrlSearchParameters, StableId, and the
+// two action-info slots.
 type Rule struct {
 	model.BaseElement
-	ContainerID   model.ID `json:"containerId"`
-	Name          string   `json:"name"`
-	Documentation string   `json:"documentation,omitempty"`
+	ContainerID        model.ID `json:"containerId"`
+	Name               string   `json:"name"`
+	Documentation      string   `json:"documentation,omitempty"`
+	Excluded           bool     `json:"excluded"`
+	MarkAsUsed         bool     `json:"markAsUsed"`
+	ApplyEntityAccess  bool     `json:"applyEntityAccess"`
+	ReturnVariableName string   `json:"returnVariableName,omitempty"`
 
-	// Return type (always boolean)
+	// Return type — Boolean or an enumeration. Not "always boolean": Rules.Rule2
+	// in the reference app returns Rules.RuleResult.
 	ReturnType DataType `json:"returnType,omitempty"`
 
 	// Parameters

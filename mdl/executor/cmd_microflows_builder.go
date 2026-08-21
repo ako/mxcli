@@ -607,6 +607,20 @@ func (fb *flowBuilder) buildSplitCondition(expr ast.Expression, fallbackExpressi
 	if ruleCond := fb.tryBuildRuleSplitCondition(expr); ruleCond != nil {
 		return ruleCond
 	}
+	// A qualified call that did NOT resolve to a rule cannot become a condition
+	// either: Mendix expressions have no user-callable functions, so falling back
+	// to an ExpressionSplitCondition here writes text the build rejects with
+	// CE0117. MDL066 catches the same mistake in value positions without needing a
+	// project; this is the decision position, where telling a rule from a
+	// microflow needs the backend. Refuse rather than write it (#939).
+	if call := unwrapParenCall(expr); call != nil && strings.Contains(call.Name, ".") {
+		fb.addErrorWithExample(fmt.Sprintf(
+			"if condition calls '%s(...)', which is not a rule in this project — a decision "+
+				"can only call a rule, and a Mendix expression cannot call anything, so the "+
+				"build fails CE0117 \"Error(s) in expression\"", call.Name),
+			"    $Result = CALL MICROFLOW "+call.Name+" (...);\n"+
+				"    if $Result then ... end if;")
+	}
 	return &microflows.ExpressionSplitCondition{
 		BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
 		Expression:  fallbackExpression,

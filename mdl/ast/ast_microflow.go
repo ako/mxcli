@@ -80,6 +80,32 @@ type CreateNanoflowStmt struct {
 
 func (s *CreateNanoflowStmt) isStatement() {}
 
+// CreateRuleStmt represents: CREATE RULE Module.Name (params) RETURNS type BEGIN body END
+//
+// Mirrors CreateNanoflowStmt: a rule shares a microflow's body, so the fields
+// are the same minus the ones a rule document has no property for (a rule stores
+// no AllowedModuleRoles, so there is nothing to grant).
+type CreateRuleStmt struct {
+	Name           QualifiedName
+	Parameters     []MicroflowParam
+	ReturnType     *MicroflowReturnType
+	Body           []MicroflowStatement
+	Documentation  string
+	Comment        string
+	Folder         string // Folder path within module
+	CreateOrModify bool
+	Excluded       bool // @excluded — document excluded from project
+}
+
+func (s *CreateRuleStmt) isStatement() {}
+
+// DropRuleStmt represents: DROP RULE Module.Name
+type DropRuleStmt struct {
+	Name QualifiedName
+}
+
+func (s *DropRuleStmt) isStatement() {}
+
 // DropNanoflowStmt represents: DROP NANOFLOW Module.Name
 type DropNanoflowStmt struct {
 	Name QualifiedName

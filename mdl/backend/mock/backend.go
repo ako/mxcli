@@ -93,6 +93,12 @@ type MockBackend struct {
 	MoveMicroflowFunc         func(mf *microflows.Microflow) error
 	ParseMicroflowFromRawFunc func(raw map[string]any, unitID, containerID model.ID) *microflows.Microflow
 	ParseMicroflowBSONFunc    func(contents []byte, unitID, containerID model.ID) (*microflows.Microflow, error)
+	ListRulesFunc             func() ([]*microflows.Rule, error)
+	GetRuleFunc               func(id model.ID) (*microflows.Rule, error)
+	CreateRuleFunc            func(rule *microflows.Rule) error
+	UpdateRuleFunc            func(rule *microflows.Rule) error
+	DeleteRuleFunc            func(id model.ID) error
+	MoveRuleFunc              func(rule *microflows.Rule) error
 	ListNanoflowsFunc         func() ([]*microflows.Nanoflow, error)
 	GetNanoflowFunc           func(id model.ID) (*microflows.Nanoflow, error)
 	CreateNanoflowFunc        func(nf *microflows.Nanoflow) error
