@@ -44,15 +44,13 @@ define copy-if-changed
 endef
 
 # Sync skills from .claude/skills/mendix to cmd/mxcli/skills for embedding
+# Skills are directory-shaped (<name>/SKILL.md, Agent Skills standard), so this
+# mirrors a tree rather than copying a flat list. --delete matters: a renamed or
+# removed skill must not linger in the embed dir, or the binary keeps shipping it.
 sync-skills:
 	@mkdir -p cmd/mxcli/skills
-	@changed=0; for f in .claude/skills/mendix/*.md; do \
-		dst="cmd/mxcli/skills/$$(basename $$f)"; \
-		if [ ! -f "$$dst" ] || ! cmp -s "$$f" "$$dst"; then \
-			cp "$$f" "$$dst"; changed=$$((changed + 1)); \
-		fi; \
-	done; \
-	if [ $$changed -gt 0 ]; then echo "Synced $$changed skill file(s)"; fi
+	@rsync -a --delete --exclude='.DS_Store' .claude/skills/mendix/ cmd/mxcli/skills/ 2>/dev/null \
+		|| { rm -rf cmd/mxcli/skills && mkdir -p cmd/mxcli/skills && cp -R .claude/skills/mendix/. cmd/mxcli/skills/; }
 
 # Sync skill packs from .claude/skills/packs to cmd/mxcli/skillpacks for embedding.
 # Recursive, unlike sync-skills: a pack is a directory tree and flattening it

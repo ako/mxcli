@@ -509,7 +509,20 @@ func (fb *flowBuilder) addStructuredInheritanceSplit(s *ast.InheritanceSplitStmt
 		fb.pendingAnnotations = nil
 	}
 
-	branchWidth := fb.measurer.measureStatements(appendInheritanceBodies(s)).Width
+	// The branches are laid out one BELOW another, all starting at branchStartX,
+	// so the room they need is the WIDEST branch — not the total. This used to
+	// measure every body concatenated into one list, which made the merge slide
+	// right by a whole activity-plus-spacing per extra branch and left it far
+	// past the branches it joins (mendixlabs/mxcli#953: three one-activity
+	// branches starting at x=720 put the merge at x=1480 instead of x=920).
+	// `layout.go`'s measureInheritanceSplitStatement always took the max, so the
+	// builder disagreed with its own measurer.
+	branchWidth := 0
+	for _, body := range inheritanceBranchBodies(s) {
+		if w := fb.measurer.measureStatements(body).Width; w > branchWidth {
+			branchWidth = w
+		}
+	}
 	if branchWidth == 0 {
 		branchWidth = HorizontalSpacing / 2
 	}
@@ -618,7 +631,19 @@ func (fb *flowBuilder) addStructuredInheritanceSplit(s *ast.InheritanceSplitStmt
 	// roundtrip does not accumulate `else` blocks; exec re-creates it here.
 	addBranch("", s.ElseBody)
 
-	fb.posX = mergeX
+	// Where the next element goes. This was `mergeX`, i.e. the merge's own centre,
+	// so whatever followed `end split` was drawn ON TOP of the merge, joined by a
+	// zero-length sequence flow (#953). The model is valid either way, so nothing
+	// below this line — not `mx check`, not the build — can notice.
+	//
+	// The spacing constants are centre-to-centre and tuned for a 40px edge gap, so
+	// clearing a 40-wide merge before a 120-wide activity needs MergeSize + half a
+	// pitch. That is what addIfStatement uses. addEnumSplit uses only
+	// HorizontalSpacing/2, which leaves an activity's left edge exactly touching
+	// the merge (measured: merge 890, activity 970, both edges at 910) — legible,
+	// but not the house gap, and not worth re-laying out every existing enum split
+	// to change.
+	fb.posX = mergeX + MergeSize + HorizontalSpacing/2
 	fb.posY = centerY
 	fb.endsWithReturn = savedEndsWithReturn
 	if allBranchesReturn {
@@ -755,13 +780,18 @@ func appendEnumBodies(s *ast.EnumSplitStmt) []ast.MicroflowStatement {
 	return stmts
 }
 
-func appendInheritanceBodies(s *ast.InheritanceSplitStmt) []ast.MicroflowStatement {
-	var stmts []ast.MicroflowStatement
+// inheritanceBranchBodies returns each branch of a type split as its own body,
+// including the `(empty)` branch.
+//
+// It deliberately does NOT flatten them into one list. The predecessor did, and
+// every caller then measured the branches as if they ran end to end when they
+// are in fact stacked vertically (#953).
+func inheritanceBranchBodies(s *ast.InheritanceSplitStmt) [][]ast.MicroflowStatement {
+	bodies := make([][]ast.MicroflowStatement, 0, len(s.Cases)+1)
 	for _, c := range s.Cases {
-		stmts = append(stmts, c.Body...)
+		bodies = append(bodies, c.Body)
 	}
-	stmts = append(stmts, s.ElseBody...)
-	return stmts
+	return append(bodies, s.ElseBody)
 }
 
 type inheritanceSplitCaseOrderAnchor struct {

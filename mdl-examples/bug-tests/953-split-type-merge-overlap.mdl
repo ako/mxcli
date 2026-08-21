@@ -1,0 +1,114 @@
+-- ============================================================================
+-- SPLIT TYPE stacked the element after END SPLIT on top of its own merge.
+--
+-- Reported against v0.19.0: "the end event renders on top of the merge in
+-- Studio Pro, connected by a zero-length sequence flow", and separately "the
+-- merge x looks over-advanced relative to its branches (branch activities at
+-- x=720, merge at x=1480)". Two defects, both in addStructuredInheritanceSplit:
+--
+--   1. It ended with `fb.posX = mergeX` — the merge's own centre — so whatever
+--      followed END SPLIT was drawn at exactly that point. addEnumSplit and
+--      addIfStatement both step past the merge first.
+--
+--   2. Branch width came from every branch body concatenated into ONE list and
+--      measured as a single left-to-right run. Branches are stacked vertically,
+--      so only the widest one matters; summing them slid the merge right by an
+--      activity-plus-spacing per extra branch.
+--
+-- MEASURED on mxbuild 11.13.0 with the three microflows below (describe prints
+-- the stored coordinates, so no Studio Pro is needed to see it):
+--
+--                            merge      element after      branches
+--   ThreeBranches   before   1480       1480  (stacked)    720
+--                   after     920       1040               720
+--   FourBranches    before   1760       1760  (stacked)    720
+--                   after     920       1040               720   <- no drift
+--   UnevenBranches  before   1760       1760  (stacked)    720, 880
+--                   after    1200       1320               720, 880
+--
+-- The CONTROL is EnumSplitComparison: identical graph shape as a CASE, and its
+-- geometry is byte-identical before and after the fix (merge 890, end 970). If
+-- that moved, the fix reached further than it should have.
+--
+-- Neither defect is visible below Studio Pro: the model is valid either way, so
+-- `mx check` reports 0 errors on the stacked version. Verified.
+--
+-- Regression coverage: mdl/executor/cmd_microflows_builder_split_geometry_test.go
+-- ============================================================================
+
+CREATE OR MODIFY MODULE Bug953;
+
+CREATE OR MODIFY PERSISTENT ENTITY Bug953.Animal ( "Name": String(50) );
+CREATE OR MODIFY PERSISTENT ENTITY Bug953.Dog GENERALIZATION Bug953.Animal ();
+CREATE OR MODIFY PERSISTENT ENTITY Bug953.Cat GENERALIZATION Bug953.Animal ();
+CREATE OR MODIFY ENUMERATION Bug953.Kind ( Dog, Other );
+
+-- Three branches, one activity each. The `return` after END SPLIT is the
+-- element that used to land on the merge.
+CREATE OR MODIFY MICROFLOW Bug953.ThreeBranches ($Animal: Bug953.Animal)
+RETURNS String
+BEGIN
+  declare $result string = 'none';
+  split type $Animal
+    when Bug953.Dog then
+      $result = 'dog';
+    when Bug953.Animal then
+      $result = 'animal';
+    when (empty) then
+      $result = 'empty';
+  end split;
+  return $result;
+END;
+
+-- One more branch, same width. The merge must not move.
+CREATE OR MODIFY MICROFLOW Bug953.FourBranches ($Animal: Bug953.Animal)
+RETURNS String
+BEGIN
+  declare $result string = 'none';
+  split type $Animal
+    when Bug953.Dog then
+      $result = 'dog';
+    when Bug953.Cat then
+      $result = 'cat';
+    when Bug953.Animal then
+      $result = 'animal';
+    when (empty) then
+      $result = 'empty';
+  end split;
+  return $result;
+END;
+
+-- One branch twice as long. The merge must follow the WIDEST branch — this is
+-- the control for "does not drift with branch count", which a builder ignoring
+-- the branches entirely would also satisfy.
+CREATE OR MODIFY MICROFLOW Bug953.UnevenBranches ($Animal: Bug953.Animal)
+RETURNS String
+BEGIN
+  declare $result string = 'none';
+  split type $Animal
+    when Bug953.Dog then
+      $result = 'dog';
+      $result = 'dog again';
+    when Bug953.Animal then
+      $result = 'animal';
+    when (empty) then
+      $result = 'empty';
+  end split;
+  return $result;
+END;
+
+-- The control: the same shape as a CASE. Untouched by the fix.
+CREATE OR MODIFY MICROFLOW Bug953.EnumSplitComparison ($Kind: Bug953.Kind)
+RETURNS String
+BEGIN
+  declare $result string = 'none';
+  case $Kind
+    when Dog then
+      $result = 'dog';
+    when Other then
+      $result = 'other';
+    when (empty) then
+      $result = 'none';
+  end case;
+  return $result;
+END;

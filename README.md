@@ -504,7 +504,7 @@ mxcli add-tool cursor
 
 **Universal (all tools):**
 - `AGENTS.md` - Comprehensive guide for AI assistants
-- `.ai-context/skills/` - MDL pattern guides (write-microflows.md, create-page.md, etc.)
+- `.ai-context/skills/` - MDL pattern guides, one `<name>/SKILL.md` each (write-microflows, create-page, ...)
 - `.ai-context/examples/` - Example MDL scripts
 
 **Tool-Specific:**

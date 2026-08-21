@@ -16,9 +16,14 @@ import (
 	"embed"
 )
 
-// Embed all skill files from the synced directory
+// Embed all skill files from the synced directory.
 //
-//go:embed skills/*.md
+// Skills are directory-shaped — `<name>/SKILL.md` per the Agent Skills standard
+// — so this embeds a tree, and `all:` is required for the same reason it is on
+// skillpacks below: a plain go:embed of a directory skips `_`- and `.`-prefixed
+// files, and a skill may carry references or assets beside its SKILL.md.
+//
+//go:embed all:skills
 var skillsFS embed.FS
 
 // Embed skill packs from the synced directory — skills that carry assets, not

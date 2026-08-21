@@ -54,7 +54,7 @@ The `opencode.json` file is OpenCode's primary configuration. It points to `AGEN
   "instructions": [
     "AGENTS.md",
     ".opencode/skills/**/SKILL.md",
-    ".ai-context/skills/*.md"
+    ".ai-context/skills/*/SKILL.md"
   ]
 }
 ```
