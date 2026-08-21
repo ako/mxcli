@@ -382,6 +382,11 @@ func (b *MprBackend) SetProjectSecurityLevel(unitID model.ID, level string) erro
 func (b *MprBackend) SetProjectDemoUsersEnabled(unitID model.ID, enabled bool) error {
 	return b.writer.SetProjectDemoUsersEnabled(unitID, enabled)
 }
+
+// SetProjectGuestAccess toggles anonymous (guest) access.
+func (b *MprBackend) SetProjectGuestAccess(unitID model.ID, enabled bool, guestUserRole string) error {
+	return b.writer.SetProjectGuestAccess(unitID, enabled, guestUserRole)
+}
 func (b *MprBackend) AddUserRole(unitID model.ID, name string, moduleRoles []string, manageAllRoles bool) error {
 	return b.writer.AddUserRole(unitID, name, moduleRoles, manageAllRoles)
 }

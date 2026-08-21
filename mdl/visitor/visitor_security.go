@@ -416,6 +416,12 @@ func (b *Builder) ExitAlterProjectSecurityStatement(ctx *parser.AlterProjectSecu
 	} else if ctx.DEMO() != nil {
 		enabled := ctx.ON() != nil
 		stmt.DemoUsersEnabled = &enabled
+	} else if ctx.GUEST() != nil {
+		enabled := ctx.ON() != nil
+		stmt.GuestAccessEnabled = &enabled
+		if roleCtx := ctx.IdentifierOrKeyword(); roleCtx != nil {
+			stmt.GuestUserRole = unquoteIdentifier(roleCtx.GetText())
+		}
 	}
 
 	b.statements = append(b.statements, stmt)
