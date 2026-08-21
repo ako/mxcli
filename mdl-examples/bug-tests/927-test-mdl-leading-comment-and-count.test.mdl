@@ -1,0 +1,96 @@
+/**
+ * ISSUE #927 -- two defects in .test.mdl handling, both of which made a suite
+ * report green while asserting less than it looked like it did.
+ *
+ * This header is itself the repro for bug 1. A file-level doc comment is not
+ * separated from the test below it by a '/', so both landed in one chunk, the
+ * header was taken as that test's doc comment, it carried no test annotation --
+ * and the whole chunk, real test included, was dropped with no message of any
+ * kind. Every later test then reported under the number of the one above it.
+ *
+ * (Prose in a doc comment must not spell an annotation out: the parser reads
+ * one anywhere in a line, so an example written literally here would be picked
+ * up as this file's own. The names below are quoted without their leading @.)
+ *
+ * No project is needed to see the parse half:
+ *
+ *   mxcli test mdl-examples/bug-tests/927-test-mdl-leading-comment-and-count.test.mdl --list
+ *
+ * Expected output -- four tests, numbered from 1:
+ *
+ *   Found 4 test(s):
+ *     test_1: a leading doc comment must not swallow this test
+ *       expect count($Scans) = 2
+ *     test_2: the line comment above is prose, not a doc comment
+ *       expect count($Scans) >= 0
+ *     test_3: a false count must fail, not pass
+ *       expect count($Scans) = 999
+ *     test_4: an aggregate that cannot be compiled is an ERROR, never a PASS
+ *       ERROR: sum() aggregates an attribute over a list, which a test
+ *              assertion cannot do on its own -- call a microflow that returns
+ *              the sum and assert on its result
+ *
+ * Before the fix the same command reported two tests -- test_1 and test_2 here
+ * were gone, and the two that remained were renumbered over them.
+ */
+
+/**
+ * @test a leading doc comment must not swallow this test
+ * @expect count($Scans) = 2
+ * @cleanup none
+ */
+retrieve $Scans from HomeScan.HomeScan;
+/
+
+-- Bug 1b: the workaround for bug 1 was to write the file header as `--` line
+-- comments instead. That re-triggered the fusion as soon as one of those lines
+-- described the bug, because the delimiters were found by raw substring search
+-- with no notion of already being inside a comment. This line spells both of
+-- them out -- /** and */ -- and the test below it must still be found.
+
+/**
+ * @test the line comment above is prose, not a doc comment
+ * @expect count($Scans) >= 0
+ * @cleanup none
+ */
+retrieve $Scans from HomeScan.HomeScan;
+/
+
+/**
+ * ISSUE #927 bug 2 -- a count assertion on a bare retrieve reported PASS
+ * unconditionally, against an empty table, for every value the reporter tried.
+ *
+ * count() is not a Mendix expression function: counting a list is an Aggregate
+ * list activity, so the condition could never be compiled into the decision
+ * that evaluates the assertion. The annotation was dropped during parsing, and
+ * a test with no assertions left passes as long as its body does not throw.
+ *
+ * The count is now lifted into the activity an author would write by hand --
+ * `$mxtest_count_Scans = COUNT($Scans);` ahead of the decision -- so the
+ * assertion is really evaluated. Against a table with anything but 999 rows,
+ * this test FAILS, and the failure names the observed count:
+ *
+ *   mxcli test mdl-examples/bug-tests/927-test-mdl-leading-comment-and-count.test.mdl -p app.mpr --local
+ *
+ *   FAIL  a false count must fail, not pass
+ *         expected count($Scans) = 999, actual: 2
+ *
+ * @test a false count must fail, not pass
+ * @expect count($Scans) = 999
+ * @cleanup none
+ */
+retrieve $Scans from HomeScan.HomeScan;
+/
+
+/**
+ * The other four aggregates need an attribute to aggregate over, which an
+ * assertion cannot supply -- so they are still refused. That is the half of
+ * bug 2 that must not regress: an assertion the runner cannot evaluate has
+ * exactly one safe outcome, and passing is not it.
+ *
+ * @test an aggregate that cannot be compiled is an ERROR, never a PASS
+ * @expect sum($Scans) = 1
+ * @cleanup none
+ */
+retrieve $Scans from HomeScan.HomeScan;
+/

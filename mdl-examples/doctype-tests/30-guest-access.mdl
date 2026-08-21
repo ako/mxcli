@@ -1,0 +1,52 @@
+-- Guest (anonymous) access (issue mendixlabs/mxcli#924)
+--
+-- Studio Pro's "Anonymous users" setting: part of the app is usable without
+-- signing in. It is a flag plus a user role, and the role is the important
+-- half — whatever it can read is the app's public surface.
+--
+-- Before this syntax existed the flag was readable (SHOW PROJECT SECURITY) but
+-- not writable, so a public-facing app could not be built unattended: every
+-- headless run ended with a manual step in Studio Pro.
+--
+-- Two Mendix behaviours shape the syntax, both measured on mxbuild 11.13:
+--
+--   * The role is mandatory. Guest access on with no role fails the build with
+--     CE0133, so GUEST ACCESS ON is refused unless a role is given here or
+--     already stored in the project.
+--   * Mendix does NOT check the role exists. A misspelled role builds with the
+--     same error count as a valid one and leaves anonymous visitors with no
+--     access at all, so mxcli validates the name itself.
+--
+-- Run:
+--   mxcli exec mdl-examples/doctype-tests/30-guest-access.mdl -p app.mpr
+--   mxcli -p app.mpr -c "show project security"
+
+create or modify entity Catalog.Product (
+    Name: String(200),
+    Price: Decimal,
+    Published: Boolean
+);
+
+create module role Catalog.Visitor description 'Read-only access to published products';
+create module role Catalog.Editor description 'Maintains the product catalogue';
+
+-- The role anonymous visitors are given. System.User is what lets an
+-- unauthenticated session exist at all.
+create user role Anonymous (Catalog.Visitor, System.User);
+create user role CatalogAdmin (Catalog.Editor, System.User);
+
+alter project security level production;
+alter project security guest access on role Anonymous;
+
+-- Grant exactly what should be public, and nothing else. The XPath constraint
+-- is the difference between "the catalogue is public" and "every row is
+-- public" — see lint rule SEC004 / DIVD-2022-00019.
+grant Catalog.Visitor on Catalog.Product (read *) where '[Published = true()]';
+grant Catalog.Editor on Catalog.Product (create, delete, read *, write *);
+
+-- Toggling access off keeps the stored role, so switching it back on needs no
+-- ROLE clause. Both statements are no-ops on a project already in that state.
+alter project security guest access off;
+alter project security guest access on;
+
+show project security;

@@ -222,6 +222,7 @@ Nested folders use `/` separator: `'Parent/Child/Grandchild'`. Missing folders a
 | Revoke entity access | `REVOKE Mod.Role ON Mod.Entity;` | |
 | Set security level | `ALTER PROJECT SECURITY LEVEL OFF\|PROTOTYPE\|PRODUCTION;` | |
 | Toggle demo users | `ALTER PROJECT SECURITY DEMO USERS ON\|OFF;` | |
+| Toggle guest access | `ALTER PROJECT SECURITY GUEST ACCESS ON ROLE UserRole\|OFF;` | Anonymous users; role required (CE0133) |
 | Create demo user | `CREATE DEMO USER 'name' PASSWORD 'pass' [ENTITY Module.Entity] (UserRole, ...);` | |
 | Drop demo user | `DROP DEMO USER 'name';` | |
 

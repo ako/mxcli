@@ -1,95 +1,92 @@
 # Test Formats
 
-mxcli supports two test file formats: `.test.mdl` for pure MDL tests and `.test.md` for literate tests with documentation.
+`mxcli test` reads two file formats: `.test.mdl` for plain MDL tests, and
+`.test.md` for tests embedded in documentation. Both describe the same thing — a
+named test, some MDL to run against the app, and what must be true afterwards —
+and both use the same [annotations](test-annotations.md).
 
-## .test.mdl Format
+A test's body calls into the app. It is not a script that builds a project: the
+statements run against a booted runtime, and the assertions are about what they
+returned or wrote.
 
-Pure MDL scripts with test annotations. Each test case is marked with `@test` and optionally `@expect`.
+## `.test.mdl`
 
-```sql
--- @test Create a new module
-CREATE MODULE TestModule;
--- @expect 0 errors
+A test is a javadoc comment followed by its statements. A line containing just
+`/` ends it, the way it ends any MDL block:
 
--- @test Create entity with attributes
-CREATE PERSISTENT ENTITY TestModule.Customer (
-    Name: String(200) NOT NULL,
-    Email: String(200) UNIQUE,
-    IsActive: Boolean DEFAULT true
+```mdl
+/**
+ * @test concatenating a name
+ * @expect $result = 'John Doe'
+ */
+$result = call microflow MyModule.ConcatNames(
+  FirstName = 'John', LastName = 'Doe'
 );
--- @expect 0 errors
+/
 
--- @test Create enumeration
-CREATE ENUMERATION TestModule.Status (
-    Active 'Active',
-    Inactive 'Inactive'
-);
--- @expect 0 errors
-
--- @test Create microflow
-CREATE MICROFLOW TestModule.ACT_Activate(
-    $customer: TestModule.Customer
-) RETURNS Boolean AS $result
-BEGIN
-    DECLARE $result Boolean = false;
-    CHANGE $customer (IsActive = true);
-    COMMIT $customer;
-    SET $result = true;
-    RETURN $result;
-END;
--- @expect 0 errors
+/**
+ * @test the seed microflow writes five brands
+ * @cleanup none
+ * @expect count($Brands) = 5
+ */
+retrieve $Brands from eShop.CatalogBrand;
+/
 ```
 
-## .test.md Format
+Two rules about layout are worth knowing, because getting them wrong used to be
+silent:
 
-Literate test files that combine prose documentation with embedded MDL code blocks. The test runner extracts and executes the MDL code blocks while ignoring the prose.
+- **A file may open with a header comment** — a `/** … */` block or `--` lines —
+  and it is not part of the first test. The test's own doc comment is the last
+  one above its statements.
+- **One `@test` per block.** Because the `/` is what ends a test, omitting it
+  merges two tests into one. That is refused by name rather than resolved, since
+  either resolution runs one of the two and drops the other.
+
+## `.test.md`
+
+The same tests, inside `mdl-test` fenced code blocks, with prose around them. One
+block is one test; everything outside the fences is documentation and is ignored.
 
 ````markdown
-# Customer Module Tests
+# Customer module
 
-This test suite validates the customer management module.
+## Names are concatenated in display order
 
-## Entity Creation
+Given a first and a last name, `ConcatNames` returns them separated by a space:
 
-Create the customer entity with standard fields:
-
-```sql
-CREATE PERSISTENT ENTITY TestModule.Customer (
-    Name: String(200) NOT NULL,
-    Email: String(200)
+```mdl-test
+/**
+ * @test concatenating a name
+ * @expect $result = 'John Doe'
+ */
+$result = call microflow MyModule.ConcatNames(
+  FirstName = 'John', LastName = 'Doe'
 );
-```
-
-## Association Setup
-
-Link customers to their orders:
-
-```sql
-CREATE ASSOCIATION TestModule.Order_Customer
-    FROM TestModule.Order
-    TO TestModule.Customer
-    TYPE Reference;
 ```
 ````
 
-The `.test.md` format is useful for:
-- Documenting test intent alongside the test code
-- Creating test suites that serve as tutorials
-- Sharing test cases with non-technical stakeholders
+Use it when the reasoning around a test is worth as much as the test — a
+specification that stays honest because it runs.
 
-## File Organization
+## File organisation
+
+`mxcli test` takes a file or a directory. A directory run picks up every
+`*.test.mdl` and `*.test.md` in it (not recursively) and reports them as one
+suite.
 
 ```
 tests/
-├── domain-model.test.mdl     # Entity and association tests
-├── microflows.test.mdl        # Microflow logic tests
-├── security.test.mdl          # Access rule tests
-├── pages.test.mdl             # Page creation tests
-└── integration.test.md        # Full integration test with docs
+├── domain-model.test.mdl
+├── microflows.test.mdl
+├── security.test.mdl
+└── ordering.test.md
 ```
 
-## Naming Conventions
+Names are yours to choose; the `.test.mdl` / `.test.md` suffix is what makes a
+file a test file.
 
-- Use descriptive file names that indicate what is being tested
-- Group related tests in the same file
-- Use the `@test` annotation to name individual test cases within a file
+## Related Pages
+
+- [Test Annotations](test-annotations.md) — `@test`, `@expect`, `@verify`, `@throws`, `@cleanup`
+- [Running Tests](running-tests.md) — `mxcli test`, `--local`, `--watch`, `--attach`

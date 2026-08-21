@@ -1058,7 +1058,7 @@ func validateModuleRole(ctx *ExecContext, role ast.QualifiedName) error {
 	return mdlerrors.NewNotFound("module role", role.Module+"."+role.Name)
 }
 
-// execAlterProjectSecurity handles ALTER PROJECT SECURITY LEVEL/DEMO USERS.
+// execAlterProjectSecurity handles ALTER PROJECT SECURITY LEVEL/DEMO USERS/GUEST ACCESS.
 func execAlterProjectSecurity(ctx *ExecContext, s *ast.AlterProjectSecurityStmt) error {
 	if !ctx.ConnectedForWrite() {
 		return mdlerrors.NewNotConnectedWrite()
@@ -1100,6 +1100,69 @@ func execAlterProjectSecurity(ctx *ExecContext, s *ast.AlterProjectSecurityStmt)
 		fmt.Fprintf(ctx.Output, "Demo users %s\n", state)
 	}
 
+	if s.GuestAccessEnabled != nil {
+		if err := applyGuestAccess(ctx, ps, s); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// applyGuestAccess handles ALTER PROJECT SECURITY GUEST ACCESS ON|OFF [ROLE r].
+//
+// Two things Mendix does not do for us, and one it does:
+//
+//   - mxbuild raises CE0133 ("No user role for anonymous users selected even
+//     though the feature anonymous users is enabled") when access is on with no
+//     role, so ON is refused here rather than producing a project that will not
+//     build. A stored role satisfies it, which is why ROLE is optional.
+//   - mxbuild does NOT check that the role exists — a nonexistent one builds
+//     with the same error count as a valid one — so a typo would otherwise be a
+//     silently broken anonymous configuration. Validate it here.
+//   - OFF leaves the stored role in place. Guest access off with a role set is
+//     valid, and dropping it would lose the operator's choice on a toggle.
+func applyGuestAccess(ctx *ExecContext, ps *security.ProjectSecurity, s *ast.AlterProjectSecurityStmt) error {
+	enabled := *s.GuestAccessEnabled
+	role := s.GuestUserRole
+
+	if role != "" {
+		known := make([]string, 0, len(ps.UserRoles))
+		var match string
+		for _, ur := range ps.UserRoles {
+			known = append(known, ur.Name)
+			if strings.EqualFold(ur.Name, role) {
+				match = ur.Name
+			}
+		}
+		if match == "" {
+			return mdlerrors.NewNotFoundMsg("user role", role, fmt.Sprintf(
+				"user role not found: %s (project user roles: %s). Mendix does not validate "+
+					"this reference, so an unknown role would build cleanly and leave anonymous "+
+					"visitors with no access",
+				role, strings.Join(known, ", ")))
+		}
+		// Store the role under its declared casing, not the caller's.
+		role = match
+	} else if enabled && ps.GuestUserRole == "" {
+		return mdlerrors.NewValidation(
+			"GUEST ACCESS ON requires a role: no anonymous user role is configured, and Mendix " +
+				"rejects anonymous access without one (CE0133). Use ALTER PROJECT SECURITY " +
+				"GUEST ACCESS ON ROLE <UserRole>")
+	}
+
+	if err := ctx.Backend.SetProjectGuestAccess(ps.ID, enabled, role); err != nil {
+		return mdlerrors.NewBackend("set guest access", err)
+	}
+
+	if !enabled {
+		fmt.Fprintf(ctx.Output, "Guest access disabled\n")
+		return nil
+	}
+	if role == "" {
+		role = ps.GuestUserRole
+	}
+	fmt.Fprintf(ctx.Output, "Guest access enabled for user role %s\n", role)
 	return nil
 }
 
