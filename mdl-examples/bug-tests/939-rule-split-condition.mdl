@@ -58,17 +58,36 @@ end
 /
 
 -- ----------------------------------------------------------------------------
--- NOT fixed here, and reported separately on the issue:
+-- Three further defects reported on the same issue, all fixed:
 --
---   * A rule call in an EXPRESSION position — `declare $Active Boolean =
---     Sample.Rule_IsActive(IsActive = $IsActive);` — is [CE0117] "Error(s) in
---     expression." on BOTH engines. Mendix has no expression syntax for calling a
---     rule; only a decision can. mxcli should refuse the statement rather than
---     write the literal text.
---   * `mxcli check -p` false-positives on the WORKING form above: mdl/exprcheck
---     does not model a qualified call, so it reports "Unexpected token after
---     expression … glued keywords such as 'emptyor'" with an empty location.
---   * Rules are not catalog objects and an ExclusiveSplit is not walked for
---     references, so `show callers of Sample.Rule_IsActive` finds nothing even
---     with the condition correctly stored.
+--   * A rule (or microflow, or Java action) call in an EXPRESSION position is
+--     CE0117 "Error(s) in expression." on BOTH engines — a Mendix expression has
+--     no user-callable functions. Now MDL066, an error, with no project needed;
+--     `exec` refuses the script. The decision position needs the project to
+--     judge (only a rule may be called there), so the flow builder refuses a
+--     qualified call whose name is not a rule.
+--   * `mxcli check -p` used to false-positive on the WORKING form above —
+--     "Unexpected token after expression … glued keywords such as 'emptyor'"
+--     with an empty location. mdl/exprcheck did not model a qualified call, so
+--     the trailing `(` was reported as leftover. It fired on the valid form as
+--     much as the invalid ones, so it carried no signal.
+--   * `show callers of Sample.Rule_IsActive` found nothing even with the
+--     condition stored correctly: a rule is not an activity, and the reference
+--     extractor walked only action activities. A decision's rule call now emits
+--     a `call` edge into CATALOG.REFS.
+--
+-- Uncommenting the statement below is the MDL066 reproduction; `mxcli check`
+-- reports it with no project.
+--
+--   create or modify microflow Sample.MF_UseRuleVar ($IsActive: Boolean) returns Boolean
+--   begin
+--     declare $Active Boolean = Sample.Rule_IsActive(IsActive = $IsActive);
+--     return $Active;
+--   end
+--
+-- Still open, and not part of this fix: rules are not catalog OBJECTS, so they
+-- do not appear in `show structure` and a microflow called only from inside a
+-- rule's body is still reported as dead by QUAL004 / GRAPH_DEAD_ASSETS. Adding
+-- the object type without also indexing rule bodies would report every rule
+-- itself as dead, so it needs both halves at once.
 -- ----------------------------------------------------------------------------

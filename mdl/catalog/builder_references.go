@@ -56,6 +56,32 @@ func collectActionActivities(oc *microflows.MicroflowObjectCollection) []*microf
 	return result
 }
 
+// collectRuleCalls returns the qualified name of every rule a flow calls from a
+// decision, recursing into LoopedActivity bodies like collectActionActivities.
+//
+// A rule is not an activity: Mendix can only call one from an ExclusiveSplit's
+// condition, so the action walk above never sees it and a rule called from a
+// decision looked uncalled — `show callers` reported none, which is how #939's
+// reporter read the corruption as "the reference never resolves" even after the
+// condition was stored correctly.
+func collectRuleCalls(oc *microflows.MicroflowObjectCollection) []string {
+	if oc == nil {
+		return nil
+	}
+	var out []string
+	for _, obj := range oc.Objects {
+		switch o := obj.(type) {
+		case *microflows.ExclusiveSplit:
+			if rc, ok := o.SplitCondition.(*microflows.RuleSplitCondition); ok && rc.RuleQualifiedName != "" {
+				out = append(out, rc.RuleQualifiedName)
+			}
+		case *microflows.LoopedActivity:
+			out = append(out, collectRuleCalls(o.ObjectCollection)...)
+		}
+	}
+	return out
+}
+
 // microflowActionRef returns the cross-reference a microflow action makes to
 // another document: the target's catalog object type, its qualified name, and
 // the RefKind label. ok is false when the action references no resolvable
@@ -229,6 +255,9 @@ func (b *Builder) buildReferences() error {
 		// Intra-flow variable→entity map so change/delete (which operate on a
 		// variable, not a named entity) can resolve their target.
 		varEntity := buildVarEntityMap(params, acts)
+		for _, rule := range collectRuleCalls(oc) {
+			emit("RULE", rule, RefKindCall)
+		}
 		for _, act := range acts {
 			if tt, tn, rk, ok := microflowActionRef(act.Action); ok {
 				emit(tt, tn, rk)
