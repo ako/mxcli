@@ -73,8 +73,25 @@ func writeExpectFlowBody(b *strings.Builder, tc TestCase) {
 		b.WriteString(line)
 		b.WriteString("\n")
 	}
+	writeExpectAggregates(b, "  ", tc.Expects)
 	for _, exp := range tc.Expects {
 		writeExpectCheck(b, exp)
+	}
+}
+
+// writeExpectAggregates emits the Aggregate list activities the assertions need,
+// after the body has produced the lists and before the first decision reads
+// them. One activity per variable, however many assertions refer to it.
+func writeExpectAggregates(b *strings.Builder, indent string, expects []Expect) {
+	seen := map[string]bool{}
+	for _, exp := range expects {
+		for _, agg := range exp.Aggregates {
+			if seen[agg.Var] {
+				continue
+			}
+			seen[agg.Var] = true
+			fmt.Fprintf(b, "%s%s = %s(%s);\n", indent, agg.Var, agg.Op, agg.List)
+		}
 	}
 }
 

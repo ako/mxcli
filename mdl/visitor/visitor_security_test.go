@@ -650,3 +650,47 @@ func TestUpdateSecurity_InModule(t *testing.T) {
 		t.Errorf("Expected MyModule, got %q", stmt.Module)
 	}
 }
+
+func TestAlterProjectSecurity_GuestAccess(t *testing.T) {
+	cases := []struct {
+		input    string
+		wantOn   bool
+		wantRole string
+	}{
+		{`ALTER PROJECT SECURITY GUEST ACCESS ON ROLE Anonymous;`, true, "Anonymous"},
+		{`ALTER PROJECT SECURITY GUEST ACCESS ON ROLE "Guest User";`, true, "Guest User"},
+		// Bare ON is legal to parse — the executor decides whether a stored role
+		// makes it valid, since re-enabling should not force a retype.
+		{`ALTER PROJECT SECURITY GUEST ACCESS ON;`, true, ""},
+		{`ALTER PROJECT SECURITY GUEST ACCESS OFF;`, false, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.input, func(t *testing.T) {
+			prog, errs := Build(tc.input)
+			if len(errs) > 0 {
+				t.Fatalf("Parse error: %v", errs[0])
+			}
+			stmt, ok := prog.Statements[0].(*ast.AlterProjectSecurityStmt)
+			if !ok {
+				t.Fatalf("Expected AlterProjectSecurityStmt, got %T", prog.Statements[0])
+			}
+			if stmt.GuestAccessEnabled == nil {
+				t.Fatal("GuestAccessEnabled is nil — the guest branch did not fire")
+			}
+			if *stmt.GuestAccessEnabled != tc.wantOn {
+				t.Errorf("GuestAccessEnabled = %v, want %v", *stmt.GuestAccessEnabled, tc.wantOn)
+			}
+			if stmt.GuestUserRole != tc.wantRole {
+				t.Errorf("GuestUserRole = %q, want %q", stmt.GuestUserRole, tc.wantRole)
+			}
+			// The other two ALTER PROJECT SECURITY forms share this node; a
+			// guest statement must not look like a level or demo-user one.
+			if stmt.SecurityLevel != "" {
+				t.Errorf("SecurityLevel = %q, want empty", stmt.SecurityLevel)
+			}
+			if stmt.DemoUsersEnabled != nil {
+				t.Errorf("DemoUsersEnabled = %v, want nil", *stmt.DemoUsersEnabled)
+			}
+		})
+	}
+}

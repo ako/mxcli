@@ -26,6 +26,11 @@ type ProjectSecurityBackend interface {
 	GetProjectSecurity() (*security.ProjectSecurity, error)
 	SetProjectSecurityLevel(unitID model.ID, level string) error
 	SetProjectDemoUsersEnabled(unitID model.ID, enabled bool) error
+	// SetProjectGuestAccess toggles anonymous access. An empty guestUserRole
+	// leaves the stored role untouched — the caller is responsible for having
+	// established that a role exists, because Mendix raises CE0133 on guest
+	// access with no role.
+	SetProjectGuestAccess(unitID model.ID, enabled bool, guestUserRole string) error
 	AddUserRole(unitID model.ID, name string, moduleRoles []string, manageAllRoles bool) error
 	AlterUserRoleModuleRoles(unitID model.ID, userRoleName string, add bool, moduleRoles []string) error
 	RemoveUserRole(unitID model.ID, name string) error

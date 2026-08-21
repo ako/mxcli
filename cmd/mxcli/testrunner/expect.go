@@ -26,6 +26,23 @@ type Expect struct {
 	// the failure message. It is empty when no such expression can be derived
 	// without guessing the operand's type — see actualExpr.
 	Actual string
+	// Aggregates are the list aggregates Condition refers to by variable. They
+	// have to be computed by an activity before the condition is evaluated —
+	// see ExpectAggregate.
+	Aggregates []ExpectAggregate
+}
+
+// ExpectAggregate is one list aggregate lifted out of an @expect condition.
+//
+// `count($List)` is not a Mendix expression function — counting a list is an
+// Aggregate list activity, so it cannot appear in the decision that evaluates
+// the assertion. The generators emit `$Var = COUNT($List);` ahead of that
+// decision and the condition refers to $Var, which is the same thing the author
+// would write by hand.
+type ExpectAggregate struct {
+	Var  string // generated variable holding the result, e.g. "$mxtest_count_Brands"
+	Op   string // MDL aggregate keyword, e.g. "COUNT"
+	List string // the list variable being aggregated, e.g. "$Brands"
 }
 
 // ParseExpect parses one @expect annotation body.
@@ -56,10 +73,48 @@ func ParseExpect(raw string) (Expect, error) {
 	}
 
 	return Expect{
-		Raw:       raw,
-		Condition: node.render(),
-		Actual:    actualExpr(node),
+		Raw:        raw,
+		Condition:  node.render(),
+		Actual:     actualExpr(node),
+		Aggregates: collectAggregates(node),
 	}, nil
+}
+
+// collectAggregates returns the aggregates in the expression, in source order
+// and without repeats. Two assertions counting the same list share one
+// variable, so the activity is emitted once.
+func collectAggregates(n expectNode) []ExpectAggregate {
+	var (
+		out  []ExpectAggregate
+		seen = map[string]bool{}
+		walk func(expectNode)
+	)
+	walk = func(n expectNode) {
+		switch e := n.(type) {
+		case *expectAggregate:
+			if !seen[e.Var] {
+				seen[e.Var] = true
+				out = append(out, ExpectAggregate{Var: e.Var, Op: e.Op, List: e.List})
+			}
+		case *expectBinary:
+			walk(e.Left)
+			walk(e.Right)
+		case *expectUnary:
+			walk(e.Operand)
+		case *expectParen:
+			walk(e.Inner)
+		case *expectCall:
+			for _, a := range e.Args {
+				walk(a)
+			}
+		case *expectIfThenElse:
+			walk(e.Cond)
+			walk(e.Then)
+			walk(e.Else)
+		}
+	}
+	walk(n)
+	return out
 }
 
 // isAssertionShaped reports whether the expression can be a pass/fail condition.
@@ -215,6 +270,20 @@ func (e *expectCall) kind() exprcheck.TypeKind {
 	}
 	return exprcheck.KindUnknown
 }
+
+// expectAggregate is a list aggregate the generators hoist into an activity. It
+// renders as the variable that activity assigns, so from the condition's point
+// of view it is an ordinary variable.
+type expectAggregate struct {
+	Var  string
+	Op   string
+	List string
+}
+
+func (e *expectAggregate) render() string { return e.Var }
+
+// Mendix's Aggregate list activity returns a Long for count.
+func (e *expectAggregate) kind() exprcheck.TypeKind { return exprcheck.KindLong }
 
 type expectParen struct{ Inner expectNode }
 
@@ -573,6 +642,9 @@ func (p *expectParser) parseIdentPrimary() (expectNode, error) {
 	// qualified names, not calls — so an unknown name is an error, not a
 	// user-defined function.
 	if p.toks[p.pos+1].Kind == exprcheck.TokLParen {
+		if isListAggregate(t.Text) {
+			return p.parseAggregate()
+		}
 		return p.parseCall()
 	}
 
@@ -585,6 +657,63 @@ func (p *expectParser) parseIdentPrimary() (expectNode, error) {
 			"%q is not a variable, a function or a qualified name", name)
 	}
 	return &expectVar{Text: name}, nil
+}
+
+// listAggregates are Mendix's list aggregates. None of them is an expression
+// function — they are Aggregate list *activities* — so a bare one in an @expect
+// used to be rejected as "not a Mendix expression function", which is true and
+// tells the author nothing about what to do instead.
+var listAggregates = map[string]bool{
+	"count": true, "sum": true, "average": true, "minimum": true, "maximum": true,
+}
+
+func isListAggregate(name string) bool { return listAggregates[strings.ToLower(name)] }
+
+// parseAggregate parses `count($List)`.
+//
+// Only count is accepted. The other four aggregate an attribute over the list
+// (`SUM($list.Amount)`), which needs the attribute's type to render a
+// comparison, so they are refused with the helper-microflow workaround rather
+// than guessed at.
+func (p *expectParser) parseAggregate() (expectNode, error) {
+	nameTok := p.next()
+	name := strings.ToLower(nameTok.Text)
+	p.next() // consume '('
+
+	if name != "count" {
+		return nil, p.errorAt(nameTok,
+			"%s() aggregates an attribute over a list, which a test assertion cannot do "+
+				"on its own — call a microflow that returns the %s and assert on its "+
+				"result (count($list) is supported here)", name, name)
+	}
+
+	arg := p.peek()
+	if arg.Kind != exprcheck.TokDollarIdent {
+		return nil, p.errorAt(arg, "count() counts a list variable, as in count($MyList)")
+	}
+	node, err := p.parseVariablePath()
+	if err != nil {
+		return nil, err
+	}
+	list := node.render()
+	if strings.ContainsAny(list, "/.") {
+		return nil, p.errorAt(arg,
+			"count() counts a list variable, not the path %s — retrieve the list into a "+
+				"variable first", list)
+	}
+	if p.peek().Kind != exprcheck.TokRParen {
+		return nil, p.errorAt(p.peek(), "expected a closing parenthesis for count()")
+	}
+	p.next()
+
+	return &expectAggregate{
+		// Named after the list so two assertions over the same list share one
+		// activity, and prefixed so it cannot collide with a test's own
+		// variables.
+		Var:  "$mxtest_count_" + strings.TrimPrefix(list, "$"),
+		Op:   "COUNT",
+		List: list,
+	}, nil
 }
 
 func (p *expectParser) parseCall() (expectNode, error) {
