@@ -1,0 +1,42 @@
+-- Repro: DROP ATTRIBUTE left an orphaned validation rule behind (CE1613).
+--
+--   [error] [CE1613] "The selected attribute 'DropAttr.Account.AccountNumber'
+--   no longer exists." at Validation rule of entity 'DropAttr.Account'
+--   The app contains: 1 errors.
+--
+-- Two bugs, each hiding the other:
+--
+--   1. The executor's cleanup compared a BY_NAME qualified-name reference
+--      against an element ID, so it matched nothing and kept every rule.
+--   2. Even once removed, the write was dropped: a child list emptied by an
+--      update is "clean", so the codec passed the STORED rules through.
+--
+-- Bug 2 only bites when the update removes the LAST member of a list, which is
+-- why every attribute below has exactly one rule. A second rule would dirty the
+-- list and the whole thing would appear to work.
+--
+-- Expected after the fix: `mx check` reports 0 errors.
+
+create module DropAttr;
+create module role DropAttr.User;
+
+create persistent entity DropAttr.Account (
+  AccountNumber: String(20) NOT NULL ERROR 'Account number is required',
+  Balance: Decimal
+)
+INDEX (AccountNumber);
+
+grant DropAttr.User on DropAttr.Account (READ (AccountNumber, Balance), WRITE (AccountNumber, Balance));
+
+-- The entity's only validation rule, its only index column, and one of its two
+-- member-access entries all point at this attribute.
+alter entity DropAttr.Account drop attribute AccountNumber;
+
+-- The Attributes list has the same failure mode, and there it is worse than a
+-- dangling reference: dropping the only attribute reported success and wrote
+-- nothing at all, so the attribute was still on disk afterwards.
+create persistent entity DropAttr.Solo (
+  OnlyAttr: String(20)
+);
+
+alter entity DropAttr.Solo drop attribute OnlyAttr;

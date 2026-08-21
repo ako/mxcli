@@ -37,6 +37,24 @@ import (
 // re-minting it is harmless — "it looked random" is not one.
 var churnIsIntended = map[string][]string{}
 
+// The guard's blind spot, which is how Workflows$*.PersistentId got in.
+//
+// It sees only properties minted through the codec's FreshGUIDFields
+// registration. A property minted by hand in a writer is invisible to it —
+// PersistentId was emitted by addFreshPersistentID (modelsdk) and a literal
+// idToBsonBinary(generateUUID()) (legacy), so no registration existed and
+// nothing complained while every workflow write churned it (issue #949).
+//
+// It is now carried by canon.CarryPersistentIDs rather than registered here,
+// because it lives on nested elements: identityFields/CarryIdentity only reach
+// top-level properties of the document root, and PersistentId sits on activities
+// and outcomes arbitrarily deep in the flow tree.
+//
+// So the rule this guard encodes still holds — a fresh GUID needs a recorded
+// decision — but "registered with the codec" is narrower than "minted fresh".
+// When adding a writer that mints an identity by hand, either register it so
+// this guard can see it, or carry it in canon and say so here.
+
 func TestFreshGUIDFieldsHaveAnIdentityDecision(t *testing.T) {
 	registered := codec.FreshGUIDRegistrations()
 	if len(registered) == 0 {

@@ -126,14 +126,12 @@ func parseMDLTests(content string, sourcePath string) ([]TestCase, error) {
 	blocks := splitTestBlocks(content)
 	var tests []TestCase
 
-	for i, block := range blocks {
-		block = strings.TrimSpace(block)
-		if block == "" {
-			continue
-		}
-
+	for _, block := range blocks {
 		// Extract javadoc comment and MDL body
-		doc, body, line := extractDocAndBody(block, content)
+		doc, body, line, err := extractDocAndBody(block)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", sourcePath, err)
+		}
 		if doc == "" {
 			// No javadoc — skip this block (it's not a test)
 			continue
@@ -149,7 +147,10 @@ func parseMDLTests(content string, sourcePath string) ([]TestCase, error) {
 			return nil, fmt.Errorf("%s: test %q: %w", sourcePath, annotations.Test, err)
 		}
 
-		testID := fmt.Sprintf("test_%d", i+1)
+		// Number the tests, not the chunks: a chunk that holds only a file
+		// header is skipped, and numbering by chunk index left a gap where it
+		// had been — so the first test in a file could report as test_2.
+		testID := fmt.Sprintf("test_%d", len(tests)+1)
 		tests = append(tests, TestCase{
 			ID:              testID,
 			Name:            annotations.Test,
@@ -198,7 +199,10 @@ func parseMarkdownTests(content string, sourcePath string) ([]TestCase, error) {
 				blockContent := strings.Join(blockLines, "\n")
 
 				// Parse the block as a single test
-				doc, body, _ := extractDocAndBody(blockContent, blockContent)
+				doc, body, _, err := extractDocAndBody(testBlock{Text: blockContent, Line: blockStart})
+				if err != nil {
+					return nil, fmt.Errorf("%s: %w", sourcePath, err)
+				}
 				annotations := parseAnnotations(doc)
 
 				if err := validateCleanup(annotations.Cleanup); err != nil {
@@ -235,59 +239,181 @@ func parseMarkdownTests(content string, sourcePath string) ([]TestCase, error) {
 	return tests, nil
 }
 
+// testBlock is one '/'-separated chunk of a test file, with the line its first
+// character sits on. The line travels with the chunk because it cannot be
+// recovered from the text afterwards: the previous implementation searched the
+// whole file for the chunk's first 20 characters, which found the wrong chunk
+// whenever two started alike and panicked on a chunk shorter than that.
+type testBlock struct {
+	Text string
+	Line int
+}
+
 // splitTestBlocks splits MDL content on '/' delimiters (the microflow block terminator).
-func splitTestBlocks(content string) []string {
+func splitTestBlocks(content string) []testBlock {
 	// Split on lines that are just '/' (the MDL block separator)
-	var blocks []string
-	var current strings.Builder
+	var blocks []testBlock
+	var current []string
+	start := 1
+	lineNum := 0
 	scanner := bufio.NewScanner(strings.NewReader(content))
 
+	flush := func() {
+		if len(current) > 0 {
+			blocks = append(blocks, testBlock{Text: strings.Join(current, "\n"), Line: start})
+			current = nil
+		}
+	}
+
 	for scanner.Scan() {
+		lineNum++
 		line := scanner.Text()
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "/" {
-			blocks = append(blocks, current.String())
-			current.Reset()
-		} else {
-			if current.Len() > 0 {
-				current.WriteString("\n")
-			}
-			current.WriteString(line)
+		switch {
+		case strings.TrimSpace(line) == "/":
+			flush()
+			start = lineNum + 1
+		case len(current) == 0 && strings.TrimSpace(line) == "":
+			// A blank line before the chunk's first content is not part of it;
+			// keeping it would report every test one line above where it is.
+			start = lineNum + 1
+		default:
+			current = append(current, line)
 		}
 	}
 
 	// Don't forget the last block (after the last '/' or if no '/' found)
-	if current.Len() > 0 {
-		blocks = append(blocks, current.String())
-	}
+	flush()
 
 	return blocks
 }
 
-// extractDocAndBody separates the javadoc comment from the MDL body.
-// Returns (docComment, body, lineNumber).
-func extractDocAndBody(block string, fullContent string) (string, string, int) {
-	block = strings.TrimSpace(block)
+// extractDocAndBody separates the test's javadoc comment from the MDL body.
+// Returns (docComment, body, lineNumber, error).
+//
+// A chunk may open with several comments — a file-level header, a `--` note —
+// before the test's own doc comment, because a header is not separated from the
+// test below it by a '/'. The test's doc is the LAST comment in that leading
+// run; everything after it is the body.
+//
+// Taking the FIRST `/**` instead is #927 bug 1: the header became the doc, it
+// carried no @test, and the whole chunk — the real test with it — was dropped
+// with no message. Scanning for the delimiters by raw substring search is bug
+// 1b: a `--` line whose prose spelled them out was read as a doc comment, so
+// describing the bug in a comment re-triggered it.
+func extractDocAndBody(block testBlock) (string, string, int, error) {
+	docs := scanDocComments(block.Text, block.Line)
 
-	// Find /** ... */ pattern
-	docStart := strings.Index(block, "/**")
-	if docStart == -1 {
-		return "", block, 1
+	// More than one @test in a chunk means a '/' separator is missing. Silently
+	// keeping one of them is what bug 1 did, and an author cannot tell a dropped
+	// test from a passing one, so this is refused rather than resolved.
+	var named []string
+	for _, d := range docs {
+		if name := parseAnnotations(d.Text).Test; name != "" {
+			named = append(named, name)
+		}
+	}
+	if len(named) > 1 {
+		return "", "", 0, fmt.Errorf(
+			"test %q is followed by another @test doc comment (%q) with no '/' separator "+
+				"between them, so only one of the two could run: add a line containing "+
+				"just '/' after the first test's statements", named[0], named[1])
 	}
 
-	docEnd := strings.Index(block[docStart:], "*/")
-	if docEnd == -1 {
-		return "", block, 1
+	// The test's doc is the last comment of the leading run: a file-level header
+	// and the test's own doc live in the same chunk, in that order.
+	var doc *docComment
+	for i := range docs {
+		if docs[i].Leading {
+			doc = &docs[i]
+		}
 	}
-	docEnd += docStart + 2 // include the */
+	if doc == nil {
+		return "", strings.TrimSpace(block.Text), block.Line, nil
+	}
+	return doc.Text, strings.TrimSpace(block.Text[doc.End:]), doc.Line, nil
+}
 
-	doc := block[docStart:docEnd]
-	body := strings.TrimSpace(block[docEnd:])
+// docComment is one `/** … */` comment found in a chunk.
+type docComment struct {
+	Text string
+	Line int
+	End  int // index just past the closing delimiter
+	// Leading is true when nothing but whitespace and other comments preceded
+	// it, which is where a test's doc comment sits.
+	Leading bool
+}
 
-	// Estimate line number
-	line := 1 + strings.Count(fullContent[:strings.Index(fullContent, block[:20])], "\n")
+// scanDocComments finds the javadoc comments in a chunk.
+//
+// It is a scanner rather than a substring search because the delimiters mean
+// nothing outside a comment: `/**` written in the prose of a `--` line comment
+// (#927 bug 1b) or inside a string literal is text, not a doc comment.
+func scanDocComments(text string, startLine int) []docComment {
+	var (
+		out      []docComment
+		i        int
+		line     = startLine
+		seenBody bool
+	)
+	for i < len(text) {
+		switch {
+		case text[i] == '\n':
+			line++
+			i++
+		case text[i] == ' ' || text[i] == '\t' || text[i] == '\r':
+			i++
+		case strings.HasPrefix(text[i:], "--"):
+			// A line comment runs to the end of the line, delimiters and all.
+			if nl := strings.IndexByte(text[i:], '\n'); nl >= 0 {
+				i += nl
+			} else {
+				i = len(text)
+			}
+		case strings.HasPrefix(text[i:], "/*"):
+			end := strings.Index(text[i:], "*/")
+			if end == -1 {
+				// Unterminated. Whatever follows is not MDL either; leave it to
+				// the MDL parser to report against the real source.
+				return out
+			}
+			comment := text[i : i+end+2]
+			if strings.HasPrefix(comment, "/**") {
+				out = append(out, docComment{
+					Text:    comment,
+					Line:    line,
+					End:     i + len(comment),
+					Leading: !seenBody,
+				})
+			}
+			line += strings.Count(comment, "\n")
+			i += len(comment)
+		case text[i] == '\'':
+			seenBody = true
+			i, line = skipMDLString(text, i, line)
+		default:
+			seenBody = true
+			i++
+		}
+	}
+	return out
+}
 
-	return doc, body, line
+// skipMDLString advances past a single-quoted MDL string literal, which escapes
+// a quote by doubling it and may span lines.
+func skipMDLString(text string, i, line int) (int, int) {
+	for j := i + 1; j < len(text); j++ {
+		switch text[j] {
+		case '\'':
+			if j+1 < len(text) && text[j+1] == '\'' {
+				j++
+				continue
+			}
+			return j + 1, line
+		case '\n':
+			line++
+		}
+	}
+	return len(text), line
 }
 
 // annotations holds parsed javadoc annotations for a test block.
@@ -307,12 +433,19 @@ var (
 	// a line the pattern did not fit produced no assertion at all, and a test
 	// with no assertions passes. Everything after @expect is now handed to
 	// ParseExpect, which either compiles it or reports why it could not.
-	expectPattern  = regexp.MustCompile(`@expect\s+(.+)`)
-	verifyPattern  = regexp.MustCompile(`@verify\s+(.+)`)
-	testPattern    = regexp.MustCompile(`@test\s+(.+)`)
-	setupPattern   = regexp.MustCompile(`@setup\s+(\S+)`)
-	cleanupPattern = regexp.MustCompile(`@cleanup\s+(\S+)`)
-	throwsPattern  = regexp.MustCompile(`@throws\s+'([^']*)'`)
+	//
+	// Every pattern is anchored to the start of the line, because an annotation
+	// is a javadoc tag and a tag opens its line. Matching one anywhere turned
+	// prose that quotes a tag into a real annotation: writing "`@expect $x = 1`
+	// in a sentence" gave the test an assertion nobody wrote, and "@cleanup none
+	// would apply here" changed the cleanup strategy. The leading `*` and its
+	// indentation are stripped before these run.
+	expectPattern  = regexp.MustCompile(`^@expect\s+(.+)`)
+	verifyPattern  = regexp.MustCompile(`^@verify\s+(.+)`)
+	testPattern    = regexp.MustCompile(`^@test\s+(.+)`)
+	setupPattern   = regexp.MustCompile(`^@setup\s+(\S+)`)
+	cleanupPattern = regexp.MustCompile(`^@cleanup\s+(\S+)`)
+	throwsPattern  = regexp.MustCompile(`^@throws\s+'([^']*)'`)
 )
 
 // parseAnnotations extracts test annotations from a javadoc comment.
@@ -364,7 +497,30 @@ func parseAnnotations(doc string) annotations {
 	}
 
 	checkVerifyCleanup(&a)
+	checkThrowsExpect(&a)
 	return a
+}
+
+// checkThrowsExpect refuses an @expect on a test that expects an exception.
+//
+// @throws replaces the body's normal outcome: both generators emit the
+// throws-shaped microflow, in which the verdict starts as a failure and only the
+// error handler can clear it, and neither emits the @expect checks at all. The
+// assertion was therefore never evaluated — while AssertionCount still counted
+// it, so the test reported making two assertions and made one. Asserting on a
+// return value the body was expected not to produce cannot be made to work, so
+// it is refused rather than quietly ignored.
+func checkThrowsExpect(a *annotations) {
+	if a.Throws == "" || len(a.Expects) == 0 {
+		return
+	}
+	for _, exp := range a.Expects {
+		a.AssertionErrors = append(a.AssertionErrors, fmt.Sprintf(
+			"@expect %s: this test also has @throws, so the body is expected to fail and "+
+				"this assertion is never evaluated. Drop one of the two — assert on the "+
+				"error with @throws, or on the result with @expect", exp.Raw))
+	}
+	a.Expects = nil
 }
 
 // checkVerifyCleanup refuses a @verify on a test whose writes are rolled back.

@@ -297,6 +297,19 @@ func (w *Writer) SetProjectDemoUsersEnabled(unitID model.ID, enabled bool) error
 	})
 }
 
+// SetProjectGuestAccess patches EnableGuestAccess — and, when guestUserRole is
+// non-empty, GuestUserRole — on Security$ProjectSecurity. An empty role leaves
+// the stored one alone so that toggling access off and on does not lose it.
+func (w *Writer) SetProjectGuestAccess(unitID model.ID, enabled bool, guestUserRole string) error {
+	return w.readPatchWrite(unitID, func(doc bson.D) (bson.D, error) {
+		doc = setBsonField(doc, "EnableGuestAccess", enabled)
+		if guestUserRole != "" {
+			doc = setBsonField(doc, "GuestUserRole", guestUserRole)
+		}
+		return doc, nil
+	})
+}
+
 // AddUserRole adds a new user role to Security$ProjectSecurity.
 func (w *Writer) AddUserRole(unitID model.ID, name string, moduleRoles []string, manageAllRoles bool) error {
 	return w.readPatchWrite(unitID, func(doc bson.D) (bson.D, error) {

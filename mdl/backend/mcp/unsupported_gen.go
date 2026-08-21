@@ -1077,6 +1077,11 @@ func (unsupportedBackend) SetProjectDemoUsersEnabled(_ model.ID, _ bool) (err0 e
 	return
 }
 
+func (unsupportedBackend) SetProjectGuestAccess(_ model.ID, _ bool, _ string) (err0 error) {
+	err0 = errUnsupported("SetProjectGuestAccess")
+	return
+}
+
 func (unsupportedBackend) SetProjectSecurityLevel(_ model.ID, _ string) (err0 error) {
 	err0 = errUnsupported("SetProjectSecurityLevel")
 	return
