@@ -413,7 +413,7 @@ Studio Pro picks the dropdown label from the referenced microflow's
 return type (`System.ConsumedODataConfiguration` vs
 `list of System.HttpHeader`).
 
-## Microflows & Nanoflows
+## Microflows, Nanoflows & Rules
 
 | Statement | Syntax | Notes |
 |-----------|--------|-------|
@@ -430,6 +430,13 @@ return type (`System.ConsumedODataConfiguration` vs
 | Create nanoflow | `create [or modify] nanoflow Module.Name (params) returns type [folder 'path'] begin ... end;` | Same body syntax as microflows |
 | Move nanoflow | `move nanoflow Module.Name to folder 'path';` | |
 | Nanoflow restrictions | N/A | No Java actions, ErrorEvent, REST calls, database queries, external actions, download file, workflow actions, import/export mappings, JSON transformation, show home page |
+| Show rules | `show rules [in module];` | `list rules` is the same statement |
+| Describe rule | `describe rule Module.Name;` | Round-trippable |
+| Create rule | `create [or modify] rule Module.Name (params) returns Boolean\|enum Module.Enum [folder 'path'] begin ... end;` | Same body syntax as microflows |
+| Drop rule | `drop rule Module.Name;` | |
+| Move rule | `move rule Module.Name to folder 'path';` | |
+| Call a rule | `if Module.Rule_Name(Param = $Value) then ... end if;` | A decision is the ONLY place a rule can be called |
+| Rule restrictions | N/A | Return type must be Boolean or an enumeration (mxbuild CE0103/CE0139); no create/change/delete/commit/rollback, no client interaction, no web-service calls (CE0009). There is no `grant execute on rule` — a rule stores no module-role security |
 
 ## Microflows - Supported Statements
 

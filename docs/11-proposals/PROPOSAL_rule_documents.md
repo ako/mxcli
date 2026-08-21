@@ -1,6 +1,6 @@
 ---
 title: Rule documents — read, author, describe, catalog
-status: draft
+status: done
 date: 2026-08-21
 related:
   - PROPOSAL_microflow_inheritance_split_statement.md
@@ -9,7 +9,7 @@ related:
 
 # Proposal: Rule documents — read, author, describe, catalog
 
-**Status:** Draft
+**Status:** Done — slices 1–4 shipped 2026-08-21
 **Date:** 2026-08-21
 
 A `Microflows$Rule` is the one document type mxcli can *reference* but cannot
