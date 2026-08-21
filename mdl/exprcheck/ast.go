@@ -57,6 +57,14 @@ type CallExpr struct {
 	baseNode
 	Name string
 	Args []RobustExpr
+	// Qualified marks a `Module.Name(...)` call. Mendix expressions have no
+	// user-callable functions, so such a call is never valid — but it IS valid
+	// MDL in a decision condition, where mxcli stores it as a rule split. The
+	// parser records it rather than rejecting it so the trailing `(` is consumed
+	// (an unconsumed one was reported as "Unexpected token after expression"),
+	// and the unknown-function check skips it: MDL066 owns that diagnostic and
+	// knows which positions are legal.
+	Qualified bool
 }
 
 type BinExpr struct {

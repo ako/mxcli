@@ -71,6 +71,10 @@ func execMove(ctx *ExecContext, s *ast.MoveStmt) error {
 		if err := moveNanoflow(ctx, s.Name, targetContainerID); err != nil {
 			return err
 		}
+	case ast.DocumentTypeRule:
+		if err := moveRule(ctx, s.Name, targetContainerID); err != nil {
+			return err
+		}
 	case ast.DocumentTypeEnumeration:
 		return moveEnumeration(ctx, s.Name, targetContainerID, targetModule.Name)
 	case ast.DocumentTypeConstant:
@@ -227,6 +231,36 @@ func moveSnippet(ctx *ExecContext, name ast.QualifiedName, targetContainerID mod
 }
 
 // moveNanoflow moves a nanoflow to a new container.
+// moveRule reparents a rule unit. A rule's placement is ordinary — the unit row
+// is ContainmentName "Documents" with the folder as its container, identical to
+// a microflow (measured on ako/TestApp, where both rules sit in a folder).
+func moveRule(ctx *ExecContext, name ast.QualifiedName, targetContainerID model.ID) error {
+	rules, err := ctx.Backend.ListRules()
+	if err != nil {
+		return mdlerrors.NewBackend("list rules", err)
+	}
+
+	h, err := getHierarchy(ctx)
+	if err != nil {
+		return mdlerrors.NewBackend("build hierarchy", err)
+	}
+
+	for _, rule := range rules {
+		modID := h.FindModuleID(rule.ContainerID)
+		if h.GetModuleName(modID) != name.Module || rule.Name != name.Name {
+			continue
+		}
+		rule.ContainerID = targetContainerID
+		if err := ctx.Backend.MoveRule(rule); err != nil {
+			return mdlerrors.NewBackend("move rule", err)
+		}
+		fmt.Fprintf(ctx.Output, "Moved rule %s to new location\n", name.String())
+		return nil
+	}
+
+	return mdlerrors.NewNotFound("rule", name.String())
+}
+
 func moveNanoflow(ctx *ExecContext, name ast.QualifiedName, targetContainerID model.ID) error {
 	// Find the nanoflow
 	nfs, err := ctx.Backend.ListNanoflows()

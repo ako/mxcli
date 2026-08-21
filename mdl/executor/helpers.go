@@ -662,3 +662,22 @@ func getAttributeTypeName(at domainmodel.AttributeType) string {
 func formatAttributeType(at domainmodel.AttributeType) string {
 	return getAttributeTypeName(at)
 }
+
+// buildWorkflowQualifiedNames returns a set of all workflow qualified names in
+// the project. Mirrors buildPageQualifiedNames; needed so a workflow's
+// `call workflow` target can be resolved (issue #943).
+func buildWorkflowQualifiedNames(ctx *ExecContext) map[string]bool {
+	result := make(map[string]bool)
+	h, err := getHierarchy(ctx)
+	if err != nil {
+		return result
+	}
+	wfs, err := ctx.Backend.ListWorkflows()
+	if err != nil {
+		return result
+	}
+	for _, w := range wfs {
+		result[h.GetQualifiedName(w.ContainerID, w.Name)] = true
+	}
+	return result
+}

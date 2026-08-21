@@ -32,6 +32,7 @@ const (
 	ShowAssociation
 	ShowMicroflows
 	ShowNanoflows
+	ShowRules
 	ShowPages
 	ShowSnippets
 	ShowLayouts
@@ -128,6 +129,8 @@ func (t ShowObjectType) String() string {
 		return "MICROFLOWS"
 	case ShowNanoflows:
 		return "NANOFLOWS"
+	case ShowRules:
+		return "RULES"
 	case ShowPages:
 		return "PAGES"
 	case ShowSnippets:
@@ -325,6 +328,7 @@ const (
 	DescribeContractMessage      // DESCRIBE CONTRACT MESSAGE Service.MessageName
 	DescribeJsonStructure        // DESCRIBE JSON STRUCTURE Module.Name
 	DescribeNanoflow             // DESCRIBE NANOFLOW Module.Name
+	DescribeRule                 // DESCRIBE RULE Module.Name
 	DescribeImportMapping        // DESCRIBE IMPORT MAPPING Module.Name
 	DescribeExportMapping        // DESCRIBE EXPORT MAPPING Module.Name
 	DescribeModel                // DESCRIBE MODEL Module.Name (agent-editor Model document)
@@ -409,6 +413,8 @@ func (t DescribeObjectType) String() string {
 		return "JSON STRUCTURE"
 	case DescribeNanoflow:
 		return "NANOFLOW"
+	case DescribeRule:
+		return "RULE"
 	case DescribeImportMapping:
 		return "IMPORT MAPPING"
 	case DescribeExportMapping:

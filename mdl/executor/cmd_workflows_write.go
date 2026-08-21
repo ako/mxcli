@@ -36,6 +36,20 @@ func execCreateWorkflow(ctx *ExecContext, s *ast.CreateWorkflowStmt) error {
 				"remove it, or keep the note as an MDL comment (`-- ...`) [MDL-WF04]")
 	}
 
+	// Refuse a broken reference here as well as at check time. `check
+	// --references` reports these, but exec runs a different pass and wrote the
+	// workflow anyway, so a script that skipped check produced a model the build
+	// rejects with CE1613 (issue #943). Same placement and reasoning as the
+	// microflow handler's validateMicroflowRules call (issue #833).
+	//
+	// Note this runs BEFORE findOrCreateModule, which auto-creates a module on
+	// demand: without it a typo'd module name silently produced a new module
+	// rather than an error.
+	if refErrors := validateWorkflowStatementRefs(ctx, s, nil); len(refErrors) > 0 {
+		return mdlerrors.NewValidationf("workflow '%s' has reference errors:\n  - %s",
+			s.Name.String(), strings.Join(refErrors, "\n  - "))
+	}
+
 	module, err := findOrCreateModule(ctx, s.Name.Module)
 	if err != nil {
 		return err

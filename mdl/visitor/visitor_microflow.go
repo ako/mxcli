@@ -114,6 +114,51 @@ func (b *Builder) ExitCreateNanoflowStatement(ctx *parser.CreateNanoflowStatemen
 	b.statements = append(b.statements, stmt)
 }
 
+// ExitCreateRuleStatement mirrors ExitCreateNanoflowStatement — a rule shares the
+// microflow header and body grammar, so the only difference is the AST node.
+func (b *Builder) ExitCreateRuleStatement(ctx *parser.CreateRuleStatementContext) {
+	stmt := &ast.CreateRuleStmt{
+		Name: buildQualifiedName(ctx.QualifiedName()),
+	}
+
+	if paramList := ctx.MicroflowParameterList(); paramList != nil {
+		stmt.Parameters = buildMicroflowParameters(paramList)
+	}
+	if retType := ctx.MicroflowReturnType(); retType != nil {
+		stmt.ReturnType = buildMicroflowReturnType(retType)
+	}
+	if opts := ctx.MicroflowOptions(); opts != nil {
+		optsCtx := opts.(*parser.MicroflowOptionsContext)
+		for _, opt := range optsCtx.AllMicroflowOption() {
+			optCtx := opt.(*parser.MicroflowOptionContext)
+			if optCtx.COMMENT() != nil && optCtx.STRING_LITERAL() != nil {
+				stmt.Comment = unquoteString(optCtx.STRING_LITERAL().GetText())
+			}
+			if optCtx.FOLDER() != nil && optCtx.STRING_LITERAL() != nil {
+				stmt.Folder = unquoteString(optCtx.STRING_LITERAL().GetText())
+			}
+		}
+	}
+	if body := ctx.MicroflowBody(); body != nil {
+		stmt.Body = buildMicroflowBody(body)
+	}
+
+	if createStmt := findParentCreateStatement(ctx); createStmt != nil {
+		if createStmt.OR() != nil && (createStmt.MODIFY() != nil || createStmt.REPLACE() != nil) {
+			stmt.CreateOrModify = true
+		}
+		for _, ann := range createStmt.AllAnnotation() {
+			annCtx := ann.(*parser.AnnotationContext)
+			if strings.EqualFold(annCtx.AnnotationName().GetText(), "excluded") {
+				stmt.Excluded = true
+			}
+		}
+	}
+	stmt.Documentation = findDocCommentText(ctx)
+
+	b.statements = append(b.statements, stmt)
+}
+
 // buildMicroflowDataType converts a data type context to ast.DataType for microflow context.
 // In microflow parameters/return types, bare qualified names are entity references (not enumerations).
 func buildMicroflowDataType(ctx parser.IDataTypeContext) ast.DataType {
