@@ -31,6 +31,41 @@ This skill covers how to use OData services to share data between Mendix applica
 - With project loaded (`-p` flag or REPL): relative paths are resolved against the `.mpr` file's directory
 - Without project: relative paths are resolved against the current working directory
 
+## Refreshing the Cached Contract
+
+mxcli caches the `$metadata` document in the client so the model rebuilds without
+the service running. That cache is a snapshot, and a consumed service that gains
+entity sets makes it stale — the file on disk has five, the client still answers
+three.
+
+`CREATE OR MODIFY ODATA CLIENT` re-reads the contract every time it runs, so
+refreshing is a re-run of the statement you already have:
+
+```mdl
+-- after refreshing ./contracts/live-now-metadata.xml from the running backend
+CREATE OR MODIFY ODATA CLIENT F1Now.NowApi (
+  ODataVersion: OData4,
+  MetadataUrl: './contracts/live-now-metadata.xml',
+  Timeout: 300,
+  ServiceUrl: '@F1Now.ApiLocation'
+);
+```
+
+Read the verb it prints — it tells you which happened:
+
+| Output | Meaning |
+|--------|---------|
+| `Modified OData client: …` + `Refreshed $metadata: 5 entity types, 0 actions` | The contract changed and the client now carries the new one |
+| `Unchanged OData client: …` | The contract is identical, so nothing was written |
+| `Warning: could not refresh $metadata: …` | The contract could not be read; the **previously cached one is kept**, so re-run once it is reachable |
+
+Then re-import: `CREATE OR MODIFY EXTERNAL ENTITIES FROM F1Now.NowApi` maps the
+new entity sets. Do **not** `DROP ODATA CLIENT` and recreate it to force a
+refresh — that invalidates the client ID the existing external entities point at.
+
+Note that `ALTER ODATA CLIENT SET MetadataUrl = …` does *not* re-fetch. Use
+`CREATE OR MODIFY` when the contract is what changed.
+
 **Use Cases for Local Metadata:**
 - **Offline development** — no network access required
 - **Testing and CI/CD** — reproducible builds with metadata snapshots

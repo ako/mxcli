@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The same service after the backend gained Trace and Stints. Copy this over
+     stale-contract-v1.xml (keeping the file name the client points at) to play
+     the "contract file refreshed from the running backend" half of the repro. -->
+<edmx:Edmx xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx" Version="4.0">
+  <edmx:DataServices>
+    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="LiveNow">
+      <EntityType Name="Session">
+        <Key><PropertyRef Name="Id"/></Key>
+        <Property Name="Id" Type="Edm.Int32" Nullable="false"/>
+        <Property Name="Name" Type="Edm.String"/>
+      </EntityType>
+      <EntityType Name="Driver">
+        <Key><PropertyRef Name="Id"/></Key>
+        <Property Name="Id" Type="Edm.Int32" Nullable="false"/>
+        <Property Name="FullName" Type="Edm.String"/>
+      </EntityType>
+      <EntityType Name="Order">
+        <Key><PropertyRef Name="Id"/></Key>
+        <Property Name="Id" Type="Edm.Int32" Nullable="false"/>
+        <Property Name="Position" Type="Edm.Int32"/>
+        <Property Name="GapToLeader" Type="Edm.String"/>
+        <Property Name="IntervalToPositionAhead" Type="Edm.String"/>
+        <Property Name="LapNumber" Type="Edm.Int32"/>
+        <Property Name="Updated" Type="Edm.DateTimeOffset"/>
+      </EntityType>
+      <EntityType Name="Trace">
+        <Key><PropertyRef Name="Id"/></Key>
+        <Property Name="Id" Type="Edm.Int32" Nullable="false"/>
+        <Property Name="Message" Type="Edm.String"/>
+      </EntityType>
+      <EntityType Name="Stints">
+        <Key><PropertyRef Name="Id"/></Key>
+        <Property Name="Id" Type="Edm.Int32" Nullable="false"/>
+        <Property Name="Compound" Type="Edm.String"/>
+      </EntityType>
+      <EntityContainer Name="Container">
+        <EntitySet Name="Sessions" EntityType="LiveNow.Session"/>
+        <EntitySet Name="Drivers" EntityType="LiveNow.Driver"/>
+        <EntitySet Name="Orders" EntityType="LiveNow.Order"/>
+        <EntitySet Name="Traces" EntityType="LiveNow.Trace"/>
+        <EntitySet Name="Stints" EntityType="LiveNow.Stints"/>
+      </EntityContainer>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>
