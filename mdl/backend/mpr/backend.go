@@ -275,6 +275,12 @@ func (b *MprBackend) IsRule(qualifiedName string) (bool, error) {
 func (b *MprBackend) ListNanoflows() ([]*microflows.Nanoflow, error) {
 	return b.reader.ListNanoflows()
 }
+func (b *MprBackend) ListRules() ([]*microflows.Rule, error) {
+	return b.reader.ListRules()
+}
+func (b *MprBackend) GetRule(id model.ID) (*microflows.Rule, error) {
+	return b.reader.GetRule(id)
+}
 func (b *MprBackend) ParseMicroflowFromRaw(raw map[string]any, unitID, containerID model.ID) *microflows.Microflow {
 	return mpr.ParseMicroflowFromRaw(raw, unitID, containerID)
 }
@@ -293,6 +299,22 @@ func (b *MprBackend) UpdateNanoflow(nf *microflows.Nanoflow) error {
 func (b *MprBackend) DeleteNanoflow(id model.ID) error { return b.writer.DeleteNanoflow(id) }
 func (b *MprBackend) MoveNanoflow(nf *microflows.Nanoflow) error {
 	return b.writer.MoveNanoflow(nf)
+}
+
+// Rule authoring is modelsdk-only, like menus: the legacy serializer has no
+// serializeRule, and a rule document is close enough to a microflow that a
+// half-written one would look valid. Reads are implemented above.
+func (b *MprBackend) CreateRule(*microflows.Rule) error {
+	return errors.New("creating a rule requires the modelsdk engine — rerun without MXCLI_ENGINE=legacy")
+}
+func (b *MprBackend) UpdateRule(*microflows.Rule) error {
+	return errors.New("modifying a rule requires the modelsdk engine — rerun without MXCLI_ENGINE=legacy")
+}
+func (b *MprBackend) DeleteRule(model.ID) error {
+	return errors.New("dropping a rule requires the modelsdk engine — rerun without MXCLI_ENGINE=legacy")
+}
+func (b *MprBackend) MoveRule(*microflows.Rule) error {
+	return errors.New("moving a rule requires the modelsdk engine — rerun without MXCLI_ENGINE=legacy")
 }
 
 // ---------------------------------------------------------------------------

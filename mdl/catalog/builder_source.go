@@ -70,6 +70,17 @@ func (b *Builder) buildSource() error {
 		}
 	}
 
+	// Rules. Without this a rule's body is not in CATALOG.SOURCE, so
+	// `search '<text>'` cannot find an expression that only a rule contains.
+	ruleList, err := b.cachedRules()
+	if err == nil {
+		for _, rule := range ruleList {
+			moduleID := b.hierarchy.findModuleID(rule.ContainerID)
+			moduleName := b.hierarchy.getModuleName(moduleID)
+			items = append(items, sourceItem{"RULE", moduleName + "." + rule.Name, moduleName})
+		}
+	}
+
 	// Pages
 	pageList, err := b.cachedPages()
 	if err == nil {

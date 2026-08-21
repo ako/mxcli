@@ -384,9 +384,40 @@ func parseIdentLed(s *Stream, ctx Context) (RobustExpr, []Hint) {
 				return &QNameExpr{baseNode: baseNode{P: t.Pos}, Module: name, Name: n2, Sub: n3}, nil
 			}
 		}
+		if s.Peek().Kind == TokLParen {
+			return parseQualifiedCall(s, ctx, t.Pos, name+"."+n2)
+		}
 		return &QNameExpr{baseNode: baseNode{P: t.Pos}, Module: name, Name: n2}, nil
 	}
 	return &VariableExpr{baseNode: baseNode{P: t.Pos}, Name: name}, nil
+}
+
+// parseQualifiedCall consumes the argument list of a `Module.Name(...)` call.
+// Nothing in a Mendix expression can call one, so the node exists to keep the
+// parse whole: without it the `(` was left on the stream and Parse reported
+// "Unexpected token after expression … glued keywords such as 'emptyor'" with an
+// empty location — on the valid decision form as much as the invalid ones, so it
+// carried no signal and pointed at a typo that was not there (#939).
+func parseQualifiedCall(s *Stream, ctx Context, pos Position, name string) (RobustExpr, []Hint) {
+	s.Consume() // '('
+	var args []RobustExpr
+	var hs []Hint
+	if s.Peek().Kind != TokRParen {
+		for {
+			a, h := parseOr(s, ctx)
+			args = append(args, a)
+			hs = append(hs, h...)
+			if s.Peek().Kind == TokComma {
+				s.Consume()
+				continue
+			}
+			break
+		}
+	}
+	if s.Peek().Kind == TokRParen {
+		s.Consume()
+	}
+	return &CallExpr{baseNode: baseNode{P: pos}, Name: name, Args: args, Qualified: true}, hs
 }
 
 func parseDollar(s *Stream, ctx Context) (RobustExpr, []Hint) {

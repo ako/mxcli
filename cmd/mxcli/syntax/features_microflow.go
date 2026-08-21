@@ -199,6 +199,33 @@ func init() {
 	})
 
 	Register(SyntaxFeature{
+		Path:    "microflow.rule",
+		Summary: "CREATE RULE — reusable decision logic, callable only from a decision",
+		Keywords: []string{
+			"rule", "create rule", "list rules", "describe rule", "drop rule",
+			"business rule", "decision logic", "reusable condition",
+		},
+		Syntax: "CREATE [OR MODIFY] RULE Module.Name ($Param: Type)\n" +
+			"RETURNS Boolean | enum Module.Enum\n[FOLDER 'path']\nBEGIN\n  <statements>\nEND;\n\n" +
+			"LIST RULES [IN Module];\nDESCRIBE RULE Module.Name;\n" +
+			"DROP RULE Module.Name;\nMOVE RULE Module.Name TO FOLDER 'path';\n\n" +
+			"A rule is called from a decision and nowhere else:\n" +
+			"  IF Module.Rule_Name(Param = $Value) THEN ... END IF;\n\n" +
+			"The return type is mandatory and must be Boolean or an enumeration\n" +
+			"(mxbuild: CE0103/CE0139). A rule may not create, change, delete, commit\n" +
+			"or roll back objects, talk to the client, or call a web service\n" +
+			"(mxbuild: CE0009) — `mxcli check` refuses these before the build.\n\n" +
+			"There is no GRANT EXECUTE ON RULE: a rule is not independently callable,\n" +
+			"so its document carries no module-role security.",
+		Example: "create or modify rule Sales.Rule_IsSolvent ($pCustomer: Sales.Customer)\n" +
+			"returns Boolean\nfolder 'Rules'\nbegin\n  return $pCustomer/Balance >= 0;\nend\n/\n\n" +
+			"create or modify microflow Sales.MF_Screen ($pCustomer: Sales.Customer)\nbegin\n" +
+			"  if Sales.Rule_IsSolvent(pCustomer = $pCustomer) then\n    return;\n" +
+			"  else\n    return;\n  end if;\nend\n/",
+		SeeAlso: []string{"microflow.create", "microflow.control-flow"},
+	})
+
+	Register(SyntaxFeature{
 		Path:    "microflow.validation",
 		Summary: "Show validation feedback on object attributes",
 		Keywords: []string{

@@ -175,6 +175,7 @@ func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 		case *ast.ReturnStmt:
 			v.checkReturn(stmt)
 			v.checkExprFunctions("return", stmt.Value)
+			v.checkQualifiedCallInExpression("return", stmt.Value)
 			v.checkDivisionSlash("return", stmt.Value)
 			v.checkDateTimeLiterals("return", stmt.Value)
 		case *ast.IfStmt:
@@ -270,6 +271,7 @@ func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 			// #893 item 1: a Create Variable activity requires a value (CE0038).
 			v.checkDeclareHasValue(stmt)
 			v.checkExprFunctions(fmt.Sprintf("declare '$%s'", stmt.Variable), stmt.InitialValue)
+			v.checkQualifiedCallInExpression(fmt.Sprintf("declare '$%s'", stmt.Variable), stmt.InitialValue)
 			v.checkDivisionSlash(fmt.Sprintf("declare '$%s'", stmt.Variable), stmt.InitialValue)
 			v.checkDateTimeLiterals(fmt.Sprintf("declare '$%s'", stmt.Variable), stmt.InitialValue)
 		case *ast.MfSetStmt:
@@ -281,6 +283,7 @@ func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 				}
 			}
 			v.checkExprFunctions(fmt.Sprintf("set '%s'", stmt.Target), stmt.Value)
+			v.checkQualifiedCallInExpression(fmt.Sprintf("set '%s'", stmt.Target), stmt.Value)
 			v.checkDivisionSlash(fmt.Sprintf("set '%s'", stmt.Target), stmt.Value)
 			v.checkDateTimeLiterals(fmt.Sprintf("set '%s'", stmt.Target), stmt.Value)
 		case *ast.RetrieveStmt:
@@ -294,6 +297,13 @@ func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 			}
 		case *ast.SynchronizeStmt:
 			v.checkSynchronizeIsNanoflowOnly()
+		case *ast.WhileStmt:
+			// A while condition is a plain boolean expression — Mendix has no rule
+			// split for a loop, so unlike an IF condition a qualified call here is
+			// never legal. The body was not walked at all before, so nothing inside
+			// a while was checked.
+			v.checkQualifiedCallInExpression("while condition", stmt.Condition)
+			v.walkBody(stmt.Body)
 		case *ast.CallMicroflowStmt:
 			v.checkAssociationObjectArgs("microflow "+stmt.MicroflowName.String(), stmt.Arguments)
 		case *ast.CallNanoflowStmt:
@@ -344,10 +354,12 @@ func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 			// but check previously only inspected return/if/declare/set (FINDINGS #17).
 			for _, ch := range stmt.Changes {
 				v.checkExprFunctions(fmt.Sprintf("create %s attribute '%s'", stmt.EntityType.String(), ch.Attribute), ch.Value)
+				v.checkQualifiedCallInExpression(fmt.Sprintf("create %s attribute '%s'", stmt.EntityType.String(), ch.Attribute), ch.Value)
 			}
 		case *ast.ChangeObjectStmt:
 			for _, ch := range stmt.Changes {
 				v.checkExprFunctions(fmt.Sprintf("change '%s' attribute '%s'", stmt.Variable, ch.Attribute), ch.Value)
+				v.checkQualifiedCallInExpression(fmt.Sprintf("change '%s' attribute '%s'", stmt.Variable, ch.Attribute), ch.Value)
 			}
 		}
 		// Check error handling inside loops

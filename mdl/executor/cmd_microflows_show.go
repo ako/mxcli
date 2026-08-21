@@ -1348,3 +1348,237 @@ func irreducibleGraphWarnings(oc *microflows.MicroflowObjectCollection) []string
 	}
 	return out
 }
+
+// listRules renders SHOW / LIST RULES. A rule is its own doctype, so it has its
+// own listing: SHOW MICROFLOWS lists microflows only, as it already does for
+// nanoflows and workflows.
+//
+// The columns mirror the nanoflow listing minus "Excluded"'s neighbours that a
+// rule has no concept of — a rule stores no AllowedModuleRoles, so there is
+// nothing to grant and nothing to show.
+func listRules(ctx *ExecContext, moduleName string) error {
+	h, err := getHierarchy(ctx)
+	if err != nil {
+		return mdlerrors.NewBackend("build hierarchy", err)
+	}
+
+	if moduleName != "" {
+		if _, err := findModule(ctx, moduleName); err != nil {
+			return err
+		}
+	}
+
+	rules, err := ctx.Backend.ListRules()
+	if err != nil {
+		return mdlerrors.NewBackend("list rules", err)
+	}
+
+	type row struct {
+		qualifiedName string
+		module        string
+		name          string
+		excluded      bool
+		folderPath    string
+		params        int
+		activities    int
+		complexity    int
+		returnType    string
+	}
+	var rows []row
+
+	for _, rule := range rules {
+		modID := h.FindModuleID(rule.ContainerID)
+		modName := h.GetModuleName(modID)
+		if moduleName != "" && modName != moduleName {
+			continue
+		}
+		returnType := ""
+		if rule.ReturnType != nil {
+			returnType = rule.ReturnType.GetTypeName()
+		}
+		rows = append(rows, row{
+			qualifiedName: modName + "." + rule.Name,
+			module:        modName,
+			name:          rule.Name,
+			excluded:      rule.Excluded,
+			folderPath:    h.BuildFolderPath(rule.ContainerID),
+			params:        len(rule.Parameters),
+			activities:    countRuleActivities(rule),
+			complexity:    calculateRuleComplexity(rule),
+			returnType:    returnType,
+		})
+	}
+
+	sort.Slice(rows, func(i, j int) bool {
+		return strings.ToLower(rows[i].qualifiedName) < strings.ToLower(rows[j].qualifiedName)
+	})
+
+	result := &TableResult{
+		Columns: []string{"Qualified Name", "Module", "Name", "Excluded", "Folder", "Params", "Actions", "McCabe", "Returns"},
+		Summary: fmt.Sprintf("(%d rules)", len(rows)),
+	}
+	for _, r := range rows {
+		result.Rows = append(result.Rows, []any{r.qualifiedName, r.module, r.name, r.excluded, r.folderPath, r.params, r.activities, r.complexity, r.returnType})
+	}
+	return writeResult(ctx, result)
+}
+
+// countRuleActivities counts meaningful activities in a rule.
+func countRuleActivities(rule *microflows.Rule) int {
+	if rule.ObjectCollection == nil {
+		return 0
+	}
+	count := 0
+	for _, obj := range rule.ObjectCollection.Objects {
+		switch obj.(type) {
+		case *microflows.StartEvent, *microflows.EndEvent, *microflows.ExclusiveMerge:
+			// Structural, not activities.
+		default:
+			count++
+		}
+	}
+	return count
+}
+
+// calculateRuleComplexity calculates McCabe cyclomatic complexity for a rule.
+func calculateRuleComplexity(rule *microflows.Rule) int {
+	if rule.ObjectCollection == nil {
+		return 1
+	}
+	complexity := 1
+	for _, obj := range rule.ObjectCollection.Objects {
+		switch obj.(type) {
+		case *microflows.ExclusiveSplit, *microflows.InheritanceSplit, *microflows.LoopedActivity:
+			complexity++
+		}
+	}
+	return complexity
+}
+
+// describeRule renders DESCRIBE RULE as re-executable MDL. It mirrors
+// describeNanoflow: a rule shares a microflow's body, so the body is rendered by
+// wrapping it in a Microflow and reusing formatMicroflowActivities.
+//
+// Two rule-specific omissions, both because the document has no such property:
+// no `grant execute` line (a rule stores no AllowedModuleRoles) and no
+// concurrency or URL options.
+func describeRule(ctx *ExecContext, name ast.QualifiedName) error {
+	h, err := getHierarchy(ctx)
+	if err != nil {
+		return mdlerrors.NewBackend("build hierarchy", err)
+	}
+
+	entityNames := make(map[model.ID]string)
+	domainModels, err := ctx.Backend.ListDomainModels()
+	if err != nil {
+		return mdlerrors.NewBackend("list domain models", err)
+	}
+	for _, dm := range domainModels {
+		modName := h.GetModuleName(dm.ContainerID)
+		for _, entity := range dm.Entities {
+			entityNames[entity.ID] = modName + "." + entity.Name
+		}
+	}
+
+	// A rule's body can call microflows, so the call-target lookup is the same
+	// one the microflow describer builds.
+	microflowNames := make(map[model.ID]string)
+	allMicroflows, err := ctx.Backend.ListMicroflows()
+	if err != nil {
+		return mdlerrors.NewBackend("list microflows", err)
+	}
+	for _, mf := range allMicroflows {
+		microflowNames[mf.ID] = h.GetQualifiedName(mf.ContainerID, mf.Name)
+	}
+
+	allRules, err := ctx.Backend.ListRules()
+	if err != nil {
+		return mdlerrors.NewBackend("list rules", err)
+	}
+	for _, r := range allRules {
+		microflowNames[r.ID] = h.GetQualifiedName(r.ContainerID, r.Name)
+	}
+
+	// Describe the live rule, not an excluded twin of the same name (#914).
+	target, _ := pickLive(allRules,
+		func(r *microflows.Rule) bool {
+			return h.GetModuleName(h.FindModuleID(r.ContainerID)) == name.Module && r.Name == name.Name
+		},
+		func(r *microflows.Rule) bool { return r.Excluded },
+	)
+	if target == nil {
+		return mdlerrors.NewNotFound("rule", name.String())
+	}
+
+	var lines []string
+
+	if target.Documentation != "" {
+		lines = append(lines, "/**")
+		for docLine := range strings.SplitSeq(target.Documentation, "\n") {
+			lines = append(lines, " * "+docLine)
+		}
+		lines = append(lines, " */")
+	}
+	if target.Excluded {
+		lines = append(lines, "@excluded")
+	}
+
+	qualifiedName := name.Module + "." + name.Name
+	if len(target.Parameters) > 0 {
+		lines = append(lines, fmt.Sprintf("create or modify rule %s (", qualifiedName))
+		for i, param := range target.Parameters {
+			paramType := "Object"
+			if param.Type != nil {
+				paramType = formatMicroflowDataType(ctx, param.Type, entityNames)
+			}
+			comma := ","
+			if i == len(target.Parameters)-1 {
+				comma = ""
+			}
+			lines = append(lines, fmt.Sprintf("  $%s: %s%s", param.Name, paramType, comma))
+		}
+		lines = append(lines, ")")
+	} else {
+		lines = append(lines, fmt.Sprintf("create or modify rule %s ()", qualifiedName))
+	}
+
+	// A rule always returns Boolean or an enumeration, so unlike a microflow the
+	// return type is never legitimately absent — render whatever is stored and
+	// let the validator complain about a rule that has none.
+	if target.ReturnType != nil {
+		returnType := formatMicroflowDataType(ctx, target.ReturnType, entityNames)
+		if returnType != "Void" && returnType != "" {
+			lines = append(lines, fmt.Sprintf("returns %s", returnType))
+		}
+	}
+
+	if folderPath := h.BuildFolderPath(target.ContainerID); folderPath != "" {
+		lines = append(lines, fmt.Sprintf("folder %s", mdlQuote(folderPath)))
+	}
+
+	lines = append(lines, "begin")
+
+	wrapperMf := &microflows.Microflow{
+		ReturnType:       target.ReturnType,
+		ObjectCollection: target.ObjectCollection,
+	}
+	prevDescribingReturnValue := ctx.DescribingMicroflowHasReturnValue
+	ctx.DescribingMicroflowHasReturnValue = microflowHasReturnValue(wrapperMf)
+	defer func() {
+		ctx.DescribingMicroflowHasReturnValue = prevDescribingReturnValue
+	}()
+
+	if target.ObjectCollection != nil && len(target.ObjectCollection.Objects) > 0 {
+		for _, line := range formatMicroflowActivities(ctx, wrapperMf, entityNames, microflowNames) {
+			lines = append(lines, "  "+line)
+		}
+	} else {
+		lines = append(lines, "  -- No activities")
+	}
+
+	lines = append(lines, "end;")
+	lines = append(lines, "/")
+
+	fmt.Fprintln(ctx.Output, strings.Join(lines, "\n"))
+	return nil
+}

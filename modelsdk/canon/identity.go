@@ -47,6 +47,12 @@ func Reconcile(contents, stored []byte) (out []byte, unchanged bool) {
 	// reference with them.
 	contents = TransplantIDs(contents, stored)
 
+	// And the nested identity property the transplant does not cover: every
+	// Workflows$* element carries a PersistentId that both engines re-mint on
+	// every write, so without this a workflow document never equals itself and
+	// no-op elision could never fire for one (issue #949).
+	contents = CarryPersistentIDs(contents, stored)
+
 	if alwaysWrite() {
 		return contents, false
 	}

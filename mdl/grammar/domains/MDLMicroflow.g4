@@ -33,6 +33,22 @@ createNanoflowStatement
     ;
 
 /**
+ * Rule creation — Mendix calls a rule "a special kind of microflow" that returns
+ * a Boolean or an enumeration and may only be used from a decision. It shares the
+ * microflow body, so this mirrors createNanoflowStatement; what a rule may not do
+ * is enforced by the validator, not by the grammar, because restricting the body
+ * rule here would duplicate it and turn every violation into a parse error with
+ * no explanation.
+ */
+createRuleStatement
+    : RULE qualifiedName
+      LPAREN microflowParameterList? RPAREN
+      microflowReturnType?
+      microflowOptions?
+      BEGIN microflowBody END SEMICOLON? SLASH?
+    ;
+
+/**
  * Java Action creation with inline Java source code.
  */
 createJavaActionStatement

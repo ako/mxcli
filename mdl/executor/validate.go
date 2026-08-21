@@ -446,6 +446,27 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 			return mdlerrors.NewValidationf("microflow '%s' has reference errors:\n  - %s",
 				s.Name.String(), strings.Join(refErrors, "\n  - "))
 		}
+	case *ast.CreateRuleStmt:
+		if s.Name.Module != "" && !sc.modules[s.Name.Module] {
+			if _, err := findModule(ctx, s.Name.Module); err != nil {
+				return mdlerrors.NewNotFound("module", s.Name.Module)
+			}
+		}
+		// The same validateRule the executor calls, so `check` and `exec` cannot
+		// disagree about what a rule may contain.
+		if errMsg := validateRule(s.Name.String(), s.Body, s.ReturnType); errMsg != "" {
+			return mdlerrors.NewValidationf("%s", strings.TrimRight(errMsg, "\n"))
+		}
+		if validationErrors := ValidateRuleBody(s); len(validationErrors) > 0 {
+			return mdlerrors.NewValidationf("rule '%s' has validation errors:\n  - %s",
+				s.Name.String(), strings.Join(validationErrors, "\n  - "))
+		}
+		if !s.Excluded {
+			if refErrors := validateFlowBodyReferences(ctx, s.Body, sc); len(refErrors) > 0 {
+				return mdlerrors.NewValidationf("rule '%s' has reference errors:\n  - %s",
+					s.Name.String(), strings.Join(refErrors, "\n  - "))
+			}
+		}
 	case *ast.CreateNanoflowStmt:
 		if s.Name.Module != "" && !sc.modules[s.Name.Module] {
 			if _, err := findModule(ctx, s.Name.Module); err != nil {

@@ -128,3 +128,52 @@ func TestWFSave_ValidatesAfterDropOnlyAlter(t *testing.T) {
 		t.Error("a drop-only ALTER never validated: ped_check_errors was not called")
 	}
 }
+
+// Issue #944. A REPLACE whose replacement reuses the original's name is an
+// in-place edit, not a collision — the original leaves in the same PED call.
+// PR #204 propagated the file backends' rename into this backend as deliberate
+// "parity"; it was neither deliberate nor correct.
+func TestWFReplaceActivity_SameNameKeepsName(t *testing.T) {
+	f, m := wfMutatorFake(t)
+	rep := &workflows.CallMicroflowTask{Microflow: "M.ACT_Review"}
+	rep.Name = "ReviewOrder" // the same activity, edited in place
+	rep.Caption = "Review the order (v2)"
+
+	if err := m.ReplaceActivity("ReviewOrder", 0, []workflows.WorkflowActivity{rep}); err != nil {
+		t.Fatalf("ReplaceActivity: %v", err)
+	}
+	ops := wfUpdateOps(t, f)
+	if !strings.Contains(ops, `"name":"ReviewOrder"`) || strings.Contains(ops, `"ReviewOrder_2"`) {
+		t.Errorf("same-name replace renamed the activity: %s", ops)
+	}
+}
+
+// Control: only the outgoing name is freed. Colliding with a surviving activity
+// still dedupes.
+func TestWFReplaceActivity_StillDedupesAgainstSurvivors(t *testing.T) {
+	f, m := wfMutatorFake(t)
+	rep := &workflows.CallMicroflowTask{Microflow: "M.ACT_Decide"}
+	rep.Name = "Decide" // "Decide" is a different activity that survives
+
+	if err := m.ReplaceActivity("ReviewOrder", 0, []workflows.WorkflowActivity{rep}); err != nil {
+		t.Fatalf("ReplaceActivity: %v", err)
+	}
+	if ops := wfUpdateOps(t, f); !strings.Contains(ops, `"name":"Decide_2"`) {
+		t.Errorf("replacement colliding with a survivor must dedupe: %s", ops)
+	}
+}
+
+// The reference may be the caption, so the freed name has to come from the
+// resolved activity. The fake's "ReviewOrder" task has caption "Review the order".
+func TestWFReplaceActivity_ResolvedByCaption(t *testing.T) {
+	f, m := wfMutatorFake(t)
+	rep := &workflows.CallMicroflowTask{Microflow: "M.ACT_Review"}
+	rep.Name = "ReviewOrder"
+
+	if err := m.ReplaceActivity("Review the order", 0, []workflows.WorkflowActivity{rep}); err != nil {
+		t.Fatalf("ReplaceActivity: %v", err)
+	}
+	if ops := wfUpdateOps(t, f); !strings.Contains(ops, `"name":"ReviewOrder"`) || strings.Contains(ops, `"ReviewOrder_2"`) {
+		t.Errorf("resolved-by-caption replace renamed the activity: %s", ops)
+	}
+}

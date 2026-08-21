@@ -35,6 +35,8 @@ func execShow(ctx *ExecContext, s *ast.ShowStmt) error {
 		return listMicroflows(ctx, s.InModule)
 	case ast.ShowNanoflows:
 		return listNanoflows(ctx, s.InModule)
+	case ast.ShowRules:
+		return listRules(ctx, s.InModule)
 	case ast.ShowPages:
 		return listPages(ctx, s.InModule)
 	case ast.ShowSnippets:
@@ -193,6 +195,8 @@ func execDescribe(ctx *ExecContext, s *ast.DescribeStmt) error {
 			return describeMicroflow(ctx, s.Name)
 		case ast.DescribeNanoflow:
 			return describeNanoflow(ctx, s.Name)
+		case ast.DescribeRule:
+			return describeRule(ctx, s.Name)
 		case ast.DescribeModule:
 			return describeModule(ctx, s.Name.Module, s.WithAll)
 		case ast.DescribePage:
@@ -298,6 +302,8 @@ func describeObjectTypeLabel(t ast.DescribeObjectType) string {
 		return "microflow"
 	case ast.DescribeNanoflow:
 		return "nanoflow"
+	case ast.DescribeRule:
+		return "rule"
 	case ast.DescribeModule:
 		return "module"
 	case ast.DescribePage:
