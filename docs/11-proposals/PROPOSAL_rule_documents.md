@@ -1,0 +1,283 @@
+---
+title: Rule documents — read, author, describe, catalog
+status: draft
+date: 2026-08-21
+related:
+  - PROPOSAL_microflow_inheritance_split_statement.md
+  - PROPOSAL_codegen_ownership.md
+---
+
+# Proposal: Rule documents — read, author, describe, catalog
+
+**Status:** Draft
+**Date:** 2026-08-21
+
+A `Microflows$Rule` is the one document type mxcli can *reference* but cannot
+read, write, describe, move, or count. Two upstream issues have now landed on
+the consequences of that gap rather than on the gap itself, and both were fixed
+one symptom at a time.
+
+## Problem Statement
+
+[Mendix's reference](https://docs.mendix.com/refguide/rules/) calls a rule "a
+special kind of microflow" that returns a Boolean or an enumeration, can only be
+used from a decision, and cannot modify data, talk to the client, or do
+integration. Structurally it is a microflow: the same object collection, the
+same flows, the same return type.
+
+mxcli treats it as a foreign object. Measured on a Mendix 11.13 project
+carrying one rule (`Sample.Rule_IsActive`) and two microflows:
+
+| Surface | Today |
+|---|---|
+| `LIST FOLDERS IN Sample` | ✅ `Rule Rule_IsActive` — works, for free, via `ListDocumentUnits` + `types.DocumentKind` |
+| `if Sample.Rule_IsActive(...) then` | ✅ authorable (a decision's condition), after #939 |
+| `show callers of Sample.Rule_IsActive` | ✅ after #939 |
+| `SHOW RULES` | ❌ no such statement |
+| `DESCRIBE RULE Sample.Rule_IsActive` | ❌ parse error |
+| `CREATE` / `ALTER` / `DROP RULE` | ❌ no grammar; a rule can only be authored in Studio Pro |
+| `MOVE RULE` / `FOLDER` clause | ❌ absent from `ast.MoveDocumentTypeByKeyword` (31 doctypes, no rule) |
+| `CATALOG.OBJECTS` | ❌ a rule is not an object; `SELECT … WHERE ModuleName='Sample'` returns only the microflows |
+| `search 'Rule_IsActive'` | ❌ no matches |
+| lint / `GRAPH_DEAD_ASSETS` | ❌ a microflow called **only** from inside a rule's body is reported dead |
+
+The last row is the one that silently misleads. A rule's body is never walked,
+so every document it calls is invisible to the reference graph — the same shape
+as the scheduled-event gap CLAUDE.md already records, one layer deeper.
+
+### Why this keeps producing issues
+
+Both rule issues so far were *absences* dressed as bugs:
+
+- **#723 §A4** — `IsRule` was unimplemented on the modelsdk backend, so every
+  `if Module.SomeRule(…)` became an expression split (CE0117). Fixed the read
+  half; left the write half.
+- **#939** — the write half. `splitConditionToGen` had no `RuleSplitCondition`
+  case, so a decision was stored with no condition at all (CE0080), and the
+  reporter's three secondary symptoms each had their own cause.
+
+Neither is the last one, because the underlying state is unchanged: the model
+has a document type mxcli cannot round-trip. Every feature that enumerates
+documents has to remember to exclude rules, and each one that forgets is a new
+issue.
+
+## The shape of the fix: a rule is a third flow flavour
+
+The repo already carries this pattern twice. `createNanoflowStatement` is a
+**verbatim mirror** of `createMicroflowStatement` (`MDLMicroflow.g4:16` and
+`:27`), sharing `microflowBody`, the flow builder, the describer and the
+validator; the differences are a distinct `$Type`, a `flowBuilder.isNanoflow`
+flag, and a disallowed-activity list. A rule is the same relationship with a
+different restriction list.
+
+That is what makes "full support" a tractable change rather than a second
+microflow implementation: almost none of the work is new, and the parts that
+are new are a validator and a `$Type`.
+
+## BSON Structure
+
+`Microflows$Rule` — properties in `initRule`'s declared order
+(`modelsdk/gen/microflows/types.go`), cross-checked against
+`generated/metamodel` (`MicroflowsRule`, an 11.6.0 snapshot):
+
+| Key | Type | Note |
+|---|---|---|
+| `Name` | string | |
+| `Documentation` | string | |
+| `Excluded` | bool | |
+| `ExportLevel` | enum | |
+| `ObjectCollection` | `Microflows$MicroflowObjectCollection` | identical to a microflow's |
+| `Flows` | list | identical to a microflow's |
+| `ReturnType` | string | in gen; **absent from `generated/metamodel`** — a pre-7 legacy sibling, see Open Questions |
+| `MicroflowReturnType` | `DataTypes$*Type` | Boolean or Enumeration only |
+| `MarkAsUsed` | bool | |
+| `ReturnVariableName` | string | |
+| `ApplyEntityAccess` | bool | |
+
+A rule carries **none** of the microflow-only keys: no `AllowedModuleRoles`, no
+`AllowConcurrentExecution` / `ConcurrenyErrorMessage` / `ConcurrencyErrorMicroflow`,
+no `Url` / `UrlSearchParameters`, no `MicroflowActionInfo` / `WorkflowActionInfo`,
+no `StableId`.
+
+**Verified by construction, not by a Studio Pro document.** A synthetic rule
+built by taking an mxcli-authored microflow's unit and keeping exactly the ten
+keys above loads and checks clean (`mx check` 0 errors on mxbuild 11.13.0), and
+a decision calling it checks clean. That is a real but weak signal: mxbuild's
+deserializer tolerates unknown properties and Studio Pro is stricter (the rule
+CLAUDE.md records for overlay writes applies here too). **A Studio Pro-authored
+rule is a prerequisite for the authoring slice** — see Open Questions.
+
+### The parameter type is the one live BSON question
+
+`generated/metamodel` lists three sibling types:
+
+- `Microflows$MicroflowParameterObject` — the canvas object (`RelativeMiddlePoint`,
+  `Size`, `VariableType`, `IsRequired`, `DefaultValue`)
+- `Microflows$MicroflowParameter` — a `MicroflowParameterBase` (`Name`, `ParameterType`)
+- `Microflows$RuleParameter` — the same `MicroflowParameterBase` shape
+
+Measured against real documents, the metamodel's split is **not** what storage
+does: every microflow in a blank 11.13 app — Studio Pro-authored marketplace
+modules included (Administration, FeedbackModule, NanoflowCommons) — stores its
+canvas parameter as `$Type: Microflows$MicroflowParameter` carrying the
+*ParameterObject* shape. mxcli writes the same thing, so mxcli is right and the
+metamodel naming is an SDK-side view.
+
+By symmetry a rule's canvas parameter is probably also
+`Microflows$MicroflowParameter`, and the synthetic rule that used it checks
+clean. But `Microflows$RuleParameter` exists for some reason, and guessing which
+type Studio Pro writes inside a rule is exactly the class of mistake that
+produces a document mxbuild accepts and Studio Pro will not open. This is the
+single measurement the authoring slice is blocked on.
+
+### `RuleCall` — already fixed, recorded here for completeness
+
+`Microflows$RuleCall` stores the rule reference under **`Microflow`**, not
+`Rule` (rules share the microflow namespace). `modelsdk/gen` bound `Rule` on
+both the encode and decode side; #939 applied a `STORAGE-NAME OVERRIDE` and
+struck the row off `modelsdk/gen/keyaudit_test.go`. Any new code touching a rule
+call must not reintroduce the SDK name.
+
+## Proposed MDL Syntax
+
+The whole surface mirrors microflows, because the document does.
+
+```mdl
+create or modify rule Sample.Rule_IsActive ($Customer: Sample.Customer) returns Boolean
+folder 'Rules'
+begin
+  return $Customer/IsActive and $Customer/Balance > 0;
+end
+/
+```
+
+`returns` accepts Boolean or an enumeration and nothing else — the restriction
+is Mendix's, and omitting it is CE-level invalid rather than a default.
+
+```mdl
+show rules;
+show rules in Sample;
+
+describe rule Sample.Rule_IsActive;   -- round-trippable, like describe microflow
+
+drop rule Sample.Rule_IsActive;
+
+move rule Sample.Rule_IsActive to folder 'Rules/Customer';
+```
+
+The decision form that calls one already exists and does not change:
+
+```mdl
+if Sample.Rule_IsActive(Customer = $Customer) then
+  ...
+end if;
+```
+
+No new verbs, no new property syntax, `Module.Element` throughout — the design
+checklist in `.claude/skills/design-mdl-syntax.md` is satisfied by construction
+because every form is the microflow form with one word changed.
+
+## Implementation Plan
+
+Four slices. Each is independently shippable and the first two are read-only.
+
+### Slice 1 — read and describe (no new BSON writes)
+
+| File | Change |
+|---|---|
+| `mdl/backend/microflow.go` | `ListRules` / `GetRule` on the interface (a rule reuses `*microflows.Microflow` — see Open Questions on whether it gets its own type) |
+| `mdl/backend/modelsdk/microflow.go` | implement via `mprread.ListUnitsWithContainer[*genMf.Rule]` — the decoder already registers `Microflows$Rule` |
+| `mdl/backend/mpr/` | legacy implementation via `listUnitsByType("Microflows$Rule")`, which `IsRule` already calls |
+| `mdl/backend/mock/` | `Func`-field stubs |
+| grammar `MDLMicroflow.g4` | `showRulesStatement`, `describeRuleStatement` |
+| `mdl/ast/`, `mdl/visitor/` | nodes + listener |
+| `mdl/executor/cmd_microflows_show.go` | `SHOW RULES`, and `DESCRIBE RULE` reusing the microflow describer |
+
+### Slice 2 — catalog, references and lint
+
+| File | Change |
+|---|---|
+| `mdl/catalog/builder.go` | `ListRules()` on `CatalogReader`; `cachedRules()` |
+| `mdl/catalog/builder_objects.go` | a `RULE` row in `CATALOG.OBJECTS` |
+| `mdl/catalog/builder_references.go` | call `emitActionRefs("RULE", …)` over each rule's object collection, so documents a rule calls stop reading as dead |
+| `mdl/catalog/builder_strings.go` | index rule text for `search` |
+
+**Both halves at once, or neither.** Adding the object type without walking rule
+bodies would report every rule as dead; walking bodies without the object type
+leaves `show callers` half-populated. #939 deliberately stopped at the edge for
+this reason.
+
+### Slice 3 — authoring (blocked on a Studio Pro reference rule)
+
+| File | Change |
+|---|---|
+| grammar `MDLMicroflow.g4` | `createRuleStatement` / `dropRuleStatement`, mirroring `createNanoflowStatement` verbatim |
+| `mdl/ast/ast_microflow.go` | `CreateRuleStmt` (or a `FlowKind` on the existing node) |
+| `mdl/executor/cmd_rules_create.go` | thin handler; `flowBuilder` gains `isRule` beside `isNanoflow` |
+| `mdl/executor/validate_rule.go` | the restriction list (below) — the `ValidateNanoflowBody` precedent |
+| `mdl/backend/*/` | `CreateRule` / `UpdateRule` / `DeleteRule`; modelsdk writes `Microflows$Rule` with the ten keys, reusing `microflowToGen`'s object/flow serialization |
+| `mdl/ast/ast.go` | `"RULE"` in `MoveDocumentTypeByKeyword`; `FOLDER` clause on create |
+
+The validator refuses what Mendix refuses, quoting the doc:
+
+- return type is not Boolean or an enumeration
+- create / change / delete / commit / rollback object
+- show page, close page, show message, validation feedback, download file
+- call web service, generate document, import/export XML
+
+Each needs a measured CE number before it ships as an error rather than a
+warning — the #931/#939 rule: measure against mxbuild, do not argue from docs.
+
+### Slice 4 — surfacing
+
+`mxcli syntax` topic, `docs-site/src`, `MDL_QUICK_REFERENCE.md`, the
+`write-microflows` skill, LSP completion/hover, and `describe`-roundtrip
+coverage in `mdl-examples/doctype-tests/`.
+
+## Version Compatibility
+
+Rules have existed since Mendix 5 and the document shape is unchanged across the
+supported range (9/10/11). No `sdk/versions/*.yaml` gate is expected. The one
+version-sensitive point is `ReturnType` vs `MicroflowReturnType` (see Open
+Questions), which is a pre-7 legacy sibling of the kind `Interval` /
+`IntervalType` already is for scheduled events — carry it through untouched on
+modify, derive it on create, and pin it against a real document per version.
+
+## Test Plan
+
+- `mdl-examples/doctype-tests/` — a rule with a Boolean return, one with an
+  enumeration return, a decision calling each, and a `describe` → re-exec
+  round trip **into a module where the rule does not exist** (replaying over
+  the original reports "Unchanged" whether or not the clause survived).
+- `mdl-examples/bug-tests/939-rule-split-condition.mdl` becomes fully
+  self-contained: it currently needs a Studio Pro-authored rule because MDL
+  cannot create one.
+- Backend round-trip tests per engine, asserting the ten stored keys and the
+  **absence** of the microflow-only ones.
+- A catalog test that a microflow called only from a rule's body is not in
+  `GRAPH_DEAD_ASSETS` — with the pre-change control.
+- Negative tests (`*.fail.mdl`) for each restriction, each carrying the CE
+  number it prevents.
+
+## Open Questions
+
+1. **A Studio Pro-authored rule is needed before Slice 3.** One rule with a
+   Boolean return and one entity parameter, plus one with an enumeration
+   return, in a project at a known version. It settles: the canvas parameter's
+   `$Type` (`Microflows$MicroflowParameter` vs `Microflows$RuleParameter`),
+   whether `ReturnType` is written and with what value, and whether any key
+   outside the ten appears. Slices 1 and 2 do not need it.
+2. **Does a rule reuse `*microflows.Microflow` in the semantic model, or get
+   its own type?** Reuse keeps the describer and builder untouched and matches
+   how the two engines already decode it; a separate type makes the restriction
+   list enforceable at compile time. ADR-0005 says the backend interface speaks
+   the semantic model, so this is a real design decision, not an implementation
+   detail.
+3. **Should `SHOW MICROFLOWS` include rules?** It currently does not, which is
+   defensible (distinct doctype) but means a project's flow logic has no single
+   listing. A `SHOW MICROFLOWS … INCLUDING RULES` opt-in, or leaving `SHOW
+   RULES` separate, are both consistent with the rest of MDL.
+4. **`ReturnType` (string) alongside `MicroflowReturnType`.** gen has it,
+   `generated/metamodel` 11.6.0 does not. If Studio Pro still writes it, it is a
+   carried-through legacy sibling; if not, mxcli must not invent it. Answered by
+   question 1.
