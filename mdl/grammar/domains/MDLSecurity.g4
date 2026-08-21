@@ -98,6 +98,12 @@ revokePublishedRestServiceAccessStatement
 alterProjectSecurityStatement
     : ALTER PROJECT SECURITY LEVEL (PRODUCTION | PROTOTYPE | OFF)
     | ALTER PROJECT SECURITY DEMO USERS (ON | OFF)
+    // ROLE is optional here but effectively required by Mendix: mxbuild raises
+    // CE0133 when guest access is on with no role. It is optional so that
+    // re-enabling a project that already stores one does not force a retype;
+    // the executor refuses ON when neither source supplies a role.
+    | ALTER PROJECT SECURITY GUEST ACCESS ON (ROLE identifierOrKeyword)?
+    | ALTER PROJECT SECURITY GUEST ACCESS OFF
     ;
 
 createDemoUserStatement
