@@ -21,6 +21,8 @@ The devcontainer created by `mxcli init` installs:
 - **Chromium (headless shell)** — installed via `@playwright/cli`'s **bundled** `playwright-core`, into a shared `PLAYWRIGHT_BROWSERS_PATH`, and exposed at the stable path `/usr/local/bin/mx-headless-shell`. The generated `.playwright/cli.config.json` pins `executablePath` to that symlink.
 - **Docker-in-Docker** — Mendix + PostgreSQL running via `mxcli docker run`
 
+If the app calls an external REST API, that endpoint is a prerequisite too — a verification run that depends on a live third party is not repeatable. See [mock-rest-apis.md](mock-rest-apis.md).
+
 The app must be running before verification:
 
 ```bash

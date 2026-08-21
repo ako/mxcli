@@ -47,6 +47,7 @@ External system integration:
 | [demo-data.md](demo-data.md) | Demo data & IMPORT | Seeding data, `import from` bulk import from external DB |
 | [rest-client.md](rest-client.md) | REST API consumption | Calling external REST APIs via consumed REST client documents |
 | [rest-call-from-json.md](rest-call-from-json.md) | REST CALL end-to-end | JSON Structure → Entities → Import Mapping → REST CALL microflow |
+| [mock-rest-apis.md](mock-rest-apis.md) | Mock a REST dependency | Building or debugging a REST integration without the live API; forcing 404/500; running offline or in CI |
 | [json-structures-and-mappings.md](json-structures-and-mappings.md) | JSON structures & mappings | CREATE/DESCRIBE JSON structures, import/export mappings, domain model patterns |
 | [java-actions.md](java-actions.md) | Custom Java actions | Extending with Java code |
 | [download-marketplace-content.md](download-marketplace-content.md) | Marketplace download & install | Adding a marketplace module/widget; downloading a `.mpk`; module-update caveat |
