@@ -97,7 +97,7 @@ func ValidateWidgetPropertiesForStatement(stmt ast.Statement, registry *WidgetRe
 // validateWidgetTree recursively walks the AST widget tree and validates
 // pluggable widgets it encounters.
 func validateWidgetTree(widgets []*ast.WidgetV3, registry *WidgetRegistry, locationPrefix string) []linter.Violation {
-	return validateWidgetTreeIn(widgets, registry, locationPrefix, nil, nil)
+	return validateWidgetTreeIn(widgets, registry, locationPrefix, nil, nil, "", false)
 }
 
 // validateWidgetTreeIn is validateWidgetTree with the *parent* widget's
@@ -108,7 +108,7 @@ func validateWidgetTree(widgets []*ast.WidgetV3, registry *WidgetRegistry, locat
 // must be exempt from the MDL-WIDGET07 "unrecognized property, silently dropped"
 // warning. When the parent mapping is known, the child's enumeration
 // sub-properties are validated against their member keys (MDL-WIDGET08). (9a)
-func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, locationPrefix string, parentObjectLists map[string]*ObjectListMapping, parent *ast.WidgetV3) []linter.Violation {
+func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, locationPrefix string, parentObjectLists map[string]*ObjectListMapping, parent *ast.WidgetV3, contextVar string, contextKnown bool) []linter.Violation {
 	var out []linter.Violation
 	for _, w := range widgets {
 		if w == nil {
@@ -126,6 +126,8 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 		out = append(out, validateDynamicTextFormatting(w, locationPrefix)...)
 		out = append(out, validateDatasourceXPathAssociationEmpty(w, locationPrefix)...)
 		out = append(out, validateComboBoxAssociation(w, locationPrefix)...)
+		// A show_page argument naming anything but the context object is dropped.
+		out = append(out, validateShowPageArguments(w, contextVar, contextKnown, locationPrefix)...)
 		// Unknown-property warning applies only to built-in widgets; pluggable
 		// widgets get the stricter def.json check (MDL-WIDGET01) above, and
 		// object-list items are validated by the object-list engine.
@@ -146,7 +148,12 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 		// Reported once per grid, not once per column — see the rule's comment.
 		out = append(out, validateDataGrid2ColumnNames(w, locationPrefix)...)
 		if len(w.Children) > 0 {
-			out = append(out, validateWidgetTreeIn(w.Children, registry, locationPrefix, objectListMappingSet(def), w)...)
+			// A data-bound widget renames the context object for everything below it.
+			childContextVar, childContextKnown := contextVar, contextKnown
+			if ds := w.GetDataSource(); ds != nil {
+				childContextVar, childContextKnown = contextVarFor(ds), true
+			}
+			out = append(out, validateWidgetTreeIn(w.Children, registry, locationPrefix, objectListMappingSet(def), w, childContextVar, childContextKnown)...)
 		}
 	}
 	out = append(out, validateConsecutiveDynamicText(widgets, locationPrefix)...)

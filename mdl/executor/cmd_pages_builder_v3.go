@@ -1237,6 +1237,20 @@ func (pb *pageBuilder) buildClientActionV3(action *ast.ActionV3) (pages.ClientAc
 
 		// Build parameter mappings from Args
 		for _, arg := range action.Args {
+			// mxcli stores this action with an empty ParameterMappings array and
+			// lets Mendix infer the argument from the enclosing widget's context
+			// object — required, because an explicit mapping is rejected as CE0115
+			// (#296). An argument naming anything else therefore cannot be honoured,
+			// and was previously dropped in silence: the button opened the page with
+			// the context object, `mx check` reported 0 errors, and DESCRIBE printed
+			// the inferred mapping. Refuse instead of re-pointing the argument.
+			if strVal, ok := arg.Value.(string); ok && !pageArgumentBindsContextObject(strVal, pb.contextVarName, pb.contextKnown) {
+				return nil, mdlerrors.NewValidationf(
+					"show_page %s: argument %s: %s cannot be stored — a widget's page argument is always the enclosing context object, which mxcli records by leaving the mapping empty (an explicit one is rejected as CE0115). Writing %s here would silently open the page with %s instead. Use $currentObject%s, or call a microflow that shows the page with the object you want [MDL-PAGEARG01]",
+					action.Target, arg.Name, strVal, strVal, pb.describeContextObject(),
+					pb.contextVarAlternative())
+			}
+
 			mapping := &pages.PageClientParameterMapping{
 				BaseElement: model.BaseElement{
 					ID:       model.ID(types.GenerateID()),

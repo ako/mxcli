@@ -261,7 +261,13 @@ func NewPluggableWidgetEngine(b backend.WidgetBuilderBackend, pb *pageBuilder) *
 func (e *PluggableWidgetEngine) Build(def *WidgetDefinition, w *ast.WidgetV3) (*pages.CustomWidget, error) {
 	// Save and restore entity context (DataSource mappings may change it)
 	oldEntityContext := e.pageBuilder.entityContext
-	defer func() { e.pageBuilder.entityContext = oldEntityContext }()
+	oldContextVar := e.pageBuilder.contextVarName
+	oldContextKnown := e.pageBuilder.contextKnown
+	defer func() {
+		e.pageBuilder.entityContext = oldEntityContext
+		e.pageBuilder.contextVarName = oldContextVar
+		e.pageBuilder.contextKnown = oldContextKnown
+	}()
 
 	// Remember the containing context for properties that name members of it
 	// rather than of this widget's own data. Saved/restored for nested widgets.
@@ -319,6 +325,8 @@ func (e *PluggableWidgetEngine) Build(def *WidgetDefinition, w *ast.WidgetV3) (*
 					builder.SetDataSource(propKey, dataSource)
 					if entityName != "" {
 						e.pageBuilder.entityContext = entityName
+						e.pageBuilder.contextVarName = contextVarFor(ds)
+						e.pageBuilder.contextKnown = true
 					}
 					break
 				}
@@ -718,6 +726,8 @@ func (e *PluggableWidgetEngine) resolveMapping(mapping PropertyMapping, w *ast.W
 			ctx.EntityName = entityName
 			if entityName != "" {
 				e.pageBuilder.entityContext = entityName
+				e.pageBuilder.contextVarName = contextVarFor(ds)
+				e.pageBuilder.contextKnown = true
 				if w.Name != "" {
 					e.pageBuilder.paramEntityNames[w.Name] = entityName
 				}
