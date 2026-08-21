@@ -121,27 +121,7 @@ Examples:
 		// so we can compute the catalog depth they need BEFORE building it. A rule
 		// that needs the refs (full) or graph_* (communities) tables then gets them
 		// automatically instead of silently returning empty results (issue #721).
-		lintRules := []linter.Rule{
-			rules.NewNamingConventionRule(),
-			rules.NewEmptyMicroflowRule(),
-			rules.NewDomainModelSizeRule(),
-			rules.NewValidationFeedbackRule(),
-			rules.NewImageSourceRule(),
-			rules.NewEmptyContainerRule(),
-			rules.NewGallerySelectionListenerRule(),
-			rules.NewDataViewLayoutGridRule(),
-			rules.NewPageNavigationSecurityRule(),
-			rules.NewNoEntityAccessRulesRule(),
-			rules.NewWeakPasswordPolicyRule(),
-			rules.NewDemoUsersActiveRule(),
-			rules.NewOverlappingActivitiesRule(), // MPR008 - requires BSON inspection
-			rules.NewLoopChildContainmentRule(),  // MPR011 - requires BSON inspection
-			rules.NewNoCommitInLoopRule(),        // CONV011-CONV014 - require BSON inspection
-			rules.NewExclusiveSplitCaptionRule(),
-			rules.NewErrorHandlingOnCallsRule(),
-			rules.NewNoContinueErrorHandlingRule(),
-			rules.NewIrreducibleFlowGraphRule(), // MDL-FLOW01 - graph structure vs MDL nesting
-		}
+		lintRules := builtinLintRules()
 		lintRulesDir := filepath.Join(projectDir, ".claude", "lint-rules")
 		if starlarkRules, err := linter.LoadStarlarkRulesFromDir(lintRulesDir); err == nil {
 			for _, rule := range starlarkRules {
@@ -213,16 +193,35 @@ Examples:
 			fmt.Fprintf(os.Stderr, "Warning: failed to load lint config: %v\n", err)
 		}
 
-		// If --rules is specified, disable every rule not in the allowlist.
-		if len(onlyRules) > 0 {
-			allowed := make(map[string]bool, len(onlyRules))
-			for _, id := range onlyRules {
-				allowed[id] = true
-			}
-			for _, rule := range lint.Rules() {
-				if !allowed[rule.ID()] {
-					lint.ConfigureRule(rule.ID(), linter.RuleConfig{Enabled: false})
+		// If --rules is specified, narrow the run to those rules. Skipped for
+		// --list-rules, which prints every rule regardless and is the remedy
+		// the error below points at — refusing there would take away the way
+		// to look up the ID you got wrong.
+		if len(onlyRules) > 0 && !listRules {
+			if unknown := applyRuleAllowlist(lint, onlyRules); len(unknown) > 0 {
+				fmt.Fprintf(os.Stderr, "Error: no such lint rule: %s\n", strings.Join(unknown, ", "))
+				for _, id := range unknown {
+					if s := suggestRuleID(id, lint.Rules()); s != "" {
+						fmt.Fprintf(os.Stderr, "  did you mean %s?\n", s)
+					}
 				}
+				fmt.Fprintln(os.Stderr, "Run 'mxcli lint -p <project> --list-rules' to see the available rule IDs.")
+				os.Exit(1)
+			}
+
+			// The allowlist only ever disables, so a rule the config file has
+			// already turned off stays off. Naming exactly those rules runs an
+			// empty rule set and reports success — the same silent pass as an
+			// unknown ID, reached by the other route.
+			if len(lint.EnabledRuleIDs()) == 0 {
+				where := "the lint config"
+				if configPath != "" {
+					where = configPath
+				}
+				fmt.Fprintf(os.Stderr,
+					"Error: every rule named by --rules is disabled by %s, so the run would report no findings. Re-enable %s there, or drop --rules.\n",
+					where, pluralItThem(len(onlyRules)))
+				os.Exit(1)
 			}
 		}
 
@@ -290,6 +289,87 @@ func catalogRefreshCommand(mode linter.CatalogMode) string {
 	default:
 		return "REFRESH CATALOG"
 	}
+}
+
+// builtinLintRules returns the rule set `mxcli lint` ships with. Built here
+// rather than inline so that tests can check the IDs users actually type.
+func builtinLintRules() []linter.Rule {
+	return []linter.Rule{
+		rules.NewNamingConventionRule(),
+		rules.NewEmptyMicroflowRule(),
+		rules.NewDomainModelSizeRule(),
+		rules.NewValidationFeedbackRule(),
+		rules.NewImageSourceRule(),
+		rules.NewEmptyContainerRule(),
+		rules.NewGallerySelectionListenerRule(),
+		rules.NewDataViewLayoutGridRule(),
+		rules.NewPageNavigationSecurityRule(),
+		rules.NewNoEntityAccessRulesRule(),
+		rules.NewWeakPasswordPolicyRule(),
+		rules.NewDemoUsersActiveRule(),
+		rules.NewOverlappingActivitiesRule(), // MPR008 - requires BSON inspection
+		rules.NewLoopChildContainmentRule(),  // MPR011 - requires BSON inspection
+		rules.NewNoCommitInLoopRule(),        // CONV011-CONV014 - require BSON inspection
+		rules.NewExclusiveSplitCaptionRule(),
+		rules.NewErrorHandlingOnCallsRule(),
+		rules.NewNoContinueErrorHandlingRule(),
+		rules.NewIrreducibleFlowGraphRule(), // MDL-FLOW01 - graph structure vs MDL nesting
+	}
+}
+
+// applyRuleAllowlist restricts lint to the rules named in only, and returns
+// the entries of only that name no registered rule.
+//
+// When anything is unknown the rule set is left untouched and the caller must
+// refuse. Disabling the rest anyway is the failure this guards: an ID nothing
+// matches disables *every* rule, so the run reports zero findings and reads
+// exactly like a clean project. A scan that silently ran nothing is worse than
+// one that errored, because the empty result gets believed.
+func applyRuleAllowlist(lint *linter.Linter, only []string) []string {
+	registered := make(map[string]bool, len(lint.Rules()))
+	for _, rule := range lint.Rules() {
+		registered[rule.ID()] = true
+	}
+
+	var unknown []string
+	seen := make(map[string]bool, len(only))
+	for _, id := range only {
+		if !registered[id] && !seen[id] {
+			seen[id] = true
+			unknown = append(unknown, id)
+		}
+	}
+	if len(unknown) > 0 {
+		return unknown
+	}
+
+	allowed := make(map[string]bool, len(only))
+	for _, id := range only {
+		allowed[id] = true
+	}
+	for _, rule := range lint.Rules() {
+		if !allowed[rule.ID()] {
+			lint.ConfigureRule(rule.ID(), linter.RuleConfig{Enabled: false})
+		}
+	}
+	return nil
+}
+
+// suggestRuleID returns the registered rule ID that differs from id only in
+// case or in separators, or "" when none does. Rule IDs mix both conventions
+// (MPR001, MDL-FLOW01), so "mdl-flow01" and "MDLFLOW01" are the near misses
+// worth naming rather than leaving the user to scan --list-rules.
+func suggestRuleID(id string, registered []linter.Rule) string {
+	fold := func(s string) string {
+		return strings.NewReplacer("-", "", "_", "", " ", "").Replace(strings.ToUpper(s))
+	}
+	want := fold(id)
+	for _, rule := range registered {
+		if fold(rule.ID()) == want {
+			return rule.ID()
+		}
+	}
+	return ""
 }
 
 // intersect returns the values of want that appear in have, preserving want's

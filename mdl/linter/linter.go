@@ -137,6 +137,27 @@ func (l *Linter) Rules() []Rule {
 	return l.rules
 }
 
+// ruleEnabled reports whether Run would execute the rule. A rule with no
+// configuration entry is enabled; only an explicit Enabled:false disables it.
+func (l *Linter) ruleEnabled(rule Rule) bool {
+	config, ok := l.configs[rule.ID()]
+	return !ok || config.Enabled
+}
+
+// EnabledRuleIDs returns the IDs of the rules Run would execute, in
+// registration order. Callers that narrow the rule set use it to confirm that
+// the narrowing left something to run: a linter with every rule disabled
+// reports zero findings, which is indistinguishable from a clean project.
+func (l *Linter) EnabledRuleIDs() []string {
+	out := make([]string, 0, len(l.rules))
+	for _, rule := range l.rules {
+		if l.ruleEnabled(rule) {
+			out = append(out, rule.ID())
+		}
+	}
+	return out
+}
+
 // Run executes all enabled rules and returns the violations found.
 func (l *Linter) Run(ctx context.Context) ([]Violation, error) {
 	var allViolations []Violation
@@ -144,7 +165,7 @@ func (l *Linter) Run(ctx context.Context) ([]Violation, error) {
 	// Run rules sequentially to avoid SQLite concurrency issues with in-memory db
 	for _, rule := range l.rules {
 		// Check if rule is enabled
-		if config, ok := l.configs[rule.ID()]; ok && !config.Enabled {
+		if !l.ruleEnabled(rule) {
 			continue
 		}
 
