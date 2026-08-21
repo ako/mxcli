@@ -190,6 +190,21 @@ func (b *Backend) ListRules() ([]*microflows.Rule, error) { return b.reader.List
 
 func (b *Backend) GetRule(id model.ID) (*microflows.Rule, error) { return b.reader.GetRule(id) }
 
+// Rule authoring is not available over MCP — Studio Pro's Model API has no rule
+// verb, so there is nothing to delegate to.
+func (b *Backend) CreateRule(*microflows.Rule) error {
+	return errUnsupported("CreateRule")
+}
+func (b *Backend) UpdateRule(*microflows.Rule) error {
+	return errUnsupported("UpdateRule")
+}
+func (b *Backend) DeleteRule(model.ID) error {
+	return errUnsupported("DeleteRule")
+}
+func (b *Backend) MoveRule(*microflows.Rule) error {
+	return errUnsupported("MoveRule")
+}
+
 // pedMiddlePoint converts an executor object position to a PED relativeMiddlePoint.
 // The executor's layout engine already computes these coordinates (the same
 // value the MPR writer serializes as RelativeMiddlePoint), so reusing them makes

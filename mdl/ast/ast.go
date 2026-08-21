@@ -60,6 +60,7 @@ const (
 	DocumentTypeMicroflow            DocumentType = "MICROFLOW"
 	DocumentTypeSnippet              DocumentType = "SNIPPET"
 	DocumentTypeNanoflow             DocumentType = "NANOFLOW"
+	DocumentTypeRule                 DocumentType = "RULE"
 	DocumentTypeEntity               DocumentType = "ENTITY"
 	DocumentTypeEnumeration          DocumentType = "ENUMERATION"
 	DocumentTypeConstant             DocumentType = "CONSTANT"
@@ -102,6 +103,7 @@ var MoveDocumentTypeByKeyword = map[string]DocumentType{
 	"PAGE":                 DocumentTypePage,
 	"MICROFLOW":            DocumentTypeMicroflow,
 	"NANOFLOW":             DocumentTypeNanoflow,
+	"RULE":                 DocumentTypeRule,
 	"SNIPPET":              DocumentTypeSnippet,
 	"BUILDINGBLOCK":        DocumentTypeBuildingBlock,
 	"LAYOUT":               DocumentTypeLayout,

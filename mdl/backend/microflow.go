@@ -38,6 +38,10 @@ type MicroflowBackend interface {
 	// exactly as it does not return nanoflows or workflows.
 	ListRules() ([]*microflows.Rule, error)
 	GetRule(id model.ID) (*microflows.Rule, error)
+	CreateRule(rule *microflows.Rule) error
+	UpdateRule(rule *microflows.Rule) error
+	DeleteRule(id model.ID) error
+	MoveRule(rule *microflows.Rule) error
 
 	// IsRule reports whether the given qualified name refers to a rule
 	// (Microflows$Rule) rather than a microflow. The flow builder uses this

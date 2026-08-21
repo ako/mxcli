@@ -79,6 +79,34 @@ func (m *MockBackend) GetRule(id model.ID) (*microflows.Rule, error) {
 	return nil, fmt.Errorf("MockBackend.GetRule not configured")
 }
 
+func (m *MockBackend) CreateRule(rule *microflows.Rule) error {
+	if m.CreateRuleFunc != nil {
+		return m.CreateRuleFunc(rule)
+	}
+	return fmt.Errorf("MockBackend.CreateRule not configured")
+}
+
+func (m *MockBackend) UpdateRule(rule *microflows.Rule) error {
+	if m.UpdateRuleFunc != nil {
+		return m.UpdateRuleFunc(rule)
+	}
+	return fmt.Errorf("MockBackend.UpdateRule not configured")
+}
+
+func (m *MockBackend) DeleteRule(id model.ID) error {
+	if m.DeleteRuleFunc != nil {
+		return m.DeleteRuleFunc(id)
+	}
+	return fmt.Errorf("MockBackend.DeleteRule not configured")
+}
+
+func (m *MockBackend) MoveRule(rule *microflows.Rule) error {
+	if m.MoveRuleFunc != nil {
+		return m.MoveRuleFunc(rule)
+	}
+	return fmt.Errorf("MockBackend.MoveRule not configured")
+}
+
 func (m *MockBackend) ListNanoflows() ([]*microflows.Nanoflow, error) {
 	if m.ListNanoflowsFunc != nil {
 		return m.ListNanoflowsFunc()

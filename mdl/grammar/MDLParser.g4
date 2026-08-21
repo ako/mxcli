@@ -128,6 +128,7 @@ createStatement
       | createKnowledgeBaseStatement
       | createAgentStatement
       | createNanoflowStatement
+      | createRuleStatement
       | createMenuStatement
       )
     ;
@@ -330,6 +331,7 @@ dropStatement
     | DROP CONSTANT qualifiedName
     | DROP MICROFLOW qualifiedName
     | DROP NANOFLOW qualifiedName
+    | DROP RULE qualifiedName
     | DROP PAGE qualifiedName
     | DROP SNIPPET qualifiedName
     | DROP MENU_KW qualifiedName
@@ -429,6 +431,7 @@ moveDocumentType
     : PAGE
     | MICROFLOW
     | NANOFLOW
+    | RULE
     | SNIPPET
     | BUILDING BLOCK
     | LAYOUT
