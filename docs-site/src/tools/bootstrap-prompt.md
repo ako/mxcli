@@ -37,7 +37,7 @@ This is an empty repo. Provision it as a Mendix app developed with mxcli.
    ./mxcli init --sync-skills
    ```
 
-3. Read `.ai-context/skills/bootstrap-app.md` and follow it end to end. It begins by
+3. Read `.ai-context/skills/bootstrap-app/SKILL.md` and follow it end to end. It begins by
    interviewing me about the app, so ask me those questions and wait for my answers
    before running anything else.
 

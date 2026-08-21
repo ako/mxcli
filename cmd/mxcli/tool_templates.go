@@ -186,7 +186,7 @@ See AGENTS.md for complete documentation and .ai-context/skills/ for patterns.
 
 ## Before Writing MDL
 
-1. Read relevant skill file: .ai-context/skills/write-microflows.md or create-page.md
+1. Read relevant skill file: .ai-context/skills/write-microflows/SKILL.md or create-page/SKILL.md
 2. Validate: ./mxcli check script.mdl -p %s --references
 3. Execute: ./mxcli exec script.mdl -p %s
 `, projectName, mprFile, mprFile, mprFile, mprFile, mprFile, mprFile, mprFile, mprFile)
@@ -237,12 +237,12 @@ func generateContinueConfig(projectName, mprPath string) string {
     {
       "name": "mdl-syntax",
       "description": "Show MDL syntax reference",
-      "prompt": "Read and summarize: .ai-context/skills/write-microflows.md"
+      "prompt": "Read and summarize: .ai-context/skills/write-microflows/SKILL.md"
     },
     {
       "name": "page-syntax",
       "description": "Show page creation syntax",
-      "prompt": "Read and summarize: .ai-context/skills/create-page.md"
+      "prompt": "Read and summarize: .ai-context/skills/create-page/SKILL.md"
     }
   ]
 }
@@ -257,7 +257,7 @@ func generateAiderConfig(projectName, mprPath string) string {
 # Files to read for context
 read-files:
   - AGENTS.md
-  - .ai-context/skills/*.md
+  - .ai-context/skills/*/SKILL.md
 
 # Project description
 description: |
@@ -442,7 +442,7 @@ system_prompt_id = "mendix-mdl"
 
 # Skills from .vibe/skills/ are auto-discovered
 # Additional context files
-# skill_paths = [".ai-context/skills"]
+# skill_paths = [".ai-context/skills"]  # <name>/SKILL.md per skill
 
 # Tool permissions for MDL workflow
 [tools.bash]
@@ -564,7 +564,7 @@ func generateOpenCodeConfig(projectName, mprPath string) string {
   "instructions": [
     "AGENTS.md",
     ".opencode/skills/**/SKILL.md",
-    ".ai-context/skills/*.md"
+    ".ai-context/skills/*/SKILL.md"
   ]
 }
 `

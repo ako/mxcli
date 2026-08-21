@@ -714,7 +714,7 @@ Both namespaces are discoverable by typing `/mxcli` in Claude Code. Add new cont
 ### mxcli init
 
 `mxcli init` creates a `.claude/` folder with skills, commands, CLAUDE.md, and VS Code MDL extension in a target Mendix project. Source of truth for synced assets:
-- Skills: `.claude/skills/mendix/` — `make sync-skills` copies these to the `cmd/mxcli/skills/` embed dir (`//go:embed skills/*.md`), which `mxcli init` writes into the project. **Edit the `mendix/` source, not the embed dir** (it is regenerated). The top-level `.claude/skills/*.md` are contributor/dev skills and are **not** synced.
+- Skills: `.claude/skills/mendix/<name>/SKILL.md` — directory-shaped, per the [Agent Skills](https://agentskills.io) standard, with `name` and `description` frontmatter. `make sync-skills` mirrors the tree into the `cmd/mxcli/skills/` embed dir (`//go:embed all:skills`), and `mxcli init` writes it into the project **twice**: `.ai-context/skills/` for every tool, and `.claude/skills/` — the only path Claude Code scans — when the project is set up for Claude. **Edit the `mendix/` source, not the embed dir** (it is regenerated, and the sync is `rsync --delete`). The `description` is the routing mechanism; the table in the generated CLAUDE.md is a shortcut, not the index. Upgrading a project retires the flat `<name>.md` files older mxcli versions wrote, but never a skill the user added. The top-level `.claude/skills/*.md` are contributor/dev skills and are **not** synced.
 - Commands: `.claude/commands/mendix/` (the `mxcli-dev/` folder is **not** synced)
 - VS Code extension: `vscode-mdl/vscode-mdl-*.vsix`
 

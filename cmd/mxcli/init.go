@@ -262,33 +262,21 @@ Container Runtime:
 			fmt.Printf("  Created %s (System module excluded from lint)\n", filepath.Base(path))
 		}
 
-		// Write universal skills to .ai-context/skills/
-		skillCount := 0
-		err = fs.WalkDir(skillsFS, "skills", func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if d.IsDir() {
-				return nil
-			}
-			// Read from embedded FS
-			content, err := skillsFS.ReadFile(path)
-			if err != nil {
-				return err
-			}
-			// Write to target directory
-			targetPath := filepath.Join(skillsDir, d.Name())
-			if err := os.WriteFile(targetPath, content, 0644); err != nil {
-				return err
-			}
-			skillCount++
-			return nil
-		})
+		// Write the skills. One code path with the SessionStart refresh, so a
+		// fresh init and an upgraded project end up with byte-identical trees —
+		// including the `.claude/skills/` copy Claude Code actually scans.
+		skillRes, err := syncAIContextSkills(absDir)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error writing skills: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Printf("  Created %d skill files in .ai-context/skills/\n", skillCount)
+		for _, dest := range skillDests(absDir) {
+			rel, relErr := filepath.Rel(absDir, dest)
+			if relErr != nil {
+				rel = dest
+			}
+			fmt.Printf("  Created %d skills in %s/\n", skillRes.Total, filepath.ToSlash(rel))
+		}
 
 		// Write tool-specific configurations
 		for _, toolName := range tools {
