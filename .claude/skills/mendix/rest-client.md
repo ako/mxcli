@@ -14,6 +14,8 @@ Mendix offers three ways to call REST APIs from microflows. Choose based on the 
 
 Both REST Client approaches can be combined with **Data Transformers** (Mendix 11.9+) and **Import/Export Mappings** to map between JSON and entities.
 
+No API to call against yet — or one you would rather not depend on while building? [mock-rest-apis.md](mock-rest-apis.md) covers standing up an endpoint you control and pointing the app at it.
+
 ---
 
 ## Approach 0: OpenAPI Import (Fastest)
@@ -44,7 +46,14 @@ This generates:
 - Basic auth if the spec declares it at the top level
 - The spec stored inside the document for Studio Pro parity
 
-`BaseUrl` is optional. When omitted, `servers[0].url` from the spec is used. When provided, it overrides that value — useful when the spec points at production but you need to import against staging or a different version.
+`BaseUrl` is optional. When omitted, `servers[0].url` from the spec is used — but only if it is
+**absolute**. A relative server URL (`/api/v3`) cannot be a `BaseUrl`: the import warns
+(*"server URL … is relative and cannot be used as BaseUrl"*) and leaves the client without one,
+which fails at call time rather than at import time. Set `BaseUrl` explicitly in that case.
+
+When provided, `BaseUrl` overrides the spec's value — useful when the spec points at production
+but you need to import against staging, a different version, or a local mock
+(see [mock-rest-apis.md](mock-rest-apis.md)).
 
 **Preview without writing:**
 ```sql

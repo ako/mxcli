@@ -451,6 +451,7 @@ func generateClaudeMD(projectName, mprFile string) string {
 	w("|-------|--------|\n")
 	w("| database-connections | External database connections (PostgreSQL, Oracle) |\n")
 	w("| rest-client | REST API consumption |\n")
+	w("| mock-rest-apis | Mocking a REST dependency (Prism, forward proxy, constant swap) |\n")
 	w("| java-actions | Custom Java actions |\n")
 	w("| odata-data-sharing | OData services and external entities |\n")
 	w("\n")
