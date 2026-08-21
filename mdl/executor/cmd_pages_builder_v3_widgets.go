@@ -83,8 +83,16 @@ func (pb *pageBuilder) buildDataViewV3(w *ast.WidgetV3) (*pages.DataView, error)
 
 		// Save and restore entity context so nested DataViews work correctly
 		oldContext := pb.entityContext
+		oldContextVar := pb.contextVarName
+		oldContextKnown := pb.contextKnown
 		pb.entityContext = entityName
-		defer func() { pb.entityContext = oldContext }()
+		pb.contextVarName = contextVarFor(ds)
+		pb.contextKnown = true
+		defer func() {
+			pb.entityContext = oldContext
+			pb.contextVarName = oldContextVar
+			pb.contextKnown = oldContextKnown
+		}()
 
 		// Register the widget name with its entity so template params like $dvOrder.Attr
 		// can be resolved to Entity.Attr
@@ -285,8 +293,16 @@ func (pb *pageBuilder) buildListViewV3(w *ast.WidgetV3) (*pages.ListView, error)
 
 		// Save and restore entity context so nested containers work correctly
 		oldContext := pb.entityContext
+		oldContextVar := pb.contextVarName
+		oldContextKnown := pb.contextKnown
 		pb.entityContext = entityName
-		defer func() { pb.entityContext = oldContext }()
+		pb.contextVarName = contextVarFor(ds)
+		pb.contextKnown = true
+		defer func() {
+			pb.entityContext = oldContext
+			pb.contextVarName = oldContextVar
+			pb.contextKnown = oldContextKnown
+		}()
 
 		// Register widget name with entity for SELECTION datasource lookup
 		if w.Name != "" && entityName != "" {

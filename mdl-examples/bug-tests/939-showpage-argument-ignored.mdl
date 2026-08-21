@@ -1,0 +1,70 @@
+-- mxcli-formula1 §39 (adjacent finding)
+--
+-- A SHOW_PAGE widget argument naming anything other than the enclosing widget's
+-- context object was discarded in silence: the page opened with the context
+-- object, `mx check` reported 0 errors, and DESCRIBE printed the inferred
+-- mapping. Nothing anywhere said the written argument had been ignored.
+--
+-- The two ACCEPTED forms below are the ones the skills document; the refused
+-- form is commented out because this script is executed by the test suite.
+
+create module PgArg;
+
+create or modify entity PgArg.Car (
+  Name: string(100)
+);
+
+create or modify page PgArg.Detail (
+  Title: 'Detail',
+  Layout: Atlas_Core.Atlas_Default,
+  Params: { $Car: PgArg.Car }
+) {
+  dataview dvDetail (DataSource: $Car) {
+    textbox tbName (Attribute: Name)
+  }
+}
+
+-- ACCEPTED: $currentObject in a database-backed list.
+create or modify page PgArg.Overview (
+  Title: 'Overview',
+  Layout: Atlas_Core.Atlas_Default
+) {
+  listview lvCars (DataSource: DATABASE PgArg.Car) {
+    actionbutton btnOpen (
+      Caption: 'Open',
+      Action: SHOW_PAGE PgArg.Detail(Car: $currentObject)
+    )
+  }
+}
+
+-- ACCEPTED: the context variable by its own name — the enclosing data view is
+-- bound to $Car, so $Car and $currentObject denote the same object.
+create or modify page PgArg.Caller (
+  Title: 'Caller',
+  Layout: Atlas_Core.Atlas_Default,
+  Params: { $Car: PgArg.Car }
+) {
+  dataview dvCar (DataSource: $Car) {
+    actionbutton btnGo (
+      Caption: 'Go',
+      Action: SHOW_PAGE PgArg.Detail(Car: $Car)
+    )
+  }
+}
+
+-- REFUSED (MDL-PAGEARG01): $Other is not the context object, so Mendix would
+-- open Detail with $Car. Uncomment to see the guard fire; `mxcli check` flags it
+-- without a project.
+--
+-- create or modify page PgArg.TwoParam (
+--   Title: 'TwoParam',
+--   Layout: Atlas_Core.Atlas_Default,
+--   Params: { $Car: PgArg.Car, $Other: PgArg.Car }
+-- ) {
+--   dataview dvTwo (DataSource: $Car) {
+--     actionbutton btnBad (
+--       Caption: 'Go',
+--       Action: SHOW_PAGE PgArg.Detail(Car: $Other)
+--     )
+--   }
+-- }

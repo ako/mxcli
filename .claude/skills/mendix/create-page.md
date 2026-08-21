@@ -319,6 +319,13 @@ describe icon collection Atlas_Core.Atlas_Filled   -- every icon + its reference
 - `action: show_page Module.PageName(Param: $value)` - Navigate with parameters
 - `action: show_page Module.PageName($Param = $value)` - Also accepted (microflow-style)
 - `action: create_object Module.Entity then show_page Module.PageName` - Create and navigate
+- **A `show_page` argument must be the context object.** Mendix takes the page
+  argument from the enclosing data widget, so the only spellings that mean
+  anything are `$currentObject` or the name of the variable that widget is bound
+  to (`datasource: $Customer` → `(Customer: $Customer)` is fine). Naming any other
+  variable is refused as **MDL-PAGEARG01** — it used to be accepted and silently
+  opened the page with the context object anyway. To open a page with something
+  else, call a microflow that shows it.
 
 **Button Styles:** `default`, `primary`, `success`, `info`, `warning`, `danger`, `inverse`
 - Case-insensitive (`primary` and `Primary` both work).
