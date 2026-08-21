@@ -79,7 +79,7 @@ CREATE ASSOCIATION MyModule.Order_Product
     DELETE_BEHAVIOR PREVENT;
 ```
 
-Options: `PREVENT` (block deletion if referenced), `DELETE` (cascade delete), or leave it out for the default behavior.
+Options: `PREVENT` (block deletion if referenced), `CASCADE` (delete the associated objects too), or leave it out for the default behavior — delete the object and null out the references.
 
 ## Using OR MODIFY for idempotent scripts
 

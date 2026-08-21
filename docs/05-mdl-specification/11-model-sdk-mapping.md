@@ -365,7 +365,8 @@ assoc := &domainmodel.Association{
 | MDL | Go Constant |
 |-----|-------------|
 | `DELETE_BUT_KEEP_REFERENCES` | `DeleteBehaviorTypeDeleteMeButKeepReferences` |
-| `DELETE_CASCADE` | `DeleteBehaviorTypeDeleteMeAndReferences` |
+| `DELETE_AND_REFERENCES`, `CASCADE` | `DeleteBehaviorTypeDeleteMeAndReferences` |
+| `DELETE_IF_NO_REFERENCES`, `PREVENT` | `DeleteBehaviorTypeDeleteMeIfNoReferences` |
 
 ### Association Struct
 
