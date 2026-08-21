@@ -1108,6 +1108,7 @@ commit $Product;
 - Escape single quotes by doubling: `@annotation 'Don''t forget'`
 - `@position` always appears in DESCRIBE output; `@caption` only when custom; `@color` only when not Default
 - DESCRIBE MICROFLOW shows `@` annotations before their activities
+- `@start(x, y)` positions the **start event** and goes on the first statement, because the start has no statement of its own. Omit it and the start is derived — one spacing unit (160) left of the first activity, on its centre line — and a rewrite re-derives it so the start follows the activities when they move. A start that is not at the derived spot was placed by hand (in Studio Pro or with `@start`): it survives a rewrite that does not mention it, and DESCRIBE emits `@start` for it. An explicit `@start` overrides both (#951)
 
 ## Special Values
 

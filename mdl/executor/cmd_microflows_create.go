@@ -273,12 +273,14 @@ func execCreateMicroflow(ctx *ExecContext, s *ast.CreateMicroflowStmt) error {
 	restServices, _ := loadRestServices(ctx)
 
 	builder := &flowBuilder{
-		// Carry over the StartEvent position of the microflow being replaced.
-		// The start has no MDL statement to annotate and DESCRIBE cannot emit
-		// it, so a rebuild would otherwise move a hand-laid-out one to the
-		// derived spot — a Studio Pro flow's 145;200 became 100;200 on a
-		// describe→exec round-trip, the only coordinate in it that did not
-		// survive. Preserved the way the folder and allowed roles already are.
+		// Carry over a HAND-PLACED StartEvent position from the microflow being
+		// replaced, the way the folder and allowed roles already are: a Studio
+		// Pro flow's 145;200 became 100;200 on a describe→exec round-trip, the
+		// only coordinate in it that did not survive (#884). A start sitting
+		// where mxcli's own layout would have put it is not carried over — that
+		// pinned the start of every rewritten flow, stranding it across the
+		// canvas from activities the same script had just moved (#951). An
+		// explicit @start(x, y) on the first statement overrides both.
 		startPosition: storedStartPosition(ctx, existingID),
 		posX:          200,
 		posY:          200,
@@ -331,22 +333,21 @@ func execCreateMicroflow(ctx *ExecContext, s *ast.CreateMicroflowStmt) error {
 }
 
 // storedStartPosition reads the StartEvent position off the microflow being
-// replaced, or nil for a fresh CREATE (where the position is derived from the
-// first annotated activity). Best-effort: a backend that cannot read the flow
-// yields the derived placement rather than failing the statement.
+// replaced, when a person put it there rather than mxcli's own layout — see
+// authoredStartPosition for how the two are told apart, and why carrying the
+// position over unconditionally pinned the start of every rewritten flow (#951).
+//
+// Nil for a fresh CREATE, and nil for a start sitting where the layout would
+// have put it anyway; both derive from the new first activity. Best-effort: a
+// backend that cannot read the flow yields the derived placement rather than
+// failing the statement.
 func storedStartPosition(ctx *ExecContext, existingID model.ID) *model.Point {
 	if existingID == "" || ctx.Backend == nil {
 		return nil
 	}
 	mf, err := ctx.Backend.GetMicroflow(existingID)
-	if err != nil || mf == nil || mf.ObjectCollection == nil {
+	if err != nil || mf == nil {
 		return nil
 	}
-	for _, o := range mf.ObjectCollection.Objects {
-		if se, ok := o.(*microflows.StartEvent); ok {
-			p := se.GetPosition()
-			return &p
-		}
-	}
-	return nil
+	return authoredStartPosition(mf.ObjectCollection)
 }

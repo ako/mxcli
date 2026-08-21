@@ -1390,6 +1390,7 @@ var knownActivityAnnotations = map[string]bool{
 	"anchor":     true,
 	"curve":      true,
 	"merge":      true,
+	"start":      true,
 }
 
 // checkUnknownAnnotations rejects an @annotation name the visitor does not
@@ -1419,8 +1420,8 @@ func (v *microflowValidator) checkUnknownAnnotations(s ast.MicroflowStatement) {
 		v.addViolation("MDL059", linter.SeverityError,
 			fmt.Sprintf("unknown annotation `@%s` — it parses but does nothing, so whatever it was "+
 				"meant to express is silently lost", name),
-			fmt.Sprintf("mxcli implements @position(x, y), @caption, @color, @annotation, @excluded and "+
-				"@anchor on a microflow statement. If `@%s` is a typo of one of those, correct it; "+
-				"container size and edge geometry are not authorable (upstream #884).", name))
+			fmt.Sprintf("mxcli implements @position(x, y), @start(x, y), @caption, @color, @annotation, "+
+				"@excluded, @anchor, @curve and @merge on a microflow statement. If `@%s` is a typo of "+
+				"one of those, correct it; container size is not authorable (upstream #884).", name))
 	}
 }
