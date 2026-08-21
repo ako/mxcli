@@ -198,11 +198,12 @@ Four slices. Each is independently shippable and the first two are read-only.
 
 | File | Change |
 |---|---|
-| `mdl/backend/microflow.go` | `ListRules` / `GetRule` on the interface (a rule reuses `*microflows.Microflow` — see Open Questions on whether it gets its own type) |
+| `sdk/microflows/microflows.go` | `microflows.Rule` — its own struct, mirroring `Nanoflow` |
+| `mdl/backend/microflow.go` | `ListRules` / `GetRule` on the interface |
 | `mdl/backend/modelsdk/microflow.go` | implement via `mprread.ListUnitsWithContainer[*genMf.Rule]` — the decoder already registers `Microflows$Rule` |
 | `mdl/backend/mpr/` | legacy implementation via `listUnitsByType("Microflows$Rule")`, which `IsRule` already calls |
 | `mdl/backend/mock/` | `Func`-field stubs |
-| grammar `MDLMicroflow.g4` | `showRulesStatement`, `describeRuleStatement` |
+| grammar `MDLCatalog.g4` | `showOrList RULES (IN …)?` beside `NANOFLOWS`; `DESCRIBE RULE qualifiedName` |
 | `mdl/ast/`, `mdl/visitor/` | nodes + listener |
 | `mdl/executor/cmd_microflows_show.go` | `SHOW RULES`, and `DESCRIBE RULE` reusing the microflow describer |
 
@@ -272,32 +273,45 @@ modify, derive it on create, and pin it against a real document per version.
 - Negative tests (`*.fail.mdl`) for each restriction, each carrying the CE
   number it prevents.
 
-## Open Questions
+## Design decisions
 
-The two BSON questions this proposal was blocked on are **answered** by
-[`ako/TestApp`](https://github.com/ako/TestApp) — the canvas parameter is
-`Microflows$MicroflowParameter`, and `ReturnType` is not written. What remains:
+Settled 2026-08-21. **A rule is handled the way a nanoflow is** — its own
+statements, its own listing, its own semantic type — not as a variant of a
+microflow.
 
-1. **Does a rule reuse `*microflows.Microflow` in the semantic model, or get its
-   own type?** Reuse keeps the describer, the builder and both engines' decoders
-   untouched — and the reference documents show a rule *is* a microflow minus
-   nine properties, which argues for reuse. A separate type makes the
-   restriction list enforceable at compile time instead of in a validator.
-   ADR-0005 says the backend interface speaks the semantic model, so this is a
-   design decision rather than an implementation detail. **Recommendation:
-   reuse, with a `FlowKind` discriminator** — the same call the nanoflow made.
-2. **Should `SHOW MICROFLOWS` include rules?** It currently does not, which is
-   defensible but means a project's flow logic has no single listing. Visible in
-   TestApp: `show modules` reports the `Rules` module as having 0 microflows and
-   no column mentions its two rules. `SHOW MICROFLOWS … INCLUDING RULES` or a
-   separate `SHOW RULES` are both consistent with the rest of MDL.
-3. **`ReturnVariableName`.** Both reference rules carry `"Variable"`; the
-   microflow in the same app carries `""`. Whether that is a Studio Pro default
-   for the rule editor or authored text is not established by two samples. It
-   must at minimum be **preserved** on modify; whether MDL grows a surface for
-   it is a separate call.
+1. **A rule gets its own semantic type**, `microflows.Rule`, mirroring
+   `microflows.Nanoflow` (which is already a distinct struct, not an alias of
+   `Microflow`). Its own `CreateRuleStmt`, its own
+   `ListRules`/`GetRule`/`CreateRule`/`UpdateRule`/`DeleteRule` on the backend
+   interface. The document shape supports this: a rule is a microflow minus nine
+   properties, and the nine are exactly the ones a rule has no concept of.
+2. **`SHOW`/`LIST MICROFLOWS` lists microflows only** — not nanoflows, not
+   workflows, and not rules. `SHOW RULES` / `LIST RULES` is the separate
+   listing, via the existing `showOrList` rule so both spellings work, as they
+   do for nanoflows.
+3. **There is no `GRANT EXECUTE ON RULE`.** Both reference rules store no
+   `AllowedModuleRoles` — a rule is not independently callable, so it has no
+   module-role security to grant. This is a real divergence from the nanoflow
+   mirror and the one place the parallel stops.
 
-### A foldered rule is stored like any other document — measured
+Two consequences worth stating, because they are what "like a nanoflow" buys:
+
+- A rule's surface is **much smaller than a nanoflow's**. A nanoflow is
+  reachable from pages, navigation and widget actions; a rule is reachable only
+  from a decision. None of `mdl/backend/widgetobj`, `sdk/pages`,
+  `modelsdk/gen/navigation` or the page grammar needs to learn about rules.
+- `microflowBody`, the flow builder, the describer and the validator are shared,
+  exactly as the nanoflow shares them.
+
+### Still open
+
+- **`ReturnVariableName`.** Both reference rules carry `"Variable"`; the
+  microflow in the same app carries `""`. Whether that is a Studio Pro default
+  for the rule editor or authored text is not established by two samples. It
+  must at minimum be **preserved** on modify; whether MDL grows a surface for it
+  is a separate call.
+
+## Measured: a foldered rule is stored like any other document
 
 TestApp now places both rules in a `MyRulesRule` folder, and the containment is
 exactly a microflow's: the rule's unit row is `ContainmentName: "Documents"`
@@ -311,7 +325,7 @@ Two consequences, both shrinking the plan:
 - The MOVE/`FOLDER` work in Slice 3 is **one entry in
   `ast.MoveDocumentTypeByKeyword`**, not a placement implementation.
 
-### The rule call #939 writes matches Studio Pro's, measured
+## Measured: the rule call #939 writes matches Studio Pro's
 
 `Rules.MicroflowUsingRule` now carries a decision calling `Rules.Rule1`, so the
 shape is no longer validated only against the legacy engine. Studio Pro stores:
