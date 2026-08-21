@@ -17,6 +17,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 
 	"github.com/mendixlabs/mxcli/mdl/backend/bsonnav"
+	"github.com/mendixlabs/mxcli/mdl/backend/wfnames"
 	"github.com/mendixlabs/mxcli/mdl/bsonutil"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/workflows"
@@ -752,36 +753,13 @@ func collectNamesRecursive(flow bson.D, names map[string]bool) {
 	}
 }
 
-// deduplicateNewActivityName ensures a new activity name doesn't conflict.
-func deduplicateNewActivityName(act workflows.WorkflowActivity, existingNames map[string]bool) {
-	name := act.GetName()
-	if name == "" {
-		return
-	}
-	if !existingNames[name] {
-		existingNames[name] = true
-		return
-	}
-	for i := 2; i < 1000; i++ {
-		candidate := fmt.Sprintf("%s_%d", name, i)
-		if !existingNames[candidate] {
-			act.SetName(candidate)
-			existingNames[candidate] = true
-			return
-		}
-	}
-}
-
 // ---------------------------------------------------------------------------
 // Internal helpers — serialization (via Deps)
 // ---------------------------------------------------------------------------
 
 // serializeAndDedup serializes workflow activities to BSON, deduplicating names.
 func (m *Mutator) serializeAndDedup(activities []workflows.WorkflowActivity) []any {
-	existingNames := m.collectAllActivityNames()
-	for _, act := range activities {
-		deduplicateNewActivityName(act, existingNames)
-	}
+	wfnames.Dedup(activities, m.collectAllActivityNames())
 
 	result := make([]any, 0, len(activities))
 	for _, act := range activities {
@@ -795,10 +773,7 @@ func (m *Mutator) serializeAndDedup(activities []workflows.WorkflowActivity) []a
 
 // buildSubFlowBson builds a Workflows$Flow BSON document from activities.
 func (m *Mutator) buildSubFlowBson(activities []workflows.WorkflowActivity) bson.D {
-	existingNames := m.collectAllActivityNames()
-	for _, act := range activities {
-		deduplicateNewActivityName(act, existingNames)
-	}
+	wfnames.Dedup(activities, m.collectAllActivityNames())
 
 	var subActsBson bson.A
 	subActsBson = append(subActsBson, bsonArrayMarker)

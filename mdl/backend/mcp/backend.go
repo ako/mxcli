@@ -5,6 +5,7 @@ package mcp
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/mendixlabs/mxcli/mdl/backend"
 	"github.com/mendixlabs/mxcli/mdl/types"
@@ -67,6 +68,12 @@ type Backend struct {
 	// gate consults it and resolution costs a tools/list round-trip, so it is
 	// computed once per connection.
 	capsCache *Capabilities
+
+	// settleDelay / settleWindow pace every ped_check_errors call against Studio
+	// Pro's lagging error list; see pedCheckDocument. Both zero means "ask once,
+	// now", which is what the unit tests want. New sets them.
+	settleDelay  time.Duration
+	settleWindow time.Duration
 
 	// dirty holds module names whose live (in-memory) domain model has diverged
 	// from the on-disk .mpr because of writes this session. Reads of a dirty
@@ -139,6 +146,8 @@ func New(mcpURL, dial string) *Backend {
 	return &Backend{
 		mcpURL:        mcpURL,
 		dial:          dial,
+		settleDelay:   settleDelay,
+		settleWindow:  settleWindow,
 		schemaFetched: map[string]bool{},
 		dirty:         map[string]bool{},
 		synthetic:     map[model.ID]string{},

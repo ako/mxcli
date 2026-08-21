@@ -78,7 +78,7 @@ blank = absent, `—` = n/a). `cmd/mcpprobe -method tools/list` is the source.
 | `ped_create_module` | ✓ | Create a module (+ its domain model). Flushes to disk immediately. |
 | `ped_create_document` | ✓ | Create standalone documents (enum, microflow, page, …). "Never create domain models." Backend: `CreateEnumeration`. |
 | `ped_update_document` | ✓ | Operation-based set/add/remove at JSON paths. Backend: entities, attributes, associations (incl. removes). |
-| `ped_check_errors` | ✓ | Validate documents (run after the final write). Backend: after every write. |
+| `ped_check_errors` | ✓ | Validate documents (run after the final write). Backend: after every write — but see **Error-list lag** below. |
 | `pg_read_page` | ✓ | **Pages only** — separate read path. (Not yet used.) |
 | `pg_write_page` | ✓ | **Pages only** — separate write path; PED is *forbidden* for pages. (Not yet used.) |
 | `oql_generate` | ✓ | NL → OQL for a module. (Agent helper; not used.) |
@@ -103,6 +103,50 @@ Captured live 2026-06-23 (`cmd/mcpprobe -method tools/list`). The 11.11 matrix a
 | **Added** | `install_marketplace_module` | `{moduleName, versionId, conflictResolution}` — installs a Marketplace module into the open project. (Not used by the backend yet.) |
 
 Tools already present in 11.11 and unchanged (do **not** re-add as "new"): `ped_list_folder`, `oql_generate`, `search_mendix_knowledge_base`, `read_skill`, `glob`, `read_file`, `write_file`.
+
+
+**Error-list lag — `ped_check_errors` is not synchronous with the write (issue #945).**
+It reads the error list Studio Pro maintains on a **background thread**, so it
+reports the model as of some moment *before* the call. Measured live (PED 1.0.0)
+with a 20ms poll interval, **26 samples** spanning both directions and three
+write-load levels (0, 10 and 30 preceding writes):
+
+| | min | median | max |
+|---|---|---|---|
+| write → error becomes **visible** | 77ms | 82ms | 115ms |
+| fix → error stops being **shown** | 75ms | 83ms | 128ms |
+
+It is one symmetric debounce, and it did **not** grow with load. A settled check
+itself costs ~11ms, so re-asking is cheap; only the initial wait is not.
+
+> **Measure it with a fine poll interval.** The first pass at this reported
+> 170-350ms and concluded the lag "grows under load". Both were artifacts of
+> polling at 50-100ms — the granularity, not the lag. Re-measuring at 20ms
+> collapsed the spread to 77-128ms and removed the load dependence entirely.
+
+Both directions are damaging, so waiting is the only fix:
+
+- asked too early it answers `No errors found.` for a document that was just
+  broken — a **silent** miss, and `ped_update_document` is no backstop because it
+  reports op-level failures only (a duplicate name comes back as `SUCCESS`);
+- it equally still reports an error a just-applied op has already **cleared**,
+  which fails a perfectly good statement on a leftover verdict. A multi-op ALTER
+  passes through intermediate states that are legitimately invalid, so this is
+  not hypothetical.
+
+**`Backend.pedCheckDocument` owns the pacing for every call site**: sleep
+`settleDelay` (250ms, ~2x the observed max) before the first ask, then re-ask
+across `settleWindow` (250ms) at `settleInterval` while the answer stays clean,
+short-circuiting on an error. Re-asking is only safe *after* the delay — past it
+a dirty verdict is current rather than left over. It lives in the shared helper
+rather than in each caller so a new write path cannot forget it; the cost is one
+settle per backend operation, and no operation validates more than once (checked:
+`renameAttribute` and `applyInPlaceEntityChanges` are early-return branches of
+`UpdateEntity`, not a loop).
+
+Verified live against the immediate check as a control, 6 trials each: the
+immediate check missed a real error **6/6** and falsely failed on a cleared
+transient **6/6**; the settled check was **0/6** on both.
 
 **New authoring capability — attribute default values (implemented, `domainmodel.go`).** PED's `DomainModels$StoredValue.defaultValue` is settable via a `ped_update_document` path-op (`/entities/N/attributes/M/value/defaultValue`); the create constructor still can't carry it, so it's set as a follow-up after the attribute exists (`applyAttributeDefaults`). Verified live on 11.12: enums store **bare** (`Draft`, not `MES.WorkOrderStatus.Draft`); PED accepts bare or qualified input but normalises to bare. **Gated on the project Mendix version (11.12+), not the server version** (frozen at 1.0.0 — see the caveat under Server identity). The entity/attribute `$constructor` schema is otherwise unchanged from 11.11; its text now hints `DomainModels$Index` and `DomainModels$ValidationRule` are addable the same constructor-then-path-op way — candidates to wire next, like defaults.
 

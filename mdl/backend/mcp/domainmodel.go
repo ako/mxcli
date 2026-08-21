@@ -1189,10 +1189,64 @@ func (b *Backend) pedCheckErrors(moduleName string) error {
 	return b.pedCheckDocument(domainModelDocType, moduleName)
 }
 
-// pedCheckDocument validates an arbitrary document and surfaces any errors.
+// The settle constants pace pedCheckDocument against Studio Pro's error-list lag.
+//
+// ped_check_errors reads the error list Studio Pro maintains on a BACKGROUND
+// thread, so it reports the model as of some moment before the call. Measured
+// live (PED 1.0.0) with a 20ms poll interval, 26 samples spanning both
+// directions and three write-load levels (0, 10 and 30 preceding writes):
+//
+//	write -> error becomes visible   77-115ms  (median 82ms)
+//	fix   -> error stops being shown 75-128ms  (median 83ms)
+//
+// It is one symmetric debounce, and it did NOT grow with load. (An earlier
+// figure of ~170-350ms in the issue #945 notes was an artifact of polling at
+// 50-100ms intervals — the granularity, not the lag.) A settled check itself
+// costs ~11ms, which is why re-asking is cheap and only the initial wait is not.
+//
+// Both directions of the lag are damaging, so waiting is the only fix. Asked too
+// early the check answers "No errors found." for a document that was just broken
+// — a SILENT miss, and ped_update_document is no backstop because it reports
+// op-level failures only (a duplicate name comes back as SUCCESS). It equally
+// still reports an error a just-applied op has already cleared, which would fail
+// a perfectly good statement on a leftover verdict; a multi-op ALTER passes
+// through intermediate states that are legitimately invalid, so that is not
+// hypothetical.
+//
+// Hence settleDelay (~2x the observed max) before the first ask, then
+// settleWindow of re-asking while the answer stays clean, in case the lag runs
+// longer somewhere unmeasured. Re-asking is only safe after settleDelay: past
+// it, a dirty verdict is current rather than left over.
+const (
+	settleDelay    = 250 * time.Millisecond
+	settleWindow   = 250 * time.Millisecond
+	settleInterval = 50 * time.Millisecond
+)
+
+// pedCheckDocument validates an arbitrary document and surfaces any errors,
+// waiting out the error-list lag first (see the settle constants). Every write
+// path validates through here, so the pacing cannot be forgotten by a new call
+// site — the cost is one settle per backend operation, and no operation checks
+// more than once.
+func (b *Backend) pedCheckDocument(docType, docName string) error {
+	time.Sleep(b.settleDelay)
+	deadline := time.Now().Add(b.settleWindow)
+	for {
+		if err := b.checkDocumentNow(docType, docName); err != nil {
+			return err
+		}
+		if !time.Now().Before(deadline) {
+			return nil
+		}
+		time.Sleep(settleInterval)
+	}
+}
+
+// checkDocumentNow asks for the current verdict without waiting for the error
+// list to settle — which is why only pedCheckDocument should call it.
 // ped_check_errors reports a clean document as "No errors found." (with
 // isError=false); any other text is the validation error(s).
-func (b *Backend) pedCheckDocument(docType, docName string) error {
+func (b *Backend) checkDocumentNow(docType, docName string) error {
 	res, err := b.client.CallTool("ped_check_errors", map[string]any{
 		"documents": []map[string]any{
 			{"documentType": docType, "documentName": docName},
