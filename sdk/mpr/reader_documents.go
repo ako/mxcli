@@ -214,6 +214,40 @@ func (r *Reader) GetMicroflow(id model.ID) (*microflows.Microflow, error) {
 	return r.parseMicroflow(unit.ID, unit.ContainerID, unit.Contents)
 }
 
+// ListRules returns every rule document (Microflows$Rule). Rules are a distinct
+// doctype and deliberately absent from ListMicroflows.
+func (r *Reader) ListRules() ([]*microflows.Rule, error) {
+	units, err := r.listUnitsByType("Microflows$Rule")
+	if err != nil {
+		return nil, err
+	}
+
+	var result []*microflows.Rule
+	for _, u := range units {
+		rule, err := r.parseRule(u.ID, u.ContainerID, u.Contents)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse rule %s: %w", u.ID, err)
+		}
+		result = append(result, rule)
+	}
+
+	return result, nil
+}
+
+// GetRule retrieves a rule by ID.
+func (r *Reader) GetRule(id model.ID) (*microflows.Rule, error) {
+	rules, err := r.ListRules()
+	if err != nil {
+		return nil, err
+	}
+	for _, rule := range rules {
+		if rule.ID == id {
+			return rule, nil
+		}
+	}
+	return nil, nil
+}
+
 // IsRule reports whether the given qualified name refers to a rule
 // (Microflows$Rule). Rules share the microflow namespace but are stored
 // under a distinct BSON type — the flow-builder needs this distinction so

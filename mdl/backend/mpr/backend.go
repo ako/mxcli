@@ -275,6 +275,12 @@ func (b *MprBackend) IsRule(qualifiedName string) (bool, error) {
 func (b *MprBackend) ListNanoflows() ([]*microflows.Nanoflow, error) {
 	return b.reader.ListNanoflows()
 }
+func (b *MprBackend) ListRules() ([]*microflows.Rule, error) {
+	return b.reader.ListRules()
+}
+func (b *MprBackend) GetRule(id model.ID) (*microflows.Rule, error) {
+	return b.reader.GetRule(id)
+}
 func (b *MprBackend) ParseMicroflowFromRaw(raw map[string]any, unitID, containerID model.ID) *microflows.Microflow {
 	return mpr.ParseMicroflowFromRaw(raw, unitID, containerID)
 }

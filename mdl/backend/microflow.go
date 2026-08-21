@@ -33,6 +33,12 @@ type MicroflowBackend interface {
 	DeleteNanoflow(id model.ID) error
 	MoveNanoflow(nf *microflows.Nanoflow) error
 
+	// ListRules / GetRule read rule documents (Microflows$Rule). A rule is its
+	// own doctype, not a microflow variant: ListMicroflows does not return them,
+	// exactly as it does not return nanoflows or workflows.
+	ListRules() ([]*microflows.Rule, error)
+	GetRule(id model.ID) (*microflows.Rule, error)
+
 	// IsRule reports whether the given qualified name refers to a rule
 	// (Microflows$Rule) rather than a microflow. The flow builder uses this
 	// to decide whether an IF condition that looks like a function call

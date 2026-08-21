@@ -21,6 +21,7 @@ showStatement
     | showOrList ASSOCIATIONS (IN (qualifiedName | IDENTIFIER))?
     | showOrList MICROFLOWS (IN (qualifiedName | IDENTIFIER))?
     | showOrList NANOFLOWS (IN (qualifiedName | IDENTIFIER))?
+    | showOrList RULES (IN (qualifiedName | IDENTIFIER))?
     | showOrList WORKFLOWS (IN (qualifiedName | IDENTIFIER))?
     | showOrList PAGES (IN (qualifiedName | IDENTIFIER))?
     | showOrList SNIPPETS (IN (qualifiedName | IDENTIFIER))?
@@ -150,6 +151,7 @@ describeStatement
     | DESCRIBE ASSOCIATION qualifiedName
     | DESCRIBE MICROFLOW qualifiedName
     | DESCRIBE NANOFLOW qualifiedName
+    | DESCRIBE RULE qualifiedName
     | DESCRIBE WORKFLOW qualifiedName
     | DESCRIBE PAGE qualifiedName
     | DESCRIBE SNIPPET qualifiedName

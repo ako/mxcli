@@ -65,6 +65,20 @@ func (m *MockBackend) ParseMicroflowBSON(contents []byte, unitID, containerID mo
 	return nil, fmt.Errorf("MockBackend.ParseMicroflowBSON not configured")
 }
 
+func (m *MockBackend) ListRules() ([]*microflows.Rule, error) {
+	if m.ListRulesFunc != nil {
+		return m.ListRulesFunc()
+	}
+	return nil, fmt.Errorf("MockBackend.ListRules not configured")
+}
+
+func (m *MockBackend) GetRule(id model.ID) (*microflows.Rule, error) {
+	if m.GetRuleFunc != nil {
+		return m.GetRuleFunc(id)
+	}
+	return nil, fmt.Errorf("MockBackend.GetRule not configured")
+}
+
 func (m *MockBackend) ListNanoflows() ([]*microflows.Nanoflow, error) {
 	if m.ListNanoflowsFunc != nil {
 		return m.ListNanoflowsFunc()

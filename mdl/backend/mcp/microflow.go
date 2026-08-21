@@ -184,6 +184,12 @@ func mfKey(m *microflows.Microflow) string {
 // Nanoflow reads/writes live in nanoflow.go (they reuse buildFlowDocContent).
 func (b *Backend) IsRule(qualifiedName string) (bool, error) { return b.reader.IsRule(qualifiedName) }
 
+// Rule reads delegate to the local reader, like nanoflow reads: MDL cannot yet
+// author a rule over MCP, so there is nothing session-local to merge.
+func (b *Backend) ListRules() ([]*microflows.Rule, error) { return b.reader.ListRules() }
+
+func (b *Backend) GetRule(id model.ID) (*microflows.Rule, error) { return b.reader.GetRule(id) }
+
 // pedMiddlePoint converts an executor object position to a PED relativeMiddlePoint.
 // The executor's layout engine already computes these coordinates (the same
 // value the MPR writer serializes as RelativeMiddlePoint), so reusing them makes

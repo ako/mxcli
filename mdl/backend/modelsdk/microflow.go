@@ -129,6 +129,63 @@ func nanoflowFromGen(nf *genMf.Nanoflow, containerID model.ID) *microflows.Nanof
 	return out
 }
 
+// ListRules returns every Microflows$Rule document. A rule is its own doctype,
+// so it is deliberately absent from ListMicroflows — SHOW MICROFLOWS lists
+// microflows only, as it already does for nanoflows and workflows.
+func (b *Backend) ListRules() ([]*microflows.Rule, error) {
+	units, err := mprread.ListUnitsWithContainer[*genMf.Rule](b.reader)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*microflows.Rule, 0, len(units))
+	for _, u := range units {
+		out = append(out, ruleFromGen(u.Element, u.ContainerID))
+	}
+	return out, nil
+}
+
+func (b *Backend) GetRule(id model.ID) (*microflows.Rule, error) {
+	units, err := mprread.ListUnitsWithContainer[*genMf.Rule](b.reader)
+	if err != nil {
+		return nil, err
+	}
+	for _, u := range units {
+		if model.ID(u.Element.ID()) == id {
+			return ruleFromGen(u.Element, u.ContainerID), nil
+		}
+	}
+	return nil, nil
+}
+
+// ruleFromGen mirrors nanoflowFromGen — a rule shares the parameter, flow-object
+// and return-type structures with a microflow, so the same helpers apply.
+//
+// gen also declares a ReturnType string beside MicroflowReturnType. Studio Pro
+// 11.13 does not write it (measured on both reference rules) and
+// generated/metamodel does not list it, so it is not read here and must not be
+// written: it is a pre-7 legacy property with nothing to carry through.
+func ruleFromGen(r *genMf.Rule, containerID model.ID) *microflows.Rule {
+	out := &microflows.Rule{
+		ContainerID:        containerID,
+		Name:               r.Name(),
+		Documentation:      r.Documentation(),
+		Excluded:           r.Excluded(),
+		MarkAsUsed:         r.MarkAsUsed(),
+		ApplyEntityAccess:  r.ApplyEntityAccess(),
+		ReturnVariableName: r.ReturnVariableName(),
+		ReturnType:         dataTypeFromGen(r.MicroflowReturnType()),
+	}
+	out.ID = model.ID(r.ID())
+	params, objs := splitFlowObjects(r.ObjectCollection())
+	out.Parameters = params
+	flows := flowsFromGen(r.FlowsItems())
+	annotFlows := annotationFlowsFromGen(r.FlowsItems())
+	if objs != nil || flows != nil || annotFlows != nil {
+		out.ObjectCollection = &microflows.MicroflowObjectCollection{Objects: objs, Flows: flows, AnnotationFlows: annotFlows}
+	}
+	return out
+}
+
 func microflowFromGen(mf *genMf.Microflow, containerID model.ID) *microflows.Microflow {
 	out := &microflows.Microflow{
 		ContainerID:        containerID,
