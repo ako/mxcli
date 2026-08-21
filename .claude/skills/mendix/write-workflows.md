@@ -223,6 +223,37 @@ documented in `system-module.md`.
   name exactly. Mendix expressions are case-sensitive on 11.9+, so a lowercase
   `$workflowContext` is an undefined variable and yields `CE0117`.
 
+## Observing a running workflow
+
+A workflow's characteristic failures are **runtime** failures — an instance that
+starts and stops, a task that never reaches an inbox, a task page that renders
+blank. None of them is visible to `mxcli check`, `mxcli lint` or `mx check`,
+which all validate the model rather than the data the model no longer matches.
+So do not stop at "it builds".
+
+Everything needed is already a skill — read the one you need rather than
+hand-rolling admin-API calls:
+
+| To see | Read |
+|---|---|
+| Live instances and open tasks (OQL against the running app) | [`verify-with-oql.md`](verify-with-oql.md), [`write-oql-queries.md`](write-oql-queries.md) |
+| The exception that stopped an instance | [`analyze-runtime.md`](analyze-runtime.md) — `run --local` tees the runtime log to `<projectDir>/.mxcli/runtime.log` |
+| `System.Workflow` / `System.WorkflowUserTask` / `System.WorkflowDefinition` shapes | [`system-module.md`](system-module.md) |
+| Driving a task end to end and asserting the result | [`test-app.md`](test-app.md), [`run-local.md`](run-local.md) |
+| Raw admin API, incl. `POST /dev/preview_execute_oql` | [`runtime-admin-api.md`](runtime-admin-api.md) |
+
+Two traps worth knowing before you start:
+
+- **The declared return type is not what the runtime checks.** A workflow-called
+  microflow whose end event returns a value while the microflow declares no
+  return type fails at instance start with `Trying to compare
+  VoidConditionValue$('') to BooleanValue('true')`. `mxcli check` catches this as
+  **MDL004** — so do not skip it, and do not reach for `--no-check` to get past
+  it. Read the message in the order it is written: the receiver is the stored
+  outcome's condition, the argument is what the microflow actually returned.
+- **A parked instance is not a failed one.** A wait or timer branch is supposed
+  to sit there. Check the branch before calling it a hang.
+
 ## Validate before presenting
 
 ```bash
