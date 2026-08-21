@@ -297,16 +297,30 @@ The two BSON questions this proposal was blocked on are **answered** by
    must at minimum be **preserved** on modify; whether MDL grows a surface for
    it is a separate call.
 
-### Two reference documents that would still help
+### A foldered rule is stored like any other document — measured
 
-Neither blocks implementation; both would turn an inference into a measurement.
+TestApp now places both rules in a `MyRulesRule` folder, and the containment is
+exactly a microflow's: the rule's unit row is `ContainmentName: "Documents"`
+with `ContainerID` pointing at the folder unit, which is itself `Folders` under
+the module. Nothing about a rule's placement is special.
 
-- **A decision that calls a rule, authored in Studio Pro.** TestApp has none, so
-  the `Microflows$RuleSplitCondition` shape #939 now writes is validated against
-  the legacy engine's output rather than against Studio Pro. The two agree
-  key-for-key, which is good evidence, but not the same thing.
-- **A rule inside a folder**, for the MOVE/`FOLDER` clause slice. Both reference
-  rules sit at the module root.
+Two consequences, both shrinking the plan:
+
+- `LIST FOLDERS IN Rules` already renders the foldered rules correctly, with no
+  change — #932's `ListDocumentUnits` walk is containment-generic.
+- The MOVE/`FOLDER` work in Slice 3 is **one entry in
+  `ast.MoveDocumentTypeByKeyword`**, not a placement implementation.
+
+### One reference document would still help
+
+It does not block implementation. `Rules.MicroflowUsingRule` exists but is
+currently empty (start → end, no decision), so TestApp still contains **no
+`Microflows$RuleSplitCondition`** — meaning the shape #939 now writes is
+validated against the legacy engine's output rather than against Studio Pro.
+The two agree key-for-key, which is good evidence but not the same thing.
+
+Dropping a decision into that microflow and pointing it at `Rules.Rule1` would
+close it.
 
 ## Adjacent findings, out of scope
 
