@@ -29,7 +29,9 @@ func UnknownFunctionCalls(src string) []FuncRef {
 	}
 	var out []FuncRef
 	walkCalls(root, func(c *CallExpr) {
-		if c.Name == "" {
+		if c.Name == "" || c.Qualified {
+			// A qualified call is never a built-in, so "did you mean toString()?"
+			// would be nonsense; MDL066 reports it with the right fix.
 			return
 		}
 		if _, ok := funcTable[c.Name]; ok {
