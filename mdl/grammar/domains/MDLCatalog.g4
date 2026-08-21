@@ -220,6 +220,7 @@ catalogTableName
     | ASSOCIATIONS  // keyword token — must be listed explicitly
     | MICROFLOWS
     | NANOFLOWS
+    | RULES
     | PAGES
     | SNIPPETS
     | LAYOUTS

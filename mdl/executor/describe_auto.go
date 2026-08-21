@@ -23,6 +23,7 @@ var objectTypeToDescribeKind = map[string]ast.DescribeObjectType{
 	"ASSOCIATION":            ast.DescribeAssociation,
 	"MICROFLOW":              ast.DescribeMicroflow,
 	"NANOFLOW":               ast.DescribeNanoflow,
+	"RULE":                   ast.DescribeRule,
 	"PAGE":                   ast.DescribePage,
 	"SNIPPET":                ast.DescribeSnippet,
 	"BUILDING_BLOCK":         ast.DescribeBuildingBlock,

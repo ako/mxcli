@@ -286,6 +286,18 @@ func (b *Builder) buildReferences() error {
 		}
 	}
 
+	// Extract rule references. A rule's body calls microflows, retrieves and
+	// evaluates like any other flow, and without this walk every document a rule
+	// calls is invisible to the reference graph — reported dead by
+	// `show callers`, GRAPH_DEAD_ASSETS and lint rule QUAL004. Same shape as the
+	// scheduled-event gap, one layer deeper.
+	rules, err := b.cachedRules()
+	if err == nil {
+		for _, rule := range rules {
+			emitActionRefs("RULE", string(rule.ID), rule.ContainerID, rule.Name, rule.Parameters, rule.ReturnType, rule.ObjectCollection)
+		}
+	}
+
 	// Extract entity references (generalization) — using cached list
 	dms, err := b.cachedDomainModels()
 	if err == nil {
