@@ -100,6 +100,7 @@ func workflowActivityFromGen(el element.Element) workflows.WorkflowActivity {
 			Page:            taskPageName(a.TaskPage()),
 		}
 		setWfBase(&t.BaseWorkflowActivity, a.ID(), a.Name(), a.Caption(), a.Annotation(), "Workflows$SingleUserTaskActivity")
+		t.BoundaryEvents = boundaryEventsFromGen(a.BoundaryEventsItems())
 		t.Outcomes = userTaskOutcomesFromGen(a.OutcomesItems())
 		return t
 	case *genWf.MultiUserTaskActivity:
@@ -113,17 +114,20 @@ func workflowActivityFromGen(el element.Element) workflows.WorkflowActivity {
 			Page:            taskPageName(a.TaskPage()),
 		}
 		setWfBase(&t.BaseWorkflowActivity, a.ID(), a.Name(), a.Caption(), a.Annotation(), "Workflows$MultiUserTaskActivity")
+		t.BoundaryEvents = boundaryEventsFromGen(a.BoundaryEventsItems())
 		t.Outcomes = userTaskOutcomesFromGen(a.OutcomesItems())
 		return t
 	case *genWf.CallMicroflowTask:
 		t := &workflows.CallMicroflowTask{Microflow: a.MicroflowQualifiedName()}
 		setWfBase(&t.BaseWorkflowActivity, a.ID(), a.Name(), a.Caption(), a.Annotation(), "Workflows$CallMicroflowTask")
+		t.BoundaryEvents = boundaryEventsFromGen(a.BoundaryEventsItems())
 		t.Outcomes = conditionOutcomesFromGen(a.OutcomesItems())
 		t.ParameterMappings = microflowParamMappingsFromGen(a.ParameterMappingsItems())
 		return t
 	case *genWf.CallMicroflowActivity:
 		t := &workflows.CallMicroflowTask{Microflow: a.MicroflowQualifiedName()}
 		setWfBase(&t.BaseWorkflowActivity, a.ID(), a.Name(), a.Caption(), a.Annotation(), "Workflows$CallMicroflowActivity")
+		t.BoundaryEvents = boundaryEventsFromGen(a.BoundaryEventsItems())
 		t.Outcomes = conditionOutcomesFromGen(a.OutcomesItems())
 		t.ParameterMappings = microflowParamMappingsFromGen(a.ParameterMappingsItems())
 		return t
@@ -133,6 +137,7 @@ func workflowActivityFromGen(el element.Element) workflows.WorkflowActivity {
 			ParameterExpression: a.ParameterExpression(),
 		}
 		setWfBase(&t.BaseWorkflowActivity, a.ID(), a.Name(), a.Caption(), a.Annotation(), "Workflows$CallWorkflowActivity")
+		t.BoundaryEvents = boundaryEventsFromGen(a.BoundaryEventsItems())
 		return t
 	case *genWf.ExclusiveSplitActivity:
 		t := &workflows.ExclusiveSplitActivity{Expression: a.Expression()}
@@ -351,4 +356,63 @@ func setWfBase(a *workflows.BaseWorkflowActivity, id element.ID, name, caption s
 	a.Caption = caption
 	a.TypeName = typeName
 	a.Annotation = annotationText(annotation)
+}
+
+// boundaryEventsFromGen reconstructs an activity's boundary events, including
+// each one's handler flow.
+//
+// Both engines WRITE boundary events; only the legacy parser
+// (sdk/mpr/parser_workflow.go, parseBoundaryEvents) read them back. So a boundary
+// event mxcli had just written read back as absent on the default engine:
+// DESCRIBE rendered nothing, and describe → edit → re-exec silently dropped the
+// timer, its handler flow and the jump inside it (issue #948).
+//
+// The delay lives under FirstExecutionTime for every timer variant — Delay() is
+// a separate gen accessor that real documents leave empty — so it is read first
+// and Delay() is only a fallback, matching the legacy parser.
+func boundaryEventsFromGen(items []element.Element) []*workflows.BoundaryEvent {
+	var out []*workflows.BoundaryEvent
+	for _, el := range items {
+		be := boundaryEventFromGen(el)
+		if be != nil {
+			out = append(out, be)
+		}
+	}
+	return out
+}
+
+func boundaryEventFromGen(el element.Element) *workflows.BoundaryEvent {
+	// The three timer variants differ only in $Type, and gen gives each its own
+	// concrete type, so the shared shape is read through a small interface rather
+	// than repeated three times.
+	type timerBoundary interface {
+		Caption() string
+		FirstExecutionTime() string
+		Delay() string
+		Flow() element.Element
+	}
+	t, ok := el.(timerBoundary)
+	if !ok {
+		return nil
+	}
+	be := &workflows.BoundaryEvent{Caption: t.Caption()}
+	be.ID = model.ID(el.ID())
+	be.TimerDelay = t.FirstExecutionTime()
+	if be.TimerDelay == "" {
+		be.TimerDelay = t.Delay()
+	}
+	switch el.(type) {
+	case *genWf.InterruptingTimerBoundaryEvent:
+		be.EventType = "InterruptingTimer"
+	case *genWf.NonInterruptingTimerBoundaryEvent:
+		be.EventType = "NonInterruptingTimer"
+	case *genWf.TimerBoundaryEvent:
+		be.EventType = "Timer"
+	default:
+		return nil // an unknown boundary-event kind is not silently mistyped
+	}
+	if f, ok := t.Flow().(*genWf.Flow); ok && f != nil {
+		be.Flow = workflowFlowFromGen(f)
+	}
+	return be
 }

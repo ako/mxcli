@@ -102,6 +102,8 @@ func stmtCreateInfo(stmt ast.Statement) (docType, name string, idempotent bool) 
 		return "microflow", s.Name.String(), s.CreateOrModify
 	case *ast.CreateNanoflowStmt:
 		return "nanoflow", s.Name.String(), s.CreateOrModify
+	case *ast.CreateRuleStmt:
+		return "rule", s.Name.String(), s.CreateOrModify
 	case *ast.CreatePageStmtV3:
 		return "page", s.Name.String(), s.IsModify || s.IsReplace
 	case *ast.CreateSnippetStmtV3:

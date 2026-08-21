@@ -633,9 +633,9 @@ owner both;     -- Creates 1-to-1: Customer has one Order
 
 | MDL Behavior | BSON DeleteBehavior.Type |
 |--------------|--------------------------|
-| `DELETE_BUT_KEEP_REFERENCES` | `"DeleteMeButKeepReferences"` |
-| `DELETE_CASCADE` | `"DeleteMeAndReferences"` |
-| (default) | `"DeleteMeIfNoReferences"` |
+| `DELETE_BUT_KEEP_REFERENCES` (and the default, when the clause is omitted) | `"DeleteMeButKeepReferences"` |
+| `DELETE_AND_REFERENCES`, `CASCADE` | `"DeleteMeAndReferences"` |
+| `DELETE_IF_NO_REFERENCES`, `PREVENT` | `"DeleteMeIfNoReferences"` |
 
 ---
 

@@ -10191,7 +10191,9 @@ func (o *RuleCall) RemoveParameterMappings(index int) {
 
 // InitFromRaw populates lazy-decoded property holders from raw BSON.
 func (o *RuleCall) InitFromRaw(raw bson.Raw) {
-	if val, err := raw.LookupErr("Rule"); err == nil {
+	// STORAGE-NAME OVERRIDE: see initRuleCall — the rule reference is stored
+	// under "Microflow".
+	if val, err := raw.LookupErr("Microflow"); err == nil {
 		if s, ok := val.StringValueOK(); ok {
 			o.rule.SetFromDecode(s)
 		}
@@ -16065,7 +16067,14 @@ func NewRule() *Rule {
 func initRuleCall() *RuleCall {
 	o := &RuleCall{}
 	o.SetTypeName("Microflows$RuleCall")
-	o.rule = property.NewByNameRef[element.Element]("Rule", "Microflows$Rule")
+	// STORAGE-NAME OVERRIDE: real BSON key is Microflow, not Rule. Rules share the
+	// microflow namespace and Mendix stores the reference under the microflow key
+	// (generated/metamodel: `json:"microflow"`; sdk/mpr/writer_microflow.go writes
+	// it; modelsdk/gen/keyaudit_test.go records the mismatch). Written as "Rule"
+	// the reference is invisible to Mendix — mx check CE0080 "The 'Condition'
+	// property is required" (upstream #939). Patched on BOTH sides: InitFromRaw
+	// below reads the same key.
+	o.rule = property.NewByNameRef[element.Element]("Microflow", "Microflows$Rule")
 	o.rule.Bind(&o.Base, 0)
 	o.parameterMappings = property.NewPartList[element.Element]("ParameterMappings")
 	o.parameterMappings.Bind(&o.Base, 1)

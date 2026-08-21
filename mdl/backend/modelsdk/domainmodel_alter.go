@@ -144,17 +144,51 @@ func (b *Backend) UpdateEntity(domainModelID model.ID, entity *domainmodel.Entit
 		ge.SetRaw(raw)
 	}
 
-	// When the update removes ALL indexes but the stored entity had some, the fresh
-	// (empty) Indexes list on ge is "clean" (untouched), so the codec passes the
-	// raw indexes through unchanged — a dropped indexed attribute would then leave
-	// an orphaned index pointing at a GUID that no longer exists, which crashes
-	// `mx check` with an unhandled AggregateException (ledger #39). Touch the list
-	// (append + remove) to mark it dirty so the codec re-emits it as empty,
-	// clearing the raw. A non-empty new index list is already dirty (entityToGen
-	// appended to it), so this is only needed for the all-removed case.
-	if len(entity.Indexes) == 0 && len(orig.IndexesItems()) > 0 {
-		ge.AddIndexes(genDm.NewIndex())
-		ge.RemoveIndexes(0)
+	// When an update empties a child list, the fresh (empty) list on ge is "clean"
+	// — entityToGen appended nothing to it — so the codec passes the STORED raw
+	// bytes through unchanged and the removal silently does not happen. Touching
+	// the list (append + remove) marks it dirty, so the codec re-emits it as empty
+	// and clears the raw. A list that still has members is already dirty from
+	// entityToGen's appends, which is why this is only needed for the last one out.
+	//
+	// That "last one out" is the whole trap: any test that removes one of two
+	// members passes against the broken code. Measured on 11.13.0, one member each:
+	//
+	//   Indexes          orphaned index → `mx check` dies with an unhandled
+	//                    AggregateException (ledger #39)
+	//   ValidationRules  rule outlives the attribute it constrains → CE1613
+	//   Attributes       DROP ATTRIBUTE reports success and writes nothing at all
+	//
+	// AccessRules and EventHandlers share the mechanism; they are covered here
+	// rather than left to be rediscovered one error code at a time.
+	for _, l := range []struct {
+		newLen, storedLen int
+		touch             func()
+	}{
+		{len(entity.Attributes), len(orig.AttributesItems()), func() {
+			ge.AddAttributes(genDm.NewAttribute())
+			ge.RemoveAttributes(0)
+		}},
+		{len(entity.ValidationRules), len(orig.ValidationRulesItems()), func() {
+			ge.AddValidationRules(genDm.NewValidationRule())
+			ge.RemoveValidationRules(0)
+		}},
+		{len(entity.Indexes), len(orig.IndexesItems()), func() {
+			ge.AddIndexes(genDm.NewIndex())
+			ge.RemoveIndexes(0)
+		}},
+		{len(entity.AccessRules), len(orig.AccessRulesItems()), func() {
+			ge.AddAccessRules(genDm.NewAccessRule())
+			ge.RemoveAccessRules(0)
+		}},
+		{len(entity.EventHandlers), len(orig.EventHandlersItems()), func() {
+			ge.AddEventHandlers(genDm.NewEventHandler())
+			ge.RemoveEventHandlers(0)
+		}},
+	} {
+		if l.newLen == 0 && l.storedLen > 0 {
+			l.touch()
+		}
 	}
 
 	// Rebuild the list in place: drop all, re-add in original order swapping the

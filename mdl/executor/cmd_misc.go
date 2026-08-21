@@ -118,7 +118,7 @@ Domain Model - Associations:
     to Module.Child
     type Reference|ReferenceSet
     [owner Default|Both|Parent|Child]
-    [delete_behavior DELETE_BUT_KEEP_REFERENCES|DELETE_CASCADE];
+    [delete_behavior DELETE_BUT_KEEP_REFERENCES|DELETE_AND_REFERENCES|DELETE_IF_NO_REFERENCES];
   /
 
   drop association Module.Name;
@@ -242,6 +242,7 @@ Security - Access Control:
 Security - Project Settings:
   alter project security level off|prototype|production;
   alter project security demo users on|off;
+  alter project security guest access on role <UserRole>|off;
   create demo user 'name' password 'pass' (UserRole [, ...]);
   drop demo user 'name';
 

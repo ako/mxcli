@@ -607,15 +607,21 @@ func TestWFNestedActivityResolution(t *testing.T) {
 	m := &mcpWorkflowMutator{backend: &Backend{client: f.connectClient(t)}, moduleName: "M", workflowName: "WF"}
 
 	// Resolve lands in the nested flow.
-	arrayPath, index, actPath, err := m.resolve("NestedCall", 0)
+	loc, err := m.resolve("NestedCall", 0)
 	if err != nil {
 		t.Fatalf("resolve nested: %v", err)
 	}
-	if arrayPath != "/flow/activities/1/outcomes/0/flow/activities" || index != 0 {
-		t.Fatalf("nested resolve = %q[%d], want /flow/activities/1/outcomes/0/flow/activities[0]", arrayPath, index)
+	if loc.arrayPath != "/flow/activities/1/outcomes/0/flow/activities" || loc.index != 0 {
+		t.Fatalf("nested resolve = %q[%d], want /flow/activities/1/outcomes/0/flow/activities[0]", loc.arrayPath, loc.index)
 	}
-	if actPath != "/flow/activities/1/outcomes/0/flow/activities/0" {
-		t.Fatalf("actPath = %q", actPath)
+	if loc.actPath != "/flow/activities/1/outcomes/0/flow/activities/0" {
+		t.Fatalf("actPath = %q", loc.actPath)
+	}
+	// The same walk collects every activity name, nested ones included.
+	for _, want := range []string{"Start", "Review", "NestedCall", "End"} {
+		if !loc.taken[want] {
+			t.Errorf("resolve did not record activity name %q: %v", want, loc.taken)
+		}
 	}
 
 	// DropActivity on the nested ref removes from the nested array.

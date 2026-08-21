@@ -160,11 +160,34 @@ surface (insert path, drop path, insert condition, boundary events).
 ## DESCRIBE round-trip
 
 `DESCRIBE WORKFLOW Module.Name` emits **executable, re-runnable** MDL — user
-tasks, decisions, splits, jump-to targets, and wait activities all come back as
-statements (not comments). You can learn the exact syntax by describing a
-Studio-Pro-authored workflow, and `describe → drop → exec` reproduces a workflow
-that builds. (The implicit start/end activities are omitted, as they are
-re-synthesised on create.)
+tasks, decisions, splits, jump-to targets, wait activities and boundary events
+all come back as statements (not comments). You can learn the exact syntax by
+describing a Studio-Pro-authored workflow, and `describe → drop → exec`
+reproduces a workflow that builds. (The implicit start/end activities are
+omitted, as they are re-synthesised on create.)
+
+**What DESCRIBE still cannot see: event sub-processes.** mxcli has no model for
+them at all, so they do not appear in the output and cannot be written from MDL.
+A workflow that has one can only be edited in Studio Pro or through
+`ALTER WORKFLOW` (below) — never with `CREATE OR REPLACE`.
+
+## Rewriting an existing workflow
+
+`CREATE OR REPLACE|MODIFY WORKFLOW` **rebuilds the workflow from the statement**,
+so anything the script does not restate is deleted — including each boundary
+event's whole handler flow. This is the failure that costs real work: it is not
+reported by `mx check` afterwards, because the result is a perfectly valid
+workflow that simply no longer does what it did.
+
+mxcli refuses the two cases where that would lose something:
+
+- a stored **event sub-process** — MDL cannot express one, so the rewrite is
+  refused outright;
+- **more stored boundary events than the statement declares** — restate them and
+  the rewrite proceeds, which is what `describe workflow` now emits for you.
+
+The safe way to change one activity in a workflow carrying hand-placed structure
+is `ALTER WORKFLOW`, which mutates in place and touches nothing else.
 
 ## Microflow statements for workflow tasks
 
@@ -199,6 +222,37 @@ documented in `system-module.md`.
 - Write the context variable as **`$WorkflowContext`**, matching the parameter
   name exactly. Mendix expressions are case-sensitive on 11.9+, so a lowercase
   `$workflowContext` is an undefined variable and yields `CE0117`.
+
+## Observing a running workflow
+
+A workflow's characteristic failures are **runtime** failures — an instance that
+starts and stops, a task that never reaches an inbox, a task page that renders
+blank. None of them is visible to `mxcli check`, `mxcli lint` or `mx check`,
+which all validate the model rather than the data the model no longer matches.
+So do not stop at "it builds".
+
+Everything needed is already a skill — read the one you need rather than
+hand-rolling admin-API calls:
+
+| To see | Read |
+|---|---|
+| Live instances and open tasks (OQL against the running app) | [`verify-with-oql.md`](verify-with-oql.md), [`write-oql-queries.md`](write-oql-queries.md) |
+| The exception that stopped an instance | [`analyze-runtime.md`](analyze-runtime.md) — `run --local` tees the runtime log to `<projectDir>/.mxcli/runtime.log` |
+| `System.Workflow` / `System.WorkflowUserTask` / `System.WorkflowDefinition` shapes | [`system-module.md`](system-module.md) |
+| Driving a task end to end and asserting the result | [`test-app.md`](test-app.md), [`run-local.md`](run-local.md) |
+| Raw admin API, incl. `POST /dev/preview_execute_oql` | [`runtime-admin-api.md`](runtime-admin-api.md) |
+
+Two traps worth knowing before you start:
+
+- **The declared return type is not what the runtime checks.** A workflow-called
+  microflow whose end event returns a value while the microflow declares no
+  return type fails at instance start with `Trying to compare
+  VoidConditionValue$('') to BooleanValue('true')`. `mxcli check` catches this as
+  **MDL004** — so do not skip it, and do not reach for `--no-check` to get past
+  it. Read the message in the order it is written: the receiver is the stored
+  outcome's condition, the argument is what the microflow actually returned.
+- **A parked instance is not a failed one.** A wait or timer branch is supposed
+  to sit there. Check the branch before calling it a hang.
 
 ## Validate before presenting
 

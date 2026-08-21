@@ -413,7 +413,7 @@ Studio Pro picks the dropdown label from the referenced microflow's
 return type (`System.ConsumedODataConfiguration` vs
 `list of System.HttpHeader`).
 
-## Microflows & Nanoflows
+## Microflows, Nanoflows & Rules
 
 | Statement | Syntax | Notes |
 |-----------|--------|-------|
@@ -430,6 +430,13 @@ return type (`System.ConsumedODataConfiguration` vs
 | Create nanoflow | `create [or modify] nanoflow Module.Name (params) returns type [folder 'path'] begin ... end;` | Same body syntax as microflows |
 | Move nanoflow | `move nanoflow Module.Name to folder 'path';` | |
 | Nanoflow restrictions | N/A | No Java actions, ErrorEvent, REST calls, database queries, external actions, download file, workflow actions, import/export mappings, JSON transformation, show home page |
+| Show rules | `show rules [in module];` | `list rules` is the same statement |
+| Describe rule | `describe rule Module.Name;` | Round-trippable |
+| Create rule | `create [or modify] rule Module.Name (params) returns Boolean\|enum Module.Enum [folder 'path'] begin ... end;` | Same body syntax as microflows |
+| Drop rule | `drop rule Module.Name;` | |
+| Move rule | `move rule Module.Name to folder 'path';` | |
+| Call a rule | `if Module.Rule_Name(Param = $Value) then ... end if;` | A decision is the ONLY place a rule can be called |
+| Rule restrictions | N/A | Return type must be Boolean or an enumeration (mxbuild CE0103/CE0139); no create/change/delete/commit/rollback, no client interaction, no web-service calls (CE0009). There is no `grant execute on rule` — a rule stores no module-role security |
 
 ## Microflows - Supported Statements
 
@@ -453,7 +460,8 @@ it is for pages.
 | Retrieve (DB) | `retrieve $Var from Module.Entity [where condition];` | Database XPath retrieve |
 | Retrieve (Assoc) | `retrieve $list from $Parent/Module.AssocName;` | Retrieve by association |
 | Add to list | `add expression to $list;` | Also accepts existing `add $item to $list;` form |
-| Call microflow | `$Result = call microflow Module.Name (Param = $value);` | |
+| Call microflow | `$Result = call microflow Module.Name (Param = $value);` | A Mendix **expression** cannot call anything — `declare $r Boolean = Module.Name(...)` is CE0117 (MDL066) |
+| Call a rule | `if Module.SomeRule (Param = $value) then ... end if;` | A decision is the **only** place a rule can be evaluated; there is no call activity for one. The name must resolve to a rule — a microflow there is CE0117 |
 | Call microflow on a queue | `call microflow Module.Name (Param = $value) in queue Module.Queue;` | Background execution; the queue must exist (CE1613) |
 | Call Java action on a queue | `call java action Module.Name (Param = $value) in queue Module.Queue;` | The Java action must `returns void`, else CE7038 |
 | Call nanoflow | `$Result = call nanoflow Module.Name (Param = $value);` | |
@@ -549,6 +557,8 @@ Nested folders use `/` separator: `'Parent/Child/Grandchild'`. Missing folders a
 | Revoke entity access (partial) | `revoke Mod.Role on Mod.Entity (read (attr));` | Partial — downgrades specific rights |
 | Set security level | `alter project security level off\|prototype\|production;` | |
 | Toggle demo users | `alter project security demo users on\|off;` | |
+| Enable guest access | `alter project security guest access on role UserRole;` | Anonymous users. The role is what visitors get — its entity access is the public surface. Mendix fails the build without one (CE0133), so `on` is refused unless a role is given or already stored. mxcli validates the role exists; Mendix does not |
+| Disable guest access | `alter project security guest access off;` | Keeps the stored role, so re-enabling needs no `role` clause |
 | Create demo user | `create demo user 'name' password 'pass' [entity Module.Entity] (UserRole, ...);` | |
 | Drop demo user | `drop demo user 'name';` | |
 

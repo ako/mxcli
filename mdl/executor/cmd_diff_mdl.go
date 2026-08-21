@@ -184,7 +184,7 @@ func associationStmtToMDL(ctx *ExecContext, s *ast.CreateAssociationStmt) string
 	deleteBehavior := "DELETE_BUT_KEEP_REFERENCES"
 	switch s.DeleteBehavior {
 	case ast.DeleteCascade:
-		deleteBehavior = "DELETE_CASCADE"
+		deleteBehavior = "DELETE_AND_REFERENCES"
 	case ast.DeleteIfNoReferences:
 		deleteBehavior = "DELETE_IF_NO_REFERENCES"
 	}
@@ -753,7 +753,7 @@ func associationToMDL(ctx *ExecContext, moduleName string, assoc *domainmodel.As
 	if assoc.ChildDeleteBehavior != nil {
 		switch assoc.ChildDeleteBehavior.Type {
 		case domainmodel.DeleteBehaviorTypeDeleteMeAndReferences:
-			deleteBehavior = "DELETE_CASCADE"
+			deleteBehavior = "DELETE_AND_REFERENCES"
 		case domainmodel.DeleteBehaviorTypeDeleteMeIfNoReferences:
 			deleteBehavior = "DELETE_IF_NO_REFERENCES"
 		}

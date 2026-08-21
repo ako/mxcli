@@ -169,6 +169,16 @@ func (b *Builder) ExitShowStatement(ctx *parser.ShowStatementContext) {
 			}
 		}
 		b.statements = append(b.statements, stmt)
+	} else if ctx.RULES() != nil {
+		stmt := &ast.ShowStmt{ObjectType: ast.ShowRules}
+		if ctx.IN() != nil {
+			if qn := ctx.QualifiedName(); qn != nil {
+				stmt.InModule = getQualifiedNameText(qn)
+			} else if id := ctx.IDENTIFIER(); id != nil {
+				stmt.InModule = id.GetText()
+			}
+		}
+		b.statements = append(b.statements, stmt)
 	} else if ctx.WORKFLOWS() != nil {
 		stmt := &ast.ShowStmt{ObjectType: ast.ShowWorkflows}
 		if ctx.IN() != nil {
@@ -1082,6 +1092,11 @@ func (b *Builder) ExitDescribeStatement(ctx *parser.DescribeStatementContext) {
 	} else if ctx.NANOFLOW() != nil {
 		b.statements = append(b.statements, &ast.DescribeStmt{
 			ObjectType: ast.DescribeNanoflow,
+			Name:       name,
+		})
+	} else if ctx.RULE() != nil {
+		b.statements = append(b.statements, &ast.DescribeStmt{
+			ObjectType: ast.DescribeRule,
 			Name:       name,
 		})
 	} else if ctx.WORKFLOW() != nil {

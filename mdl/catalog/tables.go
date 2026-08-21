@@ -183,6 +183,13 @@ func (c *Catalog) createTables() error {
 		`CREATE VIEW IF NOT EXISTS nanoflows AS
 			SELECT * FROM microflows WHERE MicroflowType = 'NANOFLOW'`,
 
+		// rules view (filtered subset of microflows view). A rule shares the
+		// storage because it shares the shape — signature, body, complexity —
+		// but it is a distinct doctype, so `microflows` is itself filtered to
+		// MicroflowType = 'MICROFLOW' wherever it is presented as microflows.
+		`CREATE VIEW IF NOT EXISTS rules AS
+			SELECT * FROM microflows WHERE MicroflowType = 'RULE'`,
+
 		// microflow_parameters: one row per parameter, for microflows and
 		// nanoflows alike. microflows_data carries only ParameterCount, so a
 		// caller could see that a flow takes three arguments but not what they
@@ -1038,6 +1045,10 @@ func (c *Catalog) createTables() error {
 			SELECT Id, 'NANOFLOW' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
 				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
 			FROM microflows WHERE MicroflowType = 'NANOFLOW'
+			UNION ALL
+			SELECT Id, 'RULE' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
+				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource
+			FROM microflows WHERE MicroflowType = 'RULE'
 			UNION ALL
 			SELECT Id, 'PAGE' as ObjectType, Name, QualifiedName, ModuleName, Folder, Description,
 				ProjectId, ProjectName, SnapshotId, SnapshotDate, SnapshotSource

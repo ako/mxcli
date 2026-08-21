@@ -55,6 +55,7 @@ func writeTestBlock(b *strings.Builder, tc TestCase, index int) {
 	b.WriteString(fmt.Sprintf("  LOG INFO NODE 'MXTEST' 'MXTEST:RUN:%s:%s';\n",
 		escapeMDLString(tc.ID), escapeMDLString(tc.Name)))
 	b.WriteString("  SET $TestFailed = false;\n")
+	writeSetupBlock(b, tc)
 
 	if tc.Throws != "" {
 		writeThrowsTestBlock(b, tc, suffix)
@@ -77,15 +78,38 @@ func writeTestBlock(b *strings.Builder, tc TestCase, index int) {
 	// Generate assertion checks for @expect (with renamed variables)
 	// Use flat IF blocks (no nesting) to avoid Mendix end-event issues
 	if len(tc.Expects) > 0 {
-		for _, exp := range tc.Expects {
-			renamedExp := renameExpect(exp, varNames, suffix)
-			writeExpectAssertion(b, tc.ID, renamedExp)
+		renamed := make([]Expect, len(tc.Expects))
+		for i, exp := range tc.Expects {
+			renamed[i] = renameExpect(exp, varNames, suffix)
+		}
+		writeExpectAggregates(b, "  ", renamed)
+		for _, exp := range renamed {
+			writeExpectAssertion(b, tc.ID, exp)
 		}
 	} else if tc.Throws == "" {
 		// No expectations — just check it didn't throw
 		b.WriteString("  IF $TestFailed = false THEN\n")
 		b.WriteString(fmt.Sprintf("    LOG INFO NODE 'MXTEST' 'MXTEST:PASS:%s';\n", escapeMDLString(tc.ID)))
 		b.WriteString("  END IF;\n")
+	}
+}
+
+// writeSetupBlock writes a test's @setup calls into the monolithic runner.
+//
+// The counterpart of writeSetupCalls, differing only in how it reports: this
+// runner has no returned verdict to carry an outcome, so a failed setup goes out
+// as an ERROR line on the log protocol. It ends the runner flow the same way a
+// throwing test body does — that is this runner's existing behaviour, and one of
+// the reasons the endpoint runner exists.
+func writeSetupBlock(b *strings.Builder, tc TestCase) {
+	for _, flow := range tc.Setups {
+		fmt.Fprintf(b, "  CALL MICROFLOW %s() ON ERROR {\n", flow)
+		fmt.Fprintf(b, "    LOG ERROR NODE 'MXTEST' 'MXTEST:ERROR:%s:Setup failed: %s';\n",
+			escapeMDLString(tc.ID), escapeMDLString(flow))
+		b.WriteString("    SET $TestFailed = true;\n")
+		b.WriteString("    SET $AllPassed = false;\n")
+		b.WriteString("    RETURN $AllPassed;\n")
+		b.WriteString("  };\n")
 	}
 }
 
@@ -188,9 +212,23 @@ func renameVariables(mdl string, names map[string]bool, suffix string) string {
 // rendered condition and the actual-value expression, which is why both are kept
 // as text rather than as a tree.
 func renameExpect(exp Expect, names map[string]bool, suffix string) Expect {
+	// An aggregate's own variable is generated, so it is not in the body's name
+	// set — but it is declared inside this one shared microflow, so two tests
+	// counting a list of the same name would declare it twice. It is renamed
+	// with everything else.
+	all := names
+	if len(exp.Aggregates) > 0 {
+		all = make(map[string]bool, len(names)+len(exp.Aggregates))
+		for n := range names {
+			all[n] = true
+		}
+		for _, agg := range exp.Aggregates {
+			all[strings.TrimPrefix(agg.Var, "$")] = true
+		}
+	}
 	rename := func(src string) string {
 		return varPattern.ReplaceAllStringFunc(src, func(match string) string {
-			if names[match[1:]] {
+			if all[match[1:]] {
 				return match + suffix
 			}
 			return match
@@ -199,6 +237,16 @@ func renameExpect(exp Expect, names map[string]bool, suffix string) Expect {
 	renamed := exp
 	renamed.Condition = rename(exp.Condition)
 	renamed.Actual = rename(exp.Actual)
+	if len(exp.Aggregates) > 0 {
+		renamed.Aggregates = make([]ExpectAggregate, len(exp.Aggregates))
+		for i, agg := range exp.Aggregates {
+			renamed.Aggregates[i] = ExpectAggregate{
+				Var:  rename(agg.Var),
+				Op:   agg.Op,
+				List: rename(agg.List),
+			}
+		}
+	}
 	return renamed
 }
 

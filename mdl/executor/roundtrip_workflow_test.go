@@ -22,6 +22,30 @@ import (
 //   - WAIT FOR NOTIFICATION (with BOUNDARY EVENT NON INTERRUPTING TIMER)
 //   - JUMP TO (inside DECISION outcome)
 //   - CALL WORKFLOW (sub-workflow with parameter expression)
+//
+// createTaskPages creates the pages a user task's `page` clause points at.
+//
+// These tests used to name pages they never created. `check --references` and
+// exec now resolve a workflow's page references (issue #943), so the missing
+// page is reported rather than written into the model — which is the point of
+// that check: Mendix rejects the same workflow with CE1613.
+func createTaskPages(t *testing.T, env *testEnv, mod string, names ...string) {
+	t.Helper()
+	for _, name := range names {
+		mdl := `create page ` + mod + `.` + name + ` (
+			Title: '` + name + `',
+			Layout: Atlas_Core.Atlas_Default
+		) {
+			layoutgrid g { row r { column c (DesktopWidth: 12) {
+				dynamictext dt (Content: '` + name + `')
+			} } }
+		}`
+		if err := env.executeMDL(mdl); err != nil {
+			t.Fatalf("create page %s.%s: %v", mod, name, err)
+		}
+	}
+}
+
 func TestRoundtripWorkflow_Comprehensive(t *testing.T) {
 	env := setupTestEnv(t)
 	defer env.teardown()
@@ -52,6 +76,9 @@ func TestRoundtripWorkflow_Comprehensive(t *testing.T) {
 	if err := env.executeMDL(`create microflow ` + mod + `.ScoreCalc (Score: Integer) returns Boolean begin end;`); err != nil {
 		t.Fatalf("create ScoreCalc: %v", err)
 	}
+
+	// Task pages named by the user tasks below.
+	createTaskPages(t, env, mod, "SubPage", "ReviewPage", "MultiReviewPage", "ApprovePage")
 
 	// Sub-workflow for CALL WORKFLOW
 	if err := env.executeMDL(`create workflow ` + mod + `.SubApprovalFlow
@@ -162,8 +189,20 @@ end workflow;`
 	}
 }
 
+// Run on BOTH engines. setupTestEnv defaults to legacy, and legacy could always
+// read boundary events — which is exactly why the default (modelsdk) engine
+// having no boundary-event reader at all stayed invisible: DESCRIBE emitted
+// nothing on the engine users actually run, so describe → exec silently dropped
+// the timer and its handler flow, while this test stayed green (issue #948).
+// Same shape as the TableMappings gap in roundtrip_dbconnection_test.go.
 func TestRoundtripWorkflow_BoundaryEventInterrupting(t *testing.T) {
-	env := setupTestEnv(t)
+	for _, eng := range gateEngines {
+		t.Run(eng.name, func(t *testing.T) { testRoundtripWorkflowBoundaryInterrupting(t, eng) })
+	}
+}
+
+func testRoundtripWorkflowBoundaryInterrupting(t *testing.T, eng gateEngine) {
+	env := setupTestEnvWithBackend(t, eng.factory)
 	defer env.teardown()
 
 	createMDL := `create workflow ` + testModule + `.WfBoundaryInt
@@ -179,6 +218,7 @@ end workflow;`
 	if err := env.executeMDL(`create or modify persistent entity ` + testModule + `.TestEntitySimple (Name: String(100));`); err != nil {
 		t.Fatalf("Failed to create entity: %v", err)
 	}
+	createTaskPages(t, env, testModule, "ReviewPage")
 
 	if err := env.executeMDL(createMDL); err != nil {
 		t.Fatalf("Failed to create workflow: %v", err)
@@ -194,8 +234,15 @@ end workflow;`
 	}
 }
 
+// Both engines, for the reason on the interrupting variant above.
 func TestRoundtripWorkflow_BoundaryEventNonInterrupting(t *testing.T) {
-	env := setupTestEnv(t)
+	for _, eng := range gateEngines {
+		t.Run(eng.name, func(t *testing.T) { testRoundtripWorkflowBoundaryNonInterrupting(t, eng) })
+	}
+}
+
+func testRoundtripWorkflowBoundaryNonInterrupting(t *testing.T, eng gateEngine) {
+	env := setupTestEnvWithBackend(t, eng.factory)
 	defer env.teardown()
 
 	createMDL := `create workflow ` + testModule + `.WfBoundaryNonInt
@@ -211,6 +258,7 @@ end workflow;`
 	if err := env.executeMDL(`create or modify persistent entity ` + testModule + `.TestEntitySimple2 (Name: String(100));`); err != nil {
 		t.Fatalf("Failed to create entity: %v", err)
 	}
+	createTaskPages(t, env, testModule, "ReviewPage")
 
 	if err := env.executeMDL(createMDL); err != nil {
 		t.Fatalf("Failed to create workflow: %v", err)
@@ -242,6 +290,7 @@ end workflow;`
 	if err := env.executeMDL(`create or modify persistent entity ` + testModule + `.TestEntityMulti (Name: String(100));`); err != nil {
 		t.Fatalf("Failed to create entity: %v", err)
 	}
+	createTaskPages(t, env, testModule, "ReviewPage")
 
 	if err := env.executeMDL(createMDL); err != nil {
 		t.Fatalf("Failed to create workflow: %v", err)

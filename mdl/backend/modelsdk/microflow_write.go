@@ -49,6 +49,12 @@ func init() {
 	codec.RegisterTypeDefaults("Microflows$NanoflowCall", codec.TypeDefaults{
 		MandatoryListMarkers: map[string]int32{"ParameterMappings": 2},
 	})
+	// A rule split's RuleCall follows the same shape: the ParameterMappings list
+	// is always emitted, with marker 2 (legacy writer, verified vs mxbuild 11.13).
+	codec.RegisterTypeDefaults("Microflows$RuleCall", codec.TypeDefaults{
+		MandatoryListMarkers: map[string]int32{"ParameterMappings": 2},
+	})
+	codec.RegisterListMarker("Microflows$RuleCallParameterMapping", 2)
 	codec.RegisterListMarker("Microflows$MicroflowCallParameterMapping", 2)
 	codec.RegisterListMarker("Microflows$NanoflowCallParameterMapping", 2)
 	// A JavaActionCallAction always serializes QueueSettings as null; its
@@ -1179,8 +1185,15 @@ func entityRefToGen(steps []microflows.EntityRefStep) element.Element {
 	return ref
 }
 
-// splitConditionToGen builds an exclusive-split condition. Rule conditions are a
-// later slice (RuleCall + parameter mappings).
+// splitConditionToGen builds an exclusive-split condition — either an expression
+// or a call into a rule. Inverse of splitConditionFromGen.
+//
+// The rule case is the one #939 reported: it used to fall through to nil and the
+// caller skipped SetSplitCondition entirely, so a decision that reads
+// `if Module.SomeRule(...) then` was stored with its Condition missing — mx check
+// CE0080 "The 'Condition' property is required", with the Decision's caption
+// still showing the call. The legacy engine had always written it
+// (sdk/mpr/writer_microflow.go), which is why the same script passed there.
 func splitConditionToGen(sc microflows.SplitCondition) element.Element {
 	switch c := sc.(type) {
 	case *microflows.ExpressionSplitCondition:
@@ -1188,9 +1201,32 @@ func splitConditionToGen(sc microflows.SplitCondition) element.Element {
 		g.SetID(element.ID(c.ID))
 		g.SetExpression(c.Expression)
 		return g
+	case *microflows.RuleSplitCondition:
+		g := genMf.NewRuleSplitCondition()
+		g.SetID(element.ID(c.ID))
+		g.SetRuleCall(ruleCallToGen(c))
+		return g
 	default:
 		return nil
 	}
+}
+
+// ruleCallToGen builds the RuleCall sub-document a RuleSplitCondition wraps. The
+// rule's qualified name goes to the "Microflow" storage key (patched in
+// initRuleCall); the RuleCall itself carries no semantic ID, so it gets a fresh
+// one like every other synthesized part.
+func ruleCallToGen(c *microflows.RuleSplitCondition) element.Element {
+	rc := genMf.NewRuleCall()
+	assignID(rc)
+	rc.SetRuleQualifiedName(c.RuleQualifiedName)
+	for _, pm := range c.ParameterMappings {
+		g := genMf.NewRuleCallParameterMapping()
+		g.SetID(element.ID(pm.ID))
+		g.SetParameterQualifiedName(pm.ParameterName)
+		g.SetArgument(pm.Argument)
+		rc.AddParameterMappings(g)
+	}
+	return rc
 }
 
 // caseValueToGen renders a sequence-flow case. ExpressionCase is serialized AS an

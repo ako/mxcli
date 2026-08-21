@@ -528,11 +528,13 @@ func formatCallMicroflowTask(a *workflows.CallMicroflowTask, indent string) []st
 		lines = append(lines, fmt.Sprintf("%scall microflow %s -- %s", indent, mf, caption))
 	}
 
-	// BoundaryEvents
-	lines = append(lines, formatBoundaryEvents(a.BoundaryEvents, indent+"  ")...)
-
-	// Outcomes
+	// Outcomes, then boundary events — the order the grammar requires
+	// (workflowCallMicroflowStmt: … OUTCOMES? BOUNDARY EVENT?). Emitting them
+	// the other way round produced DESCRIBE output that would not re-parse:
+	// "mismatched input 'outcomes' expecting ';'" (issue #948). It only showed
+	// once the default engine could read boundary events back at all.
 	lines = append(lines, formatConditionOutcomes(a.Outcomes, indent)...)
+	lines = append(lines, formatBoundaryEvents(a.BoundaryEvents, indent+"  ")...)
 
 	return lines
 }

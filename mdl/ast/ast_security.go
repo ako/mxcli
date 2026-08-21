@@ -192,6 +192,12 @@ type AlterProjectSecurityStmt struct {
 	SecurityLevel string
 	// DemoUsersEnabled is set for ALTER PROJECT SECURITY DEMO USERS ON/OFF
 	DemoUsersEnabled *bool
+	// GuestAccessEnabled is set for ALTER PROJECT SECURITY GUEST ACCESS ON/OFF
+	GuestAccessEnabled *bool
+	// GuestUserRole is the user role anonymous visitors get, from the optional
+	// ROLE clause on GUEST ACCESS ON. Empty means "keep whatever is stored" —
+	// never "clear it"; the executor refuses ON when nothing is stored either.
+	GuestUserRole string
 }
 
 func (s *AlterProjectSecurityStmt) isStatement() {}

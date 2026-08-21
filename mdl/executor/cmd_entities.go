@@ -994,8 +994,30 @@ func execAlterEntity(ctx *ExecContext, s *ast.AlterEntityStmt) error {
 			}
 			return mdlerrors.NewNotFoundMsg("attribute", s.AttributeName, fmt.Sprintf("attribute '%s' not found on entity %s", s.AttributeName, s.Name))
 		}
-		// Clean up entity-level references to the dropped attribute
+		// Clean up entity-level references to the dropped attribute.
+		//
+		// Two reference forms have to be matched, not one. Mendix stores an
+		// index's column as an element ID (AttributePointer) but a validation
+		// rule's Attribute and an access rule's MemberAccess as a BY_NAME
+		// qualified name string. Both come back in the same model.ID field, so
+		// comparing against the element ID alone matched nothing and left the
+		// rules behind — CE1613 "The selected attribute ... no longer exists."
+		// serializeValidationRule documents the same duality on the way out.
 		droppedID := entity.Attributes[idx].ID
+		droppedQName := fmt.Sprintf("%s.%s.%s", module.Name, entity.Name, entity.Attributes[idx].Name)
+		// Which FIELD carries the reference also varies by engine: the legacy
+		// backend fills a MemberAccess's AttributeID and AttributeName both, while
+		// the modelsdk one leaves AttributeID empty and fills only AttributeName
+		// (domainmodel.go: memberAccessFromGen). Both spell it qualified, so check
+		// every field that could hold it rather than picking one.
+		refersToDropped := func(refs ...string) bool {
+			for _, r := range refs {
+				if r != "" && (r == string(droppedID) || r == droppedQName) {
+					return true
+				}
+			}
+			return false
+		}
 
 		// Track what gets cleaned up for reporting
 		origValidationCount := len(entity.ValidationRules)
@@ -1004,7 +1026,7 @@ func execAlterEntity(ctx *ExecContext, s *ast.AlterEntityStmt) error {
 		// Remove validation rules that reference this attribute
 		var keepRules []*domainmodel.ValidationRule
 		for _, vr := range entity.ValidationRules {
-			if vr.AttributeID != droppedID {
+			if !refersToDropped(string(vr.AttributeID)) {
 				keepRules = append(keepRules, vr)
 			}
 		}
@@ -1015,7 +1037,7 @@ func execAlterEntity(ctx *ExecContext, s *ast.AlterEntityStmt) error {
 		for _, rule := range entity.AccessRules {
 			var keepMembers []*domainmodel.MemberAccess
 			for _, ma := range rule.MemberAccesses {
-				if ma.AttributeID != droppedID {
+				if !refersToDropped(string(ma.AttributeID), ma.AttributeName) {
 					keepMembers = append(keepMembers, ma)
 				} else {
 					removedMemberAccess++
@@ -1029,7 +1051,7 @@ func execAlterEntity(ctx *ExecContext, s *ast.AlterEntityStmt) error {
 		for _, idx := range entity.Indexes {
 			var keepAttrs []*domainmodel.IndexAttribute
 			for _, ia := range idx.Attributes {
-				if ia.AttributeID != droppedID {
+				if !refersToDropped(string(ia.AttributeID)) {
 					keepAttrs = append(keepAttrs, ia)
 				}
 			}
@@ -1037,7 +1059,7 @@ func execAlterEntity(ctx *ExecContext, s *ast.AlterEntityStmt) error {
 
 			var keepIDs []model.ID
 			for _, id := range idx.AttributeIDs {
-				if id != droppedID {
+				if !refersToDropped(string(id)) {
 					keepIDs = append(keepIDs, id)
 				}
 			}

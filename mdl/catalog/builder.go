@@ -46,6 +46,7 @@ type CatalogReader interface {
 	// Microflows & nanoflows
 	ListMicroflows() ([]*microflows.Microflow, error)
 	ListNanoflows() ([]*microflows.Nanoflow, error)
+	ListRules() ([]*microflows.Rule, error)
 
 	// Pages, layouts & snippets
 	ListPages() ([]*pages.Page, error)
@@ -109,6 +110,7 @@ type Builder struct {
 	// By caching results, we parse each document type exactly once.
 	microflowCache          []*microflows.Microflow
 	nanoflowCache           []*microflows.Nanoflow
+	ruleCache               []*microflows.Rule
 	pageCache               []*pages.Page
 	domainModelCache        []*domainmodel.DomainModel
 	enumerationCache        []*model.Enumeration
@@ -261,6 +263,17 @@ func (b *Builder) cachedNanoflows() ([]*microflows.Nanoflow, error) {
 		}
 	}
 	return b.nanoflowCache, nil
+}
+
+func (b *Builder) cachedRules() ([]*microflows.Rule, error) {
+	if b.ruleCache == nil {
+		var err error
+		b.ruleCache, err = b.reader.ListRules()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return b.ruleCache, nil
 }
 
 func (b *Builder) cachedPages() ([]*pages.Page, error) {

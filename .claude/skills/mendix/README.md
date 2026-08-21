@@ -20,6 +20,7 @@ Detailed syntax for each MDL document type:
 | [mdl-entities.md](mdl-entities.md) | Entity, attribute, association syntax | Creating domain models |
 | [write-microflows.md](write-microflows.md) | Microflow syntax reference | Writing microflow logic |
 | [write-nanoflows.md](write-nanoflows.md) | Nanoflow syntax reference | Writing client-side nanoflow logic |
+| [write-rules.md](write-rules.md) | Rule syntax reference | Writing reusable decision logic a decision calls |
 | [write-oql-queries.md](write-oql-queries.md) | OQL query syntax | Creating VIEW entities |
 | [create-page.md](create-page.md) | Page and widget syntax | Creating pages |
 | [fragments.md](fragments.md) | Fragment (reusable widget group) syntax | Reusing widget patterns across pages |
@@ -46,6 +47,7 @@ External system integration:
 | [demo-data.md](demo-data.md) | Demo data & IMPORT | Seeding data, `import from` bulk import from external DB |
 | [rest-client.md](rest-client.md) | REST API consumption | Calling external REST APIs via consumed REST client documents |
 | [rest-call-from-json.md](rest-call-from-json.md) | REST CALL end-to-end | JSON Structure → Entities → Import Mapping → REST CALL microflow |
+| [mock-rest-apis.md](mock-rest-apis.md) | Mock a REST dependency | Building or debugging a REST integration without the live API; forcing 404/500; running offline or in CI |
 | [json-structures-and-mappings.md](json-structures-and-mappings.md) | JSON structures & mappings | CREATE/DESCRIBE JSON structures, import/export mappings, domain model patterns |
 | [java-actions.md](java-actions.md) | Custom Java actions | Extending with Java code |
 | [download-marketplace-content.md](download-marketplace-content.md) | Marketplace download & install | Adding a marketplace module/widget; downloading a `.mpk`; module-update caveat |

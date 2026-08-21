@@ -4,6 +4,7 @@ package executor
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
@@ -25,6 +26,14 @@ func execAlterWorkflow(ctx *ExecContext, s *ast.AlterWorkflowStmt) error {
 		"alter workflow",
 		"upgrade your project to Mendix 9.12+ to use workflows"); err != nil {
 		return err
+	}
+
+	// Same exec-side guard as CREATE WORKFLOW: ALTER had no reference validation
+	// at all, so an inserted activity could name a microflow that exists nowhere
+	// and still be written (issue #943).
+	if refErrors := validateAlterWorkflowRefs(ctx, s, nil); len(refErrors) > 0 {
+		return mdlerrors.NewValidationf("workflow '%s' has reference errors:\n  - %s",
+			s.Name.String(), strings.Join(refErrors, "\n  - "))
 	}
 
 	h, err := getHierarchy(ctx)

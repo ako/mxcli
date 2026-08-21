@@ -407,6 +407,9 @@ func ListTests(files []string, w io.Writer) error {
 	fmt.Fprintf(w, "Found %d test(s):\n", len(suite.Tests))
 	for _, tc := range suite.Tests {
 		fmt.Fprintf(w, "  %s: %s\n", tc.ID, tc.Name)
+		for _, flow := range tc.Setups {
+			fmt.Fprintf(w, "    @setup %s\n", flow)
+		}
 		for _, exp := range tc.Expects {
 			fmt.Fprintf(w, "    @expect %s\n", exp.Raw)
 		}

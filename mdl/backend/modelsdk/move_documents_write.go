@@ -36,6 +36,13 @@ func (b *Backend) MoveNanoflow(nf *microflows.Nanoflow) error {
 	return b.moveUnit(nf.ID, nf.ContainerID, "Nanoflow")
 }
 
+func (b *Backend) MoveRule(rule *microflows.Rule) error {
+	if rule == nil {
+		return fmt.Errorf("MoveRule: nil rule")
+	}
+	return b.moveUnit(rule.ID, rule.ContainerID, "Rule")
+}
+
 func (b *Backend) MovePage(page *pages.Page) error {
 	if page == nil {
 		return fmt.Errorf("MovePage: nil page")

@@ -1,0 +1,75 @@
+-- ============================================================================
+-- Rules (Microflows$Rule)
+-- ============================================================================
+--
+-- Mendix's reference calls a rule "a special kind of microflow" that returns a
+-- Boolean or an enumeration and may only be used from a decision. mxcli handles
+-- it the way it handles a nanoflow: its own statements, its own listing, the
+-- shared microflow body.
+--
+--   list rules [in Module]
+--   describe rule Module.Name          -- round-trippable
+--   create [or modify] rule ...
+--   drop rule Module.Name
+--   move rule Module.Name to folder '...'
+--
+-- There is deliberately no `grant execute on rule`: a rule is not independently
+-- callable, so its document stores no AllowedModuleRoles (measured on two
+-- Studio Pro-authored rules, Mendix 11.13.0).
+--
+-- What a rule may NOT contain is refused by `mxcli check`, not left to the
+-- build. Measured on mxbuild 11.13.0:
+--
+--   create/change/delete/commit/rollback → CE0009 "This action is not
+--                                          supported in rules."
+--   void or non-Boolean/enum return      → CE0103 + CE0139
+-- ============================================================================
+
+create module RuleDocs;
+/
+
+create or modify enumeration RuleDocs.Outcome (
+  Approved 'Approved',
+  Rejected 'Rejected'
+)
+/
+
+create or modify entity RuleDocs.Customer (
+  Name: String(100),
+  Balance: Decimal
+)
+/
+
+-- A Boolean rule, the common case: a decision calls it and branches on true/false.
+create or modify rule RuleDocs.Rule_IsSolvent ($pCustomer: RuleDocs.Customer)
+returns Boolean
+folder 'Rules'
+begin
+  return $pCustomer/Balance >= 0;
+end
+/
+
+-- An enumeration rule: the decision branches on the enumeration's values.
+create or modify rule RuleDocs.Rule_Outcome ($pCustomer: RuleDocs.Customer)
+returns enum RuleDocs.Outcome
+begin
+  if $pCustomer/Balance >= 0 then
+    return RuleDocs.Outcome.Approved;
+  else
+    return RuleDocs.Outcome.Rejected;
+  end if;
+end
+/
+
+-- A rule is called from a decision, and only from a decision. The reference
+-- edge this produces is what makes `show callers of RuleDocs.Rule_IsSolvent`
+-- work — and what stops a microflow called only from a rule reading as dead.
+create or modify microflow RuleDocs.MF_Screen ($pCustomer: RuleDocs.Customer)
+begin
+  if RuleDocs.Rule_IsSolvent(pCustomer = $pCustomer) then
+    return;
+  else
+    return;
+  end if;
+end
+/
