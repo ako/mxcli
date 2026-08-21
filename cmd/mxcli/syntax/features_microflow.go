@@ -239,12 +239,13 @@ func init() {
 
 	Register(SyntaxFeature{
 		Path:    "microflow.layout",
-		Summary: "Canvas layout annotations — @position, @anchor, @curve, @caption, @color",
+		Summary: "Canvas layout annotations — @position, @start, @anchor, @curve, @caption, @color",
 		Keywords: []string{
-			"position", "anchor", "curve", "layout", "canvas",
+			"position", "start", "anchor", "curve", "layout", "canvas",
 			"annotation", "caption", "color", "excluded", "bezier",
 		},
 		Syntax: "@position(x, y)                       -- the activity's centre point\n" +
+			"@start(x, y)                          -- the start event, on the FIRST statement\n" +
 			"@anchor(from: right, to: left)        -- which SIDE each end of the outgoing flow attaches to\n" +
 			"@curve(from: (40, -90), to: (-40, 90))  -- the flow's bezier control vectors\n" +
 			"@merge(x, y)                          -- the implicit merge that closes a split\n" +
@@ -254,9 +255,15 @@ func init() {
 			"Mendix stores no waypoints — a flow's shape is two control vectors, each a\n" +
 			"pixel offset from its end of the line. (0, 0) at both ends is straight.\n" +
 			"@position on a split belongs to the SPLIT, so its end-if join has its own\n" +
-			"annotation. Container Size is still computed, not authorable.",
+			"annotation. Container Size is still computed, not authorable.\n\n" +
+			"@start and @merge position the two nodes that have no statement of their\n" +
+			"own, so each is written on the statement it belongs to. Omit @start and the\n" +
+			"start is placed one spacing unit left of the first activity, on its centre\n" +
+			"line — and a rewrite MOVES it to follow the activities. A start that is not\n" +
+			"at that derived spot was put there by hand: it survives a rewrite, and\n" +
+			"DESCRIBE emits @start for it so the description round-trips exactly.",
 		Example: "create microflow MyModule.ACT_Flow ($In: String)\nreturns String as $Out\nbegin\n" +
-			"  @position(200, 100)\n  @anchor(from: bottom, to: top)\n" +
+			"  @start(145, 100)\n  @position(200, 100)\n  @anchor(from: bottom, to: top)\n" +
 			"  @curve(from: (40, -90), to: (-40, 90))\n  declare $Tmp String = $In;\n" +
 			"  @position(200, 300)\n  declare $Out String = $Tmp;\n  return $Out;\nend;",
 		SeeAlso: []string{"microflow", "microflow.create"},

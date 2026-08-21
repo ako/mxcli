@@ -783,6 +783,8 @@ func formatMicroflowActivities(
 	// Build annotation map for @annotation emission
 	annotationsByTarget := buildAnnotationsByTarget(mf.ObjectCollection)
 
+	lines = append(lines, startAnnotationLines(mf.ObjectCollection)...)
+
 	// flowsByOrigin / flowsByDest are threaded into traverseFlow so @anchor
 	// emission is per-call — no package-level globals, safe under concurrent
 	// describe (e.g. captureDescribeParallel).
@@ -1013,6 +1015,8 @@ func formatMicroflowActivitiesWithSourceMap(
 
 	// Build annotation map for @annotation emission
 	annotationsByTarget := buildAnnotationsByTarget(mf.ObjectCollection)
+
+	lines = append(lines, startAnnotationLines(mf.ObjectCollection)...)
 
 	traverseFlow(ctx, startID, activityMap, flowsByOrigin, flowsByDest, splitMergeMap, visited, entityNames, microflowNames, &lines, 0, sourceMap, headerLineCount, annotationsByTarget)
 
