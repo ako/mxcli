@@ -557,6 +557,8 @@ Nested folders use `/` separator: `'Parent/Child/Grandchild'`. Missing folders a
 | Revoke entity access (partial) | `revoke Mod.Role on Mod.Entity (read (attr));` | Partial — downgrades specific rights |
 | Set security level | `alter project security level off\|prototype\|production;` | |
 | Toggle demo users | `alter project security demo users on\|off;` | |
+| Enable guest access | `alter project security guest access on role UserRole;` | Anonymous users. The role is what visitors get — its entity access is the public surface. Mendix fails the build without one (CE0133), so `on` is refused unless a role is given or already stored. mxcli validates the role exists; Mendix does not |
+| Disable guest access | `alter project security guest access off;` | Keeps the stored role, so re-enabling needs no `role` clause |
 | Create demo user | `create demo user 'name' password 'pass' [entity Module.Entity] (UserRole, ...);` | |
 | Drop demo user | `drop demo user 'name';` | |
 

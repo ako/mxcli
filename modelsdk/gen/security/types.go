@@ -865,7 +865,12 @@ func initProjectSecurity() *ProjectSecurity {
 	o.adminUserName.Bind(&o.Base, 4)
 	o.adminPassword = property.NewPrimitive[string]("AdminPassword", property.DecodeString)
 	o.adminPassword.Bind(&o.Base, 5)
-	o.adminUserRoleName = property.NewPrimitive[string]("AdminUserRoleName", property.DecodeString)
+	// STORAGE-NAME OVERRIDE: BSON key is "AdminUserRole", not the SDK name
+	// "AdminUserRoleName" (generated/metamodel tags it `json:"adminUserRole"`,
+	// and Studio Pro authored projects store "AdminUserRole": "Administrator").
+	// A Primitive uses its bound name for both decode and encode, so this one
+	// literal covers InitFromRaw too.
+	o.adminUserRoleName = property.NewPrimitive[string]("AdminUserRole", property.DecodeString)
 	o.adminUserRoleName.Bind(&o.Base, 6)
 	o.enableDemoUsers = property.NewPrimitive[bool]("EnableDemoUsers", property.DecodeBool)
 	o.enableDemoUsers.Bind(&o.Base, 7)
@@ -873,7 +878,12 @@ func initProjectSecurity() *ProjectSecurity {
 	o.demoUsers.Bind(&o.Base, 8)
 	o.enableGuestAccess = property.NewPrimitive[bool]("EnableGuestAccess", property.DecodeBool)
 	o.enableGuestAccess.Bind(&o.Base, 9)
-	o.guestUserRoleName = property.NewPrimitive[string]("GuestUserRoleName", property.DecodeString)
+	// STORAGE-NAME OVERRIDE: BSON key is "GuestUserRole", not the SDK name
+	// "GuestUserRoleName" — same split as AdminUserRole above. This one is
+	// load-bearing rather than cosmetic: mxbuild raises CE0133 when
+	// EnableGuestAccess is on and no role is stored under this key, so writing
+	// the SDK name means anonymous access never builds.
+	o.guestUserRoleName = property.NewPrimitive[string]("GuestUserRole", property.DecodeString)
 	o.guestUserRoleName.Bind(&o.Base, 10)
 	o.signInMicroflow = property.NewByNameRef[element.Element]("SignInMicroflow", "Microflows$Microflow")
 	o.signInMicroflow.Bind(&o.Base, 11)

@@ -184,6 +184,21 @@ func (b *Backend) SetProjectDemoUsersEnabled(unitID model.ID, enabled bool) erro
 	return b.persistUnit(unitID, ps)
 }
 
+// SetProjectGuestAccess toggles anonymous (guest) access. An empty
+// guestUserRole leaves the stored role alone, so turning access off and back on
+// does not lose it.
+func (b *Backend) SetProjectGuestAccess(unitID model.ID, enabled bool, guestUserRole string) error {
+	ps, err := b.loadProjectSecurityGen(unitID)
+	if err != nil {
+		return err
+	}
+	ps.SetEnableGuestAccess(enabled)
+	if guestUserRole != "" {
+		ps.SetGuestUserRoleName(guestUserRole)
+	}
+	return b.persistUnit(unitID, ps)
+}
+
 // AlterUserRoleModuleRoles adds or removes module-role mappings on a project user
 // role (by name). add=true unions, add=false subtracts.
 func (b *Backend) AlterUserRoleModuleRoles(unitID model.ID, userRoleName string, add bool, moduleRoles []string) error {

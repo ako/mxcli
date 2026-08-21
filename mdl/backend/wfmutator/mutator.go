@@ -17,6 +17,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 
 	"github.com/mendixlabs/mxcli/mdl/backend/bsonnav"
+	"github.com/mendixlabs/mxcli/mdl/backend/wfnames"
 	"github.com/mendixlabs/mxcli/mdl/bsonutil"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/workflows"
@@ -217,7 +218,7 @@ func (m *Mutator) InsertAfterActivity(activityRef string, atPos int, activities 
 		return err
 	}
 
-	newBsonActs := m.serializeAndDedup(activities)
+	newBsonActs := m.serializeAndDedup(activities, "")
 
 	insertIdx := idx + 1
 	newArr := make([]any, 0, len(acts)+len(newBsonActs))
@@ -249,7 +250,13 @@ func (m *Mutator) ReplaceActivity(activityRef string, atPos int, activities []wo
 		return err
 	}
 
-	newBsonActs := m.serializeAndDedup(activities)
+	// Free the outgoing activity's name for the replacement. It is read off the
+	// resolved element rather than from activityRef, which may be a caption.
+	var outgoing string
+	if old, ok := acts[idx].(bson.D); ok {
+		outgoing = bsonnav.DGetString(old, "Name")
+	}
+	newBsonActs := m.serializeAndDedup(activities, outgoing)
 
 	newArr := make([]any, 0, len(acts)-1+len(newBsonActs))
 	newArr = append(newArr, acts[:idx]...)
@@ -752,36 +759,24 @@ func collectNamesRecursive(flow bson.D, names map[string]bool) {
 	}
 }
 
-// deduplicateNewActivityName ensures a new activity name doesn't conflict.
-func deduplicateNewActivityName(act workflows.WorkflowActivity, existingNames map[string]bool) {
-	name := act.GetName()
-	if name == "" {
-		return
-	}
-	if !existingNames[name] {
-		existingNames[name] = true
-		return
-	}
-	for i := 2; i < 1000; i++ {
-		candidate := fmt.Sprintf("%s_%d", name, i)
-		if !existingNames[candidate] {
-			act.SetName(candidate)
-			existingNames[candidate] = true
-			return
-		}
-	}
-}
-
 // ---------------------------------------------------------------------------
 // Internal helpers — serialization (via Deps)
 // ---------------------------------------------------------------------------
 
-// serializeAndDedup serializes workflow activities to BSON, deduplicating names.
-func (m *Mutator) serializeAndDedup(activities []workflows.WorkflowActivity) []any {
-	existingNames := m.collectAllActivityNames()
-	for _, act := range activities {
-		deduplicateNewActivityName(act, existingNames)
-	}
+// serializeAndDedup serializes workflow activities to BSON, deduplicating their
+// names against the ones already in the workflow.
+//
+// freeName, when non-empty, names an activity that this same operation is
+// removing, so it is not really taken. REPLACE ACTIVITY needs it: the
+// replacement reusing the original's name is the ordinary in-place edit, not a
+// collision, and treating it as one renamed every same-name replace to Name_2 —
+// compounding on each re-run (Name_2_2, Name_2_2_2, ...) so an ALTER that
+// changed nothing still mutated the model (issue #944). INSERT passes "": there
+// the incoming activity is genuinely additional, and every existing name stands.
+func (m *Mutator) serializeAndDedup(activities []workflows.WorkflowActivity, freeName string) []any {
+	taken := m.collectAllActivityNames()
+	delete(taken, freeName) // no-op for ""
+	wfnames.Dedup(activities, taken)
 
 	result := make([]any, 0, len(activities))
 	for _, act := range activities {
@@ -795,10 +790,9 @@ func (m *Mutator) serializeAndDedup(activities []workflows.WorkflowActivity) []a
 
 // buildSubFlowBson builds a Workflows$Flow BSON document from activities.
 func (m *Mutator) buildSubFlowBson(activities []workflows.WorkflowActivity) bson.D {
-	existingNames := m.collectAllActivityNames()
-	for _, act := range activities {
-		deduplicateNewActivityName(act, existingNames)
-	}
+	// An outcome/path/branch/boundary-event sub-flow is always new content, so
+	// every existing name stands (unlike ReplaceActivity — see serializeAndDedup).
+	wfnames.Dedup(activities, m.collectAllActivityNames())
 
 	var subActsBson bson.A
 	subActsBson = append(subActsBson, bsonArrayMarker)

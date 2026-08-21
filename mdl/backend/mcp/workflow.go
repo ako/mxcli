@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/backend"
+	"github.com/mendixlabs/mxcli/mdl/backend/wfnames"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/workflows"
 )
@@ -567,6 +568,7 @@ type mcpWorkflowMutator struct {
 	moduleName   string
 	workflowName string
 	ops          []pedOpEntry
+	applied      bool // an activity-level op was sent to PED (see Save)
 }
 
 var _ backend.WorkflowMutator = (*mcpWorkflowMutator)(nil)
@@ -607,13 +609,24 @@ func (m *mcpWorkflowMutator) SetPropertyWithEntity(prop, value, entity string) e
 }
 
 // Save flushes the accumulated property sets to Studio Pro and validates.
+//
+// Activity-level ops have already been sent by the time Save runs (they apply
+// eagerly through apply), but they must still be validated: ped_update_document
+// only reports op-level failures, so a model-consistency error like CE0495
+// "Duplicate name" comes back as SUCCESS and is visible nowhere except
+// ped_check_errors. Save is the single place that check belongs — running it
+// per op would pay the error-list settle each time (see pedCheckDocument) and
+// would fail on the intermediate states a multi-op ALTER legitimately passes
+// through.
 func (m *mcpWorkflowMutator) Save() error {
-	if len(m.ops) == 0 {
+	if len(m.ops) == 0 && !m.applied {
 		return nil
 	}
-	qn := m.moduleName + "." + m.workflowName
-	if err := m.backend.pedUpdateDoc(workflowDocType, qn, m.ops...); err != nil {
-		return err
+	qn := m.qn()
+	if len(m.ops) > 0 {
+		if err := m.backend.pedUpdateDoc(workflowDocType, qn, m.ops...); err != nil {
+			return err
+		}
 	}
 	m.backend.markDirty(m.moduleName)
 	return m.backend.pedCheckDocument(workflowDocType, qn)
@@ -627,49 +640,75 @@ func (m *mcpWorkflowMutator) qn() string { return m.moduleName + "." + m.workflo
 type activityRefMatch struct {
 	arrayPath string
 	index     int
+	name      string // the activity's own name (activityRef may be its caption)
+}
+
+// wfLocation is a resolved activity location together with the set of every
+// activity name in the workflow. Both come out of a single walk of the flow
+// tree, so deduplicating an inserted activity's name costs no extra PED reads.
+type wfLocation struct {
+	arrayPath string // PED path of the activities array holding the match
+	index     int    // the match's index within that array
+	actPath   string // full PED path to the matched activity element
+	name      string // the matched activity's own name (ref may be its caption)
+	taken     map[string]bool
 }
 
 // resolve finds an activity reference (caption or name, optional 1-based @position)
-// anywhere in the flow tree and returns its containing-array path, its index, and
-// the full path to the activity element itself.
-func (m *mcpWorkflowMutator) resolve(ref string, atPos int) (arrayPath string, index int, actPath string, err error) {
+// anywhere in the flow tree and returns its location plus the workflow's
+// activity-name set.
+func (m *mcpWorkflowMutator) resolve(ref string, atPos int) (wfLocation, error) {
 	var matches []activityRefMatch
-	if err = m.searchActivities("/flow/activities", ref, &matches); err != nil {
-		return "", 0, "", err
+	taken := map[string]bool{}
+	if err := m.searchActivities("/flow/activities", ref, &matches, taken); err != nil {
+		return wfLocation{}, err
 	}
 	var pick activityRefMatch
 	switch {
 	case len(matches) == 0:
-		return "", 0, "", fmt.Errorf("activity %q not found in workflow %q", ref, m.qn())
+		return wfLocation{}, fmt.Errorf("activity %q not found in workflow %q", ref, m.qn())
 	case atPos > 0:
 		if atPos > len(matches) {
-			return "", 0, "", fmt.Errorf("activity %q @%d not found (only %d matches)", ref, atPos, len(matches))
+			return wfLocation{}, fmt.Errorf("activity %q @%d not found (only %d matches)", ref, atPos, len(matches))
 		}
 		pick = matches[atPos-1]
 	case len(matches) > 1:
-		return "", 0, "", fmt.Errorf("ambiguous activity %q (%d matches); use @N to disambiguate", ref, len(matches))
+		return wfLocation{}, fmt.Errorf("ambiguous activity %q (%d matches); use @N to disambiguate", ref, len(matches))
 	default:
 		pick = matches[0]
 	}
-	return pick.arrayPath, pick.index, fmt.Sprintf("%s/%d", pick.arrayPath, pick.index), nil
+	return wfLocation{
+		arrayPath: pick.arrayPath,
+		index:     pick.index,
+		actPath:   fmt.Sprintf("%s/%d", pick.arrayPath, pick.index),
+		name:      pick.name,
+		taken:     taken,
+	}, nil
 }
 
 // searchActivities walks an activities array and every descendant sub-flow
 // (each activity's outcome flows, then its boundary-event flows, in order),
-// appending every activity whose name or caption equals ref. The depth-first,
-// in-order traversal matches DESCRIBE, so @N numbering lines up.
-func (m *mcpWorkflowMutator) searchActivities(arrayPath, ref string, matches *[]activityRefMatch) error {
+// appending every activity whose name or caption equals ref and recording every
+// activity name it passes in taken. The depth-first, in-order traversal matches
+// DESCRIBE, so @N numbering lines up.
+//
+// Name collection rides along on the search rather than being its own pass
+// because each level costs a PED round-trip; the two consumers always want both.
+func (m *mcpWorkflowMutator) searchActivities(arrayPath, ref string, matches *[]activityRefMatch, taken map[string]bool) error {
 	acts, err := m.readArrayRaw(arrayPath)
 	if err != nil {
 		return err
 	}
 	for i, a := range acts {
+		if name := mapString(a, "name"); name != "" {
+			taken[name] = true
+		}
 		if mapString(a, "name") == ref || mapString(a, "caption") == ref {
-			*matches = append(*matches, activityRefMatch{arrayPath: arrayPath, index: i})
+			*matches = append(*matches, activityRefMatch{arrayPath: arrayPath, index: i, name: mapString(a, "name")})
 		}
 		actPath := fmt.Sprintf("%s/%d", arrayPath, i)
 		for _, sub := range m.subFlowArrays(actPath, mapString(a, "$Type")) {
-			if err := m.searchActivities(sub, ref, matches); err != nil {
+			if err := m.searchActivities(sub, ref, matches, taken); err != nil {
 				return err
 			}
 		}
@@ -751,10 +790,11 @@ func mapString(m map[string]any, key string) string {
 	return s
 }
 
-// apply sends activity-level ops to PED immediately (the existing
-// INSERT/DROP/REPLACE activity ops do the same; only the workflow-level SETs
-// defer through m.set()/Save()).
+// apply sends activity-level ops to PED immediately (only the workflow-level
+// SETs defer through m.set()/Save()). It records that a write happened so Save
+// still validates the document even when no property set was queued.
 func (m *mcpWorkflowMutator) apply(ops ...pedOpEntry) error {
+	m.applied = true
 	return m.backend.pedUpdateDoc(workflowDocType, m.qn(), ops...)
 }
 
@@ -774,10 +814,11 @@ func (m *mcpWorkflowMutator) SetActivityProperty(activityRef string, atPos int, 
 	default:
 		return fmt.Errorf("ALTER WORKFLOW set activity %s is not supported by the MCP backend (supported: page, description, due_date, targeting_microflow, targeting_xpath)", prop)
 	}
-	_, _, actPath, err := m.resolve(activityRef, atPos)
+	loc, err := m.resolve(activityRef, atPos)
 	if err != nil {
 		return err
 	}
+	actPath := loc.actPath
 	switch strings.ToLower(prop) {
 	case "targeting_microflow":
 		return m.setUserTargetingLeaf(actPath, "Workflows$MicroflowUserTargeting", "microflow", value)
@@ -806,10 +847,12 @@ func (m *mcpWorkflowMutator) setUserTargetingLeaf(actPath, wantType, field, valu
 }
 
 func (m *mcpWorkflowMutator) InsertAfterActivity(activityRef string, atPos int, activities []workflows.WorkflowActivity) error {
-	arrayPath, idx, _, err := m.resolve(activityRef, atPos)
+	loc, err := m.resolve(activityRef, atPos)
 	if err != nil {
 		return err
 	}
+	arrayPath, idx := loc.arrayPath, loc.index
+	wfnames.Dedup(activities, loc.taken)
 	ops := make([]pedOpEntry, 0, len(activities))
 	for i, a := range activities {
 		mapped, err := mapWorkflowActivity(a)
@@ -819,22 +862,29 @@ func (m *mcpWorkflowMutator) InsertAfterActivity(activityRef string, atPos int, 
 		at := idx + 1 + i
 		ops = append(ops, pedOpEntry{Path: arrayPath, Operation: pedOperation{Type: "add", Value: mapped, Index: &at}})
 	}
-	return m.backend.pedUpdateDoc(workflowDocType, m.qn(), ops...)
+	return m.apply(ops...)
 }
 
 func (m *mcpWorkflowMutator) DropActivity(activityRef string, atPos int) error {
-	arrayPath, idx, _, err := m.resolve(activityRef, atPos)
+	loc, err := m.resolve(activityRef, atPos)
 	if err != nil {
 		return err
 	}
-	return m.backend.pedUpdateDoc(workflowDocType, m.qn(), removeAtOp(arrayPath, idx))
+	return m.apply(removeAtOp(loc.arrayPath, loc.index))
 }
 
 func (m *mcpWorkflowMutator) ReplaceActivity(activityRef string, atPos int, activities []workflows.WorkflowActivity) error {
-	arrayPath, idx, _, err := m.resolve(activityRef, atPos)
+	loc, err := m.resolve(activityRef, atPos)
 	if err != nil {
 		return err
 	}
+	arrayPath, idx := loc.arrayPath, loc.index
+	// Free the outgoing activity's name before deduplicating: the remove and the
+	// adds go to PED in one call, so the replaced activity is gone by the time
+	// any name is resolved, and a replacement reusing its name is the ordinary
+	// in-place edit rather than a collision (issue #944).
+	delete(loc.taken, loc.name)
+	wfnames.Dedup(activities, loc.taken)
 	mapped := make([]map[string]any, 0, len(activities))
 	for _, a := range activities {
 		mm, err := mapWorkflowActivity(a)
@@ -851,17 +901,19 @@ func (m *mcpWorkflowMutator) ReplaceActivity(activityRef string, atPos int, acti
 		at := idx + i
 		ops = append(ops, pedOpEntry{Path: arrayPath, Operation: pedOperation{Type: "add", Value: mm, Index: &at}})
 	}
-	return m.backend.pedUpdateDoc(workflowDocType, m.qn(), ops...)
+	return m.apply(ops...)
 }
 
 // --- outcome / path / branch ops (all live in an activity's `outcomes` array) ---
 
 // InsertOutcome adds a named outcome (with an optional sub-flow) to a user task.
 func (m *mcpWorkflowMutator) InsertOutcome(activityRef string, atPos int, outcomeName string, activities []workflows.WorkflowActivity) error {
-	_, _, actPath, err := m.resolve(activityRef, atPos)
+	loc, err := m.resolve(activityRef, atPos)
 	if err != nil {
 		return err
 	}
+	actPath := loc.actPath
+	wfnames.Dedup(activities, loc.taken)
 	el := map[string]any{"$Type": "Workflows$UserTaskOutcome", "value": outcomeName}
 	if err := attachSubFlow(el, activities); err != nil {
 		return err
@@ -871,10 +923,11 @@ func (m *mcpWorkflowMutator) InsertOutcome(activityRef string, atPos int, outcom
 
 // DropOutcome removes a user-task outcome by its value ("Default" matches a void outcome).
 func (m *mcpWorkflowMutator) DropOutcome(activityRef string, atPos int, outcomeName string) error {
-	_, _, actPath, err := m.resolve(activityRef, atPos)
+	loc, err := m.resolve(activityRef, atPos)
 	if err != nil {
 		return err
 	}
+	actPath := loc.actPath
 	return m.dropFromActivityArray(actPath, "outcomes", activityRef, "outcome", func(o pedOutcomeElem) bool {
 		return o.valueString() == outcomeName ||
 			(strings.EqualFold(outcomeName, "Default") && o.SType == "Workflows$VoidConditionOutcome")
@@ -883,10 +936,12 @@ func (m *mcpWorkflowMutator) DropOutcome(activityRef string, atPos int, outcomeN
 
 // InsertPath adds a concurrent path (with an optional sub-flow) to a parallel split.
 func (m *mcpWorkflowMutator) InsertPath(activityRef string, atPos int, pathCaption string, activities []workflows.WorkflowActivity) error {
-	_, _, actPath, err := m.resolve(activityRef, atPos)
+	loc, err := m.resolve(activityRef, atPos)
 	if err != nil {
 		return err
 	}
+	actPath := loc.actPath
+	wfnames.Dedup(activities, loc.taken)
 	el := map[string]any{"$Type": "Workflows$ParallelSplitOutcome"}
 	if err := attachSubFlow(el, activities); err != nil {
 		return err
@@ -897,10 +952,11 @@ func (m *mcpWorkflowMutator) InsertPath(activityRef string, atPos int, pathCapti
 // DropPath removes a parallel-split path. Paths have no stored name; the caption
 // "Path N" addresses the N-th path, and an empty caption drops the last one.
 func (m *mcpWorkflowMutator) DropPath(activityRef string, atPos int, pathCaption string) error {
-	_, _, actPath, err := m.resolve(activityRef, atPos)
+	loc, err := m.resolve(activityRef, atPos)
 	if err != nil {
 		return err
 	}
+	actPath := loc.actPath
 	paths, err := m.readActivityArray(actPath, "outcomes")
 	if err != nil {
 		return err
@@ -923,10 +979,12 @@ func (m *mcpWorkflowMutator) DropPath(activityRef string, atPos int, pathCaption
 
 // InsertBranch adds a condition branch (true/false/default/enum-value) to a decision.
 func (m *mcpWorkflowMutator) InsertBranch(activityRef string, atPos int, condition string, activities []workflows.WorkflowActivity) error {
-	_, _, actPath, err := m.resolve(activityRef, atPos)
+	loc, err := m.resolve(activityRef, atPos)
 	if err != nil {
 		return err
 	}
+	actPath := loc.actPath
+	wfnames.Dedup(activities, loc.taken)
 	el := branchOutcomeElement(condition)
 	if err := attachSubFlow(el, activities); err != nil {
 		return err
@@ -936,10 +994,11 @@ func (m *mcpWorkflowMutator) InsertBranch(activityRef string, atPos int, conditi
 
 // DropBranch removes a decision branch by name (true/false/default, or an enum value).
 func (m *mcpWorkflowMutator) DropBranch(activityRef string, atPos int, branchName string) error {
-	_, _, actPath, err := m.resolve(activityRef, atPos)
+	loc, err := m.resolve(activityRef, atPos)
 	if err != nil {
 		return err
 	}
+	actPath := loc.actPath
 	return m.dropFromActivityArray(actPath, "outcomes", activityRef, "branch", func(o pedOutcomeElem) bool {
 		switch strings.ToLower(branchName) {
 		case "true":
@@ -959,10 +1018,12 @@ func (m *mcpWorkflowMutator) DropBranch(activityRef string, atPos int, branchNam
 // InsertBoundaryEvent attaches a (non-)interrupting timer boundary event, with an
 // optional handler sub-flow, to a user task or call-microflow activity.
 func (m *mcpWorkflowMutator) InsertBoundaryEvent(activityRef string, atPos int, eventType, delay string, activities []workflows.WorkflowActivity) error {
-	_, _, actPath, err := m.resolve(activityRef, atPos)
+	loc, err := m.resolve(activityRef, atPos)
 	if err != nil {
 		return err
 	}
+	actPath := loc.actPath
+	wfnames.Dedup(activities, loc.taken)
 	el := boundaryEventElement(eventType, delay)
 	if err := attachSubFlow(el, activities); err != nil {
 		return err
@@ -972,10 +1033,11 @@ func (m *mcpWorkflowMutator) InsertBoundaryEvent(activityRef string, atPos int, 
 
 // DropBoundaryEvent removes the activity's (first) boundary event.
 func (m *mcpWorkflowMutator) DropBoundaryEvent(activityRef string, atPos int) error {
-	_, _, actPath, err := m.resolve(activityRef, atPos)
+	loc, err := m.resolve(activityRef, atPos)
 	if err != nil {
 		return err
 	}
+	actPath := loc.actPath
 	events, err := m.readActivityArray(actPath, "boundaryEvents")
 	if err != nil {
 		return err

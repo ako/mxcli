@@ -147,6 +147,7 @@ type MockBackend struct {
 	GetProjectSecurityFunc               func() (*security.ProjectSecurity, error)
 	SetProjectSecurityLevelFunc          func(unitID model.ID, level string) error
 	SetProjectDemoUsersEnabledFunc       func(unitID model.ID, enabled bool) error
+	SetProjectGuestAccessFunc            func(unitID model.ID, enabled bool, guestUserRole string) error
 	AddUserRoleFunc                      func(unitID model.ID, name string, moduleRoles []string, manageAllRoles bool) error
 	AlterUserRoleModuleRolesFunc         func(unitID model.ID, userRoleName string, add bool, moduleRoles []string) error
 	RemoveUserRoleFunc                   func(unitID model.ID, name string) error

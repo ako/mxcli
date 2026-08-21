@@ -136,8 +136,6 @@ var knownWrongKeys = []keyMismatch{
 	{"Reports$ReportZoomMapping", "TargetParameterName", "Parameter"},
 	{"Rest$ODataRemoteEntitySource", "EntityTypeName", "RemoteName"},
 	{"Rest$ODataRemoteEntitySource", "EntitySetName", "EntitySet"},
-	{"Security$ProjectSecurity", "AdminUserRoleName", "AdminUserRole"},
-	{"Security$ProjectSecurity", "GuestUserRoleName", "GuestUserRole"},
 	{"Settings$Configuration", "RuntimePortNumber", "HttpPortNumber"},
 	{"Settings$Configuration", "AdminPortNumber", "ServerPortNumber"},
 	{"Settings$Configuration", "RuntimePortOnlyLocal", "OpenHttpPort"},

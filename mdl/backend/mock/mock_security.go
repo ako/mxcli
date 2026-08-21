@@ -3,6 +3,8 @@
 package mock
 
 import (
+	"fmt"
+
 	"github.com/mendixlabs/mxcli/mdl/backend"
 	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
@@ -28,6 +30,13 @@ func (m *MockBackend) SetProjectDemoUsersEnabled(unitID model.ID, enabled bool) 
 		return m.SetProjectDemoUsersEnabledFunc(unitID, enabled)
 	}
 	return nil
+}
+
+func (m *MockBackend) SetProjectGuestAccess(unitID model.ID, enabled bool, guestUserRole string) error {
+	if m.SetProjectGuestAccessFunc != nil {
+		return m.SetProjectGuestAccessFunc(unitID, enabled, guestUserRole)
+	}
+	return fmt.Errorf("MockBackend.SetProjectGuestAccess not configured")
 }
 
 func (m *MockBackend) AddUserRole(unitID model.ID, name string, moduleRoles []string, manageAllRoles bool) error {

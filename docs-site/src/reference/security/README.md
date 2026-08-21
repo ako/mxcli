@@ -26,6 +26,7 @@ Mendix security operates at two levels. **Module roles** define permissions with
 | Show security matrix | `SHOW SECURITY MATRIX [IN module]` |
 | Alter project security level | `ALTER PROJECT SECURITY LEVEL OFF\|PROTOTYPE\|PRODUCTION` |
 | Toggle demo users | `ALTER PROJECT SECURITY DEMO USERS ON\|OFF` |
+| Toggle guest access | `ALTER PROJECT SECURITY GUEST ACCESS ON [ROLE UserRole]\|OFF` |
 | Drop module role | `DROP MODULE ROLE module.Role` |
 | Drop user role | `DROP USER ROLE Name` |
 | Drop demo user | `DROP DEMO USER 'username'` |
