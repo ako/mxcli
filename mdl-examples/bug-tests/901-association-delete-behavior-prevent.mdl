@@ -1,0 +1,77 @@
+-- Repro: DELETE_BEHAVIOR PREVENT reported success and wrote
+-- DeleteMeButKeepReferences, destroying a stored DELETE_AND_REFERENCES.
+-- Upstream #901.
+--
+--   describe -> delete_behavior DELETE_AND_REFERENCES
+--   create or modify ... DELETE_BEHAVIOR PREVENT
+--   -> Modified association: Del901.Child_Parent
+--   describe -> delete_behavior DELETE_BUT_KEEP_REFERENCES
+--
+-- Three bugs, layered:
+--
+--   1. buildDeleteBehavior read only the CASCADE token, so PREVENT,
+--      DELETE_IF_NO_REFERENCES and DELETE_AND_REFERENCES all fell through to
+--      the zero value. A legal behaviour, so nothing downstream noticed.
+--   2. ALTER ASSOCIATION SET built the stored value from
+--      ast.DeleteBehavior.String(), which spells the prevent case
+--      "DeleteIfNoReferences" — not one of Mendix's three DeletingBehavior
+--      values. Fixing (1) alone put that string on disk.
+--   3. DESCRIBE emitted `delete_behavior DELETE_CASCADE`, which is not a
+--      token, so describe -> edit -> exec died on any cascading association.
+--
+-- `mx check` is NOT the oracle here. Measured on mxbuild 11.6.6: a project
+-- carrying the out-of-domain "DeleteIfNoReferences" builds with 0 errors, the
+-- same as a correct one. Studio Pro is the one that refuses it. So verify by
+-- reading the values back, which is what the DESCRIBEs below are for.
+--
+-- Expected after the fix: every DESCRIBE echoes the behaviour that was asked
+-- for, `mx check` reports 0 errors, and no .mxunit contains a DeletingBehavior
+-- outside {DeleteMeAndReferences, DeleteMeButKeepReferences,
+-- DeleteMeIfNoReferences}.
+
+create module Del901;
+
+create persistent entity Del901.Parent ( Name: String(100) );
+create persistent entity Del901.Child ( Title: String(100) );
+
+-- Baseline: cascade. Starting from the default would make a silent fallback to
+-- DELETE_BUT_KEEP_REFERENCES indistinguishable from success.
+create association Del901.Child_Parent
+  from Del901.Child to Del901.Parent
+  type Reference owner Default storage column
+  delete_behavior CASCADE;
+
+describe association Del901.Child_Parent;
+-- expect: delete_behavior DELETE_AND_REFERENCES
+
+-- The reported statement. Before the fix this printed "Modified association"
+-- and wrote DeleteMeButKeepReferences.
+create or modify association Del901.Child_Parent
+  from Del901.Child to Del901.Parent
+  type Reference owner Default storage column
+  delete_behavior PREVENT;
+
+describe association Del901.Child_Parent;
+-- expect: delete_behavior DELETE_IF_NO_REFERENCES
+
+-- The canonical spelling of cascade, whose alias CASCADE always worked. Not in
+-- the report, and downgraded exactly the same way.
+create or modify association Del901.Child_Parent
+  from Del901.Child to Del901.Parent
+  type Reference owner Default storage column
+  delete_behavior DELETE_AND_REFERENCES;
+
+describe association Del901.Child_Parent;
+-- expect: delete_behavior DELETE_AND_REFERENCES
+
+-- The ALTER path, where bug (2) lives. Before the fix this stored the
+-- out-of-domain string "DeleteIfNoReferences".
+alter association Del901.Child_Parent set delete_behavior PREVENT;
+
+describe association Del901.Child_Parent;
+-- expect: delete_behavior DELETE_IF_NO_REFERENCES
+
+alter association Del901.Child_Parent set delete_behavior DELETE_BUT_KEEP_REFERENCES;
+
+describe association Del901.Child_Parent;
+-- expect: delete_behavior DELETE_BUT_KEEP_REFERENCES

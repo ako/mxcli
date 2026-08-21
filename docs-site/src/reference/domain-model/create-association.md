@@ -7,7 +7,7 @@
         TO to_module.to_entity
         TYPE { Reference | ReferenceSet }
         [ OWNER { Default | Both | Parent | Child } ]
-        [ DELETE_BEHAVIOR { DELETE_BUT_KEEP_REFERENCES | DELETE_AND_REFERENCES } ]
+        [ DELETE_BEHAVIOR { DELETE_BUT_KEEP_REFERENCES | DELETE_AND_REFERENCES | DELETE_IF_NO_REFERENCES | CASCADE | PREVENT } ]
 
 ## Description
 
@@ -33,8 +33,11 @@ The `DELETE_BEHAVIOR` clause controls what happens when an object on the FROM si
 
 | Behavior | Description |
 |----------|-------------|
-| `DELETE_BUT_KEEP_REFERENCES` | Delete the object and set references to null |
+| `DELETE_BUT_KEEP_REFERENCES` | Delete the object and set references to null (the default) |
 | `DELETE_AND_REFERENCES` | Delete the object and all associated objects on the TO side |
+| `CASCADE` | Alias for `DELETE_AND_REFERENCES` |
+| `DELETE_IF_NO_REFERENCES` | Refuse the delete while anything still references the object |
+| `PREVENT` | Alias for `DELETE_IF_NO_REFERENCES` |
 
 If `OR MODIFY` is specified, the statement is idempotent: if the association already exists, it is updated to match the new definition.
 

@@ -118,7 +118,7 @@ Domain Model - Associations:
     to Module.Child
     type Reference|ReferenceSet
     [owner Default|Both|Parent|Child]
-    [delete_behavior DELETE_BUT_KEEP_REFERENCES|DELETE_CASCADE];
+    [delete_behavior DELETE_BUT_KEEP_REFERENCES|DELETE_AND_REFERENCES|DELETE_IF_NO_REFERENCES];
   /
 
   drop association Module.Name;

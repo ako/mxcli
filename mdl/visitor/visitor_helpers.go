@@ -419,13 +419,22 @@ func buildDeleteBehavior(ctx parser.IDeleteBehaviorContext) ast.DeleteBehavior {
 	}
 	db := ctx.(*parser.DeleteBehaviorContext)
 
-	if db.CASCADE() != nil {
+	// Every token the deleteBehavior rule admits has to be read here. Only
+	// CASCADE was, so PREVENT, DELETE_IF_NO_REFERENCES and DELETE_AND_REFERENCES
+	// all fell through to the zero value — a legal behaviour, which is why the
+	// substitution was silent all the way to disk and overwrote whatever the
+	// association had (upstream #901). Adding a token to the grammar means
+	// adding it here; there is no default that can be trusted to be right.
+	switch {
+	case db.CASCADE() != nil, db.DELETE_AND_REFERENCES() != nil:
 		return ast.DeleteCascade
+	case db.PREVENT() != nil, db.DELETE_IF_NO_REFERENCES() != nil:
+		return ast.DeleteIfNoReferences
+	default:
+		// DELETE_BUT_KEEP_REFERENCES, and Mendix's default for an association
+		// that names no behaviour at all.
+		return ast.DeleteKeepReferences
 	}
-	// The new grammar may use different tokens for delete behaviors
-	// Add more cases as needed based on the actual grammar
-
-	return ast.DeleteKeepReferences
 }
 
 // QuoteString escapes s for safe embedding inside an MDL single-quoted string

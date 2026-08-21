@@ -64,18 +64,7 @@ func execCreateAssociation(ctx *ExecContext, s *ast.CreateAssociationStmt) error
 		owner = domainmodel.AssociationOwnerBoth
 	}
 
-	// Convert delete behavior
-	var deleteBehavior domainmodel.DeleteBehaviorType
-	switch s.DeleteBehavior {
-	case ast.DeleteKeepReferences:
-		deleteBehavior = domainmodel.DeleteBehaviorTypeDeleteMeButKeepReferences
-	case ast.DeleteCascade:
-		deleteBehavior = domainmodel.DeleteBehaviorTypeDeleteMeAndReferences
-	case ast.DeleteIfNoReferences:
-		deleteBehavior = domainmodel.DeleteBehaviorTypeDeleteMeIfNoReferences
-	default:
-		deleteBehavior = domainmodel.DeleteBehaviorTypeDeleteMeButKeepReferences
-	}
+	deleteBehavior := storageDeleteBehavior(s.DeleteBehavior)
 
 	// Convert storage type (default: Column = foreign key in parent table)
 	storageFormat := domainmodel.StorageFormatColumn
@@ -246,7 +235,7 @@ func execAlterAssociation(ctx *ExecContext, s *ast.AlterAssociationStmt) error {
 			switch s.Operation {
 			case ast.AlterAssociationSetDeleteBehavior:
 				assoc.ChildDeleteBehavior = &domainmodel.DeleteBehavior{
-					Type: domainmodel.DeleteBehaviorType(s.DeleteBehavior.String()),
+					Type: storageDeleteBehavior(s.DeleteBehavior),
 				}
 			case ast.AlterAssociationSetOwner:
 				assoc.Owner = domainmodel.AssociationOwner(s.Owner.String())
@@ -271,7 +260,7 @@ func execAlterAssociation(ctx *ExecContext, s *ast.AlterAssociationStmt) error {
 			switch s.Operation {
 			case ast.AlterAssociationSetDeleteBehavior:
 				ca.ChildDeleteBehavior = &domainmodel.DeleteBehavior{
-					Type: domainmodel.DeleteBehaviorType(s.DeleteBehavior.String()),
+					Type: storageDeleteBehavior(s.DeleteBehavior),
 				}
 			case ast.AlterAssociationSetOwner:
 				ca.Owner = domainmodel.AssociationOwner(s.Owner.String())
@@ -527,11 +516,17 @@ func describeAssociation(ctx *ExecContext, name ast.QualifiedName) error {
 			fmt.Fprintf(ctx.Output, "storage column\n")
 		}
 
+		// DELETE_AND_REFERENCES, not DELETE_CASCADE: DESCRIBE has to emit MDL the
+		// parser accepts, and DELETE_CASCADE is not a token — only CASCADE and the
+		// three canonical names are. The other two arms already spell the
+		// canonical name, so cascade was the odd one out and a describe → edit →
+		// exec loop died on it (upstream #901). The round-trip test in
+		// cmd_associations_delete_behavior_test.go feeds this back through the parser.
 		deleteBehavior := "DELETE_BUT_KEEP_REFERENCES"
 		if childDeleteBehavior != nil {
 			switch childDeleteBehavior.Type {
 			case domainmodel.DeleteBehaviorTypeDeleteMeAndReferences:
-				deleteBehavior = "DELETE_CASCADE"
+				deleteBehavior = "DELETE_AND_REFERENCES"
 			case domainmodel.DeleteBehaviorTypeDeleteMeIfNoReferences:
 				deleteBehavior = "DELETE_IF_NO_REFERENCES"
 			case domainmodel.DeleteBehaviorTypeDeleteMeButKeepReferences:
@@ -578,6 +573,30 @@ func describeAssociation(ctx *ExecContext, name ast.QualifiedName) error {
 	}
 
 	return mdlerrors.NewNotFound("association", name.String())
+}
+
+// storageDeleteBehavior maps an authored delete behaviour onto the value Mendix
+// stores. Mendix's DeletingBehavior admits exactly three (generated/metamodel
+// enums.go); ast.DeleteBehavior has six, three of which name nothing Mendix has.
+//
+// This is the single conversion for every path that writes one. The ALTER path
+// used to build it as DeleteBehaviorType(s.DeleteBehavior.String()) instead, and
+// String() spells the prevent case "DeleteIfNoReferences" where Mendix writes
+// "DeleteMeIfNoReferences" — so `ALTER ASSOCIATION ... SET DELETE_BEHAVIOR
+// PREVENT` put an out-of-domain enum on disk (upstream #901). Nothing downstream
+// rejects one: mxbuild is lenient about property values and Studio Pro is not,
+// so the failure surfaces only when someone opens the project.
+//
+// String() is a display helper. Do not reintroduce it as a storage encoding.
+func storageDeleteBehavior(b ast.DeleteBehavior) domainmodel.DeleteBehaviorType {
+	switch b {
+	case ast.DeleteCascade:
+		return domainmodel.DeleteBehaviorTypeDeleteMeAndReferences
+	case ast.DeleteIfNoReferences:
+		return domainmodel.DeleteBehaviorTypeDeleteMeIfNoReferences
+	default:
+		return domainmodel.DeleteBehaviorTypeDeleteMeButKeepReferences
+	}
 }
 
 // applyAnchors copies authored `@anchor(from: …, to: …)` / `SET ANCHOR` values
