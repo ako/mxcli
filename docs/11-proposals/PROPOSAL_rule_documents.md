@@ -311,25 +311,52 @@ Two consequences, both shrinking the plan:
 - The MOVE/`FOLDER` work in Slice 3 is **one entry in
   `ast.MoveDocumentTypeByKeyword`**, not a placement implementation.
 
-### One reference document would still help
+### The rule call #939 writes matches Studio Pro's, measured
 
-It does not block implementation. `Rules.MicroflowUsingRule` exists but is
-currently empty (start → end, no decision), so TestApp still contains **no
-`Microflows$RuleSplitCondition`** — meaning the shape #939 now writes is
-validated against the legacy engine's output rather than against Studio Pro.
-The two agree key-for-key, which is good evidence but not the same thing.
+`Rules.MicroflowUsingRule` now carries a decision calling `Rules.Rule1`, so the
+shape is no longer validated only against the legacy engine. Studio Pro stores:
 
-Dropping a decision into that microflow and pointing it at `Rules.Rule1` would
-close it.
+```
+SplitCondition  Microflows$RuleSplitCondition
+  RuleCall      Microflows$RuleCall
+    Microflow            "Rules.Rule1"          ← the storage key, not "Rule"
+    ParameterMappings    [2, {Microflows$RuleCallParameterMapping,
+                              Parameter: "Rules.Rule1.pName", Argument: "'abc'"}]
+```
+
+Every element of that is what #939 now writes: the same `$Type`s, the same
+`Microflow` storage key (independent confirmation of the `initRuleCall`
+override), the same typed-array marker **2**, and the same fully-qualified
+`Parameter` — which is how the flow builder already constructs it
+(`call.Name + "." + name`).
+
+Two round-trip results on that document:
+
+- `DESCRIBE MICROFLOW` renders `if Rules.Rule1(pName = 'abc') then`, and
+  `show callers of Rules.Rule1` lists the microflow — the read and reference
+  paths exercised against a Studio Pro document for the first time.
+- Re-executing that describe output over the app and re-checking gives **0
+  errors, against a 0-error baseline** (mxbuild 11.13.0, baseline run first).
+  Diffing the two documents, the `SplitCondition` block does not appear in the
+  diff at all — the rebuild reproduces it exactly.
+
+What *does* differ in that diff is the surrounding flow graph, and all of it is
+pre-existing and general to microflows: the connection-index widths and
+`CaseValues` shape below, plus two more of the same kind — Studio Pro keeps a
+flow's bezier control vectors (`"15;0"`, `"0;15"`) where a `@curve` annotation
+did not survive describe, and the object collection's ordering differs. None of
+these are rule-specific and none change the check result.
 
 ## Adjacent findings, out of scope
 
 Measured while pinning the rule shape, both on Studio Pro documents in TestApp
 and both **general to microflows**, not rule-specific:
 
-- **`CaseValues` on an unconditional sequence flow.** Studio Pro writes the bare
-  marker `[2]`; mxcli writes `[2, {Microflows$NoCase}]`. Both load, and mxcli's
-  form is what the legacy writer has always produced.
+- **`CaseValues` on a sequence flow.** Studio Pro writes the bare marker `[2]`
+  where mxcli writes an explicit `[2, {Microflows$NoCase}]`, and on a boolean
+  split it labels only the *false* branch, leaving the true branch's list empty
+  where mxcli labels both. Both load; mxcli's form is what the legacy writer has
+  always produced.
 - **`OriginConnectionIndex` / `DestinationConnectionIndex` width.** Studio Pro
   stores int64; mxcli writes int32. Same class as the widths recorded as out of
   scope in #931 (`CanvasHeight`, `TabIndex`, `PopupWidth`), now observed on
