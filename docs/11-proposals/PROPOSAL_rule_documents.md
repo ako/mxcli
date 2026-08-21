@@ -88,10 +88,9 @@ are new are a validator and a `$Type`.
 | `ExportLevel` | enum | |
 | `ObjectCollection` | `Microflows$MicroflowObjectCollection` | identical to a microflow's |
 | `Flows` | list | identical to a microflow's |
-| `ReturnType` | string | in gen; **absent from `generated/metamodel`** — a pre-7 legacy sibling, see Open Questions |
-| `MicroflowReturnType` | `DataTypes$*Type` | Boolean or Enumeration only |
+| `MicroflowReturnType` | `DataTypes$*Type` | `DataTypes$BooleanType` or `DataTypes$EnumerationType` (with `Enumeration: "Mod.Enum"`) |
 | `MarkAsUsed` | bool | |
-| `ReturnVariableName` | string | |
+| `ReturnVariableName` | string | Studio Pro wrote `"Variable"` on both reference rules (and `""` on a microflow in the same app) |
 | `ApplyEntityAccess` | bool | |
 
 A rule carries **none** of the microflow-only keys: no `AllowedModuleRoles`, no
@@ -99,15 +98,28 @@ A rule carries **none** of the microflow-only keys: no `AllowedModuleRoles`, no
 no `Url` / `UrlSearchParameters`, no `MicroflowActionInfo` / `WorkflowActionInfo`,
 no `StableId`.
 
-**Verified by construction, not by a Studio Pro document.** A synthetic rule
-built by taking an mxcli-authored microflow's unit and keeping exactly the ten
-keys above loads and checks clean (`mx check` 0 errors on mxbuild 11.13.0), and
-a decision calling it checks clean. That is a real but weak signal: mxbuild's
-deserializer tolerates unknown properties and Studio Pro is stricter (the rule
-CLAUDE.md records for overlay writes applies here too). **A Studio Pro-authored
-rule is a prerequisite for the authoring slice** — see Open Questions.
+**Pinned against Studio Pro.** [`ako/TestApp`](https://github.com/ako/TestApp)
+(Mendix 11.13.0) carries two rules authored in Studio Pro — `Rules.Rule1`
+(Boolean return, String parameter, `ReturnValue: "length($pName)>0"`) and
+`Rules.Rule2` (enumeration return `Rules.RuleResult`, entity parameter
+`Pages.Bus`, `ReturnValue: "Rules.RuleResult.Approved"`). Both store exactly the
+ten properties above and nothing else.
 
-### The parameter type is the one live BSON question
+Two things the reference settles that inference had wrong or unproven:
+
+- **`ReturnType` is not written.** gen declares it (a pre-7 legacy sibling of
+  `MicroflowReturnType`, and absent from `generated/metamodel` 11.6.0); Studio
+  Pro 11.13 writes only `MicroflowReturnType`. mxcli must not invent it. This
+  is *not* the `Interval`/`IntervalType` carry-through case — there is nothing
+  to carry.
+- **The microflow-only keys really are absent.** A Studio Pro microflow in the
+  same app (`Microflows.SplitMerge`) stores 19 properties including
+  `AllowConcurrentExecution`, `AllowedModuleRoles`, `ConcurrencyErrorMicroflow`,
+  `ConcurrenyErrorMessage`, `MicroflowActionInfo`, `StableId`, `Url`,
+  `UrlSearchParameters` and `WorkflowActionInfo`. A rule stores none of them —
+  measured on both rules, not assumed from the type definition.
+
+### The parameter type — the question the reference rules answered
 
 `generated/metamodel` lists three sibling types:
 
@@ -123,12 +135,13 @@ canvas parameter as `$Type: Microflows$MicroflowParameter` carrying the
 *ParameterObject* shape. mxcli writes the same thing, so mxcli is right and the
 metamodel naming is an SDK-side view.
 
-By symmetry a rule's canvas parameter is probably also
-`Microflows$MicroflowParameter`, and the synthetic rule that used it checks
-clean. But `Microflows$RuleParameter` exists for some reason, and guessing which
-type Studio Pro writes inside a rule is exactly the class of mistake that
-produces a document mxbuild accepts and Studio Pro will not open. This is the
-single measurement the authoring slice is blocked on.
+**Resolved by the reference rules: a rule's canvas parameter is
+`Microflows$MicroflowParameter`, carrying the ParameterObject shape**
+(`DefaultValue`, `Documentation`, `HasVariableNameBeenChanged`, `IsRequired`,
+`Name`, `RelativeMiddlePoint`, `Size`, `VariableType`) — byte-for-byte the same
+shape a microflow uses. `Microflows$RuleParameter` appears in neither reference
+rule, so it is an SDK-side name with no storage counterpart here, and the rule
+writer reuses `microflowParameterToGen` unchanged.
 
 ### `RuleCall` — already fixed, recorded here for completeness
 
@@ -207,7 +220,7 @@ bodies would report every rule as dead; walking bodies without the object type
 leaves `show callers` half-populated. #939 deliberately stopped at the edge for
 this reason.
 
-### Slice 3 — authoring (blocked on a Studio Pro reference rule)
+### Slice 3 — authoring
 
 | File | Change |
 |---|---|
@@ -261,23 +274,53 @@ modify, derive it on create, and pin it against a real document per version.
 
 ## Open Questions
 
-1. **A Studio Pro-authored rule is needed before Slice 3.** One rule with a
-   Boolean return and one entity parameter, plus one with an enumeration
-   return, in a project at a known version. It settles: the canvas parameter's
-   `$Type` (`Microflows$MicroflowParameter` vs `Microflows$RuleParameter`),
-   whether `ReturnType` is written and with what value, and whether any key
-   outside the ten appears. Slices 1 and 2 do not need it.
-2. **Does a rule reuse `*microflows.Microflow` in the semantic model, or get
-   its own type?** Reuse keeps the describer and builder untouched and matches
-   how the two engines already decode it; a separate type makes the restriction
-   list enforceable at compile time. ADR-0005 says the backend interface speaks
-   the semantic model, so this is a real design decision, not an implementation
-   detail.
-3. **Should `SHOW MICROFLOWS` include rules?** It currently does not, which is
-   defensible (distinct doctype) but means a project's flow logic has no single
-   listing. A `SHOW MICROFLOWS … INCLUDING RULES` opt-in, or leaving `SHOW
-   RULES` separate, are both consistent with the rest of MDL.
-4. **`ReturnType` (string) alongside `MicroflowReturnType`.** gen has it,
-   `generated/metamodel` 11.6.0 does not. If Studio Pro still writes it, it is a
-   carried-through legacy sibling; if not, mxcli must not invent it. Answered by
-   question 1.
+The two BSON questions this proposal was blocked on are **answered** by
+[`ako/TestApp`](https://github.com/ako/TestApp) — the canvas parameter is
+`Microflows$MicroflowParameter`, and `ReturnType` is not written. What remains:
+
+1. **Does a rule reuse `*microflows.Microflow` in the semantic model, or get its
+   own type?** Reuse keeps the describer, the builder and both engines' decoders
+   untouched — and the reference documents show a rule *is* a microflow minus
+   nine properties, which argues for reuse. A separate type makes the
+   restriction list enforceable at compile time instead of in a validator.
+   ADR-0005 says the backend interface speaks the semantic model, so this is a
+   design decision rather than an implementation detail. **Recommendation:
+   reuse, with a `FlowKind` discriminator** — the same call the nanoflow made.
+2. **Should `SHOW MICROFLOWS` include rules?** It currently does not, which is
+   defensible but means a project's flow logic has no single listing. Visible in
+   TestApp: `show modules` reports the `Rules` module as having 0 microflows and
+   no column mentions its two rules. `SHOW MICROFLOWS … INCLUDING RULES` or a
+   separate `SHOW RULES` are both consistent with the rest of MDL.
+3. **`ReturnVariableName`.** Both reference rules carry `"Variable"`; the
+   microflow in the same app carries `""`. Whether that is a Studio Pro default
+   for the rule editor or authored text is not established by two samples. It
+   must at minimum be **preserved** on modify; whether MDL grows a surface for
+   it is a separate call.
+
+### Two reference documents that would still help
+
+Neither blocks implementation; both would turn an inference into a measurement.
+
+- **A decision that calls a rule, authored in Studio Pro.** TestApp has none, so
+  the `Microflows$RuleSplitCondition` shape #939 now writes is validated against
+  the legacy engine's output rather than against Studio Pro. The two agree
+  key-for-key, which is good evidence, but not the same thing.
+- **A rule inside a folder**, for the MOVE/`FOLDER` clause slice. Both reference
+  rules sit at the module root.
+
+## Adjacent findings, out of scope
+
+Measured while pinning the rule shape, both on Studio Pro documents in TestApp
+and both **general to microflows**, not rule-specific:
+
+- **`CaseValues` on an unconditional sequence flow.** Studio Pro writes the bare
+  marker `[2]`; mxcli writes `[2, {Microflows$NoCase}]`. Both load, and mxcli's
+  form is what the legacy writer has always produced.
+- **`OriginConnectionIndex` / `DestinationConnectionIndex` width.** Studio Pro
+  stores int64; mxcli writes int32. Same class as the widths recorded as out of
+  scope in #931 (`CanvasHeight`, `TabIndex`, `PopupWidth`), now observed on
+  `Microflows$SequenceFlow` as well.
+
+Neither has a known symptom. They are recorded here so the next person to diff a
+rule against Studio Pro does not mistake them for something this feature
+introduced.
