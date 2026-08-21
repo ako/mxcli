@@ -57,6 +57,11 @@ var engineScriptSkip = map[string]string{
 	// the legacy backend refuses create/modify/drop — so the script cannot pass
 	// there and the refusal is the intended behaviour.
 	"legacy/26-menu-examples.mdl": "menu authoring is modelsdk-only by design; the legacy backend refuses it",
+	// Same shape as the menu skip: rule authoring is modelsdk-only. sdk/mpr has
+	// no serializeRule, and a rule document is close enough to a microflow that
+	// a half-written one would look valid, so the legacy backend refuses
+	// create/modify/drop rather than emitting one. Reads work on both engines.
+	"legacy/rules.mdl": "rule authoring is modelsdk-only by design; the legacy backend refuses it",
 	// The legacy widget builder has no `linechart` template either, so the OL08
 	// LineChart object-list example (added in 6b837ad7) fails page build
 	// ("template not found: linechart"). Passes on modelsdk. Same class as the
