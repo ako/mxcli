@@ -26,6 +26,7 @@ type scriptContext struct {
 	nanoflows    map[string]bool // Nanoflows created (Module.Nanoflow)
 	pages        map[string]bool // Pages created (Module.Page)
 	snippets     map[string]bool // Snippets created (Module.Snippet)
+	workflows    map[string]bool // Workflows created (Module.Workflow)
 
 	// Java/JavaScript actions created in the script, mapped to their declared
 	// parameter names. A bool would be enough to stop the false "not found",
@@ -44,6 +45,7 @@ func newScriptContext() *scriptContext {
 		microflows:   make(map[string]bool),
 		nanoflows:    make(map[string]bool),
 		pages:        make(map[string]bool),
+		workflows:    make(map[string]bool),
 		snippets:     make(map[string]bool),
 
 		javaActions:       make(map[string][]string),
@@ -99,6 +101,10 @@ func (sc *scriptContext) collectDefinitions(prog *ast.Program) {
 			if s.Name.Module != "" {
 				sc.snippets[s.Name.String()] = true
 			}
+		case *ast.CreateWorkflowStmt:
+			if s.Name.Module != "" {
+				sc.workflows[s.Name.String()] = true
+			}
 		case *ast.CreateJavaActionStmt:
 			if s.Name.Module != "" {
 				sc.javaActions[s.Name.String()] = codeActionParamNames(s.Parameters)
@@ -148,6 +154,10 @@ func (sc *scriptContext) collectSingle(stmt ast.Statement) {
 		if s.Name.Module != "" {
 			sc.snippets[s.Name.String()] = true
 		}
+	case *ast.CreateWorkflowStmt:
+		if s.Name.Module != "" {
+			sc.workflows[s.Name.String()] = true
+		}
 	case *ast.CreateJavaActionStmt:
 		if s.Name.Module != "" {
 			sc.javaActions[s.Name.String()] = codeActionParamNames(s.Parameters)
@@ -178,6 +188,9 @@ func (sc *scriptContext) allNames() []string {
 		names = append(names, n)
 	}
 	for n := range sc.snippets {
+		names = append(names, n)
+	}
+	for n := range sc.workflows {
 		names = append(names, n)
 	}
 	for n := range sc.javaActions {
@@ -497,10 +510,21 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 				s.Name.String(), strings.Join(ctxErrors, "\n  - "))
 		}
 	case *ast.CreateWorkflowStmt:
-		// Reference check: every workflow call-microflow must map all of its
-		// target microflow's parameters (FINDINGS #40). Syntax-only workflow checks
-		// (MDL-WF01/02/03) run separately in the no-project phase.
-		if refErrors := validateWorkflowParameterMappings(ctx, s, sc); len(refErrors) > 0 {
+		// Two reference passes. Missing targets first: a name that resolves to
+		// nothing is the more basic error, and reporting "parameter not mapped"
+		// for a microflow that does not exist would be actively misleading.
+		// Syntax-only workflow checks (MDL-WF01/02/03) run separately in the
+		// no-project phase.
+		refErrors := validateWorkflowStatementRefs(ctx, s, sc)
+		// Then, for targets that do resolve, that every parameter is mapped
+		// (FINDINGS #40).
+		refErrors = append(refErrors, validateWorkflowParameterMappings(ctx, s, sc)...)
+		if len(refErrors) > 0 {
+			return mdlerrors.NewValidationf("workflow '%s' has reference errors:\n  - %s",
+				s.Name.String(), strings.Join(refErrors, "\n  - "))
+		}
+	case *ast.AlterWorkflowStmt:
+		if refErrors := validateAlterWorkflowRefs(ctx, s, sc); len(refErrors) > 0 {
 			return mdlerrors.NewValidationf("workflow '%s' has reference errors:\n  - %s",
 				s.Name.String(), strings.Join(refErrors, "\n  - "))
 		}
