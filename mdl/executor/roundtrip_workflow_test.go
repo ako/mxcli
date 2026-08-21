@@ -162,8 +162,20 @@ end workflow;`
 	}
 }
 
+// Run on BOTH engines. setupTestEnv defaults to legacy, and legacy could always
+// read boundary events — which is exactly why the default (modelsdk) engine
+// having no boundary-event reader at all stayed invisible: DESCRIBE emitted
+// nothing on the engine users actually run, so describe → exec silently dropped
+// the timer and its handler flow, while this test stayed green (issue #948).
+// Same shape as the TableMappings gap in roundtrip_dbconnection_test.go.
 func TestRoundtripWorkflow_BoundaryEventInterrupting(t *testing.T) {
-	env := setupTestEnv(t)
+	for _, eng := range gateEngines {
+		t.Run(eng.name, func(t *testing.T) { testRoundtripWorkflowBoundaryInterrupting(t, eng) })
+	}
+}
+
+func testRoundtripWorkflowBoundaryInterrupting(t *testing.T, eng gateEngine) {
+	env := setupTestEnvWithBackend(t, eng.factory)
 	defer env.teardown()
 
 	createMDL := `create workflow ` + testModule + `.WfBoundaryInt
@@ -194,8 +206,15 @@ end workflow;`
 	}
 }
 
+// Both engines, for the reason on the interrupting variant above.
 func TestRoundtripWorkflow_BoundaryEventNonInterrupting(t *testing.T) {
-	env := setupTestEnv(t)
+	for _, eng := range gateEngines {
+		t.Run(eng.name, func(t *testing.T) { testRoundtripWorkflowBoundaryNonInterrupting(t, eng) })
+	}
+}
+
+func testRoundtripWorkflowBoundaryNonInterrupting(t *testing.T, eng gateEngine) {
+	env := setupTestEnvWithBackend(t, eng.factory)
 	defer env.teardown()
 
 	createMDL := `create workflow ` + testModule + `.WfBoundaryNonInt

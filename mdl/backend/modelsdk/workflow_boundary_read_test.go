@@ -122,3 +122,31 @@ func roundTripWorkflowActivity(t *testing.T, act workflows.WorkflowActivity) wor
 	}
 	return back.Activities[0]
 }
+
+// A USER TASK carries boundary events too, and it is the shape the workflow
+// roundtrip integration tests use. It is worth pinning separately because the
+// wiring is per-gen-type: genWf.UserTask (the older type) has no
+// BoundaryEventsItems accessor at all, so the reader can only reach these
+// through SingleUserTaskActivity / MultiUserTaskActivity. This asserts the
+// encoder puts a user task somewhere the reader can actually see it.
+func TestWorkflowRead_UserTaskBoundaryEvents(t *testing.T) {
+	ut := &workflows.UserTask{Page: "M.TaskPage"}
+	ut.Name = "Review"
+	ut.Caption = "Review"
+	ut.Outcomes = []*workflows.UserTaskOutcome{{Value: "Approve"}}
+	ut.BoundaryEvents = []*workflows.BoundaryEvent{{
+		EventType:  "InterruptingTimer",
+		TimerDelay: "${PT1H}",
+	}}
+
+	rt, ok := roundTripWorkflowActivity(t, ut).(*workflows.UserTask)
+	if !ok {
+		t.Fatalf("round-tripped to a different type")
+	}
+	if len(rt.BoundaryEvents) != 1 {
+		t.Fatalf("user task boundary events = %d, want 1", len(rt.BoundaryEvents))
+	}
+	if got := rt.BoundaryEvents[0].TimerDelay; got != "${PT1H}" {
+		t.Errorf("TimerDelay = %q, want ${PT1H}", got)
+	}
+}
