@@ -453,7 +453,8 @@ it is for pages.
 | Retrieve (DB) | `retrieve $Var from Module.Entity [where condition];` | Database XPath retrieve |
 | Retrieve (Assoc) | `retrieve $list from $Parent/Module.AssocName;` | Retrieve by association |
 | Add to list | `add expression to $list;` | Also accepts existing `add $item to $list;` form |
-| Call microflow | `$Result = call microflow Module.Name (Param = $value);` | |
+| Call microflow | `$Result = call microflow Module.Name (Param = $value);` | A Mendix **expression** cannot call anything — `declare $r Boolean = Module.Name(...)` is CE0117 (MDL066) |
+| Call a rule | `if Module.SomeRule (Param = $value) then ... end if;` | A decision is the **only** place a rule can be evaluated; there is no call activity for one. The name must resolve to a rule — a microflow there is CE0117 |
 | Call microflow on a queue | `call microflow Module.Name (Param = $value) in queue Module.Queue;` | Background execution; the queue must exist (CE1613) |
 | Call Java action on a queue | `call java action Module.Name (Param = $value) in queue Module.Queue;` | The Java action must `returns void`, else CE7038 |
 | Call nanoflow | `$Result = call nanoflow Module.Name (Param = $value);` | |

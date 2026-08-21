@@ -452,6 +452,40 @@ declare $Session string = '';
 set $Session = 'anonymous';   -- valid, any number of times
 ```
 
+### 10. Calling a Rule or Microflow Inside an Expression
+
+**Error**: CE0117 - "Error(s) in expression." (MDL066)
+
+A Mendix **expression** has no user-callable functions. Its library is built-in
+and unqualified (`length`, `toString`, `contains`, ...); microflows, rules and
+Java actions are called by **activities**. So a qualified call in a value
+position is not an expression at all — mxbuild rejects it whichever document it
+names.
+
+❌ **INCORRECT:**
+```mdl
+declare $Active Boolean = Sample.Rule_IsActive(IsActive = $IsActive);
+declare $Next Integer = Sample.MF_Increment(N = $N);   -- a microflow is no better
+```
+
+✅ **CORRECT** — a microflow or Java action is an activity:
+```mdl
+$Next = call microflow Sample.MF_Increment(N = $N);
+```
+
+A **rule** has no call activity at all: Mendix can only evaluate one as a
+decision's condition, and that is the single position where a bare qualified
+call is valid MDL.
+
+```mdl
+if Sample.Rule_IsActive(IsActive = $IsActive) then
+  ...
+end if;
+```
+
+The name in that position must resolve to a real **rule** — a microflow there is
+the same CE0117, and mxcli refuses the statement rather than writing it.
+
 ## Control Flow
 
 ### IF Statements
