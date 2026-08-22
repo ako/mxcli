@@ -1,11 +1,6 @@
 ---
 name: custom-widgets
-description: "MDL syntax for pluggable widgets already installed in a project — Gallery, DataGrid2, ComboBox and the rest, including their datasource and column forms. Use when placing a pluggable widget on a page, or when `mxcli widget describe` output needs interpreting. For the widgets THIS project actually has, read the generated `widgets` skill."
----
-
----
-name: mendix-custom-widgets
-description: Use when writing MDL for GALLERY, COMBOBOX, or third-party pluggable widgets in CREATE PAGE / ALTER PAGE statements. Covers built-in widget syntax, child slots (TEMPLATE/FILTER), adding new custom widgets via .def.json, and engine internals.
+description: "MDL syntax for pluggable widgets in CREATE PAGE / ALTER PAGE — GALLERY, COMBOBOX, DataGrid2 and third-party widgets: datasource and column forms, child slots (TEMPLATE/FILTER), adding a widget via .def.json, and the engine internals. Use when placing a pluggable widget on a page, or when `mxcli widget describe` output needs interpreting. For the widgets THIS project actually has, read the generated `widgets` skill."
 ---
 
 # Custom & Pluggable Widgets in MDL

@@ -31,7 +31,13 @@ func embeddedSkillNames(t *testing.T) []string {
 		names = append(names, e.Name())
 	}
 	if len(names) == 0 {
-		t.Fatal("no embedded skills; the embed directive is broken")
+		// Naming the go:embed line here sent a reviewer hunting a directive that
+		// was fine: `cmd/mxcli/skills` is GENERATED, and a bare `go build` after
+		// the layout changed leaves it stale or empty. Name the build step
+		// instead (mxcli-formula1 finding 68).
+		t.Fatal("no embedded skills: cmd/mxcli/skills is empty or stale. " +
+			"It is generated from .claude/skills/mendix/ — run `make sync-skills` " +
+			"(or `make build`, which does it) before `go test`.")
 	}
 	return names
 }
