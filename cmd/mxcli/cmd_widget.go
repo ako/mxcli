@@ -49,7 +49,7 @@ var widgetInitCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Extract definitions for all project widgets",
 	Long: `Scan the project's widgets/ directory, extract .def.json for each .mpk,
-and generate skill documentation in .claude/skills/widgets/.
+and generate a widget skill in .ai-context/skills/widgets/ and .claude/skills/widgets/.
 
 This enables CREATE PAGE to use any project widget via the pluggable engine.
 
@@ -68,8 +68,12 @@ Requires --project (-p) to locate the project's widgets/ directory.`,
 var widgetDocsCmd = &cobra.Command{
 	Use:   "docs",
 	Short: "Generate widget skill documentation",
-	Long:  `Generate per-widget markdown documentation in .claude/skills/widgets/ from .mpk definitions.`,
-	RunE:  runWidgetDocs,
+	Long: "Generate a widget skill from the project's .mpk definitions.\n\n" +
+		"Writes SKILL.md — the index, with Agent Skills frontmatter naming the widgets\n" +
+		"found — plus one file per widget carrying its full property table, enumeration\n" +
+		"values, nested object properties, child slots and object lists. Written to\n" +
+		".ai-context/skills/widgets/ and .claude/skills/widgets/, whichever exist.",
+	RunE: runWidgetDocs,
 }
 
 func init() {
@@ -213,12 +217,9 @@ func generateWidgetDocs(projectPath string) error {
 		return err
 	}
 	if generated > 0 {
-		projectDir := filepath.Dir(projectPath)
-		docsDir := filepath.Join(projectDir, ".claude", "skills", "widgets")
-		if _, statErr := os.Stat(filepath.Join(projectDir, ".ai-context")); statErr == nil {
-			docsDir = filepath.Join(projectDir, ".ai-context", "skills", "widgets")
+		for _, dir := range executor.WidgetDocsDirs(filepath.Dir(projectPath)) {
+			fmt.Printf("Generated %d widget docs in %s\n", generated, dir)
 		}
-		fmt.Printf("Generated %d widget docs in %s\n", generated, docsDir)
 	}
 	return nil
 }

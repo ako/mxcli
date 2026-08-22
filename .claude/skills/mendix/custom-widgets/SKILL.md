@@ -1,6 +1,6 @@
 ---
 name: custom-widgets
-description: "MDL syntax for pluggable widgets already installed in a project — Gallery, DataGrid2, ComboBox and the rest, including their datasource and column forms. Use when placing a pluggable widget on a page, or when `mxcli widget describe` output needs interpreting."
+description: "MDL syntax for pluggable widgets already installed in a project — Gallery, DataGrid2, ComboBox and the rest, including their datasource and column forms. Use when placing a pluggable widget on a page, or when `mxcli widget describe` output needs interpreting. For the widgets THIS project actually has, read the generated `widgets` skill."
 ---
 
 ---

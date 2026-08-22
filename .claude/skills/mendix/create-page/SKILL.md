@@ -1387,7 +1387,15 @@ pluggablewidget 'com.mendix.widget.web.image.Image' imgLogo (
 )
 ```
 
-Run `mxcli widget docs -p app.mpr` to generate complete property documentation for all pluggable widgets in the project. Output is saved to `.ai-context/skills/widgets/`.
+The project's own widgets are documented as a skill: read
+`.ai-context/skills/widgets/SKILL.md` (also at `.claude/skills/widgets/SKILL.md`)
+for the index, then the per-widget file for the one you are placing — it carries
+the full property table with enumeration values, nested object properties, child
+slots and object lists.
+
+`mxcli widget docs -p app.mpr` regenerates it (so does `refresh catalog`), and
+`mxcli widget describe <name> -p app.mpr` reads the same data live from the
+`.mpk` when a widget has been upgraded since.
 
 ## See Also
 
