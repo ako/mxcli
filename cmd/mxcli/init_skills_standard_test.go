@@ -40,6 +40,18 @@ func TestEmbeddedSkillsCarryAgentSkillsFrontmatter(t *testing.T) {
 		}
 		fm := string(m[1])
 
+		// A stray SECOND frontmatter block is invisible to every check below:
+		// FindSubmatch matches the first one, and that one is correct. It is
+		// exactly what a rename-and-prepend leaves behind — the #906 migration
+		// prepended a block to `custom-widgets`, which already had one, so the
+		// skill shipped opening with a duplicate `name` and a `---` fence
+		// rendered as body. Nothing in the suite could see it
+		// (mxcli-formula1 finding 68).
+		if body := string(body[len(m[0]):]); strings.HasPrefix(strings.TrimLeft(body, "\n"), "---\n") {
+			t.Errorf("%s/SKILL.md has a second frontmatter block; everything after the first `---` "+
+				"is body, so it renders as a stray fence and a duplicate name", n)
+		}
+
 		var gotName, gotDesc string
 		for _, line := range strings.Split(fm, "\n") {
 			if v, ok := strings.CutPrefix(line, "name: "); ok {

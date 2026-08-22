@@ -158,7 +158,13 @@ release: clean grammar vscode-ext sync-all
 	@ls -lh $(BUILD_DIR)/
 
 # Run tests
-test: grammar
+# `sync-all` is not optional here. The embed dirs (cmd/mxcli/skills, skillpacks,
+# commands, lint-rules) are GENERATED from .claude/, and several tests read them
+# back. `make build` has always synced first; `make test` did not, so a checkout
+# where the skills layout had changed under a bare `go build` failed six tests in
+# cmd/mxcli with an error that pointed at the go:embed directive rather than at
+# the missing build step (mxcli-formula1 finding 68).
+test: grammar sync-all
 	CGO_ENABLED=0 go test ./...
 
 # Dual-engine read-parity harness: run read queries through the legacy (sdk/mpr)
