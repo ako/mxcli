@@ -838,6 +838,14 @@ func parseWidgetPropertyV3(ctx parser.IWidgetPropertyV3Context, widget *ast.Widg
 			widget.Properties[id.GetText()] = buildDataSourceV3(dsCtx)
 			return
 		}
+		// Generic action-typed property — a named action slot (#956). Only the
+		// forms that do not also parse as a data source reach here; MICROFLOW /
+		// NANOFLOW / VARIABLE are matched by the branch above and converted by
+		// the executor, which is the layer that knows the slot is an action.
+		if actCtx := propCtx.ActionExprV3(); actCtx != nil {
+			widget.Properties[id.GetText()] = buildActionV3(actCtx)
+			return
+		}
 		if valCtx := propCtx.PropertyValueV3(); valCtx != nil {
 			widget.Properties[id.GetText()] = buildPropertyValueV3(valCtx)
 		}
@@ -849,6 +857,12 @@ func parseWidgetPropertyV3(ctx parser.IWidgetPropertyV3Context, widget *ast.Widg
 	if kw := propCtx.Keyword(); kw != nil {
 		if dsCtx := propCtx.DataSourceExprV3(); dsCtx != nil {
 			widget.Properties[kw.GetText()] = buildDataSourceV3(dsCtx)
+			return
+		}
+		// A named action slot whose key is an MDL keyword — Switch stores its
+		// slot as `action`, PopupMenu's menu items as `action` too (#956).
+		if actCtx := propCtx.ActionExprV3(); actCtx != nil {
+			widget.Properties[kw.GetText()] = buildActionV3(actCtx)
 			return
 		}
 		if valCtx := propCtx.PropertyValueV3(); valCtx != nil {

@@ -347,7 +347,13 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 			widget.ControlBar = extractDataGrid2ControlBar(ctx, w)
 			// onClick action (ledger #67): read the client action back with full
 			// parameter mappings so a describe round-trip re-emits the onClick.
-			widget.OnClick = renderClientActionMDL(ctx, customWidgetPropertyActionMap(ctx, w, "onClick"))
+			// By SOURCE, not by the literal key — the widget may store it as
+			// `onClickEvent`/`onClickAction`, which the writer accepts and the
+			// literal lookup could not see (#956).
+			widget.OnClick = renderClientActionMDL(ctx, customWidgetActionForSource(ctx, w, "OnClick"))
+			// Slots MDL addresses by the widget's own key — DataGrid2 stores
+			// onSelectionChange and onConfigurationChange (#956).
+			widget.NamedActions = namedActionSlotsOf(ctx, w)
 		}
 		// For Gallery, extract datasource, content widgets, filter widgets, and selection mode
 		if widget.RenderMode == "gallery" {
@@ -381,7 +387,19 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 			// onClick action (ledger #67 — reported on CustomChart): read the client
 			// action back with full parameter mappings so a describe round-trip
 			// re-emits it (the finding's original widget goes through this path).
-			widget.OnClick = renderClientActionMDL(ctx, customWidgetPropertyActionMap(ctx, w, "onClick"))
+			// By SOURCE, not by the literal key — BadgeButton stores the same slot
+			// as `onClickEvent` and HeatMap as `onClickAction`, both of which the
+			// writer accepts and the literal lookup could not see (#956).
+			widget.OnClick = renderClientActionMDL(ctx, customWidgetActionForSource(ctx, w, "OnClick"))
+			// The change slot too. This path had no OnChange read at all, so a
+			// Slider/RangeSlider/StarRating stored its action correctly and
+			// described back without it — the same one-way write as the click
+			// slot, on the widgets that reach describe generically (#956).
+			widget.OnChange = renderClientActionMDL(ctx, customWidgetActionForSource(ctx, w, "OnChange"))
+			// Every remaining action slot, addressed by the widget's own key
+			// (#956) — a File Uploader's createFileAction / onUploadSuccessFile,
+			// a Switch's `action`, and so on.
+			widget.NamedActions = namedActionSlotsOf(ctx, w)
 		}
 		return []rawWidget{widget}
 

@@ -91,7 +91,7 @@ const defaultSlotContainer = "template"
 //	    to a value the widget hides, which mxbuild rejects with CE0463 and which
 //	    makes `mx create-module-package` refuse the module (upstream #931). Bump
 //	    forces existing projects to regenerate their defs with both.
-const WidgetDefGeneratorVersion = 16
+const WidgetDefGeneratorVersion = 17
 
 // WidgetDefinition describes how to construct a pluggable widget from MDL syntax.
 // Loaded from embedded JSON definition files (*.def.json).
@@ -673,6 +673,22 @@ func (e *PluggableWidgetEngine) resolveMapping(mapping PropertyMapping, w *ast.W
 
 	source := mapping.Source
 	if source == "" {
+		// A named action slot: no Source, addressed by the widget's own property
+		// key. This is how every action slot but the click and change ones is
+		// authored — `createFileAction: microflow M.ACT_CreateFile` (#956).
+		if mapping.Operation == "action" {
+			act, err := namedActionSlotValue(w, mapping.PropertyKey)
+			if err != nil {
+				return nil, err
+			}
+			if act != nil {
+				built, err := e.pageBuilder.buildClientActionV3(act)
+				if err != nil {
+					return nil, mdlerrors.NewBackend("build action for "+mapping.PropertyKey, err)
+				}
+				ctx.Action = built
+			}
+		}
 		return ctx, nil
 	}
 
@@ -1505,7 +1521,13 @@ var numericTemplatePlaceholderRe = regexp.MustCompile(`\{[0-9]+\}`)
 
 func isBuiltinPropName(name string) bool {
 	switch name {
-	case "DataSource", "Attribute", "Label", "Caption", "Action",
+	// OnChange belongs beside Action: both are dedicated MDL keywords resolved
+	// by resolveMapping, neither is a widget storage key. Its absence meant
+	// `OnChange:` fell through to the storage-name check and collided with the
+	// widgets whose slot is spelled exactly `onChange` — Slider, RangeSlider and
+	// StarRating — which were told to "use `OnChange:` instead" of `OnChange:`,
+	// and could not have their only action slot authored at all (#956).
+	case "DataSource", "Attribute", "Label", "Caption", "Action", "OnChange",
 		"Selection", "Class", "Style", "DynamicClasses", "Editable", "Visible",
 		"WidgetType", "DesignProperties", "Association", "CaptionAttribute",
 		"Content", "RenderMode", "ContentParams", "CaptionParams",

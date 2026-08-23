@@ -139,17 +139,26 @@ func TestGenerateDefJSON_SkipsComplexTypes(t *testing.T) {
 
 	def := GenerateDefJSON(mpkDef, "COMPLEX")
 
-	// textTemplate now always yields a mapping (so captions like Badge `value`
-	// are authorable); expression/icon/non-list object are skipped. An `action`
-	// property only maps when its key is MDL-authorable (onClick/onChange) — here
-	// the key is `myAction`, so it is skipped too. So exactly one mapping — the
-	// texttemplate — is expected.
-	if len(def.PropertyMappings) != 1 {
-		t.Fatalf("PropertyMappings count = %d, want 1 (only the texttemplate maps; unnamed action/expression/icon/object skipped)", len(def.PropertyMappings))
+	// textTemplate always yields a mapping (so captions like Badge `value` are
+	// authorable), and so does every action property — one whose key is not
+	// onClick/onChange becomes a NAMED slot, mapped with no Source and addressed
+	// by its own key (#956). expression/icon/non-list object remain skipped.
+	if len(def.PropertyMappings) != 2 {
+		t.Fatalf("PropertyMappings count = %d, want 2 (texttemplate + the named action slot; expression/icon/object skipped): %+v",
+			len(def.PropertyMappings), def.PropertyMappings)
 	}
-	tt := def.PropertyMappings[0]
-	if tt.PropertyKey != "myTemplate" || tt.Operation != "texttemplate" {
-		t.Errorf("mapping = {%s %s}, want {myTemplate texttemplate}", tt.PropertyKey, tt.Operation)
+	byKey := map[string]PropertyMapping{}
+	for _, m := range def.PropertyMappings {
+		byKey[m.PropertyKey] = m
+	}
+	if tt := byKey["myTemplate"]; tt.Operation != "texttemplate" {
+		t.Errorf("myTemplate operation = %q, want texttemplate", tt.Operation)
+	}
+	// A named slot must carry no Source: that is what tells resolveMapping to
+	// read the AST property by this key rather than from a fixed slot.
+	if act := byKey["myAction"]; act.Operation != "action" || act.Source != "" {
+		t.Errorf("myAction = {op=%q src=%q}, want {op=action src=\"\"} — a slot with no MDL "+
+			"alias is addressed by its own key", act.Operation, act.Source)
 	}
 	if len(def.ChildSlots) != 0 {
 		t.Errorf("ChildSlots count = %d, want 0", len(def.ChildSlots))
@@ -183,8 +192,8 @@ func TestGenerateDefJSON_TextTemplatesAlwaysMapped(t *testing.T) {
 // TestGenerateDefJSON_ActionMapping covers ledger #67: an `onClick` action
 // property must yield an `action` PropertyMapping (source OnClick) so the writer
 // serializes the client action instead of silently dropping it. A non-authorable
-// action key (e.g. DataGrid2 `onSelectionChange`) has no MDL surface yet, so no
-// mapping is emitted for it.
+// action key (e.g. DataGrid2 `onSelectionChange`) is a NAMED slot: it maps too,
+// with no Source, and is addressed by its own key (#956).
 func TestGenerateDefJSON_ActionMapping(t *testing.T) {
 	mpkDef := &mpk.WidgetDefinition{
 		ID:   "com.mendix.widget.web.datagrid.Datagrid",
@@ -202,8 +211,15 @@ func TestGenerateDefJSON_ActionMapping(t *testing.T) {
 	if onClick.Operation != "action" || onClick.Source != "OnClick" {
 		t.Errorf("onClick mapping = {op=%s src=%s}, want {action OnClick}", onClick.Operation, onClick.Source)
 	}
-	if m := findMapping(def.PropertyMappings, "onSelectionChange"); m != nil {
-		t.Errorf("onSelectionChange has no MDL surface yet; expected no mapping, got {op=%s src=%s}", m.Operation, m.Source)
+	sel := findMapping(def.PropertyMappings, "onSelectionChange")
+	if sel == nil {
+		t.Fatal("onSelectionChange (action) has no mapping — a slot with no MDL alias is " +
+			"addressed by its own key and cannot be written without one (#956)")
+	}
+	if sel.Operation != "action" || sel.Source != "" {
+		t.Errorf("onSelectionChange mapping = {op=%s src=%s}, want {action \"\"} — a Source "+
+			"would route it through a fixed AST slot instead of its own key",
+			sel.Operation, sel.Source)
 	}
 }
 
@@ -219,7 +235,7 @@ func TestGenerateDefJSON_KnownPropertiesUnmapped(t *testing.T) {
 		Properties: []mpk.PropertyDef{
 			{Key: "onClick", Type: "action"},           // mapped (action → OnClick)
 			{Key: "pageSize", Type: "integer"},         // mapped (primitive)
-			{Key: "onSelectionChange", Type: "action"}, // unmapped action slot
+			{Key: "onSelectionChange", Type: "action"}, // mapped as a named slot (#956)
 			{Key: "rowClass", Type: "expression"},      // unmapped (expression not handled)
 		},
 	}
@@ -228,12 +244,14 @@ func TestGenerateDefJSON_KnownPropertiesUnmapped(t *testing.T) {
 	for _, k := range def.KnownProperties {
 		known[k] = true
 	}
-	for _, want := range []string{"onSelectionChange", "rowClass"} {
+	for _, want := range []string{"rowClass"} {
 		if !known[want] {
 			t.Errorf("KnownProperties missing unmapped property %q — the checker can't warn it will be dropped", want)
 		}
 	}
-	for _, notWant := range []string{"onClick", "pageSize"} {
+	// onSelectionChange is now mapped as a named slot, so listing it would make
+	// MDL-WIDGET06 warn that a value mxcli writes is going to be dropped (#956).
+	for _, notWant := range []string{"onClick", "pageSize", "onSelectionChange"} {
 		if known[notWant] {
 			t.Errorf("KnownProperties should not list mapped property %q", notWant)
 		}

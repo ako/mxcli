@@ -1,0 +1,91 @@
+-- Repro: a pluggable widget's action slot is addressed by the wrong name in
+-- three places, so `onClick:` / `OnChange:` are one-way writes on most widgets.
+-- Found while investigating upstream #956. Each is a bug, not the feature that
+-- issue asks for (named slots such as FileUploader `createFileAction`).
+--
+-- The root confusion is one thing said three ways: a widget's STORAGE KEY is not
+-- MDL's NAME for that slot. Mendix's own widgets suffix theirs — BadgeButton
+-- stores `onClickEvent`, HeatMap `onClickAction`, Combobox `onChangeEvent` —
+-- while Slider/RangeSlider/StarRating store the bare `onChange`. The writer has
+-- known this since ledger #14 (actionSourceForKey strips one Event/Action
+-- suffix); the other layers did not.
+--
+--   1. DESCRIBE looked the action up under the literal string "onClick", so it
+--      found it only on widgets spelled exactly that. Measured on 11.13.0: a
+--      BadgeButton authored with `onClick:` puts `onClickEvent` and a
+--      Forms$MicroflowAction in the page unit, builds at 0 errors, and describes
+--      back as `pluggablewidget '…' bb` with NO properties — describe → exec
+--      deletes the wiring.
+--   2. `OnChange` was missing from isBuiltinPropName while `Action` was there,
+--      so on a widget whose storage key is also `onChange` the storage-name
+--      check fired against MDL's own spelling: MDL-WIDGET01 "property `OnChange`
+--      is the widget's internal storage name … use `OnChange:` instead". Slider,
+--      RangeSlider and StarRating could not have their only action slot
+--      authored at all.
+--   3. The generic pluggable DESCRIBE path read OnClick and never OnChange, so
+--      even once (2) let a Slider be authored, the action described back to
+--      nothing.
+--
+-- `mx check` is NOT the oracle for any of these. A page that lost its action is
+-- a perfectly valid document — measured 0 errors on mxbuild 11.13.0 both before
+-- and after. Verify by describing the page back and by reading the .mxunit.
+--
+-- Expected after the fix: every DESCRIBE below re-emits the action it was given,
+-- and re-running the PAGE statements reports `Unchanged page …` for each one.
+--
+-- Re-run only the page statements when checking that. Re-running the whole file
+-- aborts at `module role already exists` before reaching a single page, so an
+-- idempotence check that runs the file twice passes without testing anything:
+--
+--   sed -n '/^create or replace page/,$p' <this file> > pages.mdl
+--   mxcli exec pages.mdl -p app.mpr        # -> Unchanged page x3
+--   MXCLI_ALWAYS_WRITE=1 mxcli exec pages.mdl -p app.mpr   # -> Replaced x3
+--
+-- The second line is the control: without it, "Unchanged" is equally consistent
+-- with a comparison that never ran.
+
+create module M956;
+create module role M956.User;
+create persistent entity M956.Thing ( Name: string(100), Score: integer );
+create microflow M956.ACT_Handler () begin log 'handled'; end;
+
+-- 1. Plain `onClick` storage key (DataGrid2). This one always worked; it is the
+--    control that separates "the lookup is too narrow" from "the lookup is broken".
+create or replace page M956.P_DataGrid (Title: 'DataGrid', Layout: Atlas_Core.Atlas_Default)
+{
+  DATAGRID dg ( DataSource: DATABASE M956.Thing, onClick: microflow M956.ACT_Handler ) {
+    COLUMN c1 (Attribute: Name, Caption: 'Name')
+  }
+}
+describe page M956.P_DataGrid;
+
+-- 2. Suffixed storage key (`onClickEvent`). Expect `onClick: microflow
+--    M956.ACT_Handler` in the description — before the fix, no properties at all.
+create or replace page M956.P_Badge (Title: 'Badge', Layout: Atlas_Core.Atlas_Default)
+{
+  PLUGGABLEWIDGET 'com.mendix.widget.custom.badgebutton.BadgeButton' bb (
+    onClick: microflow M956.ACT_Handler
+  )
+}
+describe page M956.P_Badge;
+
+-- 3. Storage key spelled exactly as MDL's name (`onChange`). Before the fix this
+--    did not even pass `mxcli check`. Expect `OnChange: microflow
+--    M956.ACT_Handler` in the description.
+--
+--    StarRating rather than Slider, deliberately. Slider raises CE0463 when
+--    mxcli writes it AT ALL — measured with a control: a Slider with no action
+--    and nothing but `Attribute:` produces the same error, so it is a widget
+--    template problem unrelated to action slots and would make this script fail
+--    for a reason it is not about. StarRating stores the same bare `onChange`
+--    and builds at 0 errors.
+create or replace page M956.P_Star (Title: 'Star', Layout: Atlas_Core.Atlas_Default)
+{
+  LISTVIEW lv (DataSource: DATABASE M956.Thing) {
+    PLUGGABLEWIDGET 'com.mendix.widget.custom.starrating.StarRating' sr (
+      Attribute: Score,
+      OnChange: microflow M956.ACT_Handler
+    )
+  }
+}
+describe page M956.P_Star;
