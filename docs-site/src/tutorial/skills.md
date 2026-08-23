@@ -1,17 +1,53 @@
 # Skills and CLAUDE.md
 
-Skills are markdown files that teach AI assistants how to write correct MDL. Each skill covers a specific topic -- creating pages, writing microflows, managing security -- and contains syntax references, examples, and validation checklists. When an AI assistant needs to generate MDL, it reads the relevant skill first, which dramatically improves output quality.
+Skills teach AI assistants how to write correct MDL. Each skill covers a specific topic -- creating pages, writing microflows, managing security -- and contains syntax references, examples, and validation checklists. When an AI assistant needs to generate MDL, it reads the relevant skill first, which dramatically improves output quality.
+
+## The format
+
+Skills follow the [Agent Skills](https://agentskills.io) standard: each one is a
+directory holding a `SKILL.md`, whose YAML frontmatter says what it covers and
+when to use it.
+
+```
+.ai-context/skills/
+└── write-microflows/
+    └── SKILL.md
+```
+
+```markdown
+---
+name: write-microflows
+description: Microflow syntax reference in MDL -- every activity type, control flow,
+  expressions, and the mistakes that fail `mxcli check`. Use before writing any
+  CREATE MICROFLOW, and when debugging a microflow syntax error.
+---
+
+# Mendix Microflow Skill
+...
+```
+
+The `description` is what makes a skill findable. A tool that reads skills loads
+every description up front -- a line or two each -- and pulls in the full body
+only when one is actually needed. So the assistant knows the whole set exists
+without any of them costing context until used, and without a hand-maintained
+index that can fall out of step.
 
 ## Where skills live
 
-Skills are installed in two locations:
+`mxcli init` installs the same set in two places:
 
 | Location | Used by |
 |----------|---------|
-| `.claude/skills/` | Claude Code (tool-specific copy) |
-| `.ai-context/skills/` | All tools (universal copy) |
+| `.ai-context/skills/<name>/SKILL.md` | All tools -- the vendor-neutral copy, referenced by the generated OpenCode, Cursor, Continue, Windsurf and Aider configs |
+| `.claude/skills/<name>/SKILL.md` | Claude Code, which discovers skills from this path automatically |
 
-Both directories contain the same files. The `.claude/skills/` copy exists because Claude Code has a built-in mechanism for reading files from its `.claude/` directory. The `.ai-context/skills/` copy is the universal location that any AI tool can access.
+The `.claude/skills/` copy exists because that is the only directory Claude Code
+scans, one level deep. Both copies are refreshed from the mxcli binary on every
+session by `mxcli init --sync-skills`, so they cannot drift apart.
+
+If you are upgrading a project created by an older mxcli, the flat `<name>.md`
+files it used to write are retired automatically on the next refresh. Skill files
+you added yourself are left alone.
 
 ## Available skills
 
@@ -19,21 +55,21 @@ Both directories contain the same files. The `.claude/skills/` copy exists becau
 
 | Skill File | Topic |
 |------------|-------|
-| `generate-domain-model.md` | Entity, attribute, and association syntax |
-| `write-microflows.md` | Microflow syntax, activities, common mistakes |
-| `create-page.md` | Page and widget syntax reference |
-| `alter-page.md` | ALTER PAGE/SNIPPET for modifying existing pages |
-| `overview-pages.md` | CRUD page patterns (overview + edit) |
-| `master-detail-pages.md` | Master-detail page patterns |
-| `manage-security.md` | Module roles, user roles, access control, GRANT/REVOKE |
-| `manage-navigation.md` | Navigation profiles, home pages, menus |
-| `demo-data.md` | Mendix ID system, association storage, demo data insertion |
-| `xpath-constraints.md` | XPath syntax in WHERE clauses, nested predicates |
-| `database-connections.md` | External database connections from microflows |
-| `check-syntax.md` | Pre-flight validation checklist |
-| `organize-project.md` | Folders, MOVE command, project structure conventions |
-| `test-microflows.md` | Test annotations, file formats, Docker setup |
-| `patterns-data-processing.md` | Delta merge, batch processing, list operations |
+| `generate-domain-model/SKILL.md` | Entity, attribute, and association syntax |
+| `write-microflows/SKILL.md` | Microflow syntax, activities, common mistakes |
+| `create-page/SKILL.md` | Page and widget syntax reference |
+| `alter-page/SKILL.md` | ALTER PAGE/SNIPPET for modifying existing pages |
+| `overview-pages/SKILL.md` | CRUD page patterns (overview + edit) |
+| `master-detail-pages/SKILL.md` | Master-detail page patterns |
+| `manage-security/SKILL.md` | Module roles, user roles, access control, GRANT/REVOKE |
+| `manage-navigation/SKILL.md` | Navigation profiles, home pages, menus |
+| `demo-data/SKILL.md` | Mendix ID system, association storage, demo data insertion |
+| `xpath-constraints/SKILL.md` | XPath syntax in WHERE clauses, nested predicates |
+| `database-connections/SKILL.md` | External database connections from microflows |
+| `check-syntax/SKILL.md` | Pre-flight validation checklist |
+| `organize-project/SKILL.md` | Folders, MOVE command, project structure conventions |
+| `test-microflows/SKILL.md` | Test annotations, file formats, Docker setup |
+| `patterns-data-processing/SKILL.md` | Delta merge, batch processing, list operations |
 
 ## What a skill file contains
 
@@ -106,20 +142,33 @@ Think of `CLAUDE.md` as the "system prompt" for Claude Code in the context of yo
 
 ## Adding custom skills
 
-You can create your own skill files to teach the AI about your project's patterns and conventions. Add markdown files to `.ai-context/skills/` (or `.claude/skills/` for Claude Code):
+You can create your own skills to teach the AI about your project's patterns and conventions. Add a directory with a `SKILL.md` to `.ai-context/skills/` (and `.claude/skills/` if you use Claude Code):
 
 ```
 .ai-context/skills/
-├── write-microflows.md           # Built-in (installed by mxcli init)
-├── create-page.md                # Built-in
-├── our-naming-conventions.md     # Custom: your team's naming rules
-├── order-processing-pattern.md   # Custom: how orders work in your app
-└── api-integration-guide.md      # Custom: how to call external APIs
+├── write-microflows/SKILL.md         # Built-in (installed by mxcli init)
+├── create-page/SKILL.md              # Built-in
+├── our-naming-conventions/SKILL.md   # Custom: your team's naming rules
+├── order-processing-pattern/SKILL.md # Custom: how orders work in your app
+└── api-integration-guide/SKILL.md    # Custom: how to call external APIs
 ```
 
-A custom skill file is just a markdown document. Write it the same way you would explain something to a new team member:
+`mxcli init --sync-skills` only rewrites the skills mxcli itself ships, so your
+own directories survive every upgrade.
+
+A custom skill is a markdown document with two lines of frontmatter. Write the
+body the way you would explain something to a new team member, and write the
+`description` so an assistant can tell from it alone whether this is the skill
+for the job:
 
 ```markdown
+---
+name: order-processing-pattern
+description: How orders are processed in this application -- validation rules,
+  status enumeration, logging node and confirmation email. Use when writing or
+  changing any microflow that touches an Order.
+---
+
 # Order Processing Pattern
 
 When creating microflows that process orders in our application, follow these rules:

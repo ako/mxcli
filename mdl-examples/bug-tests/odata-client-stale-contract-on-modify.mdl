@@ -1,0 +1,59 @@
+-- ============================================================================
+-- CREATE OR MODIFY ODATA CLIENT left the cached $metadata at the snapshot
+-- taken when the client was created.
+--
+-- Reported against mxcli-formula1: the backend's F1LiveNowApi gained two entity
+-- sets (Trace, Stints) and four attributes on Order. The contract file was
+-- refreshed from the running backend and contained all five sets, but:
+--
+--   * re-running the CREATE OR MODIFY below reported "Unchanged OData client",
+--   * SHOW CONTRACT ENTITIES kept listing three entity types,
+--   * the CREATE OR MODIFY EXTERNAL ENTITIES that followed imported the old
+--     shape and silently missed the new sets.
+--
+-- The only way out was DROP ODATA CLIENT + recreate, which is destructive: it
+-- invalidates the client ID the existing external entities point at.
+--
+-- The modify branch updated every property except the one that changes most
+-- often. It now normalizes MetadataUrl and re-fetches the contract, the same
+-- way the create path does.
+--
+-- Manual repro (needs a project; MetadataUrl resolves against the .mpr):
+--
+--   mkdir -p <project>/contracts
+--   cp mdl-examples/bug-tests/contracts/stale-contract-v1.xml \
+--      <project>/contracts/live-now-metadata.xml
+--   mxcli exec mdl-examples/bug-tests/odata-client-stale-contract-on-modify.mdl \
+--      -p <project>/app.mpr        # -> Cached $metadata: 3 entity types
+--
+--   cp mdl-examples/bug-tests/contracts/stale-contract-v2.xml \
+--      <project>/contracts/live-now-metadata.xml
+--   mxcli exec mdl-examples/bug-tests/odata-client-stale-contract-on-modify.mdl \
+--      -p <project>/app.mpr        # -> Refreshed $metadata: 5 entity types
+--
+--   mxcli -p <project>/app.mpr -c "show contract entities from F1Now.NowApi"
+--                                  # -> lists Trace and Stints
+--
+-- Before the fix the second run printed "Unchanged OData client" and the SHOW
+-- still listed three. Running the script twice with the file left alone is the
+-- control: it must stay "Unchanged", or every re-run churns the document and
+-- breaks the idempotence ADR-0008 guarantees.
+--
+-- Regression coverage: mdl/executor/cmd_odata_metadata_refresh_test.go
+-- ============================================================================
+
+create or modify module F1Now;
+
+create or modify constant F1Now.ApiLocation
+  type String
+  default 'http://localhost:8080/odata/livenow/';
+
+-- Live timing feed. Re-run this statement after refreshing
+-- contracts/live-now-metadata.xml and the cached contract follows it.
+create or modify odata client F1Now.NowApi (
+  Version: '1.0.0',
+  ODataVersion: OData4,
+  MetadataUrl: './contracts/live-now-metadata.xml',
+  ServiceUrl: '@F1Now.ApiLocation',
+  Timeout: '300'
+);

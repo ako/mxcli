@@ -152,6 +152,7 @@ Microflows:
     @caption 'text'                      -- Custom caption for activity
     @color Green                         -- Background color for activity
     @position(100, 200)                  -- Canvas position for activity
+    @start(60, 200)                      -- Canvas position for the start event
     return $ReturnVar;
   end;
   /

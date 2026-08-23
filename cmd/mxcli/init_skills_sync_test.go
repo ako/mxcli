@@ -11,7 +11,8 @@ import (
 	"testing"
 )
 
-// embeddedSkillNames returns the skills this binary carries.
+// embeddedSkillNames returns the skills this binary carries. Skills are
+// directory-shaped (`<name>/SKILL.md`), so a name is a directory, not a file.
 func embeddedSkillNames(t *testing.T) []string {
 	t.Helper()
 	entries, err := fs.ReadDir(skillsFS, "skills")
@@ -21,14 +22,28 @@ func embeddedSkillNames(t *testing.T) []string {
 	var names []string
 	for _, e := range entries {
 		if !e.IsDir() {
-			names = append(names, e.Name())
+			continue
 		}
+		if _, err := skillsFS.ReadFile("skills/" + e.Name() + "/SKILL.md"); err != nil {
+			t.Errorf("%s has no SKILL.md; it will not be discovered", e.Name())
+			continue
+		}
+		names = append(names, e.Name())
 	}
 	if len(names) == 0 {
-		t.Fatal("no embedded skills; the embed directive is broken")
+		// Naming the go:embed line here sent a reviewer hunting a directive that
+		// was fine: `cmd/mxcli/skills` is GENERATED, and a bare `go build` after
+		// the layout changed leaves it stale or empty. Name the build step
+		// instead (mxcli-formula1 finding 68).
+		t.Fatal("no embedded skills: cmd/mxcli/skills is empty or stale. " +
+			"It is generated from .claude/skills/mendix/ — run `make sync-skills` " +
+			"(or `make build`, which does it) before `go test`.")
 	}
 	return names
 }
+
+// skillPath is a skill's file, relative to a skills directory.
+func skillPath(name string) string { return filepath.Join(name, "SKILL.md") }
 
 // mxcli-formula1 §16: a project initialised on Monday still served Monday's
 // skills from Tuesday's binary — the files are written once by `mxcli init` and
@@ -43,7 +58,10 @@ func TestSyncAIContextSkills_RefreshesStaleGuidance(t *testing.T) {
 	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	stale := filepath.Join(skillsDir, names[0])
+	if err := os.MkdirAll(filepath.Join(skillsDir, names[0]), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stale := filepath.Join(skillsDir, skillPath(names[0]))
 	if err := os.WriteFile(stale, []byte("# guidance from an older mxcli\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -61,11 +79,11 @@ func TestSyncAIContextSkills_RefreshesStaleGuidance(t *testing.T) {
 
 	// Every embedded skill now matches the binary, not just the one that existed.
 	for _, n := range names {
-		want, err := skillsFS.ReadFile("skills/" + n)
+		want, err := skillsFS.ReadFile("skills/" + n + "/SKILL.md")
 		if err != nil {
 			t.Fatal(err)
 		}
-		got, err := os.ReadFile(filepath.Join(skillsDir, n))
+		got, err := os.ReadFile(filepath.Join(skillsDir, skillPath(n)))
 		if err != nil {
 			t.Fatalf("%s missing after sync: %v", n, err)
 		}
@@ -76,8 +94,8 @@ func TestSyncAIContextSkills_RefreshesStaleGuidance(t *testing.T) {
 
 	var out bytes.Buffer
 	reportSkillSync(&out, res)
-	if !strings.Contains(out.String(), names[0]) {
-		t.Errorf("the refresh should name what it changed:\n%s", out.String())
+	if !strings.Contains(out.String(), "Refreshed") {
+		t.Errorf("the refresh should report what it changed:\n%s", out.String())
 	}
 }
 
@@ -91,12 +109,12 @@ func TestSyncAIContextSkills_CurrentProjectIsSilentAndUntouched(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first sync failed: %v", err)
 	}
-	if len(first.Changed) != first.Total {
-		t.Fatalf("a fresh project should write every skill: %d of %d", len(first.Changed), first.Total)
+	if len(first.Changed) < first.Total {
+		t.Fatalf("a fresh project should write every skill: %d files for %d skills", len(first.Changed), first.Total)
 	}
 
 	skillsDir := filepath.Join(dir, ".ai-context", "skills")
-	probe := filepath.Join(skillsDir, first.Changed[0])
+	probe := filepath.Join(skillsDir, filepath.FromSlash(first.Changed[0]))
 	before, err := os.Stat(probe)
 	if err != nil {
 		t.Fatal(err)

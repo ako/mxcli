@@ -44,15 +44,13 @@ define copy-if-changed
 endef
 
 # Sync skills from .claude/skills/mendix to cmd/mxcli/skills for embedding
+# Skills are directory-shaped (<name>/SKILL.md, Agent Skills standard), so this
+# mirrors a tree rather than copying a flat list. --delete matters: a renamed or
+# removed skill must not linger in the embed dir, or the binary keeps shipping it.
 sync-skills:
 	@mkdir -p cmd/mxcli/skills
-	@changed=0; for f in .claude/skills/mendix/*.md; do \
-		dst="cmd/mxcli/skills/$$(basename $$f)"; \
-		if [ ! -f "$$dst" ] || ! cmp -s "$$f" "$$dst"; then \
-			cp "$$f" "$$dst"; changed=$$((changed + 1)); \
-		fi; \
-	done; \
-	if [ $$changed -gt 0 ]; then echo "Synced $$changed skill file(s)"; fi
+	@rsync -a --delete --exclude='.DS_Store' .claude/skills/mendix/ cmd/mxcli/skills/ 2>/dev/null \
+		|| { rm -rf cmd/mxcli/skills && mkdir -p cmd/mxcli/skills && cp -R .claude/skills/mendix/. cmd/mxcli/skills/; }
 
 # Sync skill packs from .claude/skills/packs to cmd/mxcli/skillpacks for embedding.
 # Recursive, unlike sync-skills: a pack is a directory tree and flattening it
@@ -160,7 +158,13 @@ release: clean grammar vscode-ext sync-all
 	@ls -lh $(BUILD_DIR)/
 
 # Run tests
-test: grammar
+# `sync-all` is not optional here. The embed dirs (cmd/mxcli/skills, skillpacks,
+# commands, lint-rules) are GENERATED from .claude/, and several tests read them
+# back. `make build` has always synced first; `make test` did not, so a checkout
+# where the skills layout had changed under a bare `go build` failed six tests in
+# cmd/mxcli with an error that pointed at the go:embed directive rather than at
+# the missing build step (mxcli-formula1 finding 68).
+test: grammar sync-all
 	CGO_ENABLED=0 go test ./...
 
 # Dual-engine read-parity harness: run read queries through the legacy (sdk/mpr)

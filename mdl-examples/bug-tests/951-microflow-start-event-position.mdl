@@ -1,0 +1,96 @@
+-- Repro: a full rewrite via CREATE OR MODIFY MICROFLOW stranded the StartEvent.
+-- Every activity moved to where the script asked; the start stayed where the
+-- PREVIOUS layout had put it, joined to its own first activity by a long
+-- diagonal line across an otherwise empty canvas. Upstream #951.
+--
+--   create  ... activities at 200;200, 360;200, 520;200  -> start at  40;200
+--   rewrite ... activities at 360;340, 520;340, 680;340  -> start at  40;200
+--                                                                     ^ stranded
+--
+-- The cause was the fix for the OPPOSITE report. #884: a Studio Pro flow whose
+-- start sat at 145;200 came back at 100;200 on a describe -> exec round-trip,
+-- because the start has no statement to annotate and the builder always derived
+-- its position — (first activity X) minus one spacing unit. That was fixed by
+-- carrying the stored position over on every rewrite, which then pinned the
+-- start of every rewritten flow. Both reports are real and they pull opposite
+-- ways, so neither is answerable without asking where the stored value CAME
+-- from:
+--
+--   * a start at the derived spot is mxcli's own arithmetic handed back. It
+--     carries no intent, so it is re-derived and follows the activities.
+--   * a start anywhere else was put there by a person. It survives the rewrite,
+--     and DESCRIBE emits @start(x, y) for it so the description round-trips.
+--   * @start(x, y) on the first statement states the position outright and beats
+--     both — without it there was no way to move a start once one was preserved,
+--     which is the other half of what #951 reported.
+--
+-- `mx check` is NOT the oracle here, and neither is a successful build. The
+-- Mendix model carries no geometry rules: a flow whose start sits 300px from
+-- its first activity is a perfectly valid document that builds and runs, it is
+-- just drawn wrong when opened. Measured on mxbuild 11.13.0 — 0 errors before
+-- the fix and 0 errors after. Verify by reading the coordinates back.
+
+create module M951;
+
+-- 1. Fresh CREATE: the start is derived, one spacing unit (160) left of the
+--    first activity, on its centre line.  Expect StartEvent at 40;200.
+create or modify microflow M951.Layout ()
+begin
+  @position(200, 200)
+  log 'one';
+  @position(360, 200)
+  log 'two';
+  @position(520, 200)
+  log 'three';
+end;
+
+-- 2. REWRITE moving every activity right and down. The start was derived, so it
+--    follows.  Expect StartEvent at 200;340 — NOT the 40;200 of #951.
+create or modify microflow M951.Layout ()
+begin
+  @position(360, 340)
+  log 'one';
+  @position(520, 340)
+  log 'two';
+  @position(680, 340)
+  log 'three';
+end;
+
+-- 3. A hand-placed start: 145 is not derivable from 260 (260 - 160 = 100).
+--    Expect StartEvent at 145;200.
+create or modify microflow M951.Hand ()
+begin
+  @start(145, 200)
+  @position(260, 200)
+  log 'one';
+  @position(420, 200)
+  log 'two';
+end;
+
+-- 4. DESCRIBE must emit `@start(145, 200)` for it — without that line the
+--    description cannot reproduce the flow, which is #884.
+describe microflow M951.Hand;
+
+-- 5. A rewrite that does NOT mention the start keeps it: 145;200 survives even
+--    though the flow gained an activity.  Expect StartEvent still at 145;200.
+create or modify microflow M951.Hand ()
+begin
+  @position(260, 200)
+  log 'one';
+  @position(420, 200)
+  log 'two';
+  @position(580, 200)
+  log 'three';
+end;
+
+-- 6. @start moves a start that was previously preserved. Expect 100;200, which
+--    is also the derived spot for a first activity at 260 — so from here on the
+--    start is derived again and will follow the activities.
+create or modify microflow M951.Hand ()
+begin
+  @start(100, 200)
+  @position(260, 200)
+  log 'one';
+end;
+
+describe microflow M951.Hand;

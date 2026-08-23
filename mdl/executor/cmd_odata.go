@@ -983,7 +983,11 @@ func createODataClient(ctx *ExecContext, stmt *ast.CreateODataClientStmt) error 
 						svc.ODataVersion = stmt.ODataVersion
 					}
 					if stmt.MetadataUrl != "" {
-						svc.MetadataUrl = stmt.MetadataUrl
+						normalized, nerr := normalizeMetadataURL(ctx, stmt.MetadataUrl)
+						if nerr != nil {
+							return fmt.Errorf("failed to normalize MetadataUrl: %w", nerr)
+						}
+						svc.MetadataUrl = normalized
 					}
 					if stmt.TimeoutExpression != "" {
 						svc.TimeoutExpression = stmt.TimeoutExpression
@@ -1048,6 +1052,17 @@ func createODataClient(ctx *ExecContext, stmt *ast.CreateODataClientStmt) error 
 							}
 						}
 					}
+					// Re-fetch $metadata. The cached contract is a snapshot taken
+					// when the client was created; leaving it alone here made
+					// CREATE OR MODIFY converge every property except the one that
+					// changes most often. A service that gains entity sets then
+					// reports "Unchanged OData client", and the CREATE EXTERNAL
+					// ENTITIES that follows imports the old shape silently
+					// (mxcli-formula1: F1LiveNowApi gained Trace and Stints, and
+					// the only way out was DROP + recreate, which invalidates the
+					// client ID the external entities point at).
+					refreshed := refreshCachedMetadata(ctx, svc, stmt)
+
 					if err := ctx.Backend.UpdateConsumedODataService(svc); err != nil {
 						return mdlerrors.NewBackend("update OData client", err)
 					}
@@ -1060,6 +1075,11 @@ func createODataClient(ctx *ExecContext, stmt *ast.CreateODataClientStmt) error 
 					}
 					invalidateHierarchy(ctx)
 					ctx.ReportMutation("Modified", "OData client: %s.%s", modName, svc.Name)
+					if refreshed {
+						if sum := contractSummary(svc.Metadata); sum != "" {
+							fmt.Fprintf(ctx.Output, "  Refreshed $metadata: %s\n", sum)
+						}
+					}
 					return nil
 				}
 				return mdlerrors.NewAlreadyExistsMsg("OData client", modName+"."+svc.Name, fmt.Sprintf("OData client already exists: %s.%s (use create or modify to update)", modName, svc.Name))
@@ -1137,13 +1157,8 @@ Got: %s`, stmt.ServiceUrl)
 	// Fetch and cache $metadata from the service URL
 	// Normalize local file paths to absolute file:// URLs for Studio Pro compatibility
 	if newSvc.MetadataUrl != "" {
-		mprDir := ""
-		if ctx.MprPath != "" {
-			mprDir = filepath.Dir(ctx.MprPath)
-		}
-
 		// Normalize MetadataUrl: convert relative paths to absolute file:// URLs
-		normalizedUrl, err := pathutil.NormalizeURL(newSvc.MetadataUrl, mprDir)
+		normalizedUrl, err := normalizeMetadataURL(ctx, newSvc.MetadataUrl)
 		if err != nil {
 			return fmt.Errorf("failed to normalize MetadataUrl: %w", err)
 		}
@@ -1170,19 +1185,72 @@ Got: %s`, stmt.ServiceUrl)
 	}
 	invalidateHierarchy(ctx)
 	fmt.Fprintf(ctx.Output, "Created OData client: %s.%s\n", stmt.Name.Module, stmt.Name.Name)
-	if newSvc.Metadata != "" {
-		// Parse to show summary
-		if doc, err := types.ParseEdmx(newSvc.Metadata); err == nil {
-			entityCount := 0
-			actionCount := 0
-			for _, s := range doc.Schemas {
-				entityCount += len(s.EntityTypes)
-			}
-			actionCount = len(doc.Actions)
-			fmt.Fprintf(ctx.Output, "  Cached $metadata: %d entity types, %d actions\n", entityCount, actionCount)
-		}
+	if sum := contractSummary(newSvc.Metadata); sum != "" {
+		fmt.Fprintf(ctx.Output, "  Cached $metadata: %s\n", sum)
 	}
 	return nil
+}
+
+// normalizeMetadataURL resolves a MetadataUrl against the project directory,
+// turning a relative path into the absolute file:// URL that Studio Pro stores
+// and that fetchODataMetadata expects. An empty URL stays empty.
+func normalizeMetadataURL(ctx *ExecContext, rawURL string) (string, error) {
+	if rawURL == "" {
+		return "", nil
+	}
+	mprDir := ""
+	if ctx != nil && ctx.MprPath != "" {
+		mprDir = filepath.Dir(ctx.MprPath)
+	}
+	return pathutil.NormalizeURL(rawURL, mprDir)
+}
+
+// contractSummary renders a cached $metadata document as the counts worth
+// printing, or "" when there is nothing to parse.
+func contractSummary(metadata string) string {
+	if metadata == "" {
+		return ""
+	}
+	doc, err := types.ParseEdmx(metadata)
+	if err != nil {
+		return ""
+	}
+	entityCount := 0
+	for _, s := range doc.Schemas {
+		entityCount += len(s.EntityTypes)
+	}
+	return fmt.Sprintf("%d entity types, %d actions", entityCount, len(doc.Actions))
+}
+
+// refreshCachedMetadata re-reads the contract at svc.MetadataUrl into
+// svc.Metadata / svc.MetadataHash, reporting whether it actually changed.
+//
+// A fetch that fails is a warning, not an error, and leaves the cached contract
+// in place: losing a contract that was merely unreachable is worse than serving
+// a stale one, and the caller has nothing else to fall back on. An unchanged
+// contract leaves svc untouched, so the write is elided and the statement
+// reports "Unchanged" rather than churning the document.
+func refreshCachedMetadata(ctx *ExecContext, svc *model.ConsumedODataService, stmt *ast.CreateODataClientStmt) bool {
+	if svc == nil || svc.MetadataUrl == "" {
+		return false
+	}
+	auth := metadataAuthFromStmt(ctx, stmt)
+	metadata, hash, err := fetchODataMetadata(svc.MetadataUrl, auth)
+	if err != nil {
+		fmt.Fprintf(ctx.Output, "Warning: could not refresh $metadata: %v\n", err)
+		for _, hint := range auth.hints() {
+			fmt.Fprintf(ctx.Output, "  %s\n", hint)
+		}
+		fmt.Fprintf(ctx.Output, "  The client keeps the contract cached earlier, which may be out of date.\n")
+		return false
+	}
+	if metadata == "" || hash == svc.MetadataHash {
+		return false
+	}
+	svc.Metadata = metadata
+	svc.MetadataHash = hash
+	svc.Validated = true
+	return true
 }
 
 // alterODataClient handles ALTER ODATA CLIENT command.

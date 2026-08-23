@@ -269,6 +269,21 @@ type ActivityAnnotations struct {
 	// unaddressable, and it routinely landed on top of a neighbouring activity.
 	Merge *Position
 
+	// Start positions the StartEvent — the implicit node every flow begins at:
+	// @start(x, y), written on the FIRST statement, the one the start flows into.
+	//
+	// Same shape and same reason as Merge: the node has no statement of its own,
+	// so it is annotated on the statement it belongs to. Without it the start's
+	// placement was inferred rather than stated, and the two things an inference
+	// has to serve pull apart — a start a person dragged somewhere must survive a
+	// rebuild (#884), while one mxcli derived must follow the activities when
+	// they move (#951). An explicit position settles both by not guessing.
+	//
+	// DESCRIBE emits it only for a start that is not where the layout would have
+	// put it, so a described flow round-trips exactly without every description
+	// growing a line that just restates the arithmetic. (upstream #951)
+	Start *Position
+
 	// InvalidCurves holds the raw text of any @curve parameter whose coordinates
 	// were not a whole-number (x, y) pair, so validation can refuse it rather
 	// than silently straightening the edge.

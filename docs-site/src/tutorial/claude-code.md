@@ -44,7 +44,7 @@ The `CLAUDE.md` file gives Claude Code project-level context. It describes what 
 
 ### Skills
 
-The `.claude/skills/` directory (and `.ai-context/skills/` for the universal copy) contains markdown files that teach Claude specific MDL patterns. For example, `write-microflows.md` explains microflow syntax, common mistakes, and a validation checklist. Claude reads the relevant skill before generating MDL, which dramatically improves output quality.
+The `.claude/skills/` directory (and `.ai-context/skills/` for the universal copy) holds one directory per skill, each with a `SKILL.md`. For example, `write-microflows/SKILL.md` explains microflow syntax, common mistakes, and a validation checklist. Claude Code discovers them from `.claude/skills/` automatically and reads the relevant one before generating MDL, which dramatically improves output quality.
 
 ### Commands
 

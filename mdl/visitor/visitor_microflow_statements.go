@@ -326,6 +326,23 @@ func extractMicroflowAnnotations(annotations []parser.IAnnotationContext) *ast.A
 			}
 			seenActivityMetadata = true
 
+		case "start":
+			// @start(x, y) — the StartEvent, the implicit node the flow begins
+			// at. Written on the FIRST statement, the one the start flows into;
+			// same positional shape and same reason as @merge, which positions
+			// the other node that has no statement of its own. (#951)
+			if params := ann.AnnotationParams(); params != nil {
+				allParams := params.(*parser.AnnotationParamsContext).AllAnnotationParam()
+				if len(allParams) >= 2 {
+					result.Start = &ast.Position{
+						X: parseAnnotationParamInt(allParams[0]),
+						Y: parseAnnotationParamInt(allParams[1]),
+					}
+					hasAny = true
+				}
+			}
+			seenActivityMetadata = true
+
 		case "curve":
 			// @curve(from: (40, -90), to: (-40, 90)) — the bezier control
 			// vectors of the flow LEAVING this statement. Needed no grammar

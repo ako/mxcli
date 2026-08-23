@@ -138,6 +138,24 @@ Set the canvas position of the next activity:
 $Order = CREATE Sales.Order (Status = 'New');
 ```
 
+### Start event
+
+The start event has no statement of its own, so `@start` goes on the **first**
+statement — the one the start flows into:
+
+```sql
+@start(145, 200)
+@position(260, 200)
+$Order = CREATE Sales.Order (Status = 'New');
+```
+
+It is optional. Omitted, the start is placed one spacing unit left of the first
+activity on that activity's centre line, and a rewrite re-derives it so the start
+follows the activities when they move. A start that is *not* at that derived spot
+was placed on purpose — in Studio Pro or with `@start` — so it survives a rewrite
+that does not mention it, and `DESCRIBE` emits an `@start` line for it. An
+explicit `@start` overrides both.
+
 ### Caption
 
 Set a custom caption displayed on the activity in the canvas:

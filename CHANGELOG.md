@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- **`@start(x, y)` positions a microflow's start event** (#951) — written on the first statement, the one the start flows into, because the start has no statement of its own; the same placement `@merge` uses for the other implicit node. It is optional: omitted, the start is derived one spacing unit left of the first activity on that activity's centre line, as before. `DESCRIBE` emits it only for a start that is *not* at that derived spot, so an ordinary description does not grow a line restating its own arithmetic while one carrying a hand-placed start still round-trips exactly.
+
+- **A rewritten microflow no longer strands its start event** (#951) — `CREATE OR MODIFY MICROFLOW` moved every activity to where the script asked and left the start where the *previous* layout had put it, joined to its own first activity by a long, mostly-empty diagonal across the canvas. Measured on a real project: activities at `360;340`, start at `40;200`.
+
+  The cause was the fix for the opposite report. #884 was a describe→exec round-trip *moving* a hand-placed start (`145;200` came back as `100;200`), fixed by carrying the stored position over on every rewrite — which then pinned the start of every rewritten flow. Both reports are real, and neither is answerable without asking where the stored value came from. A start sitting at the derived spot is mxcli's own arithmetic handed back, carries no intent, and is now re-derived so it follows the activities; a start anywhere else was placed by a person and still survives. `@start(x, y)` states the position outright and beats both, which is the other half of what #951 reported — before it there was no way to move a start once one had been preserved.
+
+  Neither `mx check` nor a successful build detects this, in either direction: the Mendix model carries no geometry rules, so a stranded start is a valid document that builds and runs and is merely drawn wrong — 0 errors on mxbuild 11.13.0 before and after.
+
 ## [0.19.0] - 2026-08-21
 
 Headline: **A statement mxcli accepts is now a statement mxcli honours.** This release closes a long list of clauses, annotations and document properties that parsed cleanly, reported success and were then dropped on the floor: a test's `@setup` and `@verify`, `DELETE_BEHAVIOR PREVENT`, a List View's specialization templates, a REST call's file-document response, a widget's `contentparams`, a workflow's boundary events, a decision's rule call. Alongside that, **rules** become the last microflow-family document type mxcli can both read and write, `mxcli check --references` **type-checks expressions** against the catalog, and skills can now ship **assets** — Java actions, Vega specs, MDL — rather than prose alone.
