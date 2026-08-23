@@ -1,0 +1,73 @@
+-- Bug #955: `check --references` passed scripts that `exec` refuses over
+-- in-script creation order.
+--
+-- NEGATIVE TEST (.fail.mdl) — EXPECTED to fail `mxcli check`.
+-- `make check-mdl` inverts the exit code: an unexpected pass is a regression of
+-- the MDL-ORDER01 rule.
+--
+-- Symptom: this script passed `mxcli check --references` with "Check passed!"
+-- (exit 0) and then failed partway through `mxcli exec` (exit 1) — after the
+-- module had already been written, because exec is not transactional. The
+-- reference validator collects every name in the script up front, so it cannot
+-- tell a forward reference from a backward one. exec already produced the right
+-- diagnosis ("… is defined later in this script — move its create statement
+-- before this one"), but only once a statement had failed.
+--
+-- Fix: MDL-ORDER01 reports the ordering before anything is written. It lives in
+-- the no-project tier, so `exec`'s own pre-flight refuses the script too.
+--
+-- Correct form: 955-forward-definition-order-tolerated.mdl, and the reordered
+-- version of each block below.
+
+create module Repro;
+
+-- 1. A flow's parameter type. This is the shape reported in #955.
+create microflow Repro.DS_Label (
+  $Thing: Repro.Thing
+)
+returns String as $Out
+begin
+  declare $Out String = 'x';
+  return $Out;
+end;
+
+-- 2. A flow's return type.
+create microflow Repro.MakeOther ()
+returns Repro.Other as $New
+begin
+  $New = create Repro.Other (Name = 'a');
+  return $New;
+end;
+
+-- 3. An entity attribute's enumeration.
+create persistent entity Repro.Tagged (
+  Status: Enumeration(Repro.Stat)
+);
+
+-- 4. An association endpoint.
+create association Repro.Tagged_Thing from Repro.Tagged to Repro.Thing;
+
+-- 5. A CALL to a flow created later.
+create microflow Repro.Caller ()
+returns Boolean as $Out
+begin
+  $R = call microflow Repro.Callee ();
+  declare $Out Boolean = true;
+  return $Out;
+end;
+
+-- 6. A GRANT naming a document created later.
+create module role Repro.User;
+grant Repro.User on Repro.Thing (read *);
+grant execute on microflow Repro.Callee to Repro.User;
+
+create persistent entity Repro.Thing ( Name: String(100) );
+create persistent entity Repro.Other ( Name: String(100) );
+create enumeration Repro.Stat ( Open 'Open', Closed 'Closed' );
+
+create microflow Repro.Callee ()
+returns Boolean as $Out
+begin
+  declare $Out Boolean = true;
+  return $Out;
+end;

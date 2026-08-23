@@ -12,11 +12,6 @@
 -- names, page params and widget names already work. DESCRIBE re-emits such
 -- members quoted so the roundtrip stays clean.
 
-grant MyMod.Administrator on MyMod.SalesOrder (
-  read ("Order", "Status", LineTotal),
-  write ("Order")
-);
-
 -- The validation-rule half was written against the pre-2026-08 statement shape
 -- (`create validation rule <name> for <entity> required <attr> feedback '…'`),
 -- which was replaced when CREATE VALIDATION RULE gained an implementation: the
@@ -28,6 +23,16 @@ grant MyMod.Administrator on MyMod.SalesOrder (
 create entity MyMod.SalesOrder (
   "Order": String(20) not null error 'Order number is required',
   "Status": String(20)
+);
+
+-- The GRANT sits after the entity it names. It used to sit at the top of this
+-- file, which MDL-ORDER01 now reports (#955): `exec` resolves a grant's entity
+-- when it applies the grant, so the original order failed partway through a run
+-- even though every statement in it was individually valid. The quoted reserved
+-- word this test is about is unaffected by the position.
+grant MyMod.Administrator on MyMod.SalesOrder (
+  read ("Order", "Status", LineTotal),
+  write ("Order")
 );
 
 create regular expression MyMod.OrderNumber (

@@ -141,6 +141,13 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 	// when the target is created by a plain CREATE (#9).
 	violations = append(violations, ValidateScriptPageOrder(prog)...)
 
+	// Flag the same ordering mistake for the other reference kinds the executor
+	// resolves at write time — a flow's parameter and return types, an entity
+	// attribute's enumeration, an association's endpoints, a CALL, and a GRANT.
+	// `exec` already produces the diagnosis once a statement has failed; this
+	// says it before the first write (#955).
+	violations = append(violations, ValidateScriptDefinitionOrder(prog)...)
+
 	// Flag a document-access GRANT naming a role from another module — Mendix
 	// rejects it with CE0148. Needs no project, so it runs here rather than
 	// under --references, where it would only fire with -p (#836).

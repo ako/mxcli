@@ -154,3 +154,36 @@ func HasPrefix(prefix string) bool {
 	}
 	return false
 }
+
+// BySegmentMatch returns features that have a path SEGMENT containing q,
+// case-insensitively, sorted by path.
+//
+// Registry lookup is otherwise anchored at the left — `HasPrefix` matches whole
+// segments from the start of a path — so a topic is reachable only by its first
+// segment or via a hand-written alias. That made `mxcli syntax rule` an
+// "Unknown topic" while `microflow.rule` and `validation-rule` both existed
+// (#955), and it was not one gap: of the 73 distinct leaf names in the registry,
+// 60 could not be reached as a bare topic. An alias each is 60 entries to keep
+// in step with the registry; matching on any segment needs none, and answers
+// with everything relevant rather than the one spelling an alias happened to
+// pick — `rule` returns both the microflow rule and the validation rule.
+//
+// Substring rather than equality because a segment is often a compound of the
+// word the reader has in mind: `task` should find `workflow.user-task`.
+func BySegmentMatch(q string) []SyntaxFeature {
+	if q == "" {
+		return nil
+	}
+	q = strings.ToLower(q)
+	var out []SyntaxFeature
+	for _, f := range registry {
+		for _, seg := range strings.Split(strings.ToLower(f.Path), ".") {
+			if strings.Contains(seg, q) {
+				out = append(out, f)
+				break
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	return out
+}

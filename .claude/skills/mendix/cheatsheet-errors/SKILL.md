@@ -235,6 +235,28 @@ transactional — the statements before the failure are already written.
 3. Commit before executing a large script — recovery from a partial run is
    `git checkout -- App.mpr mprcontents/`.
 
+### "not found" for anything else the script creates further down (MDL-ORDER01)
+
+**Problem**: Same shape as MDL-PAGE01, for the other references the executor
+resolves when it writes the referring document — a flow's parameter or return
+type, an entity attribute's enumeration, an association endpoint, a
+`call microflow`/`call nanoflow` target, or a `grant` subject. `check` used to
+pass these and `exec` then failed partway through.
+
+**Fix**: Move the `create` for the named document above the statement that uses
+it. Statements have no dependency order beyond this, so grouping entities and
+enumerations at the top of a script avoids it entirely.
+
+**Not every forward reference is an error.** These execute fine with the
+definition afterwards, and are deliberately not flagged: an entity's `extends`
+generalization, `call java action`, `retrieve ... from`, and `create <entity>`
+inside a microflow body.
+
+**One case `check` cannot predict**: if the document is created later by
+`create or modify`, `exec` still fails when the project does not already have
+it — but the script alone cannot say whether it does, so no error is reported.
+Run with `-p` for the fullest coverage.
+
 ## Studio Pro Error Code Reference
 
 | Code | Message | Common Cause |
