@@ -452,10 +452,10 @@ it is for pages.
 | Entity declaration | `declare $entity Module.Entity;` | No AS keyword, no = empty |
 | List declaration | `declare $list list of Module.Entity = empty;` | |
 | Assignment | `set $Var = expression;` | Variable must be declared first |
-| Create object | `$Var = create Module.Entity (attr = value) [commit [without events]];` | `commit` = Commit Yes, `commit without events` = YesWithoutEvents; omitted = No (the default) |
+| Create object | `$Var = create Module.Entity (attr = value) [commit [without events]] [refresh];` | `commit` = Commit Yes, `commit without events` = YesWithoutEvents; omitted = No (the default) |
 | Change object | `change $entity (attr = value) [commit [without events]] [refresh];` | `commit` as above, before `refresh`; `refresh` updates the changed object in the client |
-| Commit | `commit $entity [with events] [refresh];` | |
-| Delete | `delete $entity;` | |
+| Commit | `commit $entity [without events] [refresh];` | **Omitted = with events**, matching Studio Pro's default. `without events` is the deviation and the only form that changes the stored value; `with events` still parses and means the default |
+| Delete | `delete $entity [refresh];` | |
 | Rollback | `rollback $entity [refresh];` | Reverts uncommitted changes |
 | Retrieve (DB) | `retrieve $Var from Module.Entity [where condition];` | Database XPath retrieve |
 | Retrieve (Assoc) | `retrieve $list from $Parent/Module.AssocName;` | Retrieve by association |
@@ -500,6 +500,24 @@ it is for pages.
 | Import mapping | `[$Var =] import from mapping Module.IMM($SourceVar) [all\|first\|limit <e> [offset <e>]];` | Apply import mapping to string variable. Trailing clause is Studio Pro's Range; omitted = infer from the mapping's root. `first` binds one OBJECT (`limit 1` is a one-element LIST). Mendix rejects `offset` on a non-list mapping (CE6100) |
 | Export mapping | `$Var = export to mapping Module.EMM($EntityVar);` | Apply export mapping to entity, returns string |
 | Error handling | `... on error continue\|rollback\|{ handler };` | Not supported on EXECUTE DATABASE QUERY |
+
+**Activity defaults.** An omitted modifier always means Mendix's own default, so a
+bare MDL statement produces the same activity as dragging a fresh one onto the
+canvas in Studio Pro:
+
+| Activity | Commit | With events | Refresh in client |
+|----------|--------|-------------|-------------------|
+| `create` | No | — | No |
+| `change` | No | — | No |
+| `commit` | — | **Yes** | No |
+| `delete` | — | — | No |
+| `rollback` | — | — | No |
+
+`commit` is the only one whose default is ON, which is why it is the only one
+with a `without` form. Before #895 mxcli wrote it OFF: the commit event handlers
+silently did not run, and no tool reported it — a commit that skips its handlers
+is a valid model, so `mxcli check`, `mxcli lint`, Studio Pro's consistency check
+and `mxbuild` were all clean. Only the running app showed it.
 
 ## Microflows - NOT Supported (Will Cause Parse Errors)
 

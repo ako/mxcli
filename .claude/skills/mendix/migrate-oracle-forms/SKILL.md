@@ -110,7 +110,7 @@ begin
     return false;
   end if;
 
-  commit $Customer with events;
+  commit $Customer;
   set $success = true;
   return $success;
 end;

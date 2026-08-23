@@ -51,25 +51,51 @@ change $Product (Name = $NewName) refresh;
 change $Product (Name = $NewName) commit refresh;
 ```
 
+`refresh` is available on `create` and `delete` too — it is the activity's
+"Refresh in client" property, and it defaults to No everywhere:
+
+```mdl
+$Order = create Sales.Order (Number = $Nr) refresh;
+delete $Order refresh;
+```
+
 **Note**: Only specify attributes you want to change. Syntax aligned with CREATE.
 
 ### COMMIT Object
 
 ```mdl
--- Commit without events
+-- Commit. Events are ON — this is Mendix's default and Studio Pro's.
 commit $Product;
 
--- Commit with events (triggers event handlers)
-commit $Product with events;
+-- Turn the event handlers off. This is the only form that changes anything.
+commit $Product without events;
 
 -- Commit with refresh in client (updates UI after commit)
 commit $Product refresh;
 
--- Commit with events and refresh
-commit $Product with events refresh;
+-- Both
+commit $Product without events refresh;
 ```
 
-**Best Practice**: Use `with events` when you want before/after commit event handlers to execute. Use `refresh` when the committed object is displayed in the client and you want the UI to update immediately.
+**An omitted modifier means Mendix's default, on every activity.** For `commit`
+that default is events **ON**, so a bare `commit $Product;` runs the before/after
+commit handlers — same as dragging a fresh Commit activity onto the canvas. Reach
+for `without events` only when you deliberately want them skipped (a bulk import
+that would otherwise fire a handler per row is the usual reason).
+
+`with events` still parses and means exactly the same as writing nothing. It is
+accepted because every script written before mxcli #895 spells it out, and
+because saying the default out loud is not an error — but `describe` prints the
+bare form, so it will disappear from round-tripped output.
+
+> **This changed in #895.** Before the fix a bare `commit $Product;` wrote events
+> **OFF**, and nothing said so: `mxcli check`, `mxcli lint`, Studio Pro's
+> consistency check and `mxbuild` were all clean, because a commit that skips its
+> handlers is a valid model. If a script of yours relies on the old behaviour,
+> write `without events` explicitly — `mxcli check` prints an MDL067 note naming
+> each microflow with a bare commit to help you find them.
+
+**Best Practice**: Use `refresh` when the committed object is displayed in the client and you want the UI to update immediately.
 
 > **Re-sorting a database-datasource grid needs `refresh`.** A plain `commit $Obj;` updates the committed attribute *values* in the grid, but a grid backed by a **database** datasource does **not** re-run its sort — so after changing a sort key (e.g. a reorder that rewrites a `SequenceNumber`), the row stays in its old position until you `commit $Obj refresh;`. The `refresh` re-queries the datasource, which re-applies the sort. (Ledger #57.)
 

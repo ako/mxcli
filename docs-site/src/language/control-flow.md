@@ -206,7 +206,7 @@ $Response = CALL MICROFLOW Integration.CallExternalAPI (
 };
 
 -- Rollback on commit failure
-COMMIT $Order WITH EVENTS ON ERROR ROLLBACK;
+COMMIT $Order ON ERROR ROLLBACK;
 ```
 
 > **Note:** `ON ERROR` is not supported on `EXECUTE DATABASE QUERY` activities.

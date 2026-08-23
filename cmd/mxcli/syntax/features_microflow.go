@@ -132,8 +132,26 @@ func init() {
 			"delete", "save", "persist", "modify object",
 			"with events", "refresh", "commit flag", "without events",
 		},
-		Syntax:  "$Obj = CREATE Module.Entity (Attr = value) [COMMIT [WITHOUT EVENTS]];\nCHANGE $Obj (Attr = value) [COMMIT [WITHOUT EVENTS]] [REFRESH];\nCOMMIT $Obj;\nCOMMIT $Obj WITH EVENTS;\nCOMMIT $Obj REFRESH;\nCOMMIT $Obj WITH EVENTS REFRESH;\nDELETE $Obj;\nROLLBACK $Obj;\n\n-- The COMMIT modifier on CREATE/CHANGE is the activity's Commit setting\n-- (omitted = No). The standalone COMMIT $Obj is a separate activity.",
-		Example: "$NewOrder = CREATE MyModule.Order (\n  OrderNumber = 'ORD-001',\n  Quantity = $Quantity,\n  CreateDate = [%CurrentDateTime%]\n) COMMIT;\n\nCHANGE $NewOrder (MyModule.Order_Customer = $Customer) COMMIT REFRESH;\nCHANGE $Draft (Status = 'Imported') COMMIT WITHOUT EVENTS;\nDELETE $OldOrder;\nROLLBACK $DraftOrder;",
+		Syntax: "$Obj = CREATE Module.Entity (Attr = value) [COMMIT [WITHOUT EVENTS]] [REFRESH];\n" +
+			"CHANGE $Obj (Attr = value) [COMMIT [WITHOUT EVENTS]] [REFRESH];\n" +
+			"COMMIT $Obj [WITHOUT EVENTS] [REFRESH];\n" +
+			"DELETE $Obj [REFRESH];\n" +
+			"ROLLBACK $Obj [REFRESH];\n\n" +
+			"-- An omitted modifier always means Mendix's own default, so a bare\n" +
+			"-- statement is exactly what Studio Pro gives you for a fresh activity:\n" +
+			"--\n" +
+			"--   Activity   With events        Refresh in client\n" +
+			"--   CREATE     (Commit: No)       No\n" +
+			"--   CHANGE     (Commit: No)       No\n" +
+			"--   COMMIT     Yes                No\n" +
+			"--   DELETE     n/a                No\n" +
+			"--   ROLLBACK   n/a                No\n" +
+			"--\n" +
+			"-- COMMIT is the one whose default is ON, so WITHOUT EVENTS is the form\n" +
+			"-- that changes anything; WITH EVENTS parses and means the default. The\n" +
+			"-- COMMIT modifier on CREATE/CHANGE is the activity's Commit setting\n" +
+			"-- (omitted = No), not the standalone COMMIT $Obj activity.",
+		Example: "$NewOrder = CREATE MyModule.Order (\n  OrderNumber = 'ORD-001',\n  Quantity = $Quantity,\n  CreateDate = [%CurrentDateTime%]\n) COMMIT;\n\nCHANGE $NewOrder (MyModule.Order_Customer = $Customer) COMMIT REFRESH;\nCHANGE $Draft (Status = 'Imported') COMMIT WITHOUT EVENTS;\n\nCOMMIT $NewOrder;                  -- runs the commit event handlers\nCOMMIT $Staging WITHOUT EVENTS;    -- bulk import: skip them deliberately\nCOMMIT $NewOrder REFRESH;          -- and repaint it on the open page\n\nDELETE $OldOrder REFRESH;\nROLLBACK $DraftOrder;",
 		SeeAlso: []string{"microflow.retrieve", "microflow.variables"},
 	})
 
