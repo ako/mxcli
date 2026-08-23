@@ -1149,11 +1149,42 @@ func (e *PluggableWidgetEngine) buildObjectListItem(mapping *ObjectListMapping, 
 				continue
 			}
 			prop.DataSource = ds
+		case "action":
+			// An action on an object-list ITEM: a chart series'
+			// staticOnClickAction, a popupmenu item's action, a maps marker's
+			// onClick, an accordion group's onToggleCollapsed (#956).
+			//
+			// Read it through namedActionSlotValue — the same reader the
+			// top-level named slots use — rather than off the AST's fixed Action
+			// slot. `microflow M.X` in a property position parses as a
+			// *DataSourceV3 (dataSourceExprV3 wins in widgetPropertyV3), so a
+			// direct read would miss the form people actually write, and would
+			// take the datasource branch of this very switch on the way past.
+			//
+			// matchedAlias, not ip.PropertyKey: the outer lookup already fell
+			// back to an MDL alias, and re-reading under the schema key would
+			// find nothing.
+			act, err := namedActionSlotValue(child, matchedAlias)
+			if err != nil {
+				return spec, err
+			}
+			if act == nil {
+				continue
+			}
+			built, err := e.pageBuilder.buildClientActionV3(act)
+			if err != nil {
+				return spec, mdlerrors.NewBackend(
+					"build action for object-list item property "+ip.PropertyKey, err)
+			}
+			if built == nil {
+				// An unset slot must stay unset: writing a NoAction over it
+				// would clear whatever the widget had.
+				continue
+			}
+			prop.Action = built
 		default:
-			// Remaining unsupported sub-property kinds (action) still need richer
-			// AST context than the child's property bag.
-			// TODO(#538 follow-up): action expressions inside object-list item
-			// property positions (e.g. chart series staticOnClickAction).
+			// Remaining unsupported sub-property kinds still need richer AST
+			// context than the child's property bag.
 			continue
 		}
 		spec.Properties = append(spec.Properties, prop)
