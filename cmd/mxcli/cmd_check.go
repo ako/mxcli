@@ -28,6 +28,12 @@ that are created within the script itself. For example, if your script creates
 a module "MyModule" and then creates entities in it, no error will be reported
 for the module reference.
 
+Creation ORDER is checked separately, and without a project. The executor
+resolves most references when it writes the referring document, so naming
+something a later statement creates fails partway through "mxcli exec" — with
+earlier statements already written, since exec is not transactional. Those are
+reported as MDL-ORDER01 (and MDL-PAGE01 for a widget's page reference).
+
 Given a project it also type-checks the expressions in the script's microflows
 and nanoflows: comparing an enumeration attribute to a string literal (in a
 create/change member, or in a condition such as: if $obj/Status = 'Open'),

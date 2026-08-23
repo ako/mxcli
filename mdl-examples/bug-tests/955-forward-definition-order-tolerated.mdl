@@ -1,0 +1,60 @@
+-- Bug #955, the other half: forward references the executor TOLERATES.
+--
+-- POSITIVE TEST — this script is EXPECTED to PASS `mxcli check`.
+--
+-- MDL-ORDER01 exists because most cross-document references are resolved when
+-- the referring document is written, so naming something created later fails
+-- partway through `exec`. That is not true of every reference, and a rule that
+-- assumed it would reject scripts that work today. Each block below was
+-- MEASURED to execute correctly against a real project with the definition
+-- coming afterwards (Mendix 11.6.6, mxcli exec exit 0, output verified by
+-- DESCRIBE rather than by the exit code alone).
+--
+-- So this file is the boundary of the rule: if MDL-ORDER01 ever fires here, it
+-- has widened past what was measured and is now rejecting valid scripts.
+--
+-- The whole script also EXECUTES cleanly, which is the check that matters — a
+-- clean `check` on a script exec would reject proves nothing on its own. That
+-- is why the CREATE OR MODIFY carve-out is not in this file: it passes `check`
+-- for an unrelated reason and does NOT exec. See 955-or-modify-not-flagged.mdl.
+
+create module Tol;
+
+-- 1. An entity's EXTENDS generalization is resolved lazily.
+create persistent entity Tol.Child extends Tol.Parent (
+  Name: String(100)
+);
+
+-- 2. A microflow body's RETRIEVE source.
+create microflow Tol.Reader ()
+returns Boolean as $Out
+begin
+  retrieve $list from Tol.Thing;
+  declare $Out Boolean = true;
+  return $Out;
+end;
+
+-- 3. A microflow body's CREATE object.
+create microflow Tol.Maker ()
+returns Boolean as $Out
+begin
+  $x = create Tol.Thing (Name = 'a');
+  declare $Out Boolean = true;
+  return $Out;
+end;
+
+-- 4. A CALL JAVA ACTION target.
+create microflow Tol.Invoker ()
+returns Boolean as $Out
+begin
+  $R = call java action Tol.JA ();
+  declare $Out Boolean = true;
+  return $Out;
+end;
+
+create persistent entity Tol.Parent ( Code: String(50) );
+create persistent entity Tol.Thing ( Name: String(100) );
+
+create java action Tol.JA () returns Boolean as $$
+public Boolean executeAction() { return true; }
+$$;
