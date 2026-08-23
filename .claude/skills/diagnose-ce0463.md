@@ -9,6 +9,26 @@ Related: [`debug-bson.md`](debug-bson.md) for the general BSON diff workflow;
 [`WIDGET_BSON_VERSION_COMPATIBILITY.md`](../../docs/03-development/WIDGET_BSON_VERSION_COMPATIBILITY.md)
 for what is version-fragile and the per-minor onboarding record.
 
+## Before you measure anything: `docker check` clears CE0463 by default
+
+`mxcli docker check` runs **`mx update-widgets` before `mx check`**, deliberately — it
+normalizes pluggable widget definitions to suppress the Case A noise below. So the plain
+command reports **0 errors** on a project that genuinely has a CE0463, and the repair
+also *mutates the project*, leaving it clean for any later check too.
+
+```bash
+mxcli docker check -p app.mpr --no-update-widgets    # the only form that can see CE0463
+```
+
+This is documented in `docker check --help` and is not a defect, but it is the first
+thing that goes wrong in a CE0463 investigation: you check, you see zero errors, and you
+conclude there is nothing to find. Measured on 11.13.0: a page mxcli wrote reported
+`0 errors / Project check passed` with the default and **1 error, CE0463** with the flag.
+
+**`mxcli check` is not an alternative.** It validates an MDL *script* — syntax,
+references, creation order, expression types — and never invokes mxbuild, so it cannot
+produce CE0463 at all.
+
 ## Step 0 — Establish which of two bugs you have
 
 These look identical in `mx check` output and have unrelated causes.
