@@ -487,6 +487,21 @@ func (w *mcpWidgetBuilder) SetObjectList(propertyKey string, items []backend.Obj
 				if src := customWidgetXPathSource(p.DataSource); src != nil {
 					obj[p.PropertyKey] = src
 				}
+			case "action":
+				// An action on an object-list item (chart series
+				// staticOnClickAction, popupmenu item action, …) — #956. The
+				// same mapper the top-level slots use, so the shapes PED
+				// refuses (parameter mappings, nanoflow) are refused here too,
+				// recorded rather than silently dropped.
+				if p.Action == nil {
+					continue
+				}
+				mapped, err := customWidgetClientAction(p.Action)
+				if err != nil {
+					w.note(fmt.Sprintf("%s[].%s: %v", propertyKey, p.PropertyKey, err))
+					continue
+				}
+				obj[p.PropertyKey] = mapped
 			default:
 				w.note(fmt.Sprintf("%s[].%s (%s)", propertyKey, p.PropertyKey, p.Operation))
 			}
