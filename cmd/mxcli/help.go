@@ -71,6 +71,20 @@ Examples:
 			return
 		}
 
+		// Not a path from the left. Before giving up, match the query against
+		// any SEGMENT of a path: `rule` names a real topic (two, in fact), it
+		// just is not the first segment of either. Without this the answer to a
+		// topic that exists is "Unknown topic" (#955).
+		if features := syntax.BySegmentMatch(path); len(features) > 0 {
+			if jsonFlag {
+				syntax.WriteJSON(os.Stdout, features)
+			} else {
+				fmt.Printf("No top-level topic %q. Showing %d topic(s) matching it:\n\n", path, len(features))
+				syntax.WriteText(os.Stdout, features)
+			}
+			return
+		}
+
 		fmt.Printf("Unknown topic: %s\n\n", path)
 		cmd.Help()
 	},
