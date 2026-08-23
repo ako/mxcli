@@ -165,9 +165,23 @@ The `extract` command parses the .mpk (ZIP archive containing `package.xml` + wi
 | selection | selection | `selection` |
 | widgets | widgets (child slot) | container name (key uppercased) |
 | boolean/string/enumeration/integer/decimal | primitive | hardcoded `value` from defaultValue |
-| action/expression/textTemplate/object/icon/image/file | *skipped* | too complex for auto-mapping |
+| textTemplate | texttemplate | `TextTemplate` |
+| action | action | `OnClick` / `OnChange` — **click and change slots only** |
+| expression/object/icon/image/file | *skipped* | too complex for auto-mapping |
 
 Skipped types require manual configuration in the .def.json.
+
+**Action slots are matched by name, and the storage key is not the MDL name.**
+Mendix's own widgets suffix theirs — a BadgeButton's click slot is `onClickEvent`,
+a HeatMap's is `onClickAction`, a Combobox's change slot is `onChangeEvent` —
+so `actionSourceForKey` strips one `Event`/`Action` suffix before matching
+`onclick`/`onchange`. That is what lets `onClick:` and `OnChange:` reach those
+widgets at all. Anything else — FileUploader `createFileAction`, DataGrid2
+`onSelectionChange`, Switch `action` — gets no mapping and therefore no MDL
+surface; `mxcli check` reports it as **MDL-WIDGET06** ("recognized but not yet
+persisted"). Object-list *item* action slots (chart series `staticOnClickAction`,
+popupmenu item `action`) do get a mapping generated, but the engine skips them at
+apply time. See upstream #956.
 
 ### Step 2 -- Extract BSON template from Studio Pro
 

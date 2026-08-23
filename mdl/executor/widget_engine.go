@@ -1505,7 +1505,13 @@ var numericTemplatePlaceholderRe = regexp.MustCompile(`\{[0-9]+\}`)
 
 func isBuiltinPropName(name string) bool {
 	switch name {
-	case "DataSource", "Attribute", "Label", "Caption", "Action",
+	// OnChange belongs beside Action: both are dedicated MDL keywords resolved
+	// by resolveMapping, neither is a widget storage key. Its absence meant
+	// `OnChange:` fell through to the storage-name check and collided with the
+	// widgets whose slot is spelled exactly `onChange` — Slider, RangeSlider and
+	// StarRating — which were told to "use `OnChange:` instead" of `OnChange:`,
+	// and could not have their only action slot authored at all (#956).
+	case "DataSource", "Attribute", "Label", "Caption", "Action", "OnChange",
 		"Selection", "Class", "Style", "DynamicClasses", "Editable", "Visible",
 		"WidgetType", "DesignProperties", "Association", "CaptionAttribute",
 		"Content", "RenderMode", "ContentParams", "CaptionParams",

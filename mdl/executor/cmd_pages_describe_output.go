@@ -638,7 +638,7 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			props = appendConditionalProps(props, w)
 			props = appendAppearanceProps(props, w)
 			formatWidgetProps(ctx.Output, prefix, header, props, "\n")
-		} else if (len(w.ExplicitProperties) > 0 || len(w.ObjectLists) > 0 || w.OnClick != "") && w.WidgetID != "" {
+		} else if (len(w.ExplicitProperties) > 0 || len(w.ObjectLists) > 0 || w.OnClick != "" || w.OnChange != "") && w.WidgetID != "" {
 			// Generic pluggable widget with explicit properties, object-list child
 			// blocks (chart series/lines/scaleColors), and/or an onClick action.
 			header := fmt.Sprintf("pluggablewidget '%s' %s", w.WidgetID, mdlIdent(w.Name))
@@ -652,6 +652,11 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			// onClick action (ledger #67 — reported on CustomChart)
 			if w.OnClick != "" {
 				props = append(props, fmt.Sprintf("onClick: %s", w.OnClick))
+			}
+			// OnChange too — a Slider/RangeSlider/StarRating reaches describe
+			// through this branch, and its action slot is the only one it has.
+			if w.OnChange != "" {
+				props = append(props, fmt.Sprintf("OnChange: %s", w.OnChange))
 			}
 			props = appendAppearanceProps(props, w)
 			if len(w.ObjectLists) == 0 {
