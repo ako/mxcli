@@ -1,0 +1,71 @@
+-- Feature: named pluggable-widget action slots. Upstream #956.
+--
+-- mxcli could author exactly two action slots — `onClick:` and `OnChange:`,
+-- matched by name after one Event/Action suffix is stripped. Every other
+-- action-typed property got no mapping at all, so the engine had nothing to
+-- write and `mxcli check` reported MDL-WIDGET06 ("recognized but not yet
+-- persisted; set it in Studio Pro if needed"). File Uploader 2.5.0 extracts to
+-- six action slots and none were authorable, so the widget could be placed and
+-- not wired — which is what the issue reported.
+--
+-- Every action-typed property is now mapped. The two with MDL names keep them;
+-- the rest are addressed by the widget's own key, as below.
+--
+-- ONE CONSTRAINT WORTH KNOWING, and it bites the first thing you try.
+-- A slot can be conditional on another property. DataGrid 2's onSelectionChange
+-- is "hidden when itemSelection = None", and writing an action into a pruned
+-- slot is CE0463 — measured on mxbuild 11.13.0, with the control (same page,
+-- slot unset) building clean. So `Selection:` below is load-bearing, not
+-- decoration. mxcli now refuses the statement at check time rather than letting
+-- the build fail:
+--
+--   ✗ widget `dg` (datagrid) property `onSelectionChange` is hidden when
+--     `itemSelection` is "None" — an action there fails the build with CE0463
+--                                                          [MDL-WIDGET10]
+--
+-- Expected: `mxcli check` passes, `mx check` reports 0 errors, both DESCRIBEs
+-- re-emit the slot, and re-running the page statements reports `Unchanged`.
+--
+-- Re-run only the page statements when checking idempotence — running the whole
+-- file twice aborts at `module role already exists` before reaching a page, so
+-- the check would pass without testing anything:
+--
+--   sed -n '/^create or replace page/,$p' <this file> > pages.mdl
+--   mxcli exec pages.mdl -p app.mpr                        # -> Unchanged x2
+--   MXCLI_ALWAYS_WRITE=1 mxcli exec pages.mdl -p app.mpr   # -> Replaced x2
+
+create module M956;
+create module role M956.User;
+create persistent entity M956.Thing ( Name: string(100) );
+create microflow M956.ACT_Selected () begin log 'selection changed'; end;
+
+-- 1. A named slot holding a microflow. `microflow M.X` parses as a DATA SOURCE
+--    — dataSourceExprV3 and actionExprV3 overlap on MICROFLOW/NANOFLOW and the
+--    datasource alternative has to win, or a chart series' `staticDataSource:
+--    microflow M.X` would become an action. The executor converts it, because
+--    the widget definition is the only layer that knows the slot is an action.
+create or replace page M956.P_NamedMicroflow (Title: 'Named', Layout: Atlas_Core.Atlas_Default)
+{
+  DATAGRID dg (
+    DataSource: DATABASE M956.Thing,
+    Selection: Multiple,
+    onSelectionChange: microflow M956.ACT_Selected
+  ) {
+    COLUMN c1 (Attribute: Name, Caption: 'Name')
+  }
+}
+describe page M956.P_NamedMicroflow;
+
+-- 2. A named slot holding a client action. These forms do not also parse as a
+--    data source, so they reach the AST as an action directly.
+create or replace page M956.P_NamedShowPage (Title: 'Named 2', Layout: Atlas_Core.Atlas_Default)
+{
+  DATAGRID dg (
+    DataSource: DATABASE M956.Thing,
+    Selection: Multiple,
+    onSelectionChange: show_page M956.P_NamedMicroflow
+  ) {
+    COLUMN c1 (Attribute: Name, Caption: 'Name')
+  }
+}
+describe page M956.P_NamedShowPage;

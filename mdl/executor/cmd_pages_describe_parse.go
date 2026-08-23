@@ -351,6 +351,9 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 			// `onClickEvent`/`onClickAction`, which the writer accepts and the
 			// literal lookup could not see (#956).
 			widget.OnClick = renderClientActionMDL(ctx, customWidgetActionForSource(ctx, w, "OnClick"))
+			// Slots MDL addresses by the widget's own key — DataGrid2 stores
+			// onSelectionChange and onConfigurationChange (#956).
+			widget.NamedActions = namedActionSlotsOf(ctx, w)
 		}
 		// For Gallery, extract datasource, content widgets, filter widgets, and selection mode
 		if widget.RenderMode == "gallery" {
@@ -393,6 +396,10 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 			// described back without it — the same one-way write as the click
 			// slot, on the widgets that reach describe generically (#956).
 			widget.OnChange = renderClientActionMDL(ctx, customWidgetActionForSource(ctx, w, "OnChange"))
+			// Every remaining action slot, addressed by the widget's own key
+			// (#956) — a File Uploader's createFileAction / onUploadSuccessFile,
+			// a Switch's `action`, and so on.
+			widget.NamedActions = namedActionSlotsOf(ctx, w)
 		}
 		return []rawWidget{widget}
 

@@ -39,7 +39,16 @@ import (
 //
 // def is the property's declared default; when it is unknown ("") the rule stays
 // a warning — mxcli will not fail a script on a comparison it could not make.
-func hiddenPropertySeverity(value, def string) (linter.Severity, string) {
+func hiddenPropertySeverity(value, def, operation string) (linter.Severity, string) {
+	if operation == "action" {
+		// An action slot has no "default value" to compare a written action
+		// against — its default is no action at all — so the `def == ""` branch
+		// below would call every hidden action harmless. Measured on a DataGrid2
+		// at 11.13.0: an action written into `onSelectionChange` while
+		// `itemSelection` is None fails the build with CE0463, and the identical
+		// page with the slot unset builds clean. (#956)
+		return linter.SeverityError, "an action there fails the build with CE0463"
+	}
 	if def == "" || strings.EqualFold(value, def) {
 		return linter.SeverityWarning, "the value will be ignored"
 	}
@@ -51,8 +60,8 @@ func hiddenPropertySeverity(value, def string) (linter.Severity, string) {
 // object-list item a nested rule fired on (e.g. "group `g1`"), empty for a
 // top-level property.
 func hiddenPropertyViolation(locationPrefix, widgetName, mdlName, itemLabel string,
-	rule types.WidgetVisibilityRule, value, def string) linter.Violation {
-	severity, consequence := hiddenPropertySeverity(value, def)
+	rule types.WidgetVisibilityRule, value, def, operation string) linter.Violation {
+	severity, consequence := hiddenPropertySeverity(value, def, operation)
 	where := ""
 	if itemLabel != "" {
 		where = " " + itemLabel
@@ -123,7 +132,8 @@ func validateWidgetItemVisibility(parent *ast.WidgetV3, item *ast.WidgetV3,
 		value := itemValues[strings.ToLower(rule.PropertyKey)]
 		declared := declaredDefault(defaults, nil, mapping.ItemProperties, mapping.PropertyKey, rule.PropertyKey)
 		label := fmt.Sprintf("%s `%s`", strings.ToLower(item.Type), item.Name)
-		out = append(out, hiddenPropertyViolation(locationPrefix, parent.Name, def.MDLName, label, rule, value, declared))
+		out = append(out, hiddenPropertyViolation(locationPrefix, parent.Name, def.MDLName, label, rule, value, declared,
+			mappingOperationFor(def, rule.PropertyKey)))
 	}
 	return out
 }

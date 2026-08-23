@@ -645,6 +645,10 @@ type rawWidget struct {
 	DesignProperties []rawDesignProp
 	// Explicit widget properties (for generic PLUGGABLEWIDGET output)
 	ExplicitProperties []rawExplicitProp
+	// NamedActions holds the widget's action slots that MDL addresses by the
+	// widget's own property key — every slot but the click and change ones,
+	// which have MDL names and are carried in OnClick/OnChange (#956).
+	NamedActions []rawNamedAction
 	// Object-list child blocks (for generic PLUGGABLEWIDGET output): chart series,
 	// lines, scale colors, etc. Reconstructed from the widget's WidgetObject lists.
 	ObjectLists []rawObjectList
@@ -671,6 +675,13 @@ type rawWidget struct {
 }
 
 // rawExplicitProp represents a non-default property extracted from a CustomWidget.
+// rawNamedAction is one named action slot read back off a stored widget: the
+// widget's own property key, and the action rendered as MDL.
+type rawNamedAction struct {
+	Key string
+	MDL string
+}
+
 type rawExplicitProp struct {
 	Key   string
 	Value string // attribute short name or primitive value

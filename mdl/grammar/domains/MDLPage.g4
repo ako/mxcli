@@ -427,6 +427,18 @@ widgetPropertyV3
     // NANOFLOW/ASSOCIATION/VARIABLE/SELECTION) disambiguates it from
     // propertyValueV3, which can never start with those. Issue: chart series (9a).
     | (IDENTIFIER | keyword) COLON dataSourceExprV3
+    // Generic action-typed property — a NAMED action slot addressed by the
+    // widget's own key: `createFileAction: show_page Module.P`. Placed AFTER the
+    // datasource branch on purpose: actionExprV3 and dataSourceExprV3 overlap on
+    // MICROFLOW / NANOFLOW / VARIABLE, and putting this first would read a chart
+    // series' `staticDataSource: microflow M.X` as an action. Those overlapping
+    // forms therefore still parse as a data source, and the executor converts
+    // them when the widget definition says the slot is action-typed — the same
+    // split fragmentArgValue already resolves ("the executor disambiguates using
+    // the parameter's declared kind"). This branch carries the forms that are
+    // unambiguous: show_page, save_changes, close_page, create_object, delete,
+    // open_link, sign_out, complete_task. Issue #956.
+    | (IDENTIFIER | keyword) COLON actionExprV3
     | IDENTIFIER COLON propertyValueV3                // Generic: any other property
     | keyword COLON propertyValueV3                  // Generic: keyword as property name (for pluggable widgets)
     ;

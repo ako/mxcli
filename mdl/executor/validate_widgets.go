@@ -298,7 +298,8 @@ func validateWidgetVisibility(w *ast.WidgetV3, registry *WidgetRegistry, locatio
 		}
 		out = append(out, hiddenPropertyViolation(locationPrefix, w.Name, def.MDLName, "", rule,
 			values[strings.ToLower(rule.PropertyKey)],
-			declaredDefault(defaults, def.PropertyMappings, nil, "", rule.PropertyKey)))
+			declaredDefault(defaults, def.PropertyMappings, nil, "", rule.PropertyKey),
+			mappingOperationFor(def, rule.PropertyKey)))
 	}
 	return out
 }
@@ -342,6 +343,16 @@ func widgetValueMap(w *ast.WidgetV3, def *WidgetDefinition) (values map[string]s
 			explicit[key] = true
 		} else if m.Default != "" {
 			val = m.Default
+		} else if m.Operation == "selection" {
+			// An omitted `Selection:` is written as None. That is the builder's
+			// own behaviour rather than a guess — the stored itemSelection reads
+			// `Selection None` on a DataGrid2 whose script never named it — and
+			// the .mpk declares no defaultValue for a selection property, so
+			// without this the condition is indeterminable and every rule keyed
+			// on a selection silently does not fire. That includes
+			// `onSelectionChange`, whose action then reaches the model as CE0463
+			// with nothing having warned (#956).
+			val = "None"
 		}
 		if val != "" {
 			if m.Operation == "selection" {
@@ -1084,7 +1095,7 @@ func validatePluggableWidgetProperties(w *ast.WidgetV3, registry *WidgetRegistry
 // silent-drop class FINDINGS #14 was about. It is reported by
 // actionStorageKeys() instead, with the spelling that works.
 func addMappingNames(add func(string), m PropertyMapping) {
-	if !readsFixedASTSlot(m.Operation) {
+	if !readsFixedASTSlot(m) {
 		add(m.PropertyKey)
 	}
 	add(m.Source)
@@ -1105,8 +1116,17 @@ func addMappingNames(add func(string), m PropertyMapping) {
 // persist, so excluding every storage key would reject working syntax. Add an
 // operation here only after checking the written document, not from the shape of
 // the mapping.
-func readsFixedASTSlot(op string) bool {
-	return op == "action" || op == "association"
+// An action mapping with NO Source is a NAMED slot: resolveMapping reads it from
+// the AST property called by the mapping's own PropertyKey, so that key is the
+// authorable name rather than an internal one (#956).
+func readsFixedASTSlot(m PropertyMapping) bool {
+	switch m.Operation {
+	case "association":
+		return true
+	case "action":
+		return m.Source != ""
+	}
+	return false
 }
 
 // actionStorageKeys maps each action mapping's storage key to the MDL name that
@@ -1116,7 +1136,7 @@ func actionStorageKeys(def *WidgetDefinition) map[string]string {
 	out := make(map[string]string)
 	collect := func(ms []PropertyMapping) {
 		for _, m := range ms {
-			if readsFixedASTSlot(m.Operation) && m.PropertyKey != "" && m.Source != "" {
+			if readsFixedASTSlot(m) && m.PropertyKey != "" && m.Source != "" {
 				out[strings.ToLower(m.PropertyKey)] = m.Source
 			}
 		}
@@ -1420,4 +1440,34 @@ func misusedBuiltinProperty(widgetID, key string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// mappingOperationFor returns the def's operation for a property key, or "" when
+// the widget declares no mapping for it. Used to tell an action slot apart from a
+// valued property when judging how bad a hidden-property violation is.
+func mappingOperationFor(def *WidgetDefinition, propertyKey string) string {
+	scan := func(ms []PropertyMapping) string {
+		for _, m := range ms {
+			if strings.EqualFold(m.PropertyKey, propertyKey) {
+				return m.Operation
+			}
+		}
+		return ""
+	}
+	if op := scan(def.PropertyMappings); op != "" {
+		return op
+	}
+	for _, mode := range def.Modes {
+		if op := scan(mode.PropertyMappings); op != "" {
+			return op
+		}
+	}
+	for _, ol := range def.ObjectLists {
+		for _, ip := range ol.ItemProperties {
+			if strings.EqualFold(ip.PropertyKey, propertyKey) {
+				return ip.Operation
+			}
+		}
+	}
+	return ""
 }

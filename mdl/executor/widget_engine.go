@@ -91,7 +91,7 @@ const defaultSlotContainer = "template"
 //	    to a value the widget hides, which mxbuild rejects with CE0463 and which
 //	    makes `mx create-module-package` refuse the module (upstream #931). Bump
 //	    forces existing projects to regenerate their defs with both.
-const WidgetDefGeneratorVersion = 16
+const WidgetDefGeneratorVersion = 17
 
 // WidgetDefinition describes how to construct a pluggable widget from MDL syntax.
 // Loaded from embedded JSON definition files (*.def.json).
@@ -673,6 +673,22 @@ func (e *PluggableWidgetEngine) resolveMapping(mapping PropertyMapping, w *ast.W
 
 	source := mapping.Source
 	if source == "" {
+		// A named action slot: no Source, addressed by the widget's own property
+		// key. This is how every action slot but the click and change ones is
+		// authored — `createFileAction: microflow M.ACT_CreateFile` (#956).
+		if mapping.Operation == "action" {
+			act, err := namedActionSlotValue(w, mapping.PropertyKey)
+			if err != nil {
+				return nil, err
+			}
+			if act != nil {
+				built, err := e.pageBuilder.buildClientActionV3(act)
+				if err != nil {
+					return nil, mdlerrors.NewBackend("build action for "+mapping.PropertyKey, err)
+				}
+				ctx.Action = built
+			}
+		}
 		return ctx, nil
 	}
 
