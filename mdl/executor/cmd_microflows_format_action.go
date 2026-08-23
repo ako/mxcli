@@ -37,6 +37,21 @@ func commitModifier(c microflows.CommitType) string {
 	}
 }
 
+// refreshModifier renders the REFRESH modifier shared by create, change,
+// commit, delete and rollback. Absent means Refresh in client = No, which is
+// Mendix's default on every one of them.
+//
+// It is a helper rather than five inline conditionals because the five drifted:
+// delete and create had no REFRESH in the grammar and none in the describer, so
+// a Studio Pro activity with the flag set round-tripped back to No — the same
+// defect #407 fixed for change alone.
+func refreshModifier(refresh bool) string {
+	if refresh {
+		return " refresh"
+	}
+	return ""
+}
+
 // escapeExpressionValue escapes raw control characters inside string literals
 // of a Mendix expression value so it can be safely embedded in MDL output.
 // The lexer's STRING_LITERAL rule forbids raw \r and \n inside single-quoted
@@ -301,9 +316,9 @@ func formatAction(
 				}
 				members = append(members, fmt.Sprintf("%s = %s", memberName, escapeExpressionValue(m.Value)))
 			}
-			return fmt.Sprintf("$%s = create %s (%s)%s;", outputVar, entityName, strings.Join(members, ", "), commitModifier(a.Commit))
+			return fmt.Sprintf("$%s = create %s (%s)%s%s;", outputVar, entityName, strings.Join(members, ", "), commitModifier(a.Commit), refreshModifier(a.RefreshInClient))
 		}
-		return fmt.Sprintf("$%s = create %s%s;", outputVar, entityName, commitModifier(a.Commit))
+		return fmt.Sprintf("$%s = create %s%s%s;", outputVar, entityName, commitModifier(a.Commit), refreshModifier(a.RefreshInClient))
 
 	case *microflows.ChangeObjectAction:
 		varName := a.ChangeVariable
@@ -331,38 +346,30 @@ func formatAction(
 				}
 				members = append(members, fmt.Sprintf("%s = %s", memberName, escapeExpressionValue(m.Value)))
 			}
-			if a.RefreshInClient {
-				return fmt.Sprintf("change $%s (%s)%s refresh;", varName, strings.Join(members, ", "), commitModifier(a.Commit))
-			}
-			return fmt.Sprintf("change $%s (%s)%s;", varName, strings.Join(members, ", "), commitModifier(a.Commit))
+			return fmt.Sprintf("change $%s (%s)%s%s;", varName, strings.Join(members, ", "), commitModifier(a.Commit), refreshModifier(a.RefreshInClient))
 		}
-		if a.RefreshInClient {
-			return fmt.Sprintf("change $%s%s refresh;", varName, commitModifier(a.Commit))
-		}
-		return fmt.Sprintf("change $%s%s;", varName, commitModifier(a.Commit))
+		return fmt.Sprintf("change $%s%s%s;", varName, commitModifier(a.Commit), refreshModifier(a.RefreshInClient))
 
 	case *microflows.CommitObjectsAction:
 		varName := a.CommitVariable
 		if varName == "" {
 			varName = "Object"
 		}
+		// Events ON is the default and is left unwritten; events OFF is the
+		// deviation and must be spelled out, or a describe → exec round trip
+		// silently turns the handlers back on (#895).
 		suffix := ""
-		if a.WithEvents {
-			suffix += " with events"
+		if !a.WithEvents {
+			suffix += " without events"
 		}
-		if a.RefreshInClient {
-			suffix += " refresh"
-		}
+		suffix += refreshModifier(a.RefreshInClient)
 		return fmt.Sprintf("commit $%s%s;", varName, suffix)
 
 	case *microflows.DeleteObjectAction:
-		return fmt.Sprintf("delete $%s;", a.DeleteVariable)
+		return fmt.Sprintf("delete $%s%s;", a.DeleteVariable, refreshModifier(a.RefreshInClient))
 
 	case *microflows.RollbackObjectAction:
-		if a.RefreshInClient {
-			return fmt.Sprintf("rollback $%s refresh;", a.RollbackVariable)
-		}
-		return fmt.Sprintf("rollback $%s;", a.RollbackVariable)
+		return fmt.Sprintf("rollback $%s%s;", a.RollbackVariable, refreshModifier(a.RefreshInClient))
 
 	case *microflows.CreateListAction:
 		// Use EntityQualifiedName (BY_NAME_REFERENCE) or fall back to EntityID lookup

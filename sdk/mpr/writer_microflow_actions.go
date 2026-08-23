@@ -97,7 +97,7 @@ func serializeMicroflowAction(action microflows.MicroflowAction) bson.D {
 		}
 		doc = append(doc, bson.E{Key: "Items", Value: items})
 		// RefreshInClient is required
-		doc = append(doc, bson.E{Key: "RefreshInClient", Value: false})
+		doc = append(doc, bson.E{Key: "RefreshInClient", Value: a.RefreshInClient})
 		// outputVariableName has storageName "VariableName"
 		doc = append(doc, bson.E{Key: "VariableName", Value: a.OutputVariable})
 		return doc

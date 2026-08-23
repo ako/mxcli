@@ -132,39 +132,81 @@ func TestFormatAction_DeleteObject(t *testing.T) {
 	}
 }
 
-func TestFormatAction_CommitObjects_WithEvents(t *testing.T) {
+// TestFormatAction_CommitObjects covers all four stored combinations of the two
+// Commit-activity flags.
+//
+// The asymmetry is the point (#895): events ON is Mendix's default and renders
+// as nothing, events OFF is the deviation and must be spelled out. Rendering it
+// the other way round is what let a Studio Pro default commit describe as
+// something that re-executed into its opposite.
+func TestFormatAction_CommitObjects(t *testing.T) {
 	e := newTestExecutor()
-	action := &microflows.CommitObjectsAction{CommitVariable: "Order", WithEvents: true}
-	got := e.formatAction(action, nil, nil)
-	if got != "commit $Order with events;" {
-		t.Errorf("got %q", got)
+	tests := []struct {
+		name   string
+		action *microflows.CommitObjectsAction
+		want   string
+	}{
+		{
+			name:   "default (events on) renders bare",
+			action: &microflows.CommitObjectsAction{CommitVariable: "Order", WithEvents: true},
+			want:   "commit $Order;",
+		},
+		{
+			name:   "events off is spelled out",
+			action: &microflows.CommitObjectsAction{CommitVariable: "Order"},
+			want:   "commit $Order without events;",
+		},
+		{
+			name:   "events on with refresh",
+			action: &microflows.CommitObjectsAction{CommitVariable: "Order", WithEvents: true, RefreshInClient: true},
+			want:   "commit $Order refresh;",
+		},
+		{
+			name:   "events off with refresh",
+			action: &microflows.CommitObjectsAction{CommitVariable: "Order", RefreshInClient: true},
+			want:   "commit $Order without events refresh;",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := e.formatAction(tt.action, nil, nil); got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 
-func TestFormatAction_CommitObjects_WithoutEvents(t *testing.T) {
+// TestFormatAction_RefreshInClient_AllActivities guards the #407 sibling: the
+// REFRESH modifier existed on change and rollback but not on delete or create,
+// so a Studio Pro activity carrying the flag described without it and lost it on
+// the next exec. Measured before the fix on a real 11.13 project: stored
+// refresh=true -> `delete $Obj;` -> re-exec -> refresh=false.
+func TestFormatAction_RefreshInClient_AllActivities(t *testing.T) {
 	e := newTestExecutor()
-	action := &microflows.CommitObjectsAction{CommitVariable: "Order"}
-	got := e.formatAction(action, nil, nil)
-	if got != "commit $Order;" {
-		t.Errorf("got %q", got)
+	tests := []struct {
+		name   string
+		action microflows.MicroflowAction
+		want   string
+	}{
+		{"delete", &microflows.DeleteObjectAction{DeleteVariable: "Customer", RefreshInClient: true}, "delete $Customer refresh;"},
+		{"rollback", &microflows.RollbackObjectAction{RollbackVariable: "Order", RefreshInClient: true}, "rollback $Order refresh;"},
+		{
+			"create",
+			&microflows.CreateObjectAction{OutputVariable: "New", EntityQualifiedName: "Mod.Order", RefreshInClient: true},
+			"$New = create Mod.Order refresh;",
+		},
+		{
+			"change",
+			&microflows.ChangeObjectAction{ChangeVariable: "Order", RefreshInClient: true},
+			"change $Order refresh;",
+		},
 	}
-}
-
-func TestFormatAction_CommitObjects_Refresh(t *testing.T) {
-	e := newTestExecutor()
-	action := &microflows.CommitObjectsAction{CommitVariable: "Order", RefreshInClient: true}
-	got := e.formatAction(action, nil, nil)
-	if got != "commit $Order refresh;" {
-		t.Errorf("got %q", got)
-	}
-}
-
-func TestFormatAction_CommitObjects_WithEventsAndRefresh(t *testing.T) {
-	e := newTestExecutor()
-	action := &microflows.CommitObjectsAction{CommitVariable: "Order", WithEvents: true, RefreshInClient: true}
-	got := e.formatAction(action, nil, nil)
-	if got != "commit $Order with events refresh;" {
-		t.Errorf("got %q", got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := e.formatAction(tt.action, nil, nil); got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 
