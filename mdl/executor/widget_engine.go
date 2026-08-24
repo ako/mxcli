@@ -1218,7 +1218,15 @@ func (e *PluggableWidgetEngine) buildObjectListItem(mapping *ObjectListMapping, 
 			// when MDL writes `Caption: '{1}'` it pairs with `CaptionParams:
 			// [{1} = attr]`. The companion key is the matched name (alias or
 			// schema name) + "Params".
-			if paramsRaw, ok := child.Properties[matchedAlias+"Params"]; ok {
+			// lookupProperty, not a direct index: MDL property names are
+			// case-insensitive everywhere else, and matchedAlias is the SCHEMA
+			// key (`buttonCaption`) while the script — and DESCRIBE — write the
+			// widget's own casing (`ButtonCaptionParams`). A direct index found
+			// the companion only when the two happened to agree, which is why
+			// this worked for a DataGrid column's `CaptionParams` and silently
+			// dropped a File Uploader custom button's, leaving a `{1}` with no
+			// parameter and failing the build with CE0720 (#956).
+			if paramsRaw, ok := lookupProperty(child.Properties, matchedAlias+"Params"); ok {
 				if astParams, ok := paramsRaw.([]ast.ParamAssignmentV3); ok && len(astParams) > 0 {
 					prop.Parameters = e.pageBuilder.buildClientTemplateParams(astParams)
 				}

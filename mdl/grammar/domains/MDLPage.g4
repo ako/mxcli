@@ -404,6 +404,13 @@ widgetPropertyV3
     | RENDERMODE COLON renderModeV3                   // RenderMode: H3
     | CONTENTPARAMS COLON paramListV3                 // ContentParams: [{1} = $var.Name]
     | CAPTIONPARAMS COLON paramListV3                 // CaptionParams: [{1} = 'hello']
+    // A text-template sub-property of an object-list ITEM carries its
+    // parameters under `<Name>Params`, and those names are the widget's own
+    // (a File Uploader custom button's `ButtonCaptionParams`), so they cannot
+    // each have a token. Placed before the generic propertyValueV3
+    // alternatives, which also admit a `[...]` array — `{N} = expr` inside is
+    // what separates them (#956).
+    | (IDENTIFIER | keyword) COLON paramListV3        // <Name>Params: [{1} = Attr]
     | BUTTONSTYLE COLON buttonStyleV3                  // ButtonStyle: Primary
     | CLASS COLON STRING_LITERAL                       // Class: 'my-class'
     | STYLE COLON STRING_LITERAL                       // Style: 'color: red'
