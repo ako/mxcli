@@ -26,11 +26,11 @@ today:
 | | |
 |---|---|
 | mapping documents | **327** (200 import, 127 export) |
-| use **only** constructs MDL can express | **100 (31%)** |
-| blocked by exactly one missing construct | 68 |
-| blocked by two or more | 159 |
+| use **only** constructs MDL can express | **97 (30%)** |
+| blocked by exactly one missing construct | 70 |
+| blocked by two or more | 160 |
 
-The other 69% is not exotic. It is concentrated in six constructs, and the
+The other 70% is not exotic. It is concentrated in six constructs, and the
 biggest single one — an array at the root of the schema, #248 — accounts for
 122 documents on its own.
 
@@ -181,20 +181,24 @@ Greedy: at each step, the construct that unblocks the most additional documents.
 
 | after adding | docs fully expressible | |
 |---|---:|---:|
-| *(today)* | 100 | 31% |
-| + array root (#248) | 127 | 39% |
-| + message-definition source | 181 | 55% |
-| + converter microflow | 204 | 62% |
-| + custom object handling | 226 | 69% |
-| + entity-less object element | 252 | 77% |
-| + nested root | 265 | 81% |
-| + find/create × error/ignore | 280 | 86% |
+| *(today)* | 97 | 30% |
+| + array root (#248) | 123 | 38% |
+| + message-definition source | 177 | 54% |
+| + converter microflow | 200 | 61% |
+| + custom object handling | 222 | 68% |
+| + entity-less object element | 248 | 76% |
+| + nested root | 261 | 80% |
+| + find/create × error/ignore | 276 | 84% |
+| + quoted member names | 280 | 86% |
 | + mapping input parameter | 283 | 87% |
 | + the XML/wrapper long tail | 327 | 100% |
 
 Mappings whose **only** blocker is a single construct — the cheapest wins:
-array root **27**, converter microflow **18**, custom handling **11**, nested
+array root **26**, converter microflow **18**, custom handling **11**, nested
 root **9**.
+
+Reproduce with `scripts/mapping-census/census.py mx-test-projects/*.mpk`; the
+classifier is the same one this section was computed from.
 
 The two large items (array root, message definitions) are also the two that
 today fail **silently** in `describe`, which raises their priority above their
