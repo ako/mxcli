@@ -933,11 +933,25 @@ func validateWidgetExpressionAssociations(w *ast.WidgetV3, locationPrefix string
 var templateParamExprRe = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*\s*\(|[+\-*<>=!]`)
 
 // validateTemplateParamExpressions flags a client expression supplied to a
-// contentparams/captionparams slot (MDL-WIDGET14). Those slots are DATA BINDINGS:
-// an unquoted value is stored as an attribute path, so an expression like
-// `formatDateTime($obj/Date, 'd MMM')` is written as a bogus attribute name and
-// Studio Pro rejects the page with CE1613. A quoted value is a legal string
-// literal and is left alone.
+// contentparams/captionparams slot (MDL-WIDGET14). mxcli stores an unquoted
+// value as an attribute path, so an expression like
+// `formatDateTime($obj/Date, 'd MMM')` would be written as a bogus attribute
+// name and Studio Pro rejects the page. A quoted value is a legal string literal
+// and is left alone.
+//
+// The refusal is right; the reason this rule used to give was not. It said a
+// template parameter "is a data binding … not an expression", which is a claim
+// about MENDIX and it is false: Studio Pro's Edit Template Parameter dialog
+// offers "Parameter type: Value | Expression", and the Expression form has its
+// own editor, variable list and wizard —
+// `formatDecimal($currentObject/Score)` is a perfectly valid parameter there.
+// The metamodel agrees: Pages$ClientTemplateParameter carries Expression beside
+// AttributeRef and SourceVariable.
+//
+// So the honest message is that MXCLI cannot author that form yet, not that the
+// platform forbids it. Telling a user to precompute a calculated attribute when
+// Studio Pro offers the thing they asked for sends them to do unnecessary
+// modelling. Authoring syntax for it is tracked separately.
 func validateTemplateParamExpressions(w *ast.WidgetV3, locationPrefix string) []linter.Violation {
 	var out []linter.Violation
 	check := func(slot string, params []ast.ParamAssignmentV3) {
@@ -957,7 +971,7 @@ func validateTemplateParamExpressions(w *ast.WidgetV3, locationPrefix string) []
 				RuleID:   "MDL-WIDGET14",
 				Severity: linter.SeverityError,
 				Message: fmt.Sprintf(
-					"%s: widget `%s` %s value `%s` is an expression, but a template parameter is a data binding — it accepts an attribute path (`$obj/Attr`) or a quoted string literal, not an expression (CE1613 in Studio Pro). Precompute it onto the bound entity (e.g. a calculated attribute) and bind that attribute instead.",
+					"%s: widget `%s` %s value `%s` looks like an expression, and MDL cannot author an expression-typed template parameter yet — an unquoted value is stored as an attribute path, so this would be written as a bogus attribute name. Mendix DOES support it: Studio Pro's Edit Template Parameter dialog has a `Value | Expression` choice. Set it there, or bind an attribute path (`$obj/Attr`) or a quoted string literal here.",
 					locationPrefix, w.Name, slot, val,
 				),
 			})
