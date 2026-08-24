@@ -210,6 +210,64 @@ The intermediate file is plain MDL: reviewable in a PR, diffable, and re-runnabl
 A follow-up run after new strings are added describes only what is still empty if
 `--untranslated` is passed (see Slice 4).
 
+### Source drift — the failure mode source-keying has to answer for
+
+A dictionary keyed on the source string cannot see the source move. The
+scenario, and it is not exotic:
+
+1. `create translations for nl_NL ('Save' as 'Opslaan')` runs.
+2. Someone edits the English in Studio Pro: `Save` → `Store`. The `en_US` and
+   `nl_NL` children of a `Texts$Text` are independent siblings, so this rewrites
+   one child's `Text` and leaves the other untouched — the element is now
+   `{en_US: 'Store', nl_NL: 'Opslaan'}`. That is Mendix's own behaviour, not
+   something mxcli introduces.
+3. The file is re-run. The walk reads the source as `Store`, finds no `Store`
+   key, and **skips**. No write, no error. The Dutch now translates an English
+   string that no longer exists.
+4. `describe translations for nl_NL` emits `'Store' as 'Opslaan'` — the new
+   source paired with the stale translation, presented as fact. Reviewing that
+   output, by hand or with an LLM, gives no signal that anything is wrong.
+
+**An unmatched key must therefore be reported, never skipped in silence.** The
+evidence is available: the file's `'Save'` matches nothing, *and* a text reads
+`'Store'` while carrying the `nl_NL` value the file assigns to `'Save'`.
+Correlating backwards by the translation value identifies the moved source:
+
+```
+1 source string in the file matched nothing in the project:
+
+  'Save' as 'Opslaan'
+      No text has 'Save' as its en_US value.
+      A text now reads 'Store' and carries nl_NL 'Opslaan' — the source was
+      probably edited. Change the file to:   'Store' as 'Opslaan'
+      and check the translation still fits.
+```
+
+Measured on the fixture project, that correlation is nearly always unambiguous:
+**209 distinct (source, target) pairs across 191 distinct targets, with only 6
+targets (3%) shared by more than one source** — and those are short generic words
+(`"Knop"` ← 6 sources). So the hint is right ~97% of the time and honest about
+the rest.
+
+Three rules:
+
+- **Unmatched keys warn by default**, and are an error under `--strict`. Silence
+  is what lets drift compound across releases.
+- **The correlation is never auto-applied.** `Save → Store` keeps the translation
+  valid; `Save → Delete` does not. The tool reports; a person or a model decides.
+- **`mxcli diff` is the home for the full report** — it already compares a script
+  against project state. `mxcli diff translations nl_NL.mdl -p app.mpr` →
+  matched / drifted / unmatched / untranslated.
+
+**Why not key on the element instead.** That trades a detectable problem for an
+undetectable one. A `Texts$Text` carries a `$ID` but no `GUID`, and Studio Pro
+renumbers every `$ID` in a module on update (94 of 94, per CLAUDE.md). An
+id-keyed file rots silently the first time anyone updates a marketplace module,
+with no trace at all. Source-keying at least leaves evidence, and it is what
+makes deduplication and hand-editing work. This is the translation-memory
+problem, and TM tools answer it the same way: keep the dictionary source-keyed,
+flag "source changed", do not guess.
+
 ## Implementation Plan
 
 Four slices, each shippable alone. **Slice 1 is the bug and should go first.**
@@ -261,9 +319,14 @@ sort, emit the `CREATE` form with each known target filled in.
 
 ### Slice 4 — `CREATE TRANSLATIONS`
 
-Grammar, AST, visitor, executor handler → the Slice 2 overlay. Plus
-`--untranslated` on describe to emit only empty targets, which keeps the LLM
-loop cheap on a project that is already 90% translated.
+Grammar, AST, visitor, executor handler → the Slice 2 overlay. Plus:
+
+- **the drift report** — unmatched keys warned (errored under `--strict`), with
+  the back-correlated suggestion. This is not optional polish: without it the
+  feature loses track of the project silently, which is the failure mode the
+  whole design has to answer for.
+- `--untranslated` on describe to emit only empty targets, which keeps the LLM
+  loop cheap on a project that is already 90% translated.
 
 ### Files to modify/create
 
@@ -300,6 +363,9 @@ observed uniformly (3299 of 3299) on 11.13.0 and is the same value
 - Unit tests on the patch function: marker preserved, existing children's `$ID`s
   preserved, adding a language, replacing an existing one, leaving an unlisted
   source alone.
+- **Source drift**: translate a string, edit the source in the stored document,
+  re-run — the run must WARN with the back-correlated suggestion, not skip in
+  silence. Control: the same run before the source edit reports nothing.
 - **Idempotence with a control**: re-running an import reports no writes, and
   `MXCLI_ALWAYS_WRITE=1` reports writes — without the second line, "no writes" is
   equally consistent with a comparison that never ran.
