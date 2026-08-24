@@ -1,0 +1,54 @@
+-- Repro: rewriting a document DELETED every language but the one MDL carries.
+-- Slice 1 of PROPOSAL_translations.md.
+--
+-- A Mendix text is a Texts$Text holding one Texts$Translation child per
+-- language. MDL carries ONE string -- `Title: 'My Account'` -- so a rebuilt
+-- document has exactly one child and the rest are gone. Measured on 11.13.0,
+-- describing Administration.MyAccount and re-executing that description:
+--
+--   whole project   nl_NL translations   335 -> 328
+--   that unit       nl_NL markers         20 -> 13
+--                   "Mijn account"       present -> GONE from the project
+--
+-- mxbuild reports 0 errors before and after, because a model missing a
+-- translation is a valid model. So `mx check` is NOT the oracle here; the
+-- oracle is counting Texts$Translation elements, or `show languages`.
+--
+-- The fix is canon.CarryTranslations, in the same chain as the other things a
+-- rebuild would lose (identity, element $IDs, PersistentId). Both engines share
+-- that choke point, so `--engine legacy` is covered too.
+--
+-- This script needs a project that ALREADY HAS translations -- it cannot create
+-- them, because authoring is Slice 4. Point it at an app carrying a marketplace
+-- module (Administration ships Dutch), and use `show languages` as the oracle:
+--
+--   mxcli -p app.mpr -c "refresh catalog full; show languages"     # before
+--   mxcli -p app.mpr -c "describe page Administration.MyAccount" > rt.mdl
+--   mxcli exec rt.mdl -p app.mpr
+--   mxcli -p app.mpr -c "refresh catalog full; show languages"     # must match
+--
+-- Expected: every per-language count is identical before and after. The control
+-- is a binary with the CarryTranslations call removed from canon.Reconcile --
+-- nl_NL drops by 7 on that one page.
+--
+-- The statements below exercise the same path on a page this script creates, so
+-- it runs anywhere. They prove the mechanism does not FIRE wrongly (a page with
+-- one language round-trips unchanged); proving it fires CORRECTLY needs stored
+-- translations, which is what the recipe above is for.
+
+create module TrPreserve;
+create module role TrPreserve.User;
+create persistent entity TrPreserve.Thing ( Name: string(100) );
+
+create or replace page TrPreserve.P_Single (Title: 'Things', Layout: Atlas_Core.Atlas_Default)
+{
+  DATAGRID dg (DataSource: DATABASE TrPreserve.Thing) {
+    COLUMN c1 (Attribute: Name, Caption: 'Name')
+  }
+}
+
+-- Re-running this page must report `Unchanged`: a single-language document has
+-- nothing to carry, and the carry must not perturb it. Run the page statement
+-- again on its own to check -- re-running the whole file aborts at
+-- `module role already exists` before reaching it.
+describe page TrPreserve.P_Single;
