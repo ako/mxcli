@@ -24,6 +24,7 @@ func (b *Builder) ExitCreateAssociationStatement(ctx *parser.CreateAssociationSt
 		Type:           ast.AssocReference, // Default
 		Owner:          ast.OwnerDefault,
 		DeleteBehavior: ast.DeleteKeepReferences,
+		IfNotExists:    ctx.IfNotExists() != nil,
 	}
 
 	// Association options

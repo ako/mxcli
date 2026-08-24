@@ -238,6 +238,11 @@ check-mdl: build
 check-skill-mdl: build
 	@./scripts/check-skill-mdl.sh ./$(BUILD_DIR)/$(BINARY_NAME) .claude/skills/mendix
 	@./scripts/check-skill-mdl.sh ./$(BUILD_DIR)/$(BINARY_NAME) .claude/skills/packs
+	@# The syntax reference is the document people copy from, and it was never
+	@# checked: four of its documented forms did not parse (`add (a, b)`,
+	@# `drop (a)`, `rename X to Y`, `drop index (Col)`) — the exact drift class
+	@# this script names in its own header. (sudoku findings #10)
+	@./scripts/check-skill-mdl.sh ./$(BUILD_DIR)/$(BINARY_NAME) docs/01-project/MDL_QUICK_REFERENCE.md
 	@# The script above checks fenced blocks in markdown. A pack also ships real
 	@# .mdl files, which it does not see — and a pack whose own MDL is never
 	@# checked is a pack that rots.

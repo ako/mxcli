@@ -133,6 +133,15 @@ func execCreateAssociation(ctx *ExecContext, s *ast.CreateAssociationStmt) error
 		// Association not found — fall through to create it.
 	}
 
+	// IF NOT EXISTS: an association of this name anywhere in the domain model
+	// means there is nothing to do. Checked once here rather than in each of the
+	// four lookups below, which exist to phrase the same-module and cross-module
+	// errors. (sudoku findings #10)
+	if s.IfNotExists && associationExists(dm, s.Name.Name) {
+		fmt.Fprintf(ctx.Output, "Association %s already exists — skipped\n", s.Name)
+		return nil
+	}
+
 	if isCrossModule {
 		if !s.CreateOrModify {
 			for _, ca := range dm.CrossAssociations {
@@ -656,3 +665,19 @@ func describeConnectionPoints(ctx *ExecContext, assoc *domainmodel.Association) 
 }
 
 // --- Executor method wrappers for callers not yet migrated ---
+
+// associationExists reports whether the domain model already holds an
+// association of this name, same-module or cross-module.
+func associationExists(dm *domainmodel.DomainModel, name string) bool {
+	for _, assoc := range dm.Associations {
+		if assoc.Name == name {
+			return true
+		}
+	}
+	for _, ca := range dm.CrossAssociations {
+		if ca.Name == name {
+			return true
+		}
+	}
+	return false
+}

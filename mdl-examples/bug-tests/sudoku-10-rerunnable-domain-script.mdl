@@ -1,0 +1,51 @@
+-- Sudoku finding #10: a domain script cannot be re-run.
+--
+-- Two halves of #10 already worked before this: `add attribute if not exists`
+-- and `mxcli exec --continue-on-error`. What was left was the rest of the
+-- domain-model surface, and one of the gaps was silent:
+--
+--   * `add index` had NO guard and did not error either. Re-running appended a
+--     second identical index, reported "Added index", and left a project that
+--     mxbuild rejects with CE0072 "Duplicate indexes". Now the bare form errors
+--     and `if not exists` skips.
+--   * `drop index` could only be addressed by an invented positional name
+--     ("idx1") that appears in no output. It now takes the column list, which
+--     is what `describe entity` prints and the index's only real identity.
+--   * `create entity` / `create association` had only `create or modify`, which
+--     REPLACES the definition and drops any attribute the statement omits
+--     (finding #24). `if not exists` leaves an existing element untouched.
+--
+-- Run this script three times against the same project. Runs 2 and 3 must
+-- report only skips, leave mprcontents byte-identical, and keep mx check at
+-- 0 errors:
+--
+--   for i in 1 2 3; do mxcli exec mdl-examples/bug-tests/sudoku-10-rerunnable-domain-script.mdl -p app.mpr; done
+--   mx check app.mpr      # 0 errors
+
+create or modify module ReRun;
+
+create entity if not exists ReRun."Game" (
+  "Level": string(20),
+  "Score": integer
+);
+
+alter entity ReRun."Game"
+  add attribute if not exists "Player": string(50),
+  add attribute if not exists "StartedOn": datetime,
+  add index if not exists on ("Level"),
+  add index if not exists on ("Score", "Level" desc);
+
+create entity if not exists ReRun."Move" ("Seq": integer);
+
+create association if not exists ReRun.Move_Game from ReRun.Move to ReRun.Game;
+
+-- Order and direction are part of an index's identity — Mendix builds a
+-- composite database index, so this is a different index from (Score, Level desc)
+-- above and is added on run 1 rather than skipped.
+alter entity ReRun."Game" add index if not exists on ("Level", "Score");
+
+-- A drop is re-runnable the same way. This one is a no-op on EVERY run,
+-- including the first: nothing indexes Player, and `if exists` says so instead
+-- of halting the script. Deliberately not dropping an index this script just
+-- created — that would converge too, but every run would report work.
+alter entity ReRun."Game" drop index if exists ("Player");

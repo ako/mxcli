@@ -20,8 +20,9 @@ func (b *Builder) ExitCreateEntityStatement(ctx *parser.CreateEntityStatementCon
 	}
 
 	stmt := &ast.CreateEntityStmt{
-		Name: buildQualifiedName(ctx.QualifiedName()),
-		Kind: ast.EntityPersistent, // Default
+		Name:        buildQualifiedName(ctx.QualifiedName()),
+		Kind:        ast.EntityPersistent, // Default
+		IfNotExists: ctx.IfNotExists() != nil,
 	}
 
 	// Entity type
@@ -677,21 +678,34 @@ func (b *Builder) ExitAlterEntityAction(ctx *parser.AlterEntityActionContext) {
 				if idxDef := ctx.IndexDefinition(); idxDef != nil {
 					idx := buildIndex(idxDef)
 					b.statements = append(b.statements, &ast.AlterEntityStmt{
-						Name:      name,
-						Operation: ast.AlterEntityAddIndex,
-						Index:     &idx,
+						Name:        name,
+						Operation:   ast.AlterEntityAddIndex,
+						Index:       &idx,
+						IfNotExists: ctx.IfNotExists() != nil,
 					})
 				}
 				return
 			}
 
-			// DROP INDEX
-			if ctx.DROP() != nil && ctx.INDEX() != nil && ctx.IDENTIFIER() != nil {
-				b.statements = append(b.statements, &ast.AlterEntityStmt{
+			// DROP INDEX. The column-list form is preferred and is the only one
+			// `describe entity` can round-trip — a Mendix index has no stored
+			// name, so the ordinal form ("idx1") names a position that shifts
+			// when an earlier index is dropped.
+			if ctx.DROP() != nil && ctx.INDEX() != nil {
+				stmt := &ast.AlterEntityStmt{
 					Name:      name,
 					Operation: ast.AlterEntityDropIndex,
-					IndexName: ctx.IDENTIFIER().GetText(),
-				})
+					IfExists:  ctx.IfExists() != nil,
+				}
+				if idxDef := ctx.IndexDefinition(); idxDef != nil {
+					idx := buildIndex(idxDef)
+					stmt.Index = &idx
+				} else if ctx.IDENTIFIER() != nil {
+					stmt.IndexName = ctx.IDENTIFIER().GetText()
+				} else {
+					return
+				}
+				b.statements = append(b.statements, stmt)
 				return
 			}
 
