@@ -359,6 +359,22 @@ func widgetValueMap(w *ast.WidgetV3, def *WidgetDefinition) (values map[string]s
 			}
 		} else if m.Default != "" {
 			val = m.Default
+		} else if m.Operation == "primitive" && m.Value != "" {
+			// A primitive mapping carries the widget XML's defaultValue in Value
+			// (Default is only populated for selections), and the builder WRITES
+			// that value when the script names nothing — so reading it here is
+			// not a guess about the widget's configuration, it is the
+			// configuration. Without it every rule keyed on an unnamed
+			// enumeration is indeterminable and silently does not fire.
+			//
+			// Measured on File Uploader 2.5.0: `uploadMode` defaults to "files",
+			// which hides `associatedImages`. With the condition unknown, the
+			// `DataSource:` clause fanned out into BOTH datasource properties —
+			// and a value in a pruned slot is CE0463 on every page carrying the
+			// widget, with nothing having warned (#956). This is the same shape
+			// as the selection case below, which was fixed first because
+			// DataGrid2 was the widget then under test.
+			val = m.Value
 		} else if m.Operation == "selection" {
 			// An omitted `Selection:` is written as None. That is the builder's
 			// own behaviour rather than a guess — the stored itemSelection reads
