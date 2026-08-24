@@ -564,6 +564,7 @@ keyword
     | TABCONTAINER | TABPAGE | WIDGET | WIDGETS
     // Object-list container keywords for pluggable widgets (#538)
     | GROUP | CUSTOMITEM | MARKER | DYNAMICMARKER | SERIES | LINE | SCALECOLOR
+    | CUSTOMBUTTON | ALLOWEDFILEFORMAT
     // Dual-stack keyword (#539)
     | LEGACYDATAGRID
 
