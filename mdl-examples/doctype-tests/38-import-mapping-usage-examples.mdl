@@ -1,0 +1,351 @@
+-- ============================================================================
+-- Import Mapping USAGE Examples
+-- ============================================================================
+--
+-- 21-import-export-mapping-examples.mdl covers AUTHORING a mapping — the
+-- structure, the elements, nesting, export. This file covers the other half:
+-- every way a mapping is CONSUMED once it exists, which until now was spread
+-- across regression fixtures (881 for ranges, 519 and 242 for the REST forms)
+-- and had to be reverse-engineered from files written about defects.
+--
+-- The consumption surface, from MDLMicroflow.g4:
+--
+--   $V = import from mapping M.IMM($Source) [range] [on error ...];
+--        range := (omitted) | ALL | FIRST | LIMIT e [OFFSET e]
+--
+--   $V = rest call get '...' returns mapping M.IMM as Module.Entity;
+--   $V = rest call get '...' returns mapping M.IMM as list of Module.Entity;
+--
+-- and, on the mapping itself, three object-handling modes: CREATE (the
+-- default), FIND, and FIND OR CREATE.
+--
+-- WHAT THIS FILE DELIBERATELY DOES NOT SHOW, and why
+--
+-- Every mapping here is OBJECT-rooted, because a list-rooted one cannot be
+-- authored in MDL at all right now:
+--
+--   * a mapping's schema source is either a JSON structure or an XML schema
+--     (`importMappingWithClause`), and there is no CREATE XML SCHEMA statement,
+--     so a JSON structure is the only authorable source;
+--   * mapping an ARRAY-rooted JSON structure fails — issue #248,
+--     `"name" is not a member of the JSON structure at (Object)`.
+--
+-- So `as list of` and the list-only ranges are documented below with their
+-- measured error codes rather than shown as microflows that do not work. When
+-- #248 lands, `mdl-examples/bug-tests/519-rest-mapping-as-list-of.mdl` becomes
+-- runnable again and is the place those forms belong.
+--
+-- Measured on Mendix 11.13.0. `mx check` reports 0 errors for this file.
+--
+-- Usage:
+--   mxcli exec mdl-examples/doctype-tests/38-import-mapping-usage-examples.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe microflow MapUse.ACT_ImportPlain"
+-- ============================================================================
+
+create module MapUse;
+
+-- ############################################################################
+-- PART 0: DOMAIN MODEL AND SCHEMA
+-- ############################################################################
+--
+-- Two entities on purpose. Object handling decides which one a mapping may use:
+-- CREATE works with either, FIND and FIND OR CREATE require a PERSISTABLE
+-- entity (see Level 1.2).
+
+@position(100, 100)
+create non-persistent entity MapUse.PetResponse (
+  PetId : integer,
+  Name : string,
+  Status : string
+);
+/
+
+@position(400, 100)
+create persistent entity MapUse.PetRecord (
+  PetId : integer,
+  Name : string,
+  Status : string
+);
+/
+
+create json structure MapUse.JSON_Pet
+  snippet '{"id": 1, "name": "Fido", "status": "available"}';
+
+-- ############################################################################
+-- PART 1: OBJECT HANDLING — what the mapping does with each object it reads
+-- ############################################################################
+
+-- ============================================================================
+-- Level 1.1: CREATE (the default)
+-- ============================================================================
+--
+-- Every import in PART 2 and PART 3 uses this mapping. A new object per import,
+-- no lookup. This is what a mapping does when no handling is written.
+
+create import mapping MapUse.IMM_Pet
+  with json structure MapUse.JSON_Pet
+{
+  create MapUse.PetResponse {
+    PetId = id,
+    Name = name,
+    Status = status
+  }
+};
+
+-- ============================================================================
+-- Level 1.2: FIND — look the object up, never create it
+-- ============================================================================
+--
+-- Two requirements, and mxcli enforces NEITHER — both surface in the build:
+--
+--   `key` on at least one member, or mxbuild reports
+--     CE0250 "Object element must have a key defined if object handling is
+--     set to 'Search for an object'."
+--
+--   a PERSISTABLE entity, or
+--     CE0251 "Searching for an object is not allowed for the entity 'X',
+--     because it is not persistable."
+--
+-- Both measured on 11.13.0 by writing the mapping without them: `mxcli exec`
+-- reports "Created import mapping" either way. So FIND and FIND OR CREATE are
+-- the two handlings where a clean mxcli run does not mean a clean build — worth
+-- an `mx check` before you move on.
+
+create import mapping MapUse.IMM_FindPet
+  with json structure MapUse.JSON_Pet
+{
+  find MapUse.PetRecord {
+    PetId = id key,
+    Name = name,
+    Status = status
+  }
+};
+
+-- ============================================================================
+-- Level 1.3: FIND OR CREATE — upsert
+-- ============================================================================
+--
+-- Same two requirements as FIND. Note that 21's IMM_UpsertPet maps a
+-- NON-persistent entity: that file only passes `mx check` because PART 5 drops
+-- the mapping again before the end, so its CE0251 never reaches the build.
+
+create import mapping MapUse.IMM_UpsertPet
+  with json structure MapUse.JSON_Pet
+{
+  find or create MapUse.PetRecord {
+    PetId = id key,
+    Name = name,
+    Status = status
+  }
+};
+
+-- ############################################################################
+-- PART 2: IMPORT FROM MAPPING — binding the result
+-- ############################################################################
+
+-- ============================================================================
+-- Level 2.1: No range — the ordinary form
+-- ============================================================================
+--
+-- The result's cardinality is inferred from the MAPPING's root: an
+-- object-rooted mapping binds one object, a list-rooted one binds a list.
+--
+-- This stores Studio Pro's ALL, explicitly. Leaving the range unwritten used to
+-- store FIRST instead, which builds cleanly and then throws
+-- `key not found: Path(QName(None,),None,)` at import time — see
+-- bug-tests/import-mapping-single-object-runtime.mdl (#192).
+
+create microflow MapUse.ACT_ImportPlain ()
+returns string as $out
+begin
+  declare $out string = 'EMPTY';
+  declare $Json string = '{"id": 1, "name": "Fido", "status": "available"}';
+  $Pet = import from mapping MapUse.IMM_Pet($Json);
+  if $Pet != empty then
+    set $out = $Pet/Name;
+  end if;
+  return $out;
+end;
+/
+
+-- ============================================================================
+-- Level 2.2: ALL — the range, written explicitly
+-- ============================================================================
+--
+-- ALL sets only the RANGE. It does NOT make the result a list: the variable's
+-- cardinality still comes from the mapping's root, so against an object-rooted
+-- mapping this binds an OBJECT. Mendix's own
+-- FeedbackModule.SUB_Feedback_PostToAppInsights ships exactly that combination.
+--
+-- The two are separate axes, and conflating them is CE0243 — "the mapping used
+-- to return 'List of X' but now returns 'X'". (#881)
+
+create microflow MapUse.ACT_ImportAll ()
+returns string as $out
+begin
+  declare $out string = 'EMPTY';
+  declare $Json string = '{"id": 1, "name": "Fido", "status": "available"}';
+  $Pet = import from mapping MapUse.IMM_Pet($Json) all;
+  if $Pet != empty then
+    set $out = $Pet/Name;
+  end if;
+  return $out;
+end;
+/
+
+-- ============================================================================
+-- Level 2.3: LIMIT / OFFSET — Studio Pro's Custom range
+-- ============================================================================
+--
+-- A bounded window over the imported items. Like ALL, it is a range setting
+-- only and does not retype the result variable.
+
+create microflow MapUse.ACT_ImportLimited ()
+returns string as $out
+begin
+  declare $out string = 'EMPTY';
+  declare $Json string = '{"id": 1, "name": "Fido", "status": "available"}';
+  $Pet = import from mapping MapUse.IMM_Pet($Json) limit 10;
+  set $out = 'ok';
+  return $out;
+end;
+/
+
+-- ============================================================================
+-- Level 2.4: FIRST and OFFSET — list-rooted mappings only
+-- ============================================================================
+--
+-- Not shown as microflows here on purpose: both need a list-rooted mapping,
+-- which #248 makes unauthorable, and against an OBJECT-rooted mapping FIRST is
+-- a landmine — it builds cleanly and throws when the activity runs:
+--
+--   $One  = import from mapping M.IMM_Pets($Json) first;
+--   $Page = import from mapping M.IMM_Pets($Json) limit 10 offset 5;
+--
+--   MicroflowException: key not found: Path(QName(None,),None,)
+--     at com.mendix.integration.importer.mapping.MappingCache.storeValueMappingElement
+--
+-- FIRST is Studio Pro's "take one of a list", so it means nothing against a
+-- single root — which is why it is the one range that also pins the result
+-- variable to a single object. `first` is NOT `limit 1`: `limit 1` binds a list
+-- of one, `first` binds an object, so the variable's TYPE differs.
+
+-- ############################################################################
+-- PART 3: ERROR HANDLING ON THE ACTIVITY
+-- ############################################################################
+--
+-- A malformed payload makes the import throw. `on error` is the same clause the
+-- other activities take — `continue`, `rollback`, or a custom handler in braces
+-- (add `without rollback` to keep what the flow already wrote) — and it is worth
+-- using here specifically: a mapping failure is a runtime event that no amount
+-- of checking predicts.
+
+create microflow MapUse.ACT_ImportWithErrorHandling ()
+returns string as $out
+begin
+  declare $out string = 'EMPTY';
+  declare $Json string = '{"id": 1, "name": "Fido", "status": "available"}';
+  $Pet = import from mapping MapUse.IMM_Pet($Json)
+    on error {
+      set $out = 'import failed';
+      return $out;
+    };
+  if $Pet != empty then
+    set $out = $Pet/Name;
+  end if;
+  return $out;
+end;
+/
+
+-- ############################################################################
+-- PART 4: REST CALL — the mapping as a response handler
+-- ############################################################################
+
+-- ============================================================================
+-- Level 4.1: returns mapping ... as Module.Entity
+-- ============================================================================
+--
+-- The response body goes straight into the mapping; no intermediate string
+-- variable. `as Entity` binds ONE object.
+--
+-- Three BSON flags sit behind this one clause, and they are three axes:
+--
+--   SingleObject           types the result VARIABLE — what `as` vs
+--                          `as list of` chooses
+--   ForceSingleOccurrence  "the mapping yields many, bind one" — set only when
+--                          the MAPPING's root is a list and the call site binds
+--                          one, so it is false for every mapping in this file
+--   Range.SingleObject     the First/All range. MDL's REST syntax has no range
+--                          keyword, so it is always All here.
+--
+-- Mirroring all three onto the call site's `as` was #242: it built cleanly and
+-- threw `key not found: Path(QName(None,),None,)` at run time.
+
+create microflow MapUse.ACT_RestAsEntity ($Url : string)
+returns MapUse.PetResponse
+begin
+  $Pet = rest call get $Url
+    timeout 30
+    returns mapping MapUse.IMM_Pet as MapUse.PetResponse
+    on error rollback;
+  return $Pet;
+end;
+/
+
+-- ============================================================================
+-- Level 4.2: returns mapping ... as list of Module.Entity
+-- ============================================================================
+--
+-- Not shown here, for the same reason as Level 2.4 — it needs a list-rooted
+-- mapping (#248). Against an object-rooted one it is not a workaround but a
+-- build error, measured on 11.13.0:
+--
+--   $Pets = rest call get $Url
+--     returns mapping M.IMM_Pet as list of M.PetResponse;
+--
+--   [error] [CE0243] "The mapping used to return a value of type
+--   'List of M.PetResponse', but now returns a value of type 'M.PetResponse'.
+--   Open the action and click OK if this was intended"
+--   at Call REST service activity 'Call REST (GET)'
+--
+-- The form itself is correct and is what MendixSSO.RetrieveUserRoles stores;
+-- it is the object-rooted mapping under it that makes this particular pairing
+-- wrong.
+
+-- ============================================================================
+-- Level 4.3: returns string, then import — the decoupled form
+-- ============================================================================
+--
+-- Equivalent to 4.1 in two steps. Worth knowing as the form that isolates a
+-- mapping problem from a transport problem: if this works and 4.1 does not, the
+-- payload is fine and the activity's mapping call is the suspect.
+
+create microflow MapUse.ACT_RestThenImport ($Url : string)
+returns MapUse.PetResponse
+begin
+  $Body = rest call get $Url
+    timeout 30
+    returns string
+    on error rollback;
+  $Pet = import from mapping MapUse.IMM_Pet($Body);
+  return $Pet;
+end;
+/
+
+-- ############################################################################
+-- PART 5: DESCRIBE ROUND-TRIP
+-- ############################################################################
+--
+-- DESCRIBE emits the range and the cardinality it actually read, so its output
+-- re-executes to the same activity. Both were silent before #881 and #519, and
+-- an omitted range came back as FIRST on the next exec.
+--
+-- One consequence to expect rather than be surprised by: ACT_ImportPlain writes
+-- no range and describes back as `... ($Json) all;` — identical to ACT_ImportAll
+-- above. That is not a rewrite. The unwritten range IS All and is stored as All,
+-- so DESCRIBE names it; only the text differs from the script that produced it.
+
+describe microflow MapUse.ACT_ImportPlain;
+describe microflow MapUse.ACT_ImportAll;
+describe microflow MapUse.ACT_RestAsEntity;
+describe import mapping MapUse.IMM_UpsertPet;
