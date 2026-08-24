@@ -1,0 +1,330 @@
+---
+title: Translations — preserve, describe, author, and auto-translate
+status: draft
+date: 2026-08-23
+related:
+  - PROPOSAL_catalog_integration.md
+  - PROPOSAL_marketplace_module_upgrade.md
+---
+
+# Proposal: Translations — preserve, describe, author, and auto-translate
+
+**Status:** Draft
+**Date:** 2026-08-23
+
+A Mendix app ships its user-visible strings in every language it supports.
+mxcli can *report* on those strings and *display* the right one, but it cannot
+author a translation — and, more urgently, it **deletes translations it did not
+write**. This proposal covers both halves, in that order.
+
+## Problem Statement
+
+### The bug: a rewrite drops every language but one
+
+Measured on Mendix 11.13.0, describing `Administration.MyAccount` (a stock
+marketplace page with Dutch translations) and re-executing that description:
+
+```
+                        before   after
+en_US markers in unit      24      20
+nl_NL markers in unit      20      13
+"Mijn account"          present   GONE from the entire project
+```
+
+Project-wide, `SHOW LANGUAGES` went `nl_NL 17 → 16` from that one page.
+
+The mechanism is `extractTextFromBson` (`sdk/mpr/parser_misc.go:637`), which
+returns the first non-empty text and ignores `LanguageCode` entirely:
+
+```go
+for _, item := range extractBsonArray(raw["Items"]) {
+    if transMap, ok := item.(map[string]any); ok {
+        text := extractString(transMap["Text"])
+        if text != "" {
+            return text          // ← eight translations collapse to one string
+        }
+    }
+}
+```
+
+Every writer then re-emits that single string as `en_US` — there are **75
+hardcoded `"en_US"` sites** in non-test code.
+
+`mx check` does not care: a model missing a translation is a valid model, and
+mxbuild reports 0 errors before and after. This is the same silent-loss class as
+[#901](https://github.com/mendixlabs/mxcli/issues/901) (delete behaviour) and
+[#956](https://github.com/mendixlabs/mxcli/issues/956) (action slots), and it is
+live against every marketplace module, all of which ship translations.
+
+### The gap: no way to author one
+
+There is no MDL syntax for a translation. `Title:`, `Caption:`, `Content:` and
+`Label:` take one string and it goes to the default language.
+
+Studio Pro's answer is *Language operations → export to Excel*, edit, import.
+mxcli has no equivalent, so a project driven from MDL is monolingual by
+construction.
+
+### What already works
+
+- **`SHOW LANGUAGES`** — translated-string counts per language, from the catalog.
+- **`CATALOG.strings`** — every indexed string with its `Language`, queryable.
+- **`ALTER SETTINGS LANGUAGE DefaultLanguageCode = 'en_US'`**.
+- **Language-aware DESCRIBE** (`mdl/executor/describe_language.go`, issue #702) —
+  picks the project's *default* language rather than whichever translation is
+  stored first.
+
+So reading for display is in reasonable shape. Preservation and authoring are not.
+
+## BSON Structure
+
+Verified by walking every `.mxunit` in a real 11.13.0 project (11 modules):
+
+```json
+{
+  "$ID":   { "Subtype": 0, "Data": "YEEClXaA+0C8dvdDrVTrNw==" },
+  "$Type": "Texts$Text",
+  "Items": [
+    3,
+    { "$ID": …, "$Type": "Texts$Translation",
+      "LanguageCode": "en_US",
+      "Text": "Help us make your experience better and share your feedback with us!" },
+    { "$ID": …, "$Type": "Texts$Translation",
+      "LanguageCode": "nl_NL",
+      "Text": "…" }
+  ]
+}
+```
+
+Measured facts, not assumptions:
+
+| Fact | Measurement |
+|------|-------------|
+| `Items` is a versioned array with leading marker `3` | **3299 of 3299** texts |
+| Children are `Texts$Translation{LanguageCode, Text}` | all |
+| Texts carrying translations but no default language | **2** of 3299 |
+| Texts with **no** items at all (unset captions) | **2089** of 3299 |
+
+`Texts$Text` is a *leaf value* embedded wherever a caption lives — page titles,
+widget captions, enum captions, log/validation messages, workflow task names,
+menu items. It is never a document of its own. That is what makes a generic walk
+possible: **one traversal covers every document type, present and future.**
+
+### Corpus size
+
+Same project:
+
+```
+Texts$Text elements            3299
+  with a default-language source  1054     (2089 empty)
+  DISTINCT source strings          411     ← the size of a translation file
+  already multi-language           338
+  per language: en_US=1054 nl_NL=330 de_DE=19 es_ES=19 pt_PT=19
+                tr_TR=19 fr_FR=18 hi_IN=17 ar_DZ=4
+```
+
+**411 distinct strings for a whole app.** One file per language is comfortably
+practical. Deduplication is a 2.6× reduction and, more importantly, means `Save`
+is translated once and lands in all 40-odd places it occurs.
+
+### `CATALOG.strings` cannot be the export source
+
+The catalog's string index is built from **21 hand-listed contexts**
+(`mdl/catalog/builder_strings.go`) — page title, page URL, documentation, enum
+caption, workflow name/description, task name, REST paths, log/show/validation
+messages. It does **not** index widget captions, which are the bulk of a page.
+
+On `Administration.MyAccount`: **39 `Texts$Text` in the unit, 2 rows in the
+catalog.** Export must do its own walk. (Widening the catalog is worth doing —
+see Open Questions — but nothing here should be built on it.)
+
+## Proposed MDL Syntax
+
+Following `.claude/skills/design-mdl-syntax.md`: a translation entry maps a
+*user-provided name to another name*, which is the `as` case, not the colon case
+(the skill's own example is `CUSTOM NAME map ('kvkNummer' as 'ChamberOfCommerceNumber')`).
+
+```mdl
+-- translations/nl_NL.mdl
+create translations for nl_NL (
+    'Save'                as 'Opslaan',
+    'Cancel'              as 'Annuleren',
+    'My Account'          as 'Mijn account',
+    'Change password'     as 'Wachtwoord veranderen',
+);
+```
+
+Scoped to one module when a project is translated piecemeal:
+
+```mdl
+create translations in Administration for nl_NL (
+    'My Account'          as 'Mijn account',
+);
+```
+
+Inspect, and produce the file:
+
+```mdl
+describe translations for nl_NL;
+describe translations in Administration for nl_NL;
+```
+
+`DESCRIBE` emits exactly the `CREATE` form, so the two round-trip. A language
+with no translations yet describes as every source string with an **empty**
+target:
+
+```mdl
+create translations for de_DE (
+    'Save'                as '',
+    'Cancel'              as '',
+);
+```
+
+### Why this shape
+
+- **Keyed on the source string, not an element id.** `$ID`s are renumbered by
+  Studio Pro on every module update (94 of 94 in the measurement recorded in
+  CLAUDE.md), so an id-keyed file rots the first time someone opens the project.
+  Source-keying is also what gives deduplication, and it is how Mendix's own
+  Excel flow behaves.
+- **Upsert by nature.** A source string absent from the file is left alone; one
+  present is set. Re-running is a no-op — see Implementation.
+- **An empty target is "not translated yet", not "translate to empty".** It is
+  skipped on write. This is what makes the describe-of-a-missing-language useful
+  as an LLM prompt.
+
+### The auto-translate loop
+
+No separate export format is needed — it *is* the round-trip:
+
+```bash
+mxcli -p app.mpr -c "describe translations for de_DE" > de_DE.mdl
+#   → 411 source strings, every target empty
+
+#   hand de_DE.mdl to an LLM, fill in the right-hand side
+
+mxcli exec de_DE.mdl -p app.mpr
+```
+
+The intermediate file is plain MDL: reviewable in a PR, diffable, and re-runnable.
+A follow-up run after new strings are added describes only what is still empty if
+`--untranslated` is passed (see Slice 4).
+
+## Implementation Plan
+
+Four slices, each shippable alone. **Slice 1 is the bug and should go first.**
+
+### Slice 1 — Preservation (no new syntax)
+
+A rewrite must carry every translation through. Two parts:
+
+1. `extractTextFromBson` and its callers keep the whole `map[string]string`
+   rather than the first string. `model.Text.Translations` is *already* a map,
+   and `textToGen` (`mdl/backend/modelsdk/domainmodel_write.go:536`) *already*
+   writes every entry sorted — so the write side of that path is done. Two
+   readers already populate the full map (`modelsdk/domainmodel.go:437`,
+   `modelsdk/page.go:200`); the legacy `sdk/mpr` collapse is the offender.
+2. Where a writer builds `Translations: map[string]string{"en_US": s}` from a
+   single MDL string, it must merge into the stored text rather than replace it
+   — guard-don't-drop, [ADR-0005](../13-decisions/0005-semantic-model-interface-currency.md).
+
+**Control:** `SHOW LANGUAGES` before and after a describe→exec round-trip over a
+marketplace module. Counts must be identical. Without the control the test passes
+against a build that never had the fix.
+
+### Slice 2 — The `Texts$Text` overlay (the write engine)
+
+Import must **not** go through the document rebuild path — that is exactly where
+translations get dropped and where all the fidelity risk lives. It is a targeted
+BSON overlay, and every piece exists:
+
+| Piece | Where |
+|-------|-------|
+| Read a unit's raw BSON | `modelsdk/mpr/reader.go:350` `GetRawUnitBytes` |
+| Pure-BSON patch (precedent) | `modelsdk/mpr/nav_patch.go` `PatchNavigationProfile` |
+| Write it back | `modelsdk/mpr/writer_core.go:189` `WriteTransaction.WriteUnit` |
+
+`WriteUnit` runs `reconcileWithStored`, so **ADR-0008 idempotence and `$ID`
+preservation come for free**: a unit whose translations did not change is not
+written, and one that did keeps every element identity.
+
+The walk is `$Type == "Texts$Text"` → read the default-language child → look the
+source up in the dictionary → add or replace the `Texts$Translation` child for the
+target language, preserving marker `3` and the existing children's order and
+`$ID`s. Type-agnostic: pages, microflows, workflows, enums, widgets, and every
+document type added later, with no per-type code.
+
+### Slice 3 — `DESCRIBE TRANSLATIONS`
+
+The same walk, read-only: collect every default-language string, deduplicate,
+sort, emit the `CREATE` form with each known target filled in.
+
+### Slice 4 — `CREATE TRANSLATIONS`
+
+Grammar, AST, visitor, executor handler → the Slice 2 overlay. Plus
+`--untranslated` on describe to emit only empty targets, which keeps the LLM
+loop cheap on a project that is already 90% translated.
+
+### Files to modify/create
+
+| File | Change |
+|------|--------|
+| `sdk/mpr/parser_misc.go` | `extractTextFromBson` → keep all translations (Slice 1) |
+| `sdk/mpr/writer_*.go` | merge into stored text instead of replacing (Slice 1) |
+| `modelsdk/mpr/text_patch.go` | **new** — the `Texts$Text` walk + patch (Slice 2) |
+| `mdl/translations/` | **new** — dictionary type, dedup, describe rendering |
+| `mdl/grammar/domains/MDLSettings.g4` | `createTranslationsStmt`, `describeTranslationsStmt` |
+| `mdl/ast/ast_translations.go` | **new** — AST node |
+| `mdl/visitor/visitor_translations.go` | **new** |
+| `mdl/executor/cmd_translations.go` | **new** — handlers |
+| `mdl/backend/` | `ListTexts` / `PatchTexts` on the backend interface + mock stub |
+| `mdl/catalog/builder_strings.go` | widen coverage (optional, see Open Questions) |
+| `cmd/mxcli/syntax/features_settings.go` | syntax topic |
+| `.claude/skills/mendix/` | new skill: translating an app |
+
+## Version Compatibility
+
+None needed. `Texts$Text` with `Items` + `Texts$Translation` children is the
+storage shape across every version mxcli supports; the leading marker `3` was
+observed uniformly (3299 of 3299) on 11.13.0 and is the same value
+`modelsdk/widgets/augment.go:908` already writes. No feature registry entry, no
+`checkFeature()` gate.
+
+## Test Plan
+
+- `mdl-examples/bug-tests/` — a round-trip over a module with real translations,
+  asserting `SHOW LANGUAGES` counts are unchanged (Slice 1).
+- `mdl-examples/doctype-tests/` — `create translations` → `describe translations`
+  round-trip, including a source string that occurs in several documents (proves
+  dedup writes to all of them) and one with an empty target (proves it is skipped).
+- Unit tests on the patch function: marker preserved, existing children's `$ID`s
+  preserved, adding a language, replacing an existing one, leaving an unlisted
+  source alone.
+- **Idempotence with a control**: re-running an import reports no writes, and
+  `MXCLI_ALWAYS_WRITE=1` reports writes — without the second line, "no writes" is
+  equally consistent with a comparison that never ran.
+- `mx check` 0 errors, and a Studio Pro open, on a project after an import.
+  **`mx check` is not the oracle here** — a lost translation is a valid model.
+
+## Open Questions
+
+1. **Homographs.** One source string needing different translations in different
+   contexts. Mendix's Excel export has the same limitation, so matching it is
+   defensible — and `in <Module>` scoping covers most real cases. Worth deciding
+   explicitly rather than discovering.
+2. **The enabled-language list.** `Settings$LanguageSettings.Languages` exists in
+   gen (`modelsdk/gen/settings/types.go:768`) and is surfaced nowhere —
+   `describe settings` shows only `DefaultLanguageCode`. Does adding a translation
+   for a language that is not enabled on the project do anything useful? Needs one
+   measurement in Studio Pro. If not, `CREATE TRANSLATIONS` should enable it or
+   refuse.
+3. **Catalog coverage.** `CATALOG.strings` indexes 21 contexts and misses widget
+   captions — 39 texts in a page, 2 indexed. Worth widening so `SHOW LANGUAGES`
+   and `search` reflect reality, but it is a separate change and this proposal
+   does not depend on it.
+4. **The 2 texts with translations but no default language.** Harmless to skip on
+   export, but the import should not silently create a default-language entry for
+   them. Confirm what Studio Pro does with such a text.
+5. **Ordering inside `Items`.** The patch preserves existing order and appends.
+   Whether Studio Pro cares (it did for widget `PropertyTypes` — CE0463) is
+   unverified for texts; a Studio Pro open after an import settles it.
