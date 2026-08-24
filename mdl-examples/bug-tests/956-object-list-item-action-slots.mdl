@@ -1,0 +1,91 @@
+-- Feature: action slots on object-list ITEMS. The remaining half of upstream
+-- #956; the top-level slots became authorable in PR #230 (named action slots).
+--
+-- An action on a list item — a chart series' `staticOnClickAction`, a popupmenu
+-- item's `action`, a maps marker's `onClick`, an accordion group's
+-- `onToggleCollapsed`, an htmlelement event's `eventAction` — parsed fine and
+-- was then dropped in silence. Measured on one ordinary project: 19 such slots
+-- across 6 widgets.
+--
+-- Everything under the executor was already in place, which is what made the
+-- failure so quiet:
+--
+--   * the .def.json already carries the mapping (operationForType returns
+--     "action" for an action-typed item property),
+--   * backend.ObjectListItemProperty already has an Action field,
+--   * widgetobj/builder.go:563 already writes Value.Action.
+--
+-- The gap was one `default: continue` in the executor's item-property switch,
+-- carrying `TODO(#538 follow-up)`. So the action reached the AST, matched a
+-- mapping, and fell off the end of a switch — the page was written, the slot was
+-- empty, and the document was perfectly valid.
+--
+-- `mx check` is NOT the oracle here, in either direction. A chart whose series
+-- has no click action is a normal chart: 0 errors before the fix and 0 after.
+-- Verify by describing the page back and reading the .mxunit — the description
+-- now re-emits `StaticOnClickAction: microflow …`, and before the fix it emitted
+-- nothing at all.
+--
+-- Two shapes matter and only one is obvious:
+--
+--   1. `staticOnClickAction: show_page M.P` reaches the AST as an action.
+--   2. `staticOnClickAction: microflow M.ACT_X` reaches it as a *DataSourceV3.
+--      `dataSourceExprV3` and `actionExprV3` overlap on MICROFLOW/NANOFLOW and
+--      the datasource alternative wins in widgetPropertyV3 — deliberately, or a
+--      series' `DataSource: microflow M.X` would become an action. Only the
+--      widget definition knows the slot is an action, so the item path goes
+--      through namedActionSlotValue, exactly as the top-level slots do.
+--
+-- Idempotence: re-run ONLY the page statements. Re-running the whole file aborts
+-- at `module already exists` before reaching a page, so a two-run check would
+-- pass without testing anything:
+--
+--   sed -n '/^create or replace page/,$p' <this file> > pages.mdl
+--   mxcli exec pages.mdl -p app.mpr                        # -> Unchanged x2
+--   MXCLI_ALWAYS_WRITE=1 mxcli exec pages.mdl -p app.mpr   # -> Replaced x2
+--
+-- The second line is the control: without it, "Unchanged" is equally consistent
+-- with a comparison that never ran.
+--
+-- Requires the chart widgets (marketplace) to be installed and
+-- `mxcli widget init` to have been run, so the .def.json exists at generator
+-- version 17 or later.
+
+create module M956Item;
+create persistent entity M956Item.Sales ( Region: string(100), Total: decimal );
+create microflow M956Item.ACT_SeriesClicked () begin log 'series clicked'; end;
+
+-- 1. The microflow form — the one that parses as a data source and has to be
+--    converted by the widget definition.
+create or replace page M956Item.P_SeriesMicroflow (
+  Title: 'Series action (microflow)', Layout: Atlas_Core.Atlas_Default
+) {
+  pluggablewidget 'com.mendix.widget.web.barchart.BarChart' chart1 {
+    series sRegion (
+      DataSet: 'static',
+      DataSource: database from M956Item.Sales,
+      StaticXAttribute: Region,
+      StaticYAttribute: Total,
+      StaticName: 'Revenue',
+      StaticOnClickAction: microflow M956Item.ACT_SeriesClicked
+    )
+  }
+}
+describe page M956Item.P_SeriesMicroflow;
+
+-- 2. A client-action form, which reaches the AST as an action directly.
+create or replace page M956Item.P_SeriesShowPage (
+  Title: 'Series action (show page)', Layout: Atlas_Core.Atlas_Default
+) {
+  pluggablewidget 'com.mendix.widget.web.barchart.BarChart' chart2 {
+    series sRegion (
+      DataSet: 'static',
+      DataSource: database from M956Item.Sales,
+      StaticXAttribute: Region,
+      StaticYAttribute: Total,
+      StaticName: 'Revenue',
+      StaticOnClickAction: show_page M956Item.P_SeriesMicroflow
+    )
+  }
+}
+describe page M956Item.P_SeriesShowPage;
