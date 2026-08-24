@@ -1,0 +1,115 @@
+-- ============================================================================
+-- Bug #242: `rest call … returns mapping … as Entity` threw at runtime
+-- ============================================================================
+--
+-- Follow-up to #192, which fixed the bare `import from mapping` activity and
+-- left the sibling REST-call path writing the shape it had identified as wrong.
+--
+-- SYMPTOM: an object-rooted import mapping invoked as
+-- `rest call … returns mapping M.IMM as Module.Entity` built cleanly — mxcli
+-- check, `mx check` 0 errors, mxbuild fine — and then threw the moment the
+-- activity ran, over a perfectly valid response body:
+--
+--   com.mendix.modules.microflowengine.MicroflowException:
+--     key not found: Path(QName(None,),None,)
+--   Caused by: java.util.NoSuchElementException: key not found: Path(QName(None,),None,)
+--     at com.mendix.integration.importer.mapping.MappingCache.storeValueMappingElement
+--
+-- ROOT CAUSE: the builder mirrored BOTH of the ImportMappingCall's flags onto
+-- the result variable's cardinality. They are not that axis:
+--
+--   ForceSingleOccurrence  "the mapping yields many, bind one"
+--   Range.SingleObject     Studio Pro's First/All range
+--
+-- MEASURED on 11.13.0, one boot, same mapping and same JSON, all four flag
+-- combinations against an OBJECT-rooted mapping:
+--
+--   FSO=true  Range=true   FAIL  key not found: Path(QName(None,),None,)  <- shipped
+--   FSO=true  Range=false  FAIL  key not found: Path(QName(None,),None,)
+--   FSO=false Range=false  PASS  imported
+--   FSO=false Range=true   PASS  imported
+--
+-- So ForceSingleOccurrence alone drives the exception. It is now inferred from
+-- the MAPPING's root rather than mirrored from the call site: true only when the
+-- mapping yields many and the call site binds one — which is exactly what
+-- PrivateCloudData.REST_GetEnvironmentByUUID stores (list-rooted mapping,
+-- ForceSingleOccurrence=true, Range.SingleObject=false). Writing false
+-- unconditionally would fix this script and silently retype that one.
+--
+-- WHY NO CHECK CATCHES IT: the model is valid. Static checks cannot see this;
+-- only running the activity can. Unit coverage of the flag pair lives in
+-- mdl/executor/cmd_microflows_rest_mapping_occurrence_test.go.
+--
+-- TO VERIFY AT RUNTIME (not just check) — the REST call needs a JSON endpoint,
+-- so serve one on 127.0.0.1:8199 first:
+--
+--   mkdir -p /tmp/probe && cd /tmp/probe
+--   printf '{"access_token": "obj-ok", "token_type": "Bearer"}' > obj.json
+--   python3 -m http.server 8199 --bind 127.0.0.1 &
+--   mxcli exec 242-rest-mapping-single-object-runtime.mdl -p app.mpr
+--   mxcli test tests/ -p app.mpr --local        # with the test below
+--
+-- and confirm ACT_RestObjAsEntity returns 'obj-ok' rather than throwing.
+-- A matching test file:
+--
+--   /**
+--    * @test object-rooted mapping bound with `as Entity` (issue #242)
+--    * @expect $v = 'obj-ok'
+--    */
+--   $v = CALL MICROFLOW RestSingle.ACT_RestObjAsEntity();
+--   /
+-- ============================================================================
+
+create module RestSingle;
+
+create non-persistent entity RestSingle.Token (
+  AccessToken : string,
+  TokenType : string
+);
+/
+
+create json structure RestSingle.JSON_Token
+  snippet '{"access_token": "obj-ok", "token_type": "Bearer"}';
+
+create import mapping RestSingle.IMM_Token
+  with json structure RestSingle.JSON_Token
+{
+  create RestSingle.Token {
+    AccessToken = access_token,
+    TokenType = token_type
+  }
+};
+
+-- The regression. An OBJECT-rooted mapping bound with `as Entity` must store
+-- ForceSingleOccurrence=false: there is no occurrence to force, and forcing one
+-- is what the importer refuses.
+create or replace microflow RestSingle.ACT_RestObjAsEntity ()
+returns string as $out
+begin
+  declare $out string = 'EMPTY';
+  $T = rest call get 'http://127.0.0.1:8199/obj.json'
+    returns mapping RestSingle.IMM_Token as RestSingle.Token;
+  if $T != empty then
+    set $out = $T/AccessToken;
+  end if;
+  return $out;
+end;
+/
+
+-- The control that always worked: `returns string` plus a bare import. If this
+-- passes at runtime and the REST form above does not, the regression is back.
+create or replace microflow RestSingle.ACT_RestStringThenImport ()
+returns string as $out
+begin
+  declare $out string = 'EMPTY';
+  $Body = rest call get 'http://127.0.0.1:8199/obj.json'
+    returns string;
+  $T = import from mapping RestSingle.IMM_Token($Body);
+  if $T != empty then
+    set $out = $T/AccessToken;
+  end if;
+  return $out;
+end;
+/
+
+describe microflow RestSingle.ACT_RestObjAsEntity;

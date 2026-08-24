@@ -60,11 +60,13 @@ func TestAddRestCallAction_ReturnsResponseUsesHttpResponseHandling(t *testing.T)
 
 // `as Module.Entity` (no `list of`) marks the REST result as a single
 // object regardless of whether the underlying import mapping is
-// list-typed. Studio Pro stores this on the microflow's
-// ImportMappingCall (Range.SingleObject + ForceSingleOccurrence), so the
-// builder must trust the explicit MDL syntax — using mapping shape as a
-// proxy collides with cases like PCD's REST_GetEnvironmentByUUID, where
-// the mapping has MaxOccurs=-1 but the call site binds a single Object.
+// list-typed: the call site's explicit syntax owns the result VARIABLE's
+// type, which is what this test is about.
+//
+// ForceSingleOccurrence is a different axis and is NOT mirrored onto it —
+// see cmd_microflows_rest_mapping_occurrence_test.go (issue #242). With no
+// backend the mapping cannot be resolved, so it reads as object-rooted and
+// the flag is false.
 func TestAddRestCallAction_MappingAsEntityProducesSingleObject(t *testing.T) {
 	fb := &flowBuilder{
 		posX:         100,
@@ -94,8 +96,10 @@ func TestAddRestCallAction_MappingAsEntityProducesSingleObject(t *testing.T) {
 	if !mapping.SingleObject {
 		t.Errorf("SingleObject = false, want true (no `list of` => single object)")
 	}
-	if mapping.ForceSingleOccurrence == nil || !*mapping.ForceSingleOccurrence {
-		t.Errorf("ForceSingleOccurrence = %v, want explicit true to mirror SingleObject", mapping.ForceSingleOccurrence)
+	if mapping.ForceSingleOccurrence == nil || *mapping.ForceSingleOccurrence {
+		t.Errorf("ForceSingleOccurrence = %v, want explicit false: an unresolvable "+
+			"mapping reads as object-rooted, and true throws at import time (#242)",
+			mapping.ForceSingleOccurrence)
 	}
 }
 
