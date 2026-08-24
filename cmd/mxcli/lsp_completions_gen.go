@@ -195,6 +195,8 @@ var mdlGeneratedKeywords = []protocol.CompletionItem{
 	{Label: "SERIES", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
 	{Label: "LINE", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
 	{Label: "SCALECOLOR", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
+	{Label: "CUSTOMBUTTON", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
+	{Label: "ALLOWEDFILEFORMAT", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
 	{Label: "LEGACYDATAGRID", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
 	{Label: "ACTIONBUTTON", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
 	{Label: "LINKBUTTON", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
