@@ -116,9 +116,17 @@ func execCreateEntity(ctx *ExecContext, s *ast.CreateEntityStmt) error {
 	// when the intent is to replace the whole definition — that path rebuilds the
 	// entity from the statement and DROPS any attribute the statement omits, so it
 	// is destructive if used for a partial update. (findings #24)
+	if existingEntity != nil && s.IfNotExists {
+		// IF NOT EXISTS is the safe half of re-runnability: it leaves the stored
+		// definition alone entirely, where CREATE OR MODIFY rebuilds it from the
+		// statement. (sudoku findings #10)
+		fmt.Fprintf(ctx.Output, "Entity %s.%s already exists — skipped\n", s.Name.Module, s.Name.Name)
+		return nil
+	}
 	if existingEntity != nil && !s.CreateOrModify {
 		return mdlerrors.NewAlreadyExistsMsg("entity", s.Name.Module+"."+s.Name.Name,
 			fmt.Sprintf("entity already exists: %s.%s — to add or change a member use 'alter entity %s.%s add attribute ...' (leaves the rest intact); "+
+				"to make the script re-runnable use 'create entity if not exists' (leaves an existing entity untouched); "+
 				"use 'create or modify entity' only to replace the whole definition (it drops any attribute this statement omits)",
 				s.Name.Module, s.Name.Name, s.Name.Module, s.Name.Name))
 	}
@@ -1133,6 +1141,23 @@ func execAlterEntity(ctx *ExecContext, s *ast.AlterEntityStmt) error {
 		for _, attr := range entity.Attributes {
 			attrNameToID[attr.Name] = attr.ID
 		}
+		// An index already covering these columns, in this order, with these
+		// sort directions IS this index — a Mendix index has no name to tell two
+		// apart. Adding it again used to append a silent duplicate that mxbuild
+		// rejects with CE0072 "Duplicate indexes", so a domain script run twice
+		// produced a model that no longer builds, with nothing in mxcli's output
+		// to say so. Now the bare form errors like ADD ATTRIBUTE does, and
+		// IF NOT EXISTS skips. (sudoku findings #10)
+		if existing := findIndexByColumns(entity, s.Index.Columns); existing != nil {
+			if s.IfNotExists {
+				fmt.Fprintf(ctx.Output, "Index %s already exists on entity %s — skipped\n", indexColumnLabel(s.Index.Columns), s.Name)
+				return nil
+			}
+			return mdlerrors.NewAlreadyExistsMsg("index", indexColumnLabel(s.Index.Columns),
+				fmt.Sprintf("index %s already exists on entity %s — re-running this statement would create a duplicate, which fails the build with CE0072; use 'add index if not exists' to make the script re-runnable",
+					indexColumnLabel(s.Index.Columns), s.Name))
+		}
+
 		idxID := model.ID(types.GenerateID())
 		var indexAttrs []*domainmodel.IndexAttribute
 		for _, col := range s.Index.Columns {
@@ -1156,31 +1181,58 @@ func execAlterEntity(ctx *ExecContext, s *ast.AlterEntityStmt) error {
 			return mdlerrors.NewBackend("add index", err)
 		}
 		invalidateDomainModelsCache(ctx)
-		fmt.Fprintf(ctx.Output, "Added index to entity %s\n", s.Name)
+		fmt.Fprintf(ctx.Output, "Added index %s to entity %s\n", indexColumnLabel(s.Index.Columns), s.Name)
 
 	case ast.AlterEntityDropIndex:
-		// Find and remove the index by position (Mendix indexes don't have user-visible names)
-		if len(entity.Indexes) == 0 {
-			return mdlerrors.NewValidationf("no indexes on entity %s", s.Name)
+		// Two selectors. The column list is the index's real identity — it is
+		// what `describe entity` prints, and a Mendix index stores no name — so
+		// it is the only form that round-trips. The ordinal name ("idx1") is
+		// kept for compatibility, but it names a POSITION that shifts as soon as
+		// an earlier index is dropped, which makes a multi-drop script depend on
+		// its own statement order.
+		label := s.IndexName
+		if s.Index != nil {
+			label = indexColumnLabel(s.Index.Columns)
 		}
-		// For now, drop by ordinal name ("idx1", "idx2", etc.) or drop all
 		idx := -1
-		for i := range entity.Indexes {
-			indexName := fmt.Sprintf("idx%d", i+1)
-			if indexName == s.IndexName {
-				idx = i
-				break
+		switch {
+		case s.Index != nil:
+			for i := range entity.Indexes {
+				if indexMatchesColumns(entity, entity.Indexes[i], s.Index.Columns) {
+					idx = i
+					break
+				}
 			}
+		case s.IndexName != "":
+			for i := range entity.Indexes {
+				if fmt.Sprintf("idx%d", i+1) == s.IndexName {
+					idx = i
+					break
+				}
+			}
+		default:
+			return mdlerrors.NewValidation("no index specified")
 		}
 		if idx < 0 {
-			return mdlerrors.NewNotFoundMsg("index", s.IndexName, fmt.Sprintf("index '%s' not found on entity %s", s.IndexName, s.Name))
+			// IF EXISTS makes a drop re-runnable: the second run finds nothing
+			// and says so instead of halting the script. (sudoku findings #10)
+			if s.IfExists {
+				fmt.Fprintf(ctx.Output, "Index %s not found on entity %s — skipped\n", label, s.Name)
+				return nil
+			}
+			hint := ""
+			if s.Index == nil {
+				hint = " — a Mendix index stores no name, so 'idx1' is a position, not an identity; select it by its columns instead, e.g. drop index (Row, Col)"
+			}
+			return mdlerrors.NewNotFoundMsg("index", label,
+				fmt.Sprintf("index %s not found on entity %s%s", label, s.Name, hint))
 		}
 		entity.Indexes = append(entity.Indexes[:idx], entity.Indexes[idx+1:]...)
 		if err := ctx.Backend.UpdateEntity(dm.ID, entity); err != nil {
 			return mdlerrors.NewBackend("drop index", err)
 		}
 		invalidateDomainModelsCache(ctx)
-		fmt.Fprintf(ctx.Output, "Dropped index '%s' from entity %s\n", s.IndexName, s.Name)
+		fmt.Fprintf(ctx.Output, "Dropped index %s from entity %s\n", label, s.Name)
 
 	case ast.AlterEntityAddEventHandler:
 		if s.EventHandler == nil {
@@ -1375,3 +1427,52 @@ func warnEntityReferences(ctx *ExecContext, entityName string) {
 }
 
 // --- Executor method wrappers for callers not yet migrated ---
+
+// indexColumnLabel renders an index's columns the way `describe entity` does,
+// so an error names the index in the spelling the author can act on.
+func indexColumnLabel(cols []ast.IndexColumn) string {
+	parts := make([]string, len(cols))
+	for i, c := range cols {
+		parts[i] = c.Name
+		if c.Descending {
+			parts[i] += " desc"
+		}
+	}
+	return "(" + strings.Join(parts, ", ") + ")"
+}
+
+// indexMatchesColumns reports whether a stored index covers exactly these
+// columns, in this order, with these sort directions.
+//
+// Order and direction are part of the identity, not decoration: Mendix builds a
+// composite database index, and (Row, Col) serves different queries from
+// (Col, Row). Treating them as the same index would make ADD refuse a distinct
+// index and DROP remove the wrong one.
+func indexMatchesColumns(entity *domainmodel.Entity, index *domainmodel.Index, cols []ast.IndexColumn) bool {
+	if len(index.Attributes) != len(cols) {
+		return false
+	}
+	nameByID := make(map[model.ID]string, len(entity.Attributes))
+	for _, attr := range entity.Attributes {
+		nameByID[attr.ID] = attr.Name
+	}
+	for i, ia := range index.Attributes {
+		if !strings.EqualFold(nameByID[ia.AttributeID], cols[i].Name) {
+			return false
+		}
+		if ia.Ascending == cols[i].Descending {
+			return false
+		}
+	}
+	return true
+}
+
+// findIndexByColumns returns the stored index with exactly these columns, or nil.
+func findIndexByColumns(entity *domainmodel.Entity, cols []ast.IndexColumn) *domainmodel.Index {
+	for _, index := range entity.Indexes {
+		if indexMatchesColumns(entity, index, cols) {
+			return index
+		}
+	}
+	return nil
+}

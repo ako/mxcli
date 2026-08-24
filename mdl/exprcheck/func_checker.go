@@ -12,6 +12,27 @@ type funcSig struct {
 	args    []TypeKind // full parameter list (max arity)
 	minArgs int        // minimum required args; 0 means all args required (= len(args))
 	ret     TypeKind
+
+	// retByArity overrides ret for a specific argument count. round() is the
+	// only built-in whose result type depends on arity: round($d) yields a whole
+	// number an Integer target accepts, round($d, 2) yields a genuine Decimal
+	// that fails CE0117. Measured on mxbuild 11.13.0 (sudoku finding #49).
+	retByArity map[int]TypeKind
+
+	// retFromArgs makes the result kind follow the operand kinds rather than
+	// being fixed: abs/max/min return an Integer for Integer operands and a
+	// Decimal as soon as one operand is Decimal. Measured the same way —
+	// `abs($int)` and `max($int, 3)` into an Integer are accepted, `abs($dec)`
+	// and `max($int, 3.5)` are CE0117.
+	retFromArgs bool
+}
+
+// retFor returns the result kind for a call with argc arguments.
+func (s funcSig) retFor(argc int) TypeKind {
+	if k, ok := s.retByArity[argc]; ok {
+		return k
+	}
+	return s.ret
 }
 
 // min returns the effective minimum argument count.
@@ -58,15 +79,23 @@ var funcTable = map[string]funcSig{
 	// formatDecimal(value [, format [, languageTag]])  — format is optional
 	"formatDecimal": {args: []TypeKind{KindDecimal, KindString, KindString}, minArgs: 1, ret: KindString},
 
-	// Math
-	"abs":    {args: []TypeKind{KindDecimal}, ret: KindDecimal},
-	"round":  {args: []TypeKind{KindDecimal, KindInteger}, minArgs: 1, ret: KindDecimal},
-	"floor":  {args: []TypeKind{KindDecimal}, ret: KindDecimal},
-	"ceil":   {args: []TypeKind{KindDecimal}, ret: KindDecimal},
+	// Math. The return kinds here are what Mendix actually accepts in an
+	// Integer/Long target, not what the expression documentation prints: floor,
+	// ceil and one-argument round produce whole numbers, and abs/max/min preserve
+	// their operands' kind. Every row was measured against mxbuild 11.13.0 with a
+	// bare `$int div 3` as the control (see round_returns_integer_test.go).
+	//
+	// There is no `trunc`. It used to be treated as a rounding function here;
+	// Mendix has no such built-in and `trunc($d)` fails the build with CE0117, so
+	// MDL044 flagging it is correct and adding it to this table would be wrong.
+	"abs":    {args: []TypeKind{KindDecimal}, ret: KindDecimal, retFromArgs: true},
+	"round":  {args: []TypeKind{KindDecimal, KindInteger}, minArgs: 1, ret: KindDecimal, retByArity: map[int]TypeKind{1: KindInteger}},
+	"floor":  {args: []TypeKind{KindDecimal}, ret: KindInteger},
+	"ceil":   {args: []TypeKind{KindDecimal}, ret: KindInteger},
 	"pow":    {args: []TypeKind{KindDecimal, KindDecimal}, ret: KindDecimal},
 	"sqrt":   {args: []TypeKind{KindDecimal}, ret: KindDecimal},
-	"max":    {args: []TypeKind{KindDecimal, KindDecimal}, ret: KindDecimal},
-	"min":    {args: []TypeKind{KindDecimal, KindDecimal}, ret: KindDecimal},
+	"max":    {args: []TypeKind{KindDecimal, KindDecimal}, ret: KindDecimal, retFromArgs: true},
+	"min":    {args: []TypeKind{KindDecimal, KindDecimal}, ret: KindDecimal, retFromArgs: true},
 	"random": {args: []TypeKind{}, ret: KindDecimal},
 
 	// Enumerations
