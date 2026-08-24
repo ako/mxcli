@@ -40,6 +40,14 @@ func Reconcile(contents, stored []byte) (out []byte, unchanged bool) {
 	// is a change to the app rather than a debugging aid.
 	contents = CarryIdentity(contents, stored)
 
+	// The translations the statement had no way to say. MDL carries ONE string
+	// per text, so a rebuild drops every other language the document held — a
+	// describe→exec round-trip deleted a page's Dutch title from a real project.
+	// Runs before the transplant because it is the one carry that changes the
+	// document's length; the transplant patches fixed-width binaries in place and
+	// must see the final framing.
+	contents = CarryTranslations(contents, stored)
+
 	// The same reasoning one level down, for the writes that do land: a rebuild
 	// mints a fresh $ID for every sub-element, so a two-line change reads in
 	// version control as a whole-document replacement. TransplantIDs puts the
