@@ -67,7 +67,7 @@ Before writing any MDL, verify these requirements:
 - `set $Var = expression;`
 - `$Var = create Module.Entity (attr = value);`
 - `change $entity (attr = value);`
-- `commit $entity [with events] [refresh];`
+- `commit $entity [without events] [refresh];` (omitted = with events, Mendix's default)
 - `delete $entity;`
 - `retrieve $Var from Module.Entity [where condition];`
 - `$Result = call microflow Module.Name (Param = $value);` (NOT `set $Result = ...`)

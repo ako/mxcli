@@ -1,0 +1,83 @@
+-- ============================================================================
+-- Bug #895: COMMIT wrote "with events = No"; delete/create dropped "refresh"
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   `commit $Obj;` stored WithEvents=false. Mendix's default is Yes, so every
+--   commit mxcli wrote skipped the objects' commit event handlers — silently.
+--   Nothing reported it: `mxcli check`, `mxcli lint`, Studio Pro's consistency
+--   check and `mxbuild --write-errors` were all clean, because a commit that
+--   skips its handlers is a perfectly valid model. The reporter found it in
+--   production: 1,800 rows written, no handler run.
+--
+--   Separately, and in the same family, a Studio Pro activity with
+--   "Refresh in client = Yes" on a DELETE or CREATE lost the flag on the next
+--   describe → exec: the modifier existed in the grammar for change and
+--   rollback only. #407 fixed exactly this for `change` and stopped there.
+--
+-- Measured (ako/TestApp, Mendix 11.13, module CommitActivity):
+--   A Commit activity dropped into Studio Pro with its properties untouched
+--   stores WithEvents=true, RefreshInClient=false. Its sibling, set the other
+--   way in the UI, stores WithEvents=false, RefreshInClient=true — so Studio
+--   Pro writes both spellings explicitly and neither is an omission Mendix
+--   fills in on load.
+--
+-- After fix:
+--   Absent = Mendix's default on every modifier, which is what MDL claims
+--   everywhere else: `commit $X;` is events ON, `commit $X without events;`
+--   is the deviation and is what DESCRIBE prints. `WITH EVENTS` still parses
+--   and means the default, so scripts written before the fix keep working.
+--   REFRESH is accepted on delete and create as it already was on change and
+--   rollback.
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/895-commit-events-and-refresh-defaults.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe microflow BugTest895.MF_CommitDefaults"
+--
+--   The describe output must be a fixpoint under describe → exec → describe,
+--   and the four commits must read back as: on, on, off, off.
+-- ============================================================================
+
+create module BugTest895;
+
+create entity BugTest895.Item (
+  Name : string(100)
+);
+/
+
+create microflow BugTest895.MF_CommitDefaults (
+  $Item: BugTest895.Item
+)
+begin
+  -- Bare: Mendix's default, events ON. Describes back as this same line.
+  commit $Item;
+  -- Redundant but legal: says the default out loud. Describes back as bare.
+  commit $Item with events;
+  -- The deviation, and the only form that turns handlers off.
+  commit $Item without events;
+  commit $Item without events refresh;
+end;
+/
+
+-- The #407 sibling: REFRESH on the two activities that never had it.
+create microflow BugTest895.MF_RefreshOnDeleteAndCreate ()
+begin
+  $New = create BugTest895.Item (Name = 'x') refresh;
+  delete $New refresh;
+end;
+/
+
+-- Negative control: the two activities that already had REFRESH must still
+-- round-trip, and their bare forms must stay bare. If this microflow's describe
+-- output gains or loses a modifier, the shared helper broke the cases it was
+-- meant to leave alone.
+create microflow BugTest895.MF_RefreshControl (
+  $Item: BugTest895.Item
+)
+begin
+  change $Item (Name = 'y') refresh;
+  rollback $Item refresh;
+  $Plain = create BugTest895.Item (Name = 'z');
+  delete $Plain;
+end;
+/

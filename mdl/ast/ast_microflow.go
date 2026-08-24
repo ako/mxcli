@@ -325,14 +325,15 @@ const (
 	CommitYesWithoutEvents                   // COMMIT WITHOUT EVENTS
 )
 
-// CreateObjectStmt represents: $Var = CREATE Entity (assignments) [COMMIT [WITHOUT EVENTS]] [ON ERROR ...]
+// CreateObjectStmt represents: $Var = CREATE Entity (assignments) [COMMIT [WITHOUT EVENTS]] [REFRESH] [ON ERROR ...]
 type CreateObjectStmt struct {
-	Variable      string               // Variable name (without $ prefix)
-	EntityType    QualifiedName        // Entity type
-	Changes       []ChangeItem         // SET assignments
-	Commit        CommitFlag           // Commit setting (default CommitNo)
-	ErrorHandling *ErrorHandlingClause // Optional ON ERROR clause
-	Annotations   *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	Variable        string               // Variable name (without $ prefix)
+	EntityType      QualifiedName        // Entity type
+	Changes         []ChangeItem         // SET assignments
+	Commit          CommitFlag           // Commit setting (default CommitNo)
+	RefreshInClient bool                 // Whether to refresh in client
+	ErrorHandling   *ErrorHandlingClause // Optional ON ERROR clause
+	Annotations     *ActivityAnnotations // Optional @position, @caption, @color, @annotation
 }
 
 func (s *CreateObjectStmt) isMicroflowStatement() {}
@@ -348,22 +349,35 @@ type ChangeObjectStmt struct {
 
 func (s *ChangeObjectStmt) isMicroflowStatement() {}
 
-// MfCommitStmt represents: COMMIT $Var [WITH EVENTS] [REFRESH] [ON ERROR ...]
+// MfCommitStmt represents: COMMIT $Var [WITHOUT EVENTS] [REFRESH] [ON ERROR ...]
+//
+// The flag is WithoutEvents, not WithEvents, so that the zero value is what a
+// bare `commit $Var;` means — Mendix's default, which is events ON (#895). Every
+// other modifier on every other activity holds to that same invariant (absent
+// modifier = zero value = Mendix default), and inverting this one field is what
+// keeps it true here: a WithEvents bool would default to the one value Studio
+// Pro never writes for a fresh Commit activity.
 type MfCommitStmt struct {
-	Variable        string               // Variable to commit
-	WithEvents      bool                 // Whether to trigger events
-	RefreshInClient bool                 // Whether to refresh in client
-	ErrorHandling   *ErrorHandlingClause // Optional ON ERROR clause
-	Annotations     *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	Variable      string // Variable to commit
+	WithoutEvents bool   // WITHOUT EVENTS was written (absent = events on)
+	// ExplicitWithEvents records that the redundant `WITH EVENTS` was written.
+	// It changes nothing about the stored activity — both spellings mean events
+	// on — and exists only so MDL067 can tell "the author said what they wanted"
+	// from "the author said nothing", which is the whole question that note asks.
+	ExplicitWithEvents bool
+	RefreshInClient    bool                 // Whether to refresh in client
+	ErrorHandling      *ErrorHandlingClause // Optional ON ERROR clause
+	Annotations        *ActivityAnnotations // Optional @position, @caption, @color, @annotation
 }
 
 func (s *MfCommitStmt) isMicroflowStatement() {}
 
-// DeleteObjectStmt represents: DELETE $Var [ON ERROR ...]
+// DeleteObjectStmt represents: DELETE $Var [REFRESH] [ON ERROR ...]
 type DeleteObjectStmt struct {
-	Variable      string               // Variable to delete
-	ErrorHandling *ErrorHandlingClause // Optional ON ERROR clause
-	Annotations   *ActivityAnnotations // Optional @position, @caption, @color, @annotation
+	Variable        string               // Variable to delete
+	RefreshInClient bool                 // Whether to refresh in client
+	ErrorHandling   *ErrorHandlingClause // Optional ON ERROR clause
+	Annotations     *ActivityAnnotations // Optional @position, @caption, @color, @annotation
 }
 
 func (s *DeleteObjectStmt) isMicroflowStatement() {}

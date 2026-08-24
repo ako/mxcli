@@ -147,10 +147,10 @@ AUTHENTICATION Basic, Session
 | Entity declaration | `DECLARE $Entity Module.Entity;` | No AS keyword, no = empty |
 | List declaration | `DECLARE $List List of Module.Entity = empty;` | |
 | Assignment | `SET $Var = expression;` | Variable must be declared first |
-| Create object | `$Var = CREATE Module.Entity (Attr = value);` | |
-| Change object | `CHANGE $Entity (Attr = value);` | |
-| Commit | `COMMIT $Entity [WITH EVENTS] [REFRESH];` | |
-| Delete | `DELETE $Entity;` | |
+| Create object | `$Var = CREATE Module.Entity (Attr = value) [COMMIT [WITHOUT EVENTS]] [REFRESH];` | |
+| Change object | `CHANGE $Entity (Attr = value) [COMMIT [WITHOUT EVENTS]] [REFRESH];` | |
+| Commit | `COMMIT $Entity [WITHOUT EVENTS] [REFRESH];` | Omitted = with events, matching Studio Pro |
+| Delete | `DELETE $Entity [REFRESH];` | |
 | Rollback | `ROLLBACK $Entity [REFRESH];` | Reverts uncommitted changes |
 | Retrieve (DB) | `RETRIEVE $Var FROM Module.Entity [WHERE condition];` | Database XPath retrieve |
 | Retrieve (Assoc) | `RETRIEVE $List FROM $Parent/Module.AssocName;` | Retrieve by association |

@@ -192,7 +192,7 @@ Multiple annotations can be stacked before a single activity:
 @caption 'Validate and save'
 @color Green
 @annotation 'Final step: commit the validated order'
-COMMIT $Order WITH EVENTS;
+COMMIT $Order;
 ```
 
 ## Complete Example

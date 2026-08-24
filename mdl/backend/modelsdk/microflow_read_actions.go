@@ -68,6 +68,7 @@ func actionFromGen(el element.Element) microflows.MicroflowAction {
 			EntityQualifiedName: a.EntityQualifiedName(),
 			OutputVariable:      a.OutputVariableName(),
 			Commit:              microflows.CommitType(a.Commit()),
+			RefreshInClient:     a.RefreshInClient(),
 			InitialMembers:      memberChangesFromGen(a.ItemsItems()),
 		}
 		out.ID = model.ID(a.ID())

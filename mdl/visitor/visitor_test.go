@@ -844,8 +844,10 @@ END;`
 	if !commitStmt.RefreshInClient {
 		t.Error("Expected RefreshInClient to be true")
 	}
-	if commitStmt.WithEvents {
-		t.Error("Expected WithEvents to be false")
+	// Absent means events ON — Mendix's default (#895) — so the flag the AST
+	// carries is WithoutEvents, and it stays clear here.
+	if commitStmt.WithoutEvents {
+		t.Error("Expected WithoutEvents to be false")
 	}
 }
 
@@ -886,8 +888,55 @@ END;`
 	if !commitStmt.RefreshInClient {
 		t.Error("Expected RefreshInClient to be true")
 	}
-	if !commitStmt.WithEvents {
-		t.Error("Expected WithEvents to be true")
+	if commitStmt.WithoutEvents {
+		t.Error("Expected WithoutEvents to be false")
+	}
+	// WITH EVENTS says the same thing as writing nothing, but MDL067 needs to
+	// tell the two apart, so the redundant spelling is recorded.
+	if !commitStmt.ExplicitWithEvents {
+		t.Error("Expected ExplicitWithEvents to be true")
+	}
+}
+
+// TestCommitWithoutEvents verifies COMMIT WITHOUT EVENTS parses — the spelling
+// that did not exist before #895, and the only one that turns the handlers off.
+func TestCommitWithoutEvents(t *testing.T) {
+	input := `CREATE MICROFLOW Test.TestCommit ($Order: Test.Order)
+RETURNS Boolean AS $Success
+BEGIN
+  COMMIT $Order WITHOUT EVENTS;
+  RETURN true;
+END;`
+
+	prog, errs := Build(input)
+	if len(errs) > 0 {
+		for _, err := range errs {
+			t.Errorf("Parse error: %v", err)
+		}
+		return
+	}
+
+	stmt := prog.Statements[0].(*ast.CreateMicroflowStmt)
+
+	var commitStmt *ast.MfCommitStmt
+	for _, s := range stmt.Body {
+		if cs, ok := s.(*ast.MfCommitStmt); ok {
+			commitStmt = cs
+			break
+		}
+	}
+
+	if commitStmt == nil {
+		t.Fatal("Expected to find COMMIT statement")
+	}
+	if !commitStmt.WithoutEvents {
+		t.Error("Expected WithoutEvents to be true")
+	}
+	if commitStmt.ExplicitWithEvents {
+		t.Error("Expected ExplicitWithEvents to be false")
+	}
+	if commitStmt.RefreshInClient {
+		t.Error("Expected RefreshInClient to be false")
 	}
 }
 

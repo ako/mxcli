@@ -369,39 +369,43 @@ func microflowStatementToMDL(ctx *ExecContext, stmt ast.MicroflowStatement, inde
 		}
 
 	case *ast.CreateObjectStmt:
+		mods := commitModifier(commitTypeOf(s.Commit)) + refreshModifier(s.RefreshInClient)
 		if len(s.Changes) > 0 {
 			var members []string
 			for _, c := range s.Changes {
 				members = append(members, fmt.Sprintf("%s = %s", c.Attribute, diffExpressionToString(ctx, c.Value)))
 			}
-			lines = append(lines, fmt.Sprintf("%s$%s = create %s (%s);", indentStr, s.Variable, s.EntityType, strings.Join(members, ", ")))
+			lines = append(lines, fmt.Sprintf("%s$%s = create %s (%s)%s;", indentStr, s.Variable, s.EntityType, strings.Join(members, ", "), mods))
 		} else {
-			lines = append(lines, fmt.Sprintf("%s$%s = create %s;", indentStr, s.Variable, s.EntityType))
+			lines = append(lines, fmt.Sprintf("%s$%s = create %s%s;", indentStr, s.Variable, s.EntityType, mods))
 		}
 
 	case *ast.ChangeObjectStmt:
+		mods := commitModifier(commitTypeOf(s.Commit)) + refreshModifier(s.RefreshInClient)
 		if len(s.Changes) > 0 {
 			var members []string
 			for _, c := range s.Changes {
 				members = append(members, fmt.Sprintf("%s = %s", c.Attribute, diffExpressionToString(ctx, c.Value)))
 			}
-			lines = append(lines, fmt.Sprintf("%schange $%s (%s);", indentStr, s.Variable, strings.Join(members, ", ")))
+			lines = append(lines, fmt.Sprintf("%schange $%s (%s)%s;", indentStr, s.Variable, strings.Join(members, ", "), mods))
 		} else {
-			lines = append(lines, fmt.Sprintf("%schange $%s;", indentStr, s.Variable))
+			lines = append(lines, fmt.Sprintf("%schange $%s%s;", indentStr, s.Variable, mods))
 		}
 
 	case *ast.MfCommitStmt:
+		// Same rendering rule as the describer: events ON is the default and
+		// stays unwritten, events OFF is spelled out. Dropping the modifiers
+		// here would make `mxcli diff` blind to a change in exactly the flags
+		// #895 was about.
 		suffix := ""
-		if s.WithEvents {
-			suffix += " with events"
+		if s.WithoutEvents {
+			suffix += " without events"
 		}
-		if s.RefreshInClient {
-			suffix += " refresh"
-		}
+		suffix += refreshModifier(s.RefreshInClient)
 		lines = append(lines, fmt.Sprintf("%scommit $%s%s;", indentStr, s.Variable, suffix))
 
 	case *ast.DeleteObjectStmt:
-		lines = append(lines, fmt.Sprintf("%sdelete $%s;", indentStr, s.Variable))
+		lines = append(lines, fmt.Sprintf("%sdelete $%s%s;", indentStr, s.Variable, refreshModifier(s.RefreshInClient)))
 
 	case *ast.RetrieveStmt:
 		var stmt string

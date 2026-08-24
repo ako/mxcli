@@ -668,6 +668,7 @@ func parseCreateObjectAction(raw map[string]any) *microflows.CreateObjectAction 
 	if action.OutputVariable == "" {
 		action.OutputVariable = extractString(raw["OutputVariableName"])
 	}
+	action.RefreshInClient = extractBool(raw["RefreshInClient"], false)
 
 	if commit, ok := raw["Commit"].(string); ok {
 		action.Commit = microflows.CommitType(commit)

@@ -380,7 +380,7 @@ begin
     status = 'PROCESSING',
     ProcessedDate = [%CurrentDateTime%]);
 
-  commit $Order with events;
+  commit $Order;
 
   -- Log success
   log info node 'OrderService' 'Order processed: ' + $OrderNumber;
@@ -498,7 +498,7 @@ Before executing a microflow script, verify:
 5. **Comment complex logic**: Use `--` for inline comments
 6. **Log important events**: Help with debugging and auditing
 7. **Handle empty cases**: Check for `= empty` before using objects
-8. **Use WITH EVENTS appropriately**: Only when you need event handlers
+8. **Use WITHOUT EVENTS appropriately**: Only when handlers must be skipped (events are on by default)
 9. **Validate before executing**: Use `mxcli check script.mdl -p app.mpr --references` to catch errors
 
 ## Related Documentation
@@ -522,7 +522,7 @@ declare $status Enumeration(Module.Enum) = …; -- Enumerations are primitives t
 ```mdl
 $var = create Module.Entity (attr = value);
 change $var (attr = value);
-commit $var [with events] [refresh];
+commit $var [without events] [refresh];
 ```
 
 ### Flow Control Pattern

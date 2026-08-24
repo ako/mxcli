@@ -258,8 +258,9 @@ setStatement
 
 // $NewProduct = CREATE MfTest.Product (Name = $Name, Code = $Code);
 // $NewProduct = CREATE MfTest.Product (Name = $Name) COMMIT;
+// $NewProduct = CREATE MfTest.Product (Name = $Name) REFRESH;
 createObjectStatement
-    : (VARIABLE EQUALS)? CREATE nonListDataType (LPAREN memberAssignmentList? RPAREN)? commitClause? onErrorClause?
+    : (VARIABLE EQUALS)? CREATE nonListDataType (LPAREN memberAssignmentList? RPAREN)? commitClause? REFRESH? onErrorClause?
     ;
 
 // CHANGE $Product (Name = $NewName, ModifiedDate = [%CurrentDateTime%]);
@@ -285,13 +286,21 @@ attributePath
     : VARIABLE ((SLASH | DOT) qualifiedName)+
     ;
 
-// COMMIT $Product; or COMMIT $Product WITH EVENTS; or COMMIT $Product REFRESH;
+// COMMIT $Product; or COMMIT $Product WITHOUT EVENTS; or COMMIT $Product REFRESH;
+//
+// Absent = WITH EVENTS, which is Mendix's default for the Commit activity and
+// what Studio Pro stores (measured: CommitActivity.DefaultCommit in ako/TestApp
+// stores WithEvents=true). WITH EVENTS therefore parses and means exactly the
+// same as writing nothing — it is kept because it is what every script written
+// before #895 says, and because spelling the default out is not an error.
+// WITHOUT EVENTS is the only form that changes the stored value.
 commitStatement
-    : COMMIT VARIABLE (WITH EVENTS)? REFRESH? onErrorClause?
+    : COMMIT VARIABLE ((WITH | WITHOUT) EVENTS)? REFRESH? onErrorClause?
     ;
 
+// DELETE $Product; or DELETE $Product REFRESH;
 deleteObjectStatement
-    : DELETE VARIABLE onErrorClause?
+    : DELETE VARIABLE REFRESH? onErrorClause?
     ;
 
 // ROLLBACK $Product; or ROLLBACK $Product REFRESH;

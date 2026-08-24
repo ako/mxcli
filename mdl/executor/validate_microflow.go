@@ -114,6 +114,10 @@ func (v *microflowValidator) validate(body []ast.MicroflowStatement) {
 	// by the build. See validate_microflow_ce_gaps.go for the measurements.
 	v.checkReturnInLoop(body)
 	v.checkDuplicateVariableNames(v.params, body)
+
+	// #895: the commit default changed to match Studio Pro. One informational
+	// note per microflow, not per statement — see validate_commit_events.go.
+	v.checkBareCommitEvents(body)
 }
 
 // checkDuplicateLoopVariables flags a loop iterator name used by more than one

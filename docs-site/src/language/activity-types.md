@@ -40,13 +40,13 @@ COMMIT $Order;
 ```
 
 Options:
-- `WITH EVENTS` -- triggers event handlers (before/after commit microflows)
+- `WITHOUT EVENTS` -- skips the event handlers (before/after commit microflows), which otherwise run
 - `REFRESH` -- refreshes the object in the client after committing
 
 ```sql
-COMMIT $Order WITH EVENTS;
+COMMIT $Order;
 COMMIT $Order REFRESH;
-COMMIT $Order WITH EVENTS REFRESH;
+COMMIT $Order REFRESH;
 ```
 
 ### DELETE
@@ -262,10 +262,10 @@ The query name follows a three-part naming convention: `Module.ConnectionName.Qu
 
 | Activity | Syntax | Returns |
 |----------|--------|---------|
-| Create object | `$Var = CREATE Module.Entity (Attr = val);` | Entity object |
-| Change object | `CHANGE $Var (Attr = val);` | -- |
-| Commit | `COMMIT $Var [WITH EVENTS] [REFRESH];` | -- |
-| Delete | `DELETE $Var;` | -- |
+| Create object | `$Var = CREATE Module.Entity (Attr = val) [COMMIT [WITHOUT EVENTS]] [REFRESH];` | Entity object |
+| Change object | `CHANGE $Var (Attr = val) [COMMIT [WITHOUT EVENTS]] [REFRESH];` | -- |
+| Commit | `COMMIT $Var [WITHOUT EVENTS] [REFRESH];` | Omitted = with events |
+| Delete | `DELETE $Var [REFRESH];` | -- |
 | Rollback | `ROLLBACK $Var [REFRESH];` | -- |
 | Retrieve (DB) | `RETRIEVE $Var FROM Module.Entity [WHERE ...] [LIMIT n];` | Entity or list |
 | Retrieve (assoc) | `RETRIEVE $Var FROM $Obj/Module.Assoc;` | Entity or list |

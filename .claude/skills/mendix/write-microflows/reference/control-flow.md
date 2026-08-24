@@ -252,7 +252,7 @@ end loop;
 loop $Binding in $BindingsList
 begin
   $NewBatch = create BatteryOntology.MaterialBatch (BatchNo = $BatchNoObj/Value);
-  commit $NewBatch with events;  -- ❌ one DB transaction per record
+  commit $NewBatch;  -- ❌ one DB transaction per record
 end loop;
 ```
 
@@ -264,13 +264,13 @@ begin
   $NewBatch = create BatteryOntology.MaterialBatch (BatchNo = $BatchNoObj/Value);
   add $NewBatch to $BatchList;   -- accumulate in memory
 end loop;
-commit $BatchList with events on error rollback;  -- ✅ single transaction
+commit $BatchList on error rollback;  -- ✅ single transaction
 ```
 
 **Pattern:**
 1. Before the loop: `$XxxList = create list of Module.Entity;`
 2. Inside the loop: `add $NewXxx to $XxxList;` (replaces `commit`)
-3. After the loop: `commit $XxxList with events on error rollback;`
+3. After the loop: `commit $XxxList on error rollback;`
 
 This applies whenever the loop **creates** new objects. For loops that only **change** existing objects, the same pattern applies — accumulate changed objects in a list, commit the list once outside the loop.
 ## Activity Annotations
@@ -280,11 +280,11 @@ Annotations use `@` prefix syntax placed before the activity they apply to:
 ```mdl
 -- Canvas position (always shown in DESCRIBE output)
 @position(200, 200)
-commit $Order with events;
+commit $Order;
 
 -- Custom caption (overrides auto-generated caption)
 @caption 'Save the order'
-commit $Order with events;
+commit $Order;
 
 -- Background color (Blue, Green, Red, Yellow, Purple, Gray)
 @color Green
@@ -292,7 +292,7 @@ log info node 'App' 'Success';
 
 -- Visual note attached to the next activity (creates AnnotationFlow)
 @annotation 'Validate the order before processing'
-commit $Order with events;
+commit $Order;
 
 -- Multiple annotations stacked on a single activity
 @position(400, 200)
@@ -321,7 +321,7 @@ MDL supports error handling for activities that may fail (microflow calls, commi
 call microflow Module.RiskyOperation() on error continue;
 
 -- ON ERROR ROLLBACK: Rollback transaction and propagate error
-commit $Order with events on error rollback;
+commit $Order on error rollback;
 
 -- ON ERROR { ... }: Custom error handler with rollback
 $Result = call microflow Module.ExternalService(data = $data) on error {
