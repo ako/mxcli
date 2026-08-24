@@ -1,0 +1,49 @@
+-- A translation for a language the project has not ENABLED is stored, passes
+-- every check, and is then discarded by the build.
+--
+-- A stock app makes this easy to hit by accident: it enables exactly ONE language
+-- (en_US) while its marketplace modules ship translations in NINE — nl_NL (335
+-- texts), de_DE, es_ES, pt_PT, tr_TR (19 each), fr_FR (18), hi_IN (17), ar_DZ (4).
+-- So Mendix plainly tolerates translations for unenabled languages. It just never
+-- builds them.
+--
+-- Measured on mxbuild 11.13.0, blank project, `mxbuild --target=deploy`:
+--
+--   grep -ral 'Zebrastreifen' deployment/   -> nothing
+--   grep -ral 'Zebra Widgets' deployment/   -> 3 files      <- the control
+--   find deployment -name '*de_DE*'         -> nothing
+--   ls deployment/model/i18n/               -> translations.properties
+--                                              translations_en_US.properties
+--
+-- The English control is what makes the German absence mean something: the same
+-- caption, same page, same build.
+--
+-- Expected: the run reports the write AND warns that de_DE is not enabled,
+-- naming what IS enabled and where to change it. `describe settings` lists the
+-- enabled languages as a comment — a comment because MDL cannot author the list,
+-- so rendering it as a statement would emit something that does not re-execute.
+--
+--   mxcli -p app.mpr -c "describe settings" | grep -A3 'alter settings LANGUAGE'
+--   mxcli -p app.mpr -c "show settings"     | grep -i language
+
+create module LG;
+create module role LG.User;
+create persistent entity LG.Thing ( Name: string(100) );
+
+create or replace page LG.P_Things (Title: 'Zebra Widgets', Layout: Atlas_Core.Atlas_Default)
+{
+  DATAGRID dg (DataSource: DATABASE LG.Thing) {
+    COLUMN c1 (Attribute: Name, Caption: 'Zebra Column')
+  }
+}
+
+grant view on page LG.P_Things to LG.User;
+
+-- de_DE is NOT enabled in a stock project. Everything below succeeds; the strings
+-- reach no built artifact.
+create translations in LG for de_DE (
+    'Zebra Widgets' as 'Zebrastreifen',
+    'Zebra Column'  as 'Zebraspalte',
+);
+
+describe settings;

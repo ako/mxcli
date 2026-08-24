@@ -69,7 +69,11 @@ func listSettings(ctx *ExecContext) error {
 	}
 
 	if ps.Language != nil {
-		tr.Rows = append(tr.Rows, []any{"Language Settings", "Default: " + ps.Language.DefaultLanguageCode})
+		v := "Default: " + ps.Language.DefaultLanguageCode
+		if codes := enabledLanguageCodes(ps.Language); len(codes) > 0 {
+			v += ", enabled: " + strings.Join(codes, ", ")
+		}
+		tr.Rows = append(tr.Rows, []any{"Language Settings", v})
 	}
 
 	if ps.Workflows != nil {
@@ -173,7 +177,19 @@ func describeSettings(ctx *ExecContext, configName string) error {
 
 	// Language settings
 	if ps.Language != nil {
-		fmt.Fprintf(ctx.Output, "alter settings LANGUAGE\n  DefaultLanguageCode = '%s';\n\n", ps.Language.DefaultLanguageCode)
+		fmt.Fprintf(ctx.Output, "alter settings LANGUAGE\n  DefaultLanguageCode = '%s';\n", ps.Language.DefaultLanguageCode)
+		// The enabled languages decide what the build emits — a translation for
+		// any other language is stored and then discarded — so DESCRIBE must show
+		// them. As a COMMENT, because MDL cannot author the list yet: rendering it
+		// as a statement would produce something that does not re-execute.
+		if codes := enabledLanguageCodes(ps.Language); len(codes) > 0 {
+			fmt.Fprintf(ctx.Output,
+				"-- Enabled languages: %s. Only these are built; `create translations` for\n"+
+					"-- any other language is stored and silently dropped at build time.\n"+
+					"-- Enable one in Studio Pro (Project > Settings > Languages) — not yet MDL.\n",
+				strings.Join(codes, ", "))
+		}
+		fmt.Fprintln(ctx.Output)
 	}
 
 	// Workflow settings
