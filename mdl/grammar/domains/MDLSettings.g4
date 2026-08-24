@@ -417,6 +417,26 @@ booleanLiteral
     | FALSE
     ;
 
+/**
+ * CREATE [OR MODIFY|REPLACE] TRANSLATIONS [IN Module] FOR <lang> ( 'src' AS 'target', ... );
+ *
+ * A translation maps a user-provided name to another name, so entries use AS
+ * rather than COLON — the same rule CUSTOM NAME map follows
+ * (.claude/skills/design-mdl-syntax.md, "colon vs as").
+ *
+ * The thing that exists is the LANGUAGE: bare CREATE refuses when it already has
+ * translations, OR MODIFY merges, OR REPLACE makes the file authoritative.
+ * See docs/11-proposals/PROPOSAL_translations.md.
+ */
+createTranslationsStatement
+    : TRANSLATIONS (IN identifierOrKeyword)? FOR identifierOrKeyword
+      LPAREN translationEntry (COMMA translationEntry)* COMMA? RPAREN
+    ;
+
+translationEntry
+    : STRING_LITERAL AS STRING_LITERAL
+    ;
+
 /** Documentation comment */
 docComment
     : DOC_COMMENT
@@ -564,6 +584,7 @@ keyword
     | TABCONTAINER | TABPAGE | WIDGET | WIDGETS
     // Object-list container keywords for pluggable widgets (#538)
     | GROUP | CUSTOMITEM | MARKER | DYNAMICMARKER | SERIES | LINE | SCALECOLOR
+    | CUSTOMBUTTON | ALLOWEDFILEFORMAT
     // Dual-stack keyword (#539)
     | LEGACYDATAGRID
 
@@ -633,7 +654,7 @@ keyword
     // CLI commands
     | BUILD | CATALOG | CHECK | CLEAR | COMMENT | CUSTOM_NAME_MAP
     | DESIGN | DRY | EXEC | FEATURES | ADDED | SINCE | FORCE
-    | LANGUAGES | LINT | PROPERTIES | READ | RULES | RUN | SARIF | SCRIPT
+    | LANGUAGES | LINT | PROPERTIES | READ | RULES | RUN | SARIF | SCRIPT | TRANSLATIONS
     | SHOW | USE | STATUS | WRITE | VIA | VIEWS | TABLES
 
     // Sequence flow anchors (for @anchor annotation)

@@ -312,22 +312,27 @@ func GenerateDefJSON(mpkDef *mpk.WidgetDefinition, mdlName string) *WidgetDefini
 				Description: p.Description,
 			})
 		case "action":
-			// Action-typed properties (e.g. DataGrid2 `onClick`, filter `onChange`)
-			// were silently skipped — no `action` operation was ever emitted, so the
-			// writer had no mapping and dropped the action with no error or warning
-			// (ledger #67). Emit an action mapping so the engine's applyOperation
-			// "action" writes the client action. Only the slots MDL can currently
-			// author (onClick → the widget's Action property, onChange → OnChange)
-			// are wired; other action slots have no MDL surface yet, so emitting a
-			// mapping for them would resolve to nothing.
-			if src := actionSourceForKey(p.Key); src != "" {
-				def.PropertyMappings = append(def.PropertyMappings, PropertyMapping{
-					PropertyKey: p.Key,
-					Source:      src,
-					Operation:   "action",
-					Description: p.Description,
-				})
-			}
+			// Every action-typed property gets a mapping, so the engine's
+			// applyOperation "action" can write it (ledger #67 — before that, none
+			// did, and an action was dropped with no error or warning).
+			//
+			// The two slots MDL names — onClick → the widget's Action property,
+			// onChange → OnChange — keep a Source and are read from those fixed AST
+			// slots. Every OTHER action slot is emitted with NO Source and is
+			// addressed by its own PropertyKey: `createFileAction: microflow …`.
+			// That is the convention the object-list item mappings already use, so
+			// it adds no concept, and it leaves actionSourceForKey meaning what it
+			// meant — the MDL alias for a key, or none.
+			//
+			// Before this, an unaliased slot got no mapping at all: File Uploader
+			// extracted to six action slots and none were authorable, so the widget
+			// could be placed and not wired (#956).
+			def.PropertyMappings = append(def.PropertyMappings, PropertyMapping{
+				PropertyKey: p.Key,
+				Source:      actionSourceForKey(p.Key),
+				Operation:   "action",
+				Description: p.Description,
+			})
 		case "boolean", "integer", "decimal", "string", "enumeration":
 			m := PropertyMapping{
 				PropertyKey: p.Key,

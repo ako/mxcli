@@ -1,0 +1,58 @@
+-- Sudoku finding #49: MDL041 refused integer arithmetic that Mendix accepts.
+--
+-- `round()`, `floor()` and `ceil()` were exempted from the Decimal check only
+-- when they were the whole right-hand side, so the inner `div`'s Decimal taint
+-- propagated back out as soon as the rounded value became an operand. Since
+-- `exec` refuses to write when any rule errors, a microflow that mxbuild builds
+-- at 0 errors could be read out of the model with `describe` and not written
+-- back — breaking the round trip for exactly the code that had to work around
+-- CE0117 in the first place.
+--
+-- Every microflow below builds at 0 errors on mxbuild 11.13.0. Before the fix,
+-- `mxcli check` reported MDL041 on all but the first, and `exec` wrote nothing.
+--
+--   mxcli check mdl-examples/bug-tests/sudoku-49-mdl041-rounding-arithmetic.mdl
+--   mxcli exec  mdl-examples/bug-tests/sudoku-49-mdl041-rounding-arithmetic.mdl -p app.mpr
+--   mx check app.mpr      # 0 errors
+
+create or modify module RoundingProbe;
+
+-- Accepted before the fix too: the rounding call is the whole expression.
+create or replace microflow RoundingProbe.WholeExpression ($bu: Integer) returns Integer
+begin
+  declare $r Integer = round(floor($bu div 3));
+  return $r;
+end;
+
+-- The reported case: the rounded value becomes an operand.
+create or replace microflow RoundingProbe.RoundedThenMultiplied ($bu: Integer) returns Integer
+begin
+  declare $r Integer = round(floor($bu div 3)) * 3;
+  return $r;
+end;
+
+create or replace microflow RoundingProbe.RoundedThenAdded ($bu: Integer) returns Integer
+begin
+  declare $r Integer = round($bu div 3) + 3;
+  return $r;
+end;
+
+create or replace microflow RoundingProbe.FloorThenMultiplied ($bu: Integer) returns Integer
+begin
+  declare $r Integer = floor($bu div 3) * 3;
+  return $r;
+end;
+
+create or replace microflow RoundingProbe.CeilThenMultiplied ($bu: Integer) returns Integer
+begin
+  declare $r Integer = ceil($bu div 3) * 3;
+  return $r;
+end;
+
+-- abs/max/min preserve their operands' kind rather than always widening to
+-- Decimal, so these are Integer-valued and were false positives as well.
+create or replace microflow RoundingProbe.KindPreservingMath ($bu: Integer) returns Integer
+begin
+  declare $r Integer = abs($bu) + max($bu, 3) + min($bu, 3);
+  return $r;
+end;

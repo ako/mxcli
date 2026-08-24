@@ -298,7 +298,8 @@ func validateWidgetVisibility(w *ast.WidgetV3, registry *WidgetRegistry, locatio
 		}
 		out = append(out, hiddenPropertyViolation(locationPrefix, w.Name, def.MDLName, "", rule,
 			values[strings.ToLower(rule.PropertyKey)],
-			declaredDefault(defaults, def.PropertyMappings, nil, "", rule.PropertyKey)))
+			declaredDefault(defaults, def.PropertyMappings, nil, "", rule.PropertyKey),
+			mappingOperationFor(def, rule.PropertyKey)))
 	}
 	return out
 }
@@ -317,12 +318,26 @@ func widgetValueMap(w *ast.WidgetV3, def *WidgetDefinition) (values map[string]s
 	for _, m := range def.Modes {
 		mappings = append(mappings, m.PropertyMappings...)
 	}
+	// An MDL source keyword shared by SEVERAL properties does not name any one of
+	// them. File Uploader 2.5.0 routes both `associatedFiles` and
+	// `associatedImages` from `DataSource:`, and `uploadMode` decides which one
+	// Studio Pro shows — so a script writing `DataSource:` once has named the
+	// keyword, not the hidden property, and must not be reported as having set
+	// it (#956). The value is still recorded, because conditions read from it.
+	sharedSource := map[string]int{}
+	for _, m := range mappings {
+		if m.Source != "" {
+			sharedSource[m.Source]++
+		}
+	}
 	for _, m := range mappings {
 		key := strings.ToLower(m.PropertyKey)
 		val, set := "", false
+		viaSharedSource := false
 		if m.Source != "" {
 			if v, ok := lookupWidgetProp(w, m.Source); ok {
 				val, set = v, true
+				viaSharedSource = sharedSource[m.Source] > 1
 			}
 		}
 		if !set {
@@ -339,9 +354,37 @@ func widgetValueMap(w *ast.WidgetV3, def *WidgetDefinition) (values map[string]s
 			}
 		}
 		if set {
-			explicit[key] = true
+			if !viaSharedSource {
+				explicit[key] = true
+			}
 		} else if m.Default != "" {
 			val = m.Default
+		} else if m.Operation == "primitive" && m.Value != "" {
+			// A primitive mapping carries the widget XML's defaultValue in Value
+			// (Default is only populated for selections), and the builder WRITES
+			// that value when the script names nothing — so reading it here is
+			// not a guess about the widget's configuration, it is the
+			// configuration. Without it every rule keyed on an unnamed
+			// enumeration is indeterminable and silently does not fire.
+			//
+			// Measured on File Uploader 2.5.0: `uploadMode` defaults to "files",
+			// which hides `associatedImages`. With the condition unknown, the
+			// `DataSource:` clause fanned out into BOTH datasource properties —
+			// and a value in a pruned slot is CE0463 on every page carrying the
+			// widget, with nothing having warned (#956). This is the same shape
+			// as the selection case below, which was fixed first because
+			// DataGrid2 was the widget then under test.
+			val = m.Value
+		} else if m.Operation == "selection" {
+			// An omitted `Selection:` is written as None. That is the builder's
+			// own behaviour rather than a guess — the stored itemSelection reads
+			// `Selection None` on a DataGrid2 whose script never named it — and
+			// the .mpk declares no defaultValue for a selection property, so
+			// without this the condition is indeterminable and every rule keyed
+			// on a selection silently does not fire. That includes
+			// `onSelectionChange`, whose action then reaches the model as CE0463
+			// with nothing having warned (#956).
+			val = "None"
 		}
 		if val != "" {
 			if m.Operation == "selection" {
@@ -890,11 +933,25 @@ func validateWidgetExpressionAssociations(w *ast.WidgetV3, locationPrefix string
 var templateParamExprRe = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*\s*\(|[+\-*<>=!]`)
 
 // validateTemplateParamExpressions flags a client expression supplied to a
-// contentparams/captionparams slot (MDL-WIDGET14). Those slots are DATA BINDINGS:
-// an unquoted value is stored as an attribute path, so an expression like
-// `formatDateTime($obj/Date, 'd MMM')` is written as a bogus attribute name and
-// Studio Pro rejects the page with CE1613. A quoted value is a legal string
-// literal and is left alone.
+// contentparams/captionparams slot (MDL-WIDGET14). mxcli stores an unquoted
+// value as an attribute path, so an expression like
+// `formatDateTime($obj/Date, 'd MMM')` would be written as a bogus attribute
+// name and Studio Pro rejects the page. A quoted value is a legal string literal
+// and is left alone.
+//
+// The refusal is right; the reason this rule used to give was not. It said a
+// template parameter "is a data binding … not an expression", which is a claim
+// about MENDIX and it is false: Studio Pro's Edit Template Parameter dialog
+// offers "Parameter type: Value | Expression", and the Expression form has its
+// own editor, variable list and wizard —
+// `formatDecimal($currentObject/Score)` is a perfectly valid parameter there.
+// The metamodel agrees: Pages$ClientTemplateParameter carries Expression beside
+// AttributeRef and SourceVariable.
+//
+// So the honest message is that MXCLI cannot author that form yet, not that the
+// platform forbids it. Telling a user to precompute a calculated attribute when
+// Studio Pro offers the thing they asked for sends them to do unnecessary
+// modelling. Authoring syntax for it is tracked separately.
 func validateTemplateParamExpressions(w *ast.WidgetV3, locationPrefix string) []linter.Violation {
 	var out []linter.Violation
 	check := func(slot string, params []ast.ParamAssignmentV3) {
@@ -914,7 +971,7 @@ func validateTemplateParamExpressions(w *ast.WidgetV3, locationPrefix string) []
 				RuleID:   "MDL-WIDGET14",
 				Severity: linter.SeverityError,
 				Message: fmt.Sprintf(
-					"%s: widget `%s` %s value `%s` is an expression, but a template parameter is a data binding — it accepts an attribute path (`$obj/Attr`) or a quoted string literal, not an expression (CE1613 in Studio Pro). Precompute it onto the bound entity (e.g. a calculated attribute) and bind that attribute instead.",
+					"%s: widget `%s` %s value `%s` looks like an expression, and MDL cannot author an expression-typed template parameter yet — an unquoted value is stored as an attribute path, so this would be written as a bogus attribute name. Mendix DOES support it: Studio Pro's Edit Template Parameter dialog has a `Value | Expression` choice. Set it there, or bind an attribute path (`$obj/Attr`) or a quoted string literal here.",
 					locationPrefix, w.Name, slot, val,
 				),
 			})
@@ -1084,7 +1141,7 @@ func validatePluggableWidgetProperties(w *ast.WidgetV3, registry *WidgetRegistry
 // silent-drop class FINDINGS #14 was about. It is reported by
 // actionStorageKeys() instead, with the spelling that works.
 func addMappingNames(add func(string), m PropertyMapping) {
-	if !readsFixedASTSlot(m.Operation) {
+	if !readsFixedASTSlot(m) {
 		add(m.PropertyKey)
 	}
 	add(m.Source)
@@ -1105,8 +1162,17 @@ func addMappingNames(add func(string), m PropertyMapping) {
 // persist, so excluding every storage key would reject working syntax. Add an
 // operation here only after checking the written document, not from the shape of
 // the mapping.
-func readsFixedASTSlot(op string) bool {
-	return op == "action" || op == "association"
+// An action mapping with NO Source is a NAMED slot: resolveMapping reads it from
+// the AST property called by the mapping's own PropertyKey, so that key is the
+// authorable name rather than an internal one (#956).
+func readsFixedASTSlot(m PropertyMapping) bool {
+	switch m.Operation {
+	case "association":
+		return true
+	case "action":
+		return m.Source != ""
+	}
+	return false
 }
 
 // actionStorageKeys maps each action mapping's storage key to the MDL name that
@@ -1116,7 +1182,7 @@ func actionStorageKeys(def *WidgetDefinition) map[string]string {
 	out := make(map[string]string)
 	collect := func(ms []PropertyMapping) {
 		for _, m := range ms {
-			if readsFixedASTSlot(m.Operation) && m.PropertyKey != "" && m.Source != "" {
+			if readsFixedASTSlot(m) && m.PropertyKey != "" && m.Source != "" {
 				out[strings.ToLower(m.PropertyKey)] = m.Source
 			}
 		}
@@ -1420,4 +1486,34 @@ func misusedBuiltinProperty(widgetID, key string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// mappingOperationFor returns the def's operation for a property key, or "" when
+// the widget declares no mapping for it. Used to tell an action slot apart from a
+// valued property when judging how bad a hidden-property violation is.
+func mappingOperationFor(def *WidgetDefinition, propertyKey string) string {
+	scan := func(ms []PropertyMapping) string {
+		for _, m := range ms {
+			if strings.EqualFold(m.PropertyKey, propertyKey) {
+				return m.Operation
+			}
+		}
+		return ""
+	}
+	if op := scan(def.PropertyMappings); op != "" {
+		return op
+	}
+	for _, mode := range def.Modes {
+		if op := scan(mode.PropertyMappings); op != "" {
+			return op
+		}
+	}
+	for _, ol := range def.ObjectLists {
+		for _, ip := range ol.ItemProperties {
+			if strings.EqualFold(ip.PropertyKey, propertyKey) {
+				return ip.Operation
+			}
+		}
+	}
+	return ""
 }

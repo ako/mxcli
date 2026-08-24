@@ -53,14 +53,29 @@ func TestGenerateDefJSON_ComboboxOnChangeEvent(t *testing.T) {
 		},
 	}, "COMBOBOX")
 
-	var mapped []string
+	// Exactly one slot may carry the OnChange SOURCE. The Combobox's other
+	// change-shaped slots are distinct properties, and routing them through the
+	// same fixed AST slot would make one `OnChange:` write three actions. They
+	// are now mapped as NAMED slots instead — reachable by their own key, and
+	// still not by `OnChange:` (#956).
+	sourced := map[string]string{}
+	named := []string{}
 	for _, m := range def.PropertyMappings {
-		if m.Operation == "action" {
-			mapped = append(mapped, m.PropertyKey+"→"+m.Source)
+		if m.Operation != "action" {
+			continue
+		}
+		if m.Source != "" {
+			sourced[m.PropertyKey] = m.Source
+		} else {
+			named = append(named, m.PropertyKey)
 		}
 	}
-	if len(mapped) != 1 || mapped[0] != "onChangeEvent→OnChange" {
-		t.Fatalf("action mappings = %v, want exactly [onChangeEvent→OnChange]", mapped)
+	if len(sourced) != 1 || sourced["onChangeEvent"] != "OnChange" {
+		t.Fatalf("slots carrying a Source = %v, want exactly {onChangeEvent: OnChange}", sourced)
+	}
+	if len(named) != 2 {
+		t.Errorf("named action slots = %v, want the two remaining change-shaped slots — "+
+			"each addressable by its own key", named)
 	}
 }
 
@@ -140,16 +155,28 @@ func TestCombobox_OnChangeMappedInBothModes(t *testing.T) {
 // not. Only the two operations that resolve from a dedicated AST accessor are
 // excluded.
 func TestReadsFixedASTSlot_MeasuredOperations(t *testing.T) {
+	// A mapping WITH a Source, which is the shape the measurement was made on.
 	excluded := map[string]bool{"action": true, "association": true}
 	for _, op := range []string{
 		"action", "association",
 		"attribute", "primitive", "datasource", "texttemplate",
 		"selection", "widgets", "attributeObjects", "expression",
 	} {
-		if got := readsFixedASTSlot(op); got != excluded[op] {
-			t.Errorf("readsFixedASTSlot(%q) = %v, want %v — "+
+		m := PropertyMapping{Operation: op, PropertyKey: "someKey", Source: "SomeSource"}
+		if got := readsFixedASTSlot(m); got != excluded[op] {
+			t.Errorf("readsFixedASTSlot(%q with a Source) = %v, want %v — "+
 				"an operation belongs here only once the written document shows "+
 				"its storage key is dropped", op, got, excluded[op])
 		}
+	}
+
+	// An action mapping with NO Source is a named slot: it is read from the AST
+	// property called by its own PropertyKey, so that key is authorable and must
+	// not be excluded (#956).
+	named := PropertyMapping{Operation: "action", PropertyKey: "onSelectionChange"}
+	if readsFixedASTSlot(named) {
+		t.Error("a named action slot was treated as reading a fixed AST slot — its own " +
+			"key would be rejected as an internal storage name, which is the only " +
+			"way it can be written")
 	}
 }

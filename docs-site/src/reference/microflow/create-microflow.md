@@ -50,14 +50,16 @@ Primitive types: `String`, `Integer`, `Long`, `Decimal`, `Boolean`, `DateTime`. 
 **Object Operations**
 
 ```sql
-$Var = CREATE Module.Entity ( Attr1 = value1, Attr2 = value2 );
-CHANGE $Entity ( Attr = value );
-COMMIT $Entity [ WITH EVENTS ] [ REFRESH ];
-DELETE $Entity;
+$Var = CREATE Module.Entity ( Attr1 = value1, Attr2 = value2 ) [ COMMIT [ WITHOUT EVENTS ] ] [ REFRESH ];
+CHANGE $Entity ( Attr = value ) [ COMMIT [ WITHOUT EVENTS ] ] [ REFRESH ];
+COMMIT $Entity [ WITHOUT EVENTS ] [ REFRESH ];
+DELETE $Entity [ REFRESH ];
 ROLLBACK $Entity [ REFRESH ];
 ```
 
-`CREATE` instantiates a new object with initial attribute values. `CHANGE` modifies attributes on an existing object. `COMMIT` persists changes to the database -- `WITH EVENTS` triggers before/after commit event handlers, `REFRESH` updates client-side state. `ROLLBACK` reverts uncommitted changes to an object.
+`CREATE` instantiates a new object with initial attribute values. `CHANGE` modifies attributes on an existing object. `COMMIT` persists changes to the database -- the before/after commit event handlers run unless you write `WITHOUT EVENTS`, matching Studio Pro's default, and `REFRESH` updates client-side state. `ROLLBACK` reverts uncommitted changes to an object.
+
+Every one of these modifiers is optional, and leaving one out always means Mendix's own default -- `Commit: No` and `Refresh in client: No` throughout, and `With events: Yes` on the standalone `COMMIT`. A bare statement therefore produces the same activity as dragging a fresh one onto the Studio Pro canvas.
 
 **Retrieval**
 
@@ -211,7 +213,7 @@ CREATE MICROFLOW Sales.ACT_ApproveOrder
 BEGIN
     IF $Order/Status = Sales.OrderStatus.Pending THEN
         CHANGE $Order (Status = Sales.OrderStatus.Approved);
-        COMMIT $Order WITH EVENTS;
+        COMMIT $Order;
         LOG INFO NODE 'OrderProcessing' 'Order approved';
         RETURN true;
     ELSE
@@ -297,7 +299,7 @@ BEGIN
         Status = 'Draft',
         CreatedBy = '[%CurrentUser%]'
     );
-    COMMIT $Order WITH EVENTS;
+    COMMIT $Order;
     RETURN $Order;
 END;
 ```

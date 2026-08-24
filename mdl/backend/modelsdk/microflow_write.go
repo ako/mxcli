@@ -436,7 +436,7 @@ func microflowActionToGen(action microflows.MicroflowAction) element.Element {
 		for _, m := range a.InitialMembers {
 			g.AddItems(memberChangeToGen(m))
 		}
-		g.SetRefreshInClient(false)
+		g.SetRefreshInClient(a.RefreshInClient)
 		g.SetOutputVariableName(a.OutputVariable)
 		return g
 	case *microflows.ChangeObjectAction:

@@ -107,6 +107,7 @@ func (fb *flowBuilder) addCreateObjectAction(s *ast.CreateObjectStmt) model.ID {
 		ErrorHandlingType: fb.ehType(s.ErrorHandling),
 		OutputVariable:    s.Variable,
 		Commit:            commitTypeOf(s.Commit),
+		RefreshInClient:   s.RefreshInClient,
 	}
 	// Set entity reference as qualified name (BY_NAME_REFERENCE)
 	entityQN := ""
@@ -159,8 +160,9 @@ func (fb *flowBuilder) addCommitAction(s *ast.MfCommitStmt) model.ID {
 		BaseElement:       model.BaseElement{ID: model.ID(types.GenerateID())},
 		ErrorHandlingType: fb.ehType(s.ErrorHandling),
 		CommitVariable:    s.Variable,
-		WithEvents:        s.WithEvents,
-		RefreshInClient:   s.RefreshInClient,
+		// Absent WITHOUT EVENTS means events ON — Mendix's default (#895).
+		WithEvents:      !s.WithoutEvents,
+		RefreshInClient: s.RefreshInClient,
 	}
 
 	activityX := fb.posX
@@ -187,8 +189,9 @@ func (fb *flowBuilder) addCommitAction(s *ast.MfCommitStmt) model.ID {
 // addDeleteAction creates a DELETE statement.
 func (fb *flowBuilder) addDeleteAction(s *ast.DeleteObjectStmt) model.ID {
 	action := &microflows.DeleteObjectAction{
-		BaseElement:    model.BaseElement{ID: model.ID(types.GenerateID())},
-		DeleteVariable: s.Variable,
+		BaseElement:     model.BaseElement{ID: model.ID(types.GenerateID())},
+		DeleteVariable:  s.Variable,
+		RefreshInClient: s.RefreshInClient,
 	}
 
 	activityX := fb.posX

@@ -769,6 +769,22 @@ func (b *Builder) ExitCatalogSelectQuery(ctx *parser.CatalogSelectQueryContext) 
 
 // ExitDescribeStatement handles DESCRIBE ENTITY/ASSOCIATION/ENUMERATION/MODULE
 func (b *Builder) ExitDescribeStatement(ctx *parser.DescribeStatementContext) {
+	// DESCRIBE TRANSLATIONS [IN Module] FOR <lang>. Placed first: TRANSLATIONS is
+	// its own token, so nothing else can match, and reading it here keeps the
+	// rest of the chain unaware of a statement that names no document.
+	if ctx.TRANSLATIONS() != nil {
+		ids := ctx.AllIdentifierOrKeyword()
+		if len(ids) == 0 {
+			return
+		}
+		stmt := &ast.DescribeTranslationsStmt{Language: identifierOrKeywordText(ids[len(ids)-1])}
+		if len(ids) > 1 {
+			stmt.Module = identifierOrKeywordText(ids[0])
+		}
+		b.statements = append(b.statements, stmt)
+		return
+	}
+
 	// DESCRIBE QUEUE Module.Name
 	if ctx.QUEUE() != nil {
 		if qn := ctx.QualifiedName(); qn != nil {
@@ -823,7 +839,7 @@ func (b *Builder) ExitDescribeStatement(ctx *parser.DescribeStatementContext) {
 		roleName := ""
 		if sl := ctx.STRING_LITERAL(); sl != nil {
 			roleName = unquoteString(sl.GetText())
-		} else if iok := ctx.IdentifierOrKeyword(); iok != nil {
+		} else if iok := ctx.IdentifierOrKeyword(0); iok != nil {
 			roleName = identifierOrKeywordText(iok)
 		}
 		if roleName != "" {
@@ -839,7 +855,7 @@ func (b *Builder) ExitDescribeStatement(ctx *parser.DescribeStatementContext) {
 	// module names that happen to match a keyword, like "Agents").
 	if ctx.MODULE() != nil {
 		var moduleName string
-		if iok := ctx.IdentifierOrKeyword(); iok != nil {
+		if iok := ctx.IdentifierOrKeyword(0); iok != nil {
 			moduleName = iok.GetText()
 		} else if id := ctx.IDENTIFIER(); id != nil {
 			// Fallback for older grammar versions.
@@ -934,7 +950,7 @@ func (b *Builder) ExitDescribeStatement(ctx *parser.DescribeStatementContext) {
 			}
 			qn := buildQualifiedName(ctx.QualifiedName())
 			widgetName := ""
-			if iok := ctx.IdentifierOrKeyword(); iok != nil {
+			if iok := ctx.IdentifierOrKeyword(0); iok != nil {
 				widgetName = identifierOrKeywordText(iok)
 			}
 			b.statements = append(b.statements, &ast.DescribeFragmentFromStmt{
@@ -945,7 +961,7 @@ func (b *Builder) ExitDescribeStatement(ctx *parser.DescribeStatementContext) {
 			return
 		}
 		// Simple: DESCRIBE FRAGMENT Name
-		if iok := ctx.IdentifierOrKeyword(); iok != nil {
+		if iok := ctx.IdentifierOrKeyword(0); iok != nil {
 			b.statements = append(b.statements, &ast.DescribeStmt{
 				ObjectType: ast.DescribeFragment,
 				Name:       ast.QualifiedName{Name: identifierOrKeywordText(iok)},

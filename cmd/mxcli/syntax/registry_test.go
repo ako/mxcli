@@ -214,3 +214,73 @@ func TestSeeAlsoRefsExist(t *testing.T) {
 		}
 	}
 }
+
+// #955: `mxcli syntax rule` reported "Unknown topic: rule" while both
+// microflow.rule and validation-rule were registered. Registry lookup is
+// anchored at the left, so a topic is reachable only by its first segment or
+// via a hand-written alias — which left 60 of the registry's leaf names with no
+// spelling that finds them.
+func TestBySegmentMatch_FindsNonLeadingSegments(t *testing.T) {
+	tests := []struct {
+		query     string
+		wantPaths []string
+	}{
+		// The reported case, and the reason an alias would have been the worse
+		// fix: "rule" names two unrelated topics and both are relevant.
+		{"rule", []string{"microflow.rule", "validation-rule"}},
+		{"user-task", []string{"workflow.user-task", "workflow.user-task.targeting"}},
+		// A segment is often a compound of the word the reader has in mind, so
+		// the match is on substring-within-segment rather than equality.
+		{"task", []string{"workflow.user-task"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			got := BySegmentMatch(tt.query)
+			for _, want := range tt.wantPaths {
+				found := false
+				for _, f := range got {
+					if f.Path == want {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("BySegmentMatch(%q) did not return %q", tt.query, want)
+				}
+			}
+		})
+	}
+}
+
+// The fallback only runs when the anchored lookup finds nothing, but it must
+// also not invent matches: a query naming no segment stays unknown, which is
+// what keeps "Unknown topic" meaningful.
+func TestBySegmentMatch_UnknownStaysUnknown(t *testing.T) {
+	if got := BySegmentMatch("zzzznope"); len(got) != 0 {
+		t.Errorf("expected no matches, got %d", len(got))
+	}
+	if got := BySegmentMatch(""); len(got) != 0 {
+		t.Errorf("empty query must not match everything, got %d", len(got))
+	}
+}
+
+// Every leaf segment in the registry must be reachable by some spelling. This
+// is the property #955 reported the absence of; asserting it over the whole
+// registry means a newly added nested topic cannot silently become
+// unreachable the way `rule` did.
+func TestEverySegmentIsReachable(t *testing.T) {
+	seen := map[string]bool{}
+	for _, f := range All() {
+		for _, seg := range strings.Split(f.Path, ".") {
+			seen[seg] = true
+		}
+	}
+	for seg := range seen {
+		if HasPrefix(seg) || ResolveAlias(seg) != seg {
+			continue // reachable as a top-level path, or via an alias
+		}
+		if len(BySegmentMatch(seg)) == 0 {
+			t.Errorf("topic segment %q is not reachable by any spelling", seg)
+		}
+	}
+}

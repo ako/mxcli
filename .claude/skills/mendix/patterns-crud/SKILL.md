@@ -38,7 +38,7 @@ begin
   $IsValid = call microflow Module.VAL_Customer_Save($Customer = $Customer);
 
   if $IsValid then
-    commit $Customer with events;
+    commit $Customer;
     close page;
   end if;
 
@@ -221,7 +221,7 @@ For a typical entity, create these microflows:
 ## Best Practices
 
 1. **Always validate before commit**: Call VAL_ microflow in ACT_Save
-2. **Use WITH EVENTS**: `commit $entity with events` triggers event handlers
+2. **Events are on by default**: a bare `commit $entity` triggers the event handlers; write `commit $entity without events` only to skip them
 3. **Close page on success**: Use `close page` after successful save/delete
 4. **Rollback on cancel**: Use `rollback $entity` to discard changes
 5. **Initialize defaults**: Set default values in ACT_New microflow

@@ -62,3 +62,49 @@ func TestValidatePluggableWidgetProperties_ActionStorageKeyIsNotAuthorable(t *te
 		}
 	}
 }
+
+// Some widgets spell their action slot exactly as MDL does. Slider, RangeSlider
+// and StarRating all store `onChange`, and the storage-key check above then fired
+// against MDL's own `OnChange:` — telling the author to "use `OnChange:` instead"
+// of `OnChange:`, and leaving those widgets' only action slot unauthorable.
+//
+// The cause was that `OnChange` was missing from isBuiltinPropName while `Action`
+// was there, so it never took the early exit the other dedicated keywords take.
+// (upstream #956)
+func TestValidatePluggableWidgetProperties_MDLNameIsNotMistakenForTheStorageKey(t *testing.T) {
+	// A Slider-shaped def: its action slot's storage key IS `onChange`.
+	def := &WidgetDefinition{
+		WidgetID: "com.mendix.widget.custom.slider.Slider",
+		MDLName:  "SLIDER",
+		PropertyMappings: []PropertyMapping{
+			{PropertyKey: "valueAttribute", Source: "Attribute", Operation: "attribute"},
+			{PropertyKey: "onChange", Source: "OnChange", Operation: "action"},
+		},
+	}
+	reg := &WidgetRegistry{byMDLName: map[string]*WidgetDefinition{"SLIDER": def}}
+
+	w := &ast.WidgetV3{Name: "sl", Type: "slider", Properties: map[string]any{
+		"Attribute": "Score",
+		"OnChange":  &ast.ActionV3{Type: "close"},
+	}}
+
+	for _, v := range validatePluggableWidgetProperties(w, reg, "page M.P") {
+		if v.Severity == linter.SeverityError {
+			t.Errorf("`OnChange:` rejected on a widget whose storage key is also `onChange` — "+
+				"this is MDL's own spelling and the only way to author the slot:\n  [%s] %s",
+				v.RuleID, v.Message)
+		}
+	}
+}
+
+// Both dedicated action keywords take the same route, so neither should ever be
+// mistaken for a storage key. Asserted together because the bug was one of them
+// being present in isBuiltinPropName and the other missing.
+func TestBuiltinPropNamesCoverBothActionKeywords(t *testing.T) {
+	for _, name := range []string{"Action", "OnChange"} {
+		if !isBuiltinPropName(name) {
+			t.Errorf("%q is a dedicated MDL keyword resolved by resolveMapping, not a widget "+
+				"storage key — omitting it makes the validator reject MDL's own spelling", name)
+		}
+	}
+}

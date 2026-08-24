@@ -172,7 +172,7 @@ BEGIN
 
   -- Finalize
   CHANGE $Order (Status = 'Placed');
-  COMMIT $Order WITH EVENTS;
+  COMMIT $Order;
 
   RETURN true;
 END;

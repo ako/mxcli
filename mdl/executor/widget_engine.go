@@ -91,7 +91,7 @@ const defaultSlotContainer = "template"
 //	    to a value the widget hides, which mxbuild rejects with CE0463 and which
 //	    makes `mx create-module-package` refuse the module (upstream #931). Bump
 //	    forces existing projects to regenerate their defs with both.
-const WidgetDefGeneratorVersion = 16
+const WidgetDefGeneratorVersion = 17
 
 // WidgetDefinition describes how to construct a pluggable widget from MDL syntax.
 // Loaded from embedded JSON definition files (*.def.json).
@@ -228,7 +228,12 @@ type BuildContext struct {
 	PrimitiveVal   string
 	DataSource     pages.DataSource
 	Action         pages.ClientAction // Domain-typed client action
-	pageBuilder    *pageBuilder
+	// ClientParams carries the `contentparams:` bindings for a `{1}`-style
+	// template, resolved while the AST widget is still in hand. applyOperation
+	// does not receive the AST, and a numeric placeholder written without its
+	// parameters is CE0720 (#928).
+	ClientParams []*pages.ClientTemplateParameter
+	pageBuilder  *pageBuilder
 }
 
 // =============================================================================
@@ -247,6 +252,11 @@ type PluggableWidgetEngine struct {
 	// an association the widget binds — must be qualified against this, not
 	// against the widget's own datasource entity. (issuetracker #19)
 	outerEntityContext string
+
+	// currentDef is the widget definition of the build in progress. resolveMapping
+	// consults it to tell the widget's PRIMARY attribute property from its others
+	// (#238); nil outside a build.
+	currentDef *WidgetDefinition
 }
 
 // NewPluggableWidgetEngine creates a new engine with the given backend and page builder.
@@ -275,6 +285,13 @@ func (e *PluggableWidgetEngine) Build(def *WidgetDefinition, w *ast.WidgetV3) (*
 	e.outerEntityContext = oldEntityContext
 	defer func() { e.outerEntityContext = oldOuterEntityContext }()
 
+	// The definition being built, for mapping decisions that need to see the
+	// widget's OTHER mappings (which attribute property a bare `Attribute:`
+	// fills). Saved/restored like the context above, for nested widgets.
+	oldDef := e.currentDef
+	e.currentDef = def
+	defer func() { e.currentDef = oldDef }()
+
 	// 1. Load template via backend
 	builder, err := e.backend.LoadWidgetTemplate(def.WidgetID, e.pageBuilder.getProjectPath())
 	if err != nil {
@@ -292,8 +309,25 @@ func (e *PluggableWidgetEngine) Build(def *WidgetDefinition, w *ast.WidgetV3) (*
 		return nil, err
 	}
 
-	// 3. Apply property mappings
+	// 3. Apply property mappings.
+	//
+	// A property the widget's editorConfig hides under the current configuration
+	// is SKIPPED, so the widget template's default survives into the stored
+	// object — which is what Studio Pro stores for it. Measured on a Studio
+	// Pro-authored File Uploader 2.5.0: all 34 declared properties are stored,
+	// the hidden ones at their default, so "hidden" means default-valued, not
+	// absent.
+	//
+	// This only ever fires for a property the script did NOT name — an MDL
+	// keyword shared by several properties (File Uploader routes both
+	// `associatedFiles` and `associatedImages` from `DataSource:`, gated on
+	// `uploadMode`). Naming a hidden property outright is still an error, raised
+	// by MDL-WIDGET10 at check time rather than silently dropped here (#956).
+	hiddenSkip := e.hiddenUnnamedProperties(def, w)
 	for _, mapping := range mappings {
+		if hiddenSkip[strings.ToLower(mapping.PropertyKey)] {
+			continue
+		}
 		ctx, err := e.resolveMapping(mapping, w)
 		if err != nil {
 			return nil, mdlerrors.NewBackend("resolve mapping for "+mapping.PropertyKey, err)
@@ -539,6 +573,65 @@ func (e *PluggableWidgetEngine) Build(def *WidgetDefinition, w *ast.WidgetV3) (*
 	return cw, nil
 }
 
+// isPrimaryAttributeMapping reports whether mapping is the one a bare
+// `Attribute:` should fill: the FIRST attribute-typed mapping in the definition,
+// which is the widget's primary attribute (GenerateDefJSON preserves the widget
+// XML's property order, and a widget declares its main attribute first —
+// verified on Slider, RangeSlider, StarRating and ComboBox).
+//
+// A widget with exactly one attribute property is unaffected, which is the case
+// the bare keyword was written for.
+func (e *PluggableWidgetEngine) isPrimaryAttributeMapping(mapping PropertyMapping) bool {
+	def := e.currentDef
+	if def == nil {
+		return true // no definition to compare against — behave as before
+	}
+	for _, m := range def.PropertyMappings {
+		if m.Operation == "attribute" || m.Source == "Attribute" {
+			return m.PropertyKey == mapping.PropertyKey
+		}
+	}
+	return true
+}
+
+// hiddenUnnamedProperties returns the widget properties that are hidden under
+// the widget's current configuration AND were not named by the script — i.e.
+// reached only through an MDL keyword that several properties share. Writing
+// into one of those is CE0463; writing into a hidden property the script named
+// explicitly is reported by MDL-WIDGET10 instead, so it is deliberately not
+// included here.
+//
+// Rules come from the .def.json, falling back to a live lift from the installed
+// .mpk (the same two sources the visibility application uses).
+func (e *PluggableWidgetEngine) hiddenUnnamedProperties(def *WidgetDefinition, w *ast.WidgetV3) map[string]bool {
+	rules := def.PropertyVisibility
+	if len(rules) == 0 {
+		rules = resolveWidgetVisibilityRules(e.pageBuilder.getProjectPath(), def.WidgetID)
+	}
+	if len(rules) == 0 {
+		return nil
+	}
+	values, explicit := widgetValueMap(w, def)
+	out := map[string]bool{}
+	for _, rule := range rules {
+		if rule.Nested() || rule.HiddenWhen == nil {
+			continue
+		}
+		key := strings.ToLower(rule.PropertyKey)
+		if explicit[key] {
+			continue // named by the script — MDL-WIDGET10's business, not ours
+		}
+		condVal, known := values[strings.ToLower(rule.HiddenWhen.PropertyKey)]
+		if !known {
+			continue // condition indeterminable — never guess
+		}
+		if rule.HiddenWhen.Hidden(map[string]string{rule.HiddenWhen.PropertyKey: condVal}) {
+			out[key] = true
+		}
+	}
+	return out
+}
+
 // templateAttrPlaceholderRe matches `{AttrName}` placeholders in a text
 // template. Numeric parameter references (`{1}`) don't match and pass through
 // verbatim.
@@ -576,9 +669,18 @@ func (e *PluggableWidgetEngine) applyOperation(builder backend.WidgetObjectBuild
 		// braces literally, which Studio Pro's translatable-text parser rejects
 		// ("Brace should be followed by a number of digits"). Placeholder-less
 		// text keeps the SetTextTemplate path so backend output is unchanged.
-		if templateAttrPlaceholderRe.MatchString(ctx.PrimitiveVal) {
+		// `contentparams:` supplies the parameters for a `{1}`-style template.
+		// The explicit-property pass has routed this since #928; the MAPPING pass
+		// did not, so the same text authored through a mapped property key was
+		// written with an empty parameter list and mxbuild answered CE0720. The
+		// gap was unreachable while such text was being dropped altogether
+		// (#254) — fixing the drop is what exposes it.
+		switch {
+		case len(ctx.ClientParams) > 0 && numericTemplatePlaceholderRe.MatchString(ctx.PrimitiveVal):
+			builder.SetTextTemplateWithClientParams(propKey, ctx.PrimitiveVal, ctx.ClientParams)
+		case templateAttrPlaceholderRe.MatchString(ctx.PrimitiveVal):
 			builder.SetTextTemplateWithParams(propKey, ctx.PrimitiveVal, e.pageBuilder.entityContext)
-		} else {
+		default:
 			builder.SetTextTemplate(propKey, ctx.PrimitiveVal)
 		}
 	case "action":
@@ -673,6 +775,22 @@ func (e *PluggableWidgetEngine) resolveMapping(mapping PropertyMapping, w *ast.W
 
 	source := mapping.Source
 	if source == "" {
+		// A named action slot: no Source, addressed by the widget's own property
+		// key. This is how every action slot but the click and change ones is
+		// authored — `createFileAction: microflow M.ACT_CreateFile` (#956).
+		if mapping.Operation == "action" {
+			act, err := namedActionSlotValue(w, mapping.PropertyKey)
+			if err != nil {
+				return nil, err
+			}
+			if act != nil {
+				built, err := e.pageBuilder.buildClientActionV3(act)
+				if err != nil {
+					return nil, mdlerrors.NewBackend("build action for "+mapping.PropertyKey, err)
+				}
+				ctx.Action = built
+			}
+		}
 		return ctx, nil
 	}
 
@@ -685,7 +803,21 @@ func (e *PluggableWidgetEngine) resolveMapping(mapping PropertyMapping, w *ast.W
 		// GenerateDefJSON orders first). Fall back to the generic single
 		// `Attribute:` keyword for single-attribute widgets (ComboBox, filters).
 		attr := namedPropValue(mapping, w)
-		if attr == "" {
+		if attr == "" && e.isPrimaryAttributeMapping(mapping) {
+			// The bare `Attribute:` keyword names ONE attribute — the widget's
+			// primary one. Applying it to every attribute-typed mapping wrote the
+			// same AttributeRef into all of them: a Slider's `Attribute: Score`
+			// landed on valueAttribute AND minAttribute, maxAttribute and
+			// stepAttribute, which Studio Pro leaves unset unless the matching
+			// *ValueType is "attribute" — and a value in a pruned slot is CE0463
+			// (issue #238).
+			//
+			// The Slider is where this surfaced because its editorConfig computes
+			// the hidden list from lookup tables —
+			// `hidePropertiesIn(t,e,[].concat(n(v[e.minValueType]), …))` — with no
+			// string literal to lift, so the visibility extractor produces NO rule
+			// for those three and the hidden-property guard cannot catch it.
+			// Not writing them in the first place does not depend on that data.
 			attr = w.GetAttribute()
 		}
 		if attr != "" {
@@ -706,6 +838,9 @@ func (e *PluggableWidgetEngine) resolveMapping(mapping PropertyMapping, w *ast.W
 		// "texttemplate" writes ctx.PrimitiveVal as the ClientTemplate text.
 		if v := namedPropValue(mapping, w); v != "" {
 			ctx.PrimitiveVal = v
+			if numericTemplatePlaceholderRe.MatchString(v) {
+				ctx.ClientParams = e.pageBuilder.buildClientTemplateParams(w.GetContentParams())
+			}
 		}
 
 	case "Attributes":
@@ -1100,7 +1235,15 @@ func (e *PluggableWidgetEngine) buildObjectListItem(mapping *ObjectListMapping, 
 			// when MDL writes `Caption: '{1}'` it pairs with `CaptionParams:
 			// [{1} = attr]`. The companion key is the matched name (alias or
 			// schema name) + "Params".
-			if paramsRaw, ok := child.Properties[matchedAlias+"Params"]; ok {
+			// lookupProperty, not a direct index: MDL property names are
+			// case-insensitive everywhere else, and matchedAlias is the SCHEMA
+			// key (`buttonCaption`) while the script — and DESCRIBE — write the
+			// widget's own casing (`ButtonCaptionParams`). A direct index found
+			// the companion only when the two happened to agree, which is why
+			// this worked for a DataGrid column's `CaptionParams` and silently
+			// dropped a File Uploader custom button's, leaving a `{1}` with no
+			// parameter and failing the build with CE0720 (#956).
+			if paramsRaw, ok := lookupProperty(child.Properties, matchedAlias+"Params"); ok {
 				if astParams, ok := paramsRaw.([]ast.ParamAssignmentV3); ok && len(astParams) > 0 {
 					prop.Parameters = e.pageBuilder.buildClientTemplateParams(astParams)
 				}
@@ -1133,11 +1276,42 @@ func (e *PluggableWidgetEngine) buildObjectListItem(mapping *ObjectListMapping, 
 				continue
 			}
 			prop.DataSource = ds
+		case "action":
+			// An action on an object-list ITEM: a chart series'
+			// staticOnClickAction, a popupmenu item's action, a maps marker's
+			// onClick, an accordion group's onToggleCollapsed (#956).
+			//
+			// Read it through namedActionSlotValue — the same reader the
+			// top-level named slots use — rather than off the AST's fixed Action
+			// slot. `microflow M.X` in a property position parses as a
+			// *DataSourceV3 (dataSourceExprV3 wins in widgetPropertyV3), so a
+			// direct read would miss the form people actually write, and would
+			// take the datasource branch of this very switch on the way past.
+			//
+			// matchedAlias, not ip.PropertyKey: the outer lookup already fell
+			// back to an MDL alias, and re-reading under the schema key would
+			// find nothing.
+			act, err := namedActionSlotValue(child, matchedAlias)
+			if err != nil {
+				return spec, err
+			}
+			if act == nil {
+				continue
+			}
+			built, err := e.pageBuilder.buildClientActionV3(act)
+			if err != nil {
+				return spec, mdlerrors.NewBackend(
+					"build action for object-list item property "+ip.PropertyKey, err)
+			}
+			if built == nil {
+				// An unset slot must stay unset: writing a NoAction over it
+				// would clear whatever the widget had.
+				continue
+			}
+			prop.Action = built
 		default:
-			// Remaining unsupported sub-property kinds (action) still need richer
-			// AST context than the child's property bag.
-			// TODO(#538 follow-up): action expressions inside object-list item
-			// property positions (e.g. chart series staticOnClickAction).
+			// Remaining unsupported sub-property kinds still need richer AST
+			// context than the child's property bag.
 			continue
 		}
 		spec.Properties = append(spec.Properties, prop)
@@ -1505,7 +1679,13 @@ var numericTemplatePlaceholderRe = regexp.MustCompile(`\{[0-9]+\}`)
 
 func isBuiltinPropName(name string) bool {
 	switch name {
-	case "DataSource", "Attribute", "Label", "Caption", "Action",
+	// OnChange belongs beside Action: both are dedicated MDL keywords resolved
+	// by resolveMapping, neither is a widget storage key. Its absence meant
+	// `OnChange:` fell through to the storage-name check and collided with the
+	// widgets whose slot is spelled exactly `onChange` — Slider, RangeSlider and
+	// StarRating — which were told to "use `OnChange:` instead" of `OnChange:`,
+	// and could not have their only action slot authored at all (#956).
+	case "DataSource", "Attribute", "Label", "Caption", "Action", "OnChange",
 		"Selection", "Class", "Style", "DynamicClasses", "Editable", "Visible",
 		"WidgetType", "DesignProperties", "Association", "CaptionAttribute",
 		"Content", "RenderMode", "ContentParams", "CaptionParams",

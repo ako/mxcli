@@ -39,6 +39,11 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 		if alterStmt, ok := stmt.(*ast.AlterEntityStmt); ok {
 			violations = append(violations, ValidateAlterEntity(alterStmt)...)
 		}
+		// An association carries the same pair of contradictory guards (MDL067).
+		if assocStmt, ok := stmt.(*ast.CreateAssociationStmt); ok {
+			violations = append(violations, validateIdempotencyGuard(
+				assocStmt.CreateOrModify, assocStmt.IfNotExists, "association", assocStmt.Name.String())...)
+		}
 		// A user role with no System module role cannot sign in (CE0156) — but
 		// only once security is on, which the script may say itself.
 		if roleStmt, ok := stmt.(*ast.CreateUserRoleStmt); ok {
@@ -140,6 +145,13 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 	// written. --references catches it too, but the ordering needs no project
 	// when the target is created by a plain CREATE (#9).
 	violations = append(violations, ValidateScriptPageOrder(prog)...)
+
+	// Flag the same ordering mistake for the other reference kinds the executor
+	// resolves at write time — a flow's parameter and return types, an entity
+	// attribute's enumeration, an association's endpoints, a CALL, and a GRANT.
+	// `exec` already produces the diagnosis once a statement has failed; this
+	// says it before the first write (#955).
+	violations = append(violations, ValidateScriptDefinitionOrder(prog)...)
 
 	// Flag a document-access GRANT naming a role from another module — Mendix
 	// rejects it with CE0148. Needs no project, so it runs here rather than

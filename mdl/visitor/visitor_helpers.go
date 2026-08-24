@@ -291,25 +291,32 @@ func buildIndex(ctx parser.IIndexDefinitionContext) ast.Index {
 		return ast.Index{}
 	}
 	idxDef := ctx.(*parser.IndexDefinitionContext)
-	var columns []ast.IndexColumn
+	return ast.Index{Columns: buildIndexColumns(idxDef.IndexAttributeList())}
+}
 
-	if attrList := idxDef.IndexAttributeList(); attrList != nil {
-		ial := attrList.(*parser.IndexAttributeListContext)
-		for _, ia := range ial.AllIndexAttribute() {
-			iaCtx := ia.(*parser.IndexAttributeContext)
-			col := ast.IndexColumn{
-				Name: unquoteIdentifier(iaCtx.IndexColumnName().GetText()),
-			}
-			// Check for sort order (ASC/DESC)
-			if iaCtx.DESC() != nil {
-				col.Descending = true
-			}
-			// ASC is default, no need to set explicitly
-			columns = append(columns, col)
-		}
+// buildIndexColumns reads an index's column list. It is shared by the two
+// spellings that reach it with the list but not the surrounding definition: the
+// entity-body/ALTER form (`index "Idx" on (A, B DESC)`) and the standalone
+// `create index Idx on Mod.Entity (A, B DESC)`.
+func buildIndexColumns(attrList parser.IIndexAttributeListContext) []ast.IndexColumn {
+	if attrList == nil {
+		return nil
 	}
-
-	return ast.Index{Columns: columns}
+	ial := attrList.(*parser.IndexAttributeListContext)
+	var columns []ast.IndexColumn
+	for _, ia := range ial.AllIndexAttribute() {
+		iaCtx := ia.(*parser.IndexAttributeContext)
+		col := ast.IndexColumn{
+			Name: unquoteIdentifier(iaCtx.IndexColumnName().GetText()),
+		}
+		// Check for sort order (ASC/DESC)
+		if iaCtx.DESC() != nil {
+			col.Descending = true
+		}
+		// ASC is default, no need to set explicitly
+		columns = append(columns, col)
+	}
+	return columns
 }
 
 func buildDataType(ctx parser.IDataTypeContext) ast.DataType {

@@ -1202,6 +1202,47 @@ func customWidgetPropertyActionMap(ctx *ExecContext, w map[string]any, propertyK
 	return nil
 }
 
+// customWidgetActionForSource returns the raw Forms$*ClientAction map stored on
+// whichever of a widget's action slots MDL addresses as `source` ("OnClick" or
+// "OnChange"), or nil when that slot is unset or holds a NoAction.
+//
+// It exists because the stored key is NOT the MDL name. Mendix's own widgets
+// suffix their action slots — a BadgeButton's click slot is `onClickEvent`, a
+// HeatMap's is `onClickAction`, a Combobox's change slot is `onChangeEvent` —
+// and the writer already accounts for that: actionSourceForKey strips one
+// Event/Action suffix before matching, which is the only reason `onClick:` and
+// `OnChange:` reach those widgets. Looking the property up by the literal string
+// "onClick" found it only on widgets spelled exactly that way, so on the rest
+// mxcli wrote an action it could not read back and a describe→exec round-trip
+// dropped the wiring (#956).
+//
+// Resolved through actionSourceForKey rather than a second copy of the rule, so
+// the reader cannot drift from the writer again — a key the writer accepts is by
+// construction a key this finds.
+func customWidgetActionForSource(ctx *ExecContext, w map[string]any, source string) map[string]any {
+	obj, ok := w["Object"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	// DataGrid2/Gallery keep PropertyTypes at the ObjectType level, so use the
+	// fallback form (same as the widget-slot readers).
+	propTypeKeyMap := buildPropertyTypeKeyMap(w, true)
+	for _, prop := range getBsonArrayElements(obj["Properties"]) {
+		propMap, ok := prop.(map[string]any)
+		if !ok {
+			continue
+		}
+		key := propTypeKeyMap[extractBinaryID(propMap["TypePointer"])]
+		if key == "" || actionSourceForKey(key) != source {
+			continue
+		}
+		if action := customWidgetPropertyActionMap(ctx, w, key); action != nil {
+			return action
+		}
+	}
+	return nil
+}
+
 // extractCustomWidgetPropertyAction extracts an action description from a CustomWidget property.
 // Returns a formatted string like "CALL_MICROFLOW Module.Flow" or "SHOW_PAGE Module.Page".
 func extractCustomWidgetPropertyAction(ctx *ExecContext, w map[string]any, propertyKey string) string {
@@ -1260,4 +1301,39 @@ func extractCustomWidgetPropertyAction(ctx *ExecContext, w map[string]any, prope
 
 func (e *Executor) extractCustomWidgetPropertyAssociation(w map[string]any, propertyKey string) string {
 	return extractCustomWidgetPropertyAssociation(e.newExecContext(context.Background()), w, propertyKey)
+}
+
+// anyCustomWidgetDataSource returns the first datasource a pluggable widget's
+// properties hold that names something — skipping any that parse to an empty
+// reference.
+//
+// firstObjectPropertyDataSource is NOT a substitute, and the difference is the
+// whole point: it returns as soon as a property's DataSource parses to a
+// non-nil value, even one carrying no reference. A File Uploader has such a
+// property ahead of its real one, so the caller received an empty datasource,
+// discarded it, and described the widget as having none — which is exactly the
+// silent drop this exists to prevent (#956).
+func anyCustomWidgetDataSource(w map[string]any) *rawDataSource {
+	obj, ok := w["Object"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	for _, prop := range getBsonArrayElements(obj["Properties"]) {
+		propMap, ok := prop.(map[string]any)
+		if !ok {
+			continue
+		}
+		value, ok := propMap["Value"].(map[string]any)
+		if !ok {
+			continue
+		}
+		ds, ok := value["DataSource"].(map[string]any)
+		if !ok || ds == nil {
+			continue
+		}
+		if result := parseDataSource(ds); result != nil && result.Reference != "" {
+			return result
+		}
+	}
+	return nil
 }

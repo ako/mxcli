@@ -1235,16 +1235,42 @@ func (fb *flowBuilder) addRestCallAction(s *ast.RestCallStmt) model.ID {
 			s.OutputVariable = s.Result.ResultEntity.Name
 		}
 		// Cardinality is authored on the microflow's ImportMappingCall in
-		// BSON (Range.SingleObject + ForceSingleOccurrence) — the same
-		// import mapping can yield either single or list depending on the
-		// call site. The describer emits `as list of Module.Entity` for a
-		// list and `as Module.Entity` for a single object; the builder
-		// trusts that explicit choice. ForceSingleOccurrence mirrors
-		// SingleObject so the writer reproduces the BSON shape Studio Pro
-		// emits (Range and ForceSingleOccurrence agree on whether one
-		// value is bound).
+		// BSON — the same import mapping can yield either single or list
+		// depending on the call site. The describer emits `as list of
+		// Module.Entity` for a list and `as Module.Entity` for a single
+		// object; the builder trusts that explicit choice for the result
+		// VARIABLE's type. The two BSON flags beside it are not the same
+		// axis and are not authored here (issue #242):
+		//
+		//	ForceSingleOccurrence  "the mapping yields many, bind one" — true
+		//	                       only when the mapping's ROOT is a list and
+		//	                       the call site binds a single object
+		//	Range.SingleObject     Studio Pro's First/All range. MDL's REST
+		//	                       syntax has no range keyword, so it is All.
+		//
+		// Mirroring both onto SingleObject wrote ForceSingleOccurrence=true
+		// for `as Entity` against an OBJECT-rooted mapping, which builds
+		// cleanly (mxcli check, mx check and mxbuild all pass) and then
+		// throws when the activity runs:
+		//
+		//	MicroflowException: key not found: Path(QName(None,),None,)
+		//	  at ...importer.mapping.MappingCache.storeValueMappingElement
+		//
+		// Measured on 11.13.0 over all four flag combinations: the exception
+		// tracks ForceSingleOccurrence alone — Range.SingleObject does not
+		// affect it either way. Both are written to match the shapes Studio
+		// Pro stores: PrivateCloudData.REST_GetEnvironmentByUUID (list-rooted
+		// mapping, single object) keeps ForceSingleOccurrence=true, and all
+		// three reference documents store Range.SingleObject=false.
 		singleObject := !s.Result.IsList
-		fso := singleObject
+		fso := false
+		if singleObject && fb.backend != nil {
+			if im, err := fb.backend.GetImportMappingByQualifiedName(
+				s.Result.MappingName.Module, s.Result.MappingName.Name); err == nil {
+				fso = fb.mappingRootIsList(im)
+			}
+		}
+		rangeAll := false
 		resultHandling = &microflows.ResultHandlingMapping{
 			BaseElement:           model.BaseElement{ID: model.ID(types.GenerateID())},
 			MappingID:             model.ID(mappingQN),
@@ -1252,6 +1278,7 @@ func (fb *flowBuilder) addRestCallAction(s *ast.RestCallStmt) model.ID {
 			ResultVariable:        s.OutputVariable,
 			SingleObject:          singleObject,
 			ForceSingleOccurrence: &fso,
+			RangeSingleObject:     &rangeAll,
 		}
 	case ast.RestResultNone:
 		resultHandling = &microflows.ResultHandlingNone{
@@ -1522,6 +1549,35 @@ func (fb *flowBuilder) addExecuteDatabaseQueryAction(s *ast.ExecuteDatabaseQuery
 	return activity.ID
 }
 
+// mappingRootIsList reports whether the import mapping's ROOT yields many
+// objects rather than one — the mapping's own shape, independent of what any
+// call site binds it to.
+//
+// JSON-backed mappings answer from the structure's root element kind; XML-schema
+// and message-definition mappings carry no JsonStructure, so the root mapping
+// element's occurrence bound answers instead (unbounded is stored as -1).
+// A mapping that cannot be resolved reads as object-rooted: that is the shape
+// mxbuild rejects loudly with CE0243 when it is wrong, whereas guessing "list"
+// writes ForceSingleOccurrence=true, which fails only once the activity runs.
+func (fb *flowBuilder) mappingRootIsList(im *model.ImportMapping) bool {
+	if im == nil {
+		return false
+	}
+	if im.JsonStructure != "" && fb.backend != nil {
+		parts := strings.SplitN(im.JsonStructure, ".", 2)
+		if len(parts) == 2 {
+			if js, err := fb.backend.GetJsonStructureByQualifiedName(parts[0], parts[1]); err == nil && len(js.Elements) > 0 {
+				return js.Elements[0].ElementType == "Array"
+			}
+		}
+	}
+	if len(im.Elements) > 0 && im.Elements[0] != nil {
+		root := im.Elements[0]
+		return root.MaxOccurs == -1 || root.MaxOccurs > 1
+	}
+	return false
+}
+
 // addImportFromMappingAction adds an ImportXmlAction to the microflow.
 func (fb *flowBuilder) addImportFromMappingAction(s *ast.ImportFromMappingStmt) model.ID {
 	activityX := fb.posX
@@ -1598,25 +1654,8 @@ func (fb *flowBuilder) addImportFromMappingAction(s *ast.ImportFromMappingStmt) 
 	resultEntityQN := ""
 	if fb.backend != nil {
 		if im, err := fb.backend.GetImportMappingByQualifiedName(s.Mapping.Module, s.Mapping.Name); err == nil {
-			resolved := false
-			if im.JsonStructure != "" {
-				parts := strings.SplitN(im.JsonStructure, ".", 2)
-				if len(parts) == 2 {
-					if js, err := fb.backend.GetJsonStructureByQualifiedName(parts[0], parts[1]); err == nil && len(js.Elements) > 0 {
-						if js.Elements[0].ElementType == "Array" && !rangeAuthored {
-							resultHandling.SingleObject = false
-						}
-						resolved = true
-					}
-				}
-			}
-			if !resolved && len(im.Elements) > 0 && im.Elements[0] != nil {
-				// MaxOccurs > 1 or unbounded (-1) signals a list even when
-				// the kind is Object.
-				root := im.Elements[0]
-				if (root.MaxOccurs == -1 || root.MaxOccurs > 1) && !rangeAuthored {
-					resultHandling.SingleObject = false
-				}
+			if !rangeAuthored && fb.mappingRootIsList(im) {
+				resultHandling.SingleObject = false
 			}
 			if len(im.Elements) > 0 && im.Elements[0] != nil && im.Elements[0].Entity != "" {
 				resultEntityQN = im.Elements[0].Entity

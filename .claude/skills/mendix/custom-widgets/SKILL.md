@@ -165,9 +165,51 @@ The `extract` command parses the .mpk (ZIP archive containing `package.xml` + wi
 | selection | selection | `selection` |
 | widgets | widgets (child slot) | container name (key uppercased) |
 | boolean/string/enumeration/integer/decimal | primitive | hardcoded `value` from defaultValue |
-| action/expression/textTemplate/object/icon/image/file | *skipped* | too complex for auto-mapping |
+| textTemplate | texttemplate | `TextTemplate` |
+| action | action | `OnClick` / `OnChange`, else the property's own key |
+| expression/object/icon/image/file | *skipped* | too complex for auto-mapping |
 
 Skipped types require manual configuration in the .def.json.
+
+**Action slots are matched by name, and the storage key is not the MDL name.**
+Mendix's own widgets suffix theirs — a BadgeButton's click slot is `onClickEvent`,
+a HeatMap's is `onClickAction`, a Combobox's change slot is `onChangeEvent` —
+so `actionSourceForKey` strips one `Event`/`Action` suffix before matching
+`onclick`/`onchange`. That is what lets `onClick:` and `OnChange:` reach those
+widgets at all.
+
+**Every other action slot is authored by the widget's own key** — a *named slot*:
+
+```sql
+FILEUPLOADER fu (
+  createFileAction:    microflow MyModule.ACT_CreateFile,
+  onUploadSuccessFile: microflow MyModule.ACT_AfterUpload
+)
+```
+
+In the .def.json a named slot is a mapping with **no `source`**, the same shape
+object-list item mappings use:
+
+```json
+{"propertyKey": "createFileAction", "operation": "action"}
+```
+
+`microflow`/`nanoflow` on a named slot parse as a *data source* — those forms
+overlap with `dataSourceExprV3` and the datasource alternative has to win, or a
+chart series' `staticDataSource: microflow M.X` would become an action. The
+executor converts them, because the widget definition is the only layer that
+knows the slot is action-typed. Every other action form (`show_page`,
+`save_changes`, …) reaches the AST as an action directly.
+
+**A slot may be conditional, and writing into a pruned one is CE0463.** DataGrid 2's
+`onSelectionChange` is *hidden when `itemSelection` = None*, so it needs
+`Selection: Multiple` (or `Single`) alongside it. `mxcli check` refuses the
+statement with **MDL-WIDGET10** rather than letting the build fail. `mxcli widget
+describe <name>` lists each slot's `hidden when` condition.
+
+Object-list *item* action slots (chart series `staticOnClickAction`, popupmenu
+item `action`) have mappings generated but the engine still skips them at apply
+time. See upstream #956.
 
 ### Step 2 -- Extract BSON template from Studio Pro
 

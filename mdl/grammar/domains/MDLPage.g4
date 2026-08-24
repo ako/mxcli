@@ -376,6 +376,8 @@ widgetTypeV3
     | SERIES
     | LINE
     | SCALECOLOR
+    | CUSTOMBUTTON
+    | ALLOWEDFILEFORMAT
     // Dual-stack keyword (Phase 2 — #539). LEGACYDATAGRID always routes to
     // the dojo-based native Forms$DataGrid even on Mendix 11+; useful for
     // migrated projects that still have native datagrids on the page.
@@ -402,6 +404,13 @@ widgetPropertyV3
     | RENDERMODE COLON renderModeV3                   // RenderMode: H3
     | CONTENTPARAMS COLON paramListV3                 // ContentParams: [{1} = $var.Name]
     | CAPTIONPARAMS COLON paramListV3                 // CaptionParams: [{1} = 'hello']
+    // A text-template sub-property of an object-list ITEM carries its
+    // parameters under `<Name>Params`, and those names are the widget's own
+    // (a File Uploader custom button's `ButtonCaptionParams`), so they cannot
+    // each have a token. Placed before the generic propertyValueV3
+    // alternatives, which also admit a `[...]` array — `{N} = expr` inside is
+    // what separates them (#956).
+    | (IDENTIFIER | keyword) COLON paramListV3        // <Name>Params: [{1} = Attr]
     | BUTTONSTYLE COLON buttonStyleV3                  // ButtonStyle: Primary
     | CLASS COLON STRING_LITERAL                       // Class: 'my-class'
     | STYLE COLON STRING_LITERAL                       // Style: 'color: red'
@@ -427,6 +436,18 @@ widgetPropertyV3
     // NANOFLOW/ASSOCIATION/VARIABLE/SELECTION) disambiguates it from
     // propertyValueV3, which can never start with those. Issue: chart series (9a).
     | (IDENTIFIER | keyword) COLON dataSourceExprV3
+    // Generic action-typed property — a NAMED action slot addressed by the
+    // widget's own key: `createFileAction: show_page Module.P`. Placed AFTER the
+    // datasource branch on purpose: actionExprV3 and dataSourceExprV3 overlap on
+    // MICROFLOW / NANOFLOW / VARIABLE, and putting this first would read a chart
+    // series' `staticDataSource: microflow M.X` as an action. Those overlapping
+    // forms therefore still parse as a data source, and the executor converts
+    // them when the widget definition says the slot is action-typed — the same
+    // split fragmentArgValue already resolves ("the executor disambiguates using
+    // the parameter's declared kind"). This branch carries the forms that are
+    // unambiguous: show_page, save_changes, close_page, create_object, delete,
+    // open_link, sign_out, complete_task. Issue #956.
+    | (IDENTIFIER | keyword) COLON actionExprV3
     | IDENTIFIER COLON propertyValueV3                // Generic: any other property
     | keyword COLON propertyValueV3                  // Generic: keyword as property name (for pluggable widgets)
     ;

@@ -41,7 +41,7 @@ func TestDescribe_UnsupportedAction_KeepsErrorHandler(t *testing.T) {
 		mkID("sync"):  unmapped,
 		mkID("after"): &microflows.ActionActivity{
 			BaseActivity: microflows.BaseActivity{BaseMicroflowObject: mkObj("after")},
-			Action:       &microflows.CommitObjectsAction{CommitVariable: "Obj"},
+			Action:       &microflows.CommitObjectsAction{CommitVariable: "Obj", WithEvents: true},
 		},
 		// The three error-branch activities that disappeared.
 		mkID("err1"): &microflows.ActionActivity{
@@ -50,7 +50,7 @@ func TestDescribe_UnsupportedAction_KeepsErrorHandler(t *testing.T) {
 		},
 		mkID("err2"): &microflows.ActionActivity{
 			BaseActivity: microflows.BaseActivity{BaseMicroflowObject: mkObj("err2")},
-			Action:       &microflows.CommitObjectsAction{CommitVariable: "E"},
+			Action:       &microflows.CommitObjectsAction{CommitVariable: "E", WithEvents: true},
 		},
 		mkID("err3"): &microflows.ActionActivity{
 			BaseActivity: microflows.BaseActivity{BaseMicroflowObject: mkObj("err3")},

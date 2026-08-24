@@ -238,7 +238,7 @@ create microflow CRM.ACT_Order_SubmitForReview ($Order: CRM.Order)
 begin
   -- Update status (like K2 "Set Status")
   change $Order (status = CRM.OrderStatus.PendingReview);
-  commit $Order with events;
+  commit $Order;
 
   -- Show page for review (like K2 "Task" with form)
   show page CRM.Order_Review ($Order = $Order);
@@ -256,7 +256,7 @@ begin
   else
     -- Auto-approve (K2 "Go To" equivalent)
     change $Order (status = CRM.OrderStatus.Approved);
-    commit $Order with events;
+    commit $Order;
     set $Approved = true;
   end if;
 
@@ -350,7 +350,7 @@ begin
     return false;
   end if;
 
-  commit $Customer with events;
+  commit $Customer;
   return true;
 end;
 

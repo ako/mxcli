@@ -22,6 +22,7 @@ type CreateObjectAction struct {
 	EntityQualifiedName string            `json:"entityQualifiedName"` // BY_NAME_REFERENCE
 	OutputVariable      string            `json:"outputVariable,omitempty"`
 	Commit              CommitType        `json:"commit"`
+	RefreshInClient     bool              `json:"refreshInClient"`
 	InitialMembers      []*MemberChange   `json:"initialMembers,omitempty"`
 }
 
@@ -49,6 +50,12 @@ type DeleteObjectAction struct {
 func (DeleteObjectAction) isMicroflowAction() {}
 
 // CommitObjectsAction commits one or more objects.
+//
+// WithEvents mirrors the stored BSON property, so unlike ast.MfCommitStmt —
+// which models the MDL statement, where an absent modifier means the Mendix
+// default — its zero value is a real setting and not the default one. Studio Pro
+// writes true for a fresh Commit activity (#895), so anything constructing this
+// action has to say so; leaving the field out means events OFF.
 type CommitObjectsAction struct {
 	model.BaseElement
 	ErrorHandlingType ErrorHandlingType `json:"errorHandlingType,omitempty"`

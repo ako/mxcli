@@ -30,7 +30,7 @@ func TestTraverseFlow_LinearSequence(t *testing.T) {
 		},
 		mkID("commit"): &microflows.ActionActivity{
 			BaseActivity: microflows.BaseActivity{BaseMicroflowObject: mkObj("commit")},
-			Action:       &microflows.CommitObjectsAction{CommitVariable: "Obj"},
+			Action:       &microflows.CommitObjectsAction{CommitVariable: "Obj", WithEvents: true},
 		},
 		mkID("end"): &microflows.EndEvent{BaseMicroflowObject: mkObj("end")},
 	}
@@ -1492,7 +1492,7 @@ func TestTraverseFlow_Issue528_NestedGuardDoesNotSwallowSharedActivities(t *test
 		mkID("outer_merge"):  &microflows.ExclusiveMerge{BaseMicroflowObject: mkObjAt("outer_merge", 300, 60)},
 		mkID("shared_act"): &microflows.ActionActivity{
 			BaseActivity: microflows.BaseActivity{BaseMicroflowObject: mkObjAt("shared_act", 400, 60)},
-			Action:       &microflows.CommitObjectsAction{CommitVariable: "Deal"},
+			Action:       &microflows.CommitObjectsAction{CommitVariable: "Deal", WithEvents: true},
 		},
 		mkID("end"): &microflows.EndEvent{BaseMicroflowObject: mkObjAt("end", 500, 60)},
 	}

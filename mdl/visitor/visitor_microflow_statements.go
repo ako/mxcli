@@ -1053,6 +1053,7 @@ func buildCreateObjectStatement(ctx parser.ICreateObjectStatementContext) *ast.C
 	}
 
 	stmt.Commit = buildCommitClause(createCtx.CommitClause())
+	stmt.RefreshInClient = createCtx.REFRESH() != nil
 
 	// Check for ON ERROR clause
 	if errClause := createCtx.OnErrorClause(); errClause != nil {
@@ -1101,7 +1102,7 @@ func buildChangeObjectStatement(ctx parser.IChangeObjectStatementContext) *ast.C
 }
 
 // buildCommitStatement converts COMMIT statement context to MfCommitStmt.
-// Grammar: COMMIT VARIABLE (WITH EVENTS)? REFRESH?
+// Grammar: COMMIT VARIABLE ((WITH | WITHOUT) EVENTS)? REFRESH?
 func buildCommitStatement(ctx parser.ICommitStatementContext) *ast.MfCommitStmt {
 	if ctx == nil {
 		return nil
@@ -1115,10 +1116,16 @@ func buildCommitStatement(ctx parser.ICommitStatementContext) *ast.MfCommitStmt 
 		stmt.Variable = strings.TrimPrefix(v.GetText(), "$")
 	}
 
-	// Check for WITH EVENTS
-	if commitCtx.EVENTS() != nil {
-		stmt.WithEvents = true
+	// Check for WITHOUT EVENTS.
+	//
+	// Absent means events ON — Mendix's default for the Commit activity (#895).
+	// A bare WITH EVENTS also leaves the flag clear: it says the same thing as
+	// writing nothing, and every script written before the default was corrected
+	// spells it out that way.
+	if commitCtx.WITHOUT() != nil {
+		stmt.WithoutEvents = true
 	}
+	stmt.ExplicitWithEvents = commitCtx.WITH() != nil
 
 	// Check for REFRESH
 	if commitCtx.REFRESH() != nil {
@@ -1134,6 +1141,7 @@ func buildCommitStatement(ctx parser.ICommitStatementContext) *ast.MfCommitStmt 
 }
 
 // buildDeleteObjectStatement converts DELETE statement context to DeleteObjectStmt.
+// Grammar: DELETE VARIABLE REFRESH?
 func buildDeleteObjectStatement(ctx parser.IDeleteObjectStatementContext) *ast.DeleteObjectStmt {
 	if ctx == nil {
 		return nil
@@ -1146,6 +1154,8 @@ func buildDeleteObjectStatement(ctx parser.IDeleteObjectStatementContext) *ast.D
 	if v := delCtx.VARIABLE(); v != nil {
 		stmt.Variable = strings.TrimPrefix(v.GetText(), "$")
 	}
+
+	stmt.RefreshInClient = delCtx.REFRESH() != nil
 
 	// Check for ON ERROR clause
 	if errClause := delCtx.OnErrorClause(); errClause != nil {

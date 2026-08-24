@@ -131,7 +131,8 @@ func extractVisibilityRulesFromMPK(mpkPath, widgetID string) []types.WidgetVisib
 func extractVisibilityRulesFromJS(js string) ([]types.WidgetVisibilityRule, editorConfigExtractStats) {
 	var rules []types.WidgetVisibilityRule
 	var stats editorConfigExtractStats
-	seen := map[string]bool{} // dedupe propertyKey+condition
+	var pending []ternaryThenCandidate // resolved after the loop
+	seen := map[string]bool{}          // dedupe propertyKey+condition
 
 	for _, loc := range hideCallRE.FindAllStringIndex(js, -1) {
 		stats.TotalHideCalls++
@@ -141,8 +142,8 @@ func extractVisibilityRulesFromJS(js string) ([]types.WidgetVisibilityRule, edit
 			stats.SkippedComplex++
 			continue
 		}
-		listKey, keys, ok := hideTargetKeys(args)
-		if !ok || len(keys) == 0 {
+		listKey, keys, condKeys, ok := hideTargetKeys(args)
+		if !ok || (len(keys) == 0 && len(condKeys) == 0) {
 			stats.SkippedComplex++
 			continue
 		}
@@ -152,14 +153,58 @@ func extractVisibilityRulesFromJS(js string) ([]types.WidgetVisibilityRule, edit
 		if listKey != "" {
 			itemIdent = enclosingForEachParam(js, callStart)
 		}
-		cond, ok := parseGuard(js, callStart, itemIdent)
+		cond, guardText, ok := parseGuard(js, callStart, itemIdent)
 		if !ok {
+			// `<outer> ? <inner> && hide(...)` — a ternary THEN branch carrying a
+			// second condition. Held back and resolved after the loop, once the
+			// else branch's rules are known (see ternaryThenCandidate).
+			//
+			// ProgressCircle's equivalent parses today only because it wraps the
+			// branch in parentheses, which the grouping-paren strip above removes;
+			// Slider writes it without them, so the guard arrives as
+			// `e.showTooltip?"value"===e.tooltipType` and no rule was produced.
+			if outer, inner, split := splitTernaryThenGuard(guardText); split {
+				aliases := enclosingAliases(js, callStart)
+				ic, iok := guardToCondition(inner, false, aliases, itemIdent)
+				oc, ook := guardToCondition(outer, false, aliases, itemIdent)
+				if iok && ook {
+					for _, key := range keys {
+						pending = append(pending, ternaryThenCandidate{
+							listKey: listKey, key: key, inner: ic, outer: oc,
+						})
+					}
+				}
+			}
 			if listKey != "" {
 				stats.SkippedNested++
 			} else {
 				stats.SkippedComplex++
 			}
 			continue
+		}
+		// A conditional array element carries its OWN condition, which supersedes
+		// the enclosing guard: the branch is what selects the property, so the
+		// guard alone would mark both branches hidden together (#956).
+		if len(condKeys) > 0 {
+			aliases := enclosingAliases(js, callStart)
+			for _, tk := range condKeys {
+				c, ok := guardToCondition(tk.guard, tk.falsy, aliases, itemIdent)
+				if !ok {
+					stats.SkippedComplex++
+					continue
+				}
+				sig := listKey + "\x00" + tk.key + "\x00" + c.PropertyKey + c.Operator + c.Value + c.Scope
+				if seen[sig] {
+					continue
+				}
+				seen[sig] = true
+				cc := c
+				rules = append(rules, types.WidgetVisibilityRule{
+					PropertyKey:     tk.key,
+					ListPropertyKey: listKey,
+					HiddenWhen:      &cc,
+				})
+			}
 		}
 		stats.Recognized++
 		for _, key := range keys {
@@ -176,7 +221,104 @@ func extractVisibilityRulesFromJS(js string) ([]types.WidgetVisibilityRule, edit
 			})
 		}
 	}
+
+	// Resolve the held-back ternary-then candidates. The inner condition is
+	// emitted only when an existing rule hides the SAME property under the
+	// negation of the outer one — the else branch — so the pair reads as a
+	// correct disjunction rather than a conjunction it cannot express (#238).
+	for _, c := range pending {
+		comp, ok := negate(c.outer)
+		if !ok {
+			continue
+		}
+		covered := false
+		for _, r := range rules {
+			if r.PropertyKey != c.key || r.ListPropertyKey != c.listKey || r.HiddenWhen == nil {
+				continue
+			}
+			if *r.HiddenWhen == comp {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			continue
+		}
+		sig := c.listKey + "\x00" + c.key + "\x00" + c.inner.PropertyKey + c.inner.Operator + c.inner.Value + c.inner.Scope
+		if seen[sig] {
+			continue
+		}
+		seen[sig] = true
+		ic := c.inner
+		rules = append(rules, types.WidgetVisibilityRule{
+			PropertyKey:     c.key,
+			ListPropertyKey: c.listKey,
+			HiddenWhen:      &ic,
+		})
+		stats.Recognized++
+	}
 	return rules, stats
+}
+
+// ternaryThenCandidate is a hide whose guard is the THEN branch of a ternary AND
+// carries a second condition:
+//
+//	e.showTooltip ? "value" === e.tooltipType && hidePropertyIn(t, e, "tooltip")
+//	              : hidePropertiesIn(t, e, ["tooltip", "tooltipType"])
+//
+// The property is hidden when `outer AND inner`, which one WidgetVisibilityCondition
+// cannot express — so the inner condition is emitted only when another rule already
+// hides the same property under the NEGATION of the outer one, i.e. the else branch
+// covers the rest. The two rules are then a correct disjunction:
+//
+//	hidden  <=>  !showTooltip  ||  tooltipType == "value"
+//
+// Without that cover the conjunction is not representable and the hide is skipped,
+// which degrades to "not hidden" and is safe. Emitting the inner condition alone
+// would prune the property whenever it holds, including where the widget shows it —
+// CE0463's mirror image (#238).
+type ternaryThenCandidate struct {
+	listKey, key string
+	inner, outer types.WidgetVisibilityCondition
+}
+
+// splitTernaryThenGuard recognises `<outer> ? <inner>` in a guard parseGuard could
+// not read, returning the two halves. The split is on the LAST `?`, so a nested
+// ternary yields the innermost then-branch, which is the one guarding this call.
+func splitTernaryThenGuard(guard string) (outer, inner string, ok bool) {
+	i := strings.LastIndex(guard, "?")
+	if i <= 0 || i == len(guard)-1 {
+		return "", "", false
+	}
+	// The outer half still carries whatever preceded it (`exports.getProperties=
+	// function(e,t){return …`), so reduce it to the trailing expression the same
+	// way the main path does.
+	outerExpr, _ := lastGuardExpr(strings.TrimSpace(guard[:i]))
+	outer = stripReturnPrefix(outerExpr)
+	inner = strings.TrimSpace(guard[i+1:])
+	if outer == "" || inner == "" {
+		return "", "", false
+	}
+	return outer, inner, true
+}
+
+// negate returns the condition that holds exactly when c does not, and whether it
+// is expressible.
+func negate(c types.WidgetVisibilityCondition) (types.WidgetVisibilityCondition, bool) {
+	out := c
+	switch c.Operator {
+	case "truthy":
+		out.Operator = "falsy"
+	case "falsy":
+		out.Operator = "truthy"
+	case "eq":
+		out.Operator = "ne"
+	case "ne":
+		out.Operator = "eq"
+	default:
+		return out, false
+	}
+	return out, true
 }
 
 // hideTargetKeys returns the object-list property a hide call targets (empty for
@@ -189,7 +331,7 @@ func extractVisibilityRulesFromJS(js string) ([]types.WidgetVisibilityRule, edit
 //
 // ok is false for a shape it does not recognize; the caller counts it as skipped
 // and emits no rule, which degrades to "not hidden".
-func hideTargetKeys(args string) (listKey string, keys []string, ok bool) {
+func hideTargetKeys(args string) (listKey string, keys []string, condKeys []ternaryKey, ok bool) {
 	parts := splitTopLevelCommas(args)
 	// Collect string-literal positional args and any array literal.
 	var stringArgs []string
@@ -197,8 +339,17 @@ func hideTargetKeys(args string) (listKey string, keys []string, ok bool) {
 	for _, p := range parts {
 		p = strings.TrimSpace(p)
 		if strings.HasPrefix(p, "[") {
-			for _, m := range stringLitRE.FindAllStringSubmatch(p, -1) {
-				arrayKeys = append(arrayKeys, m[1])
+			for _, el := range splitTopLevelCommas(strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(p), "["), "]")) {
+				if tk, ok := ternaryElement(el); ok {
+					// `cond ? "a" : "b"` as an array ELEMENT. Harvesting its string
+					// literals would invent a key from the comparison value and mark
+					// BOTH branches hidden under the outer guard — see #956.
+					condKeys = append(condKeys, tk...)
+					continue
+				}
+				for _, m := range stringLitRE.FindAllStringSubmatch(el, -1) {
+					arrayKeys = append(arrayKeys, m[1])
+				}
 			}
 			continue
 		}
@@ -209,21 +360,55 @@ func hideTargetKeys(args string) (listKey string, keys []string, ok bool) {
 	if len(arrayKeys) > 0 {
 		switch len(stringArgs) {
 		case 0:
-			return "", arrayKeys, true // hidePropertiesIn(obj, obj, [keys])
+			return "", arrayKeys, condKeys, true // hidePropertiesIn(obj, obj, [keys])
 		case 1:
-			return stringArgs[0], arrayKeys, true // hideNestedPropertiesIn(…, "groups", i, [keys])
+			return stringArgs[0], arrayKeys, condKeys, true // hideNestedPropertiesIn(…, "groups", i, [keys])
 		default:
-			return "", nil, false
+			return "", nil, condKeys, false
 		}
 	}
 	switch len(stringArgs) {
 	case 1:
-		return "", stringArgs, true // hidePropertyIn(obj, obj, "key")
+		return "", stringArgs, condKeys, true // hidePropertyIn(obj, obj, "key")
 	case 2:
-		return stringArgs[0], stringArgs[1:], true // hidePropertyIn(…, "groups", i, "key")
+		return stringArgs[0], stringArgs[1:], condKeys, true // hidePropertyIn(…, "groups", i, "key")
 	default:
-		return "", nil, false
+		return "", nil, condKeys, false
 	}
+}
+
+// ternaryKey is an array element of the form `cond ? "a" : "b"` — a hide whose
+// TARGET depends on a condition, rather than the whole call being guarded. Each
+// branch becomes its own rule carrying that condition (the then-branch when the
+// comparison holds, the else-branch when it does not).
+//
+// Harvesting the element's string literals instead — which is what the extractor
+// did — invents a key from the comparison VALUE and marks both branches hidden
+// under the enclosing guard, losing the condition that distinguishes them.
+// Measured on File Uploader 2.5.0: `associatedImages` was left ungated, so
+// authoring the widget's datasource wrote it alongside `associatedFiles` and the
+// build failed CE0463 (#956).
+type ternaryKey struct {
+	key   string
+	guard string
+	falsy bool // else-branch: the hide fires when the comparison is FALSE
+}
+
+// ternaryElementRE splits `<guard>?"then":"else"` (minified: no spaces).
+var ternaryElementRE = regexp.MustCompile(`^(.+?)\?\s*"([^"]*)"\s*:\s*"([^"]*)"$`)
+
+// ternaryElement recognizes a conditional array element and returns one entry
+// per branch. ok is false for anything else, so a plain element is unaffected.
+func ternaryElement(el string) ([]ternaryKey, bool) {
+	m := ternaryElementRE.FindStringSubmatch(strings.TrimSpace(el))
+	if m == nil {
+		return nil, false
+	}
+	guard := strings.TrimSpace(m[1])
+	return []ternaryKey{
+		{key: m[2], guard: guard, falsy: false},
+		{key: m[3], guard: guard, falsy: true},
+	}, true
 }
 
 // forEachParamRE matches the callback parameter list of a `.forEach(function(a,b){`
@@ -291,7 +476,7 @@ var nsPrefixRE = regexp.MustCompile(`[A-Za-z_$][\w$]*\.$`)
 // parseGuard reads the guard expression immediately preceding a hide call and
 // converts it to a WidgetVisibilityCondition. callStart points at the hide
 // function name; the connector just before it is `&&`, `||`, or `?`.
-func parseGuard(js string, callStart int, itemIdent string) (types.WidgetVisibilityCondition, bool) {
+func parseGuard(js string, callStart int, itemIdent string) (types.WidgetVisibilityCondition, string, bool) {
 	pre := strings.TrimRight(js[:callStart], " ")
 	// Strip the widget-editor namespace prefix (any `<ident>.`, not just `_.`).
 	if loc := nsPrefixRE.FindStringIndex(pre); loc != nil {
@@ -329,17 +514,17 @@ func parseGuard(js string, callStart int, itemIdent string) (types.WidgetVisibil
 		// with showLabel false. See the CE0463 that produced (ledger #104).
 		cond, ok := ternaryCondition(pre[:len(pre)-1])
 		if !ok {
-			return types.WidgetVisibilityCondition{}, false
+			return types.WidgetVisibilityCondition{}, pre, false
 		}
 		pre = cond
 		falsy = true
 	default:
-		return types.WidgetVisibilityCondition{}, false
+		return types.WidgetVisibilityCondition{}, pre, false
 	}
 	guard, boundary := lastGuardExpr(pre)
 	guard = stripReturnPrefix(guard) // getProperties' first statement is `return <guard> && hide…`
 	if guard == "" {
-		return types.WidgetVisibilityCondition{}, false
+		return types.WidgetVisibilityCondition{}, guard, false
 	}
 	// Skip guards nested inside a larger expression. A clean statement-level guard
 	// is bounded by a statement separator (`,`, `;`, `{`, or start-of-input); a
@@ -363,15 +548,22 @@ func parseGuard(js string, callStart int, itemIdent string) (types.WidgetVisibil
 	switch boundary {
 	case 0, ',', ';', '{':
 		// clean
+	case '?':
+		// The guard is the THEN branch of a ternary and carries its own condition
+		// (`outer ? inner && hide(...)`). Hand back the WHOLE expression, `?`
+		// included, so the caller can split it and decide whether the else branch
+		// makes the pair expressible — see ternaryThenCandidate (#238).
+		return types.WidgetVisibilityCondition{}, pre, false
 	case '&':
 		if !falsy {
-			return types.WidgetVisibilityCondition{}, false
+			return types.WidgetVisibilityCondition{}, guard, false
 		}
 	default:
-		return types.WidgetVisibilityCondition{}, false
+		return types.WidgetVisibilityCondition{}, guard, false
 	}
 	aliases := enclosingAliases(js, callStart)
-	return guardToCondition(guard, falsy, aliases, itemIdent)
+	c, ok := guardToCondition(guard, falsy, aliases, itemIdent)
+	return c, guard, ok
 }
 
 // ternaryCondition returns the text preceding the `?` that matches a trailing

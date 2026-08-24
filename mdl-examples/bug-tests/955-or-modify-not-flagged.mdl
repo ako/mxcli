@@ -1,0 +1,32 @@
+-- Bug #955, the rule's soundness carve-out: a later CREATE OR MODIFY.
+--
+-- POSITIVE TEST — this script is EXPECTED to PASS `mxcli check`.
+--
+-- Read the reason carefully, because it is NOT the reason
+-- 955-forward-definition-order-tolerated.mdl passes. That file holds references
+-- `exec` genuinely tolerates. This one does not: run against a project that
+-- does not already have Ord.Mutable, `mxcli exec` fails here exactly as it does
+-- for a plain CREATE ("entity 'Ord.Mutable' not found for parameter 'T'").
+--
+-- MDL-ORDER01 stays silent anyway, because it runs WITHOUT a project and cannot
+-- know. A plain CREATE asserts the document does not exist yet — that is what
+-- makes the rule sound with nothing to look at. `CREATE OR MODIFY` asserts
+-- nothing: the entity may already be in the project, in which case the forward
+-- reference resolves and the script is correct. Flagging it would reject
+-- working scripts, so the case is left to `--references`, which can look.
+--
+-- The residue is deliberate and known: with a later CREATE OR MODIFY and no -p,
+-- `check` still does not predict this exec failure.
+
+create module Ord;
+
+create microflow Ord.Modifier (
+  $T: Ord.Mutable
+)
+returns String as $Out
+begin
+  declare $Out String = 'x';
+  return $Out;
+end;
+
+create or modify persistent entity Ord.Mutable ( Name: String(100) );

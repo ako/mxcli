@@ -29,9 +29,34 @@ import (
 // false "equal" would silently discard the user's intent.
 //
 // Callers pass stored == nil for a unit that does not exist yet.
-func Reconcile(contents, stored []byte) (out []byte, unchanged bool) {
+// Option adjusts what Reconcile carries. Variadic so every existing caller —
+// the common rebuild case — is unaffected.
+type Option func(*reconcileOpts)
+
+type reconcileOpts struct{ contentsOwnTranslations bool }
+
+// ContentsOwnTranslations tells Reconcile that the write already accounts for
+// every translation in the document, so it must not carry the stored ones.
+//
+// The distinction is real and only the caller can make it. A REBUILD loses
+// translations by accident — MDL carries one string per text, so the other
+// languages were never expressible and carrying them back restores what the
+// statement could not say. A targeted PATCH of the stored bytes is authoritative:
+// it started from the stored translations and any that are missing are missing
+// on purpose. Carrying there would undo a deliberate deletion — measured:
+// `create or replace translations` reported removing 22 translations and every
+// one of them was silently put back.
+func ContentsOwnTranslations() Option {
+	return func(o *reconcileOpts) { o.contentsOwnTranslations = true }
+}
+
+func Reconcile(contents, stored []byte, opts ...Option) (out []byte, unchanged bool) {
 	if len(stored) == 0 {
 		return contents, false
+	}
+	var o reconcileOpts
+	for _, fn := range opts {
+		fn(&o)
 	}
 
 	// Identity is carried unconditionally. MXCLI_ALWAYS_WRITE turns off *eliding*
@@ -39,6 +64,16 @@ func Reconcile(contents, stored []byte) (out []byte, unchanged bool) {
 	// re-minted StableId would renumber the deployed model's operation ids, which
 	// is a change to the app rather than a debugging aid.
 	contents = CarryIdentity(contents, stored)
+
+	// The translations the statement had no way to say. MDL carries ONE string
+	// per text, so a rebuild drops every other language the document held — a
+	// describe→exec round-trip deleted a page's Dutch title from a real project.
+	// Runs before the transplant because it is the one carry that changes the
+	// document's length; the transplant patches fixed-width binaries in place and
+	// must see the final framing.
+	if !o.contentsOwnTranslations {
+		contents = CarryTranslations(contents, stored)
+	}
 
 	// The same reasoning one level down, for the writes that do land: a rebuild
 	// mints a fresh $ID for every sub-element, so a two-line change reads in

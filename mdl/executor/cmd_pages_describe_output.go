@@ -529,6 +529,7 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			if w.OnClick != "" {
 				props = append(props, fmt.Sprintf("onClick: %s", w.OnClick))
 			}
+			props = appendNamedActionProps(props, w)
 			// Add paging properties if non-default
 			props = appendDataGridPagingProps(props, w)
 			props = appendAppearanceProps(props, w)
@@ -638,7 +639,8 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			props = appendConditionalProps(props, w)
 			props = appendAppearanceProps(props, w)
 			formatWidgetProps(ctx.Output, prefix, header, props, "\n")
-		} else if (len(w.ExplicitProperties) > 0 || len(w.ObjectLists) > 0 || w.OnClick != "") && w.WidgetID != "" {
+		} else if (len(w.ExplicitProperties) > 0 || len(w.ObjectLists) > 0 || w.OnClick != "" ||
+			w.OnChange != "" || len(w.NamedActions) > 0) && w.WidgetID != "" {
 			// Generic pluggable widget with explicit properties, object-list child
 			// blocks (chart series/lines/scaleColors), and/or an onClick action.
 			header := fmt.Sprintf("pluggablewidget '%s' %s", w.WidgetID, mdlIdent(w.Name))
@@ -646,6 +648,15 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			if w.Caption != "" {
 				props = append(props, fmt.Sprintf("Label: %s", mdlQuote(w.Caption)))
 			}
+			// A pluggable widget's own datasource. Without this the branch
+			// emitted every property EXCEPT the datasource, so a rewrite dropped
+			// it — measured on a Studio Pro-authored File Uploader 2.5.0, whose
+			// `associatedFiles` is a Forms$AssociationSource: a page at 0 errors
+			// came back as CE0642 "Property 'Associated files' is required" plus
+			// two CE1571, because the action's parameter loses its default once
+			// the datasource is gone. The DESCRIBE text was byte-identical before
+			// and after, so only mx check separated them (#956).
+			props = appendDataSourceProp(props, w.DataSource)
 			for _, ep := range w.ExplicitProperties {
 				props = append(props, fmt.Sprintf("%s: %s", ep.Key, explicitPropValue(ep)))
 			}
@@ -653,6 +664,12 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			if w.OnClick != "" {
 				props = append(props, fmt.Sprintf("onClick: %s", w.OnClick))
 			}
+			// OnChange too — a Slider/RangeSlider/StarRating reaches describe
+			// through this branch, and its action slot is the only one it has.
+			if w.OnChange != "" {
+				props = append(props, fmt.Sprintf("OnChange: %s", w.OnChange))
+			}
+			props = appendNamedActionProps(props, w)
 			props = appendAppearanceProps(props, w)
 			if len(w.ObjectLists) == 0 {
 				formatWidgetProps(ctx.Output, prefix, header, props, "\n")
@@ -1618,4 +1635,15 @@ func dataViewHasFooterBlock(w rawWidget) bool {
 		}
 	}
 	return false
+}
+
+// appendNamedActionProps emits the widget's action slots that MDL addresses by
+// the widget's own property key: `createFileAction: microflow Module.Flow`. The
+// click and change slots are not among them — they have MDL names and are
+// emitted as `onClick:` / `OnChange:` (#956).
+func appendNamedActionProps(props []string, w rawWidget) []string {
+	for _, na := range w.NamedActions {
+		props = append(props, fmt.Sprintf("%s: %s", na.Key, na.MDL))
+	}
+	return props
 }
