@@ -1,0 +1,53 @@
+-- Issue #912: CATALOG.SOURCE should contain a describe for every document type.
+--
+-- Before the fix it carried five: ENTITY, ENUMERATION, MICROFLOW, SNIPPET and
+-- PAGE. Three more were already being collected by the catalog builder —
+-- nanoflows, rules and workflows — but the executor's describe dispatch had no
+-- case for rules and routed "nanoflow" to describeMicroflow, which searches
+-- ListMicroflows() only and so returned NotFound for every nanoflow. The worker
+-- loop discarded both errors, so those types produced zero rows in silence.
+--
+-- This script is a REPRO, not a check-time negative test: the defect lives in
+-- the catalog builder, which needs a project, so `mxcli check` (which runs
+-- without one) can only confirm the syntax. Run it against a project that has
+-- nanoflows and mappings — a blank app with Atlas_Web_Content and
+-- FeedbackModule is enough:
+--
+--   mxcli exec mdl-examples/bug-tests/912-catalog-source-all-doctypes.mdl -p app.mpr
+--
+-- Expected AFTER the fix: NANOFLOW, RULE, JSONSTRUCTURE, IMPORTMAPPING and
+-- EXPORTMAPPING all appear below, and `refresh catalog source` reports no
+-- "could not be described" lines.
+--
+-- Measured on a 9-module Mendix 11.6.6 project: 100 rows before, 118 after —
+-- the 18 being 13 nanoflows, 1 rule, 2 JSON structures, 1 import mapping and
+-- 1 export mapping. The unit guards are
+-- TestDescribeDispatchCoversEverySourceObjectType (mdl/executor) and
+-- TestRunDescribes_ReturnsFailuresInsteadOfSwallowingThem (mdl/catalog).
+
+refresh catalog source;
+
+-- Every document type that reached CATALOG.SOURCE. Before the fix this
+-- returned exactly 5 rows; it now returns one per type the project contains.
+select ObjectType, count(*) as Documents
+from CATALOG.SOURCE
+group by ObjectType
+order by Documents desc;
+
+-- The user-visible symptom. A nanoflow's body was not indexed, so searching for
+-- anything only a nanoflow contains reported "No matches found" — while
+-- helpfully suggesting `refresh catalog source`, which had already been run.
+search 'DS_LoginContext';
+
+-- Nanoflows specifically: zero rows before the fix, one per nanoflow after.
+select QualifiedName, ModuleName
+from CATALOG.SOURCE
+where ObjectType = 'NANOFLOW'
+order by QualifiedName;
+
+-- The three types the report named. Each already had a catalog table and a
+-- Reader method; only the source text was missing.
+select ObjectType, QualifiedName
+from CATALOG.SOURCE
+where ObjectType in ('JSONSTRUCTURE', 'IMPORTMAPPING', 'EXPORTMAPPING')
+order by ObjectType, QualifiedName;
