@@ -168,6 +168,20 @@ func extractObjectListItem(ctx *ExecContext, itemObj map[string]any, nestedMap m
 			}
 			continue
 		}
+		// Action sub-property (a chart series' staticOnClickAction, a popupmenu
+		// item's action, a maps marker's onClick). Emitted under the schema key,
+		// which is how MDL addresses an item action slot — there is no alias
+		// (#956). A NoAction is the unset default and is skipped, so an
+		// untouched item describes exactly as it did before.
+		if action, ok := value["Action"].(map[string]any); ok && action != nil {
+			if t := extractString(action["$Type"]); t != "Forms$NoAction" && t != "Pages$NoAction" {
+				if mdl := renderClientActionMDL(ctx, action); mdl != "" {
+					item.Props = append(item.Props, rawExplicitProp{
+						Key: objectListMDLKey(key), Value: mdl, IsRef: true})
+				}
+			}
+			continue
+		}
 		// Attribute binding (staticXAttribute, staticYAttribute, …).
 		if attrRef, ok := value["AttributeRef"].(map[string]any); ok && attrRef != nil {
 			if a := extractString(attrRef["Attribute"]); a != "" {

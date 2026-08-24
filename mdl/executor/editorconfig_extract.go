@@ -141,8 +141,8 @@ func extractVisibilityRulesFromJS(js string) ([]types.WidgetVisibilityRule, edit
 			stats.SkippedComplex++
 			continue
 		}
-		listKey, keys, ok := hideTargetKeys(args)
-		if !ok || len(keys) == 0 {
+		listKey, keys, condKeys, ok := hideTargetKeys(args)
+		if !ok || (len(keys) == 0 && len(condKeys) == 0) {
 			stats.SkippedComplex++
 			continue
 		}
@@ -160,6 +160,30 @@ func extractVisibilityRulesFromJS(js string) ([]types.WidgetVisibilityRule, edit
 				stats.SkippedComplex++
 			}
 			continue
+		}
+		// A conditional array element carries its OWN condition, which supersedes
+		// the enclosing guard: the branch is what selects the property, so the
+		// guard alone would mark both branches hidden together (#956).
+		if len(condKeys) > 0 {
+			aliases := enclosingAliases(js, callStart)
+			for _, tk := range condKeys {
+				c, ok := guardToCondition(tk.guard, tk.falsy, aliases, itemIdent)
+				if !ok {
+					stats.SkippedComplex++
+					continue
+				}
+				sig := listKey + "\x00" + tk.key + "\x00" + c.PropertyKey + c.Operator + c.Value + c.Scope
+				if seen[sig] {
+					continue
+				}
+				seen[sig] = true
+				cc := c
+				rules = append(rules, types.WidgetVisibilityRule{
+					PropertyKey:     tk.key,
+					ListPropertyKey: listKey,
+					HiddenWhen:      &cc,
+				})
+			}
 		}
 		stats.Recognized++
 		for _, key := range keys {
@@ -189,7 +213,7 @@ func extractVisibilityRulesFromJS(js string) ([]types.WidgetVisibilityRule, edit
 //
 // ok is false for a shape it does not recognize; the caller counts it as skipped
 // and emits no rule, which degrades to "not hidden".
-func hideTargetKeys(args string) (listKey string, keys []string, ok bool) {
+func hideTargetKeys(args string) (listKey string, keys []string, condKeys []ternaryKey, ok bool) {
 	parts := splitTopLevelCommas(args)
 	// Collect string-literal positional args and any array literal.
 	var stringArgs []string
@@ -197,8 +221,17 @@ func hideTargetKeys(args string) (listKey string, keys []string, ok bool) {
 	for _, p := range parts {
 		p = strings.TrimSpace(p)
 		if strings.HasPrefix(p, "[") {
-			for _, m := range stringLitRE.FindAllStringSubmatch(p, -1) {
-				arrayKeys = append(arrayKeys, m[1])
+			for _, el := range splitTopLevelCommas(strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(p), "["), "]")) {
+				if tk, ok := ternaryElement(el); ok {
+					// `cond ? "a" : "b"` as an array ELEMENT. Harvesting its string
+					// literals would invent a key from the comparison value and mark
+					// BOTH branches hidden under the outer guard — see #956.
+					condKeys = append(condKeys, tk...)
+					continue
+				}
+				for _, m := range stringLitRE.FindAllStringSubmatch(el, -1) {
+					arrayKeys = append(arrayKeys, m[1])
+				}
 			}
 			continue
 		}
@@ -209,21 +242,55 @@ func hideTargetKeys(args string) (listKey string, keys []string, ok bool) {
 	if len(arrayKeys) > 0 {
 		switch len(stringArgs) {
 		case 0:
-			return "", arrayKeys, true // hidePropertiesIn(obj, obj, [keys])
+			return "", arrayKeys, condKeys, true // hidePropertiesIn(obj, obj, [keys])
 		case 1:
-			return stringArgs[0], arrayKeys, true // hideNestedPropertiesIn(…, "groups", i, [keys])
+			return stringArgs[0], arrayKeys, condKeys, true // hideNestedPropertiesIn(…, "groups", i, [keys])
 		default:
-			return "", nil, false
+			return "", nil, condKeys, false
 		}
 	}
 	switch len(stringArgs) {
 	case 1:
-		return "", stringArgs, true // hidePropertyIn(obj, obj, "key")
+		return "", stringArgs, condKeys, true // hidePropertyIn(obj, obj, "key")
 	case 2:
-		return stringArgs[0], stringArgs[1:], true // hidePropertyIn(…, "groups", i, "key")
+		return stringArgs[0], stringArgs[1:], condKeys, true // hidePropertyIn(…, "groups", i, "key")
 	default:
-		return "", nil, false
+		return "", nil, condKeys, false
 	}
+}
+
+// ternaryKey is an array element of the form `cond ? "a" : "b"` — a hide whose
+// TARGET depends on a condition, rather than the whole call being guarded. Each
+// branch becomes its own rule carrying that condition (the then-branch when the
+// comparison holds, the else-branch when it does not).
+//
+// Harvesting the element's string literals instead — which is what the extractor
+// did — invents a key from the comparison VALUE and marks both branches hidden
+// under the enclosing guard, losing the condition that distinguishes them.
+// Measured on File Uploader 2.5.0: `associatedImages` was left ungated, so
+// authoring the widget's datasource wrote it alongside `associatedFiles` and the
+// build failed CE0463 (#956).
+type ternaryKey struct {
+	key   string
+	guard string
+	falsy bool // else-branch: the hide fires when the comparison is FALSE
+}
+
+// ternaryElementRE splits `<guard>?"then":"else"` (minified: no spaces).
+var ternaryElementRE = regexp.MustCompile(`^(.+?)\?\s*"([^"]*)"\s*:\s*"([^"]*)"$`)
+
+// ternaryElement recognizes a conditional array element and returns one entry
+// per branch. ok is false for anything else, so a plain element is unaffected.
+func ternaryElement(el string) ([]ternaryKey, bool) {
+	m := ternaryElementRE.FindStringSubmatch(strings.TrimSpace(el))
+	if m == nil {
+		return nil, false
+	}
+	guard := strings.TrimSpace(m[1])
+	return []ternaryKey{
+		{key: m[2], guard: guard, falsy: false},
+		{key: m[3], guard: guard, falsy: true},
+	}, true
 }
 
 // forEachParamRE matches the callback parameter list of a `.forEach(function(a,b){`
