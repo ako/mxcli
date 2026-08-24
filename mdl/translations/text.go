@@ -23,10 +23,11 @@
 package translations
 
 import (
-	"crypto/rand"
 	"sort"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
+
+	"github.com/mendixlabs/mxcli/mdl/types"
 )
 
 // The leading element of a Texts$Text `Items` array is a version marker, not a
@@ -201,12 +202,22 @@ func newTranslation(lang, text string) bson.D {
 	}
 }
 
+// newElementID mints an element id in the form Mendix stores: a UUID v4 laid
+// out as a .NET Guid, so the version nibble sits at byte 7 and the variant bits
+// at byte 8. types.UUIDToBlob does that byte swap, and is the same path every
+// other element mxcli writes goes through.
+//
+// Raw random bytes are NOT interchangeable here. They pass `mx check` — a Guid
+// parses any 16 bytes — but they are a shape Studio Pro has never been observed
+// to produce: 44,002 of 44,002 element ids in a stock 11.13.0 project are
+// well-formed UUIDs on that reading, as are all 1,650 translation ids the
+// marketplace modules ship, while raw bytes qualify 1 time in 64.
 func newElementID() []byte {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
+	id, err := types.GenerateIDErr()
+	if err != nil {
 		// crypto/rand does not fail in practice; a zero id is still a valid
 		// 16-byte binary, and the write is rejected downstream if it collides.
 		return make([]byte, 16)
 	}
-	return b
+	return types.UUIDToBlob(id)
 }

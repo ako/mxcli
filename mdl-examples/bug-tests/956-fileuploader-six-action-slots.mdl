@@ -1,0 +1,108 @@
+-- File Uploader: every action slot the widget declares, authored by name.
+--
+-- This is the widget upstream #956 was actually about, and the one the earlier
+-- verification never exercised — DataGrid2 (2 slots), BadgeButton and StarRating
+-- (1 each) were the whole sample. File Uploader 2.5.0 declares SIX:
+--
+--   createFileAction     createImageAction
+--   onUploadSuccessFile  onUploadSuccessImage
+--   onUploadFailureFile  onUploadFailureImage
+--
+-- They do NOT all fit on one widget. `mxcli widget describe
+-- com.mendix.widget.web.fileuploader.FileUploader -p app.mpr` reports:
+--
+--   onUploadFailureFile    hidden when uploadMode ≠ "files"
+--   onUploadFailureImage   hidden when uploadMode = "files"
+--   onUploadSuccessFile    hidden when uploadMode ≠ "files"
+--   onUploadSuccessImage   hidden when uploadMode = "files"
+--
+-- so the File and Image success/failure pairs are mutually exclusive, chosen by
+-- `uploadMode`. Writing into the pruned half is the CE0463 of trap 2 in
+-- fix-issue.md — the same shape as DataGrid2's onSelectionChange under
+-- itemSelection: None, which mxcli check now catches as MDL-WIDGET10. Hence two
+-- pages: one per mode.
+--
+-- `createFileAction` / `createImageAction` are pruned by uploadMode TOO, and
+-- `mxcli widget describe` does not say so — it reports only their readOnlyMode
+-- rule. The widget's editorConfig hides them from inside a ternary BRANCH:
+--
+--   "files" === e.uploadMode
+--       ? hidePropertiesIn(t, e, ["associatedImages", "createImageAction"])
+--       : hidePropertiesIn(t, e, ["associatedFiles", "createFileAction", …])
+--
+-- and the visibility extractor lifts a ternary used as an ARRAY ELEMENT (#233)
+-- but not one wrapping the whole call, so no rule is produced and MDL-WIDGET10
+-- cannot warn. Measured: wiring createImageAction on the files-mode page is
+-- CE0463, and `mx update-widgets` clears it by replacing exactly that action
+-- with Forms$NoAction. Each page below therefore wires only its own mode's
+-- create* slot.
+--
+-- `createFileAction` declares defaultType="CallNanoflow" in the widget XML, so
+-- the NANOFLOW form is what the widget's own default uses — it is wired to a
+-- nanoflow here for that reason, not for variety. One slot takes a MICROFLOW
+-- WITH AN ARGUMENT, which is the half the MCP/PED path cannot express today
+-- (mdl/backend/mcp/widget.go refuses parameter mappings and every action kind
+-- but microflow and show-page), so it must go through the MPR writer.
+
+create module FU;
+create module role FU.User;
+
+create persistent entity FU.UploadCtx ( Label: string(100) );
+create persistent entity FU.MyFile extends System.FileDocument ();
+create persistent entity FU.MyImage extends System.Image ();
+create association FU.MyFile_UploadCtx from FU.MyFile to FU.UploadCtx;
+create association FU.MyImage_UploadCtx from FU.MyImage to FU.UploadCtx;
+
+-- The widget's create* slots want a nanoflow: it runs in the client, makes the
+-- object and associates it to the context.
+create nanoflow FU.NF_CreateFile ( $Ctx: FU.UploadCtx ) begin end
+create nanoflow FU.NF_CreateImage ( $Ctx: FU.UploadCtx ) begin end
+create nanoflow FU.NF_UploadedImage ( $Ctx: FU.UploadCtx ) begin end
+
+-- A microflow WITH AN ARGUMENT on a success slot, and plain ones elsewhere.
+create microflow FU.ACT_FileUploaded ( $Ctx: FU.UploadCtx ) begin
+  show message 'uploaded ' + $Ctx/Label;
+end
+create microflow FU.ACT_FileFailed () begin
+  show message 'file upload failed';
+end
+create microflow FU.ACT_ImageFailed ( $Ctx: FU.UploadCtx ) begin
+  show message 'image upload failed for ' + $Ctx/Label;
+end
+
+-- Page 1 — uploadMode: files. Visible slots: createFileAction,
+-- onUploadSuccessFile, onUploadFailureFile.
+create or replace page FU.P_Files (Title: 'Files', Layout: Atlas_Core.Atlas_Default,
+  Params: { $Ctx: FU.UploadCtx })
+{
+  DATAVIEW dv (DataSource: $Ctx) {
+    pluggablewidget 'com.mendix.widget.web.fileuploader.FileUploader' fu (
+      uploadMode: 'files',
+      datasource: association FU.MyFile_UploadCtx,
+      createFileAction: nanoflow FU.NF_CreateFile($Ctx = $Ctx),
+      onUploadSuccessFile: microflow FU.ACT_FileUploaded($Ctx = $Ctx),
+      onUploadFailureFile: microflow FU.ACT_FileFailed
+    )
+  }
+}
+
+-- Page 2 — uploadMode: images. The other half of the pairs.
+create or replace page FU.P_Images (Title: 'Images', Layout: Atlas_Core.Atlas_Default,
+  Params: { $Ctx: FU.UploadCtx })
+{
+  DATAVIEW dv (DataSource: $Ctx) {
+    pluggablewidget 'com.mendix.widget.web.fileuploader.FileUploader' fu (
+      uploadMode: 'images',
+      datasource: association FU.MyImage_UploadCtx,
+      createImageAction: nanoflow FU.NF_CreateImage($Ctx = $Ctx),
+      onUploadSuccessImage: nanoflow FU.NF_UploadedImage($Ctx = $Ctx),
+      onUploadFailureImage: microflow FU.ACT_ImageFailed($Ctx = $Ctx)
+    )
+  }
+}
+
+grant view on page FU.P_Files to FU.User;
+grant view on page FU.P_Images to FU.User;
+
+describe page FU.P_Files;
+describe page FU.P_Images;
