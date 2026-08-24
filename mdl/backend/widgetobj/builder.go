@@ -1161,7 +1161,22 @@ func setTextTemplateValue(val bson.D, text string) bson.D {
 			if tmpl, ok := elem.Value.(bson.D); ok && tmpl != nil {
 				result = append(result, bson.E{Key: "TextTemplate", Value: updateTemplateText(tmpl, text)})
 			} else {
-				result = append(result, elem)
+				// The slot is nil, which is the NORMAL state of a conditional
+				// template: #574 stores one as null while its condition hides it,
+				// so a script that turns the condition on and writes the text in
+				// the same statement finds nothing to edit. Keeping the nil here
+				// dropped the text in silence — and left a widget whose own
+				// enumeration says it has custom text with no text, which is a
+				// build error (issue #254, Slider `tooltipType: customText`).
+				//
+				// Build the envelope, then write into it. Not a special case for
+				// the visible/hidden question: ApplyVisibilityRules still runs
+				// afterwards and nulls this again if the property turns out to be
+				// hidden, so an authored text can never survive into a pruned slot.
+				result = append(result, bson.E{
+					Key:   "TextTemplate",
+					Value: updateTemplateText(BuildEmptyClientTemplate(), text),
+				})
 			}
 		} else {
 			result = append(result, elem)

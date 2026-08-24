@@ -228,7 +228,12 @@ type BuildContext struct {
 	PrimitiveVal   string
 	DataSource     pages.DataSource
 	Action         pages.ClientAction // Domain-typed client action
-	pageBuilder    *pageBuilder
+	// ClientParams carries the `contentparams:` bindings for a `{1}`-style
+	// template, resolved while the AST widget is still in hand. applyOperation
+	// does not receive the AST, and a numeric placeholder written without its
+	// parameters is CE0720 (#928).
+	ClientParams []*pages.ClientTemplateParameter
+	pageBuilder  *pageBuilder
 }
 
 // =============================================================================
@@ -664,9 +669,18 @@ func (e *PluggableWidgetEngine) applyOperation(builder backend.WidgetObjectBuild
 		// braces literally, which Studio Pro's translatable-text parser rejects
 		// ("Brace should be followed by a number of digits"). Placeholder-less
 		// text keeps the SetTextTemplate path so backend output is unchanged.
-		if templateAttrPlaceholderRe.MatchString(ctx.PrimitiveVal) {
+		// `contentparams:` supplies the parameters for a `{1}`-style template.
+		// The explicit-property pass has routed this since #928; the MAPPING pass
+		// did not, so the same text authored through a mapped property key was
+		// written with an empty parameter list and mxbuild answered CE0720. The
+		// gap was unreachable while such text was being dropped altogether
+		// (#254) — fixing the drop is what exposes it.
+		switch {
+		case len(ctx.ClientParams) > 0 && numericTemplatePlaceholderRe.MatchString(ctx.PrimitiveVal):
+			builder.SetTextTemplateWithClientParams(propKey, ctx.PrimitiveVal, ctx.ClientParams)
+		case templateAttrPlaceholderRe.MatchString(ctx.PrimitiveVal):
 			builder.SetTextTemplateWithParams(propKey, ctx.PrimitiveVal, e.pageBuilder.entityContext)
-		} else {
+		default:
 			builder.SetTextTemplate(propKey, ctx.PrimitiveVal)
 		}
 	case "action":
@@ -824,6 +838,9 @@ func (e *PluggableWidgetEngine) resolveMapping(mapping PropertyMapping, w *ast.W
 		// "texttemplate" writes ctx.PrimitiveVal as the ClientTemplate text.
 		if v := namedPropValue(mapping, w); v != "" {
 			ctx.PrimitiveVal = v
+			if numericTemplatePlaceholderRe.MatchString(v) {
+				ctx.ClientParams = e.pageBuilder.buildClientTemplateParams(w.GetContentParams())
+			}
 		}
 
 	case "Attributes":

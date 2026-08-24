@@ -1,0 +1,88 @@
+-- Repro: a Slider's custom tooltip text was dropped, leaving a widget whose own
+-- enumeration says it has custom text and no text — which does not build:
+--
+--   [error] "'Tooltip' cannot be empty when 'Custom' type is chosen" at Slider 'sl'
+--
+-- Studio Pro 11.13.0 reports the same error, at
+-- /layoutCall/arguments/0/widgets/0/widgets/0, and reads the stored template as
+-- a WELL-FORMED, EMPTY Pages$ClientTemplate — so this was never a serialization
+-- problem, only a missing write:
+--
+--   "ct:tooltip": {"$Type":"Pages$ClientTemplate",
+--                  "t:template":{"$Type":"Texts$Text","translations":[]},
+--                  "parameters":[], "t:fallback":{…"translations":[]}}
+--
+-- Cause: `setTextTemplateValue` only ever UPDATED an existing TextTemplate. A
+-- CONDITIONAL template is stored null while its condition hides it (#574), and
+-- the Slider's tooltip is hidden under its own default `tooltipType: "value"`,
+-- so a statement that turns the condition on and writes the text in one go found
+-- nothing to edit and kept the null. ApplyVisibilityRules then filled the now
+-- visible property with an EMPTY template, which is what reached disk.
+--
+-- The tell that made it findable: `tooltip: 'Value {Score}'` WORKED while
+-- `tooltip: 'Plain text'` did not. The `{AttrName}` spelling goes through
+-- SetTextTemplateWithParams, which REPLACES the whole template instead of
+-- editing it, so the null never mattered there.
+--
+-- Expected after the fix: 0 errors, and each tooltip below round-trips.
+
+create module T254;
+create module role T254.User;
+create persistent entity T254.Reading ( Score: decimal );
+
+-- 1. Plain text — the case that was dropped.
+create or replace page T254.P_Text (Title: 'Text', Layout: Atlas_Core.Atlas_Default) {
+  LISTVIEW lv (DataSource: DATABASE T254.Reading) {
+    pluggablewidget 'com.mendix.widget.custom.slider.Slider' sl (
+      Attribute: Score, tooltipType: 'customText', tooltip: 'Current score')
+  }
+}
+
+-- 2. `{AttrName}` — worked before, must keep working.
+create or replace page T254.P_Attr (Title: 'Attr', Layout: Atlas_Core.Atlas_Default) {
+  LISTVIEW lv (DataSource: DATABASE T254.Reading) {
+    pluggablewidget 'com.mendix.widget.custom.slider.Slider' sl (
+      Attribute: Score, tooltipType: 'customText', tooltip: 'Score: {Score}')
+  }
+}
+
+-- 3. Mendix's own `{1}` spelling with its parameters. The MAPPING pass ignored
+--    `contentparams:` (the explicit-property pass has routed it since #928), so
+--    this stored an empty parameter list and mxbuild answered CE0720 — a gap
+--    that only became reachable once the text stopped being dropped.
+create or replace page T254.P_Num (Title: 'Num', Layout: Atlas_Core.Atlas_Default) {
+  LISTVIEW lv (DataSource: DATABASE T254.Reading) {
+    pluggablewidget 'com.mendix.widget.custom.slider.Slider' sl (
+      Attribute: Score, tooltipType: 'customText',
+      tooltip: 'Score is {1}', contentparams: [{1} = Score])
+  }
+}
+
+-- 4. CONTROL: tooltipType left at its default `value`, so the tooltip property
+--    is PRUNED. Nothing must be stored for it — dropping the text here is
+--    correct, and Studio Pro shows no `ct:tooltip` on this widget at all.
+create or replace page T254.P_Pruned (Title: 'Pruned', Layout: Atlas_Core.Atlas_Default) {
+  LISTVIEW lv (DataSource: DATABASE T254.Reading) {
+    pluggablewidget 'com.mendix.widget.custom.slider.Slider' sl (
+      Attribute: Score, tooltip: 'never shown')
+  }
+}
+
+-- 5. CONTROL: a different widget's textTemplate, same authoring form. It always
+--    worked (its template is not conditional, so it is never stored null), and
+--    it is what proves the bug was the null slot rather than textTemplate
+--    authoring in general.
+create or replace page T254.P_Timeline (Title: 'Timeline', Layout: Atlas_Core.Atlas_Default) {
+  pluggablewidget 'com.mendix.widget.web.timeline.Timeline' tl (
+    datasource: database from T254.Reading,
+    title: 'Score is {Score}',
+    groupEvents: false,
+    customVisualization: false
+  )
+}
+
+grant view on page T254.P_Text to T254.User;
+grant view on page T254.P_Attr to T254.User;
+grant view on page T254.P_Num to T254.User;
+grant view on page T254.P_Pruned to T254.User;
+grant view on page T254.P_Timeline to T254.User;
