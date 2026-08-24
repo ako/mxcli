@@ -131,7 +131,8 @@ func extractVisibilityRulesFromMPK(mpkPath, widgetID string) []types.WidgetVisib
 func extractVisibilityRulesFromJS(js string) ([]types.WidgetVisibilityRule, editorConfigExtractStats) {
 	var rules []types.WidgetVisibilityRule
 	var stats editorConfigExtractStats
-	seen := map[string]bool{} // dedupe propertyKey+condition
+	var pending []ternaryThenCandidate // resolved after the loop
+	seen := map[string]bool{}          // dedupe propertyKey+condition
 
 	for _, loc := range hideCallRE.FindAllStringIndex(js, -1) {
 		stats.TotalHideCalls++
@@ -152,8 +153,28 @@ func extractVisibilityRulesFromJS(js string) ([]types.WidgetVisibilityRule, edit
 		if listKey != "" {
 			itemIdent = enclosingForEachParam(js, callStart)
 		}
-		cond, ok := parseGuard(js, callStart, itemIdent)
+		cond, guardText, ok := parseGuard(js, callStart, itemIdent)
 		if !ok {
+			// `<outer> ? <inner> && hide(...)` — a ternary THEN branch carrying a
+			// second condition. Held back and resolved after the loop, once the
+			// else branch's rules are known (see ternaryThenCandidate).
+			//
+			// ProgressCircle's equivalent parses today only because it wraps the
+			// branch in parentheses, which the grouping-paren strip above removes;
+			// Slider writes it without them, so the guard arrives as
+			// `e.showTooltip?"value"===e.tooltipType` and no rule was produced.
+			if outer, inner, split := splitTernaryThenGuard(guardText); split {
+				aliases := enclosingAliases(js, callStart)
+				ic, iok := guardToCondition(inner, false, aliases, itemIdent)
+				oc, ook := guardToCondition(outer, false, aliases, itemIdent)
+				if iok && ook {
+					for _, key := range keys {
+						pending = append(pending, ternaryThenCandidate{
+							listKey: listKey, key: key, inner: ic, outer: oc,
+						})
+					}
+				}
+			}
 			if listKey != "" {
 				stats.SkippedNested++
 			} else {
@@ -176,7 +197,104 @@ func extractVisibilityRulesFromJS(js string) ([]types.WidgetVisibilityRule, edit
 			})
 		}
 	}
+
+	// Resolve the held-back ternary-then candidates. The inner condition is
+	// emitted only when an existing rule hides the SAME property under the
+	// negation of the outer one — the else branch — so the pair reads as a
+	// correct disjunction rather than a conjunction it cannot express (#238).
+	for _, c := range pending {
+		comp, ok := negate(c.outer)
+		if !ok {
+			continue
+		}
+		covered := false
+		for _, r := range rules {
+			if r.PropertyKey != c.key || r.ListPropertyKey != c.listKey || r.HiddenWhen == nil {
+				continue
+			}
+			if *r.HiddenWhen == comp {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			continue
+		}
+		sig := c.listKey + "\x00" + c.key + "\x00" + c.inner.PropertyKey + c.inner.Operator + c.inner.Value + c.inner.Scope
+		if seen[sig] {
+			continue
+		}
+		seen[sig] = true
+		ic := c.inner
+		rules = append(rules, types.WidgetVisibilityRule{
+			PropertyKey:     c.key,
+			ListPropertyKey: c.listKey,
+			HiddenWhen:      &ic,
+		})
+		stats.Recognized++
+	}
 	return rules, stats
+}
+
+// ternaryThenCandidate is a hide whose guard is the THEN branch of a ternary AND
+// carries a second condition:
+//
+//	e.showTooltip ? "value" === e.tooltipType && hidePropertyIn(t, e, "tooltip")
+//	              : hidePropertiesIn(t, e, ["tooltip", "tooltipType"])
+//
+// The property is hidden when `outer AND inner`, which one WidgetVisibilityCondition
+// cannot express — so the inner condition is emitted only when another rule already
+// hides the same property under the NEGATION of the outer one, i.e. the else branch
+// covers the rest. The two rules are then a correct disjunction:
+//
+//	hidden  <=>  !showTooltip  ||  tooltipType == "value"
+//
+// Without that cover the conjunction is not representable and the hide is skipped,
+// which degrades to "not hidden" and is safe. Emitting the inner condition alone
+// would prune the property whenever it holds, including where the widget shows it —
+// CE0463's mirror image (#238).
+type ternaryThenCandidate struct {
+	listKey, key string
+	inner, outer types.WidgetVisibilityCondition
+}
+
+// splitTernaryThenGuard recognises `<outer> ? <inner>` in a guard parseGuard could
+// not read, returning the two halves. The split is on the LAST `?`, so a nested
+// ternary yields the innermost then-branch, which is the one guarding this call.
+func splitTernaryThenGuard(guard string) (outer, inner string, ok bool) {
+	i := strings.LastIndex(guard, "?")
+	if i <= 0 || i == len(guard)-1 {
+		return "", "", false
+	}
+	// The outer half still carries whatever preceded it (`exports.getProperties=
+	// function(e,t){return …`), so reduce it to the trailing expression the same
+	// way the main path does.
+	outerExpr, _ := lastGuardExpr(strings.TrimSpace(guard[:i]))
+	outer = stripReturnPrefix(outerExpr)
+	inner = strings.TrimSpace(guard[i+1:])
+	if outer == "" || inner == "" {
+		return "", "", false
+	}
+	return outer, inner, true
+}
+
+// negate returns the condition that holds exactly when c does not, and whether it
+// is expressible.
+func negate(c types.WidgetVisibilityCondition) (types.WidgetVisibilityCondition, bool) {
+	out := c
+	switch c.Operator {
+	case "truthy":
+		out.Operator = "falsy"
+	case "falsy":
+		out.Operator = "truthy"
+	case "eq":
+		out.Operator = "ne"
+	case "ne":
+		out.Operator = "eq"
+	default:
+		return out, false
+	}
+	return out, true
 }
 
 // hideTargetKeys returns the object-list property a hide call targets (empty for
@@ -291,7 +409,7 @@ var nsPrefixRE = regexp.MustCompile(`[A-Za-z_$][\w$]*\.$`)
 // parseGuard reads the guard expression immediately preceding a hide call and
 // converts it to a WidgetVisibilityCondition. callStart points at the hide
 // function name; the connector just before it is `&&`, `||`, or `?`.
-func parseGuard(js string, callStart int, itemIdent string) (types.WidgetVisibilityCondition, bool) {
+func parseGuard(js string, callStart int, itemIdent string) (types.WidgetVisibilityCondition, string, bool) {
 	pre := strings.TrimRight(js[:callStart], " ")
 	// Strip the widget-editor namespace prefix (any `<ident>.`, not just `_.`).
 	if loc := nsPrefixRE.FindStringIndex(pre); loc != nil {
@@ -329,17 +447,17 @@ func parseGuard(js string, callStart int, itemIdent string) (types.WidgetVisibil
 		// with showLabel false. See the CE0463 that produced (ledger #104).
 		cond, ok := ternaryCondition(pre[:len(pre)-1])
 		if !ok {
-			return types.WidgetVisibilityCondition{}, false
+			return types.WidgetVisibilityCondition{}, pre, false
 		}
 		pre = cond
 		falsy = true
 	default:
-		return types.WidgetVisibilityCondition{}, false
+		return types.WidgetVisibilityCondition{}, pre, false
 	}
 	guard, boundary := lastGuardExpr(pre)
 	guard = stripReturnPrefix(guard) // getProperties' first statement is `return <guard> && hide…`
 	if guard == "" {
-		return types.WidgetVisibilityCondition{}, false
+		return types.WidgetVisibilityCondition{}, guard, false
 	}
 	// Skip guards nested inside a larger expression. A clean statement-level guard
 	// is bounded by a statement separator (`,`, `;`, `{`, or start-of-input); a
@@ -363,15 +481,22 @@ func parseGuard(js string, callStart int, itemIdent string) (types.WidgetVisibil
 	switch boundary {
 	case 0, ',', ';', '{':
 		// clean
+	case '?':
+		// The guard is the THEN branch of a ternary and carries its own condition
+		// (`outer ? inner && hide(...)`). Hand back the WHOLE expression, `?`
+		// included, so the caller can split it and decide whether the else branch
+		// makes the pair expressible — see ternaryThenCandidate (#238).
+		return types.WidgetVisibilityCondition{}, pre, false
 	case '&':
 		if !falsy {
-			return types.WidgetVisibilityCondition{}, false
+			return types.WidgetVisibilityCondition{}, guard, false
 		}
 	default:
-		return types.WidgetVisibilityCondition{}, false
+		return types.WidgetVisibilityCondition{}, guard, false
 	}
 	aliases := enclosingAliases(js, callStart)
-	return guardToCondition(guard, falsy, aliases, itemIdent)
+	c, ok := guardToCondition(guard, falsy, aliases, itemIdent)
+	return c, guard, ok
 }
 
 // ternaryCondition returns the text preceding the `?` that matches a trailing
