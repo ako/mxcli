@@ -740,28 +740,58 @@ func captureDescribeParallel(ctx *ExecContext, objectType string, qualifiedName 
 		MprPath: ctx.MprPath,
 	}
 
-	var err error
-	switch strings.ToLower(objectType) {
-	case "entity":
-		err = describeEntity(localCtx, qn)
-	case "microflow", "nanoflow":
-		err = describeMicroflow(localCtx, qn)
-	case "page":
-		err = describePage(localCtx, qn)
-	case "snippet":
-		err = describeSnippet(localCtx, qn)
-	case "enumeration":
-		err = describeEnumeration(localCtx, qn)
-	case "workflow":
-		err = describeWorkflow(localCtx, qn)
-	default:
+	describe := describeDispatch(objectType)
+	if describe == nil {
 		return "", mdlerrors.NewUnsupported("object type for describe: " + objectType)
 	}
 
-	if err != nil {
+	if err := describe(localCtx, qn); err != nil {
 		return "", err
 	}
 	return buf.String(), nil
+}
+
+// describeDocFunc renders one document as MDL into ctx.Output.
+type describeDocFunc func(ctx *ExecContext, name ast.QualifiedName) error
+
+// describeDispatch maps a catalog source object type to its describe function,
+// or nil when the type cannot be described.
+//
+// Kept as a table rather than a switch inside captureDescribeParallel so the
+// mapping is assertable without a project — see
+// TestDescribeDispatchCoversEverySourceObjectType, which checks it against
+// catalog.SourceObjectTypes. #912 was this table drifting behind the catalog's
+// collectors: nanoflows and rules were collected with no case here, and
+// "nanoflow" was routed to describeMicroflow, which searches ListMicroflows()
+// only and so returns NotFound for every nanoflow. Both failures were swallowed
+// by the caller, so the types simply had no rows.
+func describeDispatch(objectType string) describeDocFunc {
+	switch strings.ToUpper(objectType) {
+	case catalog.SourceEntity:
+		return describeEntity
+	case catalog.SourceMicroflow:
+		return describeMicroflow
+	case catalog.SourceNanoflow:
+		return describeNanoflow
+	case catalog.SourceRule:
+		return describeRule
+	case catalog.SourcePage:
+		return describePage
+	case catalog.SourceSnippet:
+		return describeSnippet
+	case catalog.SourceEnumeration:
+		return describeEnumeration
+	case catalog.SourceWorkflow:
+		return describeWorkflow
+	case catalog.SourceJsonStructure:
+		return describeJsonStructure
+	case catalog.SourceImportMapping:
+		return describeImportMapping
+	case catalog.SourceExportMapping:
+		return describeExportMapping
+	default:
+		return nil
+	}
 }
 
 // preWarmCache ensures all caches are populated before parallel operations.
