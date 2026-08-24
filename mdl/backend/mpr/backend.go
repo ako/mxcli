@@ -852,6 +852,14 @@ func (b *MprBackend) UpdateRawUnit(unitID string, contents []byte) error {
 	return b.writer.UpdateRawUnit(unitID, contents)
 }
 
+// UpdateRawUnitOwningTranslations writes a unit whose contents already account
+// for every translation in it. The legacy writer has no separate reconcile
+// option, so this is UpdateRawUnit — which is correct here because the legacy
+// path does not carry translations onto a raw write in the first place.
+func (b *MprBackend) UpdateRawUnitOwningTranslations(unitID string, contents []byte) error {
+	return b.writer.UpdateRawUnit(unitID, contents)
+}
+
 // ---------------------------------------------------------------------------
 // MetadataBackend
 // ---------------------------------------------------------------------------

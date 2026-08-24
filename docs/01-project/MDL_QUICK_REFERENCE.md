@@ -85,34 +85,54 @@ Modifies an existing entity without full replacement.
 
 | Operation | Syntax | Notes |
 |-----------|--------|-------|
-| Add attributes | `alter entity Module.Name add (attr: type [constraints]);` | One or more attributes |
-| Drop attributes | `alter entity Module.Name drop (AttrName, ...);` | |
+| Add attribute | `alter entity Module.Name add attribute [if not exists] attr: type [constraints];` | Comma-separate the whole action to add several: `add attribute A: integer, add attribute B: string(20)`. `if not exists` skips instead of erroring, so the script re-runs |
+| Drop attribute | `alter entity Module.Name drop attribute [if exists] AttrName;` | `if exists` skips when it is already gone |
 | Modify attributes | `alter entity Module.Name modify (attr: NewType [constraints]);` | Change type/constraints |
 | Rename attribute | `alter entity Module.Name rename attribute OldName to NewName;` | Also rewrites stored references (microflow members, page widgets, validation/access rules) and XPath constraints. Microflow expressions are free text and are **not** rewritten |
-| Add index | `alter entity Module.Name add index [name] [on] (Col1 [asc\|desc], ...);` | `on` is optional (SQL-like) |
-| Drop index | `alter entity Module.Name drop index (Col1, ...);` | |
+| Add index | `alter entity Module.Name add index [if not exists] [name] [on] (Col1 [asc\|desc], ...);` | `on` is optional (SQL-like). **Without `if not exists`, re-running is an error** — a second identical index fails the build with CE0072 |
+| Create if absent | `create entity if not exists Module.Name (...);`<br>`create association if not exists Module.Assoc from ... to ...;` | Skips when it already exists, leaving the stored definition untouched. Unlike `create or modify`, which rebuilds the element from the statement and drops any attribute the statement omits |
+| Add index (SQL form) | `create index IdxName on Module.Name (Col1 [asc\|desc], ...);` | Same effect as `alter entity … add index`. The index name is accepted and discarded — a Mendix index is identified by its columns |
+| Drop index | `alter entity Module.Name drop index [if exists] (Col1 [asc\|desc], ...);` | Selected by its columns — a Mendix index stores no name, so the columns are its identity, and they are what `describe entity` prints. The legacy positional form `drop index idx1` still works but shifts when an earlier index is dropped |
 | Add event handler | `alter entity Module.Name add event handler on before commit call Mod.MF($currentObject) [raise error];` | `($currentObject)` or `()`, RAISE ERROR only on BEFORE |
 | Drop event handler | `alter entity Module.Name drop event handler on before commit;` | |
 | Set documentation | `alter entity Module.Name set documentation 'text';` | |
 | Set position | `alter entity Module.Name set position (100, 200);` | Canvas position |
 | Add system attribute | `alter entity Module.Name add attribute owner: autoowner;` | Same syntax as regular attributes |
 | Drop system attribute | `alter entity Module.Name drop attribute owner;` | Drop by system attribute name |
-| Add attribute (idempotent) | `alter entity Module.Name add attribute if not exists AttrName: type;` | Skipped (not an error) if the attribute already exists — re-runnable |
-| Drop attribute (idempotent) | `alter entity Module.Name drop attribute if exists AttrName;` | Skipped (not an error) if the attribute is already gone — re-runnable |
 
-> **Re-running domain scripts.** `IF NOT EXISTS` / `IF EXISTS` make an individual add/drop a no-op when already applied. To re-run a whole script that is partly applied, use `mxcli exec script.mdl --continue-on-error`: every statement is attempted, each failure is reported with its statement number, and the command exits non-zero if any failed (a real error is still surfaced, never masked).
+> **Re-running domain scripts.** `IF NOT EXISTS` / `IF EXISTS` make an individual
+> create/add/drop a no-op when already applied — accepted on `create entity`,
+> `create association`, `add attribute`, `add index`, `add event handler` and
+> their drops. A script built from guarded statements re-runs to a byte-identical
+> project.
+>
+> Prefer them to `CREATE OR MODIFY`, which is not the same thing: `or modify`
+> rebuilds the element from the statement and **drops any attribute the statement
+> omits**, so it is only safe when the statement is the element's complete
+> definition. Writing both (`create or modify … if not exists`) is refused as
+> **MDL067**.
+>
+> To re-run a whole script that is partly applied and not guarded, use
+> `mxcli exec script.mdl --continue-on-error`: every statement is attempted, each
+> failure is reported with its statement number, and the command exits non-zero if
+> any failed (a real error is still surfaced, never masked).
 
 **Example:**
 ```sql
 alter entity Sales.Customer
-  add (Phone: string(50), Notes: string(unlimited));
+  add attribute Phone: string(50),
+  add attribute Notes: string(unlimited);
 
 alter entity Sales.Customer
-  rename Phone to PhoneNumber;
+  rename attribute Phone to PhoneNumber;
 
 alter entity Sales.Customer
   add index (Email);
 ```
+
+> An `INDEX` on `create entity` goes **after** the closing parenthesis of the
+> attribute list, not inside it — `create entity M.Cell (Row: Integer) index (Row);`.
+> Written inside, it parses as an attribute missing its type.
 
 ## Constants
 
@@ -1400,6 +1420,31 @@ sql disconnect source;
 ```
 
 CLI subcommand: `mxcli sql --driver postgres --dsn '...' "select 1"` (see `mxcli syntax sql`). Supported drivers: `postgres` (pg, postgresql), `oracle` (ora), `sqlserver` (mssql).
+
+## Translations
+
+Bulk translation of every user-visible string, one file per language. Entries use
+`as`, not a colon: a translation maps a user-provided name to another name.
+
+| Statement | Syntax | Notes |
+|-----------|--------|-------|
+| Describe | `describe translations [in Module] for <lang>;` | Emits the CREATE form; an untranslated string comes back with an **empty** target, which is what makes the output an LLM prompt |
+| Create | `create translations [in Module] for <lang> ( 'src' as 'target', ... );` | The language is the thing that exists — **errors** if it already has translations |
+| Merge | `create or modify translations ...` | A source the file does not name is left alone |
+| Replace | `create or replace translations ...` | The file is authoritative: a translation whose source it does not name is **REMOVED**, and the run says which. `in Module` **bounds** the deletion |
+| Show languages | `show languages;` | Per-language string counts (needs `refresh catalog full`) |
+| Default language | `alter settings LANGUAGE DefaultLanguageCode = 'en_US';` | The language a translation file's left column is written in |
+
+Keyed on the **source string**, so one entry translates every occurrence. A key
+that matches nothing is **reported**, not skipped — a source edited after the
+file was written stops matching, and the run names the string it has probably
+become.
+
+```bash
+mxcli -p app.mpr -c "describe translations for de_DE" > de_DE.mdl
+# fill in the right-hand side (by hand or with an LLM)
+mxcli exec de_DE.mdl -p app.mpr
+```
 
 ## Catalog & Search
 

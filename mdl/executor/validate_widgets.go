@@ -318,12 +318,26 @@ func widgetValueMap(w *ast.WidgetV3, def *WidgetDefinition) (values map[string]s
 	for _, m := range def.Modes {
 		mappings = append(mappings, m.PropertyMappings...)
 	}
+	// An MDL source keyword shared by SEVERAL properties does not name any one of
+	// them. File Uploader 2.5.0 routes both `associatedFiles` and
+	// `associatedImages` from `DataSource:`, and `uploadMode` decides which one
+	// Studio Pro shows — so a script writing `DataSource:` once has named the
+	// keyword, not the hidden property, and must not be reported as having set
+	// it (#956). The value is still recorded, because conditions read from it.
+	sharedSource := map[string]int{}
+	for _, m := range mappings {
+		if m.Source != "" {
+			sharedSource[m.Source]++
+		}
+	}
 	for _, m := range mappings {
 		key := strings.ToLower(m.PropertyKey)
 		val, set := "", false
+		viaSharedSource := false
 		if m.Source != "" {
 			if v, ok := lookupWidgetProp(w, m.Source); ok {
 				val, set = v, true
+				viaSharedSource = sharedSource[m.Source] > 1
 			}
 		}
 		if !set {
@@ -340,7 +354,9 @@ func widgetValueMap(w *ast.WidgetV3, def *WidgetDefinition) (values map[string]s
 			}
 		}
 		if set {
-			explicit[key] = true
+			if !viaSharedSource {
+				explicit[key] = true
+			}
 		} else if m.Default != "" {
 			val = m.Default
 		} else if m.Operation == "selection" {

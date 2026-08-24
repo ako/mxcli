@@ -194,9 +194,24 @@ func extractObjectListItem(ctx *ExecContext, itemObj map[string]any, nestedMap m
 			item.Props = append(item.Props, rawExplicitProp{Key: objectListMDLKey(key), Value: expr})
 			continue
 		}
-		// TextTemplate sub-property (e.g. chart series `staticName`).
+		// TextTemplate sub-property (e.g. chart series `staticName`, a File
+		// Uploader custom button's `buttonCaption`).
 		if text, _ := extractTextTemplateText(value); text != "" {
 			item.Props = append(item.Props, rawExplicitProp{Key: objectListMDLKey(key), Value: text})
+			// …and its PARAMETERS. A template carrying `{1}` with no parameter is
+			// CE0720 ("Place holder index 1 is greater than 0, the number of
+			// parameter(s)"), so describing the text alone turns a valid page
+			// into one that fails the build — measured on a Studio Pro-authored
+			// File Uploader custom button (#956). The companion property is the
+			// template's own name + "Params", which is the same convention the
+			// engine reads back.
+			if params := extractClientTemplateParameters(ctx, value, "TextTemplate"); len(params) > 0 {
+				item.Props = append(item.Props, rawExplicitProp{
+					Key:   objectListMDLKey(key) + "Params",
+					Value: "[" + strings.Join(formatParametersV3(params), ", ") + "]",
+					IsRef: true, // a param list is syntax, not a quoted literal
+				})
+			}
 			continue
 		}
 		// Primitive value (dataSet, interpolation, colorValue, …). Skip

@@ -109,6 +109,9 @@ type CreateAssociationStmt struct {
 	Documentation  string
 	Comment        string
 	CreateOrModify bool // true for CREATE OR MODIFY / CREATE OR REPLACE
+	// IfNotExists is CREATE ASSOCIATION IF NOT EXISTS: skip when it already
+	// exists, leaving the stored definition untouched.
+	IfNotExists bool
 
 	// Line anchors from `@anchor(from: (x, y), to: (x, y))` — where the
 	// connector attaches to the FROM and TO entity boxes, as a PERCENTAGE of the

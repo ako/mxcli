@@ -219,6 +219,15 @@ func registerNavigationHandlers(r *Registry) {
 	})
 }
 
+func registerTranslationHandlers(r *Registry) {
+	r.Register(&ast.CreateTranslationsStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execCreateTranslations(ctx, stmt.(*ast.CreateTranslationsStmt))
+	})
+	r.Register(&ast.DescribeTranslationsStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execDescribeTranslations(ctx, stmt.(*ast.DescribeTranslationsStmt))
+	})
+}
+
 func registerQueueHandlers(r *Registry) {
 	r.Register(&ast.CreateQueueStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
 		return execCreateQueue(ctx, stmt.(*ast.CreateQueueStmt))

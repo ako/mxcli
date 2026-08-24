@@ -1302,3 +1302,38 @@ func extractCustomWidgetPropertyAction(ctx *ExecContext, w map[string]any, prope
 func (e *Executor) extractCustomWidgetPropertyAssociation(w map[string]any, propertyKey string) string {
 	return extractCustomWidgetPropertyAssociation(e.newExecContext(context.Background()), w, propertyKey)
 }
+
+// anyCustomWidgetDataSource returns the first datasource a pluggable widget's
+// properties hold that names something — skipping any that parse to an empty
+// reference.
+//
+// firstObjectPropertyDataSource is NOT a substitute, and the difference is the
+// whole point: it returns as soon as a property's DataSource parses to a
+// non-nil value, even one carrying no reference. A File Uploader has such a
+// property ahead of its real one, so the caller received an empty datasource,
+// discarded it, and described the widget as having none — which is exactly the
+// silent drop this exists to prevent (#956).
+func anyCustomWidgetDataSource(w map[string]any) *rawDataSource {
+	obj, ok := w["Object"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	for _, prop := range getBsonArrayElements(obj["Properties"]) {
+		propMap, ok := prop.(map[string]any)
+		if !ok {
+			continue
+		}
+		value, ok := propMap["Value"].(map[string]any)
+		if !ok {
+			continue
+		}
+		ds, ok := value["DataSource"].(map[string]any)
+		if !ok || ds == nil {
+			continue
+		}
+		if result := parseDataSource(ds); result != nil && result.Reference != "" {
+			return result
+		}
+	}
+	return nil
+}

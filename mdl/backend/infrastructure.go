@@ -27,6 +27,15 @@ type RawUnitBackend interface {
 	// UpdateRawUnit replaces the contents of a unit by ID.
 	// Takes string (not model.ID) to match the SDK writer layer convention.
 	UpdateRawUnit(unitID string, contents []byte) error
+	// UpdateRawUnitOwningTranslations is UpdateRawUnit for a write that started
+	// from the stored bytes and is authoritative about the translations in them.
+	//
+	// The ordinary path carries the stored translations onto a write, because a
+	// rebuild from MDL can express only one string per text and would otherwise
+	// delete the rest. A targeted patch is the opposite case: a translation
+	// missing from its output is missing on purpose, and carrying it back would
+	// undo a deliberate deletion.
+	UpdateRawUnitOwningTranslations(unitID string, contents []byte) error
 }
 
 // MetadataBackend provides project-level metadata and introspection.

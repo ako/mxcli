@@ -139,25 +139,20 @@ func levenshtein(a, b string) int {
 	return prev[lb]
 }
 
-// roundingFuncs are the Decimal-returning built-ins whose result Mendix DOES
-// accept in an Integer/Long target (they yield a whole number). They must not be
-// flagged by SourceRejectedForIntegerTarget.
-//
-// `trunc` used to be listed here. Mendix has no such built-in — `trunc($D)`
-// fails the build with CE0117 on 11.13.0 — and listing it invited "fix" the
-// MDL044 report by adding it to funcTable, which would let the bad expression
-// through. MDL044 flags it, correctly.
-var roundingFuncs = map[string]bool{
-	"round": true, "floor": true, "ceil": true,
-}
-
 // SourceRejectedForIntegerTarget reports whether assigning src to an Integer/Long
 // variable is rejected by Mendix (CE0117) because src is Decimal-typed. It covers
 // two cases the build rejects but a naive check misses (findings #2):
 //   - a bare arithmetic Decimal result (e.g. `$a * 100 div $b`); and
-//   - a call to a Decimal-returning built-in that is NOT a rounding function
-//     (e.g. random(), secondsBetween(...), div-family) — round/floor/ceil/trunc
-//     are excluded because Mendix accepts their whole-number result.
+//   - a call to a Decimal-returning built-in (e.g. random(), secondsBetween(),
+//     sqrt(), two-argument round()).
+//
+// Both answers come from inferKind, so a rounding function is Integer-valued
+// wherever it appears rather than only as the whole right-hand side. Special-
+// casing it at the root was the sudoku #49 defect: `round($a div $b)` was
+// accepted and `round($a div $b) * 3` — which mxbuild builds at 0 errors — was
+// refused, because the inner div's Decimal taint propagated back out through a
+// round() the table still declared Decimal. The same shortcut let the genuinely
+// Decimal `round($a div $b, 2)` through.
 func SourceRejectedForIntegerTarget(src string, vars map[string]TypeKind) bool {
 	if strings.TrimSpace(src) == "" {
 		return false
@@ -175,11 +170,8 @@ func SourceRejectedForIntegerTarget(src string, vars map[string]TypeKind) bool {
 			return inferKind(n, ctx) == KindDecimal
 		}
 	case *CallExpr:
-		if roundingFuncs[n.Name] {
-			return false
-		}
-		if ret, ok := FuncReturnKind(n.Name); ok {
-			return ret == KindDecimal
+		if _, ok := funcTable[n.Name]; ok {
+			return inferKind(n, ctx) == KindDecimal
 		}
 	}
 	return false

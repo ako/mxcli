@@ -195,6 +195,7 @@ describeStatement
     | DESCRIBE DATA TRANSFORMER qualifiedName          // DESCRIBE DATA TRANSFORMER Module.Name
     | DESCRIBE FRAGMENT identifierOrKeyword            // DESCRIBE FRAGMENT Name
     | DESCRIBE JAR DEPENDENCY (qualifiedName | IDENTIFIER) STRING_LITERAL   // DESCRIBE JAR DEPENDENCY ModuleName 'group:artifact'
+    | DESCRIBE TRANSLATIONS (IN identifierOrKeyword)? FOR identifierOrKeyword   // DESCRIBE TRANSLATIONS [IN Module] FOR nl_NL
     | DESCRIBE qualifiedName    // DESCRIBE Module.Name — type auto-detected at execution time (must be LAST so all typed forms above win)
     ;
 

@@ -1,0 +1,35 @@
+-- Sudoku finding #4: `index … on (…)` inside `create entity` "does not parse".
+--
+-- The syntax was never missing — an INDEX belongs after the closing parenthesis
+-- of the attribute list. Inside it, the index name parses as an attribute
+-- missing its type, and the leftover tokens then tripped the unescaped-
+-- apostrophe heuristic, so the error pointed at quoting. `mxcli check` now
+-- names the real problem and shows the correct placement.
+--
+-- Fixing that surfaced the other half: `create index … on Mod.Entity (…)` had
+-- been in the grammar with no listener behind it, so it reported "Syntax OK
+-- (0 statements)" and wrote nothing — silently, even for an entity that does
+-- not exist. It now lowers to `alter entity … add index`.
+--
+--   mxcli exec mdl-examples/bug-tests/sudoku-4-entity-index-placement.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe entity IndexProbe.Cell"   # index (Row, Col desc);
+--   mx check app.mpr                                        # 0 errors
+
+create or modify module IndexProbe;
+
+-- 1. On CREATE: after the closing parenthesis.
+create entity IndexProbe."Cell" (
+  "Row": integer,
+  "Col": integer,
+  "Value": integer
+) index "IdxRow" on ("Row");
+
+-- 2. On an existing entity, the ALTER spelling.
+alter entity IndexProbe."Cell" add index "IdxCol" on ("Col");
+
+-- 3. The same thing in standalone SQL form, with a descending column.
+create index IdxRowCol on IndexProbe.Cell ("Row", "Col" desc);
+
+-- The name in every spelling is accepted and discarded: a Mendix index is
+-- identified by its columns, which is why `describe entity` renders all three
+-- as anonymous `index (...)` lines.
