@@ -1,0 +1,60 @@
+-- Repro: `create translations` mints `Texts$Translation` element ids as 16 raw
+-- random bytes, where Mendix stores every element id as a .NET Guid — a UUID in
+-- mixed-endian byte order.
+--
+-- Nothing in the normal toolchain notices. The project builds at 0 errors (a
+-- .NET Guid parses any 16 bytes), DESCRIBE round-trips the translation exactly,
+-- and the id is never shown to anyone. It is visible only by decoding the unit.
+--
+-- Run this, then measure the ids it wrote:
+--
+--   mxcli exec mdl-examples/bug-tests/translation-id-form.mdl -p app.mpr
+--   python3 - <<'PY'
+--   import bson, os, collections
+--   c = collections.Counter(); n = 0
+--   def walk(o):
+--       global n
+--       if isinstance(o, dict):
+--           if o.get("$Type") == "Texts$Translation" and o.get("LanguageCode") == "sv_SE":
+--               b = bytes(o["$ID"]); n += 1; c[(b[7] >> 4, b[8] >> 6)] += 1
+--           for v in o.values(): walk(v)
+--       elif isinstance(o, list):
+--           for v in o: walk(v)
+--   for dp, _, fs in os.walk("app/mprcontents"):
+--       for f in fs:
+--           if f.endswith(".mxunit"):
+--               walk(bson.decode(open(os.path.join(dp, f), "rb").read()))
+--   print(n, "ids;", c[(4, 2)], "well-formed;", len(c), "distinct (version,variant)")
+--   PY
+--
+-- Mendix's byte order puts the RFC-4122 version nibble at byte 7 and the variant
+-- bits at byte 8 — NOT at byte 6, where Mendix's own ids look like uniform noise
+-- and the measurement inverts. Expected after the fix: every id reads
+-- (version 4, variant 10b), one distinct combination. Before it: 1 in 64.
+--
+-- The control that makes the number mean something is the rest of the project.
+-- A stock 11.13.0 app has 44,002 element ids, all well-formed, and stays at 100%
+-- across this run — so a low number for the new ids is this code path, not the
+-- measurement.
+
+create module TrId;
+create module role TrId.User;
+create persistent entity TrId.Widget ( Label: string(100) );
+
+create or replace page TrId.P_Widgets (Title: 'Widgets', Layout: Atlas_Core.Atlas_Default)
+{
+  DATAGRID dg (DataSource: DATABASE TrId.Widget) {
+    COLUMN c1 (Attribute: Label, Caption: 'Label')
+  }
+}
+
+grant view on page TrId.P_Widgets to TrId.User;
+
+-- sv_SE, because a stock app carries no Swedish: every translation below is
+-- newly minted, so every id is one this code path produced.
+create translations in TrId for sv_SE (
+    'Widgets' as 'Grunkor',
+    'Label'   as 'Etikett',
+);
+
+describe translations in TrId for sv_SE;
