@@ -563,7 +563,7 @@ func (w *Writer) insertUnit(unitID, containerID, containmentName, unitType strin
 	return err
 }
 
-func (w *Writer) updateUnit(unitID string, contents []byte) error {
+func (w *Writer) updateUnit(unitID string, contents []byte, opts ...canon.Option) error {
 	if err := validateNoPlaceholderIDs(unitID, contents); err != nil {
 		return err
 	}
@@ -574,7 +574,7 @@ func (w *Writer) updateUnit(unitID string, contents []byte) error {
 		return w.sessionBuf(unitID, contents)
 	}
 
-	contents, unchanged := w.reconcileWithStored(unitID, contents)
+	contents, unchanged := w.reconcileWithStored(unitID, contents, opts...)
 	if unchanged {
 		return nil
 	}
@@ -629,14 +629,14 @@ func (w *Writer) updateUnit(unitID string, contents []byte) error {
 
 // reconcileWithStored applies the shared no-op-elision policy (canon.Reconcile,
 // ADR-0008 decision 1) to a write against this project.
-func (w *Writer) reconcileWithStored(unitID string, contents []byte) (out []byte, unchanged bool) {
+func (w *Writer) reconcileWithStored(unitID string, contents []byte, opts ...canon.Option) (out []byte, unchanged bool) {
 	w.writesOffered++
 	stored, err := w.reader.GetRawUnitBytes(unitID)
 	if err != nil {
 		w.writesLanded++
 		return contents, false // new unit, or unreadable — write it
 	}
-	out, unchanged = canon.Reconcile(contents, stored)
+	out, unchanged = canon.Reconcile(contents, stored, opts...)
 	if !unchanged {
 		w.writesLanded++
 	}
@@ -647,6 +647,19 @@ func (w *Writer) reconcileWithStored(unitID string, contents []byte) (out []byte
 // Used by ALTER PAGE to modify the BSON widget tree directly.
 func (w *Writer) UpdateRawUnit(unitID string, contents []byte) error {
 	return w.updateUnit(unitID, contents)
+}
+
+// UpdateRawUnitOwningTranslations is UpdateRawUnit for a write that started from
+// the stored bytes and is authoritative about every translation in them — so the
+// stored translations must NOT be carried back onto it.
+//
+// The ordinary path carries them, because a rebuild from MDL can only express
+// one string per text and would otherwise delete the rest (PROPOSAL_translations
+// slice 1). A targeted patch is the opposite case: a translation missing from its
+// output is missing on purpose. Without this, `create or replace translations`
+// reported removing 22 translations and every one was silently restored.
+func (w *Writer) UpdateRawUnitOwningTranslations(unitID string, contents []byte) error {
+	return w.updateUnit(unitID, contents, canon.ContentsOwnTranslations())
 }
 
 // InsertUnit creates a new unit in the project database.

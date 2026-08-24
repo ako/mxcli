@@ -1401,6 +1401,31 @@ sql disconnect source;
 
 CLI subcommand: `mxcli sql --driver postgres --dsn '...' "select 1"` (see `mxcli syntax sql`). Supported drivers: `postgres` (pg, postgresql), `oracle` (ora), `sqlserver` (mssql).
 
+## Translations
+
+Bulk translation of every user-visible string, one file per language. Entries use
+`as`, not a colon: a translation maps a user-provided name to another name.
+
+| Statement | Syntax | Notes |
+|-----------|--------|-------|
+| Describe | `describe translations [in Module] for <lang>;` | Emits the CREATE form; an untranslated string comes back with an **empty** target, which is what makes the output an LLM prompt |
+| Create | `create translations [in Module] for <lang> ( 'src' as 'target', ... );` | The language is the thing that exists — **errors** if it already has translations |
+| Merge | `create or modify translations ...` | A source the file does not name is left alone |
+| Replace | `create or replace translations ...` | The file is authoritative: a translation whose source it does not name is **REMOVED**, and the run says which. `in Module` **bounds** the deletion |
+| Show languages | `show languages;` | Per-language string counts (needs `refresh catalog full`) |
+| Default language | `alter settings LANGUAGE DefaultLanguageCode = 'en_US';` | The language a translation file's left column is written in |
+
+Keyed on the **source string**, so one entry translates every occurrence. A key
+that matches nothing is **reported**, not skipped — a source edited after the
+file was written stops matching, and the run names the string it has probably
+become.
+
+```bash
+mxcli -p app.mpr -c "describe translations for de_DE" > de_DE.mdl
+# fill in the right-hand side (by hand or with an LLM)
+mxcli exec de_DE.mdl -p app.mpr
+```
+
 ## Catalog & Search
 
 | Statement | Syntax | Notes |

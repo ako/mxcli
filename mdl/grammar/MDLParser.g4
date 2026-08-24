@@ -130,6 +130,7 @@ createStatement
       | createNanoflowStatement
       | createRuleStatement
       | createMenuStatement
+      | createTranslationsStatement
       )
     ;
 

@@ -36,6 +36,13 @@ func (b *Backend) UpdateRawUnit(unitID string, contents []byte) error {
 	return b.writer.UpdateRawUnit(unitID, contents)
 }
 
+// UpdateRawUnitOwningTranslations writes a unit whose contents already account
+// for every translation in it — see the interface for why that is a distinct
+// case from an ordinary rebuild.
+func (b *Backend) UpdateRawUnitOwningTranslations(unitID string, contents []byte) error {
+	return b.writer.UpdateRawUnitOwningTranslations(unitID, contents)
+}
+
 // ListRawUnitsByType returns every unit whose $Type has the given prefix, with
 // resolved raw contents — the catalog uses this for document types that have no
 // dedicated typed reader (e.g. JavaScript actions, data transformers). Delegates
