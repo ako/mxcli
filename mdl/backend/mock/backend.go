@@ -300,6 +300,10 @@ type MockBackend struct {
 	GetRawUnitByNameFunc      func(objectType, qualifiedName string) (*types.RawUnitInfo, error)
 	GetRawMicroflowByNameFunc func(qualifiedName string) ([]byte, error)
 	UpdateRawUnitFunc         func(unitID string, contents []byte) error
+	// UpdateRawUnitOwningTranslationsFunc stubs the write path that is
+	// authoritative about a unit's translations. Falls back to UpdateRawUnitFunc
+	// when unset, because most tests do not care about the distinction.
+	UpdateRawUnitOwningTranslationsFunc func(unitID string, contents []byte) error
 
 	// MetadataBackend
 	ListAllUnitIDsFunc   func() ([]string, error)

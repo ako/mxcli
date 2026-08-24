@@ -1,0 +1,64 @@
+-- Translations: DESCRIBE / CREATE [OR MODIFY|REPLACE] TRANSLATIONS.
+-- Slices 2-4 of PROPOSAL_translations.md.
+--
+-- A translation maps a user-provided name to another name, so entries use AS
+-- rather than a colon (design-mdl-syntax.md, "colon vs as").
+--
+-- The thing that exists is the LANGUAGE:
+--   create translations               -- refuses if the language already has any
+--   create or modify translations     -- merge; unnamed sources left alone
+--   create or replace translations    -- the file is authoritative; unnamed
+--                                        sources' translations are REMOVED
+--
+-- Run against any project. `sv_SE` is used because a stock app has no Swedish;
+-- swap it for a language yours does not already carry.
+
+create module TrDoc;
+create module role TrDoc.User;
+create persistent entity TrDoc.Thing ( Name: string(100) );
+
+create or replace page TrDoc.P_Things (Title: 'Things', Layout: Atlas_Core.Atlas_Default)
+{
+  DATAGRID dg (DataSource: DATABASE TrDoc.Thing) {
+    COLUMN c1 (Attribute: Name, Caption: 'Name')
+  }
+}
+
+-- 1. A new language. Bare CREATE is the "add a language" statement and refuses
+--    if sv_SE already has translations anywhere in scope.
+create translations for sv_SE (
+    'Things' as 'Saker',
+    'Name'   as 'Namn',
+);
+
+-- 2. DESCRIBE emits the CREATE form, so the two round-trip. An untranslated
+--    string comes back with an EMPTY target -- which is exactly the prompt to
+--    hand an LLM:
+--
+--      mxcli -p app.mpr -c "describe translations for de_DE" > de_DE.mdl
+--      # fill in the right-hand side
+--      mxcli exec de_DE.mdl -p app.mpr
+describe translations in TrDoc for sv_SE;
+
+-- 3. Merge. 'Name' is not named, so its translation is left alone.
+create or modify translations in TrDoc for sv_SE (
+    'Things' as 'Grejer',
+);
+
+-- 4. Replace. The file is authoritative: 'Name' is not named, so its Swedish is
+--    REMOVED and the run says which strings it deleted. Scope matters here --
+--    `in TrDoc` bounds the deletion to this module, so a set of per-module files
+--    do not wipe each other on every run.
+create or replace translations in TrDoc for sv_SE (
+    'Things' as 'Grejer',
+);
+
+describe translations in TrDoc for sv_SE;
+
+-- 5. Drift. A source string edited after the file was written stops matching.
+--    Rather than skipping in silence -- which would leave the translation
+--    attached to a string that no longer exists -- the run warns and, where the
+--    translation identifies the moved source unambiguously, names it.
+create or modify translations in TrDoc for sv_SE (
+    'Thingz' as 'Grejer',
+);

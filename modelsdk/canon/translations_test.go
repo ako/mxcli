@@ -213,3 +213,36 @@ func TestCarryTranslations_MalformedPassesThrough(t *testing.T) {
 		})
 	}
 }
+
+// A targeted patch of the stored bytes is authoritative about translations, and
+// carrying the stored ones back onto it undoes a deliberate deletion. Measured
+// while building CREATE OR REPLACE TRANSLATIONS: it reported removing 22
+// translations and every one of them was silently restored by this carry.
+//
+// The two cases are indistinguishable from the bytes — a rebuild that never
+// expressed a language and a patch that removed one both arrive missing it — so
+// only the caller can say which it is.
+func TestReconcile_ContentsOwnTranslationsSuppressesTheCarry(t *testing.T) {
+	stored := textDoc(t, 10, "P",
+		tr(11, "en_US", "Save"),
+		tr(12, "nl_NL", "Opslaan"),
+	)
+	// A patch that deliberately removed nl_NL.
+	patched := textDoc(t, 10, "P", tr(11, "en_US", "Save"))
+
+	withCarry, _ := Reconcile(patched, stored)
+	if got := translationsOf(t, withCarry); got["nl_NL"] != "Opslaan" {
+		t.Fatalf("the default did NOT carry (%v) — this test cannot show the option "+
+			"suppressing something that never happens", got)
+	}
+
+	out, _ := Reconcile(patched, stored, ContentsOwnTranslations())
+	if got := translationsOf(t, out); got["nl_NL"] != "" {
+		t.Errorf("nl_NL = %q — a deliberate removal was undone by the carry, which is "+
+			"how `create or replace translations` silently restored what it deleted",
+			got["nl_NL"])
+	}
+	if got := translationsOf(t, out); got["en_US"] != "Save" {
+		t.Errorf("the option dropped more than the carry: %v", got)
+	}
+}

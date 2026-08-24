@@ -209,6 +209,52 @@ DISCONNECT;`,
 	})
 
 	Register(SyntaxFeature{
+		Path:    "translations",
+		Summary: "Bulk translation of every user-visible string, one file per language",
+		Keywords: []string{
+			"translations", "translate", "language", "languages", "i18n",
+			"localisation", "localization", "multilingual", "nl_NL", "de_DE",
+		},
+		Syntax: `DESCRIBE TRANSLATIONS [IN <Module>] FOR <lang>;
+CREATE [OR MODIFY|REPLACE] TRANSLATIONS [IN <Module>] FOR <lang> (
+    '<source>' AS '<translation>',
+    ...
+);
+
+Entries use AS, not a colon: a translation maps a user-provided name to
+another name, the same shape CUSTOM NAME map uses.
+
+The thing that exists is the LANGUAGE, so the three verbs read directly:
+
+  CREATE             the language has none yet — errors if it does
+  CREATE OR MODIFY   merge; a source the file does not name is left alone
+  CREATE OR REPLACE  the file is authoritative; a translation whose source
+                     it does not name is REMOVED, and the run says which
+
+IN <Module> scopes both directions. Under OR REPLACE it also BOUNDS the
+deletion, so per-module files do not wipe each other on every run.
+
+Keyed on the source string, so one entry translates every occurrence.
+DESCRIBE emits the CREATE form, and an untranslated string comes back with
+an empty target — which is what makes the output an LLM prompt:
+
+  mxcli -p app.mpr -c "describe translations for de_DE" > de_DE.mdl
+  # fill in the right-hand side
+  mxcli exec de_DE.mdl -p app.mpr
+
+A key that matches nothing is REPORTED, not skipped: a source edited after
+the file was written stops matching, and the run names the string it has
+probably become.`,
+		Example: `describe translations for nl_NL;
+
+create or modify translations in Administration for nl_NL (
+    'Save'            as 'Opslaan',
+    'My Account'      as 'Mijn account',
+);`,
+		SeeAlso: []string{"settings", "settings.alter"},
+	})
+
+	Register(SyntaxFeature{
 		Path:    "settings.show",
 		Summary: "Show and describe project settings",
 		Keywords: []string{

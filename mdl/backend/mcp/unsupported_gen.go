@@ -229,6 +229,11 @@ func (unsupportedBackend) CreateRegularExpression(_ *model.RegularExpression) (e
 	return
 }
 
+func (unsupportedBackend) CreateRule(_ *microflows.Rule) (err0 error) {
+	err0 = errUnsupported("CreateRule")
+	return
+}
+
 func (unsupportedBackend) CreateScheduledEvent(_ *model.ScheduledEvent) (err0 error) {
 	err0 = errUnsupported("CreateScheduledEvent")
 	return
@@ -424,6 +429,11 @@ func (unsupportedBackend) DeleteRegularExpression(_ string) (err0 error) {
 	return
 }
 
+func (unsupportedBackend) DeleteRule(_ model.ID) (err0 error) {
+	err0 = errUnsupported("DeleteRule")
+	return
+}
+
 func (unsupportedBackend) DeleteScheduledEvent(_ string) (err0 error) {
 	err0 = errUnsupported("DeleteScheduledEvent")
 	return
@@ -606,6 +616,11 @@ func (unsupportedBackend) GetRawUnitByName(_ string, _ string) (r0 *types.RawUni
 
 func (unsupportedBackend) GetRawUnitBytes(_ model.ID) (r0 []uint8, err1 error) {
 	err1 = errUnsupported("GetRawUnitBytes")
+	return
+}
+
+func (unsupportedBackend) GetRule(_ model.ID) (r0 *microflows.Rule, err1 error) {
+	err1 = errUnsupported("GetRule")
 	return
 }
 
@@ -837,6 +852,11 @@ func (unsupportedBackend) ListRegularExpressions() (r0 []*model.RegularExpressio
 	return
 }
 
+func (unsupportedBackend) ListRules() (r0 []*microflows.Rule, err1 error) {
+	err1 = errUnsupported("ListRules")
+	return
+}
+
 func (unsupportedBackend) ListScheduledEvents() (r0 []*model.ScheduledEvent, err1 error) {
 	err1 = errUnsupported("ListScheduledEvents")
 	return
@@ -924,6 +944,11 @@ func (unsupportedBackend) MovePage(_ *pages.Page) (err0 error) {
 
 func (unsupportedBackend) MovePublishedODataService(_ *model.PublishedODataService) (err0 error) {
 	err0 = errUnsupported("MovePublishedODataService")
+	return
+}
+
+func (unsupportedBackend) MoveRule(_ *microflows.Rule) (err0 error) {
+	err0 = errUnsupported("MoveRule")
 	return
 }
 
@@ -1277,8 +1302,18 @@ func (unsupportedBackend) UpdateRawUnit(_ string, _ []uint8) (err0 error) {
 	return
 }
 
+func (unsupportedBackend) UpdateRawUnitOwningTranslations(_ string, _ []uint8) (err0 error) {
+	err0 = errUnsupported("UpdateRawUnitOwningTranslations")
+	return
+}
+
 func (unsupportedBackend) UpdateRegularExpression(_ *model.RegularExpression) (err0 error) {
 	err0 = errUnsupported("UpdateRegularExpression")
+	return
+}
+
+func (unsupportedBackend) UpdateRule(_ *microflows.Rule) (err0 error) {
+	err0 = errUnsupported("UpdateRule")
 	return
 }
 

@@ -88,6 +88,16 @@ func (m *MockBackend) UpdateRawUnit(unitID string, contents []byte) error {
 	return nil
 }
 
+func (m *MockBackend) UpdateRawUnitOwningTranslations(unitID string, contents []byte) error {
+	if m.UpdateRawUnitOwningTranslationsFunc != nil {
+		return m.UpdateRawUnitOwningTranslationsFunc(unitID, contents)
+	}
+	if m.UpdateRawUnitFunc != nil {
+		return m.UpdateRawUnitFunc(unitID, contents)
+	}
+	return fmt.Errorf("MockBackend.UpdateRawUnitOwningTranslations not configured")
+}
+
 // ---------------------------------------------------------------------------
 // MetadataBackend
 // ---------------------------------------------------------------------------
