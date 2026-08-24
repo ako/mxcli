@@ -162,6 +162,45 @@ create translations in Administration for nl_NL (
 );
 ```
 
+### `CREATE`, `CREATE OR MODIFY`, `CREATE OR REPLACE`
+
+The three map onto MDL's established convention (`cmd_pages_create_v3.go:63` —
+bare `CREATE` errors when the thing exists, `OR REPLACE` rebuilds wholesale,
+`OR MODIFY` updates in place). The thing that exists here is **the language**:
+
+| Statement | Meaning |
+|-----------|---------|
+| `create translations for de_DE (…)` | de_DE has no translations yet — make them. **Errors** if it already does. |
+| `create or modify translations for nl_NL (…)` | Merge. Sources named are set; sources not named are left alone. |
+| `create or replace translations for nl_NL (…)` | **The file is authoritative.** Any nl_NL translation whose source is not in the file is REMOVED. |
+
+Bare `CREATE` is therefore the "add a new language" statement — one file, and it
+refuses rather than silently colliding with an existing translation set.
+
+`OR REPLACE` is what makes drift self-correcting. Take the `Save` → `Store`
+rename above: under `OR MODIFY` the stale `Opslaan` stays attached to the
+renamed text (the unmatched-key warning reports it, but the model stays wrong
+until someone acts); under `OR REPLACE` that translation's source is not in the
+file, so it is removed and the project's Dutch becomes exactly what the file
+says. That is the semantics for "nl_NL.mdl is our Dutch translation, in version
+control, reviewed in PRs" — file and project cannot silently diverge.
+
+Two constraints follow, and both are load-bearing:
+
+- **`OR REPLACE` deletes real work.** A translation made in Studio Pro and never
+  added to the file is gone. Under guard-don't-drop
+  ([ADR-0005](../13-decisions/0005-semantic-model-interface-currency.md)) that
+  cannot be quiet: the run reports the count and the strings it is about to
+  remove, and `mxcli diff translations` is the preview.
+- **Scope bounds the deletion.** `create or replace translations in Administration
+  for nl_NL` removes nl_NL only from *Administration's* texts. Without that, a
+  set of per-module files would each wipe the others' work on every run — which
+  promotes `in <Module>` from a convenience to a requirement.
+
+`or update` is deliberately not offered: `or modify` is MDL's established verb
+and `.claude/skills/design-mdl-syntax.md` forbids inventing alternatives for
+standard operations.
+
 Inspect, and produce the file:
 
 ```mdl
@@ -366,6 +405,12 @@ observed uniformly (3299 of 3299) on 11.13.0 and is the same value
 - **Source drift**: translate a string, edit the source in the stored document,
   re-run — the run must WARN with the back-correlated suggestion, not skip in
   silence. Control: the same run before the source edit reports nothing.
+- **The three verbs**: bare `CREATE` refuses when the language already has
+  translations; `OR MODIFY` leaves an unlisted source's translation alone;
+  `OR REPLACE` removes it and says so. The MODIFY case is the control that
+  proves REPLACE's deletion is the statement's doing and not a side effect.
+- **Scoped REPLACE**: `in <Module>` must not touch another module's translations
+  — two per-module files applied in sequence must both survive.
 - **Idempotence with a control**: re-running an import reports no writes, and
   `MXCLI_ALWAYS_WRITE=1` reports writes — without the second line, "no writes" is
   equally consistent with a comparison that never ran.
