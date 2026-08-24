@@ -247,6 +247,11 @@ type PluggableWidgetEngine struct {
 	// an association the widget binds — must be qualified against this, not
 	// against the widget's own datasource entity. (issuetracker #19)
 	outerEntityContext string
+
+	// currentDef is the widget definition of the build in progress. resolveMapping
+	// consults it to tell the widget's PRIMARY attribute property from its others
+	// (#238); nil outside a build.
+	currentDef *WidgetDefinition
 }
 
 // NewPluggableWidgetEngine creates a new engine with the given backend and page builder.
@@ -274,6 +279,13 @@ func (e *PluggableWidgetEngine) Build(def *WidgetDefinition, w *ast.WidgetV3) (*
 	oldOuterEntityContext := e.outerEntityContext
 	e.outerEntityContext = oldEntityContext
 	defer func() { e.outerEntityContext = oldOuterEntityContext }()
+
+	// The definition being built, for mapping decisions that need to see the
+	// widget's OTHER mappings (which attribute property a bare `Attribute:`
+	// fills). Saved/restored like the context above, for nested widgets.
+	oldDef := e.currentDef
+	e.currentDef = def
+	defer func() { e.currentDef = oldDef }()
 
 	// 1. Load template via backend
 	builder, err := e.backend.LoadWidgetTemplate(def.WidgetID, e.pageBuilder.getProjectPath())
@@ -539,6 +551,27 @@ func (e *PluggableWidgetEngine) Build(def *WidgetDefinition, w *ast.WidgetV3) (*
 	return cw, nil
 }
 
+// isPrimaryAttributeMapping reports whether mapping is the one a bare
+// `Attribute:` should fill: the FIRST attribute-typed mapping in the definition,
+// which is the widget's primary attribute (GenerateDefJSON preserves the widget
+// XML's property order, and a widget declares its main attribute first —
+// verified on Slider, RangeSlider, StarRating and ComboBox).
+//
+// A widget with exactly one attribute property is unaffected, which is the case
+// the bare keyword was written for.
+func (e *PluggableWidgetEngine) isPrimaryAttributeMapping(mapping PropertyMapping) bool {
+	def := e.currentDef
+	if def == nil {
+		return true // no definition to compare against — behave as before
+	}
+	for _, m := range def.PropertyMappings {
+		if m.Operation == "attribute" || m.Source == "Attribute" {
+			return m.PropertyKey == mapping.PropertyKey
+		}
+	}
+	return true
+}
+
 // templateAttrPlaceholderRe matches `{AttrName}` placeholders in a text
 // template. Numeric parameter references (`{1}`) don't match and pass through
 // verbatim.
@@ -701,7 +734,21 @@ func (e *PluggableWidgetEngine) resolveMapping(mapping PropertyMapping, w *ast.W
 		// GenerateDefJSON orders first). Fall back to the generic single
 		// `Attribute:` keyword for single-attribute widgets (ComboBox, filters).
 		attr := namedPropValue(mapping, w)
-		if attr == "" {
+		if attr == "" && e.isPrimaryAttributeMapping(mapping) {
+			// The bare `Attribute:` keyword names ONE attribute — the widget's
+			// primary one. Applying it to every attribute-typed mapping wrote the
+			// same AttributeRef into all of them: a Slider's `Attribute: Score`
+			// landed on valueAttribute AND minAttribute, maxAttribute and
+			// stepAttribute, which Studio Pro leaves unset unless the matching
+			// *ValueType is "attribute" — and a value in a pruned slot is CE0463
+			// (issue #238).
+			//
+			// The Slider is where this surfaced because its editorConfig computes
+			// the hidden list from lookup tables —
+			// `hidePropertiesIn(t,e,[].concat(n(v[e.minValueType]), …))` — with no
+			// string literal to lift, so the visibility extractor produces NO rule
+			// for those three and the hidden-property guard cannot catch it.
+			// Not writing them in the first place does not depend on that data.
 			attr = w.GetAttribute()
 		}
 		if attr != "" {
