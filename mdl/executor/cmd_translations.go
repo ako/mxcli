@@ -145,6 +145,13 @@ func execCreateTranslations(ctx *ExecContext, s *ast.CreateTranslationsStmt) err
 	}
 
 	reportTranslationStats(ctx, s, stats, src, scope)
+
+	// A translation for a language the project has not enabled is stored, passes
+	// every check, and is then discarded by the build. Say so AFTER the stats, so
+	// the warning attaches to a run that reports having written something.
+	if w := unenabledLanguageWarning(projectLanguageSettings(ctx), s.Language); w != "" {
+		fmt.Fprint(ctx.Output, w)
+	}
 	return nil
 }
 
