@@ -401,6 +401,26 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 			// a Switch's `action`, and so on.
 			widget.NamedActions = namedActionSlotsOf(ctx, w)
 		}
+		// Generic datasource fallback for a pluggable widget with no per-widget
+		// extractor above. Without it a widget whose datasource lives on a
+		// property MDL reaches through the `DataSource:` keyword described back
+		// with no datasource at all, and a rewrite dropped it — measured on a
+		// Studio Pro-authored File Uploader 2.5.0: a page at 0 errors came back
+		// as CE0642 "Property 'Associated files' is required" plus two CE1571
+		// (the action's parameter has no default once its datasource is gone),
+		// while the DESCRIBE text was byte-identical before and after (#956).
+		//
+		// anyCustomWidgetDataSource, not firstObjectPropertyDataSource: the latter
+		// stops at the first property whose DataSource parses at all, and a File
+		// Uploader has one carrying no reference ahead of its real one.
+		if widget.DataSource == nil {
+			if ds := anyCustomWidgetDataSource(w); ds != nil {
+				widget.DataSource = ds
+				if widget.EntityContext == "" {
+					widget.EntityContext = dataSourceEntityContext(ctx, ds)
+				}
+			}
+		}
 		return []rawWidget{widget}
 
 	case "Forms$Label", "Pages$Label":
