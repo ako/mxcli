@@ -10,6 +10,42 @@ import (
 	"time"
 )
 
+// Object types collected into CATALOG.SOURCE. The executor owns the matching
+// describe dispatch, in another package, so the two lists can drift — which is
+// exactly what #912 was: nanoflows and rules were collected here and had no
+// dispatch case, so every describe failed and both types contributed zero rows.
+// TestDescribeDispatchCoversEverySourceObjectType pins the two together.
+const (
+	SourceEntity        = "ENTITY"
+	SourceMicroflow     = "MICROFLOW"
+	SourceNanoflow      = "NANOFLOW"
+	SourceRule          = "RULE"
+	SourcePage          = "PAGE"
+	SourceSnippet       = "SNIPPET"
+	SourceEnumeration   = "ENUMERATION"
+	SourceWorkflow      = "WORKFLOW"
+	SourceJsonStructure = "JSONSTRUCTURE"
+	SourceImportMapping = "IMPORTMAPPING"
+	SourceExportMapping = "EXPORTMAPPING"
+)
+
+// SourceObjectTypes is every type buildSource describes. Adding a collector
+// without adding it here (and a dispatch case) fails the executor's coverage
+// test rather than silently indexing nothing.
+var SourceObjectTypes = []string{
+	SourceEntity,
+	SourceMicroflow,
+	SourceNanoflow,
+	SourceRule,
+	SourcePage,
+	SourceSnippet,
+	SourceEnumeration,
+	SourceWorkflow,
+	SourceJsonStructure,
+	SourceImportMapping,
+	SourceExportMapping,
+}
+
 // sourceItem represents a single element to generate MDL source for.
 type sourceItem struct {
 	objType    string
@@ -21,6 +57,14 @@ type sourceItem struct {
 type sourceResult struct {
 	item sourceItem
 	text string
+}
+
+// describeFailure records a document that was collected but produced no row.
+// Keeping these is the point: the pre-#912 code dropped them, so a whole
+// document type could vanish from CATALOG.SOURCE without a word.
+type describeFailure struct {
+	item   sourceItem
+	reason string
 }
 
 // buildSource generates full MDL source into the FTS5 source table.
@@ -45,7 +89,7 @@ func (b *Builder) buildSource() error {
 			moduleID := b.hierarchy.findModuleID(dm.ContainerID)
 			moduleName := b.hierarchy.getModuleName(moduleID)
 			for _, ent := range dm.Entities {
-				items = append(items, sourceItem{"ENTITY", moduleName + "." + ent.Name, moduleName})
+				items = append(items, sourceItem{SourceEntity, moduleName + "." + ent.Name, moduleName})
 			}
 		}
 	}
@@ -56,7 +100,7 @@ func (b *Builder) buildSource() error {
 		for _, mf := range mfList {
 			moduleID := b.hierarchy.findModuleID(mf.ContainerID)
 			moduleName := b.hierarchy.getModuleName(moduleID)
-			items = append(items, sourceItem{"MICROFLOW", moduleName + "." + mf.Name, moduleName})
+			items = append(items, sourceItem{SourceMicroflow, moduleName + "." + mf.Name, moduleName})
 		}
 	}
 
@@ -66,7 +110,7 @@ func (b *Builder) buildSource() error {
 		for _, nf := range nfList {
 			moduleID := b.hierarchy.findModuleID(nf.ContainerID)
 			moduleName := b.hierarchy.getModuleName(moduleID)
-			items = append(items, sourceItem{"NANOFLOW", moduleName + "." + nf.Name, moduleName})
+			items = append(items, sourceItem{SourceNanoflow, moduleName + "." + nf.Name, moduleName})
 		}
 	}
 
@@ -77,7 +121,7 @@ func (b *Builder) buildSource() error {
 		for _, rule := range ruleList {
 			moduleID := b.hierarchy.findModuleID(rule.ContainerID)
 			moduleName := b.hierarchy.getModuleName(moduleID)
-			items = append(items, sourceItem{"RULE", moduleName + "." + rule.Name, moduleName})
+			items = append(items, sourceItem{SourceRule, moduleName + "." + rule.Name, moduleName})
 		}
 	}
 
@@ -87,7 +131,7 @@ func (b *Builder) buildSource() error {
 		for _, pg := range pageList {
 			moduleID := b.hierarchy.findModuleID(pg.ContainerID)
 			moduleName := b.hierarchy.getModuleName(moduleID)
-			items = append(items, sourceItem{"PAGE", moduleName + "." + pg.Name, moduleName})
+			items = append(items, sourceItem{SourcePage, moduleName + "." + pg.Name, moduleName})
 		}
 	}
 
@@ -96,7 +140,7 @@ func (b *Builder) buildSource() error {
 	for _, sn := range snippetList {
 		moduleID := b.hierarchy.findModuleID(sn.ContainerID)
 		moduleName := b.hierarchy.getModuleName(moduleID)
-		items = append(items, sourceItem{"SNIPPET", moduleName + "." + sn.Name, moduleName})
+		items = append(items, sourceItem{SourceSnippet, moduleName + "." + sn.Name, moduleName})
 	}
 
 	// Workflows
@@ -105,7 +149,7 @@ func (b *Builder) buildSource() error {
 		for _, wf := range wfList {
 			moduleID := b.hierarchy.findModuleID(wf.ContainerID)
 			moduleName := b.hierarchy.getModuleName(moduleID)
-			items = append(items, sourceItem{"WORKFLOW", moduleName + "." + wf.Name, moduleName})
+			items = append(items, sourceItem{SourceWorkflow, moduleName + "." + wf.Name, moduleName})
 		}
 	}
 
@@ -115,7 +159,38 @@ func (b *Builder) buildSource() error {
 		for _, en := range enumList {
 			moduleID := b.hierarchy.findModuleID(en.ContainerID)
 			moduleName := b.hierarchy.getModuleName(moduleID)
-			items = append(items, sourceItem{"ENUMERATION", moduleName + "." + en.Name, moduleName})
+			items = append(items, sourceItem{SourceEnumeration, moduleName + "." + en.Name, moduleName})
+		}
+	}
+
+	// JSON structures, import mappings and export mappings — the three types
+	// #912 asked for. Each already had a catalog table and a Reader method; only
+	// the source text was missing, so `search` could not reach a mapping's
+	// element names or a structure's fields.
+	jsonList, err := b.reader.ListJsonStructures()
+	if err == nil {
+		for _, js := range jsonList {
+			moduleID := b.hierarchy.findModuleID(js.ContainerID)
+			moduleName := b.hierarchy.getModuleName(moduleID)
+			items = append(items, sourceItem{SourceJsonStructure, moduleName + "." + js.Name, moduleName})
+		}
+	}
+
+	importList, err := b.reader.ListImportMappings()
+	if err == nil {
+		for _, im := range importList {
+			moduleID := b.hierarchy.findModuleID(im.ContainerID)
+			moduleName := b.hierarchy.getModuleName(moduleID)
+			items = append(items, sourceItem{SourceImportMapping, moduleName + "." + im.Name, moduleName})
+		}
+	}
+
+	exportList, err := b.reader.ListExportMappings()
+	if err == nil {
+		for _, em := range exportList {
+			moduleID := b.hierarchy.findModuleID(em.ContainerID)
+			moduleName := b.hierarchy.getModuleName(moduleID)
+			items = append(items, sourceItem{SourceExportMapping, moduleName + "." + em.Name, moduleName})
 		}
 	}
 
@@ -128,14 +203,9 @@ func (b *Builder) buildSource() error {
 	// projects (one describe per document), so report progress periodically —
 	// from a single ticker goroutine, the only caller of report() during the
 	// run, so the progress sink isn't written concurrently.
-	numWorkers := max(min(runtime.NumCPU(), 8), 1)
-
-	results := make([]sourceResult, len(items))
-	work := make(chan int, len(items))
-
-	var done atomic.Int64
 	total := len(items)
 	stop := make(chan struct{})
+	var done atomic.Int64
 	go func() {
 		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
@@ -149,25 +219,10 @@ func (b *Builder) buildSource() error {
 		}
 	}()
 
-	var wg sync.WaitGroup
-	for range numWorkers {
-		wg.Go(func() {
-			for idx := range work {
-				item := items[idx]
-				text, err := b.describeFunc(item.objType, item.qn)
-				if err == nil && text != "" {
-					results[idx] = sourceResult{item, text}
-				}
-				done.Add(1)
-			}
-		})
-	}
+	results, failures := runDescribes(items, b.describeFunc,
+		max(min(runtime.NumCPU(), 8), 1),
+		func(n int) { done.Store(int64(n)) })
 
-	for i := range items {
-		work <- i
-	}
-	close(work)
-	wg.Wait()
 	close(stop)
 
 	// Phase 3: Insert results into FTS5 table (serial — SQLite constraint)
@@ -190,5 +245,90 @@ func (b *Builder) buildSource() error {
 	}
 
 	b.report("source", count)
+
+	// Report what produced no row. Silence here is what let #912 sit unnoticed:
+	// 14 of 114 documents were dropped and the only visible number was the 100
+	// that survived. Grouped by type, because a whole type failing is a wiring
+	// bug while one document failing is a property of that document.
+	if len(failures) > 0 {
+		byType := map[string]int{}
+		for _, f := range failures {
+			byType[f.item.objType]++
+		}
+		for _, objType := range SourceObjectTypes {
+			if n := byType[objType]; n > 0 {
+				b.report(fmt.Sprintf("source: %d %s document(s) could not be described (e.g. %s)",
+					n, objType, firstFailureReason(failures, objType)), n)
+			}
+		}
+	}
 	return nil
+}
+
+// firstFailureReason returns one representative reason for a type, so the
+// report says why rather than only how many.
+func firstFailureReason(failures []describeFailure, objType string) string {
+	for _, f := range failures {
+		if f.item.objType == objType {
+			return f.item.qn + ": " + f.reason
+		}
+	}
+	return ""
+}
+
+// runDescribes fans the describe calls out across workers and returns both the
+// per-item results (positionally, so text stays matched to its document) and
+// every item that produced no row.
+//
+// Split out of buildSource so the failure handling is testable without a
+// project: the whole of #912 lived in the two swallowed error paths below.
+func runDescribes(items []sourceItem, describe DescribeFunc, workers int, onProgress func(done int)) ([]sourceResult, []describeFailure) {
+	if len(items) == 0 {
+		return nil, nil
+	}
+	if workers < 1 {
+		workers = 1
+	}
+
+	results := make([]sourceResult, len(items))
+	failed := make([]*describeFailure, len(items))
+	work := make(chan int, len(items))
+
+	var done atomic.Int64
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Go(func() {
+			for idx := range work {
+				item := items[idx]
+				text, err := describe(item.objType, item.qn)
+				switch {
+				case err != nil:
+					failed[idx] = &describeFailure{item, err.Error()}
+				case text == "":
+					failed[idx] = &describeFailure{item, "describe returned empty output"}
+				default:
+					results[idx] = sourceResult{item, text}
+				}
+				n := done.Add(1)
+				if onProgress != nil {
+					onProgress(int(n))
+				}
+			}
+		})
+	}
+
+	for i := range items {
+		work <- i
+	}
+	close(work)
+	wg.Wait()
+
+	// Collected in index order so the report is stable run to run.
+	var failures []describeFailure
+	for _, f := range failed {
+		if f != nil {
+			failures = append(failures, *f)
+		}
+	}
+	return results, failures
 }
