@@ -572,7 +572,10 @@ func inferKind(e RobustExpr, ctx Context) TypeKind {
 		}
 	case *CallExpr:
 		if sig, ok := funcTable[n.Name]; ok {
-			return sig.ret
+			if sig.retFromArgs {
+				return callArgsResult(n.Args, ctx)
+			}
+			return sig.retFor(len(n.Args))
 		}
 	case *ParenExpr:
 		return inferKind(n.Inner, ctx)
@@ -711,6 +714,21 @@ func otherKind(l, r TypeKind) TypeKind {
 		return r
 	}
 	return l
+}
+
+// callArgsResult folds arithResult over a call's arguments, for the built-ins
+// that preserve their operands' numeric kind (abs, max, min). It inherits
+// arithResult's conservatism: one argument of unknown kind makes the whole
+// result unknown, so a caller can never prove an assignment wrong from it.
+func callArgsResult(args []RobustExpr, ctx Context) TypeKind {
+	if len(args) == 0 {
+		return KindUnknown
+	}
+	k := inferKind(args[0], ctx)
+	for _, a := range args[1:] {
+		k = arithResult(k, inferKind(a, ctx))
+	}
+	return k
 }
 
 // arithResult returns the Mendix result kind of a non-division arithmetic

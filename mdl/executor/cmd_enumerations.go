@@ -465,6 +465,7 @@ func ValidateEntity(stmt *ast.CreateEntityStmt) []linter.Violation {
 	var violations []linter.Violation
 	persistent := stmt.Kind == ast.EntityPersistent
 	entityName := stmt.Name.String()
+	violations = append(violations, validateIdempotencyGuard(stmt.CreateOrModify, stmt.IfNotExists, "entity", entityName)...)
 	for _, attr := range stmt.Attributes {
 		violations = append(violations, validateEntityAttribute(attr, persistent, entityName)...)
 		if !persistent {
@@ -611,4 +612,27 @@ func validateEntityAttribute(attr ast.Attribute, persistent bool, entityName str
 		})
 	}
 	return violations
+}
+
+// validateIdempotencyGuard (MDL067) rejects CREATE OR MODIFY … IF NOT EXISTS.
+//
+// Both spellings exist to make a script re-runnable and they mean opposite
+// things about an existing element: OR MODIFY rebuilds it from the statement,
+// IF NOT EXISTS leaves it exactly as it is. Written together, one of them is
+// silently ignored, and which one is not something the author can tell by
+// reading the statement — so the statement is refused rather than resolved.
+// (sudoku findings #10)
+func validateIdempotencyGuard(createOrModify, ifNotExists bool, kind, name string) []linter.Violation {
+	if !createOrModify || !ifNotExists {
+		return nil
+	}
+	return []linter.Violation{{
+		RuleID:   "MDL067",
+		Severity: linter.SeverityError,
+		Message: fmt.Sprintf("'create or modify %s ... if not exists' combines two contradictory guards — "+
+			"'or modify' replaces the stored definition, 'if not exists' leaves it untouched", kind),
+		Suggestion: fmt.Sprintf("Keep one: 'create or modify %s %s' to converge on this definition, "+
+			"or 'create %s if not exists %s' to leave an existing one alone.", kind, name, kind, name),
+		Location: linter.Location{DocumentType: kind, DocumentName: name},
+	}}
 }

@@ -14,12 +14,16 @@ options { tokenVocab = MDLLexer; }
 /**
  * Creates a new entity in the domain model.
  */
+// IF NOT EXISTS makes the head of a domain script re-runnable without the reach
+// of CREATE OR MODIFY, which replaces the whole definition and drops any
+// attribute the statement omits. The guarded form never touches an entity that
+// is already there. (sudoku findings #10, #24)
 createEntityStatement
-    : PERSISTENT ENTITY qualifiedName generalizationClause? entityBody?
-    | NON_PERSISTENT ENTITY qualifiedName generalizationClause? entityBody?
-    | VIEW ENTITY qualifiedName entityBody? AS LPAREN? oqlQuery RPAREN?  // Parentheses optional
-    | EXTERNAL ENTITY qualifiedName entityBody?
-    | ENTITY qualifiedName generalizationClause? entityBody?  // Default to persistent
+    : PERSISTENT ENTITY ifNotExists? qualifiedName generalizationClause? entityBody?
+    | NON_PERSISTENT ENTITY ifNotExists? qualifiedName generalizationClause? entityBody?
+    | VIEW ENTITY ifNotExists? qualifiedName entityBody? AS LPAREN? oqlQuery RPAREN?  // Parentheses optional
+    | EXTERNAL ENTITY ifNotExists? qualifiedName entityBody?
+    | ENTITY ifNotExists? qualifiedName generalizationClause? entityBody?  // Default to persistent
     ;
 
 generalizationClause
@@ -162,11 +166,11 @@ indexColumnName
     ;
 
 createAssociationStatement
-    : ASSOCIATION qualifiedName
+    : ASSOCIATION ifNotExists? qualifiedName
       FROM qualifiedName
       TO qualifiedName
       associationOptions?
-    | ASSOCIATION qualifiedName LPAREN
+    | ASSOCIATION ifNotExists? qualifiedName LPAREN
       FROM qualifiedName TO qualifiedName
       (COMMA associationOption)*
       RPAREN
@@ -210,8 +214,9 @@ alterEntityAction
     | SET COMMENT STRING_LITERAL
     | SET POSITION LPAREN NUMBER_LITERAL COMMA NUMBER_LITERAL RPAREN
     | SET ALLOW_CREATE_CHANGE_LOCALLY EQUALS (TRUE | FALSE)
-    | ADD INDEX indexDefinition
-    | DROP INDEX IDENTIFIER
+    | ADD INDEX ifNotExists? indexDefinition
+    | DROP INDEX ifExists? indexDefinition
+    | DROP INDEX ifExists? IDENTIFIER
     | ADD EVENT HANDLER ifNotExists? eventHandlerDefinition
     | DROP EVENT HANDLER ifExists? ON eventMoment eventType
     ;
@@ -219,9 +224,14 @@ alterEntityAction
 // Idempotency guards for a re-runnable domain script: ADD ... IF NOT EXISTS
 // skips (with a notice) when the member is already present, and DROP ... IF
 // EXISTS skips when it is already gone — instead of erroring and halting the
-// run. Accepted on ATTRIBUTE and on EVENT HANDLER, which has no other way to be
-// re-run: a defensive drop-then-add fails on the drop when the handler is
-// absent, and on the add when it is present. (mxcli-todo findings #18)
+// run. Accepted on ATTRIBUTE, EVENT HANDLER and INDEX, and on CREATE ENTITY /
+// CREATE ASSOCIATION.
+//
+// EVENT HANDLER and INDEX have no other way to be re-run: a defensive
+// drop-then-add fails on the drop when the member is absent, and on the add
+// when it is present. INDEX is the sharper case — an unguarded re-run used to
+// append a second identical index silently, which mxbuild rejects with CE0072
+// "Duplicate indexes". (mxcli-todo findings #18, sudoku findings #10)
 ifNotExists
     : IF NOT EXISTS
     ;

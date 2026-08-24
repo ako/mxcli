@@ -43,6 +43,10 @@ type CreateEntityStmt struct {
 	Documentation  string
 	Comment        string
 	CreateOrModify bool // true for CREATE OR MODIFY
+	// IfNotExists is CREATE ENTITY IF NOT EXISTS: skip entirely when the entity
+	// is already there. Unlike CreateOrModify it never touches an existing
+	// definition, so it is the safe way to make a domain script re-runnable.
+	IfNotExists bool
 }
 
 func (s *CreateEntityStmt) isStatement() {}
@@ -105,8 +109,8 @@ type AlterEntityStmt struct {
 	ModifyDefaultValue any
 	Documentation      string           // For SET DOCUMENTATION
 	Comment            string           // For SET COMMENT
-	Index              *Index           // For ADD INDEX
-	IndexName          string           // For DROP INDEX
+	Index              *Index           // For ADD INDEX, and DROP INDEX by column list
+	IndexName          string           // For DROP INDEX by ordinal name ("idx1", "idx2", ...)
 	Position           *Position        // For SET POSITION
 	EventHandler       *EventHandlerDef // For ADD/DROP EVENT HANDLER
 	BoolValue          bool             // For SET ALLOW_CREATE_CHANGE_LOCALLY
@@ -114,8 +118,8 @@ type AlterEntityStmt struct {
 	// add (with a notice) when the attribute already exists; IfExists on DROP
 	// ATTRIBUTE skips the drop when it is already gone — so a domain script
 	// re-runs cleanly instead of erroring and halting.
-	IfNotExists bool // For ADD ATTRIBUTE IF NOT EXISTS
-	IfExists    bool // For DROP ATTRIBUTE IF EXISTS
+	IfNotExists bool // For ADD ATTRIBUTE / ADD INDEX / ADD EVENT HANDLER IF NOT EXISTS
+	IfExists    bool // For DROP ATTRIBUTE / DROP INDEX / DROP EVENT HANDLER IF EXISTS
 }
 
 func (s *AlterEntityStmt) isStatement() {}
