@@ -29,11 +29,16 @@ type PropertyDef struct {
 	// (mendixlabs/mxcli#716).
 	OnChange     string
 	DefaultValue string // for enumeration/boolean/integer types
-	IsList       bool
-	IsSystem     bool          // true for <systemProperty> elements
-	DataSource   string        // dataSource attribute reference
-	EnumValues   []string      // enumeration member keys (for type="enumeration")
-	Children     []PropertyDef // nested properties for object-type properties
+	// DefaultType is the KIND of the default — `defaultType` in the widget XML
+	// ("CallNanoflow", "Association", …). Part of the widget DEFINITION like
+	// OnChange, so storing "None" where the package declares one is CE0463
+	// (mendixlabs/mxcli#956).
+	DefaultType string
+	IsList      bool
+	IsSystem    bool          // true for <systemProperty> elements
+	DataSource  string        // dataSource attribute reference
+	EnumValues  []string      // enumeration member keys (for type="enumeration")
+	Children    []PropertyDef // nested properties for object-type properties
 }
 
 // WidgetDefinition holds the parsed definition of a pluggable widget from an .mpk file.
@@ -88,6 +93,7 @@ type xmlProperty struct {
 	DefaultValue string `xml:"defaultValue,attr"`
 	Required     string `xml:"required,attr"`
 	OnChange     string `xml:"onChange,attr"`
+	DefaultType  string `xml:"defaultType,attr"`
 	IsList       string `xml:"isList,attr"`
 	DataSource   string `xml:"dataSource,attr"`
 	Caption      string `xml:"caption"`
@@ -287,6 +293,7 @@ func walkPropertyGroup(pg xmlPropGroup, parentCategory string, def *WidgetDefini
 			Required:     p.Required != "false",
 			OnChange:     p.OnChange,
 			DefaultValue: p.DefaultValue,
+			DefaultType:  p.DefaultType,
 			IsList:       p.IsList == "true",
 			DataSource:   p.DataSource,
 			EnumValues:   enumValueKeys(p.EnumValues),
@@ -312,6 +319,7 @@ func walkPropertyGroup(pg xmlPropGroup, parentCategory string, def *WidgetDefini
 					Required:     np.Required != "false",
 					OnChange:     np.OnChange,
 					DefaultValue: np.DefaultValue,
+					DefaultType:  np.DefaultType,
 					IsList:       np.IsList == "true",
 					DataSource:   np.DataSource,
 					EnumValues:   enumValueKeys(np.EnumValues),
@@ -350,6 +358,7 @@ func collectNestedProperties(pg xmlPropGroup, parent *PropertyDef) {
 			Required:     p.Required != "false",
 			OnChange:     p.OnChange,
 			DefaultValue: p.DefaultValue,
+			DefaultType:  p.DefaultType,
 			IsList:       p.IsList == "true",
 			DataSource:   p.DataSource,
 			EnumValues:   enumValueKeys(p.EnumValues),

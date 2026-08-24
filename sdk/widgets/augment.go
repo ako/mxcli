@@ -582,7 +582,7 @@ func createDefaultValueType(vtID string, bsonType string, p mpk.PropertyDef) map
 		"AllowedTypes":                []any{float64(1)},
 		"AssociationTypes":            []any{float64(1)},
 		"DataSourceProperty":          "",
-		"DefaultType":                 "None",
+		"DefaultType":                 defaultTypeOf(p),
 		"DefaultValue":                p.DefaultValue,
 		"EntityProperty":              "",
 		"EnumerationValues":           []any{float64(2)},
@@ -1176,4 +1176,15 @@ func rewriteIDs(v any, remap map[string]string) any {
 // isPlaceholderID matches the "aa" prefix placeholderID mints.
 func isPlaceholderID(s string) bool {
 	return len(s) == 32 && strings.HasPrefix(s, "aa0000000000000000000000")
+}
+
+// defaultTypeOf reports the WidgetValueType DefaultType for a property: the
+// `defaultType` its widget XML declares, or "None" when it declares none. See the
+// modelsdk twin for the measurement — writing "None" where the package declares
+// "CallNanoflow" is CE0463 on every page carrying the widget.
+func defaultTypeOf(p mpk.PropertyDef) string {
+	if p.DefaultType == "" {
+		return "None"
+	}
+	return p.DefaultType
 }
