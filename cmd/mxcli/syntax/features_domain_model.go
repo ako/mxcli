@@ -37,7 +37,7 @@ func init() {
 			"non-persistent", "extends", "generalization",
 			"index", "event handler", "before commit", "after commit",
 		},
-		Syntax:  "CREATE PERSISTENT ENTITY Module.Name (\n  Attr: Type [NOT NULL [ERROR 'msg']] [UNIQUE [ERROR 'msg']] [DEFAULT val],\n  ...\n)\n[INDEX (attr1, attr2)]\n[ON BEFORE|AFTER CREATE|COMMIT|DELETE|ROLLBACK CALL Module.MF [RAISE ERROR]]\n[COMMENT 'text'];\n\nCREATE NON-PERSISTENT ENTITY Module.Name (...);\nCREATE PERSISTENT ENTITY Module.Name EXTENDS Module.Parent (...);",
+		Syntax:  "CREATE PERSISTENT ENTITY Module.Name (\n  Attr: Type [NOT NULL [ERROR 'msg']] [UNIQUE [ERROR 'msg']] [DEFAULT val],\n  ...\n)\n[INDEX (attr1, attr2)]\n[ON BEFORE|AFTER CREATE|COMMIT|DELETE|ROLLBACK CALL Module.MF [RAISE ERROR]]\n[COMMENT 'text'];\n\nCREATE NON-PERSISTENT ENTITY Module.Name (...);\nCREATE PERSISTENT ENTITY Module.Name EXTENDS Module.Parent (...);\n\n-- INDEX goes AFTER the closing parenthesis, never inside the attribute list.\n-- On an existing entity, either spelling works:\nALTER ENTITY Module.Name ADD INDEX [name] [ON] (attr1 [ASC|DESC], ...);\nCREATE INDEX IdxName ON Module.Name (attr1 [ASC|DESC], ...);",
 		Example: "-- Persistent with constraints and index\nCREATE PERSISTENT ENTITY Shop.Order (\n  OrderNumber: String(20) NOT NULL,\n  Total: Decimal DEFAULT 0,\n  CreatedAt: DateTime\n)\nINDEX (OrderNumber)\nON BEFORE COMMIT CALL Shop.ValidateOrder($currentObject) RAISE ERROR;\n\n-- With generalization\nCREATE PERSISTENT ENTITY Shop.ProductImage EXTENDS System.Image (\n  Caption: String(200)\n);",
 		SeeAlso: []string{"domain-model.entity.alter", "domain-model.entity.attributes"},
 	})

@@ -1058,3 +1058,29 @@ func moveDocumentTypeFor(ruleText string) (ast.DocumentType, bool) {
 	docType, ok := ast.MoveDocumentTypeByKeyword[strings.ToUpper(ruleText)]
 	return docType, ok
 }
+
+// ExitCreateIndexStatement handles the standalone SQL spelling,
+// `create index IdxRowCol on Mod.Cell (Row, Col DESC)`.
+//
+// The rule has been in the grammar since indexes were added, with no listener
+// behind it — so the statement parsed, produced no AST node, and `exec` reported
+// nothing and did nothing, even when the entity did not exist. That is worse
+// than a parse error: the author reads "Syntax OK" and believes the index was
+// created. Found while fixing sudoku finding #4, which is the same question
+// asked from the other side ("where does an index go?").
+//
+// It carries exactly the meaning of `alter entity Mod.Cell add index (…)`, so it
+// lowers to that statement rather than growing a second code path. The index
+// name is accepted and discarded, as it is in every other spelling: a Mendix
+// index is anonymous, identified by its column list.
+func (b *Builder) ExitCreateIndexStatement(ctx *parser.CreateIndexStatementContext) {
+	qn := ctx.QualifiedName()
+	if qn == nil {
+		return
+	}
+	b.statements = append(b.statements, &ast.AlterEntityStmt{
+		Name:      buildQualifiedName(qn),
+		Operation: ast.AlterEntityAddIndex,
+		Index:     &ast.Index{Columns: buildIndexColumns(ctx.IndexAttributeList())},
+	})
+}

@@ -90,6 +90,7 @@ Modifies an existing entity without full replacement.
 | Modify attributes | `alter entity Module.Name modify (attr: NewType [constraints]);` | Change type/constraints |
 | Rename attribute | `alter entity Module.Name rename attribute OldName to NewName;` | Also rewrites stored references (microflow members, page widgets, validation/access rules) and XPath constraints. Microflow expressions are free text and are **not** rewritten |
 | Add index | `alter entity Module.Name add index [name] [on] (Col1 [asc\|desc], ...);` | `on` is optional (SQL-like) |
+| Add index (SQL form) | `create index IdxName on Module.Name (Col1 [asc\|desc], ...);` | Same effect as `alter entity … add index`. The index name is accepted and discarded — a Mendix index is identified by its columns |
 | Drop index | `alter entity Module.Name drop index (Col1, ...);` | |
 | Add event handler | `alter entity Module.Name add event handler on before commit call Mod.MF($currentObject) [raise error];` | `($currentObject)` or `()`, RAISE ERROR only on BEFORE |
 | Drop event handler | `alter entity Module.Name drop event handler on before commit;` | |
@@ -113,6 +114,10 @@ alter entity Sales.Customer
 alter entity Sales.Customer
   add index (Email);
 ```
+
+> An `INDEX` on `create entity` goes **after** the closing parenthesis of the
+> attribute list, not inside it — `create entity M.Cell (Row: Integer) index (Row);`.
+> Written inside, it parses as an attribute missing its type.
 
 ## Constants
 
