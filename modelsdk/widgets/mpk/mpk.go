@@ -26,8 +26,14 @@ type PropertyDef struct {
 	// OnChange names the sibling action property Studio Pro runs when this
 	// property changes. Part of the widget DEFINITION, so a stale value makes
 	// Mendix report CE0463 "definition of this widget has changed" (#716).
-	OnChange       string
-	DefaultValue   string // for enumeration/boolean/integer types
+	OnChange     string
+	DefaultValue string // for enumeration/boolean/integer types
+	// DefaultType is the KIND of the default — `defaultType` in the widget XML,
+	// e.g. an action defaulting to a nanoflow call ("CallNanoflow") or a
+	// datasource defaulting to an association ("Association"). Like OnChange it
+	// is part of the widget DEFINITION, so storing "None" where the package
+	// declares one is CE0463 (mendixlabs/mxcli#956, File Uploader 2.5.0).
+	DefaultType    string
 	IsList         bool
 	Multiline      bool     // for string/textTemplate: multiline="true"
 	SelectionTypes []string // for selection properties: <selectionType name="..."/>
@@ -204,6 +210,7 @@ type xmlProperty struct {
 	Key            string             `xml:"key,attr"`
 	Type           string             `xml:"type,attr"`
 	DefaultValue   string             `xml:"defaultValue,attr"`
+	DefaultType    string             `xml:"defaultType,attr"`
 	Required       string             `xml:"required,attr"`
 	OnChange       string             `xml:"onChange,attr"`
 	IsList         string             `xml:"isList,attr"`
@@ -398,6 +405,7 @@ func walkPropertyGroup(pg xmlPropGroup, parentCategory string, def *WidgetDefini
 			Required:               p.Required != "false",
 			OnChange:               p.OnChange,
 			DefaultValue:           p.DefaultValue,
+			DefaultType:            p.DefaultType,
 			IsList:                 p.IsList == "true",
 			Multiline:              p.Multiline == "true",
 			SelectionTypes:         toSelectionTypes(p.SelectionTypes),
@@ -471,6 +479,7 @@ func collectNestedProperties(pg xmlPropGroup, parent *PropertyDef, parentCategor
 			Required:               p.Required != "false",
 			OnChange:               p.OnChange,
 			DefaultValue:           p.DefaultValue,
+			DefaultType:            p.DefaultType,
 			IsList:                 p.IsList == "true",
 			Multiline:              p.Multiline == "true",
 			SelectionTypes:         toSelectionTypes(p.SelectionTypes),
