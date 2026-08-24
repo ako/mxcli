@@ -20,8 +20,9 @@ func (b *Builder) ExitCreateEntityStatement(ctx *parser.CreateEntityStatementCon
 	}
 
 	stmt := &ast.CreateEntityStmt{
-		Name: buildQualifiedName(ctx.QualifiedName()),
-		Kind: ast.EntityPersistent, // Default
+		Name:        buildQualifiedName(ctx.QualifiedName()),
+		Kind:        ast.EntityPersistent, // Default
+		IfNotExists: ctx.IfNotExists() != nil,
 	}
 
 	// Entity type
@@ -677,21 +678,34 @@ func (b *Builder) ExitAlterEntityAction(ctx *parser.AlterEntityActionContext) {
 				if idxDef := ctx.IndexDefinition(); idxDef != nil {
 					idx := buildIndex(idxDef)
 					b.statements = append(b.statements, &ast.AlterEntityStmt{
-						Name:      name,
-						Operation: ast.AlterEntityAddIndex,
-						Index:     &idx,
+						Name:        name,
+						Operation:   ast.AlterEntityAddIndex,
+						Index:       &idx,
+						IfNotExists: ctx.IfNotExists() != nil,
 					})
 				}
 				return
 			}
 
-			// DROP INDEX
-			if ctx.DROP() != nil && ctx.INDEX() != nil && ctx.IDENTIFIER() != nil {
-				b.statements = append(b.statements, &ast.AlterEntityStmt{
+			// DROP INDEX. The column-list form is preferred and is the only one
+			// `describe entity` can round-trip — a Mendix index has no stored
+			// name, so the ordinal form ("idx1") names a position that shifts
+			// when an earlier index is dropped.
+			if ctx.DROP() != nil && ctx.INDEX() != nil {
+				stmt := &ast.AlterEntityStmt{
 					Name:      name,
 					Operation: ast.AlterEntityDropIndex,
-					IndexName: ctx.IDENTIFIER().GetText(),
-				})
+					IfExists:  ctx.IfExists() != nil,
+				}
+				if idxDef := ctx.IndexDefinition(); idxDef != nil {
+					idx := buildIndex(idxDef)
+					stmt.Index = &idx
+				} else if ctx.IDENTIFIER() != nil {
+					stmt.IndexName = ctx.IDENTIFIER().GetText()
+				} else {
+					return
+				}
+				b.statements = append(b.statements, stmt)
 				return
 			}
 
@@ -1057,4 +1071,30 @@ func (b *Builder) exitMoveFolderStatement(ctx *parser.MoveStatementContext, name
 func moveDocumentTypeFor(ruleText string) (ast.DocumentType, bool) {
 	docType, ok := ast.MoveDocumentTypeByKeyword[strings.ToUpper(ruleText)]
 	return docType, ok
+}
+
+// ExitCreateIndexStatement handles the standalone SQL spelling,
+// `create index IdxRowCol on Mod.Cell (Row, Col DESC)`.
+//
+// The rule has been in the grammar since indexes were added, with no listener
+// behind it — so the statement parsed, produced no AST node, and `exec` reported
+// nothing and did nothing, even when the entity did not exist. That is worse
+// than a parse error: the author reads "Syntax OK" and believes the index was
+// created. Found while fixing sudoku finding #4, which is the same question
+// asked from the other side ("where does an index go?").
+//
+// It carries exactly the meaning of `alter entity Mod.Cell add index (…)`, so it
+// lowers to that statement rather than growing a second code path. The index
+// name is accepted and discarded, as it is in every other spelling: a Mendix
+// index is anonymous, identified by its column list.
+func (b *Builder) ExitCreateIndexStatement(ctx *parser.CreateIndexStatementContext) {
+	qn := ctx.QualifiedName()
+	if qn == nil {
+		return
+	}
+	b.statements = append(b.statements, &ast.AlterEntityStmt{
+		Name:      buildQualifiedName(qn),
+		Operation: ast.AlterEntityAddIndex,
+		Index:     &ast.Index{Columns: buildIndexColumns(ctx.IndexAttributeList())},
+	})
 }

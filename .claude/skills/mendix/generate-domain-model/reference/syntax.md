@@ -166,6 +166,13 @@ create persistent entity Module.EntityName (
 
 **CRITICAL: INDEX syntax goes AFTER the closing parenthesis, with NO comma before**
 
+**Re-running an `alter entity ... add index` needs `if not exists`.** An index has
+no name — its columns, in order and direction, are its identity — so a second
+`add index on (Level)` is the same index twice, which mxbuild rejects with
+**CE0072 "Duplicate indexes"**. The bare form refuses it; `add index if not
+exists on (Level)` skips. Dropping works the same way and takes the same
+selector: `drop index if exists (Level)`.
+
 Indexes improve query performance for frequently filtered or sorted columns. Add them to persistent entities when:
 - Column is used in WHERE clauses frequently
 - Column is used for sorting (ORDER BY)
@@ -420,14 +427,25 @@ comment 'Additional documentation';
 
 **Idempotency**: plain `create association` is **not** idempotent — re-running it
 errors with `association already exists`, which aborts the rest of the script (and
-any associations defined *after* it are never created). Write **`create or modify
-association`** from the first draft — same clauses, but re-running is a no-op:
+any associations defined *after* it are never created). Two spellings fix that,
+and they mean different things:
 
 ```sql
+-- Converge on this definition, replacing whatever is stored.
 create or modify association Module.Child_Parent
 from Module.Child to Module.Parent
 type reference;
+
+-- Leave an existing association exactly as it is.
+create association if not exists Module.Child_Parent
+from Module.Child to Module.Parent
+type reference;
 ```
+
+Prefer `if not exists` when the statement is a *delta* rather than the element's
+complete definition. `or modify` rebuilds the element from the statement, so a
+partial `create or modify entity` drops every attribute it does not list. Writing
+both is refused as **MDL067**.
 
 **Association Types**:
 - `reference` - One-to-one or many-to-one (foreign key on FROM entity)
