@@ -304,8 +304,25 @@ func (e *PluggableWidgetEngine) Build(def *WidgetDefinition, w *ast.WidgetV3) (*
 		return nil, err
 	}
 
-	// 3. Apply property mappings
+	// 3. Apply property mappings.
+	//
+	// A property the widget's editorConfig hides under the current configuration
+	// is SKIPPED, so the widget template's default survives into the stored
+	// object — which is what Studio Pro stores for it. Measured on a Studio
+	// Pro-authored File Uploader 2.5.0: all 34 declared properties are stored,
+	// the hidden ones at their default, so "hidden" means default-valued, not
+	// absent.
+	//
+	// This only ever fires for a property the script did NOT name — an MDL
+	// keyword shared by several properties (File Uploader routes both
+	// `associatedFiles` and `associatedImages` from `DataSource:`, gated on
+	// `uploadMode`). Naming a hidden property outright is still an error, raised
+	// by MDL-WIDGET10 at check time rather than silently dropped here (#956).
+	hiddenSkip := e.hiddenUnnamedProperties(def, w)
 	for _, mapping := range mappings {
+		if hiddenSkip[strings.ToLower(mapping.PropertyKey)] {
+			continue
+		}
 		ctx, err := e.resolveMapping(mapping, w)
 		if err != nil {
 			return nil, mdlerrors.NewBackend("resolve mapping for "+mapping.PropertyKey, err)
@@ -570,6 +587,44 @@ func (e *PluggableWidgetEngine) isPrimaryAttributeMapping(mapping PropertyMappin
 		}
 	}
 	return true
+}
+
+// hiddenUnnamedProperties returns the widget properties that are hidden under
+// the widget's current configuration AND were not named by the script — i.e.
+// reached only through an MDL keyword that several properties share. Writing
+// into one of those is CE0463; writing into a hidden property the script named
+// explicitly is reported by MDL-WIDGET10 instead, so it is deliberately not
+// included here.
+//
+// Rules come from the .def.json, falling back to a live lift from the installed
+// .mpk (the same two sources the visibility application uses).
+func (e *PluggableWidgetEngine) hiddenUnnamedProperties(def *WidgetDefinition, w *ast.WidgetV3) map[string]bool {
+	rules := def.PropertyVisibility
+	if len(rules) == 0 {
+		rules = resolveWidgetVisibilityRules(e.pageBuilder.getProjectPath(), def.WidgetID)
+	}
+	if len(rules) == 0 {
+		return nil
+	}
+	values, explicit := widgetValueMap(w, def)
+	out := map[string]bool{}
+	for _, rule := range rules {
+		if rule.Nested() || rule.HiddenWhen == nil {
+			continue
+		}
+		key := strings.ToLower(rule.PropertyKey)
+		if explicit[key] {
+			continue // named by the script — MDL-WIDGET10's business, not ours
+		}
+		condVal, known := values[strings.ToLower(rule.HiddenWhen.PropertyKey)]
+		if !known {
+			continue // condition indeterminable — never guess
+		}
+		if rule.HiddenWhen.Hidden(map[string]string{rule.HiddenWhen.PropertyKey: condVal}) {
+			out[key] = true
+		}
+	}
+	return out
 }
 
 // templateAttrPlaceholderRe matches `{AttrName}` placeholders in a text
@@ -1163,7 +1218,15 @@ func (e *PluggableWidgetEngine) buildObjectListItem(mapping *ObjectListMapping, 
 			// when MDL writes `Caption: '{1}'` it pairs with `CaptionParams:
 			// [{1} = attr]`. The companion key is the matched name (alias or
 			// schema name) + "Params".
-			if paramsRaw, ok := child.Properties[matchedAlias+"Params"]; ok {
+			// lookupProperty, not a direct index: MDL property names are
+			// case-insensitive everywhere else, and matchedAlias is the SCHEMA
+			// key (`buttonCaption`) while the script — and DESCRIBE — write the
+			// widget's own casing (`ButtonCaptionParams`). A direct index found
+			// the companion only when the two happened to agree, which is why
+			// this worked for a DataGrid column's `CaptionParams` and silently
+			// dropped a File Uploader custom button's, leaving a `{1}` with no
+			// parameter and failing the build with CE0720 (#956).
+			if paramsRaw, ok := lookupProperty(child.Properties, matchedAlias+"Params"); ok {
 				if astParams, ok := paramsRaw.([]ast.ParamAssignmentV3); ok && len(astParams) > 0 {
 					prop.Parameters = e.pageBuilder.buildClientTemplateParams(astParams)
 				}

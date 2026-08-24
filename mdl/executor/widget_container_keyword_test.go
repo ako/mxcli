@@ -45,7 +45,8 @@ func containerKeywordsInGrammar(t *testing.T) map[string]bool {
 // knownUnsupportedContainers are derived keywords that collide with an existing
 // token (ATTRIBUTE, ATTR and EVENT are already lexed for other purposes), so they
 // cannot simply be added to widgetTypeV3. Their widgets' object lists are not
-// authorable until the collision is resolved — tracked, not silently tolerated.
+// authorable until the collision is resolved — tracked in issue #239, not
+// silently tolerated.
 var knownUnsupportedContainers = map[string]string{
 	"ATTRIBUTE": "collides with the Attribute: property keyword (htmlelement attributes)",
 	"ATTR":      "collides with the ATTR token (accessibilityhelper)",

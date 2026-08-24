@@ -831,6 +831,15 @@ func parseWidgetPropertyV3(ctx parser.IWidgetPropertyV3Context, widget *ast.Widg
 
 	// Generic property: Identifier: value
 	if id := propCtx.IDENTIFIER(); id != nil {
+		// `<Name>Params: [{1} = Attr]` — the parameters of a text-template
+		// sub-property whose name belongs to the WIDGET rather than to MDL (a
+		// File Uploader custom button's ButtonCaptionParams). ContentParams and
+		// CaptionParams have their own tokens and are handled above; every other
+		// template's companion arrives here (#956).
+		if plCtx := propCtx.ParamListV3(); plCtx != nil {
+			widget.Properties[id.GetText()] = buildParamListV3(plCtx)
+			return
+		}
 		// Generic datasource-typed property (e.g. chart series `staticDataSource:
 		// database Module.View`). The executor's object-list builder resolves the
 		// *ast.DataSourceV3 into a widget datasource + entity context. Chart 9a.
@@ -855,6 +864,10 @@ func parseWidgetPropertyV3(ctx parser.IWidgetPropertyV3Context, widget *ast.Widg
 	// Generic property with keyword name: keyword: value (for pluggable widget property keys
 	// that happen to be MDL keywords, e.g., type, datasource, content)
 	if kw := propCtx.Keyword(); kw != nil {
+		if plCtx := propCtx.ParamListV3(); plCtx != nil {
+			widget.Properties[kw.GetText()] = buildParamListV3(plCtx)
+			return
+		}
 		if dsCtx := propCtx.DataSourceExprV3(); dsCtx != nil {
 			widget.Properties[kw.GetText()] = buildDataSourceV3(dsCtx)
 			return

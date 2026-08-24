@@ -648,6 +648,15 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			if w.Caption != "" {
 				props = append(props, fmt.Sprintf("Label: %s", mdlQuote(w.Caption)))
 			}
+			// A pluggable widget's own datasource. Without this the branch
+			// emitted every property EXCEPT the datasource, so a rewrite dropped
+			// it — measured on a Studio Pro-authored File Uploader 2.5.0, whose
+			// `associatedFiles` is a Forms$AssociationSource: a page at 0 errors
+			// came back as CE0642 "Property 'Associated files' is required" plus
+			// two CE1571, because the action's parameter loses its default once
+			// the datasource is gone. The DESCRIBE text was byte-identical before
+			// and after, so only mx check separated them (#956).
+			props = appendDataSourceProp(props, w.DataSource)
 			for _, ep := range w.ExplicitProperties {
 				props = append(props, fmt.Sprintf("%s: %s", ep.Key, explicitPropValue(ep)))
 			}
