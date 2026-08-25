@@ -123,12 +123,39 @@ func describeExportMapping(ctx *ExecContext, name ast.QualifiedName) error {
 	if len(em.Elements) > 0 {
 		fmt.Fprintln(ctx.Output, "{")
 		for _, elem := range em.Elements {
-			printExportMappingElement(ctx.Output, elem, 1, true, "")
+			printExportMappingElement(ctx.Output, exportRootToPrint(elem), 1, true, "")
 			fmt.Fprintln(ctx.Output)
 		}
 		fmt.Fprintln(ctx.Output, "};")
 	}
 	return nil
+}
+
+// exportRootToPrint unwraps the bare Array container an array-rooted export
+// mapping stores (#248) so DESCRIBE prints the MDL that produced it — the root
+// entity, not the container.
+//
+// Without this the container falls into printExportMappingElement's value branch
+// (it is Kind "Array", not "Object") and prints "Root = " with its whole subtree
+// dropped, which is the #260 defect. Every mapping this change makes authorable
+// would have gone straight into the silent-loss set otherwise.
+//
+// Only the shape mxcli itself writes is unwrapped: a container carrying an
+// entity, or one with more than a single object child, is a shape MDL cannot
+// author (DigitalTwin.EMM_EntityQuery — see buildExportRootArrayElement), so it
+// is left alone for #260/#262 to handle rather than being printed as something
+// it is not.
+func exportRootToPrint(elem *model.ExportMappingElement) *model.ExportMappingElement {
+	// Discriminate on the stored paths, not on Kind: the two engines' readers
+	// label the container differently ("Array" vs "Object"), and the paths are
+	// what the document actually says.
+	if elem == nil || elem.JsonPath != "(Array)" || elem.Entity != "" || len(elem.Children) != 1 {
+		return elem
+	}
+	if item := elem.Children[0]; item.Entity != "" && item.JsonPath == "(Array)|(Object)" {
+		return item
+	}
+	return elem
 }
 
 func printExportMappingElement(w io.Writer, elem *model.ExportMappingElement, depth int, isRoot bool, parentPath string) {
@@ -273,6 +300,67 @@ func execCreateExportMapping(ctx *ExecContext, s *ast.CreateExportMappingStmt) e
 	return nil
 }
 
+// buildExportRootArrayElement builds the two-level shape Studio Pro stores for an
+// array-rooted export mapping: a bare Array container at the structure's root
+// path, whose single child is the item object carrying the entity.
+//
+// Measured on SnowflakeIntegration.EXM_SensorData (Evora demo app, Mendix
+// 11.13), which is the shape a root entity in MDL means — the mapping's
+// parameter is the item and the array is produced from a list of them:
+//
+//	et=Array   oh=Find      entity=-                          max=1   path=(Array)
+//	  et=Object  oh=Parameter entity=SnowflakeIntegration.SensorData max=-1  path=(Array)|(Object)
+//
+// The other shape in the corpus (DigitalTwin.EMM_EntityQuery) puts an entity on
+// the container and Find on the item — the parameter owns the list rather than
+// being in it. MDL names one entity at the root and cannot say which, so that
+// shape stays unauthorable; it needs the container syntax tracked by #262.
+func buildExportRootArrayElement(moduleName string, def *ast.ExportMappingElementDef,
+	root *types.JsonElement, idx *jsonSchemaIndex, b backend.FullBackend,
+) (*model.ExportMappingElement, error) {
+	entity := def.Entity
+	if entity != "" && !strings.Contains(entity, ".") {
+		entity = moduleName + "." + entity
+	}
+
+	itemPath := root.Path + "|(Object)"
+	item := &model.ExportMappingElement{
+		BaseElement: model.BaseElement{
+			ID:       model.ID(types.GenerateID()),
+			TypeName: "ExportMappings$ObjectMappingElement",
+		},
+		Kind:           "Object",
+		Entity:         entity,
+		ObjectHandling: "Parameter",
+		JsonPath:       itemPath,
+		MaxOccurs:      -1, // 0..*, mirroring the schema item (#841)
+	}
+	if jsItem, ok := idx.byPath[itemPath]; ok {
+		item.ExposedName = jsItem.ExposedName
+		item.MaxOccurs = jsItem.MaxOccurs
+	}
+	for _, child := range def.Children {
+		c, err := buildExportMappingElementModel(moduleName, child, entity, itemPath, idx, b, false)
+		if err != nil {
+			return nil, err
+		}
+		item.Children = append(item.Children, c)
+	}
+
+	return &model.ExportMappingElement{
+		BaseElement: model.BaseElement{
+			ID:       model.ID(types.GenerateID()),
+			TypeName: "ExportMappings$ObjectMappingElement",
+		},
+		Kind:           "Array",
+		ObjectHandling: "Find",
+		ExposedName:    root.ExposedName,
+		JsonPath:       root.Path,
+		MaxOccurs:      root.MaxOccurs,
+		Children:       []*model.ExportMappingElement{item},
+	}, nil
+}
+
 // buildExportMappingElementModel converts an AST element definition to a model element.
 // It clones properties from the matching JSON structure element and adds mapping bindings.
 func buildExportMappingElementModel(moduleName string, def *ast.ExportMappingElementDef, parentEntity, parentPath string, idx *jsonSchemaIndex, b backend.FullBackend, isRoot bool) (*model.ExportMappingElement, error) {
@@ -289,7 +377,18 @@ func buildExportMappingElementModel(moduleName string, def *ast.ExportMappingEle
 	var jsElem *types.JsonElement
 	lookupPath := parentPath + "|" + def.JsonName
 	if isRoot {
+		// The structure decides where its own root is (#248) — see the twin
+		// comment in cmd_import_mappings.go. The export side needs one thing the
+		// import side does not: an array-rooted EXPORT mapping is stored as TWO
+		// elements, a bare Array container plus the item that carries the entity,
+		// where the import mapping collapses to the item alone.
 		lookupPath = "(Object)"
+		if root := idx.root(); root != nil {
+			lookupPath = root.Path
+			if root.ElementType == "Array" {
+				return buildExportRootArrayElement(moduleName, def, root, idx, b)
+			}
+		}
 		jsElem = idx.byPath[lookupPath]
 	} else {
 		// An EXPORT mapping cannot collapse levels the way an import mapping can.

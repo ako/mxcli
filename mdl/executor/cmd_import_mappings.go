@@ -353,7 +353,23 @@ func buildImportMappingElementModel(moduleName string, def *ast.ImportMappingEle
 	lookupPath := parentPath + "|" + def.JsonName
 	switch {
 	case isRoot:
+		// The structure decides where its own root is, and Studio Pro does not
+		// ask either: an object-rooted structure is built at "(Object)", an
+		// array-rooted one at "(Array)". Hardcoding "(Object)" made every
+		// array-rooted mapping unauthorable and reported its members missing
+		// "at (Object)", a node that structure never had (#248).
+		//
+		// No extra step is needed for the array itself: the array branch below
+		// was already taking "(Array)" -> "(Array)|(Object)" for NESTED arrays,
+		// and a root array needs exactly that. The result matches Studio Pro,
+		// which stores an array-rooted import mapping as a SINGLE element at
+		// "(Array)|(Object)" with no container (measured on
+		// Teamcenter.IMM_ItemRevision and FactoryManagement.IMM_ScenarioList,
+		// Mendix 11.13).
 		lookupPath = "(Object)"
+		if root := idx.root(); root != nil {
+			lookupPath = root.Path
+		}
 		jsElem = idx.byPath[lookupPath]
 	default:
 		var arrayLevel *types.JsonElement
@@ -589,6 +605,17 @@ func (i *jsonSchemaIndex) resolve(parentPath, name string) *types.JsonElement {
 		}
 	}
 	return nil
+}
+
+// root returns the structure's single top-level element, whatever its path.
+// Returns nil for a structure that was not loaded, and for the (impossible in
+// practice) multi-root case, so the caller keeps its "(Object)" default rather
+// than guessing.
+func (i *jsonSchemaIndex) root() *types.JsonElement {
+	if len(i.children[""]) != 1 {
+		return nil
+	}
+	return i.children[""][0]
 }
 
 // resolvable reports whether a JSON structure was actually loaded.

@@ -1,0 +1,101 @@
+-- ============================================================================
+-- Bug #248: mappings over an array-rooted JSON structure could not be authored
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   Any `create import mapping` / `create export mapping` over a structure whose
+--   root is an array failed on its first member:
+--
+--     Error: import mapping X: "id" is not a member of the JSON structure at
+--            (Object), which has no members there
+--
+--   Both executors hardcoded the root lookup to "(Object)"
+--   (cmd_import_mappings.go, cmd_export_mappings.go), while an array-rooted
+--   structure is built at "(Array)" with its item at "(Array)|(Object)". The
+--   root resolved to nothing, and the member error then named a path the
+--   structure never had — which reads as "your key is wrong" rather than "the
+--   root was looked up in the wrong place".
+--
+--   122 of the 327 mapping documents in the demo apps are array-rooted, the
+--   single largest gap in the mapping surface.
+--
+-- After fix:
+--   The root is taken from the structure instead of assumed. The two sides then
+--   differ, matching what Studio Pro stores:
+--
+--     import  ONE element at (Array)|(Object)          — the array collapses
+--     export  a bare Array container at (Array), whose
+--             single child is the item at (Array)|(Object)
+--
+--   Measured against Teamcenter.IMM_ItemRevision / FactoryManagement.IMM_ScenarioList
+--   and SnowflakeIntegration.EXM_SensorData (Evora demo app, Mendix 11.13).
+--
+-- Knock-on, now unblocked:
+--   `returns mapping … as list of` and the list-only ranges (`first`, `offset`)
+--   need a list-rooted mapping. 519-rest-mapping-as-list-of.mdl could not
+--   execute at all before this fix — it died on its own mapping statement.
+--
+-- Validation:
+--   mxbuild 11.13 reports no new errors for either mapping (a blank app's own
+--   pre-existing CE0495 is the control), and both documents match the Studio Pro
+--   references element by element apart from ObjectHandlingBackup (#261) and
+--   MinOccurs, which are tracked separately.
+-- ============================================================================
+
+create module BugTest248;
+
+create persistent entity BugTest248.SensorReading (
+  MachineId: String(100),
+  Temperature: Decimal
+);
+
+-- The array root is the whole point: the same body over an object-rooted
+-- structure always worked.
+create json structure BugTest248.JSON_Readings
+  snippet $$[{"machine_id": "m1", "temperature": 20.5}]$$;
+
+create json structure BugTest248.JSON_Reading
+  snippet $${"machine_id": "m1", "temperature": 20.5}$$;
+
+-- Array-rooted import: one root element, bound to the array's item.
+create import mapping BugTest248.IMM_Readings
+  folder 'Mappings'
+  with json structure BugTest248.JSON_Readings
+{
+  create BugTest248.SensorReading {
+    MachineId = machine_id,
+    Temperature = temperature
+  }
+};
+
+-- Array-rooted export: a bare container plus the item that carries the entity.
+create export mapping BugTest248.EXM_Readings
+  folder 'Mappings'
+  with json structure BugTest248.JSON_Readings
+{
+  BugTest248.SensorReading {
+    machine_id = MachineId,
+    temperature = Temperature
+  }
+};
+
+-- Controls: the object-rooted forms must keep working unchanged.
+create import mapping BugTest248.IMM_Reading
+  folder 'Mappings'
+  with json structure BugTest248.JSON_Reading
+{
+  create BugTest248.SensorReading {
+    MachineId = machine_id,
+    Temperature = temperature
+  }
+};
+
+create export mapping BugTest248.EXM_Reading
+  folder 'Mappings'
+  with json structure BugTest248.JSON_Reading
+{
+  BugTest248.SensorReading {
+    machine_id = MachineId,
+    temperature = Temperature
+  }
+};
