@@ -25,14 +25,11 @@ func (b *Builder) ExitCreateMicroflowStatement(ctx *parser.CreateMicroflowStatem
 		stmt.ReturnType = buildMicroflowReturnType(retType)
 	}
 
-	// Parse options (FOLDER, COMMENT)
+	// Parse options (FOLDER, EXPOSED AS)
 	if opts := ctx.MicroflowOptions(); opts != nil {
 		optsCtx := opts.(*parser.MicroflowOptionsContext)
 		for _, opt := range optsCtx.AllMicroflowOption() {
 			optCtx := opt.(*parser.MicroflowOptionContext)
-			if optCtx.COMMENT() != nil && optCtx.STRING_LITERAL() != nil {
-				stmt.Comment = unquoteString(optCtx.STRING_LITERAL().GetText())
-			}
 			if optCtx.FOLDER() != nil && optCtx.STRING_LITERAL() != nil {
 				stmt.Folder = unquoteString(optCtx.STRING_LITERAL().GetText())
 			}
@@ -80,14 +77,11 @@ func (b *Builder) ExitCreateNanoflowStatement(ctx *parser.CreateNanoflowStatemen
 		stmt.ReturnType = buildMicroflowReturnType(retType)
 	}
 
-	// Parse options (FOLDER, COMMENT)
+	// Parse options (FOLDER, EXPOSED AS)
 	if opts := ctx.MicroflowOptions(); opts != nil {
 		optsCtx := opts.(*parser.MicroflowOptionsContext)
 		for _, opt := range optsCtx.AllMicroflowOption() {
 			optCtx := opt.(*parser.MicroflowOptionContext)
-			if optCtx.COMMENT() != nil && optCtx.STRING_LITERAL() != nil {
-				stmt.Comment = unquoteString(optCtx.STRING_LITERAL().GetText())
-			}
 			if optCtx.FOLDER() != nil && optCtx.STRING_LITERAL() != nil {
 				stmt.Folder = unquoteString(optCtx.STRING_LITERAL().GetText())
 			}
@@ -137,9 +131,6 @@ func (b *Builder) ExitCreateRuleStatement(ctx *parser.CreateRuleStatementContext
 		optsCtx := opts.(*parser.MicroflowOptionsContext)
 		for _, opt := range optsCtx.AllMicroflowOption() {
 			optCtx := opt.(*parser.MicroflowOptionContext)
-			if optCtx.COMMENT() != nil && optCtx.STRING_LITERAL() != nil {
-				stmt.Comment = unquoteString(optCtx.STRING_LITERAL().GetText())
-			}
 			if optCtx.FOLDER() != nil && optCtx.STRING_LITERAL() != nil {
 				stmt.Folder = unquoteString(optCtx.STRING_LITERAL().GetText())
 			}

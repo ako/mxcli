@@ -143,9 +143,13 @@ microflowOptions
     : microflowOption+
     ;
 
+// COMMENT is deliberately absent. It was parsed and dropped — the visitor stored
+// it on a field the executor never read — so `comment 'text'` reported success
+// and set no documentation at all. The `/** … */` doc comment before the
+// statement does work, and is richer (@param, @returns), so there is one
+// spelling rather than one that works and one that lies.
 microflowOption
     : FOLDER STRING_LITERAL
-    | COMMENT STRING_LITERAL
     | microflowExposedClause
     ;
 

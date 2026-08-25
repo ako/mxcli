@@ -50,7 +50,6 @@ type CreateMicroflowStmt struct {
 	ReturnType     *MicroflowReturnType
 	Body           []MicroflowStatement
 	Documentation  string
-	Comment        string
 	Folder         string // Folder path within module (e.g., "Resources/Images")
 	CreateOrModify bool
 	Excluded       bool // @excluded — document excluded from project
@@ -104,7 +103,6 @@ type CreateNanoflowStmt struct {
 	ReturnType     *MicroflowReturnType
 	Body           []MicroflowStatement
 	Documentation  string
-	Comment        string
 	Folder         string // Folder path within module
 	CreateOrModify bool
 	Excluded       bool // @excluded — document excluded from project
@@ -127,7 +125,6 @@ type CreateRuleStmt struct {
 	ReturnType     *MicroflowReturnType
 	Body           []MicroflowStatement
 	Documentation  string
-	Comment        string
 	Folder         string // Folder path within module
 	CreateOrModify bool
 	Excluded       bool // @excluded — document excluded from project

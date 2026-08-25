@@ -41,7 +41,6 @@ type CreateEntityStmt struct {
 	EventHandlers  []EventHandlerDef // ON BEFORE/AFTER CREATE/COMMIT/DELETE/ROLLBACK CALL ...
 	Position       *Position
 	Documentation  string
-	Comment        string
 	CreateOrModify bool // true for CREATE OR MODIFY
 	// IfNotExists is CREATE ENTITY IF NOT EXISTS: skip entirely when the entity
 	// is already there. Unlike CreateOrModify it never touches an existing

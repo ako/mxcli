@@ -40,9 +40,10 @@ entityOptions
     : entityOption (COMMA? entityOption)*  // Allow optional commas between options
     ;
 
+// COMMENT is deliberately absent — it was parsed and dropped. Use the `/** … */`
+// doc comment before the statement, or ALTER ENTITY … SET COMMENT.
 entityOption
-    : COMMENT STRING_LITERAL
-    | INDEX indexDefinition
+    : INDEX indexDefinition
     | eventHandlerDefinition
     ;
 
@@ -297,9 +298,11 @@ moduleOptions
     : moduleOption+
     ;
 
+// COMMENT is deliberately absent, and unlike the others it could never have
+// worked: Projects$Module has no Documentation property, so there is nowhere in
+// the model for a module comment to go.
 moduleOption
-    : COMMENT STRING_LITERAL
-    | FOLDER STRING_LITERAL
+    : FOLDER STRING_LITERAL
     ;
 
 // =============================================================================
@@ -331,9 +334,10 @@ enumerationOptions
     : enumerationOption+
     ;
 
+// COMMENT is deliberately absent — it was parsed and dropped. Use the `/** … */`
+// doc comment before the statement.
 enumerationOption
-    : COMMENT STRING_LITERAL
-    | FOLDER STRING_LITERAL                 // place the enumeration in a module folder (Bug 12b)
+    : FOLDER STRING_LITERAL                 // place the enumeration in a module folder (Bug 12b)
     ;
 
 // =============================================================================

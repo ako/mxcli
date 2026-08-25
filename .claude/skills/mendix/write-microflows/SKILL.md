@@ -394,11 +394,16 @@ toString($value)           -- Convert to string
 ## Complete Example
 
 ```mdl
+/**
+ * Process order with validation and status update.
+ *
+ * @param $OrderNumber The order to process
+ * @returns true when the order was found and marked processed
+ */
 create microflow Shop.ProcessOrder (
   $OrderNumber: string
 )
 returns boolean as $success
-comment 'Process order with validation and status update'
 begin
   declare $success boolean = false;
 
