@@ -27,6 +27,8 @@ func execShow(ctx *ExecContext, s *ast.ShowStmt) error {
 		return listEntities(ctx, s.InModule)
 	case ast.ShowEntity:
 		return listEntity(ctx, s.Name)
+	case ast.ShowAnnotations:
+		return listAnnotations(ctx, s.InModule)
 	case ast.ShowAssociations:
 		return listAssociations(ctx, s.InModule)
 	case ast.ShowAssociation:

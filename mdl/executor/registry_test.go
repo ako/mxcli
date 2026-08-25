@@ -195,6 +195,8 @@ func allKnownStatements() []ast.Statement {
 		&ast.CreateExportMappingStmt{},
 		&ast.CreateExternalEntitiesStmt{},
 		&ast.CreateExternalEntityStmt{},
+		&ast.CreateAnnotationStmt{},
+		&ast.DropAnnotationStmt{},
 		&ast.CreateImageCollectionStmt{},
 		&ast.CreateImportMappingStmt{},
 		&ast.CreateJavaActionStmt{},
