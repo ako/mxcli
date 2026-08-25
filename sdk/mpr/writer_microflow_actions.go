@@ -885,7 +885,11 @@ func serializeRestOperationCallAction(a *microflows.RestOperationCallAction) bso
 	for _, pm := range a.ParameterMappings {
 		paramMappings = append(paramMappings, bson.D{
 			{Key: "$ID", Value: idToBsonBinary(GenerateID())},
-			{Key: "$Type", Value: "Microflows$ParameterMapping"},
+			// STORAGE-NAME OVERRIDE — see the note in
+			// mdl/backend/modelsdk/microflow_rest_write.go. There is no
+			// Microflows$ParameterMapping; writing it makes the project
+			// impossible to OPEN, not merely invalid.
+			{Key: "$Type", Value: "Microflows$RestOperationParameterMapping"},
 			{Key: "Parameter", Value: pm.Parameter},
 			{Key: "Value", Value: pm.Value},
 		})
