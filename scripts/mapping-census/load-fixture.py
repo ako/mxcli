@@ -38,7 +38,9 @@ def unit_identity(blob):
     return raw, uuid.UUID(_guid_hex(raw))
 
 
-MAP_TYPES = ("ImportMappings$ImportMapping", "ExportMappings$ExportMapping")
+MAP_TYPES = ("ImportMappings$ImportMapping", "ExportMappings$ExportMapping",
+             "JsonStructures$JsonStructure",
+             "MessageDefinitions$MessageDefinition")
 
 
 def survey(mpr):
@@ -87,7 +89,9 @@ def main():
     root = os.path.join(os.path.dirname(os.path.abspath(args.project)), "mprcontents")
 
     n = skipped = 0
-    for m in manifest["mappings"]:
+    # Verbatim documents (JSON structures, message definitions) go in FIRST — a
+    # mapping resolves its source by qualified name at read time.
+    for m in manifest.get("documents", []) + manifest["mappings"]:
         # A base project that already ships the document (FeedbackModule's two
         # mappings are in every blank app) must not end up with two documents of
         # the same qualified name.

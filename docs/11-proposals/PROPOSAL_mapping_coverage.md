@@ -645,8 +645,14 @@ Filed 2026-08-24 against `ako/mxcli`.
 | [#266](https://github.com/ako/mxcli/issues/266) — converter microflow (already parses) | §7.6 | 39 |
 | [#267](https://github.com/ako/mxcli/issues/267) — nested schema root (`at a/b`) | §7.2 | 13 |
 | [#268](https://github.com/ako/mxcli/issues/268) — primitive-array wrapper (`member[]`) | §7.7 | 34 |
+| [#272](https://github.com/ako/mxcli/issues/272) — `create json structure` builds different element metadata than Studio Pro | — | — |
 
 [#253](https://github.com/ako/mxcli/issues/253) is unchanged and still open.
+
+#272 was found by the round-trip fixture rather than the census: a real Studio Pro
+mapping using nothing outside MDL's range failed to round-trip until its JSON
+structure was transplanted verbatim instead of regenerated from its snippet.
+The census cannot see it, because it reads stored documents and never rebuilds one.
 
 Not filed separately, deliberately: the quoted-member-name gap (§5.4, 5 docs) is
 inside #260; the XML-schema and XML-attribute long tail (§3, 3 docs each) waits on

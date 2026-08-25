@@ -9,6 +9,71 @@
   "MxModelReflection",
   "OpenAI_API"
  ],
+ "documents": [
+  {
+   "module": "FeedbackModule",
+   "name": "JSON_AppInsightsRequest",
+   "type": "JsonStructures$JsonStructure",
+   "file": "FeedbackModule.JSON_AppInsightsRequest.bson",
+   "source": "InventoryApp.mpr"
+  },
+  {
+   "module": "FeedbackModule",
+   "name": "JSON_AppInsightsResponse",
+   "type": "JsonStructures$JsonStructure",
+   "file": "FeedbackModule.JSON_AppInsightsResponse.bson",
+   "source": "InventoryApp.mpr"
+  },
+  {
+   "module": "KrogerAPI",
+   "name": "JSON_AccessToken",
+   "type": "JsonStructures$JsonStructure",
+   "file": "KrogerAPI.JSON_AccessToken.bson",
+   "source": "InventoryApp.mpr"
+  },
+  {
+   "module": "KrogerAPI",
+   "name": "JSON_Location",
+   "type": "JsonStructures$JsonStructure",
+   "file": "KrogerAPI.JSON_Location.bson",
+   "source": "InventoryApp.mpr"
+  },
+  {
+   "module": "KrogerAPI",
+   "name": "JSON_ProductList",
+   "type": "JsonStructures$JsonStructure",
+   "file": "KrogerAPI.JSON_ProductList.bson",
+   "source": "InventoryApp.mpr"
+  },
+  {
+   "module": "OpenAI_API",
+   "name": "JSON_OpenAI_Response",
+   "type": "JsonStructures$JsonStructure",
+   "file": "OpenAI_API.JSON_OpenAI_Response.bson",
+   "source": "InventoryApp.mpr"
+  },
+  {
+   "module": "MxGenAIConnector",
+   "name": "JSON_CohereEmbed_Request",
+   "type": "JsonStructures$JsonStructure",
+   "file": "MxGenAIConnector.JSON_CohereEmbed_Request.bson",
+   "source": "Lato_EnquiryManagement.mpr"
+  },
+  {
+   "module": "MxGenAIConnector",
+   "name": "JSON_Collection_RetrieveNearestNeighbors_Chunks",
+   "type": "JsonStructures$JsonStructure",
+   "file": "MxGenAIConnector.JSON_Collection_RetrieveNearestNeighbors_Chunks.bson",
+   "source": "Lato_EnquiryManagement.mpr"
+  },
+  {
+   "module": "MxGenAIConnector",
+   "name": "JSON_InvokeModel_CohereEmbed_Response_Modified",
+   "type": "JsonStructures$JsonStructure",
+   "file": "MxGenAIConnector.JSON_InvokeModel_CohereEmbed_Response_Modified.bson",
+   "source": "Lato_EnquiryManagement.mpr"
+  }
+ ],
  "mappings": [
   {
    "module": "FeedbackModule",

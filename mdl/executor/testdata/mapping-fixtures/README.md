@@ -20,9 +20,18 @@ documents must not be re-encoded.
 
 | file | what it is |
 |---|---|
-| `<Module>.<Name>.bson` | one mapping unit, verbatim |
-| `deps.mdl` | JSON structures, enumerations, entities, associations, microflow stubs |
-| `manifest.json` | `modules` to create, and per mapping its type, file, source project and blocking constructs |
+| `<Module>.<Name>.bson` | one unit, verbatim — a mapping, a JSON structure or a message definition |
+| `deps.mdl` | enumerations, entities, associations, microflow stubs |
+| `manifest.json` | `modules` to create, `documents` to transplant, and per mapping its type, file, source project and blocking constructs |
+
+**JSON structures are transplanted, not regenerated.** A structure rebuilt from
+its snippet is not the same document — mxcli names an array's item `DataItem`
+where Studio Pro singularises to `Datum`, and gives the root `MinOccurs 0` where
+Studio Pro writes 1 ([#272](https://github.com/ako/mxcli/issues/272)). A mapping
+element clones those values from the structure it resolves against, so a fixture
+that regenerated them would measure the structure builder instead of the mapping
+describer. That is not hypothetical: it is what made `KrogerAPI.IM_Location`
+appear lossy until the structure was transplanted.
 
 ## Coverage
 
@@ -30,7 +39,7 @@ One mapping per construct, plus a control that uses none.
 
 | mapping | blocks on | issue |
 |---|---|---|
-| `KrogerAPI.IM_Location` | — **control**, must round-trip cleanly | — |
+| `KrogerAPI.IM_Location` | — **control**: a real Studio Pro document that must round-trip cleanly | — |
 | `MendixSSO.AppRolesResponse` | array root, message-definition source | #248, #263 |
 | `Email_Connector.IMM_EmailTemplateMapping` | array root, message definition, `find`+error, `create`+error | #248, #263, #261 |
 | `KrogerAPI.IM_AccessToken` | custom object handling | #264 |
@@ -61,17 +70,36 @@ document's `$ID`, and a transplant that mints a fresh one is listed by `show` an
 then not found by `describe`. A mapping whose name is already in the project is
 skipped, not duplicated.
 
-## Current behaviour (the baseline this fixture pins)
+## The test
 
-Loaded into a blank 11.13 app, `scripts/mapping-census/roundtrip.sh` reports
-**7 parse ok, 4 parse fail**. Six of the seven that parse rebuild a *different*
-mapping — e.g. `KrogerAPI.IM_AccessToken` describes as a plain
-`create KrogerAPI.Token { … }`, dropping the custom handler entirely, and that
-output executes. Only `KrogerAPI.IM_Location` is genuinely faithful.
+`TestMappingFixtureRoundTrip` (`mdl/executor/mapping_fixture_roundtrip_test.go`,
+build tag `integration`) describes each mapping, re-executes that output — DESCRIBE
+emits `create or modify <same name>`, so it rewrites the same document — and
+compares before and after with `canon.Equal`, the canonical form the write path
+already elides on (ADR-0008).
 
-The test to write against this: describe → re-execute into a copy → compare the
-decoded documents, with every mapping either matching or **refusing** (ADR-0005
-guard-don't-drop). It should fail today on 10 of 11.
+```bash
+go test -tags integration ./mdl/executor/ -run TestMappingFixtureRoundTrip
+```
+
+`knownLossy` in that file records what is broken today with the issue that tracks
+it, and the test **fails in both directions**: a mapping that starts round-tripping
+must be struck off, and one that stops must be explained. Verified by removing an
+entry and watching exactly that mapping fail.
+
+Two positive controls, because "everything is lossy" and "the comparison never
+looked" are otherwise indistinguishable:
+
+- `RoundtripTest.IM_RoundtripControl`, authored by mxcli in the test — proves the
+  harness can pass.
+- `KrogerAPI.IM_Location`, a real Studio Pro document that uses nothing outside
+  MDL's range — proves the fixture is loaded faithfully.
+
+Current baseline: both controls pass, nine mappings are lossy. Four fail loudly
+(DESCRIBE emits MDL the grammar rejects); five parse and rebuild a different
+document. `scripts/mapping-census/roundtrip.sh` sees only the loud four — parsing
+is not fidelity.
+
 
 ## Regenerating
 

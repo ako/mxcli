@@ -36,6 +36,17 @@ from mprbson import kids, loads, units  # noqa: E402
 
 MAP_TYPES = ("ImportMappings$ImportMapping", "ExportMappings$ExportMapping")
 
+# Documents transplanted verbatim alongside the mappings rather than recreated
+# from MDL. A JSON structure rebuilt from its snippet is NOT the same document:
+# mxcli derives an array item's name as "<Name>Item" where Studio Pro
+# singularises ("Data" -> "Datum"), and gives the root MinOccurs 0 where Studio
+# Pro writes 1 (issue #272). Those differences leak into every mapping built over
+# the structure, so a round-trip fixture that regenerates them measures the
+# structure builder instead of the mapping describer. Message definitions have no
+# MDL at all (#263).
+VERBATIM_TYPES = ("JsonStructures$JsonStructure",
+                  "MessageDefinitions$MessageDefinition")
+
 # Modules every project already has, and which must never be authored: System is
 # the platform module, and describing its entities emits things like
 # `FileID: AutoNumber` with no seed that mxcli's own pre-flight then refuses.
@@ -91,9 +102,12 @@ def references(doc):
     """Everything a mapping document names, grouped by kind."""
     ref = {"entity": set(), "association": set(), "microflow": set(),
            "structure": set()}
-    for k, key in (("structure", "JsonStructure"), ("structure", "XmlSchema")):
+    for key in ("JsonStructure", "XmlSchema"):
         if doc.get(key):
-            ref[k].add(doc[key])
+            ref["structure"].add(doc[key])
+    if doc.get("MessageDefinition"):
+        # "Module.Document.MessageName" — the document is the first two parts.
+        ref["structure"].add(".".join(doc["MessageDefinition"].split(".")[:2]))
     def keep(qn):
         return qn.split(".")[0] not in PLATFORM_MODULES
 
@@ -170,6 +184,12 @@ def main():
 
     raw = _raw_bytes(args.project, [uid for uid, _d in found.values()])
 
+    # Index the verbatim-transplant candidates by qualified name.
+    verbatim_units = {}
+    for uid, (cid, d) in all_units.items():
+        if d.get("$Type") in VERBATIM_TYPES:
+            verbatim_units["%s.%s" % (module_of(uid), d.get("Name"))] = (uid, d)
+
     refs = {"entity": set(), "association": set(), "microflow": set(),
             "structure": set()}
     manifest = []
@@ -220,6 +240,23 @@ def main():
     modules = sorted({q.split(".")[0] for s in refs.values() for q in s}
                      - PLATFORM_MODULES)
 
+    # Structures and message definitions go in verbatim; anything not found that
+    # way (an XML schema, say) still falls back to a describe.
+    documents = []
+    for qn in sorted(refs["structure"]):
+        hit = verbatim_units.get(qn)
+        if hit is None:
+            continue
+        uid, d = hit
+        blob = _raw_bytes(args.project, [uid])[uid]
+        fname = "%s.bson" % qn
+        with open(os.path.join(args.out, fname), "wb") as f:
+            f.write(blob)
+        documents.append({"module": qn.split(".")[0], "name": d.get("Name"),
+                          "type": d["$Type"], "file": fname,
+                          "source": os.path.basename(args.project)})
+    refs["structure"] -= set(verbatim_units)
+
     for kind, stmt in (("structure", "describe json structure %s"),
                        ("entity", "describe entity %s"),
                        ("association", "describe association %s"),
@@ -244,7 +281,10 @@ def main():
     prev = {"modules": [], "mappings": []}
     if args.append and os.path.exists(mpath):
         prev = json.load(open(mpath))
+    seen_docs = {d["file"] for d in prev.get("documents", [])}
     doc = {"modules": sorted(set(prev.get("modules", [])) | set(modules)),
+           "documents": prev.get("documents", [])
+           + [d for d in documents if d["file"] not in seen_docs],
            "mappings": prev.get("mappings", []) + manifest}
     with open(mpath, "w") as f:
         json.dump(doc, f, indent=1)
