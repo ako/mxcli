@@ -585,11 +585,19 @@ DESCRIBE DATABASE CONNECTION Ops.Erp;`,
 		Keywords: []string{
 			"import mapping", "create import mapping", "drop import mapping",
 			"show import mappings", "describe import mapping",
-			"with json structure", "find or create", "object handling",
+			"with json structure", "with message definition", "find or create",
+			"or create", "or error", "or ignore", "overridable", "object handling backup",
+			"parameter", "input object", "mapping parameter",
+			"object handling", "converter", "value transform", "custom handling", "by microflow",
 		},
 		Syntax: "SHOW IMPORT MAPPINGS [IN Module];\nDESCRIBE IMPORT MAPPING Module.Name;\n" +
-			"CREATE [OR MODIFY] IMPORT MAPPING Module.Name [FOLDER 'path']\n  WITH JSON STRUCTURE Module.JsonStruct\n{\n" +
-			"  create|find|find or create Module.Entity {\n    Attr = jsonField [KEY],\n" +
+			"CREATE [OR MODIFY] IMPORT MAPPING Module.Name [FOLDER 'path']\n" +
+			"  WITH JSON STRUCTURE Module.JsonStruct [ROOT a/b/c]\n" +
+			"    | WITH MESSAGE DEFINITION Module.Collection.Definition\n" +
+			"    | WITH XML SCHEMA Module.Schema\n" +
+			"  [PARAMETER Module.Entity]   -- the mapping's input object, bound by `P: parameter`\n{\n" +
+			"  create Module.Entity | find Module.Entity OR CREATE|ERROR|IGNORE [OVERRIDABLE]\n" +
+			"    [by Module.MF(P: parent)] {\n    Attr = jsonField [KEY],\n" +
 			"    Attr = a/b/c,\n" +
 			"    Assoc/Module.Child = nestedKey { ... }\n  }\n};\nDROP IMPORT MAPPING Module.Name;\n\n" +
 			"OR MODIFY: updates mapping in-place, preserves UUID.\n\n" +
@@ -600,6 +608,36 @@ DESCRIBE DATABASE CONNECTION Ops.Erp;`,
 			"  Use Assoc/Module.Child = key { ... } instead when you WANT an entity\n" +
 			"  per level. The path may not cross a 0..* element: many items cannot\n" +
 			"  collapse into one value, and mxbuild rejects it with CE0256.\n\n" +
+			"Custom object handling (find X by Module.MF(...)):\n" +
+			"  A microflow resolves the object instead of Create/Find. `by` is a\n" +
+			"  modifier on `find` because that is what it means — find the object\n" +
+			"  by calling this microflow. Parameter sources: parent (the enclosing\n" +
+			"  mapped object), parameter (the mapping's own input object),\n" +
+			"  parent(2) (an ancestor N levels up), or a member path (a value from\n" +
+			"  the payload). modelsdk engine only.\n\n" +
+			"Value transform (Attr = Module.MF(jsonField)):\n" +
+			"  The value passes through a microflow on its way to the attribute.\n" +
+			"  The stored element carries only the microflow — its input IS the\n" +
+			"  member the element binds, which is why the member is named inside\n" +
+			"  the call. The export form mirrors it: jsonField = Module.MF(Attr).\n\n" +
+			"ROOT a/b/c:\n" +
+			"  Starts the mapping at a NESTED schema element rather than the\n" +
+			"  structure's root — the shape Studio Pro produces when you pick a\n" +
+			"  node deeper in the payload. Written in member names; the path may\n" +
+			"  pass through an array, and the mapping is then rooted at the item.\n\n" +
+			"Arrays of primitives:\n" +
+			"  [\"a\",\"b\"] maps to one entity per string. Write it like any other\n" +
+			"  array — Assoc/Module.Entity = tags { ... } — and bind the primitive\n" +
+			"  to the reserved member Value. The wrapper level Mendix stores is\n" +
+			"  generated, the same way an array's item level is.\n\n" +
+			"Sources:\n" +
+			"  A JSON structure is built from a payload sample; a MESSAGE DEFINITION\n" +
+			"  is derived from the domain model and names entities and attributes\n" +
+			"  itself, so its members are the definition's exposed names and the\n" +
+			"  reference is THREE parts (the definitions live inside a collection\n" +
+			"  document). Message definitions are read-only: map over one that\n" +
+			"  already exists. An array-rooted structure needs no special syntax —\n" +
+			"  the root is taken from the structure.\n\n" +
 			"Inherited attributes:\n" +
 			"  An entity mapped with EXTENDS can map its inherited attributes too —\n" +
 			"  name them exactly like its own. mxcli resolves each to the entity that\n" +
@@ -614,9 +652,16 @@ DESCRIBE DATABASE CONNECTION Ops.Erp;`,
 		Keywords: []string{
 			"export mapping", "create export mapping", "drop export mapping",
 			"show export mappings", "describe export mapping",
-			"with json structure", "null values", "as jsonKey",
+			"with json structure", "with message definition", "null values",
+			"as jsonKey", "converter", "value transform",
 		},
-		Syntax: "SHOW EXPORT MAPPINGS [IN Module];\nDESCRIBE EXPORT MAPPING Module.Name;\nCREATE [OR MODIFY] EXPORT MAPPING Module.Name [FOLDER 'path']\n  WITH JSON STRUCTURE Module.JsonStruct\n  [NULL VALUES LeaveOutElement|SendAsNil]\n{\n  Module.Entity {\n    jsonField = Attr,\n    Assoc/Module.Child AS nestedKey { ... }\n  }\n};\nDROP EXPORT MAPPING Module.Name;\n\nOR MODIFY: updates mapping in-place, preserves UUID.\n\n" +
+		Syntax: "SHOW EXPORT MAPPINGS [IN Module];\nDESCRIBE EXPORT MAPPING Module.Name;\nCREATE [OR MODIFY] EXPORT MAPPING Module.Name [FOLDER 'path']\n  WITH JSON STRUCTURE Module.JsonStruct [ROOT a/b/c]\n    | WITH MESSAGE DEFINITION Module.Collection.Definition\n    | WITH XML SCHEMA Module.Schema\n  [NULL VALUES LeaveOutElement|SendAsNil]\n{\n  Module.Entity {\n    jsonField = Attr,\n    jsonField = Module.MF(Attr),          -- value transform\n    group AS key { ... },                 -- entity-less grouping node\n    Assoc/Module.Child AS nestedKey { ... }\n  }\n};\nDROP EXPORT MAPPING Module.Name;\n\nOR MODIFY: updates mapping in-place, preserves UUID.\n\n" +
+			"Grouping nodes (group as key { ... }):\n" +
+			"  A JSON object with no Mendix object behind it — Studio Pro's\n" +
+			"  entity-less object element. It may hold OBJECT elements only: a\n" +
+			"  value there has no entity to bind its attribute to, and Mendix\n" +
+			"  reports CE0061. An ARRAY needs no such wrapper — write\n" +
+			"  Assoc/Entity AS items { values } and the container is generated.\n\n" +
 			"No nested-member form:\n" +
 			"  An import mapping can write `Attr = a/b/c` to reach a leaf without an\n" +
 			"  entity per level. An export mapping cannot: it has to PRODUCE the\n" +

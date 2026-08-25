@@ -48,6 +48,16 @@ func (r *Reader) parseImportMapping(unitID, containerID string, contents []byte)
 	if v, ok := raw["MessageDefinition"].(string); ok {
 		im.MessageDefinition = v
 	}
+	// The mapping's input object (#265). Only DataTypes$ObjectType carries an
+	// entity — the DataTypes$UnknownType marker an unparameterised mapping
+	// stores means "none".
+	if pt, ok := raw["ParameterType"].(map[string]any); ok {
+		if t, _ := pt["$Type"].(string); t == "DataTypes$ObjectType" {
+			if e, _ := pt["Entity"].(string); e != "" {
+				im.ParameterEntity = e
+			}
+		}
+	}
 
 	// Parse top-level mapping elements (may start with int32 version prefix)
 	if elements, ok := raw["Elements"].(bson.A); ok {
@@ -94,6 +104,12 @@ func parseImportObjectMappingElement(raw map[string]any) *model.ImportMappingEle
 	if v, ok := raw["JsonPath"].(string); ok {
 		elem.JsonPath = v
 	}
+	if v, ok := raw["XmlPath"].(string); ok {
+		elem.XmlPath = v
+	}
+	if v, ok := raw["Converter"].(string); ok {
+		elem.Converter = v
+	}
 	if v, ok := raw["ObjectHandling"].(string); ok {
 		elem.ObjectHandling = v
 		if v == "Find" {
@@ -101,6 +117,15 @@ func parseImportObjectMappingElement(raw map[string]any) *model.ImportMappingEle
 				elem.ObjectHandling = "FindOrCreate"
 			}
 		}
+	}
+	// The backup is what the element does when the object is NOT found, and it
+	// is carried in its own right now that MDL can say `or ignore` / `or error`
+	// (#261). FindOrCreate above stays as the shorthand for Find + Create.
+	if v, ok := raw["ObjectHandlingBackup"].(string); ok {
+		elem.ObjectHandlingBackup = v
+	}
+	if v, ok := raw["ObjectHandlingBackupAllowOverride"].(bool); ok {
+		elem.BackupAllowOverride = v
 	}
 	if v, ok := raw["Association"].(string); ok {
 		elem.Association = v
@@ -139,6 +164,12 @@ func parseImportValueMappingElement(raw map[string]any) *model.ImportMappingElem
 	}
 	if v, ok := raw["JsonPath"].(string); ok {
 		elem.JsonPath = v
+	}
+	if v, ok := raw["XmlPath"].(string); ok {
+		elem.XmlPath = v
+	}
+	if v, ok := raw["Converter"].(string); ok {
+		elem.Converter = v
 	}
 	if v, ok := raw["IsKey"].(bool); ok {
 		elem.IsKey = v

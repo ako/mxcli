@@ -127,3 +127,11 @@ func (m *MockBackend) DeleteJsonStructure(id string) error {
 	}
 	return nil
 }
+
+// ListMessageDefinitionCollections returns the configured collections.
+func (m *MockBackend) ListMessageDefinitionCollections() ([]*model.MessageDefinitionCollection, error) {
+	if m.ListMessageDefinitionCollectionsFunc != nil {
+		return m.ListMessageDefinitionCollectionsFunc()
+	}
+	return nil, fmt.Errorf("MockBackend.ListMessageDefinitionCollections not configured")
+}

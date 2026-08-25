@@ -23,6 +23,11 @@ type MappingBackend interface {
 	DeleteExportMapping(id model.ID) error
 	MoveExportMapping(em *model.ExportMapping) error
 
+	// ListMessageDefinitionCollections reads the message-definition documents.
+	// Read-only: a mapping can be authored OVER a definition (#263), but the
+	// definitions themselves are not authorable from MDL.
+	ListMessageDefinitionCollections() ([]*model.MessageDefinitionCollection, error)
+
 	ListJsonStructures() ([]*types.JsonStructure, error)
 	GetJsonStructureByQualifiedName(moduleName, name string) (*types.JsonStructure, error)
 	CreateJsonStructure(js *types.JsonStructure) error

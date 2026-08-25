@@ -91,7 +91,7 @@ func serializeExportMappingElement(elem *model.ExportMappingElement, parentPath 
 		id = generateUUID()
 	}
 
-	if elem.Kind == "Object" || elem.Kind == "Array" {
+	if isMappingObjectKind(elem.Kind) {
 		return serializeExportObjectElement(id, elem, parentPath)
 	}
 	return serializeExportValueElement(id, elem, parentPath)
@@ -131,9 +131,11 @@ func serializeExportObjectElement(id string, elem *model.ExportMappingElement, p
 		{Key: "Entity", Value: elem.Entity},
 		{Key: "ExposedName", Value: elem.ExposedName},
 		{Key: "JsonPath", Value: jsonPath},
-		{Key: "XmlPath", Value: ""},
+		{Key: "XmlPath", Value: elem.XmlPath},
 		{Key: "ObjectHandling", Value: objectHandling},
-		{Key: "ObjectHandlingBackup", Value: objectHandling},
+		// Every export object element in the demo apps stores Error (537 of
+		// 537), and the handling values are not in the backup enum (#261).
+		{Key: "ObjectHandlingBackup", Value: "Error"},
 		{Key: "ObjectHandlingBackupAllowOverride", Value: false},
 		{Key: "Association", Value: elem.Association},
 		{Key: "Children", Value: children},
@@ -162,7 +164,7 @@ func serializeExportValueElement(id string, elem *model.ExportMappingElement, pa
 		{Key: "Attribute", Value: elem.Attribute},
 		{Key: "ExposedName", Value: elem.ExposedName},
 		{Key: "JsonPath", Value: jsonPath},
-		{Key: "XmlPath", Value: ""},
+		{Key: "XmlPath", Value: elem.XmlPath},
 		{Key: "Type", Value: dataType},
 		{Key: "MinOccurs", Value: int32(0)},
 		// Mirror the bound schema element: Mendix cross-validates the two and
@@ -177,7 +179,7 @@ func serializeExportValueElement(id string, elem *model.ExportMappingElement, pa
 		// the shape mxbuild accepts and Studio Pro refuses to open. (issue #882)
 		{Key: "ElementType", Value: "Value"},
 		{Key: "Documentation", Value: ""},
-		{Key: "Converter", Value: ""},
+		{Key: "Converter", Value: elem.Converter},
 		{Key: "FractionDigits", Value: int32(-1)},
 		{Key: "TotalDigits", Value: int32(-1)},
 		{Key: "MaxLength", Value: int32(0)},

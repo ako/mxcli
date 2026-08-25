@@ -209,17 +209,25 @@ create import mapping Module.IMM_Order
 
 ### Object Handling
 
+Mendix stores **two** properties here, not one: how to get the object, and what
+to do when a `find` comes up empty. Both are yours to choose.
+
 | Syntax | Meaning |
 |--------|---------|
 | `create Module.Entity` | Always create a new object (default) |
-| `find Module.Entity` | Find by KEY attributes, ignore if not found |
-| `find or create Module.Entity` | Find by KEY, create if not found |
+| `find Module.Entity or create` | Find by KEY, create one if not found |
+| `find Module.Entity or error` | Find by KEY, fail the import if not found |
+| `find Module.Entity or ignore` | Find by KEY, skip the element if not found |
+| `find or create Module.Entity` | The older spelling of `find … or create` |
+
+Append `overridable` to let the caller override the backup at import time:
+`find Module.PetResponse or create overridable`.
 
 ```sql
 create import mapping Module.IMM_UpsertPet
   with json structure Module.JSON_Pet
 {
-  find or create Module.PetResponse {
+  find Module.PetResponse or create {
     PetId = id key,
     Name = name,
     status = status
@@ -227,7 +235,47 @@ create import mapping Module.IMM_UpsertPet
 };
 ```
 
-**Note**: `key` is only valid with `find` or `find or create`, not with `create`.
+**A bare `find` is refused.** Which of the three you get is a real runtime
+difference, and mxcli used to pick `create` for you whatever the document said —
+so it now asks rather than guessing.
+
+**Note**: `key` is only valid with `find`, not with `create` — and a `find`
+without one is rejected by the build with CE0250.
+
+### Custom Object Handling and the Mapping's Input Object
+
+A microflow can resolve the object instead of Create/Find. Write it as `by` on
+the element; the microflow's parameters are named with their sources:
+
+| Source | Means |
+|--------|-------|
+| `parent` | the enclosing mapped object |
+| `parameter` | the mapping's own input object |
+| `parent(2)` | an ancestor N levels up |
+| `a/b/c` | a value from the payload, addressed like any other member |
+
+`parameter` needs the mapping to declare an input object, which is a clause on
+the header — import mappings only:
+
+```sql
+create import mapping Module.IMM_Embed
+  with json structure Module.JSON_Embed
+  parameter GenAICommons.ChunkCollection
+{
+  create GenAICommons.ChunkCollection {
+    Name = id,
+    find Module.Chunk_ChunkCollection/GenAICommons.Chunk
+      by Module.MF_FindChunk ( Collection: parameter, Index: idx )
+      = embeddings {
+        Text = text
+      }
+  }
+};
+```
+
+Using `parameter` without declaring one is refused — the build reports it as
+CE0279. The declared entity must match the microflow's parameter type, which the
+build checks as CE0282.
 
 ---
 
@@ -332,6 +380,112 @@ create export mapping Module.EMM_Pet
 ```
 
 ---
+
+## Starting a Mapping Below the Payload Root
+
+A mapping does not have to start at the top of the JSON. `root a/b/c` on the
+source clause selects the element it starts at — the same choice Studio Pro
+offers when you pick a node deeper in the payload. Useful when the interesting
+object is buried under an envelope you do not want entities for.
+
+The path is written in **member names**, and it may pass **through arrays**: the
+mapping is then rooted at the array's item. (A value reference cannot do that —
+many items cannot collapse into one value, and mxbuild reports CE0256.)
+
+```sql
+create json structure RootDemo.JSON_Completion
+  snippet $${
+    "requestId": "r-1",
+    "response": {
+      "model": "gpt-x",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "hello",
+            "citations": [ { "title": "t", "url": "u" } ]
+          }
+        }
+      ]
+    }
+  }$$;
+```
+
+**Through an array, to an object several levels down.** Everything inside the
+statement is relative to the selected root, associations included:
+
+```sql
+create import mapping RootDemo.IMM_Answer
+  with json structure RootDemo.JSON_Completion root response/choices/message
+{
+  create RootDemo.Answer {
+    Role = role,
+    Content = content,
+    create RootDemo.Citation_Answer/RootDemo.Citation = citations {
+      Title = title,
+      Url = url
+    }
+  }
+};
+```
+
+stored as one root element at `(Object)|response|choices|(Object)|message`, with
+`citations` nesting under it as usual.
+
+**Landing on an array.** A root that ends on an array roots the mapping at its
+**item**, so `Index` below is a member of one choice, not of the list:
+
+```sql
+create import mapping RootDemo.IMM_Choice
+  with json structure RootDemo.JSON_Completion root response/choices
+{
+  create RootDemo.Choice {
+    Index = index
+  }
+};
+```
+
+stored at `(Object)|response|choices|(Object)`.
+
+**Export takes the same clause**, and produces the envelope down to the selected
+element:
+
+```sql
+create export mapping RootDemo.EXM_Answer
+  with json structure RootDemo.JSON_Completion root response/choices/message
+{
+  RootDemo.Answer {
+    role = Role,
+    content = Content,
+    RootDemo.Citation_Answer/RootDemo.Citation as citations {
+      title = Title,
+      url = Url
+    }
+  }
+};
+```
+
+### Notes
+
+- **Omit the clause** and the mapping starts at the structure's own root — an
+  array-rooted structure included, which needs no syntax of its own.
+- **DESCRIBE emits the clause** for any mapping stored below the root, including
+  ones authored in Studio Pro, so `describe` → `exec` round-trips. Re-running a
+  described mapping reports `Unchanged import mapping …`: the rebuild is
+  semantically equal and the write is elided.
+- **A path that does not resolve is refused**, and the error names what would
+  have worked:
+
+  ```
+  Error: import mapping RootDemo.IMM_Bad: root "response/choise": "choise" is not
+  a member of the schema at (Object)|response; available: model (or Model),
+  choices (or Choices)
+  ```
+
+- The selected root does **not** have to be an object. Any element the structure
+  contains can be picked; a value root would leave nothing to map, so in practice
+  it is an object or an array.
 
 ## Microflow Actions
 
@@ -453,155 +607,10 @@ This can reduce the microflow to a single retrieve + export step.
 
 ## Realistic Example: Countries REST API
 
-A complete example consuming a Countries REST API, importing the response, and
-exporting country data back to JSON.
+One worked example — structures, import of a single object and of a list, export
+in both directions, and the microflow that ties them together — is in
+[`reference/rest-api-example.md`](reference/rest-api-example.md).
 
-### Step 1: JSON Structures
-
-```sql
--- Single country (flat object)
-create json structure Integration.JSON_Country
-  snippet '{"name": "Netherlands", "officialName": "Kingdom of the Netherlands", "capital": "Amsterdam", "region": "Europe", "population": 18100436, "flagUrl": "https://flagcdn.com/w320/nl.png"}';
-
--- List of countries (array of objects)
-create json structure Integration.JSON_CountryList
-  snippet '[{"name": "Netherlands", "capital": "Amsterdam", "region": "Europe", "population": 18100436}]';
-```
-
-### Step 2: Import — Single Country
-
-```sql
-create non-persistent entity Integration.Country (
-  Name: string,
-  OfficialName: string,
-  Capital: string,
-  Region: string,
-  Population: integer,
-  FlagUrl: string
-);
-/
-
-create import mapping Integration.IMM_Country
-  with json structure Integration.JSON_Country
-{
-  create Integration.Country {
-    Name = name,
-    OfficialName = officialName,
-    Capital = capital,
-    Region = region,
-    Population = population,
-    FlagUrl = flagUrl
-  }
-};
-```
-
-### Step 3: Import — List of Countries
-
-For a list response, the import mapping maps the array item directly (no container):
-
-```sql
-create non-persistent entity Integration.CountryListItem (
-  Name: string,
-  Capital: string,
-  Region: string,
-  Population: integer
-);
-/
-
-create import mapping Integration.IMM_CountryList
-  with json structure Integration.JSON_CountryList
-{
-  create Integration.CountryListItem {
-    Name = name,
-    Capital = capital,
-    Region = region,
-    Population = population
-  }
-};
-```
-
-### Step 4: Export — Serialize Country to JSON
-
-For the flat country, the same entity works for both import and export:
-
-```sql
-create export mapping Integration.EMM_Country
-  with json structure Integration.JSON_Country
-{
-  Integration.Country {
-    name = Name,
-    officialName = OfficialName,
-    capital = Capital,
-    region = Region,
-    population = Population,
-    flagUrl = FlagUrl
-  }
-};
-```
-
-### Step 5: Export — List of Countries
-
-For exporting a list, the export domain model needs a root container + item entities:
-
-```sql
--- Container entity wrapping the array
-create non-persistent entity Integration.ExCountryList;
-/
-
--- Item entity for each country in the array
-create non-persistent entity Integration.ExCountryItem (
-  Name: string,
-  Capital: string,
-  Region: string,
-  Population: integer
-);
-/
-
-create association Integration.ExCountryItem_ExCountryList
-  from Integration.ExCountryItem
-  to Integration.ExCountryList;
-/
-
-create export mapping Integration.EMM_CountryList
-  with json structure Integration.JSON_CountryList
-{
-  Integration.ExCountryList {
-    Integration.ExCountryItem_ExCountryList/Integration.ExCountryItem as Root {
-      name = Name,
-      capital = Capital,
-      region = Region,
-      population = Population
-    }
-  }
-};
-```
-
-### Step 6: Microflow — Fetch, Import, Process, Export
-
-```sql
-create microflow Integration.GetCountryInfo ()
-returns string as $json
-begin
-  -- Fetch country data from REST API
-  $response = rest call get 'https://restcountries.com/v3.1/name/netherlands'
-    header Accept = 'application/json'
-    timeout 30
-    returns string
-    on error continue;
-
-  -- Import JSON into entity
-  $Country = import from mapping Integration.IMM_Country($response);
-
-  -- Export back to our own JSON format
-  $json = export to mapping Integration.EMM_Country($Country);
-  log info node 'Integration' 'Country: ' + $json;
-
-  return $json;
-end;
-/
-```
-
----
 
 ## Placing Documents in Folders
 
@@ -634,5 +643,8 @@ See `organize-project` for `move` and the full folder story.
 | Association direction wrong | Always FROM child TO parent (child owns FK) |
 | Using `owner default` for 1-1 nested objects in export | Use `owner both` for 1-1 relationships |
 | Missing array container entity in export | Arrays need Container + Item entities |
-| Using `key` with `create` handling | `key` only valid with `find` or `find or create` |
+| Using `key` with `create` handling | `key` only valid with `find` |
+| `find` without `or create` / `or error` / `or ignore` | Say what happens when the object is not found — the three differ at runtime |
+| `Param: parameter` with no `parameter Module.Entity` on the header | Declare the mapping's input object, or the build reports CE0279 |
+| `parameter` on an EXPORT mapping | Export mappings have no input object — their parameter is the root object |
 | Arrays in import with container entity | Import arrays map directly to item entity, no container |

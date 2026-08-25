@@ -80,7 +80,11 @@ func TestSerializeExportMapping_TypeNames(t *testing.T) {
 	assertField(t, objElem, "$Type", "ExportMappings$ObjectMappingElement")
 	assertField(t, objElem, "Entity", "MyModule.Pet")
 	assertField(t, objElem, "ObjectHandling", "Parameter")
-	assertField(t, objElem, "ObjectHandlingBackup", "Parameter")
+	// The backup is a member of {Create, Error, Ignore} — "Parameter" never was.
+	// The writer used to echo the HANDLING into it, which is how an off-enum
+	// value reached disk; Studio Pro writes "Error" on every export element,
+	// since an export has nothing to find (#261).
+	assertField(t, objElem, "ObjectHandlingBackup", "Error")
 
 	children := extractBsonArray(objElem["Children"])
 	if len(children) != 2 {

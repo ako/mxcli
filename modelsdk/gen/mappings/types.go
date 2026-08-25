@@ -1377,7 +1377,12 @@ func NewMappingMicroflowCall() *MappingMicroflowCall {
 // When a storage alias exists, init uses the STORAGE name (what Mendix uses in BSON).
 func initMappingMicroflowParameter() *MappingMicroflowParameter {
 	o := &MappingMicroflowParameter{}
-	o.SetTypeName("Mappings$MappingMicroflowParameter")
+	// STORAGE-NAME OVERRIDE: the stored $Type is
+	// "Mappings$MicroflowCallParameterMappingImpl", not the SDK name — 161 of 161
+	// parameter mappings across the demo apps, no exceptions. Registered under
+	// that name below so the decode side agrees; patching only one gives a
+	// document that writes one type and reads another (#264).
+	o.SetTypeName("Mappings$MicroflowCallParameterMappingImpl")
 	o.parameter = property.NewByNameRef[element.Element]("Parameter", "Microflows$MicroflowParameter")
 	o.parameter.Bind(&o.Base, 0)
 	o.levelOfParent = property.NewPrimitive[int32]("LevelOfParent", property.DecodeInt32)
@@ -1411,6 +1416,12 @@ func init() {
 		return initMappingMicroflowCall()
 	})
 	codec.DefaultRegistry.Register("Mappings$MappingMicroflowParameter", func() element.Element {
+		o := initMappingMicroflowParameter()
+		o.SetTypeName("Mappings$MappingMicroflowParameter")
+		return o
+	})
+	// STORAGE-NAME OVERRIDE, decode half — see initMappingMicroflowParameter.
+	codec.DefaultRegistry.Register("Mappings$MicroflowCallParameterMappingImpl", func() element.Element {
 		return initMappingMicroflowParameter()
 	})
 }
