@@ -4,6 +4,7 @@ package theme
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -94,9 +95,46 @@ func sourceFor(projectDir, name string) (source, error) {
 	}
 	s := embeddedSource(name)
 	if _, err := fs.Stat(s.fsys, path.Join(s.root, "theme.json")); err != nil {
-		return source{}, fmt.Errorf("unknown theme %q (run `mxcli theme list`)", name)
+		return source{}, unknownTheme(projectDir, name)
 	}
 	return s, nil
+}
+
+// unknownTheme names what the caller could have meant.
+//
+// Pointing at `mxcli theme list` was wrong the moment a project could own
+// themes: that listing needs -p to see them, so the message sent a user who had
+// just run `theme create` to a command that would not show what they created.
+// Listing the visible set here needs no second command and cannot go stale.
+func unknownTheme(projectDir, name string) error {
+	msg := fmt.Sprintf("unknown theme %q; %s", name, availableThemes(projectDir))
+	if projectDir == "" {
+		return errors.New(msg)
+	}
+	return fmt.Errorf("%s\n\nTo add one of your own: mxcli theme create %s -p <app.mpr>", msg, name)
+}
+
+// availableThemes renders the set visible from projectDir, for an error that
+// has to tell the user what they could have meant. It is a sentence fragment
+// so callers can compose their own lead-in.
+func availableThemes(projectDir string) string {
+	available, err := sources(projectDir)
+	if err != nil {
+		return "the available themes could not be listed"
+	}
+	names := make([]string, 0, len(available))
+	for _, s := range available {
+		n := path.Base(s.root)
+		if s.local {
+			n += " (local)"
+		}
+		names = append(names, n)
+	}
+	out := "available: " + strings.Join(names, ", ")
+	if projectDir == "" {
+		out += "\n\nThat is the built-in set. Pass -p to include the themes a project owns."
+	}
+	return out
 }
 
 // sources returns every theme visible from projectDir, local ones shadowing
@@ -151,9 +189,11 @@ func sources(projectDir string) ([]source, error) {
 
 // load reads and validates a source's theme.json.
 func (s source) load(name string) (*Theme, error) {
+	// Reached only when a source that existed a moment ago has gone; sourceFor
+	// has already produced the helpful message for a name that never resolved.
 	raw, err := fs.ReadFile(s.fsys, path.Join(s.root, "theme.json"))
 	if err != nil {
-		return nil, fmt.Errorf("unknown theme %q (run `mxcli theme list`)", name)
+		return nil, fmt.Errorf("theme %q: cannot read theme.json: %w", name, err)
 	}
 	var t Theme
 	if err := json.Unmarshal(raw, &t); err != nil {

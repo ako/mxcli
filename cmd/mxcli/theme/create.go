@@ -179,7 +179,12 @@ func (o CreateOptions) resolve(projectDir string) (string, *Tokens, error) {
 	raw, err := os.ReadFile(from)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return "", nil, fmt.Errorf("--from %q is neither a theme name (run `mxcli theme list`) nor a readable file", from)
+			// Name both readings, and list the themes actually visible from
+			// here — `mxcli theme list` without -p would hide the project's own,
+			// which is exactly the set a user working in a project means.
+			return "", nil, fmt.Errorf("--from %q is neither a theme name nor a readable file\n\n%s\n\n"+
+				"To seed a palette from a design, --from takes a path to a file declaring --mxt-* tokens.",
+				from, availableThemes(projectDir))
 		}
 		return "", nil, err
 	}

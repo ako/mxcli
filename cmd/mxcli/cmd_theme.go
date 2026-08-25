@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-// cmd_theme.go - `mxcli theme` : apply mxcli's built-in default styling
+// cmd_theme.go - `mxcli theme` : apply, build and switch app themes
 package main
 
 import (
@@ -16,8 +16,8 @@ import (
 
 var themeCmd = &cobra.Command{
 	Use:   "theme",
-	Short: "Apply mxcli's built-in default styling to a project",
-	Long: `Apply mxcli's built-in default styling to a Mendix project.
+	Short: "Apply, build and switch app themes (styling only — no model changes)",
+	Long: `Apply, build and switch themes for a Mendix project.
 
 Three themes ship in the binary: signal (the default — cool slate, one teal
 signal colour), ledger (warm paper, hairline rules, serif headings) and console

@@ -251,10 +251,40 @@ func TestApply_RefusesADirectoryThatIsNotAMendixProject(t *testing.T) {
 	}
 }
 
-func TestGet_UnknownThemeNamesTheDiscoveryCommand(t *testing.T) {
+// A typo has to name what the user could have meant. Pointing at
+// `mxcli theme list` was actively wrong once a project could own themes: that
+// listing needs -p to see them, so a user who had just run `theme create` was
+// sent to a command that would not show what they created.
+func TestGet_UnknownThemeListsWhatIsActuallyAvailable(t *testing.T) {
 	_, err := Get("", "nope")
-	if err == nil || !strings.Contains(err.Error(), "mxcli theme list") {
-		t.Errorf("err = %v; should point at `mxcli theme list`", err)
+	if err == nil {
+		t.Fatal("expected a refusal")
+	}
+	for _, want := range []string{"signal", "ledger", "console"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("err = %v; must name the available themes", err)
+		}
+	}
+	if !strings.Contains(err.Error(), "-p") {
+		t.Errorf("err = %v; without a project it must say the local ones are not listed", err)
+	}
+
+	// Inside a project the listing includes the project's own themes, marked,
+	// and the message offers the command that makes one.
+	dir := newProject(t)
+	mustCreate(t, dir, "acme", CreateOptions{})
+	_, err = Get(dir, "acmee")
+	if err == nil {
+		t.Fatal("expected a refusal")
+	}
+	if !strings.Contains(err.Error(), "acme (local)") {
+		t.Errorf("err = %v; must list the project's own themes and mark them", err)
+	}
+	if !strings.Contains(err.Error(), "theme create") {
+		t.Errorf("err = %v; must offer the command that adds one", err)
+	}
+	if strings.Contains(err.Error(), "run `mxcli theme list`") {
+		t.Error("must not send the user to a listing that hides the theme they just made")
 	}
 }
 

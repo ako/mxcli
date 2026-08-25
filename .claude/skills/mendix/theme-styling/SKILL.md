@@ -1,6 +1,6 @@
 ---
 name: theme-styling
-description: "The SCSS workflow and its traps — where styling actually compiles, custom-variables.scss, themesource directories, hot reload, and design-property errors. Use when writing or debugging SCSS, or when styling silently fails to appear."
+description: "The SCSS workflow and its traps — where styling actually compiles, custom-variables.scss, themesource directories, hot reload, design-property errors, and the mxcli theme commands (apply, create --from a design, switchable sets, light/dark). Use when writing or debugging SCSS, when applying or building a theme, when giving an app a brand palette or design tokens, or when styling silently fails to appear."
 ---
 
 # Theme & Styling — SCSS Workflow and Caveats
@@ -9,8 +9,16 @@ description: "The SCSS workflow and its traps — where styling actually compile
 
 Use this skill when working with:
 - SCSS compilation, `custom-variables.scss`, or `themesource/` directories
+- Applying or building a theme (`mxcli theme apply | create | switcher`)
+- Giving an app a brand palette, or turning design tokens into a theme
 - CSS hot-reload during Docker development
 - Debugging styling crashes or design property issues
+
+**Do not hand-write a theme scaffold.** `mxcli theme apply` writes a complete,
+verified one; `mxcli theme create <name> --from <design-file>` makes a theme the
+project owns and seeds its palette from `--mxt-*` declarations. See "A theme of
+your own" below. Hand-editing inside a generated block works exactly once — the
+digest fence refuses it on the next apply.
 
 For **MDL styling commands** (`show design properties`, `describe styling`, `alter styling`, inline `designproperties:`, `update widgets`), see:
 - Existing proposal: `docs/11-proposals/page-styling-support.md`
