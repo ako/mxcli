@@ -75,6 +75,7 @@ func execCreateMicroflow(ctx *ExecContext, s *ast.CreateMicroflowStmt) error {
 	// Excluded is model state, not script state: an absent @excluded must not
 	// clear a stored exclusion (#914).
 	existingExcluded := false
+	var existingActionInfo, existingWorkflowInfo *types.MicroflowActionInfo
 	existingMicroflows, err := ctx.Backend.ListMicroflows()
 	if err != nil {
 		return mdlerrors.NewBackend("check existing microflows", err)
@@ -96,6 +97,10 @@ func execCreateMicroflow(ctx *ExecContext, s *ast.CreateMicroflowStmt) error {
 		existingAllowedRoles = cloneRoleIDs(existing.AllowedModuleRoles)
 		preserveAllowedRoles = true
 		existingExcluded = existing.Excluded
+		// The toolbox entries hold four PNG bitmaps MDL cannot name, so a
+		// rewrite carries them rather than rebuilding from the clause.
+		existingActionInfo = existing.MicroflowActionInfo
+		existingWorkflowInfo = existing.WorkflowActionInfo
 	}
 
 	// For CREATE OR REPLACE/MODIFY, reuse the existing ID to preserve references
@@ -153,6 +158,10 @@ func execCreateMicroflow(ctx *ExecContext, s *ast.CreateMicroflowStmt) error {
 		mf.AllowedModuleRoles = existingAllowedRoles
 	} else {
 		mf.AllowedModuleRoles = defaultDocumentAccessRoles(ctx, module)
+	}
+	if mf.MicroflowActionInfo, mf.WorkflowActionInfo, err = applyExposeClauses(
+		s.Expose, existingActionInfo, existingWorkflowInfo, exposeWarner(ctx)); err != nil {
+		return err
 	}
 
 	// Build entity resolver function for parameter/return types

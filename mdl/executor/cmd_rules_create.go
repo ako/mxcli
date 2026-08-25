@@ -37,6 +37,10 @@ func execCreateRule(ctx *ExecContext, s *ast.CreateRuleStmt) error {
 		return mdlerrors.NewValidation("rule name must not be empty")
 	}
 
+	if err := refuseExposeOnFlavour(s.Expose, "rule", s.Name.Module+"."+s.Name.Name); err != nil {
+		return err
+	}
+
 	// Find or auto-create module
 	module, err := findOrCreateModule(ctx, s.Name.Module)
 	if err != nil {

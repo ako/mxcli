@@ -51,6 +51,7 @@ func execCreateJavaScriptAction(ctx *ExecContext, s *ast.CreateJavaScriptActionS
 	var existingContainer model.ID
 	// Target the live action and carry its exclusion forward (#914).
 	existingExcluded := false
+	var existingActionInfo *types.MicroflowActionInfo
 	if ex, ok := pickLive(existing,
 		func(a *types.JavaScriptAction) bool {
 			return h.GetModuleName(h.FindModuleID(a.ContainerID)) == s.Name.Module && a.Name == s.Name.Name
@@ -63,6 +64,9 @@ func execCreateJavaScriptAction(ctx *ExecContext, s *ast.CreateJavaScriptActionS
 		existingID = ex.ID
 		existingExcluded = ex.Excluded
 		existingContainer = ex.ContainerID
+		// The toolbox entry's four PNG bitmaps are not expressible in MDL, so
+		// they have to be carried rather than rebuilt.
+		existingActionInfo = ex.MicroflowActionInfo
 	}
 
 	moduleID := containerID
@@ -141,12 +145,10 @@ func execCreateJavaScriptAction(ctx *ExecContext, s *ast.CreateJavaScriptActionS
 		jsa.ReturnType = astDataTypeToJavaActionReturnType(s.ReturnType)
 	}
 
-	if s.ExposedCaption != "" {
-		jsa.MicroflowActionInfo = &types.MicroflowActionInfo{
-			BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
-			Caption:     s.ExposedCaption,
-			Category:    s.ExposedCategory,
-		}
+	if jsa.MicroflowActionInfo, err = mergeMicroflowActionInfo(
+		existingActionInfo, s.ExposedCaption, s.ExposedCategory, s.NotExposed,
+		s.ExposedBitmaps, exposeWarner(ctx)); err != nil {
+		return err
 	}
 
 	if existingID != "" {

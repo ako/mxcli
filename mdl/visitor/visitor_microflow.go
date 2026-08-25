@@ -36,6 +36,9 @@ func (b *Builder) ExitCreateMicroflowStatement(ctx *parser.CreateMicroflowStatem
 			if optCtx.FOLDER() != nil && optCtx.STRING_LITERAL() != nil {
 				stmt.Folder = unquoteString(optCtx.STRING_LITERAL().GetText())
 			}
+			if exposed := optCtx.MicroflowExposedClause(); exposed != nil {
+				stmt.Expose = append(stmt.Expose, buildExposeActionClause(exposed))
+			}
 		}
 	}
 
@@ -88,6 +91,9 @@ func (b *Builder) ExitCreateNanoflowStatement(ctx *parser.CreateNanoflowStatemen
 			if optCtx.FOLDER() != nil && optCtx.STRING_LITERAL() != nil {
 				stmt.Folder = unquoteString(optCtx.STRING_LITERAL().GetText())
 			}
+			if exposed := optCtx.MicroflowExposedClause(); exposed != nil {
+				stmt.Expose = append(stmt.Expose, buildExposeActionClause(exposed))
+			}
 		}
 	}
 
@@ -136,6 +142,9 @@ func (b *Builder) ExitCreateRuleStatement(ctx *parser.CreateRuleStatementContext
 			}
 			if optCtx.FOLDER() != nil && optCtx.STRING_LITERAL() != nil {
 				stmt.Folder = unquoteString(optCtx.STRING_LITERAL().GetText())
+			}
+			if exposed := optCtx.MicroflowExposedClause(); exposed != nil {
+				stmt.Expose = append(stmt.Expose, buildExposeActionClause(exposed))
 			}
 		}
 	}
@@ -336,4 +345,44 @@ func buildMicroflowReturnType(ctx parser.IMicroflowReturnTypeContext) *ast.Micro
 	}
 
 	return ret
+}
+
+// buildExposeActionClause reads one EXPOSED AS <kind> ACTION clause.
+//
+// A microflow has two toolbox entries, stored under different keys, so the kind
+// is part of the clause rather than implied. NOT EXPOSED is the removal form:
+// an absent clause preserves what is stored, because the entry also holds icon
+// and image bitmaps MDL cannot name.
+func buildExposeActionClause(ctx parser.IMicroflowExposedClauseContext) ast.ExposeActionClause {
+	out := ast.ExposeActionClause{Workflow: ctx.WORKFLOW() != nil}
+	if ctx.NOT() != nil {
+		out.Remove = true
+		return out
+	}
+	if strs := ctx.AllSTRING_LITERAL(); len(strs) >= 2 {
+		out.Caption = unquoteString(strs[0].GetText())
+		out.Category = unquoteString(strs[1].GetText())
+	}
+	out.Bitmaps = buildExposeBitmaps(ctx.AllExposeBitmapClause())
+	return out
+}
+
+// buildExposeBitmaps reads the ICON/IMAGE clauses hanging off an exposed clause.
+//
+// DROP ICON clears one; an omitted clause leaves what is stored alone, which is
+// why clearing has to be written out.
+func buildExposeBitmaps(clauses []parser.IExposeBitmapClauseContext) []ast.ExposeBitmap {
+	var out []ast.ExposeBitmap
+	for _, c := range clauses {
+		b := ast.ExposeBitmap{
+			Image: c.IMAGE() != nil,
+			Dark:  c.DARK() != nil,
+			Clear: c.DROP() != nil,
+		}
+		if lit := c.STRING_LITERAL(); lit != nil {
+			b.Path = unquoteString(lit.GetText())
+		}
+		out = append(out, b)
+	}
+	return out
 }

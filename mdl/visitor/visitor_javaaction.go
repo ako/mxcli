@@ -65,9 +65,15 @@ func (b *Builder) ExitCreateJavaActionStatement(ctx *parser.CreateJavaActionStat
 	// Get exposed clause (EXPOSED AS 'caption' IN 'category')
 	if exposed := ctx.JavaActionExposedClause(); exposed != nil {
 		allStrings := exposed.AllSTRING_LITERAL()
-		if len(allStrings) >= 2 {
+		switch {
+		case exposed.NOT() != nil:
+			// NOT EXPOSED removes the toolbox entry. An absent clause preserves
+			// it, so removal has to be said out loud.
+			stmt.NotExposed = true
+		case len(allStrings) >= 2:
 			stmt.ExposedCaption = unquoteString(allStrings[0].GetText())
 			stmt.ExposedCategory = unquoteString(allStrings[1].GetText())
+			stmt.ExposedBitmaps = buildExposeBitmaps(exposed.AllExposeBitmapClause())
 		}
 	}
 
@@ -160,9 +166,15 @@ func (b *Builder) ExitCreateJavaScriptActionStatement(ctx *parser.CreateJavaScri
 
 	if exposed := ctx.JavaActionExposedClause(); exposed != nil {
 		allStrings := exposed.AllSTRING_LITERAL()
-		if len(allStrings) >= 2 {
+		switch {
+		case exposed.NOT() != nil:
+			// NOT EXPOSED removes the toolbox entry. An absent clause preserves
+			// it, so removal has to be said out loud.
+			stmt.NotExposed = true
+		case len(allStrings) >= 2:
 			stmt.ExposedCaption = unquoteString(allStrings[0].GetText())
 			stmt.ExposedCategory = unquoteString(allStrings[1].GetText())
+			stmt.ExposedBitmaps = buildExposeBitmaps(exposed.AllExposeBitmapClause())
 		}
 	}
 

@@ -1,0 +1,180 @@
+-- =============================================================================
+-- EXPOSE AS TOOLBOX ACTION
+-- =============================================================================
+--
+-- "Expose as ... action" is what puts a microflow, a Java action or a
+-- JavaScript action in Studio Pro's toolbox. The point of it is that whoever
+-- drags the result onto a flow does not need to know which of the three it is —
+-- a connector presents itself as a set of named, categorised, illustrated
+-- actions rather than as implementation.
+--
+-- The stored sub-document (CodeActions$MicroflowActionInfo) has six fields:
+-- Caption, Category, and four PNG bitmaps — an icon and an image, each with a
+-- dark-mode variant.
+--
+-- THE RULE THAT MATTERS: an OMITTED clause preserves what is stored.
+--
+-- Saying nothing about the exposure is not the same as asking for it to be
+-- removed, and naming a caption is not a licence to discard the bitmaps a
+-- designer set in Studio Pro. Removal is `not exposed`; clearing one bitmap is
+-- `drop icon` / `drop image`. Nothing below Studio Pro can see the difference:
+-- an action with no toolbox entry is a valid action, so `mx check` reports 0
+-- errors either way.
+--
+-- Run from mdl-examples/doctype-tests/ — the bitmap paths are relative to the
+-- working directory, as CREATE IMAGE COLLECTION's are.
+
+-- =============================================================================
+-- PART 0 — a module to hold the examples
+-- =============================================================================
+
+create module Toolbox;
+
+-- =============================================================================
+-- PART 1 — a microflow in the microflow editor's toolbox
+-- =============================================================================
+--
+-- A microflow has TWO toolbox entries, stored under different keys with the
+-- same element type, so the clause names which one it means. This is the only
+-- one of the three document kinds where that ambiguity exists.
+
+create microflow Toolbox.MF_FormatCode ($Raw: String)
+  returns String
+  exposed as microflow action 'Format code' in 'Toolbox demo'
+    icon 'assets/toolbox-icon-64.png'
+    icon dark 'assets/toolbox-icon-64-dark.png'
+    image 'assets/toolbox-image-256.png'
+begin
+  return trim($Raw);
+end;
+/
+
+-- =============================================================================
+-- PART 2 — the same microflow in the workflow editor's toolbox
+-- =============================================================================
+--
+-- Both entries can be set on one microflow. This one carries no bitmaps, which
+-- is legal: Studio Pro falls back to its default artwork.
+
+create or modify microflow Toolbox.MF_Notify ($Message: String)
+  exposed as microflow action 'Notify' in 'Toolbox demo'
+  exposed as workflow action 'Notify (workflow)' in 'Toolbox demo'
+begin
+  log 'notify: ' + $Message;
+end;
+/
+
+-- =============================================================================
+-- PART 3 — omitting the clause preserves the entry
+-- =============================================================================
+--
+-- MF_FormatCode is rewritten here with no exposed clause at all. Its caption,
+-- category, icon and image all survive. Before this rule existed, this exact
+-- edit deleted the toolbox entry and the action vanished from the palette,
+-- with a clean build and no message.
+--
+-- Re-run `describe microflow Toolbox.MF_FormatCode` after this statement: the
+-- clause is still there.
+
+create or modify microflow Toolbox.MF_FormatCode ($Raw: String)
+  returns String
+begin
+  return toUpperCase(trim($Raw));
+end;
+/
+
+-- =============================================================================
+-- PART 4 — clearing: one bitmap, or the whole entry
+-- =============================================================================
+--
+-- `drop icon dark` clears exactly one bitmap and leaves the other three alone.
+
+create or modify microflow Toolbox.MF_FormatCode ($Raw: String)
+  returns String
+  exposed as microflow action 'Format code' in 'Toolbox demo'
+    drop icon dark
+begin
+  return toUpperCase(trim($Raw));
+end;
+/
+
+-- `not exposed as workflow action` removes that entry and leaves the microflow
+-- entry untouched.
+
+create or modify microflow Toolbox.MF_Notify ($Message: String)
+  not exposed as workflow action
+begin
+  log 'notify: ' + $Message;
+end;
+/
+
+-- =============================================================================
+-- PART 5 — Java and JavaScript actions
+-- =============================================================================
+--
+-- These have one entry each, so the clause needs no kind. The JavaScript
+-- action's tab reads "Expose nanoflow action" in Studio Pro, but Mendix stores
+-- it under the same MicroflowActionInfo key — a UI-name/storage-name split
+-- worth knowing before reading the BSON.
+
+create java action Toolbox.JA_Checksum (
+  Input: String not null
+) returns String
+exposed as 'Checksum' in 'Toolbox demo'
+  icon 'assets/toolbox-icon-64.png'
+  image 'assets/toolbox-image-256.png'
+as $$
+return Integer.toHexString(Input.hashCode());
+$$;
+
+create javascript action Toolbox.JS_Slugify (
+  Input: String not null
+) returns String
+exposed as 'Slugify' in 'Toolbox demo'
+  icon 'assets/toolbox-icon-64.png'
+platform Web
+as $$
+return Promise.resolve(String(Input).toLowerCase().replace(/[^a-z0-9]+/g, '-'));
+$$;
+
+-- =============================================================================
+-- PART 6 — what is NOT accepted, and why
+-- =============================================================================
+--
+-- A nanoflow or a rule cannot be exposed: only Microflows$Microflow carries the
+-- toolbox properties, and Studio Pro offers the tab on nothing else. Both are
+-- refused with a message naming the alternative rather than a parse error.
+--
+--   create nanoflow Toolbox.NF_Nope ()
+--     exposed as microflow action 'Nope' in 'Toolbox demo'
+--   begin
+--     log 'x';
+--   end;
+--   -- Error: nanoflow 'Toolbox.NF_Nope' cannot be exposed as a toolbox action:
+--   -- only a microflow stores one.
+--
+-- A bitmap that is not a PNG is refused — Studio Pro renders nothing for it:
+--
+--   ... exposed as 'X' in 'Y' icon 'assets/logo.jpg' ...
+--   -- Error: toolbox icon "assets/logo.jpg" is not a PNG
+--
+-- A PNG of the wrong size is WRITTEN, with a warning. Studio Pro's own wording
+-- is "should be" and it scales, but nothing else in a headless workflow would
+-- ever tell you:
+--
+--   ... icon 'assets/toolbox-image-256.png' ...
+--   -- warning: toolbox icon "assets/toolbox-image-256.png" is 256x192;
+--   -- Studio Pro expects 64x64 and will scale it
+
+-- =============================================================================
+-- PART 7 — describe round-trip
+-- =============================================================================
+--
+-- DESCRIBE re-emits the clause, so a describe → exec round trip keeps a
+-- microflow in the toolbox it was dragged from. The bitmaps are reported as
+-- comments rather than as ICON clauses: the clause names a file on disk and the
+-- model holds only bytes, so re-emitting a path would name a file that may not
+-- exist. They survive anyway, because an omitted bitmap is preserved.
+
+describe microflow Toolbox.MF_FormatCode;
+describe java action Toolbox.JA_Checksum;

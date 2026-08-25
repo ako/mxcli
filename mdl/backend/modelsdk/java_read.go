@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 
+	"go.mongodb.org/mongo-driver/v2/bson"
+
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/modelsdk/element"
 	genCa "github.com/mendixlabs/mxcli/modelsdk/gen/codeactions"
@@ -100,9 +102,11 @@ func javaActionFromGen(g *genJa.JavaAction, containerID model.ID) *javaactions.J
 		Caption() string
 		Category() string
 		ID() element.ID
+		Raw() bson.Raw
 	}); ok && mai != nil {
 		m := &javaactions.MicroflowActionInfo{Caption: mai.Caption(), Category: mai.Category()}
 		m.ID = model.ID(mai.ID())
+		readActionInfoBitmaps(mai.Raw(), m)
 		out.MicroflowActionInfo = m
 	}
 	out.ReturnType = codeActionReturnTypeFromGen(g.JavaReturnType())
@@ -201,4 +205,56 @@ func listElementEntity(l *genCa.ListType) string {
 		return ce.EntityQualifiedName()
 	}
 	return ""
+}
+
+// readActionInfoBitmaps fills the four toolbox bitmaps from the sub-document's
+// raw BSON.
+//
+// They cannot come from the gen accessors: gen declares IconData, IconDataDark,
+// ImageData and ImageDataDark as `string`, and Mendix stores them as BSON
+// *binary*, so gen's DecodeString returns "" for every real icon — the same
+// class of gen/storage mismatch CLAUDE.md records for scheduled events and
+// regular expressions. The write side already goes to raw BSON for exactly this
+// reason (microflowActionInfoBSON, #656); the read side did not, which is what
+// let a rewrite carry an icon it had never actually loaded.
+//
+// An absent or non-binary field yields nil, which the writer emits as an empty
+// binary — never BSON null, which crashes Studio Pro's UnitWriter.
+func readActionInfoBitmaps(raw bson.Raw, m *javaactions.MicroflowActionInfo) {
+	if raw == nil || m == nil {
+		return
+	}
+	get := func(key string) []byte {
+		val, err := raw.LookupErr(key)
+		if err != nil {
+			return nil
+		}
+		if _, data, ok := val.BinaryOK(); ok {
+			return data
+		}
+		return nil
+	}
+	m.IconData = get("IconData")
+	m.IconDataDark = get("IconDataDark")
+	m.ImageData = get("ImageData")
+	m.ImageDataDark = get("ImageDataDark")
+}
+
+// actionInfoFromGen converts a toolbox-entry element to the semantic type,
+// bitmaps included. Shared by the Java-action and microflow readers; nil in,
+// nil out.
+func actionInfoFromGen(el element.Element) *javaactions.MicroflowActionInfo {
+	info, ok := el.(interface {
+		Caption() string
+		Category() string
+		ID() element.ID
+		Raw() bson.Raw
+	})
+	if !ok || info == nil {
+		return nil
+	}
+	m := &javaactions.MicroflowActionInfo{Caption: info.Caption(), Category: info.Category()}
+	m.ID = model.ID(info.ID())
+	readActionInfoBitmaps(info.Raw(), m)
+	return m
 }
