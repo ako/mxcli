@@ -234,6 +234,8 @@ func importMappingElementFromGen(el element.Element) *model.ImportMappingElement
 		e.Entity = o.EntityQualifiedName()
 		e.Association = o.AssociationQualifiedName()
 		e.ObjectHandling = o.ObjectHandling()
+		e.ObjectHandlingBackup = o.ObjectHandlingBackup()
+		e.BackupAllowOverride = o.ObjectHandlingBackupAllowOverride()
 		e.CustomHandler = customHandlerFromRaw(o.Raw())
 		e.ExposedName = o.ExposedName()
 		e.JsonPath = o.JsonPath()

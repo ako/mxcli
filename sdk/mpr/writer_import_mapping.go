@@ -119,10 +119,15 @@ func serializeImportObjectElement(id string, elem *model.ImportMappingElement, p
 	if objectHandling == "" {
 		objectHandling = "Create"
 	}
-	objectHandlingBackup := objectHandling
+	// The backup takes {Create, Error, Ignore} only; copying the HANDLING into
+	// it wrote "Find"/"Custom", which occur in 0 of 1,261 real elements (#261).
+	objectHandlingBackup := "Create"
+	switch elem.ObjectHandlingBackup {
+	case "Create", "Error", "Ignore":
+		objectHandlingBackup = elem.ObjectHandlingBackup
+	}
 	if objectHandling == "FindOrCreate" {
 		objectHandling = "Find"
-		objectHandlingBackup = "Create"
 	}
 
 	// IMPORTANT: The correct $Type is "ImportMappings$ObjectMappingElement" (no "Import" prefix in the element name).
@@ -138,7 +143,7 @@ func serializeImportObjectElement(id string, elem *model.ImportMappingElement, p
 		{Key: "XmlPath", Value: elem.XmlPath},
 		{Key: "ObjectHandling", Value: objectHandling},
 		{Key: "ObjectHandlingBackup", Value: objectHandlingBackup},
-		{Key: "ObjectHandlingBackupAllowOverride", Value: false},
+		{Key: "ObjectHandlingBackupAllowOverride", Value: elem.BackupAllowOverride},
 		{Key: "Association", Value: elem.Association},
 		{Key: "Children", Value: children},
 		{Key: "MinOccurs", Value: int32(elem.MinOccurs)},

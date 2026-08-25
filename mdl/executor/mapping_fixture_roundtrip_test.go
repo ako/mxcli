@@ -44,15 +44,14 @@ import (
 // from — 112 of 327 real mappings are in this class.
 var knownLossy = map[string]string{
 	// Constructs MDL still cannot express.
-	"Email_Connector.IMM_EmailTemplateMapping": "#261 find/create + error",
 	// #268's wrapper is fixed here; what blocks it now is an OBJECT element with
 	// a nested member path (`= meta/pagination`), which the grammar has never
 	// accepted — #260 item 1.
 	"KrogerAPI.IM_ProductList":                 "#260 object element with a nested member path",
 	"MxGenAIConnector.IM_CohereEmbed_Response": "#265 mapping input parameter",
-	// #268's wrapper is fixed here; the residue is the export writer's property
-	// set — #277 (IsKey), #279 (MinOccurs) — and #261's backup.
-	"MxGenAIConnector.EM_CohereEmbed_Request": "#277 IsKey; #279 MinOccurs; #261 backup",
+	// #268's wrapper and #261's backup are fixed here; the residue is the export
+	// writer's property set — #277 (IsKey), #279 (MinOccurs).
+	"MxGenAIConnector.EM_CohereEmbed_Request": "#277 IsKey; #279 MinOccurs",
 	// #267 is fixed for this one — its `root chunks` clause round-trips — but it
 	// carries two shapes that have never parsed: an object element with an
 	// entity and NO association (DESCRIBE prints `./Entity`) and an entity-less
@@ -60,10 +59,10 @@ var knownLossy = map[string]string{
 	"MxGenAIConnector.IM_Collection_RetrieveNearestNeighbors": "#260 association-less and entity-less import object elements",
 
 	// Not constructs: the property SET a rebuild writes (#279). #266's converter
-	// is fixed on both of these — what remains is MessageDefinition2 being
-	// dropped, plus #277 and #261 on the export twin.
+	// and #261's backup are fixed on both of these — what remains is
+	// MessageDefinition2 being dropped, plus #277 on the export twin.
 	"FeedbackModule.IMM_PostResponse": "#279 rebuild drops MessageDefinition2",
-	"FeedbackModule.EXM_PostFeedback": "#279 MessageDefinition2; #277 IsKey/MaxLength; #261 backup",
+	"FeedbackModule.EXM_PostFeedback": "#279 MessageDefinition2/MinOccurs; #277 IsKey/MaxLength",
 	// The same family in the opposite direction: this document predates
 	// MappingSourceReference (the only one of the twelve without the key) and
 	// the rebuild writes the current shape, which is what Studio Pro does on

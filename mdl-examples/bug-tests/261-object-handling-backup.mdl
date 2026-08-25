@@ -1,0 +1,122 @@
+-- ============================================================================
+-- Bug #261: ObjectHandlingBackup was hardcoded, so `find` was a coin toss
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   An import mapping element stores TWO properties, not one:
+--
+--     ObjectHandling       {Parameter, Create, Find, Custom}   how to get the object
+--     ObjectHandlingBackup {Create, Error, Ignore}             what if Find fails
+--
+--   mxcli only ever wrote the first. The backup was hardcoded — so every `find`
+--   became "find, and create one if it isn't there" whatever the author meant,
+--   and a document that said "error out" came back saying "create silently".
+--   `describe` could not show the difference either, because nothing carried it.
+--
+--   Measured on the fixture: rebuilding the Studio Pro-authored
+--   Email_Connector.IMM_EmailTemplateMapping flipped seven elements from
+--   'Error' to 'Create'. mxbuild reports 0 errors either way — both documents
+--   are valid, they just do different things at runtime.
+--
+-- Syntax:
+--   The backup is a clause on the object element, and `find` now REQUIRES one:
+--
+--     find Mod.Entity or create   = member { ... }   -- the old `find or create`
+--     find Mod.Entity or error    = member { ... }   -- fail the import
+--     find Mod.Entity or ignore   = member { ... }   -- skip the element
+--     find Mod.Entity or create overridable = member { ... }
+--
+--   `find or create Mod.Entity` (the pre-existing spelling) still parses and
+--   means exactly `find Mod.Entity or create`.
+--
+--   `overridable` maps BackupAllowOverride: the caller may override the backup
+--   at import time.
+--
+-- Why `find` alone is refused:
+--   Silently picking one of three runtime behaviours is the bug. A bare `find`
+--   now gets:
+--
+--     `find T261.Item` does not say what to do when the object is not found —
+--     add one of: or create (the old `find or create`), or ignore, or error
+--
+-- Not on export:
+--   An export mapping has nothing to find — Studio Pro writes 'Error' on every
+--   export element and mxcli now does the same, rather than inheriting a value
+--   from the import side.
+--
+-- Watch for:
+--   A `find` element also needs a KEY value to search on — mxbuild reports
+--   CE0250 "Object element must have a key defined if object handling is set to
+--   'Search for an object'." — which is the pre-existing `key` marker on a
+--   value assignment, not part of this fix.
+--
+--   `create` and custom (`by`) handling keep backup 'Create': "Custom" is not a
+--   member of the ObjectHandlingBackup enum, so inheriting the handling would
+--   write an illegal value.
+--
+-- Validation:
+--   mxbuild 11.13 reports 0 errors on all six combinations below, each
+--   round-trips through describe -> exec reporting "Unchanged", and the real
+--   Email_Connector fixture now rebuilds byte-for-byte identical elements.
+-- ============================================================================
+
+create module BugTest261;
+
+create persistent entity BugTest261.Order ( Number: String(100) );
+create persistent entity BugTest261.Line ( Code: String(100) );
+create persistent entity BugTest261.Note ( Text: String(100) );
+create association BugTest261.Line_Order
+  from BugTest261.Line to BugTest261.Order
+  type Reference;
+create association BugTest261.Note_Order
+  from BugTest261.Note to BugTest261.Order
+  type Reference;
+
+create json structure BugTest261.JSON_Order
+  snippet $${"number": "n", "lines": [{"code": "c"}], "note": {"text": "t"}}$$;
+
+-- Root: find, error out when it isn't there.
+create or modify import mapping BugTest261.IMM_FindOrError
+  folder 'Mappings'
+  with json structure BugTest261.JSON_Order
+{
+  find BugTest261.Order or error {
+    -- `find` needs a KEY to search on, or mxbuild reports CE0250.
+    Number = number key,
+    -- A child that skips itself instead of failing the whole import.
+    find BugTest261.Line_Order/BugTest261.Line or ignore = lines {
+      Code = code key
+    },
+    -- The old spelling, unchanged in meaning.
+    find or create BugTest261.Note_Order/BugTest261.Note = note {
+      Text = text key
+    }
+  }
+};
+
+-- The caller may override the backup at import time.
+create or modify import mapping BugTest261.IMM_Overridable
+  folder 'Mappings'
+  with json structure BugTest261.JSON_Order
+{
+  find BugTest261.Order or create overridable {
+    Number = number key,
+    -- `create` takes a backup too, and it is always 'Create'.
+    create BugTest261.Line_Order/BugTest261.Line = lines {
+      Code = code
+    }
+  }
+};
+
+-- Export: nothing to find, so no clause — the writer stores 'Error'.
+create or modify export mapping BugTest261.EXM_Order
+  folder 'Mappings'
+  with json structure BugTest261.JSON_Order
+{
+  BugTest261.Order {
+    number = Number,
+    BugTest261.Line_Order/BugTest261.Line as lines {
+      code = Code
+    }
+  }
+};

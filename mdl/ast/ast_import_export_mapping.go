@@ -60,7 +60,12 @@ type ImportMappingElementDef struct {
 	ObjectHandling string // "Create", "Find", "FindOrCreate"
 	Association    string // qualified association name (from Assoc/Entity path)
 	CustomHandler  *MappingCustomHandlerDef
-	Children       []*ImportMappingElementDef
+	// Backup is what happens when the object is not found: "Create", "Error" or
+	// "Ignore" (#261). Empty when the statement did not say.
+	Backup string
+	// BackupOverridable sets ObjectHandlingBackupAllowOverride.
+	BackupOverridable bool
+	Children          []*ImportMappingElementDef
 
 	// Value mapping fields
 	Attribute string // entity attribute name (LHS of =)

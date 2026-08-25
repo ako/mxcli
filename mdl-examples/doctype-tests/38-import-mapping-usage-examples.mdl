@@ -111,10 +111,13 @@ create import mapping MapUse.IMM_Pet
 -- the two handlings where a clean mxcli run does not mean a clean build — worth
 -- an `mx check` before you move on.
 
+-- `find` has to say what happens when the object is NOT found: Mendix has three
+-- answers and stores the choice as ObjectHandlingBackup (#261). Bare `find` is
+-- refused rather than guessed at.
 create import mapping MapUse.IMM_FindPet
   with json structure MapUse.JSON_Pet
 {
-  find MapUse.PetRecord {
+  find MapUse.PetRecord or ignore {
     PetId = id key,
     Name = name,
     Status = status

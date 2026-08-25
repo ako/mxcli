@@ -3,8 +3,8 @@
 package modelsdkbackend
 
 import (
-	genMsg "github.com/mendixlabs/mxcli/modelsdk/gen/messagedefinitions"
 	"github.com/mendixlabs/mxcli/model"
+	genMsg "github.com/mendixlabs/mxcli/modelsdk/gen/messagedefinitions"
 	"github.com/mendixlabs/mxcli/modelsdk/mprread"
 )
 

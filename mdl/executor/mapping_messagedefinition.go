@@ -219,12 +219,20 @@ func buildImportMappingFromMessageDefinition(moduleName string, def *ast.ImportM
 	if handling == "" {
 		handling = "Create"
 	}
+	// The same rule as the JSON path: `find` must say what happens when the
+	// object is not found (#261).
+	if handling == "Find" && def.Backup == "" && def.CustomHandler == nil {
+		return nil, fmt.Errorf("`find %s` does not say what to do when the object is not "+
+			"found — add one of: or create, or ignore, or error", def.Entity)
+	}
 
 	elem.Kind = "Object"
 	elem.TypeName = "ImportMappings$ObjectMappingElement"
 	elem.Entity = entity
 	elem.Association = assoc
 	elem.ObjectHandling = handling
+	elem.ObjectHandlingBackup = def.Backup
+	elem.BackupAllowOverride = def.BackupOverridable
 
 	for _, child := range def.Children {
 		childNode := messageDefChild(node, child.JsonName)

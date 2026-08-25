@@ -508,8 +508,26 @@ importMappingWithClause
     ;
 
 importMappingRootElement
-    : importMappingObjectHandling qualifiedName mappingCustomHandler?
+    : importMappingObjectHandling qualifiedName mappingCustomHandler? mappingHandlingBackup?
       LBRACE importMappingChild (COMMA importMappingChild)* RBRACE
+    ;
+
+/**
+ * What happens when the object is NOT found (or, for `create`, when one already
+ * exists). Mendix stores this as ObjectHandlingBackup, whose values are
+ * {Create, Error, Ignore} — `find` on its own does not name one, and mxcli
+ * refuses it rather than choosing (#261).
+ *
+ *   find Module.Entity or create { ... }     -- the old `find or create`
+ *   find Module.Entity or ignore { ... }
+ *   find Module.Entity or error  { ... }
+ *   create Module.Entity or error { ... }
+ *
+ * OVERRIDABLE sets ObjectHandlingBackupAllowOverride, which lets the caller
+ * choose at runtime.
+ */
+mappingHandlingBackup
+    : OR (CREATE | ERROR | IGNORE) OVERRIDABLE?
     ;
 
 /**
@@ -535,9 +553,9 @@ mappingCallParameter
     ;
 
 importMappingChild
-    : importMappingObjectHandling qualifiedName SLASH qualifiedName mappingCustomHandler? EQUALS identifierOrKeyword
+    : importMappingObjectHandling qualifiedName SLASH qualifiedName mappingCustomHandler? mappingHandlingBackup? EQUALS identifierOrKeyword
       LBRACE importMappingChild (COMMA importMappingChild)* RBRACE       // nested object with children
-    | importMappingObjectHandling qualifiedName SLASH qualifiedName mappingCustomHandler? EQUALS identifierOrKeyword  // leaf object
+    | importMappingObjectHandling qualifiedName SLASH qualifiedName mappingCustomHandler? mappingHandlingBackup? EQUALS identifierOrKeyword  // leaf object
     | identifierOrKeyword EQUALS qualifiedName LPAREN jsonMemberPath RPAREN  // value transform: Attr = Module.MF(jsonField)
     | identifierOrKeyword EQUALS jsonMemberPath KEY?                         // value: Attr = a/b/c [KEY]
     ;

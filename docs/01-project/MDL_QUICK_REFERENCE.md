@@ -1102,7 +1102,18 @@ create import mapping Module.IMM_Pet
 };
 ```
 
-**Object handling:** `create` (default), `find` (requires KEY), `find or create`
+**Object handling:** `create` (default), or `find` — which requires a KEY *and*
+must say what happens when nothing is found:
+
+| Syntax | When the object is not found |
+|--------|------------------------------|
+| `find Module.Entity or create` | Create one (same as `find or create Module.Entity`) |
+| `find Module.Entity or error` | Fail the import |
+| `find Module.Entity or ignore` | Skip the element |
+
+Add `overridable` (`find Module.Entity or create overridable`) to let the caller
+override the choice at import time. A bare `find` is refused: the three
+behaviours are not interchangeable, and mxcli used to pick one silently.
 
 **Nested objects:** Use association path `Assoc/entity = jsonKey`:
 ```sql

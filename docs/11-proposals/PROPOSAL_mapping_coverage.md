@@ -634,17 +634,17 @@ Filed 2026-08-24 against `ako/mxcli`.
 
 | issue | §  | docs blocked |
 |---|---|---:|
-| [#248](https://github.com/ako/mxcli/issues/248) (updated) — array root, export half now confirmed | §7.1 | 122 |
+| [#248](https://github.com/ako/mxcli/issues/248) (updated) — array root, export half now confirmed — **fixed** | §7.1 | 122 |
 | [#259](https://github.com/ako/mxcli/issues/259) — schema sources never resolved; a typo also disables member validation; `null values` unvalidated | §7.3 | — |
 | [#260](https://github.com/ako/mxcli/issues/260) — DESCRIBE does not round-trip (4 defects + the 112 silent-loss set) | §5, §8 | 244 |
-| [#261](https://github.com/ako/mxcli/issues/261) — `ObjectHandlingBackup` off-enum; `find … or error/ignore` unauthorable | §6.1, §7.4 | 19 |
-| [#262](https://github.com/ako/mxcli/issues/262) — export array container written with entity + association | §6.2, §7.8 | 33 |
-| [#263](https://github.com/ako/mxcli/issues/263) — `with message definition` | §7.3 | 74 |
+| [#261](https://github.com/ako/mxcli/issues/261) — `ObjectHandlingBackup` off-enum; `find … or error/ignore` unauthorable — **fixed** | §6.1, §7.4 | 19 |
+| [#262](https://github.com/ako/mxcli/issues/262) — export array container written with entity + association — **fixed** | §6.2, §7.8 | 33 |
+| [#263](https://github.com/ako/mxcli/issues/263) — `with message definition` — **fixed** | §7.3 | 74 |
 | [#264](https://github.com/ako/mxcli/issues/264) — custom object handling (`by <microflow>(…)`) — **fixed** | §7.5 | 56 |
 | [#265](https://github.com/ako/mxcli/issues/265) — mapping input parameter | §7.9 | 10 |
-| [#266](https://github.com/ako/mxcli/issues/266) — converter microflow (already parses) | §7.6 | 39 |
-| [#267](https://github.com/ako/mxcli/issues/267) — nested schema root (`at a/b`) | §7.2 | 13 |
-| [#268](https://github.com/ako/mxcli/issues/268) — primitive-array wrapper (`member[]`) | §7.7 | 34 |
+| [#266](https://github.com/ako/mxcli/issues/266) — converter microflow (already parses) — **fixed** | §7.6 | 39 |
+| [#267](https://github.com/ako/mxcli/issues/267) — nested schema root (`root a/b`) — **fixed** | §7.2 | 13 |
+| [#268](https://github.com/ako/mxcli/issues/268) — primitive-array wrapper (`member[]`) — **fixed** | §7.7 | 34 |
 | [#272](https://github.com/ako/mxcli/issues/272) — `create json structure` builds different element metadata than Studio Pro | — | — |
 | [#277](https://github.com/ako/mxcli/issues/277) — export value elements omit `IsKey`, hardcode `MaxLength 0` | — | — |
 | [#279](https://github.com/ako/mxcli/issues/279) — rebuilt mappings carry a fixed property set: `MessageDefinition2` dropped, `MappingSourceReference` added, export `MinOccurs` hardcoded | — | — |

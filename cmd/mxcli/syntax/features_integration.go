@@ -586,6 +586,7 @@ DESCRIBE DATABASE CONNECTION Ops.Erp;`,
 			"import mapping", "create import mapping", "drop import mapping",
 			"show import mappings", "describe import mapping",
 			"with json structure", "with message definition", "find or create",
+			"or create", "or error", "or ignore", "overridable", "object handling backup",
 			"object handling", "converter", "value transform", "custom handling", "by microflow",
 		},
 		Syntax: "SHOW IMPORT MAPPINGS [IN Module];\nDESCRIBE IMPORT MAPPING Module.Name;\n" +
@@ -593,7 +594,8 @@ DESCRIBE DATABASE CONNECTION Ops.Erp;`,
 			"  WITH JSON STRUCTURE Module.JsonStruct [ROOT a/b/c]\n" +
 			"    | WITH MESSAGE DEFINITION Module.Collection.Definition\n" +
 			"    | WITH XML SCHEMA Module.Schema\n{\n" +
-			"  create|find|find or create Module.Entity [by Module.MF(P: parent)] {\n    Attr = jsonField [KEY],\n" +
+			"  create Module.Entity | find Module.Entity OR CREATE|ERROR|IGNORE [OVERRIDABLE]\n" +
+			"    [by Module.MF(P: parent)] {\n    Attr = jsonField [KEY],\n" +
 			"    Attr = a/b/c,\n" +
 			"    Assoc/Module.Child = nestedKey { ... }\n  }\n};\nDROP IMPORT MAPPING Module.Name;\n\n" +
 			"OR MODIFY: updates mapping in-place, preserves UUID.\n\n" +

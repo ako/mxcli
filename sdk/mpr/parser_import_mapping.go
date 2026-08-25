@@ -108,6 +108,15 @@ func parseImportObjectMappingElement(raw map[string]any) *model.ImportMappingEle
 			}
 		}
 	}
+	// The backup is what the element does when the object is NOT found, and it
+	// is carried in its own right now that MDL can say `or ignore` / `or error`
+	// (#261). FindOrCreate above stays as the shorthand for Find + Create.
+	if v, ok := raw["ObjectHandlingBackup"].(string); ok {
+		elem.ObjectHandlingBackup = v
+	}
+	if v, ok := raw["ObjectHandlingBackupAllowOverride"].(bool); ok {
+		elem.BackupAllowOverride = v
+	}
 	if v, ok := raw["Association"].(string); ok {
 		elem.Association = v
 	}

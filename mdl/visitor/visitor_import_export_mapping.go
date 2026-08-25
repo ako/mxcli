@@ -62,6 +62,7 @@ func buildImportRootElement(ctx *parser.ImportMappingRootElementContext) *ast.Im
 		elem.ObjectHandling = extractObjectHandling(hCtx.(*parser.ImportMappingObjectHandlingContext))
 	}
 	elem.CustomHandler = buildMappingCustomHandler(ctx.MappingCustomHandler())
+	applyMappingHandlingBackup(elem, ctx.MappingHandlingBackup())
 
 	// Entity name
 	if ctx.QualifiedName() != nil {
@@ -91,6 +92,7 @@ func buildImportChild(ctx *parser.ImportMappingChildContext) *ast.ImportMappingE
 		// Object mapping: CREATE/FIND/FIND OR CREATE Assoc/Entity = jsonKey
 		elem.ObjectHandling = extractObjectHandling(hCtx.(*parser.ImportMappingObjectHandlingContext))
 		elem.CustomHandler = buildMappingCustomHandler(ctx.MappingCustomHandler())
+		applyMappingHandlingBackup(elem, ctx.MappingHandlingBackup())
 
 		// Association path: qualifiedName SLASH qualifiedName
 		allQN := ctx.AllQualifiedName()
@@ -431,4 +433,25 @@ func buildMappingCustomHandler(ctx parser.IMappingCustomHandlerContext) *ast.Map
 		out.Parameters = append(out.Parameters, def)
 	}
 	return out
+}
+
+// applyMappingHandlingBackup reads the `or create|error|ignore [overridable]`
+// continuation onto an import mapping element (#261).
+func applyMappingHandlingBackup(elem *ast.ImportMappingElementDef, ctx parser.IMappingHandlingBackupContext) {
+	if ctx == nil {
+		return
+	}
+	c, ok := ctx.(*parser.MappingHandlingBackupContext)
+	if !ok {
+		return
+	}
+	switch {
+	case c.CREATE() != nil:
+		elem.Backup = "Create"
+	case c.ERROR() != nil:
+		elem.Backup = "Error"
+	case c.IGNORE() != nil:
+		elem.Backup = "Ignore"
+	}
+	elem.BackupOverridable = c.OVERRIDABLE() != nil
 }

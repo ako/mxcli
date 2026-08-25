@@ -133,7 +133,9 @@ func serializeExportObjectElement(id string, elem *model.ExportMappingElement, p
 		{Key: "JsonPath", Value: jsonPath},
 		{Key: "XmlPath", Value: elem.XmlPath},
 		{Key: "ObjectHandling", Value: objectHandling},
-		{Key: "ObjectHandlingBackup", Value: objectHandling},
+		// Every export object element in the demo apps stores Error (537 of
+		// 537), and the handling values are not in the backup enum (#261).
+		{Key: "ObjectHandlingBackup", Value: "Error"},
 		{Key: "ObjectHandlingBackupAllowOverride", Value: false},
 		{Key: "Association", Value: elem.Association},
 		{Key: "Children", Value: children},

@@ -158,13 +158,14 @@ func printImportMappingElement(w io.Writer, elem *model.ImportMappingElement, de
 	if elem.Kind == "Object" {
 		handling := handlingKeyword(elem.ObjectHandling)
 		by := customHandlerText(elem.CustomHandler, elem.JsonPath)
+		backup := handlingBackupText(elem)
 		if isRoot {
 			// Root: CREATE Module.Entity { — use "." if entity is empty
 			entity := elem.Entity
 			if entity == "" {
 				entity = "."
 			}
-			fmt.Fprintf(w, "%s%s %s%s {\n", indent, handling, entity, by)
+			fmt.Fprintf(w, "%s%s %s%s%s {\n", indent, handling, entity, by, backup)
 		} else {
 			// Nested object element:
 			//   CREATE Assoc/Entity = jsonKey   — normal association path
@@ -177,7 +178,7 @@ func printImportMappingElement(w io.Writer, elem *model.ImportMappingElement, de
 			} else if assoc == "" {
 				fmt.Fprintf(w, "%s%s ./%s = %s", indent, handling, entity, mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName))
 			} else {
-				fmt.Fprintf(w, "%s%s %s/%s%s = %s", indent, handling, assoc, entity, by, mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName))
+				fmt.Fprintf(w, "%s%s %s/%s%s%s = %s", indent, handling, assoc, entity, by, backup, mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName))
 			}
 			if len(printableImportChildren(elem)) > 0 {
 				fmt.Fprintln(w, " {")
@@ -521,10 +522,24 @@ func buildImportMappingElementModel(moduleName string, def *ast.ImportMappingEle
 		if handling == "" {
 			handling = "Create"
 		}
+		// `find` on its own does not say what happens when the object is NOT
+		// found, and Mendix has three answers. mxcli used to write the handling
+		// into the backup — "Find", which is not one of {Create, Error, Ignore}
+		// and appears in 0 of the 1,261 object elements in the demo apps. Refuse
+		// rather than choose: the corpus has no dominant default (Create 2,
+		// Error 6, Ignore 18) and each means something different (#261).
+		if handling == "Find" && def.Backup == "" && def.CustomHandler == nil {
+			return nil, fmt.Errorf("`find %s` does not say what to do when the object is not "+
+				"found — add one of: or create (the old `find or create`), or ignore, or error",
+				def.Entity)
+		}
+		backup := def.Backup
 
 		elem.Entity = entity
 		elem.Association = assoc
 		elem.ObjectHandling = handling
+		elem.ObjectHandlingBackup = backup
+		elem.BackupAllowOverride = def.BackupOverridable
 
 		// For arrays: skip the container and bind the item directly, which is
 		// how Studio Pro stores an import mapping over an array.
@@ -853,6 +868,31 @@ func printableImportChildren(elem *model.ImportMappingElement) []*model.ImportMa
 			continue
 		}
 		out = append(out, c)
+	}
+	return out
+}
+
+// handlingBackupText renders the `or create|error|ignore [overridable]`
+// continuation for DESCRIBE, or "" when the handling already implies it (#261).
+//
+// `find or create` prints as itself — the reader maps Find + Create back to
+// FindOrCreate — and `create` implies Create, so only the shapes that carry
+// information print a clause.
+func handlingBackupText(elem *model.ImportMappingElement) string {
+	backup := elem.ObjectHandlingBackup
+	switch backup {
+	case "Create", "Error", "Ignore":
+	default:
+		return ""
+	}
+	if elem.ObjectHandling != "Find" && backup == "Create" {
+		// create / find-or-create / a custom handler: Create is the default and
+		// saying so adds nothing.
+		return ""
+	}
+	out := " or " + strings.ToLower(backup)
+	if elem.BackupAllowOverride {
+		out += " overridable"
 	}
 	return out
 }

@@ -81,10 +81,15 @@ func serImportObjectElement(id string, elem *model.ImportMappingElement, parentP
 	if objectHandling == "" {
 		objectHandling = "Create"
 	}
-	objectHandlingBackup := objectHandling
+	// The backup takes {Create, Error, Ignore} only; copying the HANDLING into
+	// it wrote "Find"/"Custom", which occur in 0 of 1,261 real elements (#261).
+	objectHandlingBackup := "Create"
+	switch elem.ObjectHandlingBackup {
+	case "Create", "Error", "Ignore":
+		objectHandlingBackup = elem.ObjectHandlingBackup
+	}
 	if objectHandling == "FindOrCreate" {
 		objectHandling = "Find"
-		objectHandlingBackup = "Create"
 	}
 
 	return bson.D{
@@ -96,7 +101,7 @@ func serImportObjectElement(id string, elem *model.ImportMappingElement, parentP
 		{Key: "XmlPath", Value: elem.XmlPath},
 		{Key: "ObjectHandling", Value: objectHandling},
 		{Key: "ObjectHandlingBackup", Value: objectHandlingBackup},
-		{Key: "ObjectHandlingBackupAllowOverride", Value: false},
+		{Key: "ObjectHandlingBackupAllowOverride", Value: elem.BackupAllowOverride},
 		{Key: "Association", Value: elem.Association},
 		{Key: "Children", Value: children},
 		{Key: "MinOccurs", Value: int32(elem.MinOccurs)},
@@ -226,7 +231,9 @@ func serExportObjectElement(id string, elem *model.ExportMappingElement, parentP
 		{Key: "JsonPath", Value: jsonPath},
 		{Key: "XmlPath", Value: elem.XmlPath},
 		{Key: "ObjectHandling", Value: objectHandling},
-		{Key: "ObjectHandlingBackup", Value: objectHandling},
+		// Every export object element in the demo apps stores Error (537 of
+		// 537), and the handling values are not in the backup enum (#261).
+		{Key: "ObjectHandlingBackup", Value: "Error"},
 		{Key: "ObjectHandlingBackupAllowOverride", Value: false},
 		{Key: "Association", Value: elem.Association},
 		{Key: "Children", Value: children},

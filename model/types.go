@@ -1099,7 +1099,13 @@ type ImportMappingElement struct {
 	// Object mapping fields
 	Entity         string `json:"entity,omitempty"`         // qualified entity name
 	ObjectHandling string `json:"objectHandling,omitempty"` // "Create", "Find", "FindOrCreate", "Custom"
-	Association    string `json:"association,omitempty"`    // qualified association name
+	// ObjectHandlingBackup is what happens when the object is not found:
+	// "Create", "Error" or "Ignore" — the only three Mendix accepts (#261).
+	// Empty means the writer picks the default for the handling.
+	ObjectHandlingBackup string `json:"objectHandlingBackup,omitempty"`
+	// BackupAllowOverride sets ObjectHandlingBackupAllowOverride.
+	BackupAllowOverride bool   `json:"backupAllowOverride,omitempty"`
+	Association         string `json:"association,omitempty"` // qualified association name
 	// CustomHandler is set when ObjectHandling is "Custom": a microflow
 	// resolves the object instead of Create/Find (#264).
 	CustomHandler *MappingMicroflowCall `json:"customHandler,omitempty"`

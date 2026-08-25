@@ -209,17 +209,25 @@ create import mapping Module.IMM_Order
 
 ### Object Handling
 
+Mendix stores **two** properties here, not one: how to get the object, and what
+to do when a `find` comes up empty. Both are yours to choose.
+
 | Syntax | Meaning |
 |--------|---------|
 | `create Module.Entity` | Always create a new object (default) |
-| `find Module.Entity` | Find by KEY attributes, ignore if not found |
-| `find or create Module.Entity` | Find by KEY, create if not found |
+| `find Module.Entity or create` | Find by KEY, create one if not found |
+| `find Module.Entity or error` | Find by KEY, fail the import if not found |
+| `find Module.Entity or ignore` | Find by KEY, skip the element if not found |
+| `find or create Module.Entity` | The older spelling of `find … or create` |
+
+Append `overridable` to let the caller override the backup at import time:
+`find Module.PetResponse or create overridable`.
 
 ```sql
 create import mapping Module.IMM_UpsertPet
   with json structure Module.JSON_Pet
 {
-  find or create Module.PetResponse {
+  find Module.PetResponse or create {
     PetId = id key,
     Name = name,
     status = status
@@ -227,7 +235,12 @@ create import mapping Module.IMM_UpsertPet
 };
 ```
 
-**Note**: `key` is only valid with `find` or `find or create`, not with `create`.
+**A bare `find` is refused.** Which of the three you get is a real runtime
+difference, and mxcli used to pick `create` for you whatever the document said —
+so it now asks rather than guessing.
+
+**Note**: `key` is only valid with `find`, not with `create` — and a `find`
+without one is rejected by the build with CE0250.
 
 ---
 
@@ -559,155 +572,10 @@ This can reduce the microflow to a single retrieve + export step.
 
 ## Realistic Example: Countries REST API
 
-A complete example consuming a Countries REST API, importing the response, and
-exporting country data back to JSON.
+One worked example — structures, import of a single object and of a list, export
+in both directions, and the microflow that ties them together — is in
+[`reference/rest-api-example.md`](reference/rest-api-example.md).
 
-### Step 1: JSON Structures
-
-```sql
--- Single country (flat object)
-create json structure Integration.JSON_Country
-  snippet '{"name": "Netherlands", "officialName": "Kingdom of the Netherlands", "capital": "Amsterdam", "region": "Europe", "population": 18100436, "flagUrl": "https://flagcdn.com/w320/nl.png"}';
-
--- List of countries (array of objects)
-create json structure Integration.JSON_CountryList
-  snippet '[{"name": "Netherlands", "capital": "Amsterdam", "region": "Europe", "population": 18100436}]';
-```
-
-### Step 2: Import — Single Country
-
-```sql
-create non-persistent entity Integration.Country (
-  Name: string,
-  OfficialName: string,
-  Capital: string,
-  Region: string,
-  Population: integer,
-  FlagUrl: string
-);
-/
-
-create import mapping Integration.IMM_Country
-  with json structure Integration.JSON_Country
-{
-  create Integration.Country {
-    Name = name,
-    OfficialName = officialName,
-    Capital = capital,
-    Region = region,
-    Population = population,
-    FlagUrl = flagUrl
-  }
-};
-```
-
-### Step 3: Import — List of Countries
-
-For a list response, the import mapping maps the array item directly (no container):
-
-```sql
-create non-persistent entity Integration.CountryListItem (
-  Name: string,
-  Capital: string,
-  Region: string,
-  Population: integer
-);
-/
-
-create import mapping Integration.IMM_CountryList
-  with json structure Integration.JSON_CountryList
-{
-  create Integration.CountryListItem {
-    Name = name,
-    Capital = capital,
-    Region = region,
-    Population = population
-  }
-};
-```
-
-### Step 4: Export — Serialize Country to JSON
-
-For the flat country, the same entity works for both import and export:
-
-```sql
-create export mapping Integration.EMM_Country
-  with json structure Integration.JSON_Country
-{
-  Integration.Country {
-    name = Name,
-    officialName = OfficialName,
-    capital = Capital,
-    region = Region,
-    population = Population,
-    flagUrl = FlagUrl
-  }
-};
-```
-
-### Step 5: Export — List of Countries
-
-For exporting a list, the export domain model needs a root container + item entities:
-
-```sql
--- Container entity wrapping the array
-create non-persistent entity Integration.ExCountryList;
-/
-
--- Item entity for each country in the array
-create non-persistent entity Integration.ExCountryItem (
-  Name: string,
-  Capital: string,
-  Region: string,
-  Population: integer
-);
-/
-
-create association Integration.ExCountryItem_ExCountryList
-  from Integration.ExCountryItem
-  to Integration.ExCountryList;
-/
-
-create export mapping Integration.EMM_CountryList
-  with json structure Integration.JSON_CountryList
-{
-  Integration.ExCountryList {
-    Integration.ExCountryItem_ExCountryList/Integration.ExCountryItem as Root {
-      name = Name,
-      capital = Capital,
-      region = Region,
-      population = Population
-    }
-  }
-};
-```
-
-### Step 6: Microflow — Fetch, Import, Process, Export
-
-```sql
-create microflow Integration.GetCountryInfo ()
-returns string as $json
-begin
-  -- Fetch country data from REST API
-  $response = rest call get 'https://restcountries.com/v3.1/name/netherlands'
-    header Accept = 'application/json'
-    timeout 30
-    returns string
-    on error continue;
-
-  -- Import JSON into entity
-  $Country = import from mapping Integration.IMM_Country($response);
-
-  -- Export back to our own JSON format
-  $json = export to mapping Integration.EMM_Country($Country);
-  log info node 'Integration' 'Country: ' + $json;
-
-  return $json;
-end;
-/
-```
-
----
 
 ## Placing Documents in Folders
 
@@ -740,5 +608,6 @@ See `organize-project` for `move` and the full folder story.
 | Association direction wrong | Always FROM child TO parent (child owns FK) |
 | Using `owner default` for 1-1 nested objects in export | Use `owner both` for 1-1 relationships |
 | Missing array container entity in export | Arrays need Container + Item entities |
-| Using `key` with `create` handling | `key` only valid with `find` or `find or create` |
+| Using `key` with `create` handling | `key` only valid with `find` |
+| `find` without `or create` / `or error` / `or ignore` | Say what happens when the object is not found — the three differ at runtime |
 | Arrays in import with container entity | Import arrays map directly to item entity, no container |

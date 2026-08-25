@@ -160,17 +160,10 @@ func importObjectElementToGen(id string, elem *model.ImportMappingElement, paren
 	}
 
 	objectHandling := orDefault(elem.ObjectHandling, "Create")
-	objectHandlingBackup := objectHandling
 	if objectHandling == "FindOrCreate" {
 		objectHandling = "Find"
-		objectHandlingBackup = "Create"
 	}
-	if objectHandling == "Custom" {
-		// ObjectHandlingBackup is {Create, Error, Ignore} — "Custom" is not in
-		// it. Import documents with a custom handler store Create (73 of 77 in
-		// the demo apps; the rest Ignore, which MDL cannot yet ask for — #261).
-		objectHandlingBackup = "Create"
-	}
+	objectHandlingBackup := importBackupFor(objectHandling, elem.ObjectHandlingBackup)
 
 	// $Type is ObjectMappingElement (no "Import" prefix); the generated metamodel
 	// name is misleading and causes TypeCacheUnknownTypeException if used.
@@ -181,7 +174,7 @@ func importObjectElementToGen(id string, elem *model.ImportMappingElement, paren
 	addStr(g, "XmlPath", elem.XmlPath)
 	addStr(g, "ObjectHandling", objectHandling)
 	addStr(g, "ObjectHandlingBackup", objectHandlingBackup)
-	addBool(g, "ObjectHandlingBackupAllowOverride", false)
+	addBool(g, "ObjectHandlingBackupAllowOverride", elem.BackupAllowOverride)
 	addStr(g, "Association", elem.Association)
 	if ch := customHandlerToGen(elem.CustomHandler); ch != nil {
 		addPart(g, "CustomHandlerCall", ch)
@@ -343,13 +336,10 @@ func exportObjectElementToGen(id string, elem *model.ExportMappingElement, paren
 	}
 
 	objectHandling := orDefault(elem.ObjectHandling, "Parameter")
-	objectHandlingBackup := objectHandling
-	if objectHandling == "Custom" {
-		// Every export object element in the demo apps stores Error (537 of
-		// 537), and "Custom" is not in the backup enum. The non-Custom paths
-		// keep today's behaviour — that is #261's to fix, uniformly.
-		objectHandlingBackup = "Error"
-	}
+	// EVERY export object element in the demo apps stores Error — 537 of 537,
+	// whatever its handling — and "Parameter"/"Find"/"Custom" are not in the
+	// {Create, Error, Ignore} enum the backup takes (#261).
+	objectHandlingBackup := "Error"
 
 	g := newElem("ExportMappings$ObjectMappingElement", id)
 	addStr(g, "Entity", elem.Entity)
@@ -451,6 +441,11 @@ func xmlPrimitiveTypeName(dataType string) string {
 		return "Boolean"
 	case "DateTime":
 		return "DateTime"
+	case "Binary":
+		// A FileDocument/Image attribute. Falling through to "String" was the
+		// last difference between an mxcli rebuild and Studio Pro's
+		// Email_Connector.IMM_EmailTemplateMapping (#261's measurement).
+		return "Binary"
 	default:
 		return "String"
 	}
@@ -537,4 +532,23 @@ func isMappingObjectKind(kind string) bool {
 	default:
 		return false
 	}
+}
+
+// importBackupFor is the ObjectHandlingBackup an import element gets.
+//
+// The property takes {Create, Error, Ignore} and nothing else. mxcli used to
+// copy the HANDLING into it, which wrote "Find" for a plain find, "Parameter"
+// for an export root and "Custom" for a microflow handler — none of which occurs
+// in the 1,261 object elements of the demo apps (#261).
+//
+// An explicit choice from the statement wins. Otherwise: `create` and
+// `find or create` both mean Create, and a custom handler defaults to Create
+// (73 of 77 in the corpus). A bare `find` never reaches here — the executor
+// refuses it rather than choosing among three different meanings.
+func importBackupFor(handling, requested string) string {
+	switch requested {
+	case "Create", "Error", "Ignore":
+		return requested
+	}
+	return "Create"
 }
