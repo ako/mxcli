@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,7 +21,7 @@ import (
 // calls theme.Resolve directly would keep passing while the CLI stayed broken.
 func runTheme(t *testing.T, args ...string) (string, error) {
 	t.Helper()
-	for _, c := range []*cobra.Command{themeApplyCmd, themeRemoveCmd} {
+	for _, c := range []*cobra.Command{themeApplyCmd, themeRemoveCmd, themeCreateCmd, themeListCmd, themeShowCmd} {
 		resetCmdFlags(c)
 	}
 
@@ -158,5 +159,130 @@ func TestThemeApply_SwitchingLeavesNoOrphanBlocks(t *testing.T) {
 	}
 	if got := installedThemes(t, dir); len(got) != 0 {
 		t.Errorf("remove after switching left %v", got)
+	}
+}
+
+// captureStdout runs f with os.Stdout redirected. The theme commands print
+// with fmt.Printf rather than cmd.Print, so rootCmd.SetOut does not see them.
+func captureStdout(t *testing.T, f func() error) (string, error) {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved := os.Stdout
+	os.Stdout = w
+
+	done := make(chan string, 1)
+	go func() {
+		var b bytes.Buffer
+		_, _ = io.Copy(&b, r)
+		done <- b.String()
+	}()
+
+	runErr := f()
+	os.Stdout = saved
+	_ = w.Close()
+	out := <-done
+	_ = r.Close()
+	return out, runErr
+}
+
+// The whole point of a project-local theme is that the CLI treats it as a
+// theme: created here, listed here, applied here. Before the local registry
+// there was nowhere to put a fourth theme at all, so a design-derived palette
+// had to be hand-edited into a generated block — which the digest fence then
+// refuses to touch on the next apply.
+func TestThemeCreate_ScaffoldsAThemeTheOtherCommandsThenAccept(t *testing.T) {
+	dir := themeProject(t)
+
+	out, err := captureStdout(t, func() error {
+		_, e := runTheme(t, "create", "acme", "-p", dir, "--from", "console")
+		return e
+	})
+	if err != nil {
+		t.Fatalf("create: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "scaffolded from 'console'") {
+		t.Errorf("create must say what it scaffolded from:\n%s", out)
+	}
+
+	listed, err := captureStdout(t, func() error {
+		_, e := runTheme(t, "list", "-p", dir)
+		return e
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(listed, "acme") || !strings.Contains(listed, "local") {
+		t.Errorf("`theme list -p` must show the project's own theme, marked local:\n%s", listed)
+	}
+
+	// ...and must not show it without -p, or the listing depends on where the
+	// shell happens to be.
+	global, err := captureStdout(t, func() error {
+		_, e := runTheme(t, "list")
+		return e
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(global, "acme") {
+		t.Errorf("`theme list` with no project must show only the built-ins:\n%s", global)
+	}
+
+	shown, err := captureStdout(t, func() error {
+		_, e := runTheme(t, "show", "acme", "-p", dir)
+		return e
+	})
+	if err != nil {
+		t.Fatalf("show: %v", err)
+	}
+	if !strings.Contains(shown, "local to this project") || !strings.Contains(shown, "--mxt-brand") {
+		t.Errorf("`theme show` must describe a local theme and print its token vocabulary:\n%s", shown)
+	}
+
+	if _, err := runTheme(t, "apply", "acme", "-p", dir); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	if got := installedThemes(t, dir); len(got) != 1 || got[0] != "acme" {
+		t.Fatalf("installed = %v; want [acme]", got)
+	}
+	if _, err := runTheme(t, "remove", "-p", dir); err != nil {
+		t.Fatalf("bare remove of a local theme: %v", err)
+	}
+	if got := installedThemes(t, dir); len(got) != 0 {
+		t.Errorf("remove left %v", got)
+	}
+}
+
+func TestThemeCreate_SeedsFromADesignFileAndReportsWhatItRead(t *testing.T) {
+	dir := themeProject(t)
+	design := filepath.Join(dir, "canvas.dc.html")
+	if err := os.WriteFile(design, []byte(
+		"<style>:root{--mxt-brand:#7f5af0;}\n"+
+			"@media (prefers-color-scheme: dark){:root{--mxt-brand:#a78bfa;}}</style>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := captureStdout(t, func() error {
+		_, e := runTheme(t, "create", "acme", "-p", dir, "--from", design)
+		return e
+	})
+	if err != nil {
+		t.Fatalf("create --from design: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "Seeded 2 token(s)") {
+		t.Errorf("create must report what it read:\n%s", out)
+	}
+
+	palette := filepath.Join(dir, filepath.FromSlash(theme.LocalThemesDir),
+		"acme", "files", "theme", "web", "custom-variables.scss")
+	body, err := os.ReadFile(palette)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "--mxt-brand: #7f5af0;") {
+		t.Errorf("the design's brand colour did not reach the palette:\n%s", body)
 	}
 }

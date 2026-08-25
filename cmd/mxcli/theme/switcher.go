@@ -24,16 +24,49 @@ import (
 // right palette before first paint by following the OS, so the switcher only
 // has to handle the case where a user's stored choice differs from their OS
 // preference — which is also the only case that can flash.
-func SwitcherMDL(module string) string {
+// skins is the switchable set installed in the project, default first. With
+// fewer than two, the skin actions are left out rather than generated to cycle
+// a set of one.
+func SwitcherMDL(module string, skins []string) string {
 	r := strings.NewReplacer(
 		"{{MODULE}}", module,
 		"{{STORAGE_KEY}}", SwitcherStorageKey,
+		"{{SKIN_STORAGE_KEY}}", SkinStorageKey,
+		"{{SKIN_PREFIX}}", SkinClassPrefix,
+		"{{SKINS}}", jsStringArray(skins),
+		"{{DEFAULT_SKIN}}", firstOr(skins, ""),
 	)
-	return r.Replace(switcherTemplate)
+	out := r.Replace(switcherTemplate)
+	if len(skins) > 1 {
+		out += r.Replace(skinSwitcherTemplate)
+	}
+	return out
 }
 
-// SwitcherStorageKey is where an explicit choice is remembered in the browser.
+// SwitcherStorageKey is where an explicit light/dark choice is remembered.
 const SwitcherStorageKey = "mxcli-theme"
+
+// SkinStorageKey is where an explicit theme choice is remembered. Separate
+// from the variant: a user who picks Ledger and then flips to dark expects
+// Ledger's dark palette, not to have lost their theme.
+const SkinStorageKey = "mxcli-skin"
+
+// jsStringArray renders a skin list as a JavaScript array literal. The names
+// are validated theme names, so quoting is enough.
+func jsStringArray(names []string) string {
+	quoted := make([]string, len(names))
+	for i, n := range names {
+		quoted[i] = `"` + n + `"`
+	}
+	return "[" + strings.Join(quoted, ", ") + "]"
+}
+
+func firstOr(s []string, fallback string) string {
+	if len(s) == 0 {
+		return fallback
+	}
+	return s[0]
+}
 
 const switcherTemplate = `-- Runtime theme switcher, installed by ` + "`mxcli theme switcher install`" + `.
 --
@@ -153,3 +186,101 @@ page on-load event to re-apply the stored value from, and the usual substitute
 either engine. %[1]s.ApplyStoredTheme is installed and ready for it — wire it in
 Studio Pro if you need the choice to persist across reloads.`, module)
 }
+
+// skinSwitcherTemplate is appended when the project carries a switchable set.
+//
+// This is the CSS Zen Garden move: the DOM Mendix renders never changes, and
+// neither does the model. Every theme in the set is already compiled into
+// theme.compiled.css, each palette scoped to its own root class, so selecting
+// one is a class swap — no rebuild, no reload, no server round trip.
+const skinSwitcherTemplate = `
+-- ---------------------------------------------------------------------------
+-- Theme selection. The set installed here is {{SKINS}}, and "{{DEFAULT_SKIN}}"
+-- is the one that renders before any class is set.
+--
+-- Every theme's palette is in the same stylesheet, scoped to :root.{{SKIN_PREFIX}}<name>,
+-- so this only ever adds and removes a class on <html>. Light/dark is a
+-- separate axis: picking a theme keeps whichever variant is in force.
+-- ---------------------------------------------------------------------------
+
+-- Select a theme by name. An unknown name clears the override and falls back
+-- to the set's default rather than leaving the app in no theme at all.
+create or modify javascript action {{MODULE}}.SetAppSkin(
+  Skin: String
+) returns String
+exposed as 'Set app theme skin' in 'Theme'
+as $$
+var skins = {{SKINS}};
+var root = document.documentElement;
+skins.forEach(function (s) { root.classList.remove("{{SKIN_PREFIX}}" + s); });
+
+var chosen = skins.indexOf(Skin) === -1 ? "{{DEFAULT_SKIN}}" : Skin;
+root.classList.add("{{SKIN_PREFIX}}" + chosen);
+try {
+    window.localStorage.setItem("{{SKIN_STORAGE_KEY}}", chosen);
+} catch (e) {
+    // No storage available: the choice still applies for this page view.
+}
+return Promise.resolve(chosen);
+$$;
+
+-- Rotate to the next theme in the set. With no class set the app is showing
+-- the default, so that is where the rotation starts.
+create or modify javascript action {{MODULE}}.CycleAppSkin() returns String
+exposed as 'Cycle app theme skin' in 'Theme'
+as $$
+var skins = {{SKINS}};
+var root = document.documentElement;
+var current = 0;
+for (var i = 0; i < skins.length; i++) {
+    if (root.classList.contains("{{SKIN_PREFIX}}" + skins[i])) { current = i; break; }
+}
+var next = skins[(current + 1) % skins.length];
+
+skins.forEach(function (s) { root.classList.remove("{{SKIN_PREFIX}}" + s); });
+root.classList.add("{{SKIN_PREFIX}}" + next);
+try {
+    window.localStorage.setItem("{{SKIN_STORAGE_KEY}}", next);
+} catch (e) {
+    // No storage available: the choice still applies for this page view.
+}
+return Promise.resolve(next);
+$$;
+
+-- Re-apply a remembered theme. Same caveat as ApplyStoredTheme: nothing calls
+-- this automatically, because Mendix pages have no on-load event mxcli can
+-- author. Wire it in Studio Pro if the choice must survive a reload.
+create or modify javascript action {{MODULE}}.ApplyStoredSkin() returns Boolean
+exposed as 'Apply stored theme skin' in 'Theme'
+as $$
+var skins = {{SKINS}};
+var stored = null;
+try {
+    stored = window.localStorage.getItem("{{SKIN_STORAGE_KEY}}");
+} catch (e) {
+    // No storage available: the default is the right fallback.
+}
+var root = document.documentElement;
+skins.forEach(function (s) { root.classList.remove("{{SKIN_PREFIX}}" + s); });
+if (stored !== null && skins.indexOf(stored) !== -1) {
+    root.classList.add("{{SKIN_PREFIX}}" + stored);
+}
+return Promise.resolve(true);
+$$;
+
+-- Wire this to a button: actionbutton btnSkin (caption: 'Theme', action: nanoflow {{MODULE}}.ACT_CycleSkin)
+create or replace nanoflow {{MODULE}}.ACT_CycleSkin()
+returns String as $Skin
+begin
+  $Skin = call javascript action {{MODULE}}.CycleAppSkin();
+  return $Skin;
+end;
+
+-- Ready for whatever ends up calling it on load; nothing does today.
+create or replace nanoflow {{MODULE}}.ACT_ApplyStoredSkin()
+returns Boolean as $Applied
+begin
+  $Applied = call javascript action {{MODULE}}.ApplyStoredSkin();
+  return $Applied;
+end;
+`
