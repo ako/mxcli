@@ -681,3 +681,32 @@ func buildWorkflowQualifiedNames(ctx *ExecContext) map[string]bool {
 	}
 	return result
 }
+
+// buildConstantQualifiedNames indexes the project's constants by qualified name,
+// for the reference checks that name one (a settings override, for instance).
+//
+// The second return says whether the index is TRUSTWORTHY. A backend that cannot
+// list constants yields an empty map, which is indistinguishable from a project
+// that has none — and the difference matters: "no constants exist" makes every
+// override dangling, while "cannot tell" must not reject anything. Callers that
+// resolve a name check it.
+func buildConstantQualifiedNames(ctx *ExecContext) (map[string]bool, bool) {
+	result := make(map[string]bool)
+	h, err := getHierarchy(ctx)
+	if err != nil {
+		return result, false
+	}
+	consts, err := ctx.Backend.ListConstants()
+	if err != nil {
+		return result, false
+	}
+	for _, c := range consts {
+		if c == nil {
+			continue
+		}
+		result[h.GetQualifiedName(c.ContainerID, c.Name)] = true
+	}
+	// A backend that has no constant listing at all reports success with nothing
+	// in it; treat that as "cannot tell" rather than "the project has none".
+	return result, len(consts) > 0
+}

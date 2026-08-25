@@ -369,6 +369,32 @@ func alterSettings(ctx *ExecContext, stmt *ast.AlterSettingsStmt) error {
 	}
 
 	section := strings.ToLower(stmt.Section)
+
+	// Resolve the qualified names this statement would write BEFORE writing them.
+	// `mxcli check --references` runs the same functions, so exec refuses exactly
+	// what check reports — and a script run without check still cannot leave a
+	// dangling AfterStartupMicroflow or an override for a constant that does not
+	// exist (#274). No script context here: at exec time the statements before
+	// this one have already run, so anything the script created is in the project.
+	if section == "constant" {
+		if known, trusted := buildConstantQualifiedNames(ctx); trusted {
+			if errs := validateSettingsConstantRef(stmt, known, nil); len(errs) > 0 {
+				return errs[0]
+			}
+		}
+	} else {
+		var mfs, ents map[string]bool
+		if section == "model" {
+			mfs = buildMicroflowQualifiedNames(ctx)
+		}
+		if section == "workflows" {
+			ents = buildEntityQualifiedNames(ctx)
+		}
+		if errs := validateSettingsReferences(stmt, mfs, ents, nil); len(errs) > 0 {
+			return errs[0]
+		}
+	}
+
 	// ADD/REMOVE change the list of ENABLED languages rather than a key on the
 	// settings part, so they are dispatched before the key/value sections.
 	if stmt.AddLanguage || stmt.ModifyLanguage || stmt.UpsertLanguage || stmt.RemoveLanguage {
