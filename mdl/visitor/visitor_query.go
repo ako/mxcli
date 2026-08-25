@@ -91,6 +91,16 @@ func (b *Builder) ExitShowStatement(ctx *parser.ShowStatementContext) {
 				Name:       &name,
 			})
 		}
+	} else if ctx.ANNOTATIONS() != nil {
+		stmt := &ast.ShowStmt{ObjectType: ast.ShowAnnotations}
+		if ctx.IN() != nil {
+			if qn := ctx.QualifiedName(); qn != nil {
+				stmt.InModule = getQualifiedNameText(qn)
+			} else if id := ctx.IDENTIFIER(); id != nil {
+				stmt.InModule = id.GetText()
+			}
+		}
+		b.statements = append(b.statements, stmt)
 	} else if ctx.ASSOCIATIONS() != nil {
 		stmt := &ast.ShowStmt{ObjectType: ast.ShowAssociations}
 		if ctx.IN() != nil {

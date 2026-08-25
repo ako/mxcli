@@ -10,6 +10,7 @@ import (
 	"github.com/mendixlabs/mxcli/modelsdk/element"
 	genDm "github.com/mendixlabs/mxcli/modelsdk/gen/domainmodels"
 	"github.com/mendixlabs/mxcli/modelsdk/meta"
+	mmpr "github.com/mendixlabs/mxcli/modelsdk/mpr"
 	"github.com/mendixlabs/mxcli/sdk/domainmodel"
 )
 
@@ -344,4 +345,57 @@ func (b *Backend) DeleteEntity(domainModelID, entityID model.ID) error {
 		}
 	}
 	return nil
+}
+
+// SetDomainModelAnnotations replaces the canvas notes on a domain model.
+//
+// Annotations are mutated in place on the gen document rather than rebuilt from
+// the semantic type: domainmodel.Annotation carries Caption, Location and Width,
+// while the stored element also has ExportLevel — and anything else a future
+// Mendix adds. Matching each note to the one already there and setting only the
+// three fields MDL owns means a property nobody has modelled yet rides along
+// untouched, which is the whole reason UpdateDomainModel leaves this collection
+// as passthrough (ADR-0005).
+//
+// A note with no stored counterpart is appended with the defaults Studio Pro
+// writes; a stored one with no counterpart in the new list is removed, which is
+// what makes DROP ANNOTATION work.
+func (b *Backend) SetDomainModelAnnotations(domainModelID model.ID, annotations []*domainmodel.Annotation) error {
+	if b.writer == nil {
+		return fmt.Errorf("SetDomainModelAnnotations: not connected for writing")
+	}
+	gdm, err := b.loadDomainModelGen(domainModelID)
+	if err != nil {
+		return err
+	}
+
+	// Index what is stored by element ID so an edit keeps its identity: minting a
+	// fresh one would make an otherwise-unchanged domain model differ (ADR-0008).
+	stored := map[model.ID]*genDm.Annotation{}
+	for _, el := range gdm.AnnotationsItems() {
+		if ga, ok := el.(*genDm.Annotation); ok {
+			stored[model.ID(ga.ID())] = ga
+		}
+	}
+
+	for i := len(gdm.AnnotationsItems()) - 1; i >= 0; i-- {
+		gdm.RemoveAnnotations(i)
+	}
+	for _, a := range annotations {
+		ga, ok := stored[a.ID]
+		if !ok {
+			ga = genDm.NewAnnotation()
+			if a.ID != "" {
+				ga.SetID(element.ID(a.ID))
+			} else {
+				ga.SetID(element.ID(mmpr.GenerateID()))
+			}
+			ga.SetExportLevel("Hidden")
+		}
+		ga.SetCaption(a.Caption)
+		ga.SetLocation(fmt.Sprintf("%d;%d", a.Location.X, a.Location.Y))
+		ga.SetWidth(int32(a.Width))
+		gdm.AddAnnotations(ga)
+	}
+	return b.persistDM(domainModelID, gdm)
 }

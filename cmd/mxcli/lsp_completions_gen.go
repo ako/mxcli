@@ -578,6 +578,8 @@ var mdlGeneratedKeywords = []protocol.CompletionItem{
 	{Label: "PARALLEL", Kind: protocol.CompletionItemKindKeyword, Detail: "Keyword"},
 	{Label: "WAIT", Kind: protocol.CompletionItemKindKeyword, Detail: "Keyword"},
 	{Label: "ANNOTATION", Kind: protocol.CompletionItemKindKeyword, Detail: "Keyword"},
+	{Label: "ANNOTATIONS", Kind: protocol.CompletionItemKindKeyword, Detail: "Keyword"},
+	{Label: "AT", Kind: protocol.CompletionItemKindKeyword, Detail: "Keyword"},
 	{Label: "BOUNDARY", Kind: protocol.CompletionItemKindKeyword, Detail: "Keyword"},
 	{Label: "INTERRUPTING", Kind: protocol.CompletionItemKindKeyword, Detail: "Keyword"},
 	{Label: "NON", Kind: protocol.CompletionItemKindKeyword, Detail: "Keyword"},

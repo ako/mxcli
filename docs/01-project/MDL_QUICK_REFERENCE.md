@@ -433,6 +433,30 @@ Studio Pro picks the dropdown label from the referenced microflow's
 return type (`System.ConsumedODataConfiguration` vs
 `list of System.HttpHeader`).
 
+## Domain-Model Annotations
+
+The note boxes Studio Pro draws on the canvas. They belong to a module's domain
+model, not to a document, so the statements name a module.
+
+| Statement | Syntax | Notes |
+|-----------|--------|-------|
+| Show annotations | `show annotations [in Module];` | Module, Title, Position, Width, Lines. **Title** is the first line of the caption — the addressable key |
+| Create | `create annotation in Module ( Caption: 'text' );` | New notes get Studio Pro's defaults: position (60, 240), width 440 |
+| Create with layout | `create annotation in Module ( Caption: $$Orders\nmulti-line$$, Position: (60, 40), Width: 400 );` | Caption accepts `$$…$$` for a multi-line note; an MDL string literal is single-line |
+| Update in place | `create or modify annotation in Module ( Caption: 'new wording', Position: (60, 40) );` | **Position is the identity when given** — reword and re-run without duplicating. An omitted `Width` keeps the stored one |
+| Drop by title | `drop annotation 'Orders' in Module;` | Refused when two notes share a first line |
+| Drop by position | `drop annotation at (60, 40) in Module;` | The unambiguous form |
+
+**There is no colour.** A domain model holds exactly four child collections
+(Annotations, Associations, CrossAssociations, Entities), and
+`DomainModels$Annotation` stores only Caption, ExportLevel, Location and Width.
+A "coloured section box" is this element in Studio Pro's own styling — nothing
+about that styling is in the model, so nothing can author it.
+
+**Give a note a Position if you intend to re-run the script.** Without one the
+only handle is the caption's first line, so rewording creates a second note
+rather than updating the first.
+
 ## Microflows, Nanoflows & Rules
 
 | Statement | Syntax | Notes |

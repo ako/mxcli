@@ -1,0 +1,134 @@
+-- =============================================================================
+-- DOMAIN-MODEL ANNOTATIONS
+-- =============================================================================
+--
+-- The note boxes Studio Pro draws on a domain model's canvas. Every blank Mendix
+-- app ships with one, explaining what a domain model is; modellers add more to
+-- label and group a diagram that has grown past a screenful.
+--
+-- WHAT MENDIX ACTUALLY STORES
+--
+-- A domain model holds exactly four child collections: Annotations,
+-- Associations, CrossAssociations and Entities. DomainModels$Annotation has four
+-- properties — Caption, ExportLevel, Location and Width.
+--
+-- There is NO COLOUR. A "coloured section box" is this element drawn in Studio
+-- Pro's own palette; nothing about that styling is in the model, so nothing can
+-- author it. Position and width are the only layout a script controls.
+--
+-- HOW A NOTE IS ADDRESSED
+--
+-- An annotation has no name, so it is addressed by:
+--
+--   1. its POSITION, when the statement gives one — the identity to prefer,
+--      because it does not change when the wording does; or
+--   2. the FIRST LINE of its caption, when it does not.
+--
+-- Give a note a position if you intend to re-run the script. Without one, the
+-- only handle is the caption's first line, so rewording it creates a SECOND note
+-- instead of updating the first.
+
+-- =============================================================================
+-- PART 0 — a module with something to annotate
+-- =============================================================================
+
+create module Notes;
+
+create entity Notes.Order (
+  Number : string(50),
+  Total  : decimal
+);
+
+create entity Notes.Country (
+  Code : string(2),
+  Name : string(100)
+);
+
+-- =============================================================================
+-- PART 1 — a note with a layout
+-- =============================================================================
+--
+-- The caption is a dollar-quoted block, because a note is usually several lines
+-- and an MDL string literal is single-quoted and single-line.
+
+create annotation in Notes (
+  Caption: $$Orders
+Everything about an order lives here: the order itself, its lines, and
+the microflows that move it between states.$$,
+  Position: (60, 40),
+  Width: 400
+);
+
+-- =============================================================================
+-- PART 2 — a note with no layout
+-- =============================================================================
+--
+-- Position and Width are optional. A new note gets Studio Pro's own defaults —
+-- (60, 240) and 440 — rather than a zero-sized box in the corner.
+
+create annotation in Notes ( Caption: 'Reference data — lookup tables only.' );
+
+-- =============================================================================
+-- PART 3 — rewording, without duplicating
+-- =============================================================================
+--
+-- The position identifies the note, so this UPDATES the one from PART 1 even
+-- though its first line changed. Width is omitted, so the stored 400 stays.
+--
+-- Address the same note by caption instead and you would get a second box: the
+-- title "Orders and invoices" matches nothing, so there would be nothing to
+-- update. That is the whole reason to write a position down.
+
+create or modify annotation in Notes (
+  Caption: $$Orders and invoices
+Everything about an order lives here.$$,
+  Position: (60, 40)
+);
+
+-- =============================================================================
+-- PART 4 — listing
+-- =============================================================================
+--
+-- The Title column is the addressable key, and Position is what the
+-- unambiguous DROP form takes, so both are printed rather than left to be
+-- derived.
+
+show annotations in Notes;
+
+-- =============================================================================
+-- PART 5 — removing
+-- =============================================================================
+
+-- By its title, which is the first line of the caption.
+drop annotation 'Reference data — lookup tables only.' in Notes;
+
+-- Or by where it sits, which is the form that works when two notes happen to
+-- start with the same line:
+--
+--   drop annotation at (60, 40) in Notes;
+
+-- =============================================================================
+-- PART 6 — what is refused, and why
+-- =============================================================================
+--
+-- Two notes MAY share a first line, as long as they sit in different places —
+-- position tells them apart:
+--
+--   create annotation in Notes ( Caption: 'Shared', Position: (10, 10) );
+--   create annotation in Notes ( Caption: 'Shared', Position: (20, 20) );
+--
+-- But then the title no longer identifies one, so the title-addressed form
+-- refuses rather than picking whichever came first:
+--
+--   drop annotation 'Shared' in Notes;
+--   -- Error: 2 annotations in this domain model start with "Shared", so it
+--   -- does not identify one. … Address it by where it sits instead
+--   -- (drop annotation at (x, y) in Notes) …
+--
+-- A caption is required. It is the note's whole content and its fallback
+-- address, so an empty one is a blank box nobody can name:
+--
+--   create annotation in Notes ( Position: (10, 10) );
+--   -- Error: an annotation needs a Caption
+
+show annotations in Notes;
