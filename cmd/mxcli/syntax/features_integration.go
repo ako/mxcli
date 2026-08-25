@@ -590,7 +590,7 @@ DESCRIBE DATABASE CONNECTION Ops.Erp;`,
 		},
 		Syntax: "SHOW IMPORT MAPPINGS [IN Module];\nDESCRIBE IMPORT MAPPING Module.Name;\n" +
 			"CREATE [OR MODIFY] IMPORT MAPPING Module.Name [FOLDER 'path']\n" +
-			"  WITH JSON STRUCTURE Module.JsonStruct\n" +
+			"  WITH JSON STRUCTURE Module.JsonStruct [ROOT a/b/c]\n" +
 			"    | WITH MESSAGE DEFINITION Module.Collection.Definition\n" +
 			"    | WITH XML SCHEMA Module.Schema\n{\n" +
 			"  create|find|find or create Module.Entity [by Module.MF(P: parent)] {\n    Attr = jsonField [KEY],\n" +
@@ -616,6 +616,11 @@ DESCRIBE DATABASE CONNECTION Ops.Erp;`,
 			"  The stored element carries only the microflow — its input IS the\n" +
 			"  member the element binds, which is why the member is named inside\n" +
 			"  the call. The export form mirrors it: jsonField = Module.MF(Attr).\n\n" +
+			"ROOT a/b/c:\n" +
+			"  Starts the mapping at a NESTED schema element rather than the\n" +
+			"  structure's root — the shape Studio Pro produces when you pick a\n" +
+			"  node deeper in the payload. Written in member names; the path may\n" +
+			"  pass through an array, and the mapping is then rooted at the item.\n\n" +
 			"Sources:\n" +
 			"  A JSON structure is built from a payload sample; a MESSAGE DEFINITION\n" +
 			"  is derived from the domain model and names entities and attributes\n" +
@@ -641,7 +646,7 @@ DESCRIBE DATABASE CONNECTION Ops.Erp;`,
 			"with json structure", "with message definition", "null values",
 			"as jsonKey", "converter", "value transform",
 		},
-		Syntax: "SHOW EXPORT MAPPINGS [IN Module];\nDESCRIBE EXPORT MAPPING Module.Name;\nCREATE [OR MODIFY] EXPORT MAPPING Module.Name [FOLDER 'path']\n  WITH JSON STRUCTURE Module.JsonStruct\n    | WITH MESSAGE DEFINITION Module.Collection.Definition\n    | WITH XML SCHEMA Module.Schema\n  [NULL VALUES LeaveOutElement|SendAsNil]\n{\n  Module.Entity {\n    jsonField = Attr,\n    jsonField = Module.MF(Attr),          -- value transform\n    group AS key { ... },                 -- entity-less grouping node\n    Assoc/Module.Child AS nestedKey { ... }\n  }\n};\nDROP EXPORT MAPPING Module.Name;\n\nOR MODIFY: updates mapping in-place, preserves UUID.\n\n" +
+		Syntax: "SHOW EXPORT MAPPINGS [IN Module];\nDESCRIBE EXPORT MAPPING Module.Name;\nCREATE [OR MODIFY] EXPORT MAPPING Module.Name [FOLDER 'path']\n  WITH JSON STRUCTURE Module.JsonStruct [ROOT a/b/c]\n    | WITH MESSAGE DEFINITION Module.Collection.Definition\n    | WITH XML SCHEMA Module.Schema\n  [NULL VALUES LeaveOutElement|SendAsNil]\n{\n  Module.Entity {\n    jsonField = Attr,\n    jsonField = Module.MF(Attr),          -- value transform\n    group AS key { ... },                 -- entity-less grouping node\n    Assoc/Module.Child AS nestedKey { ... }\n  }\n};\nDROP EXPORT MAPPING Module.Name;\n\nOR MODIFY: updates mapping in-place, preserves UUID.\n\n" +
 			"Grouping nodes (group as key { ... }):\n" +
 			"  A JSON object with no Mendix object behind it — Studio Pro's\n" +
 			"  entity-less object element. It may hold OBJECT elements only: a\n" +

@@ -111,7 +111,11 @@ func describeExportMapping(ctx *ExecContext, name ast.QualifiedName) error {
 	}
 
 	if em.JsonStructure != "" {
-		fmt.Fprintf(ctx.Output, "  with json structure %s\n", em.JsonStructure)
+		rootClause := ""
+		if len(em.Elements) > 0 {
+			rootClause = schemaRootClause(em.Elements[0].JsonPath)
+		}
+		fmt.Fprintf(ctx.Output, "  with json structure %s%s\n", em.JsonStructure, rootClause)
 	} else if em.XmlSchema != "" {
 		fmt.Fprintf(ctx.Output, "  with xml schema %s\n", em.XmlSchema)
 	} else if em.MessageDefinition != "" {
@@ -317,8 +321,22 @@ func execCreateExportMapping(ctx *ExecContext, s *ast.CreateExportMappingStmt) e
 	}
 
 	// Build element tree from the AST definition, cloning JSON structure properties
+	// `root a/b/c` starts the mapping at a nested schema element (#267).
+	rootPath := ""
+	if s.SchemaRoot != "" {
+		if !idx.resolvable() {
+			return mdlerrors.NewValidation(fmt.Sprintf("export mapping %s: `root %s` needs a schema "+
+				"source that can be read", s.Name.String(), s.SchemaRoot))
+		}
+		je, err := resolveSchemaRoot(idx, s.SchemaRoot)
+		if err != nil {
+			return mdlerrors.NewValidation(fmt.Sprintf("export mapping %s: %v", s.Name.String(), err))
+		}
+		rootPath = je.Path
+	}
+
 	if s.RootElement != nil {
-		root, err := buildExportMappingElementModel(s.Name.Module, s.RootElement, "", "(Object)", idx, ctx.Backend, true)
+		root, err := buildExportMappingElementModel(s.Name.Module, s.RootElement, "", rootPath, idx, ctx.Backend, true)
 		if err != nil {
 			return mdlerrors.NewValidation(fmt.Sprintf("export mapping %s: %v", s.Name.String(), err))
 		}
@@ -440,11 +458,17 @@ func buildExportMappingElementModel(moduleName string, def *ast.ExportMappingEle
 		// import side does not: an array-rooted EXPORT mapping is stored as TWO
 		// elements, a bare Array container plus the item that carries the entity,
 		// where the import mapping collapses to the item alone.
-		lookupPath = "(Object)"
-		if root := idx.root(); root != nil {
-			lookupPath = root.Path
-			if root.ElementType == "Array" {
-				return buildExportRootArrayElement(moduleName, def, root, idx, b)
+		// parentPath carries an explicit `root a/b/c` selection when there is
+		// one; otherwise the structure's own root is used (#248, #267).
+		if parentPath != "" {
+			lookupPath = parentPath
+		} else {
+			lookupPath = "(Object)"
+			if root := idx.root(); root != nil {
+				lookupPath = root.Path
+				if root.ElementType == "Array" {
+					return buildExportRootArrayElement(moduleName, def, root, idx, b)
+				}
 			}
 		}
 		jsElem = idx.byPath[lookupPath]

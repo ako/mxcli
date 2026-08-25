@@ -43,20 +43,27 @@ import (
 // docs/11-proposals/PROPOSAL_mapping_coverage.md for the measurement this came
 // from — 112 of 327 real mappings are in this class.
 var knownLossy = map[string]string{
-	"Email_Connector.IMM_EmailTemplateMapping":                "#261 find/create + error",
-	"KrogerAPI.IM_ProductList":                                "#268 primitive-array wrapper",
-	"MxGenAIConnector.EM_CohereEmbed_Request":                 "#268 primitive-array wrapper",
-	"MxGenAIConnector.IM_CohereEmbed_Response":                "#265 mapping input parameter",
-	"MxGenAIConnector.IM_Collection_RetrieveNearestNeighbors": "#267 nested root",
-	"OpenAI_API.IM_OpenAI":                                    "#267 nested schema root",
-	// Not a defect: this document predates MappingSourceReference (it is the
-	// only one of the twelve without the key), and the rebuild writes the
-	// current shape — which is what Studio Pro does on save too. Kept as a
-	// fixture case so the version difference stays visible rather than being
-	// quietly normalised away.
-	"MendixSSO.AppRolesResponse":      "older document — the rebuild adds MappingSourceReference, which 11 of 12 real mappings carry",
-	"FeedbackModule.IMM_PostResponse": "#266 converter microflow",
-	"FeedbackModule.EXM_PostFeedback": "#266 converter microflow",
+	// Constructs MDL still cannot express.
+	"Email_Connector.IMM_EmailTemplateMapping": "#261 find/create + error",
+	"KrogerAPI.IM_ProductList":                 "#268 primitive-array wrapper",
+	"MxGenAIConnector.EM_CohereEmbed_Request":  "#268 primitive-array wrapper",
+	"MxGenAIConnector.IM_CohereEmbed_Response": "#265 mapping input parameter",
+	// #267 is fixed for this one — its `root chunks` clause round-trips — but it
+	// carries two shapes that have never parsed: an object element with an
+	// entity and NO association (DESCRIBE prints `./Entity`) and an entity-less
+	// import container (`= metadata`). Both are #260 describe-only spellings.
+	"MxGenAIConnector.IM_Collection_RetrieveNearestNeighbors": "#260 association-less and entity-less import object elements",
+
+	// Not constructs: the property SET a rebuild writes (#279). #266's converter
+	// is fixed on both of these — what remains is MessageDefinition2 being
+	// dropped, plus #277 and #261 on the export twin.
+	"FeedbackModule.IMM_PostResponse": "#279 rebuild drops MessageDefinition2",
+	"FeedbackModule.EXM_PostFeedback": "#279 MessageDefinition2; #277 IsKey/MaxLength; #261 backup",
+	// The same family in the opposite direction: this document predates
+	// MappingSourceReference (the only one of the twelve without the key) and
+	// the rebuild writes the current shape, which is what Studio Pro does on
+	// save too. Kept so the version difference stays visible.
+	"MendixSSO.AppRolesResponse": "#279 rebuild adds MappingSourceReference, which 11 of 12 real mappings carry",
 }
 
 // The positive control is authored by mxcli itself rather than transplanted: a

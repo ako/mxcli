@@ -250,3 +250,74 @@ func addCustomHandlerValueElements(elem *model.ImportMappingElement,
 	}
 	return nil
 }
+
+// resolveSchemaRoot finds the element a `root a/b/c` clause selects (#267).
+//
+// Unlike a member reference, this path MAY pass through an array: the mapping is
+// then rooted at the array's item, which is what Studio Pro stores —
+// `root choices/message` over an array-valued `choices` reaches
+// "(Object)|choices|(Object)|message" (OpenAI_API.IM_OpenAI). A value reference
+// cannot do that (many items cannot collapse into one value, CE0256), which is
+// why this walks the index itself rather than reusing resolvePath.
+func resolveSchemaRoot(idx *jsonSchemaIndex, path string) (*types.JsonElement, error) {
+	root := idx.root()
+	if root == nil {
+		return nil, fmt.Errorf("the schema source has no root to start from")
+	}
+	current := root
+	for _, seg := range strings.Split(path, "/") {
+		if seg == "" {
+			continue
+		}
+		// Step into an array's item before looking for the next member: the
+		// item is where the members live.
+		if current.ElementType == "Array" {
+			if item, ok := idx.byPath[current.Path+"|(Object)"]; ok {
+				current = item
+			}
+		}
+		next := idx.resolve(current.Path, seg)
+		if next == nil {
+			known := idx.memberNames(current.Path)
+			if len(known) == 0 {
+				return nil, fmt.Errorf("root %q: %q is not a member of the schema at %s, "+
+					"which has no members there", path, seg, current.Path)
+			}
+			return nil, fmt.Errorf("root %q: %q is not a member of the schema at %s; available: %s",
+				path, seg, current.Path, strings.Join(known, ", "))
+		}
+		current = next
+	}
+	// A root landing on an array means the mapping is rooted at its ITEM, the
+	// same collapse an array-rooted structure gets (#248).
+	if current.ElementType == "Array" {
+		if item, ok := idx.byPath[current.Path+"|(Object)"]; ok {
+			current = item
+		}
+	}
+	return current, nil
+}
+
+// schemaRootClause renders the `root a/b/c` clause for DESCRIBE, or "" when the
+// mapping starts at the structure's own root.
+//
+// Derived from the stored path rather than remembered: the "(Object)" markers an
+// array contributes are dropped, which is the inverse of how the clause resolves.
+func schemaRootClause(rootPath string) string {
+	if rootPath == "" || rootPath == "(Object)" || rootPath == "(Array)" ||
+		rootPath == "(Array)|(Object)" {
+		return ""
+	}
+	segs := strings.Split(rootPath, "|")
+	var out []string
+	for i, seg := range segs {
+		if i == 0 || seg == "(Object)" || seg == "(Array)" {
+			continue
+		}
+		out = append(out, seg)
+	}
+	if len(out) == 0 {
+		return ""
+	}
+	return " root " + strings.Join(out, "/")
+}

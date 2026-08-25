@@ -494,7 +494,12 @@ createImportMappingStatement
     ;
 
 importMappingWithClause
-    : WITH JSON STRUCTURE qualifiedName
+    // ROOT selects the schema element the mapping STARTS at, when that is not
+    // the structure's own root — the shape Studio Pro produces when you pick a
+    // node deeper in the payload (#267). The path is written in member names and
+    // steps through arrays implicitly: `root choices/message` reaches
+    // "(Object)|choices|(Object)|message".
+    : WITH JSON STRUCTURE qualifiedName (ROOT jsonMemberPath)?
     | WITH XML SCHEMA qualifiedName
     // Module.Collection.Definition — the definitions live inside a collection
     // document, so the reference is three parts. qualifiedName already accepts
@@ -576,7 +581,7 @@ createExportMappingStatement
     ;
 
 exportMappingWithClause
-    : WITH JSON STRUCTURE qualifiedName
+    : WITH JSON STRUCTURE qualifiedName (ROOT jsonMemberPath)?
     | WITH XML SCHEMA qualifiedName
     | WITH MESSAGE DEFINITION qualifiedName
     ;

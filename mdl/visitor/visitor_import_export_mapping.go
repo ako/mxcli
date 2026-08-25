@@ -34,6 +34,9 @@ func (b *Builder) ExitCreateImportMappingStatement(ctx *parser.CreateImportMappi
 		if sc.QualifiedName() != nil {
 			stmt.SchemaRef = buildQualifiedName(sc.QualifiedName())
 		}
+		if jp := sc.JsonMemberPath(); jp != nil {
+			stmt.SchemaRoot = jsonMemberPathText(jp)
+		}
 	}
 
 	// Parse root element
@@ -155,6 +158,9 @@ func (b *Builder) ExitCreateExportMappingStatement(ctx *parser.CreateExportMappi
 		}
 		if sc.QualifiedName() != nil {
 			stmt.SchemaRef = buildQualifiedName(sc.QualifiedName())
+		}
+		if jp := sc.JsonMemberPath(); jp != nil {
+			stmt.SchemaRoot = jsonMemberPathText(jp)
 		}
 	}
 

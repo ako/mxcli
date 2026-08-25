@@ -17,10 +17,13 @@ package ast
 //	  }
 //	};
 type CreateImportMappingStmt struct {
-	Name           QualifiedName
-	Folder         string        // Folder path within module (empty = leave placement alone)
-	SchemaKind     string        // "JSON_STRUCTURE" or "XML_SCHEMA" or ""
-	SchemaRef      QualifiedName // qualified name of the schema source
+	Name       QualifiedName
+	Folder     string        // Folder path within module (empty = leave placement alone)
+	SchemaKind string        // "JSON_STRUCTURE" or "XML_SCHEMA" or ""
+	SchemaRef  QualifiedName // qualified name of the schema source
+	// SchemaRoot selects the element the mapping STARTS at, when that is not the
+	// structure's own root (#267). Written in member names, "/"-separated.
+	SchemaRoot     string
 	RootElement    *ImportMappingElementDef
 	CreateOrModify bool // true for CREATE OR MODIFY / CREATE OR REPLACE
 }
@@ -86,11 +89,13 @@ type ImportMappingElementDef struct {
 //	  }
 //	};
 type CreateExportMappingStmt struct {
-	Name            QualifiedName
-	Folder          string        // Folder path within module (empty = leave placement alone)
-	SchemaKind      string        // "JSON_STRUCTURE" or "XML_SCHEMA" or ""
-	SchemaRef       QualifiedName // qualified name of the schema source
-	NullValueOption string        // "LeaveOutElement" or "SendAsNil" (default: "LeaveOutElement")
+	Name       QualifiedName
+	Folder     string        // Folder path within module (empty = leave placement alone)
+	SchemaKind string        // "JSON_STRUCTURE" or "XML_SCHEMA" or ""
+	SchemaRef  QualifiedName // qualified name of the schema source
+	// SchemaRoot — see the note on CreateImportMappingStmt (#267).
+	SchemaRoot      string
+	NullValueOption string // "LeaveOutElement" or "SendAsNil" (default: "LeaveOutElement")
 	RootElement     *ExportMappingElementDef
 	CreateOrModify  bool // true for CREATE OR MODIFY / CREATE OR REPLACE
 }

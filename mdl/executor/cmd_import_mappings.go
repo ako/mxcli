@@ -111,7 +111,11 @@ func describeImportMapping(ctx *ExecContext, name ast.QualifiedName) error {
 	}
 
 	if im.JsonStructure != "" {
-		fmt.Fprintf(ctx.Output, "  with json structure %s\n", im.JsonStructure)
+		rootClause := ""
+		if len(im.Elements) > 0 {
+			rootClause = schemaRootClause(im.Elements[0].JsonPath)
+		}
+		fmt.Fprintf(ctx.Output, "  with json structure %s%s\n", im.JsonStructure, rootClause)
 	} else if im.XmlSchema != "" {
 		fmt.Fprintf(ctx.Output, "  with xml schema %s\n", im.XmlSchema)
 	} else if im.MessageDefinition != "" {
@@ -342,8 +346,22 @@ func execCreateImportMapping(ctx *ExecContext, s *ast.CreateImportMappingStmt) e
 	}
 
 	// Build element tree from the AST definition, cloning JSON structure properties
+	// `root a/b/c` starts the mapping at a nested schema element (#267).
+	rootPath := ""
+	if s.SchemaRoot != "" {
+		if !idx.resolvable() {
+			return mdlerrors.NewValidation(fmt.Sprintf("import mapping %s: `root %s` needs a schema "+
+				"source that can be read", s.Name.String(), s.SchemaRoot))
+		}
+		je, err := resolveSchemaRoot(idx, s.SchemaRoot)
+		if err != nil {
+			return mdlerrors.NewValidation(fmt.Sprintf("import mapping %s: %v", s.Name.String(), err))
+		}
+		rootPath = je.Path
+	}
+
 	if s.RootElement != nil {
-		root, err := buildImportMappingElementModel(s.Name.Module, s.RootElement, "", "(Object)", ctx.Backend, idx, true)
+		root, err := buildImportMappingElementModel(s.Name.Module, s.RootElement, "", rootPath, ctx.Backend, idx, true)
 		if err != nil {
 			return mdlerrors.NewValidation(fmt.Sprintf("import mapping %s: %v", s.Name.String(), err))
 		}
@@ -414,9 +432,14 @@ func buildImportMappingElementModel(moduleName string, def *ast.ImportMappingEle
 		// "(Array)|(Object)" with no container (measured on
 		// Teamcenter.IMM_ItemRevision and FactoryManagement.IMM_ScenarioList,
 		// Mendix 11.13).
-		lookupPath = "(Object)"
-		if root := idx.root(); root != nil {
-			lookupPath = root.Path
+		// parentPath carries an explicit `root a/b/c` selection when there is
+		// one; otherwise the structure's own root is used (#248, #267).
+		lookupPath = parentPath
+		if lookupPath == "" {
+			lookupPath = "(Object)"
+			if root := idx.root(); root != nil {
+				lookupPath = root.Path
+			}
 		}
 		jsElem = idx.byPath[lookupPath]
 	default:
