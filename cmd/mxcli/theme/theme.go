@@ -67,6 +67,11 @@ type FileSpec struct {
 	Path    string `json:"path"`
 	Mode    string `json:"mode"` // "block" or "verbatim"
 	Purpose string `json:"purpose"`
+	// Shared marks a file that is byte-identical in every theme — the Atlas
+	// wiring, the recipe layer, the widget layer. In a switchable set only the
+	// default theme writes them, so the project carries one copy rather than
+	// one fenced block per theme holding the same rules.
+	Shared bool `json:"shared,omitempty"`
 }
 
 // Theme is a named styling package embedded in the mxcli binary.
@@ -258,18 +263,185 @@ func Resolve(projectDir, fallback string) (string, error) {
 			return "", fmt.Errorf("no mxcli theme found in %s (run `mxcli theme apply` to add one)", projectDir)
 		}
 		return fallback, nil
-	case 1:
-		return installed[0], nil
 	default:
-		return "", fmt.Errorf("%s carries more than one theme (%s); name the one you mean",
-			projectDir, strings.Join(installed, ", "))
+		// A project may legitimately carry several themes now, as a switchable
+		// set. Resolve answers "which one" for callers that need a single name;
+		// ResolveSet is what a bare apply or remove wants.
+		return installed[0], nil
 	}
 }
 
-// Apply writes a theme's files into projectDir.
+// ResolveSet returns the themes a bare `apply` or `remove` should act on: the
+// whole installed set, in the order it was installed, falling back to fallback
+// when the project has none.
+//
+// Order matters and is recovered from the project rather than guessed: the
+// first theme in a switchable set is the default — the one that renders before
+// any class is set — and re-applying in a different order would silently
+// promote a different theme.
+func ResolveSet(projectDir, fallback string) ([]string, error) {
+	installed, err := InstalledOrder(projectDir)
+	if err != nil {
+		return nil, err
+	}
+	if len(installed) > 0 {
+		return installed, nil
+	}
+	if fallback == "" {
+		return nil, fmt.Errorf("no mxcli theme found in %s (run `mxcli theme apply` to add one)", projectDir)
+	}
+	return []string{fallback}, nil
+}
+
+// InstalledOrder is Installed, ordered by where each theme's block sits in
+// theme/web/main.scss — which is the order they were applied, and therefore
+// which one is the set's default.
+func InstalledOrder(projectDir string) ([]string, error) {
+	installed, err := Installed(projectDir)
+	if err != nil || len(installed) < 2 {
+		return installed, err
+	}
+	main, err := os.ReadFile(filepath.Join(projectDir, "theme", "web", "main.scss"))
+	if err != nil {
+		return installed, nil
+	}
+	body := string(main)
+	sort.SliceStable(installed, func(i, j int) bool {
+		return strings.Index(body, beginMarker+" "+installed[i]+" ") <
+			strings.Index(body, beginMarker+" "+installed[j]+" ")
+	})
+	return installed, nil
+}
+
+// Apply writes one theme's files into projectDir, replacing any other.
 //
 // projectDir is the folder holding the .mpr — the theme/ tree sits beside it.
 func Apply(projectDir, name string, opts Options) (*Result, error) {
+	res, err := ApplySet(projectDir, []string{name}, opts)
+	return res.first(), err
+}
+
+// ApplySet installs several themes into one stylesheet, switchable at runtime
+// by a class on <html>. names[0] is the default — the one that renders before
+// any class is set.
+//
+// This is the same mechanism the light/dark variants already use, generalised.
+// It works because a theme is almost entirely token values: the Atlas wiring,
+// the recipe layer and the widget layer are byte-identical across themes and
+// resolve every colour through var(--mxt-*), so one copy of them serves the
+// whole set and follows whichever palette is currently in scope. Only the
+// palette, the fonts and a handful of skin rules differ per theme.
+//
+// The scopes are mutually exclusive by construction — the default claims :root
+// minus every other skin's class — so no two palettes are ever live at once and
+// the outcome does not depend on import order.
+func ApplySet(projectDir string, names []string, opts Options) (*SetResult, error) {
+	if len(names) == 0 {
+		return nil, fmt.Errorf("no theme named")
+	}
+	if err := requireMendixProject(projectDir); err != nil {
+		return nil, err
+	}
+	if opts.Variant == "" {
+		opts.Variant = VariantAuto
+	}
+	seen := map[string]bool{}
+	for _, n := range names {
+		if seen[n] {
+			return nil, fmt.Errorf("theme %q named twice", n)
+		}
+		seen[n] = true
+	}
+
+	// Themes outside the set go, along with their fonts. Within the set nothing
+	// is removed: that is the whole point.
+	if !opts.KeepOthers {
+		if err := removeThemesOutsideSet(projectDir, names, opts); err != nil {
+			return nil, err
+		}
+	}
+
+	set := &SetResult{Names: names}
+	var errs []error
+	for i, name := range names {
+		res, err := applyOne(projectDir, name, scopeFor(names, i), opts)
+		if res != nil {
+			set.Themes = append(set.Themes, res)
+		}
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return set, errors.Join(errs...)
+}
+
+// SetResult is the outcome of installing a switchable set.
+type SetResult struct {
+	// Names is the set in order; the first is the default.
+	Names  []string
+	Themes []*Result
+}
+
+func (s *SetResult) first() *Result {
+	if s == nil || len(s.Themes) == 0 {
+		return nil
+	}
+	return s.Themes[0]
+}
+
+// Changed reports whether anything on disk moved.
+func (s *SetResult) Changed() bool {
+	for _, r := range s.Themes {
+		if r.Changed() {
+			return true
+		}
+	}
+	return false
+}
+
+// scope is where one theme's tokens are declared, and whether it shares the
+// stylesheet with others.
+type scope struct {
+	// Palette is the selector the --mxt-* block is declared on.
+	Palette string
+	// Shared is true when this theme is one of several in the stylesheet, which
+	// is what makes its skin rules need scoping.
+	Shared bool
+	// Default marks the theme that renders with no class set — the only one
+	// whose block carries the shared partials' imports.
+	Default bool
+}
+
+// scopeFor builds the selector for names[i] within the set.
+//
+// The default theme claims :root minus every other skin's class rather than a
+// bare :root. Bare would keep matching once another skin's class was set, so
+// its skin rules would leak under every other theme and the result would come
+// down to specificity. Negation makes the scopes mutually exclusive instead —
+// exactly one palette is ever live.
+func scopeFor(names []string, i int) scope {
+	if len(names) == 1 {
+		return scope{Palette: ":root", Default: true}
+	}
+	if i > 0 {
+		return scope{Palette: ":root." + skinClass(names[i]), Shared: true}
+	}
+	var b strings.Builder
+	b.WriteString(":root")
+	for _, other := range names[1:] {
+		b.WriteString(":not(." + skinClass(other) + ")")
+	}
+	b.WriteString(", :root." + skinClass(names[0]))
+	return scope{Palette: b.String(), Shared: true, Default: true}
+}
+
+// SkinClassPrefix is the class a switcher sets on <html> to select a theme.
+const SkinClassPrefix = "mxt-"
+
+// skinClass is the class that selects one theme at runtime.
+func skinClass(name string) string { return SkinClassPrefix + name }
+
+func applyOne(projectDir, name string, sc scope, opts Options) (*Result, error) {
 	src, err := sourceFor(projectDir, name)
 	if err != nil {
 		return nil, err
@@ -278,19 +450,11 @@ func Apply(projectDir, name string, opts Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := requireMendixProject(projectDir); err != nil {
-		return nil, err
-	}
-	if opts.Variant == "" {
-		opts.Variant = VariantAuto
-	}
 
-	// Only one theme at a time. Both would map the same Atlas leaves, so which
-	// palette won would come down to SCSS import order rather than to what the
-	// user asked for. Removing first also cleans up the previous theme's fonts.
-	if !opts.KeepOthers {
-		if err := removeRivalThemes(projectDir, t, opts); err != nil {
-			return nil, err
+	shared := map[string]bool{}
+	for _, f := range t.Files {
+		if f.Shared {
+			shared[f.Path] = true
 		}
 	}
 
@@ -309,6 +473,12 @@ func Apply(projectDir, name string, opts Options) (*Result, error) {
 		if err := refuseSelfWrite(rel); err != nil {
 			return err
 		}
+		// A shared file belongs to the set, not to a theme. Only the default
+		// writes it; otherwise every theme in the set stacks its own fenced
+		// block of the same rules into the same file.
+		if !sc.Default && shared[rel] {
+			return nil
+		}
 		target := filepath.Join(projectDir, filepath.FromSlash(rel))
 
 		body, err := fs.ReadFile(src.fsys, p)
@@ -318,7 +488,7 @@ func Apply(projectDir, name string, opts Options) (*Result, error) {
 
 		var fr FileResult
 		if isBlockFile(rel) {
-			fr, err = applyBlockFile(target, rel, t, expand(string(body), t, opts), opts)
+			fr, err = applyBlockFile(target, rel, t, expand(string(body), t, sc, opts), opts)
 		} else {
 			fr, err = applyVerbatimFile(target, rel, body, opts)
 		}
@@ -522,36 +692,73 @@ func applyVerbatimFile(target, rel string, body []byte, opts Options) (FileResul
 	return FileResult{Path: rel, Action: action}, nil
 }
 
-// expand fills the placeholders a theme asset may carry. Kept deliberately
-// tiny — the assets are real SCSS that must stay readable and editable in
-// place, so the only things templated are the two values a user chooses at
-// apply time.
-func expand(body string, t *Theme, opts Options) string {
+// expand fills the placeholders a theme asset carries. Kept deliberately
+// small — the assets are real SCSS that must stay readable and editable in
+// place, so only what genuinely varies at apply time is templated: the
+// light/dark variant, and where this theme's tokens are declared.
+func expand(body string, t *Theme, sc scope, opts Options) string {
+	// Only the default theme's main.scss block carries the shared partials, so
+	// one copy of the Atlas wiring, the recipe layer and the widget layer
+	// serves the whole set. It is written first, so those imports precede
+	// every theme partial in the file.
+	head, tail := "", ""
+	if sc.Default {
+		head = "//\n" +
+			"// Variant: auto follows the OS and honours a theme-light / theme-dark class\n" +
+			"// on <html>; light or dark bakes one palette with no switching.\n" +
+			"//\n" +
+			"// The shared partials — the Atlas wiring, the recipe layer and the widget\n" +
+			"// layer — are imported once, here, by the set's default theme. They read the\n" +
+			"// palette through var(), so one copy serves every theme installed and follows\n" +
+			"// a class swap on <html>. Any other theme's block below is its @import alone.\n" +
+			"$mxcli-theme-variant: " + string(opts.Variant) + ";\n" +
+			"@import \"mxcli-atlas-map\";\n"
+		tail = "@import \"mxcli-recipes\";\n@import \"mxcli-widgets\";\n"
+	}
 	r := strings.NewReplacer(
 		"{{VARIANT}}", string(opts.Variant),
 		"{{THEME}}", t.Name,
+		// The palette file is plain CSS, so its selector goes in bare. The
+		// partial assigns the same selector to a Sass variable and interpolates
+		// it, and a selector is not a Sass expression — `$x: :root` and
+		// `$x: a, b` are both parse errors — so it has to be a quoted string.
+		// #{} drops the quotes again at the point of use.
+		"{{PALETTE_SCOPE}}", sc.Palette,
+		"{{SCOPE}}", `"`+sc.Palette+`"`,
+		"{{SCOPED}}", fmt.Sprintf("%t", sc.Shared),
+		"{{SHARED_HEAD}}", head,
+		"{{SHARED_TAIL}}", tail,
 	)
 	return r.Replace(body)
 }
 
-// removeRivalThemes strips every other embedded theme from the project. A
-// hand-edited rival block is left alone and reported, same as anywhere else.
+// removeThemesOutsideSet strips every theme the project carries that is not in
+// the incoming set. A hand-edited block is left alone and reported, same as
+// anywhere else.
 //
-// Files the incoming theme also ships are protected. Themes share paths —
-// every one of them writes theme/web/mxcli-fonts/OFL.txt — so without this the
-// rival pass deletes a file that is about to be written again, which shows up
-// as an apply that is never idempotent.
-func removeRivalThemes(projectDir string, incoming *Theme, opts Options) error {
+// Files the incoming set also ships are protected. Themes share paths — every
+// one writes theme/web/mxcli-fonts/OFL.txt and the three shared partials — so
+// without this the removal pass deletes a file that is about to be written
+// again, which shows up as an apply that is never idempotent.
+func removeThemesOutsideSet(projectDir string, names []string, opts Options) error {
 	all, err := List(projectDir)
 	if err != nil {
 		return err
 	}
-	protect, err := assetPaths(projectDir, incoming.Name)
-	if err != nil {
-		return err
+	keep := map[string]bool{}
+	protect := map[string]bool{}
+	for _, n := range names {
+		keep[n] = true
+		paths, err := assetPaths(projectDir, n)
+		if err != nil {
+			return err
+		}
+		for p := range paths {
+			protect[p] = true
+		}
 	}
 	for _, other := range all {
-		if other.Name == incoming.Name {
+		if keep[other.Name] {
 			continue
 		}
 		if _, err := remove(projectDir, other.Name, opts, protect); err != nil {

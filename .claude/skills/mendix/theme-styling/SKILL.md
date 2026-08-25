@@ -152,6 +152,35 @@ in a design do not say which is the app ground and which is a hovered row;
 the base theme does not declare is refused, because nothing would read it — the
 theme would apply cleanly and render unchanged.
 
+### Several themes at once — the app switches skins at runtime
+
+```bash
+mxcli theme apply signal ledger console -p app.mpr   # first named is the default
+mxcli theme switcher install -p app.mpr --module MyFirstModule
+```
+
+All of them compile into one stylesheet; the app picks one with a class on
+`<html>`. No rebuild, no reload. This is the CSS Zen Garden result for Mendix:
+the DOM Mendix renders never changes and neither does the model — brand, ground,
+ink, radius, type and card treatment all move on a class swap. Measured on a real
+11.13 app: signal `#0f6e6b`/4px/IBM Plex with shadowed cards, ledger
+`#1f3a5f`/2px/Source Sans with hairlines, console `#2dd4bf`/6px/Space Grotesk
+flat.
+
+Two things make it work, and both are worth knowing if you write a theme:
+
+1. **Nothing outside the palette may name a colour.** The Atlas map, the recipe
+   layer and the widget layer resolve everything through `var(--mxt-*)`, so one
+   copy of them serves every theme. A literal in any of those files survives the
+   swap and is wrong under every theme but one.
+2. **The default theme's scope is `:root` minus the other skins' classes**, not a
+   bare `:root`. Bare keeps matching once another class is set, so its rules leak
+   under every other theme and the winner comes down to specificity. Negation
+   makes the scopes mutually exclusive.
+
+A single installed theme is emitted exactly as before — bare `:root`, skin rules
+unscoped — so this costs a one-theme project nothing.
+
 ### Light/dark: Mendix ships the slot, not the switcher
 
 `theme/web/_theme-dark.scss` and `_theme-neutral.scss` declare `:root.theme-dark`

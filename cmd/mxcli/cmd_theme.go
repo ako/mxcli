@@ -41,8 +41,12 @@ A project can carry its own themes too. 'mxcli theme create <name>' scaffolds on
 into ` + theme.LocalThemesDir + `/, optionally seeding the palette from a design
 file that declares --mxt-* tokens; from then on it behaves like a built-in one.
 
-Only one theme applies at a time: applying removes the previous one, because two
-themes mapping the same Atlas variables would fight in the cascade.
+Several themes can be installed at once as a switchable set — 'mxcli theme apply
+signal ledger console' — and then selected at runtime by a class on <html>, with
+no rebuild. The first named renders by default. That works because a theme is
+almost entirely token values: the Atlas wiring, the recipe layer and the widget
+layer are identical across themes and resolve every colour through var(), so one
+copy of them serves the whole set.
 
 Every generated block is fenced between mxcli:theme markers whose digest records
 what mxcli wrote. Edit inside a fence and a later apply refuses rather than
@@ -242,29 +246,34 @@ Examples:
 }
 
 var themeApplyCmd = &cobra.Command{
-	Use:   "apply [name]",
+	Use:   "apply [name...]",
 	Short: "Apply a theme to an existing project",
 	Long: `Apply a theme to an existing project.
 
 Applying is idempotent: re-running replaces only mxcli's own generated blocks.
 A block carrying local edits is reported and left alone unless --force is given.
-Applying a theme removes any previously applied one, because two themes mapping
-the same Atlas variables would fight in the cascade.
+
+Name several themes to install a switchable set. Each palette is scoped to its
+own root class, so exactly one is ever live and selecting one is a class swap on
+<html> — no rebuild, no reload. The first named is the default: the one that
+renders before any class is set. Themes not in the set are removed.
+
+With no name, apply refreshes the set the project already has, in its installed
+order, and falls back to the default only when it has none.
 
 --variant auto (the default) ships both palettes: the app follows the OS and
 honours a theme-light / theme-dark class on the root element. --variant light or
 dark bakes a single palette with no switching.
 
-With no name, apply refreshes the theme the project already has, and falls back
-to the default only when it has none.
 
 Examples:
   mxcli theme apply -p app.mpr
   mxcli theme apply ledger -p app.mpr
   mxcli theme apply console -p app.mpr --variant dark
   mxcli theme apply signal -p app.mpr --dry-run
-  mxcli theme apply signal -p app.mpr --force`,
-	Args:          cobra.MaximumNArgs(1),
+  mxcli theme apply signal -p app.mpr --force
+  mxcli theme apply signal ledger console -p app.mpr   # switchable set`,
+	Args:          cobra.ArbitraryArgs,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -272,13 +281,14 @@ Examples:
 		if err != nil {
 			return err
 		}
-		// A bare `apply` refreshes the theme the project already has; only a
-		// project with none falls back to the default.
-		name := theme.DefaultName
-		if len(args) == 1 {
-			name = args[0]
-		} else if name, err = theme.Resolve(dir, theme.DefaultName); err != nil {
-			return err
+		// A bare `apply` refreshes whatever the project already has — the whole
+		// set, in its installed order, so the default is not silently promoted.
+		// Only a project with no theme falls back to the built-in default.
+		names := args
+		if len(names) == 0 {
+			if names, err = theme.ResolveSet(dir, theme.DefaultName); err != nil {
+				return err
+			}
 		}
 		force, _ := cmd.Flags().GetBool("force")
 		dryRun, _ := cmd.Flags().GetBool("dry-run")
@@ -288,36 +298,48 @@ Examples:
 			return err
 		}
 
-		res, err := theme.Apply(dir, name, theme.Options{Force: force, DryRun: dryRun, Variant: variant})
-		printThemeResult(res, dryRun)
+		set, err := theme.ApplySet(dir, names, theme.Options{Force: force, DryRun: dryRun, Variant: variant})
+		if set != nil {
+			for _, res := range set.Themes {
+				printThemeResult(res, dryRun)
+			}
+		}
 		if err != nil {
 			return err
 		}
-		if !dryRun && res.Changed() {
-			if variant == theme.VariantAuto {
-				fmt.Printf("\nLight and dark follow the OS. Add 'mxcli theme switcher install -p <app.mpr>'\n" +
-					"for a user-facing toggle.\n")
-			}
-			fmt.Printf("\nRun 'mxcli run --local --watch -p <app.mpr>' to see it; SCSS edits hot-apply.\n")
+		if dryRun || !set.Changed() {
+			return nil
 		}
+		if len(names) > 1 {
+			fmt.Printf("\n%d themes installed, switchable at runtime; '%s' renders by default.\n"+
+				"Each palette is scoped to :root.%s<name> in one stylesheet — selecting one is a\n"+
+				"class swap on <html>, no rebuild. Install the switcher to drive it:\n"+
+				"  mxcli theme switcher install -p <app.mpr>\n",
+				len(names), names[0], theme.SkinClassPrefix)
+		} else if variant == theme.VariantAuto {
+			fmt.Printf("\nLight and dark follow the OS. Add 'mxcli theme switcher install -p <app.mpr>'\n" +
+				"for a user-facing toggle.\n")
+		}
+		fmt.Printf("\nRun 'mxcli run --local --watch -p <app.mpr>' to see it; SCSS edits hot-apply.\n")
 		return nil
 	},
 }
 
 var themeRemoveCmd = &cobra.Command{
-	Use:   "remove [name]",
+	Use:   "remove [name...]",
 	Short: "Remove a theme's generated blocks from a project",
 	Long: `Remove a theme's generated blocks from a project.
 
-With no name, the installed theme is read from the mxcli:theme markers in the
-project; if it has no theme, that is an error rather than a silent no-op.
+With no name, the installed themes are read from the mxcli:theme markers in the
+project and all of them are removed; if it has none, that is an error rather
+than a silent no-op.
 
 A block carrying local edits is reported and left alone unless --force is given.
 
 Examples:
   mxcli theme remove -p app.mpr
   mxcli theme remove ledger -p app.mpr --dry-run`,
-	Args:          cobra.MaximumNArgs(1),
+	Args:          cobra.ArbitraryArgs,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -328,18 +350,23 @@ Examples:
 		// No fallback here. Defaulting to the built-in theme meant that on a
 		// project themed with any other one, remove reported every file as
 		// unchanged and exited 0 — leaving the theme fully installed.
-		name := ""
-		if len(args) == 1 {
-			name = args[0]
-		} else if name, err = theme.Resolve(dir, ""); err != nil {
-			return err
+		names := args
+		if len(names) == 0 {
+			if names, err = theme.ResolveSet(dir, ""); err != nil {
+				return err
+			}
 		}
 		force, _ := cmd.Flags().GetBool("force")
 		dryRun, _ := cmd.Flags().GetBool("dry-run")
 
-		res, err := theme.Remove(dir, name, theme.Options{Force: force, DryRun: dryRun})
-		printThemeResult(res, dryRun)
-		return err
+		for _, name := range names {
+			res, err := theme.Remove(dir, name, theme.Options{Force: force, DryRun: dryRun})
+			printThemeResult(res, dryRun)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
 	},
 }
 
@@ -397,14 +424,29 @@ Examples:
 	SilenceErrors: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		module, _ := cmd.Flags().GetString("module")
-		script := theme.SwitcherMDL(module)
+		projectPath, _ := cmd.Flags().GetString("project")
+
+		// The skin actions are generated against the set actually installed, so
+		// a cycle button can never offer a theme whose CSS is not in the page.
+		var skins []string
+		if projectPath != "" {
+			dir, err := themeProjectDir(cmd)
+			if err != nil {
+				return err
+			}
+			if skins, err = theme.InstalledOrder(dir); err != nil {
+				return err
+			}
+		} else if flag, _ := cmd.Flags().GetString("skins"); flag != "" {
+			skins = strings.Split(flag, ",")
+		}
+		script := theme.SwitcherMDL(module, skins)
 
 		if printOnly, _ := cmd.Flags().GetBool("print"); printOnly {
 			fmt.Print(script)
 			return nil
 		}
 
-		projectPath, _ := cmd.Flags().GetString("project")
 		if projectPath == "" {
 			return fmt.Errorf("--project is required (or use --print to see the MDL)")
 		}
@@ -508,6 +550,8 @@ func init() {
 	themeSwitcherInstallCmd.Flags().StringP("project", "p", "", "Path to the .mpr file")
 	themeSwitcherInstallCmd.Flags().String("module", "MyFirstModule", "Module to create the actions in")
 	themeSwitcherInstallCmd.Flags().Bool("print", false, "Print the MDL instead of running it")
+	themeSwitcherInstallCmd.Flags().String("skins", "",
+		"With --print and no project: the switchable set to generate for, comma-separated")
 	themeSwitcherCmd.AddCommand(themeSwitcherInstallCmd)
 	themeCmd.AddCommand(themeListCmd, themeShowCmd, themeCreateCmd, themeApplyCmd, themeRemoveCmd, themeSwitcherCmd)
 	rootCmd.AddCommand(themeCmd)

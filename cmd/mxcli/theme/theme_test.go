@@ -3,10 +3,14 @@
 package theme
 
 import (
+	"crypto/sha256"
 	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -256,12 +260,17 @@ func TestGet_UnknownThemeNamesTheDiscoveryCommand(t *testing.T) {
 
 // The Layer-1 file is imported once per module, so a CSS rule there is emitted
 // once per module too. Declarations only.
+//
+// Checked on the file as written, not on the asset: the palette's selector is
+// templated now, so the asset carries a placeholder and only the applied file
+// shows what actually lands in the project.
 func TestLayer1BlockContainsNoRules(t *testing.T) {
-	body, err := assetsFS.ReadFile("assets/signal/files/theme/web/custom-variables.scss")
-	if err != nil {
+	dir := newProject(t)
+	if _, err := Apply(dir, DefaultName, Options{}); err != nil {
 		t.Fatal(err)
 	}
-	for _, line := range strings.Split(string(body), "\n") {
+	body := read(t, filepath.Join(dir, "theme", "web", "custom-variables.scss"))
+	for _, line := range strings.Split(body, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasSuffix(trimmed, "{") && !strings.HasPrefix(trimmed, ":root") {
 			t.Errorf("custom-variables.scss must hold declarations only, found selector: %q", trimmed)
@@ -456,7 +465,7 @@ func TestApply_RemovesThePreviousTheme(t *testing.T) {
 }
 
 func TestSwitcherMDL_TargetsTheRequestedModule(t *testing.T) {
-	mdl := SwitcherMDL("Ops")
+	mdl := SwitcherMDL("Ops", nil)
 	if strings.Contains(mdl, "{{MODULE}}") {
 		t.Error("module placeholder left unexpanded")
 	}
@@ -516,12 +525,20 @@ func assertPartialStructure(t *testing.T, src, name string, alt Variant) {
 	if !strings.Contains(src, "@include mxcli-atlas-map;") {
 		t.Errorf("%s never includes the Atlas map", name)
 	}
+	// Every block that declares tokens must do so at the theme's own scope, or
+	// two themes sharing a stylesheet would both be live at once.
+	if !strings.Contains(src, "#{$mxcli-"+name+"-scope}") {
+		t.Errorf("%s declares its tokens on a fixed selector rather than its scope", name)
+	}
+	if !strings.Contains(src, "@include mxcli-"+name+"-skin;") {
+		t.Errorf("%s never includes its skin mixin", name)
+	}
 	// The alt palette must be reachable both ways: from the OS preference
 	// and from an explicit class a switcher sets.
 	if !strings.Contains(src, "prefers-color-scheme: "+string(alt)) {
 		t.Errorf("%s does not follow the OS into its alt palette", name)
 	}
-	if !strings.Contains(src, ":root.theme-"+string(alt)+" {") {
+	if !strings.Contains(src, "&.theme-"+string(alt)+" {") {
 		t.Errorf("%s does not honour an explicit theme-%s class", name, alt)
 	}
 }
@@ -582,7 +599,7 @@ func fontRefs(partial string) []string {
 // same string; before this was templated, the constant could drift from the
 // generated code while the test that checked it still passed.
 func TestSwitcherStorageKeyIsSubstitutedNotHardcoded(t *testing.T) {
-	mdl := SwitcherMDL("Ops")
+	mdl := SwitcherMDL("Ops", nil)
 	if strings.Contains(mdl, "{{STORAGE_KEY}}") {
 		t.Error("storage-key placeholder left unexpanded")
 	}
@@ -705,6 +722,250 @@ func TestAtlasMap_LanguageSelectorMatchesAtlasSpecificityAndUsesTheRailToken(t *
 			if strings.HasPrefix(trimmed, "color: inherit") {
 				t.Errorf("%s: still declares color: inherit for topbar text", th.Name)
 			}
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Switchable sets — several themes in one stylesheet, selected by a class
+// ---------------------------------------------------------------------------
+
+// The invariant the whole mechanism rests on: exactly one palette is live at
+// any time, and which one does not depend on import order. The default theme
+// claims :root minus every other skin's class, so the scopes are mutually
+// exclusive by construction rather than by specificity.
+func TestScopeFor_ScopesAreMutuallyExclusive(t *testing.T) {
+	names := []string{"signal", "ledger", "console"}
+
+	def := scopeFor(names, 0)
+	if !strings.HasPrefix(def.Palette, ":root:not(.mxt-ledger):not(.mxt-console)") {
+		t.Errorf("the default must exclude every other skin, got %q", def.Palette)
+	}
+	if !strings.Contains(def.Palette, ":root.mxt-signal") {
+		t.Errorf("the default must also match its own class, got %q", def.Palette)
+	}
+	if !def.Default || !def.Shared {
+		t.Errorf("default scope = %+v", def)
+	}
+	for i, want := range map[int]string{1: ":root.mxt-ledger", 2: ":root.mxt-console"} {
+		if got := scopeFor(names, i); got.Palette != want {
+			t.Errorf("scopeFor(%d) = %q, want %q", i, got.Palette, want)
+		} else if got.Default {
+			t.Errorf("only the first theme is the default; %d claims it too", i)
+		}
+	}
+
+	// A lone theme is unscoped, so a single-theme project's CSS is exactly what
+	// it was before switchable sets existed.
+	if only := scopeFor([]string{"signal"}, 0); only.Palette != ":root" || only.Shared {
+		t.Errorf("single theme scope = %+v, want plain :root, unshared", only)
+	}
+}
+
+func TestApplySet_EachPaletteIsScopedAndTheSharedLayersAreWrittenOnce(t *testing.T) {
+	dir := newProject(t)
+	names := []string{"signal", "ledger", "console"}
+	set, err := ApplySet(dir, names, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(set.Themes) != 3 {
+		t.Fatalf("installed %d themes, want 3", len(set.Themes))
+	}
+
+	// All three palettes land in the one file every module imports, each on its
+	// own selector.
+	vars := read(t, filepath.Join(dir, "theme", "web", "custom-variables.scss"))
+	for _, n := range names[1:] {
+		if !strings.Contains(vars, ":root.mxt-"+n+" {") {
+			t.Errorf("%s's palette is not scoped to its own class:\n%s", n, vars)
+		}
+	}
+	if strings.Count(vars, "--mxt-brand:") != 3 {
+		t.Errorf("expected three brand declarations, one per theme; got %d",
+			strings.Count(vars, "--mxt-brand:"))
+	}
+
+	// The shared layers are imported once, from the default theme's block. Three
+	// copies would be identical rules, so nothing would look wrong — it would
+	// just triple the stylesheet.
+	main := read(t, filepath.Join(dir, "theme", "web", "main.scss"))
+	for _, shared := range []string{"mxcli-atlas-map", "mxcli-recipes", "mxcli-widgets"} {
+		if got := strings.Count(main, `@import "`+shared+`"`); got != 1 {
+			t.Errorf("%s imported %d times, want exactly 1:\n%s", shared, got, main)
+		}
+	}
+	// ...and every theme partial is imported, or its palette is dead weight.
+	for _, n := range names {
+		if !strings.Contains(main, `@import "mxcli-`+n+`"`) {
+			t.Errorf("main.scss never imports mxcli-%s", n)
+		}
+	}
+	// The shared imports must precede the theme partials that rely on the map.
+	if strings.Index(main, `@import "mxcli-atlas-map"`) > strings.Index(main, `@import "mxcli-console"`) {
+		t.Error("the Atlas map must be imported before the theme partials that include it")
+	}
+
+	if got, err := InstalledOrder(dir); err != nil || len(got) != 3 || got[0] != "signal" {
+		t.Errorf("InstalledOrder = %v, %v; want signal first", got, err)
+	}
+}
+
+// Only a theme sharing the stylesheet gets its skin scoped. Scoping it in the
+// single-theme case would raise its specificity and start winning against app
+// CSS that used to beat it on source order.
+func TestApplySet_SkinIsScopedOnlyWhenTheStylesheetIsShared(t *testing.T) {
+	solo := newProject(t)
+	if _, err := Apply(solo, "ledger", Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, filepath.Join(solo, "theme", "web", "_mxcli-ledger.scss")); !strings.Contains(got, "$mxcli-ledger-scoped: false !default;") {
+		t.Error("a lone theme must not scope its skin")
+	}
+
+	shared := newProject(t)
+	if _, err := ApplySet(shared, []string{"signal", "ledger"}, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, filepath.Join(shared, "theme", "web", "_mxcli-ledger.scss")); !strings.Contains(got, "$mxcli-ledger-scoped: true !default;") {
+		t.Error("a theme sharing the stylesheet must scope its skin, or it applies under every other theme")
+	}
+}
+
+func TestApplySet_IsIdempotentAndReversible(t *testing.T) {
+	dir := newProject(t)
+	mainBefore := read(t, filepath.Join(dir, "theme", "web", "main.scss"))
+	varsBefore := read(t, filepath.Join(dir, "theme", "web", "custom-variables.scss"))
+	names := []string{"signal", "ledger", "console"}
+
+	if _, err := ApplySet(dir, names, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	set, err := ApplySet(dir, names, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if set.Changed() {
+		t.Error("re-applying the same set reported changes")
+	}
+
+	for _, n := range names {
+		if _, err := Remove(dir, n, Options{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := read(t, filepath.Join(dir, "theme", "web", "main.scss")); got != mainBefore {
+		t.Errorf("main.scss not restored:\nwant %q\ngot  %q", mainBefore, got)
+	}
+	if got := read(t, filepath.Join(dir, "theme", "web", "custom-variables.scss")); got != varsBefore {
+		t.Errorf("custom-variables.scss not restored:\nwant %q\ngot  %q", varsBefore, got)
+	}
+}
+
+// Narrowing a set has to remove what dropped out — otherwise a theme the user
+// removed is still selectable, and its fonts are still deployed.
+func TestApplySet_NarrowingRemovesTheThemesThatLeft(t *testing.T) {
+	dir := newProject(t)
+	if _, err := ApplySet(dir, []string{"signal", "ledger", "console"}, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ApplySet(dir, []string{"ledger"}, Options{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, err := Installed(dir); err != nil || len(got) != 1 || got[0] != "ledger" {
+		t.Fatalf("Installed = %v, %v; want [ledger]", got, err)
+	}
+	for _, gone := range []string{"signal", "console"} {
+		if _, err := os.Stat(filepath.Join(dir, "theme", "web", "_mxcli-"+gone+".scss")); err == nil {
+			t.Errorf("%s's partial survived the narrowing", gone)
+		}
+	}
+	// Back to a lone theme: unscoped again, so the CSS is what a single-theme
+	// project has always had.
+	if got := read(t, filepath.Join(dir, "theme", "web", "custom-variables.scss")); !strings.Contains(got, "\n:root {") {
+		t.Error("the surviving theme's palette must go back to a bare :root")
+	}
+}
+
+func TestApplySet_RefusesADuplicateName(t *testing.T) {
+	dir := newProject(t)
+	if _, err := ApplySet(dir, []string{"signal", "ledger", "signal"}, Options{}); err == nil {
+		t.Fatal("a repeated theme must be refused: its scope would be ambiguous")
+	}
+}
+
+// The generated switcher must only ever offer skins whose CSS is in the page.
+func TestSwitcherMDL_SkinActionsMatchTheInstalledSet(t *testing.T) {
+	solo := SwitcherMDL("Ops", []string{"signal"})
+	if strings.Contains(solo, "CycleAppSkin") {
+		t.Error("a set of one must not generate a cycle action that cycles nothing")
+	}
+
+	multi := SwitcherMDL("Ops", []string{"signal", "ledger", "console"})
+	for _, want := range []string{"Ops.SetAppSkin", "Ops.CycleAppSkin", "Ops.ACT_CycleSkin",
+		`["signal", "ledger", "console"]`, `"` + SkinStorageKey + `"`} {
+		if !strings.Contains(multi, want) {
+			t.Errorf("generated switcher is missing %q", want)
+		}
+	}
+	if strings.Contains(multi, "{{") {
+		t.Error("a placeholder was left unexpanded in the generated MDL")
+	}
+	// The skin axis must be stored separately from the light/dark axis, or
+	// picking a theme silently discards the variant choice.
+	if SkinStorageKey == SwitcherStorageKey {
+		t.Error("skin and variant must not share a storage key")
+	}
+}
+
+// Every theme vendors a different font family, so they carry different SIL OFL
+// licence texts. They used to land at one path, mxcli-fonts/OFL.txt, which was
+// survivable for a single theme — the last apply won — and wrong for a set:
+// installing three left one licence covering three families, and every apply
+// rewrote it, so the set was never idempotent. Two symptoms, one cause.
+func TestThemesDoNotClaimTheSameVerbatimPathWithDifferentContent(t *testing.T) {
+	themes, err := List("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	byPath := map[string]map[string]string{} // path -> digest -> theme
+	for _, th := range themes {
+		src := embeddedSource(th.Name)
+		root := src.filesRoot()
+		err := fs.WalkDir(src.fsys, root, func(p string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			rel := strings.TrimPrefix(p, root+"/")
+			if isBlockFile(rel) {
+				return nil // fenced per theme, so sharing a path is fine
+			}
+			body, err := fs.ReadFile(src.fsys, p)
+			if err != nil {
+				return err
+			}
+			sum := fmt.Sprintf("%x", sha256.Sum256(body))
+			if byPath[rel] == nil {
+				byPath[rel] = map[string]string{}
+			}
+			byPath[rel][sum] = th.Name
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	for rel, digests := range byPath {
+		if len(digests) > 1 {
+			var owners []string
+			for _, n := range digests {
+				owners = append(owners, n)
+			}
+			sort.Strings(owners)
+			t.Errorf("%s is written with different content by %s — installing them as a set "+
+				"leaves whichever applied last, and the apply never settles",
+				rel, strings.Join(owners, ", "))
 		}
 	}
 }

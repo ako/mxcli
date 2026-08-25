@@ -152,13 +152,21 @@ func TestCreate_RenamesEveryIdentifierBuiltFromTheThemeName(t *testing.T) {
 	if !strings.Contains(main, `@import "mxcli-acme"`) || strings.Contains(main, `@import "mxcli-signal"`) {
 		t.Errorf("main.scss must import the renamed partial:\n%s", main)
 	}
-	// The apply-time placeholders must survive the copy, or the created theme
-	// bakes whatever variant it was scaffolded under.
-	if !strings.Contains(main, "{{VARIANT}}") {
-		t.Error("{{VARIANT}} was expanded at create time; a created theme must still honour --variant")
+	// The apply-time placeholders must survive the copy. Expanding any of them
+	// at create time would bake in whatever variant the scaffold was made
+	// under, or pin the theme to a fixed selector so it could never join a
+	// switchable set.
+	if !strings.Contains(main, "{{SHARED_HEAD}}") {
+		t.Error("{{SHARED_HEAD}} was expanded at create time; the shared imports must stay templated")
 	}
-	if !strings.Contains(partial, "{{VARIANT}}") {
-		t.Error("{{VARIANT}} was expanded in the partial at create time")
+	for _, want := range []string{"{{VARIANT}}", "{{SCOPE}}", "{{SCOPED}}"} {
+		if !strings.Contains(partial, want) {
+			t.Errorf("%s was expanded in the partial at create time", want)
+		}
+	}
+	palette := read(t, filepath.Join(files, "custom-variables.scss"))
+	if !strings.Contains(palette, "{{PALETTE_SCOPE}}") {
+		t.Error("{{PALETTE_SCOPE}} was expanded at create time; the palette could never be scoped")
 	}
 }
 

@@ -442,6 +442,21 @@ out of `theme-cache/web/theme.compiled.css`):
   not SCSS `!default`. The derived ramp is CSS `color-mix()` against
   `var(--brand-primary)`, so retuning the primary re-derives it live.
 
+A fifth, learned by putting three themes in one stylesheet: **a theme is almost
+entirely token values.** The Atlas map, the recipe layer and the widget layer are
+byte-identical across all three built-ins (measured: one hash; 174 lines of
+recipes), and every colour in them resolves through `var(--mxt-*)` — only the
+palette, the fonts and 3–8 lines of skin differ per theme. That is what makes
+`theme apply <a> <b> <c>` a class swap rather than a rebuild, and it is a rule
+for anything added to those layers: **a literal colour outside the palette
+survives the swap and is wrong under every theme but one.** The default theme's
+scope is `:root` *minus* the other skins' classes, never a bare `:root` — bare
+keeps matching once another class is set, so the outcome would come down to
+specificity instead of being mutually exclusive by construction. A Sass variable
+holding a selector must be a **quoted string** (`$s: ":root, :root.mxt-x"`);
+a bare selector is not a Sass expression and `mx check` never sees it, because
+the failure is at SCSS compile time.
+
 `cmd/mxcli/theme` encodes all four. Its embed uses `//go:embed all:assets` — a
 plain `go:embed assets` skips `_`-prefixed files, which is exactly how SCSS spells
 a partial. Files the project already owns are written as digest-fenced blocks
@@ -702,6 +717,7 @@ go build -o bin/mxcli ./cmd/mxcli
 | **Default styling** | `mxcli theme list\|show\|apply\|remove` | Applies a theme (signal/ledger/console) — files under `theme/` only, the model is never touched |
 | **Project themes** | `mxcli theme create <name> [--from <theme\|design-file>]` | Scaffolds a theme the project owns into `theme/mxcli-themes/`; `--from <file>` seeds the palette from `--mxt-*` declarations |
 | **Theme switching** | `mxcli theme apply <name> --variant auto\|light\|dark`, `mxcli theme switcher install` | `auto` ships both palettes (follows the OS + honours a `theme-light`/`theme-dark` class); `switcher install` adds the JS actions + nanoflow for a user toggle (**this one does write to the model**) |
+| **Switchable sets** | `mxcli theme apply signal ledger console` | Several themes in one stylesheet, each palette scoped to `:root.mxt-<name>`; the app picks one with a class on `<html>` — no rebuild, no reload |
 | **Setup mxcli** | `mxcli setup mxcli [--os linux] [--arch amd64] [--output ./mxcli]` | Download platform-specific mxcli binary from GitHub releases |
 
 ### mxcli new
