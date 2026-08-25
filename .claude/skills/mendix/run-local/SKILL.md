@@ -55,8 +55,14 @@ association catalog only at startup; behavioural changes are hot-reloaded.
 - A **PostgreSQL** database (defaults: `127.0.0.1:5432`, user `mendix`, db derived
   from the project name; override with `--db-host/--db-name/--db-user/--db-password`).
   - **`--ensure-db`** provisions it for a fresh session: starts local Postgres if the
-    port is down and creates the role + database if missing (local superuser via
-    `sudo -u postgres`). Remote hosts are only checked, not provisioned.
+    port is down and creates the role + database if missing. It uses a service
+    manager, or a user-owned `initdb`/`pg_ctl` cluster under `~/.mxcli/postgres`
+    when no service becomes ready (e.g. Arch) — needing no `postgres` OS account or `sudo`.
+    Remote hosts are only checked, not provisioned.
+    The user-owned cluster persists across sessions; its server log is
+    `~/.mxcli/postgres/server.log`. Stop it with
+    `pg_ctl -D "$HOME/.mxcli/postgres/data" stop`. To remove it, stop it first and
+    then delete `~/.mxcli/postgres` (this permanently deletes its databases).
   - Without `--ensure-db`, create it once and the command errors if it's unreachable:
 
     ```bash
@@ -273,7 +279,7 @@ export OTEL_TRACES_EXPORTER=otlp OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:43
 mxcli run --local -p app.mpr --trace
 ```
 | `--app-port` / `--admin-port` / `--serve-port` | 8080 / 8090 / 6543 | Ports |
-| `--db-host` / `--db-name` / `--db-user` / `--db-password` | 127.0.0.1:5432 / derived / mendix / mendix | Database |
+| `--db-host` / `--db-name` / `--db-user` / `--db-password` | 127.0.0.1:5432 / derived / mendix / mendix | Database; bracket IPv6 endpoints (`[::1]:5432`) |
 
 ## Pages render in the browser
 

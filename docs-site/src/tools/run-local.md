@@ -47,9 +47,15 @@ so structural changes need a restart; behavioural changes do not.
 - A **PostgreSQL** database. Defaults: `127.0.0.1:5432`, user `mendix`, database
   derived from the project file name (`App1112.mpr` → `app1112`). Two ways to have it:
   - **`--ensure-db`** (recommended for a fresh session) provisions it: starts the
-    local Postgres service if the port is down, and creates the app role + database
-    if missing (via a local `sudo -u postgres` superuser). For a non-local `--db-host`
-    it only verifies reachability — mxcli won't provision a remote database.
+    local Postgres server if the port is down, and creates the app role + database
+    if missing. It uses a service manager, or a user-owned `initdb`/`pg_ctl` cluster
+    under `~/.mxcli/postgres` when no service becomes ready (e.g. Arch) — no
+    `postgres` OS account or `sudo` required. For a non-local `--db-host` it only verifies
+    reachability — mxcli won't provision a remote database.
+    The user-owned cluster persists across sessions; its server log is
+    `~/.mxcli/postgres/server.log`. Stop it with
+    `pg_ctl -D "$HOME/.mxcli/postgres/data" stop`. To remove it, stop it first and
+    then delete `~/.mxcli/postgres` (this permanently deletes its databases).
   - Otherwise create it once yourself; without `--ensure-db`, `run --local` stops with
     an actionable message if the DB is unreachable:
 
@@ -71,7 +77,7 @@ so structural changes need a restart; behavioural changes do not.
 | `--app-port` | 8080 | App HTTP port |
 | `--admin-port` | 8090 | M2EE admin API port |
 | `--serve-port` | 6543 | `mxbuild --serve` port |
-| `--db-host` | 127.0.0.1:5432 | Database `host:port` |
+| `--db-host` | 127.0.0.1:5432 | Database `host:port`; bracket IPv6 endpoints (`[::1]:5432`) |
 | `--db-name` | derived from project | Database name |
 | `--db-user` / `--db-password` | mendix / mendix | Database credentials |
 | `--screenshot` | off | Capture a Playwright PNG after boot and each applied change |

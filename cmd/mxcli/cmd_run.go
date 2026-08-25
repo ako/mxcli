@@ -309,7 +309,7 @@ func init() {
 	runCmd.Flags().Int("app-port", 0, "HTTP port for the app (default 8080)")
 	runCmd.Flags().Int("admin-port", 0, "M2EE admin API port (default 8090)")
 	runCmd.Flags().Int("serve-port", 0, "mxbuild --serve port (default 6543)")
-	runCmd.Flags().String("db-host", "", "Database host:port (default 127.0.0.1:5432)")
+	runCmd.Flags().String("db-host", "", "Database host:port (IPv6: [::1]:5432; default 127.0.0.1:5432)")
 	runCmd.Flags().String("db-name", "", "Database name (default derived from the project name)")
 	runCmd.Flags().String("db-user", "", "Database user (default mendix)")
 	runCmd.Flags().String("db-password", "", "Database password (default mendix)")

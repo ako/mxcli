@@ -607,7 +607,7 @@ func RunLocal(opts LocalRunOptions) error {
 	// reachability and point the user at --ensure-db.
 	if opts.EnsureDB {
 		fmt.Fprintln(w, "Ensuring database...")
-		if err := EnsureDatabase(opts.DB, w); err != nil {
+		if err := EnsureDatabase(&opts.DB, w); err != nil {
 			return fmt.Errorf("ensuring database: %w", err)
 		}
 	} else if err := pingTCP(opts.DB.Host, 3*time.Second); err != nil {
