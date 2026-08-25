@@ -594,6 +594,12 @@ exportMappingChild
     : qualifiedName SLASH qualifiedName mappingCustomHandler? AS identifierOrKeyword
       LBRACE exportMappingChild (COMMA exportMappingChild)* RBRACE       // nested object with children
     | qualifiedName SLASH qualifiedName mappingCustomHandler? AS identifierOrKeyword  // leaf object
+    // A JSON grouping node with no Mendix object behind it — Studio Pro's
+    // entity-less object element (#262). It may contain OBJECT elements only:
+    // a value needs an entity to bind its attribute to, and Mendix rejects one
+    // here with CE0061 "No entity selected."
+    | GROUP AS identifierOrKeyword
+      LBRACE exportMappingChild (COMMA exportMappingChild)* RBRACE
     | jsonMemberPath EQUALS qualifiedName LPAREN identifierOrKeyword RPAREN // value transform: a/b/c = Module.MF(Attr)
     | jsonMemberPath EQUALS identifierOrKeyword                           // value: a/b/c = Attr
     ;

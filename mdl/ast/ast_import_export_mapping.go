@@ -110,7 +110,10 @@ type ExportMappingElementDef struct {
 	Entity        string // qualified entity name (e.g. "Module.Customer")
 	Association   string // qualified association name (from Assoc/Entity path)
 	CustomHandler *MappingCustomHandlerDef
-	Children      []*ExportMappingElementDef
+	// Group marks an entity-less grouping node: a JSON object with no Mendix
+	// object behind it (#262).
+	Group    bool
+	Children []*ExportMappingElementDef
 
 	// Value mapping fields
 	Attribute string // entity attribute name (RHS of =)

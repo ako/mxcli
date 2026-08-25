@@ -641,7 +641,13 @@ DESCRIBE DATABASE CONNECTION Ops.Erp;`,
 			"with json structure", "with message definition", "null values",
 			"as jsonKey", "converter", "value transform",
 		},
-		Syntax: "SHOW EXPORT MAPPINGS [IN Module];\nDESCRIBE EXPORT MAPPING Module.Name;\nCREATE [OR MODIFY] EXPORT MAPPING Module.Name [FOLDER 'path']\n  WITH JSON STRUCTURE Module.JsonStruct\n    | WITH MESSAGE DEFINITION Module.Collection.Definition\n    | WITH XML SCHEMA Module.Schema\n  [NULL VALUES LeaveOutElement|SendAsNil]\n{\n  Module.Entity {\n    jsonField = Attr,\n    jsonField = Module.MF(Attr),          -- value transform\n    Assoc/Module.Child AS nestedKey { ... }\n  }\n};\nDROP EXPORT MAPPING Module.Name;\n\nOR MODIFY: updates mapping in-place, preserves UUID.\n\n" +
+		Syntax: "SHOW EXPORT MAPPINGS [IN Module];\nDESCRIBE EXPORT MAPPING Module.Name;\nCREATE [OR MODIFY] EXPORT MAPPING Module.Name [FOLDER 'path']\n  WITH JSON STRUCTURE Module.JsonStruct\n    | WITH MESSAGE DEFINITION Module.Collection.Definition\n    | WITH XML SCHEMA Module.Schema\n  [NULL VALUES LeaveOutElement|SendAsNil]\n{\n  Module.Entity {\n    jsonField = Attr,\n    jsonField = Module.MF(Attr),          -- value transform\n    group AS key { ... },                 -- entity-less grouping node\n    Assoc/Module.Child AS nestedKey { ... }\n  }\n};\nDROP EXPORT MAPPING Module.Name;\n\nOR MODIFY: updates mapping in-place, preserves UUID.\n\n" +
+			"Grouping nodes (group as key { ... }):\n" +
+			"  A JSON object with no Mendix object behind it — Studio Pro's\n" +
+			"  entity-less object element. It may hold OBJECT elements only: a\n" +
+			"  value there has no entity to bind its attribute to, and Mendix\n" +
+			"  reports CE0061. An ARRAY needs no such wrapper — write\n" +
+			"  Assoc/Entity AS items { values } and the container is generated.\n\n" +
 			"No nested-member form:\n" +
 			"  An import mapping can write `Attr = a/b/c` to reach a leaf without an\n" +
 			"  entity per level. An export mapping cannot: it has to PRODUCE the\n" +

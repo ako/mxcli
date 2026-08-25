@@ -207,6 +207,18 @@ func buildExportChild(ctx *parser.ExportMappingChildContext) *ast.ExportMappingE
 
 	allQN := ctx.AllQualifiedName()
 
+	if ctx.GROUP() != nil {
+		elem.Group = true
+		if id := ctx.IdentifierOrKeyword(); id != nil {
+			elem.JsonName = identifierOrKeywordText(id.(*parser.IdentifierOrKeywordContext))
+		}
+		for _, childCtx := range ctx.AllExportMappingChild() {
+			elem.Children = append(elem.Children,
+				buildExportChild(childCtx.(*parser.ExportMappingChildContext)))
+		}
+		return elem
+	}
+
 	if len(allQN) >= 2 {
 		// Object mapping: Assoc/Entity AS jsonKey
 		elem.Association = buildQualifiedName(allQN[0]).String()

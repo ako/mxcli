@@ -200,7 +200,9 @@ func printExportMappingElement(w io.Writer, elem *model.ExportMappingElement, de
 			assoc := elem.Association
 			entity := elem.Entity
 			if assoc == "" && entity == "" {
-				fmt.Fprintf(w, "%s. as %s", indent, mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName))
+				// A grouping node (#262). `.` was emitted here before and never
+				// parsed — one of the describe-only spellings of #260.
+				fmt.Fprintf(w, "%sgroup as %s", indent, mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName))
 			} else if assoc == "" {
 				fmt.Fprintf(w, "%s./%s as %s", indent, entity, mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName))
 			} else {
@@ -481,6 +483,37 @@ func buildExportMappingElementModel(moduleName string, def *ast.ExportMappingEle
 	} else {
 		elem.ExposedName = def.JsonName
 		elem.JsonPath = lookupPath
+	}
+
+	if def.Group {
+		// A grouping node: a JSON object with no Mendix object behind it, stored
+		// as an entity-less object element with ObjectHandling Find (#262).
+		//
+		// It may contain OBJECT elements only. Every one of the 10 entity-less
+		// object elements in the demo apps holds objects and nothing else, and a
+		// VALUE under one is rejected by mxbuild with CE0061 "No entity
+		// selected." — the attribute has no entity to bind to. Refused here so
+		// the author gets the reason instead of the build's.
+		for _, child := range def.Children {
+			if child.Entity == "" && !child.Group {
+				return nil, fmt.Errorf("`group as %s` can hold object elements only — %q is a "+
+					"value, and a value has no entity to bind its attribute to "+
+					"(mxbuild reports CE0061 \"No entity selected.\"). Give the group an "+
+					"entity instead: Assoc/Module.Entity as %s { ... }",
+					def.JsonName, child.JsonName, def.JsonName)
+			}
+		}
+		elem.Kind = "Object"
+		elem.TypeName = "ExportMappings$ObjectMappingElement"
+		elem.ObjectHandling = "Find"
+		for _, child := range def.Children {
+			c, err := buildExportMappingElementModel(moduleName, child, parentEntity, lookupPath, idx, b, false)
+			if err != nil {
+				return nil, err
+			}
+			elem.Children = append(elem.Children, c)
+		}
+		return elem, nil
 	}
 
 	if def.Entity != "" {

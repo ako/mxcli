@@ -26,14 +26,23 @@
 --   This is the same rule #248 applied to a root array; only the object handling
 --   differs (Parameter on the root's item, Find on a nested one).
 --
--- Not covered, deliberately:
---   An entity-less PLAIN object element — a JSON grouping node with no Mendix
---   object behind it, e.g. MxGenAIConnector.EM_ConverseRequest's `toolConfig`
---   (10 elements in 3 demo documents). A `group as toolConfig { ... }` syntax was
---   built for it and then removed: mxbuild 11.13 rejects the element mxcli
---   produced with CE0061 "No entity selected.", so the shipped marketplace
---   documents rely on something not yet identified. Authoring a construct the
---   build rejects would be worse than not offering it.
+-- The other half: entity-less PLAIN object elements
+--   A JSON grouping node with no Mendix object behind it, e.g.
+--   MxGenAIConnector.EM_ConverseRequest's `toolConfig` (10 elements in 3 demo
+--   documents), is written `group as toolConfig { ... }`.
+--
+--   It may hold OBJECT elements only. A value under one is rejected by mxbuild
+--   with CE0061 "No entity selected." — a value has no entity to bind its
+--   attribute to — so mxcli refuses it with that reason instead of letting the
+--   build report it.
+--
+--   That constraint cost a detour worth recording. The first attempt put a value
+--   under the group, mxbuild refused it, and the syntax was withdrawn on the
+--   assumption that the SHAPE was invalid. Transplanting the shipped document
+--   into an 11.13 project and checking it — 0 errors — showed the shape was fine
+--   and the reproduction was not. When a build error contradicts a shipped
+--   marketplace module, check the module itself before believing the shape is
+--   unsupported.
 -- ============================================================================
 
 create module BugTest262;
@@ -56,6 +65,24 @@ create or modify export mapping BugTest262.EXM_Payload
     name = Name,
     BugTest262.Item_Root/BugTest262.Item as items {
       code = Code
+    }
+  }
+};
+
+-- An entity-less grouping node. Object children only.
+create json structure BugTest262.JSON_Wrapped
+  snippet $${"name": "n", "wrapper": {"items": [{"code": "c"}]}}$$;
+
+create or modify export mapping BugTest262.EXM_Wrapped
+  folder 'Mappings'
+  with json structure BugTest262.JSON_Wrapped
+{
+  BugTest262.Root {
+    name = Name,
+    group as wrapper {
+      BugTest262.Item_Root/BugTest262.Item as items {
+        code = Code
+      }
     }
   }
 };
