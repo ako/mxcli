@@ -69,17 +69,59 @@ ALTER SETTINGS CONSTANT 'MyModule.ApiBaseUrl' VALUE 'https://staging.example.com
 
 ### Language Settings
 
-Set the default language for the application:
+A project's **enabled languages** are the only ones a build emits translations
+for. A translation written for any other language is stored in the model, passes
+`mx check`, and is silently discarded at build time — so enabling the language is
+the step that makes translating an app do anything.
 
 ```sql
 ALTER SETTINGS LANGUAGE <Key> = <Value>;
+ALTER SETTINGS LANGUAGE ADD [OR MODIFY] '<code>' [( <option>: <value>, ... )];
+ALTER SETTINGS LANGUAGE MODIFY '<code>' ( <option>: <value>, ... );
+ALTER SETTINGS LANGUAGE REMOVE '<code>';
 ```
-
-Example:
 
 ```sql
-ALTER SETTINGS LANGUAGE DefaultLanguageCode = 'en_US';
+-- enable a language; the defaults match Studio Pro's Add Language dialog
+ALTER SETTINGS LANGUAGE ADD 'de_DE';
+
+-- with options
+ALTER SETTINGS LANGUAGE ADD 'ar_SD' (CheckCompleteness: true, CustomDateFormat: 'yyyy-MM-dd');
+
+-- change one that is already enabled (only the options named are touched)
+ALTER SETTINGS LANGUAGE MODIFY 'de_DE' (CheckCompleteness: true);
+
+-- make it the default (it must already be enabled)
+ALTER SETTINGS LANGUAGE DefaultLanguageCode = 'de_DE';
+
+-- disable it
+ALTER SETTINGS LANGUAGE REMOVE 'de_DE';
 ```
+
+A language is identified by its **code** alone — Studio Pro's "Arabic, Sudan" is
+derived from `ar_SD` for display and is not stored in the model.
+
+| option | meaning |
+|--------|---------|
+| `CheckCompleteness` | report errors and warnings for texts that have no translation in this language, instead of letting them fall back to the default silently. The **default language is always checked** whatever this says. |
+| `CustomDateFormat`, `CustomTimeFormat`, `CustomDateTimeFormat` | override Mendix's date/time formatting for this language. Empty means default formatting. |
+
+`ADD OR MODIFY` is the upsert — it enables a language that is not there and
+changes one that is. It is what `DESCRIBE SETTINGS` emits, so a described project
+replays onto one that already has some of its languages.
+
+Two things to know about removal:
+
+- The **default language cannot be removed** — every missing translation falls
+  back on it. Change `DefaultLanguageCode` first.
+- Removing a language **does not delete its translations**. They stay in the
+  model and stop being built; the run reports how many source strings are
+  affected. To remove them, use
+  `CREATE OR REPLACE TRANSLATIONS FOR '<code>' ( );`.
+
+> `SHOW LANGUAGES` lists languages that have **translations**, which is not the
+> same list — a stock app reports eight while one is enabled. For the enabled
+> list use `DESCRIBE SETTINGS`.
 
 ### Workflow Settings
 
