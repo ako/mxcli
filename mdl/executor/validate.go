@@ -26,6 +26,7 @@ type scriptContext struct {
 	nanoflows    map[string]bool // Nanoflows created (Module.Nanoflow)
 	pages        map[string]bool // Pages created (Module.Page)
 	snippets     map[string]bool // Snippets created (Module.Snippet)
+	constants    map[string]bool // Constants created (Module.Constant)
 	workflows    map[string]bool // Workflows created (Module.Workflow)
 
 	// Java/JavaScript actions created in the script, mapped to their declared
@@ -47,6 +48,7 @@ func newScriptContext() *scriptContext {
 		pages:        make(map[string]bool),
 		workflows:    make(map[string]bool),
 		snippets:     make(map[string]bool),
+		constants:    make(map[string]bool),
 
 		javaActions:       make(map[string][]string),
 		javaScriptActions: make(map[string][]string),
@@ -84,6 +86,10 @@ func (sc *scriptContext) collectDefinitions(prog *ast.Program) {
 		case *ast.CreateEnumerationStmt:
 			if s.Name.Module != "" {
 				sc.enumerations[s.Name.String()] = true
+			}
+		case *ast.CreateConstantStmt:
+			if s.Name.Module != "" {
+				sc.constants[s.Name.String()] = true
 			}
 		case *ast.CreateMicroflowStmt:
 			if s.Name.Module != "" {
@@ -596,6 +602,30 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 				return mdlerrors.NewNotFound("module", s.Name)
 			}
 		}
+
+	// ALTER SETTINGS writes qualified names into the model — a startup microflow,
+	// the workflow user entity, the constant an override names — and resolved none
+	// of them, so a typo reached the build as CE1613 (#274).
+	case *ast.AlterSettingsStmt:
+		var errs []error
+		if strings.EqualFold(s.Section, "constant") {
+			if known, trusted := buildConstantQualifiedNames(ctx); trusted {
+				errs = validateSettingsConstantRef(s, known, sc)
+			}
+		} else {
+			var mfs, ents map[string]bool
+			if strings.EqualFold(s.Section, "model") {
+				mfs = buildMicroflowQualifiedNames(ctx)
+			}
+			if strings.EqualFold(s.Section, "workflows") {
+				ents = buildEntityQualifiedNames(ctx)
+			}
+			errs = validateSettingsReferences(s, mfs, ents, sc)
+		}
+		if len(errs) > 0 {
+			return errs[0]
+		}
+		return nil
 
 	// Query statements - no validation needed for basic ones
 	case *ast.ShowStmt, *ast.DescribeStmt, *ast.SelectStmt:
