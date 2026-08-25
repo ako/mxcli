@@ -12,7 +12,7 @@
 // declarations rather than SCSS `!default` variables. This file is imported
 // once per module, so it must hold declarations only — never rules.
 
-:root {
+{{PALETTE_SCOPE}} {
   /* ---- the one colour that defines the app --------------------------- */
   --mxt-brand: #1f3a5f;
   --mxt-brand-hover: #2b4f7d;

@@ -244,7 +244,20 @@ an empty target — which is what makes the output an LLM prompt:
 
 A key that matches nothing is REPORTED, not skipped: a source edited after
 the file was written stops matching, and the run names the string it has
-probably become.`,
+probably become.
+
+An EMPTY entry list is legal: under OR REPLACE it names nothing, so every
+translation in scope is removed. That is the way to take a language's
+translations out of the model:
+
+  create or replace translations for de_DE ( );
+
+A translation for a language the project has not ENABLED is stored, passes
+mx check, and is DISCARDED at build time — no translations_<code>.properties
+is produced at all. The run warns; enable the language in project settings
+first. Note SHOW LANGUAGES lists languages that HAVE translations, not the
+enabled ones (8 vs 1 on a stock app); the enabled list is in DESCRIBE
+SETTINGS.`,
 		Example: `describe translations for nl_NL;
 
 create or modify translations in Administration for nl_NL (
@@ -271,6 +284,7 @@ create or modify translations in Administration for nl_NL (
 			"alter settings", "modify settings", "change settings",
 			"after startup", "before shutdown", "hash algorithm",
 			"database type", "constant override", "language",
+			"add language", "remove language", "enable language", "translations",
 			"optimistic locking", "concurrency", "lost update",
 		},
 		Syntax: `ALTER SETTINGS MODEL <key> = <value>;
@@ -278,8 +292,12 @@ ALTER SETTINGS CONFIGURATION '<name>' <key> = <value>, ...;
 ALTER SETTINGS CONSTANT '<qualifiedName>' VALUE '<value>' IN CONFIGURATION '<name>';
 ALTER SETTINGS DROP CONSTANT '<qualifiedName>' IN CONFIGURATION '<name>';
 ALTER SETTINGS LANGUAGE DefaultLanguageCode = '<code>';
+ALTER SETTINGS LANGUAGE ADD '<code>' [(CheckCompleteness: true, CustomDateFormat: '<fmt>')];
+ALTER SETTINGS LANGUAGE ADD OR MODIFY '<code>' [(...)];
+ALTER SETTINGS LANGUAGE MODIFY '<code>' (CheckCompleteness: true, ...);
+ALTER SETTINGS LANGUAGE REMOVE '<code>';
 ALTER SETTINGS WORKFLOWS UserEntity = '<qualifiedName>';
-CREATE CONFIGURATION '<name>' [<key> = <value>, ...];
+CREATE [OR MODIFY] CONFIGURATION '<name>' [<key> = <value>, ...];
 DROP CONFIGURATION '<name>';`,
 		Example: `ALTER SETTINGS MODEL AfterStartupMicroflow = 'Module.MF_Startup';
 ALTER SETTINGS MODEL HashAlgorithm = 'BCrypt';
@@ -293,6 +311,32 @@ ALTER SETTINGS CONSTANT 'BusinessEvents.ServerUrl' VALUE 'kafka:9092'
 CREATE CONFIGURATION 'Production'
   DatabaseType = 'PostgreSql',
   HttpPortNumber = 8080;
+
+-- LANGUAGE ADD/REMOVE change the ENABLED languages — the list under App
+-- Settings > Languages, and the only languages a build emits anything for. A
+-- translation written for a language that is not enabled is stored, passes every
+-- check, and is discarded at build time.
+ALTER SETTINGS LANGUAGE ADD 'de_DE';
+ALTER SETTINGS LANGUAGE ADD 'ar_SD' (CheckCompleteness: true);
+ALTER SETTINGS LANGUAGE MODIFY 'ar_SD' (CustomDateFormat: 'yyyy-MM-dd');
+ALTER SETTINGS LANGUAGE REMOVE 'de_DE';
+
+-- ADD OR MODIFY is the upsert, and what DESCRIBE emits: it enables a language
+-- that is not there and changes one that is, so a described project replays onto
+-- itself and onto a project that already has some of its languages.
+
+-- CheckCompleteness turns on error reporting for texts with no translation in
+-- that language — without it they fall back to the default silently. MODIFY
+-- changes only the options it names. The DEFAULT language is always checked by
+-- Mendix whatever the flag says.
+
+-- A language is identified by its CODE alone: Studio Pro's "Arabic, Sudan" is
+-- derived from ar_SD for display and is not stored in the model.
+-- Two refusals: the DEFAULT language cannot be removed (every missing
+-- translation falls back on it — change DefaultLanguageCode first), and a
+-- language that still carries translations is refused with the count, because
+-- removing it would strip work the statement does not name. Say it on purpose
+-- with: create or replace translations for <code> ( );
 
 -- DatabaseType must be a Mendix database type:
 --   Db2, Hsqldb, MySql, Oracle, PostgreSql, SapHana, SqlServer

@@ -19,6 +19,7 @@ showStatement
     | showOrList CONTRACT MESSAGES FROM qualifiedName   // SHOW CONTRACT MESSAGES FROM Module.Service (AsyncAPI)
     | showOrList ENTITIES (IN (qualifiedName | IDENTIFIER))?
     | showOrList ASSOCIATIONS (IN (qualifiedName | IDENTIFIER))?
+    | showOrList ANNOTATIONS (IN (qualifiedName | IDENTIFIER))?   // domain-model canvas notes
     | showOrList MICROFLOWS (IN (qualifiedName | IDENTIFIER))?
     | showOrList NANOFLOWS (IN (qualifiedName | IDENTIFIER))?
     | showOrList RULES (IN (qualifiedName | IDENTIFIER))?

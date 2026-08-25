@@ -1392,7 +1392,9 @@ func emitLoopBody(
 	// Find the first activity in the loop body (the one with no incoming flow from within the loop)
 	incomingCount := make(map[model.ID]int)
 	for _, loopObj := range loop.ObjectCollection.Objects {
-		incomingCount[loopObj.GetID()] = 0
+		if isFlowNode(loopObj) {
+			incomingCount[loopObj.GetID()] = 0
+		}
 	}
 	for _, flows := range loopFlowsByOrigin {
 		for _, flow := range flows {
@@ -1469,6 +1471,22 @@ func sequenceFlowIdentity(flow *microflows.SequenceFlow) string {
 		return string(flow.ID)
 	}
 	return fmt.Sprintf("%s>%s:%t:%d:%d:%v", flow.OriginID, flow.DestinationID, flow.IsErrorHandler, flow.OriginConnectionIndex, flow.DestinationConnectionIndex, flow.CaseValue)
+}
+
+// isFlowNode reports whether an object participates in the sequence-flow graph,
+// and so can legitimately start a loop body.
+//
+// An Annotation is an object in ObjectCollection.Objects but connects through
+// AnnotationFlows, never through Flows — so its incoming-sequence-flow count is
+// permanently 0 and it looked like a start candidate to preferLoopBodyStart,
+// which picks leftmost-then-topmost. Studio Pro places annotations above/left of
+// what they describe, so the annotation usually won, traversal began at a node
+// with no outgoing sequence flow, and the entire loop body vanished from
+// describe output — silently, at exit 0 (#965). Annotations reach the output
+// through annotationsByTarget instead, attached to the activity they point at.
+func isFlowNode(obj microflows.MicroflowObject) bool {
+	_, isAnnotation := obj.(*microflows.Annotation)
+	return !isAnnotation
 }
 
 func preferLoopBodyStart(candidate, current microflows.MicroflowObject) bool {

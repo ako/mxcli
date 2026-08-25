@@ -664,6 +664,18 @@ func (w *Writer) serializeDomainModel(dm *domainmodel.DomainModel) ([]byte, erro
 		associations = append(associations, serializeAssociation(a))
 	}
 
+	// Annotations array with version prefix 3.
+	//
+	// This used to be written as the bare empty array regardless of what the
+	// domain model held, so every rewrite deleted every note on the canvas —
+	// adding one entity to a blank app took its annotation count from 1 to 0.
+	// `mx check` reports 0 errors either way: an annotation is decorative, so
+	// nothing below Studio Pro can see it go.
+	annotations := bson.A{int32(3)}
+	for _, a := range dm.Annotations {
+		annotations = append(annotations, serializeDomainModelAnnotation(a))
+	}
+
 	// CrossAssociations array with version prefix 3
 	crossAssociations := bson.A{int32(3)}
 	for _, ca := range dm.CrossAssociations {
@@ -675,7 +687,7 @@ func (w *Writer) serializeDomainModel(dm *domainmodel.DomainModel) ([]byte, erro
 		{Key: "$ID", Value: idToBsonBinary(string(dm.ID))},
 		{Key: "$Type", Value: "DomainModels$DomainModel"},
 		{Key: "Documentation", Value: ""},
-		{Key: "Annotations", Value: bson.A{int32(3)}},
+		{Key: "Annotations", Value: annotations},
 		{Key: "Entities", Value: entities},
 		{Key: "Associations", Value: associations},
 		{Key: "CrossAssociations", Value: crossAssociations},
@@ -1487,5 +1499,33 @@ func serializeText(text *model.Text) bson.D {
 		{Key: "$ID", Value: idToBsonBinary(string(text.ID))},
 		{Key: "$Type", Value: "Texts$Text"},
 		{Key: "Items", Value: items},
+	}
+}
+
+// serializeDomainModelAnnotation writes one canvas note in the shape Studio Pro
+// stores it — pinned against the annotation a blank 11.13.0 app ships with in
+// MyFirstModule.
+//
+// The position is the string "x;y", NOT a sub-document: that is the same
+// convention an entity's Location follows, and writing a sub-document is what
+// the parser used to (wrongly) expect. ExportLevel is "Hidden" on every Studio
+// Pro-authored annotation.
+//
+// There is no colour property. A domain model holds exactly four child
+// collections — Annotations, Associations, CrossAssociations and Entities — so
+// the "coloured section box" a modeller sees is this element, drawn in Studio
+// Pro's own styling, and nothing about that styling is stored in the model.
+func serializeDomainModelAnnotation(a *domainmodel.Annotation) bson.D {
+	id := string(a.ID)
+	if id == "" {
+		id = GenerateID()
+	}
+	return bson.D{
+		{Key: "$ID", Value: idToBsonBinary(id)},
+		{Key: "$Type", Value: "DomainModels$Annotation"},
+		{Key: "Caption", Value: a.Caption},
+		{Key: "ExportLevel", Value: "Hidden"},
+		{Key: "Location", Value: fmt.Sprintf("%d;%d", a.Location.X, a.Location.Y)},
+		{Key: "Width", Value: int32(a.Width)},
 	}
 }

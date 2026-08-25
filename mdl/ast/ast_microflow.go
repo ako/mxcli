@@ -50,10 +50,41 @@ type CreateMicroflowStmt struct {
 	ReturnType     *MicroflowReturnType
 	Body           []MicroflowStatement
 	Documentation  string
-	Comment        string
 	Folder         string // Folder path within module (e.g., "Resources/Images")
 	CreateOrModify bool
 	Excluded       bool // @excluded — document excluded from project
+	// Expose holds the EXPOSED AS … ACTION clauses. A microflow has two toolbox
+	// entries — one for the microflow editor, one for the workflow editor — so
+	// there can be one of each.
+	Expose []ExposeActionClause
+}
+
+// ExposeActionClause is one EXPOSED AS <kind> ACTION clause, or its NOT form.
+//
+// An absent clause is neither: it preserves what is stored, including the icon
+// and image bitmaps MDL cannot express. Removal is explicit.
+type ExposeActionClause struct {
+	// Workflow selects WorkflowActionInfo over MicroflowActionInfo.
+	Workflow bool
+	Caption  string
+	Category string
+	Remove   bool // NOT EXPOSED AS … ACTION
+	Bitmaps  []ExposeBitmap
+}
+
+// ExposeBitmap is one ICON/IMAGE clause on an exposed clause.
+//
+// An omitted bitmap is preserved rather than cleared, so Clear (DROP ICON) is
+// how a script asks for one to go away — the same shape as the clause itself.
+type ExposeBitmap struct {
+	// Image selects the 256x192 toolbox image over the 64x64 icon.
+	Image bool
+	// Dark selects the dark-mode variant.
+	Dark bool
+	// Path is the PNG file to read, resolved against the working directory.
+	// Empty when Clear is set.
+	Path  string
+	Clear bool
 }
 
 func (s *CreateMicroflowStmt) isStatement() {}
@@ -72,10 +103,13 @@ type CreateNanoflowStmt struct {
 	ReturnType     *MicroflowReturnType
 	Body           []MicroflowStatement
 	Documentation  string
-	Comment        string
 	Folder         string // Folder path within module
 	CreateOrModify bool
 	Excluded       bool // @excluded — document excluded from project
+	// Expose is parsed but refused: only Microflows$Microflow carries the toolbox
+	// properties. Accepting it in the grammar and explaining the refusal beats a
+	// parse error that says only "no viable alternative".
+	Expose []ExposeActionClause
 }
 
 func (s *CreateNanoflowStmt) isStatement() {}
@@ -91,10 +125,11 @@ type CreateRuleStmt struct {
 	ReturnType     *MicroflowReturnType
 	Body           []MicroflowStatement
 	Documentation  string
-	Comment        string
 	Folder         string // Folder path within module
 	CreateOrModify bool
 	Excluded       bool // @excluded — document excluded from project
+	// Expose is parsed but refused — see CreateNanoflowStmt.Expose.
+	Expose []ExposeActionClause
 }
 
 func (s *CreateRuleStmt) isStatement() {}

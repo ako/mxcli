@@ -75,14 +75,11 @@ func (b *Builder) ExitCreateEntityStatement(ctx *parser.CreateEntityStatementCon
 			stmt.Attributes = buildAttributes(attrList, b)
 		}
 
-		// Options (comment, extends, indexes, system attributes, etc.)
+		// Options (extends, indexes, system attributes, etc.)
 		if opts := bodyCtx.EntityOptions(); opts != nil {
 			optsCtx := opts.(*parser.EntityOptionsContext)
 			for _, opt := range optsCtx.AllEntityOption() {
 				optCtx := opt.(*parser.EntityOptionContext)
-				if optCtx.COMMENT() != nil && optCtx.STRING_LITERAL() != nil {
-					stmt.Comment = unquoteString(optCtx.STRING_LITERAL().GetText())
-				}
 				// Handle INDEX option
 				if optCtx.INDEX() != nil && optCtx.IndexDefinition() != nil {
 					stmt.Indexes = append(stmt.Indexes, buildIndex(optCtx.IndexDefinition()))
@@ -781,6 +778,28 @@ func (b *Builder) ExitDropStatement(ctx *parser.DropStatementContext) {
 				Name: unquoteString(sl.GetText()),
 			})
 		}
+		return
+	}
+
+	// DROP ANNOTATION addresses a note by caption or position, not by a
+	// qualified name — an annotation has no name — so it must be handled before
+	// the guard below, which returns silently when there is no qualifiedName.
+	// Placed after it, the statement parsed, executed nothing, and exited 0.
+	if ctx.ANNOTATION() != nil {
+		stmt := &ast.DropAnnotationStmt{}
+		if id := ctx.IdentifierOrKeyword(); id != nil {
+			stmt.Module = unquoteIdentifier(id.GetText())
+		}
+		if nums := ctx.AllNUMBER_LITERAL(); ctx.AT_KW() != nil && len(nums) >= 2 {
+			x, errX := strconv.Atoi(nums[0].GetText())
+			y, errY := strconv.Atoi(nums[1].GetText())
+			if errX == nil && errY == nil {
+				stmt.Position = &ast.Position{X: x, Y: y}
+			}
+		} else if lit := ctx.STRING_LITERAL(); lit != nil {
+			stmt.Title = unquoteString(lit.GetText())
+		}
+		b.statements = append(b.statements, stmt)
 		return
 	}
 

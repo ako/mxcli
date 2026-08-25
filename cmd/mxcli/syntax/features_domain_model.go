@@ -18,14 +18,54 @@ func init() {
 	// --- Entity ---
 
 	Register(SyntaxFeature{
+		Path:    "domain-model.annotation",
+		Summary: "Canvas notes on a domain model — the boxes that explain the diagram",
+		Keywords: []string{
+			"annotation", "annotations", "note", "canvas", "section", "comment box",
+			"create annotation", "drop annotation", "show annotations",
+		},
+		Syntax: "SHOW ANNOTATIONS [IN Module];\n\n" +
+			"CREATE [OR MODIFY] ANNOTATION IN Module (\n" +
+			"  Caption: 'text'  |  $$multi\nline$$,\n" +
+			"  [Position: (x, y),]\n" +
+			"  [Width: n]\n" +
+			");\n\n" +
+			"DROP ANNOTATION 'first line of the caption' IN Module;\n" +
+			"DROP ANNOTATION AT (x, y) IN Module;\n\n" +
+			"An annotation has no name. It is addressed by its POSITION when the\n" +
+			"statement gives one — the identity to prefer, since it survives an edit to\n" +
+			"the wording — and otherwise by the FIRST LINE of its caption. Give a note a\n" +
+			"position if you intend to re-run the script; without one, rewording creates\n" +
+			"a second note instead of updating the first.\n\n" +
+			"An omitted Position or Width leaves the stored value alone. A new note gets\n" +
+			"Studio Pro's defaults: (60, 240) and width 440.\n\n" +
+			"THERE IS NO COLOUR. DomainModels$Annotation stores Caption, ExportLevel,\n" +
+			"Location and Width — a \"coloured section box\" is this element in Studio\n" +
+			"Pro's own styling, and the model has nowhere to keep a colour.",
+		Example: "CREATE ANNOTATION IN Sales (\n" +
+			"  Caption: $$Orders\nEverything about an order lives here.$$,\n" +
+			"  Position: (60, 40),\n" +
+			"  Width: 400\n" +
+			");\n\n" +
+			"-- Reword and re-run: the position identifies the note, so this updates it\n" +
+			"CREATE OR MODIFY ANNOTATION IN Sales (\n" +
+			"  Caption: 'Orders and invoices',\n" +
+			"  Position: (60, 40)\n" +
+			");\n\n" +
+			"SHOW ANNOTATIONS IN Sales;\n" +
+			"DROP ANNOTATION AT (60, 40) IN Sales;",
+		SeeAlso: []string{"domain-model", "domain-model.entity"},
+	})
+
+	Register(SyntaxFeature{
 		Path:    "domain-model.entity",
 		Summary: "Entity creation: persistent, non-persistent, generalization, event handlers",
 		Keywords: []string{
 			"entity", "create entity", "persistent", "non-persistent",
 			"generalization", "extends", "event handler", "attribute",
 		},
-		Syntax:  "CREATE PERSISTENT ENTITY Module.Name (\n  Attr: Type [constraints],\n  ...\n) [INDEX (attr1)] [COMMENT 'text'];\n\nCREATE NON-PERSISTENT ENTITY Module.Name (...);\n\nCREATE PERSISTENT ENTITY Module.Name EXTENDS Module.Parent (...);",
-		Example: "CREATE PERSISTENT ENTITY MyModule.Customer (\n  Name: String(100) NOT NULL ERROR 'Name is required',\n  Email: String(200) UNIQUE,\n  Balance: Decimal DEFAULT 0,\n  IsActive: Boolean DEFAULT true,\n  Status: Enumeration(MyModule.CustomerType)\n)\nINDEX (Email)\nCOMMENT 'Stores customer information';",
+		Syntax:  "CREATE PERSISTENT ENTITY Module.Name (\n  Attr: Type [constraints],\n  ...\n) [INDEX (attr1)];\n\n-- Documentation is the /** … */ doc comment before the statement.\n-- (A `COMMENT 'text'` option existed, set nothing, and has been removed.)\n\nCREATE NON-PERSISTENT ENTITY Module.Name (...);\n\nCREATE PERSISTENT ENTITY Module.Name EXTENDS Module.Parent (...);",
+		Example: "/** Stores customer information. */\nCREATE PERSISTENT ENTITY MyModule.Customer (\n  Name: String(100) NOT NULL ERROR 'Name is required',\n  Email: String(200) UNIQUE,\n  Balance: Decimal DEFAULT 0,\n  IsActive: Boolean DEFAULT true,\n  Status: Enumeration(MyModule.CustomerType)\n)\nINDEX (Email);",
 		SeeAlso: []string{"domain-model.entity.create", "domain-model.entity.alter", "domain-model.entity.attributes"},
 	})
 
@@ -37,7 +77,7 @@ func init() {
 			"non-persistent", "extends", "generalization",
 			"index", "event handler", "before commit", "after commit",
 		},
-		Syntax:  "CREATE PERSISTENT ENTITY Module.Name (\n  Attr: Type [NOT NULL [ERROR 'msg']] [UNIQUE [ERROR 'msg']] [DEFAULT val],\n  ...\n)\n[INDEX (attr1, attr2)]\n[ON BEFORE|AFTER CREATE|COMMIT|DELETE|ROLLBACK CALL Module.MF [RAISE ERROR]]\n[COMMENT 'text'];\n\nCREATE NON-PERSISTENT ENTITY Module.Name (...);\nCREATE PERSISTENT ENTITY Module.Name EXTENDS Module.Parent (...);\n\n-- INDEX goes AFTER the closing parenthesis, never inside the attribute list.\n-- On an existing entity, either spelling works:\nALTER ENTITY Module.Name ADD INDEX [IF NOT EXISTS] [name] [ON] (attr1 [ASC|DESC], ...);\nCREATE INDEX IdxName ON Module.Name (attr1 [ASC|DESC], ...);\n\n-- Re-runnable script: IF NOT EXISTS skips instead of erroring, and leaves an\n-- existing element untouched (unlike OR MODIFY, which rebuilds it from the\n-- statement and drops any attribute the statement omits).\nCREATE ENTITY IF NOT EXISTS Module.Name (...);\nALTER ENTITY Module.Name ADD ATTRIBUTE IF NOT EXISTS Attr: Type;\nALTER ENTITY Module.Name DROP INDEX IF EXISTS (attr1, ...);",
+		Syntax:  "CREATE PERSISTENT ENTITY Module.Name (\n  Attr: Type [NOT NULL [ERROR 'msg']] [UNIQUE [ERROR 'msg']] [DEFAULT val],\n  ...\n)\n[INDEX (attr1, attr2)]\n[ON BEFORE|AFTER CREATE|COMMIT|DELETE|ROLLBACK CALL Module.MF [RAISE ERROR]];\n\n-- Documentation: the /** … */ doc comment before the statement, or\n-- ALTER ENTITY Module.Name SET COMMENT 'text' on an existing entity.\n\nCREATE NON-PERSISTENT ENTITY Module.Name (...);\nCREATE PERSISTENT ENTITY Module.Name EXTENDS Module.Parent (...);\n\n-- INDEX goes AFTER the closing parenthesis, never inside the attribute list.\n-- On an existing entity, either spelling works:\nALTER ENTITY Module.Name ADD INDEX [IF NOT EXISTS] [name] [ON] (attr1 [ASC|DESC], ...);\nCREATE INDEX IdxName ON Module.Name (attr1 [ASC|DESC], ...);\n\n-- Re-runnable script: IF NOT EXISTS skips instead of erroring, and leaves an\n-- existing element untouched (unlike OR MODIFY, which rebuilds it from the\n-- statement and drops any attribute the statement omits).\nCREATE ENTITY IF NOT EXISTS Module.Name (...);\nALTER ENTITY Module.Name ADD ATTRIBUTE IF NOT EXISTS Attr: Type;\nALTER ENTITY Module.Name DROP INDEX IF EXISTS (attr1, ...);",
 		Example: "-- Persistent with constraints and index\nCREATE PERSISTENT ENTITY Shop.Order (\n  OrderNumber: String(20) NOT NULL,\n  Total: Decimal DEFAULT 0,\n  CreatedAt: DateTime\n)\nINDEX (OrderNumber)\nON BEFORE COMMIT CALL Shop.ValidateOrder($currentObject) RAISE ERROR;\n\n-- With generalization\nCREATE PERSISTENT ENTITY Shop.ProductImage EXTENDS System.Image (\n  Caption: String(200)\n);",
 		SeeAlso: []string{"domain-model.entity.alter", "domain-model.entity.attributes"},
 	})

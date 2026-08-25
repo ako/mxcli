@@ -62,6 +62,11 @@ var engineScriptSkip = map[string]string{
 	// a half-written one would look valid, so the legacy backend refuses
 	// create/modify/drop rather than emitting one. Reads work on both engines.
 	"legacy/rules.mdl": "rule authoring is modelsdk-only by design; the legacy backend refuses it",
+	// Enabling a language writes Settings$LanguageSettings.Languages, which the
+	// legacy serializer carries through from the stored document rather than
+	// writing — so the list cannot change on that engine. The backend refuses it
+	// rather than reporting a write that never lands.
+	"legacy/languages.mdl": "enabling a language is modelsdk-only by design; the legacy backend refuses it",
 	// The legacy widget builder has no `linechart` template either, so the OL08
 	// LineChart object-list example (added in 6b837ad7) fails page build
 	// ("template not found: linechart"). Passes on modelsdk. Same class as the
@@ -266,6 +271,12 @@ func TestMxCheck_DoctypeScripts(t *testing.T) {
 				if skippedLines > 0 {
 					t.Logf("Mendix %s: skipped %d version-gated lines", pv.ProductVersion, skippedLines)
 				}
+
+				// A relative path inside a script (a toolbox icon PNG) names a file
+				// next to that script. The harness's working directory is this
+				// package, so without this every such fixture would fail here and
+				// nowhere else.
+				env.executor.SetScriptDir(doctypeDir)
 
 				// Execute the script
 				prog, errs := visitor.Build(filtered)

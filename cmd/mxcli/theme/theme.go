@@ -24,7 +24,6 @@
 package theme
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -68,6 +67,11 @@ type FileSpec struct {
 	Path    string `json:"path"`
 	Mode    string `json:"mode"` // "block" or "verbatim"
 	Purpose string `json:"purpose"`
+	// Shared marks a file that is byte-identical in every theme — the Atlas
+	// wiring, the recipe layer, the widget layer. In a switchable set only the
+	// default theme writes them, so the project carries one copy rather than
+	// one fenced block per theme holding the same rules.
+	Shared bool `json:"shared,omitempty"`
 }
 
 // Theme is a named styling package embedded in the mxcli binary.
@@ -83,6 +87,10 @@ type Theme struct {
 	// light-first.
 	DefaultVariant Variant    `json:"defaultVariant"`
 	Files          []FileSpec `json:"files"`
+	// Local marks a theme that came from the project's own LocalThemesDir
+	// rather than from the binary. Set on load, never serialised — where a
+	// theme lives is a property of the lookup, not of its theme.json.
+	Local bool `json:"-"`
 }
 
 // AltVariant is the variant `auto` switches to — the opposite of the default.
@@ -129,57 +137,92 @@ type Options struct {
 	KeepOthers bool
 }
 
-// List returns the embedded themes, ordered by name.
-func List() ([]Theme, error) {
-	entries, err := fs.ReadDir(assetsFS, assetsRoot)
+// List returns the themes visible from projectDir, ordered by name: the ones
+// embedded in the binary plus any the project keeps in LocalThemesDir, with a
+// local theme shadowing an embedded one of the same name.
+//
+// projectDir may be empty to list the embedded set alone.
+func List(projectDir string) ([]Theme, error) {
+	srcs, err := sources(projectDir)
 	if err != nil {
-		return nil, fmt.Errorf("reading embedded themes: %w", err)
+		return nil, err
 	}
-	var themes []Theme
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		t, err := Get(e.Name())
+	themes := make([]Theme, 0, len(srcs))
+	for _, s := range srcs {
+		t, err := s.load(path.Base(s.root))
 		if err != nil {
 			return nil, err
 		}
 		themes = append(themes, *t)
 	}
-	sort.Slice(themes, func(i, j int) bool { return themes[i].Name < themes[j].Name })
 	return themes, nil
 }
 
-// Get returns one embedded theme by name.
-func Get(name string) (*Theme, error) {
-	raw, err := assetsFS.ReadFile(path.Join(assetsRoot, name, "theme.json"))
+// Get returns one theme by name, preferring the project's own copy over the
+// embedded one. projectDir may be empty to look only in the binary.
+func Get(projectDir, name string) (*Theme, error) {
+	s, err := sourceFor(projectDir, name)
 	if err != nil {
-		return nil, fmt.Errorf("unknown theme %q (run `mxcli theme list`)", name)
+		return nil, err
 	}
-	var t Theme
-	if err := json.Unmarshal(raw, &t); err != nil {
-		return nil, fmt.Errorf("theme %q: malformed theme.json: %w", name, err)
-	}
-	if t.Name != name {
-		return nil, fmt.Errorf("theme %q: theme.json declares name %q", name, t.Name)
-	}
-	return &t, nil
+	return s.load(name)
 }
 
-// Installed reports which embedded themes have a block in projectDir, read from
+// TokenNames returns the --mxt-* tokens a theme declares, sorted. This is the
+// vocabulary a design artifact has to speak to seed the theme, so `theme show`
+// prints it and `theme create --from <file>` validates against it.
+func TokenNames(projectDir, name string) ([]string, error) {
+	src, err := sourceFor(projectDir, name)
+	if err != nil {
+		return nil, err
+	}
+	return knownTokens(src)
+}
+
+// knownTokens collects every --mxt-* name declared anywhere in a theme's SCSS:
+// the default palette in custom-variables.scss and the alt palette in the
+// theme's own partial.
+func knownTokens(src source) ([]string, error) {
+	seen := map[string]bool{}
+	root := src.filesRoot()
+	err := fs.WalkDir(src.fsys, root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(p, ".scss") {
+			return err
+		}
+		body, err := fs.ReadFile(src.fsys, p)
+		if err != nil {
+			return err
+		}
+		for _, n := range declaredTokens(string(body)) {
+			seen[n] = true
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(seen))
+	for n := range seen {
+		out = append(out, n)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// Installed reports which themes have a block in projectDir, read from
 // the mxcli:theme:begin markers rather than assumed.
 //
 // `theme remove` with no name used to fall back to the default theme, which on a
 // project themed with anything else removed nothing, reported every file as
 // unchanged and exited 0 — a silent no-op on the documented invocation.
 func Installed(projectDir string) ([]string, error) {
-	all, err := List()
+	all, err := List(projectDir)
 	if err != nil {
 		return nil, err
 	}
 	var found []string
 	for _, t := range all {
-		paths, err := assetPaths(t.Name)
+		paths, err := assetPaths(projectDir, t.Name)
 		if err != nil {
 			return nil, err
 		}
@@ -220,21 +263,81 @@ func Resolve(projectDir, fallback string) (string, error) {
 			return "", fmt.Errorf("no mxcli theme found in %s (run `mxcli theme apply` to add one)", projectDir)
 		}
 		return fallback, nil
-	case 1:
-		return installed[0], nil
 	default:
-		return "", fmt.Errorf("%s carries more than one theme (%s); name the one you mean",
-			projectDir, strings.Join(installed, ", "))
+		// A project may legitimately carry several themes now, as a switchable
+		// set. Resolve answers "which one" for callers that need a single name;
+		// ResolveSet is what a bare apply or remove wants.
+		return installed[0], nil
 	}
 }
 
-// Apply writes a theme's files into projectDir.
+// ResolveSet returns the themes a bare `apply` or `remove` should act on: the
+// whole installed set, in the order it was installed, falling back to fallback
+// when the project has none.
+//
+// Order matters and is recovered from the project rather than guessed: the
+// first theme in a switchable set is the default — the one that renders before
+// any class is set — and re-applying in a different order would silently
+// promote a different theme.
+func ResolveSet(projectDir, fallback string) ([]string, error) {
+	installed, err := InstalledOrder(projectDir)
+	if err != nil {
+		return nil, err
+	}
+	if len(installed) > 0 {
+		return installed, nil
+	}
+	if fallback == "" {
+		return nil, fmt.Errorf("no mxcli theme found in %s (run `mxcli theme apply` to add one)", projectDir)
+	}
+	return []string{fallback}, nil
+}
+
+// InstalledOrder is Installed, ordered by where each theme's block sits in
+// theme/web/main.scss — which is the order they were applied, and therefore
+// which one is the set's default.
+func InstalledOrder(projectDir string) ([]string, error) {
+	installed, err := Installed(projectDir)
+	if err != nil || len(installed) < 2 {
+		return installed, err
+	}
+	main, err := os.ReadFile(filepath.Join(projectDir, "theme", "web", "main.scss"))
+	if err != nil {
+		return installed, nil
+	}
+	body := string(main)
+	sort.SliceStable(installed, func(i, j int) bool {
+		return strings.Index(body, beginMarker+" "+installed[i]+" ") <
+			strings.Index(body, beginMarker+" "+installed[j]+" ")
+	})
+	return installed, nil
+}
+
+// Apply writes one theme's files into projectDir, replacing any other.
 //
 // projectDir is the folder holding the .mpr — the theme/ tree sits beside it.
 func Apply(projectDir, name string, opts Options) (*Result, error) {
-	t, err := Get(name)
-	if err != nil {
-		return nil, err
+	res, err := ApplySet(projectDir, []string{name}, opts)
+	return res.first(), err
+}
+
+// ApplySet installs several themes into one stylesheet, switchable at runtime
+// by a class on <html>. names[0] is the default — the one that renders before
+// any class is set.
+//
+// This is the same mechanism the light/dark variants already use, generalised.
+// It works because a theme is almost entirely token values: the Atlas wiring,
+// the recipe layer and the widget layer are byte-identical across themes and
+// resolve every colour through var(--mxt-*), so one copy of them serves the
+// whole set and follows whichever palette is currently in scope. Only the
+// palette, the fonts and a handful of skin rules differ per theme.
+//
+// The scopes are mutually exclusive by construction — the default claims :root
+// minus every other skin's class — so no two palettes are ever live at once and
+// the outcome does not depend on import order.
+func ApplySet(projectDir string, names []string, opts Options) (*SetResult, error) {
+	if len(names) == 0 {
+		return nil, fmt.Errorf("no theme named")
 	}
 	if err := requireMendixProject(projectDir); err != nil {
 		return nil, err
@@ -242,38 +345,150 @@ func Apply(projectDir, name string, opts Options) (*Result, error) {
 	if opts.Variant == "" {
 		opts.Variant = VariantAuto
 	}
+	seen := map[string]bool{}
+	for _, n := range names {
+		if seen[n] {
+			return nil, fmt.Errorf("theme %q named twice", n)
+		}
+		seen[n] = true
+	}
 
-	// Only one theme at a time. Both would map the same Atlas leaves, so which
-	// palette won would come down to SCSS import order rather than to what the
-	// user asked for. Removing first also cleans up the previous theme's fonts.
+	// Themes outside the set go, along with their fonts. Within the set nothing
+	// is removed: that is the whole point.
 	if !opts.KeepOthers {
-		if err := removeRivalThemes(projectDir, t, opts); err != nil {
+		if err := removeThemesOutsideSet(projectDir, names, opts); err != nil {
 			return nil, err
 		}
 	}
 
+	set := &SetResult{Names: names}
+	var errs []error
+	for i, name := range names {
+		res, err := applyOne(projectDir, name, scopeFor(names, i), opts)
+		if res != nil {
+			set.Themes = append(set.Themes, res)
+		}
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return set, errors.Join(errs...)
+}
+
+// SetResult is the outcome of installing a switchable set.
+type SetResult struct {
+	// Names is the set in order; the first is the default.
+	Names  []string
+	Themes []*Result
+}
+
+func (s *SetResult) first() *Result {
+	if s == nil || len(s.Themes) == 0 {
+		return nil
+	}
+	return s.Themes[0]
+}
+
+// Changed reports whether anything on disk moved.
+func (s *SetResult) Changed() bool {
+	for _, r := range s.Themes {
+		if r.Changed() {
+			return true
+		}
+	}
+	return false
+}
+
+// scope is where one theme's tokens are declared, and whether it shares the
+// stylesheet with others.
+type scope struct {
+	// Palette is the selector the --mxt-* block is declared on.
+	Palette string
+	// Shared is true when this theme is one of several in the stylesheet, which
+	// is what makes its skin rules need scoping.
+	Shared bool
+	// Default marks the theme that renders with no class set — the only one
+	// whose block carries the shared partials' imports.
+	Default bool
+}
+
+// scopeFor builds the selector for names[i] within the set.
+//
+// The default theme claims :root minus every other skin's class rather than a
+// bare :root. Bare would keep matching once another skin's class was set, so
+// its skin rules would leak under every other theme and the result would come
+// down to specificity. Negation makes the scopes mutually exclusive instead —
+// exactly one palette is ever live.
+func scopeFor(names []string, i int) scope {
+	if len(names) == 1 {
+		return scope{Palette: ":root", Default: true}
+	}
+	if i > 0 {
+		return scope{Palette: ":root." + skinClass(names[i]), Shared: true}
+	}
+	var b strings.Builder
+	b.WriteString(":root")
+	for _, other := range names[1:] {
+		b.WriteString(":not(." + skinClass(other) + ")")
+	}
+	b.WriteString(", :root." + skinClass(names[0]))
+	return scope{Palette: b.String(), Shared: true, Default: true}
+}
+
+// SkinClassPrefix is the class a switcher sets on <html> to select a theme.
+const SkinClassPrefix = "mxt-"
+
+// skinClass is the class that selects one theme at runtime.
+func skinClass(name string) string { return SkinClassPrefix + name }
+
+func applyOne(projectDir, name string, sc scope, opts Options) (*Result, error) {
+	src, err := sourceFor(projectDir, name)
+	if err != nil {
+		return nil, err
+	}
+	t, err := src.load(name)
+	if err != nil {
+		return nil, err
+	}
+
+	shared := map[string]bool{}
+	for _, f := range t.Files {
+		if f.Shared {
+			shared[f.Path] = true
+		}
+	}
+
 	res := &Result{Theme: name}
-	root := path.Join(assetsRoot, name, "files")
+	root := src.filesRoot()
 	// Edited blocks are collected rather than thrown on the first hit: a user who
 	// has hand-tuned two files should see both named once, not discover the second
 	// only after dealing with the first.
 	var skipped []error
 
-	walkErr := fs.WalkDir(assetsFS, root, func(p string, d fs.DirEntry, err error) error {
+	walkErr := fs.WalkDir(src.fsys, root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
 		rel := strings.TrimPrefix(p, root+"/")
+		if err := refuseSelfWrite(rel); err != nil {
+			return err
+		}
+		// A shared file belongs to the set, not to a theme. Only the default
+		// writes it; otherwise every theme in the set stacks its own fenced
+		// block of the same rules into the same file.
+		if !sc.Default && shared[rel] {
+			return nil
+		}
 		target := filepath.Join(projectDir, filepath.FromSlash(rel))
 
-		body, err := assetsFS.ReadFile(p)
+		body, err := fs.ReadFile(src.fsys, p)
 		if err != nil {
 			return err
 		}
 
 		var fr FileResult
 		if isBlockFile(rel) {
-			fr, err = applyBlockFile(target, rel, t, expand(string(body), t, opts), opts)
+			fr, err = applyBlockFile(target, rel, t, expand(string(body), t, sc, opts), opts)
 		} else {
 			fr, err = applyVerbatimFile(target, rel, body, opts)
 		}
@@ -303,20 +518,27 @@ func Remove(projectDir, name string, opts Options) (*Result, error) {
 // remove is Remove with a set of project-relative paths that must survive,
 // because another theme is about to write them.
 func remove(projectDir, name string, opts Options, protect map[string]bool) (*Result, error) {
-	t, err := Get(name)
+	src, err := sourceFor(projectDir, name)
+	if err != nil {
+		return nil, err
+	}
+	t, err := src.load(name)
 	if err != nil {
 		return nil, err
 	}
 
 	res := &Result{Theme: name}
-	root := path.Join(assetsRoot, name, "files")
+	root := src.filesRoot()
 	var skipped []error
 
-	walkErr := fs.WalkDir(assetsFS, root, func(p string, d fs.DirEntry, err error) error {
+	walkErr := fs.WalkDir(src.fsys, root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
 		rel := strings.TrimPrefix(p, root+"/")
+		if err := refuseSelfWrite(rel); err != nil {
+			return err
+		}
 		target := filepath.Join(projectDir, filepath.FromSlash(rel))
 
 		existing, readErr := os.ReadFile(target)
@@ -391,7 +613,7 @@ func remove(projectDir, name string, opts Options, protect map[string]bool) (*Re
 	if walkErr != nil {
 		return res, walkErr
 	}
-	pruneEmptyThemeDirs(projectDir, root)
+	pruneEmptyThemeDirs(projectDir, src)
 
 	sort.Slice(res.Files, func(i, j int) bool { return res.Files[i].Path < res.Files[j].Path })
 	return res, errors.Join(skipped...)
@@ -401,9 +623,10 @@ func remove(projectDir, name string, opts Options, protect map[string]bool) (*Re
 // are gone, so `theme remove` leaves no empty theme/web/mxcli-fonts/ behind.
 // os.Remove is the guard: it refuses a directory that still holds anything the
 // project put there.
-func pruneEmptyThemeDirs(projectDir, root string) {
+func pruneEmptyThemeDirs(projectDir string, src source) {
+	root := src.filesRoot()
 	var dirs []string
-	_ = fs.WalkDir(assetsFS, root, func(p string, d fs.DirEntry, err error) error {
+	_ = fs.WalkDir(src.fsys, root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || !d.IsDir() || p == root {
 			return err
 		}
@@ -469,36 +692,73 @@ func applyVerbatimFile(target, rel string, body []byte, opts Options) (FileResul
 	return FileResult{Path: rel, Action: action}, nil
 }
 
-// expand fills the placeholders a theme asset may carry. Kept deliberately
-// tiny — the assets are real SCSS that must stay readable and editable in
-// place, so the only things templated are the two values a user chooses at
-// apply time.
-func expand(body string, t *Theme, opts Options) string {
+// expand fills the placeholders a theme asset carries. Kept deliberately
+// small — the assets are real SCSS that must stay readable and editable in
+// place, so only what genuinely varies at apply time is templated: the
+// light/dark variant, and where this theme's tokens are declared.
+func expand(body string, t *Theme, sc scope, opts Options) string {
+	// Only the default theme's main.scss block carries the shared partials, so
+	// one copy of the Atlas wiring, the recipe layer and the widget layer
+	// serves the whole set. It is written first, so those imports precede
+	// every theme partial in the file.
+	head, tail := "", ""
+	if sc.Default {
+		head = "//\n" +
+			"// Variant: auto follows the OS and honours a theme-light / theme-dark class\n" +
+			"// on <html>; light or dark bakes one palette with no switching.\n" +
+			"//\n" +
+			"// The shared partials — the Atlas wiring, the recipe layer and the widget\n" +
+			"// layer — are imported once, here, by the set's default theme. They read the\n" +
+			"// palette through var(), so one copy serves every theme installed and follows\n" +
+			"// a class swap on <html>. Any other theme's block below is its @import alone.\n" +
+			"$mxcli-theme-variant: " + string(opts.Variant) + ";\n" +
+			"@import \"mxcli-atlas-map\";\n"
+		tail = "@import \"mxcli-recipes\";\n@import \"mxcli-widgets\";\n"
+	}
 	r := strings.NewReplacer(
 		"{{VARIANT}}", string(opts.Variant),
 		"{{THEME}}", t.Name,
+		// The palette file is plain CSS, so its selector goes in bare. The
+		// partial assigns the same selector to a Sass variable and interpolates
+		// it, and a selector is not a Sass expression — `$x: :root` and
+		// `$x: a, b` are both parse errors — so it has to be a quoted string.
+		// #{} drops the quotes again at the point of use.
+		"{{PALETTE_SCOPE}}", sc.Palette,
+		"{{SCOPE}}", `"`+sc.Palette+`"`,
+		"{{SCOPED}}", fmt.Sprintf("%t", sc.Shared),
+		"{{SHARED_HEAD}}", head,
+		"{{SHARED_TAIL}}", tail,
 	)
 	return r.Replace(body)
 }
 
-// removeRivalThemes strips every other embedded theme from the project. A
-// hand-edited rival block is left alone and reported, same as anywhere else.
+// removeThemesOutsideSet strips every theme the project carries that is not in
+// the incoming set. A hand-edited block is left alone and reported, same as
+// anywhere else.
 //
-// Files the incoming theme also ships are protected. Themes share paths —
-// every one of them writes theme/web/mxcli-fonts/OFL.txt — so without this the
-// rival pass deletes a file that is about to be written again, which shows up
-// as an apply that is never idempotent.
-func removeRivalThemes(projectDir string, incoming *Theme, opts Options) error {
-	all, err := List()
+// Files the incoming set also ships are protected. Themes share paths — every
+// one writes theme/web/mxcli-fonts/OFL.txt and the three shared partials — so
+// without this the removal pass deletes a file that is about to be written
+// again, which shows up as an apply that is never idempotent.
+func removeThemesOutsideSet(projectDir string, names []string, opts Options) error {
+	all, err := List(projectDir)
 	if err != nil {
 		return err
 	}
-	protect, err := assetPaths(incoming.Name)
-	if err != nil {
-		return err
+	keep := map[string]bool{}
+	protect := map[string]bool{}
+	for _, n := range names {
+		keep[n] = true
+		paths, err := assetPaths(projectDir, n)
+		if err != nil {
+			return err
+		}
+		for p := range paths {
+			protect[p] = true
+		}
 	}
 	for _, other := range all {
-		if other.Name == incoming.Name {
+		if keep[other.Name] {
 			continue
 		}
 		if _, err := remove(projectDir, other.Name, opts, protect); err != nil {
@@ -509,10 +769,14 @@ func removeRivalThemes(projectDir string, incoming *Theme, opts Options) error {
 }
 
 // assetPaths is the set of project-relative paths a theme writes.
-func assetPaths(name string) (map[string]bool, error) {
-	root := path.Join(assetsRoot, name, "files")
+func assetPaths(projectDir, name string) (map[string]bool, error) {
+	src, err := sourceFor(projectDir, name)
+	if err != nil {
+		return nil, err
+	}
+	root := src.filesRoot()
 	out := map[string]bool{}
-	err := fs.WalkDir(assetsFS, root, func(p string, d fs.DirEntry, err error) error {
+	err = fs.WalkDir(src.fsys, root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
@@ -520,6 +784,20 @@ func assetPaths(name string) (map[string]bool, error) {
 		return nil
 	})
 	return out, err
+}
+
+// refuseSelfWrite stops a theme from owning files inside the themes folder.
+//
+// `remove` deletes what a theme owns, so a hand-authored tree with a file at
+// theme/mxcli-themes/... would delete a theme's own source the first time the
+// project switched themes. Nothing mxcli scaffolds does this; the guard is
+// here because these trees are meant to be edited by hand.
+func refuseSelfWrite(rel string) error {
+	if rel == LocalThemesDir || strings.HasPrefix(rel, LocalThemesDir+"/") {
+		return fmt.Errorf("a theme must not write to %s (%s); that folder holds theme sources, and `theme remove` deletes what a theme owns",
+			LocalThemesDir, rel)
+	}
+	return nil
 }
 
 // isBlockFile reports whether a file gets the marker treatment. Anything else

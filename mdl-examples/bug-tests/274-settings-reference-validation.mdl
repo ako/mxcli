@@ -1,0 +1,35 @@
+-- Repro: ALTER SETTINGS wrote a qualified name into the model without resolving
+-- it. Both statements below reported success, `mxcli check --references` said
+-- "All references valid", and mxbuild answered one build later:
+--
+--   [error] [CE1613] "The selected microflow 'Nope.MF_DoesNotExist' no longer
+--                     exists." at Runtime settings
+--   [error] [CE1613] "The selected constant 'Nope.AlsoMissing' no longer
+--                     exists." at Configuration 'Default'
+--
+-- The constant is the worse of the two: the override is CREATED for a constant
+-- that does not exist, so a typo leaves dead configuration data behind rather
+-- than failing — the "no silent side effects on typos" item of the PR checklist.
+--
+-- Settings were the only statement family that resolved nothing, which is why
+-- this survived: every other family runs its references through the same pass.
+--
+-- Expected: both statements refused, by `mxcli check --references` AND by exec
+-- (the guard is in the handler, so `--no-check` does not get around it).
+--
+--   mxcli check 274-settings-reference-validation.mdl -p app.mpr --references
+--
+-- NOT named .fail.mdl, deliberately. `make check-mdl` runs `mxcli check` WITHOUT
+-- a project, and this rule cannot decide anything without one — it resolves the
+-- names against the model. As valid MDL the file checks clean there, so naming
+-- it .fail.mdl reports "negative test unexpectedly passed" and makes a working
+-- rule look regressed (the Makefile says so above check-mdl; #891/#892 are the
+-- precedents). The guard is covered by unit tests in
+-- mdl/executor/validate_settings_refs_test.go instead.
+--
+-- The controls that matter are in 274-settings-reference-valid.mdl: the same
+-- settings, with the microflow and constant created earlier in the same script,
+-- must still pass — a check that rejects everything is not a check.
+
+alter settings model AfterStartupMicroflow = 'Nope.MF_DoesNotExist';
+alter settings constant 'Nope.AlsoMissing' value 'x' in configuration 'Default';

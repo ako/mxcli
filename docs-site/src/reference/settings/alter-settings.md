@@ -15,6 +15,9 @@
     DROP CONFIGURATION 'name'
 
     ALTER SETTINGS LANGUAGE key = value
+    ALTER SETTINGS LANGUAGE ADD [OR MODIFY] 'code' [( option: value, ... )]
+    ALTER SETTINGS LANGUAGE MODIFY 'code' ( option: value, ... )
+    ALTER SETTINGS LANGUAGE REMOVE 'code' 
 
     ALTER SETTINGS WORKFLOWS key = value
 
@@ -28,7 +31,8 @@ Modifies project settings by category. Each category has its own syntax and avai
 
 **CONSTANT** settings override the default value of a project constant within a specific runtime configuration. Both the constant name and the configuration name must be enclosed in single quotes.
 
-**LANGUAGE** settings control localization, primarily the default language code.
+**LANGUAGE** settings control localization: the default language code, and the
+list of **enabled** languages — the only ones a build emits translations for.
 
 **WORKFLOWS** settings control the workflow engine, including the user entity used for workflow tasks and default task parallelism.
 
@@ -90,9 +94,34 @@ reason.
 
 ### Set the default language
 
+The code must already be enabled; `ALTER SETTINGS LANGUAGE DefaultLanguageCode`
+is validated against the enabled list.
+
 ```sql
 ALTER SETTINGS LANGUAGE DefaultLanguageCode = 'en_US';
 ```
+
+### Enable, change and disable a language
+
+```sql
+ALTER SETTINGS LANGUAGE ADD 'de_DE';
+ALTER SETTINGS LANGUAGE ADD 'ar_SD' (CheckCompleteness: true, CustomDateFormat: 'yyyy-MM-dd');
+ALTER SETTINGS LANGUAGE ADD OR MODIFY 'de_DE' (CheckCompleteness: true);
+ALTER SETTINGS LANGUAGE MODIFY 'de_DE' (CustomDateFormat: 'dd.MM.yyyy');
+ALTER SETTINGS LANGUAGE REMOVE 'de_DE';
+```
+
+Options: `CheckCompleteness` (report errors for texts with no translation in this
+language — the default language is always checked regardless),
+`CustomDateFormat`, `CustomTimeFormat`, `CustomDateTimeFormat`.
+
+`MODIFY` touches only the options it names, so turning on the completeness check
+cannot clear a custom format set elsewhere. `ADD OR MODIFY` is the upsert and is
+what `DESCRIBE SETTINGS` emits.
+
+Removing the **default** language is refused. Removing any other language does
+**not** delete its translations — they stay in the model, stop being built, and
+the run reports how many source strings are affected.
 
 ### Configure workflow user entity
 

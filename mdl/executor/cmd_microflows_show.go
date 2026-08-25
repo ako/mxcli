@@ -12,6 +12,7 @@ import (
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
 	"github.com/mendixlabs/mxcli/mdl/microflowgraph"
 	"github.com/mendixlabs/mxcli/model"
+	"github.com/mendixlabs/mxcli/sdk/javaactions"
 	"github.com/mendixlabs/mxcli/sdk/microflows"
 )
 
@@ -283,6 +284,8 @@ func describeMicroflow(ctx *ExecContext, name ast.QualifiedName) error {
 	if folderPath := h.BuildFolderPath(targetMf.ContainerID); folderPath != "" {
 		lines = append(lines, fmt.Sprintf("folder %s", mdlQuote(folderPath)))
 	}
+
+	lines = append(lines, exposeClauseLines(targetMf)...)
 
 	// BEGIN block
 	lines = append(lines, "begin")
@@ -629,6 +632,8 @@ func renderMicroflowMDL(
 			lines = append(lines, returnLine)
 		}
 	}
+
+	lines = append(lines, exposeClauseLines(mf)...)
 
 	lines = append(lines, "begin")
 	headerLineCount := len(lines)
@@ -1585,4 +1590,37 @@ func describeRule(ctx *ExecContext, name ast.QualifiedName) error {
 
 	fmt.Fprintln(ctx.Output, strings.Join(lines, "\n"))
 	return nil
+}
+
+// exposeClauseLines renders a microflow's toolbox entries as EXPOSED AS clauses,
+// so a describe → exec round trip keeps it in the toolbox it was dragged from.
+//
+// The icon and image bitmaps are not rendered — MDL cannot express them — and do
+// not need to be: an unwritten clause preserves what is stored rather than
+// clearing it.
+//
+// It is a shared helper because there are two microflow renderers in this file,
+// describeMicroflow and renderMicroflowMDL, and patching only one of them is how
+// this clause was invisible on the path the CLI actually takes.
+func exposeClauseLines(mf *microflows.Microflow) []string {
+	var out []string
+	for _, e := range []struct {
+		kind string
+		info *javaactions.MicroflowActionInfo
+	}{
+		{"microflow", mf.MicroflowActionInfo},
+		{"workflow", mf.WorkflowActionInfo},
+	} {
+		if e.info == nil || e.info.Caption == "" {
+			continue
+		}
+		out = append(out, fmt.Sprintf("exposed as %s action '%s' in '%s'",
+			e.kind, escapeMDLString(e.info.Caption), escapeMDLString(e.info.Category)))
+		for _, note := range strings.Split(describeBitmapComments(e.info), "\n") {
+			if note != "" {
+				out = append(out, note)
+			}
+		}
+	}
+	return out
 }

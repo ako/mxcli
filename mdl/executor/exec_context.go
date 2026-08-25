@@ -5,6 +5,7 @@ package executor
 import (
 	"context"
 	"io"
+	"os"
 	"path/filepath"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
@@ -98,6 +99,41 @@ type ExecContext struct {
 	// Incremented on each recursive call; execExecuteScript rejects calls
 	// that exceed maxScriptDepth to prevent infinite self-referencing scripts.
 	ScriptDepth int
+
+	// ScriptDir is the directory of the .mdl file being executed, empty when the
+	// statements did not come from a file (a -c one-liner, the REPL, a test).
+	//
+	// A relative path written INSIDE a script names a file next to that script,
+	// not next to whoever happened to invoke mxcli. Resolving against the working
+	// directory instead makes a script runnable only from one place — which is
+	// exactly how the toolbox-bitmap example broke the doctype harness, whose
+	// working directory is the package under test.
+	ScriptDir string
+}
+
+// ResolveScriptRelative turns a path written inside an MDL script into an
+// absolute one: relative to the script's own directory when that is known, and
+// to the working directory otherwise.
+func (ctx *ExecContext) ResolveScriptRelative(path string) (string, error) {
+	if path == "" || filepath.IsAbs(path) {
+		return path, nil
+	}
+	if ctx != nil && ctx.ScriptDir != "" {
+		if candidate := filepath.Join(ctx.ScriptDir, path); fileExists(candidate) {
+			return candidate, nil
+		}
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(cwd, path), nil
+}
+
+// fileExists reports whether path names an existing file.
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }
 
 // Connected returns true if a project is connected via the Backend.

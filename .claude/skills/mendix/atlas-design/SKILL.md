@@ -105,10 +105,25 @@ Layer 0  ATLAS       Atlas classes / design properties / building blocks — str
 the `signal` theme, and `mxcli theme apply -p app.mpr` adds one (`signal`,
 `ledger` or `console`) to an existing project. Each carries a full palette in
 both light and dark, vendored fonts, the focus ring, the density scale and the
-`num` / `pill` / `stat` recipe classes. Re-brand by changing `--mxt-brand` in the
-palette block; the block is digest-fenced, so mxcli refuses to overwrite your
-edits rather than silently discarding them. `mxcli theme show <name>` lists
-exactly which files it writes.
+`num` / `pill` / `stat` recipe classes. `mxcli theme show <name>` lists exactly
+which files it writes, and the `--mxt-*` vocabulary a palette is made of.
+
+**Two ways to re-brand, and picking the wrong one costs you the theme.** The
+generated blocks are digest-fenced: an edit inside one is refused on the next
+`apply` rather than discarded. That protects your work, but it also means the
+project has taken the theme out of mxcli's hands.
+
+- **Changing one or two values** — a brand colour, a radius: edit them in the
+  palette block and accept that `theme apply` will now report the file as
+  modified. Fine for a tweak.
+- **A real brand** — your palette, your type, your density: `mxcli theme create`.
+  It scaffolds a theme the project owns, which `theme list -p` shows, `theme
+  apply <name>` installs and `theme remove` takes out — no fence to fight.
+
+```bash
+mxcli theme create acme -p app.mpr --from design/tokens.css
+mxcli theme apply acme -p app.mpr
+```
 
 A Layer-1 token retune **cascades down** into Atlas components and pluggable
 widgets for free — that is the headline payoff. A full re-brand (new palette, type,
@@ -208,9 +223,33 @@ blocks are digest-fenced, so a hand-written palette in the same file will either
 be refused on the next apply or silently fight the theme in the cascade.
 
 ```bash
-mxcli theme list                       # signal (default), ledger, console
-mxcli theme show signal                # palette, and every file it writes
+mxcli theme list -p app.mpr            # built-ins + this project's own themes
+mxcli theme show signal                # palette, files it writes, token vocabulary
 mxcli theme apply signal -p app.mpr    # --variant auto | light | dark
+```
+
+When the brand is genuinely yours, make it a theme rather than an edit:
+
+```bash
+mxcli theme create acme -p app.mpr                    # scaffold from signal
+mxcli theme create acme -p app.mpr --from console     # ...or from console
+mxcli theme create acme -p app.mpr --from design.css  # ...and seed the palette
+mxcli theme apply acme -p app.mpr
+```
+
+It lands in `theme/mxcli-themes/<name>/` — committed, and not compiled until
+`apply` copies it into `theme/web/`. Scaffolding copies an existing theme, so the
+Atlas map, the recipe layer and the widget layer come across byte for byte; what
+you edit is the palette. `--from <file>` reads `--mxt-*` declarations out of any
+CSS-shaped text, filing a `prefers-color-scheme: dark` block into the dark
+palette. A `--mxt-*` name the base theme does not declare is **refused**, because
+nothing would read it — the theme would apply cleanly and render unchanged.
+
+Several themes can be installed at once and switched by a class on `<html>`:
+
+```bash
+mxcli theme apply signal ledger console -p app.mpr   # first named is the default
+mxcli theme switcher install -p app.mpr --module MyFirstModule
 ```
 
 ### The token architecture it gives you

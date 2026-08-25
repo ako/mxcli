@@ -16,6 +16,7 @@ import (
 	genTexts "github.com/mendixlabs/mxcli/modelsdk/gen/texts"
 	mmpr "github.com/mendixlabs/mxcli/modelsdk/mpr"
 	"github.com/mendixlabs/mxcli/modelsdk/property"
+	"github.com/mendixlabs/mxcli/sdk/javaactions"
 	"github.com/mendixlabs/mxcli/sdk/microflows"
 )
 
@@ -159,6 +160,9 @@ func (b *Backend) CreateMicroflow(mf *microflows.Microflow) error {
 	if err != nil {
 		return fmt.Errorf("CreateMicroflow: encode: %w", err)
 	}
+	if contents, err = patchMicroflowToolboxEntries(contents, mf); err != nil {
+		return fmt.Errorf("CreateMicroflow: %w", err)
+	}
 	return b.writer.InsertUnit(string(mf.ID), string(mf.ContainerID), "Documents", "Microflows$Microflow", contents)
 }
 
@@ -176,6 +180,9 @@ func (b *Backend) UpdateMicroflow(mf *microflows.Microflow) error {
 	contents, err := (&codec.Encoder{}).Encode(gm)
 	if err != nil {
 		return fmt.Errorf("UpdateMicroflow: encode: %w", err)
+	}
+	if contents, err = patchMicroflowToolboxEntries(contents, mf); err != nil {
+		return fmt.Errorf("UpdateMicroflow: %w", err)
 	}
 	return b.writer.UpdateRawUnit(string(mf.ID), contents)
 }
@@ -1840,4 +1847,33 @@ func orDefault(s, def string) string {
 		return def
 	}
 	return s
+}
+
+// patchMicroflowToolboxEntries writes the two "expose as … action" sub-documents
+// into an encoded microflow unit.
+//
+// They are injected post-encode for the same reason the Java action's is (#656):
+// the four icon/image fields are BSON *binary*, and gen declares them as string,
+// so anything routed through the gen accessors would silently turn a real PNG
+// into an empty value. Going to the document directly is the only lossless path.
+//
+// A nil entry writes BSON null — the absence of a toolbox entry — which is what
+// gen already encodes, so the patch is a no-op in that case.
+func patchMicroflowToolboxEntries(contents []byte, mf *microflows.Microflow) ([]byte, error) {
+	var err error
+	for _, e := range []struct {
+		key  string
+		info *javaactions.MicroflowActionInfo
+	}{
+		{"MicroflowActionInfo", mf.MicroflowActionInfo},
+		{"WorkflowActionInfo", mf.WorkflowActionInfo},
+	} {
+		if e.info == nil {
+			continue
+		}
+		if contents, err = codec.PatchBSONField(contents, e.key, microflowActionInfoBSON(e.info)); err != nil {
+			return nil, fmt.Errorf("patch %s: %w", e.key, err)
+		}
+	}
+	return contents, nil
 }

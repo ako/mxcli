@@ -49,7 +49,6 @@ type CreateEnumerationStmt struct {
 	Name           QualifiedName
 	Values         []EnumValue
 	Documentation  string
-	Comment        string
 	Folder         string // Module folder to place the enumeration in (Bug 12b)
 	CreateOrModify bool   // True if CREATE OR MODIFY was used
 }

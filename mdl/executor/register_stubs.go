@@ -280,6 +280,12 @@ func registerRegularExpressionHandlers(r *Registry) {
 }
 
 func registerImageHandlers(r *Registry) {
+	r.Register(&ast.CreateAnnotationStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execCreateAnnotation(ctx, stmt.(*ast.CreateAnnotationStmt))
+	})
+	r.Register(&ast.DropAnnotationStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execDropAnnotation(ctx, stmt.(*ast.DropAnnotationStmt))
+	})
 	r.Register(&ast.CreateImageCollectionStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
 		return execCreateImageCollection(ctx, stmt.(*ast.CreateImageCollectionStmt))
 	})

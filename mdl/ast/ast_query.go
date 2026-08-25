@@ -104,6 +104,8 @@ const (
 	ShowJarDependencies       // LIST JAR DEPENDENCIES [IN module]
 	ShowBuildingBlocks        // SHOW BUILDING BLOCKS [IN module]
 	ShowConnections           // SHOW CONNECTIONS (open external SQL connections in this session)
+	// ShowAnnotations lists a domain model's canvas notes.
+	ShowAnnotations
 )
 
 // String returns the human-readable name of the show object type.
@@ -123,6 +125,8 @@ func (t ShowObjectType) String() string {
 		return "ENTITY"
 	case ShowAssociations:
 		return "ASSOCIATIONS"
+	case ShowAnnotations:
+		return "ANNOTATIONS"
 	case ShowAssociation:
 		return "ASSOCIATION"
 	case ShowMicroflows:

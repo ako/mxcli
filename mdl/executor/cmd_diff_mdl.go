@@ -237,11 +237,6 @@ func microflowStmtToMDL(ctx *ExecContext, s *ast.CreateMicroflowStmt) string {
 		lines = append(lines, fmt.Sprintf("folder '%s'", s.Folder))
 	}
 
-	// Comment
-	if s.Comment != "" {
-		lines = append(lines, fmt.Sprintf("comment '%s'", s.Comment))
-	}
-
 	// Return type
 	if s.ReturnType != nil {
 		returnType := dataTypeToString(ctx, s.ReturnType.Type)
@@ -310,11 +305,6 @@ func nanoflowStmtToMDL(ctx *ExecContext, s *ast.CreateNanoflowStmt) string {
 	// Folder
 	if s.Folder != "" {
 		lines = append(lines, fmt.Sprintf("folder '%s'", s.Folder))
-	}
-
-	// Comment
-	if s.Comment != "" {
-		lines = append(lines, fmt.Sprintf("comment '%s'", s.Comment))
 	}
 
 	// Return type

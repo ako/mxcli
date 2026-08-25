@@ -154,9 +154,7 @@ func describeJavaAction(ctx *ExecContext, name ast.QualifiedName) error {
 		sb.WriteString("' in '")
 		sb.WriteString(ja.MicroflowActionInfo.Category)
 		sb.WriteString("'")
-		if n := len(ja.MicroflowActionInfo.IconData); n > 0 {
-			fmt.Fprintf(&sb, "\n-- icon: %d bytes", n)
-		}
+		sb.WriteString(describeBitmapComments(ja.MicroflowActionInfo))
 	}
 
 	// The grammar requires an `as $$ ... $$` body for CREATE JAVA ACTION, so always
@@ -323,6 +321,7 @@ func execCreateJavaAction(ctx *ExecContext, s *ast.CreateJavaActionStmt) error {
 	var existingContainer model.ID
 	// Target the live action and carry its exclusion forward (#914).
 	existingExcluded := false
+	var existingActionInfo *javaactions.MicroflowActionInfo
 	if existing, ok := pickLive(jas,
 		func(ja *types.JavaAction) bool {
 			return h.GetModuleName(h.FindModuleID(ja.ContainerID)) == s.Name.Module && ja.Name == s.Name.Name
@@ -335,6 +334,11 @@ func execCreateJavaAction(ctx *ExecContext, s *ast.CreateJavaActionStmt) error {
 		existingJAID = existing.ID
 		existingExcluded = existing.Excluded
 		existingContainer = existing.ContainerID
+		// The toolbox entry holds four PNG bitmaps MDL cannot name, so the
+		// stored one has to be read before the rewrite can carry them.
+		if full, err := ctx.Backend.ReadJavaActionByName(s.Name.Module + "." + s.Name.Name); err == nil && full != nil {
+			existingActionInfo = full.MicroflowActionInfo
+		}
 	}
 
 	moduleID := containerID
@@ -427,13 +431,12 @@ func execCreateJavaAction(ctx *ExecContext, s *ast.CreateJavaActionStmt) error {
 		ja.ReturnType = astDataTypeToJavaActionReturnType(s.ReturnType)
 	}
 
-	// Build MicroflowActionInfo if EXPOSED AS clause is present
-	if s.ExposedCaption != "" {
-		ja.MicroflowActionInfo = &javaactions.MicroflowActionInfo{
-			BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
-			Caption:     s.ExposedCaption,
-			Category:    s.ExposedCategory,
-		}
+	// Fold the EXPOSED AS clause onto the stored toolbox entry rather than
+	// rebuilding it: the four bitmaps are not expressible in MDL.
+	if ja.MicroflowActionInfo, err = mergeMicroflowActionInfo(ctx,
+		existingActionInfo, s.ExposedCaption, s.ExposedCategory, s.NotExposed,
+		s.ExposedBitmaps, exposeWarner(ctx)); err != nil {
+		return err
 	}
 
 	// Create or update in MPR

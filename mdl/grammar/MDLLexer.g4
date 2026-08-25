@@ -315,6 +315,9 @@ WIDGET: W I D G E T;
 WIDGETS: W I D G E T S;
 CAPTION: C A P T I O N;
 ICON: I C O N;
+// DARK selects the dark-mode variant of a toolbox icon or image
+// (EXPOSED AS … ICON DARK 'icon-dark.png').
+DARK: D A R K;
 TOOLTIP: T O O L T I P;
 DATASOURCE: D A T A S O U R C E;
 SOURCE_KW: S O U R C E;
@@ -705,6 +708,10 @@ CREATED: C R E A T E D;
 PARALLEL: P A R A L L E L;
 WAIT: W A I T;
 ANNOTATION: A N N O T A T I O N;
+ANNOTATIONS: A N N O T A T I O N S;
+// AT_KW is the WORD "at" — DROP ANNOTATION AT (x, y). The AT token is the '@'
+// symbol that opens an annotation like @position, so it cannot serve here.
+AT_KW: A T;
 BOUNDARY: B O U N D A R Y;
 INTERRUPTING: I N T E R R U P T I N G;
 NON: N O N;

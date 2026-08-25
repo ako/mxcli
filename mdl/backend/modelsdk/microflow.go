@@ -207,6 +207,11 @@ func microflowFromGen(mf *genMf.Microflow, containerID model.ID) *microflows.Mic
 	for _, qn := range mf.AllowedModuleRolesQualifiedNames() {
 		out.AllowedModuleRoles = append(out.AllowedModuleRoles, model.ID(qn))
 	}
+	// The two toolbox entries. Read them so a rewrite can carry the icon and
+	// image bitmaps MDL cannot express — a rebuild from caption and category
+	// alone destroyed them, and `mx check` reported 0 errors either way.
+	out.MicroflowActionInfo = actionInfoFromGen(mf.MicroflowActionInfo())
+	out.WorkflowActionInfo = actionInfoFromGen(mf.WorkflowActionInfo())
 	params, objs := splitFlowObjects(mf.ObjectCollection())
 	out.Parameters = params
 	// Flows live on the gen Microflow, but the model keeps them in the object

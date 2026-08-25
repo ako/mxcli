@@ -90,6 +90,7 @@ Modifies an existing entity without full replacement.
 | Modify attributes | `alter entity Module.Name modify (attr: NewType [constraints]);` | Change type/constraints |
 | Rename attribute | `alter entity Module.Name rename attribute OldName to NewName;` | Also rewrites stored references (microflow members, page widgets, validation/access rules) and XPath constraints. Microflow expressions are free text and are **not** rewritten |
 | Add index | `alter entity Module.Name add index [if not exists] [name] [on] (Col1 [asc\|desc], ...);` | `on` is optional (SQL-like). **Without `if not exists`, re-running is an error** — a second identical index fails the build with CE0072 |
+| Document an association | `/** What it links. */`<br>`create association Mod.C_P from Mod.C to Mod.P;`<br>or `... to Mod.P comment 'What it links.';` | Both spellings work on create; the doc comment wins when both are present. `comment` survives here — and only here among the CREATE statements — because it is an association's **only inline** spelling |
 | Create if absent | `create entity if not exists Module.Name (...);`<br>`create association if not exists Module.Assoc from ... to ...;` | Skips when it already exists, leaving the stored definition untouched. Unlike `create or modify`, which rebuilds the element from the statement and drops any attribute the statement omits |
 | Add index (SQL form) | `create index IdxName on Module.Name (Col1 [asc\|desc], ...);` | Same effect as `alter entity … add index`. The index name is accepted and discarded — a Mendix index is identified by its columns |
 | Drop index | `alter entity Module.Name drop index [if exists] (Col1 [asc\|desc], ...);` | Selected by its columns — a Mendix index stores no name, so the columns are its identity, and they are what `describe entity` prints. The legacy positional form `drop index idx1` still works but shifts when an earlier index is dropped |
@@ -433,6 +434,30 @@ Studio Pro picks the dropdown label from the referenced microflow's
 return type (`System.ConsumedODataConfiguration` vs
 `list of System.HttpHeader`).
 
+## Domain-Model Annotations
+
+The note boxes Studio Pro draws on the canvas. They belong to a module's domain
+model, not to a document, so the statements name a module.
+
+| Statement | Syntax | Notes |
+|-----------|--------|-------|
+| Show annotations | `show annotations [in Module];` | Module, Title, Position, Width, Lines. **Title** is the first line of the caption — the addressable key |
+| Create | `create annotation in Module ( Caption: 'text' );` | New notes get Studio Pro's defaults: position (60, 240), width 440 |
+| Create with layout | `create annotation in Module ( Caption: $$Orders\nmulti-line$$, Position: (60, 40), Width: 400 );` | Caption accepts `$$…$$` for a multi-line note; an MDL string literal is single-line |
+| Update in place | `create or modify annotation in Module ( Caption: 'new wording', Position: (60, 40) );` | **Position is the identity when given** — reword and re-run without duplicating. An omitted `Width` keeps the stored one |
+| Drop by title | `drop annotation 'Orders' in Module;` | Refused when two notes share a first line |
+| Drop by position | `drop annotation at (60, 40) in Module;` | The unambiguous form |
+
+**There is no colour.** A domain model holds exactly four child collections
+(Annotations, Associations, CrossAssociations, Entities), and
+`DomainModels$Annotation` stores only Caption, ExportLevel, Location and Width.
+A "coloured section box" is this element in Studio Pro's own styling — nothing
+about that styling is in the model, so nothing can author it.
+
+**Give a note a Position if you intend to re-run the script.** Without one the
+only handle is the caption's first line, so rewording creates a second note
+rather than updating the first.
+
 ## Microflows, Nanoflows & Rules
 
 | Statement | Syntax | Notes |
@@ -448,6 +473,10 @@ return type (`System.ConsumedODataConfiguration` vs
 | Drop microflow | `drop microflow Module.Name;` | |
 | Drop nanoflow | `drop nanoflow Module.Name;` | |
 | Create nanoflow | `create [or modify] nanoflow Module.Name (params) returns type [folder 'path'] begin ... end;` | Same body syntax as microflows |
+| Expose in the toolbox | `create microflow Module.Name () exposed as microflow action 'Caption' in 'Category' begin ... end;` | Studio Pro's "Expose as microflow action". A microflow has **two** toolbox entries, so the clause names which |
+| Expose to the workflow editor | `... exposed as workflow action 'Caption' in 'Category' ...` | The second entry; both may be set on one microflow |
+| Toolbox bitmaps | `... exposed as microflow action 'C' in 'Cat' icon 'i.png' image 'm.png' ...` | Icon 64x64 PNG, image 256x192; `icon dark`/`image dark` for the dark variants. Paths relative to the .mdl file's own directory |
+| Remove a toolbox entry | `... not exposed as workflow action ...` | An **omitted** clause preserves what is stored — icon and image included — so removal is explicit. Nanoflows and rules refuse the clause: only a microflow stores one |
 | Move nanoflow | `move nanoflow Module.Name to folder 'path';` | |
 | Nanoflow restrictions | N/A | No Java actions, ErrorEvent, REST calls, database queries, external actions, download file, workflow actions, import/export mappings, JSON transformation, show home page |
 | Show rules | `show rules [in module];` | `list rules` is the same statement |
@@ -761,11 +790,16 @@ two with a comment instead of emitting an `icon` clause that would convert them.
 | Alter configuration | `alter settings configuration 'Name' key = value;` | DatabaseType, DatabaseUrl, HttpPortNumber, etc. |
 | Alter constant | `alter settings constant 'Name' value 'val' in configuration 'cfg';` | Override constant per configuration |
 | Drop constant override | `alter settings drop constant 'Name' in configuration 'cfg';` | Reset to default value |
+| Create or modify configuration | `create or modify configuration 'Name' [key = value, ...];` | Upsert — what `describe settings` emits, so a described project replays onto a target that already has `Default` |
 | Create configuration | `create configuration 'Name' [key = value, ...];` | New server configuration. `DatabaseType` must be `Db2`, `Hsqldb`, `MySql`, `Oracle`, `PostgreSql`, `SapHana` or `SqlServer` (case-insensitive) |
 | Drop configuration | `drop configuration 'Name';` | Remove a configuration |
-| Alter language | `alter settings LANGUAGE key = value;` | DefaultLanguageCode |
+| Alter language | `alter settings LANGUAGE key = value;` | DefaultLanguageCode (must already be enabled) |
+| Enable a language | `alter settings LANGUAGE add 'de_DE' [(CheckCompleteness: true, CustomDateFormat: 'yyyy-MM-dd')];` | Adds to the enabled list — the only languages a build emits translations for. A language is identified by its code; Studio Pro's "German, Germany" is derived for display and not stored |
+| Enable or modify (upsert) | `alter settings LANGUAGE add or modify 'de_DE' (CheckCompleteness: true);` | What `describe settings` emits, so a described project replays onto itself or onto one that already has the language |
+| Modify a language | `alter settings LANGUAGE modify 'de_DE' (CheckCompleteness: true);` | Changes only the options it names. `CheckCompleteness` turns on error reporting for texts with no translation in that language (the default language is always checked regardless) |
+| Disable a language | `alter settings LANGUAGE remove 'de_DE';` | The **default** language is refused (every missing translation falls back on it). Translations are NOT deleted — they stay in the model and stop being built; the run reports how many |
 | Alter workflows | `alter settings workflows key = value;` | UserEntity, DefaultTaskParallelism |
-| List languages | `show languages;` | Lists language codes with translation string counts (requires `refresh catalog full`) |
+| List languages | `show languages;` | ⚠️ languages that have TRANSLATIONS, not enabled ones (a stock app reports 8 while 1 is enabled). For the enabled list use `describe settings`. Requires `refresh catalog full` |
 
 ## Business Events
 
@@ -1111,6 +1145,9 @@ Module.OrderResponse_CustomerInfo/Module.CustomerInfo as customer {
 | Create Java action | `create [or modify] java action Module.Name [folder 'path'](params) returns type as $$ ... $$;` | OR MODIFY updates signature/body, preserves UUID |
 | Create with type params | `create java action Module.Name(EntityType: entity <pEntity>, Obj: pEntity) ...;` | Generic type parameters |
 | Create exposed action | `... exposed as 'caption' in 'Category' as $$ ... $$;` | Toolbox-visible in Studio Pro |
+| Exposed action with bitmaps | `... exposed as 'caption' in 'Category' icon 'i.png' icon dark 'id.png' image 'm.png' image dark 'md.png' as $$ ... $$;` | Icon 64x64 PNG, image 256x192; paths relative to the .mdl file's own directory. A wrong size warns and is written; a non-PNG is refused |
+| Remove a toolbox entry | `... not exposed as $$ ... $$;` | An **omitted** clause preserves the stored entry (bitmaps included), so removal is explicit |
+| Clear one bitmap | `... exposed as 'c' in 'C' drop icon dark as $$ ... $$;` | `drop icon\|image [dark]` clears exactly one; the others are untouched |
 | Rename Java action | `rename java action Module.Old to New;` | Renames BSON unit and .java source file |
 | Rename Java action (dry run) | `rename java action Module.Old to New dry run;` | Preview reference changes without modifying |
 | Drop Java action | `drop java action Module.Name;` | Deletes MPR unit and .java source file |
@@ -1432,8 +1469,14 @@ Bulk translation of every user-visible string, one file per language. Entries us
 | Create | `create translations [in Module] for <lang> ( 'src' as 'target', ... );` | The language is the thing that exists — **errors** if it already has translations |
 | Merge | `create or modify translations ...` | A source the file does not name is left alone |
 | Replace | `create or replace translations ...` | The file is authoritative: a translation whose source it does not name is **REMOVED**, and the run says which. `in Module` **bounds** the deletion |
-| Show languages | `show languages;` | Per-language string counts (needs `refresh catalog full`) |
+| Remove a language's translations | `create or replace translations [in Module] for <lang> ( );` | An empty file is authoritative over nothing, so everything in scope goes — the only way to take a language's translations out of the model |
+| Show languages | `show languages;` | ⚠️ languages that **have translations**, not enabled ones — a stock app reports 8 while 1 is enabled. The enabled list is in `describe settings`. Needs `refresh catalog full` |
 | Default language | `alter settings LANGUAGE DefaultLanguageCode = 'en_US';` | The language a translation file's left column is written in |
+
+**A translation for a language the project has not enabled is discarded at build
+time** — it is stored in the model, passes `mx check`, and produces no
+`translations_<code>.properties` at all. The run warns; enable the language in
+project settings first.
 
 Keyed on the **source string**, so one entry translates every occurrence. A key
 that matches nothing is **reported**, not skipped — a source edited after the

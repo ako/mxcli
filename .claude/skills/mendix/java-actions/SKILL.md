@@ -140,6 +140,51 @@ return true;
 $$;
 ```
 
+#### Toolbox icon and image
+
+The entry also carries four PNG bitmaps — an icon and a larger image, each with
+a dark-mode variant. Paths resolve against the directory of the .mdl file, so a
+script and its artwork travel together:
+
+```mdl
+exposed as 'Format Currency' in 'Formatting'
+  icon 'assets/currency-64.png'
+  icon dark 'assets/currency-64-dark.png'
+  image 'assets/currency-256.png'
+```
+
+The icon should be **64x64** and the image **256x192**. A different size is
+written with a warning (Studio Pro scales it); a file that is not a PNG is
+refused, because Studio Pro renders nothing for one.
+
+#### An omitted clause preserves — it does not clear
+
+This is the rule to remember, and it is not the obvious one:
+
+| You write | What happens |
+|---|---|
+| `exposed as 'X' in 'Y'` | Caption and category from MDL; **icon and image carried** from what was stored |
+| *(no clause at all)* | The whole entry is **preserved**, bitmaps included |
+| `not exposed` | The entry is removed |
+| `exposed as 'X' in 'Y' drop icon dark` | Clears **one** bitmap; the other three are untouched |
+
+Rewriting a Java action to change its body must not cost it the icon a designer
+set in Studio Pro, and saying nothing about the toolbox is not the same as
+asking to be taken out of it. Nothing below Studio Pro can see the difference:
+an action with no toolbox entry is a valid action, so `mx check` reports 0
+errors either way.
+
+`describe java action` reports the bitmaps as comments rather than re-emitting
+`icon`/`image` clauses — the clause names a file on disk and the model holds
+only bytes. They survive a describe → exec round trip regardless, because an
+omitted bitmap is preserved.
+
+**Microflows have this too**, and two of them: `exposed as microflow action` and
+`exposed as workflow action`, for Studio Pro's two toolboxes. See
+`write-microflows`. Nanoflows and rules do not — only `Microflows$Microflow`
+stores a toolbox entry, and the clause is refused on the other two with a
+message saying so.
+
 ### Supported Parameter Types
 
 | MDL Type | Description |

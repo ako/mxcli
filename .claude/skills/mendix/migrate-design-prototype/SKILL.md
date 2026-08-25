@@ -1,6 +1,6 @@
 ---
 name: migrate-design-prototype
-description: "Reproduce a Claude Design prototype or design handoff (HTML/CSS, .dc.html export, tokens, screenshots) inside a Mendix app as an SCSS theme plus styled pages. Use when given a design artefact and asked to make the app look like it."
+description: "Reproduce a Claude Design prototype or design handoff (HTML/CSS, .dc.html export, tokens, screenshots) inside a Mendix app: build the palette with `mxcli theme create --from`, then apply classes in pages with MDL. Use when given a design artefact and asked to make the app look like it."
 ---
 
 # Migrate a Claude Design Prototype into a Mendix App (Theme + Pages)
@@ -30,11 +30,12 @@ Related skills: **`atlas-design` (read first — the Atlas-first taste + workflo
 ```
 Claude Design handoff                         Mendix app
 ─────────────────────                         ──────────────────────────────
-*.dc.html / prototype  ──①  extract  ──►  :root { --ss-* }  design tokens
-tokens / CSS / PRD          tokens        + map onto Atlas  (--brand-primary …)
+*.dc.html / prototype  ──①  theme    ──►  mxcli theme create --from <file>
+tokens / CSS / PRD          create        → a theme the project owns
                                                     │
-component styles       ──②  rebuild  ──►  .ss-* component classes in main.scss
-(cards, chips, …)           as classes            │
+component styles       ──②  rebuild  ──►  Atlas block / utility class, and only
+(cards, chips, …)           as classes      then .ss-* classes in main.scss
+                                                    │
 screenshots            ──③  reference ──►  widgets get Class: / DynamicClasses:
 (per screen)                per screen          via create page / alter page
                                                     │
@@ -59,9 +60,9 @@ gives you *before* hand-writing custom SCSS. In order of preference:
    `designproperties: ['Card style': on]`, `['Background color': 'Brand Primary']`,
    `['Spacing': ['margin-bottom': 'L']]`. `mxcli check -p` validates design-property keys
    and values (MDL-WIDGET11/12) and lists the allowed values.
-3. **Brand-token retune** — map the prototype's tokens onto Atlas brand variables
-   (`--brand-primary`, `--brand-*`) in `custom-variables.scss` so the whole app inherits
-   the palette (see "map onto Atlas" in step ①).
+3. **Brand-token retune** — build the palette with `mxcli theme create --from`
+   (step ①). The theme maps ~60 Atlas variables onto it, so the whole app inherits
+   the look; hand-mapping a handful of `--brand-*` leaves most of Atlas on stock blue.
 4. **Custom `.ss-*` SCSS — for brand identity only.** Reach for a hand-rolled component
    class (below) only when Atlas genuinely can't express the shape (bespoke chrome,
    fractional-track grids, pixel-exact rows). Hand-rolling `.panel`/`.stat`/`.card` SCSS
@@ -81,66 +82,111 @@ The rest of this skill (custom SCSS components, `.ss-*` classes, ListView row re
   `theme/web/_<name>.scss` and add `@import "<name>";` after the Atlas imports (the same
   cascade-order rule then applies within the partial). New partials **are** creatable —
   keep the import order (custom after Atlas) and everything works.
-- Use a **project prefix** for every custom class and CSS variable so they never collide
-  with Atlas or widget CSS. This project uses `ss-` (e.g. `.ss-panel`, `--ss-primary`).
-  Pick one prefix and use it everywhere.
-- `theme/web/custom-variables.scss` is the right place for **Atlas brand variables** you
-  want to override globally (`--brand-primary`, `--brand-success`, …). Deep look-and-feel
-  (bespoke chrome, component classes) belongs in `main.scss`.
+- Use a **project prefix** for every custom class so it never collides with Atlas or
+  widget CSS — `.ss-panel`, `.ss-chip`. Pick one and use it everywhere. Do **not**
+  invent a parallel set of `--ss-*` colour variables: the theme's `--mxt-*` palette is
+  already the app's vocabulary, and a second one silently stops following a theme or
+  variant swap.
+- `theme/web/custom-variables.scss` holds the **palette**, and `mxcli theme apply`
+  writes it — it is a generated, digest-fenced block. Retune tokens there for a
+  one-value tweak; for a real brand, own the theme (`mxcli theme create`, step ①)
+  rather than editing inside the fence, which the next `apply` refuses.
+- `theme/mxcli-themes/<name>/` is where a theme the project owns lives. Committed,
+  and **not compiled** — mxbuild's entry point is `theme/web/main.scss` and it does
+  not glob `theme/`, so the sources sit inert until `theme apply` copies them into
+  `theme/web/`.
 - Do **not** hand-edit `theme-cache/web/` — that is the compiled build artifact.
 
 ---
 
-## ① Extract Design Tokens
+## ① Build the Theme — `mxcli theme create --from`
 
-Pull the raw values out of the handoff (CSS custom properties, a Figma/tokens JSON, or by
-reading the prototype's stylesheet) and declare them once as a prefixed `:root` block, then
-**map the important ones onto Atlas variables** so the standard Atlas shell inherits the
-look for free.
+**Do not hand-write a token block.** A theme's palette is nothing but `--mxt-*`
+custom properties, and mxcli builds one from a design artifact directly:
 
-```scss
-// main.scss — after the @imports
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap");
-
-:root {
-  /* --- Palette straight from the handoff --- */
-  --ss-app-bg: #eef1f4;
-  --ss-surface: #ffffff;
-  --ss-ink: #1a2129;
-  --ss-text-secondary: #5c6a78;
-  --ss-border: #dde3ea;
-  --ss-primary: #2b5170;
-  --ss-chrome: #0f1720;
-
-  /* Status tokens (background / text / border triples) */
-  --ss-ok-bg: #eef4ef;     --ss-ok-text: #4a7a5c;     --ss-ok-border: #d3e5d9;
-  --ss-danger-bg: #fbf0ee; --ss-danger-text: #a13a2c; --ss-danger-border: #ecc9c2;
-
-  /* --- Map onto Atlas so the built-in shell matches --- */
-  --brand-primary: var(--ss-primary);
-  --topbar-bg: var(--ss-chrome);
-  --sidebar-bg: var(--ss-chrome);
-  --navigation-bg: var(--ss-chrome);
-  --bg-color: var(--ss-app-bg);
-  --font-family-base: "IBM Plex Sans", sans-serif;
-  --font-color-default: var(--ss-ink);
-  --font-color-header: var(--ss-ink);
-}
+```bash
+mxcli theme create acme -p app.mpr --from design/canvas.dc.html
+mxcli theme apply acme -p app.mpr
 ```
 
-Token checklist to extract from the handoff:
+`--from` reads `--mxt-*` declarations out of any CSS-shaped text — a stylesheet,
+an SCSS partial, or the `<style>` blocks of an HTML export — wherever they appear:
 
-| Category | Typical tokens |
-|----------|----------------|
-| Palette | surface, app background, ink/text, secondary/muted text, borders, primary/brand |
-| Status | ok / warning / danger — as background + text + border triples |
-| Chrome | topbar/sidebar background + border, nav idle/active/active-bg colours |
-| Typography | font family (import the webfont), header/body sizes, weights, a mono family for labels/metrics |
-| Shape | border-radius scale, shadow(s), panel/card padding |
+```css
+:root { --mxt-brand: #2b5170; --mxt-ground: #eef1f4; --mxt-ink: #1a2129; }
+@media (prefers-color-scheme: dark) { :root { --mxt-ground: #16161a; } }
+```
 
-> **Fonts:** if the design uses a non-Atlas font (e.g. IBM Plex), `@import` the webfont at
-> the top of your custom block **and** set `--font-family-base`. Keep a helper class for
-> any secondary family, e.g. `.ss-mono { font-family: "IBM Plex Mono", monospace; }`.
+Declarations inside a dark block (`prefers-color-scheme: dark`, `.theme-dark`,
+`[data-theme="dark"]`) seed the dark palette; everything else seeds the light
+one. Tokens the design does not name keep the base theme's value, so a
+five-colour handoff still yields a complete, working palette.
+
+Three reasons this beats writing the tokens yourself, and each is a mistake this
+skill used to teach:
+
+1. **The Atlas mapping is already done, and it is ~60 variables, not eight.**
+   Hand-mapping `--brand-primary`, `--topbar-bg` and a handful of others leaves
+   most of Atlas — form controls, tables, modals, the pluggable widgets — on
+   stock Mendix blue.
+2. **Fonts are vendored, not `@import`ed from a CDN.** A
+   `@import url("https://fonts.googleapis.com/…")` in `main.scss` is an
+   `@import`-ordering trap, a third-party request on every page load, and it
+   fails outright in an air-gapped deployment. The theme ships the `.woff2`
+   files under `theme/web/mxcli-fonts/`.
+3. **Light and dark come for free.** A hand-written `:root` block is one palette;
+   every mxcli theme carries both and follows the OS before first paint.
+
+### What to extract from the handoff
+
+Ask the design step to emit a `--mxt-*` block if you can — then this is a parse,
+not a judgement call. Otherwise read the values off the prototype and write them
+into a small `tokens.css` to pass to `--from`. Run `mxcli theme show signal` for
+the full vocabulary; the ones that carry the look:
+
+| From the handoff | Token |
+|---|---|
+| brand / primary, its hover, text on a brand fill | `--mxt-brand`, `--mxt-brand-hover`, `--mxt-brand-ink` |
+| app background, cards/panels, striped rows, hover, selected | `--mxt-ground`, `--mxt-surface`, `--mxt-surface-alt`, `--mxt-surface-hover`, `--mxt-surface-selected` |
+| body text, muted text, faint text, hairlines | `--mxt-ink`, `--mxt-ink-muted`, `--mxt-ink-faint`, `--mxt-line` |
+| sidebar / topbar chrome and its text | `--mxt-rail`, `--mxt-rail-line`, `--mxt-rail-ink`, `--mxt-rail-ink-active` |
+| ok / warning / danger / info | `--mxt-success`, `--mxt-warning`, `--mxt-danger`, `--mxt-info` |
+| status chip fills and their text | `--mxt-tint-ok` / `--mxt-tone-ok` (and `-warn`, `-risk`, `-info`, `-neutral`) |
+| body font, headings, mono, base size, line height | `--mxt-font`, `--mxt-font-heading`, `--mxt-font-mono`, `--mxt-font-size`, `--mxt-line-height` |
+| corner radius, row/control height, elevation, focus ring | `--mxt-radius`, `--mxt-radius-lg`, `--mxt-row-height`, `--mxt-control-height`, `--mxt-shadow`, `--mxt-focus-halo` |
+
+**A `--mxt-*` name the base theme does not declare is refused, not written.**
+Nothing reads it, so the theme would apply cleanly and render unchanged — which
+is indistinguishable from the design never having been applied. If a handoff
+value has no token, it belongs in the theme's own skin (below), not in the
+palette.
+
+### Two constraints worth knowing before you start
+
+- **The navigation rail stays dark in both palettes.** Several Atlas topbar
+  widgets paint their own text assuming a dark rail, at a specificity a simple
+  override cannot beat. If the prototype has a light sidebar, expect to fight it
+  — see `theme-styling`.
+- **Never pin an Atlas variable to a literal colour.** Map it to a token so the
+  dark variant restates ~30 values instead of ~60. A hardcoded
+  `--font-color-default` is invisible the moment the ground goes dark.
+
+### Fonts the theme does not ship
+
+The built-in themes vendor IBM Plex, Source Sans/Serif, JetBrains Mono and Space
+Grotesk. For a different family, drop the `.woff2` files into
+`theme/mxcli-themes/<name>/files/theme/web/mxcli-fonts/`, add an `@font-face`
+loop to that theme's partial beside the existing ones, and point `--mxt-font` at
+it. Vendored, for the reasons above — not a CDN `@import`.
+
+### If the design needs more than the palette
+
+Genuinely bespoke chrome goes in the theme's own skin mixin
+(`@mixin mxcli-<name>-skin` in `theme/mxcli-themes/<name>/files/theme/web/_mxcli-<name>.scss`),
+where it is scoped with the theme and survives `theme apply`. Reach for `.ss-*`
+classes in `main.scss` only for per-screen identity that is not part of the
+design language — and read `atlas-design` first, because most of what looks
+bespoke is an Atlas building block or utility class.
 
 ---
 
@@ -154,28 +200,34 @@ most of the way? If so, use it and add a thin `.ss-*` class only for the brand d
 (colour, radius, font). Re-implementing `card`/`panel`/`btn` from scratch is the mistake
 `atlas-design` exists to prevent.
 
-When Atlas can't express the shape, write **one reusable class** driven by the tokens from
-step ①. Keep classes small and composable so a widget can stack several
-(`Class: 'ss-panel ss-grid-lv'`).
+When Atlas can't express the shape, write **one reusable class driven by the theme's
+tokens**. Never a literal colour: a literal survives a light/dark flip and a theme
+swap, and is wrong under every palette but the one you wrote it against. Keep classes
+small and composable so a widget can stack several (`Class: 'ss-panel ss-grid-lv'`).
+
+Check the theme first — `.pill` and `.stat` below already ship as recipe classes
+(`mxcli theme show <name>`), so a chip and a KPI tile usually need no CSS at all.
 
 ```scss
-// White surface panel
+// Surface panel — every value resolves through the palette
 .ss-panel {
-  background: var(--ss-surface);
-  border: 1px solid var(--ss-border);
-  border-radius: 8px;
-  box-shadow: 0 1px 2px rgba(20, 33, 45, 0.05);
+  background: var(--mxt-surface);
+  border: 1px solid var(--mxt-line);
+  border-radius: var(--mxt-radius);
+  box-shadow: var(--mxt-shadow);
 }
 
-// Status chip — one base + colour modifiers
+// Status chip — one base + colour modifiers. The theme's own `pill` /
+// `pill-ok` / `pill-warn` / `pill-risk` do this already; write your own only
+// if the design's shape genuinely differs.
 .ss-chip {
   display: inline-block; border-radius: 11px; padding: 2px 10px;
-  font-family: "IBM Plex Mono", monospace; font-size: 11px; font-weight: 600;
+  font-family: var(--mxt-font-mono); font-size: 11px; font-weight: 600;
   border: 1px solid transparent;
   white-space: nowrap;              // status chips must never wrap to 2 lines
 }
-.ss-chip--ok     { background: var(--ss-ok-bg);     color: var(--ss-ok-text);     border-color: var(--ss-ok-border); }
-.ss-chip--danger { background: var(--ss-danger-bg); color: var(--ss-danger-text); border-color: var(--ss-danger-border); }
+.ss-chip--ok     { background: var(--mxt-tint-ok);   color: var(--mxt-tone-ok); }
+.ss-chip--danger { background: var(--mxt-tint-risk); color: var(--mxt-tone-risk); }
 ```
 
 **Base + modifier convention.** Give each component a base class and add `--variant`
@@ -195,7 +247,7 @@ to override Mendix's own DOM classes. Common targets:
   .ss-grid-lv .mx-listview-item {
     padding: 12px 16px !important;
     margin: 0 !important;
-    border-bottom: 1px solid var(--ss-border-light);
+    border-bottom: 1px solid var(--mxt-line);
   }
   ```
 
@@ -630,9 +682,10 @@ the fast index so a design migration doesn't rediscover them.
 ## Checklist
 
 - [ ] Read the handoff/screenshot for the screen **before** building or polishing it
-- [ ] Design tokens declared once as prefixed `:root` vars, **after** the `@import`s in `main.scss`
-- [ ] Key tokens mapped onto Atlas variables (`--brand-primary`, `--topbar-bg`, `--font-family-base`, …)
-- [ ] Non-Atlas fonts `@import`ed and set via `--font-family-base`
+- [ ] Palette built with `mxcli theme create --from <design-file>`, not hand-written — the Atlas mapping is ~60 variables and the theme already does it
+- [ ] Every handoff value that has a `--mxt-*` token uses it; anything left over went into the theme's skin mixin, not the palette
+- [ ] `mxcli theme apply <name> -p app.mpr` run, and the theme verified in a browser (light **and** dark)
+- [ ] Fonts vendored under `theme/web/mxcli-fonts/` — no `@import url("https://fonts.googleapis.com/…")` anywhere
 - [ ] Components are base classes + `--variant` modifiers, all using the project prefix
 - [ ] Persistent sidebar/topbar built as **navigation profile + layout + CSS**, not per-page widgets; new screens added via `CREATE OR REPLACE NAVIGATION`
 - [ ] Shell **restructured** to the design (full-height sidebar via `position:fixed` + `margin-left` offset; region sizes forced with `flex-basis`; collapse toggle hidden if unused)

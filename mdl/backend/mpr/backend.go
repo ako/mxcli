@@ -183,6 +183,15 @@ func (b *MprBackend) GetDomainModel(moduleID model.ID) (*domainmodel.DomainModel
 func (b *MprBackend) GetDomainModelByID(id model.ID) (*domainmodel.DomainModel, error) {
 	return b.reader.GetDomainModelByID(id)
 }
+func (b *MprBackend) SetDomainModelAnnotations(domainModelID model.ID, annotations []*domainmodel.Annotation) error {
+	dm, err := b.GetDomainModelByID(domainModelID)
+	if err != nil {
+		return err
+	}
+	dm.Annotations = annotations
+	return b.writer.UpdateDomainModel(dm)
+}
+
 func (b *MprBackend) UpdateDomainModel(dm *domainmodel.DomainModel) error {
 	return b.writer.UpdateDomainModel(dm)
 }
@@ -734,8 +743,46 @@ func (b *MprBackend) DeleteWorkflow(id model.ID) error { return b.writer.DeleteW
 func (b *MprBackend) GetProjectSettings() (*model.ProjectSettings, error) {
 	return b.reader.GetProjectSettings()
 }
+
+// UpdateProjectSettings writes the settings, EXCEPT a changed enabled-language
+// list: the legacy serializer writes DefaultLanguageCode and carries Languages
+// through from the stored document, so a language added or removed here would be
+// dropped in silence — the run reporting "Enabled language: ar_SD" and nothing
+// landing. Refuse instead (guard-don't-drop, ADR-0005), the same way rule and
+// menu authoring is refused rather than half-written.
+//
+// The comparison is against what is stored, so every other settings write still
+// works on this engine.
 func (b *MprBackend) UpdateProjectSettings(ps *model.ProjectSettings) error {
+	if b.languagesWouldChange(ps) {
+		return errors.New("changing the enabled languages requires the modelsdk engine — " +
+			"rerun without MXCLI_ENGINE=legacy (the legacy serializer carries the language list " +
+			"through unchanged, so the write would be silently dropped)")
+	}
 	return b.writer.UpdateProjectSettings(ps)
+}
+
+// languagesWouldChange reports whether ps carries a different enabled-language
+// list than the stored document. A read failure answers false: refusing on a
+// question that could not be asked would block settings writes that have nothing
+// to do with languages.
+func (b *MprBackend) languagesWouldChange(ps *model.ProjectSettings) bool {
+	if ps == nil || ps.Language == nil {
+		return false
+	}
+	stored, err := b.reader.GetProjectSettings()
+	if err != nil || stored == nil || stored.Language == nil {
+		return false
+	}
+	if len(stored.Language.Languages) != len(ps.Language.Languages) {
+		return true
+	}
+	for i, l := range ps.Language.Languages {
+		if stored.Language.Languages[i] != l {
+			return true
+		}
+	}
+	return false
 }
 
 // ---------------------------------------------------------------------------

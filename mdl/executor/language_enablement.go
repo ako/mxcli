@@ -54,9 +54,9 @@ func unenabledLanguageWarning(ls *model.LanguageSettings, code string) string {
 			"The translations are stored in the model and pass every check, but the build\n"+
 			"emits nothing for a language the project has not enabled — measured on 11.13.0:\n"+
 			"no translations_%s.properties is produced and the strings reach no page.\n"+
-			"Enable it in Studio Pro under Project > Settings > Languages; mxcli cannot yet\n"+
-			"(`alter settings LANGUAGE` carries DefaultLanguageCode only).\n",
-		code, strings.Join(enabled, ", "), code)
+			"Enable it with `alter settings LANGUAGE add '%s';` (or in Studio Pro under\n"+
+			"Project > Settings > Languages), then re-run this file.\n",
+		code, strings.Join(enabled, ", "), code, code)
 }
 
 // projectLanguageSettings reads the project's language settings, or nil when they
@@ -84,4 +84,38 @@ func enabledLanguageCodes(ls *model.LanguageSettings) []string {
 		}
 	}
 	return codes
+}
+
+// enabledLanguageDescriptions lists each enabled language with the settings that
+// are not at their default, so DESCRIBE does not lose them. A bare code means the
+// language is stored exactly as Studio Pro's Add dialog leaves it.
+func enabledLanguageDescriptions(ls *model.LanguageSettings) []string {
+	if ls == nil {
+		return nil
+	}
+	out := make([]string, 0, len(ls.Languages))
+	for _, l := range ls.Languages {
+		if l.Code == "" {
+			continue
+		}
+		var opts []string
+		if l.CheckCompleteness {
+			opts = append(opts, "CheckCompleteness")
+		}
+		if l.CustomDateFormat != "" {
+			opts = append(opts, "CustomDateFormat: "+l.CustomDateFormat)
+		}
+		if l.CustomTimeFormat != "" {
+			opts = append(opts, "CustomTimeFormat: "+l.CustomTimeFormat)
+		}
+		if l.CustomDateTimeFormat != "" {
+			opts = append(opts, "CustomDateTimeFormat: "+l.CustomDateTimeFormat)
+		}
+		if len(opts) == 0 {
+			out = append(out, l.Code)
+			continue
+		}
+		out = append(out, fmt.Sprintf("%s (%s)", l.Code, strings.Join(opts, ", ")))
+	}
+	return out
 }

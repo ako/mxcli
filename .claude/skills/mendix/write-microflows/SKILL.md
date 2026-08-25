@@ -101,6 +101,50 @@ begin
 end;
 ```
 
+### `exposed as … action` — putting a microflow in the toolbox
+
+Studio Pro can show a microflow in its toolbox, so whoever drags it onto a flow
+does not need to know it is a microflow rather than a Java action. A microflow
+has **two** such entries — one for the microflow editor, one for the workflow
+editor — so the clause names which:
+
+```mdl
+create microflow Module.FormatCode ($Raw: String)
+returns String
+exposed as microflow action 'Format code' in 'Toolbox demo'
+  icon 'assets/format-64.png'
+  icon dark 'assets/format-64-dark.png'
+  image 'assets/format-256.png'
+exposed as workflow action 'Format code' in 'Toolbox demo'
+begin
+  return trim($Raw);
+end;
+```
+
+The icon should be a **64x64** PNG and the image **256x192**; paths resolve
+against the directory of the .mdl file, so a script and its artwork travel
+together. A different size is written with a warning; a
+file that is not a PNG is refused.
+
+**An omitted clause preserves what is stored — it does not clear it:**
+
+| You write | What happens |
+|---|---|
+| `exposed as microflow action 'X' in 'Y'` | Caption and category from MDL; **icon and image carried** from what was stored |
+| *(no clause)* | Both entries **preserved**, bitmaps included |
+| `not exposed as workflow action` | Removes that one entry; the microflow entry is untouched |
+| `… drop icon dark` | Clears one bitmap; the other three are untouched |
+
+Rewriting a microflow's body must not cost it the icon a designer set in Studio
+Pro, and saying nothing about the toolbox is not asking to be taken out of it.
+Nothing below Studio Pro sees the difference — `mx check` reports 0 errors
+either way — so the preserve rule is the only thing protecting it.
+
+**Nanoflows and rules cannot be exposed.** Only `Microflows$Microflow` stores a
+toolbox entry; the clause is refused on the other two with a message naming the
+alternative. Java and JavaScript actions have one entry each and use the shorter
+`exposed as 'Caption' in 'Category'` — see the `java-actions` skill.
+
 ### `@excluded` — documents excluded from the project
 
 `@excluded` before a `create microflow` marks the document **"Exclude from project"**
@@ -351,11 +395,16 @@ toString($value)           -- Convert to string
 ## Complete Example
 
 ```mdl
+/**
+ * Process order with validation and status update.
+ *
+ * @param $OrderNumber The order to process
+ * @returns true when the order was found and marked processed
+ */
 create microflow Shop.ProcessOrder (
   $OrderNumber: string
 )
 returns boolean as $success
-comment 'Process order with validation and status update'
 begin
   declare $success boolean = false;
 

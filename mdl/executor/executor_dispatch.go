@@ -99,6 +99,7 @@ func (e *Executor) newExecContext(ctx context.Context) *ExecContext {
 		Catalog:          cat,
 		Cache:            e.cache,
 		MprPath:          e.mprPath,
+		ScriptDir:        e.scriptDir,
 		SqlMgr:           e.sqlMgr,
 		ThemeRegistry:    e.themeRegistry,
 		Settings:         e.settings,

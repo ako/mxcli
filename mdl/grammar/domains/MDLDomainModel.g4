@@ -40,9 +40,10 @@ entityOptions
     : entityOption (COMMA? entityOption)*  // Allow optional commas between options
     ;
 
+// COMMENT is deliberately absent — it was parsed and dropped. Use the `/** … */`
+// doc comment before the statement, or ALTER ENTITY … SET COMMENT.
 entityOption
-    : COMMENT STRING_LITERAL
-    | INDEX indexDefinition
+    : INDEX indexDefinition
     | eventHandlerDefinition
     ;
 
@@ -297,9 +298,11 @@ moduleOptions
     : moduleOption+
     ;
 
+// COMMENT is deliberately absent, and unlike the others it could never have
+// worked: Projects$Module has no Documentation property, so there is nowhere in
+// the model for a module comment to go.
 moduleOption
-    : COMMENT STRING_LITERAL
-    | FOLDER STRING_LITERAL
+    : FOLDER STRING_LITERAL
     ;
 
 // =============================================================================
@@ -331,9 +334,10 @@ enumerationOptions
     : enumerationOption+
     ;
 
+// COMMENT is deliberately absent — it was parsed and dropped. Use the `/** … */`
+// doc comment before the statement.
 enumerationOption
-    : COMMENT STRING_LITERAL
-    | FOLDER STRING_LITERAL                 // place the enumeration in a module folder (Bug 12b)
+    : FOLDER STRING_LITERAL                 // place the enumeration in a module folder (Bug 12b)
     ;
 
 // =============================================================================
@@ -407,6 +411,28 @@ scheduledEventProperty
 
 createImageCollectionStatement
     : IMAGE COLLECTION qualifiedName (FOLDER STRING_LITERAL)? imageCollectionOptions? imageCollectionBody?
+    ;
+
+// CREATE [OR MODIFY] ANNOTATION IN Module ( Caption: '…', Position: (x, y), Width: n )
+//
+// A domain-model annotation is the note box Studio Pro draws on the canvas. It
+// has no name — Mendix stores only Caption, ExportLevel, Location and Width — so
+// it is addressed by the first line of its caption, the way an unnamed DataGrid2
+// column is addressed by its caption.
+//
+// There is no colour. A "coloured section box" is this element in Studio Pro's
+// own styling; nothing about that styling is in the model.
+//
+// The caption may be a dollar-quoted block, because a note is usually several
+// lines and an MDL string literal is single-quoted and single-line.
+createAnnotationStatement
+    : ANNOTATION IN identifierOrKeyword LPAREN annotationProperty (COMMA annotationProperty)* RPAREN
+    ;
+
+annotationProperty
+    : CAPTION COLON (STRING_LITERAL | DOLLAR_STRING)
+    | POSITION COLON LPAREN NUMBER_LITERAL COMMA NUMBER_LITERAL RPAREN
+    | WIDTH COLON NUMBER_LITERAL
     ;
 
 imageCollectionOptions

@@ -15,10 +15,23 @@ options { tokenVocab = MDLLexer; }
  * ALTER SETTINGS CONFIGURATION 'name' Key = Value, ...;
  * ALTER SETTINGS CONSTANT 'name' VALUE 'value' [IN CONFIGURATION 'name'];
  * ALTER SETTINGS LANGUAGE Key = Value, ...;
+ * ALTER SETTINGS LANGUAGE ADD [OR MODIFY] 'ar_SD' [(Key: Value, ...)];
+ * ALTER SETTINGS LANGUAGE MODIFY 'ar_SD' (Key: Value, ...);
+ * ALTER SETTINGS LANGUAGE REMOVE 'ar_SD';
  * ALTER SETTINGS WORKFLOWS Key = Value, ...;
+ *
+ * ADD/REMOVE name the ENABLED languages — the list Studio Pro shows under
+ * App Settings > Languages, and the only languages a build emits anything for.
+ * A language is identified by its code alone: Studio Pro's "Arabic, Sudan" is
+ * derived from `ar_SD` for display and is not stored (verified against a
+ * Studio Pro-authored reference on 11.13.0).
  */
 alterSettingsClause
-    : settingsSection settingsAssignment (COMMA settingsAssignment)*
+    : settingsSection ADD OR MODIFY STRING_LITERAL languageOptions?
+    | settingsSection ADD STRING_LITERAL languageOptions?
+    | settingsSection MODIFY STRING_LITERAL languageOptions
+    | settingsSection REMOVE STRING_LITERAL
+    | settingsSection settingsAssignment (COMMA settingsAssignment)*
     | CONSTANT STRING_LITERAL (VALUE settingsValue | DROP) (IN CONFIGURATION STRING_LITERAL)?
     | DROP CONSTANT STRING_LITERAL (IN CONFIGURATION STRING_LITERAL)?
     | CONFIGURATION STRING_LITERAL settingsAssignment (COMMA settingsAssignment)*
@@ -32,6 +45,18 @@ settingsSection
 
 settingsAssignment
     : IDENTIFIER EQUALS settingsValue
+    ;
+
+// The optional properties of an added language, in the ( key: value ) form every
+// other MDL statement uses. All five are what Texts$Language stores; omitting
+// them reproduces what Studio Pro's Add Language dialog writes.
+//   ( CheckCompleteness: true, CustomDateFormat: 'yyyy-MM-dd' )
+languageOptions
+    : LPAREN languageOption (COMMA languageOption)* RPAREN
+    ;
+
+languageOption
+    : IDENTIFIER COLON settingsValue
     ;
 
 settingsValue
@@ -426,11 +451,17 @@ booleanLiteral
  *
  * The thing that exists is the LANGUAGE: bare CREATE refuses when it already has
  * translations, OR MODIFY merges, OR REPLACE makes the file authoritative.
+ *
+ * The entry list may be EMPTY. Under OR REPLACE that is the statement's own
+ * semantics taken to the limit — the file names nothing, so every translation in
+ * scope is removed — and it is the only way to take a language's translations
+ * out of the model, which `alter settings LANGUAGE remove` points at. It parsed
+ * as an error before, so the documented way to do it did not exist.
  * See docs/11-proposals/PROPOSAL_translations.md.
  */
 createTranslationsStatement
     : TRANSLATIONS (IN identifierOrKeyword)? FOR identifierOrKeyword
-      LPAREN translationEntry (COMMA translationEntry)* COMMA? RPAREN
+      LPAREN (translationEntry (COMMA translationEntry)* COMMA?)? RPAREN
     ;
 
 translationEntry
@@ -593,7 +624,7 @@ keyword
     | CAPTION | CAPTIONPARAMS | CLASS | COLUMN | COLUMNS | CONTENT | CONTENTPARAMS
     | DATASOURCE | DEFAULT | DESIGNPROPERTIES | DESKTOPWIDTH | DISPLAY | DOCUMENTATION
     | EDITABLE | FILTER | FILTERTYPE | HEADER | FOOTER
-    | ICON | LABEL | ONCLICK | ONCHANGE | PARAMS | PASSING
+    | ICON | DARK | LABEL | ONCLICK | ONCHANGE | PARAMS | PASSING
     | PHONEWIDTH | TABLETWIDTH | READONLY | RENDERMODE | REQUIRED | NULLABLE
     | SELECTION | STYLE | STYLING | TABINDEX | TITLE | TOOLTIP
     | URL | POSITION | VISIBLE | WIDTH | HEIGHT | WIDGETTYPE
@@ -637,7 +668,7 @@ keyword
     | GET | POST | PUT | PATCH
 
     // Workflow
-    | ABORT | ACTIVITY | ANNOTATION | BOUNDARY | BY | COMPLETE_TASK
+    | ABORT | ACTIVITY | ANNOTATION | ANNOTATIONS | AT_KW | BOUNDARY | BY | COMPLETE_TASK
     | CONDITION | DATE | DECISION | DUE | GROUPS | INTERRUPTING | JUMP
     | LOCK | MULTI | NODE | NON | NOTIFICATION | NOTIFY
     | OPEN | OUTCOME | OUTCOMES | OVERVIEW | PARALLEL | PAUSE
