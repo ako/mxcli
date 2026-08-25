@@ -186,7 +186,7 @@ func describeSettings(ctx *ExecContext, configName string) error {
 			fmt.Fprintf(ctx.Output,
 				"-- Enabled languages: %s. Only these are built; `create translations` for\n"+
 					"-- any other language is stored and silently dropped at build time.\n"+
-					"-- Enable one in Studio Pro (Project > Settings > Languages) — not yet MDL.\n",
+					"-- Add one with `alter settings LANGUAGE add '<code>';`.\n",
 				strings.Join(codes, ", "))
 		}
 		fmt.Fprintln(ctx.Output)
@@ -352,6 +352,18 @@ func alterSettings(ctx *ExecContext, stmt *ast.AlterSettingsStmt) error {
 	}
 
 	section := strings.ToLower(stmt.Section)
+	// ADD/REMOVE change the list of ENABLED languages rather than a key on the
+	// settings part, so they are dispatched before the key/value sections.
+	if stmt.AddLanguage || stmt.RemoveLanguage {
+		if section != "language" {
+			return mdlerrors.NewUnsupported(fmt.Sprintf(
+				"add/remove is only defined for the LANGUAGE section, not %s", stmt.Section))
+		}
+		if stmt.AddLanguage {
+			return alterSettingsLanguageAdd(ctx, ps, stmt)
+		}
+		return alterSettingsLanguageRemove(ctx, ps, stmt)
+	}
 	switch section {
 	case "model":
 		if ps.Model == nil {

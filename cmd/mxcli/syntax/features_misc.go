@@ -271,6 +271,7 @@ create or modify translations in Administration for nl_NL (
 			"alter settings", "modify settings", "change settings",
 			"after startup", "before shutdown", "hash algorithm",
 			"database type", "constant override", "language",
+			"add language", "remove language", "enable language", "translations",
 			"optimistic locking", "concurrency", "lost update",
 		},
 		Syntax: `ALTER SETTINGS MODEL <key> = <value>;
@@ -278,6 +279,8 @@ ALTER SETTINGS CONFIGURATION '<name>' <key> = <value>, ...;
 ALTER SETTINGS CONSTANT '<qualifiedName>' VALUE '<value>' IN CONFIGURATION '<name>';
 ALTER SETTINGS DROP CONSTANT '<qualifiedName>' IN CONFIGURATION '<name>';
 ALTER SETTINGS LANGUAGE DefaultLanguageCode = '<code>';
+ALTER SETTINGS LANGUAGE ADD '<code>' [(CheckCompleteness: true, CustomDateFormat: '<fmt>')];
+ALTER SETTINGS LANGUAGE REMOVE '<code>';
 ALTER SETTINGS WORKFLOWS UserEntity = '<qualifiedName>';
 CREATE CONFIGURATION '<name>' [<key> = <value>, ...];
 DROP CONFIGURATION '<name>';`,
@@ -293,6 +296,22 @@ ALTER SETTINGS CONSTANT 'BusinessEvents.ServerUrl' VALUE 'kafka:9092'
 CREATE CONFIGURATION 'Production'
   DatabaseType = 'PostgreSql',
   HttpPortNumber = 8080;
+
+-- LANGUAGE ADD/REMOVE change the ENABLED languages — the list under App
+-- Settings > Languages, and the only languages a build emits anything for. A
+-- translation written for a language that is not enabled is stored, passes every
+-- check, and is discarded at build time.
+ALTER SETTINGS LANGUAGE ADD 'de_DE';
+ALTER SETTINGS LANGUAGE ADD 'ar_SD' (CheckCompleteness: true);
+ALTER SETTINGS LANGUAGE REMOVE 'de_DE';
+
+-- A language is identified by its CODE alone: Studio Pro's "Arabic, Sudan" is
+-- derived from ar_SD for display and is not stored in the model.
+-- Two refusals: the DEFAULT language cannot be removed (every missing
+-- translation falls back on it — change DefaultLanguageCode first), and a
+-- language that still carries translations is refused with the count, because
+-- removing it would strip work the statement does not name. Say it on purpose
+-- with: create or replace translations for <code> ( );
 
 -- DatabaseType must be a Mendix database type:
 --   Db2, Hsqldb, MySql, Oracle, PostgreSql, SapHana, SqlServer

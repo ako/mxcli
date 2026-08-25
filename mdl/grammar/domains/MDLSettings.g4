@@ -15,10 +15,20 @@ options { tokenVocab = MDLLexer; }
  * ALTER SETTINGS CONFIGURATION 'name' Key = Value, ...;
  * ALTER SETTINGS CONSTANT 'name' VALUE 'value' [IN CONFIGURATION 'name'];
  * ALTER SETTINGS LANGUAGE Key = Value, ...;
+ * ALTER SETTINGS LANGUAGE ADD 'ar_SD' [(Key: Value, ...)];
+ * ALTER SETTINGS LANGUAGE REMOVE 'ar_SD';
  * ALTER SETTINGS WORKFLOWS Key = Value, ...;
+ *
+ * ADD/REMOVE name the ENABLED languages — the list Studio Pro shows under
+ * App Settings > Languages, and the only languages a build emits anything for.
+ * A language is identified by its code alone: Studio Pro's "Arabic, Sudan" is
+ * derived from `ar_SD` for display and is not stored (verified against a
+ * Studio Pro-authored reference on 11.13.0).
  */
 alterSettingsClause
-    : settingsSection settingsAssignment (COMMA settingsAssignment)*
+    : settingsSection ADD STRING_LITERAL languageOptions?
+    | settingsSection REMOVE STRING_LITERAL
+    | settingsSection settingsAssignment (COMMA settingsAssignment)*
     | CONSTANT STRING_LITERAL (VALUE settingsValue | DROP) (IN CONFIGURATION STRING_LITERAL)?
     | DROP CONSTANT STRING_LITERAL (IN CONFIGURATION STRING_LITERAL)?
     | CONFIGURATION STRING_LITERAL settingsAssignment (COMMA settingsAssignment)*
@@ -32,6 +42,18 @@ settingsSection
 
 settingsAssignment
     : IDENTIFIER EQUALS settingsValue
+    ;
+
+// The optional properties of an added language, in the ( key: value ) form every
+// other MDL statement uses. All five are what Texts$Language stores; omitting
+// them reproduces what Studio Pro's Add Language dialog writes.
+//   ( CheckCompleteness: true, CustomDateFormat: 'yyyy-MM-dd' )
+languageOptions
+    : LPAREN languageOption (COMMA languageOption)* RPAREN
+    ;
+
+languageOption
+    : IDENTIFIER COLON settingsValue
     ;
 
 settingsValue

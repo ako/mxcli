@@ -1,0 +1,42 @@
+-- ALTER SETTINGS LANGUAGE ADD / REMOVE — the project's ENABLED languages.
+--
+-- The enabled list is what App Settings > Languages shows, and the only thing a
+-- build emits translations for. Measured with `mxbuild --target=deploy`: a
+-- caption translated into a language that is not enabled reaches NOTHING under
+-- deployment/ — no translations_<code>.properties is produced at all — while the
+-- model and Studio Pro both keep it. That is why `create translations` warns.
+--
+-- The written element is pinned against a Studio Pro-authored reference
+-- (11.13.0, App Settings > Languages > Add):
+--
+--   {$Type: "Texts$Language", CheckCompleteness: false, Code: "ar_SD",
+--    CustomDateFormat: "", CustomDateTimeFormat: "", CustomTimeFormat: ""}
+--
+-- Note what is NOT there: no Description. Studio Pro's "Arabic, Sudan" is
+-- derived from the code for display, so the code is the whole stored identity —
+-- which is why these statements take a code and nothing else.
+
+-- 1. Enable a language. Defaults match Studio Pro's Add dialog: completeness
+--    unchecked, no custom formats.
+alter settings LANGUAGE add 'ar_SD';
+
+-- 2. The same with the options the Edit dialog exposes.
+alter settings LANGUAGE add 'de_DE' (CheckCompleteness: true, CustomDateFormat: 'yyyy-MM-dd');
+
+-- 3. DESCRIBE lists the enabled languages.
+describe settings;
+
+-- 4. Disable one. This REPORTS any translations that become dead weight — it does
+--    not refuse. Removing a language does not delete its translations: the
+--    enabled list and the translation data are independent, which a stock blank
+--    app proves by enabling ONE language while storing translations in EIGHT.
+alter settings LANGUAGE remove 'de_DE';
+
+-- 5. Refused: the DEFAULT language. Every missing translation falls back on it,
+--    so a project without one has no fallback. Change the default first.
+--    alter settings LANGUAGE remove 'en_US';
+--
+-- 6. NOT refused: a language that still carries translations. The run says how
+--    many source strings become dead weight and how to remove them if you want
+--    them gone:
+--      create or replace translations for ar_SD ( );

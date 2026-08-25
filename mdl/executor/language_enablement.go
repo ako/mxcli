@@ -54,9 +54,9 @@ func unenabledLanguageWarning(ls *model.LanguageSettings, code string) string {
 			"The translations are stored in the model and pass every check, but the build\n"+
 			"emits nothing for a language the project has not enabled — measured on 11.13.0:\n"+
 			"no translations_%s.properties is produced and the strings reach no page.\n"+
-			"Enable it in Studio Pro under Project > Settings > Languages; mxcli cannot yet\n"+
-			"(`alter settings LANGUAGE` carries DefaultLanguageCode only).\n",
-		code, strings.Join(enabled, ", "), code)
+			"Enable it with `alter settings LANGUAGE add '%s';` (or in Studio Pro under\n"+
+			"Project > Settings > Languages), then re-run this file.\n",
+		code, strings.Join(enabled, ", "), code, code)
 }
 
 // projectLanguageSettings reads the project's language settings, or nil when they

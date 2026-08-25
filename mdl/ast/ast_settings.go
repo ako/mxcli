@@ -11,6 +11,12 @@ type AlterSettingsStmt struct {
 	ConstantId   string // Qualified constant name
 	Value        string // Constant value
 	DropConstant bool   // If true, remove the constant override instead of setting it
+	// For LANGUAGE ADD/REMOVE: the ISO code of the language to enable or
+	// disable. A language is identified by its code alone — Studio Pro derives
+	// the display name ("Arabic, Sudan") from `ar_SD` and does not store it.
+	LanguageCode   string
+	AddLanguage    bool
+	RemoveLanguage bool
 }
 
 func (s *AlterSettingsStmt) isStatement() {}

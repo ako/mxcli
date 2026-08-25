@@ -65,6 +65,30 @@ func (b *Builder) ExitAlterSettingsClause(ctx *parser.AlterSettingsClauseContext
 			val := settingsValueText(svCtx)
 			stmt.Properties[key] = val
 		}
+	} else if ctx.SettingsSection() != nil && (ctx.ADD() != nil || ctx.REMOVE() != nil) {
+		// ALTER SETTINGS LANGUAGE ADD 'ar_SD' [( key: value, … )]
+		// ALTER SETTINGS LANGUAGE REMOVE 'ar_SD'
+		stmt.Section = ctx.SettingsSection().GetText()
+		stmt.AddLanguage = ctx.ADD() != nil
+		stmt.RemoveLanguage = ctx.REMOVE() != nil
+		if all := ctx.AllSTRING_LITERAL(); len(all) > 0 {
+			stmt.LanguageCode = unquoteString(all[0].GetText())
+		}
+		if opts := ctx.LanguageOptions(); opts != nil {
+			if oc, ok := opts.(*parser.LanguageOptionsContext); ok && oc != nil {
+				for _, o := range oc.AllLanguageOption() {
+					lo, ok := o.(*parser.LanguageOptionContext)
+					if !ok || lo == nil || lo.IDENTIFIER() == nil || lo.SettingsValue() == nil {
+						continue
+					}
+					sv, ok := lo.SettingsValue().(*parser.SettingsValueContext)
+					if !ok || sv == nil {
+						continue
+					}
+					stmt.Properties[lo.IDENTIFIER().GetText()] = settingsValueText(sv)
+				}
+			}
+		}
 	} else if ctx.SettingsSection() != nil {
 		// ALTER SETTINGS MODEL|LANGUAGE|WORKFLOWS Key = Value, ...
 		stmt.Section = ctx.SettingsSection().GetText()

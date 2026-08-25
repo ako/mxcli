@@ -52,7 +52,11 @@ func (b *Backend) UpdateProjectSettings(ps *model.ProjectSettings) error {
 		case "Settings$LanguageSettings":
 			if ps.Language != nil {
 				rawPart["DefaultLanguageCode"] = ps.Language.DefaultLanguageCode
-				settings = append(settings, rawPart)
+				// The enabled-language list, not just the default. Without this a
+				// handler could report "Enabled language: ar_SD" and write
+				// nothing — the list was carried through from the stored document
+				// and the new entry dropped on the floor.
+				settings = append(settings, settingsoverlay.Languages(ps.Language, rawPart))
 			} else {
 				settings = append(settings, rawPart)
 			}
