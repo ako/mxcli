@@ -159,15 +159,18 @@ func init() {
 
 	Register(SyntaxFeature{
 		Path:    "microflow.list-operations",
-		Summary: "List manipulation — HEAD, TAIL, FIND, FILTER, SORT, UNION, aggregates",
+		Summary: "List manipulation — HEAD, TAIL, FIND, FILTER, SORT, UNION, RANGE, aggregates",
 		Keywords: []string{
 			"list", "head", "tail", "find", "filter", "sort",
 			"union", "intersect", "subtract", "count", "sum",
 			"average", "aggregate", "add to list", "remove from list",
 			"create list",
+			// RANGE was authorable but absent from this topic, so the paging
+			// form could not be discovered from the CLI at all (issue #966).
+			"range", "paging", "pagination", "offset", "limit", "amount", "page",
 		},
-		Syntax:  "$List = CREATE LIST OF Module.Entity;\nADD $Item TO $List;\nREMOVE $Item FROM $List;\n$Result = HEAD($List);\n$Result = TAIL($List);\n$Result = FIND($List, condition);\n$Result = FILTER($List, condition);\n$Result = SORT($List, attr ASC);\n$Result = UNION($L1, $L2);\n$Result = INTERSECT($L1, $L2);\n$Result = SUBTRACT($L1, $L2);\n$Count = COUNT($List);\n$Sum = SUM($List.Attr);\n$Avg = AVERAGE($List.Attr);",
-		Example: "$AllOrders = CREATE LIST OF MyModule.Order;\nADD $NewOrder TO $AllOrders;\n$First = HEAD($AllOrders);\n$Pending = FILTER($AllOrders, Status = 'Pending');\n$Sorted = SORT($Pending, CreateDate DESC);\n$Total = SUM($AllOrders.Amount);",
+		Syntax:  "$List = CREATE LIST OF Module.Entity;\nADD $Item TO $List;\nREMOVE $Item FROM $List;\n$Result = HEAD($List);\n$Result = TAIL($List);\n$Result = FIND($List, condition);\n$Result = FILTER($List, condition);\n$Result = SORT($List, attr ASC);\n$Result = UNION($L1, $L2);\n$Result = INTERSECT($L1, $L2);\n$Result = SUBTRACT($L1, $L2);\n$Result = RANGE($List, offset, amount);\n$Result = RANGE($List, offset);\n$Count = COUNT($List);\n$Sum = SUM($List.Attr);\n$Avg = AVERAGE($List.Attr);\n\n-- RANGE takes OFFSET first, then AMOUNT, and needs at least ONE of them:\n--   RANGE($L, $Offset, $Amount)  page: skip $Offset, take $Amount\n--   RANGE($L, 0, $Amount)        first $Amount\n--   RANGE($L, $Offset)           skip $Offset, take the rest\n-- RANGE($L) with no bound is CE6520 at build time (mxcli check: MDL068).",
+		Example: "$AllOrders = CREATE LIST OF MyModule.Order;\nADD $NewOrder TO $AllOrders;\n$First = HEAD($AllOrders);\n$Pending = FILTER($AllOrders, Status = 'Pending');\n$Sorted = SORT($Pending, CreateDate DESC);\n$Page = RANGE($Sorted, $Offset, $PageSize);\n$Total = SUM($AllOrders.Amount);",
 		SeeAlso: []string{"microflow.retrieve"},
 	})
 

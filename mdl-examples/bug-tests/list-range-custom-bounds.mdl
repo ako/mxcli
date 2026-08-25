@@ -1,0 +1,130 @@
+-- Issue #966: the Range list operation's offset and amount.
+--
+-- WHAT WAS REPORTED
+--
+-- `describe microflow` printed `range($List)` for a microflow whose stored
+-- range carried both bounds — no warning, exit 0, `mxcli check` clean on the
+-- truncated output. Executing that output converts a paginated range into a
+-- full-list one, so the round trip silently changed runtime behaviour.
+--
+-- WHERE IT ACTUALLY LIVED, AND WHAT ELSE WAS BROKEN
+--
+-- Mendix nests the bounds one level below where mxcli looked:
+--
+--     Microflows$ListRange{ListName, CustomRange}
+--       └── Microflows$CustomRange{LimitExpression, OffsetExpression}
+--
+-- The modelsdk engine had it flat on BOTH sides. Being wrong twice is what hid
+-- it for so long: mxcli read its own documents back perfectly, so a describe
+-- round trip was clean and the authoring side looked correct. The issue said so
+-- explicitly ("Authoring Side Works Correctly"), and that turned out to be the
+-- one part of the report that was wrong — it had only ever been measured
+-- through mxcli's own reader. Measured against mxbuild 11.13.0 instead:
+--
+--     [error] [CE6520] "Amount and offset are not specified. Either amount or
+--     offset or both must be specified." at List operation activity 'Range'
+--
+-- The control was the same project with `range` replaced by `filter`, and the
+-- untouched base project: both carry only the app's one pre-existing CE0117,
+-- so CE6520 was this activity.
+--
+-- The legacy engine was worse and in a different way: serializeListOperation
+-- had no ListRange case at all, fell through to nil, and the action was written
+-- with an EMPTY NewOperation document. That is not a range that lost its
+-- bounds — it is a project Mendix cannot open:
+--
+--     ERROR: System.AggregateException: … (Expected '$ID' as the first
+--     property of a storage object, but got 'NewOperation'.)
+--       at StreamingBsonUnitReader.ConstructObject(…)
+--
+-- So `--engine legacy` was never a workaround for the reported bug.
+--
+-- WHY THIS FILE IS NOT THE REGRESSION TEST
+--
+-- Everything below is valid MDL that `mxcli check` accepted before the fix as
+-- well — the defect was in the BSON written and the BSON read, neither of which
+-- a check can see. The regression tests are the ones that assert the stored
+-- shape:
+--
+--   mdl/backend/modelsdk/microflow_listrange_test.go  (both sides, default engine)
+--   sdk/mpr/writer_listoperation_test.go              (legacy writer + the nil guard)
+--   mdl/executor/validate_range_bounds_test.go        (MDL068, the unbounded form)
+--
+-- This file is the end-to-end reproduction: exec it, then `describe microflow
+-- Paging.MF_GetPage` and confirm all three bounds forms come back with their
+-- expressions, on BOTH engines.
+
+create module Paging;
+
+create entity Paging.Message (
+  Body     : string(200),
+  Received : datetime
+);
+
+-- ============================================================================
+-- The reported shape: a page, with both bounds
+-- ============================================================================
+--
+-- range takes the OFFSET first and the AMOUNT second. Before the fix this
+-- described as `range($Sorted)`.
+
+create or replace microflow Paging.MF_GetPage ($Offset: Integer, $Amount: Integer)
+returns list of Paging.Message
+begin
+  retrieve $All from Paging.Message;
+  $Sorted = sort($All, Received desc);
+  $Page = range($Sorted, $Offset, $Amount);
+  return $Page;
+end;
+
+-- ============================================================================
+-- One bound is enough — Mendix requires at least one, not both
+-- ============================================================================
+
+create or replace microflow Paging.MF_FirstN ($Amount: Integer)
+returns list of Paging.Message
+begin
+  retrieve $All from Paging.Message;
+  $First = range($All, 0, $Amount);
+  return $First;
+end;
+
+create or replace microflow Paging.MF_Skip ($Offset: Integer)
+returns list of Paging.Message
+begin
+  retrieve $All from Paging.Message;
+  $Rest = range($All, $Offset);
+  return $Rest;
+end;
+
+-- ============================================================================
+-- What is refused, and why
+-- ============================================================================
+--
+-- A range with neither bound is CE6520 at build time, so it is refused at check
+-- time as MDL068 rather than written and left for mxbuild:
+--
+--   $Page = range($All);
+--   -- Error: `range($All)` has neither an offset nor an amount, and Mendix
+--   -- requires at least one (CE6520 …)
+--
+-- This is exactly the statement DESCRIBE used to emit for the microflows above,
+-- which is how the issue's truncated output passed `mxcli check`. The reader is
+-- fixed so describe no longer produces it; MDL068 closes the hand-written path.
+--
+-- To use the whole list, drop the activity and use the list variable directly.
+
+-- ============================================================================
+-- Paging at the database instead
+-- ============================================================================
+--
+-- range pages a list already in memory, so every row was fetched first. Bounds
+-- on the retrieve keep them in the database. Note the clause order is the
+-- REVERSE of range's arguments — each mirrors the Mendix editor it comes from.
+
+create or replace microflow Paging.MF_GetPageFromDatabase ($Offset: Integer, $Amount: Integer)
+returns list of Paging.Message
+begin
+  retrieve $Page from Paging.Message sort by Received desc limit $Amount offset $Offset;
+  return $Page;
+end;

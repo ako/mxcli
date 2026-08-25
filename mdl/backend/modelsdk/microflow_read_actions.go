@@ -987,7 +987,26 @@ func listOperationFromRaw(doc bson.Raw) microflows.ListOperation {
 		o.ID = id
 		return o
 	case "Microflows$ListRange":
-		o := &microflows.ListRangeOperation{ListVariable: list, LimitExpression: rawStr(doc, "LimitExpression"), OffsetExpression: rawStr(doc, "OffsetExpression")}
+		// The bounds are one level down, on a Microflows$CustomRange child —
+		// not on the ListRange itself. Reading them flat found nothing in every
+		// document Mendix wrote, so a paged range described as the unbounded
+		// `range($List)`: no warning, exit 0, and `mxcli check` clean on output
+		// that re-executes with pagination silently removed. (issue #966)
+		o := &microflows.ListRangeOperation{ListVariable: list}
+		if cr, ok := doc.Lookup("CustomRange").DocumentOK(); ok {
+			o.LimitExpression = rawStr(cr, "LimitExpression")
+			o.OffsetExpression = rawStr(cr, "OffsetExpression")
+		} else {
+			// A project written by mxcli 0.18 or earlier has the bounds flat
+			// here, because the writer put them there. Such a project does not
+			// build (CE6520), but the expressions the author typed ARE on disk
+			// — so reading them lets DESCRIBE show the range that was meant,
+			// and re-executing that output stores the nested form and repairs
+			// the project. Mendix itself never writes these keys, so the
+			// fallback cannot misfire on a Studio Pro document.
+			o.LimitExpression = rawStr(doc, "LimitExpression")
+			o.OffsetExpression = rawStr(doc, "OffsetExpression")
+		}
 		o.ID = id
 		return o
 	default:
