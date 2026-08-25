@@ -1,0 +1,23 @@
+-- The control for 274-settings-reference-validation.fail.mdl: the same settings
+-- statements, with the documents they name created earlier in the SAME script.
+--
+-- This is the escape hatch every other statement family has — "References to
+-- objects created within the script are skipped" — and the reason the check
+-- cannot simply resolve against the stored project.
+--
+-- Expected: check passes, exec writes both settings, and `mx check` is 0 errors.
+
+create module SR;
+create module role SR.User;
+
+create microflow SR.MF_Startup() returns Boolean begin
+  return true;
+end
+
+create constant SR.ApiUrl type string default 'https://example.test';
+
+alter settings model AfterStartupMicroflow = 'SR.MF_Startup';
+alter settings constant 'SR.ApiUrl' value 'https://acc.example.test' in configuration 'Default';
+
+-- Clearing a setting is not a reference and must stay legal.
+alter settings model BeforeShutdownMicroflow = '';
