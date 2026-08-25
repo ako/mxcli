@@ -1156,8 +1156,18 @@ func serializeListOperationAction(a *microflows.ListOperationAction) bson.D {
 	}
 
 	// Serialize the operation - storage name is "NewOperation"
-	if a.Operation != nil {
-		doc = append(doc, bson.E{Key: "NewOperation", Value: serializeListOperation(a.Operation)})
+	//
+	// The nil guard is not defensive tidiness: serializeListOperation returns
+	// nil for an operation it has no case for, and appending that writes an
+	// EMPTY sub-document, which Mendix's loader refuses outright — "Expected
+	// '$ID' as the first property of a storage object, but got 'NewOperation'"
+	// — so the project cannot be opened at all. Omitting the key instead leaves
+	// an activity with no action, which mxbuild reports as CE0008 "No action
+	// defined." naming the activity. A missing action is recoverable; an
+	// unloadable file is not. (issue #966, where the Range operation was the
+	// case that fell through)
+	if op := serializeListOperation(a.Operation); op != nil {
+		doc = append(doc, bson.E{Key: "NewOperation", Value: op})
 	}
 	doc = append(doc, bson.E{Key: "ResultVariableName", Value: a.OutputVariable}) // storageName differs
 	return doc
@@ -1279,6 +1289,30 @@ func serializeListOperation(op microflows.ListOperation) bson.D {
 			{Key: "ListName", Value: o.ListVariable1},               // storageName: ListName
 			{Key: "SecondListOrObjectName", Value: o.ListVariable2}, // storageName differs
 		}
+	case *microflows.ListRangeOperation:
+		// `range($List, $offset, $amount)`. This case was absent, which made the
+		// Range the one list operation the legacy engine could PARSE (see
+		// parseListOperation) but not write — and the fall-through to nil is
+		// what produced an unloadable project, not merely a lost range. (#966)
+		//
+		// The bounds are nested in a Microflows$CustomRange child, the shape the
+		// parser beside this file already reads. Emitted only when there is a
+		// bound to carry: Mendix requires at least one (CE6520), so an empty
+		// child would be a well-formed way to store an invalid range.
+		doc := bson.D{
+			{Key: "$ID", Value: idToBsonBinary(string(o.ID))},
+			{Key: "$Type", Value: "Microflows$ListRange"},
+			{Key: "ListName", Value: o.ListVariable}, // storageName: ListName
+		}
+		if o.LimitExpression != "" || o.OffsetExpression != "" {
+			doc = append(doc, bson.E{Key: "CustomRange", Value: bson.D{
+				{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+				{Key: "$Type", Value: "Microflows$CustomRange"},
+				{Key: "LimitExpression", Value: o.LimitExpression},
+				{Key: "OffsetExpression", Value: o.OffsetExpression},
+			}})
+		}
+		return doc
 	default:
 		return nil
 	}

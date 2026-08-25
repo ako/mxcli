@@ -301,6 +301,8 @@ func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 			}
 		case *ast.SynchronizeStmt:
 			v.checkSynchronizeIsNanoflowOnly()
+		case *ast.ListOperationStmt:
+			v.checkRangeHasABound(stmt)
 		case *ast.WhileStmt:
 			// A while condition is a plain boolean expression — Mendix has no rule
 			// split for a loop, so unlike an IF condition a qualified call here is
@@ -660,6 +662,34 @@ func (v *microflowValidator) checkSynchronizeIsNanoflowOnly() {
 			"(CE0009 \"This action is not supported in microflows.\")",
 		"Move the statement into a nanoflow: `create nanoflow Module.NF_Sync () begin synchronize all; end;`. "+
 			"A microflow can call that nanoflow only from client-side logic, so the caller must be a nanoflow too.")
+}
+
+// checkRangeHasABound rejects `range($List)` — a Range list operation with
+// neither an offset nor an amount.
+//
+// Mendix requires at least one, and says so at build time:
+//
+//	[error] [CE6520] "Amount and offset are not specified. Either amount or
+//	offset or both must be specified." at List operation activity 'Range'
+//
+// (mxbuild 11.13.0; the same project with a bound is 0 errors.) The grammar
+// makes both arguments optional, so the unbuildable form parsed and checked
+// clean — and that is precisely the shape DESCRIBE emitted for every paged
+// range while the reader was dropping the bounds, which is how issue #966's
+// truncated output passed `mxcli check`. The reader is fixed, so describe no
+// longer produces it; this closes the hand-written path too, and keeps a check
+// that would have caught #966 from the other side.
+func (v *microflowValidator) checkRangeHasABound(stmt *ast.ListOperationStmt) {
+	if stmt.Operation != ast.ListOpRange || stmt.OffsetExpr != nil || stmt.LimitExpr != nil {
+		return
+	}
+	v.addViolation("MDL068", linter.SeverityError,
+		fmt.Sprintf("`range($%s)` has neither an offset nor an amount, and Mendix requires at least one "+
+			"(CE6520 \"Amount and offset are not specified. Either amount or offset or both must be specified.\")",
+			stmt.InputVariable),
+		fmt.Sprintf("Give it a bound: `range($%s, $Offset, $Amount)` for a page, `range($%s, 0, $Amount)` for the "+
+			"first N, or `range($%s, $Offset)` to skip. To use the whole list unchanged, drop the range activity "+
+			"and use `$%s` directly.", stmt.InputVariable, stmt.InputVariable, stmt.InputVariable, stmt.InputVariable))
 }
 
 // xpathIdConstraintRe matches a constraint comparing the object id against a VALUE

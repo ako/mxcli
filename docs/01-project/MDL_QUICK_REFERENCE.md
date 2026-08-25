@@ -545,6 +545,7 @@ it is for pages.
 | LOOP | `loop $item in $list begin ... end loop;` | FOR EACH over list. No `return` inside — an End event cannot sit in a loop (CE0068 / MDL062); use `break` and return after the loop |
 | WHILE | `while condition begin ... end while;` | Condition-based loop |
 | Return | `return $value;` | Required at end of every flow path, and never inside a loop (MDL062) |
+| List range (paging) | `$Page = range($List, <offset>, <amount>);` | **Offset first, then amount.** `range($L, 0, $N)` = first N; `range($L, $Off)` = skip and take the rest. At least one bound is required — a bare `range($L)` is CE6520 / MDL068. Stored as a `CustomRange` nested inside the `ListRange` |
 | Execute DB query | `$Result = execute database query Module.Conn.Query;` | 3-part name; supports DYNAMIC, params, CONNECTION override |
 | Import mapping | `[$Var =] import from mapping Module.IMM($SourceVar) [all\|first\|limit <e> [offset <e>]];` | Apply import mapping to string variable. Trailing clause is Studio Pro's Range; omitted = infer from the mapping's root. `first` binds one OBJECT (`limit 1` is a one-element LIST). Mendix rejects `offset` on a non-list mapping (CE6100) |
 | Export mapping | `$Var = export to mapping Module.EMM($EntityVar);` | Apply export mapping to entity, returns string |

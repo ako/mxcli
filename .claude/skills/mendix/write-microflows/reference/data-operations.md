@@ -117,6 +117,34 @@ add head($SourceItems) to $Items;
 
 Use expression-valued `add` only when the expression returns an object compatible with the target list element type.
 
+### `range` — paging a list
+
+`range` takes the **offset first, then the amount**, and Mendix requires at
+least one of them:
+
+```mdl
+$Page  = range($Sorted, $Offset, $PageSize);  -- skip $Offset, take $PageSize
+$First = range($Sorted, 0, 10);               -- first 10
+$Rest  = range($Sorted, $Offset);             -- skip $Offset, take the rest
+```
+
+`range($List)` with no bound builds nothing useful and fails with **CE6520**
+("Amount and offset are not specified. Either amount or offset or both must be
+specified."); `mxcli check` refuses it first as **MDL068**. To use the whole
+list, drop the activity and use the list variable directly.
+
+`range` is a *list* operation — it pages a list that is already in memory, so
+every row was fetched first. To page at the database instead, put the bounds on
+the retrieve, where the rows never leave the database:
+
+```mdl
+retrieve $Page from Sales.Order where [Status = 'Open']
+  sort by OrderDate desc limit $PageSize offset $Offset;
+```
+
+Note the clause order there is `limit` then `offset` — the reverse of `range`'s
+argument order, because each mirrors the Mendix editor it comes from.
+
 ### `contains` is overloaded — string vs list
 
 `contains(a, b)` is both a **string** function (`contains(haystack, needle)` → substring test) and a **list** operation (`contains(list, object)` → membership test). mxcli picks the right serialization automatically:
