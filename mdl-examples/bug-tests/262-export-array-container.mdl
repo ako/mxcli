@@ -1,0 +1,61 @@
+-- ============================================================================
+-- Bug #262: export array containers were written with an entity and association
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   mxcli put the entity and association on BOTH levels of an export array —
+--   the container and the item — and the MDL made the author declare them twice:
+--
+--     Assoc/Entity as items { Assoc/Entity as ItemsItem { values } }
+--
+--   Studio Pro leaves the container BARE. 93 of the 93 entity-less object
+--   elements in the demo apps are array containers with that shape:
+--
+--     et=Array  entity=-  assoc=-  oh=Find   path=…|Versions
+--       et=Object entity=…  assoc=…  oh=Find   path=…|Versions|(Object)
+--
+--   Measured on AgentCommons.EM_Agent, MxGenAIConnector.EM_ConverseRequest and
+--   SnowflakeIntegration.Export_AnyChart_Heatmap.
+--
+-- After fix:
+--   An array is written exactly like a nested object — the container is
+--   generated, not declared:
+--
+--     Assoc/Entity as items { values }
+--
+--   This is the same rule #248 applied to a root array; only the object handling
+--   differs (Parameter on the root's item, Find on a nested one).
+--
+-- Not covered, deliberately:
+--   An entity-less PLAIN object element — a JSON grouping node with no Mendix
+--   object behind it, e.g. MxGenAIConnector.EM_ConverseRequest's `toolConfig`
+--   (10 elements in 3 demo documents). A `group as toolConfig { ... }` syntax was
+--   built for it and then removed: mxbuild 11.13 rejects the element mxcli
+--   produced with CE0061 "No entity selected.", so the shipped marketplace
+--   documents rely on something not yet identified. Authoring a construct the
+--   build rejects would be worse than not offering it.
+-- ============================================================================
+
+create module BugTest262;
+
+create persistent entity BugTest262.Root ( Name: String(100) );
+create persistent entity BugTest262.Item ( Code: String(100) );
+create association BugTest262.Item_Root
+  from BugTest262.Item to BugTest262.Root
+  type Reference;
+
+create json structure BugTest262.JSON_Payload
+  snippet $${"name": "n", "items": [{"code": "c"}]}$$;
+
+-- One declaration, two stored elements: a bare Array container plus the item.
+create or modify export mapping BugTest262.EXM_Payload
+  folder 'Mappings'
+  with json structure BugTest262.JSON_Payload
+{
+  BugTest262.Root {
+    name = Name,
+    BugTest262.Item_Root/BugTest262.Item as items {
+      code = Code
+    }
+  }
+};

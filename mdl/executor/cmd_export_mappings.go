@@ -150,16 +150,35 @@ func describeExportMapping(ctx *ExecContext, name ast.QualifiedName) error {
 // is left alone for #260/#262 to handle rather than being printed as something
 // it is not.
 func exportRootToPrint(elem *model.ExportMappingElement) *model.ExportMappingElement {
-	// Discriminate on the stored paths, not on Kind: the two engines' readers
-	// label the container differently ("Array" vs "Object"), and the paths are
-	// what the document actually says.
-	if elem == nil || elem.JsonPath != "(Array)" || elem.Entity != "" || len(elem.Children) != 1 {
+	return exportArrayItemToPrint(elem)
+}
+
+// exportArrayItemToPrint unwraps a bare array container to the item that carries
+// the entity, so DESCRIBE prints the MDL that produced it (#248, #262).
+//
+// Discriminate on the stored PATHS, not on Kind: the two engines' readers label
+// the container differently ("Array" vs "Object"), and the item's path is the
+// container's plus the "|(Object)" step — which is what makes it a container
+// rather than some other entity-less node.
+//
+// Only the generated shape is unwrapped. A container that carries an entity, or
+// one with more than a single object child, is something MDL cannot author
+// (DigitalTwin.EMM_EntityQuery, MxGenAIConnector.EM_ConverseRequest's
+// toolConfig), so it is left alone rather than printed as something it is not.
+func exportArrayItemToPrint(elem *model.ExportMappingElement) *model.ExportMappingElement {
+	if elem == nil || elem.Entity != "" || len(elem.Children) != 1 {
 		return elem
 	}
-	if item := elem.Children[0]; item.Entity != "" && item.JsonPath == "(Array)|(Object)" {
-		return item
+	item := elem.Children[0]
+	if item.Entity == "" || item.JsonPath != elem.JsonPath+"|(Object)" {
+		return elem
 	}
-	return elem
+	// Returned unchanged: mappingMemberName already renders an item path
+	// ("…|items|(Object)") as the ARRAY's key, by trimming the "|(Object)"
+	// marker — the same rule that makes a nested array's member print correctly
+	// (#915). Rewriting the clone's JsonPath to the container's would break the
+	// item's own children, which are addressed relative to it.
+	return item
 }
 
 func printExportMappingElement(w io.Writer, elem *model.ExportMappingElement, depth int, isRoot bool, parentPath string) {
@@ -193,7 +212,7 @@ func printExportMappingElement(w io.Writer, elem *model.ExportMappingElement, de
 		}
 		if len(elem.Children) > 0 {
 			for i, child := range elem.Children {
-				printExportMappingElement(w, child, depth+1, false, elem.JsonPath)
+				printExportMappingElement(w, exportArrayItemToPrint(child), depth+1, false, elem.JsonPath)
 				if i < len(elem.Children)-1 {
 					fmt.Fprintln(w, ",")
 				} else {
@@ -486,70 +505,88 @@ func buildExportMappingElementModel(moduleName string, def *ast.ExportMappingEle
 
 		// Check if this is an array element in the JSON structure
 		if jsElem != nil && jsElem.ElementType == "Array" {
-			// Export arrays have two levels:
-			// 1. Array container: Kind=Array, entity=container entity, assoc to parent
-			// 2. Item object: Kind=Object, entity=item entity, assoc to container
+			// A nested array is TWO elements, and Studio Pro leaves the
+			// container BARE — 93 of the 93 entity-less object elements in the
+			// demo apps have that shape (#262):
 			//
-			// MDL syntax: Assoc/Entity AS items { ItemAssoc/ItemEntity AS ItemsItem { values } }
-			// The outer Assoc/Entity is for the container, the nested child provides the item.
-			elem.Kind = "Array"
-			elem.Association = assoc
-			elem.ObjectHandling = handling
-			elem.Entity = entity
-
+			//	et=Array  entity=-   assoc=-  oh=Find   path=…|Versions
+			//	  et=Object entity=…  assoc=…  oh=Find   path=…|Versions|(Object)
+			//
+			// So the array is declared like a plain nested object —
+			// `Assoc/Entity as items { values }` — and the container is
+			// generated, the same rule #248 applied to a root array.
+			//
+			// The OLD two-level spelling is still honoured as written:
+			// `Assoc/Entity as items { ItemAssoc/ItemEntity as ItemsItem { … } }`
+			// names TWO entities, one per level, which the bare-container shape
+			// cannot express — and it is what DESCRIBE emitted before this
+			// change, so scripts in the wild and the doctype suite use it.
+			// Rewriting it into the bare shape produced CE0295 (the item's
+			// association no longer reaches its parent).
 			itemPath := lookupPath + "|(Object)"
+			twoLevel := len(def.Children) == 1 && def.Children[0].Entity != ""
 
-			// The first (and typically only) child of the array in the MDL is the item definition.
-			// Its children become the item element's value children.
-			if len(def.Children) == 1 && def.Children[0].Entity != "" {
-				itemDef := def.Children[0]
-				itemEntity := itemDef.Entity
-				if !strings.Contains(itemEntity, ".") {
-					itemEntity = moduleName + "." + itemEntity
-				}
-				itemAssoc := itemDef.Association
-				if itemAssoc != "" && !strings.Contains(itemAssoc, ".") {
-					itemAssoc = moduleName + "." + itemAssoc
-				}
-
-				itemElem := &model.ExportMappingElement{
-					BaseElement: model.BaseElement{
-						ID:       model.ID(types.GenerateID()),
-						TypeName: "ExportMappings$ObjectMappingElement",
-					},
-					Kind:           "Object",
-					Entity:         itemEntity,
-					Association:    itemAssoc,
-					ObjectHandling: "Find",
-				}
-				if jsItem, ok2 := idx.byPath[itemPath]; ok2 {
-					itemElem.ExposedName = jsItem.ExposedName
-					itemElem.JsonPath = jsItem.Path
-					itemElem.MaxOccurs = jsItem.MaxOccurs
-				} else {
-					itemElem.ExposedName = elem.ExposedName + "Item"
-					itemElem.JsonPath = itemPath
-					itemElem.MaxOccurs = -1
-				}
-				// Item's children are the value elements
-				for _, valChild := range itemDef.Children {
-					c, err := buildExportMappingElementModel(moduleName, valChild, itemEntity, itemPath, idx, b, false)
-					if err != nil {
-						return nil, err
-					}
-					itemElem.Children = append(itemElem.Children, c)
-				}
-				elem.Children = append(elem.Children, itemElem)
-			} else {
-				// Fallback: treat children as direct item children (no intermediate entity)
-				for _, child := range def.Children {
-					c, err := buildExportMappingElementModel(moduleName, child, entity, itemPath, idx, b, false)
-					if err != nil {
-						return nil, err
-					}
-					elem.Children = append(elem.Children, c)
-				}
+			itemDef := def
+			valueChildren := def.Children
+			if twoLevel {
+				itemDef = def.Children[0]
+				valueChildren = itemDef.Children
 			}
+			itemEntity := itemDef.Entity
+			if !strings.Contains(itemEntity, ".") {
+				itemEntity = moduleName + "." + itemEntity
+			}
+			itemAssoc := itemDef.Association
+			if itemAssoc != "" && !strings.Contains(itemAssoc, ".") {
+				itemAssoc = moduleName + "." + itemAssoc
+			}
+
+			itemElem := &model.ExportMappingElement{
+				BaseElement: model.BaseElement{
+					ID:       model.ID(types.GenerateID()),
+					TypeName: "ExportMappings$ObjectMappingElement",
+				},
+				Kind:           "Object",
+				Entity:         itemEntity,
+				Association:    itemAssoc,
+				ObjectHandling: "Find",
+				JsonPath:       itemPath,
+				MaxOccurs:      -1,
+			}
+			if jsItem, ok2 := idx.byPath[itemPath]; ok2 {
+				itemElem.ExposedName = jsItem.ExposedName
+				itemElem.JsonPath = jsItem.Path
+				itemElem.MaxOccurs = jsItem.MaxOccurs
+			} else {
+				itemElem.ExposedName = elem.ExposedName + "Item"
+			}
+			if itemDef.CustomHandler != nil {
+				ch, err := buildCustomHandler(itemDef.CustomHandler, moduleName, itemElem.JsonPath, b)
+				if err != nil {
+					return nil, err
+				}
+				itemElem.CustomHandler = ch
+				itemElem.ObjectHandling = "Custom"
+			}
+			for _, child := range valueChildren {
+				c, err := buildExportMappingElementModel(moduleName, child, itemEntity, itemPath, idx, b, false)
+				if err != nil {
+					return nil, err
+				}
+				itemElem.Children = append(itemElem.Children, c)
+			}
+
+			elem.Kind = "Array"
+			elem.ObjectHandling = "Find"
+			if twoLevel {
+				// The outer declaration is the CONTAINER's in this spelling.
+				elem.Entity = entity
+				elem.Association = assoc
+			} else {
+				elem.Entity = ""
+				elem.Association = ""
+			}
+			elem.Children = append(elem.Children, itemElem)
 		} else {
 			// Regular object element
 			elem.Entity = entity
