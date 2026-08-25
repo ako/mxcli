@@ -50,16 +50,27 @@ func (b *Backend) ListNavigationDocuments() ([]*types.NavigationDocument, error)
 //   - `set` works on primitive/reference leaves, and on an element-valued
 //     property only when it is currently null. So scalar leaves (homePage.page,
 //     loginPageSettings.page) are set in place, while a currently-null element
-//     (notFoundHomepage) is set whole with a constructor.
+//     (notFoundHomepage) is set whole with a constructor. (11.14 relaxed this —
+//     `set` may now replace a non-null element — but this code does not depend on
+//     the relaxation and must keep working against 11.12/11.13.)
 //   - `set` can NEVER target an array; the menu lives in menuItemCollection.items
 //     (an array). Replacing it is therefore remove-all-then-add. PED forbids
 //     batching add and remove on the SAME array path in one call, so the menu is
 //     cleared (descending removes) in the first update and rebuilt (appends) in a
 //     second.
 //
-// ped_update_document validates references and applies atomically (a bad page
-// ref fails the whole op), and the project-level navigation document is not
-// addressable by ped_check_errors, so the update result itself is the gate.
+// ped_update_document validates references (a bad page ref fails the op), and the
+// project-level navigation document is not addressable by ped_check_errors, so the
+// update result itself is the gate.
+//
+// Do NOT read that as all-or-nothing. Studio Pro 11.14 downgraded the contract from
+// 11.13's "applied atomically; stops on first error" to "operations are applied
+// independently … removing, overwriting, or renaming elements can have side effects
+// that persist even when another operation fails". The clear/rebuild split above was
+// forced by the same-array rule, but it is also what keeps this path honest: the
+// removes and the adds are already separate calls, so nothing here batches a remove
+// with an add that depends on it. Preserve that shape — a future consolidation into
+// one call would put the menu at risk of being left cleared when the rebuild fails.
 func (b *Backend) UpdateNavigationProfile(_ model.ID, profileName string, spec types.NavigationProfileSpec) error {
 	if b.client == nil {
 		return fmt.Errorf("not connected")

@@ -30,8 +30,19 @@ document is the MCP column's deep-dive.
 
 > **Provenance.** Every row below was captured live with `cmd/mcpprobe` against a
 > running Studio Pro, not copied from documentation. Raw fixtures live in
-> `mdl/backend/mcp/testdata/` (`tools.json`, `schema-entity.json`). Re-capture
-> per the onboarding procedure; do not hand-edit claims you have not verified.
+> `mdl/backend/mcp/testdata/`: tool surfaces (`tools.json`, `tools-11.13.json`,
+> `tools-11.14.json`) and entity schemas (`schema-entity.json` = 11.11,
+> `schema-entity-11.14.json`). Re-capture per the onboarding procedure; do not
+> hand-edit claims you have not verified.
+>
+> **`ped_get_schema`'s response format changed between 11.11 and 11.14**, from a
+> structured JSON schema (`{"schemas":[{elementType, schema:{properties:…}}]}`) to a
+> TypeScript-like source text (`{"kind":"constructor","schema":"constructor type
+> 'DomainModels$Entity' = {…}"}`). **Which release did it is not established here** —
+> the 11.11 fixture and the 11.14 capture are the only two samples, and 11.13's
+> addition of the `kind` argument makes 11.13 the likelier culprit. Do not cite this
+> as an 11.14 change. It costs the backend nothing either way: `ensureSchema` calls
+> the tool only to satisfy PED's fetch-before-create contract and discards the body.
 
 ## Server identity
 
@@ -41,17 +52,18 @@ document is the MCP column's deep-dive.
 | 11.11      | Yes                | `mendix-studio-pro` 1.0.0 | `2025-06-18` | 2026-06-05 |
 | 11.12      | Yes                | `mendix-studio-pro` 1.0.0 | `2025-06-18` | 2026-06-23 |
 | 11.13      | Yes                | `mendix-studio-pro` 1.0.0 | `2025-06-18` | 2026-08-11 |
+| 11.14      | Yes                | `mendix-studio-pro` 1.0.0 | `2025-06-18` | 2026-08-25 |
 
-> **`serverInfo.version` is frozen at `1.0.0` across 11.11, 11.12 **and 11.13** even
-> though the tool surface and behaviour changed in every one of them.** So the server
-> version is **not** a reliable discriminator between Studio Pro releases — three
+> **`serverInfo.version` is frozen at `1.0.0` across 11.11, 11.12, 11.13 **and 11.14**
+> even though the tool surface and behaviour changed in every one of them.** So the
+> server version is **not** a reliable discriminator between Studio Pro releases — four
 > releases in, treat this as settled rather than provisional. The machine-readable
 > [`capabilities.yaml`](../../mdl/backend/mcp/capabilities.yaml) keys `available_since`
 > on the server version and therefore **cannot express an 11.12-only capability** —
 > features that vary by Studio Pro version must be gated on the **project's Mendix
 > version** instead (e.g. `gateAttributeDefaults` → `ProjectVersion().IsAtLeast(11,12)`).
 > Until the table grows a Studio-Pro-version dimension, this per-version doc is the
-> source of truth for the 11.11→11.12 and 11.12→11.13 deltas below.
+> source of truth for the 11.11→11.12, 11.12→11.13 and 11.13→11.14 deltas below.
 >
 > **Gate a per-release *argument* on a live schema probe, not on any version.**
 > `Client.SupportsToolArg(tool, arg)` answers from a cached `tools/list` (which now
@@ -213,11 +225,120 @@ legitimately reads `"..."` is real page content and must not trip the guard.
 still **no save/flush tool**, reads still expose `$QualifiedName` but **not `$ID`**,
 and the security documents are still sealed.
 
-## Capability gaps (11.11)
+## 11.14 changes (delta vs 11.13)
+
+Captured live 2026-08-25 (`cmd/mcpprobe -method tools/list`, fixture
+`mdl/backend/mcp/testdata/tools-11.14.json`). **Tool count and composition are
+unchanged — the same 18 names, none added, none removed.** This is the first
+release where a name-only diff would have reported "nothing happened", and it
+would have been badly wrong: six tools changed their descriptions or input
+schemas, `ped_update_document` gained an operation type, its **atomicity
+guarantee was weakened**, and one long-standing capability gap closed. Diff the
+`inputSchema` *and* the description text, or you will miss the release.
+
+| Change | Tool | Effect on the backend |
+|--------|------|-----------------------|
+| **Changed** | `ped_update_document` | **Behavioural, three ways.** (1) A new `call` operation type invokes a schema-declared method on an element. (2) `set` now **replaces a non-null element-valued property** — 11.13 allowed it only while the property was null/undefined. (3) Atomicity is weaker; see below. No backend change is *required* (mxcli sends no `call` ops, and its `set` sites all target primitives or null elements), but (2) closes a gap — see the gaps table. |
+| **Changed** | `ped_get_schema` | `kind: "element"` now also prints **methods** (`method name(args: PlainObject<{…}>): output`) and **validation constraints carrying a Mendix error code**. No backend change — `ensureSchema` still discards the body. |
+| **Changed** | `ped_read_document` | Description-only: names `Settings$ProjectSettings` as a project-level document. **The server rejects it** — see the advertised-but-absent note below. |
+| **Changed** | `ped_find_document` | Description-only: adds `Security$ModuleSecurity` to the "singleton, read it directly" carve-out beside `DomainModels$DomainModel`. **The server rejects it too.** |
+| **Changed** | `glob` | Two new file domains: **`/version-control`** (`status.json`, `commits.json` with per-commit model changes, `changes.json` with pending changes) and **`/edc-schemas`** (live DB schema metadata for `DatabaseConnection` documents). Not used by the backend; `/version-control` is a plausible source for a future `--mcp` drift command. |
+| **Changed** | `read_skill` | Skill inventory only: adds `version-control` and `send-email-common`. |
+
+**No tool gained a new argument, and no default changed.** Measured across all 18
+tools: no added or removed top-level `inputSchema` property, no changed `default`,
+no changed `required` set. So 11.13's `pg_read_page` `depth` trap — a new argument
+with a default that the server applies whether or not the client knows about it —
+**did not recur**, and no new `Client.SupportsToolArg` gate is needed. This is a
+measured negative, not an assumption; re-run the same scan next release.
+
+**Atomicity was weakened, and the docs now say so.** 11.13: *"Operations are
+validated and applied atomically; stops on first error."* 11.14:
+
+> Operations are applied independently in the specified order … If an operation
+> fails, no changes are saved. **However, removing, overwriting, or renaming
+> elements can have side effects that persist even when another operation fails.**
+
+Two consequences. First, a batch containing a remove/overwrite/rename is no longer
+all-or-nothing, so a failed batch can leave the model partly mutated — the caller
+has to re-read rather than assume the prior state. `navigation.go` already splits
+its menu clear and rebuild into separate calls (PED's same-array rule forced that),
+so no mxcli write path batches a remove with a dependent add; the stale claim was
+in a *comment*, corrected in the same commit as this section. Second, `mxcli`'s
+error surfacing improves for free — see below.
+
+**Better error reporting (the visible half of the release).** Failures are now
+reported per operation, with the operation's index and path, instead of stopping at
+the first one:
+
+```
+ERROR: Update operation failed with errors (in format [<operation index>]<operationPath>: <output>):
+'[0]/entities': Property 'entities' is an array. Use 'add' or 'remove' operation instead.
+```
+
+Schemas now carry the **Mendix error code** a violated constraint will raise, as the
+second argument of the constraint type — so the CE number is knowable *before* the
+write:
+
+```
+name: string & MinLength<1, 'CE0725'>;          // Workflows$Workflow
+description: string & MinLength<1, 'MW0006'>;   // Workflows$WorkflowEventHandler
+```
+
+And an unknown element type now gets suggestions: `Pages$NoSuchWidget` →
+`Did you mean: Pages$Widget, Pages$ClientAction, Pages$GridSortItem?`
+`ped_check_errors` itself is **unchanged** — the improvement is in the write and
+schema paths, not the checker.
+
+**Three document types are advertised but not supported — do not "fix" the
+capability notes from the tool text.** 11.14's descriptions and schemas name
+`Settings$ProjectSettings`, `Security$ProjectSecurity` and `Security$ModuleSecurity`
+as supported document types, and `ped_get_schema` returns full, richly documented
+element schemas for all three. The document API rejects every one, with a control:
+
+| `documentType` | `ped_update_document` result |
+|---|---|
+| `Navigation$NavigationDocument` (known-good control) | reaches the operation layer → `'[0]/zzzNoSuchProp': …` |
+| `Settings$ProjectSettings` | `ERROR: Document type Settings$ProjectSettings is not supported.` |
+| `Security$ProjectSecurity` | `ERROR: Document type Security$ProjectSecurity is not supported.` |
+| `Security$ModuleSecurity` | `ERROR: Unknown document type` (on read/find) |
+
+The control is what makes this a finding rather than a guess: the rejection happens
+at the *document* layer, before any operation is looked at. So the "no security
+document ops" and "no project-settings write path" gaps are **still open**, and
+`capabilities.yaml` stays as it is. A reader who trusts the 11.14 tool text alone
+would conclude the opposite.
+
+**The system prompt no longer mentions the `pg_*` page tools at all.** The
+"two write protocols" rule (pages via `pg_*`, everything else via `ped_*`) was
+stated in 11.13's system prompt; in 11.14's it is gone — the tool list section
+names only the eight `ped_*`/file tools. `pg_read_page` and `pg_patch_page` are
+still in `tools/list`, and `ped_read_document` on a `Pages$Page` now returns a
+full page document. Whether `ped_update_document` can *write* a page is
+**untested** — it needs a real mutation, so measure it against a throwaway project
+before moving the page path off `pg_*`. Until then the backend keeps using `pg_*`,
+which still works.
+
+**New system-prompt sections worth knowing** (they describe how Studio Pro's own
+agent is told to behave, which is the best available guide to what the server will
+tolerate): *Element methods* (how to invoke a `call` op), *Safe operations* vs
+*Radical operations* (never remove elements not named in an error or the user's
+query; never recreate documents from scratch), an *Error-Fixing Protocol* imposing
+a single-fix rule, and *Version Control Guidelines*.
+
+**Gap re-check, measured live on 11.14.** Still **no delete-document tool**, still
+**no save/flush tool**, reads still expose `$QualifiedName` but **not `$ID`**, the
+security documents are still sealed, and the `ped_create_document` whitelist still
+rejects `Microflows$Nanoflow` (*"Did you mean: Microflows$Microflow?"*),
+`Projects$Folder` and `JavaActions$JavaAction`. Two gaps moved — see the gaps table
+for both.
+
+## Capability gaps (established 11.11, status re-checked each release)
 
 These are the *absences* that bound what the backend can do. They are as
 important as the tools that exist — re-check each when onboarding a new version,
 since a gap closing (e.g. a delete or save tool appearing) unlocks features.
+The right-hand column carries the latest measured status, not the 11.11 one.
 
 | Gap | Consequence for the backend | Status to recheck each version |
 |-----|-----------------------------|-------------------------------|
@@ -225,8 +346,8 @@ since a gap closing (e.g. a delete or save tool appearing) unlocks features.
 | **No list-modules tool** ⟶ **CLOSED in 11.12** | PED cannot enumerate modules. The backend must read modules/structure from the local mounted `.mpr` (hybrid model); `-p` must be the same project Studio Pro has open. | **11.12 adds `list_modules`** (`[{moduleName, writable, fromMarketplace}]`) → pure-MCP module enumeration is now possible; the local-`.mpr` dependency for *module listing* can be lifted on 11.12+. Other reads (structure, IDs) still use the hybrid model. |
 | **No save/flush tool** | `ped_update_document` edits stay in Studio Pro's in-memory model; the on-disk `.mpr` is stale until the user saves. Drives the dirty-set read router. **Refined on 11.12 (observed live, test8):** *created* documents (`ped_create_document`, `pg_patch_page` page-create) flush to `mprcontents/` immediately — no Concord `save_all` needed for them — but *update* ops still stay in memory (an `alter entity add attribute` was visible to `ped_check_errors` yet absent on disk → CE1613 on an `mx check` of a mid-session disk copy). (`ped_create_module` already flushed immediately on 11.11.) | Watch for a save tool / autosave; recheck the create-flush behavior each version. |
 | **Reads omit `$ID`** | Reads expose `$QualifiedName` only. Association refs need entity GUIDs, recovered from the local reader (= live `$ID` for saved entities). Reconstructed reads use synthetic IDs mapped to names. | Recheck whether reads expose `$ID`. |
-| **Array reads omit primitive types** | A `/entities/N/attributes` read gives attribute names (`$QualifiedName`) but not their primitive type or documentation — those need a per-*leaf* read (`/entities/N/attributes/M/type` → a `DomainModels$*AttributeType` constructor; `/…/documentation` → string). Reconstruction recovers them with a single **batched** leaf read (`enrichReconstructedEntities`) so a dirty/session module reports real types (correct DESCRIBE + a reliable ALTER diff); it falls back to placeholder `String` only if the read fails. | Recheck attribute-array read shape. |
-| **No in-place attribute-type change** | `set /entities/N/attributes/M/type` is rejected (`"only allowed to set primitive or reference properties directly"` — the type is a nested element), and a whole-attribute replace is rejected too (`"only allowed to update elements …"`). The only route to a new type is remove+add, which drops the attribute's `$ID` → **drops the column data**. So `ALTER ENTITY … MODIFY ATTRIBUTE <type>` is rejected over MCP; do it against a local `.mpr` (Studio Pro does an in-place migration PED can't). | Watch for a type-change / migrate op. |
+| **Array reads omit primitive types** | A `/entities/N/attributes` read gives attribute names (`$QualifiedName`) but not their primitive type or documentation — those need a per-*leaf* read (`/entities/N/attributes/M/type` → a `DomainModels$*AttributeType` constructor; `/…/documentation` → string). Reconstruction recovers them with a single **batched** leaf read (`enrichReconstructedEntities`) so a dirty/session module reports real types (correct DESCRIBE + a reliable ALTER diff); it falls back to placeholder `String` only if the read fails. | **11.14 — partially CLOSED.** An attributes-array read now carries each attribute's `type.$Type`, `value.$Type` and `documentation` inline (`{"$Type":"DomainModels$Attribute","$QualifiedName":"…Title","type":{"$Type":"DomainModels$StringAttributeType"},"value":{"$Type":"DomainModels$StoredValue"},"name":"Title","documentation":""}`). But the type's **parameters are still dropped**: the same attribute's leaf read returns `{"$Type":"DomainModels$StringAttributeType","length":200}` — `length` appears **only** in the leaf read. So `enrichReconstructedEntities` is still required for `length` / enumeration refs, but the type *kind* is now free. Not yet exploited; measured on one String attribute, so widen the sample before relying on it. |
+| **No in-place attribute-type change** | `set /entities/N/attributes/M/type` is rejected (`"only allowed to set primitive or reference properties directly"` — the type is a nested element), and a whole-attribute replace is rejected too (`"only allowed to update elements …"`). The only route to a new type is remove+add, which drops the attribute's `$ID` → **drops the column data**. So `ALTER ENTITY … MODIFY ATTRIBUTE <type>` is rejected over MCP; do it against a local `.mpr` (Studio Pro does an in-place migration PED can't). | **11.14 — the structural refusal is GONE.** 11.14's `set` explicitly *"can set or replace element-valued properties"*. Probed with a deliberately invalid value so it could not land: `set /entities/0/attributes/0/type` = `{"$Type":"DomainModels$NoSuchAttributeType"}` is now rejected as a **value validation** error (`"Type … is not a valid concrete subtype of DomainModels$AttributeType."`), not with 11.13's structural *"only allowed to set primitive or reference properties directly"*. That means the operation now reaches validation — i.e. a **valid** subtype would plausibly be accepted. **Not confirmed:** proving it needs a successful mutation against a throwaway project, and the data-safety question behind the gap (does an in-place type change migrate the column, or drop it?) is unanswered and is the *real* gate on `ALTER ENTITY … MODIFY ATTRIBUTE`. `capabilities.yaml` therefore still reports it unauthorable. |
 | **Two write protocols** | Pages **must** use `pg_*`; everything else uses `ped_*`. The system prompt forbids PED for pages. | Stable, but reconfirm. |
 | **`ped_create_document` doc-type whitelist** | The create tool accepts only certain document types; some model documents are rejected even though they have a `$constructor` schema. Confirmed off the whitelist: **`Microflows$Nanoflow`** (`"… Did you mean: Microflows$Microflow?"`), **`Projects$Folder`** (empty folders), and **`BusinessEvents$BusinessEventService`** (a `$element`, not a `$constructor` — its CREATE/ALTER are rejected in `businessevent.go`, but SHOW/DESCRIBE read the `.mpr`, DROP goes via Concord, and the published-event entities/constants it relies on are creatable). So nanoflows aren't creatable over MCP (CREATE/ALTER rejected — `nanoflow.go`; DROP works via Concord), and an *empty* folder can't be created. **But `ped_create_document` accepts a `folderPath` per document, which auto-creates the whole folder path** — so a document is placed in a (possibly nested) folder at create time (`folder.go`/`resolveDocContainer`). What you can't do: re-parent an *existing* document — `/folderPath` is not a settable property (so `MOVE`/`DROP FOLDER`/`MOVE FOLDER` are rejected), and pages can't be foldered (`pg_write_page` takes no folderPath). | Re-probe the create whitelist each version. |
 | **No Java action document creation** | `ped_create_document` rejects `JavaActions$JavaAction` outright (`"Document type 'JavaActions$JavaAction' cannot be created."`) — a Java action is backed by a `.java` source file Studio Pro generates/manages, so the model document can't be created standalone. `CREATE/ALTER JAVA ACTION` are rejected with an actionable error (`mdl/backend/mcp/javaaction.go`); *calling* a Java action from a microflow is unaffected. | Watch for a Java-action create tool. |
@@ -730,17 +851,56 @@ already removes entities/associations).
 1. Open a project in the new Studio Pro; establish transport (direct or socat).
 2. `go run ./cmd/mcpprobe -url http://localhost/mcp -dial host.docker.internal:<port> -method tools/list`
    → save to `mdl/backend/mcp/testdata/tools-<version>.json`.
-3. **Diff against the previous `tools.json`** — added/removed/renamed tools, **and
-   each surviving tool's `inputSchema`**. A name-only diff is not enough: 11.13
-   changed no tool name mxcli calls, yet `pg_read_page` gained a `depth` argument
-   defaulting to 4 that broke ALTER PAGE. Treat a **new argument with a default**
-   as a behaviour change to the existing call, since the server applies it whether
-   or not the client knows about it. A new argument mxcli must send has to be gated
-   with `Client.SupportsToolArg` — never sent unconditionally.
+3. **Diff against the previous `tools-<version>.json`** — added/removed/renamed
+   tools, each surviving tool's `inputSchema`, **and each tool's description text**.
+   Three releases have now proved a name-only diff insufficient, each in a different
+   way:
+   - **11.12** removed `pg_write_page` (a name change — the only one a name diff
+     would have caught).
+   - **11.13** changed no name mxcli calls, yet `pg_read_page` gained a `depth`
+     argument defaulting to 4 that broke ALTER PAGE. Treat a **new argument with a
+     default** as a behaviour change to the existing call, since the server applies
+     it whether or not the client knows about it. A new argument mxcli must send has
+     to be gated with `Client.SupportsToolArg` — never sent unconditionally.
+   - **11.14** changed no name and no argument at all, yet `ped_update_document`
+     gained an operation type and **downgraded its atomicity guarantee** — the whole
+     of it visible only in prose. Read the description diffs; a contract can change
+     with the schema byte-identical.
+
+   The argument scan that produced 11.14's measured negative (no added/removed
+   property, no changed `default`, no changed `required` set) is worth re-running
+   verbatim — it is what licenses "no new `SupportsToolArg` gate needed":
+
+   ```python
+   old = {t['name']: t for t in json.load(open('testdata/tools-<prev>.json'))['tools']}
+   new = {t['name']: t for t in json.load(open('testdata/tools-<next>.json'))['tools']}
+   for n in sorted(set(old) & set(new)):
+       a = (old[n].get('inputSchema') or {}).get('properties', {})
+       b = (new[n].get('inputSchema') or {}).get('properties', {})
+       assert set(a) == set(b), (n, set(b) - set(a), set(a) - set(b))
+       assert all(a[k].get('default') == b[k].get('default') for k in a), n
+   ```
+
+   Also read the **system prompt** (`resources/read` on
+   `mendix://studio-pro/system-prompt`). It states rules the tool descriptions do
+   not — 11.14 silently dropped the "pages must use `pg_*`" instruction from it.
 4. Update the **server identity** and **tool matrix** tables above (new column).
 5. Re-run the **capability gaps** checks — especially delete / save / modules /
    `$ID` exposure. Any gap that closed is a feature to build; note it here and
    in `docs/11-proposals/PROPOSAL_mcp_backend.md`.
+
+   **Probe a gap without mutating the user's open project.** Send the operation with
+   a value that *cannot* succeed, and read which layer rejects it. A **structural**
+   refusal ("only allowed to set primitive or reference properties directly") means
+   the gap is open; a **value-validation** refusal ("not a valid concrete subtype
+   of …") means the operation now reaches validation and the gap has moved. This is
+   how 11.14's attribute-type gap was measured without writing anything. Always run a
+   **known-good control** in the same batch — without one, "it was rejected" cannot
+   distinguish an unsupported document type from a rejected operation, which is
+   exactly the trap the advertised-but-absent `Settings$ProjectSettings` sets.
+   A probe that could *land* needs a throwaway project: there is still no
+   delete-document tool, so anything created over MCP persists until the user closes
+   Studio Pro without saving.
 6. Re-capture changed schemas (`ped_get_schema`) for doctypes the backend uses;
    refresh `testdata/` fixtures and any affected tests.
 7. If a tool's input schema changed, update the backend call sites and the
