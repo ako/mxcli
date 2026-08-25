@@ -6,11 +6,14 @@ theme so a generated app looks like a product on first boot, and
 
 ```bash
 mxcli theme list                        # built-in themes; the default is marked *
-mxcli theme show signal                 # palette, colorway, and the files it writes
+mxcli theme show signal                 # palette, colorway, tokens, files it writes
 mxcli theme apply -p app.mpr            # apply to an existing project
 mxcli theme apply ledger -p app.mpr     # switch theme (the previous one is removed)
 mxcli theme apply -p app.mpr --dry-run  # report changes without writing
 mxcli theme remove -p app.mpr           # take it back out
+
+mxcli theme create acme -p app.mpr      # a theme this project owns
+mxcli theme list -p app.mpr             # ...which then lists beside the built-ins
 
 mxcli new MyApp --version 11.13.0                # applies `signal`
 mxcli new MyApp --version 11.13.0 --theme none   # plain Atlas
@@ -96,6 +99,59 @@ no page on-load event to re-apply the stored value, and the usual substitute (a
 data view with a nanoflow data source) is not authorable by mxcli on either
 engine yet. `ApplyStoredTheme` is installed and ready — wire it in Studio Pro if
 you need the choice to persist across reloads.
+
+## A theme this project owns
+
+The three built-in themes are a house style, not a brand. `theme create`
+scaffolds a fourth into `theme/mxcli-themes/<name>/`, and from then on it is a
+theme like any other — `theme list -p` shows it, `theme apply <name>` installs
+it, `theme remove` takes it out.
+
+```bash
+mxcli theme create acme -p app.mpr                        # scaffold from signal
+mxcli theme create acme -p app.mpr --from console         # ...or from console
+mxcli theme create acme -p app.mpr --from design.css      # ...and seed the palette
+mxcli theme apply acme -p app.mpr
+```
+
+That folder is the right place because of two constraints. It is **committed** —
+a theme derived from a design is source the team shares, which rules out
+`.mxcli/`, that `mxcli init` puts in `.gitignore`. And it is **not compiled** —
+mxbuild's entry point is `theme/web/main.scss` and it does not glob `theme/` for
+other stylesheets, so the sources sit inert until `theme apply` copies them into
+`theme/web/`. (Verified against a real 11.13 build: nothing under
+`theme/mxcli-themes/` reaches `deployment/`.)
+
+Scaffolding copies an existing theme rather than starting from nothing, so the
+Atlas wiring and the widget layer — identical in every theme, and where most of
+the hard-won detail lives — come across byte for byte. What you edit is the
+palette. A local theme named after a built-in shadows it, so "signal, but with
+our brand" is a valid thing to create.
+
+### Seeding a palette from a design
+
+A theme's palette is nothing but `--mxt-*` custom properties, so a design tool
+seeds one by declaring them. That is the whole contract — anywhere in a `.css`,
+`.scss` or `.html` file:
+
+```css
+:root { --mxt-brand: #7f5af0; --mxt-ground: #fffffe; }
+@media (prefers-color-scheme: dark) { :root { --mxt-ground: #16161a; } }
+```
+
+Declarations inside a dark block (`prefers-color-scheme: dark`, `.theme-dark`,
+`[data-theme="dark"]`) seed the dark palette; everything else seeds the light
+one. Tokens the design does not name keep the base theme's value, so a
+three-colour design still yields a complete, working palette.
+
+`mxcli theme show signal` prints the vocabulary. A `--mxt-*` name the base theme
+does not declare is **an error**, not an extra: nothing would read it, so the
+theme would apply cleanly and render unchanged — the one failure mode this path
+exists to avoid.
+
+Inferring a palette from a mockup's inline styles was the alternative, and it is
+a guess: two greys in a design do not say which is the app ground and which is a
+hovered row. Ask the design step to emit a token block instead.
 
 ## Re-branding
 

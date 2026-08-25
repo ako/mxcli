@@ -45,14 +45,14 @@ func read(t *testing.T, path string) string {
 }
 
 func TestDefaultThemeIsEmbeddedAndWellFormed(t *testing.T) {
-	themes, err := List()
+	themes, err := List("")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(themes) == 0 {
 		t.Fatal("no themes embedded")
 	}
-	def, err := Get(DefaultName)
+	def, err := Get("", DefaultName)
 	if err != nil {
 		t.Fatalf("the default theme must be embedded: %v", err)
 	}
@@ -110,30 +110,26 @@ func TestApply_WritesTheThreeLayersAndTheFonts(t *testing.T) {
 	}
 }
 
-// Every url() the theme emits must resolve to a file the theme also ships.
-// A typo here compiles clean and only shows up as a silent fallback to
-// system-ui in the browser.
+// Every url() the theme emits must resolve to a file the theme also ships. A
+// typo here compiles clean and only shows up as a silent fallback to system-ui
+// in the browser. Every theme is checked, and
+// the filenames are derived from the partial's own @font-face loops rather
+// than restated here, so a theme that changes its weights cannot drift from a
+// hand-maintained list in this file.
 func TestApply_EveryFontURLResolvesToAVendoredFile(t *testing.T) {
-	dir := newProject(t)
-	if _, err := Apply(dir, DefaultName, Options{}); err != nil {
+	themes, err := List("")
+	if err != nil {
 		t.Fatal(err)
 	}
-
-	partial := read(t, filepath.Join(dir, "theme", "web", "_mxcli-signal.scss"))
-	weights := map[string][]string{
-		"sans": {"400", "500", "600", "700"},
-		"mono": {"400", "500", "600"},
-	}
-	for family, ws := range weights {
-		for _, w := range ws {
-			name := "ibm-plex-" + family + "-latin-" + w + "-normal.woff2"
-			if _, err := os.Stat(filepath.Join(dir, "theme", "web", "mxcli-fonts", name)); err != nil {
-				t.Errorf("%s referenced by the @font-face loop but not vendored", name)
+	for _, th := range themes {
+		t.Run(th.Name, func(t *testing.T) {
+			dir := newProject(t)
+			if _, err := Apply(dir, th.Name, Options{}); err != nil {
+				t.Fatal(err)
 			}
-		}
-	}
-	if !strings.Contains(partial, `url("./mxcli-fonts/`) {
-		t.Error("font URLs must be relative to theme.compiled.css at the web root")
+			partial := read(t, filepath.Join(dir, "theme", "web", "_mxcli-"+th.Name+".scss"))
+			assertFontsResolve(t, dir, partial)
+		})
 	}
 }
 
@@ -252,7 +248,7 @@ func TestApply_RefusesADirectoryThatIsNotAMendixProject(t *testing.T) {
 }
 
 func TestGet_UnknownThemeNamesTheDiscoveryCommand(t *testing.T) {
-	_, err := Get("nope")
+	_, err := Get("", "nope")
 	if err == nil || !strings.Contains(err.Error(), "mxcli theme list") {
 		t.Errorf("err = %v; should point at `mxcli theme list`", err)
 	}
@@ -278,7 +274,7 @@ func TestLayer1BlockContainsNoRules(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestAllThemesAreWellFormed(t *testing.T) {
-	themes, err := List()
+	themes, err := List("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,7 +298,7 @@ func TestAllThemesAreWellFormed(t *testing.T) {
 // run through the same one. Shipped per theme (a theme package is meant to be
 // self-contained), which is exactly why it can drift.
 func TestSharedPartialsAreIdenticalInEveryTheme(t *testing.T) {
-	themes, err := List()
+	themes, err := List("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -328,7 +324,7 @@ func TestSharedPartialsAreIdenticalInEveryTheme(t *testing.T) {
 // The widget layer exists because Sass bakes these colours before any custom
 // property exists, so a rule that reintroduces a literal defeats the point.
 func TestWidgetLayerResolvesEveryColourThroughAToken(t *testing.T) {
-	themes, err := List()
+	themes, err := List("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -359,7 +355,7 @@ func TestWidgetLayerResolvesEveryColourThroughAToken(t *testing.T) {
 // flip: the ink stays near-black on a near-black ground. Every theme must go
 // through --mxt-* instead, which is what the Atlas map exists for.
 func TestPalettesDeclareOnlyThemeTokens(t *testing.T) {
-	themes, err := List()
+	themes, err := List("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -486,7 +482,7 @@ func TestSwitcherMDL_TargetsTheRequestedModule(t *testing.T) {
 // differently from the one it includes would ship broken and only fail at the
 // user's next build. Assert the naming contract instead.
 func TestEveryThemeDefinesAndIncludesItsAltPaletteMixin(t *testing.T) {
-	themes, err := List()
+	themes, err := List("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -496,26 +492,90 @@ func TestEveryThemeDefinesAndIncludesItsAltPaletteMixin(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s ships no theme partial: %v", th.Name, err)
 		}
-		mixin := "mxcli-" + th.Name + "-" + string(th.AltVariant())
-		src := string(body)
-		if !strings.Contains(src, "@mixin "+mixin+" {") {
-			t.Errorf("%s does not define @mixin %s", th.Name, mixin)
-		}
-		if !strings.Contains(src, "@include "+mixin+";") {
-			t.Errorf("%s defines %s but never includes it", th.Name, mixin)
-		}
-		if !strings.Contains(src, "@include mxcli-atlas-map;") {
-			t.Errorf("%s never includes the Atlas map", th.Name)
-		}
-		// The alt palette must be reachable both ways: from the OS preference
-		// and from an explicit class a switcher sets.
-		if !strings.Contains(src, "prefers-color-scheme: "+string(th.AltVariant())) {
-			t.Errorf("%s does not follow the OS into its alt palette", th.Name)
-		}
-		if !strings.Contains(src, ":root.theme-"+string(th.AltVariant())+" {") {
-			t.Errorf("%s does not honour an explicit theme-%s class", th.Name, th.AltVariant())
+		assertPartialStructure(t, string(body), th.Name, th.AltVariant())
+	}
+}
+
+// assertPartialStructure checks the contract a theme partial has to satisfy
+// for its SCSS to compile into a working theme.
+//
+// It is a helper rather than an inline block because a *scaffolded* theme has
+// to satisfy exactly the same contract, and the naming half of it is the one
+// thing a copy can plausibly get wrong: a partial that still defines
+// @mixin mxcli-signal-dark while main.scss includes mxcli-acme-dark compiles
+// to nothing and fails at the user's build, not in CI.
+func assertPartialStructure(t *testing.T, src, name string, alt Variant) {
+	t.Helper()
+	mixin := "mxcli-" + name + "-" + string(alt)
+	if !strings.Contains(src, "@mixin "+mixin+" {") {
+		t.Errorf("%s does not define @mixin %s", name, mixin)
+	}
+	if !strings.Contains(src, "@include "+mixin+";") {
+		t.Errorf("%s defines %s but never includes it", name, mixin)
+	}
+	if !strings.Contains(src, "@include mxcli-atlas-map;") {
+		t.Errorf("%s never includes the Atlas map", name)
+	}
+	// The alt palette must be reachable both ways: from the OS preference
+	// and from an explicit class a switcher sets.
+	if !strings.Contains(src, "prefers-color-scheme: "+string(alt)) {
+		t.Errorf("%s does not follow the OS into its alt palette", name)
+	}
+	if !strings.Contains(src, ":root.theme-"+string(alt)+" {") {
+		t.Errorf("%s does not honour an explicit theme-%s class", name, alt)
+	}
+}
+
+// assertFontsResolve checks that every font the partial asks for is actually
+// on disk beside it. A missing woff2 is silent — the browser falls back to the
+// stack's next family and the page just looks slightly wrong.
+func assertFontsResolve(t *testing.T, projectDir, partial string) {
+	t.Helper()
+	names := fontRefs(partial)
+	if len(names) == 0 {
+		t.Error("no font URLs found; they must be relative to theme.compiled.css at the web root")
+	}
+	for _, name := range names {
+		if _, err := os.Stat(filepath.Join(projectDir, "theme", "web", "mxcli-fonts", name)); err != nil {
+			t.Errorf("%s is referenced by a @font-face loop but not vendored", name)
 		}
 	}
+}
+
+// fontRefs resolves every mxcli-fonts URL in a partial to concrete filenames.
+//
+// The scan is positional because each @font-face loop has its own weight list
+// — the sans family ships 400-700 and the mono one 400-600 — so a URL has to
+// be expanded against the @each it actually sits under. Cross-producing every
+// list against every URL invents files no theme ever shipped.
+func fontRefs(partial string) []string {
+	each := regexp.MustCompile(`@each\s+\$weight\s+in\s+\(([^)]+)\)`)
+	url := regexp.MustCompile(`url\("\./mxcli-fonts/([^"]+)"\)`)
+
+	var out []string
+	var weights []string
+	for _, line := range strings.Split(partial, "\n") {
+		if m := each.FindStringSubmatch(line); m != nil {
+			weights = nil
+			for _, w := range strings.Split(m[1], ",") {
+				if w = strings.TrimSpace(w); w != "" {
+					weights = append(weights, w)
+				}
+			}
+		}
+		m := url.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		if !strings.Contains(m[1], "#{$weight}") {
+			out = append(out, m[1])
+			continue
+		}
+		for _, w := range weights {
+			out = append(out, strings.ReplaceAll(m[1], "#{$weight}", w))
+		}
+	}
+	return out
 }
 
 // The storage key the docs and the switcher's JavaScript refer to must be the
@@ -617,7 +677,7 @@ func TestApply_SwitchingLeavesExactlyOneBlockInEveryFile(t *testing.T) {
 // fallback; the guard was a bare .current-language-text at (0,1,0), which only
 // won on layouts that do not nest the selector under .navbar-brand.
 func TestAtlasMap_LanguageSelectorMatchesAtlasSpecificityAndUsesTheRailToken(t *testing.T) {
-	themes, err := List()
+	themes, err := List("")
 	if err != nil {
 		t.Fatal(err)
 	}

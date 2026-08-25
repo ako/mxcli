@@ -57,7 +57,7 @@ Examples:
 		// Validate the theme before downloading ~800MB of MxBuild: a typo should
 		// fail in a second, not after the slowest step in the command.
 		if themeName != theme.NoneName {
-			if _, err := theme.Get(themeName); err != nil {
+			if _, err := theme.Get("", themeName); err != nil {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				os.Exit(1)
 			}

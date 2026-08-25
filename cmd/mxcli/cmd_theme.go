@@ -37,6 +37,10 @@ theme-dark class on the root element; --variant light or dark bakes one palette.
 Nothing in Mendix sets that class, so 'mxcli theme switcher install' adds a
 toggle — that subcommand is the only one here that writes to the model.
 
+A project can carry its own themes too. 'mxcli theme create <name>' scaffolds one
+into ` + theme.LocalThemesDir + `/, optionally seeding the palette from a design
+file that declares --mxt-* tokens; from then on it behaves like a built-in one.
+
 Only one theme applies at a time: applying removes the previous one, because two
 themes mapping the same Atlas variables would fight in the cascade.
 
@@ -49,20 +53,41 @@ New projects get the default theme automatically — see 'mxcli new --theme'.`,
 
 var themeListCmd = &cobra.Command{
 	Use:   "list",
-	Short: "List the built-in themes",
+	Short: "List the available themes",
+	Long: `List the available themes.
+
+Three ship in the binary. With -p, any theme the project keeps in
+` + theme.LocalThemesDir + `/ is listed too, marked "local"; a local theme with
+the same name as a built-in one shadows it.`,
+	SilenceUsage:  true,
+	SilenceErrors: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		themes, err := theme.List()
+		dir, err := themeProjectDirIfGiven(cmd)
 		if err != nil {
 			return err
 		}
+		themes, err := theme.List(dir)
+		if err != nil {
+			return err
+		}
+		local := false
 		for _, t := range themes {
 			marker := " "
 			if t.Name == theme.DefaultName {
 				marker = "*"
 			}
-			fmt.Printf("%s %-10s %-10s %s\n", marker, t.Name, t.Title, t.Summary)
+			origin := ""
+			if t.Local {
+				origin, local = "local", true
+			}
+			fmt.Printf("%s %-12s %-12s %-6s %s\n", marker, t.Name, t.Title, origin, t.Summary)
 		}
 		fmt.Printf("\n* = applied by default. Use 'mxcli new --theme none' to opt out.\n")
+		if local {
+			fmt.Printf("local = from %s/ in this project.\n", theme.LocalThemesDir)
+		} else if dir == "" {
+			fmt.Printf("Pass -p to also list this project's own themes.\n")
+		}
 		return nil
 	},
 }
@@ -70,13 +95,28 @@ var themeListCmd = &cobra.Command{
 var themeShowCmd = &cobra.Command{
 	Use:   "show <name>",
 	Short: "Show what a theme contains and which files it writes",
-	Args:  cobra.ExactArgs(1),
+	Long: `Show what a theme contains and which files it writes.
+
+The token list at the end is the theme's vocabulary: those are the names a
+design artifact has to declare for 'mxcli theme create --from' to seed a
+palette from it.`,
+	Args:          cobra.ExactArgs(1),
+	SilenceUsage:  true,
+	SilenceErrors: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		t, err := theme.Get(args[0])
+		dir, err := themeProjectDirIfGiven(cmd)
 		if err != nil {
 			return err
 		}
-		fmt.Printf("%s (%s) v%s\n\n%s\n\n%s\n\n", t.Title, t.Name, t.Version, t.Summary, t.Description)
+		t, err := theme.Get(dir, args[0])
+		if err != nil {
+			return err
+		}
+		origin := "built in"
+		if t.Local {
+			origin = "local to this project (" + theme.LocalThemesDir + "/" + t.Name + ")"
+		}
+		fmt.Printf("%s (%s) v%s — %s\n\n%s\n\n%s\n\n", t.Title, t.Name, t.Version, origin, t.Summary, t.Description)
 		fmt.Printf("Default palette: %s (auto switches to %s)\n\n", t.DefaultVariant, t.AltVariant())
 		if len(t.Colorway) > 0 {
 			fmt.Printf("Colorway: %s\n\n", strings.Join(t.Colorway, "  "))
@@ -84,6 +124,118 @@ var themeShowCmd = &cobra.Command{
 		fmt.Println("Files:")
 		for _, f := range t.Files {
 			fmt.Printf("  %-42s %-9s %s\n", f.Path, f.Mode, f.Purpose)
+		}
+		if tokens, err := theme.TokenNames(dir, t.Name); err == nil && len(tokens) > 0 {
+			fmt.Printf("\nTokens (%d):\n", len(tokens))
+			for _, chunk := range chunkStrings(tokens, 3) {
+				fmt.Printf("  %s\n", strings.TrimRight(strings.Join(chunk, "  "), " "))
+			}
+		}
+		return nil
+	},
+}
+
+// chunkStrings groups a sorted list into rows of n, padded so the columns line
+// up in a terminal.
+func chunkStrings(in []string, n int) [][]string {
+	width := 0
+	for _, s := range in {
+		if len(s) > width {
+			width = len(s)
+		}
+	}
+	var out [][]string
+	for i := 0; i < len(in); i += n {
+		end := i + n
+		if end > len(in) {
+			end = len(in)
+		}
+		row := make([]string, 0, end-i)
+		for _, s := range in[i:end] {
+			row = append(row, fmt.Sprintf("%-*s", width, s))
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+var themeCreateCmd = &cobra.Command{
+	Use:   "create <name>",
+	Short: "Scaffold a project-local theme, optionally seeded from a design",
+	Long: `Scaffold a theme this project owns, in ` + theme.LocalThemesDir + `/<name>/.
+
+A created theme is a first-class entry in the registry: 'theme list' shows it,
+'theme show' describes it, 'theme apply <name>' installs it. That is the point —
+hand-editing a generated block instead would work once and then be refused by
+the digest fence on the next apply.
+
+Scaffolding copies an existing theme, so the Atlas wiring and the widget layer —
+identical in every theme, and where most of the hard-won detail lives — come
+across byte for byte. What you edit is the palette.
+
+--from takes either a theme name or a file:
+
+  --from console            scaffold from the console theme, palette unchanged
+  --from design/app.dc.html read --mxt-* declarations out of the file and seed
+                            the palette with them (--base picks the scaffold)
+
+Seeding reads plain CSS custom properties, wherever they appear in the file:
+
+  :root { --mxt-brand: #7f5af0; --mxt-ground: #fffffe; }
+  @media (prefers-color-scheme: dark) { :root { --mxt-ground: #16161a; } }
+
+Declarations inside a dark block seed the dark palette; everything else seeds
+the light one. A token the base theme does not declare is an error, not a
+silent no-op — run 'mxcli theme show signal' for the vocabulary.
+
+Nothing is applied. Edit the scaffold, then:
+
+  mxcli theme apply <name> -p app.mpr
+
+Examples:
+  mxcli theme create acme -p app.mpr
+  mxcli theme create acme -p app.mpr --from console
+  mxcli theme create acme -p app.mpr --from design/canvas.dc.html
+  mxcli theme create acme -p app.mpr --from tokens.css --base console
+  mxcli theme create acme -p app.mpr --from tokens.css --dry-run`,
+	Args:          cobra.ExactArgs(1),
+	SilenceUsage:  true,
+	SilenceErrors: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		dir, err := themeProjectDir(cmd)
+		if err != nil {
+			return err
+		}
+		from, _ := cmd.Flags().GetString("from")
+		base, _ := cmd.Flags().GetString("base")
+		title, _ := cmd.Flags().GetString("title")
+		summary, _ := cmd.Flags().GetString("summary")
+		force, _ := cmd.Flags().GetBool("force")
+		dryRun, _ := cmd.Flags().GetBool("dry-run")
+
+		res, err := theme.Create(dir, args[0], theme.CreateOptions{
+			From: from, Base: base, Title: title, Summary: summary, Force: force, DryRun: dryRun,
+		})
+		if err != nil {
+			return err
+		}
+
+		verb := ""
+		if dryRun {
+			verb = " (dry run)"
+		}
+		fmt.Printf("Theme '%s' scaffolded from '%s'%s\n  %s\n", res.Name, res.Base, verb, res.Dir)
+		for _, f := range res.Files {
+			fmt.Printf("  %-9s %s\n", f.Action, f.Path)
+		}
+		if res.Tokens != nil {
+			fmt.Printf("\nSeeded %d token(s) from %s: %d base, %d dark, %d light.\n",
+				res.Tokens.Count(), res.Tokens.Source,
+				len(res.Tokens.Base), len(res.Tokens.Dark), len(res.Tokens.Light))
+		}
+		if !dryRun {
+			fmt.Printf("\nEdit the palette, then apply it:\n"+
+				"  mxcli theme apply %s -p <app.mpr>\n", res.Name)
 		}
 		return nil
 	},
@@ -288,6 +440,19 @@ func execThemeMDL(projectPath, script string) error {
 	return ex.ExecuteProgram(prog)
 }
 
+// themeProjectDirIfGiven resolves -p when it was passed and returns "" when it
+// was not. Read-only commands work without a project — `theme list` on a fresh
+// checkout should show the built-ins rather than fail — but they must not
+// silently fall back to the working directory either, which would make a
+// project's own themes appear or vanish depending on where the shell happens
+// to be.
+func themeProjectDirIfGiven(cmd *cobra.Command) (string, error) {
+	if p, _ := cmd.Flags().GetString("project"); p == "" {
+		return "", nil
+	}
+	return themeProjectDir(cmd)
+}
+
 // themeProjectDir resolves the folder holding the .mpr — the theme/ tree sits
 // beside it. Accepts -p pointing at either the .mpr or its directory.
 func themeProjectDir(cmd *cobra.Command) (string, error) {
@@ -324,17 +489,26 @@ func printThemeResult(res *theme.Result, dryRun bool) {
 }
 
 func init() {
-	for _, c := range []*cobra.Command{themeApplyCmd, themeRemoveCmd} {
+	for _, c := range []*cobra.Command{themeApplyCmd, themeRemoveCmd, themeCreateCmd} {
 		c.Flags().StringP("project", "p", "", "Path to the .mpr file or project directory")
 		c.Flags().Bool("force", false, "Overwrite blocks that carry local edits")
 		c.Flags().Bool("dry-run", false, "Report what would change without writing")
 	}
+	for _, c := range []*cobra.Command{themeListCmd, themeShowCmd} {
+		c.Flags().StringP("project", "p", "", "Path to the .mpr file or project directory (to include its own themes)")
+	}
 	themeApplyCmd.Flags().String("variant", string(theme.VariantAuto),
 		"Light/dark behaviour: auto (follow the OS + honour a theme class), light, or dark")
+	themeCreateCmd.Flags().String("from", "",
+		"A theme name to scaffold from, or a file declaring --mxt-* tokens to seed the palette")
+	themeCreateCmd.Flags().String("base", "",
+		"Theme to scaffold from when --from names a file (default: "+theme.DefaultName+")")
+	themeCreateCmd.Flags().String("title", "", "Display name (default: the theme name, title-cased)")
+	themeCreateCmd.Flags().String("summary", "", "One-line summary shown by 'theme list'")
 	themeSwitcherInstallCmd.Flags().StringP("project", "p", "", "Path to the .mpr file")
 	themeSwitcherInstallCmd.Flags().String("module", "MyFirstModule", "Module to create the actions in")
 	themeSwitcherInstallCmd.Flags().Bool("print", false, "Print the MDL instead of running it")
 	themeSwitcherCmd.AddCommand(themeSwitcherInstallCmd)
-	themeCmd.AddCommand(themeListCmd, themeShowCmd, themeApplyCmd, themeRemoveCmd, themeSwitcherCmd)
+	themeCmd.AddCommand(themeListCmd, themeShowCmd, themeCreateCmd, themeApplyCmd, themeRemoveCmd, themeSwitcherCmd)
 	rootCmd.AddCommand(themeCmd)
 }

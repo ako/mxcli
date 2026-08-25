@@ -112,6 +112,46 @@ third-party request per page load, and the app renders correctly air-gapped.
 
 `mxcli theme apply` does exactly this — see `mxcli theme show signal`.
 
+### A theme of your own: `mxcli theme create`
+
+Don't hand-edit a generated block to get a brand palette. The block is
+digest-fenced, so the next `theme apply` refuses to touch it and reports your
+file as modified — you have taken the theme out of mxcli's hands to change one
+colour. Scaffold a theme the project owns instead:
+
+```bash
+mxcli theme create acme -p app.mpr                    # scaffold from signal
+mxcli theme create acme -p app.mpr --from console     # ...or from console
+mxcli theme create acme -p app.mpr --from design.css  # ...and seed the palette
+mxcli theme apply acme -p app.mpr
+```
+
+It lands in `theme/mxcli-themes/<name>/` — committed (unlike `.mxcli/`, which
+`mxcli init` gitignores) and not compiled (mxbuild's entry point is
+`theme/web/main.scss`; it does not glob `theme/`). From then on it is a theme
+like any other: `theme list -p` shows it marked `local`, `theme apply` installs
+it, `theme remove` takes it out. A local theme named after a built-in shadows it.
+
+**Seeding from a design.** `--from <file>` reads `--mxt-*` declarations out of
+any CSS-shaped text — a stylesheet, an SCSS partial, or the `<style>` blocks of
+an HTML export:
+
+```css
+:root { --mxt-brand: #7f5af0; --mxt-ground: #fffffe; }
+@media (prefers-color-scheme: dark) { :root { --mxt-ground: #16161a; } }
+```
+
+A dark block (`prefers-color-scheme: dark`, `.theme-dark`, `[data-theme="dark"]`)
+seeds the dark palette; everything else seeds the light one. Tokens the design
+does not name keep the base theme's value.
+
+If you are driving a design step (`/design` or similar) that will feed this, ask
+it to **emit a token block** rather than inferring one from the mockup. Two greys
+in a design do not say which is the app ground and which is a hovered row;
+`mxcli theme show signal` prints the exact vocabulary to target. A `--mxt-*` name
+the base theme does not declare is refused, because nothing would read it — the
+theme would apply cleanly and render unchanged.
+
 ### Light/dark: Mendix ships the slot, not the switcher
 
 `theme/web/_theme-dark.scss` and `_theme-neutral.scss` declare `:root.theme-dark`

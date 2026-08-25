@@ -448,6 +448,20 @@ a partial. Files the project already owns are written as digest-fenced blocks
 (guard-don't-drop, as in ADR-0005): a block with local edits is refused, not
 overwritten.
 
+The registry reads two sources: the embedded themes and the project's own, under
+**`theme/mxcli-themes/<name>/`** (`theme.LocalThemesDir`), a local one shadowing
+an embedded one of the same name. That path is fixed by two constraints — it must
+be **committed** (a design-derived theme is source the team shares, which rules
+out `.mxcli/`, gitignored by `mxcli init`) and **not compiled** (mxbuild's entry
+point is `theme/web/main.scss`; it does not glob `theme/`, verified against an
+11.13 build). `theme create` scaffolds one by copying an existing theme and
+renaming the identifiers built from the name (`@mixin mxcli-<name>-<alt>`, the
+`@import`) — a copy that skips that rename collides the moment both themes exist.
+`--from <file>` seeds the palette from `--mxt-*` declarations in any CSS-shaped
+text; **an unrecognised `--mxt-*` name is refused, not written**, because nothing
+reads it — the theme would apply cleanly and render unchanged, which is
+indistinguishable from the design not having been applied at all.
+
 Two more, learned by flipping the variant on a running app:
 
 - **Atlas ships `:root.theme-dark` / `:root.theme-neutral` in `theme/web/` but
@@ -685,7 +699,8 @@ go build -o bin/mxcli ./cmd/mxcli
 | **Model repair** | `mxcli fix widgets`, `mxcli fix design-properties` | Runs `mx update-widgets` / `mx rename-design-properties` and **persists** the result without their MPR v2 → v1 collapse (harvest: let the tool convert, read the units back, restore v2, write the changed ones through mxcli's writer). Clears CE0463 / CE6087 after a headless install — measured 203 → 0 errors on a vanilla 11.12.1 app |
 | **Diagnostics** | `mxcli diag [--bundle]` | Session logs, version info, bug report bundles |
 | **New project** | `mxcli new <name> --version X.Y.Z [--output-dir dir] [--theme none]` | Downloads mxbuild, creates blank project, applies default styling, runs init, installs Linux mxcli for devcontainer |
-| **Default styling** | `mxcli theme list\|show\|apply\|remove` | Applies a built-in theme (signal/ledger/console) — files under `theme/` only, the model is never touched |
+| **Default styling** | `mxcli theme list\|show\|apply\|remove` | Applies a theme (signal/ledger/console) — files under `theme/` only, the model is never touched |
+| **Project themes** | `mxcli theme create <name> [--from <theme\|design-file>]` | Scaffolds a theme the project owns into `theme/mxcli-themes/`; `--from <file>` seeds the palette from `--mxt-*` declarations |
 | **Theme switching** | `mxcli theme apply <name> --variant auto\|light\|dark`, `mxcli theme switcher install` | `auto` ships both palettes (follows the OS + honours a `theme-light`/`theme-dark` class); `switcher install` adds the JS actions + nanoflow for a user toggle (**this one does write to the model**) |
 | **Setup mxcli** | `mxcli setup mxcli [--os linux] [--arch amd64] [--output ./mxcli]` | Download platform-specific mxcli binary from GitHub releases |
 
@@ -774,7 +789,7 @@ Full syntax tables for all MDL statements (microflows, pages, security, navigati
 ## Current Implementation Status
 
 **Implemented:**
-- Default styling + runtime theme switching (`mxcli theme list/show/apply/remove/switcher`, `mxcli new --theme`): three embedded themes (**signal** light-first, **ledger** light-first, **console** dark-first), each a palette in `theme/web/custom-variables.scss` + a shared Atlas wiring partial + a theme partial imported from `theme/web/main.scss` (which compiles last), plus vendored fonts. **No model changes**, so it hot-applies under `run --local --watch` and cannot affect a build. Generated regions are digest-fenced: a block carrying local edits is refused rather than overwritten. Applying a theme removes the previous one. `--variant auto` (default) ships both palettes — the app follows `prefers-color-scheme` before first paint and honours a `theme-light`/`theme-dark` class on `<html>`; `light`/`dark` bakes one. `theme switcher install` is the only part that writes to the model (JS actions + a nanoflow for a toggle button). Package: `cmd/mxcli/theme/`. See `docs/11-proposals/PROPOSAL_default_styling.md`
+- Default styling + runtime theme switching (`mxcli theme list/show/create/apply/remove/switcher`, `mxcli new --theme`): three embedded themes (**signal** light-first, **ledger** light-first, **console** dark-first), each a palette in `theme/web/custom-variables.scss` + a shared Atlas wiring partial + a theme partial imported from `theme/web/main.scss` (which compiles last), plus vendored fonts. **No model changes**, so it hot-applies under `run --local --watch` and cannot affect a build. Generated regions are digest-fenced: a block carrying local edits is refused rather than overwritten. Applying a theme removes the previous one. `--variant auto` (default) ships both palettes — the app follows `prefers-color-scheme` before first paint and honours a `theme-light`/`theme-dark` class on `<html>`; `light`/`dark` bakes one. `theme switcher install` is the only part that writes to the model (JS actions + a nanoflow for a toggle button). A project can add its own themes under `theme/mxcli-themes/<name>/` (committed, not compiled); `theme create <name> [--from <theme|design-file>]` scaffolds one from an existing theme, renaming the identifiers built from the name and optionally seeding the palette from `--mxt-*` declarations in a design artifact. A local theme shadows a built-in of the same name. Package: `cmd/mxcli/theme/`. See `docs/11-proposals/PROPOSAL_default_styling.md`
 - MPR v1/v2 reading and writing
 - Idempotent writes (ADR-0008): a unit whose new content is semantically equal to what is stored is **not written**, so re-running an MDL script against an in-sync project leaves the `.mpr` and `mprcontents/` byte-identical and Studio Pro shows no version-control changes. Comparison is on a canonical form (element `$ID`s normalised away — a rebuild mints them randomly, so byte comparison would skip nothing); `Microflows$Microflow.StableId` is carried from the stored document rather than re-minted, because the build derives every client-callable microflow's operation id from it. When a write **does** land, `canon.TransplantIDs` matches the rebuild against the stored document and reuses its element `$ID`s (rewriting every pointer in the same pass), so a changed document's diff is the change rather than a wholesale replacement — measured on #910's nanoflow: 1 of 37 identities survived an argument edit before, 37 of 37 after, and a change plus its revert returns to the original bytes. Inserting or deleting an activity mints IDs only for the genuinely new elements. One policy in `modelsdk/canon`, called from both engines' write choke points. `MXCLI_ALWAYS_WRITE=1` disables elision (not preservation) for bisecting — which means it no longer changes the resulting bytes, only the mtimes. The executor's output distinguishes the two: `Unchanged nanoflow: …` where the write was skipped. See `docs-site/src/internals/idempotent-writes.md`
 - Domain model (entities, attributes, associations)

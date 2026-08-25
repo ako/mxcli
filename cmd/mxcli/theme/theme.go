@@ -24,7 +24,6 @@
 package theme
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -83,6 +82,10 @@ type Theme struct {
 	// light-first.
 	DefaultVariant Variant    `json:"defaultVariant"`
 	Files          []FileSpec `json:"files"`
+	// Local marks a theme that came from the project's own LocalThemesDir
+	// rather than from the binary. Set on load, never serialised — where a
+	// theme lives is a property of the lookup, not of its theme.json.
+	Local bool `json:"-"`
 }
 
 // AltVariant is the variant `auto` switches to — the opposite of the default.
@@ -129,57 +132,92 @@ type Options struct {
 	KeepOthers bool
 }
 
-// List returns the embedded themes, ordered by name.
-func List() ([]Theme, error) {
-	entries, err := fs.ReadDir(assetsFS, assetsRoot)
+// List returns the themes visible from projectDir, ordered by name: the ones
+// embedded in the binary plus any the project keeps in LocalThemesDir, with a
+// local theme shadowing an embedded one of the same name.
+//
+// projectDir may be empty to list the embedded set alone.
+func List(projectDir string) ([]Theme, error) {
+	srcs, err := sources(projectDir)
 	if err != nil {
-		return nil, fmt.Errorf("reading embedded themes: %w", err)
+		return nil, err
 	}
-	var themes []Theme
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		t, err := Get(e.Name())
+	themes := make([]Theme, 0, len(srcs))
+	for _, s := range srcs {
+		t, err := s.load(path.Base(s.root))
 		if err != nil {
 			return nil, err
 		}
 		themes = append(themes, *t)
 	}
-	sort.Slice(themes, func(i, j int) bool { return themes[i].Name < themes[j].Name })
 	return themes, nil
 }
 
-// Get returns one embedded theme by name.
-func Get(name string) (*Theme, error) {
-	raw, err := assetsFS.ReadFile(path.Join(assetsRoot, name, "theme.json"))
+// Get returns one theme by name, preferring the project's own copy over the
+// embedded one. projectDir may be empty to look only in the binary.
+func Get(projectDir, name string) (*Theme, error) {
+	s, err := sourceFor(projectDir, name)
 	if err != nil {
-		return nil, fmt.Errorf("unknown theme %q (run `mxcli theme list`)", name)
+		return nil, err
 	}
-	var t Theme
-	if err := json.Unmarshal(raw, &t); err != nil {
-		return nil, fmt.Errorf("theme %q: malformed theme.json: %w", name, err)
-	}
-	if t.Name != name {
-		return nil, fmt.Errorf("theme %q: theme.json declares name %q", name, t.Name)
-	}
-	return &t, nil
+	return s.load(name)
 }
 
-// Installed reports which embedded themes have a block in projectDir, read from
+// TokenNames returns the --mxt-* tokens a theme declares, sorted. This is the
+// vocabulary a design artifact has to speak to seed the theme, so `theme show`
+// prints it and `theme create --from <file>` validates against it.
+func TokenNames(projectDir, name string) ([]string, error) {
+	src, err := sourceFor(projectDir, name)
+	if err != nil {
+		return nil, err
+	}
+	return knownTokens(src)
+}
+
+// knownTokens collects every --mxt-* name declared anywhere in a theme's SCSS:
+// the default palette in custom-variables.scss and the alt palette in the
+// theme's own partial.
+func knownTokens(src source) ([]string, error) {
+	seen := map[string]bool{}
+	root := src.filesRoot()
+	err := fs.WalkDir(src.fsys, root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(p, ".scss") {
+			return err
+		}
+		body, err := fs.ReadFile(src.fsys, p)
+		if err != nil {
+			return err
+		}
+		for _, n := range declaredTokens(string(body)) {
+			seen[n] = true
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(seen))
+	for n := range seen {
+		out = append(out, n)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// Installed reports which themes have a block in projectDir, read from
 // the mxcli:theme:begin markers rather than assumed.
 //
 // `theme remove` with no name used to fall back to the default theme, which on a
 // project themed with anything else removed nothing, reported every file as
 // unchanged and exited 0 — a silent no-op on the documented invocation.
 func Installed(projectDir string) ([]string, error) {
-	all, err := List()
+	all, err := List(projectDir)
 	if err != nil {
 		return nil, err
 	}
 	var found []string
 	for _, t := range all {
-		paths, err := assetPaths(t.Name)
+		paths, err := assetPaths(projectDir, t.Name)
 		if err != nil {
 			return nil, err
 		}
@@ -232,7 +270,11 @@ func Resolve(projectDir, fallback string) (string, error) {
 //
 // projectDir is the folder holding the .mpr — the theme/ tree sits beside it.
 func Apply(projectDir, name string, opts Options) (*Result, error) {
-	t, err := Get(name)
+	src, err := sourceFor(projectDir, name)
+	if err != nil {
+		return nil, err
+	}
+	t, err := src.load(name)
 	if err != nil {
 		return nil, err
 	}
@@ -253,20 +295,23 @@ func Apply(projectDir, name string, opts Options) (*Result, error) {
 	}
 
 	res := &Result{Theme: name}
-	root := path.Join(assetsRoot, name, "files")
+	root := src.filesRoot()
 	// Edited blocks are collected rather than thrown on the first hit: a user who
 	// has hand-tuned two files should see both named once, not discover the second
 	// only after dealing with the first.
 	var skipped []error
 
-	walkErr := fs.WalkDir(assetsFS, root, func(p string, d fs.DirEntry, err error) error {
+	walkErr := fs.WalkDir(src.fsys, root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
 		rel := strings.TrimPrefix(p, root+"/")
+		if err := refuseSelfWrite(rel); err != nil {
+			return err
+		}
 		target := filepath.Join(projectDir, filepath.FromSlash(rel))
 
-		body, err := assetsFS.ReadFile(p)
+		body, err := fs.ReadFile(src.fsys, p)
 		if err != nil {
 			return err
 		}
@@ -303,20 +348,27 @@ func Remove(projectDir, name string, opts Options) (*Result, error) {
 // remove is Remove with a set of project-relative paths that must survive,
 // because another theme is about to write them.
 func remove(projectDir, name string, opts Options, protect map[string]bool) (*Result, error) {
-	t, err := Get(name)
+	src, err := sourceFor(projectDir, name)
+	if err != nil {
+		return nil, err
+	}
+	t, err := src.load(name)
 	if err != nil {
 		return nil, err
 	}
 
 	res := &Result{Theme: name}
-	root := path.Join(assetsRoot, name, "files")
+	root := src.filesRoot()
 	var skipped []error
 
-	walkErr := fs.WalkDir(assetsFS, root, func(p string, d fs.DirEntry, err error) error {
+	walkErr := fs.WalkDir(src.fsys, root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
 		rel := strings.TrimPrefix(p, root+"/")
+		if err := refuseSelfWrite(rel); err != nil {
+			return err
+		}
 		target := filepath.Join(projectDir, filepath.FromSlash(rel))
 
 		existing, readErr := os.ReadFile(target)
@@ -391,7 +443,7 @@ func remove(projectDir, name string, opts Options, protect map[string]bool) (*Re
 	if walkErr != nil {
 		return res, walkErr
 	}
-	pruneEmptyThemeDirs(projectDir, root)
+	pruneEmptyThemeDirs(projectDir, src)
 
 	sort.Slice(res.Files, func(i, j int) bool { return res.Files[i].Path < res.Files[j].Path })
 	return res, errors.Join(skipped...)
@@ -401,9 +453,10 @@ func remove(projectDir, name string, opts Options, protect map[string]bool) (*Re
 // are gone, so `theme remove` leaves no empty theme/web/mxcli-fonts/ behind.
 // os.Remove is the guard: it refuses a directory that still holds anything the
 // project put there.
-func pruneEmptyThemeDirs(projectDir, root string) {
+func pruneEmptyThemeDirs(projectDir string, src source) {
+	root := src.filesRoot()
 	var dirs []string
-	_ = fs.WalkDir(assetsFS, root, func(p string, d fs.DirEntry, err error) error {
+	_ = fs.WalkDir(src.fsys, root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || !d.IsDir() || p == root {
 			return err
 		}
@@ -489,11 +542,11 @@ func expand(body string, t *Theme, opts Options) string {
 // rival pass deletes a file that is about to be written again, which shows up
 // as an apply that is never idempotent.
 func removeRivalThemes(projectDir string, incoming *Theme, opts Options) error {
-	all, err := List()
+	all, err := List(projectDir)
 	if err != nil {
 		return err
 	}
-	protect, err := assetPaths(incoming.Name)
+	protect, err := assetPaths(projectDir, incoming.Name)
 	if err != nil {
 		return err
 	}
@@ -509,10 +562,14 @@ func removeRivalThemes(projectDir string, incoming *Theme, opts Options) error {
 }
 
 // assetPaths is the set of project-relative paths a theme writes.
-func assetPaths(name string) (map[string]bool, error) {
-	root := path.Join(assetsRoot, name, "files")
+func assetPaths(projectDir, name string) (map[string]bool, error) {
+	src, err := sourceFor(projectDir, name)
+	if err != nil {
+		return nil, err
+	}
+	root := src.filesRoot()
 	out := map[string]bool{}
-	err := fs.WalkDir(assetsFS, root, func(p string, d fs.DirEntry, err error) error {
+	err = fs.WalkDir(src.fsys, root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
@@ -520,6 +577,20 @@ func assetPaths(name string) (map[string]bool, error) {
 		return nil
 	})
 	return out, err
+}
+
+// refuseSelfWrite stops a theme from owning files inside the themes folder.
+//
+// `remove` deletes what a theme owns, so a hand-authored tree with a file at
+// theme/mxcli-themes/... would delete a theme's own source the first time the
+// project switched themes. Nothing mxcli scaffolds does this; the guard is
+// here because these trees are meant to be edited by hand.
+func refuseSelfWrite(rel string) error {
+	if rel == LocalThemesDir || strings.HasPrefix(rel, LocalThemesDir+"/") {
+		return fmt.Errorf("a theme must not write to %s (%s); that folder holds theme sources, and `theme remove` deletes what a theme owns",
+			LocalThemesDir, rel)
+	}
+	return nil
 }
 
 // isBlockFile reports whether a file gets the marker treatment. Anything else
