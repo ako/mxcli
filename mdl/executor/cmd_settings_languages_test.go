@@ -9,10 +9,11 @@
 //	  {$Type:"Texts$Language", CheckCompleteness:false, Code:"en_US", CustomDateFormat:"", CustomDateTimeFormat:"", CustomTimeFormat:""},
 //	  {$Type:"Texts$Language", CheckCompleteness:false, Code:"ar_SD", CustomDateFormat:"", CustomDateTimeFormat:"", CustomTimeFormat:""}]
 //
-// Studio Pro APPENDS rather than sorting, and stores CheckCompleteness FALSE even
-// for the default language — whose Languages-table row reads "Yes", because the
-// default is always checked and the column is computed. Writing true to match the
-// UI would produce a document Studio Pro never writes.
+// Studio Pro APPENDS rather than sorting. CheckCompleteness is a real setting —
+// ticking it makes Mendix report errors for texts with no translation in that
+// language — and it starts false on a newly added language. A stock project also
+// stores false for the DEFAULT language, whose Languages-table row reads "Yes",
+// because Mendix always checks the default whatever the flag says.
 package executor
 
 import (
@@ -171,5 +172,67 @@ func TestLanguageRemove_RejectsAnUnenabledLanguage(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "en_US") {
 		t.Errorf("err = %v, want a rejection listing what IS enabled", err)
+	}
+}
+
+// MODIFY changes an enabled language's settings. Only the options the statement
+// names are touched — re-adding is not the same thing, and a script that turns on
+// the completeness check must not clear a custom format set in Studio Pro.
+func TestLanguageModify_TouchesOnlyWhatItNames(t *testing.T) {
+	ps := settingsWith("en_US", "de_DE")
+	ps.Language.Languages[1].CustomDateFormat = "dd.MM.yyyy"
+	ctx, out, written := langCtx(t, ps)
+
+	err := alterSettingsLanguageModify(ctx, ps, &ast.AlterSettingsStmt{
+		Section: "language", ModifyLanguage: true, LanguageCode: "de_DE",
+		Properties: map[string]any{"CheckCompleteness": "true"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := (*written).Language.Languages[1]
+	if !got.CheckCompleteness {
+		t.Error("CheckCompleteness was not set — it is a real setting: it makes Mendix report errors for texts with no translation in that language")
+	}
+	if got.CustomDateFormat != "dd.MM.yyyy" {
+		t.Errorf("CustomDateFormat = %q, want the stored value untouched — MODIFY changes only what it names", got.CustomDateFormat)
+	}
+	if !strings.Contains(out.String(), "CheckCompleteness") {
+		t.Errorf("output %q does not say what changed", out.String())
+	}
+}
+
+// Mendix always checks the DEFAULT language, so the flag has no effect there.
+// The value is still stored (Studio Pro stores false for en_US), but a run that
+// looked effective and was not would be worse than a note.
+func TestLanguageModify_SaysTheDefaultIsAlwaysChecked(t *testing.T) {
+	ps := settingsWith("en_US")
+	ctx, out, _ := langCtx(t, ps)
+
+	if err := alterSettingsLanguageModify(ctx, ps, &ast.AlterSettingsStmt{
+		ModifyLanguage: true, LanguageCode: "en_US",
+		Properties: map[string]any{"CheckCompleteness": "false"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "DEFAULT") {
+		t.Errorf("output %q should note that the default is always checked", out.String())
+	}
+}
+
+func TestLanguageModify_RejectsUnenabledAndEmpty(t *testing.T) {
+	ps := settingsWith("en_US")
+	ctx, _, _ := langCtx(t, ps)
+
+	if err := alterSettingsLanguageModify(ctx, ps, &ast.AlterSettingsStmt{
+		ModifyLanguage: true, LanguageCode: "nl_NL",
+		Properties: map[string]any{"CheckCompleteness": "true"},
+	}); err == nil {
+		t.Error("modifying a language that is not enabled was accepted")
+	}
+	if err := alterSettingsLanguageModify(ctx, ps, &ast.AlterSettingsStmt{
+		ModifyLanguage: true, LanguageCode: "en_US", Properties: map[string]any{},
+	}); err == nil {
+		t.Error("modify with no properties was accepted")
 	}
 }

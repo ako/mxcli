@@ -20,8 +20,16 @@
 --    unchecked, no custom formats.
 alter settings LANGUAGE add 'ar_SD';
 
--- 2. The same with the options the Edit dialog exposes.
+-- 2. The same with the options the Edit dialog exposes. CheckCompleteness is a
+--    real setting, not cosmetic: with it on, Mendix reports errors and warnings
+--    for texts that have no translation in this language, instead of letting them
+--    fall back to the default silently.
 alter settings LANGUAGE add 'de_DE' (CheckCompleteness: true, CustomDateFormat: 'yyyy-MM-dd');
+
+-- 2b. Change a language that is already enabled. MODIFY touches only the options
+--     it names, so turning the completeness check on cannot clear a custom format
+--     somebody set in Studio Pro.
+alter settings LANGUAGE modify 'ar_SD' (CheckCompleteness: true);
 
 -- 3. DESCRIBE lists the enabled languages.
 describe settings;

@@ -29,12 +29,21 @@ var languageCodeRe = regexp.MustCompile(`^[a-z]{2,3}_[A-Z]{2}$`)
 //	{ $Type: "Texts$Language", CheckCompleteness: false, Code: "ar_SD",
 //	  CustomDateFormat: "", CustomDateTimeFormat: "", CustomTimeFormat: "" }
 //
-// Two things that reference settles and a guess would not. Studio Pro APPENDS
-// rather than sorting, so the stored order is the order languages were enabled.
-// And `CheckCompleteness` is stored **false even for the default language**,
-// whose row in the Languages table reads "Yes" — the dialog explains why ("the
-// default language is always checked"), so that Yes is computed for display and
-// writing true to match it would produce a document Studio Pro never writes.
+// Two things that reference settles and a guess would not.
+//
+// Studio Pro APPENDS rather than sorting, so the stored order is the order
+// languages were enabled.
+//
+// And a newly added language starts with `CheckCompleteness: false`. That flag
+// is a real setting, not display sugar: ticking "Check completeness" makes
+// Mendix report errors and warnings for texts with no translation in that
+// language, which is how a team stops a translation silently falling back to the
+// default. It is authorable here and changeable later with MODIFY. The one
+// subtlety is the DEFAULT language — a stock project stores false for en_US
+// while the Languages table shows "Yes", because Mendix always checks the
+// default whatever the flag says (the Edit dialog states it). So false on the
+// default is what Studio Pro writes, and it does not mean the default is
+// unchecked.
 func alterSettingsLanguageAdd(ctx *ExecContext, ps *model.ProjectSettings, stmt *ast.AlterSettingsStmt) error {
 	if ps.Language == nil {
 		return mdlerrors.NewNotFound("settings section", "language")
@@ -79,6 +88,85 @@ func alterSettingsLanguageAdd(ctx *ExecContext, ps *model.ProjectSettings, stmt 
 		return mdlerrors.NewBackend("update language settings", err)
 	}
 	fmt.Fprintf(ctx.Output, "Enabled language: %s (%d enabled)\n", code, len(ps.Language.Languages))
+	return nil
+}
+
+// alterSettingsLanguageModify changes the settings of a language that is already
+// enabled: the completeness check and the custom date/time formats.
+//
+// Only the options the statement NAMES are touched — that is what distinguishes
+// MODIFY from re-adding, and it means a script turning on the completeness check
+// cannot silently clear a custom date format somebody set in Studio Pro. The
+// language's stored document is preserved either way, so its $ID and any
+// property this mxcli does not model survive.
+func alterSettingsLanguageModify(ctx *ExecContext, ps *model.ProjectSettings, stmt *ast.AlterSettingsStmt) error {
+	if ps.Language == nil {
+		return mdlerrors.NewNotFound("settings section", "language")
+	}
+	code := stmt.LanguageCode
+	if err := validateLanguageCodeForm(code); err != nil {
+		return err
+	}
+	idx := -1
+	avail := make([]string, 0, len(ps.Language.Languages))
+	for i, l := range ps.Language.Languages {
+		avail = append(avail, l.Code)
+		if strings.EqualFold(l.Code, code) {
+			idx = i
+		}
+	}
+	if idx < 0 {
+		sort.Strings(avail)
+		return mdlerrors.NewValidationf(
+			"language %q is not enabled in this project (enabled: %s) — add it first with "+
+				"`alter settings LANGUAGE add '%s';`", code, strings.Join(avail, ", "), code)
+	}
+	if len(stmt.Properties) == 0 {
+		return mdlerrors.NewValidationf(
+			"no properties given — write e.g. `alter settings LANGUAGE modify '%s' (CheckCompleteness: true);`", code)
+	}
+
+	lang := ps.Language.Languages[idx]
+	changed := make([]string, 0, len(stmt.Properties))
+	for key, val := range stmt.Properties {
+		valStr := settingsValueToString(val)
+		switch key {
+		case "CheckCompleteness":
+			v, err := settingsBool(key, valStr)
+			if err != nil {
+				return err
+			}
+			lang.CheckCompleteness = v
+		case "CustomDateFormat":
+			lang.CustomDateFormat = valStr
+		case "CustomTimeFormat":
+			lang.CustomTimeFormat = valStr
+		case "CustomDateTimeFormat":
+			lang.CustomDateTimeFormat = valStr
+		default:
+			return mdlerrors.NewUnsupported(fmt.Sprintf(
+				"unknown language option: %s\n  valid keys: CheckCompleteness, CustomDateFormat, CustomTimeFormat, CustomDateTimeFormat",
+				key))
+		}
+		changed = append(changed, key)
+	}
+	sort.Strings(changed)
+	ps.Language.Languages[idx] = lang
+
+	if err := ctx.Backend.UpdateProjectSettings(ps); err != nil {
+		return mdlerrors.NewBackend("update language settings", err)
+	}
+	fmt.Fprintf(ctx.Output, "Modified language: %s (%s)\n", lang.Code, strings.Join(changed, ", "))
+
+	// Mendix always checks the default language, so the flag changes nothing
+	// there. Say so rather than let the script look effective.
+	if _, named := stmt.Properties["CheckCompleteness"]; named &&
+		strings.EqualFold(ps.Language.DefaultLanguageCode, lang.Code) {
+		fmt.Fprintf(ctx.Output,
+			"\nNote: %s is the DEFAULT language, which Mendix checks for completeness whatever\n"+
+				"this flag says. The value is stored, and takes effect if another language\n"+
+				"becomes the default.\n", lang.Code)
+	}
 	return nil
 }
 

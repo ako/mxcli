@@ -16,6 +16,7 @@ type AlterSettingsStmt struct {
 	// the display name ("Arabic, Sudan") from `ar_SD` and does not store it.
 	LanguageCode   string
 	AddLanguage    bool
+	ModifyLanguage bool
 	RemoveLanguage bool
 }
 

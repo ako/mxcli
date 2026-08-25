@@ -85,3 +85,37 @@ func enabledLanguageCodes(ls *model.LanguageSettings) []string {
 	}
 	return codes
 }
+
+// enabledLanguageDescriptions lists each enabled language with the settings that
+// are not at their default, so DESCRIBE does not lose them. A bare code means the
+// language is stored exactly as Studio Pro's Add dialog leaves it.
+func enabledLanguageDescriptions(ls *model.LanguageSettings) []string {
+	if ls == nil {
+		return nil
+	}
+	out := make([]string, 0, len(ls.Languages))
+	for _, l := range ls.Languages {
+		if l.Code == "" {
+			continue
+		}
+		var opts []string
+		if l.CheckCompleteness {
+			opts = append(opts, "CheckCompleteness")
+		}
+		if l.CustomDateFormat != "" {
+			opts = append(opts, "CustomDateFormat: "+l.CustomDateFormat)
+		}
+		if l.CustomTimeFormat != "" {
+			opts = append(opts, "CustomTimeFormat: "+l.CustomTimeFormat)
+		}
+		if l.CustomDateTimeFormat != "" {
+			opts = append(opts, "CustomDateTimeFormat: "+l.CustomDateTimeFormat)
+		}
+		if len(opts) == 0 {
+			out = append(out, l.Code)
+			continue
+		}
+		out = append(out, fmt.Sprintf("%s (%s)", l.Code, strings.Join(opts, ", ")))
+	}
+	return out
+}

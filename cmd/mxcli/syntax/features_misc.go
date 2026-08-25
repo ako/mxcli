@@ -280,6 +280,7 @@ ALTER SETTINGS CONSTANT '<qualifiedName>' VALUE '<value>' IN CONFIGURATION '<nam
 ALTER SETTINGS DROP CONSTANT '<qualifiedName>' IN CONFIGURATION '<name>';
 ALTER SETTINGS LANGUAGE DefaultLanguageCode = '<code>';
 ALTER SETTINGS LANGUAGE ADD '<code>' [(CheckCompleteness: true, CustomDateFormat: '<fmt>')];
+ALTER SETTINGS LANGUAGE MODIFY '<code>' (CheckCompleteness: true, ...);
 ALTER SETTINGS LANGUAGE REMOVE '<code>';
 ALTER SETTINGS WORKFLOWS UserEntity = '<qualifiedName>';
 CREATE CONFIGURATION '<name>' [<key> = <value>, ...];
@@ -303,7 +304,13 @@ CREATE CONFIGURATION 'Production'
 -- check, and is discarded at build time.
 ALTER SETTINGS LANGUAGE ADD 'de_DE';
 ALTER SETTINGS LANGUAGE ADD 'ar_SD' (CheckCompleteness: true);
+ALTER SETTINGS LANGUAGE MODIFY 'ar_SD' (CustomDateFormat: 'yyyy-MM-dd');
 ALTER SETTINGS LANGUAGE REMOVE 'de_DE';
+
+-- CheckCompleteness turns on error reporting for texts with no translation in
+-- that language — without it they fall back to the default silently. MODIFY
+-- changes only the options it names. The DEFAULT language is always checked by
+-- Mendix whatever the flag says.
 
 -- A language is identified by its CODE alone: Studio Pro's "Arabic, Sudan" is
 -- derived from ar_SD for display and is not stored in the model.

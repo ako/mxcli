@@ -65,11 +65,13 @@ func (b *Builder) ExitAlterSettingsClause(ctx *parser.AlterSettingsClauseContext
 			val := settingsValueText(svCtx)
 			stmt.Properties[key] = val
 		}
-	} else if ctx.SettingsSection() != nil && (ctx.ADD() != nil || ctx.REMOVE() != nil) {
-		// ALTER SETTINGS LANGUAGE ADD 'ar_SD' [( key: value, … )]
+	} else if ctx.SettingsSection() != nil && (ctx.ADD() != nil || ctx.MODIFY() != nil || ctx.REMOVE() != nil) {
+		// ALTER SETTINGS LANGUAGE ADD    'ar_SD' [( key: value, … )]
+		// ALTER SETTINGS LANGUAGE MODIFY 'ar_SD'  ( key: value, … )
 		// ALTER SETTINGS LANGUAGE REMOVE 'ar_SD'
 		stmt.Section = ctx.SettingsSection().GetText()
 		stmt.AddLanguage = ctx.ADD() != nil
+		stmt.ModifyLanguage = ctx.MODIFY() != nil
 		stmt.RemoveLanguage = ctx.REMOVE() != nil
 		if all := ctx.AllSTRING_LITERAL(); len(all) > 0 {
 			stmt.LanguageCode = unquoteString(all[0].GetText())

@@ -16,6 +16,7 @@ options { tokenVocab = MDLLexer; }
  * ALTER SETTINGS CONSTANT 'name' VALUE 'value' [IN CONFIGURATION 'name'];
  * ALTER SETTINGS LANGUAGE Key = Value, ...;
  * ALTER SETTINGS LANGUAGE ADD 'ar_SD' [(Key: Value, ...)];
+ * ALTER SETTINGS LANGUAGE MODIFY 'ar_SD' (Key: Value, ...);
  * ALTER SETTINGS LANGUAGE REMOVE 'ar_SD';
  * ALTER SETTINGS WORKFLOWS Key = Value, ...;
  *
@@ -27,6 +28,7 @@ options { tokenVocab = MDLLexer; }
  */
 alterSettingsClause
     : settingsSection ADD STRING_LITERAL languageOptions?
+    | settingsSection MODIFY STRING_LITERAL languageOptions
     | settingsSection REMOVE STRING_LITERAL
     | settingsSection settingsAssignment (COMMA settingsAssignment)*
     | CONSTANT STRING_LITERAL (VALUE settingsValue | DROP) (IN CONFIGURATION STRING_LITERAL)?

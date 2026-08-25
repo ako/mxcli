@@ -427,10 +427,12 @@ func elementID(id model.ID) any {
 //     lives under Settings$LanguageSettings.
 //   - There is **no Description**. Studio Pro's "Arabic, Sudan" is derived from
 //     the code for display; the code is the whole stored identity.
-//   - **CheckCompleteness is false even for the default language**, whose row in
-//     the Languages table reads "Yes". The dialog explains it — "the default
-//     language is always checked" — so that Yes is computed, and writing true to
-//     match the UI would produce a document Studio Pro never writes.
+//   - a newly added language starts with **CheckCompleteness false**. The flag is
+//     a real setting — it makes Mendix report errors for texts with no
+//     translation in that language — so it is written from the model, not forced.
+//     The subtlety is the DEFAULT language: a stock project stores false for
+//     en_US while the Languages table reads "Yes", because Mendix always checks
+//     the default whatever the flag says.
 //
 // An existing language keeps its stored document, so its $ID and any property
 // this mxcli does not model survive; only the modelled fields are overlaid, and

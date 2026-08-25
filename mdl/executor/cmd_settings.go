@@ -182,7 +182,7 @@ func describeSettings(ctx *ExecContext, configName string) error {
 		// any other language is stored and then discarded — so DESCRIBE must show
 		// them. As a COMMENT, because MDL cannot author the list yet: rendering it
 		// as a statement would produce something that does not re-execute.
-		if codes := enabledLanguageCodes(ps.Language); len(codes) > 0 {
+		if codes := enabledLanguageDescriptions(ps.Language); len(codes) > 0 {
 			fmt.Fprintf(ctx.Output,
 				"-- Enabled languages: %s. Only these are built; `create translations` for\n"+
 					"-- any other language is stored and silently dropped at build time.\n"+
@@ -354,13 +354,16 @@ func alterSettings(ctx *ExecContext, stmt *ast.AlterSettingsStmt) error {
 	section := strings.ToLower(stmt.Section)
 	// ADD/REMOVE change the list of ENABLED languages rather than a key on the
 	// settings part, so they are dispatched before the key/value sections.
-	if stmt.AddLanguage || stmt.RemoveLanguage {
+	if stmt.AddLanguage || stmt.ModifyLanguage || stmt.RemoveLanguage {
 		if section != "language" {
 			return mdlerrors.NewUnsupported(fmt.Sprintf(
 				"add/remove is only defined for the LANGUAGE section, not %s", stmt.Section))
 		}
-		if stmt.AddLanguage {
+		switch {
+		case stmt.AddLanguage:
 			return alterSettingsLanguageAdd(ctx, ps, stmt)
+		case stmt.ModifyLanguage:
+			return alterSettingsLanguageModify(ctx, ps, stmt)
 		}
 		return alterSettingsLanguageRemove(ctx, ps, stmt)
 	}
