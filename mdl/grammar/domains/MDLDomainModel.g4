@@ -490,23 +490,92 @@ createImportMappingStatement
     : IMPORT MAPPING qualifiedName
       (FOLDER STRING_LITERAL)?
       importMappingWithClause?
+      importMappingParameterClause?
       LBRACE importMappingRootElement RBRACE
     ;
 
+/**
+ * The mapping's INPUT object (#265). An import mapping may take an object as a
+ * parameter, which its custom handlers then bind via `Param: parameter`:
+ *
+ *   create import mapping M.IM_Response
+ *     with json structure M.JSON_Response
+ *     parameter GenAICommons.ChunkCollection
+ *   { ... }
+ *
+ * Stored as ParameterType, a DataTypes$ObjectType naming the entity; an
+ * unparameterised mapping stores the DataTypes$UnknownType marker instead.
+ *
+ * Import only: an export mapping's parameter IS its root object, and Studio Pro
+ * writes no ParameterType at all on one (0 of 127 measured).
+ */
+importMappingParameterClause
+    : PARAMETER qualifiedName
+    ;
+
 importMappingWithClause
-    : WITH JSON STRUCTURE qualifiedName
+    // ROOT selects the schema element the mapping STARTS at, when that is not
+    // the structure's own root — the shape Studio Pro produces when you pick a
+    // node deeper in the payload (#267). The path is written in member names and
+    // steps through arrays implicitly: `root choices/message` reaches
+    // "(Object)|choices|(Object)|message".
+    : WITH JSON STRUCTURE qualifiedName (ROOT jsonMemberPath)?
     | WITH XML SCHEMA qualifiedName
+    // Module.Collection.Definition — the definitions live inside a collection
+    // document, so the reference is three parts. qualifiedName already accepts
+    // any number of them.
+    | WITH MESSAGE DEFINITION qualifiedName
     ;
 
 importMappingRootElement
-    : importMappingObjectHandling qualifiedName
+    : importMappingObjectHandling qualifiedName mappingCustomHandler? mappingHandlingBackup?
       LBRACE importMappingChild (COMMA importMappingChild)* RBRACE
     ;
 
+/**
+ * What happens when the object is NOT found (or, for `create`, when one already
+ * exists). Mendix stores this as ObjectHandlingBackup, whose values are
+ * {Create, Error, Ignore} — `find` on its own does not name one, and mxcli
+ * refuses it rather than choosing (#261).
+ *
+ *   find Module.Entity or create { ... }     -- the old `find or create`
+ *   find Module.Entity or ignore { ... }
+ *   find Module.Entity or error  { ... }
+ *   create Module.Entity or error { ... }
+ *
+ * OVERRIDABLE sets ObjectHandlingBackupAllowOverride, which lets the caller
+ * choose at runtime.
+ */
+mappingHandlingBackup
+    : OR (CREATE | ERROR | IGNORE) OVERRIDABLE?
+    ;
+
+/**
+ * `by Module.Microflow ( Param: source, ... )` — a microflow resolves the object
+ * instead of Create/Find. Stored as ObjectHandling "Custom" with the call on
+ * CustomHandlerCall; "find X by MF(...)" is read as "find the object by calling
+ * this microflow".
+ *
+ * A parameter's source is one of:
+ *   parent          the enclosing mapped object
+ *   parameter       the mapping's own input object (see PARAMETER on the mapping)
+ *   parent(2)       an ancestor N levels up (export mappings)
+ *   a/b/c           a value from the payload, addressed like any other member
+ */
+mappingCustomHandler
+    : BY qualifiedName LPAREN (mappingCallParameter (COMMA mappingCallParameter)*)? RPAREN
+    ;
+
+mappingCallParameter
+    : identifierOrKeyword COLON PARAMETER
+    | identifierOrKeyword COLON identifierOrKeyword LPAREN NUMBER_LITERAL RPAREN
+    | identifierOrKeyword COLON jsonMemberPath
+    ;
+
 importMappingChild
-    : importMappingObjectHandling qualifiedName SLASH qualifiedName EQUALS identifierOrKeyword
+    : importMappingObjectHandling qualifiedName SLASH qualifiedName mappingCustomHandler? mappingHandlingBackup? EQUALS identifierOrKeyword
       LBRACE importMappingChild (COMMA importMappingChild)* RBRACE       // nested object with children
-    | importMappingObjectHandling qualifiedName SLASH qualifiedName EQUALS identifierOrKeyword  // leaf object
+    | importMappingObjectHandling qualifiedName SLASH qualifiedName mappingCustomHandler? mappingHandlingBackup? EQUALS identifierOrKeyword  // leaf object
     | identifierOrKeyword EQUALS qualifiedName LPAREN jsonMemberPath RPAREN  // value transform: Attr = Module.MF(jsonField)
     | identifierOrKeyword EQUALS jsonMemberPath KEY?                         // value: Attr = a/b/c [KEY]
     ;
@@ -550,8 +619,9 @@ createExportMappingStatement
     ;
 
 exportMappingWithClause
-    : WITH JSON STRUCTURE qualifiedName
+    : WITH JSON STRUCTURE qualifiedName (ROOT jsonMemberPath)?
     | WITH XML SCHEMA qualifiedName
+    | WITH MESSAGE DEFINITION qualifiedName
     ;
 
 exportMappingNullValuesClause
@@ -559,14 +629,21 @@ exportMappingNullValuesClause
     ;
 
 exportMappingRootElement
-    : qualifiedName
+    : qualifiedName mappingCustomHandler?
       LBRACE exportMappingChild (COMMA exportMappingChild)* RBRACE
     ;
 
 exportMappingChild
-    : qualifiedName SLASH qualifiedName AS identifierOrKeyword
+    : qualifiedName SLASH qualifiedName mappingCustomHandler? AS identifierOrKeyword
       LBRACE exportMappingChild (COMMA exportMappingChild)* RBRACE       // nested object with children
-    | qualifiedName SLASH qualifiedName AS identifierOrKeyword            // leaf object
+    | qualifiedName SLASH qualifiedName mappingCustomHandler? AS identifierOrKeyword  // leaf object
+    // A JSON grouping node with no Mendix object behind it — Studio Pro's
+    // entity-less object element (#262). It may contain OBJECT elements only:
+    // a value needs an entity to bind its attribute to, and Mendix rejects one
+    // here with CE0061 "No entity selected."
+    | GROUP AS identifierOrKeyword
+      LBRACE exportMappingChild (COMMA exportMappingChild)* RBRACE
+    | jsonMemberPath EQUALS qualifiedName LPAREN identifierOrKeyword RPAREN // value transform: a/b/c = Module.MF(Attr)
     | jsonMemberPath EQUALS identifierOrKeyword                           // value: a/b/c = Attr
     ;
 

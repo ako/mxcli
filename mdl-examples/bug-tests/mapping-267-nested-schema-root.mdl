@@ -1,0 +1,58 @@
+-- ============================================================================
+-- Bug ako/mxcli#267: a mapping could not be rooted at a nested schema element
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   A mapping's root element does not have to be the schema's root — Studio Pro
+--   lets you start the mapping at any element, and stores that as the root
+--   element's JsonPath. 13 of the 327 mapping documents in the demo apps do it:
+--
+--     OpenAI_API.IM_OpenAI                              (Object)|choices|(Object)|message
+--     MxGenAIConnector.IM_Collection_RetrieveNearestNeighbors  (Object)|chunks|(Object)
+--     Teamcenter.Import_ChildrenParent                  (Object)|TcBOMLines|(Object)
+--
+--   MDL had no syntax for it, and DESCRIBE printed the mapping as if it were
+--   rooted at the document root — output that PARSED and executed, producing a
+--   mapping that binds members which do not exist at that level. Silent, and
+--   one of the worst cases in #260.
+--
+-- Syntax:
+--   `root a/b/c` on the source clause, written in member names. Unlike a value
+--   reference, the path MAY pass through an array — the mapping is then rooted
+--   at the array's item, which is what Studio Pro stores. A value reference
+--   cannot do that (many items cannot collapse into one value, CE0256).
+--
+-- Validation:
+--   `describe import mapping OpenAI_API.IM_OpenAI` now emits
+--   `with json structure … root choices/message`, and re-executing that output
+--   leaves the stored document UNCHANGED — the write is elided by ADR-0008's
+--   equality check, which is the strongest round-trip result available.
+-- ============================================================================
+
+create module BugTest267;
+
+create persistent entity BugTest267.Message ( Content: String(500) );
+
+-- `choices` is an array of objects; `message` is a member of its item.
+create json structure BugTest267.JSON_Response
+  snippet $${"id": "x", "choices": [{"index": 0, "message": {"role": "assistant", "content": "hi"}}]}$$;
+
+create or modify import mapping BugTest267.IMM_Message
+  folder 'Mappings'
+  with json structure BugTest267.JSON_Response root choices/message
+{
+  create BugTest267.Message {
+    Content = content
+  }
+};
+
+-- Control: the same structure mapped from its own root still works and needs no
+-- clause.
+create or modify import mapping BugTest267.IMM_Root
+  folder 'Mappings'
+  with json structure BugTest267.JSON_Response
+{
+  create BugTest267.Message {
+    Content = id
+  }
+};

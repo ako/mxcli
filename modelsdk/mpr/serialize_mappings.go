@@ -20,10 +20,21 @@ func SerializeImportMapping(im *model.ImportMapping) ([]byte, error) {
 		exportLevel = "Hidden"
 	}
 
-	// ParameterType is a required sub-document even when not used (DataTypes$UnknownType).
+	// ParameterType is a required sub-document even when unused: an
+	// unparameterised mapping stores the DataTypes$UnknownType marker, and one
+	// declaring an input object stores a DataTypes$ObjectType naming it (#265).
+	// Without the property Studio Pro fails to render the schema source and
+	// mapping elements correctly.
 	parameterType := bson.D{
 		{Key: "$ID", Value: idToBsonBinary(generateUUID())},
 		{Key: "$Type", Value: "DataTypes$UnknownType"},
+	}
+	if im.ParameterEntity != "" {
+		parameterType = bson.D{
+			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+			{Key: "$Type", Value: "DataTypes$ObjectType"},
+			{Key: "Entity", Value: im.ParameterEntity},
+		}
 	}
 
 	doc := bson.D{
@@ -56,7 +67,7 @@ func serImportMappingElement(elem *model.ImportMappingElement, parentPath string
 		id = generateUUID()
 	}
 
-	if elem.Kind == "Object" || elem.Kind == "Array" {
+	if isMappingObjectKind(elem.Kind) {
 		return serImportObjectElement(id, elem, parentPath)
 	}
 	return serImportValueElement(id, elem, parentPath)
@@ -81,10 +92,15 @@ func serImportObjectElement(id string, elem *model.ImportMappingElement, parentP
 	if objectHandling == "" {
 		objectHandling = "Create"
 	}
-	objectHandlingBackup := objectHandling
+	// The backup takes {Create, Error, Ignore} only; copying the HANDLING into
+	// it wrote "Find"/"Custom", which occur in 0 of 1,261 real elements (#261).
+	objectHandlingBackup := "Create"
+	switch elem.ObjectHandlingBackup {
+	case "Create", "Error", "Ignore":
+		objectHandlingBackup = elem.ObjectHandlingBackup
+	}
 	if objectHandling == "FindOrCreate" {
 		objectHandling = "Find"
-		objectHandlingBackup = "Create"
 	}
 
 	return bson.D{
@@ -93,10 +109,10 @@ func serImportObjectElement(id string, elem *model.ImportMappingElement, parentP
 		{Key: "Entity", Value: elem.Entity},
 		{Key: "ExposedName", Value: elem.ExposedName},
 		{Key: "JsonPath", Value: jsonPath},
-		{Key: "XmlPath", Value: ""},
+		{Key: "XmlPath", Value: elem.XmlPath},
 		{Key: "ObjectHandling", Value: objectHandling},
 		{Key: "ObjectHandlingBackup", Value: objectHandlingBackup},
-		{Key: "ObjectHandlingBackupAllowOverride", Value: false},
+		{Key: "ObjectHandlingBackupAllowOverride", Value: elem.BackupAllowOverride},
 		{Key: "Association", Value: elem.Association},
 		{Key: "Children", Value: children},
 		{Key: "MinOccurs", Value: int32(elem.MinOccurs)},
@@ -122,7 +138,7 @@ func serImportValueElement(id string, elem *model.ImportMappingElement, parentPa
 		{Key: "Attribute", Value: elem.Attribute},
 		{Key: "ExposedName", Value: elem.ExposedName},
 		{Key: "JsonPath", Value: jsonPath},
-		{Key: "XmlPath", Value: ""},
+		{Key: "XmlPath", Value: elem.XmlPath},
 		{Key: "IsKey", Value: elem.IsKey},
 		{Key: "Type", Value: dataType},
 		{Key: "MinOccurs", Value: int32(elem.MinOccurs)},
@@ -131,7 +147,7 @@ func serImportValueElement(id string, elem *model.ImportMappingElement, parentPa
 		{Key: "IsDefaultType", Value: false},
 		{Key: "ElementType", Value: "Value"},
 		{Key: "Documentation", Value: ""},
-		{Key: "Converter", Value: ""},
+		{Key: "Converter", Value: elem.Converter},
 		{Key: "FractionDigits", Value: int32(elem.FractionDigits)},
 		{Key: "TotalDigits", Value: int32(elem.TotalDigits)},
 		{Key: "MaxLength", Value: int32(elem.MaxLength)},
@@ -190,7 +206,7 @@ func serExportMappingElement(elem *model.ExportMappingElement, parentPath string
 		id = generateUUID()
 	}
 
-	if elem.Kind == "Object" || elem.Kind == "Array" {
+	if isMappingObjectKind(elem.Kind) {
 		return serExportObjectElement(id, elem, parentPath)
 	}
 	return serExportValueElement(id, elem, parentPath)
@@ -224,9 +240,11 @@ func serExportObjectElement(id string, elem *model.ExportMappingElement, parentP
 		{Key: "Entity", Value: elem.Entity},
 		{Key: "ExposedName", Value: elem.ExposedName},
 		{Key: "JsonPath", Value: jsonPath},
-		{Key: "XmlPath", Value: ""},
+		{Key: "XmlPath", Value: elem.XmlPath},
 		{Key: "ObjectHandling", Value: objectHandling},
-		{Key: "ObjectHandlingBackup", Value: objectHandling},
+		// Every export object element in the demo apps stores Error (537 of
+		// 537), and the handling values are not in the backup enum (#261).
+		{Key: "ObjectHandlingBackup", Value: "Error"},
 		{Key: "ObjectHandlingBackupAllowOverride", Value: false},
 		{Key: "Association", Value: elem.Association},
 		{Key: "Children", Value: children},
@@ -253,7 +271,7 @@ func serExportValueElement(id string, elem *model.ExportMappingElement, parentPa
 		{Key: "Attribute", Value: elem.Attribute},
 		{Key: "ExposedName", Value: elem.ExposedName},
 		{Key: "JsonPath", Value: jsonPath},
-		{Key: "XmlPath", Value: ""},
+		{Key: "XmlPath", Value: elem.XmlPath},
 		{Key: "Type", Value: dataType},
 		{Key: "MinOccurs", Value: int32(0)},
 		// Mirror the bound schema element: Mendix cross-validates the two and
@@ -264,7 +282,7 @@ func serExportValueElement(id string, elem *model.ExportMappingElement, parentPa
 		{Key: "IsDefaultType", Value: false},
 		{Key: "ElementType", Value: "Value"},
 		{Key: "Documentation", Value: ""},
-		{Key: "Converter", Value: ""},
+		{Key: "Converter", Value: elem.Converter},
 		{Key: "FractionDigits", Value: int32(-1)},
 		{Key: "TotalDigits", Value: int32(-1)},
 		{Key: "MaxLength", Value: int32(0)},
@@ -336,5 +354,15 @@ func serMappingValueDataType(typeName string) bson.D {
 			{Key: "$ID", Value: typeID},
 			{Key: "$Type", Value: "DataTypes$StringType"},
 		}
+	}
+}
+
+// isMappingObjectKind — see the note in mdl/backend/modelsdk/mapping_write.go.
+func isMappingObjectKind(kind string) bool {
+	switch kind {
+	case "Object", "Array", "Wrapper":
+		return true
+	default:
+		return false
 	}
 }

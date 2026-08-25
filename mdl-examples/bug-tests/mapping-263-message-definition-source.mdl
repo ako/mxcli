@@ -1,0 +1,70 @@
+-- ============================================================================
+-- Bug ako/mxcli#263: mappings over a MESSAGE DEFINITION could not be authored
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   MDL had `with json structure` and `with xml schema` and no third form, so a
+--   mapping sourced from a message definition — 74 of the 327 mapping documents
+--   in the demo apps, the second-largest gap after the array root — could not be
+--   written at all. Worse, DESCRIBE dropped the source clause entirely AND its
+--   output parsed, so `describe` -> `exec` rebuilt the mapping bound to nothing.
+--   70 of the 74 were in that silent-loss class (#260).
+--
+-- What a message definition is, and why it needed its own builder:
+--   It is not a payload sample. It is derived from the DOMAIN MODEL — every node
+--   names an entity or an attribute — and it carries two names per node: its own
+--   ("Emails") and the singular one its items take ("Email"). A mapping over it
+--   stores BOTH path families:
+--
+--     value  attr=AgentCore.Email.From  json=(Array)|(Object)|From  xml=Emails|Email|From
+--
+--   unbounded node   xml += ExposedName|ExposedItemName   json += ExposedName|(Object)
+--   single node      xml += ExposedName                   json += ExposedName
+--   root, unbounded  xml  = ExposedName|ExposedItemName   json  = (Array)|(Object)
+--
+--   Measured on AgentCore.MesDef_Email, AgentCore.MesDef_WorkflowDetails and
+--   Email_Connector.MD_EmailTemplate (EnquiriesManagement demo app, 11.13).
+--
+-- Not a "map everything" shorthand:
+--   Of the ten message-definition mappings in the demo apps, six map every
+--   exposed node and four map a strict subset (58 of 96, 27 of 30, 28 of 30,
+--   26 of 27) — so the body is load-bearing, not redundant.
+--
+-- Validation:
+--   Authoring AgentCore.MesDef_Email.Email from MDL reproduces Studio Pro's own
+--   AgentCore.Email_Import element for element — entity, handling, backup,
+--   exposed names, occurrences, both path families and the value data types.
+--   mxbuild 11.13 reports no new errors.
+--
+-- This script needs a project that HAS the definition; message definitions are
+-- not authorable from MDL (they are read-only here) and this file is a syntax
+-- reference. The executable coverage is
+-- mdl/executor/mapping_messagedefinition_test.go, which runs against the real
+-- definitions in mdl/executor/testdata/mapping-fixtures/.
+-- ============================================================================
+
+-- The reference is THREE parts: the definitions live inside a collection
+-- document, so it is Module.Collection.Definition.
+create or modify import mapping AgentCore.IMM_Email
+  folder 'Mappings'
+  with message definition AgentCore.MesDef_Email.Email
+{
+  create AgentCore.Email {
+    From = From,
+    Content = Content,
+    Subject = Subject
+  }
+};
+
+-- Export twin. The root object handling is Parameter, Find below it, exactly as
+-- for a JSON-structure export mapping.
+create or modify export mapping AgentCore.EXM_Email
+  folder 'Mappings'
+  with message definition AgentCore.MesDef_Email.Email
+{
+  AgentCore.Email {
+    From = From,
+    Content = Content,
+    Subject = Subject
+  }
+};

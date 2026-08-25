@@ -1081,6 +1081,11 @@ type ImportMapping struct {
 	JsonStructure     string `json:"jsonStructure,omitempty"`     // qualified name
 	XmlSchema         string `json:"xmlSchema,omitempty"`         // qualified name
 	MessageDefinition string `json:"messageDefinition,omitempty"` // qualified name
+	// ParameterEntity is the entity of the mapping's INPUT object, stored as
+	// ParameterType — a DataTypes$ObjectType naming it. Empty means the mapping
+	// takes none, which Mendix stores as the DataTypes$UnknownType marker rather
+	// than by omitting the property (#265).
+	ParameterEntity string `json:"parameterEntity,omitempty"`
 	// Mapping tree (top-level elements, usually one root)
 	Elements []*ImportMappingElement `json:"elements,omitempty"`
 }
@@ -1099,14 +1104,33 @@ type ImportMappingElement struct {
 	// Object mapping fields
 	Entity         string `json:"entity,omitempty"`         // qualified entity name
 	ObjectHandling string `json:"objectHandling,omitempty"` // "Create", "Find", "FindOrCreate", "Custom"
-	Association    string `json:"association,omitempty"`    // qualified association name
+	// ObjectHandlingBackup is what happens when the object is not found:
+	// "Create", "Error" or "Ignore" — the only three Mendix accepts (#261).
+	// Empty means the writer picks the default for the handling.
+	ObjectHandlingBackup string `json:"objectHandlingBackup,omitempty"`
+	// BackupAllowOverride sets ObjectHandlingBackupAllowOverride.
+	BackupAllowOverride bool   `json:"backupAllowOverride,omitempty"`
+	Association         string `json:"association,omitempty"` // qualified association name
+	// CustomHandler is set when ObjectHandling is "Custom": a microflow
+	// resolves the object instead of Create/Find (#264).
+	CustomHandler *MappingMicroflowCall `json:"customHandler,omitempty"`
 	// Value mapping fields
 	Attribute string `json:"attribute,omitempty"` // qualified attribute name (Module.Entity.Attr)
 	DataType  string `json:"dataType,omitempty"`  // "String", "Integer", "Boolean", etc.
 	IsKey     bool   `json:"isKey,omitempty"`
+	// Converter is a microflow the value passes through on its way to the
+	// attribute (#266). The element carries only this — there is no separate
+	// parameter path, because the microflow's input IS the member the element
+	// already binds.
+	Converter string `json:"converter,omitempty"` // qualified microflow name
 	// Schema fields (cloned from JSON structure element)
-	ExposedName    string `json:"exposedName,omitempty"`
-	JsonPath       string `json:"jsonPath,omitempty"`
+	ExposedName string `json:"exposedName,omitempty"`
+	JsonPath    string `json:"jsonPath,omitempty"`
+	// XmlPath is set for a mapping over an XML schema or a MESSAGE DEFINITION,
+	// which store BOTH path families — "Emails|Email|From" beside the JSON
+	// projection "(Array)|(Object)|From" (#263). Empty for a JSON-structure
+	// mapping.
+	XmlPath        string `json:"xmlPath,omitempty"`
 	MinOccurs      int    `json:"minOccurs,omitempty"`
 	MaxOccurs      int    `json:"maxOccurs,omitempty"` // 0 = default from JSON structure
 	Nillable       bool   `json:"nillable,omitempty"`
@@ -1117,6 +1141,102 @@ type ImportMappingElement struct {
 	// Children
 	Children []*ImportMappingElement `json:"children,omitempty"`
 }
+
+// ============================================================================
+// Mapping custom object handling
+// ============================================================================
+
+// MappingMicroflowCall is the microflow that resolves a mapping element's object
+// when its handling is Custom (#264) — Studio Pro's "call a microflow" option.
+//
+// Stored as Mappings$MappingMicroflowCallImpl on the object element's
+// CustomHandlerCall property.
+type MappingMicroflowCall struct {
+	Microflow  string                       `json:"microflow"`
+	Parameters []*MappingMicroflowParameter `json:"parameters,omitempty"`
+}
+
+// MappingMicroflowParameter binds one of the called microflow's parameters.
+//
+// Four sources occur across the demo apps, and the stored shape distinguishes
+// them by a path marker plus LevelOfParent rather than by a kind field:
+//
+//	Source     stored path        LevelOfParent
+//	parent     "(parent)"         -1     the enclosing mapped object
+//	parameter  "(parameter)"      -1     the mapping's own input object
+//	ancestor   ""                 1..N   N levels up (export mappings)
+//	path       a JSON value path  -1     a value from the payload
+type MappingMicroflowParameter struct {
+	// Parameter is the qualified parameter reference,
+	// "Module.Microflow.ParamName".
+	Parameter string `json:"parameter"`
+	// Source is one of "parent", "parameter", "ancestor", "path".
+	Source string `json:"source"`
+	// LevelOfParent is meaningful for "ancestor" only; -1 otherwise.
+	LevelOfParent int `json:"levelOfParent"`
+	// ValuePath is the JSON path for "path" only.
+	ValuePath string `json:"valuePath,omitempty"`
+	// XmlValuePath mirrors ValuePath for XML/message-definition mappings. The
+	// marker sources write the SAME marker into both path properties; a value
+	// path writes the JSON one and leaves the XML one empty.
+	XmlValuePath string `json:"xmlValuePath,omitempty"`
+}
+
+// ============================================================================
+// Message Definitions
+// ============================================================================
+
+// MessageDefinitionCollection represents a
+// MessageDefinitions$MessageDefinitionCollection document — the unit. The
+// individual definitions live inside it, which is why a mapping's
+// MessageDefinition reference is THREE parts: Module.Collection.Definition.
+type MessageDefinitionCollection struct {
+	BaseElement
+	ContainerID ID                   `json:"containerId"`
+	Name        string               `json:"name"`
+	Definitions []*MessageDefinition `json:"definitions,omitempty"`
+}
+
+// MessageDefinition is one EntityMessageDefinition inside a collection.
+type MessageDefinition struct {
+	Name string `json:"name"`
+	// Root is the exposed entity the definition is built on. Nil for a
+	// definition kind this reader does not model.
+	Root *MessageDefinitionElement `json:"root,omitempty"`
+}
+
+// MessageDefinitionElement is a node of a definition's exposed tree.
+//
+// Unlike a JSON structure, a message definition is derived from the DOMAIN
+// MODEL: every node names an entity or an attribute. It carries two names —
+// ExposedName is the node's name, ExposedItemName the singular one an unbounded
+// node's items get — and a mapping over it needs both, because it stores an
+// XmlPath built from them alongside the JSON projection.
+type MessageDefinitionElement struct {
+	// "Entity" or "Attribute".
+	Kind string `json:"kind"`
+	// Entity/Association are set on an Entity node (Association only when the
+	// node is reached through one); Attribute on an Attribute node.
+	Entity      string `json:"entity,omitempty"`
+	Association string `json:"association,omitempty"`
+	Attribute   string `json:"attribute,omitempty"`
+
+	ExposedName     string `json:"exposedName,omitempty"`
+	ExposedItemName string `json:"exposedItemName,omitempty"`
+	// Path is the definition's own path ("Email|From"). It is NOT the mapping's
+	// XmlPath, which is built from the exposed names — the definition root's
+	// path is the ITEM name while the mapping's is "Emails|Email".
+	Path          string `json:"path,omitempty"`
+	MinOccurs     int    `json:"minOccurs,omitempty"`
+	MaxOccurs     int    `json:"maxOccurs,omitempty"`
+	PrimitiveType string `json:"primitiveType,omitempty"`
+
+	Children []*MessageDefinitionElement `json:"children,omitempty"`
+}
+
+// Unbounded reports whether the node repeats (0..*), which is what makes the
+// mapping project it as an array on both path families.
+func (e *MessageDefinitionElement) Unbounded() bool { return e != nil && e.MaxOccurs == -1 }
 
 // ============================================================================
 // Export Mappings
@@ -1154,6 +1274,8 @@ type ExportMappingElement struct {
 	Entity         string `json:"entity,omitempty"`         // qualified entity name
 	Association    string `json:"association,omitempty"`    // qualified association name
 	ObjectHandling string `json:"objectHandling,omitempty"` // "Parameter" for root, "Find" for children
+	// CustomHandler — see the note on ImportMappingElement (#264).
+	CustomHandler *MappingMicroflowCall `json:"customHandler,omitempty"`
 	// 1 for Object, -1 for Array (unbounded). NOT "0 = default": Mendix reads
 	// MaxOccurs=0 literally as "never occurs", and cross-validates this against
 	// the bound JSON structure element (CE5015). Mirror the schema (#841).
@@ -1161,10 +1283,14 @@ type ExportMappingElement struct {
 	// Value mapping fields
 	Attribute string `json:"attribute,omitempty"` // qualified attribute name (Module.Entity.Attr)
 	DataType  string `json:"dataType,omitempty"`  // "String", "Integer", "Boolean", etc.
+	// Converter — see the note on ImportMappingElement (#266).
+	Converter string `json:"converter,omitempty"`
 	// Shared fields
-	ExposedName string                  `json:"exposedName,omitempty"`
-	JsonPath    string                  `json:"jsonPath,omitempty"`
-	Children    []*ExportMappingElement `json:"children,omitempty"`
+	ExposedName string `json:"exposedName,omitempty"`
+	JsonPath    string `json:"jsonPath,omitempty"`
+	// XmlPath — see the note on ImportMappingElement.
+	XmlPath  string                  `json:"xmlPath,omitempty"`
+	Children []*ExportMappingElement `json:"children,omitempty"`
 }
 
 // UnknownElement is a generic fallback for BSON elements with unrecognized $Type values.

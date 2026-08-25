@@ -696,7 +696,8 @@ keyword
 
     // General-purpose words (only tokens not already listed above)
     | ACTION | BOTH | CONTEXT | DATA | FORMAT | ITEM | LIST
-    | MESSAGE | MOD | DIV | MULTIPLE | NONE | OBJECT | OBJECTS
+    | DEFINITION | IGNORE | MESSAGE | MOD | DIV | MULTIPLE | NONE | OBJECT | OBJECTS
+    | OVERRIDABLE | ROOT
     | SINGLE | SQL | TEMPLATE | TEXT | TYPE | VALUE
 
     // Data transformers
