@@ -65,6 +65,33 @@ func (b *Builder) ExitAlterSettingsClause(ctx *parser.AlterSettingsClauseContext
 			val := settingsValueText(svCtx)
 			stmt.Properties[key] = val
 		}
+	} else if ctx.SettingsSection() != nil && (ctx.ADD() != nil || ctx.MODIFY() != nil || ctx.REMOVE() != nil) {
+		// ALTER SETTINGS LANGUAGE ADD    'ar_SD' [( key: value, … )]
+		// ALTER SETTINGS LANGUAGE MODIFY 'ar_SD'  ( key: value, … )
+		// ALTER SETTINGS LANGUAGE REMOVE 'ar_SD'
+		stmt.Section = ctx.SettingsSection().GetText()
+		stmt.UpsertLanguage = ctx.ADD() != nil && ctx.OR() != nil && ctx.MODIFY() != nil
+		stmt.AddLanguage = ctx.ADD() != nil && !stmt.UpsertLanguage
+		stmt.ModifyLanguage = ctx.MODIFY() != nil && !stmt.UpsertLanguage
+		stmt.RemoveLanguage = ctx.REMOVE() != nil
+		if all := ctx.AllSTRING_LITERAL(); len(all) > 0 {
+			stmt.LanguageCode = unquoteString(all[0].GetText())
+		}
+		if opts := ctx.LanguageOptions(); opts != nil {
+			if oc, ok := opts.(*parser.LanguageOptionsContext); ok && oc != nil {
+				for _, o := range oc.AllLanguageOption() {
+					lo, ok := o.(*parser.LanguageOptionContext)
+					if !ok || lo == nil || lo.IDENTIFIER() == nil || lo.SettingsValue() == nil {
+						continue
+					}
+					sv, ok := lo.SettingsValue().(*parser.SettingsValueContext)
+					if !ok || sv == nil {
+						continue
+					}
+					stmt.Properties[lo.IDENTIFIER().GetText()] = settingsValueText(sv)
+				}
+			}
+		}
 	} else if ctx.SettingsSection() != nil {
 		// ALTER SETTINGS MODEL|LANGUAGE|WORKFLOWS Key = Value, ...
 		stmt.Section = ctx.SettingsSection().GetText()
@@ -97,6 +124,13 @@ func (b *Builder) ExitCreateConfigurationStatement(ctx *parser.CreateConfigurati
 
 	if sl := ctx.STRING_LITERAL(); sl != nil {
 		stmt.Name = unquoteString(sl.GetText())
+	}
+
+	// CREATE OR MODIFY / OR REPLACE, read off the shared create wrapper.
+	if createStmt := findParentCreateStatement(ctx); createStmt != nil {
+		if createStmt.OR() != nil && (createStmt.MODIFY() != nil || createStmt.REPLACE() != nil) {
+			stmt.CreateOrModify = true
+		}
 	}
 
 	for _, assignCtx := range ctx.AllSettingsAssignment() {

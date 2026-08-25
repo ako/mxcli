@@ -177,18 +177,35 @@ func describeSettings(ctx *ExecContext, configName string) error {
 
 	// Language settings
 	if ps.Language != nil {
-		fmt.Fprintf(ctx.Output, "alter settings LANGUAGE\n  DefaultLanguageCode = '%s';\n", ps.Language.DefaultLanguageCode)
 		// The enabled languages decide what the build emits — a translation for
-		// any other language is stored and then discarded — so DESCRIBE must show
-		// them. As a COMMENT, because MDL cannot author the list yet: rendering it
-		// as a statement would produce something that does not re-execute.
-		if codes := enabledLanguageCodes(ps.Language); len(codes) > 0 {
+		// any other language is stored and then discarded — so DESCRIBE must
+		// reproduce them, as STATEMENTS rather than the comment this used to
+		// print. ADD OR MODIFY is the form that re-executes: plain ADD refuses a
+		// language that is already enabled, so a described project could not be
+		// replayed onto itself.
+		//
+		// Order matters. DefaultLanguageCode is validated against the enabled
+		// list, so the languages have to exist first — emitting the default line
+		// first (as this did) produces output that fails on a project that does
+		// not already have that language.
+		//
+		// Every option is named, including the ones at their default: MODIFY
+		// touches only what it names, so an omitted CustomDateFormat would leave a
+		// format the target happens to have, and the replay would not reproduce
+		// the described project.
+		for _, l := range ps.Language.Languages {
+			if l.Code == "" {
+				continue
+			}
 			fmt.Fprintf(ctx.Output,
-				"-- Enabled languages: %s. Only these are built; `create translations` for\n"+
-					"-- any other language is stored and silently dropped at build time.\n"+
-					"-- Enable one in Studio Pro (Project > Settings > Languages) — not yet MDL.\n",
-				strings.Join(codes, ", "))
+				"alter settings LANGUAGE add or modify '%s' (\n"+
+					"  CheckCompleteness: %t,\n"+
+					"  CustomDateFormat: '%s',\n"+
+					"  CustomTimeFormat: '%s',\n"+
+					"  CustomDateTimeFormat: '%s'\n);\n",
+				l.Code, l.CheckCompleteness, l.CustomDateFormat, l.CustomTimeFormat, l.CustomDateTimeFormat)
 		}
+		fmt.Fprintf(ctx.Output, "alter settings LANGUAGE\n  DefaultLanguageCode = '%s';\n", ps.Language.DefaultLanguageCode)
 		fmt.Fprintln(ctx.Output)
 	}
 
@@ -352,6 +369,23 @@ func alterSettings(ctx *ExecContext, stmt *ast.AlterSettingsStmt) error {
 	}
 
 	section := strings.ToLower(stmt.Section)
+	// ADD/REMOVE change the list of ENABLED languages rather than a key on the
+	// settings part, so they are dispatched before the key/value sections.
+	if stmt.AddLanguage || stmt.ModifyLanguage || stmt.UpsertLanguage || stmt.RemoveLanguage {
+		if section != "language" {
+			return mdlerrors.NewUnsupported(fmt.Sprintf(
+				"add/remove is only defined for the LANGUAGE section, not %s", stmt.Section))
+		}
+		switch {
+		case stmt.UpsertLanguage:
+			return alterSettingsLanguageUpsert(ctx, ps, stmt)
+		case stmt.AddLanguage:
+			return alterSettingsLanguageAdd(ctx, ps, stmt)
+		case stmt.ModifyLanguage:
+			return alterSettingsLanguageModify(ctx, ps, stmt)
+		}
+		return alterSettingsLanguageRemove(ctx, ps, stmt)
+	}
 	switch section {
 	case "model":
 		if ps.Model == nil {
@@ -700,10 +734,17 @@ func createConfiguration(ctx *ExecContext, stmt *ast.CreateConfigurationStmt) er
 		return mdlerrors.NewNotFound("settings section", "configuration")
 	}
 
-	// Check if configuration already exists
+	// Check if configuration already exists. OR MODIFY updates it instead of
+	// refusing — which is what makes a described project replayable, since
+	// DESCRIBE emits every configuration and most targets already have Default.
 	for _, cfg := range ps.Configuration.Configurations {
 		if strings.EqualFold(cfg.Name, stmt.Name) {
-			return mdlerrors.NewAlreadyExists("configuration", stmt.Name)
+			if !stmt.CreateOrModify {
+				return mdlerrors.NewAlreadyExists("configuration", stmt.Name)
+			}
+			return alterSettingsConfiguration(ctx, ps, &ast.AlterSettingsStmt{
+				Section: "configuration", ConfigName: cfg.Name, Properties: stmt.Properties,
+			})
 		}
 	}
 
@@ -886,7 +927,12 @@ func writeSettingsConfiguration(ctx *ExecContext, cfg *model.ServerConfiguration
 	if cfg.ApplicationRootUrl != "" {
 		parts = append(parts, fmt.Sprintf("  ApplicationRootUrl = '%s'", cfg.ApplicationRootUrl))
 	}
-	fmt.Fprintf(ctx.Output, "alter settings configuration '%s'\n%s;\n\n", cfg.Name, strings.Join(parts, ",\n"))
+	// CREATE OR MODIFY, not ALTER: a described project has to replay onto a
+	// target that does not have this configuration yet. ALTER answered
+	// "configuration not found: Acceptance" and stopped the whole file, which is
+	// the same shape as the language list emitting a comment — output that reads
+	// correctly and cannot be run.
+	fmt.Fprintf(ctx.Output, "create or modify configuration '%s'\n%s;\n\n", cfg.Name, strings.Join(parts, ",\n"))
 
 	// Output constant overrides. A private override has no value in the
 	// model — emitting `value ''` would round-trip into a *shared* empty

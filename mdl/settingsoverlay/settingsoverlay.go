@@ -410,3 +410,87 @@ func elementID(id model.ID) any {
 	}
 	return bsonutil.NewIDBsonBinary()
 }
+
+// Languages writes the ENABLED language list onto the preserved
+// Settings$LanguageSettings document. The list is what App Settings ▸ Languages
+// shows and the only thing a build emits translations for.
+//
+// Pinned against a Studio Pro-authored reference (11.13.0). Every field of the
+// element it writes for a newly added language:
+//
+//	{ $Type: "Texts$Language", CheckCompleteness: false, Code: "ar_SD",
+//	  CustomDateFormat: "", CustomDateTimeFormat: "", CustomTimeFormat: "" }
+//
+// Three things that reference settles, each of which a guess gets wrong:
+//
+//   - The element is **Texts$Language**, not Settings$Language, even though it
+//     lives under Settings$LanguageSettings.
+//   - There is **no Description**. Studio Pro's "Arabic, Sudan" is derived from
+//     the code for display; the code is the whole stored identity.
+//   - a newly added language starts with **CheckCompleteness false**. The flag is
+//     a real setting — it makes Mendix report errors for texts with no
+//     translation in that language — so it is written from the model, not forced.
+//     The subtlety is the DEFAULT language: a stock project stores false for
+//     en_US while the Languages table reads "Yes", because Mendix always checks
+//     the default whatever the flag says.
+//
+// An existing language keeps its stored document, so its $ID and any property
+// this mxcli does not model survive; only the modelled fields are overlaid, and
+// the order is the semantic list's (Studio Pro appends rather than sorting).
+func Languages(ls *model.LanguageSettings, raw map[string]any) map[string]any {
+	rawLangs := ArrayElements(raw["Languages"])
+	byCode := make(map[string]map[string]any, len(rawLangs))
+	for _, rl := range rawLangs {
+		code, _ := rl["Code"].(string)
+		byCode[strings.ToLower(code)] = rl
+	}
+
+	langs := bson.A{ArrayMarker(raw["Languages"], DefaultListMarker)}
+	for _, l := range ls.Languages {
+		langs = append(langs, Language(l, byCode[strings.ToLower(l.Code)], rawLangs))
+	}
+	raw["Languages"] = langs
+	return raw
+}
+
+// Language overlays one enabled language onto its preserved document. When raw is
+// nil the language is newly enabled and a document is derived from a sibling —
+// the same reasoning as newServerConfiguration: a sibling carries the exact field
+// set this project's Mendix version writes, so nothing is invented.
+func Language(l model.Language, raw map[string]any, siblings []map[string]any) map[string]any {
+	if raw == nil {
+		raw = newLanguage(siblings)
+	}
+	raw["$Type"] = "Texts$Language"
+	if raw["$ID"] == nil {
+		raw["$ID"] = elementID("")
+	}
+	raw["Code"] = l.Code
+	raw["CheckCompleteness"] = l.CheckCompleteness
+	raw["CustomDateFormat"] = l.CustomDateFormat
+	raw["CustomTimeFormat"] = l.CustomTimeFormat
+	raw["CustomDateTimeFormat"] = l.CustomDateTimeFormat
+	return raw
+}
+
+// newLanguage builds the raw document for a language with no counterpart on disk.
+// A sibling is the shape template when one exists; the fallback is the five
+// properties the reference carries, which every project has at least one of
+// (a project always enables its default language).
+func newLanguage(siblings []map[string]any) map[string]any {
+	if len(siblings) > 0 {
+		tmpl := make(map[string]any, len(siblings[0]))
+		for k, v := range siblings[0] {
+			tmpl[k] = v
+		}
+		delete(tmpl, "$ID")
+		return tmpl
+	}
+	return map[string]any{
+		"CheckCompleteness":    false,
+		"Code":                 "",
+		"CustomDateFormat":     "",
+		"CustomTimeFormat":     "",
+		"CustomDateTimeFormat": "",
+	}
+}
