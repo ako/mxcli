@@ -30,6 +30,21 @@ import (
 // NEVER be removed ("Element of type … cannot be removed"). So the MCP backend
 // can author a new rule, but cannot replace an existing one in place (that would
 // need member removal) or revoke a rule. Those paths are rejected, not faked.
+//
+// The REPLACE half of that reasoning expired on Studio Pro 11.14, and the two
+// halves are no longer equivalent. 11.14's `set` replaces a NON-NULL element
+// outright, so overwriting an existing rule no longer requires removing its
+// members. Probed live on 11.14 (see PED_MCP_CAPABILITIES.md § 11.14): a `set` at
+// /entities/N/accessRules/M clears the document layer AND shape validation and
+// fails only at reference resolution ("Reference with qualified name … of type
+// Security$ModuleRole not found"), with the stored rule verified unchanged after.
+// REVOKE is NOT in the same position: `set` may never target an array, so removal
+// has no set-shaped spelling, and whether a remove is still refused could not be
+// measured — the bounds check and the module-writability check each fire first.
+//
+// Both refusals below therefore stay as they are. Lifting the replace one needs a
+// successful mutation against a throwaway project plus a version gate (the project
+// Mendix version, since serverInfo is frozen at 1.0.0), not this comment.
 
 // Security READS come from the local .mpr, like every other read in this hybrid
 // backend — PED exposes no security document, but nothing about that makes the

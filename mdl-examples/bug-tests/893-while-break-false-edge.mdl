@@ -1,0 +1,101 @@
+-- Issue #893 case 3: a decision inside WHILE shipped with no false flow.
+--
+-- `while $C begin if X then break; end if; end while;` built an ExclusiveSplit
+-- carrying ONLY its `true` outgoing flow (to the BreakEvent). The `false` case
+-- was deferred to a following statement that never came, so the decision was
+-- written with one edge — CE0079 "the 'false' condition value should be
+-- configured on an outgoing sequence flow".
+--
+-- The identical body under LOOP was already correct. addLoopStatement had
+-- tracked the deferred case and wired the leftover to a synthesized
+-- ContinueEvent since ledger #52; addWhileStatement mirrored neither half, so
+-- the two loop builders disagreed on the same body. Measured before the fix:
+--
+--     LOOP  -> split true=1 false=1
+--     WHILE -> split true=1 false=0
+--
+-- Four WHILE shapes were affected, all of them a merge-less split:
+-- `if X then break` last, `if X then continue` last, either with a trailing
+-- statement, and either after a leading statement.
+--
+-- NOT WHAT THE ISSUE REPORTED. #893 case 3 claimed `IF` as the FIRST statement
+-- of a WHILE body was written broken. That shape builds correctly on main and
+-- did not reproduce; the defect above was found by probing its neighbourhood.
+-- Cases 1, 2 and 6 of the same issue were already fixed by MDL061/062/063.
+--
+-- WHY THIS FILE CANNOT BE THE REGRESSION TEST
+--
+-- This is a WRITER defect, not a check gap. The MDL below is valid and `mxcli
+-- check` is right to accept it — before the fix it reported "Syntax OK" and
+-- exit 0, and `exec` then wrote the broken microflow. So this file must be a
+-- plain .mdl, never a .fail.mdl: `make check-mdl` runs `mxcli check` without a
+-- project, and a negative test here would fail as "unexpectedly passed".
+--
+-- The guard is in mdl/executor/cmd_microflows_while_break_test.go, which
+-- inspects the built graph directly:
+--
+--   TestBuilder_ConditionalBreakLastInWhile_HasFalseFlow
+--   TestBuilder_MergelessSplitFalseFlow_LoopAndWhileAgree
+--   TestBuilder_MergelessSplitMidWhileBody_FalseFlowReachesNextStatement
+--
+-- The parity test is the one that matters long-term: it asserts LOOP and WHILE
+-- agree on the same body, which is what would have caught this defect when the
+-- ledger #52 fix was applied to only one of the two builders.
+--
+-- To see the original symptom, revert the pendingCase block in
+-- addWhileStatement (mdl/executor/cmd_microflows_builder_control.go) and re-run
+-- those three tests.
+
+CREATE OR MODIFY MICROFLOW MyModule.ZZ_WhileBreak ()
+BEGIN
+  DECLARE $Continue Boolean = true;
+  WHILE $Continue
+  BEGIN
+    IF 1 = 1 THEN
+      BREAK;
+    END IF;
+  END WHILE;
+END;
+/
+
+-- The same shape with a trailing statement: the deferred false case must reach
+-- the LOG rather than being dropped.
+CREATE OR MODIFY MICROFLOW MyModule.ZZ_WhileBreakThenStatement ()
+BEGIN
+  DECLARE $Continue Boolean = true;
+  WHILE $Continue
+  BEGIN
+    IF 1 = 1 THEN
+      BREAK;
+    END IF;
+    LOG INFO NODE 'probe' 'after the split';
+  END WHILE;
+END;
+/
+
+-- CONTINUE is the other merge-less exit. (RETURN inside a loop is refused by
+-- MDL062, so it is not a live shape here.)
+CREATE OR MODIFY MICROFLOW MyModule.ZZ_WhileContinue ()
+BEGIN
+  DECLARE $Continue Boolean = true;
+  WHILE $Continue
+  BEGIN
+    IF 1 = 1 THEN
+      CONTINUE;
+    END IF;
+  END WHILE;
+END;
+/
+
+-- The LOOP control: this shape was already correct, and must stay that way.
+CREATE OR MODIFY MICROFLOW MyModule.ZZ_LoopBreakControl ()
+BEGIN
+  RETRIEVE $PartList FROM MyModule.Part;
+  LOOP $Part IN $PartList
+  BEGIN
+    IF 1 = 1 THEN
+      BREAK;
+    END IF;
+  END LOOP;
+END;
+/
