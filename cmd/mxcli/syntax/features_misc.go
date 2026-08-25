@@ -280,6 +280,7 @@ ALTER SETTINGS CONSTANT '<qualifiedName>' VALUE '<value>' IN CONFIGURATION '<nam
 ALTER SETTINGS DROP CONSTANT '<qualifiedName>' IN CONFIGURATION '<name>';
 ALTER SETTINGS LANGUAGE DefaultLanguageCode = '<code>';
 ALTER SETTINGS LANGUAGE ADD '<code>' [(CheckCompleteness: true, CustomDateFormat: '<fmt>')];
+ALTER SETTINGS LANGUAGE ADD OR MODIFY '<code>' [(...)];
 ALTER SETTINGS LANGUAGE MODIFY '<code>' (CheckCompleteness: true, ...);
 ALTER SETTINGS LANGUAGE REMOVE '<code>';
 ALTER SETTINGS WORKFLOWS UserEntity = '<qualifiedName>';
@@ -306,6 +307,10 @@ ALTER SETTINGS LANGUAGE ADD 'de_DE';
 ALTER SETTINGS LANGUAGE ADD 'ar_SD' (CheckCompleteness: true);
 ALTER SETTINGS LANGUAGE MODIFY 'ar_SD' (CustomDateFormat: 'yyyy-MM-dd');
 ALTER SETTINGS LANGUAGE REMOVE 'de_DE';
+
+-- ADD OR MODIFY is the upsert, and what DESCRIBE emits: it enables a language
+-- that is not there and changes one that is, so a described project replays onto
+-- itself and onto a project that already has some of its languages.
 
 -- CheckCompleteness turns on error reporting for texts with no translation in
 -- that language — without it they fall back to the default silently. MODIFY

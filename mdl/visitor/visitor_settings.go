@@ -70,8 +70,9 @@ func (b *Builder) ExitAlterSettingsClause(ctx *parser.AlterSettingsClauseContext
 		// ALTER SETTINGS LANGUAGE MODIFY 'ar_SD'  ( key: value, … )
 		// ALTER SETTINGS LANGUAGE REMOVE 'ar_SD'
 		stmt.Section = ctx.SettingsSection().GetText()
-		stmt.AddLanguage = ctx.ADD() != nil
-		stmt.ModifyLanguage = ctx.MODIFY() != nil
+		stmt.UpsertLanguage = ctx.ADD() != nil && ctx.OR() != nil && ctx.MODIFY() != nil
+		stmt.AddLanguage = ctx.ADD() != nil && !stmt.UpsertLanguage
+		stmt.ModifyLanguage = ctx.MODIFY() != nil && !stmt.UpsertLanguage
 		stmt.RemoveLanguage = ctx.REMOVE() != nil
 		if all := ctx.AllSTRING_LITERAL(); len(all) > 0 {
 			stmt.LanguageCode = unquoteString(all[0].GetText())

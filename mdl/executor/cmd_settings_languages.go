@@ -91,6 +91,34 @@ func alterSettingsLanguageAdd(ctx *ExecContext, ps *model.ProjectSettings, stmt 
 	return nil
 }
 
+// alterSettingsLanguageUpsert is ADD OR MODIFY: enable the language when it is
+// not enabled, change the named options when it is.
+//
+// It exists because DESCRIBE has to emit something that re-executes. Plain ADD
+// refuses a language that is already enabled — the right answer for a script
+// someone writes by hand, and the wrong one for a described project replayed
+// onto itself. Same reasoning as CREATE OR MODIFY elsewhere in MDL.
+func alterSettingsLanguageUpsert(ctx *ExecContext, ps *model.ProjectSettings, stmt *ast.AlterSettingsStmt) error {
+	if ps.Language == nil {
+		return mdlerrors.NewNotFound("settings section", "language")
+	}
+	if err := validateLanguageCodeForm(stmt.LanguageCode); err != nil {
+		return err
+	}
+	for _, l := range ps.Language.Languages {
+		if strings.EqualFold(l.Code, stmt.LanguageCode) {
+			if len(stmt.Properties) == 0 {
+				// Nothing to change and nothing to add: report the state rather
+				// than an error, so a replay of a described project is quiet.
+				fmt.Fprintf(ctx.Output, "Unchanged language: %s\n", l.Code)
+				return nil
+			}
+			return alterSettingsLanguageModify(ctx, ps, stmt)
+		}
+	}
+	return alterSettingsLanguageAdd(ctx, ps, stmt)
+}
+
 // alterSettingsLanguageModify changes the settings of a language that is already
 // enabled: the completeness check and the custom date/time formats.
 //
@@ -151,12 +179,21 @@ func alterSettingsLanguageModify(ctx *ExecContext, ps *model.ProjectSettings, st
 		changed = append(changed, key)
 	}
 	sort.Strings(changed)
+	unchanged := lang == ps.Language.Languages[idx]
 	ps.Language.Languages[idx] = lang
 
 	if err := ctx.Backend.UpdateProjectSettings(ps); err != nil {
 		return mdlerrors.NewBackend("update language settings", err)
 	}
-	fmt.Fprintf(ctx.Output, "Modified language: %s (%s)\n", lang.Code, strings.Join(changed, ", "))
+	// Say which of the two happened. A replayed DESCRIBE names every option of
+	// every language, so reporting "Modified" for all of them would describe a
+	// rewrite that ADR-0008 elides — the same verb honesty the flow writers use
+	// ("Unchanged nanoflow: …" where nothing landed).
+	if unchanged {
+		fmt.Fprintf(ctx.Output, "Unchanged language: %s\n", lang.Code)
+	} else {
+		fmt.Fprintf(ctx.Output, "Modified language: %s (%s)\n", lang.Code, strings.Join(changed, ", "))
+	}
 
 	// Mendix always checks the default language, so the flag changes nothing
 	// there. Say so rather than let the script look effective.

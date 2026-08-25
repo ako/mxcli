@@ -236,3 +236,57 @@ func TestLanguageModify_RejectsUnenabledAndEmpty(t *testing.T) {
 		t.Error("modify with no properties was accepted")
 	}
 }
+
+// ADD OR MODIFY is the upsert DESCRIBE emits: it enables a language that is not
+// there and changes one that is. Plain ADD refuses an already-enabled language —
+// right for a hand-written script, wrong for a described project replayed onto
+// itself, which is the whole reason this verb exists.
+func TestLanguageUpsert_AddsWhenMissingModifiesWhenPresent(t *testing.T) {
+	ps := settingsWith("en_US")
+	ctx, _, written := langCtx(t, ps)
+
+	// Missing → added.
+	if err := alterSettingsLanguageUpsert(ctx, ps, &ast.AlterSettingsStmt{
+		UpsertLanguage: true, LanguageCode: "de_DE",
+		Properties: map[string]any{"CheckCompleteness": "true"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := (*written).Language.Languages; len(got) != 2 || !got[1].CheckCompleteness {
+		t.Fatalf("languages = %+v, want de_DE added with the option applied", got)
+	}
+
+	// Present → modified, not duplicated.
+	if err := alterSettingsLanguageUpsert(ctx, ps, &ast.AlterSettingsStmt{
+		UpsertLanguage: true, LanguageCode: "de_DE",
+		Properties: map[string]any{"CustomDateFormat": "dd.MM.yyyy"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got := (*written).Language.Languages
+	if len(got) != 2 {
+		t.Fatalf("languages = %+v, want 2 — upsert must not duplicate", got)
+	}
+	if got[1].CustomDateFormat != "dd.MM.yyyy" || !got[1].CheckCompleteness {
+		t.Errorf("de_DE = %+v, want the new format AND the earlier flag kept", got[1])
+	}
+}
+
+// A replayed DESCRIBE names every option of every language, so the run must not
+// report a rewrite for languages that did not change — the write is elided under
+// ADR-0008 and the verb has to say so.
+func TestLanguageModify_ReportsUnchangedWhenNothingMoves(t *testing.T) {
+	ps := settingsWith("en_US", "de_DE")
+	ps.Language.Languages[1].CheckCompleteness = true
+	ctx, out, _ := langCtx(t, ps)
+
+	if err := alterSettingsLanguageModify(ctx, ps, &ast.AlterSettingsStmt{
+		ModifyLanguage: true, LanguageCode: "de_DE",
+		Properties: map[string]any{"CheckCompleteness": "true"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); !strings.Contains(got, "Unchanged language") {
+		t.Errorf("output %q should report Unchanged — the value it names is the value already stored", got)
+	}
+}

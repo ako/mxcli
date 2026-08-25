@@ -17,6 +17,11 @@ type AlterSettingsStmt struct {
 	LanguageCode   string
 	AddLanguage    bool
 	ModifyLanguage bool
+	// UpsertLanguage is ADD OR MODIFY: enable the language when it is not there,
+	// change the named options when it is. It is what DESCRIBE emits, so a
+	// described project re-executes against a project that already has some of
+	// its languages.
+	UpsertLanguage bool
 	RemoveLanguage bool
 }
 

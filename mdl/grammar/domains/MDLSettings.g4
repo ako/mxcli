@@ -15,7 +15,7 @@ options { tokenVocab = MDLLexer; }
  * ALTER SETTINGS CONFIGURATION 'name' Key = Value, ...;
  * ALTER SETTINGS CONSTANT 'name' VALUE 'value' [IN CONFIGURATION 'name'];
  * ALTER SETTINGS LANGUAGE Key = Value, ...;
- * ALTER SETTINGS LANGUAGE ADD 'ar_SD' [(Key: Value, ...)];
+ * ALTER SETTINGS LANGUAGE ADD [OR MODIFY] 'ar_SD' [(Key: Value, ...)];
  * ALTER SETTINGS LANGUAGE MODIFY 'ar_SD' (Key: Value, ...);
  * ALTER SETTINGS LANGUAGE REMOVE 'ar_SD';
  * ALTER SETTINGS WORKFLOWS Key = Value, ...;
@@ -27,7 +27,8 @@ options { tokenVocab = MDLLexer; }
  * Studio Pro-authored reference on 11.13.0).
  */
 alterSettingsClause
-    : settingsSection ADD STRING_LITERAL languageOptions?
+    : settingsSection ADD OR MODIFY STRING_LITERAL languageOptions?
+    | settingsSection ADD STRING_LITERAL languageOptions?
     | settingsSection MODIFY STRING_LITERAL languageOptions
     | settingsSection REMOVE STRING_LITERAL
     | settingsSection settingsAssignment (COMMA settingsAssignment)*

@@ -31,7 +31,18 @@ alter settings LANGUAGE add 'de_DE' (CheckCompleteness: true, CustomDateFormat: 
 --     somebody set in Studio Pro.
 alter settings LANGUAGE modify 'ar_SD' (CheckCompleteness: true);
 
--- 3. DESCRIBE lists the enabled languages.
+-- 2c. ADD OR MODIFY is the upsert: enables a language that is not there, changes
+--     one that is. It is what DESCRIBE emits, which is what makes settings
+--     replayable — plain ADD refuses an already-enabled language, so a described
+--     project could not be run against itself.
+alter settings LANGUAGE add or modify 'ar_SD' (CheckCompleteness: true, CustomDateFormat: 'yyyy-MM-dd');
+
+-- 3. DESCRIBE emits those statements, every option named, with
+--    DefaultLanguageCode LAST — the default is validated against the enabled
+--    list, so the languages have to exist first. Round-trip measured: replaying
+--    the output onto the same project leaves the unit byte-identical and reports
+--    `Unchanged language` for each, and replaying it onto a BLANK project
+--    reproduces the language settings exactly.
 describe settings;
 
 -- 4. Disable one. This REPORTS any translations that become dead weight — it does
