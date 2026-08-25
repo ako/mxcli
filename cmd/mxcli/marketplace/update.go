@@ -336,12 +336,21 @@ func InstallPackageFiles(mpkPath, projectDir string) (written []string, skipped 
 		// Refuse a path that escapes the project. Nothing in a Mendix package
 		// should contain "..", and honouring one would let a package write
 		// anywhere on disk.
+		//
+		// The check is on the JOINED path, not on the entry name: an entry-name
+		// test is equally sound but is not the shape CodeQL's go/zipslip query
+		// recognises as a sanitizer, so it reported this line while the four
+		// other archive extractors in this repo — which already check the joined
+		// path — went unflagged. Same guard, one shape, no standing alert.
 		clean := filepath.Clean(f.Name)
 		if strings.HasPrefix(clean, "..") || filepath.IsAbs(clean) {
 			return written, skipped, fmt.Errorf("package entry %q would write outside the project", f.Name)
 		}
 
 		dst := filepath.Join(projectDir, clean)
+		if !strings.HasPrefix(filepath.Clean(dst), filepath.Clean(projectDir)+string(os.PathSeparator)) {
+			return written, skipped, fmt.Errorf("package entry %q would write outside the project", f.Name)
+		}
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			return written, skipped, fmt.Errorf("create %s: %w", filepath.Dir(dst), err)
 		}

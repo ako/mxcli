@@ -90,8 +90,8 @@ func execCreateAssociation(ctx *ExecContext, s *ast.CreateAssociationStmt) error
 					assoc.Owner = owner
 					assoc.StorageFormat = storageFormat
 					assoc.ChildDeleteBehavior = &domainmodel.DeleteBehavior{Type: deleteBehavior}
-					if s.Comment != "" {
-						assoc.Documentation = s.Comment
+					if doc := associationDocumentation(s); doc != "" {
+						assoc.Documentation = doc
 					}
 					// Anchors are applied only when the statement names them —
 					// silence preserves what is stored, so a `create or modify`
@@ -116,8 +116,8 @@ func execCreateAssociation(ctx *ExecContext, s *ast.CreateAssociationStmt) error
 					ca.StorageFormat = storageFormat
 					ca.ChildDeleteBehavior = &domainmodel.DeleteBehavior{Type: deleteBehavior}
 					ca.ChildRef = childRef
-					if s.Comment != "" {
-						ca.Documentation = s.Comment
+					if doc := associationDocumentation(s); doc != "" {
+						ca.Documentation = doc
 					}
 					if err := ctx.Backend.UpdateDomainModel(dm); err != nil {
 						return mdlerrors.NewBackend("update cross-module association", err)
@@ -160,6 +160,7 @@ func execCreateAssociation(ctx *ExecContext, s *ast.CreateAssociationStmt) error
 		childRef := childModule + "." + s.Child.Name
 		ca := &domainmodel.CrossModuleAssociation{
 			Name:          s.Name.Name,
+			Documentation: associationDocumentation(s),
 			Type:          assocType,
 			Owner:         owner,
 			StorageFormat: storageFormat,
@@ -190,6 +191,7 @@ func execCreateAssociation(ctx *ExecContext, s *ast.CreateAssociationStmt) error
 		}
 		assoc := &domainmodel.Association{
 			Name:          s.Name.Name,
+			Documentation: associationDocumentation(s),
 			Type:          assocType,
 			Owner:         owner,
 			StorageFormat: storageFormat,
@@ -680,4 +682,24 @@ func associationExists(dm *domainmodel.DomainModel, name string) bool {
 		}
 	}
 	return false
+}
+
+// associationDocumentation resolves the documentation a CREATE ASSOCIATION
+// carries, from either spelling.
+//
+// An association was the one domain-model element with no way to document it on
+// create: `comment 'text'` was accepted and dropped, and the `/** … */` doc
+// comment was dropped too — the plain-CREATE branches built the association
+// without Documentation at all, while the OR MODIFY branches beside them set it.
+// `mx check` passed, because an undocumented association is valid.
+//
+// The doc comment wins when both are present, matching the precedence the entity
+// path already uses. `comment` survives here — and only here among the CREATE
+// statements — because it is an association's only inline spelling; everywhere
+// else the doc comment already worked, so the dead option was removed instead.
+func associationDocumentation(s *ast.CreateAssociationStmt) string {
+	if s.Documentation != "" {
+		return s.Documentation
+	}
+	return s.Comment
 }

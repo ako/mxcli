@@ -1,0 +1,184 @@
+// The recipe layer — shared by every mxcli theme, identical in each.
+//
+// Nothing here names a colour: every value resolves through a --mxt-* token.
+// That is what lets one stylesheet carry several themes and switch between them
+// by swapping a class on <html> — a literal here would survive the swap and be
+// wrong under every theme but one.
+//
+// Imported once from theme/web/main.scss, which compiles AFTER Atlas Core and
+// after every module theme source, so these rules override Atlas without
+// !important.
+
+// Focus. An invisible focus state is the most common accessibility regression
+// in a generated app, so this adds the halo and makes sure nothing removes it.
+// ---------------------------------------------------------------------------
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible,
+.mx-link:focus-visible,
+.btn:focus-visible {
+  outline: var(--focus-outline);
+  outline-offset: var(--focus-outline-offset);
+  box-shadow: var(--mxt-focus-halo);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.mx-title {
+  font-family: var(--mxt-font-heading);
+}
+
+// ---------------------------------------------------------------------------
+// Numerics. Monospace with tabular figures so ids, amounts and dates align
+// vertically down a column. Apply with class: 'num'.
+// ---------------------------------------------------------------------------
+.num,
+.num input,
+.num textarea,
+.num .form-control-static {
+  font-family: var(--mxt-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  letter-spacing: -0.01em;
+}
+
+// A field's label is prose, not a number. Without this the class set on a
+// textbox to align its value also renders the label in monospace, because
+// Mendix nests the label inside the widget root the class lands on.
+.num label,
+.num .control-label {
+  font-family: var(--mxt-font);
+  font-variant-numeric: normal;
+  letter-spacing: normal;
+}
+
+.num-right {
+  text-align: right;
+}
+
+// ---------------------------------------------------------------------------
+// Status pills. One shape, five tones, all resolved through tokens so they
+// follow a variant flip instead of staying stuck in light-mode tints.
+// ---------------------------------------------------------------------------
+.pill {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  background: var(--mxt-tint-neutral);
+  color: var(--mxt-ink-muted);
+}
+
+.pill-ok {
+  background: var(--mxt-tint-ok);
+  color: var(--mxt-tone-ok);
+}
+
+.pill-warn {
+  background: var(--mxt-tint-warn);
+  color: var(--mxt-tone-warn);
+}
+
+.pill-risk,
+.pill-danger {
+  background: var(--mxt-tint-risk);
+  color: var(--mxt-tone-risk);
+}
+
+.pill-info {
+  background: var(--mxt-tint-info);
+  color: var(--mxt-tone-info);
+}
+
+// ---------------------------------------------------------------------------
+// KPI tile.
+// ---------------------------------------------------------------------------
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--card-padding);
+  background: var(--mxt-surface);
+  border: 1px solid var(--mxt-line);
+  border-radius: var(--mxt-radius);
+  box-shadow: var(--mxt-shadow);
+}
+
+.stat-label {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--mxt-ink-muted);
+}
+
+.stat-value {
+  font-family: var(--mxt-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--mxt-ink);
+}
+
+.stat-delta {
+  font-size: 12px;
+  color: var(--mxt-ink-muted);
+}
+
+.stat-delta-up {
+  color: var(--mxt-success);
+}
+
+.stat-delta-down {
+  color: var(--mxt-danger);
+}
+
+// ---------------------------------------------------------------------------
+// Grid rhythm. Header rows read as labels rather than as another data row.
+// ---------------------------------------------------------------------------
+.mx-datagrid th,
+.mx-datagrid-head,
+.th .column-header {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--mxt-ink-muted);
+}
+
+.density-compact {
+  --padding-table-cell-top: 4px;
+  --padding-table-cell-bottom: 4px;
+  --form-input-height: 28px;
+}
+
+// ---------------------------------------------------------------------------
+// Touch. The desktop density must never reach a finger: below the tablet
+// breakpoint every control grows to a 44px minimum target.
+// ---------------------------------------------------------------------------
+@media (max-width: 767px) {
+  :root {
+    --form-input-height: 44px;
+    --form-input-padding-y: 11px;
+    --padding-table-cell-top: 12px;
+    --padding-table-cell-bottom: 12px;
+  }
+
+  .btn,
+  .mx-link,
+  input.form-control,
+  select.form-control {
+    min-height: 44px;
+  }
+}

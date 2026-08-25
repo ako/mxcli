@@ -18,6 +18,46 @@ func init() {
 	// --- Entity ---
 
 	Register(SyntaxFeature{
+		Path:    "domain-model.annotation",
+		Summary: "Canvas notes on a domain model — the boxes that explain the diagram",
+		Keywords: []string{
+			"annotation", "annotations", "note", "canvas", "section", "comment box",
+			"create annotation", "drop annotation", "show annotations",
+		},
+		Syntax: "SHOW ANNOTATIONS [IN Module];\n\n" +
+			"CREATE [OR MODIFY] ANNOTATION IN Module (\n" +
+			"  Caption: 'text'  |  $$multi\nline$$,\n" +
+			"  [Position: (x, y),]\n" +
+			"  [Width: n]\n" +
+			");\n\n" +
+			"DROP ANNOTATION 'first line of the caption' IN Module;\n" +
+			"DROP ANNOTATION AT (x, y) IN Module;\n\n" +
+			"An annotation has no name. It is addressed by its POSITION when the\n" +
+			"statement gives one — the identity to prefer, since it survives an edit to\n" +
+			"the wording — and otherwise by the FIRST LINE of its caption. Give a note a\n" +
+			"position if you intend to re-run the script; without one, rewording creates\n" +
+			"a second note instead of updating the first.\n\n" +
+			"An omitted Position or Width leaves the stored value alone. A new note gets\n" +
+			"Studio Pro's defaults: (60, 240) and width 440.\n\n" +
+			"THERE IS NO COLOUR. DomainModels$Annotation stores Caption, ExportLevel,\n" +
+			"Location and Width — a \"coloured section box\" is this element in Studio\n" +
+			"Pro's own styling, and the model has nowhere to keep a colour.",
+		Example: "CREATE ANNOTATION IN Sales (\n" +
+			"  Caption: $$Orders\nEverything about an order lives here.$$,\n" +
+			"  Position: (60, 40),\n" +
+			"  Width: 400\n" +
+			");\n\n" +
+			"-- Reword and re-run: the position identifies the note, so this updates it\n" +
+			"CREATE OR MODIFY ANNOTATION IN Sales (\n" +
+			"  Caption: 'Orders and invoices',\n" +
+			"  Position: (60, 40)\n" +
+			");\n\n" +
+			"SHOW ANNOTATIONS IN Sales;\n" +
+			"DROP ANNOTATION AT (60, 40) IN Sales;",
+		SeeAlso: []string{"domain-model", "domain-model.entity"},
+	})
+
+	Register(SyntaxFeature{
 		Path:    "domain-model.entity",
 		Summary: "Entity creation: persistent, non-persistent, generalization, event handlers",
 		Keywords: []string{

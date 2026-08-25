@@ -114,6 +114,7 @@ createStatement
       | createUserRoleStatement
       | createDemoUserStatement
       | createImageCollectionStatement
+      | createAnnotationStatement
       | createQueueStatement
       | createScheduledEventStatement
       | createRegularExpressionStatement
@@ -348,6 +349,8 @@ dropStatement
     | DROP BUSINESS EVENT SERVICE qualifiedName
     | DROP WORKFLOW qualifiedName
     | DROP IMAGE COLLECTION qualifiedName
+    | DROP ANNOTATION STRING_LITERAL IN identifierOrKeyword
+    | DROP ANNOTATION AT_KW LPAREN NUMBER_LITERAL COMMA NUMBER_LITERAL RPAREN IN identifierOrKeyword
     | DROP JSON STRUCTURE qualifiedName
     | DROP IMPORT MAPPING qualifiedName
     | DROP EXPORT MAPPING qualifiedName

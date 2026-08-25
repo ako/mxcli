@@ -6,11 +6,15 @@ theme so a generated app looks like a product on first boot, and
 
 ```bash
 mxcli theme list                        # built-in themes; the default is marked *
-mxcli theme show signal                 # palette, colorway, and the files it writes
+mxcli theme show signal                 # palette, colorway, tokens, files it writes
 mxcli theme apply -p app.mpr            # apply to an existing project
 mxcli theme apply ledger -p app.mpr     # switch theme (the previous one is removed)
+mxcli theme apply signal ledger console -p app.mpr   # a switchable set
 mxcli theme apply -p app.mpr --dry-run  # report changes without writing
 mxcli theme remove -p app.mpr           # take it back out
+
+mxcli theme create acme -p app.mpr      # a theme this project owns
+mxcli theme list -p app.mpr             # ...which then lists beside the built-ins
 
 mxcli new MyApp --version 11.13.0                # applies `signal`
 mxcli new MyApp --version 11.13.0 --theme none   # plain Atlas
@@ -28,21 +32,82 @@ All three share the same density discipline: an 8px spacing unit, monospace
 numerics, a visible focus ring on every focusable element, and every control
 growing to a 44px touch target below 768px.
 
-Only one theme applies at a time — `theme apply` removes the previous one,
-because two themes mapping the same Atlas variables would fight in the cascade.
+## Several themes at once, switchable at runtime
+
+```bash
+mxcli theme apply signal ledger console -p app.mpr
+```
+
+All three compile into one stylesheet and the app switches between them by a
+class on `<html>` — no rebuild, no reload, no server round trip. The first named
+renders by default.
+
+That works because a theme is almost entirely token values. The Atlas wiring, the
+recipe layer and the widget layer are **byte-identical in every theme** and
+resolve every colour through `var(--mxt-*)`, so one copy of them serves the whole
+set; only the palette, the fonts and a few skin rules differ. Each palette is
+declared on its own root selector:
+
+```css
+:root:not(.mxt-ledger):not(.mxt-console), :root.mxt-signal { --mxt-brand: #0f6e6b; … }
+:root.mxt-ledger  { --mxt-brand: #1f3a5f; … }
+:root.mxt-console { --mxt-brand: #2dd4bf; … }
+```
+
+The default claims `:root` **minus** every other skin's class rather than a bare
+`:root`. Bare would keep matching once another class was set, so its rules would
+leak under every other theme and the winner would come down to specificity.
+Negation makes the scopes mutually exclusive: exactly one palette is ever live,
+and the result never depends on import order.
+
+Measured on a real 11.13 app, same page, class swap only:
+
+| | brand | ground | radius | type | cards |
+|---|---|---|---|---|---|
+| signal (default) | `#0f6e6b` | `#f4f6f8` | 4px | IBM Plex Sans | shadow |
+| ledger | `#1f3a5f` | `#f7f4ee` | 2px | Source Sans 3 | hairline |
+| console | `#2dd4bf` | `#0e1116` | 6px | Space Grotesk | flat |
+
+Light/dark is a separate axis and keeps working: each theme brings both palettes,
+so picking a theme preserves the variant and vice versa.
+
+A single theme is still emitted exactly as before — a bare `:root`, no scoping —
+so nothing changes for a project that installs one.
+
+### Driving it from the app
+
+```bash
+mxcli theme apply signal ledger console -p app.mpr
+mxcli theme switcher install -p app.mpr --module MyFirstModule
+```
+
+With a set installed, `switcher install` also generates `SetAppSkin`,
+`CycleAppSkin`, `ApplyStoredSkin` and a `ACT_CycleSkin` nanoflow, built against
+the set that is actually installed — so a cycle button can never offer a theme
+whose CSS is not in the page.
+
+```sql
+actionbutton btnSkin (caption: 'Theme', action: nanoflow MyFirstModule.ACT_CycleSkin)
+```
+
+The same reload caveat as the light/dark toggle applies: the choice is remembered
+in `localStorage` but nothing re-applies it on load, because Mendix has no page
+on-load event mxcli can author. `ApplyStoredSkin` is installed and ready to wire
+in Studio Pro.
 
 ## What it writes
 
-Six things, all under `theme/`:
+Seven things, all under `theme/`:
 
 | File | What |
 |---|---|
 | `theme/web/custom-variables.scss` | the theme's palette — this is the file to edit |
 | `theme/web/_mxcli-atlas-map.scss` | the Atlas wiring: ~60 Atlas variables expressed in terms of the palette |
-| `theme/web/_mxcli-<name>.scss` | the other palette, the variant blocks, `@font-face`, recipe classes |
+| `theme/web/_mxcli-<name>.scss` | the other palette, the variant blocks, `@font-face`, this theme's skin |
+| `theme/web/_mxcli-recipes.scss` | the recipe layer: `num` / `pill` / `stat` / focus / density — shared |
 | `theme/web/_mxcli-widgets.scss` | the widget-module layer: colours Sass bakes before any token exists |
 | `theme/web/main.scss` | the variant switch plus the `@import` lines |
-| `theme/web/mxcli-fonts/` | vendored fonts (SIL OFL 1.1) |
+| `theme/web/mxcli-fonts/` | vendored fonts, each theme's own `OFL-<name>.txt` (SIL OFL 1.1) |
 
 **The model is never touched.** No `.mpr` changes, so nothing here can affect a
 build, and the theme hot-applies under `mxcli run --local --watch`.
@@ -96,6 +161,59 @@ no page on-load event to re-apply the stored value, and the usual substitute (a
 data view with a nanoflow data source) is not authorable by mxcli on either
 engine yet. `ApplyStoredTheme` is installed and ready — wire it in Studio Pro if
 you need the choice to persist across reloads.
+
+## A theme this project owns
+
+The three built-in themes are a house style, not a brand. `theme create`
+scaffolds a fourth into `theme/mxcli-themes/<name>/`, and from then on it is a
+theme like any other — `theme list -p` shows it, `theme apply <name>` installs
+it, `theme remove` takes it out.
+
+```bash
+mxcli theme create acme -p app.mpr                        # scaffold from signal
+mxcli theme create acme -p app.mpr --from console         # ...or from console
+mxcli theme create acme -p app.mpr --from design.css      # ...and seed the palette
+mxcli theme apply acme -p app.mpr
+```
+
+That folder is the right place because of two constraints. It is **committed** —
+a theme derived from a design is source the team shares, which rules out
+`.mxcli/`, that `mxcli init` puts in `.gitignore`. And it is **not compiled** —
+mxbuild's entry point is `theme/web/main.scss` and it does not glob `theme/` for
+other stylesheets, so the sources sit inert until `theme apply` copies them into
+`theme/web/`. (Verified against a real 11.13 build: nothing under
+`theme/mxcli-themes/` reaches `deployment/`.)
+
+Scaffolding copies an existing theme rather than starting from nothing, so the
+Atlas wiring and the widget layer — identical in every theme, and where most of
+the hard-won detail lives — come across byte for byte. What you edit is the
+palette. A local theme named after a built-in shadows it, so "signal, but with
+our brand" is a valid thing to create.
+
+### Seeding a palette from a design
+
+A theme's palette is nothing but `--mxt-*` custom properties, so a design tool
+seeds one by declaring them. That is the whole contract — anywhere in a `.css`,
+`.scss` or `.html` file:
+
+```css
+:root { --mxt-brand: #7f5af0; --mxt-ground: #fffffe; }
+@media (prefers-color-scheme: dark) { :root { --mxt-ground: #16161a; } }
+```
+
+Declarations inside a dark block (`prefers-color-scheme: dark`, `.theme-dark`,
+`[data-theme="dark"]`) seed the dark palette; everything else seeds the light
+one. Tokens the design does not name keep the base theme's value, so a
+three-colour design still yields a complete, working palette.
+
+`mxcli theme show signal` prints the vocabulary. A `--mxt-*` name the base theme
+does not declare is **an error**, not an extra: nothing would read it, so the
+theme would apply cleanly and render unchanged — the one failure mode this path
+exists to avoid.
+
+Inferring a palette from a mockup's inline styles was the alternative, and it is
+a guess: two greys in a design do not say which is the app ground and which is a
+hovered row. Ask the design step to emit a token block instead.
 
 ## Re-branding
 

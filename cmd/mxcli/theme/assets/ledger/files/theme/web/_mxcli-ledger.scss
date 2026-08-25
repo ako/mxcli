@@ -56,45 +56,88 @@ $mxcli-theme-variant: {{VARIANT}} !default;
 }
 
 // ---------------------------------------------------------------------------
-// Variant selection.
+// Hairlines, not cards. Ledger separates content with 1px rules and relies on
+// no elevation at all, so the Atlas card is flattened to a ruled block.
+// ---------------------------------------------------------------------------
+@mixin mxcli-ledger-skin {
+  .card {
+    box-shadow: none;
+  }
+
+  .stat {
+    box-shadow: none;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Where this theme's tokens are declared.
 //
-//   auto  — follow the OS, and honour an explicit theme-light / theme-dark
-//           class on <html> so a switcher can override it
-//   light — Ledger's default palette, no switching
-//   dark  — the dark palette, no switching
+// ":root" when the theme is the only one installed. When several are installed
+// as a switchable set the default one claims ":root" minus the other skins'
+// classes, and each other one claims ":root.mxt-<name>" — mutually exclusive,
+// so swapping the class on <html> re-points every --mxt-* token at once. The
+// shared Atlas map and recipe layer read those tokens through var(), so they
+// follow the swap without being duplicated per theme.
+// ---------------------------------------------------------------------------
+$mxcli-ledger-scope: {{SCOPE}} !default;
+$mxcli-ledger-scoped: {{SCOPED}} !default;
+
+// ---------------------------------------------------------------------------
+// Variant selection, applied at this theme's scope.
+//
+//   auto   — follow the OS, and honour an explicit theme-light / theme-dark
+//            class on <html> so a switcher can override it
+//   light  — Ledger's default palette, no switching
+//   dark   — the dark palette, no switching
 //
 // `light` emits nothing beyond the base: it IS the base. And an explicit
 // .theme-light needs no block either, because the media query below excludes
 // it — which is the whole reason for the :not().
 // ---------------------------------------------------------------------------
-:root {
+#{$mxcli-ledger-scope} {
   @include mxcli-atlas-map;
+}
+
+// The skin is scoped only when this theme shares a stylesheet with others.
+// Unscoped it would apply under every skin in the set; scoping it always would
+// raise its specificity in the single-theme case and start winning against app
+// CSS that used to beat it on source order.
+@if $mxcli-ledger-scoped {
+  #{$mxcli-ledger-scope} {
+    @include mxcli-ledger-skin;
+  }
+} @else {
+  @include mxcli-ledger-skin;
 }
 
 @if $mxcli-theme-variant == auto {
   @media (prefers-color-scheme: dark) {
-    :root:not(.theme-light) {
-      @include mxcli-ledger-dark;
-      @include mxcli-atlas-map;
+    #{$mxcli-ledger-scope} {
+      &:not(.theme-light) {
+        @include mxcli-ledger-dark;
+        @include mxcli-atlas-map;
+      }
     }
   }
 
   // Specificity matters here: Mendix's own _theme-dark.scss also declares
   // :root.theme-dark. Same weight, so the later declaration wins — and this
   // file is imported after it.
-  :root.theme-dark {
-    @include mxcli-ledger-dark;
-    @include mxcli-atlas-map;
+  #{$mxcli-ledger-scope} {
+    &.theme-dark {
+      @include mxcli-ledger-dark;
+      @include mxcli-atlas-map;
+    }
   }
 } @else if $mxcli-theme-variant == dark {
-  :root {
+  #{$mxcli-ledger-scope} {
     @include mxcli-ledger-dark;
     @include mxcli-atlas-map;
   }
 }
 
 // ---------------------------------------------------------------------------
-// Fonts. Vendored (SIL OFL 1.1, see mxcli-fonts/OFL.txt) rather than pulled
+// Fonts. Vendored (SIL OFL 1.1, see mxcli-fonts/OFL-ledger.txt) rather than pulled
 // from a CDN: no @import ordering trap, no third-party request at runtime, and
 // the app renders correctly air-gapped. The URLs are relative to
 // theme.compiled.css, which Mendix deploys to the web root alongside
@@ -128,191 +171,4 @@ h5,
 h6,
 .mx-title {
   font-family: var(--mxt-font-heading);
-}
-
-// ---------------------------------------------------------------------------
-// Hairlines, not cards. Ledger separates content with 1px rules and relies on
-// no elevation at all, so the Atlas card is flattened to a ruled block.
-// ---------------------------------------------------------------------------
-.card {
-  box-shadow: none;
-}
-
-.stat {
-  box-shadow: none;
-}
-
-// ---------------------------------------------------------------------------
-// Focus. An invisible focus state is the most common accessibility regression
-// in a generated app, so this adds the halo and makes sure nothing removes it.
-// ---------------------------------------------------------------------------
-a:focus-visible,
-button:focus-visible,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible,
-[tabindex]:focus-visible,
-.mx-link:focus-visible,
-.btn:focus-visible {
-  outline: var(--focus-outline);
-  outline-offset: var(--focus-outline-offset);
-  box-shadow: var(--mxt-focus-halo);
-}
-
-h1,
-h2,
-h3,
-h4,
-h5,
-h6,
-.mx-title {
-  font-family: var(--mxt-font-heading);
-}
-
-// ---------------------------------------------------------------------------
-// Numerics. Monospace with tabular figures so ids, amounts and dates align
-// vertically down a column. Apply with class: 'num'.
-// ---------------------------------------------------------------------------
-.num,
-.num input,
-.num textarea,
-.num .form-control-static {
-  font-family: var(--mxt-font-mono);
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum" 1;
-  letter-spacing: -0.01em;
-}
-
-// A field's label is prose, not a number. Without this the class set on a
-// textbox to align its value also renders the label in monospace, because
-// Mendix nests the label inside the widget root the class lands on.
-.num label,
-.num .control-label {
-  font-family: var(--mxt-font);
-  font-variant-numeric: normal;
-  letter-spacing: normal;
-}
-
-.num-right {
-  text-align: right;
-}
-
-// ---------------------------------------------------------------------------
-// Status pills. One shape, five tones, all resolved through tokens so they
-// follow a variant flip instead of staying stuck in light-mode tints.
-// ---------------------------------------------------------------------------
-.pill {
-  display: inline-flex;
-  align-items: center;
-  height: 20px;
-  padding: 0 8px;
-  border-radius: 10px;
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1;
-  white-space: nowrap;
-  background: var(--mxt-tint-neutral);
-  color: var(--mxt-ink-muted);
-}
-
-.pill-ok {
-  background: var(--mxt-tint-ok);
-  color: var(--mxt-tone-ok);
-}
-
-.pill-warn {
-  background: var(--mxt-tint-warn);
-  color: var(--mxt-tone-warn);
-}
-
-.pill-risk,
-.pill-danger {
-  background: var(--mxt-tint-risk);
-  color: var(--mxt-tone-risk);
-}
-
-.pill-info {
-  background: var(--mxt-tint-info);
-  color: var(--mxt-tone-info);
-}
-
-// ---------------------------------------------------------------------------
-// KPI tile.
-// ---------------------------------------------------------------------------
-.stat {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: var(--card-padding);
-  background: var(--mxt-surface);
-  border: 1px solid var(--mxt-line);
-  border-radius: var(--mxt-radius);
-  box-shadow: var(--mxt-shadow);
-}
-
-.stat-label {
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  color: var(--mxt-ink-muted);
-}
-
-.stat-value {
-  font-family: var(--mxt-font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: 26px;
-  font-weight: 600;
-  line-height: 1.1;
-  color: var(--mxt-ink);
-}
-
-.stat-delta {
-  font-size: 12px;
-  color: var(--mxt-ink-muted);
-}
-
-.stat-delta-up {
-  color: var(--mxt-success);
-}
-
-.stat-delta-down {
-  color: var(--mxt-danger);
-}
-
-// ---------------------------------------------------------------------------
-// Grid rhythm. Header rows read as labels rather than as another data row.
-// ---------------------------------------------------------------------------
-.mx-datagrid th,
-.mx-datagrid-head,
-.th .column-header {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--mxt-ink-muted);
-}
-
-.density-compact {
-  --padding-table-cell-top: 4px;
-  --padding-table-cell-bottom: 4px;
-  --form-input-height: 28px;
-}
-
-// ---------------------------------------------------------------------------
-// Touch. The desktop density must never reach a finger: below the tablet
-// breakpoint every control grows to a 44px minimum target.
-// ---------------------------------------------------------------------------
-@media (max-width: 767px) {
-  :root {
-    --form-input-height: 44px;
-    --form-input-padding-y: 11px;
-    --padding-table-cell-top: 12px;
-    --padding-table-cell-bottom: 12px;
-  }
-
-  .btn,
-  .mx-link,
-  input.form-control,
-  select.form-control {
-    min-height: 44px;
-  }
 }

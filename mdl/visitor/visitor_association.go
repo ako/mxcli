@@ -18,6 +18,10 @@ func (b *Builder) ExitCreateAssociationStatement(ctx *parser.CreateAssociationSt
 	}
 
 	stmt := &ast.CreateAssociationStmt{
+		// The doc comment, the same spelling every other document type uses. It
+		// was never captured here, so an association was the one domain-model
+		// element with no working way to document it on create.
+		Documentation:  findDocCommentText(ctx),
 		Name:           buildQualifiedName(names[0]),
 		Parent:         buildQualifiedName(names[1]),
 		Child:          buildQualifiedName(names[2]),

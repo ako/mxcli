@@ -1,6 +1,6 @@
 ---
 name: theme-styling
-description: "The SCSS workflow and its traps — where styling actually compiles, custom-variables.scss, themesource directories, hot reload, and design-property errors. Use when writing or debugging SCSS, or when styling silently fails to appear."
+description: "The SCSS workflow and its traps — where styling actually compiles, custom-variables.scss, themesource directories, hot reload, design-property errors, and the mxcli theme commands (apply, create --from a design, switchable sets, light/dark). Use when writing or debugging SCSS, when applying or building a theme, when giving an app a brand palette or design tokens, or when styling silently fails to appear."
 ---
 
 # Theme & Styling — SCSS Workflow and Caveats
@@ -9,8 +9,16 @@ description: "The SCSS workflow and its traps — where styling actually compile
 
 Use this skill when working with:
 - SCSS compilation, `custom-variables.scss`, or `themesource/` directories
+- Applying or building a theme (`mxcli theme apply | create | switcher`)
+- Giving an app a brand palette, or turning design tokens into a theme
 - CSS hot-reload during Docker development
 - Debugging styling crashes or design property issues
+
+**Do not hand-write a theme scaffold.** `mxcli theme apply` writes a complete,
+verified one; `mxcli theme create <name> --from <design-file>` makes a theme the
+project owns and seeds its palette from `--mxt-*` declarations. See "A theme of
+your own" below. Hand-editing inside a generated block works exactly once — the
+digest fence refuses it on the next apply.
 
 For **MDL styling commands** (`show design properties`, `describe styling`, `alter styling`, inline `designproperties:`, `update widgets`), see:
 - Existing proposal: `docs/11-proposals/page-styling-support.md`
@@ -111,6 +119,75 @@ over `@import url('…fonts.googleapis…')`: no `@import`-ordering trap, no
 third-party request per page load, and the app renders correctly air-gapped.
 
 `mxcli theme apply` does exactly this — see `mxcli theme show signal`.
+
+### A theme of your own: `mxcli theme create`
+
+Don't hand-edit a generated block to get a brand palette. The block is
+digest-fenced, so the next `theme apply` refuses to touch it and reports your
+file as modified — you have taken the theme out of mxcli's hands to change one
+colour. Scaffold a theme the project owns instead:
+
+```bash
+mxcli theme create acme -p app.mpr                    # scaffold from signal
+mxcli theme create acme -p app.mpr --from console     # ...or from console
+mxcli theme create acme -p app.mpr --from design.css  # ...and seed the palette
+mxcli theme apply acme -p app.mpr
+```
+
+It lands in `theme/mxcli-themes/<name>/` — committed (unlike `.mxcli/`, which
+`mxcli init` gitignores) and not compiled (mxbuild's entry point is
+`theme/web/main.scss`; it does not glob `theme/`). From then on it is a theme
+like any other: `theme list -p` shows it marked `local`, `theme apply` installs
+it, `theme remove` takes it out. A local theme named after a built-in shadows it.
+
+**Seeding from a design.** `--from <file>` reads `--mxt-*` declarations out of
+any CSS-shaped text — a stylesheet, an SCSS partial, or the `<style>` blocks of
+an HTML export:
+
+```css
+:root { --mxt-brand: #7f5af0; --mxt-ground: #fffffe; }
+@media (prefers-color-scheme: dark) { :root { --mxt-ground: #16161a; } }
+```
+
+A dark block (`prefers-color-scheme: dark`, `.theme-dark`, `[data-theme="dark"]`)
+seeds the dark palette; everything else seeds the light one. Tokens the design
+does not name keep the base theme's value.
+
+If you are driving a design step (`/design` or similar) that will feed this, ask
+it to **emit a token block** rather than inferring one from the mockup. Two greys
+in a design do not say which is the app ground and which is a hovered row;
+`mxcli theme show signal` prints the exact vocabulary to target. A `--mxt-*` name
+the base theme does not declare is refused, because nothing would read it — the
+theme would apply cleanly and render unchanged.
+
+### Several themes at once — the app switches skins at runtime
+
+```bash
+mxcli theme apply signal ledger console -p app.mpr   # first named is the default
+mxcli theme switcher install -p app.mpr --module MyFirstModule
+```
+
+All of them compile into one stylesheet; the app picks one with a class on
+`<html>`. No rebuild, no reload. This is the CSS Zen Garden result for Mendix:
+the DOM Mendix renders never changes and neither does the model — brand, ground,
+ink, radius, type and card treatment all move on a class swap. Measured on a real
+11.13 app: signal `#0f6e6b`/4px/IBM Plex with shadowed cards, ledger
+`#1f3a5f`/2px/Source Sans with hairlines, console `#2dd4bf`/6px/Space Grotesk
+flat.
+
+Two things make it work, and both are worth knowing if you write a theme:
+
+1. **Nothing outside the palette may name a colour.** The Atlas map, the recipe
+   layer and the widget layer resolve everything through `var(--mxt-*)`, so one
+   copy of them serves every theme. A literal in any of those files survives the
+   swap and is wrong under every theme but one.
+2. **The default theme's scope is `:root` minus the other skins' classes**, not a
+   bare `:root`. Bare keeps matching once another class is set, so its rules leak
+   under every other theme and the winner comes down to specificity. Negation
+   makes the scopes mutually exclusive.
+
+A single installed theme is emitted exactly as before — bare `:root`, skin rules
+unscoped — so this costs a one-theme project nothing.
 
 ### Light/dark: Mendix ships the slot, not the switcher
 

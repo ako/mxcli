@@ -183,6 +183,15 @@ func (b *MprBackend) GetDomainModel(moduleID model.ID) (*domainmodel.DomainModel
 func (b *MprBackend) GetDomainModelByID(id model.ID) (*domainmodel.DomainModel, error) {
 	return b.reader.GetDomainModelByID(id)
 }
+func (b *MprBackend) SetDomainModelAnnotations(domainModelID model.ID, annotations []*domainmodel.Annotation) error {
+	dm, err := b.GetDomainModelByID(domainModelID)
+	if err != nil {
+		return err
+	}
+	dm.Annotations = annotations
+	return b.writer.UpdateDomainModel(dm)
+}
+
 func (b *MprBackend) UpdateDomainModel(dm *domainmodel.DomainModel) error {
 	return b.writer.UpdateDomainModel(dm)
 }
