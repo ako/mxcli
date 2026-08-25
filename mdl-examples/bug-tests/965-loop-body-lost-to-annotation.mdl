@@ -1,0 +1,132 @@
+-- Issue #965: describe emptied a whole loop body when the body carried an
+-- annotation.
+--
+-- Symptom (before the fix): describe rendered the loop with nothing in it —
+--
+--     loop $IteratorThing in $ThingList
+--     begin
+--     end loop;
+--
+-- silently, at exit code 0, and the truncated script passed `mxcli check`. The
+-- documented describe -> exec round trip therefore DELETED the loop body.
+--
+-- ROOT CAUSE
+--
+-- emitLoopBody picks the body's starting node as "the object with no incoming
+-- sequence flow, leftmost then topmost" (preferLoopBodyStart). A
+-- Microflows$Annotation IS an object in ObjectCollection.Objects, but it
+-- connects through AnnotationFlows and never through Flows — so its incoming
+-- sequence-flow count is permanently 0 and it was always a start candidate.
+-- When it won, traversal began at the annotation, which has no outgoing
+-- sequence flow, and the body emitted zero lines.
+--
+-- The model was never damaged: `bson dump` and `--format mermaid` both showed
+-- the activity, because mermaid iterates the object collection directly instead
+-- of traversing from a start node. Only the MDL serializer was affected, and
+-- only inside loops — the top level starts from its StartEvent.
+--
+-- THE DEFECT IS POSITIONAL, WHICH IS THE TRAP
+--
+-- Measured on the four placements:
+--
+--     annotation LEFT of the activity      -> body LOST
+--     annotation ABOVE it, same X          -> body LOST
+--     annotation ABOVE-LEFT                -> body LOST
+--     annotation RIGHT of the activity     -> body fine, annotation included
+--
+-- So a fixture that happens to put the annotation on the right passes against
+-- the broken code. The issue reported this as "any statement with an
+-- @annotation", which over-generalises: it is whichever object sorts first.
+--
+-- NOT A STUDIO PRO-ONLY DEFECT
+--
+-- The first reading was that this needed a Studio Pro-authored project, since
+-- Studio Pro places annotations above/left by hand. It did not: mxcli's OWN
+-- builder puts a loop-body annotation at the same X as the activity and above
+-- it — measured activity (150, 80), annotation (150, -20) — which is exactly
+-- the losing shape. mxcli was destroying loop bodies it had authored itself.
+--
+-- WHY #330 DID NOT ALREADY CATCH THIS
+--
+-- 330-preserve-loop-body-annotations.mdl covers the same construct, and its Go
+-- regression (TestLoopBodyIfAnnotationPromotedToParentFlows) covers the AST ->
+-- BSON BUILD path. The describe assertion in its header is a manual procedure
+-- in a comment — `make check-mdl` runs `mxcli check` without a project, so CI
+-- only ever syntax-checked that file. No automated test had ever DESCRIBED a
+-- loop body containing an annotation, which is the half the defect lived in.
+--
+-- The guards are therefore Go tests in
+-- mdl/executor/cmd_microflows_describe_loop_annotation_test.go, and the one
+-- that matters is TestDescribeLoopBody_SurvivesAnnotationAtBuilderPositions:
+-- it builds through the real builder and describes the result, closing the
+-- build -> describe round trip that the two existing tests each covered half
+-- of. It asserts its own premise first, so it fails loudly if the builder's
+-- layout ever changes such that the fixture stops exercising the defect.
+--
+-- This file is a plain .mdl, not .fail.mdl: the MDL is valid and `check` is
+-- right to accept it — the defect was in describe, not in validation.
+--
+-- Manual verification:
+--   mxcli exec mdl-examples/bug-tests/965-loop-body-lost-to-annotation.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe microflow BugTest965.MF_LoopWithAnnotatedBody"
+--   The loop body must contain the log statement AND its @annotation.
+
+create module BugTest965;
+
+create entity BugTest965.Thing (
+  Name : string(100)
+);
+/
+
+-- The reported shape: an annotated statement as the only thing in the loop.
+create microflow BugTest965.MF_LoopWithAnnotatedBody (
+  $ThingList: list of BugTest965.Thing
+)
+begin
+  loop $IteratorThing in $ThingList
+  begin
+    @annotation 'explains why this step exists'
+    log info node 'BugTest965' 'processing a thing';
+  end loop;
+end;
+/
+
+-- The annotation on a LATER statement must not displace the first one: body
+-- ORDER has to survive, not merely body content.
+create microflow BugTest965.MF_LoopAnnotationOnSecondStatement (
+  $ThingList: list of BugTest965.Thing
+)
+begin
+  loop $IteratorThing in $ThingList
+  begin
+    log info node 'BugTest965' 'first statement';
+    @annotation 'note on the second statement'
+    log info node 'BugTest965' 'second statement';
+  end loop;
+end;
+/
+
+-- A while loop shares emitLoopBody, so it shares the defect.
+create microflow BugTest965.MF_WhileWithAnnotatedBody ()
+begin
+  declare $Continue Boolean = true;
+  while $Continue
+  begin
+    @annotation 'note inside a while body'
+    $Continue = false;
+  end while;
+end;
+/
+
+-- Control: an unannotated loop body, which was never affected. If this one ever
+-- breaks, the cause is not #965.
+create microflow BugTest965.MF_LoopWithoutAnnotation (
+  $ThingList: list of BugTest965.Thing
+)
+begin
+  loop $IteratorThing in $ThingList
+  begin
+    log info node 'BugTest965' 'no annotation here';
+  end loop;
+end;
+/
