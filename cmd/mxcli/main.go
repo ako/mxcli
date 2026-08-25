@@ -6,6 +6,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -251,8 +252,16 @@ func mcpTracer() *backend.Tracer {
 // newLoggedExecutor creates an executor with diagnostics logging attached.
 // The caller must call logger.Close() when done (safe on nil).
 func newLoggedExecutor(mode string) (*executor.Executor, *diaglog.Logger) {
+	return newLoggedExecutorTo(mode, os.Stdout)
+}
+
+// newLoggedExecutorTo is newLoggedExecutor with the progress stream chosen by
+// the caller. A command whose stdout carries a machine-readable payload passes
+// progressSink(format) so its commentary lands on stderr instead of corrupting
+// the payload.
+func newLoggedExecutorTo(mode string, out io.Writer) (*executor.Executor, *diaglog.Logger) {
 	logger := diaglog.Init(version, mode)
-	exec := executor.New(os.Stdout)
+	exec := executor.New(out)
 	exec.SetBackendFactory(newBackendFactory())
 	exec.SetTracer(mcpTracer())
 	exec.SetLogger(logger)

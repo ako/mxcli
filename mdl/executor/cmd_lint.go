@@ -39,10 +39,13 @@ func execLint(ctx *ExecContext, s *ast.LintStmt) error {
 		rules.NewGallerySelectionListenerRule(),
 		rules.NewDataViewLayoutGridRule(),
 	}
-	rulesDir := filepath.Join(projectDir, ".claude", "lint-rules")
-	starlarkRules, err := linter.LoadStarlarkRulesFromDir(rulesDir)
+	rulesDir := linter.FindLintRulesDir(projectDir)
+	starlarkRules, loadFailures, err := linter.LoadStarlarkRulesFromDir(rulesDir)
 	if err != nil {
 		fmt.Fprintf(ctx.Output, "Warning: failed to load custom rules: %v\n", err)
+	}
+	for _, f := range loadFailures {
+		fmt.Fprintf(ctx.Output, "Warning: rule file skipped: %s: %s\n", f.Path, f.Reason)
 	}
 	for _, rule := range starlarkRules {
 		lintRules = append(lintRules, rule)
@@ -161,10 +164,10 @@ func listLintRules(ctx *ExecContext) error {
 	// Show custom Starlark rules if connected
 	if ctx.MprPath != "" {
 		projectDir := filepath.Dir(ctx.MprPath)
-		rulesDir := filepath.Join(projectDir, ".claude", "lint-rules")
-		starlarkRules, err := linter.LoadStarlarkRulesFromDir(rulesDir)
+		rulesDir := linter.FindLintRulesDir(projectDir)
+		starlarkRules, _, err := linter.LoadStarlarkRulesFromDir(rulesDir)
 		if err == nil && len(starlarkRules) > 0 {
-			fmt.Fprintln(ctx.Output, "Custom rules (from .claude/lint-rules/):")
+			fmt.Fprintf(ctx.Output, "Custom rules (from %s):\n", rulesDir)
 			fmt.Fprintln(ctx.Output)
 			for _, rule := range starlarkRules {
 				fmt.Fprintf(ctx.Output, "  %s (%s)\n", rule.ID(), rule.Name())
