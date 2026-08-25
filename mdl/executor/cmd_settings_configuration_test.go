@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mendixlabs/mxcli/mdl/ast"
 	"github.com/mendixlabs/mxcli/mdl/backend/mock"
 	"github.com/mendixlabs/mxcli/model"
 )
@@ -44,8 +45,11 @@ func TestDescribeSettingsConfiguration_ByName(t *testing.T) {
 	}
 	out := buf.String()
 
-	if !strings.Contains(out, "alter settings configuration 'Default'") {
-		t.Errorf("expected the named configuration, got:\n%s", out)
+	// CREATE OR MODIFY, not ALTER: DESCRIBE has to emit something that replays
+	// onto a project without this configuration. ALTER answered "configuration
+	// not found" and stopped the file.
+	if !strings.Contains(out, "create or modify configuration 'Default'") {
+		t.Errorf("expected the named configuration in its replayable form, got:\n%s", out)
 	}
 	if !strings.Contains(out, "ApplicationRootUrl = 'http://backend.local:8080/'") {
 		t.Errorf("expected the root URL, got:\n%s", out)
@@ -107,5 +111,49 @@ func TestShowSettings_SummaryCarriesRootURL(t *testing.T) {
 	// rather than rendered as a bare comma.
 	if strings.Contains(out, "Hsqldb, , ") {
 		t.Errorf("summary should skip an empty DatabaseUrl, got:\n%s", out)
+	}
+}
+
+// CREATE OR MODIFY CONFIGURATION updates an existing configuration instead of
+// refusing. The grammar has always accepted the prefix — `CREATE (OR
+// (MODIFY|REPLACE))?` is generic across every CREATE — so before this the
+// documented upsert parsed and behaved as a plain CREATE, answering
+// "configuration already exists" to the statement whose point is that it does
+// not. DESCRIBE emits this form, which is what makes a described project replay
+// onto a target that already has `Default`.
+func TestCreateConfiguration_OrModifyUpdatesAnExistingOne(t *testing.T) {
+	ps := &model.ProjectSettings{Configuration: &model.ConfigurationSettings{
+		Configurations: []*model.ServerConfiguration{
+			{Name: "Default", DatabaseType: "Hsqldb", HttpPortNumber: 8080},
+		},
+	}}
+	var written *model.ProjectSettings
+	mb := &mock.MockBackend{
+		IsConnectedFunc:           func() bool { return true },
+		GetProjectSettingsFunc:    func() (*model.ProjectSettings, error) { return ps, nil },
+		UpdateProjectSettingsFunc: func(p *model.ProjectSettings) error { written = p; return nil },
+	}
+	ctx, _ := newMockCtx(t, withBackend(mb))
+
+	err := createConfiguration(ctx, &ast.CreateConfigurationStmt{
+		Name: "Default", CreateOrModify: true,
+		Properties: map[string]any{"HttpPortNumber": "8085"},
+	})
+	if err != nil {
+		t.Fatalf("create or modify refused an existing configuration: %v", err)
+	}
+	if written == nil {
+		t.Fatal("nothing was written")
+	}
+	if got := written.Configuration.Configurations; len(got) != 1 || got[0].HttpPortNumber != 8085 {
+		t.Fatalf("configurations = %+v, want one Default on port 8085 — an upsert must not duplicate", got)
+	}
+
+	// Plain CREATE must still refuse; the guard is what stops a typo silently
+	// rewriting a configuration somebody else owns.
+	if err := createConfiguration(ctx, &ast.CreateConfigurationStmt{
+		Name: "Default", Properties: map[string]any{},
+	}); err == nil {
+		t.Error("plain CREATE accepted an existing configuration")
 	}
 }

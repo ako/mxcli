@@ -1,6 +1,6 @@
 ---
 name: project-settings
-description: "Read and change project settings in MDL — database configuration, constant overrides, after-startup and before-shutdown microflows, and the rest of Studio Pro's Settings dialog. Use when configuring a deployment or wiring a startup microflow."
+description: "Read and change project settings in MDL — database configuration, constant overrides, after-startup and before-shutdown microflows, the enabled languages (add/modify/remove, which decide what translations a build emits), and the rest of Studio Pro's Settings dialog. Use when configuring a deployment, wiring a startup microflow, or enabling a language before translating an app."
 ---
 
 # Project Settings
@@ -177,10 +177,41 @@ drop configuration 'Staging';
 stored in that spelling. Any other value is rejected; a configuration stored with
 one Mendix does not recognise cannot be opened in Studio Pro.
 
-### Language and Workflow Settings
+### Language Settings
+
+A project's **enabled languages** are the only ones a build emits translations
+for. Writing translations for any other language stores them, passes `mx check`,
+and produces nothing at build time — so enable the language first.
 
 ```sql
+-- enable, change, disable
+alter settings LANGUAGE add 'de_DE';
+alter settings LANGUAGE add 'ar_SD' (CheckCompleteness: true, CustomDateFormat: 'yyyy-MM-dd');
+alter settings LANGUAGE modify 'de_DE' (CheckCompleteness: true);
+alter settings LANGUAGE remove 'de_DE';
+
+-- the default must already be enabled
 alter settings LANGUAGE DefaultLanguageCode = 'en_US';
+```
+
+A language is identified by its **code** — "Arabic, Sudan" is derived from
+`ar_SD` for display and is not stored.
+
+- `CheckCompleteness` reports errors for texts with no translation in that
+  language; the **default language is always checked** regardless.
+- `MODIFY` touches only the options it names. `ADD OR MODIFY` is the upsert, and
+  is what `describe settings` emits.
+- The **default language cannot be removed** (everything falls back on it).
+  Removing any other language does **not** delete its translations — they stay in
+  the model and stop being built.
+
+⚠️ `show languages` lists languages that have **translations**, not enabled ones —
+a stock app reports 8 while 1 is enabled. Use `describe settings` for the enabled
+list.
+
+### Workflow Settings
+
+```sql
 
 alter settings workflows
   UserEntity = 'System.User',

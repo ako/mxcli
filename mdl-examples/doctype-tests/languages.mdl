@@ -1,0 +1,61 @@
+-- ALTER SETTINGS LANGUAGE ADD / REMOVE — the project's ENABLED languages.
+--
+-- The enabled list is what App Settings > Languages shows, and the only thing a
+-- build emits translations for. Measured with `mxbuild --target=deploy`: a
+-- caption translated into a language that is not enabled reaches NOTHING under
+-- deployment/ — no translations_<code>.properties is produced at all — while the
+-- model and Studio Pro both keep it. That is why `create translations` warns.
+--
+-- The written element is pinned against a Studio Pro-authored reference
+-- (11.13.0, App Settings > Languages > Add):
+--
+--   {$Type: "Texts$Language", CheckCompleteness: false, Code: "ar_SD",
+--    CustomDateFormat: "", CustomDateTimeFormat: "", CustomTimeFormat: ""}
+--
+-- Note what is NOT there: no Description. Studio Pro's "Arabic, Sudan" is
+-- derived from the code for display, so the code is the whole stored identity —
+-- which is why these statements take a code and nothing else.
+
+-- 1. Enable a language. Defaults match Studio Pro's Add dialog: completeness
+--    unchecked, no custom formats.
+alter settings LANGUAGE add 'ar_SD';
+
+-- 2. The same with the options the Edit dialog exposes. CheckCompleteness is a
+--    real setting, not cosmetic: with it on, Mendix reports errors and warnings
+--    for texts that have no translation in this language, instead of letting them
+--    fall back to the default silently.
+alter settings LANGUAGE add 'de_DE' (CheckCompleteness: true, CustomDateFormat: 'yyyy-MM-dd');
+
+-- 2b. Change a language that is already enabled. MODIFY touches only the options
+--     it names, so turning the completeness check on cannot clear a custom format
+--     somebody set in Studio Pro.
+alter settings LANGUAGE modify 'ar_SD' (CheckCompleteness: true);
+
+-- 2c. ADD OR MODIFY is the upsert: enables a language that is not there, changes
+--     one that is. It is what DESCRIBE emits, which is what makes settings
+--     replayable — plain ADD refuses an already-enabled language, so a described
+--     project could not be run against itself.
+alter settings LANGUAGE add or modify 'ar_SD' (CheckCompleteness: true, CustomDateFormat: 'yyyy-MM-dd');
+
+-- 3. DESCRIBE emits those statements, every option named, with
+--    DefaultLanguageCode LAST — the default is validated against the enabled
+--    list, so the languages have to exist first. Round-trip measured: replaying
+--    the output onto the same project leaves the unit byte-identical and reports
+--    `Unchanged language` for each, and replaying it onto a BLANK project
+--    reproduces the language settings exactly.
+describe settings;
+
+-- 4. Disable one. This REPORTS any translations that become dead weight — it does
+--    not refuse. Removing a language does not delete its translations: the
+--    enabled list and the translation data are independent, which a stock blank
+--    app proves by enabling ONE language while storing translations in EIGHT.
+alter settings LANGUAGE remove 'de_DE';
+
+-- 5. Refused: the DEFAULT language. Every missing translation falls back on it,
+--    so a project without one has no fallback. Change the default first.
+--    alter settings LANGUAGE remove 'en_US';
+--
+-- 6. NOT refused: a language that still carries translations. The run says how
+--    many source strings become dead weight and how to remove them if you want
+--    them gone:
+--      create or replace translations for ar_SD ( );
