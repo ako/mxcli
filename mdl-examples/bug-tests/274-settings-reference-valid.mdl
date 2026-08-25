@@ -1,4 +1,4 @@
--- The control for 274-settings-reference-validation.fail.mdl: the same settings
+-- The control for 274-settings-reference-validation.mdl: the same settings
 -- statements, with the documents they name created earlier in the SAME script.
 --
 -- This is the escape hatch every other statement family has — "References to

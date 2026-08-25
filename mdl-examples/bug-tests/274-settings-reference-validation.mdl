@@ -17,6 +17,16 @@
 -- Expected: both statements refused, by `mxcli check --references` AND by exec
 -- (the guard is in the handler, so `--no-check` does not get around it).
 --
+--   mxcli check 274-settings-reference-validation.mdl -p app.mpr --references
+--
+-- NOT named .fail.mdl, deliberately. `make check-mdl` runs `mxcli check` WITHOUT
+-- a project, and this rule cannot decide anything without one — it resolves the
+-- names against the model. As valid MDL the file checks clean there, so naming
+-- it .fail.mdl reports "negative test unexpectedly passed" and makes a working
+-- rule look regressed (the Makefile says so above check-mdl; #891/#892 are the
+-- precedents). The guard is covered by unit tests in
+-- mdl/executor/validate_settings_refs_test.go instead.
+--
 -- The controls that matter are in 274-settings-reference-valid.mdl: the same
 -- settings, with the microflow and constant created earlier in the same script,
 -- must still pass — a check that rejects everything is not a check.
