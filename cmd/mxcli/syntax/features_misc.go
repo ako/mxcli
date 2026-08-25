@@ -284,7 +284,7 @@ ALTER SETTINGS LANGUAGE ADD OR MODIFY '<code>' [(...)];
 ALTER SETTINGS LANGUAGE MODIFY '<code>' (CheckCompleteness: true, ...);
 ALTER SETTINGS LANGUAGE REMOVE '<code>';
 ALTER SETTINGS WORKFLOWS UserEntity = '<qualifiedName>';
-CREATE CONFIGURATION '<name>' [<key> = <value>, ...];
+CREATE [OR MODIFY] CONFIGURATION '<name>' [<key> = <value>, ...];
 DROP CONFIGURATION '<name>';`,
 		Example: `ALTER SETTINGS MODEL AfterStartupMicroflow = 'Module.MF_Startup';
 ALTER SETTINGS MODEL HashAlgorithm = 'BCrypt';

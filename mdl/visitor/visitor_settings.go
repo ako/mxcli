@@ -126,6 +126,13 @@ func (b *Builder) ExitCreateConfigurationStatement(ctx *parser.CreateConfigurati
 		stmt.Name = unquoteString(sl.GetText())
 	}
 
+	// CREATE OR MODIFY / OR REPLACE, read off the shared create wrapper.
+	if createStmt := findParentCreateStatement(ctx); createStmt != nil {
+		if createStmt.OR() != nil && (createStmt.MODIFY() != nil || createStmt.REPLACE() != nil) {
+			stmt.CreateOrModify = true
+		}
+	}
+
 	for _, assignCtx := range ctx.AllSettingsAssignment() {
 		assign, ok := assignCtx.(*parser.SettingsAssignmentContext)
 		if !ok || assign == nil {

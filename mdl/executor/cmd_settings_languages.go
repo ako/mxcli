@@ -196,8 +196,11 @@ func alterSettingsLanguageModify(ctx *ExecContext, ps *model.ProjectSettings, st
 	}
 
 	// Mendix always checks the default language, so the flag changes nothing
-	// there. Say so rather than let the script look effective.
-	if _, named := stmt.Properties["CheckCompleteness"]; named &&
+	// there. Say so rather than let the script look effective — but only when the
+	// statement actually moved it: a replayed DESCRIBE names every option of every
+	// language, and printing the note for each of them buries the one run where it
+	// matters.
+	if _, named := stmt.Properties["CheckCompleteness"]; named && !unchanged &&
 		strings.EqualFold(ps.Language.DefaultLanguageCode, lang.Code) {
 		fmt.Fprintf(ctx.Output,
 			"\nNote: %s is the DEFAULT language, which Mendix checks for completeness whatever\n"+

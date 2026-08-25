@@ -31,6 +31,13 @@ func (s *AlterSettingsStmt) isStatement() {}
 type CreateConfigurationStmt struct {
 	Name       string
 	Properties map[string]any
+	// CreateOrModify is CREATE OR MODIFY: update the configuration when it is
+	// already there instead of refusing. The grammar has always accepted the
+	// prefix — `CREATE (OR (MODIFY|REPLACE))?` is generic — so without this the
+	// documented upsert parsed and then behaved as a plain CREATE, answering
+	// "configuration already exists" to the statement whose whole point is that
+	// it should not.
+	CreateOrModify bool
 }
 
 func (s *CreateConfigurationStmt) isStatement() {}

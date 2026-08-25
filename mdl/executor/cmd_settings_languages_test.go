@@ -209,9 +209,12 @@ func TestLanguageModify_SaysTheDefaultIsAlwaysChecked(t *testing.T) {
 	ps := settingsWith("en_US")
 	ctx, out, _ := langCtx(t, ps)
 
+	// The value has to MOVE: the note is suppressed on an unchanged run, because
+	// a replayed DESCRIBE names every option of every language and printing it
+	// each time buries the one run where it matters.
 	if err := alterSettingsLanguageModify(ctx, ps, &ast.AlterSettingsStmt{
 		ModifyLanguage: true, LanguageCode: "en_US",
-		Properties: map[string]any{"CheckCompleteness": "false"},
+		Properties: map[string]any{"CheckCompleteness": "true"},
 	}); err != nil {
 		t.Fatal(err)
 	}

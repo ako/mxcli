@@ -761,6 +761,7 @@ two with a comment instead of emitting an `icon` clause that would convert them.
 | Alter configuration | `alter settings configuration 'Name' key = value;` | DatabaseType, DatabaseUrl, HttpPortNumber, etc. |
 | Alter constant | `alter settings constant 'Name' value 'val' in configuration 'cfg';` | Override constant per configuration |
 | Drop constant override | `alter settings drop constant 'Name' in configuration 'cfg';` | Reset to default value |
+| Create or modify configuration | `create or modify configuration 'Name' [key = value, ...];` | Upsert — what `describe settings` emits, so a described project replays onto a target that already has `Default` |
 | Create configuration | `create configuration 'Name' [key = value, ...];` | New server configuration. `DatabaseType` must be `Db2`, `Hsqldb`, `MySql`, `Oracle`, `PostgreSql`, `SapHana` or `SqlServer` (case-insensitive) |
 | Drop configuration | `drop configuration 'Name';` | Remove a configuration |
 | Alter language | `alter settings LANGUAGE key = value;` | DefaultLanguageCode (must already be enabled) |

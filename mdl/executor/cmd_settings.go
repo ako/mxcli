@@ -734,10 +734,17 @@ func createConfiguration(ctx *ExecContext, stmt *ast.CreateConfigurationStmt) er
 		return mdlerrors.NewNotFound("settings section", "configuration")
 	}
 
-	// Check if configuration already exists
+	// Check if configuration already exists. OR MODIFY updates it instead of
+	// refusing — which is what makes a described project replayable, since
+	// DESCRIBE emits every configuration and most targets already have Default.
 	for _, cfg := range ps.Configuration.Configurations {
 		if strings.EqualFold(cfg.Name, stmt.Name) {
-			return mdlerrors.NewAlreadyExists("configuration", stmt.Name)
+			if !stmt.CreateOrModify {
+				return mdlerrors.NewAlreadyExists("configuration", stmt.Name)
+			}
+			return alterSettingsConfiguration(ctx, ps, &ast.AlterSettingsStmt{
+				Section: "configuration", ConfigName: cfg.Name, Properties: stmt.Properties,
+			})
 		}
 	}
 
@@ -920,7 +927,12 @@ func writeSettingsConfiguration(ctx *ExecContext, cfg *model.ServerConfiguration
 	if cfg.ApplicationRootUrl != "" {
 		parts = append(parts, fmt.Sprintf("  ApplicationRootUrl = '%s'", cfg.ApplicationRootUrl))
 	}
-	fmt.Fprintf(ctx.Output, "alter settings configuration '%s'\n%s;\n\n", cfg.Name, strings.Join(parts, ",\n"))
+	// CREATE OR MODIFY, not ALTER: a described project has to replay onto a
+	// target that does not have this configuration yet. ALTER answered
+	// "configuration not found: Acceptance" and stopped the whole file, which is
+	// the same shape as the language list emitting a comment — output that reads
+	// correctly and cannot be run.
+	fmt.Fprintf(ctx.Output, "create or modify configuration '%s'\n%s;\n\n", cfg.Name, strings.Join(parts, ",\n"))
 
 	// Output constant overrides. A private override has no value in the
 	// model — emitting `value ''` would round-trip into a *shared* empty
