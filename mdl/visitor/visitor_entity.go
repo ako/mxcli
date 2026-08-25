@@ -781,6 +781,28 @@ func (b *Builder) ExitDropStatement(ctx *parser.DropStatementContext) {
 		return
 	}
 
+	// DROP ANNOTATION addresses a note by caption or position, not by a
+	// qualified name — an annotation has no name — so it must be handled before
+	// the guard below, which returns silently when there is no qualifiedName.
+	// Placed after it, the statement parsed, executed nothing, and exited 0.
+	if ctx.ANNOTATION() != nil {
+		stmt := &ast.DropAnnotationStmt{}
+		if id := ctx.IdentifierOrKeyword(); id != nil {
+			stmt.Module = unquoteIdentifier(id.GetText())
+		}
+		if nums := ctx.AllNUMBER_LITERAL(); ctx.AT_KW() != nil && len(nums) >= 2 {
+			x, errX := strconv.Atoi(nums[0].GetText())
+			y, errY := strconv.Atoi(nums[1].GetText())
+			if errX == nil && errY == nil {
+				stmt.Position = &ast.Position{X: x, Y: y}
+			}
+		} else if lit := ctx.STRING_LITERAL(); lit != nil {
+			stmt.Title = unquoteString(lit.GetText())
+		}
+		b.statements = append(b.statements, stmt)
+		return
+	}
+
 	// Get the first qualified name (most DROP statements have at least one)
 	names := ctx.AllQualifiedName()
 	if len(names) == 0 {

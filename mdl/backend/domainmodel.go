@@ -16,6 +16,16 @@ type DomainModelBackend interface {
 	GetDomainModelByID(id model.ID) (*domainmodel.DomainModel, error)
 	UpdateDomainModel(dm *domainmodel.DomainModel) error
 
+	// SetDomainModelAnnotations replaces the canvas notes on a domain model.
+	//
+	// Separate from UpdateDomainModel because that one deliberately carries
+	// annotations through as untouched storage (ADR-0005) — it rebuilds only the
+	// entity and association lists, which is what protects notes from every
+	// unrelated edit. Folding annotation authoring into it would put the
+	// preservation and the mutation on the same code path, which is how they got
+	// deleted in the first place.
+	SetDomainModelAnnotations(domainModelID model.ID, annotations []*domainmodel.Annotation) error
+
 	// Entities
 	CreateEntity(domainModelID model.ID, entity *domainmodel.Entity) error
 	UpdateEntity(domainModelID model.ID, entity *domainmodel.Entity) error

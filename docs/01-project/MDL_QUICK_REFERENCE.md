@@ -90,6 +90,7 @@ Modifies an existing entity without full replacement.
 | Modify attributes | `alter entity Module.Name modify (attr: NewType [constraints]);` | Change type/constraints |
 | Rename attribute | `alter entity Module.Name rename attribute OldName to NewName;` | Also rewrites stored references (microflow members, page widgets, validation/access rules) and XPath constraints. Microflow expressions are free text and are **not** rewritten |
 | Add index | `alter entity Module.Name add index [if not exists] [name] [on] (Col1 [asc\|desc], ...);` | `on` is optional (SQL-like). **Without `if not exists`, re-running is an error** — a second identical index fails the build with CE0072 |
+| Document an association | `/** What it links. */`<br>`create association Mod.C_P from Mod.C to Mod.P;`<br>or `... to Mod.P comment 'What it links.';` | Both spellings work on create; the doc comment wins when both are present. `comment` survives here — and only here among the CREATE statements — because it is an association's **only inline** spelling |
 | Create if absent | `create entity if not exists Module.Name (...);`<br>`create association if not exists Module.Assoc from ... to ...;` | Skips when it already exists, leaving the stored definition untouched. Unlike `create or modify`, which rebuilds the element from the statement and drops any attribute the statement omits |
 | Add index (SQL form) | `create index IdxName on Module.Name (Col1 [asc\|desc], ...);` | Same effect as `alter entity … add index`. The index name is accepted and discarded — a Mendix index is identified by its columns |
 | Drop index | `alter entity Module.Name drop index [if exists] (Col1 [asc\|desc], ...);` | Selected by its columns — a Mendix index stores no name, so the columns are its identity, and they are what `describe entity` prints. The legacy positional form `drop index idx1` still works but shifts when an earlier index is dropped |
@@ -432,6 +433,30 @@ The two microflow options share a single BSON field: write either
 Studio Pro picks the dropdown label from the referenced microflow's
 return type (`System.ConsumedODataConfiguration` vs
 `list of System.HttpHeader`).
+
+## Domain-Model Annotations
+
+The note boxes Studio Pro draws on the canvas. They belong to a module's domain
+model, not to a document, so the statements name a module.
+
+| Statement | Syntax | Notes |
+|-----------|--------|-------|
+| Show annotations | `show annotations [in Module];` | Module, Title, Position, Width, Lines. **Title** is the first line of the caption — the addressable key |
+| Create | `create annotation in Module ( Caption: 'text' );` | New notes get Studio Pro's defaults: position (60, 240), width 440 |
+| Create with layout | `create annotation in Module ( Caption: $$Orders\nmulti-line$$, Position: (60, 40), Width: 400 );` | Caption accepts `$$…$$` for a multi-line note; an MDL string literal is single-line |
+| Update in place | `create or modify annotation in Module ( Caption: 'new wording', Position: (60, 40) );` | **Position is the identity when given** — reword and re-run without duplicating. An omitted `Width` keeps the stored one |
+| Drop by title | `drop annotation 'Orders' in Module;` | Refused when two notes share a first line |
+| Drop by position | `drop annotation at (60, 40) in Module;` | The unambiguous form |
+
+**There is no colour.** A domain model holds exactly four child collections
+(Annotations, Associations, CrossAssociations, Entities), and
+`DomainModels$Annotation` stores only Caption, ExportLevel, Location and Width.
+A "coloured section box" is this element in Studio Pro's own styling — nothing
+about that styling is in the model, so nothing can author it.
+
+**Give a note a Position if you intend to re-run the script.** Without one the
+only handle is the caption's first line, so rewording creates a second note
+rather than updating the first.
 
 ## Microflows, Nanoflows & Rules
 

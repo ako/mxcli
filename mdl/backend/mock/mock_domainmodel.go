@@ -3,6 +3,8 @@
 package mock
 
 import (
+	"fmt"
+
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/domainmodel"
 )
@@ -33,6 +35,13 @@ func (m *MockBackend) UpdateDomainModel(dm *domainmodel.DomainModel) error {
 		return m.UpdateDomainModelFunc(dm)
 	}
 	return nil
+}
+
+func (m *MockBackend) SetDomainModelAnnotations(domainModelID model.ID, annotations []*domainmodel.Annotation) error {
+	if m.SetDomainModelAnnotationsFunc != nil {
+		return m.SetDomainModelAnnotationsFunc(domainModelID, annotations)
+	}
+	return fmt.Errorf("MockBackend.SetDomainModelAnnotations not configured")
 }
 
 func (m *MockBackend) CreateEntity(domainModelID model.ID, entity *domainmodel.Entity) error {

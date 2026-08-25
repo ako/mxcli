@@ -1097,6 +1097,11 @@ func (unsupportedBackend) SerializeWorkflowActivity(_ workflows.WorkflowActivity
 	return
 }
 
+func (unsupportedBackend) SetDomainModelAnnotations(_ model.ID, _ []*domainmodel.Annotation) (err0 error) {
+	err0 = errUnsupported("SetDomainModelAnnotations")
+	return
+}
+
 func (unsupportedBackend) SetProjectDemoUsersEnabled(_ model.ID, _ bool) (err0 error) {
 	err0 = errUnsupported("SetProjectDemoUsersEnabled")
 	return

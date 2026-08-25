@@ -4,6 +4,7 @@ package modelsdkbackend
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/mendixlabs/mxcli/modelsdk/element"
@@ -134,7 +135,46 @@ func domainModelFromGen(dm *genDm.DomainModel, containerID model.ID) *domainmode
 			out.CrossAssociations = append(out.CrossAssociations, crossAssocFromGen(ca))
 		}
 	}
+	// The canvas notes. Read so SHOW/DESCRIBE can list them and so an edit can
+	// match an existing note rather than appending a duplicate; the WRITE path
+	// still mutates the gen elements in place, so nothing unmodelled is lost.
+	for _, el := range dm.AnnotationsItems() {
+		if a, ok := el.(*genDm.Annotation); ok {
+			out.Annotations = append(out.Annotations, annotationFromGen(a))
+		}
+	}
 	return out
+}
+
+// annotationFromGen converts a canvas note to the semantic type.
+//
+// Location is the string "x;y" — the same convention an entity's Location uses,
+// and what every Studio Pro-authored annotation stores. gen types it as a string
+// and generated/metamodel types it as a Point; the documents agree with gen.
+func annotationFromGen(a *genDm.Annotation) *domainmodel.Annotation {
+	out := &domainmodel.Annotation{
+		Caption: a.Caption(),
+		Width:   int(a.Width()),
+	}
+	out.ID = model.ID(a.ID())
+	if x, y, ok := parsePointString(a.Location()); ok {
+		out.Location = model.Point{X: x, Y: y}
+	}
+	return out
+}
+
+// parsePointString reads Mendix's "x;y" position encoding.
+func parsePointString(s string) (int, int, bool) {
+	before, after, found := strings.Cut(s, ";")
+	if !found {
+		return 0, 0, false
+	}
+	x, errX := strconv.Atoi(strings.TrimSpace(before))
+	y, errY := strconv.Atoi(strings.TrimSpace(after))
+	if errX != nil || errY != nil {
+		return 0, 0, false
+	}
+	return x, y, true
 }
 
 func entityFromGen(e *genDm.Entity) *domainmodel.Entity {
