@@ -72,8 +72,34 @@ javaActionReturnType
     : RETURNS dataType
     ;
 
+// EXPOSED AS 'Caption' IN 'Category'  — appear in Studio Pro's toolbox
+// NOT EXPOSED                         — remove the toolbox entry
+//
+// An ABSENT clause is neither: it preserves whatever is stored. The entry also
+// carries four PNG bitmaps (icon and image, each with a dark variant) that MDL
+// cannot name, so a rewrite that rebuilt it from the caption and category alone
+// destroyed them — and one that treated silence as removal destroyed the entry.
+// Removing is therefore something a script has to say out loud.
 javaActionExposedClause
-    : EXPOSED AS STRING_LITERAL IN STRING_LITERAL
+    : EXPOSED AS STRING_LITERAL IN STRING_LITERAL exposeBitmapClause*
+    | NOT EXPOSED
+    ;
+
+// ICON 'i.png' / ICON DARK 'i-dark.png' / IMAGE 'm.png' / IMAGE DARK 'm-dark.png'
+//
+// The toolbox entry's four bitmaps. Studio Pro wants a 64x64 PNG for the icon
+// and a 256x192 PNG for the image; the dark variants are what its "Customize for
+// Dark mode" toggle fills in. Paths are read from disk at exec time and resolve
+// against the directory of the .mdl file being executed, so a script and its
+// artwork travel together.
+//
+// An omitted bitmap is preserved, not cleared — the same rule as the clause
+// itself. Clearing one is DROP ICON / DROP IMAGE.
+exposeBitmapClause
+    : ICON DARK? STRING_LITERAL
+    | IMAGE DARK? STRING_LITERAL
+    | DROP ICON DARK?
+    | DROP IMAGE DARK?
     ;
 
 /**
@@ -118,9 +144,31 @@ microflowOptions
     : microflowOption+
     ;
 
+// COMMENT is deliberately absent. It was parsed and dropped — the visitor stored
+// it on a field the executor never read — so `comment 'text'` reported success
+// and set no documentation at all. The `/** … */` doc comment before the
+// statement does work, and is richer (@param, @returns), so there is one
+// spelling rather than one that works and one that lies.
 microflowOption
     : FOLDER STRING_LITERAL
-    | COMMENT STRING_LITERAL
+    | microflowExposedClause
+    ;
+
+// EXPOSED AS MICROFLOW ACTION 'Caption' IN 'Category'
+// EXPOSED AS WORKFLOW  ACTION 'Caption' IN 'Category'
+// NOT EXPOSED AS MICROFLOW ACTION
+//
+// A microflow can be exposed twice, because Studio Pro has two toolboxes: one
+// for the microflow editor and one for the workflow editor. Mendix stores the
+// two under different keys (MicroflowActionInfo / WorkflowActionInfo) with the
+// same element type, so which one is meant has to be named — unlike a Java or
+// JavaScript action, which has only one.
+//
+// As with those, an ABSENT clause preserves what is stored; NOT EXPOSED is how a
+// script asks for the entry to go away.
+microflowExposedClause
+    : EXPOSED AS (MICROFLOW | WORKFLOW) ACTION STRING_LITERAL IN STRING_LITERAL exposeBitmapClause*
+    | NOT EXPOSED AS (MICROFLOW | WORKFLOW) ACTION
     ;
 
 microflowBody

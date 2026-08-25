@@ -33,7 +33,12 @@ type CreateJavaActionStmt struct {
 	TypeParameters  []string          // Type parameter names (e.g., ["pEntity"])
 	ExposedCaption  string            // EXPOSED AS 'caption'
 	ExposedCategory string            // IN 'category'
-	CreateOrModify  bool              // true for CREATE OR MODIFY / CREATE OR REPLACE
+	// NotExposed is NOT EXPOSED: remove the toolbox entry. Distinct from an
+	// absent clause, which preserves whatever is stored.
+	NotExposed bool
+	// ExposedBitmaps are the ICON/IMAGE clauses. An omitted one is preserved.
+	ExposedBitmaps []ExposeBitmap
+	CreateOrModify bool // true for CREATE OR MODIFY / CREATE OR REPLACE
 }
 
 func (s *CreateJavaActionStmt) isStatement() {}
@@ -66,8 +71,13 @@ type CreateJavaScriptActionStmt struct {
 	TypeParameters  []string          // Type parameter names (e.g., ["pEntity"])
 	ExposedCaption  string            // EXPOSED AS 'caption'
 	ExposedCategory string            // IN 'category'
-	Platform        string            // PLATFORM Web|Native|Hybrid|All (default Web)
-	CreateOrModify  bool              // true for CREATE OR MODIFY / CREATE OR REPLACE
+	// NotExposed is NOT EXPOSED: remove the toolbox entry. Distinct from an
+	// absent clause, which preserves whatever is stored.
+	NotExposed bool
+	// ExposedBitmaps are the ICON/IMAGE clauses. An omitted one is preserved.
+	ExposedBitmaps []ExposeBitmap
+	Platform       string // PLATFORM Web|Native|Hybrid|All (default Web)
+	CreateOrModify bool   // true for CREATE OR MODIFY / CREATE OR REPLACE
 }
 
 func (s *CreateJavaScriptActionStmt) isStatement() {}

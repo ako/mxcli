@@ -134,6 +134,21 @@ func enhanceErrorMessage(msg, offendingLine string) string {
 	// `Value = 'Caption'`, but MDL enumeration values are `Value 'Caption'`
 	// (optionally `Value CAPTION 'Caption'`) — no equals sign. The value name may
 	// itself be quoted; the `=` is the actual problem, not the quotes.
+	// A `comment 'text'` option on a CREATE that no longer accepts one. It used
+	// to parse and do nothing — the visitor stored it and the executor never read
+	// it — so scripts written against the old grammar reported success and set no
+	// documentation. Removing it turns that silence into an error, and this turns
+	// the error into the fix.
+	if looksLikeRemovedCreateComment(offendingLine) {
+		return fmt.Sprintf("%s\n\n  A `comment '…'` option on CREATE set no documentation — it was parsed and\n"+
+			"  discarded — so it has been removed. Use the doc comment, which does work\n"+
+			"  and carries more:\n"+
+			"    /** What this does. */\n"+
+			"    create microflow Mod.MF () begin … end;        (correct)\n"+
+			"    create microflow Mod.MF () comment 'What this does' begin … end;  (removed)\n"+
+			"  On an existing entity, ALTER ENTITY Mod.E SET COMMENT '…' also works.", msg)
+	}
+
 	if looksLikeEnumEquals(msg) {
 		return fmt.Sprintf("%s\n\n  Enumeration values do not use '='. Write the value name (quoted or not)\n"+
 			"  followed by an optional quoted caption:\n"+
@@ -270,6 +285,23 @@ var addMissingAttributeRe = regexp.MustCompile(`(?i)\badd\s+([A-Za-z_]\w*)\s*:`)
 // stay false-positive-free (it won't fire on `not(...)`, `is not null`, etc.).
 var bareNotRe = regexp.MustCompile(`(?i)\bnot\s+\$`)
 
+// removedCreateCommentRe matches a `comment '…'` option on one of the CREATE
+// statements that no longer takes one. Anchored on the statement keyword so it
+// does not fire on the many places COMMENT is still valid — constants, JSON
+// structures, image collections, database connections, workflow activities and
+// ALTER … SET COMMENT.
+// Two shapes, because a CREATE is usually written across several lines and the
+// offending line is then the option on its own:
+//
+//	create microflow M.MF () comment 'x' begin …    -> the whole statement
+//	  comment 'x'                                   -> just the option
+//
+// The second alternative is safe on the statements where COMMENT is still valid
+// — a valid option does not produce a parse error for the hint to attach to.
+var removedCreateCommentRe = regexp.MustCompile(
+	`(?i)(\bcreate\b.*\b(entity|enumeration|module|microflow|nanoflow|rule)\b.*\bcomment\s*'` +
+		`|^\s*comment\s*'[^']*'\s*$)`)
+
 // misplacedIndexRe matches an INDEX definition written as if it were an entry in
 // the attribute list: `index "Name" on (A, B)`, `index "Name" (A)` or the
 // anonymous `index (A)`. The discriminator against the standalone `create index`
@@ -303,6 +335,17 @@ func looksLikeMisplacedExtends(msg string) bool {
 // list. ANTLR reports the `=` as `mismatched input '=' expecting ')'`; an
 // attribute default with `=` produces a different ("no viable alternative")
 // message, so this pattern is specific to the enum-value case.
+// looksLikeRemovedCreateComment detects a `comment '…'` option on a CREATE
+// statement that no longer accepts one (entity, enumeration, module, microflow,
+// nanoflow, rule).
+//
+// It keys off the source line rather than the ANTLR message because the error
+// lands wherever the parser gave up — on the quoted string, on the following
+// token, or on `begin` — and none of those name the real problem.
+func looksLikeRemovedCreateComment(offendingLine string) bool {
+	return removedCreateCommentRe.MatchString(offendingLine)
+}
+
 func looksLikeEnumEquals(msg string) bool {
 	return strings.Contains(msg, "mismatched input '=' expecting ')'")
 }

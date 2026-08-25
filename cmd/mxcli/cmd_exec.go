@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/mendixlabs/mxcli/mdl/executor"
 	"github.com/mendixlabs/mxcli/mdl/linter"
@@ -60,6 +61,14 @@ Example:
 		exec, logger := newLoggedExecutor("exec")
 		defer logger.Close()
 		defer exec.Close()
+
+		// A relative path inside the script (a toolbox icon, an image) names a
+		// file next to the script, not next to the caller. Empty for stdin.
+		if filePath != "-" {
+			if abs, absErr := filepath.Abs(filePath); absErr == nil {
+				exec.SetScriptDir(filepath.Dir(abs))
+			}
+		}
 
 		// Auto-connect if project specified
 		if projectPath != "" {

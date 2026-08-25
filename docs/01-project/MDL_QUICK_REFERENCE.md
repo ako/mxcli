@@ -448,6 +448,10 @@ return type (`System.ConsumedODataConfiguration` vs
 | Drop microflow | `drop microflow Module.Name;` | |
 | Drop nanoflow | `drop nanoflow Module.Name;` | |
 | Create nanoflow | `create [or modify] nanoflow Module.Name (params) returns type [folder 'path'] begin ... end;` | Same body syntax as microflows |
+| Expose in the toolbox | `create microflow Module.Name () exposed as microflow action 'Caption' in 'Category' begin ... end;` | Studio Pro's "Expose as microflow action". A microflow has **two** toolbox entries, so the clause names which |
+| Expose to the workflow editor | `... exposed as workflow action 'Caption' in 'Category' ...` | The second entry; both may be set on one microflow |
+| Toolbox bitmaps | `... exposed as microflow action 'C' in 'Cat' icon 'i.png' image 'm.png' ...` | Icon 64x64 PNG, image 256x192; `icon dark`/`image dark` for the dark variants. Paths relative to the .mdl file's own directory |
+| Remove a toolbox entry | `... not exposed as workflow action ...` | An **omitted** clause preserves what is stored — icon and image included — so removal is explicit. Nanoflows and rules refuse the clause: only a microflow stores one |
 | Move nanoflow | `move nanoflow Module.Name to folder 'path';` | |
 | Nanoflow restrictions | N/A | No Java actions, ErrorEvent, REST calls, database queries, external actions, download file, workflow actions, import/export mappings, JSON transformation, show home page |
 | Show rules | `show rules [in module];` | `list rules` is the same statement |
@@ -1116,6 +1120,9 @@ Module.OrderResponse_CustomerInfo/Module.CustomerInfo as customer {
 | Create Java action | `create [or modify] java action Module.Name [folder 'path'](params) returns type as $$ ... $$;` | OR MODIFY updates signature/body, preserves UUID |
 | Create with type params | `create java action Module.Name(EntityType: entity <pEntity>, Obj: pEntity) ...;` | Generic type parameters |
 | Create exposed action | `... exposed as 'caption' in 'Category' as $$ ... $$;` | Toolbox-visible in Studio Pro |
+| Exposed action with bitmaps | `... exposed as 'caption' in 'Category' icon 'i.png' icon dark 'id.png' image 'm.png' image dark 'md.png' as $$ ... $$;` | Icon 64x64 PNG, image 256x192; paths relative to the .mdl file's own directory. A wrong size warns and is written; a non-PNG is refused |
+| Remove a toolbox entry | `... not exposed as $$ ... $$;` | An **omitted** clause preserves the stored entry (bitmaps included), so removal is explicit |
+| Clear one bitmap | `... exposed as 'c' in 'C' drop icon dark as $$ ... $$;` | `drop icon\|image [dark]` clears exactly one; the others are untouched |
 | Rename Java action | `rename java action Module.Old to New;` | Renames BSON unit and .java source file |
 | Rename Java action (dry run) | `rename java action Module.Old to New dry run;` | Preview reference changes without modifying |
 | Drop Java action | `drop java action Module.Name;` | Deletes MPR unit and .java source file |

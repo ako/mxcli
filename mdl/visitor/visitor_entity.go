@@ -75,14 +75,11 @@ func (b *Builder) ExitCreateEntityStatement(ctx *parser.CreateEntityStatementCon
 			stmt.Attributes = buildAttributes(attrList, b)
 		}
 
-		// Options (comment, extends, indexes, system attributes, etc.)
+		// Options (extends, indexes, system attributes, etc.)
 		if opts := bodyCtx.EntityOptions(); opts != nil {
 			optsCtx := opts.(*parser.EntityOptionsContext)
 			for _, opt := range optsCtx.AllEntityOption() {
 				optCtx := opt.(*parser.EntityOptionContext)
-				if optCtx.COMMENT() != nil && optCtx.STRING_LITERAL() != nil {
-					stmt.Comment = unquoteString(optCtx.STRING_LITERAL().GetText())
-				}
 				// Handle INDEX option
 				if optCtx.INDEX() != nil && optCtx.IndexDefinition() != nil {
 					stmt.Indexes = append(stmt.Indexes, buildIndex(optCtx.IndexDefinition()))

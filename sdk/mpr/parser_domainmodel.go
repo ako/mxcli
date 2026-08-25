@@ -517,8 +517,18 @@ func parseAnnotation(raw map[string]any) *domainmodel.Annotation {
 	annot.ID = model.ID(extractBsonID(raw["$ID"]))
 	annot.TypeName = extractString(raw["$Type"])
 	annot.Caption = extractString(raw["Caption"])
+	annot.Width = extractInt(raw["Width"])
 
-	if loc, ok := raw["Location"].(map[string]any); ok {
+	// Studio Pro stores the position as the string "x;y", the same shape an
+	// entity's Location uses. Reading only the sub-document form returned (0,0)
+	// for every real annotation, so a rewrite piled them all in one corner.
+	if locStr, ok := raw["Location"].(string); ok {
+		parts := strings.Split(locStr, ";")
+		if len(parts) == 2 {
+			fmt.Sscanf(parts[0], "%d", &annot.Location.X)
+			fmt.Sscanf(parts[1], "%d", &annot.Location.Y)
+		}
+	} else if loc, ok := raw["Location"].(map[string]any); ok {
 		annot.Location.X = extractInt(loc["x"])
 		annot.Location.Y = extractInt(loc["y"])
 	}

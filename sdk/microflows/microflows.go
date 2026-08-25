@@ -4,6 +4,7 @@
 package microflows
 
 import (
+	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
 )
 
@@ -32,6 +33,13 @@ type Microflow struct {
 
 	// Concurrent execution settings
 	ConcurrentExecutionSettings *ConcurrentExecutionSettings `json:"concurrentExecutionSettings,omitempty"`
+
+	// Toolbox entries. A microflow can be exposed twice — once for the microflow
+	// editor's toolbox and once for the workflow editor's — and Mendix stores the
+	// two under different keys with the same element type. Whoever drags the
+	// result in does not need to know it is a microflow, which is the point.
+	MicroflowActionInfo *types.MicroflowActionInfo `json:"microflowActionInfo,omitempty"`
+	WorkflowActionInfo  *types.MicroflowActionInfo `json:"workflowActionInfo,omitempty"`
 }
 
 // GetName returns the microflow's name.

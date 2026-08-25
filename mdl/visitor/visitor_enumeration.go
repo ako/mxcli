@@ -18,9 +18,6 @@ func (b *Builder) ExitCreateEnumerationStatement(ctx *parser.CreateEnumerationSt
 		optsCtx := opts.(*parser.EnumerationOptionsContext)
 		for _, opt := range optsCtx.AllEnumerationOption() {
 			optCtx := opt.(*parser.EnumerationOptionContext)
-			if optCtx.COMMENT() != nil && optCtx.STRING_LITERAL() != nil {
-				stmt.Comment = unquoteString(optCtx.STRING_LITERAL().GetText())
-			}
 			if optCtx.FOLDER() != nil && optCtx.STRING_LITERAL() != nil {
 				stmt.Folder = unquoteString(optCtx.STRING_LITERAL().GetText())
 			}
