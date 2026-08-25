@@ -646,6 +646,7 @@ Filed 2026-08-24 against `ako/mxcli`.
 | [#267](https://github.com/ako/mxcli/issues/267) — nested schema root (`at a/b`) | §7.2 | 13 |
 | [#268](https://github.com/ako/mxcli/issues/268) — primitive-array wrapper (`member[]`) | §7.7 | 34 |
 | [#272](https://github.com/ako/mxcli/issues/272) — `create json structure` builds different element metadata than Studio Pro | — | — |
+| [#277](https://github.com/ako/mxcli/issues/277) — export value elements omit `IsKey`, hardcode `MaxLength 0` | — | — |
 
 [#253](https://github.com/ako/mxcli/issues/253) is unchanged and still open.
 

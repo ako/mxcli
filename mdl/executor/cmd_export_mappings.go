@@ -114,6 +114,10 @@ func describeExportMapping(ctx *ExecContext, name ast.QualifiedName) error {
 		fmt.Fprintf(ctx.Output, "  with json structure %s\n", em.JsonStructure)
 	} else if em.XmlSchema != "" {
 		fmt.Fprintf(ctx.Output, "  with xml schema %s\n", em.XmlSchema)
+	} else if em.MessageDefinition != "" {
+		// Dropped entirely before #263 — and the output still PARSED, so
+		// re-executing a DESCRIBE rebuilt the mapping bound to nothing.
+		fmt.Fprintf(ctx.Output, "  with message definition %s\n", em.MessageDefinition)
 	}
 
 	if em.NullValueOption != "" && em.NullValueOption != "LeaveOutElement" {
@@ -256,6 +260,25 @@ func execCreateExportMapping(ctx *ExecContext, s *ast.CreateExportMappingStmt) e
 		em.JsonStructure = s.SchemaRef.String()
 	case "XML_SCHEMA":
 		em.XmlSchema = s.SchemaRef.String()
+	case "MESSAGE_DEFINITION":
+		em.MessageDefinition = s.SchemaRef.String()
+	}
+
+	// See the import twin: a message definition has its own builder (#263).
+	if s.SchemaKind == "MESSAGE_DEFINITION" {
+		md, err := findMessageDefinition(ctx.Backend, em.MessageDefinition)
+		if err != nil {
+			return mdlerrors.NewValidation(fmt.Sprintf("export mapping %s: %v", s.Name.String(), err))
+		}
+		if s.RootElement != nil {
+			root, err := buildExportMappingFromMessageDefinition(s.Name.Module, s.RootElement,
+				md.Root, "", "", true, ctx.Backend)
+			if err != nil {
+				return mdlerrors.NewValidation(fmt.Sprintf("export mapping %s: %v", s.Name.String(), err))
+			}
+			em.Elements = append(em.Elements, root)
+		}
+		return finishExportMapping(ctx, s, em, existing, containerID)
 	}
 
 	// Index the JSON structure for schema alignment.
@@ -275,6 +298,14 @@ func execCreateExportMapping(ctx *ExecContext, s *ast.CreateExportMappingStmt) e
 		em.Elements = append(em.Elements, root)
 	}
 
+	return finishExportMapping(ctx, s, em, existing, containerID)
+}
+
+// finishExportMapping writes the built mapping, shared by the JSON-structure and
+// message-definition paths.
+func finishExportMapping(ctx *ExecContext, s *ast.CreateExportMappingStmt,
+	em *model.ExportMapping, existing *model.ExportMapping, containerID model.ID,
+) error {
 	if existing != nil {
 		em.ID = existing.ID
 		if err := ctx.Backend.UpdateExportMapping(em); err != nil {

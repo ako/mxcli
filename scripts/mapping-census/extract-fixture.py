@@ -45,7 +45,10 @@ MAP_TYPES = ("ImportMappings$ImportMapping", "ExportMappings$ExportMapping")
 # structure builder instead of the mapping describer. Message definitions have no
 # MDL at all (#263).
 VERBATIM_TYPES = ("JsonStructures$JsonStructure",
-                  "MessageDefinitions$MessageDefinition")
+                  # The document is a COLLECTION; a mapping's MessageDefinition
+                  # reference is Module.Collection.DefinitionName, so the first
+                  # two parts name the unit.
+                  "MessageDefinitions$MessageDefinitionCollection")
 
 # Modules every project already has, and which must never be authored: System is
 # the platform module, and describing its entities emits things like

@@ -22,9 +22,12 @@ func (b *Builder) ExitCreateImportMappingStatement(ctx *parser.CreateImportMappi
 	// Parse WITH clause
 	if wc := ctx.ImportMappingWithClause(); wc != nil {
 		sc := wc.(*parser.ImportMappingWithClauseContext)
-		if sc.JSON() != nil {
+		switch {
+		case sc.JSON() != nil:
 			stmt.SchemaKind = "JSON_STRUCTURE"
-		} else {
+		case sc.MESSAGE() != nil:
+			stmt.SchemaKind = "MESSAGE_DEFINITION"
+		default:
 			stmt.SchemaKind = "XML_SCHEMA"
 		}
 		if sc.QualifiedName() != nil {
@@ -138,6 +141,8 @@ func (b *Builder) ExitCreateExportMappingStatement(ctx *parser.CreateExportMappi
 		sc := wc.(*parser.ExportMappingWithClauseContext)
 		if sc.JSON() != nil {
 			stmt.SchemaKind = "JSON_STRUCTURE"
+		} else if sc.MESSAGE() != nil {
+			stmt.SchemaKind = "MESSAGE_DEFINITION"
 		} else {
 			stmt.SchemaKind = "XML_SCHEMA"
 		}

@@ -15,6 +15,8 @@ import (
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 
+	"github.com/mendixlabs/mxcli/mdl/backend"
+	modelsdkbackend "github.com/mendixlabs/mxcli/mdl/backend/modelsdk"
 	"github.com/mendixlabs/mxcli/modelsdk/canon"
 	mmpr "github.com/mendixlabs/mxcli/modelsdk/mpr"
 )
@@ -41,16 +43,21 @@ import (
 // docs/11-proposals/PROPOSAL_mapping_coverage.md for the measurement this came
 // from — 112 of 327 real mappings are in this class.
 var knownLossy = map[string]string{
-	"Email_Connector.IMM_EmailTemplateMapping":                "#248 array root, #263 message definition, #261 find/create + error",
+	"Email_Connector.IMM_EmailTemplateMapping":                "#261 find/create + error",
 	"KrogerAPI.IM_AccessToken":                                "#264 custom object handling",
 	"KrogerAPI.IM_ProductList":                                "#268 primitive-array wrapper",
-	"MendixSSO.AppRolesResponse":                              "#248 array root, #263 message definition",
 	"MxGenAIConnector.EM_CohereEmbed_Request":                 "#268 primitive-array wrapper",
 	"MxGenAIConnector.IM_CohereEmbed_Response":                "#265 mapping input parameter, #264 custom object handling",
 	"MxGenAIConnector.IM_Collection_RetrieveNearestNeighbors": "#264 custom object handling, #267 nested root",
 	"OpenAI_API.IM_OpenAI":                                    "#267 nested schema root",
-	"FeedbackModule.IMM_PostResponse":                         "#266 converter microflow",
-	"FeedbackModule.EXM_PostFeedback":                         "#266 converter microflow",
+	// Not a defect: this document predates MappingSourceReference (it is the
+	// only one of the twelve without the key), and the rebuild writes the
+	// current shape — which is what Studio Pro does on save too. Kept as a
+	// fixture case so the version difference stays visible rather than being
+	// quietly normalised away.
+	"MendixSSO.AppRolesResponse":      "older document — the rebuild adds MappingSourceReference, which 11 of 12 real mappings carry",
+	"FeedbackModule.IMM_PostResponse": "#266 converter microflow",
+	"FeedbackModule.EXM_PostFeedback": "#266 converter microflow",
 }
 
 // The positive control is authored by mxcli itself rather than transplanted: a
@@ -115,7 +122,11 @@ func (m fixtureMapping) kind() string {
 }
 
 func TestMappingFixtureRoundTrip(t *testing.T) {
-	env := setupTestEnv(t)
+	// The modelsdk engine, not setupTestEnv's legacy default: it is what users
+	// get (cmd/mxcli/engine.go defaults to it), and it is the only engine that
+	// reads message definitions (#263) — on legacy the fixture's
+	// message-definition mappings are refused by design.
+	env := setupTestEnvWithBackend(t, func() backend.FullBackend { return modelsdkbackend.New() })
 	defer env.teardown()
 
 	manifest, loaded := loadMappingFixture(t, env)

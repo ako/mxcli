@@ -1,5 +1,6 @@
 {
  "modules": [
+  "AgentCore",
   "Email_Connector",
   "FeedbackModule",
   "GenAICommons",
@@ -51,6 +52,27 @@
    "type": "JsonStructures$JsonStructure",
    "file": "OpenAI_API.JSON_OpenAI_Response.bson",
    "source": "InventoryApp.mpr"
+  },
+  {
+   "module": "MendixSSO",
+   "name": "AppRolesMessages",
+   "type": "MessageDefinitions$MessageDefinitionCollection",
+   "file": "MendixSSO.AppRolesMessages.bson",
+   "source": "MFI - Sales Play Umbrella.mpr"
+  },
+  {
+   "module": "AgentCore",
+   "name": "MesDef_Email",
+   "type": "MessageDefinitions$MessageDefinitionCollection",
+   "file": "AgentCore.MesDef_Email.bson",
+   "source": "Lato_EnquiryManagement.mpr"
+  },
+  {
+   "module": "Email_Connector",
+   "name": "MD_EmailTemplate",
+   "type": "MessageDefinitions$MessageDefinitionCollection",
+   "file": "Email_Connector.MD_EmailTemplate.bson",
+   "source": "Lato_EnquiryManagement.mpr"
   },
   {
    "module": "MxGenAIConnector",
@@ -140,6 +162,17 @@
    "type": "ImportMappings$ImportMapping",
    "file": "MendixSSO.AppRolesResponse.bson",
    "source": "MFI - Sales Play Umbrella.mpr",
+   "blockers": [
+    "root: array",
+    "source: message definition"
+   ]
+  },
+  {
+   "module": "AgentCore",
+   "name": "Email_Import",
+   "type": "ImportMappings$ImportMapping",
+   "file": "AgentCore.Email_Import.bson",
+   "source": "Lato_EnquiryManagement.mpr",
    "blockers": [
     "root: array",
     "source: message definition"

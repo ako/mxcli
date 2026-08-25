@@ -131,7 +131,7 @@ func serializeExportObjectElement(id string, elem *model.ExportMappingElement, p
 		{Key: "Entity", Value: elem.Entity},
 		{Key: "ExposedName", Value: elem.ExposedName},
 		{Key: "JsonPath", Value: jsonPath},
-		{Key: "XmlPath", Value: ""},
+		{Key: "XmlPath", Value: elem.XmlPath},
 		{Key: "ObjectHandling", Value: objectHandling},
 		{Key: "ObjectHandlingBackup", Value: objectHandling},
 		{Key: "ObjectHandlingBackupAllowOverride", Value: false},
@@ -162,7 +162,7 @@ func serializeExportValueElement(id string, elem *model.ExportMappingElement, pa
 		{Key: "Attribute", Value: elem.Attribute},
 		{Key: "ExposedName", Value: elem.ExposedName},
 		{Key: "JsonPath", Value: jsonPath},
-		{Key: "XmlPath", Value: ""},
+		{Key: "XmlPath", Value: elem.XmlPath},
 		{Key: "Type", Value: dataType},
 		{Key: "MinOccurs", Value: int32(0)},
 		// Mirror the bound schema element: Mendix cross-validates the two and

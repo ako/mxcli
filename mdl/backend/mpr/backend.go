@@ -1046,3 +1046,15 @@ func (b *MprBackend) UpdateMenuDocument(md *types.MenuDocument) error {
 func (b *MprBackend) DeleteMenuDocument(id model.ID) error {
 	return errors.New("dropping a menu requires the modelsdk engine — rerun without MXCLI_ENGINE=legacy")
 }
+
+// ListMessageDefinitionCollections is not implemented on the legacy engine.
+//
+// The document has no legacy parser, and authoring a mapping over a message
+// definition (#263) is modelsdk-only for that reason — the codec models the
+// whole exposed tree already. Refuse rather than return an empty list: an empty
+// one reads as "this project has no message definitions", which would make the
+// executor report a real reference as unresolvable.
+func (b *MprBackend) ListMessageDefinitionCollections() ([]*model.MessageDefinitionCollection, error) {
+	return nil, errors.New("message definitions are not readable on the legacy engine — " +
+		"run without --engine legacy (the modelsdk engine is the default)")
+}

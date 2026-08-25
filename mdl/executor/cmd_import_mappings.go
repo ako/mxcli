@@ -114,6 +114,10 @@ func describeImportMapping(ctx *ExecContext, name ast.QualifiedName) error {
 		fmt.Fprintf(ctx.Output, "  with json structure %s\n", im.JsonStructure)
 	} else if im.XmlSchema != "" {
 		fmt.Fprintf(ctx.Output, "  with xml schema %s\n", im.XmlSchema)
+	} else if im.MessageDefinition != "" {
+		// Dropped entirely before #263 — and the output still PARSED, so
+		// re-executing a DESCRIBE rebuilt the mapping bound to nothing.
+		fmt.Fprintf(ctx.Output, "  with message definition %s\n", im.MessageDefinition)
 	}
 
 	if len(im.Elements) > 0 {
@@ -290,6 +294,26 @@ func execCreateImportMapping(ctx *ExecContext, s *ast.CreateImportMappingStmt) e
 		im.JsonStructure = s.SchemaRef.String()
 	case "XML_SCHEMA":
 		im.XmlSchema = s.SchemaRef.String()
+	case "MESSAGE_DEFINITION":
+		im.MessageDefinition = s.SchemaRef.String()
+	}
+
+	// A message definition resolves against the domain model, not a payload
+	// sample, and the mapping stores both path families — its own builder (#263).
+	if s.SchemaKind == "MESSAGE_DEFINITION" {
+		md, err := findMessageDefinition(ctx.Backend, im.MessageDefinition)
+		if err != nil {
+			return mdlerrors.NewValidation(fmt.Sprintf("import mapping %s: %v", s.Name.String(), err))
+		}
+		if s.RootElement != nil {
+			root, err := buildImportMappingFromMessageDefinition(s.Name.Module, s.RootElement,
+				md.Root, "", "", true, ctx.Backend)
+			if err != nil {
+				return mdlerrors.NewValidation(fmt.Sprintf("import mapping %s: %v", s.Name.String(), err))
+			}
+			im.Elements = append(im.Elements, root)
+		}
+		return finishImportMapping(ctx, s, im, existing, containerID)
 	}
 
 	// Index the JSON structure — mapping elements clone their names, path and
@@ -310,6 +334,14 @@ func execCreateImportMapping(ctx *ExecContext, s *ast.CreateImportMappingStmt) e
 		im.Elements = append(im.Elements, root)
 	}
 
+	return finishImportMapping(ctx, s, im, existing, containerID)
+}
+
+// finishImportMapping writes the built mapping, shared by the JSON-structure and
+// message-definition paths so the two cannot drift on placement or reporting.
+func finishImportMapping(ctx *ExecContext, s *ast.CreateImportMappingStmt,
+	im *model.ImportMapping, existing *model.ImportMapping, containerID model.ID,
+) error {
 	if existing != nil {
 		im.ID = existing.ID
 		if err := ctx.Backend.UpdateImportMapping(im); err != nil {

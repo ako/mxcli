@@ -234,6 +234,7 @@ func importMappingElementFromGen(el element.Element) *model.ImportMappingElement
 		e.ObjectHandling = o.ObjectHandling()
 		e.ExposedName = o.ExposedName()
 		e.JsonPath = o.JsonPath()
+		e.XmlPath = o.XmlPath()
 		e.MinOccurs = int(o.MinOccurs())
 		e.MaxOccurs = int(o.MaxOccurs())
 		e.Nillable = o.Nillable()
@@ -246,6 +247,7 @@ func importMappingElementFromGen(el element.Element) *model.ImportMappingElement
 		e.IsKey = o.IsKey()
 		e.ExposedName = o.ExposedName()
 		e.JsonPath = o.JsonPath()
+		e.XmlPath = o.XmlPath()
 		e.MinOccurs = int(o.MinOccurs())
 		e.MaxOccurs = int(o.MaxOccurs())
 		e.Nillable = o.Nillable()
@@ -271,6 +273,7 @@ func exportMappingElementFromGen(el element.Element) *model.ExportMappingElement
 		e.ObjectHandling = o.ObjectHandling()
 		e.ExposedName = o.ExposedName()
 		e.JsonPath = o.JsonPath()
+		e.XmlPath = o.XmlPath()
 		e.MaxOccurs = int(o.MaxOccurs())
 		for _, c := range o.ChildrenItems() {
 			e.Children = append(e.Children, exportMappingElementFromGen(c))
@@ -280,6 +283,7 @@ func exportMappingElementFromGen(el element.Element) *model.ExportMappingElement
 		e.Attribute = o.AttributeQualifiedName()
 		e.ExposedName = o.ExposedName()
 		e.JsonPath = o.JsonPath()
+		e.XmlPath = o.XmlPath()
 	}
 	return e
 }

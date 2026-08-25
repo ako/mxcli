@@ -94,6 +94,9 @@ func parseImportObjectMappingElement(raw map[string]any) *model.ImportMappingEle
 	if v, ok := raw["JsonPath"].(string); ok {
 		elem.JsonPath = v
 	}
+	if v, ok := raw["XmlPath"].(string); ok {
+		elem.XmlPath = v
+	}
 	if v, ok := raw["ObjectHandling"].(string); ok {
 		elem.ObjectHandling = v
 		if v == "Find" {
@@ -139,6 +142,9 @@ func parseImportValueMappingElement(raw map[string]any) *model.ImportMappingElem
 	}
 	if v, ok := raw["JsonPath"].(string); ok {
 		elem.JsonPath = v
+	}
+	if v, ok := raw["XmlPath"].(string); ok {
+		elem.XmlPath = v
 	}
 	if v, ok := raw["IsKey"].(bool); ok {
 		elem.IsKey = v

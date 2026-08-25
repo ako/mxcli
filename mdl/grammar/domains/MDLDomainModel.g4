@@ -496,6 +496,10 @@ createImportMappingStatement
 importMappingWithClause
     : WITH JSON STRUCTURE qualifiedName
     | WITH XML SCHEMA qualifiedName
+    // Module.Collection.Definition — the definitions live inside a collection
+    // document, so the reference is three parts. qualifiedName already accepts
+    // any number of them.
+    | WITH MESSAGE DEFINITION qualifiedName
     ;
 
 importMappingRootElement
@@ -552,6 +556,7 @@ createExportMappingStatement
 exportMappingWithClause
     : WITH JSON STRUCTURE qualifiedName
     | WITH XML SCHEMA qualifiedName
+    | WITH MESSAGE DEFINITION qualifiedName
     ;
 
 exportMappingNullValuesClause

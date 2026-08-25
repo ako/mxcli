@@ -585,10 +585,14 @@ DESCRIBE DATABASE CONNECTION Ops.Erp;`,
 		Keywords: []string{
 			"import mapping", "create import mapping", "drop import mapping",
 			"show import mappings", "describe import mapping",
-			"with json structure", "find or create", "object handling",
+			"with json structure", "with message definition", "find or create",
+			"object handling",
 		},
 		Syntax: "SHOW IMPORT MAPPINGS [IN Module];\nDESCRIBE IMPORT MAPPING Module.Name;\n" +
-			"CREATE [OR MODIFY] IMPORT MAPPING Module.Name [FOLDER 'path']\n  WITH JSON STRUCTURE Module.JsonStruct\n{\n" +
+			"CREATE [OR MODIFY] IMPORT MAPPING Module.Name [FOLDER 'path']\n" +
+			"  WITH JSON STRUCTURE Module.JsonStruct\n" +
+			"    | WITH MESSAGE DEFINITION Module.Collection.Definition\n" +
+			"    | WITH XML SCHEMA Module.Schema\n{\n" +
 			"  create|find|find or create Module.Entity {\n    Attr = jsonField [KEY],\n" +
 			"    Attr = a/b/c,\n" +
 			"    Assoc/Module.Child = nestedKey { ... }\n  }\n};\nDROP IMPORT MAPPING Module.Name;\n\n" +
@@ -600,6 +604,14 @@ DESCRIBE DATABASE CONNECTION Ops.Erp;`,
 			"  Use Assoc/Module.Child = key { ... } instead when you WANT an entity\n" +
 			"  per level. The path may not cross a 0..* element: many items cannot\n" +
 			"  collapse into one value, and mxbuild rejects it with CE0256.\n\n" +
+			"Sources:\n" +
+			"  A JSON structure is built from a payload sample; a MESSAGE DEFINITION\n" +
+			"  is derived from the domain model and names entities and attributes\n" +
+			"  itself, so its members are the definition's exposed names and the\n" +
+			"  reference is THREE parts (the definitions live inside a collection\n" +
+			"  document). Message definitions are read-only: map over one that\n" +
+			"  already exists. An array-rooted structure needs no special syntax —\n" +
+			"  the root is taken from the structure.\n\n" +
 			"Inherited attributes:\n" +
 			"  An entity mapped with EXTENDS can map its inherited attributes too —\n" +
 			"  name them exactly like its own. mxcli resolves each to the entity that\n" +
@@ -614,7 +626,8 @@ DESCRIBE DATABASE CONNECTION Ops.Erp;`,
 		Keywords: []string{
 			"export mapping", "create export mapping", "drop export mapping",
 			"show export mappings", "describe export mapping",
-			"with json structure", "null values", "as jsonKey",
+			"with json structure", "with message definition", "null values",
+			"as jsonKey",
 		},
 		Syntax: "SHOW EXPORT MAPPINGS [IN Module];\nDESCRIBE EXPORT MAPPING Module.Name;\nCREATE [OR MODIFY] EXPORT MAPPING Module.Name [FOLDER 'path']\n  WITH JSON STRUCTURE Module.JsonStruct\n  [NULL VALUES LeaveOutElement|SendAsNil]\n{\n  Module.Entity {\n    jsonField = Attr,\n    Assoc/Module.Child AS nestedKey { ... }\n  }\n};\nDROP EXPORT MAPPING Module.Name;\n\nOR MODIFY: updates mapping in-place, preserves UUID.\n\n" +
 			"No nested-member form:\n" +

@@ -14,7 +14,9 @@ Module creates in deps.mdl are expected to fail when the module already exists
 """
 
 import argparse
+import base64
 import glob
+import hashlib
 import json
 import os
 import sqlite3
@@ -112,12 +114,22 @@ def main():
             os.makedirs(d, exist_ok=True)
             with open(os.path.join(d, "%s.mxunit" % u), "wb") as f:
                 f.write(blob)
-            con.execute("insert into Unit (UnitID, ContainerID, ContainmentName)"
-                        " values (?,?,?)", (uid, container, "Documents"))
+            # ContentsHash is NOT optional. A v2 row without it makes mxbuild
+            # fail to LOAD the project — "System.InvalidOperationException: The
+            # data is NULL at ordinal 3" out of MprHandler.LoadMpr — long before
+            # any check runs, so the whole project reads as broken. It is a
+            # base64 SHA-256 of the unit's bytes (modelsdk/mpr writer_core.go).
+            digest = base64.b64encode(hashlib.sha256(blob).digest()).decode()
+            con.execute(
+                "insert into Unit (UnitID, ContainerID, ContainmentName,"
+                " TreeConflict, ContentsHash, ContentsConflicts)"
+                " values (?,?,?,0,?,'')", (uid, container, "Documents", digest))
         else:
-            con.execute("insert into Unit (UnitID, ContainerID, ContainmentName,"
-                        " Contents) values (?,?,?,?)",
-                        (uid, container, "Documents", blob))
+            con.execute(
+                "insert into Unit (UnitID, ContainerID, ContainmentName,"
+                " TreeConflict, ContentsHash, ContentsConflicts, Contents)"
+                " values (?,?,?,0,'','',?)",
+                (uid, container, "Documents", blob))
         n += 1
     con.commit()
     con.close()

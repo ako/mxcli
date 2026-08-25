@@ -1105,8 +1105,13 @@ type ImportMappingElement struct {
 	DataType  string `json:"dataType,omitempty"`  // "String", "Integer", "Boolean", etc.
 	IsKey     bool   `json:"isKey,omitempty"`
 	// Schema fields (cloned from JSON structure element)
-	ExposedName    string `json:"exposedName,omitempty"`
-	JsonPath       string `json:"jsonPath,omitempty"`
+	ExposedName string `json:"exposedName,omitempty"`
+	JsonPath    string `json:"jsonPath,omitempty"`
+	// XmlPath is set for a mapping over an XML schema or a MESSAGE DEFINITION,
+	// which store BOTH path families — "Emails|Email|From" beside the JSON
+	// projection "(Array)|(Object)|From" (#263). Empty for a JSON-structure
+	// mapping.
+	XmlPath        string `json:"xmlPath,omitempty"`
 	MinOccurs      int    `json:"minOccurs,omitempty"`
 	MaxOccurs      int    `json:"maxOccurs,omitempty"` // 0 = default from JSON structure
 	Nillable       bool   `json:"nillable,omitempty"`
@@ -1117,6 +1122,62 @@ type ImportMappingElement struct {
 	// Children
 	Children []*ImportMappingElement `json:"children,omitempty"`
 }
+
+// ============================================================================
+// Message Definitions
+// ============================================================================
+
+// MessageDefinitionCollection represents a
+// MessageDefinitions$MessageDefinitionCollection document — the unit. The
+// individual definitions live inside it, which is why a mapping's
+// MessageDefinition reference is THREE parts: Module.Collection.Definition.
+type MessageDefinitionCollection struct {
+	BaseElement
+	ContainerID ID                   `json:"containerId"`
+	Name        string               `json:"name"`
+	Definitions []*MessageDefinition `json:"definitions,omitempty"`
+}
+
+// MessageDefinition is one EntityMessageDefinition inside a collection.
+type MessageDefinition struct {
+	Name string `json:"name"`
+	// Root is the exposed entity the definition is built on. Nil for a
+	// definition kind this reader does not model.
+	Root *MessageDefinitionElement `json:"root,omitempty"`
+}
+
+// MessageDefinitionElement is a node of a definition's exposed tree.
+//
+// Unlike a JSON structure, a message definition is derived from the DOMAIN
+// MODEL: every node names an entity or an attribute. It carries two names —
+// ExposedName is the node's name, ExposedItemName the singular one an unbounded
+// node's items get — and a mapping over it needs both, because it stores an
+// XmlPath built from them alongside the JSON projection.
+type MessageDefinitionElement struct {
+	// "Entity" or "Attribute".
+	Kind string `json:"kind"`
+	// Entity/Association are set on an Entity node (Association only when the
+	// node is reached through one); Attribute on an Attribute node.
+	Entity      string `json:"entity,omitempty"`
+	Association string `json:"association,omitempty"`
+	Attribute   string `json:"attribute,omitempty"`
+
+	ExposedName     string `json:"exposedName,omitempty"`
+	ExposedItemName string `json:"exposedItemName,omitempty"`
+	// Path is the definition's own path ("Email|From"). It is NOT the mapping's
+	// XmlPath, which is built from the exposed names — the definition root's
+	// path is the ITEM name while the mapping's is "Emails|Email".
+	Path          string `json:"path,omitempty"`
+	MinOccurs     int    `json:"minOccurs,omitempty"`
+	MaxOccurs     int    `json:"maxOccurs,omitempty"`
+	PrimitiveType string `json:"primitiveType,omitempty"`
+
+	Children []*MessageDefinitionElement `json:"children,omitempty"`
+}
+
+// Unbounded reports whether the node repeats (0..*), which is what makes the
+// mapping project it as an array on both path families.
+func (e *MessageDefinitionElement) Unbounded() bool { return e != nil && e.MaxOccurs == -1 }
 
 // ============================================================================
 // Export Mappings
@@ -1162,9 +1223,11 @@ type ExportMappingElement struct {
 	Attribute string `json:"attribute,omitempty"` // qualified attribute name (Module.Entity.Attr)
 	DataType  string `json:"dataType,omitempty"`  // "String", "Integer", "Boolean", etc.
 	// Shared fields
-	ExposedName string                  `json:"exposedName,omitempty"`
-	JsonPath    string                  `json:"jsonPath,omitempty"`
-	Children    []*ExportMappingElement `json:"children,omitempty"`
+	ExposedName string `json:"exposedName,omitempty"`
+	JsonPath    string `json:"jsonPath,omitempty"`
+	// XmlPath — see the note on ImportMappingElement.
+	XmlPath  string                  `json:"xmlPath,omitempty"`
+	Children []*ExportMappingElement `json:"children,omitempty"`
 }
 
 // UnknownElement is a generic fallback for BSON elements with unrecognized $Type values.

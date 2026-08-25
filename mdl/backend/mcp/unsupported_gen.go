@@ -782,6 +782,11 @@ func (unsupportedBackend) ListMenuDocuments() (r0 []*types.MenuDocument, err1 er
 	return
 }
 
+func (unsupportedBackend) ListMessageDefinitionCollections() (r0 []*model.MessageDefinitionCollection, err1 error) {
+	err1 = errUnsupported("ListMessageDefinitionCollections")
+	return
+}
+
 func (unsupportedBackend) ListMicroflows() (r0 []*microflows.Microflow, err1 error) {
 	err1 = errUnsupported("ListMicroflows")
 	return

@@ -328,7 +328,6 @@ begin
   return empty;
 end;
 
--- UNRESOLVED structure MendixSSO.AppRolesMessages (describe failed)
 @Position(620, 820)
 create or modify non-persistent entity MendixSSO.AppRole (
   UUID: String(200),
@@ -411,7 +410,18 @@ create or modify enumeration MxModelReflection.TokenType (
 ) FOLDER 'Private/Tokens';
 /
 
--- UNRESOLVED structure Email_Connector.MD_EmailTemplate (describe failed)
+@Position(150, 200)
+create or modify persistent entity AgentCore.Email (
+  From: String(200),
+  Subject: String(200),
+  Content: String(2000),
+  CreatedDate_Stored: DateTime,
+  IsProcessed: Boolean default false,
+  CreatedDate: AutoCreatedDate
+)
+
+/
+
 @Position(1310, 550)
 create or modify persistent entity Email_Connector.Attachment extends System.FileDocument (
   ContentID: String(unlimited),
