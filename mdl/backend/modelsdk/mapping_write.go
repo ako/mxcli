@@ -143,7 +143,7 @@ func importMappingToGen(im *model.ImportMapping) element.Element {
 
 func importMappingElementToGen(elem *model.ImportMappingElement, parentPath string) element.Element {
 	id := string(elem.ID)
-	if elem.Kind == "Object" || elem.Kind == "Array" {
+	if isMappingObjectKind(elem.Kind) {
 		return importObjectElementToGen(id, elem, parentPath)
 	}
 	return importValueElementToGen(id, elem, parentPath)
@@ -326,7 +326,7 @@ func exportMappingToGen(em *model.ExportMapping) element.Element {
 
 func exportMappingElementToGen(elem *model.ExportMappingElement, parentPath string) element.Element {
 	id := string(elem.ID)
-	if elem.Kind == "Object" || elem.Kind == "Array" {
+	if isMappingObjectKind(elem.Kind) {
 		return exportObjectElementToGen(id, elem, parentPath)
 	}
 	return exportValueElementToGen(id, elem, parentPath)
@@ -461,6 +461,10 @@ func elementTypeForKind(kind string) string {
 	switch kind {
 	case "Array":
 		return "Array"
+	case "Wrapper":
+		// An array of PRIMITIVES: one entity per item, with the value on an
+		// attribute (#268).
+		return "Wrapper"
 	case "Value":
 		return "Value"
 	default:
@@ -516,5 +520,21 @@ func storedParameterPaths(p *model.MappingMicroflowParameter) (string, string, i
 		return p.ValuePath, p.XmlValuePath, -1
 	default:
 		return "(parent)", "(parent)", -1
+	}
+}
+
+// isMappingObjectKind reports whether a mapping element serializes as an OBJECT
+// mapping element rather than a value one.
+//
+// "Wrapper" belongs here: an array of primitives is an object element that binds
+// an entity, with the primitive on a value child (#268). Leaving it out made the
+// element serialize as a Value with no attribute, which mxbuild rejects with
+// CE5015 "Element '…/(Wrapper)' is not a Value element."
+func isMappingObjectKind(kind string) bool {
+	switch kind {
+	case "Object", "Array", "Wrapper":
+		return true
+	default:
+		return false
 	}
 }

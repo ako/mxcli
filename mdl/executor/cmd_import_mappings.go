@@ -250,12 +250,21 @@ func mappingMemberName(parentPath, jsonPath, exposedName string) string {
 	// An array's item object is addressed by the ARRAY's key: the mapping element
 	// sits at "(Object)|item|(Object)" and the script wrote "item".
 	trimmed := strings.TrimSuffix(jsonPath, "|(Object)")
+	// An array of PRIMITIVES is addressed by the ARRAY's key too — the mapping
+	// element sits at "…|tags|(Wrapper)" and the script wrote "tags" (#268).
+	trimmed = strings.TrimSuffix(trimmed, "|(Wrapper)")
 
 	// The parent path is used verbatim: for an array, the object element's own
 	// JsonPath is already the ITEM path ("…|items|(Object)"), so trimming the
 	// marker off it made a child of that item render as "(Object)/sku".
 	if parentPath != "" {
 		if rel := strings.TrimPrefix(trimmed, parentPath+"|"); rel != trimmed && rel != "" {
+			// "(Value)" is the primitive an array-of-primitives holds — a
+			// storage marker, not a member name. Its exposed name is "Value",
+			// which is what re-executing resolves against (#268).
+			if rel == "(Value)" {
+				return exposedName
+			}
 			return strings.ReplaceAll(rel, "|", "/")
 		}
 	}
@@ -517,19 +526,30 @@ func buildImportMappingElementModel(moduleName string, def *ast.ImportMappingEle
 		elem.Association = assoc
 		elem.ObjectHandling = handling
 
-		// For arrays: skip the container, use the item path directly.
-		// Studio Pro represents arrays as a single ObjectMappingElement at the |(Object) item path.
+		// For arrays: skip the container and bind the item directly, which is
+		// how Studio Pro stores an import mapping over an array.
+		//
+		// The step is to the array's ACTUAL child rather than a hardcoded
+		// "|(Object)": an array of OBJECTS has an item at "|(Object)", an array
+		// of PRIMITIVES a wrapper at "|(Wrapper)" whose single child is the
+		// value (#268). The element takes the child's ElementType too, so a
+		// primitive array is stored as a Wrapper element the way Studio Pro
+		// writes it (KrogerAPI.IM_ProductList).
 		childPath := elem.JsonPath
 		if jsElem != nil && jsElem.ElementType == "Array" {
-			itemPath := jsElem.Path + "|(Object)"
-			if jsItem, ok2 := idx.byPath[itemPath]; ok2 {
+			if jsItem := arrayItemOf(idx, jsElem); jsItem != nil {
 				elem.ExposedName = jsItem.ExposedName
 				elem.JsonPath = jsItem.Path
 				elem.MinOccurs = jsItem.MinOccurs
 				elem.MaxOccurs = jsItem.MaxOccurs
 				elem.Nillable = jsItem.Nillable
+				if jsItem.ElementType == "Wrapper" {
+					elem.Kind = "Wrapper"
+				}
+				childPath = jsItem.Path
+			} else {
+				childPath = jsElem.Path + "|(Object)"
 			}
-			childPath = itemPath
 		}
 
 		// `find X by MF(...)` is stored as ObjectHandling "Custom" — the

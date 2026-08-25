@@ -621,6 +621,11 @@ DESCRIBE DATABASE CONNECTION Ops.Erp;`,
 			"  structure's root — the shape Studio Pro produces when you pick a\n" +
 			"  node deeper in the payload. Written in member names; the path may\n" +
 			"  pass through an array, and the mapping is then rooted at the item.\n\n" +
+			"Arrays of primitives:\n" +
+			"  [\"a\",\"b\"] maps to one entity per string. Write it like any other\n" +
+			"  array — Assoc/Module.Entity = tags { ... } — and bind the primitive\n" +
+			"  to the reserved member Value. The wrapper level Mendix stores is\n" +
+			"  generated, the same way an array's item level is.\n\n" +
 			"Sources:\n" +
 			"  A JSON structure is built from a payload sample; a MESSAGE DEFINITION\n" +
 			"  is derived from the domain model and names entities and attributes\n" +

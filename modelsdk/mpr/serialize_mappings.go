@@ -56,7 +56,7 @@ func serImportMappingElement(elem *model.ImportMappingElement, parentPath string
 		id = generateUUID()
 	}
 
-	if elem.Kind == "Object" || elem.Kind == "Array" {
+	if isMappingObjectKind(elem.Kind) {
 		return serImportObjectElement(id, elem, parentPath)
 	}
 	return serImportValueElement(id, elem, parentPath)
@@ -190,7 +190,7 @@ func serExportMappingElement(elem *model.ExportMappingElement, parentPath string
 		id = generateUUID()
 	}
 
-	if elem.Kind == "Object" || elem.Kind == "Array" {
+	if isMappingObjectKind(elem.Kind) {
 		return serExportObjectElement(id, elem, parentPath)
 	}
 	return serExportValueElement(id, elem, parentPath)
@@ -336,5 +336,15 @@ func serMappingValueDataType(typeName string) bson.D {
 			{Key: "$ID", Value: typeID},
 			{Key: "$Type", Value: "DataTypes$StringType"},
 		}
+	}
+}
+
+// isMappingObjectKind — see the note in mdl/backend/modelsdk/mapping_write.go.
+func isMappingObjectKind(kind string) bool {
+	switch kind {
+	case "Object", "Array", "Wrapper":
+		return true
+	default:
+		return false
 	}
 }

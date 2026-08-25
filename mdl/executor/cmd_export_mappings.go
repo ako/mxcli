@@ -174,7 +174,10 @@ func exportArrayItemToPrint(elem *model.ExportMappingElement) *model.ExportMappi
 		return elem
 	}
 	item := elem.Children[0]
-	if item.Entity == "" || item.JsonPath != elem.JsonPath+"|(Object)" {
+	// "|(Object)" for an array of objects, "|(Wrapper)" for an array of
+	// primitives (#268) — both are the container's single item.
+	if item.Entity == "" ||
+		(item.JsonPath != elem.JsonPath+"|(Object)" && item.JsonPath != elem.JsonPath+"|(Wrapper)") {
 		return elem
 	}
 	// Returned unchanged: mappingMemberName already renders an item path
@@ -187,7 +190,15 @@ func exportArrayItemToPrint(elem *model.ExportMappingElement) *model.ExportMappi
 
 func printExportMappingElement(w io.Writer, elem *model.ExportMappingElement, depth int, isRoot bool, parentPath string) {
 	indent := strings.Repeat("  ", depth)
-	if elem.Kind == "Object" {
+	// "Wrapper" is an object element (an array of primitives binds an entity per
+	// item); leaving it out sent it to the value branch, which prints an empty
+	// binding and drops the subtree — #260's defect in a new place (#268).
+	// "Array" and "Wrapper" are object elements too — an array container that is
+	// NOT unwrapped (the two-level form, where it carries its own entity) and an
+	// array of primitives. Leaving either out sent it to the value branch, which
+	// prints an empty binding and drops the subtree: #260's defect, and why
+	// MxGenAIConnector.EM_CohereEmbed_Request described as `texts = ` (#268).
+	if elem.Kind == "Object" || elem.Kind == "Wrapper" || elem.Kind == "Array" {
 		by := customHandlerText(elem.CustomHandler, elem.JsonPath)
 		if isRoot {
 			// Root: Module.Entity { — use "." if entity is empty (parameter mapping)
@@ -580,7 +591,16 @@ func buildExportMappingElementModel(moduleName string, def *ast.ExportMappingEle
 			// change, so scripts in the wild and the doctype suite use it.
 			// Rewriting it into the bare shape produced CE0295 (the item's
 			// association no longer reaches its parent).
+			// The step is to the array's ACTUAL child: "|(Object)" for an array
+			// of objects, "|(Wrapper)" for an array of primitives (#268).
 			itemPath := lookupPath + "|(Object)"
+			itemKind := "Object"
+			if jsItem := arrayItemOf(idx, jsElem); jsItem != nil {
+				itemPath = jsItem.Path
+				if jsItem.ElementType == "Wrapper" {
+					itemKind = "Wrapper"
+				}
+			}
 			twoLevel := len(def.Children) == 1 && def.Children[0].Entity != ""
 
 			itemDef := def
@@ -603,7 +623,7 @@ func buildExportMappingElementModel(moduleName string, def *ast.ExportMappingEle
 					ID:       model.ID(types.GenerateID()),
 					TypeName: "ExportMappings$ObjectMappingElement",
 				},
-				Kind:           "Object",
+				Kind:           itemKind,
 				Entity:         itemEntity,
 				Association:    itemAssoc,
 				ObjectHandling: "Find",
@@ -612,7 +632,6 @@ func buildExportMappingElementModel(moduleName string, def *ast.ExportMappingEle
 			}
 			if jsItem, ok2 := idx.byPath[itemPath]; ok2 {
 				itemElem.ExposedName = jsItem.ExposedName
-				itemElem.JsonPath = jsItem.Path
 				itemElem.MaxOccurs = jsItem.MaxOccurs
 			} else {
 				itemElem.ExposedName = elem.ExposedName + "Item"

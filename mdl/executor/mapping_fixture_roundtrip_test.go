@@ -45,9 +45,14 @@ import (
 var knownLossy = map[string]string{
 	// Constructs MDL still cannot express.
 	"Email_Connector.IMM_EmailTemplateMapping": "#261 find/create + error",
-	"KrogerAPI.IM_ProductList":                 "#268 primitive-array wrapper",
-	"MxGenAIConnector.EM_CohereEmbed_Request":  "#268 primitive-array wrapper",
+	// #268's wrapper is fixed here; what blocks it now is an OBJECT element with
+	// a nested member path (`= meta/pagination`), which the grammar has never
+	// accepted — #260 item 1.
+	"KrogerAPI.IM_ProductList":                 "#260 object element with a nested member path",
 	"MxGenAIConnector.IM_CohereEmbed_Response": "#265 mapping input parameter",
+	// #268's wrapper is fixed here; the residue is the export writer's property
+	// set — #277 (IsKey), #279 (MinOccurs) — and #261's backup.
+	"MxGenAIConnector.EM_CohereEmbed_Request": "#277 IsKey; #279 MinOccurs; #261 backup",
 	// #267 is fixed for this one — its `root chunks` clause round-trips — but it
 	// carries two shapes that have never parsed: an object element with an
 	// entity and NO association (DESCRIBE prints `./Entity`) and an entity-less

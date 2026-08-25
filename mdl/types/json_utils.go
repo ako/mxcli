@@ -362,7 +362,14 @@ func (b *snippetBuilder) buildElementFromRawArray(exposedName, path, jsonKey, ra
 			// Primitive array: Studio Pro wraps in a Wrapper element with singular name
 			// e.g., tags: ["a","b"] → Tag (Wrapper) → Value (String)
 			wrapperName := singularize(exposedName)
-			wrapperPath := path + "|(Object)"
+			// The markers are "(Wrapper)" and "(Value)", not the object array's
+			// "(Object)" — measured on Studio Pro's KrogerAPI.JSON_ProductList,
+			// whose primitive array is
+			//   …|categories|(Wrapper)        Wrapper
+			//   …|categories|(Wrapper)|(Value) Value
+			// mxcli wrote "…|(Object)" and a value path ending in a bare "|",
+			// which no mapping could resolve against (#268).
+			wrapperPath := path + "|(Wrapper)"
 			wrapper := &JsonElement{
 				ExposedName:    wrapperName,
 				Path:           wrapperPath,
@@ -375,7 +382,7 @@ func (b *snippetBuilder) buildElementFromRawArray(exposedName, path, jsonKey, ra
 				FractionDigits: -1,
 				TotalDigits:    -1,
 			}
-			valueElem := b.buildElementFromRawValue("Value", wrapperPath+"|", jsonKey, firstItem, tracker)
+			valueElem := b.buildElementFromRawValue("Value", wrapperPath+"|(Value)", jsonKey, firstItem, tracker)
 			valueElem.MinOccurs = 0
 			valueElem.MaxOccurs = 1
 			wrapper.Children = append(wrapper.Children, valueElem)

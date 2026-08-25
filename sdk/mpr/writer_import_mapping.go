@@ -92,7 +92,7 @@ func serializeImportMappingElement(elem *model.ImportMappingElement, parentPath 
 		id = generateUUID()
 	}
 
-	if elem.Kind == "Object" || elem.Kind == "Array" {
+	if isMappingObjectKind(elem.Kind) {
 		return serializeImportObjectElement(id, elem, parentPath)
 	}
 	return serializeImportValueElement(id, elem, parentPath)
@@ -208,6 +208,11 @@ func elementTypeForKind(kind string) string {
 	if kind == "Array" {
 		return "Array"
 	}
+	if kind == "Wrapper" {
+		// An array of PRIMITIVES: one entity per item, with the value on an
+		// attribute (#268).
+		return "Wrapper"
+	}
 	if kind == "Value" {
 		return "Value"
 	}
@@ -247,5 +252,17 @@ func serializeImportValueDataType(typeName string) bson.D {
 			{Key: "$ID", Value: typeID},
 			{Key: "$Type", Value: "DataTypes$StringType"},
 		}
+	}
+}
+
+// isMappingObjectKind — see the note in mdl/backend/modelsdk/mapping_write.go.
+// Duplicated rather than shared: the two engines' writers are independent by
+// design (ADR-0002/0004).
+func isMappingObjectKind(kind string) bool {
+	switch kind {
+	case "Object", "Array", "Wrapper":
+		return true
+	default:
+		return false
 	}
 }

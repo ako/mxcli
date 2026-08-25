@@ -321,3 +321,24 @@ func schemaRootClause(rootPath string) string {
 	}
 	return " root " + strings.Join(out, "/")
 }
+
+// arrayItemOf returns the element an array's members live in: the "|(Object)"
+// item for an array of objects, the "|(Wrapper)" node for an array of primitives
+// (#268). Returns nil when the structure records neither, so the caller keeps
+// its own default.
+func arrayItemOf(idx *jsonSchemaIndex, array *types.JsonElement) *types.JsonElement {
+	if array == nil {
+		return nil
+	}
+	for _, marker := range []string{"|(Object)", "|(Wrapper)"} {
+		if e, ok := idx.byPath[array.Path+marker]; ok {
+			return e
+		}
+	}
+	// Fall back to a single child of any shape — a structure read from a
+	// document may use a marker this list does not know.
+	if kids := idx.children[array.Path]; len(kids) == 1 {
+		return kids[0]
+	}
+	return nil
+}
