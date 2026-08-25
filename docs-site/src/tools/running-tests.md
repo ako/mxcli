@@ -178,6 +178,25 @@ pins down its type (`@expect $a = $b`, where both sides are variables). Mendix's
 expression engine is typed, and a wrong guess would fail the build rather than
 the test.
 
+### A file that does not parse is one ERROR, not a dead run
+
+A malformed test file is reported the same way an uncompilable assertion is:
+against itself, as an ERROR that counts with the failures. The tests in every
+other file still run.
+
+```
+  PASS  the board is 81 squares (6ms, 2 assertions)
+  ERROR  broken.test.mdl (file could not be parsed)
+         test "first" is followed by another @test doc comment ("second") with
+         no '/' separator between them
+```
+
+`--list` prints the same thing under the listing and exits non-zero, so a
+directory that was only partly readable cannot look like a clean one. A path
+that does not *exist* is still a hard error — that is a mistake in the
+invocation, not a malformed test, and continuing would run a different suite
+than the one that was asked for.
+
 ### A test that asserts nothing, and `@verify`
 
 Every result line reports what the test actually checked:
