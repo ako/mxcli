@@ -1102,6 +1102,18 @@ create import mapping Module.IMM_Pet
 };
 ```
 
+**Input object:** an import mapping may take an object as a parameter, which a
+custom handler binds with `Param: parameter`:
+
+```sql
+create import mapping Module.IMM_Response
+  with json structure Module.JSON_Response
+  parameter GenAICommons.ChunkCollection
+{ ... }
+```
+
+Import only — an export mapping's parameter is its root object.
+
 **Object handling:** `create` (default), or `find` — which requires a KEY *and*
 must say what happens when nothing is found:
 

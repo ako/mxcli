@@ -39,6 +39,7 @@ func (b *Backend) ListImportMappings() ([]*model.ImportMapping, error) {
 			JsonStructure:     g.JsonStructureQualifiedName(),
 			XmlSchema:         g.XmlSchemaQualifiedName(),
 			MessageDefinition: g.MessageDefinitionQualifiedName(),
+			ParameterEntity:   parameterEntityFromRaw(g.Raw()),
 		}
 		im.ID = model.ID(g.ID())
 		im.TypeName = "ImportMappings$ImportMapping"
@@ -369,4 +370,26 @@ func sourceFromStoredPath(jsonPath string, level int) string {
 	default:
 		return "parent"
 	}
+}
+
+// parameterEntityFromRaw reads the mapping's input object (#265). gen models no
+// ParameterType property at all, so this goes to the stored document — the same
+// route customHandlerFromRaw takes.
+//
+// Only DataTypes$ObjectType carries an entity; the DataTypes$UnknownType marker
+// an unparameterised mapping stores yields "", which is what the model means by
+// "no input object".
+func parameterEntityFromRaw(raw bson.Raw) string {
+	if raw == nil {
+		return ""
+	}
+	doc, ok := raw.Lookup("ParameterType").DocumentOK()
+	if !ok {
+		return ""
+	}
+	if t, _ := doc.Lookup("$Type").StringValueOK(); t != "DataTypes$ObjectType" {
+		return ""
+	}
+	entity, _ := doc.Lookup("Entity").StringValueOK()
+	return entity
 }

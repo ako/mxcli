@@ -641,7 +641,7 @@ Filed 2026-08-24 against `ako/mxcli`.
 | [#262](https://github.com/ako/mxcli/issues/262) — export array container written with entity + association — **fixed** | §6.2, §7.8 | 33 |
 | [#263](https://github.com/ako/mxcli/issues/263) — `with message definition` — **fixed** | §7.3 | 74 |
 | [#264](https://github.com/ako/mxcli/issues/264) — custom object handling (`by <microflow>(…)`) — **fixed** | §7.5 | 56 |
-| [#265](https://github.com/ako/mxcli/issues/265) — mapping input parameter | §7.9 | 10 |
+| [#265](https://github.com/ako/mxcli/issues/265) — mapping input parameter — **fixed** | §7.9 | 10 |
 | [#266](https://github.com/ako/mxcli/issues/266) — converter microflow (already parses) — **fixed** | §7.6 | 39 |
 | [#267](https://github.com/ako/mxcli/issues/267) — nested schema root (`root a/b`) — **fixed** | §7.2 | 13 |
 | [#268](https://github.com/ako/mxcli/issues/268) — primitive-array wrapper (`member[]`) — **fixed** | §7.7 | 34 |

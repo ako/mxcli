@@ -39,6 +39,13 @@ func (b *Builder) ExitCreateImportMappingStatement(ctx *parser.CreateImportMappi
 		}
 	}
 
+	// The mapping's input object (#265) — what `Param: parameter` refers to.
+	if pc := ctx.ImportMappingParameterClause(); pc != nil {
+		if qn := pc.(*parser.ImportMappingParameterClauseContext).QualifiedName(); qn != nil {
+			stmt.Parameter = buildQualifiedName(qn)
+		}
+	}
+
 	// Parse root element
 	if root := ctx.ImportMappingRootElement(); root != nil {
 		stmt.RootElement = buildImportRootElement(root.(*parser.ImportMappingRootElementContext))

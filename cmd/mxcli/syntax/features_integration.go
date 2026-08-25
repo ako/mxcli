@@ -587,13 +587,15 @@ DESCRIBE DATABASE CONNECTION Ops.Erp;`,
 			"show import mappings", "describe import mapping",
 			"with json structure", "with message definition", "find or create",
 			"or create", "or error", "or ignore", "overridable", "object handling backup",
+			"parameter", "input object", "mapping parameter",
 			"object handling", "converter", "value transform", "custom handling", "by microflow",
 		},
 		Syntax: "SHOW IMPORT MAPPINGS [IN Module];\nDESCRIBE IMPORT MAPPING Module.Name;\n" +
 			"CREATE [OR MODIFY] IMPORT MAPPING Module.Name [FOLDER 'path']\n" +
 			"  WITH JSON STRUCTURE Module.JsonStruct [ROOT a/b/c]\n" +
 			"    | WITH MESSAGE DEFINITION Module.Collection.Definition\n" +
-			"    | WITH XML SCHEMA Module.Schema\n{\n" +
+			"    | WITH XML SCHEMA Module.Schema\n" +
+			"  [PARAMETER Module.Entity]   -- the mapping's input object, bound by `P: parameter`\n{\n" +
 			"  create Module.Entity | find Module.Entity OR CREATE|ERROR|IGNORE [OVERRIDABLE]\n" +
 			"    [by Module.MF(P: parent)] {\n    Attr = jsonField [KEY],\n" +
 			"    Attr = a/b/c,\n" +

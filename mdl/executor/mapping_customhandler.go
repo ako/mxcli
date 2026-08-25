@@ -342,3 +342,65 @@ func arrayItemOf(idx *jsonSchemaIndex, array *types.JsonElement) *types.JsonElem
 	}
 	return nil
 }
+
+// resolveMappingParameter resolves the `parameter Module.Entity` clause (#265)
+// to a qualified entity name, refusing one that does not exist rather than
+// writing the name through.
+//
+// Mendix stores this as ParameterType, a DataTypes$ObjectType — the mapping's
+// INPUT object, which a custom handler binds with `Param: parameter`. 10 of the
+// 327 demo-app mappings declare one, all of them ObjectType; the other 190
+// import mappings store the DataTypes$UnknownType marker, and an export mapping
+// stores no ParameterType at all (0 of 127), so this is import-only.
+func resolveMappingParameter(param ast.QualifiedName, moduleName string, b backend.FullBackend) (string, error) {
+	if param.Name == "" {
+		return "", nil
+	}
+	entity := param.String()
+	if !strings.Contains(entity, ".") {
+		entity = moduleName + "." + entity
+	}
+	if lb, ok := b.(entityLookupBackend); ok {
+		if _, found := findEntityByQN(lb, entity); !found {
+			return "", fmt.Errorf("parameter %s: entity not found", entity)
+		}
+	}
+	return entity, nil
+}
+
+// requireDeclaredParameter refuses a custom handler bound to `Param: parameter`
+// on a mapping that declares no input object.
+//
+// The source resolves to the mapping's ParameterType, so without one there is
+// nothing to pass, and mxbuild reports CE0279 "Parameter is used in object
+// handling microflow while the mapping does not specify one." Checked over the
+// BUILT model rather than the AST so it covers the JSON-structure and
+// message-definition builders at once.
+func requireDeclaredParameter(im *model.ImportMapping) error {
+	if im.ParameterEntity != "" {
+		return nil
+	}
+	var walk func(elems []*model.ImportMappingElement) error
+	walk = func(elems []*model.ImportMappingElement) error {
+		for _, e := range elems {
+			if e.CustomHandler != nil {
+				for _, p := range e.CustomHandler.Parameters {
+					if p.Source == "parameter" {
+						name := p.Parameter
+						if i := strings.LastIndex(name, "."); i >= 0 {
+							name = name[i+1:]
+						}
+						return fmt.Errorf("`%s: parameter` refers to the mapping's input object, "+
+							"but the mapping does not declare one — add `parameter Module.Entity` "+
+							"after the schema source (mxbuild reports this as CE0279)", name)
+					}
+				}
+			}
+			if err := walk(e.Children); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return walk(im.Elements)
+}

@@ -133,8 +133,16 @@ func importMappingToGen(im *model.ImportMapping) element.Element {
 	addStr(g, "PublicName", "")
 	addStr(g, "XsdRootElementName", "")
 	// ParameterType is a required sub-document even when unused; without it Studio
-	// Pro fails to render the schema source and mapping elements correctly.
-	addPart(g, "ParameterType", newElem("DataTypes$UnknownType", ""))
+	// Pro fails to render the schema source and mapping elements correctly. A
+	// mapping declaring an input object stores a DataTypes$ObjectType naming it
+	// instead of the UnknownType marker (#265).
+	if im.ParameterEntity != "" {
+		pt := newElem("DataTypes$ObjectType", "")
+		addStr(pt, "Entity", im.ParameterEntity)
+		addPart(g, "ParameterType", pt)
+	} else {
+		addPart(g, "ParameterType", newElem("DataTypes$UnknownType", ""))
+	}
 	addStr(g, "OperationName", "")
 	addStr(g, "ServiceName", "")
 	addStr(g, "WsdlFile", "")

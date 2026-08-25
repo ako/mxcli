@@ -23,7 +23,11 @@ type CreateImportMappingStmt struct {
 	SchemaRef  QualifiedName // qualified name of the schema source
 	// SchemaRoot selects the element the mapping STARTS at, when that is not the
 	// structure's own root (#267). Written in member names, "/"-separated.
-	SchemaRoot     string
+	SchemaRoot string
+	// Parameter is the entity of the mapping's INPUT object (#265), which its
+	// custom handlers bind via `Param: parameter`. Empty means the mapping takes
+	// no input object, which is stored as the DataTypes$UnknownType marker.
+	Parameter      QualifiedName
 	RootElement    *ImportMappingElementDef
 	CreateOrModify bool // true for CREATE OR MODIFY / CREATE OR REPLACE
 }

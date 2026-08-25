@@ -242,6 +242,41 @@ so it now asks rather than guessing.
 **Note**: `key` is only valid with `find`, not with `create` — and a `find`
 without one is rejected by the build with CE0250.
 
+### Custom Object Handling and the Mapping's Input Object
+
+A microflow can resolve the object instead of Create/Find. Write it as `by` on
+the element; the microflow's parameters are named with their sources:
+
+| Source | Means |
+|--------|-------|
+| `parent` | the enclosing mapped object |
+| `parameter` | the mapping's own input object |
+| `parent(2)` | an ancestor N levels up |
+| `a/b/c` | a value from the payload, addressed like any other member |
+
+`parameter` needs the mapping to declare an input object, which is a clause on
+the header — import mappings only:
+
+```sql
+create import mapping Module.IMM_Embed
+  with json structure Module.JSON_Embed
+  parameter GenAICommons.ChunkCollection
+{
+  create GenAICommons.ChunkCollection {
+    Name = id,
+    find Module.Chunk_ChunkCollection/GenAICommons.Chunk
+      by Module.MF_FindChunk ( Collection: parameter, Index: idx )
+      = embeddings {
+        Text = text
+      }
+  }
+};
+```
+
+Using `parameter` without declaring one is refused — the build reports it as
+CE0279. The declared entity must match the microflow's parameter type, which the
+build checks as CE0282.
+
 ---
 
 ## Export Mappings
@@ -610,4 +645,6 @@ See `organize-project` for `move` and the full folder story.
 | Missing array container entity in export | Arrays need Container + Item entities |
 | Using `key` with `create` handling | `key` only valid with `find` |
 | `find` without `or create` / `or error` / `or ignore` | Say what happens when the object is not found — the three differ at runtime |
+| `Param: parameter` with no `parameter Module.Entity` on the header | Declare the mapping's input object, or the build reports CE0279 |
+| `parameter` on an EXPORT mapping | Export mappings have no input object — their parameter is the root object |
 | Arrays in import with container entity | Import arrays map directly to item entity, no container |

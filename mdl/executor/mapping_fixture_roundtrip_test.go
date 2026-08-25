@@ -44,11 +44,21 @@ import (
 // from — 112 of 327 real mappings are in this class.
 var knownLossy = map[string]string{
 	// Constructs MDL still cannot express.
+	// #265's `parameter GenAICommons.ChunkCollection` is fixed here and prints.
+	// What blocks it now is #260 item 2 in the IMPORT printer: this mapping's
+	// array container carries its OWN entity, association and custom handler
+	// (Studio Pro's two-level import array), and printImportMappingElement
+	// branches on `Kind == "Object"` so an "Array" falls into the value branch
+	// and prints ` = embeddings`. Fixing only the dispatch would be worse than
+	// the parse error: the import builder GENERATES the item level, so the
+	// object form would re-execute to a one-level mapping — silent loss where
+	// there is now a loud failure. Needs an import spelling for the two-level
+	// array, as #262 kept for export.
+	"MxGenAIConnector.IM_CohereEmbed_Response": "#260 two-level import array container (entity on the Array element)",
 	// #268's wrapper is fixed here; what blocks it now is an OBJECT element with
 	// a nested member path (`= meta/pagination`), which the grammar has never
 	// accepted — #260 item 1.
-	"KrogerAPI.IM_ProductList":                 "#260 object element with a nested member path",
-	"MxGenAIConnector.IM_CohereEmbed_Response": "#265 mapping input parameter",
+	"KrogerAPI.IM_ProductList": "#260 object element with a nested member path",
 	// #268's wrapper and #261's backup are fixed here; the residue is the export
 	// writer's property set — #277 (IsKey), #279 (MinOccurs).
 	"MxGenAIConnector.EM_CohereEmbed_Request": "#277 IsKey; #279 MinOccurs",

@@ -1081,6 +1081,11 @@ type ImportMapping struct {
 	JsonStructure     string `json:"jsonStructure,omitempty"`     // qualified name
 	XmlSchema         string `json:"xmlSchema,omitempty"`         // qualified name
 	MessageDefinition string `json:"messageDefinition,omitempty"` // qualified name
+	// ParameterEntity is the entity of the mapping's INPUT object, stored as
+	// ParameterType — a DataTypes$ObjectType naming it. Empty means the mapping
+	// takes none, which Mendix stores as the DataTypes$UnknownType marker rather
+	// than by omitting the property (#265).
+	ParameterEntity string `json:"parameterEntity,omitempty"`
 	// Mapping tree (top-level elements, usually one root)
 	Elements []*ImportMappingElement `json:"elements,omitempty"`
 }

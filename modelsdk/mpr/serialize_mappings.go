@@ -20,10 +20,21 @@ func SerializeImportMapping(im *model.ImportMapping) ([]byte, error) {
 		exportLevel = "Hidden"
 	}
 
-	// ParameterType is a required sub-document even when not used (DataTypes$UnknownType).
+	// ParameterType is a required sub-document even when unused: an
+	// unparameterised mapping stores the DataTypes$UnknownType marker, and one
+	// declaring an input object stores a DataTypes$ObjectType naming it (#265).
+	// Without the property Studio Pro fails to render the schema source and
+	// mapping elements correctly.
 	parameterType := bson.D{
 		{Key: "$ID", Value: idToBsonBinary(generateUUID())},
 		{Key: "$Type", Value: "DataTypes$UnknownType"},
+	}
+	if im.ParameterEntity != "" {
+		parameterType = bson.D{
+			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+			{Key: "$Type", Value: "DataTypes$ObjectType"},
+			{Key: "Entity", Value: im.ParameterEntity},
+		}
 	}
 
 	doc := bson.D{

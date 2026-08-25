@@ -123,6 +123,11 @@ func describeImportMapping(ctx *ExecContext, name ast.QualifiedName) error {
 		// re-executing a DESCRIBE rebuilt the mapping bound to nothing.
 		fmt.Fprintf(ctx.Output, "  with message definition %s\n", im.MessageDefinition)
 	}
+	// The input object (#265). Printing it is what makes a `Param: parameter`
+	// handler in the body re-executable at all.
+	if im.ParameterEntity != "" {
+		fmt.Fprintf(ctx.Output, "  parameter %s\n", im.ParameterEntity)
+	}
 
 	if len(im.Elements) > 0 {
 		fmt.Fprintln(ctx.Output, "{")
@@ -318,6 +323,13 @@ func execCreateImportMapping(ctx *ExecContext, s *ast.CreateImportMappingStmt) e
 		im.Excluded = existing.Excluded
 	}
 
+	// The mapping's input object (#265), which `Param: parameter` binds.
+	paramEntity, err := resolveMappingParameter(s.Parameter, s.Name.Module, ctx.Backend)
+	if err != nil {
+		return mdlerrors.NewValidation(fmt.Sprintf("import mapping %s: %v", s.Name.String(), err))
+	}
+	im.ParameterEntity = paramEntity
+
 	// Set schema source reference
 	switch s.SchemaKind {
 	case "JSON_STRUCTURE":
@@ -386,6 +398,9 @@ func execCreateImportMapping(ctx *ExecContext, s *ast.CreateImportMappingStmt) e
 func finishImportMapping(ctx *ExecContext, s *ast.CreateImportMappingStmt,
 	im *model.ImportMapping, existing *model.ImportMapping, containerID model.ID,
 ) error {
+	if err := requireDeclaredParameter(im); err != nil {
+		return mdlerrors.NewValidation(fmt.Sprintf("import mapping %s: %v", s.Name.String(), err))
+	}
 	if existing != nil {
 		im.ID = existing.ID
 		if err := ctx.Backend.UpdateImportMapping(im); err != nil {

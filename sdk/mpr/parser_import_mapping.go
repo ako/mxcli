@@ -48,6 +48,16 @@ func (r *Reader) parseImportMapping(unitID, containerID string, contents []byte)
 	if v, ok := raw["MessageDefinition"].(string); ok {
 		im.MessageDefinition = v
 	}
+	// The mapping's input object (#265). Only DataTypes$ObjectType carries an
+	// entity — the DataTypes$UnknownType marker an unparameterised mapping
+	// stores means "none".
+	if pt, ok := raw["ParameterType"].(map[string]any); ok {
+		if t, _ := pt["$Type"].(string); t == "DataTypes$ObjectType" {
+			if e, _ := pt["Entity"].(string); e != "" {
+				im.ParameterEntity = e
+			}
+		}
+	}
 
 	// Parse top-level mapping elements (may start with int32 version prefix)
 	if elements, ok := raw["Elements"].(bson.A); ok {

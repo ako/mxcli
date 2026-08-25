@@ -490,7 +490,27 @@ createImportMappingStatement
     : IMPORT MAPPING qualifiedName
       (FOLDER STRING_LITERAL)?
       importMappingWithClause?
+      importMappingParameterClause?
       LBRACE importMappingRootElement RBRACE
+    ;
+
+/**
+ * The mapping's INPUT object (#265). An import mapping may take an object as a
+ * parameter, which its custom handlers then bind via `Param: parameter`:
+ *
+ *   create import mapping M.IM_Response
+ *     with json structure M.JSON_Response
+ *     parameter GenAICommons.ChunkCollection
+ *   { ... }
+ *
+ * Stored as ParameterType, a DataTypes$ObjectType naming the entity; an
+ * unparameterised mapping stores the DataTypes$UnknownType marker instead.
+ *
+ * Import only: an export mapping's parameter IS its root object, and Studio Pro
+ * writes no ParameterType at all on one (0 of 127 measured).
+ */
+importMappingParameterClause
+    : PARAMETER qualifiedName
     ;
 
 importMappingWithClause

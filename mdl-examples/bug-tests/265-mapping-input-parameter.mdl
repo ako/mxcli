@@ -1,0 +1,100 @@
+-- ============================================================================
+-- Bug #265: an import mapping could not declare its input object
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   An import mapping may take an OBJECT as input — Mendix stores it as
+--   ParameterType, a DataTypes$ObjectType naming the entity — and a custom
+--   handler binds it with `Param: parameter` (#264). MDL had no syntax for it,
+--   so `Param: parameter` referred to something that could not exist, and
+--   `describe` of a real one dropped the declaration while still emitting a
+--   handler that used it.
+--
+--   Measured across the eight demo apps: 10 of the 327 mapping documents
+--   declare one (GenAICommons.ChunkCollection in eight of them).
+--
+-- Syntax:
+--   A clause on the mapping header, after the schema source:
+--
+--     create import mapping M.IM_Response
+--       with json structure M.JSON_Response
+--       parameter GenAICommons.ChunkCollection
+--     { ... }
+--
+-- Import only:
+--   190 of the 200 import mappings in the demo apps store the
+--   DataTypes$UnknownType marker and the other 10 an ObjectType, while an
+--   EXPORT mapping carries no ParameterType property at all (0 of 127) — its
+--   parameter is its root object. So there is no export spelling.
+--
+-- Two refusals, each measured against mxbuild 11.13 with the guard stubbed:
+--   * `Param: parameter` on a mapping that declares none is CE0279 "Parameter
+--     is used in object handling microflow while the mapping does not specify
+--     one."
+--   * a parameter entity that does not exist is refused by name, rather than
+--     written through.
+--
+--   NOT guarded: a parameter whose entity does not match the microflow's
+--   parameter type. mxbuild reports that as CE0282 naming both types, which is
+--   clearer than anything mxcli could say, and checking it here would need a
+--   generalisation-aware type walk that could refuse valid specialisations.
+--
+-- Watch for:
+--   The legacy parser unmarshals a unit into map[string]any, so a nested
+--   sub-document arrives as map[string]any and NOT as bson.D. Asserting bson.D
+--   compiles, always fails, and leaves DESCRIBE silently dropping the clause on
+--   the legacy engine only — caught by running the same test on both backends.
+--
+-- Validation:
+--   mxbuild 11.13 reports 0 errors, and the mapping round-trips through
+--   describe -> exec reporting "Unchanged".
+-- ============================================================================
+
+create module BugTest265;
+
+create persistent entity BugTest265.ChunkCollection ( Name: String(100) );
+create persistent entity BugTest265.Chunk ( Text: String(200) );
+create association BugTest265.Chunk_ChunkCollection
+  from BugTest265.Chunk to BugTest265.ChunkCollection
+  type Reference;
+
+create json structure BugTest265.JSON_Embed
+  snippet $${"id": "x", "embeddings": [{"text": "t", "idx": 1}]}$$;
+
+create microflow BugTest265.MF_FindChunk (
+  $Collection: BugTest265.ChunkCollection,
+  $Index: Integer
+)
+returns BugTest265.Chunk
+begin
+  @start(100, 200)
+  @position(400, 200)
+  return empty;
+end;
+/
+
+-- The input object, bound by the handler's `Collection: parameter`.
+create or modify import mapping BugTest265.IMM_Embed
+  folder 'Mappings'
+  with json structure BugTest265.JSON_Embed
+  parameter BugTest265.ChunkCollection
+{
+  create BugTest265.ChunkCollection {
+    Name = id,
+    find BugTest265.Chunk_ChunkCollection/BugTest265.Chunk
+      by BugTest265.MF_FindChunk ( Collection: parameter, Index: idx )
+      = embeddings {
+        Text = text
+      }
+  }
+};
+
+-- Control: no clause, so the mapping stores the DataTypes$UnknownType marker.
+create or modify import mapping BugTest265.IMM_NoParam
+  folder 'Mappings'
+  with json structure BugTest265.JSON_Embed
+{
+  create BugTest265.ChunkCollection {
+    Name = id
+  }
+};
