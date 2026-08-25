@@ -102,8 +102,11 @@ Examples:
 			os.Exit(1)
 		}
 
-		// Create executor and connect
-		exec, logger := newLoggedExecutor("subcommand")
+		// Create executor and connect. With a machine-readable format, stdout
+		// carries only the payload and every progress line goes to stderr —
+		// otherwise "Connected to:" and the catalog lines precede the JSON and
+		// nothing can parse stdout.
+		exec, logger := newLoggedExecutorTo("subcommand", progressSink(format))
 		defer logger.Close()
 		defer exec.Close()
 

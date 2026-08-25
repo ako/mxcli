@@ -48,7 +48,14 @@ Examples:
 		}
 
 		// Create executor and connect
-		exec, logger := newLoggedExecutor("subcommand")
+		// With -o the payload goes to a file and stdout is free for progress.
+		// Without it the report itself is on stdout, so progress must not be
+		// (the markdown/json/html payload would be corrupted by it).
+		reportProgress := progressSink(format)
+		if outputPath != "" {
+			reportProgress = os.Stdout
+		}
+		exec, logger := newLoggedExecutorTo("subcommand", reportProgress)
 		defer logger.Close()
 		defer exec.Close()
 
