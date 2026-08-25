@@ -1194,18 +1194,38 @@ func builtinMatches(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple
 	return starlark.False, nil
 }
 
-// LoadStarlarkRulesFromDir loads all Starlark rules from a directory.
-func LoadStarlarkRulesFromDir(dir string) ([]*StarlarkRule, error) {
+// RuleLoadFailure is a .star file that was found but produced no rule.
+type RuleLoadFailure struct {
+	Path   string
+	Reason string
+}
+
+// LoadStarlarkRulesFromDir loads all Starlark rules from a directory, returning
+// the rules that loaded and every file that did not.
+//
+// Failures are returned rather than printed. The previous version wrote them to
+// **stdout** with fmt.Printf, which put diagnostics into the same stream as
+// `--format json`/`sarif` payloads and gave the caller nothing to act on. The
+// caller now decides where a warning goes and whether it is fatal (#904).
+//
+// A missing directory is not an error: most projects have no custom rules.
+func LoadStarlarkRulesFromDir(dir string) ([]*StarlarkRule, []RuleLoadFailure, error) {
 	var rules []*StarlarkRule
+	var failures []RuleLoadFailure
+
+	if dir == "" {
+		return nil, nil, nil
+	}
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return rules, nil
+			return rules, nil, nil
 		}
-		return nil, err
+		return nil, nil, err
 	}
 
+	// os.ReadDir sorts by filename, so failures come out in a stable order.
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -1218,13 +1238,12 @@ func LoadStarlarkRulesFromDir(dir string) ([]*StarlarkRule, error) {
 		path := filepath.Join(dir, entry.Name())
 		rule, err := LoadStarlarkRule(path)
 		if err != nil {
-			// Log warning but continue loading other rules
-			fmt.Printf("Warning: failed to load rule %s: %v\n", path, err)
+			failures = append(failures, RuleLoadFailure{Path: path, Reason: err.Error()})
 			continue
 		}
 
 		rules = append(rules, rule)
 	}
 
-	return rules, nil
+	return rules, failures, nil
 }

@@ -28,6 +28,7 @@ Detailed syntax for each MDL document type:
 | [write-nanoflows](write-nanoflows/SKILL.md) | Nanoflow syntax reference | Writing client-side nanoflow logic |
 | [write-rules](write-rules/SKILL.md) | Rule syntax reference | Writing reusable decision logic a decision calls |
 | [write-oql-queries](write-oql-queries/SKILL.md) | OQL query syntax | Creating VIEW entities |
+| [translations](translations/SKILL.md) | Bulk translation, one file per language | Localising an app, or working out why a translation never appears |
 | [create-page](create-page/SKILL.md) | Page and widget syntax | Creating pages |
 | [fragments](fragments/SKILL.md) | Fragment (reusable widget group) syntax | Reusing widget patterns across pages |
 | [scheduled-events-and-queues](scheduled-events-and-queues/SKILL.md) | Scheduled event (cron) and task queue syntax | Running a microflow on a schedule; bounding background concurrency |

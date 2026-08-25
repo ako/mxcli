@@ -1,0 +1,64 @@
+-- Issue #904: a broken lint setup looked green.
+--
+-- Three defects, all measured on mxcli main before the fix:
+--
+--   1. Rule discovery was `filepath.Dir(<the .mpr>) + /.claude/lint-rules`, so
+--      the 29 bundled Starlark rules were found ONLY when `.claude/` sat in the
+--      same directory as the .mpr. One `.claude/` at the repository root — the
+--      ordinary Claude Code layout — meant zero Starlark rules loaded, silently.
+--      Measured: 19 rules vs 48, same files, one directory apart.
+--
+--      The reporter read this as "only 4 of my 29 rules load". It was really
+--      0 of 29: CONV011-CONV014 are Go built-ins (mdl/linter/rules/), not
+--      bundle rules, and they appear unconditionally. There was never a
+--      stale-file problem.
+--
+--   2. `-r <id>` never validated the id. The flag disables every rule it does
+--      not name, so an unmatched id disabled ALL rules and printed
+--      "No issues found." — indistinguishable from a clean project. Broader
+--      than reported: an id that never existed in any release did the same.
+--
+--   3. Rule-load failures went to stdout via fmt.Printf and were not returned,
+--      so no caller could count them, and they landed in the same stream as
+--      `--format json` payloads.
+--
+-- WHY THIS FILE CANNOT BE THE REGRESSION TEST
+--
+-- The defect is a directory layout plus two CLI flags. MDL cannot create a
+-- directory tree, and `make check-mdl` runs `mxcli check` WITHOUT a project, so
+-- naming this `.fail.mdl` would report "negative test unexpectedly passed" —
+-- the trap the Makefile's check-mdl comment documents (#891, #892). The real
+-- guards are unit tests:
+--
+--   mdl/linter/lintrules_discovery_test.go  TestFindLintRulesDir
+--                                           TestFindLintRulesDir_StopsAtRepoRoot
+--   mdl/linter/rulefilter_test.go           TestUnknownRuleIDs
+--   mdl/linter/starlark_load_test.go        TestLoadStarlarkRulesFromDir_ReturnsFailures
+--
+-- SHELL REPRO (run against a project with the bundled rules above it)
+--
+--   mkdir -p ws/project && cd ws && git init -q .
+--   cp -r <a Mendix project>/* project/
+--   mkdir -p .claude/lint-rules && cp <mxcli>/.claude/lint-rules/*.star .claude/lint-rules/
+--
+--   mxcli lint -p project/app.mpr --list-rules | grep -c '^  [A-Z]'
+--       before: 19        after: 48
+--   mxcli lint -p project/app.mpr -r TOTALLY_MADE_UP; echo $?
+--       before: "No issues found." exit 0
+--       after:  "Error: unknown rule id(s): TOTALLY_MADE_UP" exit 1
+--   echo 'x = 1' > .claude/lint-rules/zz_bad.star
+--   mxcli lint -p project/app.mpr --list-rules 2>/dev/null | grep -c skipped
+--       before: 1 (warning polluted stdout)   after: 0 (it is on stderr)
+--
+-- The statements below exercise the MDL-level lint path, which shares the same
+-- rule-discovery code. Run with -p against the layout above: before the fix the
+-- custom-rule section was empty, after it lists the bundled rules and names the
+-- directory they came from.
+
+-- Lists built-in rules and, when a rule directory is found, the custom ones
+-- under a header naming the directory that was actually used.
+show lint rules;
+
+-- Runs the full rule set. Before the fix this ran 19 rules in the layout above
+-- and reported a project "clean" under rules that had never loaded.
+lint;
