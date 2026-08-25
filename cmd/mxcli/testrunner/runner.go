@@ -154,11 +154,30 @@ func Run(opts RunOptions) (*SuiteResult, error) {
 		return nil, fmt.Errorf("parsing test files: %w", err)
 	}
 	fmt.Fprintf(w, "  Found %d test(s) in %d file(s)\n", len(suite.Tests), len(opts.TestFiles))
+	for _, fe := range suite.FileErrors {
+		fmt.Fprintf(w, "  ERROR %s: %v\n", fe.Path, fe.Err)
+	}
 
 	if len(suite.Tests) == 0 {
+		// A directory whose every file is malformed is not an empty directory,
+		// and must not be reported as one (#903).
+		if len(suite.FileErrors) > 0 {
+			return nil, fmt.Errorf("no tests could be parsed: %d file(s) failed to parse", len(suite.FileErrors))
+		}
 		return nil, fmt.Errorf("no tests found in the provided files")
 	}
 
+	result, err := dispatchRun(opts, suite, timeout, w)
+	if result != nil {
+		// Appended after execution so an unparseable file lands in the summary,
+		// the JUnit report and the exit code alongside the tests that did run.
+		result.Tests = append(result.Tests, suiteFileErrorResults(suite.FileErrors)...)
+	}
+	return result, err
+}
+
+// dispatchRun hands the suite to the runner the options select.
+func dispatchRun(opts RunOptions, suite *TestSuite, timeout time.Duration, w io.Writer) (*SuiteResult, error) {
 	if opts.Attach {
 		return runAttached(opts, suite, timeout, w)
 	}
@@ -426,7 +445,38 @@ func ListTests(files []string, w io.Writer) error {
 			fmt.Fprintf(w, "    (no assertions — this test can only report that the body did not throw)\n")
 		}
 	}
-	return nil
+	return reportFileErrors(suite.FileErrors, w)
+}
+
+// reportFileErrors prints the files that could not be parsed and returns an
+// error when there were any, so listing a partly-readable directory exits
+// non-zero instead of looking like a clean listing.
+func reportFileErrors(errs []FileError, w io.Writer) error {
+	if len(errs) == 0 {
+		return nil
+	}
+	fmt.Fprintf(w, "\n%d file(s) could not be parsed:\n", len(errs))
+	for _, fe := range errs {
+		fmt.Fprintf(w, "  ERROR %s: %v\n", fe.Path, fe.Err)
+	}
+	return fmt.Errorf("%d test file(s) could not be parsed", len(errs))
+}
+
+// suiteFileErrorResults turns unparseable files into ERROR results so they are
+// counted in the summary and in the JUnit report, and so the run's exit code is
+// non-zero — the same fail-closed handling assertionErrorResult gives an
+// @expect that cannot be compiled.
+func suiteFileErrorResults(errs []FileError) []TestResult {
+	out := make([]TestResult, 0, len(errs))
+	for _, fe := range errs {
+		out = append(out, TestResult{
+			Name:       fmt.Sprintf("%s (file could not be parsed)", filepath.Base(fe.Path)),
+			Status:     StatusError,
+			Message:    fe.Err.Error(),
+			SourceFile: fe.Path,
+		})
+	}
+	return out
 }
 
 // parseTestFiles parses one or more test files or directories.
@@ -450,10 +500,15 @@ func parseTestFiles(paths []string) (*TestSuite, error) {
 				combined.Name = dirSuite.Name
 			}
 			combined.Tests = append(combined.Tests, dirSuite.Tests...)
+			combined.FileErrors = append(combined.FileErrors, dirSuite.FileErrors...)
 		} else {
 			fileSuite, err := ParseTestFile(path)
 			if err != nil {
-				return nil, err
+				// Isolated rather than fatal, for the same reason as in a
+				// directory (#903): naming three files should not cost the two
+				// that parse. The run is still red — see suiteFileErrorResults.
+				combined.FileErrors = append(combined.FileErrors, FileError{Path: path, Err: err})
+				continue
 			}
 			if combined.Name == "mxtest" && fileSuite.Name != "" {
 				combined.Name = fileSuite.Name

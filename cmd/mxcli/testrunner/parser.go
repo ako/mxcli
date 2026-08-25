@@ -51,6 +51,20 @@ func (tc TestCase) AssertionCount() int {
 type TestSuite struct {
 	Name  string     // Suite name (derived from file name)
 	Tests []TestCase // Test cases
+	// FileErrors holds one entry per test file that could not be parsed.
+	//
+	// A malformed file used to abort the whole run, so an unrelated bad file
+	// stopped every other test in the directory from being listed or executed
+	// (#903). It is carried here instead and reported as an ERROR result, which
+	// is the same fail-closed treatment an uncompilable @expect gets: the run
+	// stays red and names the file, and the tests that parse still run.
+	FileErrors []FileError
+}
+
+// FileError is a test file that could not be parsed, and why.
+type FileError struct {
+	Path string
+	Err  error
 }
 
 // ParseTestFile parses a test file (.test.mdl or .test.md) and extracts test cases.
@@ -104,9 +118,11 @@ func ParseTestDir(dir string) (*TestSuite, error) {
 		}
 		name := e.Name()
 		if isTestFile(name) {
-			sub, err := ParseTestFile(filepath.Join(dir, name))
+			path := filepath.Join(dir, name)
+			sub, err := ParseTestFile(path)
 			if err != nil {
-				return nil, fmt.Errorf("parsing %s: %w", name, err)
+				suite.FileErrors = append(suite.FileErrors, FileError{Path: path, Err: err})
+				continue
 			}
 			suite.Tests = append(suite.Tests, sub.Tests...)
 		}

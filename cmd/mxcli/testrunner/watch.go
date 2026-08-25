@@ -80,6 +80,10 @@ func watchLoop(opts RunOptions, target testTarget, suite *TestSuite, w io.Writer
 			// nothing further will work. Bail rather than spin.
 			return shutdown(last, err)
 		}
+		// A file that does not parse is carried into the results rather than
+		// ending the loop, so the tests that do parse keep running while it is
+		// being fixed — and the run stays red until it is (#903).
+		result.Tests = append(result.Tests, suiteFileErrorResults(injected.FileErrors)...)
 		last = result
 		PrintResults(w, result, opts.Color)
 		if err := writeJUnit(opts, result, w); err != nil {
@@ -112,6 +116,9 @@ func watchLoop(opts RunOptions, target testTarget, suite *TestSuite, w io.Writer
 		if err != nil {
 			fmt.Fprintf(w, "  test files do not parse: %v\n", err)
 			continue
+		}
+		for _, fe := range reparsed.FileErrors {
+			fmt.Fprintf(w, "  ERROR %s: %v\n", fe.Path, fe.Err)
 		}
 
 		// Report the new set BEFORE injecting: if the injection fails partway,
