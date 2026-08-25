@@ -108,13 +108,25 @@ Examples:
 		lint.AddRule(rules.NewErrorHandlingOnCallsRule())
 		lint.AddRule(rules.NewNoContinueErrorHandlingRule())
 
-		// Load Starlark rules (includes CONV001-010, CONV015-017)
+		// Load Starlark rules (includes CONV001-010, CONV015-017).
+		//
+		// Searched upward from the project, like `mxcli lint` — this command had
+		// the same .mpr-relative lookup, and it emits a *score*, so a silently
+		// reduced rule set produced a falsely high one (#904).
 		projectDir := filepath.Dir(projectPath)
-		lintRulesDir := filepath.Join(projectDir, ".claude", "lint-rules")
-		if starlarkRules, err := linter.LoadStarlarkRulesFromDir(lintRulesDir); err == nil {
-			for _, rule := range starlarkRules {
-				lint.AddRule(rule)
-			}
+		lintRulesDir := linter.FindLintRulesDir(projectDir)
+		starlarkRules, loadFailures, err := linter.LoadStarlarkRulesFromDir(lintRulesDir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: could not read %s: %v\n", lintRulesDir, err)
+		}
+		for _, f := range loadFailures {
+			fmt.Fprintf(os.Stderr, "Warning: rule file skipped: %s: %s\n", f.Path, f.Reason)
+		}
+		if len(loadFailures) > 0 {
+			fmt.Fprintf(os.Stderr, "Warning: %d rule file(s) skipped — the score below does not include them.\n", len(loadFailures))
+		}
+		for _, rule := range starlarkRules {
+			lint.AddRule(rule)
 		}
 
 		// Run all rules
