@@ -326,6 +326,59 @@ tolerate): *Element methods* (how to invoke a `call` op), *Safe operations* vs
 query; never recreate documents from scratch), an *Error-Fixing Protocol* imposing
 a single-fix rule, and *Version Control Guidelines*.
 
+**Security: nothing opened, but one refusal's *reason* expired.** Security is the
+area where 11.14's descriptions moved most and its behaviour moved least, so the
+three layers have to be kept apart.
+
+1. **The security documents are still sealed.** `Security$ProjectSecurity`,
+   `Security$ModuleSecurity` → `Unknown document type` on read/find, `Document type
+   … is not supported.` on update. Module roles, user roles, demo users and the
+   project security level remain unauthorable over MCP. This is *despite* 11.14's
+   tool text naming them (see the advertised-but-absent table above).
+2. **`ped_get_schema` now returns ten fully documented security types** —
+   `ProjectSecurity`, `ModuleSecurity`, `UserRole`, `ModuleRole`, `DemoUser`,
+   `PasswordPolicySettings`, `FileDocumentAccessRuleContainer`,
+   `ImageAccessRuleContainer`, plus `AccessRule`/`MemberAccess`. Schema *presence*
+   is not new (11.13 already knew them as nested elements) and it is **not** a write
+   path — do not read a schema as a capability.
+3. **No security type declares a method**, so 11.14's new `call` operation opens
+   nothing here.
+
+**What did change is the in-place replace of an entity access rule.** mxcli refuses
+to replace an existing `DomainModels$AccessRule` today, and the stated reason is
+that replacing one *"would need member removal"*, which PED forbids. On 11.14 that
+reasoning no longer holds: `set` can replace a non-null element outright, so a rule
+can be overwritten **without removing anything**. Measured on
+`/entities/0/accessRules/0`, three probes deep, each with a value that cannot land:
+
+| probe | result |
+|---|---|
+| `set` a bogus `$Type` | `Expected type DomainModels$AccessRule, got DomainModels$NoSuchAccessRule` |
+| `set` a well-formed rule naming a nonexistent role | `{"/moduleRoles/0":"Reference with qualified name MyFirstModule.NoSuchRole of type Security$ModuleRole not found."}` |
+| re-read the rule afterwards | unchanged — still `MyFirstModule.User`, one `memberAccess` |
+
+The second probe is the informative one: the operation clears the document layer
+**and** shape validation, and fails only at *reference resolution*. Nothing but a
+valid role stands between that call and a successful replace. The third is the
+control proving the probes mutated nothing.
+
+**REVOKE is a different question and is still unanswered.** Removing an
+`AccessRule` or a `MemberAccess` could not be measured without actually deleting
+one: an out-of-bounds index is rejected by the **bounds check before** any
+removability check (`Index 5 is out of bounds for array 'accessRules' with length
+1`), and routing the same op at a non-writable module is rejected by the
+**writability check first** (`Module 'Administration' is not writeable.`) — both
+mask the answer. So 11.13's `"Element of type … cannot be removed"` is **neither
+confirmed nor refuted on 11.14**. It needs a valid-index remove against a throwaway
+project. Note that `set` cannot substitute: it may replace an element but *never*
+target an array, so there is no removal-free spelling of REVOKE.
+
+The practical upshot: on 11.14 **re-GRANT (updating an existing rule) looks
+reachable while REVOKE does not**, which is the opposite of how the two are paired
+in `security.go` today — both are refused there for the same reason. `capabilities.yaml`
+is unchanged because mxcli's *behaviour* is unchanged; what expired is the
+justification, and acting on it needs the throwaway-project measurement first.
+
 **Gap re-check, measured live on 11.14.** Still **no delete-document tool**, still
 **no save/flush tool**, reads still expose `$QualifiedName` but **not `$ID`**, the
 security documents are still sealed, and the `ped_create_document` whitelist still
@@ -351,7 +404,7 @@ The right-hand column carries the latest measured status, not the 11.11 one.
 | **Two write protocols** | Pages **must** use `pg_*`; everything else uses `ped_*`. The system prompt forbids PED for pages. | Stable, but reconfirm. |
 | **`ped_create_document` doc-type whitelist** | The create tool accepts only certain document types; some model documents are rejected even though they have a `$constructor` schema. Confirmed off the whitelist: **`Microflows$Nanoflow`** (`"… Did you mean: Microflows$Microflow?"`), **`Projects$Folder`** (empty folders), and **`BusinessEvents$BusinessEventService`** (a `$element`, not a `$constructor` — its CREATE/ALTER are rejected in `businessevent.go`, but SHOW/DESCRIBE read the `.mpr`, DROP goes via Concord, and the published-event entities/constants it relies on are creatable). So nanoflows aren't creatable over MCP (CREATE/ALTER rejected — `nanoflow.go`; DROP works via Concord), and an *empty* folder can't be created. **But `ped_create_document` accepts a `folderPath` per document, which auto-creates the whole folder path** — so a document is placed in a (possibly nested) folder at create time (`folder.go`/`resolveDocContainer`). What you can't do: re-parent an *existing* document — `/folderPath` is not a settable property (so `MOVE`/`DROP FOLDER`/`MOVE FOLDER` are rejected), and pages can't be foldered (`pg_write_page` takes no folderPath). | Re-probe the create whitelist each version. |
 | **No Java action document creation** | `ped_create_document` rejects `JavaActions$JavaAction` outright (`"Document type 'JavaActions$JavaAction' cannot be created."`) — a Java action is backed by a `.java` source file Studio Pro generates/manages, so the model document can't be created standalone. `CREATE/ALTER JAVA ACTION` are rejected with an actionable error (`mdl/backend/mcp/javaaction.go`); *calling* a Java action from a microflow is unaffected. | Watch for a Java-action create tool. |
-| **No security document ops** | PED's `ped_find/read/update/create_document` reject every security type (`Security$ModuleSecurity`, `Security$ProjectSecurity`, …) as "Unknown document type" — only `ped_get_schema` knows them as nested *elements*. Concord exposes only security *reads* (`audit_security`, `read_entity_access_rules`, `read_microflow_security`, `read_security_info`). So the security **documents** cannot be authored via MCP (module/user roles, demo users, project security level) — neither server has a write path. **Entity access rules are the exception and are authorable**: a `DomainModels$AccessRule` lives on the domain model, not the security document, so `GRANT` works (ADD-only — PED refuses to remove a rule or a member access, so `REVOKE` and replacing a rule in place are rejected). Security **reads** are served from the local `.mpr` by the backend's reader, so `SHOW MODULE ROLES` / `USER ROLES` / `PROJECT SECURITY` work over `--mcp` and `GRANT` can validate the role it references — routing that read to PED instead is what made every `GRANT --mcp` abort before its first tool call (#900). Determine support with `ped_read_document`, NOT `ped_find_document`: `find` also reports the (supported) nameless `DomainModels$DomainModel` as "Unknown", so it is not a reliable probe. | Watch for security write tools on either server. |
+| **No security document ops** | PED's `ped_find/read/update/create_document` reject every security type (`Security$ModuleSecurity`, `Security$ProjectSecurity`, …) as "Unknown document type" — only `ped_get_schema` knows them as nested *elements*. Concord exposes only security *reads* (`audit_security`, `read_entity_access_rules`, `read_microflow_security`, `read_security_info`). So the security **documents** cannot be authored via MCP (module/user roles, demo users, project security level) — neither server has a write path. **Entity access rules are the exception and are authorable**: a `DomainModels$AccessRule` lives on the domain model, not the security document, so `GRANT` works (ADD-only — PED refuses to remove a rule or a member access, so `REVOKE` and replacing a rule in place are rejected). Security **reads** are served from the local `.mpr` by the backend's reader, so `SHOW MODULE ROLES` / `USER ROLES` / `PROJECT SECURITY` work over `--mcp` and `GRANT` can validate the role it references — routing that read to PED instead is what made every `GRANT --mcp` abort before its first tool call (#900). Determine support with `ped_read_document`, NOT `ped_find_document`: `find` also reports the (supported) nameless `DomainModels$DomainModel` as "Unknown", so it is not a reliable probe. | **11.14 — still sealed, and now actively mis-advertised.** The tool descriptions name `Settings$ProjectSettings`, `Security$ProjectSecurity` and `Security$ModuleSecurity` as supported and `ped_get_schema` returns ten fully documented security element types, but every document-API call is refused (`Unknown document type` / `Document type … is not supported.`), against a `Navigation$NavigationDocument` control that reaches the operation layer in the same probe. No security type declares a **method**, so the new `call` op opens nothing. **One thing did move:** replacing an existing `DomainModels$AccessRule` in place no longer needs member removal — 11.14's `set` replaces a non-null element, and the probe clears shape validation and fails only at reference resolution. So re-GRANT looks reachable while **REVOKE is still unmeasured** (bounds and writability checks both mask removability). See the 11.14 delta for the probes and the control. |
 
 ## Transport (per environment, not per version)
 
