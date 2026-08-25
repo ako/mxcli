@@ -451,11 +451,17 @@ booleanLiteral
  *
  * The thing that exists is the LANGUAGE: bare CREATE refuses when it already has
  * translations, OR MODIFY merges, OR REPLACE makes the file authoritative.
+ *
+ * The entry list may be EMPTY. Under OR REPLACE that is the statement's own
+ * semantics taken to the limit — the file names nothing, so every translation in
+ * scope is removed — and it is the only way to take a language's translations
+ * out of the model, which `alter settings LANGUAGE remove` points at. It parsed
+ * as an error before, so the documented way to do it did not exist.
  * See docs/11-proposals/PROPOSAL_translations.md.
  */
 createTranslationsStatement
     : TRANSLATIONS (IN identifierOrKeyword)? FOR identifierOrKeyword
-      LPAREN translationEntry (COMMA translationEntry)* COMMA? RPAREN
+      LPAREN (translationEntry (COMMA translationEntry)* COMMA?)? RPAREN
     ;
 
 translationEntry

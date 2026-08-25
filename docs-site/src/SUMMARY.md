@@ -104,6 +104,7 @@
   - [Navigation Profiles](language/navigation-profiles.md)
   - [Home Pages and Menus](language/home-pages.md)
   - [Project Settings](language/project-settings.md)
+  - [Translations](language/translations.md)
 - [Workflows](language/workflows.md)
   - [Workflow Structure](language/workflow-structure.md)
   - [Activity Types](language/workflow-activities.md)
