@@ -1437,8 +1437,14 @@ Bulk translation of every user-visible string, one file per language. Entries us
 | Create | `create translations [in Module] for <lang> ( 'src' as 'target', ... );` | The language is the thing that exists — **errors** if it already has translations |
 | Merge | `create or modify translations ...` | A source the file does not name is left alone |
 | Replace | `create or replace translations ...` | The file is authoritative: a translation whose source it does not name is **REMOVED**, and the run says which. `in Module` **bounds** the deletion |
-| Show languages | `show languages;` | Per-language string counts (needs `refresh catalog full`) |
+| Remove a language's translations | `create or replace translations [in Module] for <lang> ( );` | An empty file is authoritative over nothing, so everything in scope goes — the only way to take a language's translations out of the model |
+| Show languages | `show languages;` | ⚠️ languages that **have translations**, not enabled ones — a stock app reports 8 while 1 is enabled. The enabled list is in `describe settings`. Needs `refresh catalog full` |
 | Default language | `alter settings LANGUAGE DefaultLanguageCode = 'en_US';` | The language a translation file's left column is written in |
+
+**A translation for a language the project has not enabled is discarded at build
+time** — it is stored in the model, passes `mx check`, and produces no
+`translations_<code>.properties` at all. The run warns; enable the language in
+project settings first.
 
 Keyed on the **source string**, so one entry translates every occurrence. A key
 that matches nothing is **reported**, not skipped — a source edited after the

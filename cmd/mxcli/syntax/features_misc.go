@@ -244,7 +244,20 @@ an empty target — which is what makes the output an LLM prompt:
 
 A key that matches nothing is REPORTED, not skipped: a source edited after
 the file was written stops matching, and the run names the string it has
-probably become.`,
+probably become.
+
+An EMPTY entry list is legal: under OR REPLACE it names nothing, so every
+translation in scope is removed. That is the way to take a language's
+translations out of the model:
+
+  create or replace translations for de_DE ( );
+
+A translation for a language the project has not ENABLED is stored, passes
+mx check, and is DISCARDED at build time — no translations_<code>.properties
+is produced at all. The run warns; enable the language in project settings
+first. Note SHOW LANGUAGES lists languages that HAVE translations, not the
+enabled ones (8 vs 1 on a stock app); the enabled list is in DESCRIBE
+SETTINGS.`,
 		Example: `describe translations for nl_NL;
 
 create or modify translations in Administration for nl_NL (
