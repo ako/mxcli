@@ -177,7 +177,7 @@ func serializeImportValueElement(id string, elem *model.ImportMappingElement, pa
 		// the shape mxbuild accepts and Studio Pro refuses to open. (issue #882)
 		{Key: "ElementType", Value: "Value"},
 		{Key: "Documentation", Value: ""},
-		{Key: "Converter", Value: ""},
+		{Key: "Converter", Value: elem.Converter},
 		{Key: "FractionDigits", Value: int32(elem.FractionDigits)},
 		{Key: "TotalDigits", Value: int32(elem.TotalDigits)},
 		{Key: "MaxLength", Value: int32(elem.MaxLength)},

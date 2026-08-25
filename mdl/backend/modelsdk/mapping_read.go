@@ -245,6 +245,7 @@ func importMappingElementFromGen(el element.Element) *model.ImportMappingElement
 		e.Kind = "Value"
 		e.Attribute = o.AttributeQualifiedName()
 		e.IsKey = o.IsKey()
+		e.Converter = o.ConverterQualifiedName()
 		e.ExposedName = o.ExposedName()
 		e.JsonPath = o.JsonPath()
 		e.XmlPath = o.XmlPath()
@@ -281,6 +282,7 @@ func exportMappingElementFromGen(el element.Element) *model.ExportMappingElement
 	case *genExp.ExportValueMappingElement:
 		e.Kind = "Value"
 		e.Attribute = o.AttributeQualifiedName()
+		e.Converter = o.ConverterQualifiedName()
 		e.ExposedName = o.ExposedName()
 		e.JsonPath = o.JsonPath()
 		e.XmlPath = o.XmlPath()

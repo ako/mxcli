@@ -647,6 +647,7 @@ Filed 2026-08-24 against `ako/mxcli`.
 | [#268](https://github.com/ako/mxcli/issues/268) — primitive-array wrapper (`member[]`) | §7.7 | 34 |
 | [#272](https://github.com/ako/mxcli/issues/272) — `create json structure` builds different element metadata than Studio Pro | — | — |
 | [#277](https://github.com/ako/mxcli/issues/277) — export value elements omit `IsKey`, hardcode `MaxLength 0` | — | — |
+| *(unfiled — GitHub rate limit)* rebuilt mappings carry a fixed property set: `MessageDefinition2` dropped, `MappingSourceReference` added, export `MinOccurs` hardcoded. Body drafted; see the session scratchpad | — | — |
 
 [#253](https://github.com/ako/mxcli/issues/253) is unchanged and still open.
 

@@ -1104,6 +1104,11 @@ type ImportMappingElement struct {
 	Attribute string `json:"attribute,omitempty"` // qualified attribute name (Module.Entity.Attr)
 	DataType  string `json:"dataType,omitempty"`  // "String", "Integer", "Boolean", etc.
 	IsKey     bool   `json:"isKey,omitempty"`
+	// Converter is a microflow the value passes through on its way to the
+	// attribute (#266). The element carries only this — there is no separate
+	// parameter path, because the microflow's input IS the member the element
+	// already binds.
+	Converter string `json:"converter,omitempty"` // qualified microflow name
 	// Schema fields (cloned from JSON structure element)
 	ExposedName string `json:"exposedName,omitempty"`
 	JsonPath    string `json:"jsonPath,omitempty"`
@@ -1222,6 +1227,8 @@ type ExportMappingElement struct {
 	// Value mapping fields
 	Attribute string `json:"attribute,omitempty"` // qualified attribute name (Module.Entity.Attr)
 	DataType  string `json:"dataType,omitempty"`  // "String", "Integer", "Boolean", etc.
+	// Converter — see the note on ImportMappingElement (#266).
+	Converter string `json:"converter,omitempty"`
 	// Shared fields
 	ExposedName string `json:"exposedName,omitempty"`
 	JsonPath    string `json:"jsonPath,omitempty"`

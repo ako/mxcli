@@ -190,6 +190,9 @@ func buildImportMappingFromMessageDefinition(moduleName string, def *ast.ImportM
 		// entity that DECLARES it — use it rather than re-deriving, which is
 		// what gets inherited members wrong (#703).
 		elem.Attribute = node.Attribute
+		if err := setMappingConverter(&elem.Converter, def.Converter, moduleName, b); err != nil {
+			return nil, err
+		}
 		return elem, nil
 	}
 
@@ -270,6 +273,9 @@ func buildExportMappingFromMessageDefinition(moduleName string, def *ast.ExportM
 			elem.DataType = "String"
 		}
 		elem.Attribute = node.Attribute
+		if err := setMappingConverter(&elem.Converter, def.Converter, moduleName, b); err != nil {
+			return nil, err
+		}
 		return elem, nil
 	}
 
@@ -315,4 +321,34 @@ func buildExportMappingFromMessageDefinition(moduleName string, def *ast.ExportM
 		elem.Children = append(elem.Children, c)
 	}
 	return elem, nil
+}
+
+// setMappingConverter resolves a value element's converter microflow (#266).
+//
+// The reference is REFUSED when the microflow does not exist, rather than being
+// written through: mxbuild reports an unresolvable converter as CE1613 and the
+// mapping silently loses the transform, which is the same failure mode as an
+// unresolvable schema source (#259).
+func setMappingConverter(dst *string, converter, moduleName string, b backend.FullBackend) error {
+	if converter == "" {
+		return nil
+	}
+	if !strings.Contains(converter, ".") {
+		converter = moduleName + "." + converter
+	}
+	parts := strings.SplitN(converter, ".", 2)
+	mfs, err := b.ListMicroflows()
+	if err != nil {
+		// No microflow list to check against — take the name at face value
+		// rather than refusing something that may well be right.
+		*dst = converter
+		return nil
+	}
+	for _, mf := range mfs {
+		if strings.EqualFold(mf.Name, parts[1]) {
+			*dst = converter
+			return nil
+		}
+	}
+	return fmt.Errorf("converter microflow %q not found", converter)
 }

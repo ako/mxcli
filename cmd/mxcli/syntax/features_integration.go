@@ -586,7 +586,7 @@ DESCRIBE DATABASE CONNECTION Ops.Erp;`,
 			"import mapping", "create import mapping", "drop import mapping",
 			"show import mappings", "describe import mapping",
 			"with json structure", "with message definition", "find or create",
-			"object handling",
+			"object handling", "converter", "value transform",
 		},
 		Syntax: "SHOW IMPORT MAPPINGS [IN Module];\nDESCRIBE IMPORT MAPPING Module.Name;\n" +
 			"CREATE [OR MODIFY] IMPORT MAPPING Module.Name [FOLDER 'path']\n" +
@@ -604,6 +604,11 @@ DESCRIBE DATABASE CONNECTION Ops.Erp;`,
 			"  Use Assoc/Module.Child = key { ... } instead when you WANT an entity\n" +
 			"  per level. The path may not cross a 0..* element: many items cannot\n" +
 			"  collapse into one value, and mxbuild rejects it with CE0256.\n\n" +
+			"Value transform (Attr = Module.MF(jsonField)):\n" +
+			"  The value passes through a microflow on its way to the attribute.\n" +
+			"  The stored element carries only the microflow — its input IS the\n" +
+			"  member the element binds, which is why the member is named inside\n" +
+			"  the call. The export form mirrors it: jsonField = Module.MF(Attr).\n\n" +
 			"Sources:\n" +
 			"  A JSON structure is built from a payload sample; a MESSAGE DEFINITION\n" +
 			"  is derived from the domain model and names entities and attributes\n" +
@@ -627,9 +632,9 @@ DESCRIBE DATABASE CONNECTION Ops.Erp;`,
 			"export mapping", "create export mapping", "drop export mapping",
 			"show export mappings", "describe export mapping",
 			"with json structure", "with message definition", "null values",
-			"as jsonKey",
+			"as jsonKey", "converter", "value transform",
 		},
-		Syntax: "SHOW EXPORT MAPPINGS [IN Module];\nDESCRIBE EXPORT MAPPING Module.Name;\nCREATE [OR MODIFY] EXPORT MAPPING Module.Name [FOLDER 'path']\n  WITH JSON STRUCTURE Module.JsonStruct\n  [NULL VALUES LeaveOutElement|SendAsNil]\n{\n  Module.Entity {\n    jsonField = Attr,\n    Assoc/Module.Child AS nestedKey { ... }\n  }\n};\nDROP EXPORT MAPPING Module.Name;\n\nOR MODIFY: updates mapping in-place, preserves UUID.\n\n" +
+		Syntax: "SHOW EXPORT MAPPINGS [IN Module];\nDESCRIBE EXPORT MAPPING Module.Name;\nCREATE [OR MODIFY] EXPORT MAPPING Module.Name [FOLDER 'path']\n  WITH JSON STRUCTURE Module.JsonStruct\n    | WITH MESSAGE DEFINITION Module.Collection.Definition\n    | WITH XML SCHEMA Module.Schema\n  [NULL VALUES LeaveOutElement|SendAsNil]\n{\n  Module.Entity {\n    jsonField = Attr,\n    jsonField = Module.MF(Attr),          -- value transform\n    Assoc/Module.Child AS nestedKey { ... }\n  }\n};\nDROP EXPORT MAPPING Module.Name;\n\nOR MODIFY: updates mapping in-place, preserves UUID.\n\n" +
 			"No nested-member form:\n" +
 			"  An import mapping can write `Attr = a/b/c` to reach a leaf without an\n" +
 			"  entity per level. An export mapping cannot: it has to PRODUCE the\n" +

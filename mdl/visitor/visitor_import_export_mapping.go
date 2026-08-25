@@ -113,6 +113,10 @@ func buildImportChild(ctx *parser.ImportMappingChildContext) *ast.ImportMappingE
 			elem.Converter = buildQualifiedName(allQN[0]).String()
 		}
 		elem.ConverterParam = jsonMemberPathText(ctx.JsonMemberPath())
+		// The converter's input IS the member the element binds — the stored
+		// document has one Converter and no separate parameter path — so the
+		// member must be named here too, or resolution has nothing to look up.
+		elem.JsonName = elem.ConverterParam
 	} else {
 		// Value assignment: attr = a/b/c KEY?
 		if id := ctx.IdentifierOrKeyword(); id != nil {
@@ -215,10 +219,13 @@ func buildExportChild(ctx *parser.ExportMappingChildContext) *ast.ExportMappingE
 			elem.Children = append(elem.Children, child)
 		}
 	} else {
-		// Value mapping: a/b/c = Attr
+		// Value mapping: a/b/c = Attr, or the transform form a/b/c = Module.MF(Attr).
 		elem.JsonName = jsonMemberPathText(ctx.JsonMemberPath())
 		if id := ctx.IdentifierOrKeyword(); id != nil {
 			elem.Attribute = identifierOrKeywordText(id.(*parser.IdentifierOrKeywordContext))
+		}
+		if ctx.LPAREN() != nil && len(allQN) == 1 {
+			elem.Converter = buildQualifiedName(allQN[0]).String()
 		}
 	}
 

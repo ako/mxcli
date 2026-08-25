@@ -194,7 +194,15 @@ func printImportMappingElement(w io.Writer, elem *model.ImportMappingElement, de
 		if elem.IsKey {
 			keyStr = " key"
 		}
-		fmt.Fprintf(w, "%s%s = %s%s", indent, attrName, mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName), keyStr)
+		member := mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName)
+		// A converter is written as a call around the member it transforms —
+		// the stored element has one microflow and no separate parameter, so
+		// the member inside the call IS this element's binding (#266).
+		if elem.Converter != "" {
+			fmt.Fprintf(w, "%s%s = %s(%s)%s", indent, attrName, elem.Converter, member, keyStr)
+			return
+		}
+		fmt.Fprintf(w, "%s%s = %s%s", indent, attrName, member, keyStr)
 	}
 }
 
@@ -506,6 +514,13 @@ func buildImportMappingElementModel(moduleName string, def *ast.ImportMappingEle
 		elem.TypeName = "ImportMappings$ValueMappingElement"
 		elem.DataType = resolveAttributeType(parentEntity, def.Attribute, b)
 		elem.IsKey = def.IsKey
+		// The value may pass through a microflow on its way to the attribute
+		// (#266). The stored element carries only the microflow — its input is
+		// the member this element already binds, which is why the syntax names
+		// the member inside the call.
+		if err := setMappingConverter(&elem.Converter, def.Converter, moduleName, b); err != nil {
+			return nil, err
+		}
 		// A member reference is qualified against the entity that DECLARES it, so
 		// an inherited attribute carries an ancestor's name. Prefixing the entity
 		// being mapped produced CE1613 "The selected attribute no longer exists"

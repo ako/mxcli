@@ -1,0 +1,89 @@
+-- ============================================================================
+-- Bug #266: value converter microflows parsed but were dropped
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   `Attr = Module.MF(jsonField)` was already in the grammar and already built
+--   into the AST (ast_import_export_mapping.go carried Converter and
+--   ConverterParam). Nothing downstream read either: the model element had no
+--   Converter field and every writer hardcoded the BSON key to "".
+--
+--   So the statement was accepted, the mapping was created, and the transform
+--   was silently absent. DESCRIBE likewise printed `URL = uuid` for a converted
+--   element, which is one of #260's silent-loss cases — 39 of the 327 mapping
+--   documents in the demo apps use a converter, including the two that ship in
+--   every blank app (FeedbackModule.IMM_PostResponse, .EXM_PostFeedback).
+--
+--   The visitor also never set JsonName for that alternative, so even with a
+--   model field the member had no name to resolve against.
+--
+-- Shape:
+--   The stored value element carries ONE property — Converter, a qualified
+--   microflow — and no separate parameter path. The microflow's input IS the
+--   member the element already binds, which is why the syntax names the member
+--   inside the call rather than beside it.
+--
+-- Export had no spelling at all:
+--   The import form existed; the export grammar had only `jsonKey = Attr`. 22
+--   export value elements in the demo apps carry a converter, so the mirrored
+--   form `jsonKey = Module.MF(Attr)` was added.
+--
+-- Validation:
+--   Both mappings a blank Mendix 11.13 app ships round-trip through
+--   describe -> exec with the converter intact; before the fix the converter was
+--   absent from the rebuild.
+-- ============================================================================
+
+create module BugTest266;
+
+create persistent entity BugTest266.Response (
+  URL: String(500),
+  Payload: String(500)
+);
+
+create json structure BugTest266.JSON_Response
+  snippet $${"uuid": "00000000-0000-0000-0000-000000000000", "payload": "abc"}$$;
+
+create microflow BugTest266.ConvertUUIDToURL (
+  $uuid: String
+)
+returns String
+begin
+  @start(100, 200)
+  @position(400, 200)
+  return 'https://example.com/' + $uuid;
+end;
+/
+
+create microflow BugTest266.ConvertPayload (
+  $payload: String
+)
+returns String
+begin
+  @start(100, 200)
+  @position(400, 200)
+  return toUpperCase($payload);
+end;
+/
+
+-- Import: attribute = microflow(member)
+create or modify import mapping BugTest266.IMM_Response
+  folder 'Mappings'
+  with json structure BugTest266.JSON_Response
+{
+  create BugTest266.Response {
+    URL = BugTest266.ConvertUUIDToURL(uuid),
+    Payload = payload
+  }
+};
+
+-- Export: member = microflow(attribute) — the mirrored form.
+create or modify export mapping BugTest266.EXM_Response
+  folder 'Mappings'
+  with json structure BugTest266.JSON_Response
+{
+  BugTest266.Response {
+    uuid = URL,
+    payload = BugTest266.ConvertPayload(Payload)
+  }
+};

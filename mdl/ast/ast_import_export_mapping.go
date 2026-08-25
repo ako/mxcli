@@ -96,6 +96,9 @@ type ExportMappingElementDef struct {
 
 	// Value mapping fields
 	Attribute string // entity attribute name (RHS of =)
+	// Converter is the microflow the value passes through on its way out
+	// (#266): `jsonKey = Module.MF(Attr)`.
+	Converter string
 
 	// Shared
 	JsonName string // JSON field name (LHS of = for values, RHS of AS for objects)

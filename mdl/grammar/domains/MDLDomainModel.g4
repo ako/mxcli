@@ -572,6 +572,7 @@ exportMappingChild
     : qualifiedName SLASH qualifiedName AS identifierOrKeyword
       LBRACE exportMappingChild (COMMA exportMappingChild)* RBRACE       // nested object with children
     | qualifiedName SLASH qualifiedName AS identifierOrKeyword            // leaf object
+    | jsonMemberPath EQUALS qualifiedName LPAREN identifierOrKeyword RPAREN // value transform: a/b/c = Module.MF(Attr)
     | jsonMemberPath EQUALS identifierOrKeyword                           // value: a/b/c = Attr
     ;
 
