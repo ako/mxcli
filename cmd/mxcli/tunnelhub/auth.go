@@ -324,7 +324,20 @@ func (a *AuthConfig) safeReturn(ret string) bool {
 	if h == a.HubHost {
 		return true
 	}
-	return a.CookieDomain != "" && strings.HasSuffix(h, a.CookieDomain)
+	if a.CookieDomain == "" {
+		return false
+	}
+	// Compare against the registrable domain, not the operator's spelling of it.
+	// A bare strings.HasSuffix is a substring test, not a subdomain test: with
+	// CookieDomain "mxcli.org" it also accepts "evil-mxcli.org", which anyone can
+	// register. buildHubAuth's default supplies the leading dot that makes the
+	// naive form correct, but --cookie-domain takes an arbitrary string and
+	// nothing tells the operator the dot is load-bearing. Normalising here means
+	// both spellings behave identically and the flag cannot be mis-typed into an
+	// open redirect out of the OAuth callback -- which fires AFTER the session
+	// cookie is set, so the victim lands off-site already authenticated.
+	domain := strings.TrimPrefix(a.CookieDomain, ".")
+	return h == domain || strings.HasSuffix(h, "."+domain)
 }
 
 func (a *AuthConfig) exchangeCode(code string) (string, error) {
