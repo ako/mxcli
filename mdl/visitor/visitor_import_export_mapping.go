@@ -3,6 +3,7 @@
 package visitor
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/antlr4-go/antlr/v4"
@@ -57,6 +58,7 @@ func buildImportRootElement(ctx *parser.ImportMappingRootElementContext) *ast.Im
 	if hCtx := ctx.ImportMappingObjectHandling(); hCtx != nil {
 		elem.ObjectHandling = extractObjectHandling(hCtx.(*parser.ImportMappingObjectHandlingContext))
 	}
+	elem.CustomHandler = buildMappingCustomHandler(ctx.MappingCustomHandler())
 
 	// Entity name
 	if ctx.QualifiedName() != nil {
@@ -85,6 +87,7 @@ func buildImportChild(ctx *parser.ImportMappingChildContext) *ast.ImportMappingE
 	if hCtx := ctx.ImportMappingObjectHandling(); hCtx != nil {
 		// Object mapping: CREATE/FIND/FIND OR CREATE Assoc/Entity = jsonKey
 		elem.ObjectHandling = extractObjectHandling(hCtx.(*parser.ImportMappingObjectHandlingContext))
+		elem.CustomHandler = buildMappingCustomHandler(ctx.MappingCustomHandler())
 
 		// Association path: qualifiedName SLASH qualifiedName
 		allQN := ctx.AllQualifiedName()
@@ -184,6 +187,7 @@ func buildExportRootElement(ctx *parser.ExportMappingRootElementContext) *ast.Ex
 	if ctx.QualifiedName() != nil {
 		elem.Entity = buildQualifiedName(ctx.QualifiedName()).String()
 	}
+	elem.CustomHandler = buildMappingCustomHandler(ctx.MappingCustomHandler())
 
 	for _, childCtx := range ctx.AllExportMappingChild() {
 		child := buildExportChild(childCtx.(*parser.ExportMappingChildContext))
@@ -207,6 +211,8 @@ func buildExportChild(ctx *parser.ExportMappingChildContext) *ast.ExportMappingE
 		// Object mapping: Assoc/Entity AS jsonKey
 		elem.Association = buildQualifiedName(allQN[0]).String()
 		elem.Entity = buildQualifiedName(allQN[1]).String()
+
+		elem.CustomHandler = buildMappingCustomHandler(ctx.MappingCustomHandler())
 
 		// JSON key after AS
 		if id := ctx.IdentifierOrKeyword(); id != nil {
@@ -350,4 +356,61 @@ func jsonMemberPathText(ctx parser.IJsonMemberPathContext) string {
 		segments = append(segments, identifierOrKeywordText(seg))
 	}
 	return strings.Join(segments, "/")
+}
+
+// buildMappingCustomHandler reads the `by Module.MF(Param: source, ...)` clause
+// (#264). The source spellings map to the four shapes Studio Pro stores:
+//
+//	parent      -> "(parent)",    LevelOfParent -1
+//	parameter   -> "(parameter)", LevelOfParent -1
+//	parent(2)   -> "",            LevelOfParent 2
+//	a/b/c       -> the value path, LevelOfParent -1
+func buildMappingCustomHandler(ctx parser.IMappingCustomHandlerContext) *ast.MappingCustomHandlerDef {
+	if ctx == nil {
+		return nil
+	}
+	c, ok := ctx.(*parser.MappingCustomHandlerContext)
+	if !ok {
+		return nil
+	}
+	out := &ast.MappingCustomHandlerDef{}
+	if qn := c.QualifiedName(); qn != nil {
+		out.Microflow = buildQualifiedName(qn).String()
+	}
+	for _, pc := range c.AllMappingCallParameter() {
+		p, ok := pc.(*parser.MappingCallParameterContext)
+		if !ok {
+			continue
+		}
+		ids := p.AllIdentifierOrKeyword()
+		if len(ids) == 0 {
+			continue
+		}
+		def := &ast.MappingCallParameterDef{
+			Parameter: identifierOrKeywordText(ids[0]),
+			Level:     -1,
+		}
+		switch {
+		case p.PARAMETER() != nil:
+			def.Source = "parameter"
+		case p.NUMBER_LITERAL() != nil:
+			// `Param: parent(2)` — the keyword is an identifier here so the
+			// grammar stays free of a PARENT token; the executor rejects any
+			// word other than "parent".
+			def.Source = strings.ToLower(identifierOrKeywordText(ids[1]))
+			if n, err := strconv.Atoi(p.NUMBER_LITERAL().GetText()); err == nil {
+				def.Level = n
+			}
+		default:
+			path := jsonMemberPathText(p.JsonMemberPath())
+			if strings.EqualFold(path, "parent") {
+				def.Source = "parent"
+			} else {
+				def.Source = "path"
+				def.Path = path
+			}
+		}
+		out.Parameters = append(out.Parameters, def)
+	}
+	return out
 }

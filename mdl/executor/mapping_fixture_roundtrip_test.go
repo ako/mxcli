@@ -44,11 +44,10 @@ import (
 // from — 112 of 327 real mappings are in this class.
 var knownLossy = map[string]string{
 	"Email_Connector.IMM_EmailTemplateMapping":                "#261 find/create + error",
-	"KrogerAPI.IM_AccessToken":                                "#264 custom object handling",
 	"KrogerAPI.IM_ProductList":                                "#268 primitive-array wrapper",
 	"MxGenAIConnector.EM_CohereEmbed_Request":                 "#268 primitive-array wrapper",
-	"MxGenAIConnector.IM_CohereEmbed_Response":                "#265 mapping input parameter, #264 custom object handling",
-	"MxGenAIConnector.IM_Collection_RetrieveNearestNeighbors": "#264 custom object handling, #267 nested root",
+	"MxGenAIConnector.IM_CohereEmbed_Response":                "#265 mapping input parameter",
+	"MxGenAIConnector.IM_Collection_RetrieveNearestNeighbors": "#267 nested root",
 	"OpenAI_API.IM_OpenAI":                                    "#267 nested schema root",
 	// Not a defect: this document predates MappingSourceReference (it is the
 	// only one of the twelve without the key), and the rebuild writes the

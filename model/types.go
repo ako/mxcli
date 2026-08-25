@@ -1100,6 +1100,9 @@ type ImportMappingElement struct {
 	Entity         string `json:"entity,omitempty"`         // qualified entity name
 	ObjectHandling string `json:"objectHandling,omitempty"` // "Create", "Find", "FindOrCreate", "Custom"
 	Association    string `json:"association,omitempty"`    // qualified association name
+	// CustomHandler is set when ObjectHandling is "Custom": a microflow
+	// resolves the object instead of Create/Find (#264).
+	CustomHandler *MappingMicroflowCall `json:"customHandler,omitempty"`
 	// Value mapping fields
 	Attribute string `json:"attribute,omitempty"` // qualified attribute name (Module.Entity.Attr)
 	DataType  string `json:"dataType,omitempty"`  // "String", "Integer", "Boolean", etc.
@@ -1126,6 +1129,46 @@ type ImportMappingElement struct {
 	MaxLength      int    `json:"maxLength,omitempty"`      // -1 = unset for non-string
 	// Children
 	Children []*ImportMappingElement `json:"children,omitempty"`
+}
+
+// ============================================================================
+// Mapping custom object handling
+// ============================================================================
+
+// MappingMicroflowCall is the microflow that resolves a mapping element's object
+// when its handling is Custom (#264) — Studio Pro's "call a microflow" option.
+//
+// Stored as Mappings$MappingMicroflowCallImpl on the object element's
+// CustomHandlerCall property.
+type MappingMicroflowCall struct {
+	Microflow  string                       `json:"microflow"`
+	Parameters []*MappingMicroflowParameter `json:"parameters,omitempty"`
+}
+
+// MappingMicroflowParameter binds one of the called microflow's parameters.
+//
+// Four sources occur across the demo apps, and the stored shape distinguishes
+// them by a path marker plus LevelOfParent rather than by a kind field:
+//
+//	Source     stored path        LevelOfParent
+//	parent     "(parent)"         -1     the enclosing mapped object
+//	parameter  "(parameter)"      -1     the mapping's own input object
+//	ancestor   ""                 1..N   N levels up (export mappings)
+//	path       a JSON value path  -1     a value from the payload
+type MappingMicroflowParameter struct {
+	// Parameter is the qualified parameter reference,
+	// "Module.Microflow.ParamName".
+	Parameter string `json:"parameter"`
+	// Source is one of "parent", "parameter", "ancestor", "path".
+	Source string `json:"source"`
+	// LevelOfParent is meaningful for "ancestor" only; -1 otherwise.
+	LevelOfParent int `json:"levelOfParent"`
+	// ValuePath is the JSON path for "path" only.
+	ValuePath string `json:"valuePath,omitempty"`
+	// XmlValuePath mirrors ValuePath for XML/message-definition mappings. The
+	// marker sources write the SAME marker into both path properties; a value
+	// path writes the JSON one and leaves the XML one empty.
+	XmlValuePath string `json:"xmlValuePath,omitempty"`
 }
 
 // ============================================================================
@@ -1220,6 +1263,8 @@ type ExportMappingElement struct {
 	Entity         string `json:"entity,omitempty"`         // qualified entity name
 	Association    string `json:"association,omitempty"`    // qualified association name
 	ObjectHandling string `json:"objectHandling,omitempty"` // "Parameter" for root, "Find" for children
+	// CustomHandler — see the note on ImportMappingElement (#264).
+	CustomHandler *MappingMicroflowCall `json:"customHandler,omitempty"`
 	// 1 for Object, -1 for Array (unbounded). NOT "0 = default": Mendix reads
 	// MaxOccurs=0 literally as "never occurs", and cross-validates this against
 	// the bound JSON structure element (CE5015). Mirror the schema (#841).

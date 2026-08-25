@@ -21,6 +21,14 @@ func init() {
 	codec.RegisterListMarker("ImportMappings$ValueMappingElement", 2)
 	codec.RegisterListMarker("ExportMappings$ObjectMappingElement", 2)
 	codec.RegisterListMarker("ExportMappings$ValueMappingElement", 2)
+	// A custom handler's ParameterMappings list serializes with marker 2, and
+	// Studio Pro writes it even when the microflow takes NO parameters — the
+	// bare [2], the same MandatoryLists rule as a rule document's Flows.
+	// Dropping it is a diff against every stored document that has one (#264).
+	codec.RegisterListMarker("Mappings$MicroflowCallParameterMappingImpl", 2)
+	codec.RegisterTypeDefaults("Mappings$MappingMicroflowCallImpl", codec.TypeDefaults{
+		MandatoryListMarkers: map[string]int32{"ParameterMappings": 2},
+	})
 
 	// MappingSourceReference is always serialized as BSON null on the mapping
 	// document; CustomHandlerCall is always null on object mapping elements.
@@ -157,6 +165,12 @@ func importObjectElementToGen(id string, elem *model.ImportMappingElement, paren
 		objectHandling = "Find"
 		objectHandlingBackup = "Create"
 	}
+	if objectHandling == "Custom" {
+		// ObjectHandlingBackup is {Create, Error, Ignore} — "Custom" is not in
+		// it. Import documents with a custom handler store Create (73 of 77 in
+		// the demo apps; the rest Ignore, which MDL cannot yet ask for — #261).
+		objectHandlingBackup = "Create"
+	}
 
 	// $Type is ObjectMappingElement (no "Import" prefix); the generated metamodel
 	// name is misleading and causes TypeCacheUnknownTypeException if used.
@@ -169,6 +183,9 @@ func importObjectElementToGen(id string, elem *model.ImportMappingElement, paren
 	addStr(g, "ObjectHandlingBackup", objectHandlingBackup)
 	addBool(g, "ObjectHandlingBackupAllowOverride", false)
 	addStr(g, "Association", elem.Association)
+	if ch := customHandlerToGen(elem.CustomHandler); ch != nil {
+		addPart(g, "CustomHandlerCall", ch)
+	}
 
 	children := make([]element.Element, 0, len(elem.Children))
 	for _, c := range elem.Children {
@@ -326,6 +343,13 @@ func exportObjectElementToGen(id string, elem *model.ExportMappingElement, paren
 	}
 
 	objectHandling := orDefault(elem.ObjectHandling, "Parameter")
+	objectHandlingBackup := objectHandling
+	if objectHandling == "Custom" {
+		// Every export object element in the demo apps stores Error (537 of
+		// 537), and "Custom" is not in the backup enum. The non-Custom paths
+		// keep today's behaviour — that is #261's to fix, uniformly.
+		objectHandlingBackup = "Error"
+	}
 
 	g := newElem("ExportMappings$ObjectMappingElement", id)
 	addStr(g, "Entity", elem.Entity)
@@ -333,9 +357,12 @@ func exportObjectElementToGen(id string, elem *model.ExportMappingElement, paren
 	addStr(g, "JsonPath", jsonPath)
 	addStr(g, "XmlPath", elem.XmlPath)
 	addStr(g, "ObjectHandling", objectHandling)
-	addStr(g, "ObjectHandlingBackup", objectHandling)
+	addStr(g, "ObjectHandlingBackup", objectHandlingBackup)
 	addBool(g, "ObjectHandlingBackupAllowOverride", false)
 	addStr(g, "Association", elem.Association)
+	if ch := customHandlerToGen(elem.CustomHandler); ch != nil {
+		addPart(g, "CustomHandlerCall", ch)
+	}
 
 	children := make([]element.Element, 0, len(elem.Children))
 	for _, c := range elem.Children {
@@ -438,5 +465,56 @@ func elementTypeForKind(kind string) string {
 		return "Value"
 	default:
 		return "Object"
+	}
+}
+
+// customHandlerToGen builds the Mappings$MappingMicroflowCallImpl sub-document
+// for an object element whose handling is Custom (#264).
+//
+// Built with the generic element helpers, like the rest of the mapping writer,
+// rather than through gen: the parameter's stored $Type is
+// Mappings$MicroflowCallParameterMappingImpl (161 of 161 documents) where gen
+// names it MappingMicroflowParameter, and ParameterMappings must be emitted even
+// when EMPTY — Studio Pro writes the bare typed-array marker, the same
+// MandatoryLists rule as a rule document's Flows. gen's PartList has no way to
+// say "present but empty", and a dropped key is a diff against every stored
+// document that has one.
+//
+// ValueElementPath is deliberately not written: gen declares it and Studio Pro
+// writes it in 0 of 161 parameter mappings.
+func customHandlerToGen(call *model.MappingMicroflowCall) element.Element {
+	if call == nil || call.Microflow == "" {
+		return nil
+	}
+	g := newElem("Mappings$MappingMicroflowCallImpl", "")
+	addStr(g, "Microflow", call.Microflow)
+
+	params := make([]element.Element, 0, len(call.Parameters))
+	for _, p := range call.Parameters {
+		jsonPath, xmlPath, level := storedParameterPaths(p)
+		pg := newElem("Mappings$MicroflowCallParameterMappingImpl", "")
+		addStr(pg, "Parameter", p.Parameter)
+		addInt32(pg, "LevelOfParent", int32(level))
+		addStr(pg, "JsonValueElementPath", jsonPath)
+		addStr(pg, "XmlValueElementPath", xmlPath)
+		params = append(params, pg)
+	}
+	addPartList(g, "ParameterMappings", params)
+	return g
+}
+
+// storedParameterPaths maps a parameter's source to the (json, xml, level)
+// triple Studio Pro stores. The marker sources write the SAME marker into both
+// path properties; an explicit value path is JSON-only.
+func storedParameterPaths(p *model.MappingMicroflowParameter) (string, string, int) {
+	switch p.Source {
+	case "parameter":
+		return "(parameter)", "(parameter)", -1
+	case "ancestor":
+		return "", "", p.LevelOfParent
+	case "path":
+		return p.ValuePath, p.XmlValuePath, -1
+	default:
+		return "(parent)", "(parent)", -1
 	}
 }

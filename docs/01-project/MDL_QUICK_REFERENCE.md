@@ -1083,6 +1083,7 @@ source json '{"latitude": 51.9, "current": {"temp": 12.8}}'
 | Drop mapping | `drop import mapping Module.Name;` | |
 | Schema source | `with json structure Module.JSON_X` / `with message definition Module.Collection.Definition` / `with xml schema Module.Schema` | A **message definition** is derived from the domain model rather than a payload sample, so its members are the definition's exposed names and the reference is **three parts** — the definitions live inside a collection document. Read-only: map over one that already exists |
 | Array-rooted structure | no special syntax | The root is taken from the structure, so `[{...}]` and `{...}` are written the same way |
+| Custom object handling | `find Module.Entity by Module.Microflow ( Param: parent ) = member { ... }` | A microflow resolves the object instead of Create/Find. Parameter sources: `parent` (the enclosing mapped object), `parameter` (the mapping's own input), `parent(2)` (an ancestor N levels up), or a member path such as `idx` (a value from the payload — mxcli adds the value element Mendix requires for it). modelsdk engine only |
 | Value transform | `Attr = Module.Microflow(jsonField)` (import) / `jsonField = Module.Microflow(Attr)` (export) | The value passes through a microflow. The stored element carries only the microflow — its input **is** the member the element binds, which is why the member is named inside the call. An unresolvable microflow is refused |
 
 ```sql

@@ -35,11 +35,28 @@ type DropImportMappingStmt struct {
 func (s *DropImportMappingStmt) isStatement() {}
 
 // ImportMappingElementDef represents one element in the mapping tree.
+// MappingCustomHandlerDef is the `by Module.Microflow(...)` clause: a microflow
+// resolves the object instead of Create/Find (#264).
+type MappingCustomHandlerDef struct {
+	Microflow  string
+	Parameters []*MappingCallParameterDef
+}
+
+// MappingCallParameterDef binds one parameter of the called microflow.
+// Source is "parent", "parameter", "ancestor" or "path".
+type MappingCallParameterDef struct {
+	Parameter string
+	Source    string
+	Level     int
+	Path      string
+}
+
 type ImportMappingElementDef struct {
 	// Object mapping fields
 	Entity         string // qualified entity name (e.g. "Module.Customer")
 	ObjectHandling string // "Create", "Find", "FindOrCreate"
 	Association    string // qualified association name (from Assoc/Entity path)
+	CustomHandler  *MappingCustomHandlerDef
 	Children       []*ImportMappingElementDef
 
 	// Value mapping fields
@@ -90,9 +107,10 @@ func (s *DropExportMappingStmt) isStatement() {}
 // ExportMappingElementDef represents one element in an export mapping tree.
 type ExportMappingElementDef struct {
 	// Object mapping fields
-	Entity      string // qualified entity name (e.g. "Module.Customer")
-	Association string // qualified association name (from Assoc/Entity path)
-	Children    []*ExportMappingElementDef
+	Entity        string // qualified entity name (e.g. "Module.Customer")
+	Association   string // qualified association name (from Assoc/Entity path)
+	CustomHandler *MappingCustomHandlerDef
+	Children      []*ExportMappingElementDef
 
 	// Value mapping fields
 	Attribute string // entity attribute name (RHS of =)

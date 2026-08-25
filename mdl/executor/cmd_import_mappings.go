@@ -138,6 +138,12 @@ func handlingKeyword(handling string) string {
 		return "find"
 	case "FindOrCreate":
 		return "find or create"
+	case "Custom":
+		// The `by <microflow>` clause is what makes it Custom, and it reads as
+		// "find the object by calling this microflow" — so the word stays `find`
+		// and the clause carries the meaning. Printing `create` here would
+		// re-execute to Create and lose the handler (#264).
+		return "find"
 	default:
 		return "create"
 	}
@@ -147,13 +153,14 @@ func printImportMappingElement(w io.Writer, elem *model.ImportMappingElement, de
 	indent := strings.Repeat("  ", depth)
 	if elem.Kind == "Object" {
 		handling := handlingKeyword(elem.ObjectHandling)
+		by := customHandlerText(elem.CustomHandler, elem.JsonPath)
 		if isRoot {
 			// Root: CREATE Module.Entity { — use "." if entity is empty
 			entity := elem.Entity
 			if entity == "" {
 				entity = "."
 			}
-			fmt.Fprintf(w, "%s%s %s {\n", indent, handling, entity)
+			fmt.Fprintf(w, "%s%s %s%s {\n", indent, handling, entity, by)
 		} else {
 			// Nested object element:
 			//   CREATE Assoc/Entity = jsonKey   — normal association path
@@ -166,16 +173,17 @@ func printImportMappingElement(w io.Writer, elem *model.ImportMappingElement, de
 			} else if assoc == "" {
 				fmt.Fprintf(w, "%s%s ./%s = %s", indent, handling, entity, mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName))
 			} else {
-				fmt.Fprintf(w, "%s%s %s/%s = %s", indent, handling, assoc, entity, mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName))
+				fmt.Fprintf(w, "%s%s %s/%s%s = %s", indent, handling, assoc, entity, by, mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName))
 			}
-			if len(elem.Children) > 0 {
+			if len(printableImportChildren(elem)) > 0 {
 				fmt.Fprintln(w, " {")
 			}
 		}
-		if len(elem.Children) > 0 {
-			for i, child := range elem.Children {
+		children := printableImportChildren(elem)
+		if len(children) > 0 {
+			for i, child := range children {
 				printImportMappingElement(w, child, depth+1, false, elem.JsonPath)
-				if i < len(elem.Children)-1 {
+				if i < len(children)-1 {
 					fmt.Fprintln(w, ",")
 				} else {
 					fmt.Fprintln(w)
@@ -501,12 +509,31 @@ func buildImportMappingElementModel(moduleName string, def *ast.ImportMappingEle
 			childPath = itemPath
 		}
 
+		// `find X by MF(...)` is stored as ObjectHandling "Custom" — the
+		// microflow IS the find (#264). Built HERE, after the array branch has
+		// settled JsonPath: a value-path parameter is relative to the element's
+		// final path, which for an array is the ITEM's.
+		if def.CustomHandler != nil {
+			ch, err := buildCustomHandler(def.CustomHandler, moduleName, elem.JsonPath, b)
+			if err != nil {
+				return nil, err
+			}
+			elem.CustomHandler = ch
+			elem.ObjectHandling = "Custom"
+		}
+
 		for _, child := range def.Children {
 			c, err := buildImportMappingElementModel(moduleName, child, entity, childPath, b, idx, false)
 			if err != nil {
 				return nil, err
 			}
 			elem.Children = append(elem.Children, c)
+		}
+		// A value-path parameter needs the value it keys on to exist as an
+		// element, or mxbuild reports CE0281 (#264). Added after the authored
+		// children so one the author already mapped is not duplicated.
+		if err := addCustomHandlerValueElements(elem, def.CustomHandler, idx, childPath); err != nil {
+			return nil, err
 		}
 	} else {
 		// Value mapping — bind to attribute
@@ -755,4 +782,34 @@ func execDropImportMapping(ctx *ExecContext, s *ast.DropImportMappingStmt) error
 		fmt.Fprintf(ctx.Output, "Dropped import mapping %s.%s\n", s.Name.Module, s.Name.Name)
 	}
 	return nil
+}
+
+// printableImportChildren drops the attribute-less value elements that exist
+// only to feed a custom handler's value-path parameter (#264).
+//
+// They are DERIVED from the `by (Param: member)` clause — mxcli adds them
+// because Mendix requires the value to exist as an element (CE0281) — so
+// re-executing the clause rebuilds them. Printing them instead would emit
+// ` = idx` with no attribute, which does not parse: exactly the shape that puts
+// a mapping in #260's silent-loss set.
+func printableImportChildren(elem *model.ImportMappingElement) []*model.ImportMappingElement {
+	derived := map[string]bool{}
+	if elem.CustomHandler != nil {
+		for _, p := range elem.CustomHandler.Parameters {
+			if p.Source == "path" && p.ValuePath != "" {
+				derived[p.ValuePath] = true
+			}
+		}
+	}
+	if len(derived) == 0 {
+		return elem.Children
+	}
+	out := make([]*model.ImportMappingElement, 0, len(elem.Children))
+	for _, c := range elem.Children {
+		if c.Kind != "Object" && c.Attribute == "" && derived[c.JsonPath] {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
 }

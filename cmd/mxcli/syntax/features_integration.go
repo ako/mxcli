@@ -586,14 +586,14 @@ DESCRIBE DATABASE CONNECTION Ops.Erp;`,
 			"import mapping", "create import mapping", "drop import mapping",
 			"show import mappings", "describe import mapping",
 			"with json structure", "with message definition", "find or create",
-			"object handling", "converter", "value transform",
+			"object handling", "converter", "value transform", "custom handling", "by microflow",
 		},
 		Syntax: "SHOW IMPORT MAPPINGS [IN Module];\nDESCRIBE IMPORT MAPPING Module.Name;\n" +
 			"CREATE [OR MODIFY] IMPORT MAPPING Module.Name [FOLDER 'path']\n" +
 			"  WITH JSON STRUCTURE Module.JsonStruct\n" +
 			"    | WITH MESSAGE DEFINITION Module.Collection.Definition\n" +
 			"    | WITH XML SCHEMA Module.Schema\n{\n" +
-			"  create|find|find or create Module.Entity {\n    Attr = jsonField [KEY],\n" +
+			"  create|find|find or create Module.Entity [by Module.MF(P: parent)] {\n    Attr = jsonField [KEY],\n" +
 			"    Attr = a/b/c,\n" +
 			"    Assoc/Module.Child = nestedKey { ... }\n  }\n};\nDROP IMPORT MAPPING Module.Name;\n\n" +
 			"OR MODIFY: updates mapping in-place, preserves UUID.\n\n" +
@@ -604,6 +604,13 @@ DESCRIBE DATABASE CONNECTION Ops.Erp;`,
 			"  Use Assoc/Module.Child = key { ... } instead when you WANT an entity\n" +
 			"  per level. The path may not cross a 0..* element: many items cannot\n" +
 			"  collapse into one value, and mxbuild rejects it with CE0256.\n\n" +
+			"Custom object handling (find X by Module.MF(...)):\n" +
+			"  A microflow resolves the object instead of Create/Find. `by` is a\n" +
+			"  modifier on `find` because that is what it means — find the object\n" +
+			"  by calling this microflow. Parameter sources: parent (the enclosing\n" +
+			"  mapped object), parameter (the mapping's own input object),\n" +
+			"  parent(2) (an ancestor N levels up), or a member path (a value from\n" +
+			"  the payload). modelsdk engine only.\n\n" +
 			"Value transform (Attr = Module.MF(jsonField)):\n" +
 			"  The value passes through a microflow on its way to the attribute.\n" +
 			"  The stored element carries only the microflow — its input IS the\n" +

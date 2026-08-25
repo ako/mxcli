@@ -165,13 +165,14 @@ func exportRootToPrint(elem *model.ExportMappingElement) *model.ExportMappingEle
 func printExportMappingElement(w io.Writer, elem *model.ExportMappingElement, depth int, isRoot bool, parentPath string) {
 	indent := strings.Repeat("  ", depth)
 	if elem.Kind == "Object" {
+		by := customHandlerText(elem.CustomHandler, elem.JsonPath)
 		if isRoot {
 			// Root: Module.Entity { — use "." if entity is empty (parameter mapping)
 			entity := elem.Entity
 			if entity == "" {
 				entity = "."
 			}
-			fmt.Fprintf(w, "%s%s {\n", indent, entity)
+			fmt.Fprintf(w, "%s%s%s {\n", indent, entity, by)
 		} else {
 			// Nested object element. Several cases:
 			//   Assoc/Entity AS jsonKey  — normal association path
@@ -184,7 +185,7 @@ func printExportMappingElement(w io.Writer, elem *model.ExportMappingElement, de
 			} else if assoc == "" {
 				fmt.Fprintf(w, "%s./%s as %s", indent, entity, mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName))
 			} else {
-				fmt.Fprintf(w, "%s%s/%s as %s", indent, assoc, entity, mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName))
+				fmt.Fprintf(w, "%s%s/%s%s as %s", indent, assoc, entity, by, mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName))
 			}
 			if len(elem.Children) > 0 {
 				fmt.Fprintln(w, " {")
@@ -554,6 +555,14 @@ func buildExportMappingElementModel(moduleName string, def *ast.ExportMappingEle
 			elem.Entity = entity
 			elem.Association = assoc
 			elem.ObjectHandling = handling
+			if def.CustomHandler != nil {
+				ch, err := buildCustomHandler(def.CustomHandler, moduleName, elem.JsonPath, b)
+				if err != nil {
+					return nil, err
+				}
+				elem.CustomHandler = ch
+				elem.ObjectHandling = "Custom"
+			}
 			for _, child := range def.Children {
 				c, err := buildExportMappingElementModel(moduleName, child, entity, lookupPath, idx, b, false)
 				if err != nil {

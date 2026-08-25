@@ -503,14 +503,36 @@ importMappingWithClause
     ;
 
 importMappingRootElement
-    : importMappingObjectHandling qualifiedName
+    : importMappingObjectHandling qualifiedName mappingCustomHandler?
       LBRACE importMappingChild (COMMA importMappingChild)* RBRACE
     ;
 
+/**
+ * `by Module.Microflow ( Param: source, ... )` — a microflow resolves the object
+ * instead of Create/Find. Stored as ObjectHandling "Custom" with the call on
+ * CustomHandlerCall; "find X by MF(...)" is read as "find the object by calling
+ * this microflow".
+ *
+ * A parameter's source is one of:
+ *   parent          the enclosing mapped object
+ *   parameter       the mapping's own input object (see PARAMETER on the mapping)
+ *   parent(2)       an ancestor N levels up (export mappings)
+ *   a/b/c           a value from the payload, addressed like any other member
+ */
+mappingCustomHandler
+    : BY qualifiedName LPAREN (mappingCallParameter (COMMA mappingCallParameter)*)? RPAREN
+    ;
+
+mappingCallParameter
+    : identifierOrKeyword COLON PARAMETER
+    | identifierOrKeyword COLON identifierOrKeyword LPAREN NUMBER_LITERAL RPAREN
+    | identifierOrKeyword COLON jsonMemberPath
+    ;
+
 importMappingChild
-    : importMappingObjectHandling qualifiedName SLASH qualifiedName EQUALS identifierOrKeyword
+    : importMappingObjectHandling qualifiedName SLASH qualifiedName mappingCustomHandler? EQUALS identifierOrKeyword
       LBRACE importMappingChild (COMMA importMappingChild)* RBRACE       // nested object with children
-    | importMappingObjectHandling qualifiedName SLASH qualifiedName EQUALS identifierOrKeyword  // leaf object
+    | importMappingObjectHandling qualifiedName SLASH qualifiedName mappingCustomHandler? EQUALS identifierOrKeyword  // leaf object
     | identifierOrKeyword EQUALS qualifiedName LPAREN jsonMemberPath RPAREN  // value transform: Attr = Module.MF(jsonField)
     | identifierOrKeyword EQUALS jsonMemberPath KEY?                         // value: Attr = a/b/c [KEY]
     ;
@@ -564,14 +586,14 @@ exportMappingNullValuesClause
     ;
 
 exportMappingRootElement
-    : qualifiedName
+    : qualifiedName mappingCustomHandler?
       LBRACE exportMappingChild (COMMA exportMappingChild)* RBRACE
     ;
 
 exportMappingChild
-    : qualifiedName SLASH qualifiedName AS identifierOrKeyword
+    : qualifiedName SLASH qualifiedName mappingCustomHandler? AS identifierOrKeyword
       LBRACE exportMappingChild (COMMA exportMappingChild)* RBRACE       // nested object with children
-    | qualifiedName SLASH qualifiedName AS identifierOrKeyword            // leaf object
+    | qualifiedName SLASH qualifiedName mappingCustomHandler? AS identifierOrKeyword  // leaf object
     | jsonMemberPath EQUALS qualifiedName LPAREN identifierOrKeyword RPAREN // value transform: a/b/c = Module.MF(Attr)
     | jsonMemberPath EQUALS identifierOrKeyword                           // value: a/b/c = Attr
     ;

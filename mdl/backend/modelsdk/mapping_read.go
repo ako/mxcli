@@ -3,6 +3,8 @@
 package modelsdkbackend
 
 import (
+	"go.mongodb.org/mongo-driver/v2/bson"
+
 	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/modelsdk/element"
@@ -232,6 +234,7 @@ func importMappingElementFromGen(el element.Element) *model.ImportMappingElement
 		e.Entity = o.EntityQualifiedName()
 		e.Association = o.AssociationQualifiedName()
 		e.ObjectHandling = o.ObjectHandling()
+		e.CustomHandler = customHandlerFromRaw(o.Raw())
 		e.ExposedName = o.ExposedName()
 		e.JsonPath = o.JsonPath()
 		e.XmlPath = o.XmlPath()
@@ -272,6 +275,7 @@ func exportMappingElementFromGen(el element.Element) *model.ExportMappingElement
 		e.Entity = o.EntityQualifiedName()
 		e.Association = o.AssociationQualifiedName()
 		e.ObjectHandling = o.ObjectHandling()
+		e.CustomHandler = customHandlerFromRaw(o.Raw())
 		e.ExposedName = o.ExposedName()
 		e.JsonPath = o.JsonPath()
 		e.XmlPath = o.XmlPath()
@@ -288,4 +292,79 @@ func exportMappingElementFromGen(el element.Element) *model.ExportMappingElement
 		e.XmlPath = o.XmlPath()
 	}
 	return e
+}
+
+// customHandlerFromRaw reads a stored Mappings$MappingMicroflowCallImpl back out
+// of the element's raw BSON (#264).
+//
+// Raw rather than gen: gen's Import/ExportObjectMappingElement declares no
+// CustomHandlerCall property at all, so there is no typed accessor to read it
+// with — and a property gen does not model is exactly the kind that gets
+// silently dropped on a rebuild. The write side is unaffected, because the
+// mapping writers build generic elements rather than gen ones.
+//
+// The parameter's source is recovered from the path marker and level, which is
+// how the document distinguishes the four shapes.
+func customHandlerFromRaw(raw bson.Raw) *model.MappingMicroflowCall {
+	if raw == nil {
+		return nil
+	}
+	callDoc, ok := raw.Lookup("CustomHandlerCall").DocumentOK()
+	if !ok {
+		return nil
+	}
+	microflow, _ := callDoc.Lookup("Microflow").StringValueOK()
+	if microflow == "" {
+		return nil
+	}
+	out := &model.MappingMicroflowCall{Microflow: microflow}
+	arr, ok := callDoc.Lookup("ParameterMappings").ArrayOK()
+	if !ok {
+		return out
+	}
+	values, err := arr.Values()
+	if err != nil {
+		return out
+	}
+	for _, v := range values {
+		pd, ok := v.DocumentOK()
+		if !ok {
+			continue // the typed-array marker
+		}
+		jsonPath, _ := pd.Lookup("JsonValueElementPath").StringValueOK()
+		level := -1
+		if l, ok := pd.Lookup("LevelOfParent").Int32OK(); ok {
+			level = int(l)
+		}
+		param, _ := pd.Lookup("Parameter").StringValueOK()
+		mp := &model.MappingMicroflowParameter{
+			Parameter:     param,
+			Source:        sourceFromStoredPath(jsonPath, level),
+			LevelOfParent: level,
+		}
+		if mp.Source == "path" {
+			mp.ValuePath = jsonPath
+			mp.XmlValuePath, _ = pd.Lookup("XmlValueElementPath").StringValueOK()
+		}
+		out.Parameters = append(out.Parameters, mp)
+	}
+	return out
+}
+
+// sourceFromStoredPath is the reader's half of the source encoding — kept here
+// rather than shared with the executor because the backend must not depend on
+// it (ADR-0002: the interface speaks the semantic model).
+func sourceFromStoredPath(jsonPath string, level int) string {
+	switch {
+	case jsonPath == "(parent)":
+		return "parent"
+	case jsonPath == "(parameter)":
+		return "parameter"
+	case level >= 1:
+		return "ancestor"
+	case jsonPath != "" && jsonPath != "-":
+		return "path"
+	default:
+		return "parent"
+	}
 }
