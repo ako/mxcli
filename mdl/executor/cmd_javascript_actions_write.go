@@ -145,7 +145,7 @@ func execCreateJavaScriptAction(ctx *ExecContext, s *ast.CreateJavaScriptActionS
 		jsa.ReturnType = astDataTypeToJavaActionReturnType(s.ReturnType)
 	}
 
-	if jsa.MicroflowActionInfo, err = mergeMicroflowActionInfo(
+	if jsa.MicroflowActionInfo, err = mergeMicroflowActionInfo(ctx,
 		existingActionInfo, s.ExposedCaption, s.ExposedCategory, s.NotExposed,
 		s.ExposedBitmaps, exposeWarner(ctx)); err != nil {
 		return err

@@ -21,8 +21,8 @@
 -- an action with no toolbox entry is a valid action, so `mx check` reports 0
 -- errors either way.
 --
--- Run from mdl-examples/doctype-tests/ — the bitmap paths are relative to the
--- working directory, as CREATE IMAGE COLLECTION's are.
+-- The bitmap paths below are relative to THIS SCRIPT, not to the working
+-- directory, so the file runs from anywhere.
 
 -- =============================================================================
 -- PART 0 — a module to hold the examples

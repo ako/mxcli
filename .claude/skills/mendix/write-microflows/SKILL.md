@@ -122,7 +122,8 @@ end;
 ```
 
 The icon should be a **64x64** PNG and the image **256x192**; paths resolve
-against the working directory. A different size is written with a warning; a
+against the directory of the .mdl file, so a script and its artwork travel
+together. A different size is written with a warning; a
 file that is not a PNG is refused.
 
 **An omitted clause preserves what is stored — it does not clear it:**

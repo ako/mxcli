@@ -433,7 +433,7 @@ func execCreateJavaAction(ctx *ExecContext, s *ast.CreateJavaActionStmt) error {
 
 	// Fold the EXPOSED AS clause onto the stored toolbox entry rather than
 	// rebuilding it: the four bitmaps are not expressible in MDL.
-	if ja.MicroflowActionInfo, err = mergeMicroflowActionInfo(
+	if ja.MicroflowActionInfo, err = mergeMicroflowActionInfo(ctx,
 		existingActionInfo, s.ExposedCaption, s.ExposedCategory, s.NotExposed,
 		s.ExposedBitmaps, exposeWarner(ctx)); err != nil {
 		return err

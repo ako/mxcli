@@ -159,7 +159,7 @@ func execCreateMicroflow(ctx *ExecContext, s *ast.CreateMicroflowStmt) error {
 	} else {
 		mf.AllowedModuleRoles = defaultDocumentAccessRoles(ctx, module)
 	}
-	if mf.MicroflowActionInfo, mf.WorkflowActionInfo, err = applyExposeClauses(
+	if mf.MicroflowActionInfo, mf.WorkflowActionInfo, err = applyExposeClauses(ctx,
 		s.Expose, existingActionInfo, existingWorkflowInfo, exposeWarner(ctx)); err != nil {
 		return err
 	}

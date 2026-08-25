@@ -143,7 +143,8 @@ $$;
 #### Toolbox icon and image
 
 The entry also carries four PNG bitmaps — an icon and a larger image, each with
-a dark-mode variant. Paths resolve against the working directory:
+a dark-mode variant. Paths resolve against the directory of the .mdl file, so a
+script and its artwork travel together:
 
 ```mdl
 exposed as 'Format Currency' in 'Formatting'

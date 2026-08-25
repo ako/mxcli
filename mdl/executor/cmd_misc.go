@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/mendixlabs/mxcli/cmd/mxcli/syntax"
@@ -412,20 +411,17 @@ func execExecuteScript(ctx *ExecContext, s *ast.ExecuteScriptStmt) error {
 		return mdlerrors.NewValidationf("maximum script nesting depth (%d) exceeded — possible recursive EXECUTE SCRIPT", maxScriptDepth)
 	}
 
-	// Resolve path relative to current working directory
-	scriptPath := s.Path
-	if !filepath.IsAbs(scriptPath) {
-		cwd, err := os.Getwd()
-		if err != nil {
-			return mdlerrors.NewBackend("get current directory", err)
-		}
-		scriptPath = filepath.Join(cwd, scriptPath)
+	// Resolve against the including script's directory first, so a script that
+	// pulls in a sibling works from any working directory.
+	scriptPath, err := ctx.ResolveScriptRelative(s.Path)
+	if err != nil {
+		return mdlerrors.NewBackend("get current directory", err)
 	}
 
 	// Read the script file
-	content, err := os.ReadFile(scriptPath)
-	if err != nil {
-		return mdlerrors.NewBackend("read script file '"+s.Path+"'", err)
+	content, readErr := os.ReadFile(scriptPath)
+	if readErr != nil {
+		return mdlerrors.NewBackend("read script file '"+s.Path+"'", readErr)
 	}
 
 	// Pre-process: remove "/" statement separators (SQL*Plus style)

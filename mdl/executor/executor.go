@@ -244,6 +244,7 @@ type Executor struct {
 	output         io.Writer
 	guard          *outputGuard // line-limit wrapper around output
 	mprPath        string
+	scriptDir      string // directory of the .mdl file being executed (see SetScriptDir)
 	settings       map[string]any
 	cache          *executorCache
 	catalog        *catalog.Catalog
@@ -283,6 +284,16 @@ func (e *Executor) SetQuiet(quiet bool) {
 // SetFormat sets the output format (table or json).
 func (e *Executor) SetFormat(f OutputFormat) {
 	e.format = f
+}
+
+// SetScriptDir records the directory of the .mdl file being executed, so a
+// relative path written inside a script names a file next to that script rather
+// than next to whoever invoked mxcli.
+//
+// Empty for a -c one-liner, the REPL or stdin, where there is no script to be
+// relative to; resolution then falls back to the working directory.
+func (e *Executor) SetScriptDir(dir string) {
+	e.scriptDir = dir
 }
 
 // SetLogger sets the diagnostics logger for session logging.

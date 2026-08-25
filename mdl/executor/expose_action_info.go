@@ -23,7 +23,6 @@ import (
 	"image"
 	_ "image/png" // registers the PNG decoder used to sanity-check a toolbox bitmap
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
@@ -44,7 +43,7 @@ import (
 // everything MDL cannot express is carried from what was stored. The element's
 // own $ID is carried too: minting a fresh one on every write would make an
 // otherwise-unchanged document differ (ADR-0008).
-func mergeMicroflowActionInfo(stored *javaactions.MicroflowActionInfo, caption, category string, remove bool, bitmaps []ast.ExposeBitmap, warn func(string)) (*javaactions.MicroflowActionInfo, error) {
+func mergeMicroflowActionInfo(ctx *ExecContext, stored *javaactions.MicroflowActionInfo, caption, category string, remove bool, bitmaps []ast.ExposeBitmap, warn func(string)) (*javaactions.MicroflowActionInfo, error) {
 	if remove {
 		return nil, nil
 	}
@@ -65,7 +64,7 @@ func mergeMicroflowActionInfo(stored *javaactions.MicroflowActionInfo, caption, 
 	if out.ID == "" {
 		out.ID = model.ID(types.GenerateID())
 	}
-	if err := applyExposeBitmaps(out, bitmaps, warn); err != nil {
+	if err := applyExposeBitmaps(ctx, out, bitmaps, warn); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -88,7 +87,7 @@ var bitmapSpec = map[bool]struct {
 //
 // Relative paths resolve against the working directory, as CREATE IMAGE
 // COLLECTION's do.
-func applyExposeBitmaps(out *javaactions.MicroflowActionInfo, bitmaps []ast.ExposeBitmap, warn func(string)) error {
+func applyExposeBitmaps(ctx *ExecContext, out *javaactions.MicroflowActionInfo, bitmaps []ast.ExposeBitmap, warn func(string)) error {
 	for _, b := range bitmaps {
 		target := &out.IconData
 		switch {
@@ -103,7 +102,7 @@ func applyExposeBitmaps(out *javaactions.MicroflowActionInfo, bitmaps []ast.Expo
 			*target = nil
 			continue
 		}
-		data, err := readToolboxBitmap(b, warn)
+		data, err := readToolboxBitmap(ctx, b, warn)
 		if err != nil {
 			return err
 		}
@@ -113,14 +112,10 @@ func applyExposeBitmaps(out *javaactions.MicroflowActionInfo, bitmaps []ast.Expo
 }
 
 // readToolboxBitmap loads and sanity-checks one PNG.
-func readToolboxBitmap(b ast.ExposeBitmap, warn func(string)) ([]byte, error) {
-	path := b.Path
-	if !filepath.IsAbs(path) {
-		cwd, err := os.Getwd()
-		if err != nil {
-			return nil, mdlerrors.NewBackend("get working directory", err)
-		}
-		path = filepath.Join(cwd, path)
+func readToolboxBitmap(ctx *ExecContext, b ast.ExposeBitmap, warn func(string)) ([]byte, error) {
+	path, err := ctx.ResolveScriptRelative(b.Path)
+	if err != nil {
+		return nil, mdlerrors.NewBackend("resolve toolbox bitmap path", err)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -148,14 +143,14 @@ func readToolboxBitmap(b ast.ExposeBitmap, warn func(string)) ([]byte, error) {
 // element type, so each clause names which one it means. A kind with no clause
 // is carried through untouched — the same preserve-on-silence rule the Java and
 // JavaScript actions follow.
-func applyExposeClauses(clauses []ast.ExposeActionClause, storedMicroflow, storedWorkflow *javaactions.MicroflowActionInfo, warn func(string)) (mf, wf *javaactions.MicroflowActionInfo, err error) {
+func applyExposeClauses(ctx *ExecContext, clauses []ast.ExposeActionClause, storedMicroflow, storedWorkflow *javaactions.MicroflowActionInfo, warn func(string)) (mf, wf *javaactions.MicroflowActionInfo, err error) {
 	mf, wf = storedMicroflow, storedWorkflow
 	for _, c := range clauses {
 		target := &mf
 		if c.Workflow {
 			target = &wf
 		}
-		if *target, err = mergeMicroflowActionInfo(*target, c.Caption, c.Category, c.Remove, c.Bitmaps, warn); err != nil {
+		if *target, err = mergeMicroflowActionInfo(ctx, *target, c.Caption, c.Category, c.Remove, c.Bitmaps, warn); err != nil {
 			return nil, nil, err
 		}
 	}

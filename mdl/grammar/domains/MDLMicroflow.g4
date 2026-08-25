@@ -90,7 +90,8 @@ javaActionExposedClause
 // The toolbox entry's four bitmaps. Studio Pro wants a 64x64 PNG for the icon
 // and a 256x192 PNG for the image; the dark variants are what its "Customize for
 // Dark mode" toggle fills in. Paths are read from disk at exec time and resolve
-// against the working directory, as CREATE IMAGE COLLECTION's do.
+// against the directory of the .mdl file being executed, so a script and its
+// artwork travel together.
 //
 // An omitted bitmap is preserved, not cleared — the same rule as the clause
 // itself. Clearing one is DROP ICON / DROP IMAGE.
