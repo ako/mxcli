@@ -1,5 +1,5 @@
 -- ============================================================================
--- Bug #265: an import mapping could not declare its input object
+-- Bug ako/mxcli#265: an import mapping could not declare its input object
 -- ============================================================================
 --
 -- Symptom (before fix):

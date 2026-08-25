@@ -1,5 +1,5 @@
 -- ============================================================================
--- Bug #268: arrays of PRIMITIVES could not be mapped
+-- Bug ako/mxcli#268: arrays of PRIMITIVES could not be mapped
 -- ============================================================================
 --
 -- Symptom (before fix):

@@ -1,5 +1,5 @@
 -- ============================================================================
--- Bug #264: custom object handling (a microflow resolves the object)
+-- Bug ako/mxcli#264: custom object handling (a microflow resolves the object)
 -- ============================================================================
 --
 -- Symptom (before fix):

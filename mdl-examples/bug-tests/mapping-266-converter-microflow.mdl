@@ -1,5 +1,5 @@
 -- ============================================================================
--- Bug #266: value converter microflows parsed but were dropped
+-- Bug ako/mxcli#266: value converter microflows parsed but were dropped
 -- ============================================================================
 --
 -- Symptom (before fix):

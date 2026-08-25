@@ -1,5 +1,5 @@
 -- ============================================================================
--- Bug #248: mappings over an array-rooted JSON structure could not be authored
+-- Bug ako/mxcli#248: mappings over an array-rooted JSON structure could not be authored
 -- ============================================================================
 --
 -- Symptom (before fix):

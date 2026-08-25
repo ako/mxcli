@@ -1,5 +1,5 @@
 -- ============================================================================
--- Bug #267: a mapping could not be rooted at a nested schema element
+-- Bug ako/mxcli#267: a mapping could not be rooted at a nested schema element
 -- ============================================================================
 --
 -- Symptom (before fix):

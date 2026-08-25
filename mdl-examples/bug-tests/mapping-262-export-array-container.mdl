@@ -1,5 +1,5 @@
 -- ============================================================================
--- Bug #262: export array containers were written with an entity and association
+-- Bug ako/mxcli#262: export array containers were written with an entity and association
 -- ============================================================================
 --
 -- Symptom (before fix):

@@ -1,5 +1,5 @@
 -- ============================================================================
--- Bug #261: ObjectHandlingBackup was hardcoded, so `find` was a coin toss
+-- Bug ako/mxcli#261: ObjectHandlingBackup was hardcoded, so `find` was a coin toss
 -- ============================================================================
 --
 -- Symptom (before fix):

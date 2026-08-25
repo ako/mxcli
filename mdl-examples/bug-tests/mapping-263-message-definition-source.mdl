@@ -1,5 +1,5 @@
 -- ============================================================================
--- Bug #263: mappings over a MESSAGE DEFINITION could not be authored
+-- Bug ako/mxcli#263: mappings over a MESSAGE DEFINITION could not be authored
 -- ============================================================================
 --
 -- Symptom (before fix):
