@@ -1,0 +1,229 @@
+{
+ "modules": [
+  "AgentCore",
+  "Email_Connector",
+  "FeedbackModule",
+  "GenAICommons",
+  "KrogerAPI",
+  "MendixSSO",
+  "MxGenAIConnector",
+  "MxModelReflection",
+  "OpenAI_API"
+ ],
+ "documents": [
+  {
+   "module": "FeedbackModule",
+   "name": "JSON_AppInsightsRequest",
+   "type": "JsonStructures$JsonStructure",
+   "file": "FeedbackModule.JSON_AppInsightsRequest.bson",
+   "source": "InventoryApp.mpr"
+  },
+  {
+   "module": "FeedbackModule",
+   "name": "JSON_AppInsightsResponse",
+   "type": "JsonStructures$JsonStructure",
+   "file": "FeedbackModule.JSON_AppInsightsResponse.bson",
+   "source": "InventoryApp.mpr"
+  },
+  {
+   "module": "KrogerAPI",
+   "name": "JSON_AccessToken",
+   "type": "JsonStructures$JsonStructure",
+   "file": "KrogerAPI.JSON_AccessToken.bson",
+   "source": "InventoryApp.mpr"
+  },
+  {
+   "module": "KrogerAPI",
+   "name": "JSON_Location",
+   "type": "JsonStructures$JsonStructure",
+   "file": "KrogerAPI.JSON_Location.bson",
+   "source": "InventoryApp.mpr"
+  },
+  {
+   "module": "KrogerAPI",
+   "name": "JSON_ProductList",
+   "type": "JsonStructures$JsonStructure",
+   "file": "KrogerAPI.JSON_ProductList.bson",
+   "source": "InventoryApp.mpr"
+  },
+  {
+   "module": "OpenAI_API",
+   "name": "JSON_OpenAI_Response",
+   "type": "JsonStructures$JsonStructure",
+   "file": "OpenAI_API.JSON_OpenAI_Response.bson",
+   "source": "InventoryApp.mpr"
+  },
+  {
+   "module": "MendixSSO",
+   "name": "AppRolesMessages",
+   "type": "MessageDefinitions$MessageDefinitionCollection",
+   "file": "MendixSSO.AppRolesMessages.bson",
+   "source": "MFI - Sales Play Umbrella.mpr"
+  },
+  {
+   "module": "AgentCore",
+   "name": "MesDef_Email",
+   "type": "MessageDefinitions$MessageDefinitionCollection",
+   "file": "AgentCore.MesDef_Email.bson",
+   "source": "Lato_EnquiryManagement.mpr"
+  },
+  {
+   "module": "Email_Connector",
+   "name": "MD_EmailTemplate",
+   "type": "MessageDefinitions$MessageDefinitionCollection",
+   "file": "Email_Connector.MD_EmailTemplate.bson",
+   "source": "Lato_EnquiryManagement.mpr"
+  },
+  {
+   "module": "MxGenAIConnector",
+   "name": "JSON_CohereEmbed_Request",
+   "type": "JsonStructures$JsonStructure",
+   "file": "MxGenAIConnector.JSON_CohereEmbed_Request.bson",
+   "source": "Lato_EnquiryManagement.mpr"
+  },
+  {
+   "module": "MxGenAIConnector",
+   "name": "JSON_Collection_RetrieveNearestNeighbors_Chunks",
+   "type": "JsonStructures$JsonStructure",
+   "file": "MxGenAIConnector.JSON_Collection_RetrieveNearestNeighbors_Chunks.bson",
+   "source": "Lato_EnquiryManagement.mpr"
+  },
+  {
+   "module": "MxGenAIConnector",
+   "name": "JSON_InvokeModel_CohereEmbed_Response_Modified",
+   "type": "JsonStructures$JsonStructure",
+   "file": "MxGenAIConnector.JSON_InvokeModel_CohereEmbed_Response_Modified.bson",
+   "source": "Lato_EnquiryManagement.mpr"
+  }
+ ],
+ "mappings": [
+  {
+   "module": "FeedbackModule",
+   "name": "EXM_PostFeedback",
+   "type": "ExportMappings$ExportMapping",
+   "file": "FeedbackModule.EXM_PostFeedback.bson",
+   "source": "InventoryApp.mpr",
+   "blockers": [
+    "value converter microflow"
+   ]
+  },
+  {
+   "module": "FeedbackModule",
+   "name": "IMM_PostResponse",
+   "type": "ImportMappings$ImportMapping",
+   "file": "FeedbackModule.IMM_PostResponse.bson",
+   "source": "InventoryApp.mpr",
+   "blockers": [
+    "value converter microflow"
+   ]
+  },
+  {
+   "module": "KrogerAPI",
+   "name": "IM_AccessToken",
+   "type": "ImportMappings$ImportMapping",
+   "file": "KrogerAPI.IM_AccessToken.bson",
+   "source": "InventoryApp.mpr",
+   "blockers": [
+    "object handling: custom microflow"
+   ]
+  },
+  {
+   "module": "KrogerAPI",
+   "name": "IM_Location",
+   "type": "ImportMappings$ImportMapping",
+   "file": "KrogerAPI.IM_Location.bson",
+   "source": "InventoryApp.mpr",
+   "blockers": []
+  },
+  {
+   "module": "KrogerAPI",
+   "name": "IM_ProductList",
+   "type": "ImportMappings$ImportMapping",
+   "file": "KrogerAPI.IM_ProductList.bson",
+   "source": "InventoryApp.mpr",
+   "blockers": [
+    "path through primitive-array marker",
+    "primitive-array wrapper element"
+   ]
+  },
+  {
+   "module": "OpenAI_API",
+   "name": "IM_OpenAI",
+   "type": "ImportMappings$ImportMapping",
+   "file": "OpenAI_API.IM_OpenAI.bson",
+   "source": "InventoryApp.mpr",
+   "blockers": [
+    "root: nested schema element"
+   ]
+  },
+  {
+   "module": "MendixSSO",
+   "name": "AppRolesResponse",
+   "type": "ImportMappings$ImportMapping",
+   "file": "MendixSSO.AppRolesResponse.bson",
+   "source": "MFI - Sales Play Umbrella.mpr",
+   "blockers": [
+    "root: array",
+    "source: message definition"
+   ]
+  },
+  {
+   "module": "AgentCore",
+   "name": "Email_Import",
+   "type": "ImportMappings$ImportMapping",
+   "file": "AgentCore.Email_Import.bson",
+   "source": "Lato_EnquiryManagement.mpr",
+   "blockers": [
+    "root: array",
+    "source: message definition"
+   ]
+  },
+  {
+   "module": "Email_Connector",
+   "name": "IMM_EmailTemplateMapping",
+   "type": "ImportMappings$ImportMapping",
+   "file": "Email_Connector.IMM_EmailTemplateMapping.bson",
+   "source": "Lato_EnquiryManagement.mpr",
+   "blockers": [
+    "object handling: create + error",
+    "object handling: find + error",
+    "root: array",
+    "source: message definition"
+   ]
+  },
+  {
+   "module": "MxGenAIConnector",
+   "name": "EM_CohereEmbed_Request",
+   "type": "ExportMappings$ExportMapping",
+   "file": "MxGenAIConnector.EM_CohereEmbed_Request.bson",
+   "source": "Lato_EnquiryManagement.mpr",
+   "blockers": [
+    "path through primitive-array marker",
+    "primitive-array wrapper element"
+   ]
+  },
+  {
+   "module": "MxGenAIConnector",
+   "name": "IM_CohereEmbed_Response",
+   "type": "ImportMappings$ImportMapping",
+   "file": "MxGenAIConnector.IM_CohereEmbed_Response.bson",
+   "source": "Lato_EnquiryManagement.mpr",
+   "blockers": [
+    "mapping input parameter",
+    "object handling: custom microflow",
+    "value element with no attribute"
+   ]
+  },
+  {
+   "module": "MxGenAIConnector",
+   "name": "IM_Collection_RetrieveNearestNeighbors",
+   "type": "ImportMappings$ImportMapping",
+   "file": "MxGenAIConnector.IM_Collection_RetrieveNearestNeighbors.bson",
+   "source": "Lato_EnquiryManagement.mpr",
+   "blockers": [
+    "object handling: custom microflow",
+    "root: nested schema element"
+   ]
+  }
+ ]
+}

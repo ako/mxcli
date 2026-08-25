@@ -21,6 +21,14 @@ func init() {
 	codec.RegisterListMarker("ImportMappings$ValueMappingElement", 2)
 	codec.RegisterListMarker("ExportMappings$ObjectMappingElement", 2)
 	codec.RegisterListMarker("ExportMappings$ValueMappingElement", 2)
+	// A custom handler's ParameterMappings list serializes with marker 2, and
+	// Studio Pro writes it even when the microflow takes NO parameters — the
+	// bare [2], the same MandatoryLists rule as a rule document's Flows.
+	// Dropping it is a diff against every stored document that has one (#264).
+	codec.RegisterListMarker("Mappings$MicroflowCallParameterMappingImpl", 2)
+	codec.RegisterTypeDefaults("Mappings$MappingMicroflowCallImpl", codec.TypeDefaults{
+		MandatoryListMarkers: map[string]int32{"ParameterMappings": 2},
+	})
 
 	// MappingSourceReference is always serialized as BSON null on the mapping
 	// document; CustomHandlerCall is always null on object mapping elements.
@@ -125,8 +133,16 @@ func importMappingToGen(im *model.ImportMapping) element.Element {
 	addStr(g, "PublicName", "")
 	addStr(g, "XsdRootElementName", "")
 	// ParameterType is a required sub-document even when unused; without it Studio
-	// Pro fails to render the schema source and mapping elements correctly.
-	addPart(g, "ParameterType", newElem("DataTypes$UnknownType", ""))
+	// Pro fails to render the schema source and mapping elements correctly. A
+	// mapping declaring an input object stores a DataTypes$ObjectType naming it
+	// instead of the UnknownType marker (#265).
+	if im.ParameterEntity != "" {
+		pt := newElem("DataTypes$ObjectType", "")
+		addStr(pt, "Entity", im.ParameterEntity)
+		addPart(g, "ParameterType", pt)
+	} else {
+		addPart(g, "ParameterType", newElem("DataTypes$UnknownType", ""))
+	}
 	addStr(g, "OperationName", "")
 	addStr(g, "ServiceName", "")
 	addStr(g, "WsdlFile", "")
@@ -135,7 +151,7 @@ func importMappingToGen(im *model.ImportMapping) element.Element {
 
 func importMappingElementToGen(elem *model.ImportMappingElement, parentPath string) element.Element {
 	id := string(elem.ID)
-	if elem.Kind == "Object" || elem.Kind == "Array" {
+	if isMappingObjectKind(elem.Kind) {
 		return importObjectElementToGen(id, elem, parentPath)
 	}
 	return importValueElementToGen(id, elem, parentPath)
@@ -152,11 +168,10 @@ func importObjectElementToGen(id string, elem *model.ImportMappingElement, paren
 	}
 
 	objectHandling := orDefault(elem.ObjectHandling, "Create")
-	objectHandlingBackup := objectHandling
 	if objectHandling == "FindOrCreate" {
 		objectHandling = "Find"
-		objectHandlingBackup = "Create"
 	}
+	objectHandlingBackup := importBackupFor(objectHandling, elem.ObjectHandlingBackup)
 
 	// $Type is ObjectMappingElement (no "Import" prefix); the generated metamodel
 	// name is misleading and causes TypeCacheUnknownTypeException if used.
@@ -164,11 +179,14 @@ func importObjectElementToGen(id string, elem *model.ImportMappingElement, paren
 	addStr(g, "Entity", elem.Entity)
 	addStr(g, "ExposedName", elem.ExposedName)
 	addStr(g, "JsonPath", jsonPath)
-	addStr(g, "XmlPath", "")
+	addStr(g, "XmlPath", elem.XmlPath)
 	addStr(g, "ObjectHandling", objectHandling)
 	addStr(g, "ObjectHandlingBackup", objectHandlingBackup)
-	addBool(g, "ObjectHandlingBackupAllowOverride", false)
+	addBool(g, "ObjectHandlingBackupAllowOverride", elem.BackupAllowOverride)
 	addStr(g, "Association", elem.Association)
+	if ch := customHandlerToGen(elem.CustomHandler); ch != nil {
+		addPart(g, "CustomHandlerCall", ch)
+	}
 
 	children := make([]element.Element, 0, len(elem.Children))
 	for _, c := range elem.Children {
@@ -195,7 +213,7 @@ func importValueElementToGen(id string, elem *model.ImportMappingElement, parent
 	addStr(g, "Attribute", elem.Attribute)
 	addStr(g, "ExposedName", elem.ExposedName)
 	addStr(g, "JsonPath", jsonPath)
-	addStr(g, "XmlPath", "")
+	addStr(g, "XmlPath", elem.XmlPath)
 	addBool(g, "IsKey", elem.IsKey)
 	addPart(g, "Type", mappingValueDataTypeToGen(elem.DataType))
 	addInt32(g, "MinOccurs", int32(elem.MinOccurs))
@@ -208,7 +226,7 @@ func importValueElementToGen(id string, elem *model.ImportMappingElement, parent
 	// the shape mxbuild accepts and Studio Pro refuses to open. (issue #882)
 	addStr(g, "ElementType", "Value")
 	addStr(g, "Documentation", "")
-	addStr(g, "Converter", "")
+	addStr(g, "Converter", elem.Converter)
 	addInt32(g, "FractionDigits", int32(elem.FractionDigits))
 	addInt32(g, "TotalDigits", int32(elem.TotalDigits))
 	addInt32(g, "MaxLength", int32(elem.MaxLength))
@@ -309,7 +327,7 @@ func exportMappingToGen(em *model.ExportMapping) element.Element {
 
 func exportMappingElementToGen(elem *model.ExportMappingElement, parentPath string) element.Element {
 	id := string(elem.ID)
-	if elem.Kind == "Object" || elem.Kind == "Array" {
+	if isMappingObjectKind(elem.Kind) {
 		return exportObjectElementToGen(id, elem, parentPath)
 	}
 	return exportValueElementToGen(id, elem, parentPath)
@@ -326,16 +344,23 @@ func exportObjectElementToGen(id string, elem *model.ExportMappingElement, paren
 	}
 
 	objectHandling := orDefault(elem.ObjectHandling, "Parameter")
+	// EVERY export object element in the demo apps stores Error — 537 of 537,
+	// whatever its handling — and "Parameter"/"Find"/"Custom" are not in the
+	// {Create, Error, Ignore} enum the backup takes (#261).
+	objectHandlingBackup := "Error"
 
 	g := newElem("ExportMappings$ObjectMappingElement", id)
 	addStr(g, "Entity", elem.Entity)
 	addStr(g, "ExposedName", elem.ExposedName)
 	addStr(g, "JsonPath", jsonPath)
-	addStr(g, "XmlPath", "")
+	addStr(g, "XmlPath", elem.XmlPath)
 	addStr(g, "ObjectHandling", objectHandling)
-	addStr(g, "ObjectHandlingBackup", objectHandling)
+	addStr(g, "ObjectHandlingBackup", objectHandlingBackup)
 	addBool(g, "ObjectHandlingBackupAllowOverride", false)
 	addStr(g, "Association", elem.Association)
+	if ch := customHandlerToGen(elem.CustomHandler); ch != nil {
+		addPart(g, "CustomHandlerCall", ch)
+	}
 
 	children := make([]element.Element, 0, len(elem.Children))
 	for _, c := range elem.Children {
@@ -362,7 +387,7 @@ func exportValueElementToGen(id string, elem *model.ExportMappingElement, parent
 	addStr(g, "Attribute", elem.Attribute)
 	addStr(g, "ExposedName", elem.ExposedName)
 	addStr(g, "JsonPath", jsonPath)
-	addStr(g, "XmlPath", "")
+	addStr(g, "XmlPath", elem.XmlPath)
 	addPart(g, "Type", mappingValueDataTypeToGen(elem.DataType))
 	addInt32(g, "MinOccurs", 0)
 	// Mirror the bound schema element: Mendix cross-validates the two and
@@ -377,7 +402,7 @@ func exportValueElementToGen(id string, elem *model.ExportMappingElement, parent
 	// the shape mxbuild accepts and Studio Pro refuses to open. (issue #882)
 	addStr(g, "ElementType", "Value")
 	addStr(g, "Documentation", "")
-	addStr(g, "Converter", "")
+	addStr(g, "Converter", elem.Converter)
 	addInt32(g, "FractionDigits", -1)
 	addInt32(g, "TotalDigits", -1)
 	addInt32(g, "MaxLength", 0)
@@ -424,6 +449,11 @@ func xmlPrimitiveTypeName(dataType string) string {
 		return "Boolean"
 	case "DateTime":
 		return "DateTime"
+	case "Binary":
+		// A FileDocument/Image attribute. Falling through to "String" was the
+		// last difference between an mxcli rebuild and Studio Pro's
+		// Email_Connector.IMM_EmailTemplateMapping (#261's measurement).
+		return "Binary"
 	default:
 		return "String"
 	}
@@ -434,9 +464,99 @@ func elementTypeForKind(kind string) string {
 	switch kind {
 	case "Array":
 		return "Array"
+	case "Wrapper":
+		// An array of PRIMITIVES: one entity per item, with the value on an
+		// attribute (#268).
+		return "Wrapper"
 	case "Value":
 		return "Value"
 	default:
 		return "Object"
 	}
+}
+
+// customHandlerToGen builds the Mappings$MappingMicroflowCallImpl sub-document
+// for an object element whose handling is Custom (#264).
+//
+// Built with the generic element helpers, like the rest of the mapping writer,
+// rather than through gen: the parameter's stored $Type is
+// Mappings$MicroflowCallParameterMappingImpl (161 of 161 documents) where gen
+// names it MappingMicroflowParameter, and ParameterMappings must be emitted even
+// when EMPTY — Studio Pro writes the bare typed-array marker, the same
+// MandatoryLists rule as a rule document's Flows. gen's PartList has no way to
+// say "present but empty", and a dropped key is a diff against every stored
+// document that has one.
+//
+// ValueElementPath is deliberately not written: gen declares it and Studio Pro
+// writes it in 0 of 161 parameter mappings.
+func customHandlerToGen(call *model.MappingMicroflowCall) element.Element {
+	if call == nil || call.Microflow == "" {
+		return nil
+	}
+	g := newElem("Mappings$MappingMicroflowCallImpl", "")
+	addStr(g, "Microflow", call.Microflow)
+
+	params := make([]element.Element, 0, len(call.Parameters))
+	for _, p := range call.Parameters {
+		jsonPath, xmlPath, level := storedParameterPaths(p)
+		pg := newElem("Mappings$MicroflowCallParameterMappingImpl", "")
+		addStr(pg, "Parameter", p.Parameter)
+		addInt32(pg, "LevelOfParent", int32(level))
+		addStr(pg, "JsonValueElementPath", jsonPath)
+		addStr(pg, "XmlValueElementPath", xmlPath)
+		params = append(params, pg)
+	}
+	addPartList(g, "ParameterMappings", params)
+	return g
+}
+
+// storedParameterPaths maps a parameter's source to the (json, xml, level)
+// triple Studio Pro stores. The marker sources write the SAME marker into both
+// path properties; an explicit value path is JSON-only.
+func storedParameterPaths(p *model.MappingMicroflowParameter) (string, string, int) {
+	switch p.Source {
+	case "parameter":
+		return "(parameter)", "(parameter)", -1
+	case "ancestor":
+		return "", "", p.LevelOfParent
+	case "path":
+		return p.ValuePath, p.XmlValuePath, -1
+	default:
+		return "(parent)", "(parent)", -1
+	}
+}
+
+// isMappingObjectKind reports whether a mapping element serializes as an OBJECT
+// mapping element rather than a value one.
+//
+// "Wrapper" belongs here: an array of primitives is an object element that binds
+// an entity, with the primitive on a value child (#268). Leaving it out made the
+// element serialize as a Value with no attribute, which mxbuild rejects with
+// CE5015 "Element '…/(Wrapper)' is not a Value element."
+func isMappingObjectKind(kind string) bool {
+	switch kind {
+	case "Object", "Array", "Wrapper":
+		return true
+	default:
+		return false
+	}
+}
+
+// importBackupFor is the ObjectHandlingBackup an import element gets.
+//
+// The property takes {Create, Error, Ignore} and nothing else. mxcli used to
+// copy the HANDLING into it, which wrote "Find" for a plain find, "Parameter"
+// for an export root and "Custom" for a microflow handler — none of which occurs
+// in the 1,261 object elements of the demo apps (#261).
+//
+// An explicit choice from the statement wins. Otherwise: `create` and
+// `find or create` both mean Create, and a custom handler defaults to Create
+// (73 of 77 in the corpus). A bare `find` never reaches here — the executor
+// refuses it rather than choosing among three different meanings.
+func importBackupFor(handling, requested string) string {
+	switch requested {
+	case "Create", "Error", "Ignore":
+		return requested
+	}
+	return "Create"
 }

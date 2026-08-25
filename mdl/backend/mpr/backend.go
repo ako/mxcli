@@ -608,9 +608,15 @@ func (b *MprBackend) GetImportMappingByQualifiedName(moduleName, name string) (*
 	return b.reader.GetImportMappingByQualifiedName(moduleName, name)
 }
 func (b *MprBackend) CreateImportMapping(im *model.ImportMapping) error {
+	if err := refuseCustomHandler(importElementsCarryCustomHandler(im.Elements)); err != nil {
+		return err
+	}
 	return b.writer.CreateImportMapping(im)
 }
 func (b *MprBackend) UpdateImportMapping(im *model.ImportMapping) error {
+	if err := refuseCustomHandler(importElementsCarryCustomHandler(im.Elements)); err != nil {
+		return err
+	}
 	return b.writer.UpdateImportMapping(im)
 }
 func (b *MprBackend) DeleteImportMapping(id model.ID) error {
@@ -627,9 +633,15 @@ func (b *MprBackend) GetExportMappingByQualifiedName(moduleName, name string) (*
 	return b.reader.GetExportMappingByQualifiedName(moduleName, name)
 }
 func (b *MprBackend) CreateExportMapping(em *model.ExportMapping) error {
+	if err := refuseCustomHandler(exportElementsCarryCustomHandler(em.Elements)); err != nil {
+		return err
+	}
 	return b.writer.CreateExportMapping(em)
 }
 func (b *MprBackend) UpdateExportMapping(em *model.ExportMapping) error {
+	if err := refuseCustomHandler(exportElementsCarryCustomHandler(em.Elements)); err != nil {
+		return err
+	}
 	return b.writer.UpdateExportMapping(em)
 }
 func (b *MprBackend) DeleteExportMapping(id model.ID) error {
@@ -1045,4 +1057,53 @@ func (b *MprBackend) UpdateMenuDocument(md *types.MenuDocument) error {
 }
 func (b *MprBackend) DeleteMenuDocument(id model.ID) error {
 	return errors.New("dropping a menu requires the modelsdk engine — rerun without MXCLI_ENGINE=legacy")
+}
+
+// ListMessageDefinitionCollections is not implemented on the legacy engine.
+//
+// The document has no legacy parser, and authoring a mapping over a message
+// definition (#263) is modelsdk-only for that reason — the codec models the
+// whole exposed tree already. Refuse rather than return an empty list: an empty
+// one reads as "this project has no message definitions", which would make the
+// executor report a real reference as unresolvable.
+func (b *MprBackend) ListMessageDefinitionCollections() ([]*model.MessageDefinitionCollection, error) {
+	return nil, errors.New("message definitions are not readable on the legacy engine — " +
+		"run without --engine legacy (the modelsdk engine is the default)")
+}
+
+// The legacy serializers write CustomHandlerCall as a hard-coded nil, so a
+// mapping whose object handling is Custom (#264) would be written WITHOUT its
+// microflow — a silent drop of the thing the statement was about. Refuse
+// instead (ADR-0005 guard-don't-drop); the modelsdk engine, which is the
+// default, writes it.
+func refuseCustomHandler(carries bool) error {
+	if !carries {
+		return nil
+	}
+	return errors.New("custom object handling (`by <microflow>`) requires the modelsdk engine — " +
+		"rerun without MXCLI_ENGINE=legacy")
+}
+
+func importElementsCarryCustomHandler(elems []*model.ImportMappingElement) bool {
+	for _, e := range elems {
+		if e == nil {
+			continue
+		}
+		if e.CustomHandler != nil || importElementsCarryCustomHandler(e.Children) {
+			return true
+		}
+	}
+	return false
+}
+
+func exportElementsCarryCustomHandler(elems []*model.ExportMappingElement) bool {
+	for _, e := range elems {
+		if e == nil {
+			continue
+		}
+		if e.CustomHandler != nil || exportElementsCarryCustomHandler(e.Children) {
+			return true
+		}
+	}
+	return false
 }

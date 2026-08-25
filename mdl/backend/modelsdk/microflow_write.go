@@ -1141,16 +1141,26 @@ func listOperationToGen(op microflows.ListOperation) element.Element {
 		addStr(e, "SecondListOrObjectName", o.ListVariable2)
 		return e
 	case *microflows.ListRangeOperation:
-		// Mirrors legacy parser key "Microflows$ListRange". No legacy writer
-		// case existed; the example MDL does not exercise it, so emit the verified
-		// storage name with ListName + range expressions.
+		// The bounds are NOT properties of the ListRange. Mendix nests them:
+		//
+		//	Microflows$ListRange{ListName, CustomRange}
+		//	  └── Microflows$CustomRange{LimitExpression, OffsetExpression}
+		//
+		// Writing them flat produced a range mxbuild reads as unbounded —
+		// CE6520 "Amount and offset are not specified. Either amount or offset
+		// or both must be specified." It survived review because the reader
+		// beside it looked flat too, so mxcli round-tripped its own documents
+		// perfectly and only Mendix disagreed. (issue #966)
+		//
+		// The nesting matches the ImportMappingCall's Range (importMappingRangeToGen
+		// above) — same CustomRange element, a different parent.
 		e := newElem("Microflows$ListRange", string(o.ID))
 		addStr(e, "ListName", o.ListVariable)
-		if o.LimitExpression != "" {
-			addStr(e, "LimitExpression", o.LimitExpression)
-		}
-		if o.OffsetExpression != "" {
-			addStr(e, "OffsetExpression", o.OffsetExpression)
+		if o.LimitExpression != "" || o.OffsetExpression != "" {
+			cr := newElem("Microflows$CustomRange", "")
+			addStr(cr, "LimitExpression", o.LimitExpression)
+			addStr(cr, "OffsetExpression", o.OffsetExpression)
+			addPart(e, "CustomRange", cr)
 		}
 		return e
 	default:

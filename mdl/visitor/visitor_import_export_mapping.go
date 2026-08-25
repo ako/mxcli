@@ -3,6 +3,7 @@
 package visitor
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/antlr4-go/antlr/v4"
@@ -22,13 +23,26 @@ func (b *Builder) ExitCreateImportMappingStatement(ctx *parser.CreateImportMappi
 	// Parse WITH clause
 	if wc := ctx.ImportMappingWithClause(); wc != nil {
 		sc := wc.(*parser.ImportMappingWithClauseContext)
-		if sc.JSON() != nil {
+		switch {
+		case sc.JSON() != nil:
 			stmt.SchemaKind = "JSON_STRUCTURE"
-		} else {
+		case sc.MESSAGE() != nil:
+			stmt.SchemaKind = "MESSAGE_DEFINITION"
+		default:
 			stmt.SchemaKind = "XML_SCHEMA"
 		}
 		if sc.QualifiedName() != nil {
 			stmt.SchemaRef = buildQualifiedName(sc.QualifiedName())
+		}
+		if jp := sc.JsonMemberPath(); jp != nil {
+			stmt.SchemaRoot = jsonMemberPathText(jp)
+		}
+	}
+
+	// The mapping's input object (#265) — what `Param: parameter` refers to.
+	if pc := ctx.ImportMappingParameterClause(); pc != nil {
+		if qn := pc.(*parser.ImportMappingParameterClauseContext).QualifiedName(); qn != nil {
+			stmt.Parameter = buildQualifiedName(qn)
 		}
 	}
 
@@ -54,6 +68,8 @@ func buildImportRootElement(ctx *parser.ImportMappingRootElementContext) *ast.Im
 	if hCtx := ctx.ImportMappingObjectHandling(); hCtx != nil {
 		elem.ObjectHandling = extractObjectHandling(hCtx.(*parser.ImportMappingObjectHandlingContext))
 	}
+	elem.CustomHandler = buildMappingCustomHandler(ctx.MappingCustomHandler())
+	applyMappingHandlingBackup(elem, ctx.MappingHandlingBackup())
 
 	// Entity name
 	if ctx.QualifiedName() != nil {
@@ -82,6 +98,8 @@ func buildImportChild(ctx *parser.ImportMappingChildContext) *ast.ImportMappingE
 	if hCtx := ctx.ImportMappingObjectHandling(); hCtx != nil {
 		// Object mapping: CREATE/FIND/FIND OR CREATE Assoc/Entity = jsonKey
 		elem.ObjectHandling = extractObjectHandling(hCtx.(*parser.ImportMappingObjectHandlingContext))
+		elem.CustomHandler = buildMappingCustomHandler(ctx.MappingCustomHandler())
+		applyMappingHandlingBackup(elem, ctx.MappingHandlingBackup())
 
 		// Association path: qualifiedName SLASH qualifiedName
 		allQN := ctx.AllQualifiedName()
@@ -110,6 +128,10 @@ func buildImportChild(ctx *parser.ImportMappingChildContext) *ast.ImportMappingE
 			elem.Converter = buildQualifiedName(allQN[0]).String()
 		}
 		elem.ConverterParam = jsonMemberPathText(ctx.JsonMemberPath())
+		// The converter's input IS the member the element binds — the stored
+		// document has one Converter and no separate parameter path — so the
+		// member must be named here too, or resolution has nothing to look up.
+		elem.JsonName = elem.ConverterParam
 	} else {
 		// Value assignment: attr = a/b/c KEY?
 		if id := ctx.IdentifierOrKeyword(); id != nil {
@@ -138,11 +160,16 @@ func (b *Builder) ExitCreateExportMappingStatement(ctx *parser.CreateExportMappi
 		sc := wc.(*parser.ExportMappingWithClauseContext)
 		if sc.JSON() != nil {
 			stmt.SchemaKind = "JSON_STRUCTURE"
+		} else if sc.MESSAGE() != nil {
+			stmt.SchemaKind = "MESSAGE_DEFINITION"
 		} else {
 			stmt.SchemaKind = "XML_SCHEMA"
 		}
 		if sc.QualifiedName() != nil {
 			stmt.SchemaRef = buildQualifiedName(sc.QualifiedName())
+		}
+		if jp := sc.JsonMemberPath(); jp != nil {
+			stmt.SchemaRoot = jsonMemberPathText(jp)
 		}
 	}
 
@@ -175,6 +202,7 @@ func buildExportRootElement(ctx *parser.ExportMappingRootElementContext) *ast.Ex
 	if ctx.QualifiedName() != nil {
 		elem.Entity = buildQualifiedName(ctx.QualifiedName()).String()
 	}
+	elem.CustomHandler = buildMappingCustomHandler(ctx.MappingCustomHandler())
 
 	for _, childCtx := range ctx.AllExportMappingChild() {
 		child := buildExportChild(childCtx.(*parser.ExportMappingChildContext))
@@ -194,10 +222,24 @@ func buildExportChild(ctx *parser.ExportMappingChildContext) *ast.ExportMappingE
 
 	allQN := ctx.AllQualifiedName()
 
+	if ctx.GROUP() != nil {
+		elem.Group = true
+		if id := ctx.IdentifierOrKeyword(); id != nil {
+			elem.JsonName = identifierOrKeywordText(id.(*parser.IdentifierOrKeywordContext))
+		}
+		for _, childCtx := range ctx.AllExportMappingChild() {
+			elem.Children = append(elem.Children,
+				buildExportChild(childCtx.(*parser.ExportMappingChildContext)))
+		}
+		return elem
+	}
+
 	if len(allQN) >= 2 {
 		// Object mapping: Assoc/Entity AS jsonKey
 		elem.Association = buildQualifiedName(allQN[0]).String()
 		elem.Entity = buildQualifiedName(allQN[1]).String()
+
+		elem.CustomHandler = buildMappingCustomHandler(ctx.MappingCustomHandler())
 
 		// JSON key after AS
 		if id := ctx.IdentifierOrKeyword(); id != nil {
@@ -210,10 +252,13 @@ func buildExportChild(ctx *parser.ExportMappingChildContext) *ast.ExportMappingE
 			elem.Children = append(elem.Children, child)
 		}
 	} else {
-		// Value mapping: a/b/c = Attr
+		// Value mapping: a/b/c = Attr, or the transform form a/b/c = Module.MF(Attr).
 		elem.JsonName = jsonMemberPathText(ctx.JsonMemberPath())
 		if id := ctx.IdentifierOrKeyword(); id != nil {
 			elem.Attribute = identifierOrKeywordText(id.(*parser.IdentifierOrKeywordContext))
+		}
+		if ctx.LPAREN() != nil && len(allQN) == 1 {
+			elem.Converter = buildQualifiedName(allQN[0]).String()
 		}
 	}
 
@@ -338,4 +383,82 @@ func jsonMemberPathText(ctx parser.IJsonMemberPathContext) string {
 		segments = append(segments, identifierOrKeywordText(seg))
 	}
 	return strings.Join(segments, "/")
+}
+
+// buildMappingCustomHandler reads the `by Module.MF(Param: source, ...)` clause
+// (#264). The source spellings map to the four shapes Studio Pro stores:
+//
+//	parent      -> "(parent)",    LevelOfParent -1
+//	parameter   -> "(parameter)", LevelOfParent -1
+//	parent(2)   -> "",            LevelOfParent 2
+//	a/b/c       -> the value path, LevelOfParent -1
+func buildMappingCustomHandler(ctx parser.IMappingCustomHandlerContext) *ast.MappingCustomHandlerDef {
+	if ctx == nil {
+		return nil
+	}
+	c, ok := ctx.(*parser.MappingCustomHandlerContext)
+	if !ok {
+		return nil
+	}
+	out := &ast.MappingCustomHandlerDef{}
+	if qn := c.QualifiedName(); qn != nil {
+		out.Microflow = buildQualifiedName(qn).String()
+	}
+	for _, pc := range c.AllMappingCallParameter() {
+		p, ok := pc.(*parser.MappingCallParameterContext)
+		if !ok {
+			continue
+		}
+		ids := p.AllIdentifierOrKeyword()
+		if len(ids) == 0 {
+			continue
+		}
+		def := &ast.MappingCallParameterDef{
+			Parameter: identifierOrKeywordText(ids[0]),
+			Level:     -1,
+		}
+		switch {
+		case p.PARAMETER() != nil:
+			def.Source = "parameter"
+		case p.NUMBER_LITERAL() != nil:
+			// `Param: parent(2)` — the keyword is an identifier here so the
+			// grammar stays free of a PARENT token; the executor rejects any
+			// word other than "parent".
+			def.Source = strings.ToLower(identifierOrKeywordText(ids[1]))
+			if n, err := strconv.Atoi(p.NUMBER_LITERAL().GetText()); err == nil {
+				def.Level = n
+			}
+		default:
+			path := jsonMemberPathText(p.JsonMemberPath())
+			if strings.EqualFold(path, "parent") {
+				def.Source = "parent"
+			} else {
+				def.Source = "path"
+				def.Path = path
+			}
+		}
+		out.Parameters = append(out.Parameters, def)
+	}
+	return out
+}
+
+// applyMappingHandlingBackup reads the `or create|error|ignore [overridable]`
+// continuation onto an import mapping element (#261).
+func applyMappingHandlingBackup(elem *ast.ImportMappingElementDef, ctx parser.IMappingHandlingBackupContext) {
+	if ctx == nil {
+		return
+	}
+	c, ok := ctx.(*parser.MappingHandlingBackupContext)
+	if !ok {
+		return
+	}
+	switch {
+	case c.CREATE() != nil:
+		elem.Backup = "Create"
+	case c.ERROR() != nil:
+		elem.Backup = "Error"
+	case c.IGNORE() != nil:
+		elem.Backup = "Ignore"
+	}
+	elem.BackupOverridable = c.OVERRIDABLE() != nil
 }

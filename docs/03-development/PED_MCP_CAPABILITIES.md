@@ -225,6 +225,88 @@ legitimately reads `"..."` is real page content and must not trip the guard.
 still **no save/flush tool**, reads still expose `$QualifiedName` but **not `$ID`**,
 and the security documents are still sealed.
 
+### Re-probe 2026-08-24 (11.13.0) — mappings, and a second federation sample
+
+Probed from a devcontainer through a host-side
+`socat TCP6-LISTEN:7790,reuseaddr,fork,ipv6only=0 'TCP6:[::1]:7782'`, dialled as
+`-dial host.docker.internal:7790` with the `Host` header left at `localhost:7782`.
+
+**Tool surface: 17, identical to `tools-11.13.json` minus
+`mcp_mendix-marketplace_Component_GetComponentIDsByCriteria`.** That is the third
+observation of the federated tool coming and going on 11.13 with no restart, and
+it settles the "sample, not a constant" call above — no table row should ever
+assert it.
+
+**Import/export mappings are schema-visible but document-inaccessible** — the same
+shape as the security documents, and the second confirmed case where
+`ped_read_document` is the reliable probe:
+
+| tool | `ImportMappings$ImportMapping` / `ExportMappings$ExportMapping` |
+|------|----------------------------------------------------------------|
+| `ped_get_schema` (`element`) | **works** — full schemas for both documents and for `Import/ExportObjectMappingElement`, `Import/ExportValueMappingElement`, `Mappings$MappingMicroflowCall`, `Mappings$MappingMicroflowParameter`, `Mappings$ElementPath` |
+| `ped_get_schema` (`constructor`) | **works**, but is `{ $Type, name }` only — no way to populate a created mapping |
+| `ped_list_folder` | **works** — mappings are listed with their document type |
+| `ped_check_errors` | **works, and genuinely validates mapping content** — a keyless `find` mapping is reported as `Object element must have a key defined if object handling is set to 'Search for an object'. (at locations: /rootMappingElements/0)`, i.e. mxbuild's CE0250 with a JSON-pointer location instead of a code |
+| `ped_read_document` | `Unknown document type 'ImportMappings$ImportMapping'.` |
+| `ped_find_document` | `Unknown document type 'ImportMappings$ImportMapping'.` |
+| `ped_update_document` | `Document type ImportMappings$ImportMapping is not supported.` |
+
+Controls, so the rejections are not a bad invocation: the same calls against
+`Microflows$Microflow` and `JsonStructures$JsonStructure` succeed, and
+`ped_update_document` against a **nonexistent** microflow returns
+`Document '…' not found` rather than "not supported" — so the probe reaches
+document resolution before failing.
+
+`JsonStructures$JsonStructure` is **fully supported** (read returns `jsonSnippet`;
+its constructor takes `name` + `jsonSnippet`), so a mapping's *source* document is
+reachable over MCP even though the mapping is not.
+
+**What the mapping schemas are worth even without document access.** They are
+Studio Pro's own metamodel, and they pin enums that the on-disk BSON only implies:
+
+```
+objectHandling:       'Parameter' | 'Create' | 'Find' | 'Custom'   = "Create"
+objectHandlingBackup: 'Create' | 'Ignore' | 'Error'                = "Create"
+nullValueOption:      'SendAsNil' | 'LeaveOutElement'              = "LeaveOutElement"
+elementType: 'Undefined' | 'Inheritance' | 'Choice' | 'Object' | 'Value'
+           | 'Sequence' | 'All' | 'NamedArray' | 'Array' | 'Wrapper' = "Undefined"
+```
+
+This is how the mxcli defect in
+[`PROPOSAL_mapping_coverage.md`](../11-proposals/PROPOSAL_mapping_coverage.md) §6.1
+was confirmed — both writers set `ObjectHandlingBackup` to `Find`/`Parameter`,
+neither of which is in the union. **`ped_get_schema` is therefore useful as an enum
+oracle for types PED will not otherwise touch**, which is a cheaper check than
+opening a written project.
+
+**`ped_check_errors` is the second oracle, and the more decisive one.** It needs no
+read access to the document — just module-qualified name plus type — so a mapping
+authored on disk by mxcli can be validated by Studio Pro itself after a reload.
+Measured 2026-08-24 on 11.13.0 with three mxcli-written mappings: the legal
+`Find`/`Create` and the **off-enum `Find`/`Find`** both returned "No errors found",
+while a keyless `find` in the same folder returned the CE0250 text above. So the
+checker does inspect `/rootMappingElements/0` — the element carrying the off-enum
+value — and tolerates it, and **the project opens**: an out-of-enum *value* is not
+the "Sequence contains no matching element" failure that an unknown *property*
+causes. Whether Studio Pro normalises the value to the declared default on load is
+untested (it needs a save, and a save only rewrites units it considers changed).
+
+Two practical notes for anyone repeating this. `ped_check_errors` reads the
+**in-memory** model, so an on-disk write is invisible until the project is
+reloaded — and reloading must not be preceded by a save, or Studio Pro's
+in-memory model overwrites the write. And **PED reports no project path**: with
+two sessions each holding a project named `PedApp.mpr`, `list_modules` was the
+only way to tell which was open — worth a guard before any write.
+
+Two naming notes, both instances of the storage-name split in `CLAUDE.md`: PED
+speaks the **SDK** names (`ImportMappings$ImportObjectMappingElement`,
+`mappingMicroflowCall`) where the BSON uses storage names
+(`ImportMappings$ObjectMappingElement`, `CustomHandlerCall`). And
+`Mappings$ElementPath` is an **opaque element** (`{ $Type }`, no properties), so
+the `(Object)|a|b` mapping paths would not come through even if the document tools
+accepted mappings.
+
+
 ## 11.14 changes (delta vs 11.13)
 
 Captured live 2026-08-25 (`cmd/mcpprobe -method tools/list`, fixture
@@ -404,6 +486,7 @@ The right-hand column carries the latest measured status, not the 11.11 one.
 | **Two write protocols** | Pages **must** use `pg_*`; everything else uses `ped_*`. The system prompt forbids PED for pages. | Stable, but reconfirm. |
 | **`ped_create_document` doc-type whitelist** | The create tool accepts only certain document types; some model documents are rejected even though they have a `$constructor` schema. Confirmed off the whitelist: **`Microflows$Nanoflow`** (`"… Did you mean: Microflows$Microflow?"`), **`Projects$Folder`** (empty folders), and **`BusinessEvents$BusinessEventService`** (a `$element`, not a `$constructor` — its CREATE/ALTER are rejected in `businessevent.go`, but SHOW/DESCRIBE read the `.mpr`, DROP goes via Concord, and the published-event entities/constants it relies on are creatable). So nanoflows aren't creatable over MCP (CREATE/ALTER rejected — `nanoflow.go`; DROP works via Concord), and an *empty* folder can't be created. **But `ped_create_document` accepts a `folderPath` per document, which auto-creates the whole folder path** — so a document is placed in a (possibly nested) folder at create time (`folder.go`/`resolveDocContainer`). What you can't do: re-parent an *existing* document — `/folderPath` is not a settable property (so `MOVE`/`DROP FOLDER`/`MOVE FOLDER` are rejected), and pages can't be foldered (`pg_write_page` takes no folderPath). | Re-probe the create whitelist each version. |
 | **No Java action document creation** | `ped_create_document` rejects `JavaActions$JavaAction` outright (`"Document type 'JavaActions$JavaAction' cannot be created."`) — a Java action is backed by a `.java` source file Studio Pro generates/manages, so the model document can't be created standalone. `CREATE/ALTER JAVA ACTION` are rejected with an actionable error (`mdl/backend/mcp/javaaction.go`); *calling* a Java action from a microflow is unaffected. | Watch for a Java-action create tool. |
+| **No mapping document ops** | PED's `ped_read/find/update_document` reject `ImportMappings$ImportMapping` and `ExportMappings$ExportMapping` ("Unknown document type" / "not supported"), while `ped_get_schema` returns full `element` **and** `constructor` schemas and `ped_list_folder` lists them — the security-document shape exactly. The constructor is `{ $Type, name }` only, so even a whitelisted create would yield an empty shell with no way to populate it. mxcli's MCP backend matches: all ten mapping methods are `unsupportedBackend` stubs (`unsupported_gen.go`). `JsonStructures$JsonStructure` — the mapping's *source* — **is** fully supported, and `ped_check_errors` **does** accept a mapping by name, so an on-disk-authored mapping can still be error-checked by Studio Pro. Re-probed 11.13.0, 2026-08-24. | Watch for the mapping types appearing in `ped_read_document`. |
 | **No security document ops** | PED's `ped_find/read/update/create_document` reject every security type (`Security$ModuleSecurity`, `Security$ProjectSecurity`, …) as "Unknown document type" — only `ped_get_schema` knows them as nested *elements*. Concord exposes only security *reads* (`audit_security`, `read_entity_access_rules`, `read_microflow_security`, `read_security_info`). So the security **documents** cannot be authored via MCP (module/user roles, demo users, project security level) — neither server has a write path. **Entity access rules are the exception and are authorable**: a `DomainModels$AccessRule` lives on the domain model, not the security document, so `GRANT` works (ADD-only — PED refuses to remove a rule or a member access, so `REVOKE` and replacing a rule in place are rejected). Security **reads** are served from the local `.mpr` by the backend's reader, so `SHOW MODULE ROLES` / `USER ROLES` / `PROJECT SECURITY` work over `--mcp` and `GRANT` can validate the role it references — routing that read to PED instead is what made every `GRANT --mcp` abort before its first tool call (#900). Determine support with `ped_read_document`, NOT `ped_find_document`: `find` also reports the (supported) nameless `DomainModels$DomainModel` as "Unknown", so it is not a reliable probe. | **11.14 — still sealed, and now actively mis-advertised.** The tool descriptions name `Settings$ProjectSettings`, `Security$ProjectSecurity` and `Security$ModuleSecurity` as supported and `ped_get_schema` returns ten fully documented security element types, but every document-API call is refused (`Unknown document type` / `Document type … is not supported.`), against a `Navigation$NavigationDocument` control that reaches the operation layer in the same probe. No security type declares a **method**, so the new `call` op opens nothing. **One thing did move:** replacing an existing `DomainModels$AccessRule` in place no longer needs member removal — 11.14's `set` replaces a non-null element, and the probe clears shape validation and fails only at reference resolution. So re-GRANT looks reachable while **REVOKE is still unmeasured** (bounds and writability checks both mask removability). See the 11.14 delta for the probes and the control. |
 
 ## Transport (per environment, not per version)

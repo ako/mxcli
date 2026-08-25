@@ -1,0 +1,101 @@
+-- ============================================================================
+-- Bug ako/mxcli#264: custom object handling (a microflow resolves the object)
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   ObjectHandling has four values — Parameter | Create | Find | Custom — and
+--   MDL covered three. There was no spelling for Custom, where a microflow
+--   resolves the object instead of Mendix creating or searching for it, and both
+--   writers hardcoded CustomHandlerCall to nil. 56 of the 327 mapping documents
+--   in the demo apps use it, so `describe` of one dropped the handler and its
+--   output executed into a mapping that creates objects instead of calling the
+--   microflow.
+--
+-- Syntax:
+--   `by` is a modifier on `find`, which is what Custom means — find the object
+--   by calling this microflow:
+--
+--     find M.E by M.Microflow ( Param: source ) = member { ... }
+--
+--   The four parameter sources, and how Studio Pro stores each (measured across
+--   161 parameter mappings in the demo apps):
+--
+--     Param: parent      "(parent)"     in both path properties, LevelOfParent -1
+--     Param: parameter   "(parameter)"  in both, -1   (the mapping's own input)
+--     Param: parent(2)   ""             in both, LevelOfParent 2  (export)
+--     Param: a/b/c       the value path in the JSON one only, -1
+--
+--   The document does not record WHICH source was meant — the reader recovers it
+--   from the marker plus the level.
+--
+-- Two shapes that are easy to get wrong:
+--   * ParameterMappings is written even when the microflow takes NO parameters,
+--     as the bare typed-array marker [2] — the same MandatoryLists rule as a rule
+--     document's Flows. KrogerAPI.IM_AccessToken is the demo-app case.
+--   * ObjectHandlingBackup is {Create, Error, Ignore}; "Custom" is not in it, so
+--     the backup must not inherit the handling. Import documents with a custom
+--     handler store Create, export ones Error.
+--
+-- Engine:
+--   modelsdk only. The legacy serializers write CustomHandlerCall as nil, so the
+--   legacy backend REFUSES rather than dropping the microflow silently.
+--
+-- Validation:
+--   KrogerAPI.IM_AccessToken (CitrusGrove demo app) round-trips exactly through
+--   describe -> exec, which it did not before. mxbuild 11.13 adds no errors.
+-- ============================================================================
+
+create module BugTest264;
+
+create persistent entity BugTest264.Root ( Name: String(100) );
+create persistent entity BugTest264.Item ( Code: String(100) );
+create association BugTest264.Item_Root
+  from BugTest264.Item to BugTest264.Root
+  type Reference;
+
+create json structure BugTest264.JSON_Payload
+  snippet $${"name": "n", "items": [{"code": "c", "idx": 1}]}$$;
+
+create microflow BugTest264.FindItemByIndex ( $Index: Integer )
+returns BugTest264.Item
+begin
+  @start(100, 200)
+  @position(400, 200)
+  return empty;
+end;
+/
+
+create microflow BugTest264.GetRoot ()
+returns BugTest264.Root
+begin
+  @start(100, 200)
+  @position(400, 200)
+  return empty;
+end;
+/
+
+-- A value from the payload as the parameter: the path is relative to the
+-- element being resolved, so `idx` is the item's own field.
+create or modify import mapping BugTest264.IMM_Payload
+  folder 'Mappings'
+  with json structure BugTest264.JSON_Payload
+{
+  create BugTest264.Root {
+    Name = name,
+    find BugTest264.Item_Root/BugTest264.Item
+      by BugTest264.FindItemByIndex ( Index: idx )
+      = items {
+        Code = code
+      }
+  }
+};
+
+-- A parameterless handler: ParameterMappings is still written, as the bare marker.
+create or modify import mapping BugTest264.IMM_Root
+  folder 'Mappings'
+  with json structure BugTest264.JSON_Payload
+{
+  find BugTest264.Root by BugTest264.GetRoot() {
+    Name = name
+  }
+};

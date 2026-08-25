@@ -97,6 +97,12 @@ func parseExportObjectMappingElement(raw map[string]any) *model.ExportMappingEle
 	if v, ok := raw["JsonPath"].(string); ok {
 		elem.JsonPath = v
 	}
+	if v, ok := raw["XmlPath"].(string); ok {
+		elem.XmlPath = v
+	}
+	if v, ok := raw["Converter"].(string); ok {
+		elem.Converter = v
+	}
 	if v, ok := raw["Association"].(string); ok {
 		elem.Association = v
 	}
@@ -132,6 +138,12 @@ func parseExportValueMappingElement(raw map[string]any) *model.ExportMappingElem
 	}
 	if v, ok := raw["JsonPath"].(string); ok {
 		elem.JsonPath = v
+	}
+	if v, ok := raw["XmlPath"].(string); ok {
+		elem.XmlPath = v
+	}
+	if v, ok := raw["Converter"].(string); ok {
+		elem.Converter = v
 	}
 
 	// Extract the primitive type from the nested Type object

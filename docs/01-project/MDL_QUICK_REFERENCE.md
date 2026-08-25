@@ -545,6 +545,7 @@ it is for pages.
 | LOOP | `loop $item in $list begin ... end loop;` | FOR EACH over list. No `return` inside — an End event cannot sit in a loop (CE0068 / MDL062); use `break` and return after the loop |
 | WHILE | `while condition begin ... end while;` | Condition-based loop |
 | Return | `return $value;` | Required at end of every flow path, and never inside a loop (MDL062) |
+| List range (paging) | `$Page = range($List, <offset>, <amount>);` | **Offset first, then amount.** `range($L, 0, $N)` = first N; `range($L, $Off)` = skip and take the rest. At least one bound is required — a bare `range($L)` is CE6520 / MDL068. Stored as a `CustomRange` nested inside the `ListRange` |
 | Execute DB query | `$Result = execute database query Module.Conn.Query;` | 3-part name; supports DYNAMIC, params, CONNECTION override |
 | Import mapping | `[$Var =] import from mapping Module.IMM($SourceVar) [all\|first\|limit <e> [offset <e>]];` | Apply import mapping to string variable. Trailing clause is Studio Pro's Range; omitted = infer from the mapping's root. `first` binds one OBJECT (`limit 1` is a one-element LIST). Mendix rejects `offset` on a non-list mapping (CE6100) |
 | Export mapping | `$Var = export to mapping Module.EMM($EntityVar);` | Apply export mapping to entity, returns string |
@@ -1081,6 +1082,14 @@ source json '{"latitude": 51.9, "current": {"temp": 12.8}}'
 | Create or modify | `create or modify import mapping Module.Name ...;` | Updates existing mapping, preserves UUID |
 | Place in a folder | `create [or modify] import mapping Module.Name folder 'path' ...;` | Clause goes after the name. On `or modify` it **moves** the mapping; omitting it leaves placement alone |
 | Drop mapping | `drop import mapping Module.Name;` | |
+| Schema source | `with json structure Module.JSON_X` / `with message definition Module.Collection.Definition` / `with xml schema Module.Schema` | A **message definition** is derived from the domain model rather than a payload sample, so its members are the definition's exposed names and the reference is **three parts** — the definitions live inside a collection document. Read-only: map over one that already exists |
+| Nested schema root | `with json structure Module.JSON_X root choices/message` | Starts the mapping at a nested element instead of the structure's root. Written in member names; the path may pass through an array, and the mapping is then rooted at the item |
+| Array-rooted structure | no special syntax | The root is taken from the structure, so `[{...}]` and `{...}` are written the same way |
+| Export grouping node | `group as wrapper { Assoc/Entity as items { ... } }` | A JSON object with no Mendix object behind it. **Object children only** — a value there has no entity to bind to, and Mendix reports CE0061 |
+| Array of primitives | `Assoc/Entity = tags { Value = Value }` (import) / `Assoc/Entity as tags { Value = Value }` (export) | `["a","b"]` maps to one entity per string. Written like any other array — the wrapper level is generated — and the primitive is the reserved member `Value` |
+| Export array | `Assoc/Entity as items { values }` | Declared like a nested object; mxcli generates the bare Array container Studio Pro stores. The older two-level form `Assoc/Entity as items { ItemAssoc/ItemEntity as ItemsItem { ... } }` still works and names an entity per level |
+| Custom object handling | `find Module.Entity by Module.Microflow ( Param: parent ) = member { ... }` | A microflow resolves the object instead of Create/Find. Parameter sources: `parent` (the enclosing mapped object), `parameter` (the mapping's own input), `parent(2)` (an ancestor N levels up), or a member path such as `idx` (a value from the payload — mxcli adds the value element Mendix requires for it). modelsdk engine only |
+| Value transform | `Attr = Module.Microflow(jsonField)` (import) / `jsonField = Module.Microflow(Attr)` (export) | The value passes through a microflow. The stored element carries only the microflow — its input **is** the member the element binds, which is why the member is named inside the call. An unresolvable microflow is refused |
 
 ```sql
 create import mapping Module.IMM_Pet
@@ -1094,7 +1103,30 @@ create import mapping Module.IMM_Pet
 };
 ```
 
-**Object handling:** `create` (default), `find` (requires KEY), `find or create`
+**Input object:** an import mapping may take an object as a parameter, which a
+custom handler binds with `Param: parameter`:
+
+```sql
+create import mapping Module.IMM_Response
+  with json structure Module.JSON_Response
+  parameter GenAICommons.ChunkCollection
+{ ... }
+```
+
+Import only — an export mapping's parameter is its root object.
+
+**Object handling:** `create` (default), or `find` — which requires a KEY *and*
+must say what happens when nothing is found:
+
+| Syntax | When the object is not found |
+|--------|------------------------------|
+| `find Module.Entity or create` | Create one (same as `find or create Module.Entity`) |
+| `find Module.Entity or error` | Fail the import |
+| `find Module.Entity or ignore` | Skip the element |
+
+Add `overridable` (`find Module.Entity or create overridable`) to let the caller
+override the choice at import time. A bare `find` is refused: the three
+behaviours are not interchangeable, and mxcli used to pick one silently.
 
 **Nested objects:** Use association path `Assoc/entity = jsonKey`:
 ```sql

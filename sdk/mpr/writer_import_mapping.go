@@ -55,11 +55,21 @@ func (w *Writer) serializeImportMapping(im *model.ImportMapping) ([]byte, error)
 		exportLevel = "Hidden"
 	}
 
-	// ParameterType is a required sub-document even when not used (DataTypes$UnknownType).
-	// Without it Studio Pro fails to render the schema source and mapping elements correctly.
+	// ParameterType is a required sub-document even when unused: an
+	// unparameterised mapping stores the DataTypes$UnknownType marker, and one
+	// declaring an input object stores a DataTypes$ObjectType naming it (#265).
+	// Without the property Studio Pro fails to render the schema source and
+	// mapping elements correctly.
 	parameterType := bson.D{
 		{Key: "$ID", Value: idToBsonBinary(generateUUID())},
 		{Key: "$Type", Value: "DataTypes$UnknownType"},
+	}
+	if im.ParameterEntity != "" {
+		parameterType = bson.D{
+			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+			{Key: "$Type", Value: "DataTypes$ObjectType"},
+			{Key: "Entity", Value: im.ParameterEntity},
+		}
 	}
 
 	doc := bson.D{
@@ -92,7 +102,7 @@ func serializeImportMappingElement(elem *model.ImportMappingElement, parentPath 
 		id = generateUUID()
 	}
 
-	if elem.Kind == "Object" || elem.Kind == "Array" {
+	if isMappingObjectKind(elem.Kind) {
 		return serializeImportObjectElement(id, elem, parentPath)
 	}
 	return serializeImportValueElement(id, elem, parentPath)
@@ -119,10 +129,15 @@ func serializeImportObjectElement(id string, elem *model.ImportMappingElement, p
 	if objectHandling == "" {
 		objectHandling = "Create"
 	}
-	objectHandlingBackup := objectHandling
+	// The backup takes {Create, Error, Ignore} only; copying the HANDLING into
+	// it wrote "Find"/"Custom", which occur in 0 of 1,261 real elements (#261).
+	objectHandlingBackup := "Create"
+	switch elem.ObjectHandlingBackup {
+	case "Create", "Error", "Ignore":
+		objectHandlingBackup = elem.ObjectHandlingBackup
+	}
 	if objectHandling == "FindOrCreate" {
 		objectHandling = "Find"
-		objectHandlingBackup = "Create"
 	}
 
 	// IMPORTANT: The correct $Type is "ImportMappings$ObjectMappingElement" (no "Import" prefix in the element name).
@@ -135,10 +150,10 @@ func serializeImportObjectElement(id string, elem *model.ImportMappingElement, p
 		{Key: "Entity", Value: elem.Entity},
 		{Key: "ExposedName", Value: elem.ExposedName},
 		{Key: "JsonPath", Value: jsonPath},
-		{Key: "XmlPath", Value: ""},
+		{Key: "XmlPath", Value: elem.XmlPath},
 		{Key: "ObjectHandling", Value: objectHandling},
 		{Key: "ObjectHandlingBackup", Value: objectHandlingBackup},
-		{Key: "ObjectHandlingBackupAllowOverride", Value: false},
+		{Key: "ObjectHandlingBackupAllowOverride", Value: elem.BackupAllowOverride},
 		{Key: "Association", Value: elem.Association},
 		{Key: "Children", Value: children},
 		{Key: "MinOccurs", Value: int32(elem.MinOccurs)},
@@ -164,7 +179,7 @@ func serializeImportValueElement(id string, elem *model.ImportMappingElement, pa
 		{Key: "Attribute", Value: elem.Attribute},
 		{Key: "ExposedName", Value: elem.ExposedName},
 		{Key: "JsonPath", Value: jsonPath},
-		{Key: "XmlPath", Value: ""},
+		{Key: "XmlPath", Value: elem.XmlPath},
 		{Key: "IsKey", Value: elem.IsKey},
 		{Key: "Type", Value: dataType},
 		{Key: "MinOccurs", Value: int32(elem.MinOccurs)},
@@ -177,7 +192,7 @@ func serializeImportValueElement(id string, elem *model.ImportMappingElement, pa
 		// the shape mxbuild accepts and Studio Pro refuses to open. (issue #882)
 		{Key: "ElementType", Value: "Value"},
 		{Key: "Documentation", Value: ""},
-		{Key: "Converter", Value: ""},
+		{Key: "Converter", Value: elem.Converter},
 		{Key: "FractionDigits", Value: int32(elem.FractionDigits)},
 		{Key: "TotalDigits", Value: int32(elem.TotalDigits)},
 		{Key: "MaxLength", Value: int32(elem.MaxLength)},
@@ -207,6 +222,11 @@ func xmlPrimitiveTypeName(dataType string) string {
 func elementTypeForKind(kind string) string {
 	if kind == "Array" {
 		return "Array"
+	}
+	if kind == "Wrapper" {
+		// An array of PRIMITIVES: one entity per item, with the value on an
+		// attribute (#268).
+		return "Wrapper"
 	}
 	if kind == "Value" {
 		return "Value"
@@ -247,5 +267,17 @@ func serializeImportValueDataType(typeName string) bson.D {
 			{Key: "$ID", Value: typeID},
 			{Key: "$Type", Value: "DataTypes$StringType"},
 		}
+	}
+}
+
+// isMappingObjectKind — see the note in mdl/backend/modelsdk/mapping_write.go.
+// Duplicated rather than shared: the two engines' writers are independent by
+// design (ADR-0002/0004).
+func isMappingObjectKind(kind string) bool {
+	switch kind {
+	case "Object", "Array", "Wrapper":
+		return true
+	default:
+		return false
 	}
 }

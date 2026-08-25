@@ -1,0 +1,77 @@
+-- ============================================================================
+-- Bug ako/mxcli#268: arrays of PRIMITIVES could not be mapped
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   `"tags": ["a","b"]` maps to one entity per string, with the value on an
+--   attribute. Mendix models it with a Wrapper element whose single child binds
+--   the "(Value)" marker:
+--
+--     et=Wrapper entity=KrogerAPI.Category assoc=KrogerAPI.Category_Product
+--                path=(Object)|data|(Object)|categories|(Wrapper)
+--       value    attr=KrogerAPI.Category.Value
+--                path=(Object)|data|(Object)|categories|(Wrapper)|(Value)
+--
+--   34 of the 327 mapping documents in the demo apps contain one. MDL could not
+--   express it and `describe` leaked the markers — `= categories/(Wrapper)` with
+--   `Value = (Value)` — which does not parse.
+--
+-- Two halves, and the first was a prerequisite:
+--   1. mxcli's JSON STRUCTURE builder wrote the wrong PATHS for a primitive
+--      array: the wrapper at "…|tags|(Object)" and the value at "…|(Object)|"
+--      — a trailing empty segment. Nothing could resolve against that. The
+--      ElementType was already "Wrapper"; only the markers were wrong.
+--   2. The mapping builders stepped from an array to a hardcoded "|(Object)".
+--      They now step to the array's ACTUAL child, which is "|(Object)" for an
+--      array of objects and "|(Wrapper)" for an array of primitives.
+--
+-- No new syntax:
+--   An array of primitives is written like any other array — the wrapper level
+--   is generated, the same way the item level is. Inside it, the primitive is
+--   the reserved member `Value`.
+--
+-- Watch for:
+--   "Wrapper" is an OBJECT element kind. Both writers dispatched on
+--   `Kind == "Object" || Kind == "Array"`, so a Wrapper serialized as a VALUE
+--   element with no attribute, which mxbuild rejects with CE5015 "Element
+--   '(Object)/tags/(Wrapper)' is not a Value element."
+--
+-- Validation:
+--   mxbuild 11.13 reports 0 errors, and both mappings round-trip through
+--   describe -> exec reporting "Unchanged" — the rebuild is semantically equal.
+-- ============================================================================
+
+create module BugTest268;
+
+create persistent entity BugTest268.Product ( Name: String(100) );
+create persistent entity BugTest268.Tag ( Value: String(100) );
+create association BugTest268.Tag_Product
+  from BugTest268.Tag to BugTest268.Product
+  type Reference;
+
+create json structure BugTest268.JSON_Product
+  snippet $${"name": "n", "tags": ["a", "b"]}$$;
+
+create or modify import mapping BugTest268.IMM_Product
+  folder 'Mappings'
+  with json structure BugTest268.JSON_Product
+{
+  create BugTest268.Product {
+    Name = name,
+    create BugTest268.Tag_Product/BugTest268.Tag = tags {
+      Value = Value
+    }
+  }
+};
+
+create or modify export mapping BugTest268.EXM_Product
+  folder 'Mappings'
+  with json structure BugTest268.JSON_Product
+{
+  BugTest268.Product {
+    name = Name,
+    BugTest268.Tag_Product/BugTest268.Tag as tags {
+      Value = Value
+    }
+  }
+};
