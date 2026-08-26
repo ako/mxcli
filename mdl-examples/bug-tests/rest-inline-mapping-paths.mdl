@@ -1,0 +1,100 @@
+-- ============================================================================
+-- Inline REST mapping: multi-segment paths, and the export body that made the
+-- project unloadable
+-- ============================================================================
+--
+-- Reported by the mxcli-rest project (FINDINGS.md #36 and #37), re-measured
+-- against ako/mxcli main @ 23cc8278. Both live in the INLINE REST serializer,
+-- which is a different code path from the mapping DOCUMENTS that PR #290
+-- covered — none of that work touched these, and the census in
+-- PROPOSAL_mapping_coverage.md counts documents only.
+--
+-- Symptom 1 (#36) — a multi-segment member is silently wrong:
+--   `"Title" = "fields/Title"` inside `Response: MAPPING` passed mxcli check,
+--   exec, mx check AND describe, and at runtime every nested value came back
+--   EMPTY:
+--
+--     spitemid | title | status | duedate
+--     ---------+-------+--------+---------
+--     12       |       |        |
+--
+--   Cause: the serializer appended the member text verbatim, storing
+--   "(Object)|fields/Title" — ONE member whose name contains a slash — where
+--   Mendix stores "(Object)|fields|Title". Four Studio Pro-authored inline
+--   response mappings in the demo apps confirm the pipe form, e.g.
+--   "(Object)|results|bindings|(Object)|caseId|value".
+--
+-- Symptom 2 (#37) — a nested export body corrupts the project:
+--   Every nested child was hardcoded ObjectHandling "Create" regardless of
+--   direction. In an export body that is illegal, and mxbuild does not report
+--   it as a check error — it throws while LOADING:
+--
+--     System.AggregateException: ... (Export Object Mappings cannot have
+--     ObjectHandling set to 'Create')
+--
+--   so the project cannot be opened at all. Nested export elements are now
+--   "Find" with backup "Error", matching what Studio Pro stores on an export
+--   mapping document (there is no inline export body anywhere in the demo
+--   corpus to pin against — 0 Rest$ImplicitMappingBody in 9 packages — so the
+--   document form is the reference and mxbuild is the control).
+--
+-- Watch for:
+--   Fixing the path made DESCRIBE wrong in the same motion. ExposedName now
+--   holds the LAST segment (as Studio Pro does), so printing it emitted
+--   `"Title" = "Title"` — output that parses, re-executes and binds the wrong
+--   member. DESCRIBE derives the member from the stored JsonPath instead,
+--   relative to the enclosing element.
+--
+-- Validation:
+--   mxbuild 11.13 loads the project and reports 0 errors; both engines
+--   (legacy and modelsdk) write byte-identical paths and handling; describe ->
+--   exec reproduces the same stored paths.
+--
+--   NOT verified at runtime here: this container has no Postgres server and
+--   Docker cannot pull images, so `run --local` cannot boot. The empty-column
+--   symptom was a RUNTIME observation, so the runtime confirmation belongs in
+--   the mxcli-rest project, which has that harness.
+-- ============================================================================
+
+create module RestInline;
+
+create persistent entity RestInline.FlatProbe (
+  ItemId: String(20),
+  Title: String(100)
+);
+
+create persistent entity RestInline.Task ( Name: String(100) );
+create persistent entity RestInline.TaskFields ( Title: String(100) );
+create association RestInline.Task_TaskFields
+  from RestInline.Task to RestInline.TaskFields
+  type Reference;
+
+create or modify rest client RestInline.RC_Probe (
+  BaseUrl: 'http://localhost:4010',
+  Authentication: NONE
+)
+{
+  -- #36: the nested member must reach (Object)|fields|Title, not
+  -- (Object)|fields/Title.
+  OPERATION GetItem {
+    Method: GET,
+    Path: '/items/{id}',
+    Parameters: ($id: String),
+    Response: MAPPING RestInline.FlatProbe {
+      ItemId = "id",
+      Title  = "fields/Title"
+    }
+  }
+
+  -- #37: the nested element here is an EXPORT object element, so it must not
+  -- be ObjectHandling "Create".
+  OPERATION PostTask {
+    Method: POST,
+    Path: '/tasks',
+    Body: MAPPING RestInline.Task {
+      RestInline.Task_TaskFields/RestInline.TaskFields = "fields" {
+        "Title" = Title
+      }
+    }
+  }
+};

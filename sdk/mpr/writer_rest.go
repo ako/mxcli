@@ -297,6 +297,34 @@ func serializeRestImplicitMappingResponse(entity string, mappings []*model.RestR
 	}
 }
 
+// nestedInlineHandling is the ObjectHandling a nested inline mapping element
+// gets. It is NOT the same in both directions, and the export answer is not a
+// preference: mxbuild refuses to LOAD a project whose export object element is
+// "Create" — "Export Object Mappings cannot have ObjectHandling set to
+// 'Create'", thrown as an AggregateException before any check runs, so the
+// project cannot be opened at all. The serializer used to hardcode "Create" for
+// every nested child regardless of namespace.
+//
+// "Find" is what Studio Pro stores on a nested object element of an export
+// mapping DOCUMENT; the demo corpus contains no inline export body to pin it
+// against directly (0 Rest$ImplicitMappingBody in 9 packages), so the document
+// form is the reference and mxbuild is the control.
+func nestedInlineHandling(namespace string) string {
+	if namespace == "ExportMappings" {
+		return "Find"
+	}
+	return "Create"
+}
+
+// nestedInlineBackup pairs with it: an export element has nothing to create, so
+// Studio Pro stores "Error" (see the ObjectHandlingBackup enum, #261).
+func nestedInlineBackup(namespace string) string {
+	if namespace == "ExportMappings" {
+		return "Error"
+	}
+	return "Create"
+}
+
 // serializeInlineMappingElement creates a single ObjectMappingElement with children for inline REST mappings.
 // namespace is "ImportMappings" or "ExportMappings". objectHandling is "Create" or "Parameter".
 func serializeInlineMappingElement(entity, association, exposedName, jsonPath string, mappings []*model.RestResponseMapping, namespace, objectHandling string) bson.D {
@@ -304,21 +332,23 @@ func serializeInlineMappingElement(entity, association, exposedName, jsonPath st
 	for _, m := range mappings {
 		if m.Entity != "" {
 			// Nested object mapping
-			childJsonPath := jsonPath + "|" + m.ExposedName
-			child := serializeInlineMappingElement(m.Entity, m.Association, m.ExposedName, childJsonPath, m.Children, namespace, "Create")
+			childJsonPath := model.InlineMappingPath(jsonPath, m.ExposedName)
+			child := serializeInlineMappingElement(m.Entity, m.Association,
+				model.InlineMappingExposedName(m.ExposedName), childJsonPath, m.Children,
+				namespace, nestedInlineHandling(namespace))
 			children = append(children, child)
 		} else {
 			// Value mapping
 			valueJsonPath := m.JsonPath
 			if valueJsonPath == "" {
-				valueJsonPath = jsonPath + "|" + m.ExposedName
+				valueJsonPath = model.InlineMappingPath(jsonPath, m.ExposedName)
 			}
 			attrQN := entity + "." + m.Attribute
 			children = append(children, bson.D{
 				{Key: "$ID", Value: idToBsonBinary(generateUUID())},
 				{Key: "$Type", Value: namespace + "$ValueMappingElement"},
 				{Key: "Attribute", Value: attrQN},
-				{Key: "ExposedName", Value: m.ExposedName},
+				{Key: "ExposedName", Value: model.InlineMappingExposedName(m.ExposedName)},
 				{Key: "JsonPath", Value: valueJsonPath},
 				{Key: "XmlPath", Value: ""},
 				{Key: "IsKey", Value: false},
@@ -354,7 +384,7 @@ func serializeInlineMappingElement(entity, association, exposedName, jsonPath st
 		{Key: "JsonPath", Value: jsonPath},
 		{Key: "XmlPath", Value: ""},
 		{Key: "ObjectHandling", Value: objectHandling},
-		{Key: "ObjectHandlingBackup", Value: "Create"},
+		{Key: "ObjectHandlingBackup", Value: nestedInlineBackup(namespace)},
 		{Key: "ObjectHandlingBackupAllowOverride", Value: false},
 		{Key: "Association", Value: association},
 		{Key: "Children", Value: children},
