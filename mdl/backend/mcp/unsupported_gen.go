@@ -652,6 +652,11 @@ func (unsupportedBackend) IsRule(_ string) (r0 bool, err1 error) {
 	return
 }
 
+func (unsupportedBackend) LayoutPlaceholders(_ model.ID) (r0 []string, err1 error) {
+	err1 = errUnsupported("LayoutPlaceholders")
+	return
+}
+
 func (unsupportedBackend) ListAgentEditorAgents() (r0 []*agenteditor.Agent, err1 error) {
 	err1 = errUnsupported("ListAgentEditorAgents")
 	return
@@ -974,6 +979,11 @@ func (unsupportedBackend) OpenPageForMutation(_ model.ID) (r0 backend.PageMutato
 
 func (unsupportedBackend) OpenWorkflowForMutation(_ model.ID) (r0 backend.WorkflowMutator, err1 error) {
 	err1 = errUnsupported("OpenWorkflowForMutation")
+	return
+}
+
+func (unsupportedBackend) PageLayoutName(_ model.ID) (r0 string, err1 error) {
+	err1 = errUnsupported("PageLayoutName")
 	return
 }
 

@@ -358,6 +358,24 @@ func buildPageBodyV3(ctx parser.IPageBodyV3Context, b *Builder) []*ast.WidgetV3 
 			if ref := buildSlotMarkerV3(c); ref != nil {
 				widgets = append(widgets, ref)
 			}
+		case *parser.PlaceholderBlockV3Context:
+			// A bodyless `placeholder Main` is a layout *declaring* a slot, not
+			// a page filling one: a binding with no widgets fills nothing, and
+			// a Forms$Placeholder has no children to carry. The two jobs
+			// the one grammar rule serves are told apart by that shape rather
+			// than by tracking which document is being built, so the same
+			// distinction holds wherever a page body appears — including nested
+			// inside a scroll container region.
+			//
+			// The braced form is left to buildPagePlaceholdersV3, which the
+			// page executor calls separately.
+			if c.LBRACE() == nil {
+				widgets = append(widgets, &ast.WidgetV3{
+					Type:       "placeholder",
+					Name:       placeholderBlockName(c),
+					Properties: map[string]any{},
+				})
+			}
 		}
 	}
 
@@ -1764,4 +1782,34 @@ func buildSnippetCallParamListV3(ctx parser.ISnippetCallParamListV3Context) []as
 		}
 	}
 	return params
+}
+
+// buildLayoutV3 builds `create layout Module.Name ( … ) { … }`.
+//
+// The property block is parsed with the widget-property machinery rather than a
+// header rule of its own: a layout's header is a flat ( key: value ) list, which
+// is exactly what widgetPropertiesV3 already reads, and reusing it means a
+// layout property behaves like every other property in MDL.
+func (b *Builder) buildLayoutV3(ctx *parser.CreateLayoutStatementContext) *ast.CreateLayoutStmt {
+	stmt := &ast.CreateLayoutStmt{Properties: map[string]any{}}
+
+	if qn := ctx.QualifiedName(); qn != nil {
+		stmt.Name = buildQualifiedName(qn)
+	}
+	if createStmt := findParentCreateStatement(ctx); createStmt != nil {
+		if createStmt.OR() != nil {
+			stmt.IsReplace = createStmt.REPLACE() != nil
+			stmt.IsModify = createStmt.MODIFY() != nil
+		}
+		stmt.Documentation = findDocCommentText(ctx)
+	}
+	if props := ctx.WidgetPropertiesV3(); props != nil {
+		holder := &ast.WidgetV3{Properties: map[string]any{}}
+		parseWidgetPropertiesV3(props, holder, b)
+		stmt.Properties = holder.Properties
+	}
+	if bodyCtx := ctx.PageBodyV3(); bodyCtx != nil {
+		stmt.Widgets = buildPageBodyV3(bodyCtx, b)
+	}
+	return stmt
 }

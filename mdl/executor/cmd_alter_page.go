@@ -36,14 +36,33 @@ func execAlterPage(ctx *ExecContext, s *ast.AlterPageStmt) error {
 		containerType = "page"
 	}
 
-	if containerType == "snippet" {
+	switch containerType {
+	case "snippet":
 		snippet, modID, err := findSnippetByName(ctx, s.PageName, h)
 		if err != nil {
 			return err
 		}
 		unitID = snippet.ID
 		containerID = modID
-	} else {
+	case "layout":
+		layout, err := findLayoutByQName(ctx, s.PageName)
+		if err != nil {
+			return err
+		}
+		modID := h.FindModuleID(layout.ContainerID)
+		// The same refusal CREATE LAYOUT makes, for the same reason: a
+		// Marketplace update replaces the module wholesale, so an edit here is
+		// gone at the next update with nothing to show it ever happened.
+		if mod, _ := ctx.Backend.GetModule(modID); isMarketplaceModule(ctx, mod) {
+			return mdlerrors.NewValidation(fmt.Sprintf(
+				"layout %s is in a marketplace module — an edit there is overwritten by the next module update. "+
+					"Copy it into a module of your own first: `describe layout %s`, rename it, run it, "+
+					"then repoint pages with `alter pages set layout = <yours> where layout = %s`",
+				s.PageName.String(), s.PageName.String(), s.PageName.String()))
+		}
+		unitID = layout.ID
+		containerID = modID
+	default:
 		page, err := findPageByName(ctx, s.PageName, h)
 		if err != nil {
 			return err
@@ -96,6 +115,9 @@ func execAlterPage(ctx *ExecContext, s *ast.AlterPageStmt) error {
 				return mdlerrors.NewUnsupported("set Layout is not supported for snippets")
 			}
 			newLayoutQN := o.NewLayout.Module + "." + o.NewLayout.Name
+			if err := checkRepointPlaceholders(ctx, mutator, o, newLayoutQN); err != nil {
+				return err
+			}
 			if err := mutator.SetLayout(newLayoutQN, o.Mappings); err != nil {
 				return mdlerrors.NewBackend("set Layout", err)
 			}

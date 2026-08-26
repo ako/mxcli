@@ -71,8 +71,11 @@ func New(rawData bson.D, unitID model.ID, deps Deps) *Mutator {
 	}
 
 	finder := findBsonWidget
-	if containerType == backend.ContainerSnippet {
+	switch containerType {
+	case backend.ContainerSnippet:
 		finder = findBsonWidgetInSnippet
+	case backend.ContainerLayout:
+		finder = findBsonWidgetInLayout
 	}
 
 	return &Mutator{
@@ -287,6 +290,13 @@ func refuseWidgetsAtColumnTarget(gridRef, columnRef string) error {
 
 func (m *Mutator) InsertWidget(widgetRef string, columnRef string, position backend.InsertPosition, widgets []pages.Widget) error {
 	if columnRef != "" {
+		// `layoutContainer.top` is a scroll-container region, not a grid column.
+		// A region has no Name — its slot is its identity — so the dotted ref is
+		// the only way to address one, and it reuses the widgetRef the grammar
+		// already has rather than inventing a syntax for five fixed positions.
+		if handled, err := m.insertIntoScrollRegion(widgetRef, columnRef, position, widgets); handled {
+			return err
+		}
 		// Resolve first, so a mistyped column still reports "not found" (with the
 		// available names) rather than the refusal below.
 		if _, err := findBsonColumn(m.rawData, widgetRef, columnRef, m.widgetFinder); err != nil {
@@ -701,6 +711,34 @@ func (m *Mutator) DropVariable(name string) error {
 	return nil
 }
 
+// BoundPlaceholders returns the placeholder names this page binds content to.
+//
+// A FormCallArgument's Parameter is the placeholder's *qualified* name
+// (Atlas_Core.Atlas_Default.Main), so the layout's own qualified name is
+// stripped off the front — the last dot-separated segment is the placeholder.
+func (m *Mutator) BoundPlaceholders() []string {
+	formCall := bsonnav.DGetDoc(m.rawData, "FormCall")
+	if formCall == nil {
+		return nil
+	}
+	var out []string
+	for _, item := range bsonnav.DGetArrayElements(bsonnav.DGet(formCall, "Arguments")) {
+		doc, ok := item.(bson.D)
+		if !ok {
+			continue
+		}
+		p := bsonnav.DGetString(doc, "Parameter")
+		if p == "" {
+			continue
+		}
+		if i := strings.LastIndex(p, "."); i >= 0 {
+			p = p[i+1:]
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
 func (m *Mutator) SetLayout(newLayout string, paramMappings map[string]string) error {
 	if m.containerType == backend.ContainerSnippet {
 		return fmt.Errorf("set Layout is not supported for snippets")
@@ -1085,6 +1123,19 @@ func findBsonWidget(rawData bson.D, widgetName string) *bsonWidgetResult {
 	return nil
 }
 
+// findBsonWidgetInLayout searches a Forms$Layout for a widget by name.
+//
+// A layout's tree hangs off Content — a Forms$WebLayoutContent (or
+// Forms$NativeLayoutContent) — never off the layout element and never off a
+// FormCall, so the page finder returns nil for every layout.
+func findBsonWidgetInLayout(rawData bson.D, widgetName string) *bsonWidgetResult {
+	content := bsonnav.DGetDoc(rawData, "Content")
+	if content == nil {
+		return nil
+	}
+	return findInWidgetArray(content, "Widgets", widgetName)
+}
+
 // findBsonWidgetInSnippet searches the raw BSON snippet tree for a widget by name.
 func findBsonWidgetInSnippet(rawData bson.D, widgetName string) *bsonWidgetResult {
 	if result := findInWidgetArray(rawData, "Widgets", widgetName); result != nil {
@@ -1131,6 +1182,22 @@ func findInWidgetChildren(wDoc bson.D, widgetName string) *bsonWidgetResult {
 	}
 	if result := findInWidgetArray(wDoc, "FooterWidgets", widgetName); result != nil {
 		return result
+	}
+
+	// ScrollContainer: five named slots, not a list — Top, Right, Bottom, Left
+	// and CenterRegion, the last spelled unlike its siblings. Without this a
+	// layout's topbar and navigation are unreachable (they live in Top and
+	// Left), and so is anything inside a scroll container a page places itself.
+	for _, slot := range ScrollRegionSlots {
+		region := bsonnav.DGetDoc(wDoc, slot)
+		if region == nil {
+			continue
+		}
+		// findInWidgetArray already descends through findInWidgetChildren, so
+		// this reaches arbitrarily deep inside a region.
+		if result := findInWidgetArray(region, "Widgets", widgetName); result != nil {
+			return result
+		}
 	}
 
 	// LayoutGrid: Rows[].Columns[].Widgets[]

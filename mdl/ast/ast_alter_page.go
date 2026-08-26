@@ -114,3 +114,19 @@ type LayoutMapping struct {
 	From string
 	To   string
 }
+
+// AlterPagesLayoutStmt represents the bulk repoint:
+//
+//	ALTER PAGES [IN <module>] SET LAYOUT = Module.Layout
+//	  [MAP (Old AS New, …)] [WHERE LAYOUT = Module.Old]
+//
+// It is a statement of its own rather than an ALTER PAGE operation because it
+// names no page: the set is computed from Module and WhereLayout.
+type AlterPagesLayoutStmt struct {
+	Module      string            // "" = every module the project owns
+	NewLayout   QualifiedName     // the layout to point pages at
+	Mappings    map[string]string // Old placeholder -> New placeholder
+	WhereLayout *QualifiedName    // nil = every page in scope, whatever its layout
+}
+
+func (s *AlterPagesLayoutStmt) isStatement() {}

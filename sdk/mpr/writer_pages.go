@@ -48,29 +48,28 @@ func (w *Writer) MovePage(page *pages.Page) error {
 	return w.moveUnitByID(string(page.ID), string(page.ContainerID))
 }
 
-// CreateLayout creates a new layout.
-func (w *Writer) CreateLayout(layout *pages.Layout) error {
-	if layout.ID == "" {
-		layout.ID = model.ID(generateUUID())
-	}
-	layout.TypeName = "Forms$Layout"
+// errLayoutAuthoringIsModelsdkOnly is returned by both legacy layout writers.
+//
+// The legacy serializer wrote four top-level keys — a string $ID (Studio Pro
+// stores binary), Name, Documentation, and a LayoutType on the layout element,
+// which is not where Mendix keeps it. There was no Content wrapper at all, so
+// the widget tree had nowhere to go. Nothing ever called it: CREATE LAYOUT did
+// not exist until the modelsdk codec could produce the real document. Refusing
+// is the honest outcome — the alternative is a unit `mx check` may well accept
+// and Studio Pro cannot render.
+var errLayoutAuthoringIsModelsdkOnly = fmt.Errorf(
+	"authoring layouts needs the modelsdk engine (MXCLI_ENGINE=modelsdk); the legacy writer cannot produce a layout's Content wrapper")
 
-	contents, err := w.serializeLayout(layout)
-	if err != nil {
-		return fmt.Errorf("failed to serialize layout: %w", err)
-	}
-
-	return w.insertUnit(string(layout.ID), string(layout.ContainerID), "Documents", "Forms$Layout", contents)
+// CreateLayout is refused on the legacy engine. See
+// errLayoutAuthoringIsModelsdkOnly.
+func (w *Writer) CreateLayout(_ *pages.Layout) error {
+	return errLayoutAuthoringIsModelsdkOnly
 }
 
-// UpdateLayout updates an existing layout.
-func (w *Writer) UpdateLayout(layout *pages.Layout) error {
-	contents, err := w.serializeLayout(layout)
-	if err != nil {
-		return fmt.Errorf("failed to serialize layout: %w", err)
-	}
-
-	return w.updateUnit(string(layout.ID), contents)
+// UpdateLayout is refused on the legacy engine. See
+// errLayoutAuthoringIsModelsdkOnly.
+func (w *Writer) UpdateLayout(_ *pages.Layout) error {
+	return errLayoutAuthoringIsModelsdkOnly
 }
 
 // DeleteLayout deletes a layout.
@@ -274,17 +273,6 @@ func (w *Writer) serializePage(page *pages.Page) ([]byte, error) {
 	doc = append(doc, bson.E{Key: "Url", Value: page.URL})
 	doc = append(doc, bson.E{Key: "Variables", Value: serializeLocalVariables(page.Variables)})
 
-	return bson.Marshal(doc)
-}
-
-func (w *Writer) serializeLayout(layout *pages.Layout) ([]byte, error) {
-	doc := bson.D{
-		{Key: "$ID", Value: string(layout.ID)},
-		{Key: "$Type", Value: layout.TypeName},
-		{Key: "Name", Value: layout.Name},
-		{Key: "Documentation", Value: layout.Documentation},
-		{Key: "LayoutType", Value: string(layout.LayoutType)},
-	}
 	return bson.Marshal(doc)
 }
 

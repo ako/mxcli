@@ -13,7 +13,10 @@ import (
 // NavigationTree represents a navigation tree widget.
 type NavigationTree struct {
 	BaseWidget
-	Items []*NavigationItem `json:"items,omitempty"`
+	// NavigationProfile names the profile the menu is drawn from. It is stored
+	// inside a Forms$NavigationSource under MenuSource, not on the tree itself.
+	NavigationProfile string            `json:"navigationProfile,omitempty"`
+	Items             []*NavigationItem `json:"items,omitempty"`
 }
 
 // NavigationItem represents an item in navigation.
@@ -25,9 +28,20 @@ type NavigationItem struct {
 	SubItems []*NavigationItem `json:"subItems,omitempty"`
 }
 
-// MenuBar represents a menu bar widget.
+// MenuBar represents a menu bar widget — the horizontal navigation a topbar
+// layout carries, where a NavigationTree is the vertical one a sidebar carries.
+//
+// Its stored shape is NavigationTree's: Appearance, MenuSource, Name, TabIndex
+// and nothing else (measured on Atlas_Core.Atlas_TopBar, and exactly what
+// generated/metamodel's PagesMenuBar declares). NavigationProfile is therefore
+// carried the same way — as the profile's name, which the codec wraps in a
+// Forms$NavigationSource.
 type MenuBar struct {
 	BaseWidget
+	NavigationProfile string `json:"navigationProfile,omitempty"`
+
+	// MenuSource is the older polymorphic form, kept because the type is
+	// exported. Nothing reads or writes it.
 	MenuSource MenuSource `json:"menuSource,omitempty"`
 }
 

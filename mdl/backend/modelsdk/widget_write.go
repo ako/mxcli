@@ -538,6 +538,80 @@ func widgetToGen(w pages.Widget) (element.Element, error) {
 		g.SetValidation(widgetValidationToGen())
 		return g, nil
 
+	case *pages.ScrollContainer:
+		g := genPg.NewScrollContainer()
+		applyWidgetBase(g, &x.BaseWidget)
+		for _, r := range x.Regions {
+			rg, err := scrollRegionToGen(r)
+			if err != nil {
+				return nil, err
+			}
+			// Five named slots, not a list. gen's setter for the centre is
+			// SetCenter but the BSON key is CenterRegion — see the
+			// STORAGE-NAME OVERRIDE in modelsdk/gen/pages.
+			switch r.Slot {
+			case pages.ScrollSlotTop:
+				g.SetTop(rg)
+			case pages.ScrollSlotRight:
+				g.SetRight(rg)
+			case pages.ScrollSlotBottom:
+				g.SetBottom(rg)
+			case pages.ScrollSlotLeft:
+				g.SetLeft(rg)
+			case pages.ScrollSlotCenter:
+				g.SetCenter(rg)
+			default:
+				return nil, fmt.Errorf("scroll container %q: unknown region %q (want top, right, bottom, left or center)", x.Name, r.Slot)
+			}
+		}
+		// Flat children go in the centre, which is where a container with no
+		// explicit regions puts them. Both at once would silently discard one
+		// of the two, so it is refused.
+		if len(x.Widgets) > 0 {
+			for _, r := range x.Regions {
+				if r.Slot == pages.ScrollSlotCenter {
+					return nil, fmt.Errorf("scroll container %q has both a center region and loose widgets; put the loose widgets in the center region", x.Name)
+				}
+			}
+			flat := &pages.ScrollContainerRegion{Slot: pages.ScrollSlotCenter, Widgets: x.Widgets}
+			rg, err := scrollRegionToGen(flat)
+			if err != nil {
+				return nil, err
+			}
+			g.SetCenter(rg)
+		}
+		return g, nil
+
+	case *pages.LayoutPlaceholder:
+		// A placeholder's Name is API: a page binds to it as
+		// Module.Layout.<Name>, so renaming one unbinds every page that used it.
+		g := genPg.NewPlaceholder()
+		applyWidgetBase(g, &x.BaseWidget)
+		if x.Name == "" {
+			return nil, fmt.Errorf("placeholder needs a name: pages reference it as Module.Layout.<Name>")
+		}
+		return g, nil
+
+	case *pages.NavigationTree:
+		g := genPg.NewNavigationTree()
+		applyWidgetBase(g, &x.BaseWidget)
+		src := genPg.NewNavigationSource()
+		assignID(src)
+		src.SetNavigationProfileQualifiedName(orDefaultStr(x.NavigationProfile, "Responsive"))
+		g.SetMenuSource(src)
+		return g, nil
+
+	case *pages.MenuBar:
+		// Same four keys as a NavigationTree, and the same MenuSource wrapper —
+		// a menu bar is the horizontal navigation a topbar carries.
+		g := genPg.NewMenuBar()
+		applyWidgetBase(g, &x.BaseWidget)
+		src := genPg.NewNavigationSource()
+		assignID(src)
+		src.SetNavigationProfileQualifiedName(orDefaultStr(x.NavigationProfile, "Responsive"))
+		g.SetMenuSource(src)
+		return g, nil
+
 	case *pages.GroupBox:
 		g := genPg.NewGroupBox()
 		applyWidgetBase(g, &x.BaseWidget)
@@ -1484,4 +1558,34 @@ func orDefaultStr(s, def string) string {
 		return def
 	}
 	return s
+}
+
+// scrollRegionToGen builds one Forms$ScrollContainerRegion.
+//
+// The region carries no Name — its slot is its identity — and its Class lives
+// in Appearance like every other widget, not as a top-level key. Children go in
+// Widgets (a list); gen also exposes a singular Widget, which no real document
+// uses.
+func scrollRegionToGen(r *pages.ScrollContainerRegion) (element.Element, error) {
+	g := genPg.NewScrollContainerRegion()
+	assignID(g)
+	g.SetAppearance(newAppearance(r.Class, "", "", nil))
+	// 200/Auto is what Studio Pro writes for a region whose size was never
+	// touched — every unsized Atlas region carries it, including the centre
+	// ones where the number is inert. Writing a bare 0 instead would be a size
+	// nothing in the model ever means.
+	size := r.Size
+	if size == 0 {
+		size = 200
+	}
+	g.SetSize(int32(size))
+	g.SetSizeMode(orDefaultStr(r.SizeMode, "Auto"))
+	for _, w := range r.Widgets {
+		wg, err := widgetToGen(w)
+		if err != nil {
+			return nil, err
+		}
+		g.AddWidgets(wg)
+	}
+	return g, nil
 }

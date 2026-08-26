@@ -1,0 +1,159 @@
+-- ============================================================================
+-- Layout Examples - CREATE LAYOUT
+-- ============================================================================
+--
+-- A layout is the frame a page renders inside: the topbar, the navigation
+-- sidebar, and the placeholder the page's own content drops into.
+--
+-- Mendix's guidance is not to edit the Atlas layouts — a Marketplace update
+-- replaces the module and the edit is gone. CREATE LAYOUT refuses a Marketplace
+-- module for that reason; these examples build in a module of our own.
+--
+-- Run: mxcli exec mdl-examples/doctype-tests/layouts.mdl -p app.mpr
+-- ============================================================================
+
+create module LayoutTest;
+
+-- ----------------------------------------------------------------------------
+-- The minimum: a scroll container with a centre region holding a placeholder.
+-- A layout with no placeholder is refused — no page could use it.
+-- ----------------------------------------------------------------------------
+
+create or replace layout LayoutTest.Minimal (
+  layouttype: 'Responsive'
+) {
+  scrollcontainer layoutContainer {
+    region center (class: 'region-content') {
+      placeholder Main
+    }
+  }
+}
+
+-- ----------------------------------------------------------------------------
+-- The usual app frame: a topbar, a navigation sidebar and a content region.
+--
+-- `region` names one of five fixed slots — top, right, bottom, left, center —
+-- rather than being a free-text name. Studio Pro's default for an untouched
+-- region is size 200 / sizemode Auto, so omitting both is the same as writing
+-- them.
+-- ----------------------------------------------------------------------------
+
+-- The class is load-bearing, not decoration: Atlas scopes 24 of its layout
+-- rules to .layout-atlas and its variants, so a layout without one builds
+-- cleanly and renders with no topbar bar and no sidebar rail.
+create or replace layout LayoutTest.App_Default (
+  layouttype: 'Responsive',
+  class: 'layout-atlas layout-atlas-responsive-default'
+) {
+  scrollcontainer layoutContainer {
+    region top (size: 60, sizemode: 'Fixed', class: 'region-topbar') {
+      dynamictext brandText (content: 'My Application')
+      -- MENUBAR is the horizontal navigation a topbar carries; NAVIGATIONTREE
+      -- below is the vertical one a sidebar carries. Same stored shape.
+      menubar mainMenu (profile: 'Responsive')
+    }
+    region left (size: 232, sizemode: 'Pixels', class: 'region-sidebar') {
+      navigationtree navMenu (profile: 'Responsive')
+    }
+    region center (class: 'region-content') {
+      placeholder Main
+    }
+  }
+}
+
+-- ----------------------------------------------------------------------------
+-- More than one placeholder. A page binds to each by name — the name is API,
+-- so renaming one unbinds every page that used it.
+--
+-- Name one of them Main: Forms$Layout has no property saying which placeholder
+-- is the main one, and every layout Atlas ships follows that convention.
+-- ----------------------------------------------------------------------------
+
+create or replace layout LayoutTest.SplitHeader (
+  layouttype: 'Responsive'
+) {
+  scrollcontainer layoutContainer {
+    region top (size: 60, sizemode: 'Fixed', class: 'region-topbar') {
+      placeholder HeaderLeft
+      placeholder HeaderRight
+    }
+    region center (class: 'region-content') {
+      placeholder Main
+    }
+  }
+}
+
+-- ----------------------------------------------------------------------------
+-- A page over one of them. Bare widgets go into Main; `placeholder <Name> { }`
+-- fills a named one.
+-- ----------------------------------------------------------------------------
+
+create or replace page LayoutTest.Home (
+  title: 'Home',
+  layout: LayoutTest.App_Default
+) {
+  dynamictext welcome (content: 'Hello from the content region')
+}
+
+create or replace page LayoutTest.Split (
+  title: 'Split',
+  layout: LayoutTest.SplitHeader
+) {
+  placeholder HeaderLeft {
+    dynamictext hl (content: 'left of the header')
+  }
+  placeholder Main {
+    dynamictext body (content: 'the page body')
+  }
+}
+
+-- ----------------------------------------------------------------------------
+-- Repointing pages.
+--
+-- A new layout no page uses changes nothing. The bulk form is the real one --
+-- an app has one layout and many pages -- and WHERE is what makes it safe to
+-- run project-wide. Pages in Marketplace modules are skipped and named.
+--
+-- A page bound to a placeholder the new layout does not declare is refused
+-- before anything is written; MAP is how the binding is moved.
+-- ----------------------------------------------------------------------------
+
+alter page LayoutTest.Home { set Layout = LayoutTest.Minimal; };
+
+-- Split binds HeaderLeft, which Minimal does not declare -- so this needs MAP.
+alter page LayoutTest.Split { set Layout = LayoutTest.Minimal map (HeaderLeft as Main); };
+
+-- Put them back, filtered on what they are on now.
+alter pages in LayoutTest set layout = LayoutTest.App_Default
+  where layout = LayoutTest.Minimal;
+
+-- ----------------------------------------------------------------------------
+-- ALTER LAYOUT edits the stored document instead of rewriting it, so widgets
+-- MDL cannot spell survive. Same operations as ALTER PAGE.
+--
+-- A region has no name of its own -- its slot is its identity -- so it is
+-- addressed as <scrollContainer>.<slot>, reusing the dotted widget reference.
+-- Only INSERT INTO takes a region: BEFORE/AFTER position a widget among its
+-- siblings, so name that widget instead.
+-- ----------------------------------------------------------------------------
+
+alter layout LayoutTest.App_Default {
+  insert into layoutContainer.top { dynamictext tagline (content: 'A project-owned layout') };
+  set Content = 'My Application v2' on brandText;
+};
+
+alter layout LayoutTest.App_Default {
+  drop widget tagline;
+};
+
+-- ----------------------------------------------------------------------------
+-- DESCRIBE emits re-executable MDL, which is how a layout is copied: describe
+-- an Atlas layout, change the qualified name, run it.
+--
+-- Read the output before running it: a widget describe cannot render comes out
+-- as a comment ending "NOT re-executable", and the copy drops it. ALTER LAYOUT
+-- is the way to change a layout without that risk.
+-- ----------------------------------------------------------------------------
+
+show layouts in LayoutTest;
+describe layout LayoutTest.App_Default;
