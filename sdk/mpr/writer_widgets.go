@@ -567,7 +567,7 @@ func serializeLabelTemplate(label string) bson.D {
 			{Key: "Items", Value: bson.A{int32(3), bson.D{
 				{Key: "$ID", Value: idToBsonBinary(generateUUID())},
 				{Key: "$Type", Value: "Texts$Translation"},
-				{Key: "LanguageCode", Value: "en_US"},
+				{Key: "LanguageCode", Value: model.AuthoringLanguage()},
 				{Key: "Text", Value: label},
 			}}},
 		}},
@@ -601,7 +601,7 @@ func serializeClientTemplate(ct *pages.ClientTemplate, fallbackText *model.Text,
 		{Key: "Items", Value: bson.A{int32(3), bson.D{
 			{Key: "$ID", Value: idToBsonBinary(captionTransID)},
 			{Key: "$Type", Value: "Texts$Translation"},
-			{Key: "LanguageCode", Value: "en_US"},
+			{Key: "LanguageCode", Value: model.AuthoringLanguage()},
 			{Key: "Text", Value: captionText},
 		}}},
 	}

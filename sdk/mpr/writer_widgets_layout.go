@@ -109,7 +109,7 @@ func serializeTabPage(tp *pages.TabPage) bson.D {
 				ID:       model.ID(GenerateID()),
 				TypeName: "Texts$Text",
 			},
-			Translations: map[string]string{"en_US": tp.Name},
+			Translations: map[string]string{model.AuthoringLanguage(): tp.Name},
 		})
 	}
 

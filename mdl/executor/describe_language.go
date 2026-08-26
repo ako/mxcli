@@ -32,6 +32,11 @@ func describeDefaultLanguage(ctx *ExecContext) string {
 	}
 	ctx.Cache.defaultLang = lang
 	ctx.Cache.defaultLangLoaded = true
+	// Publish it to the writer layers. Their Texts$Text leaves cannot be handed a
+	// language without changing 183 function signatures (see
+	// model.AuthoringLanguage), so this single resolution point is also where the
+	// process learns it — before any write, which is the contract.
+	model.SetAuthoringLanguage(lang)
 	return lang
 }
 
