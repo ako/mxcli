@@ -85,7 +85,7 @@ func (fb *flowBuilder) addLogMessageAction(s *ast.LogStmt) model.ID {
 		MessageTemplate: &model.Text{
 			BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
 			Translations: map[string]string{
-				"en_US": templateText,
+				fb.textLangOrDefault(): templateText,
 			},
 		},
 		TemplateParameters: templateParams,
@@ -792,7 +792,7 @@ func (fb *flowBuilder) addShowPageAction(s *ast.ShowPageStmt) model.ID {
 				ID:       model.ID(types.GenerateID()),
 				TypeName: "Texts$Text",
 			},
-			Translations: map[string]string{"en_US": s.Title},
+			Translations: map[string]string{fb.textLangOrDefault(): s.Title},
 		}
 	}
 
@@ -858,7 +858,7 @@ func (fb *flowBuilder) addShowMessageAction(s *ast.ShowMessageStmt) model.ID {
 
 	template := &model.Text{
 		BaseElement:  model.BaseElement{ID: model.ID(types.GenerateID())},
-		Translations: map[string]string{"en_US": templateText},
+		Translations: map[string]string{fb.textLangOrDefault(): templateText},
 	}
 
 	msgType := microflows.MessageType(s.Type)
@@ -1009,7 +1009,7 @@ func (fb *flowBuilder) addValidationFeedbackAction(s *ast.ValidationFeedbackStmt
 	// Create template with translations map (default language "en_US")
 	template := &model.Text{
 		BaseElement:  model.BaseElement{ID: model.ID(types.GenerateID())},
-		Translations: map[string]string{"en_US": templateText},
+		Translations: map[string]string{fb.textLangOrDefault(): templateText},
 	}
 
 	// Build attribute or association name from variable type and attribute path.

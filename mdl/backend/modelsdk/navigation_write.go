@@ -260,7 +260,7 @@ func navCaptionBson(text string) bson.D {
 			bson.D{
 				{Key: "$ID", Value: navID()},
 				{Key: "$Type", Value: "Texts$Translation"},
-				{Key: "LanguageCode", Value: "en_US"},
+				{Key: "LanguageCode", Value: model.AuthoringLanguage()},
 				{Key: "Text", Value: text},
 			},
 		}},

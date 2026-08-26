@@ -292,7 +292,7 @@ func widgetToGen(w pages.Widget) (element.Element, error) {
 			// Caption defaults to the tab name when unset (matches legacy).
 			capText := tp.Caption
 			if capText == nil {
-				capText = &model.Text{Translations: map[string]string{"en_US": tp.Name}}
+				capText = &model.Text{Translations: map[string]string{model.AuthoringLanguage(): tp.Name}}
 			}
 			tpg.SetCaption(captionToGen(capText))
 			for _, c := range tp.Widgets {
@@ -1033,7 +1033,7 @@ func textFromString(s string) *model.Text {
 	if s == "" {
 		return nil
 	}
-	return &model.Text{Translations: map[string]string{"en_US": s}}
+	return &model.Text{Translations: map[string]string{model.AuthoringLanguage(): s}}
 }
 
 // attributeRefToGen builds a DomainModels$AttributeRef for a fully-qualified
