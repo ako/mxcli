@@ -77,7 +77,7 @@ func execCreateValidationRule(ctx *ExecContext, s *ast.CreateValidationRuleStmt)
 	}
 
 	attrQN := fmt.Sprintf("%s.%s.%s", moduleName, entity.Name, attr.Name)
-	setAttributeValidationRuleInfo(entity, attr, attrQN, ruleType, s.Feedback, info)
+	setAttributeValidationRuleInfo(entity, attr, attrQN, ruleType, s.Feedback, info, authoringLanguage(ctx))
 
 	if err := ctx.Backend.UpdateEntity(dm.ID, entity); err != nil {
 		return mdlerrors.NewBackend("create validation rule", err)
@@ -222,7 +222,7 @@ func splitAttributeQN(qn ast.QualifiedName) (module, entity, attribute string, e
 // payload-free Required/Unique rules), extended to carry a rule payload. An
 // attribute may hold several rules of DIFFERENT types at once — a Required and
 // a RegEx, say — so only the matching type is displaced.
-func setAttributeValidationRuleInfo(entity *domainmodel.Entity, attr *domainmodel.Attribute, attrQualifiedName, ruleType, feedback string, info domainmodel.ValidationRuleInfo) {
+func setAttributeValidationRuleInfo(entity *domainmodel.Entity, attr *domainmodel.Attribute, attrQualifiedName, ruleType, feedback string, info domainmodel.ValidationRuleInfo, lang string) {
 	kept := entity.ValidationRules[:0]
 	for _, vr := range entity.ValidationRules {
 		if vr != nil && vr.Type == ruleType && ruleTargetsAttribute(string(vr.AttributeID), attr) {
@@ -238,7 +238,7 @@ func setAttributeValidationRuleInfo(entity *domainmodel.Entity, attr *domainmode
 		Rule:        info,
 	}
 	vr.ID = model.ID(types.GenerateID())
-	vr.ErrorMessage = &model.Text{Translations: map[string]string{"en_US": feedback}}
+	vr.ErrorMessage = &model.Text{Translations: map[string]string{lang: feedback}}
 	vr.ErrorMessage.ID = model.ID(types.GenerateID())
 	entity.ValidationRules = append(entity.ValidationRules, vr)
 }

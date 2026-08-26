@@ -270,7 +270,7 @@ func (pb *pageBuilder) buildTabPageV3(w *ast.WidgetV3) (*pages.TabPage, error) {
 				ID:       model.ID(types.GenerateID()),
 				TypeName: "Texts$Text",
 			},
-			Translations: map[string]string{"en_US": caption},
+			Translations: map[string]string{pb.textLang(): caption},
 		}
 	}
 
@@ -311,7 +311,7 @@ func (pb *pageBuilder) buildGroupBoxV3(w *ast.WidgetV3) (*pages.GroupBox, error)
 					ID:       model.ID(types.GenerateID()),
 					TypeName: "Texts$Text",
 				},
-				Translations: map[string]string{"en_US": caption},
+				Translations: map[string]string{pb.textLang(): caption},
 			},
 		}
 	}

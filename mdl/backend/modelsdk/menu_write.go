@@ -114,7 +114,7 @@ func menuCaptionToGen(caption string) element.Element {
 	t.SetID(element.ID(mmpr.GenerateID()))
 	tr := genTexts.NewTranslation()
 	tr.SetID(element.ID(mmpr.GenerateID()))
-	tr.SetLanguageCode("en_US")
+	tr.SetLanguageCode(model.AuthoringLanguage())
 	tr.SetText(caption)
 	t.AddTranslations(tr)
 	return t
