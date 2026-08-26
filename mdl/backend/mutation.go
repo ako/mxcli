@@ -158,6 +158,15 @@ type PageMutator interface {
 	// SetLayout changes the layout reference and remaps placeholder parameters.
 	SetLayout(newLayout string, paramMappings map[string]string) error
 
+	// BoundPlaceholders returns the layout placeholder names this page binds
+	// content to, unqualified (e.g. "Main", "HeaderLeft").
+	//
+	// The caller needs these to check a repoint before it happens: a page bound
+	// to a placeholder the new layout does not declare gets a Parameter pointing
+	// at nothing, which mxbuild reports as CE1613 at the far end of the run
+	// rather than at the statement that caused it.
+	BoundPlaceholders() []string
+
 	// --- Pluggable widget operations ---
 
 	// SetPluggableProperty sets a typed property on a pluggable widget's object.

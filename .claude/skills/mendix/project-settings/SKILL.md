@@ -205,6 +205,18 @@ A language is identified by its **code** — "Arabic, Sudan" is derived from
   Removing any other language does **not** delete its translations — they stay in
   the model and stop being built.
 
+**Set the default language BEFORE authoring content.** The default is not only a
+fallback — it is the language a new caption is stored under, because Mendix has no
+language-neutral text. `alter settings LANGUAGE DefaultLanguageCode = 'nl_NL'`
+*after* creating a page leaves that page's texts in the old language, and nothing
+reports it: `mx check` is 0 errors either way and the symptom shows up only in
+Studio Pro, as the empty-caption placeholder plus a "no translation" warning.
+
+Wrong order is recoverable — **re-run the `create` statements** and the texts are
+rewritten under the new default (the old copy stays alongside, harmless).
+`create translations for '<the default>'` is refused: the default is the source
+language, not a translation target.
+
 ⚠️ `show languages` lists languages that have **translations**, not enabled ones —
 a stock app reports 8 while 1 is enabled. Use `describe settings` for the enabled
 list.

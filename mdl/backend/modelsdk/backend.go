@@ -157,24 +157,42 @@ func (b *Backend) ListModules() ([]*model.Module, error) {
 	if err != nil {
 		return nil, err
 	}
-	dec := codec.NewDecoder(codec.DefaultRegistry)
 	out := make([]*model.Module, 0, len(infos))
 	for _, mi := range infos {
 		m := moduleFromInfo(mi)
-		// Enrich with Marketplace metadata by decoding the module unit.
-		// reader.ListModules returns only ID+Name; FromAppStore/AppStoreVersion
-		// (the SHOW MODULES "Source" column) live on the gen Module.
-		if raw, rerr := b.reader.GetRawUnitBytes(mi.ID); rerr == nil && len(raw) > 0 {
-			if el, derr := dec.Decode(raw); derr == nil {
-				if gm, ok := el.(*genPr.Module); ok {
-					m.FromAppStore = gm.FromAppStore()
-					m.AppStoreVersion = gm.AppStoreVersion()
-				}
-			}
-		}
+		b.enrichModule(m)
 		out = append(out, m)
 	}
 	return out, nil
+}
+
+// enrichModule fills in the Marketplace metadata by decoding the module unit.
+// The reader returns only ID+Name; FromAppStore/AppStoreVersion (the SHOW
+// MODULES "Source" column) and AppStoreGuid live on the gen Module.
+//
+// Called from every module lookup, not just the listing: a caller that reaches
+// a module by name and then branches on FromAppStore — the marketplace guard in
+// CREATE LAYOUT does — would otherwise read false for every module and never
+// fire.
+func (b *Backend) enrichModule(m *model.Module) {
+	if m == nil || m.ID == "" {
+		return
+	}
+	raw, err := b.reader.GetRawUnitBytes(string(m.ID))
+	if err != nil || len(raw) == 0 {
+		return
+	}
+	el, err := codec.NewDecoder(codec.DefaultRegistry).Decode(raw)
+	if err != nil {
+		return
+	}
+	gm, ok := el.(*genPr.Module)
+	if !ok {
+		return
+	}
+	m.FromAppStore = gm.FromAppStore()
+	m.AppStoreVersion = gm.AppStoreVersion()
+	m.AppStoreGuid = gm.AppStoreGuid()
 }
 
 func (b *Backend) GetModuleByName(name string) (*model.Module, error) {
@@ -182,7 +200,9 @@ func (b *Backend) GetModuleByName(name string) (*model.Module, error) {
 	if err != nil || mi == nil {
 		return nil, err
 	}
-	return moduleFromInfo(mi), nil
+	m := moduleFromInfo(mi)
+	b.enrichModule(m)
+	return m, nil
 }
 
 func (b *Backend) GetModule(id model.ID) (*model.Module, error) {
@@ -190,7 +210,9 @@ func (b *Backend) GetModule(id model.ID) (*model.Module, error) {
 	if err != nil || mi == nil {
 		return nil, err
 	}
-	return moduleFromInfo(mi), nil
+	m := moduleFromInfo(mi)
+	b.enrichModule(m)
+	return m, nil
 }
 
 // moduleFromInfo converts the modelsdk ModuleInfo (ID + Name) into our

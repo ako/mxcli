@@ -794,7 +794,7 @@ two with a comment instead of emitting an `icon` clause that would convert them.
 | Create or modify configuration | `create or modify configuration 'Name' [key = value, ...];` | Upsert — what `describe settings` emits, so a described project replays onto a target that already has `Default` |
 | Create configuration | `create configuration 'Name' [key = value, ...];` | New server configuration. `DatabaseType` must be `Db2`, `Hsqldb`, `MySql`, `Oracle`, `PostgreSql`, `SapHana` or `SqlServer` (case-insensitive) |
 | Drop configuration | `drop configuration 'Name';` | Remove a configuration |
-| Alter language | `alter settings LANGUAGE key = value;` | DefaultLanguageCode (must already be enabled) |
+| Alter language | `alter settings LANGUAGE key = value;` | DefaultLanguageCode (must already be enabled). Set it **before** creating pages — it decides what language their captions are stored in |
 | Enable a language | `alter settings LANGUAGE add 'de_DE' [(CheckCompleteness: true, CustomDateFormat: 'yyyy-MM-dd')];` | Adds to the enabled list — the only languages a build emits translations for. A language is identified by its code; Studio Pro's "German, Germany" is derived for display and not stored |
 | Enable or modify (upsert) | `alter settings LANGUAGE add or modify 'de_DE' (CheckCompleteness: true);` | What `describe settings` emits, so a described project replays onto itself or onto one that already has the language |
 | Modify a language | `alter settings LANGUAGE modify 'de_DE' (CheckCompleteness: true);` | Changes only the options it names. `CheckCompleteness` turns on error reporting for texts with no translation in that language (the default language is always checked regardless) |
@@ -1239,6 +1239,28 @@ MDL uses explicit property declarations for pages:
 | Paging position | `PagingPosition: pos` | `datagrid dg (PagingPosition: both)` |
 | Paging buttons | `ShowPagingButtons: mode` | `datagrid dg (ShowPagingButtons: auto)` |
 
+**Layouts:**
+
+| Operation | Syntax | Notes |
+|-----------|--------|-------|
+| List layouts | `show layouts [in module];` | |
+| Describe layout | `describe layout Module.Name;` | Round-trippable MDL — describe an Atlas layout, rename it, run it to get a copy in your own module |
+| Create layout | `create [or replace] layout Module.Name ( layouttype: 'X' ) { <widgets> };` | modelsdk engine only. Refused in a Marketplace module: an update replaces the module and the edit is gone |
+| Alter layout | `alter layout Module.Name { <alter-page operations> };` | Edits the stored document, so widgets MDL cannot spell survive. Refused for a Marketplace target |
+| Repoint one page | `alter page Module.Page { set Layout = Module.Layout [map (Old as New, …)]; };` | Rewrites the layout reference **and** every placeholder binding |
+| Repoint many pages | `alter pages [in <module>] set layout = Module.Layout [map (…)] [where layout = Module.Old];` | The migration form. Marketplace pages are skipped and named. A `where layout` that names no real layout is an error, not a 0-page success |
+
+| Layout element | Syntax | Notes |
+|----------------|--------|-------|
+| Layout type | `layouttype: 'Responsive' \| 'Phone' \| 'Tablet' \| 'ModalPopup'` (web) · `'Default' \| 'Popup'` (native) | The two vocabularies are disjoint, so the platform is inferred — there is no `native:` flag |
+| Layout class | `class: 'layout-atlas layout-atlas-responsive-topbar'` | **Load-bearing.** Atlas scopes ~24 layout rules to `.layout-atlas`; without it the layout builds clean and renders with no topbar bar or sidebar rail. Use `-responsive-default` for sidebar navigation; popups are bare |
+| Scroll container | `scrollcontainer name { <regions> }` | The layout's root; its children are regions, not widgets |
+| Region | `region top \| right \| bottom \| left \| center [( size: N, sizemode: 'Fixed'\|'Pixels'\|'Auto', class: '…' )] { <widgets> }` | Five named slots, not a list. One region per slot |
+| Placeholder | `placeholder Main` | The slot a page's content goes into. The name is API — a page binds as `Module.Layout.<Name>`. Name one `Main`: that is how Mendix picks the main placeholder (`Forms$Layout` has no property for it). At least one is required |
+| Navigation tree | `navigationtree name (profile: 'Responsive')` | The sidebar menu (vertical); the profile is a navigation profile name |
+| Menu bar | `menubar name (profile: 'Responsive')` | The topbar menu (horizontal); same stored shape as a navigation tree |
+| Region as ALTER target | `<scrollContainerName>.<slot>` | A region has no name — its slot is its identity. `INSERT INTO layoutContainer.top { … }`. Only `INSERT INTO`; use a widget name for `BEFORE`/`AFTER` |
+
 **Snippets & Building Blocks (read-only discovery):**
 
 | Operation | Syntax | Notes |
@@ -1503,7 +1525,7 @@ Bulk translation of every user-visible string, one file per language. Entries us
 | Replace | `create or replace translations ...` | The file is authoritative: a translation whose source it does not name is **REMOVED**, and the run says which. `in Module` **bounds** the deletion |
 | Remove a language's translations | `create or replace translations [in Module] for <lang> ( );` | An empty file is authoritative over nothing, so everything in scope goes — the only way to take a language's translations out of the model |
 | Show languages | `show languages;` | ⚠️ languages that **have translations**, not enabled ones — a stock app reports 8 while 1 is enabled. The enabled list is in `describe settings`. Needs `refresh catalog full` |
-| Default language | `alter settings LANGUAGE DefaultLanguageCode = 'en_US';` | The language a translation file's left column is written in |
+| Default language | `alter settings LANGUAGE DefaultLanguageCode = 'en_US';` | The language a translation file's left column is written in — **and the language a new `Caption:`/`Title:` is stored under**, so set it before authoring content. Changing it later does not move existing text and nothing warns |
 
 **A translation for a language the project has not enabled is discarded at build
 time** — it is stored in the model, passes `mx check`, and produces no

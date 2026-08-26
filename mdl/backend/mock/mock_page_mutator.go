@@ -36,6 +36,7 @@ type MockPageMutator struct {
 	AddVariableFunc                func(name, dataType, defaultValue string) error
 	DropVariableFunc               func(name string) error
 	SetLayoutFunc                  func(newLayout string, paramMappings map[string]string) error
+	BoundPlaceholdersFunc          func() []string
 	SetPluggablePropertyFunc       func(widgetRef string, propKey string, op backend.PluggablePropertyOp, ctx backend.PluggablePropertyContext) error
 	EnclosingEntityFunc            func(widgetRef string) string
 	EnclosingEntityForChildrenFunc func(widgetRef string) string
@@ -226,6 +227,13 @@ func (m *MockPageMutator) ParamScope() (map[string]model.ID, map[string]string) 
 func (m *MockPageMutator) Save() error {
 	if m.SaveFunc != nil {
 		return m.SaveFunc()
+	}
+	return nil
+}
+
+func (m *MockPageMutator) BoundPlaceholders() []string {
+	if m.BoundPlaceholdersFunc != nil {
+		return m.BoundPlaceholdersFunc()
 	}
 	return nil
 }

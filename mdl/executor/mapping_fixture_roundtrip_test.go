@@ -80,6 +80,24 @@ var knownLossy = map[string]string{
 	"MendixSSO.AppRolesResponse": "#279 rebuild adds MappingSourceReference, which 11 of 12 real mappings carry",
 }
 
+// knownLossyFrom gates an entry on the project's Mendix version: the loss only
+// happens at or above it, and below it the document round-trips faithfully, so
+// the staleness guard must not fire.
+//
+// This exists because a fixture mapping whose name the BASE project already
+// ships is tested using the base project's own copy (see loadMappingFixture),
+// and that copy changes with the Mendix version. FeedbackModule.IMM_PostResponse
+// loses exactly one property, MessageDefinition2, which gen records as
+// Introduced 11.10.0 — so on 10.24 and 11.6 there is nothing to drop and the
+// nightly failed with "now round-trips faithfully, remove it from knownLossy".
+//
+// Its export twin needs no gate: it also loses #277's IsKey/MaxLength and
+// #279's MinOccurs, which exist on every version, so it stays lossy throughout.
+// That asymmetry is why only one of the two failed.
+var knownLossyFrom = map[string][2]int{
+	"FeedbackModule.IMM_PostResponse": {11, 10},
+}
+
 // The positive control is authored by mxcli itself rather than transplanted: a
 // mapping mxcli wrote, described and re-executed MUST be stable, so a green run
 // proves the harness can actually pass. Without it, "everything is lossy" and
@@ -190,6 +208,12 @@ func checkMappingRoundTrip(t *testing.T, env *testEnv, m fixtureMapping) {
 	t.Helper()
 	qn := m.qualifiedName()
 	reason, lossyExpected := knownLossy[qn]
+	if from, gated := knownLossyFrom[qn]; gated && lossyExpected &&
+		!env.executor.Backend().ProjectVersion().IsAtLeast(from[0], from[1]) {
+		t.Logf("%s: the loss (%s) only occurs on Mendix %d.%d+; asserting a faithful "+
+			"round trip on this project", qn, reason, from[0], from[1])
+		lossyExpected = false
+	}
 
 	unitID, before := storedUnit(t, env.projectPath, m.Type, m.Name)
 
@@ -298,7 +322,16 @@ func loadMappingFixture(t *testing.T, env *testEnv) (fixtureManifest, map[string
 			loaded[m.qualifiedName()] = true
 		}
 		if present[m.Type+"/"+m.Name] {
-			continue // already in the base project; use its copy
+			// Already in the base project — its copy is used rather than a
+			// duplicate name being created. Say so: that copy is NOT the pinned
+			// fixture, its content moves with the Mendix version, and a
+			// knownLossy expectation about it may only hold on some versions
+			// (see knownLossyFrom). Silence here cost a nightly to diagnose.
+			if isMapping {
+				t.Logf("fixture %s: using the BASE PROJECT's copy, not %s — "+
+					"its content is version-dependent", m.qualifiedName(), m.File)
+			}
+			continue
 		}
 		container, ok := modules[m.Module]
 		if !ok {

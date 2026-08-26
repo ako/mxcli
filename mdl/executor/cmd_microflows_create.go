@@ -282,6 +282,7 @@ func execCreateMicroflow(ctx *ExecContext, s *ast.CreateMicroflowStmt) error {
 	restServices, _ := loadRestServices(ctx)
 
 	builder := &flowBuilder{
+		textLang: authoringLanguage(ctx),
 		// Carry over a HAND-PLACED StartEvent position from the microflow being
 		// replaced, the way the folder and allowed roles already are: a Studio
 		// Pro flow's 145;200 became 100;200 on a describe→exec round-trip, the

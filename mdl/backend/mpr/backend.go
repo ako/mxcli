@@ -1107,3 +1107,23 @@ func exportElementsCarryCustomHandler(elems []*model.ExportMappingElement) bool 
 	}
 	return false
 }
+
+// LayoutPlaceholders returns the placeholder names a layout declares. Shared
+// with the modelsdk engine: the walk is over the stored document, not over
+// either engine's element types.
+func (b *MprBackend) LayoutPlaceholders(id model.ID) ([]string, error) {
+	raw, err := b.reader.GetRawUnit(id)
+	if err != nil {
+		return nil, err
+	}
+	return backend.LayoutPlaceholderNames(raw), nil
+}
+
+// PageLayoutName returns the qualified name of the layout a page renders inside.
+func (b *MprBackend) PageLayoutName(id model.ID) (string, error) {
+	raw, err := b.reader.GetRawUnit(id)
+	if err != nil {
+		return "", err
+	}
+	return backend.PageLayoutNameFromRaw(raw), nil
+}

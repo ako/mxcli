@@ -674,6 +674,7 @@ func (fb *flowBuilder) addErrorHandlerFlow(sourceActivityID model.ID, sourceX in
 
 	// Build error handler activities
 	errBuilder := &flowBuilder{
+		textLang:     fb.textLang,
 		posX:         errorX,
 		posY:         errorY,
 		baseY:        errorY,

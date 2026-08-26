@@ -273,7 +273,7 @@ func execCreateEntity(ctx *ExecContext, s *ast.CreateEntityStmt) error {
 			vr.ID = model.ID(types.GenerateID())
 			if a.NotNullError != "" {
 				vr.ErrorMessage = &model.Text{
-					Translations: map[string]string{"en_US": a.NotNullError},
+					Translations: map[string]string{authoringLanguage(ctx): a.NotNullError},
 				}
 				vr.ErrorMessage.ID = model.ID(types.GenerateID())
 			}
@@ -289,7 +289,7 @@ func execCreateEntity(ctx *ExecContext, s *ast.CreateEntityStmt) error {
 			vr.ID = model.ID(types.GenerateID())
 			if a.UniqueError != "" {
 				vr.ErrorMessage = &model.Text{
-					Translations: map[string]string{"en_US": a.UniqueError},
+					Translations: map[string]string{authoringLanguage(ctx): a.UniqueError},
 				}
 				vr.ErrorMessage.ID = model.ID(types.GenerateID())
 			}
@@ -774,7 +774,7 @@ func execAlterEntity(ctx *ExecContext, s *ast.AlterEntityStmt) error {
 			vr.ID = model.ID(types.GenerateID())
 			if a.NotNullError != "" {
 				vr.ErrorMessage = &model.Text{
-					Translations: map[string]string{"en_US": a.NotNullError},
+					Translations: map[string]string{authoringLanguage(ctx): a.NotNullError},
 				}
 				vr.ErrorMessage.ID = model.ID(types.GenerateID())
 			}
@@ -788,7 +788,7 @@ func execAlterEntity(ctx *ExecContext, s *ast.AlterEntityStmt) error {
 			vr.ID = model.ID(types.GenerateID())
 			if a.UniqueError != "" {
 				vr.ErrorMessage = &model.Text{
-					Translations: map[string]string{"en_US": a.UniqueError},
+					Translations: map[string]string{authoringLanguage(ctx): a.UniqueError},
 				}
 				vr.ErrorMessage.ID = model.ID(types.GenerateID())
 			}
@@ -934,10 +934,10 @@ func execAlterEntity(ctx *ExecContext, s *ast.AlterEntityStmt) error {
 				// "Required" rule and NOT NULL (re)adds it.
 				attrQN := s.Name.String() + "." + attr.Name
 				if s.ModifyNotNull != nil {
-					setAttributeValidationRule(entity, attr, attrQN, "Required", *s.ModifyNotNull, s.ModifyNotNullError)
+					setAttributeValidationRule(entity, attr, attrQN, "Required", *s.ModifyNotNull, s.ModifyNotNullError, authoringLanguage(ctx))
 				}
 				if s.ModifyUnique != nil {
-					setAttributeValidationRule(entity, attr, attrQN, "Unique", *s.ModifyUnique, s.ModifyUniqueError)
+					setAttributeValidationRule(entity, attr, attrQN, "Unique", *s.ModifyUnique, s.ModifyUniqueError, authoringLanguage(ctx))
 				}
 				if s.ModifyHasDefault {
 					defaultStr := fmt.Sprintf("%v", s.ModifyDefaultValue)
@@ -1325,7 +1325,7 @@ func execAlterEntity(ctx *ExecContext, s *ast.AlterEntityStmt) error {
 // fully-qualified attribute name (Module.Entity.Attr), while a freshly-created
 // rule may carry the bare UUID — ruleTargetsAttribute handles both. A rule we
 // add is stored as the qualified name, which validationRuleToGen writes verbatim.
-func setAttributeValidationRule(entity *domainmodel.Entity, attr *domainmodel.Attribute, attrQualifiedName, ruleType string, want bool, errMsg string) {
+func setAttributeValidationRule(entity *domainmodel.Entity, attr *domainmodel.Attribute, attrQualifiedName, ruleType string, want bool, errMsg, lang string) {
 	kept := entity.ValidationRules[:0]
 	for _, vr := range entity.ValidationRules {
 		if vr != nil && vr.Type == ruleType && ruleTargetsAttribute(string(vr.AttributeID), attr) {
@@ -1340,7 +1340,7 @@ func setAttributeValidationRule(entity *domainmodel.Entity, attr *domainmodel.At
 	vr := &domainmodel.ValidationRule{AttributeID: model.ID(attrQualifiedName), Type: ruleType}
 	vr.ID = model.ID(types.GenerateID())
 	if errMsg != "" {
-		vr.ErrorMessage = &model.Text{Translations: map[string]string{"en_US": errMsg}}
+		vr.ErrorMessage = &model.Text{Translations: map[string]string{lang: errMsg}}
 		vr.ErrorMessage.ID = model.ID(types.GenerateID())
 	}
 	entity.ValidationRules = append(entity.ValidationRules, vr)

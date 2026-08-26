@@ -330,6 +330,16 @@ ALTER SETTINGS LANGUAGE REMOVE 'de_DE';
 -- changes only the options it names. The DEFAULT language is always checked by
 -- Mendix whatever the flag says.
 
+-- SET THE DEFAULT LANGUAGE BEFORE AUTHORING CONTENT. DefaultLanguageCode is not
+-- only the fallback — it is the language a new caption is STORED under, because
+-- Mendix has no language-neutral text. Creating a page and THEN switching the
+-- default leaves that page's texts in the old language, and nothing reports it:
+-- mx check is 0 errors either way and the symptom appears only in Studio Pro, as
+-- the empty-caption placeholder plus a "no translation for this language"
+-- warning. Recovery is to re-run the create statements; the texts are then
+-- written under the new default. CREATE TRANSLATIONS FOR the default is refused —
+-- it is the source language, not a translation target.
+
 -- A language is identified by its CODE alone: Studio Pro's "Arabic, Sudan" is
 -- derived from ar_SD for display and is not stored in the model.
 -- Two refusals: the DEFAULT language cannot be removed (every missing

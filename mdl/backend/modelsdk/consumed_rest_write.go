@@ -283,21 +283,42 @@ func restImplicitMappingResponseToGen(entity string, mappings []*model.RestRespo
 	return g
 }
 
+// nestedInlineHandling / nestedInlineBackup: see the identical pair in
+// sdk/mpr/writer_rest.go. An export object element must not be "Create" —
+// mxbuild refuses to LOAD the project ("Export Object Mappings cannot have
+// ObjectHandling set to 'Create'"), so this is a correctness rule, not a
+// fidelity preference.
+func nestedInlineHandling(namespace string) string {
+	if namespace == "ExportMappings" {
+		return "Find"
+	}
+	return "Create"
+}
+
+func nestedInlineBackup(namespace string) string {
+	if namespace == "ExportMappings" {
+		return "Error"
+	}
+	return "Create"
+}
+
 func restInlineMappingElementToGen(entity, association, exposedName, jsonPath string, mappings []*model.RestResponseMapping, namespace, objectHandling string) element.Element {
 	children := make([]element.Element, 0, len(mappings))
 	for _, m := range mappings {
 		if m.Entity != "" {
-			childJSONPath := jsonPath + "|" + m.ExposedName
-			children = append(children, restInlineMappingElementToGen(m.Entity, m.Association, m.ExposedName, childJSONPath, m.Children, namespace, "Create"))
+			childJSONPath := model.InlineMappingPath(jsonPath, m.ExposedName)
+			children = append(children, restInlineMappingElementToGen(m.Entity, m.Association,
+				model.InlineMappingExposedName(m.ExposedName), childJSONPath, m.Children,
+				namespace, nestedInlineHandling(namespace)))
 			continue
 		}
 		valueJSONPath := m.JsonPath
 		if valueJSONPath == "" {
-			valueJSONPath = jsonPath + "|" + m.ExposedName
+			valueJSONPath = model.InlineMappingPath(jsonPath, m.ExposedName)
 		}
 		v := newElem(namespace+"$ValueMappingElement", "")
 		addStr(v, "Attribute", entity+"."+m.Attribute)
-		addStr(v, "ExposedName", m.ExposedName)
+		addStr(v, "ExposedName", model.InlineMappingExposedName(m.ExposedName))
 		addStr(v, "JsonPath", valueJSONPath)
 		addStr(v, "XmlPath", "")
 		addBool(v, "IsKey", false)
@@ -329,7 +350,7 @@ func restInlineMappingElementToGen(entity, association, exposedName, jsonPath st
 	addStr(g, "JsonPath", jsonPath)
 	addStr(g, "XmlPath", "")
 	addStr(g, "ObjectHandling", objectHandling)
-	addStr(g, "ObjectHandlingBackup", "Create")
+	addStr(g, "ObjectHandlingBackup", nestedInlineBackup(namespace))
 	addBool(g, "ObjectHandlingBackupAllowOverride", false)
 	addStr(g, "Association", association)
 	if len(children) > 0 {

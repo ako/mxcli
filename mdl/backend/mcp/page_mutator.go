@@ -350,6 +350,15 @@ func (m *mcpPageMutator) SetLayout(newLayout string, _ map[string]string) error 
 	return nil
 }
 
+// BoundPlaceholders returns nothing over MCP: the PED representation names the
+// layout but not the placeholder each widget group binds to, so there is no set
+// to report. Returning nil means the caller's repoint check has nothing to
+// verify and lets the statement through — the honest answer, since a wrong
+// non-empty list would refuse valid repoints.
+func (m *mcpPageMutator) BoundPlaceholders() []string {
+	return nil
+}
+
 func (m *mcpPageMutator) Save() error {
 	return m.backend.pgWritePage(m.moduleName, m.pageName, m.content)
 }

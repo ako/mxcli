@@ -256,7 +256,7 @@ func (pb *pageBuilder) buildDataGridColumnV3(w *ast.WidgetV3) (*pages.DataGridCo
 				ID:       model.ID(types.GenerateID()),
 				TypeName: "Texts$Text",
 			},
-			Translations: map[string]string{"en_US": caption},
+			Translations: map[string]string{pb.textLang(): caption},
 		}
 	}
 
@@ -445,7 +445,7 @@ func (pb *pageBuilder) buildTextBoxV3(w *ast.WidgetV3) (*pages.TextBox, error) {
 				ID:       model.ID(types.GenerateID()),
 				TypeName: "Texts$Text",
 			},
-			Translations: map[string]string{"en_US": ph},
+			Translations: map[string]string{pb.textLang(): ph},
 		}
 	}
 
@@ -642,7 +642,7 @@ func (pb *pageBuilder) buildTextWidgetV3(w *ast.WidgetV3) (*pages.Text, error) {
 				ID:       model.ID(types.GenerateID()),
 				TypeName: "Texts$Text",
 			},
-			Translations: map[string]string{"en_US": content},
+			Translations: map[string]string{pb.textLang(): content},
 		}
 	}
 
@@ -752,7 +752,7 @@ func (pb *pageBuilder) buildDynamicTextV3(w *ast.WidgetV3) (*pages.DynamicText, 
 				ID:       model.ID(types.GenerateID()),
 				TypeName: "Texts$Text",
 			},
-			Translations: map[string]string{"en_US": content},
+			Translations: map[string]string{pb.textLang(): content},
 		},
 	}
 
@@ -855,7 +855,7 @@ func (pb *pageBuilder) buildTitleV3(w *ast.WidgetV3) (*pages.Title, error) {
 				ID:       model.ID(types.GenerateID()),
 				TypeName: "Texts$Text",
 			},
-			Translations: map[string]string{"en_US": content},
+			Translations: map[string]string{pb.textLang(): content},
 		}
 	}
 
@@ -896,7 +896,7 @@ func (pb *pageBuilder) buildButtonV3(w *ast.WidgetV3) (*pages.ActionButton, erro
 					ID:       model.ID(types.GenerateID()),
 					TypeName: "Texts$Text",
 				},
-				Translations: map[string]string{"en_US": caption},
+				Translations: map[string]string{pb.textLang(): caption},
 			},
 		}
 
@@ -1026,7 +1026,7 @@ func (pb *pageBuilder) buildNavigationListItemV3(w *ast.WidgetV3) (*pages.Naviga
 				ID:       model.ID(types.GenerateID()),
 				TypeName: "Texts$Text",
 			},
-			Translations: map[string]string{"en_US": caption},
+			Translations: map[string]string{pb.textLang(): caption},
 		}
 	}
 

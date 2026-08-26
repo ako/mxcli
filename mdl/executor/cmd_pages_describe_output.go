@@ -232,6 +232,48 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			formatWidgetProps(ctx.Output, prefix, header, props, "\n")
 		}
 
+	case "Forms$ScrollContainerRegion":
+		// A synthetic wrapper: the slot is in Name, and `region top` is how MDL
+		// spells it. 200/Auto is Studio Pro's untouched default, so emitting it
+		// would put noise in every describe — and re-executing without it lands
+		// back on the same value.
+		header := fmt.Sprintf("region %s", w.Name)
+		var props []string
+		if w.RegionSize != 0 && w.RegionSize != 200 {
+			props = append(props, fmt.Sprintf("Size: %d", w.RegionSize))
+		}
+		if w.RegionSizeMode != "" && w.RegionSizeMode != "Auto" {
+			props = append(props, fmt.Sprintf("SizeMode: %s", mdlQuote(w.RegionSizeMode)))
+		}
+		props = appendAppearanceProps(props, w)
+		if len(w.Children) > 0 {
+			formatWidgetProps(ctx.Output, prefix, header, props, " {\n")
+			for _, child := range w.Children {
+				outputWidgetMDLV3(ctx, child, indent+1)
+			}
+			fmt.Fprintf(ctx.Output, "%s}\n", prefix)
+		} else {
+			formatWidgetProps(ctx.Output, prefix, header, props, "\n")
+		}
+
+	case "Forms$Placeholder", "Pages$Placeholder":
+		// No properties and no body: the name is the whole thing, and it is API
+		// — a page binds to it as Module.Layout.<Name>.
+		fmt.Fprintf(ctx.Output, "%splaceholder %s\n", prefix, mdlIdent(w.Name))
+
+	case "Forms$NavigationTree", "Pages$NavigationTree", "Forms$MenuBar", "Pages$MenuBar":
+		keyword := "navigationtree"
+		if strings.HasSuffix(w.Type, "$MenuBar") {
+			keyword = "menubar"
+		}
+		header := fmt.Sprintf("%s %s", keyword, mdlIdent(w.Name))
+		var props []string
+		if w.NavigationProfile != "" {
+			props = append(props, fmt.Sprintf("Profile: %s", mdlQuote(w.NavigationProfile)))
+		}
+		props = appendAppearanceProps(props, w)
+		formatWidgetProps(ctx.Output, prefix, header, props, "\n")
+
 	case "Forms$TabControl", "Pages$TabControl":
 		header := fmt.Sprintf("tabcontainer %s", mdlIdent(w.Name))
 		props := appendAppearanceProps(nil, w)
@@ -833,12 +875,17 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 		}
 
 	default:
-		// Output unknown widget type as comment
+		// A widget MDL cannot spell. Emitted as a comment naming it, and
+		// labelled with what that costs: describe output is re-executable, so a
+		// commented widget is one the round trip drops. Measured on
+		// Atlas_Core.Atlas_SideBar, whose two Forms$SidebarToggleButton widgets
+		// do not survive describe -> exec — silent without this note, because a
+		// bare `-- Forms$X (name)` line reads as informational.
 		fmt.Fprintf(ctx.Output, "%s-- %s", prefix, w.Type)
 		if w.Name != "" {
 			fmt.Fprintf(ctx.Output, " (%s)", w.Name)
 		}
-		fmt.Fprint(ctx.Output, "\n")
+		fmt.Fprint(ctx.Output, "  -- NOT re-executable: mxcli cannot author this widget, so re-running this script would drop it\n")
 	}
 }
 

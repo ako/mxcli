@@ -9,6 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 
 	"github.com/mendixlabs/mxcli/mdl/types"
+	"github.com/mendixlabs/mxcli/model"
 )
 
 // PatchNavigationProfile applies a navigation profile patch to raw BSON bytes,
@@ -281,7 +282,7 @@ func navpBuildCaptionBson(text string) bson.D {
 			bson.D{
 				{Key: "$ID", Value: idToBsonBinary(generateUUID())},
 				{Key: "$Type", Value: "Texts$Translation"},
-				{Key: "LanguageCode", Value: "en_US"},
+				{Key: "LanguageCode", Value: model.AuthoringLanguage()},
 				{Key: "Text", Value: text},
 			},
 		}},

@@ -12,7 +12,16 @@ func init() {
 	// A REST operation call's path/query parameter mapping lists use marker 3
 	// (the empty form defaults to 3 already). OutputVariable, BodyVariable, and
 	// BaseUrlParameterMapping serialize as BSON null when unset.
-	codec.RegisterListMarker("Microflows$ParameterMapping", 3)
+	// STORAGE-NAME OVERRIDE: the list holds Microflows$RestOperationParameterMapping,
+	// NOT Microflows$ParameterMapping — there is no such Mendix type, and writing
+	// it makes the project IMPOSSIBLE TO OPEN: mxbuild throws
+	// "The type cache does not contain a type with qualified name
+	// Microflows$ParameterMapping" from StreamingBsonUnitReader before any check
+	// runs, so `mx check` cannot even reach the model. generated/metamodel is the
+	// arbiter (MicroflowsRestOperationCallAction.ParameterMappings is
+	// []*MicroflowsRestOperationParameterMapping); the sibling
+	// Microflows$QueryParameterMapping was already right.
+	codec.RegisterListMarker("Microflows$RestOperationParameterMapping", 3)
 	codec.RegisterListMarker("Microflows$QueryParameterMapping", 3)
 	codec.RegisterTypeDefaults("Microflows$RestOperationCallAction", codec.TypeDefaults{
 		NullFields:           []string{"OutputVariable", "BodyVariable", "BaseUrlParameterMapping"},
@@ -41,7 +50,7 @@ func restOperationCallActionToGen(a *microflows.RestOperationCallAction) element
 
 	params := make([]element.Element, 0, len(a.ParameterMappings))
 	for _, pm := range a.ParameterMappings {
-		p := newElem("Microflows$ParameterMapping", "")
+		p := newElem("Microflows$RestOperationParameterMapping", "")
 		addStr(p, "Parameter", pm.Parameter)
 		addStr(p, "Value", pm.Value)
 		params = append(params, p)

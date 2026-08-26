@@ -42,14 +42,66 @@ func (p *Page) GetContainerID() model.ID {
 }
 
 // Layout represents a layout in the Mendix model.
+//
+// LayoutType is stored on the content wrapper, not on the layout element —
+// Forms$Layout has no such key, and gen's Layout.LayoutType() binds one it does
+// not have. It is modelled here because it is a property of the layout as a
+// user thinks of it; the codec puts it where Mendix keeps it.
+//
+// Platform decides the wrapper and the vocabulary: web layouts use
+// Forms$WebLayoutContent and one of Responsive/Phone/Tablet/ModalPopup, native
+// ones use Forms$NativeLayoutContent and Default/Popup.
 type Layout struct {
 	model.BaseElement
-	ContainerID       model.ID   `json:"containerId"`
-	Name              string     `json:"name"`
-	Documentation     string     `json:"documentation,omitempty"`
-	LayoutType        LayoutType `json:"layoutType"`
-	MainPlaceholderID model.ID   `json:"mainPlaceholderId,omitempty"`
-	Widget            Widget     `json:"widget,omitempty"`
+	ContainerID   model.ID   `json:"containerId"`
+	Name          string     `json:"name"`
+	Documentation string     `json:"documentation,omitempty"`
+	LayoutType    LayoutType `json:"layoutType"`
+	// Native selects Forms$NativeLayoutContent over Forms$WebLayoutContent.
+	Native bool `json:"native,omitempty"`
+	// Class and Style are the layout's own Forms$Appearance.
+	//
+	// The class is not decoration: Atlas scopes ~24 of its layout rules to
+	// `.layout-atlas` and its variants, and every Atlas layout carries one
+	// (measured: 'layout-atlas layout-atlas-responsive-topbar' and friends;
+	// only PopupLayout is bare). A layout written without it renders with none
+	// of Atlas's chrome styling — no topbar bar, no sidebar rail — which
+	// mx check is entirely silent about.
+	Class string `json:"class,omitempty"`
+	Style string `json:"style,omitempty"`
+	// Widgets is the content tree, normally a single ScrollContainer.
+	Widgets []Widget `json:"widgets,omitempty"`
+
+	// MainPlaceholderID and Widget are the shallow forms older readers filled.
+	MainPlaceholderID model.ID `json:"mainPlaceholderId,omitempty"`
+	Widget            Widget   `json:"widget,omitempty"`
+}
+
+// WebLayoutTypes and NativeLayoutTypes are the values each platform actually
+// uses, measured across all 22 layouts Atlas ships on 11.13.0. Neither
+// modelsdk/gen (Default, Popup) nor generated/metamodel's enum lists more than
+// two of the six, so this is the vocabulary real documents attest to.
+//
+// Legacy is accepted on read and deliberately absent here: it is declared in
+// LayoutType below but appears in no Atlas layout, so mxcli does not offer to
+// author a value it has never seen written.
+var (
+	WebLayoutTypes    = []LayoutType{LayoutTypeResponsive, LayoutTypePhone, LayoutTypeTablet, LayoutTypeModalPopup}
+	NativeLayoutTypes = []LayoutType{LayoutTypeDefault, LayoutTypePopup}
+)
+
+// ValidLayoutType reports whether t is a value the given platform uses.
+func ValidLayoutType(t LayoutType, native bool) bool {
+	set := WebLayoutTypes
+	if native {
+		set = NativeLayoutTypes
+	}
+	for _, v := range set {
+		if v == t {
+			return true
+		}
+	}
+	return false
 }
 
 // GetName returns the layout's name.
@@ -67,6 +119,7 @@ type LayoutType string
 
 const (
 	LayoutTypeResponsive LayoutType = "Responsive"
+	LayoutTypeDefault    LayoutType = "Default"
 	LayoutTypeTablet     LayoutType = "Tablet"
 	LayoutTypePhone      LayoutType = "Phone"
 	LayoutTypeModalPopup LayoutType = "ModalPopup"

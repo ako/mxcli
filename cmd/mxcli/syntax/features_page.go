@@ -214,6 +214,115 @@ func init() {
 		SeeAlso: []string{"snippet", "snippet.create"},
 	})
 
+	// ── Layout ────────────────────────────────────────────────────────────
+
+	Register(SyntaxFeature{
+		Path:    "layout",
+		Summary: "The frame a page is built on — regions, navigation, and the placeholders pages bind to",
+		Keywords: []string{
+			"layout", "layouts", "create layout", "scrollcontainer", "region",
+			"placeholder", "navigationtree", "topbar", "sidebar", "frame",
+		},
+		Syntax: "CREATE [OR REPLACE] LAYOUT Module.Name (\n" +
+			"  layouttype: 'Responsive' | 'Phone' | 'Tablet' | 'ModalPopup'   -- web\n" +
+			"           -- | 'Default' | 'Popup'                              -- native\n" +
+			"  [, class: 'layout-atlas layout-atlas-responsive-topbar']\n" +
+			"  [, style: '...']\n" +
+			") {\n" +
+			"  SCROLLCONTAINER name {\n" +
+			"    REGION top | right | bottom | left | center\n" +
+			"      [( Size: 60, SizeMode: 'Fixed' | 'Pixels' | 'Auto', Class: '…' )] {\n" +
+			"      -- widgets, plus:\n" +
+			"      NAVIGATIONTREE name (Profile: 'Responsive')   -- vertical, for a sidebar\n" +
+			"      MENUBAR name (Profile: 'Responsive')          -- horizontal, for a topbar\n" +
+			"      PLACEHOLDER Main\n" +
+			"    }\n" +
+			"  }\n" +
+			"}",
+		Example: "-- Mendix's own guidance is not to edit the supplied Atlas layouts:\n" +
+			"-- a Marketplace update replaces the module and the edit is gone.\n" +
+			"-- Create the layout in a module you own instead.\n" +
+			"--\n" +
+			"-- The class is load-bearing: Atlas scopes ~24 of its layout rules to\n" +
+			"-- .layout-atlas, so a layout without one builds clean and renders with\n" +
+			"-- no topbar bar and no sidebar rail.\n" +
+			"CREATE OR REPLACE LAYOUT MyModule.App_Default (\n" +
+			"  layouttype: 'Responsive',\n" +
+			"  class: 'layout-atlas layout-atlas-responsive-topbar'\n" +
+			") {\n" +
+			"  SCROLLCONTAINER layoutContainer {\n" +
+			"    REGION top (Size: 60, SizeMode: 'Fixed', Class: 'region-topbar') {\n" +
+			"      SNIPPETCALL topbar (Snippet: MyModule.SNIPPET_TopBar)\n" +
+			"    }\n" +
+			"    REGION left (Size: 232, SizeMode: 'Pixels', Class: 'region-sidebar') {\n" +
+			"      NAVIGATIONTREE navMenu (Profile: 'Responsive')\n" +
+			"    }\n" +
+			"    REGION center (Class: 'region-content') {\n" +
+			"      PLACEHOLDER Main\n" +
+			"    }\n" +
+			"  }\n" +
+			"}\n\n" +
+			"-- A page binds to a placeholder by name:\n" +
+			"CREATE PAGE MyModule.Home (Title: 'Home', Layout: MyModule.App_Default) {\n" +
+			"  TITLE t (Content: 'Welcome')\n" +
+			"}\n\n" +
+			"-- A placeholder's name is API: a page references it as Module.Layout.<Name>,\n" +
+			"-- so renaming one unbinds every page that used it. Name one Main — that\n" +
+			"-- convention is how Mendix picks the main placeholder (every Atlas layout\n" +
+			"-- does), because Forms$Layout has no property for it. A layout must declare\n" +
+			"-- at least one placeholder or no page can use it.",
+		SeeAlso: []string{"layout.show", "page.create", "snippet"},
+	})
+
+	Register(SyntaxFeature{
+		Path:    "layout.alter",
+		Summary: "ALTER LAYOUT — edit a layout in place; repoint pages onto a different one",
+		Keywords: []string{
+			"alter layout", "modify layout", "set layout", "repoint pages",
+			"alter pages", "change layout", "migrate layout", "region insert",
+		},
+		Syntax: "-- Edit a layout in place (same operations as ALTER PAGE):\n" +
+			"ALTER LAYOUT Module.Name {\n" +
+			"  INSERT INTO <scrollContainer>.<top|right|bottom|left|center> { <widgets> };\n" +
+			"  INSERT BEFORE|AFTER <widgetName> { <widgets> };\n" +
+			"  SET <property> = <value> ON <widgetName>;\n" +
+			"  DROP WIDGET <name1>, <name2>;\n" +
+			"  REPLACE <widgetName> WITH { <widgets> };\n" +
+			"};\n\n" +
+			"-- Point one page at a different layout:\n" +
+			"ALTER PAGE Module.Page { SET Layout = Module.Layout [MAP (Old AS New, …)]; };\n\n" +
+			"-- Point many at once (the migration form):\n" +
+			"ALTER PAGES [IN <module>] SET LAYOUT = Module.Layout\n" +
+			"  [MAP (Old AS New, …)] [WHERE LAYOUT = Module.OldLayout];",
+		Example: "-- Move every page off the Atlas layout onto your own:\n" +
+			"ALTER PAGES SET LAYOUT = MyModule.App_Default\n" +
+			"  WHERE LAYOUT = Atlas_Core.Atlas_Default;\n\n" +
+			"-- A page bound to a placeholder the new layout lacks is refused; rebind it:\n" +
+			"ALTER PAGE MyModule.Split { SET Layout = MyModule.Minimal MAP (HeaderLeft AS Main); };\n\n" +
+			"-- Add a topbar snippet to a layout without rewriting the document:\n" +
+			"ALTER LAYOUT MyModule.App_Default {\n" +
+			"  INSERT INTO layoutContainer.top { SNIPPETCALL bar (Snippet: MyModule.SNIPPET_ThemeBar) };\n" +
+			"};\n\n" +
+			"-- A region has no name of its own — its slot is its identity — so it is\n" +
+			"-- addressed as <scrollContainer>.<slot>. Only INSERT INTO takes a region;\n" +
+			"-- BEFORE/AFTER position a widget among siblings, so name the widget.\n" +
+			"-- Pages in Marketplace modules are skipped and named; ALTER LAYOUT refuses\n" +
+			"-- a Marketplace target outright. Prefer ALTER over CREATE OR REPLACE for a\n" +
+			"-- layout you did not author: a rewrite is only as complete as its describe.",
+		SeeAlso: []string{"layout", "layout.show", "page.alter"},
+	})
+
+	Register(SyntaxFeature{
+		Path:    "layout.show",
+		Summary: "List and describe layouts (DESCRIBE emits re-executable CREATE LAYOUT)",
+		Keywords: []string{
+			"show layouts", "list layouts", "describe layout",
+		},
+		Syntax:  "SHOW LAYOUTS;\nSHOW LAYOUTS IN <module>;\nDESCRIBE LAYOUT Module.Name;",
+		Example: "-- Copy an Atlas layout into your own module: describe it, rename it, run it.\nDESCRIBE LAYOUT Atlas_Core.Atlas_Default;",
+		SeeAlso: []string{"layout", "page.show"},
+	})
+
 	// ── Building Block ────────────────────────────────────────────────────
 
 	Register(SyntaxFeature{

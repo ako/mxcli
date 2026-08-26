@@ -118,6 +118,9 @@ func registerPageHandlers(r *Registry) {
 	r.Register(&ast.CreateSnippetStmtV3{}, func(ctx *ExecContext, stmt ast.Statement) error {
 		return execCreateSnippetV3(ctx, stmt.(*ast.CreateSnippetStmtV3))
 	})
+	r.Register(&ast.CreateLayoutStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execCreateLayout(ctx, stmt.(*ast.CreateLayoutStmt))
+	})
 	r.Register(&ast.DropSnippetStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
 		return execDropSnippet(ctx, stmt.(*ast.DropSnippetStmt))
 	})
@@ -497,6 +500,9 @@ func registerLintHandlers(r *Registry) {
 func registerAlterPageHandlers(r *Registry) {
 	r.Register(&ast.AlterPageStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
 		return execAlterPage(ctx, stmt.(*ast.AlterPageStmt))
+	})
+	r.Register(&ast.AlterPagesLayoutStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execAlterPagesLayout(ctx, stmt.(*ast.AlterPagesLayoutStmt))
 	})
 }
 

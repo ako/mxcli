@@ -1,0 +1,319 @@
+-- ============================================================================
+-- Mapping constructs, proven at RUNTIME
+-- ============================================================================
+--
+-- The nine mapping gaps closed in PR #290 were verified at the model layer and
+-- with mxbuild: the BSON matched Studio Pro's, `mx check` reported 0 errors, and
+-- describe -> exec round-tripped. None of that proves a mapping moves DATA.
+--
+-- It matters because the failure mode of a wrong mapping is silence. The inline
+-- REST mapping shipped with a path of "(Object)|fields/Title" — one member whose
+-- name contains a slash — and passed mxcli check, exec, mx check AND describe
+-- while returning an empty column at runtime (ako/mxcli#294).
+--
+-- Run it:
+--   mxcli run --local --test-endpoint -p <app>.mpr      # in one terminal
+--   mxcli test mdl-examples/bug-tests/ -p <app>.mpr --attach
+--
+-- The assertions live in mapping-runtime-proof.test.mdl next door.
+--
+-- Constructs covered, and what each assertion actually proves:
+--   #248 array root       every item imported, and its attributes bound
+--   #268 wrapper          one object per primitive, value on the attribute
+--   #267 nested root      the selected element bound, as a LIST (see below)
+--   #266 converter        the microflow transformed the value
+--   #261 backup           create / ignore / error DIFFER at run time, each with
+--                         its own control (a matching key must not throw, and
+--                         `or create` on a hit must update rather than insert)
+--   #264 custom handling  the import binds the object the microflow RETURNS —
+--                         one row updated, not a second row created
+--   #262 export           a bare array container and an entity-less grouping
+--                         node produce the right JSON
+--
+-- #265 has NO runtime assertion, and that is the finding: a mapping may declare
+-- `parameter Module.Entity`, but `import from mapping M.IMM($Json)` takes only
+-- the SOURCE variable, so nothing can supply the input object. mxbuild rejects
+-- any activity using such a mapping with CE0244 "The import mapping requires a
+-- parameter but none is specified in the action." The mapping is authorable and
+-- unusable.
+--
+-- What this caught on its first run:
+--   A mapping rooted BELOW an array yields one object per item, so the import
+--   activity binds a LIST — but `mappingRootIsList` answered from the JSON
+--   STRUCTURE's root (an Object here), so mxbuild rejected the activity with
+--   CE0243. The mapping document was right and could not have revealed it:
+--   Studio Pro's own OpenAI_API.IM_OpenAI stores MaxOccurs 1 on exactly this
+--   root, so list-ness lives only in the root's PATH.
+--
+-- A second finding, kept out of this file so it stays buildable: a JSON member
+-- named `owner` or `changedDate` makes `create json structure` emit an
+-- ExposedName that Mendix REFUSES — CE9524, "invalid custom name 'Owner'" —
+-- because it collides with a system attribute name. The message blames the
+-- character pattern, which is a red herring. Filed separately.
+-- ============================================================================
+
+create module RtMap;
+
+-- ---- #248 array-rooted structure -------------------------------------------
+create persistent entity RtMap.Item ( Code: String(20), Qty: Integer );
+create json structure RtMap.JSON_Items snippet $$[{"code": "A", "qty": 1}]$$;
+create import mapping RtMap.IMM_Items
+  with json structure RtMap.JSON_Items
+{ create RtMap.Item { Code = code, Qty = qty } };
+
+create microflow RtMap.MF_Items ( $Json: string )
+returns list of RtMap.Item as $List
+begin
+  $List = import from mapping RtMap.IMM_Items($Json);
+end;
+/
+
+-- ---- #268 array of primitives (Wrapper) ------------------------------------
+create persistent entity RtMap.Product ( Name: String(50) );
+create persistent entity RtMap.Tag ( Value: String(50) );
+create association RtMap.Tag_Product from RtMap.Tag to RtMap.Product type Reference;
+create json structure RtMap.JSON_Product snippet $${"name": "n", "tags": ["a", "b"]}$$;
+create import mapping RtMap.IMM_Product
+  with json structure RtMap.JSON_Product
+{
+  create RtMap.Product {
+    Name = name,
+    create RtMap.Tag_Product/RtMap.Tag = tags { Value = Value }
+  }
+};
+
+create microflow RtMap.MF_Product ( $Json: string )
+returns RtMap.Product as $P
+begin
+  $P = import from mapping RtMap.IMM_Product($Json);
+end;
+/
+
+-- ---- #267 mapping rooted below the payload root ----------------------------
+create persistent entity RtMap.Msg ( Content: String(200) );
+create json structure RtMap.JSON_Chat
+  snippet $${"id": "x", "choices": [{"index": 0, "message": {"role": "a", "content": "hi"}}]}$$;
+create import mapping RtMap.IMM_Chat
+  with json structure RtMap.JSON_Chat root choices/message
+{ create RtMap.Msg { Content = content } };
+
+-- A root that steps THROUGH an array yields one object per item, so the
+-- result is a LIST — mxbuild reports CE0243 if the activity says otherwise.
+create microflow RtMap.MF_Chat ( $Json: string )
+returns list of RtMap.Msg as $M
+begin
+  $M = import from mapping RtMap.IMM_Chat($Json);
+end;
+/
+
+-- ---- #266 value converter microflow ----------------------------------------
+create microflow RtMap.CONV_Upper ( $In: string )
+returns String
+begin
+  @start(100, 200)
+  @position(400, 200)
+  return toUpperCase($In);
+end;
+/
+
+create persistent entity RtMap.Conv ( Loud: String(50) );
+create json structure RtMap.JSON_Conv snippet $${"word": "quiet"}$$;
+create import mapping RtMap.IMM_Conv
+  with json structure RtMap.JSON_Conv
+{ create RtMap.Conv { Loud = RtMap.CONV_Upper(word) } };
+
+create microflow RtMap.MF_Conv ( $Json: string )
+returns RtMap.Conv as $C
+begin
+  $C = import from mapping RtMap.IMM_Conv($Json);
+end;
+/
+
+-- Helpers the runtime tests assert on.
+create microflow RtMap.MF_First ( $Json: string )
+returns RtMap.Item as $Item
+begin
+  $List = import from mapping RtMap.IMM_Items($Json);
+  $Item = head($List);
+end;
+/
+
+create microflow RtMap.MF_Tags ( $Json: string )
+returns String
+begin
+  $P = import from mapping RtMap.IMM_Product($Json);
+  retrieve $Tags from $P/RtMap.Tag_Product;
+  declare $Joined string = '';
+  loop $t in $Tags
+  begin
+    $Joined = $Joined + '|' + $t/Value;
+  end loop;
+  return $P/Name + $Joined;
+end;
+/
+
+-- ---- #261 what `find` does when the object is not found ---------------------
+create persistent entity RtMap.Person ( Code: String(20), Name: String(50) );
+create json structure RtMap.JSON_Person snippet $${"code": "X", "name": "n"}$$;
+
+create import mapping RtMap.IMM_FindOrCreate
+  with json structure RtMap.JSON_Person
+{ find RtMap.Person or create { Code = code key, Name = name } };
+
+create import mapping RtMap.IMM_FindOrIgnore
+  with json structure RtMap.JSON_Person
+{ find RtMap.Person or ignore { Code = code key, Name = name } };
+
+create import mapping RtMap.IMM_FindOrError
+  with json structure RtMap.JSON_Person
+{ find RtMap.Person or error { Code = code key, Name = name } };
+
+create microflow RtMap.MF_Backup_Create ( $Json: string )
+returns String
+begin
+  $Seed = create RtMap.Person ( Code = 'EXIST', Name = 'seeded' );
+  commit $Seed;
+  $P = import from mapping RtMap.IMM_FindOrCreate($Json);
+  retrieve $All from RtMap.Person;
+  $N = count($All);
+  declare $Who string = 'EMPTY';
+  if $P != empty then
+    $Who = $P/Name;
+  end if;
+  return $Who + '/' + toString($N);
+end;
+/
+
+create microflow RtMap.MF_Backup_Ignore ( $Json: string )
+returns String
+begin
+  $Seed = create RtMap.Person ( Code = 'EXIST', Name = 'seeded' );
+  commit $Seed;
+  $P = import from mapping RtMap.IMM_FindOrIgnore($Json);
+  retrieve $All from RtMap.Person;
+  $N = count($All);
+  declare $Who string = 'EMPTY';
+  if $P != empty then
+    $Who = $P/Name;
+  end if;
+  return $Who + '/' + toString($N);
+end;
+/
+
+create microflow RtMap.MF_Backup_Error ( $Json: string )
+returns String
+begin
+  $Seed = create RtMap.Person ( Code = 'EXIST', Name = 'seeded' );
+  commit $Seed;
+  $P = import from mapping RtMap.IMM_FindOrError($Json);
+  return $P/Name;
+end;
+/
+-- ---- #264 custom object handling -------------------------------------------
+create persistent entity RtMap.Box ( Label: String(50) );
+create persistent entity RtMap.Chunk ( Idx: Integer, Text: String(50) );
+create association RtMap.Chunk_Box from RtMap.Chunk to RtMap.Box type Reference;
+create json structure RtMap.JSON_Box
+  snippet $${"label": "b", "items": [{"idx": 1, "text": "t"}]}$$;
+
+-- The resolver. If custom handling really runs, the import binds the object
+-- THIS returns instead of creating one.
+create microflow RtMap.MF_ResolveChunk ( $Index: Integer )
+returns RtMap.Chunk as $Found
+begin
+  retrieve $Hits from RtMap.Chunk where Idx = $Index;
+  $Found = head($Hits);
+end;
+/
+
+create import mapping RtMap.IMM_Box
+  with json structure RtMap.JSON_Box
+{
+  create RtMap.Box {
+    Label = label,
+    find RtMap.Chunk_Box/RtMap.Chunk
+      by RtMap.MF_ResolveChunk ( Index: idx )
+      = items { Text = text }
+  }
+};
+
+create microflow RtMap.MF_Custom ( $Json: string )
+returns String
+begin
+  $Seed = create RtMap.Chunk ( Idx = 1, Text = 'seeded' );
+  commit $Seed;
+  $B = import from mapping RtMap.IMM_Box($Json);
+  retrieve $All from RtMap.Chunk;
+  $N = count($All);
+  retrieve $One from RtMap.Chunk where Idx = 1;
+  $C = head($One);
+  return $C/Text + '/' + toString($N);
+end;
+/
+
+-- ---- #262 export direction --------------------------------------------------
+create persistent entity RtMap.Cart ( Holder: String(50) );
+create persistent entity RtMap.Line ( Sku: String(50) );
+create association RtMap.Line_Cart from RtMap.Line to RtMap.Cart type Reference;
+create json structure RtMap.JSON_Cart
+  snippet $${"holder": "o", "meta": {"lines": [{"sku": "s"}]}}$$;
+
+-- A bare array container plus an entity-less grouping node — the two shapes
+-- #262 changed. If either is written wrong the export produces the wrong JSON.
+create export mapping RtMap.EXM_Cart
+  with json structure RtMap.JSON_Cart
+{
+  RtMap.Cart {
+    holder = Holder,
+    group as meta {
+      RtMap.Line_Cart/RtMap.Line as lines {
+        sku = Sku
+      }
+    }
+  }
+};
+
+create microflow RtMap.MF_Export ()
+returns String
+begin
+  $C = create RtMap.Cart ( Holder = 'ako' );
+  commit $C;
+  $L = create RtMap.Line ( Sku = 'SKU-1', Line_Cart = $C );
+  commit $L;
+  $Json = export to mapping RtMap.EXM_Cart($C);
+  return $Json;
+end;
+/
+-- ---- #265 mapping input parameter ------------------------------------------
+create persistent entity RtMap.Coll ( Title: String(50) );
+create persistent entity RtMap.Piece ( Body: String(50) );
+create association RtMap.Piece_Coll from RtMap.Piece to RtMap.Coll type Reference;
+create json structure RtMap.JSON_Pieces snippet $${"items": [{"body": "b"}]}$$;
+
+create microflow RtMap.MF_FromParam ( $Collection: RtMap.Coll )
+returns RtMap.Piece as $P
+begin
+  retrieve $Ps from $Collection/RtMap.Piece_Coll;
+  $P = head($Ps);
+end;
+/
+
+create import mapping RtMap.IMM_Param
+  with json structure RtMap.JSON_Pieces
+  parameter RtMap.Coll
+{
+  create RtMap.Coll {
+    find RtMap.Piece_Coll/RtMap.Piece
+      by RtMap.MF_FromParam ( Collection: parameter )
+      = items { Body = body }
+  }
+};
+
+-- NO CALLER: `import from mapping M.IMM($Json)` takes only the SOURCE
+-- variable — MDL has no way to pass the mapping's input object — so mxbuild
+-- rejects any activity using this mapping with
+--   CE0244 "The import mapping requires a parameter but none is specified in
+--           the action."
+-- The mapping is authorable (ako/mxcli#265) and unusable from MDL. Filed
+-- separately; there is no runtime assertion to make until the activity can
+-- supply it.
