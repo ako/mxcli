@@ -62,6 +62,14 @@ var engineScriptSkip = map[string]string{
 	// a half-written one would look valid, so the legacy backend refuses
 	// create/modify/drop rather than emitting one. Reads work on both engines.
 	"legacy/rules.mdl": "rule authoring is modelsdk-only by design; the legacy backend refuses it",
+	// Same shape again: layout authoring is modelsdk-only. A layout's widget tree
+	// hangs off a Forms$WebLayoutContent wrapper the legacy writer cannot build —
+	// its serializeLayout emitted four header keys, a string $ID where Studio Pro
+	// stores binary, and a LayoutType on the layout element rather than on the
+	// wrapper. Nothing had ever called it, because nothing created a layout until
+	// now. The legacy backend refuses rather than writing a document with nowhere
+	// for the tree to go. Reads (SHOW/DESCRIBE LAYOUT) work on both engines.
+	"legacy/layouts.mdl": "layout authoring is modelsdk-only by design; the legacy backend refuses it",
 	// Enabling a language writes Settings$LanguageSettings.Languages, which the
 	// legacy serializer carries through from the stored document rather than
 	// writing — so the list cannot change on that engine. The backend refuses it
