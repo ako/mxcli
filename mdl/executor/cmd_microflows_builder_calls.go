@@ -1563,6 +1563,18 @@ func (fb *flowBuilder) mappingRootIsList(im *model.ImportMapping) bool {
 	if im == nil {
 		return false
 	}
+	// A mapping rooted BELOW an array yields one object per item, whatever the
+	// structure's own root is (#267). The structure check below answers from
+	// js.Elements[0], which for `root choices/message` is the document root —
+	// an Object — so it reported a single object and mxbuild rejected the
+	// activity with CE0243 "the mapping ... now returns a value of type
+	// 'List of X'". The mapping document itself is right: Studio Pro's own
+	// OpenAI_API.IM_OpenAI stores the same MaxOccurs 1 on that root, so
+	// list-ness cannot be read off the root element either — only off its path.
+	if len(im.Elements) > 0 && im.Elements[0] != nil &&
+		mappingRootPathCrossesArray(im.Elements[0].JsonPath) {
+		return true
+	}
 	if im.JsonStructure != "" && fb.backend != nil {
 		parts := strings.SplitN(im.JsonStructure, ".", 2)
 		if len(parts) == 2 {
@@ -1757,4 +1769,32 @@ func (fb *flowBuilder) addExportToMappingAction(s *ast.ExportToMappingStmt) mode
 	fb.finishCustomErrorHandler(activity.ID, activityX, s.ErrorHandling, "")
 
 	return activity.ID
+}
+
+// mappingRootPathCrossesArray reports whether a mapping root's stored JsonPath
+// passes through an array on its way down.
+//
+// An array contributes a marker segment for its item — "(Object)" for objects,
+// "(Wrapper)" for primitives — so any marker AFTER the first segment means the
+// root sits inside an array and the mapping yields many objects:
+//
+//	(Object)                             one object
+//	(Object)|data                        one object, a nested root
+//	(Array)|(Object)                     many — an array-rooted structure (#248)
+//	(Object)|choices|(Object)|message    many — rooted below an array (#267)
+//
+// The first segment is skipped because it is always the document's own root
+// marker, which says nothing about arrays.
+func mappingRootPathCrossesArray(jsonPath string) bool {
+	segs := strings.Split(jsonPath, "|")
+	for i, seg := range segs {
+		if i == 0 {
+			continue
+		}
+		switch seg {
+		case "(Object)", "(Array)", "(Wrapper)":
+			return true
+		}
+	}
+	return false
 }

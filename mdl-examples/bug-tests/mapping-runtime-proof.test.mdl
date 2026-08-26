@@ -1,0 +1,48 @@
+/**
+ * Runtime proof that the mapping constructs shipped in PR #290 actually move
+ * data — not merely that they serialize and build. Every one of these passed
+ * `mx check` before this file existed.
+ *
+ * @test array-rooted structure imports every item (ako/mxcli#248)
+ * @expect count($result) = 2
+ */
+$result = call microflow RtMap.MF_Items(
+  Json = '[{"code":"A","qty":1},{"code":"B","qty":2}]'
+);
+/
+
+/**
+ * @test array-rooted structure binds the item attributes (ako/mxcli#248)
+ * @expect $result/Code = 'A' and $result/Qty = 7
+ */
+$result = call microflow RtMap.MF_First(Json = '[{"code":"A","qty":7}]');
+/
+
+/**
+ * An array of PRIMITIVES becomes one entity per string, with the value on an
+ * attribute via the generated Wrapper level.
+ *
+ * @test primitive-array wrapper creates one object per element (ako/mxcli#268)
+ * @expect $result = 'n|a|b'
+ */
+$result = call microflow RtMap.MF_Tags(Json = '{"name":"n","tags":["a","b"]}');
+/
+
+/**
+ * `root choices/message` starts the mapping below the payload root, stepping
+ * through an array on the way — so it yields one object per item.
+ *
+ * @test nested schema root binds the selected element (ako/mxcli#267)
+ * @expect count($result) = 2
+ */
+$result = call microflow RtMap.MF_Chat(
+  Json = '{"id":"x","choices":[{"index":0,"message":{"role":"a","content":"hi"}},{"index":1,"message":{"role":"b","content":"there"}}]}'
+);
+/
+
+/**
+ * @test value converter microflow transforms the value (ako/mxcli#266)
+ * @expect $result/Loud = 'QUIET'
+ */
+$result = call microflow RtMap.MF_Conv(Json = '{"word":"quiet"}');
+/
