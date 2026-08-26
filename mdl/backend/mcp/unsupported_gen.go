@@ -982,6 +982,11 @@ func (unsupportedBackend) OpenWorkflowForMutation(_ model.ID) (r0 backend.Workfl
 	return
 }
 
+func (unsupportedBackend) PageLayoutName(_ model.ID) (r0 string, err1 error) {
+	err1 = errUnsupported("PageLayoutName")
+	return
+}
+
 func (unsupportedBackend) ParseMicroflowBSON(_ []uint8, _ model.ID, _ model.ID) (r0 *microflows.Microflow, err1 error) {
 	err1 = errUnsupported("ParseMicroflowBSON")
 	return

@@ -62,7 +62,7 @@ func layoutToGen(l *pages.Layout) (*genPg.Layout, error) {
 	out.SetExportLevel("Hidden")
 	out.SetCanvasWidth(1280)
 	out.SetCanvasHeight(800)
-	out.SetAppearance(newAppearance("", "", "", nil))
+	out.SetAppearance(newAppearance(l.Class, l.Style, "", nil))
 	// Written explicitly rather than left to the load-time default, so the
 	// document carries the same ten keys Studio Pro writes.
 	out.SetExcluded(false)

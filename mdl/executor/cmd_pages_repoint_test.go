@@ -120,9 +120,7 @@ func TestExecAlterPagesLayout_SkipsMarketplacePagesAndFiltersOnWhere(t *testing.
 		LayoutPlaceholdersFunc: func(id model.ID) ([]string, error) {
 			return []string{"Main"}, nil
 		},
-		GetRawUnitFunc: func(id model.ID) (map[string]any, error) {
-			return map[string]any{"FormCall": map[string]any{"Form": currentLayout[id]}}, nil
-		},
+		PageLayoutNameFunc: func(id model.ID) (string, error) { return currentLayout[id], nil },
 		OpenPageForMutationFunc: func(id model.ID) (backend.PageMutator, error) {
 			opened = append(opened, id)
 			return &mock.MockPageMutator{BoundPlaceholdersFunc: func() []string { return []string{"Main"} }}, nil

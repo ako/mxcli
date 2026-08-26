@@ -87,3 +87,17 @@ func collectPlaceholders(node any, out *[]string) {
 		}
 	}
 }
+
+// PageLayoutNameFromRaw reads a page's layout reference off its stored document.
+//
+// The reference is a qualified name under FormCall.Form, not a pointer — Mendix
+// resolves it on load, which is why repointing a page is a string rewrite and
+// why every placeholder binding has to be rewritten with it.
+func PageLayoutNameFromRaw(raw map[string]any) string {
+	formCall, ok := raw["FormCall"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	name, _ := formCall["Form"].(string)
+	return name
+}

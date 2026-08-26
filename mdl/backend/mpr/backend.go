@@ -1118,3 +1118,12 @@ func (b *MprBackend) LayoutPlaceholders(id model.ID) ([]string, error) {
 	}
 	return backend.LayoutPlaceholderNames(raw), nil
 }
+
+// PageLayoutName returns the qualified name of the layout a page renders inside.
+func (b *MprBackend) PageLayoutName(id model.ID) (string, error) {
+	raw, err := b.reader.GetRawUnit(id)
+	if err != nil {
+		return "", err
+	}
+	return backend.PageLayoutNameFromRaw(raw), nil
+}

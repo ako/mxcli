@@ -1252,11 +1252,13 @@ MDL uses explicit property declarations for pages:
 
 | Layout element | Syntax | Notes |
 |----------------|--------|-------|
-| Layout type | `layouttype: 'Responsive' \| 'Phone' \| 'Tablet' \| 'ModalPopup'` (web) · `'Default' \| 'Popup'` (native) | The only header property. The two vocabularies are disjoint, so the platform is inferred — there is no `native:` flag |
+| Layout type | `layouttype: 'Responsive' \| 'Phone' \| 'Tablet' \| 'ModalPopup'` (web) · `'Default' \| 'Popup'` (native) | The two vocabularies are disjoint, so the platform is inferred — there is no `native:` flag |
+| Layout class | `class: 'layout-atlas layout-atlas-responsive-topbar'` | **Load-bearing.** Atlas scopes ~24 layout rules to `.layout-atlas`; without it the layout builds clean and renders with no topbar bar or sidebar rail. Use `-responsive-default` for sidebar navigation; popups are bare |
 | Scroll container | `scrollcontainer name { <regions> }` | The layout's root; its children are regions, not widgets |
 | Region | `region top \| right \| bottom \| left \| center [( size: N, sizemode: 'Fixed'\|'Pixels'\|'Auto', class: '…' )] { <widgets> }` | Five named slots, not a list. One region per slot |
 | Placeholder | `placeholder Main` | The slot a page's content goes into. The name is API — a page binds as `Module.Layout.<Name>`. Name one `Main`: that is how Mendix picks the main placeholder (`Forms$Layout` has no property for it). At least one is required |
-| Navigation tree | `navigationtree name (profile: 'Responsive')` | The sidebar/menu widget; the profile is a navigation profile name |
+| Navigation tree | `navigationtree name (profile: 'Responsive')` | The sidebar menu (vertical); the profile is a navigation profile name |
+| Menu bar | `menubar name (profile: 'Responsive')` | The topbar menu (horizontal); same stored shape as a navigation tree |
 | Region as ALTER target | `<scrollContainerName>.<slot>` | A region has no name — its slot is its identity. `INSERT INTO layoutContainer.top { … }`. Only `INSERT INTO`; use a widget name for `BEFORE`/`AFTER` |
 
 **Snippets & Building Blocks (read-only discovery):**

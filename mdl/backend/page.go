@@ -24,6 +24,14 @@ type PageBackend interface {
 	UpdateLayout(layout *pages.Layout) error
 	DeleteLayout(id model.ID) error
 
+	// PageLayoutName returns the qualified name of the layout a page renders
+	// inside ("Atlas_Core.Atlas_Default"), or "" when the page has none.
+	//
+	// ListPages is deliberately shallow — it does not decode the layout call —
+	// so this is the semantic read for "which layout is this page on", the
+	// question both the bulk repoint and `mxcli new` have to answer.
+	PageLayoutName(id model.ID) (string, error)
+
 	// LayoutPlaceholders returns the placeholder names a layout declares, in
 	// document order. A page binds to one as Module.Layout.<Name>, so these are
 	// the only valid targets for a repoint — see PageMutator.BoundPlaceholders.

@@ -261,8 +261,12 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 		// — a page binds to it as Module.Layout.<Name>.
 		fmt.Fprintf(ctx.Output, "%splaceholder %s\n", prefix, mdlIdent(w.Name))
 
-	case "Forms$NavigationTree", "Pages$NavigationTree":
-		header := fmt.Sprintf("navigationtree %s", mdlIdent(w.Name))
+	case "Forms$NavigationTree", "Pages$NavigationTree", "Forms$MenuBar", "Pages$MenuBar":
+		keyword := "navigationtree"
+		if strings.HasSuffix(w.Type, "$MenuBar") {
+			keyword = "menubar"
+		}
+		header := fmt.Sprintf("%s %s", keyword, mdlIdent(w.Name))
 		var props []string
 		if w.NavigationProfile != "" {
 			props = append(props, fmt.Sprintf("Profile: %s", mdlQuote(w.NavigationProfile)))

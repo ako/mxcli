@@ -382,6 +382,8 @@ func (pb *pageBuilder) buildWidgetV3(w *ast.WidgetV3) (pages.Widget, error) {
 		return nil, mdlerrors.NewValidation("region must be a direct child of scrollcontainer")
 	case "navigationtree":
 		widget, err = pb.buildNavigationTreeV3(w)
+	case "menubar":
+		widget, err = pb.buildMenuBarV3(w)
 	case "placeholder":
 		widget, err = pb.buildPlaceholderV3(w)
 	case "radiobuttons":
@@ -2407,4 +2409,19 @@ func (pb *pageBuilder) buildPlaceholderV3(w *ast.WidgetV3) (pages.Widget, error)
 		},
 	}
 	return ph, nil
+}
+
+// buildMenuBarV3 builds the horizontal navigation a topbar carries. Same shape
+// as a navigation tree — see widget_write.go.
+func (pb *pageBuilder) buildMenuBarV3(w *ast.WidgetV3) (pages.Widget, error) {
+	return &pages.MenuBar{
+		BaseWidget: pages.BaseWidget{
+			BaseElement: model.BaseElement{
+				ID:       model.ID(types.GenerateID()),
+				TypeName: "Forms$MenuBar",
+			},
+			Name: w.Name,
+		},
+		NavigationProfile: w.GetStringProp("Profile"),
+	}, nil
 }

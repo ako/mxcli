@@ -38,12 +38,19 @@ create or replace layout LayoutTest.Minimal (
 -- them.
 -- ----------------------------------------------------------------------------
 
+-- The class is load-bearing, not decoration: Atlas scopes 24 of its layout
+-- rules to .layout-atlas and its variants, so a layout without one builds
+-- cleanly and renders with no topbar bar and no sidebar rail.
 create or replace layout LayoutTest.App_Default (
-  layouttype: 'Responsive'
+  layouttype: 'Responsive',
+  class: 'layout-atlas layout-atlas-responsive-default'
 ) {
   scrollcontainer layoutContainer {
     region top (size: 60, sizemode: 'Fixed', class: 'region-topbar') {
       dynamictext brandText (content: 'My Application')
+      -- MENUBAR is the horizontal navigation a topbar carries; NAVIGATIONTREE
+      -- below is the vertical one a sidebar carries. Same stored shape.
+      menubar mainMenu (profile: 'Responsive')
     }
     region left (size: 232, sizemode: 'Pixels', class: 'region-sidebar') {
       navigationtree navMenu (profile: 'Responsive')

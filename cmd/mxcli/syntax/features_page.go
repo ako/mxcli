@@ -226,12 +226,15 @@ func init() {
 		Syntax: "CREATE [OR REPLACE] LAYOUT Module.Name (\n" +
 			"  layouttype: 'Responsive' | 'Phone' | 'Tablet' | 'ModalPopup'   -- web\n" +
 			"           -- | 'Default' | 'Popup'                              -- native\n" +
+			"  [, class: 'layout-atlas layout-atlas-responsive-topbar']\n" +
+			"  [, style: '...']\n" +
 			") {\n" +
 			"  SCROLLCONTAINER name {\n" +
 			"    REGION top | right | bottom | left | center\n" +
 			"      [( Size: 60, SizeMode: 'Fixed' | 'Pixels' | 'Auto', Class: '…' )] {\n" +
 			"      -- widgets, plus:\n" +
-			"      NAVIGATIONTREE name (Profile: 'Responsive')\n" +
+			"      NAVIGATIONTREE name (Profile: 'Responsive')   -- vertical, for a sidebar\n" +
+			"      MENUBAR name (Profile: 'Responsive')          -- horizontal, for a topbar\n" +
 			"      PLACEHOLDER Main\n" +
 			"    }\n" +
 			"  }\n" +
@@ -239,8 +242,13 @@ func init() {
 		Example: "-- Mendix's own guidance is not to edit the supplied Atlas layouts:\n" +
 			"-- a Marketplace update replaces the module and the edit is gone.\n" +
 			"-- Create the layout in a module you own instead.\n" +
+			"--\n" +
+			"-- The class is load-bearing: Atlas scopes ~24 of its layout rules to\n" +
+			"-- .layout-atlas, so a layout without one builds clean and renders with\n" +
+			"-- no topbar bar and no sidebar rail.\n" +
 			"CREATE OR REPLACE LAYOUT MyModule.App_Default (\n" +
-			"  layouttype: 'Responsive'\n" +
+			"  layouttype: 'Responsive',\n" +
+			"  class: 'layout-atlas layout-atlas-responsive-topbar'\n" +
 			") {\n" +
 			"  SCROLLCONTAINER layoutContainer {\n" +
 			"    REGION top (Size: 60, SizeMode: 'Fixed', Class: 'region-topbar') {\n" +

@@ -94,7 +94,8 @@ route in the error.
 
 ```sql
 create [or replace] layout MyModule.App_Default (
-  layouttype: 'Responsive'
+  layouttype: 'Responsive',
+  class: 'layout-atlas layout-atlas-responsive-topbar'
 ) {
   scrollcontainer layoutContainer {
     region top (size: 60, sizemode: 'Fixed', class: 'region-topbar') {
@@ -125,7 +126,8 @@ create page MyModule.Home (title: 'Home', layout: MyModule.App_Default) {
 | Scroll container | `scrollcontainer name { … }` | The layout's root. Its children are **regions**, never widgets |
 | Region | `region top \| right \| bottom \| left \| center` | Five **named slots**, not a list. One region per slot; a repeat is refused |
 | Placeholder | `placeholder Main` | The hole a page's content goes into. No properties, no body |
-| Navigation tree | `navigationtree name (profile: 'Responsive')` | The sidebar menu. The profile is a navigation profile name |
+| Navigation tree | `navigationtree name (profile: 'Responsive')` | The sidebar menu — vertical. The profile is a navigation profile name |
+| Menu bar | `menubar name (profile: 'Responsive')` | The topbar menu — horizontal. Same stored shape as a navigation tree |
 
 Region properties: `size` (integer), `sizemode` (`Fixed` / `Pixels` / `Auto`),
 `class`. Unset is Studio Pro's `200` / `Auto`.
@@ -142,8 +144,27 @@ platform is inferred from the type — a `native:` property could only ever
 contradict it. A cross-platform value (`Default` on a web layout) is refused, not
 silently accepted.
 
-`layouttype` is the **only** header property. Anything else is an error rather
-than an ignored key, which is the point of the next section.
+## The layout class is load-bearing
+
+`class:` sets the layout's own CSS class, and Atlas scopes **~24 of its layout
+rules** to `.layout-atlas` and its variants. Every Atlas layout with chrome
+carries one — `layout-atlas layout-atlas-responsive-topbar`,
+`layout-atlas layout-atlas-responsive-default`, and so on; only `PopupLayout`,
+which has no chrome, is bare.
+
+Leave it off and the layout builds cleanly, passes `mx check`, and renders with
+**no topbar bar and no sidebar rail** — a difference only a browser shows. Use
+the Atlas class that matches the shape you are building:
+
+| Shape | Class |
+|-------|-------|
+| Topbar navigation | `layout-atlas layout-atlas-responsive-topbar` |
+| Sidebar navigation | `layout-atlas layout-atlas-responsive-default` |
+| Popup | *(none)* |
+
+`layouttype`, `class` and `style` are the **only** header properties. Anything
+else is an error rather than an ignored key, which is the point of the next
+section.
 
 ## Gotchas
 
@@ -161,6 +182,10 @@ than an ignored key, which is the point of the next section.
   builds and cannot be opened.
 - **A layout must declare at least one placeholder.** Otherwise no page can use
   it. Refused at write time.
+- **The sidebar toggle, the menu bar's logo and Atlas's `Forms$Header` are not
+  authorable.** A topbar layout that needs a collapsible sidebar therefore has to
+  keep Atlas's, or do without the toggle — which is why `mxcli new` scaffolds a
+  topbar-navigation layout with no sidebar rather than an always-open one.
 - **Authoring is modelsdk-only.** The legacy writer cannot produce the `Content`
   wrapper the widget tree hangs off; it refuses rather than writing a layout with
   no tree.
@@ -180,3 +205,16 @@ mxcli -p app.mpr -c "describe layout MyModule.App_Default"   # round-trip
 A layout is a rendering artifact, so a clean `mx check` proves little on its own.
 To see it, boot the app: `mxcli run --local -p app.mpr --screenshot` and look at
 the regions.
+
+## What `mxcli new` scaffolds
+
+A new project gets `<YourModule>.App_Default` — this layout, in a module it
+owns — and its pages moved onto it, so the documented practice is the default
+rather than something to discover. `mxcli new --layout none` keeps Atlas's.
+
+It is **not** a copy of Atlas_TopBar, and could not be: that layout carries a
+`Forms$MenuBar` (now authorable), a `Forms$SidebarToggleButton` and a pluggable
+image, so a describe → exec copy renders with no navigation and no logo. The
+scaffold reproduces the *result* instead — same layout class, same region
+classes, navigation in the topbar, `Main` for page content — and omits the
+toggle button and the stock logo.

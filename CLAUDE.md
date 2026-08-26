@@ -713,7 +713,7 @@ go build -o bin/mxcli ./cmd/mxcli
 | **Marketplace drift** | `mxcli marketplace diff <id> -p app.mpr [--to V] [--json]` | Which elements of an installed marketplace module have been edited locally, and what an upgrade would overwrite |
 | **Model repair** | `mxcli fix widgets`, `mxcli fix design-properties` | Runs `mx update-widgets` / `mx rename-design-properties` and **persists** the result without their MPR v2 → v1 collapse (harvest: let the tool convert, read the units back, restore v2, write the changed ones through mxcli's writer). Clears CE0463 / CE6087 after a headless install — measured 203 → 0 errors on a vanilla 11.12.1 app |
 | **Diagnostics** | `mxcli diag [--bundle]` | Session logs, version info, bug report bundles |
-| **New project** | `mxcli new <name> --version X.Y.Z [--output-dir dir] [--theme none]` | Downloads mxbuild, creates blank project, applies default styling, runs init, installs Linux mxcli for devcontainer |
+| **New project** | `mxcli new <name> --version X.Y.Z [--output-dir dir] [--theme none] [--layout none]` | Downloads mxbuild, creates blank project, applies default styling, scaffolds a project-owned layout, runs init, installs Linux mxcli for devcontainer |
 | **Default styling** | `mxcli theme list\|show\|apply\|remove` | Applies a theme (signal/ledger/console) — files under `theme/` only, the model is never touched |
 | **Project themes** | `mxcli theme create <name> [--from <theme\|design-file>]` | Scaffolds a theme the project owns into `theme/mxcli-themes/`; `--from <file>` seeds the palette from `--mxt-*` declarations |
 | **Theme switching** | `mxcli theme apply <name> --variant auto\|light\|dark`, `mxcli theme switcher install` | `auto` ships both palettes (follows the OS + honours a `theme-light`/`theme-dark` class); `switcher install` adds the JS actions + nanoflow for a user toggle (**this one does write to the model**) |
@@ -729,7 +729,9 @@ mxcli new MyApp --version 11.8.0
 mxcli new MyApp --version 10.24.0 --output-dir ./projects/my-app
 ```
 
-Steps performed: downloads MxBuild → `mx create-project` → `mxcli theme apply` → `mxcli init` → one `mxbuild --target=deploy` run (`--skip-build` to skip) → downloads correct Linux mxcli binary for devcontainer. That build settles the JS/Java action stubs MxBuild rewrites on first build (48 tracked files in a blank 11.12 app), so a fresh clone does not go dirty the first time anyone builds it. The result is a ready-to-open project with `.devcontainer/`, AI tooling, mxcli's default styling, and a working `./mxcli` binary. Pass `--theme none` for plain Atlas.
+Steps performed: downloads MxBuild → `mx create-project` → `mxcli theme apply` → scaffolds `<YourModule>.App_Default` and moves the project's pages onto it (`--layout none` to keep Atlas's) → `mxcli init` → one `mxbuild --target=deploy` run (`--skip-build` to skip) → downloads correct Linux mxcli binary for devcontainer. That build settles the JS/Java action stubs MxBuild rewrites on first build (48 tracked files in a blank 11.12 app), so a fresh clone does not go dirty the first time anyone builds it. The result is a ready-to-open project with `.devcontainer/`, AI tooling, mxcli's default styling, a layout the project owns, and a working `./mxcli` binary. Pass `--theme none` for plain Atlas.
+
+The layout is **not** a copy of Atlas's: every Atlas layout a real app uses carries widgets MDL cannot spell (`Atlas_TopBar` has a `Forms$MenuBar`, a `Forms$SidebarToggleButton` and a pluggable image), so a describe → exec copy renders with no navigation and no logo. It reproduces the *result* instead — same layout class, same region classes, topbar navigation, `Main` for page content.
 
 ### Slash Command Namespaces
 

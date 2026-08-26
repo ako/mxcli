@@ -347,9 +347,48 @@ re-exec → describe is byte-stable, the key set matches Atlas's exactly, and th
 layout **renders in a browser** with all three regions in place and the page's own
 widget in the `Main` placeholder — the check `mx check` cannot make.
 
-### Stage 4 — `mxcli new` scaffolds a project-owned layout
+### Stage 4 — `mxcli new` scaffolds a project-owned layout — **shipped**
 
-**Decided.** A new project gets `MyFirstModule.App_Default` — a layout it owns,
+**Decided, and one requirement did not survive contact with the model.**
+
+The plan said the scaffold "must reproduce Atlas's structure closely enough that
+pages render unchanged". Measured across the Atlas web set, that is not
+achievable by copying:
+
+| Layout | Widgets MDL cannot spell |
+|--------|--------------------------|
+| Atlas_Default | `SidebarToggleButton` (+ pluggable image) |
+| Atlas_TopBar | `MenuBar`, `SidebarToggleButton` (+ pluggable image) |
+| Atlas_SideBar | `SidebarToggleButton` ×2 (+ pluggable image) |
+| Phone/Tablet_Default | `Header`, `SimpleMenuBar` |
+| *_FullPage, PopupLayout | none |
+
+Only the chrome-less variants copy cleanly. A copy of `Atlas_TopBar` — the layout
+the blank template's own page uses — renders with **no navigation and no logo**,
+which is worse than no scaffold at all.
+
+So the scaffold reproduces the **result** rather than the structure: the same
+layout class, the same region classes, navigation in the topbar, `Main` for page
+content. `Forms$MenuBar` was made authorable for it (same four keys and the same
+`MenuSource` wrapper as a `NavigationTree`, which is what `generated/metamodel`'s
+`PagesMenuBar` declares). The sidebar rail is omitted rather than shipped
+always-open, because the toggle button that collapses it is not authorable.
+
+**The finding that mattered: a layout's own CSS class is load-bearing, and
+`CREATE LAYOUT` could not set one.** Atlas scopes **24** of its layout rules to
+`.layout-atlas` and its variants; every Atlas layout with chrome carries one. A
+layout written without it builds cleanly, passes `mx check` at 0 errors, and
+renders with no topbar bar and no sidebar rail. `create layout` now takes
+`class:` and `style:`, and `describe layout` round-trips the class.
+
+Nothing mxcli or mxbuild checks could have caught that. It was found by booting
+the generated app in a browser next to the one it replaces — which is what
+`.claude/skills/verify-in-runtime.md` exists for, and is the acceptance test the
+plan predicted this stage would be.
+
+### Stage 4 (original plan)
+
+A new project gets `MyFirstModule.App_Default` — a layout it owns,
 created from MDL, with its pages pointed at it.
 
 Three reasons it belongs in the arc rather than after it:

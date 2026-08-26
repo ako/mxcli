@@ -570,6 +570,11 @@ func (unimplemented) IsRule(_ string) (bool, error) {
 	return r0, errUnimplemented("IsRule")
 }
 
+func (unimplemented) LayoutPlaceholders(_ model.ID) ([]string, error) {
+	var r0 []string
+	return r0, errUnimplemented("LayoutPlaceholders")
+}
+
 func (unimplemented) ListAgentEditorAgents() ([]*agenteditor.Agent, error) {
 	var r0 []*agenteditor.Agent
 	return r0, errUnimplemented("ListAgentEditorAgents")
@@ -878,6 +883,11 @@ func (unimplemented) OpenPageForMutation(_ model.ID) (backend.PageMutator, error
 func (unimplemented) OpenWorkflowForMutation(_ model.ID) (backend.WorkflowMutator, error) {
 	var r0 backend.WorkflowMutator
 	return r0, errUnimplemented("OpenWorkflowForMutation")
+}
+
+func (unimplemented) PageLayoutName(_ model.ID) (string, error) {
+	var r0 string
+	return r0, errUnimplemented("PageLayoutName")
 }
 
 func (unimplemented) ParseMicroflowBSON(_ []uint8, _ model.ID, _ model.ID) (*microflows.Microflow, error) {

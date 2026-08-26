@@ -24,9 +24,9 @@ func (pb *pageBuilder) buildLayoutV3(s *ast.CreateLayoutStmt) (*pages.Layout, er
 	// gen property — read as accepted while nothing was written; the metamodel
 	// does not declare it and no Studio Pro layout carries it.
 	for k := range s.Properties {
-		if !strings.EqualFold(k, "LayoutType") {
+		if !strings.EqualFold(k, "LayoutType") && !strings.EqualFold(k, "Class") && !strings.EqualFold(k, "Style") {
 			return nil, mdlerrors.NewValidation(fmt.Sprintf(
-				"layout %s: unknown property %q (a layout header takes layouttype only; "+
+				"layout %s: unknown property %q (a layout header takes layouttype, class and style; "+
 					"which placeholder is \"main\" is set by naming one Main, not by a property)",
 				s.Name.String(), k))
 		}
@@ -57,6 +57,8 @@ func (pb *pageBuilder) buildLayoutV3(s *ast.CreateLayoutStmt) (*pages.Layout, er
 		Documentation: s.Documentation,
 		LayoutType:    layoutType,
 		Native:        native,
+		Class:         props.GetStringProp("Class"),
+		Style:         props.GetStringProp("Style"),
 	}
 
 	expanded, err := pb.expandFragments(s.Widgets)

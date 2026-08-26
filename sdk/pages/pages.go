@@ -59,6 +59,16 @@ type Layout struct {
 	LayoutType    LayoutType `json:"layoutType"`
 	// Native selects Forms$NativeLayoutContent over Forms$WebLayoutContent.
 	Native bool `json:"native,omitempty"`
+	// Class and Style are the layout's own Forms$Appearance.
+	//
+	// The class is not decoration: Atlas scopes ~24 of its layout rules to
+	// `.layout-atlas` and its variants, and every Atlas layout carries one
+	// (measured: 'layout-atlas layout-atlas-responsive-topbar' and friends;
+	// only PopupLayout is bare). A layout written without it renders with none
+	// of Atlas's chrome styling — no topbar bar, no sidebar rail — which
+	// mx check is entirely silent about.
+	Class string `json:"class,omitempty"`
+	Style string `json:"style,omitempty"`
 	// Widgets is the content tree, normally a single ScrollContainer.
 	Widgets []Widget `json:"widgets,omitempty"`
 

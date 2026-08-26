@@ -616,7 +616,7 @@ keyword
     // Layout structure. SCROLLREGION is spelled `region`, an ordinary enough
     // word that leaving it out of this rule would make `region` unusable as an
     // attribute or widget name anywhere in MDL.
-    | SCROLLCONTAINER | SCROLLREGION | NAVIGATIONTREE
+    | SCROLLCONTAINER | SCROLLREGION | NAVIGATIONTREE | MENUBAR
     // Object-list container keywords for pluggable widgets (#538)
     | GROUP | CUSTOMITEM | MARKER | DYNAMICMARKER | SERIES | LINE | SCALECOLOR
     | CUSTOMBUTTON | ALLOWEDFILEFORMAT

@@ -141,3 +141,10 @@ func (m *MockBackend) LayoutPlaceholders(id model.ID) ([]string, error) {
 	}
 	return nil, errors.New("MockBackend.LayoutPlaceholders not configured")
 }
+
+func (m *MockBackend) PageLayoutName(id model.ID) (string, error) {
+	if m.PageLayoutNameFunc != nil {
+		return m.PageLayoutNameFunc(id)
+	}
+	return "", errors.New("MockBackend.PageLayoutName not configured")
+}

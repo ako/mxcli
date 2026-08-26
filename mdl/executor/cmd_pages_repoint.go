@@ -200,15 +200,12 @@ func execAlterPagesLayout(ctx *ExecContext, s *ast.AlterPagesLayoutStmt) error {
 }
 
 // pageLayoutQN returns the qualified name of the layout a page currently uses.
+// An unreadable page reports "", which no WHERE clause matches — so a page the
+// backend cannot read is left alone rather than repointed on a guess.
 func pageLayoutQN(ctx *ExecContext, p *pages.Page) string {
-	raw, err := ctx.Backend.GetRawUnit(p.ID)
-	if err != nil || raw == nil {
+	name, err := ctx.Backend.PageLayoutName(p.ID)
+	if err != nil {
 		return ""
 	}
-	formCall, ok := raw["FormCall"].(map[string]any)
-	if !ok {
-		return ""
-	}
-	name, _ := formCall["Form"].(string)
 	return name
 }

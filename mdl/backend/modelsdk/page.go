@@ -219,11 +219,25 @@ func (b *Backend) ListLayouts() ([]*pages.Layout, error) {
 			Name:          u.Element.Name(),
 			Documentation: u.Element.Documentation(),
 			LayoutType:    layoutTypeOf(u.Element),
+			Class:         appearanceClassOf(u.Element),
 		}
 		l.ID = model.ID(u.Element.ID())
 		out = append(out, l)
 	}
 	return out, nil
+}
+
+// appearanceClassOf reads the layout's own CSS class.
+//
+// Not decoration: Atlas scopes its layout chrome to `.layout-atlas` and
+// variants, so a describe that dropped the class produced a script whose output
+// rendered unstyled — valid, buildable, and visibly wrong.
+func appearanceClassOf(l *genPg.Layout) string {
+	ap, ok := l.Appearance().(*genPg.Appearance)
+	if !ok || ap == nil {
+		return ""
+	}
+	return ap.Class()
 }
 
 // layoutTypeOf reads a layout's type off its content wrapper.
@@ -274,4 +288,16 @@ func (b *Backend) LayoutPlaceholders(id model.ID) ([]string, error) {
 		return nil, err
 	}
 	return backend.LayoutPlaceholderNames(raw), nil
+}
+
+// PageLayoutName returns the qualified name of the layout a page renders inside.
+//
+// Read off the stored document: a page's layout reference is FormCall.Form, a
+// qualified name Mendix resolves on load.
+func (b *Backend) PageLayoutName(id model.ID) (string, error) {
+	raw, err := b.GetRawUnit(id)
+	if err != nil {
+		return "", err
+	}
+	return backend.PageLayoutNameFromRaw(raw), nil
 }

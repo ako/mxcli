@@ -356,8 +356,12 @@ func describeLayout(ctx *ExecContext, name ast.QualifiedName) error {
 	// Re-executable MDL, not a comment dump: `create layout` exists now, so a
 	// describe that only narrated the tree would be the one document type whose
 	// output cannot be fed back in.
-	fmt.Fprintf(ctx.Output, "create layout %s.%s (\n  layouttype: %s\n) {\n",
-		modName, mdlIdent(foundLayout.Name), mdlQuote(layoutTypeStr))
+	header := fmt.Sprintf("  layouttype: %s", mdlQuote(layoutTypeStr))
+	if foundLayout.Class != "" {
+		header += fmt.Sprintf(",\n  class: %s", mdlQuote(foundLayout.Class))
+	}
+	fmt.Fprintf(ctx.Output, "create layout %s.%s (\n%s\n) {\n",
+		modName, mdlIdent(foundLayout.Name), header)
 
 	for _, w := range getLayoutWidgetsFromRaw(ctx, foundLayout.ID) {
 		outputWidgetMDLV3(ctx, w, 1)

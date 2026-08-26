@@ -393,6 +393,7 @@ widgetTypeV3
     | SCROLLCONTAINER
     | SCROLLREGION
     | NAVIGATIONTREE
+    | MENUBAR
     // Object-list container keywords for pluggable widgets (Phase 1 — #538).
     // Each is the singular form of a Type:"object"+IsList:true widget property
     // (e.g. Accordion groups → GROUP). Routed at executor time via the parent

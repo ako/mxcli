@@ -601,6 +601,17 @@ func widgetToGen(w pages.Widget) (element.Element, error) {
 		g.SetMenuSource(src)
 		return g, nil
 
+	case *pages.MenuBar:
+		// Same four keys as a NavigationTree, and the same MenuSource wrapper —
+		// a menu bar is the horizontal navigation a topbar carries.
+		g := genPg.NewMenuBar()
+		applyWidgetBase(g, &x.BaseWidget)
+		src := genPg.NewNavigationSource()
+		assignID(src)
+		src.SetNavigationProfileQualifiedName(orDefaultStr(x.NavigationProfile, "Responsive"))
+		g.SetMenuSource(src)
+		return g, nil
+
 	case *pages.GroupBox:
 		g := genPg.NewGroupBox()
 		applyWidgetBase(g, &x.BaseWidget)

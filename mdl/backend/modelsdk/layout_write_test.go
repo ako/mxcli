@@ -164,3 +164,47 @@ func TestLayoutToGen_RefusesAnEmptyNameOrType(t *testing.T) {
 		t.Error("a layout with no layout type must be refused")
 	}
 }
+
+// The layout's own CSS class is not decoration.
+//
+// Atlas scopes ~24 of its layout rules to `.layout-atlas` and its variants, and
+// every Atlas layout that has chrome carries one — measured on 11.13.0:
+// Atlas_TopBar is 'layout-atlas layout-atlas-responsive-topbar', Atlas_Default
+// is 'layout-atlas layout-atlas-responsive-default', and only PopupLayout (which
+// has no chrome) is bare. A layout written without it renders with no topbar bar
+// and no sidebar rail, which mx check is entirely silent about — the defect is
+// only visible in a browser.
+func TestLayoutToGen_CarriesTheLayoutCSSClass(t *testing.T) {
+	l := minimalLayout()
+	l.Class = "layout-atlas layout-atlas-responsive-topbar"
+	l.Style = "min-height: 100vh;"
+
+	g, err := layoutToGen(l)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ap, ok := encodeToMap(t, g)["Appearance"].(map[string]any)
+	if !ok {
+		t.Fatal("Appearance missing")
+	}
+	if ap["Class"] != "layout-atlas layout-atlas-responsive-topbar" {
+		t.Errorf("Class = %v", ap["Class"])
+	}
+	if ap["Style"] != "min-height: 100vh;" {
+		t.Errorf("Style = %v", ap["Style"])
+	}
+
+	// Control: a layout with no class still writes an Appearance, because the
+	// ten-key shape requires one — an absent Appearance is a different bug.
+	bare, err := layoutToGen(minimalLayout())
+	if err != nil {
+		t.Fatal(err)
+	}
+	bareAp, ok := encodeToMap(t, bare)["Appearance"].(map[string]any)
+	if !ok {
+		t.Fatal("a class-less layout must still carry an Appearance")
+	}
+	if bareAp["Class"] != "" {
+		t.Errorf("Class = %v, want empty", bareAp["Class"])
+	}
+}

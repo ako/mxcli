@@ -125,3 +125,39 @@ func TestNavigationTreeToGen_WrapsTheProfileInAMenuSource(t *testing.T) {
 		t.Errorf("NavigationProfile = %v, want Responsive", src["NavigationProfile"])
 	}
 }
+
+// A menu bar is the horizontal navigation a topbar carries — the same four keys
+// as a NavigationTree and the same MenuSource wrapper, measured on
+// Atlas_Core.Atlas_TopBar and matching generated/metamodel's PagesMenuBar.
+//
+// It exists because the scaffold in `mxcli new` needs it: without a MenuBar the
+// generated layout has no navigation in the topbar, which is precisely what a
+// describe → exec copy of Atlas_TopBar loses.
+func TestMenuBarToGen_WrapsTheProfileInAMenuSource(t *testing.T) {
+	g, err := widgetToGen(&pages.MenuBar{
+		BaseWidget:        pages.BaseWidget{Name: "mainMenu"},
+		NavigationProfile: "Responsive",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := encodeToMap(t, g)
+	if doc["$Type"] != "Forms$MenuBar" {
+		t.Fatalf("$Type = %v", doc["$Type"])
+	}
+	src, ok := doc["MenuSource"].(map[string]any)
+	if !ok {
+		t.Fatalf("MenuSource missing or not a document; keys = %v", keysOf(doc))
+	}
+	if src["NavigationProfile"] != "Responsive" {
+		t.Errorf("NavigationProfile = %v, want Responsive", src["NavigationProfile"])
+	}
+	// The metamodel declares exactly Appearance, MenuSource, Name and TabIndex.
+	for _, k := range keysOf(doc) {
+		switch k {
+		case "$ID", "$Type", "Appearance", "MenuSource", "Name", "TabIndex":
+		default:
+			t.Errorf("wrote %q, which Forms$MenuBar does not have", k)
+		}
+	}
+}
