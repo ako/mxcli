@@ -999,3 +999,60 @@ func TestThemesDoNotClaimTheSameVerbatimPathWithDifferentContent(t *testing.T) {
 		}
 	}
 }
+
+// mxbuild lowers the first letter of a JavaScript action's parameter when it
+// generates the wrapper — a `Skin: String` parameter reaches the body as
+// `skin`. A body using the modelled spelling is a ReferenceError on the first
+// click, and nothing catches it earlier: `mx check` reports 0 errors because
+// the action is well-formed and the body is opaque user code, and the
+// generated file is rewritten on every build so it cannot be patched in place.
+//
+// Both parameterised actions shipped with this defect (ako/mxcli-ledger #135),
+// which killed exactly the half the multi-theme feature exists for — selecting
+// a theme by name. The no-parameter actions, which the help walks you through,
+// were fine, so the documented path worked and the feature did not.
+//
+// This checks every parameter of every generated action, so a new one cannot
+// reintroduce it.
+func TestSwitcherMDL_JSBodiesUseTheParameterNameMxbuildGenerates(t *testing.T) {
+	mdl := SwitcherMDL("Ops", []string{"signal", "ledger", "console"})
+
+	// Anchored on the declaration, not a bare "javascript action": the nanoflows
+	// below carry `call javascript action Ops.X()`, and matching those made the
+	// scan run past a real declaration and skip it — which is how the first
+	// version of this test passed against the very defect it was written for.
+	action := regexp.MustCompile(`(?s)create or modify javascript action Ops\.(\w+)\(([^)]*)\).*?as \$\$(.*?)\$\$;`)
+	found := 0
+	for _, m := range action.FindAllStringSubmatch(mdl, -1) {
+		// A mention in a comment is not a reference; stripComments is the
+		// package's own quote-aware stripper, so a // inside a string survives.
+		name, params, body := m[1], m[2], stripComments(m[3])
+		for _, decl := range strings.Split(params, ",") {
+			decl = strings.TrimSpace(decl)
+			if decl == "" {
+				continue
+			}
+			modelled := strings.TrimSpace(strings.SplitN(decl, ":", 2)[0])
+			found++
+
+			wrapper := strings.ToLower(modelled[:1]) + modelled[1:]
+			if !regexp.MustCompile(`\b` + regexp.QuoteMeta(wrapper) + `\b`).MatchString(body) {
+				t.Errorf("%s: parameter %q reaches the body as %q, which the body never reads",
+					name, modelled, wrapper)
+			}
+			if modelled != wrapper && regexp.MustCompile(`\b`+regexp.QuoteMeta(modelled)+`\b`).MatchString(body) {
+				t.Errorf("%s: body reads %q, but mxbuild generates the wrapper as %q — "+
+					"a ReferenceError on the first click", name, modelled, wrapper)
+			}
+		}
+	}
+	if found == 0 {
+		t.Fatal("no parameterised actions found; the regex stopped matching the template")
+	}
+	// Every declaration must have been visited, or a body could go unchecked
+	// while the test still passes.
+	if got, want := len(action.FindAllString(mdl, -1)),
+		strings.Count(mdl, "create or modify javascript action Ops."); got != want {
+		t.Errorf("matched %d action declarations but the MDL has %d; the scan is skipping one", got, want)
+	}
+}
