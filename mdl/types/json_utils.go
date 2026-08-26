@@ -134,14 +134,61 @@ type snippetBuilder struct {
 	customNameMap map[string]string // JSON key → custom ExposedName
 }
 
-// reservedExposedNames are element names that Mendix rejects as ExposedName values.
-// Studio Pro handles these by prefixing with underscore and keeping original case.
+// reservedExposedNames are element names Mendix will not accept as an
+// ExposedName. Studio Pro avoids them by prefixing an underscore and keeping the
+// key's ORIGINAL case — `id` becomes `_id`, `object` becomes `_object` (both
+// measured in OpenAI_API.JSON_OpenAI_Response) — which is what
+// resolveExposedName does.
+//
+// The list was only {Id, Type}, so an ordinary payload member like `owner` or
+// `class` produced a structure mxbuild REFUSES TO BUILD:
+//
+//	CE9524 "JSON element '(Object)/owner' has an invalid custom name 'Owner'.
+//	        Custom name should start with a letter or underscore followed by
+//	        either letters, digits or underscores."
+//
+// The message is a red herring — 'Owner' matches that pattern perfectly. The
+// real rule, measured against mxbuild 11.13 one name at a time, is a
+// case-insensitive reserved set:
+//
+//	every Java keyword and literal (53, each measured and rejected)
+//	the four system attribute names: Owner, ChangedDate, CreatedDate, ChangedBy
+//	CurrentUser and Guid
+//
+// It is NOT the entity-member reserved list: `Type` and `Id` are accepted by
+// mxbuild here, and are kept below only because Studio Pro avoids them too —
+// this list is "what Studio Pro avoids", a superset of "what mxbuild rejects".
+// `Object` is in the same category, added from the same reference document.
+//
+// Lookup is case-insensitive because Mendix's own check is: the member `class`
+// derives `Class`, which is not literally a Java keyword, and is still rejected.
 var reservedExposedNames = map[string]bool{
-	"Id": true, "Type": true,
+	// Studio Pro avoids these; mxbuild accepts them.
+	"id": true, "type": true, "object": true,
+
+	// Mendix system attribute names.
+	"owner": true, "changeddate": true, "createddate": true, "changedby": true,
+
+	// Mendix reserved.
+	"currentuser": true, "guid": true,
+
+	// Java keywords and literals.
+	"abstract": true, "assert": true, "boolean": true, "break": true, "byte": true,
+	"case": true, "catch": true, "char": true, "class": true, "const": true,
+	"continue": true, "default": true, "do": true, "double": true, "else": true,
+	"enum": true, "extends": true, "false": true, "final": true, "finally": true,
+	"float": true, "for": true, "goto": true, "if": true, "implements": true,
+	"import": true, "instanceof": true, "int": true, "interface": true, "long": true,
+	"native": true, "new": true, "null": true, "package": true, "private": true,
+	"protected": true, "public": true, "return": true, "short": true, "static": true,
+	"strictfp": true, "super": true, "switch": true, "synchronized": true, "this": true,
+	"throw": true, "throws": true, "transient": true, "true": true, "try": true,
+	"void": true, "volatile": true, "while": true,
 }
 
-// resolveExposedName returns the custom name if mapped, otherwise capitalizes the JSON key.
-// Reserved names (Id, Type) are prefixed with underscore to match Studio Pro behavior.
+// resolveExposedName returns the custom name if mapped, otherwise capitalizes the
+// JSON key. A name Mendix reserves is prefixed with an underscore, keeping the
+// key's original case, which is what Studio Pro stores.
 func (b *snippetBuilder) resolveExposedName(jsonKey string) string {
 	if b.customNameMap != nil {
 		if custom, ok := b.customNameMap[jsonKey]; ok {
@@ -149,7 +196,7 @@ func (b *snippetBuilder) resolveExposedName(jsonKey string) string {
 		}
 	}
 	name := capitalizeFirst(jsonKey)
-	if reservedExposedNames[name] {
+	if reservedExposedNames[strings.ToLower(name)] {
 		return "_" + jsonKey
 	}
 	return name
