@@ -9,6 +9,7 @@ import (
 	_ "github.com/mendixlabs/mxcli/modelsdk/gen/texts" // register Texts$Text so page titles decode concretely
 	"github.com/mendixlabs/mxcli/modelsdk/mprread"
 
+	"github.com/mendixlabs/mxcli/mdl/backend"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/pages"
 )
@@ -260,4 +261,17 @@ func (b *Backend) GetLayout(id model.ID) (*pages.Layout, error) {
 		}
 	}
 	return nil, nil
+}
+
+// LayoutPlaceholders returns the placeholder names a layout declares.
+//
+// Read off the raw document rather than through gen: the names are the layout's
+// public API (a page binds as Module.Layout.<Name>) and both engines need the
+// same answer, so the walk lives in backend.LayoutPlaceholderNames.
+func (b *Backend) LayoutPlaceholders(id model.ID) ([]string, error) {
+	raw, err := b.GetRawUnit(id)
+	if err != nil {
+		return nil, err
+	}
+	return backend.LayoutPlaceholderNames(raw), nil
 }

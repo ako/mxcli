@@ -24,6 +24,11 @@ type PageBackend interface {
 	UpdateLayout(layout *pages.Layout) error
 	DeleteLayout(id model.ID) error
 
+	// LayoutPlaceholders returns the placeholder names a layout declares, in
+	// document order. A page binds to one as Module.Layout.<Name>, so these are
+	// the only valid targets for a repoint — see PageMutator.BoundPlaceholders.
+	LayoutPlaceholders(id model.ID) ([]string, error)
+
 	// Snippets — no GetSnippet: snippets are resolved by qualified name via ListSnippets.
 	ListSnippets() ([]*pages.Snippet, error)
 	CreateSnippet(snippet *pages.Snippet) error

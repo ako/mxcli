@@ -116,6 +116,7 @@ type MockBackend struct {
 	DeletePageFunc         func(id model.ID) error
 	MovePageFunc           func(page *pages.Page) error
 	ListLayoutsFunc        func() ([]*pages.Layout, error)
+	LayoutPlaceholdersFunc func(id model.ID) ([]string, error)
 	GetLayoutFunc          func(id model.ID) (*pages.Layout, error)
 	CreateLayoutFunc       func(layout *pages.Layout) error
 	UpdateLayoutFunc       func(layout *pages.Layout) error

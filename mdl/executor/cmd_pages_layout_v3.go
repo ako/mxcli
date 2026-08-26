@@ -163,11 +163,17 @@ func execCreateLayout(ctx *ExecContext, s *ast.CreateLayoutStmt) error {
 }
 
 // isMarketplaceModule reports whether the module came from the Marketplace.
-// AppStoreGuid is set by the importer and by nothing else, so its presence is
-// the signal — the module name is not (a user may name a module Atlas_Core).
+//
+// Both stored signals count. FromAppStore is the flag Studio Pro sets and
+// SHOW MODULES reports; AppStoreGuid is the version UUID the importer writes.
+// A real import carries both, but checking only one makes the guard depend on
+// which field a given path happened to populate — and a marketplace guard that
+// quietly stops firing is worse than no guard, because the refusal is what
+// stops an edit an update will erase. The module *name* is not a signal: a user
+// may name a module Atlas_Core.
 func isMarketplaceModule(ctx *ExecContext, module *model.Module) bool {
 	if module == nil {
 		return false
 	}
-	return strings.TrimSpace(module.AppStoreGuid) != ""
+	return module.FromAppStore || strings.TrimSpace(module.AppStoreGuid) != ""
 }

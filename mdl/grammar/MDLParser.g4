@@ -145,6 +145,13 @@ alterStatement
     | ALTER STYLING ON (PAGE | SNIPPET) qualifiedName WIDGET IDENTIFIER alterStylingAction+
     | ALTER SETTINGS alterSettingsClause
     | ALTER PAGE qualifiedName LBRACE alterPageOperation+ RBRACE
+    | alterPagesLayoutStatement
+    // ALTER LAYOUT reuses alterPageOperation wholesale: a layout's widget tree is
+    // a page's widget tree with four extra element types, so SET/INSERT/DROP/
+    // REPLACE mean exactly the same thing. A scroll-container region is addressed
+    // through the dotted widgetRef the grammar already has — `layoutContainer.top`
+    // — because a region has no Name of its own.
+    | ALTER LAYOUT qualifiedName LBRACE alterPageOperation+ RBRACE
     | ALTER SNIPPET qualifiedName LBRACE alterPageOperation+ RBRACE
     | ALTER WORKFLOW qualifiedName alterWorkflowAction+ SEMICOLON?
     | ALTER PUBLISHED REST SERVICE qualifiedName alterPublishedRestServiceAction (COMMA? alterPublishedRestServiceAction)*
@@ -241,7 +248,7 @@ alterPageOperation
     ;
 
 alterPageSet
-    : SET LAYOUT EQUALS qualifiedName (MAP LPAREN alterLayoutMapping (COMMA alterLayoutMapping)* RPAREN)?  // SET Layout = Atlas_Core.TopBar MAP (Main -> Main)
+    : SET LAYOUT EQUALS qualifiedName (MAP LPAREN alterLayoutMapping (COMMA alterLayoutMapping)* RPAREN)?  // SET Layout = Atlas_Core.TopBar MAP (Main AS Content)
     | SET alterPageAssignment ON widgetRef                             // SET Caption = 'Save' ON btnSave  |  ON dgProducts.Name
     | SET LPAREN alterPageAssignment (COMMA alterPageAssignment)* RPAREN ON widgetRef  // SET (Caption = 'Save', ButtonStyle = Success) ON btnSave
     | SET alterPageAssignment                                                    // SET Title = 'Edit' (page-level)
@@ -249,6 +256,19 @@ alterPageSet
 
 alterLayoutMapping
     : identifierOrKeyword AS identifierOrKeyword                                // OldPlaceholder AS NewPlaceholder
+    ;
+
+// ALTER PAGES [IN <module>] SET LAYOUT = Module.Layout [MAP (...)] [WHERE LAYOUT = Module.Old]
+//
+// The bulk form is the real one: an app has one layout and many pages, so
+// moving off Atlas_Default is a single statement rather than forty. WHERE is
+// what makes it safe to run project-wide — "every page currently on X" is the
+// migration anyone actually wants — so it is a filter on the current layout and
+// nothing else.
+alterPagesLayoutStatement
+    : ALTER PAGES (IN identifierOrKeyword)? SET LAYOUT EQUALS qualifiedName
+      (MAP LPAREN alterLayoutMapping (COMMA alterLayoutMapping)* RPAREN)?
+      (WHERE LAYOUT EQUALS qualifiedName)?
     ;
 
 alterPageAssignment

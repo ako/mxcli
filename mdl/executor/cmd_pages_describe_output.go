@@ -871,12 +871,17 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 		}
 
 	default:
-		// Output unknown widget type as comment
+		// A widget MDL cannot spell. Emitted as a comment naming it, and
+		// labelled with what that costs: describe output is re-executable, so a
+		// commented widget is one the round trip drops. Measured on
+		// Atlas_Core.Atlas_SideBar, whose two Forms$SidebarToggleButton widgets
+		// do not survive describe -> exec — silent without this note, because a
+		// bare `-- Forms$X (name)` line reads as informational.
 		fmt.Fprintf(ctx.Output, "%s-- %s", prefix, w.Type)
 		if w.Name != "" {
 			fmt.Fprintf(ctx.Output, " (%s)", w.Name)
 		}
-		fmt.Fprint(ctx.Output, "\n")
+		fmt.Fprint(ctx.Output, "  -- NOT re-executable: mxcli cannot author this widget, so re-running this script would drop it\n")
 	}
 }
 

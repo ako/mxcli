@@ -32,6 +32,64 @@ mxcli exec mine.mdl -p app.mpr
 `DESCRIBE LAYOUT` emits re-executable MDL, so describe → rename → exec *is* the
 copy operation. There is no `COPY DOCUMENT` verb and none is needed.
 
+**A copy is only as good as what MDL can spell.** A widget describe cannot render
+comes out as a comment ending `-- NOT re-executable`, and re-running the script
+drops it. Measured on `Atlas_Core.Atlas_SideBar`: its two
+`Forms$SidebarToggleButton` widgets do not survive the round trip, and an
+`image` widget copied this way loses its image reference (CE0463 until
+`mxcli fix widgets`, then "No image selected"). **Read the describe output
+before running it** — the comments name exactly what will be lost. To change a
+layout without that risk, use `ALTER LAYOUT`, which edits the stored document in
+place and leaves everything it was not asked to touch alone.
+
+### Repointing pages
+
+A new layout that no page uses changes nothing:
+
+```sql
+-- one page
+alter page MyModule.Home { set Layout = MyModule.App_Default; };
+
+-- the migration: every page currently on Atlas_Default
+alter pages set layout = MyModule.App_Default
+  where layout = Atlas_Core.Atlas_Default;
+
+-- scoped to one module, whatever each page is on now
+alter pages in MyModule set layout = MyModule.App_Default;
+```
+
+Both rewrite the layout reference **and** every placeholder binding. Pages in
+Marketplace modules are skipped and named — they are not yours to edit either.
+
+A page bound to a placeholder the new layout does not declare is **refused**
+before anything is written; `map (Old as New)` is how you rebind it:
+
+```sql
+alter page MyModule.Split { set Layout = MyModule.Minimal map (HeaderLeft as Main); };
+```
+
+### ALTER LAYOUT
+
+Edits the stored document rather than rewriting it, so widgets MDL cannot spell
+survive. Same operations as `ALTER PAGE`:
+
+```sql
+alter layout MyModule.App_Default {
+  insert into layoutContainer.top { snippetcall bar (snippet: MyModule.SNIPPET_ThemeBar) };
+  set Content = 'My App' on brandText;
+  drop widget oldBanner;
+};
+```
+
+A region has no name of its own — its slot *is* its identity — so it is addressed
+as `<scrollContainerName>.<slot>`, reusing the dotted widget reference. Only
+`INSERT INTO` takes a region; `BEFORE`/`AFTER` position a widget among siblings,
+so name the widget instead. An empty slot has no stored region document to insert
+into: add it with `create or replace layout`.
+
+`ALTER LAYOUT` refuses a Marketplace target, and names the copy-then-repoint
+route in the error.
+
 ## Syntax
 
 ```sql
@@ -106,6 +164,9 @@ than an ignored key, which is the point of the next section.
 - **Authoring is modelsdk-only.** The legacy writer cannot produce the `Content`
   wrapper the widget tree hangs off; it refuses rather than writing a layout with
   no tree.
+- **`create or replace layout` rewrites the whole document; `alter layout` does
+  not.** Prefer ALTER for an edit to a layout you did not author from MDL — a
+  rewrite is only ever as complete as the describe it came from.
 
 ## Validate
 

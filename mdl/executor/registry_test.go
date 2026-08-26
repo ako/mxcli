@@ -174,6 +174,7 @@ func allKnownStatements() []ast.Statement {
 		&ast.AlterODataClientStmt{},
 		&ast.AlterODataServiceStmt{},
 		&ast.AlterPageStmt{},
+		&ast.AlterPagesLayoutStmt{},
 		&ast.AlterProjectSecurityStmt{},
 		&ast.AlterPublishedRestServiceStmt{},
 		&ast.AlterSettingsStmt{},

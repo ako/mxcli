@@ -1246,6 +1246,9 @@ MDL uses explicit property declarations for pages:
 | List layouts | `show layouts [in module];` | |
 | Describe layout | `describe layout Module.Name;` | Round-trippable MDL — describe an Atlas layout, rename it, run it to get a copy in your own module |
 | Create layout | `create [or replace] layout Module.Name ( layouttype: 'X' ) { <widgets> };` | modelsdk engine only. Refused in a Marketplace module: an update replaces the module and the edit is gone |
+| Alter layout | `alter layout Module.Name { <alter-page operations> };` | Edits the stored document, so widgets MDL cannot spell survive. Refused for a Marketplace target |
+| Repoint one page | `alter page Module.Page { set Layout = Module.Layout [map (Old as New, …)]; };` | Rewrites the layout reference **and** every placeholder binding |
+| Repoint many pages | `alter pages [in <module>] set layout = Module.Layout [map (…)] [where layout = Module.Old];` | The migration form. Marketplace pages are skipped and named. A `where layout` that names no real layout is an error, not a 0-page success |
 
 | Layout element | Syntax | Notes |
 |----------------|--------|-------|
@@ -1254,6 +1257,7 @@ MDL uses explicit property declarations for pages:
 | Region | `region top \| right \| bottom \| left \| center [( size: N, sizemode: 'Fixed'\|'Pixels'\|'Auto', class: '…' )] { <widgets> }` | Five named slots, not a list. One region per slot |
 | Placeholder | `placeholder Main` | The slot a page's content goes into. The name is API — a page binds as `Module.Layout.<Name>`. Name one `Main`: that is how Mendix picks the main placeholder (`Forms$Layout` has no property for it). At least one is required |
 | Navigation tree | `navigationtree name (profile: 'Responsive')` | The sidebar/menu widget; the profile is a navigation profile name |
+| Region as ALTER target | `<scrollContainerName>.<slot>` | A region has no name — its slot is its identity. `INSERT INTO layoutContainer.top { … }`. Only `INSERT INTO`; use a widget name for `BEFORE`/`AFTER` |
 
 **Snippets & Building Blocks (read-only discovery):**
 

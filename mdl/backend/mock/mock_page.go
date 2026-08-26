@@ -3,6 +3,8 @@
 package mock
 
 import (
+	"errors"
+
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/pages"
 )
@@ -131,4 +133,11 @@ func (m *MockBackend) ListPageTemplates() ([]*pages.PageTemplate, error) {
 		return m.ListPageTemplatesFunc()
 	}
 	return nil, nil
+}
+
+func (m *MockBackend) LayoutPlaceholders(id model.ID) ([]string, error) {
+	if m.LayoutPlaceholdersFunc != nil {
+		return m.LayoutPlaceholdersFunc(id)
+	}
+	return nil, errors.New("MockBackend.LayoutPlaceholders not configured")
 }

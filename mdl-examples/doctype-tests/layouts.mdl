@@ -101,8 +101,51 @@ create or replace page LayoutTest.Split (
 }
 
 -- ----------------------------------------------------------------------------
+-- Repointing pages.
+--
+-- A new layout no page uses changes nothing. The bulk form is the real one --
+-- an app has one layout and many pages -- and WHERE is what makes it safe to
+-- run project-wide. Pages in Marketplace modules are skipped and named.
+--
+-- A page bound to a placeholder the new layout does not declare is refused
+-- before anything is written; MAP is how the binding is moved.
+-- ----------------------------------------------------------------------------
+
+alter page LayoutTest.Home { set Layout = LayoutTest.Minimal; };
+
+-- Split binds HeaderLeft, which Minimal does not declare -- so this needs MAP.
+alter page LayoutTest.Split { set Layout = LayoutTest.Minimal map (HeaderLeft as Main); };
+
+-- Put them back, filtered on what they are on now.
+alter pages in LayoutTest set layout = LayoutTest.App_Default
+  where layout = LayoutTest.Minimal;
+
+-- ----------------------------------------------------------------------------
+-- ALTER LAYOUT edits the stored document instead of rewriting it, so widgets
+-- MDL cannot spell survive. Same operations as ALTER PAGE.
+--
+-- A region has no name of its own -- its slot is its identity -- so it is
+-- addressed as <scrollContainer>.<slot>, reusing the dotted widget reference.
+-- Only INSERT INTO takes a region: BEFORE/AFTER position a widget among its
+-- siblings, so name that widget instead.
+-- ----------------------------------------------------------------------------
+
+alter layout LayoutTest.App_Default {
+  insert into layoutContainer.top { dynamictext tagline (content: 'A project-owned layout') };
+  set Content = 'My Application v2' on brandText;
+};
+
+alter layout LayoutTest.App_Default {
+  drop widget tagline;
+};
+
+-- ----------------------------------------------------------------------------
 -- DESCRIBE emits re-executable MDL, which is how a layout is copied: describe
 -- an Atlas layout, change the qualified name, run it.
+--
+-- Read the output before running it: a widget describe cannot render comes out
+-- as a comment ending "NOT re-executable", and the copy drops it. ALTER LAYOUT
+-- is the way to change a layout without that risk.
 -- ----------------------------------------------------------------------------
 
 show layouts in LayoutTest;

@@ -375,7 +375,49 @@ classes — so switching to it is invisible until someone edits it. And it must 
 **generated as MDL**, not special-cased in Go, so what a new project contains is
 something the user could have written and can re-run.
 
-### Stage 3 — `ALTER PAGE … SET LAYOUT`, then `ALTER LAYOUT`
+### Stage 3 — `ALTER PAGE … SET LAYOUT`, then `ALTER LAYOUT` — **shipped**
+
+`ALTER PAGE … SET Layout = QN [MAP (…)]` already existed and already rewrote
+`Form` and every `Parameter` (verified on a real 11.13 project). What Stage 3
+added:
+
+**The bulk form.** `ALTER PAGES [IN <module>] SET LAYOUT = X [MAP (…)]
+[WHERE LAYOUT = Y]`, reusing `alterLayoutMapping`. Marketplace pages are
+**skipped and named**, not refused — a project-wide repoint that stopped dead on
+Administration's pages would be unusable. A `WHERE LAYOUT` that names no real
+layout is an **error**, because matching nothing would report "0 pages": success,
+for a typo.
+
+**A placeholder check on both forms.** A page bound to a placeholder the target
+does not declare was written happily; mxbuild catches it (CE1613, measured) but
+at the far end of a build and naming the page, not the statement. The check runs
+*after* MAP, because MAP is the remedy — and the message names that remedy in the
+syntax that parses. The grammar is `MAP (Old AS New)`; the comment beside the
+rule had said `MAP (Main -> Main)` since it was written, and the first version of
+this error message copied it.
+
+**`ALTER LAYOUT`**, taking the whole `ALTER PAGE` operation vocabulary rather
+than a syntax of its own — a layout's widget tree *is* a page's plus four element
+types. Two finder gaps had to close first: the page finder starts at a `FormCall`
+a layout does not have, and nothing descended into a scroll container's five
+named slots, so every widget in every layout was unreachable and so was anything
+inside a scroll container on a page. A region is addressed as
+`layoutContainer.top`, reusing the dotted widgetRef that also serves DataGrid2
+columns; which one it means is decided by the named widget's `$Type` rather than
+by new syntax. Marketplace targets are refused, naming the copy-then-repoint
+route.
+
+**The reason ALTER LAYOUT is a capability and not a convenience.** The proposal
+argued it saves rewriting the document. The stronger argument is fidelity, and it
+is measurable: describe → rename → exec of `Atlas_Core.Atlas_SideBar` **loses both
+`Forms$SidebarToggleButton` widgets**, and an `image` widget loses its image
+reference (CE0463 until `mxcli fix widgets`, then "No image selected"). A rewrite
+is only ever as complete as the describe it came from. Those widgets were already
+emitted as comments; the comment now says so — `-- NOT re-executable` — because a
+bare `-- Forms$X (name)` line reads as informational. The image round-trip loss is
+a separate defect in pluggable-widget describe, not fixed here.
+
+### Stage 3 (original plan)
 
 ### Files to modify/create
 

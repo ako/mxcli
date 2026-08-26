@@ -12,8 +12,14 @@ import (
 // OData ALTER is handled inline below.
 func (b *Builder) ExitAlterStatement(ctx *parser.AlterStatementContext) {
 	// Handle ALTER PAGE / ALTER SNIPPET
-	if (ctx.PAGE() != nil || ctx.SNIPPET() != nil) && len(ctx.AllAlterPageOperation()) > 0 {
+	if (ctx.PAGE() != nil || ctx.SNIPPET() != nil || ctx.LAYOUT() != nil) && len(ctx.AllAlterPageOperation()) > 0 {
 		b.exitAlterPageStatement(ctx)
+		return
+	}
+
+	// Handle ALTER PAGES … SET LAYOUT (the bulk repoint)
+	if sub := ctx.AlterPagesLayoutStatement(); sub != nil {
+		b.exitAlterPagesLayoutStatement(sub.(*parser.AlterPagesLayoutStatementContext))
 		return
 	}
 
