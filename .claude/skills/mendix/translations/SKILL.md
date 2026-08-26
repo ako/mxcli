@@ -96,7 +96,12 @@ Warning: 1 source string(s) in the file matched nothing in the project.
   language after editing a document.
 - **The source language** is the project's default: the left-hand column is what
   `DESCRIBE` shows for that language, so change `DefaultLanguageCode` before
-  exporting if you want a different source.
+  exporting if you want a different source. It is also **the language a new
+  caption is written in** — `Caption: 'Opslaan'` is stored under the default, so
+  set it *before* authoring pages, not after. Changing it later does not move
+  text that already exists, and nothing warns: `mx check` is 0 errors either way
+  (mendixlabs/mxcli#970). Re-running the `create` statements fixes it. See
+  [project-settings](../project-settings/SKILL.md).
 - Translating **into** the source language is refused — it would overwrite the
   strings everything else is keyed on.
 
