@@ -157,6 +157,53 @@ Three consequences:
    layout must declare a placeholder called `Main`. Renaming one silently
    unbinds every page that used it.
 
+### `LayoutType` — neither declaration is right, and it is stored twice
+
+Open question, now measured across all 22 Atlas layouts on 11.13.0.
+
+| Platform | Content wrapper | Observed `LayoutType` |
+|---|---|---|
+| Web | `Forms$WebLayoutContent` | `Responsive` (3), `Tablet` (8), `Phone` (5), `ModalPopup` (1) |
+| Native | `Forms$NativeLayoutContent` | `Default` (4), `Popup` (1) |
+
+Six values, splitting by platform. Set against what the code declares:
+
+- **`modelsdk/gen`** — `PagesLayoutType {Default, Popup}`. That is the *native*
+  vocabulary only; it cannot express any of the four web values.
+- **`sdk/pages`** — six values, but **`Legacy` instead of `Default`**. It has a
+  value no Atlas layout uses and is missing one that four of them do.
+- **`generated/metamodel`** (the 11.6 snapshot) declares `LayoutType` on
+  `PagesNativeLayoutContent` and `PagesWebLayoutContent` only, both typed
+  `PagesLayoutType` — so it too lists 2 of the 6, and does **not** record that
+  `Forms$Layout` itself carries the property.
+
+**This is a documented counter-example to CLAUDE.md's arbiter rule.** That rule
+says `generated/metamodel` decides when gen and it disagree. Here they agree
+with each other and both disagree with every real document. The tiebreaker is
+the one the architecture doc already names: *capture, don't guess*. `Responsive`,
+`Phone` and `Tablet` are Atlas-era concepts that long predate 11.6, so this is
+not the documented "property introduced after the snapshot" caveat — the
+reflection data simply under-declares this enum.
+
+**And the value is stored twice** — on `Forms$Layout` *and* on its content
+wrapper, identical in all 22 (spot-checked on `Atlas_Default`, `PopupLayout`,
+`NativePhone_PopOver`). That is the `Interval`/`IntervalType`-beside-`Schedule`
+shape from CLAUDE.md: a redundancy Studio Pro maintains and a writer must
+maintain too, not one to pick a winner from.
+
+The approach that follows:
+
+1. **Write both**, always the same value.
+2. **Validate against the platform**, not against one flat list — `Responsive`
+   on a native layout is meaningless, and so is `Default` on a web one. The
+   content wrapper's `$Type` is what decides which vocabulary applies.
+3. **Accept `Legacy` on read, do not offer it for authoring.** It is declared in
+   `sdk/pages` and appears in no Atlas layout; it is presumably a Mendix 7-era
+   web layout. Refusing to author a value we have never seen written is the
+   honest default, and reading it costs nothing.
+4. **Do not regenerate the enum from reflection data** without re-measuring —
+   it would silently narrow the accepted set back to two.
+
 ### Known gen mislabel, already patched on the page side
 
 `genPg.NewLayoutCallArgument()` produces `Forms$LayoutCallArgument`; the real
@@ -251,6 +298,34 @@ Document type through the `MODELSDK_ENGINE_ARCHITECTURE.md` recipe: expand
 `sdk/pages.Layout` past its current five fields, `layoutToGen`/`FromGen`,
 parity test in `mdl/enginecompare/`.
 
+### Stage 4 — `mxcli new` scaffolds a project-owned layout
+
+**Decided.** A new project gets `MyFirstModule.App_Default` — a layout it owns,
+created from MDL, with its pages pointed at it.
+
+Three reasons it belongs in the arc rather than after it:
+
+- It makes the documented practice the **default** one. Today every generated
+  app starts out in the position finding #136 describes: a layout it cannot
+  touch, in a module it must not edit. Scaffolding one inverts that from an
+  obstacle you discover to a starting point you already have.
+- It is the **first real consumer** of everything above, so it is also the
+  acceptance test. If `mxcli new` can emit a layout, repoint the pages and build
+  clean, the feature works.
+- It gives `mxcli theme switcher install` somewhere to put its button. That
+  command's standing limitation is that mxcli cannot reach a layout, so the
+  generated toggle has to be wired by hand onto a page — the loose end from the
+  theme work closes here.
+
+Cost: one more document in a blank app, and `mxcli new --layout none` for anyone
+who would rather start from Atlas's.
+
+Two things to get right. The scaffold must reproduce Atlas's structure closely
+enough that pages render unchanged — same placeholder name (`Main`), same region
+classes — so switching to it is invisible until someone edits it. And it must be
+**generated as MDL**, not special-cased in Go, so what a new project contains is
+something the user could have written and can re-run.
+
 ### Stage 3 — `ALTER PAGE … SET LAYOUT`, then `ALTER LAYOUT`
 
 ### Files to modify/create
@@ -271,6 +346,7 @@ parity test in `mdl/enginecompare/`.
 | `mdl/enginecompare/bsoncompare.go` | `LayoutCanonBSON` dumper |
 | `cmd/mxcli/syntax/features_page.go` | New `SyntaxFeature` entries — **#136's literal ask** |
 | `docs/01-project/MDL_QUICK_REFERENCE.md` | Layout rows |
+| `cmd/mxcli/cmd_new.go` | Stage 4: scaffold `App_Default`, `--layout none` to opt out |
 
 ## Version Compatibility
 
@@ -305,16 +381,10 @@ against a 9.x project before release, since this proposal rests on them.
 2. **Nested layouts.** `WebLayoutContent.LayoutCall` is `null` in
    `Atlas_Default`, so a layout *can* have a master. Does `create layout … using
    Atlas_Core.Atlas_Default` earn its place, or is it scope creep?
-3. **`LayoutType` disagrees between layers** — `sdk/pages` declares six values
-   (Responsive, Tablet, Phone, ModalPopup, Popup, Legacy), gen's enum has two
-   (Default, Popup). Reconcile against real documents, not either source.
-4. **`alter pages … where layout =` is a new clause shape.** Nothing else in MDL
+3. **`alter pages … where layout =` is a new clause shape.** Nothing else in MDL
    filters an ALTER by a reference. Check against
    `.claude/skills/design-mdl-syntax.md` before committing to it.
-5. **Should `mxcli new` scaffold a project-owned layout?** It already applies a
-   theme. A `MyFirstModule.App_Default` created at project setup would make the
-   documented practice the default one, at the cost of one more thing in a new
-   app — and would give `theme switcher install` somewhere to put its button.
-6. **Native layouts.** `Atlas_Core` ships five `NativePhone_*` layouts. Same
-   document type, different content wrapper (`Forms$NativeLayoutContent`?) —
-   unverified, and out of scope until measured.
+4. **Native layouts are out of scope, but the shape is now known.** `Atlas_Core`
+   ships five `NativePhone_*` layouts: same `Forms$Layout` document, wrapper
+   `Forms$NativeLayoutContent` instead of `Forms$WebLayoutContent` (measured).
+   Their widget vocabulary is native, so authoring them is a separate arc.
