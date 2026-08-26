@@ -341,10 +341,16 @@ func describeLayout(ctx *ExecContext, name ast.QualifiedName) error {
 		fmt.Fprint(ctx.Output, " */\n")
 	}
 
-	// Output layout type comment
+	// Output layout type comment.
+	//
+	// No fallback. Every Studio Pro layout stores a LayoutType — measured on
+	// all 22 Atlas ships, across six values that split by platform (web:
+	// Responsive / Phone / Tablet / ModalPopup, native: Default / Popup) — so
+	// an empty one means the read failed, and defaulting it to "Responsive"
+	// reported that failure as a fact.
 	layoutTypeStr := string(foundLayout.LayoutType)
 	if layoutTypeStr == "" {
-		layoutTypeStr = "Responsive"
+		layoutTypeStr = "(not read)"
 	}
 
 	fmt.Fprintf(ctx.Output, "-- Layout Type: %s\n", layoutTypeStr)
@@ -375,13 +381,26 @@ func getLayoutWidgetsFromRaw(ctx *ExecContext, layoutID model.ID) []rawWidget {
 		return nil
 	}
 
-	// Layouts have a Widget field containing the root widget
-	widgetData, ok := rawData["Widget"].(map[string]any)
+	// A Forms$Layout has no Widget key. Its tree hangs off Content — a
+	// Forms$WebLayoutContent (or Forms$NativeLayoutContent for the native
+	// layouts) — whose Widgets array holds the root, normally a ScrollContainer.
+	//
+	// Reading rawData["Widget"] therefore never matched, and the miss was
+	// silent: the type assertion failed, nil came back, and DESCRIBE LAYOUT
+	// printed a header with no widget structure at all for an 84-element
+	// document. Nothing distinguished that from a genuinely empty layout.
+	content, ok := rawData["Content"].(map[string]any)
 	if !ok {
 		return nil
 	}
 
-	return parseRawWidget(ctx, widgetData)
+	var out []rawWidget
+	for _, w := range getBsonArrayElements(content["Widgets"]) {
+		if wMap, ok := w.(map[string]any); ok {
+			out = append(out, parseRawWidget(ctx, wMap)...)
+		}
+	}
+	return out
 }
 
 // outputWidgetMDLV3Comment outputs a widget as MDL V3 comment.

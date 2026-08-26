@@ -157,52 +157,58 @@ Three consequences:
    layout must declare a placeholder called `Main`. Renaming one silently
    unbinds every page that used it.
 
-### `LayoutType` — neither declaration is right, and it is stored twice
+### `LayoutType` lives on the content wrapper, and gen's `Layout.LayoutType` is a phantom
 
 Open question, now measured across all 22 Atlas layouts on 11.13.0.
+
+**Where it is.** Not on `Forms$Layout`. That document's complete top-level key
+set is `$ID`, `$Type`, `Appearance`, `CanvasHeight`, `CanvasWidth`, `Content`,
+`Documentation`, `Excluded`, `ExportLevel`, `Name`. The type is one level down,
+on `Forms$WebLayoutContent` / `Forms$NativeLayoutContent` — exactly where
+`generated/metamodel` puts it. **The arbiter rule holds.**
+
+`modelsdk/gen` nonetheless exposes `Layout.LayoutType()`, bound to a key the
+document does not have, so it reads `""` for every layout ever written. That is
+a phantom property, not a wrong key — the `keyaudit_test.go` ledger does not
+list it because there is no correct key to point at.
+
+It had a live symptom. `DESCRIBE LAYOUT` reported **"Responsive" for all 22**
+Atlas layouts, including five Phone, eight Tablet, one ModalPopup and five
+native ones, because the modelsdk backend read the phantom and the describe
+output defaulted `""` to `"Responsive"`. Two faults compounding: a failed read
+rendered as a fact. Fixed in Stage 0; the legacy reader had it right all along.
+
+**What the values are.**
 
 | Platform | Content wrapper | Observed `LayoutType` |
 |---|---|---|
 | Web | `Forms$WebLayoutContent` | `Responsive` (3), `Tablet` (8), `Phone` (5), `ModalPopup` (1) |
 | Native | `Forms$NativeLayoutContent` | `Default` (4), `Popup` (1) |
 
-Six values, splitting by platform. Set against what the code declares:
+Six values, splitting by platform. Against what the code declares:
 
-- **`modelsdk/gen`** — `PagesLayoutType {Default, Popup}`. That is the *native*
-  vocabulary only; it cannot express any of the four web values.
-- **`sdk/pages`** — six values, but **`Legacy` instead of `Default`**. It has a
-  value no Atlas layout uses and is missing one that four of them do.
-- **`generated/metamodel`** (the 11.6 snapshot) declares `LayoutType` on
-  `PagesNativeLayoutContent` and `PagesWebLayoutContent` only, both typed
-  `PagesLayoutType` — so it too lists 2 of the 6, and does **not** record that
-  `Forms$Layout` itself carries the property.
+- **`modelsdk/gen`** — `PagesLayoutType {Default, Popup}`: the *native*
+  vocabulary only, unable to express any of the four web values.
+- **`sdk/pages`** — six values, but **`Legacy` instead of `Default`**: a value
+  no Atlas layout uses, missing one that four of them do.
+- **`generated/metamodel`** — right about the location, and it types both
+  wrappers `PagesLayoutType`, so it also lists 2 of the 6.
 
-**This is a documented counter-example to CLAUDE.md's arbiter rule.** That rule
-says `generated/metamodel` decides when gen and it disagree. Here they agree
-with each other and both disagree with every real document. The tiebreaker is
-the one the architecture doc already names: *capture, don't guess*. `Responsive`,
-`Phone` and `Tablet` are Atlas-era concepts that long predate 11.6, so this is
-not the documented "property introduced after the snapshot" caveat — the
-reflection data simply under-declares this enum.
-
-**And the value is stored twice** — on `Forms$Layout` *and* on its content
-wrapper, identical in all 22 (spot-checked on `Atlas_Default`, `PopupLayout`,
-`NativePhone_PopOver`). That is the `Interval`/`IntervalType`-beside-`Schedule`
-shape from CLAUDE.md: a redundancy Studio Pro maintains and a writer must
-maintain too, not one to pick a winner from.
+So the property location is settled by the metamodel and the *value set* is not
+settled by anything but real documents — which is what
+`MODELSDK_ENGINE_ARCHITECTURE.md` means by "capture, don't guess".
 
 The approach that follows:
 
-1. **Write both**, always the same value.
-2. **Validate against the platform**, not against one flat list — `Responsive`
-   on a native layout is meaningless, and so is `Default` on a web one. The
-   content wrapper's `$Type` is what decides which vocabulary applies.
-3. **Accept `Legacy` on read, do not offer it for authoring.** It is declared in
-   `sdk/pages` and appears in no Atlas layout; it is presumably a Mendix 7-era
-   web layout. Refusing to author a value we have never seen written is the
-   honest default, and reading it costs nothing.
-4. **Do not regenerate the enum from reflection data** without re-measuring —
-   it would silently narrow the accepted set back to two.
+1. **Read and write it on the content wrapper**, never on `Layout`.
+2. **Validate against the platform**, not a flat list — `Responsive` on a native
+   layout is meaningless, and so is `Default` on a web one. The wrapper's
+   `$Type` decides which vocabulary applies.
+3. **Accept `Legacy` on read, do not offer it for authoring.** Declared in
+   `sdk/pages`, present in no Atlas layout, presumably Mendix 7-era. Refusing to
+   author a value never seen written is the honest default; reading it is free.
+4. **Never default an empty value.** Every real layout stores one, so `""` means
+   the read failed — reporting it as `Responsive` is how this stayed hidden.
 
 ### Known gen mislabel, already patched on the page side
 

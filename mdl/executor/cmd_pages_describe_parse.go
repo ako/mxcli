@@ -40,6 +40,18 @@ func extractConditionalSettings(widget *rawWidget, w map[string]any) {
 	}
 }
 
+// scrollContainerRegions is the fixed slot order of a Forms$ScrollContainer.
+// The BSON key and the name MDL uses for the slot differ for the centre one,
+// which Mendix stores as "CenterRegion" while its four siblings are bare
+// positions.
+var scrollContainerRegions = []struct{ key, name string }{
+	{"Top", "top"},
+	{"Right", "right"},
+	{"Bottom", "bottom"},
+	{"Left", "left"},
+	{"CenterRegion", "center"},
+}
+
 func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...string) []rawWidget {
 	inheritedCtx := ""
 	if len(parentEntityContext) > 0 {
@@ -69,18 +81,41 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 			widget.DesignProperties = extractDesignProperties(appearance)
 		}
 		extractConditionalSettings(&widget, w)
-		// Primary location: CenterRegion.Widgets (Mendix 9+)
-		var children []any
-		if centerRegion, ok := w["CenterRegion"].(map[string]any); ok {
-			children = getBsonArrayElements(centerRegion["Widgets"])
+		// Regions are five named slots, not a list: Top, Right, Bottom, Left
+		// and CenterRegion (the last spelled differently from its siblings).
+		// Each occupied one becomes a synthetic intermediate widget, the same
+		// way TabControl preserves its tab pages below — so the output says
+		// which region a widget is in.
+		//
+		// Reading CenterRegion alone was survivable for pages, where the other
+		// slots are usually empty, and wrong for layouts: a layout's topbar
+		// lives in Top and its navigation in Left, so the two things anyone
+		// describes a layout to see were the two the walk skipped.
+		for _, slot := range scrollContainerRegions {
+			region, ok := w[slot.key].(map[string]any)
+			if !ok {
+				continue
+			}
+			child := rawWidget{Type: "Forms$ScrollContainerRegion", Name: slot.name}
+			if appearance, ok := region["Appearance"].(map[string]any); ok {
+				if class, ok := appearance["Class"].(string); ok && class != "" {
+					child.Class = class
+				}
+			}
+			for _, c := range getBsonArrayElements(region["Widgets"]) {
+				if cMap, ok := c.(map[string]any); ok {
+					child.Children = append(child.Children, parseRawWidget(ctx, cMap, inheritedCtx)...)
+				}
+			}
+			widget.Children = append(widget.Children, child)
 		}
-		// Fallback for older BSON layouts that stored children directly.
-		if len(children) == 0 {
-			children = getBsonArrayElements(w["Widgets"])
-		}
-		for _, c := range children {
-			if cMap, ok := c.(map[string]any); ok {
-				widget.Children = append(widget.Children, parseRawWidget(ctx, cMap, inheritedCtx)...)
+		// Fallback for older BSON that stored children directly on the
+		// container rather than in a region.
+		if len(widget.Children) == 0 {
+			for _, c := range getBsonArrayElements(w["Widgets"]) {
+				if cMap, ok := c.(map[string]any); ok {
+					widget.Children = append(widget.Children, parseRawWidget(ctx, cMap, inheritedCtx)...)
+				}
 			}
 		}
 		return []rawWidget{widget}

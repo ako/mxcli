@@ -213,11 +213,39 @@ func (b *Backend) ListLayouts() ([]*pages.Layout, error) {
 	}
 	out := make([]*pages.Layout, 0, len(units))
 	for _, u := range units {
-		l := &pages.Layout{ContainerID: u.ContainerID, Name: u.Element.Name(), Documentation: u.Element.Documentation()}
+		l := &pages.Layout{
+			ContainerID:   u.ContainerID,
+			Name:          u.Element.Name(),
+			Documentation: u.Element.Documentation(),
+			LayoutType:    layoutTypeOf(u.Element),
+		}
 		l.ID = model.ID(u.Element.ID())
 		out = append(out, l)
 	}
 	return out, nil
+}
+
+// layoutTypeOf reads a layout's type off its content wrapper.
+//
+// It is NOT on Forms$Layout, despite gen exposing Layout.LayoutType() — that
+// property binds a key the document does not have, so it reads "" for every
+// layout ever written. Measured: a Forms$Layout's top-level keys are $ID,
+// $Type, Appearance, CanvasHeight, CanvasWidth, Content, Documentation,
+// Excluded, ExportLevel, Name. The type lives one level down, on
+// Forms$WebLayoutContent or Forms$NativeLayoutContent, which is exactly where
+// generated/metamodel says it is.
+//
+// The empty read was invisible because DESCRIBE LAYOUT defaulted "" to
+// "Responsive", so all 22 Atlas layouts reported Responsive — including the
+// five Phone, eight Tablet, one ModalPopup and five native ones.
+func layoutTypeOf(l *genPg.Layout) pages.LayoutType {
+	switch c := l.Content().(type) {
+	case *genPg.WebLayoutContent:
+		return pages.LayoutType(c.LayoutType())
+	case *genPg.NativeLayoutContent:
+		return pages.LayoutType(c.LayoutType())
+	}
+	return ""
 }
 
 // GetLayout returns a single layout by ID (shallow).
