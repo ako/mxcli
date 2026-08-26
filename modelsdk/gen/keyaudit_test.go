@@ -48,6 +48,56 @@ type keyMismatch struct {
 }
 
 var knownWrongKeys = []keyMismatch{
+	// ---- Forms (pages) ----------------------------------------------------
+	// Invisible until 2026-08: the audit maps "Forms$X" to a metamodel struct
+	// named "FormsX", but the metamodel calls these "PagesX", so every Forms$
+	// type failed the lookup and was skipped in silence. The alias that fixed
+	// that surfaced 30 mismatches at once — mostly the same "Form was the
+	// original term for Page" rename the storage-name table in CLAUDE.md
+	// describes (Caption→CaptionTemplate, TooltipPage→TooltipForm,
+	// PageSettings→FormSettings).
+	//
+	// Two of the 30 were LIVE and are fixed rather than listed:
+	// GridSortItem.SortDirection→SortOrder (confirmed against
+	// Administration.Account_Overview, and mxcli called SetSortDirection, so
+	// every sort direction it wrote was dropped) and GroupBox.Caption→
+	// CaptionTemplate (metamodel-confirmed only; no GroupBox to hand).
+	// ScrollContainer.Center→CenterRegion likewise, for Stage 1 of the
+	// authorable-layouts work.
+	//
+	// The rest are listed, not patched: nothing in mxcli constructs these types
+	// — they are the Mendix 7-era DataGrid/Table family — so patching them would
+	// be a change with no evidence behind it and no symptom to verify against.
+	// CLAUDE.md: "leave the ones nothing writes, and note why".
+	{"Forms$DataGrid", "Caption", "CaptionTemplate"},
+	{"Forms$DataGrid", "TooltipPage", "TooltipForm"},
+	{"Forms$DataGridAddButton", "Caption", "CaptionTemplate"},
+	{"Forms$DataGridAddButton", "PageSettings", "FormSettings"},
+	{"Forms$DataGridExportToCSVButton", "Caption", "CaptionTemplate"},
+	{"Forms$DataGridExportToExcelButton", "Caption", "CaptionTemplate"},
+	{"Forms$DataGridRemoveButton", "Caption", "CaptionTemplate"},
+	{"Forms$DropDownButton", "Caption", "CaptionTemplate"},
+	{"Forms$DropDownSearchField", "AllowMultipleSelect", "AllowMultiSelect"},
+	{"Forms$GridActionButton", "Caption", "CaptionTemplate"},
+	{"Forms$GridColumn", "Width", "WidthValue"},
+	{"Forms$GridControlBar", "Items", "NewButtons"},
+	{"Forms$GridDeselectAllButton", "Caption", "CaptionTemplate"},
+	{"Forms$GridNewButton", "Caption", "CaptionTemplate"},
+	{"Forms$GridNewButton", "PageSettings", "FormSettings"},
+	{"Forms$GridSearchButton", "Caption", "CaptionTemplate"},
+	{"Forms$GridSelectAllButton", "Caption", "CaptionTemplate"},
+	{"Forms$InputReferenceSetSelector", "SelectPageSettings", "PopupFormSettings"},
+	{"Forms$LoginButton", "Caption", "CaptionTemplate"},
+	{"Forms$ReferenceSelector", "GotoPageSettings", "GotoFormSettings"},
+	{"Forms$ReferenceSelector", "SelectPageSettings", "PopupFormSettings"},
+	{"Forms$ReferenceSetSelector", "TooltipPage", "TooltipForm"},
+	{"Forms$ReferenceSetSelector", "XPathConstraint", "SelectableXPathConstraint"},
+	{"Forms$SearchBar", "Items", "NewButtons"},
+	{"Forms$SelectButton", "Caption", "CaptionTemplate"},
+	{"Forms$SidebarToggleButton", "Caption", "CaptionTemplate"},
+	{"Forms$Table", "Columns", "ColumnWidths"},
+	{"Forms$TableColumn", "Width", "Value"},
+
 	{"CustomWidgets$CustomWidgetType", "NeedsEntityContext", "WidgetNeedsEntityContext"},
 	{"CustomWidgets$CustomWidgetType", "PluginWidget", "WidgetPluginWidget"},
 	{"CustomWidgets$CustomWidgetType", "Name", "WidgetName"},
@@ -160,6 +210,10 @@ var (
 	reField     = regexp.MustCompile("(?m)^\t(\\w+)\\s+[^`\n]+`json:\"([^\",]+)")
 )
 
+// metamodelDomainAlias maps a BSON domain to the prefix generated/metamodel
+// uses for the same types, where the two disagree.
+var metamodelDomainAlias = map[string]string{"Forms": "Pages"}
+
 func TestGenPropertyKeysAgainstMetamodel(t *testing.T) {
 	// generated/metamodel: struct name -> SDK field name -> storage key.
 	metaSrc, err := os.ReadFile(filepath.Join("..", "..", "generated", "metamodel", "types.go"))
@@ -205,6 +259,16 @@ func TestGenPropertyKeysAgainstMetamodel(t *testing.T) {
 				continue
 			}
 			fields, ok := meta[domain+short]
+			if !ok {
+				// The BSON domain and the metamodel's struct prefix disagree
+				// for pages: everything stores as "Forms$…" while the
+				// metamodel names it "Pages…". Without this alias the lookup
+				// missed and every Forms$ type was skipped in silence — which
+				// is how ScrollContainer.Center ("CenterRegion") went unflagged.
+				if alias, aliased := metamodelDomainAlias[domain]; aliased {
+					fields, ok = meta[alias+short]
+				}
+			}
 			if !ok {
 				continue // no metamodel counterpart to compare against
 			}
