@@ -106,7 +106,13 @@ func Create(projectDir, name string, opts CreateOptions) (*CreateResult, error) 
 		}
 
 		target := filepath.Join(dest, "files", filepath.FromSlash(rewrite.path(rel)))
-		res.Files = append(res.Files, FileResult{Path: rewrite.path(rel), Action: ActionCreated})
+		// Reported relative to the scaffold root, not to the project. Bare, the
+		// two most important entries read as theme/web/custom-variables.scss
+		// and theme/web/main.scss — exactly the files an app is likeliest to
+		// have written itself, listed as "created" by the one command whose
+		// job is to write into theme/. Nothing was touched.
+		res.Files = append(res.Files, FileResult{
+			Path: path.Join("files", rewrite.path(rel)), Action: ActionCreated})
 		if opts.DryRun {
 			return nil
 		}
@@ -234,10 +240,24 @@ func defaultTitle(name string) string {
 	return strings.Join(parts, " ")
 }
 
-// path renames the base theme's partial, which is the only filename carrying
-// the theme's name.
+// path renames the files whose names carry the base theme's name: the SCSS
+// partial and the vendored font licence.
+//
+// The licence matters for a reason the partial does not. Nothing breaks today
+// when two themes scaffolded from signal both ship OFL-signal.txt — the content
+// is identical, because they genuinely do ship the same fonts. It breaks on the
+// edit the scaffold exists to invite: a brand theme that changes its fonts to
+// match its colours then ships IBM Plex's licence for fonts that are not IBM
+// Plex, and the filename is what would have caught that.
 func (r *rewriter) path(rel string) string {
-	return strings.ReplaceAll(rel, "_mxcli-"+r.baseName+".scss", "_mxcli-"+r.newName+".scss")
+	for _, name := range []string{
+		"_mxcli-" + r.baseName + ".scss",
+		"OFL-" + r.baseName + ".txt",
+	} {
+		renamed := strings.Replace(name, r.baseName, r.newName, 1)
+		rel = strings.ReplaceAll(rel, name, renamed)
+	}
+	return rel
 }
 
 // text renames the identifiers built from the theme name — the alt-palette
@@ -273,7 +293,11 @@ func (r *rewriter) manifest(base *Theme, opts CreateOptions) ([]byte, error) {
 	t.Files = append([]FileSpec(nil), base.Files...)
 	for i := range t.Files {
 		t.Files[i].Path = r.path(t.Files[i].Path)
-		t.Files[i].Purpose = r.text(t.Files[i].Purpose)
+		// The purpose prose names the licence file, so it has to follow the
+		// rename too — otherwise `theme show` describes the new theme's fonts
+		// under a filename that is no longer there.
+		t.Files[i].Purpose = strings.ReplaceAll(
+			r.text(t.Files[i].Purpose), "OFL-"+r.baseName+".txt", "OFL-"+r.newName+".txt")
 	}
 
 	out, err := json.MarshalIndent(t, "", "  ")

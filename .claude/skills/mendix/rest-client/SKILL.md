@@ -180,6 +180,37 @@ If you already have an import mapping document you want to reuse, call it from
 the microflow instead — `send rest request` with `response: json as $Raw`, then
 `$Obj = import from mapping Module.IMM_Something($Raw)`.
 
+#### Reaching a nested JSON member
+
+A member several levels down is written with `/`, exactly as in a mapping
+document — you do NOT need an entity for the levels in between:
+
+```sql
+response: mapping Module.FlatProbe {
+  "ItemId" = "id",
+  "Title"  = "fields/Title",     -- reaches {"fields": {"Title": …}}
+}
+```
+
+Mendix stores that as the pipe path `(Object)|fields|Title`. Before mxcli
+0.19.x the inline serializer appended the text verbatim, producing
+`(Object)|fields/Title` — one member with a slash in its name — which passed
+`mxcli check`, `exec`, `mx check` and `describe`, and returned an **empty
+column** at runtime with no diagnostic. If you are on an older build, give each
+level its own entity instead.
+
+#### An export body's nested elements
+
+`Body: MAPPING` is an EXPORT mapping, and its nested elements must not be
+"create". mxcli writes them correctly, but it is worth knowing what a wrong one
+looks like, because mxbuild does not report it as a check error — it throws
+while **loading** the project, so the app cannot be opened at all:
+
+```
+System.AggregateException: … (Export Object Mappings cannot have
+ObjectHandling set to 'Create')
+```
+
 Query parameters carry no type in the Mendix model: `Rest$QueryParameter` stores
 a name only. MDL still requires `$name: Type` for the sake of the grammar, but
 the type is dropped at write time, so `describe` re-emits every query parameter
