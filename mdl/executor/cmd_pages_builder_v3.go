@@ -374,6 +374,16 @@ func (pb *pageBuilder) buildWidgetV3(w *ast.WidgetV3) (pages.Widget, error) {
 		return nil, mdlerrors.NewValidation("tabpage must be a direct child of tabcontainer")
 	case "groupbox":
 		widget, err = pb.buildGroupBoxV3(w)
+	case "scrollcontainer":
+		widget, err = pb.buildScrollContainerV3(w)
+	case "region":
+		// A region is a slot of a scroll container, not a widget in its own
+		// right — it has no Name in the BSON, only a position.
+		return nil, mdlerrors.NewValidation("region must be a direct child of scrollcontainer")
+	case "navigationtree":
+		widget, err = pb.buildNavigationTreeV3(w)
+	case "placeholder":
+		widget, err = pb.buildPlaceholderV3(w)
 	case "radiobuttons":
 		widget, err = pb.buildRadioButtonsV3(w)
 	case "navigationlist":
@@ -2303,4 +2313,98 @@ func flowArgsToParameterMappings(args []ast.FlowArgV3) []*pages.MicroflowParamet
 		out = append(out, mapping)
 	}
 	return out
+}
+
+// buildScrollContainerV3 builds a scroll container from its five named regions.
+//
+// `region top { … }` rather than a bare `top { … }`: every other widget in MDL
+// is `<type> <name> (props) { body }`, and a region is the one place where the
+// "name" is a fixed position rather than free text. Keeping the shape means one
+// keyword instead of five and no special case in the widget grammar.
+func (pb *pageBuilder) buildScrollContainerV3(w *ast.WidgetV3) (pages.Widget, error) {
+	sc := &pages.ScrollContainer{
+		BaseWidget: pages.BaseWidget{
+			BaseElement: model.BaseElement{
+				ID:       model.ID(types.GenerateID()),
+				TypeName: "Forms$ScrollContainer",
+			},
+			Name: w.Name,
+		},
+	}
+
+	seen := map[pages.ScrollContainerSlot]bool{}
+	for _, child := range w.Children {
+		if strings.ToLower(child.Type) != "region" {
+			return nil, mdlerrors.NewValidation(fmt.Sprintf(
+				"scrollcontainer %q: %q is not a region; a scroll container's children are its regions", w.Name, child.Type))
+		}
+		slot := pages.ScrollContainerSlot(strings.ToLower(child.Name))
+		switch slot {
+		case pages.ScrollSlotTop, pages.ScrollSlotRight, pages.ScrollSlotBottom,
+			pages.ScrollSlotLeft, pages.ScrollSlotCenter:
+		default:
+			return nil, mdlerrors.NewValidation(fmt.Sprintf(
+				"scrollcontainer %q: unknown region %q (want top, right, bottom, left or center)", w.Name, child.Name))
+		}
+		// Two regions in one slot is a script that means two different things
+		// and gets one; the second would silently win.
+		if seen[slot] {
+			return nil, mdlerrors.NewValidation(fmt.Sprintf(
+				"scrollcontainer %q: region %q given twice", w.Name, slot))
+		}
+		seen[slot] = true
+
+		region := &pages.ScrollContainerRegion{
+			BaseElement: model.BaseElement{ID: model.ID(types.GenerateID()), TypeName: "Forms$ScrollContainerRegion"},
+			Slot:        slot,
+			Class:       child.GetStringProp("Class"),
+			SizeMode:    child.GetStringProp("SizeMode"),
+			Size:        child.GetIntProp("Size"),
+		}
+		for _, gc := range child.Children {
+			cw, err := pb.buildWidgetV3(gc)
+			if err != nil {
+				return nil, err
+			}
+			region.Widgets = append(region.Widgets, cw)
+		}
+		sc.Regions = append(sc.Regions, region)
+	}
+	return sc, nil
+}
+
+// buildNavigationTreeV3 builds the sidebar menu. The profile is stored inside a
+// Forms$NavigationSource, not on the tree — see widget_write.go.
+func (pb *pageBuilder) buildNavigationTreeV3(w *ast.WidgetV3) (pages.Widget, error) {
+	nt := &pages.NavigationTree{
+		BaseWidget: pages.BaseWidget{
+			BaseElement: model.BaseElement{
+				ID:       model.ID(types.GenerateID()),
+				TypeName: "Forms$NavigationTree",
+			},
+			Name: w.Name,
+		},
+		NavigationProfile: w.GetStringProp("Profile"),
+	}
+	return nt, nil
+}
+
+// buildPlaceholderV3 declares a slot a page can bind to.
+//
+// The name is the API: a page references it as Module.Layout.<Name>, so it is
+// required here rather than defaulted.
+func (pb *pageBuilder) buildPlaceholderV3(w *ast.WidgetV3) (pages.Widget, error) {
+	if w.Name == "" {
+		return nil, mdlerrors.NewValidation("placeholder needs a name: pages bind to it as Module.Layout.<Name>")
+	}
+	ph := &pages.LayoutPlaceholder{
+		BaseWidget: pages.BaseWidget{
+			BaseElement: model.BaseElement{
+				ID:       model.ID(types.GenerateID()),
+				TypeName: "Forms$Placeholder",
+			},
+			Name: w.Name,
+		},
+	}
+	return ph, nil
 }

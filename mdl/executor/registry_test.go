@@ -203,6 +203,7 @@ func allKnownStatements() []ast.Statement {
 		&ast.CreateJavaScriptActionStmt{},
 		&ast.CreateJsonStructureStmt{},
 		&ast.CreateKnowledgeBaseStmt{},
+		&ast.CreateLayoutStmt{},
 		&ast.CreateMicroflowStmt{},
 		&ast.CreateNanoflowStmt{},
 		&ast.CreateRuleStmt{},

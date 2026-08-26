@@ -353,23 +353,17 @@ func describeLayout(ctx *ExecContext, name ast.QualifiedName) error {
 		layoutTypeStr = "(not read)"
 	}
 
-	fmt.Fprintf(ctx.Output, "-- Layout Type: %s\n", layoutTypeStr)
-	fmt.Fprintf(ctx.Output, "-- This is a layout document. Layouts define the structure that pages are built upon.\n")
-	fmt.Fprintf(ctx.Output, "-- Layouts cannot be created via MDL; they must be created in Studio Pro.\n\n")
+	// Re-executable MDL, not a comment dump: `create layout` exists now, so a
+	// describe that only narrated the tree would be the one document type whose
+	// output cannot be fed back in.
+	fmt.Fprintf(ctx.Output, "create layout %s.%s (\n  layouttype: %s\n) {\n",
+		modName, mdlIdent(foundLayout.Name), mdlQuote(layoutTypeStr))
 
-	// Output as a comment showing the layout name
-	fmt.Fprintf(ctx.Output, "-- layout %s.%s\n", modName, foundLayout.Name)
-
-	// Output widgets from raw layout data
-	rawWidgets := getLayoutWidgetsFromRaw(ctx, foundLayout.ID)
-	if len(rawWidgets) > 0 {
-		fmt.Fprint(ctx.Output, "-- Widget structure:\n")
-		for _, w := range rawWidgets {
-			outputWidgetMDLV3Comment(ctx, w, 0)
-		}
+	for _, w := range getLayoutWidgetsFromRaw(ctx, foundLayout.ID) {
+		outputWidgetMDLV3(ctx, w, 1)
 	}
 
-	fmt.Fprint(ctx.Output, "\n")
+	fmt.Fprint(ctx.Output, "}\n\n")
 	return nil
 }
 
@@ -401,17 +395,6 @@ func getLayoutWidgetsFromRaw(ctx *ExecContext, layoutID model.ID) []rawWidget {
 		}
 	}
 	return out
-}
-
-// outputWidgetMDLV3Comment outputs a widget as MDL V3 comment.
-func outputWidgetMDLV3Comment(ctx *ExecContext, w rawWidget, indent int) {
-	prefix := strings.Repeat("  ", indent)
-	fmt.Fprintf(ctx.Output, "%s-- %s %s\n", prefix, w.Type, w.Name)
-
-	// Output children
-	for _, child := range w.Children {
-		outputWidgetMDLV3Comment(ctx, child, indent+1)
-	}
 }
 
 // getSnippetWidgetsFromRaw extracts widgets from raw snippet BSON.
@@ -652,6 +635,14 @@ type rawWidget struct {
 	// TabControl parsing — preserves the original tab page name/caption so
 	// DESCRIBE output shows which tab each nested widget belongs to).
 	TabCaption string
+	// Scroll-container region properties, set only on the synthetic wrappers
+	// the region walk emits (the slot name goes in Name). Same shape as
+	// TabCaption: a nameless container whose identity DESCRIBE has to put back.
+	RegionSize     int
+	RegionSizeMode string
+	// NavigationProfile is a Forms$NavigationTree's profile, which the document
+	// keeps one level down in MenuSource rather than on the tree.
+	NavigationProfile string
 	// Specialization is the entity a List View template renders. Set only on the
 	// synthetic wrappers parseListViewContent emits for Forms$ListViewTemplate,
 	// which is the same shape as TabCaption above: a container with no name, whose

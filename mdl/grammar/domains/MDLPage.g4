@@ -20,6 +20,20 @@ createPageStatement
     ;
 
 // =============================================================================
+// LAYOUT CREATION
+// =============================================================================
+
+// A layout is a page's frame: pages bind into its placeholders by name.
+// The property block carries the layout type — which is stored on the content
+// wrapper, not on the layout element — and which placeholder a page's content
+// goes into.
+createLayoutStatement
+    : LAYOUT qualifiedName
+      widgetPropertiesV3?
+      LBRACE pageBodyV3 RBRACE
+    ;
+
+// =============================================================================
 // SNIPPET CREATION
 // =============================================================================
 
@@ -247,10 +261,18 @@ slotMarkerV3
     : SLOT identifierOrKeyword?
     ;
 
-// PLACEHOLDER <Name> { widgets } — assign widgets to a named layout placeholder.
+// PLACEHOLDER <Name> [{ widgets }] — one rule, two jobs, decided by context.
+//
+// In a page, the body assigns widgets to a named layout placeholder. In a
+// layout, the bodiless form DECLARES a placeholder: a slot pages bind to as
+// Module.Layout.<Name>. They are the same syntax because they name the same
+// thing from the two ends of the binding, and the executor knows which document
+// it is building — a bodiless placeholder in a page fills nothing and is
+// reported there rather than parsed differently.
+//
 // The name accepts keywords so placeholders like Right / Left / Content parse.
 placeholderBlockV3
-    : PLACEHOLDER identifierOrKeyword LBRACE (widgetV3 | useFragmentRef | useBuildingBlockRef)* RBRACE
+    : PLACEHOLDER identifierOrKeyword (LBRACE (widgetV3 | useFragmentRef | useBuildingBlockRef)* RBRACE)?
     ;
 
 // USE FRAGMENT Name [(args)] [AS prefix_] [ { payload widgets } ]
@@ -364,6 +386,13 @@ widgetTypeV3
     | TABCONTAINER
     | TABPAGE
     | GROUPBOX
+    // Layout structure. A ScrollContainer's children are five named region
+    // slots — `region top { … }` — not a list; PLACEHOLDER here declares a
+    // slot pages bind to as Module.Layout.<Name>, which is a different thing
+    // from the page-side placeholderBlock that fills one.
+    | SCROLLCONTAINER
+    | SCROLLREGION
+    | NAVIGATIONTREE
     // Object-list container keywords for pluggable widgets (Phase 1 — #538).
     // Each is the singular form of a Type:"object"+IsList:true widget property
     // (e.g. Accordion groups → GROUP). Routed at executor time via the parent

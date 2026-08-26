@@ -220,26 +220,34 @@ explicit `SetTypeName`. The layout side will hit the same thing.
 
 ### CREATE LAYOUT
 
-Named region slots map straight onto the BSON:
+Named region slots map straight onto the BSON. As shipped:
 
 ```sql
-create layout Ledger.Ledger_Default (
-  layouttype: Responsive,
-  mainplaceholder: 'Main'
+create or replace layout Ledger.Ledger_Default (
+  layouttype: 'Responsive'
 ) {
   scrollcontainer scMain {
-    top (size: 60, sizemode: Fixed, class: 'region-topbar') {
+    region top (size: 60, sizemode: 'Fixed', class: 'region-topbar') {
       snippetcall SNIP_TopBar (snippet: Ledger.SNIPPET_TopBar)
     }
-    left (size: 200, sizemode: Auto, class: 'region-sidebar') {
+    region left (size: 232, sizemode: 'Pixels', class: 'region-sidebar') {
       navigationtree navMenu (profile: 'Responsive')
     }
-    center (class: 'region-content') {
+    region center (class: 'region-content') {
       placeholder Main
     }
   }
 }
 ```
+
+Two departures from the draft above, both forced by measurement (see Stage 2):
+
+- **`region top`, not a bare `top`.** Every other widget in MDL is
+  `<type> <name> (props) { body }`, and a region is the one place where the
+  "name" is a fixed position rather than free text. Keeping the shape means one
+  keyword instead of five and no special case in the widget grammar.
+- **No `mainplaceholder:`.** `Forms$Layout` has no such property; naming a
+  placeholder `Main` is the mechanism.
 
 `create or replace layout` follows the house convention for re-runnable scripts.
 
@@ -298,11 +306,46 @@ A read bug on its own. Prerequisite for the round-trip gate and for copying.
 `WebLayoutContent` — four widget cases in `widgetToGen`/`widgetFromGen` plus the
 content wrapper. All present in gen.
 
-### Stage 2 — `CREATE LAYOUT`
+### Stage 2 — `CREATE LAYOUT` — **shipped**
 
-Document type through the `MODELSDK_ENGINE_ARCHITECTURE.md` recipe: expand
-`sdk/pages.Layout` past its current five fields, `layoutToGen`/`FromGen`,
-parity test in `mdl/enginecompare/`.
+Document type through the `MODELSDK_ENGINE_ARCHITECTURE.md` recipe: `sdk/pages.Layout`
+expanded past its five fields, `layoutToGen` in `mdl/backend/modelsdk/layout_write.go`,
+grammar + AST + visitor + executor handler, and a legacy refusal (that writer's
+serializer emitted a string `$ID`, no `Content` wrapper and a `LayoutType` on the
+wrong node — it had never been called, because until now nothing created a layout).
+
+Three things the implementation settled that the design above did not anticipate:
+
+**The header has exactly one property, and `mainplaceholder:` is not it.** The
+draft syntax carried one, and it was wrong. `Forms$Layout` has exactly ten keys —
+`$ID`, `$Type`, `Appearance`, `CanvasHeight`, `CanvasWidth`, `Content`,
+`Documentation`, `Excluded`, `ExportLevel`, `Name` — identical across all 22
+layouts Atlas ships on 11.13.0, and `generated/metamodel`'s `PagesLayout` declares
+exactly that set. `modelsdk/gen` additionally exposes seven placeholder properties
+on `Layout` (`MainPlaceholderName`, `AcceptPlaceholderName`,
+`UseMainPlaceholderForPopups`, …) that no real document carries. Writing one gives
+a layout **mxbuild accepts at 0 errors** — measured — **and Studio Pro cannot
+open**, because it resolves every stored property against the type's list. Which
+placeholder is "main" is a naming convention: 22 of 22 name one `Main`, and a page
+binds by qualified name (`Atlas_Core.Atlas_Default.Main`) regardless. So the
+header takes `layouttype` and refuses anything else rather than ignoring it —
+silently ignoring `mainplaceholder:` would report acceptance for a value that was
+never stored.
+
+**The platform is inferred, not declared.** The two layout-type vocabularies are
+disjoint (web: Responsive/Phone/Tablet/ModalPopup; native: Default/Popup), so a
+`native:` flag could only ever contradict the type. A cross-platform value is
+refused.
+
+**The marketplace guard needed a backend fix to be real.** `FromAppStore` was
+populated only by `ListModules`; `GetModuleByName` and `GetModule` returned
+ID+Name, so a guard reading it would have been inert for every module — a guard
+that never fires. The enrichment is now wired into every module lookup.
+
+Verified end to end on a real 11.13.0 app: `mx check` 0 errors, describe →
+re-exec → describe is byte-stable, the key set matches Atlas's exactly, and the
+layout **renders in a browser** with all three regions in place and the page's own
+widget in the `Main` placeholder — the check `mx check` cannot make.
 
 ### Stage 4 — `mxcli new` scaffolds a project-owned layout
 

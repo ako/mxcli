@@ -52,6 +52,23 @@ var scrollContainerRegions = []struct{ key, name string }{
 	{"CenterRegion", "center"},
 }
 
+// bsonInt coerces a BSON numeric to int. Mendix stores a region's Size as
+// int32, but the decoders in this package hand back whichever width the driver
+// chose, so all three are accepted.
+func bsonInt(v any) int {
+	switch n := v.(type) {
+	case int32:
+		return int(n)
+	case int64:
+		return int(n)
+	case int:
+		return n
+	case float64:
+		return int(n)
+	}
+	return 0
+}
+
 func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...string) []rawWidget {
 	inheritedCtx := ""
 	if len(parentEntityContext) > 0 {
@@ -102,6 +119,10 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 					child.Class = class
 				}
 			}
+			if sm, ok := region["SizeMode"].(string); ok {
+				child.RegionSizeMode = sm
+			}
+			child.RegionSize = bsonInt(region["Size"])
 			for _, c := range getBsonArrayElements(region["Widgets"]) {
 				if cMap, ok := c.(map[string]any); ok {
 					child.Children = append(child.Children, parseRawWidget(ctx, cMap, inheritedCtx)...)
@@ -247,6 +268,16 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 	switch typeName {
 	case "Forms$LayoutGrid", "Pages$LayoutGrid":
 		widget.Rows = parseLayoutGridRows(ctx, w, inheritedCtx)
+		return []rawWidget{widget}
+
+	case "Forms$NavigationTree", "Pages$NavigationTree":
+		// The profile is a qualified name one level down, in a
+		// Forms$NavigationSource, not a property of the tree.
+		if src, ok := w["MenuSource"].(map[string]any); ok {
+			if p, ok := src["NavigationProfile"].(string); ok {
+				widget.NavigationProfile = p
+			}
+		}
 		return []rawWidget{widget}
 
 	case "Forms$DynamicText", "Pages$DynamicText":

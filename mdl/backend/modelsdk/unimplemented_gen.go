@@ -192,6 +192,10 @@ func (unimplemented) CreateRegularExpression(_ *model.RegularExpression) error {
 	return errUnimplemented("CreateRegularExpression")
 }
 
+func (unimplemented) CreateRule(_ *microflows.Rule) error {
+	return errUnimplemented("CreateRule")
+}
+
 func (unimplemented) CreateScheduledEvent(_ *model.ScheduledEvent) error {
 	return errUnimplemented("CreateScheduledEvent")
 }
@@ -349,6 +353,10 @@ func (unimplemented) DeleteRegularExpression(_ string) error {
 	return errUnimplemented("DeleteRegularExpression")
 }
 
+func (unimplemented) DeleteRule(_ model.ID) error {
+	return errUnimplemented("DeleteRule")
+}
+
 func (unimplemented) DeleteScheduledEvent(_ string) error {
 	return errUnimplemented("DeleteScheduledEvent")
 }
@@ -391,6 +399,11 @@ func (unimplemented) FindAllViewEntitySourceDocumentIDs(_ string, _ string) ([]m
 func (unimplemented) FindCustomWidgetType(_ string) (*types.RawCustomWidgetType, error) {
 	var r0 *types.RawCustomWidgetType
 	return r0, errUnimplemented("FindCustomWidgetType")
+}
+
+func (unimplemented) FindDocumentUnit(_ string, _ string) (*types.DocumentUnit, error) {
+	var r0 *types.DocumentUnit
+	return r0, errUnimplemented("FindDocumentUnit")
 }
 
 func (unimplemented) FindViewEntitySourceDocumentID(_ string, _ string) (model.ID, error) {
@@ -523,6 +536,11 @@ func (unimplemented) GetRawUnitBytes(_ model.ID) ([]uint8, error) {
 	return r0, errUnimplemented("GetRawUnitBytes")
 }
 
+func (unimplemented) GetRule(_ model.ID) (*microflows.Rule, error) {
+	var r0 *microflows.Rule
+	return r0, errUnimplemented("GetRule")
+}
+
 func (unimplemented) GetScheduledEvent(_ model.ID) (*model.ScheduledEvent, error) {
 	var r0 *model.ScheduledEvent
 	return r0, errUnimplemented("GetScheduledEvent")
@@ -612,6 +630,11 @@ func (unimplemented) ListDatabaseConnections() ([]*model.DatabaseConnection, err
 	return r0, errUnimplemented("ListDatabaseConnections")
 }
 
+func (unimplemented) ListDocumentUnits() ([]*types.DocumentUnit, error) {
+	var r0 []*types.DocumentUnit
+	return r0, errUnimplemented("ListDocumentUnits")
+}
+
 func (unimplemented) ListDomainModels() ([]*domainmodel.DomainModel, error) {
 	var r0 []*domainmodel.DomainModel
 	return r0, errUnimplemented("ListDomainModels")
@@ -675,6 +698,11 @@ func (unimplemented) ListLayouts() ([]*pages.Layout, error) {
 func (unimplemented) ListMenuDocuments() ([]*types.MenuDocument, error) {
 	var r0 []*types.MenuDocument
 	return r0, errUnimplemented("ListMenuDocuments")
+}
+
+func (unimplemented) ListMessageDefinitionCollections() ([]*model.MessageDefinitionCollection, error) {
+	var r0 []*model.MessageDefinitionCollection
+	return r0, errUnimplemented("ListMessageDefinitionCollections")
 }
 
 func (unimplemented) ListMicroflows() ([]*microflows.Microflow, error) {
@@ -747,6 +775,11 @@ func (unimplemented) ListRegularExpressions() ([]*model.RegularExpression, error
 	return r0, errUnimplemented("ListRegularExpressions")
 }
 
+func (unimplemented) ListRules() ([]*microflows.Rule, error) {
+	var r0 []*microflows.Rule
+	return r0, errUnimplemented("ListRules")
+}
+
 func (unimplemented) ListScheduledEvents() ([]*model.ScheduledEvent, error) {
 	var r0 []*model.ScheduledEvent
 	return r0, errUnimplemented("ListScheduledEvents")
@@ -778,6 +811,10 @@ func (unimplemented) MoveConstant(_ *model.Constant) error {
 
 func (unimplemented) MoveDatabaseConnection(_ *model.DatabaseConnection) error {
 	return errUnimplemented("MoveDatabaseConnection")
+}
+
+func (unimplemented) MoveDocument(_ model.ID, _ model.ID) error {
+	return errUnimplemented("MoveDocument")
 }
 
 func (unimplemented) MoveEntity(_ *domainmodel.Entity, _ model.ID, _ model.ID, _ string, _ string) ([]string, error) {
@@ -819,6 +856,10 @@ func (unimplemented) MovePage(_ *pages.Page) error {
 
 func (unimplemented) MovePublishedODataService(_ *model.PublishedODataService) error {
 	return errUnimplemented("MovePublishedODataService")
+}
+
+func (unimplemented) MoveRule(_ *microflows.Rule) error {
+	return errUnimplemented("MoveRule")
 }
 
 func (unimplemented) MoveSnippet(_ *pages.Snippet) error {
@@ -963,8 +1004,16 @@ func (unimplemented) SerializeWorkflowActivity(_ workflows.WorkflowActivity) (in
 	return r0, errUnimplemented("SerializeWorkflowActivity")
 }
 
+func (unimplemented) SetDomainModelAnnotations(_ model.ID, _ []*domainmodel.Annotation) error {
+	return errUnimplemented("SetDomainModelAnnotations")
+}
+
 func (unimplemented) SetProjectDemoUsersEnabled(_ model.ID, _ bool) error {
 	return errUnimplemented("SetProjectDemoUsersEnabled")
+}
+
+func (unimplemented) SetProjectGuestAccess(_ model.ID, _ bool, _ string) error {
+	return errUnimplemented("SetProjectGuestAccess")
 }
 
 func (unimplemented) SetProjectSecurityLevel(_ model.ID, _ string) error {
@@ -1125,8 +1174,16 @@ func (unimplemented) UpdateRawUnit(_ string, _ []uint8) error {
 	return errUnimplemented("UpdateRawUnit")
 }
 
+func (unimplemented) UpdateRawUnitOwningTranslations(_ string, _ []uint8) error {
+	return errUnimplemented("UpdateRawUnitOwningTranslations")
+}
+
 func (unimplemented) UpdateRegularExpression(_ *model.RegularExpression) error {
 	return errUnimplemented("UpdateRegularExpression")
+}
+
+func (unimplemented) UpdateRule(_ *microflows.Rule) error {
+	return errUnimplemented("UpdateRule")
 }
 
 func (unimplemented) UpdateScheduledEvent(_ *model.ScheduledEvent) error {

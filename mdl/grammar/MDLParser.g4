@@ -97,6 +97,7 @@ createStatement
       | createJavaActionStatement
       | createJavaScriptActionStatement
       | createPageStatement
+      | createLayoutStatement
       | createSnippetStatement
       | createEnumerationStatement
       | createValidationRuleStatement

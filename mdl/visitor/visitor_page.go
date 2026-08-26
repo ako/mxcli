@@ -99,3 +99,8 @@ func buildSnippetParameters(ctx parser.ISnippetParameterListContext) []ast.PageP
 	}
 	return params
 }
+
+// ExitCreateLayoutStatement is called when exiting the createLayoutStatement production.
+func (b *Builder) ExitCreateLayoutStatement(ctx *parser.CreateLayoutStatementContext) {
+	b.statements = append(b.statements, b.buildLayoutV3(ctx))
+}

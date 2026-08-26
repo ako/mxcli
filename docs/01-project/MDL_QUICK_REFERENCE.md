@@ -1239,6 +1239,22 @@ MDL uses explicit property declarations for pages:
 | Paging position | `PagingPosition: pos` | `datagrid dg (PagingPosition: both)` |
 | Paging buttons | `ShowPagingButtons: mode` | `datagrid dg (ShowPagingButtons: auto)` |
 
+**Layouts:**
+
+| Operation | Syntax | Notes |
+|-----------|--------|-------|
+| List layouts | `show layouts [in module];` | |
+| Describe layout | `describe layout Module.Name;` | Round-trippable MDL — describe an Atlas layout, rename it, run it to get a copy in your own module |
+| Create layout | `create [or replace] layout Module.Name ( layouttype: 'X' ) { <widgets> };` | modelsdk engine only. Refused in a Marketplace module: an update replaces the module and the edit is gone |
+
+| Layout element | Syntax | Notes |
+|----------------|--------|-------|
+| Layout type | `layouttype: 'Responsive' \| 'Phone' \| 'Tablet' \| 'ModalPopup'` (web) · `'Default' \| 'Popup'` (native) | The only header property. The two vocabularies are disjoint, so the platform is inferred — there is no `native:` flag |
+| Scroll container | `scrollcontainer name { <regions> }` | The layout's root; its children are regions, not widgets |
+| Region | `region top \| right \| bottom \| left \| center [( size: N, sizemode: 'Fixed'\|'Pixels'\|'Auto', class: '…' )] { <widgets> }` | Five named slots, not a list. One region per slot |
+| Placeholder | `placeholder Main` | The slot a page's content goes into. The name is API — a page binds as `Module.Layout.<Name>`. Name one `Main`: that is how Mendix picks the main placeholder (`Forms$Layout` has no property for it). At least one is required |
+| Navigation tree | `navigationtree name (profile: 'Responsive')` | The sidebar/menu widget; the profile is a navigation profile name |
+
 **Snippets & Building Blocks (read-only discovery):**
 
 | Operation | Syntax | Notes |

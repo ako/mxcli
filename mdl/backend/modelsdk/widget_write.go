@@ -565,8 +565,14 @@ func widgetToGen(w pages.Widget) (element.Element, error) {
 			}
 		}
 		// Flat children go in the centre, which is where a container with no
-		// explicit regions puts them.
+		// explicit regions puts them. Both at once would silently discard one
+		// of the two, so it is refused.
 		if len(x.Widgets) > 0 {
+			for _, r := range x.Regions {
+				if r.Slot == pages.ScrollSlotCenter {
+					return nil, fmt.Errorf("scroll container %q has both a center region and loose widgets; put the loose widgets in the center region", x.Name)
+				}
+			}
 			flat := &pages.ScrollContainerRegion{Slot: pages.ScrollSlotCenter, Widgets: x.Widgets}
 			rg, err := scrollRegionToGen(flat)
 			if err != nil {
@@ -1553,7 +1559,15 @@ func scrollRegionToGen(r *pages.ScrollContainerRegion) (element.Element, error) 
 	g := genPg.NewScrollContainerRegion()
 	assignID(g)
 	g.SetAppearance(newAppearance(r.Class, "", "", nil))
-	g.SetSize(int32(r.Size))
+	// 200/Auto is what Studio Pro writes for a region whose size was never
+	// touched — every unsized Atlas region carries it, including the centre
+	// ones where the number is inert. Writing a bare 0 instead would be a size
+	// nothing in the model ever means.
+	size := r.Size
+	if size == 0 {
+		size = 200
+	}
+	g.SetSize(int32(size))
 	g.SetSizeMode(orDefaultStr(r.SizeMode, "Auto"))
 	for _, w := range r.Widgets {
 		wg, err := widgetToGen(w)
