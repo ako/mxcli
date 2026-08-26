@@ -190,7 +190,7 @@ func outputRestOperation(w io.Writer, op *model.RestClientOperation) {
 		case "export_mapping":
 			if op.BodyVariable != "" && len(op.BodyMappings) > 0 {
 				fmt.Fprintf(w, "    Body: mapping %s {\n", op.BodyVariable)
-				writeExportMappings(w, op.BodyMappings, 6)
+				writeExportMappings(w, op.BodyMappings, 6, "(Object)")
 				fmt.Fprintln(w, "    },")
 			} else if op.BodyVariable != "" {
 				fmt.Fprintf(w, "    Body: mapping %s,\n", op.BodyVariable)
@@ -224,7 +224,7 @@ func outputRestOperation(w io.Writer, op *model.RestClientOperation) {
 	case "mapping":
 		if op.ResponseEntity != "" && len(op.ResponseMappings) > 0 {
 			fmt.Fprintf(w, "    Response: mapping %s {\n", op.ResponseEntity)
-			writeResponseMappings(w, op.ResponseMappings, 6)
+			writeResponseMappings(w, op.ResponseMappings, 6, "(Object)")
 			fmt.Fprintln(w, "    }")
 		} else if op.ResponseEntity != "" {
 			fmt.Fprintf(w, "    Response: mapping %s\n", op.ResponseEntity)
@@ -253,17 +253,56 @@ func restParamTypeOrDefault(dataType string) string {
 	return dataType
 }
 
+// inlineMemberName is the JSON member DESCRIBE should print for an inline REST
+// mapping element: its stored JsonPath rendered relative to the enclosing
+// element, not its ExposedName.
+//
+// The two differ for any MULTI-SEGMENT member. `Title = fields/Title` stores
+// JsonPath "(Object)|fields|Title" and ExposedName "Title" (the last segment,
+// as Studio Pro does), so printing ExposedName emitted `"Title" = "Title"` —
+// output that parses, re-executes, and silently binds the wrong member. Before
+// the path fix the two happened to agree, because the whole "fields/Title"
+// string was crammed into ExposedName; correcting the path is what made the
+// printer wrong, so the two changes belong together.
+//
+// The generated markers — "(Object)", "(Array)", "(Wrapper)" — are dropped:
+// they are levels MDL generates rather than names an author writes, the same
+// rule the array forms follow (ako/mxcli#248, #262).
+func inlineMemberName(parentPath string, m *model.RestResponseMapping) string {
+	if m.JsonPath == "" {
+		return m.ExposedName
+	}
+	rel := m.JsonPath
+	if parentPath != "" && strings.HasPrefix(rel, parentPath+"|") {
+		rel = rel[len(parentPath)+1:]
+	} else if i := strings.LastIndex(rel, "|"); i >= 0 {
+		rel = rel[i+1:]
+	}
+	var segs []string
+	for _, seg := range strings.Split(rel, "|") {
+		switch seg {
+		case "", "(Object)", "(Array)", "(Wrapper)":
+			continue
+		}
+		segs = append(segs, seg)
+	}
+	if len(segs) == 0 {
+		return m.ExposedName
+	}
+	return strings.Join(segs, "/")
+}
+
 // writeResponseMappings writes import-direction mappings (JSON → Entity): EntityAttr = jsonField.
 // Matches the import mapping syntax: CREATE Association/Entity = jsonField { ... }.
-func writeResponseMappings(w io.Writer, mappings []*model.RestResponseMapping, indent int) {
+func writeResponseMappings(w io.Writer, mappings []*model.RestResponseMapping, indent int, parentPath string) {
 	pad := strings.Repeat(" ", indent)
 	for _, m := range mappings {
 		if m.Entity != "" {
 			// Object mapping → nested entity via association (import style: CREATE Assoc/Entity = jsonField)
-			fmt.Fprintf(w, "%screate %s/%s = %s", pad, m.Association, m.Entity, m.ExposedName)
+			fmt.Fprintf(w, "%screate %s/%s = %s", pad, m.Association, m.Entity, inlineMemberName(parentPath, m))
 			if len(m.Children) > 0 {
 				fmt.Fprintln(w, " {")
-				writeResponseMappings(w, m.Children, indent+2)
+				writeResponseMappings(w, m.Children, indent+2, m.JsonPath)
 				fmt.Fprintf(w, "%s},\n", pad)
 			} else {
 				fmt.Fprintln(w, " {},")
@@ -274,28 +313,28 @@ func writeResponseMappings(w io.Writer, mappings []*model.RestResponseMapping, i
 			if m.JsonPath != "" {
 				jsonComment = fmt.Sprintf("  -- %s", m.JsonPath)
 			}
-			fmt.Fprintf(w, "%s%s = %s,%s\n", pad, safeIdent(m.Attribute), safeIdent(m.ExposedName), jsonComment)
+			fmt.Fprintf(w, "%s%s = %s,%s\n", pad, safeIdent(m.Attribute), safeIdent(inlineMemberName(parentPath, m)), jsonComment)
 		}
 	}
 }
 
 // writeExportMappings writes export-direction mappings (Entity → JSON): jsonField = EntityAttr.
 // Matches the export mapping syntax.
-func writeExportMappings(w io.Writer, mappings []*model.RestResponseMapping, indent int) {
+func writeExportMappings(w io.Writer, mappings []*model.RestResponseMapping, indent int, parentPath string) {
 	pad := strings.Repeat(" ", indent)
 	for _, m := range mappings {
 		if m.Entity != "" {
-			fmt.Fprintf(w, "%s%s/%s = %s", pad, m.Association, m.Entity, m.ExposedName)
+			fmt.Fprintf(w, "%s%s/%s = %s", pad, m.Association, m.Entity, inlineMemberName(parentPath, m))
 			if len(m.Children) > 0 {
 				fmt.Fprintln(w, " {")
-				writeExportMappings(w, m.Children, indent+2)
+				writeExportMappings(w, m.Children, indent+2, m.JsonPath)
 				fmt.Fprintf(w, "%s},\n", pad)
 			} else {
 				fmt.Fprintln(w, " {},")
 			}
 		} else {
 			// Export direction: jsonField = EntityAttr
-			fmt.Fprintf(w, "%s%s = %s,\n", pad, safeIdent(m.ExposedName), safeIdent(m.Attribute))
+			fmt.Fprintf(w, "%s%s = %s,\n", pad, safeIdent(inlineMemberName(parentPath, m)), safeIdent(m.Attribute))
 		}
 	}
 }
