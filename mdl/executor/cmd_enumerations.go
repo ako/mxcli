@@ -49,7 +49,7 @@ func execCreateEnumeration(ctx *ExecContext, s *ast.CreateEnumerationStmt) error
 		values = append(values, model.EnumerationValue{
 			Name: v.Name,
 			Caption: &model.Text{
-				Translations: map[string]string{"en_US": v.Caption},
+				Translations: map[string]string{authoringLanguage(ctx): v.Caption},
 			},
 		})
 	}
@@ -155,7 +155,7 @@ func execAlterEnumeration(ctx *ExecContext, s *ast.AlterEnumerationStmt) error {
 		}
 		enum.Values = append(enum.Values, model.EnumerationValue{
 			Name:    s.ValueName,
-			Caption: &model.Text{Translations: map[string]string{"en_US": s.Caption}},
+			Caption: &model.Text{Translations: map[string]string{authoringLanguage(ctx): s.Caption}},
 		})
 
 	case ast.AlterEnumDrop:
@@ -201,7 +201,7 @@ func execAlterEnumeration(ctx *ExecContext, s *ast.AlterEnumerationStmt) error {
 		} else if enum.Values[idx].Caption.Translations == nil {
 			enum.Values[idx].Caption.Translations = map[string]string{}
 		}
-		enum.Values[idx].Caption.Translations["en_US"] = s.Caption
+		enum.Values[idx].Caption.Translations[authoringLanguage(ctx)] = s.Caption
 
 	default:
 		return mdlerrors.NewUnsupported("unknown ALTER ENUMERATION operation")

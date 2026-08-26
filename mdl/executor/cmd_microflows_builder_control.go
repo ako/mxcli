@@ -602,6 +602,7 @@ func (fb *flowBuilder) addLoopStatement(s *ast.LoopStmt) model.ID {
 
 	// Build nested ObjectCollection for loop body
 	loopBuilder := &flowBuilder{
+		textLang:     fb.textLang,
 		posX:         innerStartX,
 		posY:         innerStartY,
 		baseY:        innerStartY,
@@ -919,6 +920,7 @@ func (fb *flowBuilder) addWhileStatement(s *ast.WhileStmt) model.ID {
 	}
 
 	loopBuilder := &flowBuilder{
+		textLang:     fb.textLang,
 		posX:         innerStartX,
 		posY:         innerStartY,
 		baseY:        innerStartY,

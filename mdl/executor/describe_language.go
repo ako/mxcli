@@ -88,3 +88,25 @@ func pickTextTranslation(t *model.Text, preferredLang string) string {
 	}
 	return ""
 }
+
+// authoringLanguage is the language a bare MDL string (Caption:, Title:,
+// Content:, Label:, …) is stored under when a document is CREATED. Mendix has no
+// language-neutral text: every Texts$Translation carries a LanguageCode, so a
+// writer must pick one, and mxcli picked "en_US" everywhere
+// (mendixlabs/mxcli#970). On a project that does not have en_US enabled, Studio
+// Pro then shows the empty-caption placeholder and warns there is no translation
+// for the project's language — while mxcli, mx check and mxbuild all report
+// success, so nothing catches it.
+//
+// The project's DefaultLanguageCode is the right choice, and it is by definition
+// one of the enabled languages, so this can never produce the unenabled-language
+// case that unenabledLanguageWarning reports. It deliberately shares
+// describeDefaultLanguage's cache and fallback: DESCRIBE must read back the
+// language CREATE wrote, or describe -> exec stops round-tripping on any project
+// whose default is not en_US.
+//
+// This governs CREATION only. Editing an existing text (ALTER PAGE … SET Caption)
+// updates the stored Texts$Translation in place and keeps whatever LanguageCode
+// is already there — measured, and the reason the writer-layer fallbacks are a
+// smaller problem than their count suggests.
+func authoringLanguage(ctx *ExecContext) string { return describeDefaultLanguage(ctx) }

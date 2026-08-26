@@ -74,7 +74,7 @@ func (pb *pageBuilder) buildPageV3(s *ast.CreatePageStmtV3) (*pages.Page, error)
 				ID:       model.ID(types.GenerateID()),
 				TypeName: "Texts$Text",
 			},
-			Translations: map[string]string{"en_US": s.Title},
+			Translations: map[string]string{pb.textLang(): s.Title},
 		}
 	}
 

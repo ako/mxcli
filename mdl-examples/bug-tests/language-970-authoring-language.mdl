@@ -1,0 +1,41 @@
+-- mendixlabs/mxcli#970 — a caption must land in the project's language.
+--
+-- Named with a topic prefix because two numbering namespaces meet in this
+-- directory (see CLAUDE.md): #970 here is the mendixlabs/mxcli ISSUE, not a PR.
+--
+-- Before the fix every MDL write path stored a caption/title/content under a
+-- hardcoded "en_US". On a project whose enabled language is something else,
+-- Studio Pro rendered the widget as the empty-caption placeholder and warned
+-- there was no translation for the project's language — while mxcli, `mx check`
+-- and mxbuild all reported success, so nothing caught it.
+--
+-- To reproduce the ORIGINAL bug, run this against a project whose default
+-- language is not en_US and read the stored LanguageCode; `mx check` reports 0
+-- errors either way, which is the whole point — the check is not the oracle here.
+-- The regression test that pins it is TestPageTextsUseProjectDefaultLanguage.
+
+-- Make Dutch the project's one language, the reporter's configuration.
+alter settings LANGUAGE ADD 'nl_NL';
+alter settings LANGUAGE DefaultLanguageCode = 'nl_NL';
+alter settings LANGUAGE REMOVE 'en_US';
+
+-- Every one of these texts must be stored under nl_NL, not en_US.
+create or modify page MyFirstModule.Issue970
+  (
+    Title: 'Opslaanpagina',
+    Layout: Atlas_Core.Atlas_Default
+  )
+  {
+    CONTAINER cnt {
+      ACTIONBUTTON btnSave (Caption: 'Opslaan', Action: SAVE_CHANGES)
+      DYNAMICTEXT txtWelcome (Content: 'Welkom')
+    }
+  }
+
+-- Enumeration value captions go through a different builder and were broken the
+-- same way; they are the in-run control for the page sites above.
+create or modify enumeration MyFirstModule.Issue970Status (Nieuw 'Nieuw', Klaar 'Klaar');
+
+-- DESCRIBE reads the project's default language (#702), so with the write side
+-- fixed the round trip is consistent: this prints the Dutch strings back.
+describe page MyFirstModule.Issue970;

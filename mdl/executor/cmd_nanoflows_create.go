@@ -236,6 +236,7 @@ func execCreateNanoflow(ctx *ExecContext, s *ast.CreateNanoflowStmt) error {
 	restServices, _ := loadRestServices(ctx) // best-effort: builder works without REST services
 
 	builder := &flowBuilder{
+		textLang:     authoringLanguage(ctx),
 		posX:         200,
 		posY:         200,
 		baseY:        200,
