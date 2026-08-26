@@ -76,11 +76,42 @@ func (tp *TabPage) GetName() string {
 }
 
 // ScrollContainer represents a scrollable container.
+//
+// Its children live in five named region slots, not in one list: a layout's
+// topbar is in Top, its navigation in Left, its page content in Center. Widgets
+// is the flat form some older documents use and is kept for reading them.
 type ScrollContainer struct {
 	BaseWidget
-	ScrollBehavior ScrollBehavior `json:"scrollBehavior"`
-	Widgets        []Widget       `json:"widgets,omitempty"`
+	ScrollBehavior ScrollBehavior           `json:"scrollBehavior"`
+	Regions        []*ScrollContainerRegion `json:"regions,omitempty"`
+	Widgets        []Widget                 `json:"widgets,omitempty"`
 }
+
+// ScrollContainerRegion is one of a ScrollContainer's five slots.
+//
+// Slot is the position, not a free name: the region has no Name of its own in
+// the BSON, so which slot it occupies is its identity. The BSON key for the
+// centre slot is "CenterRegion" while the other four are bare positions —
+// ScrollContainerSlot spells the MDL names and the codec maps them.
+type ScrollContainerRegion struct {
+	model.BaseElement
+	Slot     ScrollContainerSlot `json:"slot"`
+	Size     int                 `json:"size,omitempty"`
+	SizeMode string              `json:"sizeMode,omitempty"`
+	Class    string              `json:"class,omitempty"`
+	Widgets  []Widget            `json:"widgets,omitempty"`
+}
+
+// ScrollContainerSlot names one of the five regions.
+type ScrollContainerSlot string
+
+const (
+	ScrollSlotTop    ScrollContainerSlot = "top"
+	ScrollSlotRight  ScrollContainerSlot = "right"
+	ScrollSlotBottom ScrollContainerSlot = "bottom"
+	ScrollSlotLeft   ScrollContainerSlot = "left"
+	ScrollSlotCenter ScrollContainerSlot = "center"
+)
 
 // ScrollBehavior represents how scrolling behaves.
 type ScrollBehavior string

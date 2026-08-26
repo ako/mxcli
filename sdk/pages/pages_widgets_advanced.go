@@ -13,7 +13,10 @@ import (
 // NavigationTree represents a navigation tree widget.
 type NavigationTree struct {
 	BaseWidget
-	Items []*NavigationItem `json:"items,omitempty"`
+	// NavigationProfile names the profile the menu is drawn from. It is stored
+	// inside a Forms$NavigationSource under MenuSource, not on the tree itself.
+	NavigationProfile string            `json:"navigationProfile,omitempty"`
+	Items             []*NavigationItem `json:"items,omitempty"`
 }
 
 // NavigationItem represents an item in navigation.
