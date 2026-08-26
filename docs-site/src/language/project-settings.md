@@ -119,6 +119,45 @@ Two things to know about removal:
   affected. To remove them, use
   `CREATE OR REPLACE TRANSLATIONS FOR '<code>' ( );`.
 
+#### Set the default language *before* authoring content
+
+The default language is not only a fallback — it is **the language a new caption
+is written in**. `Caption: 'Opslaan'` has to be stored under some language code
+(Mendix has no language-neutral text), and mxcli uses the project's
+`DefaultLanguageCode`.
+
+So the order of these two statements changes the result:
+
+```sql
+-- right: the page's texts are stored as nl_NL
+ALTER SETTINGS LANGUAGE ADD 'nl_NL';
+ALTER SETTINGS LANGUAGE DefaultLanguageCode = 'nl_NL';
+CREATE PAGE MyModule.Opslaan ( Title: 'Opslaanpagina', ... ) { ... }
+
+-- wrong: the page is authored while en_US is still the default, so its texts
+-- are stored as en_US and stay there
+CREATE PAGE MyModule.Opslaan ( Title: 'Opslaanpagina', ... ) { ... }
+ALTER SETTINGS LANGUAGE DefaultLanguageCode = 'nl_NL';
+```
+
+Changing `DefaultLanguageCode` **does not move text that already exists** — it
+would be rewriting content you authored. Nothing reports the mismatch either:
+`mx check` gives 0 errors both ways, and the symptom only appears in Studio Pro,
+as the empty-caption placeholder plus a "no translation for this language"
+warning.
+
+**If you get the order wrong, re-run the `CREATE` statements.** With the new
+default in place the texts are stored under it; the old language's copy stays
+alongside as a harmless extra translation.
+
+```sql
+-- recovery: same script, run again after the default is correct
+CREATE OR MODIFY PAGE MyModule.Opslaan ( Title: 'Opslaanpagina', ... ) { ... }
+```
+
+`CREATE TRANSLATIONS FOR '<the default>'` is **not** the way out — it is refused,
+because the default is the source language every other translation is keyed on.
+
 > `SHOW LANGUAGES` lists languages that have **translations**, which is not the
 > same list — a stock app reports eight while one is enabled. For the enabled
 > list use `DESCRIBE SETTINGS`.

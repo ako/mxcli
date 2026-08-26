@@ -46,3 +46,81 @@ $result = call microflow RtMap.MF_Chat(
  */
 $result = call microflow RtMap.MF_Conv(Json = '{"word":"quiet"}');
 /
+
+/**
+ * #261, #264 and #262 asserted on behaviour, not on stored BSON. Each of these
+ * mappings serializes correctly and builds cleanly either way — the difference
+ * they encode only exists at run time.
+ *
+ * Every test seeds a Person with Code 'EXIST' first, so `find` has something to
+ * hit, and the result string is "<name>/<total Person rows>".
+ *
+ * @test find … or create makes a new object when the key does not match (ako/mxcli#261)
+ * @expect $result = 'fresh/2'
+ * @cleanup rollback
+ */
+$result = call microflow RtMap.MF_Backup_Create(Json = '{"code":"NEW","name":"fresh"}');
+/
+
+/**
+ * The control for the one above: the same mapping, a key that DOES match. It
+ * must update the seeded object rather than create a second one — otherwise
+ * `or create` would be indistinguishable from plain `create`.
+ *
+ * @test find … or create updates the existing object when the key matches (ako/mxcli#261)
+ * @expect $result = 'updated/1'
+ */
+$result = call microflow RtMap.MF_Backup_Create(Json = '{"code":"EXIST","name":"updated"}');
+/
+
+/**
+ * @test find … or ignore skips the element instead of creating one (ako/mxcli#261)
+ * @expect $result = 'EMPTY/1'
+ */
+$result = call microflow RtMap.MF_Backup_Ignore(Json = '{"code":"NEW","name":"fresh"}');
+/
+
+/**
+ * NOTE: `@throws` REQUIRES a message, and the message is never compared — the
+ * runner only checks it is non-empty (generator_endpoint.go, `tc.Throws != ""`),
+ * so this asserts "an exception was raised" and nothing more. A BARE `@throws`
+ * is silently ignored, and the test then fails on the exception it was written
+ * to expect. The control below is what gives this test its meaning.
+ *
+ * @test find … or error fails the import when the key does not match (ako/mxcli#261)
+ * @throws 'the object was not found'
+ */
+$result = call microflow RtMap.MF_Backup_Error(Json = '{"code":"NEW","name":"fresh"}');
+/
+
+/**
+ * The control for `or error`: a key that matches must NOT throw.
+ *
+ * @test find … or error succeeds when the key matches (ako/mxcli#261)
+ * @expect $result = 'updated'
+ */
+$result = call microflow RtMap.MF_Backup_Error(Json = '{"code":"EXIST","name":"updated"}');
+/
+
+/**
+ * Custom object handling: a microflow resolves the object. If it really runs,
+ * the import binds the SEEDED chunk (Idx 1) and updates it — one row, new text.
+ * If it were silently downgraded to `create`, there would be two rows.
+ *
+ * @test custom object handling binds the object the microflow returns (ako/mxcli#264)
+ * @expect $result = 'updated/1'
+ */
+$result = call microflow RtMap.MF_Custom(
+  Json = '{"label":"b","items":[{"idx":1,"text":"updated"}]}'
+);
+/
+
+/**
+ * Export: a bare array container plus an entity-less grouping node. Both shapes
+ * changed in #262, and a wrong one produces wrong JSON rather than a build error.
+ *
+ * @test export mapping emits the grouping node and the array (ako/mxcli#262)
+ * @expect $result = '{"holder":"ako","meta":{"lines":[{"sku":"SKU-1"}]}}'
+ */
+$result = call microflow RtMap.MF_Export();
+/

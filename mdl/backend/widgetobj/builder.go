@@ -1198,7 +1198,7 @@ func updateTemplateText(tmpl bson.D, text string) bson.D {
 							bson.D{
 								{Key: "$ID", Value: bsonutil.IDToBsonBinary(types.GenerateID())},
 								{Key: "$Type", Value: "Texts$Translation"},
-								{Key: "LanguageCode", Value: "en_US"},
+								{Key: "LanguageCode", Value: model.AuthoringLanguage()},
 								{Key: "Text", Value: text},
 							},
 						}})
@@ -1301,7 +1301,7 @@ func createClientTemplateBSONWithParams(text string, entityContext string) bson.
 			{Key: "Items", Value: bson.A{int32(3), bson.D{
 				{Key: "$ID", Value: types.UUIDToBlob(types.GenerateID())},
 				{Key: "$Type", Value: "Texts$Translation"},
-				{Key: "LanguageCode", Value: "en_US"},
+				{Key: "LanguageCode", Value: model.AuthoringLanguage()},
 				{Key: "Text", Value: t},
 			}}},
 		}
@@ -1331,7 +1331,7 @@ func createDefaultClientTemplateBSON(text string) bson.D {
 			{Key: "Items", Value: bson.A{int32(3), bson.D{
 				{Key: "$ID", Value: types.UUIDToBlob(types.GenerateID())},
 				{Key: "$Type", Value: "Texts$Translation"},
-				{Key: "LanguageCode", Value: "en_US"},
+				{Key: "LanguageCode", Value: model.AuthoringLanguage()},
 				{Key: "Text", Value: t},
 			}}},
 		}
@@ -1653,7 +1653,7 @@ func BuildClientTemplateWithTextAndParams(text string, params []*pages.ClientTem
 				bson.D{
 					{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
 					{Key: "$Type", Value: "Texts$Translation"},
-					{Key: "LanguageCode", Value: "en_US"},
+					{Key: "LanguageCode", Value: model.AuthoringLanguage()},
 					{Key: "Text", Value: text},
 				},
 			}},

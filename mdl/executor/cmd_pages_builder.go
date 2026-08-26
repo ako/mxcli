@@ -430,3 +430,7 @@ func execDropSnippet(ctx *ExecContext, s *ast.DropSnippetStmt) error {
 func (e *Executor) getModuleName(moduleID model.ID) string {
 	return getModuleName(e.newExecContext(context.Background()), moduleID)
 }
+
+// textLang is the language a bare caption/title/content string from this page's
+// MDL is stored under (mendixlabs/mxcli#970). See authoringLanguage.
+func (pb *pageBuilder) textLang() string { return authoringLanguage(pb.ctx) }
