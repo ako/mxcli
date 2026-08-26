@@ -467,3 +467,86 @@ func TestCreate_ScaffoldSatisfiesTheSameStructuralContractAsABuiltIn(t *testing.
 		})
 	}
 }
+
+// The scaffold renames the identifiers built from the theme name — the mixin,
+// the @import, the partial's filename. It did not rename the vendored font
+// licence, so two themes scaffolded from signal both shipped OFL-signal.txt
+// (ako/mxcli-ledger #140).
+//
+// Nothing collided: the content is identical because they genuinely ship the
+// same fonts. It bites on the edit the scaffold exists to invite — a brand
+// theme that changes its fonts then ships IBM Plex's licence for fonts that
+// are not IBM Plex, and the filename is what would have caught it.
+func TestCreate_RenamesTheFontLicenceToTheCreatedTheme(t *testing.T) {
+	dir := newProject(t)
+	mustCreate(t, dir, "acme", CreateOptions{Base: DefaultName})
+
+	fonts := filepath.Join(dir, filepath.FromSlash(LocalThemesDir), "acme", "files", "theme", "web", "mxcli-fonts")
+	entries, err := os.ReadDir(fonts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var licences []string
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "OFL") {
+			licences = append(licences, e.Name())
+		}
+	}
+	if len(licences) != 1 || licences[0] != "OFL-acme.txt" {
+		t.Errorf("licences = %v; want exactly [OFL-acme.txt] — a base theme's name here "+
+			"survives a font change and then covers fonts it does not license", licences)
+	}
+
+	// theme.json's prose names the licence, so `theme show` must not describe
+	// the new theme's fonts under a filename that is no longer there.
+	got, err := Get(dir, "acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range got.Files {
+		if strings.Contains(f.Purpose, "OFL-"+DefaultName) {
+			t.Errorf("theme.json still names the base theme's licence: %q", f.Purpose)
+		}
+	}
+	// And the manifest's paths must match what is on disk.
+	paths, err := assetPaths(dir, "acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !paths["theme/web/mxcli-fonts/OFL-acme.txt"] {
+		t.Errorf("the renamed licence is not in the theme's file set: %v", len(paths))
+	}
+}
+
+// `theme create` reported paths relative to the scaffold, which read as paths
+// in the app: theme/web/custom-variables.scss and theme/web/main.scss listed as
+// "created" by the one command whose job is to write into theme/. A project
+// with its own hand-written versions of both saw them reported as overwritten
+// when nothing had been touched (ako/mxcli-ledger #139).
+func TestCreate_ReportsPathsInsideTheScaffoldNotTheApp(t *testing.T) {
+	dir := newProject(t)
+	res := mustCreate(t, dir, "acme", CreateOptions{})
+
+	for _, f := range res.Files {
+		if f.Path == "theme/web/custom-variables.scss" || f.Path == "theme/web/main.scss" {
+			t.Errorf("reported %q, which is an app path this command did not write", f.Path)
+		}
+		// Every reported path must resolve under the scaffold directory.
+		if _, err := os.Stat(filepath.Join(res.Dir, filepath.FromSlash(f.Path))); err != nil {
+			t.Errorf("reported %q but it is not in the scaffold: %v", f.Path, err)
+		}
+	}
+	// theme.json sits at the scaffold root, the rest under files/ — so a caller
+	// prefixing them all with the same root cannot mislabel either.
+	var sawManifest bool
+	for _, f := range res.Files {
+		if f.Path == "theme.json" {
+			sawManifest = true
+		} else if !strings.HasPrefix(f.Path, "files/") {
+			t.Errorf("%q is neither the manifest nor under files/", f.Path)
+		}
+	}
+	if !sawManifest {
+		t.Error("theme.json was not reported")
+	}
+}
