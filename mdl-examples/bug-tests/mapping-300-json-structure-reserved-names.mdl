@@ -1,0 +1,67 @@
+-- ============================================================================
+-- Bug ako/mxcli#300: a JSON member named `owner` made the project unbuildable
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   `create json structure X snippet '{"owner": "o"}'` passed mxcli check and
+--   exec, and then mxbuild refused to build the project:
+--
+--     [error] [CE9524] "JSON element '(Object)/owner' has an invalid custom
+--             name 'Owner'. Custom name should start with a letter or
+--             underscore followed by either letters, digits or underscores."
+--
+--   `owner` is an ordinary member name in real REST payloads, and nothing
+--   before the build warns.
+--
+-- The message names the wrong rule:
+--   'Owner' matches the character pattern it quotes perfectly. The real rule,
+--   measured against mxbuild 11.13 one structure per name, is a
+--   CASE-INSENSITIVE reserved set:
+--
+--     53 Java keywords and literals   (class, new, int, break, true, …)
+--     the four system attribute names (Owner, ChangedDate, CreatedDate,
+--                                      ChangedBy)
+--     CurrentUser and Guid
+--
+--   It is NOT the entity-member reserved list: `Type` and `Id` are ACCEPTED
+--   here, though Studio Pro avoids them anyway.
+--
+-- Fix:
+--   `resolveExposedName` already had Studio Pro's avoidance — prefix an
+--   underscore, keep the key's ORIGINAL case, which is how
+--   OpenAI_API.JSON_OpenAI_Response stores `_id` and `_object`. Only the list
+--   was short: it held `{Id, Type}`. The author cannot rename a member of an
+--   external payload, so deriving a valid name is the only possible fix;
+--   refusing at check time would make the construct unusable.
+--
+-- Watch for:
+--   Match case-insensitively. Mendix does: the member `class` derives `Class`,
+--   which is not literally a Java keyword, and is still rejected.
+--
+-- Validation:
+--   mxbuild 11.13 reports 0 errors on all 72 names probed (53 keywords + the
+--   6 Mendix reserved + Id/Type/Object + 10 ordinary controls); before the fix
+--   the same probe produced one CE9524 per reserved name.
+-- ============================================================================
+
+create module BugTest300;
+
+-- The reported case, plus one of each other family.
+create json structure BugTest300.JSON_Reserved
+  snippet $${
+    "owner": "o",
+    "changedDate": "d",
+    "class": "c",
+    "int": 1,
+    "currentUser": "u",
+    "guid": "g"
+  }$$;
+
+-- Controls: ordinary members must keep the plain capitalised name, and a
+-- Java-keyword lookalike that is not one must not be prefixed.
+create json structure BugTest300.JSON_Ordinary
+  snippet $${"name": "n", "value": "v", "status": "s", "index": 1}$$;
+
+-- Studio Pro avoids these even though mxbuild accepts them; mxcli matches.
+create json structure BugTest300.JSON_StudioProAvoids
+  snippet $${"id": "i", "object": "o", "type": "t"}$$;
