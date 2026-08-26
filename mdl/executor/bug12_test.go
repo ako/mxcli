@@ -54,7 +54,7 @@ func TestSetAttributeValidationRule(t *testing.T) {
 	}
 
 	// NULLABLE on Foo: drop Foo's Required, keep Bar's.
-	setAttributeValidationRule(entity, foo, "M.E.Foo", "Required", false, "")
+	setAttributeValidationRule(entity, foo, "M.E.Foo", "Required", false, "", "en_US")
 	if n := countRules(entity, "Required"); n != 1 {
 		t.Fatalf("after NULLABLE Foo: %d Required rules, want 1 (Bar's)", n)
 	}
@@ -66,8 +66,8 @@ func TestSetAttributeValidationRule(t *testing.T) {
 	}
 
 	// NOT NULL on Foo again: re-add (idempotent — no duplicates).
-	setAttributeValidationRule(entity, foo, "M.E.Foo", "Required", true, "")
-	setAttributeValidationRule(entity, foo, "M.E.Foo", "Required", true, "")
+	setAttributeValidationRule(entity, foo, "M.E.Foo", "Required", true, "", "en_US")
+	setAttributeValidationRule(entity, foo, "M.E.Foo", "Required", true, "", "en_US")
 	if n := countRulesForAttr(entity, "Required", foo); n != 1 {
 		t.Errorf("Foo Required rules = %d, want exactly 1 (idempotent)", n)
 	}

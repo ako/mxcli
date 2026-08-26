@@ -16,18 +16,22 @@ import (
 
 // flowBuilder helps construct the flow graph from AST statements.
 type flowBuilder struct {
-	objects             []microflows.MicroflowObject
-	flows               []*microflows.SequenceFlow
-	annotationFlows     []*microflows.AnnotationFlow
-	posX                int
-	posY                int
-	baseY               int // Base Y position (for returning after ELSE branches)
-	spacing             int
-	returnValue         string // Return value expression for RETURN statement (used by buildFlowGraph final EndEvent)
-	returnType          *ast.MicroflowReturnType
-	endsWithReturn      bool              // True if the flow already ends with EndEvent(s) from RETURN statements
-	lastReturnEndID     model.ID          // Last explicit RETURN EndEvent, used as a fallback error-handler target
-	varTypes            map[string]string // Variable name -> entity qualified name (for CHANGE statements)
+	objects         []microflows.MicroflowObject
+	flows           []*microflows.SequenceFlow
+	annotationFlows []*microflows.AnnotationFlow
+	posX            int
+	posY            int
+	baseY           int // Base Y position (for returning after ELSE branches)
+	spacing         int
+	returnValue     string // Return value expression for RETURN statement (used by buildFlowGraph final EndEvent)
+	returnType      *ast.MicroflowReturnType
+	endsWithReturn  bool              // True if the flow already ends with EndEvent(s) from RETURN statements
+	lastReturnEndID model.ID          // Last explicit RETURN EndEvent, used as a fallback error-handler target
+	varTypes        map[string]string // Variable name -> entity qualified name (for CHANGE statements)
+	// textLang is the language a bare message/caption string is stored under
+	// (mendixlabs/mxcli#970). Empty means en_US, which keeps a zero-value
+	// flowBuilder — validateFlowBody builds one — behaving as before.
+	textLang            string
 	declaredVars        map[string]string // Declared primitive variables: name -> type (e.g., "$IsValid" -> "Boolean")
 	errors              []string          // Validation errors collected during build
 	measurer            *layoutMeasurer   // For measuring statement dimensions
@@ -709,4 +713,15 @@ func extractNamedArg(expr ast.Expression) (string, ast.Expression) {
 		}
 	}
 	return "", nil
+}
+
+// textLangOrDefault is the language this builder stores a bare message/caption
+// string under. A zero-value flowBuilder (validateFlowBody builds one, and it
+// never writes) reports en_US, so the fallback is identical to the pre-#970
+// behaviour rather than an empty LanguageCode.
+func (fb *flowBuilder) textLangOrDefault() string {
+	if fb.textLang == "" {
+		return fallbackLanguageCode
+	}
+	return fb.textLang
 }

@@ -2303,7 +2303,7 @@ func updateClientTemplateText(clientTemplate bson.D, text string) bool {
 	newItem := bson.D{
 		{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
 		{Key: "$Type", Value: "Texts$Translation"},
-		{Key: "LanguageCode", Value: "en_US"},
+		{Key: "LanguageCode", Value: model.AuthoringLanguage()},
 		{Key: "Text", Value: text},
 	}
 	newArr := bson.A{int32(3)}
@@ -2449,7 +2449,7 @@ func updateTextsTextValue(textsTextDoc bson.D, text string) bool {
 	newItem := bson.D{
 		{Key: "$ID", Value: bsonutil.NewIDBsonBinary()},
 		{Key: "$Type", Value: "Texts$Translation"},
-		{Key: "LanguageCode", Value: "en_US"},
+		{Key: "LanguageCode", Value: model.AuthoringLanguage()},
 		{Key: "Text", Value: text},
 	}
 	newArr := bson.A{int32(3)}
