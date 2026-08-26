@@ -228,9 +228,19 @@ Examples:
 		if dryRun {
 			verb = " (dry run)"
 		}
-		fmt.Printf("Theme '%s' scaffolded from '%s'%s\n  %s\n", res.Name, res.Base, verb, res.Dir)
+		fmt.Printf("Theme '%s' scaffolded from '%s'%s\n", res.Name, res.Base, verb)
+		// Every path is printed under the scaffold root. Bare, they read as
+		// theme/web/custom-variables.scss and theme/web/main.scss — the two
+		// files an app is most likely to have written itself, reported as
+		// "created" by the one command whose whole purpose is to write into
+		// theme/. Nothing was touched; the prefix is what says so.
+		root, err := filepath.Rel(dir, res.Dir)
+		if err != nil {
+			root = res.Dir
+		}
+		fmt.Printf("  %s/\n", filepath.ToSlash(root))
 		for _, f := range res.Files {
-			fmt.Printf("  %-9s %s\n", f.Action, f.Path)
+			fmt.Printf("  %-9s %s\n", f.Action, filepath.ToSlash(filepath.Join(root, f.Path)))
 		}
 		if res.Tokens != nil {
 			fmt.Printf("\nSeeded %d token(s) from %s: %d base, %d dark, %d light.\n",

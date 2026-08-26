@@ -189,6 +189,28 @@ Two things make it work, and both are worth knowing if you write a theme:
 A single installed theme is emitted exactly as before — bare `:root`, skin rules
 unscoped — so this costs a one-theme project nothing.
 
+### A JavaScript action's parameter arrives lowercased
+
+Not theme-specific, but the theme switcher is where it bit. mxbuild **lowers the
+first letter** of a parameter when it generates the action wrapper:
+
+```
+create or modify javascript action Mod.SetAppSkin(Skin: String) ...
+```
+```javascript
+// javascriptsource/mod/actions/SetAppSkin.js — regenerated on every build
+export async function SetAppSkin(skin) {      // ← lowercased
+```
+
+So the body must read `skin`, not `Skin`. Using the modelled spelling is a
+`ReferenceError` on the first click, and **nothing catches it before then**:
+`mx check` reports 0 errors because the action is well-formed and the body is
+opaque user code, `mxcli check` says nothing about JavaScript, and the file
+carries `Only the following code will be retained` — it is rewritten on every
+build, so it cannot be patched in place. The fix has to go back through MDL.
+
+Model the parameter capitalised, as Mendix does; read it lowercased.
+
 ### Light/dark: Mendix ships the slot, not the switcher
 
 `theme/web/_theme-dark.scss` and `_theme-neutral.scss` declare `:root.theme-dark`

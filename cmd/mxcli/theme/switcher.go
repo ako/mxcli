@@ -112,18 +112,22 @@ create or modify javascript action {{MODULE}}.SetAppTheme(
 ) returns Boolean
 exposed as 'Set app theme' in 'Theme'
 as $$
+// The parameter is modelled as Theme and reaches the body as lowercase
+// lowers the first letter when it generates the wrapper. Using the modelled
+// spelling here is a ReferenceError on the first click, and nothing catches it
+// before then — mx check sees a well-formed action with opaque user code.
 var root = document.documentElement;
 root.classList.remove("theme-light", "theme-dark");
 try {
-    if (Theme === "light" || Theme === "dark") {
-        root.classList.add("theme-" + Theme);
-        window.localStorage.setItem("{{STORAGE_KEY}}", Theme);
+    if (theme === "light" || theme === "dark") {
+        root.classList.add("theme-" + theme);
+        window.localStorage.setItem("{{STORAGE_KEY}}", theme);
     } else {
         window.localStorage.removeItem("{{STORAGE_KEY}}");
     }
 } catch (e) {
-    if (Theme === "light" || Theme === "dark") {
-        root.classList.add("theme-" + Theme);
+    if (theme === "light" || theme === "dark") {
+        root.classList.add("theme-" + theme);
     }
 }
 return Promise.resolve(true);
@@ -210,11 +214,13 @@ create or modify javascript action {{MODULE}}.SetAppSkin(
 ) returns String
 exposed as 'Set app theme skin' in 'Theme'
 as $$
+// Modelled as Skin, reaches the body as lowercase skin — mxbuild lowers the
+// first letter when it generates the wrapper.
 var skins = {{SKINS}};
 var root = document.documentElement;
 skins.forEach(function (s) { root.classList.remove("{{SKIN_PREFIX}}" + s); });
 
-var chosen = skins.indexOf(Skin) === -1 ? "{{DEFAULT_SKIN}}" : Skin;
+var chosen = skins.indexOf(skin) === -1 ? "{{DEFAULT_SKIN}}" : skin;
 root.classList.add("{{SKIN_PREFIX}}" + chosen);
 try {
     window.localStorage.setItem("{{SKIN_STORAGE_KEY}}", chosen);
