@@ -1,0 +1,37 @@
+-- ako/mxcli-ledger #143 — `create or replace snippet` must keep its translations.
+--
+-- Replaying one snippet file reset a translated label to its source language in
+-- all six languages. Silently: the run reported "Created snippet", `mx check`
+-- reported 0 errors, and the app rendered in one language.
+--
+-- The replace path was an unconditional delete-then-create, which nothing
+-- canon.Reconcile does can survive: by the time the create runs there is no
+-- stored document left to transplant identities from or compare against.
+--
+-- The CONTROL is in this file. The page and the snippet carry the same shape of
+-- content and get the same treatment; before the fix the page kept its Dutch and
+-- the snippet lost it, which is what made this a snippet defect rather than a
+-- fact about replacing documents.
+--
+--   run twice:  mxcli exec <this file> -p app.mpr
+--   before: "Created snippet"   and the nl_NL translation is gone
+--   after:  "Unchanged snippet" and it is still there
+
+alter settings LANGUAGE ADD 'nl_NL';
+
+create or replace page MyFirstModule.L143Page
+  ( Title: 'Ledger Alpha', Layout: Atlas_Core.Atlas_Default )
+  { CONTAINER c { DYNAMICTEXT t (Content: 'Ledger Beta') } }
+
+create or replace snippet MyFirstModule.SNIPPET_L143
+  { CONTAINER c { DYNAMICTEXT t (Content: 'Ledger Gamma') } }
+
+create or modify translations for nl_NL (
+  'Ledger Alpha' AS 'Ledger Alfa',
+  'Ledger Beta'  AS 'Ledger Beta-nl',
+  'Ledger Gamma' AS 'Ledger Gamma-nl'
+);
+
+-- Re-running the two documents above must report Unchanged for both and leave
+-- all three nl_NL translations in place.
+describe translations for nl_NL;

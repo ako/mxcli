@@ -236,16 +236,38 @@ func execCreateSnippetV3(ctx *ExecContext, s *ast.CreateSnippetStmtV3) error {
 		snippet.ContainerID = existingContainerID
 	}
 
-	// Delete old snippets only after successful build
-	for _, id := range snippetsToDelete {
-		if err := ctx.Backend.DeleteSnippet(id); err != nil {
-			return mdlerrors.NewBackend("delete existing snippet", err)
+	// Replace or create the snippet in the MPR, the same way a page does.
+	//
+	// This used to be an unconditional delete-then-create, and that destroyed
+	// everything the stored document carried that a rebuild cannot express —
+	// most visibly its TRANSLATIONS. A `create or replace snippet` reset a
+	// translated label to its source language in every language, silently:
+	// the run reported "Created snippet", `mx check` reported 0 errors, and the
+	// app rendered in one language (ako/mxcli-ledger #143).
+	//
+	// Delete-then-create is not a write that canon.Reconcile can preserve
+	// anything through, because by the time the create runs there is no stored
+	// document left to reconcile against — the identity transplant and the
+	// unchanged-elision both have nothing to work from. Reusing the stored
+	// unit's ID and going through Update puts the snippet back on the same
+	// choke point every other document type uses (ADR-0008). It also fixes the
+	// second consequence the page path documents: a delete+add churns the file
+	// in git and crashes Studio Pro's RevStatusCache.
+	if len(snippetsToDelete) > 0 {
+		snippet.ID = snippetsToDelete[0]
+		if err := ctx.Backend.UpdateSnippet(snippet); err != nil {
+			return mdlerrors.NewBackend("update snippet", err)
 		}
-	}
-
-	// Create the snippet in the MPR
-	if err := ctx.Backend.CreateSnippet(snippet); err != nil {
-		return mdlerrors.NewBackend("create snippet", err)
+		// Any further documents of the same name are genuine duplicates.
+		for _, id := range snippetsToDelete[1:] {
+			if err := ctx.Backend.DeleteSnippet(id); err != nil {
+				return mdlerrors.NewBackend("delete duplicate snippet", err)
+			}
+		}
+	} else {
+		if err := ctx.Backend.CreateSnippet(snippet); err != nil {
+			return mdlerrors.NewBackend("create snippet", err)
+		}
 	}
 
 	// Track the created snippet so it can be resolved by subsequent snippet references
@@ -254,6 +276,18 @@ func execCreateSnippetV3(ctx *ExecContext, s *ast.CreateSnippetStmtV3) error {
 	// Invalidate hierarchy cache so the new snippet's container is visible
 	invalidateHierarchy(ctx)
 
-	fmt.Fprintf(ctx.Output, "Created snippet %s\n", s.Name.String())
+	// Same rule as pages: "Created" was printed for the replace path too, so
+	// re-running a script against an unchanged snippet claimed to create it every
+	// time. Only a plain one-for-one replacement is eligible to be reported as
+	// unchanged — deleting a duplicate is a real change unit-write counting
+	// cannot see.
+	switch {
+	case len(snippetsToDelete) == 1:
+		ctx.ReportMutation("Replaced", "snippet %s", s.Name.String())
+	case len(snippetsToDelete) > 1:
+		fmt.Fprintf(ctx.Output, "Replaced snippet %s\n", s.Name.String())
+	default:
+		fmt.Fprintf(ctx.Output, "Created snippet %s\n", s.Name.String())
+	}
 	return nil
 }
