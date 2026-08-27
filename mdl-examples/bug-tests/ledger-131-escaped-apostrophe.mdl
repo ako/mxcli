@@ -1,0 +1,35 @@
+-- ako/mxcli-ledger #131 — `check` must accept Mendix's own apostrophe escape.
+--
+-- '' is how the Mendix expression language escapes an apostrophe inside a string
+-- literal. CLAUDE.md states the rule ("escaped by doubling them: 'it''s here'" —
+-- never backslashes), exec writes it, DESCRIBE round-trips it and `mx check`
+-- reports 0 errors. Only exprcheck disagreed: its lexer scanned to the next
+-- quote with no notion of an escape, so 'a''b' lexed as TWO strings and the
+-- parser reported the second as a leftover token.
+--
+-- The message was a red herring — "possible missing space between keywords",
+-- with nothing glued and no keyword involved.
+--
+-- IMPORTANT: this only reproduces WITH a project. exprcheck runs when one is
+-- supplied, and `make check-mdl` runs without one — which is why this repo's own
+-- MDL gate never saw it across six of the reporter's builds:
+--
+--   mxcli check <this file>                  -> passed, even before the fix
+--   mxcli check <this file> -p app.mpr       -> 1 false error before the fix
+
+create or modify microflow MyFirstModule.Ledger131 ()
+returns string as $Result
+begin
+  declare $Result string = '';
+  declare $CategoryName string = 'O''Brien';
+
+  -- a plain doubled apostrophe inside a literal
+  set $Result = 'a''b';
+
+  -- the real shape that found this: an OData filter built by concatenation,
+  -- where the quoting is itself doubled apostrophes
+  set $Result = ' and cat eq ''' + replaceAll($CategoryName, '''', '''''') + '''';
+
+  return $Result;
+end;
+/

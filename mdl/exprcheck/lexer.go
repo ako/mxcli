@@ -66,9 +66,24 @@ func Lex(src string) []Token {
 		case c == ' ' || c == '\t' || c == '\n' || c == '\r':
 			advance(1)
 		case c == '\'':
+			// Mendix escapes an apostrophe inside a string literal by DOUBLING it
+			// ('it''s here'), never with a backslash. Scanning to the next quote
+			// without modelling that lexed 'a''b' as two strings, and the parser
+			// then reported the second as a leftover token — a false error on
+			// correct MDL, with a message about glued keywords that had nothing
+			// to do with it (ako/mxcli-ledger #131). A doubled quote is consumed
+			// as part of the literal; a single one ends it.
 			j := i + 1
-			for j < len(src) && src[j] != '\'' {
-				j++
+			for j < len(src) {
+				if src[j] != '\'' {
+					j++
+					continue
+				}
+				if j+1 < len(src) && src[j+1] == '\'' {
+					j += 2 // an escaped apostrophe, not the end of the literal
+					continue
+				}
+				break
 			}
 			if j < len(src) {
 				push(TokString, src[i:j+1], p)
