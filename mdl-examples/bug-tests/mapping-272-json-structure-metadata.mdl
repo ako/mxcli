@@ -1,0 +1,100 @@
+-- ============================================================================
+-- Bug ako/mxcli#272: JSON structure element metadata differed from Studio Pro
+-- ============================================================================
+--
+-- `create json structure … snippet '…'` produced a document whose element
+-- metadata differs from the one Studio Pro writes for the SAME snippet, and it
+-- leaks into every mapping built over the structure — a mapping element mirrors
+-- the schema element it resolves against.
+--
+-- Two of the three measured differences are fixed here.
+--
+-- 1. The root's MinOccurs was 0; Studio Pro writes 1, uniformly across all nine
+--    Studio Pro-authored structures in the round-trip fixture.
+--
+--    This was deliberately 0 and documented as such: writing 1 used to make
+--    every mapping bound to the structure fail with
+--      [error] [CE5015] "The mapping does not align with the underlying schema
+--              anymore. Details: Attribute 'MinOccurs' does not match schema
+--              element '(Object)'."
+--    because the mapping serializers hardcoded MinOccurs 0. #277/#279 made every
+--    mapping element mirror the schema element instead, so both sides now agree
+--    and the root can carry the 1.
+--
+--    Do NOT revert one without the other: the two are cross-validated, and
+--    CE5015 is what disagreement looks like.
+--
+-- 2. An ExposedName was only capitalised, never sanitised, so any member with a
+--    character outside [A-Za-z0-9_] made the project unbuildable:
+--
+--      [error] [CE9524] "JSON element '(Object)/$type' has an invalid custom
+--              name '$type'. Custom name should start with a letter or
+--              underscore followed by either letters, digits or underscores."
+--
+--    Unlike the reserved-name case (#300), the message here is accurate.
+--    `$type` occurs 43 times in the demo apps, alongside `research%3Aread` and
+--    `https%3A//sws.siemens.com/sam/claims/tenantId`.
+--
+--    The rule is Studio Pro's, read off CRS_ModelSimulator's structures:
+--      confidence(No)                 -> Confidence_No_
+--      Support Prediction             -> Support_Prediction
+--      first(Importance)_Payload (kg) -> First_Importance__Payload__kg_
+--
+--    This is also what makes ako/mxcli#260's item 4 whole: such a member can now
+--    be CREATED as well as described.
+--
+-- NOT fixed — the premise does not hold:
+--   #272 also asks for Studio Pro's array-item naming (`Data` -> `Datum`,
+--   `Departments` -> `Department`) instead of mxcli's `Item` suffix. There is no
+--   single rule to reproduce. Across the nine pinned structures Studio Pro
+--   produces BOTH real singularisation (Datum, Department, Category, Image,
+--   Size, Choice) and a flat `JsonObject` / `JsonObject_2` / `JsonObject_3`
+--   (Chunks, Metadata, Labels, Embeddings) — and it is not a collision fallback:
+--   nothing named `Embedding` exists in the structure whose item is `JsonObject`.
+--   The two families come from different modules, so the behaviour varies by
+--   Studio Pro version or creation path. Picking either would match some real
+--   documents and not others. Evidence recorded on the issue.
+--
+-- Validation:
+--   mxbuild 11.13 reports 0 errors on a structure whose members previously made
+--   the project unbuildable, and on the mappings bound to it.
+-- ============================================================================
+
+create module BugTest272;
+
+create persistent entity BugTest272.Probe (
+  Kind:    String(50),
+  Scope:   String(50),
+  Support: String(50)
+);
+
+-- Every member here was previously fatal at build time.
+create json structure BugTest272.JSON_Awkward
+  snippet $${
+    "$type": "weird",
+    "research%3Aread": "scope",
+    "Support Prediction": "s"
+  }$$;
+
+create or modify import mapping BugTest272.IMM_Awkward
+  folder 'Mappings'
+  with json structure BugTest272.JSON_Awkward
+{
+  create BugTest272.Probe {
+    Kind    = "$type",
+    Scope   = "research%3Aread",
+    Support = "Support Prediction"
+  }
+};
+
+-- The export twin, which is what cross-validates MinOccurs against the schema.
+create or modify export mapping BugTest272.EXM_Awkward
+  folder 'Mappings'
+  with json structure BugTest272.JSON_Awkward
+{
+  BugTest272.Probe {
+    "$type"              = Kind,
+    "research%3Aread"    = Scope,
+    "Support Prediction" = Support
+  }
+};
