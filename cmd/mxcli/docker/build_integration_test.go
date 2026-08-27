@@ -27,17 +27,13 @@ import (
 // buggy path (update-widgets + mx check) without paying for a full MxBuild. The
 // deferred restore still runs on the DryRun return.
 //
-// Requires a resolvable mx/MxBuild and a JDK 21 (provided by the CI integration
-// job); skips otherwise.
+// Requires a resolvable mx/MxBuild and a JDK for the version the scaffolded
+// project asks for (provided by the CI integration job); skips otherwise.
 func TestBuild_PreservesMPRv2StorageFormat(t *testing.T) {
 	mxPath, err := ResolveMx("")
 	if err != nil {
 		t.Skipf("mx not resolvable: %v", err)
 	}
-	if _, err := resolveJDK21(); err != nil {
-		t.Skipf("JDK 21 not resolvable: %v", err)
-	}
-
 	// Scaffold a fresh project. `mx create-project` (no template arg) writes App.mpr
 	// into the working directory and produces MPRv2 storage.
 	dir := t.TempDir()
@@ -49,6 +45,16 @@ func TestBuild_PreservesMPRv2StorageFormat(t *testing.T) {
 	mprPath := filepath.Join(dir, "App.mpr")
 	if _, err := os.Stat(mprPath); err != nil {
 		t.Skipf("mx create-project did not produce App.mpr: %v", err)
+	}
+
+	// The JDK requirement comes from the PROJECT, so it can only be checked once
+	// the project exists. Mendix 11.14's blank app asks for Java 25 while every
+	// version up to 11.13 asks for 21 — a skip guard that resolved a fixed 21
+	// would look for the wrong JDK on exactly the row that motivated making the
+	// version per-project.
+	major, _ := ProjectJavaMajor(mprPath)
+	if _, err := resolveJDK(major); err != nil {
+		t.Skipf("no JDK for Java %d, which this project asks for: %v", javaMajorOrDefault(major), err)
 	}
 
 	// Precondition: the fixture must be MPRv2, or the test proves nothing.

@@ -257,6 +257,7 @@ type MockBackend struct {
 
 	// SettingsBackend
 	GetProjectSettingsFunc    func() (*model.ProjectSettings, error)
+	AddNavigationProfileFunc  func(navDocID model.ID, name string) error
 	UpdateProjectSettingsFunc func(ps *model.ProjectSettings) error
 
 	// ImageBackend

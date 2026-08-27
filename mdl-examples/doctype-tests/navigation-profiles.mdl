@@ -1,0 +1,62 @@
+-- Creating a navigation profile (ako/mxcli-maintenance §7).
+--
+-- Mendix routes a phone to a Phone PROFILE on the User-Agent, not on viewport
+-- width, so device-specific pages need the profile to exist. Before this,
+-- CREATE OR REPLACE NAVIGATION could only ever REPLACE a stored profile:
+--
+--   Error: navigation profile not found: Phone (available: Responsive)
+--
+-- and nothing else in mxcli added one, which put a whole class of app out of
+-- reach. A profile is now created when the name is one of Mendix's fixed web
+-- kinds; an invented name is still an error, because a profile the platform
+-- does not define can never route.
+--
+-- The shape is pinned against Studio Pro 11.14 over PED, measured by adding a
+-- profile through Studio Pro's OWN model API and reading back what it filled
+-- in. That is the part worth stating: the reference project's Phone profile
+-- carries {Precaching: true, InstallPrompt: true}, but a profile Studio Pro has
+-- just created stores ProgressiveWebAppSettings as null. Copying the former
+-- would have turned precaching on for every profile mxcli creates.
+
+create or replace navigation Phone
+  home page MyFirstModule.Home_Web
+  menu (
+    menu item 'Home' page MyFirstModule.Home_Web;
+  );
+
+create or replace navigation Tablet
+  home page MyFirstModule.Home_Web
+  menu (
+    menu item 'Home' page MyFirstModule.Home_Web;
+  );
+
+-- Re-running is an update, not a duplicate: the second run reports 'updated'.
+create or replace navigation Phone
+  home page MyFirstModule.Home_Web
+  menu (
+    menu item 'Home' page MyFirstModule.Home_Web;
+  );
+
+-- Each device kind has an offline twin. An offline profile is not a different
+-- document -- measured over PED, a freshly created PhoneOffline stores exactly
+-- the same keys as a Phone and differs only in Kind and Name.
+--
+-- What changes is what Mendix then demands of the pages the profile can reach:
+-- an attribute may be bound across at most ONE association hop, and a longer
+-- path is CE6206. Creating the profile reports the documents in the project
+-- that already exceed that, because those pages were valid until this statement
+-- ran and the build failure would otherwise turn up with no visible connection
+-- to it.
+create or replace navigation TabletOffline
+  home page MyFirstModule.Home_Web
+  menu (
+    menu item 'Home' page MyFirstModule.Home_Web;
+  );
+
+create or replace navigation PhoneOffline
+  home page MyFirstModule.Home_Web
+  menu (
+    menu item 'Home' page MyFirstModule.Home_Web;
+  );
+
+show navigation;

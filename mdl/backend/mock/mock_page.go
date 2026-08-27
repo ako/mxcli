@@ -148,3 +148,11 @@ func (m *MockBackend) PageLayoutName(id model.ID) (string, error) {
 	}
 	return "", errors.New("MockBackend.PageLayoutName not configured")
 }
+
+// AddNavigationProfile stub.
+func (m *MockBackend) AddNavigationProfile(navDocID model.ID, name string) error {
+	if m.AddNavigationProfileFunc != nil {
+		return m.AddNavigationProfileFunc(navDocID, name)
+	}
+	return errors.New("MockBackend.AddNavigationProfile not configured")
+}

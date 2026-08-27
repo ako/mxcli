@@ -7,6 +7,7 @@ package mprbackend
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/mendixlabs/mxcli/mdl/backend"
 	"github.com/mendixlabs/mxcli/mdl/linter"
@@ -1126,4 +1127,14 @@ func (b *MprBackend) PageLayoutName(id model.ID) (string, error) {
 		return "", err
 	}
 	return backend.PageLayoutNameFromRaw(raw), nil
+}
+
+// AddNavigationProfile is modelsdk-only. Creating a profile means writing a
+// fourteen-key Navigation$NavigationProfile whose shape is pinned against a
+// Studio Pro reference (see the modelsdk implementation); the legacy writer has
+// no such path, and a profile assembled from a guess is exactly the failure that
+// builds clean and will not open in Studio Pro. Refuse rather than approximate.
+func (b *MprBackend) AddNavigationProfile(_ model.ID, name string) error {
+	return fmt.Errorf("creating navigation profile %q needs the modelsdk engine "+
+		"(run without MXCLI_ENGINE=legacy)", name)
 }

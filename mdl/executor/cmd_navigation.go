@@ -25,6 +25,8 @@ func execAlterNavigation(ctx *ExecContext, s *ast.AlterNavigationStmt) error {
 	}
 
 	// Verify the profile exists
+	createdProfile := false
+	createdKind := ""
 	profileFound := false
 	for _, p := range nav.Profiles {
 		if strings.EqualFold(p.Name, s.ProfileName) {
@@ -33,8 +35,30 @@ func execAlterNavigation(ctx *ExecContext, s *ast.AlterNavigationStmt) error {
 		}
 	}
 	if !profileFound {
-		return mdlerrors.NewNotFoundMsg("navigation profile", s.ProfileName,
-			fmt.Sprintf("navigation profile not found: %s (available: %s)", s.ProfileName, profileNames(nav)))
+		// CREATE OR REPLACE could only ever REPLACE: a profile that did not exist
+		// was an error, and nothing else in mxcli added one. That put a whole class
+		// of app out of reach, because Mendix routes a phone to a Phone PROFILE on
+		// User-Agent — not on viewport width — so a device-specific front end could
+		// not be built from MDL at all (ako/mxcli-maintenance §7).
+		//
+		// Mendix's web profiles are a closed set, so an unknown name is still an
+		// error: creating "Phone" is adding the profile the platform defines,
+		// while creating "Mobile" would be inventing one that can never route.
+		kind, ok := types.CanonicalProfileKind(s.ProfileName)
+		if !ok {
+			return mdlerrors.NewNotFoundMsg("navigation profile", s.ProfileName,
+				fmt.Sprintf("navigation profile not found: %s (available: %s; Mendix's web profiles are %s)",
+					s.ProfileName, profileNames(nav), strings.Join(types.WebProfileKindNames(), ", ")))
+		}
+		if err := ctx.Backend.AddNavigationProfile(nav.ID, kind); err != nil {
+			return mdlerrors.NewBackend("create navigation profile", err)
+		}
+		createdProfile, createdKind = true, kind
+		// Re-read: the spec below is applied against the stored document, and the
+		// profile it targets has only just come into existence.
+		if nav, err = ctx.Backend.GetNavigation(); err != nil {
+			return mdlerrors.NewBackend("reload navigation", err)
+		}
 	}
 
 	// Convert AST types to writer spec
@@ -68,7 +92,17 @@ func execAlterNavigation(ctx *ExecContext, s *ast.AlterNavigationStmt) error {
 		return mdlerrors.NewBackend("update navigation profile", err)
 	}
 
-	fmt.Fprintf(ctx.Output, "Navigation profile '%s' updated.\n", s.ProfileName)
+	// Say which of the two happened. A run that silently reports "updated" after
+	// CREATING a profile hides the fact that the project gained a routing target
+	// it did not have — and a phone profile changes which pages a phone lands on.
+	if createdProfile {
+		fmt.Fprintf(ctx.Output, "Navigation profile '%s' created.\n", s.ProfileName)
+		// An offline profile changes what the platform demands of pages this
+		// statement never mentioned. Say so now, not at the next build.
+		warnOfflineIncompatiblePages(ctx, createdKind)
+	} else {
+		fmt.Fprintf(ctx.Output, "Navigation profile '%s' updated.\n", s.ProfileName)
+	}
 	return nil
 }
 
