@@ -448,9 +448,11 @@ func execCreateImportMapping(ctx *ExecContext, s *ast.CreateImportMappingStmt) e
 	// occurrence bounds from it.
 	idx := newJSONSchemaIndex(nil)
 	if s.SchemaKind == "JSON_STRUCTURE" && s.SchemaRef.Module != "" {
-		if js, err2 := ctx.Backend.GetJsonStructureByQualifiedName(s.SchemaRef.Module, s.SchemaRef.Name); err2 == nil && js != nil {
-			idx = newJSONSchemaIndex(js.Elements)
+		resolved, err := resolveJsonStructureSource(ctx.Backend, s.SchemaRef)
+		if err != nil {
+			return mdlerrors.NewValidation(fmt.Sprintf("%s mapping %s: %v", "import", s.Name.String(), err))
 		}
+		idx = resolved
 	}
 
 	// Build element tree from the AST definition, cloning JSON structure properties
