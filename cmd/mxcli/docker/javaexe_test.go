@@ -45,7 +45,7 @@ func TestJdkSearchPathsFor_Windows(t *testing.T) {
 	t.Setenv("PROGRAMFILES", `C:\Program Files`)
 	t.Setenv("LOCALAPPDATA", `C:\Users\dev\AppData\Local`)
 
-	paths := jdkSearchPathsFor("windows")
+	paths := jdkSearchPathsFor("windows", 21)
 	if len(paths) == 0 {
 		t.Fatal("no JDK search paths for windows")
 	}
@@ -59,20 +59,20 @@ func TestJdkSearchPathsFor_Windows(t *testing.T) {
 	}
 	for _, p := range paths {
 		if !strings.Contains(p, "jdk-21") {
-			t.Errorf("every pattern should pin JDK 21, got %q", p)
+			t.Errorf("every pattern should pin the requested JDK, got %q", p)
 		}
 	}
 }
 
 func TestJdkSearchPathsFor_UnixHosts(t *testing.T) {
 	for _, goos := range []string{"linux", "darwin"} {
-		paths := jdkSearchPathsFor(goos)
+		paths := jdkSearchPathsFor(goos, 21)
 		if len(paths) == 0 {
 			t.Fatalf("no JDK search paths for %s", goos)
 		}
 		for _, p := range paths {
 			if !strings.Contains(p, "21") {
-				t.Errorf("%s: every pattern should pin JDK 21, got %q", goos, p)
+				t.Errorf("%s: every pattern should pin the requested JDK, got %q", goos, p)
 			}
 		}
 	}

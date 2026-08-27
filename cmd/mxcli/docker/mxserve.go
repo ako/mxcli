@@ -30,8 +30,12 @@ type ServeOptions struct {
 	MxBuildPath string
 	// Version is the Mendix version used to resolve mxbuild when MxBuildPath is empty.
 	Version string
-	// JavaHome is the JDK 21 home. When empty it is resolved via resolveJDK21().
+	// JavaHome is the JDK home. When empty it is resolved for JavaMajor.
 	JavaHome string
+	// JavaMajor is the Java release the PROJECT is built for (its Settings >
+	// Model > JavaVersion). Zero means DefaultJavaMajor. Mendix 11.14's blank app
+	// asks for 25; everything up to 11.13 asks for 21.
+	JavaMajor int
 	// Host to bind the serve HTTP API (default 127.0.0.1).
 	Host string
 	// Port for the serve HTTP API (default 6543).
@@ -121,7 +125,7 @@ func StartServe(opts ServeOptions) (*ServeServer, error) {
 
 	javaHome := opts.JavaHome
 	if javaHome == "" {
-		jh, err := resolveJDK21()
+		jh, err := resolveJDK(opts.JavaMajor)
 		if err != nil {
 			return nil, err
 		}
