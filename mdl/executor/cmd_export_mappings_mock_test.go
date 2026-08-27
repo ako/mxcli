@@ -8,6 +8,7 @@ import (
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	"github.com/mendixlabs/mxcli/mdl/backend/mock"
+	mdltypes "github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
 )
 
@@ -126,6 +127,12 @@ func TestCreateExportMapping_OrModify_PreservesID(t *testing.T) {
 		UpdateExportMappingFunc: func(em *model.ExportMapping) error {
 			updatedID = em.ID
 			return nil
+		},
+		// The mapping names a schema source, so the backend has to KNOW it:
+		// an unresolvable source is refused rather than written through (#259),
+		// and a mock with no structures reads as a project with none.
+		GetJsonStructureByQualifiedNameFunc: func(_, name string) (*mdltypes.JsonStructure, error) {
+			return &mdltypes.JsonStructure{Name: name}, nil
 		},
 	}
 
