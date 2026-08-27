@@ -47,7 +47,7 @@ var customHandlerParamSources = []string{"parent", "parameter", "parent(N)", "a/
 // object being resolved. An absolute path is not authorable — no demo mapping
 // needs one, and accepting a raw path would let a typo through unchecked (#259).
 func buildCustomHandler(def *ast.MappingCustomHandlerDef, moduleName, elementPath string,
-	b backend.FullBackend,
+	b backend.FullBackend, idx *jsonSchemaIndex,
 ) (*model.MappingMicroflowCall, error) {
 	if def == nil {
 		return nil, nil
@@ -83,7 +83,16 @@ func buildCustomHandler(def *ast.MappingCustomHandlerDef, moduleName, elementPat
 				return nil, fmt.Errorf("parameter %q: a member path needs the element to be bound "+
 					"to a schema first", p.Parameter)
 			}
+			// Resolve through the schema so a member reaches the path Mendix
+			// stores, markers included: `Value` under an array of primitives is
+			// stored as "(Wrapper)|(Value)", not "|Value". Concatenating the
+			// written text produced a path that resolves to nothing.
 			mp.ValuePath = elementPath + "|" + strings.ReplaceAll(p.Path, "/", "|")
+			if idx != nil {
+				if js, _ := idx.resolvePathKind(elementPath, p.Path, true); js != nil {
+					mp.ValuePath = js.Path
+				}
+			}
 		default:
 			return nil, fmt.Errorf("parameter %q: unknown source %q; expected one of: %s",
 				p.Parameter, p.Source, strings.Join(customHandlerParamSources, ", "))
@@ -130,7 +139,27 @@ func customHandlerParamText(p *model.MappingMicroflowParameter, elementPath stri
 		if elementPath != "" {
 			rel = strings.TrimPrefix(rel, elementPath+"|")
 		}
-		return name + ": " + strings.ReplaceAll(rel, "|", "/")
+		// The stored path carries Mendix's generated markers, and printing them
+		// raw emitted `Suggestion: (Value)` — MDL its own grammar rejects, and
+		// the last parse failure in the demo corpus after #260.
+		//
+		// "(Value)" is the primitive an array-of-primitives holds; its member
+		// name is the element's exposed name, "Value", which is what
+		// re-executing resolves against (#268). Intermediate "(Object)" /
+		// "(Wrapper)" markers are the item levels a path steps through, which
+		// MDL never writes.
+		var segs []string
+		for _, seg := range strings.Split(rel, "|") {
+			switch seg {
+			case "(Object)", "(Array)", "(Wrapper)":
+				continue
+			case "(Value)":
+				segs = append(segs, "Value")
+			default:
+				segs = append(segs, seg)
+			}
+		}
+		return name + ": " + strings.Join(segs, "/")
 	default:
 		return name + ": parent"
 	}

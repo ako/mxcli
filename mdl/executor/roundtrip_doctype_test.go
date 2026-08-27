@@ -69,7 +69,8 @@ var engineScriptSkip = map[string]string{
 	// wrapper. Nothing had ever called it, because nothing created a layout until
 	// now. The legacy backend refuses rather than writing a document with nowhere
 	// for the tree to go. Reads (SHOW/DESCRIBE LAYOUT) work on both engines.
-	"legacy/layouts.mdl": "layout authoring is modelsdk-only by design; the legacy backend refuses it",
+	"legacy/layouts.mdl":             "layout authoring is modelsdk-only by design; the legacy backend refuses it",
+	"legacy/navigation-profiles.mdl": "creating a navigation profile is modelsdk-only by design; the legacy backend refuses it",
 	// Enabling a language writes Settings$LanguageSettings.Languages, which the
 	// legacy serializer carries through from the stored document rather than
 	// writing — so the list cannot change on that engine. The backend refuses it

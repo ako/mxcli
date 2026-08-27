@@ -339,3 +339,13 @@ func navItemsPath(profileIndex int) string {
 func isJSONNull(raw json.RawMessage) bool {
 	return len(raw) == 0 || strings.TrimSpace(string(raw)) == "null"
 }
+
+// AddNavigationProfile is not available over MCP. The navigation document is
+// reachable through the generic PED document tools, but adding a profile means
+// appending to its Profiles array, and PED's add operations are constrained to
+// what its schemas expose — nothing was verified here, so the op is refused
+// rather than attempted (ADR-0005 guard-don't-drop).
+func (b *Backend) AddNavigationProfile(_ model.ID, name string) error {
+	return fmt.Errorf("creating navigation profile %q is not supported over MCP — "+
+		"run against a local .mpr, or add it in Studio Pro (Navigation > Add navigation profile)", name)
+}
