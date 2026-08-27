@@ -4,6 +4,7 @@ package executor
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
@@ -432,4 +433,73 @@ func requireDeclaredParameter(im *model.ImportMapping) error {
 		return nil
 	}
 	return walk(im.Elements)
+}
+
+// resolveJsonStructureSource loads the JSON structure a mapping names, and
+// REFUSES a name that does not resolve (#259).
+//
+// Writing the name through was bad twice over. mxbuild reports the dangling
+// reference as CE1613 "… no longer exists" — but only at build time, while
+// `mxcli check` and even `check --references` passed. And the failure was
+// SILENT in a second, worse way: the schema index is empty when the structure
+// cannot be loaded FOR ANY REASON, and `resolvable()` reads an empty index as
+// "there is nothing to validate against", so one typo in the structure name
+// turned off every member check in the mapping. A typo'd source and a member
+// that does not exist would both go through unremarked:
+//
+//	create import mapping M.IM with json structure M.NoSuchThing
+//	{ create M.Loc { LocId = nonsense } };          -- both wrong, both accepted
+//
+// A NAMED but unresolvable source is a different case from NO source, and only
+// the first is an error — which is why this refuses here rather than making
+// `resolvable()` stricter. Schema-less mappings (XML schema, message
+// definition, and the tests that create one with no source at all) must keep
+// working.
+//
+// The error names what would have worked, the shape #882 established for
+// members.
+func resolveJsonStructureSource(b backend.FullBackend, ref ast.QualifiedName) (*jsonSchemaIndex, error) {
+	js, err := b.GetJsonStructureByQualifiedName(ref.Module, ref.Name)
+	if err == nil && js != nil {
+		return newJSONSchemaIndex(js.Elements), nil
+	}
+	// The backend may be unable to list at all (a mock in a unit test); take the
+	// name at face value rather than refusing something that may well be right.
+	all, listErr := b.ListJsonStructures()
+	if listErr != nil {
+		return newJSONSchemaIndex(nil), nil
+	}
+	names := make([]string, 0, len(all))
+	for _, s := range all {
+		if s != nil {
+			names = append(names, s.Name)
+		}
+	}
+	sort.Strings(names)
+	if len(names) == 0 {
+		return nil, fmt.Errorf("json structure %q does not exist, and the project has none — "+
+			"create it first with `create json structure %s snippet '…'`", ref.String(), ref.String())
+	}
+	return nil, fmt.Errorf("json structure %q does not exist; available: %s",
+		ref.String(), strings.Join(names, ", "))
+}
+
+// exportNullValueOptions is Mendix's ExportMappings$NullValueOption enum.
+// mxcli wrote whatever identifier it was given — `null values Banana` reached
+// the stored document verbatim (#259).
+var exportNullValueOptions = map[string]string{
+	"leaveoutelement": "LeaveOutElement",
+	"sendasnil":       "SendAsNil",
+}
+
+// canonicalNullValueOption maps an authored spelling to the enum member,
+// refusing anything outside it.
+func canonicalNullValueOption(v string) (string, error) {
+	if v == "" {
+		return "", nil
+	}
+	if canon, ok := exportNullValueOptions[strings.ToLower(v)]; ok {
+		return canon, nil
+	}
+	return "", fmt.Errorf("`null values %s` is not a Mendix option; expected LeaveOutElement or SendAsNil", v)
 }

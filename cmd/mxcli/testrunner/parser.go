@@ -76,6 +76,12 @@ type TestSuite struct {
 	// is the same fail-closed treatment an uncompilable @expect gets: the run
 	// stays red and names the file, and the tests that parse still run.
 	FileErrors []FileError
+	// FilesRead counts the test files actually opened, which is NOT the number of
+	// paths on the command line: a directory is one path and contributes as many
+	// files as it holds test-named entries — or none. Reporting the path count
+	// made `mxcli test <dir>` say "0 test(s) in 1 file(s)" for a directory nothing
+	// had been read from (ako/mxcli-maintenance §5).
+	FilesRead int
 }
 
 // FileError is a test file that could not be parsed, and why.
@@ -136,6 +142,7 @@ func ParseTestDir(dir string) (*TestSuite, error) {
 		name := e.Name()
 		if isTestFile(name) {
 			path := filepath.Join(dir, name)
+			suite.FilesRead++
 			sub, err := ParseTestFile(path)
 			if err != nil {
 				suite.FileErrors = append(suite.FileErrors, FileError{Path: path, Err: err})

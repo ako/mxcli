@@ -289,11 +289,18 @@ func execCreateExportMapping(ctx *ExecContext, s *ast.CreateExportMappingStmt) e
 		}
 	}
 
+	// `null values` is an enum, not free text: mxcli wrote whatever identifier it
+	// was given straight into the document (#259).
+	nullValueOption, nvErr := canonicalNullValueOption(s.NullValueOption)
+	if nvErr != nil {
+		return mdlerrors.NewValidation(fmt.Sprintf("export mapping %s: %v", s.Name.String(), nvErr))
+	}
+
 	em := &model.ExportMapping{
 		ContainerID:     containerID,
 		Name:            s.Name.Name,
 		ExportLevel:     "Hidden",
-		NullValueOption: s.NullValueOption,
+		NullValueOption: nullValueOption,
 	}
 	if existing != nil {
 		// Excluded is model state, not script state (#914).
@@ -342,9 +349,11 @@ func execCreateExportMapping(ctx *ExecContext, s *ast.CreateExportMappingStmt) e
 	// Index the JSON structure for schema alignment.
 	idx := newJSONSchemaIndex(nil)
 	if s.SchemaKind == "JSON_STRUCTURE" && s.SchemaRef.Module != "" {
-		if js, err2 := ctx.Backend.GetJsonStructureByQualifiedName(s.SchemaRef.Module, s.SchemaRef.Name); err2 == nil && js != nil {
-			idx = newJSONSchemaIndex(js.Elements)
+		resolved, err := resolveJsonStructureSource(ctx.Backend, s.SchemaRef)
+		if err != nil {
+			return mdlerrors.NewValidation(fmt.Sprintf("%s mapping %s: %v", "export", s.Name.String(), err))
 		}
+		idx = resolved
 	}
 
 	// Build element tree from the AST definition, cloning JSON structure properties
