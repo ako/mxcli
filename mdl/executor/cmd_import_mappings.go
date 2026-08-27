@@ -321,6 +321,15 @@ func execCreateImportMapping(ctx *ExecContext, s *ast.CreateImportMappingStmt) e
 	if existing != nil {
 		// Excluded is model state, not script state (#914).
 		im.Excluded = existing.Excluded
+		// MessageDefinition2 is version-introduced (11.10+) and CARRIED, never
+		// invented: a document written before then does not have the key, and
+		// adding one is the overlay-rule mistake — mxbuild tolerates it, Studio
+		// Pro refuses to open the document. On a CREATE there is nothing to read
+		// it off, so the version gate below decides instead.
+		im.MessageDefinition2 = existing.MessageDefinition2
+	} else if pv := ctx.Backend.ProjectVersion(); pv != nil && pv.IsAtLeast(11, 10) {
+		empty := ""
+		im.MessageDefinition2 = &empty
 	}
 
 	// The mapping's input object (#265), which `Param: parameter` binds.

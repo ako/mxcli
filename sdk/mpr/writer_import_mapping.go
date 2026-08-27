@@ -93,6 +93,13 @@ func (w *Writer) serializeImportMapping(im *model.ImportMapping) ([]byte, error)
 		{Key: "ServiceName", Value: ""},
 		{Key: "WsdlFile", Value: ""},
 	}
+	// MessageDefinition2 is version-introduced (11.10+) and CARRIED, never
+	// invented: adding the key to a document written before then is the shape
+	// mxbuild tolerates and Studio Pro refuses to open. nil means absent, which
+	// is not the same as present-and-empty (ako/mxcli#279).
+	if im.MessageDefinition2 != nil {
+		doc = append(doc, bson.E{Key: "MessageDefinition2", Value: *im.MessageDefinition2})
+	}
 	return marshalUnitIDFirst(doc)
 }
 
