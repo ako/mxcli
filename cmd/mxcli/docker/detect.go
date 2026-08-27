@@ -449,3 +449,10 @@ func javaVersionString(javaHome string) string {
 	}
 	return "(unknown)"
 }
+
+// ResolveJDK reports the JAVA_HOME for a Java release, or an error naming what
+// was searched. Exported so callers outside this package can ask whether the
+// environment can build a given project before deciding what to do about it —
+// `mxcli new` uses it to leave a project's Java version alone when a matching
+// JDK exists.
+func ResolveJDK(major int) (string, error) { return resolveJDK(major) }
