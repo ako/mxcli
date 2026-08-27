@@ -690,7 +690,7 @@ func buildImportMappingElementModel(moduleName string, def *ast.ImportMappingEle
 		// settled JsonPath: a value-path parameter is relative to the element's
 		// final path, which for an array is the ITEM's.
 		if def.CustomHandler != nil {
-			ch, err := buildCustomHandler(def.CustomHandler, moduleName, elem.JsonPath, b)
+			ch, err := buildCustomHandler(def.CustomHandler, moduleName, elem.JsonPath, b, idx)
 			if err != nil {
 				return nil, err
 			}
@@ -756,7 +756,7 @@ func buildImportMappingElementModel(moduleName string, def *ast.ImportMappingEle
 			// MxGenAIConnector.IM_CohereEmbed_Response — and building it by hand
 			// means building this too (#264, #260 item 2).
 			if itemDef.CustomHandler != nil {
-				ch, err := buildCustomHandler(itemDef.CustomHandler, moduleName, itemPath, b)
+				ch, err := buildCustomHandler(itemDef.CustomHandler, moduleName, itemPath, b, idx)
 				if err != nil {
 					return nil, err
 				}
