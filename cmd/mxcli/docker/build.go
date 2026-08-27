@@ -84,9 +84,10 @@ func Build(opts BuildOptions) error {
 		}
 	}
 
-	// Step 3: Resolve JDK 21
-	fmt.Fprintln(w, "Resolving JDK 21...")
-	javaHome, err := resolveJDK21()
+	// Step 3: Resolve the JDK the PROJECT asks for
+	javaMajor, fromProject := ProjectJavaMajor(opts.ProjectPath)
+	fmt.Fprintf(w, "Resolving %s...\n", describeJavaRequirement(javaMajor, fromProject))
+	javaHome, err := resolveJDK(javaMajor)
 	if err != nil {
 		return err
 	}

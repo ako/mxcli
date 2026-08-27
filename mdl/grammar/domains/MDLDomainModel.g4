@@ -572,10 +572,28 @@ mappingCallParameter
     | identifierOrKeyword COLON jsonMemberPath
     ;
 
+/**
+ * An OBJECT element's member takes a PATH, not a single name (#260 item 1).
+ * Studio Pro routinely maps an object several levels down with nothing mapped in
+ * between — `= meta/pagination` — and #927 gave that to value elements only, so
+ * describing such a mapping produced output its own grammar rejected.
+ *
+ * The path may step through an array; the item level is generated, so the
+ * markers Mendix stores are never written here (`items/price`, not
+ * `items/(Object)/price`).
+ */
 importMappingChild
-    : importMappingObjectHandling qualifiedName SLASH qualifiedName mappingCustomHandler? mappingHandlingBackup? EQUALS identifierOrKeyword
+    : importMappingObjectHandling qualifiedName SLASH qualifiedName mappingCustomHandler? mappingHandlingBackup? EQUALS jsonMemberPath
       LBRACE importMappingChild (COMMA importMappingChild)* RBRACE       // nested object with children
-    | importMappingObjectHandling qualifiedName SLASH qualifiedName mappingCustomHandler? mappingHandlingBackup? EQUALS identifierOrKeyword  // leaf object
+    | importMappingObjectHandling qualifiedName SLASH qualifiedName mappingCustomHandler? mappingHandlingBackup? EQUALS jsonMemberPath  // leaf object
+    // An object element with an ENTITY and NO association — the same object
+    // reached again rather than an associated one, which is what a custom
+    // handler resolving the mapping's own entity produces. Studio Pro stores
+    // Entity set and Association empty; DESCRIBE used to emit `./Module.Entity`,
+    // which the grammar never accepted (#260 item 3).
+    | importMappingObjectHandling qualifiedName mappingCustomHandler? mappingHandlingBackup? EQUALS jsonMemberPath
+      LBRACE importMappingChild (COMMA importMappingChild)* RBRACE
+    | importMappingObjectHandling qualifiedName mappingCustomHandler? mappingHandlingBackup? EQUALS jsonMemberPath
     | identifierOrKeyword EQUALS qualifiedName LPAREN jsonMemberPath RPAREN  // value transform: Attr = Module.MF(jsonField)
     | identifierOrKeyword EQUALS jsonMemberPath KEY?                         // value: Attr = a/b/c [KEY]
     ;
@@ -629,20 +647,32 @@ exportMappingNullValuesClause
     ;
 
 exportMappingRootElement
-    : qualifiedName mappingCustomHandler?
+    // An entity-less ROOT: a JSON object with no Mendix object behind it, the
+    // root-level twin of `group as` (#262). It carries no member name, because a
+    // root has none. DESCRIBE emitted `.` here and it never parsed — the last
+    // describe-only spelling left after ako/mxcli#260.
+    : GROUP LBRACE exportMappingChild (COMMA exportMappingChild)* RBRACE
+    | qualifiedName mappingCustomHandler?
       LBRACE exportMappingChild (COMMA exportMappingChild)* RBRACE
     ;
 
 exportMappingChild
-    : qualifiedName SLASH qualifiedName mappingCustomHandler? AS identifierOrKeyword
+    : qualifiedName SLASH qualifiedName mappingCustomHandler? AS jsonMemberPath
       LBRACE exportMappingChild (COMMA exportMappingChild)* RBRACE       // nested object with children
-    | qualifiedName SLASH qualifiedName mappingCustomHandler? AS identifierOrKeyword  // leaf object
+    | qualifiedName SLASH qualifiedName mappingCustomHandler? AS jsonMemberPath  // leaf object
     // A JSON grouping node with no Mendix object behind it — Studio Pro's
     // entity-less object element (#262). It may contain OBJECT elements only:
     // a value needs an entity to bind its attribute to, and Mendix rejects one
     // here with CE0061 "No entity selected."
     | GROUP AS identifierOrKeyword
       LBRACE exportMappingChild (COMMA exportMappingChild)* RBRACE
+    // The export twin of the association-less object element (#260 item 3).
+    // MUST come after GROUP: `group` is a keyword that qualifiedName accepts, so
+    // this alternative placed earlier swallows `group as x` and stores an entity
+    // called "Module.group" (caught by TestExportGroupElement).
+    | qualifiedName mappingCustomHandler? AS jsonMemberPath
+      LBRACE exportMappingChild (COMMA exportMappingChild)* RBRACE
+    | qualifiedName mappingCustomHandler? AS jsonMemberPath
     | jsonMemberPath EQUALS qualifiedName LPAREN identifierOrKeyword RPAREN // value transform: a/b/c = Module.MF(Attr)
     | jsonMemberPath EQUALS identifierOrKeyword                           // value: a/b/c = Attr
     ;

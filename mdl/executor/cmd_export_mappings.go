@@ -201,12 +201,16 @@ func printExportMappingElement(w io.Writer, elem *model.ExportMappingElement, de
 	if elem.Kind == "Object" || elem.Kind == "Wrapper" || elem.Kind == "Array" {
 		by := customHandlerText(elem.CustomHandler, elem.JsonPath)
 		if isRoot {
-			// Root: Module.Entity { — use "." if entity is empty (parameter mapping)
-			entity := elem.Entity
-			if entity == "" {
-				entity = "."
+			// Root: Module.Entity {, or `group {` when the root has no entity —
+			// a JSON object with no Mendix object behind it. `.` was emitted
+			// here and never parsed (ako/mxcli#260's last describe-only
+			// spelling); CapitalConnector.EM_AttachedDataRequest is the real
+			// document with that shape.
+			if elem.Entity == "" {
+				fmt.Fprintf(w, "%sgroup {\n", indent)
+			} else {
+				fmt.Fprintf(w, "%s%s%s {\n", indent, elem.Entity, by)
 			}
-			fmt.Fprintf(w, "%s%s%s {\n", indent, entity, by)
 		} else {
 			// Nested object element. Several cases:
 			//   Assoc/Entity AS jsonKey  — normal association path
@@ -217,11 +221,14 @@ func printExportMappingElement(w io.Writer, elem *model.ExportMappingElement, de
 			if assoc == "" && entity == "" {
 				// A grouping node (#262). `.` was emitted here before and never
 				// parsed — one of the describe-only spellings of #260.
-				fmt.Fprintf(w, "%sgroup as %s", indent, mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName))
+				fmt.Fprintf(w, "%sgroup as %s", indent, quoteMemberPath(mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName)))
 			} else if assoc == "" {
-				fmt.Fprintf(w, "%s./%s as %s", indent, entity, mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName))
+				// An entity with no association; `./Entity` never parsed (#260
+				// item 3). The `by` clause belongs here too.
+				fmt.Fprintf(w, "%s%s%s as %s", indent, entity, by,
+					quoteMemberPath(mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName)))
 			} else {
-				fmt.Fprintf(w, "%s%s/%s%s as %s", indent, assoc, entity, by, mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName))
+				fmt.Fprintf(w, "%s%s/%s%s as %s", indent, assoc, entity, by, quoteMemberPath(mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName)))
 			}
 			if len(elem.Children) > 0 {
 				fmt.Fprintln(w, " {")
@@ -245,7 +252,7 @@ func printExportMappingElement(w io.Writer, elem *model.ExportMappingElement, de
 		if parts := strings.Split(attrName, "."); len(parts) == 3 {
 			attrName = parts[2]
 		}
-		member := mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName)
+		member := quoteMemberPath(mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName))
 		if elem.Converter != "" {
 			fmt.Fprintf(w, "%s%s = %s(%s)", indent, member, elem.Converter, attrName)
 			return
@@ -282,15 +289,31 @@ func execCreateExportMapping(ctx *ExecContext, s *ast.CreateExportMappingStmt) e
 		}
 	}
 
+	// `null values` is an enum, not free text: mxcli wrote whatever identifier it
+	// was given straight into the document (#259).
+	nullValueOption, nvErr := canonicalNullValueOption(s.NullValueOption)
+	if nvErr != nil {
+		return mdlerrors.NewValidation(fmt.Sprintf("export mapping %s: %v", s.Name.String(), nvErr))
+	}
+
 	em := &model.ExportMapping{
 		ContainerID:     containerID,
 		Name:            s.Name.Name,
 		ExportLevel:     "Hidden",
-		NullValueOption: s.NullValueOption,
+		NullValueOption: nullValueOption,
 	}
 	if existing != nil {
 		// Excluded is model state, not script state (#914).
 		em.Excluded = existing.Excluded
+		// MessageDefinition2 is version-introduced (11.10+) and CARRIED, never
+		// invented: a document written before then does not have the key, and
+		// adding one is the overlay-rule mistake — mxbuild tolerates it, Studio
+		// Pro refuses to open the document. On a CREATE there is nothing to read
+		// it off, so the version gate below decides instead.
+		em.MessageDefinition2 = existing.MessageDefinition2
+	} else if pv := ctx.Backend.ProjectVersion(); pv != nil && pv.IsAtLeast(11, 10) {
+		empty := ""
+		em.MessageDefinition2 = &empty
 	}
 	if em.NullValueOption == "" {
 		em.NullValueOption = "LeaveOutElement"
@@ -326,9 +349,11 @@ func execCreateExportMapping(ctx *ExecContext, s *ast.CreateExportMappingStmt) e
 	// Index the JSON structure for schema alignment.
 	idx := newJSONSchemaIndex(nil)
 	if s.SchemaKind == "JSON_STRUCTURE" && s.SchemaRef.Module != "" {
-		if js, err2 := ctx.Backend.GetJsonStructureByQualifiedName(s.SchemaRef.Module, s.SchemaRef.Name); err2 == nil && js != nil {
-			idx = newJSONSchemaIndex(js.Elements)
+		resolved, err := resolveJsonStructureSource(ctx.Backend, s.SchemaRef)
+		if err != nil {
+			return mdlerrors.NewValidation(fmt.Sprintf("%s mapping %s: %v", "export", s.Name.String(), err))
 		}
+		idx = resolved
 	}
 
 	// Build element tree from the AST definition, cloning JSON structure properties
@@ -443,6 +468,7 @@ func buildExportRootArrayElement(moduleName string, def *ast.ExportMappingElemen
 		ObjectHandling: "Find",
 		ExposedName:    root.ExposedName,
 		JsonPath:       root.Path,
+		MinOccurs:      root.MinOccurs,
 		MaxOccurs:      root.MaxOccurs,
 		Children:       []*model.ExportMappingElement{item},
 	}, nil
@@ -513,7 +539,12 @@ func buildExportMappingElementModel(moduleName string, def *ast.ExportMappingEle
 	if jsElem != nil {
 		elem.ExposedName = jsElem.ExposedName
 		elem.JsonPath = jsElem.Path
+		// Mirror the schema element, as the import twin does: Studio Pro's export
+		// elements carry the structure's own MinOccurs and MaxLength, and the
+		// writers used to hardcode both to 0 (#277, #279).
+		elem.MinOccurs = jsElem.MinOccurs
 		elem.MaxOccurs = jsElem.MaxOccurs
+		elem.MaxLength = jsElem.MaxLength
 		lookupPath = jsElem.Path
 	} else {
 		elem.ExposedName = def.JsonName
@@ -551,6 +582,27 @@ func buildExportMappingElementModel(moduleName string, def *ast.ExportMappingEle
 		return elem, nil
 	}
 
+	if isRoot && def.Entity == "" {
+		// An entity-less ROOT — `group {`. A JSON object with no Mendix object
+		// behind it, stored as an object element with ObjectHandling Parameter
+		// and no entity, which is what CapitalConnector.EM_AttachedDataRequest
+		// carries. Without this branch it fell through to the VALUE branch below
+		// and produced a document mxbuild cannot even load:
+		// "Type ExportValueMappingElement does not contain a constructor with a
+		// parameter of type ExportMapping."
+		elem.Kind = "Object"
+		elem.TypeName = "ExportMappings$ObjectMappingElement"
+		elem.ObjectHandling = "Parameter"
+		for _, child := range def.Children {
+			c, err := buildExportMappingElementModel(moduleName, child, parentEntity, lookupPath, idx, b, false)
+			if err != nil {
+				return nil, err
+			}
+			elem.Children = append(elem.Children, c)
+		}
+		return elem, nil
+	}
+
 	if def.Entity != "" {
 		// Object/Array mapping — bind to entity
 		elem.Kind = "Object"
@@ -569,6 +621,18 @@ func buildExportMappingElementModel(moduleName string, def *ast.ExportMappingEle
 		handling := "Parameter"
 		if !isRoot {
 			handling = "Find"
+			// An element with NO association has nothing to find THROUGH, and
+			// mxbuild says so: CE0224 "No association selected for obtaining
+			// objects." Studio Pro stores Parameter on exactly this shape —
+			// CapitalConnector.EM_AttachedDataRequest's child carries an entity,
+			// no association, and ObjectHandling Parameter, directly under an
+			// entity-less root. (A custom handler overrides this below: `by`
+			// makes it Custom, which is how the association-less elements in
+			// MxGenAIConnector.IM_Collection_RetrieveNearestNeighbors are
+			// stored.)
+			if assoc == "" {
+				handling = "Parameter"
+			}
 		}
 
 		// Check if this is an array element in the JSON structure
@@ -637,7 +701,7 @@ func buildExportMappingElementModel(moduleName string, def *ast.ExportMappingEle
 				itemElem.ExposedName = elem.ExposedName + "Item"
 			}
 			if itemDef.CustomHandler != nil {
-				ch, err := buildCustomHandler(itemDef.CustomHandler, moduleName, itemElem.JsonPath, b)
+				ch, err := buildCustomHandler(itemDef.CustomHandler, moduleName, itemElem.JsonPath, b, idx)
 				if err != nil {
 					return nil, err
 				}
@@ -669,7 +733,7 @@ func buildExportMappingElementModel(moduleName string, def *ast.ExportMappingEle
 			elem.Association = assoc
 			elem.ObjectHandling = handling
 			if def.CustomHandler != nil {
-				ch, err := buildCustomHandler(def.CustomHandler, moduleName, elem.JsonPath, b)
+				ch, err := buildCustomHandler(def.CustomHandler, moduleName, elem.JsonPath, b, idx)
 				if err != nil {
 					return nil, err
 				}

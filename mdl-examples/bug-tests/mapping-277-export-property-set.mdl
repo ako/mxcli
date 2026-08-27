@@ -1,0 +1,89 @@
+-- ============================================================================
+-- Bugs ako/mxcli#277 + #279: what a rebuilt mapping's property SET looks like
+-- ============================================================================
+--
+-- Neither is a value being lost. Both are keys whose presence or value differs
+-- from the document being replaced — and either one alone is enough to stop a
+-- mapping round-tripping, which kept it in #260's silent-loss set no matter
+-- what else was fixed.
+--
+-- #277 — the export writers hardcoded three properties the IMPORT twin already
+-- read off the element:
+--
+--     object root    MinOccurs 1        hardcoded 0
+--     value element  MaxLength 0 / -1   hardcoded 0
+--     value element  IsKey false        not written at all
+--
+--   MaxLength is the one that cannot be a constant: Studio Pro stores 0 for a
+--   STRING element and -1 for a NUMERIC one, mirroring the bound schema element
+--   exactly as MaxOccurs already did. Measured on
+--   FeedbackModule.EXM_PostFeedback (screenWidth/screenHeight are the two -1s)
+--   and MxGenAIConnector.EM_CohereEmbed_Request.
+--
+-- #279 — MessageDefinition2 was never written, so no 11.10+ document
+--   round-tripped. gen records it as Introduced 11.10.0 and generates NO
+--   accessor for it, so nothing read or wrote it.
+--
+--   It is CARRIED, not derived: nil means the stored document does not have the
+--   key, which is not the same as present-and-empty. Writing it onto a
+--   pre-11.10 document is the overlay-rule mistake — mxbuild tolerates an
+--   unknown property and Studio Pro refuses to open the document. The executor
+--   carries the stored value on an update and applies the version gate only on
+--   a CREATE, where there is nothing to read it off.
+--
+-- Not fixed, deliberately:
+--   MappingSourceReference is the same family, but its gate (10.16) predates
+--   every project in the field, and the codec emits it via a package-level
+--   TypeDefaults registration — making it conditional would touch every mapping
+--   write to preserve one pre-10.16 fixture. Writing the current shape is what
+--   Studio Pro does on save too.
+--
+-- Found while validating this, and NOT fixed here (it is ako/mxcli#272):
+--   mxcli's JSON STRUCTURE builder gives its root element MinOccurs 0, where
+--   all nine Studio Pro-authored structures in the fixture have 1. The export
+--   mapping below therefore still shows a root MinOccurs of 0 — faithfully
+--   mirroring the structure it is bound to, which is now the correct
+--   behaviour. Against a Studio Pro structure the mapping root gets 1.
+--
+-- Validation:
+--   mxbuild 11.13 reports 0 errors, and three pinned Studio Pro documents came
+--   off knownLossy: FeedbackModule.IMM_PostResponse, FeedbackModule.
+--   EXM_PostFeedback and MxGenAIConnector.EM_CohereEmbed_Request now
+--   round-trip byte-identically.
+-- ============================================================================
+
+create module BugTest277;
+
+create persistent entity BugTest277.Report (
+  Title:  String(100),
+  Width:  Integer,
+  Height: Integer
+);
+
+-- A string member and two numeric ones: the structure stores MaxLength 0 for
+-- the first and -1 for the others, and the export mapping must mirror each.
+create json structure BugTest277.JSON_Report
+  snippet $${"title": "t", "width": 1, "height": 2}$$;
+
+create or modify export mapping BugTest277.EXM_Report
+  folder 'Mappings'
+  with json structure BugTest277.JSON_Report
+{
+  BugTest277.Report {
+    title  = Title,
+    width  = Width,
+    height = Height
+  }
+};
+
+-- The import twin, which already had all three right — kept as the control.
+create or modify import mapping BugTest277.IMM_Report
+  folder 'Mappings'
+  with json structure BugTest277.JSON_Report
+{
+  create BugTest277.Report {
+    Title  = title,
+    Width  = width,
+    Height = height
+  }
+};

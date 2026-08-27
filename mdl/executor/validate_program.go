@@ -107,6 +107,13 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 	// authoring time on the AST.
 	violations = append(violations, ValidatePageLayoutGrid(prog)...)
 
+	// Warn (MDL-OFFLINE01) when a page binds an attribute across more than one
+	// association in a project that has an offline navigation profile. Mendix
+	// rejects those with CE6206 on any page an offline profile can reach, and
+	// the error appears far from the statement that caused it — adding the
+	// PROFILE is what invalidates pages written earlier.
+	violations = append(violations, ValidateOfflineAttributePaths(prog, projectPath)...)
+
 	// Flag control-bar buttons that pass $currentObject — a control bar is
 	// not row-scoped, so the argument is unbound (CE1571) at build time.
 	violations = append(violations, ValidatePageButtonContext(prog)...)

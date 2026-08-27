@@ -6,11 +6,13 @@ package visitor
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/antlr4-go/antlr/v4"
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	"github.com/mendixlabs/mxcli/mdl/grammar/parser"
+	"github.com/mendixlabs/mxcli/mdl/types"
 )
 
 // errorListener collects ANTLR syntax errors.
@@ -217,22 +219,8 @@ func enhanceErrorMessage(msg, offendingLine string) string {
 			"    'it's here'   (wrong — causes parse error)", msg)
 	}
 
-	// Common reserved keywords that users try to use as identifiers
-	reservedKeywords := map[string]bool{
-		"Title": true, "Status": true, "Type": true, "Value": true,
-		"Reference": true, "Label": true, "Caption": true, "Name": true,
-		"Message": true, "Error": true, "Source": true, "Target": true,
-		"Action": true, "Service": true, "Header": true, "Footer": true,
-		"Content": true, "Body": true, "Response": true, "Request": true,
-		"Result": true, "Data": true, "Info": true, "Warning": true,
-		"Success": true, "Default": true, "Template": true, "Version": true,
-		"Index": true, "Owner": true, "Method": true, "Path": true,
-		"Query": true, "Filter": true, "Sort": true, "Order": true,
-		"Count": true, "Sum": true, "Min": true, "Max": true, "Avg": true,
-	}
-
 	// Check for pattern: mismatched input 'Word' or extraneous input 'Word'
-	for keyword := range reservedKeywords {
+	for keyword := range hintedKeywordSet {
 		patterns := []string{
 			fmt.Sprintf("mismatched input '%s'", keyword),
 			fmt.Sprintf("extraneous input '%s'", keyword),
@@ -243,12 +231,7 @@ func enhanceErrorMessage(msg, offendingLine string) string {
 		}
 		for _, pattern := range patterns {
 			if strings.Contains(msg, pattern) {
-				return fmt.Sprintf("%s\n\n  '%s' is a reserved keyword in MDL. Use a different name like:\n"+
-					"    - %s_  (add underscore suffix)\n"+
-					"    - _%s  (add underscore prefix)\n"+
-					"    - My%s (add prefix)\n\n"+
-					"  Run 'mxcli syntax keywords' to see all reserved keywords.",
-					msg, keyword, keyword, keyword, keyword)
+				return fmt.Sprintf("%s\n\n%s", msg, reservedKeywordHint(keyword))
 			}
 		}
 	}
@@ -536,4 +519,62 @@ func (b *Builder) addError(err error) {
 // addErrorWithExample adds an error with example MDL syntax to help LLMs understand the expected format.
 func (b *Builder) addErrorWithExample(message, example string) {
 	b.errors = append(b.errors, fmt.Errorf("%s\n\nExpected syntax:\n%s", message, example))
+}
+
+// reservedKeywordHint explains how to use a name the MDL parser reserves.
+//
+// The distinction it draws is the whole point, and getting it wrong costs real
+// work either way. An MDL parser keyword is escaped by QUOTING — `write
+// ("Title")` parses and the attribute is still called Title — but a name the
+// Mendix PLATFORM reserves is not, because the check strips the quotes and
+// validates the bare name (CE7247 / MDL021).
+//
+// This used to offer three renames and never mention quoting, for every keyword.
+// Measured against the platform's own list, that was the wrong advice for 38 of
+// the 41 keywords here and right for three by accident — and it is expensive
+// advice, because renaming an attribute that already exists is a schema change
+// where quoting is free. It sent ako/mxcli-maintenance's Title attribute to
+// RequestTitle for nothing.
+func reservedKeywordHint(keyword string) string {
+	if types.IsPlatformReserved(keyword) {
+		return fmt.Sprintf(
+			"  '%s' is reserved by MENDIX itself, not just by MDL, so quoting it does not help —\n"+
+				"  the name is rejected with CE7247 even as \"%s\". Rename it:\n"+
+				"    - %sValue\n"+
+				"    - My%s\n\n"+
+				"  Run 'mxcli syntax keywords' to see all reserved keywords.",
+			keyword, keyword, keyword, keyword)
+	}
+	return fmt.Sprintf(
+		"  '%s' is a keyword in MDL. Quote it to use it as a name — the model keeps the\n"+
+			"  name exactly as written, so nothing has to be renamed:\n"+
+			"    \"%s\"\n\n"+
+			"  Run 'mxcli syntax keywords' to see all reserved keywords.",
+		keyword, keyword)
+}
+
+// hintedKeywordSet holds MDL parser keywords people reach for as identifiers. Being on this list says
+// nothing about whether the name is USABLE — see the hint below.
+var hintedKeywordSet = map[string]bool{
+	"Title": true, "Status": true, "Type": true, "Value": true,
+	"Reference": true, "Label": true, "Caption": true, "Name": true,
+	"Message": true, "Error": true, "Source": true, "Target": true,
+	"Action": true, "Service": true, "Header": true, "Footer": true,
+	"Content": true, "Body": true, "Response": true, "Request": true,
+	"Result": true, "Data": true, "Info": true, "Warning": true,
+	"Success": true, "Default": true, "Template": true, "Version": true,
+	"Index": true, "Owner": true, "Method": true, "Path": true,
+	"Query": true, "Filter": true, "Sort": true, "Order": true,
+	"Count": true, "Sum": true, "Min": true, "Max": true, "Avg": true,
+}
+
+// hintedKeywords lists the keywords the hint recognises, sorted so the test that
+// classifies them reports a stable set.
+func hintedKeywords() []string {
+	out := make([]string, 0, len(hintedKeywordSet))
+	for k := range hintedKeywordSet {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }

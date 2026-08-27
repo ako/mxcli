@@ -34,9 +34,10 @@ func SettleGeneratedSources(projectPath, mxPath, version string, w io.Writer) er
 	if mxbuildPath == "" {
 		return fmt.Errorf("mxbuild not found next to %s or in the cache for %s", mxPath, version)
 	}
-	javaHome, err := resolveJDK21()
+	javaMajor, _ := ProjectJavaMajor(projectPath)
+	javaHome, err := resolveJDK(javaMajor)
 	if err != nil {
-		return fmt.Errorf("no JDK 21 available: %w", err)
+		return fmt.Errorf("no JDK %d available: %w", javaMajor, err)
 	}
 
 	cmd := exec.Command(mxbuildPath,

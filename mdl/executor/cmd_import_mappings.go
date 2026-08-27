@@ -160,7 +160,11 @@ func handlingKeyword(handling string) string {
 
 func printImportMappingElement(w io.Writer, elem *model.ImportMappingElement, depth int, isRoot bool, parentPath string) {
 	indent := strings.Repeat("  ", depth)
-	if elem.Kind == "Object" {
+	// An Array or Wrapper is an OBJECT element, not a value. Branching on
+	// "Object" alone sent one into the value branch, which printed an empty
+	// right-hand side and DROPPED the whole subtree — #260 item 2, the same trap
+	// the export printer hit under #268.
+	if elem.Kind == "Object" || elem.Kind == "Wrapper" || elem.Kind == "Array" {
 		handling := handlingKeyword(elem.ObjectHandling)
 		by := customHandlerText(elem.CustomHandler, elem.JsonPath)
 		backup := handlingBackupText(elem)
@@ -179,11 +183,28 @@ func printImportMappingElement(w io.Writer, elem *model.ImportMappingElement, de
 			assoc := elem.Association
 			entity := elem.Entity
 			if assoc == "" && entity == "" {
-				fmt.Fprintf(w, "%s%s . = %s", indent, handling, mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName))
+				// An entity-less IMPORT container. `create . = x` was emitted
+				// here and never parsed (#260 item 3), so this said something
+				// false in valid-looking MDL.
+				//
+				// It is described as a comment rather than given syntax: there
+				// is no such element in any pinned Studio Pro document (0 of 12,
+				// import and export alike), and the 10 entity-less elements the
+				// census found are all EXPORT, which `group as` covers (#262).
+				// Inventing a spelling whose stored shape cannot be checked
+				// against a real document is how a mapping ends up valid to
+				// mxbuild and unopenable in Studio Pro.
+				fmt.Fprintf(w, "%s-- entity-less object element at %q: not authorable in MDL",
+					indent, elem.JsonPath)
 			} else if assoc == "" {
-				fmt.Fprintf(w, "%s%s ./%s = %s", indent, handling, entity, mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName))
+				// An entity with no association. `./Entity` never parsed; the
+				// bare entity does. The `by` and backup clauses belong here too —
+				// this element is Custom-handled in every real example, and
+				// dropping them rebuilt a plain Create (#260 item 3).
+				fmt.Fprintf(w, "%s%s %s%s%s = %s", indent, handling, entity, by, backup,
+					quoteMemberPath(mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName)))
 			} else {
-				fmt.Fprintf(w, "%s%s %s/%s%s%s = %s", indent, handling, assoc, entity, by, backup, mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName))
+				fmt.Fprintf(w, "%s%s %s/%s%s%s = %s", indent, handling, assoc, entity, by, backup, quoteMemberPath(mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName)))
 			}
 			if len(printableImportChildren(elem)) > 0 {
 				fmt.Fprintln(w, " {")
@@ -212,7 +233,7 @@ func printImportMappingElement(w io.Writer, elem *model.ImportMappingElement, de
 		if elem.IsKey {
 			keyStr = " key"
 		}
-		member := mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName)
+		member := quoteMemberPath(mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName))
 		// A converter is written as a call around the member it transforms —
 		// the stored element has one microflow and no separate parameter, so
 		// the member inside the call IS this element's binding (#266).
@@ -249,6 +270,47 @@ func printImportMappingElement(w io.Writer, elem *model.ImportMappingElement, de
 // "name" dropped the intermediate levels, so DESCRIBE reported a mapping the
 // project did not contain and its own output no longer re-executed —
 // `"name" is not a member of the JSON structure at (Object)`. (issue #927)
+// quoteMemberPath quotes any segment of a JSON member path that is not a plain
+// MDL identifier, so DESCRIBE emits something its own grammar accepts.
+//
+// Real payloads carry members MDL cannot spell bare — `$type` (43 occurrences in
+// the demo apps), `research%3Aread`, `https%3A//sws.siemens.com/sam/claims/…`.
+// DESCRIBE emitted them raw and the output failed at the first `$` or `%`
+// (#260 item 4). identifierOrKeyword already accepts QUOTED_IDENTIFIER, so the
+// grammar needed nothing — only the describer did.
+//
+// Each SEGMENT is quoted separately: `/` is the path separator, and a member
+// whose own name contains one is a single quoted segment the caller has already
+// kept whole.
+func quoteMemberPath(path string) string {
+	if path == "" {
+		return path
+	}
+	segs := strings.Split(path, "/")
+	for i, seg := range segs {
+		if !isPlainMemberIdent(seg) {
+			segs[i] = `"` + seg + `"`
+		}
+	}
+	return strings.Join(segs, "/")
+}
+
+// isPlainMemberIdent reports whether a segment can be written without quotes.
+func isPlainMemberIdent(seg string) bool {
+	if seg == "" {
+		return false
+	}
+	for i, r := range seg {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r == '_':
+		case i > 0 && r >= '0' && r <= '9':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 func mappingMemberName(parentPath, jsonPath, exposedName string) string {
 	if jsonPath == "" {
 		return exposedName
@@ -271,7 +333,22 @@ func mappingMemberName(parentPath, jsonPath, exposedName string) string {
 			if rel == "(Value)" {
 				return exposedName
 			}
-			return strings.ReplaceAll(rel, "|", "/")
+			// An INTERMEDIATE marker is an array the path steps through on its
+			// way down — "meta|items|(Object)|price". The item level is
+			// generated, never written, so the marker is dropped here and the
+			// resolver steps through the array to match (#260 item 1).
+			var segs []string
+			for _, seg := range strings.Split(rel, "|") {
+				switch seg {
+				case "(Object)", "(Array)", "(Wrapper)":
+					continue
+				}
+				segs = append(segs, seg)
+			}
+			if len(segs) == 0 {
+				return exposedName
+			}
+			return strings.Join(segs, "/")
 		}
 	}
 
@@ -321,6 +398,15 @@ func execCreateImportMapping(ctx *ExecContext, s *ast.CreateImportMappingStmt) e
 	if existing != nil {
 		// Excluded is model state, not script state (#914).
 		im.Excluded = existing.Excluded
+		// MessageDefinition2 is version-introduced (11.10+) and CARRIED, never
+		// invented: a document written before then does not have the key, and
+		// adding one is the overlay-rule mistake — mxbuild tolerates it, Studio
+		// Pro refuses to open the document. On a CREATE there is nothing to read
+		// it off, so the version gate below decides instead.
+		im.MessageDefinition2 = existing.MessageDefinition2
+	} else if pv := ctx.Backend.ProjectVersion(); pv != nil && pv.IsAtLeast(11, 10) {
+		empty := ""
+		im.MessageDefinition2 = &empty
 	}
 
 	// The mapping's input object (#265), which `Param: parameter` binds.
@@ -362,9 +448,11 @@ func execCreateImportMapping(ctx *ExecContext, s *ast.CreateImportMappingStmt) e
 	// occurrence bounds from it.
 	idx := newJSONSchemaIndex(nil)
 	if s.SchemaKind == "JSON_STRUCTURE" && s.SchemaRef.Module != "" {
-		if js, err2 := ctx.Backend.GetJsonStructureByQualifiedName(s.SchemaRef.Module, s.SchemaRef.Name); err2 == nil && js != nil {
-			idx = newJSONSchemaIndex(js.Elements)
+		resolved, err := resolveJsonStructureSource(ctx.Backend, s.SchemaRef)
+		if err != nil {
+			return mdlerrors.NewValidation(fmt.Sprintf("%s mapping %s: %v", "import", s.Name.String(), err))
 		}
+		idx = resolved
 	}
 
 	// Build element tree from the AST definition, cloning JSON structure properties
@@ -469,7 +557,9 @@ func buildImportMappingElementModel(moduleName string, def *ast.ImportMappingEle
 		jsElem = idx.byPath[lookupPath]
 	default:
 		var arrayLevel *types.JsonElement
-		jsElem, arrayLevel = idx.resolvePath(parentPath, def.JsonName)
+		// An OBJECT element may step through an array — one object per item —
+		// where a value may not (#260 item 1).
+		jsElem, arrayLevel = idx.resolvePathKind(parentPath, def.JsonName, def.Entity != "")
 		if arrayLevel != nil {
 			return nil, fmt.Errorf("%q passes through %q, which occurs 0..* — a value cannot be pulled "+
 				"through many items, and mxbuild rejects it with CE0256 (\"a schema element with wrong "+
@@ -565,8 +655,23 @@ func buildImportMappingElementModel(moduleName string, def *ast.ImportMappingEle
 		// value (#268). The element takes the child's ElementType too, so a
 		// primitive array is stored as a Wrapper element the way Studio Pro
 		// writes it (KrogerAPI.IM_ProductList).
+		//
+		// EXCEPT when the script names TWO entities, one per level — the shape
+		// Studio Pro stores when both the container and its item carry an entity
+		// and association:
+		//
+		//	et=Array  ent=MetadataCollection assoc=…  path=…|metadata
+		//	  et=Object ent=Metadata           assoc=…  path=…|metadata|(Object)
+		//
+		// The collapsed form cannot express that, so the two-level spelling is
+		// honoured as written, exactly as the export twin does (#262). The
+		// heuristic is the same: an array whose single child is an object
+		// element (#260 item 2).
+		twoLevelArray := jsElem != nil && jsElem.ElementType == "Array" &&
+			len(def.Children) == 1 && def.Children[0].Entity != ""
+
 		childPath := elem.JsonPath
-		if jsElem != nil && jsElem.ElementType == "Array" {
+		if jsElem != nil && jsElem.ElementType == "Array" && !twoLevelArray {
 			if jsItem := arrayItemOf(idx, jsElem); jsItem != nil {
 				elem.ExposedName = jsItem.ExposedName
 				elem.JsonPath = jsItem.Path
@@ -587,7 +692,7 @@ func buildImportMappingElementModel(moduleName string, def *ast.ImportMappingEle
 		// settled JsonPath: a value-path parameter is relative to the element's
 		// final path, which for an array is the ITEM's.
 		if def.CustomHandler != nil {
-			ch, err := buildCustomHandler(def.CustomHandler, moduleName, elem.JsonPath, b)
+			ch, err := buildCustomHandler(def.CustomHandler, moduleName, elem.JsonPath, b, idx)
 			if err != nil {
 				return nil, err
 			}
@@ -595,12 +700,91 @@ func buildImportMappingElementModel(moduleName string, def *ast.ImportMappingEle
 			elem.ObjectHandling = "Custom"
 		}
 
-		for _, child := range def.Children {
-			c, err := buildImportMappingElementModel(moduleName, child, entity, childPath, b, idx, false)
-			if err != nil {
+		if twoLevelArray {
+			// The container stays an Array — it is the level Studio Pro stores
+			// at the array's own path, with the item below it.
+			elem.Kind = "Array"
+			// The single child IS the array's item, so it is bound to the item
+			// path directly rather than resolved as a member: its declared
+			// member name is the marker Studio Pro stores ("(Object)"), which is
+			// not a member of anything. Its own children then resolve under the
+			// item, as they would in the collapsed form (#260 item 2).
+			itemPath := elem.JsonPath + "|(Object)"
+			itemName := ""
+			if jsItem := arrayItemOf(idx, jsElem); jsItem != nil {
+				itemPath = jsItem.Path
+				itemName = jsItem.ExposedName
+			}
+			// Built by hand, as the export twin does: the item's declared member
+			// name is the marker Studio Pro stores, so putting it through the
+			// generic builder would try to resolve "(Object)" — or whatever
+			// DESCRIBE printed for it — as a member and fail.
+			itemDef := def.Children[0]
+			itemEntity := itemDef.Entity
+			if !strings.Contains(itemEntity, ".") {
+				itemEntity = moduleName + "." + itemEntity
+			}
+			itemAssoc := itemDef.Association
+			if itemAssoc != "" && !strings.Contains(itemAssoc, ".") {
+				itemAssoc = moduleName + "." + itemAssoc
+			}
+			itemHandling := itemDef.ObjectHandling
+			if itemHandling == "" {
+				itemHandling = "Create"
+			}
+			item := &model.ImportMappingElement{
+				BaseElement: model.BaseElement{
+					ID:       model.ID(types.GenerateID()),
+					TypeName: "ImportMappings$ObjectMappingElement",
+				},
+				Kind:                 "Object",
+				Entity:               itemEntity,
+				Association:          itemAssoc,
+				ObjectHandling:       itemHandling,
+				ObjectHandlingBackup: itemDef.Backup,
+				BackupAllowOverride:  itemDef.BackupOverridable,
+				ExposedName:          itemName,
+				JsonPath:             itemPath,
+				MinOccurs:            0,
+				MaxOccurs:            1,
+				Nillable:             true,
+			}
+			if jsItem := arrayItemOf(idx, jsElem); jsItem != nil {
+				item.MinOccurs = jsItem.MinOccurs
+				item.MaxOccurs = jsItem.MaxOccurs
+				item.Nillable = jsItem.Nillable
+			}
+			// The item carries its own custom handler — both levels do in
+			// MxGenAIConnector.IM_CohereEmbed_Response — and building it by hand
+			// means building this too (#264, #260 item 2).
+			if itemDef.CustomHandler != nil {
+				ch, err := buildCustomHandler(itemDef.CustomHandler, moduleName, itemPath, b, idx)
+				if err != nil {
+					return nil, err
+				}
+				item.CustomHandler = ch
+				item.ObjectHandling = "Custom"
+			}
+			for _, gc := range itemDef.Children {
+				c, err := buildImportMappingElementModel(moduleName, gc, itemEntity, itemPath, b, idx, false)
+				if err != nil {
+					return nil, err
+				}
+				item.Children = append(item.Children, c)
+			}
+			// A value-path parameter needs its value element to exist (#264).
+			if err := addCustomHandlerValueElements(item, itemDef.CustomHandler, idx, itemPath); err != nil {
 				return nil, err
 			}
-			elem.Children = append(elem.Children, c)
+			elem.Children = append(elem.Children, item)
+		} else {
+			for _, child := range def.Children {
+				c, err := buildImportMappingElementModel(moduleName, child, entity, childPath, b, idx, false)
+				if err != nil {
+					return nil, err
+				}
+				elem.Children = append(elem.Children, c)
+			}
 		}
 		// A value-path parameter needs the value it keys on to exist as an
 		// element, or mxbuild reports CE0281 (#264). Added after the authored
@@ -718,6 +902,21 @@ func (i *jsonSchemaIndex) add(parentPath string, elems []*types.JsonElement) {
 // value element whose path crosses a 0..* element with CE0256, so many items
 // genuinely cannot collapse into one value.
 func (i *jsonSchemaIndex) resolvePath(parentPath, path string) (*types.JsonElement, *types.JsonElement) {
+	return i.resolvePathKind(parentPath, path, false)
+}
+
+// resolvePathKind resolves a member path, optionally stepping THROUGH an array.
+//
+// A VALUE may not: many items cannot collapse into one value, and mxbuild
+// rejects it with CE0256, so the array level is returned for the caller to
+// name. An OBJECT may: an object element below an array simply means one object
+// per item, which is what Studio Pro stores for
+// `create Assoc/Entity = items/price` — the element sits at
+// "…|items|(Object)|price" (#260 item 1).
+//
+// Stepping is via arrayItemOf, so an array of primitives ("(Wrapper)") behaves
+// the same as an array of objects.
+func (i *jsonSchemaIndex) resolvePathKind(parentPath, path string, throughArrays bool) (*types.JsonElement, *types.JsonElement) {
 	segments := strings.Split(path, "/")
 	current := parentPath
 	var elem *types.JsonElement
@@ -727,7 +926,13 @@ func (i *jsonSchemaIndex) resolvePath(parentPath, path string) (*types.JsonEleme
 			return nil, nil
 		}
 		if n < len(segments)-1 && elem.ElementType == "Array" {
-			return nil, elem // caller reports which level is the array
+			if !throughArrays {
+				return nil, elem // caller reports which level is the array
+			}
+			if item := arrayItemOf(i, elem); item != nil {
+				current = item.Path
+				continue
+			}
 		}
 		current = elem.Path
 	}

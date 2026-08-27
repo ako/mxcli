@@ -177,6 +177,7 @@ var mdlGeneratedKeywords = []protocol.CompletionItem{
 	{Label: "PLACEHOLDER", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
 	{Label: "SCROLLCONTAINER", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
 	{Label: "REGION", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
+	{Label: "MENUBAR", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
 	{Label: "NAVIGATIONTREE", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
 	{Label: "SNIPPETCALL", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
 	{Label: "LAYOUTGRID", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},

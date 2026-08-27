@@ -31,15 +31,16 @@ func (b *Backend) ListImportMappings() ([]*model.ImportMapping, error) {
 	for _, u := range units {
 		g := u.Element
 		im := &model.ImportMapping{
-			ContainerID:       model.ID(u.ContainerID),
-			Name:              g.Name(),
-			Documentation:     g.Documentation(),
-			Excluded:          g.Excluded(),
-			ExportLevel:       g.ExportLevel(),
-			JsonStructure:     g.JsonStructureQualifiedName(),
-			XmlSchema:         g.XmlSchemaQualifiedName(),
-			MessageDefinition: g.MessageDefinitionQualifiedName(),
-			ParameterEntity:   parameterEntityFromRaw(g.Raw()),
+			ContainerID:        model.ID(u.ContainerID),
+			Name:               g.Name(),
+			Documentation:      g.Documentation(),
+			Excluded:           g.Excluded(),
+			ExportLevel:        g.ExportLevel(),
+			JsonStructure:      g.JsonStructureQualifiedName(),
+			XmlSchema:          g.XmlSchemaQualifiedName(),
+			MessageDefinition:  g.MessageDefinitionQualifiedName(),
+			ParameterEntity:    parameterEntityFromRaw(g.Raw()),
+			MessageDefinition2: messageDefinition2FromRaw(g.Raw()),
 		}
 		im.ID = model.ID(g.ID())
 		im.TypeName = "ImportMappings$ImportMapping"
@@ -65,15 +66,16 @@ func (b *Backend) ListExportMappings() ([]*model.ExportMapping, error) {
 	for _, u := range units {
 		g := u.Element
 		em := &model.ExportMapping{
-			ContainerID:       model.ID(u.ContainerID),
-			Name:              g.Name(),
-			Documentation:     g.Documentation(),
-			Excluded:          g.Excluded(),
-			ExportLevel:       g.ExportLevel(),
-			JsonStructure:     g.JsonStructureQualifiedName(),
-			XmlSchema:         g.XmlSchemaQualifiedName(),
-			MessageDefinition: g.MessageDefinitionQualifiedName(),
-			NullValueOption:   g.NullValueOption(),
+			ContainerID:        model.ID(u.ContainerID),
+			Name:               g.Name(),
+			Documentation:      g.Documentation(),
+			Excluded:           g.Excluded(),
+			ExportLevel:        g.ExportLevel(),
+			JsonStructure:      g.JsonStructureQualifiedName(),
+			XmlSchema:          g.XmlSchemaQualifiedName(),
+			MessageDefinition:  g.MessageDefinitionQualifiedName(),
+			NullValueOption:    g.NullValueOption(),
+			MessageDefinition2: messageDefinition2FromRaw(g.Raw()),
 		}
 		em.ID = model.ID(g.ID())
 		em.TypeName = "ExportMappings$ExportMapping"
@@ -282,6 +284,7 @@ func exportMappingElementFromGen(el element.Element) *model.ExportMappingElement
 		e.ExposedName = o.ExposedName()
 		e.JsonPath = o.JsonPath()
 		e.XmlPath = o.XmlPath()
+		e.MinOccurs = int(o.MinOccurs())
 		e.MaxOccurs = int(o.MaxOccurs())
 		for _, c := range o.ChildrenItems() {
 			e.Children = append(e.Children, exportMappingElementFromGen(c))
@@ -293,6 +296,10 @@ func exportMappingElementFromGen(el element.Element) *model.ExportMappingElement
 		e.ExposedName = o.ExposedName()
 		e.JsonPath = o.JsonPath()
 		e.XmlPath = o.XmlPath()
+		e.MinOccurs = int(o.MinOccurs())
+		e.MaxOccurs = int(o.MaxOccurs())
+		e.MaxLength = int(o.MaxLength())
+		e.IsKey = o.IsKey()
 	}
 	return e
 }
@@ -392,4 +399,29 @@ func parameterEntityFromRaw(raw bson.Raw) string {
 	}
 	entity, _ := doc.Lookup("Entity").StringValueOK()
 	return entity
+}
+
+// messageDefinition2FromRaw reads the version-introduced MessageDefinition2 key.
+//
+// gen declares it in version.go (Introduced 11.10.0) but generates NO accessor
+// for it, so this goes to the stored document — the same route
+// parameterEntityFromRaw and customHandlerFromRaw take.
+//
+// nil means the key is ABSENT, which the writer must preserve: a document
+// written before 11.10 does not carry it, and adding one is the overlay-rule
+// mistake (Studio Pro then refuses to open it). Present-and-empty — which is
+// what a blank 11.13 app's own mappings store — returns a pointer to "".
+func messageDefinition2FromRaw(raw bson.Raw) *string {
+	if raw == nil {
+		return nil
+	}
+	v, err := raw.LookupErr("MessageDefinition2")
+	if err != nil {
+		return nil
+	}
+	s, ok := v.StringValueOK()
+	if !ok {
+		return nil
+	}
+	return &s
 }

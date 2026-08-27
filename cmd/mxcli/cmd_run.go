@@ -31,7 +31,8 @@ The serve build reports which is needed, so the right action is chosen
 automatically. With --watch, mxcli rebuilds and hot-applies on every change.
 
 Requirements:
-  - Mendix 11.x project (JDK 21; version-aware JDK selection is a follow-up)
+  - A JDK matching the project's Settings > Model > JavaVersion (21 up to Mendix
+    11.13, 25 from 11.14)
   - A reachable PostgreSQL (the devcontainer provides one); the database must
     already exist. Defaults: 127.0.0.1:5432, user 'mendix', db from the project
     name. Override with --db-host/--db-name/--db-user/--db-password.

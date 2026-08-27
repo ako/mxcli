@@ -49,17 +49,25 @@ func TestBuildJsonElementsFromSnippet_NoZeroMaxOccurs(t *testing.T) {
 	}
 }
 
-// TestBuildJsonElementsFromSnippet_RootOccursOnce pins the root to 0..1.
+// TestBuildJsonElementsFromSnippet_RootOccursOnce pins the root to 1..1.
 //
-// MaxOccurs=1 is the fix: the root previously carried MaxOccurs=0, which Mendix
-// reads as "never occurs".
+// MaxOccurs=1 was the first half: the root previously carried MaxOccurs=0, which
+// Mendix reads as "never occurs".
 //
-// MinOccurs deliberately stays 0. Mendix cross-validates a mapping element
-// against its schema element, and the mapping serializers hardcode MinOccurs=0
-// (only MaxOccurs is propagated). Writing 1 here makes every mapping bound to
-// the structure fail with CE5015 "Attribute 'MinOccurs' does not match schema
-// element '(Object)'" — caught by the integration suite, not by unit tests,
-// because it needs a mapping bound to the structure and a real mx check.
+// MinOccurs=1 is what Studio Pro writes — uniformly, across all nine Studio
+// Pro-authored structures in the round-trip fixture (ako/mxcli#272).
+//
+// It could not be 1 until recently, and the reason is worth keeping: Mendix
+// cross-validates a mapping element against its schema element, and the mapping
+// serializers used to hardcode MinOccurs=0, so writing 1 here failed every bound
+// mapping with CE5015 "Attribute 'MinOccurs' does not match schema element
+// '(Object)'". #277/#279 made every mapping element mirror the schema element
+// instead, so both sides now agree.
+//
+// The two must move together. If this is ever changed back, change the mapping
+// serializers with it — CE5015 is what disagreement looks like, and it is caught
+// by the integration suite rather than here, because it needs a mapping bound to
+// the structure and a real mx check.
 func TestBuildJsonElementsFromSnippet_RootOccursOnce(t *testing.T) {
 	for name, snippet := range map[string]string{
 		"object root": `{"a":1}`,
@@ -74,9 +82,10 @@ func TestBuildJsonElementsFromSnippet_RootOccursOnce(t *testing.T) {
 			if root.MaxOccurs != 1 {
 				t.Errorf("root MaxOccurs = %d, want 1 (0 means \"never occurs\")", root.MaxOccurs)
 			}
-			if root.MinOccurs != 0 {
-				t.Errorf("root MinOccurs = %d, want 0 — the mapping serializers hardcode 0, "+
-					"and a mismatch fails every bound mapping with CE5015", root.MinOccurs)
+			if root.MinOccurs != 1 {
+				t.Errorf("root MinOccurs = %d, want 1 — what Studio Pro writes; the mapping "+
+					"elements mirror it, and a mismatch fails every bound mapping with CE5015",
+					root.MinOccurs)
 			}
 		})
 	}

@@ -90,9 +90,11 @@ func findNodeBinary(toolsNode string) string {
 	return ""
 }
 
-// BuildWebClient bundles the deployment's browser client into web/dist. It is a
-// no-op-safe prerequisite for serving a rendered app; call it after each serve
-// Deploy build. Returns an error if the web dir, tooling, or rollup build fails.
+// BuildWebClient bundles the deployment's browser client into web/dist. Call it
+// after each serve Deploy build. It is a no-op when the build already produced a
+// bundle (Mendix 11.14+); otherwise it runs mxbuild's rollup runner. Returns an
+// error if the web dir, tooling, or rollup build fails, or if there is neither a
+// bundle nor a config to build one from.
 func BuildWebClient(opts WebClientOptions) error {
 	w := opts.Stdout
 	if w == nil {
@@ -100,7 +102,31 @@ func BuildWebClient(opts WebClientOptions) error {
 	}
 	webDir := filepath.Join(opts.DeployDir, "web")
 	if fi, err := os.Stat(filepath.Join(webDir, "rollup.config.mjs")); err != nil || fi.IsDir() {
-		return fmt.Errorf("no rollup.config.mjs in %s (run a serve Deploy build first)", webDir)
+		// Mendix 11.14 closed this gap upstream: its build writes web/dist/
+		// itself and no longer emits a rollup config, because there is nothing
+		// left to configure. Measured on a blank app, same build target:
+		//
+		//   11.13.0   rollup.config.mjs PRESENT   dist/index.js ABSENT
+		//   11.14.0   rollup.config.mjs ABSENT    dist/index.js PRESENT
+		//
+		// The old gate tested for the config, so on 11.14 it failed on the
+		// absence of a file whose purpose had been served — fatally, at both
+		// call sites, for EVERY 11.14 app (ako/mxcli-ledger #146).
+		//
+		// Gate on the gap instead of on the shape one version happened to leave
+		// behind: if the bundle is already there, this step has nothing to do.
+		// The config is still required when it is NOT there, because then the
+		// rollup run is the only thing that can produce it.
+		if WebClientBundled(opts.DeployDir) {
+			fmt.Fprintln(w, "  Web client already bundled by mxbuild; skipping rollup step")
+			return nil
+		}
+		return fmt.Errorf("no rollup.config.mjs and no bundle at %s\n"+
+			"  Mendix 11.13 and earlier emit a rollup config for mxcli to run; 11.14+ writes\n"+
+			"  the bundle itself. Neither is present, so the build did not produce a client:\n"+
+			"  run a serve Deploy build first (or delete deployment/ if it was built by an\n"+
+			"  older Mendix version).",
+			webClientBundlePath(opts.DeployDir))
 	}
 	nodeBin, runner, err := resolveNodeTooling(opts.MxBuildPath)
 	if err != nil {

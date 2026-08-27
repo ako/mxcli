@@ -45,6 +45,11 @@ func (r *Reader) parseExportMapping(unitID, containerID string, contents []byte)
 	if v, ok := raw["XmlSchema"].(string); ok {
 		em.XmlSchema = v
 	}
+	// MessageDefinition2 is version-introduced (11.10+) and carried, not derived:
+	// nil means the stored document does not have the key (ako/mxcli#279).
+	if v, ok := raw["MessageDefinition2"].(string); ok {
+		em.MessageDefinition2 = &v
+	}
 	if v, ok := raw["MessageDefinition"].(string); ok {
 		em.MessageDefinition = v
 	}

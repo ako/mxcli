@@ -752,7 +752,9 @@ alter workflow Module.OrderApproval
 | Show menu tree | `show navigation menu [Profile];` | Menu tree for profile or all |
 | Show home pages | `show navigation homes;` | Home page assignments across profiles |
 | Describe navigation | `describe navigation [Profile];` | Full MDL output (round-trippable) |
-| Create/replace navigation | `create or replace navigation Profile ...;` | Full replacement of profile |
+| Create/replace navigation | `create or replace navigation Profile ...;` | Full replacement — and **creates** the profile if the project does not have it |
+| Profile kinds | `Responsive` · `Phone` · `Tablet` · `ResponsiveOffline` · `PhoneOffline` · `TabletOffline` | A closed set. An invented name (`Mobile`) is an error, not a new profile: the runtime routes on User-Agent to Mendix's own kinds. Native profiles are a different document type and are not creatable |
+| Offline profiles | `create or replace navigation TabletOffline ...;` | Same properties as the online twin, but every page the profile can reach may bind an attribute across **at most one** association hop (**CE6206**). Creating one reports the documents that already exceed that |
 
 **Navigation Example:**
 ```sql

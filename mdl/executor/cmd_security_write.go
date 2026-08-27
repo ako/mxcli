@@ -325,6 +325,9 @@ func execGrantEntityAccess(ctx *ExecContext, s *ast.GrantEntityAccessStmt) error
 	if err != nil {
 		return err
 	}
+	if err := refuseSystemEntityGrant(module.Name, s.Entity.Name); err != nil {
+		return err
+	}
 
 	dm, err := ctx.Backend.GetDomainModel(module.ID)
 	if err != nil {
@@ -572,6 +575,9 @@ func execRevokeEntityAccess(ctx *ExecContext, s *ast.RevokeEntityAccessStmt) err
 
 	module, err := findModule(ctx, s.Entity.Module)
 	if err != nil {
+		return err
+	}
+	if err := refuseSystemEntityGrant(module.Name, s.Entity.Name); err != nil {
 		return err
 	}
 
@@ -1773,4 +1779,40 @@ func domainModelHasEntity(dm *domainmodel.DomainModel, id model.ID) bool {
 		}
 	}
 	return false
+}
+
+// refuseSystemEntityGrant rejects an access rule on a System entity, which no
+// project can store.
+//
+// The System module's domain model is not a unit in the .mpr — mxcli synthesises
+// it from a built-in table so that System.User and friends can be REFERENCED —
+// so the write reached storage, missed the unit and surfaced as a filesystem
+// error naming a UUID and a .mxunit path (ako/mxcli-maintenance §4):
+//
+//	load domain model 00000000-0000-0000-0000-000000000002:
+//	open .../mprcontents/00/00/…-002.mxunit: no such file or directory
+//
+// That reads like a corrupt project, and it is not: this is a permanent property
+// of every Mendix project. Refusing up front, by name, also spares the caller the
+// half-applied state a late failure leaves — the roles have already been
+// validated by then.
+//
+// The consequence is worth stating in the message rather than leaving someone to
+// rediscover it: a constraint that TRAVERSES System is equally unusable, so
+// filtering Administration.Account by [System.UserRoles/System.UserRole/Name]
+// returns nothing. Targeting the role instead of a named user is what the
+// maintenance app did.
+func refuseSystemEntityGrant(moduleName, entityName string) error {
+	if !strings.EqualFold(moduleName, systemModuleName) {
+		return nil
+	}
+	return mdlerrors.NewValidationf(
+		"cannot grant access on %s.%s: the System module's domain model is not stored in the "+
+			"project, so it has no access rules to add to — this is true of every Mendix project, "+
+			"not a problem with this one.\n"+
+			"  System entities are readable only through the rules Mendix itself defines (a user can "+
+			"read their own row), and an XPath constraint that traverses System is equally unusable.\n"+
+			"  For a per-person assignment, grant on Administration.Account, or target a user ROLE and "+
+			"record who acted when they act.",
+		moduleName, entityName)
 }

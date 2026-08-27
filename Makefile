@@ -303,10 +303,26 @@ lint-go: fmt vet
 fmt:
 	go fmt ./...
 
-# Vet Go code (filters out generated ANTLR parser warnings)
+# Vet Go code (filters out generated ANTLR parser warnings).
+#
+# Vetted once per build-tag set, and the `integration` pass is the one that earns
+# its keep. Files behind `//go:build integration` are invisible to a bare
+# `go vet ./...` AND to `make test`, so a rename can leave them uncompilable
+# while the entire fast gate stays green. That is what happened when
+# `resolveJDK21` became `resolveJDK(major)`: three PRs went red on a CI job that
+# spends half an hour reaching a compile error the type-checker finds in seconds,
+# and nothing anyone could run locally would have said so.
+#
+# Vet only type-checks here — it does not run a single integration test — so this
+# costs a few seconds and needs no mx, no JDK and no Docker.
 vet:
-	@CGO_ENABLED=0 go vet ./... 2>&1 | grep -v 'grammar/parser/' | grep -v 'mdl-grammar/parser/' || true
-	@! CGO_ENABLED=0 go vet ./... 2>&1 | grep -v 'grammar/parser/' | grep -v 'mdl-grammar/parser/' | grep -q 'vet:'
+	@for tags in "" "integration"; do \
+		out=$$(CGO_ENABLED=0 go vet -tags "$$tags" ./... 2>&1 | grep -v 'grammar/parser/' | grep -v 'mdl-grammar/parser/'); \
+		if [ -n "$$out" ]; then echo "$$out"; fi; \
+		if echo "$$out" | grep -q 'vet:'; then \
+			echo "go vet failed (build tags: $${tags:-none})"; exit 1; \
+		fi; \
+	done
 
 # Lint TypeScript code (VS Code extension)
 lint-ts:
