@@ -435,8 +435,12 @@ func ListTests(files []string, w io.Writer) error {
 		for _, v := range tc.Verify {
 			fmt.Fprintf(w, "    @verify %s\n", v.Raw)
 		}
-		if tc.Throws != "" {
-			fmt.Fprintf(w, "    @throws '%s'\n", tc.Throws)
+		if tc.expectsThrow() {
+			if tc.Throws == "" {
+				fmt.Fprintf(w, "    @throws\n")
+			} else {
+				fmt.Fprintf(w, "    @throws '%s'\n", tc.Throws)
+			}
 		}
 		for _, e := range tc.AssertionErrors {
 			fmt.Fprintf(w, "    ERROR: %s\n", e)

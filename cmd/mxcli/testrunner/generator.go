@@ -57,7 +57,7 @@ func writeTestBlock(b *strings.Builder, tc TestCase, index int) {
 	b.WriteString("  SET $TestFailed = false;\n")
 	writeSetupBlock(b, tc)
 
-	if tc.Throws != "" {
+	if tc.expectsThrow() {
 		writeThrowsTestBlock(b, tc, suffix)
 		return
 	}
@@ -86,7 +86,7 @@ func writeTestBlock(b *strings.Builder, tc TestCase, index int) {
 		for _, exp := range renamed {
 			writeExpectAssertion(b, tc.ID, exp)
 		}
-	} else if tc.Throws == "" {
+	} else if !tc.expectsThrow() {
 		// No expectations — just check it didn't throw
 		b.WriteString("  IF $TestFailed = false THEN\n")
 		b.WriteString(fmt.Sprintf("    LOG INFO NODE 'MXTEST' 'MXTEST:PASS:%s';\n", escapeMDLString(tc.ID)))
@@ -123,7 +123,7 @@ func writeThrowsTestBlock(b *strings.Builder, tc TestCase, suffix string) {
 	renamedMDL := renameVariables(tc.MDL, varNames, suffix)
 
 	lines := strings.Split(renamedMDL, "\n")
-	rewritten := rewriteForThrowsTest(lines, tc.ID, didThrowVar)
+	rewritten := rewriteForThrowsTest(lines, didThrowVar, tc.Throws)
 	for _, line := range rewritten {
 		b.WriteString("  ")
 		b.WriteString(line)
@@ -301,7 +301,12 @@ func rewriteWithErrorHandling(lines []string, testID string) []string {
 }
 
 // rewriteForThrowsTest wraps CALL MICROFLOW with ON ERROR that sets the throw flag.
-func rewriteForThrowsTest(lines []string, testID string, didThrowVar string) []string {
+//
+// The flag is set only when the raised message matches the annotation's, so this
+// runner reports a wrong expectation the same way the endpoint runner does — as
+// "expected an exception but none was thrown", which is the only outcome its log
+// protocol has for a throws test that did not get what it asked for.
+func rewriteForThrowsTest(lines []string, didThrowVar string, want string) []string {
 	var result []string
 
 	for i := 0; i < len(lines); i++ {
@@ -311,7 +316,7 @@ func rewriteForThrowsTest(lines []string, testID string, didThrowVar string) []s
 		if containsCallMicroflow(trimmed) && strings.HasSuffix(trimmed, ";") {
 			withoutSemicolon := strings.TrimSuffix(trimmed, ";")
 			result = append(result, withoutSemicolon+" ON ERROR {")
-			result = append(result, fmt.Sprintf("  SET %s = true;", didThrowVar))
+			result = append(result, throwsFlagHandler(didThrowVar, want)...)
 			result = append(result, "};")
 		} else if containsCallMicroflow(trimmed) && !strings.HasSuffix(trimmed, ";") {
 			var callLines []string
@@ -328,7 +333,7 @@ func rewriteForThrowsTest(lines []string, testID string, didThrowVar string) []s
 			joined = strings.TrimSpace(joined)
 			joined = strings.TrimSuffix(joined, ";")
 			result = append(result, joined+" ON ERROR {")
-			result = append(result, fmt.Sprintf("  SET %s = true;", didThrowVar))
+			result = append(result, throwsFlagHandler(didThrowVar, want)...)
 			result = append(result, "};")
 		} else {
 			result = append(result, line)
@@ -336,6 +341,20 @@ func rewriteForThrowsTest(lines []string, testID string, didThrowVar string) []s
 	}
 
 	return result
+}
+
+// throwsFlagHandler sets the did-throw flag, gated on the expected message when
+// the annotation carried one. See throwsHandler for why the match is a substring
+// and where $latestError comes from.
+func throwsFlagHandler(didThrowVar, want string) []string {
+	if want == "" {
+		return []string{fmt.Sprintf("  SET %s = true;", didThrowVar)}
+	}
+	return []string{
+		fmt.Sprintf("  IF contains(%s, '%s') THEN", latestErrorMessage, escapeMDLString(want)),
+		fmt.Sprintf("    SET %s = true;", didThrowVar),
+		"  END IF;",
+	}
 }
 
 // containsCallMicroflow checks if a line starts a CALL MICROFLOW statement.
