@@ -238,6 +238,20 @@ Examples:
 			fmt.Printf("\nStep 5/7: Skipped (--skip-init)\n")
 		}
 
+		// Align the project's Java version with what mxcli can build and run
+		// BEFORE the first build, or that build is the thing that fails: Mendix
+		// 11.14's create-project writes JavaVersion = 25 and mxcli launches the
+		// runtime on JDK 21 (ako/mxcli-maintenance #1). Best-effort, like the
+		// steps around it — but note this one decides whether step 6 can succeed
+		// at all, so a failure here is worth saying out loud.
+		if lowered, err := alignJavaVersion(mprPath, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "  Warning: could not align the project's Java version: %v\n", err)
+			fmt.Fprintln(os.Stderr, "  If the first build fails with 'release version NN not supported',")
+			fmt.Fprintln(os.Stderr, "  run: mxcli -p <project>.mpr -c \"alter settings MODEL JavaVersion = '21'\"")
+		} else if lowered {
+			fmt.Println()
+		}
+
 		// Step 5: Settle the sources MxBuild generates. The template ships the JS
 		// and Java action stubs in a slightly older shape and the first build
 		// rewrites all of them — 48 tracked files in a blank Mendix 11.12 app — so
