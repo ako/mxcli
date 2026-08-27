@@ -1,0 +1,53 @@
+-- ============================================================================
+-- The last two describe-only spellings, after ako/mxcli#260
+-- ============================================================================
+--
+-- #260 took DESCRIBE from 195 of 327 real mappings parsing to 317. This closes
+-- the remaining 10, which reduce to two causes across four distinct documents:
+--
+--   1. An entity-less export ROOT printed as `. {`. `group as` (#262) covers a
+--      nested grouping node, but a ROOT has no member name, so it needs its own
+--      spelling — `group {`. The real document is
+--      CapitalConnector.EM_AttachedDataRequest (OneHarness), whose root is
+--      et=Object ent='' assoc='' oh=Parameter.
+--
+--   2. A custom handler's value-path parameter printed Mendix's storage markers
+--      raw: `Suggestion: (Value)`. The stored path is
+--      "…|suggestions|(Wrapper)|(Value)" — an array of PRIMITIVES, where the
+--      value's member name is the element's exposed name, `Value` (#268).
+--      SnowflakeRESTSQL.IMM_CortexAnalystResponse is the real document.
+--
+-- Both halves matter for (2), and the second is the one that bites: printing
+-- `Value` is not enough if the builder then concatenates it back as
+-- "…|(Wrapper)|Value", which resolves to nothing. The parameter path is resolved
+-- THROUGH the schema index instead, the same way a member reference is — which
+-- is also how it steps through the array to reach the wrapper.
+--
+-- Result: 327 of 327 mappings in the demo corpus now describe into MDL that
+-- parses, up from 195 before #260.
+--
+-- Validation:
+--   mxbuild 11.13 reports 0 errors, and both mappings round-trip through
+--   describe -> exec reporting "Unchanged".
+-- ============================================================================
+
+create module BugTest260B;
+
+create persistent entity BugTest260B.Row  ( Key: String(50), Name: String(50) );
+create json structure BugTest260B.JSON_Attached
+  snippet $${"attributes": {"key": "k", "name": "n"}}$$;
+
+-- 1: an export mapping whose ROOT has no entity.
+create or modify export mapping BugTest260B.EXM_Attached
+  folder 'Mappings'
+  with json structure BugTest260B.JSON_Attached
+{
+  group {
+    -- The real document's child carries an entity and NO association, which is
+    -- the association-less form ako/mxcli#260 made grammatical.
+    BugTest260B.Row as attributes {
+      key  = Key,
+      name = Name
+    }
+  }
+};

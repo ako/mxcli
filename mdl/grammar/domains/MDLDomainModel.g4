@@ -647,7 +647,12 @@ exportMappingNullValuesClause
     ;
 
 exportMappingRootElement
-    : qualifiedName mappingCustomHandler?
+    // An entity-less ROOT: a JSON object with no Mendix object behind it, the
+    // root-level twin of `group as` (#262). It carries no member name, because a
+    // root has none. DESCRIBE emitted `.` here and it never parsed — the last
+    // describe-only spelling left after ako/mxcli#260.
+    : GROUP LBRACE exportMappingChild (COMMA exportMappingChild)* RBRACE
+    | qualifiedName mappingCustomHandler?
       LBRACE exportMappingChild (COMMA exportMappingChild)* RBRACE
     ;
 
