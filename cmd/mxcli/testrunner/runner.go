@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -153,7 +154,7 @@ func Run(opts RunOptions) (*SuiteResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parsing test files: %w", err)
 	}
-	fmt.Fprintf(w, "  Found %d test(s) in %d file(s)\n", len(suite.Tests), len(opts.TestFiles))
+	fmt.Fprintf(w, "  Found %d test(s) in %d file(s)\n", len(suite.Tests), suite.FilesRead)
 	for _, fe := range suite.FileErrors {
 		fmt.Fprintf(w, "  ERROR %s: %v\n", fe.Path, fe.Err)
 	}
@@ -164,7 +165,7 @@ func Run(opts RunOptions) (*SuiteResult, error) {
 		if len(suite.FileErrors) > 0 {
 			return nil, fmt.Errorf("no tests could be parsed: %d file(s) failed to parse", len(suite.FileErrors))
 		}
-		return nil, fmt.Errorf("no tests found in the provided files")
+		return nil, emptySuiteError(opts.TestFiles)
 	}
 
 	result, err := dispatchRun(opts, suite, timeout, w)
@@ -501,7 +502,9 @@ func parseTestFiles(paths []string) (*TestSuite, error) {
 			}
 			combined.Tests = append(combined.Tests, dirSuite.Tests...)
 			combined.FileErrors = append(combined.FileErrors, dirSuite.FileErrors...)
+			combined.FilesRead += dirSuite.FilesRead
 		} else {
+			combined.FilesRead++
 			fileSuite, err := ParseTestFile(path)
 			if err != nil {
 				// Isolated rather than fatal, for the same reason as in a
@@ -939,4 +942,57 @@ func runCompose(dockerDir string, args ...string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+// emptySuiteError says WHY a run found nothing.
+//
+// "no tests found in the provided files" is true and useless. Discovery matches
+// on the file NAME — a directory contributes only its .test.mdl and .test.md
+// files — so a directory holding workflow.mdl is reported as empty with no hint
+// that the name is the reason (ako/mxcli-maintenance §5). The same message also
+// appears after "Found 0 test(s) in 1 file(s)", where the 1 is the directory
+// itself, which reads as though a file had been read and found wanting.
+//
+// So name the skipped candidates. A .mdl file in a test directory is almost
+// always the intended test under the wrong name, and printing it turns a dead end
+// into a rename.
+func emptySuiteError(paths []string) error {
+	var skipped []string
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+		entries, err := os.ReadDir(path)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if e.IsDir() || isTestFile(e.Name()) {
+				continue
+			}
+			if l := strings.ToLower(e.Name()); strings.HasSuffix(l, ".mdl") || strings.HasSuffix(l, ".md") {
+				skipped = append(skipped, filepath.Join(path, e.Name()))
+			}
+		}
+	}
+	sort.Strings(skipped)
+
+	if len(skipped) == 0 {
+		return fmt.Errorf("no tests found: a test file is named *.test.mdl or *.test.md, " +
+			"and holds one or more `/** @test ... */` blocks")
+	}
+	const maxNamed = 5
+	named := skipped
+	if len(named) > maxNamed {
+		named = named[:maxNamed]
+	}
+	more := ""
+	if len(skipped) > len(named) {
+		more = fmt.Sprintf(" (and %d more)", len(skipped)-len(named))
+	}
+	return fmt.Errorf("no tests found: discovery matches on the file NAME, so these were not read%s:\n"+
+		"  %s\n"+
+		"Rename one to *.test.mdl (or *.test.md) to have it picked up",
+		more, strings.Join(named, "\n  "))
 }

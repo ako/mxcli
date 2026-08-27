@@ -110,6 +110,12 @@ Before writing any MDL, verify these requirements:
 > (e.g. `ResourceType`, `TypeValue`). "Always safe to quote" covers parser keywords, not
 > these.
 >
+> The parse error tells you which case you are in. `'Title' is a keyword in MDL.
+> Quote it to use it as a name` means quoting works and nothing has to be renamed;
+> `'Type' is reserved by MENDIX itself, not just by MDL` means it does not.
+> Measured across the keywords mxcli hints on: 38 are rescued by quoting, 3
+> (`Type`, `Default`, `Owner`) are not.
+>
 > **Exception — never quote `$`-prefixed variable/parameter references.** The quote
 > rule is for *bare* names (entities, attributes, associations, declared parameter
 > names). Variable and parameter **references** in expressions and widget bindings
