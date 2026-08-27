@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- **Java 25: mxcli builds and runs a project on the JDK the project asks for** — Mendix Studio Pro 11.14 supports Java 25 and its blank app is created with `JavaVersion = 25`, but mxcli resolved a JDK **21 unconditionally** and refused any other `JAVA_HOME`. An 11.14 project therefore could not be built (`error: release version 25 not supported`) and, if built elsewhere, could not boot (`UnsupportedClassVersionError … class file version 69.0` — compiled for 25, launched on 21). The JDK is now resolved from the project's own Settings > Model > JavaVersion, and the same release is used for the build and for the runtime.
+
+  Measured end to end on a real 11.14 project left exactly as `mx create-project` wrote it: mxbuild builds it on a JDK 25 with **no deprecation warning**, and the runtime boots — `Runtime started; app serving at http://127.0.0.1:8080/`, with the client bundle served. The no-regression control is stronger than the happy path: a Java 21 project booted with `JAVA_HOME` deliberately pointing at the JDK 25 ignores it and launches on the JDK 21, verified per process rather than from the model setting.
+
+  When the required JDK is missing the error now names the version, what was searched, and the second way out a bare "install a JDK" hides — that the requirement is a model setting the project can change. `mxcli run --help` no longer describes version-aware JDK selection as a follow-up.
+
 - **`mxcli check` no longer rejects Mendix's own apostrophe escape** (ako/mxcli-ledger #131) — an expression containing `''`, which is how the Mendix expression language escapes an apostrophe inside a string literal, was reported as `Unexpected token after expression … (possible missing space between keywords)`. Nothing was glued and no keyword was involved: exprcheck's lexer scanned to the next quote with no notion of an escape, so `'a''b'` lexed as two strings and the parser reported the second as a leftover token. Everything else in the toolchain already agreed the MDL was correct — `exec` writes it, `DESCRIBE` round-trips it byte-for-byte, `mx check` reports 0 errors, and CLAUDE.md documents the doubling rule.
 
   It reproduced **only with `-p`**, because exprcheck runs when a project is supplied. `make check-mdl` runs without one, so this repo's own MDL gate was blind to it — an `mdl-examples/` script alone would not have caught it, and the regression guard is a unit test on the lexer. Reported open across six consecutive builds.

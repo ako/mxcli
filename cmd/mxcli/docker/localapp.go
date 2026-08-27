@@ -61,9 +61,11 @@ type LocalAppOptions struct {
 // runtime needs has to appear here; one omitted is invisible until an app runs
 // with the wrong configuration.
 func (o LocalAppOptions) runtimeOptions(installPath string) LocalRuntimeOptions {
+	javaMajor, _ := ProjectJavaMajor(o.ProjectPath)
 	return LocalRuntimeOptions{
 		DeployDir:         o.DeployDir,
 		InstallPath:       installPath,
+		JavaMajor:         javaMajor,
 		AppPort:           o.AppPort,
 		AdminPort:         o.AdminPort,
 		AdminPass:         o.AdminPass,
@@ -190,7 +192,8 @@ func StartLocalApp(opts LocalAppOptions) (*LocalApp, error) {
 	// 4. Build, unless the caller is reusing an existing deployment.
 	if !opts.SkipBuild {
 		fmt.Fprintln(w, "Building project (mxbuild --serve)...")
-		serve, err := StartServe(ServeOptions{Version: version, Host: "127.0.0.1", Port: opts.ServePort})
+		serveJavaMajor, _ := ProjectJavaMajor(opts.ProjectPath)
+		serve, err := StartServe(ServeOptions{Version: version, JavaMajor: serveJavaMajor, Host: "127.0.0.1", Port: opts.ServePort})
 		if err != nil {
 			return nil, fmt.Errorf("starting mxbuild serve: %w", err)
 		}

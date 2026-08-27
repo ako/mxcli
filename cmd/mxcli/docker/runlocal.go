@@ -626,10 +626,12 @@ func RunLocal(opts LocalRunOptions) error {
 
 	// 5. Start the warm build server.
 	fmt.Fprintln(w, "Starting mxbuild --serve...")
+	javaMajor, _ := ProjectJavaMajor(opts.ProjectPath)
 	serve, err := StartServe(ServeOptions{
-		Version: version,
-		Host:    "127.0.0.1",
-		Port:    opts.ServePort,
+		Version:   version,
+		JavaMajor: javaMajor,
+		Host:      "127.0.0.1",
+		Port:      opts.ServePort,
 	})
 	if err != nil {
 		return fmt.Errorf("starting mxbuild serve: %w", err)
@@ -730,7 +732,9 @@ func RunLocal(opts LocalRunOptions) error {
 	rt, err := StartLocalRuntime(LocalRuntimeOptions{
 		DeployDir:   opts.DeployDir,
 		InstallPath: installPath,
-		// JavaHome left empty: StartLocalRuntime resolves JDK 21.
+		// JavaHome left empty: StartLocalRuntime resolves a JDK for JavaMajor,
+		// which must match what mxbuild compiled the project for.
+		JavaMajor:          javaMajor,
 		AppPort:            opts.AppPort,
 		AdminPort:          opts.AdminPort,
 		AdminPass:          opts.AdminPass,

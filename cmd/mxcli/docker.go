@@ -31,7 +31,8 @@ Subcommands:
 Requirements:
   - Mendix 11.6.1 or later
   - MxBuild (auto-downloaded from CDN if not found)
-  - JDK 21 (installed in devcontainers created by 'mxcli init')
+  - A JDK matching the project's JavaVersion (21 up to Mendix 11.13, 25 from
+    11.14; devcontainers created by 'mxcli init' ship 21)
   - Docker with Compose V2, or Podman 4.7+ with podman compose
 
 Podman Support:
@@ -110,7 +111,8 @@ var dockerBuildCmd = &cobra.Command{
 
 This command:
 1. Detects the Mendix project version (requires >= 11.6.1)
-2. Locates MxBuild and JDK 21 (auto-downloads MxBuild from CDN if not found)
+2. Locates MxBuild and a JDK matching the project's JavaVersion (auto-downloads
+   MxBuild from CDN if not found)
 3. Runs MxBuild with --target=portable-app-package
 4. Applies version-aware patches to fix known PAD issues
 

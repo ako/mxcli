@@ -51,6 +51,11 @@ type LocalRuntimeOptions struct {
 	InstallPath string
 	// JavaHome is the JDK home used to launch the runtime.
 	JavaHome string
+	// JavaMajor is the Java release the PROJECT is built for. The runtime must be
+	// launched on a JDK that can load what mxbuild compiled: a project built for
+	// 25 and launched on 21 fails with UnsupportedClassVersionError. Zero means
+	// DefaultJavaMajor.
+	JavaMajor int
 	// AdminPort is the M2EE admin API port (default 8090).
 	AdminPort int
 	// AppPort is the HTTP port the app serves on (default 8080).
@@ -405,9 +410,9 @@ func StartLocalRuntime(opts LocalRuntimeOptions) (*LocalRuntime, error) {
 		return nil, fmt.Errorf("InstallPath is required")
 	}
 	if opts.JavaHome == "" {
-		// Mendix 11 needs JDK 21. Version-aware selection (9/10) is a follow-up;
-		// the local loop targets 11.x for now.
-		jh, err := resolveJDK21()
+		// The JDK has to match what the project was COMPILED for, not a constant:
+		// class files from a newer release cannot be loaded by an older JVM.
+		jh, err := resolveJDK(opts.JavaMajor)
 		if err != nil {
 			return nil, err
 		}
