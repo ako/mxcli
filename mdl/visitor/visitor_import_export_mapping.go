@@ -101,17 +101,21 @@ func buildImportChild(ctx *parser.ImportMappingChildContext) *ast.ImportMappingE
 		elem.CustomHandler = buildMappingCustomHandler(ctx.MappingCustomHandler())
 		applyMappingHandlingBackup(elem, ctx.MappingHandlingBackup())
 
-		// Association path: qualifiedName SLASH qualifiedName
+		// Association path: qualifiedName SLASH qualifiedName, or a bare
+		// qualifiedName for an object element with an entity and NO association
+		// — the same object reached again (#260 item 3).
 		allQN := ctx.AllQualifiedName()
-		if len(allQN) >= 2 {
+		switch {
+		case len(allQN) >= 2:
 			elem.Association = buildQualifiedName(allQN[0]).String()
 			elem.Entity = buildQualifiedName(allQN[1]).String()
+		case len(allQN) == 1:
+			elem.Entity = buildQualifiedName(allQN[0]).String()
 		}
 
-		// JSON key after EQUALS
-		if id := ctx.IdentifierOrKeyword(); id != nil {
-			elem.JsonName = identifierOrKeywordText(id)
-		}
+		// JSON member after EQUALS — a PATH, not a single name: Studio Pro maps
+		// an object several levels down with nothing mapped in between (#260).
+		elem.JsonName = jsonMemberPathText(ctx.JsonMemberPath())
 
 		// Nested children
 		for _, childCtx := range ctx.AllImportMappingChild() {
@@ -234,17 +238,20 @@ func buildExportChild(ctx *parser.ExportMappingChildContext) *ast.ExportMappingE
 		return elem
 	}
 
-	if len(allQN) >= 2 {
-		// Object mapping: Assoc/Entity AS jsonKey
-		elem.Association = buildQualifiedName(allQN[0]).String()
-		elem.Entity = buildQualifiedName(allQN[1]).String()
+	if len(allQN) >= 1 && ctx.AS() != nil {
+		// Object mapping: Assoc/Entity AS jsonKey, or a bare Entity AS jsonKey
+		// for the association-less form (#260 item 3).
+		if len(allQN) >= 2 {
+			elem.Association = buildQualifiedName(allQN[0]).String()
+			elem.Entity = buildQualifiedName(allQN[1]).String()
+		} else {
+			elem.Entity = buildQualifiedName(allQN[0]).String()
+		}
 
 		elem.CustomHandler = buildMappingCustomHandler(ctx.MappingCustomHandler())
 
-		// JSON key after AS
-		if id := ctx.IdentifierOrKeyword(); id != nil {
-			elem.JsonName = identifierOrKeywordText(id.(*parser.IdentifierOrKeywordContext))
-		}
+		// JSON member after AS — a PATH, as on the import side (#260).
+		elem.JsonName = jsonMemberPathText(ctx.JsonMemberPath())
 
 		// Nested children
 		for _, childCtx := range ctx.AllExportMappingChild() {

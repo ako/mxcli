@@ -54,18 +54,25 @@ var knownLossy = map[string]string{
 	// object form would re-execute to a one-level mapping — silent loss where
 	// there is now a loud failure. Needs an import spelling for the two-level
 	// array, as #262 kept for export.
-	"MxGenAIConnector.IM_CohereEmbed_Response": "#260 two-level import array container (entity on the Array element)",
 	// #268's wrapper is fixed here; what blocks it now is an OBJECT element with
 	// a nested member path (`= meta/pagination`), which the grammar has never
 	// accepted — #260 item 1.
-	"KrogerAPI.IM_ProductList": "#260 object element with a nested member path",
 	// #268's wrapper and #261's backup are fixed here; the residue is the export
 	// writer's property set — #277 (IsKey), #279 (MinOccurs).
 	// #267 is fixed for this one — its `root chunks` clause round-trips — but it
 	// carries two shapes that have never parsed: an object element with an
 	// entity and NO association (DESCRIBE prints `./Entity`) and an entity-less
 	// import container (`= metadata`). Both are #260 describe-only spellings.
-	"MxGenAIConnector.IM_Collection_RetrieveNearestNeighbors": "#260 association-less and entity-less import object elements",
+	// #260's shapes are fixed here — the association-less object element and the
+	// two-level import array both round-trip now. What is left is ONE value
+	// element's data type: the document stores DataTypes$IntegerType for
+	// GenAICommons.KnowledgeBaseChunk.Similarity, and mxcli resolves the
+	// ATTRIBUTE, which is Decimal. Studio Pro appears to store the SCHEMA
+	// element's type, but this structure records no type for `similarity`, so
+	// the rule cannot be established from this document alone — and changing
+	// resolveAttributeType globally on one marketplace element would risk
+	// CE5015 ("attribute type does not match schema type") the other way.
+	"MxGenAIConnector.IM_Collection_RetrieveNearestNeighbors": "value element data type: stored Integer, attribute is Decimal",
 
 	// Not constructs: the property SET a rebuild writes (#279). #266's converter
 	// and #261's backup are fixed on both of these — what remains is

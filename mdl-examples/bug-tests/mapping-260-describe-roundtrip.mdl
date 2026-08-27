@@ -1,0 +1,98 @@
+-- ============================================================================
+-- Bug ako/mxcli#260: DESCRIBE emitted MDL its own grammar rejects
+-- ============================================================================
+--
+-- `describe {import,export} mapping` was run over all 327 mapping documents in
+-- the demo apps and each result fed back to `mxcli check`: 83 parsed and were
+-- faithful, 112 parsed but rebuilt a DIFFERENT mapping, 132 did not parse.
+--
+-- Four defects, all of them describe/grammar rather than storage:
+--
+--   1. An OBJECT element could not address a nested member path. Studio Pro maps
+--      an object several levels down with nothing mapped in between —
+--      `= meta/pagination` — and #927 gave that to VALUE elements only, so
+--      describing such a mapping produced `mismatched input '/'`.
+--
+--   2. An Array or Wrapper element printed as an EMPTY value binding and its
+--      whole subtree was dropped (` = metadata`), because the printer branched
+--      on `Kind == "Object"` alone. The export half was fixed under #268; the
+--      import half was not. It happens not to parse, which is the only reason
+--      it never silently destroyed a mapping.
+--
+--   3. Describe-only spellings the grammar never accepted: `create ./Entity = x`
+--      for an object element with an entity and NO association, and
+--      `create . = x` for an entity-less one.
+--
+--   4. JSON members MDL cannot spell bare — `$type` (43 occurrences in the demo
+--      apps), `research%3Aread`, `https%3A//sws.siemens.com/...`. DESCRIBE
+--      emitted them raw and the output failed at the first `$` or `%`.
+--
+-- Fixes:
+--   1+2 are syntax the grammar gained: an object element's member is now a
+--       jsonMemberPath, and a path may step THROUGH an array (one object per
+--       item) where a value may not (CE0256). The two-level import array —
+--       container and item each carrying their own entity and association — is
+--       honoured as written, exactly as #262 did for export.
+--   3   `./Entity` becomes the bare entity, which the grammar now accepts.
+--   4   needed no grammar at all: identifierOrKeyword already accepts a quoted
+--       identifier, so only the describer had to quote what is not a plain name.
+--       It is NOT exercised below, and cannot be: a member like `$type` cannot
+--       be put into a structure by mxcli at all — `create json structure` derives
+--       an ExposedName of `$type`, which Mendix rejects with CE9524 because it
+--       does not start with a letter or underscore. Studio Pro sanitises
+--       (`confidence(No)` becomes `Confidence_No_`); mxcli does not. That is a
+--       separate defect in the structure builder, recorded on ako/mxcli#272 —
+--       the describer fix here is what lets an EXISTING Studio Pro document
+--       carrying such a member be described into MDL that parses.
+--
+-- NOT given syntax, deliberately:
+--   The entity-less IMPORT container. There is no such element in any pinned
+--   Studio Pro document (0 of 12, both directions), and the 10 the census found
+--   are all EXPORT, which `group as` covers (#262). DESCRIBE emits a comment
+--   naming it rather than a spelling whose stored shape cannot be checked
+--   against a real document.
+--
+-- Validation:
+--   mxbuild 11.13 reports 0 errors, and two more pinned Studio Pro documents
+--   now round-trip byte-identically: KrogerAPI.IM_ProductList and
+--   MxGenAIConnector.IM_CohereEmbed_Response.
+-- ============================================================================
+
+create module BugTest260;
+
+create persistent entity BugTest260.Root  ( Name: String(100) );
+create persistent entity BugTest260.Page  ( Start: Integer, Total: Integer );
+create persistent entity BugTest260.Item  ( Code: String(50) );
+create persistent entity BugTest260.Price ( Amount: Integer );
+
+create association BugTest260.Page_Root  from BugTest260.Page  to BugTest260.Root type Reference;
+create association BugTest260.Item_Root  from BugTest260.Item  to BugTest260.Root type Reference;
+create association BugTest260.Price_Item from BugTest260.Price to BugTest260.Item type Reference;
+
+create json structure BugTest260.JSON_Payload
+  snippet $${
+    "name": "n",
+    "meta": {"pagination": {"start": 0, "total": 10}},
+    "data": [{"code": "c", "items": {"price": {"regular": 1}}}]
+  }$$;
+
+create or modify import mapping BugTest260.IMM_Payload
+  folder 'Mappings'
+  with json structure BugTest260.JSON_Payload
+{
+  create BugTest260.Root {
+    Name = name,
+    -- 1: an object element several levels down, nothing mapped in between.
+    create BugTest260.Page_Root/BugTest260.Page = meta/pagination {
+      Start = start,
+      Total = total
+    },
+    create BugTest260.Item_Root/BugTest260.Item = data {
+      Code = code,
+      -- 1 again, and the path steps THROUGH nothing here — `items` is an object.
+      create BugTest260.Price_Item/BugTest260.Price = items/price {
+        Amount = regular
+      }
+    }
+  }
+};
