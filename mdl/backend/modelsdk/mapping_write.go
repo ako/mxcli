@@ -122,6 +122,16 @@ func importMappingToGen(im *model.ImportMapping) element.Element {
 	addStr(g, "JsonStructure", im.JsonStructure)
 	addStr(g, "XmlSchema", im.XmlSchema)
 	addStr(g, "MessageDefinition", im.MessageDefinition)
+	// MessageDefinition2 is CARRIED, never invented: gen records it as Introduced
+	// 11.10.0, so a document written before then does not have it and adding one
+	// is the shape CLAUDE.md's overlay rule warns about (mxbuild tolerates an
+	// unknown property; Studio Pro refuses to open the document). The executor
+	// decides — it carries the stored document's value on an update and applies
+	// the version gate only on a create, where there is nothing to read the key
+	// off. nil means the key is absent, which is NOT the same as present-and-empty.
+	if im.MessageDefinition2 != nil {
+		addStr(g, "MessageDefinition2", *im.MessageDefinition2)
+	}
 
 	elems := make([]element.Element, 0, len(im.Elements))
 	for _, e := range im.Elements {
@@ -307,6 +317,16 @@ func exportMappingToGen(em *model.ExportMapping) element.Element {
 	addStr(g, "JsonStructure", em.JsonStructure)
 	addStr(g, "XmlSchema", em.XmlSchema)
 	addStr(g, "MessageDefinition", em.MessageDefinition)
+	// MessageDefinition2 is CARRIED, never invented: gen records it as Introduced
+	// 11.10.0, so a document written before then does not have it and adding one
+	// is the shape CLAUDE.md's overlay rule warns about (mxbuild tolerates an
+	// unknown property; Studio Pro refuses to open the document). The executor
+	// decides — it carries the stored document's value on an update and applies
+	// the version gate only on a create, where there is nothing to read the key
+	// off. nil means the key is absent, which is NOT the same as present-and-empty.
+	if em.MessageDefinition2 != nil {
+		addStr(g, "MessageDefinition2", *em.MessageDefinition2)
+	}
 	addStr(g, "NullValueOption", orDefault(em.NullValueOption, "LeaveOutElement"))
 
 	elems := make([]element.Element, 0, len(em.Elements))
@@ -368,7 +388,9 @@ func exportObjectElementToGen(id string, elem *model.ExportMappingElement, paren
 	}
 	addPartList(g, "Children", children)
 
-	addInt32(g, "MinOccurs", 0)
+	// A schema ROOT has MinOccurs 1; hardcoding 0 lost that on every export
+	// mapping (#279).
+	addInt32(g, "MinOccurs", int32(elem.MinOccurs))
 	addInt32(g, "MaxOccurs", int32(elem.MaxOccurs))
 	addBool(g, "Nillable", true)
 	addBool(g, "IsDefaultType", false)
@@ -389,7 +411,7 @@ func exportValueElementToGen(id string, elem *model.ExportMappingElement, parent
 	addStr(g, "JsonPath", jsonPath)
 	addStr(g, "XmlPath", elem.XmlPath)
 	addPart(g, "Type", mappingValueDataTypeToGen(elem.DataType))
-	addInt32(g, "MinOccurs", 0)
+	addInt32(g, "MinOccurs", int32(elem.MinOccurs))
 	// Mirror the bound schema element: Mendix cross-validates the two and
 	// reports CE5015 on any mismatch. Hardcoding 0 only worked while the JSON
 	// structure also wrote 0 for every element (#841).
@@ -405,7 +427,13 @@ func exportValueElementToGen(id string, elem *model.ExportMappingElement, parent
 	addStr(g, "Converter", elem.Converter)
 	addInt32(g, "FractionDigits", -1)
 	addInt32(g, "TotalDigits", -1)
-	addInt32(g, "MaxLength", 0)
+	// Mirrors the bound schema element, like MaxOccurs above: Studio Pro stores 0
+	// for a string element and -1 for a numeric one, so a hardcoded 0 was wrong
+	// for every non-string value (#277).
+	addInt32(g, "MaxLength", int32(elem.MaxLength))
+	// Studio Pro writes IsKey on export value elements too; omitting it was a
+	// divergence from the import twin rather than a decision (#277).
+	addBool(g, "IsKey", elem.IsKey)
 	addBool(g, "IsContent", false)
 	addBool(g, "IsXmlAttribute", false)
 	addStr(g, "OriginalValue", "")
