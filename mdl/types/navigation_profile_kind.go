@@ -8,15 +8,23 @@ import "strings"
 // take. Mendix's set is fixed and closed — a navigation profile is not a
 // user-named thing — which is why creating one takes a kind rather than a name.
 //
-// The Offline kinds (ResponsiveOffline, PhoneOffline, TabletOffline) and the
-// native profiles (Navigation$NativeNavigationProfile, a different $Type) are
-// deliberately absent: no reference document was available for either, and a
-// profile assembled from a guess is the failure mode that builds clean and then
-// will not open in Studio Pro.
+// Each device kind has an offline twin. An offline profile is NOT a different
+// document: measured on Studio Pro 11.14, a freshly added PhoneOffline stores
+// exactly the same keys as a Phone, differing only in Kind and Name. What
+// changes is what the platform then demands of every page the profile reaches —
+// see the CE6206 warning MDL-OFFLINE01 raises.
+//
+// The native profiles (Navigation$NativeNavigationProfile, a different $Type)
+// and the Hybrid kinds are deliberately absent: no reference document was
+// available for either, and a profile assembled from a guess is the failure mode
+// that builds clean and then will not open in Studio Pro.
 var webProfileKinds = map[string]string{
-	"responsive": "Responsive",
-	"phone":      "Phone",
-	"tablet":     "Tablet",
+	"responsive":        "Responsive",
+	"phone":             "Phone",
+	"tablet":            "Tablet",
+	"responsiveoffline": "ResponsiveOffline",
+	"phoneoffline":      "PhoneOffline",
+	"tabletoffline":     "TabletOffline",
 }
 
 // CanonicalProfileKind maps a user-written profile name to the Kind Mendix
@@ -31,6 +39,17 @@ func CanonicalProfileKind(name string) (string, bool) {
 	return k, ok
 }
 
-// WebProfileKindNames lists the creatable kinds for error messages, in the order
-// Studio Pro's own Add Navigation Profile dialog offers them.
-func WebProfileKindNames() []string { return []string{"Responsive", "Phone", "Tablet"} }
+// IsOfflineProfileKind reports whether a canonical kind is an offline profile.
+//
+// It is a suffix test rather than a second table because that is what Mendix's
+// own enum is: every offline kind is its online twin's name plus "Offline". A
+// list here would be a second place to forget a kind.
+func IsOfflineProfileKind(kind string) bool {
+	return strings.HasSuffix(kind, "Offline")
+}
+
+// WebProfileKindNames lists the creatable kinds for error messages, online kinds
+// first so the common case reads first.
+func WebProfileKindNames() []string {
+	return []string{"Responsive", "Phone", "Tablet", "ResponsiveOffline", "PhoneOffline", "TabletOffline"}
+}

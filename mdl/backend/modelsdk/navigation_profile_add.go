@@ -18,18 +18,27 @@ import (
 // device-specific front end — the whole reason Phone and Tablet profiles exist —
 // could not be built from MDL at all (ako/mxcli-maintenance §7).
 //
-// The shape is pinned against a Studio Pro 11.14 document carrying all three web
-// profiles, read over PED. Every one of them stores the SAME fourteen keys; only
-// three values differ, and the interesting one is not guessable:
+// The shape is pinned against Studio Pro 11.14 over PED, and the measurement that
+// matters was taken by adding a profile through Studio Pro's OWN model API and
+// reading back what it materialised, rather than by copying a profile the user
+// had already configured:
 //
-//	                            Responsive   Phone                        Tablet
-//	ProgressiveWebAppSettings   null         {Precaching, InstallPrompt}  null
-//	AppIcon                     Atlas icon   ""                           ""
-//	Name / Kind                 Responsive   Phone                        Tablet
+//	                            a profile Studio Pro has just created
+//	ProgressiveWebAppSettings   null
+//	OfflineEntityConfigs        []
+//	ThrowPartialSyncError       true
+//	AppIcon                     ""
 //
-// So a Phone profile is NOT a copy of the Responsive one with the name changed —
-// deriving it from its sibling, which is how this file was first going to be
-// written, would have produced a Phone profile with no PWA settings.
+// That distinction is the whole point. The reference project's Phone and
+// TabletOffline profiles both carry {Precaching: true, InstallPrompt: true} — but
+// the schema's default for Precaching is FALSE and ProgressiveWebAppSettings is
+// optional, so those values are the user's choices, not Studio Pro's. Copying
+// them would have shipped every Phone profile with precaching silently on.
+//
+// Every kind stores the same fourteen keys; only Kind and Name differ. An offline
+// profile is not a different document — what changes is what Mendix then demands
+// of the pages it reaches (CE6206), which is why creating one runs MDL-OFFLINE01
+// over the project instead of just writing the profile.
 func (b *Backend) AddNavigationProfile(navDocID model.ID, name string) error {
 	if b.writer == nil {
 		return fmt.Errorf("AddNavigationProfile: not connected for writing")
@@ -105,23 +114,10 @@ func newWebProfileBson(kind string) bson.D {
 		{Key: "Name", Value: kind},
 		{Key: "NotFoundHomepage", Value: nil},
 		{Key: "OfflineEntityConfigs", Value: bson.A{int32(3)}},
-		{Key: "ProgressiveWebAppSettings", Value: progressiveWebAppBson(kind)},
+		// Optional in the schema, and null on every profile Studio Pro has just
+		// created — including the offline kinds, which is the opposite of what the
+		// reference project suggested. Turning a PWA on is a user decision.
+		{Key: "ProgressiveWebAppSettings", Value: nil},
 		{Key: "ThrowPartialSyncError", Value: true},
-	}
-}
-
-// progressiveWebAppBson returns the PWA settings for a kind. Only Phone carries
-// them; Responsive and Tablet store null. Measured on the reference document —
-// this is the asymmetry that makes a profile something to build per kind rather
-// than copy from a sibling.
-func progressiveWebAppBson(kind string) any {
-	if kind != "Phone" {
-		return nil
-	}
-	return bson.D{
-		{Key: "$ID", Value: navID()},
-		{Key: "$Type", Value: "Navigation$ProgressiveWebAppSettings"},
-		{Key: "InstallPrompt", Value: true},
-		{Key: "Precaching", Value: true},
 	}
 }

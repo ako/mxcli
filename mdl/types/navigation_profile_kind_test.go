@@ -24,11 +24,18 @@ func TestCanonicalProfileKind(t *testing.T) {
 		{"Desktop", "", false},
 		{"", "", false},
 
-		// Offline and native kinds are real Mendix values but are deliberately
-		// not creatable here: no reference document was available for either, and
-		// a guessed profile builds clean and will not open in Studio Pro.
-		{"PhoneOffline", "", false},
-		{"TabletOffline", "", false},
+		// Each device kind has an offline twin. Measured over PED on Studio Pro
+		// 11.14: a freshly created PhoneOffline stores the same keys as a Phone,
+		// so it is the same builder rather than a guessed second shape.
+		{"PhoneOffline", "PhoneOffline", true},
+		{"tabletoffline", "TabletOffline", true},
+		{"ResponsiveOffline", "ResponsiveOffline", true},
+
+		// The Hybrid and Native kinds are real Mendix values but remain
+		// uncreatable: no reference document was available for either, and a
+		// guessed profile builds clean and will not open in Studio Pro.
+		{"HybridPhone", "", false},
+		{"NativePhone", "", false},
 	}
 	for _, tc := range tests {
 		got, ok := CanonicalProfileKind(tc.in)
@@ -53,5 +60,40 @@ func TestWebProfileKindNamesMatchTheTable(t *testing.T) {
 	if len(WebProfileKindNames()) != len(webProfileKinds) {
 		t.Errorf("WebProfileKindNames has %d entries, table has %d",
 			len(WebProfileKindNames()), len(webProfileKinds))
+	}
+}
+
+func TestIsOfflineProfileKind(t *testing.T) {
+	// Creating an offline profile is what makes CE6206 apply to every page it
+	// reaches, so the executor has to be able to tell the two apart. Mendix's own
+	// enum names each offline kind after its online twin, which is why this is a
+	// suffix test and not a second table to forget a kind in.
+	for _, tc := range []struct {
+		kind    string
+		offline bool
+	}{
+		{"Responsive", false},
+		{"Phone", false},
+		{"Tablet", false},
+		{"ResponsiveOffline", true},
+		{"PhoneOffline", true},
+		{"TabletOffline", true},
+	} {
+		if got := IsOfflineProfileKind(tc.kind); got != tc.offline {
+			t.Errorf("IsOfflineProfileKind(%q) = %v, want %v", tc.kind, got, tc.offline)
+		}
+	}
+}
+
+func TestEveryOnlineKindHasAnOfflineTwin(t *testing.T) {
+	// The pairing is Mendix's, not mxcli's: adding an online kind without its
+	// offline twin would silently make one of the six uncreatable.
+	for _, k := range WebProfileKindNames() {
+		if IsOfflineProfileKind(k) {
+			continue
+		}
+		if _, ok := CanonicalProfileKind(k + "Offline"); !ok {
+			t.Errorf("%s is creatable but %sOffline is not", k, k)
+		}
 	}
 }
