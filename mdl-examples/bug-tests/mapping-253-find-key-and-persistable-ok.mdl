@@ -1,0 +1,78 @@
+-- ako/mxcli#253 — the POSITIVE control for
+-- mapping-253-find-key-and-persistable.fail.mdl next door.
+--
+-- Same mappings, corrected: a persistable entity and one member marked `key`
+-- per searching element. Measured at 0 errors on mxbuild 11.13.0, for both
+-- `or error` and `or create`.
+--
+-- A negative fixture on its own proves only that the checker refuses
+-- something. This is what proves it refuses the right thing — without it, a
+-- rule that flagged every `find` would look equally green.
+
+create module KeyGap;
+
+create entity KeyGap.PetRecord (
+  PetId : integer,
+  Name  : string
+);
+/
+
+create entity KeyGap.Box ( Tag : string );
+/
+create association KeyGap.Box_Pet from KeyGap.Box to KeyGap.PetRecord;
+
+create json structure KeyGap.JSON_Pet snippet '{"id": 1, "name": "Fido"}';
+create json structure KeyGap.JSON_Nest
+  snippet '{"tag": "t", "pet": {"id": 1, "name": "Fido"}}';
+
+create import mapping KeyGap.IMM_FindPet
+  with json structure KeyGap.JSON_Pet
+{
+  find KeyGap.PetRecord or error {
+    PetId = id key,
+    Name  = name
+  }
+};
+
+create import mapping KeyGap.IMM_UpsertPet
+  with json structure KeyGap.JSON_Pet
+{
+  find or create KeyGap.PetRecord {
+    PetId = id key,
+    Name  = name
+  }
+};
+
+create import mapping KeyGap.IMM_Nest
+  with json structure KeyGap.JSON_Nest
+{
+  create KeyGap.Box {
+    Tag = tag,
+    find KeyGap.Box_Pet/KeyGap.PetRecord or error = pet {
+      PetId = id key,
+      Name  = name
+    }
+  }
+};
+
+-- A custom handler is exempt from both: the microflow IS the find, so there is
+-- no key to declare and no database query to run. 70 of the demo corpus's 88
+-- `find` elements are this shape, so a rule that missed the exemption would
+-- flag most real mappings.
+create non-persistent entity KeyGap.Holder ( PetId : integer );
+/
+create microflow KeyGap.GetSelf ()
+returns KeyGap.Holder as $Self
+begin
+  $Self = create KeyGap.Holder (PetId = 0);
+  return $Self;
+end;
+/
+
+create import mapping KeyGap.IMM_Self
+  with json structure KeyGap.JSON_Pet
+{
+  find KeyGap.Holder by KeyGap.GetSelf() or error {
+    PetId = id
+  }
+};
