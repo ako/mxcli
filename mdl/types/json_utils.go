@@ -31,11 +31,16 @@ const occursUnbounded = -1
 //	anymore. Details: Attribute 'MinOccurs' does not match schema element
 //	'(Object)'." at Object mapping element 'Root'
 //
-// MinOccurs=0 ("optional") is harmless — the #841 defect was MaxOccurs=0, which
-// Mendix reads as "never occurs". Making the root genuinely 1..1 would mean
-// propagating MinOccurs through both mapping serializers as well; that is a
-// larger change and wants a Studio Pro reference to confirm the target shape.
-const rootMinOccurs = 0
+// That blocker is gone: #277/#279 made every mapping element mirror the bound
+// schema element's MinOccurs instead of hardcoding 0, in all three serializers.
+// With both sides agreeing, the root can carry the 1 Studio Pro writes — uniform
+// across all nine Studio Pro-authored structures pinned in the round-trip
+// fixture, and the last of ako/mxcli#272's measured differences that has a
+// well-founded target.
+//
+// Do NOT change this back without changing the mapping serializers with it: the
+// two sides are cross-validated and CE5015 is what disagreement looks like.
+const rootMinOccurs = 1
 
 // iso8601Pattern matches common ISO 8601 datetime strings that Mendix Studio Pro
 // recognizes as DateTime primitive types in JSON structures.
@@ -195,11 +200,56 @@ func (b *snippetBuilder) resolveExposedName(jsonKey string) string {
 			return custom
 		}
 	}
-	name := capitalizeFirst(jsonKey)
+	key := sanitizeExposedName(jsonKey)
+	name := capitalizeFirst(key)
 	if reservedExposedNames[strings.ToLower(name)] {
-		return "_" + jsonKey
+		return "_" + key
 	}
 	return name
+}
+
+// sanitizeExposedName replaces every character Mendix will not accept in a
+// custom name with an underscore.
+//
+// Mendix rejects anything else outright:
+//
+//	CE9524 "JSON element '(Object)/$type' has an invalid custom name '$type'.
+//	        Custom name should start with a letter or underscore followed by
+//	        either letters, digits or underscores."
+//
+// and here — unlike the reserved-name case in ako/mxcli#300 — the message is
+// accurate. mxcli only capitalised, so an ordinary API member made the project
+// unbuildable: `$type` occurs 43 times in the demo apps, alongside
+// `research%3Aread` and `https%3A//sws.siemens.com/sam/claims/tenantId`.
+//
+// The rule is Studio Pro's, read off its own structures (Evora-FactoryManagement,
+// CRS_ModelSimulator):
+//
+//	confidence(No)                -> Confidence_No_
+//	Support Prediction            -> Support_Prediction
+//	first(Importance)_Payload (kg)-> First_Importance__Payload__kg_
+//	weights__base                 -> Weights__base
+//
+// A leading digit is prefixed rather than replaced: the name must START with a
+// letter or underscore, and turning "1st" into "_st" would lose a character
+// where "_1st" keeps it.
+func sanitizeExposedName(jsonKey string) string {
+	if jsonKey == "" {
+		return jsonKey
+	}
+	out := make([]rune, 0, len(jsonKey)+1)
+	for _, r := range jsonKey {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '_':
+			out = append(out, r)
+		default:
+			out = append(out, '_')
+		}
+	}
+	if out[0] >= '0' && out[0] <= '9' {
+		out = append([]rune{'_'}, out...)
+	}
+	return string(out)
 }
 
 // nameTracker tracks used ExposedNames at each level to handle duplicates.

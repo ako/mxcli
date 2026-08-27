@@ -77,3 +77,28 @@ func TestResolveExposedNameCustomWins(t *testing.T) {
 		t.Errorf("resolveExposedName(owner) = %q, want the custom name Owner", got)
 	}
 }
+
+// Mendix rejects any character outside [A-Za-z0-9_] in a custom name, and here
+// — unlike the reserved-name case — CE9524's message is accurate. mxcli only
+// capitalised, so an ordinary API member made the project unbuildable: `$type`
+// occurs 43 times in the demo apps (ako/mxcli#272).
+//
+// The expectations are Studio Pro's own, read off CRS_ModelSimulator's
+// structures in Evora-FactoryManagement.
+func TestResolveExposedNameSanitizesInvalidCharacters(t *testing.T) {
+	b := &snippetBuilder{}
+	for _, tc := range []struct{ key, want string }{
+		{"$type", "_type"},                           // the reported case
+		{"research%3Aread", "Research_3Aread"},       // percent-encoding
+		{"confidence(No)", "Confidence_No_"},         // Studio Pro sample
+		{"Support Prediction", "Support_Prediction"}, // Studio Pro sample
+		{"first(Importance)_Payload (kg)", "First_Importance__Payload__kg_"},
+		{"weights__base", "Weights__base"}, // already valid
+		{"1st", "_1st"},                    // a leading digit is prefixed, not replaced
+		{"plain", "Plain"},                 // control: untouched
+	} {
+		if got := b.resolveExposedName(tc.key); got != tc.want {
+			t.Errorf("resolveExposedName(%q) = %q, want %q", tc.key, got, tc.want)
+		}
+	}
+}
