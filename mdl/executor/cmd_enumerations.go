@@ -11,6 +11,7 @@ import (
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
 	"github.com/mendixlabs/mxcli/mdl/linter"
+	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
 )
 
@@ -367,30 +368,11 @@ func describeEnumeration(ctx *ExecContext, name ast.QualifiedName) error {
 	return mdlerrors.NewNotFound("enumeration", name.String())
 }
 
-// mendixReservedWords contains words that cannot be used as enumeration value names.
-// These are Java reserved words plus Mendix-specific reserved identifiers.
-// Using any of these triggers CE7247: "The name 'X' is a reserved word."
-var mendixReservedWords = map[string]bool{
-	// Java reserved words
-	"abstract": true, "assert": true, "boolean": true, "break": true,
-	"byte": true, "case": true, "catch": true, "char": true,
-	"class": true, "const": true, "continue": true, "default": true,
-	"do": true, "double": true, "else": true, "enum": true,
-	"extends": true, "false": true, "final": true, "finally": true,
-	"float": true, "for": true, "goto": true, "if": true,
-	"implements": true, "import": true, "instanceof": true, "int": true,
-	"interface": true, "long": true, "native": true, "new": true,
-	"null": true, "package": true, "private": true, "protected": true,
-	"public": true, "return": true, "short": true, "static": true,
-	"strictfp": true, "super": true, "switch": true, "synchronized": true,
-	"this": true, "throw": true, "throws": true, "transient": true,
-	"true": true, "try": true, "type": true, "void": true, "volatile": true,
-	"while": true,
-	// Mendix-specific reserved identifiers
-	"changedby": true, "changeddate": true, "con": true, "context": true,
-	"createddate": true, "currentuser": true, "guid": true,
-	"id": true, "mendixobject": true, "owner": true, "submetaobjectname": true,
-}
+// mendixReservedWords is the platform's reserved-word list, which lives in
+// mdl/types because the parse-error hinting in mdl/visitor needs it too: a
+// keyword MDL merely parses can be escaped by quoting, while one of these cannot,
+// and telling the two apart is the whole point of suggesting a fix. CE7247.
+var mendixReservedWords = types.PlatformReservedWords
 
 // ValidateEnumeration checks enumeration value names for reserved words.
 // Returns a list of structured violations with rule IDs (CE7247 equivalent).
@@ -433,14 +415,8 @@ func ValidateEnumeration(stmt *ast.CreateEnumerationStmt) []linter.Violation {
 }
 
 // mendixSystemAttributeNames are attribute names reserved by the Mendix runtime.
-// These are auto-managed system attributes on persistent entities and cannot be
-// used as user-defined attribute names.
-var mendixSystemAttributeNames = map[string]bool{
-	"createddate": true,
-	"changeddate": true,
-	"owner":       true,
-	"changedby":   true,
-}
+// See mdl/types for why the list lives there.
+var mendixSystemAttributeNames = types.SystemAttributeNames
 
 // autoMemberNames maps each AutoX pseudo-type to the fixed Mendix system member
 // name it materializes as. The declared identifier is discarded on write, so a
