@@ -48,6 +48,11 @@ func (r *Reader) parseImportMapping(unitID, containerID string, contents []byte)
 	if v, ok := raw["MessageDefinition"].(string); ok {
 		im.MessageDefinition = v
 	}
+	// MessageDefinition2 is version-introduced (11.10+) and carried, not derived:
+	// nil means the stored document does not have the key (ako/mxcli#279).
+	if v, ok := raw["MessageDefinition2"].(string); ok {
+		im.MessageDefinition2 = &v
+	}
 	// The mapping's input object (#265). Only DataTypes$ObjectType carries an
 	// entity — the DataTypes$UnknownType marker an unparameterised mapping
 	// stores means "none".

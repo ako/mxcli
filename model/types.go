@@ -1081,6 +1081,10 @@ type ImportMapping struct {
 	JsonStructure     string `json:"jsonStructure,omitempty"`     // qualified name
 	XmlSchema         string `json:"xmlSchema,omitempty"`         // qualified name
 	MessageDefinition string `json:"messageDefinition,omitempty"` // qualified name
+	// MessageDefinition2 is a version-introduced sibling (11.10+) that mxcli
+	// CARRIES rather than derives: nil means the stored document does not have
+	// the key, which is not the same as present-and-empty (ako/mxcli#279).
+	MessageDefinition2 *string `json:"messageDefinition2,omitempty"`
 	// ParameterEntity is the entity of the mapping's INPUT object, stored as
 	// ParameterType — a DataTypes$ObjectType naming it. Empty means the mapping
 	// takes none, which Mendix stores as the DataTypes$UnknownType marker rather
@@ -1254,6 +1258,10 @@ type ExportMapping struct {
 	JsonStructure     string `json:"jsonStructure,omitempty"`     // qualified name
 	XmlSchema         string `json:"xmlSchema,omitempty"`         // qualified name
 	MessageDefinition string `json:"messageDefinition,omitempty"` // qualified name
+	// MessageDefinition2 is a version-introduced sibling (11.10+) that mxcli
+	// CARRIES rather than derives: nil means the stored document does not have
+	// the key, which is not the same as present-and-empty (ako/mxcli#279).
+	MessageDefinition2 *string `json:"messageDefinition2,omitempty"`
 	// NullValueOption controls how null values are serialized: "LeaveOutElement" or "SendAsNil"
 	NullValueOption string                  `json:"nullValueOption,omitempty"`
 	Elements        []*ExportMappingElement `json:"elements,omitempty"`
@@ -1280,6 +1288,14 @@ type ExportMappingElement struct {
 	// MaxOccurs=0 literally as "never occurs", and cross-validates this against
 	// the bound JSON structure element (CE5015). Mirror the schema (#841).
 	MaxOccurs int `json:"maxOccurs,omitempty"`
+	// MinOccurs, MaxLength and IsKey mirror the BOUND SCHEMA ELEMENT, exactly as
+	// the import twin does. The export writers used to hardcode MinOccurs 0 and
+	// MaxLength 0 and omit IsKey, so no export mapping mxcli wrote matched its
+	// Studio Pro original: a schema root has MinOccurs 1, and MaxLength is 0 for
+	// a string element but -1 for a numeric one (ako/mxcli#277, #279).
+	MinOccurs int  `json:"minOccurs,omitempty"`
+	MaxLength int  `json:"maxLength,omitempty"`
+	IsKey     bool `json:"isKey,omitempty"`
 	// Value mapping fields
 	Attribute string `json:"attribute,omitempty"` // qualified attribute name (Module.Entity.Attr)
 	DataType  string `json:"dataType,omitempty"`  // "String", "Integer", "Boolean", etc.

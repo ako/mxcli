@@ -291,6 +291,15 @@ func execCreateExportMapping(ctx *ExecContext, s *ast.CreateExportMappingStmt) e
 	if existing != nil {
 		// Excluded is model state, not script state (#914).
 		em.Excluded = existing.Excluded
+		// MessageDefinition2 is version-introduced (11.10+) and CARRIED, never
+		// invented: a document written before then does not have the key, and
+		// adding one is the overlay-rule mistake — mxbuild tolerates it, Studio
+		// Pro refuses to open the document. On a CREATE there is nothing to read
+		// it off, so the version gate below decides instead.
+		em.MessageDefinition2 = existing.MessageDefinition2
+	} else if pv := ctx.Backend.ProjectVersion(); pv != nil && pv.IsAtLeast(11, 10) {
+		empty := ""
+		em.MessageDefinition2 = &empty
 	}
 	if em.NullValueOption == "" {
 		em.NullValueOption = "LeaveOutElement"
@@ -443,6 +452,7 @@ func buildExportRootArrayElement(moduleName string, def *ast.ExportMappingElemen
 		ObjectHandling: "Find",
 		ExposedName:    root.ExposedName,
 		JsonPath:       root.Path,
+		MinOccurs:      root.MinOccurs,
 		MaxOccurs:      root.MaxOccurs,
 		Children:       []*model.ExportMappingElement{item},
 	}, nil
@@ -513,7 +523,12 @@ func buildExportMappingElementModel(moduleName string, def *ast.ExportMappingEle
 	if jsElem != nil {
 		elem.ExposedName = jsElem.ExposedName
 		elem.JsonPath = jsElem.Path
+		// Mirror the schema element, as the import twin does: Studio Pro's export
+		// elements carry the structure's own MinOccurs and MaxLength, and the
+		// writers used to hardcode both to 0 (#277, #279).
+		elem.MinOccurs = jsElem.MinOccurs
 		elem.MaxOccurs = jsElem.MaxOccurs
+		elem.MaxLength = jsElem.MaxLength
 		lookupPath = jsElem.Path
 	} else {
 		elem.ExposedName = def.JsonName

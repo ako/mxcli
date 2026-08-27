@@ -61,7 +61,6 @@ var knownLossy = map[string]string{
 	"KrogerAPI.IM_ProductList": "#260 object element with a nested member path",
 	// #268's wrapper and #261's backup are fixed here; the residue is the export
 	// writer's property set — #277 (IsKey), #279 (MinOccurs).
-	"MxGenAIConnector.EM_CohereEmbed_Request": "#277 IsKey; #279 MinOccurs",
 	// #267 is fixed for this one — its `root chunks` clause round-trips — but it
 	// carries two shapes that have never parsed: an object element with an
 	// entity and NO association (DESCRIBE prints `./Entity`) and an entity-less
@@ -71,31 +70,19 @@ var knownLossy = map[string]string{
 	// Not constructs: the property SET a rebuild writes (#279). #266's converter
 	// and #261's backup are fixed on both of these — what remains is
 	// MessageDefinition2 being dropped, plus #277 on the export twin.
-	"FeedbackModule.IMM_PostResponse": "#279 rebuild drops MessageDefinition2",
-	"FeedbackModule.EXM_PostFeedback": "#279 MessageDefinition2/MinOccurs; #277 IsKey/MaxLength",
 	// The same family in the opposite direction: this document predates
 	// MappingSourceReference (the only one of the twelve without the key) and
 	// the rebuild writes the current shape, which is what Studio Pro does on
 	// save too. Kept so the version difference stays visible.
-	"MendixSSO.AppRolesResponse": "#279 rebuild adds MappingSourceReference, which 11 of 12 real mappings carry",
-}
-
-// knownLossyFrom gates an entry on the project's Mendix version: the loss only
-// happens at or above it, and below it the document round-trips faithfully, so
-// the staleness guard must not fire.
-//
-// This exists because a fixture mapping whose name the BASE project already
-// ships is tested using the base project's own copy (see loadMappingFixture),
-// and that copy changes with the Mendix version. FeedbackModule.IMM_PostResponse
-// loses exactly one property, MessageDefinition2, which gen records as
-// Introduced 11.10.0 — so on 10.24 and 11.6 there is nothing to drop and the
-// nightly failed with "now round-trips faithfully, remove it from knownLossy".
-//
-// Its export twin needs no gate: it also loses #277's IsKey/MaxLength and
-// #279's MinOccurs, which exist on every version, so it stays lossy throughout.
-// That asymmetry is why only one of the two failed.
-var knownLossyFrom = map[string][2]int{
-	"FeedbackModule.IMM_PostResponse": {11, 10},
+	// The last of the property-set family (#279), and deliberately left: this
+	// document predates MappingSourceReference (gen: Introduced 10.16.0) and is
+	// the only fixture without the key. The codec emits it as a BSON null for
+	// every mapping through a package-level TypeDefaults registration, so making
+	// it conditional would touch every mapping write to preserve one pre-10.16
+	// document — and writing the current shape is what Studio Pro does on save
+	// too. MessageDefinition2, whose gate (11.10) real projects actually span,
+	// IS carried.
+	"MendixSSO.AppRolesResponse": "#279 rebuild adds MappingSourceReference; the document predates it (10.16+)",
 }
 
 // The positive control is authored by mxcli itself rather than transplanted: a
@@ -208,12 +195,6 @@ func checkMappingRoundTrip(t *testing.T, env *testEnv, m fixtureMapping) {
 	t.Helper()
 	qn := m.qualifiedName()
 	reason, lossyExpected := knownLossy[qn]
-	if from, gated := knownLossyFrom[qn]; gated && lossyExpected &&
-		!env.executor.Backend().ProjectVersion().IsAtLeast(from[0], from[1]) {
-		t.Logf("%s: the loss (%s) only occurs on Mendix %d.%d+; asserting a faithful "+
-			"round trip on this project", qn, reason, from[0], from[1])
-		lossyExpected = false
-	}
 
 	unitID, before := storedUnit(t, env.projectPath, m.Type, m.Name)
 
@@ -325,8 +306,8 @@ func loadMappingFixture(t *testing.T, env *testEnv) (fixtureManifest, map[string
 			// Already in the base project — its copy is used rather than a
 			// duplicate name being created. Say so: that copy is NOT the pinned
 			// fixture, its content moves with the Mendix version, and a
-			// knownLossy expectation about it may only hold on some versions
-			// (see knownLossyFrom). Silence here cost a nightly to diagnose.
+			// knownLossy expectation about it may only hold on some Mendix
+			// versions. Silence here cost a nightly to diagnose.
 			if isMapping {
 				t.Logf("fixture %s: using the BASE PROJECT's copy, not %s — "+
 					"its content is version-dependent", m.qualifiedName(), m.File)
