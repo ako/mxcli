@@ -1,0 +1,36 @@
+-- Creating a navigation profile (ako/mxcli-maintenance §7).
+--
+-- Mendix routes a phone to a Phone PROFILE on the User-Agent, not on viewport
+-- width, so device-specific pages need the profile to exist. Before this,
+-- CREATE OR REPLACE NAVIGATION could only ever REPLACE a stored profile:
+--
+--   Error: navigation profile not found: Phone (available: Responsive)
+--
+-- and nothing else in mxcli added one, which put a whole class of app out of
+-- reach. A profile is now created when the name is one of Mendix's fixed web
+-- kinds; an invented name is still an error, because a profile the platform
+-- does not define can never route.
+--
+-- The shape is pinned against a Studio Pro document carrying all three web
+-- profiles: only Phone stores ProgressiveWebAppSettings.
+
+create or replace navigation Phone
+  home page MyFirstModule.Home_Web
+  menu (
+    menu item 'Home' page MyFirstModule.Home_Web;
+  );
+
+create or replace navigation Tablet
+  home page MyFirstModule.Home_Web
+  menu (
+    menu item 'Home' page MyFirstModule.Home_Web;
+  );
+
+-- Re-running is an update, not a duplicate: the second run reports 'updated'.
+create or replace navigation Phone
+  home page MyFirstModule.Home_Web
+  menu (
+    menu item 'Home' page MyFirstModule.Home_Web;
+  );
+
+show navigation;
