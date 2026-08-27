@@ -217,11 +217,14 @@ func printExportMappingElement(w io.Writer, elem *model.ExportMappingElement, de
 			if assoc == "" && entity == "" {
 				// A grouping node (#262). `.` was emitted here before and never
 				// parsed — one of the describe-only spellings of #260.
-				fmt.Fprintf(w, "%sgroup as %s", indent, mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName))
+				fmt.Fprintf(w, "%sgroup as %s", indent, quoteMemberPath(mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName)))
 			} else if assoc == "" {
-				fmt.Fprintf(w, "%s./%s as %s", indent, entity, mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName))
+				// An entity with no association; `./Entity` never parsed (#260
+				// item 3). The `by` clause belongs here too.
+				fmt.Fprintf(w, "%s%s%s as %s", indent, entity, by,
+					quoteMemberPath(mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName)))
 			} else {
-				fmt.Fprintf(w, "%s%s/%s%s as %s", indent, assoc, entity, by, mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName))
+				fmt.Fprintf(w, "%s%s/%s%s as %s", indent, assoc, entity, by, quoteMemberPath(mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName)))
 			}
 			if len(elem.Children) > 0 {
 				fmt.Fprintln(w, " {")
@@ -245,7 +248,7 @@ func printExportMappingElement(w io.Writer, elem *model.ExportMappingElement, de
 		if parts := strings.Split(attrName, "."); len(parts) == 3 {
 			attrName = parts[2]
 		}
-		member := mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName)
+		member := quoteMemberPath(mappingMemberName(parentPath, elem.JsonPath, elem.ExposedName))
 		if elem.Converter != "" {
 			fmt.Fprintf(w, "%s%s = %s(%s)", indent, member, elem.Converter, attrName)
 			return
