@@ -248,7 +248,8 @@ func serExportObjectElement(id string, elem *model.ExportMappingElement, parentP
 		{Key: "ObjectHandlingBackupAllowOverride", Value: false},
 		{Key: "Association", Value: elem.Association},
 		{Key: "Children", Value: children},
-		{Key: "MinOccurs", Value: int32(0)},
+		// A schema ROOT has MinOccurs 1; hardcoding 0 lost that (#279).
+		{Key: "MinOccurs", Value: int32(elem.MinOccurs)},
 		{Key: "MaxOccurs", Value: maxOccurs},
 		{Key: "Nillable", Value: true},
 		{Key: "IsDefaultType", Value: false},
@@ -273,7 +274,8 @@ func serExportValueElement(id string, elem *model.ExportMappingElement, parentPa
 		{Key: "JsonPath", Value: jsonPath},
 		{Key: "XmlPath", Value: elem.XmlPath},
 		{Key: "Type", Value: dataType},
-		{Key: "MinOccurs", Value: int32(0)},
+		// A schema ROOT has MinOccurs 1; hardcoding 0 lost that (#279).
+		{Key: "MinOccurs", Value: int32(elem.MinOccurs)},
 		// Mirror the bound schema element: Mendix cross-validates the two and
 		// reports CE5015 on any mismatch. Hardcoding 0 only worked while the
 		// JSON structure also wrote 0 for every element (#841).
@@ -285,7 +287,12 @@ func serExportValueElement(id string, elem *model.ExportMappingElement, parentPa
 		{Key: "Converter", Value: elem.Converter},
 		{Key: "FractionDigits", Value: int32(-1)},
 		{Key: "TotalDigits", Value: int32(-1)},
-		{Key: "MaxLength", Value: int32(0)},
+		// Mirrors the bound schema element, like MaxOccurs: Studio Pro stores 0 for
+		// a string element and -1 for a numeric one (#277).
+		{Key: "MaxLength", Value: int32(elem.MaxLength)},
+		// Studio Pro writes IsKey on export value elements too; omitting it was a
+		// divergence from the import twin (#277).
+		{Key: "IsKey", Value: elem.IsKey},
 		{Key: "IsContent", Value: false},
 		{Key: "IsXmlAttribute", Value: false},
 		{Key: "OriginalValue", Value: ""},
