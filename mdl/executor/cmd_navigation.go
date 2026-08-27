@@ -26,6 +26,7 @@ func execAlterNavigation(ctx *ExecContext, s *ast.AlterNavigationStmt) error {
 
 	// Verify the profile exists
 	createdProfile := false
+	createdKind := ""
 	profileFound := false
 	for _, p := range nav.Profiles {
 		if strings.EqualFold(p.Name, s.ProfileName) {
@@ -52,7 +53,7 @@ func execAlterNavigation(ctx *ExecContext, s *ast.AlterNavigationStmt) error {
 		if err := ctx.Backend.AddNavigationProfile(nav.ID, kind); err != nil {
 			return mdlerrors.NewBackend("create navigation profile", err)
 		}
-		createdProfile = true
+		createdProfile, createdKind = true, kind
 		// Re-read: the spec below is applied against the stored document, and the
 		// profile it targets has only just come into existence.
 		if nav, err = ctx.Backend.GetNavigation(); err != nil {
@@ -96,6 +97,9 @@ func execAlterNavigation(ctx *ExecContext, s *ast.AlterNavigationStmt) error {
 	// it did not have — and a phone profile changes which pages a phone lands on.
 	if createdProfile {
 		fmt.Fprintf(ctx.Output, "Navigation profile '%s' created.\n", s.ProfileName)
+		// An offline profile changes what the platform demands of pages this
+		// statement never mentioned. Say so now, not at the next build.
+		warnOfflineIncompatiblePages(ctx, createdKind)
 	} else {
 		fmt.Fprintf(ctx.Output, "Navigation profile '%s' updated.\n", s.ProfileName)
 	}
