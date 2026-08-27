@@ -19,7 +19,16 @@ Use when the user asks to:
 
 ## Navigation Concepts
 
-- **Navigation Profiles** — Every Mendix project has navigation profiles: Responsive, Phone, Tablet, and optionally Native. Each profile has its own home page, menu, and login page.
+- **Navigation Profiles** — Every Mendix project has navigation profiles: Responsive, Phone, Tablet, and optionally Native. Each profile has its own home page, menu, and login page. The web kinds are a **closed set** and `create or replace navigation` will create one that does not exist yet:
+
+  | Online | Offline twin |
+  |---|---|
+  | `Responsive` | `ResponsiveOffline` |
+  | `Phone` | `PhoneOffline` |
+  | `Tablet` | `TabletOffline` |
+
+  An invented name (`Mobile`, `Desktop`) is an error, not a new profile: Mendix routes on **User-Agent** to its own kinds, so a profile the platform does not define can never be reached. Native profiles are a different document type and are not creatable from MDL.
+- **Offline Profiles** — An offline profile makes the app work without a connection (a PWA with a local database that syncs). It is not a different document — same properties as its online twin — but it **constrains every page it can reach**, see below.
 - **Home Page** — The default page shown after login. Can be a PAGE or MICROFLOW.
 - **Role-Based Home Pages** — Override the default home page per user role (e.g., admins see a dashboard, users see a task list).
 - **Menu Items** — Hierarchical menu tree. Each item has a caption and optionally targets a PAGE or MICROFLOW. Sub-menus nest with `menu 'caption' (...)`.
@@ -299,9 +308,60 @@ export level are preserved, so menu widgets pointing at it keep working.
 - **Authoring needs the default engine.** Under `MXCLI_ENGINE=legacy`,
   create/modify/drop refuse rather than writing a differently-shaped document.
 
+## Offline Profiles
+
+An offline profile is created the same way as any other:
+
+```sql
+create or replace navigation TabletOffline
+  home page Maintenance.Request_Overview
+  menu (
+    menu item 'Requests' page Maintenance.Request_Overview;
+  );
+```
+
+Two things about it are worth knowing before you do.
+
+**It breaks pages the statement never mentions.** Mendix restricts every page an
+offline profile can reach: an attribute may be bound across **at most one
+association hop**. A longer path is **CE6206** — *"Attribute paths with multiple
+steps cannot be used on pages that are accessible through an offline-based
+navigation."*
+
+```
+Request_Asset/AssetName                one hop    fine
+Request_Asset/Asset_Site/SiteName      two hops   CE6206
+```
+
+Those pages were valid before. Adding the profile is what invalidated them, and
+the build fails somewhere with no obvious connection to the statement you ran.
+mxcli reports them when it creates the profile:
+
+```
+Navigation profile 'TabletOffline' created.
+
+Warning: TabletOffline is an offline profile, and 3 documents in this project bind
+an attribute across more than one association.
+Mendix rejects a multi-step attribute path with CE6206 on any page reachable from
+an offline profile — one hop is allowed, two are not.
+  page Maintenance.Request_Overview: Maintenance.Site.SiteName (2 steps)
+  ...
+```
+
+It is a **warning**, not a refusal: whether a page is actually *reachable* from
+the profile takes the whole page graph, which mxcli does not walk. The fix is
+either to keep the page off the offline profile, or to bring the value one hop
+closer — add an attribute to the intermediate entity and keep it in step.
+
+**The synchronization config is derived, not authored.** `offlineEntityConfigs`
+starts empty and Studio Pro fills it from the entities the reachable pages use;
+only rows that differ from the defaults (`syncMode: Online`, no constraint) are
+stored. MDL does not author per-entity sync modes — set those in Studio Pro.
+
 ## Checklist
 
-- [ ] Profile name matches an existing profile (Responsive, Phone, Tablet, or a native profile)
+- [ ] Profile name is one of Mendix's web kinds (`Responsive`/`Phone`/`Tablet`, or their `*Offline` twins) — an invented name is an error, not a new profile
+- [ ] For an **offline** profile, no page it can reach binds an attribute across more than one association (CE6206)
 - [ ] All PAGE/MICROFLOW targets are fully qualified (`Module.Name`)
 - [ ] Role references in `for` clauses are fully qualified (`Module.Role`)
 - [ ] Every `menu item` and `menu 'caption' (...)` ends with `;`

@@ -151,6 +151,8 @@ DISCONNECT;`,
 		Keywords: []string{
 			"create navigation", "replace navigation", "home page",
 			"login page", "not found page", "menu item", "menu icon",
+			"navigation profile", "phone profile", "tablet profile",
+			"offline profile", "offline navigation",
 		},
 		Syntax: `CREATE OR REPLACE NAVIGATION <profile>
   HOME PAGE Module.Page
@@ -167,7 +169,18 @@ DISCONNECT;`,
 -- reference, not a string. Hyphenated Atlas names are double-quoted:
 --   ICON Atlas_Core.Atlas."align-center"
 -- Browse the available names with:
---   SHOW ICON COLLECTION  /  DESCRIBE ICON COLLECTION Module.Name`,
+--   SHOW ICON COLLECTION  /  DESCRIBE ICON COLLECTION Module.Name
+--
+-- <profile> is one of Mendix's fixed web kinds, and the profile is CREATED if
+-- the project does not have it yet:
+--   Responsive  Phone  Tablet                       online
+--   ResponsiveOffline  PhoneOffline  TabletOffline  offline
+-- An invented name ("Mobile") is an error: the runtime routes on User-Agent to
+-- Mendix's own kinds, so a profile the platform does not define can never route.
+--
+-- An OFFLINE profile restricts every page it can reach -- an attribute may be
+-- bound across at most ONE association hop (CE6206). Creating one reports the
+-- documents in the project that already exceed that.`,
 		Example: `CREATE OR REPLACE NAVIGATION Responsive
   HOME PAGE MyModule.Home_Web
   HOME PAGE MyModule.AdminDashboard FOR Administration.Administrator
@@ -178,6 +191,12 @@ DISCONNECT;`,
       MENU ITEM 'All Orders' PAGE Orders.Order_Overview ICON Atlas_Core.Atlas."list-bullets";
       MENU ITEM 'New Order' PAGE Orders.Order_New ICON Atlas_Core.Atlas.add;
     );
+  );
+
+CREATE OR REPLACE NAVIGATION TabletOffline
+  HOME PAGE Maintenance.Request_Overview
+  MENU (
+    MENU ITEM 'Requests' PAGE Maintenance.Request_Overview;
   );`,
 		SeeAlso: []string{"navigation.show"},
 	})
