@@ -480,8 +480,9 @@ DESCRIBE DATABASE CONNECTION Ops.Erp;`,
 		Keywords: []string{
 			"xpath", "constraint", "where", "predicate",
 			"filter", "retrieve", "association path", "enumeration",
+			"formatting", "readable", "line length", "wrap", "multi-line",
 		},
-		Syntax:  "WHERE [condition]\nWHERE [cond1][cond2]          -- implicit AND\nWHERE [cond1] AND [cond2]\nWHERE [cond1] OR [cond2]",
+		Syntax:  "WHERE [condition]\nWHERE [cond1][cond2]          -- implicit AND\nWHERE [cond1] AND [cond2]\nWHERE [cond1] OR [cond2]\n\nHow it is STORED is mxcli's choice, not your whitespace: a constraint is\nrebuilt from its parse tree on every write, so the layout is derived from the\nexpression. 80 columns or fewer is stored exactly as written. Longer is broken\nat its top-level and/or joints, one clause per line, so it can be read in\nStudio Pro's XPath editor without scrolling sideways:\n\n  [\n    Archived = false\n    and Status = 'Open'\n    and ReportedOn > '[%BeginOfCurrentDay%]'\n  ]\n\nWhere and/or meet, the and-runs get explicit parentheses (Mendix binds `and`\ntighter). A clause with no boolean joint — one long comparison or association\npath — is left whole and over width. DESCRIBE puts it back on one line, and\nre-executing that re-derives the same stored text.",
 		Example: "RETRIEVE $Orders FROM Module.Order\n  WHERE [State = 'Completed'][IsPaid = true]\n  SORT BY OrderDate DESC;\n\n-- Enumeration attribute: qualified name preferred (mxcli converts to 'Open' in BSON)\nRETRIEVE $Open FROM Module.Order\n  WHERE [Status = Module.OrderStatus.Open];\n\n-- OR: string literal form also accepted\nRETRIEVE $Open FROM Module.Order\n  WHERE [Status = 'Open'];\n\n-- Association path traversal\nWHERE [Module.Order_Customer/Module.Customer/Name = $Name]\n\n-- Mendix tokens\nWHERE [System.owner = '[%CurrentUser%]']",
 		SeeAlso: []string{"xpath.functions"},
 	})

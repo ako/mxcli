@@ -726,8 +726,13 @@ func (pb *pageBuilder) buildDataSourceV3(ds *ast.DataSourceV3) (pages.DataSource
 		// Handle WHERE clause. Expand association-only paths to the Assoc/Entity/Assoc
 		// form Mendix requires (see expandXPathAssociationPath), so the shorthand
 		// `[Mod.Assoc1/Mod.Assoc2 = $x]` doesn't trip CE1613 at build time.
+		// Formatting comes last, after the expansion above has settled the text:
+		// a constraint too long to read on one line is broken at its boolean
+		// joints (upstream #979). One that already fits is returned unchanged, so
+		// this does not churn existing pages.
 		if ds.Where != "" {
-			dbSource.XPathConstraint = pb.expandXPathAssociationPath(ds.Where, ds.Reference)
+			dbSource.XPathConstraint = visitor.FormatXPathConstraint(
+				pb.expandXPathAssociationPath(ds.Where, ds.Reference))
 		}
 
 		// Handle ORDER BY

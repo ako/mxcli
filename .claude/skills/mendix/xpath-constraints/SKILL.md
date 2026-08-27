@@ -99,6 +99,45 @@ where [not(IsPaid)]
 where [not(contains(Name, 'demo'))]
 ```
 
+## How a Constraint Is Laid Out on Disk
+
+MDL keeps a constraint on one line; how it is **stored** is decided by mxcli, not
+by the whitespace you type. A constraint is rebuilt from its parse tree on every
+write, so there is no original formatting to keep — instead the layout is derived
+from the expression:
+
+- **80 columns or fewer** → stored exactly as written, on one line. This is the
+  common case, and it means adding this changed nothing about existing projects.
+- **Longer** → broken at its top-level `and`/`or` joints, one clause per line,
+  the operator leading each continuation line. Where `and` and `or` meet, the
+  `and` runs get explicit parentheses — Mendix binds `and` tighter, and a filter
+  is being broken up precisely because it had stopped being obvious at a glance.
+- **Nothing to break on** (one long comparison, one long association path) →
+  left whole and over width. Cutting it anywhere else would not be valid XPath.
+
+```
+-- authored (one line, 141 characters)
+where [Archived = false and Status = 'Open' and Priority = 'High' and Category = 'Electrical' and Severity > 3 and ReportedOn > '[%BeginOfCurrentDay%]']
+
+-- stored, and what Studio Pro's XPath editor shows
+[
+  Archived = false
+  and Status = 'Open'
+  and Priority = 'High'
+  and Category = 'Electrical'
+  and Severity > 3
+  and ReportedOn > '[%BeginOfCurrentDay%]'
+]
+```
+
+`DESCRIBE` puts it back on one line, so a description reads the way it always
+has and re-executing it re-derives the same stored text — the unit is reported
+`Unchanged`. A constraint mxcli cannot parse is stored exactly as given rather
+than reformatted.
+
+This applies to page datasources, `retrieve … where` in microflows, and entity
+access rules alike.
+
 ### Association Path Traversal
 
 Bare association paths (without `$variable` prefix) navigate through the domain model:

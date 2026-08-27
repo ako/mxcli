@@ -458,7 +458,11 @@ func formatAction(
 			stmt := fmt.Sprintf("retrieve $%s from %s", outputVar, entityName)
 
 			if dbSource.XPathConstraint != "" {
-				constraint := strings.TrimSpace(dbSource.XPathConstraint)
+				// A stored constraint may be broken across lines — mxcli formats a
+				// long one that way so it can be read in Studio Pro's editor, and a
+				// person may have done the same by hand (upstream #979). MDL keeps it
+				// on one line; the executor re-derives the stored layout on write.
+				constraint := visitor.FlattenXPathConstraint(strings.TrimSpace(dbSource.XPathConstraint))
 				// Enrich string literals for enum attributes to qualified names
 				// (e.g. Status = 'Open' → Status = Module.OrderStatus.Open) when
 				// the entity is known and we are connected to a project.
