@@ -221,6 +221,20 @@ func renameDocType(objectType string) string {
 }
 
 // friendlyDocType returns a human-readable label for a doc-type key.
+// incrementalAlter maps a document type to the ALTER statement that edits one in
+// place. A type belongs here only if that statement really is incremental —
+// leaving untouched what it does not mention — because the whole point of the
+// hint is to steer away from the wholesale rebuild.
+//
+// Entities are handled separately above: their ALTER takes a different shape
+// ('alter entity X add attribute ...'), so a single template cannot phrase both.
+var incrementalAlter = map[string]string{
+	"page":     "ALTER PAGE",
+	"snippet":  "ALTER SNIPPET",
+	"layout":   "ALTER LAYOUT",
+	"workflow": "ALTER WORKFLOW",
+}
+
 func friendlyDocType(docType string) string {
 	switch docType {
 	case "agent-model":
@@ -586,6 +600,18 @@ func CheckProjectConflicts(ctx *ExecContext, prog *ast.Program) []error {
 					// toward the incremental, non-destructive path instead. (findings #13)
 					hint = "to add or change a member use 'alter entity " + name +
 						" add attribute ...' (leaves the rest intact); use CREATE OR MODIFY only to replace the whole definition"
+				} else if verb, ok := incrementalAlter[dt]; ok {
+					// Same reasoning, and the same harm, for every document type that
+					// has an incremental ALTER. For these CREATE OR MODIFY is not a
+					// modify at all — the executor treats it exactly as CREATE OR
+					// REPLACE and rebuilds the document from the statement — so the
+					// generic hint recommended the destructive form as the way to
+					// "update" one. A page whose column had been added by ALTER PAGE
+					// in a second script lost it on the next run of the first, with
+					// nothing reported (ako/mxcli-maintenance §4).
+					hint = "to change part of it use '" + verb + " " + name +
+						" { ... }' (leaves the rest intact); CREATE OR MODIFY rebuilds the whole " +
+						friendlyDocType(dt) + " from this statement and drops anything it does not mention, including edits made by " + verb
 				}
 				errs = append(errs, fmt.Errorf(
 					"statement %d: %s already exists in project: %s — %s",
