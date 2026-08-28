@@ -484,6 +484,56 @@ func resolveJsonStructureSource(b backend.FullBackend, ref ast.QualifiedName) (*
 		ref.String(), strings.Join(names, ", "))
 }
 
+// resolveXmlSchemaSource refuses a `with xml schema` naming a document that does
+// not exist (ako/mxcli#259).
+//
+// The JSON half of this issue had a second, worse failure — a typo'd structure
+// name silently disabled every member check. That does not apply here: mxcli
+// does not read an XSD's element tree, so a mapping over an XML schema has
+// nothing to validate its members against either way. What is left is the plain
+// dangling reference, which mxbuild reports at the far end of a build:
+//
+//	[error] [CE1613] "The selected XML schema 'XGap.NoSuchThing' no longer
+//	        exists." at Import mapping 'XGap.IMM_Xml'
+//
+// This returns nothing on success because there is nothing to return — unlike
+// the JSON twin, which hands back the index the element builder clones from.
+//
+// FAIL OPEN when the project reports no XML schemas at all. There is no
+// `create xml schema` in MDL, so an XML schema can only ever have been put there
+// by a human — and, measured, NONE of the nine demo apps in the corpus contains
+// one. A project with an empty list is therefore the ordinary case, not evidence
+// that the name is wrong, and refusing on it would break every such mapping.
+func resolveXmlSchemaSource(b backend.FullBackend, ref ast.QualifiedName) error {
+	all, err := b.ListXmlSchemas()
+	if err != nil {
+		// The backend cannot list (a mock in a unit test, an engine that does
+		// not implement it); take the name at face value rather than refusing
+		// something that may well be right.
+		return nil
+	}
+	names := make([]string, 0, len(all))
+	for _, xs := range all {
+		if xs == nil {
+			continue
+		}
+		qn := xs.Name
+		if xs.Module != "" {
+			qn = xs.Module + "." + xs.Name
+		}
+		if qn == ref.String() {
+			return nil
+		}
+		names = append(names, qn)
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	sort.Strings(names)
+	return fmt.Errorf("xml schema %q does not exist; available: %s",
+		ref.String(), strings.Join(names, ", "))
+}
+
 // exportNullValueOptions is Mendix's ExportMappings$NullValueOption enum.
 // mxcli wrote whatever identifier it was given — `null values Banana` reached
 // the stored document verbatim (#259).

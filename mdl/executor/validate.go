@@ -266,6 +266,10 @@ func validateProgram(ctx *ExecContext, prog *ast.Program) []error {
 	// are documents in it), so it belongs here rather than in the no-project
 	// pass — MxBuild otherwise reports the typo as CE1613.
 	errors = append(errors, validateIconRefs(ctx, prog)...)
+	// Resolve a mapping's `with json structure` / `with xml schema` source, for
+	// the same reason and at the same tier: MxBuild otherwise reports the typo
+	// as CE1613, a whole build later (ako/mxcli#259).
+	errors = append(errors, validateMappingSources(ctx, prog)...)
 	return errors
 }
 

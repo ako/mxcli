@@ -131,6 +131,28 @@ describe json structure Module.JSON_Pet;
 drop json structure Module.JSON_Pet;
 ```
 
+### The `with` clause is resolved, not written through
+
+A mapping's schema source — `with json structure M.X` or `with xml schema M.Y` —
+is checked against the project by both `mxcli check -p` and `exec`, and a name
+that resolves to nothing is refused with the documents that would have worked.
+mxbuild otherwise reports it as **CE1613** "… no longer exists" at the end of a
+build (ako/mxcli#259).
+
+For JSON structures a typo used to be worse than a dangling reference: the schema
+index is empty whenever the structure cannot be loaded **for any reason**, and an
+empty index reads as "there is nothing to validate against" — so one typo in the
+source name switched off every member check in the mapping.
+
+Two things the check deliberately does not do:
+
+- A structure the **same script** creates counts as existing. Create the
+  structure, then map over it, is the normal shape.
+- A project with **no** XML schemas disables the XML half rather than refusing
+  every mapping. There is no `create xml schema` in MDL — an XML schema is only
+  ever imported into the project by hand — so having none is ordinary, not
+  evidence of a typo.
+
 ---
 
 ## Import Mappings

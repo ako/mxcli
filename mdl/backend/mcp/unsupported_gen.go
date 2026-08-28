@@ -40,6 +40,11 @@ func (unsupportedBackend) AddModuleRole(_ model.ID, _ string, _ string) (err0 er
 	return
 }
 
+func (unsupportedBackend) AddNavigationProfile(_ model.ID, _ string) (err0 error) {
+	err0 = errUnsupported("AddNavigationProfile")
+	return
+}
+
 func (unsupportedBackend) AddUserRole(_ model.ID, _ string, _ []string, _ bool) (err0 error) {
 	err0 = errUnsupported("AddUserRole")
 	return
@@ -884,6 +889,11 @@ func (unsupportedBackend) ListUnits() (r0 []*types.UnitInfo, err1 error) {
 
 func (unsupportedBackend) ListWorkflows() (r0 []*workflows.Workflow, err1 error) {
 	err1 = errUnsupported("ListWorkflows")
+	return
+}
+
+func (unsupportedBackend) ListXmlSchemas() (r0 []*types.XmlSchema, err1 error) {
+	err1 = errUnsupported("ListXmlSchemas")
 	return
 }
 
