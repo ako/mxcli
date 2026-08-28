@@ -24,6 +24,37 @@ Use when the user asks to:
 - **Microflow/Page Access** controls which module roles can execute/view specific elements
 - **Project Security Level** determines enforcement: `off`, `prototype`, or `production`
 
+## The System-module ceiling — decide the role model around this FIRST
+
+**No project module can widen access to `System.User`, `System.Workflow` or
+`System.WorkflowUserTask`.** Access to System entities comes from the System
+module's own roles, and a `grant` in your module cannot raise it. This is a design
+constraint, not a detail: it decides what your screens can be, and finding it late
+means rebuilding them (ako/mxcli-maintenance-2 designed a technician picker, built
+it, tested it, and tore it out).
+
+Both consequences are **silent** — the page renders, the data is simply missing, and
+`mx check` and `mxcli lint` both pass:
+
+| What you build | What a non-Administrator sees |
+|---|---|
+| A combo box over `System.User` (e.g. "pick a technician") | **The current user only** |
+| A grid over `System.Workflow` / `System.WorkflowUserTask` | **Empty** |
+
+Three ways around it, in order of preference:
+
+1. **Record, don't pick.** Target the task at a *role*, let whoever opens it do the
+   work, and stamp who acted on completion — a plain association plus a denormalised
+   name your own module owns, which every role can then read.
+2. **A microflow data source.** Microflows bypass entity access by default, so a page
+   can show data the role cannot read directly.
+3. **Split the page by role.** Keep raw System grids on an Administrator-only page.
+   Mendix hides a button to a page the user may not view, so the link simply does not
+   appear.
+
+Related: `grant … on System.User` is refused outright — the System module's domain
+model is not stored in the project, so it has no access rules to add to.
+
 ## Syntax Reference
 
 ### Show Commands (Read-Only)
