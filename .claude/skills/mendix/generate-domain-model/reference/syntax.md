@@ -626,16 +626,20 @@ create persistent entity Module."VATRate" (
 > instead), plus `ID`, `GUID`, `CurrentUser` and the Java-keyword list. `"Type": String`
 > fails MDL021 — rename to `ResourceType` / `TypeValue`.
 
-> **Caveat 2 — a third grammar: OQL.** `Year`, `Month`, `Quarter`, `Week`, `Day`,
-> `Hour`, `Minute`, `Second`, `Weekday`, `DayOfYear`, `DayOfMonth` and `DayOfWeek` are
-> **Mendix OQL** keywords. Unlike the platform-reserved names above they are perfectly
-> legal Mendix — the entity builds and runs — so mxcli reports them as a **warning**
-> (**MDL071**) rather than refusing them. What breaks is any **view entity** whose OQL
-> references the name, with **CE0174** ("The 'Month' part is incomplete or incorrect").
-> OQL has no quoted-identifier form, so mxcli cannot escape it and neither can you.
-> The **entity** name counts as well as its attributes: `from Module.Year as y` fails
-> the same way. Rename while the name has few references — that is the entire reason
-> the warning fires at `CREATE` instead of when the view is finally written.
+> **Caveat 2 — a third grammar: OQL, where quoting DOES work.** `Year`, `Month`,
+> `Quarter`, `Week`, `Day`, `Hour`, `Minute`, `Second`, `Weekday`, `DayOfYear`,
+> `DayOfMonth` and `DayOfWeek` are **Mendix OQL** keywords. Unlike the platform-reserved
+> names above they are perfectly legal Mendix — the entity builds and runs — so mxcli
+> reports them as a **warning** (**MDL071**) rather than refusing them. What breaks is a
+> **view entity** whose OQL references the name **unquoted**: **CE0174** ("The 'Month'
+> part is incomplete or incorrect"). OQL takes double-quoted identifiers exactly like
+> SQL, and mxcli passes them through, so quoting in the view is normally the whole fix:
+> `select s."Month" as MonthNo`, `from Module."Year" as s` — both 0 errors. The
+> **entity** name counts as well as its attributes.
+>
+> The one place quoting is unavailable is an **alias**, and that is an MDL grammar limit,
+> not an OQL one: `as "X"` does not parse for any X. Since a view entity's attribute name
+> *is* its alias, a view column cannot be called `Month` — rename that one.
 
 Both `"Name"` and `` `Name` `` syntax are supported. Prefer double quotes for consistency.
 

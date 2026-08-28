@@ -49,6 +49,16 @@ func TestMDL071_FlagsReservedAttributeNamesAtCreate(t *testing.T) {
 		if !strings.Contains(v.Message, "CE0174") {
 			t.Errorf("message should name the build error: %s", v.Message)
 		}
+		// The remedy is normally a QUOTE, not a rename: OQL takes double-quoted
+		// identifiers like SQL and mxcli writes them through (measured, 0
+		// errors). An earlier revision told people to rename, which is expensive
+		// and usually unnecessary.
+		if !strings.Contains(v.Suggestion, "quote") {
+			t.Errorf("suggestion must offer quoting: %s", v.Suggestion)
+		}
+		if strings.Contains(v.Message, "cannot quote") {
+			t.Errorf("message repeats the disproved claim that OQL cannot be quoted: %s", v.Message)
+		}
 	}
 }
 
@@ -157,5 +167,41 @@ func TestMDL071_DoesNotBlockACreateThatMendixAccepts(t *testing.T) {
 	}
 	if v := firstBlockingViolation(ValidateEntity(stmt)); v != nil {
 		t.Errorf("MDL071 must not block a legal Mendix model, got %s: %s", v.RuleID, v.Message)
+	}
+}
+
+func TestMDL032_DoesNotFireOnAQuotedIdentifier(t *testing.T) {
+	// The whole basis of MDL071's mildness: quoting a reserved word in a SOURCE
+	// position is valid OQL and builds at 0 errors on 11.13.0 —
+	//
+	//	select s."Month" as MonthNo … from MyFirstModule."Year" as s
+	//
+	// so the view check must not flag the quoted form. If this ever starts
+	// failing, MDL071's suggestion ("quote it in the view") became wrong advice
+	// and both messages need revisiting.
+	//
+	// It passes today because the MDL032 regex anchors on `.` or `as` followed
+	// immediately by the word, and a `"` sits in between — accidental rather
+	// than designed, which is exactly why it is pinned here.
+	quoted := `select s."Month" as MonthNo, sum(s.Amount) as Total ` +
+		`from MyFirstModule."Year" as s group by s."Month"`
+	for _, v := range ValidateOQLSyntax(quoted) {
+		if v.RuleID == "MDL032" {
+			t.Errorf("MDL032 fired on a quoted identifier, which is valid OQL: %s", v.Message)
+		}
+	}
+
+	// Control: the same query unquoted must still be reported, or this test
+	// would pass against a check that had stopped working altogether.
+	unquoted := `select s.Month as MonthNo, sum(s.Amount) as Total ` +
+		`from MyFirstModule.Sales as s group by s.Month`
+	var found bool
+	for _, v := range ValidateOQLSyntax(unquoted) {
+		if v.RuleID == "MDL032" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("MDL032 did not fire on the unquoted form — the control failed, so the case above proves nothing")
 	}
 }

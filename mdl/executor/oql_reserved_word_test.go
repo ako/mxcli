@@ -8,9 +8,12 @@ import (
 )
 
 // A view-entity OQL that uses a reserved OQL word (e.g. Quarter, a date-part
-// keyword) as an attribute/alias parses in mxcli but fails MxBuild with CE0174.
-// mxcli can't quote it (the OQL grammar has no quoted-identifier form), so
-// ValidateOQLSyntax must surface it early as MDL032.
+// keyword) UNQUOTED as an attribute/alias parses in mxcli but fails MxBuild with
+// CE0174, so ValidateOQLSyntax must surface it early as MDL032.
+//
+// Quoting it is valid OQL and builds clean — see
+// TestMDL032_DoesNotFireOnAQuotedIdentifier, which pins the quoted form as the
+// remedy MDL032 and MDL071 both point at.
 func TestValidateOQLSyntax_ReservedWord(t *testing.T) {
 	hasMDL032 := func(oql string) bool {
 		for _, v := range ValidateOQLSyntax(oql) {

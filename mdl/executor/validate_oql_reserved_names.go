@@ -10,32 +10,51 @@ import (
 	"github.com/mendixlabs/mxcli/mdl/linter"
 )
 
-// MDL071 warns that a name will be unusable from OQL, at the point the name is
-// CHOSEN rather than at the point a view finally uses it.
+// MDL071 warns that a name will need QUOTING from OQL, at the point the name is
+// chosen rather than at the point a view finally uses it.
 //
 // MDL032 already reports the collision, but only when the view's OQL is written
 // — and by then the name is everywhere. In the reported case (ako/mxcli-captrack
 // #1) `Month`, `Year` and `Quarter` had reached 121 places across nine
-// generators and the database columns before the first view needed them; the
-// rename was mechanical and five hours late. The check costs nothing at CREATE
-// and is worth a warning there even though most entities never appear in a view.
+// generators and the database columns before the first view needed them.
 //
-// It is a WARNING, not an error, and that is the whole design: the name is
-// perfectly legal Mendix, and an app whose entities never reach a view is
-// correct as written. Making it an error would refuse working models.
+// It is a WARNING, and deliberately mild, because OQL *does* have a
+// quoted-identifier form — double quotes, exactly as in SQL — and mxcli writes
+// it through unchanged. Measured on 11.13.0, all at 0 errors:
 //
-// Both an ATTRIBUTE and an ENTITY name are affected — measured on 11.13.0, each
-// on its own:
+//	select s."Month" as MonthNo …          -- quoted source attribute
+//	from MyFirstModule."Year" as y         -- quoted source entity
+//
+// So the remedy is usually "quote it in the view", not "rename it". The warning
+// earns its place anyway: the unquoted form is what anyone writes first, it
+// fails a whole build later with CE0174, and the fix gets more expensive with
+// every reference added in between.
+//
+// THE ONE PLACE QUOTING DOES NOT REACH is the alias — and the limit is MDL's,
+// not OQL's. `as "MonthNo"` is a parse error in the MDL grammar even for a name
+// that is not reserved at all:
+//
+//	line 2:22 extraneous input '"MonthNo"' expecting the start of a statement
+//
+// A view entity's own attribute name IS its alias (they must match), so a view
+// entity cannot have an attribute called `Month`: unquoted the alias is CE0174
+// ("The 'Month' part is incomplete or incorrect. You could use here:
+// IDENTIFIER."), and quoted it does not parse. That case needs a rename, and it
+// is the only one that does. Teaching the MDL grammar to accept a quoted alias
+// would close it.
+//
+// Both an ATTRIBUTE and an ENTITY name are affected — each measured on its own,
+// unquoted:
 //
 //	attribute Month  →  CE0174 "The 'Month' part is incomplete or incorrect.
 //	                    You could use here: ASTERISK, AT_SIGN, OPEN_QUOTE, or
 //	                    IDENTIFIER."
 //	entity    Year   →  CE0174 "The 'Year' part is incomplete or incorrect. …"
 //
-// The mechanism is the same for both: OQL reads the bare word as the keyword,
-// and mxcli cannot escape it because the OQL grammar has no quoted-identifier
-// form. Quoting in MDL does not help either — that escapes MDL parser keywords,
-// which is a different grammar (see the "Quoting Escapes Parser Keywords" rule).
+// Note OPEN_QUOTE in what the parser says it expects: the quoted form is right
+// there in the error text, which is worth reading before concluding a name is
+// unusable. An earlier revision of this file asserted OQL had no quoted form at
+// all; it was contradicted by the very error message it quoted.
 //
 // The word list is oqlReservedWords, shared with MDL032 so the two cannot drift.
 
@@ -64,15 +83,16 @@ func oqlReservedNameViolation(kind, name, entityName string) linter.Violation {
 		RuleID:   "MDL071",
 		Severity: linter.SeverityWarning,
 		Message: fmt.Sprintf(
-			"%s '%s' is an OQL reserved word — it is valid Mendix, but any view entity that "+
-				"references it fails to build with CE0174, and mxcli cannot quote it",
+			"%s '%s' is an OQL reserved word — valid Mendix, but a view entity referencing it "+
+				"unquoted fails to build with CE0174",
 			kind, name),
 		Location: linter.Location{DocumentType: "entity", DocumentName: entityName},
 		Suggestion: fmt.Sprintf(
-			"Safe to keep if this %s will never appear in a view entity's OQL. Otherwise rename it "+
-				"now — e.g. '%sValue' or a domain term like 'Reporting%s' — while it has few "+
-				"references; a view added later cannot work around the name.",
-			kind, name, name),
+			"Usually no rename needed: quote it in the view's OQL, as OQL takes double-quoted "+
+				"identifiers like SQL — `select s.%q …`, `from Module.%q as s`. The exception is a "+
+				"VIEW ENTITY's own attribute, whose name is also its alias: MDL cannot express a "+
+				"quoted alias (`as %q` is a parse error), so a view column must not be called '%s'.",
+			name, name, name, name),
 	}
 }
 

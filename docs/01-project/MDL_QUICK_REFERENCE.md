@@ -1461,24 +1461,36 @@ Both double-quote (ANSI SQL) and backtick (MySQL) styles are supported. You can 
 
 ### A third grammar: OQL
 
-Quoting escapes **MDL parser** keywords. It does not help with the two grammars
-underneath:
+Quoting means different things in three grammars, and they do not agree:
 
-| Grammar | Example collision | Escape? | mxcli rule |
+| Grammar | Example collision | Quoting escapes it? | mxcli rule |
 |---|---|---|---|
 | MDL parser | `create`, `end`, `entity` | **Yes** — `"create"` | parse error |
 | Mendix platform | `Type`, `ID`, `CurrentUser` | **No** — the check strips quotes | MDL021 (CE7247) |
-| **Mendix OQL** | `Year`, `Month`, `Quarter`, `Day`, `Hour`… | **No** — OQL has no quoted-identifier form | **MDL071** (warning) |
+| **Mendix OQL** | `Year`, `Month`, `Quarter`, `Day`, `Hour`… | **Yes** — `"Month"`, as in SQL | **MDL071** (warning) |
 
-An OQL-reserved name is *legal Mendix* — the entity builds and runs. It only
-bites when a **view entity**'s OQL references it, which fails with **CE0174**
-("The 'Month' part is incomplete or incorrect"). Both an attribute name and an
-**entity** name are affected, and mxcli cannot escape either.
+An OQL-reserved name is *legal Mendix* — the entity builds and runs. It bites
+only when a **view entity**'s OQL references it **unquoted**, which fails with
+**CE0174** ("The 'Month' part is incomplete or incorrect"). OQL takes
+double-quoted identifiers exactly like SQL, and mxcli writes them through
+unchanged, so the fix is normally a quote rather than a rename:
 
-That is why MDL071 is a **warning at CREATE**, not an error: most entities never
-reach a view, but by the time one does, the name has spread. MDL032 reports the
-same collision inside a view's OQL — correctly, but far too late to rename
-cheaply.
+```sql
+-- both build at 0 errors
+select s."Month" as MonthNo, sum(s.Amount) as Total
+from MyFirstModule."Year" as s
+group by s."Month";
+```
+
+**The exception is an alias — and the limit there is MDL's, not OQL's.**
+`as "MonthNo"` is a parse error in the MDL grammar, for *any* name, reserved or
+not. A view entity's own attribute name **is** its alias (they must match), so a
+view column cannot be called `Month`: unquoted it is CE0174, quoted it does not
+parse. That is the one case that needs a rename.
+
+MDL071 warns at `CREATE` / `ALTER … ADD ATTRIBUTE` / `RENAME ATTRIBUTE` so the
+choice is made while the name still has few references. MDL032 reports the same
+collision from inside a view's OQL, where quoting is the immediate fix.
 
 **Boolean attributes** auto-default to `false` when no `default` is specified.
 

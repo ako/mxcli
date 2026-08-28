@@ -3,23 +3,32 @@
 --
 -- The reporter's exact script produced "Check passed!". By the time a view
 -- needed the name, `Month`/`Year`/`Quarter` existed in 121 places across nine
--- generators and the database columns; the rename was mechanical and five hours
--- late. MDL032 already reported the collision — but only from inside the view's
--- OQL, which is the moment it stops being cheap to fix.
+-- generators and the database columns. MDL032 already reported the collision —
+-- but only from inside the view's OQL, which is late.
 --
--- MDL071 reports it at CREATE instead, as a WARNING: the name is legal Mendix
--- (mxbuild: 0 errors) and most entities never appear in a view, so an error
--- would refuse working models. Measured on 11.13.0, each case on its own:
+-- MDL071 reports it at CREATE instead, as a WARNING. It is mild on purpose:
+-- OQL takes double-quoted identifiers exactly like SQL, and mxcli writes them
+-- through unchanged, so the usual fix is a quote in the view rather than a
+-- rename. Measured on 11.13.0:
 --
---   attribute Month  ->  CE0174 "The 'Month' part is incomplete or incorrect."
---   entity    Year   ->  CE0174 "The 'Year' part is incomplete or incorrect."
+--   select s.Month   as MonthNo   ->  CE0174 "The 'Month' part is incomplete
+--                                     or incorrect. You could use here:
+--                                     ASTERISK, AT_SIGN, OPEN_QUOTE, or
+--                                     IDENTIFIER."
+--   select s."Month" as MonthNo   ->  0 errors
+--   from   Module."Year" as y     ->  0 errors
+--
+-- The one place quoting is unavailable is an ALIAS, and that limit is MDL's own
+-- grammar rather than OQL's: `as "X"` is a parse error for any X, reserved or
+-- not. A view entity's attribute name IS its alias, so a view column cannot be
+-- called Month -- that case needs a rename.
 --
 -- Run with:  mxcli check captrack-oql-reserved-names.mdl
--- Expect:    6 MDL071 warnings (+1 MDL022), 0 errors — and `exec` writes all of it.
+-- Expect:    7 MDL071 warnings (+1 MDL022), 0 errors -- and `exec` writes it all.
+--            Note NO MDL032: the quoted view at the bottom is clean.
 
--- WARNS (MDL071 x3): the reporter's verbatim case. Quoting does not help — it
--- escapes MDL parser keywords, and OQL is a different grammar with no
--- quoted-identifier form at all.
+-- WARNS (MDL071 x3): the reporter's verbatim case. The names are fine here --
+-- the warning is about what a view will have to do with them later.
 create persistent entity CapTrack."ReservedProbe" (
   "Month": Integer,
   "Year": Integer,
@@ -28,7 +37,8 @@ create persistent entity CapTrack."ReservedProbe" (
 /
 
 -- WARNS (MDL071): the ENTITY name counts too. A view says `from CapTrack.Day
--- as d`, and OQL reads `Day` there exactly as it reads an attribute after a dot.
+-- as d`, and OQL reads `Day` there exactly as it reads an attribute after a dot
+-- -- so that view must write `from CapTrack."Day" as d`.
 create persistent entity CapTrack.Day ( Label: String(50) );
 /
 
@@ -56,4 +66,15 @@ create persistent entity CapTrack.SafeProbe (
   YearValue: Integer,
   ReportingQuarter: String(10)
 );
+/
+
+-- CLEAN, and the point of the whole rule: a view CAN use a reserved name, by
+-- quoting it in a source position. Both of these build at 0 errors on 11.13.0.
+-- If MDL ever stops passing the quotes through, this statement is what says so.
+create persistent entity CapTrack.Sales ( Month: Integer, Amount: Integer );
+/
+create view entity CapTrack.SalesByMonth ( MonthNo: integer, Total: integer ) as
+  select s."Month" as MonthNo, sum(s.Amount) as Total
+  from CapTrack.Sales as s
+  group by s."Month";
 /

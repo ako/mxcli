@@ -1055,11 +1055,22 @@ func ValidateOQLSyntax(oql string) []linter.Violation {
 	// keyword (notably date-part words like Quarter/Month/Year) parses fine in
 	// mxcli but makes MxBuild reject the view with CE0174 "The '<word>' part is
 	// incomplete or incorrect", because OQL reads the bare word as the keyword.
-	// mxcli cannot escape it — the OQL grammar has no quoted-identifier form — so
-	// surface it here instead of leaving it a silent-until-mxbuild failure. A
-	// reserved word counts only in identifier position: after a `.` (attribute
-	// access, `s.Quarter`) or after `as` (alias). Warning, not error: the set is
-	// the common date-part list, not an exhaustive mirror of Mendix's grammar.
+	// OQL DOES have a quoted-identifier form — double quotes, as in SQL — and
+	// mxcli passes it through unchanged: `s."Month"` and `from Module."Year"`
+	// both build at 0 errors (measured, 11.13.0). So this is surfaced as the
+	// prompt to quote, not as an unfixable name.
+	//
+	// The check matches only the UNQUOTED form, and by accident rather than by
+	// design: the regex anchors on `.` or `as` followed immediately by the word,
+	// and a `"` sits in between. TestMDL032_DoesNotFireOnAQuotedIdentifier pins
+	// that, because the rule's advice is wrong the day it stops holding.
+	//
+	// A reserved word counts only in identifier position: after a `.` (attribute
+	// access, `s.Quarter`) or after `as` (alias). The alias is the one position
+	// quoting cannot rescue — `as "X"` is a parse error in MDL's own grammar for
+	// any X — so a view column carrying the name has to be renamed. Warning, not
+	// error: the set is the common date-part list, not an exhaustive mirror of
+	// Mendix's grammar.
 	reservedIdentRe := regexp.MustCompile(`(?i)(?:\.\s*|\bas\s+)(` + oqlReservedWordAlternation + `)\b`)
 	seenReserved := map[string]bool{}
 	for _, m := range reservedIdentRe.FindAllStringSubmatch(oql, -1) {
@@ -1072,16 +1083,20 @@ func ValidateOQLSyntax(oql string) []linter.Violation {
 			RuleID:   "MDL032",
 			Severity: linter.SeverityWarning,
 			Message: fmt.Sprintf(
-				"OQL reserved word %q used as an identifier — MxBuild rejects the view with CE0174 (mxcli cannot quote it); rename it",
-				word),
+				"OQL reserved word %q used unquoted — MxBuild rejects the view with CE0174; quote it as %q",
+				word, word),
 			Location: linter.Location{DocumentType: "viewentity"},
 			// The regex sees "after a dot or after AS" and cannot tell which
 			// kind of name it matched, so the suggestion must not assert one:
 			// `from Module.Year as y` matches the ENTITY name, and an entity
-			// called Year trips the same CE0174 (measured on 11.13.0). Saying
-			// "rename the attribute" there sends the author looking for an
-			// attribute that does not exist.
-			Suggestion: fmt.Sprintf("Rename the %q entity, column or alias — every reference to it, including the alias — e.g. %qValue or a domain term. MDL071 reports this at CREATE time, before the name spreads", word, word),
+			// called Year trips the same CE0174 (measured on 11.13.0).
+			//
+			// Quoting is the fix in a SOURCE position — `s."Month"`,
+			// `from Module."Year"` both build at 0 errors, and mxcli writes the
+			// quotes through unchanged. It is NOT available for an alias: the
+			// MDL grammar rejects `as "X"` for any X, reserved or not. So a view
+			// column cannot carry the name, and only that case needs a rename.
+			Suggestion: fmt.Sprintf("In a source position, quote it: `s.%q`, `from Module.%q as s` — OQL takes double-quoted identifiers like SQL. For an ALIAS / view column name this is not available (MDL cannot express `as %q`), so rename that one, e.g. %qValue. MDL071 reports the collision at CREATE time, before the name spreads", word, word, word, word),
 		})
 	}
 

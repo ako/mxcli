@@ -116,15 +116,19 @@ Before writing any MDL, verify these requirements:
 > Measured across the keywords mxcli hints on: 38 are rescued by quoting, 3
 > (`Type`, `Default`, `Owner`) are not.
 >
-> **Third case — OQL keywords, which no rule refuses.** `Year`, `Month`, `Quarter`,
-> `Week`, `Day`, `Hour` and the other date-part words are neither MDL parser keywords
-> nor platform-reserved: they are accepted everywhere and build at 0 errors. They only
-> break a **view entity** whose OQL references them (**CE0174**), and OQL has no
-> quoted-identifier form, so nothing can escape them. mxcli reports **MDL071** as a
-> *warning* at `CREATE`/`ALTER`, which is the only place a rename is still cheap — the
-> `check` line for it says "it is valid Mendix, but …". Applies to the **entity** name
-> too, not just its attributes. Do not silence it by quoting; quoting changes nothing
-> here.
+> **Third case — OQL keywords, where quoting works but in a different grammar.**
+> `Year`, `Month`, `Quarter`, `Week`, `Day`, `Hour` and the other date-part words are
+> neither MDL parser keywords nor platform-reserved: they are accepted everywhere and
+> build at 0 errors. They bite only inside a **view entity**'s OQL, and only **unquoted**
+> (**CE0174**). OQL takes double-quoted identifiers just like SQL — `s."Month"`,
+> `from Module."Year" as s` — and mxcli writes them through unchanged, so the usual fix
+> is a quote in the OQL, not a rename. mxcli reports **MDL071** as a *warning* at
+> `CREATE`/`ALTER` so the name is still cheap to change if you would rather rename.
+> Applies to the **entity** name as well as its attributes.
+>
+> The exception is an **alias**, and the limit there is MDL's own grammar: `as "X"` is a
+> parse error for any X, reserved or not. A view entity's attribute name is also its
+> alias, so a view column cannot be called `Month` — that one needs a rename.
 >
 > **Exception — never quote `$`-prefixed variable/parameter references.** The quote
 > rule is for *bare* names (entities, attributes, associations, declared parameter
