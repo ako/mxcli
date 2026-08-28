@@ -4,6 +4,7 @@ package mpr
 
 import (
 	"fmt"
+	"github.com/mendixlabs/mxcli/mdl/types"
 	"strings"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -178,6 +179,19 @@ func buildContainerSet(r *Reader, moduleID string) map[string]bool {
 func replaceStringsInDoc(doc bson.D, oldName, newName string, count *int) bson.D {
 	result := make(bson.D, len(doc))
 	for i, elem := range doc {
+		// A view entity's OQL holds the qualified name EMBEDDED in the query, so
+		// the whole-string match in replaceStringsInValue never sees it and the
+		// view kept pointing at the old name after a rename (CE0174 "Cannot
+		// resolve object name"). Same fix in the modelsdk engine's
+		// replaceQNInDocCounted; the rewrite itself is shared.
+		if elem.Key == oqlPropertyKey {
+			if q, ok := elem.Value.(string); ok {
+				rewritten, n := types.RewriteOQLQualifiedName(q, oldName, newName)
+				*count += n
+				result[i] = bson.E{Key: elem.Key, Value: rewritten}
+				continue
+			}
+		}
 		result[i] = bson.E{
 			Key:   elem.Key,
 			Value: replaceStringsInValue(elem.Value, oldName, newName, count),
@@ -185,6 +199,9 @@ func replaceStringsInDoc(doc bson.D, oldName, newName string, count *int) bson.D
 	}
 	return result
 }
+
+// oqlPropertyKey is where DomainModels$OqlViewEntitySource keeps the query.
+const oqlPropertyKey = "Oql"
 
 // replaceStringsInValue replaces qualified name strings in any BSON value type.
 func replaceStringsInValue(val any, oldName, newName string, count *int) any {
