@@ -66,8 +66,22 @@ retrieve $Brands from MyModule.CatalogBrand;
  * A @throws test keeps its fixture: the seed is not the thing expected to
  * throw, and it runs before the verdict is pre-set to a failure.
  *
+ * The message is matched as a substring of what Mendix raised (ako/mxcli#301),
+ * so it names the predictable part rather than the whole message.
+ *
  * @test a test expecting an error still gets its fixture
  * @throws 'validation failed'
+ */
+call microflow MyModule.ACT_SubmitEmptyOrder();
+/
+
+/**
+ * The tag written bare expects any exception. It is the right form when the
+ * message is not the thing under test -- and it used to be dropped in silence,
+ * which left the test failing on the very error it was written to expect.
+ *
+ * @test any error will do when the message is not the point
+ * @throws
  */
 call microflow MyModule.ACT_SubmitEmptyOrder();
 /

@@ -434,6 +434,30 @@ call microflow Sales.ValidateOrder(Total = -1);
 /
 ```
 
+The message is matched as a **substring** of what Mendix raised, so name the part
+you can predict — a real message often carries an activity name or an object id.
+A failing `@throws` reports both sides:
+
+```
+FAIL  Invalid input throws validation error (6ms, 1 assertion)
+       expected an error containing 'Validation failed',
+       actual: Could not find object of type 'Sales.Order'
+```
+
+Write `@throws` on its own when the message is not the thing under test:
+
+```sql
+/**
+ * @test Invalid input is rejected
+ * @throws
+ */
+call microflow Sales.ValidateOrder(Total = -1);
+/
+```
+
+Anything else after the tag is an error, not a message: `@throws not found` is
+refused rather than read as an unquoted one.
+
 `@throws` and `@expect` cannot be combined. A `@throws` test compiles to a
 different shape — the verdict starts as a failure and only the error handler
 clears it — and the `@expect` checks are not emitted into it at all, so the

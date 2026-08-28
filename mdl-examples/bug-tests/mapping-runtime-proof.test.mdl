@@ -81,14 +81,13 @@ $result = call microflow RtMap.MF_Backup_Ignore(Json = '{"code":"NEW","name":"fr
 /
 
 /**
- * NOTE: `@throws` REQUIRES a message, and the message is never compared — the
- * runner only checks it is non-empty (generator_endpoint.go, `tc.Throws != ""`),
- * so this asserts "an exception was raised" and nothing more. A BARE `@throws`
- * is silently ignored, and the test then fails on the exception it was written
- * to expect. The control below is what gives this test its meaning.
+ * The message is compared (ako/mxcli#301): `contains($latestError/Message, …)`
+ * in the generated handler, so this asserts WHICH error was raised, not merely
+ * that one was. Its previous expectation — 'the object was not found' — was
+ * wrong and passed anyway; the raised message is Mendix's own.
  *
  * @test find … or error fails the import when the key does not match (ako/mxcli#261)
- * @throws 'the object was not found'
+ * @throws 'Could not find object of type'
  */
 $result = call microflow RtMap.MF_Backup_Error(Json = '{"code":"NEW","name":"fresh"}');
 /

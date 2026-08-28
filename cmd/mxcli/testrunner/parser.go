@@ -27,11 +27,28 @@ type TestCase struct {
 	Verify          []Verify // @verify OQL post-conditions
 	// Setups are the microflows called before the test's own statements, in
 	// order: the file header's first, then the test's own. See writeSetupCalls.
-	Setups     []string
-	Cleanup    string // @cleanup strategy ("rollback" or "none")
-	Throws     string // @throws expected error message
-	SourceFile string // Original file path
-	Line       int    // Line number in source file
+	Setups  []string
+	Cleanup string // @cleanup strategy ("rollback" or "none")
+	// ExpectsThrow records that @throws was written, which Throws cannot: a bare
+	// @throws carries no message, and "" is also what an absent annotation
+	// leaves behind. Keying the generators on Throws != "" therefore dropped the
+	// bare form silently, and the test then failed on the very exception it was
+	// written to expect (ako/mxcli#301).
+	ExpectsThrow bool
+	Throws       string // @throws expected error message, "" when written bare
+	SourceFile   string // Original file path
+	Line         int    // Line number in source file
+}
+
+// expectsThrow reports whether the test expects its body to raise an error.
+//
+// Two fields can say so, and either alone is enough: ExpectsThrow is what the
+// parser sets, and a non-empty Throws implies it — there is no test that names
+// an expected message and does not expect a throw. Reading them through one
+// accessor is what keeps a caller that sets only the message (every construction
+// site that predates the bare form) from silently becoming a non-throws test.
+func (tc TestCase) expectsThrow() bool {
+	return tc.ExpectsThrow || tc.Throws != ""
 }
 
 // AssertionCount reports how many assertions the test actually makes.
@@ -41,7 +58,7 @@ type TestCase struct {
 // is what made @verify look like an assertion while asserting nothing.
 func (tc TestCase) AssertionCount() int {
 	n := len(tc.Expects) + len(tc.Verify)
-	if tc.Throws != "" {
+	if tc.expectsThrow() {
 		n++
 	}
 	return n
@@ -190,11 +207,12 @@ func parseMDLTests(content string, sourcePath string) ([]TestCase, error) {
 			Verify:          annotations.Verify,
 			// The file's fixtures run before the test's own: they are the
 			// broader precondition, and a test's own setup may build on them.
-			Setups:     append(append([]string{}, fileSetups...), annotations.Setups...),
-			Cleanup:    annotations.Cleanup,
-			Throws:     annotations.Throws,
-			SourceFile: sourcePath,
-			Line:       line,
+			Setups:       append(append([]string{}, fileSetups...), annotations.Setups...),
+			Cleanup:      annotations.Cleanup,
+			ExpectsThrow: annotations.throwsSet,
+			Throws:       annotations.Throws,
+			SourceFile:   sourcePath,
+			Line:         line,
 		})
 	}
 
@@ -258,6 +276,7 @@ func parseMarkdownTests(content string, sourcePath string) ([]TestCase, error) {
 					Verify:          annotations.Verify,
 					Setups:          annotations.Setups,
 					Cleanup:         annotations.Cleanup,
+					ExpectsThrow:    annotations.throwsSet,
 					Throws:          annotations.Throws,
 					SourceFile:      sourcePath,
 					Line:            blockStart,
@@ -302,7 +321,7 @@ func headerSetups(content string) ([]string, error) {
 	if len(a.Verify) > 0 {
 		offending = append(offending, "@verify")
 	}
-	if a.Throws != "" {
+	if a.throwsSet {
 		offending = append(offending, "@throws")
 	}
 	if a.cleanupSet {
@@ -505,7 +524,10 @@ type annotations struct {
 	// cleanupSet records whether @cleanup was written, which the default value
 	// of Cleanup cannot express. Only the file-header check needs it.
 	cleanupSet bool
-	Throws     string
+	// throwsSet mirrors TestCase.ExpectsThrow: @throws was written, whether or
+	// not it carried a message.
+	throwsSet bool
+	Throws    string
 }
 
 var (
@@ -526,7 +548,10 @@ var (
 	testPattern    = regexp.MustCompile(`^@test\s+(.+)`)
 	setupPattern   = regexp.MustCompile(`^@setup\s+(\S+)`)
 	cleanupPattern = regexp.MustCompile(`^@cleanup\s+(\S+)`)
-	throwsPattern  = regexp.MustCompile(`^@throws\s+'([^']*)'`)
+	// throwsPattern matches the tag and hands the rest to parseThrows. The
+	// message is optional — the old pattern required it, so a bare @throws
+	// matched nothing at all and was dropped without a word.
+	throwsPattern = regexp.MustCompile(`^@throws\b(.*)$`)
 )
 
 // parseAnnotations extracts test annotations from a javadoc comment.
@@ -574,13 +599,36 @@ func parseAnnotations(doc string) annotations {
 			a.cleanupSet = true
 		}
 		if m := throwsPattern.FindStringSubmatch(line); m != nil {
-			a.Throws = m[1]
+			parseThrows(&a, m[1])
 		}
 	}
 
 	checkVerifyCleanup(&a)
 	checkThrowsExpect(&a)
 	return a
+}
+
+// parseThrows records an @throws annotation and its optional message.
+//
+// Three forms, and the third is why this is a function rather than a regexp
+// capture: `@throws` alone expects any exception, `@throws 'text'` expects one
+// whose message contains that text, and anything else is a mistake that must be
+// reported. An unquoted or half-quoted message used to match nothing, which left
+// the test with no @throws at all — the same silent-drop shape the bare form
+// suffered from (ako/mxcli#301).
+func parseThrows(a *annotations, rest string) {
+	a.throwsSet = true
+	rest = strings.TrimSpace(rest)
+	if rest == "" {
+		return
+	}
+	if len(rest) >= 2 && strings.HasPrefix(rest, "'") && strings.HasSuffix(rest, "'") {
+		a.Throws = rest[1 : len(rest)-1]
+		return
+	}
+	a.AssertionErrors = append(a.AssertionErrors, fmt.Sprintf(
+		"@throws %s: the expected message must be a single-quoted string, as in "+
+			"@throws 'not found'. Write @throws on its own to expect any exception", rest))
 }
 
 // checkThrowsExpect refuses an @expect on a test that expects an exception.
@@ -593,7 +641,7 @@ func parseAnnotations(doc string) annotations {
 // return value the body was expected not to produce cannot be made to work, so
 // it is refused rather than quietly ignored.
 func checkThrowsExpect(a *annotations) {
-	if a.Throws == "" || len(a.Expects) == 0 {
+	if !a.throwsSet || len(a.Expects) == 0 {
 		return
 	}
 	for _, exp := range a.Expects {
