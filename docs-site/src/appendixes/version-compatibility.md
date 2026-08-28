@@ -4,7 +4,7 @@ Supported Mendix Studio Pro versions, feature availability matrix, and known lim
 
 ## Supported Versions
 
-mxcli supports Mendix Studio Pro versions **9.x through 11.x**. Development and nightly testing targets three versions:
+mxcli supports Mendix Studio Pro versions **9.x through 11.x**. Development and nightly testing targets five versions:
 
 | Studio Pro Version | MPR Format | Nightly Tested | Status |
 |-------------------|------------|----------------|--------|
@@ -14,7 +14,14 @@ mxcli supports Mendix Studio Pro versions **9.x through 11.x**. Development and 
 | 10.24 (LTS) | v2 | **Yes** | Supported |
 | 11.0 -- 11.5 | v2 | No | Supported |
 | 11.6 | v2 | **Yes** | Primary development target |
-| 11.9 | v2 | **Yes** | Latest tested |
+| 11.7 -- 11.11 | v2 | No | Supported |
+| 11.12 | v2 | **Yes** | Supported |
+| 11.13 | v2 | **Yes** | Supported |
+| 11.14 | v2 | **Yes** | Latest tested |
+
+The exact patch versions are in the `mendix-version` matrix in
+[`.github/workflows/nightly.yml`](https://github.com/ako/mxcli/blob/main/.github/workflows/nightly.yml),
+which is authoritative -- this table names the minors only.
 
 ## MPR Format Versions
 
