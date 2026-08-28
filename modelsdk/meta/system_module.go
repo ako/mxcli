@@ -31,6 +31,59 @@ type SystemEntityDef struct {
 	Persistable    bool
 	Generalization string // e.g. "System.FileDocument", "System.Error"
 	Attributes     []SystemAttrDef
+
+	// RuntimeOnly marks an entity that exists in the Mendix RUNTIME's metamodel
+	// but not in the System module Studio Pro shows — a table the runtime keeps
+	// for itself (background jobs, auto-commit entries, offline sync bookkeeping,
+	// workflow execution rows).
+	//
+	// The distinction is load-bearing because a model references System members
+	// BY NAME. Writing one of these names produces a document mxbuild rejects
+	// with CE1613 "no longer exists" — which is upstream #972: `Thumbnail_Image`
+	// is owned by both ends, so System.Image counted as an owner through the
+	// child side and every specialization of it inherited an access-rule member
+	// for an association the modeler does not have.
+	//
+	// Use ModelerSystemEntities / ModelerSystemAssociations for anything that
+	// resolves against the model. The full lists stay complete for a storage
+	// backend that speaks to the runtime metamodel instead.
+	RuntimeOnly bool
+}
+
+// ModelerSystemEntities returns the System entities Studio Pro exposes — the
+// full list minus the runtime-only rows. Every path that resolves a name against
+// the model wants this one; see SystemEntityDef.RuntimeOnly.
+func ModelerSystemEntities() []SystemEntityDef {
+	out := make([]SystemEntityDef, 0, len(SystemEntities))
+	for _, e := range SystemEntities {
+		if !e.RuntimeOnly {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// ModelerSystemAssociations returns the System associations Studio Pro exposes.
+//
+// An association is runtime-only exactly when one of its ends is, so it is
+// DERIVED rather than flagged by hand: a flag on both would be two lists to keep
+// in step, and the one that fell behind would put a dangling by-name reference
+// into a model — which is the failure this whole distinction exists to prevent.
+func ModelerSystemAssociations() []SystemAssocDef {
+	runtimeOnly := make(map[string]bool, len(SystemEntities))
+	for _, e := range SystemEntities {
+		if e.RuntimeOnly {
+			runtimeOnly[e.Name] = true
+		}
+	}
+	out := make([]SystemAssocDef, 0, len(SystemAssociations))
+	for _, a := range SystemAssociations {
+		if runtimeOnly[a.Parent] || runtimeOnly[a.Child] {
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
 }
 
 // SystemEntities lists all entities in the System module.
@@ -299,11 +352,11 @@ var SystemEntities = []SystemEntityDef{
 		{Name: "Description", Type: "String"},
 	}},
 	// --- Entities below extracted from MDP (Phase 3, 2026-04-24) ---
-	{Name: "WorkflowVersion", Persistable: true, Attributes: []SystemAttrDef{
+	{Name: "WorkflowVersion", Persistable: true, RuntimeOnly: true, Attributes: []SystemAttrDef{
 		{Name: "VersionHash", Type: "String"},
 		{Name: "ModelJSON", Type: "String"},
 	}},
-	{Name: "WorkflowActivity", Persistable: true, Attributes: []SystemAttrDef{
+	{Name: "WorkflowActivity", Persistable: true, RuntimeOnly: true, Attributes: []SystemAttrDef{
 		{Name: "ModelGUID", Type: "String"},
 		{Name: "ActivityGUID", Type: "String"},
 		{Name: "Caption", Type: "String"},
@@ -318,35 +371,35 @@ var SystemEntities = []SystemEntityDef{
 		{Name: "Outcome", Type: "String"},
 		{Name: "OutcomeModelGUID", Type: "String"},
 	}},
-	{Name: "WorkflowActivityUserTaskOutcome", Persistable: true, Attributes: []SystemAttrDef{
+	{Name: "WorkflowActivityUserTaskOutcome", Persistable: true, RuntimeOnly: true, Attributes: []SystemAttrDef{
 		{Name: "Outcome", Type: "String"},
 		{Name: "Time", Type: "DateTime"},
 	}},
-	{Name: "PrivateFileDocument", Persistable: true, Generalization: "System.FileDocument"},
-	{Name: "Thumbnail", Persistable: true, Generalization: "System.Image"},
-	{Name: "BackgroundJob", Persistable: true, Attributes: []SystemAttrDef{
+	{Name: "PrivateFileDocument", Persistable: true, RuntimeOnly: true, Generalization: "System.FileDocument"},
+	{Name: "Thumbnail", Persistable: true, RuntimeOnly: true, Generalization: "System.Image"},
+	{Name: "BackgroundJob", Persistable: true, RuntimeOnly: true, Attributes: []SystemAttrDef{
 		{Name: "JobId", Type: "Long"},
 		{Name: "StartTime", Type: "DateTime"},
 		{Name: "EndTime", Type: "DateTime"},
 		{Name: "Result", Type: "String"},
 		{Name: "Successful", Type: "Boolean"},
 	}},
-	{Name: "AutoCommitEntry", Persistable: true, Attributes: []SystemAttrDef{
+	{Name: "AutoCommitEntry", Persistable: true, RuntimeOnly: true, Attributes: []SystemAttrDef{
 		{Name: "SessionId", Type: "String"},
 		{Name: "ObjectId", Type: "Long"},
 	}},
-	{Name: "UnreferencedFile", Persistable: true, Attributes: []SystemAttrDef{
+	{Name: "UnreferencedFile", Persistable: true, RuntimeOnly: true, Attributes: []SystemAttrDef{
 		{Name: "FileKey", Type: "String"},
 		{Name: "State", Type: "Enumeration", EnumQN: "System.UnreferencedFileState"},
 		{Name: "TransactionId", Type: "String"},
 	}},
-	{Name: "OfflineCreatedGuids", Persistable: true, Attributes: []SystemAttrDef{
+	{Name: "OfflineCreatedGuids", Persistable: true, RuntimeOnly: true, Attributes: []SystemAttrDef{
 		{Name: "Guid", Type: "String"},
 	}},
-	{Name: "OfflineSynchronizationHistory", Persistable: true, Attributes: []SystemAttrDef{
+	{Name: "OfflineSynchronizationHistory", Persistable: true, RuntimeOnly: true, Attributes: []SystemAttrDef{
 		{Name: "SyncId", Type: "String"},
 	}},
-	{Name: "ChangeHash", Persistable: true, Attributes: []SystemAttrDef{
+	{Name: "ChangeHash", Persistable: true, RuntimeOnly: true, Attributes: []SystemAttrDef{
 		{Name: "ObjectId", Type: "Long"},
 		{Name: "Attribute", Type: "String"},
 		{Name: "Hash", Type: "String"},

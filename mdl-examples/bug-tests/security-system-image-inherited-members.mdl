@@ -1,0 +1,58 @@
+-- mendixlabs/mxcli#972 — GRANT on a System.Image specialization wrote a member
+-- access for System.Thumbnail_Image, and mxbuild rejected the rule:
+--
+--   [CE1613] "The selected association 'System.Thumbnail_Image' no longer exists."
+--            at Access rule of entity 'Img.CaseImage'
+--
+-- The association is real, in the RUNTIME's metamodel. It arrived with the block
+-- in modelsdk/meta/system_module.go marked "extracted from MDP (Phase 3)", which
+-- describes the tables the Mendix runtime keeps rather than the System module
+-- Studio Pro shows. Thumbnail_Image is owned by BOTH ends, so System.Image
+-- counted as an owner through the child side and every specialization inherited
+-- a member for a name the modeler does not have.
+--
+--   mxcli exec mdl-examples/bug-tests/security-system-image-inherited-members.mdl -p app.mpr
+--   mx check app.mpr        -- 0 new errors (was 1 × CE1613 per rule set)
+--
+-- What to look for in the stored rule: the only System names are
+-- System.Image and System.FileDocument — the inherited ATTRIBUTES, which Mendix
+-- accepts. No System association is inherited at all, because after the fix
+-- neither System.Image nor System.FileDocument declares one.
+--
+-- Two controls, both cheap and both worth keeping:
+--
+--   * Img.PlainThing has no System ancestor. Its rule must be unaffected —
+--     otherwise this is "GRANT stopped writing associations", not "the System
+--     list stopped offering a name Mendix does not have".
+--   * The LEGACY engine was always clean here: its System list (sdk/mpr/
+--     system_module.go) never carried the MDP block. Running this script with
+--     `--engine legacy` and diffing the written rule against the default engine
+--     is the free cross-check that pins the defect to the list rather than to
+--     the GRANT path that reads it.
+--
+-- Damage was invisible from inside mxcli: `describe entity Img.CaseImage`
+-- renders the rule without the broken member, which is why the reporter could
+-- only see it through mx check.
+
+create module Img;
+create module role Img.Worker;
+
+-- The reported case: a specialization of System.Image.
+create persistent entity Img.CaseImage extends System.Image (
+  "ImageNumber": Integer,
+  "Caption": String(200)
+);
+
+-- A specialization of System.FileDocument, one level further up the same chain.
+create persistent entity Img.CaseAttachment extends System.FileDocument (
+  "DocumentNumber": Integer
+);
+
+-- The control: no System ancestor, so nothing about inherited members applies.
+create persistent entity Img.PlainThing (
+  "Label": String(100)
+);
+
+grant Img.Worker on Img.CaseImage (read ("ImageNumber", "Caption"));
+grant Img.Worker on Img.CaseAttachment (read ("DocumentNumber"));
+grant Img.Worker on Img.PlainThing (read *);
