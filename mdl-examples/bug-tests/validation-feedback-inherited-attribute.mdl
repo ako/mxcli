@@ -1,0 +1,57 @@
+-- mendixlabs/mxcli#974 — a validation feedback aimed at an INHERITED attribute
+-- wrote a reference Mendix cannot resolve:
+--
+--   [CE1613] "The selected attribute 'VF.Child.Title' no longer exists."
+--            at Validation feedback activity
+--
+-- Mendix qualifies a member reference against the entity that DECLARES it, so an
+-- inherited attribute carries the ANCESTOR's name. The builder used the
+-- variable's declared type instead, with no generalization walk. Both engines.
+--
+--   mxcli exec mdl-examples/bug-tests/validation-feedback-inherited-attribute.mdl -p app.mpr
+--   mx check app.mpr        -- 0 new errors
+--
+-- The stored references, all four verified on mxbuild 11.13.0:
+--
+--   $Child/Title      -> VF.Base.Title          inherited
+--   $Child/Own        -> VF.Child.Own           CONTROL: own attribute
+--   $Account/Name     -> System.User.Name       inherited across a System ancestor
+--   $Account/FullName -> VF.Account.FullName    CONTROL: own attribute
+--
+-- The controls are not decoration. A walk that returned an ancestor for
+-- everything would pass the first and third and be just as wrong.
+--
+-- The System.User case is the one that decided the design. The access-rule walk
+-- (EntityMembers) deliberately STOPS at System.User, because a user entity's
+-- platform members must not appear in its access rule — CE0066. That says
+-- nothing about referring to one from a microflow, so this path needs its own
+-- full-chain walk; reusing the access-rule one would silently fall back to
+-- VF.Account.Name, which is the bug being fixed.
+
+create module VF;
+
+create persistent entity VF.Base ("Title": String(200));
+create persistent entity VF.Child extends VF.Base ("Own": String(20));
+create persistent entity VF.Account extends System.User ("FullName": String(100));
+
+create or modify microflow VF.Child_Validate ( $Child: VF.Child )
+returns Boolean
+begin
+  @position(130, 200)
+  validation feedback $Child/Title message 'Title is required.';
+  @position(320, 200)
+  validation feedback $Child/Own message 'Own is required.';
+  @position(510, 200)
+  return true;
+end;
+
+create or modify microflow VF.Account_Validate ( $Account: VF.Account )
+returns Boolean
+begin
+  @position(130, 200)
+  validation feedback $Account/Name message 'Name is required.';
+  @position(320, 200)
+  validation feedback $Account/FullName message 'Full name is required.';
+  @position(510, 200)
+  return true;
+end;
