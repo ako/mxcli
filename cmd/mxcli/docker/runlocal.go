@@ -1088,6 +1088,21 @@ func clientBundleServedWithin(appURL string, window time.Duration) bool {
 // path the non-watch boot uses) and re-probe. A no-op when the bundle is already
 // served (a pure model reload never touches web/dist).
 func ensureClientServed(deployDir, appURL, mxbuildPath string, out io.Writer) error {
+	// A dangling chunk is checked FIRST, because the index.js probe cannot see it:
+	// the entry point is served with a 200 while a chunk it imports is missing, so
+	// the apply is reported as successful and the page dies in the browser with
+	// the runtime's generic error dialog. See danglingClientChunks.
+	if dangling := danglingClientChunks(deployDir); len(dangling) > 0 {
+		fmt.Fprintf(out, "  client bundle inconsistent — index.js imports %d chunk(s) that are not on disk (%s); re-bundling web client...\n",
+			len(dangling), strings.Join(dangling, ", "))
+		if err := BuildWebClient(WebClientOptions{DeployDir: deployDir, MxBuildPath: mxbuildPath, Stdout: out}); err != nil {
+			return fmt.Errorf("web client re-bundle: %w", err)
+		}
+		if still := danglingClientChunks(deployDir); len(still) > 0 {
+			return fmt.Errorf("client bundle still references missing chunks after re-bundle: %s",
+				strings.Join(still, ", "))
+		}
+	}
 	if clientBundlePresent(deployDir) && clientBundleServedWithin(appURL, clientProbeWindow) {
 		return nil
 	}

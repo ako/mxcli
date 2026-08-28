@@ -92,7 +92,14 @@ drop the `./` if it came pre-installed on `PATH`.
    ```bash
    ./mxcli new <AppName> --version <version> --theme <theme>
    rm -f <AppName>/mxcli        # a hardlink to the ./mxcli you just ran; mv would
-                                # refuse it as "the same file"
+                                # refuse it as "the same file". Still needed when
+                                # mxcli is already on PATH — `new` hardlinks it
+                                # into the project either way.
+   rm -rf .ai-context           # the seed prompt's own `mxcli init --sync-skills`
+                                # wrote this; `mxcli new` writes its own copy from
+                                # the same binary, so the one here is a stale
+                                # duplicate and `mv` fails with
+                                #   mv: cannot overwrite './.ai-context': Directory not empty
    shopt -s dotglob && mv <AppName>/* . && rmdir <AppName>
    ```
 
