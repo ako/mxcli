@@ -82,6 +82,70 @@ The argument is that the binary contains a tunnelling and pivoting tool, and
 work that is sold internally on "the binary gets much smaller" is being sold on a
 false premise; it should be sold on capability removal, which is real.
 
+## The transport constraint — measured, and it rules out most alternatives
+
+Any replacement for chisel is bounded by an environmental fact that is easy to
+miss and expensive to discover late:
+
+> **The transport must be TLS on port 443, spoken to a proxy that terminates and
+> re-inspects it.**
+
+A Claude Code container — the environment the preview feature exists to serve —
+has egress only through a TLS-terminating MITM proxy (hence its CA bundle at
+`/root/.ccr/ca-bundle.crt` and a matching Java truststore). Measured in one:
+
+| Check | Result |
+|-------|--------|
+| `ssh` client present | **Absent** — no `ssh`, no `autossh` |
+| Direct TCP to `github.com:22` | **Blocked** |
+| Proxy `CONNECT …:22` | `200 Connection Established` — **meaningless, see below** |
+| SSH banner from a real sshd (`github.com:22`) | **Never arrives**; a TLS attempt gets `Connection reset by peer` |
+| HTTPS through the proxy | **Works** |
+
+Two things make this readable rather than ambiguous, and both are needed:
+
+- **The `200` is not evidence.** `CONNECT nonexistent.invalid:22` *also* returns
+  `200 Connection Established` — the proxy answers optimistically without
+  connecting upstream. Anyone testing reachability by CONNECT status alone will
+  conclude SSH works, and be wrong.
+- **The banner is the evidence.** An sshd speaks *first*, sending `SSH-2.0-…` the
+  moment the socket opens. Nothing arrives. The `:443` control is silent too, but
+  that is correct — TLS clients speak first — which is exactly why both controls
+  are required to interpret either.
+
+Independently, the proxy declares `gitSshRewrite: true`: the platform already
+rewrites git SSH URLs to HTTPS because SSH does not work there.
+
+**This is why chisel was chosen and why it works.** It is WebSocket over genuine
+TLS on 443, so a TLS-terminating proxy can relay it like any other HTTPS traffic —
+which is what `proxyForURL` in `docker/tunnel.go` exists for. Nothing about SSH
+survives that path.
+
+The constraint is therefore a design input for anything that replaces the
+transport, and it eliminates a whole family of otherwise-attractive answers before
+any code is written.
+
+## Alternatives, if a separate binary does not satisfy the policy
+
+This proposal's answer — move the capability into an opt-in binary — is the
+cheapest one that keeps the feature. If the policy that flagged the Linux builds
+objects to the *capability* rather than to what ships unasked, it will not be
+enough. The alternatives, with the transport constraint applied:
+
+| Alternative | Verdict |
+|-------------|---------|
+| **Bring your own approved tunnel** (`ssh -R`, from the developer's own OpenSSH) | **Ruled out** for Claude Code containers by the measurement above. It may work on a corporate laptop with an approved SSH client, but supporting both environments means two transports — worse than one. |
+| **Hosted runner** — the app runs on the hosted side; the developer pushes a build | **Unaffected by the constraint**, because it needs no transport at all. Strongest endpoint story: nothing listens, tunnels, or accepts inbound. Costs compute + a database per preview, and changes the product from "your local app, previewed" to "your app, deployed" — worth building only if it keeps the warm loop (push once, then `reload_model` over the admin channel). |
+| **A narrow HTTP-only forwarder** we write ourselves | The constraint *specifies* its design: HTTPS/WebSocket on 443 — chisel's wire shape without the SSH and SOCKS payload. Legitimate **only** as capability reduction (it genuinely cannot pivot), never as signature reduction; being wire-identical to chisel while claiming to differ sits close to the line ADR-0009 draws. Detection outcome is unknown, so this costs real work to discover whether it helps. |
+| **Cloudflare Tunnel / Tailscale Funnel** | Untested, and the most promising untested option: both are built for HTTPS-only egress, so the constraint does not obviously bite, and both are frequently already allow-listed. Worth probing before building anything bespoke. |
+
+The hub itself survives all four. Its seam is already at the transport boundary:
+chisel appears only in the control server at `ControlAddr` and in whatever listens
+on a backend's `ReversePort`, while Host routing, per-subdomain autocert, the
+registry, GitHub auth, hub keys, the session log and the admin overview are
+transport-agnostic — as `control_other.go` already proves by compiling and testing
+without it. Swapping transports is a contained change, not a rewrite.
+
 ## Proposed design
 
 ### One new binary, both ends
@@ -317,9 +381,17 @@ real process boundary.
 3. **Do the hub's own binaries get flagged, and does that matter?** Almost
    certainly yes, and probably not — the tool is opt-in and honestly described.
    But if the hub is meant to be installable on managed endpoints, this whole
-   exercise only relocates the ticket. Worth confirming with whoever reported the
-   Linux detections that a separate opt-in binary actually satisfies their policy
-   **before** building this.
+   exercise only relocates the ticket. **This is the question that decides whether
+   the proposal is right at all**, and it should be answered with whoever reported
+   the Linux detections **before** any of this is built.
+
+   What to ask them, because the answer selects from the alternatives table above:
+   does the policy object to *unapproved binaries* (→ a hosted runner, or one of
+   their own approved tools), to *tunnelling as a capability* (→ hosted runner
+   only), to *chisel specifically* (→ this proposal suffices), or to *dev machines
+   accepting inbound traffic at all* (→ hosted runner only)? A separate question
+   again if the objection is chisel in the **dependency manifest** rather than in
+   the binary — that one needs the module split, not the binary split.
 4. **How long do the deprecation shims live?** One release, two, or none?
 5. **Does anything else in the repo assume `run --hub` exists?** The devcontainer
    template, the bootstrap prompt, and the session-grouping work in the hub
