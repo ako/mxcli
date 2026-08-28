@@ -39,10 +39,13 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 		if alterStmt, ok := stmt.(*ast.AlterEntityStmt); ok {
 			violations = append(violations, ValidateAlterEntity(alterStmt)...)
 		}
-		// An association carries the same pair of contradictory guards (MDL067).
+		// An association carries the same pair of contradictory guards (MDL067),
+		// and its FROM entity must live in the module it is declared in (MDL070) —
+		// the remote-parent form writes a project that cannot be opened.
 		if assocStmt, ok := stmt.(*ast.CreateAssociationStmt); ok {
 			violations = append(violations, validateIdempotencyGuard(
 				assocStmt.CreateOrModify, assocStmt.IfNotExists, "association", assocStmt.Name.String())...)
+			violations = append(violations, ValidateAssociationModules(assocStmt)...)
 		}
 		// A user role with no System module role cannot sign in (CE0156) — but
 		// only once security is on, which the script may say itself.
