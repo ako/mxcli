@@ -497,6 +497,9 @@ func (w *Writer) insertUnit(unitID, containerID, containmentName, unitType strin
 	if err := validateNoPlaceholderIDs(unitID, contents); err != nil {
 		return err
 	}
+	if err := canon.DuplicateElementIDError(unitID, contents); err != nil {
+		return err
+	}
 
 	// Convert UUID strings to 16-byte blobs for database
 	unitIDBlob := uuidToBlob(unitID)
@@ -565,6 +568,16 @@ func (w *Writer) insertUnit(unitID, containerID, containmentName, unitType strin
 
 func (w *Writer) updateUnit(unitID string, contents []byte, opts ...canon.Option) error {
 	if err := validateNoPlaceholderIDs(unitID, contents); err != nil {
+		return err
+	}
+	// Two elements sharing an $ID make the whole project unopenable, so the
+	// bytes are checked BEFORE reconciliation rather than after: an elided
+	// write is not a safe one, it is merely one that did not happen this time,
+	// and the same contents would be offered again on the next run. Checking
+	// here also covers the paths that reach storage without a rebuild —
+	// UpdateRawUnit and ALTER's targeted patches — which is where a duplicate
+	// is most likely to arrive unnoticed. (ako/mxcli-captrack #2)
+	if err := canon.DuplicateElementIDError(unitID, contents); err != nil {
 		return err
 	}
 
