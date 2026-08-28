@@ -454,6 +454,11 @@ func execCreateImportMapping(ctx *ExecContext, s *ast.CreateImportMappingStmt) e
 		}
 		idx = resolved
 	}
+	if s.SchemaKind == "XML_SCHEMA" && s.SchemaRef.Module != "" {
+		if err := resolveXmlSchemaSource(ctx.Backend, s.SchemaRef); err != nil {
+			return mdlerrors.NewValidation(fmt.Sprintf("import mapping %s: %v", s.Name.String(), err))
+		}
+	}
 
 	// Build element tree from the AST definition, cloning JSON structure properties
 	// `root a/b/c` starts the mapping at a nested schema element (#267).

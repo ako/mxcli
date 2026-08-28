@@ -220,6 +220,50 @@ func (r *Reader) ListIconCollections() ([]*types.IconCollection, error) {
 	return result, nil
 }
 
+// ListXmlSchemas returns all XML schema documents in the project.
+//
+// Read directly from the raw unit rather than through a parser, because the two
+// fields anything needs — Name and FilePath — are top-level strings and the
+// element tree is not something mxcli reads. Verified against mxbuild 11.13.0 by
+// planting a synthetic XmlSchemas$XmlSchema unit carrying exactly these keys: a
+// mapping's `with xml schema` reference to it stopped being CE1613 "no longer
+// exists" and became CE0292 "Please import an XSD file", which is mxbuild
+// naming the document it found.
+func (r *Reader) ListXmlSchemas() ([]*types.XmlSchema, error) {
+	units, err := r.listUnitsByType("XmlSchemas$XmlSchema")
+	if err != nil {
+		return nil, err
+	}
+	moduleMap, err := r.buildContainerModuleNameMap()
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*types.XmlSchema, 0, len(units))
+	for _, u := range units {
+		var raw map[string]interface{}
+		if err := bson.Unmarshal(u.Contents, &raw); err != nil {
+			return nil, fmt.Errorf("failed to parse XML schema %s: %w", u.ID, err)
+		}
+		xs := &types.XmlSchema{
+			ContainerID: model.ID(u.ContainerID),
+			Module:      moduleMap[model.ID(u.ContainerID)],
+		}
+		xs.ID = model.ID(u.ID)
+		xs.TypeName = "XmlSchemas$XmlSchema"
+		if v, ok := raw["Name"].(string); ok {
+			xs.Name = v
+		}
+		if v, ok := raw["Documentation"].(string); ok {
+			xs.Documentation = v
+		}
+		if v, ok := raw["FilePath"].(string); ok {
+			xs.FilePath = v
+		}
+		result = append(result, xs)
+	}
+	return result, nil
+}
+
 // ListJsonStructures returns all JSON structures in the project.
 func (r *Reader) ListJsonStructures() ([]*types.JsonStructure, error) {
 	units, err := r.listUnitsByType("JsonStructures$JsonStructure")

@@ -27,14 +27,28 @@
 --   whatever identifier it was given, so `null values Banana` reached the stored
 --   document verbatim.
 --
--- NOT fixed, and out of scope here:
---   `with xml schema Module.NoSuchThing` is still written through. A gen type
---   exists (modelsdk/gen/xmlschemas), so it is verifiable in principle, but it
---   needs a new ListXmlSchemas method across the backend interface, both engines
---   and the mock — a fair amount of plumbing for a dangling-reference check on a
---   document type mxcli cannot create. The silent-disabling half does not apply
---   there: an XML mapping never had member validation, because mxcli cannot read
---   XML schemas at all.
+-- The XML half, since fixed:
+--   `with xml schema Module.NoSuchThing` was written through the same way. It
+--   now resolves against ListXmlSchemas on both engines. The silent-disabling
+--   half never applied there — mxcli cannot read an XSD's element tree, so an
+--   XML mapping had no member validation to lose — leaving the plain dangling
+--   reference, CE1613.
+--
+--   There is no fixture for it HERE and cannot be: MDL cannot create an XML
+--   schema, so a bug test has nothing to reference. The rule is pinned by unit
+--   tests instead (mdl/executor/mapping_source_resolution_test.go and
+--   sdk/mpr/reader_xmlschema_test.go).
+--
+--   How the document shape was established, since no reference existed: NONE of
+--   the nine demo apps in the corpus contains an XML schema. A synthetic
+--   XmlSchemas$XmlSchema unit was planted instead, and mxbuild 11.13.0 asked
+--   whether it was the thing it resolves against — the mapping's reference went
+--   from CE1613 "The selected XML schema 'XGap.Probe_Xsd' no longer exists" to
+--   CE0292 "Please import an XSD file." at XML schema 'XGap.Probe_Xsd', which is
+--   mxbuild naming, by module and name, the document it had just found.
+--
+--   That measurement is also why the XML check FAILS OPEN on an empty list: a
+--   project with no XML schemas is the ordinary case, not evidence of a typo.
 --
 -- Watch for:
 --   An EMPTY project and a backend that CANNOT LIST look identical from here.
@@ -46,8 +60,10 @@
 --   not exist is an inconsistent model to be asserting against.
 --
 -- Validation:
---   mxbuild 11.13 reports 0 errors on the good mappings below; the three bad
---   forms are refused by `exec` with the structures that would have worked.
+--   mxbuild 11.13 reports 0 errors on the good mappings below; the bad forms are
+--   refused by `exec` AND by `check -p`, each naming what would have worked.
+--   `check -p` catching them is new: the issue's own report was that both check
+--   tiers passed, and the JSON half shipped refusing only at exec.
 -- ============================================================================
 
 create module BugTest259;

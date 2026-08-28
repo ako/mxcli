@@ -28,6 +28,11 @@ type MappingBackend interface {
 	// definitions themselves are not authorable from MDL.
 	ListMessageDefinitionCollections() ([]*model.MessageDefinitionCollection, error)
 
+	// ListXmlSchemas reads the project's XML schema documents. Read-only —
+	// there is no CREATE for one — and used to resolve a mapping's
+	// `with xml schema` reference before mxbuild reports it as CE1613.
+	ListXmlSchemas() ([]*types.XmlSchema, error)
+
 	ListJsonStructures() ([]*types.JsonStructure, error)
 	GetJsonStructureByQualifiedName(moduleName, name string) (*types.JsonStructure, error)
 	CreateJsonStructure(js *types.JsonStructure) error
