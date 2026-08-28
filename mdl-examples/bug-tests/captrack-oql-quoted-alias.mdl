@@ -1,0 +1,52 @@
+-- An OQL select ALIAS cannot be quoted, and before MDL072 saying so produced a
+-- parse error that blamed the whole statement:
+--
+--   line 2:22 extraneous input '"MonthNo"' expecting the start of a statement
+--   line 2:50 extraneous input '.' expecting the start of a statement
+--
+-- Two errors, neither naming the real problem, and the second a phantom.
+--
+-- The measurement that settled the design (mxbuild 11.13.0). OQL takes quoted
+-- identifiers in a SOURCE position but NOT as an alias — and not for any name,
+-- reserved or otherwise:
+--
+--   select s."Month" as MonthNo      ->  0 errors
+--   from   Module."Year" as y        ->  0 errors
+--   select sum(s.Amount) as "Total"  ->  CE0174 "The '"' part is incomplete or
+--                                        incorrect. You could use here:
+--                                        IDENTIFIER."
+--
+-- The two CE0174 texts differ exactly there: a source position lists
+-- "ASTERISK, AT_SIGN, OPEN_QUOTE, or IDENTIFIER", the alias position lists only
+-- "IDENTIFIER". So the grammar now ACCEPTS a quoted alias in order to refuse it
+-- with an explanation, rather than failing to parse.
+--
+-- Consequence worth knowing: a view entity's declared attribute name IS its
+-- alias, so a view column can never be called `Month` or `Year`. That one has
+-- to be renamed -- it is the single case MDL071's warning cannot talk you out of.
+--
+-- Run with:  mxcli check captrack-oql-quoted-alias.mdl
+-- Expect:    2 MDL072 errors, and NO MDL030 (the columns do have aliases).
+
+create persistent entity CapTrack.Sales ( Month: Integer, Amount: Integer );
+/
+
+-- REFUSED (MDL072): a quoted alias, ordinary name. Remedy is to unquote it.
+create view entity CapTrack.V1 ( Total: integer ) as
+  select sum(s.Amount) as "Total" from CapTrack.Sales as s;
+/
+
+-- REFUSED (MDL072): a quoted alias on a RESERVED name. Unquoting is not the
+-- remedy here -- that is CE0174 too. The view column has to be renamed.
+create view entity CapTrack.V2 ( "Month": integer ) as
+  select s."Month" as "Month" from CapTrack.Sales as s;
+/
+
+-- ACCEPTED: quoting in a SOURCE position, which is what MDL032 and MDL071 both
+-- point at. Measured at 0 errors. If this ever starts failing, the advice in
+-- those two rules became wrong.
+create view entity CapTrack.SalesByMonth ( MonthNo: integer, Total: integer ) as
+  select s."Month" as MonthNo, sum(s.Amount) as Total
+  from CapTrack.Sales as s
+  group by s."Month";
+/
