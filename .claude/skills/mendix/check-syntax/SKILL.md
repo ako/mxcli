@@ -116,6 +116,16 @@ Before writing any MDL, verify these requirements:
 > Measured across the keywords mxcli hints on: 38 are rescued by quoting, 3
 > (`Type`, `Default`, `Owner`) are not.
 >
+> **Third case — OQL keywords, which no rule refuses.** `Year`, `Month`, `Quarter`,
+> `Week`, `Day`, `Hour` and the other date-part words are neither MDL parser keywords
+> nor platform-reserved: they are accepted everywhere and build at 0 errors. They only
+> break a **view entity** whose OQL references them (**CE0174**), and OQL has no
+> quoted-identifier form, so nothing can escape them. mxcli reports **MDL071** as a
+> *warning* at `CREATE`/`ALTER`, which is the only place a rename is still cheap — the
+> `check` line for it says "it is valid Mendix, but …". Applies to the **entity** name
+> too, not just its attributes. Do not silence it by quoting; quoting changes nothing
+> here.
+>
 > **Exception — never quote `$`-prefixed variable/parameter references.** The quote
 > rule is for *bare* names (entities, attributes, associations, declared parameter
 > names). Variable and parameter **references** in expressions and widget bindings

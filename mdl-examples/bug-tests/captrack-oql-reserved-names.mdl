@@ -1,0 +1,59 @@
+-- Regression: an OQL reserved word used as a name passed every check until a
+-- view entity needed it. (ako/mxcli-captrack register #1)
+--
+-- The reporter's exact script produced "Check passed!". By the time a view
+-- needed the name, `Month`/`Year`/`Quarter` existed in 121 places across nine
+-- generators and the database columns; the rename was mechanical and five hours
+-- late. MDL032 already reported the collision — but only from inside the view's
+-- OQL, which is the moment it stops being cheap to fix.
+--
+-- MDL071 reports it at CREATE instead, as a WARNING: the name is legal Mendix
+-- (mxbuild: 0 errors) and most entities never appear in a view, so an error
+-- would refuse working models. Measured on 11.13.0, each case on its own:
+--
+--   attribute Month  ->  CE0174 "The 'Month' part is incomplete or incorrect."
+--   entity    Year   ->  CE0174 "The 'Year' part is incomplete or incorrect."
+--
+-- Run with:  mxcli check captrack-oql-reserved-names.mdl
+-- Expect:    6 MDL071 warnings (+1 MDL022), 0 errors — and `exec` writes all of it.
+
+-- WARNS (MDL071 x3): the reporter's verbatim case. Quoting does not help — it
+-- escapes MDL parser keywords, and OQL is a different grammar with no
+-- quoted-identifier form at all.
+create persistent entity CapTrack."ReservedProbe" (
+  "Month": Integer,
+  "Year": Integer,
+  "Quarter": String(10)
+);
+/
+
+-- WARNS (MDL071): the ENTITY name counts too. A view says `from CapTrack.Day
+-- as d`, and OQL reads `Day` there exactly as it reads an attribute after a dot.
+create persistent entity CapTrack.Day ( Label: String(50) );
+/
+
+-- WARNS (MDL071): an attribute added later is held to the same rule.
+alter entity CapTrack.ReservedProbe add attribute Week: Integer;
+/
+
+-- WARNS (MDL071): renaming INTO a reserved word. This is the expensive case —
+-- a rename lands on a name that already has references.
+alter entity CapTrack.ReservedProbe rename attribute Label to Hour;
+/
+
+-- CLEAN: renaming AWAY from a reserved word is the fix, not the problem.
+alter entity CapTrack.ReservedProbe rename attribute Month to MonthNumber;
+/
+
+-- CLEAN: an AutoX pseudo-type's declared name is discarded on write, so the
+-- name checked here never reaches the model. MDL022 reports the rename instead.
+create persistent entity CapTrack.AutoProbe ( Day: AutoCreatedDate );
+/
+
+-- CLEAN: names that only LOOK date-shaped are not OQL keywords.
+create persistent entity CapTrack.SafeProbe (
+  MonthNumber: Integer,
+  YearValue: Integer,
+  ReportingQuarter: String(10)
+);
+/

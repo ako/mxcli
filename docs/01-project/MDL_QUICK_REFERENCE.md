@@ -1459,6 +1459,27 @@ create persistent entity Module.VATRate ("create": datetime, Rate: decimal);
 
 Both double-quote (ANSI SQL) and backtick (MySQL) styles are supported. You can mix quoted and unquoted parts: `"combobox".CategoryTreeVE`.
 
+### A third grammar: OQL
+
+Quoting escapes **MDL parser** keywords. It does not help with the two grammars
+underneath:
+
+| Grammar | Example collision | Escape? | mxcli rule |
+|---|---|---|---|
+| MDL parser | `create`, `end`, `entity` | **Yes** — `"create"` | parse error |
+| Mendix platform | `Type`, `ID`, `CurrentUser` | **No** — the check strips quotes | MDL021 (CE7247) |
+| **Mendix OQL** | `Year`, `Month`, `Quarter`, `Day`, `Hour`… | **No** — OQL has no quoted-identifier form | **MDL071** (warning) |
+
+An OQL-reserved name is *legal Mendix* — the entity builds and runs. It only
+bites when a **view entity**'s OQL references it, which fails with **CE0174**
+("The 'Month' part is incomplete or incorrect"). Both an attribute name and an
+**entity** name are affected, and mxcli cannot escape either.
+
+That is why MDL071 is a **warning at CREATE**, not an error: most entities never
+reach a view, but by the time one does, the name has spread. MDL032 reports the
+same collision inside a view's OQL — correctly, but far too late to rename
+cheaply.
+
 **Boolean attributes** auto-default to `false` when no `default` is specified.
 
 **CALCULATED** marks an attribute as calculated (not stored). Use `calculated by Module.Microflow` to specify the calculation microflow. Calculated attributes derive their value from a microflow at runtime.

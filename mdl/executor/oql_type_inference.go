@@ -1072,10 +1072,16 @@ func ValidateOQLSyntax(oql string) []linter.Violation {
 			RuleID:   "MDL032",
 			Severity: linter.SeverityWarning,
 			Message: fmt.Sprintf(
-				"OQL reserved word %q used as an identifier — MxBuild rejects the view with CE0174 (mxcli cannot quote it); rename the attribute",
+				"OQL reserved word %q used as an identifier — MxBuild rejects the view with CE0174 (mxcli cannot quote it); rename it",
 				word),
-			Location:   linter.Location{DocumentType: "viewentity"},
-			Suggestion: fmt.Sprintf("Rename the %q column/attribute (both the source reference and the alias), e.g. %qValue or a domain term", word, word),
+			Location: linter.Location{DocumentType: "viewentity"},
+			// The regex sees "after a dot or after AS" and cannot tell which
+			// kind of name it matched, so the suggestion must not assert one:
+			// `from Module.Year as y` matches the ENTITY name, and an entity
+			// called Year trips the same CE0174 (measured on 11.13.0). Saying
+			// "rename the attribute" there sends the author looking for an
+			// attribute that does not exist.
+			Suggestion: fmt.Sprintf("Rename the %q entity, column or alias — every reference to it, including the alias — e.g. %qValue or a domain term. MDL071 reports this at CREATE time, before the name spreads", word, word),
 		})
 	}
 
