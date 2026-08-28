@@ -20,6 +20,13 @@ func execCreateAssociation(ctx *ExecContext, s *ast.CreateAssociationStmt) error
 		return mdlerrors.NewNotConnected()
 	}
 
+	// A FROM entity in another module writes a project that cannot be LOADED, so
+	// this must fail before the write — `check` reporting it is not enough for a
+	// script run with --no-check (the #833 lesson, same failure class).
+	if vs := ValidateAssociationModules(s); len(vs) > 0 {
+		return mdlerrors.NewValidationf("%s\n    %s", vs[0].Message, vs[0].Suggestion)
+	}
+
 	// Find or auto-create module
 	module, err := findOrCreateModule(ctx, s.Name.Module)
 	if err != nil {

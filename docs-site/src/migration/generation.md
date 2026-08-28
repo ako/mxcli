@@ -69,7 +69,7 @@ INDEX (OrderDate DESC);
 
 -- Associations
 CREATE ASSOCIATION Sales.Order_Customer
-  FROM CRM.Customer TO Sales.Order
+  FROM Sales.Order TO CRM.Customer
   TYPE Reference OWNER Default;
 /
 ```
