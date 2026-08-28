@@ -442,6 +442,7 @@ func ValidateEntity(stmt *ast.CreateEntityStmt) []linter.Violation {
 	persistent := stmt.Kind == ast.EntityPersistent
 	entityName := stmt.Name.String()
 	violations = append(violations, validateIdempotencyGuard(stmt.CreateOrModify, stmt.IfNotExists, "entity", entityName)...)
+	violations = append(violations, validateBareGeneralization(stmt)...)
 	for _, attr := range stmt.Attributes {
 		violations = append(violations, validateEntityAttribute(attr, persistent, entityName)...)
 		if !persistent {

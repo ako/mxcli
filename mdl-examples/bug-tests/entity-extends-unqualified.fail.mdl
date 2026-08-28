@@ -1,0 +1,33 @@
+-- Negative test. `mxcli check` must REPORT on this file, not accept it.
+--
+-- An entity's EXTENDS target was never validated. Found alongside
+-- mendixlabs/mxcli#972 (System.Thumbnail turned out not to exist in the
+-- modeler): `extends System.Thumbnail` passed `check --references` with "All
+-- references valid", and so did `extends SameModule.CompletelyMadeUp`.
+--
+-- This file holds the half that needs no project to see, because it is the half
+-- that does the most damage. Measured on mxbuild 11.13.0:
+--
+--   unqualified   ERROR: System.AggregateException: … (An error occurred when
+--                 trying to set the 'Generalization' property of a
+--                 Generalization in a Domain model …)
+--
+--                 The project does NOT load. mx check dies before validating
+--                 anything, so nothing else is reported either — the same shape
+--                 as the bare attribute name in #973. It is MDL069, and the
+--                 executor refuses it as well so `exec --no-check` cannot write
+--                 it either.
+--
+-- The other half — a QUALIFIED name that resolves to nothing — is recoverable
+-- (mxbuild reports CE1613 "The selected entity 'X' no longer exists" and the
+-- project still loads) and needs a project to detect, so it lives in
+-- mdl/executor/validate_generalization_test.go rather than here.
+--
+-- The positive controls are in entity-extends-resolvable.mdl.
+
+create module Gen;
+
+-- `Real` IS an entity of this module, so this is refused for being unqualified
+-- rather than for naming something unknown. MDL has no implicit module context.
+create persistent entity Gen.Real ("A": Integer);
+create persistent entity Gen.BadBare extends Real ("W": Integer);

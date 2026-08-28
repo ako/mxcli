@@ -366,6 +366,11 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 				return mdlerrors.NewNotFound("module", s.Name.Module)
 			}
 		}
+		// Validate the EXTENDS target. Stored by name, so an unresolved one is
+		// CE1613 at build time — or, unqualified, a project Mendix cannot open.
+		if err := validateEntityGeneralization(ctx, s, sc); err != nil {
+			return err
+		}
 		// Validate enumeration references in attributes
 		attrTypes := make(map[string]ast.DataType)
 		for _, attr := range s.Attributes {
