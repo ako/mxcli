@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- **A multi-line `CALL WORKFLOW` parameter mapping no longer captures the newline** (ako/mxcli-maintenance-2) — writing the mapping across two lines produced the workflow context variable `"Request\n  "` and the build failed **CE0109** *"Undefined variable 'Request\n  '"*. The same call on one line was fine, and `CALL MICROFLOW` was fine at any width.
+
+  That asymmetry is the diagnosis rather than a curiosity: a workflow's context is stored as a variable **name**, while a microflow's arguments stay **expressions** — and the visitor deliberately preserves an expression's trailing whitespace so a multi-line expression round-trips byte-for-byte, with tests pinning it. So the name is trimmed where it is built; trimming in the visitor, the obvious one-line fix, would have broken the round-trip the whitespace exists for. Verified end to end: the reported CE0109 becomes 0 errors on mxbuild 11.13.
 - **`mxcli check` catches a microflow data source with no arguments** (ako/mxcli-maintenance-2) — `datasource: microflow M.F` on a microflow that declares parameters wrote a data source with no parameter mappings, and the page built to **CE1571** *"No argument has been selected for parameter 'Task'"* at the far end of an `mx check`. `mxcli check --references` passed, because the microflow itself resolves — nothing compared the signature against the arguments, though both are in the model.
 
   It is an **error**, and the measurement is what licenses that. Mendix's wording — "and no default is available" — suggests a default sometimes is, so it was worth checking: a page with no parameters *and* a page carrying a `$Task` parameter of the microflow parameter's exact entity type both produce CE1571. Studio Pro does not auto-map an object in scope, so a missing argument is never filled in.
