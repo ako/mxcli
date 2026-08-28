@@ -1,0 +1,74 @@
+-- ako/mxcli#253 — `find` / `find or create` written without a key or over a
+-- non-persistable entity.
+--
+-- Negative test: `mxcli check` must REFUSE this script. Before the fix it
+-- reported "Check passed!", exec wrote the document, and the project only
+-- became unbuildable a build later — which is the whole failure mode, since an
+-- agent generating MDL gets no signal at the point it can still fix the
+-- statement.
+--
+-- Measured on mxbuild 11.13.0 against a base-project control. The ORDER matters
+-- for anyone re-measuring: mxbuild reports one at a time. A keyless find over a
+-- non-persistent entity is CE0250 ONLY; CE0251 appears once a key exists. The
+-- positive control — persistable entity, one key — is 0 errors for both
+-- `or error` and `or create`.
+
+create module KeyGap;
+
+create non-persistent entity KeyGap.Pet (
+  PetId : integer,
+  Name  : string
+);
+/
+
+create entity KeyGap.PetRecord (
+  PetId : integer,
+  Name  : string
+);
+/
+
+create json structure KeyGap.JSON_Pet snippet '{"id": 1, "name": "Fido"}';
+
+-- MDL-MAP02 (CE0250): searches, but nothing says what to search on.
+-- MDL-MAP03 (CE0251): KeyGap.Pet has no database to search.
+create import mapping KeyGap.IMM_FindPet
+  with json structure KeyGap.JSON_Pet
+{
+  find KeyGap.Pet or error {
+    PetId = id,
+    Name  = name
+  }
+};
+
+-- Both requirements apply to `find ... or create` too, and to the legacy
+-- `find or create X` spelling, which reaches the same stored handling by a
+-- different grammar route.
+create import mapping KeyGap.IMM_UpsertPet
+  with json structure KeyGap.JSON_Pet
+{
+  find or create KeyGap.Pet {
+    PetId = id key,
+    Name  = name
+  }
+};
+
+-- CE0250 is raised PER OBJECT ELEMENT, not only at the root: the same mapping
+-- with the find one level down reports "at Object mapping element 'Pet'".
+create entity KeyGap.Box ( Tag : string );
+/
+create association KeyGap.Box_Pet from KeyGap.Box to KeyGap.PetRecord;
+
+create json structure KeyGap.JSON_Nest
+  snippet '{"tag": "t", "pet": {"id": 1, "name": "Fido"}}';
+
+create import mapping KeyGap.IMM_Nest
+  with json structure KeyGap.JSON_Nest
+{
+  create KeyGap.Box {
+    Tag = tag,
+    find KeyGap.Box_Pet/KeyGap.PetRecord or error = pet {
+      PetId = id,
+      Name  = name
+    }
+  }
+};

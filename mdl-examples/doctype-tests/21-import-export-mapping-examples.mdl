@@ -50,6 +50,20 @@ create non-persistent entity MapTest.PetResponse (
 );
 /
 
+-- The upsert example below needs a PERSISTENT entity. `find` and `find or
+-- create` search the database, which a non-persistent entity does not have —
+-- Mendix rejects the mapping with CE0251, and mxcli now refuses it at check
+-- time as MDL-MAP03 (ako/mxcli#253). This example used to search PetResponse
+-- and got away with it only because PART 5 drops the mapping again before
+-- anything builds the project.
+
+create entity MapTest.PetRecord (
+  PetId: integer,
+  Name: string,
+  status: string
+);
+/
+
 -- ============================================================================
 -- Level 1.1: Simple Import Mapping
 -- ============================================================================
@@ -88,11 +102,14 @@ describe export mapping MapTest.EMM_Pet;
 --
 -- FIND OR CREATE looks up an existing object by KEY attributes.
 -- If not found, creates a new one. Useful for idempotent imports.
+--
+-- Two requirements, both enforced by mxcli check (MDL-MAP02 / MDL-MAP03):
+-- at least one member must be marked `key`, and the entity must be persistent.
 
 create import mapping MapTest.IMM_UpsertPet
   with json structure MapTest.JSON_Pet
 {
-  find or create MapTest.PetResponse {
+  find or create MapTest.PetRecord {
     PetId = id key,
     Name = name,
     status = status

@@ -171,6 +171,13 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 	// (#927).
 	violations = append(violations, ValidateExportMappingMembers(prog)...)
 
+	// Flag an import mapping element that searches for an object without a key
+	// (CE0250), or over an entity that is not persistable (CE0251). The key half
+	// is decidable from the statement and runs with or without a project; the
+	// persistability half needs the domain model and skips itself without one
+	// (ako/mxcli#253).
+	violations = append(violations, ValidateImportMappingFind(prog, projectPath)...)
+
 	// Flag a REST client operation whose Body/Response mapping clause has no
 	// `{ ... }` body — Mendix cannot reference a mapping document from an
 	// operation, so the mapping would be dropped in silence (#843).

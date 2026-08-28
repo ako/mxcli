@@ -239,8 +239,23 @@ create import mapping Module.IMM_UpsertPet
 difference, and mxcli used to pick `create` for you whatever the document said —
 so it now asks rather than guessing.
 
-**Note**: `key` is only valid with `find`, not with `create` — and a `find`
-without one is rejected by the build with CE0250.
+**A `find` has two requirements, and mxcli check enforces both** (ako/mxcli#253):
+
+1. **At least one member marked `key`**, per searching element — nested ones
+   included. Without it there is nothing to search on: **CE0250**, reported as
+   `MDL-MAP02`. (`key` is only valid with `find`; on a `create` it means nothing.)
+2. **A persistable entity.** A search is a database query, and a non-persistent
+   entity has no database: **CE0251**, reported as `MDL-MAP03`. Persistability
+   comes from the **generalization chain**, not the entity's own flag — an entity
+   declared with plain `create entity` that extends a non-persistent parent is
+   still not searchable.
+
+Re-measuring these is easy to get wrong: mxbuild reports **one at a time**. A
+keyless `find` over a non-persistent entity is CE0250 only, and CE0251 appears
+only once a key exists.
+
+A **custom handler is exempt from both** — the microflow *is* the find, so there
+is no key to declare and no query to run.
 
 ### Custom Object Handling and the Mapping's Input Object
 
@@ -645,6 +660,8 @@ See `organize-project` for `move` and the full folder story.
 | Missing array container entity in export | Arrays need Container + Item entities |
 | Using `key` with `create` handling | `key` only valid with `find` |
 | `find` without `or create` / `or error` / `or ignore` | Say what happens when the object is not found — the three differ at runtime |
+| `find` with no member marked `key` (MDL-MAP02) | Mark the identifying member — a search needs something to search on (CE0250) |
+| `find` over a non-persistent entity (MDL-MAP03) | Use `create`, or make the entity persistent — a search is a database query (CE0251) |
 | `Param: parameter` with no `parameter Module.Entity` on the header | Declare the mapping's input object, or the build reports CE0279 |
 | `parameter` on an EXPORT mapping | Export mappings have no input object — their parameter is the root object |
 | Arrays in import with container entity | Import arrays map directly to item entity, no container |
