@@ -524,6 +524,15 @@ func applyConditionalSettings(widget pages.Widget, w *ast.WidgetV3) {
 			},
 			Expression: editableIf,
 		}
+	} else if editable, ok := pages.CanonicalEditability(w.GetStringProp("Editable")); ok {
+		// `Editable: Never` — parsed and validated (MDL-WIDGET20 checks the widget
+		// TYPE) and then dropped, because nothing carried it to the writers, which
+		// hardcoded "Always". Same shape as the `Visible: false` case above.
+		//
+		// EDITABLE IF wins when both are given: the conditional settings element is
+		// what makes the enum "Conditional", so honouring a plain `Editable` too
+		// would write an enum contradicting the element beside it.
+		bw.Editable = editable
 	}
 }
 

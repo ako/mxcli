@@ -1,0 +1,50 @@
+-- `editable: Never` in CREATE PAGE was written as "Always" (ako/mxcli-maintenance-2).
+--
+-- The property parsed, passed `mxcli check`, passed `mxcli exec`, and passed
+-- `mx check` -- and the field was editable in the browser. Nothing reported it,
+-- because the writers hardcoded Editable("Always") for every static input widget
+-- and no model field carried the author's value. `describe page` emitted no
+-- editability either, so a describe/diff round-trip compared equal while the
+-- document was wrong.
+--
+-- The control that isolates it: `ALTER PAGE ... SET Editable = Never ON w` always
+-- wrote it correctly, so the value was representable and only the CREATE path
+-- lost it.
+--
+-- Static input widgets now carry it. A PLUGGABLE widget still cannot -- no
+-- .def.json maps `editable` and the stored CustomWidgets$CustomWidget has no
+-- Editable key -- so `combobox ... (Editable: ...)` is reported as MDL-WIDGET21
+-- rather than dropped in silence.
+
+create enumeration MaintTwo.Status (Open 'Open', Closed 'Closed');
+
+create entity if not exists MaintTwo.WorkOrder (
+  Number: String(20),
+  Title: String(100),
+  Notes: String(500),
+  Status: MaintTwo.Status
+);
+
+create or replace page MaintTwo.WorkOrder_View (
+  Title: 'Work order',
+  Layout: Atlas_Core.Atlas_Default
+) {
+  layoutgrid lg {
+    row r1 {
+      column c1 (DesktopWidth: AutoFill) {
+        dataview dv (Datasource: MaintTwo.WorkOrder) {
+          -- Read-only: these persist as Editable "Never".
+          textbox txtNumber (Attribute: Number, Editable: Never)
+          textarea txtNotes (Attribute: Notes, Editable: Never)
+
+          -- Editable, and stored as such: the default is not written away.
+          textbox txtTitle (Attribute: Title)
+        }
+      }
+    }
+  }
+}
+
+-- Round-trip: DESCRIBE now emits `Editable: Never`, so re-executing its output
+-- reproduces the same document instead of silently widening it to Always.
+describe page MaintTwo.WorkOrder_View;

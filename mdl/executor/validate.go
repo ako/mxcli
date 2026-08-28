@@ -35,6 +35,13 @@ type scriptContext struct {
 	// its parameters checked, exactly as a call to a stored one does.
 	javaActions       map[string][]string // Module.Action -> parameter names
 	javaScriptActions map[string][]string // Module.Action -> parameter names
+
+	// Microflows and nanoflows created in the script, mapped to their parameter
+	// names — for the same reason as the code actions above. The overwhelmingly
+	// common shape is one script that creates a data source microflow AND the
+	// page that binds it, so without this the CE1571 check would only ever fire
+	// on a flow that already existed, which is the minority case.
+	flowParams map[string][]string // Module.Flow (lower-cased) -> parameter names
 }
 
 // newScriptContext creates a new script context.
@@ -52,6 +59,7 @@ func newScriptContext() *scriptContext {
 
 		javaActions:       make(map[string][]string),
 		javaScriptActions: make(map[string][]string),
+		flowParams:        make(map[string][]string),
 	}
 }
 
@@ -94,10 +102,12 @@ func (sc *scriptContext) collectDefinitions(prog *ast.Program) {
 		case *ast.CreateMicroflowStmt:
 			if s.Name.Module != "" {
 				sc.microflows[s.Name.String()] = true
+				sc.recordFlowParams(s.Name.String(), s.Parameters)
 			}
 		case *ast.CreateNanoflowStmt:
 			if s.Name.Module != "" {
 				sc.nanoflows[s.Name.String()] = true
+				sc.recordFlowParams(s.Name.String(), s.Parameters)
 			}
 		case *ast.CreatePageStmtV3:
 			if s.Name.Module != "" {
@@ -147,10 +157,12 @@ func (sc *scriptContext) collectSingle(stmt ast.Statement) {
 	case *ast.CreateMicroflowStmt:
 		if s.Name.Module != "" {
 			sc.microflows[s.Name.String()] = true
+			sc.recordFlowParams(s.Name.String(), s.Parameters)
 		}
 	case *ast.CreateNanoflowStmt:
 		if s.Name.Module != "" {
 			sc.nanoflows[s.Name.String()] = true
+			sc.recordFlowParams(s.Name.String(), s.Parameters)
 		}
 	case *ast.CreatePageStmtV3:
 		if s.Name.Module != "" {
@@ -529,6 +541,11 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 			return mdlerrors.NewValidationf("page '%s' has context errors:\n  - %s",
 				s.Name.String(), strings.Join(ctxErrors, "\n  - "))
 		}
+		// CE1571: a microflow data source must be given an argument per parameter.
+		if argErrors := validateDataSourceArguments(ctx, s.Widgets, sc); len(argErrors) > 0 {
+			return mdlerrors.NewValidationf("page '%s' has data source errors:\n  - %s",
+				s.Name.String(), strings.Join(argErrors, "\n  - "))
+		}
 	case *ast.CreateSnippetStmtV3:
 		if s.Name.Module != "" && !sc.modules[s.Name.Module] {
 			if _, err := findModule(ctx, s.Name.Module); err != nil {
@@ -539,6 +556,12 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 		if refErrors := validateWidgetReferences(ctx, s.Widgets, sc); len(refErrors) > 0 {
 			return mdlerrors.NewValidationf("snippet '%s' has reference errors:\n  - %s",
 				s.Name.String(), strings.Join(refErrors, "\n  - "))
+		}
+		// A snippet takes the same data sources a page does, and CE1571 does not
+		// care which document the widget lives in.
+		if argErrors := validateDataSourceArguments(ctx, s.Widgets, sc); len(argErrors) > 0 {
+			return mdlerrors.NewValidationf("snippet '%s' has data source errors:\n  - %s",
+				s.Name.String(), strings.Join(argErrors, "\n  - "))
 		}
 		// Validate snippet context tree (parameter/selection/attribute bindings)
 		if ctxErrors := validatePageContextTree(s.Parameters, s.Widgets); len(ctxErrors) > 0 {
@@ -1201,4 +1224,14 @@ func validateMicroflowRules(stmt *ast.CreateMicroflowStmt) error {
 	}
 	return mdlerrors.NewValidationf("microflow '%s' has validation errors:\n  - %s",
 		stmt.Name.String(), strings.Join(msgs, "\n  - "))
+}
+
+// recordFlowParams remembers a script-defined flow's parameter names so a data
+// source bound to it is checked exactly as one bound to a stored flow is.
+func (sc *scriptContext) recordFlowParams(qualifiedName string, params []ast.MicroflowParam) {
+	names := make([]string, 0, len(params))
+	for _, p := range params {
+		names = append(names, p.Name)
+	}
+	sc.flowParams[strings.ToLower(qualifiedName)] = names
 }
