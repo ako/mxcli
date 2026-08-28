@@ -402,5 +402,5 @@ After setting up security, verify with:
 mxcli -p app.mpr -c "show security matrix in MyModule"
 
 # Validate with Mendix
-~/.mxcli/mxbuild/*/modeler/mx check app.mpr
+mxcli docker check -p app.mpr
 ```

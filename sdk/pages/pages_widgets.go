@@ -40,6 +40,20 @@ type BaseWidget struct {
 	DesignProperties       []DesignPropertyValue           `json:"designProperties,omitempty"`
 	ConditionalVisibility  *ConditionalVisibilitySettings  `json:"-"` // Set via VISIBLE IF
 	ConditionalEditability *ConditionalEditabilitySettings `json:"-"` // Set via EDITABLE IF
+	// Editable is Mendix's Editability enum — "Always", "Never" or
+	// "Conditional". Empty means the author did not say, which the writers
+	// render as Mendix's own default, "Always".
+	//
+	// It lives on BaseWidget rather than on each input widget because the same
+	// `editable:` property applies to every widget that has editability at all
+	// (twelve MDL types — see editableWidgetTypes), and MDL-WIDGET20 already
+	// refuses it on the ones that do not. Before this field existed the property
+	// was parsed, validated, and then dropped between the AST and the model: the
+	// writers hardcoded "Always" for TextBox, TextArea, CheckBox, DatePicker and
+	// RadioButtons, so `editable: Never` produced an editable field with no
+	// warning anywhere. Exactly the failure `Visible: false` had in
+	// applyConditionalSettings, and the second half of issue #928.
+	Editable string `json:"editable,omitempty"`
 }
 
 // GetName returns the widget's name.
@@ -127,4 +141,40 @@ type PageVariable struct {
 	UseAllPages bool     `json:"useAllPages"`
 	PageID      model.ID `json:"pageId,omitempty"`
 	Widget      string   `json:"widget,omitempty"`
+}
+
+// CanonicalEditability maps an author-written editability to the value Mendix
+// stores, reporting whether it is one of the three the platform defines.
+//
+// The caller decides what to do with a false — a writer must not quietly pass an
+// unknown string through, since Studio Pro resolves the enum on load and an
+// invented member is exactly the kind of value that builds clean and will not
+// open.
+func CanonicalEditability(v string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "always":
+		return "Always", true
+	case "never":
+		return "Never", true
+	case "conditional":
+		return "Conditional", true
+	default:
+		return "", false
+	}
+}
+
+// WidgetEditability is the value a writer should store for a widget: the
+// conditional settings element wins, then an explicit `editable:`, then Mendix's
+// own default.
+func WidgetEditability(bw *BaseWidget) string {
+	switch {
+	case bw == nil:
+		return "Always"
+	case bw.ConditionalEditability != nil:
+		return "Conditional"
+	case bw.Editable != "":
+		return bw.Editable
+	default:
+		return "Always"
+	}
 }

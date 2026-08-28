@@ -386,7 +386,7 @@ func widgetToGen(w pages.Widget) (element.Element, error) {
 		if ref := attributeRefToGen(x.AttributePath); ref != nil {
 			g.SetAttributeRef(ref)
 		}
-		g.SetEditable("Always")
+		g.SetEditable(pages.WidgetEditability(&x.BaseWidget))
 		g.SetFormattingInfo(newFormattingInfo())
 		g.SetInputMask("")
 		g.SetIsPasswordBox(x.IsPassword)
@@ -446,7 +446,7 @@ func widgetToGen(w pages.Widget) (element.Element, error) {
 		if ref := attributeRefToGen(x.AttributePath); ref != nil {
 			g.SetAttributeRef(ref)
 		}
-		g.SetEditable("Always")
+		g.SetEditable(pages.WidgetEditability(&x.BaseWidget))
 		if x.Label != "" {
 			g.SetLabelTemplate(textAsClientTemplate(textFromString(x.Label)))
 		}
@@ -469,7 +469,7 @@ func widgetToGen(w pages.Widget) (element.Element, error) {
 			g.SetAttributeRef(ref)
 		}
 		g.SetCounterMessage(captionToGen(x.CounterMessage))
-		g.SetEditable("Always")
+		g.SetEditable(pages.WidgetEditability(&x.BaseWidget))
 		if x.Label != "" {
 			g.SetLabelTemplate(textAsClientTemplate(textFromString(x.Label)))
 		}
@@ -500,7 +500,7 @@ func widgetToGen(w pages.Widget) (element.Element, error) {
 		if ref := attributeRefToGen(x.AttributePath); ref != nil {
 			g.SetAttributeRef(ref)
 		}
-		g.SetEditable("Always")
+		g.SetEditable(pages.WidgetEditability(&x.BaseWidget))
 		g.SetFormattingInfo(newFormattingInfo())
 		if x.Label != "" {
 			g.SetLabelTemplate(textAsClientTemplate(textFromString(x.Label)))
@@ -523,7 +523,7 @@ func widgetToGen(w pages.Widget) (element.Element, error) {
 		if ref := attributeRefToGen(x.AttributePath); ref != nil {
 			g.SetAttributeRef(ref)
 		}
-		g.SetEditable("Always")
+		g.SetEditable(pages.WidgetEditability(&x.BaseWidget))
 		if x.Label != "" {
 			g.SetLabelTemplate(textAsClientTemplate(textFromString(x.Label)))
 		}

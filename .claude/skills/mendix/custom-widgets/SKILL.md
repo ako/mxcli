@@ -462,7 +462,7 @@ mxcli widget list -p App.mpr
 mxcli check script.mdl -p App.mpr --references
 
 # full mx check (catches CE0463)
-~/.mxcli/mxbuild/*/modeler/mx check App.mpr
+mxcli docker check -p App.mpr
 
 # debug CE0463 -- compare NDSL dumps
 mxcli bson dump -p App.mpr --type page --object "Module.PageName" --format ndsl

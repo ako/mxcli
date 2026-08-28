@@ -337,13 +337,13 @@ For manual testing or debugging, you can replicate the test runner's workflow:
 ```bash
 # Create a fresh project
 cd /tmp/test-workspace
-~/.mxcli/mxbuild/*/modeler/mx create-project
+~/.mxcli/mxbuild/<version>/modeler/mx create-project
 
 # Apply MDL changes
 mxcli exec script.mdl -p /tmp/test-workspace/App.mpr
 
 # Validate
-~/.mxcli/mxbuild/*/modeler/mx check /tmp/test-workspace/App.mpr
+mxcli docker check -p /tmp/test-workspace/App.mpr
 ```
 
 Expected output for a passing test:

@@ -69,14 +69,14 @@ The first time you run this, it will download the MxBuild toolchain for your pro
 If you have `mx` installed locally (e.g., from a Mendix installation), you can run the check directly:
 
 ```bash
-~/.mxcli/mxbuild/*/modeler/mx check app.mpr
+mxcli docker check -p app.mpr
 ```
 
 Or use mxcli to auto-download and run it:
 
 ```bash
 mxcli setup mxbuild -p app.mpr
-~/.mxcli/mxbuild/*/modeler/mx check app.mpr
+mxcli docker check -p app.mpr
 ```
 
 ## The recommended workflow
