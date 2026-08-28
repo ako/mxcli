@@ -92,6 +92,32 @@ duplicate it here. Data assertions under the demo use
 rather than a video, `--screenshot` with repeated `--screenshot-url` already does
 that without any script.
 
+### The overlay ships with this skill: `narrate.js`
+
+`narrate.js` sits beside this file and is copied into the project along with it.
+Require it from the demo script rather than writing another one — the last three
+projects each re-derived their own Stage 2 from this page's prose, which is why
+no two demos look alike.
+
+It asserts nothing and holds no selectors, so it is the same file in every
+project:
+
+| | |
+|---|---|
+| `say(page, text, step)` | caption, held for `max(2200, words * 280)` ms — a fixed hold rushes long lines and stalls on short ones |
+| `point` / `unpoint` | pulsing outline around an element's rect, **drawn** — a real click ring would move the cursor and the page under it |
+| `clickSlowly` | scroll in, mark, beat, click: a cursor that arrives and clicks in one frame reads as a glitch |
+| `typeSlowly` | per-key typing, then commit |
+| `bringIntoView` | includes **horizontal** scroll (`inline: 'center'`), for a grid whose action sits past a phone's right edge |
+
+The spinning ring in the caption bar is the compositor fix described above, not
+decoration and not a loading indicator — it is what keeps a reading pause from
+collapsing to no frames. Removing it silently breaks the pause *and* any audio
+timed against it.
+
+What stays per-project is the walk itself: the persona, the steps and the
+selectors (`narrated-walkthrough.js`). Only the library is shared.
+
 ### Spoken narration, if you add it
 
 `recordVideo` writes a **silent** track — voice is not a setting, it is a second
