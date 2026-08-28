@@ -1,45 +1,24 @@
--- Regression: an association whose FROM entity lives in another module wrote a
--- project that could no longer be OPENED. (ako/mxcli-captrack findings)
+-- The forms that DO work, for the association direction MDL070 refuses.
+-- The refused ones are in captrack-assoc-remote-parent.fail.mdl.
 --
--- Before MDL070: `mxcli check` passed, `mxcli exec` printed "Created
--- association", and the next `mx check` failed while LOADING the .mpr:
---
---   KeyNotFoundException: The given key '4a25f08b-…' was not present in the
---   dictionary
---     at StreamingBsonUnitReader.ResolvePostponedProperties()
---
--- Mendix stores an association in the module of its FROM entity, so a remote
--- FROM leaves a ParentPointer aimed at an element in another unit. Neither
--- stored form can express it: Association holds two local element IDs, and
--- CrossAssociation holds a local parent plus a BY_NAME child — there is no
--- by-name PARENT. Hence a refusal, not a fix to the writer.
---
--- Run with:  mxcli check captrack-assoc-remote-parent.mdl -p app.mpr
--- Expect:    MDL070 on the two REFUSED statements, nothing on the rest.
+-- Mendix stores an association in the module of its FROM entity, so the FROM
+-- entity has to be local. The TO entity may be remote — that direction is
+-- stored BY NAME and nothing dangles. Measured at 0 errors on 11.13.0.
 
 create persistent entity MyFirstModule.Department ( Name: String(100) );
-
--- REFUSED (MDL070): FROM System.User, association declared in MyFirstModule.
-create association MyFirstModule.User_Department
-  from System.User to MyFirstModule.Department
-  type reference_set owner both;
 /
 
--- REFUSED (MDL070): not System-specific — any remote FROM module does it.
-create association MyFirstModule.Account_Department
-  from Administration.Account to MyFirstModule.Department
-  type reference owner default;
-/
-
--- ACCEPTED: the supported cross-module direction. The FROM entity is local, so
--- the remote end is stored BY NAME and nothing dangles. Measured at 0 errors.
+-- The supported cross-module direction: local FROM, remote TO.
 create association MyFirstModule.Department_User
   from MyFirstModule.Department to System.User
   type reference owner default;
 /
 
--- ACCEPTED: the remedy when the relationship really is many-to-many across a
--- module boundary — a join entity in your own module, one reference per side.
+-- The remedy when the relationship really is many-to-many across a module
+-- boundary: a join entity in your own module, one reference per side. This is
+-- what the reporter ended up with, and it is the better model anyway — a row
+-- that says "this user plans this department" is something you can hang
+-- attributes and XPath constraints on, which a bare reference set is not.
 create persistent entity MyFirstModule.PlannerAssignment ( );
 /
 create association MyFirstModule.PlannerAssignment_User
