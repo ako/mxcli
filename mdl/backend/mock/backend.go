@@ -221,6 +221,7 @@ type MockBackend struct {
 	UpdateExportMappingFunc              func(em *model.ExportMapping) error
 	DeleteExportMappingFunc              func(id model.ID) error
 	MoveExportMappingFunc                func(em *model.ExportMapping) error
+	ListXmlSchemasFunc                   func() ([]*types.XmlSchema, error)
 	ListJsonStructuresFunc               func() ([]*types.JsonStructure, error)
 	ListMessageDefinitionCollectionsFunc func() ([]*model.MessageDefinitionCollection, error)
 	GetJsonStructureByQualifiedNameFunc  func(moduleName, name string) (*types.JsonStructure, error)

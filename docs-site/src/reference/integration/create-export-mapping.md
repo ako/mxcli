@@ -63,6 +63,16 @@ If `OR MODIFY` is specified and the mapping already exists, it is updated in pla
 `WITH XML SCHEMA module.XmlSchema`
 :   Associates the mapping with the named XML schema.
 
+    The reference is **resolved** against the project: a name that matches no XML
+    schema is refused by `mxcli check -p` and by `exec`, naming the schemas that
+    exist. mxbuild otherwise reports it as CE1613 "The selected XML schema 'X' no
+    longer exists" at the end of a build.
+
+    A project holding **no** XML schemas disables the check rather than refusing
+    every mapping — there is no `CREATE XML SCHEMA` in MDL, so an XML schema is
+    only ever something imported into the project by hand, and having none is the
+    ordinary case. The same resolution applies to `WITH JSON STRUCTURE`.
+
 `NULL VALUES LeaveOutElement | SendAsNil`
 :   Controls null serialisation. Defaults to `LeaveOutElement`.
 

@@ -133,3 +133,93 @@ func TestCanonicalNullValueOption(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// XML schema half of #259
+// ---------------------------------------------------------------------------
+
+// xmlBackend returns a backend whose XML schema list is exactly these qualified
+// names.
+func xmlBackend(qualified ...string) *mock.MockBackend {
+	all := make([]*mdltypes.XmlSchema, 0, len(qualified))
+	for _, qn := range qualified {
+		i := strings.LastIndex(qn, ".")
+		all = append(all, &mdltypes.XmlSchema{Module: qn[:i], Name: qn[i+1:]})
+	}
+	return &mock.MockBackend{
+		ListXmlSchemasFunc: func() ([]*mdltypes.XmlSchema, error) { return all, nil },
+	}
+}
+
+// TestResolveXmlSchemaSourceRefusesUnknown pins the refusal.
+//
+// mxbuild reports the dangling reference as CE1613 "The selected XML schema 'X'
+// no longer exists", a whole build later. There is no `create xml schema` in
+// MDL, so the reference can only ever point at something a human put there —
+// which is exactly why a typo in it had nothing to catch it.
+func TestResolveXmlSchemaSourceRefusesUnknown(t *testing.T) {
+	b := xmlBackend("Shop.Orders_Xsd", "Shop.Invoice_Xsd")
+
+	err := resolveXmlSchemaSource(b, ast.QualifiedName{Module: "Shop", Name: "NoSuchThing"})
+	if err == nil {
+		t.Fatal("accepted an XML schema name that does not resolve — mxbuild reports CE1613")
+	}
+	for _, want := range []string{"Shop.Orders_Xsd", "Shop.Invoice_Xsd"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not list %q", err, want)
+		}
+	}
+}
+
+// TestResolveXmlSchemaSourceAcceptsKnown is the control: a name that resolves
+// must pass, or the refusal has simply been inverted.
+func TestResolveXmlSchemaSourceAcceptsKnown(t *testing.T) {
+	b := xmlBackend("Shop.Orders_Xsd")
+
+	if err := resolveXmlSchemaSource(b, ast.QualifiedName{Module: "Shop", Name: "Orders_Xsd"}); err != nil {
+		t.Fatalf("refused a schema that exists: %v", err)
+	}
+}
+
+// TestResolveXmlSchemaSourceIsModuleAware pins that the match is on the
+// QUALIFIED name. Matching on the bare name would accept `A.Foo` because `B.Foo`
+// exists — a dangling reference that still reaches mxbuild, which is the whole
+// failure being fixed.
+func TestResolveXmlSchemaSourceIsModuleAware(t *testing.T) {
+	b := xmlBackend("Other.Orders_Xsd")
+
+	if err := resolveXmlSchemaSource(b, ast.QualifiedName{Module: "Shop", Name: "Orders_Xsd"}); err == nil {
+		t.Fatal("accepted Shop.Orders_Xsd because Other.Orders_Xsd exists")
+	}
+}
+
+// TestResolveXmlSchemaSourceFailsOpenOnEmptyProject pins the direction that
+// keeps this rule from being a regression.
+//
+// MDL cannot create an XML schema, and — measured — NONE of the nine demo apps
+// in the corpus contains one. A project with no XML schemas is therefore the
+// ordinary case, not evidence that the name is wrong; refusing on it would break
+// every such mapping in exchange for catching nothing.
+func TestResolveXmlSchemaSourceFailsOpenOnEmptyProject(t *testing.T) {
+	b := xmlBackend()
+
+	if err := resolveXmlSchemaSource(b, ast.QualifiedName{Module: "Shop", Name: "Anything"}); err != nil {
+		t.Fatalf("refused against a project with no XML schemas: %v", err)
+	}
+}
+
+// TestResolveXmlSchemaSourceFailsOpenWhenListUnavailable covers a backend that
+// cannot answer at all — an engine that does not implement the read, or an
+// unconfigured mock. Taking the name at face value is right: nothing was
+// learned, so nothing should be asserted.
+func TestResolveXmlSchemaSourceFailsOpenWhenListUnavailable(t *testing.T) {
+	b := &mock.MockBackend{
+		ListXmlSchemasFunc: func() ([]*mdltypes.XmlSchema, error) {
+			return nil, errors.New("backend cannot list")
+		},
+	}
+
+	if err := resolveXmlSchemaSource(b, ast.QualifiedName{Module: "Shop", Name: "Anything"}); err != nil {
+		t.Fatalf("refused when the backend could not answer: %v", err)
+	}
+}

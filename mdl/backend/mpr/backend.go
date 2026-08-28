@@ -652,6 +652,12 @@ func (b *MprBackend) MoveExportMapping(em *model.ExportMapping) error {
 	return b.writer.MoveExportMapping(em)
 }
 
+// ListXmlSchemas delegates to the reader — there is nothing to convert, since
+// the semantic type IS what the reader returns.
+func (b *MprBackend) ListXmlSchemas() ([]*types.XmlSchema, error) {
+	return b.reader.ListXmlSchemas()
+}
+
 func (b *MprBackend) ListJsonStructures() ([]*types.JsonStructure, error) {
 	return convertJsonStructureSlice(b.reader.ListJsonStructures())
 }
