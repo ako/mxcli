@@ -31,6 +31,11 @@ type Watcher struct {
 	closeOnce   sync.Once
 	mu          sync.Mutex
 	suppressEnd time.Time
+
+	// debounce is how long a burst of filesystem events is collapsed over. It
+	// is a field rather than the constant so a test can choose a window that
+	// cannot race with its own burst — see newWatcherDebounced.
+	debounce time.Duration
 }
 
 const watchDebounce = 500 * time.Millisecond
@@ -43,14 +48,28 @@ func NewWatcher(mprPath, contentsDir string, prog *tea.Program) (*Watcher, error
 }
 
 func newWatcher(mprPath, contentsDir string, sender MsgSender) (*Watcher, error) {
+	return newWatcherDebounced(mprPath, contentsDir, sender, watchDebounce)
+}
+
+// newWatcherDebounced is newWatcher with the debounce window chosen by the
+// caller.
+//
+// It exists for tests, and for a specific reason. Asserting that a burst of
+// writes collapses into ONE message means the whole burst has to land inside
+// the window — with the production 500ms that is true on an idle machine and
+// not guaranteed on a loaded CI runner, where the burst itself can outlast the
+// window and an intermediate timer fires. Passing a window far longer than any
+// plausible burst removes the race from the test instead of narrowing it.
+func newWatcherDebounced(mprPath, contentsDir string, sender MsgSender, debounce time.Duration) (*Watcher, error) {
 	fsw, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, err
 	}
 
 	w := &Watcher{
-		fsw:  fsw,
-		done: make(chan struct{}),
+		debounce: debounce,
+		fsw:      fsw,
+		done:     make(chan struct{}),
 	}
 
 	if contentsDir != "" {
@@ -113,7 +132,7 @@ func (w *Watcher) run(sender MsgSender) {
 				debounceTimer.Stop()
 			}
 			seq := debounceSeq.Add(1)
-			debounceTimer = time.AfterFunc(watchDebounce, func() {
+			debounceTimer = time.AfterFunc(w.debounce, func() {
 				if debounceSeq.Load() != seq {
 					return
 				}
