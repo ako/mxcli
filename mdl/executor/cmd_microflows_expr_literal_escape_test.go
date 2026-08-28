@@ -5,17 +5,27 @@
 // The previous implementation had two dueling bugs:
 //  1. Using mdlQuote() duplicated every backslash, breaking regex escape
 //     sequences like `\d` that the Mendix expression engine reads literally.
-//  2. Using only apostrophe-doubling emitted raw control characters (0x0A,
-//     0x0D, 0x09) inside single-quoted literals, which the MDL lexer rejects.
+//  2. Using only apostrophe-doubling was believed to emit control characters
+//     "which the MDL lexer rejects" — it does not. STRING_LITERAL is
+//     `'\” ( ~['\\] | '\\' . | '\'\” )* '\”`, and `~['\\]` admits every byte
+//     but an apostrophe and a backslash. Escaping them was added for a problem
+//     that did not exist, and cost the stored value: measured against a running
+//     11.13 runtime, a microflow storing 'a\tb' put FOUR bytes in the database
+//     (61 5c 74 62 — backslash, t), because Mendix's expression engine has no
+//     backslash escapes at all.
 //
-// The fix is quoteExpressionLiteral: escape control chars and backslashes
-// followed by an MDL-significant letter (n/r/t/\/') but pass other backslash
-// sequences through unchanged so regex escapes survive roundtrip.
+// So quoteExpressionLiteral now passes a control character through as itself,
+// and still doubles an apostrophe and a backslash followed by an
+// MDL-significant letter (n/r/t/\/') so `\t` meant literally survives a
+// reparse, while other backslash sequences pass through so regex escapes do.
 package executor
 
 import (
 	"strings"
 	"testing"
+
+	"github.com/mendixlabs/mxcli/mdl/ast"
+	"github.com/mendixlabs/mxcli/mdl/visitor"
 )
 
 func TestQuoteExpressionLiteral_PreservesRegexBackslashEscapes(t *testing.T) {
@@ -38,27 +48,49 @@ func TestQuoteExpressionLiteral_PreservesRegexBackslashEscapes(t *testing.T) {
 	}
 }
 
-func TestQuoteExpressionLiteral_EscapesRawControlChars(t *testing.T) {
-	// Raw newline, carriage return, and tab must be escaped — STRING_LITERAL
-	// does not accept them raw and the describe output has to survive check.
+func TestQuoteExpressionLiteral_PassesRawControlCharsThrough(t *testing.T) {
+	// The value is going into a MENDIX expression, where a backslash is just a
+	// backslash. Escaping a tab here is what put `a\tb` — four bytes, with a
+	// literal backslash — into the database instead of a tab, which is how a
+	// tab-delimited export became one cell per row (ako/mxcli-captrack #5).
+	//
+	// The MDL lexer accepts these raw, so the describe output still reparses;
+	// the raw newline already round-tripped this way, which is why only the tab
+	// ever looked broken.
 	cases := []struct {
 		in   string
 		want string
 	}{
-		{"line1\nline2", `'line1\nline2'`},
-		{"line1\r\nline2", `'line1\r\nline2'`},
-		{"col\tcol", `'col\tcol'`},
+		{"line1\nline2", "'line1\nline2'"},
+		{"line1\r\nline2", "'line1\r\nline2'"},
+		{"col\tcol", "'col\tcol'"},
 	}
 	for _, tc := range cases {
 		got := quoteExpressionLiteral(tc.in)
 		if got != tc.want {
 			t.Errorf("quoteExpressionLiteral(%q) = %q, want %q", tc.in, got, tc.want)
 		}
-		// Extra invariant: output must never contain the raw control char.
-		for _, bad := range []byte{'\n', '\r', '\t'} {
-			if strings.ContainsRune(got, rune(bad)) {
-				t.Errorf("output %q leaked raw control byte 0x%02x", got, bad)
-			}
+		// The inverse of the old invariant, and the point of the fix: the byte
+		// the author wrote must still be there.
+		if !strings.ContainsRune(got, []rune(strings.TrimLeft(tc.in, "linecol0123456789"))[0]) {
+			t.Errorf("output %q lost its control character", got)
+		}
+	}
+}
+
+func TestQuoteExpressionLiteral_StillEscapesALiteralBackslashLetterPair(t *testing.T) {
+	// A backslash the author meant literally, followed by n/r/t, must still be
+	// doubled — otherwise unquoteString decodes the pair back into a control
+	// character on reparse and a two-character `\t` silently becomes a tab.
+	// This is the one case where the two grammars genuinely differ, and it is
+	// why the fix is not "stop escaping everything".
+	for _, tc := range []struct{ in, want string }{
+		{`\t`, `'\\t'`},
+		{`\n`, `'\\n'`},
+		{`\d`, `'\d'`}, // not MDL-significant: passes through for regexes
+	} {
+		if got := quoteExpressionLiteral(tc.in); got != tc.want {
+			t.Errorf("quoteExpressionLiteral(%q) = %q, want %q", tc.in, got, tc.want)
 		}
 	}
 }
@@ -113,19 +145,71 @@ func TestQuoteExpressionLiteral_TrailingBackslashDoubled(t *testing.T) {
 	}
 }
 
-func TestQuoteExpressionLiteral_IdempotentForDecodeThenEncode(t *testing.T) {
-	// Critical invariant: any value that the visitor could produce as a
-	// decoded LiteralString must reserialise to a form the lexer accepts,
-	// so describe → exec → describe is stable.
-	raw := "multi\nline with \\d regex and 'quotes'"
-	out := quoteExpressionLiteral(raw)
-	for _, bad := range []byte{'\n', '\r', '\t'} {
-		if strings.ContainsRune(out, rune(bad)) {
-			t.Errorf("output %q has raw control byte 0x%02x", out, bad)
+func TestQuoteExpressionLiteral_RoundTripsThroughTheRealParser(t *testing.T) {
+	// Critical invariant: whatever quoteExpressionLiteral emits must come back
+	// out of the actual MDL parser as the same value, so describe → exec →
+	// describe is stable.
+	//
+	// This is now a real round trip. The previous version asserted "output
+	// contains no control bytes", which was asserting the bug — a control byte
+	// in the output is exactly what correctness requires, since the string is
+	// stored into a Mendix expression where a backslash is only a backslash.
+	for _, raw := range []string{
+		"multi\nline\twith 'quotes'",
+		"col\tcol",
+		"line1\r\nline2",
+		`regex ^\d+$`,
+		`literal \t backslash-t`,
+		`trailing backslash \`,
+		"it's here",
+	} {
+		src := "create microflow M.MF_RT()\nbegin\n  declare $s String = " +
+			quoteExpressionLiteral(raw) + ";\nend\n"
+		prog, errs := visitor.Build(src)
+		if len(errs) > 0 {
+			t.Errorf("%q: emitted MDL does not parse: %v\n  src: %q", raw, errs, src)
+			continue
+		}
+		got, ok := firstDeclaredStringLiteral(prog)
+		if !ok {
+			t.Errorf("%q: could not read the literal back", raw)
+			continue
+		}
+		if got != raw {
+			t.Errorf("round trip changed the value:\n  in   %q\n  MDL  %q\n  back %q",
+				raw, src, got)
 		}
 	}
-	// Apostrophes must be escaped.
-	if strings.Contains(out, "'quotes'") && !strings.Contains(out, "''quotes''") {
-		t.Errorf("apostrophes not doubled in %q", out)
+}
+
+// firstDeclaredStringLiteral digs the value out of `declare $s String = '...'`.
+func firstDeclaredStringLiteral(prog *ast.Program) (string, bool) {
+	for _, st := range prog.Statements {
+		mf, ok := st.(*ast.CreateMicroflowStmt)
+		if !ok {
+			continue
+		}
+		for _, body := range mf.Body {
+			d, ok := body.(*ast.DeclareStmt)
+			if !ok {
+				continue
+			}
+			// A multi-line expression comes back wrapped in a SourceExpr, which
+			// keeps the raw source text. That wrapper is also WHY the asymmetry
+			// existed: an expression spanning lines never reached
+			// quoteExpressionLiteral, so a raw newline was stored intact while a
+			// raw tab — single-line, unwrapped — got escaped.
+			inner := d.InitialValue
+			if se, ok := inner.(*ast.SourceExpr); ok {
+				inner = se.Expression
+			}
+			lit, ok := inner.(*ast.LiteralExpr)
+			if !ok || lit.Kind != ast.LiteralString {
+				continue
+			}
+			s, ok := lit.Value.(string)
+			return s, ok
+		}
 	}
+	return "", false
 }
