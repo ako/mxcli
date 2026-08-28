@@ -1,0 +1,40 @@
+-- ============================================================================
+-- NEGATIVE TEST: an association whose FROM entity is in another module
+-- ============================================================================
+--
+-- Before MDL070 this passed `mxcli check`, `exec` printed "Created
+-- association", and the project could no longer be OPENED:
+--
+--   KeyNotFoundException: The given key '4a25f08b-…' was not present in the
+--   dictionary
+--     at StreamingBsonUnitReader.ResolvePostponedProperties()
+--
+-- A LOAD failure, not a build error — Studio Pro cannot open it either, and
+-- mxbuild reports it as a stack trace naming no document.
+--
+-- Mendix stores an association in the module of its FROM entity, and neither
+-- stored form can express a remote one: DomainModels$Association holds two
+-- element IDs both local to the unit, and DomainModels$CrossAssociation holds a
+-- local ParentPointer plus a BY_NAME ChildRef. There is no by-name PARENT. So
+-- this is a refusal, not a writer fix.
+--
+-- This script MUST fail `mxcli check` with MDL070, twice. The supported and
+-- remodelled forms are in captrack-assoc-remote-parent.mdl.
+-- ============================================================================
+
+create persistent entity MyFirstModule.Department ( Name: String(100) );
+/
+
+-- MDL070: FROM System.User, association declared in MyFirstModule.
+create association MyFirstModule.User_Department
+  from System.User to MyFirstModule.Department
+  type reference_set owner both;
+/
+
+-- MDL070: not System-specific — any remote FROM module does the same thing. A
+-- guard keyed on the System module would pass this straight through to the same
+-- unopenable model.
+create association MyFirstModule.Account_Department
+  from Administration.Account to MyFirstModule.Department
+  type reference owner default;
+/
