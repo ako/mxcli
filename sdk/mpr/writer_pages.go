@@ -336,6 +336,11 @@ func serializeLocalVariables(vars []*pages.LocalVariable) bson.A {
 		if v.VariableType == "DataTypes$ObjectType" {
 			varType = append(varType, bson.E{Key: "Entity", Value: v.Name})
 		}
+		// An enumeration points at one by name. Without this the type was written
+		// with nothing to resolve, so it was flattened to a String instead (#977).
+		if v.VariableType == "DataTypes$EnumerationType" && v.EnumerationRef != "" {
+			varType = append(varType, bson.E{Key: "Enumeration", Value: v.EnumerationRef})
+		}
 
 		varDoc := bson.D{
 			{Key: "$ID", Value: idToBsonBinary(varID)},

@@ -1552,13 +1552,16 @@ func extractClientTemplateParameters(ctx *ExecContext, w map[string]any, fieldNa
 			continue
 		}
 
-		// Check for SourceVariable (page/snippet parameter reference)
-		// If present, output as $paramName.Attribute
-		sourceVarName := ""
-		if srcVar, ok := pMap["SourceVariable"].(map[string]any); ok && srcVar != nil {
-			if paramName, ok := srcVar["PageParameter"].(string); ok && paramName != "" {
-				sourceVarName = paramName
-			}
+		// Which variable the parameter is bound to, if any. This read only
+		// PageParameter, so a binding to a page-level LOCAL variable came back as
+		// `<unbound>` here while the pluggable describer rendered the same bytes
+		// as `$Name` (upstream #977) — hence the shared resolver.
+		sourceVarName, isLocalVariable := sourceVariableBinding(pMap)
+
+		// A local variable renders bare: it has no AttributeRef to hang off.
+		if isLocalVariable {
+			result = append(result, "$"+sourceVarName)
+			continue
 		}
 
 		// Check for AttributeRef
