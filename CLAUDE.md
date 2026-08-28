@@ -60,7 +60,7 @@ The `mx` command-line tool validates and builds Mendix projects. Location depend
 mxcli setup mxbuild -p app.mpr
 
 # check/validate a Mendix project
-~/.mxcli/mxbuild/*/modeler/mx check /path/to/app.mpr
+mxcli docker check -p /path/to/app.mpr
 
 # or use the integrated command (auto-downloads mxbuild)
 mxcli docker check -p app.mpr

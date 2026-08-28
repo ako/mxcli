@@ -505,7 +505,7 @@ between *different* microflows, not within the page itself.
 2. **Check syntax**: `mxcli check script.mdl`
 3. **Check references**: `mxcli check script.mdl -p app.mpr --references`
 4. **Verify result**: Run `describe page Module.PageName` after ALTER to confirm changes
-5. **Validate project**: `~/.mxcli/mxbuild/*/modeler/mx check app.mpr` (or `mxcli docker check -p app.mpr`)
+5. **Validate project**: `mxcli docker check -p app.mpr` (or `mxcli docker check -p app.mpr`)
 
 ## Related Commands
 

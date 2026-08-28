@@ -223,7 +223,17 @@ func execCreateUserRole(ctx *ExecContext, s *ast.CreateUserRoleStmt) error {
 	for _, ur := range ps.UserRoles {
 		if ur.Name == s.Name {
 			if !s.CreateOrModify {
-				return mdlerrors.NewAlreadyExists("user role", s.Name)
+				// Name the re-runnable form. A blank Mendix app already ships an
+				// `Administrator` user role, so this fires on the first realistic
+				// security script — and because exec halts on the first error, every
+				// statement after it is skipped. ako/mxcli-maintenance-2 concluded
+				// from the bare message that CREATE OR MODIFY USER ROLE did not
+				// exist and filed it as missing MDL surface; it exists, and its
+				// module-role list is required.
+				return mdlerrors.NewAlreadyExistsMsg("user role", s.Name, fmt.Sprintf(
+					"user role already exists: %s — use 'create or modify user role %s (Module.Role, ...)' "+
+						"to add module roles to it and keep the script re-runnable "+
+						"(the parenthesised module-role list is required)", s.Name, s.Name))
 			}
 			// Additive: ensure specified module roles are present
 			if err := ctx.Backend.AlterUserRoleModuleRoles(ps.ID, s.Name, true, moduleRoleNames); err != nil {

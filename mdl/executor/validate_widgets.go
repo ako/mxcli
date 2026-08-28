@@ -138,6 +138,8 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 			// "silently dropped on write" family, but the flat property
 			// allow-list cannot see it because it is type-agnostic.
 			out = append(out, validateWidgetEditability(w, locationPrefix)...)
+		} else if def != nil {
+			out = append(out, validatePluggableEditability(w, locationPrefix)...)
 		}
 		if mapping != nil {
 			out = append(out, validateObjectListItemEnums(w, mapping, locationPrefix)...)

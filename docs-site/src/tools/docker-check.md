@@ -10,7 +10,7 @@ mxcli docker check -p app.mpr
 
 ## What It Does
 
-1. **Resolves the `mx` binary** -- Looks for `mx` in the mxbuild directory, PATH, or cached installations at `~/.mxcli/mxbuild/*/modeler/mx`
+1. **Resolves the `mx` binary** -- Looks for `mx` in the mxbuild directory, PATH, or cached installations at `~/.mxcli/mxbuild/<version>/modeler/mx`
 2. **Runs `mx check`** -- Executes the Mendix project checker against the `.mpr` file
 3. **Reports results** -- Outputs errors, warnings, and deprecations to the console
 
