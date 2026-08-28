@@ -30,18 +30,23 @@ import (
 // fails a whole build later with CE0174, and the fix gets more expensive with
 // every reference added in between.
 //
-// THE ONE PLACE QUOTING DOES NOT REACH is the alias — and the limit is MDL's,
-// not OQL's. `as "MonthNo"` is a parse error in the MDL grammar even for a name
-// that is not reserved at all:
+// THE ONE PLACE QUOTING DOES NOT REACH is the alias, and the limit is OQL's own:
+// it accepts only a bare identifier there, for ANY name. Measured with `as
+// "Total"`, a word reserved nowhere:
 //
-//	line 2:22 extraneous input '"MonthNo"' expecting the start of a statement
+//	CE0174 "The '"' part is incomplete or incorrect.
+//	        You could use here: IDENTIFIER."
+//
+// The two CE0174 texts differ exactly on this. A source position lists
+// "ASTERISK, AT_SIGN, OPEN_QUOTE, or IDENTIFIER"; the alias position lists only
+// IDENTIFIER. Reading them is what settles which positions can be quoted — an
+// earlier revision guessed twice and was wrong twice.
 //
 // A view entity's own attribute name IS its alias (they must match), so a view
-// entity cannot have an attribute called `Month`: unquoted the alias is CE0174
-// ("The 'Month' part is incomplete or incorrect. You could use here:
-// IDENTIFIER."), and quoted it does not parse. That case needs a rename, and it
-// is the only one that does. Teaching the MDL grammar to accept a quoted alias
-// would close it.
+// entity cannot have an attribute called `Month` at all: unquoted the alias is
+// CE0174, and quoted it is CE0174 for a different reason. That case needs a
+// rename, and it is the only one that does. (MDL072 reports the quoted spelling
+// with that explanation rather than letting it fail to parse.)
 //
 // Both an ATTRIBUTE and an ENTITY name are affected — each measured on its own,
 // unquoted:
@@ -90,9 +95,9 @@ func oqlReservedNameViolation(kind, name, entityName string) linter.Violation {
 		Suggestion: fmt.Sprintf(
 			"Usually no rename needed: quote it in the view's OQL, as OQL takes double-quoted "+
 				"identifiers like SQL — `select s.%q …`, `from Module.%q as s`. The exception is a "+
-				"VIEW ENTITY's own attribute, whose name is also its alias: MDL cannot express a "+
-				"quoted alias (`as %q` is a parse error), so a view column must not be called '%s'.",
-			name, name, name, name),
+				"VIEW ENTITY's own attribute, whose name is also its select alias: OQL takes only "+
+				"a bare identifier there, so a view column must not be called '%s'.",
+			name, name, name),
 	}
 }
 

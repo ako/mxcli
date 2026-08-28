@@ -637,9 +637,10 @@ create persistent entity Module."VATRate" (
 > `select s."Month" as MonthNo`, `from Module."Year" as s` — both 0 errors. The
 > **entity** name counts as well as its attributes.
 >
-> The one place quoting is unavailable is an **alias**, and that is an MDL grammar limit,
-> not an OQL one: `as "X"` does not parse for any X. Since a view entity's attribute name
-> *is* its alias, a view column cannot be called `Month` — rename that one.
+> The one place quoting is unavailable is an **alias**, and that limit is OQL's: it takes
+> a bare identifier there for any name (`as "Total"` is CE0174 too, reported as MDL072).
+> Since a view entity's attribute name *is* its select alias, a view column cannot be
+> called `Month` at all — rename that one.
 
 Both `"Name"` and `` `Name` `` syntax are supported. Prefer double quotes for consistency.
 

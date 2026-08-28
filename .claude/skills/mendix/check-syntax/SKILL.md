@@ -126,9 +126,10 @@ Before writing any MDL, verify these requirements:
 > `CREATE`/`ALTER` so the name is still cheap to change if you would rather rename.
 > Applies to the **entity** name as well as its attributes.
 >
-> The exception is an **alias**, and the limit there is MDL's own grammar: `as "X"` is a
-> parse error for any X, reserved or not. A view entity's attribute name is also its
-> alias, so a view column cannot be called `Month` — that one needs a rename.
+> The exception is an **alias**, and that limit is OQL's own: it takes a bare identifier
+> there for any name — `as "Total"`, reserved nowhere, is CE0174 too (**MDL072**). A view
+> entity's attribute name is also its select alias, so a view column cannot be called
+> `Month` at all — that one needs a rename, not a quote.
 >
 > **Exception — never quote `$`-prefixed variable/parameter references.** The quote
 > rule is for *bare* names (entities, attributes, associations, declared parameter

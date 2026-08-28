@@ -18,10 +18,11 @@
 --   select s."Month" as MonthNo   ->  0 errors
 --   from   Module."Year" as y     ->  0 errors
 --
--- The one place quoting is unavailable is an ALIAS, and that limit is MDL's own
--- grammar rather than OQL's: `as "X"` is a parse error for any X, reserved or
--- not. A view entity's attribute name IS its alias, so a view column cannot be
--- called Month -- that case needs a rename.
+-- The one place quoting is unavailable is an ALIAS, and that limit is OQL's:
+-- it takes a bare identifier there for ANY name -- `as "Total"`, reserved
+-- nowhere, is CE0174 too. A view entity's attribute name IS its select alias,
+-- so a view column cannot be called Month at all; that case needs a rename.
+-- See captrack-oql-quoted-alias.mdl (MDL072) for the measurement.
 --
 -- Run with:  mxcli check captrack-oql-reserved-names.mdl
 -- Expect:    7 MDL071 warnings (+1 MDL022), 0 errors -- and `exec` writes it all.

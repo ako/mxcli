@@ -1067,10 +1067,10 @@ func ValidateOQLSyntax(oql string) []linter.Violation {
 	//
 	// A reserved word counts only in identifier position: after a `.` (attribute
 	// access, `s.Quarter`) or after `as` (alias). The alias is the one position
-	// quoting cannot rescue — `as "X"` is a parse error in MDL's own grammar for
-	// any X — so a view column carrying the name has to be renamed. Warning, not
-	// error: the set is the common date-part list, not an exhaustive mirror of
-	// Mendix's grammar.
+	// quoting cannot rescue, and the limit is OQL's own: it takes a bare
+	// identifier there for ANY name (`as "Total"` is CE0174 too). So a view
+	// column carrying the name has to be renamed. Warning, not error: the set is
+	// the common date-part list, not an exhaustive mirror of Mendix's grammar.
 	reservedIdentRe := regexp.MustCompile(`(?i)(?:\.\s*|\bas\s+)(` + oqlReservedWordAlternation + `)\b`)
 	seenReserved := map[string]bool{}
 	for _, m := range reservedIdentRe.FindAllStringSubmatch(oql, -1) {

@@ -1482,11 +1482,13 @@ from MyFirstModule."Year" as s
 group by s."Month";
 ```
 
-**The exception is an alias — and the limit there is MDL's, not OQL's.**
-`as "MonthNo"` is a parse error in the MDL grammar, for *any* name, reserved or
-not. A view entity's own attribute name **is** its alias (they must match), so a
-view column cannot be called `Month`: unquoted it is CE0174, quoted it does not
-parse. That is the one case that needs a rename.
+**The exception is an alias, and that limit is OQL's own.** The alias position
+takes a bare identifier for *any* name — `as "Total"`, reserved nowhere, is
+CE0174 as well. The two CE0174 texts say so precisely: a source position lists
+`ASTERISK, AT_SIGN, OPEN_QUOTE, or IDENTIFIER`, the alias position lists only
+`IDENTIFIER`. A view entity's own attribute name **is** its alias (they must
+match), so a view column cannot be called `Month` at all — that is the one case
+that needs a rename, and **MDL072** says so when you try the quoted spelling.
 
 MDL071 warns at `CREATE` / `ALTER … ADD ATTRIBUTE` / `RENAME ATTRIBUTE` so the
 choice is made while the name still has few references. MDL032 reports the same
