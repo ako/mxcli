@@ -14,10 +14,16 @@ import (
 // User, FileDocument, …) can't be resolved — mirrors the legacy reader's
 // BuildSystemModule. Entity IDs are synthetic (System entities are referenced by
 // qualified name, never by ID, in serialized output).
+//
+// It builds the MODELER view: meta also carries the entities that exist only in
+// the runtime's metamodel, and a model that names one of those is rejected by
+// mxbuild with CE1613 "no longer exists" — upstream #972, where every
+// specialization of System.Image inherited an access-rule member for
+// System.Thumbnail_Image. See meta.SystemEntityDef.RuntimeOnly.
 func buildSystemDomainModel() *domainmodel.DomainModel {
 	dm := &domainmodel.DomainModel{ContainerID: model.ID(meta.SystemModuleID)}
 	dm.ID = model.ID(meta.SystemDomainModelID)
-	for _, e := range meta.SystemEntities {
+	for _, e := range meta.ModelerSystemEntities() {
 		ent := &domainmodel.Entity{
 			Name:              e.Name,
 			Persistable:       e.Persistable,
@@ -43,7 +49,7 @@ func buildSystemDomainModel() *domainmodel.DomainModel {
 	// association on the modelsdk engine (legacy already builds them via
 	// BuildSystemDomainModel). IDs are synthetic and match the entity ID scheme
 	// so the Parent/Child columns resolve to qualified names.
-	for _, a := range meta.SystemAssociations {
+	for _, a := range meta.ModelerSystemAssociations() {
 		assoc := &domainmodel.Association{
 			Name:     a.Name,
 			ParentID: model.ID("System." + a.Parent),

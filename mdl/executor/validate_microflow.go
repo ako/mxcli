@@ -43,6 +43,30 @@ func ValidateMicroflow(stmt *ast.CreateMicroflowStmt) []linter.Violation {
 	return v.violations
 }
 
+// checkQualifiedEntityRef reports an entity reference written without a module
+// (MDL008), the rule that already covered microflow parameters.
+//
+// MDL has no implicit module context, and an unqualified name is not merely
+// unresolvable — it is written as NOTHING. A `create` with a bare entity stores
+// no Entity key at all, so its member assignments cannot be qualified and reach
+// disk as bare words, and the project stops loading:
+//
+//	ERROR: … The text 'Name' is not a valid AttributeIdentifier.
+//
+// A `retrieve` stores the equally invalid ".Thing". The reference check never
+// saw either, because it skipped any reference whose Module was empty — which is
+// what made this silent (upstream #973).
+func (v *microflowValidator) checkQualifiedEntityRef(site string, entity ast.QualifiedName) {
+	if entity.Name == "" || entity.Module != "" {
+		return
+	}
+	v.addViolation("MDL008", linter.SeverityError,
+		fmt.Sprintf("%s: entity '%s' is missing its module prefix — MDL has no implicit module "+
+			"context, and an unqualified name is written as no reference at all, which Mendix "+
+			"cannot load", site, entity.Name),
+		fmt.Sprintf("Use a qualified name like 'Module.%s' or 'System.%s'.", entity.Name, entity.Name))
+}
+
 // microflowValidator holds state for validating a single microflow.
 type microflowValidator struct {
 	mfName        string
@@ -291,6 +315,12 @@ func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 			v.checkDivisionSlash(fmt.Sprintf("set '%s'", stmt.Target), stmt.Value)
 			v.checkDateTimeLiterals(fmt.Sprintf("set '%s'", stmt.Target), stmt.Value)
 		case *ast.RetrieveStmt:
+			// An ASSOCIATION retrieve names an association, not an entity, and its
+			// source is unqualified by construction — do not read it as a bare
+			// entity reference.
+			if stmt.StartVariable == "" {
+				v.checkQualifiedEntityRef("retrieve", stmt.Source)
+			}
 			// RETRIEVE populates a list variable — remove from empty tracking
 			delete(v.emptyListVars, stmt.Variable)
 			if stmt.Where != nil {
@@ -354,7 +384,10 @@ func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 			v.loopDepth++
 			v.walkBody(stmt.Body)
 			v.loopDepth--
+		case *ast.CreateListStmt:
+			v.checkQualifiedEntityRef("create list of", stmt.EntityType)
 		case *ast.CreateObjectStmt:
+			v.checkQualifiedEntityRef("create", stmt.EntityType)
 			// Attribute values in a `create` are expressions too — an aggregate
 			// (sum/count/…) or an unknown function here fails the build with CE0117,
 			// but check previously only inspected return/if/declare/set (FINDINGS #17).

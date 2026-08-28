@@ -238,6 +238,27 @@ create persistent entity Module.Photo (
 
 **Note:** `mxcli syntax entity` output may show EXTENDS after `)` — this is misleading. Always place EXTENDS before `(`.
 
+**The parent must exist, and must be qualified.** The generalization is stored by
+NAME, so mxcli cannot make one up for you and Mendix reports an unresolved one at
+build time. `mxcli check --references` resolves it against the project plus the
+script:
+
+```sql
+-- Fine: the parent is created LATER in the same script. A generalization is
+-- resolved lazily, so order does not matter.
+create persistent entity Module.Manager extends Module.Person (Reports: integer);
+create persistent entity Module.Person (Name: string(100));
+
+-- Refused: no such entity.        CE1613 "The selected entity … no longer exists"
+create persistent entity Module.X extends System.Thumbnail (N: integer);
+
+-- Refused: unqualified.           MDL069 — and this one is worse. A bare name is
+-- stored as-is and Mendix cannot load the project AT ALL, so `mx check` dies
+-- before reporting anything. Write `extends Module.Person`, even when the parent
+-- is in the same module.
+create persistent entity Module.Manager extends Person (Reports: integer);
+```
+
 **Security follows inheritance.** Mendix inheritance is multi-table: all of the
 parent's attributes are members of the child, so a specialized entity's access rule
 must cover them. Grant an inherited member exactly like one of the entity's own —

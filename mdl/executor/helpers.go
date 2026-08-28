@@ -81,21 +81,6 @@ func findOrCreateModule(ctx *ExecContext, name string) (*model.Module, error) {
 	return findModule(ctx, name)
 }
 
-func findModuleByID(ctx *ExecContext, id model.ID) (*model.Module, error) {
-	modules, err := getModulesFromCache(ctx)
-	if err != nil {
-		return nil, mdlerrors.NewBackend("list modules", err)
-	}
-
-	for _, m := range modules {
-		if m.ID == id {
-			return m, nil
-		}
-	}
-
-	return nil, mdlerrors.NewNotFoundMsg("module", string(id), "module not found with ID: "+string(id))
-}
-
 // resolveFolder resolves a folder path (e.g., "Resources/Images") to a folder ID.
 // The path is relative to the given module. If the folder doesn't exist, it creates it.
 func resolveFolder(ctx *ExecContext, moduleID model.ID, folderPath string) (model.ID, error) {

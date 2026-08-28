@@ -1,0 +1,55 @@
+-- Negative test. `mxcli check` must REPORT on this file, not accept it.
+--
+-- mendixlabs/mxcli#973 was filed as "an unassigned CREATE statement writes a
+-- create activity without an Entity, silently". The reported trigger does NOT
+-- reproduce: the reporter's script, run verbatim on both engines, stores
+-- `Entity: "Repro2.Thing"` and mx check is clean, so omitting `$X =` is not what
+-- breaks it.
+--
+-- What does reproduce is an entity reference with no MODULE PREFIX, and it is
+-- worse than the reported CE6005. Measured on mxbuild 11.13.0:
+--
+--   create Thing (Name = 'Damaged') COMMIT;
+--
+--     mxcli check --references  ->  "All references valid — Check passed!"
+--     mx check                  ->  ERROR: StorageLoadException … The text
+--                                   'Name' is not a valid AttributeIdentifier.
+--
+--   The activity has no Entity key at all, so the member assignments cannot be
+--   qualified and reach disk as bare words. The project does NOT load.
+--
+--   retrieve $items from Thing;   stores Entity: ".Thing" — the same shape from
+--                                 the other side.
+--
+-- The hole was in the reference collector, which skipped any entity reference
+-- whose Module was empty, so an unqualified name was never validated and was
+-- then written as nothing. MDL008 already said this for microflow PARAMETERS;
+-- it now says it for the body too, and being a static property of the statement
+-- it fires with no project at hand — which is what makes this file a negative
+-- test CI can run.
+--
+-- CONTROL, and the reason this is about the missing prefix rather than the
+-- missing entity: a QUALIFIED name that resolves to nothing was always caught —
+--
+--   create U973.NoSuchEntity (…);
+--   -> entity not found: U973.NoSuchEntity (referenced by create)
+--
+-- (needs a project, so it is covered in
+-- mdl/executor/validate_microflow_bare_entity_test.go rather than here.)
+
+create module U973;
+create persistent entity U973.Thing ("Name": String(100));
+
+-- `U973.Thing` above is a real entity of this module, so each of the three below
+-- is refused for being unqualified, not for naming something unknown.
+create or modify microflow U973.MF_Bare ()
+begin
+  @position(130, 200)
+  create Thing (Name = 'Damaged') COMMIT;
+  @position(320, 200)
+  retrieve $items from Thing;
+  @position(510, 200)
+  $list = create list of Thing;
+  @position(700, 200)
+  return;
+end;

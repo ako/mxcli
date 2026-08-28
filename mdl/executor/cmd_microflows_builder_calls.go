@@ -988,6 +988,27 @@ func (fb *flowBuilder) addClosePageAction(s *ast.ClosePageStmt) model.ID {
 	return activity.ID
 }
 
+// declaringMemberRef qualifies a member against the entity that DECLARES it,
+// which is an ancestor when the attribute is inherited. Mendix stores member
+// references that way, and qualifying against the entity that merely USES one is
+// CE1613 "The selected attribute ... no longer exists" (upstream #974) — the same
+// rule the access-rule writer learned in #758 and the mapping writer in #703.
+//
+// When nothing resolves — no backend, an unknown entity, an unknown member — the
+// naive spelling is kept. The reference is wrong either way and mxbuild names it;
+// substituting something else would only make the error harder to read.
+func (fb *flowBuilder) declaringMemberRef(entityQN, memberName string) string {
+	if entityQN == "" {
+		return memberName
+	}
+	if fb.backend != nil {
+		if ref, ok := DeclaringMemberRef(fb.backend, entityQN, memberName); ok {
+			return ref
+		}
+	}
+	return entityQN + "." + memberName
+}
+
 // addValidationFeedbackAction creates a VALIDATION FEEDBACK statement as a ValidationFeedbackAction.
 func (fb *flowBuilder) addValidationFeedbackAction(s *ast.ValidationFeedbackStmt) model.ID {
 	// Build the template text from the message expression.
@@ -1030,11 +1051,7 @@ func (fb *flowBuilder) addValidationFeedbackAction(s *ast.ValidationFeedbackStmt
 			switch strings.Count(segs[0].Name, ".") {
 			case 0:
 				// Single bare segment: direct attribute access.
-				if entityQName != "" {
-					attributeName = entityQName + "." + segs[0].Name
-				} else {
-					attributeName = segs[0].Name
-				}
+				attributeName = fb.declaringMemberRef(entityQName, segs[0].Name)
 			case 1:
 				// Qualified association names use Module.Association.
 				associationName = segs[0].Name
@@ -1046,15 +1063,11 @@ func (fb *flowBuilder) addValidationFeedbackAction(s *ast.ValidationFeedbackStmt
 			// Multi-hop paths are not a validation-feedback association target.
 			// Fall back to the first segment as an attribute so we do not join
 			// unrelated traversal pieces into a synthetic association name.
-			if entityQName != "" {
-				attributeName = entityQName + "." + segs[0].Name
-			} else {
-				attributeName = segs[0].Name
-			}
+			attributeName = fb.declaringMemberRef(entityQName, segs[0].Name)
 		}
 	} else if entityQName != "" && len(s.AttributePath.Path) > 0 {
 		// Fallback for legacy Path without Segments
-		attributeName = entityQName + "." + s.AttributePath.Path[0]
+		attributeName = fb.declaringMemberRef(entityQName, s.AttributePath.Path[0])
 	}
 
 	// Append template parameters from TemplateArgs (e.g., OBJECTS [$Var1, $Var2])
