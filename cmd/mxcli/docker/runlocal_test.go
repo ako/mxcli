@@ -567,6 +567,43 @@ func TestCustomHostRootURL(t *testing.T) {
 	}
 }
 
+func TestResolveAppRootURL(t *testing.T) {
+	const (
+		flagURL = "https://proxy.example.com"
+		hubURL  = "https://app-main.hub.example.com"
+		cfgURL  = "http://backend.local:8080/"
+	)
+	tests := []struct {
+		name                  string
+		flag, hub, configured string
+		wantURL               string
+		wantFrom              appRootSource
+	}{
+		{"nothing set", "", "", "", "", appRootNone},
+		{"configuration only", "", "", cfgURL, cfgURL, appRootConfig},
+		{"hub only", "", hubURL, "", hubURL, appRootHub},
+		{"hub beats configuration", "", hubURL, cfgURL, hubURL, appRootHub},
+		{"flag beats configuration", flagURL, "", cfgURL, flagURL, appRootFlag},
+		{"flag beats hub", flagURL, hubURL, "", flagURL, appRootFlag},
+		{"flag beats both", flagURL, hubURL, cfgURL, flagURL, appRootFlag},
+		// The stock value of a blank app is not a choice, so it must not be
+		// mistaken for one — but only via the configuration, never via the flag.
+		{"stock configuration ignored", "", "", "http://localhost:8080/", "", appRootNone},
+		{"flag honoured verbatim even on loopback", "http://localhost:9999/", "", "", "http://localhost:9999/", appRootFlag},
+		{"flag whitespace trimmed", "  " + flagURL + "  ", "", "", flagURL, appRootFlag},
+		{"blank flag falls through to hub", "   ", hubURL, "", hubURL, appRootHub},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, from := resolveAppRootURL(tt.flag, tt.hub, tt.configured)
+			if got != tt.wantURL || from != tt.wantFrom {
+				t.Errorf("resolveAppRootURL(%q, %q, %q) = (%q, %q), want (%q, %q)",
+					tt.flag, tt.hub, tt.configured, got, from, tt.wantURL, tt.wantFrom)
+			}
+		})
+	}
+}
+
 func TestURLPort(t *testing.T) {
 	tests := map[string]string{
 		"http://backend.local:8080/": "8080",

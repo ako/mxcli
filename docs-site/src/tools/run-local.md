@@ -85,6 +85,7 @@ so structural changes need a restart; behavioural changes do not.
 | `--screenshot-url` | app root | Page to shoot: full URL, or a path relative to the app root (e.g. `/p/customers`). Repeat for a multi-page set. |
 | `--screenshot-user` / `--screenshot-password` | — | Log in once (Mendix form auth) and reuse the session, so pages behind login render authenticated |
 | `--runtime-log` | `<projectDir>/.mxcli/runtime.log` | Runtime log file — JVM stdout/stderr **and** the application log (server stack traces + microflow `LOG` output); `-` disables |
+| `--app-root-url` | — | Public URL the app is reached at when something fronts it (reverse proxy, tunnel, ngrok). Sets `ApplicationRootUrl` so absolute URLs — OIDC/SAML redirect URIs, deep links — name that host, not the listen address. Wins over the project configuration and over `--hub`. |
 | `--test-endpoint` | off | Host mxcli's token-guarded test endpoint so [`mxcli test … --attach`](running-tests.md) runs a suite against this app with no boot of its own. Installed before the boot (the handler registers from after-startup, so it cannot be added to a running app); your project's own after-startup microflow is chained, not displaced. Removed on exit. Tests then use **this app's database** |
 | `--debug` | off | Enable the microflow debugger at boot; then use [`mxcli debug`](debug-microflows.md) from another terminal. Behaviour-neutral until a breakpoint is set |
 | `--debug-pass` | `mxdebug` | Debugger password when `--debug` is set |

@@ -156,6 +156,7 @@ Examples:
 		screenshotUser, _ := cmd.Flags().GetString("screenshot-user")
 		screenshotPassword, _ := cmd.Flags().GetString("screenshot-password")
 		runtimeLog, _ := cmd.Flags().GetString("runtime-log")
+		appRootURL, _ := cmd.Flags().GetString("app-root-url")
 		debug, _ := cmd.Flags().GetBool("debug")
 		debugPass, _ := cmd.Flags().GetString("debug-pass")
 		metrics, _ := cmd.Flags().GetBool("metrics")
@@ -208,6 +209,7 @@ Examples:
 			ScreenshotURLs:     screenshotURLs,
 			ScreenshotUser:     screenshotUser,
 			ScreenshotPassword: screenshotPassword,
+			AppRootURL:         appRootURL,
 			RuntimeLogPath:     runtimeLog,
 			Debug:              debug,
 			DebugPass:          debugPass,
@@ -319,6 +321,7 @@ func init() {
 	runCmd.Flags().StringArray("screenshot-url", nil, "Page to screenshot: a full URL or a path relative to the app root, e.g. /p/customers (default the app root). Repeat for a multi-page set.")
 	runCmd.Flags().String("screenshot-user", "", "Log in with this user before screenshotting (for pages behind login)")
 	runCmd.Flags().String("screenshot-password", "", "Password for --screenshot-user")
+	runCmd.Flags().String("app-root-url", "", "Public URL the app is reached at when something fronts it (reverse proxy, tunnel, ngrok). Sets the runtime's ApplicationRootUrl so absolute URLs — OIDC/SAML redirect URIs, deep links — name that host instead of the listen address. Wins over the project configuration.")
 	runCmd.Flags().String("runtime-log", "", "Write the Mendix runtime log (server stack traces + microflow LOG output) to this file for debugging (default <projectDir>/.mxcli/runtime.log; \"-\" to disable)")
 	runCmd.Flags().Bool("debug", false, "Enable the microflow debugger at boot and start a session, so 'mxcli debug break/paused/…' works from another terminal (no breakpoints = no behaviour change)")
 	runCmd.Flags().String("debug-pass", "", "Debugger password when --debug is set (default \"mxdebug\")")

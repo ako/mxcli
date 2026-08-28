@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -117,6 +118,14 @@ type LocalRunOptions struct {
 	// screenshotStorage is the resolved Playwright storage-state file (from login);
 	// internal, set during boot.
 	screenshotStorage string
+	// AppRootURL is the public URL the app is reached at, when it is served
+	// through something in front of it — a reverse proxy, an SSH tunnel, ngrok,
+	// or a tunnel-hub preview. It becomes the runtime's ApplicationRootUrl, which
+	// Mendix needs to generate absolute URLs (OIDC/SAML redirect URIs, deep
+	// links) naming that host rather than the listen address.
+	//
+	// Highest precedence of the three sources — see resolveAppRootURL.
+	AppRootURL string
 	// RuntimeLogPath tees the Mendix runtime's stdout+stderr to a file so the
 	// warm loop is debuggable (server stack traces, microflow LOG output).
 	// Default <projectDir>/.mxcli/runtime.log; set to "-" to disable. Findings #25.
@@ -302,6 +311,44 @@ func applicationRootURLFrom(settings *model.ProjectSettings) (rootURL, configNam
 		}
 	}
 	return first, firstName
+}
+
+// appRootSource names where the ApplicationRootUrl a run boots with came from.
+// It exists so the run can SAY which one won: with three places to set the value,
+// "the app root URL is X" stops being useful on its own.
+type appRootSource string
+
+const (
+	appRootNone   appRootSource = ""
+	appRootFlag   appRootSource = "--app-root-url"
+	appRootHub    appRootSource = "hub"
+	appRootConfig appRootSource = "configuration"
+)
+
+// resolveAppRootURL picks the ApplicationRootUrl to boot with and says where it
+// came from. Precedence: an explicit --app-root-url, then a hub assignment, then
+// the project's configuration.
+//
+// The flag wins over a hub assignment because it is the more specific
+// instruction: the hub's URL is inferred from the preview's identity, while the
+// flag is someone naming the origin the app is actually reached at. When both are
+// set and disagree, the caller warns rather than silently picking — a hub preview
+// served under a different root URL is a real misconfiguration, not a preference.
+//
+// The flag is honoured verbatim, deliberately skipping customHostRootURL. That
+// filter exists to avoid mistaking a blank app's stock `http://localhost:8080/`
+// for a deliberate choice; a flag is a deliberate choice by construction, and a
+// loopback value is legitimate behind a local reverse proxy on another port.
+func resolveAppRootURL(flag, hub, configured string) (string, appRootSource) {
+	switch {
+	case strings.TrimSpace(flag) != "":
+		return strings.TrimSpace(flag), appRootFlag
+	case hub != "":
+		return hub, appRootHub
+	case customHostRootURL(configured):
+		return configured, appRootConfig
+	}
+	return "", appRootNone
 }
 
 // customHostRootURL reports whether an ApplicationRootUrl names a host worth
@@ -674,7 +721,7 @@ func RunLocal(opts LocalRunOptions) error {
 	// back a per-preview subdomain + reverse port; a single-app hub falls back to
 	// the hub URL itself.
 	var hubReg *HubRegistration
-	appRootURL := ""
+	hubRootURL := ""
 	if opts.Hub != "" {
 		meta := DetectHubMeta(opts.ProjectPath, HubMeta{
 			Prefix: opts.HubPrefix, Project: opts.HubProject, Solution: opts.HubSolution,
@@ -694,23 +741,38 @@ func RunLocal(opts LocalRunOptions) error {
 			hubReg = nil
 			err = nil
 		} else {
-			appRootURL = hubReg.URL
+			hubRootURL = hubReg.URL
 		}
 	}
 
-	// No hub URL: fall back to the one configured in the project. This is what
-	// makes "give each app its own host name" work for a local run — Mendix needs
-	// to know the URL it is reached at to generate absolute URLs (OIDC/SAML
-	// redirect URIs, deep links) that point at the host name rather than the
-	// listen address. A hub assignment wins, since that URL is the one actually
-	// serving the app.
-	if appRootURL == "" && customHostRootURL(modelRootURL) {
-		appRootURL = modelRootURL
+	// Settle the root URL across its three sources. Mendix needs the URL it is
+	// actually reached at to generate absolute URLs (OIDC/SAML redirect URIs,
+	// deep links) naming that host rather than the listen address.
+	appRootURL, appRootFrom := resolveAppRootURL(opts.AppRootURL, hubRootURL, modelRootURL)
+	switch appRootFrom {
+	case appRootFlag:
+		fmt.Fprintf(w, "Application root URL: %s (--app-root-url)\n", appRootURL)
+		// An explicit URL that is not the one the hub is serving the preview at
+		// means the preview will render under an origin the runtime does not know
+		// about — the exact SPA/originURI breakage ApplicationRootUrl exists to
+		// prevent. Say so; do not silently prefer either.
+		if hubRootURL != "" && hubRootURL != appRootURL {
+			fmt.Fprintf(stderr, "Warning: --app-root-url %s overrides the hub preview URL %s — "+
+				"the app will generate absolute URLs for %s, so the hub preview may not work. "+
+				"Drop --app-root-url to use the hub's URL.\n", appRootURL, hubRootURL, appRootURL)
+		}
+	case appRootConfig:
 		fmt.Fprintf(w, "Application root URL from configuration %q: %s\n", modelRootConfig, appRootURL)
+	}
+	if appRootFrom == appRootFlag || appRootFrom == appRootConfig {
 		if port := urlPort(appRootURL); port != "" && port != fmt.Sprint(opts.AppPort) {
-			fmt.Fprintf(stderr, "Warning: configuration %q says port %s but the app is serving on %d — "+
-				"absolute URLs will point at %s. Update the configuration or pass --app-port %s.\n",
-				modelRootConfig, port, opts.AppPort, appRootURL, port)
+			from := "configuration " + strconv.Quote(modelRootConfig)
+			if appRootFrom == appRootFlag {
+				from = "--app-root-url"
+			}
+			fmt.Fprintf(stderr, "Warning: %s says port %s but the app is serving on %d — "+
+				"absolute URLs will point at %s. Update it or pass --app-port %s.\n",
+				from, port, opts.AppPort, appRootURL, port)
 		}
 	}
 
