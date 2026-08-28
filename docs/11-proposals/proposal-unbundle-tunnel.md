@@ -39,6 +39,39 @@ The gate reduced the blast radius from three platforms to one. This proposal
 takes it to zero, by moving the capability into a binary that a person has to
 choose to install.
 
+### A second, independent reason: the tunnel is a vulnerability-maintenance burden
+
+Endpoint detection is what prompted this proposal, but it is not the only recurring
+cost, and the other one showed up while the proposal was being written.
+
+On 2026-08-28 `govulncheck` began failing on main and on every open PR:
+
+```
+GO-2026-6303  golang.org/x/crypto/ssh  (found v0.52.0, fixed v0.55.0)
+  Source-address critical option not enforced for non-public-key auth callbacks
+  cmd/mxcli/tunnelhub/server.go:252 … eventually calls ssh.NewServerConn
+```
+
+Two things are worth drawing out. First, this was **the only reachable
+vulnerability in the entire codebase**, and its single trace runs through the
+embedded chisel SSH server. Second, it was a real finding rather than scanner
+noise: an unenforced source-address restriction is exactly the property that
+matters for a component whose whole job is accepting remote connections
+([#339](https://github.com/ako/mxcli/pull/339) bumped the dependency for that
+reason).
+
+The pattern generalises. Every future advisory against `golang.org/x/crypto/ssh`,
+`gorilla/websocket`, `armon/go-socks5` or the rest of the 28-package tunnel graph
+lands as an mxcli CI outage — blocking unrelated PRs across the whole repo — for a
+capability most users never invoke. It also stops every open PR at once, so the
+cost is paid by whoever happens to be working that day, not by whoever wants the
+tunnel.
+
+Moving the tunnel into its own binary confines that class of interruption to the
+binary that actually has the capability. Moving it into its own **module** (see the
+module-boundary section) removes it from mxcli's dependency graph entirely, which
+is what stops the scanner reaching it at all.
+
 ### What this changes about ADR-0009
 
 ADR-0009 is Accepted and immutable. This proposal, if accepted, is implemented by
@@ -274,6 +307,15 @@ an enterprise scanning mxcli's dependency manifest — SCA, SBOM, `go list -m al
 Dependabot — still sees chisel, and a policy that blocks the *dependency* is not
 satisfied by a binary that does not link it. That is a real variant of the
 complaint that started this.
+
+**`govulncheck` sharpens this into the deciding argument.** It analyses reachable
+call paths, so it follows the *build*, not the manifest — meaning the binary split
+alone does fix the CI outages described above, since `./cmd/mxcli` would no longer
+reach `ssh.NewServerConn`. But manifest-level scanners (SCA, SBOM, Dependabot)
+follow `go.mod`, and they would keep reporting chisel against mxcli for as long as
+the two share a module. Which scanner the complainant runs therefore decides
+whether the binary split is sufficient or whether the module split is required —
+the same fork as open question 3, arriving from a different direction.
 
 Splitting the hub into its own module (`./hub`, module
 `github.com/mendixlabs/mxcli/hub`) removes chisel from mxcli's module graph
