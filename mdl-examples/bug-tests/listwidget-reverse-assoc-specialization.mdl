@@ -1,0 +1,72 @@
+-- mendixlabs/mxcli#975 — a list widget navigating a REVERSE association typed
+-- its rows as the wrong end when the page's context object was a specialization:
+--
+--   [CE1613] "The selected attribute 'RA.Base.Content' no longer exists."
+--            at Text box [Content]
+--
+-- The destination is the end OPPOSITE the context, matched by qualified name.
+-- `RA.Sub` equals neither `RA.Note` nor `RA.Base`, both ends resolve so neither
+-- empty-end fallback applies, and control reached the last line of
+-- resolveAssociationDestination:
+--
+--   // No context or mismatch — default to the child (TO) side, which
+--   // matches the common FROM=context pattern.
+--   return childEntity
+--
+-- A guess that is silent when it is wrong. `mxcli check --references` passed.
+--
+--   mxcli exec mdl-examples/bug-tests/listwidget-reverse-assoc-specialization.mdl -p app.mpr
+--   mx check app.mpr        -- 0 new errors
+--
+-- Two controls on the same page, both of which passed BEFORE the fix — they are
+-- what make this "the context is a specialization" rather than "reverse
+-- navigation is broken":
+--
+--   lvFromBase   context is Base itself   reverse, rows are Note
+--   dvForward    context is Note          forward, the row is a Base
+
+create module RA;
+
+create persistent entity RA.Base ("Title": String(200));
+create persistent entity RA.Sub extends RA.Base ("Extra": String(20));
+create persistent entity RA.Note ("Content": String(200));
+create association RA.Note_Base from RA.Note to RA.Base;
+
+create or modify page RA.SubDetail
+  (
+    Title: 'Sub detail',
+    Layout: Atlas_Core.Atlas_Default,
+    Params: { $Sub: RA.Sub, $Base: RA.Base, $Note: RA.Note }
+  )
+  {
+    LAYOUTGRID lgMain {
+      ROW rowMain {
+        COLUMN colMain (DesktopWidth: AutoFill) {
+
+          -- The reported case: the context is a SPECIALIZATION of the TO end,
+          -- so the rows are Note and `Content` must resolve against Note.
+          DATAVIEW dvSub (DataSource: $Sub) {
+            TEXTBOX txtSubTitle (Label: 'Title', Attribute: Title)
+            LISTVIEW lvNotes (DataSource: $currentObject/RA.Note_Base) {
+              TEXTBOX txtContent (Label: 'Content', Attribute: Content)
+            }
+          }
+
+          -- Control: the context is the TO end itself.
+          DATAVIEW dvBase (DataSource: $Base) {
+            LISTVIEW lvFromBase (DataSource: $currentObject/RA.Note_Base) {
+              TEXTBOX txtContent2 (Label: 'Content', Attribute: Content)
+            }
+          }
+
+          -- Control: forward navigation from the FROM end. The row is a Base,
+          -- so `Title` must resolve — not `Content`.
+          DATAVIEW dvNote (DataSource: $Note) {
+            DATAVIEW dvForward (DataSource: $currentObject/RA.Note_Base) {
+              TEXTBOX txtBaseTitle (Label: 'Title', Attribute: Title)
+            }
+          }
+        }
+      }
+    }
+  };

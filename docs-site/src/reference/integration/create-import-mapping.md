@@ -37,6 +37,27 @@ Each entity block specifies one of three strategies:
 
 Marking an attribute with `KEY` designates it as the lookup key for FIND and FIND OR CREATE.
 
+### Requirements for FIND
+
+An element that searches has two requirements, both refused by `mxcli check` and
+by `exec` rather than left to the build:
+
+| Rule | Requirement | Build error if ignored |
+|------|-------------|------------------------|
+| `MDL-MAP02` | At least one member marked `KEY`, on **each** searching element | CE0250 "Object element must have a key defined…" |
+| `MDL-MAP03` | The entity must be **persistable** | CE0251 "Searching for an object is not allowed for the entity 'X', because it is not persistable." |
+
+Persistability is taken from the **generalization chain**, not the entity's own
+setting: an entity declared with plain `CREATE ENTITY` that extends a
+non-persistent parent is still not searchable.
+
+An element with a custom handler (`FIND module.Entity BY module.Microflow(...)`)
+is exempt from both — the microflow *is* the find.
+
+`MDL-MAP02` needs no project. `MDL-MAP03` resolves the entity from the script
+when the script creates it, and from the project otherwise; an entity it cannot
+resolve is left alone rather than assumed non-persistable.
+
 ### Nested Objects and Arrays
 
 Child entities are nested inside the parent's `{ }` block using the association path:
@@ -64,6 +85,16 @@ If `OR MODIFY` is specified and the mapping already exists, it is updated in pla
 
 `WITH XML SCHEMA module.XmlSchema`
 :   Associates the mapping with the named XML schema instead of a JSON structure.
+
+    The reference is **resolved** against the project: a name that matches no XML
+    schema is refused by `mxcli check -p` and by `exec`, naming the schemas that
+    exist. mxbuild otherwise reports it as CE1613 "The selected XML schema 'X' no
+    longer exists" at the end of a build.
+
+    A project holding **no** XML schemas disables the check rather than refusing
+    every mapping — there is no `CREATE XML SCHEMA` in MDL, so an XML schema is
+    only ever something imported into the project by hand, and having none is the
+    ordinary case. The same resolution applies to `WITH JSON STRUCTURE`.
 
 `CREATE | FIND | FIND OR CREATE`
 :   Object handling strategy for each entity block.

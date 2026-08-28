@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mendixlabs/mxcli/mdl/visitor"
 	"github.com/mendixlabs/mxcli/sdk/domainmodel"
 )
 
@@ -46,7 +47,10 @@ func outputEntityAccessGrants(ctx *ExecContext, entity *domainmodel.Entity, modu
 			strings.Join(roleStrs, ", "), moduleName, entityName, rightsStr)
 
 		if rule.XPathConstraint != "" {
-			escaped := strings.ReplaceAll(rule.XPathConstraint, "'", "''")
+			// A long constraint is stored broken across lines so it can be read in
+			// Studio Pro's editor (upstream #979); MDL keeps it on one line, and the
+			// executor re-derives the stored layout on write.
+			escaped := strings.ReplaceAll(visitor.FlattenXPathConstraint(rule.XPathConstraint), "'", "''")
 			grantLine += fmt.Sprintf(" where '%s'", escaped)
 		}
 		grantLine += ";"

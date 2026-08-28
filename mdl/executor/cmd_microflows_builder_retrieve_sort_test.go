@@ -3,10 +3,12 @@
 package executor
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	"github.com/mendixlabs/mxcli/mdl/backend/mock"
+	"github.com/mendixlabs/mxcli/mdl/visitor"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/domainmodel"
 	"github.com/mendixlabs/mxcli/sdk/microflows"
@@ -139,7 +141,22 @@ func TestAddRetrieveAction_PreservesMultipleXPathPredicates(t *testing.T) {
 	if !ok {
 		t.Fatalf("got source %T, want *microflows.DatabaseRetrieveSource", action.Source)
 	}
-	if source.XPathConstraint != where {
-		t.Fatalf("XPathConstraint = %q, want %q", source.XPathConstraint, where)
+	// This constraint is 129 characters, so it is now stored broken across lines
+	// so it can be read in Studio Pro's editor (upstream #979). What #772 is about
+	// — that all three predicate groups survive, not just the first — is asserted
+	// on the flattened form, which is independent of how it was laid out.
+	if got := visitor.FlattenXPathConstraint(source.XPathConstraint); got != where {
+		t.Fatalf("XPathConstraint flattens to %q, want %q", got, where)
+	}
+	wantLayout := strings.Join([]string{
+		"[",
+		"  CreatedAt > $Token/CreatedAt",
+		"  or (CreatedAt = $Token/CreatedAt and ItemId > $Token/ItemId)",
+		"]",
+		"[CreatedAt < '[%CurrentDateTime%]']",
+		"[ExternalId != empty]",
+	}, "\n")
+	if source.XPathConstraint != wantLayout {
+		t.Errorf("XPathConstraint layout\n got:\n%s\nwant:\n%s", source.XPathConstraint, wantLayout)
 	}
 }

@@ -34,17 +34,37 @@ func validatePageContextTree(params []ast.PageParameter, widgets []*ast.WidgetV3
 	return errors
 }
 
+// widgetKindsWithoutStoredNames are the widget kinds Mendix stores with no Name
+// at all, so MDL's name for one is mxcli's own — derived at describe time to give
+// ALTER PAGE something to address.
+//
+// Measured on a stored page: Forms$LayoutGridRow and Forms$LayoutGridColumn carry
+// no `Name` key. A DataGrid2 column is the same, and mxcli says so itself in
+// MDL-WIDGET16 ("DataGrid 2 stores no column names"), deriving one from the bound
+// attribute — so two columns over the same attribute derive the same name and no
+// renaming fixes that without breaking the documented addressing.
+//
+// A name the model does not hold cannot be a CE0495 duplicate, and reporting one
+// made DESCRIBE output fail mxcli's own check (upstream #978).
+var widgetKindsWithoutStoredNames = map[string]bool{
+	"row":    true,
+	"column": true,
+}
+
 // checkDuplicateWidgetNames flags any widget name that appears more than once on a
 // page. Mendix requires widget names to be unique per page and rejects duplicates
 // with CE0495 "Duplicate name" — which mxcli check otherwise passed (FINDINGS #15).
 // Each duplicate name is reported once, in first-seen order.
+//
+// Widget kinds Mendix stores without a name are skipped: see
+// widgetKindsWithoutStoredNames.
 func checkDuplicateWidgetNames(widgets []*ast.WidgetV3) []string {
 	counts := make(map[string]int)
 	var order []string
 	var walk func(ws []*ast.WidgetV3)
 	walk = func(ws []*ast.WidgetV3) {
 		for _, w := range ws {
-			if w.Name != "" {
+			if w.Name != "" && !widgetKindsWithoutStoredNames[strings.ToLower(w.Type)] {
 				if counts[w.Name] == 0 {
 					order = append(order, w.Name)
 				}

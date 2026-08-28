@@ -332,6 +332,12 @@ func xpathConstraintClause(constraint string) string {
 	if xpath == "" {
 		return ""
 	}
+	// A stored constraint may be broken across lines — mxcli formats a long one
+	// that way so it can be read in Studio Pro's editor, and a person may have
+	// done the same by hand (upstream #979). MDL keeps it on one line: the
+	// datasource is one property among several on a widget, and the executor
+	// re-derives the stored layout from the expression anyway.
+	xpath = visitor.FlattenXPathConstraint(xpath)
 	if groups := visitor.SplitXPathPredicateGroups(xpath); len(groups) > 0 {
 		return strings.Join(groups, " ")
 	}

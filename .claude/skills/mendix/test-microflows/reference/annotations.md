@@ -11,7 +11,8 @@ Supporting reference for [test-microflows](../SKILL.md).
 | `@expect` | Assert an entity attribute | `@expect $product/Name = 'TestProduct'` |
 | `@expect` | Assert with a built-in | `@expect length($result) = 81` |
 | `@verify` | OQL post-condition on the database | `@verify select count(*) as n from Mod.E = 1` |
-| `@throws` | Expect error | `@throws 'validation failed'` |
+| `@throws` | Expect any error | `@throws` |
+| `@throws` | Expect an error whose message contains this | `@throws 'validation failed'` |
 | `@setup` | Microflow to run first | `@setup MyModule.ACT_SeedCustomers` |
 | `@cleanup` | Rollback strategy | `@cleanup rollback` (default) or `@cleanup none` |
 

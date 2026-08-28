@@ -79,7 +79,7 @@ func TestNormalizeDateTimeValue_NoFractionalNoTimezone(t *testing.T) {
 
 func TestBuildJsonElementsFromSnippet_SimpleObject(t *testing.T) {
 	snippet := `{"name": "John", "age": 30, "active": true}`
-	elems, err := BuildJsonElementsFromSnippet(snippet, nil)
+	elems, err := BuildJsonElementsFromSnippet(snippet, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestBuildJsonElementsFromSnippet_SimpleObject(t *testing.T) {
 
 func TestBuildJsonElementsFromSnippet_RootArray(t *testing.T) {
 	snippet := `[{"id": 1}]`
-	elems, err := BuildJsonElementsFromSnippet(snippet, nil)
+	elems, err := BuildJsonElementsFromSnippet(snippet, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,14 +125,14 @@ func TestBuildJsonElementsFromSnippet_RootArray(t *testing.T) {
 }
 
 func TestBuildJsonElementsFromSnippet_InvalidJSON(t *testing.T) {
-	_, err := BuildJsonElementsFromSnippet("not json", nil)
+	_, err := BuildJsonElementsFromSnippet("not json", nil, nil)
 	if err == nil {
 		t.Error("expected error for invalid JSON")
 	}
 }
 
 func TestBuildJsonElementsFromSnippet_PrimitiveRoot(t *testing.T) {
-	_, err := BuildJsonElementsFromSnippet(`"hello"`, nil)
+	_, err := BuildJsonElementsFromSnippet(`"hello"`, nil, nil)
 	if err == nil {
 		t.Error("expected error for primitive root")
 	}
@@ -140,7 +140,7 @@ func TestBuildJsonElementsFromSnippet_PrimitiveRoot(t *testing.T) {
 
 func TestBuildJsonElementsFromSnippet_DateTimeDetection(t *testing.T) {
 	snippet := `{"created": "2015-05-22T14:56:29.000Z"}`
-	elems, err := BuildJsonElementsFromSnippet(snippet, nil)
+	elems, err := BuildJsonElementsFromSnippet(snippet, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +156,7 @@ func TestBuildJsonElementsFromSnippet_DateTimeDetection(t *testing.T) {
 
 func TestBuildJsonElementsFromSnippet_DecimalDetection(t *testing.T) {
 	snippet := `{"price": 19.99}`
-	elems, err := BuildJsonElementsFromSnippet(snippet, nil)
+	elems, err := BuildJsonElementsFromSnippet(snippet, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func TestBuildJsonElementsFromSnippet_DecimalDetection(t *testing.T) {
 
 func TestBuildJsonElementsFromSnippet_NullValue(t *testing.T) {
 	snippet := `{"value": null}`
-	elems, err := BuildJsonElementsFromSnippet(snippet, nil)
+	elems, err := BuildJsonElementsFromSnippet(snippet, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +180,7 @@ func TestBuildJsonElementsFromSnippet_NullValue(t *testing.T) {
 
 func TestBuildJsonElementsFromSnippet_NestedObject(t *testing.T) {
 	snippet := `{"address": {"city": "Amsterdam"}}`
-	elems, err := BuildJsonElementsFromSnippet(snippet, nil)
+	elems, err := BuildJsonElementsFromSnippet(snippet, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestBuildJsonElementsFromSnippet_NestedObject(t *testing.T) {
 
 func TestBuildJsonElementsFromSnippet_PrimitiveArray(t *testing.T) {
 	snippet := `{"tags": ["a", "b"]}`
-	elems, err := BuildJsonElementsFromSnippet(snippet, nil)
+	elems, err := BuildJsonElementsFromSnippet(snippet, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +216,7 @@ func TestBuildJsonElementsFromSnippet_PrimitiveArray(t *testing.T) {
 func TestBuildJsonElementsFromSnippet_CustomNameMap(t *testing.T) {
 	snippet := `{"myField": "value"}`
 	custom := map[string]string{"myField": "CustomName"}
-	elems, err := BuildJsonElementsFromSnippet(snippet, custom)
+	elems, err := BuildJsonElementsFromSnippet(snippet, custom, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +229,7 @@ func TestBuildJsonElementsFromSnippet_CustomNameMap(t *testing.T) {
 func TestBuildJsonElementsFromSnippet_ReservedNames(t *testing.T) {
 	// "id" capitalizes to "Id" which is reserved — should get underscore prefix
 	snippet := `{"id": "123"}`
-	elems, err := BuildJsonElementsFromSnippet(snippet, nil)
+	elems, err := BuildJsonElementsFromSnippet(snippet, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -209,6 +209,40 @@ A common shape: the task page's buttons call a microflow that does the change an
 then `set task outcome $Task '<Outcome>'`, leaving the workflow's outcome branch
 bodies empty.
 
+### Claim the task before completing it
+
+**`set task outcome` on a task nobody has claimed fails at runtime**, and it fails
+quietly — the button appears to do nothing and the only trace is in the runtime log:
+
+```
+ERROR - Client: You can't complete this user task, it is not assigned to you.
+```
+
+`mxcli check` and `mx check` both pass; the build is clean. `mxcli check` now warns
+about it (**MDL-WORKFLOW10**), but the platform rule is worth knowing rather than
+being told.
+
+The trap is that **`targeting xpath` / `targeting microflow` decides who may SEE a
+task — it does not assign it.** There is no `assign task` statement; claiming is a
+plain write to the Assignees association, and it must come first:
+
+```sql
+create microflow Module.ACT_CompleteTask ( $Task: System.WorkflowUserTask )
+begin
+  change $Task (System.WorkflowUserTask_Assignees = [%CurrentUser%]);
+  commit $Task;
+  set task outcome $Task 'Plan';
+end;
+```
+
+If the task is claimed somewhere else — earlier in the process, or in a microflow
+this one calls — the warning does not apply.
+
+Related: **`WorkflowUserTask.Name` holds the task's CAPTION, not the activity
+name.** A task declared `user task "ReviewAndPlan" 'Review and plan'` stores
+`Name = 'Review and plan'`, so routing an inbox on the activity name silently never
+matches. Route on your own entity's status instead.
+
 ## System-module documents are read from the runtime, not the .mpr
 
 `describe enumeration System.WorkflowUserTaskState` and `show enumerations in System`

@@ -12,8 +12,8 @@ import (
 func PrettyPrintJSON(s string) string { return types.PrettyPrintJSON(s) }
 
 // BuildJsonElementsFromSnippet delegates to types.BuildJsonElementsFromSnippet.
-func BuildJsonElementsFromSnippet(snippet string, customNameMap map[string]string) ([]*JsonElement, error) {
-	return types.BuildJsonElementsFromSnippet(snippet, customNameMap)
+func BuildJsonElementsFromSnippet(snippet string, customNameMap, itemNameMap map[string]string) ([]*JsonElement, error) {
+	return types.BuildJsonElementsFromSnippet(snippet, customNameMap, itemNameMap)
 }
 
 // CreateJsonStructure creates a new JSON structure unit in the MPR.

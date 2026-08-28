@@ -1,0 +1,51 @@
+-- A multi-line CALL WORKFLOW parameter mapping captured the newline
+-- (ako/mxcli-maintenance-2).
+--
+-- The mapping written across two lines produced the workflow context variable
+-- "Request\n  ", and the build failed:
+--
+--   CE0109 "Undefined variable 'Request
+--     '"
+--
+-- The same call on ONE line was fine, and CALL MICROFLOW was fine at any width.
+-- That asymmetry is the whole diagnosis: a workflow's context is stored as a
+-- variable NAME, while a microflow's arguments stay EXPRESSIONS -- and the
+-- visitor deliberately preserves an expression's trailing whitespace so a
+-- multi-line expression round-trips byte-for-byte (there are tests pinning it).
+-- So the fix trims the NAME, not the expression; trimming in the visitor would
+-- have broken the round-trip the whitespace exists for.
+
+create module WFA;
+create module role WFA.User;
+create persistent entity WFA.Request ( Code: string(50) );
+
+create page WFA."TaskPage" (
+  params: { $Task: System.WorkflowUserTask },
+  title: 'Task', layout: Atlas_Core.Atlas_Default
+) {
+  layoutgrid g { row r { column c (desktopwidth: 12) {
+    dataview dv (datasource: $Task) { textbox tb (attribute: Name, label: 'Task') }
+  } } }
+};
+
+create workflow WFA.WF_Approve
+  parameter $Context: WFA.Request
+begin
+  user task Review 'Review'
+    page WFA.TaskPage
+    outcomes
+      'Approve' { }
+      'Reject'  { };
+end workflow;
+
+create microflow WFA.MF_OneLine ( $Request: WFA.Request )
+begin
+  $wf1 = call workflow WFA.WF_Approve (Context = $Request);
+end;
+
+create microflow WFA.MF_MultiLine ( $Request: WFA.Request )
+begin
+  $wf2 = call workflow WFA.WF_Approve (
+    Context = $Request
+  );
+end;

@@ -81,6 +81,10 @@ type LocalVariable struct {
 	Name         string   `json:"name"`
 	DefaultValue string   `json:"defaultValue"`           // Mendix expression string
 	VariableType string   `json:"variableType,omitempty"` // BSON $Type, e.g., "DataTypes$BooleanType"
+	// EnumerationRef is the qualified name a DataTypes$EnumerationType points at.
+	// Empty for every other type. Without it an enumeration-typed variable had
+	// nowhere to keep its enumeration and was written as a String (#977).
+	EnumerationRef string `json:"enumerationRef,omitempty"`
 }
 
 // GetName returns the variable's name.

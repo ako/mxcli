@@ -24,7 +24,7 @@ The `mx` command must be available. In a dev container, run `mxcli setup mxbuild
 
 ```bash
 # In dev container (after mxcli setup mxbuild -p app.mpr)
-~/.mxcli/mxbuild/*/modeler/mx check app.mpr
+mxcli docker check -p app.mpr
 
 # Or use the integrated command (auto-downloads mxbuild)
 mxcli docker check -p app.mpr

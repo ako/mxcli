@@ -114,6 +114,12 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 	// PROFILE is what invalidates pages written earlier.
 	violations = append(violations, ValidateOfflineAttributePaths(prog, projectPath)...)
 
+	// Warn (MDL-WORKFLOW10) when a microflow completes a user task it never
+	// assigned. TARGETING decides who may SEE a task; it does not assign it, and
+	// completing an unassigned one fails only at runtime, with the button
+	// appearing to do nothing.
+	violations = append(violations, ValidateTaskClaims(prog)...)
+
 	// Flag control-bar buttons that pass $currentObject — a control bar is
 	// not row-scoped, so the argument is unbound (CE1571) at build time.
 	violations = append(violations, ValidatePageButtonContext(prog)...)
@@ -170,6 +176,18 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 	// answer is in the statement, so it runs here rather than under --references
 	// (#927).
 	violations = append(violations, ValidateExportMappingMembers(prog)...)
+
+	// Flag a CUSTOM NAME MAP entry that matches nothing in the snippet. Silence
+	// there made a typo indistinguishable from not writing the entry, which is
+	// how #272's missing `item of` stayed hidden (ako/mxcli#272).
+	violations = append(violations, ValidateJsonStructureNames(prog)...)
+
+	// Flag an import mapping element that searches for an object without a key
+	// (CE0250), or over an entity that is not persistable (CE0251). The key half
+	// is decidable from the statement and runs with or without a project; the
+	// persistability half needs the domain model and skips itself without one
+	// (ako/mxcli#253).
+	violations = append(violations, ValidateImportMappingFind(prog, projectPath)...)
 
 	// Flag a REST client operation whose Body/Response mapping clause has no
 	// `{ ... }` body — Mendix cannot reference a mapping document from an

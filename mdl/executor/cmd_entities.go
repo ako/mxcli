@@ -89,6 +89,22 @@ func execCreateEntity(ctx *ExecContext, s *ast.CreateEntityStmt) error {
 		return mdlerrors.NewNotConnected()
 	}
 
+	// An unqualified EXTENDS target is refused here as well as at check time:
+	// `exec --no-check` skips the pre-flight, and this is the case that writes a
+	// file Mendix cannot open rather than one it merely reports on. It needs no
+	// project state, so it runs before anything is looked up or created — the
+	// module below is AUTO-CREATED, and a statement that can never be valid must
+	// not leave one behind.
+	//
+	// A qualified target that resolves to nothing is left to check: the
+	// generalization is resolved lazily, so a parent created later in the same
+	// script is legitimate and a per-statement guard would refuse it.
+	if s.Generalization != nil {
+		if err := checkGeneralizationQualified(s.Name, *s.Generalization); err != nil {
+			return err
+		}
+	}
+
 	// Find or auto-create module
 	module, err := findOrCreateModule(ctx, s.Name.Module)
 	if err != nil {
@@ -344,7 +360,9 @@ func execCreateEntity(ctx *ExecContext, s *ast.CreateEntityStmt) error {
 		HasChangedDate:  storeChangedDate,
 	}
 
-	// Set generalization (inheritance) if specified
+	// Set generalization (inheritance) if specified. A bare, unqualified target
+	// was already refused at the top of this function — it is stored as-is and
+	// produces a project Mendix cannot open.
 	if s.Generalization != nil {
 		entity.GeneralizationRef = s.Generalization.String()
 	}

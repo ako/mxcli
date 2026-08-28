@@ -144,8 +144,8 @@ func (pb *pageBuilder) buildPageV3(s *ast.CreatePageStmtV3) (*pages.Page, error)
 			ContainerID:  page.ID,
 			Name:         v.Name,
 			DefaultValue: v.DefaultValue,
-			VariableType: mdlTypeToBsonType(v.DataType),
 		}
+		localVar.VariableType, localVar.EnumerationRef = pageVariableType(v.DataType)
 		page.Variables = append(page.Variables, localVar)
 		pb.localVariables[v.Name] = true
 	}
@@ -279,8 +279,8 @@ func (pb *pageBuilder) buildSnippetV3(s *ast.CreateSnippetStmtV3) (*pages.Snippe
 			ContainerID:  snippet.ID,
 			Name:         v.Name,
 			DefaultValue: v.DefaultValue,
-			VariableType: mdlTypeToBsonType(v.DataType),
 		}
+		localVar.VariableType, localVar.EnumerationRef = pageVariableType(v.DataType)
 		snippet.Variables = append(snippet.Variables, localVar)
 		pb.localVariables[v.Name] = true
 	}
@@ -524,6 +524,15 @@ func applyConditionalSettings(widget pages.Widget, w *ast.WidgetV3) {
 			},
 			Expression: editableIf,
 		}
+	} else if editable, ok := pages.CanonicalEditability(w.GetStringProp("Editable")); ok {
+		// `Editable: Never` — parsed and validated (MDL-WIDGET20 checks the widget
+		// TYPE) and then dropped, because nothing carried it to the writers, which
+		// hardcoded "Always". Same shape as the `Visible: false` case above.
+		//
+		// EDITABLE IF wins when both are given: the conditional settings element is
+		// what makes the enum "Conditional", so honouring a plain `Editable` too
+		// would write an enum contradicting the element beside it.
+		bw.Editable = editable
 	}
 }
 
@@ -726,8 +735,13 @@ func (pb *pageBuilder) buildDataSourceV3(ds *ast.DataSourceV3) (pages.DataSource
 		// Handle WHERE clause. Expand association-only paths to the Assoc/Entity/Assoc
 		// form Mendix requires (see expandXPathAssociationPath), so the shorthand
 		// `[Mod.Assoc1/Mod.Assoc2 = $x]` doesn't trip CE1613 at build time.
+		// Formatting comes last, after the expansion above has settled the text:
+		// a constraint too long to read on one line is broken at its boolean
+		// joints (upstream #979). One that already fits is returned unchanged, so
+		// this does not churn existing pages.
 		if ds.Where != "" {
-			dbSource.XPathConstraint = pb.expandXPathAssociationPath(ds.Where, ds.Reference)
+			dbSource.XPathConstraint = visitor.FormatXPathConstraint(
+				pb.expandXPathAssociationPath(ds.Where, ds.Reference))
 		}
 
 		// Handle ORDER BY
@@ -941,6 +955,52 @@ func (pb *pageBuilder) expandXPathAssociationPath(constraint, contextEntity stri
 	})
 }
 
+// isSpecializationOf reports whether entityQN is ancestorQN or inherits from it,
+// walking the generalization chain over the domain models already loaded — the
+// same list the association ends are resolved against, so the two cannot
+// disagree about what an entity is.
+func (pb *pageBuilder) isSpecializationOf(entityQN, ancestorQN string) bool {
+	if entityQN == "" || ancestorQN == "" {
+		return false
+	}
+	seen := map[string]bool{}
+	for current := entityQN; current != ""; {
+		if seen[current] {
+			return false // a cycle a corrupt model could contain
+		}
+		seen[current] = true
+		if current == ancestorQN {
+			return true
+		}
+		current = pb.generalizationOf(current)
+	}
+	return false
+}
+
+// generalizationOf returns an entity's EXTENDS target, or "" when the entity is
+// not in the loaded domain models or has no generalization.
+func (pb *pageBuilder) generalizationOf(entityQN string) string {
+	parts := strings.SplitN(entityQN, ".", 2)
+	if len(parts) != 2 {
+		return ""
+	}
+	domainModels, err := pb.getDomainModels()
+	if err != nil {
+		return ""
+	}
+	for _, dm := range domainModels {
+		if pb.moduleNameByID(dm.ContainerID) != parts[0] {
+			continue
+		}
+		for _, e := range dm.Entities {
+			if e.Name == parts[1] {
+				return e.GeneralizationRef
+			}
+		}
+	}
+	return ""
+}
+
 func (pb *pageBuilder) resolveAssociationDestination(assocQN, contextEntity string) string {
 	if assocQN == "" {
 		return ""
@@ -974,7 +1034,9 @@ func (pb *pageBuilder) resolveAssociationDestination(assocQN, contextEntity stri
 				continue
 			}
 			parentEntity := pb.entityQNByID(ca.ParentID)
-			if contextEntity != "" && contextEntity == ca.ChildRef {
+			// A specialization of the remote end navigates it in reverse just as
+			// the end itself does (#975).
+			if contextEntity != "" && (contextEntity == ca.ChildRef || pb.isSpecializationOf(contextEntity, ca.ChildRef)) {
 				return parentEntity
 			}
 			return ca.ChildRef
@@ -993,6 +1055,24 @@ func (pb *pageBuilder) resolveAssociationDestination(assocQN, contextEntity stri
 				}
 				if contextEntity == parentEntity {
 					return childEntity
+				}
+				// Neither end matched BY NAME, but the context may be a
+				// SPECIALIZATION of one: a page bound to `Sub` navigating an
+				// association declared on `Base` is ordinary, and Mendix resolves
+				// it through the generalization. Without this the walk fell
+				// through to the guess at the bottom and typed the rows as the
+				// wrong end — silently, and only mxbuild disagreed (#975).
+				//
+				// Only when BOTH ends resolved: when one is empty the fallbacks
+				// below are load-bearing (issuetracker #14), and a destination of
+				// "" makes the .mpr unloadable.
+				if childEntity != "" && parentEntity != "" {
+					if pb.isSpecializationOf(contextEntity, childEntity) {
+						return parentEntity
+					}
+					if pb.isSpecializationOf(contextEntity, parentEntity) {
+						return childEntity
+					}
 				}
 			}
 			// One end may be unresolvable: entityQNByID only sees the project's
@@ -1524,6 +1604,41 @@ func mdlTypeToBsonType(mdlType string) string {
 		// Could be an entity type - use ObjectType
 		return "DataTypes$ObjectType"
 	}
+}
+
+// pageVariableEnumRe matches an MDL enumeration type, `Enumeration(Module.Name)`,
+// with `Enum` accepted as the grammar's short spelling.
+var pageVariableEnumRe = regexp.MustCompile(`(?i)^enum(?:eration)?\s*\(\s*([^)\s]+)\s*\)$`)
+
+// pageVariableType maps a page variable's MDL type to the BSON $Type Mendix
+// stores, plus the enumeration it points at when there is one.
+//
+// The enumeration's qualified name is in the AST already — the visitor keeps the
+// data type's raw source text — so `Enumeration(Mod.Status)` arrives complete.
+// Before this it fell through mdlTypeToBsonType's default to ObjectType and was
+// then flattened to a StringType by the writer, losing the type twice over and
+// saying nothing either time (upstream #977).
+//
+// An enumeration with no qualified name in the parentheses is NOT reported as
+// one: an EnumerationType with nothing to resolve is a by-name reference Mendix
+// reads as null, which is worse than the old fallback.
+func pageVariableType(mdlType string) (bsonType, enumerationQN string) {
+	if m := pageVariableEnumRe.FindStringSubmatch(strings.TrimSpace(mdlType)); m != nil && m[1] != "" {
+		return "DataTypes$EnumerationType", m[1]
+	}
+	return mdlTypeToBsonType(mdlType), ""
+}
+
+// pageVariableMDLType is the inverse, for DESCRIBE.
+func pageVariableMDLType(bsonType, enumerationQN string) string {
+	if bsonType == "DataTypes$EnumerationType" {
+		if enumerationQN == "" {
+			// The reference did not survive; `Enumeration()` would not re-parse.
+			return "Unknown"
+		}
+		return "Enumeration(" + enumerationQN + ")"
+	}
+	return bsonTypeToMDLType(bsonType)
 }
 
 // bsonTypeToMDLType converts a BSON DataTypes$* type to an MDL type name.

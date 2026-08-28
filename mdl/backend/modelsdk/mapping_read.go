@@ -12,6 +12,7 @@ import (
 	genImp "github.com/mendixlabs/mxcli/modelsdk/gen/importmappings"
 	genJson "github.com/mendixlabs/mxcli/modelsdk/gen/jsonstructures"
 	genPrj "github.com/mendixlabs/mxcli/modelsdk/gen/projects"
+	genXml "github.com/mendixlabs/mxcli/modelsdk/gen/xmlschemas"
 	"github.com/mendixlabs/mxcli/modelsdk/mprread"
 )
 
@@ -83,6 +84,33 @@ func (b *Backend) ListExportMappings() ([]*model.ExportMapping, error) {
 			em.Elements = append(em.Elements, exportMappingElementFromGen(el))
 		}
 		out = append(out, em)
+	}
+	return out, nil
+}
+
+// ListXmlSchemas reads every XmlSchemas$XmlSchema unit.
+//
+// Shallow on purpose: the entry list holds the imported .xsd, which mxcli does
+// not parse, so only the fields that identify the document are converted. Its
+// one job is resolving a mapping's `with xml schema` reference (ako/mxcli#259).
+func (b *Backend) ListXmlSchemas() ([]*types.XmlSchema, error) {
+	units, err := mprread.ListUnitsWithContainer[*genXml.XmlSchema](b.reader)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*types.XmlSchema, 0, len(units))
+	for _, u := range units {
+		g := u.Element
+		xs := &types.XmlSchema{
+			ContainerID:   model.ID(u.ContainerID),
+			Module:        b.moduleNameFor(model.ID(g.ID())),
+			Name:          g.Name(),
+			Documentation: g.Documentation(),
+			FilePath:      g.FilePath(),
+		}
+		xs.ID = model.ID(g.ID())
+		xs.TypeName = "XmlSchemas$XmlSchema"
+		out = append(out, xs)
 	}
 	return out, nil
 }

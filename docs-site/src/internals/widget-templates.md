@@ -256,7 +256,7 @@ mxcli widget extract --mpk widgets/MyWidget.mpk
 mxcli -p test.mpr -c "CREATE PAGE Test.TestPage ... MYWIDGET ..."
 
 # Check for errors (should have no CE0463)
-~/.mxcli/mxbuild/*/modeler/mx check test.mpr
+mxcli docker check -p test.mpr
 
 # Compare BSON structure if issues persist
 mxcli bson dump -p test.mpr --type page --object "Test.TestPage" --format ndsl

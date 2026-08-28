@@ -126,8 +126,21 @@ func appendConditionalProps(props []string, w rawWidget) []string {
 	return props
 }
 
-// appendAppearanceProps appends Class, Style, DesignProperties, and conditional settings if present.
+// appendAppearanceProps appends Class, Style, DesignProperties, and conditional
+// settings if present — and editability, which every input widget carries.
+//
+// This lived in the CheckBox case alone, so `describe page` printed no
+// editability for a textbox. That made a describe/exec round-trip silently
+// normalise `Editable: Never` back to Always, and it meant a describe/diff could
+// not reveal the CREATE-path loss reported in ako/mxcli-maintenance-2 — both
+// sides printed nothing, so the documents compared equal while the model was
+// wrong.
 func appendAppearanceProps(props []string, w rawWidget) []string {
+	// Only when it deviates from Mendix's default, so unchanged widgets keep a
+	// quiet round-trip. Empty means the widget type has no editability at all.
+	if w.Editable != "" && w.Editable != "Always" {
+		props = append(props, fmt.Sprintf("Editable: %s", w.Editable))
+	}
 	if w.Class != "" {
 		props = append(props, fmt.Sprintf("Class: %s", mdlQuote(w.Class)))
 	}
@@ -534,10 +547,6 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 		}
 		if w.Content != "" {
 			props = append(props, fmt.Sprintf("Attribute: %s", w.Content))
-		}
-		// Show Editable if not default "Always"
-		if w.Editable != "" && w.Editable != "Always" {
-			props = append(props, fmt.Sprintf("Editable: %s", w.Editable))
 		}
 		// Show ReadOnlyStyle if not default "Inherit"
 		if w.ReadOnlyStyle != "" && w.ReadOnlyStyle != "Inherit" {
@@ -1543,13 +1552,16 @@ func extractClientTemplateParameters(ctx *ExecContext, w map[string]any, fieldNa
 			continue
 		}
 
-		// Check for SourceVariable (page/snippet parameter reference)
-		// If present, output as $paramName.Attribute
-		sourceVarName := ""
-		if srcVar, ok := pMap["SourceVariable"].(map[string]any); ok && srcVar != nil {
-			if paramName, ok := srcVar["PageParameter"].(string); ok && paramName != "" {
-				sourceVarName = paramName
-			}
+		// Which variable the parameter is bound to, if any. This read only
+		// PageParameter, so a binding to a page-level LOCAL variable came back as
+		// `<unbound>` here while the pluggable describer rendered the same bytes
+		// as `$Name` (upstream #977) — hence the shared resolver.
+		sourceVarName, isLocalVariable := sourceVariableBinding(pMap)
+
+		// A local variable renders bare: it has no AttributeRef to hang off.
+		if isLocalVariable {
+			result = append(result, "$"+sourceVarName)
+			continue
 		}
 
 		// Check for AttributeRef

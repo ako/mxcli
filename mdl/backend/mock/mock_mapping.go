@@ -93,6 +93,17 @@ func (m *MockBackend) MoveExportMapping(em *model.ExportMapping) error {
 	return nil
 }
 
+// ListXmlSchemas errors when unconfigured, per the backend-mock convention.
+// That is also the SAFE default here: resolveXmlSchemaSource treats a backend
+// that cannot list as "take the name at face value", so a test that does not
+// care about XML schemas keeps working rather than having its mapping refused.
+func (m *MockBackend) ListXmlSchemas() ([]*types.XmlSchema, error) {
+	if m.ListXmlSchemasFunc != nil {
+		return m.ListXmlSchemasFunc()
+	}
+	return nil, fmt.Errorf("MockBackend.ListXmlSchemas not configured")
+}
+
 func (m *MockBackend) ListJsonStructures() ([]*types.JsonStructure, error) {
 	if m.ListJsonStructuresFunc != nil {
 		return m.ListJsonStructuresFunc()

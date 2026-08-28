@@ -467,8 +467,29 @@ createJsonStructureStatement
       (CUSTOM_NAME_MAP LPAREN customNameMapping (COMMA customNameMapping)* RPAREN)?
     ;
 
+/**
+ * An entry in CUSTOM NAME MAP. Two shapes, both mapping a name to a name (hence
+ * `as`, per the colon-vs-as rule in design-mdl-syntax):
+ *
+ *   'data' as 'Records'            -- the element reached by JSON key `data`
+ *   item of 'data' as 'Record'     -- the ITEM element of the array at `data`
+ *
+ * An array's item element has no JSON key of its own — it is the anonymous
+ * `[…]` entry — so the plain form cannot reach it and its name was previously
+ * derived and unspellable (ako/mxcli#272). `item of` addresses it by the key of
+ * the array that contains it.
+ *
+ * The two are independent on purpose: naming the item does not require renaming
+ * the array, so adding one is a one-line diff.
+ *
+ * `item of 'Root'` names the item of a ROOT-level array, which has no key. Root
+ * is the fixed exposed name Studio Pro gives the root element (22 of 22
+ * measured), and a root array has no keys of its own, so there is nothing for it
+ * to collide with.
+ */
 customNameMapping
-    : STRING_LITERAL AS STRING_LITERAL   // 'jsonKey' AS 'CustomName'
+    : STRING_LITERAL AS STRING_LITERAL              // 'jsonKey' AS 'CustomName'
+    | ITEM OF STRING_LITERAL AS STRING_LITERAL      // ITEM OF 'jsonKey' AS 'CustomName'
     ;
 
 // =============================================================================

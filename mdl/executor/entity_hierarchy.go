@@ -169,6 +169,42 @@ func ResolveMemberRef(b entityLookupBackend, entityQN, memberName string) (strin
 	return "", false
 }
 
+// DeclaringMemberRef returns the reference Mendix stores for an attribute of an
+// entity, qualified against the entity that DECLARES it — "M.Base.Title" for an
+// attribute Child inherits from Base. Reports false when nothing in the chain
+// declares it, or when the chain cannot be walked.
+//
+// It differs from ResolveMemberRef in one way that matters: the walk does NOT
+// stop at System.User. That stop exists because a user entity's platform members
+// must not appear in its ACCESS RULE (listing them is CE0066), which says nothing
+// about referring to one from a microflow — a validation feedback on an inherited
+// System.User attribute is ordinary and wants "System.User.Name". Reusing the
+// access-rule walk here would fall back to the child's name, which is the bug it
+// would be there to fix (upstream #974).
+func DeclaringMemberRef(b entityLookupBackend, entityQN, memberName string) (string, bool) {
+	if b == nil || entityQN == "" || memberName == "" {
+		return "", false
+	}
+	seen := map[string]bool{}
+	for currentQN := entityQN; currentQN != ""; {
+		if seen[currentQN] {
+			return "", false // a cycle a corrupt model could contain
+		}
+		seen[currentQN] = true
+		entity, ok := findEntityByQN(b, currentQN)
+		if !ok {
+			return "", false
+		}
+		for _, attr := range entity.Attributes {
+			if attr != nil && attr.Name == memberName {
+				return currentQN + "." + memberName, true
+			}
+		}
+		currentQN = entity.GeneralizationRef
+	}
+	return "", false
+}
+
 // ResolveMemberType returns the data type of an entity's member, following the
 // generalization chain. Returns "" when the member cannot be resolved.
 func ResolveMemberType(b entityLookupBackend, entityQN, memberName string) string {

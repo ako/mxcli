@@ -88,10 +88,19 @@ func generateClaudeMD(projectName, mprFile string) string {
 	w(bt3 + "bash\n")
 	w("./mxcli setup mxbuild -p " + mprPath + "    # Auto-download for project's Mendix version\n")
 	w(bt3 + "\n\n")
+	// The glob form used to be documented first. It breaks the moment a second
+	// mxbuild is cached — the shell expands it to two paths and mx reads the
+	// second as an argument ("Verb '...' is not recognized"), which reads like a
+	// broken install rather than a bad command line (ako/mxcli-maintenance-2).
+	// The version-resolving command goes first, and the direct form names a
+	// version instead of globbing.
 	w("After setup, " + bt + "mx" + bt + " is at " + bt + "~/.mxcli/mxbuild/{version}/modeler/mx" + bt + ". Usage:\n\n")
 	w(bt3 + "bash\n")
-	w("~/.mxcli/mxbuild/*/modeler/mx check " + mprPath + "   # Validate project\n")
-	w("./mxcli docker check -p " + mprPath + "               # Alternative (auto-downloads mxbuild)\n")
+	w("./mxcli docker check -p " + mprPath + "   # Validate project (resolves the project's Mendix version)\n")
+	w(bt3 + "\n\n")
+	w("To call " + bt + "mx" + bt + " directly, name the version — a " + bt + "*" + bt + " glob breaks once two are cached:\n\n")
+	w(bt3 + "bash\n")
+	w("~/.mxcli/mxbuild/<version>/modeler/mx check " + mprPath + "\n")
 	w(bt3 + "\n\n")
 
 	// ── Quick Start ─────────────────────────────────────────────────
@@ -487,6 +496,7 @@ func generateClaudeMD(projectName, mprFile string) string {
 	w("| Skill | Purpose |\n")
 	w("|-------|--------|\n")
 	w("| test-app | Playwright UI tests + DB assertions |\n")
+	w("| record-narrated-demo | Narrated walkthrough video, after the journey passes |\n")
 	w("| test-microflows | Microflow unit testing (.test.mdl files) |\n")
 	w("| write-lint-rules | Custom Starlark lint rule authoring |\n")
 	w("| assess-quality | **Full project quality assessment** against best practices |\n")

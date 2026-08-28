@@ -229,22 +229,32 @@ func execDropEnumeration(ctx *ExecContext, s *ast.DropEnumerationStmt) error {
 		return mdlerrors.NewBackend("list enumerations", err)
 	}
 
+	// The owning module is resolved through the container hierarchy, as SHOW,
+	// DESCRIBE and ALTER all do. An enumeration inside a FOLDER has the folder's
+	// ID as its ContainerID, so matching that ID against the module list — which
+	// is what this did — found nothing and reported the enumeration missing while
+	// the other three commands resolved it happily (upstream #976).
+	h, err := getHierarchy(ctx)
+	if err != nil {
+		return mdlerrors.NewBackend("build hierarchy", err)
+	}
+
 	// Collect all enumerations matching the name (and optional module).
 	type match struct {
-		enum   *model.Enumeration
-		module *model.Module
+		enum       *model.Enumeration
+		moduleName string
 	}
 	var matches []match
 	for _, enum := range enums {
 		if enum.Name != s.Name.Name {
 			continue
 		}
-		module, err := findModuleByID(ctx, enum.ContainerID)
-		if err != nil {
-			continue
+		modName := h.GetModuleName(h.FindModuleID(enum.ContainerID))
+		if modName == "" {
+			continue // container does not walk up to a module; not ours to drop
 		}
-		if s.Name.Module == "" || module.Name == s.Name.Module {
-			matches = append(matches, match{enum, module})
+		if s.Name.Module == "" || modName == s.Name.Module {
+			matches = append(matches, match{enum, modName})
 		}
 	}
 
@@ -255,12 +265,12 @@ func execDropEnumeration(ctx *ExecContext, s *ast.DropEnumerationStmt) error {
 		if err := ctx.Backend.DeleteEnumeration(matches[0].enum.ID); err != nil {
 			return mdlerrors.NewBackend("delete enumeration", err)
 		}
-		fmt.Fprintf(ctx.Output, "Dropped enumeration: %s.%s\n", matches[0].module.Name, s.Name.Name)
+		fmt.Fprintf(ctx.Output, "Dropped enumeration: %s.%s\n", matches[0].moduleName, s.Name.Name)
 		return nil
 	default:
 		var names []string
 		for _, m := range matches {
-			names = append(names, m.module.Name+"."+s.Name.Name)
+			names = append(names, m.moduleName+"."+s.Name.Name)
 		}
 		return mdlerrors.NewValidationf("ambiguous enumeration name %q — found in: %s; use a fully-qualified name",
 			s.Name.Name, strings.Join(names, ", "))
@@ -442,6 +452,7 @@ func ValidateEntity(stmt *ast.CreateEntityStmt) []linter.Violation {
 	persistent := stmt.Kind == ast.EntityPersistent
 	entityName := stmt.Name.String()
 	violations = append(violations, validateIdempotencyGuard(stmt.CreateOrModify, stmt.IfNotExists, "entity", entityName)...)
+	violations = append(violations, validateBareGeneralization(stmt)...)
 	for _, attr := range stmt.Attributes {
 		violations = append(violations, validateEntityAttribute(attr, persistent, entityName)...)
 		if !persistent {

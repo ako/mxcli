@@ -1,0 +1,34 @@
+-- The positive controls for the EXTENDS validation added alongside
+-- mendixlabs/mxcli#972. Its negative half is entity-extends-unresolvable.fail.mdl.
+--
+-- Every form below must keep passing `check --references` and building clean.
+-- Without these the check is "reject inheritance", not "validate the target" —
+-- and two of them are easy to break by accident:
+--
+--   * The FORWARD reference. A generalization is resolved lazily, so a parent
+--     created later in the same script executes correctly (which is why
+--     eagerDefRefs deliberately does not treat it as an ordering error).
+--     Resolving against statement order instead of against the whole script
+--     breaks it.
+--
+--   * System.Image. #972 narrowed the virtual System module to the entities the
+--     modeler actually has; a check that resolved System names against the wrong
+--     list — or exempted System entirely, as the workflow-parameter check does —
+--     would either reject every image entity or accept the name that started all
+--     this.
+--
+--   mxcli exec mdl-examples/bug-tests/entity-extends-resolvable.mdl -p app.mpr
+--   mx check app.mpr        -- 0 new errors
+
+create module GenOK;
+
+-- Forward reference: the parent is created AFTER the child.
+create persistent entity GenOK.Sub extends GenOK.Base ("B": Integer);
+create persistent entity GenOK.Base ("A": Integer);
+
+-- Real System entities, one of them the specialization root from #972.
+create persistent entity GenOK.Img extends System.Image ("N": Integer);
+create persistent entity GenOK.Doc extends System.FileDocument ("M": Integer);
+
+-- An entity that already exists in the project, from another module.
+create persistent entity GenOK.Acct extends Administration.Account ("P": Integer);

@@ -1,0 +1,23 @@
+-- ako/mxcli#272, the silence half: a CUSTOM NAME MAP entry that matches nothing.
+--
+-- Negative test — `mxcli check` must REFUSE this. Every entry below was
+-- previously accepted, applied to no element, and reported nothing, which is
+-- what made the missing `item of` invisible: the natural workaround
+-- (`'lines|(Object)' as …`) looked like it worked.
+--
+-- Four distinct shapes, one per line of the map:
+--   a path where a key was expected      MDL-JSON01
+--   a misspelled key                     MDL-JSON01
+--   `item of` on something not an array  MDL-JSON02
+--   `item of 'Root'` on an object root   MDL-JSON02
+
+create module BugTest272Fail;
+
+create json structure BugTest272Fail.JSON_Typo
+  snippet $${"lines": [{"sku": "A1"}], "note": "x"}$$
+  custom name map (
+    'lines|(Object)' as 'OrderLine',
+    'lnies' as 'OrderLines',
+    item of 'note' as 'Nope',
+    item of 'Root' as 'Entry'
+  );

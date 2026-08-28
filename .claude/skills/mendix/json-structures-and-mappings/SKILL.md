@@ -122,6 +122,31 @@ create json structure Module.JSON_Pet
   CUSTOM NAME map ('id' as '_id');
 ```
 
+**Name array items yourself** — `item of` (ako/mxcli#272). An array's item is the
+anonymous `[...]` entry, so it has no JSON key and the plain form cannot reach
+it; left alone it gets a derived name like `LinesItem`:
+
+```sql
+create json structure Module.JSON_Invoice
+  snippet '{"lines": [{"sku": "A1"}], "tags": ["urgent"]}'
+  CUSTOM NAME map (
+    'lines' as 'OrderLines',
+    item of 'lines' as 'OrderLine',
+    item of 'tags' as 'Tag'
+  );
+```
+
+This is worth doing rather than accepting the default: a **mapping element clones
+the schema element's ExposedName**, so the item's name is what every mapping over
+this structure carries, and it is one of the two names a member resolves by.
+
+- The two clauses are independent — naming an item does not require renaming its
+  array, so adding one is a one-line diff.
+- `item of` names a primitive array's **wrapper** too; that wrapper *is* the item.
+- A root-level array has no key: `item of 'Root' as 'Entry'`.
+- An entry whose key is not in the snippet is an error (`MDL-JSON01`), as is
+  `item of` on something that is not an array (`MDL-JSON02`).
+
 ### Browse
 
 ```sql
@@ -130,6 +155,28 @@ show json structures in module;
 describe json structure Module.JSON_Pet;
 drop json structure Module.JSON_Pet;
 ```
+
+### The `with` clause is resolved, not written through
+
+A mapping's schema source — `with json structure M.X` or `with xml schema M.Y` —
+is checked against the project by both `mxcli check -p` and `exec`, and a name
+that resolves to nothing is refused with the documents that would have worked.
+mxbuild otherwise reports it as **CE1613** "… no longer exists" at the end of a
+build (ako/mxcli#259).
+
+For JSON structures a typo used to be worse than a dangling reference: the schema
+index is empty whenever the structure cannot be loaded **for any reason**, and an
+empty index reads as "there is nothing to validate against" — so one typo in the
+source name switched off every member check in the mapping.
+
+Two things the check deliberately does not do:
+
+- A structure the **same script** creates counts as existing. Create the
+  structure, then map over it, is the normal shape.
+- A project with **no** XML schemas disables the XML half rather than refusing
+  every mapping. There is no `create xml schema` in MDL — an XML schema is only
+  ever imported into the project by hand — so having none is ordinary, not
+  evidence of a typo.
 
 ---
 
@@ -239,8 +286,23 @@ create import mapping Module.IMM_UpsertPet
 difference, and mxcli used to pick `create` for you whatever the document said —
 so it now asks rather than guessing.
 
-**Note**: `key` is only valid with `find`, not with `create` — and a `find`
-without one is rejected by the build with CE0250.
+**A `find` has two requirements, and mxcli check enforces both** (ako/mxcli#253):
+
+1. **At least one member marked `key`**, per searching element — nested ones
+   included. Without it there is nothing to search on: **CE0250**, reported as
+   `MDL-MAP02`. (`key` is only valid with `find`; on a `create` it means nothing.)
+2. **A persistable entity.** A search is a database query, and a non-persistent
+   entity has no database: **CE0251**, reported as `MDL-MAP03`. Persistability
+   comes from the **generalization chain**, not the entity's own flag — an entity
+   declared with plain `create entity` that extends a non-persistent parent is
+   still not searchable.
+
+Re-measuring these is easy to get wrong: mxbuild reports **one at a time**. A
+keyless `find` over a non-persistent entity is CE0250 only, and CE0251 appears
+only once a key exists.
+
+A **custom handler is exempt from both** — the microflow *is* the find, so there
+is no key to declare and no query to run.
 
 ### Custom Object Handling and the Mapping's Input Object
 
@@ -384,108 +446,19 @@ create export mapping Module.EMM_Pet
 ## Starting a Mapping Below the Payload Root
 
 A mapping does not have to start at the top of the JSON. `root a/b/c` on the
-source clause selects the element it starts at — the same choice Studio Pro
-offers when you pick a node deeper in the payload. Useful when the interesting
-object is buried under an envelope you do not want entities for.
-
-The path is written in **member names**, and it may pass **through arrays**: the
-mapping is then rooted at the array's item. (A value reference cannot do that —
-many items cannot collapse into one value, and mxbuild reports CE0256.)
+source clause selects the element it starts at, and the path may pass **through
+arrays** — the mapping is then rooted at the array's item, so it yields one
+object per entry.
 
 ```sql
-create json structure RootDemo.JSON_Completion
-  snippet $${
-    "requestId": "r-1",
-    "response": {
-      "model": "gpt-x",
-      "choices": [
-        {
-          "index": 0,
-          "message": {
-            "role": "assistant",
-            "content": "hello",
-            "citations": [ { "title": "t", "url": "u" } ]
-          }
-        }
-      ]
-    }
-  }$$;
-```
-
-**Through an array, to an object several levels down.** Everything inside the
-statement is relative to the selected root, associations included:
-
-```sql
-create import mapping RootDemo.IMM_Answer
+create import mapping RootDemo.IMM_Choices
   with json structure RootDemo.JSON_Completion root response/choices/message
-{
-  create RootDemo.Answer {
-    Role = role,
-    Content = content,
-    create RootDemo.Citation_Answer/RootDemo.Citation = citations {
-      Title = title,
-      Url = url
-    }
-  }
-};
+{ create RootDemo.Message { Role = role, Content = content } };
 ```
 
-stored as one root element at `(Object)|response|choices|(Object)|message`, with
-`citations` nesting under it as usual.
+Worked examples, the array-crossing rule and what it does to a call's
+cardinality: [reference/mapping-root-selection.md](reference/mapping-root-selection.md).
 
-**Landing on an array.** A root that ends on an array roots the mapping at its
-**item**, so `Index` below is a member of one choice, not of the list:
-
-```sql
-create import mapping RootDemo.IMM_Choice
-  with json structure RootDemo.JSON_Completion root response/choices
-{
-  create RootDemo.Choice {
-    Index = index
-  }
-};
-```
-
-stored at `(Object)|response|choices|(Object)`.
-
-**Export takes the same clause**, and produces the envelope down to the selected
-element:
-
-```sql
-create export mapping RootDemo.EXM_Answer
-  with json structure RootDemo.JSON_Completion root response/choices/message
-{
-  RootDemo.Answer {
-    role = Role,
-    content = Content,
-    RootDemo.Citation_Answer/RootDemo.Citation as citations {
-      title = Title,
-      url = Url
-    }
-  }
-};
-```
-
-### Notes
-
-- **Omit the clause** and the mapping starts at the structure's own root — an
-  array-rooted structure included, which needs no syntax of its own.
-- **DESCRIBE emits the clause** for any mapping stored below the root, including
-  ones authored in Studio Pro, so `describe` → `exec` round-trips. Re-running a
-  described mapping reports `Unchanged import mapping …`: the rebuild is
-  semantically equal and the write is elided.
-- **A path that does not resolve is refused**, and the error names what would
-  have worked:
-
-  ```
-  Error: import mapping RootDemo.IMM_Bad: root "response/choise": "choise" is not
-  a member of the schema at (Object)|response; available: model (or Model),
-  choices (or Choices)
-  ```
-
-- The selected root does **not** have to be an object. Any element the structure
-  contains can be picked; a value root would leave nothing to map, so in practice
-  it is an object or an array.
 
 ## Microflow Actions
 
@@ -645,6 +618,8 @@ See `organize-project` for `move` and the full folder story.
 | Missing array container entity in export | Arrays need Container + Item entities |
 | Using `key` with `create` handling | `key` only valid with `find` |
 | `find` without `or create` / `or error` / `or ignore` | Say what happens when the object is not found — the three differ at runtime |
+| `find` with no member marked `key` (MDL-MAP02) | Mark the identifying member — a search needs something to search on (CE0250) |
+| `find` over a non-persistent entity (MDL-MAP03) | Use `create`, or make the entity persistent — a search is a database query (CE0251) |
 | `Param: parameter` with no `parameter Module.Entity` on the header | Declare the mapping's input object, or the build reports CE0279 |
 | `parameter` on an EXPORT mapping | Export mappings have no input object — their parameter is the root object |
 | Arrays in import with container entity | Import arrays map directly to item entity, no container |

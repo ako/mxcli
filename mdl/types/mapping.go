@@ -19,6 +19,34 @@ type JsonStructure struct {
 // GetName returns the JSON structure's name.
 func (js *JsonStructure) GetName() string { return js.Name }
 
+// XmlSchema represents an XML schema document — the other thing a mapping's
+// `with` clause can name.
+//
+// Read-only, and deliberately shallow: mxcli cannot author an XML schema (there
+// is no `create xml schema`, because the document holds an imported .xsd), and
+// it does not read the element tree either, so a mapping over one has nothing to
+// validate its members against. What it IS used for is resolving the reference,
+// which mxbuild otherwise reports as CE1613 "The selected XML schema 'X' no
+// longer exists" at the far end of a build (ako/mxcli#259).
+type XmlSchema struct {
+	model.BaseElement
+	ContainerID model.ID `json:"containerId"`
+	// Module is the owning module's name, resolved by the backend. It is carried
+	// on the document rather than left to the caller because resolving it needs
+	// the container hierarchy — a document's ContainerID may be a FOLDER inside
+	// the module — and only the backends can walk that.
+	Module        string `json:"module,omitempty"`
+	Name          string `json:"name"`
+	Documentation string `json:"documentation,omitempty"`
+	// FilePath is the .xsd the document was imported from. Kept because it is
+	// the one field that tells a reader where the schema came from; an empty one
+	// is what mxbuild calls CE0292 "Please import an XSD file."
+	FilePath string `json:"filePath,omitempty"`
+}
+
+// GetName returns the XML schema's name.
+func (xs *XmlSchema) GetName() string { return xs.Name }
+
 // GetContainerID returns the container ID.
 func (js *JsonStructure) GetContainerID() model.ID { return js.ContainerID }
 

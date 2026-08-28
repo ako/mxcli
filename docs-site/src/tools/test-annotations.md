@@ -20,7 +20,7 @@ $result = call microflow Sudoku.ACT_DealGame();
 | `@test <name>` | Names the test. Required — a doc comment without it is not a test. |
 | `@expect <condition>` | A Mendix expression over the body's variables that must be true. Repeatable. |
 | `@verify <oql> <op> <value>` | An OQL post-condition on the database. Repeatable. |
-| `@throws '<message>'` | The body is expected to raise an error. |
+| `@throws ['<message>']` | The body is expected to raise an error; with a message, one whose text contains it. |
 | `@setup <Module.Microflow>` | A microflow to call before the body. Repeatable. |
 | `@cleanup rollback\|none` | Whether the test's writes survive it. `rollback` is the default. |
 
@@ -118,6 +118,32 @@ test.
 $result = call microflow Sales.ACT_Submit(Order = $empty);
 /
 ```
+
+The message is **matched as a substring** of the error Mendix raised, so an
+expectation names the part of the message the test can predict. A real message
+routinely carries an activity name or an object id, which is why the match is not
+equality:
+
+```
+FAIL  rejects an empty order (6ms, 1 assertion)
+       expected an error containing 'validation failed',
+       actual: Could not find object of type 'Sales.Order'
+```
+
+Write `@throws` **on its own** to expect any exception, when the message is not
+the thing under test:
+
+```mdl
+/**
+ * @test rejects an empty order
+ * @throws
+ */
+$result = call microflow Sales.ACT_Submit(Order = $empty);
+/
+```
+
+Anything after `@throws` that is not a single-quoted string is an error, not a
+message — `@throws not found` is refused rather than read as an unquoted one.
 
 ## `@setup`
 

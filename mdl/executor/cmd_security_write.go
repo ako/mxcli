@@ -11,6 +11,7 @@ import (
 	"github.com/mendixlabs/mxcli/mdl/backend"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
 	"github.com/mendixlabs/mxcli/mdl/types"
+	"github.com/mendixlabs/mxcli/mdl/visitor"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/domainmodel"
 	"github.com/mendixlabs/mxcli/sdk/security"
@@ -222,7 +223,17 @@ func execCreateUserRole(ctx *ExecContext, s *ast.CreateUserRoleStmt) error {
 	for _, ur := range ps.UserRoles {
 		if ur.Name == s.Name {
 			if !s.CreateOrModify {
-				return mdlerrors.NewAlreadyExists("user role", s.Name)
+				// Name the re-runnable form. A blank Mendix app already ships an
+				// `Administrator` user role, so this fires on the first realistic
+				// security script — and because exec halts on the first error, every
+				// statement after it is skipped. ako/mxcli-maintenance-2 concluded
+				// from the bare message that CREATE OR MODIFY USER ROLE did not
+				// exist and filed it as missing MDL surface; it exists, and its
+				// module-role list is required.
+				return mdlerrors.NewAlreadyExistsMsg("user role", s.Name, fmt.Sprintf(
+					"user role already exists: %s — use 'create or modify user role %s (Module.Role, ...)' "+
+						"to add module roles to it and keep the script re-runnable "+
+						"(the parenthesised module-role list is required)", s.Name, s.Name))
 			}
 			// Additive: ensure specified module roles are present
 			if err := ctx.Backend.AlterUserRoleModuleRoles(ps.ID, s.Name, true, moduleRoleNames); err != nil {
@@ -539,6 +550,13 @@ func execGrantEntityAccess(ctx *ExecContext, s *ast.GrantEntityAccessStmt) error
 		})
 	}
 
+	// A constraint too long to read on one line is broken at its boolean joints;
+	// one that already fits comes back unchanged (upstream #979). It is formatted
+	// ONCE, here, because the stored text is also what identifies the rule: a rule
+	// is keyed by role plus constraint (#936), so echoing the result back with the
+	// unformatted spelling would look for a rule that is not there.
+	xpathConstraint := visitor.FormatXPathConstraint(s.XPathConstraint)
+
 	if err := ctx.Backend.AddEntityAccessRule(backend.EntityAccessRuleParams{
 		UnitID:              dm.ID,
 		EntityName:          s.Entity.Name,
@@ -546,7 +564,7 @@ func execGrantEntityAccess(ctx *ExecContext, s *ast.GrantEntityAccessStmt) error
 		AllowCreate:         allowCreate,
 		AllowDelete:         allowDelete,
 		DefaultMemberAccess: defaultMemberAccess,
-		XPathConstraint:     s.XPathConstraint,
+		XPathConstraint:     xpathConstraint,
 		MemberAccesses:      memberAccesses,
 	}); err != nil {
 		return mdlerrors.NewBackend("grant entity access", err)
@@ -562,7 +580,7 @@ func execGrantEntityAccess(ctx *ExecContext, s *ast.GrantEntityAccessStmt) error
 	ctx.trackModifiedDomainModel(module.ID, module.Name)
 	fmt.Fprintf(ctx.Output, "Granted access on %s.%s to %s\n", s.Entity.Module, s.Entity.Name, strings.Join(roleNames, ", "))
 	if !ctx.Quiet {
-		fmt.Fprint(ctx.Output, formatAccessRuleResult(ctx, s.Entity.Module, s.Entity.Name, roleNames, s.XPathConstraint, false))
+		fmt.Fprint(ctx.Output, formatAccessRuleResult(ctx, s.Entity.Module, s.Entity.Name, roleNames, xpathConstraint, false))
 	}
 	return nil
 }

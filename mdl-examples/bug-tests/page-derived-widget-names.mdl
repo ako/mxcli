@@ -1,0 +1,68 @@
+-- mendixlabs/mxcli#978 — `describe page` emitted MDL that mxcli's own
+-- `check --references` rejected, on stock Administration pages:
+--
+--   - duplicate widget name 'row1' (used 2 times) … (CE0495)
+--   - duplicate widget name 'col1' (used 2 times) … (CE0495)
+--   - duplicate widget name 'FullName' (used 2 times) … (CE0495)
+--
+-- This file is the shape that produced them, and it must CHECK CLEAN.
+--
+-- The names are derived at describe time, and Mendix stores none of them.
+-- Measured on the stored page: Forms$LayoutGridRow and Forms$LayoutGridColumn
+-- carry no `Name` key at all. A DataGrid2 column is the same — mxcli says so
+-- itself in MDL-WIDGET16 ("DataGrid 2 stores no column names") and derives one
+-- from the bound attribute so ALTER PAGE has something to address.
+--
+-- So CE0495 was being cited for something Mendix does not check: a name the
+-- model does not hold cannot be a duplicate of anything.
+--
+-- The triage of this issue predicted the opposite fix — that describe should
+-- number rows and columns uniquely, and that exempting them was the weaker
+-- option. Measuring changed the answer twice: there is no stored name to make
+-- unique, and ALTER PAGE ALREADY handles a repeated derived column name —
+--
+--   column "X" is ambiguous: 2 columns on this page derive that name …
+--   qualify the reference as `ON gridName.X`
+--
+-- — so renaming would have broken documented addressing to fix a collision that
+-- is not one.
+--
+-- The control lives in mdl/executor/validate_page_unnamed_widgets_test.go: two
+-- widgets Mendix DOES name, sharing a name, are still reported. Without that,
+-- this change would read as "stop checking for duplicates".
+
+create module DerivedNames;
+create persistent entity DerivedNames.Account ("FullName": String(200), "Login": String(100));
+
+create or modify page DerivedNames.Overview
+  (
+    Title: 'Accounts',
+    Layout: Atlas_Core.Atlas_Default
+  )
+  {
+    -- Two layout grids. Each numbers its own rows and columns from 1, so both
+    -- contain a `row1` and a `col1` — which is what describe emits for any page
+    -- with more than one grid.
+    LAYOUTGRID lgFirst {
+      ROW row1 {
+        COLUMN col1 (DesktopWidth: AutoFill) {
+          STATICTEXT stFirst (Content: 'First grid')
+        }
+      }
+    }
+
+    LAYOUTGRID lgSecond {
+      ROW row1 {
+        COLUMN col1 (DesktopWidth: AutoFill) {
+          -- Two columns bound to the same attribute derive the same name. Real
+          -- pages do this (one visible, one for export), and no renaming fixes
+          -- it without breaking `ON gridName.FullName` addressing.
+          DATAGRID dgAccounts (DataSource: DATABASE DerivedNames.Account) {
+            COLUMN FullName (Attribute: FullName, Caption: 'Full name')
+            COLUMN FullNameAgain (Attribute: FullName, Caption: 'Full name (sortable)')
+            COLUMN Login (Attribute: Login, Caption: 'Login')
+          }
+        }
+      }
+    }
+  };

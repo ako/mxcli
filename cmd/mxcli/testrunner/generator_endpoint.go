@@ -63,7 +63,7 @@ func writeTestFlow(b *strings.Builder, tc TestCase) {
 	// the fixture is not the thing expected to throw.
 	writeSetupCalls(b, tc)
 
-	if tc.Throws != "" {
+	if tc.expectsThrow() {
 		writeThrowsFlowBody(b, tc)
 	} else {
 		writeExpectFlowBody(b, tc)
@@ -123,10 +123,16 @@ func writeExpectAggregates(b *strings.Builder, indent string, expects []Expect) 
 // writeThrowsFlowBody writes the body of an @throws test: the verdict starts as
 // a failure and only the error handler can clear it, so a body that completes
 // without throwing fails — which is the point of the annotation.
+//
+// When the annotation carried a message, the handler clears the verdict only if
+// the raised error's message contains it. Before that, the message was
+// decorative: the handler passed on any exception at all, so a stale or simply
+// wrong expectation kept reporting PASS against a completely different error
+// (ako/mxcli#301).
 func writeThrowsFlowBody(b *strings.Builder, tc TestCase) {
 	fmt.Fprintf(b, "  SET $Verdict = '%s';\n",
 		escapeMDLString(verdictFailPrefix+"expected an exception but none was thrown"))
-	for _, line := range rewriteBodyForThrows(strings.Split(tc.MDL, "\n")) {
+	for _, line := range rewriteBodyForThrows(strings.Split(tc.MDL, "\n"), tc.Throws) {
 		b.WriteString("  ")
 		b.WriteString(line)
 		b.WriteString("\n")
@@ -178,9 +184,48 @@ func rewriteBodyForVerdict(lines []string, tc TestCase) []string {
 
 // rewriteBodyForThrows attaches an ON ERROR handler that clears the pre-set
 // failure verdict — the error is the expected outcome.
-func rewriteBodyForThrows(lines []string) []string {
-	handler := []string{fmt.Sprintf("  SET $Verdict = '%s';", verdictPass)}
-	return attachOnError(lines, handler)
+//
+// With a want, the handler clears it only for a matching message and otherwise
+// replaces it with one naming both sides, so a failing @throws says what was
+// raised instead of only what was expected.
+func rewriteBodyForThrows(lines []string, want string) []string {
+	return attachOnError(lines, throwsHandler(want))
+}
+
+// throwsHandler builds the ON ERROR body of an @throws test.
+//
+// $latestError is the error variable Mendix makes available inside a handler;
+// its Message member is what the annotation is compared against. Measured
+// against mxbuild 11.6.0 and 11.13.0 at 0 errors, with `$noSuchThing/Message` as
+// the control (CE0109, "Undefined variable").
+//
+// The comparison is `contains`, so an expectation is a substring of the raised
+// message: a Mendix error message routinely carries an activity name or an
+// object id the test cannot predict, and demanding equality would make almost
+// every real expectation unwritable.
+func throwsHandler(want string) []string {
+	if want == "" {
+		return []string{fmt.Sprintf("  SET $Verdict = '%s';", verdictPass)}
+	}
+	msg := verdictFailPrefix + "expected an error containing " + quoteForMessage(want) + ", actual: "
+	return []string{
+		fmt.Sprintf("  IF contains(%s, '%s') THEN", latestErrorMessage, escapeMDLString(want)),
+		fmt.Sprintf("    SET $Verdict = '%s';", verdictPass),
+		"  ELSE",
+		fmt.Sprintf("    SET $Verdict = '%s' + %s;", escapeMDLString(msg), latestErrorMessage),
+		"  END IF;",
+	}
+}
+
+// latestErrorMessage is the MDL expression for the message of the error being
+// handled. Named once because it appears in both branches of every @throws
+// handler and in the legacy runner.
+const latestErrorMessage = "$latestError/Message"
+
+// quoteForMessage renders the expected message for a human-readable verdict,
+// before that verdict is itself escaped for MDL.
+func quoteForMessage(s string) string {
+	return "'" + s + "'"
 }
 
 // attachOnError appends `ON ERROR { ... }` to each CALL statement in the body,

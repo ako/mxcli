@@ -37,6 +37,10 @@ func (unimplemented) AddModuleRole(_ model.ID, _ string, _ string) error {
 	return errUnimplemented("AddModuleRole")
 }
 
+func (unimplemented) AddNavigationProfile(_ model.ID, _ string) error {
+	return errUnimplemented("AddNavigationProfile")
+}
+
 func (unimplemented) AddUserRole(_ model.ID, _ string, _ []string, _ bool) error {
 	return errUnimplemented("AddUserRole")
 }
@@ -803,6 +807,11 @@ func (unimplemented) ListUnits() ([]*types.UnitInfo, error) {
 func (unimplemented) ListWorkflows() ([]*workflows.Workflow, error) {
 	var r0 []*workflows.Workflow
 	return r0, errUnimplemented("ListWorkflows")
+}
+
+func (unimplemented) ListXmlSchemas() ([]*types.XmlSchema, error) {
+	var r0 []*types.XmlSchema
+	return r0, errUnimplemented("ListXmlSchemas")
 }
 
 func (unimplemented) LoadWidgetTemplate(_ string, _ string) (backend.WidgetObjectBuilder, error) {
