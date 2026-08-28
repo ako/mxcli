@@ -42,7 +42,8 @@ Use this skill when:
 In MDL, reference System entities with the `System.` prefix:
 
 ```mdl
--- Association to the current user
+-- Association to the current user. The direction is not a style choice: YOUR
+-- entity must be the FROM side (see "The FROM entity must be yours" below).
 create association MyModule.Order_CreatedBy
 from MyModule.Order to System.User
 type reference;
@@ -59,6 +60,40 @@ create persistent entity MyModule.ProductPhoto extends System.Image (
   IsPrimary: boolean default false
 );
 ```
+
+### The FROM entity must be yours
+
+An association is stored in the module of its **FROM** entity — Mendix has no
+other place to put it. So `from System.User to MyModule.Order` is not a
+differently-shaped association; it is one Mendix cannot store. Written anyway,
+its `ParentPointer` names an element in the System unit and the **project stops
+opening**:
+
+```
+KeyNotFoundException: The given key '4a25f08b-…' was not present in the dictionary
+  at StreamingBsonUnitReader.ResolvePostponedProperties()
+```
+
+That is a *load* failure, not a build error, so Studio Pro cannot open it either
+and the stack trace names no document. mxcli refuses it as **MDL070** at check
+time, before anything is written.
+
+This is not about System. Any remote FROM module does the same thing —
+`create association MyModule.X from Administration.Account to MyModule.Y` fails
+identically. The rule is the module boundary.
+
+Three ways out, in the order to consider them:
+
+| Situation | Do this |
+|---|---|
+| The FK genuinely belongs on your entity | Reverse it: `from MyModule.Order to System.User` |
+| Many-to-many across the boundary | A **join entity** in your module with a reference to each side |
+| The association really belongs to the other module | Declare it there — but never in `System` or a Marketplace module, which must not be written to |
+
+The join entity is usually the better model anyway: a row that says "this user
+plans this department" is something you can hang attributes and XPath
+constraints on, which a bare reference set is not.
+
 
 ---
 
