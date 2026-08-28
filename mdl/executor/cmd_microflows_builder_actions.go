@@ -9,6 +9,7 @@ import (
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	"github.com/mendixlabs/mxcli/mdl/types"
+	"github.com/mendixlabs/mxcli/mdl/visitor"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/domainmodel"
 	"github.com/mendixlabs/mxcli/sdk/microflows"
@@ -1073,9 +1074,11 @@ func (fb *flowBuilder) addRetrieveAction(s *ast.RetrieveStmt) model.ID {
 func retrieveXPathConstraint(expr ast.Expression) string {
 	xpath := normalizeXPathEnumRefs(expressionToXPath(expr))
 	if strings.HasPrefix(strings.TrimSpace(xpath), "[") && strings.HasSuffix(strings.TrimSpace(xpath), "]") {
-		return strings.TrimSpace(xpath)
+		return visitor.FormatXPathConstraint(strings.TrimSpace(xpath))
 	}
-	return "[" + xpath + "]"
+	// A constraint too long to read on one line is broken at its boolean joints;
+	// one that already fits comes back unchanged (upstream #979).
+	return visitor.FormatXPathConstraint("[" + xpath + "]")
 }
 
 func (fb *flowBuilder) inferSortEntityRefSteps(sourceEntityQN, attrPath string) []microflows.EntityRefStep {

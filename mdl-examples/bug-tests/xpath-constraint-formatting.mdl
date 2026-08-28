@@ -1,0 +1,95 @@
+-- mendixlabs/mxcli#979 — a long XPath constraint is stored on one line.
+--
+-- Filed as "preserve the whitespace I typed". Preserving is the weaker half:
+-- the formatting the reporter cares about lives in Studio Pro's constraint
+-- editor, and a constraint is rebuilt from its parse tree on every write, so
+-- there is no original whitespace left by the time anything is stored. What is
+-- stored instead is a layout DERIVED from the expression — which also covers a
+-- constraint a person formatted by hand in Studio Pro.
+--
+-- Run this, then look at the stored constraints:
+--
+--   mxcli exec mdl-examples/bug-tests/xpath-constraint-formatting.mdl -p app.mpr
+--   mxcli describe page XPathFmt.RequestOverview      -- back on one line
+--
+-- Expected on disk (verified against mxbuild 11.13.0, 0 new errors):
+--
+--   dgLong   [\n  Archived = false\n  and Status = 'Open'\n  … \n]
+--   dgShort  [Archived = false]
+--
+-- dgShort is the CONTROL. It is the same kind of constraint on the same
+-- entity, under 80 columns, and it must come back byte-identical — otherwise
+-- this is not "format what is too long to read", it is "rewrite everything",
+-- and every page mxcli touches would churn.
+
+create module XPathFmt;
+create module role XPathFmt.Viewer;
+
+create persistent entity XPathFmt.MaintenanceRequest (
+  "RequestTitle": String(200),
+  "Status": String(20),
+  "Priority": String(20),
+  "Category": String(50),
+  "Severity": Integer,
+  "Escalated": Boolean,
+  "Archived": Boolean,
+  "ReportedOn": DateTime
+);
+
+create or modify page XPathFmt.RequestOverview
+  (
+    Title: 'Maintenance requests',
+    Layout: Atlas_Core.Atlas_Default
+  )
+  {
+    LAYOUTGRID lgMain {
+      ROW rowMain {
+        COLUMN colMain (DesktopWidth: AutoFill) {
+
+          -- Too long for one line: broken at its `and` joints.
+          DATAGRID dgLong (
+            DataSource: database from XPathFmt.MaintenanceRequest
+              where [Archived = false and Status = 'Open' and Priority = 'High' and Category = 'Electrical' and Severity > 3 and ReportedOn > '[%BeginOfCurrentDay%]']
+              sort by ReportedOn desc
+          ) {
+            COLUMN colLongTitle (Attribute: RequestTitle, Caption: 'Title')
+          }
+
+          -- The control: short enough to read, stored exactly as written.
+          DATAGRID dgShort (
+            DataSource: database from XPathFmt.MaintenanceRequest where [Archived = false]
+          ) {
+            COLUMN colShortTitle (Attribute: RequestTitle, Caption: 'Title')
+          }
+
+          -- Mixed and/or. The `and` runs get explicit parentheses as they are
+          -- broken up: Mendix binds `and` tighter than `or`, and a filter is
+          -- being split across lines precisely because it had stopped being
+          -- obvious at a glance.
+          DATAGRID dgMixed (
+            DataSource: database from XPathFmt.MaintenanceRequest
+              where [Archived = false and (Status = 'Open' and Priority = 'High' and Category = 'Electrical' or Escalated = true and Severity > 3)]
+          ) {
+            COLUMN colMixedTitle (Attribute: RequestTitle, Caption: 'Title')
+          }
+        }
+      }
+    }
+  };
+
+-- The same rule applies to a microflow retrieve …
+create or modify microflow XPathFmt.MF_GetUrgent ()
+returns list of XPathFmt.MaintenanceRequest
+begin
+  @position(130, 200)
+  retrieve $Urgent from XPathFmt.MaintenanceRequest
+    where [Archived = false and Status = 'Open' and Priority = 'High' and Category = 'Electrical' and Severity > 3];
+  @position(320, 200)
+  return $Urgent;
+end;
+
+-- … and to an entity access rule. DESCRIBE ENTITY renders it back on one line,
+-- inside the quoted `where '...'` form, and re-executing that leaves the stored
+-- constraint untouched.
+grant XPathFmt.Viewer on XPathFmt.MaintenanceRequest (read *)
+  where '[Archived = false and Status = ''Open'' and Priority = ''High'' and Category = ''Electrical'' and Severity > 3]';

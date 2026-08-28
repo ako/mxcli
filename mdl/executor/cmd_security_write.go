@@ -11,6 +11,7 @@ import (
 	"github.com/mendixlabs/mxcli/mdl/backend"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
 	"github.com/mendixlabs/mxcli/mdl/types"
+	"github.com/mendixlabs/mxcli/mdl/visitor"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/domainmodel"
 	"github.com/mendixlabs/mxcli/sdk/security"
@@ -539,6 +540,13 @@ func execGrantEntityAccess(ctx *ExecContext, s *ast.GrantEntityAccessStmt) error
 		})
 	}
 
+	// A constraint too long to read on one line is broken at its boolean joints;
+	// one that already fits comes back unchanged (upstream #979). It is formatted
+	// ONCE, here, because the stored text is also what identifies the rule: a rule
+	// is keyed by role plus constraint (#936), so echoing the result back with the
+	// unformatted spelling would look for a rule that is not there.
+	xpathConstraint := visitor.FormatXPathConstraint(s.XPathConstraint)
+
 	if err := ctx.Backend.AddEntityAccessRule(backend.EntityAccessRuleParams{
 		UnitID:              dm.ID,
 		EntityName:          s.Entity.Name,
@@ -546,7 +554,7 @@ func execGrantEntityAccess(ctx *ExecContext, s *ast.GrantEntityAccessStmt) error
 		AllowCreate:         allowCreate,
 		AllowDelete:         allowDelete,
 		DefaultMemberAccess: defaultMemberAccess,
-		XPathConstraint:     s.XPathConstraint,
+		XPathConstraint:     xpathConstraint,
 		MemberAccesses:      memberAccesses,
 	}); err != nil {
 		return mdlerrors.NewBackend("grant entity access", err)
@@ -562,7 +570,7 @@ func execGrantEntityAccess(ctx *ExecContext, s *ast.GrantEntityAccessStmt) error
 	ctx.trackModifiedDomainModel(module.ID, module.Name)
 	fmt.Fprintf(ctx.Output, "Granted access on %s.%s to %s\n", s.Entity.Module, s.Entity.Name, strings.Join(roleNames, ", "))
 	if !ctx.Quiet {
-		fmt.Fprint(ctx.Output, formatAccessRuleResult(ctx, s.Entity.Module, s.Entity.Name, roleNames, s.XPathConstraint, false))
+		fmt.Fprint(ctx.Output, formatAccessRuleResult(ctx, s.Entity.Module, s.Entity.Name, roleNames, xpathConstraint, false))
 	}
 	return nil
 }
