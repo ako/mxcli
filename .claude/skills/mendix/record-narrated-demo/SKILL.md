@@ -92,6 +92,42 @@ duplicate it here. Data assertions under the demo use
 rather than a video, `--screenshot` with repeated `--screenshot-url` already does
 that without any script.
 
+### Spoken narration, if you add it
+
+`recordVideo` writes a **silent** track — voice is not a setting, it is a second
+pipeline you build and mux in. It has been produced ad hoc in a session before,
+which is the problem: re-improvised each time, it lands on a different voice, a
+different pace and different levels, so the demo's sound quality is luck. Pin it.
+
+Neither dependency is guaranteed present — both were **absent** from a fresh web
+container, and `apt-get install ffmpeg` failed there against a stale package index
+(404s on superseded `libva`/`mesa` versions) until `apt-get update` ran first.
+Check for them before promising audio; `pip install piper-tts` plus one voice
+`.onnx` + `.onnx.json` is the rest.
+
+Three things decide whether the result sounds professional. All are measured, not
+matters of taste:
+
+1. **Normalize, or it clips.** Raw Piper output measured **-17.5 LUFS with a
+   +0.0 dBTP true peak** — at full scale, so it crunches audibly the moment it is
+   encoded to AAC for the video. Two-pass `loudnorm` (measure with
+   `print_format=json`, then feed the measured values back) to `I=-16:TP=-1.5`
+   brought the same clip to -16.2 LUFS / **-4.5 dBTP**. Resample to 48 kHz stereo
+   at the same time: Piper emits 22.05 kHz mono, which is not what a video
+   container wants.
+2. **Set the pace explicitly and then verify it.** `--length-scale` controls
+   speaking rate, but only scales cleanly with `--sentence-silence 0`
+   (measured 0.5 → 2.26s, 1.0 → 3.39s, 2.0 → 5.41s on one sentence; an earlier
+   run varying the flag alone moved the duration by 6% across the same range).
+   Read each clip's real duration back with `ffprobe` rather than trusting the
+   flag.
+3. **Time the video from the audio, not the reverse.** Synthesize first, measure
+   each clip, and hold the step for that long. This is also why the pulsing
+   indicator above is load-bearing rather than cosmetic: if an idle pause
+   collapses to almost no frames, a pre-rendered voice track drifts against the
+   picture no matter how good the synthesis is. Confirm the recorded file's
+   duration matches the script's wall-clock before adding audio at all.
+
 ## What to narrate
 
 Narrate only what a viewer with **no build context** would understand.
