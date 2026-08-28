@@ -163,7 +163,7 @@ After updating a template, verify it works:
 mxcli -p test.mpr -c "CREATE PAGE Test.TestPage ... COMBOBOX ..."
 
 # Check for errors (should have no CE0463 errors)
-~/.mxcli/mxbuild/*/modeler/mx check test.mpr
+mxcli docker check -p test.mpr
 
 # Compare BSON if issues persist
 mxcli bson dump -p test.mpr --type page --object "Test.TestPage" --format ndsl

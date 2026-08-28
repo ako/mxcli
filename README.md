@@ -549,7 +549,7 @@ MxBuild is auto-downloaded on first use (via `mxcli setup mxbuild -p app.mpr` or
 ```bash
 # Auto-download mxbuild and check project
 mxcli setup mxbuild -p app.mpr
-~/.mxcli/mxbuild/*/modeler/mx check app.mpr
+mxcli docker check -p app.mpr
 
 # or use the integrated command
 mxcli docker check -p app.mpr

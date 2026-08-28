@@ -41,7 +41,7 @@ Use `mx check` to validate projects without Studio Pro. This catches consistency
 
 ```bash
 # find the mx binary
-MX=~/.mxcli/mxbuild/*/modeler/mx
+MX=~/.mxcli/mxbuild/<version>/modeler/mx
 
 # check the project
 $MX check /path/to/app.mpr
