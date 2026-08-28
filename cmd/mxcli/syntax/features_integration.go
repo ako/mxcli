@@ -547,8 +547,14 @@ DESCRIBE DATABASE CONNECTION Ops.Erp;`,
 			"json structure", "create json structure", "drop json structure",
 			"snippet", "schema", "json schema",
 		},
-		Syntax:  "SHOW JSON STRUCTURES [IN Module];\nDESCRIBE JSON STRUCTURE Module.Name;\nCREATE JSON STRUCTURE Module.Name [FOLDER 'path'] [COMMENT 'text'] SNIPPET '{ ... }';\nCREATE OR MODIFY JSON STRUCTURE Module.Name SNIPPET '{ ... }';\nDROP JSON STRUCTURE Module.Name;",
-		Example: "CREATE OR MODIFY JSON STRUCTURE MyModule.JSON_Pet\n  SNIPPET '{\"id\": 1, \"name\": \"Fido\", \"status\": \"available\"}';\n\nDESCRIBE JSON STRUCTURE MyModule.JSON_Pet;",
+		Syntax: "SHOW JSON STRUCTURES [IN Module];\nDESCRIBE JSON STRUCTURE Module.Name;\nCREATE JSON STRUCTURE Module.Name [FOLDER 'path'] [COMMENT 'text'] SNIPPET '{ ... }'\n  [CUSTOM NAME MAP (\n    'jsonKey' AS 'CustomName',       -- rename the element that key reaches\n    ITEM OF 'arrayKey' AS 'Name',    -- name the ARRAY's item element\n    ITEM OF 'Root' AS 'Name'         -- ... of a ROOT-level array\n  )];\nCREATE OR MODIFY JSON STRUCTURE Module.Name SNIPPET '{ ... }';\nDROP JSON STRUCTURE Module.Name;\n\n" +
+			"An array's item is the anonymous [...] entry, so it has no JSON key and the\n" +
+			"plain form cannot reach it — ITEM OF addresses it by the array's key, and\n" +
+			"names a primitive array's wrapper too. Left unnamed an item keeps its\n" +
+			"generated name. The name matters because a mapping element clones it.\n" +
+			"An entry whose key is not in the snippet is an error (MDL-JSON01), as is\n" +
+			"ITEM OF on a key that is not an array (MDL-JSON02).",
+		Example: "CREATE OR MODIFY JSON STRUCTURE MyModule.JSON_Pet\n  SNIPPET '{\"id\": 1, \"name\": \"Fido\", \"status\": \"available\"}';\n\nCREATE JSON STRUCTURE MyModule.JSON_Invoice\n  SNIPPET '{\"lines\": [{\"sku\": \"A1\"}], \"tags\": [\"urgent\"]}'\n  CUSTOM NAME MAP (\n    'lines' AS 'OrderLines',\n    ITEM OF 'lines' AS 'OrderLine',\n    ITEM OF 'tags' AS 'Tag'\n  );\n\nDESCRIBE JSON STRUCTURE MyModule.JSON_Pet;",
 		SeeAlso: []string{"import-mapping", "export-mapping"},
 	})
 

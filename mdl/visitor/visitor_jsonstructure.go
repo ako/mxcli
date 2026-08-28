@@ -41,12 +41,20 @@ func (b *Builder) ExitCreateJsonStructureStatement(ctx *parser.CreateJsonStructu
 	// Parse CUSTOM NAME MAP if present
 	if ctx.CUSTOM_NAME_MAP() != nil {
 		stmt.CustomNameMap = make(map[string]string)
+		stmt.CustomItemNameMap = make(map[string]string)
 		for _, mapping := range ctx.AllCustomNameMapping() {
 			mappingCtx := mapping.(*parser.CustomNameMappingContext)
 			strings := mappingCtx.AllSTRING_LITERAL()
-			if len(strings) == 2 {
-				jsonKey := unquoteString(strings[0].GetText())
-				customName := unquoteString(strings[1].GetText())
+			if len(strings) != 2 {
+				continue
+			}
+			jsonKey := unquoteString(strings[0].GetText())
+			customName := unquoteString(strings[1].GetText())
+			// `item of 'key' as 'Name'` names the array's ITEM element; the bare
+			// form names the element the key itself reaches.
+			if mappingCtx.ITEM() != nil {
+				stmt.CustomItemNameMap[jsonKey] = customName
+			} else {
 				stmt.CustomNameMap[jsonKey] = customName
 			}
 		}

@@ -1,0 +1,77 @@
+-- ============================================================================
+-- ako/mxcli#272: an array's ITEM element could not be named
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   `create json structure … custom name map (…)` could rename any element the
+--   JSON has a key for, but NOT an array's item — the item is the anonymous
+--   `[…]` entry and has no key. It got a derived name (`LinesItem`, or
+--   `JsonObject` at the root) that no MDL could change.
+--
+--   It is not cosmetic: a MAPPING element clones the schema element's
+--   ExposedName, which is one of the two names a member resolves by (#882). So
+--   every mapping over an mxcli-built structure carried a generated name, and a
+--   Studio Pro mapping described over an mxcli-rebuilt structure diffed on it.
+--
+--   The obvious workaround — naming the item by its path —
+--
+--     custom name map ('lines|(Object)' as 'OrderLine')
+--
+--   parsed, executed, and did NOTHING: an entry matching no key applied to no
+--   element and reported no error, so a typo was indistinguishable from success.
+--   That silence is why the gap stayed hidden. It is now MDL-JSON01.
+--
+-- What was NOT done, and why:
+--   The issue proposed matching Studio Pro's item naming, including its apparent
+--   English singularisation (Data→Datum, Categories→Category). Measured across
+--   621 array elements in nine demo apps, that premise does not hold:
+--
+--     61%  JsonObject / Wrapper [+ counter]   the generator's own default
+--     35%  a word someone chose                Datum, Department, SensorData
+--      4%  <Name>Item                          AgentJobItem, XItem
+--
+--   The fingerprint that settles it is Evora's JSON_AutoConfigResponse, whose
+--   eight arrays read, in document order:
+--
+--     Scope, Wrapper_2, Wrapper_3, Wrapper_4, Wrapper_5, Wrapper_6, Claim,
+--     CodeChallengeMethods
+--
+--   — a machine counter with GAPS where a human renamed. And JSON_SensorData's
+--   `Array -> SensorData`, a name with no relation to the array's at all.
+--
+--   So there is no single Studio Pro rule to mimic: the corpus is a third
+--   hand-written. No default can match it, and changing mxcli's default would
+--   rewrite every stored structure's item names plus every mapping bound to one.
+--   The fix is therefore EXPRESSIVENESS — let the author name it — not
+--   default-matching. Defaults are unchanged.
+--
+-- Validation:
+--   mxbuild 11.13.0 reports 0 errors on the structures and mappings below, and
+--   the stored mapping element carries 'Record', not 'RecordsItem'. DESCRIBE
+--   round-trips: describe -> exec reproduces every ExposedName exactly.
+-- ============================================================================
+
+create module BugTest272;
+
+create persistent entity BugTest272.Line ( Sku: String(50) );
+
+-- `item of` names the item; the two clauses are independent, so naming an item
+-- does not require renaming its array.
+create or modify json structure BugTest272.JSON_Invoice
+  snippet $${"lines": [{"sku": "A1"}], "tags": ["urgent"]}$$
+  custom name map (
+    'lines' as 'OrderLines',
+    item of 'lines' as 'OrderLine',
+    item of 'tags' as 'Tag'
+  );
+
+-- A ROOT-level array has no key either. `item of 'Root'` names its item — the
+-- element every mapping over an array-rooted structure binds (#248).
+create or modify json structure BugTest272.JSON_Feed
+  snippet $$[{"id": 1}]$$
+  custom name map (item of 'Root' as 'Entry');
+
+-- Left unnamed, an item keeps its generated name. This is the control: the new
+-- clause must change nothing for a structure that does not use it.
+create or modify json structure BugTest272.JSON_Plain
+  snippet $${"rows": [{"sku": "A1"}]}$$;

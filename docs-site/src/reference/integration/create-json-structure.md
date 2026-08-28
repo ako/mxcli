@@ -68,6 +68,40 @@ CREATE JSON STRUCTURE MyModule.JSON_WeatherResponse
     );
 ```
 
+### Naming an array's item element
+
+An array's item is the anonymous `[…]` entry, so it has no JSON key and the plain
+form cannot reach it. `ITEM OF` addresses it by the array's key:
+
+```sql
+CREATE JSON STRUCTURE MyModule.JSON_Invoice
+    SNIPPET '{"lines": [{"sku": "A1"}], "tags": ["urgent"]}'
+    CUSTOM NAME MAP (
+        'lines'         AS 'OrderLines',
+        ITEM OF 'lines' AS 'OrderLine',
+        ITEM OF 'tags'  AS 'Tag'
+    );
+```
+
+The two clauses are independent: naming an item does not require renaming its
+array. `ITEM OF` also names a primitive array's wrapper element, which is that
+array's item.
+
+A **root-level** array has no key either — `ITEM OF 'Root'` names its item:
+
+```sql
+CREATE JSON STRUCTURE MyModule.JSON_Feed
+    SNIPPET '[{"id": 1}]'
+    CUSTOM NAME MAP (ITEM OF 'Root' AS 'Entry');
+```
+
+Left unnamed, an item keeps its generated name (`<Array>Item`, the singular for a
+primitive array's wrapper, `JsonObject` at the root).
+
+An entry naming a key the snippet does not contain is an error (`MDL-JSON01`),
+as is `ITEM OF` on a key that is not an array (`MDL-JSON02`) — previously such an
+entry applied to nothing and reported nothing.
+
 ### Idempotent replacement
 
 ```sql

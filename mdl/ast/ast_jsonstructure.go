@@ -12,6 +12,11 @@ type CreateJsonStructureStmt struct {
 	Folder         string            // Optional folder path within module
 	CreateOrModify bool              // true for CREATE OR MODIFY (or OR REPLACE, treated identically)
 	CustomNameMap  map[string]string // Optional: JSON key → custom ExposedName
+	// CustomItemNameMap names the ITEM element of an array, keyed by the array's
+	// JSON key ("Root" for a root-level array). An item has no key of its own,
+	// so CustomNameMap cannot reach it and its name was derived and unspellable
+	// (ako/mxcli#272).
+	CustomItemNameMap map[string]string
 }
 
 func (s *CreateJsonStructureStmt) isStatement() {}
