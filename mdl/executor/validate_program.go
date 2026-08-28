@@ -114,6 +114,12 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 	// PROFILE is what invalidates pages written earlier.
 	violations = append(violations, ValidateOfflineAttributePaths(prog, projectPath)...)
 
+	// Warn (MDL-WORKFLOW10) when a microflow completes a user task it never
+	// assigned. TARGETING decides who may SEE a task; it does not assign it, and
+	// completing an unassigned one fails only at runtime, with the button
+	// appearing to do nothing.
+	violations = append(violations, ValidateTaskClaims(prog)...)
+
 	// Flag control-bar buttons that pass $currentObject — a control bar is
 	// not row-scoped, so the argument is unbound (CE1571) at build time.
 	violations = append(violations, ValidatePageButtonContext(prog)...)

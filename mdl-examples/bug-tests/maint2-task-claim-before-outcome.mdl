@@ -1,0 +1,33 @@
+-- A user task must be CLAIMED before SET TASK OUTCOME (ako/mxcli-maintenance-2).
+--
+-- Completing a task nobody has claimed fails at RUNTIME, and quietly: the button
+-- appears to do nothing, and the only trace is in the runtime log --
+--
+--   ERROR - Client: You can't complete this user task, it is not assigned to you.
+--
+-- while `mxcli check` passed, `mx check` passed and the build was clean. About
+-- eight minutes of runtime archaeology.
+--
+-- The trap: TARGETING XPATH / TARGETING MICROFLOW decides who may SEE a task. It
+-- does not assign it. There is no ASSIGN TASK statement -- claiming is a plain
+-- write to the Assignees association, and it must come first.
+--
+-- MDL-WORKFLOW10 now warns. It is a WARNING, not an error, because a task can be
+-- claimed somewhere the rule cannot see -- in a microflow this one calls, or
+-- earlier in the process.
+
+create module TaskClaim;
+
+-- Warned: completes a task it never assigned.
+create microflow TaskClaim.ACT_CompleteUnclaimed ( $Task: System.WorkflowUserTask )
+begin
+  set task outcome $Task 'Plan';
+end;
+
+-- Clean: claim, commit, then complete. This is the working shape.
+create microflow TaskClaim.ACT_CompleteClaimed ( $Task: System.WorkflowUserTask )
+begin
+  change $Task (System.WorkflowUserTask_Assignees = [%CurrentUser%]);
+  commit $Task;
+  set task outcome $Task 'Plan';
+end;
