@@ -7,6 +7,19 @@ description: "Reference for the built-in System module — User, FileDocument, I
 
 The `System` module is a built-in Mendix module present in every application. It provides core entities for user management, file handling, workflows, task queues, HTTP services, and more. These entities are not defined in the application's domain model but are available for use in microflows, pages, associations, and Java actions.
 
+## Access to System entities has a ceiling
+
+**No project module can widen access to `System.User`, `System.Workflow` or
+`System.WorkflowUserTask`.** Their access comes from the System module's own roles,
+and a `grant` in your module cannot raise it — so any UI over them is
+Administrator-only unless the data is denormalised into your own entities or reached
+through a microflow data source (microflows bypass entity access by default).
+
+It fails **silently**: a combo box over `System.User` lists the current user only, a
+grid over `System.Workflow` renders empty, and both `mx check` and `mxcli lint` pass.
+See the System-module ceiling section in [manage-security](../manage-security/SKILL.md)
+for the three ways around it.
+
 ## Reference files
 
 - [`reference/workflow-and-queues.md`](reference/workflow-and-queues.md) — the

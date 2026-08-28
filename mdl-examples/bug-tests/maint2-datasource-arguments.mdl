@@ -1,0 +1,61 @@
+-- A microflow page data source must be given an argument per parameter
+-- (ako/mxcli-maintenance-2).
+--
+-- `datasource: microflow M.F` on a microflow WITH parameters built to
+-- CE1571 "No argument has been selected for parameter 'Task'", while
+-- `mxcli check --references` passed: the microflow itself resolves, so nothing
+-- compared the signature against the arguments.
+--
+-- The measurement that decides the severity, on Mendix 11.13:
+--
+--   page with NO parameters,        no arguments  -> CE1571
+--   page WITH a $Task parameter of
+--   the parameter's exact type,     no arguments  -> CE1571
+--
+-- So Studio Pro does not auto-map an object in scope, not even one of the right
+-- type. A missing argument is always wrong, which is why this is an error rather
+-- than a warning -- Mendix's own "and no default is available" reads as though a
+-- default sometimes is.
+
+create module DSArgs;
+create module role DSArgs.User;
+
+create persistent entity DSArgs.Task ( Name: string(50) );
+create persistent entity DSArgs.Req ( Code: string(50) );
+
+create microflow DSArgs.DS_ReqForTask ( Task: DSArgs.Task )
+returns list of DSArgs.Req as $items
+begin
+  retrieve $items from DSArgs.Req;
+  return $items;
+end;
+
+-- No parameters: the bare form is correct and must stay clean. This is the
+-- common case, and a rule that flagged it would fire on nearly every page.
+create microflow DSArgs.DS_AllReqs ()
+returns list of DSArgs.Req as $items
+begin
+  retrieve $items from DSArgs.Req;
+  return $items;
+end;
+
+create page DSArgs."P_Requests" (
+  Title: 'Requests',
+  Layout: Atlas_Core.Atlas_Default
+) {
+  datagrid dgAll (datasource: microflow DSArgs.DS_AllReqs) {
+    column c1 (attribute: Code, caption: 'Code')
+  }
+};
+
+create page DSArgs."P_TaskRequests" (
+  params: { $Task: DSArgs.Task },
+  Title: 'Task requests',
+  Layout: Atlas_Core.Atlas_Default
+) {
+  -- One argument per parameter. Writing `microflow DSArgs.DS_ReqForTask` here
+  -- is refused by `mxcli check` instead of building to CE1571.
+  datagrid dgForTask (datasource: microflow DSArgs.DS_ReqForTask(Task: $Task)) {
+    column c1 (attribute: Code, caption: 'Code')
+  }
+};

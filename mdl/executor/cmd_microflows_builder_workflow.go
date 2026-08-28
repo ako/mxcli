@@ -7,6 +7,7 @@ import (
 	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
 	"github.com/mendixlabs/mxcli/sdk/microflows"
+	"strings"
 )
 
 // wrapAction wraps a MicroflowAction in an ActionActivity with standard positioning.
@@ -34,7 +35,25 @@ func (fb *flowBuilder) addCallWorkflowAction(s *ast.CallWorkflowStmt) model.ID {
 	wfQN := s.Workflow.Module + "." + s.Workflow.Name
 	ctxVar := s.ContextVariable
 	if len(s.Arguments) > 0 {
-		ctxVar = fb.exprToString(s.Arguments[0].Value)
+		// TRIM FIRST. A workflow's context is stored as a variable NAME, not as an
+		// expression — but the argument arrives as an expression source, and the
+		// visitor deliberately preserves an expression's trailing whitespace so a
+		// multi-line expression round-trips byte-for-byte
+		// (appendExpressionListTrailingWhitespace, and the tests that pin it).
+		//
+		// So a mapping written across two lines
+		//
+		//	call workflow M.WF (
+		//	  Context = $Request
+		//	);
+		//
+		// produced the name "Request\n  " and the build failed CE0109 "Undefined
+		// variable 'Request\n  '". One-line calls were fine, and CALL MICROFLOW was
+		// fine at any width — its arguments stay expressions, where the whitespace
+		// is harmless. That asymmetry is why the fix belongs here, on the
+		// name, rather than in the visitor: trimming there would break the
+		// round-trip the whitespace exists for. (ako/mxcli-maintenance-2)
+		ctxVar = strings.TrimSpace(fb.exprToString(s.Arguments[0].Value))
 		// Strip leading $ if present
 		if len(ctxVar) > 0 && ctxVar[0] == '$' {
 			ctxVar = ctxVar[1:]

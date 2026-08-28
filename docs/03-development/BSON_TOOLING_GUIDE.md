@@ -118,7 +118,7 @@ After writing BSON, always validate:
 
 ```bash
 # if mx is cached from setup
-~/.mxcli/mxbuild/*/modeler/mx check app.mpr
+mxcli docker check -p app.mpr
 
 # or via mxcli
 mxcli docker check -p app.mpr

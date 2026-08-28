@@ -30,7 +30,7 @@ This downloads mxbuild to `~/.mxcli/mxbuild/{version}/` and makes the `mx` tool 
 
 ```bash
 # Find the mx binary
-MX=~/.mxcli/mxbuild/*/modeler/mx
+MX=~/.mxcli/mxbuild/<version>/modeler/mx
 
 # Check a project
 $MX check /path/to/app.mpr

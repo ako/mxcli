@@ -216,7 +216,7 @@ The `mx` validation tool must match the project's Mendix version:
 mxcli setup mxbuild -p app.mpr
 
 # Check the project
-~/.mxcli/mxbuild/*/modeler/mx check app.mpr
+mxcli docker check -p app.mpr
 ```
 
 MxBuild is downloaded on demand and cached in `~/.mxcli/mxbuild/{version}/`.

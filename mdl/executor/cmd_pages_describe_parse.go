@@ -329,18 +329,21 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 		widget.Caption = extractLabelText(ctx, w)
 		widget.Content = extractAttributeRef(ctx, w)
 		widget.Placeholder = extractPlaceholderText(ctx, w)
+		widget.Editable = extractEditable(ctx, w)
 		widget.OnChange = extractOnChangeAction(ctx, w)
 		return []rawWidget{widget}
 
 	case "Forms$TextArea", "Pages$TextArea":
 		widget.Caption = extractLabelText(ctx, w)
 		widget.Content = extractAttributeRef(ctx, w)
+		widget.Editable = extractEditable(ctx, w)
 		widget.OnChange = extractOnChangeAction(ctx, w)
 		return []rawWidget{widget}
 
 	case "Forms$DatePicker", "Pages$DatePicker":
 		widget.Caption = extractLabelText(ctx, w)
 		widget.Content = extractAttributeRef(ctx, w)
+		widget.Editable = extractEditable(ctx, w)
 		widget.OnChange = extractOnChangeAction(ctx, w)
 		return []rawWidget{widget}
 
@@ -348,6 +351,7 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 		widget.Type = "Forms$RadioButtons" // Normalize type
 		widget.Caption = extractLabelText(ctx, w)
 		widget.Content = extractAttributeRef(ctx, w)
+		widget.Editable = extractEditable(ctx, w)
 		widget.OnChange = extractOnChangeAction(ctx, w)
 		return []rawWidget{widget}
 
@@ -745,6 +749,12 @@ func extractPlaceholderText(ctx *ExecContext, w map[string]any) string {
 
 // extractEditable extracts the Editable setting from an input widget.
 // Returns "Always", "Never", or "Conditional".
+//
+// Every input widget must call this, not just CheckBox. While TextBox did not,
+// `describe page` emitted no editability at all for the widget people use most,
+// so a describe/exec round-trip silently normalised `Editable: Never` back to
+// Always — and a describe/diff could not reveal the CREATE-path loss that
+// ako/mxcli-maintenance-2 reported, because both sides printed nothing.
 func extractEditable(ctx *ExecContext, w map[string]any) string {
 	if editable, ok := w["Editable"].(string); ok {
 		return editable
