@@ -110,27 +110,105 @@ func describeJsonStructure(ctx *ExecContext, name ast.QualifiedName) error {
 
 	// Detect custom name mappings by comparing ExposedName to auto-generated names
 	customMappings := collectCustomNameMappings(js.Elements)
-	if len(customMappings) > 0 {
+	itemMappings := collectCustomItemNames(js.Elements)
+	if len(customMappings) > 0 || len(itemMappings) > 0 {
 		// Sort keys for deterministic DESCRIBE output
-		keys := make([]string, 0, len(customMappings))
-		for k := range customMappings {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
+		keys := sortedMapKeys(customMappings)
+		itemKeys := sortedMapKeys(itemMappings)
+		last := len(keys) + len(itemKeys)
 
 		fmt.Fprintf(ctx.Output, "\n  CUSTOM NAME map (\n")
-		for i, jsonKey := range keys {
-			sep := ","
-			if i == len(keys)-1 {
-				sep = ""
-			}
-			fmt.Fprintf(ctx.Output, "    '%s' as '%s'%s\n", jsonKey, customMappings[jsonKey], sep)
+		n := 0
+		for _, jsonKey := range keys {
+			n++
+			fmt.Fprintf(ctx.Output, "    '%s' as '%s'%s\n", jsonKey, customMappings[jsonKey], commaUnlessLast(n, last))
+		}
+		// `item of` entries come last so the plain renames stay grouped; both
+		// orders re-execute identically.
+		for _, jsonKey := range itemKeys {
+			n++
+			fmt.Fprintf(ctx.Output, "    item of '%s' as '%s'%s\n", jsonKey, itemMappings[jsonKey], commaUnlessLast(n, last))
 		}
 		fmt.Fprintf(ctx.Output, "  )")
 	}
 
 	fmt.Fprintln(ctx.Output, ";")
 	return nil
+}
+
+// sortedMapKeys returns a map's keys in a deterministic order, which DESCRIBE
+// output depends on.
+func sortedMapKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func commaUnlessLast(n, last int) string {
+	if n == last {
+		return ""
+	}
+	return ","
+}
+
+// collectCustomItemNames returns array JSON key → its ITEM element's ExposedName,
+// for items whose name differs from the generated default.
+//
+// It exists because an item element has no JSON key, so collectCustomNames skips
+// it (its path segment is the structural marker "(Object)" or "(Wrapper)"). Without
+// this, a named item was written on CREATE and lost on DESCRIBE — so
+// describe → exec silently renamed it back (ako/mxcli#272).
+func collectCustomItemNames(elements []*types.JsonElement) map[string]string {
+	out := make(map[string]string)
+	for _, elem := range elements {
+		collectItemNames(elem, out, true)
+	}
+	return out
+}
+
+func collectItemNames(elem *types.JsonElement, out map[string]string, isRoot bool) {
+	if elem.ElementType == "Array" {
+		key := arrayJsonKey(elem, isRoot)
+		for _, child := range elem.Children {
+			if key != "" && child.ExposedName != "" && child.ExposedName != defaultItemName(elem, isRoot) {
+				out[key] = child.ExposedName
+			}
+		}
+	}
+	for _, child := range elem.Children {
+		collectItemNames(child, out, false)
+	}
+}
+
+// arrayJsonKey is the key `item of` addresses this array by: its own JSON key,
+// or the root sentinel when the array IS the root and has none.
+func arrayJsonKey(elem *types.JsonElement, isRoot bool) string {
+	if isRoot {
+		return types.RootArrayItemKey
+	}
+	parts := strings.Split(elem.Path, "|")
+	last := parts[len(parts)-1]
+	if last == "" || last[0] == '(' {
+		return ""
+	}
+	return last
+}
+
+// defaultItemName is what the builder would have generated, so DESCRIBE emits an
+// entry only for a name someone actually chose.
+func defaultItemName(arrayElem *types.JsonElement, isRoot bool) string {
+	if isRoot {
+		return "JsonObject"
+	}
+	for _, child := range arrayElem.Children {
+		if child.ElementType == "Wrapper" {
+			return types.SingularizeExposedName(arrayElem.ExposedName)
+		}
+	}
+	return arrayElem.ExposedName + "Item"
 }
 
 // collectCustomNameMappings walks the element tree and returns JSON key → ExposedName
@@ -200,7 +278,7 @@ func execCreateJsonStructure(ctx *ExecContext, s *ast.CreateJsonStructureStmt) e
 	}
 
 	// Build element tree from JSON snippet, applying custom name mappings
-	elements, err := types.BuildJsonElementsFromSnippet(s.JsonSnippet, s.CustomNameMap)
+	elements, err := types.BuildJsonElementsFromSnippet(s.JsonSnippet, s.CustomNameMap, s.CustomItemNameMap)
 	if err != nil {
 		return mdlerrors.NewBackend("build element tree", err)
 	}

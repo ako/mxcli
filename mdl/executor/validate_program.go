@@ -177,6 +177,11 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 	// (#927).
 	violations = append(violations, ValidateExportMappingMembers(prog)...)
 
+	// Flag a CUSTOM NAME MAP entry that matches nothing in the snippet. Silence
+	// there made a typo indistinguishable from not writing the entry, which is
+	// how #272's missing `item of` stayed hidden (ako/mxcli#272).
+	violations = append(violations, ValidateJsonStructureNames(prog)...)
+
 	// Flag an import mapping element that searches for an object without a key
 	// (CE0250), or over an entity that is not persistable (CE0251). The key half
 	// is decidable from the statement and runs with or without a project; the

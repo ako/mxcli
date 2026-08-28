@@ -72,6 +72,36 @@ CUSTOM NAME map (
   'naam' as 'CompanyName'
 );
 
+/**
+ * Naming an ARRAY's item element.
+ *
+ * An array's item is the anonymous `[...]` entry, so it has no JSON key and the
+ * plain form cannot reach it -- its name was derived (`LinesItem`) and could not
+ * be changed (ako/mxcli#272). `item of` addresses it by the array's key.
+ *
+ * This is not cosmetic: a mapping element clones the schema element's
+ * ExposedName, so the item's name is what every mapping over this structure
+ * carries.
+ *
+ * The two clauses are independent -- naming an item does not require renaming
+ * its array -- and `item of` works for a primitive array's wrapper too.
+ */
+create json structure JsonTest.Invoice
+  snippet $${"lines": [{"sku": "A1", "qty": 2}], "tags": ["urgent"]}$$
+CUSTOM NAME map (
+  'lines' as 'OrderLines',
+  item of 'lines' as 'OrderLine',
+  item of 'tags' as 'Tag'
+);
+
+/**
+ * A ROOT-level array has no key either. `item of 'Root'` names its item -- the
+ * element every mapping over an array-rooted structure binds (ako/mxcli#248).
+ */
+create json structure JsonTest.Feed
+  snippet $$[{"id": 1, "title": "t"}]$$
+CUSTOM NAME map (item of 'Root' as 'Entry');
+
 -- MARK: Describe
 
 -- Describe a JSON structure (shows element tree + JSON snippet)

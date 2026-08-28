@@ -33,7 +33,7 @@ func TestBuildJsonElementsFromSnippet_NoZeroMaxOccurs(t *testing.T) {
 	}
 	for name, snippet := range snippets {
 		t.Run(name, func(t *testing.T) {
-			elems, err := BuildJsonElementsFromSnippet(snippet, nil)
+			elems, err := BuildJsonElementsFromSnippet(snippet, nil, nil)
 			if err != nil {
 				t.Fatalf("BuildJsonElementsFromSnippet: %v", err)
 			}
@@ -74,7 +74,7 @@ func TestBuildJsonElementsFromSnippet_RootOccursOnce(t *testing.T) {
 		"array root":  `[{"a":1}]`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			elems, err := BuildJsonElementsFromSnippet(snippet, nil)
+			elems, err := BuildJsonElementsFromSnippet(snippet, nil, nil)
 			if err != nil {
 				t.Fatalf("BuildJsonElementsFromSnippet: %v", err)
 			}
@@ -99,7 +99,7 @@ func TestBuildJsonElementsFromSnippet_RootOccursOnce(t *testing.T) {
 // intermittent — one element in the tree came out correct.
 func TestBuildJsonElementsFromSnippet_RepeatingElementsUnbounded(t *testing.T) {
 	t.Run("nested object array item", func(t *testing.T) {
-		elems, err := BuildJsonElementsFromSnippet(`{"items":[{"id":"a"}]}`, nil)
+		elems, err := BuildJsonElementsFromSnippet(`{"items":[{"id":"a"}]}`, nil, nil)
 		if err != nil {
 			t.Fatalf("BuildJsonElementsFromSnippet: %v", err)
 		}
@@ -117,7 +117,7 @@ func TestBuildJsonElementsFromSnippet_RepeatingElementsUnbounded(t *testing.T) {
 	// was 0..0 while the nested-array item was already 0..-1 — the same
 	// construct written two different ways in two builders.
 	t.Run("root array item", func(t *testing.T) {
-		elems, err := BuildJsonElementsFromSnippet(`[{"id":"a"}]`, nil)
+		elems, err := BuildJsonElementsFromSnippet(`[{"id":"a"}]`, nil, nil)
 		if err != nil {
 			t.Fatalf("BuildJsonElementsFromSnippet: %v", err)
 		}
@@ -135,7 +135,7 @@ func TestBuildJsonElementsFromSnippet_RepeatingElementsUnbounded(t *testing.T) {
 	})
 
 	t.Run("primitive array wrapper", func(t *testing.T) {
-		elems, err := BuildJsonElementsFromSnippet(`{"tags":["a","b"]}`, nil)
+		elems, err := BuildJsonElementsFromSnippet(`{"tags":["a","b"]}`, nil, nil)
 		if err != nil {
 			t.Fatalf("BuildJsonElementsFromSnippet: %v", err)
 		}

@@ -94,9 +94,16 @@ func normalizeDateTimeValue(s string) string {
 
 // BuildJsonElementsFromSnippet parses a JSON snippet and builds the element tree
 // that Mendix Studio Pro would generate. Returns the root element.
-// The optional customNameMap maps JSON keys to custom ExposedNames (as set in
-// Studio Pro's "Custom name" column). Unmapped keys use auto-generated names.
-func BuildJsonElementsFromSnippet(snippet string, customNameMap map[string]string) ([]*JsonElement, error) {
+//
+// customNameMap maps JSON keys to custom ExposedNames (Studio Pro's "Custom
+// name" column). itemNameMap does the same for an ARRAY's ITEM element, keyed by
+// the array's JSON key — an item is the anonymous `[…]` entry and has no key of
+// its own, so it is unreachable from customNameMap and its name was previously
+// derived and unspellable (ako/mxcli#272). "Root" addresses a root-level array's
+// item, which likewise has no key.
+//
+// Both are optional; unmapped elements use the generated names.
+func BuildJsonElementsFromSnippet(snippet string, customNameMap, itemNameMap map[string]string) ([]*JsonElement, error) {
 	// Validate JSON
 	if !json.Valid([]byte(snippet)) {
 		return nil, fmt.Errorf("invalid JSON snippet")
@@ -109,7 +116,7 @@ func BuildJsonElementsFromSnippet(snippet string, customNameMap map[string]strin
 		return nil, fmt.Errorf("failed to parse JSON snippet: %w", err)
 	}
 
-	b := &snippetBuilder{customNameMap: customNameMap}
+	b := &snippetBuilder{customNameMap: customNameMap, itemNameMap: itemNameMap}
 	tracker := &nameTracker{seen: make(map[string]int)}
 
 	switch tok {
@@ -134,9 +141,27 @@ func BuildJsonElementsFromSnippet(snippet string, customNameMap map[string]strin
 	}
 }
 
+// rootArrayItemKey is the key `item of` uses for a ROOT-level array, which has
+// no JSON key of its own. "Root" is the exposed name Studio Pro gives every root
+// element (9 of 9 pinned structures), and a root array has no keys at its own
+// level, so there is nothing for it to collide with.
+const rootArrayItemKey = "Root"
+
 // snippetBuilder holds state for building the element tree from a JSON snippet.
 type snippetBuilder struct {
 	customNameMap map[string]string // JSON key → custom ExposedName
+	itemNameMap   map[string]string // array's JSON key → its ITEM element's name
+}
+
+// itemName returns the name for the item element of the array reached by
+// jsonKey, or fallback when the script did not name it.
+func (b *snippetBuilder) itemName(jsonKey, fallback string) string {
+	if b.itemNameMap != nil {
+		if custom, ok := b.itemNameMap[jsonKey]; ok {
+			return custom
+		}
+	}
+	return fallback
 }
 
 // reservedExposedNames are element names Mendix will not accept as an
@@ -400,14 +425,18 @@ func (b *snippetBuilder) buildElementFromRawRootArray(exposedName, path, rawJSON
 		itemPath := path + "|(Object)"
 		trimmed := strings.TrimSpace(string(firstItem))
 
+		// A root array has no JSON key, so `item of 'Root'` addresses its item —
+		// Root being the fixed exposed name of the root element.
+		rootItemName := b.itemName(rootArrayItemKey, "JsonObject")
+
 		if len(trimmed) > 0 && trimmed[0] == '{' {
-			itemElem := b.buildElementFromRawObject("JsonObject", itemPath, trimmed, tracker)
+			itemElem := b.buildElementFromRawObject(rootItemName, itemPath, trimmed, tracker)
 			itemElem.MinOccurs = 0
 			itemElem.MaxOccurs = occursUnbounded
 			itemElem.Nillable = true
 			arrayElem.Children = append(arrayElem.Children, itemElem)
 		} else {
-			child := b.buildElementFromRawValue("JsonObject", itemPath, "", firstItem, tracker)
+			child := b.buildElementFromRawValue(rootItemName, itemPath, "", firstItem, tracker)
 			child.MinOccurs = 0
 			child.MaxOccurs = occursUnbounded
 			arrayElem.Children = append(arrayElem.Children, child)
@@ -447,8 +476,8 @@ func (b *snippetBuilder) buildElementFromRawArray(exposedName, path, jsonKey, ra
 		trimmed := strings.TrimSpace(string(firstItem))
 
 		if len(trimmed) > 0 && trimmed[0] == '{' {
-			// Object array: child is NameItem object
-			itemName := exposedName + "Item"
+			// Object array: child is NameItem object unless the script named it
+			itemName := b.itemName(jsonKey, exposedName+"Item")
 			itemPath := path + "|(Object)"
 			itemElem := b.buildElementFromRawObject(itemName, itemPath, trimmed, tracker)
 			itemElem.MinOccurs = 0
@@ -458,7 +487,10 @@ func (b *snippetBuilder) buildElementFromRawArray(exposedName, path, jsonKey, ra
 		} else {
 			// Primitive array: Studio Pro wraps in a Wrapper element with singular name
 			// e.g., tags: ["a","b"] → Tag (Wrapper) → Value (String)
-			wrapperName := singularize(exposedName)
+			// The Wrapper IS the item element here — one per array entry — so
+			// `item of` names it too, rather than there being a second spelling
+			// for the primitive case.
+			wrapperName := b.itemName(jsonKey, singularize(exposedName))
 			// The markers are "(Wrapper)" and "(Value)", not the object array's
 			// "(Object)" — measured on Studio Pro's KrogerAPI.JSON_ProductList,
 			// whose primitive array is
@@ -489,6 +521,51 @@ func (b *snippetBuilder) buildElementFromRawArray(exposedName, path, jsonKey, ra
 
 	return arrayElem
 }
+
+// SnippetKeys reports which JSON keys a snippet contains, and which of those
+// reach an ARRAY — the two things a CUSTOM NAME MAP entry can address.
+//
+// It builds the same element tree the writer does rather than re-walking the
+// JSON, so the answer cannot drift from what the names would actually be applied
+// to. rootIsArray says whether `item of "Root"` is meaningful.
+func SnippetKeys(snippet string) (keys, arrayKeys map[string]bool, rootIsArray bool, err error) {
+	elems, err := BuildJsonElementsFromSnippet(snippet, nil, nil)
+	if err != nil {
+		return nil, nil, false, err
+	}
+	keys = map[string]bool{}
+	arrayKeys = map[string]bool{}
+	var walk func(e *JsonElement)
+	walk = func(e *JsonElement) {
+		parts := strings.Split(e.Path, "|")
+		last := parts[len(parts)-1]
+		if last != "" && last[0] != '(' {
+			keys[last] = true
+			if e.ElementType == "Array" {
+				arrayKeys[last] = true
+			}
+		}
+		for _, c := range e.Children {
+			walk(c)
+		}
+	}
+	for _, e := range elems {
+		walk(e)
+		if e.ElementType == "Array" {
+			rootIsArray = true
+			arrayKeys[rootArrayItemKey] = true
+		}
+	}
+	return keys, arrayKeys, rootIsArray, nil
+}
+
+// SingularizeExposedName exposes the primitive-array wrapper's default name so
+// DESCRIBE can tell a generated name from a chosen one.
+func SingularizeExposedName(s string) string { return singularize(s) }
+
+// rootArrayItemKeyExported lets other packages spell the root sentinel without
+// duplicating the literal.
+const RootArrayItemKey = rootArrayItemKey
 
 // singularize returns a naive singular form by stripping trailing "s".
 // Handles common cases: Tags→Tag, Items→Item. Known-incorrect for some words
