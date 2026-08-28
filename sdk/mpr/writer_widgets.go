@@ -125,8 +125,12 @@ func patchConditionalSettings(doc bson.D, w pages.Widget) bson.D {
 		if elem.Key == "ConditionalEditabilitySettings" && bw.ConditionalEditability != nil {
 			doc[i].Value = serializeConditionalEditability(bw.ConditionalEditability)
 		}
-		if elem.Key == "Editable" && bw.ConditionalEditability != nil {
-			doc[i].Value = "Conditional"
+		// Editability: the conditional settings element wins, then an explicit
+		// `editable:`. Only ever narrowed from the template's own value when the
+		// author actually said something, so a widget that never mentions
+		// editability keeps whatever the template had.
+		if elem.Key == "Editable" && (bw.ConditionalEditability != nil || bw.Editable != "") {
+			doc[i].Value = pages.WidgetEditability(bw)
 		}
 	}
 	return doc
