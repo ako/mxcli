@@ -144,7 +144,11 @@ func describePage(ctx *ExecContext, name ast.QualifiedName) error {
 				varTypeName := "Unknown"
 				if vt, ok := v["VariableType"].(map[string]any); ok {
 					if vtType, ok := vt["$Type"].(string); ok {
-						varTypeName = bsonTypeToMDLType(vtType)
+						// An enumeration carries the name it points at, so it has to
+						// be read alongside the $Type or DESCRIBE loses the type again
+						// at the far end of the round trip (#977).
+						enumQN, _ := vt["Enumeration"].(string)
+						varTypeName = pageVariableMDLType(vtType, enumQN)
 					}
 				}
 				varParts = append(varParts, fmt.Sprintf("$%s: %s = %s", varName, varTypeName, mdlQuote(defaultVal)))

@@ -156,16 +156,23 @@ func localVariableToGen(v *pages.LocalVariable) element.Element {
 	assignID(lv)
 	lv.SetName(v.Name)
 	lv.SetDefaultValue(v.DefaultValue)
-	lv.SetVariableType(localVarTypeToGen(v.VariableType))
+	lv.SetVariableType(localVarTypeToGen(v.VariableType, v.EnumerationRef))
 	return lv
 }
 
 // localVarTypeToGen maps a LocalVariable's BSON $Type ("DataTypes$StringType", …)
-// to the gen data-type element. Defaults to String.
-func localVarTypeToGen(typeName string) element.Element {
+// to the gen data-type element.
+//
+// The default is String, which is Mendix's own default for a page variable — but
+// it used to swallow an ENUMERATION too, because the builder handed one over as
+// an ObjectType and nothing here recognised that either. A type was lost twice
+// and reported as "String" both times (upstream #977). The enumeration now
+// arrives with its qualified name and is built as what it is.
+func localVarTypeToGen(typeName, enumerationQN string) element.Element {
 	var t element.Element
 	switch typeName {
-	case "DataTypes$IntegerType":
+	case "DataTypes$IntegerType", "DataTypes$LongType":
+		// gen has no Long: Mendix models both as the same data type here.
 		t = genDT.NewIntegerType()
 	case "DataTypes$BooleanType":
 		t = genDT.NewBooleanType()
@@ -173,6 +180,16 @@ func localVarTypeToGen(typeName string) element.Element {
 		t = genDT.NewDecimalType()
 	case "DataTypes$DateTimeType":
 		t = genDT.NewDateTimeType()
+	case "DataTypes$EnumerationType":
+		// Without a qualified name there is nothing to point at, and a by-name
+		// reference Mendix resolves to null is worse than a String.
+		if enumerationQN != "" {
+			et := genDT.NewEnumerationType()
+			et.SetEnumerationQualifiedName(enumerationQN)
+			t = et
+		} else {
+			t = genDT.NewStringType()
+		}
 	default:
 		t = genDT.NewStringType()
 	}

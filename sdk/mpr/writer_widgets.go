@@ -678,16 +678,42 @@ func serializeClientTemplateParameter(param *pages.ClientTemplateParameter) bson
 		{Key: "GroupDigits", Value: groupDigits},
 	}
 
-	// Build SourceVariable if present (references a page/snippet parameter)
+	// Build SourceVariable if present. Studio Pro distinguishes three bindings on
+	// the same Forms$PageVariable — LocalVariable (a page `Variables:` entry),
+	// SnippetParameter, and PageParameter — and exactly one is populated. This
+	// wrote PageParameter for all three, so a binding to a page-level variable
+	// named a page parameter that does not exist (upstream #977). The modelsdk
+	// writer already branched; the two now agree.
 	var sourceVariable any
 	if param.SourceVariable != "" {
-		sourceVariable = bson.D{
+		fields := bson.D{
 			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
 			{Key: "$Type", Value: "Forms$PageVariable"},
-			{Key: "PageParameter", Value: param.SourceVariable},
-			{Key: "UseAllPages", Value: false},
-			{Key: "Widget", Value: ""},
 		}
+		switch param.SourceVariableKind {
+		case "local":
+			fields = append(fields,
+				bson.E{Key: "LocalVariable", Value: param.SourceVariable},
+				bson.E{Key: "PageParameter", Value: ""},
+				bson.E{Key: "SnippetParameter", Value: ""},
+			)
+		case "snippet":
+			fields = append(fields,
+				bson.E{Key: "LocalVariable", Value: ""},
+				bson.E{Key: "PageParameter", Value: ""},
+				bson.E{Key: "SnippetParameter", Value: param.SourceVariable},
+			)
+		default:
+			fields = append(fields,
+				bson.E{Key: "LocalVariable", Value: ""},
+				bson.E{Key: "PageParameter", Value: param.SourceVariable},
+				bson.E{Key: "SnippetParameter", Value: ""},
+			)
+		}
+		sourceVariable = append(fields,
+			bson.E{Key: "UseAllPages", Value: false},
+			bson.E{Key: "Widget", Value: ""},
+		)
 	}
 
 	return bson.D{

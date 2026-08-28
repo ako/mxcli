@@ -144,8 +144,8 @@ func (pb *pageBuilder) buildPageV3(s *ast.CreatePageStmtV3) (*pages.Page, error)
 			ContainerID:  page.ID,
 			Name:         v.Name,
 			DefaultValue: v.DefaultValue,
-			VariableType: mdlTypeToBsonType(v.DataType),
 		}
+		localVar.VariableType, localVar.EnumerationRef = pageVariableType(v.DataType)
 		page.Variables = append(page.Variables, localVar)
 		pb.localVariables[v.Name] = true
 	}
@@ -279,8 +279,8 @@ func (pb *pageBuilder) buildSnippetV3(s *ast.CreateSnippetStmtV3) (*pages.Snippe
 			ContainerID:  snippet.ID,
 			Name:         v.Name,
 			DefaultValue: v.DefaultValue,
-			VariableType: mdlTypeToBsonType(v.DataType),
 		}
+		localVar.VariableType, localVar.EnumerationRef = pageVariableType(v.DataType)
 		snippet.Variables = append(snippet.Variables, localVar)
 		pb.localVariables[v.Name] = true
 	}
@@ -1604,6 +1604,41 @@ func mdlTypeToBsonType(mdlType string) string {
 		// Could be an entity type - use ObjectType
 		return "DataTypes$ObjectType"
 	}
+}
+
+// pageVariableEnumRe matches an MDL enumeration type, `Enumeration(Module.Name)`,
+// with `Enum` accepted as the grammar's short spelling.
+var pageVariableEnumRe = regexp.MustCompile(`(?i)^enum(?:eration)?\s*\(\s*([^)\s]+)\s*\)$`)
+
+// pageVariableType maps a page variable's MDL type to the BSON $Type Mendix
+// stores, plus the enumeration it points at when there is one.
+//
+// The enumeration's qualified name is in the AST already — the visitor keeps the
+// data type's raw source text — so `Enumeration(Mod.Status)` arrives complete.
+// Before this it fell through mdlTypeToBsonType's default to ObjectType and was
+// then flattened to a StringType by the writer, losing the type twice over and
+// saying nothing either time (upstream #977).
+//
+// An enumeration with no qualified name in the parentheses is NOT reported as
+// one: an EnumerationType with nothing to resolve is a by-name reference Mendix
+// reads as null, which is worse than the old fallback.
+func pageVariableType(mdlType string) (bsonType, enumerationQN string) {
+	if m := pageVariableEnumRe.FindStringSubmatch(strings.TrimSpace(mdlType)); m != nil && m[1] != "" {
+		return "DataTypes$EnumerationType", m[1]
+	}
+	return mdlTypeToBsonType(mdlType), ""
+}
+
+// pageVariableMDLType is the inverse, for DESCRIBE.
+func pageVariableMDLType(bsonType, enumerationQN string) string {
+	if bsonType == "DataTypes$EnumerationType" {
+		if enumerationQN == "" {
+			// The reference did not survive; `Enumeration()` would not re-parse.
+			return "Unknown"
+		}
+		return "Enumeration(" + enumerationQN + ")"
+	}
+	return bsonTypeToMDLType(bsonType)
 }
 
 // bsonTypeToMDLType converts a BSON DataTypes$* type to an MDL type name.

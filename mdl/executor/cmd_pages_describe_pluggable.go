@@ -555,6 +555,36 @@ func extractTextTemplateText(value map[string]any) (string, map[string]any) {
 }
 
 // extractTextTemplateParameters extracts parameters from a TextTemplate (Forms$ClientTemplate).
+// sourceVariableBinding reads the SourceVariable of a stored
+// Forms$ClientTemplateParameter and reports which variable it names, and whether
+// that variable is a page-level LOCAL one.
+//
+// Studio Pro distinguishes three bindings on the same Forms$PageVariable —
+// LocalVariable (a page `Variables:` entry), PageParameter, and SnippetParameter
+// — and exactly one is populated. The two describers used to read this
+// separately, and one of them looked only at PageParameter: a local-variable
+// binding came back as `<unbound>` from that reader and as `$Name` from the
+// other, for the same bytes (upstream #977). One shape, one resolver.
+//
+// A local variable renders bare (`$Name`); the other two carry an AttributeRef
+// and render as `$Name.Attr`, which is why the caller needs the distinction.
+func sourceVariableBinding(param map[string]any) (name string, isLocal bool) {
+	srcVar, ok := param["SourceVariable"].(map[string]any)
+	if !ok || srcVar == nil {
+		return "", false
+	}
+	if v, ok := srcVar["LocalVariable"].(string); ok && v != "" {
+		return v, true
+	}
+	if v, ok := srcVar["PageParameter"].(string); ok && v != "" {
+		return v, false
+	}
+	if v, ok := srcVar["SnippetParameter"].(string); ok && v != "" {
+		return v, false
+	}
+	return "", false
+}
+
 func extractTextTemplateParameters(ctx *ExecContext, textTemplate map[string]any) []string {
 	params := getBsonArrayElements(textTemplate["Parameters"])
 	if params == nil || len(params) == 0 {
@@ -577,21 +607,7 @@ func extractTextTemplateParameters(ctx *ExecContext, textTemplate map[string]any
 			continue
 		}
 
-		// Check for SourceVariable (page parameter / local variable / snippet parameter)
-		sourceVarName := ""
-		isLocalVariable := false
-		if srcVar, ok := pMap["SourceVariable"].(map[string]any); ok && srcVar != nil {
-			// Local page-level variable — Studio Pro UI emits this form for
-			// $varName references that bind to a Variables entry.
-			if name, ok := srcVar["LocalVariable"].(string); ok && name != "" {
-				sourceVarName = name
-				isLocalVariable = true
-			} else if name, ok := srcVar["PageParameter"].(string); ok && name != "" {
-				sourceVarName = name
-			} else if name, ok := srcVar["SnippetParameter"].(string); ok && name != "" {
-				sourceVarName = name
-			}
-		}
+		sourceVarName, isLocalVariable := sourceVariableBinding(pMap)
 
 		// Local variable: emit as bare $varName (no .attribute suffix).
 		if isLocalVariable {

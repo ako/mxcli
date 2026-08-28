@@ -1,0 +1,58 @@
+-- mendixlabs/mxcli#977 — page variables, two separate faults with different
+-- diagnoses. Both reported as "silently dropped"; only one of them was.
+--
+--   mxcli exec mdl-examples/bug-tests/page-variable-bindings.mdl -p app.mpr
+--   mxcli describe page PV.VarPage        -- both must survive
+--   mx check app.mpr                      -- 0 new errors
+--
+-- PART A — ContentParams bound to a page variable rendered as `<unbound>`.
+--
+--   On the DEFAULT engine the model was already correct: the parameter stored
+--   SourceVariable { $Type: "Forms$PageVariable", LocalVariable: "Label" }, and
+--   the READER could not see it — it looked only at PageParameter, found no
+--   AttributeRef beside it, and fell through to "<unbound>". Nothing was lost
+--   until the describe output was executed again, at which point it would be.
+--
+--   The two describers disagreed about the same bytes: the pluggable one read
+--   LocalVariable, the other did not. They now share one resolver.
+--
+--   On the LEGACY engine the write really was wrong — it put every binding in
+--   PageParameter, so `$Label` named a page parameter that does not exist. Same
+--   three-way branch as the modelsdk writer now.
+--
+-- PART B — an Enumeration-typed variable was stored as a String.
+--
+--   Two silent defaults, stacked: the builder had no enumeration case and
+--   returned ObjectType, then the writer had no ObjectType case and returned a
+--   StringType. That is also the reporter's second complaint — a variable typed
+--   Unknown reverting to String on the next page rewrite.
+--
+--   Stored now:  VariableType { $Type: "DataTypes$EnumerationType",
+--                               Enumeration: "PV.ENUM_Status" }
+--
+-- CONTROLS on the same page, all of which worked before: $Show (Boolean) and
+-- $Label (String) must keep their types, and the round trip must report
+-- `Unchanged page PV.VarPage` — describe → exec re-deriving the same bytes is
+-- what proves the reader and the writer now agree.
+
+create module PV;
+create enumeration PV.ENUM_Status (Open 'Open', Closed 'Closed');
+create persistent entity PV.Thing ("Title": String(200));
+
+create or modify page PV.VarPage
+  (
+    Title: 'Var page',
+    Layout: Atlas_Core.Atlas_Default,
+    Params: { $Thing: PV.Thing },
+    Variables: {
+      $Filter: Enumeration(PV.ENUM_Status) = 'PV.ENUM_Status.Open',
+      $Show: Boolean = 'true',
+      $Label: String = '''hello'''
+    }
+  )
+  {
+    DATAVIEW dvThing (DataSource: $Thing) {
+      DYNAMICTEXT dtA (Content: 'Label is {1}', ContentParams: [{1} = $Label])
+      TEXTBOX txtTitle (Label: 'Title', Attribute: Title)
+    }
+  };
