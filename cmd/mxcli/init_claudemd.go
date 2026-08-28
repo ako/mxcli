@@ -487,6 +487,7 @@ func generateClaudeMD(projectName, mprFile string) string {
 	w("| Skill | Purpose |\n")
 	w("|-------|--------|\n")
 	w("| test-app | Playwright UI tests + DB assertions |\n")
+	w("| record-narrated-demo | Narrated walkthrough video, after the journey passes |\n")
 	w("| test-microflows | Microflow unit testing (.test.mdl files) |\n")
 	w("| write-lint-rules | Custom Starlark lint rule authoring |\n")
 	w("| assess-quality | **Full project quality assessment** against best practices |\n")
