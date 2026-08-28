@@ -419,38 +419,7 @@ Container Runtime:
 					}
 				}
 
-				skillCount2 := 0
-				err = fs.WalkDir(skillsFS, "skills", func(path string, d fs.DirEntry, err error) error {
-					if err != nil {
-						return err
-					}
-					if d.IsDir() {
-						return nil
-					}
-					// Skip README
-					if d.Name() == "README.md" {
-						return nil
-					}
-					content, err := skillsFS.ReadFile(path)
-					if err != nil {
-						return err
-					}
-					// Derive skill name from filename (strip .md)
-					skillName := strings.TrimSuffix(d.Name(), ".md")
-					// Create per-skill subdirectory
-					skillDir := filepath.Join(opencodeSkillsDir, skillName)
-					if err := os.MkdirAll(skillDir, 0755); err != nil {
-						return err
-					}
-					// Wrap content with OpenCode frontmatter
-					wrapped := wrapSkillContent(skillName, content)
-					targetPath := filepath.Join(skillDir, "SKILL.md")
-					if err := os.WriteFile(targetPath, wrapped, 0644); err != nil {
-						return err
-					}
-					skillCount2++
-					return nil
-				})
+				skillCount2, err := writeWrappedSkills(opencodeSkillsDir, wrapSkillContent)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "  Error writing OpenCode skills: %v\n", err)
 				} else {
@@ -460,34 +429,7 @@ Container Runtime:
 			// Vibe-specific: write all skills as .vibe/skills/<name>/SKILL.md
 			if toolName == "vibe" {
 				vibeSkillsDir := filepath.Join(absDir, ".vibe", "skills")
-				vibeSkillCount := 0
-				err = fs.WalkDir(skillsFS, "skills", func(path string, d fs.DirEntry, err error) error {
-					if err != nil {
-						return err
-					}
-					if d.IsDir() {
-						return nil
-					}
-					if d.Name() == "README.md" {
-						return nil
-					}
-					content, err := skillsFS.ReadFile(path)
-					if err != nil {
-						return err
-					}
-					skillName := strings.TrimSuffix(d.Name(), ".md")
-					skillDir := filepath.Join(vibeSkillsDir, skillName)
-					if err := os.MkdirAll(skillDir, 0755); err != nil {
-						return err
-					}
-					wrapped := wrapSkillForVibe(skillName, content)
-					targetPath := filepath.Join(skillDir, "SKILL.md")
-					if err := os.WriteFile(targetPath, wrapped, 0644); err != nil {
-						return err
-					}
-					vibeSkillCount++
-					return nil
-				})
+				vibeSkillCount, err := writeWrappedSkills(vibeSkillsDir, wrapSkillForVibe)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "  Error writing Vibe skills: %v\n", err)
 				} else {
