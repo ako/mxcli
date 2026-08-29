@@ -1,0 +1,64 @@
+-- Regression: a literal tab in an MDL string reached the model as the two
+-- characters `\t`, so a tab-delimited export came out as one cell per row and
+-- the failure looked like a Java bug. (ako/mxcli-captrack register #5)
+--
+-- Measured end to end against a running Mendix 11.13 runtime, reading the
+-- value straight out of Postgres:
+--
+--   before:  length 4, bytes 61 5c 74 62   ->  a  \  t  b
+--   after:   length 3, bytes 61 09 62      ->  a <TAB> b
+--
+-- Mendix's expression engine has exactly one escape -- an apostrophe is doubled
+-- -- and no backslash escapes at all, so `'a\tb'` in a stored expression IS a
+-- backslash followed by a `t`.
+--
+-- The escaping was deliberate, on the premise that the MDL lexer rejects raw
+-- control characters in a literal. It does not: STRING_LITERAL is
+--
+--   '\'' ( ~['\\] | '\\' . | '\'\'' )* '\''
+--
+-- and `~['\\]` admits every byte but an apostrophe and a backslash. A raw
+-- NEWLINE already round-tripped for a different reason (a multi-line expression
+-- is kept as raw source text and never reaches the escaping at all), which is
+-- why only the tab ever looked broken.
+--
+-- KNOWN REMAINING GAP, deliberately not fixed here. To write a LITERAL
+-- backslash followed by n/r/t you spell it `\\t` in MDL, and mxcli stores
+-- `\\t` -- three characters, where the author meant two. That is the same class
+-- of defect as the tab, and it is load-bearing: `describe` emits the stored
+-- expression VERBATIM into MDL (cmd_microflows_format_action.go, `initialValue
+-- := a.InitialValue`), so a stored two-character `\t` would reparse as a tab.
+-- Removing the doubling therefore requires describe to escape on output, at
+-- every site that emits an expression -- separate work.
+--
+-- Its blast radius is small and measured: across 33,645 units in 90 projects,
+-- ZERO Studio Pro-authored string values contain a backslash escape, so no real
+-- document round-trips through the lossy path today.
+--
+-- Run with:  mxcli check captrack-expression-literal-tab.mdl
+-- Expect:    Check passed -- and `describe microflow` re-emits each literal
+--            with its control character intact.
+
+create microflow MyFirstModule.MF_TabLiteral()
+begin
+  -- A real tab. Must reach the stored expression as one 0x09 byte.
+  declare $tabbed String = 'col	col';
+
+  -- A real newline. Already worked, and must keep working -- this is the
+  -- control that says the fix did not simply move the breakage.
+  declare $lines String = 'line1
+line2';
+
+  -- `\t` in MDL SOURCE is MDL's own escape and decodes to a tab, so this
+  -- stores a tab too -- it is the same case as the first one, spelled
+  -- differently. (It read as "a literal backslash-t" at first glance; the
+  -- stored bytes say otherwise.)
+  declare $alsoTab String = 'also a tab: \t';
+
+  -- Regex escapes must pass through untouched: Mendix hands `\d` to the regex
+  -- compiler verbatim.
+  declare $regex String = '^\d+$';
+
+  -- The engine's only real escape.
+  declare $quoted String = 'it''s here';
+end

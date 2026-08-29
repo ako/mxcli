@@ -166,28 +166,38 @@ func mendixFunctionName(name string) string {
 	return name
 }
 
-// quoteExpressionLiteral wraps a Mendix expression string literal in single
-// quotes and applies the narrowest possible escaping needed for MDL roundtrip:
+// quoteExpressionLiteral renders a Go string as a MENDIX expression literal.
 //
-//   - ASCII control characters that STRING_LITERAL does not accept raw — 0x0A
-//     (newline), 0x0D (carriage return), 0x09 (tab) — are written as `\n`, `\r`,
-//     `\t`. The MDL lexer rejects raw newlines inside single-quoted literals,
-//     so emitting them verbatim produces parse errors on re-execute.
-//   - Apostrophes are doubled (MDL's own delimiter-escape convention).
-//   - Backslashes followed by one of the recognised escape letters (n/r/t/\/')
-//     are doubled so the visitor's unquoteString preserves them — without this,
-//     the source literal `\\n` would come back as a real newline on reparse.
-//   - For any other backslash-prefixed byte (e.g. `\d`, `\w`, `\p{...}` inside
-//     regexes) the backslash is emitted as-is and the follower is written by the
-//     next loop iteration via the default arm, so the two bytes end up in the
-//     output unchanged. This keeps Mendix regular-expression escape sequences
-//     bit-exact across describe→exec roundtrips; the output is byte-identical
-//     to passthrough even though the implementation walks the bytes separately.
+// Its output goes into the stored document, so it must be what Mendix's
+// expression engine reads — and that engine has exactly ONE escape: an
+// apostrophe is doubled, SQL-style. There are no backslash escapes.
+// Measured against a running 11.13 runtime: a microflow storing 'a\tb'
+// (backslash, t) put FOUR bytes in the database, 61 5c 74 62 — a literal
+// backslash and a 't', not a tab. That is the bug this function used to have.
 //
-// This is narrower than mdlQuote (used for @annotation / @caption text where
-// the AST value is a plain string): mdlQuote unconditionally doubles every
-// backslash, which would break expression literals containing regex escape
-// sequences that the Mendix engine consumes literally.
+// It escaped \n, \r and \t on the premise that "STRING_LITERAL does not accept
+// them raw and the describe output has to survive check". The premise is false
+// on both halves. The lexer rule is
+//
+//	STRING_LITERAL : '\'' ( ~['\\] | '\\' . | '\'\'' )* '\''
+//
+// and `~['\\]` admits every byte except an apostrophe and a backslash —
+// newline, tab and carriage return included. A raw newline already round-tripped
+// through describe → exec for exactly that reason, which is why only the tab
+// looked broken: the newline path never reached the escape.
+//
+// So the escaping bought nothing and cost the value. A raw control character is
+// now emitted as itself: correct in the document, and parseable on the way back.
+//
+// What IS still escaped, and must be:
+//
+//   - an apostrophe, doubled — the engine's only escape, and the MDL lexer's too;
+//   - a backslash whose NEXT byte is one of n/r/t/\/', doubled — otherwise
+//     unquoteString would decode the pair into a control character on reparse,
+//     turning a literal two-character `\t` into a tab. A backslash before any
+//     other byte passes through verbatim, so a regex literal like `^\d+$`
+//     survives (the engine reads `\d` literally and hands it to the regex
+//     compiler).
 func quoteExpressionLiteral(s string) string {
 	var b strings.Builder
 	b.Grow(len(s) + 2)
@@ -195,12 +205,6 @@ func quoteExpressionLiteral(s string) string {
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		switch c {
-		case '\n':
-			b.WriteString(`\n`)
-		case '\r':
-			b.WriteString(`\r`)
-		case '\t':
-			b.WriteString(`\t`)
 		case '\'':
 			b.WriteString(`''`)
 		case '\\':
@@ -250,13 +254,19 @@ func quoteExpressionLiteral(s string) string {
 }
 
 // expressionToString converts an AST Expression to a Mendix expression string.
-// Note: string literals are quoted via mdlQuote, which escapes backslashes,
-// newlines, tabs, and carriage returns for MDL round-trip safety. Mendix's
-// expression engine does not treat `\n` etc. as escapes, so a string literal
-// with an embedded raw newline round-trips as `\n` in the MDL source (parseable)
-// but is re-serialised into BSON as a two-character `\n` sequence rather than a
-// real newline. This is the correct trade-off for describe→re-execute flows;
-// the alternative (emitting raw control chars in MDL) would break the parser.
+//
+// The string it returns is STORED — `action.Expression = expressionToString(...)`
+// — so it is Mendix's grammar throughout, not MDL's. Literals go through
+// quoteExpressionLiteral, which doubles an apostrophe and otherwise emits the
+// value as it is.
+//
+// This used to say the opposite, and reasoned from it: that escaping a control
+// character was "the correct trade-off for describe→re-execute flows" because
+// "emitting raw control chars in MDL would break the parser". Both halves were
+// wrong. STRING_LITERAL's `~['\\]` accepts every byte but an apostrophe and a
+// backslash, so raw control characters parse — and the trade-off was not one,
+// because the escaped form is what the runtime then stores: 'a\tb' became the
+// four bytes `a`, `\`, `t`, `b` in the database, not a tab.
 func expressionToString(expr ast.Expression) string {
 	// Check for nil interface
 	if expr == nil {
