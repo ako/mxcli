@@ -125,6 +125,19 @@ func TestBuildMenuItemBson_NoIconStillWritesNull(t *testing.T) {
 	}
 }
 
+// Studio Pro stores the absence of a page-title override as an explicit null.
+// An empty TextTemplate is a real override to "" and raises CW0263.
+func TestBuildFormSettingsBson_NoTitleOverrideStaysNull(t *testing.T) {
+	settings := buildFormSettingsBson("M.Dash")
+	title, present := navIconEntry(settings, "TitleOverride")
+	if !present {
+		t.Fatal("TitleOverride key missing; Studio Pro writes an explicit null")
+	}
+	if title != nil {
+		t.Fatalf("TitleOverride = %#v, want nil", title)
+	}
+}
+
 // The read side has to recognise all three variants, because a project authored
 // in Studio Pro contains all three. The fixtures are the literal shapes dumped
 // from ako/mxcli-ledger's navigation document.

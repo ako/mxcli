@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- **Fixed navigation page actions overriding page titles with an empty template** — `CREATE OR REPLACE NAVIGATION` wrote `FormSettings.TitleOverride` as an empty `Microflows$TextTemplate`. That is an explicit override to an empty string, not “no override”, so every newly authored page menu item added a CW0263 warning and could render without the page title. All three navigation writers now emit the Studio Pro-authored shape, an explicit null, matching the already-correct page-button and show-page writers.
+
 ## [0.20.0] - 2026-08-28
 
 Headline: **Mendix 11.14 and Java 25, and the layer wrapped around a page — layouts, navigation profiles, mappings, translations and themes — becomes something a script can write.** A blank 11.14 project now builds, boots and runs as generated. `CREATE LAYOUT` closes the last document a page depends on that MDL could not write, so an app no longer has to start on an Atlas layout it cannot touch; a census of 327 real mapping documents turned the import/export mapping surface from a guess into a list and this release works through it; translations survive a rewrite and can be authored in bulk; and a project can carry, scaffold and switch between its own themes. Running underneath all of it is one theme: **a statement that reported success now has to have meant something.** Several of the fixes below are round-trips where `describe` printed a document mxcli could not express as one it could, and that output parsed — so the model was rebuilt, valid, and different.
