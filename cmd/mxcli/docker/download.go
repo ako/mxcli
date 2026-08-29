@@ -357,11 +357,59 @@ func DownloadRuntime(version string, w io.Writer) (string, error) {
 // extractTarGzStrip1 extracts a tar.gz stream to the target directory,
 // stripping the first path component (equivalent to tar --strip-components=1).
 func extractTarGzStrip1(r io.Reader, targetDir string) error {
+	return extractTarGzInto(r, targetDir, true)
+}
+
+// extractTarGz extracts a tar.gz stream to the target directory.
+func extractTarGz(r io.Reader, targetDir string) error {
+	return extractTarGzInto(r, targetDir, false)
+}
+
+// extractTarGzInto extracts a tar.gz stream into targetDir, optionally
+// stripping the first path component.
+//
+// Every write goes through *os.Root, so containment is decided by the kernel
+// resolving the path (openat2 RESOLVE_BENEATH on Linux) rather than by
+// comparing strings. That distinction is the whole fix. The lexical guard this
+// replaced — a "does the joined path still start with targetDir" test, plus a
+// lexical resolution of each symlink's target — looks airtight entry by entry
+// and is escapable in two steps, because it resolves a link against its
+// LEXICAL parent while the OS resolves it against its REAL one:
+//
+//	sub/            (dir)
+//	sub/up -> ..    lexically targetDir; allowed, and correct — it IS targetDir
+//	sub/up/w -> ..  lexically targetDir/sub; allowed. Really targetDir/w -> the
+//	                PARENT of targetDir, because sub/up is already targetDir
+//	sub/up/w/pwned  no ".." in the name, passes every check, lands outside
+//
+// Measured before the fix: `pwned` written to targetDir's parent, and with one
+// more link in the chain, into any sibling directory. Both are refused now, and
+// TestExtractTarGz_RefusesChainedUpDirSymlinks holds the archives.
+//
+// The symlink target check is kept as well, so a hostile archive cannot leave
+// an outward-pointing symlink in the cache for whatever reads it later — os.Root
+// stops US following it, not mxbuild or the JVM. It resolves the parent with
+// EvalSymlinks for the reason above.
+//
+// Neither archive this extracts contains a symlink at all: measured on the
+// 11.13.0 CDN tarballs, the runtime is 3,646 files + 279 directories and mxbuild
+// is 33,188 + 5,036, with no other entry type in either. So refusing one cannot
+// break a real download.
+//
+// CodeQL go/unsafe-unzip-symlink, alerts 4-7 (both functions, both the header
+// name and the link name).
+func extractTarGzInto(r io.Reader, targetDir string, strip1 bool) error {
 	gz, err := gzip.NewReader(r)
 	if err != nil {
 		return fmt.Errorf("gzip reader: %w", err)
 	}
 	defer gz.Close()
+
+	root, err := os.OpenRoot(targetDir)
+	if err != nil {
+		return fmt.Errorf("opening extraction root %s: %w", targetDir, err)
+	}
+	defer root.Close()
 
 	tr := tar.NewReader(gz)
 	for {
@@ -373,67 +421,39 @@ func extractTarGzStrip1(r io.Reader, targetDir string) error {
 			return fmt.Errorf("reading tar: %w", err)
 		}
 
-		// Strip the first path component
-		name := header.Name
-		if strings.Contains(name, "..") {
-			continue
-		}
-
-		// Find the first / and strip everything before it
-		idx := strings.IndexByte(name, '/')
-		if idx < 0 {
-			// Top-level entry (the directory itself), skip
-			continue
-		}
-		name = name[idx+1:]
-		if name == "" {
-			continue
-		}
-
-		target := filepath.Join(targetDir, filepath.FromSlash(name))
-
-		// Ensure the target is within targetDir
-		if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(targetDir)) {
+		name, ok := tarEntryPath(header.Name, strip1)
+		if !ok {
 			continue
 		}
 
 		switch header.Typeflag {
 		case tar.TypeDir:
-			if err := os.MkdirAll(target, 0755); err != nil {
-				return fmt.Errorf("creating directory %s: %w", target, err)
+			if err := root.MkdirAll(name, 0755); err != nil {
+				return fmt.Errorf("creating directory %s: %w", name, err)
 			}
 		case tar.TypeReg:
-			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
-				return fmt.Errorf("creating parent directory for %s: %w", target, err)
+			if err := mkdirAllParent(root, name); err != nil {
+				return fmt.Errorf("creating parent directory for %s: %w", name, err)
 			}
-			f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, header.FileInfo().Mode())
+			f, err := root.OpenFile(name, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, header.FileInfo().Mode())
 			if err != nil {
-				return fmt.Errorf("creating file %s: %w", target, err)
+				return fmt.Errorf("creating file %s: %w", name, err)
 			}
 			if _, err := io.Copy(f, tr); err != nil {
 				f.Close()
-				return fmt.Errorf("writing file %s: %w", target, err)
+				return fmt.Errorf("writing file %s: %w", name, err)
 			}
 			f.Close()
 		case tar.TypeSymlink:
-			linkTarget := header.Linkname
-			// Resolve effective symlink destination and verify it stays within targetDir
-			var resolved string
-			if filepath.IsAbs(linkTarget) {
-				resolved = filepath.Clean(linkTarget)
-			} else {
-				resolved = filepath.Clean(filepath.Join(filepath.Dir(target), linkTarget))
+			if err := mkdirAllParent(root, name); err != nil {
+				return fmt.Errorf("creating parent directory for symlink %s: %w", name, err)
 			}
-			allowedPrefix := filepath.Clean(targetDir) + string(os.PathSeparator)
-			if !strings.HasPrefix(resolved, allowedPrefix) && resolved != filepath.Clean(targetDir) {
+			if !symlinkStaysInside(targetDir, name, header.Linkname) {
 				continue
 			}
-			os.Remove(target)
-			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
-				return fmt.Errorf("creating parent directory for symlink %s: %w", target, err)
-			}
-			if err := os.Symlink(linkTarget, target); err != nil {
-				return fmt.Errorf("creating symlink %s: %w", target, err)
+			_ = root.Remove(name) // replace an existing entry; absent is fine
+			if err := root.Symlink(header.Linkname, name); err != nil {
+				return fmt.Errorf("creating symlink %s: %w", name, err)
 			}
 		}
 	}
@@ -441,77 +461,78 @@ func extractTarGzStrip1(r io.Reader, targetDir string) error {
 	return nil
 }
 
-// extractTarGz extracts a tar.gz stream to the target directory.
-func extractTarGz(r io.Reader, targetDir string) error {
-	gz, err := gzip.NewReader(r)
+// tarEntryPath turns a tar header name into a path relative to the extraction
+// root, reporting false for an entry that must be skipped.
+//
+// Containment is filepath.IsLocal, which rejects an absolute path, a path that
+// escapes through a ".." ELEMENT, and (on Windows) a reserved device name. The
+// substring test it replaces — strings.Contains(name, "..") — also dropped
+// legitimate files: "foo..bar" never made it out of the archive, silently.
+func tarEntryPath(name string, strip1 bool) (string, bool) {
+	name = strings.TrimPrefix(name, "./")
+	if strip1 {
+		// Everything up to the first "/" is the archive's top-level directory.
+		idx := strings.IndexByte(name, '/')
+		if idx < 0 {
+			return "", false // the top-level entry itself
+		}
+		name = name[idx+1:]
+	}
+	name = strings.TrimSuffix(name, "/")
+	if name == "" || name == "." {
+		return "", false
+	}
+	local := filepath.FromSlash(name)
+	if !filepath.IsLocal(local) {
+		return "", false
+	}
+	return local, true
+}
+
+// mkdirAllParent creates the parent directory of a root-relative path.
+func mkdirAllParent(root *os.Root, name string) error {
+	dir := filepath.Dir(name)
+	if dir == "." || dir == string(os.PathSeparator) {
+		return nil
+	}
+	return root.MkdirAll(dir, 0755)
+}
+
+// symlinkStaysInside reports whether a symlink placed at rel (relative to
+// targetDir) and pointing at linkname would resolve inside targetDir.
+//
+// The parent is resolved with EvalSymlinks, not joined lexically: an earlier
+// entry may have made it a symlink, and then the lexical and the real parent
+// disagree. Resolving lexically is what let a two-link chain out. Both sides are
+// evaluated so a targetDir that is itself reached through a link (/tmp on macOS)
+// compares equal to itself.
+func symlinkStaysInside(targetDir, rel, linkname string) bool {
+	if linkname == "" {
+		return false
+	}
+	root, err := filepath.EvalSymlinks(targetDir)
 	if err != nil {
-		return fmt.Errorf("gzip reader: %w", err)
+		return false
 	}
-	defer gz.Close()
-
-	tr := tar.NewReader(gz)
-	for {
-		header, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("reading tar: %w", err)
-		}
-
-		// Sanitize path to prevent directory traversal
-		name := header.Name
-		if strings.Contains(name, "..") {
-			continue
-		}
-
-		target := filepath.Join(targetDir, filepath.FromSlash(name))
-
-		// Ensure the target is within targetDir
-		if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(targetDir)) {
-			continue
-		}
-
-		switch header.Typeflag {
-		case tar.TypeDir:
-			if err := os.MkdirAll(target, 0755); err != nil {
-				return fmt.Errorf("creating directory %s: %w", target, err)
-			}
-		case tar.TypeReg:
-			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
-				return fmt.Errorf("creating parent directory for %s: %w", target, err)
-			}
-			f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, header.FileInfo().Mode())
-			if err != nil {
-				return fmt.Errorf("creating file %s: %w", target, err)
-			}
-			if _, err := io.Copy(f, tr); err != nil {
-				f.Close()
-				return fmt.Errorf("writing file %s: %w", target, err)
-			}
-			f.Close()
-		case tar.TypeSymlink:
-			linkTarget := header.Linkname
-			// Resolve effective symlink destination and verify it stays within targetDir
-			var resolved string
-			if filepath.IsAbs(linkTarget) {
-				resolved = filepath.Clean(linkTarget)
-			} else {
-				resolved = filepath.Clean(filepath.Join(filepath.Dir(target), linkTarget))
-			}
-			allowedPrefix := filepath.Clean(targetDir) + string(os.PathSeparator)
-			if !strings.HasPrefix(resolved, allowedPrefix) && resolved != filepath.Clean(targetDir) {
-				continue
-			}
-			os.Remove(target) // Remove existing if any
-			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
-				return fmt.Errorf("creating parent directory for symlink %s: %w", target, err)
-			}
-			if err := os.Symlink(linkTarget, target); err != nil {
-				return fmt.Errorf("creating symlink %s: %w", target, err)
-			}
-		}
+	parent, err := filepath.EvalSymlinks(filepath.Join(targetDir, filepath.Dir(rel)))
+	if err != nil {
+		return false
 	}
+	if !pathWithin(root, parent) {
+		return false
+	}
+	dest := linkname
+	if !filepath.IsAbs(dest) {
+		dest = filepath.Join(parent, dest)
+	}
+	return pathWithin(root, filepath.Clean(dest))
+}
 
-	return nil
+// pathWithin reports whether p is root or lives under it. The separator matters:
+// a bare prefix test puts /cache/runtime-evil inside /cache/runtime.
+func pathWithin(root, p string) bool {
+	if p == root {
+		return true
+	}
+	return strings.HasPrefix(p, root+string(os.PathSeparator))
 }
