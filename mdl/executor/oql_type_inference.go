@@ -57,8 +57,8 @@ func inferOQLTypes(ctx *ExecContext, oqlQuery string, declaredAttrs []ast.ViewAt
 		}
 
 		// Check for explicit alias
-		if aliasMatch := regexp.MustCompile(`(?i)\s+as\s+(\w+)\s*$`).FindStringSubmatch(expr); aliasMatch != nil {
-			col.Alias = aliasMatch[1]
+		if aliasMatch := oqlAliasSuffixRe.FindStringSubmatch(expr); aliasMatch != nil {
+			col.Alias = unquoteOQLIdent(aliasMatch[1])
 			expr = strings.TrimSuffix(expr, aliasMatch[0])
 			col.Expression = strings.TrimSpace(expr)
 		}
@@ -91,6 +91,44 @@ func extractAliasMap(oql string) map[string]string {
 	return aliasMap
 }
 
+// oqlIdent matches one OQL identifier in either spelling: bare, or quoted.
+//
+// A quoted alias exists because an OQL reserved word has to be quoted to
+// survive MxBuild (CE0174), and a view entity's declared attribute name IS its
+// select alias — so a view column called `Month` can only be written `as
+// "Month"`. Every alias-detection pattern below has to know that form, or a
+// quoted alias reads as NO alias and MDL030 reports "select column N has no as
+// alias" on a query that has one.
+const oqlIdent = `(?:"[^"\r\n]*"|` + "`[^`\r\n]*`" + `|\w+)`
+
+// oqlAliasSuffixRe matches a trailing `AS <alias>` on a select column, with the
+// alias captured. Built once from oqlIdent so the five places that strip or read
+// an alias cannot disagree about what an alias looks like.
+var oqlAliasSuffixRe = regexp.MustCompile(`(?i)\s+as\s+(` + oqlIdent + `)\s*$`)
+
+// unquoteOQLIdent strips the quoting from an OQL identifier, so an alias can be
+// compared against a declared attribute name. The stored QUERY keeps its quotes
+// — they are what MxBuild needs — but the NAME the alias denotes is the bare
+// word.
+// isQuotedOQLIdent reports whether an identifier carries MDL quoting.
+func isQuotedOQLIdent(s string) bool {
+	s = strings.TrimSpace(s)
+	if len(s) < 2 {
+		return false
+	}
+	return (s[0] == '"' && s[len(s)-1] == '"') || (s[0] == '`' && s[len(s)-1] == '`')
+}
+
+func unquoteOQLIdent(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) >= 2 {
+		if (s[0] == '"' && s[len(s)-1] == '"') || (s[0] == '`' && s[len(s)-1] == '`') {
+			return s[1 : len(s)-1]
+		}
+	}
+	return s
+}
+
 // ValidateOQLTypes performs static type checking of OQL SELECT expressions against
 // declared view entity attributes. Does not require a project connection — it only
 // checks types that can be inferred from the OQL syntax itself (aggregate functions,
@@ -111,7 +149,7 @@ func ValidateOQLTypes(oql string, attrs []ast.ViewAttribute) []linter.Violation 
 		}
 
 		// Strip AS alias
-		if aliasMatch := regexp.MustCompile(`(?i)\s+as\s+\w+\s*$`).FindStringSubmatch(expr); aliasMatch != nil {
+		if aliasMatch := oqlAliasSuffixRe.FindStringSubmatch(expr); aliasMatch != nil {
 			expr = strings.TrimSuffix(expr, aliasMatch[0])
 		}
 		expr = strings.TrimSpace(expr)
@@ -168,7 +206,7 @@ func inferTypeStatic(expr string) ast.DataType {
 				cols := parseSelectColumns(innerSelect)
 				if len(cols) == 1 {
 					col := cols[0]
-					if aliasMatch := regexp.MustCompile(`(?i)\s+as\s+\w+\s*$`).FindStringSubmatch(col); aliasMatch != nil {
+					if aliasMatch := oqlAliasSuffixRe.FindStringSubmatch(col); aliasMatch != nil {
 						col = strings.TrimSuffix(col, aliasMatch[0])
 					}
 					return inferTypeStatic(strings.TrimSpace(col))
@@ -981,10 +1019,34 @@ func ValidateOQLSyntax(oql string) []linter.Violation {
 	selectClause := extractSelectClause(oql)
 	if selectClause != "" {
 		columns := parseSelectColumns(selectClause)
-		aliasPattern := regexp.MustCompile(`(?i)\s+as\s+\w+\s*$`)
+		aliasPattern := oqlAliasSuffixRe
 		for i, col := range columns {
 			col = strings.TrimSpace(col)
 			if col == "" {
+				continue
+			}
+			// MDL072: the alias is there but quoted, which OQL does not accept.
+			// Reported before MDL030 for this column, because "has no as alias"
+			// is actively misleading about a column that plainly has one.
+			if m := aliasPattern.FindStringSubmatch(col); m != nil && isQuotedOQLIdent(m[1]) {
+				bare := unquoteOQLIdent(m[1])
+				violations = append(violations, linter.Violation{
+					RuleID:   "MDL072",
+					Severity: linter.SeverityError,
+					Message: fmt.Sprintf(
+						"select column %d has a quoted alias %s — OQL requires a bare identifier "+
+							"here, and MxBuild rejects the view with CE0174 (the alias position "+
+							"lists only IDENTIFIER as valid, unlike a source position which also "+
+							"allows OPEN_QUOTE)",
+						i+1, m[1]),
+					Location: linter.Location{DocumentType: "viewentity"},
+					Suggestion: fmt.Sprintf(
+						"Write it unquoted: `as %s`. Note quoting IS allowed in a source position "+
+							"(`s.%s`, `from Module.%s as s`) — the alias is the one place it is not, "+
+							"so if %q is an OQL reserved word the view column has to be renamed "+
+							"(e.g. %sValue) rather than quoted.",
+						bare, m[1], m[1], bare, bare),
+				})
 				continue
 			}
 			if !aliasPattern.MatchString(col) {
@@ -1055,10 +1117,21 @@ func ValidateOQLSyntax(oql string) []linter.Violation {
 	// keyword (notably date-part words like Quarter/Month/Year) parses fine in
 	// mxcli but makes MxBuild reject the view with CE0174 "The '<word>' part is
 	// incomplete or incorrect", because OQL reads the bare word as the keyword.
-	// mxcli cannot escape it — the OQL grammar has no quoted-identifier form — so
-	// surface it here instead of leaving it a silent-until-mxbuild failure. A
-	// reserved word counts only in identifier position: after a `.` (attribute
-	// access, `s.Quarter`) or after `as` (alias). Warning, not error: the set is
+	// OQL DOES have a quoted-identifier form — double quotes, as in SQL — and
+	// mxcli passes it through unchanged: `s."Month"` and `from Module."Year"`
+	// both build at 0 errors (measured, 11.13.0). So this is surfaced as the
+	// prompt to quote, not as an unfixable name.
+	//
+	// The check matches only the UNQUOTED form, and by accident rather than by
+	// design: the regex anchors on `.` or `as` followed immediately by the word,
+	// and a `"` sits in between. TestMDL032_DoesNotFireOnAQuotedIdentifier pins
+	// that, because the rule's advice is wrong the day it stops holding.
+	//
+	// A reserved word counts only in identifier position: after a `.` (attribute
+	// access, `s.Quarter`) or after `as` (alias). The alias is the one position
+	// quoting cannot rescue, and the limit is OQL's own: it takes a bare
+	// identifier there for ANY name (`as "Total"` is CE0174 too). So a view
+	// column carrying the name has to be renamed. Warning, not error: the set is
 	// the common date-part list, not an exhaustive mirror of Mendix's grammar.
 	reservedIdentRe := regexp.MustCompile(`(?i)(?:\.\s*|\bas\s+)(` + oqlReservedWordAlternation + `)\b`)
 	seenReserved := map[string]bool{}
@@ -1072,10 +1145,20 @@ func ValidateOQLSyntax(oql string) []linter.Violation {
 			RuleID:   "MDL032",
 			Severity: linter.SeverityWarning,
 			Message: fmt.Sprintf(
-				"OQL reserved word %q used as an identifier — MxBuild rejects the view with CE0174 (mxcli cannot quote it); rename the attribute",
-				word),
-			Location:   linter.Location{DocumentType: "viewentity"},
-			Suggestion: fmt.Sprintf("Rename the %q column/attribute (both the source reference and the alias), e.g. %qValue or a domain term", word, word),
+				"OQL reserved word %q used unquoted — MxBuild rejects the view with CE0174; quote it as %q",
+				word, word),
+			Location: linter.Location{DocumentType: "viewentity"},
+			// The regex sees "after a dot or after AS" and cannot tell which
+			// kind of name it matched, so the suggestion must not assert one:
+			// `from Module.Year as y` matches the ENTITY name, and an entity
+			// called Year trips the same CE0174 (measured on 11.13.0).
+			//
+			// Quoting is the fix in a SOURCE position — `s."Month"`,
+			// `from Module."Year"` both build at 0 errors, and mxcli writes the
+			// quotes through unchanged. It is NOT available for an alias: the
+			// MDL grammar rejects `as "X"` for any X, reserved or not. So a view
+			// column cannot carry the name, and only that case needs a rename.
+			Suggestion: fmt.Sprintf("In a source position, quote it: `s.%q`, `from Module.%q as s` — OQL takes double-quoted identifiers like SQL. For an ALIAS / view column name this is not available (MDL cannot express `as %q`), so rename that one, e.g. %qValue. MDL071 reports the collision at CREATE time, before the name spreads", word, word, word, word),
 		})
 	}
 
