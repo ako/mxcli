@@ -74,7 +74,7 @@ create persistent entity Module.Photo (
 | Create enumeration | `create [or modify] enumeration Module.Name (Value1 'caption', ...);` | |
 | Alter enumeration values | `alter enumeration Module.Name add value X [caption '..'] \| rename value X to Y \| modify value X caption '..' \| drop value X;` | `modify value … caption` re-captions in place (works while referenced) |
 | Drop enumeration | `drop enumeration Module.Name;` | |
-| Create association | `create [or modify] association Module.Name from Parent to Child type reference\|ReferenceSet [owner default\|both] [delete_behavior ...];` | OR MODIFY updates existing association in-place |
+| Create association | `create [or modify] association Module.Name from Parent to Child type reference\|ReferenceSet [owner default\|both] [delete_behavior ...];` | OR MODIFY updates existing association in-place. **The FROM entity must live in `Module`** — Mendix stores an association in its FROM entity's module, so a remote FROM writes a dangling pointer and the project stops OPENING (**MDL070**). The TO entity may be remote; that direction is stored BY NAME |
 | Drop association | `drop association Module.Name;` | |
 | Association line anchors | `@anchor(from: (0, 54), to: (100, 54))` above `create association …` | Where the connector attaches to each entity box, as a **percentage** of the box (0..100, whole numbers). `from` = the FROM entity's box, `to` = the TO entity's. Omitting an end preserves what is stored, so a `create or modify` about something else never flattens a hand-tuned line. Cross-module associations have no anchors — Mendix stores none |
 | Retune anchors in place | `alter association Module.Name set anchor from (50, 100) to (50, 0);` | `(0, 50)` left-middle, `(100, 50)` right-middle, `(50, 100)` bottom-centre. `describe association` re-emits a non-default pair as the same `@anchor(...)`, so describe → edit → exec round-trips |
@@ -1458,6 +1458,41 @@ create persistent entity Module.VATRate ("create": datetime, Rate: decimal);
 ```
 
 Both double-quote (ANSI SQL) and backtick (MySQL) styles are supported. You can mix quoted and unquoted parts: `"combobox".CategoryTreeVE`.
+
+### A third grammar: OQL
+
+Quoting means different things in three grammars, and they do not agree:
+
+| Grammar | Example collision | Quoting escapes it? | mxcli rule |
+|---|---|---|---|
+| MDL parser | `create`, `end`, `entity` | **Yes** — `"create"` | parse error |
+| Mendix platform | `Type`, `ID`, `CurrentUser` | **No** — the check strips quotes | MDL021 (CE7247) |
+| **Mendix OQL** | `Year`, `Month`, `Quarter`, `Day`, `Hour`… | **Yes** — `"Month"`, as in SQL | **MDL071** (warning) |
+
+An OQL-reserved name is *legal Mendix* — the entity builds and runs. It bites
+only when a **view entity**'s OQL references it **unquoted**, which fails with
+**CE0174** ("The 'Month' part is incomplete or incorrect"). OQL takes
+double-quoted identifiers exactly like SQL, and mxcli writes them through
+unchanged, so the fix is normally a quote rather than a rename:
+
+```sql
+-- both build at 0 errors
+select s."Month" as MonthNo, sum(s.Amount) as Total
+from MyFirstModule."Year" as s
+group by s."Month";
+```
+
+**The exception is an alias, and that limit is OQL's own.** The alias position
+takes a bare identifier for *any* name — `as "Total"`, reserved nowhere, is
+CE0174 as well. The two CE0174 texts say so precisely: a source position lists
+`ASTERISK, AT_SIGN, OPEN_QUOTE, or IDENTIFIER`, the alias position lists only
+`IDENTIFIER`. A view entity's own attribute name **is** its alias (they must
+match), so a view column cannot be called `Month` at all — that is the one case
+that needs a rename, and **MDL072** says so when you try the quoted spelling.
+
+MDL071 warns at `CREATE` / `ALTER … ADD ATTRIBUTE` / `RENAME ATTRIBUTE` so the
+choice is made while the name still has few references. MDL032 reports the same
+collision from inside a view's OQL, where quoting is the immediate fix.
 
 **Boolean attributes** auto-default to `false` when no `default` is specified.
 

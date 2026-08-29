@@ -92,6 +92,68 @@ duplicate it here. Data assertions under the demo use
 rather than a video, `--screenshot` with repeated `--screenshot-url` already does
 that without any script.
 
+### The overlay ships with this skill: `narrate.js`
+
+`narrate.js` sits beside this file and is copied into the project along with it.
+Require it from the demo script rather than writing another one — the last three
+projects each re-derived their own Stage 2 from this page's prose, which is why
+no two demos look alike.
+
+It asserts nothing and holds no selectors, so it is the same file in every
+project:
+
+| | |
+|---|---|
+| `say(page, text, step)` | caption, held for `max(2200, words * 280)` ms — a fixed hold rushes long lines and stalls on short ones |
+| `point` / `unpoint` | pulsing outline around an element's rect, **drawn** — a real click ring would move the cursor and the page under it |
+| `clickSlowly` | scroll in, mark, beat, click: a cursor that arrives and clicks in one frame reads as a glitch |
+| `typeSlowly` | per-key typing, then commit |
+| `bringIntoView` | includes **horizontal** scroll (`inline: 'center'`), for a grid whose action sits past a phone's right edge |
+
+The spinning ring in the caption bar is the compositor fix described above, not
+decoration and not a loading indicator — it is what keeps a reading pause from
+collapsing to no frames. Removing it silently breaks the pause *and* any audio
+timed against it.
+
+What stays per-project is the walk itself: the persona, the steps and the
+selectors (`narrated-walkthrough.js`). Only the library is shared.
+
+### Spoken narration, if you add it
+
+`recordVideo` writes a **silent** track — voice is not a setting, it is a second
+pipeline you build and mux in. It has been produced ad hoc in a session before,
+which is the problem: re-improvised each time, it lands on a different voice, a
+different pace and different levels, so the demo's sound quality is luck. Pin it.
+
+Neither dependency is guaranteed present — both were **absent** from a fresh web
+container, and `apt-get install ffmpeg` failed there against a stale package index
+(404s on superseded `libva`/`mesa` versions) until `apt-get update` ran first.
+Check for them before promising audio; `pip install piper-tts` plus one voice
+`.onnx` + `.onnx.json` is the rest.
+
+Three things decide whether the result sounds professional. All are measured, not
+matters of taste:
+
+1. **Normalize, or it clips.** Raw Piper output measured **-17.5 LUFS with a
+   +0.0 dBTP true peak** — at full scale, so it crunches audibly the moment it is
+   encoded to AAC for the video. Two-pass `loudnorm` (measure with
+   `print_format=json`, then feed the measured values back) to `I=-16:TP=-1.5`
+   brought the same clip to -16.2 LUFS / **-4.5 dBTP**. Resample to 48 kHz stereo
+   at the same time: Piper emits 22.05 kHz mono, which is not what a video
+   container wants.
+2. **Set the pace explicitly and then verify it.** `--length-scale` controls
+   speaking rate, but only scales cleanly with `--sentence-silence 0`
+   (measured 0.5 → 2.26s, 1.0 → 3.39s, 2.0 → 5.41s on one sentence; an earlier
+   run varying the flag alone moved the duration by 6% across the same range).
+   Read each clip's real duration back with `ffprobe` rather than trusting the
+   flag.
+3. **Time the video from the audio, not the reverse.** Synthesize first, measure
+   each clip, and hold the step for that long. This is also why the pulsing
+   indicator above is load-bearing rather than cosmetic: if an idle pause
+   collapses to almost no frames, a pre-rendered voice track drifts against the
+   picture no matter how good the synthesis is. Confirm the recorded file's
+   duration matches the script's wall-clock before adding audio at all.
+
 ## What to narrate
 
 Narrate only what a viewer with **no build context** would understand.

@@ -1,0 +1,44 @@
+-- Regression: renaming an entity (or a module) left every view entity's OQL
+-- pointing at the old name, and said nothing about it.
+--
+--   $ mxcli exec rename.mdl -p app.mpr
+--   Renamed entity: MyFirstModule.Period -> MyFirstModule.Timeframe
+--                                       <- no "Updated N reference(s)" line
+--   $ mx check
+--   CE0174 "Cannot resolve object name 'MyFirstModule.Period'."
+--
+-- Cause: a view's OQL is the one place a qualified name is stored EMBEDDED IN A
+-- SENTENCE rather than as a property of its own. Both engines' rename walkers
+-- match a string that equals the name or begins with it -- right for a BY_NAME
+-- property, blind to `from MyFirstModule.Period as p` in the middle of a query.
+--
+-- Run this whole file, then `rename entity MyFirstModule.Period to Timeframe;`
+-- and `mx check`. Expected: "Updated 1 reference(s)" and 0 errors.
+--
+-- The controls are in the file on purpose -- the fix is a name-based rewrite,
+-- and the ways a rewrite like that goes wrong are all name-shaped:
+--
+--   PeriodDetail  -- a LONGER name starting with the old one, must not move
+--   Other.Period  -- same entity name, different module, must not move
+--   "Year"        -- a QUOTED reference must keep its quotes (dropping them is
+--                    CE0174, since quoting is how a view names an entity called
+--                    after an OQL reserved word)
+
+create persistent entity MyFirstModule.Period ( Label: String(50), Amount: Integer );
+/
+-- CONTROL: renaming Period must leave this alone.
+create persistent entity MyFirstModule.PeriodDetail ( Note: String(50) );
+/
+create view entity MyFirstModule.PeriodSummary ( Label: string(50), Total: integer ) as
+  select p.Label as Label, sum(p.Amount) as Total
+  from MyFirstModule.Period as p
+  group by p.Label;
+/
+
+-- CONTROL: quoted reference. `Year` is an OQL reserved word, so a view has to
+-- quote it -- and a rename must return it quoted, not bare.
+create persistent entity MyFirstModule.Year ( Label: String(50) );
+/
+create view entity MyFirstModule.YearSummary ( Label: string(50) ) as
+  select y.Label as Label from MyFirstModule."Year" as y;
+/

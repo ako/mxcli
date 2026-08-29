@@ -271,9 +271,22 @@ selectItem
     | aggregateFunction (AS selectAlias)?
     ;
 
-// Allow keywords as aliases in SELECT
+// Allow keywords as aliases in SELECT, and quoted identifiers.
+//
+// QUOTED_IDENTIFIER is not cosmetic here: an OQL reserved word (the date-part
+// keywords Year/Month/Quarter/Day/...) MUST be quoted to survive MxBuild, which
+// otherwise rejects the view with CE0174 "The 'Month' part is incomplete or
+// incorrect". OQL takes double-quoted identifiers exactly as SQL does, and the
+// stored query keeps the raw source text, so the quotes reach MxBuild intact.
+//
+// A view entity's declared attribute name IS its select alias — they have to
+// match — so without this a view simply could not have a column called `Month`:
+// unquoted the alias is CE0174, and quoted it did not parse. The `keyword`
+// alternative above covers MDL's own keywords, which is a different grammar and
+// does not help with OQL's. (ako/mxcli-captrack)
 selectAlias
     : IDENTIFIER
+    | QUOTED_IDENTIFIER
     | keyword
     ;
 

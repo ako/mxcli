@@ -1,0 +1,31 @@
+-- The forms that DO work, for the association direction MDL070 refuses.
+-- The refused ones are in captrack-assoc-remote-parent.fail.mdl.
+--
+-- Mendix stores an association in the module of its FROM entity, so the FROM
+-- entity has to be local. The TO entity may be remote — that direction is
+-- stored BY NAME and nothing dangles. Measured at 0 errors on 11.13.0.
+
+create persistent entity MyFirstModule.Department ( Name: String(100) );
+/
+
+-- The supported cross-module direction: local FROM, remote TO.
+create association MyFirstModule.Department_User
+  from MyFirstModule.Department to System.User
+  type reference owner default;
+/
+
+-- The remedy when the relationship really is many-to-many across a module
+-- boundary: a join entity in your own module, one reference per side. This is
+-- what the reporter ended up with, and it is the better model anyway — a row
+-- that says "this user plans this department" is something you can hang
+-- attributes and XPath constraints on, which a bare reference set is not.
+create persistent entity MyFirstModule.PlannerAssignment ( );
+/
+create association MyFirstModule.PlannerAssignment_User
+  from MyFirstModule.PlannerAssignment to System.User
+  type reference owner default;
+/
+create association MyFirstModule.PlannerAssignment_Department
+  from MyFirstModule.PlannerAssignment to MyFirstModule.Department
+  type reference owner default;
+/

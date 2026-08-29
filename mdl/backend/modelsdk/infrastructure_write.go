@@ -189,10 +189,28 @@ func docNameOf(doc bson.D) string {
 // used by RenameReferences to report per-unit hit counts.
 func replaceQNInDocCounted(doc bson.D, oldName, newName string, count *int) bson.D {
 	for i, elem := range doc {
+		// A view entity's OQL is the one place a qualified name is stored inside
+		// a sentence rather than as a property of its own, so the whole-string
+		// match below never sees it. Without this, renaming an entity a view
+		// selects from left the view pointing at a name that no longer exists —
+		// CE0174 "Cannot resolve object name" — and reported 0 references
+		// updated. See types.RewriteOQLQualifiedName.
+		if elem.Key == oqlPropertyKey {
+			if q, ok := elem.Value.(string); ok {
+				if rewritten, n := types.RewriteOQLQualifiedName(q, oldName, newName); n > 0 {
+					*count += n
+					doc[i].Value = rewritten
+				}
+				continue
+			}
+		}
 		doc[i].Value = replaceQNInValueCounted(elem.Value, oldName, newName, count)
 	}
 	return doc
 }
+
+// oqlPropertyKey is where DomainModels$OqlViewEntitySource keeps the query.
+const oqlPropertyKey = "Oql"
 
 func replaceQNInValueCounted(v any, oldName, newName string, count *int) any {
 	switch val := v.(type) {
