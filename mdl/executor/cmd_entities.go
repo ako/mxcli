@@ -173,8 +173,10 @@ func execCreateEntity(ctx *ExecContext, s *ast.CreateEntityStmt) error {
 	// Mendix rejects names like Owner/Type/Context/Id at runtime regardless of
 	// entity kind — catching here avoids writing a project that Studio Pro will
 	// refuse to open. Issue #552.
-	if vs := ValidateEntity(s); len(vs) > 0 {
-		v := vs[0]
+	// Only ERROR-severity violations block the write. ValidateEntity also emits
+	// warnings (MDL022 AutoX rename, MDL071 OQL reserved name) and those must not
+	// refuse a script that `mxcli check` reports as passing.
+	if v := firstBlockingViolation(ValidateEntity(s)); v != nil {
 		return mdlerrors.NewValidationf("%s — %s", v.Message, v.Suggestion)
 	}
 

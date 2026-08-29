@@ -1,0 +1,44 @@
+-- ============================================================================
+-- NEGATIVE TEST: a quoted OQL select alias
+-- ============================================================================
+--
+-- Before MDL072 this produced two parse errors, neither naming the problem and
+-- the second a phantom:
+--
+--   line 2:22 extraneous input '"MonthNo"' expecting the start of a statement
+--   line 2:50 extraneous input '.' expecting the start of a statement
+--
+-- The grammar now ACCEPTS a quoted alias in order to refuse it with an
+-- explanation. The measurement behind that choice (mxbuild 11.13.0): OQL takes
+-- quoted identifiers in a SOURCE position but NOT as an alias, and not for any
+-- name at all --
+--
+--   select s."Month" as MonthNo      ->  0 errors
+--   from   Module."Year" as y        ->  0 errors
+--   select sum(s.Amount) as "Total"  ->  CE0174 "The '"' part is incomplete or
+--                                        incorrect. You could use here:
+--                                        IDENTIFIER."
+--
+-- The two CE0174 texts differ exactly there: a source position lists
+-- "ASTERISK, AT_SIGN, OPEN_QUOTE, or IDENTIFIER", the alias position lists only
+-- "IDENTIFIER".
+--
+-- This script MUST fail `mxcli check` with MDL072, twice, and MUST NOT report
+-- MDL030 ("has no as alias") -- these columns plainly have one. The working
+-- forms are in captrack-oql-quoted-alias.mdl.
+-- ============================================================================
+
+create persistent entity CapTrack.Sales ( Month: Integer, Amount: Integer );
+/
+
+-- MDL072: quoted alias, ordinary name. Remedy is to unquote it.
+create view entity CapTrack.V1 ( Total: integer ) as
+  select sum(s.Amount) as "Total" from CapTrack.Sales as s;
+/
+
+-- MDL072: quoted alias on a RESERVED name. Unquoting is NOT the remedy here --
+-- that is CE0174 too. The view column has to be renamed. Getting this
+-- distinction wrong sends someone in a circle: unquote, CE0174, requote, CE0174.
+create view entity CapTrack.V2 ( "Month": integer ) as
+  select s."Month" as "Month" from CapTrack.Sales as s;
+/

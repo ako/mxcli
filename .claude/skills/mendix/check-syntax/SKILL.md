@@ -116,6 +116,21 @@ Before writing any MDL, verify these requirements:
 > Measured across the keywords mxcli hints on: 38 are rescued by quoting, 3
 > (`Type`, `Default`, `Owner`) are not.
 >
+> **Third case — OQL keywords, where quoting works but in a different grammar.**
+> `Year`, `Month`, `Quarter`, `Week`, `Day`, `Hour` and the other date-part words are
+> neither MDL parser keywords nor platform-reserved: they are accepted everywhere and
+> build at 0 errors. They bite only inside a **view entity**'s OQL, and only **unquoted**
+> (**CE0174**). OQL takes double-quoted identifiers just like SQL — `s."Month"`,
+> `from Module."Year" as s` — and mxcli writes them through unchanged, so the usual fix
+> is a quote in the OQL, not a rename. mxcli reports **MDL071** as a *warning* at
+> `CREATE`/`ALTER` so the name is still cheap to change if you would rather rename.
+> Applies to the **entity** name as well as its attributes.
+>
+> The exception is an **alias**, and that limit is OQL's own: it takes a bare identifier
+> there for any name — `as "Total"`, reserved nowhere, is CE0174 too (**MDL072**). A view
+> entity's attribute name is also its select alias, so a view column cannot be called
+> `Month` at all — that one needs a rename, not a quote.
+>
 > **Exception — never quote `$`-prefixed variable/parameter references.** The quote
 > rule is for *bare* names (entities, attributes, associations, declared parameter
 > names). Variable and parameter **references** in expressions and widget bindings
