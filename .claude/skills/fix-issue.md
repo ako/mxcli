@@ -1,12 +1,23 @@
 # Fix Issue Skill
 
-A fast-path workflow for diagnosing and fixing bugs in mxcli. Each fix appends
-to the symptom table below, so the next similar issue costs fewer reads.
+A fast-path workflow for diagnosing and fixing bugs in mxcli.
+
+Each fix appends one row to the symptom table below. That table is **evidence, not
+reading material** — it is ~1 MB and cannot be loaded whole. The entry point for a
+diagnosis is [`docs-wiki/bug-patterns/`](../../docs-wiki/bug-patterns/), which digests
+these rows into failure classes; the table is where you drill down for the specific
+instance.
 
 ## How to Use
 
-1. Match the issue symptom to a row in the table — go straight to that file.
-2. Follow the fix pattern for that row.
+1. **Start with the failure class.** Skim
+   [`docs-wiki/bug-patterns/`](../../docs-wiki/bug-patterns/) — it is small, and it tells
+   you which layer the bug lives in. Coverage is partial (three pages against 600+ rows),
+   so a miss there means the finding has not been digested yet, **not** that it is new.
+2. **Then find the instance**: `grep -i '<keyword>' .claude/skills/fix-issue.md`. Go
+   straight to the file the matching row names and follow its fix pattern. Do not open
+   this file's table whole — it is ~1 MB, and it is looked up by matching a symptom, not
+   read in order.
 3. Write a failing test first, then implement.
 4. **Verify at the layer the symptom lives in.** Parser → unit test. BSON we write →
    unit test on the encoded document. Files on disk after `mx` runs → integration test

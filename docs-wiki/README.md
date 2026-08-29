@@ -15,6 +15,12 @@ If you're new to mxcli internals, read in this order:
 5. `rationale/` — *why* the codebase is shaped this way
 6. `glossary.md` — terminology bridge across Mendix / mxcli / BSON
 
+**Diagnosing a bug?** Start at [`bug-patterns/`](bug-patterns/) — the failure *classes*,
+digested from the symptom table in
+[`.claude/skills/fix-issue.md`](../.claude/skills/fix-issue.md). Grep that table for the
+specific instance afterwards; it is ~1 MB and is not meant to be read whole. Pattern
+coverage is partial, so a miss there means the finding has not been digested yet.
+
 ## How this wiki is maintained
 
 - **On-demand only**, via `/mxcli-dev:wiki-sync`.
