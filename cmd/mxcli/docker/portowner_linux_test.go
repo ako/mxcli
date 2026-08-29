@@ -237,3 +237,44 @@ func TestCheckTargetPortsFree_ErrorNamesTheHolder(t *testing.T) {
 		t.Errorf("the refusal does not name the holder:\n%v", err)
 	}
 }
+
+// A port field wider than 16 bits is not a port, and must be refused rather than
+// narrowed. Parsing at bit size 32 accepted it: on a 64-bit build "FFFFFFFF"
+// came back as 4294967295, and on a 32-bit one (386, arm — measured) as -1 with
+// ok=true, because int is 32 bits there and the conversion silently wraps. The
+// kernel never writes such a field, so nothing here is reachable from a hostile
+// input; what the old code gave up was the parser doing the range check, which
+// is the only thing standing between the caller's `p != port` comparison and a
+// number that is not a port at all. This is CodeQL alert 8
+// (go/incorrect-integer-conversion).
+//
+// Both halves matter: the reject case fails against the old parser, and the
+// 8080 case is the control that the narrower parse still accepts a real port.
+func TestHexPort_RefusesAValueWiderThanAPort(t *testing.T) {
+	if p, ok := hexPort("0100007F:1F90"); !ok || p != 8080 {
+		t.Fatalf("control failed: a real port no longer parses, got %d,%v", p, ok)
+	}
+	for _, addr := range []string{"0100007F:FFFFFFFF", "0100007F:80000000", "0100007F:10000"} {
+		if p, ok := hexPort(addr); ok {
+			t.Errorf("%s: accepted as port %d — a port is 16 bits", addr, p)
+		}
+	}
+}
+
+// End to end through the parser: a row whose port field is out of range must not
+// be matched against the port being looked up, whatever it narrows to.
+func TestParseListeningInodes_IgnoresAnOutOfRangePortField(t *testing.T) {
+	const bogus = `  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
+   0: 0100007F:FFFFFFFF 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 5555 1 0000000000000000 100 0 0 10 0
+`
+	// int(^uint32(0)) is whatever 0xFFFFFFFF narrows to on this build — -1 where
+	// int is 32 bits, 4294967295 where it is 64 — so the row is asked for under
+	// the value the old parser would have produced, on either width. Written as
+	// an expression rather than a literal because 4294967295 is not a valid int
+	// constant on a 32-bit build.
+	for _, port := range []int{-1, 65535, int(^uint32(0))} {
+		if got := parseListeningInodes(bogus, port); len(got) != 0 {
+			t.Errorf("port %d matched a row whose port field is not a port: %v", port, got)
+		}
+	}
+}
