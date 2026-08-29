@@ -453,6 +453,8 @@ func ValidateEntity(stmt *ast.CreateEntityStmt) []linter.Violation {
 	entityName := stmt.Name.String()
 	violations = append(violations, validateIdempotencyGuard(stmt.CreateOrModify, stmt.IfNotExists, "entity", entityName)...)
 	violations = append(violations, validateBareGeneralization(stmt)...)
+	// MDL071: the entity's own name reads as an OQL keyword in `from Module.X`.
+	violations = append(violations, ValidateOQLReservedEntityName(stmt)...)
 	for _, attr := range stmt.Attributes {
 		violations = append(violations, validateEntityAttribute(attr, persistent, entityName)...)
 		if !persistent {
@@ -514,6 +516,12 @@ func validateNPEValidationRules(attr ast.Attribute, entityName string) []linter.
 // skipped here; the kind-independent checks (MDL021 reserved words, MDL022 AutoX
 // rename, MDL023 autonumber seed) all still run.
 func ValidateAlterEntity(stmt *ast.AlterEntityStmt) []linter.Violation {
+	// MDL071 also applies to RENAME ATTRIBUTE — renaming is how this collision
+	// is normally fixed, so it is also how it gets introduced, onto a name that
+	// already has references.
+	if stmt.Operation == ast.AlterEntityRenameAttribute {
+		return ValidateOQLReservedRename(stmt)
+	}
 	if stmt.Operation != ast.AlterEntityAddAttribute || stmt.Attribute == nil {
 		return nil
 	}
@@ -525,6 +533,9 @@ func ValidateAlterEntity(stmt *ast.AlterEntityStmt) []linter.Violation {
 // which is only meaningful when the entity is known to be persistent.
 func validateEntityAttribute(attr ast.Attribute, persistent bool, entityName string) []linter.Violation {
 	var violations []linter.Violation
+	// MDL071 first, so the early returns further down still carry it: an OQL
+	// collision is independent of every other property of the attribute.
+	violations = append(violations, validateOQLReservedAttributeName(attr, entityName)...)
 	// AutoX pseudo-types ARE the system attributes. The declared identifier is
 	// discarded — the field always materializes under its fixed system member
 	// name — so warn (MDL022) when the two differ, since the write silently
