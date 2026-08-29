@@ -71,6 +71,13 @@ func (w *Writer) insertUnit(unitID, containerID, containmentName, unitType strin
 	if err := validateNoPlaceholderIDs(unitID, contents); err != nil {
 		return err
 	}
+	// Two elements sharing an $ID make the whole project unopenable. Checked on
+	// both engines from the same function: which engine ran is an --engine flag,
+	// not something a user should be able to see in their diff — and least of
+	// all in whether a corrupt write was caught. (ako/mxcli-captrack #2)
+	if err := canon.DuplicateElementIDError(unitID, contents); err != nil {
+		return err
+	}
 
 	// Convert UUID strings to 16-byte blobs for database
 	unitIDBlob := uuidToBlob(unitID)
@@ -134,6 +141,13 @@ func (w *Writer) insertUnit(unitID, containerID, containmentName, unitType strin
 
 func (w *Writer) updateUnit(unitID string, contents []byte) error {
 	if err := validateNoPlaceholderIDs(unitID, contents); err != nil {
+		return err
+	}
+	// Two elements sharing an $ID make the whole project unopenable. Checked on
+	// both engines from the same function: which engine ran is an --engine flag,
+	// not something a user should be able to see in their diff — and least of
+	// all in whether a corrupt write was caught. (ako/mxcli-captrack #2)
+	if err := canon.DuplicateElementIDError(unitID, contents); err != nil {
 		return err
 	}
 
