@@ -1,0 +1,45 @@
+-- ledger #148 — MDL071 warned where OQL cannot reach.
+--
+-- The rule warns that a name will need quoting from OQL later. It fired on two
+-- NON-PERSISTENT entities, which have no table:
+--
+--   ⚠ attribute 'Year' is an OQL reserved word — valid Mendix, but a view
+--     entity referencing it unquoted fails to build with CE0174  [MDL071]
+--       at Ledger.BudgetContext
+--
+-- Measured rather than reasoned about, by pointing a view entity at a
+-- non-persistent one (mxbuild 11.13.0):
+--
+--   [error] [CE0174] "Error(s) in OQL query: Entity 'DS147.NpeYear' cannot be
+--           used in OQL, because it is a non-persistable entity"
+--           at Entity 'DS147.VOverNpe'
+--
+-- Mendix refuses the reference itself, so the collision the warning predicts
+-- cannot occur. Warning-level, so it cost only noise — the kind that teaches
+-- people to skim warnings.
+--
+--   mxcli check mdl-examples/bug-tests/ledger-148-mdl071-non-persistent.mdl
+--
+-- Expect exactly three MDL071 warnings, all on the persistent controls.
+
+create module Mdl071Npe;
+
+-- THE REPORTED CASE — no MDL071 for either name.
+create non-persistent entity Mdl071Npe.BudgetContext ( Year: Integer, Month: Integer );
+
+-- …including when the ENTITY's own name is the reserved word.
+create non-persistent entity Mdl071Npe.Quarter ( Label: String(50) );
+
+-- CONTROL 1 — the same attribute on a PERSISTENT entity. Still MDL071: a view
+-- really could reference this column unquoted later. Without this control the
+-- fix is indistinguishable from deleting the rule.
+create persistent entity Mdl071Npe.BudgetLine ( Year: Integer, Amount: Decimal );
+
+-- CONTROL 2 — the ENTITY name on a persistent entity. Still MDL071.
+create persistent entity Mdl071Npe.Month ( Amount: Decimal );
+
+-- CONTROL 3 — ALTER carries no persistence kind, so "unknown" keeps the
+-- warning. Treating unknown as non-persistent would silently drop MDL071 from
+-- the path where a name arrives onto an entity that already has references,
+-- which is the expensive case the rule exists for.
+alter entity Mdl071Npe.BudgetLine add attribute Quarter: Integer;

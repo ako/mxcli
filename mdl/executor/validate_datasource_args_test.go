@@ -3,6 +3,11 @@
 // ako/mxcli-maintenance-2: `datasource: microflow M.F` on a microflow WITH
 // parameters built to CE1571 while `mxcli check --references` passed. The
 // microflow resolves fine — the missing argument was nobody's check.
+//
+// These cases all sit OUTSIDE any data context (dataContext{}), which is where
+// the rule was measured and where a missing argument is still an error. The
+// enclosing-context half of the same rule is in
+// validate_datasource_context_test.go.
 package executor
 
 import (
@@ -23,9 +28,15 @@ func dsWidget(name, flow string, args ...string) *ast.WidgetV3 {
 	}
 }
 
+// noContext runs one data source with nothing enclosing it — the shape the rule
+// was originally measured on.
+func noContext(widgetName string, ds *ast.DataSourceV3, sigs map[string]*flowSignature) []string {
+	return dataSourceArgErrors(widgetName, ds, sigs, dataContext{}, sameName)
+}
+
 func TestDataSourceMissingArgumentIsReported(t *testing.T) {
-	params := map[string][]string{"ds.mf": {"Task"}}
-	got := dataSourceArgErrors("dgBad", dsWidget("dgBad", "DS.MF").GetDataSource(), params)
+	sigs := map[string]*flowSignature{"ds.mf": objSig("Task", "DS.Task")}
+	got := noContext("dgBad", dsWidget("dgBad", "DS.MF").GetDataSource(), sigs)
 	if len(got) != 1 {
 		t.Fatalf("got %d errors, want 1: %v", len(got), got)
 	}
@@ -43,12 +54,12 @@ func TestDataSourceMissingArgumentIsReported(t *testing.T) {
 func TestDataSourceWithItsArgumentIsClean(t *testing.T) {
 	// The control that makes the rule worth having: the correct form must pass, or
 	// the check simply forbids microflow data sources.
-	params := map[string][]string{"ds.mf": {"Task"}}
-	if got := dataSourceArgErrors("dgGood", dsWidget("dgGood", "DS.MF", "Task").GetDataSource(), params); len(got) != 0 {
+	sigs := map[string]*flowSignature{"ds.mf": objSig("Task", "DS.Task")}
+	if got := noContext("dgGood", dsWidget("dgGood", "DS.MF", "Task").GetDataSource(), sigs); len(got) != 0 {
 		t.Errorf("correct arguments reported: %v", got)
 	}
 	// Mendix resolves names case-insensitively, and so must this.
-	if got := dataSourceArgErrors("dgGood", dsWidget("dgGood", "ds.MF", "task").GetDataSource(), params); len(got) != 0 {
+	if got := noContext("dgGood", dsWidget("dgGood", "ds.MF", "task").GetDataSource(), sigs); len(got) != 0 {
 		t.Errorf("case difference reported: %v", got)
 	}
 }
@@ -56,8 +67,8 @@ func TestDataSourceWithItsArgumentIsClean(t *testing.T) {
 func TestParameterlessDataSourceNeedsNoParens(t *testing.T) {
 	// The most common data source in any app. A rule that flagged this would fire
 	// on nearly every page and be turned off.
-	params := map[string][]string{"ds.all": {}}
-	if got := dataSourceArgErrors("dgA", dsWidget("dgA", "DS.All").GetDataSource(), params); len(got) != 0 {
+	sigs := map[string]*flowSignature{"ds.all": {}}
+	if got := noContext("dgA", dsWidget("dgA", "DS.All").GetDataSource(), sigs); len(got) != 0 {
 		t.Errorf("parameterless microflow reported: %v", got)
 	}
 }
@@ -66,8 +77,8 @@ func TestUnknownFlowIsLeftToTheReferenceCheck(t *testing.T) {
 	// "not found" is validateWidgetReferences' job. Reporting it here too would
 	// double every typo, and worse, a typo'd flow name would be reported as a
 	// missing ARGUMENT — which sends the reader to the wrong line.
-	params := map[string][]string{"ds.mf": {"Task"}}
-	if got := dataSourceArgErrors("dgX", dsWidget("dgX", "DS.Nope").GetDataSource(), params); len(got) != 0 {
+	sigs := map[string]*flowSignature{"ds.mf": objSig("Task", "DS.Task")}
+	if got := noContext("dgX", dsWidget("dgX", "DS.Nope").GetDataSource(), sigs); len(got) != 0 {
 		t.Errorf("unknown flow reported by the argument check: %v", got)
 	}
 }
@@ -76,8 +87,8 @@ func TestArgumentNamingNoParameterIsReported(t *testing.T) {
 	// A typo in the ARGUMENT name binds nothing and is silent otherwise. Both
 	// faults are reported: the parameter left unfilled and the name that matches
 	// nothing.
-	params := map[string][]string{"ds.mf": {"Task"}}
-	got := dataSourceArgErrors("dgT", dsWidget("dgT", "DS.MF", "Tsak").GetDataSource(), params)
+	sigs := map[string]*flowSignature{"ds.mf": objSig("Task", "DS.Task")}
+	got := noContext("dgT", dsWidget("dgT", "DS.MF", "Tsak").GetDataSource(), sigs)
 	if len(got) != 2 {
 		t.Fatalf("got %d errors, want 2 (missing + unknown): %v", len(got), got)
 	}
@@ -85,15 +96,18 @@ func TestArgumentNamingNoParameterIsReported(t *testing.T) {
 	if !strings.Contains(joined, "'Tsak'") || !strings.Contains(joined, "no argument for parameter 'Task'") {
 		t.Errorf("both faults not reported:\n%s", joined)
 	}
+	if !strings.Contains(joined, "(it declares 'Task')") {
+		t.Errorf("the unknown-argument message should list the real parameters:\n%s", joined)
+	}
 }
 
 func TestNonFlowDataSourcesAreIgnored(t *testing.T) {
 	// Database, association, selection and variable sources have no parameters to
 	// map, and must not be dragged into this.
-	params := map[string][]string{"ds.mf": {"Task"}}
+	sigs := map[string]*flowSignature{"ds.mf": objSig("Task", "DS.Task")}
 	for _, kind := range []string{"database", "association", "selection", "parameter"} {
 		ds := &ast.DataSourceV3{Type: kind, Reference: "DS.MF"}
-		if got := dataSourceArgErrors("w", ds, params); len(got) != 0 {
+		if got := noContext("w", ds, sigs); len(got) != 0 {
 			t.Errorf("%s data source reported: %v", kind, got)
 		}
 	}

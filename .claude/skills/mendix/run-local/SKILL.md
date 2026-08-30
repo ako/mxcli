@@ -390,6 +390,39 @@ A script that drives the app through a browser should **sign out at the end**,
 otherwise each run leaks a slot and the fifth or sixth run is the one that fails —
 which makes it look like a change you just made broke authentication.
 
+## The same licence also stops the app after a few hours
+
+The development licence has a **maximum run time**, and the runtime enforces it by
+shutting *itself* down. It warns at every boot, which reads as boilerplate until
+the day it matters:
+
+```
+WARNING - LicenseService: The runtime has been started using a trial licence,
+          the framework will be terminated when the maximum time is exceeded!
+...
+LicenseService: Maximum run time exceeded, framework is now terminating
+```
+
+Measured on one machine: **3h52m** and **5h07m** — not a fixed number, and shorter
+than a working session. Budget for a restart on anything long-running.
+
+`mxcli run` now **exits** when the runtime stops, with a non-zero status and the
+reason, so a shell loop or systemd can restart it:
+
+```bash
+while ! mxcli run --local -p app.mpr; do echo "restarting"; done
+```
+
+Two traps this closes, both of which cost hours before it did:
+
+- **A 200 from a tunnelled URL is not evidence the app is alive.** Under `--hub`
+  the tunnel outlives the runtime, so the preview URL keeps answering over a dead
+  app. Health-check the app itself, and check something the *app* serves —
+  `/dist/index.js`, not `/`, which returns the SPA shell either way.
+- **`mxcli run` at several hundred percent CPU is not working hard.** It used to
+  keep supervising a runtime it had neither reaped nor noticed the death of; a
+  `Z` (zombie) process underneath it is the tell.
+
 ## External browser preview (`--hub`)
 
 > **Linux builds only.** `--hub` and `mxcli tunnel-hub` ship in the **Linux** build

@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -124,6 +125,80 @@ type LocalRuntime struct {
 	ctrl    *RuntimeController
 	// bootConfig is the update_configuration payload sent at start; see BootConfig.
 	bootConfig map[string]any
+
+	// exited is closed by the reaper when the JVM stops, and exitErr holds what
+	// Wait returned. Nothing used to wait on the runtime at all, so an exited
+	// JVM stayed an unreaped zombie — and Signal(0), which alive() asked,
+	// SUCCEEDS on a zombie. Measured: proc state `Z`, Signal(0) nil; after
+	// Wait(), "process already finished". So a runtime that had terminated
+	// itself hours earlier still read as alive (mxcli-formula1 FINDINGS §60).
+	exitMu  sync.Mutex
+	exited  chan struct{}
+	exitErr error
+}
+
+// watchExit reaps the runtime process and records how it went.
+//
+// Exactly one goroutine may Wait on a process: a second waiter blocks forever,
+// so stopProcess consults this instead of taking its own.
+func (rt *LocalRuntime) watchExit() {
+	cmd := rt.cmd
+	if cmd == nil || cmd.Process == nil {
+		return
+	}
+	rt.exitMu.Lock()
+	rt.exited = make(chan struct{})
+	rt.exitErr = nil
+	done := rt.exited
+	rt.exitMu.Unlock()
+
+	go func() {
+		err := cmd.Wait()
+		rt.exitMu.Lock()
+		rt.exitErr = err
+		rt.exitMu.Unlock()
+		close(done)
+	}()
+}
+
+// Exited is closed when the runtime process stops, for whatever reason. A
+// runtime that was never started yields a nil channel, which blocks forever —
+// the right answer for "tell me when this stops".
+func (rt *LocalRuntime) Exited() <-chan struct{} {
+	rt.exitMu.Lock()
+	defer rt.exitMu.Unlock()
+	return rt.exited
+}
+
+// ExitErr returns what the runtime process exited with: nil for a clean exit or
+// while it is still running.
+func (rt *LocalRuntime) ExitErr() error {
+	rt.exitMu.Lock()
+	defer rt.exitMu.Unlock()
+	return rt.exitErr
+}
+
+// runtimeExitReason picks the cause of a runtime shutdown out of its own log,
+// or returns "" when it cannot tell.
+//
+// The one cause worth naming is the developer licence's maximum run time, which
+// is why §60 happened at all: the runtime terminates itself after a few hours
+// and the message is right there in the log, having also warned at every boot.
+// Measured lifetimes on one machine were 3h52m and 5h07m — not a fixed number,
+// and shorter than a working session.
+//
+// Nothing is guessed. An exit this cannot explain is reported as an exit, since
+// inventing a cause is worse than reporting none.
+func runtimeExitReason(log string) string {
+	if strings.Contains(log, "Maximum run time exceeded") {
+		return "the runtime terminated itself: the local standalone runtime uses a " +
+			"development licence with a maximum run time (\"Maximum run time exceeded, " +
+			"framework is now terminating\"), which it also warns about at boot"
+	}
+	if strings.Contains(log, "java.lang.OutOfMemoryError") {
+		return "the runtime JVM ran out of memory (java.lang.OutOfMemoryError)"
+	}
+	return ""
 }
 
 func (o *LocalRuntimeOptions) applyDefaults() {
@@ -498,6 +573,9 @@ func (rt *LocalRuntime) spawnAndConfigure() error {
 	}
 	rt.cmd = cmd
 	rt.log = log
+	// Reap from the moment it starts, not from Stop: an unreaped exit is what
+	// made alive() lie for eight hours (§60).
+	rt.watchExit()
 
 	if err := rt.waitAdminReady(rt.opts.ReadyTimeout); err != nil {
 		_ = rt.Stop()
@@ -631,6 +709,13 @@ func (rt *LocalRuntime) HealthOK() bool {
 // Log returns the captured runtime output (for diagnostics).
 func (rt *LocalRuntime) Log() string { return rt.log.String() }
 
+// alive reports whether the runtime process is still running.
+//
+// Signal(0) is only a correct liveness test BECAUSE watchExit reaps: it succeeds
+// on an unreaped zombie — measured, proc state `Z`, err nil — and returns
+// "process already finished" once Wait has run. Before the reaper existed this
+// function reported a runtime that had terminated itself hours earlier as alive
+// (mxcli-formula1 FINDINGS §60). Removing watchExit silently breaks this line.
 func (rt *LocalRuntime) alive() bool {
 	if rt.cmd == nil || rt.cmd.Process == nil {
 		return false
@@ -650,8 +735,20 @@ func (rt *LocalRuntime) stopProcess() error {
 		return nil
 	}
 	_ = signalProcessGroup(rt.cmd.Process, syscall.SIGTERM)
-	done := make(chan error, 1)
-	go func() { done <- rt.cmd.Wait() }()
+	// The reaper owns the Wait. A second one blocks forever, so this waits on
+	// the channel the reaper closes rather than calling Wait again — and a child
+	// that had already exited (the §60 case) is therefore stopped instantly
+	// instead of hanging the shutdown for 8 seconds and then some.
+	done := rt.Exited()
+	if done == nil {
+		// Nothing is reaping (a runtime assembled outside spawnAndConfigure):
+		// take the wait here so the child is still not left a zombie.
+		ch := make(chan error, 1)
+		go func() { ch <- rt.cmd.Wait() }()
+		closed := make(chan struct{})
+		go func() { <-ch; close(closed) }()
+		done = closed
+	}
 	select {
 	case <-done:
 	case <-time.After(8 * time.Second):
@@ -659,6 +756,9 @@ func (rt *LocalRuntime) stopProcess() error {
 		<-done
 	}
 	rt.cmd = nil
+	rt.exitMu.Lock()
+	rt.exited, rt.exitErr = nil, nil
+	rt.exitMu.Unlock()
 	if rt.logFile != nil {
 		_ = rt.logFile.Close()
 		rt.logFile = nil

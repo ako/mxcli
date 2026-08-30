@@ -54,6 +54,36 @@ reference/mxbuild/modeler/mx update-widgets /path/to/copy.mpr
 
 Then extract the widget's BSON to compare against your generated output.
 
+#### `mx convert`'s error COUNT is not evidence about the model
+
+Measured on one model, twice (ledger #149), and it nearly produced a false
+regression report:
+
+```
+deployment/ ABSENT   ->  contains 1 errors, 64 warnings
+deployment/ PRESENT  ->  contains 0 errors, 64 warnings
+mx check (same copy) ->  contains 0 errors        # and -j writes "errors": []
+```
+
+Three things make this a trap rather than a curiosity:
+
+1. **convert never names the error.** The full output is the count — no rule id,
+   no document, no `-v`.
+2. **`mx check` creates `deployment/` as a side effect**, so checking a project
+   before converting it silently changes the convert result.
+3. **Converting twice gives `0`**, because the first convert leaves the directory
+   behind — so the natural "did it really fail?" retry reports success and hides
+   the original number.
+
+The count therefore moves with test hygiene: any throwaway copy made without a
+built `deployment/` reports `1`. Identical on two mxcli revisions, so it is not
+an mxcli behaviour at all.
+
+**Rule: if `mx convert` reports errors and will not say which, reproduce them
+under `mx check` before believing them.** Where convert *does* name what it
+changed — the property-rename diff method in the CLAUDE.md overlay section — it
+is still the authoritative tool; it is the bare count that proves nothing.
+
 ### Step 3: Extract and Compare BSON
 
 Use the debug dump tool or Python to compare working vs broken widgets:

@@ -33,14 +33,41 @@ func init() {
 		Path:    "page.widgets",
 		Summary: "Widget types: containers, data widgets, inputs, actions, display",
 		Keywords: []string{
-			"widget", "layoutgrid", "container", "dataview", "datagrid",
+			"widget", "layoutgrid", "container", "customcontainer", "dataview", "datagrid",
 			"gallery", "listview", "textbox", "textarea", "datepicker",
-			"combobox", "checkbox", "radiobuttons", "actionbutton",
-			"dynamictext", "snippetcall", "navigationlist",
+			"combobox", "checkbox", "radiobuttons", "actionbutton", "linkbutton",
+			"dynamictext", "title", "snippetcall", "navigationlist", "item",
 			"column", "row", "footer", "header", "controlbar",
 			"template", "specialization", "list view template",
+			"tabcontainer", "tabpage", "tabs", "groupbox", "collapsible",
+			"image", "filter", "textfilter", "numberfilter", "datefilter",
+			"dropdownfilter", "dropdownsort", "customwidget", "pluggablewidget",
+			"statictext", "staticimage", "dynamicimage", "dropdown", "referenceselector",
+			"legacydatagrid",
 		},
-		Syntax:  "-- Containers\nLAYOUTGRID name { ROW r { COLUMN c (DesktopWidth: 6) { ... } } }\nCONTAINER name (Class: 'cls') { ... }\nCONTAINER name (OnClick: MICROFLOW Module.MF) { ... }   -- clickable container\n\n-- Data widgets\nDATAVIEW name (DataSource: $Param) { ... FOOTER f { ... } }\nDATAGRID name (DataSource: DATABASE Module.Entity) { COLUMN c (Attribute: A) }\nGALLERY name (DataSource: DATABASE Module.Entity, DesktopColumns: 3) { ... }\nLISTVIEW name (DataSource: DATABASE Module.Entity) { ... }\nLISTVIEW name (...) { ... TEMPLATE FOR Module.Specialization { ... } }\n\n-- Inputs\nTEXTBOX name (Label: 'L', Attribute: Attr)\nTEXTAREA | DATEPICKER | COMBOBOX | CHECKBOX | RADIOBUTTONS\n\n-- Actions\nACTIONBUTTON name (Caption: 'C', Action: SAVE_CHANGES, ButtonStyle: Primary)\n\n-- Display\nDYNAMICTEXT name (Content: 'Hello, {1}!', ContentParams: [{1} = Name])",
+		Syntax: "-- Containers\nLAYOUTGRID name { ROW r { COLUMN c (DesktopWidth: 6) { ... } } }\nCONTAINER name (Class: 'cls') { ... }\nCONTAINER name (OnClick: MICROFLOW Module.MF) { ... }   -- clickable container\nCUSTOMCONTAINER name (Class: 'cls') { ... }\nGROUPBOX name (Caption: 'C') { ... }\nTABCONTAINER name { TABPAGE tp (Caption: 'One') { ... } TABPAGE tp2 (Caption: 'Two') { ... } }\n\n" +
+			"-- Data widgets\nDATAVIEW name (DataSource: $Param) { ... FOOTER f { ... } }\nDATAGRID name (DataSource: DATABASE Module.Entity) { COLUMN c (Attribute: A) }\nGALLERY name (DataSource: DATABASE Module.Entity, DesktopColumns: 3) { ... }\nLISTVIEW name (DataSource: DATABASE Module.Entity) { ... }\nLISTVIEW name (...) { ... TEMPLATE FOR Module.Specialization { ... } }\n\n" +
+			"-- Data grid filters and sort (inside a DATAGRID's FILTER block)\nDATAGRID dg (...) { COLUMN c (Attribute: A) FILTER f { TEXTFILTER tf (Attribute: A) } }\nTEXTFILTER | NUMBERFILTER | DATEFILTER | DROPDOWNFILTER | DROPDOWNSORT\n\n" +
+			"-- Inputs\nTEXTBOX name (Label: 'L', Attribute: Attr)\nTEXTAREA | DATEPICKER | COMBOBOX | CHECKBOX | RADIOBUTTONS\n\n" +
+			"-- Actions\nACTIONBUTTON name (Caption: 'C', Action: SAVE_CHANGES, ButtonStyle: Primary)\nLINKBUTTON name (Caption: 'C', Action: ...)\n\n" +
+			"-- Display\nDYNAMICTEXT name (Content: 'Hello, {1}!', ContentParams: [{1} = Name])\nTITLE name (Content: 'Heading')\nIMAGE name (ImageType: imageUrl, ImageUrl: 'https://…')\n" +
+			"--   Note: on Mendix 11.13 an authored Image reports CE0463 \"the definition of this\n" +
+			"--   widget has changed\" until you run `mxcli fix widgets -p app.mpr`, which clears it\n" +
+			"--   and preserves MPR v2 (measured: 2 errors -> 0, 393 .mxunit files unchanged).\n" +
+			"--   mxcli's embedded widget templates are the 11.6 set; `mx update-widgets` is the\n" +
+			"--   same remedy but collapses MPR v2 to v1, so prefer `mxcli fix widgets`.\n\n" +
+			"-- Any pluggable widget by its id (id FIRST, then the name)\nPLUGGABLEWIDGET 'com.mendix.widget.web.badge.Badge' name (value: 'x')\nCUSTOMWIDGET 'com.mendix.widget.custom.x.X' name (prop: 'x')      -- legacy spelling\n\n" +
+			"-- Accepted by the parser, NOT writable on the default engine.\n" +
+			"-- Measured on 11.13.0: each is refused with\n" +
+			"--   \"widget *pages.X not yet supported by the modelsdk engine\"\n" +
+			"-- Re-run with MXCLI_ENGINE=legacy, or use the alternative given:\n" +
+			"--   STATICTEXT     -> DYNAMICTEXT with a literal Content\n" +
+			"--   STATICIMAGE    -> IMAGE\n" +
+			"--   DYNAMICIMAGE   -> IMAGE\n" +
+			"--   DROPDOWN       -> COMBOBOX\n" +
+			"-- And two the executor refuses on BOTH engines, each with its own message:\n" +
+			"--   REFERENCESELECTOR  (unsupported widget type)\n" +
+			"--   LEGACYDATAGRID     (use DATAGRID for the pluggable equivalent on Mendix 11+)",
 		Example: "DATAVIEW dvCustomer (DataSource: $Customer) {\n  TEXTBOX txtName (Label: 'Name', Attribute: Name)\n  COMBOBOX cbStatus (Label: 'Status', Attribute: Status)\n  FOOTER footer1 {\n    ACTIONBUTTON btnSave (Caption: 'Save', Action: SAVE_CHANGES, ButtonStyle: Primary)\n    ACTIONBUTTON btnCancel (Caption: 'Cancel', Action: CANCEL_CHANGES)\n  }\n}",
 		SeeAlso: []string{"page.create", "page.datasource"},
 	})
