@@ -51,11 +51,10 @@ func init() {
 			"-- Inputs\nTEXTBOX name (Label: 'L', Attribute: Attr)\nTEXTAREA | DATEPICKER | COMBOBOX | CHECKBOX | RADIOBUTTONS\n\n" +
 			"-- Actions\nACTIONBUTTON name (Caption: 'C', Action: SAVE_CHANGES, ButtonStyle: Primary)\nLINKBUTTON name (Caption: 'C', Action: ...)\n\n" +
 			"-- Display\nDYNAMICTEXT name (Content: 'Hello, {1}!', ContentParams: [{1} = Name])\nTITLE name (Content: 'Heading')\nIMAGE name (ImageType: imageUrl, ImageUrl: 'https://…')\n" +
-			"--   Note: on Mendix 11.13 an authored Image reports CE0463 \"the definition of this\n" +
-			"--   widget has changed\" until you run `mxcli fix widgets -p app.mpr`, which clears it\n" +
-			"--   and preserves MPR v2 (measured: 2 errors -> 0, 393 .mxunit files unchanged).\n" +
-			"--   mxcli's embedded widget templates are the 11.6 set; `mx update-widgets` is the\n" +
-			"--   same remedy but collapses MPR v2 to v1, so prefer `mxcli fix widgets`.\n\n" +
+			"--   IMAGE needs a source. Its default, `ImageType: image`, shows an entry from an\n" +
+			"--   image collection — which MDL cannot yet name, so the bare form writes a model\n" +
+			"--   mxbuild refuses (\"No image selected.\"). MDL-WIDGET22 reports that at check\n" +
+			"--   time. Use the URL form above, or `ImageType: icon`.\n\n" +
 			"-- Any pluggable widget by its id (id FIRST, then the name)\nPLUGGABLEWIDGET 'com.mendix.widget.web.badge.Badge' name (value: 'x')\nCUSTOMWIDGET 'com.mendix.widget.custom.x.X' name (prop: 'x')      -- legacy spelling\n\n" +
 			"-- Accepted by the parser, NOT writable on the default engine.\n" +
 			"-- Measured on 11.13.0: each is refused with\n" +
