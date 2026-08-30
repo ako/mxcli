@@ -253,6 +253,12 @@ The thing that exists is the LANGUAGE, so the three verbs read directly:
 IN <Module> scopes both directions. Under OR REPLACE it also BOUNDS the
 deletion, so per-module files do not wipe each other on every run.
 
+It does NOT reach PROJECT-level documents, and the navigation is one — so a
+scoped run leaves the menu in the source language while the pages switch,
+which reads as a half-applied translation rather than a scoping decision.
+A scoped run now names the file's own entries it did not reach; re-run the
+same file without IN <Module> to land those too.
+
 Keyed on the source string, so one entry translates every occurrence.
 DESCRIBE emits the CREATE form, and an untranslated string comes back with
 an empty target — which is what makes the output an LLM prompt:
