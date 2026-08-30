@@ -109,7 +109,14 @@ func oqlReservedNameViolation(kind, name, entityName string) linter.Violation {
 // and the attribute materialises under its fixed system member name, so the name
 // checked here never reaches the model. (None of the four are OQL words anyway —
 // the skip is about not warning on a name that does not exist.)
-func validateOQLReservedAttributeName(attr ast.Attribute, entityName string) []linter.Violation {
+//
+// A NON-PERSISTENT entity is skipped for a stronger reason: it cannot be reached
+// from OQL at all, so the collision this rule predicts cannot occur. See
+// oqlUnreachable.
+func validateOQLReservedAttributeName(attr ast.Attribute, kind entityPersistence, entityName string) []linter.Violation {
+	if oqlUnreachable(kind) {
+		return nil
+	}
 	if _, isAuto := autoMemberNames[attr.Type.Kind]; isAuto {
 		return nil
 	}
@@ -119,11 +126,25 @@ func validateOQLReservedAttributeName(attr ast.Attribute, entityName string) []l
 	return []linter.Violation{oqlReservedNameViolation("attribute", attr.Name, entityName)}
 }
 
+// oqlUnreachable reports whether the entity is one no OQL query can name, which
+// makes the whole premise of MDL071 unreachable for it.
+//
+// Measured on mxbuild 11.13.0 by pointing a view entity at a non-persistent one
+// (ledger #148) — Mendix refuses the reference itself rather than the name:
+//
+//	[error] [CE0174] "Error(s) in OQL query: Entity 'DS147.NpeYear' cannot be
+//	        used in OQL, because it is a non-persistable entity"
+//
+// Only a KNOWN non-persistent entity is skipped. Unknown keeps the warning: the
+// ALTER path has no kind to read, and a name that arrives late is the expensive
+// case this rule exists for.
+func oqlUnreachable(kind entityPersistence) bool { return kind == persistenceNonPersistent }
+
 // ValidateOQLReservedEntityName warns when the ENTITY's own name collides. A
 // view says `from Module.Year as y`, and the parser reads `Year` there exactly
 // as it reads an attribute after a dot.
 func ValidateOQLReservedEntityName(stmt *ast.CreateEntityStmt) []linter.Violation {
-	if stmt == nil || !isOQLReservedName(stmt.Name.Name) {
+	if stmt == nil || oqlUnreachable(entityPersistenceOf(stmt.Kind)) || !isOQLReservedName(stmt.Name.Name) {
 		return nil
 	}
 	return []linter.Violation{oqlReservedNameViolation("entity", stmt.Name.Name, stmt.Name.String())}

@@ -450,18 +450,47 @@ var autoMemberNames = map[ast.DataTypeKind]string{
 func ValidateEntity(stmt *ast.CreateEntityStmt) []linter.Violation {
 	var violations []linter.Violation
 	persistent := stmt.Kind == ast.EntityPersistent
+	kind := entityPersistenceOf(stmt.Kind)
 	entityName := stmt.Name.String()
 	violations = append(violations, validateIdempotencyGuard(stmt.CreateOrModify, stmt.IfNotExists, "entity", entityName)...)
 	violations = append(violations, validateBareGeneralization(stmt)...)
 	// MDL071: the entity's own name reads as an OQL keyword in `from Module.X`.
 	violations = append(violations, ValidateOQLReservedEntityName(stmt)...)
 	for _, attr := range stmt.Attributes {
-		violations = append(violations, validateEntityAttribute(attr, persistent, entityName)...)
+		violations = append(violations, validateEntityAttribute(attr, kind, entityName)...)
 		if !persistent {
 			violations = append(violations, validateNPEValidationRules(attr, entityName)...)
 		}
 	}
 	return violations
+}
+
+// entityPersistence is what the per-attribute checks know about the entity they
+// are looking at. It is three-valued because ALTER ENTITY … ADD ATTRIBUTE does
+// not carry the kind, and the two rules keyed on it want opposite defaults for
+// that case: MDL020 stays silent unless the entity is known persistent, MDL071
+// stays loud unless it is known NON-persistent. A boolean cannot express both,
+// and the one it used to express dropped MDL071 from the ALTER path.
+type entityPersistence int
+
+const (
+	persistenceUnknown entityPersistence = iota
+	persistencePersistent
+	persistenceNonPersistent
+)
+
+func entityPersistenceOf(kind ast.EntityKind) entityPersistence {
+	switch kind {
+	case ast.EntityPersistent:
+		return persistencePersistent
+	case ast.EntityNonPersistent:
+		return persistenceNonPersistent
+	default:
+		// A VIEW entity is queryable from OQL — indeed its own attribute names
+		// ARE select aliases, the one MDL071 case that needs a rename — and an
+		// EXTERNAL entity is not known to be out of reach either.
+		return persistencePersistent
+	}
 }
 
 // validateNPEValidationRules (MDL054) rejects a validation rule on a
@@ -525,17 +554,19 @@ func ValidateAlterEntity(stmt *ast.AlterEntityStmt) []linter.Violation {
 	if stmt.Operation != ast.AlterEntityAddAttribute || stmt.Attribute == nil {
 		return nil
 	}
-	return validateEntityAttribute(*stmt.Attribute, false, stmt.Name.String())
+	return validateEntityAttribute(*stmt.Attribute, persistenceUnknown, stmt.Name.String())
 }
 
 // validateEntityAttribute runs the reserved-name / AutoX / autonumber-seed checks
-// for a single attribute. persistent enables the MDL020 system-attribute check,
-// which is only meaningful when the entity is known to be persistent.
-func validateEntityAttribute(attr ast.Attribute, persistent bool, entityName string) []linter.Violation {
+// for a single attribute. kind enables the MDL020 system-attribute check, which
+// is only meaningful when the entity is known to be persistent, and suppresses
+// MDL071 when it is known NOT to be.
+func validateEntityAttribute(attr ast.Attribute, kind entityPersistence, entityName string) []linter.Violation {
+	persistent := kind == persistencePersistent
 	var violations []linter.Violation
 	// MDL071 first, so the early returns further down still carry it: an OQL
 	// collision is independent of every other property of the attribute.
-	violations = append(violations, validateOQLReservedAttributeName(attr, entityName)...)
+	violations = append(violations, validateOQLReservedAttributeName(attr, kind, entityName)...)
 	// AutoX pseudo-types ARE the system attributes. The declared identifier is
 	// discarded — the field always materializes under its fixed system member
 	// name — so warn (MDL022) when the two differ, since the write silently
