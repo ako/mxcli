@@ -1,0 +1,122 @@
+-- ledger #147 — the CE1571 data source check called a working page an error.
+--
+-- `mxcli check --references` refused a page that mxbuild builds at 0 errors:
+--
+--   widget 'dgMatrix': microflow data source DS147.DS_Rows has no argument for
+--   parameter 'Context' — Mendix rejects this with CE1571 and does not fill it
+--   in, even when an object of the right type is in scope.
+--
+-- The last clause was the defect. The rule was built on a measurement that a
+-- page PARAMETER of the parameter's type does not auto-map (true), and
+-- generalised it to "an object of the right type in scope" (false). An
+-- enclosing DATA CONTEXT is a different thing and Mendix does fill from it.
+--
+-- Run this and compare the two verdicts — they now agree widget for widget:
+--
+--   mxcli check mdl-examples/bug-tests/ledger-147-datasource-arg-data-context.mdl \
+--     -p app.mpr --references
+--   mxcli exec  … -p app.mpr && scripts/mx-check.sh -p app.mpr --version 11.13.0
+--
+-- Measured on mxbuild 11.13.0, all five widgets in one `mx check`:
+--
+--   dgMatrix      nested in a dataview of the parameter's type   → no error
+--   dgDeep        matching context two levels up, mismatched     → no error
+--                 dataview in between
+--   dgWrong       nested in a dataview of a DIFFERENT type       → CE1571
+--   dgLoose       no enclosing data context at all               → CE1571
+--   dgParamScope  page parameter of the exact type, no dataview  → CE1571
+--
+-- The last three are the CONTROLS. Without them this file would only show that
+-- the rule had been deleted.
+
+create module DS147;
+
+create non-persistent entity DS147.ReportContext ( Yr: Integer );
+create persistent entity DS147.Row ( Label: String(100), Amount: Decimal );
+
+create or modify microflow DS147.DS_ReportContext ()
+returns DS147.ReportContext
+begin
+  @position(130, 200)
+  $Ctx = create DS147.ReportContext (Yr = 2026);
+  @position(320, 200)
+  return $Ctx;
+end;
+
+create or modify microflow DS147.DS_OneRow ()
+returns DS147.Row
+begin
+  @position(130, 200)
+  retrieve $Rows from DS147.Row;
+  @position(320, 200)
+  $R = head($Rows);
+  @position(510, 200)
+  return $R;
+end;
+
+create or modify microflow DS147.DS_Rows ( $Context: DS147.ReportContext )
+returns list of DS147.Row
+begin
+  @position(130, 200)
+  retrieve $Rows from DS147.Row;
+  @position(320, 200)
+  return $Rows;
+end;
+
+-- ACCEPTED: the grid sits inside a data container of the parameter's type.
+create or modify page DS147.NestedOK
+  ( Title: 'Nested in a matching data context', Layout: Atlas_Core.Atlas_Default )
+  {
+    DATAVIEW dvContext (DataSource: MICROFLOW DS147.DS_ReportContext) {
+      DATAGRID dgMatrix (DataSource: MICROFLOW DS147.DS_Rows) {
+        COLUMN colLabel (Attribute: Label, Caption: 'Label')
+      }
+    }
+  };
+
+-- ACCEPTED: the matching context is two levels up, behind a mismatched one.
+create or modify page DS147.NestedTwoDeep
+  ( Title: 'Matching context two levels up', Layout: Atlas_Core.Atlas_Default )
+  {
+    DATAVIEW dvOuter (DataSource: MICROFLOW DS147.DS_ReportContext) {
+      DATAVIEW dvInner (DataSource: MICROFLOW DS147.DS_OneRow) {
+        DATAGRID dgDeep (DataSource: MICROFLOW DS147.DS_Rows) {
+          COLUMN colDeep (Attribute: Label, Caption: 'Label')
+        }
+      }
+    }
+  };
+
+-- CONTROL 1 — no enclosing data context at all. Still CE1571.
+create or modify page DS147.TopLevelBad
+  ( Title: 'No enclosing context', Layout: Atlas_Core.Atlas_Default )
+  {
+    DATAGRID dgLoose (DataSource: MICROFLOW DS147.DS_Rows) {
+      COLUMN colLoose (Attribute: Label, Caption: 'Label')
+    }
+  };
+
+-- CONTROL 2 — an enclosing context of a DIFFERENT type. Still CE1571, and the
+-- message names the type that is actually in context.
+create or modify page DS147.NestedWrongType
+  ( Title: 'Nested in a mismatched context', Layout: Atlas_Core.Atlas_Default,
+    Params: { $Row: DS147.Row } )
+  {
+    DATAVIEW dvRow (DataSource: $Row) {
+      DATAGRID dgWrong (DataSource: MICROFLOW DS147.DS_Rows) {
+        COLUMN colWrong (Attribute: Label, Caption: 'Label')
+      }
+    }
+  };
+
+-- CONTROL 3 — a page PARAMETER of the exact type is NOT a data context. This is
+-- the original measurement the rule was built on, and it still holds: it is why
+-- the fix is "enclosing data context", not "in scope".
+create or modify page DS147.ParamInScope
+  ( Title: 'Page parameter of the exact type', Layout: Atlas_Core.Atlas_Default,
+    Params: { $Ctx: DS147.ReportContext } )
+  {
+    DATAGRID dgParamScope (DataSource: MICROFLOW DS147.DS_Rows) {
+      COLUMN colParam (Attribute: Label, Caption: 'Label')
+    }
+  };
