@@ -241,7 +241,9 @@ func buildFormSettingsBson(formName string) bson.D {
 		{Key: "$Type", Value: "Forms$FormSettings"},
 		{Key: "Form", Value: formName},
 		{Key: "ParameterMappings", Value: bson.A{int32(1)}},
-		{Key: "TitleOverride", Value: emptyTextTemplate()},
+		// No override is an explicit null. An empty template overrides the page
+		// title with "" and produces CW0263 for every authored menu item (#812).
+		{Key: "TitleOverride", Value: nil},
 	}
 }
 
