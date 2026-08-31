@@ -336,6 +336,10 @@ type WidgetObjectBuilder interface {
 	SetAssociation(propertyKey string, assocPath string, entityName string)
 	SetPrimitive(propertyKey string, value string)
 	SetSelection(propertyKey string, value string)
+	// SetImage points an image-typed property (e.g. the Image widget's
+	// `imageObject`) at an image collection entry, by its three-part qualified
+	// name `Module.Collection.Image`.
+	SetImage(propertyKey string, imageQN string)
 	SetExpression(propertyKey string, value string)
 	SetDataSource(propertyKey string, ds pages.DataSource)
 	SetChildWidgets(propertyKey string, children []pages.Widget)

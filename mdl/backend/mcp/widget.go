@@ -183,6 +183,13 @@ func (w *mcpWidgetBuilder) SetPrimitive(propertyKey, value string) {
 	w.object[propertyKey] = value
 }
 
+func (w *mcpWidgetBuilder) SetImage(propertyKey, imageQN string) {
+	if imageQN == "" {
+		return
+	}
+	w.object[propertyKey] = imageQN
+}
+
 func (w *mcpWidgetBuilder) SetDataSource(propertyKey string, ds pages.DataSource) {
 	if src := customWidgetXPathSource(ds); src != nil {
 		w.object[propertyKey] = src

@@ -122,6 +122,9 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 			out = append(out, validatePluggableContentParams(w, locationPrefix)...)
 		}
 		out = append(out, validateWidgetVisibility(w, registry, locationPrefix)...)
+		// An IMAGE with nothing to show — the default source needs an image
+		// reference MDL cannot author. See validate_widget_image.go.
+		out = append(out, validateImageSource(w, locationPrefix)...)
 		out = append(out, validateStaticWidget(w, locationPrefix)...)
 		out = append(out, validateDynamicTextFormatting(w, locationPrefix)...)
 		out = append(out, validateDatasourceXPathAssociationEmpty(w, locationPrefix)...)

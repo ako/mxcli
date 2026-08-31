@@ -263,6 +263,13 @@ func validateWidgetReferences(ctx *ExecContext, widgets []*ast.WidgetV3, sc *scr
 		}
 	}
 
+	if len(refs.images) > 0 {
+		// No same-script exemption: MDL cannot create an image collection entry,
+		// so an image reference can only ever resolve against the project.
+		known, collections := buildImageQualifiedNames(ctx)
+		errors = append(errors, imageRefErrors(refs.images, known, collections)...)
+	}
+
 	return errors
 }
 
@@ -273,6 +280,7 @@ type widgetRefCollector struct {
 	pages      []string
 	snippets   []string
 	entities   []string
+	images     []string
 }
 
 // dedupe collapses repeated references within each category, preserving first
@@ -286,6 +294,7 @@ func (c *widgetRefCollector) dedupe() {
 	c.pages = uniqueStrings(c.pages)
 	c.snippets = uniqueStrings(c.snippets)
 	c.entities = uniqueStrings(c.entities)
+	c.images = uniqueStrings(c.images)
 }
 
 // uniqueStrings returns s with duplicate values removed, preserving order.
@@ -307,7 +316,8 @@ func uniqueStrings(s []string) []string {
 
 func (c *widgetRefCollector) empty() bool {
 	return len(c.microflows) == 0 && len(c.nanoflows) == 0 &&
-		len(c.pages) == 0 && len(c.snippets) == 0 && len(c.entities) == 0
+		len(c.pages) == 0 && len(c.snippets) == 0 && len(c.entities) == 0 &&
+		len(c.images) == 0
 }
 
 func (c *widgetRefCollector) collectFromWidgets(widgets []*ast.WidgetV3) {
@@ -343,6 +353,14 @@ func (c *widgetRefCollector) collectFromWidget(w *ast.WidgetV3) {
 	// Check Snippet reference
 	if snippet := w.GetSnippet(); snippet != "" {
 		c.snippets = append(c.snippets, snippet)
+	}
+
+	// An image widget's Image collection entry. Only the image widget spells it
+	// this way; `Image` on any other widget type is not a collection reference.
+	if strings.EqualFold(w.Type, "image") {
+		if img := strings.TrimSpace(w.GetStringProp("Image")); img != "" {
+			c.images = append(c.images, img)
+		}
 	}
 
 	// Recurse into children

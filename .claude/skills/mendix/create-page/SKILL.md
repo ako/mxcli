@@ -355,6 +355,31 @@ The following features are NOT implemented in mxcli and require manual configura
 > DYNAMICTEXT spacer (Content: ' ')
 > ```
 
+### IMAGE needs a source
+
+An `image` widget shows an entry from an **image collection** by default, and the
+entry is named as three parts — `Module.Collection.ImageName`:
+
+```sql
+image imgLogo (Image: 'MyFirstModule.Images._1', Width: 48, Height: 48)
+```
+
+`show image collections` lists the collections; `describe image collection
+MyFirstModule.Images` lists the images inside one.
+
+An `image` with that (default) source and no `Image:` builds into a model mxbuild
+refuses — *"No image selected."* — so `mxcli check` reports it as **MDL-WIDGET22**
+before you spend a build on it. A name that does not resolve is reported by
+`mxcli check --references`, which is cheaper than mxbuild's CE1613 *"The selected
+image … no longer exists."*
+
+The two other sources take no collection entry:
+
+```sql
+image imgRemote (ImageType: imageUrl, ImageUrl: 'https://example.com/logo.svg')
+image imgIcon   (ImageType: icon)
+```
+
 ### Binding across modules and to audit members
 
 An attribute path may cross module boundaries, including into the platform's
@@ -427,7 +452,7 @@ All shorthand widgets (IMAGE, COMBOBOX, GALLERY, DATAGRID, etc.) are pluggable w
 
 ```sql
 -- Shorthand (common properties only)
-image imgLogo (width: 48, height: 48)
+image imgLogo (Image: 'MyFirstModule.Images._1', width: 48, height: 48)
 
 -- Full PLUGGABLEWIDGET syntax (all properties available)
 pluggablewidget 'com.mendix.widget.web.image.Image' imgLogo (

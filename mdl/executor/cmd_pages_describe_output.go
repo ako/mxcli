@@ -653,40 +653,7 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			}
 		} else if widgetType == "image" {
 			header := fmt.Sprintf("image %s", mdlIdent(w.Name))
-			props := []string{}
-			if w.ImageType != "" && w.ImageType != "image" {
-				props = append(props, fmt.Sprintf("ImageType: %s", w.ImageType))
-			}
-			if w.ImageUrl != "" {
-				props = append(props, fmt.Sprintf("ImageUrl: %s", mdlQuote(w.ImageUrl)))
-			}
-			if w.AlternativeText != "" {
-				props = append(props, fmt.Sprintf("AlternativeText: %s", mdlQuote(w.AlternativeText)))
-			}
-			if w.WidthUnit != "" && w.WidthUnit != "auto" {
-				props = append(props, fmt.Sprintf("WidthUnit: %s", w.WidthUnit))
-			}
-			if w.ImageWidth != "" && w.ImageWidth != "100" {
-				props = append(props, fmt.Sprintf("Width: %s", w.ImageWidth))
-			}
-			if w.HeightUnit != "" && w.HeightUnit != "auto" {
-				props = append(props, fmt.Sprintf("HeightUnit: %s", w.HeightUnit))
-			}
-			if w.ImageHeight != "" && w.ImageHeight != "100" {
-				props = append(props, fmt.Sprintf("Height: %s", w.ImageHeight))
-			}
-			if w.DisplayAs != "" && w.DisplayAs != "fullImage" {
-				props = append(props, fmt.Sprintf("DisplayAs: %s", w.DisplayAs))
-			}
-			if w.Responsive != "" && w.Responsive != "true" {
-				props = append(props, fmt.Sprintf("Responsive: %s", w.Responsive))
-			}
-			if w.OnClickType == "enlarge" {
-				props = append(props, "OnClickType: enlarge")
-			}
-			if w.Action != "" {
-				props = append(props, fmt.Sprintf("OnClick: %s", w.Action))
-			}
+			props := describeImageWidgetProps(w)
 			props = appendConditionalProps(props, w)
 			props = appendAppearanceProps(props, w)
 			formatWidgetProps(ctx.Output, prefix, header, props, "\n")
@@ -1703,6 +1670,55 @@ func dataViewHasFooterBlock(w rawWidget) bool {
 func appendNamedActionProps(props []string, w rawWidget) []string {
 	for _, na := range w.NamedActions {
 		props = append(props, fmt.Sprintf("%s: %s", na.Key, na.MDL))
+	}
+	return props
+}
+
+// describeImageWidgetProps renders an image widget's own properties, separated
+// from the output loop so the round trip can be asserted directly.
+//
+// `Image:` is the one §142 turns on: it names the image collection entry the
+// widget shows, and until the `image` operation existed there was nothing to
+// emit, so describe -> exec copied an Atlas layout and lost its brand image. An
+// ABSENT entry emits nothing rather than an empty `Image: ”`, which would
+// re-execute into a reference to nothing.
+func describeImageWidgetProps(w rawWidget) []string {
+	props := []string{}
+	if w.ImageType != "" && w.ImageType != "image" {
+		props = append(props, fmt.Sprintf("ImageType: %s", w.ImageType))
+	}
+	if w.ImageObject != "" {
+		props = append(props, fmt.Sprintf("Image: %s", mdlQuote(w.ImageObject)))
+	}
+	if w.ImageUrl != "" {
+		props = append(props, fmt.Sprintf("ImageUrl: %s", mdlQuote(w.ImageUrl)))
+	}
+	if w.AlternativeText != "" {
+		props = append(props, fmt.Sprintf("AlternativeText: %s", mdlQuote(w.AlternativeText)))
+	}
+	if w.WidthUnit != "" && w.WidthUnit != "auto" {
+		props = append(props, fmt.Sprintf("WidthUnit: %s", w.WidthUnit))
+	}
+	if w.ImageWidth != "" && w.ImageWidth != "100" {
+		props = append(props, fmt.Sprintf("Width: %s", w.ImageWidth))
+	}
+	if w.HeightUnit != "" && w.HeightUnit != "auto" {
+		props = append(props, fmt.Sprintf("HeightUnit: %s", w.HeightUnit))
+	}
+	if w.ImageHeight != "" && w.ImageHeight != "100" {
+		props = append(props, fmt.Sprintf("Height: %s", w.ImageHeight))
+	}
+	if w.DisplayAs != "" && w.DisplayAs != "fullImage" {
+		props = append(props, fmt.Sprintf("DisplayAs: %s", w.DisplayAs))
+	}
+	if w.Responsive != "" && w.Responsive != "true" {
+		props = append(props, fmt.Sprintf("Responsive: %s", w.Responsive))
+	}
+	if w.OnClickType == "enlarge" {
+		props = append(props, "OnClickType: enlarge")
+	}
+	if w.Action != "" {
+		props = append(props, fmt.Sprintf("OnClick: %s", w.Action))
 	}
 	return props
 }
