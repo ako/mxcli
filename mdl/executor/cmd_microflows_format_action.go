@@ -409,9 +409,12 @@ func formatAction(
 		if outputVar == "" {
 			outputVar = "Result"
 		}
-		fn := string(a.Function)
-		if fn == "" {
-			fn = "count"
+		fn, known := mdlAggregateKeyword(a.Function)
+		if !known {
+			// A function this build has no MDL keyword for. Rendering it by
+			// lowercasing the stored name is what produced unreadable MDL for
+			// Reduce/All/Any (#1004), so say so instead of emitting a lie.
+			return fmt.Sprintf("// unsupported aggregate function %q on $%s — mxcli cannot render this activity as MDL;", a.Function, outputVar)
 		}
 		// Extract attribute name (use last part of qualified name for readability)
 		attrName := a.AttributeQualifiedName
@@ -422,15 +425,27 @@ func formatAction(
 				attrName = parts[len(parts)-1]
 			}
 		}
+		// REDUCE carries the fold Mendix stores beside the expression. Both parts
+		// are required, so they are rendered even when empty rather than dropped —
+		// a reduce that describes without them cannot be executed back (#1004).
+		if a.Function == microflows.AggregateFunctionReduce {
+			initial := a.ReduceInitialValue
+			if initial == "" {
+				initial = "empty"
+			}
+			return fmt.Sprintf("$%s = reduce($%s, %s, initial: %s, returns: %s);",
+				outputVar, a.InputVariable, a.Expression, initial,
+				formatMicroflowDataType(ctx, a.ReduceReturnType, entityNames))
+		}
 		// Expression-based aggregate: SUM($list, $currentObject/Attr + 1)
 		if a.UseExpression && a.Expression != "" {
-			return fmt.Sprintf("$%s = %s($%s, %s);", outputVar, strings.ToLower(fn), a.InputVariable, a.Expression)
+			return fmt.Sprintf("$%s = %s($%s, %s);", outputVar, fn, a.InputVariable, a.Expression)
 		}
 		// Attribute-based aggregate: SUM($list.Attr)
 		if attrName != "" && a.Function != microflows.AggregateFunctionCount {
-			return fmt.Sprintf("$%s = %s($%s.%s);", outputVar, strings.ToLower(fn), a.InputVariable, attrName)
+			return fmt.Sprintf("$%s = %s($%s.%s);", outputVar, fn, a.InputVariable, attrName)
 		}
-		return fmt.Sprintf("$%s = %s($%s);", outputVar, strings.ToLower(fn), a.InputVariable)
+		return fmt.Sprintf("$%s = %s($%s);", outputVar, fn, a.InputVariable)
 
 	case *microflows.RetrieveAction:
 		outputVar := a.OutputVariable
@@ -2033,4 +2048,38 @@ func queueClauseMDL(qs *microflows.QueueSettings) string {
 		return ""
 	}
 	return " in queue " + qs.Queue
+}
+
+// mdlAggregateKeyword maps a Mendix aggregate function to the MDL keyword that
+// parses back to it, reporting false for one this build cannot express.
+//
+// DESCRIBE used to render an aggregate by lowercasing whatever was stored,
+// which silently assumed every value of Mendix's enumeration was also an MDL
+// keyword. It was not: Reduce, All and Any described as MDL that the grammar
+// then rejected (#1004). Mapping explicitly means a function added to Mendix
+// later fails TestAggregateKeywordsCoverEveryFunction rather than a user's
+// script.
+func mdlAggregateKeyword(fn microflows.AggregateFunction) (string, bool) {
+	switch fn {
+	case microflows.AggregateFunctionCount, "":
+		// Count is also the fallback for an activity with no function stored,
+		// which is what Mendix defaults a fresh aggregate to.
+		return "count", true
+	case microflows.AggregateFunctionSum:
+		return "sum", true
+	case microflows.AggregateFunctionAverage:
+		return "average", true
+	case microflows.AggregateFunctionMin:
+		return "minimum", true
+	case microflows.AggregateFunctionMax:
+		return "maximum", true
+	case microflows.AggregateFunctionReduce:
+		return "reduce", true
+	case microflows.AggregateFunctionAll:
+		return "all", true
+	case microflows.AggregateFunctionAny:
+		return "any", true
+	default:
+		return "", false
+	}
 }
