@@ -123,16 +123,27 @@ func TestDescribeWorkflow_MultiLineAnnotationCommentsEveryLine(t *testing.T) {
 
 // The control for the whole change: an activity with no annotation must emit
 // exactly what it did before, with no stray comment line.
+//
+// The fixture carries the jump's target as a real activity. It did not, and the
+// test asserted "no violations at all" — which held until MDL-WF05 landed and
+// correctly reported the dangling target. Both PRs were green alone and red
+// together, because neither CI run saw the other's change; a fixture that is a
+// VALID workflow is what makes the assertion mean what it says.
 func TestDescribeWorkflow_NoAnnotationEmitsNoComment(t *testing.T) {
+	target := &workflows.UserTask{}
+	target.Name = "Review"
+	target.Caption = "Review"
+	target.Page = "M.ReviewPage"
+
 	jump := &workflows.JumpToActivity{TargetActivity: "Review"}
 	jump.Name = "j1"
 
-	src, parseErrs, rules := describeAndValidate(t, jump)
+	src, parseErrs, rules := describeAndValidate(t, target, jump)
 	if parseErrs != nil {
 		t.Fatalf("parse: %v\n%s", parseErrs, src)
 	}
 	if len(rules) > 0 {
-		t.Errorf("unexpected violations %v for a plain jump:\n%s", rules, src)
+		t.Errorf("unexpected violations %v for a valid workflow with no annotation:\n%s", rules, src)
 	}
 	if strings.Contains(src, "annotation") {
 		t.Errorf("emitted an annotation for an activity that has none:\n%s", src)
