@@ -136,12 +136,14 @@ func navLoginPageOf(el element.Element) string {
 // not-found page mxcli has ever written read back empty and was dropped by a
 // DESCRIBE -> exec round-trip.
 //
-// This fixes the read half only. Whether the writers should switch to
-// Navigation$NotFoundHomePage is a separate question that needs a Studio
-// Pro-authored reference to settle: no project on this machine has a not-found
-// page set, mxbuild accepts the HomePage spelling, and Studio Pro is stricter
-// than mxbuild. Reading both is correct either way -- documents already on disk
-// carry the HomePage spelling and must keep round-tripping.
+// Settled by ako/TestApp: its "Fallback page" is stored as
+// Navigation$NotFoundHomePage, so gen and generated/metamodel were right and the
+// writers were wrong. They now emit that $Type.
+//
+// Both are still accepted here, and must stay that way: every not-found page
+// mxcli wrote before that fix carries the Navigation$HomePage spelling, and
+// those documents have to keep round-tripping. mxbuild accepts either, which is
+// why nothing caught it.
 func navNotFoundPageOf(el element.Element) string {
 	var page, microflow string
 	switch nfp := el.(type) {

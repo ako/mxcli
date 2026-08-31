@@ -17,14 +17,17 @@
 -- document and by generated/metamodel (LoginPageSettings *PagesPageSettings),
 -- so for the login page gen is simply wrong and the writers are right.
 --
--- The not-found page is the other way round: generated/metamodel and gen agree
--- on Navigation$NotFoundHomePage and all three mxcli writers emit
--- Navigation$HomePage. That is a WRITER question and is deliberately NOT
--- changed here -- no project on this machine has a not-found page set, so
--- there is no Studio Pro reference to settle it, and mxbuild accepts the
--- HomePage spelling. The reader now accepts both, which is correct either way:
--- every not-found page mxcli has already written carries the HomePage
--- spelling and has to keep round-tripping.
+-- The not-found page -- Studio Pro calls it the "Fallback page" -- was wrong the
+-- other way round: generated/metamodel and gen both say
+-- Navigation$NotFoundHomePage, and all three mxcli writers emitted
+-- Navigation$HomePage. ako/TestApp settles it in gen's favour: Studio Pro
+-- stores the fallback page as Navigation$NotFoundHomePage, so the writers are
+-- fixed here too and now reproduce that document exactly.
+--
+-- The reader still accepts BOTH $Types, and must keep doing so: every
+-- not-found page mxcli wrote before this carries the HomePage spelling and has
+-- to keep round-tripping. mxbuild accepts either, which is why nothing caught
+-- it -- only a Studio Pro-authored document could.
 --
 -- THE CONTROL IS THE OTHER ENGINE. Legacy read the same document correctly the
 -- whole time, which is what makes this a reader bug rather than a writer bug:
