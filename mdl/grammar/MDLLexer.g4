@@ -217,6 +217,10 @@ CONTAINS: C O N T A I N S;
 AVERAGE: A V E R A G E;
 MINIMUM: M I N I M U M;
 MAXIMUM: M A X I M U M;
+// Mendix's three newer aggregate functions. ALL is already a token above.
+REDUCE: R E D U C E;
+ANY: A N Y;
+INITIAL: I N I T I A L;
 LIST: L I S T;
 REMOVE: R E M O V E;
 EQUALS_OP: E Q U A L S;

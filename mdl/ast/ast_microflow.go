@@ -725,6 +725,8 @@ const (
 	AggregateMinimum
 	AggregateMaximum
 	AggregateReduce
+	AggregateAll
+	AggregateAny
 )
 
 func (t AggregateListOperationType) String() string {
@@ -741,6 +743,10 @@ func (t AggregateListOperationType) String() string {
 		return "MAXIMUM"
 	case AggregateReduce:
 		return "REDUCE"
+	case AggregateAll:
+		return "ALL"
+	case AggregateAny:
+		return "ANY"
 	default:
 		return "UNKNOWN"
 	}
@@ -757,7 +763,14 @@ type AggregateListStmt struct {
 	Attribute      string                     // Attribute name for SUM/AVG/MIN/MAX (empty for COUNT or expression form)
 	IsExpression   bool                       // true when Expression is used instead of Attribute
 	Expression     Expression                 // Mendix expression (when IsExpression=true)
-	Annotations    *ActivityAnnotations       // Optional @position, @caption, @color, @annotation
+
+	// REDUCE only. InitialValue seeds $currentResult; ReturnType is the type the
+	// fold produces. Mendix requires both and neither can be inferred from the
+	// expression, so REDUCE names them and the other functions leave them zero.
+	InitialValue Expression
+	ReturnType   *DataType
+
+	Annotations *ActivityAnnotations // Optional @position, @caption, @color, @annotation
 }
 
 func (s *AggregateListStmt) isMicroflowStatement() {}

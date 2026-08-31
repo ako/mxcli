@@ -828,6 +828,20 @@ listAggregateOperation
     | MINIMUM LPAREN attributePath RPAREN                                             // $min = MINIMUM($list.attr)
     | MAXIMUM LPAREN VARIABLE COMMA expression RPAREN                                 // $max = MAXIMUM($list, expr)
     | MAXIMUM LPAREN attributePath RPAREN                                             // $max = MAXIMUM($list.attr)
+    // REDUCE folds a list into one value. Both extra inputs are required and
+    // neither is derivable: `initial` seeds $currentResult, `returns` is the
+    // type Mendix stores alongside it (#1004).
+    | REDUCE LPAREN VARIABLE COMMA expression COMMA reduceFoldOptions RPAREN          // $total = REDUCE($list, expr, initial: 0, returns: Decimal)
+    // ALL / ANY test a Boolean expression over every item. Their return type is
+    // always Boolean, so it is derived rather than written.
+    | ALL LPAREN VARIABLE COMMA expression RPAREN                                     // $allMatch = ALL($list, expr)
+    | ANY LPAREN VARIABLE COMMA expression RPAREN                                     // $anyMatch = ANY($list, expr)
+    ;
+
+// REDUCE's seed and result type, in the ( key: value ) property style used
+// across MDL. Order is fixed so the statement reads the way it is written.
+reduceFoldOptions
+    : INITIAL COLON expression COMMA RETURNS COLON dataType
     ;
 
 /**
