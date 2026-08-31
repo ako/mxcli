@@ -1,0 +1,61 @@
+-- ledger #138 — the same-script exemption did not cover a snippet's nanoflow.
+--
+-- `mxcli check` printed the exemption and then failed on exactly that:
+--
+--   ✓ Syntax OK (4 statements)
+--   (Note: References to objects created within the script are skipped)
+--   Reference errors:
+--     statement 4: snippet 'Ledger.SNIPPET_ThemeBar' has reference errors:
+--     - nanoflow not found: Ledger.ACT_SkinLedgerPaper
+--     - nanoflow not found: Ledger.ACT_SkinIng
+--     - nanoflow not found: Ledger.ACT_SkinRabobank
+--
+-- All three were created by statements 1–3 of the same file, in order. `exec`
+-- ran it without complaint and `mx check` reported 0 errors, so the report was
+-- false in both directions that matter.
+--
+-- One omission in a list of five: validateWidgetReferences consulted the script
+-- context for microflows, pages, snippets and entities, and for nanoflows alone
+-- it did not.
+--
+--   mxcli check mdl-examples/bug-tests/ledger-138-snippet-nanoflow-same-script.mdl \
+--     -p app.mpr --references
+--
+-- Expect: check passes. The CONTROL is in the unit test rather than here — a
+-- nanoflow that exists in neither the project nor the script must still be
+-- reported, and putting it in this file would make the file fail by design.
+
+create module Ledger138;
+
+create or modify nanoflow Ledger138.ACT_SkinLedgerPaper ()
+returns String
+begin
+  @position(360, 200)
+  return 'ledgerpaper';
+end;
+
+create or modify nanoflow Ledger138.ACT_SkinIng ()
+returns String
+begin
+  @position(360, 200)
+  return 'ing';
+end;
+
+-- The snippet is written AFTER the nanoflows it calls, which is the ordering
+-- MDL-ORDER01 requires. #138 is the inverse of that rule: a reference to
+-- something created EARLIER being reported as missing.
+create or replace snippet Ledger138.SNIPPET_ThemeBar
+{
+  container ctnThemeBar (Class: 'ledger-themebar') {
+    actionbutton btnSkinPaper (
+      Caption: 'Ledger Paper',
+      Action: nanoflow Ledger138.ACT_SkinLedgerPaper,
+      Class: 'ledger-themebar-btn'
+    )
+    actionbutton btnSkinIng (
+      Caption: 'ING',
+      Action: nanoflow Ledger138.ACT_SkinIng,
+      Class: 'ledger-themebar-btn'
+    )
+  }
+}

@@ -109,12 +109,21 @@ func parseListeningInodes(contents string, port int) map[string]bool {
 }
 
 // hexPort extracts the port from a /proc/net/tcp local_address ("0100007F:1F90").
+//
+// The bit size is 16 because a TCP port is 16 bits — the kernel writes the field
+// as %04X. Parsing at 32 and narrowing to int is only correct where int is 64
+// bits: on a 32-bit build (386, arm) "FFFFFFFF" parses fine and converts to -1,
+// so an out-of-range field would be reported as a port instead of rejected.
+// Nothing the kernel writes reaches that, but the comparison in the caller is
+// then against a number that is not a port, and the whole point of this file is
+// to name the right process. Parsing at the type's real width makes the range
+// check the parser's job. (CodeQL go/incorrect-integer-conversion, alert 8.)
 func hexPort(addr string) (int, bool) {
 	i := strings.LastIndex(addr, ":")
 	if i < 0 {
 		return 0, false
 	}
-	n, err := strconv.ParseUint(addr[i+1:], 16, 32)
+	n, err := strconv.ParseUint(addr[i+1:], 16, 16)
 	if err != nil {
 		return 0, false
 	}

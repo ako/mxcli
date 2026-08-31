@@ -144,7 +144,17 @@ func execCreateTranslations(ctx *ExecContext, s *ast.CreateTranslationsStmt) err
 		return mdlerrors.NewBackend("apply translations", err)
 	}
 
-	reportTranslationStats(ctx, s, stats, src, scope)
+	// Computed before the stats are reported, because it changes what the DRIFT
+	// warning may claim: an entry that matched nothing IN SCOPE but does match
+	// outside it has not drifted at all, and "the text may have been deleted" is
+	// the wrong diagnosis for it.
+	outOfScope, err := translations.OutOfScope(ctx.Backend, src, scope, dict)
+	if err != nil {
+		outOfScope = nil
+	}
+
+	reportTranslationStats(ctx, s, stats, src, scope, outOfScope)
+	reportOutOfScopeEntries(ctx, s, outOfScope)
 
 	// A translation for a language the project has not enabled is stored, passes
 	// every check, and is then discarded by the build. Say so AFTER the stats, so
@@ -158,7 +168,12 @@ func execCreateTranslations(ctx *ExecContext, s *ast.CreateTranslationsStmt) err
 // reportTranslationStats says what happened, and says it loudly where a caller
 // needs to know: OR REPLACE can delete work somebody did in Studio Pro, and an
 // unmatched key means the file has stopped describing the project.
-func reportTranslationStats(ctx *ExecContext, s *ast.CreateTranslationsStmt, stats translations.Stats, src string, scope translations.Scope) {
+//
+// outOfScope names the entries an `IN <Module>` run could not reach. They are
+// excluded from the drift warning: they matched nothing in scope, but they DID
+// match, so "the text may have been deleted" would be false about them and
+// reportOutOfScopeEntries says the true thing instead.
+func reportTranslationStats(ctx *ExecContext, s *ast.CreateTranslationsStmt, stats translations.Stats, src string, scope translations.Scope, outOfScope []string) {
 	switch {
 	case stats.Set == 0 && stats.Removed == 0:
 		// Nothing to do is the normal outcome of re-running a file, so say so
@@ -185,7 +200,8 @@ func reportTranslationStats(ctx *ExecContext, s *ast.CreateTranslationsStmt, sta
 		}
 	}
 
-	if len(stats.Unmatched) == 0 {
+	drifted := excludeStrings(stats.Unmatched, outOfScope)
+	if len(drifted) == 0 {
 		return
 	}
 	entries, _, err := translations.Collect(ctx.Backend, src, scope)
@@ -200,10 +216,55 @@ func reportTranslationStats(ctx *ExecContext, s *ast.CreateTranslationsStmt, sta
 		"\nWarning: %d source string(s) in the file matched nothing in the project.\n"+
 			"A source edited after the file was written stops matching, which leaves its\n"+
 			"translation attached to a string that no longer exists:\n\n",
-		len(stats.Unmatched))
-	for _, d := range translations.SuggestDrift(stats.Unmatched, dict, entries, s.Language) {
+		len(drifted))
+	for _, d := range translations.SuggestDrift(drifted, dict, entries, s.Language) {
 		fmt.Fprintln(ctx.Output, d.Explain(s.Language))
 	}
+}
+
+// excludeStrings returns ss without any value in drop, preserving order.
+func excludeStrings(ss, drop []string) []string {
+	if len(drop) == 0 {
+		return ss
+	}
+	skip := make(map[string]bool, len(drop))
+	for _, d := range drop {
+		skip[d] = true
+	}
+	out := make([]string, 0, len(ss))
+	for _, s := range ss {
+		if !skip[s] {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// reportOutOfScopeEntries says what an `IN <Module>` run did NOT consider.
+//
+// The NAVIGATION is a project-level document, not a module one, so `in Ledger`
+// never reaches it: the app's page text switched to Dutch and the sidebar did
+// not, while the run reported "Set 212 nl_NL translation(s) across 20
+// document(s)" — a success and a count, and the count is the only thing that
+// would have given it away, if you knew what number to expect (ledger #137).
+//
+// Only the file's OWN entries are reported. "The project has other strings" is
+// true of every scoped run and would warn forever, which is exactly the
+// per-module workflow the scoping exists to support.
+func reportOutOfScopeEntries(ctx *ExecContext, s *ast.CreateTranslationsStmt, missed []string) {
+	if s.Module == "" || len(missed) == 0 {
+		return
+	}
+	fmt.Fprintf(ctx.Output,
+		"\nNot considered: %d of this file's source string(s) also occur OUTSIDE module %s,\n"+
+			"and `in %s` did not reach them. The navigation is a project-level document, so a\n"+
+			"scoped run leaves the menu in the source language while the pages switch:\n\n",
+		len(missed), s.Module, s.Module)
+	for _, srcStr := range quoteAll(missed) {
+		fmt.Fprintf(ctx.Output, "  %s\n", srcStr)
+	}
+	fmt.Fprintf(ctx.Output,
+		"\nRe-run the same file without `in %s` to land these as well.\n", s.Module)
 }
 
 func quoteAll(ss []string) []string {

@@ -893,9 +893,32 @@ func RunLocal(opts LocalRunOptions) error {
 		return watchAndApply(opts, serve, rt, watcher, mxbuildPath)
 	}
 	fmt.Fprintln(w, "(run with --watch to rebuild and hot-apply on changes; Ctrl-C to stop)")
-	waitForInterrupt()
+	if waitForInterruptOrExit(rt.Exited()) {
+		return runtimeStoppedError(rt)
+	}
 	fmt.Fprintln(w, "\nShutting down...")
 	return nil
+}
+
+// runtimeStoppedError reports a runtime that stopped without being asked to.
+//
+// It is an ERROR, not a message: `run` returning 0 after the app has gone is
+// what let a supervisor conclude everything was fine, and what made "the hub URL
+// still answers" the only evidence available. A non-zero exit is what any
+// supervisor — a shell loop, systemd, a container restart policy — already knows
+// how to act on.
+func runtimeStoppedError(rt *LocalRuntime) error {
+	detail := ""
+	if reason := runtimeExitReason(rt.Log()); reason != "" {
+		detail = "\n  " + reason
+	}
+	if err := rt.ExitErr(); err != nil {
+		detail += "\n  the runtime process exited with: " + err.Error()
+	}
+	return fmt.Errorf("the app stopped: the Mendix runtime is no longer running%s\n"+
+		"  mxcli is exiting rather than staying up over a dead app — a tunnel or reverse proxy\n"+
+		"  keeps answering after the runtime is gone, so \"the URL responds\" is not evidence\n"+
+		"  the app is alive. Re-run to restart it.", detail)
 }
 
 // maybeScreenshot captures the app (best-effort) when --screenshot is set. A
@@ -1029,12 +1052,28 @@ func resolveRuntimeInstall(version string, w io.Writer) (string, error) {
 	return CachedRuntimePath(version), nil
 }
 
-// waitForInterrupt blocks until the process receives SIGINT or SIGTERM.
-func waitForInterrupt() {
+// waitForInterruptOrExit blocks until the process receives SIGINT or SIGTERM, or
+// the runtime stops on its own. It returns true when the runtime was the cause.
+//
+// Waiting on the signal ALONE is what turned a runtime that terminated itself
+// into an eight-hour outage nobody was told about: the hub tunnel outlives the
+// app, so the preview URL kept answering while `mxcli run` sat here (see
+// mxcli-formula1 FINDINGS §60). The local runtime has a bounded lifetime by
+// design — its development licence has a maximum run time — so this is the
+// expected ending of a long run, not an edge case.
+//
+// A nil exited channel (no runtime to watch) blocks forever, which is what a
+// nil channel does and the right answer here.
+func waitForInterruptOrExit(exited <-chan struct{}) (runtimeStopped bool) {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(sigCh)
-	<-sigCh
+	select {
+	case <-sigCh:
+		return false
+	case <-exited:
+		return true
+	}
 }
 
 // clientProbeWindow bounds how long ensureClientServed waits for the app to serve
@@ -1173,6 +1212,12 @@ func watchAndApply(opts LocalRunOptions, serve *ServeServer, rt *LocalRuntime, w
 		case <-sigCh:
 			fmt.Fprintln(w, "\nShutting down...")
 			return nil
+		case <-rt.Exited():
+			// Same reason as the non-watch path: a runtime that stops on its own
+			// must end the run rather than leave it watching for edits to apply
+			// to nothing (FINDINGS §60). A restart the controller performs
+			// re-arms this channel, so only an unasked-for exit lands here.
+			return runtimeStoppedError(rt)
 		case <-ticker.C:
 			now := sourceMTime(opts.ProjectPath)
 			if !now.After(last) {

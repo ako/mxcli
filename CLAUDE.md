@@ -564,6 +564,8 @@ mxcli uses a layered documentation system — each artifact type has a single ca
 
 **ADRs are immutable once accepted.** Supersede with a new ADR rather than editing in place. Conventions and template in [`docs/13-decisions/README.md`](docs/13-decisions/README.md).
 
+**Bug findings are read in the opposite order from how they are written.** A fix *appends* one row to the symptom table; a diagnosis *starts* at `docs-wiki/bug-patterns/`, which digests those rows into failure classes, and drills into the table only for the specific instance. The table is append-only evidence — grep it, never read it whole. Its digest is currently thin (3 pattern pages against 600+ rows, none re-synced since the initial synthesis), so a pattern miss means "not yet digested", not "not seen before".
+
 **The wiki is synthesized, not stated.** It frames and connects across the other artifacts — it never restates content that has a canonical home. Rules and seed page list in [`.claude/skills/maintain-wiki.md`](.claude/skills/maintain-wiki.md).
 
 ## PR / Commit Review Checklist
@@ -571,7 +573,7 @@ mxcli uses a layered documentation system — each artifact type has a single ca
 When reviewing pull requests or validating work before commit, verify these items:
 
 ### Bug fixes
-- [ ] **Fix-issue skill consulted** — read `.claude/skills/fix-issue.md` before diagnosing; match symptom to table before opening files
+- [ ] **Fix-issue skill consulted** — start at [`docs-wiki/bug-patterns/`](docs-wiki/bug-patterns/) for the failure *class*, then `grep -i` the symptom table in `.claude/skills/fix-issue.md` for the *instance*; match before opening files. **Do not open the table whole — it is ~1 MB.** A pattern-page miss means the finding has not been digested yet, never that it has not been seen
 - [ ] **Symptom table updated** — new symptom/layer/file mapping added to `.claude/skills/fix-issue.md` if not already covered. Append at the END of the table — for readable diffs, not for merging: conflicts are handled by the `merge=union` driver in `.gitattributes`, which keeps both sides when two fixes append at once. (Insert position alone never fixed this; moving rows from the top to the bottom just moved the collision.) The table is looked up by matching a symptom, not read in order, so position carries no meaning
 - [ ] **Test written first** — failing test exists before implementation (parser test in `sdk/mpr/`, backend mutation test in `mdl/backend/mpr/`, executor handler test in `mdl/executor/` using `MockBackend`)
 - [ ] **Verified at the layer the symptom lives in** — a test proves something about the layer it exercises and nothing more. Parser/grammar → unit test. BSON we write → unit test on the encoded document. Files on disk after `mx` runs → integration test (`-tags integration`). **The rendered app's behaviour or appearance → `.claude/skills/verify-in-runtime.md`** (boot with `run --local`, assert in Playwright). A page can serialize to valid-looking BSON, pass `mx check`, build cleanly, and still render wrong — that was #812.

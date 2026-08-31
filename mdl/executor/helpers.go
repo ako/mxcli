@@ -225,7 +225,12 @@ func validateWidgetReferences(ctx *ExecContext, widgets []*ast.WidgetV3, sc *scr
 	if len(refs.nanoflows) > 0 {
 		known := buildNanoflowQualifiedNames(ctx)
 		for _, ref := range refs.nanoflows {
-			if !known[ref] {
+			// sc.nanoflows is the same-script exemption every branch here
+			// applies. It was the one branch that did not, so a snippet button
+			// bound to a nanoflow created three statements earlier was reported
+			// as missing — under the line that says such references are skipped
+			// (ledger #138).
+			if !known[ref] && !sc.nanoflows[ref] {
 				errors = append(errors, fmt.Sprintf("nanoflow not found: %s", ref))
 			}
 		}
