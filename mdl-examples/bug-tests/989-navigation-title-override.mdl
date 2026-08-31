@@ -68,9 +68,11 @@
 --     both Studio Pro and mxcli store Forms$FormSettings (property `Form`).
 --   * every list these writers emit carries typed-array marker 1 -- HomeItems,
 --     ParameterMappings, PagesForSpecializations, Menu.Items, Caption.Items --
---     where the same blank app's own document has 2 for the empty/parameter
---     lists and 3 for the Items collections. debug-bson.md says any marker other
---     than 2 or 3 makes Studio Pro ignore the whole array.
+--     where the same blank app's own document has 2 or 3 for those fields.
+--     Marker 1 is NOT invalid: Mendix writes it for by-name reference and string
+--     lists (CustomWidgets$WidgetValueType.AllowedTypes, 212k occurrences in a
+--     Marketplace package mxcli has never touched), so this is a per-field
+--     mismatch rather than corruption. Fixed separately.
 
 
 create module Issue989;
