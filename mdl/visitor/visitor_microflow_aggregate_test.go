@@ -101,3 +101,76 @@ func parseSingleAggregate(t *testing.T, stmt string) *ast.AggregateListStmt {
 	t.Fatalf("no AggregateListStmt produced by %q", stmt)
 	return nil
 }
+
+// Mendix has eight aggregate functions; the grammar had five. DESCRIBE renders
+// an activity by name, so a stored Reduce/All/Any came back out as MDL the
+// parser could not read: `reduce(...)` fell through to a plain Change Variable
+// and MDL044 then reported `reduce()` as "not a Mendix expression function"
+// (#1004). Each of the three must reach an aggregate, not a SET.
+func TestAggregateAcceptsReduceAllAny(t *testing.T) {
+	cases := []struct {
+		name, src  string
+		wantOp     ast.AggregateListOperationType
+		wantInit   bool
+		wantReturn ast.DataTypeKind
+	}{
+		{
+			name:       "reduce carries its seed and result type",
+			src:        "$T = reduce($ProductList, $currentResult + $currentObject/Price, initial: 0, returns: Decimal);",
+			wantOp:     ast.AggregateReduce,
+			wantInit:   true,
+			wantReturn: ast.TypeDecimal,
+		},
+		{
+			name:   "all takes a bare boolean expression",
+			src:    "$T = all($ProductList, $currentObject/Price > 0);",
+			wantOp: ast.AggregateAll,
+		},
+		{
+			name:   "any takes a bare boolean expression",
+			src:    "$T = any($ProductList, $currentObject/Price > 0);",
+			wantOp: ast.AggregateAny,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := parseSingleAggregate(t, tc.src)
+			if got.Operation != tc.wantOp {
+				t.Errorf("operation = %v, want %v", got.Operation, tc.wantOp)
+			}
+			if got.InputVariable != "ProductList" {
+				t.Errorf("input variable = %q, want %q", got.InputVariable, "ProductList")
+			}
+			if !got.IsExpression || got.Expression == nil {
+				t.Errorf("expression form not recognised: IsExpression=%v Expression=%v", got.IsExpression, got.Expression)
+			}
+			if tc.wantInit {
+				if got.InitialValue == nil {
+					t.Error("initial value missing — reduce would be stored with an empty fold")
+				}
+				if got.ReturnType == nil {
+					t.Fatal("return type missing — reduce would be stored with no result type")
+				}
+				if got.ReturnType.Kind != tc.wantReturn {
+					t.Errorf("return type kind = %v, want %v", got.ReturnType.Kind, tc.wantReturn)
+				}
+			} else if got.InitialValue != nil || got.ReturnType != nil {
+				// ALL/ANY have no seed and always fold to Boolean; writing either
+				// from MDL would let an author contradict Mendix.
+				t.Errorf("%v should carry no seed or declared type, got initial=%v returns=%v",
+					tc.wantOp, got.InitialValue, got.ReturnType)
+			}
+		})
+	}
+}
+
+// Adding REDUCE, ANY and INITIAL as lexer tokens takes those words out of
+// circulation as bare identifiers unless they are also listed in the `keyword`
+// rule. They are, and this is the check that says so.
+func TestReduceKeywordsStayUsableAsIdentifiers(t *testing.T) {
+	src := "create entity M.Thing (\n  reduce: string(10),\n  any: string(10),\n  initial: string(10)\n);"
+	if _, errs := Build(src); len(errs) > 0 {
+		t.Fatalf("new keywords are no longer usable as attribute names: %v", errs)
+	}
+}

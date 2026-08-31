@@ -1401,6 +1401,10 @@ func (fb *flowBuilder) addAggregateListAction(s *ast.AggregateListStmt) model.ID
 		function = microflows.AggregateFunctionMax
 	case ast.AggregateReduce:
 		function = microflows.AggregateFunctionReduce
+	case ast.AggregateAll:
+		function = microflows.AggregateFunctionAll
+	case ast.AggregateAny:
+		function = microflows.AggregateFunctionAny
 	default:
 		return ""
 	}
@@ -1410,6 +1414,21 @@ func (fb *flowBuilder) addAggregateListAction(s *ast.AggregateListStmt) model.ID
 		InputVariable:  s.InputVariable,
 		OutputVariable: s.OutputVariable,
 		Function:       function,
+	}
+
+	// The fold Mendix stores beside the expression. REDUCE names both in MDL;
+	// ALL and ANY always fold a Boolean and never take a seed, which is what
+	// Studio Pro writes for them (empty initial value, Boolean return type).
+	switch s.Operation {
+	case ast.AggregateReduce:
+		if s.InitialValue != nil {
+			action.ReduceInitialValue = expressionToString(s.InitialValue)
+		}
+		if s.ReturnType != nil {
+			action.ReduceReturnType = convertASTToMicroflowDataType(*s.ReturnType, nil)
+		}
+	case ast.AggregateAll, ast.AggregateAny:
+		action.ReduceReturnType = &microflows.BooleanType{}
 	}
 
 	if s.IsExpression && s.Expression != nil {

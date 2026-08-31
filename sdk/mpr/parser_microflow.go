@@ -987,6 +987,15 @@ func parseAggregateListAction(raw map[string]any) *microflows.AggregateListActio
 		action.Expression = extractString(raw["Expression"])
 	}
 
+	// Reduce's fold: what it starts from and what it folds to. Studio Pro writes
+	// both on every AggregateAction (empty initial value on All/Any), so read
+	// them unconditionally rather than only for Reduce — a rewrite that dropped
+	// them silently deleted the fold (#1004).
+	action.ReduceInitialValue = extractString(raw["ReduceInitialValueExpression"])
+	if rt, ok := raw["ReduceReturnDataType"].(map[string]any); ok {
+		action.ReduceReturnType = parseMicroflowDataType(rt)
+	}
+
 	return action
 }
 
