@@ -36,6 +36,19 @@ func execCreateWorkflow(ctx *ExecContext, s *ast.CreateWorkflowStmt) error {
 				"remove it, or keep the note as an MDL comment (`-- ...`) [MDL-WF04]")
 	}
 
+	// Same for a jump whose target names no activity. A jump target is the only
+	// INTRA-document reference a workflow has, and validateWorkflowStatementRefs
+	// resolves only external ones (microflows, pages, entities), so nothing
+	// looked at it: the jump was written pointing at itself and surfaced under
+	// the native validator as CE6681, an error describing a different fault
+	// (mendixlabs/mxcli#1005). Refused with the check-time rule's own function so
+	// the two cannot drift, and here as well as at check time for the #833
+	// reason — exec is reachable without check.
+	if vs := ValidateWorkflowJumpTargets(s); len(vs) > 0 {
+		return mdlerrors.NewValidationf("workflow '%s': %s\n  → %s",
+			s.Name.String(), vs[0].Message, vs[0].Suggestion)
+	}
+
 	// Refuse a broken reference here as well as at check time. `check
 	// --references` reports these, but exec runs a different pass and wrote the
 	// workflow anyway, so a script that skipped check produced a model the build
@@ -494,15 +507,32 @@ func buildParallelSplit(n *ast.WorkflowParallelSplitNode) *workflows.ParallelSpl
 	return act
 }
 
+// jumpActivityName is the base name every jump activity gets; deduplication
+// appends a counter, giving JumpTo, JumpTo2, ...
+//
+// It used to be the TARGET's name, which made the jump a second activity
+// carrying that name. Mendix resolves TargetActivity by name, so the jump could
+// resolve to itself — the build then fails CE6681 ("not possible to jump to end
+// activities or jump-to activities"), an error naming a different fault
+// (mendixlabs/mxcli#1005). Whether it did depended on flow order, because
+// deduplication renames the SECOND activity it meets with a given name:
+//
+//	backward jump (target first)  jump becomes StepB2, target keeps StepB  — worked
+//	forward  jump (jump first)    jump KEEPS StepB, target becomes StepB2  — broke
+//
+// so a jump to a perfectly valid activity was also affected, which is why fixing
+// only the unresolved-target case would not have been enough.
+const jumpActivityName = "JumpTo"
+
 func buildJumpTo(n *ast.WorkflowJumpToNode) *workflows.JumpToActivity {
 	act := &workflows.JumpToActivity{}
 	act.ID = model.ID(generateWorkflowUUID())
-	act.Name = n.Target
+	act.Name = jumpActivityName
 	act.Caption = n.Caption
 	act.TargetActivity = n.Target
 
 	if act.Caption == "" {
-		act.Caption = act.Name
+		act.Caption = n.Target
 	}
 
 	return act
@@ -556,73 +586,102 @@ func buildEndWorkflow(n *ast.WorkflowEndNode) *workflows.EndWorkflowActivity {
 // Mendix Studio Pro requires unique activity names (CE0495).
 func deduplicateActivityNames(activities []workflows.WorkflowActivity) {
 	nameCount := make(map[string]int)
-	deduplicateActivityNamesInFlow(activities, nameCount)
+	// Two passes, jumps LAST.
+	//
+	// A jump is not a jump target (Mendix refuses that, CE6681), so it has no
+	// claim on a name a real activity wants. Letting it compete in flow order is
+	// how a FORWARD jump used to take its target's name and push the target to
+	// <name>2 — leaving the jump pointing at itself even though the target
+	// existed (mendixlabs/mxcli#1005). Naming jumps last means only jumps are
+	// ever suffixed, whatever they are called and wherever they appear.
+	deduplicateActivityNamesInFlow(activities, nameCount, false)
+	deduplicateActivityNamesInFlow(activities, nameCount, true)
 }
 
-// deduplicateActivityNamesInFlow recursively deduplicates activity names.
-func deduplicateActivityNamesInFlow(activities []workflows.WorkflowActivity, nameCount map[string]int) {
+// deduplicateActivityNamesInFlow recursively deduplicates activity names. Both
+// passes walk the whole tree; jumpPass selects which activities are renamed, so
+// a jump nested in an outcome flow is still reached in the second pass.
+func deduplicateActivityNamesInFlow(activities []workflows.WorkflowActivity, nameCount map[string]int, jumpPass bool) {
 	for _, act := range activities {
 		switch a := act.(type) {
 		case *workflows.UserTask:
-			a.Name = uniqueName(a.Name, nameCount)
+			if !jumpPass {
+				a.Name = uniqueName(a.Name, nameCount)
+			}
 			for _, outcome := range a.Outcomes {
 				if outcome.Flow != nil {
-					deduplicateActivityNamesInFlow(outcome.Flow.Activities, nameCount)
+					deduplicateActivityNamesInFlow(outcome.Flow.Activities, nameCount, jumpPass)
 				}
 			}
 		case *workflows.CallMicroflowTask:
-			a.Name = uniqueName(a.Name, nameCount)
+			if !jumpPass {
+				a.Name = uniqueName(a.Name, nameCount)
+			}
 			for _, outcome := range a.Outcomes {
 				switch o := outcome.(type) {
 				case *workflows.BooleanConditionOutcome:
 					if o.Flow != nil {
-						deduplicateActivityNamesInFlow(o.Flow.Activities, nameCount)
+						deduplicateActivityNamesInFlow(o.Flow.Activities, nameCount, jumpPass)
 					}
 				case *workflows.EnumerationValueConditionOutcome:
 					if o.Flow != nil {
-						deduplicateActivityNamesInFlow(o.Flow.Activities, nameCount)
+						deduplicateActivityNamesInFlow(o.Flow.Activities, nameCount, jumpPass)
 					}
 				case *workflows.VoidConditionOutcome:
 					if o.Flow != nil {
-						deduplicateActivityNamesInFlow(o.Flow.Activities, nameCount)
+						deduplicateActivityNamesInFlow(o.Flow.Activities, nameCount, jumpPass)
 					}
 				}
 			}
 		case *workflows.CallWorkflowActivity:
-			a.Name = uniqueName(a.Name, nameCount)
+			if !jumpPass {
+				a.Name = uniqueName(a.Name, nameCount)
+			}
 		case *workflows.ExclusiveSplitActivity:
-			a.Name = uniqueName(a.Name, nameCount)
+			if !jumpPass {
+				a.Name = uniqueName(a.Name, nameCount)
+			}
 			for _, outcome := range a.Outcomes {
 				switch o := outcome.(type) {
 				case *workflows.BooleanConditionOutcome:
 					if o.Flow != nil {
-						deduplicateActivityNamesInFlow(o.Flow.Activities, nameCount)
+						deduplicateActivityNamesInFlow(o.Flow.Activities, nameCount, jumpPass)
 					}
 				case *workflows.EnumerationValueConditionOutcome:
 					if o.Flow != nil {
-						deduplicateActivityNamesInFlow(o.Flow.Activities, nameCount)
+						deduplicateActivityNamesInFlow(o.Flow.Activities, nameCount, jumpPass)
 					}
 				case *workflows.VoidConditionOutcome:
 					if o.Flow != nil {
-						deduplicateActivityNamesInFlow(o.Flow.Activities, nameCount)
+						deduplicateActivityNamesInFlow(o.Flow.Activities, nameCount, jumpPass)
 					}
 				}
 			}
 		case *workflows.ParallelSplitActivity:
-			a.Name = uniqueName(a.Name, nameCount)
+			if !jumpPass {
+				a.Name = uniqueName(a.Name, nameCount)
+			}
 			for _, outcome := range a.Outcomes {
 				if outcome.Flow != nil {
-					deduplicateActivityNamesInFlow(outcome.Flow.Activities, nameCount)
+					deduplicateActivityNamesInFlow(outcome.Flow.Activities, nameCount, jumpPass)
 				}
 			}
 		case *workflows.JumpToActivity:
-			a.Name = uniqueName(a.Name, nameCount)
+			if jumpPass {
+				a.Name = uniqueName(a.Name, nameCount)
+			}
 		case *workflows.WaitForTimerActivity:
-			a.Name = uniqueName(a.Name, nameCount)
+			if !jumpPass {
+				a.Name = uniqueName(a.Name, nameCount)
+			}
 		case *workflows.WaitForNotificationActivity:
-			a.Name = uniqueName(a.Name, nameCount)
+			if !jumpPass {
+				a.Name = uniqueName(a.Name, nameCount)
+			}
 		case *workflows.EndWorkflowActivity:
-			a.Name = uniqueName(a.Name, nameCount)
+			if !jumpPass {
+				a.Name = uniqueName(a.Name, nameCount)
+			}
 		}
 	}
 }
