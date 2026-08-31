@@ -97,6 +97,10 @@ func newWebProfileBson(kind string) bson.D {
 			{Key: "$Type", Value: "Texts$Text"},
 			{Key: "Items", Value: bson.A{int32(3)}},
 		}},
+		// 3 here, from the PED session this profile shape was pinned against;
+		// the rewrite path writes 2, which is what all 51 stored profiles carry.
+		// Both lists are empty, so nothing observed distinguishes them yet — see
+		// navMarkerHomeItems.
 		{Key: "HomeItems", Value: bson.A{int32(3)}},
 		{Key: "HomePage", Value: bson.D{
 			{Key: "$ID", Value: navID()},
@@ -109,7 +113,9 @@ func newWebProfileBson(kind string) bson.D {
 		{Key: "Menu", Value: bson.D{
 			{Key: "$ID", Value: navID()},
 			{Key: "$Type", Value: "Menus$MenuItemCollection"},
-			{Key: "Items", Value: bson.A{int32(1)}},
+			// Menus$MenuItemCollection.Items is 3 in every Studio Pro document
+			// (153 occurrences); this was the one list here still on 1.
+			{Key: "Items", Value: bson.A{navMarkerItems}},
 		}},
 		{Key: "Name", Value: kind},
 		{Key: "NotFoundHomepage", Value: nil},
