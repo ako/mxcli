@@ -85,15 +85,8 @@ func webNavProfileFromGen(p *genNav.NavigationProfile) *types.NavigationProfile 
 			}
 		}
 	}
-	if lps, ok := p.LoginPageSettings().(*genNav.NavigationProfileLoginFormSettings); ok && lps != nil {
-		profile.LoginPage = lps.LoginPageQualifiedName()
-	}
-	if nfp, ok := p.NotFoundHomepage().(*genNav.NotFoundHomePage); ok && nfp != nil {
-		profile.NotFoundPage = nfp.PageQualifiedName()
-		if profile.NotFoundPage == "" {
-			profile.NotFoundPage = nfp.MicroflowQualifiedName()
-		}
-	}
+	profile.LoginPage = navLoginPageOf(p.LoginPageSettings())
+	profile.NotFoundPage = navNotFoundPageOf(p.NotFoundHomepage())
 	if mic, ok := p.MenuItemCollection().(*genMenus.MenuItemCollection); ok && mic != nil {
 		for _, itemEl := range mic.ItemsItems() {
 			if mi := navMenuItemFromGen(itemEl); mi != nil {
@@ -103,6 +96,68 @@ func webNavProfileFromGen(p *genNav.NavigationProfile) *types.NavigationProfile 
 	}
 	appendOfflineEntities(profile, p.OfflineEntityConfigsItems())
 	return profile
+}
+
+// navLoginPageOf reads a profile's login page out of whatever element the codec
+// decoded for LoginPageSettings.
+//
+// The stored $Type is Forms$FormSettings -- the storage name of
+// Pages$PageSettings -- with the page under "Form", which is what a blank 11.12
+// app's own navigation document carries and what generated/metamodel declares
+// (NavigationProfile.LoginPageSettings *PagesPageSettings). So it decodes to
+// *genPages.PageSettings.
+//
+// gen additionally declares Navigation$NavigationProfileLoginFormSettings, with
+// the page under "LoginPage". Reading only that type is why DESCRIBE NAVIGATION
+// silently dropped the `login page` clause on this engine while legacy printed
+// it. No document carries it (0 of 54 local projects, 0 of the mx-test-projects,
+// and not the blank app), but it is cheap to accept and costs nothing if some
+// Mendix version does write it.
+func navLoginPageOf(el element.Element) string {
+	switch lps := el.(type) {
+	case *genPages.PageSettings:
+		if lps != nil {
+			return lps.PageQualifiedName()
+		}
+	case *genNav.NavigationProfileLoginFormSettings:
+		if lps != nil {
+			return lps.LoginPageQualifiedName()
+		}
+	}
+	return ""
+}
+
+// navNotFoundPageOf reads a profile's not-found page, accepting both $Types that
+// occur in the wild.
+//
+// generated/metamodel and gen agree that this slot holds a
+// Navigation$NotFoundHomePage, and the reader only accepted that -- but all three
+// of mxcli's navigation writers emit a plain Navigation$HomePage there, so every
+// not-found page mxcli has ever written read back empty and was dropped by a
+// DESCRIBE -> exec round-trip.
+//
+// This fixes the read half only. Whether the writers should switch to
+// Navigation$NotFoundHomePage is a separate question that needs a Studio
+// Pro-authored reference to settle: no project on this machine has a not-found
+// page set, mxbuild accepts the HomePage spelling, and Studio Pro is stricter
+// than mxbuild. Reading both is correct either way -- documents already on disk
+// carry the HomePage spelling and must keep round-tripping.
+func navNotFoundPageOf(el element.Element) string {
+	var page, microflow string
+	switch nfp := el.(type) {
+	case *genNav.NotFoundHomePage:
+		if nfp != nil {
+			page, microflow = nfp.PageQualifiedName(), nfp.MicroflowQualifiedName()
+		}
+	case *genNav.HomePage:
+		if nfp != nil {
+			page, microflow = nfp.PageQualifiedName(), nfp.MicroflowQualifiedName()
+		}
+	}
+	if page != "" {
+		return page
+	}
+	return microflow
 }
 
 func nativeNavProfileFromGen(p *genNav.NativeNavigationProfile) *types.NavigationProfile {

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- **`describe navigation` no longer drops a profile's login page and not-found page** — the two clauses were written correctly and sat on disk, but the modelsdk reader type-asserted only the `$Type`s `modelsdk/gen` declares for those slots, and neither is what the documents carry: `LoginPageSettings` is stored as `Forms$FormSettings` (page under `Form`) and `NotFoundHomepage` as `Navigation$HomePage`. A failed type assertion leaves the field empty, so `DESCRIBE NAVIGATION` printed neither clause and pasting its output back — the copy workflow the docs recommend — deleted both from the profile.
+
+  The legacy engine read the same bytes correctly the whole time, which is both the diagnosis and the control: the two engines now print identical output for the same document. The two slots are wrong in opposite directions, and only one is fixed here — a blank app's own navigation document and `generated/metamodel` agree with the writers about `Forms$FormSettings`, so gen is wrong there; for the not-found page gen and `generated/metamodel` agree with each other and mxcli's three writers are the odd one out. That half is a writer question left open on purpose: no project available carries a not-found page, so there is no Studio Pro reference to settle it, and mxbuild accepts either spelling. Reading both is correct either way, since every not-found page mxcli has already written uses the `HomePage` spelling.
+
 - **Fixed navigation page actions overriding page titles with an empty template** — `CREATE OR REPLACE NAVIGATION` wrote `FormSettings.TitleOverride` as an empty `Microflows$TextTemplate`. That is an explicit override to an empty string, not “no override”, so every newly authored page menu item added a CW0263 warning and could render without the page title. All three navigation writers now emit the Studio Pro-authored shape, an explicit null, matching the already-correct page-button and show-page writers.
 
 ## [0.20.0] - 2026-08-28
