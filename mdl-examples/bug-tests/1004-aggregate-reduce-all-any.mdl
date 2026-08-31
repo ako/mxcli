@@ -1,0 +1,93 @@
+-- ============================================================================
+-- Bug #1004: DESCRIBE emitted `reduce(...)`, which mxcli's own checker rejected
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   Describing a microflow containing Mendix's Reduce aggregate produced
+--
+--     $Reduce = reduce($ContractList, $currentResult + $currentObject/Number);
+--
+--   and running that same line back through mxcli failed:
+--
+--     ✗ set 'Reduce' calls 'reduce()', which is not a Mendix expression
+--       function — the build fails CE0117 "Error(s) in expression" [MDL044]
+--
+--   Note "set": the parser did not reject `reduce(...)`, it read the line as a
+--   plain Change Variable whose value happened to be a function call. MDL044
+--   then correctly observed that Mendix has no `reduce()` expression function.
+--
+-- Root cause:
+--   DESCRIBE rendered an aggregate by lowercasing whatever Mendix had stored,
+--   which assumed every value of the AggregateFunction enumeration was also an
+--   MDL keyword. Mendix has eight; the grammar had five. Reduce, All and Any
+--   all described as MDL the parser could not read back.
+--
+--   Underneath that was a quieter defect the grammar alone would not have
+--   fixed: Mendix stores a Reduce's seed and result type in
+--   ReduceInitialValueExpression and ReduceReturnDataType, and the semantic
+--   model had no field for either — so mxcli read them as nothing and would
+--   have written them back as nothing, deleting the fold from a microflow that
+--   still passed `mx check`.
+--
+-- Measured (ako/TestApp, Mendix 11.14, Microflows.MicroflowReduce):
+--   Studio Pro writes BOTH properties on every AggregateAction, not only on
+--   Reduce — its All and Any activities each carry an empty initial value and a
+--   Boolean return type, even though Mendix's own reference guide says a return
+--   type is "not applicable" to them. Attribute is likewise stored as "" when
+--   unused. After the fix all three activities re-serialize byte-identically to
+--   what Studio Pro wrote.
+--
+-- After fix:
+--   reduce/all/any are aggregate statements. REDUCE names its seed and result
+--   type because Mendix requires both and neither can be inferred; ALL and ANY
+--   take neither, since they never accumulate and always fold to Boolean.
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/1004-aggregate-reduce-all-any.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe microflow BugTest1004.MF_Aggregates"
+--
+--   The describe output must be a fixpoint under describe → exec → describe.
+--   The script is re-runnable, so a second `exec` against an in-sync project
+--   must report "Unchanged microflow" (ADR-0008) rather than rewriting it.
+-- ============================================================================
+
+create module BugTest1004;
+
+create or modify entity BugTest1004.Order (
+  Amount : decimal,
+  Paid   : boolean
+);
+/
+
+create or modify microflow BugTest1004.MF_Aggregates (
+  $Orders: list of BugTest1004.Order
+)
+begin
+  -- The five functions that always round-tripped, as the control: if these
+  -- break, the change broke aggregates generally rather than the new three.
+  $Count = count($Orders);
+  $Total = sum($Orders.Amount);
+  $Avg = average($Orders.Amount);
+  $Min = minimum($Orders.Amount);
+  $Max = maximum($Orders.Amount);
+
+  -- Boolean predicates over every item. No seed, always Boolean.
+  $AllPaid = all($Orders, $currentObject/Paid);
+  $AnyUnpaid = any($Orders, not($currentObject/Paid));
+
+  -- The fold. $currentResult is the accumulator; both extra inputs are
+  -- required, and dropping either is the silent half of this bug.
+  $Discounted = reduce(
+    $Orders,
+    $currentResult + $currentObject/Amount * 0.9,
+    initial: 0,
+    returns: Decimal
+  );
+
+  -- An expression-form aggregate, to pin that the older functions still take
+  -- one and did not get folded into the reduce path.
+  $WithVat = sum($Orders, $currentObject/Amount * 1.21);
+
+  return;
+end;
+/

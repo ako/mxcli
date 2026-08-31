@@ -159,6 +159,43 @@ set $Found = contains($Items, $Item);
 ```
 
 The distinction: a **literal or computed** second argument is always the string function. When both arguments are plain variables, the input variable's declared type decides — a **String** input becomes the string function (Change Variable, so declare the Boolean first), anything else stays a list operation (which creates its own output variable, so leave it undeclared). Getting the declare wrong is what triggers `CE0111 "Duplicate variable name"`.
+
+### Aggregates — all eight, including `reduce`, `all` and `any`
+
+An Aggregate list activity folds a list into one value. `count` takes only the
+list; the rest take either an **attribute** or an **expression** over
+`$currentObject`.
+
+```mdl
+$Count   = count($Orders);
+$Total   = sum($Orders.Amount);              -- attribute form
+$Total   = sum($Orders, $currentObject/Amount * 1.21);  -- expression form
+$Avg     = average($Orders.Amount);
+$Min     = minimum($Orders.Amount);
+$Max     = maximum($Orders.Amount);
+
+-- Boolean predicates over every item. No seed, always Boolean.
+$AllPaid = all($Orders, $currentObject/Paid);
+$AnyLate = any($Orders, $currentObject/DueDate < [%CurrentDateTime%]);
+
+-- REDUCE folds with a running total. $currentResult is the accumulator.
+$Discounted = reduce(
+  $Orders,
+  $currentResult + $currentObject/Amount * 0.9,
+  initial: 0,
+  returns: Decimal
+);
+```
+
+**`reduce` needs `initial:` and `returns:` and neither can be inferred.** Mendix
+stores both beside the expression, and the fold is meaningless without a seed
+and a result type — so MDL makes them mandatory rather than guessing. `all` and
+`any` take neither: they never accumulate, and always fold to Boolean.
+
+Do not reach for `reduce` where `sum` will do. It exists for folds Mendix has no
+dedicated function for — running a string together, or carrying a value forward
+that depends on the previous item.
+
 ## Database Operations
 
 ### RETRIEVE Statement
