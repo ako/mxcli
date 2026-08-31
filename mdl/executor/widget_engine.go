@@ -675,6 +675,11 @@ func (e *PluggableWidgetEngine) applyOperation(builder backend.WidgetObjectBuild
 		builder.SetPrimitive(propKey, ctx.PrimitiveVal)
 	case "selection":
 		builder.SetSelection(propKey, ctx.PrimitiveVal)
+	case "image":
+		// An image collection entry, by its three-part qualified name. The
+		// value arrives through the generic source branch, so it is in
+		// PrimitiveVal like any other scalar — only the key it lands on differs.
+		builder.SetImage(propKey, ctx.PrimitiveVal)
 	case "expression":
 		builder.SetExpression(propKey, ctx.PrimitiveVal)
 	case "datasource":

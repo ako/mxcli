@@ -12,31 +12,32 @@ import (
 
 // MDL-WIDGET22: an IMAGE widget with nothing to show.
 //
-// The Image widget's `datasource` property defaults to `image` — an image from
-// an image collection — and MDL has no way to say WHICH image: the widget's
-// `imageObject` property is of type `image`, an operation the pluggable widget
-// engine does not implement. So the default spelling
-//
-//	image i (Responsive: false)
-//
-// writes a model mxbuild refuses:
+// The Image widget's `datasource` property selects where the image comes from,
+// and it defaults to `image` — an entry from an image collection, named on the
+// widget's `imageObject` property. A widget with that source and no entry is a
+// model mxbuild refuses:
 //
 //	[error] "No image selected." at Image 'i'
 //
 // This was invisible until the CE0463 fix landed. Every mxcli-authored Image
 // failed the build with CE0463 "the definition of this widget has changed" —
 // which fired first, and which `mx update-widgets` cleared, leaving the real
-// error behind it (mxcli-formula1 FINDINGS §69/§142). It is also why a
-// describe → exec copy of an Atlas layout loses its brand image.
+// error behind it (mxcli-formula1 FINDINGS §69/§142).
 //
-// Reported at check time because that is where it costs a second rather than a
-// build. It is an ERROR: the build does not pass, so accepting it would be
-// mxcli passing a script it knows produces a broken app.
+// When this rule was first written MDL could not name an image collection entry
+// at all, so its only advice was to switch source. `Image:` is now authorable
+// (see the `image` operation in widget_engine.go), so the rule reports a
+// genuinely incomplete widget rather than a missing capability — and the remedy
+// it offers is the one that keeps the author's intent.
+//
+// Reported at check time because that costs a second rather than a build. It is
+// an ERROR: the build does not pass, so accepting it would be mxcli waving
+// through a script it knows produces a broken app.
 const imageSourceRule = "MDL-WIDGET22"
 
 // imageSourceNeedsImage lists the `datasource` values that require an image
-// reference MDL cannot yet author. Anything else — including a value this build
-// does not recognise — is left alone rather than guessed at.
+// collection entry. Anything else — including a value this build does not
+// recognise — is left alone rather than guessed at.
 var imageSourceNeedsImage = map[string]bool{
 	"":      true, // absent: the widget's own default is "image"
 	"image": true,
@@ -52,6 +53,9 @@ func validateImageSource(w *ast.WidgetV3, locationPrefix string) []linter.Violat
 
 	switch {
 	case imageSourceNeedsImage[strings.ToLower(source)]:
+		if strings.TrimSpace(w.GetStringProp("Image")) != "" {
+			return nil // an entry is named — the widget is complete
+		}
 		return []linter.Violation{{
 			RuleID:   imageSourceRule,
 			Severity: linter.SeverityError,
@@ -61,11 +65,12 @@ func validateImageSource(w *ast.WidgetV3, locationPrefix string) []linter.Violat
 					"build with \"No image selected.\"",
 				locationPrefix, w.Name),
 			Location: linter.Location{DocumentType: "page"},
-			Suggestion: "MDL cannot yet point an image widget at an image collection entry " +
-				"(the widget's `imageObject` property is of a type the widget engine does not " +
-				"author). Use the URL form instead — `image " + w.Name +
-				" (ImageType: imageUrl, ImageUrl: 'https://…')` — or `ImageType: icon`, or set " +
-				"the image in Studio Pro.",
+			Suggestion: fmt.Sprintf(
+				"Name the entry: `image %s (Image: 'Module.Collection.ImageName')` — "+
+					"`show image collections` lists them, and `describe image collection "+
+					"Module.Collection` lists the images inside one. Or switch source: "+
+					"`ImageType: imageUrl, ImageUrl: 'https://…'`, or `ImageType: icon`.",
+				w.Name),
 		}}
 	case strings.EqualFold(source, "imageUrl") && strings.TrimSpace(w.GetStringProp("ImageUrl")) == "":
 		return []linter.Violation{{

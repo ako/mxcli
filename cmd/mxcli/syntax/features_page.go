@@ -50,11 +50,15 @@ func init() {
 			"-- Data grid filters and sort (inside a DATAGRID's FILTER block)\nDATAGRID dg (...) { COLUMN c (Attribute: A) FILTER f { TEXTFILTER tf (Attribute: A) } }\nTEXTFILTER | NUMBERFILTER | DATEFILTER | DROPDOWNFILTER | DROPDOWNSORT\n\n" +
 			"-- Inputs\nTEXTBOX name (Label: 'L', Attribute: Attr)\nTEXTAREA | DATEPICKER | COMBOBOX | CHECKBOX | RADIOBUTTONS\n\n" +
 			"-- Actions\nACTIONBUTTON name (Caption: 'C', Action: SAVE_CHANGES, ButtonStyle: Primary)\nLINKBUTTON name (Caption: 'C', Action: ...)\n\n" +
-			"-- Display\nDYNAMICTEXT name (Content: 'Hello, {1}!', ContentParams: [{1} = Name])\nTITLE name (Content: 'Heading')\nIMAGE name (ImageType: imageUrl, ImageUrl: 'https://…')\n" +
+			"-- Display\nDYNAMICTEXT name (Content: 'Hello, {1}!', ContentParams: [{1} = Name])\nTITLE name (Content: 'Heading')\nIMAGE name (Image: 'Module.Collection.ImageName')\nIMAGE name (ImageType: imageUrl, ImageUrl: 'https://…')\n" +
 			"--   IMAGE needs a source. Its default, `ImageType: image`, shows an entry from an\n" +
-			"--   image collection — which MDL cannot yet name, so the bare form writes a model\n" +
-			"--   mxbuild refuses (\"No image selected.\"). MDL-WIDGET22 reports that at check\n" +
-			"--   time. Use the URL form above, or `ImageType: icon`.\n\n" +
+			"--   image collection, named as three parts: Module.Collection.ImageName.\n" +
+			"--   `show image collections` lists the collections, `describe image collection\n" +
+			"--   Module.Collection` the images inside one. An IMAGE with that source and no\n" +
+			"--   entry writes a model mxbuild refuses (\"No image selected.\"); MDL-WIDGET22\n" +
+			"--   reports that at check time, and a name that does not resolve is reported by\n" +
+			"--   `check --references` rather than failing the build with CE1613.\n" +
+			"--   The alternatives are the URL form above, or `ImageType: icon`.\n\n" +
 			"-- Any pluggable widget by its id (id FIRST, then the name)\nPLUGGABLEWIDGET 'com.mendix.widget.web.badge.Badge' name (value: 'x')\nCUSTOMWIDGET 'com.mendix.widget.custom.x.X' name (prop: 'x')      -- legacy spelling\n\n" +
 			"-- Accepted by the parser, NOT writable on the default engine.\n" +
 			"-- Measured on 11.13.0: each is refused with\n" +

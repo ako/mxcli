@@ -17,10 +17,12 @@ import (
 //	  → [error] "No image selected." at Image 'i'
 //
 // The Image widget's `datasource` defaults to `image`, which shows an image from
-// an image collection — and MDL has no way to say WHICH image (the widget's
-// `imageObject` property is of type `image`, an operation the widget engine does
-// not implement). So the default spelling of `image` always writes a model
-// mxbuild rejects.
+// an image collection, named on the widget's `imageObject` property.
+//
+// When this rule was written MDL could not name one at all, so the only advice
+// it could give was to switch source. `Image:` is authorable now, so the rule
+// reports a genuinely incomplete widget — and the case that must NOT fire is a
+// widget that names its entry.
 //
 // CE0463 was masking that, which is why it went unnoticed: the definition error
 // fired first and `mx update-widgets` "fixed" the page by clearing it, leaving
@@ -56,9 +58,13 @@ func TestImageWidget_DefaultSourceWithNoImageIsReported(t *testing.T) {
 	if !strings.Contains(got[0].Message, "No image selected") {
 		t.Errorf("the message should quote what mxbuild says: %s", got[0].Message)
 	}
-	// It must offer the spelling that does work, not just refuse.
+	// The suggestion must lead with the remedy that keeps the author's intent —
+	// naming the entry — not only with "use a different source".
+	if !strings.Contains(got[0].Suggestion, "Image: 'Module.Collection.ImageName'") {
+		t.Errorf("the suggestion should show how to name the entry: %s", got[0].Suggestion)
+	}
 	if !strings.Contains(got[0].Suggestion, "imageUrl") {
-		t.Errorf("the suggestion should name the working form: %s", got[0].Suggestion)
+		t.Errorf("the suggestion should still offer the alternative sources: %s", got[0].Suggestion)
 	}
 }
 
@@ -112,5 +118,29 @@ func TestImageWidget_EmptyUrlIsReported(t *testing.T) {
 	w := imageWidget(map[string]any{"ImageType": "imageUrl", "ImageUrl": ""})
 	if got := imageViolations(validateImageSource(w, "page X")); len(got) != 1 {
 		t.Fatalf("got %d violations, want 1: %+v", len(got), got)
+	}
+}
+
+// The capability this rule used to say did not exist: an image collection entry
+// named on the widget. It must not be reported.
+func TestImageWidget_NamedCollectionEntryIsClean(t *testing.T) {
+	for _, props := range []map[string]any{
+		{"Image": "MyFirstModule.Images._1"},                       // default source
+		{"ImageType": "image", "Image": "MyFirstModule.Images._1"}, // source spelled out
+	} {
+		if got := imageViolations(validateImageSource(imageWidget(props), "page X")); len(got) != 0 {
+			t.Errorf("a widget naming its image was reported: %+v", got)
+		}
+	}
+}
+
+// CONTROL: an empty Image is not an image. Whitespace is not either — the value
+// reaches the writer verbatim, so " " would store a reference to nothing.
+func TestImageWidget_EmptyOrBlankImageIsStillReported(t *testing.T) {
+	for _, v := range []string{"", "   "} {
+		got := imageViolations(validateImageSource(imageWidget(map[string]any{"Image": v}), "page X"))
+		if len(got) != 1 {
+			t.Errorf("Image=%q: got %d violations, want 1", v, len(got))
+		}
 	}
 }
