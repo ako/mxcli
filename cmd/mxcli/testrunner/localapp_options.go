@@ -4,7 +4,6 @@ package testrunner
 
 import (
 	"io"
-	"path/filepath"
 
 	"github.com/mendixlabs/mxcli/cmd/mxcli/docker"
 )
@@ -26,12 +25,13 @@ func localAppOptions(opts RunOptions, logPath string, env []string, w io.Writer)
 		AppPort:     localTestAppPort,
 		AdminPort:   localTestAdminPort,
 		ServePort:   localTestServePort,
-		// A scratch deployment tree, for the same reason as the scratch database:
-		// the default is <project dir>/deployment, which is what a concurrent
-		// `mxcli run --local` is serving the browser bundle from. Rebuilding it
-		// headless leaves that app serving a 404 for /dist/index.js — 200 and a
-		// blank page, with nothing reported at either end (FINDINGS §62).
-		DeployDir: filepath.Join(filepath.Dir(opts.ProjectPath), ".mxcli", localTestDeployDir),
+		// DeployDir is deliberately left at its default, <project dir>/deployment.
+		// It is shared with a concurrent `mxcli run --local` — unlike the ports and
+		// the database — because mxbuild writes the deployment there and has no
+		// option to move it, so a scratch tree is one nothing populates
+		// (mxcli-ledger §150). The damage that sharing used to do, a headless boot
+		// deleting the browser bundle the running app serves, is undone by
+		// StartLocalApp carrying the bundle across the boot (FINDINGS §62).
 		DB: docker.DBConfig{
 			// A scratch database, so a `run --local` dev loop can keep serving the
 			// same project while the tests run.

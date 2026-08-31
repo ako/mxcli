@@ -40,20 +40,24 @@ mxcli test tests/ -p app.mpr --local     # no daemon needed
 mxcli test tests/ -p app.mpr             # Docker
 ```
 
-`--local` uses its own ports (app 8081, admin 8091), its own `<project>_test`
-database and its own deployment tree (`.mxcli/deployment-test/`), so a
-`mxcli run --local` dev loop can keep serving the same project while the tests
-run — the tests never write into the database you are looking at in the browser,
-and never rebuild the directory that browser's page is served from. The database
-and the deployment tree are created on first use.
+`--local` uses its own ports (app 8081, admin 8091) and its own `<project>_test`
+database, so a `mxcli run --local` dev loop can keep serving the same project
+while the tests run — the tests never write into the database you are looking at
+in the browser. The database is created on first use.
 
-The deployment tree is the one that used to be shared, and the failure was silent:
-a headless test boot does not bundle the web client, so rebuilding the dev loop's
-`deployment/` left the running app answering **HTTP 200 with a blank page** —
-Mendix's SPA shell over a 404 for `/dist/index.js`. Tests passed, the run kept
-running, nothing was reported at either end. Because of that, `--skip-build` now
-reuses the *test* tree and is refused (with the reason) until the suite has run
-once without it.
+The **deployment directory is shared**, and not by choice: mxbuild always writes
+it to `<app dir>/deployment` and has no option to move it. That used to blank the
+running app — a headless test boot does not bundle the web client, and the boot's
+packaging pass deletes `deployment/web/dist`, so the app answered **HTTP 200 with
+a blank page** (Mendix's SPA shell over a 404 for `/dist/index.js`) while the
+tests passed and nothing was reported at either end. The bundle is now copied
+aside before the boot and put back after, so the dev loop keeps the exact bundle
+it built.
+
+Two things still to know about running both at once: the test boot loads and
+unloads the model in the same tree, and both runtimes share `deployment/data/`.
+Neither has been measured to cause damage; if you see something odd, run them one
+at a time and say so.
 
 ### Constants
 
