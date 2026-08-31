@@ -1,6 +1,6 @@
 ---
 title: Translations — preserve, describe, author, and auto-translate
-status: draft
+status: partial
 date: 2026-08-23
 related:
   - PROPOSAL_catalog_integration.md
@@ -9,7 +9,7 @@ related:
 
 # Proposal: Translations — preserve, describe, author, and auto-translate
 
-**Status:** Draft
+**Status:** Partial — all four slices shipped; see Implementation Status.
 **Date:** 2026-08-23
 
 A Mendix app ships its user-visible strings in every language it supports.
@@ -307,6 +307,38 @@ makes deduplication and hand-editing work. This is the translation-memory
 problem, and TM tools answer it the same way: keep the dictionary source-keyed,
 flag "source changed", do not guess.
 
+## Implementation Status
+
+All four slices below are shipped. What remains is one convenience flag and the
+open questions at the end of this document; the feature itself is usable.
+
+| Slice | State | Landed in |
+|-------|-------|-----------|
+| 1 — Preservation | done | #245 |
+| 2 — The `Texts$Text` overlay | done | #250 |
+| 3 — `DESCRIBE TRANSLATIONS` | done | #250 |
+| 4 — `CREATE TRANSLATIONS` + drift report | done, except `--untranslated` | #250 |
+
+Shipped beyond the original plan, because running the feature exposed the need:
+
+- **Enabled-language statements** — `ALTER SETTINGS ADD/REMOVE/ADD OR MODIFY
+  LANGUAGE`, which is what Open Question 2 turned into (#257 and follow-ups).
+  `create translations` now *warns* when the language is not enabled rather than
+  refusing or enabling it silently.
+- **An out-of-scope report** (`mdl/translations/outofscope.go`) — a scoped run
+  names the entries its own scope kept it from reaching. Ledger #137: `in Ledger`
+  never reaches the project-level NAVIGATION, so the pages went Dutch and the
+  sidebar did not, under a message that read as success.
+- **A removal form** — an `OR REPLACE` naming nothing takes a language's
+  translations back out, which is otherwise unexpressible.
+- **A lint rule** (`mdl/linter/rules/missing_translations.go`), a skill
+  (`.claude/skills/mendix/translations/SKILL.md`), and a manual page
+  (`docs-site/src/language/translations.md`).
+
+Still unbuilt: **`--untranslated`** on `DESCRIBE`, to emit only the empty targets.
+It is a cost optimisation for the LLM loop on an already-translated project, not
+a correctness gap — the full describe is what the loop uses today.
+
 ## Implementation Plan
 
 Four slices, each shippable alone. **Slice 1 is the bug and should go first.**
@@ -419,23 +451,45 @@ observed uniformly (3299 of 3299) on 11.13.0 and is the same value
 
 ## Open Questions
 
+Two of the five are settled by shipped work; the resolutions are recorded here
+rather than deleted, since each was decided by a measurement.
+
+### Settled
+
+2. **The enabled-language list.** ~~Does a translation for an unenabled language
+   do anything?~~ **Measured**: a stock 11.13 app enables exactly one language
+   (`en_US`) while its documents carry translations in nine, all from marketplace
+   modules — so Studio Pro stores and keeps them, and `mx check` passes. But the
+   app does not *serve* an unenabled language, which makes translating 411
+   strings into a language nobody can select the quiet failure here. Resolved by
+   doing neither of the two things this question offered: `CREATE TRANSLATIONS`
+   does not enable the language (that is a settings change, and not this
+   statement's business) and does not refuse (the translations are legitimately
+   stored) — it **warns**, and `ALTER SETTINGS ADD LANGUAGE` is the fix it names.
+   Note the trap the skill now documents: `show languages` lists languages that
+   have *translations*, not enabled ones, so it reports 8 where 1 is enabled.
+
+5. **Ordering inside `Items`.** ~~Does Studio Pro care, as it did for widget
+   `PropertyTypes`?~~ **No** — the patch preserves existing order and appends,
+   and projects patched this way open in Studio Pro and build clean. What *did*
+   bite, and was not this, is the **`$ID` form**: a new `Texts$Translation` must
+   carry a 16-byte `$ID` as its **first** property or the build fails with
+   `Expected '$ID' as the first property of a storage object`. See
+   `mdl-examples/bug-tests/translation-id-form.mdl`.
+
+### Still open
+
 1. **Homographs.** One source string needing different translations in different
-   contexts. Mendix's Excel export has the same limitation, so matching it is
-   defensible — and `in <Module>` scoping covers most real cases. Worth deciding
-   explicitly rather than discovering.
-2. **The enabled-language list.** `Settings$LanguageSettings.Languages` exists in
-   gen (`modelsdk/gen/settings/types.go:768`) and is surfaced nowhere —
-   `describe settings` shows only `DefaultLanguageCode`. Does adding a translation
-   for a language that is not enabled on the project do anything useful? Needs one
-   measurement in Studio Pro. If not, `CREATE TRANSLATIONS` should enable it or
-   refuse.
-3. **Catalog coverage.** `CATALOG.strings` indexes 21 contexts and misses widget
-   captions — 39 texts in a page, 2 indexed. Worth widening so `SHOW LANGUAGES`
-   and `search` reflect reality, but it is a separate change and this proposal
-   does not depend on it.
-4. **The 2 texts with translations but no default language.** Harmless to skip on
-   export, but the import should not silently create a default-language entry for
-   them. Confirm what Studio Pro does with such a text.
-5. **Ordering inside `Items`.** The patch preserves existing order and appends.
-   Whether Studio Pro cares (it did for widget `PropertyTypes` — CE0463) is
-   unverified for texts; a Studio Pro open after an import settles it.
+   contexts. Unchanged, and now with usage behind it: `DESCRIBE` flags a
+   conflicting source (3 on a stock app), and `in <Module>` resolves the common
+   case. Mendix's own Excel export has the same limitation. Worth deciding
+   explicitly rather than discovering, but nothing has forced the decision yet.
+
+3. **Catalog coverage.** `CATALOG.strings` still indexes 21 contexts and misses
+   widget captions — 39 texts in a page, 2 indexed. The translation walk is its
+   own and type-agnostic, so this feature does not depend on it; it remains worth
+   widening so `SHOW LANGUAGES` and `search` reflect reality.
+
+4. **The 2 texts with translations but no default language.** Skipped on export,
+   as planned. What Studio Pro does with such a text is still unconfirmed, and
+   the import still does not invent a default-language entry for them.
