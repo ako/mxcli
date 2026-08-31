@@ -41,12 +41,12 @@ import (
 // Studio Pro document uses 1, and mxcli's own menu-document codec path already
 // writes 3 for the same Menus$ item collections, so the two paths disagreed.
 //
-// HomeItems is the one value with a caveat: all 51 observations are empty lists
-// (no project on this machine has a role-based home page), and
-// navigation_profile_add.go writes 3 there, from a PED session against Studio
-// Pro 11.14 that cannot be re-run here. 51 documents beat one unreproducible
-// observation, but a Studio Pro-authored profile WITH a role-based home page
-// would settle it for good.
+// HomeItems needed a second source, because all 51 census observations are empty
+// lists and navigation_profile_add.go wrote 3 there from a PED session that
+// cannot be re-run here. ako/TestApp settles it: its Studio Pro-authored profile
+// carries HomeItems [marker 2] holding two Navigation$RoleBasedHomePage
+// elements -- a NON-empty list, which is the case the census could not reach.
+// navigation_profile_add.go now writes 2 as well.
 const (
 	navMarkerItems             = int32(3)
 	navMarkerParameterMappings = int32(2)

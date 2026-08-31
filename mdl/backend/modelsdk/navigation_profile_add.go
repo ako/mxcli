@@ -97,11 +97,11 @@ func newWebProfileBson(kind string) bson.D {
 			{Key: "$Type", Value: "Texts$Text"},
 			{Key: "Items", Value: bson.A{int32(3)}},
 		}},
-		// 3 here, from the PED session this profile shape was pinned against;
-		// the rewrite path writes 2, which is what all 51 stored profiles carry.
-		// Both lists are empty, so nothing observed distinguishes them yet — see
+		// 2, not the 3 the PED session this profile shape was pinned against
+		// recorded: ako/TestApp's Studio Pro-authored profile carries
+		// HomeItems [marker 2] with two RoleBasedHomePages in it. See
 		// navMarkerHomeItems.
-		{Key: "HomeItems", Value: bson.A{int32(3)}},
+		{Key: "HomeItems", Value: bson.A{navMarkerHomeItems}},
 		{Key: "HomePage", Value: bson.D{
 			{Key: "$ID", Value: navID()},
 			{Key: "$Type", Value: "Navigation$HomePage"},

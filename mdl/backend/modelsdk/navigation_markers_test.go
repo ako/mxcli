@@ -86,8 +86,14 @@ func TestUpdateNavigationProfile_TypedArrayMarkers(t *testing.T) {
 	if err != nil || nav == nil || len(nav.Profiles) == 0 {
 		t.Skipf("no navigation profiles in fixture: %v", err)
 	}
+	// The role-based home page matters: it makes HomeItems NON-empty, which is
+	// the case the census could not reach (all 51 stored profiles have it empty).
+	// ako/TestApp's Studio Pro-authored profile carries two of them at marker 2.
 	if err := b.UpdateNavigationProfile(nav.ID, nav.Profiles[0].Name, types.NavigationProfileSpec{
-		HomePages: []types.NavHomePageSpec{{IsPage: true, Target: "MyFirstModule.Home"}},
+		HomePages: []types.NavHomePageSpec{
+			{IsPage: true, Target: "MyFirstModule.Home"},
+			{IsPage: true, Target: "MyFirstModule.Admin", ForRole: "Administrator"},
+		},
 		HasMenu:   true,
 		MenuItems: []types.NavMenuItemSpec{{Caption: "Home", Page: "MyFirstModule.Home"}},
 	}); err != nil {
@@ -113,8 +119,12 @@ func TestUpdateNavigationProfile_TypedArrayMarkers(t *testing.T) {
 	if prof == nil {
 		t.Fatal("no profile document")
 	}
+	homeItems, _ := prof.Map()["HomeItems"].(bson.A)
+	if len(homeItems) != 2 {
+		t.Fatalf("HomeItems holds %d entries, want the marker plus one role-based home page", len(homeItems))
+	}
 	if got := markerOf(t, prof, "HomeItems"); got != 2 {
-		t.Errorf("Navigation$NavigationProfile.HomeItems marker = %d, want 2 (51 documents)", got)
+		t.Errorf("Navigation$NavigationProfile.HomeItems marker = %d, want 2 (ako/TestApp, non-empty)", got)
 	}
 	if got := markerOf(t, childDoc(t, prof, "Menu"), "Items"); got != 3 {
 		t.Errorf("Menus$MenuItemCollection.Items marker = %d, want 3 (153 documents)", got)
