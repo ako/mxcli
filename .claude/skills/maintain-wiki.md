@@ -22,7 +22,7 @@ Six page categories. Anything outside these belongs somewhere else.
    SDK, Mendix Studio Pro), what is intentionally not implemented.
 5. **Glossary / vocabulary bridge** — Mendix ↔ mxcli ↔ BSON terminology.
 6. **Bug-pattern taxonomy** — *categories* of recurring failure modes that
-   link out to symptom-table rows in `.claude/skills/fix-issue.md`.
+   link out to findings in `.claude/skills/fix-issue/findings/*.jsonl`.
 
 ## What the wiki is NOT for
 
@@ -35,7 +35,7 @@ home instead.
 | MDL syntax tables | `docs/01-project/MDL_QUICK_REFERENCE.md` |
 | What a function does | source code |
 | Step-by-step task procedure | `.claude/skills/<task>.md` |
-| Specific bug fix recipe | symptom table in `.claude/skills/fix-issue.md` |
+| Specific bug fix recipe | `.claude/skills/fix-issue/findings/*.jsonl` |
 | Proposal status, PR / issue numbers, roadmap | proposal frontmatter; GitHub |
 | Latest design proposal | `docs/11-proposals/` |
 | Architecture decision record | `docs/13-decisions/` (ADRs) |
@@ -119,7 +119,7 @@ Rules:
 - **The Sources column lists what was actually read**, not what was relevant.
   This is the audit trail; a reviewer can verify synthesis is grounded.
 - **Write the row as the final step of every sync.** No exceptions. Same
-  discipline as the symptom-table append in `fix-issue.md`.
+  discipline as appending a finding under `fix-issue/findings/`.
 
 ## Seed topic pages
 
@@ -140,8 +140,8 @@ isn't better served by an existing page or a different doc artifact.
 | `rationale/backend-abstraction.md` | rationale | why the executor never imports `sdk/mpr` for writes (cites ADRs) |
 | `positioning/vs-typescript-sdk.md` | positioning | gap analysis, intentional differences |
 | `glossary.md` | glossary | Mendix ↔ mxcli ↔ BSON term bridge |
-| `bug-patterns/bson-numeric-width.md` | bug-pattern | int32/int64 mismatches (links #583, #585 rows) |
-| `bug-patterns/visitor-wiring-gaps.md` | bug-pattern | parsed-but-not-stored (links #393 row) |
+| `bug-patterns/bson-numeric-width.md` | bug-pattern | int32/int64 mismatches (links #583, #585 findings) |
+| `bug-patterns/visitor-wiring-gaps.md` | bug-pattern | parsed-but-not-stored (links #393 finding) |
 | `bug-patterns/widget-type-object-drift.md` | bug-pattern | CE0463 family |
 
 ## Adding a new page

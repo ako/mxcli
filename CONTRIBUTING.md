@@ -334,7 +334,7 @@ local install.
 **Keep a `FINDINGS.md`** at the repo root as you go — one entry per surprise or
 defect: the exact MDL, the command, the error, the Mendix + mxcli versions, and how
 you verified it. A finding that reproduces against a real `mx check` is often enough
-to drive a fix straight into a symptom row in `.claude/skills/fix-issue.md`. The full
+to drive a fix straight into a finding under `.claude/skills/fix-issue/findings/`. The full
 workflow is documented in
 **[Developing on the Web (Claude Code)](https://mendixlabs.github.io/mxcli/tutorial/claude-code-web.html)**.
 

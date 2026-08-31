@@ -54,13 +54,17 @@ bun.lock binary
 
 # Append-only knowledge files use git's union merge driver.
 #
-# Every bug fix appends a row to the symptom table in fix-issue.md, so two
-# concurrent fixes always collide on the same line — five resolution rounds in
-# one week. Moving the insertion point from the top of the table to the bottom
-# did not help: both sides still append to the same place, so the collision
-# moved with it.
+# Every bug fix appends one finding, so two concurrent fixes write to the same
+# place. "union" tells git to keep BOTH sides of a conflicting hunk instead of
+# raising a conflict, which is exactly right for a file of independent
+# line-oriented records where order carries no meaning.
 #
-# "union" tells git to keep BOTH sides of a conflicting hunk instead of raising
-# a conflict. That is exactly right for a file that is only ever appended to and
-# is looked up by matching a symptom, so row order carries no meaning.
-.claude/skills/fix-issue.md merge=union
+# It sits on findings/*.jsonl, NOT on fix-issue.md. It used to cover the whole
+# skill file, back when the findings were a Markdown table inside it — and union
+# applies file-wide, so two branches editing the same PROSE line would have kept
+# both silently. The note that shipped with it said as much and named this fix.
+#
+# Note what union does NOT do: GitHub's server-side merge does not run merge
+# drivers, so a PR still shows the conflict and still has to merge main locally.
+# Sharding by area is what actually reduces collisions.
+.claude/skills/fix-issue/findings/*.jsonl merge=union

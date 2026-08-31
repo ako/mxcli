@@ -3,13 +3,13 @@ title: Widget Type / Object Drift (CE0463)
 category: bug-pattern
 last-synced: 4e185f73
 sources:
-  - .claude/skills/fix-issue.md
+  - .claude/skills/fix-issue/findings/
   - .claude/skills/debug-bson.md
   - sdk/widgets/templates/README.md
   - sdk/mpr/writer_widgets.go
 ---
 
-> **Do not duplicate**: the specific CE0463 fix recipes live in the `.claude/skills/fix-issue.md` symptom rows, the diff workflow lives in `.claude/skills/debug-bson.md`, and the template-extraction procedure lives in `sdk/widgets/templates/README.md`. This page describes the pattern only.
+> **Do not duplicate**: the specific CE0463 fix recipes live in the `fix-issue/findings/*.jsonl` records, the diff workflow lives in `.claude/skills/debug-bson.md`, and the template-extraction procedure lives in `sdk/widgets/templates/README.md`. This page describes the pattern only.
 
 ## What this is
 
@@ -25,6 +25,6 @@ A key trap: `mx check` is tolerant and passes anyway — only `mx diff` and Stud
 
 ## See also
 
-- [fix-issue symptom table](../../.claude/skills/fix-issue.md) — the per-instance CE0463/CE3637 fix recipes
+- [fix-issue findings](../../.claude/skills/fix-issue/findings/) — the per-instance CE0463/CE3637 fix recipes
 - [[architecture/widget-engine]] — how `.def.json` definitions and templates produce widget BSON
 - [[models/version-gating]] — why a field can be valid in one Mendix minor and drift in another
