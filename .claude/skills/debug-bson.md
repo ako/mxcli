@@ -380,12 +380,27 @@ for t, props in crash_props.items():
 
 **Root cause**: The BSON array type indicator rule. Every Mendix BSON array must begin with an `int32` **type indicator** of `2` or `3`. This indicator is skipped by `extractBsonArray` and by Studio Pro's reader. Writing `int32(len(items))` as the first element instead produces an invalid indicator when `len ≠ 2` and `len ≠ 3` — Studio Pro cannot recognise the array and reads 0 parameter mappings.
 
-**Type indicator values**:
+**Type indicator values**. The marker is a **per-field constant**, not a
+function of the list's contents — measured over 19,078 unit files in 54 local
+projects, `Forms$FormSettings.ParameterMappings` is `2` in 816 empty *and* 306
+non-empty occurrences. So "initialized empty array" below names the fields, not
+a rule about emptiness, and the way to get a field right is to read it off a
+Studio Pro document rather than to reason from the list's length.
+
 | First element | Meaning |
 |---------------|---------|
-| `int32(3)` | Initialized array — used for `Items`, `DesignProperties`, and most non-empty lists |
-| `int32(2)` | Initialized empty array — used for `ParameterMappings`, `PagesForSpecializations`, `Parameters` |
-| Any other value | **Invalid** — Studio Pro ignores the entire array |
+| `int32(3)` | Used for `Items` (`Texts$Text`, `Menus$MenuItem*`), `DesignProperties`, `OfflineEntityConfigs`, and most contained-element lists |
+| `int32(2)` | Used for `ParameterMappings`, `PagesForSpecializations`, `Parameters`, `HomeItems`, `Profiles` |
+| `int32(1)` | **Legitimate, not invalid.** Mendix writes it for by-name reference and string lists — `CustomWidgets$WidgetValueType.AllowedTypes` (212k occurrences), `CustomIcons$CustomIcon.Tags`, `AllowedModuleRoles`. Verified in a Marketplace `.mpk` mxcli has never touched |
+| Anything else | Not observed. Writing an unobserved value is a guess; get a reference document |
+
+This table previously said any value other than 2 or 3 was invalid and would
+make Studio Pro ignore the array. That is false, and it was load-bearing: it
+framed mxcli's marker-1 navigation lists as corrupt rather than as a per-field
+mismatch, which is a different bug with a different fix. A wrong marker for a
+given field is still worth fixing — no Studio Pro document uses `1` for
+`Menus$MenuItemCollection.Items` — but the reason is "it does not match the
+documents", never "it is invalid".
 
 **How Studio Pro stores page parameter mappings**: Studio Pro does **not** store explicit `Forms$PageParameterMapping` objects in BSON. It always writes `ParameterMappings: [2]` (type indicator only, no inline objects) and infers `$currentObject` at runtime from the enclosing widget context — DataGrid row, DataView datasource, etc. No matter what the MDL source specifies for `(Param: $currentObject)`, the correct serialization is always the empty `[2]` array.
 

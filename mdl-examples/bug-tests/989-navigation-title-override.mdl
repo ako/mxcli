@@ -1,0 +1,153 @@
+-- PR #989: navigation page actions got an empty TitleOverride instead of null,
+-- blanking the page title on every mxcli-authored menu item.
+--
+-- The same defect as #812, in the writers #812 did not touch. All three
+-- navigation writers built their Forms$FormSettings with
+--
+--   TitleOverride: { $Type: "Microflows$TextTemplate", Text: {...}, Parameters: [] }
+--
+-- where Studio Pro writes `null`. An empty template is not the absence of an
+-- override -- it IS an override, to the empty string -- so every page menu item
+-- mxcli authored raised CW0263 "Empty template" and could render without the
+-- page's own title.
+--
+-- Unlike the ShowPage / button paths there is nothing to preserve here:
+-- types.NavMenuItemSpec has no title field, so MDL cannot author a navigation
+-- title override at all and the value is unconditionally null.
+--
+-- The builder is shared with the profile's LOGIN PAGE (buildFormSettingsBson is
+-- called for LoginPageSettings as well as for each menu item's Forms$FormAction),
+-- so this script exercises both, plus a nested sub-menu -- sub-items are built by
+-- the same recursive call.
+--
+-- THE REFERENCE IS IN THE PROJECT. A blank Mendix app's own navigation document
+-- already contains both shapes, so the fix can be checked against a Studio
+-- Pro-authored document rather than against a warning count. On a blank 11.12
+-- app, before this script runs:
+--
+--   LoginPageSettings <Forms$FormSettings>
+--     Form = ""
+--     ParameterMappings [marker 2, 0 items]
+--     TitleOverride = null            <-- the shape mxcli must write
+--   Menu.Items[0].Action.FormSettings <Forms$FormSettings>
+--     Form = MyFirstModule.Home_Web
+--     ParameterMappings [marker 2, 0 items]
+--     TitleOverride = null
+--
+-- Verify without Studio Pro. `mxcli bson dump` has no navigation type, so read
+-- the unit directly (MPR v2). Note `grep -a`: a .mxunit is raw BSON and plain
+-- `grep -rl` skips it as binary.
+--
+--   mxcli exec 989-navigation-title-override.mdl -p app.mpr
+--   f=$(grep -ral NavigationDocument app/mprcontents | head -1)
+--   strings -a "$f" | grep -c TextTemplate
+--
+-- Measured on a real 11.12.0 v2 app, both engines (MXCLI_ENGINE=legacy selects
+-- sdk/mpr/writer_navigation.go, the default selects
+-- mdl/backend/modelsdk/navigation_write.go):
+--
+--   before the fix: 4   -- one per Forms$FormSettings: 3 page menu items + the
+--                          login page. This is the control: revert TitleOverride
+--                          to navEmptyTextTemplate() and the 4 come back.
+--   after the fix:  0   -- while `strings -a "$f" | grep -c TitleOverride` stays
+--                          at 4, so the key is still written, now as null.
+--
+-- And at the layer the symptom was reported in:
+--
+--   mxcli docker check -p app.mpr
+--       -> 0 errors before and after; CW0263 warnings drop by one per
+--          Forms$FormSettings written. Measured on a real 11.12.3 app in the
+--          PR: 199 -> 183.
+--
+-- Two things this script also makes visible, both OUT OF SCOPE for #989 and
+-- neither introduced by it:
+--   * `describe navigation Responsive` prints no `login page` line even though
+--     the document carries Form = Issue989.NavLogin, so a describe -> exec
+--     round-trip drops the login page. The reader type-asserts
+--     *genNav.NavigationProfileLoginFormSettings (property `LoginPage`), and
+--     both Studio Pro and mxcli store Forms$FormSettings (property `Form`).
+--   * every list these writers emit carries typed-array marker 1 -- HomeItems,
+--     ParameterMappings, PagesForSpecializations, Menu.Items, Caption.Items --
+--     where the same blank app's own document has 2 or 3 for those fields.
+--     Marker 1 is NOT invalid: Mendix writes it for by-name reference and string
+--     lists (CustomWidgets$WidgetValueType.AllowedTypes, 212k occurrences in a
+--     Marketplace package mxcli has never touched), so this is a per-field
+--     mismatch rather than corruption. Fixed separately.
+
+
+create module Issue989;
+create module role Issue989.User;
+
+-- Distinct titles, so a blanked one is visible rather than merely absent.
+create page Issue989.NavHome (
+  title: 'Home Page Title',
+  Layout: Atlas_Core.Atlas_Default
+)
+{
+  container c1 { }
+}
+/
+
+create page Issue989.NavReports (
+  title: 'Reports Page Title',
+  Layout: Atlas_Core.Atlas_Default
+)
+{
+  container c1 { }
+}
+/
+
+create page Issue989.NavSettings (
+  title: 'Settings Page Title',
+  Layout: Atlas_Core.Atlas_Default
+)
+{
+  container c1 { }
+}
+/
+
+create page Issue989.NavLogin (
+  title: 'Sign In Page Title',
+  Layout: Atlas_Core.Atlas_Default
+)
+{
+  container c1 { }
+}
+/
+
+-- Three page menu items (one of them nested, to cover the recursive sub-item
+-- build) and a login page: four Forms$FormSettings, four TitleOverrides that
+-- must all be null.
+create or replace navigation Responsive
+  home page Issue989.NavHome
+  login page Issue989.NavLogin
+  menu (
+    menu item 'Home' page Issue989.NavHome;
+    menu 'Admin' (
+      menu item 'Reports' page Issue989.NavReports;
+      menu item 'Settings' page Issue989.NavSettings;
+    );
+  );
+
+-- A microflow action and a sub-menu container write Forms$MicroflowAction /
+-- Forms$NoAction, which carry no FormSettings -- included so the TextTemplate
+-- count above is attributable to the page items alone.
+create microflow Issue989.DoNothing ()
+begin
+  return;
+end;
+/
+
+create or replace navigation Responsive
+  home page Issue989.NavHome
+  login page Issue989.NavLogin
+  menu (
+    menu item 'Home' page Issue989.NavHome;
+    menu item 'Run' microflow Issue989.DoNothing;
+    menu 'Admin' (
+      menu item 'Reports' page Issue989.NavReports;
+      menu item 'Settings' page Issue989.NavSettings;
+    );
+  );
+
+describe navigation Responsive;
