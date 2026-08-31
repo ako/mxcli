@@ -509,6 +509,9 @@ it is for pages.
 | Retrieve (DB) | `retrieve $Var from Module.Entity [where condition];` | Database XPath retrieve |
 | Retrieve (Assoc) | `retrieve $list from $Parent/Module.AssocName;` | Retrieve by association |
 | Add to list | `add expression to $list;` | Also accepts existing `add $item to $list;` form |
+| Aggregate a list | `$Total = sum($list.Attr);` / `$Total = sum($list, expression);` | `count` (list only), `sum`, `average`, `minimum`, `maximum` — attribute or expression over `$currentObject` |
+| All / any | `$AllMatch = all($list, boolean-expression);` | And `any(...)`. No seed, always Boolean — Mendix stores a Boolean return type for both |
+| Reduce a list | `$Folded = reduce($list, expression, initial: value, returns: Type);` | `$currentResult` is the accumulator. `initial` and `returns` are **required** — Mendix stores both and neither is inferable, so MDL will not guess (#1004) |
 | Call microflow | `$Result = call microflow Module.Name (Param = $value);` | A Mendix **expression** cannot call anything — `declare $r Boolean = Module.Name(...)` is CE0117 (MDL066) |
 | Call a rule | `if Module.SomeRule (Param = $value) then ... end if;` | A decision is the **only** place a rule can be evaluated; there is no call activity for one. The name must resolve to a rule — a microflow there is CE0117 |
 | Call microflow on a queue | `call microflow Module.Name (Param = $value) in queue Module.Queue;` | Background execution; the queue must exist (CE1613) |
