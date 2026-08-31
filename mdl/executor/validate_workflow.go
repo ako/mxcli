@@ -30,6 +30,7 @@ var wfOutcomeIdentRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 //   - MDL-WF03: decision / call-microflow outcome that is not a valid
 //     enumeration value identifier
 //   - MDL-WF04: standalone `annotation` in a workflow body (unloadable model)
+//   - MDL-WF05: `jump to` a target that names no activity (see validate_workflow_jump.go)
 func ValidateWorkflow(stmt *ast.CreateWorkflowStmt) []linter.Violation {
 	var out []linter.Violation
 	loc := linter.Location{
@@ -80,6 +81,7 @@ func ValidateWorkflow(stmt *ast.CreateWorkflowStmt) []linter.Violation {
 			})
 		}
 	})
+	out = append(out, ValidateWorkflowJumpTargets(stmt)...)
 	return out
 }
 
