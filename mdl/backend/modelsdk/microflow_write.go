@@ -680,8 +680,17 @@ func microflowActionToGen(action microflows.MicroflowAction) element.Element {
 		if a.UseExpression {
 			g.SetUseExpression(true)
 			g.SetExpression(a.Expression)
-		} else if a.AttributeQualifiedName != "" {
-			g.SetAttributeQualifiedName(a.AttributeQualifiedName)
+		}
+		// Written even when unused: every Studio Pro reference document carries
+		// Attribute as "". Omitting it made a freshly described Studio Pro
+		// aggregate rewrite on its first execution for no semantic reason.
+		g.SetAttributeQualifiedName(a.AttributeQualifiedName)
+		// Reduce's fold. Written for the functions a reference document shows
+		// Mendix storing them on, and otherwise only to carry back what the
+		// stored document already had (#1004).
+		if a.Function.WritesReduceProperties() || a.ReduceInitialValue != "" || a.ReduceReturnType != nil {
+			g.SetReduceInitialValueExpression(a.ReduceInitialValue)
+			g.SetReduceReturnDataType(microflowDataTypeToGen(a.ReduceReturnType))
 		}
 		g.SetOutputVariableName(a.OutputVariable)
 		return g

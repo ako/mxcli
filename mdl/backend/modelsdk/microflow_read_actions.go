@@ -212,6 +212,11 @@ func actionFromGen(el element.Element) microflows.MicroflowAction {
 			AttributeQualifiedName: a.AttributeQualifiedName(),
 			UseExpression:          a.UseExpression(),
 			Expression:             a.Expression(),
+			// Reduce's fold: what it starts from and what it folds to. Studio Pro
+			// stores both on every AggregateAction, so a rewrite that did not read
+			// them back silently deleted the fold (#1004).
+			ReduceInitialValue: a.ReduceInitialValueExpression(),
+			ReduceReturnType:   dataTypeFromGen(a.ReduceReturnDataType()),
 		}
 		out.ID = model.ID(a.ID())
 		return out

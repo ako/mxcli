@@ -380,9 +380,18 @@ func serializeMicroflowAction(action microflows.MicroflowAction) bson.D {
 		if a.UseExpression {
 			doc = append(doc, bson.E{Key: "UseExpression", Value: true})
 			doc = append(doc, bson.E{Key: "Expression", Value: a.Expression})
-		} else if a.AttributeQualifiedName != "" {
-			// Attribute is BY_NAME_REFERENCE
-			doc = append(doc, bson.E{Key: "Attribute", Value: a.AttributeQualifiedName})
+		}
+		// Attribute is BY_NAME_REFERENCE, and is written even when unused: every
+		// Studio Pro reference document carries it as "". Omitting it made a
+		// freshly described Studio Pro aggregate rewrite on its first execution
+		// for no semantic reason.
+		doc = append(doc, bson.E{Key: "Attribute", Value: a.AttributeQualifiedName})
+		// Reduce's fold. Written for the functions a reference document shows
+		// Mendix storing them on, and otherwise only to carry back what the
+		// stored document already had (#1004).
+		if a.Function.WritesReduceProperties() || a.ReduceInitialValue != "" || a.ReduceReturnType != nil {
+			doc = append(doc, bson.E{Key: "ReduceInitialValueExpression", Value: a.ReduceInitialValue})
+			doc = append(doc, bson.E{Key: "ReduceReturnDataType", Value: serializeMicroflowDataType(a.ReduceReturnType)})
 		}
 		doc = append(doc, bson.E{Key: "VariableName", Value: a.OutputVariable}) // storageName for outputVariableName
 		return doc

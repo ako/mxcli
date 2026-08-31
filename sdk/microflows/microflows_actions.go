@@ -197,6 +197,16 @@ type AggregateListAction struct {
 	AttributeQualifiedName string            `json:"attributeQualifiedName,omitempty"` // BY_NAME_REFERENCE: Module.Entity.Attribute
 	UseExpression          bool              `json:"useExpression,omitempty"`          // true when Expression is used instead of Attribute
 	Expression             string            `json:"expression,omitempty"`             // Mendix expression string (when UseExpression=true)
+
+	// ReduceInitialValue and ReduceReturnType are what REDUCE folds from, and
+	// the type it folds to. Studio Pro writes both on *every* AggregateAction it
+	// stores, not only on Reduce: measured on the three reference activities in
+	// ako/TestApp (Reduce, All, Any), where All and Any carry an empty initial
+	// value and a Boolean return type even though Mendix's own reference guide
+	// says a return type is "not applicable" to them. Carrying both here is what
+	// keeps a stored Reduce from losing its fold on rewrite (#1004).
+	ReduceInitialValue string   `json:"reduceInitialValue,omitempty"`
+	ReduceReturnType   DataType `json:"reduceReturnType,omitempty"`
 }
 
 func (AggregateListAction) isMicroflowAction() {}
@@ -211,7 +221,42 @@ const (
 	AggregateFunctionMin     AggregateFunction = "Minimum"
 	AggregateFunctionMax     AggregateFunction = "Maximum"
 	AggregateFunctionReduce  AggregateFunction = "Reduce"
+	AggregateFunctionAll     AggregateFunction = "All"
+	AggregateFunctionAny     AggregateFunction = "Any"
 )
+
+// AllAggregateFunctions is every value Mendix's AggregateFunction enumeration
+// can hold. DESCRIBE used to render an aggregate by lowercasing whatever was
+// stored, so each function Mendix added came back out as MDL the grammar could
+// not read (#1004). Anything rendering or parsing these must cover this list.
+var AllAggregateFunctions = []AggregateFunction{
+	AggregateFunctionCount,
+	AggregateFunctionSum,
+	AggregateFunctionAverage,
+	AggregateFunctionMin,
+	AggregateFunctionMax,
+	AggregateFunctionReduce,
+	AggregateFunctionAll,
+	AggregateFunctionAny,
+}
+
+// WritesReduceProperties reports whether Mendix stores
+// ReduceInitialValueExpression and ReduceReturnDataType for this function.
+//
+// Measured true for Reduce, All and Any against Studio Pro reference documents
+// (ako/TestApp): All and Any carry an empty initial value and a Boolean return
+// type, so the two properties are not Reduce-only. No reference document exists
+// for the five older functions, so mxcli writes the pair for those only when a
+// stored document already carried it — inventing a key is the mistake that makes
+// a document mxbuild accepts and Studio Pro cannot open.
+func (f AggregateFunction) WritesReduceProperties() bool {
+	switch f {
+	case AggregateFunctionReduce, AggregateFunctionAll, AggregateFunctionAny:
+		return true
+	default:
+		return false
+	}
+}
 
 // ListOperationAction performs list operations.
 type ListOperationAction struct {
