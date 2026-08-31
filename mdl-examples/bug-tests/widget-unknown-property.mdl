@@ -31,5 +31,6 @@ create or replace page MyFirstModule.P_UnknownProp
   -- genuinely unknown property → MDL-WIDGET07 (no suggestion)
   dynamictext unknown ( Content: 'hi', TotallyMadeUp: 'x' )
   -- describe-vocabulary props on a native image → no warning
-  image img ( WidthUnit: pixels, Width: 36, HeightUnit: pixels, Height: 36 )
+  image img ( ImageType: imageUrl, ImageUrl: 'https://example.com/x.png',
+              WidthUnit: pixels, Width: 36, HeightUnit: pixels, Height: 36 )
 }

@@ -64,6 +64,19 @@ func TestNavMenuItemBson_CarriesTheIconThrough(t *testing.T) {
 	}
 }
 
+// Studio Pro stores the absence of a page-title override as an explicit null.
+// An empty TextTemplate is a real override to "" and raises CW0263.
+func TestNavFormSettingsBson_NoTitleOverrideStaysNull(t *testing.T) {
+	settings := navFormSettingsBson("M.Dash")
+	title, present := navIconEntry(settings, "TitleOverride")
+	if !present {
+		t.Fatal("TitleOverride key missing; Studio Pro writes an explicit null")
+	}
+	if title != nil {
+		t.Fatalf("TitleOverride = %#v, want nil", title)
+	}
+}
+
 func TestMenuIconOf_NilIconYieldsNothing(t *testing.T) {
 	typeName, image := menuIconOf(nil)
 	if typeName != "" || image != "" {
