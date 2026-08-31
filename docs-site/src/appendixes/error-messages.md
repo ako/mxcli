@@ -103,6 +103,23 @@ on 11.9.0) [MDL-WIDGET02]
 
 The deprecated-widget catalog is hand-maintained in `mdl/executor/keyword_dispatch.go` (`LegacyWidgets`). Open an issue if you spot a native widget that should be on the list.
 
+### MDL-LISTOP01: Undefined iterator in a FILTER/FIND predicate
+
+```
+filter($L, …): '$item' is not defined in this microflow. A filter predicate is
+evaluated once per item and Mendix binds the item to '$currentObject' — no other
+iterator name exists, so mxbuild rejects this with CE0109 "Undefined variable
+'item'". [MDL-LISTOP01]
+```
+
+**Cause:** A `FILTER`/`FIND` predicate navigates from a variable the microflow never binds. Mendix evaluates the predicate once per item with the item bound to `$currentObject`, and defines no other iterator name — so `filter($L, $item/Amount > 0)` compiles to a reference to nothing.
+
+**Solution:**
+1. Use `$currentObject/` for the item under test: `filter($L, $currentObject/Amount > 0)`.
+2. Or write the attribute bare — `filter($L, Amount > 0)` — and mxcli resolves it against the list's entity and stores `$currentObject/Amount`.
+
+The rule keys on **scope, not on the name**. `$item` is perfectly valid in a predicate when it is the enclosing loop's iterator, which is how the O(N) lookup idiom is written — inside `loop $item in $L`, `find($Others, Key = $item/Key)` navigates the loop's variable and is not flagged.
+
 ## mxcli Parser Errors
 
 ### Mismatched input
@@ -159,6 +176,20 @@ Error: unresolved reference 'MyModule.NonExistent' at line 5
 **Cause:** A qualified name references an element that does not exist in the project. This error appears with `mxcli check script.mdl -p app.mpr --references`.
 
 **Solution:** Verify the referenced element exists, or create it before the referencing statement.
+
+### Bare name is not a member of the list's entity
+
+```
+Error: filter($L, …): "Nonexistent" is not an attribute or association of
+Shop.Order — a filter predicate is evaluated once per item, so a bare name must
+be a member of the list's entity (mxbuild reports CE0117 otherwise)
+```
+
+**Cause:** A bare name in a `FILTER`/`FIND` predicate can only mean a member of the item being tested. mxcli resolves it against the list's element entity and rewrites it to `$currentObject/<member>`; a name that does not resolve cannot be rewritten into anything valid.
+
+**Solution:** Check the spelling against `DESCRIBE ENTITY Shop.Order`. If you meant a variable rather than a member, write it with its `$` — a bare word is always read as a member of the iterated item.
+
+Before mxcli qualified these, the unresolvable name was written into the expression verbatim and surfaced at build time as `CE0117 "Error(s) in expression."`, with `mxcli check` reporting nothing.
 
 ## BSON Serialization Errors
 
