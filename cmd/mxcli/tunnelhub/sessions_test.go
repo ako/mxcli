@@ -24,7 +24,15 @@ func TestSessionURL(t *testing.T) {
 
 func TestSessionLog_PersistAndPrune(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sub", "hub-sessions.json")
-	base := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
+	// Relative to the real clock, unlike the fixed base the other tests here
+	// use, and that difference is load-bearing: NewSessionLogFile prunes inside
+	// load(), before a test can inject its clock, so the prune on reload runs
+	// against time.Now() no matter what is assigned to log2.now afterwards. With
+	// a hardcoded base this test passes until the wall clock drifts past the
+	// retention window and then fails for good -- which is what happened on
+	// 2026-08-31, exactly 30 days after a base of 2026-08-01 and a 30-day
+	// retention, on every branch at once.
+	base := time.Now().UTC()
 
 	log, err := NewSessionLogFile(path, 30*24*time.Hour)
 	if err != nil {
@@ -42,7 +50,9 @@ func TestSessionLog_PersistAndPrune(t *testing.T) {
 		Subdomain: "ancient", LastSeenAt: base.Add(-40 * 24 * time.Hour),
 	})
 
-	// Reload from disk with "now" past the old record's retention window.
+	// Reload from disk. The prune happens during load, on the real clock: the
+	// 40-day-old record is outside the 30-day window and the 1-hour-old one is
+	// comfortably inside it, so the outcome does not depend on when this runs.
 	log2, err := NewSessionLogFile(path, 30*24*time.Hour)
 	if err != nil {
 		t.Fatalf("reload: %v", err)

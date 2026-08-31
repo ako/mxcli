@@ -23,6 +23,42 @@ type NavHomePageSpec = types.NavHomePageSpec
 type NavMenuItemSpec = types.NavMenuItemSpec
 
 // UpdateNavigationProfile patches a navigation profile's home pages, login page, and menu.
+// Typed-array markers for the lists these writers emit.
+//
+// The leading int32 of a Mendix array is a per-FIELD constant, not a function of
+// the list's contents: Forms$FormSettings.ParameterMappings is 2 in 816 empty
+// and 306 non-empty real occurrences alike. So each list below takes the value
+// Studio Pro writes for that field, censused over 19,078 unit files in 54
+// projects on this machine:
+//
+//	Forms$FormSettings.ParameterMappings        2  (1122 documents)
+//	Forms$FormAction.PagesForSpecializations    2  (357)
+//	Menus$MenuItemCollection.Items              3  (153)
+//	Menus$MenuItem.Items                        3  (459)
+//	Texts$Text.Items                            3  (169,486 vs 7 at 2)
+//	Navigation$NavigationProfile.HomeItems      2  (51)
+//
+// These writers previously emitted 1 for all of them. Note what that was NOT:
+// 1 is a perfectly legitimate Mendix marker -- a Marketplace .mpk mxcli has
+// never touched carries it on CustomWidgets$WidgetValueType.AllowedTypes (212k
+// occurrences) and on Forms$Page.AllowedModuleRoles. debug-bson.md's rule that
+// "any other value is invalid and Studio Pro ignores the array" is too strong
+// and is corrected there. The defect is narrower: for THESE fields, no
+// Studio Pro document uses 1, and mxcli's own menu-document codec path already
+// writes 3 for the same Menus$ item collections, so the two paths disagreed.
+//
+// HomeItems needed a second source, because all 51 census observations are empty
+// lists and navigation_profile_add.go wrote 3 there from a PED session that
+// cannot be re-run here. ako/TestApp settles it: its Studio Pro-authored profile
+// carries HomeItems [marker 2] holding two Navigation$RoleBasedHomePage
+// elements -- a NON-empty list, which is the case the census could not reach.
+// navigation_profile_add.go now writes 2 as well.
+const (
+	navMarkerItems             = int32(3)
+	navMarkerParameterMappings = int32(2)
+	navMarkerHomeItems         = int32(2)
+)
+
 func (w *Writer) UpdateNavigationProfile(navDocID model.ID, profileName string, spec NavigationProfileSpec) error {
 	return w.readPatchWrite(navDocID, func(doc bson.D) (bson.D, error) {
 		profiles := getBsonArray(doc, "Profiles")
@@ -105,7 +141,7 @@ func patchWebProfile(doc bson.D, spec NavigationProfileSpec) bson.D {
 	}
 
 	// --- HomeItems (role-based homes) ---
-	homeItems := bson.A{int32(1)}
+	homeItems := bson.A{navMarkerHomeItems}
 	for _, rh := range roleHomes {
 		homeItems = append(homeItems, buildRoleBasedHomeBson(rh))
 	}
@@ -122,7 +158,12 @@ func patchWebProfile(doc bson.D, spec NavigationProfileSpec) bson.D {
 	if spec.NotFoundPage != "" {
 		doc = setBsonField(doc, "NotFoundHomepage", bson.D{
 			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
-			{Key: "$Type", Value: "Navigation$HomePage"},
+			// Studio Pro's "Fallback page". The $Type is
+			// Navigation$NotFoundHomePage, not the Navigation$HomePage the home
+			// page slot takes -- measured on ako/TestApp, whose fallback page
+			// Studio Pro stored as Navigation$NotFoundHomePage/Page. mxbuild
+			// accepts either, so nothing caught this.
+			{Key: "$Type", Value: "Navigation$NotFoundHomePage"},
 			{Key: "Microflow", Value: ""},
 			{Key: "Page", Value: spec.NotFoundPage},
 		})
@@ -133,7 +174,7 @@ func patchWebProfile(doc bson.D, spec NavigationProfileSpec) bson.D {
 
 	// --- Menu ---
 	if spec.HasMenu {
-		menuItems := bson.A{int32(1)}
+		menuItems := bson.A{navMarkerItems}
 		for _, mi := range spec.MenuItems {
 			menuItems = append(menuItems, buildMenuItemBson(mi))
 		}
@@ -177,7 +218,7 @@ func patchNativeProfile(doc bson.D, spec NavigationProfileSpec) bson.D {
 	}
 
 	// Role-based native home pages
-	roleItems := bson.A{int32(1)}
+	roleItems := bson.A{navMarkerHomeItems}
 	for _, rh := range roleHomes {
 		page := ""
 		nanoflow := ""
@@ -240,8 +281,10 @@ func buildFormSettingsBson(formName string) bson.D {
 		{Key: "$ID", Value: idToBsonBinary(generateUUID())},
 		{Key: "$Type", Value: "Forms$FormSettings"},
 		{Key: "Form", Value: formName},
-		{Key: "ParameterMappings", Value: bson.A{int32(1)}},
-		{Key: "TitleOverride", Value: emptyTextTemplate()},
+		{Key: "ParameterMappings", Value: bson.A{navMarkerParameterMappings}},
+		// No override is an explicit null. An empty template overrides the page
+		// title with "" and produces CW0263 for every authored menu item (#812).
+		{Key: "TitleOverride", Value: nil},
 	}
 }
 
@@ -257,7 +300,7 @@ func buildMenuItemBson(mi NavMenuItemSpec) bson.D {
 	}
 
 	// Sub-items
-	subItems := bson.A{int32(1)}
+	subItems := bson.A{navMarkerItems}
 	for _, sub := range mi.Items {
 		subItems = append(subItems, buildMenuItemBson(sub))
 	}
@@ -299,7 +342,7 @@ func buildCaptionBson(text string) bson.D {
 		{Key: "$ID", Value: idToBsonBinary(generateUUID())},
 		{Key: "$Type", Value: "Texts$Text"},
 		{Key: "Items", Value: bson.A{
-			int32(1),
+			navMarkerItems,
 			bson.D{
 				{Key: "$ID", Value: idToBsonBinary(generateUUID())},
 				{Key: "$Type", Value: "Texts$Translation"},
@@ -319,7 +362,7 @@ func buildMenuAction(mi NavMenuItemSpec) bson.D {
 			{Key: "DisabledDuringExecution", Value: false},
 			{Key: "FormSettings", Value: buildFormSettingsBson(mi.Page)},
 			{Key: "NumberOfPagesToClose2", Value: ""},
-			{Key: "PagesForSpecializations", Value: bson.A{int32(1)}},
+			{Key: "PagesForSpecializations", Value: bson.A{navMarkerParameterMappings}},
 		}
 	}
 	if mi.Microflow != "" {
