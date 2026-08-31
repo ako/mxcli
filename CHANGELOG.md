@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- **`describe navigation` no longer drops a profile's login page and not-found page** — the two clauses were written correctly and sat on disk, but the modelsdk reader type-asserted only the `$Type`s `modelsdk/gen` declares for those slots, and neither is what the documents carry: `LoginPageSettings` is stored as `Forms$FormSettings` (page under `Form`) and `NotFoundHomepage` as `Navigation$HomePage`. A failed type assertion leaves the field empty, so `DESCRIBE NAVIGATION` printed neither clause and pasting its output back — the copy workflow the docs recommend — deleted both from the profile.
+
+  The legacy engine read the same bytes correctly the whole time, which is both the diagnosis and the control: the two engines now print identical output for the same document. The two slots were wrong in opposite directions. For the login page a blank app's own navigation document and `generated/metamodel` agree with the writers, so **gen** is wrong. For the not-found page — Studio Pro's **"Fallback page"** — gen and `generated/metamodel` agree with each other and mxcli's three **writers** were the odd one out, storing `Navigation$HomePage` where Studio Pro stores `Navigation$NotFoundHomePage`; the writers are corrected and now reproduce a Studio Pro-authored fallback page exactly. mxbuild accepts either spelling, so only a reference document could separate them. The reader keeps accepting both, because every not-found page mxcli wrote before this carries the old spelling and has to keep round-tripping.
+
 - **Fixed navigation page actions overriding page titles with an empty template** — `CREATE OR REPLACE NAVIGATION` wrote `FormSettings.TitleOverride` as an empty `Microflows$TextTemplate`. That is an explicit override to an empty string, not “no override”, so every newly authored page menu item added a CW0263 warning and could render without the page title. All three navigation writers now emit the Studio Pro-authored shape, an explicit null, matching the already-correct page-button and show-page writers.
 
 ## [0.20.0] - 2026-08-28

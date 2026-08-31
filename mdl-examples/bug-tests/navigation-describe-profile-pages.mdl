@@ -1,0 +1,65 @@
+-- DESCRIBE NAVIGATION dropped a profile's `login page` and `not found page`
+-- on the modelsdk engine, so a describe -> exec round-trip deleted both from
+-- the project.
+--
+-- The clauses were written correctly and were on disk. The READER lost them:
+-- mdl/backend/modelsdk/navigation_read.go accepted only the $Types
+-- modelsdk/gen declares for those two slots, and neither is the $Type the
+-- documents carry.
+--
+--   slot                | stored $Type          | gen expected
+--   --------------------+-----------------------+---------------------------------------
+--   LoginPageSettings   | Forms$FormSettings    | Navigation$NavigationProfileLoginFormSettings
+--                       | (page under "Form")   | (page under "LoginPage")
+--   NotFoundHomepage    | Navigation$HomePage   | Navigation$NotFoundHomePage
+--
+-- Forms$FormSettings is confirmed by a blank 11.12 app's own navigation
+-- document and by generated/metamodel (LoginPageSettings *PagesPageSettings),
+-- so for the login page gen is simply wrong and the writers are right.
+--
+-- The not-found page -- Studio Pro calls it the "Fallback page" -- was wrong the
+-- other way round: generated/metamodel and gen both say
+-- Navigation$NotFoundHomePage, and all three mxcli writers emitted
+-- Navigation$HomePage. ako/TestApp settles it in gen's favour: Studio Pro
+-- stores the fallback page as Navigation$NotFoundHomePage, so the writers are
+-- fixed here too and now reproduce that document exactly.
+--
+-- The reader still accepts BOTH $Types, and must keep doing so: every
+-- not-found page mxcli wrote before this carries the HomePage spelling and has
+-- to keep round-tripping. mxbuild accepts either, which is why nothing caught
+-- it -- only a Studio Pro-authored document could.
+--
+-- THE CONTROL IS THE OTHER ENGINE. Legacy read the same document correctly the
+-- whole time, which is what makes this a reader bug rather than a writer bug:
+--
+--   mxcli exec navigation-describe-profile-pages.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe navigation Responsive"
+--   MXCLI_ENGINE=legacy mxcli -p app.mpr -c "describe navigation Responsive"
+--
+-- Before the fix the two disagreed -- legacy printed `login page` and
+-- `not found page`, the default engine printed neither. After it they are
+-- identical. Re-executing the default engine's own output was the damage:
+-- both clauses were absent from it, so the profile lost them.
+
+
+create module NavRT;
+create module role NavRT.User;
+
+create page NavRT.Home    (title: 'Home',    Layout: Atlas_Core.Atlas_Default) { container c1 { } }
+/
+create page NavRT.SignIn  (title: 'Sign In', Layout: Atlas_Core.Atlas_Default) { container c1 { } }
+/
+create page NavRT.Missing (title: 'Missing', Layout: Atlas_Core.Atlas_Default) { container c1 { } }
+/
+
+create or replace navigation Responsive
+  home page NavRT.Home
+  login page NavRT.SignIn
+  not found page NavRT.Missing
+  menu (
+    menu item 'Home' page NavRT.Home;
+  );
+
+-- Must print all three clauses. Before the fix, on the default engine, only
+-- `home page` came back.
+describe navigation Responsive;

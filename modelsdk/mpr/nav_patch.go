@@ -128,7 +128,12 @@ func navpPatchWebProfile(doc bson.D, spec types.NavigationProfileSpec) bson.D {
 	if spec.NotFoundPage != "" {
 		doc = navpSetBsonField(doc, "NotFoundHomepage", bson.D{
 			{Key: "$ID", Value: idToBsonBinary(generateUUID())},
-			{Key: "$Type", Value: "Navigation$HomePage"},
+			// Studio Pro's "Fallback page". The $Type is
+			// Navigation$NotFoundHomePage, not the Navigation$HomePage the home
+			// page slot takes -- measured on ako/TestApp, whose fallback page
+			// Studio Pro stored as Navigation$NotFoundHomePage/Page. mxbuild
+			// accepts either, so nothing caught this.
+			{Key: "$Type", Value: "Navigation$NotFoundHomePage"},
 			{Key: "Microflow", Value: ""},
 			{Key: "Page", Value: spec.NotFoundPage},
 		})
