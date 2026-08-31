@@ -47,6 +47,12 @@ func FormatXPathConstraintWidth(constraint string, width int) string {
 	if strings.TrimSpace(constraint) == "" {
 		return constraint
 	}
+	// XPath's operator keywords are lower case only, and MDL accepts any case.
+	// This runs BEFORE the width test, because the short branch returns the
+	// caller's own bytes and an uppercase `AND` there is CE0161 at build time —
+	// which is exactly where it hid (mxcli-formula1 §80). See
+	// NormalizeXPathOperators.
+	constraint = NormalizeXPathOperators(constraint)
 	// Already short enough to read at a glance: leave it exactly as it is. This
 	// is the case for the overwhelming majority of constraints, and returning the
 	// caller's own bytes is what keeps this change from touching them.

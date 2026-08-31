@@ -233,7 +233,10 @@ create page CWTest.P_Image_Basic
   layoutgrid lgMain {
     row row1 {
       column col1 (desktopwidth: 12) {
-        image imgLogo
+        -- An image needs a SOURCE. The widget's default source is an image
+        -- collection entry, which MDL cannot yet name, so the bare form builds
+        -- to "No image selected." (MDL-WIDGET22). The URL form is complete.
+        image imgLogo (ImageType: imageUrl, ImageUrl: 'https://example.com/logo.png')
       }
     }
   }
@@ -263,6 +266,8 @@ create page CWTest.P_Image_Dimensions
     row row1 {
       column col1 (desktopwidth: 12) {
         image imgBanner (
+          ImageType: imageUrl,
+          ImageUrl: 'https://example.com/banner.png',
           AlternativeText: 'Company banner',
           WidthUnit: pixels,
           width: 800,
@@ -302,9 +307,14 @@ create page CWTest.P_Image_OnClick
     layoutgrid lgMain {
       row row1 {
         column col1 (desktopwidth: 6) {
+          -- DisplayAs is NOT set here on purpose: the widget hides it unless
+          -- the source is an image collection entry, and MDL cannot name one
+          -- (MDL-WIDGET22), so this page uses the URL source. Setting DisplayAs
+          -- alongside it is CE0463, which MDL-WIDGET10 reports at check time.
           image imgTask (
+            ImageType: imageUrl,
+            ImageUrl: 'https://example.com/task.png',
             AlternativeText: 'Task image',
-            DisplayAs: thumbnail,
             WidthUnit: pixels,
             width: 300
           )

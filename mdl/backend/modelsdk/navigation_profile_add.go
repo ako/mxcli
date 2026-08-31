@@ -97,7 +97,11 @@ func newWebProfileBson(kind string) bson.D {
 			{Key: "$Type", Value: "Texts$Text"},
 			{Key: "Items", Value: bson.A{int32(3)}},
 		}},
-		{Key: "HomeItems", Value: bson.A{int32(3)}},
+		// 2, not the 3 the PED session this profile shape was pinned against
+		// recorded: ako/TestApp's Studio Pro-authored profile carries
+		// HomeItems [marker 2] with two RoleBasedHomePages in it. See
+		// navMarkerHomeItems.
+		{Key: "HomeItems", Value: bson.A{navMarkerHomeItems}},
 		{Key: "HomePage", Value: bson.D{
 			{Key: "$ID", Value: navID()},
 			{Key: "$Type", Value: "Navigation$HomePage"},
@@ -109,7 +113,9 @@ func newWebProfileBson(kind string) bson.D {
 		{Key: "Menu", Value: bson.D{
 			{Key: "$ID", Value: navID()},
 			{Key: "$Type", Value: "Menus$MenuItemCollection"},
-			{Key: "Items", Value: bson.A{int32(1)}},
+			// Menus$MenuItemCollection.Items is 3 in every Studio Pro document
+			// (153 occurrences); this was the one list here still on 1.
+			{Key: "Items", Value: bson.A{navMarkerItems}},
 		}},
 		{Key: "Name", Value: kind},
 		{Key: "NotFoundHomepage", Value: nil},

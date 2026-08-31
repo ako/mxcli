@@ -941,6 +941,39 @@ func extractCustomWidgetPropertyAssociation(ctx *ExecContext, w map[string]any, 
 }
 
 // extractCustomWidgetPropertyString extracts a string property value from a CustomWidget.
+// extractCustomWidgetPropertyImage reads an image-typed property's stored
+// reference — the WidgetValue's `Image` key, holding a three-part
+// Module.Collection.Image qualified name.
+//
+// It resolves the property through its TypePointer like every other extractor
+// here, rather than by position: the Image widget has TWO image-typed
+// properties (`imageObject` and `defaultImageDynamic`), so taking the first
+// Image found would return the wrong one.
+func extractCustomWidgetPropertyImage(ctx *ExecContext, w map[string]any, propertyKey string) string {
+	obj, ok := w["Object"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	propTypeKeyMap := buildPropertyTypeKeyMap(w, false)
+	for _, prop := range getBsonArrayElements(obj["Properties"]) {
+		propMap, ok := prop.(map[string]any)
+		if !ok {
+			continue
+		}
+		if propTypeKeyMap[extractBinaryID(propMap["TypePointer"])] != propertyKey {
+			continue
+		}
+		value, ok := propMap["Value"].(map[string]any)
+		if !ok {
+			continue
+		}
+		if img, ok := value["Image"].(string); ok {
+			return img
+		}
+	}
+	return ""
+}
+
 func extractCustomWidgetPropertyString(ctx *ExecContext, w map[string]any, propertyKey string) string {
 	obj, ok := w["Object"].(map[string]any)
 	if !ok {
@@ -1124,6 +1157,7 @@ func extractExplicitProperties(ctx *ExecContext, w map[string]any) []rawExplicit
 // extractImageProperties extracts properties from a pluggable Image CustomWidget.
 func extractImageProperties(ctx *ExecContext, w map[string]any, widget *rawWidget) {
 	widget.ImageType = extractCustomWidgetPropertyString(ctx, w, "datasource")
+	widget.ImageObject = extractCustomWidgetPropertyImage(ctx, w, "imageObject")
 	widget.ImageUrl = extractCustomWidgetPropertyTextTemplate(ctx, w, "imageUrl")
 	widget.AlternativeText = extractCustomWidgetPropertyTextTemplate(ctx, w, "alternativeText")
 	widget.ImageWidth = extractCustomWidgetPropertyString(ctx, w, "width")

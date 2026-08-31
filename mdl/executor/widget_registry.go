@@ -34,6 +34,10 @@ var defaultKnownOperations = map[string]bool{
 	"texttemplate":     true,
 	"action":           true,
 	"attributeObjects": true,
+	// An image collection entry on an image-typed property (the Image widget's
+	// `imageObject`). Without it the property is unreachable from MDL and the
+	// widget's default source has nothing to show — see setImageValue.
+	"image": true,
 }
 
 // knownOperations is the active set used for validation, initialized from

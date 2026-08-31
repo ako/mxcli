@@ -689,7 +689,12 @@ type rawWidget struct {
 	DisplayAs       string // "fullImage", "thumbnail"
 	Responsive      string // "true", "false"
 	ImageType       string // "image", "imageUrl", "icon"
-	OnClickType     string // "action", "enlarge"
+	// ImageObject is the image collection entry the widget shows, as the
+	// three-part qualified name Module.Collection.Image. Empty when the source
+	// is not an image collection, or when none is selected. Without it a
+	// describe -> exec copy loses the image (mxcli-formula1 FINDINGS §142).
+	ImageObject string
+	OnClickType string // "action", "enlarge"
 }
 
 // rawExplicitProp represents a non-default property extracted from a CustomWidget.

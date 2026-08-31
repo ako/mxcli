@@ -95,6 +95,23 @@ func (ob *Builder) SetPrimitive(propertyKey string, value string) {
 	})
 }
 
+// SetImage points an image-typed property at an image collection entry, by its
+// three-part qualified name (`Module.Collection.Image`).
+//
+// The Image widget's `imageObject` is the case this exists for: it holds the
+// image the widget shows, and without it the default `ImageType: image` writes a
+// model mxbuild refuses with "No image selected." It is also what a describe →
+// exec copy of an Atlas layout needs in order to keep its brand image
+// (mxcli-formula1 FINDINGS §142).
+func (ob *Builder) SetImage(propertyKey string, imageQN string) {
+	if imageQN == "" {
+		return
+	}
+	ob.object = updateWidgetPropertyValue(ob.object, ob.propertyTypeIDs, propertyKey, func(val bson.D) bson.D {
+		return setImageValue(val, imageQN)
+	})
+}
+
 func (ob *Builder) SetSelection(propertyKey string, value string) {
 	if value == "" {
 		return
@@ -1073,6 +1090,28 @@ func setPrimitiveValue(val bson.D, value string) bson.D {
 	for _, elem := range val {
 		if elem.Key == "PrimitiveValue" {
 			result = append(result, bson.E{Key: "PrimitiveValue", Value: value})
+		} else {
+			result = append(result, elem)
+		}
+	}
+	return result
+}
+
+// setImageValue writes the image reference onto a WidgetValue's `Image` key.
+//
+// The key is REPLACED, never added: a value node that does not declare one
+// belongs to a property that is not image-typed, and a key the widget's
+// definition does not know about is the CE0463 shape. Measured on a Studio
+// Pro-authored widget, the stored form is the bare qualified name —
+// `MyFirstModule.Images._1` — with nothing else on the node changed.
+func setImageValue(val bson.D, imageQN string) bson.D {
+	if imageQN == "" {
+		return val
+	}
+	result := make(bson.D, 0, len(val))
+	for _, elem := range val {
+		if elem.Key == "Image" {
+			result = append(result, bson.E{Key: "Image", Value: imageQN})
 		} else {
 			result = append(result, elem)
 		}

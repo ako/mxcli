@@ -1,0 +1,87 @@
+-- mxcli-formula1 FINDINGS §80 — uppercase AND stored verbatim into XPath.
+--
+--   ERROR at Formula1Backend, Microflow 'ZZ_AndProbe2',
+--     Retrieve object(s) activity 'Retrieve list of LiveForecast from database':
+--     Error(s) in XPath constraint.                                  (CE0161)
+--     BUILD FAILED
+--
+-- XPath 1.0 spells its operators in lower case only; MDL's lexer accepts any
+-- case (`AND: A N D;`). mxcli lowercased the operator on one of its two
+-- rendering paths and not the other, so the casing survived only in some
+-- statements — which is what made the bug look like it was about casing alone.
+--
+-- The finding is careful about that, and it is the reason this file has the
+-- shape it does. An earlier note blamed the casing, and its literal-only
+-- reproducer BUILT CLEANLY:
+--
+--   WHERE SessionKey = '1' AND AtLap = 2                  -> stored `and`, builds
+--   WHERE SessionKey = $N/SessionKey AND AtLap = $N/AtLap -> stored `AND`, CE0161
+--   ...the same with lowercase `and`                      -> builds
+--
+-- The trigger is a VARIABLE reference. `buildRetrieveWhereExpression` freezes
+-- the raw source whenever the clause contains a `/`, and every variable path
+-- has one; the frozen text is then handed to the writer verbatim.
+--
+--   mxcli exec mdl-examples/bug-tests/f1-80-xpath-operator-case.mdl -p app.mpr
+--   scripts/mx-check.sh -p app.mpr --version 11.13.0        # no CE0161
+--
+-- Expect every constraint below to be stored with a lower-case `and`.
+
+create module AndCase;
+
+create persistent entity AndCase.Forecast ( SessionKey: String(50), AtLap: Integer );
+
+-- THE REPORTED CASE: variable references either side of an uppercase AND.
+create or modify microflow AndCase.MF_VarAnd ( $Newest: AndCase.Forecast )
+begin
+  @position(130, 200)
+  retrieve $L from AndCase.Forecast
+    where SessionKey = $Newest/SessionKey AND AtLap = $Newest/AtLap;
+end;
+
+-- CONTROL 1 — literals only. This ALWAYS built, because the parse-tree renderer
+-- lowercases the operator. Without it the file would not show that the two
+-- paths used to disagree.
+create or modify microflow AndCase.MF_LiteralAnd ()
+begin
+  @position(130, 200)
+  retrieve $L from AndCase.Forecast where SessionKey = '1' AND AtLap = 2;
+end;
+
+-- CONTROL 2 — the lowercase spelling the reporting project used as a
+-- workaround. It built before and must still build.
+create or modify microflow AndCase.MF_VarAndLower ( $Newest: AndCase.Forecast )
+begin
+  @position(130, 200)
+  retrieve $L from AndCase.Forecast
+    where SessionKey = $Newest/SessionKey and AtLap = $Newest/AtLap;
+end;
+
+-- OR and NOT are lexed case-insensitively too, and are the same XPath keywords.
+create or modify microflow AndCase.MF_OrNot ( $Newest: AndCase.Forecast )
+begin
+  @position(130, 200)
+  retrieve $L from AndCase.Forecast
+    where SessionKey = $Newest/SessionKey OR NOT(AtLap = $Newest/AtLap);
+end;
+
+-- A STRING LITERAL is data, not syntax: the operator inside it must survive
+-- untouched, or the constraint quietly matches different rows — worse than the
+-- build error being fixed. Only the operator OUTSIDE the quotes is normalised.
+create or modify microflow AndCase.MF_LiteralText ( $Newest: AndCase.Forecast )
+begin
+  @position(130, 200)
+  retrieve $L from AndCase.Forecast
+    where SessionKey = 'A AND B' AND AtLap = $Newest/AtLap;
+end;
+
+-- The other two constraint writers go through the same choke point, and were
+-- broken in the same way (measured: both stored `AND` before the fix).
+create module role AndCase.User;
+GRANT AndCase.User ON AndCase.Forecast (READ *) WHERE '[AtLap = 1 AND SessionKey = ''x'']';
+
+create or modify page AndCase.P ( Title: 'p', Layout: Atlas_Core.Atlas_Default ) {
+  datagrid dg (DataSource: DATABASE AndCase.Forecast where '[AtLap = 1 AND SessionKey = ''x'']') {
+    column c (Attribute: SessionKey)
+  }
+};

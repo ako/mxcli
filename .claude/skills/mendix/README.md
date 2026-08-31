@@ -79,6 +79,7 @@ Page-specific patterns:
 | [migrate-design-prototype](migrate-design-prototype/SKILL.md) | Turn a Claude Design prototype into a themed Mendix app | Reproducing a design handoff/prototype as an SCSS theme + styled pages |
 | [debug-bson](debug-bson/SKILL.md) | BSON debugging | Troubleshooting SDK issues |
 | [analyze-runtime](analyze-runtime/SKILL.md) | Analyze runtime behavior — logs, metrics, traces, catalog, and cross-source joins | Profiling a slow page/microflow, finding what hits the DB, correlating cost with model shape |
+| [upgrade-mendix-version](upgrade-mendix-version/SKILL.md) | Move a project to a newer Mendix version headlessly | Raising the Mendix version; a build says the project version does not match MxBuild |
 
 ---
 
@@ -117,6 +118,8 @@ Load skills based on the task:
 | "Build/apply a theme from a design" | `migrate-design-prototype`, `theme-styling` |
 | "Why is this slow / profile the app / what hits the database" | `analyze-runtime`, `run-local` |
 | "Trace / metrics / flame chart / correlate cost with model" | `analyze-runtime` |
+| "Upgrade Mendix version / move to 11.x" | `upgrade-mendix-version` |
+| "Project version does not match MxBuild" | `upgrade-mendix-version` |
 
 ### For Error Recovery
 
