@@ -19,8 +19,14 @@ This command is the trigger; the skill is the contract.
 - `--all` — sync every page in `docs-wiki/`.
 - `--stale` — sync only pages whose `last-synced:` SHA is older than HEAD.
 
+For `bug-patterns/` specifically, run **`make digest-status`** first: it reports
+how many findings have landed since the last bug-pattern sync and which areas
+no page mentions. That is the scope question for this category — the pages
+digest `.claude/skills/fix-issue/findings/*.jsonl`, and an area with many
+findings and no page is an undigested failure class, not a missing file.
+
 If invoked with no arguments, ask the user which page(s) to sync. List the
-seed table from `maintain-wiki.md` as options.
+page list from `.claude/skills/maintain-wiki/pages.md` as options.
 
 ## Process
 
@@ -88,10 +94,10 @@ If the user is requesting a page that doesn't yet exist in
 2. Is it really a procedure (skill), reference (manual), implementation
    detail (source), state (proposal frontmatter / GitHub), or
    decision (ADR)? → route there instead.
-3. If it genuinely belongs in the wiki, add it to the seed table in
+3. If it genuinely belongs in the wiki, add a row to the page list in
    `maintain-wiki.md` first, with its category, before creating the file.
 
-The seed table is the wiki's table of contents — new pages outside it
+That file is the wiki's table of contents — new pages outside it
 should be the rare exception, not the default.
 
 ## Important reminders

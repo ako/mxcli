@@ -983,6 +983,41 @@ func buildAggregateListStatement(ctx parser.IAggregateListStatementContext) *ast
 			} else if path := op.AttributePath(); path != nil {
 				stmt.InputVariable, stmt.Attribute = parseAttributePath(path.GetText())
 			}
+		} else if op.REDUCE() != nil {
+			// REDUCE($list, expr, initial: seed, returns: Type). Expression(0) is
+			// the fold body; the seed lives inside reduceFoldOptions, which the
+			// grammar makes mandatory, so a well-formed parse always has both.
+			stmt.Operation = ast.AggregateReduce
+			stmt.IsExpression = true
+			if v := op.VARIABLE(); v != nil {
+				stmt.InputVariable = strings.TrimPrefix(v.GetText(), "$")
+			}
+			if exprCtx := op.Expression(); exprCtx != nil {
+				stmt.Expression = buildSourceExpression(exprCtx)
+			}
+			if opts, ok := op.ReduceFoldOptions().(*parser.ReduceFoldOptionsContext); ok && opts != nil {
+				if seed := opts.Expression(); seed != nil {
+					stmt.InitialValue = buildSourceExpression(seed)
+				}
+				if dt := opts.DataType(); dt != nil {
+					t := buildDataType(dt)
+					stmt.ReturnType = &t
+				}
+			}
+		} else if op.ALL() != nil || op.ANY() != nil {
+			// Boolean predicates over the list. No seed, and the return type is
+			// always Boolean, so neither is written in MDL.
+			stmt.Operation = ast.AggregateAll
+			if op.ANY() != nil {
+				stmt.Operation = ast.AggregateAny
+			}
+			stmt.IsExpression = true
+			if v := op.VARIABLE(); v != nil {
+				stmt.InputVariable = strings.TrimPrefix(v.GetText(), "$")
+			}
+			if exprCtx := op.Expression(); exprCtx != nil {
+				stmt.Expression = buildSourceExpression(exprCtx)
+			}
 		}
 	}
 

@@ -637,6 +637,8 @@ func operationForType(t string) string {
 		return "expression"
 	case "action":
 		return "action"
+	case "image":
+		return "image"
 	case "boolean", "integer", "decimal", "string", "enumeration":
 		return "primitive"
 	}

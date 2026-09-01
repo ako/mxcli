@@ -1,0 +1,42 @@
+-- Issue #1002 (refusals): a FILTER/FIND predicate that mxcli can prove wrong.
+--
+-- `mxcli check mdl-examples/bug-tests/1002-filter-bad-iterator.fail.mdl`
+-- reports MDL-LISTOP01 on the first microflow. Before the fix both statements
+-- passed check and produced a model mxbuild rejected — CE0109 for the unbound
+-- iterator, CE0117 for the unknown attribute.
+
+create or modify module FilterProbe;
+
+create or modify persistent entity FilterProbe.Order (
+  Status: String(50),
+  Qty: Integer
+);
+
+-- MDL-LISTOP01: Mendix binds the item to $currentObject; '$item' is undefined.
+create or replace microflow FilterProbe.BadIterator () returns Boolean
+begin
+  retrieve $L from FilterProbe.Order;
+  $R = FILTER($L, $item/Qty > 0);
+  return true;
+end;
+
+-- Refused by the executor (needs -p to resolve the entity): 'Nonexistent' is
+-- not a member of FilterProbe.Order.
+create or replace microflow FilterProbe.UnknownAttribute () returns Boolean
+begin
+  retrieve $L from FilterProbe.Order;
+  $R = FILTER($L, Nonexistent > 0);
+  return true;
+end;
+
+-- CONTROL: '$item' is fine when it IS in scope — the enclosing loop's iterator,
+-- which is how CLAUDE.md's O(N) lookup idiom is written. This must NOT be flagged.
+create or replace microflow FilterProbe.LoopIteratorIsFine ($Others: List of FilterProbe.Order) returns Boolean
+begin
+  retrieve $L from FilterProbe.Order;
+  loop $item in $L
+  begin
+    $Match = FIND($Others, Status = $item/Status);
+  end loop;
+  return true;
+end;

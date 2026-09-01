@@ -1,0 +1,64 @@
+-- mxcli-formula1 FINDINGS §142 — MDL could not say WHICH image an image widget
+-- shows, so two things went wrong at once.
+--
+-- 1. Every mxcli-authored `image` widget was incomplete. Its default source is
+--    an entry from an image collection (`ImageType: image`), and MDL had no way
+--    to name one, so the model mxbuild got was:
+--
+--      [error] "No image selected." at Image 'imgLogo'
+--
+-- 2. A describe -> rename -> exec copy of an Atlas layout came out with no
+--    brand image. `describe` emitted the widget as
+--
+--      image staticImage1 (Responsive: false)
+--
+--    because there was nothing to emit — the reference was in the stored
+--    document and had no MDL spelling.
+--
+-- Both halves are needed: the WRITE (the `image` operation on the widget
+-- engine, mapping the widget's `imageObject` property) and the READ (describe
+-- emitting `Image:`). With only the write, a round trip still loses it.
+--
+-- The name has THREE parts, like an icon reference: Module.Collection.Image.
+--
+-- Verify:
+--   mxcli exec widget-image-collection-entry.mdl -p app.mpr
+--   mxcli -p app.mpr -c "DESCRIBE PAGE IMG.ImagePage"
+--       -- must emit: image imgLogo (Image: 'MyFirstModule.Images._1')
+--   mx check -p app.mpr        -- 0 errors; before the fix, "No image selected."
+--
+-- Adjust the image reference to one this project actually has:
+--   mxcli -p app.mpr -c "show image collections"
+--   mxcli -p app.mpr -c "describe image collection MyFirstModule.Images"
+
+create module IMG;
+
+create or replace page IMG.ImagePage (
+  title: 'Image sources',
+  layout: Atlas_Core.Atlas_Default
+) {
+  -- The default source: an entry from an image collection.
+  image imgLogo (Image: 'MyFirstModule.Images._1')
+
+  -- The two sources that take no collection entry, unchanged by this fix.
+  image imgRemote (ImageType: imageUrl, ImageUrl: 'https://example.com/logo.svg')
+  image imgIcon (ImageType: icon)
+}
+
+-- Both new checks, as MDL that must FAIL `mxcli check`. Uncomment one at a time.
+--
+-- MDL-WIDGET22 — the default source with no entry ("No image selected."):
+--
+--   create or replace page IMG.NoSource (title: 'x', layout: Atlas_Core.Atlas_Default) {
+--     image imgNothing (Width: 48, Height: 48)
+--   }
+--
+-- check --references — a name that does not resolve. Before the reference check
+-- this passed `mxcli check --references` and failed the BUILD with
+--   [CE1613] "The selected image '...' no longer exists."
+--
+--   create or replace page IMG.BadRef (title: 'x', layout: Atlas_Core.Atlas_Default) {
+--     image imgTypo (Image: 'MyFirstModule.Images.NoSuchImage')  -- image not found
+--     image imgColl (Image: 'Nope.Missing.Img')                  -- collection not found
+--     image imgShape (Image: 'JustTwo.Parts')                    -- not three parts
+--   }

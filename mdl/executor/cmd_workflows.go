@@ -197,14 +197,12 @@ func describeWorkflowToString(ctx *ExecContext, name ast.QualifiedName) (string,
 
 	// Display name
 	if targetWf.WorkflowName != "" {
-		escaped := strings.ReplaceAll(targetWf.WorkflowName, "'", "''")
-		lines = append(lines, fmt.Sprintf("  display '%s'", escaped))
+		lines = append(lines, fmt.Sprintf("  display %s", mdlQuoted(targetWf.WorkflowName)))
 	}
 
 	// Description
 	if targetWf.WorkflowDescription != "" {
-		escaped := strings.ReplaceAll(targetWf.WorkflowDescription, "'", "''")
-		lines = append(lines, fmt.Sprintf("  description '%s'", escaped))
+		lines = append(lines, fmt.Sprintf("  description %s", mdlQuoted(targetWf.WorkflowDescription)))
 	}
 
 	// Export level (only emit when non-empty)
@@ -219,7 +217,7 @@ func describeWorkflowToString(ctx *ExecContext, name ast.QualifiedName) (string,
 
 	// Due date
 	if targetWf.DueDate != "" {
-		lines = append(lines, fmt.Sprintf("  due date '%s'", targetWf.DueDate))
+		lines = append(lines, fmt.Sprintf("  due date %s", mdlQuoted(targetWf.DueDate)))
 	}
 
 	lines = append(lines, "")
@@ -237,14 +235,50 @@ func describeWorkflowToString(ctx *ExecContext, name ast.QualifiedName) (string,
 	return strings.Join(lines, "\n"), nil, nil
 }
 
-// formatAnnotation returns an ANNOTATION statement for a workflow activity annotation.
-// The annotation is emitted as a parseable MDL statement so it survives round-trips.
+// formatAnnotation renders an activity's annotation as MDL comment lines.
+//
+// It used to emit `annotation '<text>';`, and its own doc comment claimed that
+// statement "survives round-trips". It does not, and has not since MDL-WF04: a
+// standalone `annotation` in a workflow body is refused at check time AND by
+// execCreateWorkflow, because Mendix constructs every child of the activity flow
+// with a Flow parent and no annotation type takes one — the written unit cannot
+// be LOADED, so Studio Pro will not open the project. The describer was emitting
+// the one construct the writer refuses, and a 23-activity workflow produced 13
+// MDL-WF04 errors from unmodified DESCRIBE output (mendixlabs/mxcli#1007).
+//
+// A comment is the honest emit today, not a workaround. The annotation being
+// re-emitted here is ATTACHED to an activity, and although the write path stores
+// an attached annotation (addActivityBaseFields), no MDL input can produce one:
+// MDLWorkflow.g4 has only the standalone `workflowAnnotationStmt`. So the text is
+// unwritable either way, and carrying it as a comment at least keeps it in front
+// of whoever edits the script. The `annotation:` marker says what the line was.
+//
+// The microflow domain does have an attached form (`@annotation 'text'`, see
+// MDLMicroflow.g4) and it round-trips properly. Giving workflow activities the
+// same prefix is the fix that would preserve the annotation rather than
+// commenting it out; it is a grammar change, and deliberately not bundled here.
 func formatAnnotation(annotation string, indent string) string {
 	if annotation == "" {
 		return ""
 	}
-	escaped := strings.ReplaceAll(annotation, "'", "''")
-	return fmt.Sprintf("%sannotation '%s';", indent, escaped)
+	return annotationComment(annotation, indent)
+}
+
+// annotationComment renders text as one or more `-- annotation:` lines. An
+// annotation may contain newlines, and a `--` comment runs to end of line, so a
+// multi-line note has to be prefixed line by line or everything after the first
+// newline becomes stray tokens — the same failure the statement form had.
+func annotationComment(text, indent string) string {
+	lines := strings.Split(text, "\n")
+	for i, l := range lines {
+		l = strings.TrimRight(l, "\r")
+		if i == 0 {
+			lines[i] = indent + "-- annotation: " + l
+			continue
+		}
+		lines[i] = indent + "--   " + l
+	}
+	return strings.Join(lines, "\n")
 }
 
 // boundaryEventKeyword maps an EventType string to the MDL BOUNDARY EVENT keyword sequence.
@@ -269,8 +303,7 @@ func formatBoundaryEvents(events []*workflows.BoundaryEvent, indent string) []st
 	for _, event := range events {
 		keyword := boundaryEventKeyword(event.EventType)
 		if event.TimerDelay != "" {
-			escapedDelay := strings.ReplaceAll(event.TimerDelay, "'", "''")
-			lines = append(lines, fmt.Sprintf("%s%s '%s'", indent, keyword, escapedDelay))
+			lines = append(lines, fmt.Sprintf("%s%s %s", indent, keyword, mdlQuoted(event.TimerDelay)))
 		} else {
 			lines = append(lines, fmt.Sprintf("%s%s", indent, keyword))
 		}
@@ -323,8 +356,7 @@ func formatWorkflowActivities(flow *workflows.Flow, indent string) []string {
 			// (issuetracker #16). Re-applying the shorter form rebuilds the same
 			// Caption, so dropping it is lossless.
 			if caption := a.Caption; caption != "" && caption != target && caption != a.Name {
-				escapedCaption := strings.ReplaceAll(caption, "'", "''")
-				actLines = append(actLines, fmt.Sprintf("%sjump to %s comment '%s'", indent, mdlIdent(target), escapedCaption))
+				actLines = append(actLines, fmt.Sprintf("%sjump to %s comment %s", indent, mdlIdent(target), mdlQuoted(caption)))
 			} else {
 				actLines = append(actLines, fmt.Sprintf("%sjump to %s", indent, mdlIdent(target)))
 			}
@@ -337,12 +369,9 @@ func formatWorkflowActivities(flow *workflows.Flow, indent string) []string {
 				actLines = append(actLines, formatAnnotation(a.Annotation, indent))
 			}
 			if a.DelayExpression != "" {
-				escapedDelay := strings.ReplaceAll(a.DelayExpression, "'", "''")
-				escapedCaption := strings.ReplaceAll(caption, "'", "''")
-				actLines = append(actLines, fmt.Sprintf("%swait for timer '%s' comment '%s'", indent, escapedDelay, escapedCaption))
+				actLines = append(actLines, fmt.Sprintf("%swait for timer %s comment %s", indent, mdlQuoted(a.DelayExpression), mdlQuoted(caption)))
 			} else {
-				escapedCaption := strings.ReplaceAll(caption, "'", "''")
-				actLines = append(actLines, fmt.Sprintf("%swait for timer comment '%s'", indent, escapedCaption))
+				actLines = append(actLines, fmt.Sprintf("%swait for timer comment %s", indent, mdlQuoted(caption)))
 			}
 		case *workflows.WaitForNotificationActivity:
 			caption := a.Caption
@@ -368,13 +397,15 @@ func formatWorkflowActivities(flow *workflows.Flow, indent string) []string {
 			// Skip - auto-generated by Mendix, implicit in MDL syntax
 			continue
 		case *workflows.WorkflowAnnotationActivity:
-			// Standalone annotation (sticky note) - emit as ANNOTATION statement
-			if a.Description != "" {
-				escapedDesc := strings.ReplaceAll(a.Description, "'", "''")
-				actLines = []string{fmt.Sprintf("%sannotation '%s'", indent, escapedDesc)}
-			} else {
+			// A standalone annotation (sticky note) read back from the model. Emitted
+			// as a comment for the same reason as an attached one: the `annotation`
+			// statement it used to produce is refused by MDL-WF04 and by exec, so the
+			// describe output could not be re-run (mendixlabs/mxcli#1007).
+			if a.Description == "" {
 				continue
 			}
+			isComment = true
+			actLines = []string{annotationComment(a.Description, indent)}
 		case *workflows.GenericWorkflowActivity:
 			isComment = true
 			caption := a.Caption
@@ -424,7 +455,7 @@ func formatUserTask(a *workflows.UserTask, indent string) []string {
 	if a.IsMulti {
 		taskKeyword = "multi user task"
 	}
-	lines = append(lines, fmt.Sprintf("%s%s %s '%s'", indent, taskKeyword, mdlIdent(nameStr), caption))
+	lines = append(lines, fmt.Sprintf("%s%s %s %s", indent, taskKeyword, mdlIdent(nameStr), mdlQuoted(caption)))
 
 	if a.Page != "" {
 		lines = append(lines, fmt.Sprintf("%s  page %s", indent, a.Page))
@@ -439,7 +470,7 @@ func formatUserTask(a *workflows.UserTask, indent string) []string {
 			}
 		case *workflows.XPathBasedUserSource:
 			if us.XPath != "" {
-				lines = append(lines, fmt.Sprintf("%s  targeting users xpath '%s'", indent, us.XPath))
+				lines = append(lines, fmt.Sprintf("%s  targeting users xpath %s", indent, mdlQuoted(us.XPath)))
 			}
 		case *workflows.MicroflowGroupSource:
 			if us.Microflow != "" {
@@ -447,7 +478,7 @@ func formatUserTask(a *workflows.UserTask, indent string) []string {
 			}
 		case *workflows.XPathGroupSource:
 			if us.XPath != "" {
-				lines = append(lines, fmt.Sprintf("%s  targeting groups xpath '%s'", indent, us.XPath))
+				lines = append(lines, fmt.Sprintf("%s  targeting groups xpath %s", indent, mdlQuoted(us.XPath)))
 			}
 		}
 	}
@@ -458,14 +489,12 @@ func formatUserTask(a *workflows.UserTask, indent string) []string {
 
 	// Due date (task-level)
 	if a.DueDate != "" {
-		escapedDueDate := strings.ReplaceAll(a.DueDate, "'", "''")
-		lines = append(lines, fmt.Sprintf("%s  due date '%s'", indent, escapedDueDate))
+		lines = append(lines, fmt.Sprintf("%s  due date %s", indent, mdlQuoted(a.DueDate)))
 	}
 
 	// Task description
 	if a.TaskDescription != "" {
-		escaped := strings.ReplaceAll(a.TaskDescription, "'", "''")
-		lines = append(lines, fmt.Sprintf("%s  description '%s'", indent, escaped))
+		lines = append(lines, fmt.Sprintf("%s  description %s", indent, mdlQuoted(a.TaskDescription)))
 	}
 
 	// Outcomes
@@ -480,12 +509,12 @@ func formatUserTask(a *workflows.UserTask, indent string) []string {
 				outValue = outcome.Name
 			}
 			if outcome.Flow != nil && len(outcome.Flow.Activities) > 0 {
-				lines = append(lines, fmt.Sprintf("%s    '%s' {", indent, outValue))
+				lines = append(lines, fmt.Sprintf("%s    %s {", indent, mdlQuoted(outValue)))
 				subLines := formatWorkflowActivities(outcome.Flow, indent+"      ")
 				lines = append(lines, subLines...)
 				lines = append(lines, fmt.Sprintf("%s    }", indent))
 			} else {
-				lines = append(lines, fmt.Sprintf("%s    '%s' { }", indent, outValue))
+				lines = append(lines, fmt.Sprintf("%s    %s { }", indent, mdlQuoted(outValue)))
 			}
 		}
 	}
@@ -521,7 +550,7 @@ func formatCallMicroflowTask(a *workflows.CallMicroflowTask, indent string) []st
 			if idx := strings.LastIndex(paramName, "."); idx >= 0 {
 				paramName = paramName[idx+1:]
 			}
-			params = append(params, fmt.Sprintf("%s = '%s'", paramName, strings.ReplaceAll(pm.Expression, "'", "''")))
+			params = append(params, fmt.Sprintf("%s = %s", paramName, mdlQuoted(pm.Expression)))
 		}
 		lines = append(lines, fmt.Sprintf("%scall microflow %s with (%s) -- %s", indent, mf, strings.Join(params, ", "), caption))
 	} else {
@@ -583,7 +612,6 @@ func formatCallWorkflowActivity(a *workflows.CallWorkflowActivity, indent string
 		wf = "?"
 	}
 
-	escapedCaption := strings.ReplaceAll(caption, "'", "''")
 	if len(a.ParameterMappings) > 0 {
 		var params []string
 		for _, pm := range a.ParameterMappings {
@@ -591,11 +619,11 @@ func formatCallWorkflowActivity(a *workflows.CallWorkflowActivity, indent string
 			if idx := strings.LastIndex(paramName, "."); idx >= 0 {
 				paramName = paramName[idx+1:]
 			}
-			params = append(params, fmt.Sprintf("%s = '%s'", paramName, strings.ReplaceAll(pm.Expression, "'", "''")))
+			params = append(params, fmt.Sprintf("%s = %s", paramName, mdlQuoted(pm.Expression)))
 		}
-		lines = append(lines, fmt.Sprintf("%scall workflow %s comment '%s' with (%s)", indent, wf, escapedCaption, strings.Join(params, ", ")))
+		lines = append(lines, fmt.Sprintf("%scall workflow %s comment %s with (%s)", indent, wf, mdlQuoted(caption), strings.Join(params, ", ")))
 	} else {
-		lines = append(lines, fmt.Sprintf("%scall workflow %s comment '%s'", indent, wf, escapedCaption))
+		lines = append(lines, fmt.Sprintf("%scall workflow %s comment %s", indent, wf, mdlQuoted(caption)))
 	}
 
 	// BoundaryEvents
@@ -618,8 +646,7 @@ func formatExclusiveSplit(a *workflows.ExclusiveSplitActivity, indent string) []
 	}
 
 	if a.Expression != "" {
-		escapedExpr := strings.ReplaceAll(a.Expression, "'", "''")
-		lines = append(lines, fmt.Sprintf("%sdecision '%s' -- %s", indent, escapedExpr, caption))
+		lines = append(lines, fmt.Sprintf("%sdecision %s -- %s", indent, mdlQuoted(a.Expression), caption))
 	} else {
 		lines = append(lines, fmt.Sprintf("%sdecision -- %s", indent, caption))
 	}

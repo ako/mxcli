@@ -312,20 +312,30 @@ func (e *PluggableWidgetEngine) Build(def *WidgetDefinition, w *ast.WidgetV3) (*
 	// 3. Apply property mappings.
 	//
 	// A property the widget's editorConfig hides under the current configuration
-	// is SKIPPED, so the widget template's default survives into the stored
-	// object — which is what Studio Pro stores for it. Measured on a Studio
-	// Pro-authored File Uploader 2.5.0: all 34 declared properties are stored,
-	// the hidden ones at their default, so "hidden" means default-valued, not
-	// absent.
+	// is written at its DECLARED DEFAULT. Measured on a Studio Pro-authored File
+	// Uploader 2.5.0: all 34 declared properties are stored, the hidden ones at
+	// their default, so "hidden" means default-valued, not absent.
+	//
+	// Writing the default rather than merely skipping the mapping is the whole
+	// point: skipping leaves the widget TEMPLATE's captured value, and a template
+	// holds whatever the widget it was extracted from was set to. Image's is
+	// width/height 48 against a declared default of 100, which made every Image
+	// mxcli authored fail with CE0463 — see hiddenUnnamedProperties. Where no
+	// default can be looked up (a datasource has none) the mapping is skipped,
+	// exactly as before.
 	//
 	// This only ever fires for a property the script did NOT name — an MDL
 	// keyword shared by several properties (File Uploader routes both
 	// `associatedFiles` and `associatedImages` from `DataSource:`, gated on
 	// `uploadMode`). Naming a hidden property outright is still an error, raised
 	// by MDL-WIDGET10 at check time rather than silently dropped here (#956).
-	hiddenSkip := e.hiddenUnnamedProperties(def, w)
+	hiddenSkip := e.hiddenUnnamedProperties(def, w,
+		widgetPropertyDefaults(e.pageBuilder.getProjectPath(), def.WidgetID))
 	for _, mapping := range mappings {
-		if hiddenSkip[strings.ToLower(mapping.PropertyKey)] {
+		if reset, hidden := hiddenSkip[strings.ToLower(mapping.PropertyKey)]; hidden {
+			if reset != "" && mapping.Operation == "primitive" {
+				builder.SetPrimitive(mapping.PropertyKey, reset)
+			}
 			continue
 		}
 		ctx, err := e.resolveMapping(mapping, w)
@@ -336,6 +346,18 @@ func (e *PluggableWidgetEngine) Build(def *WidgetDefinition, w *ast.WidgetV3) (*
 		if err := e.applyOperation(builder, mapping.Operation, mapping.PropertyKey, ctx); err != nil {
 			return nil, err
 		}
+	}
+	// A hidden property that MDL cannot name gets its declared default too. The
+	// loop above visits property MAPPINGS — which is what gives a property an MDL
+	// keyword — so it reached `width` and `height` and never `maxHeight`, whose
+	// value stayed at whatever the template captured. That single field is the
+	// whole of the CE0463 on a copied Atlas layout: one line differing in 1480,
+	// mxcli's 0 against the package's declared 250 (mxcli-ledger §142).
+	//
+	// The set of properties that must be default-valued is the widget's to decide,
+	// not mxcli's; making it a subset of what MDL has words for was the mistake.
+	for propKey, reset := range unmappedHiddenResets(def, e.visibilityRules(def), hiddenSkip) {
+		builder.SetPrimitive(propKey, reset)
 	}
 
 	// 4. Auto datasource: map AST DataSource to first DataSource-type property.
@@ -601,18 +623,32 @@ func (e *PluggableWidgetEngine) isPrimaryAttributeMapping(mapping PropertyMappin
 // explicitly is reported by MDL-WIDGET10 instead, so it is deliberately not
 // included here.
 //
+// The KEY's presence means "hidden". The VALUE is the property's DECLARED
+// default, which the caller must write, or "" when no default could be looked
+// up — mxcli does not invent one.
+//
+// Skipping the property instead leaves the widget TEMPLATE's captured value in
+// place, and a template captures whatever the widget it was extracted from
+// happened to be set to. For the Image widget that is width/height 48 against a
+// declared default of 100, so every Image mxcli authored failed the build with
+// CE0463 — while mxcli's own MDL-WIDGET10 said, in as many words, that a hidden
+// `width` must be "100" (mxcli-formula1 FINDINGS §69/§142). The invariant is
+// default-VALUED, not skipped; the two only coincide when the template is
+// already at the default.
+//
+// defaults is the declared-default map from widgetPropertyDefaults — the same
+// source MDL-WIDGET10 reads, so the writer and the checker cannot disagree about
+// what a default is, which is how this shipped.
+//
 // Rules come from the .def.json, falling back to a live lift from the installed
 // .mpk (the same two sources the visibility application uses).
-func (e *PluggableWidgetEngine) hiddenUnnamedProperties(def *WidgetDefinition, w *ast.WidgetV3) map[string]bool {
-	rules := def.PropertyVisibility
-	if len(rules) == 0 {
-		rules = resolveWidgetVisibilityRules(e.pageBuilder.getProjectPath(), def.WidgetID)
-	}
+func (e *PluggableWidgetEngine) hiddenUnnamedProperties(def *WidgetDefinition, w *ast.WidgetV3, defaults map[string]string) map[string]string {
+	rules := e.visibilityRules(def)
 	if len(rules) == 0 {
 		return nil
 	}
 	values, explicit := widgetValueMap(w, def)
-	out := map[string]bool{}
+	out := map[string]string{}
 	for _, rule := range rules {
 		if rule.Nested() || rule.HiddenWhen == nil {
 			continue
@@ -621,13 +657,82 @@ func (e *PluggableWidgetEngine) hiddenUnnamedProperties(def *WidgetDefinition, w
 		if explicit[key] {
 			continue // named by the script — MDL-WIDGET10's business, not ours
 		}
-		condVal, known := values[strings.ToLower(rule.HiddenWhen.PropertyKey)]
+		condKey := strings.ToLower(rule.HiddenWhen.PropertyKey)
+		condVal, known := values[condKey]
 		if !known {
-			continue // condition indeterminable — never guess
+			// widgetValueMap only knows properties the definition MAPS, because a
+			// mapping is what gives a property an MDL keyword. A rule whose
+			// condition is an UNMAPPED property was therefore always
+			// indeterminable and never fired — which is how `maxHeight` (hidden
+			// when `maxHeightUnit` is "none") kept the template's value and
+			// produced the one differing field in 1480 on a copied Atlas layout
+			// (mxcli-ledger §142).
+			//
+			// The declared default is the right fallback for exactly the reason
+			// the rest of this function exists: MDL cannot name the property, so
+			// nothing has moved it off its default. It is a fallback and not a
+			// preference — a value the script set, or a mapping's own default,
+			// still wins above.
+			condVal, known = defaults[defaultsKey("", rule.HiddenWhen.PropertyKey)]
+			if !known || condVal == "" {
+				continue // still indeterminable — never guess
+			}
 		}
 		if rule.HiddenWhen.Hidden(map[string]string{rule.HiddenWhen.PropertyKey: condVal}) {
-			out[key] = true
+			out[key] = defaults[defaultsKey("", rule.PropertyKey)]
 		}
+	}
+	return out
+}
+
+// visibilityRules is the widget's editorConfig visibility rules: from the
+// .def.json when it carries them, otherwise a live lift from the installed .mpk.
+// Both consumers must use the same list — reading the .def.json field directly
+// gets an EMPTY one for every widget whose rules are lifted, which is most of
+// them, and a lookup keyed on it then silently finds nothing.
+func (e *PluggableWidgetEngine) visibilityRules(def *WidgetDefinition) []types.WidgetVisibilityRule {
+	if len(def.PropertyVisibility) > 0 {
+		return def.PropertyVisibility
+	}
+	return resolveWidgetVisibilityRules(e.pageBuilder.getProjectPath(), def.WidgetID)
+}
+
+// unmappedHiddenResets returns the hidden properties that the property-mapping
+// loop will not reach, keyed by the property key as the widget declares it (the
+// hidden map is lower-cased; a builder needs the real spelling, which is what
+// rules carries).
+//
+// Only properties with a declared default are returned — where none could be
+// looked up there is nothing to write, and mxcli does not invent one. That is
+// also what keeps #956's File Uploader datasource pruning unchanged: a
+// datasource has no default.
+//
+// The mapped ones are excluded rather than merged: the loop already writes them,
+// and writing a second value for one property is its own defect.
+func unmappedHiddenResets(def *WidgetDefinition, rules []types.WidgetVisibilityRule, hidden map[string]string) map[string]string {
+	if len(hidden) == 0 {
+		return nil
+	}
+	mapped := make(map[string]bool, len(def.PropertyMappings))
+	for _, m := range def.PropertyMappings {
+		mapped[strings.ToLower(m.PropertyKey)] = true
+	}
+	for _, mode := range def.Modes {
+		for _, m := range mode.PropertyMappings {
+			mapped[strings.ToLower(m.PropertyKey)] = true
+		}
+	}
+	out := map[string]string{}
+	for _, rule := range rules {
+		key := strings.ToLower(rule.PropertyKey)
+		if mapped[key] {
+			continue
+		}
+		reset, isHidden := hidden[key]
+		if !isHidden || reset == "" {
+			continue
+		}
+		out[rule.PropertyKey] = reset
 	}
 	return out
 }
@@ -648,6 +753,11 @@ func (e *PluggableWidgetEngine) applyOperation(builder backend.WidgetObjectBuild
 		builder.SetPrimitive(propKey, ctx.PrimitiveVal)
 	case "selection":
 		builder.SetSelection(propKey, ctx.PrimitiveVal)
+	case "image":
+		// An image collection entry, by its three-part qualified name. The
+		// value arrives through the generic source branch, so it is in
+		// PrimitiveVal like any other scalar — only the key it lands on differs.
+		builder.SetImage(propKey, ctx.PrimitiveVal)
 	case "expression":
 		builder.SetExpression(propKey, ctx.PrimitiveVal)
 	case "datasource":

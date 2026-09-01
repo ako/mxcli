@@ -196,10 +196,10 @@ func TestResolveXmlSchemaSourceIsModuleAware(t *testing.T) {
 // TestResolveXmlSchemaSourceFailsOpenOnEmptyProject pins the direction that
 // keeps this rule from being a regression.
 //
-// MDL cannot create an XML schema, and — measured — NONE of the nine demo apps
-// in the corpus contains one. A project with no XML schemas is therefore the
-// ordinary case, not evidence that the name is wrong; refusing on it would break
-// every such mapping in exchange for catching nothing.
+// MDL cannot create an XML schema, and they are rare: 3 documents in 1 of the 9
+// demo apps. A project with no XML schemas is therefore the ordinary case, not
+// evidence that the name is wrong; refusing on it would break every such mapping
+// in exchange for catching almost nothing.
 func TestResolveXmlSchemaSourceFailsOpenOnEmptyProject(t *testing.T) {
 	b := xmlBackend()
 

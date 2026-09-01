@@ -6,7 +6,7 @@ sources:
   - docs/13-decisions/0008-identity-and-idempotence.md
   - modelsdk/canon/identity.go
   - CLAUDE.md
-  - .claude/skills/fix-issue.md
+  - .claude/skills/fix-issue/findings/
 ---
 
 > **Do not duplicate**: the rules an implementer must follow (CLAUDE.md is canonical), the decision and its measurements (see [ADR-0008](../../docs/13-decisions/0008-identity-and-idempotence.md)), the dangling-reference fix recipe (symptom table in `.claude/skills/fix-issue.md`), or the identity-field table (read `modelsdk/canon/identity.go`).

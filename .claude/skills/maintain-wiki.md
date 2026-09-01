@@ -22,7 +22,7 @@ Six page categories. Anything outside these belongs somewhere else.
    SDK, Mendix Studio Pro), what is intentionally not implemented.
 5. **Glossary / vocabulary bridge** — Mendix ↔ mxcli ↔ BSON terminology.
 6. **Bug-pattern taxonomy** — *categories* of recurring failure modes that
-   link out to symptom-table rows in `.claude/skills/fix-issue.md`.
+   link out to findings in `.claude/skills/fix-issue/findings/*.jsonl`.
 
 ## What the wiki is NOT for
 
@@ -35,7 +35,7 @@ home instead.
 | MDL syntax tables | `docs/01-project/MDL_QUICK_REFERENCE.md` |
 | What a function does | source code |
 | Step-by-step task procedure | `.claude/skills/<task>.md` |
-| Specific bug fix recipe | symptom table in `.claude/skills/fix-issue.md` |
+| Specific bug fix recipe | `.claude/skills/fix-issue/findings/*.jsonl` |
 | Proposal status, PR / issue numbers, roadmap | proposal frontmatter; GitHub |
 | Latest design proposal | `docs/11-proposals/` |
 | Architecture decision record | `docs/13-decisions/` (ADRs) |
@@ -119,30 +119,22 @@ Rules:
 - **The Sources column lists what was actually read**, not what was relevant.
   This is the audit trail; a reviewer can verify synthesis is grounded.
 - **Write the row as the final step of every sync.** No exceptions. Same
-  discipline as the symptom-table append in `fix-issue.md`.
+  discipline as appending a finding under `fix-issue/findings/`.
 
 ## Seed topic pages
 
-Start with these. Stubs are fine; the structure matters more than initial
-content. Adding pages outside the seed list requires a stated reason it
-isn't better served by an existing page or a different doc artifact.
+The page list lives in [`maintain-wiki/pages.md`](maintain-wiki/pages.md) — the
+wiki's table of contents. Stubs are fine; the structure matters more than initial
+content. Adding a page outside it requires a stated reason it isn't better served
+by an existing page or a different doc artifact.
 
-| Path | Category | Frames |
-|------|----------|--------|
-| `architecture/mdl-execution.md` | architecture | grammar → AST → visitor → executor → backend → MPR writer |
-| `architecture/mpr-read-write.md` | architecture | MPR v1/v2, BSON round-trip, write safety |
-| `architecture/widget-engine.md` | architecture | def.json, WidgetRegistry, V3 builders |
-| `models/association-pointers.md` | mental-model | why `ParentPointer` = FROM, `ChildPointer` = TO |
-| `models/element-identity.md` | mental-model | `$ID` vs `GUID` vs `StableId`; the unit as identity boundary |
-| `models/storage-vs-qualified-names.md` | mental-model | BSON `$type` vs SDK qualified name |
-| `models/version-gating.md` | mental-model | feature registry, `min_version`, `checkFeature()` |
-| `rationale/mdl-as-sql.md` | rationale | why MDL is SQL-shaped, design principles (cites ADRs) |
-| `rationale/backend-abstraction.md` | rationale | why the executor never imports `sdk/mpr` for writes (cites ADRs) |
-| `positioning/vs-typescript-sdk.md` | positioning | gap analysis, intentional differences |
-| `glossary.md` | glossary | Mendix ↔ mxcli ↔ BSON term bridge |
-| `bug-patterns/bson-numeric-width.md` | bug-pattern | int32/int64 mismatches (links #583, #585 rows) |
-| `bug-patterns/visitor-wiring-gaps.md` | bug-pattern | parsed-but-not-stored (links #393 row) |
-| `bug-patterns/widget-type-object-drift.md` | bug-pattern | CE0463 family |
+It is a **table and nothing else**, in its own file, with `merge=union` in
+`.gitattributes`. That is deliberate: every wiki sync appends a row, so two
+parallel syncs would otherwise collide on one line and the work would have to be
+serialised — which is exactly what happened to the five bug-pattern PRs, and how
+13 pages went missing when the stack merged into itself. Union is safe here and
+is NOT safe on this file, which is prose: union keeps both sides of an edited
+prose line silently.
 
 ## Adding a new page
 
@@ -151,8 +143,9 @@ Before creating `docs-wiki/<new>.md`:
 1. Confirm the topic does not fit an existing page.
 2. Confirm it isn't better served by a skill (procedure), the user manual
    (how-to), source code (implementation), or proposal frontmatter (state).
-3. Add it to the seed table above as part of the same sync run, with its
-   category. The seed table is the wiki's table of contents.
+3. Add a row to [`maintain-wiki/pages.md`](maintain-wiki/pages.md) as part of
+   the same sync run, with its category. That file is the wiki's table of
+   contents.
 
 ## Final checklist
 
@@ -161,4 +154,4 @@ Before creating `docs-wiki/<new>.md`:
 - [ ] `last-synced:` updated to current HEAD SHA
 - [ ] `sources:` reflects what was actually read this run
 - [ ] `SYNC_LOG.md` row appended
-- [ ] Seed table updated if a new page was added
+- [ ] `maintain-wiki/pages.md` updated if a new page was added

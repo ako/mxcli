@@ -11,6 +11,11 @@
       "operation": "primitive"
     },
     {
+      "propertyKey": "imageObject",
+      "source": "Image",
+      "operation": "image"
+    },
+    {
       "propertyKey": "imageUrl",
       "source": "ImageUrl",
       "operation": "texttemplate"

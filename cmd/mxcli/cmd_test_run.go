@@ -211,6 +211,14 @@ Examples:
 			os.Exit(1)
 		}
 
+		// A --local run that BUILDS recompiles the project's Java into the
+		// classpath a concurrent `mxcli run --local` is holding open, which can
+		// leave that app answering HTTP 200 with an empty body (mxcli-formula1
+		// §81). Neither --attach nor --skip-build builds, so neither can cause it.
+		if local && !attach && !skipBuild {
+			warnIfDevLoopServing(projectPath, os.Stdout)
+		}
+
 		result, err := testrunner.Run(opts)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)

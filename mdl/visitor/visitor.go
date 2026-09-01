@@ -151,6 +151,29 @@ func enhanceErrorMessage(msg, offendingLine string) string {
 			"  On an existing entity, ALTER ENTITY Mod.E SET COMMENT '…' also works.", msg)
 	}
 
+	// `Height: n` on an annotation. Mendix stores no annotation height — the box
+	// auto-sizes to its caption — so the bare "expecting {POSITION, CAPTION,
+	// WIDTH}" reads like a missing mxcli feature when it is a missing Mendix
+	// property. Say which it is, and name the two levers that do exist. (#1014)
+	if looksLikeAnnotationProperty(msg) && annotationHeightRe.MatchString(offendingLine) {
+		return fmt.Sprintf("%s\n\n  Mendix does not store an annotation height. DomainModels$Annotation has\n"+
+			"  exactly four properties — Caption, ExportLevel, Location and Width — so the\n"+
+			"  note auto-sizes to its caption and there is nothing to write a height into.\n"+
+			"  Height follows from the wrapping, so WIDTH is the lever:\n"+
+			"    Width: 300   -- narrower wraps to more lines, so the note is TALLER\n"+
+			"    Width: 600   -- wider wraps to fewer lines, so the note is SHORTER\n"+
+			"  To stop a note overlapping what sits below it, move those down:\n"+
+			"    ALTER ENTITY Mod.Entity SET POSITION (x, y);", msg)
+	}
+
+	// Any other unknown property in an annotation's list — the same four-property
+	// limit, without the height-specific advice.
+	if looksLikeAnnotationProperty(msg) {
+		return fmt.Sprintf("%s\n\n  An annotation stores only Caption, Position and Width (Mendix keeps\n"+
+			"  Caption, ExportLevel, Location and Width, and nothing else — there is no\n"+
+			"  height, no colour and no name).", msg)
+	}
+
 	if looksLikeEnumEquals(msg) {
 		return fmt.Sprintf("%s\n\n  Enumeration values do not use '='. Write the value name (quoted or not)\n"+
 			"  followed by an optional quoted caption:\n"+
@@ -577,4 +600,25 @@ func hintedKeywords() []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// annotationHeightRe matches a `Height:` property line.
+var annotationHeightRe = regexp.MustCompile(`(?i)^\s*height\s*:`)
+
+// looksLikeAnnotationProperty reports whether a parse error came from an
+// annotation's property list. The three-token expecting-set is unique to
+// `annotationProperty` in the grammar, and survives simplifyExpecting untouched
+// (three tokens, none of them statement-start keywords), so keying on it does
+// not misfire on a page widget's Height or any other property list.
+func looksLikeAnnotationProperty(msg string) bool {
+	i := strings.Index(msg, "expecting {")
+	if i < 0 {
+		return false
+	}
+	rel := strings.Index(msg[i:], "}")
+	if rel < 0 {
+		return false
+	}
+	set := msg[i : i+rel]
+	return strings.Contains(set, "CAPTION") && strings.Contains(set, "POSITION") && strings.Contains(set, "WIDTH")
 }
