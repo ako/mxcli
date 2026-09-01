@@ -130,7 +130,7 @@ for display in this README):
 | [mxcli Playground](mxcli-playground.md) | Draft | A public GitHub repository (mendixlabs/mxcli-playground) containing a ready-to-use Mendix project pre-configured with mxcli, Claude Code ski |
 | [Owning the modelsdk/gen codegen — why the vendored generator cannot be adopted as-is](PROPOSAL_codegen_ownership.md) | Draft | Constraint set by the maintainer (2026-08-13): the reflection data is an |
 | [Playwright Session Reuse and Lifecycle Control](PROPOSAL_playwright_session_reuse.md) | Draft | Builds on proposal-playwright-cli.md, which |
-| [Project brain — an opt-in store for what mxcli cannot compute](PROPOSAL_project_brain.md) | Draft | An agent working on a Mendix project accumulates knowledge it loses each |
+| [Project brain — an opt-in store, in a user's Mendix project, for what mxcli cannot compute](PROPOSAL_project_brain.md) | Draft | Audience: users of mxcli building Mendix projects — not mxcli's own |
 | [RENAME with Reference Refactoring](PROPOSAL_rename_refactoring.md) | Draft | Renaming entities, microflows, pages, and modules is one of the most common refactoring operations. |
 | [Replace Generated Playwright Tests with playwright-cli](proposal-playwright-cli.md) | Draft | The current approach (documented in proposal-playwright-testing.md) has Claude Code generate TypeScript test files (.spec.ts), then run them |
 | [Self-Describing Syntax Feature Registry](syntax-feature-registry.md) | Draft | Branch: research/recursive-help-discovery |

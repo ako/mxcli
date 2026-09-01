@@ -1,5 +1,5 @@
 ---
-title: Project brain — an opt-in store for what mxcli cannot compute
+title: Project brain — an opt-in store, in a user's Mendix project, for what mxcli cannot compute
 status: draft
 date: 2026-09-01
 related:
@@ -9,7 +9,7 @@ related:
   - PROPOSAL_ai_capability_dataset.md
 ---
 
-# Project brain — an opt-in store for what mxcli cannot compute
+# Project brain — an opt-in store, in a user's Mendix project, for what mxcli cannot compute
 
 > Written in response to mendixlabs/mxcli#1017. The issue asks that the brief's
 > assumptions be verified against the codebase and that conflicts be flagged
@@ -17,6 +17,13 @@ related:
 > amending, and one of them is wrong outright.
 
 ## 1. Problem
+
+**Audience: users of mxcli building Mendix projects** — not mxcli's own
+development. The store lives in the user's Mendix project, is maintained by that
+developer and their agent, and is read by people who may never see mxcli's
+source. This matters throughout: it sets the scale (tens of lines, not
+hundreds of entries), the number of writers (one developer, not many parallel
+sessions), and the review audience (a Mendix developer reading a pull request).
 
 An agent working on a Mendix project accumulates knowledge it loses each
 session: why a pattern was chosen, which marketplace version broke what, which
@@ -33,25 +40,66 @@ will disagree with the project.
 
 ## 2. Assumptions verified
 
-### 2.1 Can MDL read and write `Documentation`? — Partly, and unevenly
+### 2.1 Can MDL read and write `Documentation`? — Yes, via doc comments, and it is the supported spelling
 
-Yes for domain-model objects, through two spellings: a `/** … */` doc comment
-before a statement (`findDocCommentText`, wired per-statement in
-`mdl/visitor/`), and `ALTER ENTITY … SET DOCUMENTATION` / `SET COMMENT`
-(`MDLDomainModel.g4:214`).
+A `/** … */` comment before a statement becomes the object's `Documentation` and
+is written into the model. Measured on Mendix 11.13, executing against a real
+project and then searching the **stored bytes**, not a read-back:
 
-But the surface is uneven, and there is a recorded finding about exactly this:
-`create … comment 'text'` was accepted and **wrote nothing** on `create entity`,
-`enumeration`, `module`, `microflow`, `nanoflow`, `rule` and `association`. The
-dead option was removed rather than wired, on the grounds that two spellings —
-one of which lies — are worse than one. `COMMENT` remains live on constants,
-JSON structures, image collections, database connections and workflows.
+```
+create microflow … with a /** … */ header
+  -> text present in mprcontents/d4/a4/….mxunit
+create entity … with a /** … */ header
+  -> text present in mprcontents/84/77/….mxunit
+describe microflow …
+  -> the comment comes back verbatim, above `create or modify microflow`
+```
 
-**Consequence for the design.** Tier 1 ("attach knowledge to the object it
-concerns") is the right preference and is *not* uniformly available today. Phase
-3 must open with a per-doctype audit of what can actually carry documentation
-and round-trip it, and the proposal should not assume a microflow can be
-annotated from MDL until that audit says so.
+`create … comment 'text'` was removed **because this exists**, not because the
+capability was missing — two spellings, one of which wrote nothing, is worse
+than one. Reading the removal as evidence of a gap is the wrong inference, and
+the earlier draft of this proposal made it.
+
+The doc comment is wired at **28 sites** across `mdl/visitor/`, covering entity,
+microflow, page, association, enumeration, workflow, scheduled event, queue,
+regular expression, JSON structure, image collection, OData, REST, business
+events and the agent-editor documents.
+
+**But a rewrite destroys it.** Writing works; *surviving* does not. Measured on
+the same project, checking the stored bytes after each step, with the untouched
+object as the control:
+
+```
+                     microflow doc      entity doc
+after create           PRESENT            PRESENT
+after `create or replace` the microflow
+                       ABSENT             PRESENT     <- control holds
+after `create or modify` the entity
+                       ABSENT             ABSENT
+```
+
+Each rewrite destroys **its own** object's documentation and leaves the other
+alone. So a statement that says nothing about documentation — adding an
+attribute, changing a flow — silently deletes whatever was promoted there.
+`mx check` is clean throughout: a document with no documentation is valid.
+
+This is the guard-don't-drop class, and it is **fatal to tier 1 as the brief
+describes it**. "Knowledge attached to the object travels with the object and is
+deleted with it" is true, and the unstated half is that it is also deleted by an
+ordinary edit that has nothing to do with the knowledge. An agent that promotes a
+decision into a microflow's documentation and later adds a parameter has thrown
+the decision away, with every signal reporting success.
+
+**Consequence for the design.** Tier 1 is the strongest idea in the brief and is
+**blocked** until rewrites preserve documentation the statement does not restate.
+That is a fix in mxcli's writers, not in the brain, and it should be a
+precondition of phase 3 rather than a task inside it. Until then the brain's
+preference order starts at tier 2.
+
+A caveat on this measurement: it was made with a corrected test. The first
+version chained `&& echo SURVIVED` to `head -1`, which exits 0 on empty input, so
+it reported success regardless of what grep found — the same shape as the test
+failures catalogued in §3.
 
 ### 2.2 What does the catalog give us, and how fast? — Everything needed, and it is free
 
@@ -118,48 +166,50 @@ embed directory directly is always wrong, because the next sync deletes it. The
 `.mxcli/` **is** gitignored by `mxcli init` (`constant_gitignore.go`), so the
 brief's split between committed docs and tool-owned state holds as written.
 
-## 3. Evidence from mxcli's own attempt at this
+## 3. Evidence from an analogous store — with the differences stated
 
-mxcli already runs a store of exactly this shape — the bug findings under
+mxcli maintains a store of a similar shape: the bug findings under
 `.claude/skills/fix-issue/findings/`, digested into `docs-wiki/bug-patterns/`.
-It has been running for months and has failed in four ways that this design
-should be built against, because every one of them is reachable from the brief
-as written.
 
-**It grew until it could not be read.** The findings began as a Markdown table
-inside a skill file and reached **1.05 MB across 630 rows** — past a context
-window, past what GitHub's web editor will open, and past what the digest step
-could consume. The instruction to "read it before diagnosing" was unfollowable
-for months and nobody noticed, because an unread file has no failure mode.
-*→ The brief's caps are the single most important thing in it. Keep them, and
-enforce them in `promote` as it says.*
+**It is not this feature and the audience is different.** That store is for
+developing *mxcli itself* — a Go repository, many parallel agent sessions,
+hundreds of entries accumulated over months, read by people working on the tool.
+The brain proposed here is for a *user's Mendix project*: one developer and their
+agent, a few dozen lines, read by someone who may never see mxcli's source. The
+scale differs by two orders of magnitude and the number of concurrent writers by
+more.
 
-**The digest nothing triggered stopped.** Three pattern pages were written on one
-day in May and none was re-synced for three months while the corpus grew 200×.
-The sync was on-demand and no step demanded it.
-*→ A trigger has to fire where work already happens. What eventually worked was
-printing the gap from a command that already runs on every fix, not adding a
-report someone must remember.*
+So this is an analogy, not a precedent. Three of its failures transfer, one does
+not, and saying which is the point of including it.
 
-**Append-only plus union merge produced silent duplicates.** `merge=union` was
-added so parallel fixes would not conflict. It cannot distinguish a genuine
-parallel append from a re-append of the same content, and nothing compared lines:
-`main` currently holds **885 records of which 629 are distinct** — the executor
-shard is essentially the same 247 findings twice.
-*→ `staged.jsonl` and the committed `decisions.md` are both append-only stores
-with the same exposure. Whatever check they get must compare entries, not just
-validate each one.*
+**Transfers — unbounded growth destroys the artifact.** The findings began as a
+table inside a skill file and reached 1.05 MB across 630 rows: past a context
+window, past what GitHub's web editor will open. The instruction to read it
+before diagnosing was unfollowable for months and nobody noticed, because an
+unread file has no failure mode. This transfers *more* strongly here, not less:
+a project brain is loaded into an agent's context every session, so its size is a
+recurring tax rather than an occasional one. **The brief's caps are the single
+most important thing in it**, and `promote` refusing when a cap would be exceeded
+is the right enforcement point.
 
-**Claims about the mechanism went stale, including "it runs in CI".** A README
-and a PR body both said the findings check ran in CI. It did not. Coverage
-percentages written into prose were stale within days.
-*→ Anything the brain reports about itself should be computed by a command, not
-written into a file.*
+**Transfers — a curation step with no trigger stops.** Three digest pages were
+written on one day and none was re-synced for three months while the corpus grew.
+The step was on-demand and nothing demanded it. The brain has the same shape:
+`staged.jsonl` fills automatically and `promote` is manual. What eventually
+worked in the analogous case was printing the gap from a command that already
+runs, rather than adding a report someone must remember to invoke.
 
-None of this argues against the feature. It argues that the parts of the brief
-that look like restraint — caps, no auto-promotion, human-in-the-loop `promote` —
-are the parts that carry the design, and the parts that look like plumbing are
-where it will fail.
+**Transfers — self-reported claims go stale.** A README and a PR body both said a
+check ran in CI when it did not; coverage figures written into prose were stale
+within days. Anything the brain says about itself — its size, its staleness —
+should be computed by `brain show` / `brain check`, never written into a
+committed file.
+
+**Does not transfer — silent duplicates from union merges.** `merge=union` let
+256 duplicate findings reach the shared corpus unnoticed. That is a
+many-parallel-writers problem; a single developer on one project has little
+exposure to it. It justifies a cheap duplicate check on `staged.jsonl` and
+nothing more, and the earlier draft over-weighted it.
 
 ## 4. Design
 
@@ -171,8 +221,8 @@ or §3.
 | A1 | `check` reports three anchor states — resolved, **not found**, **not indexable** — and fails only on the middle one | §2.2: the `objects` view is not a complete inventory |
 | A2 | Anchors resolve at document *and* member granularity (`objects` + `attributes_data`) | §2.2: `@Mod.Entity.Attr` is the natural thing to write |
 | A3 | Generated lint rules use a `brain_` filename prefix and a `BRAIN###` ID namespace | §2.3: `mxcli init` writes into the same directory |
-| A4 | Phase 3 opens with a per-doctype documentation audit; no promotion to model documentation before it | §2.1: `create … comment` was a dead option on seven doctypes |
-| A5 | `staged.jsonl` and every committed store get a **duplicate check**, not only a shape check | §3: 256 duplicate findings reached `main` unnoticed |
+| A4 | **Tier 1 is blocked** until a rewrite preserves documentation it does not restate. Until then the preference order starts at tier 2 | §2.1: measured — `create or replace` destroys the doc comment, `mx check` clean |
+| A5 | `staged.jsonl` gets a cheap duplicate check | §3: cheap insurance, but a many-writers problem that mostly does not apply here |
 | A6 | `brain show`'s size figure and any coverage number are computed, never written into a committed file | §3: prose figures went stale within days |
 | A7 | The gap that motivates curation is printed by a command that already runs, not only by `brain check` | §3: the on-demand digest went three months without a run |
 
@@ -209,3 +259,7 @@ Unchanged from the brief, with A4 inserted:
 3. **THEORY.md does not exist.** The issue says to read it and to update it if the
    working theory changes. There is no such file anywhere in the repository. Is it
    expected to be created, or was another document meant?
+4. **Who fixes documentation preservation?** §2.1 measures that `create or
+   replace` / `create or modify` destroys an object's doc comment. That is an
+   mxcli writer defect independent of this feature and worth its own issue; the
+   brain merely cannot use tier 1 until it is fixed.
