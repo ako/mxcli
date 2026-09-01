@@ -224,7 +224,7 @@ func validateOptions(opts RunOptions) error {
 		return nil
 	}
 	if !opts.Watch {
-		return checkScratchDeploymentExists(opts)
+		return nil
 	}
 	if !opts.Local {
 		return fmt.Errorf("--watch requires --local: the Docker path can only re-run tests by restarting the container")
@@ -236,33 +236,6 @@ func validateOptions(opts RunOptions) error {
 		return fmt.Errorf("--watch cannot be combined with --skip-build: watching exists to rebuild on every change")
 	}
 	return nil
-}
-
-// checkScratchDeploymentExists refuses `--skip-build` before the test run has a
-// deployment of its own to reuse.
-//
-// A local test run builds into its own tree rather than the dev loop's
-// deployment/, because rebuilding — or merely booting a runtime against — the
-// directory a running `mxcli run --local` serves leaves that app returning a 404
-// for /dist/index.js: HTTP 200, blank page, nothing reported at either end
-// (FINDINGS §62, and §35 for the boot-only route). So "reuse what is already
-// built" now means the test tree, which does not exist until tests have run once.
-//
-// Saying that is the whole point: without it the first --skip-build run fails
-// inside the runtime boot, against a path the user never chose.
-func checkScratchDeploymentExists(opts RunOptions) error {
-	if !opts.SkipBuild || !opts.Local || opts.ProjectPath == "" {
-		return nil
-	}
-	dir := filepath.Join(filepath.Dir(opts.ProjectPath), ".mxcli", localTestDeployDir)
-	if _, err := os.Stat(filepath.Join(dir, "model")); err == nil {
-		return nil
-	}
-	return fmt.Errorf("--skip-build has nothing to reuse: %s does not exist yet.\n"+
-		"  A local test run builds into its own %s tree rather than the project's deployment/,\n"+
-		"  which `mxcli run --local` serves the browser bundle from — rebuilding that one blanks\n"+
-		"  the running app with no error at either end. Run the suite once without --skip-build.",
-		dir, localTestDeployDir)
 }
 
 // runEndpoint injects the test endpoint plus one microflow per test, boots the

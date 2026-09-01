@@ -128,7 +128,17 @@ func renderSyncPlan(plan *executor.SyncPlan) {
 	}
 
 	if plan.Empty() {
-		fmt.Fprintln(out, "Every stored widget instance already matches its installed package. Nothing to do.")
+		// Say what was compared, not what was concluded. This message used to
+		// read "Every stored widget instance already matches its installed
+		// package", which a reporting project got on a widget `mx check` was
+		// reporting CE0463 on at that moment (mxcli-ledger §142) — and the two
+		// were both right, about different things. The comparison is over the
+		// stored SCHEMA (each property's declared type attributes); the value in
+		// the widget's Object is not looked at, and the CE0463 there was a value.
+		fmt.Fprintln(out, "No schema drift: every stored widget's property declarations match its installed package.")
+		fmt.Fprintln(out, "  This compares the stored property SCHEMA, not the values in each widget — a widget can")
+		fmt.Fprintln(out, "  still fail CE0463 on a value the package would not accept. Run 'mxcli fix widgets' for")
+		fmt.Fprintln(out, "  the full update.")
 		return
 	}
 
