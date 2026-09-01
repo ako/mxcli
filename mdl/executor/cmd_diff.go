@@ -4,10 +4,12 @@
 package executor
 
 import (
-	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
@@ -87,10 +89,20 @@ func diffProgram(ctx *ExecContext, prog *ast.Program, opts DiffOptions) error {
 	processed := make(map[string]bool)
 
 	// Process each statement
+	// Statements diff cannot compare, and statements whose comparison failed.
+	// Both are reported rather than dropped — see unsupportedDiffError.
+	skipped := map[string]int{}
+	var failures []string
+
 	for _, stmt := range prog.Statements {
 		result, err := diffStatement(ctx, stmt)
 		if err != nil {
-			// Skip statements that can't be diffed (e.g., connection statements)
+			var unsupported *unsupportedDiffError
+			if errors.As(err, &unsupported) {
+				skipped[unsupported.kind]++
+			} else {
+				failures = append(failures, err.Error())
+			}
 			continue
 		}
 		if result != nil {
@@ -135,8 +147,37 @@ func diffProgram(ctx *ExecContext, prog *ast.Program, opts DiffOptions) error {
 	// Output summary
 	fmt.Fprintf(ctx.Output, "\nSummary: %d new, %d modified, %d unchanged\n",
 		newCount, modifiedCount, unchangedCount)
+	reportUndiffed(ctx, skipped, failures)
 
 	return nil
+}
+
+// reportUndiffed prints what the summary above does NOT account for.
+//
+// The counts only ever describe statements diff understands, so a script made
+// entirely of statements it does not understand summarises as all zeros. That
+// reads as "nothing would change" for a script that may add documents, which
+// is exactly the wrong answer from a pre-apply safety gate.
+func reportUndiffed(ctx *ExecContext, skipped map[string]int, failures []string) {
+	if len(skipped) > 0 {
+		kinds := make([]string, 0, len(skipped))
+		for k := range skipped {
+			kinds = append(kinds, k)
+		}
+		sort.Strings(kinds)
+		total := 0
+		for _, n := range skipped {
+			total += n
+		}
+		fmt.Fprintf(ctx.Output, "\nNot compared (%d statement(s)) — diff has no comparison for these,\n"+
+			"so they are absent from the summary above, not unchanged:\n", total)
+		for _, k := range kinds {
+			fmt.Fprintf(ctx.Output, "  %s x%d\n", k, skipped[k])
+		}
+	}
+	for _, f := range failures {
+		fmt.Fprintf(ctx.Output, "\nCould not diff: %s\n", f)
+	}
 }
 
 // DiffProgram is a method wrapper for external callers.
@@ -160,8 +201,34 @@ func diffStatement(ctx *ExecContext, stmt ast.Statement) (*DiffResult, error) {
 	case *ast.CreateNanoflowStmt:
 		return diffNanoflow(ctx, s)
 	default:
-		return nil, nil // Skip unsupported statements
+		return nil, &unsupportedDiffError{kind: statementKindName(stmt)}
 	}
+}
+
+// unsupportedDiffError marks a statement diff has no comparison for. It is an
+// error rather than a nil result so that diffProgram can SAY so: skipping
+// silently made `diff` report "0 new, 0 modified, 0 unchanged" for a script
+// that would genuinely add documents, which is worse than a wrong count
+// because there is nothing on screen to disbelieve (#997).
+type unsupportedDiffError struct{ kind string }
+
+func (e *unsupportedDiffError) Error() string {
+	return "diff does not compare " + e.kind + " statements"
+}
+
+// statementKindName turns an AST statement type into something an MDL author
+// recognises: *ast.GrantMicroflowAccessStmt → "grant microflow access".
+func statementKindName(stmt ast.Statement) string {
+	name := strings.TrimPrefix(fmt.Sprintf("%T", stmt), "*ast.")
+	name = strings.TrimSuffix(name, "Stmt")
+	var out []rune
+	for i, r := range name {
+		if i > 0 && r >= 'A' && r <= 'Z' {
+			out = append(out, ' ')
+		}
+		out = append(out, unicode.ToLower(r))
+	}
+	return string(out)
 }
 
 // diffEntity compares a CREATE ENTITY statement against the project
@@ -285,88 +352,71 @@ func diffAssociation(ctx *ExecContext, s *ast.CreateAssociationStmt) (*DiffResul
 
 // diffMicroflow compares a CREATE MICROFLOW statement against the project
 func diffMicroflow(ctx *ExecContext, s *ast.CreateMicroflowStmt) (*DiffResult, error) {
-	result := &DiffResult{
-		ObjectType: "Microflow",
-		ObjectName: s.Name,
-		Proposed:   microflowStmtToMDL(ctx, s),
-	}
+	result := &DiffResult{ObjectType: "Microflow", ObjectName: s.Name}
 
-	// Try to find existing microflow
-	h, err := getHierarchy(ctx)
+	// Build the flow the script describes, without writing anything, then
+	// render it through the SAME describer the stored side goes through. The
+	// second AST-to-MDL renderer this replaces dropped every activity type it
+	// did not know, which the diff then showed as a deletion (#997).
+	built, err := buildMicroflowFromStmt(ctx, s, buildFlowOpts{})
 	if err != nil {
+		return nil, err
+	}
+	proposed, err := renderFlowFromModel(ctx, "microflow", built.Microflow, s.Name)
+	if err != nil {
+		return nil, err
+	}
+	result.Proposed = proposed
+
+	if built.ExistingID == "" {
 		result.IsNew = true
 		return result, nil
 	}
 
-	mfs, err := ctx.Backend.ListMicroflows()
-	if err != nil {
+	stored, err := ctx.Backend.GetMicroflow(built.ExistingID)
+	if err != nil || stored == nil {
 		result.IsNew = true
 		return result, nil
 	}
-
-	for _, mf := range mfs {
-		modID := h.FindModuleID(mf.ContainerID)
-		modName := h.GetModuleName(modID)
-		if modName == s.Name.Module && mf.Name == s.Name.Name {
-			// Capture current MDL representation
-			var buf bytes.Buffer
-			oldOutput := ctx.Output
-			ctx.Output = &buf
-			describeMicroflow(ctx, s.Name)
-			ctx.Output = oldOutput
-			result.Current = strings.TrimSuffix(buf.String(), "\n")
-			result.Changes = compareMicroflows(ctx, result.Current, result.Proposed)
-			return result, nil
-		}
+	current, err := renderFlowFromModel(ctx, "microflow", stored, s.Name)
+	if err != nil {
+		return nil, err
 	}
-
-	result.IsNew = true
+	result.Current = current
+	result.Changes = compareMicroflows(ctx, result.Current, result.Proposed)
 	return result, nil
 }
 
 // diffNanoflow compares a CREATE NANOFLOW statement against the project
 func diffNanoflow(ctx *ExecContext, s *ast.CreateNanoflowStmt) (*DiffResult, error) {
-	result := &DiffResult{
-		ObjectType: "Nanoflow",
-		ObjectName: s.Name,
-		Proposed:   nanoflowStmtToMDL(ctx, s),
-	}
+	result := &DiffResult{ObjectType: "Nanoflow", ObjectName: s.Name}
 
-	// Try to find existing nanoflow
-	// Errors treated as "new" to match diffMicroflow and other diff* functions
-	h, err := getHierarchy(ctx)
+	built, err := buildNanoflowFromStmt(ctx, s, buildFlowOpts{})
 	if err != nil {
+		return nil, err
+	}
+	proposed, err := renderFlowFromModel(ctx, "nanoflow", nanoflowAsMicroflow(built.Nanoflow), s.Name)
+	if err != nil {
+		return nil, err
+	}
+	result.Proposed = proposed
+
+	if built.ExistingID == "" {
 		result.IsNew = true
 		return result, nil
 	}
 
-	nfs, err := ctx.Backend.ListNanoflows()
-	if err != nil {
+	stored, err := ctx.Backend.GetNanoflow(built.ExistingID)
+	if err != nil || stored == nil {
 		result.IsNew = true
 		return result, nil
 	}
-
-	for _, nf := range nfs {
-		modID := h.FindModuleID(nf.ContainerID)
-		modName := h.GetModuleName(modID)
-		if modName == s.Name.Module && nf.Name == s.Name.Name {
-			// Capture current MDL representation
-			var buf bytes.Buffer
-			if err := func() error {
-				oldOutput := ctx.Output
-				ctx.Output = &buf
-				defer func() { ctx.Output = oldOutput }()
-				return describeNanoflow(ctx, s.Name)
-			}(); err != nil {
-				return nil, err
-			}
-			result.Current = strings.TrimSuffix(buf.String(), "\n")
-			result.Changes = compareMicroflows(ctx, result.Current, result.Proposed)
-			return result, nil
-		}
+	current, err := renderFlowFromModel(ctx, "nanoflow", nanoflowAsMicroflow(stored), s.Name)
+	if err != nil {
+		return nil, err
 	}
-
-	result.IsNew = true
+	result.Current = current
+	result.Changes = compareMicroflows(ctx, result.Current, result.Proposed)
 	return result, nil
 }
 
