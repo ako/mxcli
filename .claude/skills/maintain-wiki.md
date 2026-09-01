@@ -163,6 +163,8 @@ isn't better served by an existing page or a different doc artifact.
 | `bug-patterns/capability-gap-as-parse-error.md` | bug-pattern | an unspelled capability presenting as `no viable alternative`, and the workarounds that follow |
 | `bug-patterns/keyword-collisions.md` | bug-pattern | MDL's keyword set occupying positions where user data lives |
 | `bug-patterns/scripts-that-cannot-rerun.md` | bug-pattern | statement-level idempotence, and why it is not write-level idempotence |
+| `bug-patterns/expression-translation-drift.md` | bug-pattern | MDL expression to Mendix expression, where the translation changes the meaning |
+| `bug-patterns/misleading-diagnostics.md` | bug-pattern | hints that fire on the wrong thing and send the reader somewhere the problem is not |
 
 ## Adding a new page
 
