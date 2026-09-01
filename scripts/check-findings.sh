@@ -41,6 +41,12 @@ for path in sys.argv[1:]:
                 print("%s:%d: not a JSON object" % (path, n)); bad += 1; continue
             if not rec.get("area"):
                 print("%s:%d: missing `area`" % (path, n)); bad += 1
+            # A dateless finding is invisible to the digest report, which then
+            # says the wiki is current when it is not. Required rather than
+            # warned about: 249 records accumulated undated before this check
+            # existed, and nobody saw the warning that was not there.
+            if not rec.get("date"):
+                print("%s:%d: missing `date` (YYYY-MM-DD)" % (path, n)); bad += 1
             structured = all(rec.get(k) for k in ("symptom", "cause", "file", "insight"))
             if not structured and not rec.get("raw"):
                 print("%s:%d: needs either symptom/cause/file/insight or raw" % (path, n))
