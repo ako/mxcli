@@ -14,6 +14,15 @@ package ast
 // no name, so the note is addressed by the first line of its caption. There is
 // no colour: a "coloured section box" is this element in Studio Pro's styling,
 // not stored state.
+//
+// There is also no HEIGHT (#1014). The note auto-sizes to its caption, so its
+// height is a function of the text and the width rather than stored state.
+// Measured four ways on 11.13.0, because the metamodel in this repo is an 11.6.0
+// snapshot and cannot rule out a later property on its own: `mx dump-mpr` emits
+// those four keys and no more; `mx convert -p`, which rewrites the model through
+// Mendix's OWN object model and would materialise a defaulted property, adds
+// nothing; and the published Model SDK's domainmodels.Annotation lists caption,
+// exportLevel, location and width. Width is therefore the only height lever.
 type CreateAnnotationStmt struct {
 	Module  string
 	Caption string
