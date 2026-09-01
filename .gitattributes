@@ -68,3 +68,16 @@ bun.lock binary
 # drivers, so a PR still shows the conflict and still has to merge main locally.
 # Sharding by area is what actually reduces collisions.
 .claude/skills/fix-issue/findings/*.jsonl merge=union
+
+# docs-wiki/SYNC_LOG.md is append-only by its own stated rule ("Append only.
+# Never edit historical rows."), so two syncs appending a row each is the same
+# situation as two fixes appending a finding. Without this, every parallel wiki
+# PR conflicts on one line and the work gets serialised for no reason — which is
+# what happened to the five bug-pattern PRs.
+docs-wiki/SYNC_LOG.md merge=union
+
+# The wiki's page list. A table and nothing else, in its own file precisely so
+# union is safe on it: every sync appends a row, and without this two parallel
+# syncs collide on one line. The prose that used to surround it stays in
+# maintain-wiki.md, where union would be a hazard rather than a help.
+.claude/skills/maintain-wiki/pages.md merge=union
