@@ -62,7 +62,7 @@ func (r *Reader) parseNanoflow(unitID, containerID string, contents []byte) (*mi
 	}
 	for _, p := range extractBsonSlice(paramsArray) {
 		if paramMap := extractBsonMap(p); paramMap != nil {
-			param := parseMicroflowParameter(paramMap)
+			param := parseMicroflowParameter(paramMap, len(nf.Parameters))
 			nf.Parameters = append(nf.Parameters, param)
 		}
 	}
@@ -83,7 +83,7 @@ func (r *Reader) parseNanoflow(unitID, containerID string, contents []byte) (*mi
 			for _, obj := range extractBsonSlice(ocRaw["Objects"]) {
 				if objMap := extractBsonMap(obj); objMap != nil {
 					if typeName, _ := objMap["$Type"].(string); typeName == "Microflows$MicroflowParameter" {
-						param := parseMicroflowParameter(objMap)
+						param := parseMicroflowParameter(objMap, len(nf.Parameters))
 						nf.Parameters = append(nf.Parameters, param)
 					}
 				}

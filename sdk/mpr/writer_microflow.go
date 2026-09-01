@@ -325,8 +325,13 @@ func serializeAnnotationFlow(af *microflows.AnnotationFlow, majorVersion int) bs
 // DefaultValue and IsRequired were introduced in Mendix 10; emitting them on a
 // Mendix 9 project trips the Studio Pro metamodel checker, so they are gated.
 func serializeMicroflowParameter(p *microflows.MicroflowParameter, posX int, majorVersion int) bson.D {
-	// Calculate position based on index - parameters appear at the top of the microflow
-	relativeMiddlePoint := fmt.Sprintf("%d;53", 200+posX*100)
+	// An authored position is written as given; without one the parameter goes
+	// where the layout puts it — a row of boxes along the top of the canvas.
+	pos := microflows.DerivedParameterPosition(posX)
+	if p.Position != nil {
+		pos = *p.Position
+	}
+	relativeMiddlePoint := pointToString(pos)
 
 	doc := bson.D{
 		{Key: "$ID", Value: idToBsonBinary(string(p.ID))},

@@ -59,6 +59,18 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 		// Check microflow body for common issues
 		if mfStmt, ok := stmt.(*ast.CreateMicroflowStmt); ok {
 			violations = append(violations, ValidateMicroflow(mfStmt)...)
+			violations = append(violations,
+				ValidateFlowParameterAnnotations("microflow '"+mfStmt.Name.String()+"'", mfStmt.Parameters)...)
+		}
+		// Parameter annotations for the two flow flavours that do not go through
+		// ValidateMicroflow but share the parameter grammar.
+		if nfStmt, ok := stmt.(*ast.CreateNanoflowStmt); ok {
+			violations = append(violations,
+				ValidateFlowParameterAnnotations("nanoflow '"+nfStmt.Name.String()+"'", nfStmt.Parameters)...)
+		}
+		if ruleStmt, ok := stmt.(*ast.CreateRuleStmt); ok {
+			violations = append(violations,
+				ValidateFlowParameterAnnotations("rule '"+ruleStmt.Name.String()+"'", ruleStmt.Parameters)...)
 		}
 		// Check workflow for constructs MxBuild rejects (missing page,
 		// single-outcome-with-activities, invalid decision outcome names)

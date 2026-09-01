@@ -310,6 +310,14 @@ commit $Product;
 - `@position` always appears in DESCRIBE output; `@caption` only when custom; `@color` only when not Default
 - DESCRIBE MICROFLOW shows `@` annotations before their activities
 - `@start(x, y)` positions the **start event** and goes on the first statement, because the start has no statement of its own. Omit it and the start is derived — one spacing unit (160) left of the first activity, on its centre line — and a rewrite re-derives it so the start follows the activities when they move. A start that is not at the derived spot was placed by hand (in Studio Pro or with `@start`): it survives a rewrite that does not mention it, and DESCRIBE emits `@start` for it. An explicit `@start` overrides both (#951)
+- `@position(x, y)` on a **parameter** goes inside the parameter list, ahead of the parameter it places — a parameter is a stored node with its own coordinates, and this is the only annotation it takes. Omit it and the parameters form a row along the top of the canvas (200;53, 300;53, …). The `@start` rule above applies unchanged: a parameter on that derived row is re-derived on a rewrite, one anywhere else was placed by hand, survives, and is emitted by DESCRIBE (#993). Before this, a hand-aligned parameter block was moved back onto the row by any rewrite — including a describe → exec of mxcli's own output:
+
+  ```
+  create or modify nanoflow MyModule.ACT_Clear (
+    @position(-77, 0)
+    $Feedback: MyModule.Feedback
+  )
+  ```
 ## Error Handling
 
 MDL supports error handling for activities that may fail (microflow calls, commits, external service calls, etc.).

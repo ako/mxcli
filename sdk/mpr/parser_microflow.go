@@ -82,7 +82,7 @@ func ParseMicroflowFromRaw(raw map[string]any, unitID, containerID model.ID) *mi
 	}
 	for _, p := range extractBsonSlice(paramsArray) {
 		if paramMap := extractBsonMap(p); paramMap != nil {
-			param := parseMicroflowParameter(paramMap)
+			param := parseMicroflowParameter(paramMap, len(mf.Parameters))
 			mf.Parameters = append(mf.Parameters, param)
 		}
 	}
@@ -109,7 +109,7 @@ func ParseMicroflowFromRaw(raw map[string]any, unitID, containerID model.ID) *mi
 			for _, obj := range extractBsonSlice(ocRaw["Objects"]) {
 				if objMap := extractBsonMap(obj); objMap != nil {
 					if typeName, _ := objMap["$Type"].(string); typeName == "Microflows$MicroflowParameter" {
-						param := parseMicroflowParameter(objMap)
+						param := parseMicroflowParameter(objMap, len(mf.Parameters))
 						mf.Parameters = append(mf.Parameters, param)
 					}
 				}
@@ -237,7 +237,11 @@ func parseCaseValue(raw any) microflows.CaseValue {
 	return nil
 }
 
-func parseMicroflowParameter(raw map[string]any) *microflows.MicroflowParameter {
+// parseMicroflowParameter reads one Microflows$MicroflowParameter. idx is the
+// parameter's ordinal in its flow, needed to tell a stored position that says
+// something from one that is mxcli's own layout arithmetic handed back — see
+// microflows.AuthoredParameterPosition.
+func parseMicroflowParameter(raw map[string]any, idx int) *microflows.MicroflowParameter {
 	param := &microflows.MicroflowParameter{}
 
 	// Use extractBsonID to handle binary IDs
@@ -254,6 +258,9 @@ func parseMicroflowParameter(raw map[string]any) *microflows.MicroflowParameter 
 		param.Type = parseMicroflowDataType(pt)
 	} else if pt := extractBsonMap(raw["ParameterType"]); pt != nil {
 		param.Type = parseMicroflowDataType(pt)
+	}
+	if rmp, ok := raw["RelativeMiddlePoint"]; ok {
+		param.Position = microflows.AuthoredParameterPosition(parsePoint(rmp), idx)
 	}
 
 	return param

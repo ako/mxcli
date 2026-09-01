@@ -1380,15 +1380,20 @@ func memberChangeToGen(m *microflows.MemberChange) element.Element {
 	return g
 }
 
-// microflowParameterToGen builds a gen MicroflowParameter (position derives from
-// index, matching the legacy serializer).
+// microflowParameterToGen builds a gen MicroflowParameter. An authored position
+// is written as given; without one the position derives from the index, matching
+// the legacy serializer.
 func microflowParameterToGen(p *microflows.MicroflowParameter, idx, major int) element.Element {
 	g := genMf.NewMicroflowParameter()
 	g.SetID(element.ID(p.ID))
 	g.SetDocumentation(p.Documentation)
 	g.SetHasVariableNameBeenChanged(false)
 	g.SetName(p.Name)
-	g.SetRelativeMiddlePoint(fmt.Sprintf("%d;53", 200+idx*100))
+	pos := microflows.DerivedParameterPosition(idx)
+	if p.Position != nil {
+		pos = *p.Position
+	}
+	g.SetRelativeMiddlePoint(fmt.Sprintf("%d;%d", pos.X, pos.Y))
 	g.SetSize("30;30")
 	if major >= 10 {
 		g.SetDefaultValue("")

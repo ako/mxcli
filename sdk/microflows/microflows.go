@@ -131,6 +131,46 @@ type MicroflowParameter struct {
 	Name          string   `json:"name"`
 	Documentation string   `json:"documentation,omitempty"`
 	Type          DataType `json:"type"`
+
+	// Position is the parameter's place on the canvas, set only when those
+	// coordinates say something DerivedParameterPosition would not have
+	// produced — see that function for why the distinction is the whole point.
+	// nil means "wherever the layout puts it", which is why this is a pointer:
+	// 0;0 is a position a person can choose, and two flows in the reference
+	// project use it.
+	Position *model.Point `json:"position,omitempty"`
+}
+
+// DerivedParameterPosition returns where mxcli's own layout puts the parameter
+// at index idx: a row of boxes along the top of the canvas, one spacing unit
+// apart. Both writers used to compute this inline and unconditionally, which is
+// why a hand-placed parameter did not survive a rewrite (#993).
+//
+// It exists so that both readers can tell an authored position from mxcli's own
+// arithmetic handed back. A parameter sitting exactly here carries no intent and
+// is re-derived on the next write; one anywhere else was put there by a person
+// and is kept. This is the arbitration authoredStartPosition makes for the
+// StartEvent, and it is made for the same reason: carrying stored coordinates
+// over UNCONDITIONALLY pins the node, so inserting a parameter would leave the
+// existing ones stranded on the old grid while the new one lands on top of them
+// (the shape of #951, one node family over).
+//
+// A person who places a parameter exactly where the layout would have is
+// indistinguishable from the layout — and re-deriving gives back the same point,
+// so the ambiguity costs nothing.
+func DerivedParameterPosition(idx int) model.Point {
+	return model.Point{X: 200 + idx*100, Y: 53}
+}
+
+// AuthoredParameterPosition returns stored, or nil when stored is the point the
+// layout would have derived for index idx. Readers call this so that everything
+// downstream can treat a non-nil Position as intent.
+func AuthoredParameterPosition(stored model.Point, idx int) *model.Point {
+	if stored == DerivedParameterPosition(idx) {
+		return nil
+	}
+	p := stored
+	return &p
 }
 
 // GetName returns the parameter's name.
