@@ -1,232 +1,211 @@
 ---
-title: Project Brain — Persistent Knowledge and Session Scaffolding for Long-Term AI Collaboration
+title: Project brain — an opt-in store for what mxcli cannot compute
 status: draft
+date: 2026-09-01
+related:
+  - .claude/skills/fix-issue.md
+  - .claude/skills/maintain-wiki.md
+  - docs/13-decisions/0003-mdl-is-sql-shaped.md
+  - PROPOSAL_ai_capability_dataset.md
 ---
 
-# Proposal: Project Brain — Persistent Knowledge and Session Scaffolding for Long-Term AI Collaboration
+# Project brain — an opt-in store for what mxcli cannot compute
 
-## Problem Statement
+> Written in response to mendixlabs/mxcli#1017. The issue asks that the brief's
+> assumptions be verified against the codebase and that conflicts be flagged
+> rather than followed. §2 does that; four of the four assumptions needed
+> amending, and one of them is wrong outright.
 
-mxcli is developed with significant AI involvement, yet the project's knowledge infrastructure is built for static human reading rather than persistent, connected memory. Three related friction points compound over time:
+## 1. Problem
 
-1. **Documentation goes stale without detection** — Proposals describe features as future work after they have already shipped (e.g., the registry implementation predating its own proposal by weeks). There is no mechanism to detect or prevent this drift.
+An agent working on a Mendix project accumulates knowledge it loses each
+session: why a pattern was chosen, which marketplace version broke what, which
+mxbuild error means what *here*. The usual answers — a hand-maintained
+`CLAUDE.md`, a memory-bank tool — rot, and duplicate what mxcli can already
+answer.
 
-2. **No orientation layer for new contributors or agent sessions** — Skills files cover specific tasks well, but there is no single place that answers: *what is the current state of the project, what is actively being worked on, and what is the path for adding something new end-to-end?* A new human contributor or an AI agent dropped into a fresh session must reconstruct this from scattered files, CLAUDE.md, and git history.
+The governing principle from the brief is right and is what makes this
+Mendix-specific rather than another memory tool: **store only the negative
+space.** Anything derivable from the model must be answered by a command and
+never written down. mxcli can already query entities, microflows, pages,
+bindings and references; a store that transcribes any of that is a store that
+will disagree with the project.
 
-3. **Knowledge is not connected** — The internals documentation in `docs-site/src/internals/` covers the pipeline and key subsystems, but the pages are isolated documents rather than a traversable network. There is no way to navigate from "executor" to "backend interface" to "MPR backend" as a linked path, and no graph view for humans to explore topics.
+## 2. Assumptions verified
 
-These are not separate problems. They share the same root: the project has grown to a point where implicit conventions and scattered documents work for a small team in a single session but break down for parallel development, onboarding, and long-running AI collaboration across many sessions.
+### 2.1 Can MDL read and write `Documentation`? — Partly, and unevenly
 
-## Current State
+Yes for domain-model objects, through two spellings: a `/** … */` doc comment
+before a statement (`findDocCommentText`, wired per-statement in
+`mdl/visitor/`), and `ALTER ENTITY … SET DOCUMENTATION` / `SET COMMENT`
+(`MDLDomainModel.g4:214`).
 
-The project already has several knowledge layers that are good individually but unconnected:
+But the surface is uneven, and there is a recorded finding about exactly this:
+`create … comment 'text'` was accepted and **wrote nothing** on `create entity`,
+`enumeration`, `module`, `microflow`, `nanoflow`, `rule` and `association`. The
+dead option was removed rather than wired, on the grounds that two spellings —
+one of which lies — are worse than one. `COMMENT` remains live on constants,
+JSON structures, image collections, database connections and workflows.
 
-| Layer | Location | Audience | Character |
-|---|---|---|---|
-| Kitchen-sink AI context | `CLAUDE.md` | AI agents | Procedural, comprehensive, monolithic |
-| Maintainer task skills | `.claude/skills/*.md` | AI agents (mxcli-dev) | Procedural ("how to do X") |
-| User task skills | `.claude/skills/mendix/*.md` | AI agents (shipped to users) | Procedural ("how to do X") |
-| Internals docs | `docs-site/src/internals/` | Curious users + contributors | Explanatory, isolated pages |
-| Proposals | `docs/11-proposals/` | Contributors | Forward-looking, no lifecycle |
-| Architecture docs | `docs/01-project/`, `docs/03-development/` | Contributors | Structural, sparse |
+**Consequence for the design.** Tier 1 ("attach knowledge to the object it
+concerns") is the right preference and is *not* uniformly available today. Phase
+3 must open with a per-doctype audit of what can actually carry documentation
+and round-trip it, and the proposal should not assume a microflow can be
+annotated from MDL until that audit says so.
 
-The gaps are: links between topics (graph), decision lifecycle (why things are the way they are), extension guides (how to add new things end-to-end), a raw material inbox, and a live "what's next" layer connected to GitHub data.
+### 2.2 What does the catalog give us, and how fast? — Everything needed, and it is free
 
-## Proposed System: Four Connected Layers
+The `objects` view (`mdl/catalog/tables.go:1028`) unions **43 document types**
+with a `QualifiedName` column — module, entity, association, microflow,
+nanoflow, rule, page, snippet, layout, workflow, and so on. Resolving
+`Sales.ACT_Order_Approve` is one equality query.
 
-### Layer 1: Raw Inbox (`docs/raw/`)
-
-An immutable drop zone for unprocessed source material: GitHub issue exports, research notes, discussion transcripts, external references. Files land here and are never edited after landing. The `/brain-ingest` command processes them into the wiki and marks each file as processed via frontmatter. The raw material remains as provenance.
-
-This separates input from synthesised knowledge cleanly. An agent or contributor drops a file here; the brain processes it on the next ingest run.
-
-### Layer 2: The Wiki (`wiki/`)
-
-A contributor-facing wiki at the repo root. The character is **explanatory** — how things work and why — distinct from skills (procedural) and proposals (decisions in flight). One concept per file, explicit links between topics, with a Mermaid index in `README.md` that renders as a graph.
-
-Both humans and agents write to the wiki. The agent drafts and updates via commands; humans edit directly. The wiki is not agent-owned — it is collaboratively maintained, with the agent doing the bulk of routine updates.
-
-The `docs-site/src/internals/` pages are good raw material; overlapping topics link to the wiki or migrate into it. The distinction is audience: docs-site explains internals to curious users, the wiki explains them to contributors who need to change things.
-
-**Structure:**
+Measured against a real project's catalog (`/home/vscode/ord`, 382 objects,
+1.6 MB SQLite):
 
 ```
-wiki/
-  README.md               # visual index: Mermaid graph of clusters + entry points
-  log.md                  # chronological record of all wiki operations
-  MAP.md                  # source path → wiki topic manifest (drives freshness hooks)
-
-  pipeline/               # the journey from MDL text to MPR write
-    overview.md           # full pipeline diagram, links to each step
-    grammar.md            # ANTLR4, domain split, make grammar
-    ast.md                # statement node hierarchy, how kinds map to types
-    visitor.md            # ANTLR listener → AST construction
-    executor.md           # registry, dispatch, ExecContext, register_stubs.go
-    backend.md            # hexagonal boundary, interface design, why it exists
-    mpr.md                # BSON, reader/writer, storage names, v1 vs v2
-
-  design/                 # why things are the way they are (ADRs)
-    mdl-syntax-principles.md      # design guidelines, anti-patterns, decision framework
-    backend-boundary.md           # no sdk/mpr in executor, why enforced by checklist
-    registry-explicit-wiring.md   # why init() was rejected, emptyRegistry() testing
-    grammar-domain-split.md       # how the domain split reduces conflict surface
-
-  subsystems/             # key components in isolation
-    catalog.md            # SQLite catalog, what it indexes, query interface
-    lsp.md                # LSP capabilities, how diagnostics flow, wiring
-    widget-engine.md      # widget registry, .def.json, template loading
-    version-awareness.md  # feature registry, checkFeature(), version gates
-    repl.md               # REPL architecture, session state
-
-  extending/              # end-to-end contributor guides
-    new-command.md        # full path: grammar → AST → visitor → executor → backend → MPR
-    new-document-type.md  # adding a new Mendix document type
-    new-backend-method.md # interface → MPR implementation → mock stub
-    new-lint-rule.md      # rule registration, Starlark vs Go rules
-    new-widget.md         # .def.json, widget registry, template extraction
+resolve one anchor: 0.038 ms   (mean of 1000, no index on QualifiedName)
 ```
 
-**ADR format for `design/`:** Each decision file uses:
-- **Context** — what problem prompted this decision
-- **Decision** — what was chosen and what was explicitly rejected
-- **Status** — `accepted` | `superseded` | `under review`
-- **Consequences** — what the decision implies for contributors and agents
+A hundred anchors is under 4 ms. **Speed is a non-issue and should not shape the
+design.**
 
-**Links to skills:** Each `extending/` guide links to the relevant maintainer skill for the step-by-step checklist. The wiki provides narrative and rationale; the skill provides the checklist and gotchas.
+Two caveats that do:
 
-**`MAP.md` — the source-to-topic manifest:**
-Maps source paths to wiki topics, enabling automated freshness checking:
-```
-mdl/executor/registry.go        → wiki/pipeline/executor.md
-mdl/grammar/domains/            → wiki/pipeline/grammar.md
-mdl/backend/                    → wiki/pipeline/backend.md
-sdk/mpr/                        → wiki/pipeline/mpr.md
-```
+- **The `objects` view indexes only describable types.** A recorded finding says
+  it in as many words — "do not measure coverage from the catalog… enumerate raw
+  unit `$Type`s instead". An anchor to a document type outside the view resolves
+  as *missing*, which is a false staleness signal. `check` must distinguish
+  "resolved", "not found", and **"cannot be resolved by this index"**, and only
+  the middle one is a failure.
+- **Member-level anchors need a second query.** `@Sales.Order` resolves through
+  `objects`; `@Sales.Order.Status` does not — attributes live in
+  `attributes_data` (`EntityQualifiedName` + `Name`, 254 rows in the sample
+  project). Support both or document that anchors are document-scoped; do not
+  let an attribute anchor silently fail.
 
-### Layer 3: Live Project State (Connected to GitHub)
+**Staleness of the catalog itself** is an `.mpr` **mtime** comparison
+(`cmd_catalog.go:296`). `brain check --ci` on a fresh clone gets fresh mtimes, so
+CI rebuilds the catalog every run. That cost is unmeasured here and needs a
+number before `--ci` is promised.
 
-The wiki provides static knowledge. Current project state — what is in progress, ready to pick up, blocked — lives in GitHub (issues, milestones, project board) and must not be duplicated in the wiki, where it would go stale immediately.
+### 2.3 Does the Starlark engine support generated rules? — The question does not arise
 
-A scheduled Claude Code agent generates `wiki/CURRENT.md` periodically — not raw GitHub data, but a synthesised briefing: given open issues, active PRs, and recent decisions, what does the project need next and why. This gives contributor personal second-brain systems a pull-able summary, and gives AI agents dropping into a fresh session an orientation point without querying the GitHub API themselves.
+Rules are **discovered from files**: `FindLintRulesDir` walks up for
+`.claude/lint-rules/`, and every `*.star` in it is loaded. There is no compiled-in
+registry to extend, so "a rule generated at runtime from a template" is just **a
+generated file**. No engine work is needed.
 
-### Layer 4: CDC Feed (`feed/brain.xml`)
+One hazard the brief does not mention: `mxcli init` writes the bundled rules into
+that same directory with `os.WriteFile` per file (`init.go:351`). It does **not**
+wipe the directory, so a generated rule survives an upgrade — *unless its
+filename collides with a shipped one*. Generated rules therefore need a reserved
+prefix (`brain_*.star`) and a rule-ID namespace outside the shipped `ARCH` /
+`CONV` / `QUAL` / `SEC` / `MDL` sets.
 
-An Atom feed that publishes insight events whenever the wiki gains new or significantly revised knowledge. This is the machine-readable layer that other brains — personal (meowary) or project — subscribe to and integrate.
+### 2.4 Release and skill mechanics — the brief's premise is wrong
 
-**Feed schema** uses a `brain:` namespace for knowledge-specific metadata:
+**There is no goreleaser.** No `.goreleaser.yml` exists. Releases run
+`make release` from `.github/workflows/release.yml`.
 
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom"
-      xmlns:brain="https://projectbrain.dev/ns/1.0">
-  <title>mxcli Project Brain</title>
-  <subtitle>CDC feed — insight events from the mxcli knowledge base</subtitle>
-  <link href="[PAGES_URL]/feed/brain.xml" rel="self"/>
-  <id>[PAGES_URL]/feed/brain.xml</id>
-  <updated>[ISO8601]</updated>
-  <author><name>mxcli Brain Agent</name></author>
-  <!-- entries appended by /brain-ingest and wiki operations -->
-</feed>
-```
+Skills ship by embedding: `//go:embed all:skills` over `cmd/mxcli/skills/`
+(`skills_content.go:26`), which `make sync-skills` mirrors from
+`.claude/skills/mendix/` with **`rsync --delete`**. So shipping a skill means
+adding `.claude/skills/mendix/<name>/SKILL.md` and nothing else — and editing the
+embed directory directly is always wrong, because the next sync deletes it. The
+`all:` prefix is load-bearing (a plain `go:embed` skips `_`-prefixed files).
 
-Each entry includes:
-- `brain:event_type` — `concept-created` | `concept-revised` | `adr-added` | `adr-superseded` | `divergence-detected` | `synthesis-updated`
-- `brain:confidence` — 0.0–1.0 (agent confidence in the insight)
-- `brain:trigger` — `empirical` | `discussion` | `research` | `contradiction` | `synthesis`
-- `brain:supersedes` — URI of the previous entry if this revises an earlier one
+`.mxcli/` **is** gitignored by `mxcli init` (`constant_gitignore.go`), so the
+brief's split between committed docs and tool-owned state holds as written.
 
-**Feed entries are append-only.** Never delete or modify existing entries. The feed is the immutable audit log of the project brain's evolution.
+## 3. Evidence from mxcli's own attempt at this
 
-A `feed/.feedmeta` file holds feed configuration and the list of external brain feed URLs to sync from (e.g., meowary feeds from contributors).
+mxcli already runs a store of exactly this shape — the bug findings under
+`.claude/skills/fix-issue/findings/`, digested into `docs-wiki/bug-patterns/`.
+It has been running for months and has failed in four ways that this design
+should be built against, because every one of them is reachable from the brief
+as written.
 
-**Emission rules** — a feed entry must be emitted when:
-- A new page is created in `wiki/design/` (ADR) or `wiki/pipeline/`
-- An existing ADR is superseded or deprecated
-- A `wiki/extending/` guide is substantially revised
-- A DIVERGENCE is detected during `/brain-sync`
-- `wiki/CURRENT.md` is regenerated with a materially different project state
+**It grew until it could not be read.** The findings began as a Markdown table
+inside a skill file and reached **1.05 MB across 630 rows** — past a context
+window, past what GitHub's web editor will open, and past what the digest step
+could consume. The instruction to "read it before diagnosing" was unfollowable
+for months and nobody noticed, because an unread file has no failure mode.
+*→ The brief's caps are the single most important thing in it. Keep them, and
+enforce them in `promote` as it says.*
 
-## Agent Commands
+**The digest nothing triggered stopped.** Three pattern pages were written on one
+day in May and none was re-synced for three months while the corpus grew 200×.
+The sync was on-demand and no step demanded it.
+*→ A trigger has to fire where work already happens. What eventually worked was
+printing the gap from a command that already runs on every fix, not adding a
+report someone must remember.*
 
-### `/brain-ingest`
-Processes new files in `docs/raw/`:
-1. Read each unprocessed file
-2. Extract key concepts, decisions, insights
-3. Create or update relevant wiki pages with cross-links to existing pages
-4. Mark source file as processed (add `processed: true` to frontmatter)
-5. Update `wiki/log.md`
-6. Evaluate each changed wiki page against feed emission rules; append entries to `feed/brain.xml`
+**Append-only plus union merge produced silent duplicates.** `merge=union` was
+added so parallel fixes would not conflict. It cannot distinguish a genuine
+parallel append from a re-append of the same content, and nothing compared lines:
+`main` currently holds **885 records of which 629 are distinct** — the executor
+shard is essentially the same 247 findings twice.
+*→ `staged.jsonl` and the committed `decisions.md` are both append-only stores
+with the same exposure. Whatever check they get must compare entries, not just
+validate each one.*
 
-### `/brain-sync`
-Consumes external brain feeds listed in `feed/.feedmeta`:
-1. For each new feed item since last sync, determine if it extends, confirms, or contradicts current wiki knowledge
-2. If extends: draft wiki update (propose, do not auto-commit)
-3. If contradicts: create a DIVERGENCE entry in `wiki/synthesis/open-questions.md`
-4. If confirms: note corroboration on the relevant wiki page
-5. Emit a feed event summarising what was integrated
+**Claims about the mechanism went stale, including "it runs in CI".** A README
+and a PR body both said the findings check ran in CI. It did not. Coverage
+percentages written into prose were stale within days.
+*→ Anything the brain reports about itself should be computed by a command, not
+written into a file.*
 
-This is the primary mechanism for meowary (retran's personal second brain) to contribute knowledge back to the project brain, and for the project brain to receive updates from contributor systems.
+None of this argues against the feature. It argues that the parts of the brief
+that look like restraint — caps, no auto-promotion, human-in-the-loop `promote` —
+are the parts that carry the design, and the parts that look like plumbing are
+where it will fail.
 
-### `/mxcli-dev:update-wiki`
-End-of-feature wiki update command. Reads the current diff, identifies affected topics via `MAP.md`, and drafts updates to relevant wiki pages. Invoked intentionally at the end of a feature as part of the definition of done.
+## 4. Design
 
-### `/brain-lint`
-Health-checks the wiki:
-- Verify all `[[wikilinks]]` resolve
-- Check `wiki/README.md` lists all pages
-- Flag concepts mentioned across multiple pages but without their own topic page
-- Flag ADRs that may be invalidated by recent wiki changes
-- Flag MAP.md entries whose source path no longer exists
-- Report `wiki/design/` entries whose status has not been reviewed in 90 days
+Adopt the brief as written, with the following amendments, each traceable to §2
+or §3.
 
-## Freshness Enforcement
-
-**Hook — flag on edit:**
-A `PostToolUse` hook on writes to mapped source paths looks up `MAP.md` and surfaces which wiki topics may be affected. It flags the connection; it does not generate content.
-
-**Review integration:**
-The existing `/mxcli-dev:review` command checks wiki freshness: for each source file changed in the PR, verify the corresponding wiki topic has been touched or explicitly noted as unaffected.
-
-**CI check:**
-A Makefile target compares modification dates of source files against their mapped wiki topics and warns when source is newer than documentation by more than a threshold. Staleness becomes visible at PR time.
-
-## Skill Level Mapping
-
-| | Maintainer (mxcli-dev) | User (mendix/) |
+| # | Amendment | Because |
 |---|---|---|
-| **Procedural skills** | `.claude/skills/*.md` | `.claude/skills/mendix/*.md` |
-| **Explanatory wiki** | `wiki/` (this proposal) | `docs-site/src/` (exists) |
-| **Live state** | `wiki/CURRENT.md` (generated) | — |
-| **CDC feed** | `feed/brain.xml` | — |
+| A1 | `check` reports three anchor states — resolved, **not found**, **not indexable** — and fails only on the middle one | §2.2: the `objects` view is not a complete inventory |
+| A2 | Anchors resolve at document *and* member granularity (`objects` + `attributes_data`) | §2.2: `@Mod.Entity.Attr` is the natural thing to write |
+| A3 | Generated lint rules use a `brain_` filename prefix and a `BRAIN###` ID namespace | §2.3: `mxcli init` writes into the same directory |
+| A4 | Phase 3 opens with a per-doctype documentation audit; no promotion to model documentation before it | §2.1: `create … comment` was a dead option on seven doctypes |
+| A5 | `staged.jsonl` and every committed store get a **duplicate check**, not only a shape check | §3: 256 duplicate findings reached `main` unnoticed |
+| A6 | `brain show`'s size figure and any coverage number are computed, never written into a committed file | §3: prose figures went stale within days |
+| A7 | The gap that motivates curation is printed by a command that already runs, not only by `brain check` | §3: the on-demand digest went three months without a run |
 
-## Relationship to Meowary and Federated Brains
+Everything else — the three tiers, the storage layout, the CLI surface, the
+promote-only-through-a-human rule, the non-goals — stands as written. The
+non-goals in particular should be treated as load-bearing.
 
-Retran's meowary system (https://github.com/retran/meowary) is a personal second brain with GitHub CLI integration, PARA structure, and session-planning scaffolding. The project brain is the *supply side* that feeds meowary and equivalent systems:
+**The skill.** Ship it under `.claude/skills/mendix/project-brain/SKILL.md`; the
+embed and `mxcli init` handle the rest (§2.4). The brief is right that the
+description decides whether it is ever used and should be phrased around
+symptoms. Worth adding: mxcli's own skills are synced with `rsync --delete`, so
+the source of truth is `.claude/skills/mendix/`, never the embed directory.
 
-- **Project brain publishes:** `feed/brain.xml` (knowledge events), `wiki/CURRENT.md` (project state)
-- **Meowary subscribes:** adds `feed/brain.xml` to `feed/.feedmeta` subscribed_feeds; `/brain-sync` pulls new entries and integrates them into meowary's knowledge base
-- **Meowary contributes back:** decisions and insights from retran's sessions can be published to meowary's own feed, which the project brain pulls via `/brain-sync` and proposes as wiki updates
+## 5. Phasing
 
-This is the federated model: each brain (project or personal) publishes a CDC feed; `/brain-sync` connects them bidirectionally. The `brain:` namespace makes feeds from different systems structurally compatible.
+Unchanged from the brief, with A4 inserted:
 
-## What Is Not Changing
+1. Storage, anchors, `init` / `capture` / `staged` / `promote` / `drop` /
+   `check` / `show`, plus the skill. Markdown destinations only.
+2. The mxbuild error → resolution trigger.
+3. **Documentation audit**, then promotion into model documentation and lint-rule
+   generation.
 
-- **`CLAUDE.md`** — remains the primary AI context file as-is. This proposal does not replace or restructure it. The wiki complements CLAUDE.md; it does not supersede it.
-- **`.claude/skills/`** — remain the procedural task references. The wiki's `extending/` guides are the narrative counterpart, not a replacement.
-- **`docs-site/src/`** — remains the user-facing published documentation. Overlapping internals topics link between the two rather than merging.
-- **`docs/11-proposals/`** — remains for in-flight feature proposals. Accepted proposals that establish lasting architectural decisions migrate to `wiki/design/` as ADRs.
+## 6. Open questions
 
-## Summary and Priority
-
-| Component | Problem solved | Effort |
-|---|---|---|
-| `wiki/pipeline/` + `wiki/extending/` | Orients contributors; raw material exists in docs-site | Low |
-| `wiki/design/` (ADRs) | Captures why; prevents decision re-litigation | Low per decision |
-| `MAP.md` + hook | Freshness enforcement without manual discipline | Low |
-| `docs/raw/` + `/brain-ingest` | Structured intake of source material | Low |
-| `feed/brain.xml` + emission rules | CDC feed for federated brain subscriptions | Low |
-| `/brain-sync` | Bidirectional meowary ↔ project brain connection | Medium |
-| `wiki/CURRENT.md` (scheduled agent) | Live session briefing from GitHub data | Medium |
-| `/brain-lint` | Automated health checks | Medium |
-
-**Recommended order:** `wiki/pipeline/` and `wiki/extending/` first — highest immediate value, raw material already exists. Add `MAP.md` and the hook immediately after. Then `docs/raw/`, `feed/brain.xml`, and `/brain-ingest` together as a batch — they form one coherent intake workflow. `/brain-sync`, CURRENT.md, and `/brain-lint` are independent and can follow in any order.
+1. **What does `brain check --ci` cost on a cold clone?** It needs a catalog, and
+   catalog validity is an mtime comparison that a fresh checkout always fails.
+   Unmeasured. If a full build is expensive, `--ci` may need a cheaper anchor
+   index than the catalog.
+2. **Is `docs/` the right home?** The brief argues for reviewability in PR diffs,
+   which is correct. But a Mendix project's `docs/` may already be Studio Pro's
+   or a customer's. `init`'s adoption step should cover "there is a `docs/` and it
+   is not ours".
+3. **THEORY.md does not exist.** The issue says to read it and to update it if the
+   working theory changes. There is no such file anywhere in the repository. Is it
+   expected to be created, or was another document meant?
