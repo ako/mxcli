@@ -35,7 +35,7 @@ GO_BUILD_FLAGS = -trimpath
 # Clean version for VS Code extension (must be valid semver: major.minor.patch)
 VSCE_VERSION = $(shell echo "$(VERSION)" | sed 's/^v//; s/-.*//' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$$' || echo "0.0.0")
 
-.PHONY: build build-debug size release clean test engine-diff test-mdl check-mdl check-skill-mdl check-findings digest-status check-tunnel-deps check-widget-versions grammar completions sync-skills sync-skill-packs sync-commands sync-lint-rules sync-changelog sync-all docs documentation docs-site docs-serve vscode-ext vscode-install source-tree sbom sbom-report lint lint-go lint-ts fmt vet
+.PHONY: build build-debug size release clean test engine-diff test-mdl check-mdl check-skill-mdl check-findings check-wiki-pages digest-status check-tunnel-deps check-widget-versions grammar completions sync-skills sync-skill-packs sync-commands sync-lint-rules sync-changelog sync-all docs documentation docs-site docs-serve vscode-ext vscode-install source-tree sbom sbom-report lint lint-go lint-ts fmt vet
 
 # Helper: copy file only if content differs (avoids mtime updates that invalidate go build cache)
 # Usage: $(call copy-if-changed,src,dst)
@@ -275,6 +275,12 @@ check-findings:
 # Advisory, always exits 0 — see the header in the script for why.
 digest-status:
 	@scripts/digest-status.sh
+
+# The wiki's page list must describe the wiki, both directions. It drifted for
+# three months before anyone noticed, because a table of contents has no failure
+# mode of its own.
+check-wiki-pages:
+	@scripts/check-wiki-pages.sh
 
 check-tunnel-deps:
 	@./scripts/check-tunnel-deps.sh

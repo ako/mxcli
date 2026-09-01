@@ -39,9 +39,13 @@ func init() {
 			"a second note instead of updating the first.\n\n" +
 			"An omitted Position or Width leaves the stored value alone. A new note gets\n" +
 			"Studio Pro's defaults: (60, 240) and width 440.\n\n" +
-			"THERE IS NO COLOUR. DomainModels$Annotation stores Caption, ExportLevel,\n" +
-			"Location and Width — a \"coloured section box\" is this element in Studio\n" +
-			"Pro's own styling, and the model has nowhere to keep a colour.",
+			"THERE IS NO HEIGHT, AND NO COLOUR. DomainModels$Annotation stores exactly\n" +
+			"Caption, ExportLevel, Location and Width. A note auto-sizes to its caption,\n" +
+			"so height follows from the wrapping and WIDTH is the only lever: narrower\n" +
+			"wraps to more lines and is TALLER, wider is SHORTER. To keep a note clear of\n" +
+			"what sits below it, move those with ALTER ENTITY … SET POSITION (x, y).\n" +
+			"Likewise a \"coloured section box\" is this element in Studio Pro's own\n" +
+			"styling — the model has nowhere to keep a colour.",
 		Example: "CREATE ANNOTATION IN Sales (\n" +
 			"  Caption: $$Orders\nEverything about an order lives here.$$,\n" +
 			"  Position: (60, 40),\n" +

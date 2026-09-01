@@ -40,9 +40,13 @@ must cover everything need to account for both.
 ## Guard
 
 `make check-findings` (`scripts/check-findings.sh`) validates every line: one
-JSON object, an `area`, and either the four fields or `raw`. It runs in CI, and
-prints one line saying how far `docs-wiki/bug-patterns/` has fallen behind these
+JSON object, an `area`, a `date`, and either the four fields or `raw`. It prints
+one line saying how far `docs-wiki/bug-patterns/` has fallen behind these
 findings — see `make digest-status` for the breakdown.
+
+It runs in CI as of the change that added this sentence. It did not before,
+for the two weeks this file claimed it did — which is the same shape as every
+other finding here, so it is recorded rather than quietly corrected.
 
 The extraction was verified lossless by regenerating every table row from the
 records and diffing against the original 630 — byte-identical as a multiset.
