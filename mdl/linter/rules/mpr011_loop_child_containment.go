@@ -58,11 +58,12 @@ func (r *LoopChildContainmentRule) Check(ctx *linter.LintContext) []linter.Viola
 				Severity: r.DefaultSeverity(),
 				Message: fmt.Sprintf(
 					"Activity '%s' at (%d,%d) lies outside the loop '%s' that contains it (box %dx%d) "+
-						"in microflow '%s.%s'. The flow renders wrong in Studio Pro; mx check does not detect this.",
-					e.Child, e.ChildX, e.ChildY, e.Loop, e.BoxW, e.BoxH, mf.ModuleName, mf.Name),
+						"in %s '%s.%s'. The flow renders wrong in Studio Pro; mx check does not detect this.",
+					e.Child, e.ChildX, e.ChildY, e.Loop, e.BoxW, e.BoxH,
+					mf.DocumentNoun(), mf.ModuleName, mf.Name),
 				Location: linter.Location{
 					Module:       mf.ModuleName,
-					DocumentType: "microflow",
+					DocumentType: mf.DocumentNoun(),
 					DocumentName: mf.Name,
 					DocumentID:   mf.ID,
 				},

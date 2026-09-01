@@ -59,12 +59,12 @@ func findCommitsInLoops(objects []microflows.MicroflowObject, mf linter.Microflo
 				*violations = append(*violations, linter.Violation{
 					RuleID:   r.ID(),
 					Severity: r.DefaultSeverity(),
-					Message: fmt.Sprintf("Microflow '%s.%s' has a Commit action inside a loop. "+
+					Message: fmt.Sprintf("%s '%s.%s' has a Commit action inside a loop. "+
 						"This causes N+1 database operations.",
-						mf.ModuleName, mf.Name),
+						mf.DocumentNounTitle(), mf.ModuleName, mf.Name),
 					Location: linter.Location{
 						Module:       mf.ModuleName,
-						DocumentType: "microflow",
+						DocumentType: mf.DocumentNoun(),
 						DocumentName: mf.Name,
 						DocumentID:   mf.ID,
 					},

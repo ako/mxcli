@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	"iter"
+	"strings"
 	"sync"
 
 	"github.com/mendixlabs/mxcli/mdl/catalog"
@@ -489,12 +490,39 @@ type Microflow struct {
 	QualifiedName  string
 	ModuleName     string
 	Folder         string
-	MicroflowType  string // "Microflow", "Nanoflow"
+	MicroflowType  string // "MICROFLOW", "NANOFLOW", "RULE" (as stored by the catalog)
 	Description    string
 	ReturnType     string
 	ParameterCount int
 	ActivityCount  int
 	Complexity     int // McCabe cyclomatic complexity
+}
+
+// DocumentNoun is what to call this document in a lint message and in
+// Location.DocumentType.
+//
+// Microflows() yields all three flow flavours, because they share one catalog
+// table — so a rule that hardcodes "microflow" reports a nanoflow or a rule
+// under the wrong doctype. That is how MPR002 came to say "Microflow 'Rule1'
+// has no activities" about a rule, and the same about a nanoflow.
+//
+// An unrecognised type falls back to "microflow": a lint finding is worth more
+// with an imprecise noun than not at all.
+func (m Microflow) DocumentNoun() string {
+	switch m.MicroflowType {
+	case "NANOFLOW":
+		return "nanoflow"
+	case "RULE":
+		return "rule"
+	default:
+		return "microflow"
+	}
+}
+
+// DocumentNounTitle is DocumentNoun capitalised, for a message that opens with it.
+func (m Microflow) DocumentNounTitle() string {
+	n := m.DocumentNoun()
+	return strings.ToUpper(n[:1]) + n[1:]
 }
 
 // Microflows returns an iterator over all microflows (excluding system modules).
