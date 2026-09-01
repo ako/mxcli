@@ -39,16 +39,27 @@
 --   tests instead (mdl/executor/mapping_source_resolution_test.go and
 --   sdk/mpr/reader_xmlschema_test.go).
 --
---   How the document shape was established, since no reference existed: NONE of
---   the nine demo apps in the corpus contains an XML schema. A synthetic
---   XmlSchemas$XmlSchema unit was planted instead, and mxbuild 11.13.0 asked
---   whether it was the thing it resolves against — the mapping's reference went
---   from CE1613 "The selected XML schema 'XGap.Probe_Xsd' no longer exists" to
---   CE0292 "Please import an XSD file." at XML schema 'XGap.Probe_Xsd', which is
---   mxbuild naming, by module and name, the document it had just found.
+--   How the document shape was established. First by planting a synthetic
+--   XmlSchemas$XmlSchema unit and letting mxbuild 11.13.0 identify it: the
+--   mapping's reference went from CE1613 "The selected XML schema
+--   'XGap.Probe_Xsd' no longer exists" to CE0292 "Please import an XSD file." at
+--   XML schema 'XGap.Probe_Xsd' — mxbuild naming, by module and name, the
+--   document it had just found. Since verified against THREE REAL Studio Pro
+--   documents (OneHarness: XML_ECO, XMLRequest_Diagram, XMLRequest_DiagramId),
+--   which mxcli lists with the right module and names.
 --
---   That measurement is also why the XML check FAILS OPEN on an empty list: a
---   project with no XML schemas is the ordinary case, not evidence of a typo.
+--   CORRECTION, recorded because the wrong number shipped: this file first said
+--   no demo app contained an XML schema. It is 3 documents in 1 of 9 apps. The
+--   grep that produced the zero searched the EXTRACTED FILE TREE for the type
+--   string — which can only work for MPR v2, where units are files under
+--   mprcontents/. OneHarness is MPR **v1**: its units live in the SQLite
+--   Unit.Contents blob, where the string is not greppable from the file. The
+--   grep silently answered a different question than the one asked and returned
+--   0 for a reason unrelated to the answer.
+--
+--   The conclusion is unchanged, and is why the XML check FAILS OPEN on an empty
+--   list: 8 of 9 apps have none, so an empty list is the ordinary case, not
+--   evidence of a typo.
 --
 -- Watch for:
 --   An EMPTY project and a backend that CANNOT LIST look identical from here.
