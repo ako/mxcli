@@ -259,7 +259,9 @@ Unchanged from the brief, with A4 inserted:
 3. **THEORY.md does not exist.** The issue says to read it and to update it if the
    working theory changes. There is no such file anywhere in the repository. Is it
    expected to be created, or was another document meant?
-4. **Who fixes documentation preservation?** §2.1 measures that `create or
-   replace` / `create or modify` destroys an object's doc comment. That is an
-   mxcli writer defect independent of this feature and worth its own issue; the
-   brain merely cannot use tier 1 until it is fixed.
+4. **Documentation preservation is filed as `mendixlabs/mxcli#1018`.** It is an
+   mxcli writer defect independent of this feature. The brain cannot use tier 1
+   until it is fixed, and `ALTER ENTITY … ADD ATTRIBUTE` is measured to preserve
+   documentation — so the workaround, and the shape of the fix, is to carry the
+   stored value the way the rewrite paths already carry folder, allowed module
+   roles and element identity.
