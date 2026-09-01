@@ -175,6 +175,7 @@ func execCreateRule(ctx *ExecContext, s *ast.CreateRuleStmt) error {
 			ContainerID: rule.ID,
 			Name:        p.Name,
 			Type:        convertASTToMicroflowDataType(p.Type, entityResolver),
+			Position:    positionFromAST(p.Position),
 		}
 		rule.Parameters = append(rule.Parameters, param)
 	}

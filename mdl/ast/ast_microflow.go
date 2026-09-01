@@ -33,8 +33,15 @@ type ErrorHandlingClause struct {
 
 // MicroflowParam represents a microflow parameter.
 type MicroflowParam struct {
-	Name string   // Parameter name (without $ prefix)
-	Type DataType // Parameter type
+	Name     string    // Parameter name (without $ prefix)
+	Type     DataType  // Parameter type
+	Position *Position // @position(x, y) on the parameter; nil to let the layout place it
+	// UnknownAnnotations holds annotation names written on the parameter that
+	// mxcli does not implement there. Collected rather than dropped so MDL059
+	// can refuse them: an annotation that parses and does nothing loses whatever
+	// it was meant to express, silently (#884, the same reasoning one node
+	// family over).
+	UnknownAnnotations []string
 }
 
 // MicroflowReturnType represents a microflow return type.

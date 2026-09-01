@@ -66,7 +66,7 @@ func (r *Reader) parseRule(unitID, containerID string, contents []byte) (*microf
 		for _, obj := range extractBsonSlice(oc["Objects"]) {
 			if objMap := extractBsonMap(obj); objMap != nil {
 				if typeName, _ := objMap["$Type"].(string); typeName == "Microflows$MicroflowParameter" {
-					rule.Parameters = append(rule.Parameters, parseMicroflowParameter(objMap))
+					rule.Parameters = append(rule.Parameters, parseMicroflowParameter(objMap, len(rule.Parameters)))
 				}
 			}
 		}

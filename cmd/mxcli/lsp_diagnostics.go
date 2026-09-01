@@ -278,6 +278,18 @@ func (s *mdlServer) runSemanticValidation(text string) []protocol.Diagnostic {
 		}
 		if mfStmt, ok := stmt.(*ast.CreateMicroflowStmt); ok {
 			violations = append(violations, executor.ValidateMicroflow(mfStmt)...)
+			violations = append(violations, executor.ValidateFlowParameterAnnotations(
+				"microflow '"+mfStmt.Name.String()+"'", mfStmt.Parameters)...)
+		}
+		// The editor reports an unusable parameter annotation for the same
+		// reason `check` does — a typo of @position parses and does nothing.
+		if nfStmt, ok := stmt.(*ast.CreateNanoflowStmt); ok {
+			violations = append(violations, executor.ValidateFlowParameterAnnotations(
+				"nanoflow '"+nfStmt.Name.String()+"'", nfStmt.Parameters)...)
+		}
+		if ruleStmt, ok := stmt.(*ast.CreateRuleStmt); ok {
+			violations = append(violations, executor.ValidateFlowParameterAnnotations(
+				"rule '"+ruleStmt.Name.String()+"'", ruleStmt.Parameters)...)
 		}
 		if setStmt, ok := stmt.(*ast.AlterSettingsStmt); ok {
 			violations = append(violations, executor.ValidateSettings(setStmt)...)
