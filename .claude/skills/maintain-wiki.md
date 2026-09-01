@@ -143,6 +143,15 @@ isn't better served by an existing page or a different doc artifact.
 | `bug-patterns/bson-numeric-width.md` | bug-pattern | int32/int64 mismatches (links #583, #585 findings) |
 | `bug-patterns/visitor-wiring-gaps.md` | bug-pattern | parsed-but-not-stored (links #393 finding) |
 | `bug-patterns/widget-type-object-drift.md` | bug-pattern | CE0463 family |
+| `bug-patterns/describe-round-trip-gaps.md` | bug-pattern | DESCRIBE as a second, unvalidated MDL implementation: won't-parse / drops / invents / destroys |
+| `bug-patterns/unloadable-model-writes.md` | bug-pattern | writes that break LOAD rather than validation — no CE code, whole project down |
+| `bug-patterns/silent-property-drop.md` | bug-pattern | a property parses, passes every check, and never reaches the model |
+| `bug-patterns/check-mxbuild-drift.md` | bug-pattern | `mxcli check` as a model of mxbuild, drifting in both directions |
+| `bug-patterns/platform-semantics-gaps.md` | bug-pattern | legal MDL, illegal Mendix — expression / XPath / variable-scope rules the grammar cannot carry |
+| `bug-patterns/duplicate-resolver-drift.md` | bug-pattern | one question answered in two places, and the two disagree |
+| `bug-patterns/rewrite-drops-unauthored-state.md` | bug-pattern | CREATE OR REPLACE losing what the statement did not mention |
+| `bug-patterns/flow-graph-geometry.md` | bug-pattern | generated microflow coordinates and sequence-flow wiring |
+| `bug-patterns/integration-contract-drift.md` | bug-pattern | OData / REST / mappings, where neither check nor mxbuild is an oracle |
 
 ## Adding a new page
 
