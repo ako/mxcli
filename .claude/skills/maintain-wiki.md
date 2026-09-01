@@ -143,6 +143,10 @@ isn't better served by an existing page or a different doc artifact.
 | `bug-patterns/bson-numeric-width.md` | bug-pattern | int32/int64 mismatches (links #583, #585 findings) |
 | `bug-patterns/visitor-wiring-gaps.md` | bug-pattern | parsed-but-not-stored (links #393 finding) |
 | `bug-patterns/widget-type-object-drift.md` | bug-pattern | CE0463 family |
+| `bug-patterns/describe-round-trip-gaps.md` | bug-pattern | DESCRIBE as a second, unvalidated MDL implementation: won't-parse / drops / invents / destroys |
+| `bug-patterns/unloadable-model-writes.md` | bug-pattern | writes that break LOAD rather than validation — no CE code, whole project down |
+| `bug-patterns/silent-property-drop.md` | bug-pattern | a property parses, passes every check, and never reaches the model |
+| `bug-patterns/check-mxbuild-drift.md` | bug-pattern | `mxcli check` as a model of mxbuild, drifting in both directions |
 
 ## Adding a new page
 
