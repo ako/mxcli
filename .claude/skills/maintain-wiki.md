@@ -160,6 +160,9 @@ isn't better served by an existing page or a different doc artifact.
 | `bug-patterns/engine-divergence.md` | bug-pattern | two backend implementations, and a gap in one that is invisible from inside it |
 | `bug-patterns/mutator-addressing.md` | bug-pattern | in-place edits to nodes the model does not name |
 | `bug-patterns/access-rule-reconciliation.md` | bug-pattern | GRANT is a read-modify-write, and both directions of loss report success |
+| `bug-patterns/capability-gap-as-parse-error.md` | bug-pattern | an unspelled capability presenting as `no viable alternative`, and the workarounds that follow |
+| `bug-patterns/keyword-collisions.md` | bug-pattern | MDL's keyword set occupying positions where user data lives |
+| `bug-patterns/scripts-that-cannot-rerun.md` | bug-pattern | statement-level idempotence, and why it is not write-level idempotence |
 
 ## Adding a new page
 
