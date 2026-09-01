@@ -1024,6 +1024,7 @@ ALTER MODULE MyModule DROP JAR DEPENDENCY 'org.duckdb:duckdb_jdbc';`,
 		Keywords: []string{
 			"execution error", "entity already exists", "type mismatch",
 			"boolean default", "view entity", "microflow validation",
+			"CE0117", "CE0109", "MDL-LISTOP01",
 		},
 		Syntax: "mxcli check script.mdl -p app.mpr --references",
 		Example: `-- Entity already exists
@@ -1035,6 +1036,15 @@ ALTER MODULE MyModule DROP JAR DEPENDENCY 'org.duckdb:duckdb_jdbc';`,
 
 -- OQL invalid association path (dot vs slash)
 -- Wrong:  WHERE l.Library.Loan_Member = m.ID
--- Right:  WHERE l/Library.Loan_Member = m.ID`,
+-- Right:  WHERE l/Library.Loan_Member = m.ID
+
+-- FILTER/FIND predicate names something that is not a member
+-- Error:  "Nonexistent" is not an attribute or association of Shop.Order
+-- Cause:  a bare name in a predicate means a member of the item under test
+-- Fix:    check it against DESCRIBE ENTITY, or write $Var for a variable
+
+-- FILTER/FIND predicate uses an iterator Mendix does not define
+-- Error:  filter($L, ...): '$item' is not defined ... [MDL-LISTOP01]
+-- Fix:    use $currentObject/Attr, or a bare attribute name`,
 	})
 }
