@@ -1,0 +1,135 @@
+-- ============================================================================
+-- Issue #1002: a bare attribute in a FILTER/FIND predicate failed CE0117
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   `filter($L, Amount > 0)` was stored as `Microflows$FilterByExpression` with
+--   the authored text verbatim. Mendix evaluates that expression once per item
+--   with the item bound to `$currentObject`, where a bare attribute name is not
+--   a valid expression — so mxbuild reported CE0117 while `mxcli check` passed.
+--
+-- This is the unfinished half of bug #343. That fix rerouted the `=` form to
+-- `Microflows$Filter` (filter BY ATTRIBUTE), which takes a member name rather
+-- than an expression. Every other predicate still fell through to the broken
+-- expression shape, so the split was on the OPERATOR and invisible to the
+-- author: `Status = 'Pending'` built and `Status != 'Pending'` did not.
+--
+-- Not a Mendix version change, despite the issue's diagnosis: the same probe
+-- produces the identical 7 errors on mxbuild 11.11.0 and 11.13.0.
+--
+-- After fix:
+--   A bare name that resolves to a member of the list's element entity is
+--   rewritten to `$currentObject/<member>`. One that does not resolve is
+--   refused by the executor (see 1002-filter-bare-unknown-attribute.fail.mdl).
+--
+-- Every microflow below builds at 0 errors.
+--
+--   mxcli exec mdl-examples/bug-tests/1002-filter-find-bare-attribute.mdl -p app.mpr
+--   mx check app.mpr      # 0 errors
+
+create or modify module FilterProbe;
+
+create or modify persistent entity FilterProbe.Order (
+  Status: String(50),
+  Amount: Decimal,
+  Qty: Integer
+);
+
+-- === CONTROLS: the '=' form, which bug #343 reroutes to filter-by-attribute. ===
+-- These built before the fix too and must keep building — a regression here
+-- means the #343 reroute was lost.
+create or replace microflow FilterProbe.A_BareEqualsReroute () returns Boolean
+begin
+  retrieve $L from FilterProbe.Order;
+  $R = FILTER($L, Status = 'Pending');
+  return true;
+end;
+
+create or replace microflow FilterProbe.B_FindBareEqualsReroute () returns Boolean
+begin
+  retrieve $L from FilterProbe.Order;
+  $R = FIND($L, Status = 'Pending');
+  return true;
+end;
+
+-- === THE BUG: a bare attribute with any other operator. CE0117 before the fix. ===
+create or replace microflow FilterProbe.C_BareDecimalGreater () returns Boolean
+begin
+  retrieve $L from FilterProbe.Order;
+  $R = FILTER($L, Amount > 0);
+  return true;
+end;
+
+create or replace microflow FilterProbe.D_BareIntegerGreater () returns Boolean
+begin
+  retrieve $L from FilterProbe.Order;
+  $R = FILTER($L, Qty > 0);
+  return true;
+end;
+
+create or replace microflow FilterProbe.E_BareStringNotEquals () returns Boolean
+begin
+  retrieve $L from FilterProbe.Order;
+  $R = FILTER($L, Status != 'Pending');
+  return true;
+end;
+
+create or replace microflow FilterProbe.F_FindBareGreater () returns Boolean
+begin
+  retrieve $L from FilterProbe.Order;
+  $R = FIND($L, Qty > 0);
+  return true;
+end;
+
+-- A compound predicate: several bare names, and a string literal that must NOT
+-- be rewritten even though it spells an attribute name.
+create or replace microflow FilterProbe.G_CompoundPredicate () returns Boolean
+begin
+  retrieve $L from FilterProbe.Order;
+  $R = FILTER($L, Qty > 0 and Status != 'Amount');
+  return true;
+end;
+
+-- === The explicit form keeps working unchanged. ===
+create or replace microflow FilterProbe.H_CurrentObjectGreater () returns Boolean
+begin
+  retrieve $L from FilterProbe.Order;
+  $R = FILTER($L, $currentObject/Amount > 0);
+  return true;
+end;
+
+create or replace microflow FilterProbe.I_FindCurrentObject () returns Boolean
+begin
+  retrieve $L from FilterProbe.Order;
+  $R = FIND($L, $currentObject/Amount > 0);
+  return true;
+end;
+
+-- === SORT is a different mechanism (SortItem, not an expression), so a bare
+-- === attribute is correct there and must be left alone.
+create or replace microflow FilterProbe.J_SortBare () returns Boolean
+begin
+  retrieve $L from FilterProbe.Order;
+  $R = SORT($L, Amount DESC);
+  return true;
+end;
+
+-- === The element entity is resolved through a parameter and through a call. ===
+create or replace microflow FilterProbe.K_ParamListBare ($Orders: List of FilterProbe.Order) returns Boolean
+begin
+  $R = FILTER($Orders, Qty > 0);
+  return true;
+end;
+
+create or replace microflow FilterProbe.GetOrders () returns List of FilterProbe.Order
+begin
+  retrieve $L from FilterProbe.Order;
+  return $L;
+end;
+
+create or replace microflow FilterProbe.L_CallListBare () returns Boolean
+begin
+  $Orders = CALL MICROFLOW FilterProbe.GetOrders ();
+  $R = FILTER($Orders, Qty > 0);
+  return true;
+end;
