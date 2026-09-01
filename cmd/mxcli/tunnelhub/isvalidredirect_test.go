@@ -28,9 +28,9 @@ func TestSafeReturnRejectsLookalikeDomains(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			a := &AuthConfig{HubHost: c.hubHost, CookieDomain: c.cookieDomain}
-			got := a.safeReturn(c.ret)
+			got := a.isValidRedirect(c.ret)
 			if got != c.wantSafe {
-				t.Errorf("safeReturn(%q) with CookieDomain=%q = %v, want %v",
+				t.Errorf("isValidRedirect(%q) with CookieDomain=%q = %v, want %v",
 					c.ret, c.cookieDomain, got, c.wantSafe)
 			}
 		})
