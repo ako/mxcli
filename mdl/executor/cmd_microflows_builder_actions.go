@@ -5,6 +5,7 @@ package executor
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
@@ -1191,7 +1192,7 @@ func (fb *flowBuilder) addListOperationAction(s *ast.ListOperationStmt) model.ID
 			operation = &microflows.FindOperation{
 				BaseElement:  model.BaseElement{ID: model.ID(types.GenerateID())},
 				ListVariable: s.InputVariable,
-				Expression:   fb.exprToString(s.Condition),
+				Expression:   fb.exprToString(fb.qualifyIteratorAttributes(s.Condition, s.InputVariable, "find")),
 			}
 		}
 	case ast.ListOpFilter:
@@ -1201,7 +1202,7 @@ func (fb *flowBuilder) addListOperationAction(s *ast.ListOperationStmt) model.ID
 			operation = &microflows.FilterOperation{
 				BaseElement:  model.BaseElement{ID: model.ID(types.GenerateID())},
 				ListVariable: s.InputVariable,
-				Expression:   fb.exprToString(s.Condition),
+				Expression:   fb.exprToString(fb.qualifyIteratorAttributes(s.Condition, s.InputVariable, "filter")),
 			}
 		}
 	case ast.ListOpSort:
@@ -1888,4 +1889,213 @@ func (fb *flowBuilder) lookupAssociation(moduleName, assocName string) *assocLoo
 		}
 	}
 	return nil
+}
+
+// qualifyIteratorAttributes rewrites a bare attribute name in a FILTER/FIND
+// predicate into `$currentObject/<Attr>`.
+//
+// Mendix's "filter by expression" / "find by expression" evaluates the predicate
+// once per item with the item bound to `$currentObject`; a bare attribute name is
+// not a valid expression there and the build fails with CE0117. mxcli used to
+// store the authored text verbatim, so `filter($L, Amount > 0)` wrote
+// `"Amount > 0"` and produced a model that `mxcli check` accepted and mxbuild
+// rejected — measured identically on 11.11.0 and 11.13.0, so this is mxcli's
+// behaviour and not a Mendix version change (issue #1002).
+//
+// This is the other half of bug #343. That fix rerouted `filter($L, attr = value)`
+// to `Microflows$Filter` (filter BY ATTRIBUTE), which takes a member name rather
+// than an expression and so accepts the bare form. Everything else — a different
+// operator, a compound predicate — still fell through to the expression shape.
+// The split was on the operator and invisible to the author: `Status = 'x'` built
+// and `Status != 'x'` did not.
+//
+// Only a name that provably resolves to a member of the list's element entity is
+// qualified. A name that does NOT resolve, when the entity IS known, is a real
+// mistake and is reported here rather than left to surface as CE0117 at build
+// time. When the element entity cannot be determined nothing is proven either
+// way, so the expression is passed through unchanged.
+func (fb *flowBuilder) qualifyIteratorAttributes(cond ast.Expression, listVariable, opLabel string) ast.Expression {
+	if cond == nil {
+		return nil
+	}
+	entityQN := fb.listElementEntity(listVariable)
+	if entityQN == "" {
+		return cond
+	}
+
+	// name → the path segment to write after `$currentObject/`. An attribute is
+	// referenced by its bare name; an association carries its module qualifier.
+	renamed := map[string]string{}
+	var rewrite func(ast.Expression) ast.Expression
+	rewrite = func(e ast.Expression) ast.Expression {
+		switch n := e.(type) {
+		case nil:
+			return nil
+		case *ast.IdentifierExpr:
+			segment, ok := fb.iteratorMemberPath(entityQN, n.Name)
+			if !ok {
+				if !isMendixExpressionKeyword(n.Name) {
+					fb.addError("%s($%s, …): %q is not an attribute or association of %s — a %s predicate is evaluated once per item, so a bare name must be a member of the list's entity (mxbuild reports CE0117 otherwise)",
+						opLabel, listVariable, n.Name, entityQN, opLabel)
+				}
+				return n
+			}
+			renamed[n.Name] = segment
+			return &ast.AttributePathExpr{
+				Variable: "currentObject",
+				Path:     []string{segment},
+				Segments: []ast.PathSegment{{Name: segment, Separator: "/"}},
+			}
+		case *ast.BinaryExpr:
+			return &ast.BinaryExpr{Left: rewrite(n.Left), Operator: n.Operator, Right: rewrite(n.Right)}
+		case *ast.UnaryExpr:
+			return &ast.UnaryExpr{Operator: n.Operator, Operand: rewrite(n.Operand)}
+		case *ast.ParenExpr:
+			return &ast.ParenExpr{Inner: rewrite(n.Inner)}
+		case *ast.FunctionCallExpr:
+			args := make([]ast.Expression, len(n.Arguments))
+			for i, a := range n.Arguments {
+				args[i] = rewrite(a)
+			}
+			return &ast.FunctionCallExpr{Name: n.Name, Arguments: args}
+		case *ast.IfThenElseExpr:
+			return &ast.IfThenElseExpr{
+				Condition: rewrite(n.Condition),
+				ThenExpr:  rewrite(n.ThenExpr),
+				ElseExpr:  rewrite(n.ElseExpr),
+			}
+		case *ast.SourceExpr:
+			inner := rewrite(n.Expression)
+			if n.Source == "" {
+				return inner
+			}
+			// A non-empty Source is the exact text to write back (decimal and
+			// whitespace fidelity, #17-19), so patch the names inside it rather
+			// than re-rendering the tree — the same treatment association paths
+			// get in resolveAssociationPaths.
+			return &ast.SourceExpr{Expression: inner, Source: qualifyNamesInSource(n.Source, renamed)}
+		default:
+			// LiteralExpr, VariableExpr, AttributePathExpr, QualifiedNameExpr,
+			// ConstantRefExpr, TokenExpr, XPathPathExpr: nothing to qualify. An
+			// AttributePathExpr is already anchored to some variable, and naming
+			// the wrong one is MDL-LISTOP01's business, not this function's.
+			return e
+		}
+	}
+
+	return rewrite(cond)
+}
+
+// listElementEntity returns the qualified entity name of a list variable's
+// elements, or "" when the variable's type was never tracked.
+func (fb *flowBuilder) listElementEntity(listVariable string) string {
+	if fb == nil || fb.varTypes == nil || listVariable == "" {
+		return ""
+	}
+	entityQN, _ := strings.CutPrefix(fb.varTypes[listVariable], "List of ")
+	if entityQN == fb.varTypes[listVariable] {
+		return "" // not a list type
+	}
+	return entityQN
+}
+
+// iteratorMemberPath resolves a bare name against entityQN and returns the path
+// segment that references it from `$currentObject`. An attribute keeps its bare
+// name; an association is returned module-qualified, which is how Mendix spells
+// one in a path (`$currentObject/Sales.Order_Customer`).
+func (fb *flowBuilder) iteratorMemberPath(entityQN, name string) (string, bool) {
+	if name == "" || strings.Contains(name, ".") {
+		return "", false
+	}
+	if _, ok := fb.resolveAttributeInEntityHierarchy(entityQN, name); ok {
+		return name, true
+	}
+	if fb.backend == nil {
+		return "", false
+	}
+	module, _, found := strings.Cut(entityQN, ".")
+	if !found {
+		return "", false
+	}
+	mod, err := fb.backend.GetModuleByName(module)
+	if err != nil || mod == nil {
+		return "", false
+	}
+	dm, err := fb.backend.GetDomainModel(mod.ID)
+	if err != nil || dm == nil {
+		return "", false
+	}
+	for _, a := range dm.Associations {
+		if a.Name == name {
+			return module + "." + name, true
+		}
+	}
+	for _, a := range dm.CrossAssociations {
+		if a.Name == name {
+			return module + "." + name, true
+		}
+	}
+	return "", false
+}
+
+// isMendixExpressionKeyword reports whether name is a bare word Mendix defines
+// itself, so an unresolved one is not reported as a missing attribute.
+func isMendixExpressionKeyword(name string) bool {
+	switch strings.ToLower(name) {
+	case "true", "false", "empty", "nil", "null":
+		return true
+	}
+	return false
+}
+
+// bareNameInSourceRe matches a whole-word occurrence of a name that is not
+// already part of a path (`$currentObject/Amount`) or a qualified name
+// (`Module.Amount`). Go's regexp has no lookbehind, so the preceding character
+// is captured and put back.
+var bareNameInSourceRe = regexp.MustCompile(`(^|[^\w./$])([A-Za-z_]\w*)(\b)`)
+
+// qualifyNamesInSource rewrites each name in names to `$currentObject/<segment>`
+// within expression source text, leaving single-quoted string literals alone.
+func qualifyNamesInSource(source string, names map[string]string) string {
+	if len(names) == 0 {
+		return source
+	}
+	var out strings.Builder
+	for i := 0; i < len(source); {
+		if source[i] == '\'' {
+			// Copy the whole literal verbatim, including doubled-quote escapes.
+			j := i + 1
+			for j < len(source) {
+				if source[j] == '\'' {
+					if j+1 < len(source) && source[j+1] == '\'' {
+						j += 2
+						continue
+					}
+					j++
+					break
+				}
+				j++
+			}
+			out.WriteString(source[i:j])
+			i = j
+			continue
+		}
+		next := strings.IndexByte(source[i:], '\'')
+		end := len(source)
+		if next >= 0 {
+			end = i + next
+		}
+		segment := source[i:end]
+		out.WriteString(bareNameInSourceRe.ReplaceAllStringFunc(segment, func(m string) string {
+			sub := bareNameInSourceRe.FindStringSubmatch(m)
+			if len(sub) == 4 {
+				if segment, ok := names[sub[2]]; ok {
+					return sub[1] + "$currentObject/" + segment
+				}
+			}
+			return m
+		}))
+		i = end
+	}
+	return out.String()
 }
