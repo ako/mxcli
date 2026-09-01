@@ -54,9 +54,9 @@ func validateMappingSources(ctx *ExecContext, prog *ast.Program) []error {
 //
 // A source family whose set is EMPTY disables itself. That is not defensiveness:
 // for XML schemas an empty set is the ordinary case (MDL cannot create one, and
-// none of the nine demo apps has any), and for JSON structures an empty set
-// means the project could not be read — in both, refusing would report every
-// mapping as broken on the strength of having learned nothing.
+// only 1 of the 9 demo apps has any), and for JSON structures an empty set means
+// the project could not be read — in both, refusing would report every mapping
+// as broken on the strength of having learned nothing.
 func mappingSourceViolations(refs []mappingSourceRef, jsonNames, xmlNames map[string]bool) []error {
 	var errs []error
 	for _, ref := range refs {
