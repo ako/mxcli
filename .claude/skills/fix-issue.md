@@ -89,10 +89,19 @@ records and is not correct for prose.
 
 ```bash
 cat >> .claude/skills/fix-issue/findings/mdl-executor.jsonl <<'JSON'
-{"area":"mdl/executor","symptom":"...","cause":"...","file":"...","insight":"...","refs":["#123"]}
+{"area":"mdl/executor","date":"2026-08-31","symptom":"...","cause":"...","file":"...","insight":"...","refs":["#123"]}
 JSON
 make check-findings
 ```
+
+`check-findings` prints one line saying how far `docs-wiki/bug-patterns/` has
+fallen behind; `make digest-status` breaks it down by area. **If the class of
+failure keeps recurring, sync its pattern page** (`/mxcli-dev:wiki-sync
+bug-patterns/<page>.md`). Nothing else will ask: the digest is on demand, and
+every page in it was written on one day in May while the findings went on
+accumulating — 607 of the 631 arrived afterwards. Neither number is a target to
+drive to zero; they are there so the decision is made deliberately rather than
+by default.
 
 Write the **insight**, not the changelog: what would have made this cheaper to
 find, what measurement settled it, and which plausible-sounding wrong turn to

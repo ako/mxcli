@@ -51,3 +51,9 @@ if bad:
     sys.exit(1)
 print("findings OK: %d records in %d shards" % (total, len(sys.argv) - 1))
 PY
+
+# The digest gap, one line, on every run. Advisory: a stale digest never fails
+# this check. It is printed HERE because this is the command the After-Every-Fix
+# checklist already runs — a report nobody invokes is how the digest fell three
+# months behind in the first place.
+"$(dirname "${BASH_SOURCE[0]}")/digest-status.sh" --brief || true
