@@ -145,6 +145,40 @@ retrieve $Page from Sales.Order where [Status = 'Open']
 Note the clause order there is `limit` then `offset` — the reverse of `range`'s
 argument order, because each mirrors the Mendix editor it comes from.
 
+### `filter` / `find` test one item at a time — `$currentObject`
+
+A FILTER/FIND predicate is an expression Mendix evaluates once per item, with
+the item bound to **`$currentObject`**. That is the only iterator name there is:
+
+```mdl
+$Pending = filter($Orders, $currentObject/Status = 'Pending');
+$Large   = filter($Orders, $currentObject/Amount > 1000);
+$Match   = find($Orders, $currentObject/OrderNumber = $Wanted);
+```
+
+A **bare attribute name** means the same thing — mxcli resolves it against the
+list's entity and writes `$currentObject/Attr`:
+
+```mdl
+$Open = filter($Orders, Status != 'Closed');   -- stored as $currentObject/Status
+```
+
+Two things are refused rather than passed through to the build:
+
+- a bare name that is **not** a member of the list's entity (this used to reach
+  mxbuild as `CE0117 "Error(s) in expression."`);
+- any **other** iterator name — `filter($L, $item/Amount > 0)` is `MDL-LISTOP01`,
+  pre-empting `CE0109 "Undefined variable 'item'"`.
+
+`$item` is still fine when it is genuinely in scope, which is how the O(N) lookup
+idiom is written: inside `loop $item in $L`, `find($Others, Key = $item/Key)`
+navigates the **loop's** variable on the right-hand side.
+
+**`sort` is not an expression.** It takes attribute names directly, so a bare
+attribute is the only spelling — `sort($Orders, CreateDate desc)`. Writing
+`$currentObject/` there is wrong.
+
+
 ### `contains` is overloaded — string vs list
 
 `contains(a, b)` is both a **string** function (`contains(haystack, needle)` → substring test) and a **list** operation (`contains(list, object)` → membership test). mxcli picks the right serialization automatically:
