@@ -8,6 +8,7 @@ import (
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	"github.com/mendixlabs/mxcli/mdl/visitor"
+	"github.com/mendixlabs/mxcli/sdk/microflows"
 )
 
 // indentOf returns the number of leading spaces on the first line containing want.
@@ -32,11 +33,16 @@ func renderMicroflowBody(t *testing.T, src string) []string {
 	if !ok {
 		t.Fatalf("statement 0: got %T, want *ast.CreateMicroflowStmt", prog.Statements[0])
 	}
-	var lines []string
-	for _, stmt := range mf.Body {
-		lines = append(lines, microflowStatementToMDL(nil, stmt, 1)...)
-	}
-	return lines
+	// Renders through the LIVE describer. This test used to drive the diff's
+	// own AST-to-MDL renderer, which #997 deleted: two renderers for one
+	// language drift, and diff's had fallen far enough behind to report
+	// activities it could not print as deletions. The indentation rule below
+	// is now the describer's, which is the only place it still exists.
+	fb := &flowBuilder{posX: 100, posY: 100, spacing: HorizontalSpacing, measurer: &layoutMeasurer{}}
+	oc := fb.buildFlowGraph(mf.Body, nil)
+	e := newTestExecutor()
+	built := &microflows.Microflow{ObjectCollection: oc}
+	return formatMicroflowActivities(e.newExecContext(t.Context()), built, nil, nil)
 }
 
 // Both splits used to render a branch body at the SAME column as its branch
@@ -44,7 +50,8 @@ func renderMicroflowBody(t *testing.T, src string) []string {
 // anything nested: a nested `if`'s `else` landed exactly where a reader expects
 // a case branch, in output where `else` on a `case` is an MDL008 error. (#913)
 //
-// Reverting either `indent+2` in cmd_diff_mdl.go fails this test.
+// The describer indents a branch body from its branch keyword; flattening it
+// again fails this test.
 func TestSplitBranchBodiesIndentFromTheirBranchKeyword(t *testing.T) {
 	t.Run("enum split", func(t *testing.T) {
 		lines := renderMicroflowBody(t, `CREATE MICROFLOW Sample.F ($Status: Enumeration(Sample.Status))
