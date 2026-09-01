@@ -152,6 +152,11 @@ isn't better served by an existing page or a different doc artifact.
 | `bug-patterns/rewrite-drops-unauthored-state.md` | bug-pattern | CREATE OR REPLACE losing what the statement did not mention |
 | `bug-patterns/flow-graph-geometry.md` | bug-pattern | generated microflow coordinates and sequence-flow wiring |
 | `bug-patterns/integration-contract-drift.md` | bug-pattern | OData / REST / mappings, where neither check nor mxbuild is an oracle |
+| `bug-patterns/test-runner-cannot-fail.md` | bug-pattern | `mxcli test` reporting PASS for what did not hold, run or get evaluated |
+| `bug-patterns/local-loop-silence.md` | bug-pattern | the warm loop failing quietly across processes mxcli does not own |
+| `bug-patterns/styling-compiles-to-nothing.md` | bug-pattern | SCSS and tokens written correctly, compiled nowhere, checked by nothing |
+| `bug-patterns/package-operations-damage.md` | bug-pattern | marketplace / `mx` operations that change the project and report success |
+| `bug-patterns/cli-contract-defects.md` | bug-pattern | flags, paths, stdout and help — the class with no Mendix document in it |
 
 ## Adding a new page
 
