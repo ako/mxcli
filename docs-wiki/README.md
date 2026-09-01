@@ -16,10 +16,11 @@ If you're new to mxcli internals, read in this order:
 6. `glossary.md` — terminology bridge across Mendix / mxcli / BSON
 
 **Diagnosing a bug?** Start at [`bug-patterns/`](bug-patterns/) — the failure *classes*,
-digested from the symptom table in
-[`.claude/skills/fix-issue.md`](../.claude/skills/fix-issue.md). Grep that table for the
-specific instance afterwards; it is ~1 MB and is not meant to be read whole. Pattern
-coverage is partial, so a miss there means the finding has not been digested yet.
+digested from the findings in
+[`.claude/skills/fix-issue/findings/`](../.claude/skills/fix-issue/findings/). Grep
+those for the specific instance afterwards; they are data, not reading material.
+Pattern coverage is partial, so a miss there means the finding has not been
+digested yet.
 
 ## How this wiki is maintained
 
@@ -36,7 +37,7 @@ coverage is partial, so a miss there means the finding has not been digested yet
 | MDL syntax tables | `docs/01-project/MDL_QUICK_REFERENCE.md` |
 | What a function does | source code |
 | Step-by-step procedure | `.claude/skills/<task>.md` |
-| Specific bug recipe | `.claude/skills/fix-issue.md` |
+| Specific bug recipe | `.claude/skills/fix-issue/findings/*.jsonl` |
 | Proposal status / PR # / roadmap | proposal frontmatter, GitHub |
 | Architectural decision history | `docs/13-decisions/` (ADRs) |
 | Latest design proposal | `docs/11-proposals/` |

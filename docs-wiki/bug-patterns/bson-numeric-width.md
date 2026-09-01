@@ -3,11 +3,11 @@ title: BSON Numeric Width Mismatches
 category: bug-pattern
 last-synced: 4e185f73
 sources:
-  - .claude/skills/fix-issue.md
+  - .claude/skills/fix-issue/findings/
   - sdk/mpr/parser.go
 ---
 
-> **Do not duplicate**: the per-field fix recipes live in the `.claude/skills/fix-issue.md` symptom rows (issues #583, #585) and the `extractInt` helper signature lives in `sdk/mpr/parser.go`. This page describes the pattern only.
+> **Do not duplicate**: the per-field fix recipes live in the `fix-issue/findings/*.jsonl` records (issues #583, #585) and the `extractInt` helper signature lives in `sdk/mpr/parser.go`. This page describes the pattern only.
 
 ## What this is
 
@@ -23,6 +23,6 @@ The canonical fix is the width-agnostic `extractInt` helper in [`sdk/mpr/parser.
 
 ## See also
 
-- [fix-issue symptom table](../../.claude/skills/fix-issue.md) — the per-instance fix recipes for this pattern
+- [fix-issue findings](../../.claude/skills/fix-issue/findings/) — the per-instance fix recipes for this pattern
 - [[architecture/mpr-read-write]] — how the BSON reader/parser layer is structured
 - [[models/storage-vs-qualified-names]] — the other major class of read/write mismatch

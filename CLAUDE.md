@@ -557,14 +557,14 @@ mxcli uses a layered documentation system — each artifact type has a single ca
 | User manual | `docs-site/src/` | hand-edited | How to use mxcli / MDL |
 | Concept wiki | `docs-wiki/` | `/mxcli-dev:wiki-sync` | Synthesized brain — framing and connecting only |
 | Skill | `.claude/skills/` | hand-edited | Step-by-step procedure for a recurring task |
-| Symptom table | `.claude/skills/fix-issue.md` | append on every bug fix | Bug symptom → file → fix recipe |
+| Bug findings | `.claude/skills/fix-issue/findings/*.jsonl` | append on every bug fix | Bug symptom → file → fix recipe (evidence; grep or DuckDB, never read whole) |
 | Load-bearing rule | this file | hand-edited | Always-in-context invariants and routing |
 
 **State stays in its native home.** Proposal status, PR / issue numbers, roadmap, version registries — these live only where they're authoritative (proposal frontmatter, GitHub, the `sdk/versions/*.yaml` files). The wiki and CLAUDE.md may cite this state but never mirror it.
 
 **ADRs are immutable once accepted.** Supersede with a new ADR rather than editing in place. Conventions and template in [`docs/13-decisions/README.md`](docs/13-decisions/README.md).
 
-**Bug findings are read in the opposite order from how they are written.** A fix *appends* one row to the symptom table; a diagnosis *starts* at `docs-wiki/bug-patterns/`, which digests those rows into failure classes, and drills into the table only for the specific instance. The table is append-only evidence — grep it, never read it whole. Its digest is currently thin (3 pattern pages against 600+ rows, none re-synced since the initial synthesis), so a pattern miss means "not yet digested", not "not seen before".
+**Bug findings are read in the opposite order from how they are written.** A fix *appends* one record to `.claude/skills/fix-issue/findings/<area>.jsonl`; a diagnosis *starts* at `docs-wiki/bug-patterns/`, which digests those records into failure classes, and drills into the findings only for the specific instance. The findings are append-only evidence — grep them, or query them with DuckDB (`select … from 'findings/*.jsonl'`), never read them whole. The digest is currently thin (3 pattern pages against 630 findings, none re-synced since the initial synthesis), so a pattern miss means "not yet digested", not "not seen before".
 
 **The wiki is synthesized, not stated.** It frames and connects across the other artifacts — it never restates content that has a canonical home. Rules and seed page list in [`.claude/skills/maintain-wiki.md`](.claude/skills/maintain-wiki.md).
 
@@ -573,8 +573,8 @@ mxcli uses a layered documentation system — each artifact type has a single ca
 When reviewing pull requests or validating work before commit, verify these items:
 
 ### Bug fixes
-- [ ] **Fix-issue skill consulted** — start at [`docs-wiki/bug-patterns/`](docs-wiki/bug-patterns/) for the failure *class*, then `grep -i` the symptom table in `.claude/skills/fix-issue.md` for the *instance*; match before opening files. **Do not open the table whole — it is ~1 MB.** A pattern-page miss means the finding has not been digested yet, never that it has not been seen
-- [ ] **Symptom table updated** — new symptom/layer/file mapping added to `.claude/skills/fix-issue.md` if not already covered. Append at the END of the table — for readable diffs, not for merging: conflicts are handled by the `merge=union` driver in `.gitattributes`, which keeps both sides when two fixes append at once. (Insert position alone never fixed this; moving rows from the top to the bottom just moved the collision.) The table is looked up by matching a symptom, not read in order, so position carries no meaning
+- [ ] **Fix-issue skill consulted** — start at [`docs-wiki/bug-patterns/`](docs-wiki/bug-patterns/) for the failure *class*, then `grep -i` `.claude/skills/fix-issue/findings/*.jsonl` for the *instance*; match before opening files. A pattern-page miss means the finding has not been digested yet, never that it has not been seen
+- [ ] **Finding recorded** — one JSON line appended to `.claude/skills/fix-issue/findings/<area>.jsonl` if the symptom is not already covered, and `make check-findings` passes. Write the *insight* (what would have made it cheaper to find, what measurement settled it), not the changelog. `merge=union` in `.gitattributes` keeps both sides when two fixes append at once; order carries no meaning, since these are looked up by matching a symptom
 - [ ] **Test written first** — failing test exists before implementation (parser test in `sdk/mpr/`, backend mutation test in `mdl/backend/mpr/`, executor handler test in `mdl/executor/` using `MockBackend`)
 - [ ] **Verified at the layer the symptom lives in** — a test proves something about the layer it exercises and nothing more. Parser/grammar → unit test. BSON we write → unit test on the encoded document. Files on disk after `mx` runs → integration test (`-tags integration`). **The rendered app's behaviour or appearance → `.claude/skills/verify-in-runtime.md`** (boot with `run --local`, assert in Playwright). A page can serialize to valid-looking BSON, pass `mx check`, build cleanly, and still render wrong — that was #812.
 - [ ] **Fix proven to be the cause** — revert the fix (or stub the guard) and confirm the test fails with the reported symptom. A test that only passes against fixed code has not been shown to detect anything; two bugs this week had a green suite while live (#812 a clobbered `RegisterTypeDefaults`, #808 an integration test that had only ever skipped)

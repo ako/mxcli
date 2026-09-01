@@ -3,11 +3,11 @@ title: Visitor Wiring Gaps
 category: bug-pattern
 last-synced: 4e185f73
 sources:
-  - .claude/skills/fix-issue.md
+  - .claude/skills/fix-issue/findings/
   - mdl/visitor/visitor_enumeration.go
 ---
 
-> **Do not duplicate**: the specific fix recipe (issue #393) lives in the `.claude/skills/fix-issue.md` symptom row, and the canonical wiring blocks live in `mdl/visitor/`. This page describes the pattern only.
+> **Do not duplicate**: the specific fix recipe (issue #393) lives in the `.claude/skills/fix-issue/findings/` symptom row, and the canonical wiring blocks live in `mdl/visitor/`. This page describes the pattern only.
 
 ## What this is
 
@@ -23,6 +23,6 @@ The canonical fix is to diff the broken visitor against a known-good sibling. Th
 
 ## See also
 
-- [fix-issue symptom table](../../.claude/skills/fix-issue.md) — the per-instance fix recipes for this pattern
+- [fix-issue findings](../../.claude/skills/fix-issue/findings/) — the per-instance fix recipes for this pattern
 - [[architecture/mdl-execution]] — the grammar → visitor → AST → executor pipeline this gap sits in
 - [[rationale/mdl-as-sql]] — why MDL statements roundtrip through `DESCRIBE`
