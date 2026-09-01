@@ -100,6 +100,8 @@ func (v *microflowValidator) addViolation(ruleID string, severity linter.Severit
 
 // validate runs all checks on the microflow body.
 func (v *microflowValidator) validate(body []ast.MicroflowStatement) {
+	v.checkListOperationIterator(body)
+
 	// Walk the body for per-statement checks (validation feedback, return value checks)
 	v.emptyListVars = make(map[string]bool)
 	v.walkBody(body)
