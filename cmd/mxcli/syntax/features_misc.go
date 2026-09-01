@@ -156,7 +156,7 @@ DISCONNECT;`,
 		},
 		Syntax: `CREATE OR REPLACE NAVIGATION <profile>
   HOME PAGE Module.Page
-  [HOME PAGE Module.Page FOR Module.UserRole]
+  [HOME PAGE Module.Page FOR UserRole]
   [LOGIN PAGE Module.LoginPage]
   [NOT FOUND PAGE Module.Custom404]
   [MENU (
@@ -164,6 +164,14 @@ DISCONNECT;`,
     MENU 'Group' [ICON Module.IconCollection.Name] ( ... );
   )];
 
+-- FOR takes a USER role, written BARE (FOR Administrator). User roles are
+-- project-level and have no module part; a module role is a different thing
+-- that often shares the name (a blank app has a user role Administrator and
+-- module roles called Administrator in three modules). A qualified name here
+-- gives a project Mendix cannot LOAD -- StorageLoadException "not a valid
+-- UserRoleIdentifier", raised before checking runs, so there is no error code
+-- and no line number. List the real ones with SHOW USER ROLES.
+--
 -- ICON is a qualified name into an ICON COLLECTION (Atlas_Core.Atlas,
 -- Atlas_Core.Atlas_Filled, Atlas_Core.Atlas_Styling, or your own) -- a model
 -- reference, not a string. Hyphenated Atlas names are double-quoted:
@@ -183,7 +191,7 @@ DISCONNECT;`,
 -- documents in the project that already exceed that.`,
 		Example: `CREATE OR REPLACE NAVIGATION Responsive
   HOME PAGE MyModule.Home_Web
-  HOME PAGE MyModule.AdminDashboard FOR Administration.Administrator
+  HOME PAGE MyModule.AdminDashboard FOR Administrator
   LOGIN PAGE Administration.Login
   MENU (
     MENU ITEM 'Home' PAGE MyModule.Home_Web ICON Atlas_Core.Atlas.home;

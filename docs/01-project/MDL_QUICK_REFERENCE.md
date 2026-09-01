@@ -764,7 +764,7 @@ alter workflow Module.OrderApproval
 ```sql
 create or replace navigation Responsive
   home page MyModule.Home_Web
-  home page MyModule.AdminHome for MyModule.Administrator
+  home page MyModule.AdminHome for Administrator
   login page Administration.Login
   not found page MyModule.Custom404
   menu (

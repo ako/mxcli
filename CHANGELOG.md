@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- **`HOME PAGE … FOR` resolves the user role, and the docs no longer recommend the form that breaks the project** (mendixlabs/mxcli#1001) — the role was written straight through to BSON, and what it did depended on its shape. Measured on a blank 11.13 app: `for Administrator` builds at 0 errors; `for Supervisor` (bare, unknown) is an ordinary `CE1613`; and `for MyFirstModule.Administrator` produces a project Mendix **cannot load** — `StorageLoadException: … 'MyFirstModule.Administrator' is not a valid UserRoleIdentifier`, raised before any checking runs, so there is no error code and no location.
+
+  The third was the form **mxcli's own documentation, skill and `mxcli syntax` output all recommended**, across ten places including one runnable example. `FOR` binds a *user* role, which is project-level and written bare; a *module* role is module-scoped and shares the name — a blank app has a user role `Administrator` and module roles called `Administrator` in three modules, so the wrong one reads as correct.
+
+  Both `check --references` and `exec` now refuse it through the same function, naming the bare form to write. A bare unknown role and a case mismatch (Mendix matches exactly, so `for administrator` really is CE1613) get their own messages, since they need different fixes. Two controls: a refused `exec` leaves the `.mpr` byte-identical, and a script that creates a user role and then uses it still passes — the ordinary way to write one, which a project-only lookup would have refused (`mdl-examples/bug-tests/navigation-1001-home-page-for-user-role.mdl`).
+
+  Worth knowing beyond this bug: a load failure suppresses the `The app contains: N errors` line while still exiting 1, so `mx check` reads as having succeeded. It has now been misread that way in two reports.
+
 - **`check --references` now resolves icon references in placeholders, snippets, layouts and menu documents** (mendixlabs/mxcli#1008) — an icon naming an **image** collection instead of an **icon** collection passed `check --references`, executed fine, and surfaced only at build as `CE1613 "The selected custom icon … no longer exists."`. The reported case (a button in a page body) was already caught, which is what made this look like a resolver bug; it is a **coverage** gap. `iconRefsInStatement` walked only `CreatePageStmtV3.Widgets`, `AlterPageStmt` operations and `AlterNavigationStmt`, so four icon-bearing shapes were never inspected: widgets inside a `placeholder X { … }` block (a page's `Placeholders` is held apart from the bare-body `Widgets`), `CREATE SNIPPET`, `CREATE LAYOUT`, and `CREATE MENU` — whose items carry icons exactly as a navigation profile's do.
 
   Layouts matter most of the four: a layout's topbar is shared, so one wrong icon there is an error on every page that uses it.

@@ -5,7 +5,7 @@
 ```sql
 CREATE OR REPLACE NAVIGATION profile
     HOME PAGE module.PageName
-    [ HOME PAGE module.PageName FOR module.UserRole ]
+    [ HOME PAGE module.PageName FOR UserRole ]
     [ LOGIN PAGE module.PageName ]
     [ NOT FOUND PAGE module.PageName ]
     [ MENU (
@@ -44,8 +44,10 @@ Each `MENU ITEM` specifies a label and a target page. Menu items are terminated 
 `HOME PAGE module.PageName`
 :   The default home page for the profile. Required. The page must already exist.
 
-`HOME PAGE module.PageName FOR module.UserRole`
+`HOME PAGE module.PageName FOR UserRole`
 :   Optional role-specific home page. Users with this role see a different home page than the default. Multiple role-specific home pages can be specified.
+
+    The role is a **user role**, written as a bare name (`FOR Administrator`). User roles are project-level and have no module part. A module-qualified name here — a module role, which often shares the name — produces a project Mendix cannot load: `StorageLoadException: … is not a valid UserRoleIdentifier`, raised before checking runs. `mxcli check --references` refuses it.
 
 `LOGIN PAGE module.PageName`
 :   Optional custom login page. If omitted, the default system login page is used.
@@ -76,7 +78,7 @@ Full navigation with role-specific homes and menus:
 ```sql
 CREATE OR REPLACE NAVIGATION Responsive
     HOME PAGE MyModule.Home_Web
-    HOME PAGE MyModule.AdminHome FOR MyModule.Administrator
+    HOME PAGE MyModule.AdminHome FOR Administrator
     LOGIN PAGE Administration.Login
     NOT FOUND PAGE MyModule.Custom404
     MENU (
