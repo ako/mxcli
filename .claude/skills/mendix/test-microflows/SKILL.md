@@ -54,10 +54,22 @@ tests passed and nothing was reported at either end. The bundle is now copied
 aside before the boot and put back after, so the dev loop keeps the exact bundle
 it built.
 
-Two things still to know about running both at once: the test boot loads and
-unloads the model in the same tree, and both runtimes share `deployment/data/`.
-Neither has been measured to cause damage; if you see something odd, run them one
-at a time and say so.
+**The compiled Java is shared too, and that one is not fixable — only reportable.**
+A test run recompiles the project into `deployment/run/bin`, the classpath the
+running app's JVM is holding open. Measured: every class file is rewritten (new
+inode, identical content). A JVM loads classes lazily, so one the app has not
+reached yet can afterwards fail with `NoClassDefFoundError` — and the microflows
+behind it then answer **HTTP 200 with an empty body** rather than an error, so the
+app looks half-working. Only Java-backed resources are affected, which is why it
+does not look like the test run did it.
+
+mxcli warns when it sees a dev loop serving the same project (`run --local`
+records itself in `.mxcli/run-local.json`, removed on exit). **If something the
+app serves stops returning data after a test run, restart that app.** That is the
+whole remedy.
+
+One thing left that has not been measured: both runtimes share `deployment/data/`.
+No damage observed; if you see something odd, run them one at a time and say so.
 
 ### Constants
 
