@@ -153,6 +153,9 @@ func StartLocalApp(opts LocalAppOptions) (*LocalApp, error) {
 	if err := checkLocalAppPortsFree(opts); err != nil {
 		return nil, err
 	}
+	if err := checkDeployDirIsBuildable(opts); err != nil {
+		return nil, err
+	}
 
 	// 1. Project version → which mxbuild and runtime to use.
 	reader, err := mpr.Open(opts.ProjectPath)
@@ -184,10 +187,13 @@ func StartLocalApp(opts LocalAppOptions) (*LocalApp, error) {
 
 	app := &LocalApp{Version: version, RuntimeLogPath: opts.RuntimeLogPath}
 
-	// Whether a browser bundle exists *before* this boot. The boot's Gradle
-	// packaging removes it, and this app is booted headless (tests), so the loss
-	// is only noticed later by whoever opens a browser (mxcli-formula1 §35).
-	hadWebClient := WebClientBundled(opts.DeployDir)
+	// The boot's Gradle packaging removes the browser bundle, and this app is
+	// booted headless (tests), so it does not build a replacement — the loss is
+	// noticed later by whoever opens a browser onto the `run --local` that is
+	// serving the same deployment directory (mxcli-formula1 §35 and §62). The
+	// directory is shared because mxbuild shares it, so the bundle is carried
+	// across the boot instead.
+	restoreWebClient := preserveWebClientBundle(opts.DeployDir)
 
 	// 4. Build, unless the caller is reusing an existing deployment.
 	if !opts.SkipBuild {
@@ -213,11 +219,12 @@ func StartLocalApp(opts LocalAppOptions) (*LocalApp, error) {
 	// 5. Boot the runtime against the deployment.
 	rt, err := StartLocalRuntime(opts.runtimeOptions(installPath))
 	if err != nil {
+		restoreWebClient()
 		app.Stop()
 		return nil, err
 	}
 	app.Runtime = rt
-	ReportLostWebClientBundle(opts.DeployDir, hadWebClient, w)
+	restoreWebClient()
 	return app, nil
 }
 
@@ -272,6 +279,39 @@ func (a *LocalApp) Stop() error {
 		a.serve = nil
 	}
 	return firstErr
+}
+
+// checkDeployDirIsBuildable refuses a DeployDir that this build will not write
+// to.
+//
+// mxbuild's deploy target writes to `<app dir>/deployment` and takes no option
+// to change it — measured, not inferred: `--target=deploy` on a project whose
+// deployment/ had just been deleted recreated it there, `mxbuild --help` lists
+// no deployment-path flag, and BuildRequest carries none. So DeployDir decides
+// where the RUNTIME reads while nothing decides where the BUILD writes, and
+// setting them apart points the runtime at a directory nothing populates.
+//
+// That is what `mxcli test --local` did after it was given a scratch tree of its
+// own: the runtime aborted with `Path '…/deployment-test/model/bundles' cannot
+// be resolved in base path '…/deployment-test'` for every project, whether or
+// not another app was running (mxcli-ledger §150). This states the constraint
+// instead, at the point the caller can still act on it.
+//
+// With SkipBuild there is no build to disagree with, so the caller may boot
+// against any tree they have populated themselves.
+func checkDeployDirIsBuildable(o LocalAppOptions) error {
+	if o.SkipBuild || o.DeployDir == "" || o.ProjectPath == "" {
+		return nil
+	}
+	buildDir := filepath.Join(filepath.Dir(o.ProjectPath), "deployment")
+	if filepath.Clean(o.DeployDir) == filepath.Clean(buildDir) {
+		return nil
+	}
+	return fmt.Errorf("cannot boot against %s: mxbuild always writes the deployment to %s "+
+		"and has no option to change it, so that directory would be empty.\n"+
+		"  Leave DeployDir unset to use the build's own directory, or pass SkipBuild to boot "+
+		"against a tree you populated yourself.",
+		o.DeployDir, buildDir)
 }
 
 // checkLocalAppPortsFree refuses to boot onto a port something is already

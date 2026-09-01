@@ -26,6 +26,7 @@ sharding only happen between fixes touching the *same* area.
 | field | |
 |---|---|
 | `area` | package the fix landed in, e.g. `mdl/executor`. Decides the shard |
+| `date` | when the finding was last touched, `YYYY-MM-DD`. Backfilled by `git blame` over the table this came from, so it is *last touched*, not *first written* — a row that was later corrected carries the correction's date. Used by `make digest-status` to measure how far the wiki digest has fallen behind |
 | `symptom` | what the user saw — the thing you match against |
 | `cause` | the mechanism |
 | `file` | where to look first |
@@ -39,7 +40,9 @@ must cover everything need to account for both.
 ## Guard
 
 `make check-findings` (`scripts/check-findings.sh`) validates every line: one
-JSON object, an `area`, and either the four fields or `raw`. It runs in CI.
+JSON object, an `area`, and either the four fields or `raw`. It runs in CI, and
+prints one line saying how far `docs-wiki/bug-patterns/` has fallen behind these
+findings — see `make digest-status` for the breakdown.
 
 The extraction was verified lossless by regenerating every table row from the
 records and diffing against the original 630 — byte-identical as a multiset.

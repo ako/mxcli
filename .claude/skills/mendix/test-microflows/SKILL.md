@@ -40,20 +40,36 @@ mxcli test tests/ -p app.mpr --local     # no daemon needed
 mxcli test tests/ -p app.mpr             # Docker
 ```
 
-`--local` uses its own ports (app 8081, admin 8091), its own `<project>_test`
-database and its own deployment tree (`.mxcli/deployment-test/`), so a
-`mxcli run --local` dev loop can keep serving the same project while the tests
-run — the tests never write into the database you are looking at in the browser,
-and never rebuild the directory that browser's page is served from. The database
-and the deployment tree are created on first use.
+`--local` uses its own ports (app 8081, admin 8091) and its own `<project>_test`
+database, so a `mxcli run --local` dev loop can keep serving the same project
+while the tests run — the tests never write into the database you are looking at
+in the browser. The database is created on first use.
 
-The deployment tree is the one that used to be shared, and the failure was silent:
-a headless test boot does not bundle the web client, so rebuilding the dev loop's
-`deployment/` left the running app answering **HTTP 200 with a blank page** —
-Mendix's SPA shell over a 404 for `/dist/index.js`. Tests passed, the run kept
-running, nothing was reported at either end. Because of that, `--skip-build` now
-reuses the *test* tree and is refused (with the reason) until the suite has run
-once without it.
+The **deployment directory is shared**, and not by choice: mxbuild always writes
+it to `<app dir>/deployment` and has no option to move it. That used to blank the
+running app — a headless test boot does not bundle the web client, and the boot's
+packaging pass deletes `deployment/web/dist`, so the app answered **HTTP 200 with
+a blank page** (Mendix's SPA shell over a 404 for `/dist/index.js`) while the
+tests passed and nothing was reported at either end. The bundle is now copied
+aside before the boot and put back after, so the dev loop keeps the exact bundle
+it built.
+
+**The compiled Java is shared too, and that one is not fixable — only reportable.**
+A test run recompiles the project into `deployment/run/bin`, the classpath the
+running app's JVM is holding open. Measured: every class file is rewritten (new
+inode, identical content). A JVM loads classes lazily, so one the app has not
+reached yet can afterwards fail with `NoClassDefFoundError` — and the microflows
+behind it then answer **HTTP 200 with an empty body** rather than an error, so the
+app looks half-working. Only Java-backed resources are affected, which is why it
+does not look like the test run did it.
+
+mxcli warns when it sees a dev loop serving the same project (`run --local`
+records itself in `.mxcli/run-local.json`, removed on exit). **If something the
+app serves stops returning data after a test run, restart that app.** That is the
+whole remedy.
+
+One thing left that has not been measured: both runtimes share `deployment/data/`.
+No damage observed; if you see something odd, run them one at a time and say so.
 
 ### Constants
 

@@ -19,6 +19,12 @@ This command is the trigger; the skill is the contract.
 - `--all` — sync every page in `docs-wiki/`.
 - `--stale` — sync only pages whose `last-synced:` SHA is older than HEAD.
 
+For `bug-patterns/` specifically, run **`make digest-status`** first: it reports
+how many findings have landed since the last bug-pattern sync and which areas
+no page mentions. That is the scope question for this category — the pages
+digest `.claude/skills/fix-issue/findings/*.jsonl`, and an area with many
+findings and no page is an undigested failure class, not a missing file.
+
 If invoked with no arguments, ask the user which page(s) to sync. List the
 seed table from `maintain-wiki.md` as options.
 

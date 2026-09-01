@@ -14,27 +14,24 @@ import (
 	"github.com/mendixlabs/mxcli/cmd/mxcli/docker"
 )
 
-// Local test runs deliberately do not share the dev loop's ports, database or
-// DEPLOYMENT DIRECTORY: `mxcli run --local` may well be serving the same project
-// (that is the point of the warm loop), and a test run must neither refuse to
-// start because of it, nor write its fixtures into the database the developer is
-// looking at, nor rebuild the directory the running app serves the browser from.
+// Local test runs deliberately do not share the dev loop's ports or database:
+// `mxcli run --local` may well be serving the same project (that is the point of
+// the warm loop), and a test run must neither refuse to start because of it nor
+// write its fixtures into the database the developer is looking at.
 //
-// The deployment directory was the one shared resource left off this list, and
-// it is the one the BROWSER reads. A headless test boot does not bundle the web
-// client, so its build left the running app serving Mendix's SPA shell over a
-// 404 for /dist/index.js — HTTP 200, blank page, no error at either end
-// (mxcli-formula1 FINDINGS §62).
+// The deployment directory is the one resource that IS shared, and not by
+// choice: mxbuild writes it to `<app dir>/deployment` and has no option to move
+// it, so a test run cannot build into a tree of its own (mxcli-ledger §150 —
+// where trying made the runtime abort on an empty directory). The damage that
+// sharing does — a headless boot's packaging pass deleting the browser bundle
+// the running app serves, leaving HTTP 200 over a blank page (mxcli-formula1
+// §62) — is undone in StartLocalApp, which carries the bundle across the boot.
 const (
 	localTestAppPort   = 8081
 	localTestAdminPort = 8091
 	localTestServePort = 6544
 	// localTestDBSuffix is appended to the project's local database name.
 	localTestDBSuffix = "_test"
-	// localTestDeployDir is the test boot's own deployment tree, under the
-	// project's .mxcli/ — gitignored, and already where the test runtime log
-	// lives, so a scratch build tree does not surface as untracked files.
-	localTestDeployDir = "deployment-test"
 )
 
 // runLocalAndCapture builds the project and boots mxcli's own runtime — no

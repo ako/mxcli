@@ -501,9 +501,10 @@ func resolveJsonStructureSource(b backend.FullBackend, ref ast.QualifiedName) (*
 //
 // FAIL OPEN when the project reports no XML schemas at all. There is no
 // `create xml schema` in MDL, so an XML schema can only ever have been put there
-// by a human — and, measured, NONE of the nine demo apps in the corpus contains
-// one. A project with an empty list is therefore the ordinary case, not evidence
-// that the name is wrong, and refusing on it would break every such mapping.
+// by a human, and it is rare: 3 documents in 1 of the 9 demo apps, against 36
+// message-definition collections and hundreds of JSON structures. A project with
+// an empty list is therefore the ordinary case, not evidence that the name is
+// wrong, and refusing on it would break every such mapping.
 func resolveXmlSchemaSource(b backend.FullBackend, ref ast.QualifiedName) error {
 	all, err := b.ListXmlSchemas()
 	if err != nil {
