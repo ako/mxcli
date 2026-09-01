@@ -272,6 +272,7 @@ func init() {
 			"annotation", "caption", "color", "excluded", "bezier",
 		},
 		Syntax: "@position(x, y)                       -- the activity's centre point\n" +
+			"@position(x, y)                       -- also on a PARAMETER, in the ( … ) list\n" +
 			"@start(x, y)                          -- the start event, on the FIRST statement\n" +
 			"@anchor(from: right, to: left)        -- which SIDE each end of the outgoing flow attaches to\n" +
 			"@curve(from: (40, -90), to: (-40, 90))  -- the flow's bezier control vectors\n" +
@@ -288,8 +289,15 @@ func init() {
 			"start is placed one spacing unit left of the first activity, on its centre\n" +
 			"line — and a rewrite MOVES it to follow the activities. A start that is not\n" +
 			"at that derived spot was put there by hand: it survives a rewrite, and\n" +
-			"DESCRIBE emits @start for it so the description round-trips exactly.",
-		Example: "create microflow MyModule.ACT_Flow ($In: String)\nreturns String as $Out\nbegin\n" +
+			"DESCRIBE emits @start for it so the description round-trips exactly.\n\n" +
+			"A PARAMETER is a stored node with its own coordinates, so it takes\n" +
+			"@position too — written inside the parameter list, ahead of the parameter\n" +
+			"it places. It is the only annotation a parameter takes. Omit it and the\n" +
+			"parameters form a row along the top of the canvas at 200;53, 300;53, … ;\n" +
+			"the same derived/authored rule as @start then applies, so a parameter on\n" +
+			"that row is re-derived and one anywhere else survives a rewrite and is\n" +
+			"emitted by DESCRIBE.",
+		Example: "create microflow MyModule.ACT_Flow (\n  @position(145, 0)\n  $In: String\n)\nreturns String as $Out\nbegin\n" +
 			"  @start(145, 100)\n  @position(200, 100)\n  @anchor(from: bottom, to: top)\n" +
 			"  @curve(from: (40, -90), to: (-40, 90))\n  declare $Tmp String = $In;\n" +
 			"  @position(200, 300)\n  declare $Out String = $Tmp;\n  return $Out;\nend;",

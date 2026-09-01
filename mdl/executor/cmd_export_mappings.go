@@ -122,6 +122,15 @@ func describeExportMapping(ctx *ExecContext, name ast.QualifiedName) error {
 		// Dropped entirely before #263 — and the output still PARSED, so
 		// re-executing a DESCRIBE rebuilt the mapping bound to nothing.
 		fmt.Fprintf(ctx.Output, "  with message definition %s\n", em.MessageDefinition)
+	} else if em.WebServiceSource.IsSet() {
+		// MDL has no `with web service` clause, so this cannot round-trip.
+		// Emitting NOTHING would be worse than saying so: the output parses, and
+		// re-executing it deletes the binding (ako/mxcli#365). The precedent is
+		// the range-bounded-by-attribute rule, which is marked rather than
+		// rendered wrong.
+		fmt.Fprintf(ctx.Output, "  -- SOURCE NOT REPRESENTABLE: imported web service %s%s\n",
+			em.WebServiceSource.ImportedWebService, webServiceDetail(em.WebServiceSource))
+		fmt.Fprintf(ctx.Output, "  -- re-executing this statement would drop it (CE6896); mxcli refuses the rewrite\n")
 	}
 
 	if em.NullValueOption != "" && em.NullValueOption != "LeaveOutElement" {
@@ -270,6 +279,13 @@ func execCreateExportMapping(ctx *ExecContext, s *ast.CreateExportMappingStmt) e
 	existing, _ := ctx.Backend.GetExportMappingByQualifiedName(s.Name.Module, s.Name.Name)
 	if existing != nil && !s.CreateOrModify {
 		return mdlerrors.NewAlreadyExists("export mapping", s.Name.String())
+	}
+	// A stored SOAP binding is not something the statement can restate, so a
+	// rewrite would delete it (ako/mxcli#365).
+	if existing != nil {
+		if err := checkNoWebServiceSource("export", s.Name.String(), existing.WebServiceSource); err != nil {
+			return err
+		}
 	}
 
 	module, err := findModule(ctx, s.Name.Module)

@@ -224,6 +224,7 @@ func execCreateMicroflow(ctx *ExecContext, s *ast.CreateMicroflowStmt) error {
 			ContainerID: mf.ID,
 			Name:        p.Name,
 			Type:        convertASTToMicroflowDataType(p.Type, entityResolver),
+			Position:    positionFromAST(p.Position),
 		}
 		mf.Parameters = append(mf.Parameters, param)
 	}

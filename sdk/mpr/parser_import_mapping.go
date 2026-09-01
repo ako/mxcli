@@ -48,6 +48,7 @@ func (r *Reader) parseImportMapping(unitID, containerID string, contents []byte)
 	if v, ok := raw["MessageDefinition"].(string); ok {
 		im.MessageDefinition = v
 	}
+	im.WebServiceSource = parseWebServiceSource(raw)
 	// MessageDefinition2 is version-introduced (11.10+) and carried, not derived:
 	// nil means the stored document does not have the key (ako/mxcli#279).
 	if v, ok := raw["MessageDefinition2"].(string); ok {
@@ -211,4 +212,33 @@ func extractPrimitiveTypeName(typeObj map[string]any) string {
 	default:
 		return "String"
 	}
+}
+
+// parseWebServiceSource reads a mapping's SOAP binding.
+//
+// Read-only, and read for one reason: a rewrite that dropped these keys turned a
+// working integration into CE6896 + CE0270. ImportedWebService is stored under
+// `wsdlFile`'s SDK name — the BSON key is ImportedWebService — and the root
+// element under RootElementName (`xsdRootElementName` in the SDK).
+func parseWebServiceSource(raw map[string]any) model.WebServiceMappingSource {
+	var w model.WebServiceMappingSource
+	if v, ok := raw["ImportedWebService"].(string); ok {
+		w.ImportedWebService = v
+	}
+	if v, ok := raw["ServiceName"].(string); ok {
+		w.ServiceName = v
+	}
+	if v, ok := raw["OperationName"].(string); ok {
+		w.OperationName = v
+	}
+	if v, ok := raw["RootElementName"].(string); ok {
+		w.RootElementName = v
+	}
+	if v, ok := raw["ParameterName"].(string); ok {
+		w.ParameterName = v
+	}
+	if v, ok := raw["IsHeader"].(bool); ok {
+		w.IsHeader = v
+	}
+	return w
 }

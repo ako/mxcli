@@ -86,6 +86,16 @@ jobs:
         # honouring the pre-existing-failure SKIP list). Previously this step only
         # iterated doctype-tests/, so bug-test regression fixtures had no CI gate.
         run: make check-mdl
+      - name: Check bug findings
+        # One JSON object per line, an area, a date, and either the four
+        # structured fields or a raw row. DuckDB rejects a whole file on one bad
+        # line, so a typo in an appended finding takes out every query over that
+        # area. Also prints how far docs-wiki/bug-patterns/ has fallen behind.
+        run: make check-findings
+      - name: Check wiki page list
+        # The table of contents must describe the wiki, both directions. It
+        # drifted for three months before anyone noticed.
+        run: make check-wiki-pages
       - name: Check skill MDL blocks
         run: ./scripts/check-skill-mdl.sh ./bin/mxcli .claude/skills/mendix
       - name: Check docs-site MDL blocks

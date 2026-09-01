@@ -125,8 +125,11 @@ microflowParameterList
     : microflowParameter (COMMA microflowParameter)*
     ;
 
+// Annotations on a parameter: `@position(x, y)` places the parameter box on the
+// canvas. Parameters are stored nodes with real geometry, so this is the same
+// annotation the statements below it take, attached to the thing it positions.
 microflowParameter
-    : (parameterName | VARIABLE) COLON dataType
+    : annotation* (parameterName | VARIABLE) COLON dataType
     ;
 
 // Allow reserved keywords as parameter names (similar to attributeName)

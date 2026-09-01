@@ -174,6 +174,7 @@ func execCreateNanoflow(ctx *ExecContext, s *ast.CreateNanoflowStmt) error {
 			ContainerID: nf.ID,
 			Name:        p.Name,
 			Type:        convertASTToMicroflowDataType(p.Type, entityResolver),
+			Position:    positionFromAST(p.Position),
 		}
 		nf.Parameters = append(nf.Parameters, param)
 	}
