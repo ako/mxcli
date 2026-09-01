@@ -27,7 +27,7 @@ digested yet.
 - **On-demand only**, via `/mxcli-dev:wiki-sync`.
 - Rules and template: [`.claude/skills/maintain-wiki.md`](../.claude/skills/maintain-wiki.md).
 - Audit trail of every sync: [`SYNC_LOG.md`](SYNC_LOG.md).
-- New pages outside the seed list need to be added to the skill's seed table first.
+- New pages outside the list need a row in [`.claude/skills/maintain-wiki/pages.md`](../.claude/skills/maintain-wiki/pages.md) first.
 
 ## What this wiki is NOT
 

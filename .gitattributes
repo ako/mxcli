@@ -75,3 +75,9 @@ bun.lock binary
 # PR conflicts on one line and the work gets serialised for no reason — which is
 # what happened to the five bug-pattern PRs.
 docs-wiki/SYNC_LOG.md merge=union
+
+# The wiki's page list. A table and nothing else, in its own file precisely so
+# union is safe on it: every sync appends a row, and without this two parallel
+# syncs collide on one line. The prose that used to surround it stays in
+# maintain-wiki.md, where union would be a hazard rather than a help.
+.claude/skills/maintain-wiki/pages.md merge=union
