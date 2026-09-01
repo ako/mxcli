@@ -56,6 +56,7 @@ func (r *Reader) parseExportMapping(unitID, containerID string, contents []byte)
 	if v, ok := raw["NullValueOption"].(string); ok {
 		em.NullValueOption = v
 	}
+	em.WebServiceSource = parseWebServiceSource(raw)
 
 	// Parse top-level mapping elements (array with int32 version prefix)
 	if elements, ok := raw["Elements"].(bson.A); ok {

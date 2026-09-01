@@ -156,6 +156,27 @@ describe json structure Module.JSON_Pet;
 drop json structure Module.JSON_Pet;
 ```
 
+### SOAP-sourced mappings are refused, not rewritten
+
+A mapping can also be sourced from an **imported web service** — a WSDL binding
+(which service, which operation, which root element). MDL cannot spell that, so
+`create or replace|modify` over such a mapping is **refused** rather than
+rebuilding it without the binding, which would leave it with no schema source at
+all (**CE6896**, plus **CE0270**). `describe` marks the source instead of
+emitting nothing, because the silent output parses and re-executing it is what
+deletes the binding (ako/mxcli#365):
+
+```sql
+create or modify import mapping Legacy.IMM_Order
+  -- SOURCE NOT REPRESENTABLE: imported web service Legacy.WS_Orders (service OrderService, operation GetOrder)
+  -- re-executing this statement would drop it (CE6896); mxcli refuses the rewrite
+{ ... }
+```
+
+Edit such a mapping in Studio Pro. Note that a consumed SOAP service does **not**
+create XML schema documents — the WSDL's XSDs are held inline on the web-service
+document — so `with xml schema` is a different path and does not help here.
+
 ### The `with` clause is resolved, not written through
 
 A mapping's schema source — `with json structure M.X` or `with xml schema M.Y` —
