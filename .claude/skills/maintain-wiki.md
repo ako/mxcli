@@ -157,6 +157,9 @@ isn't better served by an existing page or a different doc artifact.
 | `bug-patterns/styling-compiles-to-nothing.md` | bug-pattern | SCSS and tokens written correctly, compiled nowhere, checked by nothing |
 | `bug-patterns/package-operations-damage.md` | bug-pattern | marketplace / `mx` operations that change the project and report success |
 | `bug-patterns/cli-contract-defects.md` | bug-pattern | flags, paths, stdout and help — the class with no Mendix document in it |
+| `bug-patterns/engine-divergence.md` | bug-pattern | two backend implementations, and a gap in one that is invisible from inside it |
+| `bug-patterns/mutator-addressing.md` | bug-pattern | in-place edits to nodes the model does not name |
+| `bug-patterns/access-rule-reconciliation.md` | bug-pattern | GRANT is a read-modify-write, and both directions of loss report success |
 
 ## Adding a new page
 
