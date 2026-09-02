@@ -10,4 +10,5 @@ Pages define the user interface of a Mendix application. Each page has a layout,
 | [CREATE SNIPPET](create-snippet.md) | Create a reusable widget fragment |
 | [ALTER PAGE / ALTER SNIPPET](alter-page.md) | Modify an existing page or snippet in-place |
 | [DROP PAGE / SNIPPET](drop-page.md) | Remove a page or snippet |
-| [CREATE LAYOUT](create-layout.md) | Create a page layout |
+| [CREATE LAYOUT](create-layout.md) | Create a layout — the frame a page renders inside |
+| [ALTER LAYOUT](alter-layout.md) | Edit a layout in place; move pages onto a different one |

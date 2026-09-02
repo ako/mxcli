@@ -249,6 +249,7 @@
   - [ALTER PAGE / ALTER SNIPPET](reference/page/alter-page.md)
   - [DROP PAGE / SNIPPET](reference/page/drop-page.md)
   - [CREATE LAYOUT](reference/page/create-layout.md)
+  - [ALTER LAYOUT](reference/page/alter-layout.md)
 - [Security Statements](reference/security/README.md)
   - [CREATE MODULE ROLE](reference/security/create-module-role.md)
   - [CREATE USER ROLE](reference/security/create-user-role.md)
