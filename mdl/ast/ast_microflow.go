@@ -52,14 +52,19 @@ type MicroflowReturnType struct {
 
 // CreateMicroflowStmt represents: CREATE MICROFLOW Module.Name (params) RETURNS type BEGIN body END
 type CreateMicroflowStmt struct {
-	Name           QualifiedName
-	Parameters     []MicroflowParam
-	ReturnType     *MicroflowReturnType
-	Body           []MicroflowStatement
-	Documentation  string
-	Folder         string // Folder path within module (e.g., "Resources/Images")
-	CreateOrModify bool
-	Excluded       bool // @excluded — document excluded from project
+	Name          QualifiedName
+	Parameters    []MicroflowParam
+	ReturnType    *MicroflowReturnType
+	Body          []MicroflowStatement
+	Documentation string
+	// DocumentationSet records whether the statement carried a `/** … */`
+	// comment at all, as opposed to carrying an empty one. A rewrite that did
+	// not mention documentation preserves the stored value; an explicitly empty
+	// comment clears it (mendixlabs/mxcli#1018).
+	DocumentationSet bool
+	Folder           string // Folder path within module (e.g., "Resources/Images")
+	CreateOrModify   bool
+	Excluded         bool // @excluded — document excluded from project
 	// Expose holds the EXPOSED AS … ACTION clauses. A microflow has two toolbox
 	// entries — one for the microflow editor, one for the workflow editor — so
 	// there can be one of each.

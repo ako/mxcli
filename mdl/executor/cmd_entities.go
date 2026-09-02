@@ -397,6 +397,12 @@ func execCreateEntity(ctx *ExecContext, s *ast.CreateEntityStmt) error {
 		}
 		// Carry forward (and prune) indexes so a dropped indexed attribute doesn't
 		// leave an orphaned index that crashes `mx check` (finding #39).
+		// A rewrite that says nothing about documentation preserves what is
+		// stored; an explicitly empty `/** */` clears it. Same rule and same
+		// reason as the index carry below (mendixlabs/mxcli#1018).
+		if !s.DocumentationSet {
+			entity.Documentation = existingEntity.Documentation
+		}
 		if droppedIdx := reconcileDroppedIndexes(entity, existingEntity); droppedIdx > 0 {
 			fmt.Fprintf(ctx.Output,
 				"  Dropped %d index(es) that referenced removed attribute(s).\n", droppedIdx)

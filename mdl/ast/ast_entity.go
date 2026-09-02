@@ -41,7 +41,12 @@ type CreateEntityStmt struct {
 	EventHandlers  []EventHandlerDef // ON BEFORE/AFTER CREATE/COMMIT/DELETE/ROLLBACK CALL ...
 	Position       *Position
 	Documentation  string
-	CreateOrModify bool // true for CREATE OR MODIFY
+	// DocumentationSet records whether the statement carried a `/** … */`
+	// comment at all, as opposed to carrying an empty one. A rewrite that did
+	// not mention documentation preserves the stored value; an explicitly empty
+	// comment clears it (mendixlabs/mxcli#1018).
+	DocumentationSet bool
+	CreateOrModify   bool // true for CREATE OR MODIFY
 	// IfNotExists is CREATE ENTITY IF NOT EXISTS: skip entirely when the entity
 	// is already there. Unlike CreateOrModify it never touches an existing
 	// definition, so it is the safe way to make a domain script re-runnable.

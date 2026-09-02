@@ -76,6 +76,8 @@ func execCreateMicroflow(ctx *ExecContext, s *ast.CreateMicroflowStmt) error {
 	// clear a stored exclusion (#914).
 	existingExcluded := false
 	var existingActionInfo, existingWorkflowInfo *types.MicroflowActionInfo
+	var existingDocumentation string
+	preserveDocumentation := false
 	existingMicroflows, err := ctx.Backend.ListMicroflows()
 	if err != nil {
 		return mdlerrors.NewBackend("check existing microflows", err)
@@ -101,6 +103,15 @@ func execCreateMicroflow(ctx *ExecContext, s *ast.CreateMicroflowStmt) error {
 		// rewrite carries them rather than rebuilding from the clause.
 		existingActionInfo = existing.MicroflowActionInfo
 		existingWorkflowInfo = existing.WorkflowActionInfo
+		// A rewrite that says nothing about documentation preserves what is
+		// stored; an explicitly empty `/** */` clears it. Without this the
+		// statement's zero value overwrote the stored prose and the run
+		// reported success (mendixlabs/mxcli#1018). There is no ALTER MICROFLOW,
+		// so the empty comment is the only clearing spelling there is.
+		if !s.DocumentationSet {
+			existingDocumentation = existing.Documentation
+			preserveDocumentation = true
+		}
 	}
 
 	// For CREATE OR REPLACE/MODIFY, reuse the existing ID to preserve references
@@ -153,6 +164,9 @@ func execCreateMicroflow(ctx *ExecContext, s *ast.CreateMicroflowStmt) error {
 		AllowConcurrentExecution: true, // Default: allow concurrent execution
 		MarkAsUsed:               false,
 		Excluded:                 s.Excluded || existingExcluded,
+	}
+	if preserveDocumentation {
+		mf.Documentation = existingDocumentation
 	}
 	if preserveAllowedRoles {
 		mf.AllowedModuleRoles = existingAllowedRoles
