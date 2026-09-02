@@ -51,6 +51,8 @@ func execCreatePageV3(ctx *ExecContext, s *ast.CreatePageStmtV3) error {
 	// Where the page being rewritten currently sits, so a statement that says
 	// nothing about folders leaves it there (#932).
 	var existingContainerID model.ID
+	var existingDocumentation string
+	haveExistingPage := false
 	var excludedMatches []*pages.Page
 	matches := 0
 	for _, p := range existingPages {
@@ -71,6 +73,8 @@ func execCreatePageV3(ctx *ExecContext, s *ast.CreatePageStmtV3) error {
 			existingAllowedRoles = cloneRoleIDs(p.AllowedRoles)
 			preserveAllowedRoles = true
 			existingContainerID = p.ContainerID
+			existingDocumentation = p.Documentation
+			haveExistingPage = true
 		}
 		pagesToDelete = append(pagesToDelete, p.ID)
 	}
@@ -83,6 +87,8 @@ func execCreatePageV3(ctx *ExecContext, s *ast.CreatePageStmtV3) error {
 		preserveAllowedRoles = true
 		existingExcluded = true
 		existingContainerID = p.ContainerID
+		existingDocumentation = p.Documentation
+		haveExistingPage = true
 		pagesToDelete = append(pagesToDelete, p.ID)
 	}
 
@@ -106,6 +112,10 @@ func execCreatePageV3(ctx *ExecContext, s *ast.CreatePageStmtV3) error {
 		return mdlerrors.NewBackend("build page", err)
 	}
 	page.Excluded = page.Excluded || existingExcluded
+	// A rewrite that carried no doc comment keeps the stored one (#1018).
+	if haveExistingPage {
+		page.Documentation = carriedDocumentation(s.DocumentationSet, s.Documentation, existingDocumentation)
+	}
 	if preserveAllowedRoles {
 		page.AllowedRoles = existingAllowedRoles
 	} else if len(page.AllowedRoles) == 0 {
@@ -185,6 +195,8 @@ func execCreateSnippetV3(ctx *ExecContext, s *ast.CreateSnippetStmtV3) error {
 	// snippet back into the module root whenever a script that says nothing
 	// about folders was re-run (#932).
 	var existingContainerID model.ID
+	var existingSnipDoc string
+	haveExistingSnip := false
 	var excludedSnippets []*pages.Snippet
 	matches := 0
 	for _, snip := range existingSnippets {
@@ -203,12 +215,16 @@ func execCreateSnippetV3(ctx *ExecContext, s *ast.CreateSnippetStmtV3) error {
 		}
 		if len(snippetsToDelete) == 0 {
 			existingContainerID = snip.ContainerID
+			existingSnipDoc = snip.Documentation
+			haveExistingSnip = true
 		}
 		snippetsToDelete = append(snippetsToDelete, snip.ID)
 	}
 	if len(snippetsToDelete) == 0 && len(excludedSnippets) > 0 {
 		existingExcluded = true
 		existingContainerID = excludedSnippets[0].ContainerID
+		existingSnipDoc = excludedSnippets[0].Documentation
+		haveExistingSnip = true
 		snippetsToDelete = append(snippetsToDelete, excludedSnippets[0].ID)
 	}
 
@@ -230,6 +246,11 @@ func execCreateSnippetV3(ctx *ExecContext, s *ast.CreateSnippetStmtV3) error {
 	snippet, err := pb.buildSnippetV3(s)
 	if err != nil {
 		return mdlerrors.NewBackend("build snippet", err)
+	}
+
+	// A rewrite that carried no doc comment keeps the stored one (#1018).
+	if haveExistingSnip {
+		snippet.Documentation = carriedDocumentation(s.DocumentationSet, s.Documentation, existingSnipDoc)
 	}
 	snippet.Excluded = snippet.Excluded || existingExcluded
 	if s.Folder == "" && existingContainerID != "" {

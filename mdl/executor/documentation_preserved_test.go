@@ -186,6 +186,31 @@ func docPreserveCases() []docPreserveCase {
 			rewrite: "create or modify odata service TestModule.DocOd (\n  path: 'odata/doc2/',\n  version: '1.0.1',\n  ODataVersion: OData4,\n  namespace: 'TestModule.Doc'\n)\nauthentication basic\n{\n  publish entity TestModule.DocOdEnt as 'Ents' (\n    ReadMode: source\n  )\n  expose (*);\n};",
 		},
 		{
+			name:       "page",
+			storedOnly: true,
+			create:     doc + "create page TestModule.DocPage ( Title: 'T', Layout: Atlas_Core.Atlas_Default ) {\n  container c { }\n};",
+			rewrite:    "create or replace page TestModule.DocPage ( Title: 'T2', Layout: Atlas_Core.Atlas_Default ) {\n  container c2 { }\n};",
+		},
+		{
+			name:       "snippet",
+			storedOnly: true,
+			create:     doc + "create snippet TestModule.DocSnip {\n  container c { }\n};",
+			rewrite:    "create or replace snippet TestModule.DocSnip {\n  container c2 { }\n};",
+		},
+		{
+			name:       "layout",
+			storedOnly: true,
+			modelsdk:   true,
+			create:     doc + "create layout TestModule.DocLayout (\n  layouttype: 'Responsive'\n) {\n  scrollcontainer layoutContainer {\n    region center {\n      placeholder Main\n    }\n  }\n};",
+			rewrite:    "create or replace layout TestModule.DocLayout (\n  layouttype: 'Responsive'\n) {\n  scrollcontainer layoutContainer {\n    region center (class: 'x') {\n      placeholder Main\n    }\n  }\n};",
+		},
+		{
+			name:       "javascript action",
+			storedOnly: true,
+			create:     doc + "create javascript action MyFirstModule.DocJs ()\nreturns String\nas $$\nreturn Promise.resolve('a');\n$$;",
+			rewrite:    "create or modify javascript action MyFirstModule.DocJs ()\nreturns String\nas $$\nreturn Promise.resolve('b');\n$$;",
+		},
+		{
 			name:     "enumeration",
 			create:   doc + "create enumeration TestModule.DocEnum ( A 'A', B 'B' );",
 			rewrite:  "create or replace enumeration TestModule.DocEnum ( A 'A', B 'B', C 'C' );",

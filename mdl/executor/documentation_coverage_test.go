@@ -42,24 +42,30 @@ var docCarryDone = map[string]bool{
 	"CreateViewEntityStmt":           true,
 	"CreateBusinessEventServiceStmt": true,
 	"CreateJavaActionStmt":           true,
+	"CreateJavaScriptActionStmt":     true,
 	"CreateMenuStmt":                 true,
 	"CreateODataServiceStmt":         true,
+	"CreatePageStmtV3":               true,
+	"CreateSnippetStmtV3":            true,
+	"CreateLayoutStmt":               true,
 }
 
-// docCarryPending are the types still losing documentation on a rewrite. This
-// list is the remaining work for #1018 and is expected to shrink to empty.
-var docCarryPending = map[string]bool{
-	"CreateModelStmt":              true,
-	"CreateConsumedMCPServiceStmt": true,
-	"CreateKnowledgeBaseStmt":      true,
-	"CreateAgentStmt":              true,
-	"CreateJavaScriptActionStmt":   true,
-	"CreateODataClientStmt":        true,
-	"CreateExternalEntityStmt":     true,
-	"CreateLayoutStmt":             true,
-	"CreateRestClientStmt":         true,
-	"CreatePageStmtV3":             true,
-	"CreateSnippetStmtV3":          true,
+// docCarryPending are the types whose carry is written but NOT covered by
+// TestDocumentation_SurvivesRewrite, with the reason each has no fixture. They
+// are listed as pending rather than done on purpose: an untested carry was
+// already demonstrated to be worth nothing when CreateODataServiceStmt turned
+// out to have a second update path the first fix never touched.
+//
+// The value is the blocker, so the remaining work says what it needs rather
+// than only that it exists.
+var docCarryPending = map[string]string{
+	"CreateModelStmt":              "agent editor: needs AgentEditorCommons and Mendix 11.9+, absent from the test project",
+	"CreateConsumedMCPServiceStmt": "agent editor: needs AgentEditorCommons and Mendix 11.9+",
+	"CreateKnowledgeBaseStmt":      "agent editor: needs AgentEditorCommons and Mendix 11.9+",
+	"CreateAgentStmt":              "agent editor: needs AgentEditorCommons and Mendix 11.9+",
+	"CreateODataClientStmt":        "needs a reachable $metadata or a cached contract file",
+	"CreateExternalEntityStmt":     "needs an OData client with a cached contract",
+	"CreateRestClientStmt":         "needs an OpenAPI spec to import",
 }
 
 var (
@@ -98,7 +104,7 @@ func TestDocumentationCarry_EveryRewritableDoctypeIsAccountedFor(t *testing.T) {
 				continue
 			}
 			seen[name] = true
-			if docCarryDone[name] || docCarryPending[name] {
+			if docCarryDone[name] || docCarryPending[name] != "" {
 				continue
 			}
 			unaccounted = append(unaccounted, name)
@@ -123,7 +129,8 @@ func TestDocumentationCarry_EveryRewritableDoctypeIsAccountedFor(t *testing.T) {
 			t.Errorf("docCarryDone lists %s, which no longer matches a statement type", name)
 		}
 	}
-	t.Logf("#1018 documentation carry: %d done, %d pending", len(docCarryDone), len(docCarryPending))
+	t.Logf("#1018 documentation carry: %d done, %d pending (of %d in scope)",
+		len(docCarryDone), len(docCarryPending), len(seen))
 }
 
 // A type in docCarryDone must actually carry the bit, or the list is a claim
