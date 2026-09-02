@@ -102,6 +102,8 @@ REPLACE dgProducts.Description WITH { COLUMN Notes (Attribute: Notes) }
 
 Changes the page's layout without rebuilding the widget tree. Placeholder names are auto-mapped by default. If the new layout has different placeholder names, use `MAP` to specify the mapping.
 
+A repoint that would leave the page bound to a placeholder the target layout does not declare is **refused**, and the error names `MAP` as the remedy. The check runs after `MAP` is applied, so mapping onto an existing placeholder is always accepted. To move many pages at once, see [ALTER LAYOUT](alter-layout.md), which documents the bulk `ALTER PAGES … SET LAYOUT` form.
+
 Not supported for snippets (snippets don't have layouts).
 
 ### ADD Variables / DROP Variables
