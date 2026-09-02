@@ -48,25 +48,29 @@ var docCarryDone = map[string]bool{
 	"CreatePageStmtV3":               true,
 	"CreateSnippetStmtV3":            true,
 	"CreateLayoutStmt":               true,
+	"CreateODataClientStmt":          true,
+	"CreateExternalEntityStmt":       true,
+	"CreateRestClientStmt":           true,
+	"CreateModelStmt":                true,
+	"CreateKnowledgeBaseStmt":        true,
+	"CreateConsumedMCPServiceStmt":   true,
+	"CreateAgentStmt":                true,
 }
 
-// docCarryPending are the types whose carry is written but NOT covered by
-// TestDocumentation_SurvivesRewrite, with the reason each has no fixture. They
-// are listed as pending rather than done on purpose: an untested carry was
-// already demonstrated to be worth nothing when CreateODataServiceStmt turned
-// out to have a second update path the first fix never touched.
+// docCarryPending is empty: every statement type in scope is carried AND
+// covered by TestDocumentation_SurvivesRewrite.
 //
-// The value is the blocker, so the remaining work says what it needs rather
-// than only that it exists.
-var docCarryPending = map[string]string{
-	"CreateModelStmt":              "agent editor: needs AgentEditorCommons and Mendix 11.9+, absent from the test project",
-	"CreateConsumedMCPServiceStmt": "agent editor: needs AgentEditorCommons and Mendix 11.9+",
-	"CreateKnowledgeBaseStmt":      "agent editor: needs AgentEditorCommons and Mendix 11.9+",
-	"CreateAgentStmt":              "agent editor: needs AgentEditorCommons and Mendix 11.9+",
-	"CreateODataClientStmt":        "needs a reachable $metadata or a cached contract file",
-	"CreateExternalEntityStmt":     "needs an OData client with a cached contract",
-	"CreateRestClientStmt":         "needs an OpenAPI spec to import",
-}
+// It is kept rather than deleted because it is the mechanism that made the
+// remaining work visible while there was any, and because the next doctype
+// added has to land in one list or the other.
+//
+// Worth recording why it emptied. The last seven entries carried BLOCKERS —
+// "agent editor needs AgentEditorCommons and Mendix 11.9+", "needs a reachable
+// $metadata", "needs an OpenAPI spec" — and every one of them was an assumption
+// written down as if it were a measurement. Tested directly, all seven author
+// fine offline against an ordinary 11.13 project. A blocker nobody has tried is
+// a guess with a citation.
+var docCarryPending = map[string]string{}
 
 var (
 	// `(?:V\d)?` is load-bearing: CreatePageStmtV3 and CreateSnippetStmtV3 were

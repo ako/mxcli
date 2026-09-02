@@ -211,6 +211,50 @@ func docPreserveCases() []docPreserveCase {
 			rewrite:    "create or modify javascript action MyFirstModule.DocJs ()\nreturns String\nas $$\nreturn Promise.resolve('b');\n$$;",
 		},
 		{
+			name:       "odata client",
+			storedOnly: true,
+			create:     doc + "create odata client MyFirstModule.DocOdc (\n  MetadataUrl: 'http://127.0.0.1:9/nope/$metadata'\n);",
+			rewrite:    "create or modify odata client MyFirstModule.DocOdc (\n  MetadataUrl: 'http://127.0.0.1:9/other/$metadata'\n);",
+		},
+		{
+			name:       "external entity",
+			storedOnly: true,
+			create: "create odata client MyFirstModule.DocExtOdc (\n  MetadataUrl: 'http://127.0.0.1:9/nope/$metadata'\n);\n" + doc +
+				"create external entity MyFirstModule.DocExt\nfrom odata client MyFirstModule.DocExtOdc\n(\n  EntitySet: 'Things',\n  Countable: Yes\n);",
+			rewrite: "create or modify external entity MyFirstModule.DocExt\nfrom odata client MyFirstModule.DocExtOdc\n(\n  EntitySet: 'Things',\n  Countable: No\n);",
+		},
+		{
+			name:       "rest client",
+			storedOnly: true,
+			create:     doc + "create rest client MyFirstModule.DocRc (\n  BaseUrl: 'http://localhost:3001/api',\n  Authentication: none\n)\n{\n  operation \"Ping\" {\n    Method: get,\n    Path: '/ping'\n  }\n};",
+			rewrite:    "create or modify rest client MyFirstModule.DocRc (\n  BaseUrl: 'http://localhost:3001/api2',\n  Authentication: none\n)\n{\n  operation \"Ping\" {\n    Method: get,\n    Path: '/ping'\n  }\n};",
+		},
+		{
+			name:       "ai model",
+			storedOnly: true,
+			create:     doc + "create model TestModule.DocModel ( Provider: MxCloudGenAI );",
+			rewrite:    "create or modify model TestModule.DocModel ( Provider: MxCloudGenAI );",
+		},
+		{
+			name:       "knowledge base",
+			storedOnly: true,
+			create:     doc + "create knowledge base TestModule.DocKb ( Provider: MxCloudGenAI );",
+			rewrite:    "create or modify knowledge base TestModule.DocKb ( Provider: MxCloudGenAI );",
+		},
+		{
+			name:       "consumed mcp service",
+			storedOnly: true,
+			create:     doc + "create consumed mcp service TestModule.DocMcp ( ProtocolVersion: 'v2025_03_26' );",
+			rewrite:    "create or modify consumed mcp service TestModule.DocMcp ( ProtocolVersion: 'v2025_03_26' );",
+		},
+		{
+			name:       "agent",
+			storedOnly: true,
+			create: "create model TestModule.DocAgentModel ( Provider: MxCloudGenAI );\n" + doc +
+				"create agent TestModule.DocAgent ( UsageType: Task, Model: TestModule.DocAgentModel, SystemPrompt: 'p' );",
+			rewrite: "create or modify agent TestModule.DocAgent ( UsageType: Task, Model: TestModule.DocAgentModel, SystemPrompt: 'p2' );",
+		},
+		{
 			name:     "enumeration",
 			create:   doc + "create enumeration TestModule.DocEnum ( A 'A', B 'B' );",
 			rewrite:  "create or replace enumeration TestModule.DocEnum ( A 'A', B 'B', C 'C' );",
