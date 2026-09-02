@@ -1,0 +1,97 @@
+-- ============================================================================
+-- mendixlabs/mxcli#1008: icon references that `check --references` never saw
+-- ============================================================================
+--
+-- Report: an icon naming an IMAGE collection (Images$ImageCollection) instead of
+-- an ICON collection (CustomIcons$CustomIconCollection) passed
+-- `mxcli check --references`, executed fine, and only failed at build:
+--
+--   [error] [CE1613] "The selected custom icon 'Mod.Icons_SVG.cmdFilter24'
+--   no longer exists." at Action button 'abBad'
+--
+-- The reported case — a button in a page body — was already caught (the
+-- resolver shipped in 0.18.0). Four OTHER shapes were not, because
+-- iconRefsInStatement walked only CreatePageStmtV3.Widgets, AlterPageStmt and
+-- AlterNavigationStmt. Each of these holds its widgets in a field the walk never
+-- visited, so the icon was never seen at all:
+--
+--   1. `placeholder X { … }` — CreatePageStmtV3.Placeholders, held apart from
+--      the bare body in .Widgets
+--   2. CREATE SNIPPET       — CreateSnippetStmtV3, not in the type switch
+--   3. CREATE LAYOUT        — CreateLayoutStmt, not in the type switch
+--   4. CREATE MENU          — CreateMenuStmt, whose items carry icons like a
+--                             profile menu's do
+--
+-- All four were measured on Mendix 11.13: `check --references` exit 0 and
+-- silent, then `mx check` reporting CE1613 for each one.
+--
+-- This script is the POSITIVE control: the same four shapes with VALID icons.
+-- It must exec cleanly and build to 0 errors, which is what proves the fix
+-- rejects bad references without rejecting good ones — an over-eager walk would
+-- break every one of these.
+--
+-- To see the refusals, re-run any block with the icon replaced by an image
+-- collection reference; `mxcli check --references` now names the collection and
+-- lists the real ones, instead of deferring to MxBuild.
+--
+-- Verify:
+--   mxcli check  mdl-examples/bug-tests/icon-refs-1008-*.mdl -p app.mpr --references
+--     → Check passed!
+--   mxcli exec   mdl-examples/bug-tests/icon-refs-1008-*.mdl -p app.mpr
+--   mx check app.mpr   → 0 errors
+-- ============================================================================
+
+create module Icon1008;
+
+-- 1. A page whose button lives in a named layout placeholder, not the body.
+create or replace page Icon1008.PlaceholderPage
+( title: 'Placeholder', layout: Atlas_Core.Atlas_Default )
+{
+  placeholder Main {
+    actionbutton abInPlaceholder (
+      caption: 'Edit',
+      action: nothing,
+      icon: 'Atlas_Core.Atlas_Filled.pencil'
+    )
+  }
+}
+
+-- 2. A snippet.
+create or replace snippet Icon1008.ButtonSnippet
+{
+  actionbutton abInSnippet (
+    caption: 'Edit',
+    action: nothing,
+    icon: 'Atlas_Core.Atlas_Filled.pencil'
+  )
+}
+
+-- 3. A layout. The costliest of the four to get wrong: the topbar is shared, so
+--    one bad icon here is an error on every page using the layout.
+create or replace layout Icon1008.AppFrame
+( layouttype: 'Responsive' )
+{
+  scrollcontainer layoutContainer {
+    region top (class: 'region-topbar') {
+      actionbutton abInLayout (
+        caption: 'Edit',
+        action: nothing,
+        icon: 'Atlas_Core.Atlas_Filled.pencil'
+      )
+    }
+    region center (class: 'region-content') {
+      placeholder Main
+    }
+  }
+}
+
+-- 4. A standalone menu document, sub-items included — the same NavMenuItemDef a
+--    navigation profile's menu uses, which is why it needs the same recursion.
+create or modify menu Icon1008.Main_Menu (
+  menu item 'Home' page Icon1008.PlaceholderPage
+    icon Atlas_Core.Atlas_Filled.home;
+  menu 'More' icon Atlas_Core.Atlas_Filled.home (
+    menu item 'Edit' page Icon1008.PlaceholderPage
+      icon Atlas_Core.Atlas_Filled.pencil;
+  );
+);

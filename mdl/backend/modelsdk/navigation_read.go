@@ -140,10 +140,19 @@ func navLoginPageOf(el element.Element) string {
 // Navigation$NotFoundHomePage, so gen and generated/metamodel were right and the
 // writers were wrong. They now emit that $Type.
 //
-// Both are still accepted here, and must stay that way: every not-found page
-// mxcli wrote before that fix carries the Navigation$HomePage spelling, and
-// those documents have to keep round-tripping. mxbuild accepts either, which is
-// why nothing caught it.
+// Both are still accepted here, and must stay that way -- but not because the
+// old spelling is benign. Mendix cannot LOAD a project carrying it: `mx check`
+// and `mxbuild --target=deploy` both exit 1 with "Object of type
+// '...Navigation.HomePage' cannot be converted to type
+// '...Navigation.NotFoundHomePage'" (measured on 11.13). So a project mxcli
+// wrote before the writer fix does not build at all, and reading the old
+// spelling here is what lets mxcli open that project and repair it -- mxcli
+// parses the BSON directly, so it is not bound by Mendix's load validation.
+// Dropping this branch would strand exactly the projects that need fixing.
+//
+// Nothing caught the bug because nothing ever BUILT a project with a fallback
+// page set: the automated mx-check coverage runs doctype-tests/ only, and no
+// script there sets one.
 func navNotFoundPageOf(el element.Element) string {
 	var page, microflow string
 	switch nfp := el.(type) {

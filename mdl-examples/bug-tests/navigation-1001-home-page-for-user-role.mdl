@@ -1,0 +1,82 @@
+-- ============================================================================
+-- mendixlabs/mxcli#1001: HOME PAGE ... FOR takes a USER role, not a module role
+-- ============================================================================
+--
+-- `FOR` binds a Mendix **user role**. A user role is project-level, so its
+-- identifier is a bare name (`Administrator`). A **module role** is
+-- module-scoped (`Administration.Administrator`) and looks almost identical —
+-- a blank app has a user role `Administrator` AND module roles of that name in
+-- three modules, so the wrong one reads as correct.
+--
+-- mxcli's own documentation recommended the module-qualified form, which is the
+-- worst of the three possible values. Measured on a blank Mendix 11.13 app:
+--
+--   for Administrator                 → mx check exit 0, 0 errors
+--   for Supervisor (bare, unknown)    → CE1613 "The selected user role
+--                                       'Supervisor' no longer exists"
+--   for MyFirstModule.Administrator   → the project will not LOAD:
+--
+--     StorageLoadException: Role based home page in  has an invalid value ''
+--     for property UserRole. The text 'MyFirstModule.Administrator' is not a
+--     valid UserRoleIdentifier.
+--
+-- The third is a tier worse than a build error. It happens before checking
+-- runs, so there is no error code and no location, and `mx check` exits 1
+-- WITHOUT the "The app contains: N errors" line that people read as the
+-- verdict — which is why the report said check "reports success".
+--
+-- Nothing resolved the role: it went to BSON verbatim from
+-- cmd_navigation.go's `hp.ForRole.String()`. `mxcli check --references` passed
+-- and `exec` wrote the unloadable project. Both now refuse it, through the same
+-- function, naming the bare form to write instead.
+--
+-- This script is the POSITIVE control: the forms that are correct. An
+-- over-eager check would refuse these, and the failing direction would not
+-- notice. In particular the last block — creating a user role and then using it
+-- — is the ordinary way to write one, and must not be refused for naming a role
+-- that is not in the project *yet*.
+--
+-- To see the refusals, change a `for` value to a qualified name
+-- (`for Nav1001.Supervisor`), an unknown name, or the wrong casing
+-- (`for supervisor`).
+--
+-- Verify:
+--   mxcli check  mdl-examples/bug-tests/navigation-1001-*.mdl -p app.mpr --references
+--     → Check passed!
+--   mxcli exec   mdl-examples/bug-tests/navigation-1001-*.mdl -p app.mpr
+--   mx check app.mpr   → 0 errors
+-- ============================================================================
+
+create module Nav1001;
+
+create module role Nav1001.User;
+
+create page Nav1001.Home ( title: 'Home', layout: Atlas_Core.Atlas_Default )
+{
+  container cHome {
+    dynamictext txtHome (content: 'Home')
+  }
+}
+
+create page Nav1001.AdminHome ( title: 'Admin', layout: Atlas_Core.Atlas_Default )
+{
+  container cAdmin {
+    dynamictext txtAdmin (content: 'Admin')
+  }
+}
+
+-- 1. A bare user role: the correct form. `Administrator` is a project user
+--    role in every Mendix app.
+create or replace navigation Responsive
+  home page Nav1001.Home
+  home page Nav1001.AdminHome for Administrator;
+
+-- 2. A user role the script creates itself. The role does not exist in the
+--    project when `check` runs, so the check has to read the script's own
+--    CREATE USER ROLE statements as well as the project's — otherwise this
+--    perfectly valid pairing is refused.
+create user role Nav1001_Supervisor (System.User, Nav1001.User);
+
+create or replace navigation Responsive
+  home page Nav1001.Home
+  home page Nav1001.AdminHome for Nav1001_Supervisor;

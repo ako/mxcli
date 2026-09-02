@@ -71,10 +71,13 @@ create or replace navigation Responsive
   home page NavTest.NavTest_Home
   login page Administration.login;
 
--- Set home page with a role-based override
+-- Set home page with a role-based override.
+-- `for` takes a USER role, written bare. A module-qualified name here
+-- (`Administration.Administrator` is a MODULE role) gives a project Mendix
+-- cannot load at all -- see bug-tests/navigation-1001-home-page-for-user-role.mdl.
 create or replace navigation Responsive
   home page NavTest.NavTest_Home
-  home page NavTest.NavTest_Home for Administration.Administrator
+  home page NavTest.NavTest_Home for Administrator
   login page Administration.login;
 
 -- Replace the entire menu tree

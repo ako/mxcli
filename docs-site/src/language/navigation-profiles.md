@@ -18,7 +18,7 @@ Replaces an entire navigation profile:
 ```sql
 CREATE OR REPLACE NAVIGATION <Profile>
   HOME PAGE <Module>.<Page>
-  [HOME PAGE <Module>.<Page> FOR <Module>.<Role>]
+  [HOME PAGE <Module>.<Page> FOR <UserRole>]
   [LOGIN PAGE <Module>.<Page>]
   [NOT FOUND PAGE <Module>.<Page>]
   [MENU (
@@ -31,7 +31,7 @@ CREATE OR REPLACE NAVIGATION <Profile>
 ```sql
 CREATE OR REPLACE NAVIGATION Responsive
   HOME PAGE MyModule.Home_Web
-  HOME PAGE MyModule.AdminHome FOR MyModule.Administrator
+  HOME PAGE MyModule.AdminHome FOR Administrator
   LOGIN PAGE Administration.Login
   NOT FOUND PAGE MyModule.Custom404
   MENU (

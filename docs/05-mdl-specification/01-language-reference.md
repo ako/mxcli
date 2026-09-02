@@ -1218,7 +1218,7 @@ describe navigation [<profile>]    -- Full MDL output (round-trippable)
 ```sql
 create or replace navigation <profile>
   home page Module.HomePage
-  [home page Module.AdminHome for Module.AdminRole]
+  [home page Module.AdminHome for AdminUserRole]
   [login page Module.LoginPage]
   [not found page Module.Custom404]
   [menu (
@@ -1233,7 +1233,7 @@ create or replace navigation <profile>
 ```sql
 create or replace navigation Responsive
   home page MyModule.Home_Web
-  home page MyModule.AdminHome for MyModule.Administrator
+  home page MyModule.AdminHome for Administrator
   login page Administration.Login
   menu (
     menu item 'Home' page MyModule.Home_Web;

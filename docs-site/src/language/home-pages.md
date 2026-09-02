@@ -15,14 +15,24 @@ CREATE OR REPLACE NAVIGATION Responsive
 
 ### Role-Specific Home Pages
 
-Use `HOME PAGE ... FOR` to direct users to different pages based on their module role:
+Use `HOME PAGE ... FOR` to direct users to different pages based on their **user role**:
 
 ```sql
 CREATE OR REPLACE NAVIGATION Responsive
   HOME PAGE MyModule.Home_Web
-  HOME PAGE MyModule.AdminDashboard FOR MyModule.Administrator
-  HOME PAGE MyModule.ManagerDashboard FOR MyModule.Manager;
+  HOME PAGE MyModule.AdminDashboard FOR Administrator
+  HOME PAGE MyModule.ManagerDashboard FOR Manager;
 ```
+
+> **Write the role as a bare name.** `FOR` takes a *user role*, which is
+> project-level and has no module part — `FOR Administrator`, not
+> `FOR MyModule.Administrator`. A *module role* is a different thing that
+> happens to share the name: a blank app has a user role `Administrator` and
+> module roles called `Administrator` in three modules, so the wrong one looks
+> right. A module-qualified name here produces a project Mendix **cannot load**
+> (`StorageLoadException: … is not a valid UserRoleIdentifier`), which is worse
+> than a build error because it happens before checking runs. `mxcli check
+> --references` refuses it.
 
 When a user logs in, the runtime checks their roles and redirects to the most specific matching home page. If no role-specific page matches, the default home page is used.
 

@@ -154,6 +154,60 @@ func TestIconRefsInStatement(t *testing.T) {
 			}},
 			want: []string{"Atlas_Core.Atlas.home", "Atlas_Core.Atlas.pencil"},
 		},
+		// The four shapes below all reached MxBuild as CE1613 with `mxcli check
+		// --references` reporting nothing (mendixlabs/mxcli#1008). Each holds its
+		// widgets in a field the walk did not visit, so the icon was never seen.
+		{
+			// A page's Widgets field is only the bare body. Content bound to a
+			// named layout placeholder lives in Placeholders.
+			name: "create page, placeholder block",
+			stmt: &ast.CreatePageStmtV3{Placeholders: []*ast.PagePlaceholderV3{
+				{Name: "Main", Widgets: []*ast.WidgetV3{btn("btnP", "Atlas_Core.Atlas.home")}},
+			}},
+			want: []string{"Atlas_Core.Atlas.home"},
+		},
+		{
+			// Both halves of a page, so fixing one does not silently drop the other.
+			name: "create page, body and placeholder together",
+			stmt: &ast.CreatePageStmtV3{
+				Widgets: []*ast.WidgetV3{btn("btnBody", "Atlas_Core.Atlas.home")},
+				Placeholders: []*ast.PagePlaceholderV3{
+					{Name: "Topbar", Widgets: []*ast.WidgetV3{btn("btnPh", "Atlas_Core.Atlas.pencil")}},
+				},
+			},
+			want: []string{"Atlas_Core.Atlas.home", "Atlas_Core.Atlas.pencil"},
+		},
+		{
+			name: "create snippet",
+			stmt: &ast.CreateSnippetStmtV3{Widgets: []*ast.WidgetV3{
+				{Type: "CONTAINER", Name: "c1", Children: []*ast.WidgetV3{
+					btn("btnS", "Atlas_Core.Atlas.home"),
+				}},
+			}},
+			want: []string{"Atlas_Core.Atlas.home"},
+		},
+		{
+			// The costliest of the four: a layout's topbar is shared, so one bad
+			// icon there is an error on every page that uses the layout.
+			name: "create layout",
+			stmt: &ast.CreateLayoutStmt{Widgets: []*ast.WidgetV3{
+				{Type: "SCROLLCONTAINER", Name: "layoutContainer", Children: []*ast.WidgetV3{
+					btn("btnL", "Atlas_Core.Atlas.home"),
+				}},
+			}},
+			want: []string{"Atlas_Core.Atlas.home"},
+		},
+		{
+			// A menu document carries the same NavMenuItemDef as a profile menu,
+			// so it needs the same recursion into sub-items.
+			name: "menu document, including sub-items",
+			stmt: &ast.CreateMenuStmt{Items: []ast.NavMenuItemDef{
+				{Caption: "Home", Icon: "Atlas_Core.Atlas.home", Items: []ast.NavMenuItemDef{
+					{Caption: "Nested", Icon: "Atlas_Core.Atlas.pencil"},
+				}},
+			}},
+			want: []string{"Atlas_Core.Atlas.home", "Atlas_Core.Atlas.pencil"},
+		},
 		{
 			name: "no icons at all",
 			stmt: &ast.CreatePageStmtV3{Widgets: []*ast.WidgetV3{
