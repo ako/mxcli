@@ -52,6 +52,8 @@ func execCreateJavaScriptAction(ctx *ExecContext, s *ast.CreateJavaScriptActionS
 	// Target the live action and carry its exclusion forward (#914).
 	existingExcluded := false
 	var existingActionInfo *types.MicroflowActionInfo
+	var existingJSDoc string
+	haveExistingJS := false
 	if ex, ok := pickLive(existing,
 		func(a *types.JavaScriptAction) bool {
 			return h.GetModuleName(h.FindModuleID(a.ContainerID)) == s.Name.Module && a.Name == s.Name.Name
@@ -67,6 +69,8 @@ func execCreateJavaScriptAction(ctx *ExecContext, s *ast.CreateJavaScriptActionS
 		// The toolbox entry's four PNG bitmaps are not expressible in MDL, so
 		// they have to be carried rather than rebuilt.
 		existingActionInfo = ex.MicroflowActionInfo
+		existingJSDoc = ex.Documentation
+		haveExistingJS = true
 	}
 
 	moduleID := containerID
@@ -89,6 +93,10 @@ func execCreateJavaScriptAction(ctx *ExecContext, s *ast.CreateJavaScriptActionS
 		ExportLevel:             "Public",
 		ActionDefaultReturnName: "ReturnValueName",
 		Platform:                platformOrDefault(s.Platform),
+	}
+	// A rewrite that carried no doc comment keeps the stored one (#1018).
+	if haveExistingJS {
+		jsa.Documentation = carriedDocumentation(s.DocumentationSet, s.Documentation, existingJSDoc)
 	}
 
 	// Type parameter definitions (with IDs for BY_ID references).

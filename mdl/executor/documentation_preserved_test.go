@@ -166,6 +166,26 @@ func docPreserveCases() []docPreserveCase {
 			rewrite: "create or modify business event service TestModule.DocBes\n( ServiceName: 'DocBes2', EventNamePrefix: 'com.example' )\n{\n  message DocCreated (OrderId: long) publish\n    entity TestModule.DocBePayload;\n};",
 		},
 		{
+			name:     "java action",
+			create:   doc + "create java action MyFirstModule.DocJa () returns String as $$\npublic String executeAction() { return \"x\"; }\n$$;",
+			rewrite:  "create or modify java action MyFirstModule.DocJa () returns String as $$\npublic String executeAction() { return \"y\"; }\n$$;",
+			describe: "describe java action MyFirstModule.DocJa",
+		},
+		{
+			name:     "menu",
+			modelsdk: true,
+			create:   "create microflow TestModule.DocMenuMf ()\nbegin\nend;\n" + doc + "create menu TestModule.DocMenu (\n  menu item 'Home' microflow TestModule.DocMenuMf;\n);",
+			rewrite:  "create or modify menu TestModule.DocMenu (\n  menu item 'Home2' microflow TestModule.DocMenuMf;\n);",
+			describe: "describe menu TestModule.DocMenu",
+		},
+		{
+			name:       "odata service",
+			storedOnly: true,
+			create: "create entity TestModule.DocOdEnt ( L: String );\n" + doc +
+				"create odata service TestModule.DocOd (\n  path: 'odata/doc/',\n  version: '1.0.0',\n  ODataVersion: OData4,\n  namespace: 'TestModule.Doc'\n)\nauthentication basic\n{\n  publish entity TestModule.DocOdEnt as 'Ents' (\n    ReadMode: source\n  )\n  expose (*);\n};",
+			rewrite: "create or modify odata service TestModule.DocOd (\n  path: 'odata/doc2/',\n  version: '1.0.1',\n  ODataVersion: OData4,\n  namespace: 'TestModule.Doc'\n)\nauthentication basic\n{\n  publish entity TestModule.DocOdEnt as 'Ents' (\n    ReadMode: source\n  )\n  expose (*);\n};",
+		},
+		{
 			name:     "enumeration",
 			create:   doc + "create enumeration TestModule.DocEnum ( A 'A', B 'B' );",
 			rewrite:  "create or replace enumeration TestModule.DocEnum ( A 'A', B 'B', C 'C' );",

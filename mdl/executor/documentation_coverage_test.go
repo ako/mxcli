@@ -41,6 +41,9 @@ var docCarryDone = map[string]bool{
 	"CreateAssociationStmt":          true,
 	"CreateViewEntityStmt":           true,
 	"CreateBusinessEventServiceStmt": true,
+	"CreateJavaActionStmt":           true,
+	"CreateMenuStmt":                 true,
+	"CreateODataServiceStmt":         true,
 }
 
 // docCarryPending are the types still losing documentation on a rewrite. This
@@ -50,11 +53,8 @@ var docCarryPending = map[string]bool{
 	"CreateConsumedMCPServiceStmt": true,
 	"CreateKnowledgeBaseStmt":      true,
 	"CreateAgentStmt":              true,
-	"CreateJavaActionStmt":         true,
 	"CreateJavaScriptActionStmt":   true,
-	"CreateMenuStmt":               true,
 	"CreateODataClientStmt":        true,
-	"CreateODataServiceStmt":       true,
 	"CreateExternalEntityStmt":     true,
 	"CreateLayoutStmt":             true,
 	"CreateRestClientStmt":         true,
