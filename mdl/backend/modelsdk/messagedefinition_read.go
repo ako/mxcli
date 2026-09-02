@@ -25,8 +25,11 @@ func (b *Backend) ListMessageDefinitionCollections() ([]*model.MessageDefinition
 	for _, u := range units {
 		g := u.Element
 		c := &model.MessageDefinitionCollection{
-			ContainerID: model.ID(u.ContainerID),
-			Name:        g.Name(),
+			ContainerID:   model.ID(u.ContainerID),
+			Name:          g.Name(),
+			Documentation: g.Documentation(),
+			Excluded:      g.Excluded(),
+			ExportLevel:   g.ExportLevel(),
 		}
 		c.ID = model.ID(g.ID())
 		c.TypeName = "MessageDefinitions$MessageDefinitionCollection"
@@ -62,6 +65,7 @@ func exposedNodeFromGen(n any) *model.MessageDefinitionElement {
 			Entity:          v.EntityQualifiedName(),
 			ExposedName:     v.ExposedName(),
 			ExposedItemName: v.ExposedItemName(),
+			OriginalName:    v.OriginalName(),
 			Path:            v.Path(),
 			MinOccurs:       int(v.MinOccurs()),
 			MaxOccurs:       int(v.MaxOccurs()),
@@ -81,8 +85,10 @@ func exposedNodeFromGen(n any) *model.MessageDefinitionElement {
 		e := &model.MessageDefinitionElement{
 			Kind:            "Entity",
 			Association:     v.AssociationQualifiedName(),
+			Entity:          v.EntityQualifiedName(),
 			ExposedName:     v.ExposedName(),
 			ExposedItemName: v.ExposedItemName(),
+			OriginalName:    v.OriginalName(),
 			Path:            v.Path(),
 			MinOccurs:       int(v.MinOccurs()),
 			MaxOccurs:       int(v.MaxOccurs()),
@@ -101,6 +107,7 @@ func exposedNodeFromGen(n any) *model.MessageDefinitionElement {
 			Kind:          "Attribute",
 			Attribute:     v.AttributeQualifiedName(),
 			ExposedName:   v.ExposedName(),
+			OriginalName:  v.OriginalName(),
 			Path:          v.Path(),
 			MinOccurs:     int(v.MinOccurs()),
 			MaxOccurs:     int(v.MaxOccurs()),
