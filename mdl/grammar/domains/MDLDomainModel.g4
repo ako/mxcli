@@ -493,6 +493,118 @@ customNameMapping
     ;
 
 // =============================================================================
+// MESSAGE DEFINITION COLLECTION
+// =============================================================================
+
+/**
+ * CREATE [OR MODIFY] MESSAGE DEFINITION COLLECTION Module.Name
+ *   FOLDER 'Private/Messages'
+ * (
+ *   definition Order for Sales.Order as 'Orders' (
+ *     OrderId,
+ *     Sales.Order_Line/Sales.Line as 'Lines' ( Sku, Quantity )
+ *   )
+ * );
+ *
+ * A message definition is a SELECTION OVER THE DOMAIN MODEL — every element
+ * names an entity, an attribute or an association — which is what makes it
+ * authorable where an XML schema or a WSDL is not (they hold an imported file).
+ * It is the source for 74 of the 327 mappings in the demo corpus, and the only
+ * one of the four a script could not create.
+ *
+ * A collection holds one or more definitions; 28 of 36 real collections hold
+ * exactly one, but the reference a mapping uses is three parts either way
+ * (Module.Collection.Definition), so the collection is never implicit.
+ */
+createMessageDefinitionCollectionStatement
+    : MESSAGE DEFINITION COLLECTION qualifiedName
+      (FOLDER STRING_LITERAL)?
+      LPAREN messageDefinitionDef (COMMA messageDefinitionDef)* COMMA? RPAREN
+    ;
+
+/**
+ * `definition <Name> for <Module.Entity> [as '<ExposedName>'] ( members )`
+ *
+ * The definition's Name and its root element's exposed name are independent —
+ * measured, 19 of 56 definitions are named something other than their entity.
+ */
+messageDefinitionDef
+    : DEFINITION identifierOrKeyword FOR qualifiedName messageExposedName?
+      LPAREN messageMember (COMMA messageMember)* COMMA? RPAREN
+    ;
+
+/**
+ * A member is an ATTRIBUTE (a bare name) or an ASSOCIATION (Assoc/Module.Entity
+ * with its own member list) — the same discriminator import and export mappings
+ * use, so there is nothing new to learn.
+ *
+ * The association's TARGET entity is spelled out rather than inferred, and that
+ * is load-bearing: MaxOccurs is not a function of the association's type (all
+ * 927 resolvable ones in the corpus are `Reference`, yet 526 store 1 and 401
+ * store -1). It tracks the DIRECTION of traversal — holder is the FROM entity
+ * gives 1, holder is the TO entity gives -1, with zero counter-examples. Naming
+ * the target makes the direction explicit in the source text instead of
+ * something a reader has to work out.
+ */
+messageMember
+    : qualifiedName SLASH qualifiedName messageExposedName?
+      LPAREN messageMember (COMMA messageMember)* COMMA? RPAREN   // association
+    | identifierOrKeyword messageExposedName?                     // attribute
+    ;
+
+// `as 'Name'` sets ExposedName. A name mapped to a name takes `as`, not `:`.
+messageExposedName
+    : AS STRING_LITERAL
+    ;
+
+/**
+ * ALTER MESSAGE DEFINITION COLLECTION Module.Name <op>;
+ *
+ * Definitions within a collection. Whole-document CREATE OR MODIFY is not
+ * enough on its own: definitions nest to depth 7 in the corpus, so restating
+ * one to add a leaf is the diff-unfriendliness ADR-0003 argues against.
+ */
+alterMessageDefinitionCollectionStatement
+    : ALTER MESSAGE DEFINITION COLLECTION qualifiedName alterMessageCollectionOperation
+    ;
+
+alterMessageCollectionOperation
+    : ADD DEFINITION (IF NOT EXISTS)? identifierOrKeyword FOR qualifiedName messageExposedName?
+      LPAREN messageMember (COMMA messageMember)* COMMA? RPAREN
+    | DROP DEFINITION (IF EXISTS)? identifierOrKeyword
+    | RENAME DEFINITION identifierOrKeyword TO identifierOrKeyword
+    ;
+
+/**
+ * ALTER MESSAGE DEFINITION Module.Collection.Definition <op>;
+ *
+ * Members within one definition, addressed by the SAME three-part reference
+ * `WITH MESSAGE DEFINITION` takes, so the two cannot drift apart.
+ *
+ * `SET member X AS 'Name'` changes only the element's ExposedName. It is not
+ * RENAME: ALTER ENTITY's RENAME ATTRIBUTE renames the attribute in the model and
+ * rewrites every reference to it, and borrowing the verb here would promise
+ * something far larger than this does.
+ *
+ * `IN <path>` reaches a nested member, written in exposed names. `/` is not used
+ * as the path separator because it already means "association to entity" inside
+ * a member.
+ */
+alterMessageDefinitionStatement
+    : ALTER MESSAGE DEFINITION qualifiedName alterMessageDefinitionOperation
+    ;
+
+alterMessageDefinitionOperation
+    : ADD MEMBER (IF NOT EXISTS)? messageMember (IN messageMemberPath)?
+    | DROP MEMBER (IF EXISTS)? identifierOrKeyword (IN messageMemberPath)?
+    | SET MEMBER identifierOrKeyword (IN messageMemberPath)? messageExposedName
+    ;
+
+messageMemberPath
+    : identifierOrKeyword (SLASH identifierOrKeyword)*
+    ;
+
+// =============================================================================
 // IMPORT / EXPORT MAPPING CREATION
 // =============================================================================
 
