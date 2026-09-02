@@ -55,7 +55,7 @@ func (b *Builder) buildPageV3(ctx *parser.CreatePageStatementContext) *ast.Creat
 				stmt.IsModify = true
 			}
 		}
-		stmt.Documentation = findDocCommentText(ctx)
+		stmt.Documentation, stmt.DocumentationSet = findDocComment(ctx)
 		for _, ann := range createStmt.AllAnnotation() {
 			annCtx := ann.(*parser.AnnotationContext)
 			if strings.EqualFold(annCtx.AnnotationName().GetText(), "excluded") {
@@ -208,7 +208,7 @@ func (b *Builder) buildSnippetV3(ctx *parser.CreateSnippetStatementContext) *ast
 				stmt.IsModify = true
 			}
 		}
-		stmt.Documentation = findDocCommentText(ctx)
+		stmt.Documentation, stmt.DocumentationSet = findDocComment(ctx)
 	}
 
 	// Parse V3 header
@@ -1801,7 +1801,7 @@ func (b *Builder) buildLayoutV3(ctx *parser.CreateLayoutStatementContext) *ast.C
 			stmt.IsReplace = createStmt.REPLACE() != nil
 			stmt.IsModify = createStmt.MODIFY() != nil
 		}
-		stmt.Documentation = findDocCommentText(ctx)
+		stmt.Documentation, stmt.DocumentationSet = findDocComment(ctx)
 	}
 	if props := ctx.WidgetPropertiesV3(); props != nil {
 		holder := &ast.WidgetV3{Properties: map[string]any{}}

@@ -177,7 +177,7 @@ func (b *Builder) buildViewEntity(ctx *parser.CreateEntityStatementContext) {
 		}
 
 	}
-	stmt.Documentation = findDocCommentText(ctx)
+	stmt.Documentation, stmt.DocumentationSet = findDocComment(ctx)
 
 	// Entity body (view attributes)
 	if body := ctx.EntityBody(); body != nil {

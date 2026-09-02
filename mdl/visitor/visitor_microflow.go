@@ -109,7 +109,7 @@ func (b *Builder) ExitCreateNanoflowStatement(ctx *parser.CreateNanoflowStatemen
 			}
 		}
 	}
-	stmt.Documentation = findDocCommentText(ctx)
+	stmt.Documentation, stmt.DocumentationSet = findDocComment(ctx)
 
 	b.statements = append(b.statements, stmt)
 }
@@ -154,7 +154,7 @@ func (b *Builder) ExitCreateRuleStatement(ctx *parser.CreateRuleStatementContext
 			}
 		}
 	}
-	stmt.Documentation = findDocCommentText(ctx)
+	stmt.Documentation, stmt.DocumentationSet = findDocComment(ctx)
 
 	b.statements = append(b.statements, stmt)
 }

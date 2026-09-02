@@ -16,6 +16,7 @@ type CreateODataClientStmt struct {
 	ProxyType         string
 	Description       string
 	Documentation     string
+	DocumentationSet  bool   // see mendixlabs/mxcli#1018: absent preserves, empty clears
 	Folder            string // Folder path within module (e.g., "Integration/APIs")
 	CreateOrModify    bool   // True if CREATE OR MODIFY was used
 
@@ -84,16 +85,17 @@ func (s *DropODataClientStmt) isStatement() {}
 
 // CreateODataServiceStmt represents: CREATE ODATA SERVICE Module.Name (...) AUTHENTICATION ... { ... }
 type CreateODataServiceStmt struct {
-	Name          QualifiedName
-	Path          string
-	Version       string
-	ODataVersion  string
-	Namespace     string
-	ServiceName   string
-	Summary       string
-	Description   string
-	Documentation string
-	Folder        string // Folder path within module (e.g., "Integration/APIs")
+	Name             QualifiedName
+	Path             string
+	Version          string
+	ODataVersion     string
+	Namespace        string
+	ServiceName      string
+	Summary          string
+	Description      string
+	Documentation    string
+	DocumentationSet bool   // see mendixlabs/mxcli#1018: absent preserves, empty clears
+	Folder           string // Folder path within module (e.g., "Integration/APIs")
 	// PublishAssociations selects how associations appear in the metadata:
 	// true = as links, false = as an associated object id. The executor
 	// defaults an unspecified value to true, so PublishAssociationsSet records
@@ -217,6 +219,7 @@ type CreateExternalEntityStmt struct {
 	AllowCreateChangeLocally *bool       // "Allow creating and changing locally" flag
 	Attributes               []Attribute // reuse from ast_entity.go
 	Documentation            string
+	DocumentationSet         bool // see mendixlabs/mxcli#1018: absent preserves, empty clears
 	CreateOrModify           bool
 
 	// UnknownProperties: see CreateODataServiceStmt.UnknownProperties.

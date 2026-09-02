@@ -146,13 +146,14 @@ type OQLQuery struct {
 
 // CreateViewEntityStmt represents: CREATE [OR MODIFY|REPLACE] VIEW ENTITY Module.Name (attrs) AS SELECT ...
 type CreateViewEntityStmt struct {
-	Name            QualifiedName
-	Attributes      []ViewAttribute
-	Query           OQLQuery
-	Position        *Position
-	Documentation   string
-	CreateOrModify  bool
-	CreateOrReplace bool
+	Name             QualifiedName
+	Attributes       []ViewAttribute
+	Query            OQLQuery
+	Position         *Position
+	Documentation    string
+	DocumentationSet bool // see mendixlabs/mxcli#1018: absent preserves, empty clears
+	CreateOrModify   bool
+	CreateOrReplace  bool
 }
 
 func (s *CreateViewEntityStmt) isStatement() {}

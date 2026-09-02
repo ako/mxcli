@@ -80,6 +80,10 @@ func execCreateRegularExpression(ctx *ExecContext, s *ast.CreateRegularExpressio
 		Expression:    s.Expression,
 		ExportLevel:   s.ExportLevel,
 	}
+	// A rewrite that carried no doc comment keeps the stored one (#1018).
+	if existing != nil {
+		re.Documentation = carriedDocumentation(s.DocumentationSet, s.Documentation, existing.Documentation)
+	}
 	if existing != nil {
 		re.ID = existing.ID
 		re.Excluded = existing.Excluded

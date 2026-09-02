@@ -12,12 +12,13 @@ type ImageItem struct {
 //
 //	CREATE IMAGE COLLECTION Module.Name [EXPORT LEVEL 'Public'] [COMMENT '...'] [(IMAGE "name" FROM FILE 'path', ...)]
 type CreateImageCollectionStmt struct {
-	Folder         string // Folder path within module (empty = leave placement alone)
-	Name           QualifiedName
-	CreateOrModify bool
-	ExportLevel    string // "Hidden" (default) or "Public"
-	Comment        string
-	Images         []ImageItem
+	Folder           string // Folder path within module (empty = leave placement alone)
+	Name             QualifiedName
+	CreateOrModify   bool
+	ExportLevel      string // "Hidden" (default) or "Public"
+	Comment          string
+	DocumentationSet bool // see mendixlabs/mxcli#1018: absent preserves, empty clears
+	Images           []ImageItem
 }
 
 func (s *CreateImageCollectionStmt) isStatement() {}

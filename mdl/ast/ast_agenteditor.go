@@ -16,18 +16,19 @@ package ast
 //	  [, DeepLinkURL: '...']
 //	);
 type CreateModelStmt struct {
-	Folder         string // Folder path within module (empty = leave placement alone)
-	Name           QualifiedName
-	Documentation  string
-	Provider       string         // "MxCloudGenAI" by default
-	Key            *QualifiedName // qualified name of the String constant holding the Portal key
-	DisplayName    string         // optional Portal-populated metadata
-	KeyName        string         // optional Portal-populated metadata
-	KeyID          string         // optional Portal-populated metadata
-	Environment    string         // optional Portal-populated metadata
-	ResourceName   string         // optional Portal-populated metadata
-	DeepLinkURL    string         // optional Portal-populated metadata
-	CreateOrModify bool           // true for CREATE OR MODIFY / CREATE OR REPLACE
+	Folder           string // Folder path within module (empty = leave placement alone)
+	Name             QualifiedName
+	Documentation    string
+	DocumentationSet bool           // see mendixlabs/mxcli#1018: absent preserves, empty clears
+	Provider         string         // "MxCloudGenAI" by default
+	Key              *QualifiedName // qualified name of the String constant holding the Portal key
+	DisplayName      string         // optional Portal-populated metadata
+	KeyName          string         // optional Portal-populated metadata
+	KeyID            string         // optional Portal-populated metadata
+	Environment      string         // optional Portal-populated metadata
+	ResourceName     string         // optional Portal-populated metadata
+	DeepLinkURL      string         // optional Portal-populated metadata
+	CreateOrModify   bool           // true for CREATE OR MODIFY / CREATE OR REPLACE
 }
 
 func (s *CreateModelStmt) isStatement() {}
@@ -59,6 +60,7 @@ type CreateConsumedMCPServiceStmt struct {
 	Folder                   string // Folder path within module (empty = leave placement alone)
 	Name                     QualifiedName
 	OuterDocumentation       string // /** ... */ doc comment
+	DocumentationSet         bool   // see mendixlabs/mxcli#1018: absent preserves, empty clears
 	ProtocolVersion          string
 	Version                  string
 	ConnectionTimeoutSeconds int
@@ -94,6 +96,7 @@ type CreateKnowledgeBaseStmt struct {
 	Folder           string // Folder path within module (empty = leave placement alone)
 	Name             QualifiedName
 	Documentation    string
+	DocumentationSet bool // see mendixlabs/mxcli#1018: absent preserves, empty clears
 	Provider         string
 	Key              *QualifiedName
 	ModelDisplayName string
@@ -125,23 +128,24 @@ func (s *AlterKnowledgeBaseStmt) isStatement() {}
 
 // CreateAgentStmt represents CREATE AGENT Module.Name (...) [{ body }].
 type CreateAgentStmt struct {
-	Folder         string // Folder path within module (empty = leave placement alone)
-	Name           QualifiedName
-	Documentation  string
-	UsageType      string // "Task" or "Conversational"
-	Description    string
-	Model          *QualifiedName // reference to a Model document
-	Entity         *QualifiedName // reference to a domain entity
-	MaxTokens      *int
-	ToolChoice     string
-	Temperature    *float64
-	TopP           *float64
-	SystemPrompt   string
-	UserPrompt     string
-	Variables      []AgentVarDef
-	Tools          []AgentToolDef
-	KBTools        []AgentKBToolDef
-	CreateOrModify bool // true for CREATE OR MODIFY / CREATE OR REPLACE
+	Folder           string // Folder path within module (empty = leave placement alone)
+	Name             QualifiedName
+	Documentation    string
+	DocumentationSet bool   // see mendixlabs/mxcli#1018: absent preserves, empty clears
+	UsageType        string // "Task" or "Conversational"
+	Description      string
+	Model            *QualifiedName // reference to a Model document
+	Entity           *QualifiedName // reference to a domain entity
+	MaxTokens        *int
+	ToolChoice       string
+	Temperature      *float64
+	TopP             *float64
+	SystemPrompt     string
+	UserPrompt       string
+	Variables        []AgentVarDef
+	Tools            []AgentToolDef
+	KBTools          []AgentKBToolDef
+	CreateOrModify   bool // true for CREATE OR MODIFY / CREATE OR REPLACE
 }
 
 func (s *CreateAgentStmt) isStatement() {}

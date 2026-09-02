@@ -7,6 +7,9 @@ package executor
 import (
 	"strings"
 	"testing"
+
+	"github.com/mendixlabs/mxcli/mdl/backend"
+	modelsdkbackend "github.com/mendixlabs/mxcli/mdl/backend/modelsdk"
 )
 
 // mendixlabs/mxcli#1018 — a rewrite that does not restate a `/** … */` doc
@@ -25,6 +28,10 @@ import (
 
 type docPreserveCase struct {
 	name string
+	// modelsdk marks a doctype the legacy engine refuses to author (rules, and
+	// anything else modelsdk-only). The harness defaults to legacy, so without
+	// this the case fails at its own precondition and says nothing about #1018.
+	modelsdk bool
 	// create carries a doc comment; rewrite deliberately does not.
 	create   string
 	rewrite  string
@@ -49,6 +56,38 @@ func docPreserveCases() []docPreserveCase {
 			describe: "describe microflow TestModule.DocMf",
 		},
 		{
+			name:     "queue",
+			create:   doc + "create queue TestModule.DocQ ( Parallelism: 2 );",
+			rewrite:  "create or modify queue TestModule.DocQ ( Parallelism: 3 );",
+			describe: "describe queue TestModule.DocQ",
+		},
+		{
+			name:     "regular expression",
+			create:   doc + "create regular expression TestModule.DocRe ( Expression: '[0-9]+' );",
+			rewrite:  "create or modify regular expression TestModule.DocRe ( Expression: '[0-9]{2}' );",
+			describe: "describe regular expression TestModule.DocRe",
+		},
+		{
+			name: "scheduled event",
+			create: "create microflow TestModule.DocSeFlow ()\nbegin\nend;\n" + doc +
+				"create scheduled event TestModule.DocSe ( Microflow: TestModule.DocSeFlow, Repeat: Daily, HourOfDay: 4 );",
+			rewrite:  "create or modify scheduled event TestModule.DocSe ( Microflow: TestModule.DocSeFlow, Repeat: Daily, HourOfDay: 5 );",
+			describe: "describe scheduled event TestModule.DocSe",
+		},
+		{
+			name:     "nanoflow",
+			create:   doc + "create nanoflow TestModule.DocNf ()\nbegin\nend;",
+			rewrite:  "create or replace nanoflow TestModule.DocNf ()\nbegin\nend;",
+			describe: "describe nanoflow TestModule.DocNf",
+		},
+		{
+			name:     "rule",
+			modelsdk: true,
+			create:   doc + "create rule TestModule.DocRule ()\nreturns Boolean\nbegin\n  return true;\nend;",
+			rewrite:  "create or modify rule TestModule.DocRule ()\nreturns Boolean\nbegin\n  return false;\nend;",
+			describe: "describe rule TestModule.DocRule",
+		},
+		{
 			name:     "enumeration",
 			create:   doc + "create enumeration TestModule.DocEnum ( A 'A', B 'B' );",
 			rewrite:  "create or replace enumeration TestModule.DocEnum ( A 'A', B 'B', C 'C' );",
@@ -62,6 +101,9 @@ func TestDocumentation_SurvivesRewrite(t *testing.T) {
 	for _, tc := range docPreserveCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			env := setupTestEnv(t)
+			if tc.modelsdk {
+				env = setupTestEnvWithBackend(t, func() backend.FullBackend { return modelsdkbackend.New() })
+			}
 			defer env.teardown()
 
 			if err := env.executeMDL(tc.create); err != nil {

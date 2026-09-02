@@ -8,9 +8,10 @@ package ast
 //	  Expression: '^[a-z]+$'
 //	);
 type CreateRegularExpressionStmt struct {
-	Folder        string // Folder path within module (empty = leave placement alone)
-	Name          QualifiedName
-	Documentation string
+	Folder           string // Folder path within module (empty = leave placement alone)
+	Name             QualifiedName
+	Documentation    string
+	DocumentationSet bool // see mendixlabs/mxcli#1018: absent preserves, empty clears
 	// Expression is the pattern, as written (unquoted).
 	Expression  string
 	ExportLevel string

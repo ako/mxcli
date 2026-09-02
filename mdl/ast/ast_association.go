@@ -99,16 +99,17 @@ func (s StorageType) String() string {
 
 // CreateAssociationStmt represents: CREATE ASSOCIATION Module.Name FROM ... TO ... TYPE ...
 type CreateAssociationStmt struct {
-	Name           QualifiedName
-	Parent         QualifiedName
-	Child          QualifiedName
-	Type           AssociationType
-	Owner          OwnerType
-	Storage        StorageType
-	DeleteBehavior DeleteBehavior
-	Documentation  string
-	Comment        string
-	CreateOrModify bool // true for CREATE OR MODIFY / CREATE OR REPLACE
+	Name             QualifiedName
+	Parent           QualifiedName
+	Child            QualifiedName
+	Type             AssociationType
+	Owner            OwnerType
+	Storage          StorageType
+	DeleteBehavior   DeleteBehavior
+	Documentation    string
+	DocumentationSet bool // see mendixlabs/mxcli#1018: absent preserves, empty clears
+	Comment          string
+	CreateOrModify   bool // true for CREATE OR MODIFY / CREATE OR REPLACE
 	// IfNotExists is CREATE ASSOCIATION IF NOT EXISTS: skip when it already
 	// exists, leaving the stored definition untouched.
 	IfNotExists bool

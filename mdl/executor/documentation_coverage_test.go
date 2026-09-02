@@ -26,30 +26,47 @@ import (
 // doc comment. Move a type here when its executor carry lands AND
 // TestDocumentation_SurvivesRewrite covers it.
 var docCarryDone = map[string]bool{
-	"CreateEntityStmt":      true,
-	"CreateMicroflowStmt":   true,
-	"CreateEnumerationStmt": true,
+	"CreateEntityStmt":            true,
+	"CreateMicroflowStmt":         true,
+	"CreateEnumerationStmt":       true,
+	"CreateQueueStmt":             true,
+	"CreateRegularExpressionStmt": true,
+	"CreateScheduledEventStmt":    true,
+	"CreateNanoflowStmt":          true,
+	"CreateRuleStmt":              true,
 }
 
 // docCarryPending are the types still losing documentation on a rewrite. This
 // list is the remaining work for #1018 and is expected to shrink to empty.
 var docCarryPending = map[string]bool{
-	"CreateModelStmt": true, "CreateConsumedMCPServiceStmt": true,
-	"CreateKnowledgeBaseStmt": true, "CreateAgentStmt": true,
-	"CreateAssociationStmt": true, "CreateBusinessEventServiceStmt": true,
-	"CreateViewEntityStmt": true, "CreateConstantStmt": true,
-	"CreateJavaActionStmt": true, "CreateJavaScriptActionStmt": true,
-	"CreateJsonStructureStmt": true, "CreateNanoflowStmt": true,
-	"CreateRuleStmt": true, "CreateMenuStmt": true,
-	"CreateODataClientStmt": true, "CreateODataServiceStmt": true,
-	"CreateExternalEntityStmt": true, "CreateLayoutStmt": true,
-	"CreateQueueStmt": true, "CreateRegularExpressionStmt": true,
-	"CreateRestClientStmt": true, "CreateScheduledEventStmt": true,
-	"CreateWorkflowStmt": true,
+	"CreateModelStmt":                true,
+	"CreateConsumedMCPServiceStmt":   true,
+	"CreateKnowledgeBaseStmt":        true,
+	"CreateAgentStmt":                true,
+	"CreateAssociationStmt":          true,
+	"CreateBusinessEventServiceStmt": true,
+	"CreateViewEntityStmt":           true,
+	"CreateConstantStmt":             true,
+	"CreateJavaActionStmt":           true,
+	"CreateJavaScriptActionStmt":     true,
+	"CreateJsonStructureStmt":        true,
+	"CreateMenuStmt":                 true,
+	"CreateODataClientStmt":          true,
+	"CreateODataServiceStmt":         true,
+	"CreateExternalEntityStmt":       true,
+	"CreateLayoutStmt":               true,
+	"CreateRestClientStmt":           true,
+	"CreateWorkflowStmt":             true,
+	"CreateImageCollectionStmt":      true,
+	"CreatePageStmtV3":               true,
+	"CreateSnippetStmtV3":            true,
 }
 
 var (
-	stmtRe = regexp.MustCompile(`(?s)type (\w+Stmt) struct \{(.*?)\n\}`)
+	// `(?:V\d)?` is load-bearing: CreatePageStmtV3 and CreateSnippetStmtV3 were
+	// invisible to the first version of this pattern, so two in-scope doctypes
+	// were absent from a list whose entire job is to be complete.
+	stmtRe = regexp.MustCompile(`(?s)type (\w+Stmt(?:V\d)?) struct \{(.*?)\n\}`)
 	// A rewrite flag is spelled CreateOrModify / CreateOrReplace on most
 	// statements and IsReplace / IsModify on a few (CreateLayoutStmt). Matching
 	// only the first spelling made this test disagree with the enumeration it
@@ -75,7 +92,9 @@ func TestDocumentationCarry_EveryRewritableDoctypeIsAccountedFor(t *testing.T) {
 		}
 		for _, m := range stmtRe.FindAllStringSubmatch(string(src), -1) {
 			name, body := m[1], m[2]
-			if !strings.Contains(body, "Documentation") || !rewriteRe.MatchString(body) {
+			// Image collections spell it `Comment`; everything else `Documentation`.
+			if (!strings.Contains(body, "Documentation") && !strings.Contains(body, "Comment")) ||
+				!rewriteRe.MatchString(body) {
 				continue
 			}
 			seen[name] = true

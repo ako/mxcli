@@ -81,7 +81,7 @@ func (b *Builder) ExitCreateWorkflowStatement(ctx *parser.CreateWorkflowStatemen
 			stmt.CreateOrModify = true
 		}
 	}
-	stmt.Documentation = findDocCommentText(ctx)
+	stmt.Documentation, stmt.DocumentationSet = findDocComment(ctx)
 
 	// Parse body
 	if body := ctx.WorkflowBody(); body != nil {

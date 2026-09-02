@@ -52,6 +52,8 @@ func execCreateNanoflow(ctx *ExecContext, s *ast.CreateNanoflowStmt) error {
 	var existingContainerID model.ID
 	var existingAllowedRoles []model.ID
 	preserveAllowedRoles := false
+	var existingDocumentation string
+	haveExisting := false
 	// Excluded is model state, not script state: an absent @excluded must not
 	// clear a stored exclusion (#914).
 	existingExcluded := false
@@ -75,6 +77,8 @@ func execCreateNanoflow(ctx *ExecContext, s *ast.CreateNanoflowStmt) error {
 		existingAllowedRoles = cloneRoleIDs(existing.AllowedModuleRoles)
 		preserveAllowedRoles = true
 		existingExcluded = existing.Excluded
+		existingDocumentation = existing.Documentation
+		haveExisting = true
 	}
 
 	// For CREATE OR REPLACE/MODIFY, reuse the existing ID to preserve references
@@ -106,6 +110,11 @@ func execCreateNanoflow(ctx *ExecContext, s *ast.CreateNanoflowStmt) error {
 		Documentation: s.Documentation,
 		MarkAsUsed:    false,
 		Excluded:      s.Excluded || existingExcluded,
+	}
+
+	// A rewrite that carried no doc comment keeps the stored one (#1018).
+	if haveExisting {
+		nf.Documentation = carriedDocumentation(s.DocumentationSet, s.Documentation, existingDocumentation)
 	}
 	if preserveAllowedRoles {
 		nf.AllowedModuleRoles = existingAllowedRoles

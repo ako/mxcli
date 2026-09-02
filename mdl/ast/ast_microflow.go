@@ -110,14 +110,15 @@ func (s *DropMicroflowStmt) isStatement() {}
 
 // CreateNanoflowStmt represents: CREATE NANOFLOW Module.Name (params) RETURNS type BEGIN body END
 type CreateNanoflowStmt struct {
-	Name           QualifiedName
-	Parameters     []MicroflowParam
-	ReturnType     *MicroflowReturnType
-	Body           []MicroflowStatement
-	Documentation  string
-	Folder         string // Folder path within module
-	CreateOrModify bool
-	Excluded       bool // @excluded — document excluded from project
+	Name             QualifiedName
+	Parameters       []MicroflowParam
+	ReturnType       *MicroflowReturnType
+	Body             []MicroflowStatement
+	Documentation    string
+	DocumentationSet bool   // see mendixlabs/mxcli#1018: absent preserves, empty clears
+	Folder           string // Folder path within module
+	CreateOrModify   bool
+	Excluded         bool // @excluded — document excluded from project
 	// Expose is parsed but refused: only Microflows$Microflow carries the toolbox
 	// properties. Accepting it in the grammar and explaining the refusal beats a
 	// parse error that says only "no viable alternative".
@@ -132,14 +133,15 @@ func (s *CreateNanoflowStmt) isStatement() {}
 // are the same minus the ones a rule document has no property for (a rule stores
 // no AllowedModuleRoles, so there is nothing to grant).
 type CreateRuleStmt struct {
-	Name           QualifiedName
-	Parameters     []MicroflowParam
-	ReturnType     *MicroflowReturnType
-	Body           []MicroflowStatement
-	Documentation  string
-	Folder         string // Folder path within module
-	CreateOrModify bool
-	Excluded       bool // @excluded — document excluded from project
+	Name             QualifiedName
+	Parameters       []MicroflowParam
+	ReturnType       *MicroflowReturnType
+	Body             []MicroflowStatement
+	Documentation    string
+	DocumentationSet bool   // see mendixlabs/mxcli#1018: absent preserves, empty clears
+	Folder           string // Folder path within module
+	CreateOrModify   bool
+	Excluded         bool // @excluded — document excluded from project
 	// Expose is parsed but refused — see CreateNanoflowStmt.Expose.
 	Expose []ExposeActionClause
 }
