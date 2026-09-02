@@ -139,8 +139,16 @@ func navpPatchWebProfile(doc bson.D, spec types.NavigationProfileSpec) bson.D {
 			// Studio Pro's "Fallback page". The $Type is
 			// Navigation$NotFoundHomePage, not the Navigation$HomePage the home
 			// page slot takes -- measured on ako/TestApp, whose fallback page
-			// Studio Pro stored as Navigation$NotFoundHomePage/Page. mxbuild
-			// accepts either, so nothing caught this.
+			// Studio Pro stored as Navigation$NotFoundHomePage/Page.
+			//
+			// The wrong $Type here is not cosmetic: Mendix cannot LOAD the
+			// project. Both `mx check` and `mxbuild --target=deploy` exit 1 with
+			// "Object of type '...Navigation.HomePage' cannot be converted to
+			// type '...Navigation.NotFoundHomePage'" (measured on 11.13, against
+			// a build of this file emitting the old spelling). Nothing caught it
+			// because nothing ever BUILT a project with a fallback page set --
+			// the automated mx-check coverage runs doctype-tests/ only, and no
+			// script there sets one.
 			{Key: "$Type", Value: "Navigation$NotFoundHomePage"},
 			{Key: "Microflow", Value: ""},
 			{Key: "Page", Value: spec.NotFoundPage},

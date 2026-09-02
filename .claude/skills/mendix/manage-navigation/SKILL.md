@@ -68,15 +68,32 @@ create or replace navigation Responsive
 
 ### Role-Based Home Pages
 
-Add `for Module.Role` to override the home page for specific user roles:
+Add `for <UserRole>` to override the home page for specific user roles. The
+role is a **bare name** — user roles are project-level and have no module part:
 
 ```sql
 create or replace navigation Responsive
   home page MyModule.Home_Web
-  home page MyModule.AdminDashboard for Administration.Administrator
-  home page MyModule.CustomerPortal for MyModule.Customer
+  home page MyModule.AdminDashboard for Administrator
+  home page MyModule.CustomerPortal for Customer
   login page Administration.Login;
 ```
+
+**Never write a module-qualified role here.** `for Administration.Administrator`
+is a *module role*, and Mendix cannot load a project containing one in this
+position:
+
+```
+StorageLoadException: Role based home page has an invalid value '' for property
+UserRole. The text 'Administration.Administrator' is not a valid UserRoleIdentifier.
+```
+
+That is worse than a build error — it happens before checking runs, so there is
+no error code and no line number, and `mx check` exits non-zero *without* the
+"The app contains: N errors" line. The two role kinds are easy to confuse
+because they share names: a blank app has a user role `Administrator` and module
+roles called `Administrator` in three modules. List the real ones with
+`show user roles`; `mxcli check --references` refuses the wrong form.
 
 ### Full Menu Tree
 
