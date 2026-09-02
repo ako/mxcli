@@ -670,6 +670,9 @@ func execCreateViewEntity(ctx *ExecContext, s *ast.CreateViewEntityStmt) error {
 		// Update existing entity — preserve Source object ID to avoid CE-6770
 		entity.ID = existingEntity.ID
 		entity.SourceObjectID = existingEntity.SourceObjectID
+		// A rewrite that carried no doc comment keeps the stored one (#1018).
+		entity.Documentation = carriedDocumentation(
+			s.DocumentationSet, s.Documentation, existingEntity.Documentation)
 		if err := ctx.Backend.UpdateEntity(dm.ID, entity); err != nil {
 			return mdlerrors.NewBackend("update view entity", err)
 		}

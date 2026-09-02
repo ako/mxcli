@@ -5,6 +5,10 @@
 package executor
 
 import (
+	"bytes"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -28,6 +32,9 @@ import (
 
 type docPreserveCase struct {
 	name string
+	// storedOnly marks a doctype whose documentation DESCRIBE does not render,
+	// so the assertion reads the stored units instead.
+	storedOnly bool
 	// modelsdk marks a doctype the legacy engine refuses to author (rules, and
 	// anything else modelsdk-only). The harness defaults to legacy, so without
 	// this the case fails at its own precondition and says nothing about #1018.
@@ -39,6 +46,31 @@ type docPreserveCase struct {
 }
 
 const docMarker = "DOC-MARKER-PRESERVE-ME"
+
+// storedContains searches the project's units for text. Some doctypes —
+// associations, view entities — store documentation that DESCRIBE does not
+// render, so the describe-based assertion cannot see them. Reading the stored
+// bytes is what the original #1018 measurement did and is the more faithful
+// check anyway: it asks what is in the model, not what the reader reports.
+func storedContains(t *testing.T, projectPath, needle string) bool {
+	t.Helper()
+	dir := filepath.Join(filepath.Dir(projectPath), "mprcontents")
+	found := false
+	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || found {
+			return nil //nolint:nilerr // a partial walk is reported as not-found
+		}
+		b, readErr := os.ReadFile(p)
+		if readErr == nil && bytes.Contains(b, []byte(needle)) {
+			found = true
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk %s: %v", dir, err)
+	}
+	return found
+}
 
 func docPreserveCases() []docPreserveCase {
 	doc := "/** " + docMarker + " */\n"
@@ -88,6 +120,52 @@ func docPreserveCases() []docPreserveCase {
 			describe: "describe rule TestModule.DocRule",
 		},
 		{
+			name:     "json structure",
+			create:   doc + "create json structure TestModule.DocJs\n  snippet $${\"a\": 1}$$;",
+			rewrite:  "create or modify json structure TestModule.DocJs\n  snippet $${\"a\": 1, \"b\": 2}$$;",
+			describe: "describe json structure TestModule.DocJs",
+		},
+		{
+			name:     "image collection",
+			create:   doc + "create image collection TestModule.DocIc;",
+			rewrite:  "create or modify image collection TestModule.DocIc;",
+			describe: "describe image collection TestModule.DocIc",
+		},
+		{
+			name: "workflow",
+			create: "create entity TestModule.DocWfCtx ( Label: String );\n" + doc +
+				"create workflow TestModule.DocWf\n  parameter $WorkflowContext: TestModule.DocWfCtx\nbegin\nend workflow;",
+			rewrite:  "create or modify workflow TestModule.DocWf\n  parameter $WorkflowContext: TestModule.DocWfCtx\nbegin\nend workflow;",
+			describe: "describe workflow TestModule.DocWf",
+		},
+		{
+			name:     "constant",
+			create:   doc + "create constant TestModule.DocConst type string default 'a';",
+			rewrite:  "create or modify constant TestModule.DocConst type string default 'b';",
+			describe: "describe constant TestModule.DocConst",
+		},
+		{
+			name:       "association",
+			storedOnly: true,
+			create: "create entity TestModule.DocA ( L: String );\ncreate entity TestModule.DocB ( L: String );\n" + doc +
+				"create association TestModule.DocA_DocB from TestModule.DocA to TestModule.DocB;",
+			rewrite: "create or modify association TestModule.DocA_DocB from TestModule.DocA to TestModule.DocB;",
+		},
+		{
+			name:       "view entity",
+			storedOnly: true,
+			create: "create entity TestModule.DocSrc ( L: String );\n" + doc +
+				"create view entity TestModule.DocView as ( select s.L as L from TestModule.DocSrc as s );",
+			rewrite: "create or modify view entity TestModule.DocView as ( select s.L as Label from TestModule.DocSrc as s );",
+		},
+		{
+			name:       "business event service",
+			storedOnly: true,
+			create: "create entity TestModule.DocBePayload ( L: String );\n" + doc +
+				"create business event service TestModule.DocBes\n( ServiceName: 'DocBes', EventNamePrefix: 'com.example' )\n{\n  message DocCreated (OrderId: long) publish\n    entity TestModule.DocBePayload;\n};",
+			rewrite: "create or modify business event service TestModule.DocBes\n( ServiceName: 'DocBes2', EventNamePrefix: 'com.example' )\n{\n  message DocCreated (OrderId: long) publish\n    entity TestModule.DocBePayload;\n};",
+		},
+		{
 			name:     "enumeration",
 			create:   doc + "create enumeration TestModule.DocEnum ( A 'A', B 'B' );",
 			rewrite:  "create or replace enumeration TestModule.DocEnum ( A 'A', B 'B', C 'C' );",
@@ -108,6 +186,18 @@ func TestDocumentation_SurvivesRewrite(t *testing.T) {
 
 			if err := env.executeMDL(tc.create); err != nil {
 				t.Fatalf("create: %v", err)
+			}
+			if tc.storedOnly {
+				if !storedContains(t, env.projectPath, docMarker) {
+					t.Fatalf("precondition failed: the doc comment did not reach the stored model")
+				}
+				if err := env.executeMDL(tc.rewrite); err != nil {
+					t.Fatalf("rewrite: %v", err)
+				}
+				if !storedContains(t, env.projectPath, docMarker) {
+					t.Errorf("the rewrite deleted the documentation it never mentioned (#1018)")
+				}
+				return
 			}
 			before, err := env.describeMDL(tc.describe)
 			if err != nil {
