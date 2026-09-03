@@ -1,0 +1,259 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// store.go - the committed side of the brain: docs/brain/.
+//
+// The store lives under docs/ because it is reviewed in a pull request like any
+// other change, and in its own subfolder because a Mendix project's docs/ may
+// already be the customer's or Studio Pro's. A labelled subfolder can be added
+// to someone else's docs tree; a decisions.md dropped into it cannot
+// (PROPOSAL_project_brain.md §4.2).
+package brain
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+)
+
+// StoreDir is the store's location relative to the project directory.
+const StoreDir = "docs/brain"
+
+// Store is the committed half of the brain. The staged queue is deliberately
+// not part of it — see staged.go.
+type Store struct{ Root string }
+
+// NewStore locates the store for a project directory.
+func NewStore(projectDir string) *Store {
+	return &Store{Root: filepath.Join(projectDir, filepath.FromSlash(StoreDir))}
+}
+
+// ErrForeignStore is returned when docs/brain/ exists but mxcli did not write
+// it. Adopting it would mean writing into someone else's notes.
+var ErrForeignStore = errors.New("docs/brain/ exists but was not written by mxcli")
+
+// Exists reports whether the store has been initialised.
+func (s *Store) Exists() bool {
+	_, err := os.Stat(filepath.Join(s.Root, "README.md"))
+	return err == nil
+}
+
+// Init creates the store, returning the paths written. It refuses a docs/brain/
+// that exists without mxcli's marker, and is otherwise idempotent: an existing
+// store is left alone rather than overwritten, so a second `init` cannot
+// silently discard entries.
+func (s *Store) Init() ([]string, error) {
+	if info, err := os.Stat(s.Root); err == nil && info.IsDir() {
+		readme, err := os.ReadFile(filepath.Join(s.Root, "README.md"))
+		if err != nil || !HasMarker(string(readme)) {
+			return nil, fmt.Errorf("%w: %s", ErrForeignStore, s.Root)
+		}
+	}
+	if err := os.MkdirAll(filepath.Join(s.Root, "modules"), 0755); err != nil {
+		return nil, err
+	}
+	var written []string
+	for _, f := range []struct{ path, content string }{
+		{filepath.Join(s.Root, "README.md"), readmeContent()},
+		{filepath.Join(s.Root, "project.md"), RenderShard(ProjectShard, nil)},
+	} {
+		if _, err := os.Stat(f.path); err == nil {
+			continue // never clobber an existing file
+		}
+		if err := os.WriteFile(f.path, []byte(f.content), 0644); err != nil {
+			return nil, err
+		}
+		written = append(written, f.path)
+	}
+	return written, nil
+}
+
+// ShardPath is where a shard's Markdown lives.
+func (s *Store) ShardPath(shard string) string {
+	if shard == ProjectShard {
+		return filepath.Join(s.Root, "project.md")
+	}
+	return filepath.Join(s.Root, "modules", shard+".md")
+}
+
+// LoadShard reads a shard. A shard that does not exist is empty, not an error —
+// shards appear on promotion.
+func (s *Store) LoadShard(shard string) ([]Entry, []string, error) {
+	b, err := os.ReadFile(s.ShardPath(shard))
+	if os.IsNotExist(err) {
+		return nil, nil, nil
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	return ParseShard(string(b))
+}
+
+// SaveShard writes a shard, deleting it when it has no entries left. Leaving an
+// empty file behind would make the directory accumulate husks that read as
+// "this module has decisions" when it has none.
+func (s *Store) SaveShard(shard string, entries []Entry) error {
+	path := s.ShardPath(shard)
+	if len(entries) == 0 && shard != ProjectShard {
+		err := os.Remove(path)
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(RenderShard(shard, entries)), 0644)
+}
+
+// ListShards returns every shard that exists, project first and modules sorted.
+func (s *Store) ListShards() ([]string, error) {
+	var shards []string
+	if _, err := os.Stat(s.ShardPath(ProjectShard)); err == nil {
+		shards = append(shards, ProjectShard)
+	}
+	ents, err := os.ReadDir(filepath.Join(s.Root, "modules"))
+	if os.IsNotExist(err) {
+		return shards, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var mods []string
+	for _, e := range ents {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		mods = append(mods, strings.TrimSuffix(e.Name(), ".md"))
+	}
+	sort.Strings(mods)
+	return append(shards, mods...), nil
+}
+
+// ErrCapExceeded reports a promotion that would push a shard past its budget.
+type ErrCapExceeded struct {
+	Shard      string
+	Would, Cap int
+}
+
+func (e *ErrCapExceeded) Error() string {
+	return fmt.Sprintf("promoting into %s would take it to %d lines, past its %d-line cap; "+
+		"drop or condense an entry there first (mxcli brain show %s)", e.Shard, e.Would, e.Cap, e.Shard)
+}
+
+// Promote appends an entry to a shard. This is the only writer of a committed
+// file, and it is the point where the cap bites — refusing with the shard named
+// and its occupancy, rather than letting the store grow past what a session can
+// afford to load.
+func (s *Store) Promote(e Entry, shard string) error {
+	entries, _, err := s.LoadShard(shard)
+	if err != nil {
+		return err
+	}
+	for _, existing := range entries {
+		if existing.ID == e.ID {
+			return fmt.Errorf("%s already carries entry %s (%q)", shard, e.ID, existing.Title)
+		}
+	}
+	next := append(entries, e)
+	if lines, limit := CountLines(RenderShard(shard, next)), CapFor(shard); lines > limit {
+		return &ErrCapExceeded{Shard: shard, Would: lines, Cap: limit}
+	}
+	return s.SaveShard(shard, next)
+}
+
+// Drop removes an entry by id, reporting which shard it came from and whether
+// that emptied the shard.
+func (s *Store) Drop(id string) (shard string, deletedFile bool, err error) {
+	shards, err := s.ListShards()
+	if err != nil {
+		return "", false, err
+	}
+	for _, sh := range shards {
+		entries, _, err := s.LoadShard(sh)
+		if err != nil {
+			return "", false, err
+		}
+		kept := make([]Entry, 0, len(entries))
+		found := false
+		for _, e := range entries {
+			if e.ID == id {
+				found = true
+				continue
+			}
+			kept = append(kept, e)
+		}
+		if !found {
+			continue
+		}
+		if err := s.SaveShard(sh, kept); err != nil {
+			return "", false, err
+		}
+		return sh, len(kept) == 0 && sh != ProjectShard, nil
+	}
+	return "", false, nil
+}
+
+// Usage computes size and headroom for every shard. Nothing here is cached or
+// written down (A6).
+func (s *Store) Usage() ([]Usage, error) {
+	shards, err := s.ListShards()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Usage, 0, len(shards))
+	for _, sh := range shards {
+		b, err := os.ReadFile(s.ShardPath(sh))
+		if err != nil {
+			return nil, err
+		}
+		entries, _, err := ParseShard(string(b))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, Usage{Shard: sh, Entries: len(entries), Lines: CountLines(string(b)), Cap: CapFor(sh)})
+	}
+	return out, nil
+}
+
+func readmeContent() string {
+	return `# Project brain
+
+` + shardMarker + `
+
+Project knowledge that mxcli cannot compute: why a pattern was chosen here,
+which marketplace version broke what, what a recurring mxbuild error means in
+this app.
+
+**Anything mxcli can answer does not belong here.** Entities, microflows, pages,
+bindings and references are all queryable — a note that transcribes them is a
+note that will disagree with the project.
+
+## Layout
+
+    project.md           cross-cutting decisions; loaded every session
+    modules/<Module>.md  decisions anchored to one module; loaded when it is in play
+
+An entry's anchors decide its file: ` + "`@Sales.Order`" + ` puts it in
+` + "`modules/Sales.md`" + `. An entry with no anchor is cross-cutting and lives in
+` + "`project.md`" + `.
+
+## Working with it
+
+    mxcli brain capture "<text>" --anchor @Module.Element   queue something
+    mxcli brain staged                                      review the queue
+    mxcli brain promote <id>                                write it into a shard
+    mxcli brain check                                       anchors still resolve?
+    mxcli brain show                                        size and headroom
+
+Promotion is a human step on purpose: an agent queues, a person decides what is
+worth committing.
+
+Sizes and headroom are computed by ` + "`mxcli brain show`" + ` and are deliberately
+not written down anywhere, including in this file — a figure in prose is stale
+the next time anyone promotes.
+`
+}
