@@ -155,6 +155,8 @@ func execShow(ctx *ExecContext, s *ast.ShowStmt) error {
 		return listContractMessages(ctx, s.Name)
 	case ast.ShowJsonStructures:
 		return listJsonStructures(ctx, s.InModule)
+	case ast.ShowMessageDefinitionCollections:
+		return listMessageDefinitionCollections(ctx, s.InModule)
 	case ast.ShowImportMappings:
 		return listImportMappings(ctx, s.InModule)
 	case ast.ShowExportMappings:
@@ -277,6 +279,8 @@ func execDescribe(ctx *ExecContext, s *ast.DescribeStmt) error {
 			return describeContractMessage(ctx, s.Name)
 		case ast.DescribeJsonStructure:
 			return describeJsonStructure(ctx, s.Name)
+		case ast.DescribeMessageDefinitionCollection:
+			return execDescribeMessageDefinitionCollection(ctx, s.Name)
 		case ast.DescribeImportMapping:
 			return describeImportMapping(ctx, s.Name)
 		case ast.DescribeExportMapping:
@@ -372,6 +376,8 @@ func describeObjectTypeLabel(t ast.DescribeObjectType) string {
 		return "contractmessage"
 	case ast.DescribeJsonStructure:
 		return "jsonstructure"
+	case ast.DescribeMessageDefinitionCollection:
+		return "messagedefinitioncollection"
 	case ast.DescribeImportMapping:
 		return "importmapping"
 	case ast.DescribeExportMapping:

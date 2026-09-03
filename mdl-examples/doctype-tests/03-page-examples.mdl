@@ -1953,13 +1953,62 @@ create page PgTest.StyledPage
 
 -- MARK: Image Widgets
 -- ============================================================================
--- Image widgets (Forms$StaticImageViewer, Forms$ImageViewer) are deprecated
--- in Mendix 11.x React/optimized client (CE0582). No pluggable replacement
--- exists. Image examples are therefore not included in this test file.
---
--- If Mendix adds a pluggable image widget in the future, examples can be
--- re-added using the same pattern as DATAGRID (pluggable widget template).
+-- Image Widget Examples
 -- ============================================================================
+--
+-- The BUILT-IN image widgets (`staticimage` -> Forms$StaticImageViewer,
+-- `dynamicimage` -> Forms$ImageViewer) are deprecated in the Mendix 11.x
+-- React/optimized client (CE0582), so they are deliberately not exercised here.
+--
+-- `image` is NOT one of them: it routes to the pluggable
+-- com.mendix.widget.web.image.Image, which is the current widget and is
+-- covered below. This file previously said no pluggable replacement existed
+-- and skipped images entirely — so this gate built ZERO image widgets and ran
+-- green through two separate image defects: a CE0463 on every image widget
+-- mxcli wrote, and an image reference that could not be authored at all. Both
+-- are fixed (597db1b2), and both were fixed with nothing here to catch a
+-- regression — bug-tests/ documents them but this gate is what CI runs.
+--
+-- `Image:` names an image-collection asset by its three-part qualified name.
+-- Bare and quoted both parse (DESCRIBE emits the quoted form); the bare form
+-- is used below to match every other qualified-name property on a page.
+-- Atlas_Core.Layout.logo ships with Atlas_Core in every Mendix app.
+--
+-- The property is effectively REQUIRED even though the widget package declares
+-- it optional: an image widget with no source fails the build with
+-- [Error] "No image selected.", which is what makes this example a real check
+-- rather than a smoke test — omit the `Image:` line and mx check goes red.
+
+create page PgTest.P042_Image
+(
+  title: 'Image Widget',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  container cImages {
+    -- Sized in pixels, so `width` is a VISIBLE property and takes the authored
+    -- value by the ordinary route.
+    image imgLogoFixed (
+      Image: Atlas_Core.Layout.logo,
+      WidthUnit: pixels, Width: 36,
+      AlternativeText: 'Company logo'
+    )
+
+    -- Default units, and the case that actually regressed: under `auto` the
+    -- width and height properties are HIDDEN, and a hidden property must be
+    -- written with its DECLARED default rather than skipped. Skipping leaves
+    -- whatever value the widget template happened to capture — image.json was
+    -- extracted from a 48px logo — and 48 against a declared 100 is CE0463 on
+    -- every image widget. Nothing in the authored MDL below distinguishes the
+    -- two behaviours, which is exactly why it needs a gate rather than a test
+    -- that asserts what the script says.
+    image imgLogoAuto (Image: Atlas_Core.Layout.logo)
+
+    -- The URL mode, whose source lives in a text template rather than on the
+    -- Image field — the two modes reach the picture by different routes.
+    image imgFromUrl (ImageType: imageUrl, ImageUrl: 'img/logo.svg')
+  }
+}
 
 -- MARK: Custom Container
 

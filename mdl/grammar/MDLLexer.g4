@@ -657,7 +657,9 @@ OF: O F;
 OVER: O V E R;
 FOR: F O R;
 REPLACE: R E P L A C E;
-MEMBERS: M E M B E R S;
+EXAMPLE: E X A M P L E;   // `example '...'` on a message definition member
+MEMBER: M E M B E R;      // `add member X` — ANTLR prefers the longest match,
+MEMBERS: M E M B E R S;   // so "members" still lexes as MEMBERS
 ATTRIBUTE_NAME: A T T R I B U T E N A M E;
 FORMAT: F O R M A T;
 SQL: S Q L;

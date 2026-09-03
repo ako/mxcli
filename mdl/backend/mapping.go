@@ -24,9 +24,14 @@ type MappingBackend interface {
 	MoveExportMapping(em *model.ExportMapping) error
 
 	// ListMessageDefinitionCollections reads the message-definition documents.
-	// Read-only: a mapping can be authored OVER a definition (#263), but the
-	// definitions themselves are not authorable from MDL.
 	ListMessageDefinitionCollections() ([]*model.MessageDefinitionCollection, error)
+	// CreateMessageDefinitionCollection / Update / Delete author the document
+	// (ako/mxcli#272). A message definition is a selection over the domain
+	// model — unlike an XML schema or a WSDL it holds nothing external — which
+	// is what makes it the one non-JSON mapping source a script can create.
+	CreateMessageDefinitionCollection(c *model.MessageDefinitionCollection) error
+	UpdateMessageDefinitionCollection(c *model.MessageDefinitionCollection) error
+	DeleteMessageDefinitionCollection(id string) error
 
 	// ListXmlSchemas reads the project's XML schema documents. Read-only —
 	// there is no CREATE for one — and used to resolve a mapping's

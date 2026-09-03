@@ -122,6 +122,15 @@ func describeImportMapping(ctx *ExecContext, name ast.QualifiedName) error {
 		// Dropped entirely before #263 — and the output still PARSED, so
 		// re-executing a DESCRIBE rebuilt the mapping bound to nothing.
 		fmt.Fprintf(ctx.Output, "  with message definition %s\n", im.MessageDefinition)
+	} else if im.WebServiceSource.IsSet() {
+		// MDL has no `with web service` clause, so this cannot round-trip.
+		// Emitting NOTHING would be worse than saying so: the output parses, and
+		// re-executing it deletes the binding (ako/mxcli#365). The precedent is
+		// the range-bounded-by-attribute rule, which is marked rather than
+		// rendered wrong.
+		fmt.Fprintf(ctx.Output, "  -- SOURCE NOT REPRESENTABLE: imported web service %s%s\n",
+			im.WebServiceSource.ImportedWebService, webServiceDetail(im.WebServiceSource))
+		fmt.Fprintf(ctx.Output, "  -- re-executing this statement would drop it (CE6896); mxcli refuses the rewrite\n")
 	}
 	// The input object (#265). Printing it is what makes a `Param: parameter`
 	// handler in the body re-executable at all.
@@ -372,6 +381,13 @@ func execCreateImportMapping(ctx *ExecContext, s *ast.CreateImportMappingStmt) e
 	if existing != nil && !s.CreateOrModify {
 		return mdlerrors.NewAlreadyExists("import mapping", s.Name.String())
 	}
+	// A stored SOAP binding is not something the statement can restate, so a
+	// rewrite would delete it (ako/mxcli#365).
+	if existing != nil {
+		if err := checkNoWebServiceSource("import", s.Name.String(), existing.WebServiceSource); err != nil {
+			return err
+		}
+	}
 
 	module, err := findModule(ctx, s.Name.Module)
 	if err != nil {
@@ -496,6 +512,9 @@ func finishImportMapping(ctx *ExecContext, s *ast.CreateImportMappingStmt,
 	}
 	if existing != nil {
 		im.ID = existing.ID
+		// A rewrite must not delete the samples the stored document carries
+		// (ako/mxcli#379).
+		carryImportOriginalValues(im, existing)
 		if err := ctx.Backend.UpdateImportMapping(im); err != nil {
 			return mdlerrors.NewBackend("update import mapping", err)
 		}
@@ -593,14 +612,14 @@ func buildImportMappingElementModel(moduleName string, def *ast.ImportMappingEle
 		elem.MinOccurs = jsElem.MinOccurs
 		elem.MaxOccurs = jsElem.MaxOccurs
 		elem.Nillable = jsElem.Nillable
-		// OriginalValue is deliberately NOT cloned. It is the sample value parsed
-		// out of the JSON structure's snippet ("42", "\"Widget\""), and it belongs
-		// to the STRUCTURE — Studio Pro leaves it empty on every mapping element.
-		// Measured across the two Studio-Pro-authored mappings a blank app ships
-		// (FeedbackModule's IMM_PostResponse and EMM_PostFeedback, ~15 value
-		// elements between them): all "", while their structures carry 17 non-empty
-		// samples. Copying the sample in makes an mxcli-written mapping differ from
-		// a Studio-Pro-written one over the same structure. (issue #882)
+		// OriginalValue is deliberately NOT cloned from the structure — a NEW
+		// mapping gets an empty one (#882). That decision stands, but its
+		// original measurement was too narrow: it read two mappings a blank app
+		// ships, and at corpus scale 2,322 of 3,042 value elements DO carry the
+		// sample. The split is per document (145 mappings all, 107 none, 2
+		// mixed), so it is not derivable — which is why a REWRITE carries the
+		// stored value forward instead of choosing. See
+		// carryImportOriginalValues (ako/mxcli#379).
 		elem.FractionDigits = jsElem.FractionDigits
 		elem.TotalDigits = jsElem.TotalDigits
 		elem.MaxLength = jsElem.MaxLength

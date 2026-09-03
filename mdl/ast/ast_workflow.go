@@ -4,10 +4,11 @@ package ast
 
 // CreateWorkflowStmt represents: CREATE WORKFLOW Module.Name ...
 type CreateWorkflowStmt struct {
-	Folder         string // Folder path within module (empty = leave placement alone)
-	Name           QualifiedName
-	CreateOrModify bool
-	Documentation  string
+	Folder           string // Folder path within module (empty = leave placement alone)
+	Name             QualifiedName
+	CreateOrModify   bool
+	Documentation    string
+	DocumentationSet bool // see mendixlabs/mxcli#1018: absent preserves, empty clears
 
 	// Context parameter entity
 	ParameterVar    string        // e.g. "$WorkflowContext"

@@ -1,0 +1,49 @@
+-- ako/mxcli#997 — `mxcli diff` reported false deletions on an UNMODIFIED
+-- `mxcli describe` dump, and leaked a Go struct pointer into retrieve
+-- constraints.
+--
+-- Root cause was one thing, not three: diff rendered its two sides with two
+-- different renderers. The project side went through the real describer; the
+-- script side went through a second AST-to-MDL renderer whose statement switch
+-- covered 18 of 43 activity types and had NO default case — so every java
+-- action call, `download file`, `show message` and canvas annotation emitted
+-- zero lines and appeared in the diff as a deletion.
+--
+-- Repro: run this, then
+--     mxcli describe microflow MyFirstModule.ACT_Diff997 -p app.mpr > dump.mdl
+--     mxcli diff dump.mdl -p app.mpr
+-- Before: "0 new, 1 modified" with the java action, the annotations and the
+-- constraint shown as deletions, the constraint re-rendered as `&{0x...}`.
+-- After:  "0 new, 0 modified, 1 unchanged".
+--
+-- The control that matters is the pair: an unmodified dump must be UNCHANGED
+-- and a real edit must still show. Change 'Ford' to 'Tesla' in the dump and
+-- diff again — one line, and the java action stays as context.
+
+create or replace microflow MyFirstModule.ACT_Diff997 (
+  $Email: String
+)
+returns Boolean as $Ok
+begin
+  @position(200, 200)
+  retrieve $Cars from MyFirstModule.Car
+    where Brand = 'Ford'
+    limit 1;
+  @position(400, 200)
+  $Ok = call java action FeedbackModule.ValidateEmail(EmailAddress = $Email);
+  @position(600, 200)
+  return $Ok;
+end;
+
+-- `show message` was also among the 25 unrendered types, and nanoflows went
+-- through the same second renderer.
+create or replace nanoflow MyFirstModule.NF_Diff997 ($In: String)
+returns String as $Out
+begin
+  @position(200, 200)
+  declare $Out String = $In;
+  @position(400, 200)
+  show message 'hi' type Information;
+  @position(600, 200)
+  return $Out;
+end;

@@ -377,6 +377,13 @@ func splitFlowObjects(coll element.Element) ([]*microflows.MicroflowParameter, [
 		if po, ok := el.(*genMf.MicroflowParameter); ok {
 			p := &microflows.MicroflowParameter{Name: po.Name(), Type: dataTypeFromGen(po.ParameterType())}
 			p.ID = model.ID(el.ID())
+			// Carry the parameter's canvas position, but only when it is not the
+			// one the layout would derive for this index — a parameter sitting on
+			// the derived grid carries no intent, and pinning it would strand the
+			// others the moment a parameter is inserted (#993, and #951 before
+			// it). Without this the position was never read at all, so a rewrite
+			// moved every hand-placed parameter back onto the grid.
+			p.Position = microflows.AuthoredParameterPosition(pointFromGen(el), len(params))
 			params = append(params, p)
 			continue
 		}

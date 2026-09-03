@@ -1,0 +1,65 @@
+-- ako/mxcli#993 — @position on a flow parameter.
+--
+-- A MicroflowParameter is a stored node with real geometry (RelativeMiddlePoint
+-- + Size 30;30), and Studio Pro lets you drag it. Before this, no annotation
+-- reached it: a generated flow's parameter block landed on mxcli's derived grid
+-- and a hand-aligned one was moved back there by any rewrite. Measured on a real
+-- project: a nanoflow parameter at -77;0 came back at 200;53 from a describe →
+-- exec of mxcli's own output.
+--
+-- Run, then `describe` each flow: NF_ParamPos round-trips its annotations,
+-- NF_ParamDerived emits none because its parameters sit exactly where the layout
+-- put them.
+
+create or replace nanoflow MyFirstModule.NF_ParamPos (
+  @position(300, 100)
+  $A: Integer,
+  @position(200, 100)
+  $B: Integer
+)
+returns Integer as $R
+begin
+  @position(300, 200)
+  declare $R Integer = $A + $B;
+  @position(500, 200)
+  return $R;
+end;
+
+-- Control: no annotation, so both parameters go where the layout puts them —
+-- 200;53 and 300;53. DESCRIBE must emit no @position for either, or every
+-- rewritten flow would come back with its parameters pinned to the grid they
+-- happened to be on (the #951 failure, one node family over).
+create or replace nanoflow MyFirstModule.NF_ParamDerived (
+  $A: Integer,
+  $B: Integer
+)
+returns Integer as $R
+begin
+  @position(300, 200)
+  declare $R Integer = $A + $B;
+  @position(500, 200)
+  return $R;
+end;
+
+-- Microflows and rules share the parameter grammar, so they take it too.
+create or replace microflow MyFirstModule.MF_ParamPos (
+  @position(140, -60)
+  $A: Integer
+)
+returns Integer as $R
+begin
+  @position(300, 200)
+  declare $R Integer = $A + 1;
+  @position(500, 200)
+  return $R;
+end;
+
+create or replace rule MyFirstModule.RL_ParamPos (
+  @position(60, -40)
+  $A: Integer
+)
+returns Boolean
+begin
+  @position(300, 200)
+  return $A > 0;
+end;

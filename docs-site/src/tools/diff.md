@@ -19,6 +19,36 @@ This shows:
 
 Use `mxcli diff` to review changes before applying them, especially when working with AI-generated scripts.
 
+### What diff does not compare
+
+`diff` compares entities, view entities, enumerations, associations, microflows
+and nanoflows. Every other statement — `grant`, `create constant`, pages,
+navigation, settings — is listed under **Not compared** after the summary:
+
+```
+Summary: 0 new, 0 modified, 1 unchanged
+
+Not compared (2 statement(s)) — diff has no comparison for these,
+so they are absent from the summary above, not unchanged:
+  create constant x1
+  grant microflow access x1
+```
+
+Read that list. The counts describe only the statements diff understands, so a
+script made entirely of the others summarises as all zeros — which means "not
+examined", not "no change". Those statements were previously skipped without a
+word, so the summary looked like a clean bill of health for a script that would
+add documents (#997).
+
+### Both sides go through one renderer
+
+The project side and the script side are rendered by the same describer
+`describe microflow` uses, so an unmodified `describe` dump diffs as
+**unchanged**. Before this, the script side had a renderer of its own that
+covered 18 of 43 activity types and silently emitted nothing for the rest, so a
+java-action call, a `download file` or a canvas annotation appeared as a
+deletion in a script that changed nothing at all.
+
 ## mxcli diff-local
 
 Compares local changes against a git reference for MPR v2 projects. MPR v2 (Mendix >= 10.18) stores documents as individual files in an `mprcontents/` folder, making git diff feasible.

@@ -283,7 +283,7 @@ END WORKFLOW;
 ```sql
 CREATE OR REPLACE NAVIGATION Responsive
   HOME PAGE MyModule.Home_Web
-  HOME PAGE MyModule.AdminHome FOR MyModule.Administrator
+  HOME PAGE MyModule.AdminHome FOR Administrator
   LOGIN PAGE Administration.Login
   NOT FOUND PAGE MyModule.Custom404
   MENU (

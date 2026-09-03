@@ -42,6 +42,12 @@ func (b *Backend) ListImportMappings() ([]*model.ImportMapping, error) {
 			MessageDefinition:  g.MessageDefinitionQualifiedName(),
 			ParameterEntity:    parameterEntityFromRaw(g.Raw()),
 			MessageDefinition2: messageDefinition2FromRaw(g.Raw()),
+			WebServiceSource: model.WebServiceMappingSource{
+				ImportedWebService: g.ImportedWebServiceQualifiedName(),
+				ServiceName:        g.ServiceName(),
+				OperationName:      g.OperationName(),
+				RootElementName:    g.RootElementName(),
+			},
 		}
 		im.ID = model.ID(g.ID())
 		im.TypeName = "ImportMappings$ImportMapping"
@@ -77,6 +83,16 @@ func (b *Backend) ListExportMappings() ([]*model.ExportMapping, error) {
 			MessageDefinition:  g.MessageDefinitionQualifiedName(),
 			NullValueOption:    g.NullValueOption(),
 			MessageDefinition2: messageDefinition2FromRaw(g.Raw()),
+			// ParameterName and IsHeader are export-only: which SOAP message
+			// part the mapping produces, and whether it is a header.
+			WebServiceSource: model.WebServiceMappingSource{
+				ImportedWebService: g.ImportedWebServiceQualifiedName(),
+				ServiceName:        g.ServiceName(),
+				OperationName:      g.OperationName(),
+				RootElementName:    g.RootElementName(),
+				ParameterName:      g.ParameterName(),
+				IsHeader:           g.IsHeader(),
+			},
 		}
 		em.ID = model.ID(g.ID())
 		em.TypeName = "ExportMappings$ExportMapping"
@@ -324,6 +340,7 @@ func exportMappingElementFromGen(el element.Element) *model.ExportMappingElement
 		e.ExposedName = o.ExposedName()
 		e.JsonPath = o.JsonPath()
 		e.XmlPath = o.XmlPath()
+		e.OriginalValue = o.OriginalValue()
 		e.MinOccurs = int(o.MinOccurs())
 		e.MaxOccurs = int(o.MaxOccurs())
 		e.MaxLength = int(o.MaxLength())

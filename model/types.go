@@ -1070,6 +1070,31 @@ type DistributionSettings struct {
 // ============================================================================
 
 // ImportMapping represents an ImportMappings$ImportMapping document.
+// WebServiceMappingSource is a mapping's SOAP binding: the imported web service
+// document plus which service, operation and root element of it the mapping
+// covers.
+//
+// It is read-only. mxcli cannot author a SOAP mapping, and the point of reading
+// it is precisely that it cannot: a rewrite that dropped these turned a working
+// integration into CE6896 "A mapping must have exactly one schema source" and
+// CE0270 "No root element could be found in the schema" (ako/mxcli#365).
+//
+// ParameterName and IsHeader exist on EXPORT mappings only — which SOAP message
+// part the mapping produces, and whether it is a header — and are carried for
+// the same reason.
+type WebServiceMappingSource struct {
+	ImportedWebService string `json:"importedWebService,omitempty"` // stored as wsdlFile
+	ServiceName        string `json:"serviceName,omitempty"`
+	OperationName      string `json:"operationName,omitempty"`
+	RootElementName    string `json:"rootElementName,omitempty"` // stored as xsdRootElementName
+	ParameterName      string `json:"parameterName,omitempty"`   // export only
+	IsHeader           bool   `json:"isHeader,omitempty"`        // export only
+}
+
+// IsSet reports whether the mapping is sourced from a web service. The imported
+// service is the discriminator: the other fields only qualify which part of it.
+func (w WebServiceMappingSource) IsSet() bool { return w.ImportedWebService != "" }
+
 type ImportMapping struct {
 	BaseElement
 	ContainerID   ID     `json:"containerId"`
@@ -1085,6 +1110,12 @@ type ImportMapping struct {
 	// CARRIES rather than derives: nil means the stored document does not have
 	// the key, which is not the same as present-and-empty (ako/mxcli#279).
 	MessageDefinition2 *string `json:"messageDefinition2,omitempty"`
+	// WebServiceSource is the imported web service (SOAP) a mapping can be
+	// sourced from — a FOURTH source kind beside JSON structure, XML schema and
+	// message definition. mxcli does not author one, but it must not destroy
+	// one: the properties are read so a rewrite can be refused rather than
+	// silently dropping the binding (ako/mxcli#365).
+	WebServiceSource WebServiceMappingSource `json:"webServiceSource,omitempty"`
 	// ParameterEntity is the entity of the mapping's INPUT object, stored as
 	// ParameterType — a DataTypes$ObjectType naming it. Empty means the mapping
 	// takes none, which Mendix stores as the DataTypes$UnknownType marker rather
@@ -1196,9 +1227,15 @@ type MappingMicroflowParameter struct {
 // MessageDefinition reference is THREE parts: Module.Collection.Definition.
 type MessageDefinitionCollection struct {
 	BaseElement
-	ContainerID ID                   `json:"containerId"`
-	Name        string               `json:"name"`
-	Definitions []*MessageDefinition `json:"definitions,omitempty"`
+	ContainerID ID     `json:"containerId"`
+	Name        string `json:"name"`
+	// Documentation, Excluded and ExportLevel are carried so a CREATE OR MODIFY
+	// preserves what the statement does not restate. ExportLevel is "Hidden" on
+	// every collection measured, but it is read rather than assumed.
+	Documentation string               `json:"documentation,omitempty"`
+	Excluded      bool                 `json:"excluded,omitempty"`
+	ExportLevel   string               `json:"exportLevel,omitempty"`
+	Definitions   []*MessageDefinition `json:"definitions,omitempty"`
 }
 
 // MessageDefinition is one EntityMessageDefinition inside a collection.
@@ -1219,14 +1256,26 @@ type MessageDefinition struct {
 type MessageDefinitionElement struct {
 	// "Entity" or "Attribute".
 	Kind string `json:"kind"`
-	// Entity/Association are set on an Entity node (Association only when the
-	// node is reached through one); Attribute on an Attribute node.
+	// Entity/Association are set on an Entity node; Attribute on an Attribute
+	// node. Association is set only when the node is reached through one, and
+	// Entity is then its TARGET — both are needed to rebuild or describe the
+	// node, because the stored MaxOccurs depends on the direction of traversal
+	// and cannot be recovered from the association alone.
 	Entity      string `json:"entity,omitempty"`
 	Association string `json:"association,omitempty"`
 	Attribute   string `json:"attribute,omitempty"`
 
 	ExposedName     string `json:"exposedName,omitempty"`
 	ExposedItemName string `json:"exposedItemName,omitempty"`
+	// OriginalName is the member's own name — the entity's, the attribute's, or
+	// for an association node the TARGET entity's. Stored beside ExposedName
+	// because the two differ routinely (52 of 56 roots, 406 of 933
+	// associations) and Mendix keeps both.
+	OriginalName string `json:"originalName,omitempty"`
+	// Example is author-set free text. Rare — 1 of 4,707 elements across the
+	// demo corpus and ako/TestApp — but hardcoding it empty would silently drop
+	// the one that exists, so it is carried like any other authored value.
+	Example string `json:"example,omitempty"`
 	// Path is the definition's own path ("Email|From"). It is NOT the mapping's
 	// XmlPath, which is built from the exposed names — the definition root's
 	// path is the ITEM name while the mapping's is "Emails|Email".
@@ -1263,8 +1312,14 @@ type ExportMapping struct {
 	// the key, which is not the same as present-and-empty (ako/mxcli#279).
 	MessageDefinition2 *string `json:"messageDefinition2,omitempty"`
 	// NullValueOption controls how null values are serialized: "LeaveOutElement" or "SendAsNil"
-	NullValueOption string                  `json:"nullValueOption,omitempty"`
-	Elements        []*ExportMappingElement `json:"elements,omitempty"`
+	NullValueOption string `json:"nullValueOption,omitempty"`
+	// WebServiceSource is the imported web service (SOAP) a mapping can be
+	// sourced from — a FOURTH source kind beside JSON structure, XML schema and
+	// message definition. mxcli does not author one, but it must not destroy
+	// one: the properties are read so a rewrite can be refused rather than
+	// silently dropping the binding (ako/mxcli#365).
+	WebServiceSource WebServiceMappingSource `json:"webServiceSource,omitempty"`
+	Elements         []*ExportMappingElement `json:"elements,omitempty"`
 }
 
 // GetName returns the export mapping's name.
@@ -1304,6 +1359,11 @@ type ExportMappingElement struct {
 	// Shared fields
 	ExposedName string `json:"exposedName,omitempty"`
 	JsonPath    string `json:"jsonPath,omitempty"`
+	// OriginalValue is the sample parsed out of the JSON structure's snippet.
+	// Carried rather than derived: whether a mapping stores it is a per-document
+	// property mxcli cannot compute, so a rewrite preserves what was there
+	// instead of choosing (ako/mxcli#379).
+	OriginalValue string `json:"originalValue,omitempty"`
 	// XmlPath — see the note on ImportMappingElement.
 	XmlPath  string                  `json:"xmlPath,omitempty"`
 	Children []*ExportMappingElement `json:"children,omitempty"`

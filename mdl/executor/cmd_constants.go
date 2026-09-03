@@ -287,11 +287,14 @@ func createConstant(ctx *ExecContext, stmt *ast.CreateConstantStmt) error {
 			modName := h.GetModuleName(modID)
 			if strings.EqualFold(modName, stmt.Name.Module) && strings.EqualFold(c.Name, stmt.Name.Name) {
 				if stmt.CreateOrModify {
-					// Update existing constant — COMMENT takes precedence over doc-comment
+					// Update existing constant — COMMENT takes precedence over
+					// doc-comment, and a rewrite that mentioned NEITHER keeps
+					// what is stored (#1018).
 					if stmt.Comment != "" {
 						c.Documentation = stmt.Comment
 					} else {
-						c.Documentation = stmt.Documentation
+						c.Documentation = carriedDocumentation(
+							stmt.DocumentationSet, stmt.Documentation, c.Documentation)
 					}
 					c.Type = constType
 					c.DefaultValue = defaultValue

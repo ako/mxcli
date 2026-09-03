@@ -101,13 +101,47 @@ type iconRef struct {
 }
 
 // iconRefsInStatement collects icon references from the statements that can
-// carry one: page/snippet widget trees and navigation menus.
+// carry one: page/snippet/layout widget trees, navigation menus and menu
+// documents.
+//
+// Every widget-bearing field has to be walked, not just the obvious one. A
+// reference the walker misses is a reference nothing checks, and the escape is
+// silent both ways: `mxcli check --references` passes and `exec` succeeds, so
+// the first sign is CE1613 from MxBuild — exactly the deferral this validator
+// exists to prevent (mendixlabs/mxcli#1008).
 func iconRefsInStatement(stmt ast.Statement) []iconRef {
 	var out []iconRef
 	switch s := stmt.(type) {
 	case *ast.CreatePageStmtV3:
 		for _, w := range s.Widgets {
 			out = append(out, iconRefsInWidget(w)...)
+		}
+		// Widgets is the bare body only. Content bound to a named layout
+		// placeholder is held apart in Placeholders, so walking Widgets alone
+		// misses every icon inside a `placeholder X { … }` block.
+		for _, ph := range s.Placeholders {
+			if ph == nil {
+				continue
+			}
+			for _, w := range ph.Widgets {
+				out = append(out, iconRefsInWidget(w)...)
+			}
+		}
+	case *ast.CreateSnippetStmtV3:
+		for _, w := range s.Widgets {
+			out = append(out, iconRefsInWidget(w)...)
+		}
+	case *ast.CreateLayoutStmt:
+		// A layout's icons are the costliest to get wrong: its topbar is shared,
+		// so one bad reference is an error on every page using the layout.
+		for _, w := range s.Widgets {
+			out = append(out, iconRefsInWidget(w)...)
+		}
+	case *ast.CreateMenuStmt:
+		// A standalone menu document carries the same NavMenuItemDef as a
+		// profile menu, sub-items included.
+		for _, item := range s.Items {
+			out = append(out, iconRefsInMenu(item)...)
 		}
 	case *ast.AlterPageStmt:
 		for _, op := range s.Operations {

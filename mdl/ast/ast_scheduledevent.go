@@ -13,9 +13,10 @@ package ast
 // "not mentioned" stays distinguishable from "mentioned as 0" — 0 is a real
 // hour, minute and month offset.
 type CreateScheduledEventStmt struct {
-	Folder        string // Folder path within module (empty = leave placement alone)
-	Name          QualifiedName
-	Documentation string
+	Folder           string // Folder path within module (empty = leave placement alone)
+	Name             QualifiedName
+	Documentation    string
+	DocumentationSet bool // see mendixlabs/mxcli#1018: absent preserves, empty clears
 	// Microflow is the qualified name of the microflow to run.
 	Microflow string
 	// Repeat names the schedule variant: Minutely, Hourly, Daily, Weekly,

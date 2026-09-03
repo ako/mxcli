@@ -75,35 +75,36 @@ const (
 	ShowNavigationMenu  // SHOW NAVIGATION MENU [profile]
 	ShowNavigationHomes // SHOW NAVIGATION HOMES
 
-	ShowStructure             // SHOW STRUCTURE [DEPTH n] [IN module] [ALL]
-	ShowWorkflows             // SHOW WORKFLOWS [IN module]
-	ShowBusinessEventServices // SHOW BUSINESS EVENT SERVICES [IN module]
-	ShowBusinessEventClients  // SHOW BUSINESS EVENT CLIENTS [IN module]
-	ShowBusinessEvents        // SHOW BUSINESS EVENTS [IN module] (individual messages)
-	ShowSettings              // SHOW SETTINGS
-	ShowFragments             // SHOW FRAGMENTS
-	ShowDatabaseConnections   // SHOW DATABASE CONNECTIONS [IN module]
-	ShowImageCollections      // SHOW IMAGE COLLECTIONS [IN module]
-	ShowIconCollections       // SHOW ICON COLLECTIONS [IN module]
-	ShowRestClients           // SHOW REST CLIENTS [IN module]
-	ShowPublishedRestServices // SHOW PUBLISHED REST SERVICES [IN module]
-	ShowDataTransformers      // LIST DATA TRANSFORMERS [IN module]
-	ShowConstantValues        // SHOW CONSTANT VALUES [IN module]
-	ShowContractEntities      // SHOW CONTRACT ENTITIES FROM Module.Service
-	ShowContractActions       // SHOW CONTRACT ACTIONS FROM Module.Service
-	ShowContractChannels      // SHOW CONTRACT CHANNELS FROM Module.Service (AsyncAPI)
-	ShowContractMessages      // SHOW CONTRACT MESSAGES FROM Module.Service (AsyncAPI)
-	ShowLanguages             // SHOW LANGUAGES
-	ShowJsonStructures        // SHOW JSON STRUCTURES [IN module]
-	ShowImportMappings        // SHOW IMPORT MAPPINGS [IN module]
-	ShowExportMappings        // SHOW EXPORT MAPPINGS [IN module]
-	ShowModels                // SHOW MODELS [IN module] (agent-editor Model documents)
-	ShowAgents                // SHOW AGENTS [IN module] (agent-editor Agent documents)
-	ShowKnowledgeBases        // SHOW KNOWLEDGE BASES [IN module] (agent-editor KB documents)
-	ShowConsumedMCPServices   // SHOW CONSUMED MCP SERVICES [IN module] (agent-editor MCP documents)
-	ShowJarDependencies       // LIST JAR DEPENDENCIES [IN module]
-	ShowBuildingBlocks        // SHOW BUILDING BLOCKS [IN module]
-	ShowConnections           // SHOW CONNECTIONS (open external SQL connections in this session)
+	ShowStructure                    // SHOW STRUCTURE [DEPTH n] [IN module] [ALL]
+	ShowWorkflows                    // SHOW WORKFLOWS [IN module]
+	ShowBusinessEventServices        // SHOW BUSINESS EVENT SERVICES [IN module]
+	ShowBusinessEventClients         // SHOW BUSINESS EVENT CLIENTS [IN module]
+	ShowBusinessEvents               // SHOW BUSINESS EVENTS [IN module] (individual messages)
+	ShowSettings                     // SHOW SETTINGS
+	ShowFragments                    // SHOW FRAGMENTS
+	ShowDatabaseConnections          // SHOW DATABASE CONNECTIONS [IN module]
+	ShowImageCollections             // SHOW IMAGE COLLECTIONS [IN module]
+	ShowIconCollections              // SHOW ICON COLLECTIONS [IN module]
+	ShowRestClients                  // SHOW REST CLIENTS [IN module]
+	ShowPublishedRestServices        // SHOW PUBLISHED REST SERVICES [IN module]
+	ShowDataTransformers             // LIST DATA TRANSFORMERS [IN module]
+	ShowConstantValues               // SHOW CONSTANT VALUES [IN module]
+	ShowContractEntities             // SHOW CONTRACT ENTITIES FROM Module.Service
+	ShowContractActions              // SHOW CONTRACT ACTIONS FROM Module.Service
+	ShowContractChannels             // SHOW CONTRACT CHANNELS FROM Module.Service (AsyncAPI)
+	ShowContractMessages             // SHOW CONTRACT MESSAGES FROM Module.Service (AsyncAPI)
+	ShowLanguages                    // SHOW LANGUAGES
+	ShowJsonStructures               // SHOW JSON STRUCTURES [IN module]
+	ShowMessageDefinitionCollections // SHOW MESSAGE DEFINITION COLLECTIONS [IN module]
+	ShowImportMappings               // SHOW IMPORT MAPPINGS [IN module]
+	ShowExportMappings               // SHOW EXPORT MAPPINGS [IN module]
+	ShowModels                       // SHOW MODELS [IN module] (agent-editor Model documents)
+	ShowAgents                       // SHOW AGENTS [IN module] (agent-editor Agent documents)
+	ShowKnowledgeBases               // SHOW KNOWLEDGE BASES [IN module] (agent-editor KB documents)
+	ShowConsumedMCPServices          // SHOW CONSUMED MCP SERVICES [IN module] (agent-editor MCP documents)
+	ShowJarDependencies              // LIST JAR DEPENDENCIES [IN module]
+	ShowBuildingBlocks               // SHOW BUILDING BLOCKS [IN module]
+	ShowConnections                  // SHOW CONNECTIONS (open external SQL connections in this session)
 	// ShowAnnotations lists a domain model's canvas notes.
 	ShowAnnotations
 )
@@ -237,6 +238,8 @@ func (t ShowObjectType) String() string {
 		return "LANGUAGES"
 	case ShowJsonStructures:
 		return "JSON STRUCTURES"
+	case ShowMessageDefinitionCollections:
+		return "MESSAGE DEFINITION COLLECTIONS"
 	case ShowImportMappings:
 		return "IMPORT MAPPINGS"
 	case ShowExportMappings:
@@ -309,43 +312,44 @@ const (
 	DescribeLayout
 	DescribeConstant
 	DescribeJavaAction
-	DescribeJavaScriptAction     // DESCRIBE JAVASCRIPT ACTION Module.Name
-	DescribeModuleRole           // DESCRIBE MODULE ROLE Module.RoleName
-	DescribeUserRole             // DESCRIBE USER ROLE Name
-	DescribeDemoUser             // DESCRIBE DEMO USER 'name'
-	DescribeODataClient          // DESCRIBE ODATA CLIENT Module.ServiceName
-	DescribeODataService         // DESCRIBE ODATA SERVICE Module.ServiceName
-	DescribeExternalEntity       // DESCRIBE EXTERNAL ENTITY Module.EntityName
-	DescribeNavigation           // DESCRIBE NAVIGATION [profile]
-	DescribeWorkflow             // DESCRIBE WORKFLOW Module.Name
-	DescribeBusinessEventService // DESCRIBE BUSINESS EVENT SERVICE Module.Name
-	DescribeDatabaseConnection   // DESCRIBE DATABASE CONNECTION Module.Name
-	DescribeSettings             // DESCRIBE SETTINGS
-	DescribeFragment             // DESCRIBE FRAGMENT Name
-	DescribeImageCollection      // DESCRIBE IMAGE COLLECTION Module.Name
-	DescribeIconCollection       // DESCRIBE ICON COLLECTION Module.Name
-	DescribeRestClient           // DESCRIBE REST CLIENT Module.Name
-	DescribePublishedRestService // DESCRIBE PUBLISHED REST SERVICE Module.Name
-	DescribeDataTransformer      // DESCRIBE DATA TRANSFORMER Module.Name
-	DescribeContractEntity       // DESCRIBE CONTRACT ENTITY Service.EntityName [FORMAT mdl]
-	DescribeContractAction       // DESCRIBE CONTRACT ACTION Service.ActionName [FORMAT mdl]
-	DescribeContractMessage      // DESCRIBE CONTRACT MESSAGE Service.MessageName
-	DescribeJsonStructure        // DESCRIBE JSON STRUCTURE Module.Name
-	DescribeNanoflow             // DESCRIBE NANOFLOW Module.Name
-	DescribeRule                 // DESCRIBE RULE Module.Name
-	DescribeImportMapping        // DESCRIBE IMPORT MAPPING Module.Name
-	DescribeExportMapping        // DESCRIBE EXPORT MAPPING Module.Name
-	DescribeModel                // DESCRIBE MODEL Module.Name (agent-editor Model document)
-	DescribeAgent                // DESCRIBE AGENT Module.Name (agent-editor Agent document)
-	DescribeKnowledgeBase        // DESCRIBE KNOWLEDGE BASE Module.Name (agent-editor KB document)
-	DescribeConsumedMCPService   // DESCRIBE CONSUMED MCP SERVICE Module.Name (agent-editor MCP document)
-	DescribeJarDependency        // DESCRIBE JAR DEPENDENCY ModuleName 'group:artifact'
-	DescribeBuildingBlock        // DESCRIBE BUILDING BLOCK Module.Name
-	DescribeMenu                 // DESCRIBE MENU Module.Name (standalone Menus$MenuDocument)
-	DescribeQueue                // DESCRIBE QUEUE Module.Name
-	DescribeScheduledEvent       // DESCRIBE SCHEDULED EVENT Module.Name
-	DescribeRegularExpression    // DESCRIBE REGULAR EXPRESSION Module.Name
-	DescribeAuto                 // DESCRIBE Module.Name — type auto-detected at execution time
+	DescribeJavaScriptAction            // DESCRIBE JAVASCRIPT ACTION Module.Name
+	DescribeModuleRole                  // DESCRIBE MODULE ROLE Module.RoleName
+	DescribeUserRole                    // DESCRIBE USER ROLE Name
+	DescribeDemoUser                    // DESCRIBE DEMO USER 'name'
+	DescribeODataClient                 // DESCRIBE ODATA CLIENT Module.ServiceName
+	DescribeODataService                // DESCRIBE ODATA SERVICE Module.ServiceName
+	DescribeExternalEntity              // DESCRIBE EXTERNAL ENTITY Module.EntityName
+	DescribeNavigation                  // DESCRIBE NAVIGATION [profile]
+	DescribeWorkflow                    // DESCRIBE WORKFLOW Module.Name
+	DescribeBusinessEventService        // DESCRIBE BUSINESS EVENT SERVICE Module.Name
+	DescribeDatabaseConnection          // DESCRIBE DATABASE CONNECTION Module.Name
+	DescribeSettings                    // DESCRIBE SETTINGS
+	DescribeFragment                    // DESCRIBE FRAGMENT Name
+	DescribeImageCollection             // DESCRIBE IMAGE COLLECTION Module.Name
+	DescribeIconCollection              // DESCRIBE ICON COLLECTION Module.Name
+	DescribeRestClient                  // DESCRIBE REST CLIENT Module.Name
+	DescribePublishedRestService        // DESCRIBE PUBLISHED REST SERVICE Module.Name
+	DescribeDataTransformer             // DESCRIBE DATA TRANSFORMER Module.Name
+	DescribeContractEntity              // DESCRIBE CONTRACT ENTITY Service.EntityName [FORMAT mdl]
+	DescribeContractAction              // DESCRIBE CONTRACT ACTION Service.ActionName [FORMAT mdl]
+	DescribeContractMessage             // DESCRIBE CONTRACT MESSAGE Service.MessageName
+	DescribeJsonStructure               // DESCRIBE JSON STRUCTURE Module.Name
+	DescribeMessageDefinitionCollection // DESCRIBE MESSAGE DEFINITION COLLECTION Module.Name
+	DescribeNanoflow                    // DESCRIBE NANOFLOW Module.Name
+	DescribeRule                        // DESCRIBE RULE Module.Name
+	DescribeImportMapping               // DESCRIBE IMPORT MAPPING Module.Name
+	DescribeExportMapping               // DESCRIBE EXPORT MAPPING Module.Name
+	DescribeModel                       // DESCRIBE MODEL Module.Name (agent-editor Model document)
+	DescribeAgent                       // DESCRIBE AGENT Module.Name (agent-editor Agent document)
+	DescribeKnowledgeBase               // DESCRIBE KNOWLEDGE BASE Module.Name (agent-editor KB document)
+	DescribeConsumedMCPService          // DESCRIBE CONSUMED MCP SERVICE Module.Name (agent-editor MCP document)
+	DescribeJarDependency               // DESCRIBE JAR DEPENDENCY ModuleName 'group:artifact'
+	DescribeBuildingBlock               // DESCRIBE BUILDING BLOCK Module.Name
+	DescribeMenu                        // DESCRIBE MENU Module.Name (standalone Menus$MenuDocument)
+	DescribeQueue                       // DESCRIBE QUEUE Module.Name
+	DescribeScheduledEvent              // DESCRIBE SCHEDULED EVENT Module.Name
+	DescribeRegularExpression           // DESCRIBE REGULAR EXPRESSION Module.Name
+	DescribeAuto                        // DESCRIBE Module.Name — type auto-detected at execution time
 )
 
 // String returns the human-readable name of the describe object type.
@@ -413,6 +417,8 @@ func (t DescribeObjectType) String() string {
 		return "CONTRACT ACTION"
 	case DescribeContractMessage:
 		return "CONTRACT MESSAGE"
+	case DescribeMessageDefinitionCollection:
+		return "MESSAGE DEFINITION COLLECTION"
 	case DescribeJsonStructure:
 		return "JSON STRUCTURE"
 	case DescribeNanoflow:

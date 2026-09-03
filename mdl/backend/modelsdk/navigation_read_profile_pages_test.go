@@ -68,8 +68,13 @@ func TestGetNavigation_ProfilePagesRoundTrip(t *testing.T) {
 
 // Studio Pro's "Fallback page" is a Navigation$NotFoundHomePage, not the
 // Navigation$HomePage the home-page slot takes -- measured on ako/TestApp. All
-// three writers used to emit the latter; mxbuild accepts either, so only a
-// reference document could tell them apart.
+// three writers used to emit the latter, which gives a project Mendix cannot
+// load: `mx check` and `mxbuild --target=deploy` both exit 1 with "Object of
+// type '...Navigation.HomePage' cannot be converted to type
+// '...Navigation.NotFoundHomePage'" (measured on 11.13). The build was never
+// the safety net here -- it simply never ran against a project with a fallback
+// page, since the automated mx-check coverage is doctype-tests/ and no script
+// there sets one. This test is that missing coverage.
 func TestUpdateNavigationProfile_NotFoundPageType(t *testing.T) {
 	proj := copyFixture(t)
 	b := New()

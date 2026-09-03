@@ -31,7 +31,7 @@ func callExternalActionToGen(a *microflows.CallExternalAction) element.Element {
 	// CE7269 ("return type has changed"); the executor resolves the kind from the
 	// consumed service's cached $metadata. Omitted for void/unknown.
 	if a.ResultDataType != "" {
-		addPart(g, "VariableDataType", externalActionReturnTypeToGen(a.ResultDataType))
+		addPart(g, "VariableDataType", externalActionReturnTypeToGen(a.ResultDataType, a.ResultEntity))
 	}
 	mappings := make([]element.Element, 0, len(a.ParameterMappings))
 	for _, pm := range a.ParameterMappings {
@@ -39,6 +39,11 @@ func callExternalActionToGen(a *microflows.CallExternalAction) element.Element {
 		addStr(m, "ParameterName", pm.ParameterName)
 		addStr(m, "Argument", pm.Argument)
 		addBool(m, "CanBeEmpty", pm.CanBeEmpty)
+		// generated/metamodel declares ParameterType without omitempty. Omitting
+		// it is CE7252 + a CE0117 per argument.
+		if pm.ParameterDataType != "" {
+			addPart(m, "ParameterType", externalActionReturnTypeToGen(pm.ParameterDataType, pm.ParameterEntity))
+		}
 		mappings = append(mappings, m)
 	}
 	if len(mappings) > 0 {
@@ -50,7 +55,20 @@ func callExternalActionToGen(a *microflows.CallExternalAction) element.Element {
 // externalActionReturnTypeToGen maps a Mendix kind name to the DataTypes$ element
 // stored in CallExternalAction.VariableDataType. Mirrors
 // sdk/mpr.serializeExternalActionReturnType.
-func externalActionReturnTypeToGen(kind string) element.Element {
+// An Object or List return also carries the entity it is typed on: both
+// DataTypes$ObjectType and DataTypes$ListType store an Entity by qualified
+// name, and one without it is as unaligned as no type at all.
+func externalActionReturnTypeToGen(kind, entity string) element.Element {
+	switch kind {
+	case "Object", "List":
+		t := "DataTypes$ObjectType"
+		if kind == "List" {
+			t = "DataTypes$ListType"
+		}
+		e := newElem(t, "")
+		addStr(e, "Entity", entity)
+		return e
+	}
 	t := "DataTypes$VoidType"
 	switch kind {
 	case "Boolean":

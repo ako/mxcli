@@ -56,6 +56,7 @@ func (r *Reader) parseExportMapping(unitID, containerID string, contents []byte)
 	if v, ok := raw["NullValueOption"].(string); ok {
 		em.NullValueOption = v
 	}
+	em.WebServiceSource = parseWebServiceSource(raw)
 
 	// Parse top-level mapping elements (array with int32 version prefix)
 	if elements, ok := raw["Elements"].(bson.A); ok {
@@ -149,6 +150,9 @@ func parseExportValueMappingElement(raw map[string]any) *model.ExportMappingElem
 	}
 	if v, ok := raw["Converter"].(string); ok {
 		elem.Converter = v
+	}
+	if v, ok := raw["OriginalValue"].(string); ok {
+		elem.OriginalValue = v
 	}
 
 	// Extract the primitive type from the nested Type object

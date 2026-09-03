@@ -57,7 +57,7 @@ func (b *Builder) ExitCreateEntityStatement(ctx *parser.CreateEntityStatementCon
 		}
 
 	}
-	stmt.Documentation = findDocCommentText(ctx)
+	stmt.Documentation, stmt.DocumentationSet = findDocComment(ctx)
 
 	// Generalization clause (EXTENDS/GENERALIZATION before entity body)
 	if genClause := ctx.GeneralizationClause(); genClause != nil {
@@ -177,7 +177,7 @@ func (b *Builder) buildViewEntity(ctx *parser.CreateEntityStatementContext) {
 		}
 
 	}
-	stmt.Documentation = findDocCommentText(ctx)
+	stmt.Documentation, stmt.DocumentationSet = findDocComment(ctx)
 
 	// Entity body (view attributes)
 	if body := ctx.EntityBody(); body != nil {
@@ -450,19 +450,33 @@ func buildViewAttributes(attrList parser.IAttributeDefinitionListContext) []ast.
 // findDocCommentText extracts the documentation comment text for a create statement.
 // The docComment can appear either on the createStatement itself or on the parent statement rule.
 func findDocCommentText(ctx antlr.RuleContext) string {
+	text, _ := findDocComment(ctx)
+	return text
+}
+
+// findDocComment returns the statement's doc comment and whether one was
+// written at all. The two are different facts and the caller needs both:
+// an ABSENT comment on a rewrite must preserve whatever is stored, while an
+// explicitly EMPTY one (`/** */`) must clear it.
+//
+// Without the second return value they are indistinguishable — both yield "" —
+// and a rewrite that says nothing about documentation silently deletes it
+// (mendixlabs/mxcli#1018). There is no `ALTER MICROFLOW … SET DOCUMENTATION` to
+// fall back on, so the empty comment is the only clearing spelling available.
+func findDocComment(ctx antlr.RuleContext) (string, bool) {
 	createStmt := findParentCreateStatement(ctx)
 	if createStmt != nil {
 		if docCtx := createStmt.DocComment(); docCtx != nil {
-			return extractDocComment(docCtx.GetText())
+			return extractDocComment(docCtx.GetText()), true
 		}
 	}
 	stmtCtx := findParentStatement(ctx)
 	if stmtCtx != nil {
 		if docCtx := stmtCtx.DocComment(); docCtx != nil {
-			return extractDocComment(docCtx.GetText())
+			return extractDocComment(docCtx.GetText()), true
 		}
 	}
-	return ""
+	return "", false
 }
 
 // findParentCreateStatement navigates up the parse tree to find the CreateStatement parent.
@@ -920,6 +934,10 @@ func (b *Builder) ExitDropStatement(ctx *parser.DropStatementContext) {
 		})
 	} else if ctx.JSON() != nil && ctx.STRUCTURE() != nil {
 		b.statements = append(b.statements, &ast.DropJsonStructureStmt{
+			Name: buildQualifiedName(names[0]),
+		})
+	} else if ctx.MESSAGE() != nil && ctx.DEFINITION() != nil && ctx.COLLECTION() != nil {
+		b.statements = append(b.statements, &ast.DropMessageDefinitionCollectionStmt{
 			Name: buildQualifiedName(names[0]),
 		})
 	} else if ctx.IMPORT() != nil && ctx.MAPPING() != nil {

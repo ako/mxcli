@@ -251,17 +251,10 @@ func describeMicroflow(ctx *ExecContext, name ast.QualifiedName) error {
 	qualifiedName := name.Module + "." + name.Name
 	if len(targetMf.Parameters) > 0 {
 		lines = append(lines, fmt.Sprintf("create or modify microflow %s (", qualifiedName))
-		for i, param := range targetMf.Parameters {
-			paramType := "Object"
-			if param.Type != nil {
-				paramType = formatMicroflowDataType(ctx, param.Type, entityNames)
-			}
-			comma := ","
-			if i == len(targetMf.Parameters)-1 {
-				comma = ""
-			}
-			lines = append(lines, fmt.Sprintf("  $%s: %s%s", param.Name, paramType, comma))
-		}
+		lines = append(lines, describeMicroflowParameters(targetMf.Parameters,
+			func(p *microflows.MicroflowParameter) string {
+				return formatMicroflowDataType(ctx, p.Type, entityNames)
+			})...)
 		lines = append(lines, ")")
 	} else {
 		lines = append(lines, fmt.Sprintf("create or modify microflow %s ()", qualifiedName))
@@ -400,17 +393,10 @@ func describeNanoflow(ctx *ExecContext, name ast.QualifiedName) error {
 	qualifiedName := name.Module + "." + name.Name
 	if len(targetNf.Parameters) > 0 {
 		lines = append(lines, fmt.Sprintf("create or modify nanoflow %s (", qualifiedName))
-		for i, param := range targetNf.Parameters {
-			paramType := "Object"
-			if param.Type != nil {
-				paramType = formatMicroflowDataType(ctx, param.Type, entityNames)
-			}
-			comma := ","
-			if i == len(targetNf.Parameters)-1 {
-				comma = ""
-			}
-			lines = append(lines, fmt.Sprintf("  $%s: %s%s", param.Name, paramType, comma))
-		}
+		lines = append(lines, describeMicroflowParameters(targetNf.Parameters,
+			func(p *microflows.MicroflowParameter) string {
+				return formatMicroflowDataType(ctx, p.Type, entityNames)
+			})...)
 		lines = append(lines, ")")
 	} else {
 		lines = append(lines, fmt.Sprintf("create or modify nanoflow %s ()", qualifiedName))
@@ -606,17 +592,10 @@ func renderMicroflowMDL(
 	qualifiedName := name.Module + "." + name.Name
 	if len(mf.Parameters) > 0 {
 		lines = append(lines, fmt.Sprintf("create or modify %s %s (", flowType, qualifiedName))
-		for i, param := range mf.Parameters {
-			paramType := "Object"
-			if param.Type != nil {
-				paramType = formatMicroflowDataType(ctx, param.Type, entityNames)
-			}
-			comma := ","
-			if i == len(mf.Parameters)-1 {
-				comma = ""
-			}
-			lines = append(lines, fmt.Sprintf("  $%s: %s%s", param.Name, paramType, comma))
-		}
+		lines = append(lines, describeMicroflowParameters(mf.Parameters,
+			func(p *microflows.MicroflowParameter) string {
+				return formatMicroflowDataType(ctx, p.Type, entityNames)
+			})...)
 		lines = append(lines, ")")
 	} else {
 		lines = append(lines, fmt.Sprintf("create or modify %s %s ()", flowType, qualifiedName))
@@ -1535,17 +1514,10 @@ func describeRule(ctx *ExecContext, name ast.QualifiedName) error {
 	qualifiedName := name.Module + "." + name.Name
 	if len(target.Parameters) > 0 {
 		lines = append(lines, fmt.Sprintf("create or modify rule %s (", qualifiedName))
-		for i, param := range target.Parameters {
-			paramType := "Object"
-			if param.Type != nil {
-				paramType = formatMicroflowDataType(ctx, param.Type, entityNames)
-			}
-			comma := ","
-			if i == len(target.Parameters)-1 {
-				comma = ""
-			}
-			lines = append(lines, fmt.Sprintf("  $%s: %s%s", param.Name, paramType, comma))
-		}
+		lines = append(lines, describeMicroflowParameters(target.Parameters,
+			func(p *microflows.MicroflowParameter) string {
+				return formatMicroflowDataType(ctx, p.Type, entityNames)
+			})...)
 		lines = append(lines, ")")
 	} else {
 		lines = append(lines, fmt.Sprintf("create or modify rule %s ()", qualifiedName))

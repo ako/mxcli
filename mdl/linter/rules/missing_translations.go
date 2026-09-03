@@ -57,12 +57,18 @@ func (r *MissingTranslationsRule) Check(ctx *linter.LintContext) []linter.Violat
 	}
 
 	// Step 2: Find elements that have translations in some languages but not all.
-	// Group by (QualifiedName, StringContext) — each group should have all languages.
+	// Group by (QualifiedName, StringContext, ElementId) — each group should have
+	// all languages.
+	//
+	// ElementId is load-bearing: sibling elements of one type share a
+	// QualifiedName and a StringContext (an enumeration's twelve values, a page's
+	// action buttons), so grouping without it folds them into one group and a
+	// single translated value makes the whole set look complete.
 	rows, err := db.Query(`
-		SELECT QualifiedName, ObjectType, StringContext, Language, StringValue
+		SELECT QualifiedName, ObjectType, StringContext, Language, StringValue, ElementId
 		FROM strings
 		WHERE Language != ''
-		ORDER BY QualifiedName, StringContext, Language
+		ORDER BY QualifiedName, StringContext, ElementId, Language
 	`)
 	if err != nil {
 		return nil
@@ -73,6 +79,7 @@ func (r *MissingTranslationsRule) Check(ctx *linter.LintContext) []linter.Violat
 	type elementKey struct {
 		QualifiedName string
 		StringContext string
+		ElementID     string
 	}
 	type elementInfo struct {
 		ObjectType string
@@ -82,11 +89,11 @@ func (r *MissingTranslationsRule) Check(ctx *linter.LintContext) []linter.Violat
 
 	elements := make(map[elementKey]*elementInfo)
 	for rows.Next() {
-		var qn, objType, sctx, lang, value string
-		if err := rows.Scan(&qn, &objType, &sctx, &lang, &value); err != nil {
+		var qn, objType, sctx, lang, value, elemID string
+		if err := rows.Scan(&qn, &objType, &sctx, &lang, &value, &elemID); err != nil {
 			continue
 		}
-		key := elementKey{qn, sctx}
+		key := elementKey{qn, sctx, elemID}
 		info, ok := elements[key]
 		if !ok {
 			info = &elementInfo{ObjectType: objType, Languages: make(map[string]bool)}

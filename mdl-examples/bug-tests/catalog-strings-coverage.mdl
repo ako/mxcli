@@ -1,0 +1,58 @@
+-- CATALOG.strings reached five hand-written sites, so most of a project's
+-- translatable text was never indexed — and a language present only on an
+-- unindexed site was INVISIBLE rather than undercounted.
+--
+-- Measured on testdata/expr-checker/minimal.mpr (MPR v2), before the fix:
+--
+--                          indexed    actually in the project
+--   translatable texts         ~69                       3265
+--   languages                     8                          9   <- ar_DZ missing
+--   en_US translations           66                       1045
+--   extraction sites              5                         17
+--
+-- The five were page titles, enum captions and three microflow message
+-- templates, each hand-written against a typed reader. Everything else — every
+-- widget caption, tooltip, validation message and client template — was
+-- unreachable, and a sixth site cost another hand-written case.
+--
+-- Two commands showed the split, on the same project:
+--
+--   describe translations for nl_NL  ->  'Save' as 'Opslaan'
+--   search 'Opslaan'                 ->  No matches found.
+--
+-- The fix indexes from the type-agnostic Texts$Text walk that DESCRIBE
+-- TRANSLATIONS already uses (translations.SitesInUnit), so the two subsystems
+-- cannot disagree about what the project contains.
+--
+-- After the fix, on the same project: 1496 rows, 9 languages, en_US 1045,
+-- nl_NL 333, ar_DZ 4 — identical to an independent BSON walk of the units.
+--
+-- CONTROL: stub buildTranslatableStrings and re-run. `strings: 3` (only the
+-- non-translatable rows survive), and `show languages` reports nothing at all.
+-- Without that line, "9 languages" is equally consistent with a build that
+-- never had the fix.
+
+refresh catalog full;
+
+-- Every language in the project, not only the ones on a page title.
+show languages;
+
+-- A widget caption is translatable text; before the fix this found nothing.
+search 'Opslaan';
+
+-- The context now names the site a text lives at, e.g.
+-- Forms$ActionButton.Caption, rather than a hand-picked label like page_title.
+select StringContext, count(*) as n
+from CATALOG.strings
+where Language != ''
+group by StringContext
+order by n desc;
+
+-- Atlas design templates are ~70% of the corpus and never render in the app.
+-- They ARE indexed (DESCRIBE TRANSLATIONS reaches them, so SHOW LANGUAGES must
+-- agree), and ObjectType is what lets a consumer filter them out.
+select ObjectType, count(*) as n
+from CATALOG.strings
+where Language != ''
+group by ObjectType
+order by n desc;

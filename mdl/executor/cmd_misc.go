@@ -266,7 +266,7 @@ Navigation:
   describe navigation Profile;
   create or replace navigation Profile
     home page Module.Page
-    [home page Module.Page for Module.Role]
+    [home page Module.Page for UserRole]
     [login page Module.Page]
     [not found page Module.Page]
     [menu (

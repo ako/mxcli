@@ -1,0 +1,141 @@
+-- ############################################################################
+-- MESSAGE DEFINITION COLLECTIONS
+-- ############################################################################
+--
+-- A message definition is one of the four sources a mapping can be bound to,
+-- and it was the only non-JSON one a script could create (ako/mxcli#272).
+-- Measured across the nine demo apps: 74 of 327 mappings (22.6%) are sourced
+-- from one.
+--
+-- Unlike an XML schema (which holds an imported .xsd) or an imported web
+-- service (which holds a WSDL), a message definition holds nothing external.
+-- It is a SELECTION OVER THE DOMAIN MODEL: every element names an entity, an
+-- attribute or an association. That is what makes it authorable at all.
+--
+-- Almost every stored property is derived, so a statement says only what a
+-- person chooses: the collection's name, each definition's name, its root
+-- entity, the members, and the occasional rename.
+
+create module MsgTest;
+
+create persistent entity MsgTest.Customer (
+  FirstName: String(100),
+  LastName: String(100),
+  Address: String(200)
+);
+/
+
+create persistent entity MsgTest.Order (
+  OrderId: Long,
+  OrderDate: DateTime,
+  TotalAmount: Decimal
+);
+/
+
+create persistent entity MsgTest.OrderLine (
+  Sku: String(50),
+  Quantity: Integer
+);
+/
+
+create association MsgTest.Order_Customer from MsgTest.Order to MsgTest.Customer;
+create association MsgTest.OrderLine_Order from MsgTest.OrderLine to MsgTest.Order;
+
+-- ============================================================================
+-- Level 1: a collection with one definition
+-- ============================================================================
+--
+-- An ATTRIBUTE is a bare name; an ASSOCIATION is `Assoc/Module.Entity` with its
+-- own member list — the same discriminator import and export mappings use.
+--
+-- The association's TARGET entity is spelled out, and that is load-bearing.
+-- The stored MaxOccurs tracks the DIRECTION of traversal, not the association's
+-- type: reaching Customer FROM Order follows the foreign key and is a single
+-- object, while reaching Order FROM Customer is the reverse and is a list.
+-- Naming the target makes the direction explicit rather than something a reader
+-- has to work out.
+
+create message definition collection MsgTest.MD_Order
+  folder 'Messages'
+(
+  definition OrderMessage for MsgTest.Order as 'Orders' (
+    OrderId,
+    OrderDate,
+    TotalAmount as 'Total',
+    MsgTest.OrderLine_Order/MsgTest.OrderLine as 'Lines' (
+      Sku,
+      Quantity
+    ),
+    MsgTest.Order_Customer/MsgTest.Customer (
+      FirstName,
+      LastName,
+      Address example 'Kerstraat 5, Leiden, Netherlands'
+    )
+  )
+);
+
+-- ============================================================================
+-- Level 2: several definitions, and the same association both ways
+-- ============================================================================
+--
+-- OrderMessage above reaches Customer from Order and gets a single object.
+-- CustomerOrders below reaches Order from Customer over the SAME association
+-- and gets a list. One association, two directions, two cardinalities.
+
+create or modify message definition collection MsgTest.MD_Order
+  folder 'Messages'
+(
+  definition OrderMessage for MsgTest.Order as 'Orders' (
+    OrderId,
+    MsgTest.Order_Customer/MsgTest.Customer ( FirstName )
+  ),
+  definition CustomerOrders for MsgTest.Customer as 'Customers' (
+    FirstName,
+    MsgTest.Order_Customer/MsgTest.Order as 'Orders' ( OrderId, OrderDate )
+  )
+);
+
+-- ============================================================================
+-- Level 3: targeted edits
+-- ============================================================================
+--
+-- A whole-document CREATE OR MODIFY is a poor tool for "expose one more
+-- attribute": real definitions nest to depth 7, so restating one to add a leaf
+-- is the diff-unfriendliness ADR-0003 argues against. ALTER edits the stored
+-- document instead, leaving the definitions it does not mention alone.
+--
+-- The definition is addressed as Module.Collection.Definition — the same
+-- three-part reference WITH MESSAGE DEFINITION uses.
+
+alter message definition MsgTest.MD_Order.OrderMessage add member TotalAmount;
+alter message definition MsgTest.MD_Order.OrderMessage add member LastName in Customer;
+
+-- SET changes only the element's ExposedName. It is NOT a rename: the attribute
+-- itself is untouched, which is why the verb is SET and not RENAME.
+alter message definition MsgTest.MD_Order.OrderMessage set member TotalAmount as 'GrandTotal';
+
+alter message definition MsgTest.MD_Order.OrderMessage drop member LastName in Customer;
+
+-- Definitions within the collection.
+alter message definition collection MsgTest.MD_Order
+  add definition LineMessage for MsgTest.OrderLine ( Sku, Quantity );
+alter message definition collection MsgTest.MD_Order rename definition LineMessage to Lines;
+alter message definition collection MsgTest.MD_Order drop definition if exists Lines;
+
+-- ============================================================================
+-- A mapping over a definition
+-- ============================================================================
+--
+-- The reference is three parts: the collection, then the definition inside it.
+
+create import mapping MsgTest.IMM_Order
+  with message definition MsgTest.MD_Order.OrderMessage
+{
+  create MsgTest.Order { OrderId = OrderId }
+};
+
+-- MARK: Browse
+
+show message definition collections;
+show message definition collections in MsgTest;
+describe message definition collection MsgTest.MD_Order;

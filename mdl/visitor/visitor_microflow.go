@@ -57,7 +57,7 @@ func (b *Builder) ExitCreateMicroflowStatement(ctx *parser.CreateMicroflowStatem
 			}
 		}
 	}
-	stmt.Documentation = findDocCommentText(ctx)
+	stmt.Documentation, stmt.DocumentationSet = findDocComment(ctx)
 
 	b.statements = append(b.statements, stmt)
 }
@@ -109,7 +109,7 @@ func (b *Builder) ExitCreateNanoflowStatement(ctx *parser.CreateNanoflowStatemen
 			}
 		}
 	}
-	stmt.Documentation = findDocCommentText(ctx)
+	stmt.Documentation, stmt.DocumentationSet = findDocComment(ctx)
 
 	b.statements = append(b.statements, stmt)
 }
@@ -154,7 +154,7 @@ func (b *Builder) ExitCreateRuleStatement(ctx *parser.CreateRuleStatementContext
 			}
 		}
 	}
-	stmt.Documentation = findDocCommentText(ctx)
+	stmt.Documentation, stmt.DocumentationSet = findDocComment(ctx)
 
 	b.statements = append(b.statements, stmt)
 }
@@ -310,10 +310,44 @@ func buildMicroflowParameters(ctx parser.IMicroflowParameterListContext) []ast.M
 			param.Type = buildMicroflowDataType(dt)
 		}
 
+		applyParameterAnnotations(&param, p.AllAnnotation())
+
 		params = append(params, param)
 	}
 
 	return params
+}
+
+// applyParameterAnnotations reads the annotations written on a parameter.
+//
+// Only @position(x, y) means anything on a parameter — it is a stored node with
+// its own coordinates, and nothing else about it is a canvas property. Every
+// other name is recorded rather than ignored, so MDL059 can refuse it; an
+// annotation that parses and does nothing is the failure mode #884 was about,
+// and a typo of `@position` is exactly the case that has to be caught.
+func applyParameterAnnotations(param *ast.MicroflowParam, annotations []parser.IAnnotationContext) {
+	for _, annCtx := range annotations {
+		ann := annCtx.(*parser.AnnotationContext)
+		name := strings.ToLower(ann.AnnotationName().GetText())
+		if name != "position" {
+			param.UnknownAnnotations = append(param.UnknownAnnotations, name)
+			continue
+		}
+		params := ann.AnnotationParams()
+		if params == nil {
+			param.UnknownAnnotations = append(param.UnknownAnnotations, name)
+			continue
+		}
+		all := params.(*parser.AnnotationParamsContext).AllAnnotationParam()
+		if len(all) < 2 {
+			param.UnknownAnnotations = append(param.UnknownAnnotations, name)
+			continue
+		}
+		param.Position = &ast.Position{
+			X: parseAnnotationParamInt(all[0]),
+			Y: parseAnnotationParamInt(all[1]),
+		}
+	}
 }
 
 // buildMicroflowReturnType converts return type context to MicroflowReturnType.

@@ -94,7 +94,7 @@ func (b *Builder) ExitCreateJavaActionStatement(ctx *parser.CreateJavaActionStat
 	// Check for documentation comment and OR MODIFY/REPLACE from parent createStatement
 	if parent, ok := ctx.GetParent().(*parser.CreateStatementContext); ok {
 		if docComment := parent.DocComment(); docComment != nil {
-			stmt.Documentation = extractDocComment(docComment.GetText())
+			stmt.Documentation, stmt.DocumentationSet = extractDocComment(docComment.GetText()), true
 		}
 		if parent.OR() != nil && (parent.MODIFY() != nil || parent.REPLACE() != nil) {
 			stmt.CreateOrModify = true
@@ -105,7 +105,7 @@ func (b *Builder) ExitCreateJavaActionStatement(ctx *parser.CreateJavaActionStat
 	if stmt.Documentation == "" {
 		if stmtCtx := findParentStatement(ctx); stmtCtx != nil {
 			if docCtx := stmtCtx.DocComment(); docCtx != nil {
-				stmt.Documentation = extractDocComment(docCtx.GetText())
+				stmt.Documentation, stmt.DocumentationSet = extractDocComment(docCtx.GetText()), true
 			}
 		}
 	}
@@ -194,7 +194,7 @@ func (b *Builder) ExitCreateJavaScriptActionStatement(ctx *parser.CreateJavaScri
 
 	if parent, ok := ctx.GetParent().(*parser.CreateStatementContext); ok {
 		if docComment := parent.DocComment(); docComment != nil {
-			stmt.Documentation = extractDocComment(docComment.GetText())
+			stmt.Documentation, stmt.DocumentationSet = extractDocComment(docComment.GetText()), true
 		}
 		if parent.OR() != nil && (parent.MODIFY() != nil || parent.REPLACE() != nil) {
 			stmt.CreateOrModify = true
@@ -203,7 +203,7 @@ func (b *Builder) ExitCreateJavaScriptActionStatement(ctx *parser.CreateJavaScri
 	if stmt.Documentation == "" {
 		if stmtCtx := findParentStatement(ctx); stmtCtx != nil {
 			if docCtx := stmtCtx.DocComment(); docCtx != nil {
-				stmt.Documentation = extractDocComment(docCtx.GetText())
+				stmt.Documentation, stmt.DocumentationSet = extractDocComment(docCtx.GetText()), true
 			}
 		}
 	}

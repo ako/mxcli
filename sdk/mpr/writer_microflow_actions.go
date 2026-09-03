@@ -190,7 +190,7 @@ func serializeMicroflowAction(action microflows.MicroflowAction) bson.D {
 		// VariableDataType when we know the schema kind — the executor
 		// resolves it from the consumed service's cached $metadata.
 		if a.ResultDataType != "" {
-			doc = append(doc, bson.E{Key: "VariableDataType", Value: serializeExternalActionReturnType(a.ResultDataType)})
+			doc = append(doc, bson.E{Key: "VariableDataType", Value: serializeExternalActionReturnType(a.ResultDataType, a.ResultEntity)})
 		}
 		// Serialize parameter mappings
 		if len(a.ParameterMappings) > 0 {
@@ -203,6 +203,14 @@ func serializeMicroflowAction(action microflows.MicroflowAction) bson.D {
 					{Key: "ParameterName", Value: pm.ParameterName},
 					{Key: "Argument", Value: pm.Argument},
 					{Key: "CanBeEmpty", Value: pm.CanBeEmpty},
+				}
+				// generated/metamodel declares ParameterType without omitempty.
+				// Omitting it is CE7252 + a CE0117 per argument.
+				if pm.ParameterDataType != "" {
+					mapping = append(mapping, bson.E{
+						Key:   "ParameterType",
+						Value: serializeExternalActionReturnType(pm.ParameterDataType, pm.ParameterEntity),
+					})
 				}
 				mappings = append(mappings, mapping)
 			}
@@ -1663,7 +1671,10 @@ func serializeExportXmlAction(a *microflows.ExportXmlAction) bson.D {
 // suitable for ODataPublish$CallExternalAction.VariableDataType. Mendix's
 // CE7269 fires when this field's $Type doesn't match what the cached schema
 // declares for the action's return.
-func serializeExternalActionReturnType(kind string) bson.D {
+// An Object or List return also carries the entity it is typed on: both
+// DataTypes$ObjectType and DataTypes$ListType store an Entity by qualified
+// name, and one without it is as unaligned as no type at all.
+func serializeExternalActionReturnType(kind, entity string) bson.D {
 	typeID := idToBsonBinary(generateUUID())
 	bsonType := "DataTypes$VoidType"
 	switch kind {
@@ -1679,6 +1690,18 @@ func serializeExternalActionReturnType(kind string) bson.D {
 		bsonType = "DataTypes$DateTimeType"
 	case "Binary":
 		bsonType = "DataTypes$BinaryType"
+	case "Object":
+		return bson.D{
+			{Key: "$ID", Value: typeID},
+			{Key: "$Type", Value: "DataTypes$ObjectType"},
+			{Key: "Entity", Value: entity},
+		}
+	case "List":
+		return bson.D{
+			{Key: "$ID", Value: typeID},
+			{Key: "$Type", Value: "DataTypes$ListType"},
+			{Key: "Entity", Value: entity},
+		}
 	case "Void", "":
 		bsonType = "DataTypes$VoidType"
 	}

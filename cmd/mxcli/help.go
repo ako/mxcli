@@ -23,6 +23,7 @@ Top-level topics:
   domain-model    - Entities, associations, enumerations, constants, keywords, types
   microflow       - Microflow/nanoflow creation and activities
   page            - Pages, snippets, fragments, widgets
+  layout          - Layouts: regions, navigation, placeholders, repointing pages
   security        - Roles, access control, demo users
   workflow        - Workflows, user tasks, decisions, parallel splits
   navigation      - Navigation profiles, menus, home pages

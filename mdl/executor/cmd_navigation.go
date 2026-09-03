@@ -19,6 +19,14 @@ func execAlterNavigation(ctx *ExecContext, s *ast.AlterNavigationStmt) error {
 		return mdlerrors.NewNotConnectedWrite()
 	}
 
+	// Resolve `FOR <user role>` before anything is written — including the
+	// profile this may add below. A module-qualified role here produces a project
+	// Mendix cannot load at all, so refusing is the only useful outcome
+	// (mendixlabs/mxcli#1001). Same function `check` calls.
+	if err := validateNavigationRoleForExec(ctx, s); err != nil {
+		return err
+	}
+
 	nav, err := ctx.Backend.GetNavigation()
 	if err != nil {
 		return mdlerrors.NewBackend("get navigation", err)
