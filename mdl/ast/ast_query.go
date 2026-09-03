@@ -312,43 +312,44 @@ const (
 	DescribeLayout
 	DescribeConstant
 	DescribeJavaAction
-	DescribeJavaScriptAction     // DESCRIBE JAVASCRIPT ACTION Module.Name
-	DescribeModuleRole           // DESCRIBE MODULE ROLE Module.RoleName
-	DescribeUserRole             // DESCRIBE USER ROLE Name
-	DescribeDemoUser             // DESCRIBE DEMO USER 'name'
-	DescribeODataClient          // DESCRIBE ODATA CLIENT Module.ServiceName
-	DescribeODataService         // DESCRIBE ODATA SERVICE Module.ServiceName
-	DescribeExternalEntity       // DESCRIBE EXTERNAL ENTITY Module.EntityName
-	DescribeNavigation           // DESCRIBE NAVIGATION [profile]
-	DescribeWorkflow             // DESCRIBE WORKFLOW Module.Name
-	DescribeBusinessEventService // DESCRIBE BUSINESS EVENT SERVICE Module.Name
-	DescribeDatabaseConnection   // DESCRIBE DATABASE CONNECTION Module.Name
-	DescribeSettings             // DESCRIBE SETTINGS
-	DescribeFragment             // DESCRIBE FRAGMENT Name
-	DescribeImageCollection      // DESCRIBE IMAGE COLLECTION Module.Name
-	DescribeIconCollection       // DESCRIBE ICON COLLECTION Module.Name
-	DescribeRestClient           // DESCRIBE REST CLIENT Module.Name
-	DescribePublishedRestService // DESCRIBE PUBLISHED REST SERVICE Module.Name
-	DescribeDataTransformer      // DESCRIBE DATA TRANSFORMER Module.Name
-	DescribeContractEntity       // DESCRIBE CONTRACT ENTITY Service.EntityName [FORMAT mdl]
-	DescribeContractAction       // DESCRIBE CONTRACT ACTION Service.ActionName [FORMAT mdl]
-	DescribeContractMessage      // DESCRIBE CONTRACT MESSAGE Service.MessageName
-	DescribeJsonStructure        // DESCRIBE JSON STRUCTURE Module.Name
-	DescribeNanoflow             // DESCRIBE NANOFLOW Module.Name
-	DescribeRule                 // DESCRIBE RULE Module.Name
-	DescribeImportMapping        // DESCRIBE IMPORT MAPPING Module.Name
-	DescribeExportMapping        // DESCRIBE EXPORT MAPPING Module.Name
-	DescribeModel                // DESCRIBE MODEL Module.Name (agent-editor Model document)
-	DescribeAgent                // DESCRIBE AGENT Module.Name (agent-editor Agent document)
-	DescribeKnowledgeBase        // DESCRIBE KNOWLEDGE BASE Module.Name (agent-editor KB document)
-	DescribeConsumedMCPService   // DESCRIBE CONSUMED MCP SERVICE Module.Name (agent-editor MCP document)
-	DescribeJarDependency        // DESCRIBE JAR DEPENDENCY ModuleName 'group:artifact'
-	DescribeBuildingBlock        // DESCRIBE BUILDING BLOCK Module.Name
-	DescribeMenu                 // DESCRIBE MENU Module.Name (standalone Menus$MenuDocument)
-	DescribeQueue                // DESCRIBE QUEUE Module.Name
-	DescribeScheduledEvent       // DESCRIBE SCHEDULED EVENT Module.Name
-	DescribeRegularExpression    // DESCRIBE REGULAR EXPRESSION Module.Name
-	DescribeAuto                 // DESCRIBE Module.Name — type auto-detected at execution time
+	DescribeJavaScriptAction            // DESCRIBE JAVASCRIPT ACTION Module.Name
+	DescribeModuleRole                  // DESCRIBE MODULE ROLE Module.RoleName
+	DescribeUserRole                    // DESCRIBE USER ROLE Name
+	DescribeDemoUser                    // DESCRIBE DEMO USER 'name'
+	DescribeODataClient                 // DESCRIBE ODATA CLIENT Module.ServiceName
+	DescribeODataService                // DESCRIBE ODATA SERVICE Module.ServiceName
+	DescribeExternalEntity              // DESCRIBE EXTERNAL ENTITY Module.EntityName
+	DescribeNavigation                  // DESCRIBE NAVIGATION [profile]
+	DescribeWorkflow                    // DESCRIBE WORKFLOW Module.Name
+	DescribeBusinessEventService        // DESCRIBE BUSINESS EVENT SERVICE Module.Name
+	DescribeDatabaseConnection          // DESCRIBE DATABASE CONNECTION Module.Name
+	DescribeSettings                    // DESCRIBE SETTINGS
+	DescribeFragment                    // DESCRIBE FRAGMENT Name
+	DescribeImageCollection             // DESCRIBE IMAGE COLLECTION Module.Name
+	DescribeIconCollection              // DESCRIBE ICON COLLECTION Module.Name
+	DescribeRestClient                  // DESCRIBE REST CLIENT Module.Name
+	DescribePublishedRestService        // DESCRIBE PUBLISHED REST SERVICE Module.Name
+	DescribeDataTransformer             // DESCRIBE DATA TRANSFORMER Module.Name
+	DescribeContractEntity              // DESCRIBE CONTRACT ENTITY Service.EntityName [FORMAT mdl]
+	DescribeContractAction              // DESCRIBE CONTRACT ACTION Service.ActionName [FORMAT mdl]
+	DescribeContractMessage             // DESCRIBE CONTRACT MESSAGE Service.MessageName
+	DescribeJsonStructure               // DESCRIBE JSON STRUCTURE Module.Name
+	DescribeMessageDefinitionCollection // DESCRIBE MESSAGE DEFINITION COLLECTION Module.Name
+	DescribeNanoflow                    // DESCRIBE NANOFLOW Module.Name
+	DescribeRule                        // DESCRIBE RULE Module.Name
+	DescribeImportMapping               // DESCRIBE IMPORT MAPPING Module.Name
+	DescribeExportMapping               // DESCRIBE EXPORT MAPPING Module.Name
+	DescribeModel                       // DESCRIBE MODEL Module.Name (agent-editor Model document)
+	DescribeAgent                       // DESCRIBE AGENT Module.Name (agent-editor Agent document)
+	DescribeKnowledgeBase               // DESCRIBE KNOWLEDGE BASE Module.Name (agent-editor KB document)
+	DescribeConsumedMCPService          // DESCRIBE CONSUMED MCP SERVICE Module.Name (agent-editor MCP document)
+	DescribeJarDependency               // DESCRIBE JAR DEPENDENCY ModuleName 'group:artifact'
+	DescribeBuildingBlock               // DESCRIBE BUILDING BLOCK Module.Name
+	DescribeMenu                        // DESCRIBE MENU Module.Name (standalone Menus$MenuDocument)
+	DescribeQueue                       // DESCRIBE QUEUE Module.Name
+	DescribeScheduledEvent              // DESCRIBE SCHEDULED EVENT Module.Name
+	DescribeRegularExpression           // DESCRIBE REGULAR EXPRESSION Module.Name
+	DescribeAuto                        // DESCRIBE Module.Name — type auto-detected at execution time
 )
 
 // String returns the human-readable name of the describe object type.
@@ -416,6 +417,8 @@ func (t DescribeObjectType) String() string {
 		return "CONTRACT ACTION"
 	case DescribeContractMessage:
 		return "CONTRACT MESSAGE"
+	case DescribeMessageDefinitionCollection:
+		return "MESSAGE DEFINITION COLLECTION"
 	case DescribeJsonStructure:
 		return "JSON STRUCTURE"
 	case DescribeNanoflow:

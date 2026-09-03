@@ -360,6 +360,21 @@ func registerJSONStructureHandlers(r *Registry) {
 	})
 }
 
+func registerMessageDefinitionHandlers(r *Registry) {
+	r.Register(&ast.CreateMessageDefinitionCollectionStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execCreateMessageDefinitionCollection(ctx, stmt.(*ast.CreateMessageDefinitionCollectionStmt))
+	})
+	r.Register(&ast.DropMessageDefinitionCollectionStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execDropMessageDefinitionCollection(ctx, stmt.(*ast.DropMessageDefinitionCollectionStmt))
+	})
+	r.Register(&ast.AlterMessageDefinitionCollectionStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execAlterMessageDefinitionCollection(ctx, stmt.(*ast.AlterMessageDefinitionCollectionStmt))
+	})
+	r.Register(&ast.AlterMessageDefinitionStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
+		return execAlterMessageDefinition(ctx, stmt.(*ast.AlterMessageDefinitionStmt))
+	})
+}
+
 func registerMappingHandlers(r *Registry) {
 	r.Register(&ast.CreateImportMappingStmt{}, func(ctx *ExecContext, stmt ast.Statement) error {
 		return execCreateImportMapping(ctx, stmt.(*ast.CreateImportMappingStmt))

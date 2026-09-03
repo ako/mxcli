@@ -1225,6 +1225,11 @@ func (b *Builder) ExitDescribeStatement(ctx *parser.DescribeStatementContext) {
 			ObjectType: ast.DescribeDataTransformer,
 			Name:       name,
 		})
+	} else if ctx.MESSAGE() != nil && ctx.DEFINITION() != nil && ctx.COLLECTION() != nil {
+		b.statements = append(b.statements, &ast.DescribeStmt{
+			ObjectType: ast.DescribeMessageDefinitionCollection,
+			Name:       name,
+		})
 	} else if ctx.JSON() != nil && ctx.STRUCTURE() != nil {
 		b.statements = append(b.statements, &ast.DescribeStmt{
 			ObjectType: ast.DescribeJsonStructure,

@@ -549,7 +549,13 @@ messageDefinitionDef
 messageMember
     : qualifiedName SLASH qualifiedName messageExposedName?
       LPAREN messageMember (COMMA messageMember)* COMMA? RPAREN   // association
-    | identifierOrKeyword messageExposedName?                     // attribute
+    | identifierOrKeyword messageExposedName? messageExample?      // attribute
+    ;
+
+// `example 'text'` sets the element's Example — author-set sample text. Only a
+// value member carries one in any document measured.
+messageExample
+    : EXAMPLE STRING_LITERAL
     ;
 
 // `as 'Name'` sets ExposedName. A name mapped to a name takes `as`, not `:`.

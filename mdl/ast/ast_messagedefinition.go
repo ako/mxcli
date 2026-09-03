@@ -55,7 +55,11 @@ type MessageMemberDef struct {
 	Entity      QualifiedName // the association's target
 
 	ExposedName string // "" means: use the member's own name
-	Members     []*MessageMemberDef
+	// Example is author-set sample text. Rare (1 of 4,707 elements measured)
+	// but real, and describe emitting nothing for it is what would make
+	// describe -> exec lossy.
+	Example string
+	Members []*MessageMemberDef
 }
 
 // IsAssociation reports whether the member exposes an association rather than an

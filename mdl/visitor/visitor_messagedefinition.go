@@ -82,6 +82,11 @@ func (b *Builder) buildMessageMember(c parser.IMessageMemberContext) *ast.Messag
 	}
 
 	mem.Attribute = identifierOrKeywordText(ctx.IdentifierOrKeyword())
+	if ex, ok := ctx.MessageExample().(*parser.MessageExampleContext); ok && ex != nil {
+		if lit := ex.STRING_LITERAL(); lit != nil {
+			mem.Example = unquoteString(lit.GetText())
+		}
+	}
 	return mem
 }
 
