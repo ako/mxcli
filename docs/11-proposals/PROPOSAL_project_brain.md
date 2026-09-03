@@ -225,6 +225,8 @@ or §3.
 | A5 | `staged.jsonl` gets a cheap duplicate check | §3: cheap insurance, but a many-writers problem that mostly does not apply here |
 | A6 | `brain show`'s size figure and any coverage number are computed, never written into a committed file | §3: prose figures went stale within days |
 | A7 | The gap that motivates curation is printed by a command that already runs, not only by `brain check` | §3: the on-demand digest went three months without a run |
+| A8 | Records shard by **anchor scope** — `project.md` for cross-cutting, `modules/<Module>.md` for anchored ones — created on demand, with caps applying per shard | §4.1: one file makes a single project-wide budget, and every session pays for every module |
+| A9 | The store lives at **`docs/brain/`**, with a `README.md` written by `init` | §4.2: a bare `docs/` gives no signal that the files are brain-managed, and §6 Q2 |
 
 Everything else — the three tiers, the storage layout, the CLI surface, the
 promote-only-through-a-human rule, the non-goals — stands as written. The
@@ -235,6 +237,90 @@ embed and `mxcli init` handle the rest (§2.4). The brief is right that the
 description decides whether it is ever used and should be phrased around
 symptoms. Worth adding: mxcli's own skills are synced with `rsync --delete`, so
 the source of truth is `.claude/skills/mendix/`, never the embed directory.
+
+### 4.1 Storage layout at scale
+
+The brief's single decisions file assumes a project whose decisions fit one
+budget. Mendix projects routinely run to 100+ modules, and one file has two
+failure modes there — both of which the caps make *worse* rather than better:
+
+- **The cap becomes a project-wide budget.** Recording a `Sales` decision
+  competes with a `Finance` decision for the same allowance, so `promote` starts
+  refusing on exactly the projects that most need the store.
+- **Every session pays for every module.** The store is loaded into context each
+  session; an agent working in one module carries the other ninety-nine.
+
+Shard by **anchor scope**, which is derived rather than chosen:
+
+```
+docs/brain/
+  README.md            written by `brain init` — what the folder is, how it is checked
+  project.md           cross-cutting, no anchor: always loaded, the tightest cap
+  modules/<Module>.md  anchored to `Module.*`: loaded when that module is in play
+```
+
+Three properties follow, and they are the reason to shard on this key rather
+than by topic or by date:
+
+1. **There is no index to maintain.** An anchor is `@Sales.Order.Status`; its
+   module prefix *is* its file name. Routing is a string split — and A6 already
+   forbids a written index, which would be a self-reported claim that goes stale.
+2. **Misfiling becomes a check rather than a style note.** The `objects` view
+   carries a `ModuleName` column (`mdl/catalog/tables.go:1028`), so `check` can
+   assert that every anchor in `modules/Sales.md` resolves with
+   `ModuleName = 'Sales'`. This check cannot exist for a single file: there is
+   nothing for an entry to be inconsistent *with*.
+3. **`check` can scope to a diff.** `--changed` reads git's changed-file list and
+   validates only the affected shards — the cheap half of the answer to §6 Q1.
+
+**Shards are created on demand, and their universe is far smaller than the module
+count.** Marketplace modules do not carry decisions: Mendix's own guidance is not
+to edit them, and mxcli already refuses to write a layout into one. The catalog
+distinguishes them (`modules.Source`), so the universe is computable rather than
+guessed. Measured on the sample project:
+
+```
+9 modules, 7 of them Marketplace (Atlas_Core, Administration, NanoflowCommons, …)
+  -> 2 modules could ever own a shard
+```
+
+This is emphatically not the "one file per record" shape that turned the
+analogous store into 600 files (§3). A shard holds many entries and is keyed by
+something the project already has a name for; the file count tracks *modules the
+team owns*, not decisions.
+
+**Phase 2 introduces a third key.** An mxbuild error → resolution record is
+anchored to a CE number, not to a module, and belongs in its own `errors.md`
+rather than being forced into one of the other two. Naming the axis now —
+*anchored to a module, anchored to an error, anchored to nothing* — is cheaper
+than discovering it once entries exist.
+
+### 4.2 Where the store lives
+
+`docs/brain/`, not `docs/`.
+
+The brief's argument for `docs/` is reviewability in a pull request. That is
+right and is preserved unchanged. What a bare `docs/` does not give is any signal
+that the files are brain-managed, and it walks straight into §6 Q2: a Mendix
+project's `docs/` may already be the customer's, or Studio Pro's.
+
+A clearly-named subfolder answers both at once. Dropping a `decisions.md` into
+someone else's docs tree is a collision; adding a labelled folder beside their
+files is not.
+
+Two alternatives, and why not:
+
+- **`brain/` at the repository root.** More discoverable, but a Mendix project
+  root is already crowded (`mprcontents/`, `theme/`, `themesource/`,
+  `javascriptsource/`, `resources/`, `deployment/`, `.mxcli/`, `.claude/`,
+  `.ai-context/`), and discoverability is the skill's job — its `description` is
+  what decides whether the store is ever consulted at all (§2.4).
+- **An `mxcli-` prefix, as in `theme/mxcli-themes/`.** That prefix exists where
+  mxcli *generates* files and must not clobber the user's. Brain entries are
+  written by the developer and promoted through a human, so the prefix would
+  signal tool ownership — the opposite of the intent. The `README.md` carries the
+  ownership statement instead; because it describes mechanism rather than state,
+  A6 still holds.
 
 ## 5. Phasing
 
@@ -251,11 +337,15 @@ Unchanged from the brief, with A4 inserted:
 1. **What does `brain check --ci` cost on a cold clone?** It needs a catalog, and
    catalog validity is an mtime comparison that a fresh checkout always fails.
    Unmeasured. If a full build is expensive, `--ci` may need a cheaper anchor
-   index than the catalog.
-2. **Is `docs/` the right home?** The brief argues for reviewability in PR diffs,
-   which is correct. But a Mendix project's `docs/` may already be Studio Pro's
-   or a customer's. `init`'s adoption step should cover "there is a `docs/` and it
-   is not ours".
+   index than the catalog. A8 narrows the question but does not close it:
+   `--changed` checks only the shards a diff touches, yet the *first* of those
+   still pays for the catalog build.
+2. ~~**Is `docs/` the right home?**~~ **Answered — `docs/brain/` (A9, §4.2).** A
+   labelled subfolder is safe to add to a `docs/` that is Studio Pro's or a
+   customer's, which a bare `decisions.md` is not, and the folder name is what
+   tells a reviewer the files are brain-managed. `init`'s adoption step still has
+   to handle an existing `docs/brain/` that is *not* ours, which is now the only
+   collision left.
 3. **THEORY.md does not exist.** The issue says to read it and to update it if the
    working theory changes. There is no such file anywhere in the repository. Is it
    expected to be created, or was another document meant?
