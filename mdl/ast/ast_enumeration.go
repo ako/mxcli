@@ -46,11 +46,16 @@ func (s *MoveFolderStmt) isStatement() {}
 
 // CreateEnumerationStmt represents: CREATE ENUMERATION Module.Name (values) COMMENT '...'
 type CreateEnumerationStmt struct {
-	Name           QualifiedName
-	Values         []EnumValue
-	Documentation  string
-	Folder         string // Module folder to place the enumeration in (Bug 12b)
-	CreateOrModify bool   // True if CREATE OR MODIFY was used
+	Name          QualifiedName
+	Values        []EnumValue
+	Documentation string
+	// DocumentationSet records whether the statement carried a `/** … */`
+	// comment at all, as opposed to carrying an empty one. A rewrite that did
+	// not mention documentation preserves the stored value; an explicitly empty
+	// comment clears it (mendixlabs/mxcli#1018).
+	DocumentationSet bool
+	Folder           string // Module folder to place the enumeration in (Bug 12b)
+	CreateOrModify   bool   // True if CREATE OR MODIFY was used
 }
 
 func (s *CreateEnumerationStmt) isStatement() {}
@@ -89,14 +94,15 @@ func (s *DropEnumerationStmt) isStatement() {}
 
 // CreateConstantStmt represents: CREATE CONSTANT Module.Name TYPE type DEFAULT value [COMMENT '...']
 type CreateConstantStmt struct {
-	Name            QualifiedName
-	DataType        DataType
-	DefaultValue    any // The default value (can be string, number, boolean, etc.)
-	Documentation   string
-	Comment         string
-	Folder          string // Folder path within module (e.g., "Resources/Constants")
-	ExposedToClient bool
-	CreateOrModify  bool // True if CREATE OR MODIFY was used
+	Name             QualifiedName
+	DataType         DataType
+	DefaultValue     any // The default value (can be string, number, boolean, etc.)
+	Documentation    string
+	DocumentationSet bool // see mendixlabs/mxcli#1018: absent preserves, empty clears
+	Comment          string
+	Folder           string // Folder path within module (e.g., "Resources/Constants")
+	ExposedToClient  bool
+	CreateOrModify   bool // True if CREATE OR MODIFY was used
 }
 
 func (s *CreateConstantStmt) isStatement() {}

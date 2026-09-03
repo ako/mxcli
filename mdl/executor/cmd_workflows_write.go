@@ -85,6 +85,8 @@ func execCreateWorkflow(ctx *ExecContext, s *ast.CreateWorkflowStmt) error {
 	// excluded twin of this name — target the live workflow and carry its
 	// exclusion forward (#914).
 	existingExcluded := false
+	var existingDocumentation string
+	haveExistingWf := false
 	if existing, ok := pickLive(existingWorkflows,
 		func(w *workflows.Workflow) bool {
 			return h.GetModuleName(h.FindModuleID(w.ContainerID)) == s.Name.Module && w.Name == s.Name.Name
@@ -97,6 +99,8 @@ func execCreateWorkflow(ctx *ExecContext, s *ast.CreateWorkflowStmt) error {
 		existingID = existing.ID
 		existingExcluded = existing.Excluded
 		existingContainer = existing.ContainerID
+		existingDocumentation = existing.Documentation
+		haveExistingWf = true
 
 		// Refuse a rewrite that would delete a stored construct this statement
 		// does not restate (guard-don't-drop, ADR-0005) — issue #948.
@@ -115,6 +119,10 @@ func execCreateWorkflow(ctx *ExecContext, s *ast.CreateWorkflowStmt) error {
 	wf.ContainerID = containerID
 	wf.Name = s.Name.Name
 	wf.Documentation = s.Documentation
+	// A rewrite that carried no doc comment keeps the stored one (#1018).
+	if haveExistingWf {
+		wf.Documentation = carriedDocumentation(s.DocumentationSet, s.Documentation, existingDocumentation)
+	}
 
 	// Parameter
 	if s.ParameterEntity.Module != "" {

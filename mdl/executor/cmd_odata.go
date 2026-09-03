@@ -885,9 +885,11 @@ func execCreateExternalEntity(ctx *ExecContext, s *ast.CreateExternalEntityStmt)
 		if len(attrs) > 0 {
 			existingEntity.Attributes = attrs
 		}
-		if s.Documentation != "" {
-			existingEntity.Documentation = s.Documentation
-		}
+		// A rewrite that carried no doc comment keeps the stored one; an
+		// explicitly empty `/** */` clears it (#1018). The `!= ""` form this
+		// replaces preserved but could not clear.
+		existingEntity.Documentation = carriedDocumentation(
+			s.DocumentationSet, s.Documentation, existingEntity.Documentation)
 		if err := ctx.Backend.UpdateEntity(dm.ID, existingEntity); err != nil {
 			return mdlerrors.NewBackend("update external entity", err)
 		}
@@ -975,7 +977,10 @@ func createODataClient(ctx *ExecContext, stmt *ast.CreateODataClientStmt) error 
 			modName := h.GetModuleName(modID)
 			if strings.EqualFold(modName, stmt.Name.Module) && strings.EqualFold(svc.Name, stmt.Name.Name) {
 				if stmt.CreateOrModify {
-					svc.Documentation = stmt.Documentation
+					// svc is the STORED service being mutated, so its own value is
+					// what a silent rewrite preserves (#1018).
+					svc.Documentation = carriedDocumentation(
+						stmt.DocumentationSet, stmt.Documentation, svc.Documentation)
 					if stmt.Version != "" {
 						svc.Version = stmt.Version
 					}
@@ -1457,7 +1462,12 @@ func createODataService(ctx *ExecContext, stmt *ast.CreateODataServiceStmt) erro
 				if stmt.CreateOrModify {
 					// Snapshot the grants before anything below can clear them.
 					existingRoles := append([]string(nil), svc.AllowedModuleRoles...)
-					svc.Documentation = stmt.Documentation
+					// svc is the STORED service being mutated, so its own value
+					// is what a silent rewrite preserves (#1018). There are two
+					// update paths for this doctype and patching only the first
+					// left the defect fully intact — the test caught it.
+					svc.Documentation = carriedDocumentation(
+						stmt.DocumentationSet, stmt.Documentation, svc.Documentation)
 					if stmt.Path != "" {
 						svc.Path = stmt.Path
 					}

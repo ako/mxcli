@@ -82,6 +82,10 @@ func execCreateEnumeration(ctx *ExecContext, s *ast.CreateEnumerationStmt) error
 		// Excluded is model state, not script state: MDL cannot express it for
 		// an enumeration, so the stored value is the one that survives (#914).
 		enum.Excluded = existingEnum.Excluded
+		// Absent doc comment preserves, explicitly empty clears (#1018).
+		if !s.DocumentationSet {
+			enum.Documentation = existingEnum.Documentation
+		}
 		// Placement is model state too when the statement is silent about it.
 		if s.Folder == "" {
 			enum.ContainerID = existingEnum.ContainerID

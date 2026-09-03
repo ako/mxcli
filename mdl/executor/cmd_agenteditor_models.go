@@ -192,6 +192,10 @@ func execCreateAgentEditorModel(ctx *ExecContext, s *ast.CreateModelStmt) error 
 		ResourceName:  s.ResourceName,
 		DeepLinkURL:   s.DeepLinkURL,
 	}
+	// A rewrite that carried no doc comment keeps the stored one (#1018).
+	if existing != nil {
+		m.Documentation = carriedDocumentation(s.DocumentationSet, s.Documentation, existing.Documentation)
+	}
 
 	if existing != nil {
 		m.ID = existing.ID

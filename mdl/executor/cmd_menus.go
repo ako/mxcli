@@ -85,6 +85,10 @@ func execCreateMenu(ctx *ExecContext, s *ast.CreateMenuStmt) error {
 		Documentation: s.Documentation,
 		Items:         menuItemsFromAST(s.Items),
 	}
+	// A rewrite that carried no doc comment keeps the stored one (#1018).
+	if existing != nil {
+		md.Documentation = carriedDocumentation(s.DocumentationSet, s.Documentation, existing.Documentation)
+	}
 
 	if existing != nil {
 		// Preserve the document's identity and the properties MDL does not

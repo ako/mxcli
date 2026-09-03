@@ -4,13 +4,14 @@ package ast
 
 // CreateBusinessEventServiceStmt represents CREATE BUSINESS EVENT SERVICE.
 type CreateBusinessEventServiceStmt struct {
-	Name            QualifiedName
-	ServiceName     string
-	EventNamePrefix string
-	Messages        []*BusinessEventMessageDef
-	CreateOrModify  bool
-	Folder          string
-	Documentation   string
+	Name             QualifiedName
+	ServiceName      string
+	EventNamePrefix  string
+	Messages         []*BusinessEventMessageDef
+	CreateOrModify   bool
+	Folder           string
+	Documentation    string
+	DocumentationSet bool // see mendixlabs/mxcli#1018: absent preserves, empty clears
 }
 
 func (s *CreateBusinessEventServiceStmt) isStatement() {}

@@ -18,7 +18,7 @@ func (b *Builder) ExitCreateImageCollectionStatement(ctx *parser.CreateImageColl
 	}
 
 	// Extract /** ... */ doc comment (same as other create statements)
-	stmt.Comment = findDocCommentText(ctx)
+	stmt.Comment, stmt.DocumentationSet = findDocComment(ctx)
 
 	if opts := ctx.ImageCollectionOptions(); opts != nil {
 		optsCtx := opts.(*parser.ImageCollectionOptionsContext)

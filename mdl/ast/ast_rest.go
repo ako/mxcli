@@ -8,14 +8,15 @@ package ast
 
 // CreateRestClientStmt represents: CREATE REST CLIENT Module.Name BASE URL '...' AUTHENTICATION ... BEGIN ... END
 type CreateRestClientStmt struct {
-	Name           QualifiedName
-	BaseUrl        string
-	Authentication *RestAuthDef // nil = AUTHENTICATION NONE
-	Operations     []*RestOperationDef
-	Documentation  string
-	Folder         string // Folder path within module
-	CreateOrModify bool   // True if CREATE OR MODIFY was used
-	OpenApiPath    string // Non-empty = spec-driven; operations come from spec not OPERATION blocks
+	Name             QualifiedName
+	BaseUrl          string
+	Authentication   *RestAuthDef // nil = AUTHENTICATION NONE
+	Operations       []*RestOperationDef
+	Documentation    string
+	DocumentationSet bool   // see mendixlabs/mxcli#1018: absent preserves, empty clears
+	Folder           string // Folder path within module
+	CreateOrModify   bool   // True if CREATE OR MODIFY was used
+	OpenApiPath      string // Non-empty = spec-driven; operations come from spec not OPERATION blocks
 }
 
 func (s *CreateRestClientStmt) isStatement() {}

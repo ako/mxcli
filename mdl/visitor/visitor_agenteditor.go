@@ -18,7 +18,7 @@ func (b *Builder) ExitCreateModelStatement(ctx *parser.CreateModelStatementConte
 	stmt := &ast.CreateModelStmt{
 		Name: buildQualifiedName(ctx.QualifiedName()),
 	}
-	stmt.Documentation = findDocCommentText(ctx)
+	stmt.Documentation, stmt.DocumentationSet = findDocComment(ctx)
 	if lit := ctx.STRING_LITERAL(); lit != nil {
 		stmt.Folder = unquoteString(lit.GetText())
 	}
@@ -158,7 +158,7 @@ func (b *Builder) ExitCreateConsumedMCPServiceStatement(ctx *parser.CreateConsum
 	stmt := &ast.CreateConsumedMCPServiceStmt{
 		Name: buildQualifiedName(ctx.QualifiedName()),
 	}
-	stmt.OuterDocumentation = findDocCommentText(ctx)
+	stmt.OuterDocumentation, stmt.DocumentationSet = findDocComment(ctx)
 	if lit := ctx.STRING_LITERAL(); lit != nil {
 		stmt.Folder = unquoteString(lit.GetText())
 	}
@@ -184,7 +184,7 @@ func (b *Builder) ExitCreateKnowledgeBaseStatement(ctx *parser.CreateKnowledgeBa
 	stmt := &ast.CreateKnowledgeBaseStmt{
 		Name: buildQualifiedName(ctx.QualifiedName()),
 	}
-	stmt.Documentation = findDocCommentText(ctx)
+	stmt.Documentation, stmt.DocumentationSet = findDocComment(ctx)
 	if lit := ctx.STRING_LITERAL(); lit != nil {
 		stmt.Folder = unquoteString(lit.GetText())
 	}
@@ -215,7 +215,7 @@ func (b *Builder) ExitCreateAgentStatement(ctx *parser.CreateAgentStatementConte
 	stmt := &ast.CreateAgentStmt{
 		Name: buildQualifiedName(ctx.QualifiedName()),
 	}
-	stmt.Documentation = findDocCommentText(ctx)
+	stmt.Documentation, stmt.DocumentationSet = findDocComment(ctx)
 	if lit := ctx.STRING_LITERAL(); lit != nil {
 		stmt.Folder = unquoteString(lit.GetText())
 	}

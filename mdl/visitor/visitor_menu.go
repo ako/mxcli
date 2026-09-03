@@ -19,6 +19,10 @@ func (b *Builder) ExitCreateMenuStatement(ctx *parser.CreateMenuStatementContext
 	}
 
 	stmt := &ast.CreateMenuStmt{Name: buildQualifiedName(qn)}
+	// A menu's doc comment was parsed and then read by nobody, so the
+	// documentation never reached the model at all — a write gap rather than
+	// the rewrite gap of #1018, found while testing the latter.
+	stmt.Documentation, stmt.DocumentationSet = findDocComment(ctx)
 	if lit := ctx.STRING_LITERAL(); lit != nil {
 		stmt.Folder = unquoteString(lit.GetText())
 	}

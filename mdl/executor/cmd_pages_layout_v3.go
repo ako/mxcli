@@ -113,6 +113,8 @@ func execCreateLayout(ctx *ExecContext, s *ast.CreateLayoutStmt) error {
 
 	existing, _ := ctx.Backend.ListLayouts()
 	var toDelete []model.ID
+	var existingLayoutDoc string
+	haveExistingLayout := false
 	for _, l := range existing {
 		modName := getModuleName(ctx, getModuleID(ctx, l.ContainerID))
 		if modName != s.Name.Module || l.Name != s.Name.Name {
@@ -120,6 +122,10 @@ func execCreateLayout(ctx *ExecContext, s *ast.CreateLayoutStmt) error {
 		}
 		if !s.IsReplace && !s.IsModify {
 			return mdlerrors.NewAlreadyExists("layout", s.Name.String())
+		}
+		if len(toDelete) == 0 {
+			existingLayoutDoc = l.Documentation
+			haveExistingLayout = true
 		}
 		toDelete = append(toDelete, l.ID)
 	}
@@ -143,6 +149,11 @@ func execCreateLayout(ctx *ExecContext, s *ast.CreateLayoutStmt) error {
 	layout, err := pb.buildLayoutV3(s)
 	if err != nil {
 		return err
+	}
+
+	// A rewrite that carried no doc comment keeps the stored one (#1018).
+	if haveExistingLayout {
+		layout.Documentation = carriedDocumentation(s.DocumentationSet, s.Documentation, existingLayoutDoc)
 	}
 
 	for _, id := range toDelete {

@@ -59,6 +59,8 @@ func execCreateRule(ctx *ExecContext, s *ast.CreateRuleStmt) error {
 
 	// Check whether a rule of this name already exists in the module.
 	var existingID model.ID
+	var existingDocumentation string
+	haveExisting := false
 	var existingContainerID model.ID
 	// Excluded is model state, not script state: an absent @excluded must not
 	// clear a stored exclusion (#914).
@@ -85,6 +87,8 @@ func execCreateRule(ctx *ExecContext, s *ast.CreateRuleStmt) error {
 		existingID = existing.ID
 		existingContainerID = existing.ContainerID
 		existingExcluded = existing.Excluded
+		existingDocumentation = existing.Documentation
+		haveExisting = true
 		// MDL has no surface for ReturnVariableName, and Studio Pro writes one
 		// ("Variable" on both reference rules), so carry the stored value rather
 		// than blanking it on every rewrite.
@@ -112,6 +116,11 @@ func execCreateRule(ctx *ExecContext, s *ast.CreateRuleStmt) error {
 		MarkAsUsed:         false,
 		Excluded:           s.Excluded || existingExcluded,
 		ReturnVariableName: existingReturnVariableName,
+	}
+
+	// A rewrite that carried no doc comment keeps the stored one (#1018).
+	if haveExisting {
+		rule.Documentation = carriedDocumentation(s.DocumentationSet, s.Documentation, existingDocumentation)
 	}
 
 	// Load metadata needed by the entity resolver up front so backend read
