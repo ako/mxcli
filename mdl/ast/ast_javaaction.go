@@ -22,17 +22,18 @@ type JavaActionParam struct {
 //	EXPOSED AS 'caption' IN 'category'
 //	AS $$ ... $$;
 type CreateJavaActionStmt struct {
-	Folder          string            // Folder path within module (empty = leave placement alone)
-	Name            QualifiedName     // Qualified name (Module.ActionName)
-	Parameters      []JavaActionParam // Input parameters
-	ReturnType      DataType          // Return type (can be nil for void)
-	JavaCode        string            // The executeAction() body
-	ExtraCode       string            // Optional extra code section
-	Imports         []string          // Optional additional imports
-	Documentation   string            // Optional documentation comment
-	TypeParameters  []string          // Type parameter names (e.g., ["pEntity"])
-	ExposedCaption  string            // EXPOSED AS 'caption'
-	ExposedCategory string            // IN 'category'
+	Folder           string            // Folder path within module (empty = leave placement alone)
+	Name             QualifiedName     // Qualified name (Module.ActionName)
+	Parameters       []JavaActionParam // Input parameters
+	ReturnType       DataType          // Return type (can be nil for void)
+	JavaCode         string            // The executeAction() body
+	ExtraCode        string            // Optional extra code section
+	Imports          []string          // Optional additional imports
+	Documentation    string            // Optional documentation comment
+	DocumentationSet bool              // see mendixlabs/mxcli#1018: absent preserves, empty clears
+	TypeParameters   []string          // Type parameter names (e.g., ["pEntity"])
+	ExposedCaption   string            // EXPOSED AS 'caption'
+	ExposedCategory  string            // IN 'category'
 	// NotExposed is NOT EXPOSED: remove the toolbox entry. Distinct from an
 	// absent clause, which preserves whatever is stored.
 	NotExposed bool
@@ -62,15 +63,16 @@ func (s *DropJavaActionStmt) isStatement() {}
 // It mirrors CreateJavaActionStmt with an added Platform (Web/Native/Hybrid/All,
 // default Web). The inline source is JavaScript rather than Java.
 type CreateJavaScriptActionStmt struct {
-	Folder          string            // Folder path within module (empty = leave placement alone)
-	Name            QualifiedName     // Qualified name (Module.ActionName)
-	Parameters      []JavaActionParam // Input parameters
-	ReturnType      DataType          // Return type (can be nil for void)
-	JavaScriptCode  string            // The exported function body (user code)
-	Documentation   string            // Optional documentation comment
-	TypeParameters  []string          // Type parameter names (e.g., ["pEntity"])
-	ExposedCaption  string            // EXPOSED AS 'caption'
-	ExposedCategory string            // IN 'category'
+	Folder           string            // Folder path within module (empty = leave placement alone)
+	Name             QualifiedName     // Qualified name (Module.ActionName)
+	Parameters       []JavaActionParam // Input parameters
+	ReturnType       DataType          // Return type (can be nil for void)
+	JavaScriptCode   string            // The exported function body (user code)
+	Documentation    string            // Optional documentation comment
+	DocumentationSet bool              // see mendixlabs/mxcli#1018: absent preserves, empty clears
+	TypeParameters   []string          // Type parameter names (e.g., ["pEntity"])
+	ExposedCaption   string            // EXPOSED AS 'caption'
+	ExposedCategory  string            // IN 'category'
 	// NotExposed is NOT EXPOSED: remove the toolbox entry. Distinct from an
 	// absent clause, which preserves whatever is stored.
 	NotExposed bool

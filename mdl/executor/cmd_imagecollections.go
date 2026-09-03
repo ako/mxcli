@@ -49,6 +49,10 @@ func execCreateImageCollection(ctx *ExecContext, s *ast.CreateImageCollectionStm
 		ExportLevel:   s.ExportLevel,
 		Documentation: s.Comment,
 	}
+	// A rewrite that carried no doc comment keeps the stored one (#1018).
+	if existing != nil {
+		ic.Documentation = carriedDocumentation(s.DocumentationSet, s.Comment, existing.Documentation)
+	}
 	if existing != nil {
 		ic.ID = existing.ID
 		// Excluded is model state, not script state (#914).

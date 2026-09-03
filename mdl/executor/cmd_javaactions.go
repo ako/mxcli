@@ -321,6 +321,8 @@ func execCreateJavaAction(ctx *ExecContext, s *ast.CreateJavaActionStmt) error {
 	var existingContainer model.ID
 	// Target the live action and carry its exclusion forward (#914).
 	existingExcluded := false
+	var existingJADoc string
+	haveExistingJA := false
 	var existingActionInfo *javaactions.MicroflowActionInfo
 	if existing, ok := pickLive(jas,
 		func(ja *types.JavaAction) bool {
@@ -334,6 +336,8 @@ func execCreateJavaAction(ctx *ExecContext, s *ast.CreateJavaActionStmt) error {
 		existingJAID = existing.ID
 		existingExcluded = existing.Excluded
 		existingContainer = existing.ContainerID
+		existingJADoc = existing.Documentation
+		haveExistingJA = true
 		// The toolbox entry holds four PNG bitmaps MDL cannot name, so the
 		// stored one has to be read before the rewrite can carry them.
 		if full, err := ctx.Backend.ReadJavaActionByName(s.Name.Module + "." + s.Name.Name); err == nil && full != nil {
@@ -363,6 +367,10 @@ func execCreateJavaAction(ctx *ExecContext, s *ast.CreateJavaActionStmt) error {
 		Name:          s.Name.Name,
 		Documentation: s.Documentation,
 		ExportLevel:   "Public",
+	}
+	// A rewrite that carried no doc comment keeps the stored one (#1018).
+	if haveExistingJA {
+		ja.Documentation = carriedDocumentation(s.DocumentationSet, s.Documentation, existingJADoc)
 	}
 
 	// Build type parameter definitions (with IDs for BY_ID references)

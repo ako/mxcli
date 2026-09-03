@@ -120,6 +120,8 @@ func buildMicroflowFromStmt(ctx *ExecContext, s *ast.CreateMicroflowStmt, opts b
 	// Excluded is model state, not script state: an absent @excluded must not
 	// clear a stored exclusion (#914).
 	existingExcluded := false
+	var existingDocumentation string
+	preserveDocumentation := false
 	var existingActionInfo, existingWorkflowInfo *types.MicroflowActionInfo
 	existingMicroflows, err := ctx.Backend.ListMicroflows()
 	if err != nil {
@@ -145,6 +147,10 @@ func buildMicroflowFromStmt(ctx *ExecContext, s *ast.CreateMicroflowStmt, opts b
 		// The toolbox entries hold four PNG bitmaps MDL cannot name, so a
 		// rewrite carries them rather than rebuilding from the clause.
 		existingActionInfo = existing.MicroflowActionInfo
+		// A rewrite that carried no doc comment keeps the stored one; an
+		// explicitly empty `/** */` clears it (#1018).
+		existingDocumentation = existing.Documentation
+		preserveDocumentation = true
 		existingWorkflowInfo = existing.WorkflowActionInfo
 	}
 
@@ -198,6 +204,9 @@ func buildMicroflowFromStmt(ctx *ExecContext, s *ast.CreateMicroflowStmt, opts b
 		AllowConcurrentExecution: true, // Default: allow concurrent execution
 		MarkAsUsed:               false,
 		Excluded:                 s.Excluded || existingExcluded,
+	}
+	if preserveDocumentation {
+		mf.Documentation = carriedDocumentation(s.DocumentationSet, s.Documentation, existingDocumentation)
 	}
 	if preserveAllowedRoles {
 		mf.AllowedModuleRoles = existingAllowedRoles
@@ -425,6 +434,8 @@ func buildNanoflowFromStmt(ctx *ExecContext, s *ast.CreateNanoflowStmt, opts bui
 	// Excluded is model state, not script state: an absent @excluded must not
 	// clear a stored exclusion (#914).
 	existingExcluded := false
+	var existingDocumentation string
+	preserveDocumentation := false
 	existingNanoflows, err := ctx.Backend.ListNanoflows()
 	if err != nil {
 		return nil, mdlerrors.NewBackend("check existing nanoflows", err)
@@ -445,6 +456,9 @@ func buildNanoflowFromStmt(ctx *ExecContext, s *ast.CreateNanoflowStmt, opts bui
 		existingAllowedRoles = cloneRoleIDs(existing.AllowedModuleRoles)
 		preserveAllowedRoles = true
 		existingExcluded = existing.Excluded
+		// A rewrite that carried no doc comment keeps the stored one (#1018).
+		existingDocumentation = existing.Documentation
+		preserveDocumentation = true
 	}
 
 	// For CREATE OR REPLACE/MODIFY, reuse the existing ID to preserve references
@@ -476,6 +490,9 @@ func buildNanoflowFromStmt(ctx *ExecContext, s *ast.CreateNanoflowStmt, opts bui
 		Documentation: s.Documentation,
 		MarkAsUsed:    false,
 		Excluded:      s.Excluded || existingExcluded,
+	}
+	if preserveDocumentation {
+		nf.Documentation = carriedDocumentation(s.DocumentationSet, s.Documentation, existingDocumentation)
 	}
 	if preserveAllowedRoles {
 		nf.AllowedModuleRoles = existingAllowedRoles

@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash /tmp/claude-1000/-workspaces-ako-mxcli/e4512e16-4485-4216-afba-df4212243089/scratchpad/verify-rebuild.sh 2>&1)"
+    ]
+  }
+}

@@ -37,11 +37,12 @@ type CreatePageStmtV3 struct {
 	// `placeholder <Name> { … }` blocks (issue #532). `Widgets` above is the
 	// bare-body content, which binds to the Main placeholder. A `placeholder
 	// Main { … }` block merges into Main.
-	Placeholders  []*PagePlaceholderV3
-	Documentation string
-	IsReplace     bool // CREATE OR REPLACE
-	IsModify      bool // CREATE OR MODIFY
-	Excluded      bool // @excluded — document excluded from project
+	Placeholders     []*PagePlaceholderV3
+	Documentation    string
+	DocumentationSet bool // see mendixlabs/mxcli#1018: absent preserves, empty clears
+	IsReplace        bool // CREATE OR REPLACE
+	IsModify         bool // CREATE OR MODIFY
+	Excluded         bool // @excluded — document excluded from project
 
 	// Pop-up dimensions (issue #661). nil means "not specified" — the executor
 	// applies the Mendix defaults (600 / 600 / false).
@@ -62,14 +63,15 @@ type PagePlaceholderV3 struct {
 
 // CreateSnippetStmtV3 represents a V3 snippet creation statement.
 type CreateSnippetStmtV3 struct {
-	Name          QualifiedName
-	Parameters    []PageParameter // From Params: { } block
-	Variables     []PageVariable  // From Variables: { } block
-	Folder        string
-	Widgets       []*WidgetV3
-	Documentation string
-	IsReplace     bool
-	IsModify      bool
+	Name             QualifiedName
+	Parameters       []PageParameter // From Params: { } block
+	Variables        []PageVariable  // From Variables: { } block
+	Folder           string
+	Widgets          []*WidgetV3
+	Documentation    string
+	DocumentationSet bool // see mendixlabs/mxcli#1018: absent preserves, empty clears
+	IsReplace        bool
+	IsModify         bool
 }
 
 func (s *CreateSnippetStmtV3) isStatement() {}
@@ -80,12 +82,13 @@ func (s *CreateSnippetStmtV3) isStatement() {}
 // on the content wrapper rather than on the layout element — and which
 // placeholder a page's content goes into.
 type CreateLayoutStmt struct {
-	Name          QualifiedName
-	Properties    map[string]any
-	Widgets       []*WidgetV3
-	Documentation string
-	IsReplace     bool
-	IsModify      bool
+	Name             QualifiedName
+	Properties       map[string]any
+	Widgets          []*WidgetV3
+	Documentation    string
+	DocumentationSet bool // see mendixlabs/mxcli#1018: absent preserves, empty clears
+	IsReplace        bool
+	IsModify         bool
 }
 
 func (s *CreateLayoutStmt) isStatement() {}

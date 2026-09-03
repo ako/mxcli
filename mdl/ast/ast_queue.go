@@ -6,9 +6,10 @@ package ast
 //
 //	CREATE [OR REPLACE|MODIFY] QUEUE Module.Name ( Parallelism: 3, ClusterWide: true );
 type CreateQueueStmt struct {
-	Folder        string // Folder path within module (empty = leave placement alone)
-	Name          QualifiedName
-	Documentation string
+	Folder           string // Folder path within module (empty = leave placement alone)
+	Name             QualifiedName
+	Documentation    string
+	DocumentationSet bool // see mendixlabs/mxcli#1018: absent preserves, empty clears
 	// Parallelism is kept as written. Mendix stores it as an expression string
 	// (Queues$BasicQueueConfig.ParallelismExpression), so `3` and `'3'` are the
 	// same thing and an arbitrary expression is legal.

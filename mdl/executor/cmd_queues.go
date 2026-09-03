@@ -78,6 +78,10 @@ func execCreateQueue(ctx *ExecContext, s *ast.CreateQueueStmt) error {
 		ClusterWide:   s.ClusterWide,
 		ExportLevel:   s.ExportLevel,
 	}
+	// A rewrite that carried no doc comment keeps the stored one (#1018).
+	if existing != nil {
+		q.Documentation = carriedDocumentation(s.DocumentationSet, s.Documentation, existing.Documentation)
+	}
 
 	if existing != nil {
 		q.ID = existing.ID

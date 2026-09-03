@@ -60,6 +60,10 @@ func execCreateConsumedMCPService(ctx *ExecContext, s *ast.CreateConsumedMCPServ
 		InnerDocumentation:       s.InnerDocumentation,
 		ConnectionTimeoutSeconds: s.ConnectionTimeoutSeconds,
 	}
+	// A rewrite that carried no doc comment keeps the stored one (#1018).
+	if existing != nil {
+		c.Documentation = carriedDocumentation(s.DocumentationSet, s.OuterDocumentation, existing.Documentation)
+	}
 
 	if existing != nil {
 		c.ID = existing.ID
@@ -163,6 +167,10 @@ func execCreateKnowledgeBase(ctx *ExecContext, s *ast.CreateKnowledgeBaseStmt) e
 		Environment:      s.Environment,
 		DeepLinkURL:      s.DeepLinkURL,
 	}
+	// A rewrite that carried no doc comment keeps the stored one (#1018).
+	if existing != nil {
+		k.Documentation = carriedDocumentation(s.DocumentationSet, s.Documentation, existing.Documentation)
+	}
 
 	if existing != nil {
 		k.ID = existing.ID
@@ -252,6 +260,10 @@ func execCreateAgent(ctx *ExecContext, s *ast.CreateAgentStmt) error {
 		ToolChoice:    s.ToolChoice,
 		Temperature:   s.Temperature,
 		TopP:          s.TopP,
+	}
+	// A rewrite that carried no doc comment keeps the stored one (#1018).
+	if existingAgent != nil {
+		a.Documentation = carriedDocumentation(s.DocumentationSet, s.Documentation, existingAgent.Documentation)
 	}
 
 	// Resolve Model reference

@@ -97,9 +97,8 @@ func execCreateAssociation(ctx *ExecContext, s *ast.CreateAssociationStmt) error
 					assoc.Owner = owner
 					assoc.StorageFormat = storageFormat
 					assoc.ChildDeleteBehavior = &domainmodel.DeleteBehavior{Type: deleteBehavior}
-					if doc := associationDocumentation(s); doc != "" {
-						assoc.Documentation = doc
-					}
+					assoc.Documentation = carriedDocumentation(
+						associationDocumentationStated(s), associationDocumentation(s), assoc.Documentation)
 					// Anchors are applied only when the statement names them —
 					// silence preserves what is stored, so a `create or modify`
 					// that is not about layout does not flatten a hand-tuned line.
@@ -123,9 +122,8 @@ func execCreateAssociation(ctx *ExecContext, s *ast.CreateAssociationStmt) error
 					ca.StorageFormat = storageFormat
 					ca.ChildDeleteBehavior = &domainmodel.DeleteBehavior{Type: deleteBehavior}
 					ca.ChildRef = childRef
-					if doc := associationDocumentation(s); doc != "" {
-						ca.Documentation = doc
-					}
+					ca.Documentation = carriedDocumentation(
+						associationDocumentationStated(s), associationDocumentation(s), ca.Documentation)
 					if err := ctx.Backend.UpdateDomainModel(dm); err != nil {
 						return mdlerrors.NewBackend("update cross-module association", err)
 					}
@@ -704,6 +702,15 @@ func associationExists(dm *domainmodel.DomainModel, name string) bool {
 // path already uses. `comment` survives here — and only here among the CREATE
 // statements — because it is an association's only inline spelling; everywhere
 // else the doc comment already worked, so the dead option was removed instead.
+// associationDocumentationStated reports whether the statement said anything
+// about documentation — a doc comment (even an empty one) or a COMMENT clause.
+// The OR MODIFY path used `if doc != ""`, which preserved the stored value but
+// also made it unclearable; #1018's rule is that an explicitly empty comment
+// clears while an absent one preserves.
+func associationDocumentationStated(s *ast.CreateAssociationStmt) bool {
+	return s.DocumentationSet || s.Comment != ""
+}
+
 func associationDocumentation(s *ast.CreateAssociationStmt) string {
 	if s.Documentation != "" {
 		return s.Documentation

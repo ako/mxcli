@@ -284,6 +284,8 @@ func createBusinessEventService(ctx *ExecContext, stmt *ast.CreateBusinessEventS
 	// Placement is carried forward the same way when the statement is silent
 	// about folders (#932).
 	var existingContainerID model.ID
+	var existingDocumentation string
+	haveExistingSvc := false
 	if existing, ok := pickLive(existingServices,
 		func(svc *model.BusinessEventService) bool {
 			return strings.EqualFold(h.GetModuleName(h.FindModuleID(svc.ContainerID)), moduleName) &&
@@ -297,6 +299,8 @@ func createBusinessEventService(ctx *ExecContext, stmt *ast.CreateBusinessEventS
 		existingID = existing.ID
 		existingExcluded = existing.Excluded
 		existingContainerID = existing.ContainerID
+		existingDocumentation = existing.Documentation
+		haveExistingSvc = true
 	}
 
 	// Resolve folder if specified
@@ -316,6 +320,10 @@ func createBusinessEventService(ctx *ExecContext, stmt *ast.CreateBusinessEventS
 		Documentation: stmt.Documentation,
 		ExportLevel:   "Hidden",
 		Excluded:      existingExcluded,
+	}
+	// A rewrite that carried no doc comment keeps the stored one (#1018).
+	if haveExistingSvc {
+		svc.Documentation = carriedDocumentation(stmt.DocumentationSet, stmt.Documentation, existingDocumentation)
 	}
 	if existingID != "" {
 		svc.ID = existingID

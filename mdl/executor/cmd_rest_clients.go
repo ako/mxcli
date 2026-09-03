@@ -378,6 +378,7 @@ func createRestClient(ctx *ExecContext, stmt *ast.CreateRestClientStmt) error {
 	// delete+create, so its container is re-applied on every statement and an
 	// unset value files a foldered service back into the module root (#932).
 	var preservedContainerID model.ID
+	var preservedDocumentation string
 	wasModified := false
 	for _, existing := range existingServices {
 		existModID := h.FindModuleID(existing.ContainerID)
@@ -387,6 +388,9 @@ func createRestClient(ctx *ExecContext, stmt *ast.CreateRestClientStmt) error {
 				// Preserve the existing ID so SEND REST REQUEST references stay valid after replace.
 				preservedID = existing.ID
 				preservedContainerID = existing.ContainerID
+				// The rewrite is a delete+create, so the stored documentation
+				// has to be captured before the delete or it is gone (#1018).
+				preservedDocumentation = existing.Documentation
 				wasModified = true
 				if err := ctx.Backend.DeleteConsumedRestService(existing.ID); err != nil {
 					return mdlerrors.NewBackend("delete existing rest client", err)
@@ -419,6 +423,9 @@ func createRestClient(ctx *ExecContext, stmt *ast.CreateRestClientStmt) error {
 	// Preserve the existing ID on OR MODIFY so SEND REST REQUEST references stay valid.
 	if preservedID != "" {
 		svc.ID = preservedID
+		// A rewrite that carried no doc comment keeps the stored one (#1018).
+		svc.Documentation = carriedDocumentation(
+			stmt.DocumentationSet, stmt.Documentation, preservedDocumentation)
 	}
 
 	// Authentication — Mendix requires Rest$ConstantValue for BASIC auth credentials

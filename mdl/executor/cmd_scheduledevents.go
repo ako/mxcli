@@ -126,6 +126,9 @@ func execCreateScheduledEvent(ctx *ExecContext, s *ast.CreateScheduledEventStmt)
 		// Carry the stored values so a modify does not invent new ones.
 		ev.Interval = existing.Interval
 		ev.IntervalType = existing.IntervalType
+		// Same rule, one property over: a rewrite that carried no doc comment
+		// keeps the stored documentation (#1018).
+		ev.Documentation = carriedDocumentation(s.DocumentationSet, s.Documentation, existing.Documentation)
 		if err := ctx.Backend.UpdateScheduledEvent(ev); err != nil {
 			return mdlerrors.NewBackend("update scheduled event", err)
 		}
