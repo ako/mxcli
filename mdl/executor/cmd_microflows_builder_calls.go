@@ -617,21 +617,23 @@ func (fb *flowBuilder) resolveMappingRefForWrite(ref string, preferExport bool) 
 // resolveExternalActionReturnKind looks up the called OData action in the
 // consumed service's cached $metadata and returns the Mendix kind name
 // ("Boolean", "String", "Integer", "Long", "Decimal", "DateTime", "Binary",
-// or "Void") of its return type. Used to populate
-// CallExternalAction.ResultDataType so the writer can emit VariableDataType
-// BSON; without it Mendix raises CE7269 whenever the schema declares any
-// return type.
+// "Object", "List" or "Void") of its return type, plus the qualified name of
+// the external entity an Object/List is typed on. Used to populate
+// CallExternalAction.ResultDataType/ResultEntity so the writer can emit
+// VariableDataType BSON; without it Mendix raises CE7269 ("the return type for
+// remote action '<x>' has changed") whenever the schema declares any return
+// type.
 //
 // Returns "" if the service or action can't be resolved — the writer omits
 // VariableDataType, falling back to the prior (buggy) behavior rather than
 // emitting a wrong type.
-func (fb *flowBuilder) resolveExternalActionReturnKind(serviceRef ast.QualifiedName, actionName string) string {
+func (fb *flowBuilder) resolveExternalActionReturnKind(serviceRef ast.QualifiedName, actionName string) (string, string) {
 	if fb.backend == nil {
-		return ""
+		return "", ""
 	}
 	services, err := fb.backend.ListConsumedODataServices()
 	if err != nil {
-		return ""
+		return "", ""
 	}
 	for _, svc := range services {
 		modName := fb.hierarchy.GetModuleName(fb.hierarchy.FindModuleID(svc.ContainerID))
@@ -639,20 +641,159 @@ func (fb *flowBuilder) resolveExternalActionReturnKind(serviceRef ast.QualifiedN
 			continue
 		}
 		if svc.Metadata == "" {
-			return ""
+			return "", ""
 		}
 		doc, err := types.ParseEdmx(svc.Metadata)
 		if err != nil {
-			return ""
+			return "", ""
 		}
 		for _, act := range doc.Actions {
-			if strings.EqualFold(act.Name, actionName) {
-				return edmReturnTypeToKind(act.ReturnType)
+			if !strings.EqualFold(act.Name, actionName) {
+				continue
 			}
+			kind := edmReturnTypeToKind(act.ReturnType)
+			if kind != "" {
+				return kind, ""
+			}
+			// Not a primitive. An entity-typed return needs the local external
+			// entity that was imported for it, because DataTypes$ObjectType and
+			// DataTypes$ListType store an Entity by qualified name.
+			return fb.resolveExternalActionReturnEntity(serviceRef, act.ReturnType)
 		}
+		return "", ""
+	}
+	return "", ""
+}
+
+// externalParamKind is one action parameter's resolved Mendix type.
+type externalParamKind struct {
+	kind   string // "String", "Object", … — same vocabulary as the return type
+	entity string // set only for Object/List
+}
+
+// resolveExternalActionParameterKinds types every parameter of the called action
+// from the cached contract, keyed by lower-cased parameter name.
+//
+// Returns an empty map when the service, contract or action cannot be resolved,
+// in which case the writer omits ParameterType exactly as before — a wrong type
+// is worse than the known-missing one.
+func (fb *flowBuilder) resolveExternalActionParameterKinds(serviceRef ast.QualifiedName, actionName string) map[string]externalParamKind {
+	out := map[string]externalParamKind{}
+	if fb.backend == nil {
+		return out
+	}
+	services, err := fb.backend.ListConsumedODataServices()
+	if err != nil {
+		return out
+	}
+	for _, svc := range services {
+		modName := fb.hierarchy.GetModuleName(fb.hierarchy.FindModuleID(svc.ContainerID))
+		if !strings.EqualFold(modName, serviceRef.Module) || !strings.EqualFold(svc.Name, serviceRef.Name) {
+			continue
+		}
+		if svc.Metadata == "" {
+			return out
+		}
+		doc, err := types.ParseEdmx(svc.Metadata)
+		if err != nil {
+			return out
+		}
+		for _, act := range doc.Actions {
+			if !strings.EqualFold(act.Name, actionName) {
+				continue
+			}
+			for _, p := range act.Parameters {
+				if kind := edmReturnTypeToKind(p.Type); kind != "" && kind != "Void" {
+					out[strings.ToLower(p.Name)] = externalParamKind{kind: kind}
+					continue
+				}
+				// Entity-typed parameter: same resolution as an entity return.
+				if kind, entity := fb.resolveExternalActionReturnEntity(serviceRef, p.Type); kind != "" {
+					out[strings.ToLower(p.Name)] = externalParamKind{kind: kind, entity: entity}
+				}
+			}
+			return out
+		}
+		return out
+	}
+	return out
+}
+
+// resolveExternalActionReturnEntity maps a non-primitive OData return type onto
+// the external entity imported for it.
+//
+// The contract names the type in its own namespace (`Trippin.Person`, or
+// `Collection(Trippin.Person)` for a list); the model names it by the entity
+// mxcli created for that type, whose RemoteEntityName is the bare type name and
+// whose RemoteServiceName is the consumed service. Matching on those two is the
+// same linkage `CREATE OR MODIFY EXTERNAL ENTITIES` writes.
+//
+// Returns ("", "") when no entity has been imported for the type. That is the
+// honest outcome: emitting an ObjectType with no Entity is as unaligned as
+// emitting nothing, so the writer keeps omitting VariableDataType and
+// ValidateExternalActionCalls reports the missing import at check time with the
+// statement that fixes it.
+func (fb *flowBuilder) resolveExternalActionReturnEntity(serviceRef ast.QualifiedName, returnType string) (string, string) {
+	typeName, isList := edmBareTypeName(returnType)
+	if typeName == "" {
+		return "", ""
+	}
+	qn := fb.findExternalEntityFor(serviceRef.String(), typeName)
+	if qn == "" {
+		return "", ""
+	}
+	if isList {
+		return "List", qn
+	}
+	return "Object", qn
+}
+
+// findExternalEntityFor finds the external entity imported from serviceQN for
+// the remote type remoteName, returning its qualified name.
+func (fb *flowBuilder) findExternalEntityFor(serviceQN, remoteName string) string {
+	if fb.backend == nil {
 		return ""
 	}
+	dms, err := fb.backend.ListDomainModels()
+	if err != nil {
+		return ""
+	}
+	for _, dm := range dms {
+		modName := fb.hierarchy.GetModuleName(fb.hierarchy.FindModuleID(dm.ContainerID))
+		for _, ent := range dm.Entities {
+			if !strings.EqualFold(ent.RemoteServiceName, serviceQN) {
+				continue
+			}
+			if strings.EqualFold(ent.RemoteEntityName, remoteName) {
+				return modName + "." + ent.Name
+			}
+		}
+	}
 	return ""
+}
+
+// edmBareTypeName strips OData's Collection() wrapper and the type's namespace,
+// reporting the bare type name and whether it was a collection.
+//
+// The namespace has to go: the contract says `Trippin.Person`, while the
+// imported entity records `Person` as its RemoteEntityName. Returns "" for a
+// primitive or an unparseable type, so only entity-typed returns reach the
+// entity lookup.
+func edmBareTypeName(edmType string) (string, bool) {
+	t := strings.TrimSpace(edmType)
+	isList := false
+	if strings.HasPrefix(t, "Collection(") && strings.HasSuffix(t, ")") {
+		t = strings.TrimSuffix(strings.TrimPrefix(t, "Collection("), ")")
+		isList = true
+	}
+	t = strings.TrimSpace(t)
+	if t == "" || strings.HasPrefix(t, "Edm.") {
+		return "", isList
+	}
+	if i := strings.LastIndex(t, "."); i >= 0 {
+		t = t[i+1:]
+	}
+	return t, isList
 }
 
 // edmReturnTypeToKind maps an EDM type name (e.g. "Edm.Boolean") to the
@@ -678,9 +819,10 @@ func edmReturnTypeToKind(edmType string) string {
 	case "Edm.Binary":
 		return "Binary"
 	default:
-		// Complex / collection / entity-typed returns aren't yet mapped.
-		// Leave empty so the writer omits VariableDataType rather than
-		// emitting a wrong type that would silently mislead Mendix.
+		// Not a primitive. Entity-typed and collection returns are resolved by
+		// resolveExternalActionReturnEntity, which needs the project to map the
+		// contract's type onto the entity imported for it. Complex types
+		// (ComplexType, not EntityType) are still unmapped and end up here.
 		return ""
 	}
 }
@@ -688,14 +830,23 @@ func edmReturnTypeToKind(edmType string) string {
 // addCallExternalActionAction creates a CALL EXTERNAL ACTION statement.
 func (fb *flowBuilder) addCallExternalActionAction(s *ast.CallExternalActionStmt) model.ID {
 	serviceQN := s.ServiceName.Module + "." + s.ServiceName.Name
+	returnKind, returnEntity := fb.resolveExternalActionReturnKind(s.ServiceName, s.ActionName)
 
-	// Build parameter mappings
+	// Build parameter mappings. Each carries the parameter's TYPE as well as its
+	// name: generated/metamodel declares ParameterType without omitempty, and a
+	// mapping without one is CE7252 plus a CE0117 per argument, because Mendix
+	// cannot type-check an argument against an untyped parameter.
+	paramKinds := fb.resolveExternalActionParameterKinds(s.ServiceName, s.ActionName)
 	var mappings []*microflows.ExternalActionParameterMapping
 	for _, arg := range s.Arguments {
 		mapping := &microflows.ExternalActionParameterMapping{
 			BaseElement:   model.BaseElement{ID: model.ID(types.GenerateID())},
 			ParameterName: arg.Name,
 			Argument:      fb.exprToString(arg.Value),
+		}
+		if pk, ok := paramKinds[strings.ToLower(arg.Name)]; ok {
+			mapping.ParameterDataType = pk.kind
+			mapping.ParameterEntity = pk.entity
 		}
 		mappings = append(mappings, mapping)
 	}
@@ -708,7 +859,8 @@ func (fb *flowBuilder) addCallExternalActionAction(s *ast.CallExternalActionStmt
 		ParameterMappings:    mappings,
 		ResultVariableName:   s.OutputVariable,
 		UseReturnVariable:    s.OutputVariable != "",
-		ResultDataType:       fb.resolveExternalActionReturnKind(s.ServiceName, s.ActionName),
+		ResultDataType:       returnKind,
+		ResultEntity:         returnEntity,
 	}
 
 	activityX := fb.posX
