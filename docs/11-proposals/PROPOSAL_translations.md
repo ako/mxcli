@@ -469,6 +469,26 @@ rather than deleted, since each was decided by a measurement.
    Note the trap the skill now documents: `show languages` lists languages that
    have *translations*, not enabled ones, so it reports 8 where 1 is enabled.
 
+
+3. **Catalog coverage.** ~~`CATALOG.strings` misses widget captions; worth
+   widening so `SHOW LANGUAGES` and `search` reflect reality.~~ **Done**, and
+   wider than the question assumed. Measured on a stock project the index held
+   **69 of 3265 texts and 8 of 9 languages** — a language present only on an
+   unindexed site was *invisible*, not undercounted, so `SHOW LANGUAGES` named 8
+   and `search` returned nothing for a caption `DESCRIBE TRANSLATIONS` had just
+   listed. It also blinded the QUAL005 lint rule that shipped with slice 4, which
+   discovers its language set from the same table.
+
+   The resolution was not to add cases. The five extractors were hand-written per
+   type, so a sixth site cost a sixth case; the index is now built from **this
+   proposal's own walk** (`translations.SitesInUnit`), which is what makes the two
+   subsystems structurally unable to disagree about what the project contains.
+   `StringContext` names the site (`Forms$ActionButton.Caption`) and `ObjectType`
+   is derived from the unit `$Type`, so a document type Mendix adds later is
+   handled with no list to maintain. Atlas design templates are ~70% of the corpus
+   and are indexed rather than excluded, because `CREATE TRANSLATIONS` writes them
+   — `ObjectType` is how a consumer filters them out.
+
 5. **Ordering inside `Items`.** ~~Does Studio Pro care, as it did for widget
    `PropertyTypes`?~~ **No** — the patch preserves existing order and appends,
    and projects patched this way open in Studio Pro and build clean. What *did*
@@ -484,11 +504,6 @@ rather than deleted, since each was decided by a measurement.
    conflicting source (3 on a stock app), and `in <Module>` resolves the common
    case. Mendix's own Excel export has the same limitation. Worth deciding
    explicitly rather than discovering, but nothing has forced the decision yet.
-
-3. **Catalog coverage.** `CATALOG.strings` still indexes 21 contexts and misses
-   widget captions — 39 texts in a page, 2 indexed. The translation walk is its
-   own and type-agnostic, so this feature does not depend on it; it remains worth
-   widening so `SHOW LANGUAGES` and `search` reflect reality.
 
 4. **The 2 texts with translations but no default language.** Skipped on export,
    as planned. What Studio Pro does with such a text is still unconfirmed, and

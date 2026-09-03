@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- **`CATALOG.strings` indexes every translatable string, not five hand-picked kinds** — `SHOW LANGUAGES` listed 8 of a project's 9 languages and `search` could not find a widget caption that `DESCRIBE TRANSLATIONS` had just listed. The index was filled by per-type extractors reaching five sites (page title, enum caption, three microflow message templates), so a text anywhere else was never indexed: measured on a stock 11.13 app, **69 of 3265 texts and 8 of 9 languages**. A language present only on an unindexed site is *invisible* rather than undercounted, which also blinded lint rule QUAL005 — it discovers its language set from the same table.
+
+  The rows now come from the type-agnostic `Texts$Text` walk that `DESCRIBE TRANSLATIONS` already uses, so the two subsystems cannot disagree about what the project contains; the typed path keeps only the strings that are *not* translatable (URLs, log node names, REST paths, documentation, and the `Microflows$StringTemplate` a workflow name is stored in). `StringContext` now names the site — `Forms$ActionButton.Caption` rather than `page_title` — and `ObjectType` is derived from the unit `$Type` mechanically, so a document type Mendix adds later is named correctly with nobody maintaining a list. Same project after: 1496 rows, 9 languages, counts identical to an independent BSON walk. Atlas design templates are ~70% of the corpus and are indexed rather than dropped, because `CREATE TRANSLATIONS` writes them and a `SHOW LANGUAGES` that excluded them would reopen the same split; `ObjectType` is how a consumer filters them.
+
 - **`HOME PAGE … FOR` resolves the user role, and the docs no longer recommend the form that breaks the project** (mendixlabs/mxcli#1001) — the role was written straight through to BSON, and what it did depended on its shape. Measured on a blank 11.13 app: `for Administrator` builds at 0 errors; `for Supervisor` (bare, unknown) is an ordinary `CE1613`; and `for MyFirstModule.Administrator` produces a project Mendix **cannot load** — `StorageLoadException: … 'MyFirstModule.Administrator' is not a valid UserRoleIdentifier`, raised before any checking runs, so there is no error code and no location.
 
   The third was the form **mxcli's own documentation, skill and `mxcli syntax` output all recommended**, across ten places including one runnable example. `FOR` binds a *user* role, which is project-level and written bare; a *module* role is module-scoped and shares the name — a blank app has a user role `Administrator` and module roles called `Administrator` in three modules, so the wrong one reads as correct.
@@ -475,7 +479,6 @@ Headline: **A statement mxcli accepts is now a statement mxcli honours.** This r
   - Excluded documents stay excluded, and the live twin is targeted.
   - An additive chain keeps its operators in the order they were written.
   - A building-block datasource override is rebound by widget type, not by one that happens to be present already.
-
 
 ## [0.18.0] - 2026-08-14
 
