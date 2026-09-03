@@ -133,7 +133,17 @@ func (b *Builder) buildContractEntities() error {
 // consume them. Runs after both buildExternalEntities and buildContractEntities.
 // Targets the underlying _data table because contract_entities is a view.
 func (b *Builder) buildContractEntityUsage() error {
-	_, err := b.tx.Exec(`
+	_, err := b.tx.Exec(contractEntityUsageSQL)
+	return err
+}
+
+// contractEntityUsageSQL fills contract_entities.UsedByExternalEntity by joining
+// the imported external entities on their remote name.
+//
+// Shared with the test rather than copied into it: the column is only as
+// meaningful as the rows external_entities holds, and it read as "not linked"
+// for every entity that table was omitting (mendixlabs/mxcli#1020).
+const contractEntityUsageSQL = `
 		UPDATE contract_entities_data
 		SET UsedByExternalEntity = (
 			SELECT ee.QualifiedName
@@ -144,9 +154,7 @@ func (b *Builder) buildContractEntityUsage() error {
 			  AND ee.RemoteName = contract_entities_data.EntityName
 			LIMIT 1
 		)
-	`)
-	return err
-}
+	`
 
 // buildContractMessages parses cached AsyncAPI documents from business event client
 // services and populates the contract_messages catalog table.

@@ -48,6 +48,7 @@ func NewRegistry() *Registry {
 	registerSettingsHandlers(r)
 	registerODataHandlers(r)
 	registerJSONStructureHandlers(r)
+	registerMessageDefinitionHandlers(r)
 	registerMappingHandlers(r)
 	registerRESTHandlers(r)
 	registerDataTransformerHandlers(r)

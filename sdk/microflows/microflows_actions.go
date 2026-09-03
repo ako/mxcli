@@ -739,6 +739,12 @@ type CallExternalAction struct {
 	// triggers Mendix's CE7269 "return type has changed" when the schema
 	// declares any return type.
 	ResultDataType string `json:"resultDataType,omitempty"`
+	// ResultEntity is the qualified name of the external entity a returned
+	// object or list is typed on. Required when ResultDataType is "Object" or
+	// "List" — DataTypes$ObjectType and DataTypes$ListType both store an
+	// Entity, and one without it is as unaligned as no type at all. Empty for
+	// every primitive kind.
+	ResultEntity string `json:"resultEntity,omitempty"`
 }
 
 func (CallExternalAction) isMicroflowAction() {}
@@ -749,6 +755,15 @@ type ExternalActionParameterMapping struct {
 	ParameterName string `json:"parameterName,omitempty"`
 	Argument      string `json:"argument,omitempty"` // Expression
 	CanBeEmpty    bool   `json:"canBeEmpty,omitempty"`
+	// ParameterDataType / ParameterEntity type the parameter, resolved from the
+	// consumed service's cached $metadata, and are written as the mapping's
+	// ParameterType sub-document. generated/metamodel declares ParameterType
+	// WITHOUT omitempty — it is not optional — and omitting it is CE7252 "the
+	// parameters for remote action '<x>' have changed" plus a CE0117
+	// "Error(s) in expression" per argument, because an argument cannot be
+	// type-checked against a parameter that has no type (mendixlabs/mxcli#1020).
+	ParameterDataType string `json:"parameterDataType,omitempty"`
+	ParameterEntity   string `json:"parameterEntity,omitempty"`
 }
 
 // WebServiceCallAction calls a web service.

@@ -38,7 +38,18 @@ func (b *Builder) buildExternalEntities() error {
 		moduleName := b.hierarchy.getModuleName(moduleID)
 
 		for _, entity := range dm.Entities {
-			if entity.Source != "Rest$ODataRemoteEntitySource" {
+			// BOTH OData sources are external entities. Cataloguing only the
+			// entity-set-backed one hid every type-sourced entity — the derived,
+			// abstract, contained and action parameter/return types that
+			// CREATE EXTERNAL ENTITIES imports with no entity set of their own.
+			//
+			// That is not merely an under-count. contract_entities.UsedByExternalEntity
+			// is filled by joining this table on RemoteName, so for exactly those
+			// entities the column was STRUCTURALLY always empty, whether or not
+			// the import had worked. It read as "this contract entity is not
+			// linked to anything", which is what sent mendixlabs/mxcli#1020
+			// looking for a linkage bug in the MPR that was never there.
+			if !isODataEntitySource(entity.Source) {
 				continue
 			}
 
@@ -196,4 +207,21 @@ func (b *Builder) buildExternalActions() error {
 
 	b.report("External Actions", len(actionMap))
 	return nil
+}
+
+// isODataEntitySource reports whether an entity's Source marks it as consumed
+// from an OData service.
+//
+// Mendix stores two, and the difference is whether the contract gave the type
+// an entity set:
+//
+//	Rest$ODataRemoteEntitySource  entity-set-backed, persistable
+//	Rest$ODataEntityTypeSource    no entity set — derived, abstract, contained,
+//	                              or an action's parameter/return type
+//
+// Both are external entities and both are written by CREATE EXTERNAL ENTITIES
+// (see applyExternalEntityFields), so anything asking "is this external?" has to
+// accept both. The domain-model writer already does.
+func isODataEntitySource(source string) bool {
+	return source == "Rest$ODataRemoteEntitySource" || source == "Rest$ODataEntityTypeSource"
 }

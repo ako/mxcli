@@ -90,11 +90,23 @@ ordinary edit that has nothing to do with the knowledge. An agent that promotes 
 decision into a microflow's documentation and later adds a parameter has thrown
 the decision away, with every signal reporting success.
 
-**Consequence for the design.** Tier 1 is the strongest idea in the brief and is
-**blocked** until rewrites preserve documentation the statement does not restate.
-That is a fix in mxcli's writers, not in the brain, and it should be a
-precondition of phase 3 rather than a task inside it. Until then the brain's
-preference order starts at tier 2.
+**Consequence for the design — since fixed.** Tier 1 is the strongest idea in the
+brief and was **blocked** until rewrites preserved documentation the statement
+does not restate. That was a fix in mxcli's writers, not in the brain. It has
+landed: every rewrite path now carries the stored value when the statement is
+silent, the way it already carried folder, allowed module roles and element
+identity, and a fixture asserts survival for **all 29 rewrite-capable document
+types** (`documentation_preserved_test.go`, with an untouched-object control and
+an empty-comment-clears case). A source-scanning guard fails when a new
+rewrite-capable type appears without one. Tier 1 is therefore a phase-3 task
+rather than a precondition of it.
+
+Two mistakes made on the way there are worth carrying into the brain's own
+tests. A control that does not *compile* is not a control — deleting the carry
+block failed on unused variables instead of failing the test, so the condition
+had to be stubbed to `if false` instead. And a type counted as done because the
+carry was written, while the statement had a second update path the fixture never
+exercised; "done" had to be redefined as **carried and covered**.
 
 A caveat on this measurement: it was made with a corrected test. The first
 version chained `&& echo SURVIVED` to `head -1`, which exits 0 on empty input, so
@@ -221,10 +233,12 @@ or §3.
 | A1 | `check` reports three anchor states — resolved, **not found**, **not indexable** — and fails only on the middle one | §2.2: the `objects` view is not a complete inventory |
 | A2 | Anchors resolve at document *and* member granularity (`objects` + `attributes_data`) | §2.2: `@Mod.Entity.Attr` is the natural thing to write |
 | A3 | Generated lint rules use a `brain_` filename prefix and a `BRAIN###` ID namespace | §2.3: `mxcli init` writes into the same directory |
-| A4 | **Tier 1 is blocked** until a rewrite preserves documentation it does not restate. Until then the preference order starts at tier 2 | §2.1: measured — `create or replace` destroys the doc comment, `mx check` clean |
+| A4 | ~~Tier 1 is blocked~~ **Resolved.** Rewrites now carry documentation the statement does not restate, on all 29 rewrite-capable document types | §2.1: was measured broken, now fixture-covered with a control |
 | A5 | `staged.jsonl` gets a cheap duplicate check | §3: cheap insurance, but a many-writers problem that mostly does not apply here |
 | A6 | `brain show`'s size figure and any coverage number are computed, never written into a committed file | §3: prose figures went stale within days |
 | A7 | The gap that motivates curation is printed by a command that already runs, not only by `brain check` | §3: the on-demand digest went three months without a run |
+| A8 | Records shard by **anchor scope** — `project.md` for cross-cutting, `modules/<Module>.md` for anchored ones — created on demand, with caps applying per shard | §4.1: one file makes a single project-wide budget, and every session pays for every module |
+| A9 | The store lives at **`docs/brain/`**, with a `README.md` written by `init` | §4.2: a bare `docs/` gives no signal that the files are brain-managed, and §6 Q2 |
 
 Everything else — the three tiers, the storage layout, the CLI surface, the
 promote-only-through-a-human rule, the non-goals — stands as written. The
@@ -236,6 +250,90 @@ description decides whether it is ever used and should be phrased around
 symptoms. Worth adding: mxcli's own skills are synced with `rsync --delete`, so
 the source of truth is `.claude/skills/mendix/`, never the embed directory.
 
+### 4.1 Storage layout at scale
+
+The brief's single decisions file assumes a project whose decisions fit one
+budget. Mendix projects routinely run to 100+ modules, and one file has two
+failure modes there — both of which the caps make *worse* rather than better:
+
+- **The cap becomes a project-wide budget.** Recording a `Sales` decision
+  competes with a `Finance` decision for the same allowance, so `promote` starts
+  refusing on exactly the projects that most need the store.
+- **Every session pays for every module.** The store is loaded into context each
+  session; an agent working in one module carries the other ninety-nine.
+
+Shard by **anchor scope**, which is derived rather than chosen:
+
+```
+docs/brain/
+  README.md            written by `brain init` — what the folder is, how it is checked
+  project.md           cross-cutting, no anchor: always loaded, the tightest cap
+  modules/<Module>.md  anchored to `Module.*`: loaded when that module is in play
+```
+
+Three properties follow, and they are the reason to shard on this key rather
+than by topic or by date:
+
+1. **There is no index to maintain.** An anchor is `@Sales.Order.Status`; its
+   module prefix *is* its file name. Routing is a string split — and A6 already
+   forbids a written index, which would be a self-reported claim that goes stale.
+2. **Misfiling becomes a check rather than a style note.** The `objects` view
+   carries a `ModuleName` column (`mdl/catalog/tables.go:1028`), so `check` can
+   assert that every anchor in `modules/Sales.md` resolves with
+   `ModuleName = 'Sales'`. This check cannot exist for a single file: there is
+   nothing for an entry to be inconsistent *with*.
+3. **`check` can scope to a diff.** `--changed` reads git's changed-file list and
+   validates only the affected shards — the cheap half of the answer to §6 Q1.
+
+**Shards are created on demand, and their universe is far smaller than the module
+count.** Marketplace modules do not carry decisions: Mendix's own guidance is not
+to edit them, and mxcli already refuses to write a layout into one. The catalog
+distinguishes them (`modules.Source`), so the universe is computable rather than
+guessed. Measured on the sample project:
+
+```
+9 modules, 7 of them Marketplace (Atlas_Core, Administration, NanoflowCommons, …)
+  -> 2 modules could ever own a shard
+```
+
+This is emphatically not the "one file per record" shape that turned the
+analogous store into 600 files (§3). A shard holds many entries and is keyed by
+something the project already has a name for; the file count tracks *modules the
+team owns*, not decisions.
+
+**Phase 2 introduces a third key.** An mxbuild error → resolution record is
+anchored to a CE number, not to a module, and belongs in its own `errors.md`
+rather than being forced into one of the other two. Naming the axis now —
+*anchored to a module, anchored to an error, anchored to nothing* — is cheaper
+than discovering it once entries exist.
+
+### 4.2 Where the store lives
+
+`docs/brain/`, not `docs/`.
+
+The brief's argument for `docs/` is reviewability in a pull request. That is
+right and is preserved unchanged. What a bare `docs/` does not give is any signal
+that the files are brain-managed, and it walks straight into §6 Q2: a Mendix
+project's `docs/` may already be the customer's, or Studio Pro's.
+
+A clearly-named subfolder answers both at once. Dropping a `decisions.md` into
+someone else's docs tree is a collision; adding a labelled folder beside their
+files is not.
+
+Two alternatives, and why not:
+
+- **`brain/` at the repository root.** More discoverable, but a Mendix project
+  root is already crowded (`mprcontents/`, `theme/`, `themesource/`,
+  `javascriptsource/`, `resources/`, `deployment/`, `.mxcli/`, `.claude/`,
+  `.ai-context/`), and discoverability is the skill's job — its `description` is
+  what decides whether the store is ever consulted at all (§2.4).
+- **An `mxcli-` prefix, as in `theme/mxcli-themes/`.** That prefix exists where
+  mxcli *generates* files and must not clobber the user's. Brain entries are
+  written by the developer and promoted through a human, so the prefix would
+  signal tool ownership — the opposite of the intent. The `README.md` carries the
+  ownership statement instead; because it describes mechanism rather than state,
+  A6 still holds.
+
 ## 5. Phasing
 
 Unchanged from the brief, with A4 inserted:
@@ -244,24 +342,28 @@ Unchanged from the brief, with A4 inserted:
    `check` / `show`, plus the skill. Markdown destinations only.
 2. The mxbuild error → resolution trigger.
 3. **Documentation audit**, then promotion into model documentation and lint-rule
-   generation.
+   generation. No longer gated on A4.
 
 ## 6. Open questions
 
 1. **What does `brain check --ci` cost on a cold clone?** It needs a catalog, and
    catalog validity is an mtime comparison that a fresh checkout always fails.
    Unmeasured. If a full build is expensive, `--ci` may need a cheaper anchor
-   index than the catalog.
-2. **Is `docs/` the right home?** The brief argues for reviewability in PR diffs,
-   which is correct. But a Mendix project's `docs/` may already be Studio Pro's
-   or a customer's. `init`'s adoption step should cover "there is a `docs/` and it
-   is not ours".
+   index than the catalog. A8 narrows the question but does not close it:
+   `--changed` checks only the shards a diff touches, yet the *first* of those
+   still pays for the catalog build.
+2. ~~**Is `docs/` the right home?**~~ **Answered — `docs/brain/` (A9, §4.2).** A
+   labelled subfolder is safe to add to a `docs/` that is Studio Pro's or a
+   customer's, which a bare `decisions.md` is not, and the folder name is what
+   tells a reviewer the files are brain-managed. `init`'s adoption step still has
+   to handle an existing `docs/brain/` that is *not* ours, which is now the only
+   collision left.
 3. **THEORY.md does not exist.** The issue says to read it and to update it if the
    working theory changes. There is no such file anywhere in the repository. Is it
    expected to be created, or was another document meant?
-4. **Documentation preservation is filed as `mendixlabs/mxcli#1018`.** It is an
-   mxcli writer defect independent of this feature. The brain cannot use tier 1
-   until it is fixed, and `ALTER ENTITY … ADD ATTRIBUTE` is measured to preserve
-   documentation — so the workaround, and the shape of the fix, is to carry the
-   stored value the way the rewrite paths already carry folder, allowed module
-   roles and element identity.
+4. ~~**Documentation preservation is filed as `mendixlabs/mxcli#1018`.**~~
+   **Fixed** — all 29 rewrite-capable document types carry documentation the
+   statement does not restate, each with a fixture. The shape of the fix was the
+   one predicted here: carry the stored value the way the rewrite paths already
+   carry folder, allowed module roles and element identity. Upstream #1018 stays
+   open until the fork syncs.

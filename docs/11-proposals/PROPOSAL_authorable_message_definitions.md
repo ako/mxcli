@@ -1,6 +1,6 @@
 ---
 title: Authorable message definitions — the last mapping source MDL cannot write
-status: draft
+status: implemented
 date: 2026-09-01
 related:
   - PROPOSAL_mapping_coverage.md
@@ -289,11 +289,18 @@ nothing (the shape `MDL-JSON01` / `MDL-JSON02` established).
 
 **Out:**
 
-- **Inherited attributes.** An entity mapped with `EXTENDS` can expose its
-  parent's attributes; whether the corpus contains any has not been measured.
-  Determine before implementing, and refuse rather than guess.
-- **`Documentation` / `Example` / `ErrorMessage` / `WarningMessage`.** Empty in
-  4,686 of 4,686. Add them when a document needs them, not before.
+- ~~**Inherited attributes.**~~ **Measured and IN scope.** 398 of 3,697 exposed
+  attributes are inherited (10.8%) — e.g. `Email_Connector.Attachment` exposing
+  `System.FileDocument.FileID`. Far too common to refuse, and the stored
+  `Attribute` names the DECLARING entity, which `DeclaringMemberRef` already
+  resolves for mappings.
+- **`Documentation` / `ErrorMessage` / `WarningMessage`.** Empty in 4,707 of
+  4,707. Add them when a document needs them, not before.
+- ~~**`Example`.**~~ **In scope after all.** The corpus said empty in 4,686 of
+  4,686 — but that corpus is marketplace modules. ako/TestApp's hand-authored
+  definition sets one, so it is author-set and rare rather than unused, and
+  hardcoding it empty would silently drop the one that exists. `example '...'`
+  is now syntax.
 - **Published message definitions** (the Business Events surface). A different
   document.
 - **A wildcard member** (`definition Order for Sales.Order ( * )` to expose every
@@ -311,6 +318,28 @@ nothing (the shape `MDL-JSON01` / `MDL-JSON02` established).
 3. **Inherited attributes** — refuse, or block the proposal until measured?
 4. **Legacy engine** — author there too, or modelsdk-only like rules, menus and
    layouts?
+
+## What implementation changed
+
+Five things the census had not shown, all found by round-tripping ako/TestApp's
+hand-authored collection against its stored bytes:
+
+1. **`Path` is a chain of ORIGINAL names**, not exposed ones, and an
+   **association contributes two segments** — its own name, then the target
+   entity's: `Order|OrderLine_Order|OrderLine|Amount`. Confirmed afterwards at
+   4,707 of 4,707 elements once we knew to look for it.
+2. **The typed-array marker is 2**, where the codec defaults to 3.
+3. **Every element serializes `Children` even when empty** — a leaf attribute
+   stores the bare `[2]`, the same `MandatoryLists` rule as a rule document's
+   `Flows`.
+4. **`PrimitiveType` is mapped, not passed through**: `Long → Integer`,
+   `AutoNumber → Integer`, `Enumeration → String`, everything else identity.
+   A pass-through gets 279 corpus elements wrong.
+5. **`Example` is author-set** — see the scope note above.
+
+The lesson is worth more than the list: **one hand-authored reference document
+is worth more than a large census of marketplace modules.** A module author and
+someone building an app by hand exercise different parts of the same document.
 
 ## Implementation outline
 
