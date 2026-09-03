@@ -997,7 +997,25 @@ func (fb *flowBuilder) addRetrieveAction(s *ast.RetrieveStmt) model.ID {
 				attrPath := col.Attribute
 				var entityRefSteps []microflows.EntityRefStep
 				if !strings.Contains(attrPath, ".") {
-					attrPath = entityQN + "." + attrPath
+					// Qualify with the entity that DECLARES the attribute, which is
+					// not always the one being retrieved. Mendix resolves a sort
+					// reference against the declaring entity, so qualifying an
+					// INHERITED name with the list's own entity produced CE1613 "The
+					// selected attribute … no longer exists" — after `mxcli check`
+					// and `exec` both passed (CapTrackV2 §13). Reading the same
+					// attribute already worked, because the page builder walks the
+					// chain; this path did not, though flowBuilder has carried
+					// resolveAttributeInEntityHierarchy all along.
+					//
+					// Falling back to the plain qualification keeps the behaviour
+					// for a unit test with no backend, and for an attribute the
+					// model does not know about — which is the checker's business to
+					// report, not this function's to guess at.
+					if declared, ok := fb.resolveAttributeInEntityHierarchy(entityQN, attrPath); ok {
+						attrPath = declared
+					} else {
+						attrPath = entityQN + "." + attrPath
+					}
 				} else {
 					// Validate that qualified attribute path belongs to the retrieved entity
 					// Expected format: Module.Entity.Attribute
@@ -1005,7 +1023,12 @@ func (fb *flowBuilder) addRetrieveAction(s *ast.RetrieveStmt) model.ID {
 					if len(parts) >= 3 {
 						// Extract entity from attribute path (first two parts)
 						attrEntityQN := parts[0] + "." + parts[1]
-						if attrEntityQN != entityQN {
+						// An ANCESTOR is not a foreign entity: naming the declaring
+						// entity outright is the reference Mendix wants, and it was
+						// refused as not belonging (CapTrackV2 §13). It takes no
+						// EntityRefSteps either — inheritance is not a traversal,
+						// the attribute is on the object already.
+						if attrEntityQN != entityQN && !fb.entityIsSubtypeOf(entityQN, attrEntityQN) {
 							entityRefSteps = fb.inferSortEntityRefSteps(entityQN, attrPath)
 							if len(entityRefSteps) == 0 {
 								fb.addError("sort by attribute '%s' does not belong to entity '%s'", col.Attribute, entityQN)
