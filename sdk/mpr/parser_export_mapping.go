@@ -151,6 +151,9 @@ func parseExportValueMappingElement(raw map[string]any) *model.ExportMappingElem
 	if v, ok := raw["Converter"].(string); ok {
 		elem.Converter = v
 	}
+	if v, ok := raw["OriginalValue"].(string); ok {
+		elem.OriginalValue = v
+	}
 
 	// Extract the primitive type from the nested Type object
 	if typeObj, ok := raw["Type"].(map[string]any); ok {
