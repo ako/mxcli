@@ -436,7 +436,10 @@ func exportValueElementToGen(id string, elem *model.ExportMappingElement, parent
 	addBool(g, "IsKey", elem.IsKey)
 	addBool(g, "IsContent", false)
 	addBool(g, "IsXmlAttribute", false)
-	addStr(g, "OriginalValue", "")
+	// Carried, not hardcoded: whether a mapping stores the structure's sample is
+	// a per-document property, so a rewrite preserves what was there rather than
+	// deleting it (ako/mxcli#379). A newly authored mapping still gets "".
+	addStr(g, "OriginalValue", elem.OriginalValue)
 	addStr(g, "XmlPrimitiveType", xmlPrimitiveTypeName(elem.DataType))
 	return g
 }

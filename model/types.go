@@ -1359,6 +1359,11 @@ type ExportMappingElement struct {
 	// Shared fields
 	ExposedName string `json:"exposedName,omitempty"`
 	JsonPath    string `json:"jsonPath,omitempty"`
+	// OriginalValue is the sample parsed out of the JSON structure's snippet.
+	// Carried rather than derived: whether a mapping stores it is a per-document
+	// property mxcli cannot compute, so a rewrite preserves what was there
+	// instead of choosing (ako/mxcli#379).
+	OriginalValue string `json:"originalValue,omitempty"`
 	// XmlPath — see the note on ImportMappingElement.
 	XmlPath  string                  `json:"xmlPath,omitempty"`
 	Children []*ExportMappingElement `json:"children,omitempty"`

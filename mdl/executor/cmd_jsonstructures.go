@@ -4,7 +4,9 @@
 package executor
 
 import (
+	"encoding/json"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"unicode"
@@ -295,6 +297,14 @@ func execCreateJsonStructure(ctx *ExecContext, s *ast.CreateJsonStructureStmt) e
 		JsonSnippet:   types.PrettyPrintJSON(s.JsonSnippet),
 		Elements:      elements,
 	}
+	// Keep the stored snippet's FORMATTING when the content is the same. mxcli
+	// pretty-prints on describe, so describe -> exec — how a document is copied
+	// — otherwise rewrote a snippet Studio Pro had stored on one line into a
+	// multi-line one. Same JSON, different bytes, and a diff against the
+	// original for nothing (ako/mxcli#379).
+	if existing != nil && sameJSONContent(existing.JsonSnippet, js.JsonSnippet) {
+		js.JsonSnippet = existing.JsonSnippet
+	}
 	// A rewrite that carried no doc comment keeps the stored one (#1018).
 	if existing != nil {
 		js.Documentation = carriedDocumentation(s.DocumentationSet, s.Documentation, existing.Documentation)
@@ -364,4 +374,24 @@ func findJsonStructure(ctx *ExecContext, moduleName, structName string) *types.J
 		}
 	}
 	return nil
+}
+
+// sameJSONContent reports whether two snippets carry the same JSON, ignoring
+// whitespace. Comparing the decoded values rather than the strings is the point:
+// the question is whether a rewrite would change anything that matters.
+//
+// Anything that does not parse is treated as different, so a malformed snippet
+// is replaced rather than silently kept.
+func sameJSONContent(a, b string) bool {
+	if a == b {
+		return true
+	}
+	var va, vb any
+	if err := json.Unmarshal([]byte(a), &va); err != nil {
+		return false
+	}
+	if err := json.Unmarshal([]byte(b), &vb); err != nil {
+		return false
+	}
+	return reflect.DeepEqual(va, vb)
 }
