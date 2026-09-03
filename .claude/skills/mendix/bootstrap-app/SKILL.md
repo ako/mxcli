@@ -56,6 +56,17 @@ it is building.
    `ledger` (light, dense, data-heavy), `console` (dark), or `none` for stock Atlas.
    Default `signal`.
 7. **Mendix version.** Default `11.13.0`.
+8. **Do you have requirements to work from?** A specification document, a
+   prototype, a wireframe, a long description — anything that is the source of
+   truth but is not in this repo. **Default: yes, record them.** If they say yes,
+   ask them to paste or point at it; if they say "just build it", say in one line
+   that you will record the slices you derive as you go, and carry on.
+
+   This one is not cosmetic. Requirements that live in a Word document, a Figma
+   file or a chat window leave **no trace in git**: not in an issue, not in a
+   commit message. A session that resumes after an idle reap has no idea what it
+   was building towards, and neither does the next person. Recording them costs
+   a minute now and is unrecoverable later.
 
 If the user says "defaults" or ignores a question, choose something sensible for it,
 say what you chose in one line, and keep going — **do not block on them twice**.
@@ -121,16 +132,46 @@ drop the `./` if it came pre-installed on `PATH`.
    applied, a `mxcli check` that passed but a real `mx check` later flagged. Note the
    Mendix + mxcli versions and how each finding was verified. This is durable context
    for the next session, and the most useful thing to share back to improve mxcli.
-6. **COMMIT everything now** — `<AppName>.mpr`, `.devcontainer/`, `.claude/` (the
-   SessionStart hook **and** `.claude/bootstrap-mxcli.sh`), `README.md` and
-   `FINDINGS.md`. This step is mandatory, not housekeeping: the seed prompt is a
+6. **Record the plan in the brain** — unless the user opted out at Q8:
+
+   ```bash
+   ./mxcli brain init -p <AppName>.mpr
+   ./mxcli brain capture "<one requirement, in the user's words>" \
+     --slice 01-<first-slice> -a @<AppName>Module.<WhatWillImplementIt> \
+     -p <AppName>.mpr
+   ./mxcli brain staged -p <AppName>.mpr    # then promote each
+   ```
+
+   Split the requirements into **slices you could deliver one at a time**, named
+   with a numeric prefix so they sort into a roadmap: `01-accounts`,
+   `02-approvals`. Anchor each requirement at **what will implement it** — the
+   entity, microflow or page you are about to create. The anchor points forward,
+   so naming something that does not exist yet is correct here, and it is what
+   makes `./mxcli brain plan` a real progress report instead of a checklist.
+
+   Read `.ai-context/skills/project-brain/SKILL.md` before doing this.
+
+   Two things to keep straight, because they are easy to conflate:
+
+   - `README.md` is the **brief** — what the app is, in the user's words, for a
+     human landing on the repo. One page, written once.
+   - `docs/brain/plan/` is the **scope** — the individual requirements, anchored
+     and countable, appended to as they emerge.
+
+   **Never write a status or a tick-box next to a requirement.** Whether it is
+   built is computed by `./mxcli brain plan` from the model; a hand-maintained
+   status is wrong the moment anyone builds anything, and nothing will tell you.
+
+7. **COMMIT everything now** — `<AppName>.mpr`, `.devcontainer/`, `.claude/` (the
+   SessionStart hook **and** `.claude/bootstrap-mxcli.sh`), `README.md`,
+   `FINDINGS.md` and `docs/brain/`. This step is mandatory, not housekeeping: the seed prompt is a
    *one-time* seed, and committing its output is what makes every later session
    bootstrap from files instead of from a re-paste. The `mxcli` binary itself stays
    git-ignored (~85 MB); the bootstrap script is what fetches it back into a fresh
    clone, so committing the script is what makes the hook survive a reap.
-7. **Boot and verify:** `./mxcli run --local -p <AppName>.mpr` in the background, then
+8. **Boot and verify:** `./mxcli run --local -p <AppName>.mpr` in the background, then
    confirm the app answers HTTP 200 at http://localhost:8080/ and report.
-8. **(Optional) browser preview from a cloud session:**
+9. **(Optional) browser preview from a cloud session:**
    `./mxcli run --hub https://hub.mxcli.org -p <AppName>.mpr`, and report the preview
    URL it prints. Needs `MXCLI_HUB_KEY` on the environment; without it, continue as a
    normal local run. `--hub` ships in the **Linux** build only (a cloud session is a
@@ -219,6 +260,9 @@ named after it. From the brief, propose in chat:
   only what the other app actually needs
 
 Show it as **MDL the user can read**, and wait for their go-ahead before executing it.
+Name the elements the same way the plan's anchors do — if a requirement is anchored
+`@<AppName>Module.ACT_Approve`, propose that name — so `./mxcli brain plan` starts
+counting the moment the work lands, without anyone editing the plan.
 If a design was handed to you, it is the source of truth for the model and the pages —
 see `migrate-design-prototype`.
 
@@ -230,6 +274,18 @@ see `migrate-design-prototype`.
 ./mxcli run --local -p <AppName>.mpr --watch --screenshot   # warm dev loop + screenshots
 ./mxcli exec change.mdl -p <AppName>.mpr                     # edit the model; the loop hot-applies
 ```
+
+Keep the plan current as you go — it is the only record of scope that outlives the
+conversation:
+
+```bash
+./mxcli brain plan -p <AppName>.mpr        # what is outstanding, counted from the model
+./mxcli brain capture "<new requirement>" --slice <slice> -a @Mod.Thing -p <AppName>.mpr
+```
+
+Requirements arrive mid-build — the user says "and it should also…". Capture that
+when it is said, not later. Do **not** tick anything off: `brain plan` derives what is
+built from the model, so finishing the work is what moves the number.
 
 In a solution, run one loop per app from its own folder, with the second app on the
 alternate ports, and start the producer first so the consumer's external entities

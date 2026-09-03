@@ -55,9 +55,9 @@ a longer prompt.
 ## What the skill does once it takes over
 
 1. **Interviews you** — one app or a solution, app name, what the app is for, what it
-   keeps track of, who logs in, theme, Mendix version. The app name comes first
-   because it becomes the `.mpr` file name, the Studio Pro app name and the path baked
-   into the SessionStart hook.
+   keeps track of, who logs in, theme, Mendix version, and **whether you have
+   requirements to work from**. The app name comes first because it becomes the `.mpr`
+   file name, the Studio Pro app name and the path baked into the SessionStart hook.
 2. **Provisions** — `mxcli new` into a subfolder and moves it to the repo root (the
    root is where `.claude/` and `./mxcli` must live), `mxcli init --tool claude`, then
    `run --local --setup --ensure-db` to cache MxBuild + runtime and create the
@@ -65,9 +65,17 @@ a longer prompt.
 3. **Writes the brief** — `README.md` (what is being built, in your words) and
    `FINDINGS.md` (anything surprising or broken, appended as work proceeds). These are
    what an idle-reaped session reads to know what it is working on.
-4. **Commits, then boots and verifies** — HTTP 200 at `http://localhost:8080/`, plus
+4. **Records the plan** — the requirements, grouped into deliverable slices, in
+   [`docs/brain/plan/`](project-brain.md). On by default; say so at the interview if
+   you would rather skip it. This exists because a specification in a Word document, a
+   Figma file or a chat window leaves **no trace in git** — not an issue, not a commit
+   message — so hours of work can end up with nothing recording what it was for.
+   Requirements anchor at what will implement them, so `mxcli brain plan` reports
+   progress **derived from the model**: building the thing moves the number, and there
+   is no status column to maintain.
+5. **Commits, then boots and verifies** — HTTP 200 at `http://localhost:8080/`, plus
    an optional `run --hub` preview URL.
-5. **Proposes the model in MDL and waits** — module, entities, roles, pages — before
+6. **Proposes the model in MDL and waits** — module, entities, roles, pages — before
    building anything.
 
 For a solution repo it also covers the parts that bite: per-app ports, a hostname per
