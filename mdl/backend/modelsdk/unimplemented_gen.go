@@ -164,6 +164,10 @@ func (unimplemented) CreateMenuDocument(_ *types.MenuDocument) error {
 	return errUnimplemented("CreateMenuDocument")
 }
 
+func (unimplemented) CreateMessageDefinitionCollection(_ *model.MessageDefinitionCollection) error {
+	return errUnimplemented("CreateMessageDefinitionCollection")
+}
+
 func (unimplemented) CreateMicroflow(_ *microflows.Microflow) error {
 	return errUnimplemented("CreateMicroflow")
 }
@@ -319,6 +323,10 @@ func (unimplemented) DeleteLayout(_ model.ID) error {
 
 func (unimplemented) DeleteMenuDocument(_ model.ID) error {
 	return errUnimplemented("DeleteMenuDocument")
+}
+
+func (unimplemented) DeleteMessageDefinitionCollection(_ string) error {
+	return errUnimplemented("DeleteMessageDefinitionCollection")
 }
 
 func (unimplemented) DeleteMicroflow(_ model.ID) error {
@@ -1133,6 +1141,10 @@ func (unimplemented) UpdateLayout(_ *pages.Layout) error {
 
 func (unimplemented) UpdateMenuDocument(_ *types.MenuDocument) error {
 	return errUnimplemented("UpdateMenuDocument")
+}
+
+func (unimplemented) UpdateMessageDefinitionCollection(_ *model.MessageDefinitionCollection) error {
+	return errUnimplemented("UpdateMessageDefinitionCollection")
 }
 
 func (unimplemented) UpdateMicroflow(_ *microflows.Microflow) error {

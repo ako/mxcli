@@ -139,6 +139,7 @@ func generateClaudeMD(projectName, mprFile string) string {
 	w("| " + bt + ".ai-context/skills/check-syntax/SKILL.md" + bt + " | **Pre-flight** validation checklist |\n")
 	w("| " + bt + ".ai-context/skills/demo-data/SKILL.md" + bt + " | **READ for any database/import work** - Mendix ID system, demo data |\n")
 	w("| " + bt + ".ai-context/skills/test-microflows/SKILL.md" + bt + " | **READ for testing** - test annotations, file formats, Docker setup |\n")
+	w("| " + bt + ".ai-context/skills/project-brain/SKILL.md" + bt + " | **Why was it done this way here?** - the project's recorded decisions in " + bt + "docs/brain/" + bt + " |\n")
 	w("\n")
 	w("**Always validate before presenting to user:**\n\n")
 	w(bt3 + "bash\n")

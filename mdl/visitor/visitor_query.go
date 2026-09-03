@@ -711,6 +711,17 @@ func (b *Builder) ExitShowStatement(ctx *parser.ShowStatementContext) {
 			}
 		}
 		b.statements = append(b.statements, stmt)
+	} else if ctx.MESSAGE() != nil && ctx.DEFINITION() != nil && ctx.COLLECTION() != nil {
+		// SHOW MESSAGE DEFINITION COLLECTIONS [IN module]
+		stmt := &ast.ShowStmt{ObjectType: ast.ShowMessageDefinitionCollections}
+		if ctx.IN() != nil {
+			if qn := ctx.QualifiedName(); qn != nil {
+				stmt.InModule = getQualifiedNameText(qn)
+			} else if id := ctx.IDENTIFIER(); id != nil {
+				stmt.InModule = id.GetText()
+			}
+		}
+		b.statements = append(b.statements, stmt)
 	} else if ctx.IMPORT() != nil && ctx.MAPPINGS() != nil {
 		// SHOW IMPORT MAPPINGS [IN module]
 		stmt := &ast.ShowStmt{ObjectType: ast.ShowImportMappings}
@@ -1212,6 +1223,11 @@ func (b *Builder) ExitDescribeStatement(ctx *parser.DescribeStatementContext) {
 	} else if ctx.DATA() != nil && ctx.TRANSFORMER() != nil {
 		b.statements = append(b.statements, &ast.DescribeStmt{
 			ObjectType: ast.DescribeDataTransformer,
+			Name:       name,
+		})
+	} else if ctx.MESSAGE() != nil && ctx.DEFINITION() != nil && ctx.COLLECTION() != nil {
+		b.statements = append(b.statements, &ast.DescribeStmt{
+			ObjectType: ast.DescribeMessageDefinitionCollection,
 			Name:       name,
 		})
 	} else if ctx.JSON() != nil && ctx.STRUCTURE() != nil {

@@ -327,6 +327,23 @@ func (b *MprBackend) MoveRule(*microflows.Rule) error {
 	return errors.New("moving a rule requires the modelsdk engine — rerun without MXCLI_ENGINE=legacy")
 }
 
+// Message definition collections are authored through gen+codec only, as rules,
+// menus and layouts are. The legacy writer has no serializer for the document
+// and building one would duplicate a shape the codec already gets right
+// (ako/mxcli#272). Reading works on both engines.
+
+func (b *MprBackend) CreateMessageDefinitionCollection(*model.MessageDefinitionCollection) error {
+	return errors.New("creating a message definition collection requires the modelsdk engine — rerun without MXCLI_ENGINE=legacy")
+}
+
+func (b *MprBackend) UpdateMessageDefinitionCollection(*model.MessageDefinitionCollection) error {
+	return errors.New("modifying a message definition collection requires the modelsdk engine — rerun without MXCLI_ENGINE=legacy")
+}
+
+func (b *MprBackend) DeleteMessageDefinitionCollection(string) error {
+	return errors.New("dropping a message definition collection requires the modelsdk engine — rerun without MXCLI_ENGINE=legacy")
+}
+
 // ---------------------------------------------------------------------------
 // PageBackend
 // ---------------------------------------------------------------------------

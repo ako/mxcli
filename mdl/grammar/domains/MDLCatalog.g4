@@ -48,6 +48,7 @@ showStatement
     | showOrList KNOWLEDGE BASES (IN (qualifiedName | IDENTIFIER))?
     | showOrList CONSUMED MCP SERVICES (IN (qualifiedName | IDENTIFIER))?
     | showOrList JSON STRUCTURES (IN (qualifiedName | IDENTIFIER))?
+    | showOrList MESSAGE DEFINITION COLLECTION (IN (qualifiedName | IDENTIFIER))?
     | showOrList IMPORT MAPPINGS (IN (qualifiedName | IDENTIFIER))?
     | showOrList EXPORT MAPPINGS (IN (qualifiedName | IDENTIFIER))?
     | showOrList ENTITY qualifiedName
@@ -188,6 +189,7 @@ describeStatement
     | DESCRIBE KNOWLEDGE BASE qualifiedName             // DESCRIBE KNOWLEDGE BASE Module.Name
     | DESCRIBE CONSUMED MCP SERVICE qualifiedName       // DESCRIBE CONSUMED MCP SERVICE Module.Name
     | DESCRIBE JSON STRUCTURE qualifiedName              // DESCRIBE JSON STRUCTURE Module.Name
+    | DESCRIBE MESSAGE DEFINITION COLLECTION qualifiedName
     | DESCRIBE IMPORT MAPPING qualifiedName             // DESCRIBE IMPORT MAPPING Module.Name
     | DESCRIBE EXPORT MAPPING qualifiedName             // DESCRIBE EXPORT MAPPING Module.Name
     | DESCRIBE REST CLIENT qualifiedName                // DESCRIBE REST CLIENT Module.Name

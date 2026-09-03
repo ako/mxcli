@@ -1085,6 +1085,11 @@ source json '{"latitude": 51.9, "current": {"temp": 12.8}}'
 | Create or modify | `create or modify json structure Module.Name snippet '...';` | Preserves UUID — preferred for AI agents |
 | Create with name map | `create json structure Module.Name snippet '...' CUSTOM NAME map ('jsonKey' as 'CustomName', ...);` | Override auto-generated ExposedNames |
 | Name an array's item | `CUSTOM NAME map (item of 'lines' as 'OrderLine')` | An item has no JSON key; `item of 'Root'` for a root array |
+| Message definition collection | `create [or modify] message definition collection M.Name [folder '...'] ( definition D for M.Entity [as 'X'] ( members ) );` | A selection over the domain model — the one non-JSON mapping source MDL can create |
+| Message definition member | attribute: `OrderId [as 'X'] [example '...']`; association: `M.Assoc/M.Entity [as 'X'] ( ... )` | Naming the target sets the traversal direction, which decides the cardinality |
+| Alter a definition's members | `alter message definition M.Coll.Def add\|drop\|set member X [in path] [as 'Y']` | Addressed as Module.Collection.Definition; `set` changes only the exposed name |
+| Alter a collection | `alter message definition collection M.Coll add\|drop\|rename definition ...` | |
+| Browse | `show message definition collections [in M]`, `describe message definition collection M.Name` | |
 | Drop structure | `drop json structure Module.Name;` | |
 
 ## Import Mappings

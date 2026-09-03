@@ -23,29 +23,40 @@ func (b *Backend) ListMessageDefinitionCollections() ([]*model.MessageDefinition
 	}
 	out := make([]*model.MessageDefinitionCollection, 0, len(units))
 	for _, u := range units {
-		g := u.Element
-		c := &model.MessageDefinitionCollection{
-			ContainerID: model.ID(u.ContainerID),
-			Name:        g.Name(),
-		}
-		c.ID = model.ID(g.ID())
-		c.TypeName = "MessageDefinitions$MessageDefinitionCollection"
-		for _, md := range g.MessageDefinitionsItems() {
-			em, ok := md.(*genMsg.EntityMessageDefinition)
-			if !ok {
-				// A definition kind this reader does not model. Recorded by name
-				// so a mapping referencing it is refused with "not found" rather
-				// than silently resolving against nothing.
-				continue
-			}
-			c.Definitions = append(c.Definitions, &model.MessageDefinition{
-				Name: em.Name(),
-				Root: exposedNodeFromGen(em.ExposedEntity()),
-			})
-		}
-		out = append(out, c)
+		out = append(out, messageCollectionFromGen(u.Element, string(u.ContainerID)))
 	}
 	return out, nil
+}
+
+// messageCollectionFromGen converts one stored collection to the semantic model.
+//
+// Extracted from the loop so the write path's round-trip test can drive the same
+// conversion a real read does — a test that rebuilt from a hand-made struct
+// would prove nothing about documents Studio Pro actually writes.
+func messageCollectionFromGen(g *genMsg.MessageDefinitionCollection, containerID string) *model.MessageDefinitionCollection {
+	c := &model.MessageDefinitionCollection{
+		ContainerID:   model.ID(containerID),
+		Name:          g.Name(),
+		Documentation: g.Documentation(),
+		Excluded:      g.Excluded(),
+		ExportLevel:   g.ExportLevel(),
+	}
+	c.ID = model.ID(g.ID())
+	c.TypeName = "MessageDefinitions$MessageDefinitionCollection"
+	for _, md := range g.MessageDefinitionsItems() {
+		em, ok := md.(*genMsg.EntityMessageDefinition)
+		if !ok {
+			// A definition kind this reader does not model. Skipped by name so a
+			// mapping referencing it is refused with "not found" rather than
+			// silently resolving against nothing.
+			continue
+		}
+		c.Definitions = append(c.Definitions, &model.MessageDefinition{
+			Name: em.Name(),
+			Root: exposedNodeFromGen(em.ExposedEntity()),
+		})
+	}
+	return c
 }
 
 // exposedNodeFromGen converts one node of a definition's exposed tree.
@@ -62,6 +73,8 @@ func exposedNodeFromGen(n any) *model.MessageDefinitionElement {
 			Entity:          v.EntityQualifiedName(),
 			ExposedName:     v.ExposedName(),
 			ExposedItemName: v.ExposedItemName(),
+			OriginalName:    v.OriginalName(),
+			Example:         v.Example(),
 			Path:            v.Path(),
 			MinOccurs:       int(v.MinOccurs()),
 			MaxOccurs:       int(v.MaxOccurs()),
@@ -81,8 +94,11 @@ func exposedNodeFromGen(n any) *model.MessageDefinitionElement {
 		e := &model.MessageDefinitionElement{
 			Kind:            "Entity",
 			Association:     v.AssociationQualifiedName(),
+			Entity:          v.EntityQualifiedName(),
 			ExposedName:     v.ExposedName(),
 			ExposedItemName: v.ExposedItemName(),
+			OriginalName:    v.OriginalName(),
+			Example:         v.Example(),
 			Path:            v.Path(),
 			MinOccurs:       int(v.MinOccurs()),
 			MaxOccurs:       int(v.MaxOccurs()),
@@ -101,6 +117,8 @@ func exposedNodeFromGen(n any) *model.MessageDefinitionElement {
 			Kind:          "Attribute",
 			Attribute:     v.AttributeQualifiedName(),
 			ExposedName:   v.ExposedName(),
+			OriginalName:  v.OriginalName(),
+			Example:       v.Example(),
 			Path:          v.Path(),
 			MinOccurs:     int(v.MinOccurs()),
 			MaxOccurs:     int(v.MaxOccurs()),

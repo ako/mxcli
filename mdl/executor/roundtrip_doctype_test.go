@@ -71,6 +71,13 @@ var engineScriptSkip = map[string]string{
 	// for the tree to go. Reads (SHOW/DESCRIBE LAYOUT) work on both engines.
 	"legacy/layouts.mdl":             "layout authoring is modelsdk-only by design; the legacy backend refuses it",
 	"legacy/navigation-profiles.mdl": "creating a navigation profile is modelsdk-only by design; the legacy backend refuses it",
+	// Same shape again: message definition collection authoring is
+	// modelsdk-only. The legacy writer has no serializer for the document, and
+	// building one would duplicate a shape the codec already gets right —
+	// including a typed-array marker of 2 and an empty-but-present Children
+	// list, neither of which is the codec's default. The legacy backend refuses
+	// create/modify/drop rather than emitting one. Reads work on both engines.
+	"legacy/40-message-definition-examples.mdl": "message definition authoring is modelsdk-only by design; the legacy backend refuses it",
 	// Enabling a language writes Settings$LanguageSettings.Languages, which the
 	// legacy serializer carries through from the stored document rather than
 	// writing — so the list cannot change on that engine. The backend refuses it

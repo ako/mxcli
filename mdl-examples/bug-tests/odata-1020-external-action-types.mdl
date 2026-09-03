@@ -1,0 +1,89 @@
+-- ============================================================================
+-- mendixlabs/mxcli#1020: an external action call had no types on it
+-- ============================================================================
+--
+-- Report: after importing external entities for an OData service whose actions
+-- have complex parameter/return types, CE7252 and CE7269 persisted, and
+-- re-running CREATE OR MODIFY EXTERNAL ENTITIES never cleared them.
+--
+-- It never could. Both errors are raised on Microflows$CallExternalAction — the
+-- microflow ACTIVITY — not on the entity. From Mendix 11.13's own
+-- Mendix.Modeler.Texts.dll, both LOCATION: CallExternalAction.cs:
+--
+--   CE7252 ACTION_PARAMETERS_UNALIGNED
+--          "The parameters for remote action '{ACTION}' have changed."
+--   CE7269 ACTION_RETURN_TYPE_UNALIGNED
+--          "The return type for remote action '{ACTION}' has changed."
+--
+-- Two separate omissions in the call, both of the same shape — a DataTypes$
+-- sub-document that was never written:
+--
+--   CE7269  The return-type resolver mapped only EDM primitives, so an action
+--           returning an ENTITY (or a collection of them) got NO
+--           VariableDataType at all. Now resolved to DataTypes$ObjectType /
+--           DataTypes$ListType naming the imported external entity.
+--
+--   CE7252  ExternalActionParameterMapping.ParameterType was never written,
+--           though generated/metamodel declares it WITHOUT omitempty. Measured:
+--           a call with ANY parameter — of any type — produced CE7252 plus one
+--           CE0117 "Error(s) in expression" per argument, because an argument
+--           cannot be type-checked against an untyped parameter.
+--
+-- Measured on Mendix 11.13 against a local $metadata with three action shapes:
+--
+--   before  GetAnyAirport (no params, entity return)  -> CE7269
+--           FindAirport   (one string param)          -> CE7252 + 1x CE0117
+--           GetNearestAirport (two double params)     -> CE7252 + 2x CE0117
+--   after   all three                                 -> 0 errors
+--
+-- Also fixed alongside: the catalog listed only entity-set-backed external
+-- entities, so an action's parameter/return-type entity was missing from
+-- CATALOG.external_entities and contract_entities.UsedByExternalEntity was
+-- STRUCTURALLY always empty for it — the observation the report was built on.
+--
+-- This script cannot run standalone: it needs a consumed OData service whose
+-- cached $metadata declares the actions. Point MetadataUrl at a service of your
+-- own, or serve a contract locally, then run the blocks in order. The MDL below
+-- is exactly what was executed for the measurement above.
+--
+-- Verify:
+--   mxcli exec  <this file> -p app.mpr
+--   mx check app.mpr   -> 0 errors
+-- ============================================================================
+
+create module Ext;
+
+create constant Ext.SvcUrl type String default 'http://127.0.0.1:8899/';
+
+-- The contract must declare the actions as <Action> with an <ActionImport> in
+-- the EntityContainer. Mendix's `call external action` takes OData ACTIONS
+-- only, not Functions (CE7251), and an unbound action with no ActionImport is
+-- not part of the service's callable surface.
+create odata client Ext.TripPin (
+  Version: '1.0',
+  ODataVersion: OData4,
+  MetadataUrl: 'http://127.0.0.1:8899/$metadata',
+  Timeout: 300,
+  ServiceUrl: @Ext.SvcUrl
+);
+
+-- Imports BOTH kinds of entity: the entity-set-backed one (People) and the
+-- action's return type (Airport), which has no entity set and is stored as
+-- Rest$ODataEntityTypeSource.
+create external entities from Ext.TripPin into Ext;
+
+-- The three shapes. Each was a separate error before the fix; all three build
+-- to 0 errors now.
+create microflow Ext.ACT_ExternalActions() returns boolean
+begin
+    -- Entity return, no parameters. Was CE7269.
+    $A = call external action Ext.TripPin.GetAnyAirport();
+
+    -- One string parameter. Was CE7252 + CE0117.
+    $B = call external action Ext.TripPin.FindAirport(code = 'EHAM');
+
+    -- Two numeric parameters: one CE0117 per argument before the fix.
+    $C = call external action Ext.TripPin.GetNearestAirport(lat = 52.0, lon = 4.0);
+
+    return true;
+end;

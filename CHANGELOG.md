@@ -12,6 +12,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **QUAL005 reports the sibling elements it used to fold together** — the rule grouped by `(QualifiedName, StringContext)` while `ElementId` sat unused in the table, so an enumeration's twelve values became one group and translating any single value made the whole set look complete. Grouping now includes `ElementId`. The existing test harness synthesized that column from `QualifiedName+StringContext`, which is why no test caught it.
 
+- **`call external action` now types its return value and its parameters** (mendixlabs/mxcli#1020) — a call against a consumed OData service was written with neither the result variable's type nor its parameters' types, so Mendix reported `CE7269` ("the return type for remote action … has changed") and `CE7252` ("the parameters … have changed"), and re-running `CREATE OR MODIFY EXTERNAL ENTITIES` never cleared them.
+
+  It never could. Both codes are defined on `CallExternalAction.cs` — they are raised by the microflow **activity**, not by the entity — which is what made the reported remedy the wrong lever. Two omissions of the same shape, each a `DataTypes$` sub-document that was never written:
+
+  - The return-type resolver mapped only EDM primitives, so an action returning an **entity** (or a collection of them) got no `VariableDataType` at all. It now resolves to `DataTypes$ObjectType` / `DataTypes$ListType` naming the external entity imported for that type — the same linkage the entity import writes.
+  - `ExternalActionParameterMapping.ParameterType` was never written, though `generated/metamodel` declares it **without `omitempty`**. Measured: a call with *any* parameter, of any type, produced CE7252 plus one `CE0117` "Error(s) in expression" per argument — an argument cannot be type-checked against an untyped parameter.
+
+  Measured on 11.13 against a contract with three action shapes: before, a no-parameter entity return was CE7269, a one-string-parameter call was CE7252 + 1× CE0117, and a two-parameter call CE7252 + 2× CE0117; after, all three build at **0 errors**. Reverting the return resolver reproduces CE7269 verbatim.
+
+  `mxcli check --references` now also resolves the call against the cached contract, so an unknown action, an argument the action does not declare, a declared parameter left unsupplied, or an entity return whose entity has not been imported are reported with the statement that fixes them instead of surfacing a build later.
+
+- **The catalog listed only half the external entities** — `external_entities` skipped every entity stored as `Rest$ODataEntityTypeSource`, which is what `CREATE EXTERNAL ENTITIES` writes for any type the contract gives no entity set: derived, abstract, contained, and an action's parameter and return types. They were absent from `CATALOG.external_entities` and from module entity counts.
+
+  The consequence was worse than the under-count. `contract_entities.UsedByExternalEntity` is filled by joining that table on `RemoteName`, so for exactly those entities the column was **structurally always empty** — it read as "this contract entity is linked to nothing" whether or not the import had worked, which is the evidence #1020 was diagnosed from. Both sources are now catalogued, and the reporter's query resolves.
+
 - **`HOME PAGE … FOR` resolves the user role, and the docs no longer recommend the form that breaks the project** (mendixlabs/mxcli#1001) — the role was written straight through to BSON, and what it did depended on its shape. Measured on a blank 11.13 app: `for Administrator` builds at 0 errors; `for Supervisor` (bare, unknown) is an ordinary `CE1613`; and `for MyFirstModule.Administrator` produces a project Mendix **cannot load** — `StorageLoadException: … 'MyFirstModule.Administrator' is not a valid UserRoleIdentifier`, raised before any checking runs, so there is no error code and no location.
 
   The third was the form **mxcli's own documentation, skill and `mxcli syntax` output all recommended**, across ten places including one runnable example. `FOR` binds a *user* role, which is project-level and written bare; a *module* role is module-scoped and shares the name — a blank app has a user role `Administrator` and module roles called `Administrator` in three modules, so the wrong one reads as correct.

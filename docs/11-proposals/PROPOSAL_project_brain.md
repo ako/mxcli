@@ -240,15 +240,16 @@ or §3.
 | A8 | Records shard by **anchor scope** — `project.md` for cross-cutting, `modules/<Module>.md` for anchored ones — created on demand, with caps applying per shard | §4.1: one file makes a single project-wide budget, and every session pays for every module |
 | A9 | The store lives at **`docs/brain/`**, with a `README.md` written by `init` | §4.2: a bare `docs/` gives no signal that the files are brain-managed, and §6 Q2 |
 
-Everything else — the three tiers, the storage layout, the CLI surface, the
-promote-only-through-a-human rule, the non-goals — stands as written. The
-non-goals in particular should be treated as load-bearing.
+Everything else — the three tiers, the promote-only-through-a-human rule, the
+non-goals — stands as written. The non-goals in particular should be treated as
+load-bearing.
 
-**The skill.** Ship it under `.claude/skills/mendix/project-brain/SKILL.md`; the
-embed and `mxcli init` handle the rest (§2.4). The brief is right that the
-description decides whether it is ever used and should be phrased around
-symptoms. Worth adding: mxcli's own skills are synced with `rsync --delete`, so
-the source of truth is `.claude/skills/mendix/`, never the embed directory.
+The storage layout and the CLI surface no longer stand as written: A8 and A9
+change the first, and the second has to follow it. §4.1 and §4.2 give the
+layout; §4.3 restates the surface against it and §4.4 the skill. Both are
+restated in full rather than by reference, because a reader of this proposal
+cannot see the brief.
+
 
 ### 4.1 Storage layout at scale
 
@@ -334,12 +335,90 @@ Two alternatives, and why not:
   ownership statement instead; because it describes mechanism rather than state,
   A6 still holds.
 
+### 4.3 CLI surface, restated against the sharded layout
+
+Seven verbs under `mxcli brain`. Sharding changes six of them and deliberately
+leaves `capture` alone, so the surface is given in full rather than deferred to
+the brief.
+
+| Command | Behaviour under A8/A9 |
+|---|---|
+| `brain init` | Creates `docs/brain/` with `README.md` and an empty `project.md`. `modules/` is created empty; shards appear on promotion. Adopts an existing `docs/` rather than claiming it, and **refuses** a `docs/brain/` it did not write (§6 Q2's residue) |
+| `brain capture <text> [@anchor…]` | Appends to `.mxcli/brain/staged.jsonl`. **Not sharded** — staging is a queue, not a store, and it is gitignored (§2.4). Sharding a queue buys nothing and costs a routing decision made before a human has looked at the entry |
+| `brain staged` | Lists the queue with the shard each entry *would* land in, so the routing is visible before it happens |
+| `brain promote <id> [--to <shard>]` | The only writer of a committed file, and still human-invoked. Destination is **derived**: the module of the entry's first anchor, or `project.md` when it has none. `--to project` is the escape hatch for a fact that is cross-cutting despite carrying an anchor |
+| `brain drop <id>` | Removes an entry from the queue or from its shard, and **deletes a shard that becomes empty** — otherwise the directory accumulates husks that read as "this module has decisions" |
+| `brain check [--changed] [--ci]` | Per-shard. Reports A1's three anchor states, and **separately** whether an entry is misfiled — a second axis, not a fourth state: an anchor can resolve perfectly and still sit in the wrong shard. `--changed` reads git's changed-file list and checks only the affected shards |
+| `brain show [<shard>]` | Per-shard size and cap headroom, **computed on every run** (A6). No shard's figure is ever written into a committed file, including the `README.md` |
+
+Two rules the table compresses:
+
+**The cap is per shard, and `promote` is where it bites.** A promotion that would
+push its destination past the cap is refused, naming the shard and its current
+occupancy. `project.md` carries the tightest cap of any shard, because it is the
+only file loaded unconditionally.
+
+**Misfiling is a check, with one deliberate relaxation.** `check` requires that
+**at least one** of an entry's anchors resolves with `ModuleName` equal to its
+shard. Additional anchors into other modules are *reported, not failed* — a fact
+like "`Sales.Order` is committed by `Finance.ACT_Post`" is genuinely two-module,
+and forcing it into `project.md` would grow the one file that must stay small.
+An entry with **zero** anchors in its own shard is misfiled, and that is the
+failure the check exists for.
+
+**A7's host is `mxcli lint`, not `mxcli check`.** The staged-entry count and the
+number of shards whose anchors no longer resolve have to surface from something
+that already runs; `brain check` alone is a report nothing demands, which is how
+the analogous store's curation step went three months without a run (§3).
+`check` is the wrong host despite being the more frequently run of the two: it is
+scoped to an **MDL script**, so a project-level staleness line has no business in
+its output. `lint` already takes `-p app.mpr`, already runs in review, and is
+already where the brain has a presence — A3's generated rules surface there.
+
+### 4.4 The skill
+
+Ship it at `.claude/skills/mendix/project-brain/SKILL.md`. The embed
+(`//go:embed all:skills`) and `mxcli init` handle distribution, and the source of
+truth is `.claude/skills/mendix/` — never the embed directory, which
+`make sync-skills` rebuilds with `rsync --delete` (§2.4).
+
+The `description` is the routing mechanism, so it is phrased around symptoms
+rather than around the feature:
+
+```yaml
+---
+name: project-brain
+description: "Project-specific knowledge mxcli cannot compute — why a pattern was
+  chosen here, which marketplace version broke what, what a recurring mxbuild error
+  means in this app. Use before designing something that looks like it was decided
+  before, and when an mxbuild error is resolved by something non-obvious."
+---
+```
+
+Sharding gives the skill four instructions it would not otherwise need, and the
+first is the one that matters:
+
+1. **Read `project.md`, plus the shard for each module you are about to touch.**
+   That set is known before the work starts. **Never read the whole directory** —
+   the analogous store's failure was a file too large to read, and the sharded
+   equivalent is an agent that reads every shard and reinstates the cost the
+   sharding removed.
+2. **Ask whether `mxcli` can answer it before writing anything down.** Entities,
+   microflows, pages, bindings and references are all queryable; a store that
+   transcribes them is a store that will disagree with the project (§1).
+3. **`capture` during work; never `promote`.** Promotion is the human's step, and
+   the skill should say so rather than leaving an agent to infer it from the
+   command's absence in its instructions.
+4. **Write the anchor, not the name.** `@Sales.Order.Status` is what makes an
+   entry checkable and routable; the same fact written as prose is neither.
+
 ## 5. Phasing
 
 Unchanged from the brief, with A4 inserted:
 
-1. Storage, anchors, `init` / `capture` / `staged` / `promote` / `drop` /
-   `check` / `show`, plus the skill. Markdown destinations only.
+1. Storage, anchors, and the seven verbs of §4.3 — `init` / `capture` /
+   `staged` / `promote` / `drop` / `check` / `show` — plus the skill of §4.4.
+   Markdown destinations only.
 2. The mxbuild error → resolution trigger.
 3. **Documentation audit**, then promotion into model documentation and lint-rule
    generation. No longer gated on A4.

@@ -199,7 +199,7 @@ func serializeExportValueElement(id string, elem *model.ExportMappingElement, pa
 		{Key: "IsKey", Value: elem.IsKey},
 		{Key: "IsContent", Value: false},
 		{Key: "IsXmlAttribute", Value: false},
-		{Key: "OriginalValue", Value: ""},
+		{Key: "OriginalValue", Value: elem.OriginalValue},
 		{Key: "XmlPrimitiveType", Value: xmlPrimitiveTypeName(elem.DataType)},
 	}
 }

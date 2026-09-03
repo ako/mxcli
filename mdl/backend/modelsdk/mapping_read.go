@@ -340,6 +340,7 @@ func exportMappingElementFromGen(el element.Element) *model.ExportMappingElement
 		e.ExposedName = o.ExposedName()
 		e.JsonPath = o.JsonPath()
 		e.XmlPath = o.XmlPath()
+		e.OriginalValue = o.OriginalValue()
 		e.MinOccurs = int(o.MinOccurs())
 		e.MaxOccurs = int(o.MaxOccurs())
 		e.MaxLength = int(o.MaxLength())

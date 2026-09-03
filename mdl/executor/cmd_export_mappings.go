@@ -410,6 +410,9 @@ func finishExportMapping(ctx *ExecContext, s *ast.CreateExportMappingStmt,
 ) error {
 	if existing != nil {
 		em.ID = existing.ID
+		// A rewrite must not delete the samples the stored document carries
+		// (ako/mxcli#379).
+		carryExportOriginalValues(em, existing)
 		if err := ctx.Backend.UpdateExportMapping(em); err != nil {
 			return mdlerrors.NewBackend("update export mapping", err)
 		}
