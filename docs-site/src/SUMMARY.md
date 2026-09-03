@@ -131,6 +131,7 @@
   - [Available Tables](tools/catalog-tables.md)
   - [SQL Queries](tools/catalog-sql.md)
   - [Use Cases](tools/catalog-use-cases.md)
+- [Project Brain](tools/project-brain.md)
 - [Linting and Reports](tools/linting.md)
   - [Built-in Rules](tools/builtin-rules.md)
   - [Starlark Rules](tools/starlark-rules.md)

@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/mendixlabs/mxcli/cmd/mxcli/brain"
 	"os"
 	"path/filepath"
 	"strings"
@@ -306,6 +307,14 @@ Examples:
 			os.Exit(1)
 		}
 
+		// A7: the gap that motivates curation is printed by a command that
+		// already runs. A queue nobody promotes is the brain's version of the
+		// on-demand digest that went three months without a run — and a report
+		// only `brain check` prints is a report nothing demands. One file read,
+		// silent when there is no store or no queue, and on stderr so it cannot
+		// corrupt --format json/sarif.
+		reportBrainGap(projectDir)
+
 		// Exit with error if there are errors
 		summary := linter.Summarize(violations)
 		if summary.Errors > 0 {
@@ -360,4 +369,24 @@ func pluralItThem(n int) string {
 		return "it"
 	}
 	return "them"
+}
+
+// reportBrainGap prints one line when the project brain has staged entries that
+// nobody has promoted. It never fails lint and never touches the model: the
+// brain is opt-in, so a project without a store hears nothing at all.
+func reportBrainGap(projectDir string) {
+	if !brain.NewStore(projectDir).Exists() {
+		return
+	}
+	staged, err := brain.NewQueue(projectDir).Load()
+	if err != nil || len(staged) == 0 {
+		return
+	}
+	noun := "entries"
+	if len(staged) == 1 {
+		noun = "entry"
+	}
+	fmt.Fprintf(os.Stderr,
+		"\nProject brain: %d staged %s not yet promoted — 'mxcli brain staged' to review.\n",
+		len(staged), noun)
 }
