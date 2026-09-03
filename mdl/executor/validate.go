@@ -289,6 +289,11 @@ func validateProgram(ctx *ExecContext, prog *ast.Program) []error {
 	// worse than the two above: a module-qualified role here makes the project
 	// unloadable rather than merely failing the build (mendixlabs/mxcli#1001).
 	errors = append(errors, validateNavigationRoles(ctx, prog)...)
+	// Resolve CALL EXTERNAL ACTION against the consumed service's cached
+	// contract. MxBuild otherwise reports the drift as CE7252/CE7269 on the
+	// microflow — errors whose wording sends people to the entity import, which
+	// cannot fix either of them (mendixlabs/mxcli#1020).
+	errors = append(errors, validateExternalActionCalls(ctx, prog)...)
 	return errors
 }
 
