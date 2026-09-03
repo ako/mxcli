@@ -90,11 +90,23 @@ ordinary edit that has nothing to do with the knowledge. An agent that promotes 
 decision into a microflow's documentation and later adds a parameter has thrown
 the decision away, with every signal reporting success.
 
-**Consequence for the design.** Tier 1 is the strongest idea in the brief and is
-**blocked** until rewrites preserve documentation the statement does not restate.
-That is a fix in mxcli's writers, not in the brain, and it should be a
-precondition of phase 3 rather than a task inside it. Until then the brain's
-preference order starts at tier 2.
+**Consequence for the design — since fixed.** Tier 1 is the strongest idea in the
+brief and was **blocked** until rewrites preserved documentation the statement
+does not restate. That was a fix in mxcli's writers, not in the brain. It has
+landed: every rewrite path now carries the stored value when the statement is
+silent, the way it already carried folder, allowed module roles and element
+identity, and a fixture asserts survival for **all 29 rewrite-capable document
+types** (`documentation_preserved_test.go`, with an untouched-object control and
+an empty-comment-clears case). A source-scanning guard fails when a new
+rewrite-capable type appears without one. Tier 1 is therefore a phase-3 task
+rather than a precondition of it.
+
+Two mistakes made on the way there are worth carrying into the brain's own
+tests. A control that does not *compile* is not a control — deleting the carry
+block failed on unused variables instead of failing the test, so the condition
+had to be stubbed to `if false` instead. And a type counted as done because the
+carry was written, while the statement had a second update path the fixture never
+exercised; "done" had to be redefined as **carried and covered**.
 
 A caveat on this measurement: it was made with a corrected test. The first
 version chained `&& echo SURVIVED` to `head -1`, which exits 0 on empty input, so
@@ -221,7 +233,7 @@ or §3.
 | A1 | `check` reports three anchor states — resolved, **not found**, **not indexable** — and fails only on the middle one | §2.2: the `objects` view is not a complete inventory |
 | A2 | Anchors resolve at document *and* member granularity (`objects` + `attributes_data`) | §2.2: `@Mod.Entity.Attr` is the natural thing to write |
 | A3 | Generated lint rules use a `brain_` filename prefix and a `BRAIN###` ID namespace | §2.3: `mxcli init` writes into the same directory |
-| A4 | **Tier 1 is blocked** until a rewrite preserves documentation it does not restate. Until then the preference order starts at tier 2 | §2.1: measured — `create or replace` destroys the doc comment, `mx check` clean |
+| A4 | ~~Tier 1 is blocked~~ **Resolved.** Rewrites now carry documentation the statement does not restate, on all 29 rewrite-capable document types | §2.1: was measured broken, now fixture-covered with a control |
 | A5 | `staged.jsonl` gets a cheap duplicate check | §3: cheap insurance, but a many-writers problem that mostly does not apply here |
 | A6 | `brain show`'s size figure and any coverage number are computed, never written into a committed file | §3: prose figures went stale within days |
 | A7 | The gap that motivates curation is printed by a command that already runs, not only by `brain check` | §3: the on-demand digest went three months without a run |
@@ -330,7 +342,7 @@ Unchanged from the brief, with A4 inserted:
    `check` / `show`, plus the skill. Markdown destinations only.
 2. The mxbuild error → resolution trigger.
 3. **Documentation audit**, then promotion into model documentation and lint-rule
-   generation.
+   generation. No longer gated on A4.
 
 ## 6. Open questions
 
@@ -349,9 +361,9 @@ Unchanged from the brief, with A4 inserted:
 3. **THEORY.md does not exist.** The issue says to read it and to update it if the
    working theory changes. There is no such file anywhere in the repository. Is it
    expected to be created, or was another document meant?
-4. **Documentation preservation is filed as `mendixlabs/mxcli#1018`.** It is an
-   mxcli writer defect independent of this feature. The brain cannot use tier 1
-   until it is fixed, and `ALTER ENTITY … ADD ATTRIBUTE` is measured to preserve
-   documentation — so the workaround, and the shape of the fix, is to carry the
-   stored value the way the rewrite paths already carry folder, allowed module
-   roles and element identity.
+4. ~~**Documentation preservation is filed as `mendixlabs/mxcli#1018`.**~~
+   **Fixed** — all 29 rewrite-capable document types carry documentation the
+   statement does not restate, each with a fixture. The shape of the fix was the
+   one predicted here: carry the stored value the way the rewrite paths already
+   carry folder, allowed module roles and element identity. Upstream #1018 stays
+   open until the fork syncs.
