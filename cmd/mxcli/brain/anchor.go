@@ -19,6 +19,26 @@ import (
 // it carries the tightest cap.
 const ProjectShard = "project"
 
+// PlanPrefix marks a shard that holds requirements rather than decisions. The
+// prefix is part of the shard name so that one identifier addresses all three
+// kinds of file — project.md, modules/<M>.md and plan/<slice>.md — and no
+// caller has to carry a second "is this a plan shard" flag alongside it.
+const PlanPrefix = "plan/"
+
+// PlanShard names the shard holding a slice's requirements.
+func PlanShard(slice string) string { return PlanPrefix + slice }
+
+// IsPlanShard reports whether a shard holds requirements.
+func IsPlanShard(shard string) bool { return strings.HasPrefix(shard, PlanPrefix) }
+
+// SliceOf returns the slice a plan shard belongs to, or "".
+func SliceOf(shard string) string {
+	if !IsPlanShard(shard) {
+		return ""
+	}
+	return strings.TrimPrefix(shard, PlanPrefix)
+}
+
 // identifier is the Mendix name shape — a leading letter or underscore, then
 // letters, digits and underscores. Anything else is rejected at parse time
 // rather than becoming an anchor that can never resolve.

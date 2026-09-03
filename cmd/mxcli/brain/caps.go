@@ -18,14 +18,27 @@ package brain
 const (
 	ProjectShardCap = 120
 	ModuleShardCap  = 240
+
+	// PlanSliceCap is generous because a slice holds source material — text
+	// lifted from a specification, not a distilled decision — and because a
+	// plan shard is read when planning rather than loaded every session.
+	//
+	// It is still a cap, and that is the point: a slice too long to read is a
+	// slice that should be split. Here the limit does not merely bound context
+	// cost, it enforces the slicing discipline the plan exists for.
+	PlanSliceCap = 600
 )
 
 // CapFor returns the line budget for a shard.
 func CapFor(shard string) int {
-	if shard == ProjectShard {
+	switch {
+	case shard == ProjectShard:
 		return ProjectShardCap
+	case IsPlanShard(shard):
+		return PlanSliceCap
+	default:
+		return ModuleShardCap
 	}
-	return ModuleShardCap
 }
 
 // Usage is what `brain show` reports. Every field is computed on the call —

@@ -75,6 +75,24 @@ type MisfiledFinding struct {
 	Belongs string // the shard it should be in, from its first resolved anchor
 }
 
+// SliceProgress is a slice's requirements counted against the model. Every
+// figure is derived from resolving anchors, so nothing here is self-reported
+// and no one has to maintain a status column that will go stale.
+type SliceProgress struct {
+	Slice string
+	// Built is requirements whose anchors all resolve — the thing exists.
+	Built int
+	// Planned is requirements with at least one anchor that does not resolve
+	// yet. Not a failure: that is what a requirement is until it is built.
+	Planned int
+	// Unanchored is requirements with no anchor at all. They cannot be
+	// measured, and are counted apart rather than silently called planned.
+	Unanchored int
+}
+
+// Total is every requirement in the slice.
+func (p SliceProgress) Total() int { return p.Built + p.Planned + p.Unanchored }
+
 // Report is what `brain check` prints and exits on.
 type Report struct {
 	Shards    []string
@@ -84,6 +102,7 @@ type Report struct {
 	Findings  []AnchorFinding // NotFound and NotIndexable only
 	Misfiled  []MisfiledFinding
 	Malformed []string // entry blocks whose metadata line could not be read
+	Slices    []SliceProgress
 }
 
 // Failed reports whether the check should exit non-zero.
@@ -115,6 +134,17 @@ func Check(s *Store, r Resolver, shards []string) (Report, error) {
 		for _, m := range malformed {
 			rep.Malformed = append(rep.Malformed, shard+": "+m)
 		}
+		if IsPlanShard(shard) {
+			progress, err := checkSlice(r, shard, entries)
+			if err != nil {
+				return rep, err
+			}
+			rep.Entries += len(entries)
+			rep.Anchors += progress.anchors
+			rep.ResolvedN += progress.resolved
+			rep.Slices = append(rep.Slices, progress.SliceProgress)
+			continue
+		}
 		for _, e := range entries {
 			rep.Entries++
 			var resolvedModules []string
@@ -143,6 +173,53 @@ func Check(s *Store, r Resolver, shards []string) (Report, error) {
 		}
 	}
 	return rep, nil
+}
+
+type sliceCounts struct {
+	SliceProgress
+	anchors, resolved int
+}
+
+// checkSlice counts a slice's requirements against the model. It records no
+// findings and no misfiling, and that is the point rather than an omission:
+//
+//   - A requirement's anchor points FORWARD. Not resolving means not built,
+//     which is the normal state of a requirement and must never fail a check —
+//     measured: filed as an ordinary entry, one unbuilt requirement took
+//     `brain check` to exit 1.
+//   - A slice spans modules by design ("approvals" touches Sales and Finance),
+//     so the misfiling rule that keeps decisions honest does not apply.
+func checkSlice(r Resolver, shard string, entries []Entry) (sliceCounts, error) {
+	out := sliceCounts{SliceProgress: SliceProgress{Slice: SliceOf(shard)}}
+	for _, e := range entries {
+		anchors := e.ParsedAnchors()
+		if len(anchors) == 0 {
+			out.Unanchored++
+			continue
+		}
+		built := true
+		for _, a := range anchors {
+			out.anchors++
+			res, err := r.Resolve(a)
+			if err != nil {
+				return out, err
+			}
+			// NotIndexable counts as built: the thing is there, the catalog
+			// simply does not index its type. Calling it planned would report
+			// finished work as outstanding.
+			if res.State == NotFound {
+				built = false
+				continue
+			}
+			out.resolved++
+		}
+		if built {
+			out.Built++
+		} else {
+			out.Planned++
+		}
+	}
+	return out, nil
 }
 
 // belongsIn names the shard an entry should have gone to. With no resolved

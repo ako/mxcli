@@ -1,13 +1,22 @@
 ---
 name: project-brain
-description: "Project-specific knowledge mxcli cannot compute — why a pattern was chosen here, which marketplace version broke what, what a recurring mxbuild error means in this app. Use before designing something that looks like it was decided before, and when an mxbuild error is resolved by something non-obvious."
+description: "Project-specific knowledge mxcli cannot compute — the requirements and slices being built from (a spec, a prototype, a conversation), why a pattern was chosen here, which marketplace version broke what. Use when starting from requirements that live outside git, before designing something that looks like it was decided before, and when an mxbuild error is resolved by something non-obvious."
 ---
 
 # Project brain
 
-The brain holds what mxcli **cannot** compute about this project: why a pattern
-was chosen here, which marketplace version broke what, what a recurring mxbuild
-error means in *this* app.
+The brain holds what mxcli **cannot** compute about this project. Two halves:
+
+- **Decisions** — why a pattern was chosen here, which marketplace version broke
+  what, what a recurring mxbuild error means in *this* app.
+- **The plan** — the requirements being built from and the slices they are
+  grouped into, when the source is a specification document, a prototype or a
+  conversation rather than GitHub issues.
+
+The plan half matters because hours of work can otherwise leave no trace: a
+Word document and a chat transcript are not in git, so a session that resumes
+later has no idea what it was building towards, and neither does the next
+person.
 
 It lives in `docs/brain/`, is committed, and is reviewed in a pull request like
 any other change.
@@ -36,10 +45,15 @@ the constraint, the history that no query can reach.
 docs/brain/
   project.md           cross-cutting decisions
   modules/<Module>.md  decisions anchored to one module
+  plan/<slice>.md      requirements for one deliverable slice
 ```
 
-**Read `project.md`, plus the shard for each module you are about to touch.**
-That set is known before the work starts.
+**When building: read `project.md`, plus the shard for each module you are about
+to touch.** That set is known before the work starts.
+
+**When planning, or when picking up work: read the plan.** `mxcli brain plan`
+first — it says which slices are outstanding — then the shard for the slice you
+are working on.
 
 **Never read the whole directory.** A large project has dozens of shards, and
 reading them all reinstates exactly the context cost the split removed. If you
@@ -65,6 +79,69 @@ custom login microflow is reworked." -a @Administration.Account -p app.mpr
 ```
 
 Then leave it. `mxcli lint` reminds the developer that something is staged.
+
+## Recording requirements and slices
+
+When the source of truth is outside git — a specification document, a
+prototype, a long conversation — record it as **requirements grouped into
+slices** before building. Otherwise the work is invisible: not in an issue, not
+in a commit message, and gone from the session that resumes tomorrow.
+
+```bash
+mxcli brain capture "Orders must be approvable by a manager" \
+  --slice 02-approvals -a @Sales.ACT_Order_Approve -p app.mpr
+```
+
+`--slice` is the only signal needed. It files the entry in `plan/02-approvals.md`
+and makes it a requirement rather than a decision.
+
+**Slices are ordered by name**, so a numeric prefix is how a roadmap is
+sequenced: `01-accounts`, `02-approvals`, `03-reporting`. That is your choice,
+not something mxcli maintains.
+
+### A requirement's anchor points forward
+
+This is the difference that matters, and it is why requirements are not simply
+more decisions:
+
+| | Anchor points | An anchor that does not resolve means |
+|---|---|---|
+| decision | backward, at what exists | the decision is **stale** — check fails |
+| requirement | forward, at what is intended | **not built yet** — normal, check passes |
+
+So anchor a requirement at what you are *going to* build. `@Sales.ACT_Order_Approve`
+before that microflow exists is correct, not a mistake.
+
+### Progress is derived, never written
+
+```bash
+mxcli brain plan -p app.mpr
+```
+
+```
+SLICE           BUILT  PLANNED   UNANCHORED
+01-accounts         1        0
+02-approvals        0        1            1
+
+1 of 3 requirements built, across 2 slice(s).
+```
+
+A requirement is **built** when its anchors resolve against the model. Nothing
+in the file says "done" — building the thing is what moves the number.
+
+**Never write a status into a requirement**, and never keep a checklist beside
+it. A hand-maintained status is wrong the moment someone builds something, and
+nothing will tell you.
+
+A requirement with **no anchor** is counted separately as unanchored: it cannot
+be measured. That is a prompt to anchor it once you know what will implement it,
+not an error.
+
+### Slices have a generous cap, and that is the slicing discipline
+
+A slice holds source material, so its budget is much larger than a decision
+shard's — and it is not loaded every session. But it is still a budget: **a
+slice too long to read is a slice that should be split.**
 
 ## Write the anchor, not the name
 
@@ -133,12 +210,17 @@ cap: the cap is what stops the store becoming a file nobody reads.
 | `mxcli brain staged` | Lists the queue with the shard each entry would land in |
 | `mxcli brain promote <id> [--to <shard>]` | Writes it into its shard. The human step |
 | `mxcli brain drop <id>` | Removes it from the queue or from its shard |
-| `mxcli brain check [--changed]` | Anchors still resolve, entries in the right shard |
+| `mxcli brain capture "<text>" --slice <name> [-a @Anchor]…` | Queues a **requirement** of that slice |
+| `mxcli brain plan` | The roadmap: each slice's requirements counted against the model |
+| `mxcli brain check [--changed]` | Anchors still resolve, entries in the right shard, plus slice progress |
 | `mxcli brain show [<shard>]` | Entries, lines and headroom per shard |
 
 ## What not to record
 
 - Anything `show`, `describe` or the catalog answers — it will drift.
 - Counts and sizes of anything, including the brain itself.
-- Task state ("next we should…"). This is a store of what is true, not a to-do.
+- **Status.** Whether a requirement is done is computed by `mxcli brain plan`.
+  A "✅" written beside one is wrong as soon as anyone builds anything.
+- Sprint chatter and task assignment. Requirements and their slices, yes; who is
+  doing what this week, no — that belongs in an issue tracker.
 - A restatement of Mendix documentation. Record what is true *here*.

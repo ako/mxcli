@@ -69,7 +69,7 @@ func TestShardRoundTrips(t *testing.T) {
 		mustEntry(t, "No anchors here"),
 		mustEntry(t, "Body with tricky text\nAnchors: not really a meta line\nand a - hyphen", "@Sales.Order"),
 	}
-	out, malformed, err := ParseShard(RenderShard("Sales", in))
+	out, malformed, err := ParseShard("Sales", RenderShard("Sales", in))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestShardRoundTrips(t *testing.T) {
 
 func TestMalformedEntryIsReportedNotSkipped(t *testing.T) {
 	content := "# Sales\n\n" + shardMarker + "\n\n## A heading with no metadata line\n\nsome prose\n"
-	entries, malformed, err := ParseShard(content)
+	entries, malformed, err := ParseShard("Sales", content)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -442,5 +442,195 @@ func TestNotIndexableAnchorDoesNotMakeAnEntryLookMisfiled(t *testing.T) {
 	}
 	if len(rep.Misfiled) != 1 || rep.Misfiled[0].EntryID != e2.ID {
 		t.Fatalf("the resolvable entry must still be caught: %+v", rep.Misfiled)
+	}
+}
+
+func mustRequirement(t *testing.T, text, slice string, anchors ...string) Entry {
+	t.Helper()
+	e, err := NewRequirement(text, anchors, slice, day)
+	if err != nil {
+		t.Fatalf("NewRequirement(%q): %v", text, err)
+	}
+	return e
+}
+
+// The central claim, with its control. A requirement's anchor points forward:
+// not resolving means not built yet, which is the normal state. The identical
+// entry recorded as a decision must still fail, or the distinction is doing
+// nothing.
+func TestUnbuiltRequirementDoesNotFailButTheSameDecisionDoes(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(dir)
+	if _, err := s.Init(); err != nil {
+		t.Fatal(err)
+	}
+	r := stubResolver{} // resolves nothing
+
+	req := mustRequirement(t, "Orders must be approvable", "02-approvals", "@Sales.ACT_Approve")
+	if err := s.Promote(req, req.Shard()); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := Check(s, r, []string{req.Shard()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Failed() {
+		t.Errorf("an unbuilt requirement must not fail the check: %+v", rep)
+	}
+	if len(rep.Slices) != 1 || rep.Slices[0].Planned != 1 || rep.Slices[0].Built != 0 {
+		t.Fatalf("expected one planned requirement: %+v", rep.Slices)
+	}
+
+	// Control: the same sentence and anchor, recorded as a decision, fails.
+	dec := mustEntry(t, "Orders must be approvable", "@Sales.ACT_Approve")
+	if err := s.Promote(dec, "Sales"); err != nil {
+		t.Fatal(err)
+	}
+	rep, err = Check(s, r, []string{"Sales"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rep.Failed() {
+		t.Error("a decision anchored at something missing must still fail — otherwise the kind distinction changes nothing")
+	}
+}
+
+// Progress is derived from resolving anchors, so building the thing is what
+// moves the number. Nothing in the file says "done".
+func TestSliceProgressIsDerivedFromTheModel(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(dir)
+	if _, err := s.Init(); err != nil {
+		t.Fatal(err)
+	}
+	built := mustRequirement(t, "Accounts can be created", "01-accounts", "@Admin.NewAccount")
+	planned := mustRequirement(t, "Accounts can be archived", "01-accounts", "@Admin.ArchiveAccount")
+	unanchored := mustRequirement(t, "It should feel fast", "01-accounts")
+	for _, e := range []Entry{built, planned, unanchored} {
+		if err := s.Promote(e, e.Shard()); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	before := stubResolver{}
+	rep, err := Check(s, before, []string{PlanShard("01-accounts")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := rep.Slices[0]
+	if got.Built != 0 || got.Planned != 2 || got.Unanchored != 1 {
+		t.Fatalf("before: %+v", got)
+	}
+
+	// Build one of them — only the resolver changes, not the store.
+	after := stubResolver{"@Admin.NewAccount": {State: Resolved, Module: "Admin", Kind: "microflow"}}
+	rep, err = Check(s, after, []string{PlanShard("01-accounts")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = rep.Slices[0]
+	if got.Built != 1 || got.Planned != 1 || got.Unanchored != 1 {
+		t.Fatalf("after: %+v — progress must follow the model, not the file", got)
+	}
+	if got.Total() != 3 {
+		t.Errorf("total = %d, want 3", got.Total())
+	}
+}
+
+// A requirement anchored at a document type the catalog does not index is
+// BUILT: the thing exists. Counting it as planned would report finished work as
+// outstanding — the same false signal as A1, in the progress report.
+func TestNotIndexableCountsAsBuilt(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(dir)
+	if _, err := s.Init(); err != nil {
+		t.Fatal(err)
+	}
+	e := mustRequirement(t, "A nightly job trims the audit log", "04-ops", "@Ops.NightlyTrim")
+	if err := s.Promote(e, e.Shard()); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := Check(s, stubResolver{"@Ops.NightlyTrim": {State: NotIndexable, Kind: "scheduled event"}},
+		[]string{e.Shard()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Slices[0].Built != 1 {
+		t.Fatalf("a not-indexable target exists and must count as built: %+v", rep.Slices[0])
+	}
+}
+
+// A slice spans modules on purpose, so the misfiling rule that keeps decisions
+// honest must not apply to it.
+func TestCrossModuleSliceIsNeverMisfiled(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(dir)
+	if _, err := s.Init(); err != nil {
+		t.Fatal(err)
+	}
+	e := mustRequirement(t, "Approving an order posts it to the ledger", "02-approvals",
+		"@Sales.Order", "@Finance.ACT_Post")
+	if err := s.Promote(e, e.Shard()); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := Check(s, stubResolver{
+		"@Sales.Order":      {State: Resolved, Module: "Sales"},
+		"@Finance.ACT_Post": {State: Resolved, Module: "Finance"},
+	}, []string{e.Shard()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Misfiled) != 0 {
+		t.Fatalf("a slice spans modules by design: %+v", rep.Misfiled)
+	}
+}
+
+// The same sentence can legitimately be a requirement of two slices; the id has
+// to distinguish them or the second is refused as a duplicate.
+func TestSameTextInTwoSlicesIsTwoRequirements(t *testing.T) {
+	a := mustRequirement(t, "The list must paginate", "01-accounts")
+	b := mustRequirement(t, "The list must paginate", "02-approvals")
+	if a.ID == b.ID {
+		t.Fatal("requirements in different slices must not collide")
+	}
+	// Control: the same text in the SAME slice is one requirement.
+	c := mustRequirement(t, "The list must paginate", "01-accounts")
+	if a.ID != c.ID {
+		t.Fatal("the same requirement in the same slice must be one entry")
+	}
+}
+
+func TestRequirementRoundTripsThroughItsSlice(t *testing.T) {
+	in := []Entry{mustRequirement(t, "A title\nand a body", "02-approvals", "@Sales.Order")}
+	shard := PlanShard("02-approvals")
+	out, malformed, err := ParseShard(shard, RenderShard(shard, in))
+	if err != nil || len(malformed) != 0 {
+		t.Fatalf("err=%v malformed=%v", err, malformed)
+	}
+	if len(out) != 1 {
+		t.Fatalf("got %d entries", len(out))
+	}
+	// The kind comes from the file, not from a second copy inside the entry.
+	if out[0].EntryKind() != KindRequirement || out[0].Slice != "02-approvals" {
+		t.Errorf("kind/slice not recovered from the shard: %+v", out[0])
+	}
+}
+
+func TestSliceNamesAreValidated(t *testing.T) {
+	for _, bad := range []string{"", "has space", "../escape", "a/b"} {
+		if _, err := NewRequirement("x", nil, bad, day); err == nil {
+			t.Errorf("slice %q should be refused", bad)
+		}
+	}
+	for _, ok := range []string{"01-accounts", "approvals", "a_b", "2"} {
+		if _, err := NewRequirement("x", nil, ok, day); err != nil {
+			t.Errorf("slice %q should be accepted: %v", ok, err)
+		}
+	}
+}
+
+func TestPlanSlicesGetMoreRoomThanDecisions(t *testing.T) {
+	if CapFor(PlanShard("01-x")) <= CapFor("Sales") {
+		t.Fatal("a slice holds source material and is not loaded every session; it needs more room than a decision shard")
 	}
 }

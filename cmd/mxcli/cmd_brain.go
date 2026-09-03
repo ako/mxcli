@@ -24,17 +24,27 @@ var brainCmd = &cobra.Command{
 	Short: "Project knowledge mxcli cannot compute (docs/brain/)",
 	Long: `Record and check the project knowledge mxcli cannot compute.
 
-Why a pattern was chosen here, which marketplace version broke what, what a
-recurring mxbuild error means in this app. Anything mxcli CAN answer does not
-belong here — entities, microflows, pages, bindings and references are all
-queryable, and a note that transcribes them is a note that will disagree with
-the project.
+Two halves. DECISIONS: why a pattern was chosen here, which marketplace version
+broke what, what a recurring mxbuild error means in this app. THE PLAN: the
+requirements being built from, grouped into slices, when the source is a
+specification, a prototype or a conversation rather than issues in a tracker.
 
-Entries live in docs/brain/, committed and reviewed like any other change. An
-entry's anchors decide its file: @Sales.Order puts it in modules/Sales.md, and
-an entry with no anchor is cross-cutting and lives in project.md. That is what
-lets a session load the shards for the modules it is touching instead of the
-whole store.
+Anything mxcli CAN answer does not belong here — entities, microflows, pages,
+bindings and references are all queryable, and a note that transcribes them is a
+note that will disagree with the project.
+
+Entries live in docs/brain/, committed and reviewed like any other change. A
+decision's anchors decide its file: @Sales.Order puts it in modules/Sales.md, and
+one with no anchor is cross-cutting and lives in project.md. A requirement goes
+to its slice, plan/<slice>.md. That is what lets a session load the shards for
+the modules it is touching instead of the whole store.
+
+The two kinds differ in which way their anchors point, and it decides everything
+else. A decision's anchor points BACKWARD at what exists, so one that stops
+resolving means the decision is stale and 'check' fails. A requirement's points
+FORWARD at what is intended, so one that does not resolve means not built yet —
+which is why 'brain plan' can report progress derived from the model instead of
+from a status column that goes stale the moment someone builds something.
 
 An agent captures; a person promotes. The queue is in .mxcli/ and is git-ignored,
 so nothing reaches a pull request until someone has looked at it.`,
@@ -42,6 +52,8 @@ so nothing reaches a pull request until someone has looked at it.`,
   mxcli brain capture "Orders are committed by Finance, not Sales" -a @Sales.Order -a @Finance.ACT_Post -p app.mpr
   mxcli brain staged -p app.mpr
   mxcli brain promote a1b2c3 -p app.mpr
+  mxcli brain capture "Orders must be approvable by a manager" --slice 02-approvals -a @Sales.ACT_Order_Approve -p app.mpr
+  mxcli brain plan -p app.mpr
   mxcli brain check -p app.mpr
   mxcli brain show -p app.mpr`,
 }
@@ -73,7 +85,19 @@ var brainCaptureCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		dir := brainProjectDir(cmd)
 		anchors, _ := cmd.Flags().GetStringSlice("anchor")
-		e, err := brain.NewEntry(args[0], anchors, time.Now())
+		slice, _ := cmd.Flags().GetString("slice")
+		// --slice is the only signal needed: a requirement is a requirement
+		// because it belongs to a deliverable slice, so there is no second
+		// --kind flag to contradict it.
+		var (
+			e   brain.Entry
+			err error
+		)
+		if slice != "" {
+			e, err = brain.NewRequirement(args[0], anchors, slice, time.Now())
+		} else {
+			e, err = brain.NewEntry(args[0], anchors, time.Now())
+		}
 		if err != nil {
 			brainFatal(err)
 		}
@@ -103,7 +127,7 @@ var brainStagedCmd = &cobra.Command{
 			return
 		}
 		for _, e := range entries {
-			fmt.Printf("%s  %-14s  %s\n", e.ID, shardLabel(e.Shard()), e.Title)
+			fmt.Printf("%s  %-18s  %s\n", e.ID, shardLabel(e.Shard()), e.Title)
 			if len(e.Anchors) > 0 {
 				fmt.Printf("        %s\n", strings.Join(e.Anchors, " "))
 			}
@@ -205,6 +229,65 @@ var brainShowCmd = &cobra.Command{
 	},
 }
 
+var brainPlanCmd = &cobra.Command{
+	Use:   "plan",
+	Short: "The roadmap: each slice's requirements counted against the model",
+	Long: `Show the plan — the slices, and how much of each is built.
+
+Every figure is DERIVED. A requirement is "built" when its anchors resolve
+against the model, so nothing is self-reported and there is no status column to
+maintain or to go stale. Building the thing is what moves the number.
+
+Slices are listed in name order, so a numeric prefix is how a roadmap is
+sequenced: 01-accounts, 02-approvals. That is the user's choice, not a field
+mxcli maintains.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		projectPath := brainProjectPath(cmd)
+		store := brain.NewStore(filepath.Dir(projectPath))
+		slices, err := store.ListSlices()
+		if err != nil {
+			brainFatal(err)
+		}
+		if len(slices) == 0 {
+			fmt.Println("No slices yet. Record one with:")
+			fmt.Println("  mxcli brain capture \"<requirement>\" --slice 01-<name> -a @Module.Element")
+			return
+		}
+		resolver, closeFn, err := openBrainResolver(projectPath)
+		if err != nil {
+			brainFatal(err)
+		}
+		defer closeFn()
+
+		rep, err := brain.Check(store, resolver, slices)
+		if err != nil {
+			brainFatal(err)
+		}
+		printBrainPlan(rep.Slices)
+	},
+}
+
+func printBrainPlan(slices []brain.SliceProgress) {
+	width := len("SLICE")
+	for _, sl := range slices {
+		if n := len(sl.Slice); n > width {
+			width = n
+		}
+	}
+	var built, total int
+	fmt.Printf("%-*s %8s %8s %12s\n", width, "SLICE", "BUILT", "PLANNED", "UNANCHORED")
+	for _, sl := range slices {
+		un := ""
+		if sl.Unanchored > 0 {
+			un = fmt.Sprint(sl.Unanchored)
+		}
+		fmt.Printf("%-*s %8d %8d %12s\n", width, sl.Slice, sl.Built, sl.Planned, un)
+		built += sl.Built
+		total += sl.Total()
+	}
+	fmt.Printf("\n%d of %d requirements built, across %d slice(s).\n", built, total, len(slices))
+}
+
 var brainCheckCmd = &cobra.Command{
 	Use:   "check",
 	Short: "Do the anchors still resolve, and is every entry in the right shard?",
@@ -301,6 +384,10 @@ func printBrainReport(rep brain.Report) {
 		fmt.Printf("MISFILED      %s: %q is in %s but resolves in %s\n",
 			m.EntryID, m.Title, shardLabel(m.Shard), belongs)
 	}
+	if len(rep.Slices) > 0 {
+		fmt.Println()
+		printBrainPlan(rep.Slices)
+	}
 	fmt.Printf("\n%d entries, %d anchors, %d resolved, across %d shard(s).\n",
 		rep.Entries, rep.Anchors, rep.ResolvedN, len(rep.Shards))
 	if !rep.Failed() {
@@ -326,8 +413,7 @@ func changedShards(projectDir string, all []string) ([]string, error) {
 		if line == "" || !strings.Contains(line, brain.StoreDir+"/") {
 			continue
 		}
-		base := strings.TrimSuffix(filepath.Base(line), ".md")
-		touched[base] = true
+		touched[shardForPath(line)] = true
 	}
 	var shards []string
 	for _, s := range all {
@@ -337,6 +423,19 @@ func changedShards(projectDir string, all []string) ([]string, error) {
 	}
 	sort.Strings(shards)
 	return shards, nil
+}
+
+// shardForPath maps a file under docs/brain/ back to its shard name. The
+// basename alone is not enough: a plan slice's shard carries the plan/ prefix,
+// so mapping docs/brain/plan/01-accounts.md to "01-accounts" made every edited
+// slice invisible to --changed. Found by editing one; the unit test had only
+// ever used module shards, which is exactly the blind spot.
+func shardForPath(path string) string {
+	base := strings.TrimSuffix(filepath.Base(path), ".md")
+	if strings.Contains(filepath.ToSlash(filepath.Dir(path)), brain.StoreDir+"/plan") {
+		return brain.PlanShard(base)
+	}
+	return base
 }
 
 // catalogResolver answers anchors from the catalog, falling back to a
@@ -448,10 +547,14 @@ func runGit(dir string, args ...string) (string, error) {
 }
 
 func shardLabel(shard string) string {
-	if shard == brain.ProjectShard {
+	switch {
+	case shard == brain.ProjectShard:
 		return "project.md"
+	case brain.IsPlanShard(shard):
+		return "plan/" + brain.SliceOf(shard) + ".md"
+	default:
+		return shard + ".md"
 	}
-	return shard + ".md"
 }
 
 func brainProjectPath(cmd *cobra.Command) string {
@@ -479,12 +582,15 @@ func init() {
 	}
 	brainCaptureCmd.Flags().StringSliceP("anchor", "a", nil,
 		"Anchor into the model (@Module, @Module.Element, @Module.Entity.Attribute); repeatable")
+	brainCaptureCmd.Flags().StringP("slice", "s", "",
+		"Record this as a requirement of the named slice (plan/<slice>.md) instead of a decision")
 	brainPromoteCmd.Flags().String("to", "",
 		"Override the derived shard (use 'project' for a cross-cutting fact)")
 	brainCheckCmd.Flags().Bool("changed", false, "Only check shards touched by the working tree")
 	brainCheckCmd.Flags().Bool("ci", false, "Machine-friendly output for CI")
 
+	brainPlanCmd.Flags().StringP("project", "p", "", "Path to the .mpr file")
 	brainCmd.AddCommand(brainInitCmd, brainCaptureCmd, brainStagedCmd,
-		brainPromoteCmd, brainDropCmd, brainShowCmd, brainCheckCmd)
+		brainPromoteCmd, brainDropCmd, brainShowCmd, brainCheckCmd, brainPlanCmd)
 	rootCmd.AddCommand(brainCmd)
 }

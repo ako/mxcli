@@ -1,10 +1,19 @@
 # Project Brain
 
-`mxcli brain` records the project knowledge mxcli **cannot** compute: why a
-pattern was chosen here, which marketplace version broke what, what a recurring
-mxbuild error means in *this* app.
+`mxcli brain` records the project knowledge mxcli **cannot** compute. Two halves:
 
-It is opt-in. A project without `docs/brain/` never hears about it.
+- **Decisions** — why a pattern was chosen here, which marketplace version broke
+  what, what a recurring mxbuild error means in *this* app.
+- **The plan** — the requirements being built from, grouped into slices, when the
+  source is a specification document, a prototype or a conversation.
+
+The plan half exists because that source leaves **no trace in git**. A Word
+document, a Figma file and a chat window are not an issue and not a commit
+message, so hours of work can end with nothing recording what it was for — and a
+session resuming tomorrow has no idea what it was building towards.
+
+It is opt-in. A project without `docs/brain/` never hears about it. `mxcli`'s
+bootstrap interview asks for requirements by default.
 
 ## The rule
 
@@ -20,10 +29,12 @@ history that no query can reach.
 
 ```
 docs/brain/
-  README.md            what the folder is
-  project.md           cross-cutting decisions
-  modules/Sales.md     decisions anchored to the Sales module
-  modules/Finance.md   …
+  README.md              what the folder is
+  project.md             cross-cutting decisions
+  modules/Sales.md       decisions anchored to the Sales module
+  modules/Finance.md     …
+  plan/01-accounts.md    requirements for one deliverable slice
+  plan/02-approvals.md   …
 ```
 
 Committed, and reviewed in a pull request like any other change.
@@ -104,6 +115,62 @@ committed by `Finance.ACT_Post`" genuinely spans two modules.
 Misfiling is only decided when something resolved. An entry whose anchors are
 all *not indexable* is left alone — there is no evidence about where it belongs.
 
+## Requirements and slices
+
+When the source of truth lives outside git, record it before building:
+
+```bash
+mxcli brain capture "Orders must be approvable by a manager" \
+  --slice 02-approvals -a @Sales.ACT_Order_Approve -p app.mpr
+```
+
+`--slice` is the only signal needed: it files the entry in `plan/02-approvals.md`
+and makes it a requirement. Slices sort by name, so a numeric prefix is how a
+roadmap is sequenced — that is your choice, not a field mxcli maintains.
+
+### A requirement's anchor points forward
+
+| | Anchor points at | An anchor that does not resolve means |
+|---|---|---|
+| decision | what exists | the decision is **stale** — `check` fails |
+| requirement | what is intended | **not built yet** — normal, `check` passes |
+
+Same syntax, opposite meaning. Anchoring a requirement at a microflow that does
+not exist yet is correct: it is the forward reference that later becomes the
+progress signal.
+
+This is not a theoretical distinction. Recorded as an ordinary entry, a single
+unbuilt requirement takes `mxcli brain check` to exit 1 — which is what made
+requirements a separate kind rather than more entries in the same files.
+
+### Progress is derived
+
+```bash
+mxcli brain plan -p app.mpr
+```
+
+```
+SLICE           BUILT  PLANNED   UNANCHORED
+01-accounts         1        0
+02-approvals        0        1            1
+
+1 of 3 requirements built, across 2 slice(s).
+```
+
+A requirement is **built** when its anchors resolve against the model. Nothing in
+the file says "done": create the microflow a requirement points at and the count
+moves on the next run, with the plan file untouched.
+
+That is the reason this belongs in mxcli rather than in a hand-kept markdown
+checklist. A status column is wrong the moment someone builds something, and
+nothing tells you; a derived one cannot be.
+
+A requirement with **no anchor** is counted apart as *unanchored* rather than
+silently called planned — it cannot be measured until you say what will
+implement it.
+
+Misfiling is not checked for slices: a slice spans modules by design.
+
 ## Size
 
 ```bash
@@ -119,6 +186,11 @@ Administration.md        2       16     224/240
 Each shard has a line budget and `promote` refuses rather than exceeding it,
 naming the shard and its occupancy. `project.md` is the tightest: it is the only
 file loaded every session, so every line in it is charged to every session.
+
+A plan slice gets far more room — it holds source material and is read when
+planning rather than loaded every session. It is still a budget, and that is the
+point: **a slice too long to read is a slice that should be split.** Here the cap
+does not merely bound context cost, it enforces the slicing discipline.
 
 When a promotion is refused the answer is to condense or drop, not to raise the
 cap. The cap is what stops the store becoming a file nobody reads.
@@ -136,7 +208,9 @@ stale the next time anyone promotes.
 | `brain staged` | Lists the queue with the shard each entry would land in |
 | `brain promote <id> [--to <shard>]` | Writes it into its shard |
 | `brain drop <id>` | Removes it from the queue or from its shard |
-| `brain check [--changed]` | Anchors resolve, entries filed correctly |
+| `brain capture "<text>" --slice <name> [-a @Anchor]…` | Queues a **requirement** of that slice |
+| `brain plan` | Each slice's requirements counted against the model |
+| `brain check [--changed]` | Anchors resolve, entries filed correctly, plus slice progress |
 | `brain show [<shard>]` | Entries, lines and headroom per shard |
 
 Dropping the last entry from a module shard deletes the file, so the directory

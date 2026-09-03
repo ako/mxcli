@@ -51,8 +51,10 @@ func (s *Store) Init() ([]string, error) {
 			return nil, fmt.Errorf("%w: %s", ErrForeignStore, s.Root)
 		}
 	}
-	if err := os.MkdirAll(filepath.Join(s.Root, "modules"), 0755); err != nil {
-		return nil, err
+	for _, sub := range []string{"modules", "plan"} {
+		if err := os.MkdirAll(filepath.Join(s.Root, sub), 0755); err != nil {
+			return nil, err
+		}
 	}
 	var written []string
 	for _, f := range []struct{ path, content string }{
@@ -72,10 +74,14 @@ func (s *Store) Init() ([]string, error) {
 
 // ShardPath is where a shard's Markdown lives.
 func (s *Store) ShardPath(shard string) string {
-	if shard == ProjectShard {
+	switch {
+	case shard == ProjectShard:
 		return filepath.Join(s.Root, "project.md")
+	case IsPlanShard(shard):
+		return filepath.Join(s.Root, "plan", SliceOf(shard)+".md")
+	default:
+		return filepath.Join(s.Root, "modules", shard+".md")
 	}
-	return filepath.Join(s.Root, "modules", shard+".md")
 }
 
 // LoadShard reads a shard. A shard that does not exist is empty, not an error —
@@ -88,7 +94,7 @@ func (s *Store) LoadShard(shard string) ([]Entry, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	return ParseShard(string(b))
+	return ParseShard(shard, string(b))
 }
 
 // SaveShard writes a shard, deleting it when it has no entries left. Leaving an
@@ -115,22 +121,40 @@ func (s *Store) ListShards() ([]string, error) {
 	if _, err := os.Stat(s.ShardPath(ProjectShard)); err == nil {
 		shards = append(shards, ProjectShard)
 	}
-	ents, err := os.ReadDir(filepath.Join(s.Root, "modules"))
+	mods, err := s.namesIn("modules", "")
+	if err != nil {
+		return nil, err
+	}
+	slices, err := s.namesIn("plan", PlanPrefix)
+	if err != nil {
+		return nil, err
+	}
+	shards = append(shards, mods...)
+	return append(shards, slices...), nil
+}
+
+// ListSlices returns the plan shards, in name order — which is what gives a
+// roadmap its order, since a slice is sorted by name and a numeric prefix is
+// the user's way of sequencing it.
+func (s *Store) ListSlices() ([]string, error) { return s.namesIn("plan", PlanPrefix) }
+
+func (s *Store) namesIn(sub, prefix string) ([]string, error) {
+	ents, err := os.ReadDir(filepath.Join(s.Root, sub))
 	if os.IsNotExist(err) {
-		return shards, nil
+		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	var mods []string
+	var out []string
 	for _, e := range ents {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
 			continue
 		}
-		mods = append(mods, strings.TrimSuffix(e.Name(), ".md"))
+		out = append(out, prefix+strings.TrimSuffix(e.Name(), ".md"))
 	}
-	sort.Strings(mods)
-	return append(shards, mods...), nil
+	sort.Strings(out)
+	return out, nil
 }
 
 // ErrCapExceeded reports a promotion that would push a shard past its budget.
@@ -210,7 +234,7 @@ func (s *Store) Usage() ([]Usage, error) {
 		if err != nil {
 			return nil, err
 		}
-		entries, _, err := ParseShard(string(b))
+		entries, _, err := ParseShard(sh, string(b))
 		if err != nil {
 			return nil, err
 		}

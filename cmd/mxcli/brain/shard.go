@@ -70,13 +70,19 @@ func renderAnchors(anchors []string) string {
 // carry a well-formed metadata line is *reported*, not skipped: silently
 // dropping it would make `check` claim a clean shard while an entry sits in it
 // unchecked.
-func ParseShard(content string) (entries []Entry, malformed []string, err error) {
-	blocks := splitEntries(content)
-	for _, blk := range blocks {
+//
+// The kind is taken from the shard, never from the entry's own text. A
+// requirement is a requirement because it lives under plan/, so there is no
+// second copy of that fact in the file to drift from the first.
+func ParseShard(shard, content string) (entries []Entry, malformed []string, err error) {
+	for _, blk := range splitEntries(content) {
 		e, ok := parseEntry(blk)
 		if !ok {
 			malformed = append(malformed, firstLine(blk))
 			continue
+		}
+		if IsPlanShard(shard) {
+			e.Kind, e.Slice = KindRequirement, SliceOf(shard)
 		}
 		entries = append(entries, e)
 	}
@@ -138,13 +144,22 @@ func firstLine(s string) string {
 }
 
 func shardTitle(shard string) string {
-	if shard == ProjectShard {
+	switch {
+	case shard == ProjectShard:
 		return "Project"
+	case IsPlanShard(shard):
+		return "Slice: " + SliceOf(shard)
+	default:
+		return shard
 	}
-	return shard
 }
 
 func shardPreamble(shard string) string {
+	if IsPlanShard(shard) {
+		return "Requirements for this slice. Anchors point FORWARD, at what the slice\n" +
+			"will build — an anchor that does not resolve yet means not built, not\n" +
+			"stale. `mxcli brain plan` counts them against the model.\n"
+	}
 	if shard == ProjectShard {
 		return "Decisions that are not about one module. This file is loaded every\n" +
 			"session, so it carries the tightest cap — see `mxcli brain show`.\n"

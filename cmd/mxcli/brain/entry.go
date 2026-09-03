@@ -12,17 +12,46 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 )
 
+// Kind is what an entry records, and it decides what a failed anchor MEANS.
+//
+// This is the whole reason requirements are not simply more decisions. A
+// decision's anchor points backward at something that exists, so an anchor that
+// no longer resolves means the decision is stale. A requirement's anchor points
+// forward at something intended, so an anchor that does not resolve means "not
+// built yet" — the normal state of a requirement, and measured to fail the
+// check outright when requirements were tried as ordinary entries.
+type Kind string
+
+const (
+	KindDecision    Kind = "decision"
+	KindRequirement Kind = "requirement"
+)
+
 // Entry is one recorded piece of project knowledge.
 type Entry struct {
-	ID      string   `json:"id"`
+	ID string `json:"id"`
+	// Kind is empty for a decision, so an entry written before requirements
+	// existed still reads correctly. Use EntryKind rather than this field.
+	Kind Kind `json:"kind,omitempty"`
+	// Slice is the deliverable a requirement belongs to. Empty for a decision.
+	Slice   string   `json:"slice,omitempty"`
 	Title   string   `json:"title"`
 	Body    string   `json:"body,omitempty"`
 	Anchors []string `json:"anchors,omitempty"`
 	Date    string   `json:"date"`
+}
+
+// EntryKind normalises the zero value: an entry with no kind is a decision.
+func (e Entry) EntryKind() Kind {
+	if e.Kind == KindRequirement {
+		return KindRequirement
+	}
+	return KindDecision
 }
 
 // NewEntry builds an entry from captured text. The first line is the title and
@@ -54,6 +83,9 @@ func NewEntry(text string, anchors []string, now time.Time) (Entry, error) {
 func (e Entry) computeID() string {
 	h := sha256.New()
 	h.Write([]byte(strings.ToLower(strings.Join(strings.Fields(e.Title), " "))))
+	if e.Slice != "" {
+		h.Write([]byte("\x01" + e.Slice))
+	}
 	for _, a := range e.Anchors {
 		h.Write([]byte("\x00" + a))
 	}
@@ -73,8 +105,38 @@ func (e Entry) ParsedAnchors() []Anchor {
 	return out
 }
 
-// Shard is where this entry belongs.
-func (e Entry) Shard() string { return ShardFor(e.ParsedAnchors()) }
+// NewRequirement builds a requirement: a piece of intended scope belonging to a
+// deliverable slice. Its anchors are forward references — they may name things
+// that do not exist yet, and usually do.
+func NewRequirement(text string, anchors []string, slice string, now time.Time) (Entry, error) {
+	e, err := NewEntry(text, anchors, now)
+	if err != nil {
+		return Entry{}, err
+	}
+	if !sliceName.MatchString(slice) {
+		return Entry{}, fmt.Errorf("slice %q: use letters, digits, '-' and '_' (a leading number orders it: 01-accounts)", slice)
+	}
+	e.Kind, e.Slice = KindRequirement, slice
+	// The id folds in the slice, so the same sentence can legitimately appear
+	// as a requirement of two slices without the second being refused as a
+	// duplicate.
+	e.ID = e.computeID()
+	return e, nil
+}
+
+// sliceName is deliberately permissive about ordering: a slice is sorted by
+// name, so a numeric prefix is how a roadmap gets its order, and that is the
+// user's choice rather than a field mxcli maintains.
+var sliceName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*$`)
+
+// Shard is where this entry belongs. A requirement goes to its slice; a
+// decision to the module of its first anchor.
+func (e Entry) Shard() string {
+	if e.EntryKind() == KindRequirement {
+		return PlanShard(e.Slice)
+	}
+	return ShardFor(e.ParsedAnchors())
+}
 
 // MisfiledIn reports whether the entry sits in the wrong shard, given which of
 // its anchors resolved and in which module.

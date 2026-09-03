@@ -147,10 +147,20 @@ func TestChangedShardsMapsPathsToShards(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// A plan slice too: its shard carries the plan/ prefix, so mapping a path
+	// by basename alone made every edited slice invisible to --changed. The
+	// first version of this test used only module shards and missed it.
+	req, err := brain.NewRequirement("A requirement", []string{"@Sales.Thing"}, "01-accounts", day())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Promote(req, req.Shard()); err != nil {
+		t.Fatal(err)
+	}
 	run("add", "-A")
 	run("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "seed")
 
-	all := []string{brain.ProjectShard, "Finance", "Sales"}
+	all := []string{brain.ProjectShard, "Finance", "Sales", brain.PlanShard("01-accounts")}
 
 	// Control: a clean tree changes nothing, so nothing is checked.
 	got, err := changedShards(dir, all)
@@ -176,6 +186,23 @@ func TestChangedShardsMapsPathsToShards(t *testing.T) {
 	}
 	if len(got) != 1 || got[0] != "Sales" {
 		t.Fatalf("got %v, want [Sales]", got)
+	}
+
+	// The same for a plan slice, which is the case the basename mapping broke.
+	planPath := filepath.Join(dir, "docs", "brain", "plan", "01-accounts.md")
+	pb, err := os.ReadFile(planPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(planPath, append(pb, []byte("\nedited\n")...), 0644); err != nil {
+		t.Fatal(err)
+	}
+	got, err = changedShards(dir, all)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0] != "Sales" || got[1] != brain.PlanShard("01-accounts") {
+		t.Fatalf("got %v, want [Sales plan/01-accounts]", got)
 	}
 }
 
