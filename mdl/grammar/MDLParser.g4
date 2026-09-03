@@ -120,6 +120,7 @@ createStatement
       | createScheduledEventStatement
       | createRegularExpressionStatement
       | createJsonStructureStatement
+      | createMessageDefinitionCollectionStatement
       | createImportMappingStatement
       | createExportMappingStatement
       | createConfigurationStatement
@@ -154,6 +155,8 @@ alterStatement
     | ALTER LAYOUT qualifiedName LBRACE alterPageOperation+ RBRACE
     | ALTER SNIPPET qualifiedName LBRACE alterPageOperation+ RBRACE
     | ALTER WORKFLOW qualifiedName alterWorkflowAction+ SEMICOLON?
+    | alterMessageDefinitionCollectionStatement
+    | alterMessageDefinitionStatement
     | ALTER PUBLISHED REST SERVICE qualifiedName alterPublishedRestServiceAction (COMMA? alterPublishedRestServiceAction)*
     | ALTER MODEL qualifiedName SET agentEditorAlterAssignment (COMMA agentEditorAlterAssignment)*
     | ALTER KNOWLEDGE BASE qualifiedName SET agentEditorAlterAssignment (COMMA agentEditorAlterAssignment)*
@@ -373,6 +376,7 @@ dropStatement
     | DROP ANNOTATION STRING_LITERAL IN identifierOrKeyword
     | DROP ANNOTATION AT_KW LPAREN NUMBER_LITERAL COMMA NUMBER_LITERAL RPAREN IN identifierOrKeyword
     | DROP JSON STRUCTURE qualifiedName
+    | DROP MESSAGE DEFINITION COLLECTION qualifiedName
     | DROP IMPORT MAPPING qualifiedName
     | DROP EXPORT MAPPING qualifiedName
     | DROP REST CLIENT qualifiedName

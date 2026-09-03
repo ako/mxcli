@@ -209,25 +209,28 @@ type MockBackend struct {
 	DeleteDataTransformerFunc       func(id model.ID) error
 
 	// MappingBackend
-	ListImportMappingsFunc               func() ([]*model.ImportMapping, error)
-	GetImportMappingByQualifiedNameFunc  func(moduleName, name string) (*model.ImportMapping, error)
-	CreateImportMappingFunc              func(im *model.ImportMapping) error
-	UpdateImportMappingFunc              func(im *model.ImportMapping) error
-	DeleteImportMappingFunc              func(id model.ID) error
-	MoveImportMappingFunc                func(im *model.ImportMapping) error
-	ListExportMappingsFunc               func() ([]*model.ExportMapping, error)
-	GetExportMappingByQualifiedNameFunc  func(moduleName, name string) (*model.ExportMapping, error)
-	CreateExportMappingFunc              func(em *model.ExportMapping) error
-	UpdateExportMappingFunc              func(em *model.ExportMapping) error
-	DeleteExportMappingFunc              func(id model.ID) error
-	MoveExportMappingFunc                func(em *model.ExportMapping) error
-	ListXmlSchemasFunc                   func() ([]*types.XmlSchema, error)
-	ListJsonStructuresFunc               func() ([]*types.JsonStructure, error)
-	ListMessageDefinitionCollectionsFunc func() ([]*model.MessageDefinitionCollection, error)
-	GetJsonStructureByQualifiedNameFunc  func(moduleName, name string) (*types.JsonStructure, error)
-	CreateJsonStructureFunc              func(js *types.JsonStructure) error
-	UpdateJsonStructureFunc              func(js *types.JsonStructure) error
-	DeleteJsonStructureFunc              func(id string) error
+	ListImportMappingsFunc                func() ([]*model.ImportMapping, error)
+	GetImportMappingByQualifiedNameFunc   func(moduleName, name string) (*model.ImportMapping, error)
+	CreateImportMappingFunc               func(im *model.ImportMapping) error
+	UpdateImportMappingFunc               func(im *model.ImportMapping) error
+	DeleteImportMappingFunc               func(id model.ID) error
+	MoveImportMappingFunc                 func(im *model.ImportMapping) error
+	ListExportMappingsFunc                func() ([]*model.ExportMapping, error)
+	GetExportMappingByQualifiedNameFunc   func(moduleName, name string) (*model.ExportMapping, error)
+	CreateExportMappingFunc               func(em *model.ExportMapping) error
+	UpdateExportMappingFunc               func(em *model.ExportMapping) error
+	DeleteExportMappingFunc               func(id model.ID) error
+	MoveExportMappingFunc                 func(em *model.ExportMapping) error
+	ListXmlSchemasFunc                    func() ([]*types.XmlSchema, error)
+	ListJsonStructuresFunc                func() ([]*types.JsonStructure, error)
+	ListMessageDefinitionCollectionsFunc  func() ([]*model.MessageDefinitionCollection, error)
+	CreateMessageDefinitionCollectionFunc func(c *model.MessageDefinitionCollection) error
+	UpdateMessageDefinitionCollectionFunc func(c *model.MessageDefinitionCollection) error
+	DeleteMessageDefinitionCollectionFunc func(id string) error
+	GetJsonStructureByQualifiedNameFunc   func(moduleName, name string) (*types.JsonStructure, error)
+	CreateJsonStructureFunc               func(js *types.JsonStructure) error
+	UpdateJsonStructureFunc               func(js *types.JsonStructure) error
+	DeleteJsonStructureFunc               func(id string) error
 
 	// JavaBackend
 	ListJavaActionsFunc            func() ([]*types.JavaAction, error)

@@ -194,6 +194,11 @@ func (unsupportedBackend) CreateMenuDocument(_ *types.MenuDocument) (err0 error)
 	return
 }
 
+func (unsupportedBackend) CreateMessageDefinitionCollection(_ *model.MessageDefinitionCollection) (err0 error) {
+	err0 = errUnsupported("CreateMessageDefinitionCollection")
+	return
+}
+
 func (unsupportedBackend) CreateMicroflow(_ *microflows.Microflow) (err0 error) {
 	err0 = errUnsupported("CreateMicroflow")
 	return
@@ -386,6 +391,11 @@ func (unsupportedBackend) DeleteLayout(_ model.ID) (err0 error) {
 
 func (unsupportedBackend) DeleteMenuDocument(_ model.ID) (err0 error) {
 	err0 = errUnsupported("DeleteMenuDocument")
+	return
+}
+
+func (unsupportedBackend) DeleteMessageDefinitionCollection(_ string) (err0 error) {
+	err0 = errUnsupported("DeleteMessageDefinitionCollection")
 	return
 }
 
@@ -1259,6 +1269,11 @@ func (unsupportedBackend) UpdateLayout(_ *pages.Layout) (err0 error) {
 
 func (unsupportedBackend) UpdateMenuDocument(_ *types.MenuDocument) (err0 error) {
 	err0 = errUnsupported("UpdateMenuDocument")
+	return
+}
+
+func (unsupportedBackend) UpdateMessageDefinitionCollection(_ *model.MessageDefinitionCollection) (err0 error) {
+	err0 = errUnsupported("UpdateMessageDefinitionCollection")
 	return
 }
 

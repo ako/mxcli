@@ -156,50 +156,29 @@ describe json structure Module.JSON_Pet;
 drop json structure Module.JSON_Pet;
 ```
 
-### SOAP-sourced mappings are refused, not rewritten
+## Message Definitions
 
-A mapping can also be sourced from an **imported web service** — a WSDL binding
-(which service, which operation, which root element). MDL cannot spell that, so
-`create or replace|modify` over such a mapping is **refused** rather than
-rebuilding it without the binding, which would leave it with no schema source at
-all (**CE6896**, plus **CE0270**). `describe` marks the source instead of
-emitting nothing, because the silent output parses and re-executing it is what
-deletes the binding (ako/mxcli#365):
+A mapping's source can also be a **message definition** — 74 of the 327 mappings
+in the demo corpus (22.6%), and the only non-JSON source MDL can create. It
+holds nothing external: it is a **selection over the domain model**.
 
 ```sql
-create or modify import mapping Legacy.IMM_Order
-  -- SOURCE NOT REPRESENTABLE: imported web service Legacy.WS_Orders (service OrderService, operation GetOrder)
-  -- re-executing this statement would drop it (CE6896); mxcli refuses the rewrite
-{ ... }
+create message definition collection Sales.MD_Order (
+  definition OrderMessage for Sales.Order as 'Orders' (
+    OrderId,
+    Sales.Order_Customer/Sales.Customer ( FirstName )
+  )
+);
 ```
 
-Edit such a mapping in Studio Pro. Note that a consumed SOAP service does **not**
-create XML schema documents — the WSDL's XSDs are held inline on the web-service
-document — so `with xml schema` is a different path and does not help here.
+A bare name is an attribute; `Assoc/Module.Entity` is an association. **Name the
+target entity** — the stored cardinality follows the direction of traversal, so
+the same association gives a single object one way and a list the other.
 
-### The `with` clause is resolved, not written through
+The full vocabulary, the ALTER statements, inherited attributes and what mxcli
+deliberately does not guess:
+[reference/message-definitions.md](reference/message-definitions.md).
 
-A mapping's schema source — `with json structure M.X` or `with xml schema M.Y` —
-is checked against the project by both `mxcli check -p` and `exec`, and a name
-that resolves to nothing is refused with the documents that would have worked.
-mxbuild otherwise reports it as **CE1613** "… no longer exists" at the end of a
-build (ako/mxcli#259).
-
-For JSON structures a typo used to be worse than a dangling reference: the schema
-index is empty whenever the structure cannot be loaded **for any reason**, and an
-empty index reads as "there is nothing to validate against" — so one typo in the
-source name switched off every member check in the mapping.
-
-Two things the check deliberately does not do:
-
-- A structure the **same script** creates counts as existing. Create the
-  structure, then map over it, is the normal shape.
-- A project with **no** XML schemas disables the XML half rather than refusing
-  every mapping. There is no `create xml schema` in MDL — an XML schema is only
-  ever imported into the project by hand — so having none is ordinary, not
-  evidence of a typo.
-
----
 
 ## Import Mappings
 
