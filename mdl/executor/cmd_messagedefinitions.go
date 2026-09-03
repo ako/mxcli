@@ -87,6 +87,12 @@ func execCreateMessageDefinitionCollection(ctx *ExecContext, s *ast.CreateMessag
 	if err := ctx.Backend.CreateMessageDefinitionCollection(c); err != nil {
 		return mdlerrors.NewBackend("create message definition collection", err)
 	}
+	// The document — and any folder resolveFolder just created for it — is not
+	// in the cached hierarchy, so a later statement looking this collection up
+	// by module would not find it and would create a DUPLICATE (CE0122). The
+	// update branch gets this for free from applyDocumentFolder; the create
+	// branch has to say it.
+	invalidateHierarchy(ctx)
 	ctx.ReportMutation("Created", "message definition collection: %s", s.Name.String())
 	return nil
 }

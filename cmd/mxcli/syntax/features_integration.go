@@ -541,6 +541,41 @@ DESCRIBE DATABASE CONNECTION Ops.Erp;`,
 	// ── JSON Structures ───────────────────────────────────────────────
 
 	Register(SyntaxFeature{
+		Path:    "message-definition",
+		Summary: "Message definition collections — a mapping source built from the domain model",
+		Keywords: []string{
+			"message definition", "message definition collection", "create message definition",
+			"exposed entity", "exposed attribute", "exposed association",
+		},
+		Syntax: "SHOW MESSAGE DEFINITION COLLECTIONS [IN Module];\nDESCRIBE MESSAGE DEFINITION COLLECTION Module.Name;\nCREATE [OR MODIFY] MESSAGE DEFINITION COLLECTION Module.Name [FOLDER 'path']\n(\n  DEFINITION Name FOR Module.Entity [AS 'Exposed'] (\n    AttributeName [AS 'Exposed'] [EXAMPLE 'text'],\n    Module.Assoc/Module.TargetEntity [AS 'Exposed'] ( ... )\n  )\n);\nDROP MESSAGE DEFINITION COLLECTION Module.Name;\n\n" +
+			"ALTER MESSAGE DEFINITION COLLECTION Module.Name\n" +
+			"  ADD DEFINITION [IF NOT EXISTS] Name FOR Module.Entity [AS 'X'] ( ... )\n" +
+			"  | DROP DEFINITION [IF EXISTS] Name\n" +
+			"  | RENAME DEFINITION Old TO New;\n\n" +
+			"ALTER MESSAGE DEFINITION Module.Collection.Definition\n" +
+			"  ADD MEMBER [IF NOT EXISTS] <member> [IN path]\n" +
+			"  | DROP MEMBER [IF EXISTS] Name [IN path]\n" +
+			"  | SET MEMBER Name [IN path] AS 'Exposed';\n\n" +
+			"A message definition is a SELECTION OVER THE DOMAIN MODEL — every element\n" +
+			"names an entity, an attribute or an association — which is why it is\n" +
+			"authorable where an XML schema or a WSDL is not. It is the source for 74 of\n" +
+			"the 327 mappings in the demo corpus.\n\n" +
+			"A bare name is an ATTRIBUTE; Assoc/Module.Entity is an ASSOCIATION.\n" +
+			"Naming the association's TARGET is required: the stored cardinality follows\n" +
+			"the DIRECTION of traversal, so the same association gives a single object\n" +
+			"one way and a list the other. One that connects neither way is refused,\n" +
+			"because a wrong cardinality builds cleanly.\n\n" +
+			"Inherited attributes are named like the entity's own and resolve to the\n" +
+			"entity that DECLARES them. Everything else — occurrence bounds, element\n" +
+			"types, paths, item names, primitive types — is derived. Studio Pro\n" +
+			"pluralises a repeating element's exposed name; mxcli defaults to the\n" +
+			"entity's own name and lets AS say otherwise.\n\n" +
+			"IN <path> reaches a nested member, in exposed names. SET changes only the\n" +
+			"exposed name — it is not a model rename. Authoring is modelsdk-only.",
+		Example: "CREATE MESSAGE DEFINITION COLLECTION Sales.MD_Order\n(\n  DEFINITION OrderMessage FOR Sales.Order AS 'Orders' (\n    OrderId,\n    Sales.OrderLine_Order/Sales.OrderLine AS 'Lines' ( Sku, Quantity ),\n    Sales.Order_Customer/Sales.Customer ( FirstName )\n  )\n);\n\nALTER MESSAGE DEFINITION Sales.MD_Order.OrderMessage ADD MEMBER LastName IN Customer;\n\nCREATE IMPORT MAPPING Sales.IMM_Order\n  WITH MESSAGE DEFINITION Sales.MD_Order.OrderMessage\n{ create Sales.Order { OrderId = OrderId } };",
+	})
+
+	Register(SyntaxFeature{
 		Path:    "json-structure",
 		Summary: "JSON structures — schema snapshots used by import/export mappings",
 		Keywords: []string{
