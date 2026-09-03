@@ -61,7 +61,7 @@ modules ship translations in **nine**, so "other languages already have
 translations here" is true and misleading.
 
 > `SHOW LANGUAGES` lists languages that **have translations**, which is a
-> different list — a stock app reports eight while one is enabled. The enabled
+> different list — a stock app reports nine while one is enabled. The enabled
 > list is in `DESCRIBE SETTINGS`.
 
 ## Drift: a source string that was edited

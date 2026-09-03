@@ -3,6 +3,13 @@
 package catalog
 
 import (
+	"sort"
+	"strings"
+	"unicode"
+
+	"go.mongodb.org/mongo-driver/v2/bson"
+
+	"github.com/mendixlabs/mxcli/mdl/translations"
 	"github.com/mendixlabs/mxcli/sdk/microflows"
 	"github.com/mendixlabs/mxcli/sdk/workflows"
 )
@@ -32,27 +39,22 @@ func (b *Builder) buildStrings() error {
 		count++
 	}
 
-	// Extract from pages (title, URL) — using cached list
+	// Every TRANSLATABLE string comes from the walk below, not from here. What
+	// remains in the typed extractions is the strings that are not Texts$Text
+	// and so are invisible to it: URLs, log node names, REST paths,
+	// documentation, and the workflow templates (Microflows$StringTemplate,
+	// which holds a plain Text and cannot carry a translation).
+
+	// Page URL (no language)
 	pageList, err := b.cachedPages()
 	if err == nil {
 		for _, pg := range pageList {
+			if pg.URL == "" {
+				continue
+			}
 			moduleID := b.hierarchy.findModuleID(pg.ContainerID)
 			moduleName := b.hierarchy.getModuleName(moduleID)
-			qn := moduleName + "." + pg.Name
-
-			pageID := string(pg.ID)
-
-			// Page title translations (with language code)
-			if pg.Title != nil && pg.Title.Translations != nil {
-				for lang, t := range pg.Title.Translations {
-					insert(qn, "PAGE", t, "page_title", lang, pageID, moduleName)
-				}
-			}
-
-			// Page URL (no language)
-			if pg.URL != "" {
-				insert(qn, "PAGE", pg.URL, "page_url", "", pageID, moduleName)
-			}
+			insert(moduleName+"."+pg.Name, "PAGE", pg.URL, "page_url", "", string(pg.ID), moduleName)
 		}
 	}
 
@@ -66,36 +68,12 @@ func (b *Builder) buildStrings() error {
 
 			mfID := string(mf.ID)
 
-			// Documentation (no language)
+			// Documentation (no language). The activities' message templates
+			// are Texts$Text and come from the walk.
 			if mf.Documentation != "" {
 				insert(qn, "MICROFLOW", mf.Documentation, "documentation", "", mfID, moduleName)
 			}
-
-			// Extract strings from activities
-			extractActivityStrings(mf.ObjectCollection, qn, "MICROFLOW", moduleName, insert)
-		}
-	}
-
-	// Extract from enumerations (value captions) — using cached list
-	enums, err := b.cachedEnumerations()
-	if err == nil {
-		for _, enum := range enums {
-			moduleID := b.hierarchy.findModuleID(enum.ContainerID)
-			moduleName := b.hierarchy.getModuleName(moduleID)
-			qn := moduleName + "." + enum.Name
-
-			enumID := string(enum.ID)
-			for _, val := range enum.Values {
-				if val.Caption != nil && val.Caption.Translations != nil {
-					valID := string(val.ID)
-					if valID == "" {
-						valID = enumID
-					}
-					for lang, t := range val.Caption.Translations {
-						insert(qn, "ENUMERATION", t, "enum_caption", lang, valID, moduleName)
-					}
-				}
-			}
+			extractLogNodeNames(mf.ObjectCollection, qn, "MICROFLOW", moduleName, insert)
 		}
 	}
 
@@ -151,8 +129,129 @@ func (b *Builder) buildStrings() error {
 		}
 	}
 
+	b.buildTranslatableStrings(insert)
+
 	b.report("strings", count)
 	return nil
+}
+
+// buildTranslatableStrings indexes every Texts$Text in the project.
+//
+// It walks the RAW units rather than the typed readers, deliberately. The typed
+// path reached five sites because each was hand-written, and a sixth cost
+// another case; this reaches all of them — 17 distinct sites in a stock 11.13
+// app — with no per-type code, and covers document types mxcli cannot otherwise
+// round-trip. Measured on that app, the typed path indexed ~69 of 3265 texts and
+// saw 8 of 9 languages, so `ar_DZ` was invisible to SHOW LANGUAGES and to
+// QUAL005 rather than merely undercounted.
+//
+// Atlas design templates (Forms$PageTemplate, Forms$BuildingBlock) are ~70% of
+// the corpus and their captions never render in a running app. They are indexed
+// anyway, with ObjectType naming the document type so a consumer can filter:
+// DESCRIBE TRANSLATIONS reaches them and CREATE TRANSLATIONS writes them, so a
+// SHOW LANGUAGES that excluded them would disagree with the statement that
+// changes them — the same split this is closing.
+// The caller's insert closure counts the rows it writes, so nothing is counted
+// here — doing both reported twice the rows the table actually holds.
+func (b *Builder) buildTranslatableStrings(insert func(string, string, string, string, string, string, string)) {
+	units, err := b.reader.ListRawUnitsByType("")
+	if err != nil {
+		return
+	}
+
+	for _, u := range units {
+		if len(u.Contents) == 0 {
+			continue
+		}
+		var named struct {
+			Name string `bson:"Name"`
+		}
+		_ = bson.Unmarshal(u.Contents, &named)
+
+		moduleName := b.hierarchy.getModuleName(b.hierarchy.findModuleID(u.ContainerID))
+		qn := named.Name
+		if moduleName != "" && qn != "" {
+			qn = moduleName + "." + qn
+		}
+
+		for _, r := range translatableRows(u.Type, qn, moduleName, u.Contents) {
+			insert(r.QualifiedName, r.ObjectType, r.StringValue, r.StringContext, r.Language, r.ElementID, r.ModuleName)
+		}
+	}
+}
+
+// stringRow is one row of the strings index.
+type stringRow struct {
+	QualifiedName string
+	ObjectType    string
+	StringValue   string
+	StringContext string
+	Language      string
+	ElementID     string
+	ModuleName    string
+}
+
+// translatableRows turns one unit's stored bytes into index rows, one per
+// (text, language). A language present with an empty string is a text that is
+// not translated yet and is skipped: indexing it would make the language look
+// present everywhere it is not, which is the opposite of what QUAL005 asks.
+func translatableRows(unitType, qualifiedName, moduleName string, raw []byte) []stringRow {
+	sites, err := translations.SitesInUnit(raw)
+	if err != nil {
+		return nil
+	}
+	objType := catalogObjectType(unitType)
+
+	var out []stringRow
+	for _, site := range sites {
+		ctx := site.OwnerType + "." + site.Property
+		for _, lang := range sortedLangs(site.Targets) {
+			if site.Targets[lang] == "" {
+				continue
+			}
+			out = append(out, stringRow{
+				QualifiedName: qualifiedName,
+				ObjectType:    objType,
+				StringValue:   site.Targets[lang],
+				StringContext: ctx,
+				Language:      lang,
+				ElementID:     site.ElementID,
+				ModuleName:    moduleName,
+			})
+		}
+	}
+	return out
+}
+
+// sortedLangs keeps row order deterministic — a map iteration here would make
+// the catalog's bytes differ between two builds of an unchanged project.
+func sortedLangs(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// catalogObjectType turns a unit's stored $Type into the catalog's object-type
+// vocabulary — "Forms$PageTemplate" to "PAGE_TEMPLATE". Derived rather than
+// looked up in a table, so a document type Mendix adds later is named correctly
+// without anyone maintaining a list. It agrees with the hand-written values on
+// every type they both cover (PAGE, MICROFLOW, ENUMERATION).
+func catalogObjectType(unitType string) string {
+	name := unitType
+	if i := strings.LastIndex(name, "$"); i >= 0 {
+		name = name[i+1:]
+	}
+	var b strings.Builder
+	for i, r := range name {
+		if unicode.IsUpper(r) && i > 0 {
+			b.WriteByte('_')
+		}
+		b.WriteRune(unicode.ToUpper(r))
+	}
+	return b.String()
 }
 
 // extractWorkflowFlowStrings extracts strings from workflow activities recursively.
@@ -207,42 +306,21 @@ func extractWorkflowFlowStrings(flow *workflows.Flow, qn, moduleName string, ins
 	}
 }
 
-// extractActivityStrings extracts string literals from microflow/nanoflow activities.
-func extractActivityStrings(oc *microflows.MicroflowObjectCollection, qn, objType, moduleName string, insert func(string, string, string, string, string, string, string)) {
+// extractLogNodeNames indexes the one microflow-activity string that is NOT a
+// Texts$Text. The message templates that used to be extracted here — log, show
+// message, validation feedback — are Texts$Text and come from the walk in
+// buildTranslatableStrings, which also reaches the ones this never listed.
+func extractLogNodeNames(oc *microflows.MicroflowObjectCollection, qn, objType, moduleName string, insert func(string, string, string, string, string, string, string)) {
 	if oc == nil {
 		return
 	}
-
 	for _, obj := range oc.Objects {
 		act, ok := obj.(*microflows.ActionActivity)
 		if !ok || act.Action == nil {
 			continue
 		}
-
-		actID := string(act.ID)
-
-		switch a := act.Action.(type) {
-		case *microflows.LogMessageAction:
-			if a.MessageTemplate != nil && a.MessageTemplate.Translations != nil {
-				for lang, t := range a.MessageTemplate.Translations {
-					insert(qn, objType, t, "log_message", lang, actID, moduleName)
-				}
-			}
-			if a.LogNodeName != "" {
-				insert(qn, objType, a.LogNodeName, "log_node", "", actID, moduleName)
-			}
-		case *microflows.ShowMessageAction:
-			if a.Template != nil && a.Template.Translations != nil {
-				for lang, t := range a.Template.Translations {
-					insert(qn, objType, t, "show_message", lang, actID, moduleName)
-				}
-			}
-		case *microflows.ValidationFeedbackAction:
-			if a.Template != nil && a.Template.Translations != nil {
-				for lang, t := range a.Template.Translations {
-					insert(qn, objType, t, "validation_message", lang, actID, moduleName)
-				}
-			}
+		if a, ok := act.Action.(*microflows.LogMessageAction); ok && a.LogNodeName != "" {
+			insert(qn, objType, a.LogNodeName, "log_node", "", string(act.ID), moduleName)
 		}
 	}
 }

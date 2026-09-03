@@ -186,12 +186,31 @@ CREATE TABLE PERMISSIONS (
 
 ```sql
 CREATE VIRTUAL TABLE STRINGS USING fts5(
-    name,           -- Document qualified name
-    kind,           -- Document type
-    strings,        -- All text content concatenated
-    tokenize='porter unicode61'
+    QualifiedName,  -- Document qualified name, e.g. MyModule.Home
+    ObjectType,     -- Document type, derived from the unit $Type: PAGE,
+                    -- PAGE_TEMPLATE, BUILDING_BLOCK, MICROFLOW, ENUMERATION, ...
+    StringValue,    -- The string itself
+    StringContext,  -- Where it lives. For translatable text this is
+                    -- <owner $Type>.<property>, e.g. Forms$ActionButton.Caption.
+                    -- Non-translatable strings keep a plain label: page_url,
+                    -- log_node, documentation, rest_path, task_name, ...
+    Language,       -- Language code, empty for non-translatable strings
+    ElementId,      -- The owning element's $ID — what distinguishes an
+                    -- enumeration's twelve values from each other
+    ModuleName
 );
 ```
+
+Every `Texts$Text` in the project is indexed, found by a type-agnostic walk
+rather than per-document-type extraction, so a caption in a document type mxcli
+cannot otherwise read is still searchable. That includes Atlas's design
+templates (`PAGE_TEMPLATE`, `BUILDING_BLOCK`), which are roughly 70% of a stock
+project's text and never render in a running app — filter them out with
+`ObjectType` when you want only the app's own strings.
+
+An empty translation — a text that exists but is not translated yet — is **not**
+a row, so a language's presence in this table means it is actually translated
+somewhere.
 
 ### SOURCE (FTS5)
 
