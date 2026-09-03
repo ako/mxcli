@@ -1267,10 +1267,15 @@ type MessageDefinitionElement struct {
 
 	ExposedName     string `json:"exposedName,omitempty"`
 	ExposedItemName string `json:"exposedItemName,omitempty"`
-	// OriginalName is the member's own name — the entity's, the attribute's or
-	// the association's. Stored beside ExposedName because the two differ
-	// routinely (52 of 56 roots, 406 of 933 associations) and Mendix keeps both.
+	// OriginalName is the member's own name — the entity's, the attribute's, or
+	// for an association node the TARGET entity's. Stored beside ExposedName
+	// because the two differ routinely (52 of 56 roots, 406 of 933
+	// associations) and Mendix keeps both.
 	OriginalName string `json:"originalName,omitempty"`
+	// Example is author-set free text. Rare — 1 of 4,707 elements across the
+	// demo corpus and ako/TestApp — but hardcoding it empty would silently drop
+	// the one that exists, so it is carried like any other authored value.
+	Example string `json:"example,omitempty"`
 	// Path is the definition's own path ("Email|From"). It is NOT the mapping's
 	// XmlPath, which is built from the exposed names — the definition root's
 	// path is the ITEM name while the mapping's is "Emails|Email".

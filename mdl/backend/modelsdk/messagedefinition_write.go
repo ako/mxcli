@@ -4,6 +4,7 @@ package modelsdkbackend
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/backend"
 	"github.com/mendixlabs/mxcli/model"
@@ -25,14 +26,44 @@ import (
 //	MaxLength        -1           always
 //	FractionDigits   -1           always
 //	TotalDigits      -1           always
-//	Documentation    ""           always (as are Example/Error/WarningMessage)
+//	Documentation    ""           always (as are ErrorMessage/WarningMessage)
+//
+// Example is the exception and is CARRIED: it is author-set free text, rare (1
+// of 4,707 elements across the corpus and ako/TestApp) but real, and hardcoding
+// it empty would silently drop the one that exists.
 //	ElementType      Object/Value derived from the node's kind
 //	PrimitiveType    Unknown for an object, the attribute's type for a value
-//	OriginalName     the entity / attribute / association's own name
-//	Path             the position in the tree
+//	OriginalName     the entity / attribute / target entity's own name
+//	Path             the position in the tree — see messagePathSegment
 //	ExposedItemName  OriginalName when MaxOccurs is -1, "" otherwise (461/461)
 //
 // So the caller supplies only what a person chooses, and this fills in the rest.
+
+func init() {
+	// Studio Pro writes typed-array marker 2 on these lists; the codec's default
+	// is 3. Measured across the demo corpus and ako/TestApp — 37 definition
+	// lists and 575 child lists, all marker 2 — and caught by the round-trip
+	// test against a real document, which is the only thing that would have.
+	codec.RegisterListMarker("MessageDefinitions$EntityMessageDefinition", 2)
+	codec.RegisterListMarker("MessageDefinitions$ExposedEntity", 2)
+	codec.RegisterListMarker("MessageDefinitions$ExposedAssociation", 2)
+	codec.RegisterListMarker("MessageDefinitions$ExposedAttribute", 2)
+
+	// Every exposed element serializes Children even when it has none — a leaf
+	// attribute stores the bare [2]. Same MandatoryLists rule as a rule
+	// document's Flows and a custom handler's ParameterMappings; omitting it is
+	// a diff against every stored document, which is exactly what the
+	// round-trip against ako/TestApp reported before this was here.
+	for _, t := range []string{
+		"MessageDefinitions$ExposedEntity",
+		"MessageDefinitions$ExposedAssociation",
+		"MessageDefinitions$ExposedAttribute",
+	} {
+		codec.RegisterTypeDefaults(t, codec.TypeDefaults{
+			MandatoryListMarkers: map[string]int32{"Children": 2},
+		})
+	}
+}
 
 // element constants, named rather than repeated so the measurement above has one
 // place to be wrong.
@@ -135,16 +166,12 @@ func messageCollectionToGen(c *model.MessageDefinitionCollection) (*genMsg.Messa
 
 // messageNodeToGen converts one node, filling in everything derived.
 //
-// parentPath is the enclosing node's Path; the stored Path is the chain of
-// exposed names joined with "|" ("Reference|Content").
+// parentPath is the enclosing node's Path.
 func messageNodeToGen(n *model.MessageDefinitionElement, parentPath string) (element.Element, error) {
 	if n == nil {
 		return nil, nil
 	}
-	path := n.ExposedName
-	if parentPath != "" {
-		path = parentPath + "|" + n.ExposedName
-	}
+	path := messagePath(parentPath, n)
 
 	if n.Kind == "Attribute" {
 		a := genMsg.NewExposedAttribute()
@@ -204,6 +231,43 @@ func addMessageChildren(add func(element.Element), n *model.MessageDefinitionEle
 	return nil
 }
 
+// messagePath builds a node's stored Path.
+//
+// Two things about it are easy to get wrong, and both were, until ako/TestApp's
+// hand-authored collection showed the real shape (then confirmed at 4,707 of
+// 4,707 elements across it and the demo corpus):
+//
+//   - the chain is of ORIGINAL names, not exposed ones. A root exposed as
+//     "Orders" contributes "Order".
+//
+//   - an ASSOCIATION contributes TWO segments — the association's own name and
+//     then the target entity's:
+//
+//     Order|OrderLine_Order|OrderLine|Amount
+//     ^root ^association    ^entity   ^attribute
+func messagePath(parentPath string, n *model.MessageDefinitionElement) string {
+	seg := messagePathSegment(n)
+	if parentPath == "" {
+		return seg
+	}
+	return parentPath + "|" + seg
+}
+
+func messagePathSegment(n *model.MessageDefinitionElement) string {
+	if n.Association != "" {
+		return shortName(n.Association) + "|" + n.OriginalName
+	}
+	return n.OriginalName
+}
+
+// shortName drops the module from a qualified name.
+func shortName(qualified string) string {
+	if i := strings.LastIndex(qualified, "."); i >= 0 {
+		return qualified[i+1:]
+	}
+	return qualified
+}
+
 // exposedCommon is the property set every node type shares.
 type exposedCommon interface {
 	SetPath(string)
@@ -232,7 +296,7 @@ func applyExposedCommon(e exposedCommon, n *model.MessageDefinitionElement, path
 	e.SetFractionDigits(mdUnsetPrecision)
 	e.SetTotalDigits(mdUnsetPrecision)
 	e.SetDocumentation("")
-	e.SetExample("")
+	e.SetExample(n.Example)
 	e.SetErrorMessage("")
 	e.SetWarningMessage("")
 }
