@@ -189,6 +189,47 @@ func (s *Store) Promote(e Entry, shard string) error {
 	return s.SaveShard(shard, next)
 }
 
+// Replace swaps an entry for a new one with the same id, in place. Used by
+// resolution, where a question becomes the decision it was heading towards and
+// should not move, jump to the end of the file, or change identity.
+func (s *Store) Replace(shard string, e Entry) error {
+	entries, _, err := s.LoadShard(shard)
+	if err != nil {
+		return err
+	}
+	found := false
+	for i := range entries {
+		if entries[i].ID == e.ID {
+			entries[i], found = e, true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("%s does not carry entry %s", shard, e.ID)
+	}
+	return s.SaveShard(shard, entries)
+}
+
+// Find returns the entry with the given id and the shard holding it.
+func (s *Store) Find(id string) (Entry, string, error) {
+	shards, err := s.ListShards()
+	if err != nil {
+		return Entry{}, "", err
+	}
+	for _, sh := range shards {
+		entries, _, err := s.LoadShard(sh)
+		if err != nil {
+			return Entry{}, "", err
+		}
+		for _, e := range entries {
+			if e.ID == id {
+				return e, sh, nil
+			}
+		}
+	}
+	return Entry{}, "", nil
+}
+
 // Drop removes an entry by id, reporting which shard it came from and whether
 // that emptied the shard.
 func (s *Store) Drop(id string) (shard string, deletedFile bool, err error) {
@@ -219,6 +260,29 @@ func (s *Store) Drop(id string) (shard string, deletedFile bool, err error) {
 		return sh, len(kept) == 0 && sh != ProjectShard, nil
 	}
 	return "", false, nil
+}
+
+// OpenQuestions lists the unanswered questions across the store. It needs no
+// resolver and no catalog — just the files — so a caller that only wants to
+// nag about them pays a few small reads rather than a model load.
+func (s *Store) OpenQuestions() ([]OpenQuestion, error) {
+	shards, err := s.ListShards()
+	if err != nil {
+		return nil, err
+	}
+	var out []OpenQuestion
+	for _, sh := range shards {
+		entries, _, err := s.LoadShard(sh)
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range entries {
+			if e.Open {
+				out = append(out, OpenQuestion{Shard: sh, EntryID: e.ID, Title: e.Title})
+			}
+		}
+	}
+	return out, nil
 }
 
 // Usage computes size and headroom for every shard. Nothing here is cached or

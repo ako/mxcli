@@ -634,3 +634,196 @@ func TestPlanSlicesGetMoreRoomThanDecisions(t *testing.T) {
 		t.Fatal("a slice holds source material and is not loaded every session; it needs more room than a decision shard")
 	}
 }
+
+func mustQuestion(t *testing.T, text, slice string, anchors ...string) Entry {
+	t.Helper()
+	e, err := NewQuestion(text, anchors, slice, day)
+	if err != nil {
+		t.Fatalf("NewQuestion(%q): %v", text, err)
+	}
+	return e
+}
+
+// A question's anchors are not checked, and the control is the identical
+// anchor recorded as a decision. Often the question IS whether the thing should
+// exist, so the staleness rule that keeps decisions honest would report every
+// question as a defect.
+func TestOpenQuestionIsNotCheckedButTheSameDecisionIs(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(dir)
+	if _, err := s.Init(); err != nil {
+		t.Fatal(err)
+	}
+	r := stubResolver{} // resolves nothing
+
+	q := mustQuestion(t, "Should approvers see rejected orders?", "", "@Sales.ACT_Nope")
+	if err := s.Promote(q, "Sales"); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := Check(s, r, []string{"Sales"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Failed() {
+		t.Errorf("an open question must not fail the check: %+v", rep)
+	}
+	if len(rep.Open) != 1 || rep.Open[0].EntryID != q.ID {
+		t.Fatalf("the question must still be reported: %+v", rep.Open)
+	}
+	if len(rep.Findings) != 0 {
+		t.Errorf("a question's anchors must not be resolved at all: %+v", rep.Findings)
+	}
+
+	// Control: the same anchor as a settled decision still fails.
+	d := mustEntry(t, "Approvers see rejected orders", "@Sales.ACT_Nope")
+	if err := s.Promote(d, "Sales"); err != nil {
+		t.Fatal(err)
+	}
+	rep, err = Check(s, r, []string{"Sales"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rep.Failed() {
+		t.Error("a decision anchored at nothing must still fail — otherwise --open disables the check for everything")
+	}
+}
+
+// Resolution is the transition the whole kind exists for: the entry becomes a
+// decision in place, keeps its identity, and its anchors start being checked.
+func TestResolvingAQuestionMakesItACheckedDecision(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(dir)
+	if _, err := s.Init(); err != nil {
+		t.Fatal(err)
+	}
+	q := mustQuestion(t, "Should approvers see rejected orders?", "", "@Sales.Order")
+	if err := s.Promote(q, "Sales"); err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := q.Resolve("Yes, for 30 days", day)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.ID != q.ID {
+		t.Errorf("id changed on resolution (%s -> %s); an answered question is the same knowledge", q.ID, resolved.ID)
+	}
+	if resolved.Open {
+		t.Error("a resolved question is no longer open")
+	}
+	if !strings.Contains(resolved.Body, "Should approvers see rejected orders?") {
+		t.Errorf("the question must survive as the answer's context: %q", resolved.Body)
+	}
+	if err := s.Replace("Sales", resolved); err != nil {
+		t.Fatal(err)
+	}
+
+	// Now it IS checked: a dead anchor on the answer fails.
+	rep, err := Check(s, stubResolver{}, []string{"Sales"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rep.Failed() {
+		t.Error("once answered, the entry's anchors must be checked like any other decision")
+	}
+	if len(rep.Open) != 0 {
+		t.Errorf("it is no longer an open question: %+v", rep.Open)
+	}
+}
+
+func TestResolveRefusesSomethingThatIsNotAQuestion(t *testing.T) {
+	if _, err := mustEntry(t, "A settled decision").Resolve("an answer", day); err == nil {
+		t.Fatal("resolving a decision must be refused")
+	}
+	if _, err := mustQuestion(t, "A question", "").Resolve("", day); err == nil {
+		t.Fatal("an empty answer must be refused")
+	}
+}
+
+func TestReplaceKeepsPositionInTheShard(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(dir)
+	if _, err := s.Init(); err != nil {
+		t.Fatal(err)
+	}
+	first := mustEntry(t, "First decision", "@Sales.A")
+	q := mustQuestion(t, "A question?", "", "@Sales.B")
+	last := mustEntry(t, "Last decision", "@Sales.C")
+	for _, e := range []Entry{first, q, last} {
+		if err := s.Promote(e, "Sales"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	resolved, err := q.Resolve("An answer", day)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Replace("Sales", resolved); err != nil {
+		t.Fatal(err)
+	}
+	entries, _, err := s.LoadShard("Sales")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 3 || entries[1].ID != q.ID || entries[1].Title != "An answer" {
+		t.Fatalf("a resolved question must stay where it was, not move to the end: %+v", entries)
+	}
+}
+
+// A question filed against a slice is not scope until it is answered, so it
+// must not inflate the slice's outstanding work.
+func TestSliceQuestionsAreCountedApartFromRequirements(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(dir)
+	if _, err := s.Init(); err != nil {
+		t.Fatal(err)
+	}
+	req := mustRequirement(t, "Orders can be approved", "02-approvals", "@Sales.ACT_Approve")
+	q := mustQuestion(t, "Do approvers see rejected orders?", "02-approvals", "@Sales.Order")
+	for _, e := range []Entry{req, q} {
+		if err := s.Promote(e, e.Shard()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rep, err := Check(s, stubResolver{}, []string{PlanShard("02-approvals")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := rep.Slices[0]
+	if got.Questions != 1 {
+		t.Errorf("questions = %d, want 1: %+v", got.Questions, got)
+	}
+	if got.Planned != 1 || got.Total() != 1 {
+		t.Errorf("an unanswered question is not outstanding scope: %+v", got)
+	}
+	if len(rep.Open) != 1 {
+		t.Errorf("a slice's questions must still be reported: %+v", rep.Open)
+	}
+}
+
+func TestOpenMarkerRoundTrips(t *testing.T) {
+	in := []Entry{
+		mustQuestion(t, "Still open?", "", "@Sales.Order"),
+		mustEntry(t, "Settled", "@Sales.Order"),
+	}
+	out, malformed, err := ParseShard("Sales", RenderShard("Sales", in))
+	if err != nil || len(malformed) != 0 {
+		t.Fatalf("err=%v malformed=%v", err, malformed)
+	}
+	if !out[0].Open || out[1].Open {
+		t.Fatalf("the OPEN marker did not round-trip: %+v", out)
+	}
+}
+
+// Entries written before questions existed carry no marker and must read back
+// as settled decisions, not as questions.
+func TestEntryWithoutTheMarkerIsNotOpen(t *testing.T) {
+	content := "# Sales\n\n" + shardMarker + "\n\n## An older entry\n\n" +
+		"Anchors: `@Sales.Order` · id `abc123` · 2026-08-01\n"
+	out, malformed, err := ParseShard("Sales", content)
+	if err != nil || len(malformed) != 0 {
+		t.Fatalf("err=%v malformed=%v", err, malformed)
+	}
+	if len(out) != 1 || out[0].Open {
+		t.Fatalf("an entry with no marker is a settled decision: %+v", out)
+	}
+}
