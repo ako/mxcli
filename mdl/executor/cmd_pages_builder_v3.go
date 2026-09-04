@@ -2550,12 +2550,20 @@ func (pb *pageBuilder) buildMenuBarV3(w *ast.WidgetV3) (pages.Widget, error) {
 // missingWidgetMessage explains why a widget has no definition, and — the part
 // that matters — names a remedy that can actually work.
 //
-// The old message always said "run 'mxcli widget init -p app.mpr'". For a
-// widget Studio Pro bundles rather than installing into the project (File
-// Uploader, Events, Google Tag, Markdown viewer at the time of writing) that is
+// The old message always said "run 'mxcli widget init -p app.mpr'". When the
+// widget's package is not in the project at all — File Uploader, Events, Google
+// Tag and Markdown viewer are in no blank project, measured on 11.13 — that is
 // worse than unhelpful: `widget init` scans `widgets/`, the .mpk is not there,
 // and re-running it can never help. Reported as the postscript to
 // mendixlabs/mxcli#1036, where it cost the reporter a debugging session.
+//
+// The remedy is to install the widget, which is also the only way to use it in
+// Studio Pro. Measured: a blank 11.13 project ships 33 widgets and none of those
+// four; installing File Uploader takes widgets/ from 33 to 34, and mxcli then
+// builds the page with no further action, because initPluggableEngine refreshes
+// definitions from installed packages on its own. mxcli therefore ships no
+// definitions for them — there is nothing to ship that the project does not
+// already carry once the widget is usable at all.
 //
 // The distinguishing question is exactly the one FindMPK answers, and it is the
 // same lookup the template loader makes before giving up.
@@ -2579,9 +2587,8 @@ func missingWidgetMessage(projectDir, widgetID string) string {
 		}
 	}
 	return "no definition for widget " + widgetID +
-		" — no widget package for it in the project's widgets/ directory." +
-		" If Studio Pro bundles this widget rather than installing it, 'mxcli widget init' cannot help:" +
-		" it scans widgets/, and the package is not there." +
-		" Install the widget from the Marketplace so its .mpk lands in widgets/, or report it at" +
-		" https://github.com/mendixlabs/mxcli/issues so mxcli can ship a definition."
+		" — the project has no widget package for it in widgets/." +
+		" 'mxcli widget init' cannot help: it scans widgets/, and the package is not there." +
+		" Install the widget or its module from the Marketplace; that puts the .mpk in widgets/," +
+		" after which mxcli picks it up automatically."
 }

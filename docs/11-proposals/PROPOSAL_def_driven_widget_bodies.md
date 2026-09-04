@@ -282,40 +282,36 @@ Six slices. Each ships alone; 1 is independent of the rest.
 
 ### Slice 1 — Stop the bleeding
 
-Correct whether or not anything else lands. **Items 2–4 are implemented**;
-item 1 proved larger than the draft assumed and is carried forward.
+Correct whether or not anything else lands. **Items 2–4 are implemented.**
+Item 1 was dropped: the premise behind it turned out to be false (below).
 
-1. **Ship the four missing built-in widgets.** Measured: `events`,
-   `fileuploader`, `googletag`, `markdown` have no definition anywhere. All four
-   pass `check` and fail `exec` with `no definition for widget`.
+1. ~~**Ship the four missing built-in widgets.**~~ **Dropped — the premise was
+   wrong.** The draft assumed `events`, `fileuploader`, `googletag` and
+   `markdown` are bundled with Studio Pro and therefore unreachable to mxcli.
+   Measured instead:
 
-   **Corrected during implementation, twice.** The draft said their `.mpk`s live
-   inside `Mendix.Modeler.Core.dll`; that was inferred from a bare ID-string
-   match and is **wrong** — the assembly holds 690 embedded zips and *zero*
-   `widgets.mendix.com` namespace hits, so it carries no widget XML. And
-   embedding a `.def.json` is **not sufficient**: the engine also needs a
-   template, and `getOrGenerateTemplate` (`modelsdk/widgets/loader.go:215`)
-   derives one from the `.mpk` **in the project's `widgets/`**. Shipping a def
-   alone merely changes the error from `no definition for widget` to
-   `template not found: fileuploader` — verified, which is why no def was
-   shipped here.
+   | | |
+   |---|---|
+   | A blank Mendix 11.13 project (`mx create-project`) | 33 widgets, **none of the four** |
+   | Installing File Uploader (Marketplace module 235351) | `widgets/` goes 33 → 34, `.mpk` present |
+   | `exec` of a page using it, straight after | **builds** — no `widget init` needed |
 
-   The real source is the **Marketplace**, where all four are Mendix-published:
-   File Uploader (module 235351, 2.5.0), Events (widget 224259, 1.3.1), Google
-   Tag (module 207519, 2.4.1), Markdown viewer (widget 230248, 1.0.3).
-   `marketplace download` + `widget extract` produces genuine definitions —
-   FileUploader's shows exactly the six action slots
-   `mdl-examples/bug-tests/956-fileuploader-six-action-slots.mdl` documents, and
-   object lists `ALLOWEDFILEFORMAT`/`CUSTOMBUTTON`, the two keywords already
-   hardcoded in the lexer. That cross-check is what makes the extraction
-   trustworthy; **never hand-write a definition** (CLAUDE.md, and the CE0463
-   history behind `sdk/widgets/templates/README.md`).
+   So a widget whose package is absent is one **Studio Pro cannot use either**;
+   it is not a gap mxcli can paper over, and there is nothing to ship. The
+   moment the widget is usable at all, the `.mpk` is in the project and mxcli
+   picks it up on its own, because `initPluggableEngine` refreshes definitions
+   from installed packages before reading them.
 
-   Remaining work is therefore to ship the four **packages** — or templates
-   generated from them at build time — and let the existing
-   `getOrGenerateTemplate` path serve them. Carried forward as its own change:
-   it needs a decision on embedding ~400 KB of `.mpk` versus pre-generating
-   templates, and a policy for keeping them current as Mendix ships versions.
+   Two wrong turns are worth recording, since both looked settled at the time.
+   Their `.mpk`s are **not** inside `Mendix.Modeler.Core.dll` — that came from a
+   bare ID-string match, and the assembly has 690 embedded zips with *zero*
+   `widgets.mendix.com` hits. And embedding a `.def.json` would not have worked
+   anyway: `getOrGenerateTemplate` (`modelsdk/widgets/loader.go:215`) derives the
+   template from the `.mpk` **in `widgets/`**, so a def alone only moves the
+   error to `template not found: fileuploader` — verified before the premise
+   itself was checked, which is the lesson. The remaining item below is the
+   whole fix.
+
 2. **Fix that error message.** It currently says
    `(run 'mxcli widget init -p app.mpr')` — a remedy that **provably cannot
    work**, since `widget init` scans `widgets/` and these are not there.
