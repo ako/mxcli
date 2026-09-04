@@ -53,6 +53,21 @@ func serializeClientAction(action pages.ClientAction) bson.D {
 			{Key: "$Type", Value: "Forms$DeleteClientAction"},
 			{Key: "ClosePage", Value: a.ClosePage},
 		}
+	case *pages.SignOutClientAction:
+		// Until this case existed, SIGN_OUT fell through to the default below
+		// and was written as Forms$NoAction — so the button rendered, said
+		// "Sign out", and did nothing, with `mxcli check`, `exec` and `mx check`
+		// all clean. That made the documented workaround for the modelsdk
+		// engine's refusal ("rerun with MXCLI_ENGINE=legacy") the more dangerous
+		// of the two paths (CapTrackV2 FINDINGS §10).
+		//
+		// One property, pinned against a Studio Pro-authored button (ako/TestApp,
+		// Mendix 11): DisabledDuringExecution, true.
+		return bson.D{
+			{Key: "$ID", Value: idToBsonBinary(string(a.ID))},
+			{Key: "$Type", Value: "Forms$SignOutClientAction"},
+			{Key: "DisabledDuringExecution", Value: true},
+		}
 	case *pages.CreateObjectClientAction:
 		// Build EntityRef if entity is specified
 		var entityRef any

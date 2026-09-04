@@ -1168,6 +1168,8 @@ func renderClientActionMDL(ctx *ExecContext, action map[string]any) string {
 	case "Forms$SetTaskOutcomeClientAction", "Pages$SetTaskOutcomeClientAction":
 		outcomeValue, _ := action["OutcomeValue"].(string)
 		return "complete_task '" + strings.ReplaceAll(outcomeValue, "'", "''") + "'"
+	case "Forms$SignOutClientAction", "Pages$SignOutClientAction":
+		return "sign_out"
 	case "Forms$NoClientAction", "Pages$NoClientAction":
 		return ""
 	default:

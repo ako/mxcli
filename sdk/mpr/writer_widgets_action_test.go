@@ -174,3 +174,68 @@ func TestPageClientAction_RequiredFields(t *testing.T) {
 		t.Error("TitleOverride key missing entirely; Studio Pro writes it as an explicit null")
 	}
 }
+
+// CapTrackV2 FINDINGS §10 — `ACTIONBUTTON … (Action: SIGN_OUT)` was refused by
+// the default modelsdk engine with "client action *pages.SignOutClientAction
+// not yet supported … rerun with MXCLI_ENGINE=legacy".
+//
+// That advice was the more dangerous of the two paths. The legacy writer had no
+// case for the action either, so it fell through to the default below and wrote
+// Forms$NoAction: the button rendered, said "Sign out", and did nothing, with
+// `mxcli check`, `exec` and `mx check` all clean. Measured on Mendix 11.13 —
+// `describe page` came back `actionbutton btnOut (Caption: 'Sign out')`, no
+// action at all, and the stored BSON held Forms$NoAction.
+//
+// The shape is pinned against a Studio Pro-authored sign-out button
+// (ako/TestApp), which is provably Studio Pro's rather than mxcli's: until this
+// change NEITHER engine could emit the type.
+func TestSignOutClientAction_IsNotSilentlyDroppedToNoAction(t *testing.T) {
+	doc := serializeClientAction(&pages.SignOutClientAction{
+		BaseElement: model.BaseElement{ID: "action-id"},
+	})
+	if doc == nil {
+		t.Fatal("serializeClientAction returned nil")
+	}
+
+	got := map[string]any{}
+	for _, e := range doc {
+		got[e.Key] = e.Value
+	}
+
+	if got["$Type"] == "Forms$NoAction" {
+		t.Fatal("SIGN_OUT was written as Forms$NoAction — the button renders and does nothing, " +
+			"which check, exec and mx check all report as fine")
+	}
+	if got["$Type"] != "Forms$SignOutClientAction" {
+		t.Errorf("$Type = %v, want Forms$SignOutClientAction", got["$Type"])
+	}
+	if got["DisabledDuringExecution"] != true {
+		t.Errorf("DisabledDuringExecution = %v, want true (the Studio Pro reference's only property)",
+			got["DisabledDuringExecution"])
+	}
+	// The reference carries exactly these three keys and no more. An extra
+	// property is what Studio Pro refuses to open even when mxbuild accepts it.
+	if len(doc) != 3 {
+		t.Errorf("the action has %d keys, want 3 ($ID, $Type, DisabledDuringExecution): %v", len(doc), doc)
+	}
+}
+
+// CONTROL: the default branch still exists and still yields Forms$NoAction, so
+// this test proves something about SIGN_OUT rather than about the fallback being
+// removed. OPEN_LINK is the action that still lands there — see FINDINGS §10.
+func TestUnhandledClientActionStillFallsBackToNoAction(t *testing.T) {
+	doc := serializeClientAction(&pages.LinkClientAction{
+		BaseElement: model.BaseElement{ID: "link-id"},
+		Address:     "https://example.com",
+	})
+	var typeName string
+	for _, e := range doc {
+		if e.Key == "$Type" {
+			typeName, _ = e.Value.(string)
+		}
+	}
+	if typeName != "Forms$NoAction" {
+		t.Errorf("$Type = %q; this control pins the fallback SIGN_OUT used to hit, "+
+			"so that the test above cannot pass for the wrong reason", typeName)
+	}
+}

@@ -1483,6 +1483,23 @@ func clientActionToGen(a pages.ClientAction) (element.Element, error) {
 		g.SetNumberOfPagesToClose2("")
 		g.SetPageSettings(formSettingsToGen(x.PageName))
 		return g, nil
+	case *pages.SignOutClientAction:
+		// sign_out → Forms$SignOutClientAction. One property, and the reference
+		// pins its value: a Studio Pro-authored sign-out button (ako/TestApp,
+		// Mendix 11) stores exactly
+		//
+		//	{ "$Type": "Forms$SignOutClientAction", "DisabledDuringExecution": true }
+		//
+		// That document is provably Studio Pro's rather than mxcli's, because
+		// until now NEITHER engine could emit the type — modelsdk refused it and
+		// legacy wrote Forms$NoAction (CapTrackV2 FINDINGS §10).
+		g := genPg.NewSignOutClientAction()
+		if x.ID != "" {
+			g.SetID(element.ID(x.ID))
+		}
+		assignID(g)
+		g.SetDisabledDuringExecution(true)
+		return g, nil
 	case *pages.SetTaskOutcomeClientAction:
 		g := genPg.NewSetTaskOutcomeClientAction()
 		if x.ID != "" {
