@@ -658,13 +658,15 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 			}
 		} else {
 			var mfs, ents map[string]bool
+			var rets map[string]string
 			if strings.EqualFold(s.Section, "model") {
 				mfs = buildMicroflowQualifiedNames(ctx)
+				rets = buildMicroflowReturnTypes(ctx)
 			}
 			if strings.EqualFold(s.Section, "workflows") {
 				ents = buildEntityQualifiedNames(ctx)
 			}
-			errs = validateSettingsReferences(s, mfs, ents, sc)
+			errs = validateSettingsReferences(s, mfs, ents, rets, sc)
 		}
 		if len(errs) > 0 {
 			return errs[0]

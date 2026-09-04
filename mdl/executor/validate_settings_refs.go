@@ -9,6 +9,7 @@ import (
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
+	"github.com/mendixlabs/mxcli/mdl/linter"
 )
 
 // settingsMicroflowKeys are the model settings whose value is a microflow's
@@ -30,7 +31,7 @@ var settingsMicroflowKeys = []string{
 // Empty is not a reference — it clears the setting, which is Studio Pro's
 // "(none)" — and a name created earlier in the same script is not missing, the
 // same escape hatch every other family has.
-func validateSettingsReferences(stmt *ast.AlterSettingsStmt, knownMicroflows, knownEntities map[string]bool, sc *scriptContext) []error {
+func validateSettingsReferences(stmt *ast.AlterSettingsStmt, knownMicroflows, knownEntities map[string]bool, returnTypes map[string]string, sc *scriptContext) []error {
 	if stmt == nil {
 		return nil
 	}
@@ -47,13 +48,16 @@ func validateSettingsReferences(stmt *ast.AlterSettingsStmt, knownMicroflows, kn
 			if ref == "" {
 				continue // clearing the setting
 			}
-			if knownMicroflows[ref] || (sc != nil && sc.microflows[ref]) {
+			if !knownMicroflows[ref] && !(sc != nil && sc.microflows[ref]) {
+				errs = append(errs, mdlerrors.NewValidationf(
+					"microflow not found: %s (referenced by %s) — the model stores the name as written, "+
+						"so the build reports CE1613 \"The selected microflow no longer exists\"",
+					ref, key))
 				continue
 			}
-			errs = append(errs, mdlerrors.NewValidationf(
-				"microflow not found: %s (referenced by %s) — the model stores the name as written, "+
-					"so the build reports CE1613 \"The selected microflow no longer exists\"",
-				ref, key))
+			if err := checkAfterStartupReturnsBoolean(key, ref, returnTypes, sc); err != nil {
+				errs = append(errs, err)
+			}
 		}
 	}
 
@@ -67,6 +71,63 @@ func validateSettingsReferences(stmt *ast.AlterSettingsStmt, knownMicroflows, kn
 		}
 	}
 	return errs
+}
+
+// checkAfterStartupReturnsBoolean reports an after-startup microflow that does
+// not return Boolean.
+//
+// Mendix requires it, and the build says so late and out of context:
+// CE0142 "After startup microflow should return a boolean". The setting itself
+// resolves fine — the name exists — so #274's existence check passes and the
+// script writes a project that cannot build. The trip-up in the wild is a
+// seed/demo-data microflow wired to after-startup: it does its work, returns
+// nothing, and the build refuses it (CapTrackV2 FINDINGS §6).
+//
+// Only AfterStartupMicroflow is checked. BeforeShutdown and HealthCheck have
+// their own rules, and neither has been measured here — asserting one on a
+// guess would be the same defect in the other direction.
+//
+// A microflow whose return type is unknown is left alone. That covers a
+// script-created flow the context did not record and a backend that could not
+// list return types: in both cases nothing is KNOWN to be wrong, and a refusal
+// would block a script that builds.
+func checkAfterStartupReturnsBoolean(key, ref string, returnTypes map[string]string, sc *scriptContext) error {
+	if !strings.EqualFold(key, "AfterStartupMicroflow") {
+		return nil
+	}
+	var actual string
+	switch {
+	case sc != nil && sc.microflows[ref]:
+		sig, ok := sc.flowParams[strings.ToLower(ref)]
+		if !ok || sig == nil {
+			return nil // created in this script, signature not recorded
+		}
+		if sig.ReturnKind == ast.TypeBoolean {
+			return nil
+		}
+		actual = sig.ReturnKind.String()
+		if sig.ReturnKind == ast.TypeVoid {
+			actual = "nothing"
+		}
+	default:
+		stored, ok := returnTypes[ref]
+		if !ok {
+			return nil // return type unavailable — say nothing rather than guess
+		}
+		if stored == "Boolean" {
+			return nil
+		}
+		actual = stored
+		if stored == "" {
+			actual = "nothing"
+		}
+	}
+
+	return mdlerrors.NewValidationf(
+		"after-startup microflow %s returns %s, but Mendix requires Boolean — the build reports "+
+			"CE0142 \"After startup microflow should return a boolean\". The setting stores only the "+
+			"name, so this is not caught by resolving the reference.",
+		ref, actual)
 }
 
 // validateSettingsConstantRef resolves the constant an override names.
@@ -120,4 +181,66 @@ func nearestConstant(ref string, known map[string]bool) string {
 	}
 	sort.Strings(candidates)
 	return candidates[0]
+}
+
+// ValidateAfterStartupReturnType (MDL073) is the project-less half of the
+// after-startup check.
+//
+// The rule needs the microflow's return type, and the overwhelmingly common
+// shape is one script that CREATES the seed microflow and wires it in the same
+// breath — so the answer is in the script itself and `mxcli check` with no
+// project can give it. The project path (validateSettingsReferences) covers the
+// other half, where the microflow was already stored.
+//
+// Both call checkAfterStartupReturnsBoolean, so the two cannot drift.
+func ValidateAfterStartupReturnType(prog *ast.Program) []linter.Violation {
+	if prog == nil {
+		return nil
+	}
+
+	returnTypes := map[string]string{}
+	for _, stmt := range prog.Statements {
+		mf, ok := stmt.(*ast.CreateMicroflowStmt)
+		if !ok {
+			continue
+		}
+		if mf.ReturnType == nil {
+			returnTypes[mf.Name.String()] = ""
+			continue
+		}
+		returnTypes[mf.Name.String()] = mf.ReturnType.Type.Kind.String()
+	}
+	if len(returnTypes) == 0 {
+		return nil
+	}
+
+	var out []linter.Violation
+	for _, stmt := range prog.Statements {
+		s, ok := stmt.(*ast.AlterSettingsStmt)
+		if !ok || !strings.EqualFold(s.Section, "model") {
+			continue
+		}
+		raw, ok := s.Properties["AfterStartupMicroflow"]
+		if !ok {
+			continue
+		}
+		ref := settingsValueToString(raw)
+		if ref == "" {
+			continue
+		}
+		// Only a microflow this script defines: anything else needs the project,
+		// and reporting it from here would guess.
+		if _, defined := returnTypes[ref]; !defined {
+			continue
+		}
+		if err := checkAfterStartupReturnsBoolean("AfterStartupMicroflow", ref, returnTypes, nil); err != nil {
+			out = append(out, linter.Violation{
+				RuleID:     "MDL073",
+				Severity:   linter.SeverityError,
+				Message:    err.Error(),
+				Suggestion: "End the microflow with `return true;` and declare `returns boolean` on it",
+			})
+		}
+	}
+	return out
 }

@@ -414,6 +414,35 @@ func buildMicroflowQualifiedNames(ctx *ExecContext) map[string]bool {
 	return result
 }
 
+// buildMicroflowReturnTypes maps each stored microflow's qualified name to the
+// name of its return type ("Boolean", "String", …), or "" for a microflow that
+// returns nothing.
+//
+// Separate from buildMicroflowQualifiedNames rather than folded into it: that
+// set answers "does this name resolve", which several callers want and which
+// must keep working when the return type is unavailable. A microflow missing
+// here is a microflow whose type nothing may conclude anything from.
+func buildMicroflowReturnTypes(ctx *ExecContext) map[string]string {
+	result := make(map[string]string)
+	h, err := getHierarchy(ctx)
+	if err != nil {
+		return result
+	}
+	mfs, err := ctx.Backend.ListMicroflows()
+	if err != nil {
+		return result
+	}
+	for _, mf := range mfs {
+		qn := h.GetQualifiedName(mf.ContainerID, mf.Name)
+		if mf.ReturnType == nil {
+			result[qn] = ""
+			continue
+		}
+		result[qn] = mf.ReturnType.GetTypeName()
+	}
+	return result
+}
+
 // buildQueueQualifiedNames returns the set of task queue qualified names in the
 // project, lower-cased — Mendix name resolution is case-insensitive and the
 // caller compares an author-written name against it.

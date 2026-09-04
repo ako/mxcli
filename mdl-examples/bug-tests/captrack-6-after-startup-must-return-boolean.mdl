@@ -1,0 +1,30 @@
+-- CONTROL for CapTrackV2 FINDINGS §6 (see the .fail.mdl beside this file).
+--
+-- A Boolean after-startup microflow is the whole point of the setting and must
+-- stay clean — a check that refused every after-startup microflow would satisfy
+-- the negative test and break the feature.
+--
+-- Verify:
+--   mxcli check captrack-6-after-startup-must-return-boolean.mdl   -- 0 errors
+--   mxcli exec  captrack-6-after-startup-must-return-boolean.mdl -p app.mpr
+--   mx check -p app.mpr                                            -- 0 errors
+
+create module StartupOk;
+/
+create persistent entity StartupOk.Seed (
+  Code: string(50)
+);
+/
+
+-- The same seed microflow, ending with the Boolean the platform requires.
+create microflow StartupOk.MF_SeedData ()
+returns boolean
+begin
+  $S = create StartupOk.Seed (Code = 'demo');
+  commit $S;
+  return true;
+end;
+/
+
+alter settings model AfterStartupMicroflow = 'StartupOk.MF_SeedData';
+/
