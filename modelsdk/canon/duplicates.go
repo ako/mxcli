@@ -21,13 +21,24 @@ import (
 // the identity Mendix is complaining about is the 16-byte $ID. Verified against
 // stored translations on 11.13.
 //
-// This is a WRITE-TIME guard with no root cause behind it, and that is
-// deliberate. The reporter (ako/mxcli-captrack #2) lost about an hour to one of
-// these and could not establish what produced it: two candidate explanations
-// were proposed during the build, both were tested, and both were withdrawn.
-// What was established is that the corruption is STICKY — once a unit carries
-// duplicate ids, every later edit inherits them, so each subsequent write looks
-// like the culprit and the second experiment measures the first one's damage.
+// This was a WRITE-TIME guard with no root cause behind it, and that is what
+// made it worth having: the reporter (ako/mxcli-captrack #2) lost about an hour
+// to one of these and could not establish what produced it — two candidate
+// explanations were proposed during the build, both tested, both withdrawn. The
+// corruption is STICKY, which is why: once a unit carries duplicate ids, every
+// later edit inherits them, so each subsequent write looks like the culprit and
+// the second experiment measures the first one's damage.
+//
+// **The cause of the reported case is now known**, and fixed at source in
+// CarryTranslations (see reuseSafeID). Carrying translations by source string
+// handed ONE stored Texts$Translation element to every rebuilt text sharing that
+// string — eight copies of the literal '{1}' on one page — and appending it
+// verbatim put its $ID on all eight. Reproduced end to end and fixed
+// (CapTrackV2 §30/§17).
+//
+// The guard stays, and not only for the case it caught. It is cheap, it is the
+// only thing standing between a write and an unopenable project, and nothing
+// says Texts$Translation was the only way to get here.
 //
 // A guard is worth having anyway, and arguably worth more without a root cause
 // than with one: it converts an unopenable project and an hour of archaeology

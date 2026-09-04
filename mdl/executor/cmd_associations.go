@@ -72,6 +72,7 @@ func execCreateAssociation(ctx *ExecContext, s *ast.CreateAssociationStmt) error
 	}
 
 	deleteBehavior := storageDeleteBehavior(s.DeleteBehavior)
+	deleteMessage := s.DeleteErrorMessage
 
 	// Convert storage type (default: Column = foreign key in parent table)
 	storageFormat := domainmodel.StorageFormatColumn
@@ -96,7 +97,7 @@ func execCreateAssociation(ctx *ExecContext, s *ast.CreateAssociationStmt) error
 					assoc.Type = assocType
 					assoc.Owner = owner
 					assoc.StorageFormat = storageFormat
-					assoc.ChildDeleteBehavior = &domainmodel.DeleteBehavior{Type: deleteBehavior}
+					assoc.ChildDeleteBehavior = &domainmodel.DeleteBehavior{Type: deleteBehavior, ErrorMessage: deleteMessage}
 					assoc.Documentation = carriedDocumentation(
 						associationDocumentationStated(s), associationDocumentation(s), assoc.Documentation)
 					// Anchors are applied only when the statement names them —
@@ -120,7 +121,7 @@ func execCreateAssociation(ctx *ExecContext, s *ast.CreateAssociationStmt) error
 					ca.Type = assocType
 					ca.Owner = owner
 					ca.StorageFormat = storageFormat
-					ca.ChildDeleteBehavior = &domainmodel.DeleteBehavior{Type: deleteBehavior}
+					ca.ChildDeleteBehavior = &domainmodel.DeleteBehavior{Type: deleteBehavior, ErrorMessage: deleteMessage}
 					ca.ChildRef = childRef
 					ca.Documentation = carriedDocumentation(
 						associationDocumentationStated(s), associationDocumentation(s), ca.Documentation)
@@ -172,7 +173,8 @@ func execCreateAssociation(ctx *ExecContext, s *ast.CreateAssociationStmt) error
 			ParentID:      parentID,
 			ChildRef:      childRef,
 			ChildDeleteBehavior: &domainmodel.DeleteBehavior{
-				Type: deleteBehavior,
+				Type:         deleteBehavior,
+				ErrorMessage: deleteMessage,
 			},
 		}
 		if err := ctx.Backend.CreateCrossAssociation(dm.ID, ca); err != nil {
@@ -203,7 +205,8 @@ func execCreateAssociation(ctx *ExecContext, s *ast.CreateAssociationStmt) error
 			ParentID:      parentID,
 			ChildID:       childID,
 			ChildDeleteBehavior: &domainmodel.DeleteBehavior{
-				Type: deleteBehavior,
+				Type:         deleteBehavior,
+				ErrorMessage: deleteMessage,
 			},
 		}
 		applyAnchors(assoc, s.FromAnchor, s.ToAnchor)
@@ -251,7 +254,8 @@ func execAlterAssociation(ctx *ExecContext, s *ast.AlterAssociationStmt) error {
 			switch s.Operation {
 			case ast.AlterAssociationSetDeleteBehavior:
 				assoc.ChildDeleteBehavior = &domainmodel.DeleteBehavior{
-					Type: storageDeleteBehavior(s.DeleteBehavior),
+					Type:         storageDeleteBehavior(s.DeleteBehavior),
+					ErrorMessage: s.DeleteErrorMessage,
 				}
 			case ast.AlterAssociationSetOwner:
 				assoc.Owner = domainmodel.AssociationOwner(s.Owner.String())
@@ -276,7 +280,8 @@ func execAlterAssociation(ctx *ExecContext, s *ast.AlterAssociationStmt) error {
 			switch s.Operation {
 			case ast.AlterAssociationSetDeleteBehavior:
 				ca.ChildDeleteBehavior = &domainmodel.DeleteBehavior{
-					Type: storageDeleteBehavior(s.DeleteBehavior),
+					Type:         storageDeleteBehavior(s.DeleteBehavior),
+					ErrorMessage: s.DeleteErrorMessage,
 				}
 			case ast.AlterAssociationSetOwner:
 				ca.Owner = domainmodel.AssociationOwner(s.Owner.String())
@@ -538,18 +543,7 @@ func describeAssociation(ctx *ExecContext, name ast.QualifiedName) error {
 		// canonical name, so cascade was the odd one out and a describe → edit →
 		// exec loop died on it (upstream #901). The round-trip test in
 		// cmd_associations_delete_behavior_test.go feeds this back through the parser.
-		deleteBehavior := "DELETE_BUT_KEEP_REFERENCES"
-		if childDeleteBehavior != nil {
-			switch childDeleteBehavior.Type {
-			case domainmodel.DeleteBehaviorTypeDeleteMeAndReferences:
-				deleteBehavior = "DELETE_AND_REFERENCES"
-			case domainmodel.DeleteBehaviorTypeDeleteMeIfNoReferences:
-				deleteBehavior = "DELETE_IF_NO_REFERENCES"
-			case domainmodel.DeleteBehaviorTypeDeleteMeButKeepReferences:
-				deleteBehavior = "DELETE_BUT_KEEP_REFERENCES"
-			}
-		}
-		fmt.Fprintf(ctx.Output, "delete_behavior %s;\n", deleteBehavior)
+		fmt.Fprintf(ctx.Output, "%s;\n", describeDeleteClause(childDeleteBehavior))
 	}
 
 	for _, assoc := range dm.Associations {
@@ -716,4 +710,32 @@ func associationDocumentation(s *ast.CreateAssociationStmt) string {
 		return s.Documentation
 	}
 	return s.Comment
+}
+
+// describeDeleteClause renders a child delete behaviour as MDL.
+//
+// It emits the SQL spelling, because that is the one that says what the
+// behaviour DOES: `ON DELETE RESTRICT` on a FROM/TO pair reads the way a foreign
+// key does, while `DELETE_IF_NO_REFERENCES` leaves a reader to work out which
+// side is governed. The old spelling still parses, so nothing that already
+// exists breaks — this only changes what DESCRIBE chooses to write.
+//
+// The message is emitted whenever there is one. Dropping it would make a
+// describe -> exec round trip produce an association whose runtime does not
+// start, which is the failure this whole clause exists to prevent (CapTrackV2
+// §1) — and the round trip is exactly how these scripts get regenerated.
+func describeDeleteClause(db *domainmodel.DeleteBehavior) string {
+	action := "on delete set null"
+	if db != nil {
+		switch db.Type {
+		case domainmodel.DeleteBehaviorTypeDeleteMeAndReferences:
+			action = "on delete cascade"
+		case domainmodel.DeleteBehaviorTypeDeleteMeIfNoReferences:
+			action = "on delete restrict"
+		}
+	}
+	if db != nil && db.ErrorMessage != "" {
+		return action + " error_message " + mdlQuote(db.ErrorMessage)
+	}
+	return action
 }

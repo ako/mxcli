@@ -4,6 +4,7 @@ package executor
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
@@ -168,5 +169,59 @@ func assertStoredBehavior(t *testing.T, assoc *domainmodel.Association, want dom
 	}
 	if got != want {
 		t.Errorf("stored %q, want %q", got, want)
+	}
+}
+
+// The message must survive DESCRIBE, or a describe -> exec round trip writes an
+// association whose RUNTIME does not start — and regenerating scripts that way
+// is exactly how these models are maintained (CapTrackV2 §1).
+func TestDescribeAssociation_RoundTripsTheDeleteErrorMessage(t *testing.T) {
+	const msg = "A customer with orders cannot be deleted"
+	ctx, _ := assocFixture(t)
+	assertNoError(t, execCreateAssociation(ctx, &ast.CreateAssociationStmt{
+		Name:               ast.QualifiedName{Module: "M", Name: "Child_Parent"},
+		Parent:             ast.QualifiedName{Module: "M", Name: "Child"},
+		Child:              ast.QualifiedName{Module: "M", Name: "Parent"},
+		Type:               ast.AssocReference,
+		DeleteBehavior:     ast.DeleteIfNoReferences,
+		DeleteErrorMessage: msg,
+		CreateOrModify:     true,
+	}))
+
+	var buf bytes.Buffer
+	ctx.Output = &buf
+	assertNoError(t, describeAssociation(ctx, ast.QualifiedName{Module: "M", Name: "Child_Parent"}))
+
+	prog, errs := visitor.Build(buf.String())
+	if len(errs) > 0 {
+		t.Fatalf("DESCRIBE emitted MDL the parser rejects: %v\n--- output ---\n%s", errs, buf.String())
+	}
+	stmt := prog.Statements[0].(*ast.CreateAssociationStmt)
+	if stmt.DeleteBehavior != ast.DeleteIfNoReferences {
+		t.Errorf("behaviour = %v, want DeleteIfNoReferences", stmt.DeleteBehavior)
+	}
+	if stmt.DeleteErrorMessage != msg {
+		t.Errorf("message = %q, want %q\n--- output ---\n%s", stmt.DeleteErrorMessage, msg, buf.String())
+	}
+}
+
+// CONTROL: a behaviour with no message emits no ERROR_MESSAGE clause. An empty
+// one would re-execute into a message that is not what the author wrote.
+func TestDescribeAssociation_NoMessageEmitsNoClause(t *testing.T) {
+	ctx, _ := assocFixture(t)
+	assertNoError(t, execCreateAssociation(ctx, &ast.CreateAssociationStmt{
+		Name:           ast.QualifiedName{Module: "M", Name: "Child_Parent"},
+		Parent:         ast.QualifiedName{Module: "M", Name: "Child"},
+		Child:          ast.QualifiedName{Module: "M", Name: "Parent"},
+		Type:           ast.AssocReference,
+		DeleteBehavior: ast.DeleteCascade,
+		CreateOrModify: true,
+	}))
+
+	var buf bytes.Buffer
+	ctx.Output = &buf
+	assertNoError(t, describeAssociation(ctx, ast.QualifiedName{Module: "M", Name: "Child_Parent"}))
+	if strings.Contains(strings.ToLower(buf.String()), "error_message") {
+		t.Errorf("emitted an ERROR_MESSAGE clause for a cascade:\n%s", buf.String())
 	}
 }

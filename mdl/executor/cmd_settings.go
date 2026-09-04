@@ -384,13 +384,15 @@ func alterSettings(ctx *ExecContext, stmt *ast.AlterSettingsStmt) error {
 		}
 	} else {
 		var mfs, ents map[string]bool
+		var rets map[string]string
 		if section == "model" {
 			mfs = buildMicroflowQualifiedNames(ctx)
+			rets = buildMicroflowReturnTypes(ctx)
 		}
 		if section == "workflows" {
 			ents = buildEntityQualifiedNames(ctx)
 		}
-		if errs := validateSettingsReferences(stmt, mfs, ents, nil); len(errs) > 0 {
+		if errs := validateSettingsReferences(stmt, mfs, ents, rets, nil); len(errs) > 0 {
 			return errs[0]
 		}
 	}

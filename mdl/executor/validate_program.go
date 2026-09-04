@@ -186,6 +186,13 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 	// under --references, where it would only fire with -p (#836).
 	violations = append(violations, ValidateGrantRoles(prog)...)
 
+	// Flag an after-startup microflow that does not return Boolean (CE0142).
+	// The reference RESOLVES — the name exists — so #274's existence check has
+	// nothing to say; the constraint is on the thing the setting names. When the
+	// script creates the microflow itself, which is the usual shape, the answer
+	// is in the script and needs no project (CapTrackV2 FINDINGS §6).
+	violations = append(violations, ValidateAfterStartupReturnType(prog)...)
+
 	// Flag an export mapping value whose member is a nested path — an export has
 	// to produce the intermediate node, so Mendix rejects it with CE5015. The
 	// answer is in the statement, so it runs here rather than under --references

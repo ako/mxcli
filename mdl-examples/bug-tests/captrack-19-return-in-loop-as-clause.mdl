@@ -1,0 +1,51 @@
+-- CONTROL for CapTrackV2 FINDINGS §19 (see the .fail.mdl beside this file).
+--
+-- Un-exempting `returns T as $Var` from MDL062 must not turn the clause itself
+-- into an error. Its real effect — buildFlowGraph taking the terminal End
+-- event's value from the variable — is unchanged, and a fix that reported every
+-- as-clause microflow would satisfy the negative test while breaking the idiom
+-- the clause exists for.
+--
+-- Verify:
+--   mxcli check captrack-19-return-in-loop-as-clause.mdl     -- 0 errors
+--   mxcli exec  captrack-19-return-in-loop-as-clause.mdl -p app.mpr
+--   mx check -p app.mpr                                      -- 0 errors
+
+create module RetLoopOk;
+/
+create persistent entity RetLoopOk.Item (
+  Code: string(50)
+);
+/
+
+-- The as-clause idiom: the loop assigns the variable, the header returns it.
+-- This is the shape MDL062's message points authors at.
+create microflow RetLoopOk.MF_AsClause ()
+returns boolean as $Done
+begin
+  declare $Done boolean = false;
+  retrieve $L from RetLoopOk.Item;
+  loop $I in $L
+  begin
+    set $Done = true;
+  end loop;
+end;
+/
+
+-- `break` is the construct that replaces an in-loop return, with a single
+-- return after the loop.
+create microflow RetLoopOk.MF_BreakThenReturn ()
+returns boolean
+begin
+  declare $Found boolean = false;
+  retrieve $L from RetLoopOk.Item;
+  loop $I in $L
+  begin
+    if $I/Code = 'x' then
+      set $Found = true;
+      break;
+    end if;
+  end loop;
+  return $Found;
+end;
+/

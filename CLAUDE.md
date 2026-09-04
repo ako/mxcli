@@ -255,7 +255,9 @@ The reserved-word lists live in `mdl/executor/cmd_enumerations.go` (`mendixReser
 
 ### AfterStartupMicroflow Must Return Boolean
 
-A microflow wired as the project's **after-startup** microflow must return `Boolean` — Mendix build fails with **CE0142** on a void (no-return) microflow. A common trip-up: a seed/demo-data microflow wired to after-startup will not build until it ends with a `return true` (Boolean). This is a Mendix platform rule, not an mxcli check.
+A microflow wired as the project's **after-startup** microflow must return `Boolean` — Mendix build fails with **CE0142** on a void (no-return) microflow. A common trip-up: a seed/demo-data microflow wired to after-startup will not build until it ends with a `return true` (Boolean).
+
+`mxcli check` now reports it (**MDL073**), which it could not before: #274 made `ALTER SETTINGS` resolve the qualified names it writes, but the name here *resolves* — the constraint is on the thing it names, not on the reference. The check runs with **no project** when the script creates the microflow itself (the usual shape), and against the stored return type when it does not. A microflow whose return type cannot be established is left alone rather than guessed at. `BeforeShutdownMicroflow` and `HealthCheckMicroflow` are deliberately **not** type-checked — their rules have not been measured here.
 
 ### Overlay Writes: Never Invent a Key, Branch on `$Type`
 
