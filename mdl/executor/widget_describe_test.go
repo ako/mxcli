@@ -86,3 +86,55 @@ func TestPrintWidgetDescription_RendersTheHeaderAndProperties(t *testing.T) {
 		}
 	}
 }
+
+// The containers are the half of a widget's shape that DESCRIBE WIDGET was
+// missing relative to the generated .md — and the half whose MDL syntax is
+// currently wrong for most widgets, so reporting them without saying which are
+// reachable would repeat the .md's mistake.
+//
+// Gallery is used because it is an EMBEDDED definition carrying containers on
+// both sides of the answer, so this needs no project and cannot skip. An
+// earlier version pointed at the fixture project and skipped every run, since
+// the fixture has no extracted defs — a test that only ever skips proves
+// nothing (see #808 in fix-issue.md).
+func TestDescribeWidget_ReportsContainersAndWhetherTheyAreAuthorable(t *testing.T) {
+	desc, err := DescribeWidget("gallery", "")
+	if err != nil {
+		t.Fatalf("DescribeWidget(gallery): %v", err)
+	}
+	byKeyword := map[string]DescribedContainer{}
+	for _, c := range desc.Containers {
+		byKeyword[c.Keyword] = c
+	}
+	if len(byKeyword) == 0 {
+		t.Fatal("no containers reported for a widget that has three")
+	}
+
+	// `emptyplaceholder` is not in the grammar's container vocabulary.
+	if c, ok := byKeyword["emptyplaceholder"]; !ok {
+		t.Errorf("emptyplaceholder missing; got %v", desc.Containers)
+	} else if c.Authorable {
+		t.Error("emptyplaceholder reported authorable, but it does not parse today")
+	}
+
+	// The control, in the same widget: `template` does parse. Without it,
+	// "not authorable" above is equally consistent with a probe that always
+	// fails — which is the risk of deriving the answer rather than listing it.
+	if c, ok := byKeyword["template"]; !ok {
+		t.Errorf("template missing; got %v", desc.Containers)
+	} else if !c.Authorable {
+		t.Error("template parses inside a widget body but was reported unauthorable")
+	}
+}
+
+// Authorability is derived by parsing, never from a list. A list here would be
+// the same defect the whole proposal is about, one layer up — so an invented
+// keyword must come back false through the same path a real one comes back true.
+func TestContainerKeywordParses_DerivesTheAnswerRatherThanListingIt(t *testing.T) {
+	if !containerKeywordParses("group", false) {
+		t.Error("group should parse as an object-list container")
+	}
+	if containerKeywordParses("definitelynotakeyword", false) {
+		t.Error("an invented keyword must not report as authorable")
+	}
+}

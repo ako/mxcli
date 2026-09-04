@@ -11,6 +11,7 @@ import (
 
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
 	"github.com/mendixlabs/mxcli/mdl/types"
+	"github.com/mendixlabs/mxcli/mdl/visitor"
 	mwidgets "github.com/mendixlabs/mxcli/modelsdk/widgets"
 	mmpk "github.com/mendixlabs/mxcli/modelsdk/widgets/mpk"
 )
@@ -70,6 +71,8 @@ func DescribeWidget(arg, projectPath string) (*WidgetDescription, error) {
 			}
 		}
 	}
+	desc.Containers = describeContainers(def)
+
 	if desc.Source == "" {
 		tmpl, terr := mwidgets.GetTemplate(widgetID)
 		if terr != nil || tmpl == nil {
@@ -117,6 +120,25 @@ type WidgetDescription struct {
 	Properties   []DescribedProperty `json:"properties"`
 	Rules        []DescribedRule     `json:"dynamicRules"`
 	RuleCoverage string              `json:"ruleCoverage,omitempty"`
+	// Containers a widget's body can hold: child slots (a curly-brace block of
+	// widgets) and object lists (repeating entries). Reported with whether MDL
+	// can currently express each one, which is NOT a given — see
+	// DescribedContainer.Authorable.
+	Containers []DescribedContainer `json:"containers,omitempty"`
+}
+
+// DescribedContainer is one child slot or object list of a widget.
+type DescribedContainer struct {
+	Keyword     string   `json:"keyword"`
+	PropertyKey string   `json:"propertyKey"`
+	Kind        string   `json:"kind"` // "child slot" | "object list"
+	ItemKeys    []string `json:"itemKeys,omitempty"`
+	// Authorable reports whether `<keyword> name (…)` actually parses inside a
+	// widget body today. It is derived by parsing a probe, never from a list:
+	// the bug this description exists to help with (mendixlabs/mxcli#1036) was
+	// two lists of keywords with nothing comparing them, and a third list here
+	// would be the same mistake one layer up.
+	Authorable bool `json:"authorable"`
 }
 
 func resolveWidgetTarget(registry *WidgetRegistry, arg string) (string, *WidgetDefinition) {
@@ -341,6 +363,20 @@ func PrintWidgetDescription(out io.Writer, d WidgetDescription) {
 	if d.RuleCoverage != "" {
 		fmt.Fprintf(out, "  — %s\n", d.RuleCoverage)
 	}
+
+	if len(d.Containers) > 0 {
+		fmt.Fprintf(out, "\nBody containers (%d):\n", len(d.Containers))
+		for _, c := range d.Containers {
+			mark := "  authorable"
+			if !c.Authorable {
+				mark = "  NOT authorable from MDL yet"
+			}
+			fmt.Fprintf(out, "  %-34s %-12s -> %s%s\n", c.Keyword, c.Kind, c.PropertyKey, mark)
+			if len(c.ItemKeys) > 0 {
+				fmt.Fprintf(out, "  %-34s   items: %s\n", "", strings.Join(c.ItemKeys, ", "))
+			}
+		}
+	}
 }
 
 func countProps(props []DescribedProperty) int {
@@ -403,4 +439,50 @@ func describeWidgetStmt(ctx *ExecContext, name string) error {
 	}
 	PrintWidgetDescription(ctx.Output, *desc)
 	return nil
+}
+
+// describeContainers lists a widget's child slots and object lists, each marked
+// with whether MDL can currently express it.
+func describeContainers(def *WidgetDefinition) []DescribedContainer {
+	if def == nil {
+		return nil
+	}
+	var out []DescribedContainer
+	for _, cs := range def.ChildSlots {
+		kw := strings.ToLower(cs.MDLContainer)
+		out = append(out, DescribedContainer{
+			Keyword: kw, PropertyKey: cs.PropertyKey, Kind: "child slot",
+			Authorable: containerKeywordParses(kw, true),
+		})
+	}
+	for _, ol := range def.ObjectLists {
+		kw := strings.ToLower(ol.MDLContainer)
+		c := DescribedContainer{
+			Keyword: kw, PropertyKey: ol.PropertyKey, Kind: "object list",
+			Authorable: containerKeywordParses(kw, false),
+		}
+		for _, ip := range ol.ItemProperties {
+			c.ItemKeys = append(c.ItemKeys, ip.PropertyKey)
+		}
+		out = append(out, c)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Keyword < out[j].Keyword })
+	return out
+}
+
+// containerKeywordParses answers "can I write this inside a widget body?" by
+// parsing a minimal page and checking for errors — deriving the answer from the
+// grammar itself rather than restating it.
+func containerKeywordParses(keyword string, slot bool) bool {
+	if keyword == "" {
+		return false
+	}
+	body := keyword + " probe1 (x: 'y')"
+	if slot {
+		body = keyword + " probe1 { dynamictext t (Content: 'x') }"
+	}
+	src := "create page Probe.P (Title: 'P', Layout: Atlas_Core.Atlas_Default) {\n" +
+		"  pluggablewidget 'probe.Widget' pw {\n    " + body + "\n  }\n}\n"
+	_, errs := visitor.Build(src)
+	return len(errs) == 0
 }
