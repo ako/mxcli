@@ -212,7 +212,7 @@ func StartLocalApp(opts LocalAppOptions) (*LocalApp, error) {
 		}
 		if !build.OK() {
 			app.Stop()
-			return nil, fmt.Errorf("build failed: %s\n%s", build.Message, string(build.Raw))
+			return nil, &BuildFailedError{Result: build}
 		}
 	}
 
