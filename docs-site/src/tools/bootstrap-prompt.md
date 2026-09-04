@@ -110,20 +110,33 @@ tag (latest is v0.16.0) **and** as a rolling `nightly` pre-release, with assets 
 
 ## Which Mendix version to ask for
 
-The skill defaults to the newest version that has a published MxBuild — everything
-mxcli does starts with downloading it, so "supported" means "on the CDN". It runs this
-check itself when asked for a newer version, and it is the check to run before bumping
-the default:
+The skill prefers **whatever the session environment already provides**, and otherwise
+the newest version with a published MxBuild.
+
+The environment's contribution is a *cached* MxBuild, not a variable — a Claude Code
+session image may bake one in, and reusing it turns a multi-hundred-MB download into
+no download at all. The cache directory is the signal:
 
 ```bash
-curl -sI -o /dev/null -w '%{http_code}\n' https://cdn.mendix.com/runtime/mxbuild-11.13.0.tar.gz   # 200
-curl -sI -o /dev/null -w '%{http_code}\n' https://cdn.mendix.com/runtime/mendix-11.13.0.tar.gz    # 200 (runtime)
+ls ~/.mxcli/mxbuild/ 2>/dev/null | sort -V | tail -1   # e.g. 11.13.0, or empty
+```
+
+With no cached version, the skill takes the newest on the CDN — everything mxcli does
+starts with downloading MxBuild, so "supported" means "on the CDN". At the time of
+writing that is **11.14.0**; treat the number as perishable and run the check rather
+than quoting it:
+
+```bash
+V=11.14.0
+curl -sI -o /dev/null -w '%{http_code}\n' https://cdn.mendix.com/runtime/mxbuild-$V.tar.gz   # 200
+curl -sI -o /dev/null -w '%{http_code}\n' https://cdn.mendix.com/runtime/mendix-$V.tar.gz    # 200 (runtime)
 ```
 
 Both have to answer `200` — `run --local` needs the runtime tarball as well as
-MxBuild. In a solution, give every app the **same** version: they share the
-`~/.mxcli/mxbuild` cache, and a mismatch means a second multi-hundred-MB download and
-two runtimes to keep straight.
+MxBuild. This is also the check to run before bumping the version named in the skill.
+In a solution, give every app the **same** version: they share the `~/.mxcli/mxbuild`
+cache, and a mismatch means a second multi-hundred-MB download and two runtimes to
+keep straight.
 
 ## Two rules that make this robust
 

@@ -55,7 +55,8 @@ it is building.
 6. **Look and feel.** One of the bundled themes: `signal` (light, high contrast),
    `ledger` (light, dense, data-heavy), `console` (dark), or `none` for stock Atlas.
    Default `signal`.
-7. **Mendix version.** Default `11.13.0`.
+7. **Mendix version.** Default to whatever the session environment already provides —
+   see below — and otherwise the newest version on the CDN (today `11.14.0`).
 8. **Do you have requirements to work from?** A specification document, a
    prototype, a wireframe, a long description — anything that is the source of
    truth but is not in this repo. **Default: yes, record them.** If they say yes,
@@ -71,20 +72,38 @@ it is building.
 If the user says "defaults" or ignores a question, choose something sensible for it,
 say what you chose in one line, and keep going — **do not block on them twice**.
 
-### Checking the Mendix version default
+### Choosing the Mendix version
 
-Everything mxcli does starts with downloading MxBuild, so "supported" means "on the
-CDN". If asked for a version newer than the default, verify both tarballs answer
-`200` before using it — `run --local` needs the runtime as well as MxBuild:
+**Prefer a version the environment already has.** A Claude Code session image may bake
+in an MxBuild, and using it turns a multi-hundred-MB download into no download at all.
+There is no environment variable for this — the cache directory is the signal:
 
 ```bash
-curl -sI -o /dev/null -w '%{http_code}\n' https://cdn.mendix.com/runtime/mxbuild-11.13.0.tar.gz
-curl -sI -o /dev/null -w '%{http_code}\n' https://cdn.mendix.com/runtime/mendix-11.13.0.tar.gz
+ls ~/.mxcli/mxbuild/ 2>/dev/null | sort -V | tail -1   # e.g. 11.13.0, or empty
 ```
+
+If that names a version, use it and say so in one line ("using 11.13.0, already cached
+in this environment"). If the user asked for a specific version, they win — check it on
+the CDN as below and accept the download.
+
+**Otherwise take the newest version on the CDN.** Everything mxcli does starts with
+downloading MxBuild, so "supported" means "on the CDN", and `run --local` needs the
+runtime tarball as well. At the time of writing the newest is **11.14.0** (11.15.0 is
+not published). Do not trust that number — it ages. Confirm the one you land on, and
+walk backwards a minor if it 404s:
+
+```bash
+V=11.14.0
+curl -sI -o /dev/null -w '%{http_code}\n' https://cdn.mendix.com/runtime/mxbuild-$V.tar.gz
+curl -sI -o /dev/null -w '%{http_code}\n' https://cdn.mendix.com/runtime/mendix-$V.tar.gz
+```
+
+Both have to answer `200`. Run the same check for any version the user names.
 
 In a solution, give every app the **same** version: they share the `~/.mxcli/mxbuild`
 cache, and a mismatch means a second multi-hundred-MB download and two runtimes to
-keep straight.
+keep straight — which also means the cached-version rule applies to the solution as a
+whole, not per app.
 
 ---
 
