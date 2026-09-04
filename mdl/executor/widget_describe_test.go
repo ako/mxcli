@@ -138,3 +138,100 @@ func TestContainerKeywordParses_DerivesTheAnswerRatherThanListingIt(t *testing.T
 		t.Error("an invented keyword must not report as authorable")
 	}
 }
+
+// The example is the half of the generated .md that was WRONG — its version
+// promised syntax that failed on its own first line. This one is built from
+// probes, so the guarantee is testable: feed it back and it parses.
+func TestDescribeWidget_ExampleParsesAsWritten(t *testing.T) {
+	for _, w := range []string{"gallery", "combobox", "image"} {
+		desc, err := DescribeWidget(w, "")
+		if err != nil {
+			t.Fatalf("DescribeWidget(%s): %v", w, err)
+		}
+		if desc.Example == "" {
+			t.Errorf("%s: no example emitted", w)
+			continue
+		}
+		if !pageBodyParses(desc.Example) {
+			t.Errorf("%s: emitted example does not parse:\n%s", w, desc.Example)
+		}
+	}
+}
+
+// A container MDL cannot express must be left out AND named. Silently including
+// it is what made the .md misleading rather than merely incomplete; silently
+// dropping it would be almost as bad, since the reader would never learn the
+// widget has it.
+func TestDescribeWidget_ExampleOmitsUnauthorableContainersAndSaysSo(t *testing.T) {
+	desc, err := DescribeWidget("gallery", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(desc.Example, "emptyplaceholder") {
+		t.Errorf("example includes a container that cannot be written:\n%s", desc.Example)
+	}
+	var named bool
+	for _, o := range desc.OmittedFromExample {
+		if strings.Contains(o, "emptyplaceholder") {
+			named = true
+		}
+	}
+	if !named {
+		t.Errorf("omitted container not named; got %v", desc.OmittedFromExample)
+	}
+
+	// The control: an authorable container IS included, so "omits things" is
+	// not simply "omits everything".
+	if !strings.Contains(desc.Example, "template") {
+		t.Errorf("authorable container missing from the example:\n%s", desc.Example)
+	}
+}
+
+// Two widgets sharing a name on one page is invalid, and the parser does not
+// catch it — so the example has to number them itself. The .md generator had
+// this same defect.
+func TestDescribeWidget_ExampleNamesAreUnique(t *testing.T) {
+	desc, err := DescribeWidget("gallery", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, line := range strings.Split(desc.Example, "\n") {
+		fields := strings.Fields(strings.TrimSpace(line))
+		if len(fields) < 2 {
+			continue
+		}
+		name := fields[1]
+		if !strings.HasPrefix(name, "slot") && !strings.HasPrefix(name, "item") {
+			continue
+		}
+		if seen[name] {
+			t.Errorf("duplicate widget name %q in example:\n%s", name, desc.Example)
+		}
+		seen[name] = true
+	}
+	if len(seen) < 2 {
+		t.Skip("widget has fewer than two named containers; nothing to collide")
+	}
+}
+
+// The head form is probed too: a widget whose keyword the grammar accepts uses
+// it, and one whose keyword it does not falls back to the explicit-id form.
+// Both halves in one test, so neither can pass vacuously.
+func TestDescribeWidget_ExampleHeadFormFollowsTheGrammar(t *testing.T) {
+	authorable, err := DescribeWidget("gallery", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(authorable.Example, "gallery widget1") {
+		t.Errorf("gallery's keyword parses, so the example should use it:\n%s", authorable.Example)
+	}
+
+	notYet, err := DescribeWidget("image", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.HasPrefix(notYet.Example, "pluggablewidget") == strings.HasPrefix(notYet.Example, "image widget1") {
+		t.Fatalf("indeterminate head form:\n%s", notYet.Example)
+	}
+}

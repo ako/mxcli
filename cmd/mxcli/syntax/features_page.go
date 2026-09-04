@@ -52,6 +52,11 @@ DESCRIBE WIDGET 'com.mendix.widget.web.htmlelement.HTMLElement';
 -- editor uses to HIDE properties under some configurations — the ones that
 -- cause CE0463 if written into the pruned half.
 --
+-- Also emits an MDL example that PARSES AS WRITTEN: the head form and every
+-- container in it are chosen by probing the real parser, and anything the
+-- grammar cannot yet express is left out and named. So the example widens on
+-- its own as MDL gains ground, and cannot promise syntax that fails.
+--
 -- Same output as ` + "`mxcli widget describe`" + `, because it is the same code.`,
 		SeeAlso: []string{"page.widgets", "page.create"},
 	})

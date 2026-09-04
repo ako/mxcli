@@ -88,6 +88,7 @@ func DescribeWidget(arg, projectPath string) (*WidgetDescription, error) {
 			desc.Rules = rulesFromDef(def.PropertyVisibility)
 		}
 	}
+	desc.Example, desc.OmittedFromExample = buildUsageExample(desc)
 	return &desc, nil
 }
 
@@ -125,6 +126,11 @@ type WidgetDescription struct {
 	// can currently express each one, which is NOT a given — see
 	// DescribedContainer.Authorable.
 	Containers []DescribedContainer `json:"containers,omitempty"`
+	// Example is re-executable MDL placing this widget, and OmittedFromExample
+	// says what it leaves out. Both are derived by parsing, so the example is
+	// guaranteed to parse and widens on its own as the grammar does.
+	Example            string   `json:"example,omitempty"`
+	OmittedFromExample []string `json:"omittedFromExample,omitempty"`
 }
 
 // DescribedContainer is one child slot or object list of a widget.
@@ -364,6 +370,16 @@ func PrintWidgetDescription(out io.Writer, d WidgetDescription) {
 		fmt.Fprintf(out, "  — %s\n", d.RuleCoverage)
 	}
 
+	if d.Example != "" {
+		fmt.Fprintf(out, "\nMDL example (parses as written):\n")
+		for _, line := range strings.Split(d.Example, "\n") {
+			fmt.Fprintf(out, "  %s\n", line)
+		}
+		if len(d.OmittedFromExample) > 0 {
+			fmt.Fprintf(out, "  -- omitted: %s\n", strings.Join(d.OmittedFromExample, "; "))
+		}
+	}
+
 	if len(d.Containers) > 0 {
 		fmt.Fprintf(out, "\nBody containers (%d):\n", len(d.Containers))
 		for _, c := range d.Containers {
@@ -483,6 +499,130 @@ func containerKeywordParses(keyword string, slot bool) bool {
 	}
 	src := "create page Probe.P (Title: 'P', Layout: Atlas_Core.Atlas_Default) {\n" +
 		"  pluggablewidget 'probe.Widget' pw {\n    " + body + "\n  }\n}\n"
+	_, errs := visitor.Build(src)
+	return len(errs) == 0
+}
+
+// buildUsageExample renders MDL that places this widget, and returns it with a
+// list of what it left out.
+//
+// Two rules make it worth printing at all, both learned from the generated .md
+// this replaces (mendixlabs/mxcli#1036):
+//
+//  1. It emits only what PARSES. The head form, and every container, is chosen
+//     by probing the real parser — so the example corrects itself as the grammar
+//     gains ground, and cannot drift the way a hand-written template did.
+//  2. It says what it omitted and why. The .md's example silently included
+//     containers that could not be written, which is what made it misleading
+//     rather than merely incomplete.
+//
+// The result is verified by parsing it before returning; if it somehow does not
+// parse, the caller is told rather than handed a broken snippet.
+func buildUsageExample(d WidgetDescription) (example string, omitted []string) {
+	name := "widget1"
+
+	// Head: the widget's own keyword when the grammar takes it, else the
+	// explicit-id form. Probed, never assumed.
+	head := "pluggablewidget '" + d.WidgetID + "' " + name
+	if kw := strings.ToLower(d.MDLName); kw != "" && widgetKeywordParses(kw) {
+		head = kw + " " + name
+	}
+
+	// Scalars: only those whose value can be written as a literal. A datasource,
+	// attribute, action or expression needs a real name from the project, and
+	// inventing one would produce an example that parses but cannot run.
+	var props []string
+	var needBinding []string
+	for _, p := range d.Properties {
+		if p.System {
+			continue
+		}
+		switch p.Type {
+		case "boolean", "integer", "enumeration", "string", "textTemplate":
+			if p.Required {
+				props = append(props, "  "+p.Key+": "+exampleLiteral(p))
+			}
+		case "attribute", "datasource", "action", "expression", "selection":
+			if p.Required {
+				needBinding = append(needBinding, p.Key+" ("+p.Type+")")
+			}
+		}
+	}
+
+	// Names are numbered across the whole body: two widgets sharing a name on
+	// one page is invalid, and the parser does not catch it — the same defect
+	// the generated .md had.
+	var body []string
+	n := 0
+	for _, c := range d.Containers {
+		if !c.Authorable {
+			omitted = append(omitted, c.Keyword)
+			continue
+		}
+		n++
+		if c.Kind == "child slot" {
+			body = append(body, fmt.Sprintf("  %s slot%d {\n    -- widgets for `%s`\n  }", c.Keyword, n, c.PropertyKey))
+			continue
+		}
+		item := fmt.Sprintf("  %s item%d", c.Keyword, n)
+		if len(c.ItemKeys) > 0 {
+			item += " (" + c.ItemKeys[0] + ": '…')"
+		}
+		body = append(body, item+"   -- one entry of `"+c.PropertyKey+"`")
+	}
+
+	var sb strings.Builder
+	sb.WriteString(head)
+	if len(props) > 0 {
+		sb.WriteString(" (\n" + strings.Join(props, ",\n") + "\n)")
+	}
+	if len(body) > 0 {
+		sb.WriteString(" {\n" + strings.Join(body, "\n") + "\n}")
+	}
+	out := sb.String()
+
+	if !pageBodyParses(out) {
+		return "", append(omitted, "(example could not be generated for this widget)")
+	}
+	for _, n := range needBinding {
+		omitted = append(omitted, n+" — needs a name from your project")
+	}
+	return out, omitted
+}
+
+// exampleLiteral picks a writable value for a scalar property: its default when
+// it has one, else the first enumeration value, else a placeholder.
+func exampleLiteral(p DescribedProperty) string {
+	switch p.Type {
+	case "boolean":
+		if p.Default != "" {
+			return p.Default
+		}
+		return "false"
+	case "integer":
+		if p.Default != "" {
+			return p.Default
+		}
+		return "0"
+	}
+	if p.Default != "" {
+		return "'" + p.Default + "'"
+	}
+	if len(p.Enum) > 0 {
+		return "'" + p.Enum[0] + "'"
+	}
+	return "'…'"
+}
+
+// widgetKeywordParses reports whether `<keyword> name (…)` is accepted as a
+// widget in a page body — the head-form half of the same probe the containers use.
+func widgetKeywordParses(keyword string) bool {
+	return pageBodyParses(keyword + " probe1 (someProp: 'x')")
+}
+
+// pageBodyParses puts a fragment in a minimal page and reports whether it parses.
+func pageBodyParses(body string) bool {
+	src := "create page Probe.P (Title: 'P', Layout: Atlas_Core.Atlas_Default) {\n" + body + "\n}\n"
 	_, errs := visitor.Build(src)
 	return len(errs) == 0
 }
