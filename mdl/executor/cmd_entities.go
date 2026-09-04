@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
+	"github.com/mendixlabs/mxcli/mdl/dmlayout"
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
 	"github.com/mendixlabs/mxcli/mdl/types"
 	"github.com/mendixlabs/mxcli/model"
@@ -154,8 +155,14 @@ func execCreateEntity(ctx *ExecContext, s *ast.CreateEntityStmt) error {
 	} else if existingEntity != nil {
 		location = existingEntity.Location
 	} else {
-		// Auto-position based on existing entities
-		location = model.Point{X: 100 + len(dm.Entities)*150, Y: 100}
+		// No @Position and no stored entity: take the next grid slot.
+		//
+		// This used to be `X: 100 + len(dm.Entities)*150, Y: 100` — one row, for
+		// every entity ever created. A 40-entity domain model came out as a
+		// 6,000px line, and 150px is narrower than an entity box, so the boxes
+		// touched as well. The grid is not a good layout, only a defensible
+		// default; `mxcli layout` computes one from the association graph.
+		location = dmlayout.GridSlot(len(dm.Entities))
 	}
 
 	// Determine persistable based on entity kind

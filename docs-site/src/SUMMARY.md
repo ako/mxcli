@@ -120,6 +120,7 @@
 # Part V: Project Tools
 
 - [Default Styling](tools/theme.md)
+- [Domain Model Layout](tools/domain-model-layout.md)
 - [Code Navigation](tools/code-navigation.md)
   - [SHOW CALLERS / CALLEES](tools/callers-callees.md)
   - [SHOW REFERENCES / IMPACT](tools/references-impact.md)
