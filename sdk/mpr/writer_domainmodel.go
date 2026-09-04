@@ -1266,11 +1266,29 @@ func serializeDeleteBehavior(parentBehavior, childBehavior *domainmodel.DeleteBe
 		childType = string(childBehavior.Type)
 	}
 
+	// A "delete me if no references" child side carries the message the user sees
+	// when the delete is refused; every other behaviour leaves it null. Both were
+	// hardcoded null here, and for that one behaviour that produces a model whose
+	// RUNTIME will not start — `None.get` in SchemeFactory, with `mx check`
+	// reporting 0 errors either way (CapTrackV2 §1).
+	//
+	// Shape measured on a Studio Pro reference (ako/TestApp,
+	// Mappings.Order_Customer): an ordinary Texts$Text, which serializeText
+	// already produces with the typed-array marker 3 this needs.
+	var childMessage any
+	if childType == string(domainmodel.DeleteBehaviorTypeDeleteMeIfNoReferences) {
+		msg := ""
+		if childBehavior != nil {
+			msg = childBehavior.ErrorMessage
+		}
+		childMessage = serializeText(&model.Text{Translations: map[string]string{"en_US": msg}})
+	}
+
 	return bson.D{
 		{Key: "$ID", Value: idToBsonBinary(generateUUID())},
 		{Key: "$Type", Value: "DomainModels$DeleteBehavior"},
 		{Key: "ChildDeleteBehavior", Value: childType},
-		{Key: "ChildErrorMessage", Value: nil},
+		{Key: "ChildErrorMessage", Value: childMessage},
 		{Key: "ParentDeleteBehavior", Value: parentType},
 		{Key: "ParentErrorMessage", Value: nil},
 	}

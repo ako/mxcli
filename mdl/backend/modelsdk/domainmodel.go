@@ -576,7 +576,13 @@ func assocFromGen(a *genDm.Association) *domainmodel.Association {
 	out.ID = model.ID(a.ID())
 	if db, ok := a.DeleteBehavior().(*genDm.AssociationDeleteBehavior); ok && db != nil {
 		out.ParentDeleteBehavior = &domainmodel.DeleteBehavior{Type: domainmodel.DeleteBehaviorType(db.ParentDeleteBehavior())}
-		out.ChildDeleteBehavior = &domainmodel.DeleteBehavior{Type: domainmodel.DeleteBehaviorType(db.ChildDeleteBehavior())}
+		out.ChildDeleteBehavior = &domainmodel.DeleteBehavior{
+			Type: domainmodel.DeleteBehaviorType(db.ChildDeleteBehavior()),
+			// Read the refusal message back too, or DESCRIBE cannot emit it and a
+			// describe -> exec round trip writes an association whose runtime will
+			// not start (CapTrackV2 §1).
+			ErrorMessage: deleteErrorMessageFromGen(db.ChildErrorMessage()),
+		}
 	}
 
 	// Read the external (OData) source back. RemoteParentNavigationProperty in
@@ -614,7 +620,35 @@ func crossAssocFromGen(ca *genDm.CrossAssociation) *domainmodel.CrossModuleAssoc
 	out.ID = model.ID(ca.ID())
 	if db, ok := ca.DeleteBehavior().(*genDm.AssociationDeleteBehavior); ok && db != nil {
 		out.ParentDeleteBehavior = &domainmodel.DeleteBehavior{Type: domainmodel.DeleteBehaviorType(db.ParentDeleteBehavior())}
-		out.ChildDeleteBehavior = &domainmodel.DeleteBehavior{Type: domainmodel.DeleteBehaviorType(db.ChildDeleteBehavior())}
+		out.ChildDeleteBehavior = &domainmodel.DeleteBehavior{
+			Type: domainmodel.DeleteBehaviorType(db.ChildDeleteBehavior()),
+			// Read the refusal message back too, or DESCRIBE cannot emit it and a
+			// describe -> exec round trip writes an association whose runtime will
+			// not start (CapTrackV2 §1).
+			ErrorMessage: deleteErrorMessageFromGen(db.ChildErrorMessage()),
+		}
 	}
 	return out
+}
+
+// deleteErrorMessageFromGen reads the en_US text out of a delete behaviour's
+// error message, or "" when there is none. The message is a Texts$Text like any
+// caption; MDL carries one string, and CarryTranslations puts the other
+// languages back on a rewrite.
+func deleteErrorMessageFromGen(el element.Element) string {
+	txt, ok := el.(*genTexts.Text)
+	if !ok || txt == nil {
+		return ""
+	}
+	t := textFromGen(txt)
+	if t == nil {
+		return ""
+	}
+	if v, ok := t.Translations["en_US"]; ok {
+		return v
+	}
+	for _, v := range t.Translations {
+		return v
+	}
+	return ""
 }

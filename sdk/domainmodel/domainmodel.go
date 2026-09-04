@@ -402,6 +402,15 @@ const (
 type DeleteBehavior struct {
 	model.BaseElement
 	Type DeleteBehaviorType `json:"type"`
+	// ErrorMessage is the text the user sees when a DeleteMeIfNoReferences
+	// delete is refused — Studio Pro's "Error message if 'X' object cannot be
+	// deleted", which the dialog only shows once that behaviour is selected.
+	//
+	// It is stored as a Texts$Text, so it is translatable like any caption. Its
+	// absence is not cosmetic: an association with DeleteMeIfNoReferences and a
+	// null message stops the RUNTIME STARTING, which is a worse failure than a
+	// build error and names nothing about the model (CapTrackV2 §1).
+	ErrorMessage string `json:"errorMessage,omitempty"`
 }
 
 // DeleteBehaviorType represents the type of delete behavior.

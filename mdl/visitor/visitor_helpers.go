@@ -713,3 +713,45 @@ func stripMDLComments(s string) string {
 // ----------------------------------------------------------------------------
 
 // ExitCreateMicroflowStatement is called when exiting the createMicroflowStatement production.
+
+// buildReferentialAction maps SQL's referential actions onto Mendix's three
+// delete behaviours. They correspond exactly:
+//
+//	ON DELETE CASCADE   -> DeleteMeAndReferences
+//	ON DELETE RESTRICT  -> DeleteMeIfNoReferences
+//	ON DELETE SET NULL  -> DeleteMeButKeepReferences (Mendix's default)
+//
+// Every alternative the referentialAction rule admits is read explicitly, for
+// the reason buildDeleteBehavior spells out above: a token that falls through to
+// a zero value is a LEGAL behaviour, so the substitution is silent all the way
+// to disk and overwrites whatever the association had (upstream #901). Adding an
+// alternative to the rule means adding it here. The default below is unreachable
+// while the rule has three alternatives, and is not a fallback to rely on.
+func buildReferentialAction(ctx parser.IReferentialActionContext) ast.DeleteBehavior {
+	if ctx == nil {
+		return ast.DeleteKeepReferences
+	}
+	ra := ctx.(*parser.ReferentialActionContext)
+	switch {
+	case ra.CASCADE() != nil:
+		return ast.DeleteCascade
+	case ra.RESTRICT() != nil:
+		return ast.DeleteIfNoReferences
+	case ra.SET() != nil && ra.NULL() != nil:
+		return ast.DeleteKeepReferences
+	default:
+		return ast.DeleteKeepReferences
+	}
+}
+
+// buildErrorMessage reads the text of an ERROR_MESSAGE clause.
+func buildErrorMessage(ctx parser.IErrorMessageClauseContext) string {
+	if ctx == nil {
+		return ""
+	}
+	emc, ok := ctx.(*parser.ErrorMessageClauseContext)
+	if !ok || emc.STRING_LITERAL() == nil {
+		return ""
+	}
+	return unquoteString(emc.STRING_LITERAL().GetText())
+}

@@ -184,12 +184,38 @@ func init() {
 		Path:    "domain-model.association.delete-behavior",
 		Summary: "Delete behavior options for associations",
 		Keywords: []string{
-			"delete behavior", "cascade", "prevent",
+			"delete behavior", "cascade", "prevent", "restrict",
+			"on delete", "set null", "error message", "referential action",
 			"delete and references", "delete but keep references",
 			"delete if no references", "referential integrity",
 		},
-		Syntax:  "DELETE_BEHAVIOR options:\n  DELETE_BUT_KEEP_REFERENCES  Delete object, nullify FK (default)\n  DELETE_AND_REFERENCES       Delete object and cascade to children\n  DELETE_IF_NO_REFERENCES     Prevent deletion if referenced\n  CASCADE                     Alias for DELETE_AND_REFERENCES\n  PREVENT                     Alias for DELETE_IF_NO_REFERENCES",
-		Example: "CREATE ASSOCIATION Shop.Order_Customer\n  FROM Shop.Order TO Shop.Customer\n  TYPE Reference\n  DELETE_BEHAVIOR PREVENT;\n\nCREATE ASSOCIATION Shop.Order_Lines\n  FROM Shop.OrderLine TO Shop.Order\n  TYPE Reference\n  DELETE_BEHAVIOR CASCADE;",
+		Syntax: "ON DELETE <action> [ERROR_MESSAGE '<text>']\n" +
+			"  ON DELETE SET NULL   Keep the referencing objects, clear the reference (default)\n" +
+			"  ON DELETE CASCADE    Delete the referencing objects too\n" +
+			"  ON DELETE RESTRICT   Refuse the delete while references exist\n\n" +
+			"These are SQL's referential actions, and Mendix's three delete behaviours are\n" +
+			"exactly them. FROM/TO already matches a foreign key's direction -- FROM owns the\n" +
+			"key, TO is referenced -- so `FROM Order TO Customer ON DELETE RESTRICT` means\n" +
+			"deleting a CUSTOMER is refused while Orders reference it, the same way it would\n" +
+			"in CREATE TABLE.\n\n" +
+			"ERROR_MESSAGE is what the user sees when a RESTRICT delete is refused (Studio\n" +
+			"Pro's \"Error message if 'X' object cannot be deleted\"). SQL has no equivalent;\n" +
+			"this is a Mendix extension. Omitting it stores an empty message.\n\n" +
+			"The older spelling still works and means the same thing:\n" +
+			"  DELETE_BEHAVIOR DELETE_BUT_KEEP_REFERENCES | DELETE_AND_REFERENCES\n" +
+			"                | DELETE_IF_NO_REFERENCES | CASCADE | PREVENT\n" +
+			"                [ERROR_MESSAGE '<text>']\n" +
+			"DESCRIBE emits the ON DELETE form, because it says which side is governed.",
+		Example: "CREATE ASSOCIATION Shop.Order_Customer\n" +
+			"  FROM Shop.Order TO Shop.Customer\n" +
+			"  TYPE Reference\n" +
+			"  ON DELETE RESTRICT\n" +
+			"    ERROR_MESSAGE 'A customer with orders cannot be deleted';\n\n" +
+			"CREATE ASSOCIATION Shop.Order_Lines\n" +
+			"  FROM Shop.OrderLine TO Shop.Order\n" +
+			"  TYPE Reference\n" +
+			"  ON DELETE CASCADE;\n\n" +
+			"ALTER ASSOCIATION Shop.Order_Customer SET ON DELETE SET NULL;",
 		SeeAlso: []string{"domain-model.association.create"},
 	})
 

@@ -1,0 +1,73 @@
+-- CapTrackV2 FINDINGS §1 — `DELETE_BEHAVIOR PREVENT` wrote an app whose RUNTIME
+-- WILL NOT START. Not a build error; `mx check` reports 0 errors either way.
+--
+--   ERROR - M2EE: An error occurred while initializing the Runtime: None.get
+--   java.util.NoSuchElementException: None.get
+--     at …SchemeFactory$.…$setDeleteBehavior(SchemeFactory.scala:515)
+--
+-- mxcli wrote ChildDeleteBehavior "DeleteMeIfNoReferences" with a NULL
+-- ChildErrorMessage. Studio Pro writes a Texts$Text there — the field its
+-- association dialog only reveals once that behaviour is selected, which is why
+-- it was missed. Measured on a Studio Pro reference (ako/TestApp,
+-- Mappings.Order_Customer, Mendix 11), the stored shape is:
+--
+--   "ChildDeleteBehavior": "DeleteMeIfNoReferences",
+--   "ChildErrorMessage": { "$Type": "Texts$Text",
+--                          "Items": [ 3, { "$Type": "Texts$Translation",
+--                                          "LanguageCode": "en_US",
+--                                          "Text": "…" } ] },
+--   "ParentErrorMessage": null
+--
+-- A census of 47,789 units across 122 projects found 423 delete behaviours and
+-- NOT ONE using this one — so no reference existed anywhere until one was made,
+-- which is exactly how the null shipped.
+--
+-- The syntax is SQL's. Mendix's three behaviours ARE SQL's referential actions,
+-- and MDL's FROM/TO already matches a foreign key's direction (measured on the
+-- same reference: ParentPointer -> Order, the FK owner and the FROM;
+-- ChildPointer -> Customer, referenced and the TO). So this reads the way it
+-- does in CREATE TABLE, with no Mendix-specific knowledge.
+--
+-- Verify:
+--   mxcli exec captrack-1-on-delete-restrict-message.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe association ODR.Order_Customer"
+--       -- must emit: on delete restrict error_message '…'
+--   mxcli run --local -p app.mpr      -- boots; before the fix, None.get at startup
+
+create module ODR;
+/
+create persistent entity ODR.Customer (Name: string(200));
+/
+create persistent entity ODR.Order (OrderNo: string(50));
+/
+
+-- The reported case. Deleting a CUSTOMER is refused while Orders reference it.
+create association ODR.Order_Customer
+  from ODR.Order to ODR.Customer
+  type Reference
+  on delete restrict
+    error_message 'A customer with orders cannot be deleted';
+/
+
+-- CONTROL: the other two actions must NOT get a message element — Studio Pro
+-- leaves both null, as all 423 behaviours in the wild are.
+create association ODR.Order_Cascade
+  from ODR.Order to ODR.Customer
+  type Reference
+  on delete cascade;
+/
+create association ODR.Order_SetNull
+  from ODR.Order to ODR.Customer
+  type Reference
+  on delete set null;
+/
+
+-- CONTROL: the older spelling still parses and still means the same thing, and
+-- can carry the message too, so an existing script gains the fix without being
+-- rewritten.
+create association ODR.Order_Legacy
+  from ODR.Order to ODR.Customer
+  type Reference
+  delete_behavior prevent
+    error_message 'still referenced';
+/

@@ -185,8 +185,35 @@ associationOption
     : TYPE COLON? (REFERENCE | REFERENCE_SET)
     | OWNER COLON? (DEFAULT | BOTH)
     | STORAGE COLON? (COLUMN | TABLE)
-    | DELETE_BEHAVIOR deleteBehavior
+    | DELETE_BEHAVIOR deleteBehavior errorMessageClause?
+    | onDeleteClause
     | COMMENT STRING_LITERAL
+    ;
+
+// The SQL spelling. Mendix's three delete behaviours ARE SQL's referential
+// actions, and MDL's FROM/TO already matches a foreign key's direction, so this
+// reads exactly as it does in CREATE TABLE:
+//
+//   FROM Shop.Order TO Shop.Customer ON DELETE RESTRICT
+//     -> deleting a Customer is refused while Orders reference it
+//
+// The older DELETE_BEHAVIOR clause above keeps working unchanged; it is the one
+// that gives no clue which side it governs, which is why this exists.
+onDeleteClause
+    : ON DELETE referentialAction errorMessageClause?
+    ;
+
+referentialAction
+    : CASCADE                                   // DeleteMeAndReferences
+    | RESTRICT                                  // DeleteMeIfNoReferences
+    | SET NULL                                  // DeleteMeButKeepReferences (default)
+    ;
+
+// SQL's RESTRICT raises a system error; Mendix lets the modeller write the text
+// the user sees. Only meaningful with RESTRICT/PREVENT — the executor reports it
+// on the others rather than dropping it silently.
+errorMessageClause
+    : ERROR_MESSAGE STRING_LITERAL
     ;
 
 deleteBehavior
@@ -242,7 +269,8 @@ ifExists
     ;
 
 alterAssociationAction
-    : SET DELETE_BEHAVIOR deleteBehavior
+    : SET DELETE_BEHAVIOR deleteBehavior errorMessageClause?
+    | SET onDeleteClause
     | SET OWNER (DEFAULT | BOTH)
     | SET STORAGE (COLUMN | TABLE)
     | SET COMMENT STRING_LITERAL

@@ -59,6 +59,8 @@ var mdlGeneratedKeywords = []protocol.CompletionItem{
 	{Label: "STORAGE", Kind: protocol.CompletionItemKindKeyword, Detail: "DDL keyword"},
 	{Label: "TABLE", Kind: protocol.CompletionItemKindKeyword, Detail: "DDL keyword"},
 	{Label: "DELETE_BEHAVIOR", Kind: protocol.CompletionItemKindKeyword, Detail: "DDL keyword"},
+	{Label: "RESTRICT", Kind: protocol.CompletionItemKindKeyword, Detail: "DDL keyword"},
+	{Label: "ERROR MESSAGE", Kind: protocol.CompletionItemKindKeyword, Detail: "DDL keyword"},
 	{Label: "CASCADE", Kind: protocol.CompletionItemKindKeyword, Detail: "DDL keyword"},
 	{Label: "PREVENT", Kind: protocol.CompletionItemKindKeyword, Detail: "DDL keyword"},
 	{Label: "ALLOW_CREATE_CHANGE_LOCALLY", Kind: protocol.CompletionItemKindKeyword, Detail: "DDL keyword"},
