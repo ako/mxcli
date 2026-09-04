@@ -443,6 +443,88 @@ func execDropMessageDefinitionCollection(ctx *ExecContext, s *ast.DropMessageDef
 	return nil
 }
 
+// messageDefinitionsUsingAssociation returns the definitions that expose the
+// named association, each as a ready ALTER statement that would remove the
+// member.
+//
+// A message definition is a SELECTION over the domain model, so it holds the
+// association by qualified name and nothing keeps the two in step: dropping the
+// association leaves the definition pointing at nothing, and mxbuild rejects the
+// project with CE1613 "The selected association … no longer exists". `describe`
+// goes on emitting the member, so the break survives a describe -> exec round
+// trip (ako/mxcli-rest FINDINGS #60).
+//
+// The whole element tree is walked, not the root's own children: a definition
+// nests, and the association that breaks is usually not at the top.
+//
+// The remedy is spelled out rather than described because the two names in it
+// differ and guessing wrong is the likely outcome: `drop member` matches the
+// member's ORIGINAL name (the target entity's, e.g. RateSnapshot) while an `in`
+// path segment matches the EXPOSED one (e.g. Snapshots). Told only "remove the
+// member", an author reaches for the name they wrote in the definition, which is
+// the exposed one, and gets "message definition member not found".
+func messageDefinitionsUsingAssociation(ctx *ExecContext, assocQN string) []string {
+	colls, err := ctx.Backend.ListMessageDefinitionCollections()
+	if err != nil {
+		return nil
+	}
+	h, herr := getHierarchy(ctx)
+
+	var out []string
+	for _, c := range colls {
+		if c == nil {
+			continue
+		}
+		collName := c.Name
+		if herr == nil {
+			if m := h.GetModuleName(h.FindModuleID(c.ContainerID)); m != "" {
+				collName = m + "." + c.Name
+			}
+		}
+		for _, def := range c.Definitions {
+			if def == nil {
+				continue
+			}
+			for _, hit := range findAssociationMembers(def.Root, assocQN, nil) {
+				stmt := fmt.Sprintf("alter message definition %s.%s drop member %s",
+					collName, def.Name, hit.member)
+				if len(hit.path) > 0 {
+					stmt += " in " + strings.Join(hit.path, "/")
+				}
+				out = append(out, stmt)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// associationMemberHit is one exposed member that reaches through the
+// association: its original name, and the exposed-name path to its holder.
+type associationMemberHit struct {
+	member string
+	path   []string
+}
+
+func findAssociationMembers(n *model.MessageDefinitionElement, assocQN string, path []string) []associationMemberHit {
+	if n == nil {
+		return nil
+	}
+	var out []associationMemberHit
+	for _, c := range n.Children {
+		if c == nil {
+			continue
+		}
+		if c.Association == assocQN {
+			out = append(out, associationMemberHit{member: c.OriginalName, path: append([]string(nil), path...)})
+			// No recursion into a member that is itself going away.
+			continue
+		}
+		out = append(out, findAssociationMembers(c, assocQN, append(path, c.ExposedName))...)
+	}
+	return out
+}
+
 // mappingsUsingCollection returns the mappings whose source is a definition in
 // this collection. A mapping's reference is three parts
 // (Module.Collection.Definition), so the collection is its prefix.

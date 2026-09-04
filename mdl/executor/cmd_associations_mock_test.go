@@ -294,3 +294,132 @@ func TestExecDropAssociation_ReconcilesAccessRules(t *testing.T) {
 		t.Errorf("output does not report the reconcile: %q", buf.String())
 	}
 }
+
+// Dropping an association a message definition still exposes left the
+// definition pointing at nothing: mxcli said "Dropped association" and named
+// neither the collection nor the definition, and `describe` went on emitting
+// the dangling member, so a describe -> exec round trip carried the break
+// forward. mxbuild is what caught it, as CE1613 "The selected association
+// 'DelProbe.Child_Parent' no longer exists" at the definition
+// (ako/mxcli-rest FINDINGS #60).
+//
+// The neighbouring drop already behaves this way: `drop message definition
+// collection` refuses while a mapping is bound to it. This is the same refusal
+// from the other side.
+func TestExecDropAssociation_RefusedWhileAMessageDefinitionUsesIt(t *testing.T) {
+	mod := mkModule("MyModule")
+	ent1 := mkEntity(mod.ID, "Order")
+	ent2 := mkEntity(mod.ID, "Customer")
+	assoc := mkAssociation(mod.ID, "Order_Customer", ent1.ID, ent2.ID)
+	dm := mkDomainModel(mod.ID, ent1, ent2)
+	dm.Associations = []*domainmodel.Association{assoc}
+
+	// The association is reached from a NESTED member, not the root's own
+	// children — a guard that only looked one level down would miss it.
+	coll := &model.MessageDefinitionCollection{
+		// The container is what qualifies the collection in the remedy. An
+		// unqualified `alter message definition MD_Orders...` would not run.
+		ContainerID: mod.ID,
+		Name:        "MD_Orders",
+		Definitions: []*model.MessageDefinition{{
+			Name: "OrderMsg",
+			Root: &model.MessageDefinitionElement{
+				Kind: "Entity", Entity: "MyModule.Order",
+				OriginalName: "Order", ExposedName: "Order",
+				Children: []*model.MessageDefinitionElement{{
+					Kind: "Entity", Entity: "MyModule.Order",
+					Association: "MyModule.Self",
+					// The exposed name differs from the original, which is the
+					// trap the spelled-out remedy exists to avoid.
+					OriginalName: "Order", ExposedName: "Self",
+					Children: []*model.MessageDefinitionElement{{
+						Kind: "Entity", Entity: "MyModule.Customer",
+						Association:  "MyModule.Order_Customer",
+						OriginalName: "Customer", ExposedName: "Buyer",
+					}},
+				}},
+			},
+		}},
+	}
+
+	deleted := false
+	mb := &mock.MockBackend{
+		IsConnectedFunc:       func() bool { return true },
+		ListModulesFunc:       func() ([]*model.Module, error) { return []*model.Module{mod}, nil },
+		GetDomainModelFunc:    func(model.ID) (*domainmodel.DomainModel, error) { return dm, nil },
+		DeleteAssociationFunc: func(model.ID, model.ID) error { deleted = true; return nil },
+		ListMessageDefinitionCollectionsFunc: func() ([]*model.MessageDefinitionCollection, error) {
+			return []*model.MessageDefinitionCollection{coll}, nil
+		},
+	}
+
+	ctx, _ := newMockCtx(t, withBackend(mb), withHierarchy(mkHierarchy(mod)))
+	err := execDropAssociation(ctx, &ast.DropAssociationStmt{
+		Name: ast.QualifiedName{Module: "MyModule", Name: "Order_Customer"},
+	})
+	if err == nil {
+		t.Fatal("the drop was accepted while a message definition still exposed the association")
+	}
+	if deleted {
+		t.Error("the association was deleted despite the refusal")
+	}
+	// The refusal has to spell the remedy, not just say the association is in
+	// use. The member's ORIGINAL name (Customer) and the exposed path to its
+	// holder (Self) are different names, and an author told only "remove the
+	// member" reaches for the one they wrote — so mxcli writes the statement.
+	for _, want := range []string{
+		"CE1613",
+		"alter message definition MyModule.MD_Orders.OrderMsg drop member Customer in Self;",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not mention %q: %v", want, err)
+		}
+	}
+}
+
+// CONTROL: a collection that does NOT name the association must not block the
+// drop. Without this, a guard that refused whenever any collection existed
+// would pass the test above.
+func TestExecDropAssociation_UnrelatedMessageDefinitionDoesNotBlock(t *testing.T) {
+	mod := mkModule("MyModule")
+	ent1 := mkEntity(mod.ID, "Order")
+	ent2 := mkEntity(mod.ID, "Customer")
+	assoc := mkAssociation(mod.ID, "Order_Customer", ent1.ID, ent2.ID)
+	dm := mkDomainModel(mod.ID, ent1, ent2)
+	dm.Associations = []*domainmodel.Association{assoc}
+
+	coll := &model.MessageDefinitionCollection{
+		Name: "MD_Other",
+		Definitions: []*model.MessageDefinition{{
+			Name: "OtherMsg",
+			Root: &model.MessageDefinitionElement{
+				Kind: "Entity", Entity: "MyModule.Order",
+				Children: []*model.MessageDefinitionElement{
+					{Kind: "Attribute", Attribute: "MyModule.Order.OrderNo"},
+					{Kind: "Entity", Entity: "MyModule.Customer", Association: "MyModule.Order_Somebody"},
+				},
+			},
+		}},
+	}
+
+	deleted := false
+	mb := &mock.MockBackend{
+		IsConnectedFunc:       func() bool { return true },
+		ListModulesFunc:       func() ([]*model.Module, error) { return []*model.Module{mod}, nil },
+		GetDomainModelFunc:    func(model.ID) (*domainmodel.DomainModel, error) { return dm, nil },
+		DeleteAssociationFunc: func(model.ID, model.ID) error { deleted = true; return nil },
+		ListMessageDefinitionCollectionsFunc: func() ([]*model.MessageDefinitionCollection, error) {
+			return []*model.MessageDefinitionCollection{coll}, nil
+		},
+	}
+
+	ctx, _ := newMockCtx(t, withBackend(mb), withHierarchy(mkHierarchy(mod)))
+	if err := execDropAssociation(ctx, &ast.DropAssociationStmt{
+		Name: ast.QualifiedName{Module: "MyModule", Name: "Order_Customer"},
+	}); err != nil {
+		t.Fatalf("an unrelated collection blocked the drop: %v", err)
+	}
+	if !deleted {
+		t.Error("the association was not deleted")
+	}
+}

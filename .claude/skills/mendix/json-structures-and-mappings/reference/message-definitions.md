@@ -67,12 +67,31 @@ alter message definition collection Sales.MD_Order rename definition Line to Ord
 alter message definition collection Sales.MD_Order drop definition if exists OrderLine;
 ```
 
-`in <path>` reaches a nested member, written in **exposed names**. `SET` changes
-only the exposed name — it is not a model rename, which is why the verb is not
-`RENAME`.
+`in <path>` reaches a nested member, written in **exposed names**. `DROP MEMBER`
+takes the member's **original** name, though — the attribute's, or for an
+association the target entity's — so the two halves of `drop member Tag in
+Orders` are named differently on purpose.
 
-Dropping or renaming a definition a mapping still references is refused, naming
-the mappings.
+`SET` changes only the exposed name — it is not a model rename, which is why the
+verb is not `RENAME`.
+
+### Dropping something a definition still needs
+
+A definition is a selection over the domain model held **by qualified name**, and
+nothing keeps the two in step. Both directions are refused rather than left to
+mxbuild:
+
+- **A definition a mapping still references** — refused, naming the mappings.
+- **An association a definition still exposes** — refused, printing the `alter …
+  drop member` statement for each definition that exposes it, ready to run. All
+  of them are listed: an association exposed in both directions dangles from the
+  other one if you clear only the first.
+
+Without the second, `drop association` reported success and mxbuild reported
+CE1613 at the definition — and `describe` went on emitting the dangling member,
+so the break survived a describe → exec round trip. The guard covers message
+definitions only: a microflow retrieve or an object mapping element over the same
+association is still your own CE1613 to resolve.
 
 ### What mxcli does not guess
 

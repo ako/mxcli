@@ -103,3 +103,33 @@ create or modify export mapping MsgCard.EXM_Order
   }
 };
 /
+
+-- The second half of the same report: dropping an association a definition
+-- still exposes was accepted silently, and `describe` went on emitting the
+-- dangling member, so a describe -> exec round trip carried the break forward.
+-- mxbuild is what caught it, as CE1613 at the definition.
+--
+-- Not written as a statement here because the refusal is at exec time against a
+-- project, which `mxcli check` (and so `make check-mdl`) does not reach. Run it
+-- by hand after the statements above:
+--
+--   $ mxcli -p app.mpr -c 'drop association MsgCard.Order_Tag'
+--   Error: association MsgCard.Order_Tag is still exposed by a message
+--   definition — dropping it would leave the definition bound to nothing
+--   (CE1613). Remove the member first:
+--     alter message definition MsgCard.MD_Orders.OrderMsg drop member Tag;
+--     alter message definition MsgCard.MD_Orders.TagMsg drop member Order;
+--
+-- BOTH are listed, because Order_Tag is exposed twice — once each way — and
+-- clearing one still leaves the other dangling. The statements run verbatim,
+-- and after both the drop succeeds. That is the whole point of printing them:
+-- `drop member` matches the member's ORIGINAL name (the target entity's, `Tag`)
+-- while an `in` path segment matches the EXPOSED one (`Tags`), so "remove the
+-- member first" on its own sends the author to the name they wrote and a
+-- "member not found".
+--
+-- CONTROL: `drop association MsgCard.Order_Customer` after removing only the
+-- Tags member must still be refused, and an association no definition names
+-- (add one and drop it) must still drop. The guard is scoped to message
+-- definitions alone — a microflow retrieve or an object mapping element over
+-- the same association is still the author's own CE1613 to resolve.
