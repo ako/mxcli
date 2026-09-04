@@ -126,6 +126,7 @@ func convertMenuItemDef(def ast.NavMenuItemDef) types.NavMenuItemSpec {
 	if def.Microflow != nil {
 		spec.Microflow = def.Microflow.String()
 	}
+	spec.SignOut = def.SignOut
 	for _, sub := range def.Items {
 		spec.Items = append(spec.Items, convertMenuItemDef(sub))
 	}
@@ -383,6 +384,9 @@ func menuItemTarget(item *types.NavMenuItem) string {
 	if item.Microflow != "" {
 		return " -> MF:" + item.Microflow
 	}
+	if item.ActionType == "SignOutAction" {
+		return " -> sign out"
+	}
 	return ""
 }
 
@@ -402,6 +406,8 @@ func printMenuMDL(w io.Writer, items []*types.NavMenuItem, depth int, reproducer
 			fmt.Fprintf(w, "%smenu item '%s' page %s%s;\n", indent, item.Caption, item.Page, icon)
 		} else if item.Microflow != "" {
 			fmt.Fprintf(w, "%smenu item '%s' microflow %s%s;\n", indent, item.Caption, item.Microflow, icon)
+		} else if item.ActionType == "SignOutAction" {
+			fmt.Fprintf(w, "%smenu item '%s' sign_out%s;\n", indent, item.Caption, icon)
 		} else {
 			fmt.Fprintf(w, "%smenu item '%s'%s;\n", indent, item.Caption, icon)
 		}

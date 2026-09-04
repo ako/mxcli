@@ -1445,6 +1445,27 @@ func formSettingsToGen(pageName string) element.Element {
 	return ps
 }
 
+// staticAddressToGen builds the Forms$StaticOrDynamicString an open-link action
+// nests as its Address.
+//
+// Only the STATIC form is authored: MDL spells `OPEN_LINK 'https://…'` and has
+// no syntax for the dynamic one. 6 of the 31 Studio Pro references are dynamic
+// (IsDynamic true, an AttributeRef, an empty Value) — DESCRIBE flags those
+// rather than rendering them as a literal, because a dynamic address printed as
+// a static one round-trips into a different link.
+//
+// AttributeRef is deliberately left unset. gen declares a fourth property here,
+// `Attribute`, that not one of the 31 documents carries; writing a key Mendix
+// does not store is what makes a document mxbuild accepts and Studio Pro cannot
+// open (CLAUDE.md, "Overlay Writes: Never Invent a Key").
+func staticAddressToGen(address string) element.Element {
+	s := genPg.NewStaticOrDynamicString()
+	assignID(s)
+	s.SetIsDynamic(false)
+	s.SetValue(address)
+	return s
+}
+
 // clientActionToGen converts a widget client action. Simple actions are supported;
 // the page/microflow/nanoflow/create-object actions (which carry settings sub-
 // objects) are refused loudly for now.
@@ -1482,6 +1503,46 @@ func clientActionToGen(a pages.ClientAction) (element.Element, error) {
 		g.SetDisabledDuringExecution(true)
 		g.SetNumberOfPagesToClose2("")
 		g.SetPageSettings(formSettingsToGen(x.PageName))
+		return g, nil
+	case *pages.LinkClientAction:
+		// open_link → Forms$OpenLinkClientAction. Note the storage name: the
+		// semantic type is LinkClientAction and the executor stamped it
+		// "Forms$LinkClientAction", which is not what Mendix stores — a wrong
+		// $Type that never reached disk only because neither engine could write
+		// the action at all.
+		//
+		// Pinned against 31 Studio Pro-authored link buttons (ako/TestApp,
+		// FeedbackModule): exactly five keys, LinkType "Web" in all 31, and the
+		// address nested as a Forms$StaticOrDynamicString.
+		g := genPg.NewOpenLinkClientAction()
+		if x.ID != "" {
+			g.SetID(element.ID(x.ID))
+		}
+		assignID(g)
+		g.SetDisabledDuringExecution(true)
+		linkType := string(x.LinkType)
+		if linkType == "" {
+			linkType = "Web"
+		}
+		g.SetLinkType(linkType)
+		g.SetAddress(staticAddressToGen(x.Address))
+		return g, nil
+	case *pages.SignOutClientAction:
+		// sign_out → Forms$SignOutClientAction. One property, and the reference
+		// pins its value: a Studio Pro-authored sign-out button (ako/TestApp,
+		// Mendix 11) stores exactly
+		//
+		//	{ "$Type": "Forms$SignOutClientAction", "DisabledDuringExecution": true }
+		//
+		// That document is provably Studio Pro's rather than mxcli's, because
+		// until now NEITHER engine could emit the type — modelsdk refused it and
+		// legacy wrote Forms$NoAction (CapTrackV2 FINDINGS §10).
+		g := genPg.NewSignOutClientAction()
+		if x.ID != "" {
+			g.SetID(element.ID(x.ID))
+		}
+		assignID(g)
+		g.SetDisabledDuringExecution(true)
 		return g, nil
 	case *pages.SetTaskOutcomeClientAction:
 		g := genPg.NewSetTaskOutcomeClientAction()

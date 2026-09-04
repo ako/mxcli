@@ -108,6 +108,11 @@ func buildNavMenuItemDef(ctx parser.INavMenuItemDefContext) ast.NavMenuItemDef {
 		item.Microflow = &built
 		next++
 	}
+	// SIGN_OUT names no target, so it consumes none of the qualifiedName list —
+	// which is why it is read separately rather than as a third switch arm.
+	if c.SIGN_OUT() != nil {
+		item.SignOut = true
+	}
 	if c.ICON() != nil && len(names) > next {
 		item.Icon = buildQualifiedName(names[next]).String()
 	}

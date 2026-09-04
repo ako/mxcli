@@ -3,6 +3,7 @@
 package testrunner
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -99,6 +100,20 @@ func (s *testAppSession) applyModelChange(projectPath string) (string, error) {
 func runViaEndpoint(opts RunOptions, suite *TestSuite, token string, timeout time.Duration, w io.Writer) (*SuiteResult, error) {
 	sess, err := bootForTests(opts, token, timeout, w)
 	if err != nil {
+		// A build MxBuild rejected because of a generated test microflow is that
+		// test's problem, not the run's. Reporting it as an ERROR row — and the
+		// rest as SKIP — says which assertion broke, where the bare failure said
+		// only that the project would not deploy (FINDINGS #46 follow-up).
+		var bf *docker.BuildFailedError
+		if errors.As(err, &bf) {
+			if results := resultsFromFailedBuild(bf.BuildErrors(), suite); results != nil {
+				return &SuiteResult{Name: suite.Name, Tests: results, Started: time.Now()}, nil
+			}
+			// Not the tests' doing: the model itself does not build. Say so
+			// rather than letting the reader assume a test is at fault.
+			_, other := attributeBuildProblems(bf.BuildErrors(), suite)
+			return nil, fmt.Errorf("%w%s", err, buildFailureHint(other))
+		}
 		return nil, err
 	}
 	defer sess.stop()

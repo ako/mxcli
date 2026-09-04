@@ -379,14 +379,33 @@ func reportBrainGap(projectDir string) {
 		return
 	}
 	staged, err := brain.NewQueue(projectDir).Load()
-	if err != nil || len(staged) == 0 {
+	if err != nil {
 		return
 	}
-	noun := "entries"
-	if len(staged) == 1 {
-		noun = "entry"
+	// An unanswered question is the same shape of gap as an unpromoted entry:
+	// something a person has to act on, that no other command would mention.
+	open, err := brain.NewStore(projectDir).OpenQuestions()
+	if err != nil {
+		return
 	}
-	fmt.Fprintf(os.Stderr,
-		"\nProject brain: %d staged %s not yet promoted — 'mxcli brain staged' to review.\n",
-		len(staged), noun)
+	if len(staged) == 0 && len(open) == 0 {
+		return
+	}
+	var parts []string
+	if len(staged) > 0 {
+		parts = append(parts, fmt.Sprintf("%d staged %s not yet promoted ('mxcli brain staged')",
+			len(staged), plural(len(staged), "entry", "entries")))
+	}
+	if len(open) > 0 {
+		parts = append(parts, fmt.Sprintf("%d open %s ('mxcli brain check')",
+			len(open), plural(len(open), "question", "questions")))
+	}
+	fmt.Fprintf(os.Stderr, "\nProject brain: %s.\n", strings.Join(parts, "; "))
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }

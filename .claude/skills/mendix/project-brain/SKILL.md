@@ -1,6 +1,6 @@
 ---
 name: project-brain
-description: "Project-specific knowledge mxcli cannot compute — the requirements and slices being built from (a spec, a prototype, a conversation), why a pattern was chosen here, which marketplace version broke what. Use when starting from requirements that live outside git, before designing something that looks like it was decided before, and when an mxbuild error is resolved by something non-obvious."
+description: "Project-specific knowledge mxcli cannot compute — the requirements and slices being built from (a spec, a prototype, a conversation), why a pattern was chosen here, what is still undecided, which marketplace version broke what. Use when starting from requirements that live outside git, before designing something that looks like it was decided before, when you have had to correct the same thing twice, and when an mxbuild error is resolved by something non-obvious."
 ---
 
 # Project brain
@@ -9,6 +9,8 @@ The brain holds what mxcli **cannot** compute about this project. Two halves:
 
 - **Decisions** — why a pattern was chosen here, which marketplace version broke
   what, what a recurring mxbuild error means in *this* app.
+- **Open questions** — what is *not* decided yet, so it is not silently
+  forgotten and rediscovered expensively later.
 - **The plan** — the requirements being built from and the slices they are
   grouped into, when the source is a specification document, a prototype or a
   conversation rather than GitHub issues.
@@ -143,6 +145,56 @@ A slice holds source material, so its budget is much larger than a decision
 shard's — and it is not loaded every session. But it is still a budget: **a
 slice too long to read is a slice that should be split.**
 
+## When to capture a decision
+
+Capture is easy to postpone forever, so it needs a trigger rather than good
+intentions. Two, and the first is the reliable one:
+
+1. **You have had to correct the same thing twice.** The second correction is
+   the signal: it will happen a third time to someone else. Capture what the
+   right answer is and why, anchored at whatever you were working on.
+2. **You chose between real alternatives** and the losing one would look
+   reasonable to the next person. Record the choice *and* what ruled the other
+   out — a decision without its reason gets re-litigated.
+
+If you are unsure whether something qualifies, capture it. Staging costs
+nothing and is reversible; a person decides what is worth committing.
+
+## Recording what is NOT decided
+
+An open question is a decision that has not been made yet. Record it rather
+than carrying it in your head — the conversation ends, and the question is
+expensive to rediscover.
+
+```bash
+mxcli brain capture "Do approvers see rejected orders?
+The spec is silent. Affects the overview page and the access rules." \
+  --open -a @Sales.Order -p app.mpr
+```
+
+A question's **anchors are not checked**. It may name something that does not
+exist — often the question is precisely whether it should — so the staleness
+rule that keeps decisions honest does not apply to it.
+
+`--open` combines with `--slice`: a question about a slice's scope is filed with
+that slice, and is counted apart from its requirements. An unanswered question
+is not outstanding scope, so it never inflates the slice.
+
+Answering it turns it into a decision, in place:
+
+```bash
+mxcli brain resolve <id> "Yes, for 30 days
+Agreed with the product owner; drives the overview filter and the access rule."
+```
+
+The entry keeps its id and its position, and the question survives as the
+answer's context. From that moment its anchors **are** checked, like any other
+decision.
+
+`mxcli brain check` and `mxcli lint` both report unanswered questions until
+someone resolves one. That is deliberate: a question nobody answers is the one
+kind of entry that gets more expensive the longer it sits.
+
 ## Write the anchor, not the name
 
 `@Sales.Order.Status` is what makes an entry **routable** (its module decides
@@ -211,6 +263,8 @@ cap: the cap is what stops the store becoming a file nobody reads.
 | `mxcli brain promote <id> [--to <shard>]` | Writes it into its shard. The human step |
 | `mxcli brain drop <id>` | Removes it from the queue or from its shard |
 | `mxcli brain capture "<text>" --slice <name> [-a @Anchor]…` | Queues a **requirement** of that slice |
+| `mxcli brain capture "<text>" --open [-a @Anchor]…` | Queues an **open question**; its anchors are not checked |
+| `mxcli brain resolve <id> "<answer>"` | Answers a question, turning it into a decision in place |
 | `mxcli brain plan` | The roadmap: each slice's requirements counted against the model |
 | `mxcli brain check [--changed]` | Anchors still resolve, entries in the right shard, plus slice progress |
 | `mxcli brain show [<shard>]` | Entries, lines and headroom per shard |

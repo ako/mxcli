@@ -1449,8 +1449,12 @@ func (pb *pageBuilder) buildClientActionV3(action *ast.ActionV3) (pages.ClientAc
 	case "openLink":
 		return &pages.LinkClientAction{
 			BaseElement: model.BaseElement{
-				ID:       model.ID(types.GenerateID()),
-				TypeName: "Forms$LinkClientAction",
+				ID: model.ID(types.GenerateID()),
+				// Mendix stores this as Forms$OpenLinkClientAction — the
+				// storage name differs from the SDK type name, the split
+				// CLAUDE.md documents. The wrong value here never reached disk
+				// only because neither engine could write the action at all.
+				TypeName: "Forms$OpenLinkClientAction",
 			},
 			LinkType: pages.LinkTypeWeb,
 			Address:  action.LinkURL,

@@ -39,7 +39,17 @@ type Entry struct {
 	// existed still reads correctly. Use EntryKind rather than this field.
 	Kind Kind `json:"kind,omitempty"`
 	// Slice is the deliverable a requirement belongs to. Empty for a decision.
-	Slice   string   `json:"slice,omitempty"`
+	Slice string `json:"slice,omitempty"`
+	// Open marks an unresolved question: a decision that has not been made
+	// yet. It lives beside the decisions it will join rather than in a file of
+	// its own, because the moment you need to see it is when you are reading
+	// what that module already decided.
+	//
+	// Unlike Kind for a requirement — which is implied by the file — this has
+	// to travel with the entry, since a question shares its shard with settled
+	// decisions. There is still only ONE copy of the fact, so nothing can
+	// drift; what the store forbids is two copies, not one in an odd place.
+	Open    bool     `json:"open,omitempty"`
 	Title   string   `json:"title"`
 	Body    string   `json:"body,omitempty"`
 	Anchors []string `json:"anchors,omitempty"`
@@ -128,6 +138,52 @@ func NewRequirement(text string, anchors []string, slice string, now time.Time) 
 // name, so a numeric prefix is how a roadmap gets its order, and that is the
 // user's choice rather than a field mxcli maintains.
 var sliceName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*$`)
+
+// NewQuestion builds an open question: something undecided, recorded so it is
+// not silently forgotten and rediscovered expensively later.
+//
+// A question's anchors are not checked for staleness. It may name something
+// that does not exist — the question is often precisely whether it should — so
+// the rule that keeps decisions honest would report every question as a defect.
+func NewQuestion(text string, anchors []string, slice string, now time.Time) (Entry, error) {
+	var (
+		e   Entry
+		err error
+	)
+	if slice != "" {
+		e, err = NewRequirement(text, anchors, slice, now)
+	} else {
+		e, err = NewEntry(text, anchors, now)
+	}
+	if err != nil {
+		return Entry{}, err
+	}
+	e.Open = true
+	return e, nil
+}
+
+// Resolve turns a question into the decision it was always going to become,
+// keeping the entry's id so that anything referring to it still resolves, and
+// keeping the question itself as the answer's context.
+//
+// The id therefore stops matching the title it was derived from. That is
+// deliberate: an answered question is the same piece of knowledge as the
+// question, and re-minting the id would make it a different one.
+func (e Entry) Resolve(answer string, now time.Time) (Entry, error) {
+	if !e.Open {
+		return Entry{}, fmt.Errorf("entry %s is not an open question", e.ID)
+	}
+	title, body := splitTitle(answer)
+	if title == "" {
+		return Entry{}, fmt.Errorf("an answer needs at least one line")
+	}
+	out := e
+	out.Open = false
+	out.Title = title
+	out.Date = now.Format("2006-01-02")
+	out.Body = strings.TrimSpace("Resolves: " + e.Title + "\n\n" + strings.TrimSpace(body+"\n\n"+e.Body))
+	return out, nil
+}
 
 // Shard is where this entry belongs. A requirement goes to its slice; a
 // decision to the module of its first anchor.

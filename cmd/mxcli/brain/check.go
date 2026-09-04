@@ -67,6 +67,13 @@ type AnchorFinding struct {
 	Kind    string
 }
 
+// OpenQuestion is something the project has not decided yet.
+type OpenQuestion struct {
+	Shard   string
+	EntryID string
+	Title   string
+}
+
 // MisfiledFinding is an entry sitting in a shard none of its anchors belong to.
 type MisfiledFinding struct {
 	Shard   string
@@ -85,12 +92,18 @@ type SliceProgress struct {
 	// Planned is requirements with at least one anchor that does not resolve
 	// yet. Not a failure: that is what a requirement is until it is built.
 	Planned int
+	// Questions is open questions filed against this slice — scope that is not
+	// settled. They are not requirements and are not counted as either built
+	// or planned; counting an unanswered question as outstanding work would
+	// overstate the slice.
+	Questions int
 	// Unanchored is requirements with no anchor at all. They cannot be
 	// measured, and are counted apart rather than silently called planned.
 	Unanchored int
 }
 
-// Total is every requirement in the slice.
+// Total is every requirement in the slice. Open questions are excluded: they
+// are not scope until they are answered.
 func (p SliceProgress) Total() int { return p.Built + p.Planned + p.Unanchored }
 
 // Report is what `brain check` prints and exits on.
@@ -103,6 +116,7 @@ type Report struct {
 	Misfiled  []MisfiledFinding
 	Malformed []string // entry blocks whose metadata line could not be read
 	Slices    []SliceProgress
+	Open      []OpenQuestion
 }
 
 // Failed reports whether the check should exit non-zero.
@@ -143,10 +157,19 @@ func Check(s *Store, r Resolver, shards []string) (Report, error) {
 			rep.Anchors += progress.anchors
 			rep.ResolvedN += progress.resolved
 			rep.Slices = append(rep.Slices, progress.SliceProgress)
+			rep.Open = append(rep.Open, progress.open...)
 			continue
 		}
 		for _, e := range entries {
 			rep.Entries++
+			if e.Open {
+				// A question's anchors are not checked. It may name something
+				// that does not exist — often the question IS whether it
+				// should — so the staleness rule that keeps decisions honest
+				// would report every question as a defect.
+				rep.Open = append(rep.Open, OpenQuestion{Shard: shard, EntryID: e.ID, Title: e.Title})
+				continue
+			}
 			var resolvedModules []string
 			for _, a := range e.ParsedAnchors() {
 				rep.Anchors++
@@ -178,6 +201,7 @@ func Check(s *Store, r Resolver, shards []string) (Report, error) {
 type sliceCounts struct {
 	SliceProgress
 	anchors, resolved int
+	open              []OpenQuestion
 }
 
 // checkSlice counts a slice's requirements against the model. It records no
@@ -192,6 +216,11 @@ type sliceCounts struct {
 func checkSlice(r Resolver, shard string, entries []Entry) (sliceCounts, error) {
 	out := sliceCounts{SliceProgress: SliceProgress{Slice: SliceOf(shard)}}
 	for _, e := range entries {
+		if e.Open {
+			out.Questions++
+			out.open = append(out.open, OpenQuestion{Shard: shard, EntryID: e.ID, Title: e.Title})
+			continue
+		}
 		anchors := e.ParsedAnchors()
 		if len(anchors) == 0 {
 			out.Unanchored++

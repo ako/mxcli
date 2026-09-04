@@ -1168,6 +1168,27 @@ func renderClientActionMDL(ctx *ExecContext, action map[string]any) string {
 	case "Forms$SetTaskOutcomeClientAction", "Pages$SetTaskOutcomeClientAction":
 		outcomeValue, _ := action["OutcomeValue"].(string)
 		return "complete_task '" + strings.ReplaceAll(outcomeValue, "'", "''") + "'"
+	case "Forms$SignOutClientAction", "Pages$SignOutClientAction":
+		return "sign_out"
+	case "Forms$OpenLinkClientAction", "Pages$OpenLinkClientAction":
+		// The address is a nested Forms$StaticOrDynamicString. MDL can spell the
+		// static form only; a DYNAMIC address (6 of the 31 Studio Pro references
+		// use one) reads its value from an attribute at runtime, so rendering it
+		// as a literal would round-trip into a different link. Say so instead.
+		addr := actionMapForKey(action, "Address")
+		if addr == nil {
+			return "open_link ''"
+		}
+		if isDynamic, _ := addr["IsDynamic"].(bool); isDynamic {
+			attr := ""
+			if ref := actionMapForKey(addr, "AttributeRef"); ref != nil {
+				attr, _ = ref["Attribute"].(string)
+			}
+			return "-- open_link with a dynamic address (" + attr + ") — MDL cannot author this; " +
+				"the button is left as-is"
+		}
+		value, _ := addr["Value"].(string)
+		return "open_link '" + strings.ReplaceAll(value, "'", "''") + "'"
 	case "Forms$NoClientAction", "Pages$NoClientAction":
 		return ""
 	default:

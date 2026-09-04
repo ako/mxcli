@@ -156,6 +156,16 @@ func menuActionToGen(item *types.NavMenuItem) element.Element {
 		ms.SetMicroflowQualifiedName(item.Microflow)
 		a.SetMicroflowSettings(ms)
 		return a
+	case item.ActionType == "SignOutAction":
+		// A menu item's sign-out is the same Forms$SignOutClientAction a button
+		// carries — measured on ako/TestApp's own sign-out menu item, which
+		// stores exactly DisabledDuringExecution: true and nothing else. Before
+		// this case it fell to NoAction below, so describe -> exec turned a
+		// working sign-out item into a dead one.
+		a := genPages.NewSignOutClientAction()
+		a.SetID(element.ID(mmpr.GenerateID()))
+		a.SetDisabledDuringExecution(true)
+		return a
 	default:
 		a := genPages.NewNoClientAction()
 		a.SetID(element.ID(mmpr.GenerateID()))
