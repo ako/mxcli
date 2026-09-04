@@ -28,6 +28,7 @@ type NavMenuItemDef struct {
 	Caption   string           // from STRING_LITERAL
 	Page      *QualifiedName   // PAGE target
 	Microflow *QualifiedName   // MICROFLOW target
+	SignOut   bool             // SIGN_OUT — the third action a menu item can carry
 	Icon      string           // ICON 'Module.Collection.name', empty for none
 	Items     []NavMenuItemDef // Sub-items (for MENU 'caption' (...))
 }

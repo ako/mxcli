@@ -337,8 +337,12 @@ navigationClause
 // those segments are double-quoted the same way a keyword-colliding name is:
 //   ICON Atlas_Core.Atlas.home
 //   ICON Atlas_Core.Atlas."align-center"
+// SIGN_OUT is the third action a menu item can carry. Studio Pro writes it as
+// the same Forms$SignOutClientAction a button uses (measured on ako/TestApp),
+// which is why it sits beside PAGE and MICROFLOW rather than in a syntax of its
+// own.
 navMenuItemDef
-    : MENU_KW ITEM STRING_LITERAL ((PAGE qualifiedName) | (MICROFLOW qualifiedName))? (ICON qualifiedName)? SEMICOLON?
+    : MENU_KW ITEM STRING_LITERAL ((PAGE qualifiedName) | (MICROFLOW qualifiedName) | SIGN_OUT)? (ICON qualifiedName)? SEMICOLON?
     | MENU_KW STRING_LITERAL (ICON qualifiedName)? LPAREN navMenuItemDef* RPAREN SEMICOLON?
     ;
 
