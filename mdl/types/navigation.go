@@ -107,6 +107,10 @@ type NavMenuItemSpec struct {
 	Caption   string
 	Page      string
 	Microflow string
+	// SignOut is the third action a menu item can carry. Studio Pro stores it
+	// as the same Forms$SignOutClientAction a button uses, so it needs no
+	// target — which is why it is a flag rather than another name field.
+	SignOut bool
 	// Icon is a qualified icon-collection name (Atlas_Core.Atlas.home). Empty
 	// means no icon, which serializes as a null Icon.
 	Icon  string

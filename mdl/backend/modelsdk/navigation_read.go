@@ -296,6 +296,12 @@ func resolveMenuAction(item *types.NavMenuItem, action element.Element) {
 		if ms, ok := a.MicroflowSettings().(*genPages.MicroflowSettings); ok && ms != nil {
 			item.Microflow = ms.MicroflowQualifiedName()
 		}
+	case *genPages.SignOutClientAction:
+		// Named explicitly rather than falling to the raw-type-name default
+		// below: DESCRIBE and the writer both key on "SignOutAction", and a
+		// round trip only closes if the reader produces the name the writer
+		// consumes.
+		item.ActionType = "SignOutAction"
 	default:
 		t := action.TypeName()
 		switch {
