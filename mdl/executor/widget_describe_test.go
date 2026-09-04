@@ -5,6 +5,8 @@ package executor
 import (
 	"strings"
 	"testing"
+
+	"github.com/mendixlabs/mxcli/mdl/types"
 )
 
 // A widget was the only MDL extension point with no in-language DESCRIBE, which
@@ -233,5 +235,107 @@ func TestDescribeWidget_ExampleHeadFormFollowsTheGrammar(t *testing.T) {
 	}
 	if strings.HasPrefix(notYet.Example, "pluggablewidget") == strings.HasPrefix(notYet.Example, "image widget1") {
 		t.Fatalf("indeterminate head form:\n%s", notYet.Example)
+	}
+}
+
+// A widget's properties are "required" only where the editor shows them. Combo
+// box declares eleven bindings across mutually exclusive options-source modes,
+// so listing them all overstates what a reader must supply — the same class of
+// misinformation as the generated .md, quieter: not syntax that fails, but work
+// that is not needed.
+//
+// Needs a project: the rules come from the .mpk's editorConfig, so the embedded
+// template carries none. Asserted below rather than left to be discovered.
+func TestDescribeWidget_BindingsHiddenUnderTheExampleAreNotAskedFor(t *testing.T) {
+	const fixture = "../../testdata/expr-checker/minimal.mpr"
+	desc, err := DescribeWidget("combobox", fixture)
+	if err != nil {
+		t.Fatalf("DescribeWidget(combobox, fixture): %v", err)
+	}
+	if len(desc.Rules) == 0 {
+		t.Fatal("no visibility rules from the project .mpk — nothing could be pruned, so this would pass vacuously")
+	}
+	omitted := strings.Join(desc.OmittedFromExample, "; ")
+
+	// attributeBoolean is hidden when optionsSourceType ≠ "boolean", and the
+	// default is "association" — so the rule fires and it must not be asked for.
+	if strings.Contains(omitted, "attributeBoolean") {
+		t.Errorf("attributeBoolean is hidden under the example's configuration but was still asked for:\n%s", omitted)
+	}
+}
+
+// The control. Pruning must not simply drop every binding: a widget whose
+// datasource nothing hides still has to ask for it, or the example would look
+// complete while being unusable.
+func TestDescribeWidget_VisibleBindingsAreStillAskedFor(t *testing.T) {
+	for _, w := range []string{"gallery", "datagrid"} {
+		desc, err := DescribeWidget(w, "")
+		if err != nil {
+			t.Fatalf("%s: %v", w, err)
+		}
+		if !strings.Contains(strings.Join(desc.OmittedFromExample, "; "), "datasource") {
+			t.Errorf("%s: its datasource is not hidden by any rule, so it must still be asked for; got %v",
+				w, desc.OmittedFromExample)
+		}
+	}
+}
+
+// Conservatism, stated as a test: a rule whose condition property has no
+// determinable value must NOT prune. Over-listing costs the reader a moment;
+// hiding a binding they actually need sends them to a build error, which is the
+// failure this area keeps producing.
+func TestHiddenUnder_DoesNotPruneOnAnIndeterminableCondition(t *testing.T) {
+	d := WidgetDescription{
+		Properties: []DescribedProperty{
+			{Key: "someBinding", Type: "datasource", Required: true},
+			// `mode` has no default and no enum, so its value is unknowable.
+			{Key: "mode", Type: "enumeration"},
+		},
+		Rules: []DescribedRule{{
+			Property: "someBinding",
+			Cond:     &types.WidgetVisibilityCondition{PropertyKey: "mode", Operator: "ne", Value: "x"},
+		}},
+	}
+	if hiddenUnder(d, "someBinding") {
+		t.Error("pruned on a condition whose value cannot be determined")
+	}
+
+	// The control: give `mode` a default the condition matches, and it prunes.
+	d.Properties[1].Default = "y" // "y" != "x", so `ne` fires
+	if !hiddenUnder(d, "someBinding") {
+		t.Error("did not prune when the condition is determinable and fires")
+	}
+}
+
+// A rule about an object-list ITEM's property must never prune the WIDGET's
+// binding of the same name — they are different properties on different objects.
+func TestHiddenUnder_IgnoresNestedItemRules(t *testing.T) {
+	d := WidgetDescription{
+		Properties: []DescribedProperty{
+			{Key: "caption", Type: "attribute", Required: true},
+			{Key: "mode", Type: "enumeration", Default: "y"},
+		},
+		Rules: []DescribedRule{{
+			Property: "caption",
+			Nested:   true,
+			Cond:     &types.WidgetVisibilityCondition{PropertyKey: "mode", Operator: "ne", Value: "x"},
+		}},
+	}
+	if hiddenUnder(d, "caption") {
+		t.Error("a nested item rule pruned the widget's own binding")
+	}
+}
+
+// The limitation behind the test above, stated so it is not rediscovered: with
+// no project there is no .mpk, so no editorConfig, so no rules — and nothing to
+// prune with. The description is still useful, it just cannot narrow the
+// bindings.
+func TestDescribeWidget_NoProjectMeansNoVisibilityRules(t *testing.T) {
+	desc, err := DescribeWidget("combobox", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(desc.Rules) != 0 {
+		t.Errorf("embedded combobox unexpectedly carries %d rules; the pruning test's project requirement may be stale", len(desc.Rules))
 	}
 }

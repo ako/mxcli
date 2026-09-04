@@ -108,6 +108,14 @@ type DescribedProperty struct {
 type DescribedRule struct {
 	Property   string `json:"property"`
 	HiddenWhen string `json:"hiddenWhen"`
+	// Cond is the same condition in machine form. Kept alongside the English
+	// so the usage example can EVALUATE it: a widget's required properties are
+	// required only where visible, and Combo box lists eleven bindings of which
+	// its mutually exclusive options-source modes leave about two.
+	Cond *types.WidgetVisibilityCondition `json:"-"`
+	// Nested marks a rule about an object-list ITEM's property rather than the
+	// widget's own. Those are evaluated against the item, never the widget.
+	Nested bool `json:"-"`
 }
 
 // WidgetDescription is the full inspection result (also the JSON shape).
@@ -317,7 +325,12 @@ func rulesToDescribed(rules []types.WidgetVisibilityRule) []DescribedRule {
 		if r.HiddenWhen == nil {
 			continue
 		}
-		out = append(out, DescribedRule{Property: r.PropertyKey, HiddenWhen: conditionText(r.HiddenWhen)})
+		out = append(out, DescribedRule{
+			Property:   r.PropertyKey,
+			HiddenWhen: conditionText(r.HiddenWhen),
+			Cond:       r.HiddenWhen,
+			Nested:     r.Nested(),
+		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Property < out[j].Property })
 	return out
@@ -537,14 +550,18 @@ func buildUsageExample(d WidgetDescription) (example string, omitted []string) {
 		if p.System {
 			continue
 		}
-		switch p.Type {
-		case "boolean", "integer", "enumeration", "string", "textTemplate":
+		// The two sources spell property types differently — a project .mpk
+		// gives "datasource", the embedded template "DataSource" — so this
+		// folds case. Matching only one spelling silently emptied the example
+		// for every widget described without a project.
+		switch strings.ToLower(p.Type) {
+		case "boolean", "integer", "enumeration", "string", "texttemplate":
 			if p.Required {
 				props = append(props, "  "+p.Key+": "+exampleLiteral(p))
 			}
 		case "attribute", "datasource", "action", "expression", "selection":
-			if p.Required {
-				needBinding = append(needBinding, p.Key+" ("+p.Type+")")
+			if p.Required && !hiddenUnder(d, p.Key) {
+				needBinding = append(needBinding, p.Key+" ("+strings.ToLower(p.Type)+")")
 			}
 		}
 	}
@@ -593,7 +610,7 @@ func buildUsageExample(d WidgetDescription) (example string, omitted []string) {
 // exampleLiteral picks a writable value for a scalar property: its default when
 // it has one, else the first enumeration value, else a placeholder.
 func exampleLiteral(p DescribedProperty) string {
-	switch p.Type {
+	switch strings.ToLower(p.Type) {
 	case "boolean":
 		if p.Default != "" {
 			return p.Default
@@ -625,4 +642,51 @@ func pageBodyParses(body string) bool {
 	src := "create page Probe.P (Title: 'P', Layout: Atlas_Core.Atlas_Default) {\n" + body + "\n}\n"
 	_, errs := visitor.Build(src)
 	return len(errs) == 0
+}
+
+// exampleValues is the configuration the example describes: each scalar
+// property's default, which is also what the example writes for the required
+// ones. Visibility rules are evaluated against this.
+func exampleValues(d WidgetDescription) map[string]string {
+	values := map[string]string{}
+	var walk func(props []DescribedProperty)
+	walk = func(props []DescribedProperty) {
+		for _, p := range props {
+			if p.Default != "" {
+				values[p.Key] = p.Default
+			} else if len(p.Enum) > 0 {
+				// An enumeration with no declared default takes its first value,
+				// which is what Mendix shows in the editor.
+				values[p.Key] = p.Enum[0]
+			}
+			walk(p.Children)
+		}
+	}
+	walk(d.Properties)
+	return values
+}
+
+// hiddenUnder reports whether a property is hidden in the configuration the
+// example describes, so its binding need not be asked for.
+//
+// Conservative in the direction of asking too much rather than too little: a
+// rule whose condition property has no determinable value does NOT prune, and
+// nested rules (about an object-list item) never apply to the widget itself.
+// Over-listing a binding costs the reader a moment; hiding one they actually
+// need would send them to a build error, which is the failure this whole area
+// keeps producing.
+func hiddenUnder(d WidgetDescription, propertyKey string) bool {
+	values := exampleValues(d)
+	for _, r := range d.Rules {
+		if r.Nested || r.Cond == nil || !strings.EqualFold(r.Property, propertyKey) {
+			continue
+		}
+		if _, known := values[r.Cond.PropertyKey]; !known {
+			continue // indeterminable — do not guess, keep asking for it
+		}
+		if r.Cond.Hidden(values) {
+			return true
+		}
+	}
+	return false
 }
