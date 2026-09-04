@@ -348,8 +348,11 @@ const (
 	DescribeMenu                        // DESCRIBE MENU Module.Name (standalone Menus$MenuDocument)
 	DescribeQueue                       // DESCRIBE QUEUE Module.Name
 	DescribeScheduledEvent              // DESCRIBE SCHEDULED EVENT Module.Name
-	DescribeRegularExpression           // DESCRIBE REGULAR EXPRESSION Module.Name
-	DescribeAuto                        // DESCRIBE Module.Name — type auto-detected at execution time
+	// DescribeWidget is not a document — it is a widget DEFINITION, named by
+	// MDL keyword or widget id. Name carries whichever was written.
+	DescribeWidget            // DESCRIBE WIDGET combobox | DESCRIBE WIDGET 'com.mendix.widget.web.combobox.Combobox'
+	DescribeRegularExpression // DESCRIBE REGULAR EXPRESSION Module.Name
+	DescribeAuto              // DESCRIBE Module.Name — type auto-detected at execution time
 )
 
 // String returns the human-readable name of the describe object type.

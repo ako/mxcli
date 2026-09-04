@@ -30,6 +30,33 @@ func init() {
 	})
 
 	Register(SyntaxFeature{
+		Path:    "page.widget-describe",
+		Summary: "DESCRIBE WIDGET — a widget's properties, enum values and editor rules",
+		Keywords: []string{
+			"describe widget", "widget properties", "widget definition", "what properties",
+			"enum values", "widget rules", "hidden properties", "pluggable widget properties",
+		},
+		Syntax: `DESCRIBE WIDGET <keyword>;
+DESCRIBE WIDGET '<widget id>';`,
+		Example: `DESCRIBE WIDGET combobox;
+DESCRIBE WIDGET 'com.mendix.widget.web.htmlelement.HTMLElement';
+
+-- Names the widget by its MDL keyword or its full widget id.
+--
+-- Works with NO project open, answering from mxcli's embedded set. With a
+-- project the answer is better: the installed .mpk is version-accurate and is
+-- the only place a Marketplace widget appears.
+--
+-- Reports each property's key, type, caption, category, whether it is required,
+-- its default and its enumeration values, plus the dynamic rules the widget's
+-- editor uses to HIDE properties under some configurations — the ones that
+-- cause CE0463 if written into the pruned half.
+--
+-- Same output as ` + "`mxcli widget describe`" + `, because it is the same code.`,
+		SeeAlso: []string{"page.widgets", "page.create"},
+	})
+
+	Register(SyntaxFeature{
 		Path:    "page.widgets",
 		Summary: "Widget types: containers, data widgets, inputs, actions, display",
 		Keywords: []string{

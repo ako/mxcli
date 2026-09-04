@@ -1,0 +1,406 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package executor
+
+import (
+	"fmt"
+	"io"
+	"path/filepath"
+	"sort"
+	"strings"
+
+	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
+	"github.com/mendixlabs/mxcli/mdl/types"
+	mwidgets "github.com/mendixlabs/mxcli/modelsdk/widgets"
+	mmpk "github.com/mendixlabs/mxcli/modelsdk/widgets/mpk"
+)
+
+// DescribeWidget assembles everything mxcli knows about one widget: its
+// properties (key, type, caption, category, required, default, enum options)
+// and the dynamic rules its editor uses to hide properties under some
+// configurations.
+//
+// It exists in the executor rather than in cmd/ so that the MDL statement
+// `DESCRIBE WIDGET x` and the CLI `mxcli widget describe x` are the same code.
+// That is the point of the statement: a widget was the one MDL extension point
+// with no in-language DESCRIBE, which is why `mxcli widget init` had to generate
+// documentation at all — and why that documentation could drift from what the
+// parser accepts (mendixlabs/mxcli#1036).
+//
+// arg is an MDL keyword (COMBOBOX), a widget id
+// (com.mendix.widget.web.combobox.Combobox), or one of a few built-in aliases.
+// projectPath may be empty, in which case only mxcli's embedded knowledge is
+// available and the answer is correspondingly thinner.
+func DescribeWidget(arg, projectPath string) (*WidgetDescription, error) {
+	registry, err := NewWidgetRegistry()
+	if err != nil {
+		return nil, mdlerrors.NewBackend("widget registry init", err)
+	}
+	if projectPath != "" {
+		_ = registry.LoadUserDefinitions(projectPath)
+	}
+
+	widgetID, def := resolveWidgetTarget(registry, arg)
+	if widgetID == "" {
+		return nil, widgetNotFoundError(registry, arg)
+	}
+
+	desc := WidgetDescription{WidgetID: widgetID}
+	if def != nil {
+		desc.MDLName = def.MDLName
+		desc.Kind = def.WidgetKind
+	}
+	if desc.Kind == "" {
+		desc.Kind = "pluggable"
+	}
+
+	// Properties + version: prefer the project's installed .mpk (version-accurate,
+	// and the only place a Marketplace widget appears); else mxcli's embedded
+	// template.
+	if projectPath != "" {
+		if dir := projectDirOf(projectPath); dir != "" {
+			if mpkPath, ferr := mmpk.FindMPK(dir, widgetID); ferr == nil && mpkPath != "" {
+				if wd, perr := mmpk.ParseMPKForWidget(mpkPath, widgetID); perr == nil && wd != nil {
+					desc.Name = wd.Name
+					desc.Version = wd.Version
+					desc.Source = "project .mpk"
+					desc.Properties = propsFromMPK(wd)
+					desc.Rules, desc.RuleCoverage = rulesFromProject(mpkPath, widgetID)
+				}
+			}
+		}
+	}
+	if desc.Source == "" {
+		tmpl, terr := mwidgets.GetTemplate(widgetID)
+		if terr != nil || tmpl == nil {
+			return nil, mdlerrors.NewNotFoundMsg("widget", arg,
+				"no installed .mpk and no embedded template for "+arg+
+					" — open the project with -p to inspect a widget it has installed")
+		}
+		desc.Name = tmpl.Name
+		desc.Version = tmpl.Version
+		desc.Source = "embedded template"
+		desc.Properties = propsFromTemplate(tmpl.Type)
+		if def != nil {
+			desc.Rules = rulesFromDef(def.PropertyVisibility)
+		}
+	}
+	return &desc, nil
+}
+
+type DescribedProperty struct {
+	Key      string              `json:"key"`
+	Type     string              `json:"type"`
+	Caption  string              `json:"caption,omitempty"`
+	Category string              `json:"category,omitempty"`
+	Required bool                `json:"required"`
+	Default  string              `json:"default,omitempty"`
+	System   bool                `json:"system,omitempty"`
+	Enum     []string            `json:"enum,omitempty"`
+	Children []DescribedProperty `json:"children,omitempty"`
+}
+
+// DescribedRule is one dynamic (visibility) rule of a widget's discovered format.
+type DescribedRule struct {
+	Property   string `json:"property"`
+	HiddenWhen string `json:"hiddenWhen"`
+}
+
+// WidgetDescription is the full inspection result (also the JSON shape).
+type WidgetDescription struct {
+	WidgetID     string              `json:"widgetId"`
+	MDLName      string              `json:"mdlName,omitempty"`
+	Name         string              `json:"name,omitempty"`
+	Version      string              `json:"version,omitempty"`
+	Source       string              `json:"source"` // "project .mpk" | "embedded template"
+	Kind         string              `json:"kind,omitempty"`
+	Properties   []DescribedProperty `json:"properties"`
+	Rules        []DescribedRule     `json:"dynamicRules"`
+	RuleCoverage string              `json:"ruleCoverage,omitempty"`
+}
+
+func resolveWidgetTarget(registry *WidgetRegistry, arg string) (string, *WidgetDefinition) {
+	if strings.Contains(arg, ".") {
+		if def, ok := registry.GetByWidgetID(arg); ok {
+			return arg, def
+		}
+		return arg, nil // unknown to the registry, but a valid id to look up in the project
+	}
+	upper := strings.ToUpper(arg)
+	if def, ok := registry.Get(upper); ok {
+		return def.WidgetID, def
+	}
+	// Well-known widgets that are special-cased in the executor (no .def.json in the
+	// registry) but that users still name by keyword.
+	if id, ok := builtinWidgetAliases[upper]; ok {
+		def, _ := registry.GetByWidgetID(id)
+		return id, def
+	}
+	return "", nil
+}
+
+// builtinWidgetAliases maps MDL keywords for executor-special-cased widgets (which
+// have no .def.json registry entry) to their widget ids, so `widget describe` can
+// resolve them by the same friendly names users write in MDL.
+var builtinWidgetAliases = map[string]string{
+	"DATAGRID":  "com.mendix.widget.web.datagrid.Datagrid",
+	"DATAGRID2": "com.mendix.widget.web.datagrid.Datagrid",
+}
+
+// widgetNotFoundError builds a helpful error listing the known MDL names.
+func widgetNotFoundError(registry *WidgetRegistry, arg string) error {
+	var names []string
+	for _, d := range registry.All() {
+		if d.MDLName != "" {
+			names = append(names, d.MDLName)
+		}
+	}
+	for alias := range builtinWidgetAliases {
+		names = append(names, strings.ToLower(alias))
+	}
+	sort.Strings(names)
+	return fmt.Errorf("unknown widget %q — use an MDL keyword (%s) or a full widget id (com.mendix.widget…). Run `mxcli widget list` to see all",
+		arg, strings.Join(names, ", "))
+}
+
+// projectDirOf returns the directory containing widgets/ for a project path
+// (accepts either the .mpr file or its directory).
+func projectDirOf(projectPath string) string {
+	if strings.EqualFold(filepath.Ext(projectPath), ".mpr") {
+		return filepath.Dir(projectPath)
+	}
+	return projectPath
+}
+
+// propsFromMPK builds described properties from a parsed .mpk definition, in the
+// widget's declared order (regular + system interleaved).
+func propsFromMPK(wd *mmpk.WidgetDefinition) []DescribedProperty {
+	order := wd.AllTopLevel
+	if len(order) == 0 {
+		order = wd.Properties
+	}
+	out := make([]DescribedProperty, 0, len(order))
+	for _, p := range order {
+		out = append(out, describedPropFromMPK(p))
+	}
+	return out
+}
+
+func describedPropFromMPK(p mmpk.PropertyDef) DescribedProperty {
+	dp := DescribedProperty{
+		Key:      p.Key,
+		Type:     p.Type,
+		Caption:  p.Caption,
+		Category: p.Category,
+		Required: p.Required,
+		Default:  p.DefaultValue,
+		System:   p.IsSystem,
+	}
+	if dp.System && dp.Type == "" {
+		dp.Type = "system"
+	}
+	for _, ev := range p.EnumValues {
+		dp.Enum = append(dp.Enum, ev.Key)
+	}
+	for _, c := range p.Children {
+		dp.Children = append(dp.Children, describedPropFromMPK(c))
+	}
+	return dp
+}
+
+// propsFromTemplate walks an embedded template's Type map (ObjectType.PropertyTypes)
+// to build described properties. Used when no project .mpk is available.
+func propsFromTemplate(typ map[string]any) []DescribedProperty {
+	objType, _ := typ["ObjectType"].(map[string]any)
+	pts, _ := objType["PropertyTypes"].([]any)
+	var out []DescribedProperty
+	for _, pt := range pts {
+		m, ok := pt.(map[string]any)
+		if !ok {
+			continue // leading array marker
+		}
+		out = append(out, describedPropFromTemplate(m))
+	}
+	return out
+}
+
+func describedPropFromTemplate(m map[string]any) DescribedProperty {
+	dp := DescribedProperty{
+		Key:      asString(m["PropertyKey"]),
+		Caption:  asString(m["Caption"]),
+		Category: asString(m["Category"]),
+	}
+	vt, _ := m["ValueType"].(map[string]any)
+	if vt != nil {
+		dp.Type = asString(vt["Type"])
+		dp.Default = asString(vt["DefaultValue"])
+		if r, ok := vt["Required"].(bool); ok {
+			dp.Required = r
+		}
+		if evs, ok := vt["EnumerationValues"].([]any); ok {
+			for _, ev := range evs {
+				if em, ok := ev.(map[string]any); ok {
+					if k := asString(em["_Key"]); k != "" {
+						dp.Enum = append(dp.Enum, k)
+					}
+				}
+			}
+		}
+		if nested, ok := vt["ObjectType"].(map[string]any); ok {
+			if npts, ok := nested["PropertyTypes"].([]any); ok {
+				for _, npt := range npts {
+					if nm, ok := npt.(map[string]any); ok {
+						dp.Children = append(dp.Children, describedPropFromTemplate(nm))
+					}
+				}
+			}
+		}
+	}
+	dp.System = isSystemPropKey(dp.Key)
+	return dp
+}
+
+func isSystemPropKey(key string) bool {
+	switch key {
+	case "Label", "Visibility", "Editability", "Name", "TabIndex":
+		return true
+	}
+	return false
+}
+
+// rulesFromProject extracts dynamic rules from the project's installed .mpk editor
+// config, returning the rules and a coverage note (recognized / total hide-calls).
+func rulesFromProject(mpkPath, widgetID string) ([]DescribedRule, string) {
+	rules, recognized, total := ExtractWidgetVisibilityStats(mpkPath, widgetID)
+	coverage := ""
+	if total > 0 {
+		coverage = fmt.Sprintf("%d of %d editor hide-rules recognized", recognized, total)
+	}
+	return rulesToDescribed(rules), coverage
+}
+
+func rulesFromDef(rules []types.WidgetVisibilityRule) []DescribedRule {
+	return rulesToDescribed(rules)
+}
+
+func rulesToDescribed(rules []types.WidgetVisibilityRule) []DescribedRule {
+	out := make([]DescribedRule, 0, len(rules))
+	for _, r := range rules {
+		if r.HiddenWhen == nil {
+			continue
+		}
+		out = append(out, DescribedRule{Property: r.PropertyKey, HiddenWhen: conditionText(r.HiddenWhen)})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Property < out[j].Property })
+	return out
+}
+
+// conditionText renders a visibility condition as readable English.
+func conditionText(c *types.WidgetVisibilityCondition) string {
+	switch c.Operator {
+	case "eq":
+		return fmt.Sprintf("%s = %q", c.PropertyKey, c.Value)
+	case "ne":
+		return fmt.Sprintf("%s ≠ %q", c.PropertyKey, c.Value)
+	case "truthy":
+		return fmt.Sprintf("%s is set", c.PropertyKey)
+	case "falsy":
+		return fmt.Sprintf("%s is not set", c.PropertyKey)
+	default:
+		return fmt.Sprintf("%s %s %q", c.PropertyKey, c.Operator, c.Value)
+	}
+}
+
+func PrintWidgetDescription(out io.Writer, d WidgetDescription) {
+	title := d.Name
+	if title == "" {
+		title = d.WidgetID
+	}
+	fmt.Fprintf(out, "Widget: %s", title)
+	if d.MDLName != "" {
+		fmt.Fprintf(out, " (%s)", d.MDLName)
+	}
+	fmt.Fprintln(out)
+	fmt.Fprintf(out, "  ID:      %s\n", d.WidgetID)
+	if d.Version != "" {
+		fmt.Fprintf(out, "  Version: %s\n", d.Version)
+	}
+	fmt.Fprintf(out, "  Kind:    %s\n", d.Kind)
+	fmt.Fprintf(out, "  Source:  %s\n", d.Source)
+
+	fmt.Fprintf(out, "\nProperties (%d):\n", countProps(d.Properties))
+	printProps(out, d.Properties, 0)
+
+	fmt.Fprintf(out, "\nDynamic property rules (%d):\n", len(d.Rules))
+	if len(d.Rules) == 0 {
+		fmt.Fprintln(out, "  (none discovered)")
+	}
+	for _, r := range d.Rules {
+		fmt.Fprintf(out, "  %-40s hidden when %s\n", r.Property, r.HiddenWhen)
+	}
+	if d.RuleCoverage != "" {
+		fmt.Fprintf(out, "  — %s\n", d.RuleCoverage)
+	}
+}
+
+func countProps(props []DescribedProperty) int {
+	n := 0
+	for _, p := range props {
+		n++
+		n += countProps(p.Children)
+	}
+	return n
+}
+
+func printProps(out interface{ Write([]byte) (int, error) }, props []DescribedProperty, depth int) {
+	indent := strings.Repeat("  ", depth+1)
+	for _, p := range props {
+		req := ""
+		if p.Required {
+			req = " required"
+		}
+		sys := ""
+		if p.System {
+			sys = " [system]"
+		}
+		line := fmt.Sprintf("%s%-34s %-13s", indent, p.Key, p.Type)
+		extra := strings.TrimRight(req+sys, " ")
+		if p.Default != "" {
+			extra = strings.TrimSpace(extra + " default=" + p.Default)
+		}
+		if len(p.Enum) > 0 {
+			extra = strings.TrimSpace(extra + " {" + strings.Join(p.Enum, "|") + "}")
+		}
+		if p.Category != "" {
+			extra = strings.TrimSpace(extra + "  (" + p.Category + ")")
+		}
+		fmt.Fprintf(out, "%s %s\n", strings.TrimRight(line, " "), extra)
+		if len(p.Children) > 0 {
+			printProps(out, p.Children, depth+1)
+		}
+	}
+}
+
+// describeWidgetStmt is the DESCRIBE WIDGET handler. It prints exactly what
+// `mxcli widget describe` prints, because it is the same function — see
+// DescribeWidget for why that matters.
+//
+// The widget is named by MDL keyword or widget id; unlike every other DESCRIBE
+// there is no qualified name, because a widget definition is not a document in
+// the model. It comes from a package in the project (or from mxcli's embedded
+// set), which is also why this reads no backend and works with no project open.
+func describeWidgetStmt(ctx *ExecContext, name string) error {
+	if name == "" {
+		return mdlerrors.NewValidation("DESCRIBE WIDGET needs a widget: an MDL keyword (combobox) or a widget id ('com.mendix.widget.web.combobox.Combobox')")
+	}
+	projectPath := ""
+	if ctx != nil && ctx.Backend != nil {
+		projectPath = ctx.Backend.Path()
+	}
+	desc, err := DescribeWidget(name, projectPath)
+	if err != nil {
+		return err
+	}
+	PrintWidgetDescription(ctx.Output, *desc)
+	return nil
+}

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- **`DESCRIBE WIDGET` — a widget's definition, in-language** — `describe widget combobox;` or `describe widget 'com.mendix.widget.web.htmlelement.HTMLElement';` reports each property's key, type, caption, category, required flag, default and enumeration values, plus the dynamic rules the widget's editor uses to *hide* properties under some configurations (the ones that cause CE0463 when written into the pruned half).
+
+  A widget was the only MDL extension point without one: a microflow, nanoflow, Java action and JavaScript action all describe in-language against the live project. That gap is *why* `mxcli widget init` generates markdown documentation at all — and why that documentation could drift from what the parser accepts, as reported in mendixlabs/mxcli#1036. The statement and `mxcli widget describe` are now the same function, so they cannot disagree.
+
+  It works with **no project open**, answering from mxcli's embedded set — "what can I write here?" is asked before anything is open. With a project the answer is better: the installed `.mpk` is version-accurate and is the only place a Marketplace widget appears.
+
 - **A widget with no definition no longer names a remedy that cannot work** — `exec` failed with `no definition for widget … (run 'mxcli widget init -p app.mpr')`, and running that command changed nothing, because `widget init` scans `widgets/` and the package was not there. Reported as the postscript to mendixlabs/mxcli#1036, where it cost a debugging session. The message now branches on whether the package is actually installed, using the same `FindMPK` lookup the template loader makes before giving up, and otherwise says to install the widget.
 
   Measured while fixing it: a widget whose package is absent is one **Studio Pro cannot use either**, so mxcli ships no definitions for these. A blank Mendix 11.13 project carries 33 widgets and none of File Uploader, Events, Google Tag or Markdown viewer; installing File Uploader takes `widgets/` from 33 to 34, and a page using it then builds with no `widget init` at all — `initPluggableEngine` refreshes definitions from installed packages on its own.
