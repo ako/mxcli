@@ -4,6 +4,8 @@
 
 - **Decisions** — why a pattern was chosen here, which marketplace version broke
   what, what a recurring mxbuild error means in *this* app.
+- **Open questions** — what is not decided yet, recorded so it is not silently
+  forgotten and rediscovered expensively later.
 - **The plan** — the requirements being built from, grouped into slices, when the
   source is a specification document, a prototype or a conversation.
 
@@ -171,6 +173,51 @@ implement it.
 
 Misfiling is not checked for slices: a slice spans modules by design.
 
+## Open questions
+
+An open question is a decision that has not been made yet.
+
+```bash
+mxcli brain capture "Do approvers see rejected orders?" --open -a @Sales.Order -p app.mpr
+```
+
+Its **anchors are not checked**. A question may name something that does not
+exist — often the question is precisely whether it should — so the staleness
+rule that keeps decisions honest would report every question as a defect.
+Measured: the identical anchor takes `brain check` to exit 1 as a decision and
+exit 0 as a question.
+
+`--open` combines with `--slice`. A question about a slice's scope is filed with
+that slice and counted apart from its requirements: an unanswered question is
+not outstanding scope, so it never inflates the slice's numbers.
+
+Answering it converts it in place:
+
+```bash
+mxcli brain resolve <id> "Yes, for 30 days
+Agreed with the product owner; drives the overview filter and the access rule."
+```
+
+The entry keeps its **id** and its position in the file, and the question
+survives as the answer's context. From that moment its anchors are checked like
+any other decision — which is the whole point of the transition, and is asserted
+by a test.
+
+Both `brain check` and `mxcli lint` report unanswered questions until one is
+resolved. A question nobody answers is the one kind of entry that gets more
+expensive the longer it sits.
+
+## When to capture a decision
+
+Capture needs a trigger, not good intentions. The reliable one:
+
+> **You have had to correct the same thing twice.**
+
+The second correction is the signal — it will happen a third time, to someone
+else. The other trigger is choosing between real alternatives where the losing
+one would look reasonable to the next person: record the choice *and* what ruled
+the other out, or it gets re-litigated.
+
 ## Size
 
 ```bash
@@ -209,6 +256,8 @@ stale the next time anyone promotes.
 | `brain promote <id> [--to <shard>]` | Writes it into its shard |
 | `brain drop <id>` | Removes it from the queue or from its shard |
 | `brain capture "<text>" --slice <name> [-a @Anchor]…` | Queues a **requirement** of that slice |
+| `brain capture "<text>" --open [-a @Anchor]…` | Queues an **open question**; anchors not checked |
+| `brain resolve <id> "<answer>"` | Answers it, turning it into a decision in place |
 | `brain plan` | Each slice's requirements counted against the model |
 | `brain check [--changed]` | Anchors resolve, entries filed correctly, plus slice progress |
 | `brain show [<shard>]` | Entries, lines and headroom per shard |
