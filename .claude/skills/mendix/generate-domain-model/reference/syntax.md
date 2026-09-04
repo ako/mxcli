@@ -96,15 +96,34 @@ identifiers; a value whose name is a reserved word can't be targeted by `alter`.
 
 ### Entities
 
-**IMPORTANT: All entities MUST have @Position annotation**
+**Positions are optional. Prefer `mxcli layout` over hand-placing them.**
 
-The `@position(x, y)` annotation specifies where the entity appears in the domain model diagram. Without it, entities appear at (0,0) or random locations.
+`@position(x, y)` sets where the entity sits in the domain-model diagram. An
+entity without one is NOT lost — it takes the next slot in a wrapping grid — but
+a grid is a default, not a layout: it knows nothing about which entities are
+related, so association lines still cross the diagram.
 
-**Position Guidelines:**
-- Use increments of 50 or 100 for spacing (e.g., 100, 200, 300)
-- Leave space between entities (at least 200 pixels)
-- Organize related entities in logical groups
-- Example layout: Categories at y=100, Transactions at y=300, Reports at y=500
+The better answer for a generated domain model is to write no positions at all
+and arrange the module once the script has run:
+
+```bash
+mxcli layout -p app.mpr --module MyModule --dry-run   # see the moves
+mxcli layout -p app.mpr --module MyModule             # apply
+```
+
+That lays entities out from the association graph — lookups on the left, each
+entity one column past the furthest thing it references — so the lines mostly
+run one way. It is idempotent (a second run moves nothing) and local (adding an
+entity later moves a handful, not the model). It REPLACES positions you set by
+hand in the module it touches, which is the reason it is a separate command
+rather than something `exec` does on its own.
+
+Write `@position` when you want explicit control of a particular entity, and
+remember the coordinate is the box's **CENTRE**, not its top-left corner:
+
+- 250+ apart horizontally, 250+ vertically, to clear a typical box
+- group related entities, and keep the lookups together
+- `alter entity Mod.Name set position (x, y)` moves one without restating it
 
 **Association line anchors** — where the connector attaches to each entity box —
 are set with `@anchor`, as a **percentage of the box** (0..100, whole numbers):
