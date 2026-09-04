@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -207,3 +208,27 @@ func TestChangedShardsMapsPathsToShards(t *testing.T) {
 }
 
 func day() time.Time { return time.Date(2026, 9, 3, 0, 0, 0, 0, time.UTC) }
+
+// The store's project.md is documented as loaded every session, and its cap —
+// the tightest in the store — is justified by exactly that. Routing to it
+// through the skill alone does not make it true: a skill is triggered by
+// symptom, so a session that never hits the symptom never reads the project's
+// decisions. The generated CLAUDE.md is the only thing that makes the claim
+// mechanical, which is why it is asserted here rather than left to review.
+func TestGeneratedClaudeMDRoutesToTheBrainAtSessionStart(t *testing.T) {
+	md := generateClaudeMD("Demo", "Demo.mpr")
+	for _, want := range []string{
+		"docs/brain/project.md",       // the unconditional read
+		"docs/brain/modules/<Module>", // the on-demand shards
+		"brain plan",                  // how to pick work up
+	} {
+		if !strings.Contains(md, want) {
+			t.Errorf("generated CLAUDE.md does not mention %q — project.md is then loaded only when a symptom happens to trigger the skill, and the cap that assumes otherwise is unfounded", want)
+		}
+	}
+	// It has to come before the bulk of the file, or "read this first" is a
+	// claim the document's own ordering contradicts.
+	if i := strings.Index(md, "docs/brain/project.md"); i < 0 || i > len(md)/3 {
+		t.Errorf("the brain section is at byte %d of %d; it is meant to be read first", i, len(md))
+	}
+}
