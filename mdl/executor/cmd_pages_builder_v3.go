@@ -5,6 +5,7 @@ package executor
 import (
 	"fmt"
 	"log"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/mendixlabs/mxcli/sdk/domainmodel"
 	"github.com/mendixlabs/mxcli/sdk/microflows"
 	"github.com/mendixlabs/mxcli/sdk/pages"
+	"github.com/mendixlabs/mxcli/sdk/widgets/mpk"
 )
 
 // ============================================================================
@@ -432,7 +434,7 @@ func (pb *pageBuilder) buildWidgetV3(w *ast.WidgetV3) (pages.Widget, error) {
 					if def, ok := pb.widgetRegistry.GetByWidgetID(widgetType); ok {
 						return pb.buildPluggable(def, w)
 					}
-					return nil, mdlerrors.NewNotFoundMsg("widget", widgetType, "no definition for widget "+widgetType+" (run 'mxcli widget init -p app.mpr')")
+					return nil, mdlerrors.NewNotFoundMsg("widget", widgetType, pb.missingWidgetMessage(widgetType))
 				}
 			}
 		}
@@ -2543,4 +2545,43 @@ func (pb *pageBuilder) buildMenuBarV3(w *ast.WidgetV3) (pages.Widget, error) {
 		},
 		NavigationProfile: w.GetStringProp("Profile"),
 	}, nil
+}
+
+// missingWidgetMessage explains why a widget has no definition, and — the part
+// that matters — names a remedy that can actually work.
+//
+// The old message always said "run 'mxcli widget init -p app.mpr'". For a
+// widget Studio Pro bundles rather than installing into the project (File
+// Uploader, Events, Google Tag, Markdown viewer at the time of writing) that is
+// worse than unhelpful: `widget init` scans `widgets/`, the .mpk is not there,
+// and re-running it can never help. Reported as the postscript to
+// mendixlabs/mxcli#1036, where it cost the reporter a debugging session.
+//
+// The distinguishing question is exactly the one FindMPK answers, and it is the
+// same lookup the template loader makes before giving up.
+func (pb *pageBuilder) missingWidgetMessage(widgetID string) string {
+	projectDir := ""
+	if pb.backend != nil {
+		projectDir = filepath.Dir(pb.backend.Path())
+	}
+	return missingWidgetMessage(projectDir, widgetID)
+}
+
+// missingWidgetMessage is the pure form, so the branch can be tested without
+// standing up a whole backend.
+func missingWidgetMessage(projectDir, widgetID string) string {
+	if projectDir != "" {
+		if found, err := mpk.FindMPK(projectDir, widgetID); err == nil && found != "" {
+			// The package is installed; the definition just has not been
+			// extracted from it yet. This is the case `widget init` exists for.
+			return "no definition for widget " + widgetID +
+				" — its package is installed but not extracted yet (run 'mxcli widget init -p app.mpr')"
+		}
+	}
+	return "no definition for widget " + widgetID +
+		" — no widget package for it in the project's widgets/ directory." +
+		" If Studio Pro bundles this widget rather than installing it, 'mxcli widget init' cannot help:" +
+		" it scans widgets/, and the package is not there." +
+		" Install the widget from the Marketplace so its .mpk lands in widgets/, or report it at" +
+		" https://github.com/mendixlabs/mxcli/issues so mxcli can ship a definition."
 }

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- **A widget with no definition no longer names a remedy that cannot work** — `exec` failed with `no definition for widget … (run 'mxcli widget init -p app.mpr')`, and running that command changed nothing. Studio Pro *bundles* File Uploader, Events, Google Tag and Markdown viewer rather than installing them, so their `.mpk` never reaches the project's `widgets/` directory — the only place `widget init` scans. Reported as the postscript to mendixlabs/mxcli#1036, where it cost a debugging session. The message now branches on whether the package is actually installed, using the same `FindMPK` lookup the template loader makes before giving up, and says plainly that `widget init` cannot help when it is not.
+
+- **`()` is accepted on every widget** — `container c ()`, `dynamictext t ()` and `pluggablewidget 'id' pw ()` were parse errors reported at the closing paren, as though the widget were wrong, while bare `container c` and `container c (x: 'y')` both parsed. `widgetPropertiesV3` required at least one property; an empty list is now allowed, removing an arbitrary difference between two spellings of the same thing.
+
+- **Generated widget docs emit child slots with their required name** — `mxcli widget init` wrote `tagcontentcontainer { … }`, which even a working slot rejects, so the three child slots that *did* parse were documented in a form that could not. Names are emitted and numbered (`slot1`, `slot2`), since two identically named widgets on one page would collide.
+
 - **A failed build now says which test caused it** (ako/mxcli-sudoku FINDINGS #46 follow-up) — an `@expect` that is syntactically valid but only rejected by MxBuild took down an entire `mxcli test --local` run: no test results at all, valid tests in the same file never executed, and the cause arrived as ~200 lines of mxbuild JSON with the real error among dozens of unrelated Atlas warnings.
 
   `BuildResult` parsed only the status and message and left the rest of the response unread, though mxbuild returns every problem with a severity, an error code and a location. Measured on 11.13, a failing build returns **18 problems of which one is the error**, so printing the body meant 11,580 bytes in which nothing marked the line that mattered. Filtering to errors renders it as `[CE0117] Error(s) in expression. — at MxTest / Microflow 'Test_test_3' / Decision '$result = 3'`.

@@ -415,8 +415,13 @@ widgetTypeV3
     ;
 
 // V3 Widget properties: (Prop: Value, Prop: Value)
+// The list may be EMPTY. `container c ()` is what an LLM writes when a widget
+// needs no properties, and rejecting it gave a parse error at the `)` that read
+// as though the widget itself were wrong. Bare `container c` already parsed, so
+// this only removes an arbitrary difference between two spellings of the same
+// thing (mendixlabs/mxcli#1036).
 widgetPropertiesV3
-    : LPAREN widgetPropertyV3 (COMMA widgetPropertyV3)* RPAREN
+    : LPAREN (widgetPropertyV3 (COMMA widgetPropertyV3)*)? RPAREN
     ;
 
 widgetPropertyV3

@@ -282,13 +282,40 @@ Six slices. Each ships alone; 1 is independent of the rest.
 
 ### Slice 1 — Stop the bleeding
 
-Correct whether or not anything else lands.
+Correct whether or not anything else lands. **Items 2–4 are implemented**;
+item 1 proved larger than the draft assumed and is carried forward.
 
-1. **Embed the four missing built-in defs.** Measured: `events`, `fileuploader`,
-   `googletag`, `markdown` have no definition anywhere — not in `widgets/`
-   (Studio Pro never materialises them; their `.mpk`s live inside
-   `Mendix.Modeler.Core.dll`), and not in `modelsdk/widgets/definitions/`. All
-   four pass `check` and fail `exec` with `no definition for widget`.
+1. **Ship the four missing built-in widgets.** Measured: `events`,
+   `fileuploader`, `googletag`, `markdown` have no definition anywhere. All four
+   pass `check` and fail `exec` with `no definition for widget`.
+
+   **Corrected during implementation, twice.** The draft said their `.mpk`s live
+   inside `Mendix.Modeler.Core.dll`; that was inferred from a bare ID-string
+   match and is **wrong** — the assembly holds 690 embedded zips and *zero*
+   `widgets.mendix.com` namespace hits, so it carries no widget XML. And
+   embedding a `.def.json` is **not sufficient**: the engine also needs a
+   template, and `getOrGenerateTemplate` (`modelsdk/widgets/loader.go:215`)
+   derives one from the `.mpk` **in the project's `widgets/`**. Shipping a def
+   alone merely changes the error from `no definition for widget` to
+   `template not found: fileuploader` — verified, which is why no def was
+   shipped here.
+
+   The real source is the **Marketplace**, where all four are Mendix-published:
+   File Uploader (module 235351, 2.5.0), Events (widget 224259, 1.3.1), Google
+   Tag (module 207519, 2.4.1), Markdown viewer (widget 230248, 1.0.3).
+   `marketplace download` + `widget extract` produces genuine definitions —
+   FileUploader's shows exactly the six action slots
+   `mdl-examples/bug-tests/956-fileuploader-six-action-slots.mdl` documents, and
+   object lists `ALLOWEDFILEFORMAT`/`CUSTOMBUTTON`, the two keywords already
+   hardcoded in the lexer. That cross-check is what makes the extraction
+   trustworthy; **never hand-write a definition** (CLAUDE.md, and the CE0463
+   history behind `sdk/widgets/templates/README.md`).
+
+   Remaining work is therefore to ship the four **packages** — or templates
+   generated from them at build time — and let the existing
+   `getOrGenerateTemplate` path serve them. Carried forward as its own change:
+   it needs a decision on embedding ~400 KB of `.mpk` versus pre-generating
+   templates, and a policy for keeping them current as Mendix ships versions.
 2. **Fix that error message.** It currently says
    `(run 'mxcli widget init -p app.mpr')` — a remedy that **provably cannot
    work**, since `widget init` scans `widgets/` and these are not there.
