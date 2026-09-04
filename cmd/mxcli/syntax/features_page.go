@@ -140,7 +140,7 @@ func init() {
 			"button style", "primary", "danger", "success",
 			"icon", "linkbutton", "link button",
 		},
-		Syntax:  "Action: SAVE_CHANGES\nAction: SAVE_CHANGES CLOSE_PAGE      -- save, then close the pop-up\nAction: CANCEL_CHANGES\nAction: CANCEL_CHANGES CLOSE_PAGE\nAction: CLOSE_PAGE\nAction: DELETE\nAction: DELETE CLOSE_PAGE\nAction: DELETE_OBJECT\nAction: NANOFLOW Module.NF\nAction: OPEN_LINK 'https://example.com'\nAction: SIGN_OUT\nAction: COMPLETE_TASK 'OutcomeName'\nAction: SHOW_PAGE Module.Page\nAction: SHOW_PAGE Module.Page(Param: $currentObject)\nAction: MICROFLOW Module.MF\nAction: MICROFLOW Module.MF(Param: $val)\nAction: CREATE_OBJECT Module.Entity THEN SHOW_PAGE Module.Page\n\nA SHOW_PAGE argument must be the enclosing widget's context object --\neither $currentObject or the name of the variable the enclosing data\nwidget is bound to. Mendix infers it from that widget, so naming any\nother variable is refused (MDL-PAGEARG01); call a microflow instead.\n\nOPEN_LINK parses but is written by NEITHER engine: the modelsdk engine\nrefuses it, and the legacy engine writes Forms$NoAction, so the button\nrenders and does nothing (measured on 11.13). Call a nanoflow that opens\nthe URL instead. SIGN_OUT is written by both.\n\nButton styles: Default, Primary, Success, Info, Warning, Danger\nIcon: 'Module.IconCollection.IconName'   -- e.g. 'Atlas_Core.Atlas_Filled.pencil'\nUse `linkbutton` instead of `actionbutton` for link render mode (same properties).",
+		Syntax:  "Action: SAVE_CHANGES\nAction: SAVE_CHANGES CLOSE_PAGE      -- save, then close the pop-up\nAction: CANCEL_CHANGES\nAction: CANCEL_CHANGES CLOSE_PAGE\nAction: CLOSE_PAGE\nAction: DELETE\nAction: DELETE CLOSE_PAGE\nAction: DELETE_OBJECT\nAction: NANOFLOW Module.NF\nAction: OPEN_LINK 'https://example.com'\nAction: SIGN_OUT\nAction: COMPLETE_TASK 'OutcomeName'\nAction: SHOW_PAGE Module.Page\nAction: SHOW_PAGE Module.Page(Param: $currentObject)\nAction: MICROFLOW Module.MF\nAction: MICROFLOW Module.MF(Param: $val)\nAction: CREATE_OBJECT Module.Entity THEN SHOW_PAGE Module.Page\n\nA SHOW_PAGE argument must be the enclosing widget's context object --\neither $currentObject or the name of the variable the enclosing data\nwidget is bound to. Mendix infers it from that widget, so naming any\nother variable is refused (MDL-PAGEARG01); call a microflow instead.\n\nOPEN_LINK takes a static web address and stores it as a\nForms$StaticOrDynamicString. Mendix also supports a DYNAMIC address, read\nfrom an attribute at runtime; MDL cannot author that one, and DESCRIBE\nflags such a button rather than printing its address as a literal.\n\nButton styles: Default, Primary, Success, Info, Warning, Danger\nIcon: 'Module.IconCollection.IconName'   -- e.g. 'Atlas_Core.Atlas_Filled.pencil'\nUse `linkbutton` instead of `actionbutton` for link render mode (same properties).",
 		Example: "ACTIONBUTTON btnSave (Caption: 'Save', Action: SAVE_CHANGES, ButtonStyle: Primary)\nACTIONBUTTON btnEdit (Caption: 'Edit',\n  Action: SHOW_PAGE Module.EditPage(Item: $currentObject))\nLINKBUTTON btnDelete (Caption: 'Delete', Action: DELETE,\n  Icon: 'Atlas_Core.Atlas_Filled.pencil')",
 		SeeAlso: []string{"page.widgets"},
 	})
@@ -375,7 +375,7 @@ func init() {
 			"menu", "menus", "menu document", "menu item",
 		},
 		Syntax: "CREATE [OR MODIFY] MENU Module.Name [FOLDER 'path'] (\n" +
-			"  MENU ITEM '<caption>' [PAGE Module.Page | MICROFLOW Module.Flow] [ICON Module.Collection.name];\n" +
+			"  MENU ITEM '<caption>' [PAGE Module.Page | MICROFLOW Module.Flow | SIGN_OUT] [ICON Module.Collection.name];\n" +
 			"  MENU '<caption>' [ICON Module.Collection.name] ( <nested items> );\n" +
 			");\n" +
 			"DESCRIBE MENU Module.Name;\n" +
@@ -394,6 +394,9 @@ func init() {
 			"--     SHOW NAVIGATION MENU and ALTER NAVIGATION. Both use these same items.\n" +
 			"--   * OR MODIFY replaces the item list wholesale; an omitted item is removed.\n" +
 			"--     The document's identity and export level are preserved.\n" +
+			"--   * SIGN_OUT is the log-out menu item. It needs no target and stores the\n" +
+			"--     same Forms$SignOutClientAction a sign-out BUTTON carries. Works both\n" +
+			"--     here and in a navigation profile's menu.\n" +
 			"--   * ICON names an icon collection entry. A glyph or image icon cannot be\n" +
 			"--     expressed in MDL; DESCRIBE flags those rather than dropping them silently.\n" +
 			"--   * A page with required parameters cannot be opened from a menu item\n" +

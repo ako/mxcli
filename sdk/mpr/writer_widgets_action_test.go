@@ -220,13 +220,17 @@ func TestSignOutClientAction_IsNotSilentlyDroppedToNoAction(t *testing.T) {
 	}
 }
 
-// CONTROL: the default branch still exists and still yields Forms$NoAction, so
-// this test proves something about SIGN_OUT rather than about the fallback being
-// removed. OPEN_LINK is the action that still lands there — see FINDINGS §10.
+// CONTROL: the quiet default still exists and still yields Forms$NoAction, so
+// the tests here prove something about the actions they name rather than about
+// the fallback having been removed.
+//
+// ShowHomePage is the stand-in: no MDL statement builds one, so it is a
+// semantic type nothing writes. (An earlier draft used LinkClientAction, which
+// stopped being a valid control the moment OPEN_LINK was implemented — a
+// control has to name something still genuinely unhandled.)
 func TestUnhandledClientActionStillFallsBackToNoAction(t *testing.T) {
-	doc := serializeClientAction(&pages.LinkClientAction{
-		BaseElement: model.BaseElement{ID: "link-id"},
-		Address:     "https://example.com",
+	doc := serializeClientAction(&pages.ShowHomePageClientAction{
+		BaseElement: model.BaseElement{ID: "home-id"},
 	})
 	var typeName string
 	for _, e := range doc {
@@ -235,7 +239,48 @@ func TestUnhandledClientActionStillFallsBackToNoAction(t *testing.T) {
 		}
 	}
 	if typeName != "Forms$NoAction" {
-		t.Errorf("$Type = %q; this control pins the fallback SIGN_OUT used to hit, "+
-			"so that the test above cannot pass for the wrong reason", typeName)
+		t.Errorf("$Type = %q; this control pins the fallback SIGN_OUT and OPEN_LINK used to hit, "+
+			"so the tests above cannot pass for the wrong reason", typeName)
+	}
+}
+
+// OPEN_LINK on the legacy engine, which fell to that same NoAction default.
+// Pinned against the 31 Studio Pro references: five keys, and the address a
+// nested Forms$StaticOrDynamicString whose AttributeRef is null for the static
+// form MDL authors.
+func TestOpenLinkClientAction_IsNotSilentlyDroppedToNoAction(t *testing.T) {
+	doc := serializeClientAction(&pages.LinkClientAction{
+		BaseElement: model.BaseElement{ID: "link-id"},
+		LinkType:    pages.LinkTypeWeb,
+		Address:     "https://example.com",
+	})
+	got := map[string]any{}
+	for _, e := range doc {
+		got[e.Key] = e.Value
+	}
+	if got["$Type"] != "Forms$OpenLinkClientAction" {
+		t.Fatalf("$Type = %v, want Forms$OpenLinkClientAction (NOT Forms$LinkClientAction, "+
+			"which is the SDK name and not what Mendix stores)", got["$Type"])
+	}
+	if got["LinkType"] != "Web" {
+		t.Errorf("LinkType = %v, want Web", got["LinkType"])
+	}
+	if len(doc) != 5 {
+		t.Errorf("the action has %d keys, want 5: %v", len(doc), doc)
+	}
+	addr, ok := got["Address"].(bson.D)
+	if !ok {
+		t.Fatalf("Address is %T, want a nested document", got["Address"])
+	}
+	a := map[string]any{}
+	for _, e := range addr {
+		a[e.Key] = e.Value
+	}
+	if a["$Type"] != "Forms$StaticOrDynamicString" || a["IsDynamic"] != false ||
+		a["Value"] != "https://example.com" {
+		t.Errorf("Address = %v", addr)
+	}
+	if _, present := a["AttributeRef"]; !present {
+		t.Error("AttributeRef is absent; all 31 references carry it as null")
 	}
 }
