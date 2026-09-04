@@ -33,18 +33,23 @@ association with its own member list — the same discriminator import and expor
 mappings use.
 
 Naming the association's target entity is required, and not decoration. The
-stored cardinality tracks the **direction of traversal**, not the association's
-type:
+stored cardinality is derived from the **direction of traversal** and the
+**association's type** together:
 
-| traversal | cardinality |
-|---|---|
-| from the association's FROM entity (following the foreign key) | a single object |
-| from its TO entity (the reverse) | a list |
+| traversal | `Reference` | `ReferenceSet` |
+|---|---|---|
+| from the association's FROM entity (following the reference) | a single object | a list |
+| from its TO entity (the reverse) | a list | a list |
 
-So the same association gives a single object one way and a list the other. An
-association that connects the two entities in **neither** direction is refused —
-a wrong cardinality builds cleanly and would silently expose a list as a single
-object.
+So a `Reference` gives a single object one way and a list the other, while a
+`ReferenceSet` is a list in both directions — a set is many at both ends.
+
+An association that connects the two entities in **neither** direction is
+refused rather than guessed at. The two halves of the rule fail differently if
+you do get one wrong, which is useful when diagnosing: a wrong *direction*
+builds cleanly and silently exposes a list as a single object, while a wrong
+*type* is caught by mxbuild as CE6524 on the definition ("The occurrence of
+'...' has changed") plus CE0295 on any mapping element bound to it.
 
 **Inherited attributes** are named exactly like the entity's own; mxcli resolves
 each to the entity that declares it, which is what Mendix stores.

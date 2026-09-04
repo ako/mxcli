@@ -172,8 +172,9 @@ create message definition collection Sales.MD_Order (
 ```
 
 A bare name is an attribute; `Assoc/Module.Entity` is an association. **Name the
-target entity** — the stored cardinality follows the direction of traversal, so
-the same association gives a single object one way and a list the other.
+target entity** — the stored cardinality follows the direction of traversal and
+the association's type, so a `Reference` gives a single object one way and a list
+the other, while a `ReferenceSet` is a list both ways.
 
 The full vocabulary, the ALTER statements, inherited attributes and what mxcli
 deliberately does not guess:

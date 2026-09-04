@@ -1,0 +1,105 @@
+-- A message definition's association cardinality was direction-only, and that
+-- is the right rule for a Reference and the wrong one for a ReferenceSet
+-- (ako/mxcli-rest FINDINGS #60).
+--
+-- MaxOccurs says whether the exposed element is a single object or a list:
+--
+--                    forward (holder is FROM)   reverse (holder is TO)
+--   Reference                  1                        -1
+--   ReferenceSet              -1                        -1
+--
+-- mxcli returned 1 for every forward traversal, so a set was exposed as one
+-- object. The direction rule was measured on a corpus in which all 927
+-- resolvable associations are `Reference` — it pins the direction half and says
+-- nothing about the type half, which is why it looked exceptionless.
+--
+-- Unlike the direction half, this one has a build error behind it. Measured on
+-- ako/mxcli-rest's RestLab (Mendix 11.13.0), against a 0-error baseline, the
+-- forward traversal of RateSnapshot_ExchangeRate produced:
+--
+--   [error] [CE6524] "The domain model has changed and is no longer consistent
+--     with the message definition … The occurrence of
+--     'RestLab.RateSnapshot_ExchangeRate' has changed"
+--     at Entity message definition 'RateSnapshot'
+--   [error] [CE0295] "Association 'RestLab.RateSnapshot_ExchangeRate' is not
+--     allowed." at Object mapping element 'Rates'
+--
+-- and 0 errors after the fix. CE6524's own advice ("resolve by refreshing the
+-- message definition") is the tell: Mendix believes the domain model moved under
+-- a definition that was in fact written wrong a second earlier.
+--
+-- Verify:
+--   mxcli exec messagedef-referenceset-cardinality.mdl -p app.mpr
+--   mx check -p app.mpr    -- 0 errors; before the fix, CE6524 + CE0295
+--
+-- The CONTROL is the Reference beside it: Order -> Customer must stay a single
+-- object. A fix that returned -1 unconditionally clears CE6524 too.
+
+create module MsgCard;
+/
+
+create or modify entity MsgCard.Customer (
+  Name: String(200)
+);
+/
+
+create or modify entity MsgCard.Tag (
+  Label: String(100)
+);
+/
+
+create or modify entity MsgCard.Order (
+  OrderNo: String(50)
+);
+/
+
+-- The control: a plain Reference. One Order has one Customer, so reaching
+-- Customer from Order is a single object (MaxOccurs 1).
+create or modify association MsgCard.Order_Customer
+  from MsgCard.Order to MsgCard.Customer type reference;
+/
+
+-- The bug: a set is many in BOTH directions.
+create or modify association MsgCard.Order_Tag
+  from MsgCard.Order to MsgCard.Tag type referenceset;
+/
+
+create or modify message definition collection MsgCard.MD_Orders
+(
+  -- The forward traversal of each. Before the fix both stored MaxOccurs 1;
+  -- only Tags was wrong.
+  definition "OrderMsg" for MsgCard.Order as 'Order' (
+    "OrderNo",
+    MsgCard.Order_Customer/MsgCard.Customer as 'Customer' (
+      "Name"
+    ),
+    MsgCard.Order_Tag/MsgCard.Tag as 'Tags' (
+      "Label"
+    )
+  ),
+  -- The reverse of the set, which was already right and must stay right.
+  definition "TagMsg" for MsgCard.Tag as 'Tag' (
+    "Label",
+    MsgCard.Order_Tag/MsgCard.Order as 'Orders' (
+      "OrderNo"
+    )
+  )
+);
+/
+
+-- The mapping is where CE0295 lands: an object mapping element bound to an
+-- association whose occurrence disagrees with the domain model is refused.
+create or modify export mapping MsgCard.EXM_Order
+  with message definition MsgCard.MD_Orders."OrderMsg"
+{
+  MsgCard.Order {
+    OrderNo = "OrderNo",
+    MsgCard.Order_Customer/MsgCard.Customer as Customer {
+      Name = "Name"
+    },
+    MsgCard.Order_Tag/MsgCard.Tag as Tags {
+      Label = "Label"
+    }
+  }
+};
+/

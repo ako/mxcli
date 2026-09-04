@@ -127,6 +127,20 @@ wrong: get it backwards and the definition exposes a list as a single object, or
 a single object as a list. A build error is not guaranteed — the mapping over it
 simply carries the wrong cardinality.
 
+> **Correction (ako/mxcli-rest FINDINGS #60).** The heading above is right that
+> `MaxOccurs` is not a function of the type *alone*; it is a function of the
+> direction **and** the type. The census could not see the second half: every
+> association in it is a `Reference`, so the corpus never varied the input the
+> rule was declared independent of. A **`ReferenceSet` is a list in both
+> directions**, and unlike the direction half this one does have a build error
+> behind it — mxbuild reports CE6524 on the definition and CE0295 on any mapping
+> element bound to it. Shipped rule:
+>
+> |                  | forward (holder is FROM) | reverse |
+> |---|---|---|
+> | `Reference`      | `1`  | `-1` |
+> | `ReferenceSet`   | `-1` | `-1` |
+
 **Design consequence: the statement names the target entity**, so direction is
 explicit in the source text rather than inferred:
 

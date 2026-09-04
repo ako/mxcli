@@ -43,13 +43,24 @@ func mdFixture(t *testing.T) (*ExecContext, *model.MessageDefinitionCollection) 
 	customer.ID = nextID("cust")
 	customer.Attributes = []*domainmodel.Attribute{mkAttr("Name", &domainmodel.StringAttributeType{})}
 
+	tag := &domainmodel.Entity{Name: "Tag", Persistable: true}
+	tag.ID = nextID("tag")
+	tag.Attributes = []*domainmodel.Attribute{mkAttr("Label", &domainmodel.StringAttributeType{})}
+
 	// ParentID is the FROM entity (the FK owner); ChildID the TO entity.
-	assoc := &domainmodel.Association{Name: "Order_Customer", ParentID: order.ID, ChildID: customer.ID}
+	assoc := &domainmodel.Association{Name: "Order_Customer", ParentID: order.ID, ChildID: customer.ID,
+		Type: domainmodel.AssociationTypeReference}
 	assoc.ID = nextID("assoc")
 
+	// The same shape as a set: one Order has many Tags, so BOTH directions are
+	// lists. This is the association the corpus had no example of.
+	tags := &domainmodel.Association{Name: "Order_Tag", ParentID: order.ID, ChildID: tag.ID,
+		Type: domainmodel.AssociationTypeReferenceSet}
+	tags.ID = nextID("tags")
+
 	dm := &domainmodel.DomainModel{ContainerID: mod.ID,
-		Entities:     []*domainmodel.Entity{base, order, customer},
-		Associations: []*domainmodel.Association{assoc},
+		Entities:     []*domainmodel.Entity{base, order, customer, tag},
+		Associations: []*domainmodel.Association{assoc, tags},
 	}
 	dm.ID = nextID("dm")
 	h := mkHierarchy(mod)
@@ -136,6 +147,55 @@ func TestAssociationCardinalityFollowsTheDirection(t *testing.T) {
 	// ExposedItemName is set exactly when the element repeats — 461 of 461.
 	if child.ExposedItemName != "Order" {
 		t.Errorf("ExposedItemName = %q, want Order", child.ExposedItemName)
+	}
+}
+
+// TestReferenceSetIsAListInBothDirections is the half the direction rule got
+// wrong (ako/mxcli-rest FINDINGS #60).
+//
+// Direction alone is the right rule for a Reference and the wrong one for a
+// ReferenceSet: a set is many in BOTH directions, so the forward traversal is a
+// list too. The demo corpus the direction rule was measured on contains no
+// ReferenceSet at all (927 of 927 are Reference), which is why it read as
+// exceptionless.
+//
+// Unlike the Reference case, this one HAS a build error behind it: mxbuild
+// reports CE6524 "The occurrence of '...' has changed" on the definition, and
+// CE0295 on any object mapping element bound to it. Measured on
+// ako/mxcli-rest's RestLab.RateSnapshot_ExchangeRate at 11.13.0, against a
+// baseline of 0 errors.
+func TestReferenceSetIsAListInBothDirections(t *testing.T) {
+	// Forward: Order is the FROM entity, and reaching its Tags gives a list.
+	c, err := runCreate(t, mdCreate(&ast.MessageDefinitionDef{
+		Name:    "OrderMsg",
+		Entity:  ast.QualifiedName{Module: "Sales", Name: "Order"},
+		Members: []*ast.MessageMemberDef{assocMember("Order_Tag", "Tag", attrMember("Label"))},
+	}))
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	child := c.Definitions[0].Root.Children[0]
+	if child.MaxOccurs != -1 {
+		t.Errorf("Order -> Tag MaxOccurs = %d, want -1: a ReferenceSet is a list in the forward direction too", child.MaxOccurs)
+	}
+	// ExposedItemName is set exactly when the element repeats — 461 of 461 — so
+	// the cardinality being wrong took the item name with it.
+	if child.ExposedItemName != "Tag" {
+		t.Errorf("ExposedItemName = %q, want Tag", child.ExposedItemName)
+	}
+
+	// CONTROL: the reverse was already right, and must stay right. If this were
+	// the only assertion, a fix that returned -1 unconditionally would pass.
+	c, err = runCreate(t, mdCreate(&ast.MessageDefinitionDef{
+		Name:    "TagMsg",
+		Entity:  ast.QualifiedName{Module: "Sales", Name: "Tag"},
+		Members: []*ast.MessageMemberDef{assocMember("Order_Tag", "Order", attrMember("OrderId"))},
+	}))
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if got := c.Definitions[0].Root.Children[0].MaxOccurs; got != -1 {
+		t.Errorf("Tag -> Order MaxOccurs = %d, want -1 (the reverse of a set)", got)
 	}
 }
 

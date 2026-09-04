@@ -274,25 +274,34 @@ func buildMessageMember(ctx *ExecContext, m *ast.MessageMemberDef, holderQN, col
 }
 
 // resolveAssociationCardinality returns the MaxOccurs an exposed association
-// stores, from the DIRECTION the definition traverses it in.
+// stores: whether the element is a single object or a list.
 //
-// This is the one derivation in the whole document that is not obvious, and
-// getting it backwards has no build error behind it — the definition simply
-// exposes a list as a single object, or the reverse.
+// It is a function of the direction of traversal AND the association's type,
+// and the second half was learned the hard way (ako/mxcli-rest FINDINGS #60).
 //
-// It is NOT a function of the association's type: measured across the demo
-// corpus, all 927 resolvable associations are `Reference`, yet 526 store 1 and
-// 401 store -1. It tracks direction, with zero counter-examples:
+//	                 forward (holder is FROM)   reverse (holder is TO)
+//	Reference                  1                        -1
+//	ReferenceSet              -1                        -1
 //
-//	holder is the FROM entity (child -> parent, following the FK)   ->   1   (496)
-//	holder is the TO entity   (parent -> children, in reverse)      ->  -1   (401)
+// The reverse is always a list: many holders point at one target, so from the
+// target's side the element repeats. The forward direction is where the type
+// decides — a Reference gives one object per holder, a ReferenceSet gives many.
 //
-// ako/TestApp confirms it in a single document: Mappings.Order_Customer appears
-// in both of its definitions and stores 1 reaching Customer from Order and -1
-// reaching Order from Customer.
+// Direction ALONE looked exceptionless because the demo corpus it was measured
+// on contains no ReferenceSet: all 927 resolvable associations are `Reference`,
+// yet 526 store 1 and 401 store -1, which pins the direction half and says
+// nothing about the type half. ako/TestApp confirms the direction half in one
+// document: Mappings.Order_Customer stores 1 reaching Customer from Order and
+// -1 reaching Order from Customer.
+//
+// Unlike the direction half, getting the type half wrong DOES have a build
+// error behind it — mxbuild reports CE6524 "The occurrence of '...' has
+// changed" on the definition, plus CE0295 on any object mapping element bound
+// to it. Measured on ako/mxcli-rest at 11.13.0 against a 0-error baseline.
 //
 // An association that connects the two entities in NEITHER direction is refused
-// rather than defaulted. A wrong cardinality is worse than a refusal: it builds.
+// rather than defaulted. A wrong cardinality is worse than a refusal: for a
+// Reference it builds clean and exposes a list as a single object.
 func resolveAssociationCardinality(ctx *ExecContext, assocQN, holderQN, targetQN, where string) (int, error) {
 	assoc, ok := lookupAssociation(ctx, assocQN)
 	if !ok {
@@ -302,7 +311,11 @@ func resolveAssociationCardinality(ctx *ExecContext, assocQN, holderQN, targetQN
 	fromQN, toQN := associationEnds(ctx, assoc)
 	switch {
 	case fromQN == holderQN && toQN == targetQN:
-		// Following the foreign key: one target per holder.
+		// Following the reference: one target per holder for a Reference, many
+		// for a ReferenceSet.
+		if assoc.Type == domainmodel.AssociationTypeReferenceSet {
+			return -1, nil
+		}
 		return 1, nil
 	case toQN == holderQN && fromQN == targetQN:
 		// The reverse: many holders point at one target, so from the target's

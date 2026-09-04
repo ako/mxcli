@@ -25,12 +25,26 @@ its own members — the same discriminator import and export mappings use. A
 mapping then binds to `Module.Collection.Definition`, a three-part reference.
 
 **Name the association's target entity.** It is not decoration: the stored
-cardinality tracks the **direction of traversal**, not the association's type.
+cardinality — single object or list — is derived from the **direction of
+traversal** and the **association's type** together.
+
+|                  | forward (from the FK owner) | reverse            |
+|------------------|-----------------------------|--------------------|
+| **Reference**    | single object               | list               |
+| **ReferenceSet** | list                        | list               |
+
 Reaching `Customer` from `Order` follows the foreign key and gives a single
 object; reaching `Order` from `Customer` is the reverse and gives a list — the
-same association, both ways. An association that connects the two entities in
-neither direction is **refused**, because a wrong cardinality builds cleanly and
-would silently expose a list as a single object.
+same association, both ways. A **ReferenceSet is a list in both directions**,
+because a set is many at both ends.
+
+An association that connects the two entities in neither direction is
+**refused**, because mxcli would have to guess. Guessing is worse than
+refusing in opposite ways on the two halves of the rule, which is worth knowing
+when something looks wrong: a wrong *direction* builds cleanly and silently
+exposes a list as a single object, while a wrong *type* is caught — mxbuild
+reports CE6524 (`The occurrence of '...' has changed`) on the definition and
+CE0295 (`Association '...' is not allowed`) on any mapping element bound to it.
 
 **Inherited attributes are named like the entity's own.** mxcli resolves each to
 the entity that declares it, which is what Mendix stores; qualifying one against
