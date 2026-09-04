@@ -154,8 +154,16 @@ func execAlterEnumeration(ctx *ExecContext, s *ast.AlterEnumerationStmt) error {
 	case ast.AlterEnumAdd:
 		for _, v := range enum.Values {
 			if v.Name == s.ValueName {
+				// IF NOT EXISTS makes a script that adds a value re-runnable.
+				// Without it the second run errors and `exec` STOPS THERE, so
+				// one already-present value silently truncates the rest of the
+				// script. (ako/mxcli-rest FINDINGS #60)
+				if s.IfNotExists {
+					fmt.Fprintf(ctx.Output, "Value '%s' already exists on enumeration %s — skipped\n", s.ValueName, s.Name)
+					return nil
+				}
 				return mdlerrors.NewAlreadyExistsMsg("enumeration value", s.ValueName,
-					fmt.Sprintf("value '%s' already exists on enumeration %s", s.ValueName, s.Name))
+					fmt.Sprintf("value '%s' already exists on enumeration %s — use 'add value if not exists' to make the script re-runnable", s.ValueName, s.Name))
 			}
 		}
 		enum.Values = append(enum.Values, model.EnumerationValue{
@@ -172,6 +180,11 @@ func execAlterEnumeration(ctx *ExecContext, s *ast.AlterEnumerationStmt) error {
 			}
 		}
 		if idx < 0 {
+			// The DROP twin of the guard above: a re-run finds the value gone.
+			if s.IfExists {
+				fmt.Fprintf(ctx.Output, "Enumeration %s has no value '%s' — skipped\n", s.Name, s.ValueName)
+				return nil
+			}
 			return mdlerrors.NewNotFound("enumeration value", s.ValueName)
 		}
 		enum.Values = append(enum.Values[:idx], enum.Values[idx+1:]...)

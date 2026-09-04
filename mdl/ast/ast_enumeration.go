@@ -67,6 +67,13 @@ type AlterEnumerationStmt struct {
 	ValueName string
 	NewName   string // For RENAME
 	Caption   string // For ADD and MODIFY CAPTION
+
+	// Idempotency guards, so a script that adds an enumeration value is
+	// re-runnable. Without them the second run errors and exec STOPS THERE,
+	// leaving every later statement unapplied. Same pair as ALTER ENTITY's
+	// ADD ATTRIBUTE / DROP INDEX. (ako/mxcli-rest FINDINGS #60)
+	IfNotExists bool // ADD VALUE IF NOT EXISTS
+	IfExists    bool // DROP VALUE IF EXISTS
 }
 
 func (s *AlterEnumerationStmt) isStatement() {}

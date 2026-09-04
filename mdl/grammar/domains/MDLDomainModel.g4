@@ -285,11 +285,17 @@ anchorPoint
     : LPAREN NUMBER_LITERAL COMMA NUMBER_LITERAL RPAREN
     ;
 
+// ADD VALUE IF NOT EXISTS / DROP VALUE IF EXISTS are the same idempotency
+// guards as on ATTRIBUTE / INDEX above, and for the same reason: without them a
+// script that adds an enumeration value is not re-runnable. The unguarded ADD
+// errors on the second run and `exec` STOPS THERE, leaving every later statement
+// unapplied — so one already-present value silently truncates the script.
+// (ako/mxcli-rest FINDINGS #60)
 alterEnumerationAction
-    : ADD VALUE IDENTIFIER (CAPTION STRING_LITERAL)?
+    : ADD VALUE ifNotExists? IDENTIFIER (CAPTION STRING_LITERAL)?
     | RENAME VALUE IDENTIFIER TO IDENTIFIER
     | MODIFY VALUE IDENTIFIER CAPTION STRING_LITERAL
-    | DROP VALUE IDENTIFIER
+    | DROP VALUE ifExists? IDENTIFIER
     | SET COMMENT STRING_LITERAL
     ;
 
