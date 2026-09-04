@@ -331,6 +331,14 @@ only.
    registry. `htmlelement frame ( … )` works for every widget with a definition.
 6. `DESCRIBE PAGE` emits the keyword form.
 
+### Slice 0 — The validator knows what a widget is (blocks slices 2–3)
+
+Report at `check` time what only `exec` catches today: an unknown widget kind or
+id, and a container the parent's definition does not declare — each naming the
+near misses. The detection already exists in `validateWidgetTreeIn`; only the
+reporting is missing. Worth shipping on its own, and the thing that makes
+slices 2–3 safe (Open Question 1).
+
 ### Slice 3 — The widget body is def-driven
 
 7. **Grammar.** A parallel body rule used *only* by the widget alternatives, so
@@ -448,13 +456,45 @@ version differences are already carried by the def
 
 ## Open Questions
 
-1. **Does error quality actually survive?** The tradeoff is real: today a typo'd
-   container or widget is a clean parse error; afterwards it is a semantic one.
-   The claim that semantic is *better* rests on the validator naming the real
-   alternatives, which is unproven until written. **If the validator cannot fire
-   everywhere the parser did — notably with no `--project`, where only built-in
-   defs load — slices 2 and 3 should not ship.** This is the one question that
-   could sink them.
+1. ~~**Does error quality actually survive?**~~ **Settled: no, not as things
+   stand — and the fix is a prerequisite slice, not a risk to accept.**
+
+   The question assumed the validator would need to match what the parser
+   catches. Measured, the validator catches **less than assumed**, and the gap
+   is already open for every case that reaches it today:
+
+   | written | today's verdict |
+   |---|---|
+   | `contaner c1 (…)` — typo'd widget kind | **parse error** (the parser is the allow-list) |
+   | `pluggablewidget 'com.acme.NotAWidget' w1` — unknown widget | `check` **passes**; fails at `exec` |
+   | `group g1 (…)` inside HTML Element — real keyword, wrong widget | `check` **passes**; fails at `exec` |
+
+   So **`widgetTypeV3` is currently the widget-kind validator.** The validator
+   has no independent notion of "is this a real widget kind" and does not need
+   one, because nothing else can parse. Slices 2–3 remove that enforcement, so
+   as written they would move *every* container mistake into the hole the last
+   two rows already occupy: `check` green, failure at `exec`.
+
+   **But the detection is already computed.** `validateWidgetTreeIn` holds the
+   parent's declared object lists and looks the child up in them
+   (`mapping := parentObjectLists[strings.ToUpper(w.Type)]`), and
+   `lookupWidgetDef` says whether the type is a known widget. Nothing *reports*
+   when both miss — the branch routes to `validateStaticWidgetUnknownProps`,
+   which checks properties of a presumed static widget rather than questioning
+   the kind.
+
+   That reframes the work. Closing the hole is an improvement **today**,
+   independent of any grammar change: it makes `check` catch two mistakes that
+   currently reach `exec`. And once `check` reports them, this question is
+   answered affirmatively **by construction**, because the semantic error exists
+   before the parse error is given up.
+
+   **Resolution: a new Slice 0 — "the validator knows what a widget is" — lands
+   before slices 2–3, and they are blocked on it rather than on a decision.**
+   It must report, with near-miss suggestions: an unknown widget kind or id, and
+   a container the parent's definition does not declare. Its own control is that
+   a *correct* widget and a *correct* container stay silent.
+
 2. **How far does the ambiguity reach?** A generic identifier as a widget type
    makes any two consecutive identifiers a widget. Contained by construction
    (ordered last), but ANTLR's ALL(\*) behaviour deserves a measurement rather
