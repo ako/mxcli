@@ -412,13 +412,88 @@ first is the one that matters:
 4. **Write the anchor, not the name.** `@Sales.Order.Status` is what makes an
    entry checkable and routable; the same fact written as prose is neither.
 
+### 4.5 Two more record kinds, and the property that separates them
+
+The brief and §4.1–4.4 describe one kind of record: a **decision**. Two more are
+needed, and the reason is a single property rather than three separate
+arguments — **what a failed anchor means.**
+
+| Kind | Its anchor points | An anchor that does not resolve means | Checked? |
+|---|---|---|---|
+| decision | backward, at what exists | the decision is **stale** | yes — fails |
+| requirement | forward, at what is intended | **not built yet** | counted, never fails |
+| open question | at what is *under discussion* | nothing — the question is often whether it should exist | not at all |
+
+The syntax is identical in all three. Only the direction differs, and that is
+the whole lifecycle.
+
+**This was measured before it was designed**, which is what settled it in one
+command: recorded as an ordinary entry, a single not-yet-built requirement takes
+`brain check` to exit 1. The same is true of a question. Requirements and
+questions could not be more decisions without making the check useless.
+
+**Requirements** (`plan/<slice>.md`, `capture --slice`) exist because the source
+of truth is frequently outside git — a specification document, a prototype, a
+conversation. None of that is an issue or a commit message, so hours of work can
+end with nothing recording what they were for, and a resumed session has no idea
+what it was building towards. This is the gap the analogous store never had,
+because mxcli's own work is driven by GitHub issues.
+
+The inversion then pays for the feature rather than merely accommodating it: a
+requirement is **built** when its anchors resolve, so `brain plan` reports
+progress *derived from the model*. Measured end to end — a slice at 0 built /
+1 planned became 1 / 0 after creating the microflow its requirement named, with
+the plan file untouched. There is no status column to maintain and none that can
+be silently wrong, which is A6 applied to scope rather than to size. It is also
+where this design departs from the AI-native SDLC playbook, which keeps a
+`plan.md` and recommends a hook to enforce that the diff still matches it: that
+is a self-reported artifact being policed, and it is only necessary when there is
+no queryable model. There is one here.
+
+**Open questions** (`--open`, `brain resolve`) are decisions not yet made. They
+live beside the decisions they will join rather than in a file of their own,
+because the moment you need to see one is while reading what that module already
+decided. Resolution converts the entry **in place**, keeping its id and position
+— an answered question is the same piece of knowledge as the question — and from
+then on its anchors are checked like any other decision.
+
+Two consequences worth stating, because both are the kind of thing that looks
+like an oversight:
+
+- **A question filed against a slice is not scope.** It is counted apart from
+  the slice's requirements; counting an unanswered question as outstanding work
+  would overstate what is left to do.
+- **Requirements and questions are never misfiled.** A slice spans modules by
+  design, and a question has no resolved anchor to compare a shard against.
+
+Two amendments follow, in the table's numbering:
+
+| # | Amendment | Because |
+|---|---|---|
+| A10 | Three record kinds, distinguished by anchor direction. Requirements live in `plan/<slice>.md`; questions live beside decisions and carry an `OPEN` marker | §4.5: measured — a requirement or question recorded as a decision takes `check` to exit 1 |
+| A11 | Capture gets a **trigger**: a correction made twice, or a choice between real alternatives. `mxcli lint` reports unpromoted entries *and* unanswered questions | §4.5: the plan half fills at bootstrap while the decisions half fills only if someone remembers — A7 applied to the imbalance |
+
+A11's trigger is taken from the AI-native SDLC playbook's rule for `CLAUDE.md`
+("when Claude makes a mistake twice, the correction goes into `CLAUDE.md`"),
+which is the one piece of that document this design was missing outright.
+
+Its other contribution was to expose a defect: the playbook is explicit that
+`CLAUDE.md` is read at the **start of a session**, and this proposal asserted the
+same of `project.md` — using it to justify the tightest cap in the store — with
+no mechanism behind it. A generated project mentioned the brain exactly once, in
+a skills-table row, behind a symptom-triggered description. The generated
+`CLAUDE.md` now names `docs/brain/project.md` directly. **A policy about what is
+loaded is worth nothing without the thing that loads it**, and the same question
+should be asked of any future claim of that shape here.
+
 ## 5. Phasing
 
 Unchanged from the brief, with A4 inserted:
 
-1. Storage, anchors, and the seven verbs of §4.3 — `init` / `capture` /
-   `staged` / `promote` / `drop` / `check` / `show` — plus the skill of §4.4.
-   Markdown destinations only.
+1. Storage, anchors, and the verbs of §4.3 — `init` / `capture` / `staged` /
+   `promote` / `drop` / `check` / `show`, plus `plan` and `resolve` for the two
+   further record kinds of §4.5 — and the skill of §4.4. Markdown destinations
+   only.
 2. The mxbuild error → resolution trigger.
 3. **Documentation audit**, then promotion into model documentation and lint-rule
    generation. No longer gated on A4.
