@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- **`mxcli check` now catches two widget mistakes that only `exec` caught** — an explicit widget id that resolves to nothing (**MDL-WIDGET25**) and a real container keyword used on a parent that declares no such container (**MDL-WIDGET26**, e.g. `group` inside HTML Element). Both parsed cleanly and reported success at check time, then failed the build.
+
+  The cause is that the **grammar was the widget-kind validator**: `widgetTypeV3` is an allow-list, so an unknown kind could not parse and the validator never needed an independent notion of one — and neither of these mistakes is a keyword the parser checks. `isUniversalObjectListKeyword` actively suppressed the second, treating a container keyword as always-an-item wherever it appeared.
+
+  Both rules stay silent when they cannot be sure: an id whose `.mpk` **is** installed is real and merely unextracted (the registry `check` uses reads `.mxcli/widgets/` and does not refresh from installed packages), and a container is never judged against a parent whose definition could not be resolved. Measured: zero false positives across the whole `mdl-examples/doctype-tests/` corpus.
+
 - **`DESCRIBE WIDGET` — a widget's definition, in-language** — `describe widget combobox;` or `describe widget 'com.mendix.widget.web.htmlelement.HTMLElement';` reports each property's key, type, caption, category, required flag, default and enumeration values, plus the dynamic rules the widget's editor uses to *hide* properties under some configurations (the ones that cause CE0463 when written into the pruned half).
 
   A widget was the only MDL extension point without one: a microflow, nanoflow, Java action and JavaScript action all describe in-language against the live project. That gap is *why* `mxcli widget init` generates markdown documentation at all — and why that documentation could drift from what the parser accepts, as reported in mendixlabs/mxcli#1036. The statement and `mxcli widget describe` are now the same function, so they cannot disagree.

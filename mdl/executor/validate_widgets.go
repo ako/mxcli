@@ -116,6 +116,9 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 		}
 		mapping := parentObjectLists[strings.ToUpper(w.Type)]
 		isObjectListItem := mapping != nil || isUniversalObjectListKeyword(w.Type)
+		// Slice 0: is this a widget at all, and does the parent declare this
+		// container? Both were previously left to `exec`.
+		out = append(out, validateWidgetKind(w, registry, lookupWidgetDef(parent, registry), parentObjectLists, locationPrefix)...)
 		out = append(out, validatePluggableWidgetProperties(w, registry, locationPrefix)...)
 		// #928: contentparams with no `{N}` placeholder to consume them.
 		if lookupWidgetDef(w, registry) != nil {
