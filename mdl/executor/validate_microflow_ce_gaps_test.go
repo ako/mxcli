@@ -374,10 +374,18 @@ end;`)
 	}
 }
 
-// With `returns T as $Var` the builder takes the End event's value from the
-// variable and none lands inside the loop. Measured: no CE0068 (that shape
-// builds CE0109 instead, a different defect this rule must not mislabel).
-func TestMDL062_ExemptsReturnsAsClause(t *testing.T) {
+// `returns T as $Var` was exempt on the grounds that the builder synthesizes the
+// End event from the variable so none lands in the loop, and that the shape
+// builds CE0109 rather than CE0068. Both were wrong, and this is the exact
+// source that measured wrong: mxbuild reports ONE error per microflow, $Done is
+// never assigned here, and CE0109 masked the CE0068 underneath.
+//
+// Re-measured on mxbuild 11.13.0 with `declare $Done Boolean = false` inserted
+// and nothing else changed, the same microflow reports
+// CE0068 "End events cannot be placed inside a loop." — and `describe
+// microflow` shows the in-loop `return true` written either way, so the End
+// event was always in the loop. Reported as CapTrackV2 FINDINGS §19.
+func TestMDL062_FiresWithReturnsAsClause(t *testing.T) {
 	vs := checkMicroflowSource(t, `create microflow Synthetic.MF_AsClause () returns Boolean as $Done
 begin
   retrieve $L from Synthetic.Item;
@@ -386,8 +394,29 @@ begin
     return true;
   end loop;
 end;`)
+	if _, ok := violationsByRule(vs)["MDL062"]; !ok {
+		t.Errorf("MDL062 stayed silent on a `returns … as $Var` microflow whose loop "+
+			"contains a return — measured CE0068 on mxbuild 11.13.0 once CE0109 stops "+
+			"masking it: %#v", vs)
+	}
+}
+
+// CONTROL for the un-exemption: the AS clause on its own must stay clean. The
+// clause's real effect — buildFlowGraph taking the terminal End event's value
+// from the variable — is unchanged, and a fix that simply reported every
+// as-clause microflow would satisfy the test above while breaking the idiom.
+func TestMDL062_ReturnsAsClauseWithoutALoopReturnIsClean(t *testing.T) {
+	vs := checkMicroflowSource(t, `create microflow Synthetic.MF_AsClean () returns Boolean as $Done
+begin
+  declare $Done Boolean = false;
+  retrieve $L from Synthetic.Item;
+  loop $I in $L
+  begin
+    set $Done = true;
+  end loop;
+end;`)
 	if _, bad := violationsByRule(vs)["MDL062"]; bad {
-		t.Errorf("MDL062 fired on a `returns … as $Var` microflow, where no End event lands in the loop: %#v", vs)
+		t.Errorf("MDL062 fired on an as-clause microflow with no return inside the loop: %#v", vs)
 	}
 }
 

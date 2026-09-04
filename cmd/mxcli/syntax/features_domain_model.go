@@ -95,7 +95,7 @@ func init() {
 			"event handler", "documentation",
 			"if not exists", "if exists", "idempotent",
 		},
-		Syntax:  "ALTER ENTITY Module.Name ADD ATTRIBUTE [IF NOT EXISTS] AttrName: Type [constraints];\nALTER ENTITY Module.Name DROP ATTRIBUTE [IF EXISTS] AttrName;\nALTER ENTITY Module.Name RENAME ATTRIBUTE OldName TO NewName;\nALTER ENTITY Module.Name MODIFY ATTRIBUTE AttrName Type [DEFAULT val];\nALTER ENTITY Module.Name DROP DEFAULT ON ATTRIBUTE AttrName;\nALTER ENTITY Module.Name ADD INDEX [name] [ON] (attr1, attr2);\nALTER ENTITY Module.Name SET DOCUMENTATION 'text';\nALTER ENTITY Module.Name ADD EVENT HANDLER ON BEFORE COMMIT CALL Module.MF RAISE ERROR;\n\nMODIFY ATTRIBUTE always takes a type — restate it even when you are only\nchanging the default. There is no 'MODIFY ATTRIBUTE X SET DEFAULT v' form:\nSET would be read as the type name. Use DROP DEFAULT to clear one.\n\nIF NOT EXISTS / IF EXISTS make the add/drop a no-op (skipped, not an error)\nwhen the attribute is already present / already gone — so a domain script\nre-runs cleanly. For a whole script, 'mxcli exec --continue-on-error' reports\neach failed statement and keeps going instead of halting at the first.\n\nRENAME ATTRIBUTE also rewrites every reference to the attribute: the stored\nqualified names (microflow create/change members, page widgets, the entity's own\nvalidation and access rules) AND the bare steps inside XPath constraints, which\nare resolved to their owning entity first so another entity's identically-named\nattribute is left alone. A constraint that cannot be resolved is reported and\nleft unchanged, never guessed at. Uses inside microflow expressions ($obj/Attr)\nare free text and are NOT rewritten; mxbuild reports those as CE0117.",
+		Syntax:  "ALTER ENTITY Module.Name ADD ATTRIBUTE [IF NOT EXISTS] AttrName: Type [constraints];\nALTER ENTITY Module.Name DROP ATTRIBUTE [IF EXISTS] AttrName;\nALTER ENTITY Module.Name RENAME ATTRIBUTE OldName TO NewName;\nALTER ENTITY Module.Name MODIFY ATTRIBUTE AttrName Type [DEFAULT val];\nALTER ENTITY Module.Name DROP DEFAULT ON ATTRIBUTE AttrName;\nALTER ENTITY Module.Name ADD INDEX [name] [ON] (attr1, attr2);\nALTER ENTITY Module.Name SET DOCUMENTATION 'text';\nALTER ENTITY Module.Name SET POSITION (x, y);\nALTER ENTITY Module.Name ADD EVENT HANDLER ON BEFORE COMMIT CALL Module.MF RAISE ERROR;\n\nSET POSITION places the entity in the domain-model editor, and CREATE ENTITY\ntakes the same thing as an @Position(x, y) annotation. Both are the box's\nCENTRE, not its top-left corner. An entity created without one takes the next\nslot in a wrapping grid, which is a default rather than a layout: to arrange a\nwhole module from its association graph, run 'mxcli layout -p app.mpr'\n(--dry-run first; it replaces positions you set by hand).\n\nMODIFY ATTRIBUTE always takes a type — restate it even when you are only\nchanging the default. There is no 'MODIFY ATTRIBUTE X SET DEFAULT v' form:\nSET would be read as the type name. Use DROP DEFAULT to clear one.\n\nIF NOT EXISTS / IF EXISTS make the add/drop a no-op (skipped, not an error)\nwhen the attribute is already present / already gone — so a domain script\nre-runs cleanly. For a whole script, 'mxcli exec --continue-on-error' reports\neach failed statement and keeps going instead of halting at the first.\n\nRENAME ATTRIBUTE also rewrites every reference to the attribute: the stored\nqualified names (microflow create/change members, page widgets, the entity's own\nvalidation and access rules) AND the bare steps inside XPath constraints, which\nare resolved to their owning entity first so another entity's identically-named\nattribute is left alone. A constraint that cannot be resolved is reported and\nleft unchanged, never guessed at. Uses inside microflow expressions ($obj/Attr)\nare free text and are NOT rewritten; mxbuild reports those as CE0117.",
 		Example: "ALTER ENTITY Shop.Customer ADD ATTRIBUTE Phone: String(20);\nALTER ENTITY Shop.Customer ADD ATTRIBUTE IF NOT EXISTS Phone: String(20);  -- re-runnable\nALTER ENTITY Shop.Customer DROP ATTRIBUTE IF EXISTS OldField;              -- re-runnable\nALTER ENTITY Shop.Customer RENAME ATTRIBUTE Email TO EmailAddress;\nALTER ENTITY Shop.Customer MODIFY ATTRIBUTE Phone String(30) DEFAULT '';  -- type restated\nALTER ENTITY Shop.Customer DROP DEFAULT ON ATTRIBUTE Phone;               -- clear a default\nALTER ENTITY Shop.Customer ADD INDEX ON (EmailAddress);\nALTER ENTITY Shop.Customer\n  ADD EVENT HANDLER ON BEFORE COMMIT CALL Shop.Validate($currentObject) RAISE ERROR;",
 		SeeAlso: []string{"domain-model.entity.create", "domain-model.entity.attributes"},
 	})
@@ -184,12 +184,38 @@ func init() {
 		Path:    "domain-model.association.delete-behavior",
 		Summary: "Delete behavior options for associations",
 		Keywords: []string{
-			"delete behavior", "cascade", "prevent",
+			"delete behavior", "cascade", "prevent", "restrict",
+			"on delete", "set null", "error message", "referential action",
 			"delete and references", "delete but keep references",
 			"delete if no references", "referential integrity",
 		},
-		Syntax:  "DELETE_BEHAVIOR options:\n  DELETE_BUT_KEEP_REFERENCES  Delete object, nullify FK (default)\n  DELETE_AND_REFERENCES       Delete object and cascade to children\n  DELETE_IF_NO_REFERENCES     Prevent deletion if referenced\n  CASCADE                     Alias for DELETE_AND_REFERENCES\n  PREVENT                     Alias for DELETE_IF_NO_REFERENCES",
-		Example: "CREATE ASSOCIATION Shop.Order_Customer\n  FROM Shop.Order TO Shop.Customer\n  TYPE Reference\n  DELETE_BEHAVIOR PREVENT;\n\nCREATE ASSOCIATION Shop.Order_Lines\n  FROM Shop.OrderLine TO Shop.Order\n  TYPE Reference\n  DELETE_BEHAVIOR CASCADE;",
+		Syntax: "ON DELETE <action> [ERROR_MESSAGE '<text>']\n" +
+			"  ON DELETE SET NULL   Keep the referencing objects, clear the reference (default)\n" +
+			"  ON DELETE CASCADE    Delete the referencing objects too\n" +
+			"  ON DELETE RESTRICT   Refuse the delete while references exist\n\n" +
+			"These are SQL's referential actions, and Mendix's three delete behaviours are\n" +
+			"exactly them. FROM/TO already matches a foreign key's direction -- FROM owns the\n" +
+			"key, TO is referenced -- so `FROM Order TO Customer ON DELETE RESTRICT` means\n" +
+			"deleting a CUSTOMER is refused while Orders reference it, the same way it would\n" +
+			"in CREATE TABLE.\n\n" +
+			"ERROR_MESSAGE is what the user sees when a RESTRICT delete is refused (Studio\n" +
+			"Pro's \"Error message if 'X' object cannot be deleted\"). SQL has no equivalent;\n" +
+			"this is a Mendix extension. Omitting it stores an empty message.\n\n" +
+			"The older spelling still works and means the same thing:\n" +
+			"  DELETE_BEHAVIOR DELETE_BUT_KEEP_REFERENCES | DELETE_AND_REFERENCES\n" +
+			"                | DELETE_IF_NO_REFERENCES | CASCADE | PREVENT\n" +
+			"                [ERROR_MESSAGE '<text>']\n" +
+			"DESCRIBE emits the ON DELETE form, because it says which side is governed.",
+		Example: "CREATE ASSOCIATION Shop.Order_Customer\n" +
+			"  FROM Shop.Order TO Shop.Customer\n" +
+			"  TYPE Reference\n" +
+			"  ON DELETE RESTRICT\n" +
+			"    ERROR_MESSAGE 'A customer with orders cannot be deleted';\n\n" +
+			"CREATE ASSOCIATION Shop.Order_Lines\n" +
+			"  FROM Shop.OrderLine TO Shop.Order\n" +
+			"  TYPE Reference\n" +
+			"  ON DELETE CASCADE;\n\n" +
+			"ALTER ASSOCIATION Shop.Order_Customer SET ON DELETE SET NULL;",
 		SeeAlso: []string{"domain-model.association.create"},
 	})
 

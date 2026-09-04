@@ -1,0 +1,43 @@
+-- CapTrackV2 FINDINGS §10 — `ACTIONBUTTON … (Action: SIGN_OUT)` was refused by
+-- the default engine:
+--
+--   client action *pages.SignOutClientAction not yet supported by the
+--   modelsdk engine — rerun with MXCLI_ENGINE=legacy
+--
+-- The refusal was honest. The advice was not: the legacy writer had no case for
+-- the action either, so it fell through to the default and wrote
+-- `Forms$NoAction`. The button rendered, said "Sign out", and did nothing —
+-- with `mxcli check`, `exec` and `mx check` all clean. Measured on Mendix 11.13:
+--
+--   before, either engine:  describe -> actionbutton btnOut (Caption: 'Sign out')
+--                           stored   -> Forms$NoAction
+--   after,  either engine:  describe -> ... Action: sign_out
+--                           stored   -> Forms$SignOutClientAction,
+--                                       DisabledDuringExecution: true
+--
+-- That two-key shape is pinned against a Studio Pro-authored sign-out button
+-- (ako/TestApp). The reference is provably Studio Pro's rather than mxcli's,
+-- because until this fix NEITHER engine could emit the type.
+--
+-- Verify:
+--   mxcli exec captrack-10-sign-out-action.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe page SignOut.P_Account"
+--       -- must emit: Action: sign_out
+--   MXCLI_ENGINE=legacy mxcli exec … -p other.mpr    -- same document
+--   mx check -p app.mpr        -- 0 errors, before and after (this never was a
+--                                 build error, which is what made it dangerous)
+
+create module SignOut;
+/
+
+create or replace page SignOut.P_Account
+  (Title: 'Account', Layout: Atlas_Core.Atlas_Default)
+{
+  container cActions {
+    actionbutton btnSignOut (Caption: 'Sign out', Action: sign_out, ButtonStyle: Default)
+
+    -- CONTROL: the actions that already worked are untouched by the new case.
+    actionbutton btnClose (Caption: 'Close', Action: close_page)
+  }
+}
+/

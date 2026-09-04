@@ -49,29 +49,27 @@ func (o OwnerType) String() string {
 // DeleteBehavior represents the delete behavior of an association.
 type DeleteBehavior int
 
+// Mendix has exactly three, and so does SQL: SET NULL, CASCADE, RESTRICT.
+//
+// Three further values used to sit here — DeleteBoth, DeleteKeepParentDeleteChild
+// and DeleteKeepChildDeleteParent — which no grammar rule could produce and which
+// named nothing Mendix has. They were the trap behind upstream #901: String() is a
+// DISPLAY helper, and using it as a storage encoding put an out-of-domain enum on
+// disk, which mxbuild tolerates and Studio Pro does not.
 const (
-	DeleteKeepReferences DeleteBehavior = iota
-	DeleteCascade
-	DeleteBoth
-	DeleteKeepParentDeleteChild
-	DeleteKeepChildDeleteParent
-	DeleteIfNoReferences
+	DeleteKeepReferences DeleteBehavior = iota // ON DELETE SET NULL
+	DeleteCascade                              // ON DELETE CASCADE
+	DeleteIfNoReferences                       // ON DELETE RESTRICT
 )
 
+// String is for display. The storage encoding is storageDeleteBehavior in the
+// executor — do not reintroduce this as one.
 func (d DeleteBehavior) String() string {
 	switch d {
-	case DeleteKeepReferences:
-		return "DeleteMeButKeepReferences"
 	case DeleteCascade:
 		return "DeleteMeAndReferences"
-	case DeleteBoth:
-		return "DeleteBoth"
-	case DeleteKeepParentDeleteChild:
-		return "KeepParentDeleteChild"
-	case DeleteKeepChildDeleteParent:
-		return "KeepChildDeleteParent"
 	case DeleteIfNoReferences:
-		return "DeleteIfNoReferences"
+		return "DeleteMeIfNoReferences"
 	default:
 		return "DeleteMeButKeepReferences"
 	}
@@ -99,17 +97,22 @@ func (s StorageType) String() string {
 
 // CreateAssociationStmt represents: CREATE ASSOCIATION Module.Name FROM ... TO ... TYPE ...
 type CreateAssociationStmt struct {
-	Name             QualifiedName
-	Parent           QualifiedName
-	Child            QualifiedName
-	Type             AssociationType
-	Owner            OwnerType
-	Storage          StorageType
-	DeleteBehavior   DeleteBehavior
-	Documentation    string
-	DocumentationSet bool // see mendixlabs/mxcli#1018: absent preserves, empty clears
-	Comment          string
-	CreateOrModify   bool // true for CREATE OR MODIFY / CREATE OR REPLACE
+	Name           QualifiedName
+	Parent         QualifiedName
+	Child          QualifiedName
+	Type           AssociationType
+	Owner          OwnerType
+	Storage        StorageType
+	DeleteBehavior DeleteBehavior
+	// DeleteErrorMessage is the text a user sees when a RESTRICT/PREVENT delete
+	// is refused — Studio Pro's "Error message if 'X' object cannot be deleted".
+	// Stored as a Texts$Text; without one the runtime fails to START, not to
+	// build (CapTrackV2 §1).
+	DeleteErrorMessage string
+	Documentation      string
+	DocumentationSet   bool // see mendixlabs/mxcli#1018: absent preserves, empty clears
+	Comment            string
+	CreateOrModify     bool // true for CREATE OR MODIFY / CREATE OR REPLACE
 	// IfNotExists is CREATE ASSOCIATION IF NOT EXISTS: skip when it already
 	// exists, leaving the stored definition untouched.
 	IfNotExists bool
@@ -149,9 +152,12 @@ type AlterAssociationStmt struct {
 	Name           QualifiedName
 	Operation      AlterAssociationOperation
 	DeleteBehavior DeleteBehavior
-	Owner          OwnerType
-	Storage        StorageType
-	Comment        string
+	// DeleteErrorMessage: see CreateAssociationStmt. An ALTER that sets
+	// RESTRICT/PREVENT needs it for the same reason a CREATE does.
+	DeleteErrorMessage string
+	Owner              OwnerType
+	Storage            StorageType
+	Comment            string
 
 	// SET ANCHOR FROM (x, y) TO (x, y) — both ends are always given together,
 	// because the pair is one visual decision.

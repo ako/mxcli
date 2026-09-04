@@ -22,7 +22,7 @@ const shardMarker = "<!-- mxcli-brain -->"
 
 // metaLine matches an entry's one metadata line. The separator is a middle dot
 // so that a title or body containing a hyphen cannot be mistaken for it.
-var metaLine = regexp.MustCompile("^Anchors: (.*?) · id `([0-9a-f]{6})` · (\\d{4}-\\d{2}-\\d{2})\\s*$")
+var metaLine = regexp.MustCompile("^Anchors: (.*?) · id `([0-9a-f]{6})` · (\\d{4}-\\d{2}-\\d{2})( · OPEN)?\\s*$")
 
 // anchorRef matches one backticked anchor inside the metadata line.
 var anchorRef = regexp.MustCompile("`(@[A-Za-z_][A-Za-z0-9_.]*)`")
@@ -45,7 +45,11 @@ func RenderShard(shard string, entries []Entry) string {
 func renderEntry(e Entry) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "## %s\n\n", e.Title)
-	fmt.Fprintf(&b, "Anchors: %s · id `%s` · %s\n", renderAnchors(e.Anchors), e.ID, e.Date)
+	open := ""
+	if e.Open {
+		open = " · OPEN"
+	}
+	fmt.Fprintf(&b, "Anchors: %s · id `%s` · %s%s\n", renderAnchors(e.Anchors), e.ID, e.Date, open)
 	if e.Body != "" {
 		fmt.Fprintf(&b, "\n%s\n", e.Body)
 	}
@@ -125,6 +129,7 @@ func parseEntry(block string) (Entry, bool) {
 				e.Anchors = append(e.Anchors, a[1])
 			}
 			e.ID, e.Date = m[2], m[3]
+			e.Open = m[4] != ""
 			metaAt = i
 			break
 		}

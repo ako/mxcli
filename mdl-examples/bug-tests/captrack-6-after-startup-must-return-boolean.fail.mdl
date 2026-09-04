@@ -1,0 +1,41 @@
+-- NEGATIVE TEST — `mxcli check` must REFUSE this file.
+--
+-- CapTrackV2 FINDINGS §6 — `ALTER SETTINGS MODEL AfterStartupMicroflow = '…'`
+-- accepted a microflow with no return type and `mxcli check` passed. The build
+-- then failed:
+--
+--   [CE0142] "After startup microflow should return a boolean"
+--
+-- #274 made ALTER SETTINGS resolve the qualified names it writes, so a
+-- MISSPELLED microflow is caught. But the name here resolves perfectly — the
+-- constraint is on the thing it names, not on the reference. The shape that
+-- trips it in practice is a seed/demo-data microflow wired to after-startup:
+-- it does its work, returns nothing, and the build refuses it.
+--
+-- `ALTER MICROFLOW … RETURNS …` does not parse either, so the remedy is DROP +
+-- CREATE. The setting survives that, since it is stored by qualified name.
+--
+-- Verify:
+--   mxcli check captrack-6-after-startup-must-return-boolean.fail.mdl
+--       -- must report the return type and name CE0142, and exit non-zero
+--
+-- The control lives beside this file as
+-- captrack-6-after-startup-must-return-boolean.mdl.
+
+create module Startup;
+/
+create persistent entity Startup.Seed (
+  Code: string(50)
+);
+/
+
+-- A seed microflow: does its work, returns nothing.
+create microflow Startup.MF_SeedData ()
+begin
+  $S = create Startup.Seed (Code = 'demo');
+  commit $S;
+end;
+/
+
+alter settings model AfterStartupMicroflow = 'Startup.MF_SeedData';
+/

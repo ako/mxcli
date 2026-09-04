@@ -53,6 +53,48 @@ func serializeClientAction(action pages.ClientAction) bson.D {
 			{Key: "$Type", Value: "Forms$DeleteClientAction"},
 			{Key: "ClosePage", Value: a.ClosePage},
 		}
+	case *pages.LinkClientAction:
+		// OPEN_LINK fell through to the default below and was written as
+		// Forms$NoAction, exactly as SIGN_OUT was — the button rendered and did
+		// nothing (CapTrackV2 FINDINGS §10).
+		//
+		// The storage name is Forms$OpenLinkClientAction, NOT the
+		// "Forms$LinkClientAction" the semantic type carries. Pinned against 31
+		// Studio Pro-authored link buttons: five keys, LinkType "Web" in all 31,
+		// address nested as a Forms$StaticOrDynamicString whose AttributeRef is
+		// null for the static form MDL authors.
+		linkType := string(a.LinkType)
+		if linkType == "" {
+			linkType = "Web"
+		}
+		return bson.D{
+			{Key: "$ID", Value: idToBsonBinary(string(a.ID))},
+			{Key: "$Type", Value: "Forms$OpenLinkClientAction"},
+			{Key: "Address", Value: bson.D{
+				{Key: "$ID", Value: idToBsonBinary(generateUUID())},
+				{Key: "$Type", Value: "Forms$StaticOrDynamicString"},
+				{Key: "AttributeRef", Value: nil},
+				{Key: "IsDynamic", Value: false},
+				{Key: "Value", Value: a.Address},
+			}},
+			{Key: "DisabledDuringExecution", Value: true},
+			{Key: "LinkType", Value: linkType},
+		}
+	case *pages.SignOutClientAction:
+		// Until this case existed, SIGN_OUT fell through to the default below
+		// and was written as Forms$NoAction — so the button rendered, said
+		// "Sign out", and did nothing, with `mxcli check`, `exec` and `mx check`
+		// all clean. That made the documented workaround for the modelsdk
+		// engine's refusal ("rerun with MXCLI_ENGINE=legacy") the more dangerous
+		// of the two paths (CapTrackV2 FINDINGS §10).
+		//
+		// One property, pinned against a Studio Pro-authored button (ako/TestApp,
+		// Mendix 11): DisabledDuringExecution, true.
+		return bson.D{
+			{Key: "$ID", Value: idToBsonBinary(string(a.ID))},
+			{Key: "$Type", Value: "Forms$SignOutClientAction"},
+			{Key: "DisabledDuringExecution", Value: true},
+		}
 	case *pages.CreateObjectClientAction:
 		// Build EntityRef if entity is specified
 		var entityRef any

@@ -93,9 +93,13 @@ var brainCaptureCmd = &cobra.Command{
 			e   brain.Entry
 			err error
 		)
-		if slice != "" {
+		open, _ := cmd.Flags().GetBool("open")
+		switch {
+		case open:
+			e, err = brain.NewQuestion(args[0], anchors, slice, time.Now())
+		case slice != "":
 			e, err = brain.NewRequirement(args[0], anchors, slice, time.Now())
-		} else {
+		default:
 			e, err = brain.NewEntry(args[0], anchors, time.Now())
 		}
 		if err != nil {
@@ -109,7 +113,11 @@ var brainCaptureCmd = &cobra.Command{
 			fmt.Printf("Already queued as %s — not added again.\n", e.ID)
 			return
 		}
-		fmt.Printf("Queued %s -> would promote into %s\n", e.ID, shardLabel(e.Shard()))
+		what := "Queued"
+		if e.Open {
+			what = "Queued open question"
+		}
+		fmt.Printf("%s %s -> would promote into %s\n", what, e.ID, shardLabel(e.Shard()))
 		fmt.Println("Review with 'mxcli brain staged'; commit it with 'mxcli brain promote " + e.ID + "'.")
 	},
 }
@@ -226,6 +234,39 @@ var brainShowCmd = &cobra.Command{
 			}
 			fmt.Printf("%-*s %8d %8d %7d/%-4d%s\n", width, shardLabel(u.Shard), u.Entries, u.Lines, u.Headroom(), u.Cap, note)
 		}
+	},
+}
+
+var brainResolveCmd = &cobra.Command{
+	Use:   "resolve <id> <answer>",
+	Short: "Answer an open question, turning it into a decision",
+	Long: `Answer an open question.
+
+The entry becomes an ordinary decision in place: same id, same position in the
+file, with the question kept as the answer's context. It does not move and does
+not get a new identity, because an answered question is the same piece of
+knowledge as the question — anything referring to it still resolves.
+
+This is the step that stops questions accumulating. A question nobody answers
+is reported by 'brain check' and by 'mxcli lint' until someone does.`,
+	Args: cobra.ExactArgs(2),
+	Run: func(cmd *cobra.Command, args []string) {
+		store := brain.NewStore(brainProjectDir(cmd))
+		e, shard, err := store.Find(args[0])
+		if err != nil {
+			brainFatal(err)
+		}
+		if shard == "" {
+			brainFatal(fmt.Errorf("no committed entry with id %s", args[0]))
+		}
+		resolved, err := e.Resolve(args[1], time.Now())
+		if err != nil {
+			brainFatal(err)
+		}
+		if err := store.Replace(shard, resolved); err != nil {
+			brainFatal(err)
+		}
+		fmt.Printf("Resolved %s in %s\n", resolved.ID, shardLabel(shard))
 	},
 }
 
@@ -388,8 +429,18 @@ func printBrainReport(rep brain.Report) {
 		fmt.Println()
 		printBrainPlan(rep.Slices)
 	}
+	for _, q := range rep.Open {
+		fmt.Printf("OPEN          %s: %q (%s)\n", q.EntryID, q.Title, shardLabel(q.Shard))
+	}
 	fmt.Printf("\n%d entries, %d anchors, %d resolved, across %d shard(s).\n",
 		rep.Entries, rep.Anchors, rep.ResolvedN, len(rep.Shards))
+	if n := len(rep.Open); n > 0 {
+		noun := "questions"
+		if n == 1 {
+			noun = "question"
+		}
+		fmt.Printf("%d open %s — answer one with 'mxcli brain resolve <id> \"<answer>\"'.\n", n, noun)
+	}
 	if !rep.Failed() {
 		fmt.Println("OK")
 	}
@@ -582,6 +633,8 @@ func init() {
 	}
 	brainCaptureCmd.Flags().StringSliceP("anchor", "a", nil,
 		"Anchor into the model (@Module, @Module.Element, @Module.Entity.Attribute); repeatable")
+	brainCaptureCmd.Flags().Bool("open", false,
+		"Record this as an OPEN QUESTION — something not decided yet, so its anchors are not checked")
 	brainCaptureCmd.Flags().StringP("slice", "s", "",
 		"Record this as a requirement of the named slice (plan/<slice>.md) instead of a decision")
 	brainPromoteCmd.Flags().String("to", "",
@@ -590,7 +643,8 @@ func init() {
 	brainCheckCmd.Flags().Bool("ci", false, "Machine-friendly output for CI")
 
 	brainPlanCmd.Flags().StringP("project", "p", "", "Path to the .mpr file")
+	brainResolveCmd.Flags().StringP("project", "p", "", "Path to the .mpr file")
 	brainCmd.AddCommand(brainInitCmd, brainCaptureCmd, brainStagedCmd,
-		brainPromoteCmd, brainDropCmd, brainShowCmd, brainCheckCmd, brainPlanCmd)
+		brainPromoteCmd, brainDropCmd, brainShowCmd, brainCheckCmd, brainPlanCmd, brainResolveCmd)
 	rootCmd.AddCommand(brainCmd)
 }

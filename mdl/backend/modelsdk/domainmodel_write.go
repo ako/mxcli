@@ -116,6 +116,22 @@ func assocToGen(a *domainmodel.Association) *genDm.Association {
 	}
 	db.SetParentDeleteBehavior(parentDB)
 	db.SetChildDeleteBehavior(childDB)
+	// A "delete me if no references" child side carries the message the user sees
+	// when the delete is refused. Studio Pro writes a Texts$Text there and mxcli
+	// wrote null, which does not fail the BUILD — it stops the runtime STARTING,
+	// with a stack trace naming SchemeFactory and nothing about the model
+	// (CapTrackV2 §1).
+	//
+	// Only that behaviour, and only the child side. A census of 47,789 units
+	// across 122 projects found 423 delete behaviours, every one of them keep or
+	// cascade with both messages null — so writing a text element unconditionally
+	// would differ from Studio Pro on every association that exists in the wild.
+	// The Studio Pro reference (ako/TestApp, Mappings.Order_Customer) shows the
+	// same: the message appears on the restrict side, and ParentErrorMessage
+	// stays null.
+	if childDB == string(domainmodel.DeleteBehaviorTypeDeleteMeIfNoReferences) {
+		db.SetChildErrorMessage(textToGen(deleteErrorText(a.ChildDeleteBehavior)))
+	}
 	out.SetDeleteBehavior(db)
 
 	// An association between external entities carries a Rest$OData* source; a
@@ -847,4 +863,23 @@ func assignID(elem element.Element) {
 		return
 	}
 	ider.SetID(element.ID(mmpr.GenerateID()))
+}
+
+// deleteErrorText is the message element a restrict behaviour must carry.
+//
+// An omitted message becomes an empty en_US translation rather than a null: null
+// is the shape that stops the runtime starting, and Studio Pro's dialog lets the
+// box be left empty, so an empty text is the closest thing to "no message" that
+// still boots.
+//
+// NOTE: the empty case is INFERRED, not measured. The reference document
+// (ako/TestApp) captures a message that was filled in; nobody has yet saved a
+// restrict association with the box cleared, so what Studio Pro writes then is
+// unverified. If this ever misbehaves, that is the line to check first.
+func deleteErrorText(db *domainmodel.DeleteBehavior) *model.Text {
+	msg := ""
+	if db != nil {
+		msg = db.ErrorMessage
+	}
+	return &model.Text{Translations: map[string]string{"en_US": msg}}
 }

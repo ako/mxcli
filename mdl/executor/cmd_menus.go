@@ -148,6 +148,11 @@ func menuItemsFromAST(defs []ast.NavMenuItemDef) []*types.NavMenuItem {
 		} else if d.Microflow != nil {
 			item.Microflow = d.Microflow.String()
 			item.ActionType = "MicroflowAction"
+		} else if d.SignOut {
+			// Studio Pro stores a sign-out menu item as the same
+			// Forms$SignOutClientAction a button carries (measured on
+			// ako/TestApp), so it is an ActionType rather than a target.
+			item.ActionType = "SignOutAction"
 		} else {
 			item.ActionType = "NoAction"
 		}

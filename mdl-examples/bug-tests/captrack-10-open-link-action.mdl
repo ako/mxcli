@@ -1,0 +1,53 @@
+-- The other half of the same defect as SIGN_OUT (CapTrackV2 FINDINGS §10):
+-- `ACTIONBUTTON … (Action: OPEN_LINK '…')` was written by NEITHER engine.
+--
+--   modelsdk: refused — "client action *pages.LinkClientAction not yet
+--             supported by the modelsdk engine"
+--   legacy:   fell through to the quiet default and wrote Forms$NoAction, so
+--             the button rendered and did nothing, with `mxcli check`, `exec`
+--             and `mx check` all clean.
+--
+-- Two things a reference settles that reasoning would not. The STORAGE NAME is
+-- Forms$OpenLinkClientAction, not the "Forms$LinkClientAction" the semantic type
+-- carried — a wrong $Type that never reached disk only because nothing could
+-- write the action. And the address is not a string field: it is a nested
+-- Forms$StaticOrDynamicString.
+--
+-- Pinned against 31 Studio Pro-authored link buttons (ako/TestApp,
+-- FeedbackModule): exactly five keys, LinkType "Web" in all 31.
+--
+--   { "$Type": "Forms$OpenLinkClientAction",
+--     "Address": { "$Type": "Forms$StaticOrDynamicString",
+--                  "AttributeRef": null, "IsDynamic": false,
+--                  "Value": "https://www.mendix.com/" },
+--     "DisabledDuringExecution": true,
+--     "LinkType": "Web" }
+--
+-- 6 of those 31 are DYNAMIC (IsDynamic true, an AttributeRef, an empty Value) —
+-- the address is read from an attribute at runtime. MDL cannot author that, so
+-- DESCRIBE flags such a button instead of printing its address as a literal,
+-- which would round-trip into a different link.
+--
+-- Verify:
+--   mxcli exec captrack-10-open-link-action.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe page OpenLink.P_Links"
+--       -- must emit: Action: open_link 'https://example.com'
+--   mx check -p app.mpr        -- 0 errors
+
+create module OpenLink;
+/
+
+create or replace page OpenLink.P_Links
+  (Title: 'Links', Layout: Atlas_Core.Atlas_Default)
+{
+  container cLinks {
+    actionbutton btnDocs (Caption: 'Docs', Action: open_link 'https://example.com')
+
+    -- A link button is the render mode a URL usually wants.
+    linkbutton lnkHome (Caption: 'Mendix', Action: open_link 'https://www.mendix.com/')
+
+    -- CONTROL: the actions that already worked are untouched.
+    actionbutton btnClose (Caption: 'Close', Action: close_page)
+  }
+}
+/

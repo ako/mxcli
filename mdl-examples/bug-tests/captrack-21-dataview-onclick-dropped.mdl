@@ -1,0 +1,70 @@
+-- CapTrackV2 FINDINGS §21 — a data view's own `OnClick:` is dropped.
+--
+--   dataview dv (…, OnClick: SHOW_PAGE …)
+--     -> parses, `mxcli check` clean, `exec` writes the page without a word,
+--        and the rendered element has no handler and no role="button".
+--
+-- `OnClick:` is an alias for `Action:` (the visitor stores both under
+-- Properties["Action"], issue #603), and mxcli writes that property for three
+-- widget kinds only: container/customcontainer, the buttons, and a
+-- navigationlist item. Measured on Mendix 11.13 by writing ONE page with four
+-- widgets and reading it back with `describe page`:
+--
+--   container    OnClick kept   (Pages$DivContainer.OnClickAction)
+--   listview     OnClick GONE   (Mendix HAS ListView.ClickAction — no mxcli writer)
+--   dataview     OnClick GONE   (Mendix models no click action on a data view)
+--   dynamictext  OnClick GONE   (same)
+--
+-- MDL-WIDGET23 now reports the drop, with a different remedy for each of the two
+-- shapes. The container is the correct modelling for the first, a workaround for
+-- the second.
+--
+-- Verify:
+--   mxcli check captrack-21-dataview-onclick-dropped.mdl
+--       -- 3 MDL-WIDGET23 warnings: dvDropped, lvDropped, txtDropped
+--       -- and NOTHING on cClickable or btnGo
+--   mxcli exec captrack-21-dataview-onclick-dropped.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe page Clicks.P_Clicks"
+--       -- only the container's action comes back
+--   mx check -p app.mpr        -- 0 errors either way; this never was a build error
+
+create module Clicks;
+/
+create persistent entity Clicks.Thing (
+  Name: string(100)
+);
+/
+create microflow Clicks.DS_OneThing ()
+returns Clicks.Thing as $T
+begin
+  retrieve $L from Clicks.Thing;
+  set $T = head($L);
+end;
+/
+
+create or replace page Clicks.P_Clicks
+  (Title: 'Clicks', Layout: Atlas_Core.Atlas_Default)
+{
+  -- CONTROL: the one shape that works, and the remedy the rule points at.
+  container cClickable (OnClick: show_page Clicks.P_Clicks) {
+    dynamictext tIn (Content: 'this one really is clickable')
+  }
+
+  -- CONTROL: a button's action is written too.
+  actionbutton btnGo (Caption: 'Go', Action: show_page Clicks.P_Clicks)
+
+  -- Reported (no slot in Mendix at all).
+  dataview dvDropped (DataSource: microflow Clicks.DS_OneThing, OnClick: show_page Clicks.P_Clicks) {
+    dynamictext tDv (Content: 'inside the data view')
+  }
+
+  -- Reported (no slot in Mendix at all).
+  dynamictext txtDropped (Content: 'bare text', OnClick: show_page Clicks.P_Clicks)
+
+  -- Reported, with the OTHER message: Mendix models ListView.ClickAction,
+  -- mxcli has no writer for it.
+  listview lvDropped (DataSource: database from Clicks.Thing, OnClick: show_page Clicks.P_Clicks) {
+    dynamictext tLv (Content: 'a row')
+  }
+}
+/

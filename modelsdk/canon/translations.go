@@ -3,6 +3,7 @@
 package canon
 
 import (
+	"crypto/sha256"
 	"sort"
 	"strconv"
 
@@ -95,8 +96,16 @@ func CarryTranslations(contents, stored []byte) []byte {
 		return contents
 	}
 
+	// Every element id already in the rebuilt document, so a carried element that
+	// would collide with one gets a fresh id instead. See reuseSafeID.
+	used := elementIDs(newDoc)
+
 	changed := false
-	for path, text := range newByPath {
+	// Sorted, not map order: which text is visited first decides which one keeps
+	// a stored element's id, and a run-to-run difference there would change the
+	// bytes and stop no-op elision from ever firing.
+	for _, path := range sortedPaths(newByPath) {
+		text := newByPath[path]
 		var want map[string]bson.D
 		if byPath {
 			want = textTranslationElems(storedByPath[path])
@@ -106,7 +115,7 @@ func CarryTranslations(contents, stored []byte) []byte {
 		if len(want) == 0 {
 			continue
 		}
-		if mergeText(text, want) {
+		if mergeText(text, want, path, used) {
 			changed = true
 		}
 	}
@@ -226,7 +235,11 @@ func storedTranslationSets(doc bson.D) map[string]*translationSet {
 // mergeText appends the languages a rebuilt text is missing, reporting whether
 // anything was added. A language the rebuild wrote is never overwritten: the
 // statement is the authority for what it says.
-func mergeText(text bson.D, want map[string]bson.D) bool {
+//
+// used carries every element id already in the document and is updated as ids
+// are taken, so the same stored element handed to two texts does not put one id
+// on both of them (see reuseSafeID).
+func mergeText(text bson.D, want map[string]bson.D, path string, used map[string]bool) bool {
 	have := textTranslations(text)
 	items, ok := docLookup(text, "Items").(bson.A)
 	if !ok {
@@ -237,7 +250,7 @@ func mergeText(text bson.D, want map[string]bson.D) bool {
 		if _, exists := have[lang]; exists {
 			continue
 		}
-		items = append(items, want[lang])
+		items = append(items, reuseSafeID(want[lang], path, lang, used))
 		added = true
 	}
 	if !added {
@@ -327,4 +340,108 @@ func docLookup(d bson.D, key string) any {
 		}
 	}
 	return nil
+}
+
+// reuseSafeID returns the stored translation element to append, with a fresh
+// element id if the stored one is already taken in this document.
+//
+// The by-source branch can hand ONE stored element to several rebuilt texts —
+// eight copies of the literal '{1}' on a page is entirely ordinary — and
+// appending it verbatim each time put the same $ID on all eight. A unit whose
+// document holds two elements with the same $ID cannot be opened: Studio Pro
+// refuses the whole project, and mxcli's own write-time guard (duplicates.go)
+// refuses the write. That guard is what surfaced this, and its comment records
+// that the cause could not be established at the time — this is it, for the
+// Texts$Translation case it was reported against (CapTrackV2 §30/§17).
+//
+// Re-identifying a copy is safe HERE in a way that deduplicating ids in general
+// is not, and the distinction is the whole argument for doing it:
+//
+//   - An $ID is a pointer target, and rewriting one means finding every
+//     reference to it (ADR-0008). Nothing references a Texts$Translation: it is
+//     a leaf child of a Texts$Text, holding four keys and no identity of its own
+//     that anything resolves by. So there are no references to miss.
+//   - The FIRST use keeps the stored id, so an unchanged document still compares
+//     equal and no-op elision fires. Only the copies — elements that never
+//     existed on disk under that id — are re-identified.
+//
+// The fresh id is derived rather than random, so the same inputs give the same
+// bytes on every run; a random id would make the document differ from itself and
+// write on every execution.
+func reuseSafeID(elem bson.D, path, lang string, used map[string]bool) bson.D {
+	id, ok := docLookup(elem, "$ID").(bson.Binary)
+	if !ok {
+		return elem // no id to collide; leave it exactly as it was
+	}
+	key := string(id.Data)
+	if !used[key] {
+		used[key] = true
+		return elem
+	}
+	next := derivedID(id, path, lang, used)
+	out := make(bson.D, len(elem))
+	copy(out, elem)
+	for i := range out {
+		if out[i].Key == "$ID" {
+			out[i].Value = next
+		}
+	}
+	used[string(next.Data)] = true
+	return out
+}
+
+// derivedID builds a deterministic 16-byte id from the element being copied and
+// where the copy is going. Two different destinations therefore get two
+// different ids, and the same run twice gets the same ones.
+//
+// The loop is a collision guard rather than an expectation: a SHA-256 prefix
+// colliding with an id already in the document is not a case anyone will see,
+// but the failure it would cause is precisely the one this function exists to
+// remove, so it is cheaper to rule out than to reason about.
+func derivedID(from bson.Binary, path, lang string, used map[string]bool) bson.Binary {
+	for n := 0; ; n++ {
+		h := sha256.New()
+		h.Write(from.Data)
+		h.Write([]byte(path))
+		h.Write([]byte(lang))
+		h.Write([]byte(strconv.Itoa(n)))
+		out := bson.Binary{Subtype: from.Subtype, Data: h.Sum(nil)[:16]}
+		if !used[string(out.Data)] {
+			return out
+		}
+	}
+}
+
+// elementIDs collects every $ID in a document, so a carried element can be told
+// whether the id it wants is already spoken for.
+func elementIDs(doc bson.D) map[string]bool {
+	out := map[string]bool{}
+	var walk func(v any)
+	walk = func(v any) {
+		switch n := v.(type) {
+		case bson.D:
+			if b, ok := docLookup(n, "$ID").(bson.Binary); ok {
+				out[string(b.Data)] = true
+			}
+			for _, e := range n {
+				walk(e.Value)
+			}
+		case bson.A:
+			for _, e := range n {
+				walk(e)
+			}
+		}
+	}
+	walk(doc)
+	return out
+}
+
+// sortedPaths keeps the visit order stable across runs.
+func sortedPaths(m map[string]bson.D) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }

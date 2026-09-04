@@ -75,6 +75,11 @@ type flowSignature struct {
 	// Returns is the entity qualified name of an object or list return type,
 	// "" for anything else (including a flow that returns nothing).
 	Returns string
+	// ReturnKind is the return type as declared, which Returns cannot express:
+	// a Boolean and a void microflow both leave Returns empty, and the
+	// after-startup check has to tell them apart (CE0142). TypeVoid where the
+	// flow declares no return at all.
+	ReturnKind ast.DataTypeKind
 }
 
 // paramNames returns the parameter names in declaration order, which is what the
@@ -437,9 +442,10 @@ func sdkDataTypeEntity(dt microflows.DataType) string {
 // astFlowSignature builds a signature from a CREATE MICROFLOW / CREATE NANOFLOW
 // statement, for a flow this script has not written yet.
 func astFlowSignature(params []ast.MicroflowParam, ret *ast.MicroflowReturnType) *flowSignature {
-	sig := &flowSignature{}
+	sig := &flowSignature{ReturnKind: ast.TypeVoid}
 	if ret != nil {
 		sig.Returns = astDataTypeEntity(ret.Type)
+		sig.ReturnKind = ret.Type.Kind
 	}
 	for _, p := range params {
 		entity := astDataTypeEntity(p.Type)

@@ -723,6 +723,42 @@ actionbutton btnSubmit (
 )
 ```
 
+### Only a CONTAINER (or a Button) Can Be Clicked
+
+`onclick:` is an alias for `action:`, and mxcli writes it for three widget kinds
+only: `container`/`customcontainer` (`Forms$DivContainer.onClickAction`), the
+buttons, and a `navigationlist` `item`. Anywhere else it parses, passes check,
+is written, and reaches nothing — the rendered element has no handler and no
+`role="button"`. MDL-WIDGET23 reports it rather than letting it go quiet.
+
+Two shapes, two remedies:
+
+- **Mendix models no click there at all** (`dataview`, `dynamictext`, `title`,
+  the input widgets, `groupbox`, `tabcontainer`, `layoutgrid`, `snippetcall`) —
+  put the action on a `container` inside the widget. A container renders with
+  `tabindex="0" role="button"`, so it is the correct modelling, not a workaround.
+- **Mendix models one but mxcli cannot write it yet** (`listview`,
+  `staticimage`, `dynamicimage`) — the container is a workaround here; the model
+  could hold the action.
+
+```sql
+-- WRONG: silently does nothing
+dataview dvOrder (datasource: microflow Mod.DS_Order, onclick: show_page Mod.Detail) {
+  dynamictext t (content: 'Open')
+}
+
+-- RIGHT: the container carries the click
+dataview dvOrder (datasource: microflow Mod.DS_Order) {
+  container clickable (onclick: show_page Mod.Detail) {
+    dynamictext t (content: 'Open')
+  }
+}
+```
+
+Pluggable widgets are exempt: their action slots come from the widget's own
+definition and are routed by the widget engine, so `datagrid` (DataGrid 2) and
+`pluggablewidget '…' (onclick: …)` are written normally.
+
 ### CONTAINER / CUSTOMCONTAINER Widgets
 
 Generic container for grouping widgets. `customcontainer` is an alias for `container` (both map to `Forms$DivContainer`):

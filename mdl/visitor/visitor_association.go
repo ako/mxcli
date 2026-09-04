@@ -62,9 +62,22 @@ func (b *Builder) ExitCreateAssociationStatement(ctx *parser.CreateAssociationSt
 				}
 			}
 
-			// DELETE_BEHAVIOR
+			// DELETE_BEHAVIOR <behaviour>, the original spelling.
 			if delBehavior := optCtx.DeleteBehavior(); delBehavior != nil {
 				stmt.DeleteBehavior = buildDeleteBehavior(delBehavior)
+			}
+
+			// ON DELETE <action>, the SQL spelling. Both set the same field —
+			// they are two ways of naming one Mendix behaviour, not two features.
+			if onDel := optCtx.OnDeleteClause(); onDel != nil {
+				stmt.DeleteBehavior = buildReferentialAction(onDel.ReferentialAction())
+				if msg := onDel.ErrorMessageClause(); msg != nil {
+					stmt.DeleteErrorMessage = buildErrorMessage(msg)
+				}
+			}
+			// ERROR_MESSAGE hangs off either clause.
+			if msg := optCtx.ErrorMessageClause(); msg != nil {
+				stmt.DeleteErrorMessage = buildErrorMessage(msg)
 			}
 
 			// COMMENT
@@ -191,15 +204,31 @@ func (b *Builder) ExitAlterAssociationAction(ctx *parser.AlterAssociationActionC
 			}
 			name := buildQualifiedName(qn)
 
-			// SET DELETE_BEHAVIOR
+			// SET DELETE_BEHAVIOR <behaviour>, and SET ON DELETE <action>.
 			if ctx.DELETE_BEHAVIOR() != nil {
 				if delBehavior := ctx.DeleteBehavior(); delBehavior != nil {
-					b.statements = append(b.statements, &ast.AlterAssociationStmt{
+					alter := &ast.AlterAssociationStmt{
 						Name:           name,
 						Operation:      ast.AlterAssociationSetDeleteBehavior,
 						DeleteBehavior: buildDeleteBehavior(delBehavior),
-					})
+					}
+					if msg := ctx.ErrorMessageClause(); msg != nil {
+						alter.DeleteErrorMessage = buildErrorMessage(msg)
+					}
+					b.statements = append(b.statements, alter)
 				}
+				return
+			}
+			if onDel := ctx.OnDeleteClause(); onDel != nil {
+				alter := &ast.AlterAssociationStmt{
+					Name:           name,
+					Operation:      ast.AlterAssociationSetDeleteBehavior,
+					DeleteBehavior: buildReferentialAction(onDel.ReferentialAction()),
+				}
+				if msg := onDel.ErrorMessageClause(); msg != nil {
+					alter.DeleteErrorMessage = buildErrorMessage(msg)
+				}
+				b.statements = append(b.statements, alter)
 				return
 			}
 

@@ -116,24 +116,30 @@ func zeroValueHint(t ast.DataType) string {
 // continues after it. Returning a value from inside a loop needs the value
 // stashed in a variable and a single return after the loop.
 //
-// The rule predicts what the BUILDER emits, not what the MDL looks like, and
-// two forms measured clean on mxbuild 11.6.6 are therefore exempt. Both were
-// found by running the rule over the shipped examples before wiring it up:
+// The rule predicts what the BUILDER emits, not what the MDL looks like, so
+// `while true` is exempt: it is built as an ExclusiveMerge back-edge, not a
+// LoopedActivity (#350). With no loop object there is no "inside a loop", and
+// the return is an ordinary End event. A plain `while <cond>` IS a
+// LoopedActivity and is not exempt — measured separately.
 //
-//   - `while true` is built as an ExclusiveMerge back-edge, not a
-//     LoopedActivity (#350). With no loop object there is no "inside a loop",
-//     and the return is an ordinary End event. A plain `while <cond>` IS a
-//     LoopedActivity and is not exempt — measured separately.
-//   - `returns T as $Var` makes buildFlowGraph synthesize the End event from
-//     the variable, and no End event lands inside the loop. Firing here would
-//     name the wrong defect: that shape builds CE0109 ("Undefined variable")
-//     instead, which is a separate gap and not what this rule is about.
+// `returns T as $Var` used to be exempt too, on the stated grounds that
+// buildFlowGraph synthesizes the End event from the variable so none lands in
+// the loop, and that the shape builds CE0109 ("Undefined variable") rather than
+// CE0068. The first half was never true and the second was an artefact of the
+// measurement: mxbuild reports ONE error per microflow, and in the shape that
+// was measured — `returns Boolean as $Done` with the loop's `return true` and
+// nothing assigning $Done — CE0109 simply won the race and hid CE0068
+// underneath. Re-measured on 11.13.0, with `declare $Done Boolean = false`
+// added and NOTHING else changed:
+//
+//	as-clause, $Done unassigned  ->  CE0109 "Undefined variable 'Done'."
+//	as-clause, $Done assigned    ->  CE0068 "End events cannot be placed inside a loop."
+//
+// `describe microflow` shows the in-loop `return true` written in both, so the
+// End event was always there. The exemption is gone; a masked error is not an
+// absent one, and CapTrackV2 FINDINGS §19 is the report it cost.
 func (v *microflowValidator) checkReturnInLoop(body []ast.MicroflowStatement) {
 	if v.skipCEGapRules() {
-		return
-	}
-	// See the AS-clause note above: the builder routes the return elsewhere.
-	if v.returnType != nil && v.returnType.Variable != "" {
 		return
 	}
 

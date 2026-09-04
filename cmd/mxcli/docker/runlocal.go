@@ -645,7 +645,7 @@ func RunLocal(opts LocalRunOptions) error {
 		return fmt.Errorf("initial build: %w", err)
 	}
 	if !build.OK() {
-		return fmt.Errorf("initial build failed: %s\n%s", build.Message, string(build.Raw))
+		return fmt.Errorf("initial build failed: %s\n%s", build.Message, buildFailureDetail(build))
 	}
 
 	// 5b. Bundle the browser client (web/dist). The serve Deploy target writes the

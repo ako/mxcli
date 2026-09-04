@@ -341,6 +341,15 @@ func navMenuAction(mi types.NavMenuItemSpec) bson.D {
 			}},
 		}
 	}
+	if mi.SignOut {
+		// Same element a sign-out BUTTON carries, pinned against the sign-out
+		// menu item in ako/TestApp: two properties and nothing else.
+		return bson.D{
+			{Key: "$ID", Value: navID()},
+			{Key: "$Type", Value: "Forms$SignOutClientAction"},
+			{Key: "DisabledDuringExecution", Value: true},
+		}
+	}
 	return bson.D{
 		{Key: "$ID", Value: navID()},
 		{Key: "$Type", Value: "Forms$NoAction"},

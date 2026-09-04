@@ -91,6 +91,23 @@ TABLE: T A B L E;
 
 // Delete behavior keywords
 DELETE_BEHAVIOR: D E L E T E '_'? B E H A V I O R;
+
+// SQL referential actions. Mendix's three delete behaviours are exactly SQL's
+// CASCADE / RESTRICT / SET NULL, and MDL's FROM/TO already matches a foreign
+// key's direction — FROM owns the key, TO is referenced — so `ON DELETE
+// RESTRICT` reads the way it does in `CREATE TABLE` with no Mendix-specific
+// knowledge. Verified against a Studio Pro reference (ako/TestApp
+// Mappings.Order_Customer): ParentPointer -> Order (FK owner, the FROM),
+// ChildPointer -> Customer (referenced, the TO).
+//
+// ERROR_MESSAGE, not ERROR: `ERROR` is already a token, and the compound name
+// mirrors Studio Pro's own label ("Error message if 'X' object cannot be
+// deleted"). SQL's RESTRICT has no custom message, so this clause is a Mendix
+// extension rather than something borrowed.
+RESTRICT: R E S T R I C T;
+ERROR_MESSAGE: E R R O R WS+ M E S S A G E
+             | E R R O R '_' M E S S A G E
+             | E R R O R M E S S A G E;
 CASCADE: C A S C A D E;
 PREVENT: P R E V E N T;
 

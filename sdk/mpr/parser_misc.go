@@ -594,6 +594,11 @@ func parseNavMenuItem(raw map[string]any) *NavMenuItem {
 			if ms, ok := action["MicroflowSettings"].(map[string]any); ok {
 				mi.Microflow = extractString(ms["Microflow"])
 			}
+		case strings.HasSuffix(actionType, "SignOutClientAction"):
+			// Named rather than left to the raw-type-name default: DESCRIBE and
+			// both writers key on "SignOutAction", so a round trip only closes
+			// if the reader produces the name the writer consumes.
+			mi.ActionType = "SignOutAction"
 		case strings.HasSuffix(actionType, "OpenLinkAction") || strings.HasSuffix(actionType, "OpenLinkClientAction"):
 			mi.ActionType = "OpenLinkAction"
 		case strings.HasSuffix(actionType, "NoAction") || strings.HasSuffix(actionType, "NoClientAction"):

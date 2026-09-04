@@ -1,0 +1,54 @@
+-- A navigation menu can carry a LOG-OUT item, and mxcli could neither author
+-- one nor read one back. This is the menu half of CapTrackV2 FINDINGS §10; the
+-- button half is captrack-10-sign-out-action.mdl.
+--
+-- MDL's menu item took PAGE or MICROFLOW only, so:
+--
+--   authoring: there was no spelling for it at all.
+--   reading:   ako/TestApp's sign-out menu item came back as a plain
+--              `menu item 'Item 5';` — so DESCRIBE -> exec turned a working
+--              log-out entry into a dead one, silently, `mx check` clean.
+--
+-- Measured on ako/TestApp (Mendix 11.14), before and after:
+--
+--   before:  show navigation menu Responsive  ->  Item 5
+--   after:   show navigation menu Responsive  ->  Item 5 -> sign out
+--
+-- Studio Pro stores it as the same element a sign-out BUTTON carries —
+-- Forms$SignOutClientAction, DisabledDuringExecution true, nothing else — which
+-- is why SIGN_OUT sits beside PAGE and MICROFLOW rather than having a syntax of
+-- its own. It needs no target.
+--
+-- Both menu constructs are covered: a standalone menu document and the menu
+-- inside a navigation profile. They have separate writers and separate readers,
+-- and BOTH ended in a NoAction default.
+--
+-- Verify:
+--   mxcli exec captrack-10-sign-out-menu-item.mdl -p app.mpr
+--   mxcli -p app.mpr -c "describe menu SignOutMenu.Account_Menu"
+--       -- must emit: menu item 'Sign out' sign_out;
+--   mx check -p app.mpr        -- 0 errors
+
+create module SignOutMenu;
+/
+create or replace page SignOutMenu.Home (Title: 'Home', Layout: Atlas_Core.Atlas_Default)
+{
+  dynamictext t (Content: 'home')
+}
+/
+
+create or modify menu SignOutMenu.Account_Menu (
+  menu item 'Home' page SignOutMenu.Home;
+
+  -- The item that could not be spelled.
+  menu item 'Sign out' sign_out;
+
+  -- SIGN_OUT names no target, so it must not disturb the qualified-name list it
+  -- shares with PAGE/MICROFLOW and ICON — an icon after it still lands as one.
+  menu item 'Log out' sign_out icon Atlas_Core.Atlas.home;
+
+  -- CONTROL: an item with no action must stay actionless. A conversion that
+  -- stamped every actionless item as sign-out would look correct above.
+  menu item 'Plain';
+);
+/

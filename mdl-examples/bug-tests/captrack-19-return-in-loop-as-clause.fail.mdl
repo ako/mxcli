@@ -1,0 +1,61 @@
+-- NEGATIVE TEST — `mxcli check` must REFUSE this file (MDL062).
+--
+-- CapTrackV2 FINDINGS §19 — a `return` inside a loop passed `mxcli check` and
+-- `exec`, and mxbuild then rejected it:
+--
+--   [CE0068] "End events cannot be placed inside a loop."
+--
+-- MDL062 has existed since #893 and did not fire, because it stood down for the
+-- whole microflow whenever the header carried a `returns T as $Var` clause. The
+-- stated reason was that the builder synthesizes the End event from the variable
+-- so none lands in the loop, and that the shape builds CE0109 instead.
+--
+-- Neither held. `describe microflow` shows the in-loop `return` written either
+-- way, and mxbuild reports ONE error per microflow: in the shape that was
+-- measured, $Var was never assigned, so CE0109 "Undefined variable" won the race
+-- and hid the CE0068 underneath. Measured on mxbuild 11.13.0, changing NOTHING
+-- but adding a `declare` for the variable:
+--
+--   as-clause, $Done unassigned  ->  CE0109 "Undefined variable 'Done'."
+--   as-clause, $Done assigned    ->  CE0068 "End events cannot be placed inside a loop."
+--
+-- Verify:
+--   mxcli check captrack-19-return-in-loop-as-clause.fail.mdl
+--       -- must report MDL062 for BOTH microflows below and exit non-zero
+--
+-- The positive control lives beside this file as
+-- captrack-19-return-in-loop-as-clause.mdl, whose shapes must stay clean.
+
+create module RetLoop;
+/
+create persistent entity RetLoop.Item (
+  Code: string(50)
+);
+/
+
+-- The exact source whose measurement went wrong: $Done is never assigned, so
+-- CE0109 masked CE0068 on the build that established the exemption.
+create microflow RetLoop.MF_Masked ()
+returns boolean as $Done
+begin
+  retrieve $L from RetLoop.Item;
+  loop $I in $L
+  begin
+    return true;
+  end loop;
+end;
+/
+
+-- The same microflow with the mask removed. This one builds CE0068 on 11.13.0,
+-- which is what proves the two are the same defect.
+create microflow RetLoop.MF_Unmasked ()
+returns boolean as $Done
+begin
+  declare $Done boolean = false;
+  retrieve $L from RetLoop.Item;
+  loop $I in $L
+  begin
+    return true;
+  end loop;
+end;
+/

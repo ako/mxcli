@@ -39,6 +39,12 @@ type docPreserveCase struct {
 	// anything else modelsdk-only). The harness defaults to legacy, so without
 	// this the case fails at its own precondition and says nothing about #1018.
 	modelsdk bool
+	// minMajor/minMinor gate a doctype that does not exist in every supported
+	// Mendix version. Without this the case fails at CREATE on an older
+	// project, which says nothing about #1018 — the doctype is simply absent.
+	// Kept as a version rather than a boolean so the reason is legible at the
+	// case, and mirrors sdk/versions/mendix-11.yaml.
+	minMajor, minMinor int
 	// create carries a doc comment; rewrite deliberately does not.
 	create   string
 	rewrite  string
@@ -231,24 +237,32 @@ func docPreserveCases() []docPreserveCase {
 		},
 		{
 			name:       "ai model",
+			minMajor:   11,
+			minMinor:   9,
 			storedOnly: true,
 			create:     doc + "create model TestModule.DocModel ( Provider: MxCloudGenAI );",
 			rewrite:    "create or modify model TestModule.DocModel ( Provider: MxCloudGenAI );",
 		},
 		{
 			name:       "knowledge base",
+			minMajor:   11,
+			minMinor:   9,
 			storedOnly: true,
 			create:     doc + "create knowledge base TestModule.DocKb ( Provider: MxCloudGenAI );",
 			rewrite:    "create or modify knowledge base TestModule.DocKb ( Provider: MxCloudGenAI );",
 		},
 		{
 			name:       "consumed mcp service",
+			minMajor:   11,
+			minMinor:   9,
 			storedOnly: true,
 			create:     doc + "create consumed mcp service TestModule.DocMcp ( ProtocolVersion: 'v2025_03_26' );",
 			rewrite:    "create or modify consumed mcp service TestModule.DocMcp ( ProtocolVersion: 'v2025_03_26' );",
 		},
 		{
 			name:       "agent",
+			minMajor:   11,
+			minMinor:   9,
 			storedOnly: true,
 			create: "create model TestModule.DocAgentModel ( Provider: MxCloudGenAI );\n" + doc +
 				"create agent TestModule.DocAgent ( UsageType: Task, Model: TestModule.DocAgentModel, SystemPrompt: 'p' );",
@@ -272,6 +286,10 @@ func TestDocumentation_SurvivesRewrite(t *testing.T) {
 				env = setupTestEnvWithBackend(t, func() backend.FullBackend { return modelsdkbackend.New() })
 			}
 			defer env.teardown()
+
+			if tc.minMajor > 0 {
+				env.requireMinVersion(t, tc.minMajor, tc.minMinor)
+			}
 
 			if err := env.executeMDL(tc.create); err != nil {
 				t.Fatalf("create: %v", err)

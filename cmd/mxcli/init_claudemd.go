@@ -60,6 +60,25 @@ func generateClaudeMD(projectName, mprFile string) string {
 	w("This is a Mendix project configured for AI-assisted development using mxcli and MDL (Mendix Definition Language).\n\n")
 
 	// ── Communication Style ────────────────────────────────────────
+	// The brain's project.md is described as "loaded every session", and this
+	// is the only thing that makes that true. Routing to it through the skill
+	// alone does not: a skill is triggered by symptom, so a session that never
+	// hits the symptom never learns the project's own decisions — and the
+	// tightest cap in the store was justified by an unconditional load that
+	// nothing actually performed.
+	w("## Project Brain — read this first\n\n")
+	w("If " + bt + "docs/brain/" + bt + " exists, read " + bt + "docs/brain/project.md" + bt + " before doing anything\n")
+	w("else. It holds the decisions this project has already made — things no command can\n")
+	w("tell you, and that are cheap to contradict by accident.\n\n")
+	w("Then, depending on what you are doing:\n\n")
+	w("- **Building in a module** — also read " + bt + "docs/brain/modules/<Module>.md" + bt + " for the\n")
+	w("  modules you are about to touch. Not the whole directory; only those.\n")
+	w("- **Planning, or picking work up** — run " + bt + "./mxcli brain plan -p " + mprPath + bt + ".\n")
+	w("  It reports what is built from the model itself, so it cannot be out of date.\n\n")
+	w("Record what you learn with " + bt + "./mxcli brain capture" + bt + ". Read\n")
+	w(bt + ".ai-context/skills/project-brain/SKILL.md" + bt + " for what belongs there and what does not —\n")
+	w("the short version is that anything mxcli can answer must never be written down.\n\n")
+
 	w("## Communication Style\n\n")
 	w("When discussing changes with the user:\n\n")
 	w("- **Never show raw MDL scripts in chat.** Instead, describe changes in plain language as a numbered list.\n")

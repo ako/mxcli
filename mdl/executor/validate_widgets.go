@@ -141,6 +141,9 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 			// "silently dropped on write" family, but the flat property
 			// allow-list cannot see it because it is type-agnostic.
 			out = append(out, validateWidgetEditability(w, locationPrefix)...)
+			// FINDINGS §21: the same blind spot for `onclick:`/`action:`, which
+			// only three static widget kinds actually store.
+			out = append(out, validateWidgetOnClick(w, locationPrefix)...)
 		} else if def != nil {
 			out = append(out, validatePluggableEditability(w, locationPrefix)...)
 		}

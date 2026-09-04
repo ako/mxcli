@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -69,11 +70,97 @@ type BuildResult struct {
 	Status          string          `json:"status"`
 	RestartRequired bool            `json:"restartRequired"`
 	Message         string          `json:"message"`
+	Problems        BuildProblems   `json:"problems"`
 	Raw             json.RawMessage `json:"-"`
+}
+
+// BuildProblems is the serve response's problems object. The consistency errors
+// are in the inner list; the outer one carries only the summary.
+type BuildProblems struct {
+	Problems []BuildProblem `json:"problems"`
+}
+
+// BuildProblem is one consistency message from a build.
+//
+// Only the fields anything reads are declared. Severity is the load-bearing one:
+// a failing build of a blank 11.13 app returns 18 problems of which 16 are
+// warnings and one a deprecation, so printing the response wholesale buries the
+// single error that actually stopped the build.
+type BuildProblem struct {
+	Severity  string          `json:"severity"` // "Error", "Warning", "Deprecation"
+	Message   string          `json:"message"`
+	ErrorCode string          `json:"errorCode"` // e.g. "CE0109"
+	Locations []BuildLocation `json:"locations"`
+}
+
+// BuildLocation is where a problem was found. Document is the human name Studio
+// Pro would show — `Microflow 'Test_test_3'` — which is what lets a caller
+// attribute an error to the document it generated.
+type BuildLocation struct {
+	Module   string `json:"module"`
+	Document string `json:"document"`
+	Element  string `json:"element"`
 }
 
 // OK reports whether the build succeeded.
 func (r *BuildResult) OK() bool { return r.Status == "Success" }
+
+// Errors returns only the problems that failed the build.
+func (r *BuildResult) Errors() []BuildProblem {
+	var out []BuildProblem
+	for _, p := range r.Problems.Problems {
+		if strings.EqualFold(p.Severity, "Error") {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// ErrorSummary renders the build errors one per line, with the code and the
+// document each was found in.
+//
+// This is what a caller should print instead of the raw response body: the body
+// is ~200 lines of JSON in which the real error sits among unrelated Atlas
+// warnings, and a reader has no way to tell which line failed the build.
+// Returns "" when the response carried no structured errors, so a caller can
+// fall back rather than print nothing.
+func (r *BuildResult) ErrorSummary() string {
+	errs := r.Errors()
+	if len(errs) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for i, p := range errs {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString("  ")
+		if p.ErrorCode != "" {
+			b.WriteString("[" + p.ErrorCode + "] ")
+		}
+		b.WriteString(p.Message)
+		if loc := p.Where(); loc != "" {
+			b.WriteString(" — at " + loc)
+		}
+	}
+	return b.String()
+}
+
+// Where renders a problem's first location as `Module / Document / Element`,
+// skipping the parts the response left empty.
+func (p BuildProblem) Where() string {
+	if len(p.Locations) == 0 {
+		return ""
+	}
+	l := p.Locations[0]
+	parts := make([]string, 0, 3)
+	for _, s := range []string{l.Module, l.Document, l.Element} {
+		if s != "" {
+			parts = append(parts, s)
+		}
+	}
+	return strings.Join(parts, " / ")
+}
 
 // ServeServer wraps a long-lived `mxbuild --serve` process and its build API.
 type ServeServer struct {
@@ -283,4 +370,50 @@ func (w *syncBuffer) String() string {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.b.String()
+}
+
+// buildFailureDetail renders what to show a user after a failed build.
+//
+// The structured error list when the response carried one, and the raw body only
+// as a fallback. Printing the body was the previous behaviour everywhere, and it
+// is close to useless: on a blank 11.13 app a single consistency error arrives
+// alongside 16 Atlas warnings in ~200 lines of JSON, with nothing marking which
+// one stopped the build.
+func buildFailureDetail(r *BuildResult) string {
+	if r == nil {
+		return ""
+	}
+	if summary := r.ErrorSummary(); summary != "" {
+		return summary
+	}
+	return string(r.Raw)
+}
+
+// BuildFailedError is returned when mxbuild rejected the model.
+//
+// It carries the parsed result so a caller can do something better than print
+// the message: `mxcli test` maps each error back to the generated test microflow
+// it was found in, which is the difference between "the build failed" and
+// "test 3's assertion does not compile".
+type BuildFailedError struct {
+	Result *BuildResult
+}
+
+func (e *BuildFailedError) Error() string {
+	msg := "build failed"
+	if e.Result != nil && e.Result.Message != "" {
+		msg += ": " + e.Result.Message
+	}
+	if detail := buildFailureDetail(e.Result); detail != "" {
+		msg += "\n" + detail
+	}
+	return msg
+}
+
+// BuildErrors returns the consistency errors that failed the build.
+func (e *BuildFailedError) BuildErrors() []BuildProblem {
+	if e == nil || e.Result == nil {
+		return nil
+	}
+	return e.Result.Errors()
 }

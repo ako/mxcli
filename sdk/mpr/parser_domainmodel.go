@@ -453,6 +453,10 @@ func parseAssociation(raw map[string]any) *domainmodel.Association {
 		if childType := extractString(deleteBehaviorRaw["ChildDeleteBehavior"]); childType != "" {
 			assoc.ChildDeleteBehavior = &domainmodel.DeleteBehavior{
 				Type: domainmodel.DeleteBehaviorType(childType),
+				// Read the refusal message back, or DESCRIBE cannot emit it and a
+				// describe -> exec round trip rebuilds an association whose runtime
+				// will not start (CapTrackV2 §1).
+				ErrorMessage: deleteBehaviorErrorMessage(deleteBehaviorRaw["ChildErrorMessage"]),
 			}
 		}
 	}
@@ -503,7 +507,8 @@ func parseCrossAssociation(raw map[string]any) *domainmodel.CrossModuleAssociati
 		}
 		if childType := extractString(deleteBehaviorRaw["ChildDeleteBehavior"]); childType != "" {
 			ca.ChildDeleteBehavior = &domainmodel.DeleteBehavior{
-				Type: domainmodel.DeleteBehaviorType(childType),
+				Type:         domainmodel.DeleteBehaviorType(childType),
+				ErrorMessage: deleteBehaviorErrorMessage(deleteBehaviorRaw["ChildErrorMessage"]),
 			}
 		}
 	}
@@ -780,3 +785,31 @@ func parseEventHandler(raw map[string]any) *domainmodel.EventHandler {
 }
 
 // parseMicroflow parses microflow contents from BSON.
+
+// deleteBehaviorErrorMessage reads the en_US text out of a delete behaviour's
+// error message. The message is an ordinary Texts$Text; MDL carries one string.
+func deleteBehaviorErrorMessage(raw any) string {
+	m, ok := raw.(map[string]any)
+	if !ok {
+		return ""
+	}
+	items, ok := m["Items"].([]any)
+	if !ok {
+		return ""
+	}
+	first := ""
+	for _, it := range items {
+		tr, ok := it.(map[string]any)
+		if !ok {
+			continue
+		}
+		text := extractString(tr["Text"])
+		if extractString(tr["LanguageCode"]) == "en_US" {
+			return text
+		}
+		if first == "" {
+			first = text
+		}
+	}
+	return first
+}
