@@ -135,7 +135,7 @@ for display in this README):
 | [Replace Generated Playwright Tests with playwright-cli](proposal-playwright-cli.md) | Draft | The current approach (documented in proposal-playwright-testing.md) has Claude Code generate TypeScript test files (.spec.ts), then run them |
 | [Self-Describing Syntax Feature Registry](syntax-feature-registry.md) | Draft | Branch: research/recursive-help-discovery |
 | [Structured description of irreducible microflow graphs](PROPOSAL_structured_microflow_description.md) | Draft | DESCRIBE MICROFLOW renders a microflow's control flow as nested if/then/else. |
-| [Def-driven pluggable widget bodies](PROPOSAL_def_driven_widget_bodies.md) | Draft | A pluggable widget's object lists and child slots are reachable from MDL only when their keyword is in a hand-maintained list of nine, while `widget init` documents all of them. |
+| [Widgets as first-class MDL, not a second dialect](PROPOSAL_def_driven_widget_bodies.md) | Draft | A widget is named, described and tracked differently from every other MDL extension point, and resolves against hardcoded grammar lists rather than the project. |
 | [Translations — preserve, describe, author, and auto-translate](PROPOSAL_translations.md) | Partial | A Mendix app ships its user-visible strings in every language it supports. |
 | [Version-Aware Agent Support](PROPOSAL_version_aware_agent_support.md) | Draft | Three use cases require mxcli to be version-aware at the MDL level: |
 | [warm dev loop — Docker-free run and iPad split-screen preview](PROPOSAL_mxcli_dev_warm_loop.md) | Draft | Relates to: PROPOSAL_check_mxbuild_gap_heuristics.md (the static-check gate that |
