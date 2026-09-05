@@ -1,10 +1,12 @@
 # Widget Types
 
-MDL supports a comprehensive set of widget types for building Mendix pages. Each widget is declared with a type keyword, a unique name, properties in parentheses, and optional child widgets in braces.
+A widget is declared with a type keyword, a unique name, properties in parentheses, and optional child widgets in braces.
 
 ```sql
 WIDGET_TYPE widgetName (Property: value, ...) [{ children }]
 ```
+
+**The list below is not the boundary.** The built-in Mendix widgets are documented here because they have fixed, hand-written property sets. Every **pluggable or custom widget** installed in the project is also written by its own name, with a body derived from the widget's definition — see [Any installed widget](#any-installed-widget) below. If a widget is in `widgets/`, MDL can name it.
 
 ## Widget Categories
 
@@ -445,6 +447,74 @@ NAVIGATIONLIST navMain {
 }
 ```
 
+## Any installed widget
+
+Everything above is a **built-in** widget: its keyword and properties are fixed
+by Mendix and by mxcli. A **pluggable or custom widget** — DataGrid 2, Combo box,
+Gallery, HTML Element, the charts, anything from the Marketplace, anything your
+team built — is named the same way, by its own MDL name:
+
+```sql
+htmlelement frame (tagName: 'div', tagContentMode: 'container') {
+  attribute a1 (attributeName: 'data-testid', attributeValueType: 'expression')
+  tagcontentcontainer body {
+    dynamictext caption (Content: 'Inside the element')
+  }
+}
+```
+
+Three things there come from the widget's own definition rather than from any
+list in mxcli:
+
+- **The keyword** `htmlelement` — the widget's MDL name, which is the last
+  segment of its widget id.
+- **The properties** `tagName`, `tagContentMode` — written with the widget's own
+  spelling, exactly as `DESCRIBE WIDGET` reports them.
+- **The body containers** `attribute` (an object list, one entry per repetition)
+  and `tagcontentcontainer` (a child slot, holding widgets).
+
+### Finding the names
+
+Ask the widget:
+
+```sql
+DESCRIBE WIDGET htmlelement;
+```
+
+It lists every property with its type, default and enumeration members, every
+body container and whether MDL can express it, and a complete example that
+parses and checks as written. See
+[DESCRIBE WIDGET](../reference/query/describe-widget.md).
+
+### The explicit form
+
+A widget can also be named by its full id. This is the fallback, not the norm —
+use it when two installed packages ship the same MDL name, or when you have the
+id in hand and not the name:
+
+```sql
+pluggablewidget 'com.mendix.widget.web.htmlelement.HTMLElement' frame (
+  tagName: 'div'
+)
+```
+
+`DESCRIBE PAGE` emits the short form wherever it round-trips, and falls back to
+the id form when the name would be ambiguous.
+
+### When a widget is not found
+
+A name that resolves to no installed definition is an error, not a silently
+accepted widget — MDL-WIDGET25, with the nearest known names suggested. A
+container keyword the parent widget does not declare is MDL-WIDGET26. Both need
+a project open (`-p`), since without one mxcli knows only its embedded widgets.
+
+If a widget you have installed is not found, its definition has not been
+extracted yet:
+
+```bash
+mxcli widget init -p app.mpr     # extract definitions for every widget in widgets/
+```
+
 ## Common Widget Properties
 
 These properties are shared across many widget types:
@@ -464,3 +534,5 @@ These properties are shared across many widget types:
 - [Page Structure](./page-structure.md) -- layout selection and data sources
 - [Data Binding](./data-binding.md) -- connecting widgets to attributes
 - [ALTER PAGE](./alter-page.md) -- modifying widgets in existing pages
+- [DESCRIBE WIDGET](../reference/query/describe-widget.md) -- inspect any installed widget's properties and body containers
+- [Pluggable Widgets Across Versions](../guides/pluggable-widgets.md) -- how mxcli keeps widget definitions version-correct

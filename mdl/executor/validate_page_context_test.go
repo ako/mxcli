@@ -25,7 +25,7 @@ func TestValidatePageContextTree_ParameterDSValid(t *testing.T) {
 		},
 	}
 
-	errors := validatePageContextTree(params, widgets)
+	errors := validatePageContextTree(nil, params, widgets)
 	if len(errors) > 0 {
 		t.Errorf("Expected no errors, got: %v", errors)
 	}
@@ -44,7 +44,7 @@ func TestValidatePageContextTree_ParameterDSInvalid(t *testing.T) {
 		},
 	}
 
-	errors := validatePageContextTree(params, widgets)
+	errors := validatePageContextTree(nil, params, widgets)
 	if len(errors) != 1 {
 		t.Fatalf("Expected 1 error, got %d: %v", len(errors), errors)
 	}
@@ -72,7 +72,7 @@ func TestValidatePageContextTree_SelectionDSValid(t *testing.T) {
 		},
 	}
 
-	errors := validatePageContextTree(nil, widgets)
+	errors := validatePageContextTree(nil, nil, widgets)
 	if len(errors) > 0 {
 		t.Errorf("Expected no errors, got: %v", errors)
 	}
@@ -88,7 +88,7 @@ func TestValidatePageContextTree_SelectionDSInvalid(t *testing.T) {
 		},
 	}
 
-	errors := validatePageContextTree(nil, widgets)
+	errors := validatePageContextTree(nil, nil, widgets)
 	if len(errors) != 1 {
 		t.Fatalf("Expected 1 error, got %d: %v", len(errors), errors)
 	}
@@ -102,7 +102,7 @@ func TestValidatePageContextTree_AttributeWithoutContext(t *testing.T) {
 		{Type: "textbox", Name: "txtName", Properties: map[string]any{"Attribute": "Name"}},
 	}
 
-	errors := validatePageContextTree(nil, widgets)
+	errors := validatePageContextTree(nil, nil, widgets)
 	if len(errors) != 1 {
 		t.Fatalf("Expected 1 error, got %d: %v", len(errors), errors)
 	}
@@ -125,14 +125,14 @@ func TestValidatePageContextTree_AttributeInsideDataView(t *testing.T) {
 		},
 	}
 
-	errors := validatePageContextTree(nil, widgets)
+	errors := validatePageContextTree(nil, nil, widgets)
 	if len(errors) > 0 {
 		t.Errorf("Expected no errors, got: %v", errors)
 	}
 }
 
 func TestValidatePageContextTree_NoErrors(t *testing.T) {
-	errors := validatePageContextTree(nil, nil)
+	errors := validatePageContextTree(nil, nil, nil)
 	if len(errors) > 0 {
 		t.Errorf("Expected no errors for nil widgets, got: %v", errors)
 	}

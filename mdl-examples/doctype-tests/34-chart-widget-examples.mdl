@@ -180,7 +180,7 @@ create page ChartExamples.P_Line (
       StaticXAttribute: Period,
       StaticYAttribute: Total,
       StaticName: 'Revenue',
-      Interpolation: 'smooth'
+      Interpolation: 'spline'
     )
   }
 }

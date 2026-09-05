@@ -17,7 +17,7 @@ func TestCheckDuplicateWidgetNames_Unit(t *testing.T) {
 			{Type: "listview", Name: "ruTop"},
 		}},
 	}
-	errs := checkDuplicateWidgetNames(widgets)
+	errs := checkDuplicateWidgetNames(widgets, nil)
 	if len(errs) != 1 || !strings.Contains(errs[0], "ruTop") {
 		t.Fatalf("expected one duplicate error for ruTop, got %v", errs)
 	}
@@ -40,7 +40,7 @@ func TestCheckDuplicateWidgetNames_Parsed(t *testing.T) {
 	if !ok {
 		t.Fatalf("statement 0 = %T, want *ast.CreatePageStmtV3", prog.Statements[0])
 	}
-	dup := checkDuplicateWidgetNames(pg.Widgets)
+	dup := checkDuplicateWidgetNames(pg.Widgets, nil)
 	if len(dup) != 1 || !strings.Contains(dup[0], "ruTop") {
 		t.Fatalf("expected duplicate ruTop error from parsed page, got %v (widget names may not be populated for containers)", dup)
 	}

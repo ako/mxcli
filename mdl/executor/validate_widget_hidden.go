@@ -158,6 +158,20 @@ func registryProjectPath(registry *WidgetRegistry) string {
 	return registry.projectPath
 }
 
+// sharedSourceOffMode reports whether an item property's shared Source lookup
+// must be skipped because the item's dataSet mode selects its sibling.
+//
+// Scoped to a chart series' datasource pair, which is the one place two item
+// properties claim the same Source. Anything wider would blind the
+// hidden-property rule on every other object list, so the gate mirrors the
+// builder's own condition rather than generalising it.
+func sharedSourceOffMode(mapping *ObjectListMapping, m ItemPropertyMapping, dataSetMode string) bool {
+	if m.Operation != "datasource" || !isChartSeriesContainer(mapping.MDLContainer) {
+		return false
+	}
+	return !seriesDataSourceMatchesMode(m.PropertyKey, dataSetMode)
+}
+
 // itemValueMap resolves an object-list item's sub-property values (keyed by
 // lowercased schema key) and reports which the MDL set explicitly. The item form
 // of widgetValueMap.
@@ -165,10 +179,24 @@ func itemValueMap(item *ast.WidgetV3, mapping *ObjectListMapping) (values map[st
 	values = map[string]string{}
 	explicit = map[string]bool{}
 
+	// A chart series' two datasource sub-properties SHARE the Source name
+	// "DataSource" (measured on linechart.def.json: staticDataSource and
+	// dynamicDataSource both declare it, neither declares an alias), so the
+	// mode selects which one the friendly `DataSource:` lands in. The builder
+	// routes on it — buildObjectListItem consults "DataSource" only for the
+	// property seriesDataSourceMatchesMode picks — so the checker has to as
+	// well, or it reports a property the script never wrote.
+	itemDataSetMode := "static"
+	if v, ok := lookupProperty(item.Properties, "dataSet"); ok {
+		if s := stringifyAny(v); s != "" {
+			itemDataSetMode = s
+		}
+	}
+
 	for _, m := range mapping.ItemProperties {
 		key := strings.ToLower(m.PropertyKey)
 		val, set := "", false
-		if m.Source != "" {
+		if m.Source != "" && !sharedSourceOffMode(mapping, m, itemDataSetMode) {
 			if v, ok := lookupWidgetProp(item, m.Source); ok {
 				val, set = v, true
 			}

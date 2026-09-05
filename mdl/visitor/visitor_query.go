@@ -1011,6 +1011,24 @@ func (b *Builder) ExitDescribeStatement(ctx *parser.DescribeStatementContext) {
 		return
 	}
 
+	// DESCRIBE WIDGET <keyword|'widget id'> — a widget DEFINITION, not a
+	// document, so there is no qualified name. The STYLING branch above
+	// returns before this, but WIDGET also appears there (DESCRIBE STYLING …
+	// WIDGET name), so the guard stays explicit rather than resting on order.
+	if ctx.WIDGET() != nil && ctx.STYLING() == nil {
+		name := ""
+		if lit := ctx.STRING_LITERAL(); lit != nil {
+			name = unquoteString(lit.GetText())
+		} else if id := ctx.IdentifierOrKeyword(0); id != nil {
+			name = id.GetText()
+		}
+		b.statements = append(b.statements, &ast.DescribeStmt{
+			ObjectType: ast.DescribeWidget,
+			Name:       ast.QualifiedName{Name: name},
+		})
+		return
+	}
+
 	// Handle DESCRIBE NAVIGATION [profile]
 	if ctx.NAVIGATION() != nil {
 		stmt := &ast.DescribeStmt{ObjectType: ast.DescribeNavigation}

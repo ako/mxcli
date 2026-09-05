@@ -169,7 +169,13 @@ func execShow(ctx *ExecContext, s *ast.ShowStmt) error {
 }
 
 func execDescribe(ctx *ExecContext, s *ast.DescribeStmt) error {
-	if !ctx.Connected() && s.ObjectType != ast.DescribeFragment {
+	// DESCRIBE WIDGET joins DESCRIBE FRAGMENT in not needing a project: a widget
+	// definition is not a document in the model, and mxcli's embedded set can
+	// answer for a built-in widget with nothing open. With a project the answer
+	// is better — the installed .mpk is version-accurate and covers Marketplace
+	// widgets — but requiring one would make the statement useless for exactly
+	// the "what can I write here?" question it exists to answer.
+	if !ctx.Connected() && s.ObjectType != ast.DescribeFragment && s.ObjectType != ast.DescribeWidget {
 		return mdlerrors.NewNotConnected()
 	}
 
@@ -243,6 +249,8 @@ func execDescribe(ctx *ExecContext, s *ast.DescribeStmt) error {
 			return describeExternalEntity(ctx, s.Name)
 		case ast.DescribeNavigation:
 			return describeNavigation(ctx, s.Name)
+		case ast.DescribeWidget:
+			return describeWidgetStmt(ctx, s.Name.Name)
 		case ast.DescribeWorkflow:
 			return describeWorkflow(ctx, s.Name)
 		case ast.DescribeBusinessEventService:
@@ -340,6 +348,8 @@ func describeObjectTypeLabel(t ast.DescribeObjectType) string {
 		return "externalentity"
 	case ast.DescribeNavigation:
 		return "navigation"
+	case ast.DescribeWidget:
+		return "widget"
 	case ast.DescribeWorkflow:
 		return "workflow"
 	case ast.DescribeBusinessEventService:

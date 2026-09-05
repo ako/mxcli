@@ -796,12 +796,17 @@ func widgetDocMarkdown(mpkDef *mpk.WidgetDefinition, def *WidgetDefinition, mdlN
 	buf.WriteString(fmt.Sprintf("%s '%s' widget1", prefix, mpkDef.ID))
 	if def != nil && (len(def.ChildSlots) > 0 || len(def.ObjectLists) > 0) {
 		buf.WriteString(" {\n")
-		for _, slot := range def.ChildSlots {
-			buf.WriteString(fmt.Sprintf("  %s {\n    -- widgets for `%s`\n  }\n", strings.ToLower(slot.MDLContainer), slot.PropertyKey))
+		// Names are required — `controlbar cb1 { … }`, never `controlbar { … }`
+		// — and must be unique within the page, so they are numbered. Emitting
+		// the nameless form made even the slots that DO parse unusable as
+		// written (mendixlabs/mxcli#1036).
+		for i, slot := range def.ChildSlots {
+			buf.WriteString(fmt.Sprintf("  %s slot%d {\n    -- widgets for `%s`\n  }\n",
+				strings.ToLower(slot.MDLContainer), i+1, slot.PropertyKey))
 		}
-		for _, ol := range def.ObjectLists {
-			itemKw := strings.ToLower(ol.MDLContainer)
-			buf.WriteString(fmt.Sprintf("  %s item1   -- one entry of `%s`\n", itemKw, ol.PropertyKey))
+		for i, ol := range def.ObjectLists {
+			buf.WriteString(fmt.Sprintf("  %s item%d   -- one entry of `%s`\n",
+				strings.ToLower(ol.MDLContainer), i+1, ol.PropertyKey))
 		}
 		buf.WriteString("}\n")
 	} else {

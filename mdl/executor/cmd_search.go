@@ -198,8 +198,14 @@ func execShowReferences(ctx *ExecContext, s *ast.ShowStmt) error {
 		return err
 	}
 
-	targetName := s.Name.String()
-	fmt.Fprintf(ctx.Output, "\nReferences to %s\n", targetName)
+	typed := s.Name.String()
+	fmt.Fprintf(ctx.Output, "\nReferences to %s\n", typed)
+
+	// A widget's TargetName is stored SHOUTED (COMBOBOX) while MDL keywords are
+	// written in lower case, so an exact-only match answers the natural spelling
+	// with "(no references found)" — wrong, not missing. See resolveReferenceTarget.
+	targetName, loose := resolveReferenceTarget(ctx, typed)
+	reportResolvedTarget(ctx, typed, targetName, loose)
 
 	// Find all references to this target
 	query := `
@@ -209,7 +215,7 @@ func execShowReferences(ctx *ExecContext, s *ast.ShowStmt) error {
 		ORDER by RefKind, SourceType, SourceName
 	`
 
-	result, err := ctx.Catalog.Query(strings.Replace(query, "?", "'"+targetName+"'", 1))
+	result, err := ctx.Catalog.Query(strings.Replace(query, "?", "'"+escapeSQLString(targetName)+"'", 1))
 	if err != nil {
 		return mdlerrors.NewBackend("query references", err)
 	}
@@ -236,8 +242,11 @@ func execShowImpact(ctx *ExecContext, s *ast.ShowStmt) error {
 		return err
 	}
 
-	targetName := s.Name.String()
-	fmt.Fprintf(ctx.Output, "\nImpact analysis for %s\n", targetName)
+	typed := s.Name.String()
+	fmt.Fprintf(ctx.Output, "\nImpact analysis for %s\n", typed)
+
+	targetName, loose := resolveReferenceTarget(ctx, typed)
+	reportResolvedTarget(ctx, typed, targetName, loose)
 
 	// Find all direct references to this target
 	directQuery := `
@@ -247,7 +256,7 @@ func execShowImpact(ctx *ExecContext, s *ast.ShowStmt) error {
 		ORDER by SourceType, SourceName
 	`
 
-	result, err := ctx.Catalog.Query(strings.Replace(directQuery, "?", "'"+targetName+"'", 1))
+	result, err := ctx.Catalog.Query(strings.Replace(directQuery, "?", "'"+escapeSQLString(targetName)+"'", 1))
 	if err != nil {
 		return mdlerrors.NewBackend("query impact", err)
 	}

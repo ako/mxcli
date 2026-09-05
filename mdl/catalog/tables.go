@@ -7,6 +7,12 @@ package catalog
 //
 // History:
 //
+//	11 — the `widget` edge in refs (page/snippet -> widget definition) and the
+//	    graph_god_nodes change that keeps widget targets off the asset side.
+//	    Both need the bump for the same reason: refs are only written by
+//	    REFRESH CATALOG FULL and a view is CREATE VIEW IF NOT EXISTS, so a
+//	    cached catalog would answer `show references to combobox` with
+//	    "(no references found)" — a wrong answer, not a missing one.
 //	10 — the three lookups expression type checking needs and the catalog could
 //	    not answer: attributes_data.EnumerationQualifiedName (DataType says only
 //	    "Enumeration", losing which one), enumeration_values_data (the table
@@ -23,7 +29,7 @@ package catalog
 //	    SnapshotSource / SourceId / SourceBranch / SourceRevision columns
 //	    from every row (issue #576).
 //	1 — initial flat schema with denormalized snapshot columns on every row.
-const CatalogSchemaVersion = "10"
+const CatalogSchemaVersion = "11"
 
 // MetaSchemaVersion is the catalog_meta key that records the schema version
 // the cache was built against.
@@ -1297,8 +1303,14 @@ func (c *Catalog) createTables() error {
 		// graph_god_nodes — degree centrality (most depended-upon / highest fan-out).
 		`CREATE VIEW IF NOT EXISTS graph_god_nodes AS
 			WITH deg AS (
+				-- WIDGET targets are excluded from the ASSET side: a widget
+				-- definition belongs to no Mendix module, and every other row here
+				-- is a module-qualified document, so it would list as an asset whose
+				-- ModuleName is its own name (the ELSE d.Asset fallback below) and
+				-- whose ObjectType is NULL. A page's OUT-degree still counts the
+				-- widgets it uses, which is a real dependency.
 				SELECT TargetName AS Asset, COUNT(*) AS InDeg, 0 AS OutDeg
-				FROM refs WHERE TargetName != '' GROUP BY TargetName
+				FROM refs WHERE TargetName != '' AND TargetType != 'WIDGET' GROUP BY TargetName
 				UNION ALL
 				SELECT SourceName AS Asset, 0 AS InDeg, COUNT(*) AS OutDeg
 				FROM refs WHERE SourceName != '' GROUP BY SourceName

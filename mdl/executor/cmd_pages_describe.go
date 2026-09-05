@@ -670,6 +670,16 @@ type rawWidget struct {
 	// Object-list child blocks (for generic PLUGGABLEWIDGET output): chart series,
 	// lines, scale colors, etc. Reconstructed from the widget's WidgetObject lists.
 	ObjectLists []rawObjectList
+
+	// ChildSlots are the widget's reconstructed child slots — fixed properties
+	// holding widgets, as opposed to ObjectLists' repeated items.
+	ChildSlots []rawChildSlot
+
+	// OmittedContainers names container-shaped properties present in the stored
+	// document that DESCRIBE could not reproduce. Emitted as a comment so a
+	// describe -> exec round trip cannot silently delete a widget's body.
+	// See unreconstructedContainers.
+	OmittedContainers []string
 	// Data container context: entity qualified name provided by this container
 	EntityContext string
 	// Full widget ID (e.g. "com.mendix.widget.custom.switch.Switch")

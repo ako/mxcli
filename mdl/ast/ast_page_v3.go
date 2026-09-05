@@ -107,6 +107,23 @@ type WidgetV3 struct {
 	// no name, and carries nothing but this entity and its widgets. Empty for
 	// every other widget, including a Gallery's named `template <name>` slot.
 	Specialization string
+
+	// TypeIsGeneric records that Type came from the grammar's generic
+	// IDENTIFIER alternative rather than one of the enumerated widget-type
+	// tokens (slice 2 of PROPOSAL_def_driven_widget_bodies.md).
+	//
+	// The distinction is invisible in Type — both arrive as a lowercase string —
+	// but it is what tells a typo from a built-in. `htmlelemnt` can ONLY be a
+	// misspelt widget definition, because a real built-in has its own token; a
+	// generic type that resolves to no definition is therefore MDL-WIDGET25
+	// rather than a static widget to be validated on the builtin property
+	// vocabulary. Without it the typo passes `check` with a warning about the
+	// wrong thing.
+	//
+	// Set by the visitor from the parse tree, never inferred from a list of
+	// known widget names — inferring it would reintroduce the list this
+	// proposal exists to remove.
+	TypeIsGeneric bool
 }
 
 // DataSourceV3 represents a V3 datasource expression.

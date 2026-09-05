@@ -4,13 +4,20 @@ package executor
 
 import "testing"
 
+// The key is emitted VERBATIM. It used to be PascalCased, which round-tripped
+// (MDL property names are case-insensitive) but made DESCRIBE PAGE the only
+// surface spelling it that way — `describe widget` documents `staticName` and
+// that is what a person writes.
 func TestObjectListMDLKey(t *testing.T) {
 	cases := map[string]string{
-		"staticXAttribute": "StaticXAttribute",
-		"staticName":       "StaticName",
-		"dataSet":          "DataSet",
-		"interpolation":    "Interpolation",
+		"staticXAttribute": "staticXAttribute",
+		"staticName":       "staticName",
+		"dataSet":          "dataSet",
+		"interpolation":    "interpolation",
 		"":                 "",
+		// Already-capitalised keys are untouched too: verbatim means verbatim,
+		// not lower-cased. A widget is free to name a property `Foo`.
+		"Foo": "Foo",
 	}
 	for in, want := range cases {
 		if got := objectListMDLKey(in); got != want {
@@ -67,13 +74,13 @@ func TestExtractObjectListItem_ChartSeries(t *testing.T) {
 			isRef bool
 		}{p.Value, p.IsRef}
 	}
-	if p, ok := got["DataSet"]; !ok || p.val != "static" || p.isRef {
+	if p, ok := got["dataSet"]; !ok || p.val != "static" || p.isRef {
 		t.Errorf("DataSet prop = %+v, want {static,false}", p)
 	}
-	if p, ok := got["StaticXAttribute"]; !ok || p.val != "Region" || !p.isRef {
+	if p, ok := got["staticXAttribute"]; !ok || p.val != "Region" || !p.isRef {
 		t.Errorf("StaticXAttribute prop = %+v, want {Region,true}", p)
 	}
-	if p, ok := got["StaticName"]; !ok || p.val != "Revenue" || p.isRef {
+	if p, ok := got["staticName"]; !ok || p.val != "Revenue" || p.isRef {
 		t.Errorf("StaticName prop = %+v, want {Revenue,false}", p)
 	}
 	// The datasource sub-property must NOT also appear as a scalar prop.

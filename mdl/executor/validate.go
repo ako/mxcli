@@ -549,7 +549,7 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 				s.Name.String(), strings.Join(refErrors, "\n  - "))
 		}
 		// Validate page context tree (parameter/selection/attribute bindings)
-		if ctxErrors := validatePageContextTree(s.Parameters, s.Widgets); len(ctxErrors) > 0 {
+		if ctxErrors := validatePageContextTree(ctx, s.Parameters, s.Widgets); len(ctxErrors) > 0 {
 			return mdlerrors.NewValidationf("page '%s' has context errors:\n  - %s",
 				s.Name.String(), strings.Join(ctxErrors, "\n  - "))
 		}
@@ -576,7 +576,7 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 				s.Name.String(), strings.Join(argErrors, "\n  - "))
 		}
 		// Validate snippet context tree (parameter/selection/attribute bindings)
-		if ctxErrors := validatePageContextTree(s.Parameters, s.Widgets); len(ctxErrors) > 0 {
+		if ctxErrors := validatePageContextTree(ctx, s.Parameters, s.Widgets); len(ctxErrors) > 0 {
 			return mdlerrors.NewValidationf("snippet '%s' has context errors:\n  - %s",
 				s.Name.String(), strings.Join(ctxErrors, "\n  - "))
 		}
