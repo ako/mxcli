@@ -542,10 +542,19 @@ version differences are already carried by the def
    that can run `mxcli`. It does not for one reading a repo cold, which is the
    case `widget init` was built for. Likely answer: keep generating, but from the
    same code path `DESCRIBE WIDGET` uses, so they cannot disagree.
-5. **What is a widget edge's source granularity?** Per instance (page + widget
-   name) is most useful for impact analysis but multiplies rows on a page with 40
-   widgets. Per (page, widget type) is cheaper and answers the upgrade question.
-   Measure both on a real app before choosing.
-6. **The built-in census.** The four in slice 1 came from scraping widget IDs out
-   of `Mendix.Modeler.Core.dll` — a floor, not a census. Confirm against Studio
-   Pro's widget toolbox before treating the list as complete.
+5. ~~**What is a widget edge's source granularity?**~~ **Settled by slice 5: per
+   (container, widget definition).** Per instance says nothing `SHOW REFERENCES`
+   or `SHOW IMPACT` can use — both list sources, and `CATALOG.WIDGETS` already
+   holds the instances — so the extra rows buy nothing at any project size. It
+   also matches the four sibling widget projections in `buildReferences`, which
+   have collapsed with DISTINCT all along.
+
+   The question that turned out to matter was not granularity but **what to put
+   in `TargetName`**, which the draft did not ask. The dotted widget ID poisons
+   every module-derived graph view; the MDL name does not. See slice 5.
+6. ~~**The built-in census.**~~ **Moot — the premise it rested on was wrong.**
+   It asked whether the four widget IDs scraped out of `Mendix.Modeler.Core.dll`
+   were a complete list of Studio Pro's bundled widgets. Slice 1 established
+   they are not bundled at all: a blank 11.13 project ships 33 widgets, none of
+   them, and a widget whose `.mpk` is absent is one Studio Pro cannot use
+   either. There is no list to complete.
