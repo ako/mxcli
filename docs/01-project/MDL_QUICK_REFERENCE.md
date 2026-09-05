@@ -1618,6 +1618,15 @@ Cross-reference commands require `refresh catalog full` to populate reference da
 
 `show callers` covers invocation only. A document that merely *uses a type* — an entity as a page datasource, a microflow parameter, an entity's generalization — is not a caller of it; `show references to` lists those.
 
+A **pluggable or custom widget** is a reference target too, so "which pages use this widget?" is one query — the same question about a Java action always was:
+
+```mdl
+show references to combobox;      -- pages and snippets that place a Combo box
+show impact of htmlelement;       -- the same, grouped by document type
+```
+
+Name the widget the way you write it in a page body. The target is stored as the widget's MDL name and matched case-insensitively when the exact spelling finds nothing, so `combobox`, `ComboBox` and `COMBOBOX` all resolve; the resolved spelling is printed. A built-in Mendix widget (`textbox`, `dynamictext`) has no definition and therefore no edge — use `show widgets` for those.
+
 ## Connection & Session
 
 | Statement | Syntax | Notes |

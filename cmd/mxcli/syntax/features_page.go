@@ -57,7 +57,16 @@ DESCRIBE WIDGET 'com.mendix.widget.web.htmlelement.HTMLElement';
 -- grammar cannot yet express is left out and named. So the example widens on
 -- its own as MDL gains ground, and cannot promise syntax that fails.
 --
--- Same output as ` + "`mxcli widget describe`" + `, because it is the same code.`,
+-- Same output as ` + "`mxcli widget describe`" + `, because it is the same code.
+
+-- The other direction — which pages already use it — is a reference query,
+-- and needs ` + "`refresh catalog full`" + `:
+SHOW REFERENCES TO combobox;
+SHOW IMPACT OF htmlelement;
+
+-- Name it as you write it in a page body; the casing does not matter. A
+-- built-in Mendix widget (textbox, dynamictext) has no definition and so no
+-- reference edge — use SHOW WIDGETS for those.`,
 		SeeAlso: []string{"page.widgets", "page.create"},
 	})
 
