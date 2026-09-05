@@ -59,11 +59,11 @@ func TestExtractObjectListItem_EmptyFieldsDoNotSwallowTheProperty(t *testing.T) 
 	for _, p := range got.Props {
 		byKey[p.Key] = p.Value
 	}
-	if byKey["AttributeName"] != "data-x" {
-		t.Errorf("AttributeName = %q, want %q (props: %+v)", byKey["AttributeName"], "data-x", got.Props)
+	if byKey["attributeName"] != "data-x" {
+		t.Errorf("AttributeName = %q, want %q (props: %+v)", byKey["attributeName"], "data-x", got.Props)
 	}
-	if byKey["AttributeValueType"] != "expression" {
-		t.Errorf("AttributeValueType = %q, want %q", byKey["AttributeValueType"], "expression")
+	if byKey["attributeValueType"] != "expression" {
+		t.Errorf("AttributeValueType = %q, want %q", byKey["attributeValueType"], "expression")
 	}
 }
 

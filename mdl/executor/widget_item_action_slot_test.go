@@ -191,7 +191,7 @@ func TestExtractObjectListItem_ReadsAnAction(t *testing.T) {
 
 	var got string
 	for _, p := range item.Props {
-		if p.Key == "StaticOnClickAction" {
+		if p.Key == "staticOnClickAction" {
 			if !p.IsRef {
 				t.Error("the action was quoted — `staticOnClickAction: 'microflow …'` does not parse back")
 			}

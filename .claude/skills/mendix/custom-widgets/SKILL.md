@@ -79,12 +79,12 @@ auto-generates the `.def.json`.
 ```
 pluggablewidget 'com.mendix.widget.web.barchart.BarChart' chart1 {
   series s1 (
-    DataSet: 'static',
+    dataSet: 'static',
     DataSource: database from MyModule.SalesByRegion,  -- an OQL VIEW (aggregated)
-    StaticXAttribute: Region,      -- resolves against the series' own datasource
-    StaticYAttribute: Total,
-    StaticName: 'Revenue',
-    Interpolation: 'linear'        -- line/area only: linear | smooth
+    staticXAttribute: Region,      -- resolves against the series' own datasource
+    staticYAttribute: Total,
+    staticName: 'Revenue',
+    interpolation: 'linear'        -- line/area only: linear | spline
   )
 }
 ```
@@ -101,15 +101,15 @@ from`, so a microflow-backed series described back as a missing entity.)
 pluggablewidget 'com.mendix.widget.web.piechart.PieChart' pie1 (
   DataSource: database from MyModule.SalesByRegion,
   ValueAttribute: Total,
-  SeriesName: 'Sales by Region'   -- REQUIRED (CE4899 without it)
+  seriesName: 'Sales by Region'   -- REQUIRED (CE4899 without it)
 )
 
 pluggablewidget 'com.mendix.widget.web.heatmap.HeatMap' heat1 (
   DataSource: database from MyModule.SalesByRegion,
   ValueAttribute: Total           -- REQUIRED (CE0642 without it)
 ) {
-  scalecolor scLow  (ValuePercentage: 0,   ColorValue: '#f7fbff')
-  scalecolor scHigh (ValuePercentage: 100, ColorValue: '#08306b')
+  scalecolor scLow  (valuePercentage: 0,   colorValue: '#f7fbff')
+  scalecolor scHigh (valuePercentage: 100, colorValue: '#08306b')
 }
 ```
 

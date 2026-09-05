@@ -250,13 +250,25 @@ func extractObjectListItem(ctx *ExecContext, itemObj map[string]any, nestedMap m
 	return item
 }
 
-// objectListMDLKey maps a widget schema sub-property key to the MDL property name
-// the DESCRIBE output uses. MDL property names are case-insensitive, so the
-// canonical PascalCase form (first letter upper) round-trips to the same schema
-// key on re-exec (staticXAttribute→StaticXAttribute, staticName→StaticName).
+// objectListMDLKey is the MDL property name DESCRIBE emits for a widget schema
+// sub-property: the schema key, verbatim.
+//
+// It used to upper-case the first letter. That round-tripped — MDL property
+// names are case-insensitive, so `StaticName` and `staticName` both resolve —
+// but it made DESCRIBE PAGE the only surface using that spelling:
+//
+//	mxcli widget describe htmlelement   attributeName      (from the .mpk)
+//	what you write in a page            attributeName
+//	DESCRIBE PAGE, before               AttributeName
+//
+// Three surfaces, two spellings, for no benefit. It was invisible while only
+// chart series reached this code; slice 3 put it on every widget with an object
+// list, which is what made it worth fixing.
+//
+// Emitting the key verbatim also keeps a real distinction visible that
+// PascalCase erased: `DataSource:` stays capitalised because it is MDL's own
+// keyword, not a widget schema key, so the two kinds of name no longer look
+// alike.
 func objectListMDLKey(schemaKey string) string {
-	if schemaKey == "" {
-		return schemaKey
-	}
-	return strings.ToUpper(schemaKey[:1]) + schemaKey[1:]
+	return schemaKey
 }
