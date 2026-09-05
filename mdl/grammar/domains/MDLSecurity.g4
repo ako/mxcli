@@ -115,8 +115,14 @@ dropDemoUserStatement
     : DROP DEMO USER STRING_LITERAL
     ;
 
+// IN is optional before the module name, not just before the whole clause.
+// `update security RestLab` used to reach the parser's error recovery, which
+// consumed the name silently: the statement parsed as ONE statement with no
+// error, `mxcli check` reported "Syntax OK", and the run went project-wide.
+// A scope the author asked for and did not get is worse than a parse error.
+// (mendixlabs/mxcli#1047)
 updateSecurityStatement
-    : UPDATE SECURITY (IN qualifiedName)?
+    : UPDATE SECURITY (IN? qualifiedName)?
     ;
 
 moduleRoleList

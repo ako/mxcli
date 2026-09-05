@@ -1,0 +1,67 @@
+-- `UPDATE SECURITY` was inert on every MPR v2 project (mendixlabs/mxcli#1047).
+--
+-- It returned on the first module it could not reconcile, and one module always
+-- can: SYSTEM. System's domain model is SYNTHESIZED rather than stored — there
+-- is no unit file behind the id the module carries — so the reconcile could not
+-- load it and the command died there:
+--
+--   $ mxcli -p app.mpr -c 'update security'
+--   Error: failed to reconcile security for module System: load domain model
+--   00000000-0000-0000-0000-000000000002: .../mprcontents/00/00/
+--   00000000-0000-0000-0000-000000000002.mxunit: no such file or directory
+--
+-- Reported as "UPDATE SECURITY does not fix the CE0066 it exists to fix". The
+-- reason is that it never ran. Whether it had written some modules before dying
+-- depended on where the unreconcilable one fell in the list, so it was also
+-- non-atomic.
+--
+-- A SECOND defect in the same command: `update security RestLab` — without IN —
+-- reached the parser's error recovery, which consumed the module name silently.
+-- The statement parsed as one statement with no error, `mxcli check` reported
+-- "Syntax OK", and the run went PROJECT-WIDE. A scope the author asked for and
+-- did not get is worse than a parse error.
+--
+-- Verify (this script needs no fixture — it exercises the command itself):
+--
+--   mxcli exec update-security-runs-at-all.mdl -p app.mpr
+--   mx check -p app.mpr        -- unchanged from before the run
+--
+-- Every statement below must SUCCEED. Before the fix the first one failed with
+-- the System error above, and the third silently ran project-wide.
+--
+-- And two that must FAIL, run by hand because a script stops at the first error:
+--
+--   $ mxcli -p app.mpr -c 'update security in System'
+--   Error: System is the platform's module — its entity access rules are
+--   Mendix's, not the project's, and its domain model is not stored in the .mpr
+--   at all. There is nothing here to reconcile
+--
+--   $ mxcli -p app.mpr -c 'update security NoSuchModule'
+--   Error: module not found: NoSuchModule
+--
+-- That second one is the reason a typo is refused rather than skipped: matching
+-- no module used to reconcile nothing and print "All entity access rules are up
+-- to date" — a success message for a run that did nothing.
+--
+-- WHAT THIS EXAMPLE DOES NOT SHOW. It does not demonstrate a CE0066 being
+-- repaired, and that is deliberate rather than an omission: mxcli reconciles an
+-- entity's access rules on every write path, so it cannot produce a stale rule
+-- to repair. Measured on 11.13.0 — `alter entity … add attribute` on both
+-- engines, and a whole-entity `create or modify` rewrite, each left the project
+-- at 0 errors. The original report's precondition ("adding an attribute leaves
+-- one CE0066") therefore does not reproduce on current main. What is fixed here
+-- is that the command RUNS; the repair itself is covered by unit tests, which
+-- can construct the stale state this cannot.
+
+-- The project-wide run. This is the statement that used to fail.
+update security;
+/
+
+-- Scoped with IN.
+update security in Administration;
+/
+
+-- Scoped WITHOUT in — the same thing. This used to parse cleanly and then
+-- reconcile every module in the project.
+update security Administration;
+/
