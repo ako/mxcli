@@ -385,11 +385,44 @@ slices 2–3 safe (Open Question 1).
     commands); the existing `SHOW WIDGETS` is unrelated — it lists widget
     *instances on pages*, not definitions.
 
-### Slice 5 — A `widget` edge in `CATALOG.REFS`
+### Slice 5 — A `widget` edge in `CATALOG.REFS` — **implemented**
 
-11. Emit one edge per widget instance on a page, so
-    `show references to widget htmlelement` and `show impact of` work. Catalog
-    work, not grammar; independent of slices 2–4.
+11. ~~Emit one edge per widget instance on a page~~ — **one edge per page (or
+    snippet) x widget definition.** `show references to combobox` and
+    `show impact of htmlelement` work. Catalog work, not grammar; independent
+    of slices 2–4.
+
+    Three details differ from the sketch above, each settled by measurement
+    rather than by the wording:
+
+    - **Per container, not per instance.** DISTINCT collapses a page's seven
+      comboboxes into one edge, matching the four sibling widget projections in
+      `buildReferences`. Per-instance rows say nothing `SHOW REFERENCES` or
+      `SHOW IMPACT` can use, and `CATALOG.WIDGETS` already holds the instances.
+
+    - **`TargetName` is the MDL name (`COMBOBOX`), not the widget ID.** The
+      dotted ID poisons the module-derived graph views, which take everything
+      before the first dot as the module: measured on `testdata/expr-checker`,
+      it invented a module `com` carrying 14 edges from three real modules, and
+      listed `com.mendix.widget.web.image.Image` in `graph_god_nodes` with
+      `ModuleName` `com`. The ID lives in `TargetId`. A widget is consequently
+      the **first non-dotted target** in the table (0 of 248 before), so
+      `graph_god_nodes` now excludes `WIDGET` from its asset side.
+
+    - **Only widgets that resolve to a definition.** A built-in stores its BSON
+      `$Type` in the same column and has none, so it gets no edge — an edge
+      should point at something describable.
+
+    The syntax in the original sketch (`show references to widget htmlelement`)
+    was not needed: `show references to <name>` already parses both a bare word
+    and a dotted ID, so no grammar changed. It did need one fix on the executor
+    side — the stored name is SHOUTED while MDL keywords are written in lower
+    case, so the natural spelling answered "(no references found)", a wrong
+    answer rather than a missing one.
+
+    Not done, and deliberately: a widget definition is **not** added to
+    `objects`, so an unused `.mpk` does not appear in `GRAPH_DEAD_ASSETS`. The
+    anti-join that answers it is documented in `catalog-schema.md` instead.
 
 ### Slice 6 — `PLUGGABLEWIDGET` → `WIDGET` (and collapse `CUSTOMWIDGET`)
 
