@@ -62,6 +62,11 @@ func LoadWidgetRegistry(projectPath string) *WidgetRegistry {
 	if projectPath != "" {
 		_ = registry.LoadUserDefinitions(projectPath)
 		registry.projectPath = projectPath
+		// The validator and DESCRIBE WIDGET must agree about which properties a
+		// widget has; they read different sources, so the definition is topped up
+		// from the same .mpk DESCRIBE parses. See
+		// widget_known_props_from_mpk.go for why this is not a list of nine.
+		enrichKnownPropertiesFromMPK(registry, projectPath)
 	}
 	return registry
 }
