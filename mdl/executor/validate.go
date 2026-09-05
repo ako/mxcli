@@ -26,6 +26,7 @@ type scriptContext struct {
 	nanoflows    map[string]bool // Nanoflows created (Module.Nanoflow)
 	pages        map[string]bool // Pages created (Module.Page)
 	snippets     map[string]bool // Snippets created (Module.Snippet)
+	layouts      map[string]bool // Layouts created (Module.Layout)
 	constants    map[string]bool // Constants created (Module.Constant)
 	workflows    map[string]bool // Workflows created (Module.Workflow)
 
@@ -58,6 +59,7 @@ func newScriptContext() *scriptContext {
 		pages:        make(map[string]bool),
 		workflows:    make(map[string]bool),
 		snippets:     make(map[string]bool),
+		layouts:      make(map[string]bool),
 		constants:    make(map[string]bool),
 
 		javaActions:       make(map[string][]string),
@@ -120,6 +122,10 @@ func (sc *scriptContext) collectDefinitions(prog *ast.Program) {
 			if s.Name.Module != "" {
 				sc.snippets[s.Name.String()] = true
 			}
+		case *ast.CreateLayoutStmt:
+			if s.Name.Module != "" {
+				sc.layouts[s.Name.String()] = true
+			}
 		case *ast.CreateWorkflowStmt:
 			if s.Name.Module != "" {
 				sc.workflows[s.Name.String()] = true
@@ -174,6 +180,10 @@ func (sc *scriptContext) collectSingle(stmt ast.Statement) {
 	case *ast.CreateSnippetStmtV3:
 		if s.Name.Module != "" {
 			sc.snippets[s.Name.String()] = true
+		}
+	case *ast.CreateLayoutStmt:
+		if s.Name.Module != "" {
+			sc.layouts[s.Name.String()] = true
 		}
 	case *ast.CreateWorkflowStmt:
 		if s.Name.Module != "" {
@@ -383,6 +393,13 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 	// surfaces during --references instead of partway through a script (#836).
 	// The check needs no project state, so it runs before the switch.
 	if err := validateCrossModuleGrant(stmt); err != nil {
+		return err
+	}
+
+	// An ALTER's target document must already exist. Until this, only the
+	// MODULE was resolved, so a misspelled document passed --references and was
+	// refused by exec — check was the weaker gate, which is backwards.
+	if err := validateAlterTarget(ctx, stmt, sc); err != nil {
 		return err
 	}
 

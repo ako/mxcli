@@ -340,6 +340,20 @@ func execDropAssociation(ctx *ExecContext, s *ast.DropAssociationStmt) error {
 		ctx.trackModifiedDomainModel(module.ID, module.Name)
 	}
 
+	// A message definition holds the association by qualified name, and nothing
+	// keeps the two in step — the drop leaves the definition pointing at nothing
+	// and mxbuild rejects the project with CE1613. Unlike the access rules above
+	// there is nothing to reconcile: removing the member would change the
+	// published contract, which is the author's decision and not mxcli's. So the
+	// drop is refused, naming what to fix — the same posture `drop message
+	// definition collection` already takes from the other side.
+	if remedies := messageDefinitionsUsingAssociation(ctx, s.Name.String()); len(remedies) > 0 {
+		return mdlerrors.NewValidation(fmt.Sprintf(
+			"association %s is still exposed by a message definition — dropping it would leave "+
+				"the definition bound to nothing (CE1613). Remove the member first:\n  %s",
+			s.Name.String(), strings.Join(remedies, ";\n  ")+";"))
+	}
+
 	for _, assoc := range dm.Associations {
 		if assoc.Name == s.Name.Name {
 			if err := ctx.Backend.DeleteAssociation(dm.ID, assoc.ID); err != nil {

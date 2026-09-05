@@ -274,25 +274,34 @@ func buildMessageMember(ctx *ExecContext, m *ast.MessageMemberDef, holderQN, col
 }
 
 // resolveAssociationCardinality returns the MaxOccurs an exposed association
-// stores, from the DIRECTION the definition traverses it in.
+// stores: whether the element is a single object or a list.
 //
-// This is the one derivation in the whole document that is not obvious, and
-// getting it backwards has no build error behind it — the definition simply
-// exposes a list as a single object, or the reverse.
+// It is a function of the direction of traversal AND the association's type,
+// and the second half was learned the hard way (ako/mxcli-rest FINDINGS #60).
 //
-// It is NOT a function of the association's type: measured across the demo
-// corpus, all 927 resolvable associations are `Reference`, yet 526 store 1 and
-// 401 store -1. It tracks direction, with zero counter-examples:
+//	                 forward (holder is FROM)   reverse (holder is TO)
+//	Reference                  1                        -1
+//	ReferenceSet              -1                        -1
 //
-//	holder is the FROM entity (child -> parent, following the FK)   ->   1   (496)
-//	holder is the TO entity   (parent -> children, in reverse)      ->  -1   (401)
+// The reverse is always a list: many holders point at one target, so from the
+// target's side the element repeats. The forward direction is where the type
+// decides — a Reference gives one object per holder, a ReferenceSet gives many.
 //
-// ako/TestApp confirms it in a single document: Mappings.Order_Customer appears
-// in both of its definitions and stores 1 reaching Customer from Order and -1
-// reaching Order from Customer.
+// Direction ALONE looked exceptionless because the demo corpus it was measured
+// on contains no ReferenceSet: all 927 resolvable associations are `Reference`,
+// yet 526 store 1 and 401 store -1, which pins the direction half and says
+// nothing about the type half. ako/TestApp confirms the direction half in one
+// document: Mappings.Order_Customer stores 1 reaching Customer from Order and
+// -1 reaching Order from Customer.
+//
+// Unlike the direction half, getting the type half wrong DOES have a build
+// error behind it — mxbuild reports CE6524 "The occurrence of '...' has
+// changed" on the definition, plus CE0295 on any object mapping element bound
+// to it. Measured on ako/mxcli-rest at 11.13.0 against a 0-error baseline.
 //
 // An association that connects the two entities in NEITHER direction is refused
-// rather than defaulted. A wrong cardinality is worse than a refusal: it builds.
+// rather than defaulted. A wrong cardinality is worse than a refusal: for a
+// Reference it builds clean and exposes a list as a single object.
 func resolveAssociationCardinality(ctx *ExecContext, assocQN, holderQN, targetQN, where string) (int, error) {
 	assoc, ok := lookupAssociation(ctx, assocQN)
 	if !ok {
@@ -302,7 +311,11 @@ func resolveAssociationCardinality(ctx *ExecContext, assocQN, holderQN, targetQN
 	fromQN, toQN := associationEnds(ctx, assoc)
 	switch {
 	case fromQN == holderQN && toQN == targetQN:
-		// Following the foreign key: one target per holder.
+		// Following the reference: one target per holder for a Reference, many
+		// for a ReferenceSet.
+		if assoc.Type == domainmodel.AssociationTypeReferenceSet {
+			return -1, nil
+		}
 		return 1, nil
 	case toQN == holderQN && fromQN == targetQN:
 		// The reverse: many holders point at one target, so from the target's
@@ -428,6 +441,88 @@ func execDropMessageDefinitionCollection(ctx *ExecContext, s *ast.DropMessageDef
 	}
 	ctx.ReportMutation("Dropped", "message definition collection: %s", s.Name.String())
 	return nil
+}
+
+// messageDefinitionsUsingAssociation returns the definitions that expose the
+// named association, each as a ready ALTER statement that would remove the
+// member.
+//
+// A message definition is a SELECTION over the domain model, so it holds the
+// association by qualified name and nothing keeps the two in step: dropping the
+// association leaves the definition pointing at nothing, and mxbuild rejects the
+// project with CE1613 "The selected association … no longer exists". `describe`
+// goes on emitting the member, so the break survives a describe -> exec round
+// trip (ako/mxcli-rest FINDINGS #60).
+//
+// The whole element tree is walked, not the root's own children: a definition
+// nests, and the association that breaks is usually not at the top.
+//
+// The remedy is spelled out rather than described because the two names in it
+// differ and guessing wrong is the likely outcome: `drop member` matches the
+// member's ORIGINAL name (the target entity's, e.g. RateSnapshot) while an `in`
+// path segment matches the EXPOSED one (e.g. Snapshots). Told only "remove the
+// member", an author reaches for the name they wrote in the definition, which is
+// the exposed one, and gets "message definition member not found".
+func messageDefinitionsUsingAssociation(ctx *ExecContext, assocQN string) []string {
+	colls, err := ctx.Backend.ListMessageDefinitionCollections()
+	if err != nil {
+		return nil
+	}
+	h, herr := getHierarchy(ctx)
+
+	var out []string
+	for _, c := range colls {
+		if c == nil {
+			continue
+		}
+		collName := c.Name
+		if herr == nil {
+			if m := h.GetModuleName(h.FindModuleID(c.ContainerID)); m != "" {
+				collName = m + "." + c.Name
+			}
+		}
+		for _, def := range c.Definitions {
+			if def == nil {
+				continue
+			}
+			for _, hit := range findAssociationMembers(def.Root, assocQN, nil) {
+				stmt := fmt.Sprintf("alter message definition %s.%s drop member %s",
+					collName, def.Name, hit.member)
+				if len(hit.path) > 0 {
+					stmt += " in " + strings.Join(hit.path, "/")
+				}
+				out = append(out, stmt)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// associationMemberHit is one exposed member that reaches through the
+// association: its original name, and the exposed-name path to its holder.
+type associationMemberHit struct {
+	member string
+	path   []string
+}
+
+func findAssociationMembers(n *model.MessageDefinitionElement, assocQN string, path []string) []associationMemberHit {
+	if n == nil {
+		return nil
+	}
+	var out []associationMemberHit
+	for _, c := range n.Children {
+		if c == nil {
+			continue
+		}
+		if c.Association == assocQN {
+			out = append(out, associationMemberHit{member: c.OriginalName, path: append([]string(nil), path...)})
+			// No recursion into a member that is itself going away.
+			continue
+		}
+		out = append(out, findAssociationMembers(c, assocQN, append(path, c.ExposedName))...)
+	}
+	return out
 }
 
 // mappingsUsingCollection returns the mappings whose source is a definition in

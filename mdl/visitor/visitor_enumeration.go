@@ -57,16 +57,18 @@ func (b *Builder) ExitAlterEnumerationAction(ctx *parser.AlterEnumerationActionC
 						caption = unquoteString(ctx.STRING_LITERAL().GetText())
 					}
 					b.statements = append(b.statements, &ast.AlterEnumerationStmt{
-						Name:      name,
-						Operation: ast.AlterEnumAdd,
-						ValueName: ids[0].GetText(),
-						Caption:   caption,
+						Name:        name,
+						Operation:   ast.AlterEnumAdd,
+						ValueName:   ids[0].GetText(),
+						Caption:     caption,
+						IfNotExists: ctx.IfNotExists() != nil,
 					})
 				} else if ctx.DROP() != nil && ctx.VALUE() != nil && len(ids) >= 1 {
 					b.statements = append(b.statements, &ast.AlterEnumerationStmt{
 						Name:      name,
 						Operation: ast.AlterEnumDrop,
 						ValueName: ids[0].GetText(),
+						IfExists:  ctx.IfExists() != nil,
 					})
 				} else if ctx.RENAME() != nil && ctx.VALUE() != nil && len(ids) >= 2 {
 					b.statements = append(b.statements, &ast.AlterEnumerationStmt{
