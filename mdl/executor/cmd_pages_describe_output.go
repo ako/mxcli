@@ -661,7 +661,9 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			w.OnChange != "" || len(w.NamedActions) > 0) && w.WidgetID != "" {
 			// Generic pluggable widget with explicit properties, object-list child
 			// blocks (chart series/lines/scaleColors), and/or an onClick action.
-			header := fmt.Sprintf("pluggablewidget '%s' %s", w.WidgetID, mdlIdent(w.Name))
+			// The widget's own MDL name where that round-trips, else the
+			// explicit id form. See pluggableWidgetHeader.
+			header := pluggableWidgetHeader(ctx.GetWidgetRegistry(), w.WidgetID, w.Name)
 			props := []string{}
 			if w.Caption != "" {
 				props = append(props, fmt.Sprintf("Label: %s", mdlQuote(w.Caption)))
@@ -689,8 +691,15 @@ func outputWidgetMDLV3(ctx *ExecContext, w rawWidget, indent int) {
 			}
 			props = appendNamedActionProps(props, w)
 			props = appendAppearanceProps(props, w)
-			if len(w.ObjectLists) == 0 {
+			if len(w.ObjectLists) == 0 && len(w.OmittedContainers) == 0 {
 				formatWidgetProps(ctx.Output, prefix, header, props, "\n")
+			} else if len(w.ObjectLists) == 0 {
+				// Nothing reconstructable, but the document DOES carry containers.
+				// Emit the body with the gap named rather than a bare head that
+				// reads as complete — see unreconstructedContainers.
+				formatWidgetProps(ctx.Output, prefix, header, props, " {\n")
+				writeOmittedContainerNote(ctx.Output, prefix+"  ", w.OmittedContainers)
+				fmt.Fprintf(ctx.Output, "%s}\n", prefix)
 			} else {
 				// Emit the widget with a body holding its object-list items.
 				formatWidgetProps(ctx.Output, prefix, header, props, " {\n")
