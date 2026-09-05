@@ -1,0 +1,43 @@
+-- DESCRIBE WIDGET — a widget definition, in-language.
+--
+-- Slice 4 of PROPOSAL_def_driven_widget_bodies.md. A widget was the only MDL
+-- extension point with no DESCRIBE: a microflow, nanoflow, Java action and
+-- JavaScript action all describe in-language, against the live project. A
+-- widget did not, which is WHY `mxcli widget init` generates markdown
+-- documentation at all — and why that documentation could drift from what the
+-- parser accepts (mendixlabs/mxcli#1036).
+--
+-- The statement and `mxcli widget describe` are the same function
+-- (executor.DescribeWidget), so they cannot disagree.
+
+-- By MDL keyword.
+describe widget combobox;
+
+-- By full widget id — what a widget package, a page's BSON and the generated
+-- docs all carry, and the only name a widget without a keyword has.
+describe widget 'com.mendix.widget.web.htmlelement.HTMLElement';
+
+-- Unlike every other DESCRIBE there is no qualified name: a widget definition
+-- is not a document in the model. It comes from a package in the project, or
+-- from mxcli's embedded set — which is also why this works with NO project
+-- open, the state an agent is in when it asks "what can I write here?".
+--
+-- The report covers each property's key, type, caption, category, whether it is
+-- required, its default and its enumeration values, plus the dynamic rules the
+-- widget's editor uses to hide properties under some configurations. Those
+-- rules matter: writing into a hidden property is the CE0463 that
+-- mdl-examples/bug-tests/956-fileuploader-six-action-slots.mdl documents.
+
+-- The report ends with an MDL example that PARSES AS WRITTEN. Both the head
+-- form and the containers in it are chosen by probing the real parser, so:
+--
+--   gallery      -> `gallery widget1 (…) { filter slot1 {…} template slot2 {…} }`
+--                   its `emptyplaceholder` slot is omitted and named, because
+--                   the grammar has no keyword for it yet
+--   htmlelement  -> the `pluggablewidget '<id>' …` form, because `htmlelement`
+--                   is not yet a widget keyword, and all four of its containers
+--                   are omitted and named
+--
+-- This is the half of the generated .md that was wrong — its example failed on
+-- its own first line. Deriving it means it cannot promise syntax that fails,
+-- and that it widens on its own once slices 2-3 land.

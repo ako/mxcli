@@ -57,7 +57,7 @@ func TestCheckDuplicateWidgetNames_IgnoresUnnamedWidgetKinds(t *testing.T) {
 		),
 	}
 
-	if errs := checkDuplicateWidgetNames(page); len(errs) != 0 {
+	if errs := checkDuplicateWidgetNames(page, nil); len(errs) != 0 {
 		t.Errorf("a widget kind whose name is not stored cannot be a CE0495 duplicate; got:\n  %s",
 			strings.Join(errs, "\n  "))
 	}
@@ -77,7 +77,7 @@ func TestCheckDuplicateWidgetNames_StillCatchesRealDuplicates(t *testing.T) {
 		),
 	}
 
-	errs := checkDuplicateWidgetNames(page)
+	errs := checkDuplicateWidgetNames(page, nil)
 	if len(errs) != 1 {
 		t.Fatalf("got %d errors, want 1:\n  %s", len(errs), strings.Join(errs, "\n  "))
 	}
@@ -95,7 +95,7 @@ func TestCheckDuplicateWidgetNames_NamedWidgetCollidingWithADerivedName(t *testi
 		namedWidget("container", "row1"),
 	}
 
-	errs := checkDuplicateWidgetNames(page)
+	errs := checkDuplicateWidgetNames(page, nil)
 	if len(errs) != 1 || !strings.Contains(errs[0], "row1") {
 		t.Fatalf("two containers named row1 are a real duplicate; got %d errors:\n  %s",
 			len(errs), strings.Join(errs, "\n  "))

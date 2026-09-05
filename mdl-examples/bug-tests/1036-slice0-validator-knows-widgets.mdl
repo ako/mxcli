@@ -1,0 +1,54 @@
+-- Slice 0 of PROPOSAL_def_driven_widget_bodies.md: the validator knows what a
+-- widget is. Both statements below used to pass `mxcli check` and fail only at
+-- `exec`.
+--
+-- Until now the GRAMMAR was the widget-kind validator: `widgetTypeV3` is an
+-- allow-list, so an unknown kind could not parse and the validator never needed
+-- an independent notion of one. Two mistakes are not keywords, so neither was
+-- caught:
+--
+--   MDL-WIDGET25  an explicit widget id that resolves to nothing
+--   MDL-WIDGET26  a real container keyword on a parent that has no such container
+--
+-- Reporting them is worth doing on its own. It is also what makes slices 2-3
+-- safe: those give up the parser's enforcement, so the semantic check has to
+-- exist first (Open Question 1).
+--
+-- Both rules are deliberately silent when they cannot be sure:
+--   * an id whose .mpk IS installed is real, just not extracted yet — the
+--     registry used by `check` reads .mxcli/widgets/ and does NOT refresh from
+--     installed packages, so without this guard every widget in a project that
+--     never ran `widget init` would be called unknown
+--   * a container is never judged against a parent whose definition could not
+--     be resolved, for the same reason
+--
+-- NOT a .fail.mdl, deliberately. `make check-mdl` runs `check` WITHOUT a
+-- project, and both rules need one:
+--
+--   MDL-WIDGET25 cannot tell an unknown widget from one installed in a project
+--                it cannot see, so with no -p it stays silent
+--   MDL-WIDGET26 needs the PARENT's definition resolved, and without a project
+--                the registry holds only the nine embedded widgets
+--
+-- So this file passes check with no project and reports both rules with one.
+-- That is the case the Makefile warns about (#891, #892): naming it .fail.mdl
+-- would report "negative test unexpectedly passed" and make a working rule look
+-- regressed. The rules are covered by unit tests in validate_widget_kind_test.go
+-- instead; this file is the human-readable repro.
+--
+-- Run it against a project to see them:
+--   mxcli check mdl-examples/bug-tests/1036-slice0-validator-knows-widgets.mdl -p app.mpr
+
+create page Bug1036.SliceZero (
+  title: 'Slice 0',
+  layout: Atlas_Core.Atlas_Default,
+  folder: 'Bug1036'
+) {
+  -- MDL-WIDGET25: no definition, and no package in widgets/ either.
+  pluggablewidget 'com.acme.widget.NotAWidget' w1 (someProp: 'x')
+
+  -- MDL-WIDGET26: `group` is Accordion's container, not HTML Element's.
+  pluggablewidget 'com.mendix.widget.web.htmlelement.HTMLElement' h (tagName: 'div') {
+    group g1 (headerText: 'HTML Element has no groups')
+  }
+}

@@ -1,0 +1,80 @@
+-- mendixlabs/mxcli#1036 — slices 2 and 3 of PROPOSAL_def_driven_widget_bodies.md
+--
+-- `mxcli widget init` generates widget documentation for agents to follow. Fed
+-- back into `mxcli check` verbatim, the generated htmlelement.md failed on the
+-- first line of its own example:
+--
+--     line 4:4 mismatched input 'tagcontentcontainer' expecting '}'
+--
+-- The doc generator derived a keyword for every object list and child slot in a
+-- widget definition; the grammar accepted nine hardcoded ones. Two lists, and
+-- nothing comparing them. Measured on the fixture's definitions: 16 of 46
+-- documented constructs parsed. It is 50 of 50 now.
+--
+-- The cost was not the wasted sessions. Unable to express the `attributes` list
+-- below, the reporter's team fell back to tagContentHTML, which executes
+-- same-origin — the exact risk the sandbox they wanted was for.
+--
+-- Nothing here is a new keyword. Every name in this file comes from a widget's
+-- own definition, which is why `mxcli widget describe htmlelement` lists them.
+
+create module DefDriven;
+
+-- A widget named by its own MDL name. `htmlelement` was never in the grammar's
+-- widget-type list, though the builder has always resolved it: the page builder
+-- tries widgetRegistry.Get(ToUpper(type)) FIRST. Only ANTLR needed a token.
+create page DefDriven.HtmlElementBody (
+  Title: 'HTML Element with attributes',
+  Layout: Atlas_Core.Atlas_Default
+) {
+  htmlelement frame (tagName: 'div') {
+
+    -- Object list. `attribute` lexes as the ATTRIBUTE keyword token and never
+    -- as IDENTIFIER, so accepting a bare identifier as a widget type is NOT
+    -- enough to reach it — this is the case slice 3 exists for.
+    attribute a1 (
+      attributeName: 'data-role',
+      attributeValueType: 'expression'
+    )
+    attribute a2 (
+      attributeName: 'aria-label',
+      attributeValueType: 'expression'
+    )
+
+    -- A second object list on the same widget.
+    event e1 (
+      eventName: 'onClick'
+    )
+
+    -- Child slot: a fixed property holding widgets, not a repeating item.
+    tagcontentcontainer body {
+      dynamictext greeting (Content: 'Hello from inside an HTML Element')
+    }
+  }
+}
+
+-- A pluggable widget with no properties at all. `()` on a def-driven widget
+-- parses for the same reason it does on a built-in (slice 1).
+create page DefDriven.BareWidget (
+  Title: 'Bare',
+  Layout: Atlas_Core.Atlas_Default
+) {
+  htmlelement plain ()
+}
+
+-- Containers on widgets that already had keywords keep working unchanged —
+-- the enumerated alternatives are still tried first, so nothing about an
+-- ordinary widget body moved.
+create page DefDriven.StillWorks (
+  Title: 'Unchanged',
+  Layout: Atlas_Core.Atlas_Default
+) {
+  accordion acc () {
+    group g1 (headerText: 'Section one') {
+      dynamictext t1 (Content: 'inside a group')
+    }
+  }
+  container plain (Class: 'row') {
+    dynamictext t2 (Content: 'inside a container')
+  }
+}

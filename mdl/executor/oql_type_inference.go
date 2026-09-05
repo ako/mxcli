@@ -694,18 +694,32 @@ func inferAggregateType(ctx *ExecContext, expr string, col *OQLColumnInfo, alias
 		return ast.DataType{Kind: ast.TypeInteger}
 	}
 
-	// SUM(expression) → preserves input type (Integer→Integer, else Decimal)
+	// SUM(expression) → preserves the input type, and stays UNKNOWN when that
+	// type could not be resolved.
+	//
+	// Falling back to Decimal looks harmless and is not: the argument is
+	// unresolvable exactly when the source entity is created by the same script
+	// (check skips references to script-created objects), which is the common
+	// shape for a view entity. Measured against mxbuild 11.6.6 on `sum(s.Units)`
+	// where Units is an Integer attribute:
+	//
+	//	declared Integer -> 0 errors    <- what mxcli flagged
+	//	declared Decimal -> CE6770      <- what mxcli's hint told the user to write
+	//
+	// So the guess inverted the truth and the "Fix:" would break a working
+	// project. inferTypeStatic's SUM branch already says this in its own comment;
+	// this path disagreed with it.
 	if strings.HasPrefix(upperExpr, "SUM(") {
 		col.IsAggregate = true
 		col.AggregateFunc = "sum"
 		innerArg := extractFunctionArg(expr)
 		if innerArg != "" {
 			innerType := inferTypeFromExpression(ctx, innerArg, &OQLColumnInfo{}, aliasMap)
-			if innerType.Kind == ast.TypeInteger || innerType.Kind == ast.TypeLong {
+			if innerType.Kind != ast.TypeUnknown {
 				return innerType
 			}
 		}
-		return ast.DataType{Kind: ast.TypeDecimal}
+		return ast.DataType{Kind: ast.TypeUnknown}
 	}
 
 	// AVG(expression) → always Decimal

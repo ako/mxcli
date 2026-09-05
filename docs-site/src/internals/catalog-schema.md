@@ -156,18 +156,67 @@ CREATE TABLE WIDGETS (
 
 ### REFS
 
+The reference graph: one row per edge. Populated by `refresh catalog full`.
+
 ```sql
 CREATE TABLE REFS (
-    SourceName  TEXT,           -- Referencing document
-    SourceKind  TEXT,           -- "Microflow", "Page", etc.
-    TargetName  TEXT,           -- Referenced element
-    TargetKind  TEXT,           -- "Entity", "Microflow", etc.
-    RefKind     TEXT            -- "Call", "DataSource", "Association", etc.
+    Id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    SourceType  TEXT NOT NULL,  -- "MICROFLOW", "PAGE", "ENTITY", ...
+    SourceId    TEXT NOT NULL,  -- element $ID, or '' where the builder has no id
+    SourceName  TEXT NOT NULL,  -- referencing document, module-qualified
+    TargetType  TEXT NOT NULL,  -- "ENTITY", "MICROFLOW", "WIDGET", ...
+    TargetId    TEXT,           -- element $ID, or the widget ID for a WIDGET target
+    TargetName  TEXT NOT NULL,  -- referenced element
+    RefKind     TEXT NOT NULL,  -- see the vocabulary below
+    ModuleName  TEXT,
+    ProjectId   TEXT,
+    SnapshotId  TEXT
 );
 
-CREATE INDEX idx_refs_source ON REFS(SourceName);
-CREATE INDEX idx_refs_target ON REFS(TargetName);
+CREATE INDEX idx_refs_source ON refs(SourceType, SourceName);
+CREATE INDEX idx_refs_target ON refs(TargetType, TargetName);
+CREATE INDEX idx_refs_kind   ON refs(RefKind);
 ```
+
+`RefKind` values are lower-case, and the current vocabulary is whatever
+`CATALOG.GRAPH_REFKIND_DISTRIBUTION` reports for your project — query that
+rather than trusting a list here:
+
+| RefKind | Edge |
+|---------|------|
+| `call` | flow calls a microflow / nanoflow / rule / Java action / REST operation |
+| `create` / `change` / `delete` / `retrieve` | flow acts on an entity object |
+| `return` | flow returns an entity type |
+| `parameter` | page or flow parameter entity type |
+| `generalize` | entity extends entity |
+| `associate` | association targets entity |
+| `layout` | page uses a layout |
+| `datasource` | page or widget reads an entity |
+| `action` | widget calls a microflow / nanoflow |
+| `show_page` | flow or widget action opens a page |
+| `home_page` / `login_page` / `menu_item` | navigation profile references a page |
+| `calculate` | calculated attribute uses a microflow |
+| `schedule` | scheduled event runs a microflow |
+| `validate` | attribute validation rule uses a regular expression |
+| `widget` | page or snippet uses a pluggable / custom widget |
+
+#### WIDGET targets
+
+A `widget` edge is the odd one out and is worth knowing about before you join
+against it:
+
+- `TargetName` is the widget's **MDL name** (`COMBOBOX`), not its dotted widget
+  ID. The ID is in `TargetId`. A dotted target would be mis-read as a module by
+  `GRAPH_MODULE_COUPLING` and friends, which take everything before the first
+  dot as the module name.
+- It is therefore the only `TargetName` that is not module-qualified — a widget
+  definition belongs to no Mendix module. `GRAPH_GOD_NODES` excludes `WIDGET`
+  targets from its asset list for that reason, while still counting a page's
+  out-degree towards the widgets it uses.
+- Only widgets with a definition get an edge. A built-in Mendix widget
+  (`Forms$DynamicText`) has none, so it produces no row; use `CATALOG.WIDGETS`
+  for those.
+- One edge per page x widget, not per widget instance.
 
 ### PERMISSIONS
 
@@ -233,6 +282,16 @@ WHERE AttributeCount > 20 ORDER BY AttributeCount DESC;
 -- Find all references to an entity
 SELECT SourceName, RefKind FROM CATALOG.REFS
 WHERE TargetName = 'Sales.Customer';
+
+-- Which pages use a given pluggable widget?
+SELECT SourceType, SourceName FROM CATALOG.REFS
+WHERE RefKind = 'widget' AND TargetName = 'COMBOBOX';
+
+-- Which installed widget packages does nothing use?
+-- (MDL's SELECT has no NOT EXISTS / NOT IN — use an anti-join.)
+SELECT d.MdlName, d.WidgetId FROM CATALOG.WIDGET_DEFINITIONS d
+LEFT JOIN CATALOG.REFS r ON r.TargetId = d.WidgetId AND r.RefKind = 'widget'
+WHERE r.Id IS NULL;
 
 -- Full-text search
 SELECT name, kind, snippet(STRINGS, 2, '<b>', '</b>', '...', 20)

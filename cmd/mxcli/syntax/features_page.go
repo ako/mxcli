@@ -30,6 +30,83 @@ func init() {
 	})
 
 	Register(SyntaxFeature{
+		Path:    "page.widget-describe",
+		Summary: "DESCRIBE WIDGET — a widget's properties, enum values and editor rules",
+		Keywords: []string{
+			"describe widget", "widget properties", "widget definition", "what properties",
+			"enum values", "widget rules", "hidden properties", "pluggable widget properties",
+		},
+		Syntax: `DESCRIBE WIDGET <keyword>;
+DESCRIBE WIDGET '<widget id>';`,
+		Example: `DESCRIBE WIDGET combobox;
+DESCRIBE WIDGET 'com.mendix.widget.web.htmlelement.HTMLElement';
+
+-- Names the widget by its MDL keyword or its full widget id.
+--
+-- Works with NO project open, answering from mxcli's embedded set. With a
+-- project the answer is better: the installed .mpk is version-accurate and is
+-- the only place a Marketplace widget appears.
+--
+-- Reports each property's key, type, caption, category, whether it is required,
+-- its default and its enumeration values, plus the dynamic rules the widget's
+-- editor uses to HIDE properties under some configurations — the ones that
+-- cause CE0463 if written into the pruned half.
+--
+-- Also emits an MDL example that PARSES AS WRITTEN: the head form and every
+-- container in it are chosen by probing the real parser, and anything the
+-- grammar cannot yet express is left out and named. So the example widens on
+-- its own as MDL gains ground, and cannot promise syntax that fails.
+--
+-- Same output as ` + "`mxcli widget describe`" + `, because it is the same code.
+
+-- The other direction — which pages already use it — is a reference query,
+-- and needs ` + "`refresh catalog full`" + `:
+SHOW REFERENCES TO combobox;
+SHOW IMPACT OF htmlelement;
+
+-- Name it as you write it in a page body; the casing does not matter. A
+-- built-in Mendix widget (textbox, dynamictext) has no definition and so no
+-- reference edge — use SHOW WIDGETS for those.`,
+		SeeAlso: []string{"page.widgets", "page.create"},
+	})
+
+	Register(SyntaxFeature{
+		Path:    "page.widget-any",
+		Summary: "Any widget with a definition, written by its own MDL name",
+		Keywords: []string{
+			"htmlelement", "html element", "fileuploader", "file uploader", "markdown",
+			"custom widget syntax", "marketplace widget", "pluggable widget name",
+			"widget not recognized", "mismatched input", "def-driven", "mdl name",
+			"object list", "child slot", "widget container", "attributes list",
+		},
+		Syntax: `<widget-mdl-name> <name> [( Prop: Value, ... )] [{ <containers and widgets> }]
+<container-name> <name> [( Prop: Value, ... )] [{ ... }]`,
+		Example: `-- Any widget with a definition is written by its own MDL name. There is no
+-- list of blessed keywords: if ` + "`describe widget <name>`" + ` knows it, you can write it.
+CREATE PAGE Sales.Detail (Title: 'Detail', Layout: Atlas_Core.Atlas_Default) {
+  htmlelement frame (tagName: 'div') {
+    -- object lists and child slots the widget's own definition declares
+    attribute a1 (attributeName: 'title', attributeValueType: 'expression')
+    tagcontentcontainer body {
+      dynamictext t (Content: 'hello')
+    }
+  }
+  fileuploader up ()
+}
+
+-- The names come from the widget itself, so ask it rather than guessing:
+--   mxcli widget describe htmlelement -p app.mpr
+-- which lists every property, every container, and an example that parses.
+--
+-- A name that resolves to no definition is MDL-WIDGET25 (widget) or
+-- MDL-WIDGET26 (container), each naming the near misses — but BOTH need a
+-- project, because the set of valid widget names IS the project's installed
+-- packages. With no -p, ` + "`mxcli check`" + ` cannot tell a typo from a widget it
+-- has simply never seen, and says nothing rather than guessing.`,
+		SeeAlso: []string{"page.widgets", "page.widget-describe", "page.create"},
+	})
+
+	Register(SyntaxFeature{
 		Path:    "page.widgets",
 		Summary: "Widget types: containers, data widgets, inputs, actions, display",
 		Keywords: []string{

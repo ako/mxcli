@@ -42,12 +42,12 @@ func TestExtractObjectListItem_EmitsTextTemplateParameters(t *testing.T) {
 	var text, params string
 	for _, p := range item.Props {
 		switch p.Key {
-		case "ButtonCaption":
+		case "buttonCaption":
 			text = p.Value
-		case "ButtonCaptionParams":
+		case "buttonCaptionParams":
 			params = p.Value
 			if !p.IsRef {
-				t.Error("the parameter list was quoted — `ButtonCaptionParams: '[...]'` does not parse")
+				t.Error("the parameter list was quoted — `buttonCaptionParams: '[...]'` does not parse")
 			}
 		}
 	}
@@ -78,7 +78,7 @@ func TestBuildObjectListItem_ReadsParamsCompanionCaseInsensitively(t *testing.T)
 		},
 	}
 	child := &ast.WidgetV3{Name: "b1", Properties: map[string]any{
-		"ButtonCaption":       "Hello {1}",
+		"buttonCaption":       "Hello {1}",
 		"ButtonCaptionParams": []ast.ParamAssignmentV3{{Index: 1, Value: "'abc'"}},
 	}}
 

@@ -552,6 +552,18 @@ func buildWidgetV3(ctx parser.IWidgetV3Context, b *Builder) *ast.WidgetV3 {
 		widget.Properties["WidgetType"] = unquoteString(wCtx.STRING_LITERAL().GetText())
 	} else if typeCtx := wCtx.WidgetTypeV3(); typeCtx != nil {
 		widget.Type = strings.ToLower(typeCtx.GetText())
+		// Which alternative matched, taken from the parse tree rather than by
+		// comparing the text against a list of known widget names. A generic
+		// type must resolve to a widget definition; an enumerated one is a
+		// built-in. See ast.WidgetV3.TypeIsGeneric.
+		// Both generic alternatives count. IDENTIFIER covers `htmlelement`
+		// (slice 2); Keyword covers a container whose name lexes as a keyword
+		// token, such as `attribute` (slice 3) — the case that motivated the
+		// issue. An enumerated widget type is a direct token alternative of
+		// widgetTypeV3 and matches neither accessor.
+		if typeCtx.IDENTIFIER() != nil || typeCtx.Keyword() != nil {
+			widget.TypeIsGeneric = true
+		}
 	}
 
 	// Get required identifier. The name may be quoted (QUOTED_IDENTIFIER) when it

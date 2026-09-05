@@ -149,10 +149,34 @@ func extractObjectListItem(ctx *ExecContext, itemObj map[string]any, nestedMap m
 		}
 
 		// Per-item datasource (e.g. chart series `staticDataSource`).
-		if ds, ok := value["DataSource"].(map[string]any); ok && ds != nil {
+		// These branches must consume the property only when they actually
+		// EXTRACTED something. A widget value carries every field it could
+		// possibly have — Action, AttributeRef, DataSource, Expression,
+		// TextTemplate, PrimitiveValue — most of them empty, so a branch that
+		// `continue`s merely because its key EXISTS swallows the property and
+		// the branches below it never run.
+		//
+		// The measured culprit is the ACTION branch below: `value["Action"]` is
+		// present on every sub-property as a Forms$NoAction, and it continued
+		// unconditionally. On an HTML Element authored by mxcli, that consumed
+		// all six sub-properties of an `attribute` item; the item ended with
+		// zero Props, the caller's `len(item.Props) > 0` filter dropped it, and
+		// the whole `attributes` list vanished from DESCRIBE — while the list
+		// itself resolved perfectly (probe: list="attributes" objects=1
+		// nested=6). Isolated by reverting that one branch: object lists go
+		// 2 -> 0.
+		//
+		// DataSource and AttributeRef are the same latent shape and are guarded
+		// the same way. Neither is load-bearing for the measured case.
+		if ds, ok := value["DataSource"].(map[string]any); ok && len(ds) > 0 {
 			if rds := parseCustomWidgetDataSource(ctx, ds); rds != nil && rds.Reference != "" {
 				item.DataSource = rds
 			}
+			// Consume it either way. A datasource that is PRESENT but could not
+			// be rendered must not fall through to the scalar branches below —
+			// they would describe it as its PrimitiveValue, which is a wrong
+			// answer rather than a missing one. `len(ds) > 0` is the whole
+			// change: an EMPTY map means the field is simply unset.
 			continue
 		}
 		// Child widgets (an Accordion group's `content` slot). A Widgets-typed
@@ -173,17 +197,20 @@ func extractObjectListItem(ctx *ExecContext, itemObj map[string]any, nestedMap m
 		// which is how MDL addresses an item action slot — there is no alias
 		// (#956). A NoAction is the unset default and is skipped, so an
 		// untouched item describes exactly as it did before.
-		if action, ok := value["Action"].(map[string]any); ok && action != nil {
+		if action, ok := value["Action"].(map[string]any); ok && len(action) > 0 {
 			if t := extractString(action["$Type"]); t != "Forms$NoAction" && t != "Pages$NoAction" {
 				if mdl := renderClientActionMDL(ctx, action); mdl != "" {
 					item.Props = append(item.Props, rawExplicitProp{
 						Key: objectListMDLKey(key), Value: mdl, IsRef: true})
 				}
+				// A real action, rendered or not, is not a scalar.
+				continue
 			}
-			continue
+			// A NoAction is the unset default: fall through, since the property
+			// may carry its value in one of the fields below.
 		}
 		// Attribute binding (staticXAttribute, staticYAttribute, …).
-		if attrRef, ok := value["AttributeRef"].(map[string]any); ok && attrRef != nil {
+		if attrRef, ok := value["AttributeRef"].(map[string]any); ok && len(attrRef) > 0 {
 			if a := extractString(attrRef["Attribute"]); a != "" {
 				item.Props = append(item.Props, rawExplicitProp{Key: objectListMDLKey(key), Value: shortAttributeName(a), IsRef: true})
 			}
@@ -223,13 +250,25 @@ func extractObjectListItem(ctx *ExecContext, itemObj map[string]any, nestedMap m
 	return item
 }
 
-// objectListMDLKey maps a widget schema sub-property key to the MDL property name
-// the DESCRIBE output uses. MDL property names are case-insensitive, so the
-// canonical PascalCase form (first letter upper) round-trips to the same schema
-// key on re-exec (staticXAttribute→StaticXAttribute, staticName→StaticName).
+// objectListMDLKey is the MDL property name DESCRIBE emits for a widget schema
+// sub-property: the schema key, verbatim.
+//
+// It used to upper-case the first letter. That round-tripped — MDL property
+// names are case-insensitive, so `StaticName` and `staticName` both resolve —
+// but it made DESCRIBE PAGE the only surface using that spelling:
+//
+//	mxcli widget describe htmlelement   attributeName      (from the .mpk)
+//	what you write in a page            attributeName
+//	DESCRIBE PAGE, before               AttributeName
+//
+// Three surfaces, two spellings, for no benefit. It was invisible while only
+// chart series reached this code; slice 3 put it on every widget with an object
+// list, which is what made it worth fixing.
+//
+// Emitting the key verbatim also keeps a real distinction visible that
+// PascalCase erased: `DataSource:` stays capitalised because it is MDL's own
+// keyword, not a widget schema key, so the two kinds of name no longer look
+// alike.
 func objectListMDLKey(schemaKey string) string {
-	if schemaKey == "" {
-		return schemaKey
-	}
-	return strings.ToUpper(schemaKey[:1]) + schemaKey[1:]
+	return schemaKey
 }

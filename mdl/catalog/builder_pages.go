@@ -554,21 +554,9 @@ func extractWidgetsRecursive(w map[string]any) []rawWidgetInfo {
 		}
 	}
 
-	// Handle CustomWidget nested widgets in properties
+	// Handle CustomWidget nested widgets in properties — both kinds of container.
 	if obj, ok := w["Object"].(map[string]any); ok {
-		props := getBsonArrayElements(obj["Properties"])
-		for _, prop := range props {
-			if propMap, ok := prop.(map[string]any); ok {
-				if value, ok := propMap["Value"].(map[string]any); ok {
-					propWidgets := getBsonArrayElements(value["Widgets"])
-					for _, pw := range propWidgets {
-						if pwMap, ok := pw.(map[string]any); ok {
-							result = append(result, extractWidgetsRecursive(pwMap)...)
-						}
-					}
-				}
-			}
-		}
+		result = append(result, widgetsInPropertyBag(obj)...)
 	}
 
 	// Handle NavigationList items
@@ -584,6 +572,51 @@ func extractWidgetsRecursive(w map[string]any) []rawWidgetInfo {
 		}
 	}
 
+	return result
+}
+
+// widgetsInPropertyBag walks a pluggable widget's stored property bag and
+// indexes every widget inside it, through BOTH kinds of container:
+//
+//	Value.Widgets   a child slot   — a Gallery's content, an HTML Element's body
+//	Value.Objects   an object list — a DataGrid2 column, a chart series
+//
+// Only the first was walked, so anything placed in a column, a gallery item or
+// a series was invisible to the catalog. Measured on a real project: a page
+// holding 19 chart sparklines inside datagrid columns did not appear under
+// "which pages use VegaChart?", while the grid around them did.
+//
+// The consequence is wider than the widget edge, because CATALOG.REFS is a
+// projection of this table: an entity or microflow used ONLY inside a column
+// template reported zero references, so anything using reference counts to
+// decide "unused, safe to delete" would delete a document in active use. That is
+// issue #940's failure mode — fixed for List View templates, left open here.
+//
+// An object-list item is itself a property bag, so the walk recurses: a column
+// holding a nested widget that has its own object list is covered without a
+// second case.
+func widgetsInPropertyBag(bag map[string]any) []rawWidgetInfo {
+	var result []rawWidgetInfo
+	for _, prop := range getBsonArrayElements(bag["Properties"]) {
+		propMap, ok := prop.(map[string]any)
+		if !ok {
+			continue
+		}
+		value, ok := propMap["Value"].(map[string]any)
+		if !ok {
+			continue
+		}
+		for _, pw := range getBsonArrayElements(value["Widgets"]) {
+			if pwMap, ok := pw.(map[string]any); ok {
+				result = append(result, extractWidgetsRecursive(pwMap)...)
+			}
+		}
+		for _, obj := range getBsonArrayElements(value["Objects"]) {
+			if objMap, ok := obj.(map[string]any); ok {
+				result = append(result, widgetsInPropertyBag(objMap)...)
+			}
+		}
+	}
 	return result
 }
 

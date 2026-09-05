@@ -60,7 +60,20 @@ func widgetTypeAlternatives(t *testing.T) []string {
 			line = line[:i]
 		}
 		for _, tok := range strings.Split(line, "|") {
-			if tok = strings.TrimSpace(tok); regexp.MustCompile(`^[A-Z][A-Z0-9]*$`).MatchString(tok) {
+			tok = strings.TrimSpace(tok)
+			// IDENTIFIER is the generic alternative added by slice 2 of
+			// PROPOSAL_def_driven_widget_bodies.md, not a keyword — it is how a
+			// widget is named by its own MDL name. It lexes as a token class, so
+			// the all-caps shape below matches it; there is no keyword
+			// "identifier" to document. Its lower-case sibling `keyword` (slice
+			// 3) is already skipped by that shape.
+			//
+			// Covered instead by TestDefDrivenWidgetNameIsDocumented below, which
+			// is the assertion that actually applies to it.
+			if tok == "IDENTIFIER" {
+				continue
+			}
+			if regexp.MustCompile(`^[A-Z][A-Z0-9]*$`).MatchString(tok) {
 				out = append(out, strings.ToLower(tok))
 			}
 		}
@@ -163,4 +176,46 @@ func TestWidgetKeywordGuardCanFail(t *testing.T) {
 		t.Error("dataview is documented but did not match — the matcher is broken, so the " +
 			"whole guard is vacuous")
 	}
+}
+
+// The enumerated keywords are no longer the whole widget vocabulary: since
+// slices 2-3 any widget with a definition can be named by its MDL name, and any
+// container a definition declares can be written in a body. That is a bigger
+// capability than the list above, and the same reasoning applies to it — a
+// capability nobody can find is one people build around.
+//
+// This asserts both halves are still present in the grammar (so their removal
+// is noticed) and that a page.* topic tells the reader about them.
+func TestDefDrivenWidgetNameIsDocumented(t *testing.T) {
+	path := filepath.Join("..", "..", "..", "mdl", "grammar", "domains", "MDLPage.g4")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	rule := regexp.MustCompile(`(?s)\nwidgetTypeV3\s*\n\s*:(.*?)\n\s*;`).FindStringSubmatch(string(b))
+	if rule == nil {
+		t.Fatal("widgetTypeV3 rule not found")
+	}
+	body := rule[1]
+	for _, alt := range []string{"IDENTIFIER", "keyword"} {
+		if !regexp.MustCompile(`\|\s*` + alt + `\s*\n`).MatchString(body + "\n") {
+			t.Errorf("widgetTypeV3 no longer offers the generic `%s` alternative — "+
+				"if that was deliberate, 30 of 46 documented widget containers stop parsing again "+
+				"(mendixlabs/mxcli#1036); update this guard rather than deleting it", alt)
+		}
+	}
+
+	corpus := pageSyntaxCorpus()
+	if corpus == "" {
+		t.Fatal("no page.* topics registered — the guard would pass vacuously")
+	}
+	// The reader has to be able to learn that a widget can be named by its own
+	// name. Any of these phrasings satisfies that.
+	for _, want := range []string{"mdl name", "def-driven", "any widget with a definition"} {
+		if strings.Contains(corpus, want) {
+			return
+		}
+	}
+	t.Error("no page.* syntax topic explains that a widget can be written by its own MDL name " +
+		"(e.g. `htmlelement frame (...)`) — add it to cmd/mxcli/syntax/features_page.go")
 }

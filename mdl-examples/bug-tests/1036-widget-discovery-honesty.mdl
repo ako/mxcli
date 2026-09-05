@@ -1,0 +1,40 @@
+-- Slice 1 of PROPOSAL_def_driven_widget_bodies.md — the parts of
+-- mendixlabs/mxcli#1036 that need no design work.
+--
+-- Three independent defects, all found while reproducing the report:
+--
+-- 1. `()` was a parse error on EVERY widget kind. `container c` parsed and
+--    `container c (x: 'y')` parsed, but `container c ()` — what an LLM writes
+--    for a widget that needs no properties — failed at the `)` with an error
+--    that read as though the widget itself were wrong.
+--
+-- 2. The `no definition for widget` error always said "run 'mxcli widget init
+--    -p app.mpr'". For a widget Studio Pro BUNDLES rather than installs (File
+--    Uploader, Events, Google Tag, Markdown viewer) that is worse than
+--    unhelpful: widget init scans widgets/, the .mpk is not there, and
+--    re-running it can never help. It is now branched on whether the package is
+--    actually installed — the same question FindMPK answers for the template
+--    loader.
+--
+-- 3. `mxcli widget init` generated child-slot examples with NO NAME
+--    (`tagcontentcontainer { … }`), which even a working slot rejects — so the
+--    three slots that DID parse were documented in a form that could not.
+--    Names are now emitted and numbered, since two `slot1`s on one page would
+--    collide.
+--
+-- Not in this file: the capability gap itself (30 of 46 documented constructs
+-- do not parse). That is slices 2-3 of the proposal.
+
+create page Bug1036.EmptyProps (
+  title: 'Empty property lists',
+  layout: Atlas_Core.Atlas_Default,
+  folder: 'Bug1036'
+) {
+  -- All three spellings are now accepted, and mean the same thing.
+  container outer () {
+    container inner {
+      dynamictext note ( Content: 'both spellings parse' )
+    }
+    dynamictext empty ()
+  }
+}
