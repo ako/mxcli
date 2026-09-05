@@ -1,9 +1,64 @@
 ---
 name: custom-widgets
-description: "MDL syntax for pluggable widgets in CREATE PAGE / ALTER PAGE — GALLERY, COMBOBOX, DataGrid2 and third-party widgets: datasource and column forms, child slots (TEMPLATE/FILTER), adding a widget via .def.json, and the engine internals. Use when placing a pluggable widget on a page, or when `mxcli widget describe` output needs interpreting. For the widgets THIS project actually has, read the generated `widgets` skill."
+description: "MDL syntax for pluggable widgets in CREATE PAGE / ALTER PAGE — any installed widget is named by its own name (`htmlelement frame (…) { … }`), with object lists and child slots read from its definition. Covers GALLERY, COMBOBOX, DataGrid2, charts and third-party widgets: datasource and column forms, child slots (TEMPLATE/FILTER), the `pluggablewidget '<id>'` fallback, adding a widget via .def.json, and the engine internals. Use when placing a pluggable widget on a page, or when `mxcli widget describe` output needs interpreting. For the widgets THIS project actually has, read the generated `widgets` skill."
 ---
 
 # Custom & Pluggable Widgets in MDL
+
+## Any installed widget is named by its own name
+
+If a widget is installed in `widgets/`, MDL names it directly — no keyword list,
+no widget id:
+
+```sql
+htmlelement frame (tagName: 'div', tagContentMode: 'container') {
+  attribute a1 (attributeName: 'data-testid', attributeValueType: 'expression')
+  tagcontentcontainer body {
+    dynamictext caption (Content: 'Inside the element')
+  }
+}
+```
+
+Three things there are read from the widget's definition, not from anything
+hardcoded: the **keyword** (`htmlelement`, the last segment of the widget id),
+the **properties** (the widget's own spelling — `tagName`, not `TagName`), and
+the **body containers** — `attribute` is an object list (one entry per
+repetition), `tagcontentcontainer` a child slot (holds widgets).
+
+**Ask the widget rather than guessing.** `describe widget <name>` lists every
+property with its type, default and enumeration members; every body container
+and whether MDL can express it; and a complete example that parses AND checks as
+written:
+
+```bash
+mxcli widget describe htmlelement -p app.mpr
+```
+
+Do this first when placing an unfamiliar widget. It is faster than reading this
+file and it cannot go stale, because it reads the `.mpk` the project actually
+has.
+
+### The id form is the fallback
+
+```sql
+pluggablewidget 'com.mendix.widget.web.htmlelement.HTMLElement' frame (tagName: 'div')
+```
+
+Use it only when two installed packages ship the same MDL name, or when you have
+the id and not the name. Everything below that still shows the id form works
+unchanged — the short form is simply the better default.
+
+### When the name is not found
+
+A name resolving to no installed definition is an **error** (MDL-WIDGET25, with
+near-miss suggestions), and a container the parent does not declare is
+MDL-WIDGET26. Both need `-p`: without a project, mxcli knows only its embedded
+widgets, so it stays quiet rather than reporting every real widget as unknown.
+If a widget you have installed is not found, extract its definition:
+
+```bash
+mxcli widget init -p app.mpr
+```
 
 ## Built-in Pluggable Widgets
 
@@ -61,9 +116,14 @@ combobox cmbCustomer (
 
 ## Charts (Mendix Charts.mpk)
 
-Charts are pluggable widgets authored by their **package id**. Install `Charts.mpk`
-into the project's `widgets/` folder first (any Charts-based app has it); `exec`
-auto-generates the `.def.json`.
+Charts are pluggable widgets. Install `Charts.mpk` into the project's `widgets/`
+folder first (any Charts-based app has it); `exec` auto-generates the
+`.def.json`.
+
+Each is authorable by its **own name** — `barchart`, `linechart`, `piechart`,
+`heatmap` — and the examples below use the package id form, which also still
+works. The id column is kept because it is what `describe widget` prints and
+what identifies the widget unambiguously.
 
 **Chart type → widget id → data container:**
 
