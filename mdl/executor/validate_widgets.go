@@ -645,7 +645,7 @@ func isKnownStaticWidgetProp(key string) bool {
 // separately (MDL-WIDGET01) and must not reach here.
 func validateStaticWidgetUnknownProps(w *ast.WidgetV3, locationPrefix string) []linter.Violation {
 	var out []linter.Violation
-	for key := range w.Properties {
+	for _, key := range sortedPropertyKeys(w) {
 		if isKnownStaticWidgetProp(key) {
 			continue
 		}
@@ -698,7 +698,7 @@ func validateDynamicTextFormatting(w *ast.WidgetV3, locationPrefix string) []lin
 	// (1) Format keys placed at the widget level are silently dropped on write —
 	// formatting is per-parameter. Flag them with the correct location.
 	if strings.EqualFold(w.Type, "dynamictext") {
-		for key := range w.Properties {
+		for _, key := range sortedPropertyKeys(w) {
 			if paramFormatKeys[strings.ToLower(key)] {
 				out = append(out, linter.Violation{
 					RuleID:   "MDL-WIDGET18",
@@ -1047,7 +1047,7 @@ func validatePluggableWidgetProperties(w *ast.WidgetV3, registry *WidgetRegistry
 	knownUnmapped := knownUnmappedProperties(def, allowed)
 
 	var out []linter.Violation
-	for key := range w.Properties {
+	for _, key := range sortedPropertyKeys(w) {
 		// Builtin property names (Label, Class, Visible, DataSource, …) are
 		// MDL-recognized keywords that the widget engine routes via a
 		// dedicated path rather than via propertyMappings. Accept them
@@ -1527,4 +1527,34 @@ func mappingOperationFor(def *WidgetDefinition, propertyKey string) string {
 		}
 	}
 	return ""
+}
+
+// sortedPropertyKeys returns a widget's property keys in a stable order.
+//
+// A validator that appends one violation per property key was iterating the map
+// directly, so `mxcli check` printed the same warnings in a different order from
+// one run to the next. Measured before the fix: two runs of the same binary over
+// mdl-examples/ disagreed on 11 of 515 scripts.
+//
+// Nothing was wrong with the diagnostics — but "the output is stable" is what
+// makes a before/after diff of `check` usable as a measurement, and it was not.
+// This surfaced while diffing check output across the corpus to size the
+// grammar change for slices 2-3: the noise floor of the tool was larger than
+// the signal being looked for.
+//
+// The three call sites are the ones that emit PER KEY (MDL-WIDGET07, WIDGET17,
+// WIDGET18). Two other loops over w.Properties do a case-insensitive LOOKUP and
+// break on the first hit; those are left alone, since they are only
+// order-sensitive when a widget carries two keys differing solely in case, and
+// picking either is equally correct.
+func sortedPropertyKeys(w *ast.WidgetV3) []string {
+	if w == nil {
+		return nil
+	}
+	out := make([]string, 0, len(w.Properties))
+	for k := range w.Properties {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
