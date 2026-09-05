@@ -138,7 +138,14 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 		// widgets get the stricter def.json check (MDL-WIDGET01) above, and
 		// object-list items are validated by the object-list engine.
 		def := lookupWidgetDef(w, registry)
-		if def == nil && !isObjectListItem {
+		// A generic widget type that resolved to nothing is already reported as
+		// MDL-WIDGET25 (the kind is wrong). Validating its properties on top of
+		// that says the kind is fine and the property is not, which points at
+		// the wrong token — measured on `htmlelemnt frame (tagName: 'div')`,
+		// which drew a `tagName` warning beside the real error. A built-in
+		// (TypeIsGeneric false) keeps the check, since its properties are the
+		// only thing that can be wrong about it.
+		if def == nil && !isObjectListItem && !w.TypeIsGeneric {
 			out = append(out, validateStaticWidgetUnknownProps(w, locationPrefix)...)
 			// #928: `editable:` on a widget Mendix gives no editability — same
 			// "silently dropped on write" family, but the flat property

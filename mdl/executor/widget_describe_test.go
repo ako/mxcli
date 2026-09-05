@@ -112,20 +112,24 @@ func TestDescribeWidget_ReportsContainersAndWhetherTheyAreAuthorable(t *testing.
 		t.Fatal("no containers reported for a widget that has three")
 	}
 
-	// `emptyplaceholder` is not in the grammar's container vocabulary.
-	if c, ok := byKeyword["emptyplaceholder"]; !ok {
-		t.Errorf("emptyplaceholder missing; got %v", desc.Containers)
-	} else if c.Authorable {
-		t.Error("emptyplaceholder reported authorable, but it does not parse today")
-	}
-
-	// The control, in the same widget: `template` does parse. Without it,
-	// "not authorable" above is equally consistent with a probe that always
-	// fails — which is the risk of deriving the answer rather than listing it.
-	if c, ok := byKeyword["template"]; !ok {
-		t.Errorf("template missing; got %v", desc.Containers)
-	} else if !c.Authorable {
-		t.Error("template parses inside a widget body but was reported unauthorable")
+	// Both of these used to sit on opposite sides of the answer: `template` was
+	// in the grammar's container vocabulary and `emptyplaceholder` was not.
+	// Slices 2-3 removed that boundary, so both are authorable now — measured
+	// across the fixture's definitions, 50 of 50 containers are.
+	//
+	// The assertion is kept pointing at the SAME two containers deliberately.
+	// It is the regression test for the capability: if `emptyplaceholder` ever
+	// reports unauthorable again, the def-driven body has been lost.
+	for _, kw := range []string{"emptyplaceholder", "template"} {
+		c, ok := byKeyword[kw]
+		if !ok {
+			t.Errorf("%s missing; got %v", kw, desc.Containers)
+			continue
+		}
+		if !c.Authorable {
+			t.Errorf("%s reported unauthorable — since slices 2-3 every container a definition "+
+				"declares can be written (mendixlabs/mxcli#1036)", kw)
+		}
 	}
 }
 
@@ -136,8 +140,22 @@ func TestContainerKeywordParses_DerivesTheAnswerRatherThanListingIt(t *testing.T
 	if !containerKeywordParses("group", false) {
 		t.Error("group should parse as an object-list container")
 	}
-	if containerKeywordParses("definitelynotakeyword", false) {
-		t.Error("an invented keyword must not report as authorable")
+	// An invented keyword now PARSES — that is what slices 2-3 did, and it is
+	// why the wrong-name check moved to the validator (MDL-WIDGET25/26), which
+	// can consult the parent's definition where the parser cannot.
+	if !containerKeywordParses("definitelynotakeyword", false) {
+		t.Error("since slice 3 any name parses in a container position; the check that it is a " +
+			"REAL container belongs to MDL-WIDGET26, not to the parser")
+	}
+	// The probe must still be a real probe. A body that is malformed for a
+	// reason unrelated to the keyword has to come back false, or "authorable"
+	// would be a constant dressed up as a derivation — the exact defect this
+	// test exists to prevent, one layer up.
+	if containerKeywordParses("group (", false) {
+		t.Error("a malformed probe reported authorable — the parse probe is not actually running")
+	}
+	if containerKeywordParses("", false) {
+		t.Error("an empty keyword must not report as authorable")
 	}
 }
 
@@ -164,28 +182,41 @@ func TestDescribeWidget_ExampleParsesAsWritten(t *testing.T) {
 // it is what made the .md misleading rather than merely incomplete; silently
 // dropping it would be almost as bad, since the reader would never learn the
 // widget has it.
-func TestDescribeWidget_ExampleOmitsUnauthorableContainersAndSaysSo(t *testing.T) {
+func TestDescribeWidget_ExampleOmitsWhatItCannotFillAndSaysSo(t *testing.T) {
 	desc, err := DescribeWidget("gallery", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(desc.Example, "emptyplaceholder") {
-		t.Errorf("example includes a container that cannot be written:\n%s", desc.Example)
+
+	// Since slices 2-3 no container is omitted for being unwritable — all three
+	// of Gallery's appear. This half is the capability regression test: it fails
+	// if the def-driven body is lost.
+	for _, kw := range []string{"emptyplaceholder", "filter", "template"} {
+		if !strings.Contains(desc.Example, kw) {
+			t.Errorf("container %q missing from the example — every container a definition declares "+
+				"should now be writable:\n%s", kw, desc.Example)
+		}
+	}
+
+	// The omission machinery still has a job: a BINDING cannot be invented,
+	// because it needs a name from the reader's own project. Those must be left
+	// out and named, which is what stopped the generated .md from promising
+	// syntax that failed.
+	if len(desc.OmittedFromExample) == 0 {
+		t.Fatal("nothing reported as omitted — Gallery's datasource cannot be filled in, " +
+			"so the example must say so rather than invent one")
 	}
 	var named bool
 	for _, o := range desc.OmittedFromExample {
-		if strings.Contains(o, "emptyplaceholder") {
+		if strings.Contains(strings.ToLower(o), "datasource") {
 			named = true
 		}
 	}
 	if !named {
-		t.Errorf("omitted container not named; got %v", desc.OmittedFromExample)
+		t.Errorf("the unfillable datasource is not named among the omissions; got %v", desc.OmittedFromExample)
 	}
-
-	// The control: an authorable container IS included, so "omits things" is
-	// not simply "omits everything".
-	if !strings.Contains(desc.Example, "template") {
-		t.Errorf("authorable container missing from the example:\n%s", desc.Example)
+	if strings.Contains(desc.Example, "DataSource:") {
+		t.Errorf("the example invented a datasource instead of omitting it:\n%s", desc.Example)
 	}
 }
 

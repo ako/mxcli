@@ -71,6 +71,42 @@ SHOW IMPACT OF htmlelement;
 	})
 
 	Register(SyntaxFeature{
+		Path:    "page.widget-any",
+		Summary: "Any widget with a definition, written by its own MDL name",
+		Keywords: []string{
+			"htmlelement", "html element", "fileuploader", "file uploader", "markdown",
+			"custom widget syntax", "marketplace widget", "pluggable widget name",
+			"widget not recognized", "mismatched input", "def-driven", "mdl name",
+			"object list", "child slot", "widget container", "attributes list",
+		},
+		Syntax: `<widget-mdl-name> <name> [( Prop: Value, ... )] [{ <containers and widgets> }]
+<container-name> <name> [( Prop: Value, ... )] [{ ... }]`,
+		Example: `-- Any widget with a definition is written by its own MDL name. There is no
+-- list of blessed keywords: if ` + "`describe widget <name>`" + ` knows it, you can write it.
+CREATE PAGE Sales.Detail (Title: 'Detail', Layout: Atlas_Core.Atlas_Default) {
+  htmlelement frame (tagName: 'div') {
+    -- object lists and child slots the widget's own definition declares
+    attribute a1 (attributeName: 'title', attributeValueType: 'expression')
+    tagcontentcontainer body {
+      dynamictext t (Content: 'hello')
+    }
+  }
+  fileuploader up ()
+}
+
+-- The names come from the widget itself, so ask it rather than guessing:
+--   mxcli widget describe htmlelement -p app.mpr
+-- which lists every property, every container, and an example that parses.
+--
+-- A name that resolves to no definition is MDL-WIDGET25 (widget) or
+-- MDL-WIDGET26 (container), each naming the near misses — but BOTH need a
+-- project, because the set of valid widget names IS the project's installed
+-- packages. With no -p, ` + "`mxcli check`" + ` cannot tell a typo from a widget it
+-- has simply never seen, and says nothing rather than guessing.`,
+		SeeAlso: []string{"page.widgets", "page.widget-describe", "page.create"},
+	})
+
+	Register(SyntaxFeature{
 		Path:    "page.widgets",
 		Summary: "Widget types: containers, data widgets, inputs, actions, display",
 		Keywords: []string{

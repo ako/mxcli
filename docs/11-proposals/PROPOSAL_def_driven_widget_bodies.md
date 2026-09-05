@@ -321,15 +321,30 @@ Item 1 was dropped: the premise behind it turned out to be false (below).
    errors while bare `pw` and `pw (x: 'y')` are fine. One-line grammar fix, found
    in the same investigation.
 
-### Slice 2 — The widget keyword is def-driven
+### Slice 2 — The widget keyword is def-driven — **implemented**
 
-Smallest of the capability slices, because the builder already resolves by MDL
-name and the visitor already sets `Type` from token text. Grammar and visitor
-only.
+5. **Done.** `widgetTypeV3` gains a generic `IDENTIFIER` alternative, ordered
+   last, so `htmlelement frame ( … )` works for every widget with a definition.
+6. `DESCRIBE PAGE` emits the keyword form — **not done here**, see below.
 
-5. Accept an identifier as a widget type in a page body, resolved against the
-   registry. `htmlelement frame ( … )` works for every widget with a definition.
-6. `DESCRIBE PAGE` emits the keyword form.
+Not "grammar and visitor only", which was the estimate. The load-bearing half
+was the validator, exactly as Open Question 1 warned:
+
+- The visitor records **which alternative matched** (`ast.WidgetV3.TypeIsGeneric`),
+  because `Type` alone cannot tell a typo from a built-in — both are a lowercase
+  string. It is taken from the parse tree, never by comparing the text against a
+  list of known names, which would reintroduce the list this proposal removes.
+- **MDL-WIDGET25 grew a second branch** for a generic type that resolves to no
+  definition. Without it, measured: `htmlelemnt frame (tagName: 'div')` gave
+  *"0 errors, 1 warning"* — a warning about `tagName` — while the correct
+  spelling was completely clean. A typo had traded a parse error for a wrong
+  answer, which is worse than what it replaced.
+- **MDL-WIDGET07 is suppressed** for a generic type that did not resolve.
+  Reporting its properties on top of the kind error points at the wrong token.
+
+Item 6 is left for its own change: `DESCRIBE PAGE` currently emits the
+`pluggablewidget '<id>'` form, which still round-trips, so this is a readability
+improvement rather than a capability and does not belong in the same commit.
 
 ### Slice 0 — The validator knows what a widget is (blocks slices 2–3)
 
@@ -339,42 +354,56 @@ near misses. The detection already exists in `validateWidgetTreeIn`; only the
 reporting is missing. Worth shipping on its own, and the thing that makes
 slices 2–3 safe (Open Question 1).
 
-### Slice 3 — The widget body is def-driven
+### Slice 3 — The widget body is def-driven — **implemented**
 
-7. **Grammar.** A parallel body rule used *only* by the widget alternatives, so
-   the ambiguity is contained and an ordinary widget body is untouched:
+7. **Grammar — simpler than proposed.** No parallel `pluggableBodyV3` /
+   `genericContainerV3` rule was needed: adding `keyword` beside `IDENTIFIER` in
+   the same last-ordered `widgetTypeV3` alternative covers containers, because a
+   container and a widget occupy the same position in a body.
 
-   ```antlr
-   pluggableBodyV3
-       : LBRACE (widgetV3 | genericContainerV3)* RBRACE
-       ;
+   `keyword` is load-bearing, as the draft said: `attribute` lexes as the
+   `ATTRIBUTE` token and never as `IDENTIFIER`, so slice 2 alone cannot reach the
+   case that motivated the issue.
 
-   // Any container the parent widget's def declares — an object-list item or a
-   // child slot. Resolved at executor time; the parser has no opinion.
-   genericContainerV3
-       : (IDENTIFIER | keyword) (IDENTIFIER | QUOTED_IDENTIFIER | keyword)
-         widgetPropertiesV3? widgetBodyV3?
-       ;
-   ```
+   **One ordering fix was required, and it is the finding of this slice.**
+   `pageBodyV3` listed `widgetV3` *first*. `SLOT`, `PLACEHOLDER` and `USE` are
+   all inside `keyword` (655 tokens), so the generic alternative swallowed them:
+   `slot body` became a widget of type `slot`, and `placeholder Main { … }` a
+   widget named `Main`. The specific alternatives now precede `widgetV3`.
 
-   **`keyword` is load-bearing, not defensive**: `attribute` lexes as the
-   `ATTRIBUTE` token, never as `IDENTIFIER`, so an `IDENTIFIER`-only alternative
-   would not match the case that motivated this. `genericContainerV3` goes
-   **last** so every enumerated widget type keeps winning.
-
-8. **Validator.** The load-bearing half. Resolve the container against the
-   parent's def and, on a miss, beat the parser's message:
+8. **Validator — done.** A container the parent does not declare is reported
+   against the parent, naming what it *does* declare:
 
    ```
-   widget `frame` (htmlelement) has no object list or child slot `attribut`
-     did you mean: attribute, event, tagcontentcontainer, tagcontentrepeatcontainer
+   `attribut` is not a container of `htmlelement` — it declares: attribute,
+     event, tagcontentcontainer, tagcontentrepeatcontainer
    ```
 
-   `check` already calls `LoadWidgetRegistry`. **This must land with the grammar**
-   — see Open Question 1.
+   Inside a resolvable parent this beats "not a widget in this project", so the
+   generic branch routes to MDL-WIDGET26 when a parent definition is available
+   and to MDL-WIDGET25 when it is not.
 
-9. **Delete the nine** from `widgetTypeV3`. Their lexer tokens stay (several are
-   used elsewhere); they stop being a capability boundary.
+9. ~~**Delete the nine** from `widgetTypeV3`.~~ **Deferred, deliberately.** They
+   are no longer a capability boundary — anything else parses too — so what
+   remains is redundancy, not drift risk: a new container keyword needs no
+   maintenance because the generic path already accepts it. Removing them would
+   flip nine keywords to `TypeIsGeneric`, routing them through the generic
+   branch, where a container inside an *unresolvable* parent would newly report
+   MDL-WIDGET25. That is a false-positive class in exchange for tidiness.
+
+**Result.** The construct from the issue parses:
+
+```mdl
+htmlelement frame (tagName: 'div') {
+  attribute a1 (attributeName: 'data-role', attributeValueType: 'expression')
+  tagcontentcontainer body { dynamictext t (Content: 'hi') }
+}
+```
+
+Measured across the fixture's definitions: **50 of 50 containers authorable**,
+from 16 of 46. With a project, properties are validated against the real
+definition — an invented `attributeValueType: 'static'` is MDL-WIDGET08, *valid
+values are expression, template*.
 
 ### Slice 4 — `DESCRIBE WIDGET` / `LIST WIDGETS`
 
@@ -528,11 +557,26 @@ version differences are already carried by the def
    a container the parent's definition does not declare. Its own control is that
    a *correct* widget and a *correct* container stay silent.
 
-2. **How far does the ambiguity reach?** A generic identifier as a widget type
-   makes any two consecutive identifiers a widget. Contained by construction
-   (ordered last), but ANTLR's ALL(\*) behaviour deserves a measurement rather
-   than an argument — build the grammar and diff error messages across the whole
-   `mdl-examples/` corpus.
+2. ~~**How far does the ambiguity reach?**~~ **Settled by measurement.** Built
+   the grammar and diffed `mxcli check` output across all 515 scripts in
+   `mdl-examples/`, at each step:
+
+   | | verdict changes | message changes |
+   |---|---|---|
+   | `IDENTIFIER` (slice 2) | 0 of 515 | 0 |
+   | `+ keyword` (slice 3, 655 tokens) | 0 of 515 | 0 |
+
+   Ordering the alternative last contains it, and ALL(\*) resolves the rest.
+
+   **But the diff was not sufficient, and that is the more useful finding.** It
+   compares DIAGNOSTICS, and the real damage was to the AST: `slot body` and
+   `placeholder Main { … }` were silently reparsed as widgets, still exiting 0.
+   Two visitor unit tests caught what 515 scripts could not. A corpus diff of
+   `check` output cannot see a construct that parses into the wrong shape.
+
+   Running it also required fixing the tool: three validators emitted one
+   violation per property while ranging over a map, so two runs of the *same*
+   binary disagreed on 11 of 515 scripts — a noise floor larger than the signal.
 3. **Should child slots stay named?** Consistency says yes and existing documents
    require it. But a slot is a fixed property, not a repeating item, so its name
    is never referenced — `tagcontentcontainer { }` reads better and is what the

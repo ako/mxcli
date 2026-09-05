@@ -249,7 +249,18 @@ snippetHeaderPropertyV3
 // `placeholder <Name> { … }` block binds its widgets to that named layout
 // placeholder (issue #532 — pages over a layout with >1 placeholder).
 pageBodyV3
-    : (widgetV3 | useFragmentRef | useBuildingBlockRef | placeholderBlockV3 | slotMarkerV3)*
+    // ORDER IS LOAD-BEARING since slices 2-3. widgetV3's last alternative is a
+    // generic (IDENTIFIER | keyword) widget type, and SLOT, PLACEHOLDER and USE
+    // are all in `keyword` — so with widgetV3 first, `slot content` parsed as a
+    // widget of type `slot` named `content`, and `placeholder Main { … }` as a
+    // widget named Main. Both still PARSED and still exited 0, which is why a
+    // diff of `mxcli check` output across all 515 example scripts did not show
+    // it; the damage is to the AST, not to the diagnostics. Two visitor unit
+    // tests caught it.
+    //
+    // The specific alternatives therefore go first, the same ordering fix
+    // widgetV3 already applies internally for `template for`.
+    : (useFragmentRef | useBuildingBlockRef | placeholderBlockV3 | slotMarkerV3 | widgetV3)*
     ;
 
 // SLOT [name] — a content placeholder inside a `define fragment` body. When the
@@ -412,6 +423,28 @@ widgetTypeV3
     // the dojo-based native Forms$DataGrid even on Mendix 11+; useful for
     // migrated projects that still have native datagrids on the page.
     | LEGACYDATAGRID
+    // Any widget with a definition, named by its MDL name — `htmlelement frame
+    // (...)`, `fileuploader up (...)`. Slice 2 of
+    // PROPOSAL_def_driven_widget_bodies.md (mendixlabs/mxcli#1036).
+    //
+    // The list above was never a capability boundary: cmd_pages_builder_v3.go's
+    // default branch already resolves widgetRegistry.Get(ToUpper(w.Type)) FIRST,
+    // and every .def.json declares an mdlName. Only ANTLR needed a token, so a
+    // widget mxcli could build was one MDL could not spell.
+    //
+    // ORDERED LAST so every enumerated type keeps winning its own alternative,
+    // and the widget's NAME is still a direct IDENTIFIER child of widgetV3 —
+    // this one is nested inside widgetTypeV3, so wCtx.IDENTIFIER() is unaffected.
+    //
+    // An unknown name is no longer a parse error; it is MDL-WIDGET25, which
+    // slice 0 added for exactly this reason.
+    | IDENTIFIER
+    // Slice 3: the same, for a container whose name lexes as a KEYWORD token.
+    // This is not defensive — it is the case that motivated the whole issue.
+    // `attribute` lexes as ATTRIBUTE and never as IDENTIFIER, so the
+    // alternative above cannot match `attribute a1 (...)`, which is the HTML
+    // Element object list the reporter could not write.
+    | keyword
     ;
 
 // V3 Widget properties: (Prop: Value, Prop: Value)

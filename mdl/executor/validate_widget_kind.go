@@ -64,6 +64,54 @@ func validateWidgetKind(w *ast.WidgetV3, registry *WidgetRegistry, parentDef *Wi
 		return nil
 	}
 
+	// A generic widget type — one the grammar accepted as a bare IDENTIFIER
+	// rather than as an enumerated widget token (slice 2). It can only be a
+	// widget definition's MDL name, so failing to resolve one is a mistake,
+	// not a built-in mxcli happens not to know.
+	//
+	// Without this the typo `htmlelemnt` reaches validateStaticWidgetUnknownProps
+	// and is reported as an unrecognized PROPERTY (MDL-WIDGET07, a warning), so
+	// `check` exits 0 having complained about the wrong thing. Measured before
+	// this branch existed: `htmlelemnt frame (tagName: 'div')` gave
+	// "0 errors, 1 warning" about `tagName`, while the correct spelling was
+	// completely clean.
+	//
+	// Same project requirement as the id branch below, and for the same reason:
+	// with no project the registry holds only the embedded widgets, so every
+	// real one would be reported.
+	if w.TypeIsGeneric && registryProjectPath(registry) != "" {
+		if _, known := registry.Get(strings.ToUpper(w.Type)); known {
+			return nil
+		}
+		// A container the parent declares is not a widget and never resolves in
+		// the registry — that is what makes it a container. Accept it here and
+		// let the object-list engine validate its properties.
+		if parentDef != nil &&
+			(parentObjectLists[strings.ToUpper(w.Type)] != nil || parentDeclaresSlot(parentDef, w.Type)) {
+			return nil
+		}
+		// Inside a resolvable parent, "not a container of <parent>" beats "not a
+		// widget": it names what the parent DOES declare, which is the answer
+		// the author needs. `attribut` inside an htmlelement is a misspelt
+		// container, not a missing widget package.
+		if parentDef != nil {
+			return []linter.Violation{{
+				RuleID:   "MDL-WIDGET26",
+				Severity: linter.SeverityError,
+				Message: fmt.Sprintf("%s: `%s` is not a container of %s%s",
+					locationPrefix, strings.ToLower(w.Type), parentLabel(parentDef), declaredContainers(parentDef)),
+				Suggestion: "use one of the parent widget's own containers, or move this out of the widget's body",
+			}}
+		}
+		return []linter.Violation{{
+			RuleID:   "MDL-WIDGET25",
+			Severity: linter.SeverityError,
+			Message: fmt.Sprintf("%s: `%s` is not a widget in this project%s",
+				locationPrefix, strings.ToLower(w.Type), nearestWidgetNames(registry, w.Type)),
+			Suggestion: "run `mxcli widget init` if the package was just installed, or `describe widget <name>` to see what is available",
+		}}
+	}
+
 	// A container keyword used where the parent does not declare it. These
 	// keywords mean nothing on their own — `group` is not a widget — so one
 	// outside a parent that declares it can only be a mistake.
@@ -207,4 +255,28 @@ func parentDeclaresSlot(parentDef *WidgetDefinition, keyword string) bool {
 		}
 	}
 	return false
+}
+
+// nearestWidgetNames suggests known MDL names close to an unresolved one,
+// using the same edit-distance helper MDL-WIDGET07 uses for property keys.
+//
+// A hand-rolled prefix heuristic was tried first and is not good enough: the
+// commonest real mistake is a dropped letter in the MIDDLE (`htmlelemnt`),
+// which shares no useful prefix with `htmlelement` past the typo, so it
+// suggested nothing at all on the very case that motivated the rule.
+func nearestWidgetNames(registry *WidgetRegistry, name string) string {
+	if registry == nil || name == "" {
+		return ""
+	}
+	var candidates []string
+	for _, def := range registry.All() {
+		if def.MDLName != "" {
+			candidates = append(candidates, strings.ToLower(def.MDLName))
+		}
+	}
+	sort.Strings(candidates)
+	if best := nearestKey(name, candidates); best != "" {
+		return " — did you mean `" + best + "`?"
+	}
+	return ""
 }
