@@ -23,6 +23,14 @@ Pass -p and it also resolves every reference — modules, entities, pages,
 microflows and icons — against that project; --references is implied by -p and
 is kept only for compatibility.
 
+It also resolves MEMBER names, not just the entity they belong to: an attribute
+named in a create/change activity is looked up on that entity and its
+generalizations, so a typo is reported here rather than as CE1613 at the far end
+of a build. This needs the target's entity to be known, which it is for a create
+(the entity is in the statement) and for a change on a parameter, a database
+retrieve, an association retrieve, or a loop over one of those. A variable bound
+by some other activity is left unchecked rather than guessed at.
+
 Reference validation is smart: it automatically skips references to objects
 that are created within the script itself. For example, if your script creates
 a module "MyModule" and then creates entities in it, no error will be reported

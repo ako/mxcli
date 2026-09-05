@@ -54,6 +54,37 @@ icon or entity sailed through a command that had been handed the project. A run
 without a project now says what it did not check, so a pass is never read as
 more than it is.
 
+### It resolves MEMBER names too, where it can establish the entity
+
+Resolution does not stop at the entity. An attribute named in a **create** or
+**change** activity is looked up on that entity *and its generalizations*, so a
+typo is reported by `check` rather than by mxbuild as `CE1613 "The selected
+attribute '…' no longer exists"` a whole build later:
+
+```
+Sales.ACT_Close: Sales.Order has no member "IsArchived" (in change $Order)
+  — it has OrderNo, Status — mxbuild reports this as CE1613 …
+```
+
+This needs the target's entity to be **known**, and that is the boundary worth
+understanding rather than assuming:
+
+| the object comes from | checked? |
+|---|---|
+| a `create Module.Entity (…)` | yes — the entity is in the statement |
+| a microflow/nanoflow **parameter** | yes |
+| `retrieve $L from Module.Entity` | yes |
+| `retrieve $L from $Obj/Module.Assoc` | yes, when `$Obj` is itself typed |
+| a `loop` over any of those | yes — the iterator inherits the element type |
+| anything else (`send rest request`, `response: file as $Doc`, …) | **no** |
+
+A variable this cannot type is left **unchecked**, never guessed at — a false
+"no such member" would block a script that builds cleanly. Two more things are
+deliberately not reported: a **qualified** member (`Module.Assoc`), which exec
+already refuses when it cannot be an attribute, and any member on an entity the
+**script itself** creates or whose attribute the script adds earlier — the
+add-the-column-then-populate-it shape stays valid.
+
 ## Pre-Flight Validation Checklist
 
 Before writing any MDL, verify these requirements:
