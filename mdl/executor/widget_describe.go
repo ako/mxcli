@@ -88,6 +88,7 @@ func DescribeWidget(arg, projectPath string) (*WidgetDescription, error) {
 			desc.Rules = rulesFromDef(def.PropertyVisibility)
 		}
 	}
+	desc.defDefaults = definitionDefaults(def)
 	desc.Example, desc.OmittedFromExample = buildUsageExample(desc)
 	return &desc, nil
 }
@@ -139,6 +140,17 @@ type WidgetDescription struct {
 	// guaranteed to parse and widens on its own as the grammar does.
 	Example            string   `json:"example,omitempty"`
 	OmittedFromExample []string `json:"omittedFromExample,omitempty"`
+
+	// defDefaults is the value mxcli's own WidgetDefinition gives each property
+	// when a script does not set one — the mapping's `default`, else a primitive
+	// mapping's `value`. Unexported, so it never reaches the JSON output; it
+	// exists only so the example's hide-rule narrowing resolves a property to
+	// the SAME value MDL-WIDGET10 will.
+	//
+	// The .mpk alone is not enough: a selection property declares no
+	// defaultValue there, so gallery's `itemSelection` looked indeterminable
+	// and the example emitted the `keepSelection` that "Single" hides.
+	defDefaults map[string]string
 }
 
 // DescribedContainer is one child slot or object list of a widget.
@@ -554,13 +566,23 @@ func buildUsageExample(d WidgetDescription) (example string, omitted []string) {
 		// gives "datasource", the embedded template "DataSource" — so this
 		// folds case. Matching only one spelling silently emptied the example
 		// for every widget described without a project.
+		// hiddenUnder applies to BOTH branches. It used to gate only the
+		// binding branch, so the example emitted literals its own configuration
+		// hides — `heightUnit: 'aspectRatio'` followed by the `height` that
+		// choice hides — and mxcli's own MDL-WIDGET10 then warned about 32 of
+		// them. The generator and the checker implement the same editorConfig
+		// rules; disagreeing is worse than either alone, because the example is
+		// what a reader copies.
+		if hiddenUnder(d, p.Key) {
+			continue
+		}
 		switch strings.ToLower(p.Type) {
 		case "boolean", "integer", "enumeration", "string", "texttemplate":
 			if p.Required {
 				props = append(props, "  "+p.Key+": "+exampleLiteral(p))
 			}
 		case "attribute", "datasource", "action", "expression", "selection":
-			if p.Required && !hiddenUnder(d, p.Key) {
+			if p.Required {
 				needBinding = append(needBinding, p.Key+" ("+strings.ToLower(p.Type)+")")
 			}
 		}
@@ -663,7 +685,55 @@ func exampleValues(d WidgetDescription) map[string]string {
 		}
 	}
 	walk(d.Properties)
+	// The definition's default WINS over the package's. It is what mxcli writes
+	// when a script is silent, and therefore what the validator concludes the
+	// property holds — which is the whole point of resolving it here.
+	for k, v := range d.defDefaults {
+		if v != "" {
+			values[k] = v
+		}
+	}
 	return values
+}
+
+// definitionDefaults collects the value each mapping falls back to, mirroring
+// widgetValueMap's own order: an explicit `default`, else a primitive mapping's
+// `value` (the widget XML's defaultValue, which is where the generator and the
+// checker have to agree).
+func definitionDefaults(def *WidgetDefinition) map[string]string {
+	if def == nil {
+		return nil
+	}
+	out := map[string]string{}
+	collect := func(mappings []PropertyMapping) {
+		for _, m := range mappings {
+			if m.PropertyKey == "" {
+				continue
+			}
+			switch {
+			case m.Default != "":
+				out[m.PropertyKey] = m.Default
+			case m.Operation == "primitive" && m.Value != "":
+				out[m.PropertyKey] = m.Value
+			case m.Operation == "selection":
+				// An omitted `Selection:` is WRITTEN as None — the builder's own
+				// behaviour, not a guess — and a selection property declares no
+				// defaultValue in the .mpk, which is why the generator saw
+				// DataGrid2's `itemSelection` as indeterminable and emitted the
+				// `itemSelectionMethod` that "None" hides. Same reasoning, and
+				// same three branches, as widgetValueMap.
+				out[m.PropertyKey] = "None"
+			}
+			if m.Operation == "selection" {
+				out[m.PropertyKey] = canonicalSelection(out[m.PropertyKey])
+			}
+		}
+	}
+	collect(def.PropertyMappings)
+	for _, mode := range def.Modes {
+		collect(mode.PropertyMappings)
+	}
+	return out
 }
 
 // hiddenUnder reports whether a property is hidden in the configuration the
