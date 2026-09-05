@@ -165,6 +165,17 @@ type DescribedContainer struct {
 	// two lists of keywords with nothing comparing them, and a third list here
 	// would be the same mistake one layer up.
 	Authorable bool `json:"authorable"`
+
+	// items carries each sub-property's writable value as the WIDGET DEFINITION
+	// records it — the mapping's `default`/`value` and its enumValues. Unexported,
+	// so the JSON shape is unchanged.
+	//
+	// The .mpk is not always enough: ParseMPKForWidget returns 0 children for a
+	// PopupMenu's `basicItems`, while the definition carries
+	// {"propertyKey":"itemType","value":"item","enumValues":["item","divider"]}.
+	// MDL-WIDGET08 reads the definition, so the example has to as well or the two
+	// disagree about the same sub-property.
+	items []DescribedProperty
 }
 
 func resolveWidgetTarget(registry *WidgetRegistry, arg string) (string, *WidgetDefinition) {
@@ -504,6 +515,13 @@ func describeContainers(def *WidgetDefinition) []DescribedContainer {
 		}
 		for _, ip := range ol.ItemProperties {
 			c.ItemKeys = append(c.ItemKeys, ip.PropertyKey)
+			def := ip.Default
+			if def == "" && ip.Operation == "primitive" {
+				def = ip.Value
+			}
+			c.items = append(c.items, DescribedProperty{
+				Key: ip.PropertyKey, Type: ip.Operation, Default: def, Enum: ip.EnumValues,
+			})
 		}
 		out = append(out, c)
 	}
@@ -604,8 +622,8 @@ func buildUsageExample(d WidgetDescription) (example string, omitted []string) {
 			continue
 		}
 		item := fmt.Sprintf("  %s item%d", c.Keyword, n)
-		if len(c.ItemKeys) > 0 {
-			item += " (" + c.ItemKeys[0] + ": '…')"
+		if k, lit := itemExampleLiteral(d, c); k != "" {
+			item += " (" + k + ": " + lit + ")"
 		}
 		body = append(body, item+"   -- one entry of `"+c.PropertyKey+"`")
 	}
@@ -627,6 +645,60 @@ func buildUsageExample(d WidgetDescription) (example string, omitted []string) {
 		omitted = append(omitted, n+" — needs a name from your project")
 	}
 	return out, omitted
+}
+
+// itemExampleLiteral picks the sub-property to show on an object-list item, and
+// a value for it that the validator will accept.
+//
+// It used to take ItemKeys[0] and write `'…'`. For an ENUMERATION sub-property
+// that is simply a wrong value, and mxcli's own MDL-WIDGET08 said so — "property
+// `dataSet` has invalid value `…` — valid values are static, dynamic" — on 11 of
+// the fixture's examples. The block claims to parse as written, and it did; it
+// just did not CHECK as written, which is the more useful promise.
+//
+// The values were already in hand: propsFromMPK carries an object-list
+// property's sub-properties as Children, with their enums and defaults, so the
+// same exampleLiteral used for the widget's own scalars applies here.
+//
+// Preference order is deliberate: a sub-property with a derivable literal (a
+// default, or an enumeration's first member) beats one without, because for a
+// free-text sub-property there is no correct value to invent and a placeholder
+// is the honest output — and the validator accepts any string, so it costs
+// nothing.
+func itemExampleLiteral(d WidgetDescription, c DescribedContainer) (key, literal string) {
+	if len(c.ItemKeys) == 0 {
+		return "", ""
+	}
+	children := map[string]DescribedProperty{}
+	for _, p := range d.Properties {
+		if !strings.EqualFold(p.Key, c.PropertyKey) {
+			continue
+		}
+		for _, ch := range p.Children {
+			children[strings.ToLower(ch.Key)] = ch
+		}
+	}
+	// The definition WINS, for the same reason it does in exampleValues: it is
+	// what MDL-WIDGET08 checks the value against.
+	for _, it := range c.items {
+		if it.Default == "" && len(it.Enum) == 0 {
+			continue
+		}
+		children[strings.ToLower(it.Key)] = it
+	}
+	for _, k := range c.ItemKeys {
+		ch, ok := children[strings.ToLower(k)]
+		if !ok {
+			continue
+		}
+		if ch.Default == "" && len(ch.Enum) == 0 {
+			continue // nothing to derive; keep looking for one that has something
+		}
+		return k, exampleLiteral(ch)
+	}
+	// No sub-property offers a value. Show the first key with a placeholder —
+	// it is a free-text slot, which the validator accepts.
+	return c.ItemKeys[0], "'…'"
 }
 
 // exampleLiteral picks a writable value for a scalar property: its default when
