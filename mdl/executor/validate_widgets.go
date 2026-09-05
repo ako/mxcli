@@ -1163,6 +1163,16 @@ func addMappingNames(add func(string), m PropertyMapping) {
 		add(m.PropertyKey)
 	}
 	add(m.Source)
+	// The aliases are the names people are TOLD to write, so they have to be
+	// accepted here — the builder already resolves them (widget_engine.go), and
+	// the knownProperties set in widget_defs.go already walks them. Leaving them
+	// out made the validator the odd one out of three readers of the same
+	// def.json: `ValueAttribute: Total` on a PieChart persisted correctly and
+	// was still reported as MDL-WIDGET01 "has no property", which — because exec
+	// refuses a script with errors — blocked the page from being written at all.
+	for _, a := range m.MdlAliases {
+		add(a)
+	}
 }
 
 // readsFixedASTSlot reports whether an operation's value is resolved from a
