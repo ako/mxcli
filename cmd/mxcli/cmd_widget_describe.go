@@ -18,6 +18,14 @@ properties (key, type, caption, category, required, default, enum options) and t
 dynamic property rules (which properties the widget's editor hides under which
 configuration) lifted from the widget package's editorConfig.
 
+It also reports the widget's BODY CONTAINERS — its object lists (a repeated entry,
+e.g. a chart series) and child slots (a block of widgets, e.g. a gallery template)
+— with whether MDL can express each one, and ends with a complete MDL example
+that parses and checks as written. Values in the example are real enumeration
+members; bindings it cannot fill (a datasource, an attribute, an action) are named
+under "omitted" rather than invented, because a generic example cannot know a name
+from your project.
+
 The widget can be named by its MDL keyword (e.g. COMBOBOX, DATAGRID2) or its full
 widget id (e.g. com.mendix.widget.web.combobox.Combobox).
 

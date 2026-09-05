@@ -78,7 +78,7 @@ page MyModule.OrderList: widget `cb1` (combobox) has no property
 **Cause:** The property key written on a pluggable widget is not declared in the widget's `.def.json` (the extracted schema from its `.mpk`). Usually a typo; sometimes a property that exists in a different widget but not this one.
 
 **Solution:**
-1. Compare the key against the widget's known properties — `mxcli describe widget <Name>` lists them.
+1. Compare the key against the widget's known properties — `mxcli widget describe <name>` lists them (or `describe widget <name>;` in MDL).
 2. Use the suggested replacement if one is offered (Levenshtein-nearest match).
 3. If the property genuinely doesn't exist on this widget version, check that `.mxcli/widgets/` has the latest schema: `mxcli refresh catalog -p app.mpr` re-extracts any `.mpk` whose mtime changed.
 4. If the property was just added by a `.mpk` upgrade, make sure `mxcli init` or `widget init` was run after the upgrade.

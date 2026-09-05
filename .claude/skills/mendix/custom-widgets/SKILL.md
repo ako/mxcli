@@ -1,6 +1,6 @@
 ---
 name: custom-widgets
-description: "MDL syntax for pluggable widgets in CREATE PAGE / ALTER PAGE — any installed widget is named by its own name (`htmlelement frame (…) { … }`), with object lists and child slots read from its definition. Covers GALLERY, COMBOBOX, DataGrid2, charts and third-party widgets: datasource and column forms, child slots (TEMPLATE/FILTER), the `pluggablewidget '<id>'` fallback, adding a widget via .def.json, and the engine internals. Use when placing a pluggable widget on a page, or when `mxcli widget describe` output needs interpreting. For the widgets THIS project actually has, read the generated `widgets` skill."
+description: "MDL syntax for pluggable widgets in CREATE PAGE / ALTER PAGE — any installed widget is named by its own name (`htmlelement frame (…) { … }`), with object lists and child slots read from its definition. Covers GALLERY, COMBOBOX, DataGrid2, charts and third-party widgets: datasource and column forms, child slots (TEMPLATE/FILTER), the `pluggablewidget '<id>'` fallback, and adding a widget via .def.json. Use when placing a pluggable widget on a page, or when `mxcli widget describe` output needs interpreting. For the widgets THIS project has, read the generated `widgets` skill."
 ---
 
 # Custom & Pluggable Widgets in MDL
