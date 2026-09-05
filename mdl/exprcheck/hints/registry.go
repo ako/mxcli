@@ -175,6 +175,26 @@ var Registry = &registry{byCode: map[string]Entry{
 			},
 		},
 	},
+	"E013": {
+		Code:     "E013",
+		Slug:     "bare-identifier-value",
+		Severity: SeverityError,
+		Trigger:  "A bare word stands alone as the value of a create/change member.",
+		WhyWrong: "Mendix expressions have no bare identifiers: a value is a literal, a $variable, a qualified name or a function call. The bare word reaches the build as CE0117 \"Error(s) in expression\".",
+		HowToFix: "Quote it if it is text, add the $ if it is a variable, or qualify it if it is an enumeration value.",
+		Examples: []ExampleFix{
+			{
+				Wrong: "CHANGE $Order (Status = Closed);",
+				Right: "CHANGE $Order (Status = 'Closed');",
+				Note:  "a String attribute takes a quoted literal",
+			},
+			{
+				Wrong: "CHANGE $Order (Status = Closed);",
+				Right: "CHANGE $Order (Status = Sales.OrderStatus.Closed);",
+				Note:  "an enumeration attribute takes a qualified value",
+			},
+		},
+	},
 	"E012": {
 		Code:     "E012",
 		Slug:     "id-attribute-illegal",

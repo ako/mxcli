@@ -101,6 +101,23 @@ is measured rather than reasoned — the writer strips one prefix on one branch:
 Note the two-segment form: `Assoc/Attr`, not the XPath `Assoc/Entity/Attr`,
 which mxbuild also rejects.
 
+### Expression KINDS are checked in the positions that declare one
+
+Two more things reach mxbuild as `CE0117 "Error(s) in expression"` and are now
+reported by `check`:
+
+- **A bare word as a member's value.** Mendix expressions have no bare
+  identifiers, so `CHANGE $Order (Status = Closed)` is E013. Write `'Closed'`
+  (a literal), `$Closed` (a variable), or `Module.Enum.Value` (an enumeration).
+  Scoped to the *whole* value of a create/change member: a bare name **nested**
+  in a list-operation predicate is legal — `FILTER($L, Status = 'Open')`
+  resolves `Status` against the item under test — and is not reported.
+- **A log message's template parameter must be a String.** `LOG … WITH ({1} =
+  $Order/Qty)` is E009. Measured on 11.13.0: Integer, Decimal, Boolean,
+  DateTime and an object each fail; a String attribute is clean; and
+  `toString(…)` around any of them is clean. So wrap the non-String ones —
+  the writer is fine, Mendix simply does not coerce here.
+
 A variable this cannot type is left **unchecked**, never guessed at — a false
 "no such member" would block a script that builds cleanly. Two more things are
 deliberately not reported: a **qualified** member (`Module.Assoc`), which exec

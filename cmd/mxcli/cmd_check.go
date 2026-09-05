@@ -35,6 +35,11 @@ The same applies inside widgets: a page's XPath constraint has every step
 resolved against the entity it filters, and a template parameter (ContentParams
 / CaptionParams) rooted in a variable is reported with no project at all.
 
+Expression kinds are checked where the position declares one: a bare word as a
+create/change member's value (Mendix expressions have no bare identifiers), and
+a log message's template parameter, which must be a String — Mendix does not
+coerce there, so wrap a non-String one in toString(...).
+
 Reference validation is smart: it automatically skips references to objects
 that are created within the script itself. For example, if your script creates
 a module "MyModule" and then creates entities in it, no error will be reported
