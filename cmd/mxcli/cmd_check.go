@@ -31,6 +31,10 @@ of a build. This needs the target's entity to be known, which it is for a create
 retrieve, an association retrieve, or a loop over one of those. A variable bound
 by some other activity is left unchecked rather than guessed at.
 
+The same applies inside widgets: a page's XPath constraint has every step
+resolved against the entity it filters, and a template parameter (ContentParams
+/ CaptionParams) rooted in a variable is reported with no project at all.
+
 Reference validation is smart: it automatically skips references to objects
 that are created within the script itself. For example, if your script creates
 a module "MyModule" and then creates entities in it, no error will be reported

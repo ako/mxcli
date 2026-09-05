@@ -19,6 +19,20 @@
 --
 -- Usage (check passes; emits MDL-WIDGET15 info lines for the two fused pairs):
 --   mxcli check mdl-examples/bug-tests/ledger-27-consecutive-dynamictext.mdl
+--
+-- CORRECTION (mendixlabs/mxcli#1046). The content params here used to be written
+-- `{1} = $currentObject/Amount`. That is wrong, and this file demonstrated the
+-- very class of defect it was filed under: a template parameter is evaluated
+-- against the widget's own context object, so the `$currentObject/` prefix ends
+-- up as part of the ATTRIBUTE NAME. Measured on 11.13.0 — the page as shipped
+-- built with six errors:
+--
+--   [CE1613] "The selected attribute 'MyModule.Summary.$currentObject/Amount'
+--            no longer exists." at Text 'dMonth'   (and five more)
+--
+-- Nothing caught it because the example was only ever run through `mxcli check`
+-- with no project and never executed. MDL-WIDGET24 now reports it with no
+-- project at all, which is how this was found.
 -- ============================================================================
 
 create entity MyModule.Summary ( Amount: Decimal, LastImport: DateTime );
@@ -33,18 +47,18 @@ create or replace page MyModule.SummaryPage
   dataview dv (datasource: $Summary) {
     -- Text-mode pair fuses → flagged
     container box {
-      dynamictext dMonth (content: 'This month: {1}', contentparams: [{1} = $currentObject/Amount])
-      dynamictext dImport (content: 'Last import: {1}', contentparams: [{1} = $currentObject/LastImport])
+      dynamictext dMonth (content: 'This month: {1}', contentparams: [{1} = Amount])
+      dynamictext dImport (content: 'Last import: {1}', contentparams: [{1} = LastImport])
     }
     -- Paragraph-mode pair ALSO fuses (renders inline) → flagged (#29)
     container paras {
-      dynamictext pMonth (content: 'This month: {1}', RenderMode: Paragraph, contentparams: [{1} = $currentObject/Amount])
-      dynamictext pImport (content: 'Last import: {1}', RenderMode: Paragraph, contentparams: [{1} = $currentObject/LastImport])
+      dynamictext pMonth (content: 'This month: {1}', RenderMode: Paragraph, contentparams: [{1} = Amount])
+      dynamictext pImport (content: 'Last import: {1}', RenderMode: Paragraph, contentparams: [{1} = LastImport])
     }
     -- Heading (block-level) + subtitle does NOT fuse → not flagged
     container heads {
-      dynamictext hTitle (content: 'Summary {1}', RenderMode: H2, contentparams: [{1} = $currentObject/Amount])
-      dynamictext hSub (content: 'as of {1}', contentparams: [{1} = $currentObject/LastImport])
+      dynamictext hTitle (content: 'Summary {1}', RenderMode: H2, contentparams: [{1} = Amount])
+      dynamictext hSub (content: 'as of {1}', contentparams: [{1} = LastImport])
     }
   }
 }

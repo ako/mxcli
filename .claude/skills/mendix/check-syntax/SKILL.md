@@ -78,6 +78,29 @@ understanding rather than assuming:
 | a `loop` over any of those | yes — the iterator inherits the element type |
 | anything else (`send rest request`, `response: file as $Doc`, …) | **no** |
 
+Widget positions are resolved too:
+
+- an **XPath constraint** on a `database from Module.Entity` source — every step
+  is followed, so a bare name must be an attribute of the entity it lands on and
+  a `Module.Name` step must be an association or an entity;
+- a **template parameter** (`ContentParams` / `CaptionParams`) rooted in a
+  variable. That one needs **no project** and fires under a bare
+  `mxcli check`, because the answer is in the statement.
+
+The template-parameter rule is narrower than "no `$` roots", and the difference
+is measured rather than reasoned — the writer strips one prefix on one branch:
+
+| `{1} = …` | |
+|---|---|
+| `OrderNo` | fine |
+| `Order_Customer/Name` | fine — association hop, then attribute |
+| `$currentObject/Order_Customer/Name` | fine — the prefix is stripped |
+| `$currentObject/OrderNo` | **CE1613** |
+| `$Order/Name` | **CE1613** |
+
+Note the two-segment form: `Assoc/Attr`, not the XPath `Assoc/Entity/Attr`,
+which mxbuild also rejects.
+
 A variable this cannot type is left **unchecked**, never guessed at — a false
 "no such member" would block a script that builds cleanly. Two more things are
 deliberately not reported: a **qualified** member (`Module.Assoc`), which exec

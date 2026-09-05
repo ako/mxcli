@@ -199,6 +199,14 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 	// (#927).
 	violations = append(violations, ValidateExportMappingMembers(prog)...)
 
+	// Flag a template parameter written as a `$variable/` path where the
+	// position takes an attribute of the widget's context object. The writer
+	// keeps the prefix as part of the attribute name, so the model names an
+	// attribute that cannot exist (mendixlabs/mxcli#1046). The answer is in the
+	// statement, so it runs here rather than under --references — otherwise
+	// `mxcli check page.mdl` would stay silent on a mistake it can see.
+	violations = append(violations, ValidateWidgetParamPaths(prog)...)
+
 	// Flag a CUSTOM NAME MAP entry that matches nothing in the snippet. Silence
 	// there made a typo indistinguishable from not writing the entry, which is
 	// how #272's missing `item of` stayed hidden (ako/mxcli#272).

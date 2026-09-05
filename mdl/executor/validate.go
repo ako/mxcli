@@ -311,6 +311,11 @@ func validateProgram(ctx *ExecContext, prog *ast.Program) []error {
 	for _, msg := range validateMemberReferences(ctx, prog, sc) {
 		errors = append(errors, mdlerrors.NewValidation(msg))
 	}
+	// Resolve the MEMBERS inside a widget's XPath constraint. The entity in
+	// `database from Mod.Entity` was resolved and the `where […]` was not, so a
+	// member that does not exist reached mxbuild as CE1613
+	// (mendixlabs/mxcli#1049).
+	errors = append(errors, validateXPathMembers(ctx, prog)...)
 	return errors
 }
 
