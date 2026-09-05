@@ -125,7 +125,7 @@ func TestUnreconstructedContainers(t *testing.T) {
 		},
 	}
 
-	got := unreconstructedContainers(widget, nil)
+	got := unreconstructedContainers(widget, nil, nil)
 
 	// The populated slot must be reported.
 	var sawPopulated, sawEmpty bool
@@ -151,7 +151,7 @@ func TestUnreconstructedContainers(t *testing.T) {
 
 // Nothing to report on a document with no containers at all.
 func TestUnreconstructedContainers_Empty(t *testing.T) {
-	if got := unreconstructedContainers(map[string]any{}, nil); len(got) != 0 {
+	if got := unreconstructedContainers(map[string]any{}, nil, nil); len(got) != 0 {
 		t.Errorf("got %v, want none", got)
 	}
 }

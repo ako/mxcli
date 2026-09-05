@@ -45,7 +45,7 @@ import (
 //
 // Anything already reconstructed is excluded, so a chart's series list — which
 // DESCRIBE does emit — produces no note.
-func unreconstructedContainers(w map[string]any, reconstructed []rawObjectList) []string {
+func unreconstructedContainers(w map[string]any, reconstructed []rawObjectList, slots []rawChildSlot) []string {
 	obj, ok := w["Object"].(map[string]any)
 	if !ok {
 		return nil
@@ -55,10 +55,17 @@ func unreconstructedContainers(w map[string]any, reconstructed []rawObjectList) 
 		return nil
 	}
 
-	done := make(map[string]bool, len(reconstructed))
+	done := make(map[string]bool, len(reconstructed)+len(slots))
 	for _, ol := range reconstructed {
 		if ol.Keyword != "" {
 			done[ol.Keyword] = true
+		}
+	}
+	// A slot DESCRIBE now reproduces is not a loss, so it must not be named as
+	// one — otherwise the note would fire on exactly the case that was fixed.
+	for _, cs := range slots {
+		if cs.Keyword != "" {
+			done[cs.Keyword] = true
 		}
 	}
 

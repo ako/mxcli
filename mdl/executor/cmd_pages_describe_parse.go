@@ -455,7 +455,8 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 		if !isKnownCustomWidgetType(widget.RenderMode) {
 			widget.ExplicitProperties = extractExplicitProperties(ctx, w)
 			widget.ObjectLists = extractObjectLists(ctx, w)
-			widget.OmittedContainers = unreconstructedContainers(w, widget.ObjectLists)
+			widget.ChildSlots = extractChildSlots(ctx, w, widget.EntityContext)
+			widget.OmittedContainers = unreconstructedContainers(w, widget.ObjectLists, widget.ChildSlots)
 			// onClick action (ledger #67 — reported on CustomChart): read the client
 			// action back with full parameter mappings so a describe round-trip
 			// re-emits it (the finding's original widget goes through this path).
