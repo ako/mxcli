@@ -22,7 +22,22 @@
 --   * a container is never judged against a parent whose definition could not
 --     be resolved, for the same reason
 --
--- This file is expected to FAIL check — that is the point.
+-- NOT a .fail.mdl, deliberately. `make check-mdl` runs `check` WITHOUT a
+-- project, and both rules need one:
+--
+--   MDL-WIDGET25 cannot tell an unknown widget from one installed in a project
+--                it cannot see, so with no -p it stays silent
+--   MDL-WIDGET26 needs the PARENT's definition resolved, and without a project
+--                the registry holds only the nine embedded widgets
+--
+-- So this file passes check with no project and reports both rules with one.
+-- That is the case the Makefile warns about (#891, #892): naming it .fail.mdl
+-- would report "negative test unexpectedly passed" and make a working rule look
+-- regressed. The rules are covered by unit tests in validate_widget_kind_test.go
+-- instead; this file is the human-readable repro.
+--
+-- Run it against a project to see them:
+--   mxcli check mdl-examples/bug-tests/1036-slice0-validator-knows-widgets.mdl -p app.mpr
 
 create page Bug1036.SliceZero (
   title: 'Slice 0',

@@ -41,6 +41,17 @@ func validateWidgetKind(w *ast.WidgetV3, registry *WidgetRegistry, parentDef *Wi
 	// `pluggablewidget '<id>'` / `customwidget '<id>'` forms, where the id is a
 	// string literal the parser cannot check.
 	if id, ok := w.Properties["WidgetType"].(string); ok && id != "" {
+		// With no project there is nothing to be unknown RELATIVE TO: the
+		// registry holds only the embedded widgets, so every real project
+		// widget would be reported. `mxcli check` with no -p is the common
+		// case — it is how the example corpus is checked in CI — and without
+		// this one example file alone produced 14 violations.
+		//
+		// Scoped to this branch on purpose: the container rule below needs a
+		// resolvable PARENT, not a project, and works from a definition alone.
+		if registryProjectPath(registry) == "" {
+			return nil
+		}
 		if _, known := registry.GetByWidgetID(id); !known && !packageInstalledFor(registry, id) {
 			return []linter.Violation{{
 				RuleID:   "MDL-WIDGET25",

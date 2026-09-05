@@ -36,7 +36,9 @@ func pluggable(id, name string, children ...*ast.WidgetV3) *ast.WidgetV3 {
 // The parser cannot catch it — the id is a string literal — so the validator is
 // the only thing that could, and today it says nothing.
 func TestValidateWidgetKind_UnknownWidgetIDIsReported(t *testing.T) {
-	got := widgetKindViolations(t, "", []*ast.WidgetV3{
+	// Needs a project: with none, the rule cannot tell an unknown widget from
+	// one installed in a project it cannot see — see the no-project control.
+	got := widgetKindViolations(t, "../../testdata/expr-checker/minimal.mpr", []*ast.WidgetV3{
 		pluggable("com.acme.widget.NotAWidget", "w1"),
 	})
 	if !containsRule(got, "MDL-WIDGET25") {
@@ -159,4 +161,22 @@ func containsText(msgs []string, text string) bool {
 		}
 	}
 	return false
+}
+
+// With NO project the registry holds only the embedded widgets, so every real
+// project widget would look unknown. `mxcli check` without -p is the common
+// case — it is how the example corpus is checked in CI — and an earlier version
+// of this rule produced 14 violations in a single example file.
+//
+// The guard that was there (is the .mpk installed?) could not help: with no
+// project there is no widgets/ to look in. This is the control that measurement
+// with -p could not provide.
+func TestValidateWidgetKind_NoProjectMeansNoUnknownWidgetClaims(t *testing.T) {
+	got := widgetKindViolations(t, "", []*ast.WidgetV3{
+		pluggable("com.mendix.widget.web.htmlelement.HTMLElement", "h"),
+		pluggable("com.acme.widget.NotAWidget", "w1"),
+	})
+	if containsRule(got, "MDL-WIDGET25") {
+		t.Errorf("claimed a widget is unknown with no project to judge against: %v", got)
+	}
 }
