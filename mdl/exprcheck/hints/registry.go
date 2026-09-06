@@ -175,6 +175,46 @@ var Registry = &registry{byCode: map[string]Entry{
 			},
 		},
 	},
+	"E014": {
+		Code:     "E014",
+		Slug:     "trailing-tokens",
+		Severity: SeverityError,
+		Trigger:  "The expression parsed, but tokens were left over after it.",
+		WhyWrong: "The expression is incomplete or malformed — most often a Mendix keyword used as if it were a function, or two keywords glued together.",
+		HowToFix: "`empty` is a keyword, not a function: write `$List = empty` rather than `empty($List)`. For a count, use `length($List) = 0`.",
+		Examples: []ExampleFix{
+			{
+				Wrong: "IF empty($Orders) THEN",
+				Right: "IF $Orders = empty THEN",
+				Note:  "empty is a keyword, so the '(' is left over",
+			},
+			{
+				Wrong: "IF $X = '' emptyor $Y THEN",
+				Right: "IF $X = '' empty or $Y THEN",
+				Note:  "glued keywords",
+			},
+		},
+	},
+	"E013": {
+		Code:     "E013",
+		Slug:     "bare-identifier-value",
+		Severity: SeverityError,
+		Trigger:  "A bare word stands alone as the value of a create/change member.",
+		WhyWrong: "Mendix expressions have no bare identifiers: a value is a literal, a $variable, a qualified name or a function call. The bare word reaches the build as CE0117 \"Error(s) in expression\".",
+		HowToFix: "Quote it if it is text, add the $ if it is a variable, or qualify it if it is an enumeration value.",
+		Examples: []ExampleFix{
+			{
+				Wrong: "CHANGE $Order (Status = Closed);",
+				Right: "CHANGE $Order (Status = 'Closed');",
+				Note:  "a String attribute takes a quoted literal",
+			},
+			{
+				Wrong: "CHANGE $Order (Status = Closed);",
+				Right: "CHANGE $Order (Status = Sales.OrderStatus.Closed);",
+				Note:  "an enumeration attribute takes a qualified value",
+			},
+		},
+	},
 	"E012": {
 		Code:     "E012",
 		Slug:     "id-attribute-illegal",

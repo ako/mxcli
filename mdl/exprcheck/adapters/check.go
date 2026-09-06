@@ -124,6 +124,11 @@ func (c *CheckAdapter) walkBodyWithScope(body []ast.MicroflowStatement, mf strin
 			c.checkExpr(n.Value, "MfSetStmt.Value", mf, r)
 		case *ast.LogStmt:
 			c.checkExpr(n.Message, "LogStmt.Message", mf, r)
+			// The template parameters were not walked at all, so a non-String
+			// one reached mxbuild as CE0117 (mendixlabs/mxcli#1043).
+			for _, tp := range n.Template {
+				c.checkExpr(tp.Value, "LogStmt.TemplateParam", mf, r)
+			}
 		case *ast.CreateObjectStmt:
 			entityQN := n.EntityType.String()
 			for _, ci := range n.Changes {

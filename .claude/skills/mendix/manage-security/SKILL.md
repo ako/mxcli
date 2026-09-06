@@ -248,6 +248,33 @@ Mendix **CE0066** "Entity access is out of date", which masks the CE2729
 "No read access to attribute" errors underneath until Studio Pro's *Update
 security* is clicked.
 
+### `UPDATE SECURITY` — reconciling rules that have gone stale
+
+mxcli reconciles an entity's access rules whenever it writes the entity, so a
+rule normally cannot go stale through mxcli. `UPDATE SECURITY` is the repair for
+one that did — a model edited elsewhere, or an older mxcli:
+
+```sql
+update security;                 -- every module the project owns
+update security RestLab;         -- one module (IN is optional)
+update security in RestLab;      -- the same thing
+```
+
+Three things worth knowing, each of which was a defect until
+[mendixlabs/mxcli#1047](https://github.com/mendixlabs/mxcli/issues/1047):
+
+- **`System` is skipped.** Its entities are the platform's, its access rules are
+  Mendix's rather than the project's, and its domain model is not stored in the
+  `.mpr` at all. Naming it explicitly is an error, not a silent no-op.
+- **One unreadable module does not end the run.** It is reported and stepped
+  over, so the rest are still reconciled. Previously the first failure returned,
+  and System guaranteed one on every project — which made the command inert.
+- **The scope is honoured.** `update security RestLab` used to parse cleanly and
+  run project-wide, because the name reached the parser's error recovery.
+
+A run that skipped something says so. `All entity access rules are up to date`
+means every module was looked at.
+
 A member name that matches nothing is now an error rather than a silent skip:
 
 ```

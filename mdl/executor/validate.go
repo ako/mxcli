@@ -304,6 +304,18 @@ func validateProgram(ctx *ExecContext, prog *ast.Program) []error {
 	// microflow — errors whose wording sends people to the entity import, which
 	// cannot fix either of them (mendixlabs/mxcli#1020).
 	errors = append(errors, validateExternalActionCalls(ctx, prog)...)
+	// Resolve MEMBER names inside a CREATE / CHANGE against the entity they are
+	// assigned to. Reference checking used to stop at the document and entity
+	// level, so a mistyped attribute passed check and exec and surfaced as
+	// CE1613 at the far end of a build (mendixlabs/mxcli#1048).
+	for _, msg := range validateMemberReferences(ctx, prog, sc) {
+		errors = append(errors, mdlerrors.NewValidation(msg))
+	}
+	// Resolve the MEMBERS inside a widget's XPath constraint. The entity in
+	// `database from Mod.Entity` was resolved and the `where […]` was not, so a
+	// member that does not exist reached mxbuild as CE1613
+	// (mendixlabs/mxcli#1049).
+	errors = append(errors, validateXPathMembers(ctx, prog)...)
 	return errors
 }
 

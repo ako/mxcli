@@ -1,0 +1,133 @@
+-- `check --references` resolved the ENTITY a create/change names and stopped
+-- there, so a mistyped MEMBER passed check, passed exec, and surfaced at the far
+-- end of a build (mendixlabs/mxcli#1048):
+--
+--   CHANGE $Order ("IsArchived" = true);   -- no such attribute
+--     mxcli check -p app.mpr --references  -> exit 0
+--     mxcli exec                           -> "Created microflow"
+--     mx check                             -> [CE1613] "The selected attribute
+--                                             'Bench.Order.IsArchived' no longer exists."
+--
+-- exec DOES resolve the name (resolveAttributeInEntityHierarchy) and, when
+-- resolution fails, writes `<entity>.<member>` anyway. That fabricated
+-- identifier is what mxbuild rejects.
+--
+-- Verify — everything below must PASS, which is the point: these are the shapes
+-- that must not be reported.
+--
+--   mxcli exec  member-refs-resolved-at-check.mdl -p app.mpr
+--   mxcli check member-refs-resolved-at-check.mdl -p app.mpr --references
+--   mx check -p app.mpr        -- 0 errors
+--
+-- EXEC FIRST, and that ordering is the point rather than a convenience. The
+-- check resolves members against the PROJECT, so against an app that has never
+-- seen these entities every member is unknowable and the file passes having
+-- exercised nothing. Measured: run the perturbation below against a virgin app
+-- and it is silent; run it after the exec and it reports. A check that consults
+-- the model can only speak about a model that exists.
+--
+-- Then make ONE edit and re-check: change `"Status"` to `"Statuss"` in
+-- ACT_Close. It is reported, with the entity's real members listed:
+--
+--   MemberRefs.ACT_Close: MemberRefs.Order has no member "Statuss"
+--     (in change $Order) — it has OrderNo, Status — mxbuild reports this as
+--     CE1613 "The selected attribute 'MemberRefs.Order.Statuss' no longer exists"
+
+create module MemberRefs;
+/
+
+create or modify entity MemberRefs.Base (
+  Code: String(20)
+);
+/
+
+create or modify entity MemberRefs.Order extends MemberRefs.Base (
+  OrderNo: String(50),
+  Status: String(50)
+);
+/
+
+create or modify entity MemberRefs.Customer (
+  Name: String(200)
+);
+/
+
+create or modify association MemberRefs.Order_Customer
+  from MemberRefs.Order to MemberRefs.Customer type reference;
+/
+
+-- The entity of a CREATE is in the statement, so its members are always checked.
+-- This one is the non-vacuity anchor: perturb any name here and it is reported.
+create or modify microflow MemberRefs.ACT_New ()
+begin
+  $O = create MemberRefs.Order (
+    "OrderNo" = 'A-1',
+    "Status" = 'Open'
+  );
+  COMMIT $O;
+end;
+/
+
+-- A CHANGE on a PARAMETER. Also covers the two shapes that would be false
+-- positives if the walk were naive:
+--   "Code"           is INHERITED from MemberRefs.Base — the walk must follow
+--                    GeneralizationRef, or every specialisation reports its
+--                    inherited members as missing.
+--   Order_Customer   is an ASSOCIATION, which is a legal member of a change and
+--                    is not in the entity's attribute list.
+create or modify microflow MemberRefs.ACT_Close (
+  $Order: MemberRefs.Order,
+  $Customer: MemberRefs.Customer
+)
+begin
+  CHANGE $Order (
+    "Status" = 'Closed',
+    "Code" = 'CLOSED',
+    Order_Customer = $Customer
+  );
+  COMMIT $Order;
+end;
+/
+
+-- A LOOP over a database retrieve: the iterator inherits the element type, so
+-- the commonest bulk-update shape is checked rather than silently skipped.
+create or modify microflow MemberRefs.ACT_CloseAll ()
+begin
+  RETRIEVE $Orders FROM MemberRefs.Order;
+  LOOP $O IN $Orders
+  BEGIN
+    CHANGE $O ("Status" = 'Closed');
+    COMMIT $O;
+  END LOOP;
+end;
+/
+
+-- A LOOP over an ASSOCIATION retrieve, traversed from the TO end. Resolving
+-- this is what stops the check being silent on the shape real scripts use most.
+create or modify microflow MemberRefs.ACT_CloseForCustomer (
+  $Customer: MemberRefs.Customer
+)
+begin
+  RETRIEVE $Orders FROM $Customer/MemberRefs.Order_Customer;
+  LOOP $O IN $Orders
+  BEGIN
+    CHANGE $O ("OrderNo" = 'X');
+  END LOOP;
+end;
+/
+
+-- CONTROL: the migration shape. `Archived` does not exist in the stored project
+-- when this script starts — the statement above adds it — so a check that only
+-- consulted the project would report it and break the change most likely to
+-- name a new member.
+alter entity MemberRefs.Order add attribute "Archived": Boolean;
+/
+
+create or modify microflow MemberRefs.ACT_Archive (
+  $Order: MemberRefs.Order
+)
+begin
+  CHANGE $Order ("Archived" = true);
+  COMMIT $Order;
+end;
+/

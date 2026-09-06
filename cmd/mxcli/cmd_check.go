@@ -23,6 +23,23 @@ Pass -p and it also resolves every reference — modules, entities, pages,
 microflows and icons — against that project; --references is implied by -p and
 is kept only for compatibility.
 
+It also resolves MEMBER names, not just the entity they belong to: an attribute
+named in a create/change activity is looked up on that entity and its
+generalizations, so a typo is reported here rather than as CE1613 at the far end
+of a build. This needs the target's entity to be known, which it is for a create
+(the entity is in the statement) and for a change on a parameter, a database
+retrieve, an association retrieve, or a loop over one of those. A variable bound
+by some other activity is left unchecked rather than guessed at.
+
+The same applies inside widgets: a page's XPath constraint has every step
+resolved against the entity it filters, and a template parameter (ContentParams
+/ CaptionParams) rooted in a variable is reported with no project at all.
+
+Expression kinds are checked where the position declares one: a bare word as a
+create/change member's value (Mendix expressions have no bare identifiers), and
+a log message's template parameter, which must be a String — Mendix does not
+coerce there, so wrap a non-String one in toString(...).
+
 Reference validation is smart: it automatically skips references to objects
 that are created within the script itself. For example, if your script creates
 a module "MyModule" and then creates entities in it, no error will be reported

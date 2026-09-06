@@ -38,6 +38,11 @@ type EmptyExpr struct{ baseNode }
 type VariableExpr struct {
 	baseNode
 	Name string
+	// Bare is true when the source wrote a plain identifier (`Closed`) rather
+	// than a variable reference (`$Closed`). Mendix has no bare identifiers in
+	// expressions, so the distinction is a defect signal — see
+	// checkBareIdentifierValue.
+	Bare bool
 }
 
 type AttributePathExpr struct {

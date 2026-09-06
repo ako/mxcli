@@ -1,0 +1,134 @@
+-- Two member positions inside a widget that reference checking walked past.
+-- Both passed `check --references`, passed `exec`, and failed the build.
+--
+-- 1. An XPATH CONSTRAINT naming a member the entity does not have
+--    (mendixlabs/mxcli#1049). The check resolved the entity in
+--    `database from Bench.Order` and never looked inside the `where […]`:
+--
+--      where [Bench.Order_Status = 'Open']
+--      mx check -> [CE1613] "The selected association 'Bench.Order_Status'
+--                  no longer exists." at Data grid 2 'gridOrders'
+--
+-- 2. A CONTENTPARAMS value rooted in a VARIABLE (mendixlabs/mxcli#1046). A
+--    template parameter is evaluated against the widget's own context object,
+--    so `$Customer/` has nowhere to resolve and the writer keeps it as part of
+--    the attribute name:
+--
+--      ContentParams: [{1} = $Customer/Name]
+--      mx check -> [CE1613] "The selected attribute
+--                  'Bench.Customer.$Customer/Name' no longer exists."
+--
+-- The two run in different TIERS, and the difference is the useful part:
+--
+--   * the XPath one asks about the MODEL, so it needs -p;
+--   * the ContentParams one is answerable from the statement alone, so it fires
+--     under a bare `mxcli check` with no project (MDL-WIDGET24).
+--
+-- That second tier is not theoretical. `ledger-27-consecutive-dynamictext.mdl`
+-- had shipped in this directory using `{1} = $currentObject/Amount`, had only
+-- ever been run through `mxcli check` with no project, and built with SIX
+-- CE1613s the first time anyone executed it. MDL-WIDGET24 found it.
+--
+-- Verify — EXEC FIRST, for the reason the sibling example gives: members are
+-- resolved against the model, so against an app that has never seen these
+-- entities every step is unknowable and the file passes having checked nothing.
+--
+--   mxcli exec  widget-member-refs-resolved-at-check.mdl -p app.mpr
+--   mxcli check widget-member-refs-resolved-at-check.mdl -p app.mpr --references
+--   mx check -p app.mpr        -- 0 errors
+--
+-- Then perturb, one at a time, and re-check:
+--
+--   [Status = 'Open']         -> [Statuss = 'Open']
+--     WidgetRefs.P_List: datagrid "gridOrders": the constraint on
+--     WidgetRefs.Order names "Statuss", which is neither an attribute nor an
+--     association of it — …
+--
+--   {1} = OrderNo             -> {1} = $Order/OrderNo
+--     (reported with NO project, by MDL-WIDGET24, naming `OrderNo` as the fix)
+--
+-- The shapes MDL-WIDGET24 must NOT report, all measured on 11.13.0 by executing
+-- and building each one:
+--
+--   OrderNo                                       clean
+--   WidgetRefs.Order_Customer/Name                clean  (association hop)
+--   $currentObject/WidgetRefs.Order_Customer/Name clean  (prefix stripped)
+--   $currentObject/OrderNo                        CE1613
+--   $Order/Name                                   CE1613
+
+create module WidgetRefs;
+/
+
+create or modify entity WidgetRefs.Customer (
+  Name: String(200)
+);
+/
+
+create or modify entity WidgetRefs.Order (
+  OrderNo: String(50),
+  Status: String(50)
+);
+/
+
+create or modify association WidgetRefs.Order_Customer
+  from WidgetRefs.Order to WidgetRefs.Customer type reference;
+/
+
+-- Every constraint here RESOLVES, which is the point: these are the shapes that
+-- must not be reported.
+create or replace page WidgetRefs.P_List
+(
+  Title: 'Orders',
+  Layout: Atlas_Core.Atlas_Default
+)
+{
+  -- A bare attribute of the constrained entity.
+  datagrid gridOrders (datasource: database from WidgetRefs.Order where [Status = 'Open']) {
+    column cNo (attribute: OrderNo, caption: 'No')
+  }
+
+  -- An ASSOCIATION HOP and then an attribute of the entity it reaches. The walk
+  -- has to carry the entity from step to step, or this reads as a member of
+  -- Order and is wrongly reported.
+  datagrid gridByCustomer (
+    datasource: database from WidgetRefs.Order
+      where [WidgetRefs.Order_Customer/WidgetRefs.Customer/Name = 'Acme']
+  ) {
+    column cNo2 (attribute: OrderNo, caption: 'No')
+  }
+}
+/
+
+-- ContentParams written the way the position wants: the attribute name, or an
+-- association path to one. No `$variable/` root.
+create or replace page WidgetRefs.P_Detail
+(
+  params: { $Order: WidgetRefs.Order },
+  title: 'Order',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  dataview dvOrder (datasource: $Order) {
+    dynamictext dtNo (Content: 'Order {1}', ContentParams: [{1} = OrderNo])
+
+    -- An association path is LEGAL here — it is an attribute reached over an
+    -- association, stored as AttributeRef plus steps. Two segments, not three:
+    -- the association then the attribute. The XPath spelling
+    -- (`Assoc/Entity/Attr`) is NOT this, and mxbuild rejects it with the same
+    -- CE1613 — measured, and the reason this line is written out rather than
+    -- assumed.
+    dynamictext dtCust (
+      Content: 'for {1}',
+      ContentParams: [{1} = WidgetRefs.Order_Customer/Name]
+    )
+
+    -- And `$currentObject/` IS stripped when an association path follows, so
+    -- this builds cleanly too. A check that flagged every variable root would
+    -- report it — the control that keeps MDL-WIDGET24 honest.
+    dynamictext dtCust2 (
+      Content: 'also {1}',
+      ContentParams: [{1} = $currentObject/WidgetRefs.Order_Customer/Name]
+    )
+  }
+}
+/
