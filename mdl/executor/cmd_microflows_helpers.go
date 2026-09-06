@@ -507,11 +507,65 @@ var xpathEnumRefRe = regexp.MustCompile(`[A-Za-z][A-Za-z0-9_]*\.[A-Za-z][A-Za-z0
 // string to the string literal format that Mendix database queries require.
 // Example: "[Status = XpathTest.OrderStatus.Open]" → "[Status = 'Open']".
 // This handles the SourceExpr (bracketed) path where qualifiedNameToXPath is bypassed.
+//
+// INSIDE A STRING LITERAL the letters are data and are left alone, the same rule
+// NormalizeXPathOperators follows. Running the regex over the whole constraint
+// rewrote a ref the author had already quoted into a DOUBLED quote —
+// `'Mod.Enum.Value'` became `''Value''` — which every downstream reader lexes as
+// an empty string literal followed by a stray bare word. The stored constraint
+// then read `Status = Mod.Enum.` with the value, the closing quote and the ENTIRE
+// following clause gone, `mxcli check` passing, and mxbuild reporting only a
+// generic CE0161 that does not say which clause (ako/CapTrackV3 FINDINGS §29).
+//
+// A quoted ref is left exactly as written rather than repaired. Consuming the
+// author's quotes would make `Name = 'a.b.c'` — an ordinary literal that happens
+// to have two dots — silently match something else, and telling those two apart
+// needs the project's enumerations, which this string-level pass does not have.
+// MDL-XPATH01 reports the quoted spelling at check time, where the enum can
+// actually be resolved.
 func normalizeXPathEnumRefs(xpath string) string {
-	return xpathEnumRefRe.ReplaceAllStringFunc(xpath, func(match string) string {
-		lastDot := strings.LastIndex(match, ".")
-		return "'" + match[lastDot+1:] + "'"
-	})
+	var b strings.Builder
+	b.Grow(len(xpath))
+	for i := 0; i < len(xpath); {
+		if xpath[i] != '\'' {
+			j := strings.IndexByte(xpath[i:], '\'')
+			if j < 0 {
+				b.WriteString(xpathEnumRefRe.ReplaceAllStringFunc(xpath[i:], enumRefToLiteral))
+				break
+			}
+			b.WriteString(xpathEnumRefRe.ReplaceAllStringFunc(xpath[i:i+j], enumRefToLiteral))
+			i += j
+			continue
+		}
+		b.WriteString(xpath[i:xpathLiteralEnd(xpath, i)])
+		i = xpathLiteralEnd(xpath, i)
+	}
+	return b.String()
+}
+
+// enumRefToLiteral turns `Module.Enum.Value` into the `'Value'` a database query
+// compares against.
+func enumRefToLiteral(match string) string {
+	return "'" + match[strings.LastIndex(match, ".")+1:] + "'"
+}
+
+// xpathLiteralEnd returns the index just past the string literal starting at
+// start. A doubled quote inside one is an escaped quote, not the end — the same
+// rule the MDL expression scanner and NormalizeXPathOperators use. An unclosed
+// literal runs to the end of the constraint, which keeps the caller's loop
+// terminating on malformed input instead of stalling.
+func xpathLiteralEnd(s string, start int) int {
+	for j := start + 1; j < len(s); j++ {
+		if s[j] != '\'' {
+			continue
+		}
+		if j+1 < len(s) && s[j+1] == '\'' {
+			j++
+			continue
+		}
+		return j + 1
+	}
+	return len(s)
 }
 
 // memberExpressionToString converts an AST Expression to a Mendix expression string,
@@ -632,7 +686,17 @@ func xpathBareAttrName(expr ast.Expression) string {
 
 // enumStringToQN builds a QualifiedNameExpr for an enum value reference.
 // enumRef = "Module.EnumName", valueKey = "Open" → Module: "Module", Name: "EnumName.Open"
+//
+// A value that is ALREADY the qualified name is returned as it stands. Mendix
+// stores an enum comparison as the bare value, so a stored `'Module.Enum.Value'`
+// is a constraint the author quoted by mistake (ako/CapTrackV3 FINDINGS §29) —
+// prefixing it again rendered `Xp.Status.Xp.Status.Confirmed`, which a
+// describe → exec round-trip would then write back into the model. Describing an
+// invalid constraint should show what is stored, not compound it.
 func enumStringToQN(enumRef, valueKey string) *ast.QualifiedNameExpr {
+	if strings.HasPrefix(valueKey, enumRef+".") {
+		valueKey = strings.TrimPrefix(valueKey, enumRef+".")
+	}
 	parts := strings.SplitN(enumRef, ".", 2)
 	if len(parts) != 2 {
 		return &ast.QualifiedNameExpr{QualifiedName: ast.QualifiedName{Module: enumRef, Name: valueKey}}

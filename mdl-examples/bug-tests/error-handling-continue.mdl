@@ -1,0 +1,129 @@
+-- `ON ERROR CONTINUE` was dropped on most statements and written INVALID on the
+-- rest (ako/CapTrackV3 FINDINGS §11).
+--
+-- The report: the clause parsed, `exec` said nothing, and
+-- `describe microflow` showed the retrieve with no error handler:
+--
+--   RETRIEVE $Users FROM System.User WHERE 'id = ''[%CurrentUser%]''' ON ERROR CONTINUE;
+--   describe -> retrieve $Users from System.User where id = '[%CurrentUser%]';
+--
+-- It vanished at the last hop. The visitor builds the clause and the flow builder
+-- set it on the ACTIVITY — a field the metamodel does not have on an
+-- ActionActivity and neither engine serializes — while both writers emitted a
+-- hardcoded literal "Rollback" on the ACTION, where errorHandlingType actually
+-- lives.
+--
+-- WHICH VALUES MENDIX ACCEPTS. Measured on 11.14.0 by writing each into a stored
+-- document of a 0-error project and building. The split is not guessable from the
+-- metamodel, where one enum covers every action type:
+--
+--   action           Rollback   Continue   Abort
+--   Retrieve            ok         ok        ok
+--   Delete              ok         ok        ok
+--   MicroflowCall       ok         ok      CE6035
+--   Log                 ok       CE6035    CE6035
+--   Create              ok       CE6035    CE6035
+--   Change              ok       CE6035    CE6035
+--   Commit              ok       CE6035    CE6035
+--   Aggregate           ok       CE6035    CE6035
+--
+-- Two things follow, and they point in opposite directions.
+--
+-- 1. THE HARDCODED "Rollback" WAS LOAD-BEARING. A nanoflow's no-clause default is
+--    Abort, and Abort is CE6035 on most types — so serializing the builder's
+--    value unconditionally would have broken every nanoflow that logs or creates.
+--    The clause is therefore carried ONLY when the author wrote one; an
+--    un-annotated activity keeps the exact document it has always had.
+--
+-- 2. CREATE AND COMMIT WERE ALREADY WRITING AN INVALID MODEL. Their builders did
+--    set the value on the action, so mxcli wrote `Continue` where mxbuild refuses
+--    it, and `mxcli check` passed:
+--
+--      $T = CREATE EH.Thing ( Code = 'a' ) COMMIT ON ERROR CONTINUE;
+--      mx check -> [CE6035] "Error handling type is not supported"
+--                    at Create object activity 'Create Thing (Code)'
+--
+--    Now MDL076, refused rather than downgraded: Continue swallows the error and
+--    carries on, Rollback aborts the flow, and an author who wrote the clause
+--    meant the first.
+--
+-- A MEASUREMENT TRAP worth keeping. The first version of that table was VACUOUS
+-- for Delete and said so only because the probe reported its own patch count: the
+-- Delete writer emits no ErrorHandlingType key at all, so setting it changed
+-- nothing and mxbuild's silence read as "accepted". The probe was changed to
+-- INSERT an absent key.
+--
+-- Verify:
+--
+--   mxcli exec  error-handling-continue.mdl -p app.mpr
+--   mx check -p app.mpr        -- 0 errors
+--   mxcli -p app.mpr -c "describe microflow ErrH.ACT_Handled"
+--     -- all three statements come back carrying `on error continue`
+--
+-- Then perturb:
+--
+--   ON ERROR CONTINUE on the retrieve  ->  stub the builder's action-level assignment
+--     describe drops the clause entirely — the reported symptom.
+--
+--   add `$T = CREATE ErrH.Thing ( Code = 'x' ) ON ERROR CONTINUE;`
+--     MDL076 at check time. Before the rule: check passed and mx check gave CE6035.
+
+create module ErrH;
+/
+
+create or modify entity ErrH.Thing ( Code: String(20) );
+/
+
+create or modify microflow ErrH.SUB_Noop ()
+begin
+  LOG INFO 'noop';
+end;
+/
+
+-- The three statements Mendix accepts Continue on. All three must round-trip.
+create or modify microflow ErrH.ACT_Handled ()
+begin
+  RETRIEVE $Rows FROM ErrH.Thing ON ERROR CONTINUE;
+  $T = HEAD($Rows);
+  DELETE $T ON ERROR CONTINUE;
+  CALL MICROFLOW ErrH.SUB_Noop () ON ERROR CONTINUE;
+end;
+/
+
+-- CONTROL: the same statements with NO clause. These must keep the document they
+-- have always had — the writers' literal — because the builder's value for "no
+-- clause" is not always one Mendix accepts. Without this control a fix that
+-- serialized the builder's value unconditionally would look correct above.
+create or modify microflow ErrH.ACT_Plain ()
+begin
+  RETRIEVE $Rows FROM ErrH.Thing;
+  $T = HEAD($Rows);
+  DELETE $T;
+  CALL MICROFLOW ErrH.SUB_Noop ();
+end;
+/
+
+-- CONTROL: a NANOFLOW, whose no-clause default is Abort — the value that would
+-- have broken the build had it been serialized. An explicit clause on a nanoflow
+-- is still the author's.
+create or modify nanoflow ErrH.NF_Plain ()
+begin
+  RETRIEVE $Rows FROM ErrH.Thing;
+  LOG INFO 'from a nanoflow';
+end;
+/
+
+-- CONTROL for MDL076: a CUSTOM handler is accepted on every action type measured,
+-- including the two the rule refuses Continue on. A rule that flagged the clause
+-- itself, rather than the Continue variant, would reject this working microflow —
+-- and a custom handler is the fix MDL076 suggests.
+create or modify microflow ErrH.ACT_CustomHandler ()
+begin
+  $T = CREATE ErrH.Thing ( Code = 'a' ) ON ERROR {
+    LOG ERROR 'create failed';
+  };
+  COMMIT $T ON ERROR {
+    LOG ERROR 'commit failed';
+  };
+end;
+/

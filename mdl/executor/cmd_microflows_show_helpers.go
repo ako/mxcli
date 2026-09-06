@@ -2070,6 +2070,10 @@ func getActionErrorHandlingType(activity *microflows.ActionActivity) microflows.
 		return action.ErrorHandlingType
 	case *microflows.CommitObjectsAction:
 		return action.ErrorHandlingType
+	case *microflows.RetrieveAction:
+		return action.ErrorHandlingType
+	case *microflows.DeleteObjectAction:
+		return action.ErrorHandlingType
 	case *microflows.DownloadFileAction:
 		return action.ErrorHandlingType
 	case *microflows.SynchronizeAction:
