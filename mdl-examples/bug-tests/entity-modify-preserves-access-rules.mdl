@@ -1,0 +1,117 @@
+-- `create or modify persistent entity` on an EXISTING entity deleted every
+-- access rule on it. ako/mxcli-rest FINDINGS, "create or modify persistent
+-- entity silently deletes every access rule".
+--
+--   create or modify persistent entity App.Order ( Ref: String(20) );
+--   exec -> Modified entity: App.Order          <- the whole output
+--   mxcli check -> passed
+--   describe entity App.Order -> not one `grant` left
+--
+-- MEASURED on a real project (ako/CapTrackV3), both engines, mxbuild 11.14.0.
+-- Re-running one domain-model script over eight entities:
+--
+--   access rules    174 -> 132
+--   member entries  1352 -> 1071
+--   mx check        0 errors -> 288 errors, every one CE2729
+--
+-- THE 288 IS A CORRECTION TO THE REPORT, which said `mx check` stays clean. It
+-- does — on an entity nothing is bound to yet. The loss is silent EXACTLY where
+-- nothing depends on the access, and announces itself only once pages exist:
+--
+--   [CE2729] No read access to attribute 'Name' in entity 'CapTrack.Department'
+--            for user role 'TeamLead'   at Text 'mdName'
+--
+-- IDEMPOTENCE DOES NOT HELP. A byte-identical re-run strips the rules just as
+-- completely: the rebuilt document genuinely differs from the stored one, so it
+-- is not elided (ADR-0008). Re-running a domain-model script is the ordinary way
+-- to work, which is what made this reachable.
+--
+-- THE CAUSE WAS STRUCTURAL, not a missing case. The modify branch built a fresh
+-- entity from the AST and swapped it in, so every field MDL has no words for went
+-- with it. Documentation and indexes had each been added back to a carry list
+-- after their own defect report; access rules would have been the third, and the
+-- external-source and OData fields the next.
+--
+-- Dropping an attribute the statement omits and rebuilding the ones it names are
+-- INDEPENDENT: an entity can be modified in place. So the fix inverts the
+-- direction — start from what is stored, overwrite only what the statement
+-- declares — and the carry list has no tail. A reflection test now fails on any
+-- Entity field that is in neither group.
+--
+-- ONE THING IS STILL REMOVED BY OMISSION, and deliberately: EXTENDS. There is no
+-- "extends nothing" spelling, so preserving it would make an inheritance
+-- impossible to remove. It is now REPORTED like a dropped attribute, which is the
+-- only part of this that was silent before.
+--
+-- Verify:
+--
+--   mxcli exec  entity-modify-preserves-access-rules.mdl -p app.mpr
+--   mxcli exec  entity-modify-preserves-access-rules.mdl -p app.mpr   -- again
+--   mxcli -p app.mpr -c "describe entity AccP.Order"
+--     -- both grants still there, both times
+--   mx check -p app.mpr        -- 0 errors
+--
+-- Use `mx check` DIRECTLY, not `mxcli docker check`: that command runs
+-- `mx update-widgets` first and can mask a model-level failure.
+--
+-- Then perturb:
+--
+--   stub mergeDeclaredOntoStoredEntity to return the rebuilt entity
+--     -> every `grant` above disappears, `Modified entity:` is still the only
+--        output, and mxcli check still passes. At scale: 174 -> 132 and 288
+--        CE2729 errors.
+--
+--   drop `extends System.FileDocument` from AccP.Export below
+--     -> reported as a dropped member. Before: silent.
+
+create module AccP;
+/
+
+create or modify module role AccP.Reader;
+/
+
+create or modify persistent entity AccP.Order (
+  Ref: String(20),
+  Amount: Decimal default 0,
+  Note: String(100)
+);
+/
+
+grant AccP.Reader on AccP.Order (create, delete, read (Ref, Amount, Note), write (Ref, Amount));
+/
+
+-- THE REPORTED CASE. Restating the entity must leave the grant above untouched.
+-- Run this file twice: the second run is the byte-identical re-run that the
+-- report expected to be safe and was not.
+create or modify persistent entity AccP.Order (
+  Ref: String(20),
+  Amount: Decimal default 0,
+  Note: String(100)
+);
+/
+
+-- THE CONTROL THAT COST A DAY. An entity's access rules also govern its
+-- INHERITED members, and those never appear in its own Attributes list. The
+-- obvious predicate for pruning — "not among the rebuilt entity's attributes" —
+-- therefore empties every rule on a specialisation that owns no attributes, and
+-- mxbuild reports CE0066 "Entity access is out of date". The first version of
+-- this fix did exactly that, and only an entity shaped like this one exposes it.
+create or modify persistent entity AccP.Export extends System.FileDocument (
+);
+/
+
+grant AccP.Reader on AccP.Export (create, delete, read (Name, Contents), write (Name, Contents));
+/
+
+create or modify persistent entity AccP.Export extends System.FileDocument (
+);
+/
+
+-- CONTROL: the other half of the contract is unchanged. An attribute the
+-- statement omits IS removed, warned about, and its member entry goes with it —
+-- a preserved rule naming an attribute that no longer exists would dangle.
+create or modify persistent entity AccP.Order (
+  Ref: String(20),
+  Amount: Decimal default 0
+);
+/

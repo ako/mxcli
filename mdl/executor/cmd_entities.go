@@ -404,16 +404,34 @@ func execCreateEntity(ctx *ExecContext, s *ast.CreateEntityStmt) error {
 		}
 		// Carry forward (and prune) indexes so a dropped indexed attribute doesn't
 		// leave an orphaned index that crashes `mx check` (finding #39).
-		// A rewrite that says nothing about documentation preserves what is
-		// stored; an explicitly empty `/** */` clears it. Same rule and same
-		// reason as the index carry below (mendixlabs/mxcli#1018).
-		if !s.DocumentationSet {
-			entity.Documentation = existingEntity.Documentation
-		}
+		// MODIFY IN PLACE rather than replace. `create or modify` declares the
+		// entity's ATTRIBUTE SET — omitting one removes it, warned about above —
+		// but that is a statement about attributes and not a licence to discard
+		// everything else the entity holds. The code used to rebuild the whole
+		// entity from the AST and swap the object in, so every field the syntax
+		// has no words for went with it.
+		//
+		// That is how the access rules went: `create or modify persistent entity`
+		// on an existing entity deleted every grant on it, with `Modified entity:`
+		// as the only output (ako/mxcli-rest). Measured on a real project, 174
+		// access rules to 132 by re-running one domain-model script over eight
+		// entities — and a byte-identical re-run lost them just as completely,
+		// because the rebuild genuinely differs and so is not elided.
+		//
+		// Preserving by construction rather than by a carry list is the point.
+		// The list was already at documentation and indexes, each added after its
+		// own defect report; access rules would have been the third, and the
+		// external-source and OData fields the next. Starting from what is stored
+		// and overwriting only what the statement declares has no such tail.
+		entity = mergeDeclaredOntoStoredEntity(existingEntity, entity, s)
 		if droppedIdx := reconcileDroppedIndexes(entity, existingEntity); droppedIdx > 0 {
 			fmt.Fprintf(ctx.Output,
 				"  Dropped %d index(es) that referenced removed attribute(s).\n", droppedIdx)
 		}
+		// An attribute the statement dropped must lose its member access too, or
+		// the carried rule dangles — the same class reconcileDroppedIndexes
+		// exists to prevent, one member over.
+		pruneMemberAccessesForDroppedAttributes(entity, existingEntity)
 		// Update existing entity
 		entity.ID = existingEntity.ID
 		if err := ctx.Backend.UpdateEntity(dm.ID, entity); err != nil {
@@ -436,6 +454,156 @@ func execCreateEntity(ctx *ExecContext, s *ast.CreateEntityStmt) error {
 
 	ctx.trackModifiedDomainModel(module.ID, module.Name)
 	return nil
+}
+
+// mergeDeclaredOntoStoredEntity returns the stored entity with the fields this
+// statement actually declares overwritten from the rebuilt one.
+//
+// The split is what the MDL syntax can express. Everything in the first group
+// below has a spelling in `create or modify entity`, so the statement is
+// authoritative about it — including the attribute set, where an omission is a
+// removal (warned about by droppedEntityMembers). Everything else — access
+// rules, the view/external source fields, the OData remote properties — has no
+// spelling at all, so an omission carries no meaning and the stored value stands.
+//
+// Documentation is declared-but-optional and is distinguished by its own AST
+// flag rather than by an empty value: a rewrite that says nothing about it
+// preserves what is stored, while an explicitly empty `/** */` clears it
+// (mendixlabs/mxcli#1018).
+//
+// entityFieldsDeclaredByStatement lists the first group by name, and
+// TestMergeDeclaredOntoStoredEntity_EveryFieldHasADecision fails on any Entity
+// field missing from it — so adding one to the struct forces the choice rather
+// than defaulting to whichever branch happens to be the safe one here.
+func mergeDeclaredOntoStoredEntity(stored, declared *domainmodel.Entity, s *ast.CreateEntityStmt) *domainmodel.Entity {
+	if stored == nil {
+		return declared
+	}
+	merged := *stored
+	merged.Name = declared.Name
+	merged.Persistable = declared.Persistable
+	merged.Location = declared.Location
+	merged.Attributes = declared.Attributes
+	merged.ValidationRules = declared.ValidationRules
+	merged.Indexes = declared.Indexes
+	merged.EventHandlers = declared.EventHandlers
+	merged.HasOwner = declared.HasOwner
+	merged.HasChangedBy = declared.HasChangedBy
+	merged.HasCreatedDate = declared.HasCreatedDate
+	merged.HasChangedDate = declared.HasChangedDate
+	// An omitted EXTENDS still removes the generalization — there is no "extends
+	// nothing" spelling, so preserving it would make an inheritance impossible to
+	// remove. It is reported by droppedEntityMembers instead, which is the same
+	// treatment an omitted attribute gets.
+	//
+	// Generalization and GeneralizationID are the READ-side spellings of the same
+	// thing, which the executor never fills. Both writers key off
+	// GeneralizationRef alone, so carrying the stored pair would be inert today —
+	// they are overwritten anyway, because a stale parent left beside a changed
+	// ref is a trap for whichever writer reads them first.
+	merged.GeneralizationRef = declared.GeneralizationRef
+	merged.Generalization = declared.Generalization
+	merged.GeneralizationID = declared.GeneralizationID
+	if s != nil && !s.DocumentationSet {
+		merged.Documentation = stored.Documentation
+	} else {
+		merged.Documentation = declared.Documentation
+	}
+	return &merged
+}
+
+// entityFieldsDeclaredByStatement names the domainmodel.Entity fields that
+// `create or modify entity` is authoritative about — the ones
+// mergeDeclaredOntoStoredEntity takes from the rebuilt entity. Every other field
+// is preserved from what is stored. It is a package-level var rather than a
+// literal in the test because the test's job is to fail when the struct grows a
+// field this list does not mention.
+var entityFieldsDeclaredByStatement = map[string]bool{
+	"Name":              true,
+	"Documentation":     true, // via s.DocumentationSet; see above
+	"Location":          true,
+	"Persistable":       true,
+	"Attributes":        true,
+	"ValidationRules":   true,
+	"Indexes":           true,
+	"EventHandlers":     true,
+	"HasOwner":          true,
+	"HasChangedBy":      true,
+	"HasCreatedDate":    true,
+	"HasChangedDate":    true,
+	"GeneralizationRef": true,
+	"Generalization":    true,
+	"GeneralizationID":  true,
+	// ContainerID and the embedded BaseElement identify the stored element, so
+	// they are preserved. `entity.ID = existingEntity.ID` at the call site says
+	// the same thing about the ID; the merge is where it now comes from.
+}
+
+// pruneMemberAccessesForDroppedAttributes removes the member entries of the
+// preserved access rules whose attribute this rewrite removed.
+//
+// Attributes the rewrite ADDS need nothing here: each engine extends a rule with
+// the missing members at the rule's default rights on write (syncMemberAccesses,
+// ReconcileMemberAccesses). Only removal has to be handled, and only here.
+func pruneMemberAccessesForDroppedAttributes(entity, stored *domainmodel.Entity) {
+	if stored == nil || len(entity.AccessRules) == 0 {
+		return
+	}
+	// A member is pruned only on POSITIVE evidence that this rewrite removed its
+	// attribute: the STORED entity owned it and the rebuilt one does not. The
+	// obvious predicate — "not among the rebuilt entity's attributes" — is wrong,
+	// and wrong in the direction that breaks security. An entity's access rules
+	// also govern its INHERITED members, and those never appear in its own
+	// Attributes list: CapTrack.ExportDocument extends System.FileDocument and
+	// owns no attributes at all, so that predicate emptied all five of its rules
+	// and mxbuild reported CE0066 "Entity access is out of date" — a regression
+	// an earlier version of this fix introduced, and which only a specialisation
+	// exposes.
+	kept := make(map[string]bool, len(entity.Attributes))
+	for _, a := range entity.Attributes {
+		kept[strings.ToLower(a.Name)] = true
+	}
+	removed := make(map[string]bool)
+	for _, a := range stored.Attributes {
+		if !kept[strings.ToLower(a.Name)] {
+			removed[strings.ToLower(a.Name)] = true
+			if a.ID != "" {
+				removed[string(a.ID)] = true
+			}
+		}
+	}
+	if len(removed) == 0 {
+		return
+	}
+	survives := func(ma *domainmodel.MemberAccess) bool {
+		// Both fields are consulted because the two engines fill different ones:
+		// the modelsdk reader populates only AttributeName (memberAccessFromGen),
+		// the legacy one an AttributeID. The DROP ATTRIBUTE cleanup this mirrors
+		// checks both for the same reason.
+		if ma.AttributeID != "" && removed[string(ma.AttributeID)] {
+			return false
+		}
+		if ma.AttributeName == "" {
+			return true
+		}
+		name := ma.AttributeName
+		if i := strings.LastIndex(name, "."); i >= 0 {
+			name = name[i+1:]
+		}
+		return !removed[strings.ToLower(name)]
+	}
+	for _, rule := range entity.AccessRules {
+		if rule == nil {
+			continue
+		}
+		var members []*domainmodel.MemberAccess
+		for _, ma := range rule.MemberAccesses {
+			if survives(ma) {
+				members = append(members, ma)
+			}
+		}
+		rule.MemberAccesses = members
+	}
 }
 
 // reconcileDroppedIndexes fixes ledger finding #39: when CREATE OR MODIFY drops
@@ -525,6 +693,13 @@ func droppedEntityMembers(existing, replacement *domainmodel.Entity) []string {
 	}
 	if existing.HasChangedDate && !replacement.HasChangedDate {
 		dropped = append(dropped, "changedDate (system field)")
+	}
+	// An omitted EXTENDS un-inherits the entity, which is a bigger change than a
+	// dropped attribute and was the only one of these that happened in silence.
+	// It is reported rather than preserved because there is no "extends nothing"
+	// spelling, so preserving it would make an inheritance impossible to remove.
+	if existing.GeneralizationRef != "" && replacement.GeneralizationRef == "" {
+		dropped = append(dropped, "extends "+existing.GeneralizationRef+" (generalization)")
 	}
 	return dropped
 }
