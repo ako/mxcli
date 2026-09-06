@@ -96,23 +96,23 @@ func attrIDForIndex(i int) string {
 	return string(rune('a'+i)) + "aaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 }
 
+// entityAttrNames reads back the seeded entity's attribute names.
+func entityAttrNames(t *testing.T, db *sql.DB, unitID model.ID) []string {
+	t.Helper()
+	entity := readSeededEntity(t, db, unitID)
+	var names []string
+	for _, a := range extractBsonArray(entity["Attributes"]) {
+		if m, ok := a.(map[string]any); ok {
+			names = append(names, extractString(m["Name"]))
+		}
+	}
+	return names
+}
+
 // memberAttrRefs reads back the rule's member entries.
 func memberAttrRefs(t *testing.T, db *sql.DB, unitID model.ID) []string {
 	t.Helper()
-	var contents []byte
-	if err := db.QueryRow(`SELECT Contents FROM Unit WHERE UnitID = ?`,
-		uuidToBlob(string(unitID))).Scan(&contents); err != nil {
-		t.Fatalf("read unit: %v", err)
-	}
-	var raw map[string]any
-	if err := bson.Unmarshal(contents, &raw); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	entities := extractBsonArray(raw["Entities"])
-	if len(entities) == 0 {
-		t.Fatal("no entities")
-	}
-	entity := entities[0].(map[string]any)
+	entity := readSeededEntity(t, db, unitID)
 	rules := extractBsonArray(entity["AccessRules"])
 	if len(rules) == 0 {
 		t.Fatal("no access rules")
@@ -130,9 +130,39 @@ func memberAttrRefs(t *testing.T, db *sql.DB, unitID model.ID) []string {
 	return refs
 }
 
+// readSeededEntity returns the single entity of the seeded domain model unit.
+func readSeededEntity(t *testing.T, db *sql.DB, unitID model.ID) map[string]any {
+	t.Helper()
+	var contents []byte
+	if err := db.QueryRow(`SELECT Contents FROM Unit WHERE UnitID = ?`,
+		uuidToBlob(string(unitID))).Scan(&contents); err != nil {
+		t.Fatalf("read unit: %v", err)
+	}
+	var raw map[string]any
+	if err := bson.Unmarshal(contents, &raw); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	entities := extractBsonArray(raw["Entities"])
+	if len(entities) == 0 {
+		t.Fatal("no entities")
+	}
+	entity, ok := entities[0].(map[string]any)
+	if !ok {
+		t.Fatalf("entity is %T, want map[string]any", entities[0])
+	}
+	return entity
+}
+
 func TestReconcileMemberAccesses_FillsARuleWhoseMembersAreAllGone(t *testing.T) {
 	w, db := newTestWriterSecurity(t)
 	unitID := seedRuleWithEmptyMembers(t, db, "EventId")
+
+	// Read the seed back before asking anything of it. Without this, a fixture
+	// that failed to round-trip is indistinguishable from the reconcile
+	// declining to act, and the failure message would blame the wrong code.
+	if attrs := entityAttrNames(t, db, unitID); len(attrs) != 1 || attrs[0] != "EventId" {
+		t.Fatalf("fixture did not round-trip: entity attributes = %v, want [EventId]", attrs)
+	}
 
 	count, err := w.ReconcileMemberAccesses(unitID, "MyModule")
 	if err != nil {
