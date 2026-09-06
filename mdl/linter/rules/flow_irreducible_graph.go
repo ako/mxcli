@@ -92,7 +92,7 @@ func (r *IrreducibleFlowGraphRule) violation(mf linter.Microflow, f microflowgra
 			mf.ModuleName, mf.Name, what, f.Class, len(f.Overlap)),
 		Location: linter.Location{
 			Module:       mf.ModuleName,
-			DocumentType: "microflow",
+			DocumentType: mf.DocumentNoun(),
 			DocumentName: mf.Name,
 			DocumentID:   mf.ID,
 		},

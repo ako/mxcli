@@ -65,7 +65,7 @@ func findEmptySplitCaptions(objects []microflows.MicroflowObject, mf linter.Micr
 						mf.ModuleName, mf.Name),
 					Location: linter.Location{
 						Module:       mf.ModuleName,
-						DocumentType: "microflow",
+						DocumentType: mf.DocumentNoun(),
 						DocumentName: mf.Name,
 						DocumentID:   mf.ID,
 					},

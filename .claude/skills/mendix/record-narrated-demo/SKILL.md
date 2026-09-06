@@ -48,6 +48,25 @@ other: `INVALID` means the instrument did not run, which is a finding of its own
 **Writing the journey first is what makes the demo cheap.** The persona, the
 path, and the definition of success already exist by the time you record.
 
+## Seed the data before you record
+
+The failure this skill is most prone to, and it is not subtle. The first real
+ContactBook capture was an empty grid reading `0 to 0 of 0` with a column header
+rendering as `colActions` — which reads as **a broken app, not a new one**. The
+journey passed; the app was live; the recording was worthless.
+
+Before any take:
+
+- **Populate every list the camera will see**, with plausible values — real names
+  and amounts, never `test1` / `asdf` / `aaa`.
+- **Caption every column and button the camera will see.** A header showing its
+  attribute name is the single clearest tell that nobody looked at the screen.
+- **Open on something already interesting.** The first thing on screen should be
+  a populated state, not an empty one waiting to be filled.
+
+`mxcli` seeds this itself — see [demo-data](../demo-data/SKILL.md). Seeding is
+part of recording, not a nicety before it.
+
 ## Recording mechanics
 
 Four things that decide whether the video is watchable. Each has a reason; none
@@ -58,6 +77,17 @@ is a style preference.
 A cursor moving at test speed reads as **broken**, not fast. The gating runner is
 tuned for signal and should stay that way — slow the demo script down on its own,
 and leave reading pauses where a viewer would actually need to read.
+
+Two numbers, both from films that were re-cut for being too fast:
+
+- **Hold every screen for `max(caption read time, screen read time)`, floor 2.5s.**
+  Caption read time is roughly `words ÷ 3.5` seconds — which is what `narrate.js`
+  computes. Screen read time is how long it takes a viewer to *find the thing that
+  changed*, and it is always longer than it feels while authoring. `narrate.js`
+  knows only the caption; when the screen is the slower of the two, pass `holdMs`.
+- **About two events per ten seconds.** A click, then its result. Not a click, a
+  scroll, a filter and a result — that is four things a viewer is asked to track
+  in the time they can follow one.
 
 ### Give the compositor something to draw during pauses
 
@@ -154,6 +184,84 @@ matters of taste:
    picture no matter how good the synthesis is. Confirm the recorded file's
    duration matches the script's wall-clock before adding audio at all.
 
+## The take has to be true, not only watchable
+
+`narrate.js` makes a recording watchable. Nothing in it — by design — checks that
+what you filmed actually happened, or that the timestamp you cut on points at it.
+Four failures, each of which cost a take and each of which *looked like success*:
+
+### The recorder's clock is not the video's clock
+
+It is wrong in **two** ways at once, and fixing only the first is the trap:
+
+- an **offset** — recording starts when the browser context is created, before
+  your first navigation has settled;
+- a **scale** — the capture drops frames while the page is busy, so the file plays
+  back longer than the session it recorded. Measured at **~1.065**.
+
+A constant offset that was right at the start was **four seconds wrong by the
+end** — the difference between cutting to the payoff screen and cutting to the one
+before it. Three rounds of cuts showed the wrong moment in every beat before this
+was found, and each one was plausible in isolation.
+
+So: record both anchors and map linearly, `video_t = A + B × mark_t`. Then
+**verify by looking** — one frame from the middle of every clip, tiled into a
+contact sheet. Spot-checking two clips is exactly how the wrong offset survived
+those three rounds.
+
+### Assert the state the beat is about
+
+A click can be swallowed while the previous action's request is still in flight,
+and the result looks fine: a board ended up *full but not solved*, so the payoff
+never arrived and the control that depended on it stayed disabled. Check the DOM
+for the state the beat is **about** — not that the click returned.
+
+A beat that cannot be asserted is a beat you cannot trust. This is not a verdict
+about the app: the demo still never gates the build. It is a check on the
+**recording**, and it belongs here for the same reason a camera has a viewfinder.
+
+### Pace to the app, not to the script
+
+Driving entries faster than the runtime committed them made two microflows overlap
+and deadlock in Postgres. The `UpdateConflictException` surfaced as a modal dialog
+that then swallowed every later click and killed the take. Two defences: never act
+faster than a floor found experimentally per app, and detect-and-dismiss the error
+dialog so one failure does not cost the session.
+
+Test the dialog guard on **visibility, not presence** — Mendix ships the error
+dialog container in the DOM hidden, so a presence test fires on every click.
+
+### `recordVideo.size` pads; it does not scale
+
+A viewport smaller than the video size lands in the top-left corner with grey
+around it. For a fixed-width page — which most Mendix layouts are — set the
+viewport **to** the video size and apply CSS `zoom`: the page then lays out at the
+smaller effective width while Chromium rasterizes at full device resolution.
+Sharp and full-frame, where a smaller viewport is soft and letterboxed. A
+stylesheet does not survive a navigation, so re-apply it after every `goto`.
+
+### These ship as code: `take.js` and `cut-clips.js`
+
+Both sit beside this file and are copied into the project with it. CommonJS, like
+`narrate.js`, and required the same way.
+
+| | |
+|---|---|
+| `openTake(browser, opts)` | a context with `recordVideo`, both clock anchors, the zoom fix |
+| `take.mark(name)` | a beat, timed from the settled first screen |
+| `take.click` / `take.type` | paced to `minGap` and guarded against the error dialog |
+| `take.assertBeat(name, probe, why)` | records whether the beat held; `finish()` **throws** if one did not |
+| `take.finish()` | closes the context, writes `capture/beats.json` with `offset_s` |
+| `node cut-clips.js` | cuts the raw take on the linear map, refuses implausible anchors, writes the contact sheet |
+
+`cut-clips.js` reads a project-owned `capture/clips.json` edit list, so the script
+is the same everywhere and only the edit is per-film. It **refuses** a clip
+shorter than its target unless that clip is explicitly marked `"freeze": true` —
+holding a final frame is legitimate on a static screen, never to stretch an
+interaction, and every pad is reported.
+
+What stays per-project is the walk and the selectors. Only the machinery is shared.
+
 ## What to narrate
 
 Narrate only what a viewer with **no build context** would understand.
@@ -164,9 +272,27 @@ Cut:
   and to a viewer it is noise about a claim they were not disputing
 - anything implying *"this used to be broken"* — the audience did not see the
   before, so it lands as an apology for a bug they never met
+- **every word of Mendix vocabulary.** No entity, microflow, page, association,
+  domain model, catalog. The test is sharper than a word list: *if the visual
+  needs those words to make sense, the visual is wrong.*
 
 Keep it to the persona's own motivation: what they are trying to do, what they
-see, and what changed for them.
+see, and what changed for them. Name them — "Sam", not "the user".
+
+**Unless the product is single-player.** A puzzle, a calculator, a personal tool
+has no task-persona, and inventing one is affectation. Write about the thing in
+present tense instead.
+
+## Where this stops
+
+This skill owns the **capture**. How a capture is framed, cut and scored into a
+finished film is the video system's — `video-system/` in `ako/mxcli-intro-video`,
+which defines the product-demonstration type this skill feeds.
+
+Two boundaries worth keeping: the recording is **full-bleed** (no browser chrome,
+no window frame, no laptop mockup — the capture *is* the frame), and the
+narration plate stays `narrate.js`'s. **One caption system per film**; a second
+one layered on in the edit reads as two designs.
 
 ## Checklist
 
@@ -178,4 +304,11 @@ see, and what changed for them.
 - [ ] Recorded at **both** a desktop viewport and a real mobile device profile
 - [ ] The mobile pass runs the same steps, with nothing simplified
 - [ ] Narration mentions no database proof and no past bugs
+- [ ] No Mendix vocabulary anywhere in the narration
+- [ ] Every list the camera sees is populated with plausible data; every column
+      and button the camera sees is captioned
+- [ ] Every beat that has a payoff is asserted, and the take reported none failed
+- [ ] Both clock anchors recorded, and the contact sheet **looked at** — each tile
+      shows its own beat
+- [ ] Every frozen tail is on a static screen, and reported
 - [ ] App was live and the database real — this instrument mocks nothing

@@ -101,3 +101,73 @@ func TestEmptyMicroflowRule_Metadata(t *testing.T) {
 		t.Errorf("Category = %q, want quality", r.Category())
 	}
 }
+
+// TestEmptyMicroflowRule_NamesTheDocumentType is the test this rule did not
+// have: LintContext.Microflows() yields microflows, nanoflows and rules alike
+// (one catalog table, three doctypes), and MPR002 called every one of them a
+// microflow — "Microflow 'Rule1' has no activities" about a rule.
+//
+// The fixtures use the catalog's own spellings, uppercase, rather than the
+// title-case ones the older tests in this file use. That difference is the
+// point: the old spellings never had to be right, because nothing read the
+// column. Now that the noun is derived from it, a fixture that does not match
+// what the catalog writes would test the fallback instead of the mapping.
+func TestEmptyMicroflowRule_NamesTheDocumentType(t *testing.T) {
+	db := setupMicroflowsDB(t, [][]any{
+		{"id1", "ACT_Process", "MyModule.ACT_Process", "MyModule", "", "MICROFLOW", "", "Void", 0, 0, 0},
+		{"id2", "NF_Refresh", "MyModule.NF_Refresh", "MyModule", "", "NANOFLOW", "", "Void", 0, 0, 0},
+		{"id3", "Rule1", "MyModule.Rule1", "MyModule", "", "RULE", "", "Boolean", 1, 0, 0},
+		// An unknown type must still be reported, under the generic noun: a
+		// finding with an imprecise label beats no finding at all.
+		{"id4", "Mystery", "MyModule.Mystery", "MyModule", "", "SOMETHING_NEW", "", "Void", 0, 0, 0},
+	})
+	defer db.Close()
+
+	violations := NewEmptyMicroflowRule().Check(linter.NewLintContextFromDB(db))
+	if len(violations) != 4 {
+		t.Fatalf("expected 4 violations, got %d", len(violations))
+	}
+
+	byName := map[string]linter.Violation{}
+	for _, v := range violations {
+		byName[v.Location.DocumentName] = v
+	}
+
+	for _, tc := range []struct{ doc, wantType, wantMessage string }{
+		{"ACT_Process", "microflow", "Microflow 'ACT_Process' has no activities"},
+		{"NF_Refresh", "nanoflow", "Nanoflow 'NF_Refresh' has no activities"},
+		{"Rule1", "rule", "Rule 'Rule1' has no activities"},
+		{"Mystery", "microflow", "Microflow 'Mystery' has no activities"},
+	} {
+		v, ok := byName[tc.doc]
+		if !ok {
+			t.Errorf("no violation for %s", tc.doc)
+			continue
+		}
+		if v.Message != tc.wantMessage {
+			t.Errorf("%s: message = %q, want %q", tc.doc, v.Message, tc.wantMessage)
+		}
+		// The doctype also reaches the JSON and SARIF output as documentType,
+		// where a wrong value is not merely cosmetic.
+		if v.Location.DocumentType != tc.wantType {
+			t.Errorf("%s: documentType = %q, want %q", tc.doc, v.Location.DocumentType, tc.wantType)
+		}
+	}
+}
+
+// TestDocumentNounCoversEveryCatalogType pins the mapping against the values
+// the catalog actually inserts (mdl/catalog/builder_microflows.go), so adding a
+// fourth flow flavour there fails here rather than silently reporting it as a
+// microflow.
+func TestDocumentNounCoversEveryCatalogType(t *testing.T) {
+	for stored, want := range map[string]string{
+		"MICROFLOW": "microflow",
+		"NANOFLOW":  "nanoflow",
+		"RULE":      "rule",
+	} {
+		mf := linter.Microflow{MicroflowType: stored}
+		if got := mf.DocumentNoun(); got != want {
+			t.Errorf("DocumentNoun(%q) = %q, want %q", stored, got, want)
+		}
+	}
+}
