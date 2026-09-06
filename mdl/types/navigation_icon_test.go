@@ -6,7 +6,7 @@ import "testing"
 
 // A menu item's icon is one of three Mendix elements, and mxcli could name only
 // one of them. MenuIconKindOf maps the storage $Type onto a vocabulary so the
-// readers, the writers, DESCRIBE and MDL074 all decide the same way instead of
+// readers, the writers, DESCRIBE and MDL077 all decide the same way instead of
 // each doing its own strings.HasSuffix.
 func TestMenuIconKindOf(t *testing.T) {
 	cases := []struct {
@@ -52,7 +52,7 @@ func TestMenuIconStorageType(t *testing.T) {
 	}
 }
 
-// HasIcon is what MDL074 asks. A glyph icon carries a numeric code and NO name,
+// HasIcon is what MDL077 asks. A glyph icon carries a numeric code and NO name,
 // so a check written as `Icon == ""` reports an item that plainly has an icon.
 func TestNavMenuItemHasIcon(t *testing.T) {
 	cases := []struct {

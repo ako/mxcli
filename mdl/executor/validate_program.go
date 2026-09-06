@@ -53,7 +53,7 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 			violations = append(violations, ValidateUserRoleSystemModuleRole(roleStmt, securityEnabled)...)
 		}
 		// A navigation menu item with no icon is unreadable once the sidebar is
-		// collapsed to its icon rail (MDL074). Covers both statements that carry
+		// collapsed to its icon rail (MDL077). Covers both statements that carry
 		// menu items, which share one AST node so they cannot diverge.
 		violations = append(violations, validateMenuItemIcons(stmt)...)
 		// A page with parameters and a Url must name each parameter in it (CE5601).

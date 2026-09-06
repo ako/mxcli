@@ -14,7 +14,7 @@ import (
 func navIconWarnings(vs []linter.Violation) []linter.Violation {
 	var out []linter.Violation
 	for _, v := range vs {
-		if v.RuleID == "MDL074" {
+		if v.RuleID == "MDL077" {
 			out = append(out, v)
 		}
 	}
@@ -140,7 +140,7 @@ func TestValidateMenuItemIcons_RunsWithoutAProject(t *testing.T) {
 		},
 	}}
 	if got := navIconWarnings(ValidateProgram(prog, "")); len(got) != 1 {
-		t.Errorf("got %d MDL074 from ValidateProgram with no project, want 1: %+v", len(got), got)
+		t.Errorf("got %d MDL077 from ValidateProgram with no project, want 1: %+v", len(got), got)
 	}
 }
 

@@ -71,7 +71,7 @@ type NavMenuItem struct {
 // HasIcon reports whether the item carries an icon of ANY of the three kinds.
 //
 // Not `Icon != ""`: a glyph icon has a numeric code and no name, so the obvious
-// test calls an item with a perfectly good icon iconless. MDL074 asks this
+// test calls an item with a perfectly good icon iconless. MDL077 asks this
 // question, and asking it the obvious way would have made the rule fire on every
 // Studio Pro-authored menu.
 func (m *NavMenuItem) HasIcon() bool {

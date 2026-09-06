@@ -163,7 +163,7 @@ func TestNavMenuItem_BareIconIsStillACollectionIcon(t *testing.T) {
 	}
 }
 
-// An item with no icon at all keeps the zero kind, which is what MDL074 reads.
+// An item with no icon at all keeps the zero kind, which is what MDL077 reads.
 func TestNavMenuItem_NoIconIsKindNone(t *testing.T) {
 	items := navMenuItems(t, `MENU ITEM 'Home' PAGE M.Home;`)
 	if items[0].IconKind != types.MenuIconNone {

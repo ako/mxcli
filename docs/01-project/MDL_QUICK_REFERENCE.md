@@ -775,7 +775,7 @@ create or replace navigation Responsive
   );
 ```
 
-**An item with no icon is reported (MDL074, a warning).** The navigation sidebar
+**An item with no icon is reported (MDL077, a warning).** The navigation sidebar
 collapses to an icon rail, and that is the state most users leave it in: a
 collapsed item shows its icon, and one without falls back to the first few
 characters of its caption — rarely enough to tell `Orders` from `Order lines`.

@@ -119,7 +119,7 @@ create or replace navigation Responsive
 ### Menu Icons
 
 **Give every menu item an icon.** It is optional in the grammar and `mxcli check`
-warns when it is missing (**MDL074**), because the navigation sidebar collapses
+warns when it is missing (**MDL077**), because the navigation sidebar collapses
 to an icon rail and that is the state most users leave it in: a collapsed item
 shows its icon, and one without falls back to the first few characters of its
 caption — rarely enough to tell `Orders` from `Order lines`. Nothing else catches

@@ -1,5 +1,5 @@
 -- ============================================================================
--- MDL074: a navigation menu item with no icon is reported
+-- MDL077: a navigation menu item with no icon is reported
 -- ============================================================================
 --
 -- The navigation sidebar collapses to an icon rail, and that is the state most
@@ -11,7 +11,7 @@
 -- This script is a POSITIVE example — every item carries an icon, so it checks
 -- clean. The warning it guards against is exercised by the unit tests in
 -- mdl/executor/validate_navigation_icons_test.go, which can assert the absence
--- of a warning as well as its presence; a `.fail.mdl` cannot, because MDL074 is
+-- of a warning as well as its presence; a `.fail.mdl` cannot, because MDL077 is
 -- a WARNING and `check` still exits 0.
 --
 -- The rule needs no project, so it fires under `make check-mdl` too.

@@ -10,7 +10,7 @@ import (
 	"github.com/mendixlabs/mxcli/mdl/types"
 )
 
-// validateMenuItemIcons (MDL074) flags a navigation menu item that specifies no
+// validateMenuItemIcons (MDL077) flags a navigation menu item that specifies no
 // icon.
 //
 // # Why this is worth a warning
@@ -68,7 +68,7 @@ func validateMenuItemIcons(stmt ast.Statement) []linter.Violation {
 			// kind, which is what the writer and DESCRIBE also read.
 			if item.IconKind == types.MenuIconNone {
 				out = append(out, linter.Violation{
-					RuleID:   "MDL074",
+					RuleID:   "MDL077",
 					Severity: linter.SeverityWarning,
 					Message: fmt.Sprintf(
 						"%s: menu item %q specifies no icon — a collapsed navigation sidebar "+
