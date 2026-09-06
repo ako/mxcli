@@ -529,6 +529,19 @@ func parseRawWidget(ctx *ExecContext, w map[string]any, parentEntityContext ...s
 		if ps := extractInt(w["PageSize"]); ps > 0 {
 			widget.PageSize = strconv.Itoa(ps)
 		}
+		// A List View's Editable is a BOOL — the property that makes the inputs
+		// inside it editable — not the three-valued Always/Never/Conditional one
+		// the input widgets carry in this same field. Reusing the field means the
+		// shared formatter prints it; emitting it separately there duplicates the
+		// property. Only `true` is carried: false is Mendix's default and an empty
+		// value keeps an unchanged list view quiet.
+		//
+		// Without this an editable list view round-trips into a read-only one,
+		// which is the failure the builder fix would otherwise reintroduce on the
+		// next describe → exec (ako/CapTrackV3 FINDINGS §6).
+		if editable, ok := w["Editable"].(bool); ok && editable {
+			widget.Editable = "true"
+		}
 		widget.Children = parseListViewContent(ctx, w, widget.EntityContext)
 		return []rawWidget{widget}
 

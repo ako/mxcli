@@ -281,6 +281,19 @@ func (pb *pageBuilder) buildListViewV3(w *ast.WidgetV3) (*pages.ListView, error)
 		lv.PageSize = ps
 	}
 
+	// Mendix's List View has an Editable property of its own (default No), and
+	// THAT is what makes the inputs inside it editable. The parser accepted
+	// `Editable: true`, this builder dropped it, and the writer wrote false — so
+	// every input inside an authored list view rendered as
+	// <div class="form-control-static">: a value, not a field.
+	//
+	// It reads as a styling bug or a missing grant and is neither: entity access
+	// was ReadWrite and `mx check` reported 0 errors. `Editable:` on the
+	// individual textbox does not help either — that is a different property,
+	// and the list view's read-only context wins over it
+	// (ako/CapTrackV3 FINDINGS §6).
+	lv.Editable = w.GetBoolProp("Editable")
+
 	// Handle DataSource
 	var listEntity string
 	if ds := w.GetDataSource(); ds != nil {
