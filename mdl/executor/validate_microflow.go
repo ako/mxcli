@@ -194,6 +194,7 @@ func (v *microflowValidator) checkDuplicateLoopVariables(body []ast.MicroflowSta
 func (v *microflowValidator) walkBody(body []ast.MicroflowStatement) {
 	for _, s := range body {
 		v.checkUnknownAnnotations(s)
+		v.checkErrorHandlingContinueSupported(s)
 		switch stmt := s.(type) {
 		case *ast.ValidationFeedbackStmt:
 			if isEmptyMessage(stmt.Message) {

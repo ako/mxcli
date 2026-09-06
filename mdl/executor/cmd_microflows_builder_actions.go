@@ -191,9 +191,10 @@ func (fb *flowBuilder) addCommitAction(s *ast.MfCommitStmt) model.ID {
 // addDeleteAction creates a DELETE statement.
 func (fb *flowBuilder) addDeleteAction(s *ast.DeleteObjectStmt) model.ID {
 	action := &microflows.DeleteObjectAction{
-		BaseElement:     model.BaseElement{ID: model.ID(types.GenerateID())},
-		DeleteVariable:  s.Variable,
-		RefreshInClient: s.RefreshInClient,
+		BaseElement:       model.BaseElement{ID: model.ID(types.GenerateID())},
+		ErrorHandlingType: explicitErrorHandling(fb, s.ErrorHandling),
+		DeleteVariable:    s.Variable,
+		RefreshInClient:   s.RefreshInClient,
 	}
 
 	activityX := fb.posX
@@ -1068,9 +1069,20 @@ func (fb *flowBuilder) addRetrieveAction(s *ast.RetrieveStmt) model.ID {
 	}
 
 	action := &microflows.RetrieveAction{
-		BaseElement:    model.BaseElement{ID: model.ID(types.GenerateID())},
-		OutputVariable: s.Variable,
-		Source:         source,
+		BaseElement: model.BaseElement{ID: model.ID(types.GenerateID())},
+		// ErrorHandlingType lives on the ACTION in the metamodel, not on the
+		// activity — the activity-level assignment below is read by nothing and
+		// serialized by neither engine, which is why `ON ERROR CONTINUE` on a
+		// retrieve parsed, executed without complaint, and arrived in the model as
+		// the writer's hardcoded "Rollback" (ako/CapTrackV3 FINDINGS §11).
+		//
+		// Only an EXPLICIT clause is carried. Left empty the writer keeps the
+		// literal it has always written, so a retrieve nobody annotated is
+		// byte-identical to before — which matters because a NANOFLOW's default is
+		// Abort, and Abort is CE6035 on most activity types.
+		ErrorHandlingType: explicitErrorHandling(fb, s.ErrorHandling),
+		OutputVariable:    s.Variable,
+		Source:            source,
 	}
 
 	activityX := fb.posX
