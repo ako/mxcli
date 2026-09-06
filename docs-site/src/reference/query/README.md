@@ -27,6 +27,7 @@ Statements for browsing and inspecting project elements. Query statements are re
 | [DESCRIBE ENUMERATION](describe-enumeration.md) | Show enumeration values and documentation |
 | [DESCRIBE MICROFLOW](describe-microflow.md) | Show complete MDL source for a microflow or nanoflow |
 | [DESCRIBE PAGE](describe-page.md) | Show complete MDL source for a page or snippet |
+| [DESCRIBE WIDGET](describe-widget.md) | Show a widget's properties, body containers and a working MDL example |
 
 ## Search
 

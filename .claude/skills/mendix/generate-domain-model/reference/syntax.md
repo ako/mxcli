@@ -90,6 +90,19 @@ alter enumeration Module.TransactionType modify value EXPENSE caption 'Expense /
 alter enumeration Module.TransactionType drop value REFUND;
 ```
 
+**Add `if not exists` in a script you will re-run.** The bare `add value` errors
+on the second run, and `exec` stops at the failing statement — so one
+already-present value leaves every later statement in the file unapplied. The
+same pair as `add attribute` / `add index`:
+
+```sql
+alter enumeration Module.TransactionType add value if not exists REFUND caption 'Refund';
+alter enumeration Module.TransactionType drop value if exists REFUND;
+```
+
+A defensive drop-then-add is not a substitute: the drop fails when the value is
+absent and the add when it is present.
+
 `modify value … caption` re-captions in place — the value keeps its identity, so it
 works even while the enumeration is in use. (Value names in `alter` must be plain
 identifiers; a value whose name is a reserved word can't be targeted by `alter`.)

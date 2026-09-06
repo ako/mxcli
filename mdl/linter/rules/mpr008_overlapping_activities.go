@@ -85,14 +85,14 @@ func (r *OverlappingActivitiesRule) Check(ctx *linter.LintContext) []linter.Viol
 							RuleID:   r.ID(),
 							Severity: r.DefaultSeverity(),
 							Message: fmt.Sprintf(
-								"Activities '%s' (%d,%d) and '%s' (%d,%d) overlap in microflow '%s.%s'. "+
+								"Activities '%s' (%d,%d) and '%s' (%d,%d) overlap in %s '%s.%s'. "+
 									"Each MDL statement that creates a canvas activity needs its own @position annotation.",
 								a.caption, a.x, a.y, b.caption, b.x, b.y,
-								mf.ModuleName, mf.Name,
+								mf.DocumentNoun(), mf.ModuleName, mf.Name,
 							),
 							Location: linter.Location{
 								Module:       mf.ModuleName,
-								DocumentType: "microflow",
+								DocumentType: mf.DocumentNoun(),
 								DocumentName: mf.Name,
 								DocumentID:   mf.ID,
 							},

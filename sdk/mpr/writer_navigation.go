@@ -304,7 +304,7 @@ func buildMenuItemBson(mi NavMenuItemSpec) bson.D {
 		{Key: "Action", Value: buildMenuAction(mi)},
 		{Key: "AlternativeText", Value: nil},
 		{Key: "Caption", Value: buildCaptionBson(mi.Caption)},
-		{Key: "Icon", Value: buildMenuIconBson(mi.Icon)},
+		{Key: "Icon", Value: buildMenuIconBson(mi)},
 	}
 
 	// Sub-items
@@ -327,21 +327,46 @@ func buildMenuItemBson(mi NavMenuItemSpec) bson.D {
 // the widget icon path already proven in issue #602.
 //
 // Two sibling variants exist in the same document — Forms$GlyphIcon{Code: int}
-// and Forms$ImageIcon{Image: QN} — and are deliberately NOT emitted here. Both
-// carry a different payload shape, and ImageIcon's qualified name is
-// indistinguishable from an IconCollectionIcon's without resolving which
-// collection document it lands in. Guessing between polymorphic variants is the
-// failure mode that produces a document mxbuild accepts and Studio Pro cannot
-// open.
-func buildMenuIconBson(icon string) interface{} {
-	if icon == "" {
+// and Forms$ImageIcon{Image: QN}. They used to be excluded because a name alone
+// cannot tell an image icon from a collection icon without resolving which
+// document it lands in, and guessing between polymorphic variants is the failure
+// mode that produces a document mxbuild accepts and Studio Pro cannot open.
+//
+// Nothing is guessed now: the KIND is carried explicitly, from the author's own
+// `icon image …` / `icon glyph …` or from the kind the reader saw in storage. So
+// all three are emitted, and the branch is a dispatch rather than an inference.
+//
+// Excluding them was not neutral. `create or replace navigation` is a full
+// replacement, so an icon the writer would not emit was an icon the statement
+// DELETED — measured on testdata/expr-checker, exec of DESCRIBE's own output
+// destroyed a glyph icon at exit 0.
+func buildMenuIconBson(spec NavMenuItemSpec) interface{} {
+	kind := spec.IconKind
+	if kind == types.MenuIconNone && spec.Icon != "" {
+		// A spec built before the kind existed carries a name and nothing else,
+		// and that name has only ever meant an icon-collection icon.
+		kind = types.MenuIconCollection
+	}
+	storage := types.MenuIconStorageType(kind)
+	if storage == "" {
 		return nil
 	}
-	return bson.D{
+	doc := bson.D{
 		{Key: "$ID", Value: idToBsonBinary(generateUUID())},
-		{Key: "$Type", Value: "Forms$IconCollectionIcon"},
-		{Key: "Image", Value: icon},
+		{Key: "$Type", Value: storage},
 	}
+	if kind == types.MenuIconGlyph {
+		// A glyph with no code identifies no glyph. Emit no icon rather than an
+		// element nobody can see.
+		if spec.IconCode == 0 {
+			return nil
+		}
+		return append(doc, bson.E{Key: "Code", Value: int32(spec.IconCode)})
+	}
+	if spec.Icon == "" {
+		return nil
+	}
+	return append(doc, bson.E{Key: "Image", Value: spec.Icon})
 }
 
 // buildCaptionBson builds a Texts$Text BSON document with a single en_US translation.

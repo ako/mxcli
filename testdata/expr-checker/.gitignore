@@ -23,6 +23,9 @@
 /mprcontents/mprjournal*
 
 .claude/settings.local.json
+# Derived from widgets/*.mpk and rewritten by `refresh catalog full`
+# (executor.RegenerateWidgetDocs), not authored here.
+.claude/skills/widgets/
 mxcli.exe
 mxcli
 .mxcli

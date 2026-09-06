@@ -278,7 +278,7 @@ func navMenuItemBson(mi types.NavMenuItemSpec) bson.D {
 		{Key: "Action", Value: navMenuAction(mi)},
 		{Key: "AlternativeText", Value: nil},
 		{Key: "Caption", Value: navCaptionBson(mi.Caption)},
-		{Key: "Icon", Value: navMenuIconBson(mi.Icon)},
+		{Key: "Icon", Value: navMenuIconBson(mi)},
 	}
 	subItems := bson.A{navMarkerItems}
 	for _, sub := range mi.Items {
@@ -288,18 +288,42 @@ func navMenuItemBson(mi types.NavMenuItemSpec) bson.D {
 	return item
 }
 
-// navMenuIconBson mirrors sdk/mpr's buildMenuIconBson: the storage name is
-// Forms$IconCollectionIcon (not the metamodel's Pages$…), and only that variant
-// is emitted. See the comment there for why GlyphIcon/ImageIcon are excluded.
-func navMenuIconBson(icon string) interface{} {
-	if icon == "" {
+// navMenuIconBson mirrors sdk/mpr's buildMenuIconBson. The storage names are
+// Forms$… (not the metamodel's Pages$…) — "Form" was the original term for
+// "Page".
+//
+// All THREE variants are emitted. Only the icon-collection one used to be, so a
+// glyph or image icon read off a real project came back as no icon at all, and
+// `create or replace navigation` — a full replacement — wrote that nothing over
+// the user's icon. Measured on testdata/expr-checker: exec of DESCRIBE's own
+// output destroyed the Home item's glyph icon at exit 0.
+func navMenuIconBson(spec types.NavMenuItemSpec) interface{} {
+	kind := spec.IconKind
+	if kind == types.MenuIconNone && spec.Icon != "" {
+		// A spec built before the kind existed carries a name and nothing else.
+		// That name has only ever meant an icon-collection icon.
+		kind = types.MenuIconCollection
+	}
+	storage := types.MenuIconStorageType(kind)
+	if storage == "" {
 		return nil
 	}
-	return bson.D{
+	doc := bson.D{
 		{Key: "$ID", Value: navID()},
-		{Key: "$Type", Value: "Forms$IconCollectionIcon"},
-		{Key: "Image", Value: icon},
+		{Key: "$Type", Value: storage},
 	}
+	if kind == types.MenuIconGlyph {
+		// A glyph with no code identifies no glyph; writing one would store an
+		// icon nobody can see. Emit no icon rather than an empty element.
+		if spec.IconCode == 0 {
+			return nil
+		}
+		return append(doc, bson.E{Key: "Code", Value: int32(spec.IconCode)})
+	}
+	if spec.Icon == "" {
+		return nil
+	}
+	return append(doc, bson.E{Key: "Image", Value: spec.Icon})
 }
 
 func navCaptionBson(text string) bson.D {

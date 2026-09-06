@@ -93,7 +93,7 @@ func (r *NamingConventionRule) Check(ctx *linter.LintContext) []linter.Violation
 				Message:  fmt.Sprintf("Microflow name '%s' should use PascalCase with optional prefix (ACT_, SUB_, DS_, VAL_, SCH_, IVK_, BCO_, ACO_, BCR_, ACR_, BDE_, ADE_, BRO_, ARO_, OCH_, SE_, DL_, PWS_, ASU_, NAV_, LOGIN_)", mf.Name),
 				Location: linter.Location{
 					Module:       mf.ModuleName,
-					DocumentType: "microflow",
+					DocumentType: mf.DocumentNoun(),
 					DocumentName: mf.Name,
 					DocumentID:   mf.ID,
 				},

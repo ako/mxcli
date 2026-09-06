@@ -3,6 +3,7 @@
 package mpr
 
 import (
+	"github.com/mendixlabs/mxcli/mdl/types"
 	"testing"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -30,7 +31,7 @@ func navIconEntry(d bson.D, key string) (interface{}, bool) {
 // Studio Pro-authored reference: every menu icon in ako/mxcli-ledger's
 // navigation document is Forms$IconCollectionIcon{Image: "Atlas_Core.Atlas.…"}.
 func TestBuildMenuIconBson_UsesTheFormsStorageName(t *testing.T) {
-	got := buildMenuIconBson("Atlas_Core.Atlas.align-center")
+	got := buildMenuIconBson(NavMenuItemSpec{Icon: "Atlas_Core.Atlas.align-center"})
 	d, ok := got.(bson.D)
 	if !ok {
 		t.Fatalf("expected a bson.D, got %T", got)
@@ -59,8 +60,8 @@ func TestBuildMenuIconBson_UsesTheFormsStorageName(t *testing.T) {
 // No icon must stay a null, not an empty element: an IconCollectionIcon with a
 // blank Image is a dangling reference, where absent is the modelled default.
 func TestBuildMenuIconBson_EmptyNameStaysNull(t *testing.T) {
-	if got := buildMenuIconBson(""); got != nil {
-		t.Errorf("buildMenuIconBson(\"\") = %v, want nil", got)
+	if got := buildMenuIconBson(NavMenuItemSpec{}); got != nil {
+		t.Errorf("buildMenuIconBson(empty spec) = %v, want nil", got)
 	}
 }
 
@@ -202,4 +203,70 @@ func TestParseNavMenuItem_NoIconReadsAsNone(t *testing.T) {
 	if mi.Icon != "" || mi.IconType != "" {
 		t.Errorf("Icon/IconType = (%q, %q), want both empty", mi.Icon, mi.IconType)
 	}
+}
+
+// All three icon elements are written now. Only the collection variant used to
+// be, and because `create or replace navigation` is a full replacement, an icon
+// the writer would not emit was an icon the statement DELETED — measured on
+// testdata/expr-checker, exec of DESCRIBE's own output destroyed a glyph icon at
+// exit 0.
+func TestBuildMenuIconBson_Glyph(t *testing.T) {
+	got, ok := buildMenuIconBson(NavMenuItemSpec{IconKind: types.MenuIconGlyph, IconCode: 57345}).(bson.D)
+	if !ok {
+		t.Fatal("a glyph icon produced no document")
+	}
+	m := bsonDToMap(got)
+	if m["$Type"] != "Forms$GlyphIcon" {
+		t.Errorf("$Type = %v, want Forms$GlyphIcon", m["$Type"])
+	}
+	if m["Code"] != int32(57345) {
+		t.Errorf("Code = %#v, want int32(57345) — Mendix stores the character code as an int32", m["Code"])
+	}
+	if _, hasImage := m["Image"]; hasImage {
+		t.Error("a glyph icon must not carry an Image; it has no qualified name")
+	}
+}
+
+func TestBuildMenuIconBson_Image(t *testing.T) {
+	got, ok := buildMenuIconBson(NavMenuItemSpec{IconKind: types.MenuIconImage, Icon: "MyMod.Images.logo"}).(bson.D)
+	if !ok {
+		t.Fatal("an image icon produced no document")
+	}
+	m := bsonDToMap(got)
+	if m["$Type"] != "Forms$ImageIcon" {
+		t.Errorf("$Type = %v, want Forms$ImageIcon", m["$Type"])
+	}
+	if m["Image"] != "MyMod.Images.logo" {
+		t.Errorf("Image = %v", m["Image"])
+	}
+}
+
+// The control that keeps the dispatch honest: a name with NO kind still means an
+// icon-collection icon. Every script written before the kind existed carries
+// exactly that, so treating it as "unknown" would silently drop every icon in
+// the corpus.
+func TestBuildMenuIconBson_BareNameIsStillACollectionIcon(t *testing.T) {
+	got, ok := buildMenuIconBson(NavMenuItemSpec{Icon: "Atlas_Core.Atlas.home"}).(bson.D)
+	if !ok {
+		t.Fatal("a bare name produced no document")
+	}
+	if bsonDToMap(got)["$Type"] != "Forms$IconCollectionIcon" {
+		t.Errorf("$Type = %v, want Forms$IconCollectionIcon", bsonDToMap(got)["$Type"])
+	}
+}
+
+// A glyph with no code identifies no glyph, and an element with no Code renders
+// as a blank where an icon should be. Emit nothing instead.
+func TestBuildMenuIconBson_GlyphWithoutACodeIsNoIcon(t *testing.T) {
+	if got := buildMenuIconBson(NavMenuItemSpec{IconKind: types.MenuIconGlyph}); got != nil {
+		t.Errorf("got %v, want nil", got)
+	}
+}
+
+func bsonDToMap(d bson.D) map[string]any {
+	m := make(map[string]any, len(d))
+	for _, e := range d {
+		m[e.Key] = e.Value
+	}
+	return m
 }

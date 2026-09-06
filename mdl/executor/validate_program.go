@@ -52,6 +52,10 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 		if roleStmt, ok := stmt.(*ast.CreateUserRoleStmt); ok {
 			violations = append(violations, ValidateUserRoleSystemModuleRole(roleStmt, securityEnabled)...)
 		}
+		// A navigation menu item with no icon is unreadable once the sidebar is
+		// collapsed to its icon rail (MDL074). Covers both statements that carry
+		// menu items, which share one AST node so they cannot diverge.
+		violations = append(violations, validateMenuItemIcons(stmt)...)
 		// A page with parameters and a Url must name each parameter in it (CE5601).
 		if pageStmt, ok := stmt.(*ast.CreatePageStmtV3); ok {
 			violations = append(violations, ValidatePageURLParameters(pageStmt)...)
@@ -198,6 +202,25 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 	// answer is in the statement, so it runs here rather than under --references
 	// (#927).
 	violations = append(violations, ValidateExportMappingMembers(prog)...)
+
+	// Flag a template parameter written as a `$variable/` path where the
+	// position takes an attribute of the widget's context object. The writer
+	// keeps the prefix as part of the attribute name, so the model names an
+	// attribute that cannot exist (mendixlabs/mxcli#1046). The answer is in the
+	// statement, so it runs here rather than under --references — otherwise
+	// `mxcli check page.mdl` would stay silent on a mistake it can see.
+	violations = append(violations, ValidateWidgetParamPaths(prog)...)
+
+	// Flag a CREATE whose target name has no module. `exec` refuses it and
+	// `check` passed it, so a script stopped partway through with the earlier
+	// statements already applied (mendixlabs/mxcli#1050).
+	violations = append(violations, ValidateCreateIsQualified(prog)...)
+
+	// Flag `RETURNS void AS $x`. The alias names the returned variable, so
+	// pairing it with void is a contradiction — and mxcli believed the alias,
+	// writing `return $x` into a flow with no such variable (CE0109,
+	// mendixlabs/mxcli#1041).
+	violations = append(violations, ValidateVoidReturnAlias(prog)...)
 
 	// Flag a CUSTOM NAME MAP entry that matches nothing in the snippet. Silence
 	// there made a typo indistinguishable from not writing the entry, which is

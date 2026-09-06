@@ -62,6 +62,12 @@ type ExecContext struct {
 	// ThemeRegistry holds cached theme design property definitions (lazy init).
 	ThemeRegistry *ThemeRegistry
 
+	// widgetRegistry caches the widget definitions for this session. Loaded
+	// once via GetWidgetRegistry, because DESCRIBE PAGE consults it per widget
+	// and LoadWidgetRegistry reads .def.json files off disk.
+	widgetRegistry       *WidgetRegistry
+	widgetRegistryLoaded bool
+
 	// Settings holds session-scoped key-value settings (SET command).
 	Settings map[string]any
 
@@ -284,4 +290,29 @@ func (ctx *ExecContext) ensureSqlMgr() *sqllib.Manager {
 		ctx.SqlMgr = sqllib.NewManager()
 	}
 	return ctx.SqlMgr
+}
+
+// GetWidgetRegistry returns the session's widget registry, loading it on first
+// use. It is cached because DESCRIBE PAGE asks per widget and the load reads
+// every .def.json in the project — file I/O in a per-widget path is exactly
+// what the review checklist warns against.
+//
+// A nil result is normal and means "no definitions available": with no project
+// only the embedded widgets exist, and callers must degrade rather than treat
+// it as an error.
+func (ctx *ExecContext) GetWidgetRegistry() *WidgetRegistry {
+	if ctx == nil {
+		return nil
+	}
+	if ctx.widgetRegistryLoaded {
+		return ctx.widgetRegistry
+	}
+	ctx.widgetRegistryLoaded = true
+	// LoadWidgetRegistry wants the .mpr PATH, not its directory —
+	// LoadUserDefinitions takes filepath.Dir of it internally. Passing the
+	// directory looks one level too high and silently finds no definitions,
+	// which shows up as DESCRIBE falling back to the widget-id form for every
+	// widget rather than as an error.
+	ctx.widgetRegistry = LoadWidgetRegistry(ctx.MprPath)
+	return ctx.widgetRegistry
 }

@@ -1,0 +1,102 @@
+-- An association datasource at PAGE level typed its rows as the entity it was
+-- navigating AWAY from (mendixlabs/mxcli#1045):
+--
+--   datagrid gA (datasource: $Customer/Bench.Order_Customer) { … OrderNo … }
+--   mx check -> [CE1613] "The selected attribute 'Bench.Customer.OrderNo'
+--               no longer exists." at Columns (1/1) of data grid 2 'gA'
+--
+-- The destination entity is resolved as "the end opposite the context", and the
+-- context used was the ENCLOSING data container's entity. That is the right
+-- answer inside a data view and empty at page level, where nothing encloses the
+-- widget — so neither end matched and the last-resort fallback returned the
+-- association's TO side, which is the entity the grid started from. Every column
+-- was then bound against it.
+--
+-- The report's own diagnosis was right and is worth keeping: the SAME path
+-- inside a data view was already correct, which is what localised the bug to
+-- page level. A named context variable answers the question directly —
+-- `$Customer/…` traverses from whatever $Customer holds, enclosed or not.
+--
+-- Verify:
+--
+--   mxcli exec  assoc-datasource-page-level.mdl -p app.mpr
+--   mx check -p app.mpr        -- 0 errors; before the fix, one CE1613 on P_PageLevel
+--
+-- Unlike the member-resolution examples in this directory, this one does NOT
+-- need exec-before-check: the defect is in what the WRITER stores, so the proof
+-- is `mx check` on the result rather than a report from `mxcli check`.
+
+create module AssocDS;
+/
+
+create or modify entity AssocDS.Customer (
+  Name: String(200)
+);
+/
+
+create or modify entity AssocDS.Order (
+  OrderNo: String(50)
+);
+/
+
+-- Order is the FROM end and Customer the TO end, so traversing FROM a Customer
+-- reaches Orders. That direction is the one that was wrong.
+create or modify association AssocDS.Order_Customer
+  from AssocDS.Order to AssocDS.Customer type reference;
+/
+
+-- PAGE LEVEL: nothing encloses the grid, so the only thing that can say what the
+-- association is traversed from is `$Customer`. This is the reported case.
+create or replace page AssocDS.P_PageLevel
+(
+  params: { $Customer: AssocDS.Customer },
+  title: 'Orders for a customer',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  datagrid gridOrders (datasource: $Customer/AssocDS.Order_Customer) {
+    column cNo (attribute: OrderNo, caption: 'No')
+  }
+}
+/
+
+-- CONTROL: the same traversal INSIDE a data view. This was already correct, and
+-- must stay correct — the fix only adds a better answer where a variable is
+-- named, and leaves the enclosing-entity path alone.
+create or replace page AssocDS.P_InDataView
+(
+  params: { $Customer: AssocDS.Customer },
+  title: 'Same thing, enclosed',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  dataview dvCustomer (datasource: $Customer) {
+    datagrid gridOrders2 (datasource: $currentObject/AssocDS.Order_Customer) {
+      column cNo2 (attribute: OrderNo, caption: 'No')
+    }
+  }
+}
+/
+
+-- CONTROL: the REVERSE direction. Traversing from an Order reaches its Customer,
+-- so the widget here binds Name. Without this a fix that always returned the
+-- FROM end would look correct on the two pages above.
+--
+-- Note the widget: a DATA VIEW, not a grid. Traversing a Reference from its FROM
+-- end yields ONE object, and Mendix rejects a grid over it with a separate and
+-- correct complaint — [CE8812] "A grid association path must result in a list."
+-- That is about cardinality rather than about which entity was resolved, and
+-- writing it as a grid here would have made this control fail for the wrong
+-- reason.
+create or replace page AssocDS.P_Reverse
+(
+  params: { $Order: AssocDS.Order },
+  title: 'The other way',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  dataview dvCustomer (datasource: $Order/AssocDS.Order_Customer) {
+    textbox tName (label: 'Customer', attribute: Name)
+  }
+}
+/

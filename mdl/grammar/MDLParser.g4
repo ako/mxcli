@@ -342,8 +342,30 @@ navigationClause
 // which is why it sits beside PAGE and MICROFLOW rather than in a syntax of its
 // own.
 navMenuItemDef
-    : MENU_KW ITEM STRING_LITERAL ((PAGE qualifiedName) | (MICROFLOW qualifiedName) | SIGN_OUT)? (ICON qualifiedName)? SEMICOLON?
-    | MENU_KW STRING_LITERAL (ICON qualifiedName)? LPAREN navMenuItemDef* RPAREN SEMICOLON?
+    : MENU_KW ITEM STRING_LITERAL ((PAGE qualifiedName) | (MICROFLOW qualifiedName) | SIGN_OUT)? navMenuIcon? SEMICOLON?
+    | MENU_KW STRING_LITERAL navMenuIcon? LPAREN navMenuItemDef* RPAREN SEMICOLON?
+    ;
+
+// Mendix stores three DIFFERENT icon elements, and they are not variants of one
+// value: an icon-collection icon and an image icon each hold a qualified name —
+// into an icon collection and an image collection, which are different documents
+// — while a glyph icon holds a numeric character code and no name at all.
+//
+//   ICON Atlas_Core.Atlas.home            Forms$IconCollectionIcon
+//   ICON GLYPH 57345                      Forms$GlyphIcon
+//   ICON IMAGE MyModule.Images.logo       Forms$ImageIcon
+//
+// Only the first was expressible, so DESCRIBE emitted a comment for the other
+// two and re-running its own output DESTROYED them.
+//
+// The two keyword-led alternatives come FIRST. qualifiedName accepts a keyword
+// as a name segment (identifierOrKeyword), so `ICON IMAGE …` also matches the
+// bare form with `image` read as the name; listing the specific alternatives
+// ahead of the general one is what settles it.
+navMenuIcon
+    : ICON GLYPH NUMBER_LITERAL
+    | ICON IMAGE qualifiedName
+    | ICON qualifiedName
     ;
 
 // A standalone menu document (Menus$MenuDocument) — the reusable menu a menu

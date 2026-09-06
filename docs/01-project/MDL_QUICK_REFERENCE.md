@@ -72,7 +72,7 @@ create persistent entity Module.Photo (
 | Rename association | `rename association Module.Old to New;` | Updates all references |
 | Show entities | `show entities [in module];` | List all or filter by module |
 | Create enumeration | `create [or modify] enumeration Module.Name (Value1 'caption', ...);` | |
-| Alter enumeration values | `alter enumeration Module.Name add value X [caption '..'] \| rename value X to Y \| modify value X caption '..' \| drop value X;` | `modify value … caption` re-captions in place (works while referenced) |
+| Alter enumeration values | `alter enumeration Module.Name add value [if not exists] X [caption '..'] \| rename value X to Y \| modify value X caption '..' \| drop value [if exists] X;` | `modify value … caption` re-captions in place (works while referenced). `if not exists` / `if exists` make the script re-runnable — the bare forms error and stop the run |
 | Drop enumeration | `drop enumeration Module.Name;` | |
 | Create association | `create [or modify] association Module.Name from Parent to Child type reference\|ReferenceSet [owner default\|both] [delete_behavior ...];` | OR MODIFY updates existing association in-place. **The FROM entity must live in `Module`** — Mendix stores an association in its FROM entity's module, so a remote FROM writes a dangling pointer and the project stops OPENING (**MDL070**). The TO entity may be remote; that direction is stored BY NAME |
 | Drop association | `drop association Module.Name;` | |
@@ -775,6 +775,14 @@ create or replace navigation Responsive
   );
 ```
 
+**An item with no icon is reported (MDL074, a warning).** The navigation sidebar
+collapses to an icon rail, and that is the state most users leave it in: a
+collapsed item shows its icon, and one without falls back to the first few
+characters of its caption — rarely enough to tell `Orders` from `Order lines`.
+The menu still builds and `mx check` passes, so the only symptom is in a browser.
+The rule covers every item at every depth, in both `create navigation`'s `menu`
+block and `create menu`, and needs no project.
+
 `icon` is optional and is a **qualified name** into an **icon collection** —
 `Atlas_Core.Atlas`, `Atlas_Core.Atlas_Filled`, `Atlas_Core.Atlas_Styling`, or one
 of your own — written like any other model reference. Hyphenated Atlas names
@@ -782,10 +790,27 @@ of your own — written like any other model reference. Hyphenated Atlas names
 `Atlas_Core.Atlas."align-center"`. List the available names with `describe icon
 collection Atlas_Core.Atlas`.
 
-Studio Pro can also set a *glyph* icon (a numeric character code) or an *image*
-icon (pointing into an image collection). Those are different elements; MDL
-writes only the icon-collection form, and `describe navigation` marks the other
-two with a comment instead of emitting an `icon` clause that would convert them.
+Mendix stores **three different icon elements**, and each has its own form,
+because they are not spellings of one value — a collection icon and an image icon
+each hold a qualified name (into an icon collection and an *image* collection,
+different documents), while a glyph icon holds a numeric character code and no
+name at all:
+
+| form | element | holds |
+|------|---------|-------|
+| `icon Atlas_Core.Atlas.home` | `Forms$IconCollectionIcon` | a name in an icon collection |
+| `icon glyph 57377` | `Forms$GlyphIcon` | a numeric character code |
+| `icon image MyModule.Images.logo` | `Forms$ImageIcon` | a name in an image collection |
+
+The bare form is the icon-collection icon, so every existing script keeps its
+meaning. The keyword forms exist because writing a bare name for an image icon
+would rebuild it as a collection icon — a silent variant swap.
+
+`describe navigation` emits all three, so describe → exec is lossless. It
+previously wrote a comment for the other two, and since `create or replace
+navigation` is a **full replacement**, re-running that output DELETED the icon
+the comment had just declined to describe. A `$Type` this build does not know is
+still flagged rather than guessed at.
 
 ## Project Settings
 
@@ -1238,6 +1263,7 @@ MDL uses explicit property declarations for pages:
 | Pop-up dimensions | `PopupWidth: n, PopupHeight: n, PopupResizable: bool` | `(Layout: Atlas_Core.PopupLayout, PopupWidth: 800, PopupHeight: 480, PopupResizable: true)` — case-sensitive; default 600×600 |
 | Page CSS class / style | `Class: 'css-class', Style: 'css: rule'` | `(Title: 'Home', Class: 'container-fluid bg-light', Style: 'min-height: 100vh')` — the page's Appearance |
 | Page variables | `variables: { $name: type = 'expr' }` | `variables: { $show: boolean = 'true' }` |
+| Inspect a widget | `describe widget <keyword\|'widget id'>;` | `describe widget combobox;` — properties, enum values, defaults and the editor rules that HIDE properties under some configurations. Works with no project open; with one, reads the installed `.mpk` (version-accurate, and the only place a Marketplace widget appears). Same output as `mxcli widget describe` |
 | Widget name | Required after type | `textbox txtName (...)` |
 | Attribute binding | `attribute: AttrName` | `textbox txt (label: 'Name', attribute: Name)` |
 | Variable binding | `datasource: $Var` | `dataview dv (datasource: $Product) { ... }` |
@@ -1616,6 +1642,15 @@ mxcli exec de_DE.mdl -p app.mpr
 Cross-reference commands require `refresh catalog full` to populate reference data.
 
 `show callers` covers invocation only. A document that merely *uses a type* — an entity as a page datasource, a microflow parameter, an entity's generalization — is not a caller of it; `show references to` lists those.
+
+A **pluggable or custom widget** is a reference target too, so "which pages use this widget?" is one query — the same question about a Java action always was:
+
+```mdl
+show references to combobox;      -- pages and snippets that place a Combo box
+show impact of htmlelement;       -- the same, grouped by document type
+```
+
+Name the widget the way you write it in a page body. The target is stored as the widget's MDL name and matched case-insensitively when the exact spelling finds nothing, so `combobox`, `ComboBox` and `COMBOBOX` all resolve; the resolved spelling is printed. A built-in Mendix widget (`textbox`, `dynamictext`) has no definition and therefore no edge — use `show widgets` for those.
 
 ## Connection & Session
 

@@ -1,0 +1,88 @@
+-- Every mxcli-authored image widget failed the build (mxcli-ledger §142).
+--
+-- On a project at 0 errors, one image widget on one new page:
+--
+--   [error] [CE0463] "The definition of this widget has changed. Update this
+--           widget by right-clicking it and selecting 'Update widget'…"
+--     at Image 'imgProbe'
+--
+-- A field-level diff of Atlas' own brand image against a describe → rename →
+-- exec copy of it, GUIDs masked, differs in ONE line of 1480:
+--
+--   === ONLY IN ATLAS ===  Object/Properties/21/Value/PrimitiveValue = '250'
+--   === ONLY IN MINE  ===  Object/Properties/21/Value/PrimitiveValue = '0'
+--
+-- Through its TypePointer that property is `maxHeight`. MDL has no keyword for
+-- it, so it is never written and keeps whatever the widget TEMPLATE captured —
+-- 0, against Image 1.6.0's declared 250.
+--
+-- WHY THE FIRST FIX FOR THIS DID NOTHING, which is the part worth keeping. The
+-- writer already default-values a hidden property MDL cannot name, and
+-- `maxHeight` IS hidden here ("hidden when maxHeightUnit = none"). The
+-- condition was evaluated against `maxHeightUnit`'s DECLARED default, which
+-- Image 1.6.0 states as "pixels" — so the rule read `maxHeight` as visible and
+-- wrote nothing. But `maxHeightUnit` is unmapped too, so the document actually
+-- gets the template's "none". The question "will this property be hidden?" has
+-- to be asked of the configuration that will be WRITTEN, not of the one the
+-- package declares. Its test had encoded the default as "none", so it passed
+-- against an input that does not exist.
+--
+-- Ground truth, measured across the 69 Image widgets of a real 11.14.0 project:
+-- all 65 that carry a `maxHeight` store 250, at every combination of heightUnit
+-- and maxHeightUnit. The one mxcli wrote was the only outlier.
+--
+-- Verify:
+--
+--   mxcli exec image-widget-hidden-maxheight.mdl -p app.mpr
+--   mx check -p app.mpr        -- 0 errors
+--
+-- Use `mx check` DIRECTLY, not `mxcli docker check`: that command runs
+-- `mx update-widgets` first, which reconciles the widget and reports 0 errors
+-- while the stored value is still 0. Measured — the same project reads 0 errors
+-- through `mxcli docker check` and 1 error through `mx check` (scripts/mx-check.sh).
+--
+-- Then perturb: revert the fix (or stub the `stored` lookup in
+-- hiddenUnnamedProperties) and re-run. The stored `maxHeight` goes back to 0 and
+-- `mx check` reports the CE0463 above.
+
+create module ImgProbe;
+/
+
+-- The reported shape: an image with no dimensions given, so every dimension
+-- property is left to the writer.
+create or replace page ImgProbe.P_Image
+(
+  title: 'One image',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  container c1 {
+    image imgProbe (Image: 'Atlas_Core.Layout.logo', Responsive: false)
+  }
+}
+/
+
+-- CONTROL: the dimensions MDL *can* name must survive. `maxHeightUnit` has no
+-- MDL keyword — there is no authorable configuration in which `maxHeight` is
+-- visible — so the risk this change carries is the opposite one: the reset now
+-- consults the template, and a value the script gave must still outrank it.
+-- Both `heightUnit`/`height` and `widthUnit`/`width` are mapped and named here,
+-- and both must be stored as written rather than reset to 100/auto.
+create or replace page ImgProbe.P_ImageSized
+(
+  title: 'A sized image',
+  layout: Atlas_Core.Atlas_Default
+)
+{
+  container c1 {
+    image imgSized (
+      Image: 'Atlas_Core.Layout.logo',
+      Responsive: false,
+      WidthUnit: 'pixels',
+      Width: 200,
+      HeightUnit: 'pixels',
+      Height: 120
+    )
+  }
+}
+/

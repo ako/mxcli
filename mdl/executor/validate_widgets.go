@@ -62,6 +62,11 @@ func LoadWidgetRegistry(projectPath string) *WidgetRegistry {
 	if projectPath != "" {
 		_ = registry.LoadUserDefinitions(projectPath)
 		registry.projectPath = projectPath
+		// The validator and DESCRIBE WIDGET must agree about which properties a
+		// widget has; they read different sources, so the definition is topped up
+		// from the same .mpk DESCRIBE parses. See
+		// widget_known_props_from_mpk.go for why this is not a list of nine.
+		enrichKnownPropertiesFromMPK(registry, projectPath)
 	}
 	return registry
 }
@@ -116,6 +121,9 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 		}
 		mapping := parentObjectLists[strings.ToUpper(w.Type)]
 		isObjectListItem := mapping != nil || isUniversalObjectListKeyword(w.Type)
+		// Slice 0: is this a widget at all, and does the parent declare this
+		// container? Both were previously left to `exec`.
+		out = append(out, validateWidgetKind(w, registry, lookupWidgetDef(parent, registry), parentObjectLists, locationPrefix)...)
 		out = append(out, validatePluggableWidgetProperties(w, registry, locationPrefix)...)
 		// #928: contentparams with no `{N}` placeholder to consume them.
 		if lookupWidgetDef(w, registry) != nil {
@@ -135,7 +143,14 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 		// widgets get the stricter def.json check (MDL-WIDGET01) above, and
 		// object-list items are validated by the object-list engine.
 		def := lookupWidgetDef(w, registry)
-		if def == nil && !isObjectListItem {
+		// A generic widget type that resolved to nothing is already reported as
+		// MDL-WIDGET25 (the kind is wrong). Validating its properties on top of
+		// that says the kind is fine and the property is not, which points at
+		// the wrong token — measured on `htmlelemnt frame (tagName: 'div')`,
+		// which drew a `tagName` warning beside the real error. A built-in
+		// (TypeIsGeneric false) keeps the check, since its properties are the
+		// only thing that can be wrong about it.
+		if def == nil && !isObjectListItem && !w.TypeIsGeneric {
 			out = append(out, validateStaticWidgetUnknownProps(w, locationPrefix)...)
 			// #928: `editable:` on a widget Mendix gives no editability — same
 			// "silently dropped on write" family, but the flat property
@@ -642,7 +657,7 @@ func isKnownStaticWidgetProp(key string) bool {
 // separately (MDL-WIDGET01) and must not reach here.
 func validateStaticWidgetUnknownProps(w *ast.WidgetV3, locationPrefix string) []linter.Violation {
 	var out []linter.Violation
-	for key := range w.Properties {
+	for _, key := range sortedPropertyKeys(w) {
 		if isKnownStaticWidgetProp(key) {
 			continue
 		}
@@ -695,7 +710,7 @@ func validateDynamicTextFormatting(w *ast.WidgetV3, locationPrefix string) []lin
 	// (1) Format keys placed at the widget level are silently dropped on write —
 	// formatting is per-parameter. Flag them with the correct location.
 	if strings.EqualFold(w.Type, "dynamictext") {
-		for key := range w.Properties {
+		for _, key := range sortedPropertyKeys(w) {
 			if paramFormatKeys[strings.ToLower(key)] {
 				out = append(out, linter.Violation{
 					RuleID:   "MDL-WIDGET18",
@@ -1044,7 +1059,7 @@ func validatePluggableWidgetProperties(w *ast.WidgetV3, registry *WidgetRegistry
 	knownUnmapped := knownUnmappedProperties(def, allowed)
 
 	var out []linter.Violation
-	for key := range w.Properties {
+	for _, key := range sortedPropertyKeys(w) {
 		// Builtin property names (Label, Class, Visible, DataSource, …) are
 		// MDL-recognized keywords that the widget engine routes via a
 		// dedicated path rather than via propertyMappings. Accept them
@@ -1153,6 +1168,16 @@ func addMappingNames(add func(string), m PropertyMapping) {
 		add(m.PropertyKey)
 	}
 	add(m.Source)
+	// The aliases are the names people are TOLD to write, so they have to be
+	// accepted here — the builder already resolves them (widget_engine.go), and
+	// the knownProperties set in widget_defs.go already walks them. Leaving them
+	// out made the validator the odd one out of three readers of the same
+	// def.json: `ValueAttribute: Total` on a PieChart persisted correctly and
+	// was still reported as MDL-WIDGET01 "has no property", which — because exec
+	// refuses a script with errors — blocked the page from being written at all.
+	for _, a := range m.MdlAliases {
+		add(a)
+	}
 }
 
 // readsFixedASTSlot reports whether an operation's value is resolved from a
@@ -1524,4 +1549,34 @@ func mappingOperationFor(def *WidgetDefinition, propertyKey string) string {
 		}
 	}
 	return ""
+}
+
+// sortedPropertyKeys returns a widget's property keys in a stable order.
+//
+// A validator that appends one violation per property key was iterating the map
+// directly, so `mxcli check` printed the same warnings in a different order from
+// one run to the next. Measured before the fix: two runs of the same binary over
+// mdl-examples/ disagreed on 11 of 515 scripts.
+//
+// Nothing was wrong with the diagnostics — but "the output is stable" is what
+// makes a before/after diff of `check` usable as a measurement, and it was not.
+// This surfaced while diffing check output across the corpus to size the
+// grammar change for slices 2-3: the noise floor of the tool was larger than
+// the signal being looked for.
+//
+// The three call sites are the ones that emit PER KEY (MDL-WIDGET07, WIDGET17,
+// WIDGET18). Two other loops over w.Properties do a case-insensitive LOOKUP and
+// break on the first hit; those are left alone, since they are only
+// order-sensitive when a widget carries two keys differing solely in case, and
+// picking either is equally correct.
+func sortedPropertyKeys(w *ast.WidgetV3) []string {
+	if w == nil {
+		return nil
+	}
+	out := make([]string, 0, len(w.Properties))
+	for k := range w.Properties {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }

@@ -1,0 +1,66 @@
+-- `alter enumeration … add value` had no IF NOT EXISTS, so a script that adds
+-- an enumeration value was not re-runnable (ako/mxcli-rest FINDINGS #60).
+--
+-- The harm is not the error. It is that `exec` STOPS at the failing statement,
+-- so one already-present value leaves every LATER statement in the file
+-- unapplied — a script that half-ran, reported an error about an enumeration,
+-- and silently skipped the rest. Measured with the bare form first and a
+-- guarded add second: the second value was absent afterwards.
+--
+-- A defensive drop-then-add is not a workaround, which is why the guard has to
+-- exist: the drop fails when the value is absent and the add when it is
+-- present, so neither ordering is re-runnable on its own.
+--
+-- ONE THING TO KNOW BEFORE READING THE SCRIPT. `create or modify enumeration`
+-- REPLACES the value list rather than merging into it (measured: an enum with
+-- three values, re-declared with one, keeps only that one). So an ALTER that
+-- adds a value is undone by any later re-declaration of the enum, and a script
+-- where the CREATE precedes the ALTER re-adds rather than skipping — which is
+-- exactly why the values below are declared once and the ALTERs target values
+-- the CREATE already lists.
+--
+-- Verify — the point is that running this file TWICE behaves identically, so
+-- run it twice:
+--
+--   mxcli exec enum-add-value-if-not-exists.mdl -p app.mpr
+--   mxcli exec enum-add-value-if-not-exists.mdl -p app.mpr
+--   mx check -p app.mpr        -- 0 errors
+--
+-- Both runs print, for the guarded add:
+--   Value 'Outbound' already exists on enumeration EnumGuard.Lane — skipped
+-- and carry on to the statements below it.
+--
+-- CONTROL: drop the `if not exists` from that ALTER and run again. It fails with
+--   value 'Outbound' already exists on enumeration EnumGuard.Lane — use
+--   'add value if not exists' to make the script re-runnable
+-- and the ALTERs after it do not run.
+
+create module EnumGuard;
+/
+
+create or modify enumeration EnumGuard.Lane (
+  Inbound 'Inbound',
+  Outbound 'Outbound'
+);
+/
+
+-- The guard, on a value that is already there. Without `if not exists` this
+-- statement ends the run.
+alter enumeration EnumGuard.Lane add value if not exists Outbound caption 'Outbound';
+/
+
+-- The statement that proves the run was not truncated: it only lands if the one
+-- above did not stop the script. Re-declaring the enum above would drop it
+-- again, so this value exists only between here and the next CREATE.
+alter enumeration EnumGuard.Lane add value if not exists Internal caption 'Internal';
+/
+
+-- The DROP twin. A re-run finds the value already gone and skips rather than
+-- reporting "enumeration value not found" and halting.
+alter enumeration EnumGuard.Lane drop value if exists Retired;
+/
+
+-- CONTROL: an unguarded ALTER that is naturally idempotent still works
+-- unchanged — MODIFY re-captions the same value however many times it runs.
+alter enumeration EnumGuard.Lane modify value Inbound caption 'Inbound / Received';
+/

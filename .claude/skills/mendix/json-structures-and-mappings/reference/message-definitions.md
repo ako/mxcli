@@ -25,12 +25,26 @@ its own members — the same discriminator import and export mappings use. A
 mapping then binds to `Module.Collection.Definition`, a three-part reference.
 
 **Name the association's target entity.** It is not decoration: the stored
-cardinality tracks the **direction of traversal**, not the association's type.
+cardinality — single object or list — is derived from the **direction of
+traversal** and the **association's type** together.
+
+|                  | forward (from the FK owner) | reverse            |
+|------------------|-----------------------------|--------------------|
+| **Reference**    | single object               | list               |
+| **ReferenceSet** | list                        | list               |
+
 Reaching `Customer` from `Order` follows the foreign key and gives a single
 object; reaching `Order` from `Customer` is the reverse and gives a list — the
-same association, both ways. An association that connects the two entities in
-neither direction is **refused**, because a wrong cardinality builds cleanly and
-would silently expose a list as a single object.
+same association, both ways. A **ReferenceSet is a list in both directions**,
+because a set is many at both ends.
+
+An association that connects the two entities in neither direction is
+**refused**, because mxcli would have to guess. Guessing is worse than
+refusing in opposite ways on the two halves of the rule, which is worth knowing
+when something looks wrong: a wrong *direction* builds cleanly and silently
+exposes a list as a single object, while a wrong *type* is caught — mxbuild
+reports CE6524 (`The occurrence of '...' has changed`) on the definition and
+CE0295 (`Association '...' is not allowed`) on any mapping element bound to it.
 
 **Inherited attributes are named like the entity's own.** mxcli resolves each to
 the entity that declares it, which is what Mendix stores; qualifying one against
@@ -53,12 +67,31 @@ alter message definition collection Sales.MD_Order rename definition Line to Ord
 alter message definition collection Sales.MD_Order drop definition if exists OrderLine;
 ```
 
-`in <path>` reaches a nested member, written in **exposed names**. `SET` changes
-only the exposed name — it is not a model rename, which is why the verb is not
-`RENAME`.
+`in <path>` reaches a nested member, written in **exposed names**. `DROP MEMBER`
+takes the member's **original** name, though — the attribute's, or for an
+association the target entity's — so the two halves of `drop member Tag in
+Orders` are named differently on purpose.
 
-Dropping or renaming a definition a mapping still references is refused, naming
-the mappings.
+`SET` changes only the exposed name — it is not a model rename, which is why the
+verb is not `RENAME`.
+
+### Dropping something a definition still needs
+
+A definition is a selection over the domain model held **by qualified name**, and
+nothing keeps the two in step. Both directions are refused rather than left to
+mxbuild:
+
+- **A definition a mapping still references** — refused, naming the mappings.
+- **An association a definition still exposes** — refused, printing the `alter …
+  drop member` statement for each definition that exposes it, ready to run. All
+  of them are listed: an association exposed in both directions dangles from the
+  other one if you clear only the first.
+
+Without the second, `drop association` reported success and mxbuild reported
+CE1613 at the definition — and `describe` went on emitting the dangling member,
+so the break survived a describe → exec round trip. The guard covers message
+definitions only: a microflow retrieve or an object mapping element over the same
+association is still your own CE1613 to resolve.
 
 ### What mxcli does not guess
 

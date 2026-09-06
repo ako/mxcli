@@ -54,6 +54,95 @@ icon or entity sailed through a command that had been handed the project. A run
 without a project now says what it did not check, so a pass is never read as
 more than it is.
 
+### It resolves MEMBER names too, where it can establish the entity
+
+Resolution does not stop at the entity. An attribute named in a **create** or
+**change** activity is looked up on that entity *and its generalizations*, so a
+typo is reported by `check` rather than by mxbuild as `CE1613 "The selected
+attribute '…' no longer exists"` a whole build later:
+
+```
+Sales.ACT_Close: Sales.Order has no member "IsArchived" (in change $Order)
+  — it has OrderNo, Status — mxbuild reports this as CE1613 …
+```
+
+This needs the target's entity to be **known**, and that is the boundary worth
+understanding rather than assuming:
+
+| the object comes from | checked? |
+|---|---|
+| a `create Module.Entity (…)` | yes — the entity is in the statement |
+| a microflow/nanoflow **parameter** | yes |
+| `retrieve $L from Module.Entity` | yes |
+| `retrieve $L from $Obj/Module.Assoc` | yes, when `$Obj` is itself typed |
+| a `loop` over any of those | yes — the iterator inherits the element type |
+| anything else (`send rest request`, `response: file as $Doc`, …) | **no** |
+
+Widget positions are resolved too:
+
+- an **XPath constraint** on a `database from Module.Entity` source — every step
+  is followed, so a bare name must be an attribute of the entity it lands on and
+  a `Module.Name` step must be an association or an entity;
+- a **template parameter** (`ContentParams` / `CaptionParams`) rooted in a
+  variable. That one needs **no project** and fires under a bare
+  `mxcli check`, because the answer is in the statement.
+
+The template-parameter rule is narrower than "no `$` roots", and the difference
+is measured rather than reasoned — the writer strips one prefix on one branch:
+
+| `{1} = …` | |
+|---|---|
+| `OrderNo` | fine |
+| `Order_Customer/Name` | fine — association hop, then attribute |
+| `$currentObject/Order_Customer/Name` | fine — the prefix is stripped |
+| `$currentObject/OrderNo` | **CE1613** |
+| `$Order/Name` | **CE1613** |
+
+Note the two-segment form: `Assoc/Attr`, not the XPath `Assoc/Entity/Attr`,
+which mxbuild also rejects.
+
+### Expression KINDS are checked in the positions that declare one
+
+Two more things reach mxbuild as `CE0117 "Error(s) in expression"` and are now
+reported by `check`:
+
+- **A bare word as a member's value.** Mendix expressions have no bare
+  identifiers, so `CHANGE $Order (Status = Closed)` is E013. Write `'Closed'`
+  (a literal), `$Closed` (a variable), or `Module.Enum.Value` (an enumeration).
+  Scoped to the *whole* value of a create/change member: a bare name **nested**
+  in a list-operation predicate is legal — `FILTER($L, Status = 'Open')`
+  resolves `Status` against the item under test — and is not reported.
+- **A log message's template parameter must be a String.** `LOG … WITH ({1} =
+  $Order/Qty)` is E009. Measured on 11.13.0: Integer, Decimal, Boolean,
+  DateTime and an object each fail; a String attribute is clean; and
+  `toString(…)` around any of them is clean. So wrap the non-String ones —
+  the writer is fine, Mendix simply does not coerce here.
+
+### Three more things check now refuses
+
+- **An unqualified CREATE** (`create association Order_Probe …`) — MDL074, no
+  project needed. `exec` always refused it; check now does too, which matters
+  because exec is **not transactional**: the statements before the failure are
+  already applied, and re-running hits "already exists" on them.
+- **`RETURNS void AS $x`** — MDL075, no project needed. An alias names the
+  variable a flow returns, so it cannot be paired with void; mxcli used to
+  believe the alias and write `return $x` into a flow with no such variable
+  (CE0109). Write `RETURNS void`, or give the alias the type it holds.
+- **`empty($List)`** — E014. `empty` is a Mendix **keyword**, not a function, so
+  the parser stops at the `(`. Write `$List = empty` or `length($List) = 0`.
+
+**One thing to know about hint ordering**: the reference check runs before
+expression checking and **exits on its first error**, so an unrelated mistake
+anywhere in a file hides every expression hint in it. If you expect an E0xx and
+see none, fix the reference errors first and re-run.
+
+A variable this cannot type is left **unchecked**, never guessed at — a false
+"no such member" would block a script that builds cleanly. Two more things are
+deliberately not reported: a **qualified** member (`Module.Assoc`), which exec
+already refuses when it cannot be an attribute, and any member on an entity the
+**script itself** creates or whose attribute the script adds earlier — the
+add-the-column-then-populate-it shape stays valid.
+
 ## Pre-Flight Validation Checklist
 
 Before writing any MDL, verify these requirements:

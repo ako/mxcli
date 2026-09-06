@@ -118,9 +118,30 @@ create or replace navigation Responsive
 
 ### Menu Icons
 
-Both `menu item` and `menu 'caption' (...)` take an optional `icon`. It is a
-**qualified name** into an **icon collection** — a model reference, written like
-every other reference in MDL, not a string:
+**Give every menu item an icon.** It is optional in the grammar and `mxcli check`
+warns when it is missing (**MDL074**), because the navigation sidebar collapses
+to an icon rail and that is the state most users leave it in: a collapsed item
+shows its icon, and one without falls back to the first few characters of its
+caption — rarely enough to tell `Orders` from `Order lines`. Nothing else catches
+it. The model builds, `mx check` passes, and the menu is simply hard to use.
+
+Both `menu item` and `menu 'caption' (...)` take an `icon`, in one of three
+forms — Mendix stores three different icon **elements**, not three spellings of
+one value:
+
+```sql
+menu item 'Home'  page M.Home  icon Atlas_Core.Atlas.home;     -- icon collection
+menu item 'Close' page M.Close icon glyph 57377;               -- numeric glyph code
+menu item 'Logo'  page M.Logo  icon image M.Images.logo;       -- image collection
+```
+
+The **bare** form is the icon-collection icon and is what you normally want. Use
+`glyph` only to reproduce a legacy icon a project already has — `describe
+navigation` emits it for you — and `image` for a picture from an image
+collection, which is a different document from an icon collection.
+
+The icon-collection form is a **qualified name** — a model reference, written
+like every other reference in MDL, not a string:
 
 ```sql
 create or replace navigation Responsive

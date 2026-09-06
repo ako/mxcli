@@ -1663,6 +1663,31 @@ func execRevokePublishedRestServiceAccess(ctx *ExecContext, s *ast.RevokePublish
 }
 
 // execUpdateSecurity handles UPDATE SECURITY [IN Module].
+//
+// # Why one module's failure must not end the run
+//
+// This used to return on the first module that could not be reconciled, and one
+// module always can: SYSTEM. Its domain model is SYNTHESIZED rather than stored
+// — there is no unit file behind the id the module carries — so
+// ReconcileMemberAccesses cannot load it, and the command died there having
+// reconciled nothing:
+//
+//	$ mxcli -p app.mpr -c 'update security'
+//	Error: failed to reconcile security for module System: load domain model
+//	00000000-…-002: …/mprcontents/00/00/…002.mxunit: no such file or directory
+//
+// That made the command inert on EVERY MPR v2 project, which is the whole of
+// mendixlabs/mxcli#1047's first half: it was reported as "UPDATE SECURITY does
+// not fix the CE0066 it is meant to fix", and the reason is that it never ran.
+// Whether it had already written some modules before dying depended on where the
+// unreconcilable one fell in the list, so the failure was also non-atomic.
+//
+// System is now skipped by name rather than by letting it fail, because
+// reconciling it is not merely impossible but wrong: its entities are the
+// platform's and its access rules are not the user's to rewrite. Any OTHER
+// module that cannot be read is reported and stepped over, so a project with one
+// unreadable module still gets the rest reconciled — and is told which it
+// missed, since a silent skip is how "up to date" comes to mean "not looked at".
 func execUpdateSecurity(ctx *ExecContext, s *ast.UpdateSecurityStmt) error {
 	if !ctx.ConnectedForWrite() {
 		return mdlerrors.NewNotConnectedWrite()
@@ -1674,8 +1699,22 @@ func execUpdateSecurity(ctx *ExecContext, s *ast.UpdateSecurityStmt) error {
 	}
 
 	totalModified := 0
+	matched := false
+	var skipped []string
 	for _, mod := range modules {
-		if s.Module != "" && mod.Name != s.Module {
+		if s.Module != "" && !strings.EqualFold(mod.Name, s.Module) {
+			continue
+		}
+		matched = true
+
+		// The platform's own module: not stored, and not ours to rewrite.
+		if strings.EqualFold(mod.Name, "System") {
+			if s.Module != "" {
+				return mdlerrors.NewValidation(
+					"System is the platform's module — its entity access rules are Mendix's, " +
+						"not the project's, and its domain model is not stored in the .mpr at all. " +
+						"There is nothing here to reconcile")
+			}
 			continue
 		}
 
@@ -1686,7 +1725,10 @@ func execUpdateSecurity(ctx *ExecContext, s *ast.UpdateSecurityStmt) error {
 
 		count, err := ctx.Backend.ReconcileMemberAccesses(dm.ID, mod.Name)
 		if err != nil {
-			return mdlerrors.NewBackend(fmt.Sprintf("reconcile security for module %s", mod.Name), err)
+			// One module that cannot be read is not a reason to abandon the
+			// others, and staying quiet about it is not an option either.
+			skipped = append(skipped, fmt.Sprintf("%s (%v)", mod.Name, err))
+			continue
 		}
 		if count > 0 {
 			fmt.Fprintf(ctx.Output, "Reconciled %d access rule(s) in module %s\n", count, mod.Name)
@@ -1694,7 +1736,13 @@ func execUpdateSecurity(ctx *ExecContext, s *ast.UpdateSecurityStmt) error {
 		}
 	}
 
-	if totalModified == 0 {
+	if s.Module != "" && !matched {
+		return mdlerrors.NewNotFound("module", s.Module)
+	}
+	for _, sk := range skipped {
+		fmt.Fprintf(ctx.Output, "Skipped %s — its domain model could not be read\n", sk)
+	}
+	if totalModified == 0 && len(skipped) == 0 {
 		fmt.Fprintf(ctx.Output, "All entity access rules are up to date\n")
 	}
 

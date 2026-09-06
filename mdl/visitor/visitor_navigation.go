@@ -3,8 +3,11 @@
 package visitor
 
 import (
+	"strconv"
+
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	"github.com/mendixlabs/mxcli/mdl/grammar/parser"
+	"github.com/mendixlabs/mxcli/mdl/types"
 )
 
 // ExitCreateNavigationStatement handles CREATE [OR REPLACE] NAVIGATION <profile> <clauses>.
@@ -93,29 +96,26 @@ func buildNavMenuItemDef(ctx parser.INavMenuItemDefContext) ast.NavMenuItemDef {
 
 	item := ast.NavMenuItemDef{Caption: caption}
 
-	// Both the PAGE/MICROFLOW target and the ICON are qualifiedNames, so they
-	// arrive in one indexed list. The target always comes first when present;
-	// whatever remains after it is the icon.
-	names := c.AllQualifiedName()
-	next := 0
-	switch {
-	case c.PAGE() != nil && len(names) > next:
-		built := buildQualifiedName(names[next])
-		item.Page = &built
-		next++
-	case c.MICROFLOW() != nil && len(names) > next:
-		built := buildQualifiedName(names[next])
-		item.Microflow = &built
-		next++
+	// The PAGE/MICROFLOW target is the item's only qualifiedName now that the
+	// icon is its own sub-rule — which is what removed the old positional
+	// bookkeeping, where the target and the icon shared one indexed list and the
+	// icon was "whatever remains".
+	if qn := c.QualifiedName(); qn != nil {
+		switch {
+		case c.PAGE() != nil:
+			built := buildQualifiedName(qn)
+			item.Page = &built
+		case c.MICROFLOW() != nil:
+			built := buildQualifiedName(qn)
+			item.Microflow = &built
+		}
 	}
-	// SIGN_OUT names no target, so it consumes none of the qualifiedName list —
-	// which is why it is read separately rather than as a third switch arm.
+	// SIGN_OUT names no target, which is why it is read separately rather than
+	// as a third switch arm.
 	if c.SIGN_OUT() != nil {
 		item.SignOut = true
 	}
-	if c.ICON() != nil && len(names) > next {
-		item.Icon = buildQualifiedName(names[next]).String()
-	}
+	applyNavMenuIcon(&item, c.NavMenuIcon())
 
 	// Recurse into sub-items (for MENU 'caption' (...))
 	for _, subCtx := range c.AllNavMenuItemDef() {
@@ -124,4 +124,47 @@ func buildNavMenuItemDef(ctx parser.INavMenuItemDefContext) ast.NavMenuItemDef {
 	}
 
 	return item
+}
+
+// applyNavMenuIcon reads the ICON clause onto the item.
+//
+// Mendix stores three different icon ELEMENTS, not three spellings of one
+// value: a collection icon and an image icon each hold a qualified name (into an
+// icon collection and an image collection — different documents), while a glyph
+// icon holds a numeric character code and no name at all. The kind is recorded
+// so the writer emits the right $Type; collapsing them onto one string is what
+// made a rewrite turn a glyph into nothing.
+//
+// The bare form is the collection icon, which keeps every existing script
+// meaning exactly what it did.
+func applyNavMenuIcon(item *ast.NavMenuItemDef, ctx parser.INavMenuIconContext) {
+	if ctx == nil {
+		return
+	}
+	c, ok := ctx.(*parser.NavMenuIconContext)
+	if !ok {
+		return
+	}
+	switch {
+	case c.GLYPH() != nil:
+		item.IconKind = types.MenuIconGlyph
+		if n := c.NUMBER_LITERAL(); n != nil {
+			// A glyph code is a character code: whole, and small. A fractional or
+			// unparseable literal leaves the code at zero rather than guessing,
+			// and the writer refuses to emit a glyph without one.
+			if v, err := strconv.Atoi(n.GetText()); err == nil {
+				item.IconCode = v
+			}
+		}
+	case c.IMAGE() != nil:
+		item.IconKind = types.MenuIconImage
+		if qn := c.QualifiedName(); qn != nil {
+			item.Icon = buildQualifiedName(qn).String()
+		}
+	default:
+		item.IconKind = types.MenuIconCollection
+		if qn := c.QualifiedName(); qn != nil {
+			item.Icon = buildQualifiedName(qn).String()
+		}
+	}
 }

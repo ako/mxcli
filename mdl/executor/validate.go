@@ -26,6 +26,7 @@ type scriptContext struct {
 	nanoflows    map[string]bool // Nanoflows created (Module.Nanoflow)
 	pages        map[string]bool // Pages created (Module.Page)
 	snippets     map[string]bool // Snippets created (Module.Snippet)
+	layouts      map[string]bool // Layouts created (Module.Layout)
 	constants    map[string]bool // Constants created (Module.Constant)
 	workflows    map[string]bool // Workflows created (Module.Workflow)
 
@@ -58,6 +59,7 @@ func newScriptContext() *scriptContext {
 		pages:        make(map[string]bool),
 		workflows:    make(map[string]bool),
 		snippets:     make(map[string]bool),
+		layouts:      make(map[string]bool),
 		constants:    make(map[string]bool),
 
 		javaActions:       make(map[string][]string),
@@ -120,6 +122,10 @@ func (sc *scriptContext) collectDefinitions(prog *ast.Program) {
 			if s.Name.Module != "" {
 				sc.snippets[s.Name.String()] = true
 			}
+		case *ast.CreateLayoutStmt:
+			if s.Name.Module != "" {
+				sc.layouts[s.Name.String()] = true
+			}
 		case *ast.CreateWorkflowStmt:
 			if s.Name.Module != "" {
 				sc.workflows[s.Name.String()] = true
@@ -174,6 +180,10 @@ func (sc *scriptContext) collectSingle(stmt ast.Statement) {
 	case *ast.CreateSnippetStmtV3:
 		if s.Name.Module != "" {
 			sc.snippets[s.Name.String()] = true
+		}
+	case *ast.CreateLayoutStmt:
+		if s.Name.Module != "" {
+			sc.layouts[s.Name.String()] = true
 		}
 	case *ast.CreateWorkflowStmt:
 		if s.Name.Module != "" {
@@ -294,6 +304,18 @@ func validateProgram(ctx *ExecContext, prog *ast.Program) []error {
 	// microflow — errors whose wording sends people to the entity import, which
 	// cannot fix either of them (mendixlabs/mxcli#1020).
 	errors = append(errors, validateExternalActionCalls(ctx, prog)...)
+	// Resolve MEMBER names inside a CREATE / CHANGE against the entity they are
+	// assigned to. Reference checking used to stop at the document and entity
+	// level, so a mistyped attribute passed check and exec and surfaced as
+	// CE1613 at the far end of a build (mendixlabs/mxcli#1048).
+	for _, msg := range validateMemberReferences(ctx, prog, sc) {
+		errors = append(errors, mdlerrors.NewValidation(msg))
+	}
+	// Resolve the MEMBERS inside a widget's XPath constraint. The entity in
+	// `database from Mod.Entity` was resolved and the `where […]` was not, so a
+	// member that does not exist reached mxbuild as CE1613
+	// (mendixlabs/mxcli#1049).
+	errors = append(errors, validateXPathMembers(ctx, prog)...)
 	return errors
 }
 
@@ -383,6 +405,13 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 	// surfaces during --references instead of partway through a script (#836).
 	// The check needs no project state, so it runs before the switch.
 	if err := validateCrossModuleGrant(stmt); err != nil {
+		return err
+	}
+
+	// An ALTER's target document must already exist. Until this, only the
+	// MODULE was resolved, so a misspelled document passed --references and was
+	// refused by exec — check was the weaker gate, which is backwards.
+	if err := validateAlterTarget(ctx, stmt, sc); err != nil {
 		return err
 	}
 
@@ -549,7 +578,7 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 				s.Name.String(), strings.Join(refErrors, "\n  - "))
 		}
 		// Validate page context tree (parameter/selection/attribute bindings)
-		if ctxErrors := validatePageContextTree(s.Parameters, s.Widgets); len(ctxErrors) > 0 {
+		if ctxErrors := validatePageContextTree(ctx, s.Parameters, s.Widgets); len(ctxErrors) > 0 {
 			return mdlerrors.NewValidationf("page '%s' has context errors:\n  - %s",
 				s.Name.String(), strings.Join(ctxErrors, "\n  - "))
 		}
@@ -576,7 +605,7 @@ func validateWithContext(ctx *ExecContext, stmt ast.Statement, sc *scriptContext
 				s.Name.String(), strings.Join(argErrors, "\n  - "))
 		}
 		// Validate snippet context tree (parameter/selection/attribute bindings)
-		if ctxErrors := validatePageContextTree(s.Parameters, s.Widgets); len(ctxErrors) > 0 {
+		if ctxErrors := validatePageContextTree(ctx, s.Parameters, s.Widgets); len(ctxErrors) > 0 {
 			return mdlerrors.NewValidationf("snippet '%s' has context errors:\n  - %s",
 				s.Name.String(), strings.Join(ctxErrors, "\n  - "))
 		}

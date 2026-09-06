@@ -32,18 +32,130 @@ func (p *parserImpl) Parse(src string, ctx Context) (RobustExpr, []Hint) {
 	// would produce false positives for valid expressions that use characters
 	// the lexer does not model (e.g. "$Total : $Count" with Mendix ':' division).
 	if t := s.Peek(); t.Kind != TokEOF && t.Kind != TokError {
+		// This hint used to carry no code, no document and no microflow: the
+		// location held only a line and column, which are the offsets WITHIN the
+		// expression fragment rather than into the file, so they printed as
+		// nothing useful. The reader saw `[]` for the code and had to find the
+		// offending expression in a 40-line script by eye
+		// (mendixlabs/mxcli#1042). Everything the context knows is attached now,
+		// which is what hintsLocation is for.
+		//
+		// The fix line is also no longer only about glued keywords. That was the
+		// case it was written for, and it sent people hunting for an 'emptyor'
+		// that was not there: the report's actual input was `empty($List)` —
+		// `empty` is a Mendix KEYWORD, not a function, so the parser consumed it
+		// and stopped at the '('. Naming the likelier causes first makes the
+		// message point at the real one.
 		hs = append(hs, hints.Hint{
+			Code:     "E014",
+			Slug:     "trailing-tokens",
 			Severity: hints.SeverityError,
-			Where: hints.Location{
-				Line:   t.Pos.Line,
-				Column: t.Pos.Column,
-			},
+			Where:    hintsLocation(ctx, t.Pos),
 			YouWrote: t.Text,
-			Problem:  "Unexpected token after expression — the expression appears incomplete or malformed (possible missing space between keywords).",
-			Fix:      "Check for glued keywords such as 'emptyor' (should be 'empty or') or 'andtrue' (should be 'and true').",
+			Problem: "Unexpected token after the expression — everything up to here parsed, " +
+				"and this is left over, so the expression is incomplete or malformed.",
+			Fix: "Check that a keyword is not being used as a function — `empty` is a keyword, " +
+				"so `empty($List)` is not a call; write `$List = empty` (or `length($List) = 0`). " +
+				"Also check for glued keywords such as 'emptyor' (should be 'empty or').",
 		})
 	}
+	hs = append(hs, checkSlotKind(expr, ctx)...)
+	hs = append(hs, checkBareIdentifierValue(expr, ctx)...)
 	return expr, hs
+}
+
+// checkSlotKind compares the whole expression's inferred kind against what the
+// slot it sits in expects.
+//
+// The expectations table in slot_resolver.go had existed for some time with
+// NOTHING READING IT — slotKind() was defined and never called — so a slot
+// declared `{Kind: KindString}` constrained nothing. `LOG WARNING 42` passed,
+// and so did every non-String log template parameter (mendixlabs/mxcli#1043),
+// which is CE0117 "Error(s) in expression" at the activity.
+//
+// Only a CONCRETE expectation is enforced. An entry carrying ResolveBy
+// ("AttributeOf:Parent", "MicroflowReturn", …) names a kind that has to be
+// looked up per call site, and the adapter encodes that by appending the
+// resolved target to the slot path ("ChangeItem.Value:Sales.Order.Status"),
+// which does not match the table at all — so those stay unenforced here rather
+// than being enforced against the wrong kind.
+//
+// Both sides must be known. An inferred KindUnknown is "could not tell", and
+// reporting it would flag every expression whose type mxcli cannot resolve.
+func checkSlotKind(expr RobustExpr, ctx Context) []Hint {
+	sc, ok := slotKind(ctx)
+	if !ok || sc.Kind == KindUnknown || sc.ResolveBy != "" {
+		return nil
+	}
+	k := inferKind(expr, ctx)
+	if k == KindUnknown || k == sc.Kind {
+		return nil
+	}
+	// `empty` satisfies any slot: it is Mendix's null, not a kind of its own.
+	if k == KindEmpty {
+		return nil
+	}
+	fix := "Convert it, e.g. with toString(...)."
+	if sc.Kind != KindString {
+		fix = "Replace it with an expression of kind " + typeKindName(sc.Kind) + "."
+	}
+	return []Hint{{
+		Code:     "E009",
+		Slug:     "slot-type-mismatch",
+		Severity: hints.SeverityError,
+		Where:    hintsLocation(ctx, expr.Pos()),
+		YouWrote: "<" + typeKindName(k) + ">",
+		Problem: "This position requires " + typeKindName(sc.Kind) + ", but the expression has kind " +
+			typeKindName(k) + ". Mendix does not coerce here — it reports CE0117 \"Error(s) in expression\".",
+		Fix: fix,
+	}}
+}
+
+// checkBareIdentifierValue reports a bare word standing alone as a member's
+// value: `CHANGE $Order (Status = Closed)`.
+//
+// Mendix expressions have no bare identifiers — a variable is `$Name`, a string
+// is 'quoted', an enumeration value is Module.Enum.Value — so the parser reads
+// one as a variable reference, it resolves to nothing, and the kind comes out
+// Unknown. Unknown is tolerated everywhere by design, which is exactly why this
+// slipped through check and exec to arrive as CE0117 (mendixlabs/mxcli#1044).
+//
+// Scoped to the WHOLE expression of a create/change member, and that scoping is
+// the load-bearing part rather than caution for its own sake: a bare name NESTED
+// inside a list-operation predicate is legal MDL — `FILTER($L, Status = 'Open')`
+// resolves `Status` against the item under test — so a rule that fired on any
+// bare identifier would reject working scripts. A member's value is the one
+// position where the bare word is the entire expression and can only be a
+// mistake.
+func checkBareIdentifierValue(expr RobustExpr, ctx Context) []Hint {
+	if !strings.HasPrefix(ctx.SlotPath, "ChangeItem.Value") &&
+		!strings.HasPrefix(ctx.SlotPath, "CreateItem.Value") {
+		return nil
+	}
+	v, ok := expr.(*VariableExpr)
+	if !ok || !v.Bare {
+		return nil
+	}
+	// A name that IS in scope is a variable the author spelled without its $,
+	// which is worth saying differently.
+	fix := "Quote it if it is text ('" + v.Name + "'), write $" + v.Name +
+		" if it is a variable, or qualify it (Module.Enum.Value) if it is an enumeration value."
+	if ctx.Scope != nil {
+		if _, inScope := ctx.Scope.Lookup(v.Name); inScope {
+			fix = "Write $" + v.Name + " — a variable reference needs its $."
+		}
+	}
+	return []Hint{{
+		Code:     "E013",
+		Slug:     "bare-identifier-value",
+		Severity: hints.SeverityError,
+		Where:    hintsLocation(ctx, expr.Pos()),
+		YouWrote: v.Name,
+		Problem: "A bare word is not a Mendix expression. Mendix reads a value as a literal, " +
+			"a $variable, a qualified name or a function call, so this arrives as " +
+			"CE0117 \"Error(s) in expression\".",
+		Fix: fix,
+	}}
 }
 
 func parseOr(s *Stream, ctx Context) (RobustExpr, []Hint) {
@@ -389,7 +501,10 @@ func parseIdentLed(s *Stream, ctx Context) (RobustExpr, []Hint) {
 		}
 		return &QNameExpr{baseNode: baseNode{P: t.Pos}, Module: name, Name: n2}, nil
 	}
-	return &VariableExpr{baseNode: baseNode{P: t.Pos}, Name: name}, nil
+	// Bare records that this came from a plain identifier rather than
+	// `$Name`. The two collapse to the same node, and telling them apart is
+	// what makes the bare-word rule possible.
+	return &VariableExpr{baseNode: baseNode{P: t.Pos}, Name: name, Bare: true}, nil
 }
 
 // parseQualifiedCall consumes the argument list of a `Module.Name(...)` call.
@@ -568,6 +683,15 @@ func inferKind(e RobustExpr, ctx Context) TypeKind {
 		if ctx.Scope != nil {
 			if k, ok := ctx.Scope.Lookup(n.Name); ok {
 				return k
+			}
+		}
+		// A variable the entity scope knows holds an OBJECT. Without this a
+		// `$Customer` infers Unknown, and Unknown is tolerated everywhere — so
+		// an object handed to a slot that wants a String went unreported, which
+		// is the case mendixlabs/mxcli#1043 was actually filed about.
+		if ctx.Entities != nil {
+			if _, ok := ctx.Entities.VariableEntity(n.Name); ok {
+				return KindObject
 			}
 		}
 	case *CallExpr:

@@ -865,9 +865,9 @@ create page Sales.Dashboard (Title: 'Revenue', Layout: Atlas_Core.Atlas_Default)
     series sRevenue (
       dataSet: static,
       DataSource: database from Sales.ByRegion,   -- or: staticDataSource: database from Sales.ByRegion
-      StaticXAttribute: Region,
-      StaticYAttribute: Total,
-      StaticName: 'Revenue'
+      staticXAttribute: Region,
+      staticYAttribute: Total,
+      staticName: 'Revenue'
     )
   }
 }

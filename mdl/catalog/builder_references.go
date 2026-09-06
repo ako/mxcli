@@ -34,6 +34,7 @@ const (
 	RefKindReturn     = "return"     // Microflow/nanoflow returns an entity type
 	RefKindSchedule   = "schedule"   // Scheduled event runs a microflow
 	RefKindValidate   = "validate"   // Attribute validation rule uses a regular expression
+	RefKindWidget     = "widget"     // Page/snippet uses a pluggable or custom widget
 )
 
 // collectActionActivities returns all ActionActivity objects from an ObjectCollection,
@@ -425,6 +426,12 @@ func (b *Builder) buildReferences() error {
 					refCount += int(n)
 				}
 			}
+		}
+
+		// Page/snippet -> widget definition. buildWidgetDefinitions runs before
+		// this pass, so the join target is populated.
+		if n, werr := insertWidgetRefs(b.tx, projectID, snapshotID); werr == nil {
+			refCount += n
 		}
 	}
 
