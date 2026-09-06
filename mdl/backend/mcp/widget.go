@@ -542,6 +542,12 @@ func (w *mcpWidgetBuilder) PropertyTypeIDs() map[string]pages.PropertyTypeIDEntr
 	return out
 }
 
+// PrimitiveValues has nothing to report: this backend records property SETS and
+// hands them to Studio Pro, which expands every default itself, so there is no
+// template object here to read a captured value out of. Empty is the honest
+// answer and leaves the caller on its declared-default fallback.
+func (w *mcpWidgetBuilder) PrimitiveValues() map[string]string { return nil }
+
 func (w *mcpWidgetBuilder) EnsureRequiredObjectLists()                             {}
 func (w *mcpWidgetBuilder) ApplyPropertyVisibility(_ []types.WidgetVisibilityRule) {}
 

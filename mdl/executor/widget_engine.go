@@ -329,8 +329,14 @@ func (e *PluggableWidgetEngine) Build(def *WidgetDefinition, w *ast.WidgetV3) (*
 	// `associatedFiles` and `associatedImages` from `DataSource:`, gated on
 	// `uploadMode`). Naming a hidden property outright is still an error, raised
 	// by MDL-WIDGET10 at check time rather than silently dropped here (#956).
+	//
+	// builder.PrimitiveValues() is read HERE, before any mapping is applied, so
+	// it is the template's captured configuration — the values an unmapped
+	// property will actually be stored with. A rule keyed on one of those has to
+	// be evaluated against them; see hiddenUnnamedProperties.
 	hiddenSkip := e.hiddenUnnamedProperties(def, w,
-		widgetPropertyDefaults(e.pageBuilder.getProjectPath(), def.WidgetID))
+		widgetPropertyDefaults(e.pageBuilder.getProjectPath(), def.WidgetID),
+		builder.PrimitiveValues())
 	for _, mapping := range mappings {
 		if reset, hidden := hiddenSkip[strings.ToLower(mapping.PropertyKey)]; hidden {
 			if reset != "" && mapping.Operation == "primitive" {
@@ -640,9 +646,13 @@ func (e *PluggableWidgetEngine) isPrimaryAttributeMapping(mapping PropertyMappin
 // source MDL-WIDGET10 reads, so the writer and the checker cannot disagree about
 // what a default is, which is how this shipped.
 //
+// stored is the TEMPLATE's captured configuration, read before any mapping was
+// applied. It is what answers a rule keyed on a property MDL cannot name; see
+// the fallback chain below.
+//
 // Rules come from the .def.json, falling back to a live lift from the installed
 // .mpk (the same two sources the visibility application uses).
-func (e *PluggableWidgetEngine) hiddenUnnamedProperties(def *WidgetDefinition, w *ast.WidgetV3, defaults map[string]string) map[string]string {
+func (e *PluggableWidgetEngine) hiddenUnnamedProperties(def *WidgetDefinition, w *ast.WidgetV3, defaults, stored map[string]string) map[string]string {
 	rules := e.visibilityRules(def)
 	if len(rules) == 0 {
 		return nil
@@ -659,7 +669,7 @@ func (e *PluggableWidgetEngine) hiddenUnnamedProperties(def *WidgetDefinition, w
 		}
 		condKey := strings.ToLower(rule.HiddenWhen.PropertyKey)
 		condVal, known := values[condKey]
-		if !known {
+		if !known || condVal == "" {
 			// widgetValueMap only knows properties the definition MAPS, because a
 			// mapping is what gives a property an MDL keyword. A rule whose
 			// condition is an UNMAPPED property was therefore always
@@ -668,12 +678,21 @@ func (e *PluggableWidgetEngine) hiddenUnnamedProperties(def *WidgetDefinition, w
 			// produced the one differing field in 1480 on a copied Atlas layout
 			// (mxcli-ledger §142).
 			//
-			// The declared default is the right fallback for exactly the reason
-			// the rest of this function exists: MDL cannot name the property, so
-			// nothing has moved it off its default. It is a fallback and not a
-			// preference — a value the script set, or a mapping's own default,
-			// still wins above.
-			condVal, known = defaults[defaultsKey("", rule.HiddenWhen.PropertyKey)]
+			// The TEMPLATE's captured value is the answer, and the declared
+			// default is NOT: the question is whether the property will be hidden
+			// in the document about to be WRITTEN, and an unmapped property is
+			// written with whatever the template holds. The two differ exactly
+			// where it matters — Image declares `maxHeightUnit` "pixels" and the
+			// template captured "none", so reading the default concluded
+			// "visible" and left `maxHeight` at the template's 0 against a
+			// declared 250, which is the whole of §142's CE0463. Both are
+			// fallbacks and not preferences: a value the script set, or a
+			// mapping's own default, still wins above.
+			if v, ok := stored[rule.HiddenWhen.PropertyKey]; ok && v != "" {
+				condVal, known = v, true
+			} else {
+				condVal, known = defaults[defaultsKey("", rule.HiddenWhen.PropertyKey)]
+			}
 			if !known || condVal == "" {
 				continue // still indeterminable — never guess
 			}

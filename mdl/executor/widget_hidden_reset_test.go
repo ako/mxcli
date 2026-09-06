@@ -90,7 +90,7 @@ func imageDefaults() map[string]string {
 // captured.
 func TestHiddenProperties_ResetToTheirDeclaredDefault(t *testing.T) {
 	e := &PluggableWidgetEngine{pageBuilder: &pageBuilder{}}
-	hidden := e.hiddenUnnamedProperties(imageDef(), &ast.WidgetV3{Name: "img"}, imageDefaults())
+	hidden := e.hiddenUnnamedProperties(imageDef(), &ast.WidgetV3{Name: "img"}, imageDefaults(), nil)
 
 	for _, key := range []string{"width", "height"} {
 		reset, ok := hidden[key]
@@ -110,7 +110,7 @@ func TestHiddenProperties_VisiblePropertyIsNotReset(t *testing.T) {
 	e := &PluggableWidgetEngine{pageBuilder: &pageBuilder{}}
 	w := &ast.WidgetV3{Name: "img", Properties: map[string]any{"WidthUnit": "pixels", "Width": "48"}}
 
-	hidden := e.hiddenUnnamedProperties(imageDef(), w, imageDefaults())
+	hidden := e.hiddenUnnamedProperties(imageDef(), w, imageDefaults(), nil)
 	if _, ok := hidden["width"]; ok {
 		t.Error("width is visible when widthUnit is pixels — resetting it would discard Width: 48")
 	}
@@ -127,7 +127,7 @@ func TestHiddenProperties_ExplicitlyNamedIsLeftToTheChecker(t *testing.T) {
 	e := &PluggableWidgetEngine{pageBuilder: &pageBuilder{}}
 	w := &ast.WidgetV3{Name: "img", Properties: map[string]any{"Width": "48"}}
 
-	if _, ok := e.hiddenUnnamedProperties(imageDef(), w, imageDefaults())["width"]; ok {
+	if _, ok := e.hiddenUnnamedProperties(imageDef(), w, imageDefaults(), nil)["width"]; ok {
 		t.Error("a hidden property the script named must not be silently reset — MDL-WIDGET10 reports it")
 	}
 }
@@ -137,7 +137,7 @@ func TestHiddenProperties_ExplicitlyNamedIsLeftToTheChecker(t *testing.T) {
 // old behaviour and remains the fallback.
 func TestHiddenProperties_NoDeclaredDefaultMeansNoReset(t *testing.T) {
 	e := &PluggableWidgetEngine{pageBuilder: &pageBuilder{}}
-	hidden := e.hiddenUnnamedProperties(imageDef(), &ast.WidgetV3{Name: "img"}, nil)
+	hidden := e.hiddenUnnamedProperties(imageDef(), &ast.WidgetV3{Name: "img"}, nil, nil)
 
 	reset, ok := hidden["width"]
 	if !ok {
@@ -156,7 +156,7 @@ func TestHiddenProperties_DataSourcePruningIsUnchanged(t *testing.T) {
 	def := uploadModeDef()
 
 	filesMode := e.hiddenUnnamedProperties(def, &ast.WidgetV3{
-		Name: "fu", Properties: map[string]any{"DataSource": "assoc"}}, nil)
+		Name: "fu", Properties: map[string]any{"DataSource": "assoc"}}, nil, nil)
 	if _, ok := filesMode["associatedimages"]; !ok {
 		t.Error("associatedImages was not pruned under the default uploadMode — this is #956's CE0463")
 	}
@@ -178,7 +178,7 @@ func TestHiddenProperties_WriterAndCheckerShareTheDefaultsSource(t *testing.T) {
 	}
 	e := &PluggableWidgetEngine{pageBuilder: &pageBuilder{}}
 	hidden := e.hiddenUnnamedProperties(imageDef(), &ast.WidgetV3{Name: "img"},
-		widgetPropertyDefaults("", "com.mendix.widget.web.image.Image"))
+		widgetPropertyDefaults("", "com.mendix.widget.web.image.Image"), nil)
 	if reset := hidden["width"]; reset != "" {
 		t.Errorf("reset = %q, want empty when the defaults source has nothing", reset)
 	}

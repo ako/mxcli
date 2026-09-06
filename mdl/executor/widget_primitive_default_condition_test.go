@@ -67,7 +67,7 @@ func TestHiddenUnnamedProperties_PrunesTheInactiveDataSource(t *testing.T) {
 	def := uploadModeDef()
 
 	filesMode := e.hiddenUnnamedProperties(def, &ast.WidgetV3{
-		Name: "fu", Properties: map[string]any{"DataSource": "assoc"}}, nil)
+		Name: "fu", Properties: map[string]any{"DataSource": "assoc"}}, nil, nil)
 	if _, ok := filesMode["associatedimages"]; !ok {
 		t.Error("associatedImages was not pruned under the default uploadMode — this is the CE0463")
 	}
@@ -76,7 +76,7 @@ func TestHiddenUnnamedProperties_PrunesTheInactiveDataSource(t *testing.T) {
 	}
 
 	imagesMode := e.hiddenUnnamedProperties(def, &ast.WidgetV3{
-		Name: "fu", Properties: map[string]any{"uploadMode": "images", "DataSource": "assoc"}}, nil)
+		Name: "fu", Properties: map[string]any{"uploadMode": "images", "DataSource": "assoc"}}, nil, nil)
 	if _, ok := imagesMode["associatedfiles"]; !ok {
 		t.Error("associatedFiles was not pruned under uploadMode images")
 	}
