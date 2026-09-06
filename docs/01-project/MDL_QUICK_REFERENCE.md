@@ -775,6 +775,14 @@ create or replace navigation Responsive
   );
 ```
 
+**An item with no icon is reported (MDL074, a warning).** The navigation sidebar
+collapses to an icon rail, and that is the state most users leave it in: a
+collapsed item shows its icon, and one without falls back to the first few
+characters of its caption — rarely enough to tell `Orders` from `Order lines`.
+The menu still builds and `mx check` passes, so the only symptom is in a browser.
+The rule covers every item at every depth, in both `create navigation`'s `menu`
+block and `create menu`, and needs no project.
+
 `icon` is optional and is a **qualified name** into an **icon collection** —
 `Atlas_Core.Atlas`, `Atlas_Core.Atlas_Filled`, `Atlas_Core.Atlas_Styling`, or one
 of your own — written like any other model reference. Hyphenated Atlas names
@@ -782,10 +790,27 @@ of your own — written like any other model reference. Hyphenated Atlas names
 `Atlas_Core.Atlas."align-center"`. List the available names with `describe icon
 collection Atlas_Core.Atlas`.
 
-Studio Pro can also set a *glyph* icon (a numeric character code) or an *image*
-icon (pointing into an image collection). Those are different elements; MDL
-writes only the icon-collection form, and `describe navigation` marks the other
-two with a comment instead of emitting an `icon` clause that would convert them.
+Mendix stores **three different icon elements**, and each has its own form,
+because they are not spellings of one value — a collection icon and an image icon
+each hold a qualified name (into an icon collection and an *image* collection,
+different documents), while a glyph icon holds a numeric character code and no
+name at all:
+
+| form | element | holds |
+|------|---------|-------|
+| `icon Atlas_Core.Atlas.home` | `Forms$IconCollectionIcon` | a name in an icon collection |
+| `icon glyph 57377` | `Forms$GlyphIcon` | a numeric character code |
+| `icon image MyModule.Images.logo` | `Forms$ImageIcon` | a name in an image collection |
+
+The bare form is the icon-collection icon, so every existing script keeps its
+meaning. The keyword forms exist because writing a bare name for an image icon
+would rebuild it as a collection icon — a silent variant swap.
+
+`describe navigation` emits all three, so describe → exec is lossless. It
+previously wrote a comment for the other two, and since `create or replace
+navigation` is a **full replacement**, re-running that output DELETED the icon
+the comment had just declined to describe. A `$Type` this build does not know is
+still flagged rather than guessed at.
 
 ## Project Settings
 

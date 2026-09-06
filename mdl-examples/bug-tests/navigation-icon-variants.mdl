@@ -1,0 +1,65 @@
+-- ============================================================================
+-- Menu icons: all three of Mendix's icon elements round-trip
+-- ============================================================================
+--
+-- Mendix stores THREE different icon elements on a menu item, and they are not
+-- spellings of one value:
+--
+--   Forms$IconCollectionIcon   a qualified name in an icon collection
+--   Forms$GlyphIcon            a numeric character code, and no name at all
+--   Forms$ImageIcon            a qualified name in an IMAGE collection
+--
+-- MDL could name only the first, so `describe navigation` emitted a comment for
+-- the other two — and since CREATE NAVIGATION is a FULL REPLACEMENT, re-running
+-- that output DELETED the icon the comment had just declined to describe.
+--
+-- Measured on testdata/expr-checker, whose Home item carries a glyph icon:
+--
+--   describe   menu item 'Home' page …;
+--              -- icon a numeric glyph code (Forms$GlyphIcon) is not reproducible …
+--   exec       Navigation profile 'Responsive' updated.
+--   describe   menu item 'Home' page …;        <- the icon was destroyed
+--
+-- Exit 0, success message, silent loss — the same shape as the pluggable-widget
+-- body loss in mendixlabs/mxcli#1036.
+--
+-- The bare form still means the icon-collection icon, so every script written
+-- before this keeps its meaning. The keyword forms exist because writing a bare
+-- name for an image icon would rebuild it as a COLLECTION icon: a silent variant
+-- swap, and the reason the bare form was not simply widened to cover all three.
+
+create module NavIconVariants;
+
+create page NavIconVariants.Home ( Title: 'Home', Layout: Atlas_Core.Atlas_Default ) {
+  dynamictext t (Content: 'Home')
+}
+
+create page NavIconVariants.Close ( Title: 'Close', Layout: Atlas_Core.Atlas_Default ) {
+  dynamictext t (Content: 'Close')
+}
+
+create page NavIconVariants.Logo ( Title: 'Logo', Layout: Atlas_Core.Atlas_Default ) {
+  dynamictext t (Content: 'Logo')
+}
+
+create or replace navigation Responsive
+  home page NavIconVariants.Home
+  menu (
+    -- Forms$IconCollectionIcon — the bare form, unchanged
+    menu item 'Home' page NavIconVariants.Home icon Atlas_Core.Atlas.home;
+    -- Forms$GlyphIcon — the numeric character code IS the glyph's identity
+    menu item 'Close' page NavIconVariants.Close icon glyph 57377;
+    -- Forms$ImageIcon — an image collection, a different document
+    menu item 'Logo' page NavIconVariants.Logo icon image NavIconVariants.Images.logo;
+    -- A submenu takes any of the three too; it sits on the collapsed icon rail
+    menu 'Admin' icon glyph 57345 (
+      menu item 'Users' page NavIconVariants.Home icon Atlas_Core.Atlas.user;
+    );
+  );
+
+-- The same item syntax serves a standalone menu document, which is why one AST
+-- node backs both and the two cannot diverge.
+create or modify menu NavIconVariants.Main_Menu (
+  menu item 'Home' page NavIconVariants.Home icon Atlas_Core.Atlas.home;
+  menu item 'Close' page NavIconVariants.Close icon glyph 57377;
+);

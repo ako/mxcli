@@ -237,7 +237,7 @@ func navMenuItemFromGen(el element.Element) *types.NavMenuItem {
 	item := &types.NavMenuItem{
 		Caption: textOf(mi.Caption()),
 	}
-	item.IconType, item.Icon = menuIconOf(mi.Icon())
+	item.IconType, item.Icon, item.IconCode = menuIconOf(mi.Icon())
 	resolveMenuAction(item, mi.Action())
 	for _, subEl := range mi.ItemsItems() {
 		if sub := navMenuItemFromGen(subEl); sub != nil {
@@ -262,21 +262,31 @@ func navMenuItemFromGen(el element.Element) *types.NavMenuItem {
 // nothing for exactly the registered variants — which is what made DESCRIBE drop
 // every Atlas icon under this engine while the legacy engine printed them. Match
 // on the Raw() method instead, which both shapes satisfy.
-func menuIconOf(icon element.Element) (typeName, image string) {
+func menuIconOf(icon element.Element) (typeName, image string, code int) {
 	if icon == nil {
-		return "", ""
+		return "", "", 0
 	}
 	typeName = icon.TypeName()
 	raw, ok := icon.(interface{ Raw() bson.Raw })
 	if !ok {
-		return typeName, ""
+		return typeName, "", 0
 	}
 	if v, err := raw.Raw().LookupErr("Image"); err == nil {
 		if s, ok := v.StringValueOK(); ok {
 			image = s
 		}
 	}
-	return typeName, image
+	// Forms$GlyphIcon's Code is the ONLY thing identifying which glyph it is.
+	// Reading the $Type alone told a caller a glyph was there and nothing more,
+	// so DESCRIBE could not re-emit it and a rewrite replaced it with nothing.
+	if v, err := raw.Raw().LookupErr("Code"); err == nil {
+		if i, ok := v.Int32OK(); ok {
+			code = int(i)
+		} else if i, ok := v.Int64OK(); ok {
+			code = int(i)
+		}
+	}
+	return typeName, image, code
 }
 
 // resolveMenuAction sets the action type / target on a NavMenuItem from a gen

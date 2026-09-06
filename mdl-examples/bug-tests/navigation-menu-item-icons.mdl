@@ -1,0 +1,50 @@
+-- ============================================================================
+-- MDL074: a navigation menu item with no icon is reported
+-- ============================================================================
+--
+-- The navigation sidebar collapses to an icon rail, and that is the state most
+-- users leave it in. A collapsed item shows its icon; one without falls back to
+-- the first few characters of its caption, which is rarely enough to tell
+-- "Orders" from "Order lines". Nothing caught it: the icon is optional in the
+-- grammar, the model builds, and `mx check` passes.
+--
+-- This script is a POSITIVE example — every item carries an icon, so it checks
+-- clean. The warning it guards against is exercised by the unit tests in
+-- mdl/executor/validate_navigation_icons_test.go, which can assert the absence
+-- of a warning as well as its presence; a `.fail.mdl` cannot, because MDL074 is
+-- a WARNING and `check` still exits 0.
+--
+-- The rule needs no project, so it fires under `make check-mdl` too.
+
+create module NavIcons;
+
+create page NavIcons.Home ( Title: 'Home', Layout: Atlas_Core.Atlas_Default ) {
+  dynamictext t (Content: 'Home')
+}
+
+create page NavIcons.Orders ( Title: 'Orders', Layout: Atlas_Core.Atlas_Default ) {
+  dynamictext t (Content: 'Orders')
+}
+
+create page NavIcons.Users ( Title: 'Users', Layout: Atlas_Core.Atlas_Default ) {
+  dynamictext t (Content: 'Users')
+}
+
+-- Every item iconed, including the SUBMENU PARENT — it sits directly on the
+-- collapsed rail, so it needs one most of all.
+create or replace navigation Responsive
+  home page NavIcons.Home
+  menu (
+    menu item 'Home' page NavIcons.Home icon Atlas_Core.Atlas.home;
+    menu item 'Orders' page NavIcons.Orders icon Atlas_Core.Atlas."shopping-cart";
+    menu 'Admin' icon Atlas_Core.Atlas.cog (
+      menu item 'Users' page NavIcons.Users icon Atlas_Core.Atlas.user;
+    );
+  );
+
+-- A standalone menu document carries the same items and gets the same rule:
+-- CREATE MENU and CREATE NAVIGATION share one AST node so they cannot diverge.
+create or modify menu NavIcons.Main_Menu (
+  menu item 'Home' page NavIcons.Home icon Atlas_Core.Atlas.home;
+  menu item 'Orders' page NavIcons.Orders icon Atlas_Core.Atlas."shopping-cart";
+);

@@ -2,6 +2,8 @@
 
 package ast
 
+import "github.com/mendixlabs/mxcli/mdl/types"
+
 // AlterNavigationStmt represents: CREATE [OR REPLACE] NAVIGATION <profile> [clauses...]
 // This is a full-replacement command: omitted clauses clear that section.
 type AlterNavigationStmt struct {
@@ -25,12 +27,19 @@ type NavHomePageDef struct {
 
 // NavMenuItemDef represents a MENU ITEM or MENU sub-menu definition.
 type NavMenuItemDef struct {
-	Caption   string           // from STRING_LITERAL
-	Page      *QualifiedName   // PAGE target
-	Microflow *QualifiedName   // MICROFLOW target
-	SignOut   bool             // SIGN_OUT — the third action a menu item can carry
-	Icon      string           // ICON 'Module.Collection.name', empty for none
-	Items     []NavMenuItemDef // Sub-items (for MENU 'caption' (...))
+	Caption   string         // from STRING_LITERAL
+	Page      *QualifiedName // PAGE target
+	Microflow *QualifiedName // MICROFLOW target
+	SignOut   bool           // SIGN_OUT — the third action a menu item can carry
+	Icon      string         // the qualified name, for the collection and image kinds
+	// IconKind says WHICH of Mendix's three icon elements was written. They are
+	// not variants of one value — a glyph carries a numeric code and no name —
+	// so a single Icon string could express only one of the three, and the other
+	// two were destroyed on rewrite.
+	IconKind types.MenuIconKind
+	// IconCode is the glyph's numeric character code, set only for MenuIconGlyph.
+	IconCode int
+	Items    []NavMenuItemDef // Sub-items (for MENU 'caption' (...))
 }
 
 // CreateMenuStmt is `create [or modify] menu Module.Name ( <items> )` — a

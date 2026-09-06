@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
+	"github.com/mendixlabs/mxcli/mdl/types"
 )
 
 // navMenuItems parses a CREATE NAVIGATION with the given menu body and returns
@@ -99,5 +100,90 @@ func TestNavMenuItem_IconWithoutATarget(t *testing.T) {
 	}
 	if items[0].Page != nil || items[0].Microflow != nil {
 		t.Error("no target was written, so none must be built")
+	}
+}
+
+// Mendix stores three different icon elements and MDL could name only one, so
+// DESCRIBE emitted a comment for the other two and re-running its own output
+// destroyed them. These are the two new forms.
+//
+// A parse test is not enough here: the slice 2-3 lesson is that a corpus diff of
+// `check` output is blind to a construct that parses into the WRONG SHAPE. These
+// assert the AST, which is what the writer reads.
+func TestNavMenuItem_ParsesAGlyphIcon(t *testing.T) {
+	items := navMenuItems(t, `MENU ITEM 'Dashboard' PAGE M.Dash ICON GLYPH 57345;`)
+	if len(items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(items))
+	}
+	if items[0].IconKind != types.MenuIconGlyph {
+		t.Errorf("IconKind = %q, want %q", items[0].IconKind, types.MenuIconGlyph)
+	}
+	if items[0].IconCode != 57345 {
+		t.Errorf("IconCode = %d, want 57345", items[0].IconCode)
+	}
+	if items[0].Icon != "" {
+		t.Errorf("Icon = %q, want empty — a glyph carries a code, not a name", items[0].Icon)
+	}
+	if items[0].Page == nil || items[0].Page.Name != "Dash" {
+		t.Error("the ICON clause displaced the PAGE target")
+	}
+}
+
+func TestNavMenuItem_ParsesAnImageIcon(t *testing.T) {
+	items := navMenuItems(t, `MENU ITEM 'Dashboard' PAGE M.Dash ICON IMAGE MyMod.Images.logo;`)
+	if len(items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(items))
+	}
+	if items[0].IconKind != types.MenuIconImage {
+		t.Errorf("IconKind = %q, want %q", items[0].IconKind, types.MenuIconImage)
+	}
+	if items[0].Icon != "MyMod.Images.logo" {
+		t.Errorf("Icon = %q", items[0].Icon)
+	}
+	if items[0].Page == nil || items[0].Page.Name != "Dash" {
+		t.Error("the ICON clause displaced the PAGE target")
+	}
+}
+
+// The control, and the one that would break first: qualifiedName accepts a
+// keyword as a name segment, so `ICON IMAGE …` also matches the BARE form with
+// `image` read as the name. The bare form must keep meaning icon-collection, and
+// the keyword-led form must not be swallowed by it.
+func TestNavMenuItem_BareIconIsStillACollectionIcon(t *testing.T) {
+	items := navMenuItems(t, `MENU ITEM 'Home' PAGE M.Home ICON Atlas_Core.Atlas.home;`)
+	if items[0].IconKind != types.MenuIconCollection {
+		t.Errorf("IconKind = %q, want %q — the bare form is the collection icon",
+			items[0].IconKind, types.MenuIconCollection)
+	}
+	if items[0].Icon != "Atlas_Core.Atlas.home" {
+		t.Errorf("Icon = %q", items[0].Icon)
+	}
+	if items[0].IconCode != 0 {
+		t.Errorf("IconCode = %d, want 0", items[0].IconCode)
+	}
+}
+
+// An item with no icon at all keeps the zero kind, which is what MDL074 reads.
+func TestNavMenuItem_NoIconIsKindNone(t *testing.T) {
+	items := navMenuItems(t, `MENU ITEM 'Home' PAGE M.Home;`)
+	if items[0].IconKind != types.MenuIconNone {
+		t.Errorf("IconKind = %q, want none", items[0].IconKind)
+	}
+}
+
+// A submenu takes the new forms too — it sits directly on the collapsed rail.
+func TestNavMenuItem_SubMenuTakesAGlyphIcon(t *testing.T) {
+	items := navMenuItems(t, "MENU 'Admin' ICON GLYPH 100 (\n  MENU ITEM 'Users' PAGE M.U ICON IMAGE M.I.u;\n);")
+	if len(items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(items))
+	}
+	if items[0].IconKind != types.MenuIconGlyph || items[0].IconCode != 100 {
+		t.Errorf("submenu icon = (%q, %d), want (glyph, 100)", items[0].IconKind, items[0].IconCode)
+	}
+	if len(items[0].Items) != 1 {
+		t.Fatalf("sub-items = %d, want 1 — the icon clause ate the block", len(items[0].Items))
+	}
+	if items[0].Items[0].IconKind != types.MenuIconImage {
+		t.Errorf("sub-item kind = %q, want image", items[0].Items[0].IconKind)
 	}
 }

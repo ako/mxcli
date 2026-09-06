@@ -234,7 +234,7 @@ func convertNavProfile(in *mpr.NavigationProfile) *types.NavigationProfile {
 func convertNavMenuItem(in *mpr.NavMenuItem) *types.NavMenuItem {
 	mi := &types.NavMenuItem{
 		Caption: in.Caption, Page: in.Page, Microflow: in.Microflow, ActionType: in.ActionType,
-		Icon: in.Icon, IconType: in.IconType,
+		Icon: in.Icon, IconType: in.IconType, IconCode: in.IconCode,
 	}
 	if in.Items != nil {
 		mi.Items = make([]*types.NavMenuItem, len(in.Items))
