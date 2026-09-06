@@ -43,6 +43,23 @@
 -- impossible to remove. It is now REPORTED like a dropped attribute, which is the
 -- only part of this that was silent before.
 --
+-- A SECOND DEFECT FELL OUT OF THE FIRST, and it is the more interesting one. A
+-- fix that starts PRESERVING something reaches states no prior code could
+-- produce. When the rewrite drops EVERY attribute a rule covered, the prune
+-- empties that rule's member list — and the LEGACY engine's
+-- ReconcileMemberAccesses skipped any rule whose list held only the storage
+-- marker, so the entity's NEW attributes never got an entry. CE0066 again, this
+-- time from the opposite direction. Measured on the real BusinessEvents 3.12.0
+-- module: the Administrator rule went 5 members -> 0 on legacy and 5 -> 1 on
+-- modelsdk, from the same script.
+--
+-- That engine split is the whole diagnosis. Identical input, 0 errors on one
+-- engine and CE0066 on the other, localises the defect to the legacy path in one
+-- measurement and makes the codec engine the reference for what the document
+-- should contain. The guard is now `len(maArr) == 0` — no storage marker at all
+-- — because a rule with no entries on an entity that HAS members is exactly the
+-- out-of-date state CE0066 names.
+--
 -- Verify:
 --
 --   mxcli exec  entity-modify-preserves-access-rules.mdl -p app.mpr
@@ -63,6 +80,12 @@
 --
 --   drop `extends System.FileDocument` from AccP.Export below
 --     -> reported as a dropped member. Before: silent.
+--
+--   restore the `len(maArr) <= 1` early break in ReconcileMemberAccesses, then
+--   run AccP.Wiped below on --engine legacy
+--     -> CE0066 on the module. The rule survives with an empty member list and
+--        Kept never gets an entry. Unaffected on modelsdk, which is how the
+--        defect was localised.
 
 create module AccP;
 /
@@ -113,5 +136,28 @@ create or modify persistent entity AccP.Export extends System.FileDocument (
 create or modify persistent entity AccP.Order (
   Ref: String(20),
   Amount: Decimal default 0
+);
+/
+
+-- THE SECOND DEFECT, in its smallest form: a rewrite that drops EVERY attribute
+-- the rule covered and introduces a new one. The prune empties the member list,
+-- and the reconcile then has to fill it — which the legacy engine refused to do
+-- for an empty list, leaving Kept uncovered and the module at CE0066. Run this
+-- under both engines; they must agree.
+create or modify persistent entity AccP.Wiped (
+  Gone: String(20),
+  AlsoGone: Integer
+);
+/
+
+-- `create, delete` is not decoration: without an entity-level right, a rule whose
+-- every member right is None grants nothing at all, and Mendix says so — CE0004
+-- "No access rights granted". That is Mendix being right about a rule that has
+-- become pointless, not a defect, but it would mask the one under test.
+grant AccP.Reader on AccP.Wiped (create, delete, read (Gone, AlsoGone), write (Gone));
+/
+
+create or modify persistent entity AccP.Wiped (
+  Kept: String(20)
 );
 /
