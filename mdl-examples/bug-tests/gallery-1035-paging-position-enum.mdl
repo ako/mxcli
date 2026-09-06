@@ -1,0 +1,82 @@
+-- ============================================================================
+-- Gallery CE0463 "the definition of this widget has changed" on a non-default
+-- pagination  (mendixlabs/mxcli#1035)
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   A gallery authored with `pagination: 'loadMore'` or
+--   `pagination: 'virtualScrolling'` made mxbuild reject the page with CE0463.
+--   A gallery on the default `pagination: 'buttons'` was clean, which is why
+--   the vast majority of galleries never showed it.
+--
+--   The error names the widget VERSION, so nothing in it points at a value.
+--   `mxcli docker check` also runs `mx update-widgets` before `mx check` by
+--   default and repairs the widget, so the plain command reports 0 errors on a
+--   project that genuinely has this. Use `--no-update-widgets` to see it:
+--
+--     mxcli docker check -p app.mpr --no-update-widgets
+--
+-- Root cause:
+--   gallery.def.json wrote `pagingPosition: "below"`. The Gallery .mpk declares
+--
+--     <property key="pagingPosition" type="enumeration" defaultValue="bottom">
+--       <enumerationValue key="bottom">Below grid</enumerationValue>
+--       <enumerationValue key="top">Above grid</enumerationValue>
+--       <enumerationValue key="both">Both</enumerationValue>
+--     </property>
+--
+--   so "below" is the first word of the CAPTION of key "bottom" — not a member
+--   of the enumeration at all. Mendix stores what mxcli writes and then refuses
+--   the widget.
+--
+--   It stayed hidden because `pagingPosition` is hidden when pagination is
+--   `buttons`, and the hidden-property pass resets a hidden unnamed property to
+--   its declared default ("bottom"). Only a non-default pagination let the
+--   wrong literal reach disk.
+--
+-- After fix:
+--   `pagingPosition: "bottom"` in all three definition copies
+--   (sdk/widgets/definitions, modelsdk/widgets/definitions, .mxcli/widgets).
+--   Verified: three galleries — virtualScrolling, loadMore and the default
+--   buttons — build at 0 errors, where the first two were CE0463 before.
+--   TestDefJSONEnumLiteralsAreDeclaredMPKKeys guards the class: every
+--   enumeration literal in a .def.json must be a key the .mpk declares.
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/gallery-1035-paging-position-enum.mdl -p app.mpr
+--   mxcli docker check -p app.mpr --no-update-widgets    -- must be 0 errors
+-- ============================================================================
+
+create module Bug1035;
+create persistent entity Bug1035.Item ( Name: string(200) );
+
+-- The two configurations that failed. Both leave `pagingPosition` visible, so
+-- the literal from the definition is what gets stored.
+create or replace page Bug1035.P_LoadMore (
+  Title: 'Load more',
+  Layout: Atlas_Core.Atlas_Default
+) {
+  gallery gLoadMore ( DataSource: database from Bug1035.Item, pagination: 'loadMore' ) {
+    template t { dynamictext d (Content: '{1}', ContentParams: [{1} = Name]) }
+  }
+}
+
+create or replace page Bug1035.P_VirtualScrolling (
+  Title: 'Virtual scrolling',
+  Layout: Atlas_Core.Atlas_Default
+) {
+  gallery gVirtual ( DataSource: database from Bug1035.Item, pagination: 'virtualScrolling' ) {
+    template t { dynamictext d (Content: '{1}', ContentParams: [{1} = Name]) }
+  }
+}
+
+-- The control: the default pagination was clean before the fix too, so a run
+-- that only checks this page proves nothing.
+create or replace page Bug1035.P_Buttons (
+  Title: 'Buttons',
+  Layout: Atlas_Core.Atlas_Default
+) {
+  gallery gButtons ( DataSource: database from Bug1035.Item, pagination: 'buttons' ) {
+    template t { dynamictext d (Content: '{1}', ContentParams: [{1} = Name]) }
+  }
+}
