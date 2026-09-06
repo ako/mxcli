@@ -1,0 +1,130 @@
+-- Two statements `mxcli check` passed, `exec` wrote without complaint, and only
+-- mxbuild refused — one of them by refusing to LOAD the project at all.
+-- ako/CapTrackV3 FINDINGS §9 and §46.
+--
+-- 1. AN UNASSIGNED CREATE (§9):
+--
+--      CREATE Mod.Region ( Name = 'North' ) COMMIT;   -- no `$Var =`
+--      mx check -> [CE6005] "The 'Entity' property is required."
+--                    at Create object activity 'Create Region (Name)'
+--
+--    The error names the wrong property. `Entity` IS stored. A field-level diff
+--    of the assigned and unassigned documents differs in ONE substantive field —
+--    `Action.VariableName`, "R" vs "" — everything else being identity (element
+--    IDs, flow pointers, StableId). A Mendix Create activity always names its
+--    output, and Studio Pro supplies the name itself when you drop one. Patching
+--    that single field took the project from 1 error to 0; restoring it took it
+--    back to 1.
+--
+--    mxcli now supplies it too, on Studio Pro's `New<Entity>` convention.
+--    Supplied rather than refused, because nothing is guessed: the author said
+--    create this entity and did not ask for a handle, which is exactly what an
+--    auto-named output is. The generated name is NOT registered as
+--    referenceable, so a later `change $NewRegion` stays the error it is.
+--
+-- 2. A TWO-PART SORT PATH (§46) — the severe one:
+--
+--      RETRIEVE $Rows FROM Mod.Item SORT BY System.createdDate ASC;
+--      mxcli check -> passed
+--      mxcli exec  -> succeeded, no complaint
+--      mx          -> System.ArgumentNullException: Value cannot be null.
+--                       at DomainModels.Refs.AttributeRef.set_AttributeId
+--
+--    Not a CE code — an unhandled exception with a stack trace. The project is
+--    UNLOADABLE, so Studio Pro cannot open it either. The report attributed the
+--    exception to `exec`; it is `mx` READING what exec wrote.
+--
+--    One guard caused it. The qualified branch validated `len(parts) >= 3`, so a
+--    two-part path fell through every check and was written verbatim as the
+--    sort's AttributeQualifiedName. `System.createdDate` reads as
+--    Module.Attribute, names no entity, and Mendix stores a null AttributeId.
+--
+--    Refused rather than repaired: `Module.Attribute` has no reading that names
+--    an entity, and the two candidate repairs — a bare member of the retrieved
+--    entity, or a member of the module's like-named entity — mean different
+--    things, and only the author knows which.
+--
+-- WHAT ACTUALLY WORKS FOR A SYSTEM MEMBER, measured on 11.14.0. This is narrower
+-- than the report suggests, and worth stating because the obvious reading is
+-- wrong:
+--
+--   sort by <a real attribute>                 0 errors
+--   sort by createdDate  (entity STORES it)    0 errors   <- the right spelling
+--   sort by createdDate  (entity does not)     CE1613     <- Mendix is right
+--   sort by CreatedDate  (wrong case)          CE1613     <- Mendix is right
+--   sort by System.createdDate                 UNLOADABLE <- the defect
+--
+-- A system member is spelled BARE and works. An earlier reading of this — that
+-- mxcli could not sort by a system member at all — came from testing against an
+-- entity that did not store one.
+--
+-- Verify:
+--
+--   mxcli exec  create-output-variable-and-sort-path.mdl -p app.mpr
+--   mx check -p app.mpr        -- 0 errors
+--
+-- Use `mx check` DIRECTLY, not `mxcli docker check`: that command runs
+-- `mx update-widgets` first and can mask a model-level failure.
+--
+-- Then perturb, one at a time:
+--
+--   stub freshCreateVariable to return ""
+--     -> CE6005 on every unassigned create, and mxcli check still passes.
+--
+--   change `sort by createdDate` to `sort by System.createdDate`
+--     -> refused by exec now. Before the fix: written, and the project could no
+--        longer be opened by mxbuild or Studio Pro.
+
+create module CrSort;
+/
+
+-- The entity must STORE createdDate for a sort on it to resolve — that is what
+-- the AutoCreatedDate pseudo-type sets.
+create or modify persistent entity CrSort.Item (
+  Code: String(20),
+  CreatedDate: AutoCreatedDate
+);
+/
+
+create or modify entity CrSort.Region ( Name: String(50) );
+/
+
+-- §9: the reported case, twice over. Two unassigned creates of the SAME entity
+-- must not end up sharing an output variable — Mendix reports that as CE0119, so
+-- a bare "New"+entity would trade one silent defect for another.
+create or modify microflow CrSort.ACT_Unassigned ()
+begin
+  CREATE CrSort.Region ( Name = 'North' ) COMMIT;
+  CREATE CrSort.Region ( Name = 'South' ) COMMIT;
+end;
+/
+
+-- CONTROL for §9: an assigned create keeps the AUTHOR's name, and that name is
+-- still referenceable afterwards. Without this a fix that always generated a name
+-- would look correct above.
+create or modify microflow CrSort.ACT_Assigned ()
+begin
+  $R = CREATE CrSort.Region ( Name = 'East' ) COMMIT;
+  CHANGE $R ( Name = 'West' );
+  COMMIT $R;
+end;
+/
+
+-- §46: the spelling that works. A bare system member on an entity that stores it.
+create or modify microflow CrSort.ACT_SortBare ()
+begin
+  RETRIEVE $Rows FROM CrSort.Item SORT BY createdDate ASC;
+  LOG INFO 'done';
+end;
+/
+
+-- CONTROL for §46: an ordinary attribute, and a fully qualified three-part path.
+-- The existing belongs-to-the-entity check owns the three-part case and must stay
+-- permissive; a fix that refused every dotted path would break this.
+create or modify microflow CrSort.ACT_SortOther ()
+begin
+  RETRIEVE $Rows FROM CrSort.Item SORT BY Code DESC;
+  RETRIEVE $Rows2 FROM CrSort.Item SORT BY CrSort.Item.Code ASC;
+  LOG INFO 'done';
+end;
+/

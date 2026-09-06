@@ -28,6 +28,11 @@ type flowBuilder struct {
 	endsWithReturn  bool              // True if the flow already ends with EndEvent(s) from RETURN statements
 	lastReturnEndID model.ID          // Last explicit RETURN EndEvent, used as a fallback error-handler target
 	varTypes        map[string]string // Variable name -> entity qualified name (for CHANGE statements)
+	// generatedVars holds the output-variable names minted for an unassigned
+	// CREATE. Kept apart from varTypes so a generated name is never referenceable
+	// from the script, while still reserving the name against a second create of
+	// the same entity (see freshCreateVariable).
+	generatedVars map[string]bool
 	// textLang is the language a bare message/caption string is stored under
 	// (mendixlabs/mxcli#970). Empty means en_US, which keeps a zero-value
 	// flowBuilder — validateFlowBody builds one — behaving as before.

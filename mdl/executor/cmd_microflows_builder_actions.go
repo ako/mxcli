@@ -6,6 +6,7 @@ package executor
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
@@ -104,22 +105,47 @@ func commitTypeOf(f ast.CommitFlag) microflows.CommitType {
 
 // addCreateObjectAction creates a CREATE OBJECT statement.
 func (fb *flowBuilder) addCreateObjectAction(s *ast.CreateObjectStmt) model.ID {
-	action := &microflows.CreateObjectAction{
-		BaseElement:       model.BaseElement{ID: model.ID(types.GenerateID())},
-		ErrorHandlingType: fb.ehType(s.ErrorHandling),
-		OutputVariable:    s.Variable,
-		Commit:            commitTypeOf(s.Commit),
-		RefreshInClient:   s.RefreshInClient,
-	}
 	// Set entity reference as qualified name (BY_NAME_REFERENCE)
 	entityQN := ""
 	if s.EntityType.Module != "" && s.EntityType.Name != "" {
 		entityQN = s.EntityType.Module + "." + s.EntityType.Name
+	}
+
+	// A Mendix Create activity ALWAYS names its output, and Studio Pro supplies
+	// the name itself when you drop one. mxcli wrote an empty VariableName for
+	// `CREATE Mod.Thing (…);` with no `$Var =`, and mxbuild rejects that as
+	// CE6005 "The 'Entity' property is required." — an error that names the wrong
+	// property, since Entity IS stored. Measured on 11.14.0: the assigned and
+	// unassigned documents differ in exactly one field, and setting that one
+	// field takes the project from 1 error to 0 (ako/CapTrackV3 FINDINGS §9).
+	//
+	// Supplied rather than refused, because nothing is being guessed: the author
+	// said create this entity and did not ask for a handle, which is precisely
+	// what an auto-named output is. Studio Pro's own convention is New<Entity>.
+	outputVar := s.Variable
+	if outputVar == "" {
+		outputVar = fb.freshCreateVariable(s.EntityType.Name)
+		if fb.generatedVars == nil {
+			fb.generatedVars = map[string]bool{}
+		}
+		fb.generatedVars[outputVar] = true
+	}
+
+	action := &microflows.CreateObjectAction{
+		BaseElement:       model.BaseElement{ID: model.ID(types.GenerateID())},
+		ErrorHandlingType: fb.ehType(s.ErrorHandling),
+		OutputVariable:    outputVar,
+		Commit:            commitTypeOf(s.Commit),
+		RefreshInClient:   s.RefreshInClient,
+	}
+	if entityQN != "" {
 		action.EntityQualifiedName = entityQN
 	}
 
-	// Register variable type for CHANGE statements
-	if fb.varTypes != nil && entityQN != "" {
+	// Register variable type for CHANGE statements. The AUTHOR's name is
+	// registered, never the generated one: an auto-named output is deliberately
+	// not referenceable, so a later `change $NewThing` stays the error it is.
+	if fb.varTypes != nil && entityQN != "" && s.Variable != "" {
 		fb.varTypes[s.Variable] = entityQN
 	}
 
@@ -154,6 +180,42 @@ func (fb *flowBuilder) addCreateObjectAction(s *ast.CreateObjectStmt) model.ID {
 	fb.finishCustomErrorHandler(activity.ID, activityX, s.ErrorHandling, s.Variable)
 
 	return activity.ID
+}
+
+// freshCreateVariable returns the output-variable name for a CREATE the script
+// did not assign, following Studio Pro's New<Entity> convention.
+//
+// It must not collide with a name already in the flow: two activities sharing an
+// output variable is CE0119, so a bare "New"+entity would turn one silent defect
+// into another the moment a microflow creates two of the same entity. The suffix
+// walks up until the name is free, and the search is bounded by the number of
+// variables that exist, so it always terminates.
+func (fb *flowBuilder) freshCreateVariable(entityName string) string {
+	base := "New" + entityName
+	if base == "New" {
+		base = "NewObject"
+	}
+	if !fb.variableNameTaken(base) {
+		return base
+	}
+	for i := 2; ; i++ {
+		candidate := base + strconv.Itoa(i)
+		if !fb.variableNameTaken(candidate) {
+			return candidate
+		}
+	}
+}
+
+// variableNameTaken reports whether a name is already used in this flow. varTypes
+// carries the ones the script named; generatedVars carries the ones this function
+// has handed out, which varTypes deliberately does not record.
+func (fb *flowBuilder) variableNameTaken(name string) bool {
+	if fb.varTypes != nil {
+		if _, ok := fb.varTypes[name]; ok {
+			return true
+		}
+	}
+	return fb.generatedVars[name]
 }
 
 // addCommitAction creates a COMMIT statement.
@@ -1021,6 +1083,33 @@ func (fb *flowBuilder) addRetrieveAction(s *ast.RetrieveStmt) model.ID {
 					// Validate that qualified attribute path belongs to the retrieved entity
 					// Expected format: Module.Entity.Attribute
 					parts := strings.Split(attrPath, ".")
+					// A TWO-part path is never one of those, and the guard below used
+					// to skip it entirely: `System.createdDate` reads as
+					// Module.Attribute, named no entity, and was written straight
+					// through as the sort's AttributeQualifiedName. Mendix then
+					// resolves it to nothing and stores a null AttributeId, which
+					// makes the project UNLOADABLE — not a CE code but an unhandled
+					// System.ArgumentNullException out of AttributeRef.set_AttributeId,
+					// so Studio Pro cannot open it either (ako/CapTrackV3 FINDINGS §46).
+					//
+					// Refused rather than repaired. `Module.Attribute` has no reading
+					// that names an entity, and the two candidate repairs — treat it
+					// as a bare member of the retrieved entity, or as a member of the
+					// module's like-named entity — mean different things and only the
+					// author knows which.
+					//
+					// A system member is spelled BARE (`sort by createdDate`), which
+					// works whenever the entity stores it: measured on 11.14.0, that
+					// builds at 0 errors, and the same sort on an entity that does not
+					// store it is CE1613 — Mendix reporting the truth, not a defect.
+					if len(parts) == 2 {
+						fb.addError("sort by '%s' is not a valid attribute reference — a qualified sort "+
+							"attribute is Module.Entity.Attribute, and '%s' names no entity. Mendix stores "+
+							"an empty attribute reference for it, which makes the project impossible to "+
+							"open. Write a system member bare (`sort by %s`), or qualify it fully",
+							col.Attribute, attrPath, parts[1])
+						continue // Skip this sort column but continue processing others
+					}
 					if len(parts) >= 3 {
 						// Extract entity from attribute path (first two parts)
 						attrEntityQN := parts[0] + "." + parts[1]
