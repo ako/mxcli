@@ -578,6 +578,10 @@ func parseNavMenuItem(raw map[string]any) *NavMenuItem {
 	if icon, ok := raw["Icon"].(map[string]any); ok {
 		mi.IconType = extractString(icon["$Type"])
 		mi.Icon = extractString(icon["Image"])
+		// The glyph's Code identifies WHICH glyph; without it a caller knows one
+		// was there and nothing more, so it cannot be re-emitted or carried
+		// through a rewrite.
+		mi.IconCode = extractInt(icon["Code"])
 	}
 
 	// Extract action type and target from Action

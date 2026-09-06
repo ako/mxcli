@@ -7,6 +7,7 @@ import (
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	"github.com/mendixlabs/mxcli/mdl/linter"
+	"github.com/mendixlabs/mxcli/mdl/types"
 )
 
 // validateMenuItemIcons (MDL074) flags a navigation menu item that specifies no
@@ -61,7 +62,11 @@ func validateMenuItemIcons(stmt ast.Statement) []linter.Violation {
 	var walk func(list []ast.NavMenuItemDef)
 	walk = func(list []ast.NavMenuItemDef) {
 		for _, item := range list {
-			if item.Icon == "" {
+			// NOT `item.Icon == ""`. A glyph icon carries a numeric code and no
+			// name, so the obvious test reports an item that plainly has an
+			// icon — and every Studio Pro-authored menu is full of them. Ask the
+			// kind, which is what the writer and DESCRIBE also read.
+			if item.IconKind == types.MenuIconNone {
 				out = append(out, linter.Violation{
 					RuleID:   "MDL074",
 					Severity: linter.SeverityWarning,

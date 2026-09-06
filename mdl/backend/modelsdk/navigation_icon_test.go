@@ -25,7 +25,7 @@ func navIconEntry(d bson.D, key string) (interface{}, bool) {
 // divergence here means MXCLI_ENGINE silently changes what lands in the .mpr —
 // and only one of the two would open in Studio Pro.
 func TestNavMenuIconBson_MatchesTheMprEngine(t *testing.T) {
-	d, ok := navMenuIconBson("Atlas_Core.Atlas.align-center").(bson.D)
+	d, ok := navMenuIconBson(types.NavMenuItemSpec{Icon: "Atlas_Core.Atlas.align-center"}).(bson.D)
 	if !ok {
 		t.Fatal("expected a bson.D")
 	}
@@ -41,8 +41,8 @@ func TestNavMenuIconBson_MatchesTheMprEngine(t *testing.T) {
 }
 
 func TestNavMenuIconBson_EmptyNameStaysNull(t *testing.T) {
-	if got := navMenuIconBson(""); got != nil {
-		t.Errorf("navMenuIconBson(\"\") = %v, want nil", got)
+	if got := navMenuIconBson(types.NavMenuItemSpec{}); got != nil {
+		t.Errorf("navMenuIconBson(empty spec) = %v, want nil", got)
 	}
 }
 
@@ -78,9 +78,9 @@ func TestNavFormSettingsBson_NoTitleOverrideStaysNull(t *testing.T) {
 }
 
 func TestMenuIconOf_NilIconYieldsNothing(t *testing.T) {
-	typeName, image := menuIconOf(nil)
-	if typeName != "" || image != "" {
-		t.Errorf("menuIconOf(nil) = (%q, %q), want empty", typeName, image)
+	typeName, image, code := menuIconOf(nil)
+	if typeName != "" || image != "" || code != 0 {
+		t.Errorf("menuIconOf(nil) = (%q, %q, %d), want empty", typeName, image, code)
 	}
 }
 
@@ -116,7 +116,7 @@ func TestMenuIconOf_ReadsTheNameOffARegisteredVariant(t *testing.T) {
 	} {
 		t.Run(tc.typeName, func(t *testing.T) {
 			el := decodeIcon(t, tc.typeName, bsonv2.E{Key: "Image", Value: tc.image})
-			gotType, gotImage := menuIconOf(el)
+			gotType, gotImage, _ := menuIconOf(el)
 			if gotType != tc.typeName {
 				t.Errorf("type = %q, want %q", gotType, tc.typeName)
 			}
@@ -131,11 +131,41 @@ func TestMenuIconOf_ReadsTheNameOffARegisteredVariant(t *testing.T) {
 // DESCRIBE from emitting a lossy ICON clause for it.
 func TestMenuIconOf_GlyphHasNoName(t *testing.T) {
 	el := decodeIcon(t, "Forms$GlyphIcon", bsonv2.E{Key: "Code", Value: int32(9999)})
-	gotType, gotImage := menuIconOf(el)
+	gotType, gotImage, _ := menuIconOf(el)
 	if gotType != "Forms$GlyphIcon" {
 		t.Errorf("type = %q", gotType)
 	}
 	if gotImage != "" {
 		t.Errorf("image = %q, want empty: a glyph has no qualified name", gotImage)
+	}
+}
+
+// The glyph's Code is the only thing that says WHICH glyph. Reading the $Type
+// alone left a caller knowing one was there and nothing more, so DESCRIBE could
+// not re-emit it and a rewrite replaced it with nothing.
+func TestMenuIconOf_ReadsTheGlyphCode(t *testing.T) {
+	el := decodeIcon(t, "Forms$GlyphIcon", bsonv2.E{Key: "Code", Value: int32(57345)})
+	gotType, gotImage, gotCode := menuIconOf(el)
+	if gotType != "Forms$GlyphIcon" {
+		t.Errorf("type = %q, want Forms$GlyphIcon", gotType)
+	}
+	if gotImage != "" {
+		t.Errorf("image = %q, want empty — a glyph carries no qualified name", gotImage)
+	}
+	if gotCode != 57345 {
+		t.Errorf("code = %d, want 57345", gotCode)
+	}
+}
+
+// The control: a collection icon must NOT pick up a code, or "has a code" stops
+// distinguishing a glyph from anything else.
+func TestMenuIconOf_CollectionIconHasNoCode(t *testing.T) {
+	el := decodeIcon(t, "Forms$IconCollectionIcon", bsonv2.E{Key: "Image", Value: "Atlas_Core.Atlas.home"})
+	_, gotImage, gotCode := menuIconOf(el)
+	if gotImage != "Atlas_Core.Atlas.home" {
+		t.Errorf("image = %q", gotImage)
+	}
+	if gotCode != 0 {
+		t.Errorf("code = %d, want 0", gotCode)
 	}
 }

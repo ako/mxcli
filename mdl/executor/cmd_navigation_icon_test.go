@@ -70,27 +70,68 @@ func TestPrintMenuMDL_RoundTripsASubMenuIcon(t *testing.T) {
 	}
 }
 
-// The other two variants are real and appear in Studio Pro-authored projects,
-// but CREATE NAVIGATION cannot write them. Emitting `icon '…'` for an ImageIcon
-// would convert it to an IconCollectionIcon on replay — a silent variant swap.
-// The loss has to be visible instead.
-func TestPrintMenuMDL_FlagsAnIconItCannotReproduce(t *testing.T) {
-	for _, tc := range []struct{ name, iconType, icon, wantIn string }{
-		{"image icon", "Forms$ImageIcon", "System.Images.Close", "System.Images.Close"},
-		{"glyph icon", "Forms$GlyphIcon", "", "a numeric glyph code"},
+// All three variants round-trip now. They used to be flagged with a comment
+// instead, and because CREATE NAVIGATION is a full replacement, re-running that
+// output DELETED the icon the comment had just declined to describe — measured
+// on testdata/expr-checker, a glyph icon destroyed at exit 0.
+//
+// Each form is emitted with its own keyword, so replay rebuilds the same
+// ELEMENT. Writing `icon System.Images.Close` for an ImageIcon would have
+// converted it to an IconCollectionIcon: a silent variant swap, which is why the
+// bare form was not simply widened to cover all three.
+func TestPrintMenuMDL_EmitsEachIconVariant(t *testing.T) {
+	for _, tc := range []struct{ name, iconType, icon, want string }{
+		{"collection icon", "Forms$IconCollectionIcon", "Atlas_Core.Atlas.home", " icon Atlas_Core.Atlas.home"},
+		{"image icon", "Forms$ImageIcon", "System.Images.Close", " icon image System.Images.Close"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := menuMDL([]*types.NavMenuItem{{
 				Caption: "Close", Page: "M.Close", Icon: tc.icon, IconType: tc.iconType,
 			}})
-			// Check the statement line only — the note below it also says "icon".
+			if !strings.Contains(got, tc.want) {
+				t.Errorf("got %q, want it to contain %q", got, tc.want)
+			}
+			if strings.Contains(got, "-- icon") {
+				t.Errorf("still flagged as unreproducible: %q", got)
+			}
+		})
+	}
+
+	t.Run("glyph icon", func(t *testing.T) {
+		got := menuMDL([]*types.NavMenuItem{{
+			Caption: "Close", Page: "M.Close", IconType: "Forms$GlyphIcon", IconCode: 57345,
+		}})
+		if !strings.Contains(got, " icon glyph 57345") {
+			t.Errorf("got %q, want it to contain ` icon glyph 57345`", got)
+		}
+		if strings.Contains(got, "-- icon") {
+			t.Errorf("still flagged as unreproducible: %q", got)
+		}
+	})
+}
+
+// The note survives for what is genuinely beyond the language, and that is the
+// control: without a case that still flags, "emits everything" and "flags
+// nothing" are indistinguishable.
+//
+// A glyph with no Code cannot be rebuilt — the code IS the glyph's identity — and
+// a $Type this build does not know must never be guessed at, because emitting a
+// clause for it would rebuild a different element.
+func TestPrintMenuMDL_StillFlagsWhatItCannotRebuild(t *testing.T) {
+	for _, tc := range []struct{ name, iconType, icon string }{
+		{"glyph with no code", "Forms$GlyphIcon", ""},
+		{"unknown variant", "Forms$SomeFutureIcon", "M.X.y"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := menuMDL([]*types.NavMenuItem{{
+				Caption: "Close", Page: "M.Close", Icon: tc.icon, IconType: tc.iconType,
+			}})
 			stmt := strings.SplitN(got, "\n", 2)[0]
 			if strings.Contains(stmt, " icon ") {
-				t.Errorf("emitted an ICON clause for %s, which replay would convert: %q",
-					tc.iconType, got)
+				t.Errorf("emitted a clause for %s, which replay could not rebuild: %q", tc.iconType, got)
 			}
-			if !strings.Contains(got, "-- icon") || !strings.Contains(got, tc.wantIn) {
-				t.Errorf("the unreproducible icon was dropped silently: %q", got)
+			if !strings.Contains(got, "-- icon") {
+				t.Errorf("dropped silently: %q", got)
 			}
 		})
 	}

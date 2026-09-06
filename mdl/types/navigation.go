@@ -2,7 +2,11 @@
 
 package types
 
-import "github.com/mendixlabs/mxcli/model"
+import (
+	"strings"
+
+	"github.com/mendixlabs/mxcli/model"
+)
 
 // NavigationDocument represents a parsed navigation document.
 type NavigationDocument struct {
@@ -54,9 +58,92 @@ type NavMenuItem struct {
 	// Empty for no icon and for a glyph icon, which carries a numeric Code
 	// instead. IconType keeps the storage $Type so a reader can tell the three
 	// apart — DESCRIBE only round-trips Forms$IconCollectionIcon.
-	Icon     string         `json:"icon,omitempty"`
-	IconType string         `json:"iconType,omitempty"`
+	Icon     string `json:"icon,omitempty"`
+	IconType string `json:"iconType,omitempty"`
+	// IconCode is Forms$GlyphIcon's numeric Code — the ONLY thing that
+	// identifies a glyph icon, since it carries no qualified name. Without it a
+	// reader knows a glyph was there but not which one, so it can neither be
+	// re-emitted by DESCRIBE nor carried through a rewrite.
+	IconCode int            `json:"iconCode,omitempty"`
 	Items    []*NavMenuItem `json:"items,omitempty"`
+}
+
+// HasIcon reports whether the item carries an icon of ANY of the three kinds.
+//
+// Not `Icon != ""`: a glyph icon has a numeric code and no name, so the obvious
+// test calls an item with a perfectly good icon iconless. MDL074 asks this
+// question, and asking it the obvious way would have made the rule fire on every
+// Studio Pro-authored menu.
+func (m *NavMenuItem) HasIcon() bool {
+	if m == nil {
+		return false
+	}
+	switch MenuIconKindOf(m.IconType) {
+	case MenuIconNone:
+		return false
+	case MenuIconGlyph:
+		return true
+	default:
+		// A collection or image icon without a name is a malformed element, not
+		// an icon anyone can see.
+		return m.Icon != ""
+	}
+}
+
+// MenuIconKind names which of Mendix's three icon elements a menu item carries.
+//
+// They are not variations on one shape: an icon-collection icon and an image
+// icon each hold a qualified name (into an icon collection and an image
+// collection respectively — different documents), while a glyph icon holds a
+// numeric character code and no name at all. Treating them as one "icon string"
+// is what made a rewrite silently convert a glyph into nothing.
+type MenuIconKind string
+
+const (
+	MenuIconNone       MenuIconKind = ""
+	MenuIconCollection MenuIconKind = "collection"
+	MenuIconGlyph      MenuIconKind = "glyph"
+	MenuIconImage      MenuIconKind = "image"
+	// MenuIconUnknown is a stored $Type this build does not know. It is
+	// deliberately NOT MenuIconNone: reporting an unrecognised element as "no
+	// icon" is how a future fourth variant would get silently dropped by a
+	// rewrite, which is the bug this vocabulary exists to prevent.
+	MenuIconUnknown MenuIconKind = "unknown"
+)
+
+// MenuIconKindOf maps a stored $Type onto the vocabulary.
+//
+// Matched on the suffix because the same element has two spellings: the
+// metamodel calls it Pages$IconCollectionIcon and storage calls it
+// Forms$IconCollectionIcon ("Form" was the original term for "Page"). A reader
+// handing over either name must land on the same kind.
+func MenuIconKindOf(iconType string) MenuIconKind {
+	switch {
+	case iconType == "":
+		return MenuIconNone
+	case strings.HasSuffix(iconType, "IconCollectionIcon"):
+		return MenuIconCollection
+	case strings.HasSuffix(iconType, "GlyphIcon"):
+		return MenuIconGlyph
+	case strings.HasSuffix(iconType, "ImageIcon"):
+		return MenuIconImage
+	}
+	return MenuIconUnknown
+}
+
+// MenuIconStorageType is the inverse: the $Type a writer must emit for a kind.
+// Empty for MenuIconNone (no Icon element at all) and for MenuIconUnknown,
+// which a writer must never invent a name for.
+func MenuIconStorageType(kind MenuIconKind) string {
+	switch kind {
+	case MenuIconCollection:
+		return "Forms$IconCollectionIcon"
+	case MenuIconGlyph:
+		return "Forms$GlyphIcon"
+	case MenuIconImage:
+		return "Forms$ImageIcon"
+	}
+	return ""
 }
 
 // MenuDocument is a standalone `Menus$MenuDocument` — a reusable menu that menu
@@ -111,8 +198,15 @@ type NavMenuItemSpec struct {
 	// as the same Forms$SignOutClientAction a button uses, so it needs no
 	// target — which is why it is a flag rather than another name field.
 	SignOut bool
-	// Icon is a qualified icon-collection name (Atlas_Core.Atlas.home). Empty
-	// means no icon, which serializes as a null Icon.
-	Icon  string
-	Items []NavMenuItemSpec
+	// Icon is the qualified name for a collection or image icon
+	// (Atlas_Core.Atlas.home). Empty with IconKind None means no icon, which
+	// serializes as a null Icon.
+	Icon string
+	// IconKind selects which of the three icon elements to write. The spec used
+	// to carry a name and nothing else, so every icon became a
+	// Forms$IconCollectionIcon and a glyph turned into nothing on rewrite.
+	IconKind MenuIconKind
+	// IconCode is the glyph's numeric Code, meaningful only for MenuIconGlyph.
+	IconCode int
+	Items    []NavMenuItemSpec
 }

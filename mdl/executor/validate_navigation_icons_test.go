@@ -8,6 +8,7 @@ import (
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	"github.com/mendixlabs/mxcli/mdl/linter"
+	"github.com/mendixlabs/mxcli/mdl/types"
 )
 
 func navIconWarnings(vs []linter.Violation) []linter.Violation {
@@ -34,7 +35,7 @@ func TestValidateMenuItemIcons_FlagsMissingIcon(t *testing.T) {
 	stmt := &ast.AlterNavigationStmt{
 		ProfileName: "Responsive",
 		MenuItems: []ast.NavMenuItemDef{
-			{Caption: "Home", Icon: "Atlas_Core.Atlas.home"},
+			{Caption: "Home", Icon: "Atlas_Core.Atlas.home", IconKind: types.MenuIconCollection},
 			{Caption: "Orders"},
 		},
 	}
@@ -58,9 +59,9 @@ func TestValidateMenuItemIcons_IconedItemIsSilent(t *testing.T) {
 	stmt := &ast.AlterNavigationStmt{
 		ProfileName: "Responsive",
 		MenuItems: []ast.NavMenuItemDef{
-			{Caption: "Home", Icon: "Atlas_Core.Atlas.home"},
-			{Caption: "Admin", Icon: `Atlas_Core.Atlas."align-center"`, Items: []ast.NavMenuItemDef{
-				{Caption: "Users", Icon: "Atlas_Core.Atlas.user"},
+			{Caption: "Home", Icon: "Atlas_Core.Atlas.home", IconKind: types.MenuIconCollection},
+			{Caption: "Admin", Icon: `Atlas_Core.Atlas."align-center"`, IconKind: types.MenuIconCollection, Items: []ast.NavMenuItemDef{
+				{Caption: "Users", Icon: "Atlas_Core.Atlas.user", IconKind: types.MenuIconCollection},
 			}},
 		},
 	}
@@ -75,9 +76,9 @@ func TestValidateMenuItemIcons_RecursesIntoSubItems(t *testing.T) {
 	stmt := &ast.AlterNavigationStmt{
 		ProfileName: "Responsive",
 		MenuItems: []ast.NavMenuItemDef{
-			{Caption: "Admin", Icon: "Atlas_Core.Atlas.cog", Items: []ast.NavMenuItemDef{
+			{Caption: "Admin", Icon: "Atlas_Core.Atlas.cog", IconKind: types.MenuIconCollection, Items: []ast.NavMenuItemDef{
 				{Caption: "Users"},
-				{Caption: "Roles", Icon: "Atlas_Core.Atlas.group"},
+				{Caption: "Roles", Icon: "Atlas_Core.Atlas.group", IconKind: types.MenuIconCollection},
 				{Caption: "Deep", Items: []ast.NavMenuItemDef{{Caption: "Deeper"}}},
 			}},
 		},
@@ -140,5 +141,23 @@ func TestValidateMenuItemIcons_RunsWithoutAProject(t *testing.T) {
 	}}
 	if got := navIconWarnings(ValidateProgram(prog, "")); len(got) != 1 {
 		t.Errorf("got %d MDL074 from ValidateProgram with no project, want 1: %+v", len(got), got)
+	}
+}
+
+// The trap this rule walked straight into: a glyph icon has a numeric code and
+// NO name, so a check written as `Icon == ""` reports an item that plainly has
+// an icon. Every Studio Pro-authored menu is full of them — the fixture's own
+// Home item carries glyph 57377 — so the naive rule warned about the majority of
+// real menus while claiming they had no icon.
+func TestValidateMenuItemIcons_AGlyphIconIsAnIcon(t *testing.T) {
+	stmt := &ast.AlterNavigationStmt{
+		ProfileName: "Responsive",
+		MenuItems: []ast.NavMenuItemDef{
+			{Caption: "Home", IconKind: types.MenuIconGlyph, IconCode: 57377},
+			{Caption: "Logo", IconKind: types.MenuIconImage, Icon: "MyMod.Images.logo"},
+		},
+	}
+	if got := navIconWarnings(validateMenuItemIcons(stmt)); len(got) != 0 {
+		t.Errorf("warned about items that have icons: %+v", got)
 	}
 }

@@ -120,19 +120,56 @@ func menuCaptionToGen(caption string) element.Element {
 	return t
 }
 
-// menuIconToGen emits only Forms$IconCollectionIcon, the one variant MDL can
-// name. A glyph icon carries a numeric code and an image icon points into an
-// image collection; neither is expressible in the ICON clause, so an item that
-// had one keeps no icon rather than getting a wrong one. DESCRIBE flags those on
-// the way out, so the loss is visible rather than silent.
+// menuIconToGen emits whichever of Mendix's three icon elements the item
+// carries.
+//
+// It used to emit only Forms$IconCollectionIcon, because that was the one
+// variant the ICON clause could name — so an item holding a glyph or image icon
+// was rewritten with NO icon. `create or modify menu` is a full replacement, so
+// that was deletion, not omission: the item came back without the icon it went
+// in with, at exit 0.
+//
+// Nothing is inferred here. The kind comes from the author's `icon glyph …` /
+// `icon image …` or from the kind the reader saw in storage.
 func menuIconToGen(item *types.NavMenuItem) element.Element {
-	if item.Icon == "" {
-		return nil
+	kind := types.MenuIconKindOf(item.IconType)
+	if kind == types.MenuIconNone && item.Icon != "" {
+		// An item built before the kind existed carries a name and nothing else,
+		// and that name has only ever meant an icon-collection icon.
+		kind = types.MenuIconCollection
 	}
-	icon := genPages.NewIconCollectionIcon()
-	icon.SetID(element.ID(mmpr.GenerateID()))
-	icon.SetImageQualifiedName(item.Icon)
-	return icon
+	switch kind {
+	case types.MenuIconGlyph:
+		// A glyph with no code identifies no glyph; an empty element is worse
+		// than none, because it renders as a blank where an icon should be.
+		if item.IconCode == 0 {
+			return nil
+		}
+		icon := genPages.NewGlyphIcon()
+		icon.SetID(element.ID(mmpr.GenerateID()))
+		icon.SetCode(int32(item.IconCode))
+		return icon
+	case types.MenuIconImage:
+		if item.Icon == "" {
+			return nil
+		}
+		icon := genPages.NewImageIcon()
+		icon.SetID(element.ID(mmpr.GenerateID()))
+		icon.SetImageQualifiedName(item.Icon)
+		return icon
+	case types.MenuIconCollection:
+		if item.Icon == "" {
+			return nil
+		}
+		icon := genPages.NewIconCollectionIcon()
+		icon.SetID(element.ID(mmpr.GenerateID()))
+		icon.SetImageQualifiedName(item.Icon)
+		return icon
+	}
+	// MenuIconUnknown: a stored $Type this build does not know. Emitting nothing
+	// would delete it, so the codec must refuse rather than guess — see the
+	// caller, which turns this into an error.
+	return nil
 }
 
 // menuActionToGen builds the item's client action. The gen type names are the SDK

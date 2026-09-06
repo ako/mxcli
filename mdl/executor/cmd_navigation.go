@@ -117,8 +117,10 @@ func execAlterNavigation(ctx *ExecContext, s *ast.AlterNavigationStmt) error {
 // convertMenuItemDef converts an AST NavMenuItemDef to a writer NavMenuItemSpec.
 func convertMenuItemDef(def ast.NavMenuItemDef) types.NavMenuItemSpec {
 	spec := types.NavMenuItemSpec{
-		Caption: def.Caption,
-		Icon:    def.Icon,
+		Caption:  def.Caption,
+		Icon:     def.Icon,
+		IconKind: def.IconKind,
+		IconCode: def.IconCode,
 	}
 	if def.Page != nil {
 		spec.Page = def.Page.String()
@@ -419,20 +421,49 @@ func printMenuMDL(w io.Writer, items []*types.NavMenuItem, depth int, reproducer
 
 // menuItemIconMDL renders the ICON clause for a menu item, or "" when there is
 // nothing CREATE NAVIGATION can reproduce.
+//
+// All three of Mendix's icon elements have a form now. Only the collection one
+// used to, so DESCRIBE emitted a comment for a glyph or image icon — and since
+// CREATE NAVIGATION is a full replacement, re-running that output DELETED the
+// icon it had just declined to describe.
 func menuItemIconMDL(item *types.NavMenuItem) string {
-	if item.Icon == "" || !strings.HasSuffix(item.IconType, "IconCollectionIcon") {
-		return ""
+	switch types.MenuIconKindOf(item.IconType) {
+	case types.MenuIconGlyph:
+		// The code is the whole identity of a glyph. Without it there is nothing
+		// to emit that would rebuild the same icon, so fall through to the note.
+		if item.IconCode == 0 {
+			return ""
+		}
+		return fmt.Sprintf(" icon glyph %d", item.IconCode)
+	case types.MenuIconImage:
+		if item.Icon == "" {
+			return ""
+		}
+		return " icon image " + quoteQualifiedName(item.Icon)
+	case types.MenuIconCollection:
+		if item.Icon == "" {
+			return ""
+		}
+		return " icon " + quoteQualifiedName(item.Icon)
 	}
-	return " icon " + quoteQualifiedName(item.Icon)
+	return ""
 }
 
-// menuItemIconNote flags an icon DESCRIBE cannot round-trip, so re-running the
-// output loses it visibly rather than silently. CREATE NAVIGATION writes only
-// Forms$IconCollectionIcon; a glyph icon (numeric Code) or an image icon
-// (pointing into an image collection, not an icon collection) is a different
-// element and would have to be guessed at.
+// menuItemIconNote flags an icon DESCRIBE still cannot round-trip, so re-running
+// the output loses it visibly rather than silently.
+//
+// All three icon elements are reproducible now, so this fires only on what is
+// genuinely beyond the language: a stored $Type this build does not know, or a
+// variant whose payload is missing (a glyph with no Code, a named icon with no
+// name) — where emitting a clause would rebuild a DIFFERENT icon rather than the
+// same one. Guessing between polymorphic variants is the failure mode that
+// produces a document mxbuild accepts and Studio Pro cannot open.
 func menuItemIconNote(item *types.NavMenuItem, reproducer string) string {
-	if item.IconType == "" || strings.HasSuffix(item.IconType, "IconCollectionIcon") {
+	if item.IconType == "" {
+		return ""
+	}
+	// If there is a clause for it, there is nothing to flag.
+	if menuItemIconMDL(item) != "" {
 		return ""
 	}
 	target := item.Icon
