@@ -816,6 +816,38 @@ func (pb *pageBuilder) buildDataSourceV3(ds *ast.DataSourceV3) (pages.DataSource
 			ctxVar = "" // implicit context — no SourceVariable in BSON
 		}
 
+		// Which entity the association is traversed FROM.
+		//
+		// pb.entityContext is the ENCLOSING data container's entity, which is the
+		// right answer for `$currentObject/Assoc` inside a data view and the
+		// wrong one at page level: there is no enclosing container, so it is
+		// empty, resolveAssociationDestination matched neither end, and its
+		// last-resort fallback returned the association's TO side — the entity
+		// the grid was navigating AWAY from. The rows were then typed as the
+		// context entity and every column bound against it:
+		//
+		//	datagrid gA (datasource: $Customer/Bench.Order_Customer) { … OrderNo … }
+		//	mx check -> [CE1613] "The selected attribute 'Bench.Customer.OrderNo'
+		//	            no longer exists." at Columns (1/1) of data grid 2 'gA'
+		//
+		// The same path inside a data view was correct, which is what made the
+		// report's diagnosis land on page level specifically
+		// (mendixlabs/mxcli#1045).
+		//
+		// A NAMED context variable answers the question directly: `$Customer/…`
+		// traverses from whatever $Customer holds, whether or not anything
+		// encloses the widget. Falling back to pb.entityContext keeps the
+		// data-view case exactly as it was.
+		fromEntity := pb.entityContext
+		if ds.ContextVariable != "" && ds.ContextVariable != "currentObject" {
+			name := strings.TrimPrefix(ds.ContextVariable, "$")
+			if qn := pb.paramEntityNames[name]; qn != "" {
+				fromEntity = qn
+			} else if qn := pb.paramEntityNames["$"+name]; qn != "" {
+				fromEntity = qn
+			}
+		}
+
 		path := ds.Reference
 		destEntity := ""
 		if idx := strings.Index(path, "/"); idx >= 0 {
@@ -831,10 +863,10 @@ func (pb *pageBuilder) buildDataSourceV3(ds *ast.DataSourceV3) (pages.DataSource
 		// `EntityRefStep.set_AssociationId`: same unopenable project as an empty
 		// DestinationEntity, a different property. Qualify with the context
 		// entity's module, exactly as attribute-path hops do (upstream #854).
-		path = pb.resolveAssociationPathIn(path, pb.entityContext)
+		path = pb.resolveAssociationPathIn(path, fromEntity)
 
 		if destEntity == "" {
-			destEntity = pb.resolveAssociationDestination(path, pb.entityContext)
+			destEntity = pb.resolveAssociationDestination(path, fromEntity)
 		} else if _, _, ok := pb.associationEndpoints(path); !ok {
 			// An author-supplied destination satisfies the guard below, so it is
 			// the one path where a misspelled — or wrongly-moduled — association
@@ -845,7 +877,7 @@ func (pb *pageBuilder) buildDataSourceV3(ds *ast.DataSourceV3) (pages.DataSource
 					"writing it would produce a project Mendix cannot open; "+
 					"a bare name is qualified with the module of the context entity (%s), "+
 					"so an association declared elsewhere must be named in full",
-				path, ds.Reference, pb.entityContext)
+				path, ds.Reference, fromEntity)
 		}
 
 		// An empty DestinationEntity is a by-name reference Mendix resolves to
