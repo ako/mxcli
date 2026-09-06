@@ -775,6 +775,14 @@ create or replace navigation Responsive
   );
 ```
 
+**An item with no icon is reported (MDL074, a warning).** The navigation sidebar
+collapses to an icon rail, and that is the state most users leave it in: a
+collapsed item shows its icon, and one without falls back to the first few
+characters of its caption — rarely enough to tell `Orders` from `Order lines`.
+The menu still builds and `mx check` passes, so the only symptom is in a browser.
+The rule covers every item at every depth, in both `create navigation`'s `menu`
+block and `create menu`, and needs no project.
+
 `icon` is optional and is a **qualified name** into an **icon collection** —
 `Atlas_Core.Atlas`, `Atlas_Core.Atlas_Filled`, `Atlas_Core.Atlas_Styling`, or one
 of your own — written like any other model reference. Hyphenated Atlas names

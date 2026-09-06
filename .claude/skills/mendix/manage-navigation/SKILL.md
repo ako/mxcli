@@ -118,7 +118,14 @@ create or replace navigation Responsive
 
 ### Menu Icons
 
-Both `menu item` and `menu 'caption' (...)` take an optional `icon`. It is a
+**Give every menu item an icon.** It is optional in the grammar and `mxcli check`
+warns when it is missing (**MDL074**), because the navigation sidebar collapses
+to an icon rail and that is the state most users leave it in: a collapsed item
+shows its icon, and one without falls back to the first few characters of its
+caption — rarely enough to tell `Orders` from `Order lines`. Nothing else catches
+it. The model builds, `mx check` passes, and the menu is simply hard to use.
+
+Both `menu item` and `menu 'caption' (...)` take an `icon`. It is a
 **qualified name** into an **icon collection** — a model reference, written like
 every other reference in MDL, not a string:
 
