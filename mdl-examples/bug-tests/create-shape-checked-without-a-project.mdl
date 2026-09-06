@@ -65,9 +65,9 @@
 --     (no -p needed) MDL075: … cannot be paired with void … CE0109
 --
 --   IF $Things = empty THEN             ->   IF empty($Things) THEN
---     (needs -p, against an app that does NOT already have this module, or the
---      duplicate-CREATE check exits first) E014: unexpected token after the
---      expression … at CreateShape.ACT_Count
+--     (needs -p, and needs the rest of the file to be reference-clean — see the
+--      tier note above) E014: unexpected token after the expression …
+--      at CreateShape.ACT_Count
 
 create module CreateShape;
 /
