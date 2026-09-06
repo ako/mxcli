@@ -43,8 +43,12 @@ func (ChangeObjectAction) isMicroflowAction() {}
 // DeleteObjectAction deletes an object.
 type DeleteObjectAction struct {
 	model.BaseElement
-	DeleteVariable  string `json:"deleteVariable"`
-	RefreshInClient bool   `json:"refreshInClient"`
+	// ErrorHandlingType is set only when the author wrote an ON ERROR clause.
+	// Studio Pro writes no key at all for a delete, so an empty value keeps the
+	// document byte-identical to what it has always been.
+	ErrorHandlingType ErrorHandlingType `json:"errorHandlingType,omitempty"`
+	DeleteVariable    string            `json:"deleteVariable"`
+	RefreshInClient   bool              `json:"refreshInClient"`
 }
 
 func (DeleteObjectAction) isMicroflowAction() {}
@@ -115,8 +119,13 @@ const (
 // RetrieveAction retrieves objects from the database.
 type RetrieveAction struct {
 	model.BaseElement
-	OutputVariable string         `json:"outputVariable"`
-	Source         RetrieveSource `json:"source,omitempty"`
+	// ErrorHandlingType is set only when the author wrote an ON ERROR clause;
+	// empty means "leave the writer's default alone". Measured on 11.14.0: a
+	// retrieve accepts every handling type, which is why the clause is carried
+	// here and refused on the activities that do not (see MDL076).
+	ErrorHandlingType ErrorHandlingType `json:"errorHandlingType,omitempty"`
+	OutputVariable    string            `json:"outputVariable"`
+	Source            RetrieveSource    `json:"source,omitempty"`
 }
 
 func (RetrieveAction) isMicroflowAction() {}

@@ -97,8 +97,9 @@ func actionFromGen(el element.Element) microflows.MicroflowAction {
 
 	case *genMf.DeleteAction:
 		out := &microflows.DeleteObjectAction{
-			DeleteVariable:  a.DeleteVariableName(),
-			RefreshInClient: a.RefreshInClient(),
+			ErrorHandlingType: microflows.ErrorHandlingType(a.ErrorHandlingType()),
+			DeleteVariable:    a.DeleteVariableName(),
+			RefreshInClient:   a.RefreshInClient(),
 		}
 		out.ID = model.ID(a.ID())
 		return out
@@ -113,8 +114,9 @@ func actionFromGen(el element.Element) microflows.MicroflowAction {
 
 	case *genMf.RetrieveAction:
 		out := &microflows.RetrieveAction{
-			OutputVariable: a.OutputVariableName(),
-			Source:         retrieveSourceFromGen(a.RetrieveSource()),
+			ErrorHandlingType: microflows.ErrorHandlingType(a.ErrorHandlingType()),
+			OutputVariable:    a.OutputVariableName(),
+			Source:            retrieveSourceFromGen(a.RetrieveSource()),
 		}
 		out.ID = model.ID(a.ID())
 		return out

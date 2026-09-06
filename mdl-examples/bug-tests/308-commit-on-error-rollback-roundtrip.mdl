@@ -43,11 +43,19 @@ begin
 end;
 /
 
--- Negative control: explicit `on error continue` must survive equally.
-create microflow BugTest308.MF_CommitContinue (
-  $Item: BugTest308.Item
-)
-begin
-  commit $Item on error continue;
-end;
-/
+-- The `on error continue` case that used to sit here has been REMOVED, because
+-- it asserted something that does not build. Measured on 11.14.0: the statement
+-- stores `Continue` exactly as this file expected, and mxbuild then rejects it —
+--
+--   commit $Item on error continue;
+--   mx check -> [CE6035] "Error handling type is not supported"
+--                 at Commit object(s) activity 'Commit 'Item''
+--
+-- The example was written for round-trip fidelity and its Usage block never ran
+-- `mx check`, so a describe -> exec -> describe fixpoint was mistaken for a valid
+-- model. `mxcli check` now reports it as MDL076, which is why this file failed
+-- `make check-mdl` the moment that rule landed.
+--
+-- Continue IS supported on `retrieve`, `delete` and `call microflow`, and their
+-- round-trip is covered by `error-handling-continue.mdl` — which also carries the
+-- full per-action table.

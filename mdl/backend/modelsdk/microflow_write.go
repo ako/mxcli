@@ -468,6 +468,11 @@ func microflowActionToGen(action microflows.MicroflowAction) element.Element {
 	case *microflows.DeleteObjectAction:
 		g := genMf.NewDeleteAction()
 		g.SetID(element.ID(a.ID))
+		// Studio Pro writes no ErrorHandlingType on a delete; set it only when the
+		// author asked for one.
+		if a.ErrorHandlingType != "" {
+			g.SetErrorHandlingType(string(a.ErrorHandlingType))
+		}
 		g.SetDeleteVariableName(a.DeleteVariable)
 		g.SetRefreshInClient(a.RefreshInClient)
 		return g
@@ -480,7 +485,9 @@ func microflowActionToGen(action microflows.MicroflowAction) element.Element {
 	case *microflows.RetrieveAction:
 		g := genMf.NewRetrieveAction()
 		g.SetID(element.ID(a.ID))
-		g.SetErrorHandlingType("Rollback")
+		// Only an explicit ON ERROR clause moves this off the literal both engines
+		// have always written (ako/CapTrackV3 FINDINGS §11).
+		g.SetErrorHandlingType(orDefault(string(a.ErrorHandlingType), "Rollback"))
 		g.SetOutputVariableName(a.OutputVariable)
 		if src := retrieveSourceToGen(a.Source); src != nil {
 			g.SetRetrieveSource(src)

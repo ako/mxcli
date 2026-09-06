@@ -39,6 +39,23 @@ func (fb *flowBuilder) ehType(eh *ast.ErrorHandlingClause) microflows.ErrorHandl
 	return convertErrorHandlingType(eh)
 }
 
+// explicitErrorHandling returns the handling type for an action ONLY when the
+// author wrote an ON ERROR clause, and the empty string otherwise.
+//
+// The distinction is the whole safety of carrying this property at all. The
+// writers have always emitted a literal for these actions, and the value the
+// builder would otherwise supply is not always one Mendix accepts: a NANOFLOW's
+// no-clause default is Abort (ehType), and Abort is CE6035 on Log, Create,
+// Change, Commit, MicroflowCall and Aggregate — measured on 11.14.0 by setting
+// each in a stored document and building. Returning empty for "no clause" leaves
+// every un-annotated activity exactly as it was.
+func explicitErrorHandling(fb *flowBuilder, eh *ast.ErrorHandlingClause) microflows.ErrorHandlingType {
+	if eh == nil {
+		return ""
+	}
+	return fb.ehType(eh)
+}
+
 func isEmptyCustomErrorHandler(eh *ast.ErrorHandlingClause) bool {
 	if eh == nil || len(eh.Body) != 0 {
 		return false

@@ -146,12 +146,19 @@ func serializeMicroflowAction(action microflows.MicroflowAction) bson.D {
 		}
 
 	case *microflows.DeleteObjectAction:
-		return bson.D{
+		doc := bson.D{
 			{Key: "$ID", Value: idToBsonBinary(string(a.ID))},
 			{Key: "$Type", Value: "Microflows$DeleteAction"},
 			{Key: "DeleteVariableName", Value: a.DeleteVariable},
 			{Key: "RefreshInClient", Value: a.RefreshInClient},
 		}
+		// Studio Pro writes no ErrorHandlingType on a delete, so the key is added
+		// only when the author asked for one — an un-annotated delete keeps the
+		// document it has always had.
+		if a.ErrorHandlingType != "" {
+			doc = append(doc, bson.E{Key: "ErrorHandlingType", Value: string(a.ErrorHandlingType)})
+		}
+		return doc
 
 	case *microflows.RollbackObjectAction:
 		return bson.D{
@@ -361,7 +368,9 @@ func serializeMicroflowAction(action microflows.MicroflowAction) bson.D {
 		doc := bson.D{
 			{Key: "$ID", Value: idToBsonBinary(string(a.ID))},
 			{Key: "$Type", Value: "Microflows$RetrieveAction"},
-			{Key: "ErrorHandlingType", Value: "Rollback"},        // Default error handling type
+			// Only an explicit ON ERROR clause moves this off the literal that has
+			// always been written here (ako/CapTrackV3 FINDINGS §11).
+			{Key: "ErrorHandlingType", Value: stringOrDefault(string(a.ErrorHandlingType), "Rollback")},
 			{Key: "ResultVariableName", Value: a.OutputVariable}, // storageName differs from qualifiedName
 		}
 		if a.Source != nil {

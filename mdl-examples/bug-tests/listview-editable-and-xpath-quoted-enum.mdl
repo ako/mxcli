@@ -1,0 +1,137 @@
+-- Two properties mxcli accepted, wrote wrong, and reported nothing about.
+-- Both from ako/CapTrackV3 FINDINGS, both with every gate green.
+--
+-- 1. A LIST VIEW'S `Editable` WAS DROPPED (§6):
+--
+--      listview lvRows (datasource: DATABASE Lv.Row, Editable: true) { … }
+--
+--    Every input widget inside it rendered as `<div class="form-control-static">`
+--    — a value, not a field. It reads as a styling bug or a missing entity-access
+--    grant and is neither: `show access on entity` reported ReadWrite and
+--    `mx check` reported 0 errors.
+--
+--    Mendix's List View has an `Editable` property of its OWN (default No), and
+--    that is what makes the inputs inside it editable. `Editable:` on the
+--    individual textbox does not help — a different property, and the list view's
+--    read-only context wins over it. The parser accepted the value,
+--    buildListViewV3 dropped it, and the writer wrote false.
+--
+--    `describe page` reads it back too, or the fix would be undone by the next
+--    describe → exec round trip.
+--
+-- 2. A QUOTED ENUM IN AN XPATH STRING CONSTRAINT WAS TRUNCATED (§29):
+--
+--      RETRIEVE $Rows FROM Xp.Movement
+--        WHERE 'Status = ''Xp.Status.Confirmed'' and Kind = Xp.Kind.Addition';
+--
+--      describe microflow -> where Status = Xp.Status.;
+--      mx check           -> [CE0161] "Error(s) in XPath constraint."
+--      mxcli check        -> passed
+--
+--    The value, the closing quote AND THE WHOLE FOLLOWING CLAUSE were gone, so
+--    the retrieve returned rows it should have filtered out. mxbuild's CE0161
+--    does not say which clause, and a retrieve returning too many rows reads as
+--    a data problem rather than a serialization one.
+--
+--    `normalizeXPathEnumRefs` ran its regex over the whole constraint with no
+--    quote awareness, so a ref the author had ALREADY quoted was rewritten inside
+--    its own quotes: `'Xp.Status.Confirmed'` became `''Confirmed''`, which every
+--    downstream reader lexes as an empty string literal.
+--
+--    The same bug corrupted any ordinary literal with two dots — `Code = 'a.b.c'`
+--    was stored as `Code = ''c''`. That half was never reported, and it silently
+--    changes which rows match.
+--
+-- WHAT IS AND IS NOT REPAIRED. A quoted ref is now stored exactly as written
+-- rather than unquoted for the author: telling `'Xp.Status.Confirmed'` from
+-- `'a.b.c'` needs the project's enumerations, which that string-level pass does
+-- not have, and guessing would make an ordinary literal match different rows.
+-- So the quoted spelling still fails the build — as CE0161 on a constraint that
+-- says what the author wrote, instead of on a truncated one. The bracket form
+-- below is the spelling that works.
+--
+-- Verify:
+--
+--   mxcli exec  listview-editable-and-xpath-quoted-enum.mdl -p app.mpr
+--   mx check -p app.mpr        -- 0 errors
+--
+-- Then perturb, one at a time:
+--
+--   listview lvRows (…, Editable: true)  ->  drop the Editable property
+--     `describe page` no longer prints it, and every textbox inside renders
+--     read-only in the browser. mx check stays at 0 errors — which is the point.
+--
+--   WHERE [Status = Xp.Status.Confirmed and …]
+--     ->  WHERE 'Status = ''Xp.Status.Confirmed'' and …'
+--     Before the fix: stored `[Status = ''Confirmed'' and Kind = 'Addition']`,
+--     described as `where Status = Xp.Status.;` — tail gone. After: stored
+--     verbatim and rejected as CE0161, which is the honest failure.
+
+create module LvXp;
+/
+
+create or modify enumeration LvXp.Status ( Confirmed 'Confirmed', Draft 'Draft' );
+/
+
+create or modify enumeration LvXp.Kind ( Addition 'Addition', Removal 'Removal' );
+/
+
+create or modify entity LvXp.Movement (
+  Code: String(50),
+  Status: LvXp.Status,
+  Kind: LvXp.Kind
+);
+/
+
+-- §6: the reported case. Every input inside this list view must be a field.
+create or replace page LvXp.P_Editable
+( title: 'Editable rows', layout: Atlas_Core.Atlas_Default )
+{
+  listview lvRows (datasource: DATABASE LvXp.Movement, Editable: true) {
+    textbox tCode (label: 'Code', attribute: Code)
+  }
+}
+/
+
+-- CONTROL for §6: Mendix's default is No, and a list view that does not ask for
+-- it must stay read-only. Without this, a fix that set Editable unconditionally
+-- would look correct on the page above.
+create or replace page LvXp.P_ReadOnly
+( title: 'Read-only rows', layout: Atlas_Core.Atlas_Default )
+{
+  listview lvPlain (datasource: DATABASE LvXp.Movement) {
+    textbox tCode2 (label: 'Code', attribute: Code)
+  }
+}
+/
+
+-- §29: the bracket form, which takes enum values unquoted and has always worked.
+-- This is the spelling to write.
+create or modify microflow LvXp.ACT_Bracket ()
+begin
+  RETRIEVE $Rows FROM LvXp.Movement
+    WHERE [Status = LvXp.Status.Confirmed and Kind = LvXp.Kind.Addition];
+  LOG INFO 'done';
+end;
+/
+
+-- CONTROL for §29: the UNQUOTED ref inside a STRING constraint. This is what
+-- normalizeXPathEnumRefs exists for and must keep working — it is stored as
+-- `[Status = 'Confirmed' and Kind = 'Addition']`, identical to the bracket form.
+create or modify microflow LvXp.ACT_UnquotedInString ()
+begin
+  RETRIEVE $Rows FROM LvXp.Movement
+    WHERE 'Status = LvXp.Status.Confirmed and Kind = LvXp.Kind.Addition';
+  LOG INFO 'done';
+end;
+/
+
+-- CONTROL for §29, the half that was never reported: an ordinary literal with
+-- two dots is DATA. This was stored as `Code = ''c''` — a different constraint,
+-- matching different rows, with nothing said about it.
+create or modify microflow LvXp.ACT_DottedLiteral ()
+begin
+  RETRIEVE $Rows FROM LvXp.Movement WHERE 'Code = ''a.b.c''';
+  LOG INFO 'done';
+end;
+/

@@ -745,6 +745,7 @@ func parseMemberChange(raw map[string]any) *microflows.MemberChange {
 func parseDeleteAction(raw map[string]any) *microflows.DeleteObjectAction {
 	action := &microflows.DeleteObjectAction{}
 	action.ID = model.ID(extractBsonID(raw["$ID"]))
+	action.ErrorHandlingType = microflows.ErrorHandlingType(extractString(raw["ErrorHandlingType"]))
 	action.DeleteVariable = extractString(raw["DeleteVariableName"])
 	action.RefreshInClient = extractBool(raw["RefreshInClient"], false)
 	return action
@@ -774,6 +775,7 @@ func parseRollbackAction(raw map[string]any) *microflows.RollbackObjectAction {
 func parseRetrieveAction(raw map[string]any) *microflows.RetrieveAction {
 	action := &microflows.RetrieveAction{}
 	action.ID = model.ID(extractBsonID(raw["$ID"]))
+	action.ErrorHandlingType = microflows.ErrorHandlingType(extractString(raw["ErrorHandlingType"]))
 	// Writer uses "ResultVariableName" as the storage name
 	action.OutputVariable = extractString(raw["ResultVariableName"])
 
