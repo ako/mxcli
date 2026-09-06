@@ -118,6 +118,24 @@ reported by `check`:
   `toString(…)` around any of them is clean. So wrap the non-String ones —
   the writer is fine, Mendix simply does not coerce here.
 
+### Three more things check now refuses
+
+- **An unqualified CREATE** (`create association Order_Probe …`) — MDL074, no
+  project needed. `exec` always refused it; check now does too, which matters
+  because exec is **not transactional**: the statements before the failure are
+  already applied, and re-running hits "already exists" on them.
+- **`RETURNS void AS $x`** — MDL075, no project needed. An alias names the
+  variable a flow returns, so it cannot be paired with void; mxcli used to
+  believe the alias and write `return $x` into a flow with no such variable
+  (CE0109). Write `RETURNS void`, or give the alias the type it holds.
+- **`empty($List)`** — E014. `empty` is a Mendix **keyword**, not a function, so
+  the parser stops at the `(`. Write `$List = empty` or `length($List) = 0`.
+
+**One thing to know about hint ordering**: the reference check runs before
+expression checking and **exits on its first error**, so an unrelated mistake
+anywhere in a file hides every expression hint in it. If you expect an E0xx and
+see none, fix the reference errors first and re-run.
+
 A variable this cannot type is left **unchecked**, never guessed at — a false
 "no such member" would block a script that builds cleanly. Two more things are
 deliberately not reported: a **qualified** member (`Module.Assoc`), which exec

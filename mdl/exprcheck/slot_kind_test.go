@@ -178,3 +178,46 @@ func TestBareIdentifier_AcceptsRealExpressions(t *testing.T) {
 		}
 	}
 }
+
+// The trailing-token hint carried no code and no document: the reader saw `[]`
+// where a code belongs and had to find the offending expression in a 40-line
+// script by eye. Its fix line also named only glued keywords, which sent people
+// hunting for an 'emptyor' that was not there — the reported input was
+// `empty($List)`, where `empty` is a Mendix KEYWORD rather than a function, so
+// the parser consumed it and stopped at the '(' (mendixlabs/mxcli#1042).
+func TestTrailingTokens_CarriesACodeAndTheRealCause(t *testing.T) {
+	hs := parseIn(t, "empty($Orders)", "IfStmt.Condition", func(c *Context) {
+		c.Microflow = "Bench.P_Empty"
+	})
+	var got *Hint
+	for i := range hs {
+		if hs[i].Code == "E014" {
+			got = &hs[i]
+		}
+	}
+	if got == nil {
+		t.Fatalf("no E014 for a trailing token: %v", codes(hs))
+	}
+	// Which microflow it is in, since the line/column are offsets into the
+	// expression fragment rather than into the file.
+	if got.Where.Microflow != "Bench.P_Empty" {
+		t.Errorf("the hint does not say which flow it is in: %+v", got.Where)
+	}
+	// The likelier cause first — `empty` as a function, not a glued keyword.
+	if !strings.Contains(got.Fix, "keyword") || !strings.Contains(got.Fix, "$List = empty") {
+		t.Errorf("the fix should name the keyword-as-function cause: %s", got.Fix)
+	}
+}
+
+// CONTROL: the correct spellings parse with nothing left over.
+func TestTrailingTokens_AcceptsTheCorrectSpellings(t *testing.T) {
+	for _, src := range []string{
+		"$Orders = empty",
+		"length($Orders) = 0",
+		"$X = '' or $Y = ''",
+	} {
+		if hs := parseIn(t, src, "IfStmt.Condition"); hasCode(hs, "E014") {
+			t.Errorf("%q reported a trailing token: %v", src, hs)
+		}
+	}
+}

@@ -32,15 +32,31 @@ func (p *parserImpl) Parse(src string, ctx Context) (RobustExpr, []Hint) {
 	// would produce false positives for valid expressions that use characters
 	// the lexer does not model (e.g. "$Total : $Count" with Mendix ':' division).
 	if t := s.Peek(); t.Kind != TokEOF && t.Kind != TokError {
+		// This hint used to carry no code, no document and no microflow: the
+		// location held only a line and column, which are the offsets WITHIN the
+		// expression fragment rather than into the file, so they printed as
+		// nothing useful. The reader saw `[]` for the code and had to find the
+		// offending expression in a 40-line script by eye
+		// (mendixlabs/mxcli#1042). Everything the context knows is attached now,
+		// which is what hintsLocation is for.
+		//
+		// The fix line is also no longer only about glued keywords. That was the
+		// case it was written for, and it sent people hunting for an 'emptyor'
+		// that was not there: the report's actual input was `empty($List)` —
+		// `empty` is a Mendix KEYWORD, not a function, so the parser consumed it
+		// and stopped at the '('. Naming the likelier causes first makes the
+		// message point at the real one.
 		hs = append(hs, hints.Hint{
+			Code:     "E014",
+			Slug:     "trailing-tokens",
 			Severity: hints.SeverityError,
-			Where: hints.Location{
-				Line:   t.Pos.Line,
-				Column: t.Pos.Column,
-			},
+			Where:    hintsLocation(ctx, t.Pos),
 			YouWrote: t.Text,
-			Problem:  "Unexpected token after expression — the expression appears incomplete or malformed (possible missing space between keywords).",
-			Fix:      "Check for glued keywords such as 'emptyor' (should be 'empty or') or 'andtrue' (should be 'and true').",
+			Problem: "Unexpected token after the expression — everything up to here parsed, " +
+				"and this is left over, so the expression is incomplete or malformed.",
+			Fix: "Check that a keyword is not being used as a function — `empty` is a keyword, " +
+				"so `empty($List)` is not a call; write `$List = empty` (or `length($List) = 0`). " +
+				"Also check for glued keywords such as 'emptyor' (should be 'empty or').",
 		})
 	}
 	hs = append(hs, checkSlotKind(expr, ctx)...)

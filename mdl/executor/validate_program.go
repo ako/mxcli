@@ -207,6 +207,17 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 	// `mxcli check page.mdl` would stay silent on a mistake it can see.
 	violations = append(violations, ValidateWidgetParamPaths(prog)...)
 
+	// Flag a CREATE whose target name has no module. `exec` refuses it and
+	// `check` passed it, so a script stopped partway through with the earlier
+	// statements already applied (mendixlabs/mxcli#1050).
+	violations = append(violations, ValidateCreateIsQualified(prog)...)
+
+	// Flag `RETURNS void AS $x`. The alias names the returned variable, so
+	// pairing it with void is a contradiction — and mxcli believed the alias,
+	// writing `return $x` into a flow with no such variable (CE0109,
+	// mendixlabs/mxcli#1041).
+	violations = append(violations, ValidateVoidReturnAlias(prog)...)
+
 	// Flag a CUSTOM NAME MAP entry that matches nothing in the snippet. Silence
 	// there made a typo indistinguishable from not writing the entry, which is
 	// how #272's missing `item of` stayed hidden (ako/mxcli#272).

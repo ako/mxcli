@@ -1,0 +1,123 @@
+-- Three things `mxcli check` accepted that exec or the build refused. All three
+-- are answerable from the STATEMENT alone, so they are reported with no project
+-- — a divergence that only `-p` catches is still a divergence.
+--
+-- 1. An UNQUALIFIED CREATE (mendixlabs/mxcli#1050):
+--
+--      create association Order_Probe from Bench.Order to Bench.Customer …
+--      mxcli check --references -> "All references valid", exit 0
+--      mxcli exec               -> Error: module name is required: objects must
+--                                  be created within a module
+--
+--    The cost is not the error, it is that exec is NOT TRANSACTIONAL: the
+--    statements before this one are already applied when it fails, and
+--    re-running the script then hits "already exists" on them. Now MDL074.
+--
+-- 2. `RETURNS void AS $x` (mendixlabs/mxcli#1041):
+--
+--      CREATE MICROFLOW … RETURNS void AS $result BEGIN COMMIT $C; END;
+--      mx check -> [CE0109] "Undefined variable 'result'." at End event
+--
+--    An alias names the variable a flow returns, so pairing it with void is a
+--    contradiction — and mxcli believed the alias, writing `return $result` into
+--    a flow that has no such variable. Refused rather than repaired: emitting a
+--    bare `return` would also build, but the author who wrote an alias meant to
+--    return something, and silently dropping it makes the flow return nothing
+--    while its source still says otherwise. Now MDL075.
+--
+-- 3. A CODE-LESS, LOCATION-LESS parse error (mendixlabs/mxcli#1042):
+--
+--      IF empty($Orders) THEN …
+--      ✗ Unexpected token after expression … []      <- no code, no document
+--
+--    `empty` is a Mendix KEYWORD, not a function, so the parser consumed it and
+--    stopped at the '('. The hint now carries a code (E014) and the microflow it
+--    is in, and its fix line names that cause first instead of sending people
+--    hunting for a glued 'emptyor' that was not there. The line and column stay
+--    offsets into the expression fragment rather than into the file, so the flow
+--    name is the locator — stated because it is a real limit, not an oversight.
+--
+-- WHICH TIER EACH ONE RUNS IN — measured, because they are not the same and the
+-- difference decides how you reproduce them:
+--
+--   MDL074, MDL075   no project. `mxcli check file.mdl` reports them.
+--   E014             needs -p, and needs the file to be otherwise clean.
+--                    Expression checking is the catalog-backed tier and runs
+--                    AFTER the reference check, which EXITS on its first error —
+--                    so one unrelated mistake anywhere in the file hides every
+--                    expression hint in it. Measured while writing this example:
+--                    a control microflow here had `set $out = …` without
+--                    declaring $out, and that one reference error made the E014
+--                    perturbation below look like it did not fire at all.
+--
+-- Verify:
+--
+--   mxcli check create-shape-checked-without-a-project.mdl
+--   mxcli exec  create-shape-checked-without-a-project.mdl -p app.mpr
+--   mx check -p app.mpr        -- 0 errors
+--
+-- Then perturb, one at a time:
+--
+--   create entity CreateShape.Thing …   ->   create entity Thing …
+--     (no -p needed) MDL074: entity "Thing" has no module …
+--
+--   returns void                        ->   returns void as $result
+--     (no -p needed) MDL075: … cannot be paired with void … CE0109
+--
+--   IF $Things = empty THEN             ->   IF empty($Things) THEN
+--     (needs -p, against an app that does NOT already have this module, or the
+--      duplicate-CREATE check exits first) E014: unexpected token after the
+--      expression … at CreateShape.ACT_Count
+
+create module CreateShape;
+/
+
+create or modify entity CreateShape.Thing (
+  Code: String(20)
+);
+/
+
+create or modify entity CreateShape.Other (
+  Label: String(20)
+);
+/
+
+-- CONTROL for MDL074: a qualified association is exactly what the rule wants,
+-- and a `create module` — which has nothing to be qualified BY — must never be
+-- reported. Both appear in this file.
+create or modify association CreateShape.Thing_Other
+  from CreateShape.Thing to CreateShape.Other type reference;
+/
+
+-- CONTROL for MDL075: `RETURNS void` on its own is the spelling the report
+-- itself identified as round-tripping cleanly.
+create or modify microflow CreateShape.ACT_Void ( $Thing: CreateShape.Thing )
+returns void
+begin
+  COMMIT $Thing;
+end;
+/
+
+-- CONTROL for MDL075: a typed return WITH an alias is the ordinary shape. A rule
+-- that flagged the alias itself would break far more than it fixed.
+create or modify microflow CreateShape.ACT_Typed ()
+returns string as $out
+begin
+  DECLARE $out String = 'done';
+  RETURN $out;
+end;
+/
+
+-- CONTROL for E014: the two correct ways to ask whether a list is empty.
+-- `empty` is a keyword, so it goes on the right of a comparison.
+create or modify microflow CreateShape.ACT_Count ()
+begin
+  RETRIEVE $Things FROM CreateShape.Thing;
+  IF $Things = empty THEN
+    LOG INFO 'none';
+  END IF;
+  IF length($Things) = 0 THEN
+    LOG INFO 'still none';
+  END IF;
+end;
+/

@@ -175,6 +175,26 @@ var Registry = &registry{byCode: map[string]Entry{
 			},
 		},
 	},
+	"E014": {
+		Code:     "E014",
+		Slug:     "trailing-tokens",
+		Severity: SeverityError,
+		Trigger:  "The expression parsed, but tokens were left over after it.",
+		WhyWrong: "The expression is incomplete or malformed — most often a Mendix keyword used as if it were a function, or two keywords glued together.",
+		HowToFix: "`empty` is a keyword, not a function: write `$List = empty` rather than `empty($List)`. For a count, use `length($List) = 0`.",
+		Examples: []ExampleFix{
+			{
+				Wrong: "IF empty($Orders) THEN",
+				Right: "IF $Orders = empty THEN",
+				Note:  "empty is a keyword, so the '(' is left over",
+			},
+			{
+				Wrong: "IF $X = '' emptyor $Y THEN",
+				Right: "IF $X = '' empty or $Y THEN",
+				Note:  "glued keywords",
+			},
+		},
+	},
 	"E013": {
 		Code:     "E013",
 		Slug:     "bare-identifier-value",
