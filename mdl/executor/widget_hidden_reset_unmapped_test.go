@@ -35,6 +35,32 @@ import (
 // editorConfig, and the set MDL can name is decided by mxcli. Making one a subset
 // of the other was the mistake: every hidden property with a declared default is
 // written, whether or not MDL has a word for it.
+//
+// ---------------------------------------------------------------------------
+//
+// THAT FIX SHIPPED AND CHANGED NOTHING, for a reason worth stating plainly: it
+// was verified against an input that does not exist. The helper below used to
+// declare `maxHeightUnit`'s default as "none"; Image 1.6.0 declares "pixels" —
+// so the test asked the rule a question the real package never asks.
+// Re-measured against the .mpk in a live 11.14.0 project:
+//
+//	maxheight = "250"   maxheightunit = "pixels"
+//
+// With "pixels" the condition `maxHeightUnit = none` is FALSE, maxHeight reads
+// as visible, no reset is written, and the template's 0 survives — which is
+// exactly what the reporter kept seeing on a binary that contained the fix.
+//
+// The defect is which value the condition is evaluated against. `maxHeightUnit`
+// is unmapped, so it is written with whatever the TEMPLATE captured — "none" —
+// and never with its declared "pixels". Asking "is maxHeight hidden?" of the
+// declared default asks about a document that will not be written; it has to be
+// asked of the configuration that WILL be, which is what `stored` carries.
+//
+// Ground truth for the answer, measured across the 69 Image widgets in that
+// project: all 65 carrying a `maxHeight` store **250**, at every combination of
+// heightUnit and maxHeightUnit. The only outlier was the one mxcli authored.
+// Proven both ways on the real package — patching that stored 0 to 250 takes the
+// project from 1 error to 0, and restoring it takes it back to 1.
 
 // imageDefWithMaxHeight is the Image widget reduced to the two properties this is
 // about — one hidden property WITH an MDL mapping, one WITHOUT.
@@ -48,11 +74,27 @@ func imageDefWithMaxHeight() *WidgetDefinition {
 	return def
 }
 
+// The DECLARED defaults, as Image 1.6.0 states them — `maxHeightUnit` is
+// "pixels". Reading "none" here is what let the first fix pass a test it could
+// not pass in a project.
 func imageDefaultsWithMaxHeight() map[string]string {
 	d := imageDefaults()
 	d["maxheight"] = "250"
-	d["maxheightunit"] = "none"
+	d["maxheightunit"] = "pixels"
 	return d
+}
+
+// The TEMPLATE's captured configuration, as mxcli's embedded Image template
+// holds it. `maxHeightUnit` is "none", which is NOT its declared default — a
+// template captures whatever the widget it was extracted from happened to be set
+// to, and that is precisely why an unmapped property cannot be reasoned about
+// from the declared defaults.
+func imageTemplateValues() map[string]string {
+	return map[string]string{
+		"heightUnit": "auto", "widthUnit": "auto",
+		"maxHeightUnit": "none", "minHeightUnit": "none",
+		"maxHeight": "0", "minHeight": "0",
+	}
 }
 
 // The reset list must include a hidden property that has no MDL mapping. Before
@@ -61,7 +103,8 @@ func imageDefaultsWithMaxHeight() map[string]string {
 func TestHiddenResets_IncludeAPropertyMDLCannotName(t *testing.T) {
 	e := &PluggableWidgetEngine{pageBuilder: &pageBuilder{}}
 	def := imageDefWithMaxHeight()
-	hidden := e.hiddenUnnamedProperties(def, &ast.WidgetV3{Name: "img"}, imageDefaultsWithMaxHeight())
+	hidden := e.hiddenUnnamedProperties(def, &ast.WidgetV3{Name: "img"},
+		imageDefaultsWithMaxHeight(), imageTemplateValues())
 
 	resets := unmappedHiddenResets(def, def.PropertyVisibility, hidden)
 	got, ok := resets["maxHeight"]
@@ -73,13 +116,33 @@ func TestHiddenResets_IncludeAPropertyMDLCannotName(t *testing.T) {
 	}
 }
 
+// THE CONTROL that makes the test above mean anything, and the one the first
+// attempt at this fix did not have. Drop the template's values and the rule is
+// evaluated against the DECLARED default "pixels" instead — the condition is
+// false, maxHeight reads as visible, and nothing is written. That is the exact
+// state of the shipped binary the reporter measured: the fix present, the value
+// still 0.
+func TestHiddenResets_DeclaredDefaultAloneCannotAnswerTheCondition(t *testing.T) {
+	e := &PluggableWidgetEngine{pageBuilder: &pageBuilder{}}
+	def := imageDefWithMaxHeight()
+	hidden := e.hiddenUnnamedProperties(def, &ast.WidgetV3{Name: "img"},
+		imageDefaultsWithMaxHeight(), nil)
+
+	if v, ok := unmappedHiddenResets(def, def.PropertyVisibility, hidden)["maxHeight"]; ok {
+		t.Errorf("maxHeight was reset to %q from the declared defaults alone — if this "+
+			"passes, the condition no longer depends on the template's value and the "+
+			"test above proves nothing", v)
+	}
+}
+
 // CONTROL 1: a hidden property that DOES have a mapping must not appear here.
 // The mapping loop already writes it, and writing it twice would be a second
 // value for one property.
 func TestHiddenResets_SkipWhatTheMappingLoopAlreadyWrites(t *testing.T) {
 	e := &PluggableWidgetEngine{pageBuilder: &pageBuilder{}}
 	def := imageDefWithMaxHeight()
-	hidden := e.hiddenUnnamedProperties(def, &ast.WidgetV3{Name: "img"}, imageDefaultsWithMaxHeight())
+	hidden := e.hiddenUnnamedProperties(def, &ast.WidgetV3{Name: "img"},
+		imageDefaultsWithMaxHeight(), imageTemplateValues())
 
 	for _, mapped := range []string{"width", "height"} {
 		if _, ok := unmappedHiddenResets(def, def.PropertyVisibility, hidden)[mapped]; ok {
@@ -95,8 +158,10 @@ func TestHiddenResets_SkipWhatTheMappingLoopAlreadyWrites(t *testing.T) {
 func TestHiddenResets_NoDeclaredDefaultWritesNothing(t *testing.T) {
 	e := &PluggableWidgetEngine{pageBuilder: &pageBuilder{}}
 	def := imageDefWithMaxHeight()
-	// Defaults for everything except maxHeight.
-	hidden := e.hiddenUnnamedProperties(def, &ast.WidgetV3{Name: "img"}, imageDefaults())
+	// The template still says maxHeightUnit is "none", so the property IS
+	// hidden; what is missing is anything to reset it TO.
+	hidden := e.hiddenUnnamedProperties(def, &ast.WidgetV3{Name: "img"},
+		imageDefaults(), imageTemplateValues())
 
 	if v, ok := unmappedHiddenResets(def, def.PropertyVisibility, hidden)["maxHeight"]; ok {
 		t.Errorf("maxHeight was reset to %q with no declared default to reset it to", v)
@@ -106,13 +171,16 @@ func TestHiddenResets_NoDeclaredDefaultWritesNothing(t *testing.T) {
 // CONTROL 3: a VISIBLE unmapped property is not touched. The reset is about
 // hidden properties; applying it to a visible one would overwrite the template's
 // value where the template is right.
+//
+// It also pins the precedence: the script's own `MaxHeightUnit: pixels` outranks
+// the template's captured "none", or naming a property would stop meaning
+// anything.
 func TestHiddenResets_VisibleUnmappedPropertyIsLeftAlone(t *testing.T) {
 	e := &PluggableWidgetEngine{pageBuilder: &pageBuilder{}}
 	def := imageDefWithMaxHeight()
-	// maxHeightUnit = "pixels" makes maxHeight visible, so nothing is hidden by
-	// that rule.
 	w := &ast.WidgetV3{Name: "img", Properties: map[string]any{"MaxHeightUnit": "pixels"}}
-	hidden := e.hiddenUnnamedProperties(def, w, imageDefaultsWithMaxHeight())
+	hidden := e.hiddenUnnamedProperties(def, w,
+		imageDefaultsWithMaxHeight(), imageTemplateValues())
 
 	if _, ok := unmappedHiddenResets(def, def.PropertyVisibility, hidden)["maxHeight"]; ok {
 		t.Error("maxHeight is visible under this configuration and must keep its value")

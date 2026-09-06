@@ -721,6 +721,18 @@ func (ob *Builder) PropertyTypeIDs() map[string]pages.PropertyTypeIDEntry {
 	return ob.propertyTypeIDs
 }
 
+// PrimitiveValues returns each property's current comparable value in the object
+// being built, keyed as the widget declares it.
+//
+// Read before the property mappings are applied, this is the TEMPLATE's captured
+// configuration — which is what an UNMAPPED property will actually be stored
+// with, since nothing else ever touches one. That distinction is what a
+// visibility rule has to be evaluated against: the declared default is what the
+// property SHOULD hold, not what it will (see hiddenUnnamedProperties).
+func (ob *Builder) PrimitiveValues() map[string]string {
+	return primitiveValuesOf(ob.object, ob.propertyTypeIDs)
+}
+
 // ---------------------------------------------------------------------------
 // Object list defaults
 // ---------------------------------------------------------------------------

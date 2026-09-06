@@ -367,6 +367,12 @@ type WidgetObjectBuilder interface {
 	// PropertyTypeIDs returns the property type metadata for the loaded template.
 	PropertyTypeIDs() map[string]pages.PropertyTypeIDEntry
 
+	// PrimitiveValues returns each property's current comparable value in the
+	// object being built. Read before the mappings are applied it is the
+	// template's captured configuration, which is what a property MDL cannot
+	// name will actually be stored with.
+	PrimitiveValues() map[string]string
+
 	// --- Object list defaults ---
 
 	// EnsureRequiredObjectLists auto-populates required empty object lists.
