@@ -319,6 +319,7 @@ func (r *StarlarkRule) buildPredeclared() starlark.StringDict {
 		"java_actions":          starlark.NewBuiltin("java_actions", r.builtinJavaActions),
 		"documentable_elements": starlark.NewBuiltin("documentable_elements", r.builtinDocumentableElements),
 		"documents":             starlark.NewBuiltin("documents", r.builtinDocuments),
+		"navigation_targets":    starlark.NewBuiltin("navigation_targets", r.builtinNavigationTargets),
 		"pages":                 starlark.NewBuiltin("pages", r.builtinPages),
 		"enumerations":          starlark.NewBuiltin("enumerations", r.builtinEnumerations),
 		"constants":             starlark.NewBuiltin("constants", r.builtinConstants),
@@ -461,6 +462,31 @@ func (r *StarlarkRule) builtinDocuments(_ *starlark.Thread, _ *starlark.Builtin,
 			"qualified_name": starlark.String(d.QualifiedName),
 			"module_name":    starlark.String(d.ModuleName),
 			"folder":         starlark.String(d.Folder),
+		}))
+	}
+
+	return starlark.NewList(out), nil
+}
+
+// builtinNavigationTargets returns every page a navigation profile routes to —
+// the profile home page, role-specific home pages, and menu item targets.
+//
+// Navigation was reachable only from the Go rules (through the reader's
+// GetNavigation), so no Starlark rule could ask which pages a user can actually
+// reach. Login and not-found pages are excluded: the platform routes to those.
+func (r *StarlarkRule) builtinNavigationTargets(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if r.ctx == nil {
+		return starlark.NewList(nil), nil
+	}
+
+	var out []starlark.Value
+	for t := range r.ctx.NavigationTargets() {
+		out = append(out, starlarkstruct.FromStringDict(starlark.String("navigation_target"), starlark.StringDict{
+			"profile": starlark.String(t.Profile),
+			"kind":    starlark.String(t.Kind),
+			"role":    starlark.String(t.Role),
+			"caption": starlark.String(t.Caption),
+			"page":    starlark.String(t.Page),
 		}))
 	}
 

@@ -1654,6 +1654,62 @@ func (ctx *LintContext) DocumentableElements() iter.Seq[Documentable] {
 	}
 }
 
+// NavigationTarget is one page a navigation profile sends a user to: the
+// profile's home page, a role-specific home page, or a menu item's target.
+type NavigationTarget struct {
+	Profile string // "Responsive", "Phone", "Tablet", …
+	Kind    string // "home", "role_home" or "menu"
+	Role    string // user role, for a role_home; "" otherwise
+	Caption string // menu item caption, for a menu target; "" otherwise
+	Page    string // qualified page name
+}
+
+// NavigationTargets iterates every page a navigation profile routes to.
+//
+// The login page and the not-found page are deliberately NOT targets: the
+// platform routes to those itself (/login.html, and the 404 handler), so they
+// are not screens a user navigates or links to.
+//
+// Microflow-valued menu items and home pages are skipped — the microflow decides
+// what to open, so there is no page here to say anything about. Targets in
+// System and Marketplace modules are not filtered here; a caller that joins to
+// Pages() gets that exclusion for free, and one that does not is asking about
+// navigation itself.
+func (ctx *LintContext) NavigationTargets() iter.Seq[NavigationTarget] {
+	return func(yield func(NavigationTarget) bool) {
+		rows, err := ctx.db.Query(`
+			SELECT ProfileName, 'home', '', '', HomePage
+			FROM navigation_profiles
+			WHERE HomePageType = 'PAGE' AND COALESCE(HomePage, '') <> ''
+			UNION ALL
+			SELECT ProfileName, 'role_home', UserRole, '', Page
+			FROM navigation_role_homes
+			WHERE COALESCE(Page, '') <> ''
+			UNION ALL
+			SELECT ProfileName, 'menu', '', COALESCE(Caption, ''), TargetPage
+			FROM navigation_menu_items
+			WHERE COALESCE(TargetPage, '') <> ''
+			ORDER BY 1, 2, 5
+		`)
+		if err != nil {
+			ctx.recordQueryError("NavigationTargets", err)
+			return
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var t NavigationTarget
+			if err := rows.Scan(&t.Profile, &t.Kind, &t.Role, &t.Caption, &t.Page); err != nil {
+				ctx.recordQueryError("NavigationTargets row scan", err)
+				continue
+			}
+			if !yield(t) {
+				return
+			}
+		}
+	}
+}
+
 // Document is one element of the App Explorer tree — what it is, which module
 // holds it, and the folder path it sits in ("" for the module root).
 //

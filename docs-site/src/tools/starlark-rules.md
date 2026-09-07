@@ -1,6 +1,6 @@
 # Starlark Rules
 
-In addition to the built-in Go rules, mxcli bundles 27 Starlark-based lint rules. Starlark is a Python-like language that allows rules to be extended and customized without recompiling mxcli.
+In addition to the built-in Go rules, mxcli bundles 29 Starlark-based lint rules. Starlark is a Python-like language that allows rules to be extended and customized without recompiling mxcli.
 
 ## Bundled Starlark Rules
 
@@ -38,7 +38,7 @@ In addition to the built-in Go rules, mxcli bundles 27 Starlark-based lint rules
 |------|-------------|
 | **DESIGN001** | Entity attribute count -- Warns when entities have too many attributes |
 
-### Convention Rules (CONV001-CONV010, CONV015-CONV018)
+### Convention Rules (CONV001-CONV010, CONV015-CONV019)
 
 | Rule | Description |
 |------|-------------|
@@ -47,6 +47,7 @@ In addition to the built-in Go rules, mxcli bundles 27 Starlark-based lint rules
 | **CONV016** | Event handlers -- Validates event handler configuration |
 | **CONV017** | Calculated attributes -- Checks calculated attribute patterns |
 | **CONV018** | Module folder organization -- A module past a readable size with every document loose in its root and no folders at all ([options](#conv018-options)) |
+| **CONV019** | Navigation page URL -- A page a navigation profile routes to that has no URL, so it cannot be linked to or bookmarked ([details](#conv019-details)) |
 
 Additional convention rules cover access rule constraints, role mapping, microflow size and content.
 
@@ -170,6 +171,47 @@ the catalog's `objects` view so a new document type is covered without a second
 list to keep in step. It is the companion to `documentable_elements()`, which
 projects only what can carry documentation and therefore leaves out microflows
 and Java actions — the two kinds that fill up an unorganised module.
+
+### CONV019 details {#conv019-details}
+
+A Mendix page is reachable at `/p/<url>` only if it has been given a URL.
+Without one the page exists solely at the end of a click path: it cannot be
+bookmarked, linked to from an email, reopened after a browser refresh, or
+captured directly with `mxcli run --local --screenshot-url` — verifying one
+screen means driving a browser through login and the menu.
+
+**Why only navigation targets.** Measured on a blank Mendix 11.12.1 app, **0 of
+16 pages carry a URL** — Mendix's own Home page and every Administration and
+FeedbackModule page included. Reporting every page without one would warn about
+every page of every project from the day it is created, which is noise rather
+than a finding. The pages a profile routes to are different: they are the app's
+top-level screens, the ones a user lands on, bookmarks and shares. A page
+reached only from a button inside another screen is never reported.
+
+Also never reported:
+
+- the **login page** and the **not-found page** — the platform routes to those
+  itself, so a URL on them buys nothing;
+- **microflow-valued** menu items and home pages — the microflow decides what
+  opens, so there is no page here to be addressable;
+- targets in **System and Marketplace modules**.
+
+A page routed to several ways — a home page that is also a menu item — is one
+finding naming every route, not one finding per route.
+
+The remedy is `Url: 'orders'` on `CREATE PAGE`, or the URL property in Studio
+Pro. An app that deliberately has no deep links can turn the rule off:
+
+```yaml
+rules:
+  CONV019:
+    enabled: false
+```
+
+Behind it is the `navigation_targets()` builtin — `(profile, kind, role,
+caption, page)` for every page a navigation profile routes to, where `kind` is
+`home`, `role_home` or `menu`. Navigation was previously reachable only from the
+Go rules, so no Starlark rule could ask which pages a user can actually reach.
 
 ## Where Starlark Rules Live
 

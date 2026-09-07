@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`mxcli lint` reports a navigation screen that cannot be linked to (CONV019)** — a Mendix page is reachable at `/p/<url>` only if it has been given a URL; without one it exists solely at the end of a click path and cannot be bookmarked, shared, reopened after a refresh, or captured with `--screenshot-url` (ako/CapTrackV4 FINDINGS 014).
+
+  It reports only the pages a **navigation profile routes to** — the profile home page, role home pages, and menu item targets. Measured on a blank Mendix 11.12.1 app, **0 of 16 pages carry a URL**, Mendix's own Home page included, so reporting every page without one would warn about every page of every project from the day it is created. The screens a profile routes to are the ones a user lands on and shares; a page reached only from a button inside another screen is never reported. Neither are login and not-found pages (the platform routes to those itself), microflow-valued targets, or Marketplace pages. A page routed to several ways is one finding naming every route.
+
+  Verified live on a blank app: it reports `Home_Web` and nothing else, and two pages created in one statement — one with `Url:`, one without — separate exactly as intended.
+
+  A new **`navigation_targets()`** Starlark builtin carries it: `(profile, kind, role, caption, page)` for every routed-to page. Navigation was previously reachable only from the Go rules, so no Starlark rule could ask which pages a user can actually reach.
+
 - **`mxcli lint` reports a module nobody has ever organised (CONV018)** — Studio Pro lets a module hold folders and every Mendix style guide expects them, but nothing in mxcli reported their absence: a project with 200 documents loose in one flat module scored clean. It now reports one, and only when **both** halves hold — more than `max_root_documents` (default 20) documents sit directly in the module root, **and not one** document in the module is in a folder.
 
   The second half is what keeps it from nagging. A module that has started to organise itself — even one folder — is never reported, however much is still at its root: the team has evidently made a choice about where things go. Verified live on a 25-microflow flat module, which reports, and then goes silent the moment a single `MOVE … TO FOLDER` lands. Threshold via `.claude/lint-config.yaml`.
