@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	mdlerrors "github.com/mendixlabs/mxcli/mdl/errors"
 )
@@ -99,8 +100,13 @@ func (r *ThemeRegistry) GetPropertiesForWidget(widgetTypeKey string) []ThemeProp
 	return result
 }
 
-// mdlKeywordToDesignPropsKey maps MDL widget type keywords (uppercase) to
-// the keys used in design-properties.json.
+// mdlKeywordToDesignPropsKey maps MDL widget type keywords to the keys used in
+// design-properties.json — for the NATIVE widgets only.
+//
+// A pluggable widget is keyed in design-properties.json by its widget id, and
+// which widget a keyword produces is decided elsewhere (keywordDispatchTable and
+// the embedded widget definitions). Naming one here is how DATAGRID came to be
+// validated against the wrong widget: see pluggableKeywordIDs.
 var mdlKeywordToDesignPropsKey = map[string]string{
 	"container":         "DivContainer",
 	"customcontainer":   "DivContainer",
@@ -111,17 +117,13 @@ var mdlKeywordToDesignPropsKey = map[string]string{
 	"datepicker":        "DatePicker",
 	"checkbox":          "CheckBox",
 	"radiobuttons":      "RadioButtons",
-	"combobox":          "ReferenceSelector",
 	"dropdown":          "DropDown",
 	"referenceselector": "ReferenceSelector",
-	"datagrid":          "DataGrid",
 	"dataview":          "DataView",
 	"listview":          "ListView",
-	"gallery":           "Gallery",
 	"layoutgrid":        "LayoutGrid",
 	"dynamictext":       "DynamicText",
 	"statictext":        "Label",
-	"image":             "Image",
 	"staticimage":       "StaticImageViewer",
 	"dynamicimage":      "DynamicImageViewer",
 	"navigationlist":    "NavigationList",
@@ -130,12 +132,60 @@ var mdlKeywordToDesignPropsKey = map[string]string{
 	"footer":            "Footer",
 }
 
+// pluggableKeywordIDs maps an MDL keyword to the pluggable widget id it writes,
+// built once from the two places that already decide it: keywordDispatchTable
+// (version-aware keywords, today just DATAGRID) and the embedded widget
+// definitions (COMBOBOX, GALLERY, IMAGE, the DataGrid filters, …).
+//
+// Deriving it rather than listing it is the point. The hand-written table above
+// named DataGrid for `datagrid`, which is Atlas Core's DEPRECATED data grid,
+// while MDL's `datagrid` has always written Data grid 2 from the DataWidgets
+// module. The two have disjoint design properties, so MDL-WIDGET11 warned that
+// Compact / Hover / Striped were "not defined for this widget type" — they are
+// exactly its properties — and suggested Style and Row size, which mxbuild then
+// refuses with CE6083 "not supported by your theme". Taking the tool's advice
+// turned 16 warnings into 17 build errors (ako/CapTrackV4 010).
+//
+// The other three were wrong in the quieter direction: `combobox`, `gallery` and
+// `image` named keys no web design-properties.json defines, so the registry
+// lookup missed and validateWidgetDesignProps skipped those widgets entirely.
+// Silence read as approval.
+var pluggableKeywordIDs = sync.OnceValue(func() map[string]string {
+	out := map[string]string{}
+	for _, mapping := range keywordDispatchTable {
+		for _, b := range mapping.Bindings {
+			if b.Kind == bindingKindPluggable && b.WidgetID != "" {
+				out[strings.ToLower(mapping.Keyword)] = b.WidgetID
+				break
+			}
+		}
+	}
+	// A definition's own MDLName is what the builder dispatches on, so this is
+	// the same answer the writer gives. A registry that fails to load leaves the
+	// dispatch-table entries, which is the case that matters most.
+	if reg, err := NewWidgetRegistry(); err == nil && reg != nil {
+		for _, def := range reg.All() {
+			if def.MDLName != "" && def.WidgetID != "" {
+				out[strings.ToLower(def.MDLName)] = def.WidgetID
+			}
+		}
+	}
+	return out
+})
+
 // resolveDesignPropsKey converts an MDL widget type keyword (e.g., "container",
-// "CONTAINER") to the design-properties.json key (e.g., "DivContainer"). The
-// lookup is case-insensitive against the lowercase-keyed map. Falls back to the
-// input as-is for unrecognized types (e.g., pluggable widget identifiers).
+// "CONTAINER") to the design-properties.json key (e.g., "DivContainer").
+//
+// A keyword that writes a PLUGGABLE widget resolves to that widget's id, which
+// is how design-properties.json keys them. Native keywords use the table above.
+// An unrecognised type falls through as-is — a pluggable id written directly is
+// already the right key.
 func resolveDesignPropsKey(mdlKeyword string) string {
-	if key, ok := mdlKeywordToDesignPropsKey[strings.ToLower(mdlKeyword)]; ok {
+	lower := strings.ToLower(mdlKeyword)
+	if id, ok := pluggableKeywordIDs()[lower]; ok {
+		return id
+	}
+	if key, ok := mdlKeywordToDesignPropsKey[lower]; ok {
 		return key
 	}
 	return mdlKeyword
