@@ -55,7 +55,7 @@
     },
     {
       "propertyKey": "pagingPosition",
-      "value": "below",
+      "value": "bottom",
       "operation": "primitive"
     },
     {
