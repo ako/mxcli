@@ -1,0 +1,56 @@
+-- ============================================================================
+-- mendixlabs/mxcli#999 — a repeatable widget property written as a VALUE
+-- ============================================================================
+--
+-- NEGATIVE TEST: this script must FAIL `mxcli check`.
+--
+-- Repeatable widget properties (FileUploader `allowedFileFormats` and
+-- `customButtons`, HTML Element `attributes` and `events`) are written in MDL as
+-- CONTAINER BLOCKS in the widget body. Written as a property value they had two
+-- failure modes, and the dangerous one looked like success:
+--
+--   [(configMode: simple)]           parsed as a list of EXPRESSIONS, flattened
+--                                    to a []string no writer claimed. check
+--                                    clean, exec successful, property GONE from
+--                                    storage.
+--   [(configMode: simple, x: y)]     died as `missing ')' at ','`, which names a
+--                                    paren and leaves the author guessing.
+--
+-- The reporter's framing was "check/exec-pass-then-discard". On FileUploader the
+-- dropped property was `allowedFileFormats`, which restricts what a user may
+-- upload — so the silent drop is a correctness problem and a mild security one.
+--
+-- Both shapes now reach MDL-WIDGET27, whose message names the container keyword
+-- and rewrites the entry into the form that works. The property form is NOT
+-- given a write path: two spellings for one construct is the anti-pattern the
+-- syntax design guide names.
+--
+-- The working form is in navigation-icon-variants.mdl's sibling,
+-- 1036-def-driven-widget-body.mdl, and inline at the bottom of this file.
+
+create module Nine99;
+
+create page Nine99.P_Bad ( Title: 'Bad', Layout: Atlas_Core.Atlas_Default ) {
+  htmlelement frame (
+    tagName: 'div',
+    -- single key: used to check clean, exec, and vanish
+    attributes: [(attributeName: 'data-x')]
+  )
+}
+
+create page Nine99.P_BadMulti ( Title: 'BadMulti', Layout: Atlas_Core.Atlas_Default ) {
+  htmlelement frame2 (
+    tagName: 'div',
+    -- multi key: used to be a parse error naming a paren
+    events: [(eventName: 'onClick', eventStopPropagation: 'true')]
+  )
+}
+
+-- For reference, the form that works and persists — verified by describing the
+-- page back after exec:
+--
+--   create page Nine99.P_Good ( Title: 'Good', Layout: Atlas_Core.Atlas_Default ) {
+--     htmlelement frame ( tagName: 'div' ) {
+--       attribute a1 (attributeName: 'data-x', attributeValueType: 'expression')
+--     }
+--   }
