@@ -126,6 +126,26 @@ type WidgetV3 struct {
 	TypeIsGeneric bool
 }
 
+// ObjectEntryListV3 is `[(k: v, …), …]` written as a widget property VALUE —
+// a repeatable widget property (FileUploader `allowedFileFormats`, HTML Element
+// `attributes`) spelled the way a JSON author would reach for.
+//
+// It is NOT how MDL writes an object list; the entries are container blocks in
+// the widget body. This type exists so the mistake can be REPORTED
+// (MDL-WIDGET27) rather than mis-handled, and it is deliberately never given a
+// write path: a second spelling for one construct is the anti-pattern the syntax
+// design guide names, and it is what a reader would then have to learn twice.
+//
+// Before it existed the two shapes failed differently and both badly
+// (mendixlabs/mxcli#999): the single-key form parsed as a list of expressions,
+// checked clean, exec'd successfully and was silently discarded, while the
+// multi-key form died as `missing ')' at ','`.
+type ObjectEntryListV3 struct {
+	// Entries preserves what was written, so the diagnostic can name the first
+	// key the author used rather than describing the shape abstractly.
+	Entries []map[string]any
+}
+
 // DataSourceV3 represents a V3 datasource expression.
 type DataSourceV3 struct {
 	Type            string          // "parameter", "database", "microflow", "nanoflow", "association", "selection"

@@ -1521,6 +1521,15 @@ func buildPropertyValueV3(ctx parser.IPropertyValueV3Context) any {
 	if id := pvCtx.IDENTIFIER(); id != nil {
 		return id.GetText()
 	}
+	// `[(k: v, …), …]` — a repeatable widget property written as a property
+	// VALUE. Built into its own type so the property validator can REPORT it
+	// (MDL-WIDGET27) rather than mis-handle it: the single-key shape used to
+	// flatten into a []string that no writer claimed, so it checked clean,
+	// exec'd, and vanished (mendixlabs/mxcli#999). It is never given a write
+	// path — the entries belong in a container block in the widget body.
+	if oel := pvCtx.ObjectEntryListV3(); oel != nil {
+		return buildObjectEntryListV3(oel)
+	}
 	// Handle H1-H6 tokens (used for HeaderMode)
 	for _, hFn := range []func() antlr.TerminalNode{pvCtx.H1, pvCtx.H2, pvCtx.H3, pvCtx.H4, pvCtx.H5, pvCtx.H6} {
 		if h := hFn(); h != nil {
@@ -1824,4 +1833,38 @@ func (b *Builder) buildLayoutV3(ctx *parser.CreateLayoutStatementContext) *ast.C
 		stmt.Widgets = buildPageBodyV3(bodyCtx, b)
 	}
 	return stmt
+}
+
+// buildObjectEntryListV3 collects `[(k: v, …), …]` verbatim. The values are kept
+// so the diagnostic can name the first key the author wrote instead of
+// describing the shape abstractly.
+func buildObjectEntryListV3(ctx parser.IObjectEntryListV3Context) *ast.ObjectEntryListV3 {
+	c, ok := ctx.(*parser.ObjectEntryListV3Context)
+	if !ok {
+		return nil
+	}
+	out := &ast.ObjectEntryListV3{}
+	for _, entryCtx := range c.AllObjectEntryV3() {
+		e, ok := entryCtx.(*parser.ObjectEntryV3Context)
+		if !ok {
+			continue
+		}
+		entry := map[string]any{}
+		for _, fieldCtx := range e.AllObjectEntryFieldV3() {
+			f, ok := fieldCtx.(*parser.ObjectEntryFieldV3Context)
+			if !ok {
+				continue
+			}
+			key := ""
+			if k := f.IdentifierOrKeyword(); k != nil {
+				key = k.GetText()
+			}
+			if key == "" {
+				continue
+			}
+			entry[key] = buildPropertyValueV3(f.PropertyValueV3())
+		}
+		out.Entries = append(out.Entries, entry)
+	}
+	return out
 }

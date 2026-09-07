@@ -48,6 +48,32 @@ Use it only when two installed packages ship the same MDL name, or when you have
 the id and not the name. Everything below that still shows the id form works
 unchanged — the short form is simply the better default.
 
+### Repeated entries are BLOCKS, never a property value
+
+A widget's repeatable property — FileUploader `allowedFileFormats`, HTML Element
+`attributes`, a chart's `series` — is written as container blocks in the body:
+
+```sql
+htmlelement frame ( tagName: 'div' ) {
+  attribute a1 (attributeName: 'data-testid', attributeValueType: 'expression')
+}
+```
+
+**Not** as a property value:
+
+```sql
+htmlelement frame ( attributes: [(attributeName: 'data-testid')] )   -- MDL-WIDGET27
+```
+
+That form is an error (`mendixlabs/mxcli#999`). It used to be worse than an
+error: the single-key shape checked clean, exec'd successfully and the property
+vanished from storage, while the multi-key shape died as `missing ')' at ','`.
+The error now names the container keyword and rewrites your entry into the form
+that works.
+
+`describe widget <name> -p <project.mpr>` lists a widget's container keywords
+under **Body containers**.
+
 ### When the name is not found
 
 A name resolving to no installed definition is an **error** (MDL-WIDGET25, with

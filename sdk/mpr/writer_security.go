@@ -1456,9 +1456,20 @@ func (w *Writer) ReconcileMemberAccesses(unitID model.ID, moduleName string) (in
 							break
 						}
 
-						// If empty (just the storage marker), skip
-						if len(maArr) <= 1 {
-							break
+						// A list holding only the storage marker is NOT a reason to
+						// skip: a rule with no member entries on an entity that has
+						// members is precisely the out-of-date state CE0066 names, and
+						// topping it up is what this function is for. The early break
+						// that used to be here made the legacy engine disagree with the
+						// codec engine, which fills such a rule in — and it surfaced the
+						// moment `create or modify entity` started PRESERVING rules
+						// instead of deleting them: a rewrite that drops every attribute
+						// a rule covered empties the list, and the entity's new
+						// attributes then never got an entry (CE0066 on the module).
+						// An entity with no members at all still lands here and still
+						// changes nothing, since the add loops below find nothing to add.
+						if len(maArr) == 0 {
+							break // no storage marker; not a list this writer produced
 						}
 
 						// Get DefaultMemberAccessRights for new entries
