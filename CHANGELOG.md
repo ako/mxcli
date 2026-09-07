@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **An attribute added to a generalization left every specialization's access rule short a member — and `update security` said the model was fine** (mendixlabs/mxcli#1047). `ALTER ENTITY M.Gen ADD ATTRIBUTE …`, where a specialization of `Gen` also has an access rule, produced **CE0066 "Entity access is out of date"**; `UPDATE SECURITY` — project-wide or scoped, the command that exists to repair exactly that — reported **"All entity access rules are up to date"** and changed nothing.
+
+  `ReconcileMemberAccesses` computes the same-module ancestor set and then used it **only** for associations. The attribute pass beside it walked the entity's own attributes, so a specialization's expected member set never contained what it inherits: nothing looked missing, nothing was added, and the 0 it returned is what the command prints as "up to date". A false success, which is worse than an error — it ends the investigation. Both engines had it in the same shape and both are fixed; a fix in one of these parallel writers stays latent in the other until something switches engines.
+
+  Inherited members are now included, each qualified against the entity that **declares** it (`M.Gen.AfterSpec`, not `M.Spec.AfterSpec` — that is CE1613), with a child attribute shadowing an ancestor's of the same name. An ancestor in another module is still neither added nor pruned, since its domain model is not loaded here.
+
+  Measured end to end on 11.12.1, both engines: the reporter's repro now checks clean, and a project broken by the **pre-fix** binary is repaired by the fixed one — `Reconciled 1 access rule(s) in module ProbeSecond`, `mx check` 1 → 0. That also closes a gap an earlier fix recorded explicitly: `update security` had never been shown repairing a real CE0066, because once the write path reconciles, no MDL script can produce one.
+
 ### Added
 
 - **`mxcli lint` reports a navigation screen that cannot be linked to (CONV019)** — a Mendix page is reachable at `/p/<url>` only if it has been given a URL; without one it exists solely at the end of a click path and cannot be bookmarked, shared, reopened after a refresh, or captured with `--screenshot-url` (ako/CapTrackV4 FINDINGS 014).
