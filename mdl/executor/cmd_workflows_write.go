@@ -369,6 +369,13 @@ func buildCallMicroflowTask(n *ast.WorkflowCallMicroflowNode) *workflows.CallMic
 	if task.Caption == "" {
 		task.Caption = task.Name
 	}
+	// An explicit `as <name>` overrides the microflow-derived name, but only
+	// after the caption fallback above — the caption should still read as the
+	// microflow, not as the activity id. Mendix resolves `jump to` by name
+	// (ako/mxcli#408).
+	if n.Name != "" {
+		task.Name = n.Name
+	}
 
 	for _, outcomeNode := range n.Outcomes {
 		outcome := buildConditionOutcome(outcomeNode)
@@ -403,6 +410,9 @@ func buildCallWorkflowActivity(n *ast.WorkflowCallWorkflowNode) *workflows.CallW
 	if act.Caption == "" {
 		act.Caption = act.Name
 	}
+	if n.Name != "" {
+		act.Name = n.Name
+	}
 
 	// Auto-bind $WorkflowContext parameter expression
 	act.ParameterExpression = "$WorkflowContext"
@@ -434,7 +444,13 @@ func buildExclusiveSplit(n *ast.WorkflowDecisionNode) *workflows.ExclusiveSplitA
 	if act.Caption == "" {
 		act.Caption = "Decision"
 	}
+	// An explicit name is the activity's identity: Mendix resolves `jump to` by
+	// JumpToActivity.TargetActivity, which stores a name. Falling back to the
+	// caption keeps existing scripts unchanged (ako/mxcli#408).
 	act.Name = act.Caption
+	if n.Name != "" {
+		act.Name = n.Name
+	}
 
 	// Detect boolean decision (has TRUE or FALSE outcomes).
 	// The Mendix 11 runtime only supports BooleanConditionOutcome and
@@ -499,6 +515,9 @@ func buildParallelSplit(n *ast.WorkflowParallelSplitNode) *workflows.ParallelSpl
 		act.Caption = "Parallel split"
 	}
 	act.Name = act.Caption
+	if n.Name != "" {
+		act.Name = n.Name
+	}
 
 	for _, pathNode := range n.Paths {
 		outcome := &workflows.ParallelSplitOutcome{}
@@ -557,6 +576,9 @@ func buildWaitForTimer(n *ast.WorkflowWaitForTimerNode) *workflows.WaitForTimerA
 		act.Caption = "Wait for timer"
 	}
 	act.Name = act.Caption
+	if n.Name != "" {
+		act.Name = n.Name
+	}
 
 	return act
 }
@@ -570,6 +592,9 @@ func buildWaitForNotification(n *ast.WorkflowWaitForNotificationNode) *workflows
 		act.Caption = "Wait for notification"
 	}
 	act.Name = act.Caption
+	if n.Name != "" {
+		act.Name = n.Name
+	}
 
 	// BoundaryEvents (Issue #7)
 	act.BoundaryEvents = buildBoundaryEvents(n.BoundaryEvents)

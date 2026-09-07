@@ -157,7 +157,7 @@ For a broader set of checks across the entire project (not just a single script)
 mxcli lint -p app.mpr
 ```
 
-This runs 14 built-in rules plus 27 Starlark rules covering security, architecture, quality, and naming conventions. See `mxcli lint --list-rules` for the full list.
+This runs 14 built-in rules plus 29 Starlark rules covering security, architecture, quality, and naming conventions. See `mxcli lint --list-rules` for the full list.
 
 For CI/CD integration, output in SARIF format:
 
