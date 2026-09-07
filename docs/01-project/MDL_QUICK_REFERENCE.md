@@ -618,7 +618,7 @@ Nested folders use `/` separator: `'Parent/Child/Grandchild'`. Missing folders a
 | Drop module role | `drop module role Mod.Role;` | |
 | Create user role | `create user role Name (Mod.Role, ...) [manage all roles];` | Aggregates module roles |
 | Alter user role | `alter user role Name add\|remove module roles (Mod.Role, ...);` | |
-| Drop user role | `drop user role Name;` | |
+| Drop user role | `drop user role [if exists] Name;` | `if exists` makes a cleanup script re-runnable |
 | Grant microflow access | `grant execute on microflow Mod.MF to Mod.Role, ...;` | |
 | Revoke microflow access | `revoke execute on microflow Mod.MF from Mod.Role, ...;` | |
 | Grant nanoflow access | `grant execute on nanoflow Mod.NF to Mod.Role, ...;` | |
@@ -633,7 +633,7 @@ Nested folders use `/` separator: `'Parent/Child/Grandchild'`. Missing folders a
 | Enable guest access | `alter project security guest access on role UserRole;` | Anonymous users. The role is what visitors get — its entity access is the public surface. Mendix fails the build without one (CE0133), so `on` is refused unless a role is given or already stored. mxcli validates the role exists; Mendix does not |
 | Disable guest access | `alter project security guest access off;` | Keeps the stored role, so re-enabling needs no `role` clause |
 | Create demo user | `create demo user 'name' password 'pass' [entity Module.Entity] (UserRole, ...);` | |
-| Drop demo user | `drop demo user 'name';` | |
+| Drop demo user | `drop demo user [if exists] 'name';` | `if exists` makes a cleanup script re-runnable |
 
 ## Workflows
 
