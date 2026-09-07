@@ -44,12 +44,20 @@ ALLOWED_ACTIONS = (
 )
 
 # Allowed activity types (non-action activities)
+#
+# ExclusiveMerge is here because an `if` produces BOTH a split and a merge. The
+# list allowed the split and forbade the join it necessarily creates, so an ACT_
+# microflow that guards anything — "do not open a page with an empty parameter" —
+# could not be written cleanly: the guard was permitted and its own closing brace
+# was reported. Measured on a microflow whose ONLY violation was the merge, and
+# 122 times over on one real project.
 ALLOWED_ACTIVITY_TYPES = (
     "SubMicroflow",
     "MicroflowCallAction",
     "StartEvent",
     "EndEvent",
     "ExclusiveSplit",
+    "ExclusiveMerge",
     "Annotation",
 )
 
