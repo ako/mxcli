@@ -81,32 +81,34 @@ begin
     page Module.ReviewPage
     outcomes 'Done' { };
 
-  -- Call a microflow (server logic); optional parameter mapping + outcomes
-  call microflow Module.ACT_Validate
+  -- Call a microflow (server logic); optional name, parameter mapping + outcomes
+  call microflow Module.ACT_Validate as callMicroflow1
     with (Module.ACT_Validate.Item = '$WorkflowContext');
 
-  -- Decision: a boolean or enum exclusive split
-  decision '$WorkflowContext/Total > 1000'
+  -- Decision: a boolean or enum exclusive split. The name is optional; give one
+  -- when a `jump to` targets it. Outcome values are enumeration value
+  -- identifiers — bare or qualified (Module.Enum.Value).
+  decision decision1 '$WorkflowContext/Total > 1000'
     outcomes
       true  -> { call microflow Module.ACT_Escalate; }
       false -> { call microflow Module.ACT_AutoApprove; };
 
   -- Parallel split: independent branches run concurrently
-  parallel split
+  parallel split split1
     path 1 { call microflow Module.ACT_Notify; }
     path 2 { call microflow Module.ACT_Log; };
 
   -- Wait for a timer, then continue (duration is a Mendix expression)
-  wait for timer 'addHours([%CurrentDateTime%], 1)';
+  wait for timer timer1 'addHours([%CurrentDateTime%], 1)';
 
   -- Wait for an external notification (e.g. an event)
-  wait for notification;
+  wait for notification waitForNotification1;
 
   -- Jump back to an earlier activity by name (a loop)
   jump to Review;
 
   -- Call a sub-workflow
-  call workflow Module.SubProcess comment 'delegate';
+  call workflow Module.SubProcess as callWorkflow1 comment 'delegate';
 end workflow;
 ```
 
@@ -175,6 +177,27 @@ omitted, as they are re-synthesised on create.)
 them at all, so they do not appear in the output and cannot be written from MDL.
 A workflow that has one can only be edited in Studio Pro or through
 `ALTER WORKFLOW` (below) — never with `CREATE OR REPLACE`.
+
+## Activity names, and why `jump to` depends on them
+
+Mendix stores `JumpToActivity.TargetActivity` as an activity **name string**, not
+a pointer — so a jump is only as good as the name it aims at. Every activity type
+takes an optional explicit name (`as <name>` for the two call activities, a bare
+name for the rest); without one mxcli derives it from the caption, or from the
+called document for `call microflow` / `call workflow`.
+
+That default is fine for a workflow written from scratch, and it is why two
+decisions sharing a caption used to collide on one name. It is **not** fine when
+reproducing a workflow Studio Pro authored: Studio Pro names activities by type
+and ordinal — `decision1`, `split1`, `callMicroflow1`, `userTask1`,
+`waitForNotification1` — with no relation to the caption. `describe workflow`
+emits the stored name whenever it is not derivable, so the jump wiring survives a
+re-execution; before that it did not, and a `jump to decision1` reached MxBuild as
+a jump to itself (**CE6681**, "not possible to jump to end activities or jump-to
+activities" — an error naming a different fault). See ako/mxcli#408.
+
+`mxcli check` resolves every jump against the activity names the script itself
+declares (**MDL-WF05**) and lists the valid targets when one misses.
 
 ## Rewriting an existing workflow
 

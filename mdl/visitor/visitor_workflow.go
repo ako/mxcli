@@ -541,10 +541,27 @@ func buildWorkflowUserTaskOutcome(ctx parser.IWorkflowUserTaskOutcomeContext) as
 	return outcome
 }
 
+// workflowActivityNameText reads an optional explicit activity name off a
+// statement. Mendix resolves `jump to` by activity NAME, so this is the only way
+// a described workflow's jump wiring survives a re-execution (ako/mxcli#408).
+func workflowActivityNameText(ctx parser.IWorkflowActivityNameContext) string {
+	if ctx == nil {
+		return ""
+	}
+	if qid := ctx.QUOTED_IDENTIFIER(); qid != nil {
+		return unquoteIdentifier(qid.GetText())
+	}
+	if id := ctx.IDENTIFIER(); id != nil {
+		return id.GetText()
+	}
+	return ""
+}
+
 // buildWorkflowCallMicroflow builds a WorkflowCallMicroflowNode.
 func buildWorkflowCallMicroflow(ctx parser.IWorkflowCallMicroflowStmtContext) *ast.WorkflowCallMicroflowNode {
 	cmCtx := ctx.(*parser.WorkflowCallMicroflowStmtContext)
 	node := &ast.WorkflowCallMicroflowNode{
+		Name:      workflowActivityNameText(cmCtx.WorkflowActivityName()),
 		Microflow: buildQualifiedName(cmCtx.QualifiedName()),
 	}
 
@@ -593,6 +610,7 @@ func bareWorkflowParameterName(raw string) string {
 func buildWorkflowCallWorkflow(ctx parser.IWorkflowCallWorkflowStmtContext) *ast.WorkflowCallWorkflowNode {
 	cwCtx := ctx.(*parser.WorkflowCallWorkflowStmtContext)
 	node := &ast.WorkflowCallWorkflowNode{
+		Name:     workflowActivityNameText(cwCtx.WorkflowActivityName()),
 		Workflow: buildQualifiedName(cwCtx.QualifiedName()),
 	}
 
@@ -616,7 +634,9 @@ func buildWorkflowCallWorkflow(ctx parser.IWorkflowCallWorkflowStmtContext) *ast
 // buildWorkflowDecision builds a WorkflowDecisionNode.
 func buildWorkflowDecision(ctx parser.IWorkflowDecisionStmtContext) *ast.WorkflowDecisionNode {
 	dCtx := ctx.(*parser.WorkflowDecisionStmtContext)
-	node := &ast.WorkflowDecisionNode{}
+	node := &ast.WorkflowDecisionNode{
+		Name: workflowActivityNameText(dCtx.WorkflowActivityName()),
+	}
 
 	allStrings := dCtx.AllSTRING_LITERAL()
 	stringIdx := 0
@@ -672,7 +692,9 @@ func buildWorkflowConditionOutcome(ctx parser.IWorkflowConditionOutcomeContext) 
 // buildWorkflowParallelSplit builds a WorkflowParallelSplitNode.
 func buildWorkflowParallelSplit(ctx parser.IWorkflowParallelSplitStmtContext) *ast.WorkflowParallelSplitNode {
 	psCtx := ctx.(*parser.WorkflowParallelSplitStmtContext)
-	node := &ast.WorkflowParallelSplitNode{}
+	node := &ast.WorkflowParallelSplitNode{
+		Name: workflowActivityNameText(psCtx.WorkflowActivityName()),
+	}
 
 	if psCtx.COMMENT() != nil && psCtx.STRING_LITERAL() != nil {
 		node.Caption = unquoteString(psCtx.STRING_LITERAL().GetText())
@@ -727,7 +749,9 @@ func buildWorkflowJumpTo(ctx parser.IWorkflowJumpToStmtContext) *ast.WorkflowJum
 // buildWorkflowWaitForTimer builds a WorkflowWaitForTimerNode.
 func buildWorkflowWaitForTimer(ctx parser.IWorkflowWaitForTimerStmtContext) *ast.WorkflowWaitForTimerNode {
 	wtCtx := ctx.(*parser.WorkflowWaitForTimerStmtContext)
-	node := &ast.WorkflowWaitForTimerNode{}
+	node := &ast.WorkflowWaitForTimerNode{
+		Name: workflowActivityNameText(wtCtx.WorkflowActivityName()),
+	}
 
 	allStrings := wtCtx.AllSTRING_LITERAL()
 	if len(allStrings) > 0 && wtCtx.COMMENT() == nil {
@@ -745,7 +769,9 @@ func buildWorkflowWaitForTimer(ctx parser.IWorkflowWaitForTimerStmtContext) *ast
 // buildWorkflowWaitForNotification builds a WorkflowWaitForNotificationNode.
 func buildWorkflowWaitForNotification(ctx parser.IWorkflowWaitForNotificationStmtContext) *ast.WorkflowWaitForNotificationNode {
 	wnCtx := ctx.(*parser.WorkflowWaitForNotificationStmtContext)
-	node := &ast.WorkflowWaitForNotificationNode{}
+	node := &ast.WorkflowWaitForNotificationNode{
+		Name: workflowActivityNameText(wnCtx.WorkflowActivityName()),
+	}
 
 	if wnCtx.COMMENT() != nil && wnCtx.STRING_LITERAL() != nil {
 		node.Caption = unquoteString(wnCtx.STRING_LITERAL().GetText())

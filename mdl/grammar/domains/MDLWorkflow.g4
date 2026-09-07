@@ -40,6 +40,18 @@ workflowActivityStmt
     | workflowAnnotationStmt SEMICOLON
     ;
 
+/**
+ * An activity's explicit name. Mendix resolves `jump to` by
+ * JumpToActivity.TargetActivity, which stores an activity NAME, and Studio Pro
+ * names every activity by type and ordinal (decision1, split1, callMicroflow1)
+ * independently of its caption. Without a name slot a described workflow's jump
+ * wiring could not be re-executed. See ako/mxcli#408.
+ */
+workflowActivityName
+    : IDENTIFIER
+    | QUOTED_IDENTIFIER
+    ;
+
 workflowUserTaskStmt
     : USER TASK (IDENTIFIER | QUOTED_IDENTIFIER) STRING_LITERAL
       (PAGE qualifiedName)?
@@ -72,7 +84,7 @@ workflowUserTaskOutcome
     ;
 
 workflowCallMicroflowStmt
-    : CALL MICROFLOW qualifiedName (COMMENT STRING_LITERAL)?
+    : CALL MICROFLOW qualifiedName (AS workflowActivityName)? (COMMENT STRING_LITERAL)?
       (WITH LPAREN workflowParameterMapping (COMMA workflowParameterMapping)* RPAREN)?
       (OUTCOMES workflowConditionOutcome+)?
       (BOUNDARY EVENT workflowBoundaryEventClause+)?
@@ -83,12 +95,12 @@ workflowParameterMapping
     ;
 
 workflowCallWorkflowStmt
-    : CALL WORKFLOW qualifiedName (COMMENT STRING_LITERAL)?
+    : CALL WORKFLOW qualifiedName (AS workflowActivityName)? (COMMENT STRING_LITERAL)?
       (WITH LPAREN workflowParameterMapping (COMMA workflowParameterMapping)* RPAREN)?
     ;
 
 workflowDecisionStmt
-    : DECISION STRING_LITERAL? (COMMENT STRING_LITERAL)?
+    : DECISION workflowActivityName? STRING_LITERAL? (COMMENT STRING_LITERAL)?
       (OUTCOMES workflowConditionOutcome+)?
     ;
 
@@ -97,7 +109,7 @@ workflowConditionOutcome
     ;
 
 workflowParallelSplitStmt
-    : PARALLEL SPLIT (COMMENT STRING_LITERAL)?
+    : PARALLEL SPLIT workflowActivityName? (COMMENT STRING_LITERAL)?
       workflowParallelPath+
     ;
 
@@ -110,11 +122,11 @@ workflowJumpToStmt
     ;
 
 workflowWaitForTimerStmt
-    : WAIT FOR TIMER STRING_LITERAL? (COMMENT STRING_LITERAL)?
+    : WAIT FOR TIMER workflowActivityName? STRING_LITERAL? (COMMENT STRING_LITERAL)?
     ;
 
 workflowWaitForNotificationStmt
-    : WAIT FOR NOTIFICATION (COMMENT STRING_LITERAL)?
+    : WAIT FOR NOTIFICATION workflowActivityName? (COMMENT STRING_LITERAL)?
       (BOUNDARY EVENT workflowBoundaryEventClause+)?
     ;
 
