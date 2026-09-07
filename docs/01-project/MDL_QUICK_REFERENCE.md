@@ -802,6 +802,16 @@ name at all:
 | `icon glyph 57377` | `Forms$GlyphIcon` | a numeric character code |
 | `icon image MyModule.Images.logo` | `Forms$ImageIcon` | a name in an image collection |
 
+**A glyph code the font does not define is reported (MDL078, a warning).** A
+glyph code is a bare integer, so nothing resolves it: `mxcli check` and `mx check`
+both pass at 0 errors and the failure lands at `mxbuild --target=deploy`, as
+*"An exception occurred while exporting layout '<some layout>'"* — naming a
+document that is not the cause. Measured on 11.14.0: mxbuild resolves the code
+through a LINQ `.First(...)` in `GlyphFont.GetClass`, which throws on an absent
+one. The rule checks the 247 codes the shipped font actually defines. Prefer an
+icon collection reference, which `check --references` resolves before anything is
+written.
+
 The bare form is the icon-collection icon, so every existing script keeps its
 meaning. The keyword forms exist because writing a bare name for an image icon
 would rebuild it as a collection icon — a silent variant swap.
