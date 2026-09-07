@@ -125,6 +125,11 @@ func validateWidgetTreeIn(widgets []*ast.WidgetV3, registry *WidgetRegistry, loc
 		// container? Both were previously left to `exec`.
 		out = append(out, validateWidgetKind(w, registry, lookupWidgetDef(parent, registry), parentObjectLists, locationPrefix)...)
 		out = append(out, validatePluggableWidgetProperties(w, registry, locationPrefix)...)
+		// A repeatable property written as a property value — `attributes:
+		// [(…)]` — which used to check clean, exec, and vanish (#999). Runs for
+		// every widget kind and needs no definition: the SHAPE is wrong whatever
+		// the widget declares.
+		out = append(out, validateObjectEntryProperties(w, registry, locationPrefix)...)
 		// #928: contentparams with no `{N}` placeholder to consume them.
 		if lookupWidgetDef(w, registry) != nil {
 			out = append(out, validatePluggableContentParams(w, locationPrefix)...)

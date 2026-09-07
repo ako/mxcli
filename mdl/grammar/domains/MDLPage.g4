@@ -653,7 +653,44 @@ propertyValueV3
     | qualifiedName
     | IDENTIFIER
     | H1 | H2 | H3 | H4 | H5 | H6  // HeaderMode values
+    | objectEntryListV3            // [(k: v, k: v)] — see below; parsed only to be REJECTED
     | LBRACKET (expression (COMMA expression)*)? RBRACKET  // Array
+    ;
+
+// `attributes: [(attributeName: 'x', attributeValueType: 'expression')]` —
+// a repeatable widget property written as a property VALUE.
+//
+// This is not how MDL writes an object list. The entries are CONTAINER BLOCKS in
+// the widget body:
+//
+//     htmlelement frame (tagName: 'div') {
+//       attribute a1 (attributeName: 'x', attributeValueType: 'expression')
+//     }
+//
+// The alternative exists ONLY so the mistake is reported precisely
+// (MDL-WIDGET27), never to give the construct a second spelling. Without it the
+// two shapes failed differently and both badly (mendixlabs/mxcli#999):
+//
+//   single key  [(configMode: simple)]                 parsed as a list of
+//                                                      EXPRESSIONS, checked
+//                                                      clean, exec'd, and was
+//                                                      silently discarded
+//   multi key   [(configMode: simple, x: y)]           died as
+//                                                      `missing ')' at ','`
+//
+// Ordered BEFORE the expression array so the single-key shape lands here rather
+// than being flattened to a string nobody claims. Measured: `[(` appears nowhere
+// in mdl-examples/ outside comments, so nothing legitimate is captured.
+objectEntryListV3
+    : LBRACKET objectEntryV3 (COMMA objectEntryV3)* RBRACKET
+    ;
+
+objectEntryV3
+    : LPAREN objectEntryFieldV3 (COMMA objectEntryFieldV3)* RPAREN
+    ;
+
+objectEntryFieldV3
+    : identifierOrKeyword COLON propertyValueV3
     ;
 
 // V3 Design property list: ['Key': 'Value', 'Key': ON]

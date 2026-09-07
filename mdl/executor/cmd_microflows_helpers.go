@@ -511,7 +511,7 @@ var xpathEnumRefRe = regexp.MustCompile(`[A-Za-z][A-Za-z0-9_]*\.[A-Za-z][A-Za-z0
 // INSIDE A STRING LITERAL the letters are data and are left alone, the same rule
 // NormalizeXPathOperators follows. Running the regex over the whole constraint
 // rewrote a ref the author had already quoted into a DOUBLED quote —
-// `'Mod.Enum.Value'` became `''Value''` — which every downstream reader lexes as
+// `'Mod.Enum.Value'` became `”Value”` — which every downstream reader lexes as
 // an empty string literal followed by a stray bare word. The stored constraint
 // then read `Status = Mod.Enum.` with the value, the closing quote and the ENTIRE
 // following clause gone, `mxcli check` passing, and mxbuild reporting only a
