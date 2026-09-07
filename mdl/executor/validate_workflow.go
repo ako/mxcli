@@ -16,11 +16,18 @@ import (
 	"github.com/mendixlabs/mxcli/mdl/linter"
 )
 
-// wfOutcomeIdentRe matches a valid Mendix EnumerationValueIdentifier: a bare
-// identifier (no spaces or punctuation). Decision / call-microflow outcome names
-// must be enum value identifiers; free text like 'Confirmed closed' is rejected
-// by MxBuild.
-var wfOutcomeIdentRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+// wfOutcomeIdentRe matches a valid Mendix EnumerationValueIdentifier: dotted
+// identifier segments, no spaces or other punctuation. Decision /
+// call-microflow outcome names must be enum value identifiers; free text like
+// 'Confirmed closed' is rejected by MxBuild.
+//
+// The qualified form is what Studio Pro actually stores — every
+// EnumerationValueConditionOutcome in the demo corpus holds
+// Module.Enum.Value (7 of 7 non-empty), so `describe workflow` emits it and a
+// bare-identifier-only rule refused mxcli's own output (ako/mxcli#408). Bare
+// values stay accepted: the rule's job is to catch free text, not to pick a
+// spelling.
+var wfOutcomeIdentRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$`)
 
 // ValidateWorkflow checks a workflow for constructs that pass parsing but are
 // rejected by MxBuild, without requiring a project connection.
@@ -98,7 +105,7 @@ func checkWorkflowOutcomeNames(outcomes []ast.WorkflowConditionOutcomeNode, kind
 			Severity:   linter.SeverityError,
 			Location:   loc,
 			Message:    fmt.Sprintf("%s outcome '%s' is not a valid enumeration value identifier — MxBuild rejects outcome names with spaces or punctuation", kind, o.Value),
-			Suggestion: "Use a bare identifier (e.g. 'ConfirmedClosed'); a decision branches on the enumeration returned by its expression, so outcome names must match that enum's value identifiers.",
+			Suggestion: "Use an enumeration value identifier — bare ('ConfirmedClosed') or qualified ('Module.Enum.ConfirmedClosed'); a decision branches on the enumeration returned by its expression, so outcome names must match that enum's value identifiers.",
 		})
 	}
 	return out

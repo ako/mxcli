@@ -73,6 +73,7 @@ type WorkflowUserTaskOutcomeNode struct {
 
 // WorkflowCallMicroflowNode represents a CALL MICROFLOW activity.
 type WorkflowCallMicroflowNode struct {
+	Name              string // explicit activity name (`as <name>`); see ako/mxcli#408
 	Microflow         QualifiedName
 	Caption           string
 	Outcomes          []WorkflowConditionOutcomeNode
@@ -84,6 +85,7 @@ func (n *WorkflowCallMicroflowNode) workflowActivityNode() {}
 
 // WorkflowCallWorkflowNode represents a CALL WORKFLOW activity.
 type WorkflowCallWorkflowNode struct {
+	Name              string // explicit activity name (`as <name>`); see ako/mxcli#408
 	Workflow          QualifiedName
 	Caption           string
 	ParameterMappings []WorkflowParameterMappingNode
@@ -93,6 +95,7 @@ func (n *WorkflowCallWorkflowNode) workflowActivityNode() {}
 
 // WorkflowDecisionNode represents a DECISION activity.
 type WorkflowDecisionNode struct {
+	Name       string // explicit activity name; see ako/mxcli#408
 	Expression string // decision expression
 	Caption    string
 	Outcomes   []WorkflowConditionOutcomeNode
@@ -108,6 +111,7 @@ type WorkflowConditionOutcomeNode struct {
 
 // WorkflowParallelSplitNode represents a PARALLEL SPLIT activity.
 type WorkflowParallelSplitNode struct {
+	Name    string // explicit activity name; see ako/mxcli#408
 	Caption string
 	Paths   []WorkflowParallelPathNode
 }
@@ -130,6 +134,7 @@ func (n *WorkflowJumpToNode) workflowActivityNode() {}
 
 // WorkflowWaitForTimerNode represents a WAIT FOR TIMER activity.
 type WorkflowWaitForTimerNode struct {
+	Name            string // explicit activity name; see ako/mxcli#408
 	DelayExpression string
 	Caption         string
 }
@@ -138,6 +143,7 @@ func (n *WorkflowWaitForTimerNode) workflowActivityNode() {}
 
 // WorkflowWaitForNotificationNode represents a WAIT FOR NOTIFICATION activity.
 type WorkflowWaitForNotificationNode struct {
+	Name           string // explicit activity name; see ako/mxcli#408
 	Caption        string
 	BoundaryEvents []WorkflowBoundaryEventNode // Issue #7
 }

@@ -1,0 +1,104 @@
+-- ako/mxcli#408 — `describe workflow` output was not re-executable.
+--
+-- Two defects, both reproduced below. Before the fix, 6 of the 14 workflows in
+-- the 9 demo apps in mx-test-projects/ failed describe -> check.
+--
+-- 1. MDL-WF03 required a BARE enumeration value identifier, but every
+--    Workflows$EnumerationValueConditionOutcome in the corpus stores the
+--    QUALIFIED form (Module.Enum.Value; 7 of 7 non-empty). The describer emits
+--    what is stored, so the rule refused mxcli's own output.
+--
+-- 2. MDL had a name slot only on `user task`. Every other builder derived the
+--    activity name from the caption, while Mendix resolves
+--    JumpToActivity.TargetActivity by activity NAME and Studio Pro names
+--    activities decision1 / split1 / callMicroflow1 regardless of caption. A
+--    `jump to decision1` therefore resolved to nothing (MDL-WF05), or reached
+--    MxBuild as a jump to itself (CE6681).
+--
+-- Verified: describe -> exec -> mx check at 0 errors on mxbuild 11.10.0 against
+-- FactoryManagement(AgenticEnterpriseEdition), with the untouched app as the
+-- baseline; the round-tripped document stores decision1..3, split1,
+-- callMicroflow1..6, waitForNotification1..2 and both jump targets resolve.
+
+create module WF408;
+
+create enumeration WF408.Kind ( Standard, Priority );
+
+create entity WF408.Order (
+  Total : decimal,
+  Kind  : enumeration(WF408.Kind)
+);
+
+create page WF408.ReworkPage (
+  title: 'Rework',
+  layout: Atlas_Core.Atlas_Default,
+  params: { $WorkflowUserTask: System.WorkflowUserTask }
+) {
+  layoutgrid g1 {
+    row r1 {
+      column c1 (desktopwidth: 12) {
+        dynamictext txt1 (content: 'Rework the request', rendermode: H2)
+      }
+    }
+  }
+}
+/
+
+create microflow WF408.ACT_Noop ()
+begin
+  -- nothing to do; this workflow only needs a callable target
+  log info 'noop';
+end;
+/
+
+-- Defect 1: the qualified form Studio Pro stores must be accepted.
+--
+-- A decision's outcomes must match what its expression returns (CE6686), so the
+-- expression yields the enumeration the outcomes name, and the outcomes cover
+-- every value PLUS the empty one — Studio Pro writes that third
+-- EnumerationValueConditionOutcome with Value '' on every enum decision, and
+-- mxbuild refuses the decision without it.
+create workflow WF408.QualifiedEnumOutcome
+  parameter $WorkflowContext: WF408.Order
+begin
+  decision '$WorkflowContext/Kind'
+    outcomes
+      'WF408.Kind.Standard' -> { }
+      'WF408.Kind.Priority' -> { }
+      '' -> { }
+  ;
+end workflow;
+/
+
+-- Defect 2: a jump resolves against an explicitly named decision and split.
+--
+-- The jump sits at the end of a user-task outcome branch. MxBuild refuses one
+-- that is not at the end of a path (CE6679), one that crosses a parallel-split
+-- boundary (CE6682 / CE7415), and a main flow ending in a jump leaves the
+-- implicit End unreachable (CE6689) — none of which is what this test is about,
+-- so the workflow is shaped the way Studio Pro shapes one.
+create workflow WF408.NamedJumpTargets
+  parameter $WorkflowContext: WF408.Order
+begin
+  decision decision1 '$WorkflowContext/Total > 1000'
+    outcomes
+      true -> {
+        user task Rework 'Fix and resubmit'
+          page WF408.ReworkPage
+          outcomes
+            'Resubmit' { jump to decision1; }
+            'Abandon'  { }
+        ;
+      }
+      false -> { call microflow WF408.ACT_Noop as callMicroflow1; }
+  ;
+
+  parallel split split1
+    path 1 { call microflow WF408.ACT_Noop as callMicroflow2; }
+    path 2 { }
+  ;
+
+  wait for timer timer1 'addHours([%CurrentDateTime%], 1)';
+  wait for notification waitForNotification1;
+end workflow;
+/
