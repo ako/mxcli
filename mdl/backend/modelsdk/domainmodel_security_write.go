@@ -371,12 +371,39 @@ func (b *Backend) ReconcileMemberAccesses(unitID model.ID, moduleName string) (i
 		// part of the chain that lives in THIS module can be walked; an ancestor
 		// in another module is handled by preserving its references below rather
 		// than by resolving them.
+		ancestors := sameModuleAncestors(ent, byName, moduleName)
 		ownerIDs := map[string]bool{entityID: true}
-		for _, anc := range sameModuleAncestors(ent, byName, moduleName) {
+		for _, anc := range ancestors {
 			ownerIDs[string(anc.ID())] = true
 		}
 
-		// Attributes (in order) with calculated flags.
+		// Attributes (in order) with calculated flags — the entity's OWN and
+		// those it INHERITS from a generalization in this module.
+		//
+		// The ancestor walk above used to feed the ASSOCIATION pass only, so a
+		// specialization's expected attribute set was its own attributes and
+		// nothing else. Adding an attribute to a generalization therefore left
+		// every specialization's rule short of a member, which Mendix reports as
+		// CE0066 "Entity access is out of date" — and `UPDATE SECURITY`, the
+		// command that exists to repair it, found nothing missing, reported 0
+		// modified, and printed "All entity access rules are up to date" over a
+		// project mx check rejects (mendixlabs/mxcli#1047, reported against
+		// 0.21.0 and reproduced on both engines).
+		//
+		// Each reference is qualified against the entity that DECLARES the
+		// member, which is what Mendix stores; qualifying an inherited one
+		// against this entity is CE1613 "The selected attribute no longer
+		// exists". A child attribute SHADOWS an ancestor's of the same name, as
+		// the executor's own member walk (EntityMembersFor) already treats it —
+		// emitting both would put two entries in the rule for one member.
+		//
+		// An ancestor in ANOTHER module is still not resolvable here, so its
+		// members are neither added nor pruned: the existing entries are carried
+		// through by the "preserve what cannot be checked" branch below. For the
+		// same reason a stale inherited entry — one whose ancestor has since
+		// dropped the attribute — is still preserved rather than removed; that is
+		// the opposite direction from this defect and #1047's own control reports
+		// "+1 added, -0 removed".
 		type attrInfo struct {
 			qn   string
 			calc bool
@@ -384,18 +411,29 @@ func (b *Backend) ReconcileMemberAccesses(unitID model.ID, moduleName string) (i
 		var attrs []attrInfo
 		attrSet := map[string]bool{}
 		calcSet := map[string]bool{}
-		for _, ae := range ent.AttributesItems() {
-			a, ok := ae.(*genDm.Attribute)
-			if !ok {
-				continue
+		claimed := map[string]bool{}
+		collectAttrs := func(owner *genDm.Entity, ownerName string) {
+			for _, ae := range owner.AttributesItems() {
+				a, ok := ae.(*genDm.Attribute)
+				if !ok {
+					continue
+				}
+				if claimed[a.Name()] {
+					continue // shadowed by a nearer entity in the chain
+				}
+				claimed[a.Name()] = true
+				qn := moduleName + "." + ownerName + "." + a.Name()
+				_, isCalc := a.Value().(*genDm.CalculatedValue)
+				attrs = append(attrs, attrInfo{qn, isCalc})
+				attrSet[qn] = true
+				if isCalc {
+					calcSet[qn] = true
+				}
 			}
-			qn := moduleName + "." + entityName + "." + a.Name()
-			_, isCalc := a.Value().(*genDm.CalculatedValue)
-			attrs = append(attrs, attrInfo{qn, isCalc})
-			attrSet[qn] = true
-			if isCalc {
-				calcSet[qn] = true
-			}
+		}
+		collectAttrs(ent, entityName)
+		for _, anc := range ancestors { // nearest first, so the nearer shadows
+			collectAttrs(anc, anc.Name())
 		}
 
 		// FROM-side associations (ParentPointer == this entity), regular + cross.
