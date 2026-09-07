@@ -43,8 +43,35 @@ This catches everything Level 1 catches, plus:
 - Microflow calls to non-existent microflows
 - Page layouts that don't exist in the project
 - Association endpoints pointing to missing entities
+- A plain `create` whose name already exists in the project
 
 This is the check you should run before executing a script. It's fast (reads the project but doesn't modify it) and catches most mistakes.
+
+### Name conflicts with the project
+
+A plain `create` of something the project already has is reported here rather
+than left to `exec`:
+
+```
+statement 4: association already exists in project: Sales.Order_Customer — use CREATE OR MODIFY to update it
+```
+
+This matters because `exec` stops at the *first* such statement, having already
+written the ones before it — so a script that only fails at execution time
+leaves the project half-modified. `--references` reports every conflict in the
+script up front, before anything is written.
+
+Three spellings say "it is fine if this already exists", and none of them is
+reported as a conflict:
+
+| Form | What exec does |
+|------|----------------|
+| `create or modify X` | rewrites the element |
+| `create or replace X` | rewrites the element |
+| `create X if not exists` | leaves the stored element untouched |
+
+`create module M;` is also never reported: it is a no-op when the module exists,
+which is why it can safely open every script.
 
 ## Level 3: Full project validation with mx check
 

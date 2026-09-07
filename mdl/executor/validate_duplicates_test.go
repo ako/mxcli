@@ -245,8 +245,10 @@ create persistent entity Dup.Customer (Name: string);
 // Phase 2: CheckProjectConflicts — project-side existence checks
 // ---------------------------------------------------------------------------
 
-// setupProjectConflictCtx creates a mock context with a workflow "M.ExistingWF"
-// and a microflow "M.ExistingMF" already present in the project.
+// setupProjectConflictCtx creates a mock context with a workflow "M.ExistingWF",
+// a microflow "M.ExistingMF", an association "M.ExistingAssoc", a rule
+// "M.ExistingRule" and a javascript action "M.ExistingJS" already present in
+// the project.
 func setupProjectConflictCtx(t *testing.T) (*ExecContext, *model.Module) {
 	t.Helper()
 	mod := mkModule("M")
@@ -255,13 +257,37 @@ func setupProjectConflictCtx(t *testing.T) (*ExecContext, *model.Module) {
 	wf := mkWorkflow(mod.ID, "ExistingWF")
 	mf := mkMicroflow(mod.ID, "ExistingMF")
 
+	parent := mkEntity(mod.ID, "Parent")
+	child := mkEntity(mod.ID, "Child")
+	assoc := mkAssociation(mod.ID, "ExistingAssoc", child.ID, parent.ID)
+	dm := &domainmodel.DomainModel{
+		BaseElement:  model.BaseElement{ID: nextID("dm")},
+		ContainerID:  mod.ID,
+		Entities:     []*domainmodel.Entity{parent, child},
+		Associations: []*domainmodel.Association{assoc},
+	}
+	rule := &microflows.Rule{
+		BaseElement: model.BaseElement{ID: nextID("rule")},
+		ContainerID: mod.ID,
+		Name:        "ExistingRule",
+	}
+	jsa := &types.JavaScriptAction{
+		BaseElement: model.BaseElement{ID: nextID("jsa")},
+		ContainerID: mod.ID,
+		Name:        "ExistingJS",
+	}
+
 	mb := &mock.MockBackend{
 		IsConnectedFunc: func() bool { return true },
+		ListModulesFunc: func() ([]*model.Module, error) { return []*model.Module{mod}, nil },
 		ListWorkflowsFunc: func() ([]*workflows.Workflow, error) {
 			return []*workflows.Workflow{wf}, nil
 		},
 		ListMicroflowsFunc: func() ([]*microflows.Microflow, error) {
 			return []*microflows.Microflow{mf}, nil
+		},
+		ListRulesFunc: func() ([]*microflows.Rule, error) {
+			return []*microflows.Rule{rule}, nil
 		},
 		// Other list functions return empty (no conflicts for those types)
 		ListEnumerationsFunc:              func() ([]*model.Enumeration, error) { return nil, nil },
@@ -279,12 +305,16 @@ func setupProjectConflictCtx(t *testing.T) (*ExecContext, *model.Module) {
 		},
 		ListAgentEditorAgentsFunc: func() ([]*agenteditor.Agent, error) { return nil, nil },
 		ListImageCollectionsFunc:  func() ([]*types.ImageCollection, error) { return nil, nil },
-		ListDomainModelsFunc:      func() ([]*domainmodel.DomainModel, error) { return nil, nil },
-		ListNanoflowsFunc:         func() ([]*microflows.Nanoflow, error) { return nil, nil },
-		ListPagesFunc:             func() ([]*pages.Page, error) { return nil, nil },
-		ListSnippetsFunc:          func() ([]*pages.Snippet, error) { return nil, nil },
-		ListJavaActionsFunc:       func() ([]*types.JavaAction, error) { return nil, nil },
-		ListJavaScriptActionsFunc: func() ([]*types.JavaScriptAction, error) { return nil, nil },
+		ListDomainModelsFunc: func() ([]*domainmodel.DomainModel, error) {
+			return []*domainmodel.DomainModel{dm}, nil
+		},
+		ListNanoflowsFunc:   func() ([]*microflows.Nanoflow, error) { return nil, nil },
+		ListPagesFunc:       func() ([]*pages.Page, error) { return nil, nil },
+		ListSnippetsFunc:    func() ([]*pages.Snippet, error) { return nil, nil },
+		ListJavaActionsFunc: func() ([]*types.JavaAction, error) { return nil, nil },
+		ListJavaScriptActionsFunc: func() ([]*types.JavaScriptAction, error) {
+			return []*types.JavaScriptAction{jsa}, nil
+		},
 	}
 
 	ctx, _ := newMockCtx(t, withBackend(mb), withHierarchy(h))
@@ -413,5 +443,123 @@ func TestCheckProjectConflicts_NotConnected_NoErrors(t *testing.T) {
 	errs := CheckProjectConflicts(ctx, prog)
 	if len(errs) != 0 {
 		t.Errorf("expected no errors when not connected, got: %v", errs)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// The types the project check used to skip silently. stmtCreateInfo classified
+// each of them, projectNameSets.setFor did not, so a plain CREATE against a
+// project that already had one passed `check --references` and then failed at
+// exec — part-way through, with the earlier statements already written.
+// ---------------------------------------------------------------------------
+
+func TestCheckProjectConflicts_CreateExistingAssociation_Error(t *testing.T) {
+	ctx, _ := setupProjectConflictCtx(t)
+	assertHasConflict(t, ctx, `
+create association M.ExistingAssoc from M.Child to M.Parent;
+`, "M.ExistingAssoc")
+}
+
+func TestCheckProjectConflicts_CreateNewAssociation_NoError(t *testing.T) {
+	ctx, _ := setupProjectConflictCtx(t)
+	assertNoConflicts(t, ctx, `
+create association M.BrandNewAssoc from M.Child to M.Parent;
+`)
+}
+
+func TestCheckProjectConflicts_CreateOrModifyAssociation_NoError(t *testing.T) {
+	ctx, _ := setupProjectConflictCtx(t)
+	assertNoConflicts(t, ctx, `
+create or modify association M.ExistingAssoc from M.Child to M.Parent;
+`)
+}
+
+func TestCheckProjectConflicts_CreateExistingRule_Error(t *testing.T) {
+	ctx, _ := setupProjectConflictCtx(t)
+	assertHasConflict(t, ctx, `
+create rule M.ExistingRule ( Amount : Decimal ) returns Boolean
+begin
+  return $Amount > 10;
+end;
+`, "M.ExistingRule")
+}
+
+func TestCheckProjectConflicts_CreateNewRule_NoError(t *testing.T) {
+	ctx, _ := setupProjectConflictCtx(t)
+	assertNoConflicts(t, ctx, `
+create rule M.BrandNewRule ( Amount : Decimal ) returns Boolean
+begin
+  return $Amount > 10;
+end;
+`)
+}
+
+// A DROP earlier in the script removes the name from the project set, so the
+// re-create is clean. This is what stmtDropInfo's missing DropRuleStmt case
+// would have broken the moment rules became project-checked.
+func TestCheckProjectConflicts_DropThenCreateRule_NoConflict(t *testing.T) {
+	ctx, _ := setupProjectConflictCtx(t)
+	assertNoConflicts(t, ctx, `
+drop rule M.ExistingRule;
+create rule M.ExistingRule ( Amount : Decimal ) returns Boolean
+begin
+  return $Amount > 10;
+end;
+`)
+}
+
+func TestCheckProjectConflicts_CreateExistingJavaScriptAction_Error(t *testing.T) {
+	ctx, _ := setupProjectConflictCtx(t)
+	assertHasConflict(t, ctx, `
+create javascript action M.ExistingJS() returns Boolean
+as $$
+  return true;
+$$;
+`, "M.ExistingJS")
+}
+
+func TestCheckProjectConflicts_CreateNewJavaScriptAction_NoError(t *testing.T) {
+	ctx, _ := setupProjectConflictCtx(t)
+	assertNoConflicts(t, ctx, `
+create javascript action M.BrandNewJS() returns Boolean
+as $$
+  return true;
+$$;
+`)
+}
+
+// CREATE MODULE for a module that already exists is NOT a conflict:
+// execCreateModule prints "already exists" and returns nil, and `create module
+// M;` opens nearly every script. The exemption is recorded in
+// projectCheckExemptDocTypes; this is the behaviour it protects.
+func TestCheckProjectConflicts_CreateExistingModule_NoError(t *testing.T) {
+	ctx, _ := setupProjectConflictCtx(t)
+	assertNoConflicts(t, ctx, `create module M;`)
+}
+
+// IF NOT EXISTS is the third idempotency spelling and was not recognised:
+// exec skips such a statement with "already exists — skipped", but the check
+// reported a conflict. That made a re-runnable domain script — the form that
+// exists precisely to be re-run — fail its own second run at check time.
+func TestCheckProjectConflicts_IfNotExists_NoError(t *testing.T) {
+	ctx, mod := setupProjectConflictCtx(t)
+	_ = mod
+	assertNoConflicts(t, ctx, `
+create entity if not exists M.Parent ( Name : String(50) );
+create association if not exists M.ExistingAssoc from M.Child to M.Parent;
+`)
+}
+
+// The control for the test above: without IF NOT EXISTS the same two
+// statements are conflicts, so the test is detecting the modifier and not
+// simply failing to find the elements.
+func TestCheckProjectConflicts_WithoutIfNotExists_Error(t *testing.T) {
+	ctx, _ := setupProjectConflictCtx(t)
+	msgs := conflictErrorMessages(ctx, `
+create entity M.Parent ( Name : String(50) );
+create association M.ExistingAssoc from M.Child to M.Parent;
+`, t)
+	if len(msgs) != 2 {
+		t.Errorf("expected 2 conflicts without IF NOT EXISTS, got %d: %v", len(msgs), msgs)
 	}
 }
