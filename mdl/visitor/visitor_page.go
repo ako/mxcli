@@ -64,42 +64,6 @@ func buildPageParameters(ctx parser.IPageParameterListContext) []ast.PageParamet
 	return params
 }
 
-// buildSnippetParameters converts snippet parameter list to []ast.PageParameter.
-func buildSnippetParameters(ctx parser.ISnippetParameterListContext) []ast.PageParameter {
-	if ctx == nil {
-		return nil
-	}
-	listCtx := ctx.(*parser.SnippetParameterListContext)
-	var params []ast.PageParameter
-
-	for _, param := range listCtx.AllSnippetParameter() {
-		paramCtx := param.(*parser.SnippetParameterContext)
-		name := ""
-		if id := paramCtx.IDENTIFIER(); id != nil {
-			name = strings.TrimPrefix(id.GetText(), "$")
-		}
-		if v := paramCtx.VARIABLE(); v != nil {
-			name = strings.TrimPrefix(v.GetText(), "$")
-		}
-		if qid := paramCtx.QUOTED_IDENTIFIER(); qid != nil {
-			// Quoted name for reserved-keyword params, e.g. "List". See issue #114.
-			name = unquoteIdentifier(qid.GetText())
-		}
-		var entityType ast.QualifiedName
-		if dt := paramCtx.DataType(); dt != nil {
-			dtCtx := dt.(*parser.DataTypeContext)
-			if qn := dtCtx.QualifiedName(); qn != nil {
-				entityType = buildQualifiedName(qn)
-			}
-		}
-		params = append(params, ast.PageParameter{
-			Name:       name,
-			EntityType: entityType,
-		})
-	}
-	return params
-}
-
 // ExitCreateLayoutStatement is called when exiting the createLayoutStatement production.
 func (b *Builder) ExitCreateLayoutStatement(ctx *parser.CreateLayoutStatementContext) {
 	b.statements = append(b.statements, b.buildLayoutV3(ctx))

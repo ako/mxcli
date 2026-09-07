@@ -286,8 +286,17 @@ func buildSnippetParameterListAsPage(ctx parser.ISnippetParameterListContext) []
 			param.Name = unquoteIdentifier(qid.GetText())
 		}
 
+		// Walk the parse tree rather than re-splitting its TEXT. GetText() hands
+		// back the source verbatim, so a quoted entity name arrived as
+		// `Pd."Thing"` and exec failed with `entity not found: Pd."Thing"` —
+		// while the identical quoted form in a PAGE parameter resolved, because
+		// that path has always used buildQualifiedName (ako/CapTrackV4 019). The
+		// project convention is to quote every identifier, so this was reached by
+		// following the house style.
 		if dt := spCtx.DataType(); dt != nil {
-			param.EntityType = parseQualifiedName(dt.GetText())
+			if qn := dt.(*parser.DataTypeContext).QualifiedName(); qn != nil {
+				param.EntityType = buildQualifiedName(qn)
+			}
 		}
 
 		params = append(params, param)
