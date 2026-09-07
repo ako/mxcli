@@ -11,6 +11,7 @@ type ShowStmt struct {
 	ObjectType ShowObjectType
 	InModule   string         // Optional module filter
 	Name       *QualifiedName // Optional specific object name
+	Like       string         // For SHOW GLYPHS LIKE 'pattern' — a name substring
 	Transitive bool           // For SHOW CALLERS/CALLEES TRANSITIVE
 	Depth      int            // For SHOW CONTEXT/STRUCTURE DEPTH N (default 2)
 	All        bool           // For SHOW STRUCTURE ALL (include system modules)
@@ -85,6 +86,7 @@ const (
 	ShowDatabaseConnections          // SHOW DATABASE CONNECTIONS [IN module]
 	ShowImageCollections             // SHOW IMAGE COLLECTIONS [IN module]
 	ShowIconCollections              // SHOW ICON COLLECTIONS [IN module]
+	ShowGlyphs                       // SHOW GLYPHS [LIKE 'pattern']
 	ShowRestClients                  // SHOW REST CLIENTS [IN module]
 	ShowPublishedRestServices        // SHOW PUBLISHED REST SERVICES [IN module]
 	ShowDataTransformers             // LIST DATA TRANSFORMERS [IN module]
@@ -218,6 +220,8 @@ func (t ShowObjectType) String() string {
 		return "IMAGE COLLECTIONS"
 	case ShowIconCollections:
 		return "ICON COLLECTIONS"
+	case ShowGlyphs:
+		return "GLYPHS"
 	case ShowRestClients:
 		return "REST CLIENTS"
 	case ShowPublishedRestServices:
@@ -293,7 +297,11 @@ type DescribeStmt struct {
 	Name       QualifiedName
 	WithAll    bool   // For DESCRIBE MODULE ... WITH ALL
 	Format     string // For DESCRIBE CONTRACT ... FORMAT mdl
-	Qualifier  string // For DESCRIBE JAR DEPENDENCY: the 'group:artifact' coordinate
+	// Qualifier carries the subject of a DESCRIBE whose subject is not a
+	// qualified name: the 'group:artifact' coordinate of a JAR DEPENDENCY, and
+	// the code or name of a GLYPH (a glyph has no qualified name — it is a
+	// character code in a font, not an element in the project).
+	Qualifier string
 }
 
 func (s *DescribeStmt) isStatement() {}
@@ -327,6 +335,7 @@ const (
 	DescribeFragment                    // DESCRIBE FRAGMENT Name
 	DescribeImageCollection             // DESCRIBE IMAGE COLLECTION Module.Name
 	DescribeIconCollection              // DESCRIBE ICON COLLECTION Module.Name
+	DescribeGlyph                       // DESCRIBE GLYPH 57350 | DESCRIBE GLYPH 'star'
 	DescribeRestClient                  // DESCRIBE REST CLIENT Module.Name
 	DescribePublishedRestService        // DESCRIBE PUBLISHED REST SERVICE Module.Name
 	DescribeDataTransformer             // DESCRIBE DATA TRANSFORMER Module.Name
@@ -408,6 +417,8 @@ func (t DescribeObjectType) String() string {
 		return "IMAGE COLLECTION"
 	case DescribeIconCollection:
 		return "ICON COLLECTION"
+	case DescribeGlyph:
+		return "GLYPH"
 	case DescribeRestClient:
 		return "REST CLIENT"
 	case DescribePublishedRestService:

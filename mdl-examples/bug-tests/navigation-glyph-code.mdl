@@ -37,6 +37,16 @@
 --
 -- Browse them with `describe icon collection Atlas_Core.Atlas`.
 --
+-- AND THE GLYPHS THEMSELVES are now browsable, which they were not when MDL078
+-- landed — its advice was a list of numeric ranges with holes in it:
+--
+--   show glyphs;                -- all 247, with names
+--   show glyphs like 'star';    -- 57350 star, 57351 star-empty
+--   describe glyph 57350;       -- by code
+--   describe glyph 'star';      -- or by name
+--
+-- Neither needs a project: a glyph is a character code in a font, not a document.
+--
 -- Verify:
 --
 --   mxcli check navigation-glyph-code.mdl
@@ -78,4 +88,12 @@ create or modify menu GlyphNav.MENU_Good (
 create or modify menu GlyphNav.MENU_Collection (
   menu item 'Overview' page GlyphNav.PG_Home icon Atlas_Core.Atlas.dashboard;
 )
+/
+
+-- The browsing commands, which is how the code above is meant to be found.
+-- Read-only, and they work without `-p`.
+show glyphs like 'star';
+/
+
+describe glyph 57350;
 /

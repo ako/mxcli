@@ -43,6 +43,11 @@ showStatement
     | showOrList JAVASCRIPT ACTIONS (IN (qualifiedName | IDENTIFIER))?
     | showOrList IMAGE COLLECTION (IN (qualifiedName | IDENTIFIER))?
     | showOrList ICON COLLECTION (IN (qualifiedName | IDENTIFIER))?
+    // A glyph is a character code in a FONT, not an element in the project, so
+    // there is nothing to scope with IN and nothing a connection would add.
+    // LIKE filters on the name, which is the direction an author needs: they
+    // know they want a star and not that a star is 57350.
+    | showOrList GLYPHS (LIKE STRING_LITERAL)?
     | showOrList MODELS (IN (qualifiedName | IDENTIFIER))?
     | showOrList AGENTS (IN (qualifiedName | IDENTIFIER))?
     | showOrList KNOWLEDGE BASES (IN (qualifiedName | IDENTIFIER))?
@@ -186,6 +191,7 @@ describeStatement
     | DESCRIBE FRAGMENT FROM SNIPPET qualifiedName WIDGET identifierOrKeyword  // DESCRIBE FRAGMENT FROM SNIPPET Module.Snippet WIDGET name
     | DESCRIBE IMAGE COLLECTION qualifiedName           // DESCRIBE IMAGE COLLECTION Module.Name
     | DESCRIBE ICON COLLECTION qualifiedName            // DESCRIBE ICON COLLECTION Module.Name
+    | DESCRIBE GLYPH (NUMBER_LITERAL | STRING_LITERAL)  // DESCRIBE GLYPH 57350 | DESCRIBE GLYPH 'star' 
     | DESCRIBE MODEL qualifiedName                      // DESCRIBE MODEL Module.Name (agent-editor)
     | DESCRIBE AGENT qualifiedName                      // DESCRIBE AGENT Module.Name (agent-editor)
     | DESCRIBE KNOWLEDGE BASE qualifiedName             // DESCRIBE KNOWLEDGE BASE Module.Name

@@ -802,6 +802,17 @@ name at all:
 | `icon glyph 57377` | `Forms$GlyphIcon` | a numeric character code |
 | `icon image MyModule.Images.logo` | `Forms$ImageIcon` | a name in an image collection |
 
+**Browse the glyph codes with `show glyphs`.** A glyph is a character code in a
+font, not a document in the project, so there is nothing to scope with `IN` and
+no connection is needed:
+
+```sql
+show glyphs;                  -- all 247, with names
+show glyphs like 'star';      -- 57350 star, 57351 star-empty
+describe glyph 57350;         -- by code
+describe glyph 'star';        -- or by name
+```
+
 **A glyph code the font does not define is reported (MDL078, a warning).** A
 glyph code is a bare integer, so nothing resolves it: `mxcli check` and `mx check`
 both pass at 0 errors and the failure lands at `mxbuild --target=deploy`, as

@@ -127,25 +127,47 @@ func TestMDL078_WalksSubItems(t *testing.T) {
 	}
 }
 
-// The table is 247 codes in 35 runs. A regeneration that flattened it, or an
-// edit that dropped a run, would change this — and the rule would start
-// reporting working navigations.
-func TestGlyphRangesMatchTheFont(t *testing.T) {
-	total := 0
-	prevEnd := -1
-	for i, r := range glyphRanges {
-		if r[0] > r[1] {
-			t.Errorf("range %d is inverted: %#v", i, r)
-		}
-		if r[0] <= prevEnd {
-			t.Errorf("range %d (%#v) overlaps or is out of order — glyphCodeDefined "+
-				"binary-searches, so the table must be sorted and disjoint", i, r)
-		}
-		prevEnd = r[1]
-		total += r[1] - r[0] + 1
+// The table is the whole set MDL078 accepts AND the set `show glyphs` lists, so
+// a regeneration that lost entries would quietly narrow both at once.
+func TestGlyphIconsMatchTheFont(t *testing.T) {
+	icons := GlyphIcons()
+	if len(icons) != 247 {
+		t.Errorf("table holds %d icons, want 247 (the private-use range of "+
+			"glyphicons-halflings-regular.woff)", len(icons))
 	}
-	if total != 247 {
-		t.Errorf("table covers %d codes, want 247 (the cmap of "+
-			"glyphicons-halflings-regular.woff)", total)
+	seenCode := map[int]bool{}
+	seenName := map[string]bool{}
+	prev := -1
+	for i, g := range icons {
+		if g.Code <= prev {
+			t.Fatalf("entry %d (%d) is out of order — LookupGlyph binary-searches, "+
+				"so the table must be sorted by code", i, g.Code)
+		}
+		prev = g.Code
+		if seenCode[g.Code] {
+			t.Errorf("code %d appears twice", g.Code)
+		}
+		seenCode[g.Code] = true
+		if g.Name == "" {
+			t.Errorf("code %d has no name — every code in the font is named by Atlas's "+
+				"own bootstrap stylesheet, so a blank one means the extraction lost it", g.Code)
+		}
+		for _, n := range append([]string{g.Name}, g.Aliases...) {
+			if seenName[n] {
+				t.Errorf("name %q appears twice — `describe glyph %q` would be ambiguous "+
+					"between two codes", n, n)
+			}
+			seenName[n] = true
+		}
+	}
+	// The measured endpoints, and the alias the extraction has to preserve.
+	for code, name := range map[int]string{57345: "glass", 57377: "home", 57952: "menu-up", 63743: "apple"} {
+		g, ok := LookupGlyph(code)
+		if !ok || g.Name != name {
+			t.Errorf("LookupGlyph(%d) = %+v, %v; want name %q", code, g, ok, name)
+		}
+	}
+	if g, _ := LookupGlyph(57895); len(g.Aliases) != 2 {
+		t.Errorf("bitcoin lost its aliases: %+v — `show glyphs like 'btc'` then finds nothing", g)
 	}
 }

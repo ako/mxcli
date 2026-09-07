@@ -278,6 +278,7 @@ var mdlGeneratedKeywords = []protocol.CompletionItem{
 	{Label: "FILTERTYPE", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
 	{Label: "IMAGE", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
 	{Label: "GLYPH", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
+	{Label: "GLYPHS", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
 	{Label: "QUEUE", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
 	{Label: "QUEUES", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},
 	{Label: "SCHEDULED", Kind: protocol.CompletionItemKindKeyword, Detail: "Widget keyword"},

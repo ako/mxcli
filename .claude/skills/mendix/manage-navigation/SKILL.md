@@ -146,9 +146,10 @@ errors and then breaks `mxbuild --target=deploy` with *"An exception occurred
 while exporting layout '<some layout>'"* — a message naming a document that is
 not the cause. `mxcli check` now warns (**MDL078**) against the 247 codes the
 shipped font defines, but a glyph is still an unchecked number where an icon
-collection reference is a resolved model reference. Take glyph codes from what
-the project already has, or use `icon Atlas_Core.Atlas.<name>` and list the
-names with `describe icon collection Atlas_Core.Atlas`.
+collection reference is a resolved model reference. Browse the codes with `show glyphs`
+(`show glyphs like 'star'` searches by name, `describe glyph 57350` goes the
+other way), or use `icon Atlas_Core.Atlas.<name>` and list the names with
+`describe icon collection Atlas_Core.Atlas`.
 
 The icon-collection form is a **qualified name** — a model reference, written
 like every other reference in MDL, not a string:
