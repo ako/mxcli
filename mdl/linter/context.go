@@ -1653,3 +1653,68 @@ func (ctx *LintContext) DocumentableElements() iter.Seq[Documentable] {
 		}
 	}
 }
+
+// Document is one element of the App Explorer tree — what it is, which module
+// holds it, and the folder path it sits in ("" for the module root).
+//
+// Distinct from Documentable above, which projects only what can carry
+// DOCUMENTATION and therefore leaves out microflows and Java actions on
+// purpose. A rule asking where a document LIVES needs those two most of all:
+// they are what fills up an unorganised module.
+type Document struct {
+	Kind          string // catalog ObjectType: "MICROFLOW", "PAGE", "WORKFLOW", …
+	Name          string
+	QualifiedName string
+	ModuleName    string
+	Folder        string // "" = directly in the module root
+}
+
+// Documents iterates every element of the catalog's `objects` view that belongs
+// to a module, excluding System and Marketplace modules.
+//
+// It reads the view rather than a list of tables here, so a document type added
+// to the catalog is covered without a second list to keep in step — the mistake
+// behind #1036, where two keyword lists drifted with nothing comparing them.
+//
+// MODULE rows are skipped: a module is the container, not something inside one.
+// Every other kind is yielded as-is, including kinds the view hardcodes to an
+// empty Folder (associations, external entities). Deciding which kinds Studio
+// Pro actually lets you file in a folder is left to the caller, where it is
+// visible and editable, rather than baked into a second list in here.
+func (ctx *LintContext) Documents() iter.Seq[Document] {
+	return func(yield func(Document) bool) {
+		rows, err := ctx.db.Query(`
+			SELECT o.ObjectType, o.Name, o.QualifiedName, o.ModuleName, COALESCE(o.Folder, '')
+			FROM objects o
+			LEFT JOIN modules m ON o.ModuleName = m.Name
+			WHERE o.ObjectType <> 'MODULE'
+			  AND COALESCE(o.ModuleName, '') <> ''
+			  AND ` + notPlatformModule("m") + `
+			ORDER BY o.ModuleName, o.ObjectType, o.Name
+		`)
+		if err != nil {
+			ctx.recordQueryError("Documents(objects)", err)
+			return
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var d Document
+			var qn sql.NullString
+			if err := rows.Scan(&d.Kind, &d.Name, &qn, &d.ModuleName, &d.Folder); err != nil {
+				ctx.recordQueryError("Documents(objects) row scan", err)
+				continue
+			}
+			d.QualifiedName = qn.String
+			if d.QualifiedName == "" {
+				d.QualifiedName = d.Name
+			}
+			if ctx.IsExcluded(d.ModuleName) {
+				continue
+			}
+			if !yield(d) {
+				return
+			}
+		}
+	}
+}

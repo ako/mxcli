@@ -352,7 +352,7 @@ mxcli lint -p app.mpr --list-rules
 mxcli lint -p app.mpr --exclude System --exclude Administration
 ```
 
-14 built-in Go rules (MPR001-MPR007, SEC001-SEC003, CONV011-CONV014) plus 27 bundled Starlark rules covering security (SEC004-SEC009), architecture (ARCH001-003), quality (QUAL001-004), design (DESIGN001), and Mendix best practice conventions (CONV001-CONV010, CONV015-CONV017). Custom `.star` rules in `.claude/lint-rules/` are loaded automatically.
+14 built-in Go rules (MPR001-MPR007, SEC001-SEC003, CONV011-CONV014) plus 28 bundled Starlark rules covering security (SEC004-SEC009), architecture (ARCH001-003), quality (QUAL001-004), design (DESIGN001), and Mendix best practice conventions (CONV001-CONV010, CONV015-CONV018). Custom `.star` rules in `.claude/lint-rules/` are loaded automatically.
 
 ### Best Practices Report
 

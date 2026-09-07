@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`mxcli lint` reports a module nobody has ever organised (CONV018)** — Studio Pro lets a module hold folders and every Mendix style guide expects them, but nothing in mxcli reported their absence: a project with 200 documents loose in one flat module scored clean. It now reports one, and only when **both** halves hold — more than `max_root_documents` (default 20) documents sit directly in the module root, **and not one** document in the module is in a folder.
+
+  The second half is what keeps it from nagging. A module that has started to organise itself — even one folder — is never reported, however much is still at its root: the team has evidently made a choice about where things go. Verified live on a 25-microflow flat module, which reports, and then goes silent the moment a single `MOVE … TO FOLDER` lands. Threshold via `.claude/lint-config.yaml`.
+
+  Only kinds Studio Pro actually lets you file in a folder are counted — an association belongs to the domain model, an external entity to a consumed service, so counting them would report a module as unorganised on the strength of elements nobody can move. That list is an allow-list in the rule, where it is visible and editable, and its polarity is deliberate: a document type missing from it is undercounted, so the rule stays quiet rather than inventing a violation.
+
+  Behind it is a new **`documents()`** Starlark builtin — every element of the App Explorer tree as `(kind, name, qualified_name, module_name, folder)`, read from the catalog's `objects` view so a new document type is covered without a second list to keep in step. It is the companion to `documentable_elements()`, which projects only what can carry documentation and so omits microflows and Java actions — the two kinds that fill up an unorganised module.
+
 ### Fixed
 
 - **A Gallery with a non-default pagination was rejected as CE0463** (mendixlabs/mxcli#1035) — `pagination: 'loadMore'` and `pagination: 'virtualScrolling'` produced a widget mxbuild refuses with *"the definition of this widget has changed"*. The definition stored `pagingPosition: "below"`, which is not a member of the enumeration at all: the Gallery package declares `{bottom|top|both}`, and `"below"` is the first word of `bottom`'s **caption**, "Below grid". Mendix stores what mxcli writes and then rejects the widget.

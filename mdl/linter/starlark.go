@@ -318,6 +318,7 @@ func (r *StarlarkRule) buildPredeclared() starlark.StringDict {
 		"microflows":            starlark.NewBuiltin("microflows", r.builtinMicroflows),
 		"java_actions":          starlark.NewBuiltin("java_actions", r.builtinJavaActions),
 		"documentable_elements": starlark.NewBuiltin("documentable_elements", r.builtinDocumentableElements),
+		"documents":             starlark.NewBuiltin("documents", r.builtinDocuments),
 		"pages":                 starlark.NewBuiltin("pages", r.builtinPages),
 		"enumerations":          starlark.NewBuiltin("enumerations", r.builtinEnumerations),
 		"constants":             starlark.NewBuiltin("constants", r.builtinConstants),
@@ -434,6 +435,32 @@ func (r *StarlarkRule) builtinDocumentableElements(_ *starlark.Thread, _ *starla
 			"qualified_name": starlark.String(d.QualifiedName),
 			"module_name":    starlark.String(d.ModuleName),
 			"description":    starlark.String(d.Description),
+		}))
+	}
+
+	return starlark.NewList(out), nil
+}
+
+// builtinDocuments returns every element of the App Explorer tree as a uniform
+// (kind, name, qualified_name, module_name, folder) projection.
+//
+// The companion to documentable_elements for rules about where a document
+// LIVES rather than what it says: it covers microflows and Java actions, which
+// that projection deliberately omits, and it carries `folder`, which no
+// per-kind builtin exposes uniformly.
+func (r *StarlarkRule) builtinDocuments(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if r.ctx == nil {
+		return starlark.NewList(nil), nil
+	}
+
+	var out []starlark.Value
+	for d := range r.ctx.Documents() {
+		out = append(out, starlarkstruct.FromStringDict(starlark.String("document"), starlark.StringDict{
+			"kind":           starlark.String(d.Kind),
+			"name":           starlark.String(d.Name),
+			"qualified_name": starlark.String(d.QualifiedName),
+			"module_name":    starlark.String(d.ModuleName),
+			"folder":         starlark.String(d.Folder),
 		}))
 	}
 
