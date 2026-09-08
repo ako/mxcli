@@ -29,6 +29,21 @@ func workflowViolations(t *testing.T, src string) [][2]string {
 	return out
 }
 
+// programViolations runs the real ValidateProgram wiring, so a rule that is
+// written but never reached by `check` / `exec` fails the test.
+func programViolations(t *testing.T, src string) [][2]string {
+	t.Helper()
+	prog, errs := visitor.Build(src)
+	if len(errs) > 0 {
+		t.Fatalf("parse errors: %v", errs)
+	}
+	var out [][2]string
+	for _, v := range ValidateProgram(prog, "") {
+		out = append(out, [2]string{v.RuleID, v.Message})
+	}
+	return out
+}
+
 func hasRule(vs [][2]string, ruleID string) bool {
 	for _, v := range vs {
 		if v[0] == ruleID {
@@ -103,7 +118,14 @@ end workflow;`
 	}
 }
 
-// MDL-WF03 — a decision outcome that is not a valid identifier (has a space) is flagged.
+// MDL-WF03 — every outcome that is not Module.Enumeration.Value is flagged.
+//
+// This test used to assert that the bare 'Reopened' was ACCEPTED and only the
+// free-text 'Confirmed closed' flagged. That was the defect: a bare identifier
+// is written verbatim into EnumerationValueConditionOutcome.Value, which the
+// Mendix loader refuses, leaving a project Studio Pro and mxbuild cannot open
+// (ako/mxcli#1031, ako/mxcli#1065). Both values are now errors — with different
+// advice, since one author needs a qualifier and the other needs a real name.
 func TestValidateWorkflow_FreeTextDecisionOutcome(t *testing.T) {
 	src := wfPreamble + `create workflow WF.W parameter $Ctx: WF.Ctx
 begin
@@ -117,18 +139,26 @@ end workflow;`
 	if !hasRule(vs, "MDL-WF03") {
 		t.Fatalf("expected MDL-WF03 for free-text decision outcome, got %v", vs)
 	}
-	// 'Reopened' is a valid identifier and must NOT be flagged; only 'Confirmed closed'.
-	var wf03 int
+	var flagged []string
 	for _, v := range vs {
 		if v[0] == "MDL-WF03" {
-			wf03++
-			if !strings.Contains(v[1], "Confirmed closed") {
-				t.Errorf("MDL-WF03 should name 'Confirmed closed', got %q", v[1])
-			}
+			flagged = append(flagged, v[1])
 		}
 	}
-	if wf03 != 1 {
-		t.Fatalf("expected exactly one MDL-WF03 (only 'Confirmed closed'), got %d in %v", wf03, vs)
+	if len(flagged) != 2 {
+		t.Fatalf("expected MDL-WF03 on BOTH outcomes, got %d: %v", len(flagged), flagged)
+	}
+	var sawBare, sawFreeText bool
+	for _, m := range flagged {
+		if strings.Contains(m, "Reopened") {
+			sawBare = true
+		}
+		if strings.Contains(m, "Confirmed closed") {
+			sawFreeText = true
+		}
+	}
+	if !sawBare || !sawFreeText {
+		t.Errorf("MDL-WF03 must name both outcomes, got %v", flagged)
 	}
 }
 
@@ -236,5 +266,80 @@ end workflow;`
 	vs := workflowViolations(t, src)
 	if hasRule(vs, "MDL-WF05") {
 		t.Fatalf("jump to a named decision/split must resolve, got %v", vs)
+	}
+}
+
+// MDL-WF03 — the three-row control that fixes the rule's threshold.
+// EnumerationValueConditionOutcome.Value is parsed by the Mendix LOADER, so a
+// value it rejects is not a CE number: the project will not open at all
+// (StorageLoadException). Measured on 11.10.0, one workflow per copy of the
+// same app: 1 segment and 2 segments both make the project unloadable, 3
+// segments checks at 0 errors. See ako/mxcli#1031 and ako/mxcli#1065.
+func TestValidateWorkflow_EnumOutcomeMustBeQualified(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		value   string
+		flagged bool
+	}{
+		{"bare value", "OutcomeA", true},
+		{"enum-qualified only", "Status.OutcomeA", true},
+		{"fully qualified", "WFP.Status.OutcomeA", false},
+		{"four segments", "A.B.C.D", true},
+		{"free text", "Confirmed closed", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			src := wfPreamble + `create workflow WF.W parameter $Ctx: WF.Ctx
+begin
+  decision '$Ctx/Status'
+    outcomes
+      '` + tc.value + `' -> { }
+      '' -> { }
+  ;
+end workflow;`
+			vs := workflowViolations(t, src)
+			if got := hasRule(vs, "MDL-WF03"); got != tc.flagged {
+				t.Fatalf("MDL-WF03 fired = %v, want %v for %q (violations: %v)", got, tc.flagged, tc.value, vs)
+			}
+		})
+	}
+}
+
+// The empty outcome an enumeration decision must carry ("none of the above",
+// which Studio Pro writes on every enum decision) is not an identifier and must
+// never be flagged — otherwise the rule refuses the only shape that builds.
+func TestValidateWorkflow_EmptyEnumOutcomeAccepted(t *testing.T) {
+	src := wfPreamble + `create workflow WF.W parameter $Ctx: WF.Ctx
+begin
+  decision '$Ctx/Status'
+    outcomes
+      'WFP.Status.OutcomeA' -> { }
+      '' -> { }
+  ;
+end workflow;`
+	if vs := workflowViolations(t, src); hasRule(vs, "MDL-WF03") {
+		t.Fatalf("the empty enum outcome must not trigger MDL-WF03, got %v", vs)
+	}
+}
+
+// A bare value reaches storage through ALTER WORKFLOW … INSERT BRANCH too, so
+// the guard covers it. Without this the corrupting write is one keyword away
+// from the one that was fixed.
+func TestValidateAlterWorkflow_InsertBranchOutcomeMustBeQualified(t *testing.T) {
+	bare := `alter workflow WF.W insert condition 'OutcomeA' on 'Decision' { };`
+	if vs := programViolations(t, bare); !hasRule(vs, "MDL-WF03") {
+		t.Fatalf("expected MDL-WF03 for a bare INSERT CONDITION value, got %v", vs)
+	}
+	qualified := `alter workflow WF.W insert condition 'WFP.Status.OutcomeA' on 'Decision' { };`
+	if vs := programViolations(t, qualified); hasRule(vs, "MDL-WF03") {
+		t.Fatalf("a qualified INSERT CONDITION value must be accepted, got %v", vs)
+	}
+	// The three keyword conditions are Boolean/Void outcomes whatever their
+	// casing — the mutator lower-cases before dispatching — so they must not be
+	// mistaken for an unqualified enumeration value.
+	for _, kw := range []string{"Default", "default", "true", "FALSE"} {
+		src := `alter workflow WF.W insert condition '` + kw + `' on 'Decision' { };`
+		if vs := programViolations(t, src); hasRule(vs, "MDL-WF03") {
+			t.Errorf("INSERT CONDITION %q must not trigger MDL-WF03, got %v", kw, vs)
+		}
 	}
 }

@@ -1,0 +1,103 @@
+-- ako/mxcli#1031 + ako/mxcli#1065 — a decision outcome that is not a qualified
+-- enumeration value identifier makes the project UNLOADABLE, and
+-- ako/mxcli#1023 — an unquoted `with (...)` value crashed the binary.
+--
+-- ============================================================================
+-- #1031 / #1065: EnumerationValueConditionOutcome.Value must be qualified
+-- ============================================================================
+--
+-- Symptom: `decision ... outcomes 'OutcomeA' -> { }` passed `mxcli check`,
+-- exec printed "Created workflow", and `describe workflow` round-tripped it —
+-- but the project then failed to LOAD in Studio Pro and mxbuild:
+--
+--   Mendix.Modeler.Storage.StorageLoadException: ...
+--    - Enumeration value condition outcome in workflow 'WFP.Dec' has an invalid
+--      value 'OutcomeA' for property Value. The text 'OutcomeA' is not a valid
+--      EnumerationValueIdentifier.
+--
+-- This is worse than a build error: it is thrown by the UnitLoader before any
+-- consistency check runs, so there is no CE number and no `N errors.` line —
+-- the project cannot be opened at all.
+--
+-- What settled the threshold (11.10.0, one workflow per copy of the same app,
+-- verdict = the literal `mx check` line):
+--
+--   'OutcomeA'             (1 segment)  -> StorageLoadException, unloadable
+--   'Status.OutcomeA'      (2 segments) -> StorageLoadException, unloadable
+--   'WFP.Status.OutcomeA'  (3 segments) -> The app contains: 0 errors.
+--
+-- The two-segment row is the one worth keeping: "qualify it" is ambiguous
+-- without it, and shortening an enumeration that lives in the same module is
+-- exactly what an author would try.
+--
+-- Fix: MDL-WF03 requires Module.Enumeration.Value on decision and
+-- call-microflow outcomes, and on ALTER WORKFLOW ... INSERT CONDITION, which
+-- writes the same field. Because MDL-WF03 is an error and `exec` refuses a
+-- script with errors, the corrupting write can no longer happen.
+
+create enumeration WF1031.Status (
+  OutcomeA 'Outcome A',
+  OutcomeB 'Outcome B'
+);
+/
+
+create persistent entity WF1031.Ctx (
+  Title: string(50),
+  Status: WF1031.Status
+);
+/
+
+create microflow WF1031.ACT_Noop ($Ctx: WF1031.Ctx)
+begin
+  @position(200,200) return;
+end;
+/
+
+-- The qualified form: this is what Studio Pro stores, and the only form that
+-- loads. The trailing '' outcome is the "none of the above" branch every
+-- enumeration decision must carry, or the build fails CE6686.
+--
+-- The nested calls spell out `with (...)` and `outcomes default -> { }`: mxcli
+-- auto-wires those for a call activity in the workflow's MAIN flow but not for
+-- one inside a decision branch, and an unwired call is CE6685 + CE6686.
+create workflow WF1031.Dec
+  parameter $Ctx: WF1031.Ctx
+begin
+  decision decision1 '$WorkflowContext/Status'
+    outcomes
+      'WF1031.Status.OutcomeA' -> {
+        call microflow WF1031.ACT_Noop as callMicroflow1
+          with (Ctx = '$WorkflowContext') outcomes default -> { };
+      }
+      'WF1031.Status.OutcomeB' -> {
+        call microflow WF1031.ACT_Noop as callMicroflow2
+          with (Ctx = '$WorkflowContext') outcomes default -> { };
+      }
+      '' -> { }
+  ;
+end workflow;
+/
+
+-- ============================================================================
+-- #1023: an unquoted `with (...)` value crashed the process
+-- ============================================================================
+--
+-- Symptom: `call microflow M.ACT with (Ctx = $WorkflowContext)` — the bare
+-- variable spelling used everywhere else in MDL — took the binary down with a
+-- SIGSEGV in buildWorkflowCallMicroflow, on `check`, on `check --references`
+-- and on `exec` alike, with no diagnostic beyond the Go panic.
+--
+-- Root cause: the grammar requires a STRING_LITERAL there, but the AST builder
+-- walks the parse tree even when the parse failed (that is what lets `check`
+-- report more than the first error), so the rule was visited with a nil child.
+--
+-- Fix: the mapping builder nil-checks both children and skips what the parser
+-- could not build, leaving the syntax error the listener already recorded as
+-- the thing the author is told about. The value must still be quoted:
+
+create workflow WF1031.Call
+  parameter $Ctx: WF1031.Ctx
+begin
+  call microflow WF1031.ACT_Noop as callMicroflow1 with (Ctx = '$WorkflowContext');
+end workflow;
+/

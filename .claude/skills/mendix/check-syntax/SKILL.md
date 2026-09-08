@@ -54,6 +54,33 @@ icon or entity sailed through a command that had been handed the project. A run
 without a project now says what it did not check, so a pass is never read as
 more than it is.
 
+### It also reports a name the PROJECT already has
+
+A plain `create` of a document the project already carries is a `check` error,
+not something to discover at exec time:
+
+```
+statement 4: association already exists in project: Sales.Order_Customer — use CREATE OR MODIFY to update it
+```
+
+The reason it belongs in `check` is that **`exec` stops at the first one having
+already written everything before it**. A script whose fourth statement
+conflicts leaves three statements' worth of changes in the project and no
+fourth — so "run it and see" is not a free experiment. `check` reports every
+conflict in the script before anything is written.
+
+Three spellings say "fine if it already exists", and none is reported:
+`create or modify`, `create or replace`, and `create … if not exists` (which
+leaves the stored element untouched rather than rewriting it). `create module M;`
+is never reported either — it is a no-op when the module exists, which is what
+lets it open every script.
+
+The types covered are the ones `exec` refuses: entity, enumeration, constant,
+association, microflow, nanoflow, rule, page, snippet, java action, javascript
+action, workflow, and the integration/agent document types. If you find one that
+`exec` refuses and `check` does not, that is a bug of exactly the shape
+`TestEveryCreateDocTypeIsProjectChecked` exists to prevent.
+
 ### It resolves MEMBER names too, where it can establish the entity
 
 Resolution does not stop at the entity. An attribute named in a **create** or

@@ -48,10 +48,23 @@ BEFORE and AFTER position a widget among siblings, and treating them as INTO
 would silently put widgets somewhere the script did not ask for.
 
 **Property lookup is per-shape, and the shapes differ.** A button's text is a
-`CaptionTemplate`, not a `Caption`. Page-level property names are case-sensitive
-while widget ones are matched lowercase. A column's value kind comes from the
+`CaptionTemplate`, not a `Caption`. A column's value kind comes from the
 schema — expression, primitive or text template — and writing a string where a
 reference belongs is accepted by everything and visible to nothing.
+
+**A key stored case-sensitively still has to be matched case-insensitively.**
+CREATE has always resolved the author's spelling case-insensitively, so any
+resolver on the ALTER side that does not is a verb the tool accepts on the way in
+and rejects on the way back out — and DESCRIBE, which prints canonical capitalised
+names, hands the author the spelling that fails. This has now been the cause
+twice: first for first-class widget properties (`set class`), then for pluggable
+ones (`set PageSize` on a grid CREATE had just written with `PageSize: 20`), where
+the second fix was blocked for a month by the first one's comment asserting that
+template keys must match exactly. The way to settle it is to **measure the
+ambiguity rather than assume it**: relaxing the match is safe exactly when no
+single lookup scope holds two keys differing only in case, which across every
+shipped widget template is 0 of 1208 keys — and a test pins that as templates
+are added.
 
 **Hand-built BSON drifts from codec-built BSON.** The mutator constructs
 documents directly while CREATE goes through the codec, so the two encodings of

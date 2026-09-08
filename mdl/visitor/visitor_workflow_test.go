@@ -1247,3 +1247,59 @@ func TestBareWorkflowParameterName(t *testing.T) {
 		}
 	}
 }
+
+// An unquoted value in a workflow `with (...)` mapping is a syntax error — the
+// grammar requires a STRING_LITERAL. It used to be a SIGSEGV instead: Build()
+// walks the parse tree even when the parse failed, so the mapping rule was
+// visited with a nil STRING_LITERAL child and every command that parses a
+// script (check, check --references, exec) died with no diagnostic.
+// See ako/mxcli#1023.
+func TestWorkflowVisitor_UnquotedParameterMappingDoesNotPanic(t *testing.T) {
+	for _, tc := range []struct{ name, input string }{
+		{"call microflow", `CREATE WORKFLOW M.T PARAMETER $Ctx: M.E
+BEGIN
+  CALL MICROFLOW M.ACT WITH (Ctx = $WorkflowContext);
+END WORKFLOW;`},
+		{"call workflow", `CREATE WORKFLOW M.T PARAMETER $Ctx: M.E
+BEGIN
+  CALL WORKFLOW M.Sub WITH (Ctx = $WorkflowContext);
+END WORKFLOW;`},
+		{"qualified parameter", `CREATE WORKFLOW M.T PARAMETER $Ctx: M.E
+BEGIN
+  CALL MICROFLOW M.ACT WITH (M.ACT.Ctx = $WorkflowContext);
+END WORKFLOW;`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, errs := Build(tc.input) // must not panic
+			if len(errs) == 0 {
+				t.Fatal("expected a syntax error for an unquoted mapping value, got none — " +
+					"the guard must not turn the crash into a silently accepted script")
+			}
+		})
+	}
+}
+
+// The control: the quoted form still parses and still yields the mapping, so
+// the nil guard skips only what the parser could not build.
+func TestWorkflowVisitor_QuotedParameterMappingStillBuilds(t *testing.T) {
+	input := `CREATE WORKFLOW M.T PARAMETER $Ctx: M.E
+BEGIN
+  CALL MICROFLOW M.ACT WITH (Ctx = '$WorkflowContext');
+END WORKFLOW;`
+
+	prog, errs := Build(input)
+	if len(errs) > 0 {
+		t.Fatalf("quoted mapping must parse cleanly, got %v", errs)
+	}
+	stmt := prog.Statements[0].(*ast.CreateWorkflowStmt)
+	call, ok := stmt.Activities[0].(*ast.WorkflowCallMicroflowNode)
+	if !ok {
+		t.Fatalf("expected a call-microflow activity, got %T", stmt.Activities[0])
+	}
+	if len(call.ParameterMappings) != 1 {
+		t.Fatalf("expected 1 parameter mapping, got %d", len(call.ParameterMappings))
+	}
+	if got := call.ParameterMappings[0]; got.Parameter != "Ctx" || got.Expression != "$WorkflowContext" {
+		t.Errorf("mapping = %+v, want {Ctx $WorkflowContext}", got)
+	}
+}

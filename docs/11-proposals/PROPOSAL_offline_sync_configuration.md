@@ -4,6 +4,7 @@ status: draft
 date: 2026-09-07
 related:
   - navigation-support.md
+  - https://github.com/ako/TestApp
   - docs/13-decisions/0003-mdl-is-sql-shaped.md
   - docs/13-decisions/0005-semantic-model-interface-currency.md
 ---
@@ -11,9 +12,12 @@ related:
 # Offline synchronization configuration
 
 > Prompted by a CapTrack screenshot of Studio Pro's **Customize offline
-> synchronization** dialog: three entities, three different sync modes, one XPath
-> constraint. mxcli can create the profile that dialog belongs to, and can read
-> every row in it, and cannot write a single one.
+> synchronization** dialog. mxcli can create the profile that dialog belongs to,
+> and can read every row in it, and cannot write a single one.
+>
+> Pinned against `ako/TestApp`, whose `TabletOffline` profile configures seven
+> entities across all six sync modes — so §2.1 onward is measured against a
+> stored document rather than inferred from the UI.
 
 ## 1. Problem
 
@@ -59,45 +63,65 @@ A hand-configured sync setup therefore survives `CREATE OR REPLACE NAVIGATION`
 today. This is a clean gap, not a data-loss defect — the opposite of what
 `create or modify entity` was doing to access rules.
 
-### 2.1 The read is lossy, and that is the hazard
+### 2.1 Measured against a real document
 
-`modelsdk/gen` declares **six** properties on `Navigation$OfflineEntityConfig`:
+`ako/TestApp` carries a `TabletOffline` profile with **seven** configured
+entities, covering **all six** members of the sync enum — so the shape below is
+observed, not derived:
+
+| Entity | SyncMode | Constraint | CompatibilityMode |
+|---|---|---|---|
+| `Mappings.Customer` | `Never` | — | false |
+| `Pages.Bus` | `All` | — | false |
+| `Rules.BusinessRule` | `Online` | — | false |
+| `Rules.RuleAction` | `Constrained` | `[\n  (\n    contains(ActionValue, '''abc''')\n  )\n]` | false |
+| `Rules.RuleCategory` | `None` | — | false |
+| `Rules.RuleExecutionLog` | `NoneAndPreserveData` | — | false |
+| `System.Language` | `All` | — | false |
+
+**Studio Pro writes exactly four properties**, not the six `modelsdk/gen`
+declares:
 
 ```
-Entity  DownloadMode  ShouldDownload  SyncMode  Constraint  CompatibilityMode
+CompatibilityMode   Constraint   Entity   SyncMode
 ```
 
-`mdl/types.NavOfflineEntity` keeps **three** — `Entity`, `SyncMode`,
-`Constraint`. `DownloadMode`, `ShouldDownload` and `CompatibilityMode` are read
-and discarded. `CompatibilityMode` is the column carrying warning triangles in
-the screenshot, so it is not hypothetical.
+`DownloadMode` and `ShouldDownload` occur **zero times** in the document. gen
+declares them, and nothing on a web profile writes them — presumably native-only.
+That shrinks the carry problem considerably: the semantic model drops **one** of
+the four written properties, `CompatibilityMode`, not three of six.
 
-That matters the moment authoring exists. A writer that builds a config element
-from the three fields the semantic model carries writes a document missing the
-other three — which is precisely the class of defect that had
-`create or modify entity` deleting access rules, and `create or modify entity`
-is the more instructive precedent: the fix there was not to extend the carry
-list but to **invert the direction**, starting from what is stored and
-overwriting only what the statement declares.
+Three further observations that change the design:
 
-So this proposal's first rule: **the read must carry all six properties before
-the write carries any.** MDL will be able to spell three of them; the other
-three must survive a rewrite untouched. The precedent is `ruleInfoFromGen` for
-validation rules, where the payload is carried on READ specifically so a
-rewrite can be refused or preserved rather than silently downgraded.
+- **`System.Language` is configured.** A validation rule that refuses System or
+  Marketplace entities here would reject a real document.
+- **The constraint is stored multi-line**, with embedded newlines and Mendix's
+  doubled-quote escaping (`'''abc'''` — a quoted literal inside a quoted XPath).
+  MDL's own string escaping has to survive a round trip of that, which is the
+  one part of the syntax with a non-obvious test.
+- **The typed-array marker is `3`**, and `OfflineEntityConfigs` is present on
+  every web profile including the online `Responsive` one, where it is the empty
+  `[3]`.
 
-### 2.2 `generated/metamodel` and `gen` disagree, and the snapshot is why
+### 2.2 Two properties the generated sources do not have
 
-`generated/metamodel.NavigationOfflineEntityConfig` declares **three**
-properties — `Constraint`, `Entity`, `SyncMode`. CLAUDE.md makes
-`generated/metamodel` the arbiter when the two disagree, with one caveat that
-applies exactly here: it is a **snapshot of 11.6.0**, so it is sound for what it
-contains and says nothing about properties introduced later.
+**`CompatibilityMode` is real.** It is written on all seven configs.
+`generated/metamodel` declares three properties and is missing it; `gen` has it.
+This is exactly the documented caveat on the arbiter rule — `generated/metamodel`
+is a **snapshot of 11.6.0**, sound for what it contains and silent about
+anything added later. Settled in gen's favour, by a document.
 
-`CompatibilityMode` appears in the Studio Pro UI of the version in the
-screenshot. The likeliest reading is that it postdates the snapshot rather than
-that `gen` invented it — but *likeliest* is not measured, and the rule for that
-is to get a real document.
+**`ThrowPartialSyncError` is in neither.** The screenshot's "Throw error when
+server rejects objects during synchronization" is stored as a profile-level bool
+of that name, and it occurs **zero times** in `modelsdk/gen` *and* zero times in
+`generated/metamodel`. It is also on the online `Responsive` profile, so it
+belongs to every web profile rather than to offline ones.
+
+A property neither generated source knows about cannot be written through the
+codec's typed accessors at all. It has to be an overlay onto the stored profile
+document — which is what `mdl/settingsoverlay` already does, and which brings its
+rules with it: write only a key the document already carries, and never invent
+one. That is a constraint on the design, not a detail.
 
 ## 3. The trap this feature is walking into
 
@@ -107,8 +131,14 @@ The sync mode is an enumeration, and `generated/metamodel` declares six members:
 All   Constrained   Never   None   NoneAndPreserveData   Online
 ```
 
-Studio Pro's dropdown shows **captions**: "Online", "All Objects", "By XPath".
-Neither "All Objects" nor "By XPath" is a member of the enumeration.
+Studio Pro's dropdown shows **captions** — the screenshot's three visible rows
+read "Online", "All Objects" and "By XPath". Neither "All Objects" nor "By XPath"
+is a member of the enumeration.
+
+The reference document settles the mapping rather than leaving it to be guessed:
+the entity whose row shows "By XPath" is stored as `Constrained`, and the one
+showing "All Objects" as `All`. All six members occur in that one profile, so
+the dialog exposes more captions than the screenshot happened to show.
 
 This is the same defect that shipped as `mendixlabs/mxcli#1035` two days ago —
 `gallery.def.json` stored `pagingPosition: "below"` because "Below grid" was the
@@ -159,10 +189,21 @@ The cost is that `Constrained` has no bare word, which is correct: there is
 nothing to say.
 
 **Every mode word maps to one enum member, and the mapping is a table with a
-test.** `ONLINE`→`Online`, `ALL`→`All`, `NEVER`→`Never`, `WHERE`→`Constrained`.
-`None` and `NoneAndPreserveData` need words too — and need a reference document
-before they get them, because the difference between them is data retention on
-the device and the dialog in the screenshot does not obviously expose either.
+test.** All six members occur in the reference document, so all six need words
+and none is speculative:
+
+| MDL | Stored |
+|---|---|
+| `ONLINE` | `Online` |
+| `ALL` | `All` |
+| `NEVER` | `Never` |
+| `WHERE '<xpath>'` | `Constrained` |
+| `NONE` | `None` |
+| `NONE PRESERVE DATA` | `NoneAndPreserveData` |
+
+`None` and `NoneAndPreserveData` differ in whether data already on the device
+survives, which is why the second is a modifier on the first rather than an
+unrelated word.
 
 ### 4.2 Writing
 
@@ -172,11 +213,19 @@ deliberately not proposed: the list is small, wholly visible in one describe,
 and diff-friendly as a block.
 
 The write is an **overlay on the stored element**, not a rebuild — §2.1. For an
-entity already configured, `DownloadMode`, `ShouldDownload` and
-`CompatibilityMode` are read from the stored config and written back unchanged.
-For a newly added entity they take the codec's declared defaults, which is the
-one case where a reference document is load-bearing: a default guessed wrong is
-invisible until a device syncs.
+entity already configured, `CompatibilityMode` is read from the stored config and
+written back unchanged; it is the only written property MDL will not be able to
+spell. A newly added entity gets `false`, which is what all seven reference
+configs carry.
+
+`DownloadMode` and `ShouldDownload` are **not written**, and the writer must not
+start writing them. A property absent from every real document is one Studio Pro
+fills in on load; emitting it is how a document mxbuild accepts becomes one
+Studio Pro cannot open.
+
+`ThrowPartialSyncError` is profile-level and unknown to both generated sources
+(§2.2), so it is a separate raw-BSON overlay under the guard-don't-drop rules —
+written only onto a document that already carries the key.
 
 ### 4.3 Catalog and references
 
@@ -186,30 +235,36 @@ This is the same argument that made a widget a reference target — "which
 profiles sync this entity?" is the question an offline change asks, and it is
 currently unanswerable.
 
-## 5. What needs a reference document before implementation
+## 5. The reference document
 
-There is **no local project with a populated offline entity config.** Every
-project on this machine carries the empty `OfflineEntityConfigs` key, which
-every navigation profile has; none carries a `Navigation$OfflineEntityConfig`
-element. An earlier scan of this reported five hits and was wrong — it matched
-the key name, not the element.
+`ako/TestApp` is the reference, and its `TabletOffline` profile answers every
+question this proposal originally listed as blocking. The four are closed:
 
-So the shape must come from a real document, and CapTrack in the screenshot is
-one: three entities, three modes, one XPath constraint, and visible
-compatibility-mode state.
+1. **Which properties Studio Pro writes** — four: `Entity`, `SyncMode`,
+   `Constraint`, `CompatibilityMode`. `DownloadMode` and `ShouldDownload` occur
+   zero times and must not be written (§2.1).
+2. **Whether `CompatibilityMode` exists on this version** — yes, on all seven
+   configs. `gen` is right and `generated/metamodel` is a stale snapshot, exactly
+   as its documented caveat allows (§2.2).
+3. **The caption-to-key mapping** — confirmed against the stored values, with all
+   six enum members present in one profile (§3).
+4. **Where the throw-on-reject setting lives** — `ThrowPartialSyncError`, a
+   profile-level bool on every web profile, and **absent from both generated
+   sources** (§2.2).
 
-What a dump of that document settles, none of which should be guessed:
+An earlier scan of this machine reported five projects with offline configs and
+was wrong: it matched the `OfflineEntityConfigs` key that every profile carries,
+not the element. No local project has one; `ako/TestApp` had to be fetched.
 
-1. **Which of the six properties Studio Pro actually writes**, and their
-   defaults — particularly whether `ShouldDownload` and `DownloadMode` are
-   written at all on a web profile or are native-only.
-2. **Whether `CompatibilityMode` really exists on this version**, closing §2.2.
-3. **What the caption-to-key mapping is**, confirming "All Objects"→`All` and
-   "By XPath"→`Constrained` rather than assuming it.
-4. **Where "Throw error when server rejects objects during synchronization"
-   lives.** It is on neither `gen`'s `NavigationProfile` nor the metamodel's, so
-   it is either a later property or is not stored on the profile at all. It is
-   in the screenshot, so it is stored somewhere.
+What is still unmeasured, and does not block phase 1:
+
+- **Native profiles.** `OfflineEntityConfigs` is declared on
+  `NativeNavigationProfile` too, and `DownloadMode`/`ShouldDownload` are the
+  obvious candidates for being written there. Nothing in this proposal touches
+  native, and a native reference document is needed before it does.
+- **`CompatibilityMode: true`.** All seven references are `false`, so the value
+  is carried but the true case has never been seen. Carrying it is safe;
+  authoring it is not proposed.
 
 ## 6. Phasing
 
@@ -221,8 +276,11 @@ What a dump of that document settles, none of which should be guessed:
    closes the describe → exec round trip.
 3. **Catalog rows and the reference edge.**
 
-`None` / `NoneAndPreserveData` words, and the throw-on-reject setting, are held
-back to whichever slice the reference document lands in.
+`ThrowPartialSyncError` belongs to slice 2 but is a separate mechanism — a
+raw-BSON overlay rather than a codec write (§2.2) — so it can land after the
+`SYNC` block without holding it up.
+
+Native profiles are out of scope until a native reference document exists (§5).
 
 ## 7. Overlap
 
