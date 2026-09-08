@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -188,4 +189,61 @@ func TestStagedSinceGivesADispatcherItsSliceBoundary(t *testing.T) {
 	if got.LastID != found.ID {
 		t.Errorf("last_id is %q, want the newest entry %q", got.LastID, found.ID)
 	}
+}
+
+// The brief has to be pipeable: the pack on stdout, the commentary on stderr.
+// If the size line landed on stdout, every use of `brain brief | ...` would
+// feed a session a line about token counts as though it were a decision.
+func TestBriefPutsThePackOnStdoutAndTheSizeOnStderr(t *testing.T) {
+	dir := t.TempDir()
+	mpr := filepath.Join(dir, "App.mpr")
+	if err := os.WriteFile(mpr, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := brain.NewStore(dir)
+	if _, err := store.Init(); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range []brain.Entry{
+		mustTestEntry(t, "the whole app is single-tenant"),
+		mustTestEntry(t, "planning uses a snapshot", "@Planning.Snapshot"),
+		mustTestEntry(t, "billing runs nightly", "@Billing.ACT_Post"),
+		mustTestRequirement(t, "roll up by cost centre", "07-planning", "@Planning.ACT_Rollup"),
+	} {
+		if err := store.Promote(e, e.Shard()); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	out := runBrainForTest(t, []string{"brain", "brief", "--slice", "07-planning", "-p", mpr})
+
+	for _, want := range []string{"single-tenant", "snapshot", "roll up by cost centre"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("stdout does not contain %q", want)
+		}
+	}
+	if strings.Contains(out, "billing runs nightly") {
+		t.Error("a module the slice does not touch is in the pack")
+	}
+	if strings.Contains(out, "whole store is") {
+		t.Error("the size line is on stdout; `brain brief | ...` would feed it to the session as content")
+	}
+}
+
+func mustTestEntry(t *testing.T, text string, anchors ...string) brain.Entry {
+	t.Helper()
+	e, err := brain.NewEntry(text, anchors, brainTestDay())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return e
+}
+
+func mustTestRequirement(t *testing.T, text, slice string, anchors ...string) brain.Entry {
+	t.Helper()
+	e, err := brain.NewRequirement(text, anchors, slice, brainTestDay())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return e
 }

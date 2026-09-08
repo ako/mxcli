@@ -82,6 +82,8 @@ func generateClaudeMD(projectName, mprFile string) string {
 	w("Then, depending on what you are doing:\n\n")
 	w("- **Building in a module** — also read " + bt + "docs/brain/modules/<Module>.md" + bt + " for the\n")
 	w("  modules you are about to touch. Not the whole directory; only those.\n")
+	w("- **Working a slice** — " + bt + "./mxcli brain brief --slice <name> -p " + mprPath + bt + " emits\n")
+	w("  exactly that pack (project + the slice's modules + its plan) as one read.\n")
 	w("- **Planning, or picking work up** — run " + bt + "./mxcli brain plan -p " + mprPath + bt + ".\n")
 	w("  It reports what is built from the model itself, so it cannot be out of date.\n\n")
 	w("Record what you learn with " + bt + "./mxcli brain capture" + bt + ". Read\n")

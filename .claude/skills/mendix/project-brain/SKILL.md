@@ -61,6 +61,23 @@ are working on.
 reading them all reinstates exactly the context cost the split removed. If you
 do not know which modules you are touching yet, read `project.md` and come back.
 
+**`mxcli brain brief` produces that set for you**, so the rule above does not
+depend on judgement:
+
+```
+mxcli brain brief --slice 07-planning     # project + the modules that slice's
+                                          # requirements anchor into + its plan
+mxcli brain brief --module Sales          # project + Sales, no plan
+```
+
+The modules are *derived* from the slice's requirement anchors — you do not tell
+it which modules the slice touches, because that is what you opened the brief to
+find out. The pack goes to stdout and its size to stderr, so it pipes.
+
+This matters most when each slice runs in its own session or sub-agent: the pack
+is then re-read from a cold start every slice, and reading the whole store
+instead is roughly three times the tokens.
+
 ## Writing to it
 
 An agent **captures**; a person **promotes**. Capturing is free and reversible;
@@ -259,13 +276,14 @@ cap: the cap is what stops the store becoming a file nobody reads.
 |---|---|
 | `mxcli brain init -p app.mpr` | Creates `docs/brain/`. Refuses a `docs/brain/` it did not write |
 | `mxcli brain capture "<text>" [-a @Anchor]…` | Queues an entry. Never commits |
-| `mxcli brain staged` | Lists the queue with the shard each entry would land in |
+| `mxcli brain staged [--since <id>] [--slice <n>] [--fail-if-empty]` | Lists the queue with the shard each entry would land in. `--since` is the slice boundary — see below |
 | `mxcli brain promote <id> [--to <shard>]` | Writes it into its shard. The human step |
 | `mxcli brain drop <id>` | Removes it from the queue or from its shard |
 | `mxcli brain capture "<text>" --slice <name> [-a @Anchor]…` | Queues a **requirement** of that slice |
 | `mxcli brain capture "<text>" --open [-a @Anchor]…` | Queues an **open question**; its anchors are not checked |
 | `mxcli brain resolve <id> "<answer>"` | Answers a question, turning it into a decision in place |
-| `mxcli brain plan` | The roadmap: each slice's requirements counted against the model |
+| `mxcli brain plan [--slice <name>]` | The roadmap: each slice's requirements counted against the model |
+| `mxcli brain brief --slice <name> \| --module <M>` | The reading pack: exactly the shards that work needs |
 | `mxcli brain check [--changed]` | Anchors still resolve, entries in the right shard, plus slice progress |
 | `mxcli brain show [<shard>]` | Entries, lines and headroom per shard |
 
@@ -278,3 +296,29 @@ cap: the cap is what stops the store becoming a file nobody reads.
 - Sprint chatter and task assignment. Requirements and their slices, yes; who is
   doing what this week, no — that belongs in an issue tracker.
 - A restatement of Mendix documentation. Record what is true *here*.
+
+## Handing a slice to another agent
+
+Every command above takes `--json`, so a dispatcher can act on the answers
+rather than read them. Two shapes are worth knowing.
+
+**Give the agent its pack.** `mxcli brain brief --slice <name>` is one bounded
+read instead of a directory the agent has to navigate.
+
+**Check that it recorded something.** With one agent per slice the brain stops
+being a record and becomes the *only* channel between slices — the next agent
+has no memory of this one, so a capture that never happened is a decision lost
+rather than a note lost. Note the boundary before dispatching and ask afterwards:
+
+```
+before=$(mxcli brain staged --json | jq -r .last_id)
+# ... the slice's agent runs, and captures ...
+mxcli brain staged --since "$before" --fail-if-empty --json
+```
+
+`--since` rather than `--slice` is deliberate: `capture --slice` is what makes an
+entry a *requirement*, so a decision found while building a slice carries no
+slice at all — and a slice's findings are mostly decisions. The queue is
+append-only, so its own order is the honest boundary. `last_id` comes back even
+when nothing matched, so a slice that recorded nothing still hands the next one
+a boundary.

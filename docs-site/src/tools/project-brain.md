@@ -46,6 +46,24 @@ budget — recording a `Sales` decision would compete with a `Finance` one — a
 every session would load every module's decisions. With one file per module, a
 session loads `project.md` plus the shards for the modules it is touching.
 
+`mxcli brain brief` assembles that set, so the saving does not depend on anyone
+judging it correctly:
+
+```bash
+mxcli brain brief --slice 07-planning -p app.mpr   # project + that slice's
+                                                   # modules + its plan
+mxcli brain brief --module Sales -p app.mpr        # project + Sales, no plan
+```
+
+Which modules a slice needs is derived from its requirements' anchors — you do
+not name them, because that is the thing the brief is being read to find out.
+The pack goes to stdout and its size to stderr, so it pipes straight into a
+prompt; `--json` returns the shards separately with their paths.
+
+This is worth little in one long session, where the store is read once and then
+cached. It is worth a large fraction of the context when each slice runs in its
+own session or sub-agent and the pack is re-read from a cold start every time.
+
 ## Anchors
 
 An entry's anchors are what make it routable and checkable.
@@ -252,15 +270,26 @@ stale the next time anyone promotes.
 |---|---|
 | `brain init` | Creates `docs/brain/`. Refuses a `docs/brain/` it did not write |
 | `brain capture "<text>" [-a @Anchor]…` | Queues an entry. Never commits |
-| `brain staged` | Lists the queue with the shard each entry would land in |
+| `brain staged [--since <id>] [--slice <n>] [--fail-if-empty]` | Lists the queue with the shard each entry would land in |
 | `brain promote <id> [--to <shard>]` | Writes it into its shard |
 | `brain drop <id>` | Removes it from the queue or from its shard |
 | `brain capture "<text>" --slice <name> [-a @Anchor]…` | Queues a **requirement** of that slice |
 | `brain capture "<text>" --open [-a @Anchor]…` | Queues an **open question**; anchors not checked |
 | `brain resolve <id> "<answer>"` | Answers it, turning it into a decision in place |
-| `brain plan` | Each slice's requirements counted against the model |
+| `brain plan [--slice <name>]` | Each slice's requirements counted against the model |
+| `brain brief --slice <name> \| --module <M>` | The reading pack: exactly the shards that work needs |
 | `brain check [--changed]` | Anchors resolve, entries filed correctly, plus slice progress |
 | `brain show [<shard>]` | Entries, lines and headroom per shard |
 
 Dropping the last entry from a module shard deletes the file, so the directory
 does not accumulate husks that read as "this module has decisions".
+
+Every command takes `--json`, so a dispatcher running one agent per slice can
+act on the answers rather than read them. `brain staged --since <id>` is the
+slice boundary: note `last_id` before handing a slice off, pass it back
+afterwards, and `--fail-if-empty` exits 1 on a slice that recorded nothing.
+
+`--since` rather than `--slice`, because `capture --slice` is what makes an entry
+a *requirement* — a decision found while building a slice carries no slice at
+all, and a slice's findings are mostly decisions. The queue is append-only, so
+its own order is the honest boundary.

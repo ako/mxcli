@@ -55,6 +55,7 @@ so nothing reaches a pull request until someone has looked at it.`,
   mxcli brain staged -p app.mpr
   mxcli brain promote a1b2c3 -p app.mpr
   mxcli brain capture "Orders must be approvable by a manager" --slice 02-approvals -a @Sales.ACT_Order_Approve -p app.mpr
+  mxcli brain brief --slice 02-approvals -p app.mpr
   mxcli brain plan -p app.mpr
   mxcli brain check -p app.mpr
   mxcli brain show -p app.mpr`,
@@ -335,6 +336,13 @@ mxcli maintains.`,
 		if err != nil {
 			brainFatal(err)
 		}
+		if only, _ := cmd.Flags().GetString("slice"); only != "" {
+			want := brain.PlanShard(only)
+			if !slices.Contains(sliceShards, want) {
+				brainFatal(fmt.Errorf("no slice %q; 'mxcli brain plan' lists them", only))
+			}
+			sliceShards = []string{want}
+		}
 		if len(sliceShards) == 0 {
 			fmt.Println("No slices yet. Record one with:")
 			fmt.Println("  mxcli brain capture \"<requirement>\" --slice 01-<name> -a @Module.Element")
@@ -377,6 +385,70 @@ func printBrainPlan(slices []brain.SliceProgress) {
 		total += sl.Total()
 	}
 	fmt.Printf("\n%d of %d requirements built, across %d slice(s).\n", built, total, len(slices))
+}
+
+var brainBriefCmd = &cobra.Command{
+	Use:   "brief",
+	Short: "The reading pack for a slice: project + its modules + its plan",
+	Long: `Emit exactly the shards a session needs, as one bounded read.
+
+The store is sharded so a session can load project.md plus the modules it is
+touching instead of the whole thing. Nothing produced that pack, though —
+docs/brain/ is a directory, so a session either read all of it or guessed.
+
+  mxcli brain brief --slice 07-planning     project + the modules that slice's
+                                            requirements anchor into + its plan
+  mxcli brain brief --module Sales --module Finance
+                                            project + those modules, no plan
+                                            (maintenance rather than roadmap)
+
+Which modules a slice needs is DERIVED from its requirements' anchors, not
+configured: asking the caller which modules its slice touches would be asking
+it the thing it opened the brief to find out.
+
+The pack goes to stdout and the size line to stderr, so it can be piped
+straight into a prompt. --json gives the shards separately with their paths.`,
+	Example: `  mxcli brain brief --slice 07-planning -p app.mpr
+  mxcli brain brief --module Sales -p app.mpr --json`,
+	Run: func(cmd *cobra.Command, args []string) {
+		store := brain.NewStore(brainProjectDir(cmd))
+		if !store.Exists() {
+			fmt.Println("No store yet. Create one with 'mxcli brain init'.")
+			return
+		}
+		slice, _ := cmd.Flags().GetString("slice")
+		modules, _ := cmd.Flags().GetStringSlice("module")
+		if slice == "" && len(modules) == 0 {
+			brainFatal(fmt.Errorf("say what the session is working on: --slice <name> or --module <Module>"))
+		}
+		if slice != "" && len(modules) > 0 {
+			// Refused rather than merged: a brief's value is what it leaves
+			// out, and silently widening the pack past what was asked for is
+			// the whole-store read it exists to replace.
+			brainFatal(fmt.Errorf("--slice and --module are different questions; pass one"))
+		}
+
+		var (
+			b   brain.Brief
+			err error
+		)
+		if slice != "" {
+			b, err = store.Brief(slice)
+		} else {
+			b, err = store.BriefForModules(modules)
+		}
+		if err != nil {
+			brainFatal(err)
+		}
+
+		if globalJSONFlag {
+			brainJSON(b)
+			return
+		}
+		fmt.Print(b.Text())
+		// stderr, so `brain brief | ...` pipes the pack and not the commentary.
+		fmt.Fprintln(os.Stderr, b.Summary())
+	},
 }
 
 var brainCheckCmd = &cobra.Command{
@@ -704,9 +776,17 @@ func init() {
 	brainCheckCmd.Flags().Bool("ci", false, "Machine-friendly output for CI")
 
 	brainPlanCmd.Flags().StringP("project", "p", "", "Path to the .mpr file")
+	brainPlanCmd.Flags().String("slice", "",
+		"Report only this slice, instead of every slice in the plan")
+	brainBriefCmd.Flags().StringP("project", "p", "", "Path to the .mpr file")
+	brainBriefCmd.Flags().String("slice", "",
+		"The slice being worked; its modules are derived from its requirements' anchors")
+	brainBriefCmd.Flags().StringSlice("module", nil,
+		"Modules being worked, for a session with no slice; repeatable")
 	brainResolveCmd.Flags().StringP("project", "p", "", "Path to the .mpr file")
 	brainCmd.AddCommand(brainInitCmd, brainCaptureCmd, brainStagedCmd,
-		brainPromoteCmd, brainDropCmd, brainShowCmd, brainCheckCmd, brainPlanCmd, brainResolveCmd)
+		brainPromoteCmd, brainDropCmd, brainShowCmd, brainCheckCmd, brainPlanCmd,
+		brainResolveCmd, brainBriefCmd)
 	rootCmd.AddCommand(brainCmd)
 }
 
