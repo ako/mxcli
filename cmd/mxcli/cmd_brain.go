@@ -4,10 +4,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	osexec "os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -130,6 +132,10 @@ var brainStagedCmd = &cobra.Command{
 		if err != nil {
 			brainFatal(err)
 		}
+		if globalJSONFlag {
+			brainJSON(stagedReport(entries))
+			return
+		}
 		if len(entries) == 0 {
 			fmt.Println("Nothing staged.")
 			return
@@ -217,6 +223,13 @@ var brainShowCmd = &cobra.Command{
 		}
 		// Width is computed from the names actually present: a module shard is
 		// named after its module, and those run long.
+		if len(args) == 1 {
+			usage = slices.DeleteFunc(usage, func(u brain.Usage) bool { return u.Shard != args[0] })
+		}
+		if globalJSONFlag {
+			brainJSON(map[string]any{"shards": usage})
+			return
+		}
 		width := len("SHARD")
 		for _, u := range usage {
 			if n := len(shardLabel(u.Shard)); n > width {
@@ -225,9 +238,6 @@ var brainShowCmd = &cobra.Command{
 		}
 		fmt.Printf("%-*s %8s %8s %12s\n", width, "SHARD", "ENTRIES", "LINES", "HEADROOM")
 		for _, u := range usage {
-			if len(args) == 1 && u.Shard != args[0] {
-				continue
-			}
 			note := ""
 			if u.Over() {
 				note = "  OVER CAP"
@@ -285,11 +295,11 @@ mxcli maintains.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		projectPath := brainProjectPath(cmd)
 		store := brain.NewStore(filepath.Dir(projectPath))
-		slices, err := store.ListSlices()
+		sliceShards, err := store.ListSlices()
 		if err != nil {
 			brainFatal(err)
 		}
-		if len(slices) == 0 {
+		if len(sliceShards) == 0 {
 			fmt.Println("No slices yet. Record one with:")
 			fmt.Println("  mxcli brain capture \"<requirement>\" --slice 01-<name> -a @Module.Element")
 			return
@@ -300,9 +310,13 @@ mxcli maintains.`,
 		}
 		defer closeFn()
 
-		rep, err := brain.Check(store, resolver, slices)
+		rep, err := brain.Check(store, resolver, sliceShards)
 		if err != nil {
 			brainFatal(err)
+		}
+		if globalJSONFlag {
+			brainJSON(planReport(rep.Slices))
+			return
 		}
 		printBrainPlan(rep.Slices)
 	},
@@ -376,9 +390,14 @@ anchors into other modules are fine, because a fact can genuinely span two.`,
 		if err != nil {
 			brainFatal(err)
 		}
-		if ci, _ := cmd.Flags().GetBool("ci"); ci {
+		switch ci, _ := cmd.Flags().GetBool("ci"); {
+		case globalJSONFlag:
+			// --json wins over --ci: both exist for a machine, and one of them
+			// carries the states and counts rather than only the problems.
+			brainJSON(rep)
+		case ci:
 			printBrainReportCI(rep)
-		} else {
+		default:
 			printBrainReport(rep)
 		}
 		if rep.Failed() {
@@ -647,4 +666,53 @@ func init() {
 	brainCmd.AddCommand(brainInitCmd, brainCaptureCmd, brainStagedCmd,
 		brainPromoteCmd, brainDropCmd, brainShowCmd, brainCheckCmd, brainPlanCmd, brainResolveCmd)
 	rootCmd.AddCommand(brainCmd)
+}
+
+// brainJSON writes v to stdout as indented JSON. Every brain command printed
+// for a human only, which is what made the store unusable as the channel
+// between sub-agents: an orchestrator dispatching one agent per slice has to
+// DECIDE on `staged` and `check`, not read them.
+//
+// Indented on purpose. These outputs are small (a queue, a plan, a report), and
+// the consumer is as often a person eyeballing what the machine will see as a
+// parser.
+func brainJSON(v any) {
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		brainFatal(err)
+	}
+	fmt.Println(string(b))
+}
+
+// stagedEntry is one queued entry as a machine sees it. The shard is included
+// because it is derived (an entry's first anchor names its file), so a caller
+// would otherwise have to reimplement the routing rule to know where a promote
+// would put it.
+type stagedEntry struct {
+	brain.Entry
+	Shard string `json:"shard"`
+}
+
+func stagedReport(entries []brain.Entry) map[string]any {
+	out := make([]stagedEntry, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, stagedEntry{Entry: e, Shard: e.Shard()})
+	}
+	return map[string]any{"staged": out, "count": len(out)}
+}
+
+// planReport carries the totals as well as the slices. A dispatcher's question
+// is usually "is this slice done", and the answer is a comparison it should not
+// have to assemble from four counters.
+func planReport(slices []brain.SliceProgress) map[string]any {
+	var built, total int
+	for _, sl := range slices {
+		built += sl.Built
+		total += sl.Total()
+	}
+	return map[string]any{
+		"slices": slices,
+		"built":  built,
+		"total":  total,
+	}
 }
