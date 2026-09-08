@@ -120,3 +120,72 @@ func runBrainForTest(t *testing.T, args []string) string {
 }
 
 func brainTestDay() time.Time { return time.Date(2026, 9, 3, 0, 0, 0, 0, time.UTC) }
+
+// The dispatcher's loop, end to end: note the queue's last id, run the slice,
+// ask what it staged. The two things that make it usable are asserted here
+// because neither is obvious from the filter alone.
+//
+//  1. last_id comes from the UNFILTERED queue and is reported even when nothing
+//     matched. A slice that staged nothing must still hand the next slice a
+//     boundary, or the next one re-reports this one's captures.
+//  2. count 0 is qualified by "filtered", because the number alone cannot say
+//     whether the queue is empty or the filter matched nothing — and only one
+//     of those means the slice did not do its job.
+func TestStagedSinceGivesADispatcherItsSliceBoundary(t *testing.T) {
+	dir := t.TempDir()
+	mpr := filepath.Join(dir, "App.mpr")
+	if err := os.WriteFile(mpr, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	queue := brain.NewQueue(dir)
+	stage := func(text string) brain.Entry {
+		t.Helper()
+		e, err := brain.NewEntry(text, nil, brainTestDay())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := queue.Append(e); err != nil {
+			t.Fatal(err)
+		}
+		return e
+	}
+
+	boundary := stage("a decision from the slice before this one")
+
+	type staged struct {
+		Count    int    `json:"count"`
+		LastID   string `json:"last_id"`
+		Filtered bool   `json:"filtered"`
+	}
+	decode := func(out string) staged {
+		t.Helper()
+		var s staged
+		if err := json.Unmarshal([]byte(out), &s); err != nil {
+			t.Fatalf("not JSON: %v\n%s", err, out)
+		}
+		return s
+	}
+
+	// The slice staged nothing.
+	got := decode(runBrainForTest(t, []string{"brain", "staged", "-p", mpr, "--since", boundary.ID, "--json"}))
+	if got.Count != 0 {
+		t.Errorf("count %d, want 0", got.Count)
+	}
+	if !got.Filtered {
+		t.Error("a zero count was not marked as filtered; a caller cannot tell it from an empty queue")
+	}
+	if got.LastID != boundary.ID {
+		t.Errorf("last_id is %q, want %q — a slice that staged nothing must still pass the boundary on",
+			got.LastID, boundary.ID)
+	}
+
+	// Now it stages something, including a decision, which carries no slice.
+	found := stage("a decision found while building the slice")
+	got = decode(runBrainForTest(t, []string{"brain", "staged", "-p", mpr, "--since", boundary.ID, "--json"}))
+	if got.Count != 1 {
+		t.Errorf("count %d, want 1", got.Count)
+	}
+	if got.LastID != found.ID {
+		t.Errorf("last_id is %q, want the newest entry %q", got.LastID, found.ID)
+	}
+}

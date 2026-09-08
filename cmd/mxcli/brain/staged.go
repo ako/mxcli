@@ -165,3 +165,61 @@ func (q *Queue) Get(id string) (Entry, bool, error) {
 	}
 	return Entry{}, false, nil
 }
+
+// StagedFilter narrows the queue to what a caller actually wants to see.
+//
+// The queue is a flat, append-only list of everything ever staged, which is the
+// right shape for a person reviewing before a promote and the wrong one for a
+// dispatcher asking what a single slice recorded.
+type StagedFilter struct {
+	// SinceID is the id of the last entry that was already in the queue.
+	// Everything after it — exclusively — is what has been staged since.
+	//
+	// This is the honest slice boundary. The queue is append-only, so its own
+	// order IS the timeline; Entry.Date is a day, so every capture in a session
+	// shares one value and cannot separate anything.
+	SinceID string
+	// Slice matches requirements of one slice. Note this is NOT "what slice 07
+	// staged": `capture --slice` is what makes an entry a requirement, so a
+	// decision found while building a slice carries no slice at all. Use
+	// SinceID for that question and this one for queued scope.
+	Slice string
+}
+
+// Empty reports whether the filter would return the queue unchanged.
+func (f StagedFilter) Empty() bool { return f.SinceID == "" && f.Slice == "" }
+
+// FilterStaged applies f to entries, preserving queue order.
+//
+// An unknown SinceID is an error rather than an empty result. Empty is a
+// meaningful answer here — "this slice recorded nothing", which a dispatcher
+// acts on — so producing it from a typo or an id that has since been promoted
+// would make the caller abort a slice that had in fact done its job.
+func FilterStaged(entries []Entry, f StagedFilter) ([]Entry, error) {
+	out := entries
+	if f.SinceID != "" {
+		at := -1
+		for i, e := range out {
+			if e.ID == f.SinceID {
+				at = i
+				break
+			}
+		}
+		if at < 0 {
+			return nil, fmt.Errorf("no staged entry with id %s; it may have been promoted or dropped "+
+				"since it was noted (an empty result means the slice staged nothing, so this cannot "+
+				"be reported as one)", f.SinceID)
+		}
+		out = out[at+1:]
+	}
+	if f.Slice != "" {
+		kept := make([]Entry, 0, len(out))
+		for _, e := range out {
+			if e.Slice == f.Slice {
+				kept = append(kept, e)
+			}
+		}
+		out = kept
+	}
+	return out, nil
+}

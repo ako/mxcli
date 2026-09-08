@@ -127,17 +127,53 @@ var brainCaptureCmd = &cobra.Command{
 var brainStagedCmd = &cobra.Command{
 	Use:   "staged",
 	Short: "List the queue, with the shard each entry would land in",
+	Long: `List what has been captured and not yet promoted.
+
+With no flags this is the review list a person reads before promoting.
+
+--since <id> narrows it to what has been staged since that entry, which is how
+a dispatcher asks what one slice recorded: note the last id in the queue before
+dispatching, pass it afterwards, and refuse to advance on an empty answer
+(--fail-if-empty exits 1 so a script does not have to parse for that).
+
+--since is the boundary rather than a date or a slice because neither of those
+can express it. Entry.Date is a day, so every capture in a session shares one
+value. And --slice matches only requirements — 'capture --slice' is what MAKES
+an entry a requirement, so a decision found while building a slice carries no
+slice at all, and a slice's findings are mostly decisions. The queue is
+append-only, so its own order is the honest timeline.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		entries, err := brain.NewQueue(brainProjectDir(cmd)).Load()
+		all, err := brain.NewQueue(brainProjectDir(cmd)).Load()
 		if err != nil {
 			brainFatal(err)
 		}
+		entries := all
+		filter := brain.StagedFilter{}
+		filter.SinceID, _ = cmd.Flags().GetString("since")
+		filter.Slice, _ = cmd.Flags().GetString("slice")
+		entries, err = brain.FilterStaged(entries, filter)
+		if err != nil {
+			brainFatal(err)
+		}
+		failIfEmpty, _ := cmd.Flags().GetBool("fail-if-empty")
+		defer func() {
+			if failIfEmpty && len(entries) == 0 {
+				os.Exit(1)
+			}
+		}()
 		if globalJSONFlag {
-			brainJSON(stagedReport(entries))
+			brainJSON(stagedReport(all, entries, filter))
 			return
 		}
 		if len(entries) == 0 {
-			fmt.Println("Nothing staged.")
+			if filter.Empty() {
+				fmt.Println("Nothing staged.")
+			} else {
+				// Distinguished on purpose: "nothing matched" is the answer a
+				// dispatcher acts on, and reading it as "the queue is empty"
+				// would hide entries a person still has to promote.
+				fmt.Println("Nothing staged matching that filter.")
+			}
 			return
 		}
 		for _, e := range entries {
@@ -658,6 +694,12 @@ func init() {
 		"Record this as a requirement of the named slice (plan/<slice>.md) instead of a decision")
 	brainPromoteCmd.Flags().String("to", "",
 		"Override the derived shard (use 'project' for a cross-cutting fact)")
+	brainStagedCmd.Flags().String("since", "",
+		"Only entries staged after this entry id — the slice boundary (see 'mxcli brain staged --help')")
+	brainStagedCmd.Flags().String("slice", "",
+		"Only requirements of this slice (decisions carry no slice; use --since for a slice's findings)")
+	brainStagedCmd.Flags().Bool("fail-if-empty", false,
+		"Exit 1 when nothing matches, so a dispatcher can refuse to advance on a slice that recorded nothing")
 	brainCheckCmd.Flags().Bool("changed", false, "Only check shards touched by the working tree")
 	brainCheckCmd.Flags().Bool("ci", false, "Machine-friendly output for CI")
 
@@ -693,12 +735,37 @@ type stagedEntry struct {
 	Shard string `json:"shard"`
 }
 
-func stagedReport(entries []brain.Entry) map[string]any {
-	out := make([]stagedEntry, 0, len(entries))
-	for _, e := range entries {
+// stagedReport renders the queue for a machine. `all` is the unfiltered queue
+// and `shown` what survived the filter — both are needed, because the two
+// figures a dispatcher wants come from different sides of it.
+func stagedReport(all, shown []brain.Entry, filter brain.StagedFilter) map[string]any {
+	out := make([]stagedEntry, 0, len(shown))
+	for _, e := range shown {
 		out = append(out, stagedEntry{Entry: e, Shard: e.Shard()})
 	}
-	return map[string]any{"staged": out, "count": len(out)}
+	rep := map[string]any{"staged": out, "count": len(out)}
+
+	// The id to pass as --since next time. It comes from the UNFILTERED queue
+	// and is reported even when nothing matched, which is exactly the case a
+	// dispatcher needs it in: a slice that staged nothing must still hand the
+	// next slice a boundary, or the next one re-reports this one's captures.
+	if len(all) > 0 {
+		rep["last_id"] = all[len(all)-1].ID
+	}
+	rep["queue_size"] = len(all)
+
+	// A count of 0 means two different things and the number cannot say which:
+	// the queue is empty, or the filter matched nothing.
+	if !filter.Empty() {
+		rep["filtered"] = true
+		if filter.SinceID != "" {
+			rep["since"] = filter.SinceID
+		}
+		if filter.Slice != "" {
+			rep["slice"] = filter.Slice
+		}
+	}
+	return rep
 }
 
 // planReport carries the totals as well as the slices. A dispatcher's question
