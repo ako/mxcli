@@ -74,7 +74,7 @@ func init() {
 		// outcome does not ('OK' { }). The two read alike but are separate
 		// grammar rules, so the arrow is easy to drop — this entry did, and
 		// taught the broken form until TestExamplesParse started checking it.
-		Syntax:  "DECISION ['<caption>'] [COMMENT '<text>']\n  OUTCOMES '<outcome>' -> { <activities> } ...;",
+		Syntax:  "DECISION [<name>] ['<caption>'] [COMMENT '<text>']\n  OUTCOMES '<outcome>' -> { <activities> } ...;",
 		Example: "DECISION 'Check amount'\n  OUTCOMES\n    'Under 1000' -> { }\n    'Over 1000' -> {\n      USER TASK ManagerApproval 'Manager must approve'\n        OUTCOMES 'OK' { };\n    };",
 		SeeAlso: []string{"workflow.create", "workflow.parallel-split"},
 	})
@@ -86,7 +86,7 @@ func init() {
 			"parallel", "concurrent", "split", "fork", "join",
 			"parallel gateway", "AND",
 		},
-		Syntax:  "PARALLEL SPLIT [COMMENT '<text>']\n  PATH 1 { <activities> }\n  PATH 2 { <activities> };",
+		Syntax:  "PARALLEL SPLIT [<name>] [COMMENT '<text>']\n  PATH 1 { <activities> }\n  PATH 2 { <activities> };",
 		Example: "PARALLEL SPLIT\n  PATH 1 {\n    USER TASK LegalReview 'Legal review'\n      OUTCOMES 'Done' { };\n  }\n  PATH 2 {\n    USER TASK TechReview 'Technical review'\n      OUTCOMES 'Done' { };\n  };",
 		SeeAlso: []string{"workflow.decision", "workflow.create"},
 	})
@@ -98,7 +98,7 @@ func init() {
 			"call microflow", "microflow task", "automated step",
 			"system task",
 		},
-		Syntax:  "CALL MICROFLOW Module.MF [COMMENT '<text>']\n  [OUTCOMES '<outcome>' { <activities> } ...];",
+		Syntax:  "CALL MICROFLOW Module.MF [AS <name>] [COMMENT '<text>']\n  [OUTCOMES '<outcome>' { <activities> } ...];",
 		Example: "CALL MICROFLOW HR.SendNotification\n  COMMENT 'Notify manager';",
 		SeeAlso: []string{"workflow.create", "workflow.call-workflow"},
 	})
@@ -109,9 +109,31 @@ func init() {
 		Keywords: []string{
 			"call workflow", "sub-workflow", "nested workflow",
 		},
-		Syntax:  "CALL WORKFLOW Module.WF [COMMENT '<text>'];",
+		Syntax:  "CALL WORKFLOW Module.WF [AS <name>] [COMMENT '<text>'];",
 		Example: "CALL WORKFLOW HR.SubApproval COMMENT 'Delegate to sub-process';",
 		SeeAlso: []string{"workflow.create", "workflow.call-microflow"},
+	})
+
+	Register(SyntaxFeature{
+		Path:    "workflow.jump-to",
+		Summary: "Jump to another activity — and the activity names it resolves against",
+		Keywords: []string{
+			"jump", "jump to", "goto", "loop back", "activity name",
+		},
+		// Mendix stores JumpToActivity.TargetActivity as an activity NAME, not a
+		// pointer, so the jump is only as good as the name. Studio Pro names
+		// activities by type and ordinal regardless of caption (decision1,
+		// split1, callMicroflow1); mxcli derives a name when none is given, which
+		// is why an explicit one matters when reproducing a stored workflow.
+		Syntax: "JUMP TO <activity-name> [COMMENT '<text>'];\n\n" +
+			"-- name the target so the jump resolves:\n" +
+			"DECISION <name> ['<caption>'] ...\nPARALLEL SPLIT <name> ...\n" +
+			"WAIT FOR TIMER <name> ...\nWAIT FOR NOTIFICATION <name>\n" +
+			"CALL MICROFLOW Module.MF AS <name>\nCALL WORKFLOW Module.WF AS <name>",
+		Example: "DECISION decision1 '$WorkflowContext/Total > 1000'\n" +
+			"  OUTCOMES\n    true -> { }\n    false -> { };\n\n" +
+			"PARALLEL SPLIT split1\n  PATH 1 { JUMP TO decision1; }\n  PATH 2 { };",
+		SeeAlso: []string{"workflow.create", "workflow.decision", "workflow.parallel-split"},
 	})
 
 	Register(SyntaxFeature{

@@ -179,3 +179,62 @@ end workflow;`
 		t.Errorf("MDL-WF04 must not fire without an annotation: %v", vs)
 	}
 }
+
+// MDL-WF03 must accept the qualified form Studio Pro actually stores. Every
+// EnumerationValueConditionOutcome in the demo corpus stores Module.Enum.Value
+// (7 of 7 non-empty), so `describe workflow` emits it and the rule refused its
+// own output. See ako/mxcli#408.
+func TestValidateWorkflow_QualifiedEnumOutcomeAccepted(t *testing.T) {
+	src := wfPreamble + `create workflow WF.W parameter $Ctx: WF.Ctx
+begin
+  decision '$Ctx/Total > 1000'
+    outcomes
+      'FactoryManagement.ENUM_InvestigationType.Engineering' -> { }
+      'FactoryManagement.ENUM_InvestigationType.Operations' -> { }
+  ;
+end workflow;`
+	if vs := workflowViolations(t, src); hasRule(vs, "MDL-WF03") {
+		t.Fatalf("qualified enum outcome must not trigger MDL-WF03, got %v", vs)
+	}
+}
+
+// The control for the case above: free text with a space is still refused, so
+// widening the rule to accept dots did not turn it off.
+func TestValidateWorkflow_QualifiedEnumOutcomeStillRejectsFreeText(t *testing.T) {
+	src := wfPreamble + `create workflow WF.W parameter $Ctx: WF.Ctx
+begin
+  decision '$Ctx/Total > 1000'
+    outcomes
+      'Factory Management.ENUM_Kind.A' -> { }
+  ;
+end workflow;`
+	if vs := workflowViolations(t, src); !hasRule(vs, "MDL-WF03") {
+		t.Fatalf("dotted free text with a space must still trigger MDL-WF03, got %v", vs)
+	}
+}
+
+// MDL-WF05 — a jump may target a named decision or parallel split. Mendix
+// resolves JumpToActivity.TargetActivity by activity NAME, and Studio Pro names
+// them decision1 / split1 regardless of caption, so MDL needs a name slot on
+// every jumpable activity or a described workflow cannot be re-executed.
+func TestValidateWorkflow_JumpToNamedDecisionAndSplit(t *testing.T) {
+	src := wfPreamble + `create workflow WF.W parameter $Ctx: WF.Ctx
+begin
+  decision decision1 '$Ctx/Total > 1000'
+    outcomes
+      true -> { }
+      false -> { }
+  ;
+  parallel split split1
+    path 1 { jump to decision1; }
+    path 2 { }
+  ;
+  wait for timer timer1 'PT1H';
+  wait for notification waitForNotification1;
+  jump to split1;
+end workflow;`
+	vs := workflowViolations(t, src)
+	if hasRule(vs, "MDL-WF05") {
+		t.Fatalf("jump to a named decision/split must resolve, got %v", vs)
+	}
+}

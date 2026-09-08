@@ -53,6 +53,28 @@ having "no roles" is the same class seen from the query side, and it is the shap
 most likely to be believed, because "no roles" reads like a finding rather than a
 gap.
 
+**Reconciliation has two directions and they are fixed separately.** Every
+finding above is reconciliation *removing* something. The other direction —
+failing to *add* a member the entity has gained — produced the same `CE0066`
+from the opposite side, and stayed open through several fixes to this function
+because each one was aimed at the loss. The ancestor set was being computed and
+consumed by the association pass only; the attribute pass beside it walked the
+entity's own attributes and no one noticed the asymmetry. **When a function
+computes a set and uses it for one of two symmetric passes, check the other.**
+
+**A count that drives a message is part of the contract.** The same defect made
+`update security` print *"All entity access rules are up to date"* over a project
+`mx check` rejects, because the reconcile reported 0 modified. That is worse than
+an error: an error is investigated, a false success ends the investigation, and
+the reporter reasonably concluded the command was broken rather than the model.
+Assert the count a repair command returns, not only the state it leaves behind.
+
+**Once the write path reconciles, an MDL script can no longer prove the repair
+path.** The statement that used to break the model now fixes it as it writes, so
+the script ends clean against a build that never had the fix. Break the project
+with a *previous* binary and repair it with the new one — that is what finally
+showed this command taking a real `CE0066` from 1 to 0.
+
 ## See also
 
 - [fix-issue findings](../../.claude/skills/fix-issue/findings/) — the member

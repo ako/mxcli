@@ -646,14 +646,27 @@ Nested folders use `/` separator: `'Parent/Child/Grandchild'`. Missing folders a
 
 **Workflow Activity Types:**
 - `user task <name> '<caption>' [page Mod.Page] [targeting [users|groups] microflow Mod.MF] [targeting [users|groups] xpath '<expr>'] [outcomes '<out>' { } ...];`
-- `call microflow Mod.MF [comment '<text>'] [outcomes '<out>' { } ...];`
-- `call workflow Mod.WF [comment '<text>'];`
-- `decision ['<caption>'] outcomes '<out>' { } ...;`
-- `parallel split path 1 { } path 2 { };`
+- `call microflow Mod.MF [as <name>] [comment '<text>'] [outcomes '<out>' { } ...];`
+- `call workflow Mod.WF [as <name>] [comment '<text>'];`
+- `decision [<name>] ['<caption>'] outcomes '<out>' { } ...;`
+- `parallel split [<name>] path 1 { } path 2 { };`
 - `jump to <activity-name>;`
-- `wait for timer ['<expr>'];`
-- `wait for notification;`
+- `wait for timer [<name>] ['<expr>'];`
+- `wait for notification [<name>];`
 - `end;`
+
+**Activity names.** Every activity has a name, and `jump to` resolves against it
+— Mendix stores `JumpToActivity.TargetActivity` as a name string, not a pointer.
+Without an explicit name mxcli derives one (from the caption, or from the called
+document for `call microflow` / `call workflow`), which is fine for a workflow
+written from scratch. Name activities explicitly when a `jump to` targets them,
+and when reproducing a workflow Studio Pro authored: Studio Pro names activities
+by type and ordinal (`decision1`, `split1`, `callMicroflow1`) regardless of
+caption, so `describe workflow` emits the name whenever it is not derivable.
+
+**Decision outcomes** are enumeration value identifiers, bare (`Approved`) or
+qualified (`Module.Enum.Approved` — the form Studio Pro stores). Free text with
+spaces is rejected (`MDL-WF03`).
 
 **Example:**
 ```sql

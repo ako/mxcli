@@ -1,0 +1,79 @@
+-- ============================================================================
+-- CE0066 after adding an attribute to a GENERALIZATION, and `UPDATE SECURITY`
+-- reporting "up to date" over it  (mendixlabs/mxcli#1047)
+-- ============================================================================
+--
+-- Symptom (before fix), reported against 0.21.0 on a confirmed MPR v2 project
+-- and reproduced here on Mendix 11.12.1 with both engines:
+--
+--   gen + grant, specialisation + grant          → mx check 0 errors  (control)
+--   ALTER ENTITY ...Gen ADD ATTRIBUTE AfterSpec  → CE0066 at the domain model
+--
+--   | command                          | mxcli said                          |
+--   |----------------------------------|-------------------------------------|
+--   | UPDATE SECURITY (project-wide)   | "All entity access rules are up to  |
+--   |                                  |  date"  → CE0066 unchanged          |
+--   | UPDATE SECURITY ProbeSecond      | same                                |
+--
+--   The reporter's own tool named the one missing member and fixed it:
+--     + Spec: ProbeSecond.Gen.AfterSpec (ReadWrite)   → mx check 1 → 0
+--
+-- Root cause:
+--   ReconcileMemberAccesses computes the ancestor set (sameModuleAncestors) and
+--   used it ONLY for associations. The attribute pass walked the entity's OWN
+--   attributes, so a specialisation's expected member set never contained the
+--   members it inherits. Nothing looked missing, nothing was added, `modified`
+--   stayed 0 — and that 0 is what the command prints as "up to date". A false
+--   success, which is worse than an error: it tells you the model is fine.
+--
+--   Both engines had it in the same shape. The codec engine is
+--   mdl/backend/modelsdk/domainmodel_security_write.go; the legacy engine is
+--   sdk/mpr/writer_security.go. Fixing one would have left the other latent
+--   until something switched engines.
+--
+-- After fix:
+--   The inherited attribute is included, qualified against the entity that
+--   DECLARES it (`ProbeSecond.Gen.AfterSpec`, not `ProbeSecond.Spec.AfterSpec`
+--   — that would be CE1613). A child attribute shadows an ancestor's of the
+--   same name, matching the executor's own member walk.
+--
+--   Measured end to end: a project broken by the pre-fix binary is repaired by
+--   the fixed one — "Reconciled 1 access rule(s) in module ProbeSecond", and
+--   mx check goes 1 → 0, on both engines and on both the project-wide and the
+--   scoped form. That also closes a gap an earlier fix recorded explicitly:
+--   `update security` had never been shown repairing a real CE0066.
+--
+-- NOTE ON RUNNING THIS FILE
+--   With the fix in place, ALTER ENTITY reconciles as it writes, so this script
+--   ends at 0 errors WITHOUT needing `update security` at all. It therefore
+--   proves the write path, not the repair path — the repair path needs a
+--   project broken by an older binary, which a .mdl file cannot produce. The
+--   Go tests carry that half (both engines), and the controls are there.
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/1047-inherited-member-reconcile.mdl -p app.mpr
+--   mxcli docker check -p app.mpr --no-update-widgets     -- must be 0 errors
+--   MXCLI_ENGINE=legacy mxcli exec ...                    -- same on both engines
+-- ============================================================================
+
+create module ProbeSecond;
+create module role ProbeSecond.User;
+
+create persistent entity ProbeSecond."Gen" ( Name: string(200) );
+create persistent entity ProbeSecond."Spec" extends ProbeSecond."Gen" ( Extra: string(50) );
+
+grant ProbeSecond.User on ProbeSecond."Gen" (READ *, WRITE *);
+grant ProbeSecond.User on ProbeSecond."Spec" (READ *, WRITE *);
+
+-- The control: everything above checks clean. A run that only executes the
+-- ALTER below cannot tell a fixed build from a broken one.
+
+-- The reported trigger. The specialisation's rule needs an entry for this
+-- attribute even though the specialisation does not declare it.
+ALTER ENTITY ProbeSecond."Gen" ADD ATTRIBUTE IF NOT EXISTS "AfterSpec": String(50);
+
+-- Idempotent: the command that used to report "up to date" over a broken model
+-- now reports honestly, and re-running it changes nothing.
+UPDATE SECURITY ProbeSecond;
+
+describe entity ProbeSecond."Spec";
