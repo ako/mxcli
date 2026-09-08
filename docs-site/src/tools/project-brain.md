@@ -264,6 +264,28 @@ Sizes are computed on every run and are deliberately not written into any
 committed file, including the store's own `README.md` — a figure in prose is
 stale the next time anyone promotes.
 
+## Renaming
+
+`mxcli rename` rewrites matching anchors in `docs/brain/` and in the staged
+queue, and reports the count:
+
+```
+Renamed entity: Sales.Order → Sales.PurchaseOrder
+Updated 2 brain anchor(s): @Sales.Order -> @Sales.PurchaseOrder
+```
+
+Renaming a module also moves `modules/<Old>.md` to `modules/<New>.md`, so its
+entries do not immediately read as misfiled. Entry ids are not re-derived: an id
+is a handle (`brain promote <id>`, prose that cites one), and invalidating every
+reference *to* an entry in order to fix that entry's references to the model
+would trade one dangling pointer for several.
+
+It happens at the rename because it cannot be done afterwards. A decision's
+anchor points backward, so a stale one shows up as `NOT FOUND`; a requirement's
+points forward, so a stale one merely counts as `PLANNED` — indistinguishable
+from not built yet. Measured on a real project, a refactor moved the reported
+progress from 65/65 to 63/65 and the number was the only symptom.
+
 ## Commands
 
 | Command | Does |

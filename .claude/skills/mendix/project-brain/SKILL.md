@@ -287,6 +287,21 @@ cap: the cap is what stops the store becoming a file nobody reads.
 | `mxcli brain check [--changed]` | Anchors still resolve, entries in the right shard, plus slice progress |
 | `mxcli brain show [<shard>]` | Entries, lines and headroom per shard |
 
+## Renaming
+
+`mxcli rename` updates the brain's anchors along with the model's own
+cross-references, and says how many it touched. You do not have to fix them by
+hand, and `--dry-run` previews the brain's share too.
+
+This is done at the rename because it cannot be done afterwards. A decision's
+anchor points backward, so a stale one is reported `NOT FOUND` — but a
+requirement's points forward, so a stale one just counts as `PLANNED`, which is
+exactly what a forward anchor failing is supposed to mean. Once the old name is
+gone there is no way to tell "never built" from "built, then renamed".
+
+If you rename an element some other way — in Studio Pro, or by hand — run
+`mxcli brain check` afterwards and expect the plan's counts to have moved.
+
 ## What not to record
 
 - Anything `show`, `describe` or the catalog answers — it will drift.
