@@ -81,6 +81,11 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 		if wfStmt, ok := stmt.(*ast.CreateWorkflowStmt); ok {
 			violations = append(violations, ValidateWorkflow(wfStmt)...)
 		}
+		// ALTER WORKFLOW … INSERT BRANCH writes the same outcome value, so it
+		// carries the same load-time trap (MDL-WF03).
+		if awfStmt, ok := stmt.(*ast.AlterWorkflowStmt); ok {
+			violations = append(violations, ValidateAlterWorkflow(awfStmt)...)
+		}
 		// Check GRANT for member rights Mendix cannot store
 		if grantStmt, ok := stmt.(*ast.GrantEntityAccessStmt); ok {
 			violations = append(violations, ValidateGrantEntityAccess(grantStmt)...)

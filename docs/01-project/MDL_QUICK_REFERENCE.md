@@ -646,9 +646,9 @@ Nested folders use `/` separator: `'Parent/Child/Grandchild'`. Missing folders a
 
 **Workflow Activity Types:**
 - `user task <name> '<caption>' [page Mod.Page] [targeting [users|groups] microflow Mod.MF] [targeting [users|groups] xpath '<expr>'] [outcomes '<out>' { } ...];`
-- `call microflow Mod.MF [as <name>] [comment '<text>'] [outcomes '<out>' { } ...];`
-- `call workflow Mod.WF [as <name>] [comment '<text>'];`
-- `decision [<name>] ['<caption>'] outcomes '<out>' { } ...;`
+- `call microflow Mod.MF [as <name>] [comment '<text>'] [with (<Param> = '<expr>', ...)] [outcomes '<out>' -> { } ...];`
+- `call workflow Mod.WF [as <name>] [comment '<text>'] [with (<Param> = '<expr>', ...)];`
+- `decision [<name>] ['<expression>'] outcomes <true|false|'Module.Enum.Value'> -> { } ...;`
 - `parallel split [<name>] path 1 { } path 2 { };`
 - `jump to <activity-name>;`
 - `wait for timer [<name>] ['<expr>'];`
@@ -664,9 +664,17 @@ and when reproducing a workflow Studio Pro authored: Studio Pro names activities
 by type and ordinal (`decision1`, `split1`, `callMicroflow1`) regardless of
 caption, so `describe workflow` emits the name whenever it is not derivable.
 
-**Decision outcomes** are enumeration value identifiers, bare (`Approved`) or
-qualified (`Module.Enum.Approved` — the form Studio Pro stores). Free text with
-spaces is rejected (`MDL-WF03`).
+**Decision outcomes** are `true` / `false` for a boolean decision, and a **fully
+qualified** enumeration value identifier — `Module.Enumeration.Value` — for an
+enum decision, plus one `'' -> { }` outcome for "none of the above" (without it
+the build fails `CE6686`). Anything shorter is refused as `MDL-WF03`, and by
+`exec`: Mendix parses the value when the project is **loaded**, so a bare
+`'Approved'` — or `'Status.Approved'`, even when the enumeration is in the same
+module — is not a build error but a `StorageLoadException` that leaves the
+project unopenable in Studio Pro and mxbuild.
+
+**Parameter values in `with (...)` are quoted strings**, not bare variables:
+`call microflow Mod.MF with (Request = '$WorkflowContext')`.
 
 **Example:**
 ```sql
