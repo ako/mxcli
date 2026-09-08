@@ -93,6 +93,13 @@ begin
       true  -> { call microflow Module.ACT_Escalate; }
       false -> { call microflow Module.ACT_AutoApprove; };
 
+  -- An ENUM decision needs every value PLUS the empty one (see below).
+  decision decision2 '$WorkflowContext/Kind'
+    outcomes
+      'Module.Kind.Standard' -> { }
+      'Module.Kind.Priority' -> { }
+      ''                     -> { };
+
   -- Parallel split: independent branches run concurrently
   parallel split split1
     path 1 { call microflow Module.ACT_Notify; }
@@ -280,6 +287,15 @@ documented in `system-module`.
   task (`CE1834`). Bind the page to `System.WorkflowUserTask`.
 - A user task / decision with a single outcome and no activity can trip
   `CE1876` — give each branch a body or a distinct outcome.
+- An **enumeration** decision needs an outcome for the **empty value** as well
+  as one per enumeration value: Mendix generates that set and MxBuild compares
+  the stored outcomes against it, so anything else is `CE6686` ("Regenerate the
+  outcomes"). Write `'' -> { }` alongside the named values; `check` reports a
+  missing one as `MDL-WF06`. The same applies to a `call microflow` activity
+  branching on an enumeration return, and to a decision introduced by
+  `ALTER WORKFLOW … INSERT AFTER` / `REPLACE ACTIVITY`. A **required
+  (`not null`) attribute does not exempt it** — measured, the empty outcome is
+  still required. Boolean (`true`/`false`) decisions do not take one.
 - The context **Parameter entity must be persistent**.
 - Write the context variable as **`$WorkflowContext`**, matching the parameter
   name exactly. Mendix expressions are case-sensitive on 11.9+, so a lowercase

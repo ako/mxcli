@@ -36,6 +36,7 @@ var wfOutcomeIdentRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A
 //   - MDL-WF02: single-outcome user task containing nested activities (CE1876)
 //   - MDL-WF03: decision / call-microflow outcome that is not a valid
 //     enumeration value identifier
+//   - MDL-WF06: enumeration outcomes with no empty-valued branch (CE6686)
 //   - MDL-WF04: standalone `annotation` in a workflow body (unloadable model)
 //   - MDL-WF05: `jump to` a target that names no activity (see validate_workflow_jump.go)
 func ValidateWorkflow(stmt *ast.CreateWorkflowStmt) []linter.Violation {
@@ -71,8 +72,10 @@ func ValidateWorkflow(stmt *ast.CreateWorkflowStmt) []linter.Violation {
 			}
 		case *ast.WorkflowDecisionNode:
 			out = append(out, checkWorkflowOutcomeNames(n.Outcomes, "decision", loc)...)
+			out = append(out, checkWorkflowEmptyEnumOutcome(n.Outcomes, "decision", workflowDecisionLabel(n), loc)...)
 		case *ast.WorkflowCallMicroflowNode:
 			out = append(out, checkWorkflowOutcomeNames(n.Outcomes, "call microflow", loc)...)
+			out = append(out, checkWorkflowEmptyEnumOutcome(n.Outcomes, "call microflow", workflowCallMicroflowLabel(n), loc)...)
 		case *ast.WorkflowAnnotationActivityNode:
 			// MDL-WF04 — a standalone annotation is written into the workflow's
 			// activity flow, but Mendix constructs every child of that list with a
@@ -89,6 +92,58 @@ func ValidateWorkflow(stmt *ast.CreateWorkflowStmt) []linter.Violation {
 		}
 	})
 	out = append(out, ValidateWorkflowJumpTargets(stmt)...)
+	return out
+}
+
+// ValidateAlterWorkflow applies the outcome-set rule to the activities an ALTER
+// WORKFLOW statement introduces (MDL-WF06).
+//
+// ALTER reaches the same build error as CREATE: an `INSERT AFTER … decision`
+// whose outcomes name enumeration values but no empty one is CE6686, measured on
+// mxbuild 11.10.0 against a project that was at 0 errors before the ALTER. The
+// activity-shaped ops carry an ordinary WorkflowActivityNode, so the check is
+// the CREATE one over the introduced subtree — the same shape
+// validateAlterWorkflowRefs uses for references.
+//
+// Only MDL-WF06 runs here. The others are not simply un-ported: MDL-WF01/WF02
+// describe a state a later op in the same script can still repair (`SET ACTIVITY
+// … PAGE`), and MDL-WF05 resolves jump targets against activities the statement
+// cannot see. The outcome set of an inserted activity is complete where it is
+// written — `INSERT OUTCOME` cannot extend it, since on a decision it writes a
+// UserTaskOutcome into a ConditionOutcome list and yields a model Mendix cannot
+// load at all.
+func ValidateAlterWorkflow(stmt *ast.AlterWorkflowStmt) []linter.Violation {
+	loc := linter.Location{
+		Module:       stmt.Name.Module,
+		DocumentType: "workflow",
+		DocumentName: stmt.Name.Name,
+	}
+	var added []ast.WorkflowActivityNode
+	for _, op := range stmt.Operations {
+		switch o := op.(type) {
+		case *ast.InsertAfterOp:
+			added = append(added, o.NewActivity)
+		case *ast.ReplaceActivityOp:
+			added = append(added, o.NewActivity)
+		case *ast.InsertOutcomeOp:
+			added = append(added, o.Activities...)
+		case *ast.InsertPathOp:
+			added = append(added, o.Activities...)
+		case *ast.InsertBranchOp:
+			added = append(added, o.Activities...)
+		case *ast.InsertBoundaryEventOp:
+			added = append(added, o.Activities...)
+		}
+	}
+	var out []linter.Violation
+	walkWorkflowActivities(added, func(a ast.WorkflowActivityNode) {
+		switch n := a.(type) {
+		case *ast.WorkflowDecisionNode:
+			out = append(out, checkWorkflowEmptyEnumOutcome(n.Outcomes, "decision", workflowDecisionLabel(n), loc)...)
+		case *ast.WorkflowCallMicroflowNode:
+			out = append(out, checkWorkflowEmptyEnumOutcome(n.Outcomes, "call microflow", workflowCallMicroflowLabel(n), loc)...)
+		}
+	})
 	return out
 }
 
@@ -109,6 +164,97 @@ func checkWorkflowOutcomeNames(outcomes []ast.WorkflowConditionOutcomeNode, kind
 		})
 	}
 	return out
+}
+
+// checkWorkflowEmptyEnumOutcome flags an activity that branches on an
+// enumeration without an outcome for the EMPTY value (MDL-WF06).
+//
+// Mendix generates one outcome per enumeration value **plus one with an empty
+// value**, and mxbuild compares the stored set against that generated set:
+// anything else is CE6686 ("The current outcomes of the ... do not match the
+// configured expression/microflow. Regenerate the outcomes."). Studio Pro's own
+// documents agree — every enum decision in the FactoryManagement demo app
+// stores the extra Workflows$EnumerationValueConditionOutcome with Value ”.
+//
+// Measured on mxbuild 11.10.0, in a blank 11.10.0 app:
+//
+//   - decision on `$WorkflowContext/Kind` with the two enum values → 1 error,
+//     CE6686; adding `” -> { }` → 0 errors.
+//   - the same decision on an attribute carrying a REQUIRED (not null)
+//     validation rule → still CE6686. The empty outcome is not about whether
+//     the value can be empty in practice, which is why this is an error rather
+//     than a warning.
+//   - a call-microflow activity branching on an enumeration-returning microflow
+//     → the same CE6686 ("...of the call microflow activity do not match the
+//     configured microflow"), cleared the same way. Hence both call sites.
+//   - a boolean decision (true/false) is 0 errors with no empty outcome, so the
+//     rule must classify outcomes exactly as buildConditionOutcome does.
+//
+// mxbuild wants set EQUALITY, so a missing enumeration *value* is CE6686 too
+// (measured: Standard + ” on a two-value enum is 1 error). That half needs the
+// enumeration's definition and so belongs to the reference pass, not here; this
+// rule reports only what is decidable from the statement alone.
+func checkWorkflowEmptyEnumOutcome(outcomes []ast.WorkflowConditionOutcomeNode, kind, label string, loc linter.Location) []linter.Violation {
+	var enumValues []string
+	for _, o := range outcomes {
+		switch o.Value {
+		case "True", "False":
+			// A boolean branch: buildConditionOutcome emits a
+			// BooleanConditionOutcome and mxbuild wants exactly true/false.
+			return nil
+		case "Default":
+			// A VoidConditionOutcome — not an enumeration branch.
+			continue
+		case "":
+			// The empty-valued enumeration outcome this rule is about.
+			return nil
+		default:
+			enumValues = append(enumValues, o.Value)
+		}
+	}
+	if len(enumValues) == 0 {
+		return nil
+	}
+	// Quote the CE6686 text MxBuild actually prints for this activity kind, so
+	// searching the build output for it lands here.
+	ceText := "the current outcomes of the decision activity do not match the configured expression"
+	if kind == "call microflow" {
+		ceText = "the current outcomes of the call microflow activity do not match the configured microflow"
+	}
+	return []linter.Violation{{
+		RuleID:   "MDL-WF06",
+		Severity: linter.SeverityError,
+		Location: loc,
+		Message: fmt.Sprintf(
+			"%s %s branches on an enumeration but has no outcome for the empty value — MxBuild rejects this (CE6686 %q)",
+			kind, label, ceText),
+		Suggestion: "Add an empty outcome alongside the named values: `'' -> { }`. Mendix generates one outcome per enumeration value plus one for the empty value, and the stored set must match — a required (not null) attribute does not exempt it.",
+	}}
+}
+
+// workflowDecisionLabel returns a human-readable label for a decision.
+func workflowDecisionLabel(n *ast.WorkflowDecisionNode) string {
+	switch {
+	case n.Name != "":
+		return "'" + n.Name + "'"
+	case n.Caption != "":
+		return "'" + n.Caption + "'"
+	case n.Expression != "":
+		return "on '" + n.Expression + "'"
+	}
+	return "(unnamed)"
+}
+
+// workflowCallMicroflowLabel returns a human-readable label for a call-microflow
+// activity.
+func workflowCallMicroflowLabel(n *ast.WorkflowCallMicroflowNode) string {
+	if n.Name != "" {
+		return "'" + n.Name + "'"
+	}
+	if qn := n.Microflow.String(); qn != "" && qn != "." {
+		return "'" + qn + "'"
+	}
+	return "(unnamed)"
 }
 
 // workflowUserTaskLabel returns a human-readable label for a user task.

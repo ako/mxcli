@@ -53,6 +53,14 @@ of 374 example files and 3 of the hits were false positives, because the rule
 read the AST while the outcome depended on what the builder synthesises. The
 corpus is the cheapest false-positive test available.
 
+**Severity turns on what the builder's condition is actually about, and the
+intuitive reading is often the wrong one.** The empty-outcome rule looked like a
+warning — surely an enumeration decision only needs an empty branch when the
+value can be empty — until a *required* attribute was measured and produced the
+same build error. The condition was on the enumeration type, not on the value,
+which makes it an error. Measure the exemption you are about to grant; do not
+infer it.
+
 **Severity is the design decision, not an afterthought.** A rule whose vocabulary
 cannot be proven complete — anything about widget properties, or about a name
 that might be legal in a context the rule cannot see — must be a *warning*, or

@@ -81,6 +81,11 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 		if wfStmt, ok := stmt.(*ast.CreateWorkflowStmt); ok {
 			violations = append(violations, ValidateWorkflow(wfStmt)...)
 		}
+		// An ALTER that inserts or replaces an activity reaches the same build
+		// errors as a CREATE body; MDL-WF06 is checked over what it introduces.
+		if altWfStmt, ok := stmt.(*ast.AlterWorkflowStmt); ok {
+			violations = append(violations, ValidateAlterWorkflow(altWfStmt)...)
+		}
 		// Check GRANT for member rights Mendix cannot store
 		if grantStmt, ok := stmt.(*ast.GrantEntityAccessStmt); ok {
 			violations = append(violations, ValidateGrantEntityAccess(grantStmt)...)

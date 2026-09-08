@@ -74,8 +74,18 @@ func init() {
 		// outcome does not ('OK' { }). The two read alike but are separate
 		// grammar rules, so the arrow is easy to drop — this entry did, and
 		// taught the broken form until TestExamplesParse started checking it.
-		Syntax:  "DECISION [<name>] ['<caption>'] [COMMENT '<text>']\n  OUTCOMES '<outcome>' -> { <activities> } ...;",
-		Example: "DECISION 'Check amount'\n  OUTCOMES\n    'Under 1000' -> { }\n    'Over 1000' -> {\n      USER TASK ManagerApproval 'Manager must approve'\n        OUTCOMES 'OK' { };\n    };",
+		Syntax: "DECISION [<name>] ['<caption>'] [COMMENT '<text>']\n  OUTCOMES TRUE -> { <activities> } FALSE -> { <activities> };\n\n" +
+			"-- branching on an enumeration: one outcome per value PLUS the empty one\n" +
+			"DECISION [<name>] ['<caption>']\n  OUTCOMES '<Module.Enum.Value>' -> { <activities> } ... '' -> { };",
+		// An outcome name is an enumeration value identifier, so free text like
+		// 'Under 1000' is refused (MDL-WF03) — the example taught that form until
+		// it was corrected. An enumeration decision also needs the EMPTY outcome:
+		// Mendix generates one outcome per value plus one for the empty value and
+		// MxBuild compares against that set (CE6686, MDL-WF06).
+		Example: "-- boolean condition: exactly TRUE and FALSE, no empty outcome\n" +
+			"DECISION decision1 'Check amount'\n  OUTCOMES\n    TRUE -> {\n      USER TASK ManagerApproval 'Manager must approve'\n        OUTCOMES 'OK' { };\n    }\n    FALSE -> { };\n\n" +
+			"-- enumeration: every value, plus '' for the empty value (CE6686)\n" +
+			"DECISION decision2 '$WorkflowContext/Kind'\n  OUTCOMES\n    'Sales.Kind.Standard' -> { }\n    'Sales.Kind.Priority' -> { }\n    '' -> { };",
 		SeeAlso: []string{"workflow.create", "workflow.parallel-split"},
 	})
 
