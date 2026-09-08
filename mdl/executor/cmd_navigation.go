@@ -496,9 +496,48 @@ func menuItemIconNote(item *types.NavMenuItem, reproducer string) string {
 // embedded newlines and indentation; emitting it verbatim would terminate the
 // comment mid-XPath and leave the remainder parsed as MDL.
 func singleLine(s string) string {
-	s = strings.ReplaceAll(s, "\r\n", " ")
-	s = strings.ReplaceAll(s, "\n", " ")
-	return strings.Join(strings.Fields(s), " ")
+	// Collapsing whitespace with strings.Fields would also collapse it INSIDE
+	// string literals, so a constraint containing 'two  spaces' would come back
+	// as 'two spaces' — a silent change to the value being matched on, in a
+	// place nothing would look. Quote state is tracked so only whitespace
+	// outside literals is folded.
+	var b strings.Builder
+	inLiteral := false
+	pendingSpace := false
+
+	// write emits one byte, flushing a deferred separator first. Deferring is
+	// what keeps a fold from landing INSIDE the literal that follows it.
+	write := func(c byte) {
+		if pendingSpace {
+			if b.Len() > 0 {
+				b.WriteByte(' ')
+			}
+			pendingSpace = false
+		}
+		b.WriteByte(c)
+	}
+
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c == '\'':
+			// A doubled quote inside a literal is an escaped quote, not a
+			// close: copy both and stay in the literal.
+			if inLiteral && i+1 < len(s) && s[i+1] == '\'' {
+				write('\'')
+				b.WriteByte('\'')
+				i++
+				continue
+			}
+			write(c)
+			inLiteral = !inLiteral
+		case !inLiteral && (c == ' ' || c == '\t' || c == '\n' || c == '\r'):
+			pendingSpace = true
+		default:
+			write(c)
+		}
+	}
+	return b.String()
 }
 
 // syncModeMDL renders a stored sync mode as the MDL that reproduces it.
@@ -520,7 +559,20 @@ func syncModeMDL(mode, constraint string) string {
 	case "NoneAndPreserveData":
 		return "none preserve data"
 	case "Constrained":
-		return fmt.Sprintf("where '%s'", escapeMDLString(singleLine(constraint)))
+		// The bracket form, so nothing is escaped. A stored constraint already
+		// carries Mendix's own quote escaping; wrapping it in a quoted MDL
+		// string doubles every one of those again, and the reference document's
+		// came back as six consecutive quotes — correct, unreadable, and the
+		// thing mendixlabs/mxcli#750 is about.
+		//
+		// Studio Pro stores the constraint bracketed, so the folded value is
+		// normally already `[...]`; one without them is wrapped rather than
+		// assumed to have them.
+		x := singleLine(constraint)
+		if !strings.HasPrefix(x, "[") || !strings.HasSuffix(x, "]") {
+			x = "[" + x + "]"
+		}
+		return "where " + x
 	default:
 		// An unknown member is not guessed at. Emitting a mode MDL cannot spell
 		// would produce a script that fails at check; saying so is honest and

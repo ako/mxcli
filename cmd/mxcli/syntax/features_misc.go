@@ -167,7 +167,7 @@ DISCONNECT;`,
   [SYNC (
     SYNC Module.Entity ONLINE;
     SYNC Module.Entity ALL;
-    SYNC Module.Entity WHERE '[Amount > 0]';
+    SYNC Module.Entity WHERE [Amount > 0];
     SYNC Module.Entity NEVER;
     SYNC Module.Entity NONE;
     SYNC Module.Entity NONE PRESERVE DATA;
@@ -204,10 +204,15 @@ DISCONNECT;`,
 --
 --   ONLINE               fetched from the server, never held on the device
 --   ALL                  every object downloaded
---   WHERE '<xpath>'      only the objects the XPath selects
+--   WHERE [<xpath>]      only the objects the XPath selects
 --   NEVER                not synchronized
 --   NONE                 not downloaded; anything already on the device is dropped
 --   NONE PRESERVE DATA   not downloaded; what is on the device stays
+--
+-- WHERE takes the XPath in BRACKETS, verbatim -- nothing inside is escaped.
+-- A quoted WHERE '<xpath>' still parses, but every quote inside it doubles,
+-- and a stored constraint already carries Mendix's own escaping, so the two
+-- compose into runs of six quotes. DESCRIBE emits the bracket form.
 --
 -- The block REPLACES the stored list, the way MENU replaces the menu. An
 -- entity's compatibility-mode flag has no syntax and is preserved across the

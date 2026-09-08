@@ -3,7 +3,9 @@
 package visitor
 
 import (
+	"github.com/antlr4-go/antlr/v4"
 	"strconv"
+	"strings"
 
 	"github.com/mendixlabs/mxcli/mdl/ast"
 	"github.com/mendixlabs/mxcli/mdl/grammar/parser"
@@ -127,7 +129,20 @@ func buildNavSyncDef(ctx parser.INavSyncDefContext) ast.NavSyncDef {
 		// WHERE implies Constrained: the mode and the constraint come from one
 		// alternative so they cannot disagree.
 		def.Mode = "Constrained"
-		if lit := mc.STRING_LITERAL(); lit != nil {
+		if xc := mc.XpathConstraint(); xc != nil {
+			// First-class form. The source text is taken verbatim and stored
+			// bracketed, exactly as a RETRIEVE's multi-predicate WHERE does —
+			// no unescaping, because nothing was escaped.
+			xcCtx := xc.(*parser.XpathConstraintContext)
+			if xe := xcCtx.XpathExpr(); xe != nil {
+				if prc, ok := xe.(antlr.ParserRuleContext); ok {
+					if src := strings.TrimSpace(extractExpressionText(prc)); src != "" {
+						def.Constraint = normalizeXPathTokens("[" + src + "]")
+					}
+				}
+			}
+		} else if lit := mc.STRING_LITERAL(); lit != nil {
+			// Legacy quoted form: the '' pairs are MDL escaping and come off here.
 			def.Constraint = unquoteString(lit.GetText())
 		}
 	}

@@ -203,7 +203,7 @@ create or replace navigation PhoneOffline
   sync (
     sync MyModule.Setting online;
     sync MyModule.Vehicle all;
-    sync MyModule.Trip where '[Distance > 0]';
+    sync MyModule.Trip where [Distance > 0];
     sync MyModule.AuditEntry never;
     sync MyModule.Lookup none;
     sync MyModule.Draft none preserve data;
@@ -214,7 +214,7 @@ create or replace navigation PhoneOffline
 |---|---|
 | `online` | fetched from the server, never held on the device |
 | `all` | every object downloaded |
-| `where '<xpath>'` | only the objects the XPath selects |
+| `where [<xpath>]` | only the objects the XPath selects |
 | `never` | not synchronized |
 | `none` | not downloaded; anything already on the device is dropped |
 | `none preserve data` | not downloaded; what is on the device stays |
@@ -227,12 +227,17 @@ is deliberate.
 **`where` implies the constrained mode** rather than naming it, so a constraint
 without a mode and a mode without a constraint are both unspellable.
 
-**Quote doubling matters here.** An offline constraint routinely contains quoted
-literals, and every `'` inside the MDL string is doubled:
+**Use the bracket form.** It takes the XPath verbatim — nothing inside is
+escaped, so quoted literals stay readable:
 
 ```sql
-sync MyModule.Team where '[contains(Name, ''''abc'''')]';
+sync MyModule.Team where [contains(Name, 'abc')];
 ```
+
+A quoted `where '<xpath>'` still parses, but every quote inside it must be
+doubled — and a stored constraint already carries Mendix's own escaping, so the
+two compose into runs of six quotes. `describe navigation` emits the bracket
+form. This is the general problem tracked as `mendixlabs/mxcli#750`.
 
 **The block replaces the stored list**, the way `menu (...)` replaces the menu.
 Omitting it leaves the stored configuration alone.

@@ -3,9 +3,11 @@
 package visitor
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/mendixlabs/mxcli/generated/metamodel"
+	"github.com/mendixlabs/mxcli/mdl/ast"
 )
 
 // Every MDL sync word must map to a DECLARED member of Navigation$SyncMode.
@@ -89,5 +91,42 @@ func TestSyncKeywordsStayUsableAsIdentifiers(t *testing.T) {
 				t.Errorf("%q is no longer usable as an identifier: %v", word, errs[0])
 			}
 		})
+	}
+}
+
+// Both WHERE forms must reach the same stored constraint. The bracket form is
+// what DESCRIBE emits and is the one to use; the quoted form still parses
+// because scripts already contain it.
+//
+// The escaping is the whole point of the pair: inside the quoted form every
+// quote doubles, and a stored constraint already carries Mendix's own escaping,
+// so the two compose — which is how the reference document's constraint came
+// back as six consecutive quotes (mendixlabs/mxcli#750).
+func TestBothWhereFormsProduceTheSameConstraint(t *testing.T) {
+	bracket := "create or replace navigation TabletOffline sync ( sync Mod.E where [contains(V, 'abc')]; )"
+	quoted := "create or replace navigation TabletOffline sync ( sync Mod.E where '[contains(V, ''abc'')]'; )"
+
+	got := map[string]string{}
+	for name, src := range map[string]string{"bracket": bracket, "quoted": quoted} {
+		prog, errs := Build(src)
+		if len(errs) > 0 {
+			t.Fatalf("%s form failed to parse: %v", name, errs[0])
+		}
+		stmt, ok := prog.Statements[0].(*ast.AlterNavigationStmt)
+		if !ok || len(stmt.SyncEntries) != 1 {
+			t.Fatalf("%s form did not produce one sync entry: %+v", name, prog.Statements[0])
+		}
+		e := stmt.SyncEntries[0]
+		if e.Mode != "Constrained" {
+			t.Errorf("%s form: mode = %q, want Constrained (WHERE implies it)", name, e.Mode)
+		}
+		got[name] = e.Constraint
+	}
+
+	if got["bracket"] != got["quoted"] {
+		t.Errorf("the two WHERE forms disagree:\n bracket %q\n quoted  %q", got["bracket"], got["quoted"])
+	}
+	if !strings.Contains(got["bracket"], "'abc'") {
+		t.Errorf("the literal lost its quotes: %q", got["bracket"])
 	}
 }

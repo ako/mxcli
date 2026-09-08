@@ -355,7 +355,14 @@ navSyncMode
     | NEVER
     | NONE PRESERVE DATA
     | NONE
-    | WHERE STRING_LITERAL
+    // The bracket form is the first-class one and is what DESCRIBE emits: an
+    // XPath constraint routinely contains quoted literals, and inside a quoted
+    // MDL string every one of them doubles — the stored value already carries
+    // Mendix's own escaping, so the two compose into runs of six quotes
+    // (mendixlabs/mxcli#750). Brackets take the XPath verbatim.
+    //
+    // The quoted form still parses, because scripts already use it.
+    | WHERE (xpathConstraint | STRING_LITERAL)
     ;
 
 // The icon is a qualifiedName, like every other reference into the model, and

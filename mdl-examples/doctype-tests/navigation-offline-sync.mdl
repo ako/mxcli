@@ -58,7 +58,13 @@ create or replace navigation "PhoneOffline"
     sync "OfflineSync"."Vehicle" all;
     -- Only what the XPath selects. WHERE implies the constrained mode, so a
     -- constraint without a mode cannot be written.
-    sync "OfflineSync"."Trip" where '[Distance > 0]';
+    --
+    -- The bracket form takes the XPath verbatim: nothing inside it is escaped,
+    -- and quoted literals stay readable. A quoted 'string' still parses, but
+    -- every quote inside it has to be doubled -- and the stored value already
+    -- carries Mendix's own escaping, so the two compose into runs of six
+    -- quotes (mendixlabs/mxcli#750). DESCRIBE emits the bracket form.
+    sync "OfflineSync"."Trip" where [Distance > 0 and contains(Name, 'ab')];
     -- Not synchronized at all.
     sync "OfflineSync"."AuditEntry" never;
     -- Not downloaded, and anything already on the device is dropped.
