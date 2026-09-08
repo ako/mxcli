@@ -167,10 +167,25 @@ type MenuDocument struct {
 func (m *MenuDocument) GetName() string { return m.Name }
 
 // NavOfflineEntity declares offline sync rules for an entity.
+//
+// These are the four properties Studio Pro writes on a web profile, measured
+// against ako/TestApp's TabletOffline profile (seven configs, all six sync
+// modes). modelsdk/gen declares two more — DownloadMode and ShouldDownload —
+// which occur ZERO times in that document; they are presumably native-only, and
+// a writer must not start emitting them. A property absent from every real
+// document is one Studio Pro fills in on load, so writing it is how a document
+// mxbuild accepts becomes one Studio Pro cannot open.
+//
+// CompatibilityMode is carried but not authorable. It exists so a future write
+// path can put it back unchanged instead of dropping it — the mistake that had
+// `create or modify entity` deleting access rules.
 type NavOfflineEntity struct {
 	Entity     string `json:"entity"`
 	SyncMode   string `json:"syncMode"`
 	Constraint string `json:"constraint,omitempty"`
+	// CompatibilityMode is read and preserved, never authored. Every reference
+	// config carries false; the true case has not been observed.
+	CompatibilityMode bool `json:"compatibilityMode,omitempty"`
 }
 
 // NavigationProfileSpec specifies changes to a navigation profile.

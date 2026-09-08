@@ -347,9 +347,16 @@ func outputNavigationProfile(ctx *ExecContext, p *types.NavigationProfile) {
 		for _, oe := range p.OfflineEntities {
 			constraint := ""
 			if oe.Constraint != "" {
-				constraint = fmt.Sprintf(" where '%s'", oe.Constraint)
+				// The stored constraint is multi-line in real documents
+				// (measured on ako/TestApp), and a newline inside a `--`
+				// comment would end the comment and leave XPath as MDL.
+				constraint = fmt.Sprintf(" where '%s'", singleLine(oe.Constraint))
 			}
-			fmt.Fprintf(ctx.Output, "  -- SYNC %s MODE %s%s;\n", oe.Entity, oe.SyncMode, constraint)
+			compat := ""
+			if oe.CompatibilityMode {
+				compat = " compatibility mode"
+			}
+			fmt.Fprintf(ctx.Output, "  -- SYNC %s MODE %s%s%s;\n", oe.Entity, oe.SyncMode, constraint, compat)
 		}
 	}
 
@@ -472,4 +479,14 @@ func menuItemIconNote(item *types.NavMenuItem, reproducer string) string {
 	}
 	return fmt.Sprintf("-- icon %s (%s) is not reproducible by %s; set it in Studio Pro",
 		target, item.IconType, reproducer)
+}
+
+// singleLine folds a stored multi-line value onto one line so it can appear
+// inside a `--` comment. Studio Pro writes an offline sync constraint with
+// embedded newlines and indentation; emitting it verbatim would terminate the
+// comment mid-XPath and leave the remainder parsed as MDL.
+func singleLine(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", " ")
+	s = strings.ReplaceAll(s, "\n", " ")
+	return strings.Join(strings.Fields(s), " ")
 }
