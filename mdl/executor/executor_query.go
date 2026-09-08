@@ -8,7 +8,11 @@ import (
 )
 
 func execShow(ctx *ExecContext, s *ast.ShowStmt) error {
-	if !ctx.Connected() && s.ObjectType != ast.ShowModules && s.ObjectType != ast.ShowFragments {
+	// SHOW GLYPHS reads the Mendix glyph font, not the project, so a connection
+	// would be an arbitrary requirement — and the rule that sends people here
+	// (MDL078) runs in the project-free pass too.
+	if !ctx.Connected() && s.ObjectType != ast.ShowModules && s.ObjectType != ast.ShowFragments &&
+		s.ObjectType != ast.ShowGlyphs {
 		return mdlerrors.NewNotConnected()
 	}
 
@@ -131,6 +135,8 @@ func execShow(ctx *ExecContext, s *ast.ShowStmt) error {
 		return listImageCollections(ctx, s.InModule)
 	case ast.ShowIconCollections:
 		return listIconCollections(ctx, s.InModule)
+	case ast.ShowGlyphs:
+		return listGlyphs(ctx, s.Like)
 	case ast.ShowModels:
 		return listAgentEditorModels(ctx, s.InModule)
 	case ast.ShowAgents:
@@ -175,7 +181,8 @@ func execDescribe(ctx *ExecContext, s *ast.DescribeStmt) error {
 	// is better — the installed .mpk is version-accurate and covers Marketplace
 	// widgets — but requiring one would make the statement useless for exactly
 	// the "what can I write here?" question it exists to answer.
-	if !ctx.Connected() && s.ObjectType != ast.DescribeFragment && s.ObjectType != ast.DescribeWidget {
+	if !ctx.Connected() && s.ObjectType != ast.DescribeFragment && s.ObjectType != ast.DescribeWidget &&
+		s.ObjectType != ast.DescribeGlyph {
 		return mdlerrors.NewNotConnected()
 	}
 
@@ -265,6 +272,8 @@ func execDescribe(ctx *ExecContext, s *ast.DescribeStmt) error {
 			return describeImageCollection(ctx, s.Name)
 		case ast.DescribeIconCollection:
 			return describeIconCollection(ctx, s.Name)
+		case ast.DescribeGlyph:
+			return describeGlyph(ctx, s.Qualifier)
 		case ast.DescribeModel:
 			return describeAgentEditorModel(ctx, s.Name)
 		case ast.DescribeAgent:
@@ -364,6 +373,8 @@ func describeObjectTypeLabel(t ast.DescribeObjectType) string {
 		return "imagecollection"
 	case ast.DescribeIconCollection:
 		return "iconcollection"
+	case ast.DescribeGlyph:
+		return "glyph"
 	case ast.DescribeModel:
 		return "model"
 	case ast.DescribeAgent:

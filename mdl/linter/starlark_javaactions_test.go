@@ -261,7 +261,12 @@ func allKindsFixture(t *testing.T) (*catalog.Catalog, map[string]string) {
 	// export_mappings declare `Id INTEGER PRIMARY KEY AUTOINCREMENT` while every
 	// other table uses `Id TEXT PRIMARY KEY`, so a synthetic string id is a
 	// datatype mismatch on exactly those three.
-	want := map[string]string{"Module": "Racing"}
+	// Module is deliberately NOT in here. A Mendix module has no documentation
+	// property at all — the metamodel declares none, modelsdk/gen offers no
+	// accessor, and no stored Projects$ModuleImpl carries the key — so QUAL002
+	// no longer sweeps modules. The module row above still exists because every
+	// other element in this fixture lives in it.
+	want := map[string]string{}
 	for table, meta := range tables {
 		name := meta.kind + "X"
 		q := fmt.Sprintf(
@@ -439,7 +444,10 @@ func TestQUAL002_ExcludesTheSystemModule(t *testing.T) {
 	if strings.Contains(joined, "'System'") {
 		t.Errorf("the System module itself was reported:\n%s", joined)
 	}
-	if !strings.Contains(joined, "'Racing'") {
-		t.Errorf("the user's own module stopped being reported:\n%s", joined)
+	// The positive control. Excluding System must not exclude the user's own
+	// module along with it, and an entity is what carries that now — a module is
+	// no longer reported at all, so its absence proves nothing here.
+	if !strings.Contains(joined, "'EntityX'") {
+		t.Errorf("the user's own module's contents stopped being reported:\n%s", joined)
 	}
 }
