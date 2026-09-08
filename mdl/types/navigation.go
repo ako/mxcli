@@ -195,6 +195,22 @@ type NavigationProfileSpec struct {
 	NotFoundPage string
 	MenuItems    []NavMenuItemSpec
 	HasMenu      bool
+	// OfflineEntities is the SYNC block. HasSync distinguishes "no block was
+	// written, leave the stored list alone" from "an empty block was written,
+	// clear it" — the same distinction HasMenu draws, and the reason a spec
+	// field alone is not enough.
+	OfflineEntities []NavOfflineEntitySpec
+	HasSync         bool
+}
+
+// NavOfflineEntitySpec is one entity's offline sync rule, as MDL can express
+// it. CompatibilityMode is deliberately absent: it is stored, carried on read
+// and preserved on write, but there is no syntax for it — so a spec that could
+// express it would invite a writer to set it from a value nobody supplied.
+type NavOfflineEntitySpec struct {
+	Entity     string
+	SyncMode   string
+	Constraint string
 }
 
 // NavHomePageSpec specifies a home page assignment.

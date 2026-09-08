@@ -654,6 +654,12 @@ keyword
 
     // Navigation
     | FOUND | HOME | HOMES | LOGIN | MENU_KW | NAVIGATION
+    // Offline synchronization. These have to stay usable as identifiers: NEVER
+    // is already a value elsewhere in MDL (`editable: never` on a list view),
+    // and ONLINE/SYNC/PRESERVE are plausible entity and attribute names. A new
+    // keyword that is not listed here silently steals every existing use of
+    // that word — which is what TestKeywordRuleCoverage exists to catch.
+    | SYNC | ONLINE | NEVER | PRESERVE
 
     // Log levels
     | CRITICAL | DEBUG | ERROR | INFO | SUCCESS | WARNING
