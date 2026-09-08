@@ -550,9 +550,10 @@ func parseNavigationProfile(raw map[string]any) *NavigationProfile {
 	for _, item := range extractBsonArray(raw["OfflineEntityConfigs"]) {
 		if oeMap, ok := item.(map[string]any); ok {
 			oe := &NavOfflineEntity{
-				Entity:     extractString(oeMap["Entity"]),
-				SyncMode:   extractString(oeMap["SyncMode"]),
-				Constraint: extractString(oeMap["Constraint"]),
+				Entity:            extractString(oeMap["Entity"]),
+				SyncMode:          extractString(oeMap["SyncMode"]),
+				Constraint:        extractString(oeMap["Constraint"]),
+				CompatibilityMode: extractBool(oeMap["CompatibilityMode"], false),
 			}
 			if oe.Entity != "" {
 				profile.OfflineEntities = append(profile.OfflineEntities, oe)

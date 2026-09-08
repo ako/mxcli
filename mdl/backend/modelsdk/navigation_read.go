@@ -217,9 +217,10 @@ func appendOfflineEntities(profile *types.NavigationProfile, items []element.Ele
 			continue
 		}
 		e := &types.NavOfflineEntity{
-			Entity:     oe.EntityQualifiedName(),
-			SyncMode:   oe.SyncMode(),
-			Constraint: oe.Constraint(),
+			Entity:            oe.EntityQualifiedName(),
+			SyncMode:          oe.SyncMode(),
+			Constraint:        oe.Constraint(),
+			CompatibilityMode: oe.CompatibilityMode(),
 		}
 		if e.Entity != "" {
 			profile.OfflineEntities = append(profile.OfflineEntities, e)
