@@ -65,6 +65,15 @@ func (q *Queue) Load() ([]Entry, error) {
 // motivated it in mxcli's own findings store was a many-parallel-writers
 // problem, and one developer on one project has little exposure to it (A5).
 func (q *Queue) Append(e Entry) (added bool, err error) {
+	// The write itself is a short O_APPEND and needs no protection. The lock is
+	// held for the duplicate check, and — more importantly — so that a promote
+	// cannot be rebuilding the file from a snapshot taken before this line.
+	release, err := acquireQueueLock(q.Path)
+	if err != nil {
+		return false, err
+	}
+	defer release()
+
 	entries, err := q.Load()
 	if err != nil {
 		return false, err
@@ -93,7 +102,17 @@ func (q *Queue) Append(e Entry) (added bool, err error) {
 }
 
 // Drop removes an entry from the queue by id.
+//
+// This is the read-modify-write half of a promote, so the lock spans the load
+// and the rewrite: without it a capture landing between the two is overwritten
+// by a queue rebuilt from before it existed.
 func (q *Queue) Drop(id string) (bool, error) {
+	release, err := acquireQueueLock(q.Path)
+	if err != nil {
+		return false, err
+	}
+	defer release()
+
 	entries, err := q.Load()
 	if err != nil {
 		return false, err
@@ -130,10 +149,7 @@ func (q *Queue) write(entries []Entry) error {
 		b.Write(line)
 		b.WriteByte('\n')
 	}
-	if err := os.MkdirAll(filepath.Dir(q.Path), 0755); err != nil {
-		return err
-	}
-	return os.WriteFile(q.Path, []byte(b.String()), 0644)
+	return writeFileAtomic(q.Path, []byte(b.String()))
 }
 
 // Get returns the queued entry with the given id.
