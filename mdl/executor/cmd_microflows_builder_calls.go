@@ -665,10 +665,25 @@ func (fb *flowBuilder) resolveExternalActionReturnKind(serviceRef ast.QualifiedN
 	return "", ""
 }
 
-// externalParamKind is one action parameter's resolved Mendix type.
+// externalParamKind is one action parameter's resolved Mendix type, plus
+// whether the contract lets the argument be left empty.
 type externalParamKind struct {
-	kind   string // "String", "Object", … — same vocabulary as the return type
-	entity string // set only for Object/List
+	kind       string // "String", "Object", … — same vocabulary as the return type
+	entity     string // set only for Object/List
+	canBeEmpty bool   // the contract's Nullable, which Mendix stores as CanBeEmpty
+}
+
+// paramCanBeEmpty reads a parameter's nullability the way Mendix does.
+//
+// CSDL makes Nullable OPTIONAL on <Parameter> and defaults it to true, so an
+// absent attribute means nullable — the opposite of Go's zero value. Getting
+// this backwards is invisible in a contract that spells every Nullable out and
+// only shows up on one that does not.
+func paramCanBeEmpty(p *types.EdmActionParameter) bool {
+	if p.Nullable == nil {
+		return true
+	}
+	return *p.Nullable
 }
 
 // resolveExternalActionParameterKinds types every parameter of the called action
@@ -703,14 +718,16 @@ func (fb *flowBuilder) resolveExternalActionParameterKinds(serviceRef ast.Qualif
 				continue
 			}
 			for _, p := range act.Parameters {
+				// Nullability is recorded even when the type does not resolve:
+				// CanBeEmpty is read straight off the contract and does not
+				// depend on mxcli being able to name the Mendix type.
+				pk := externalParamKind{canBeEmpty: paramCanBeEmpty(p)}
 				if kind := edmReturnTypeToKind(p.Type); kind != "" && kind != "Void" {
-					out[strings.ToLower(p.Name)] = externalParamKind{kind: kind}
-					continue
+					pk.kind = kind
+				} else if kind, entity := fb.resolveExternalActionReturnEntity(serviceRef, p.Type); kind != "" {
+					pk.kind, pk.entity = kind, entity
 				}
-				// Entity-typed parameter: same resolution as an entity return.
-				if kind, entity := fb.resolveExternalActionReturnEntity(serviceRef, p.Type); kind != "" {
-					out[strings.ToLower(p.Name)] = externalParamKind{kind: kind, entity: entity}
-				}
+				out[strings.ToLower(p.Name)] = pk
 			}
 			return out
 		}
@@ -847,6 +864,10 @@ func (fb *flowBuilder) addCallExternalActionAction(s *ast.CallExternalActionStmt
 		if pk, ok := paramKinds[strings.ToLower(arg.Name)]; ok {
 			mapping.ParameterDataType = pk.kind
 			mapping.ParameterEntity = pk.entity
+			// Mendix compares CanBeEmpty against the contract's Nullable and
+			// raises CE7252 when they disagree, so leaving it at Go's false
+			// makes every call on a nullable parameter unbuildable.
+			mapping.CanBeEmpty = pk.canBeEmpty
 		}
 		mappings = append(mappings, mapping)
 	}
