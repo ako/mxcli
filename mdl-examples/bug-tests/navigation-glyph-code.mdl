@@ -1,0 +1,99 @@
+-- `icon glyph <n>` with a code the Mendix glyph font does not define broke the
+-- build, blaming a document nobody had touched (ako/CapTrackV4 007, R2).
+--
+--   menu item 'Overview' page M.P icon glyph 57562;
+--   mxcli check -> passed
+--   mx check    -> 0 errors
+--   mxbuild --target=deploy ->
+--     ERROR: One or more errors occurred.
+--     (An exception occurred while exporting layout 'CapTrack.App_Default'.)
+--
+-- Neither the navigation nor the menu item is mentioned, and the layout named is
+-- fine. Bisecting it cost three build cycles.
+--
+-- THE MECHANISM, measured on 11.14.0 with two full builds of one project
+-- differing only in the code:
+--
+--   57562 (0xEBDA)   ERROR ... exporting layout 'CapTrack.App_Default'
+--                    -> System.InvalidOperationException:
+--                       Sequence contains no matching element
+--                       at ...Forms.Icons.GlyphFont.GetClass(Int32 code)
+--   57377 (0xE021)   pages and layouts export cleanly
+--
+-- GlyphFont.GetClass is a LINQ `.First(...)` over mxbuild's glyph table, so an
+-- absent code throws instead of reporting. MDL078 checks the same set: the cmap
+-- of the font Atlas_Core ships (glyphicons-halflings-regular.woff), 247 codes in
+-- 35 runs, which agrees with mxbuild on both measured points.
+--
+-- A WARNING, not an error. The table is a snapshot of a Mendix asset, and if
+-- Mendix ever extends the font then refusing a newly-valid code would be worse
+-- than the gap this closes.
+--
+-- THE BETTER SPELLING is an icon collection reference, which is a model
+-- reference and is resolved by `mxcli check --references` before anything is
+-- written (finding 013):
+--
+--   icon Atlas_Core.Atlas."user-neutral-group"
+--
+-- Browse them with `describe icon collection Atlas_Core.Atlas`.
+--
+-- AND THE GLYPHS THEMSELVES are now browsable, which they were not when MDL078
+-- landed — its advice was a list of numeric ranges with holes in it:
+--
+--   show glyphs;                -- all 247, with names
+--   show glyphs like 'star';    -- 57350 star, 57351 star-empty
+--   describe glyph 57350;       -- by code
+--   describe glyph 'star';      -- or by name
+--
+-- Neither needs a project: a glyph is a character code in a font, not a document.
+--
+-- Verify:
+--
+--   mxcli check navigation-glyph-code.mdl
+--     -- one MDL078 warning, for GlyphNav.PG_Bad's item only
+--
+-- Then perturb:
+--
+--   change 57377 to 57344 (0xE000, one below the font's first code)
+--     -> a second MDL078. Before the rule: silence here, and a failed deploy
+--        naming an unrelated layout.
+
+create module GlyphNav;
+/
+
+/** A page for the menu items to point at. */
+CREATE OR REPLACE PAGE GlyphNav.PG_Home ( Title: 'Home', Layout: Atlas_Core.Atlas_Default )
+{
+  CONTAINER root { DYNAMICTEXT txt (Content: 'home') }
+}
+/
+
+-- THE REPORTED CASE. 57562 is past the font's last icon (57952 / 0xE260) with
+-- nothing in between, so mxbuild's lookup throws.
+create or modify menu GlyphNav.MENU_Bad (
+  menu item 'Overview' page GlyphNav.PG_Home icon glyph 57562;
+)
+/
+
+-- CONTROL: the code the blank app itself ships. A rule that flagged glyphs in
+-- general would reject this, and every working navigation with it.
+create or modify menu GlyphNav.MENU_Good (
+  menu item 'Overview' page GlyphNav.PG_Home icon glyph 57377;
+)
+/
+
+-- CONTROL: the spelling that avoids the whole problem. An icon collection entry
+-- is resolved by `check --references`, so a wrong NAME is caught immediately
+-- where a wrong NUMBER never was.
+create or modify menu GlyphNav.MENU_Collection (
+  menu item 'Overview' page GlyphNav.PG_Home icon Atlas_Core.Atlas.dashboard;
+)
+/
+
+-- The browsing commands, which is how the code above is meant to be found.
+-- Read-only, and they work without `-p`.
+show glyphs like 'star';
+/
+
+describe glyph 57350;
+/

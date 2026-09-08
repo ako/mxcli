@@ -84,7 +84,7 @@ func init() {
 			"user role", "application role", "manage roles",
 			"add module roles", "remove module roles",
 		},
-		Syntax:  "CREATE USER ROLE <name> (<role> [, ...]) [MANAGE ALL ROLES];\nALTER USER ROLE <name> ADD MODULE ROLES (<role> [, ...]);\nALTER USER ROLE <name> REMOVE MODULE ROLES (<role> [, ...]);\nDROP USER ROLE <name>;",
+		Syntax:  "CREATE USER ROLE <name> (<role> [, ...]) [MANAGE ALL ROLES];\nALTER USER ROLE <name> ADD MODULE ROLES (<role> [, ...]);\nALTER USER ROLE <name> REMOVE MODULE ROLES (<role> [, ...]);\nDROP USER ROLE [IF EXISTS] <name>;",
 		Example: "CREATE USER ROLE AppAdmin (Shop.Admin, HR.Admin) MANAGE ALL ROLES;\nALTER USER ROLE AppAdmin ADD MODULE ROLES (Reporting.Viewer);",
 		SeeAlso: []string{"security.module-role", "security.demo-user"},
 	})
@@ -130,7 +130,7 @@ func init() {
 			"demo user", "test user", "demo account",
 			"password", "login",
 		},
-		Syntax:  "CREATE DEMO USER '<name>' PASSWORD '<pass>' [ENTITY Module.Entity] (<userrole> [, ...]);\nDROP DEMO USER '<name>';",
+		Syntax:  "CREATE DEMO USER '<name>' PASSWORD '<pass>' [ENTITY Module.Entity] (<userrole> [, ...]);\nDROP DEMO USER [IF EXISTS] '<name>';",
 		Example: "CREATE DEMO USER 'admin' PASSWORD 'Admin1!' (AppAdmin);\nCREATE DEMO USER 'user' PASSWORD 'User1!' (AppUser);",
 		SeeAlso: []string{"security.user-role", "security.project-security"},
 	})

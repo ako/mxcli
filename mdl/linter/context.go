@@ -1561,8 +1561,14 @@ type documentableSource struct {
 //     most of them, and flagging every widget would drown the rule.
 //   - contract_entities — generated from a remote service's $metadata. Not the
 //     user's text to write, so not the user's omission to report.
+//   - modules — a Mendix module HAS no documentation property, so the rule was
+//     asking for something no editor can supply. Measured three ways: the
+//     metamodel's ProjectsModule declares none, modelsdk/gen's Module offers no
+//     Documentation accessor, and none of a real project's stored
+//     Projects$ModuleImpl units contains the key. It reported every module of
+//     every project forever, which is what a report of 39 unanswerable warnings
+//     looks like from the inside (ako/CapTrackV4 R12).
 var documentableSources = []documentableSource{
-	{"modules", "Module", "Description"},
 	{"entities", "Entity", "Description"},
 	{"associations", "Association", "Description"},
 	{"pages", "Page", "Description"},

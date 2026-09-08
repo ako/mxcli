@@ -386,6 +386,7 @@ IMAGE: I M A G E;
 // GLYPH names Mendix's legacy icon element (Forms$GlyphIcon), a numeric
 // character code rather than a reference into a collection.
 GLYPH: G L Y P H;
+GLYPHS: G L Y P H S;
 QUEUE: Q U E U E;
 QUEUES: Q U E U E S;
 SCHEDULED: S C H E D U L E D;

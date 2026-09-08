@@ -5,7 +5,7 @@
 # covers every document type a user authors, not just the domain model.
 #
 # Documents swept generically (one option each, all default True):
-#   Module, Entity, Page, Snippet, BuildingBlock, Layout, Enumeration,
+#   Entity, Page, Snippet, BuildingBlock, Layout, Enumeration,
 #   JavaScriptAction, ImageCollection, DataTransformer, Workflow,
 #   BusinessEventService, RestClient, PublishedRestService, Constant,
 #   JsonStructure, ImportMapping, ExportMapping
@@ -41,11 +41,6 @@ SEVERITY = "info"
 # A new Mendix document type is covered by adding a row in Go's
 # documentableSources and a row here — not by writing another loop.
 _DOC_KINDS = {
-    "Module": (
-        "check_modules",
-        "Module",
-        "Document what the module is for: it is the first thing a newcomer opens.",
-    ),
     "Entity": (
         "check_entities",
         "Entity",

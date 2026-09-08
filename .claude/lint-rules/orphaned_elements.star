@@ -28,7 +28,7 @@ ENTRY_PAGE_PATTERNS = ["Home", "Login", "Index", "Dashboard"]
 # Reference kinds that mean "something causes this microflow to run". These are
 # catalog RefKind values (mdl/catalog/builder_references.go); a kind missing here
 # turns a live document into a false "not called from anywhere" finding.
-MICROFLOW_ENTRY_KINDS = ["call", "schedule", "datasource", "action", "calculate"]
+MICROFLOW_ENTRY_KINDS = ["call", "schedule", "datasource", "action", "calculate", "settings"]
 
 # Reference kinds that mean "something opens this page".
 PAGE_ENTRY_KINDS = ["show_page", "home_page", "login_page", "menu_item", "action"]
@@ -70,9 +70,16 @@ def check():
         #   datasource  a page or widget uses it as a data source
         #   action      a widget button calls it
         #   calculate   a calculated attribute computes with it
+        #   settings    a project setting names it (after-startup, before-shutdown,
+        #               health-check) — the RUNTIME calls it, and nothing in the
+        #               model does
         #
         # The banking-app report hit the 'datasource' case: DS_CurrentCustomer and
-        # DS_MyAccounts are both page data sources and both were flagged.
+        # DS_MyAccounts are both page data sources and both were flagged. The
+        # CapTrackV4 report hit 'settings': the project's own AfterStartupMicroflow
+        # was reported as "not called from anywhere. Remove if unused", and taking
+        # that advice left a dangling name mx check did not catch either — only the
+        # runtime refused to start.
         has_callers = False
         for ref in refs:
             if ref.ref_kind in MICROFLOW_ENTRY_KINDS:

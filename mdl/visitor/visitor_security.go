@@ -94,7 +94,10 @@ func (b *Builder) ExitDropUserRoleStatement(ctx *parser.DropUserRoleStatementCon
 		name = unquoteString(sl.GetText())
 	}
 	if name != "" {
-		b.statements = append(b.statements, &ast.DropUserRoleStmt{Name: name})
+		b.statements = append(b.statements, &ast.DropUserRoleStmt{
+			Name:     name,
+			IfExists: ctx.IfExists() != nil,
+		})
 	}
 }
 
@@ -464,6 +467,7 @@ func (b *Builder) ExitDropDemoUserStatement(ctx *parser.DropDemoUserStatementCon
 	if sl := ctx.STRING_LITERAL(); sl != nil {
 		b.statements = append(b.statements, &ast.DropDemoUserStmt{
 			UserName: unquoteString(sl.GetText()),
+			IfExists: ctx.IfExists() != nil,
 		})
 	}
 }

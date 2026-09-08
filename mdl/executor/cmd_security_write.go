@@ -315,6 +315,10 @@ func execDropUserRole(ctx *ExecContext, s *ast.DropUserRoleStmt) error {
 		}
 	}
 	if !found {
+		if s.IfExists {
+			fmt.Fprintf(ctx.Output, "User role '%s' does not exist, skipping\n", s.Name)
+			return nil
+		}
 		return mdlerrors.NewNotFound("user role", s.Name)
 	}
 
@@ -1393,6 +1397,10 @@ func execDropDemoUser(ctx *ExecContext, s *ast.DropDemoUserStmt) error {
 		}
 	}
 	if !found {
+		if s.IfExists {
+			fmt.Fprintf(ctx.Output, "Demo user '%s' does not exist, skipping\n", s.UserName)
+			return nil
+		}
 		return mdlerrors.NewNotFound("demo user", s.UserName)
 	}
 

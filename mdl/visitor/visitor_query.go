@@ -592,6 +592,14 @@ func (b *Builder) ExitShowStatement(ctx *parser.ShowStatementContext) {
 			}
 		}
 		b.statements = append(b.statements, stmt)
+	} else if ctx.GLYPHS() != nil {
+		// SHOW GLYPHS [LIKE 'pattern'] — the Mendix glyph font, not a project
+		// document, so there is no IN clause.
+		stmt := &ast.ShowStmt{ObjectType: ast.ShowGlyphs}
+		if sl := ctx.STRING_LITERAL(); sl != nil {
+			stmt.Like = unquoteString(sl.GetText())
+		}
+		b.statements = append(b.statements, stmt)
 	} else if ctx.ICON() != nil && ctx.COLLECTION() != nil {
 		// SHOW ICON COLLECTION [IN module]
 		stmt := &ast.ShowStmt{ObjectType: ast.ShowIconCollections}
@@ -803,6 +811,22 @@ func (b *Builder) ExitDescribeStatement(ctx *parser.DescribeStatementContext) {
 			stmt.Module = identifierOrKeywordText(ids[0])
 		}
 		b.statements = append(b.statements, stmt)
+		return
+	}
+
+	// DESCRIBE GLYPH 57350 | DESCRIBE GLYPH 'star'. Placed with the other
+	// no-document statements: a glyph is a character code in a font, so it has no
+	// qualified name for the chain below to build.
+	if ctx.GLYPH() != nil {
+		stmt := &ast.DescribeStmt{ObjectType: ast.DescribeGlyph}
+		if n := ctx.NUMBER_LITERAL(); n != nil {
+			stmt.Qualifier = n.GetText()
+		} else if sl := ctx.STRING_LITERAL(); sl != nil {
+			stmt.Qualifier = unquoteString(sl.GetText())
+		}
+		if stmt.Qualifier != "" {
+			b.statements = append(b.statements, stmt)
+		}
 		return
 	}
 
