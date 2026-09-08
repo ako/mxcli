@@ -580,6 +580,55 @@ func buildEntityEnumAttrMap(ctx *ExecContext, entityQN string) map[string]string
 	return result
 }
 
+// buildAssociationQualifiedNames returns a set of all association qualified names
+// in the project, covering both intra-module associations and cross-module ones
+// (which live on the FROM entity's domain model, so both come off the same walk).
+func buildAssociationQualifiedNames(ctx *ExecContext) map[string]bool {
+	result := make(map[string]bool)
+	modules, err := getModulesFromCache(ctx)
+	if err != nil {
+		return result
+	}
+	moduleNames := make(map[model.ID]string)
+	for _, m := range modules {
+		moduleNames[m.ID] = m.Name
+	}
+	dms, err := ctx.Backend.ListDomainModels()
+	if err != nil {
+		return result
+	}
+	for _, dm := range dms {
+		modName := moduleNames[dm.ContainerID]
+		if modName == "" {
+			continue
+		}
+		for _, assoc := range dm.Associations {
+			result[modName+"."+assoc.Name] = true
+		}
+		for _, ca := range dm.CrossAssociations {
+			result[modName+"."+ca.Name] = true
+		}
+	}
+	return result
+}
+
+// buildRuleQualifiedNames returns a set of all rule qualified names in the project.
+func buildRuleQualifiedNames(ctx *ExecContext) map[string]bool {
+	result := make(map[string]bool)
+	h, err := getHierarchy(ctx)
+	if err != nil {
+		return result
+	}
+	rules, err := ctx.Backend.ListRules()
+	if err != nil {
+		return result
+	}
+	for _, r := range rules {
+		result[h.GetQualifiedName(r.ContainerID, r.Name)] = true
+	}
+	return result
+}
+
 // buildJavaActionQualifiedNames returns a set of all java action qualified names in the project.
 func buildJavaActionQualifiedNames(ctx *ExecContext) map[string]bool {
 	result := make(map[string]bool)
