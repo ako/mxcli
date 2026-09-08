@@ -41,10 +41,36 @@ docs/brain/
 
 Committed, and reviewed in a pull request like any other change.
 
+A shard is re-rendered from its entries on every write, so the title and the
+preamble are regenerated and hand-edits to them do not survive. **YAML
+frontmatter is preserved**, because mxcli does not own it — it is where markdown
+tooling keeps per-file metadata (Foam and Obsidian tags, a docs site's nav
+weight), and discarding it would quietly break any of those. It counts toward
+the shard's cap, since a session loading the shard loads it too. A shard with no
+frontmatter never grows an empty block.
+
 The split is not cosmetic. A single file would make the size cap a project-wide
 budget — recording a `Sales` decision would compete with a `Finance` one — and
 every session would load every module's decisions. With one file per module, a
 session loads `project.md` plus the shards for the modules it is touching.
+
+`mxcli brain brief` assembles that set, so the saving does not depend on anyone
+judging it correctly:
+
+```bash
+mxcli brain brief --slice 07-planning -p app.mpr   # project + that slice's
+                                                   # modules + its plan
+mxcli brain brief --module Sales -p app.mpr        # project + Sales, no plan
+```
+
+Which modules a slice needs is derived from its requirements' anchors — you do
+not name them, because that is the thing the brief is being read to find out.
+The pack goes to stdout and its size to stderr, so it pipes straight into a
+prompt; `--json` returns the shards separately with their paths.
+
+This is worth little in one long session, where the store is read once and then
+cached. It is worth a large fraction of the context when each slice runs in its
+own session or sub-agent and the pack is re-read from a cold start every time.
 
 ## Anchors
 
@@ -246,21 +272,54 @@ Sizes are computed on every run and are deliberately not written into any
 committed file, including the store's own `README.md` — a figure in prose is
 stale the next time anyone promotes.
 
+## Renaming
+
+`mxcli rename` rewrites matching anchors in `docs/brain/` and in the staged
+queue, and reports the count:
+
+```
+Renamed entity: Sales.Order → Sales.PurchaseOrder
+Updated 2 brain anchor(s): @Sales.Order -> @Sales.PurchaseOrder
+```
+
+Renaming a module also moves `modules/<Old>.md` to `modules/<New>.md`, so its
+entries do not immediately read as misfiled. Entry ids are not re-derived: an id
+is a handle (`brain promote <id>`, prose that cites one), and invalidating every
+reference *to* an entry in order to fix that entry's references to the model
+would trade one dangling pointer for several.
+
+It happens at the rename because it cannot be done afterwards. A decision's
+anchor points backward, so a stale one shows up as `NOT FOUND`; a requirement's
+points forward, so a stale one merely counts as `PLANNED` — indistinguishable
+from not built yet. Measured on a real project, a refactor moved the reported
+progress from 65/65 to 63/65 and the number was the only symptom.
+
 ## Commands
 
 | Command | Does |
 |---|---|
 | `brain init` | Creates `docs/brain/`. Refuses a `docs/brain/` it did not write |
 | `brain capture "<text>" [-a @Anchor]…` | Queues an entry. Never commits |
-| `brain staged` | Lists the queue with the shard each entry would land in |
+| `brain staged [--since <id>] [--slice <n>] [--fail-if-empty]` | Lists the queue with the shard each entry would land in |
 | `brain promote <id> [--to <shard>]` | Writes it into its shard |
 | `brain drop <id>` | Removes it from the queue or from its shard |
 | `brain capture "<text>" --slice <name> [-a @Anchor]…` | Queues a **requirement** of that slice |
 | `brain capture "<text>" --open [-a @Anchor]…` | Queues an **open question**; anchors not checked |
 | `brain resolve <id> "<answer>"` | Answers it, turning it into a decision in place |
-| `brain plan` | Each slice's requirements counted against the model |
+| `brain plan [--slice <name>]` | Each slice's requirements counted against the model |
+| `brain brief --slice <name> \| --module <M>` | The reading pack: exactly the shards that work needs |
 | `brain check [--changed]` | Anchors resolve, entries filed correctly, plus slice progress |
 | `brain show [<shard>]` | Entries, lines and headroom per shard |
 
 Dropping the last entry from a module shard deletes the file, so the directory
 does not accumulate husks that read as "this module has decisions".
+
+Every command takes `--json`, so a dispatcher running one agent per slice can
+act on the answers rather than read them. `brain staged --since <id>` is the
+slice boundary: note `last_id` before handing a slice off, pass it back
+afterwards, and `--fail-if-empty` exits 1 on a slice that recorded nothing.
+
+`--since` rather than `--slice`, because `capture --slice` is what makes an entry
+a *requirement* — a decision found while building a slice carries no slice at
+all, and a slice's findings are mostly decisions. The queue is append-only, so
+its own order is the honest boundary.

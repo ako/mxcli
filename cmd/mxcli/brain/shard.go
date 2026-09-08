@@ -185,3 +185,55 @@ func CountLines(content string) int {
 	}
 	return strings.Count(content, "\n") + 1
 }
+
+// extractFrontmatter returns the YAML frontmatter block at the top of a shard,
+// fences included, or "" when there is none.
+//
+// A shard is re-rendered from the entries parsed out of it, so everything else
+// in the file is discarded on the next write. That is deliberate for the parts
+// mxcli owns — the title and the preamble are regenerated so they cannot drift
+// from the shard's identity — but it also ate frontmatter, which mxcli does not
+// own and which is where every markdown tool in the ecosystem keeps its
+// per-file metadata: Foam and Obsidian tags, a docs site's nav weight, a
+// linter's per-file config.
+//
+// The recognition is deliberately strict, because the failure of a loose rule
+// is not a missed block but a swallowed document. Only an opening fence on the
+// very first line, closed by a later fence, counts. An unterminated `---` is
+// left alone: treating it as frontmatter would carry the entire file forward as
+// opaque text and then write the entries out again beneath it.
+func extractFrontmatter(content string) string {
+	if !strings.HasPrefix(content, "---\n") {
+		return ""
+	}
+	rest := content[len("---\n"):]
+	// The closing fence is a line of exactly "---". Scanning line by line
+	// rather than with an index search so a "---" inside a YAML value cannot
+	// close the block early.
+	offset := len("---\n")
+	for len(rest) > 0 {
+		line, tail, found := strings.Cut(rest, "\n")
+		if !found {
+			return "" // ran off the end: no closing fence, so not frontmatter
+		}
+		offset += len(line) + 1
+		if strings.TrimRight(line, " \t") == "---" {
+			return content[:offset]
+		}
+		rest = tail
+	}
+	return ""
+}
+
+// RenderShardWithFrontmatter renders a shard beneath a preserved frontmatter
+// block. An empty block renders exactly as before, so a shard nobody has
+// annotated is byte-identical and existing projects see no diff.
+func RenderShardWithFrontmatter(shard string, entries []Entry, frontmatter string) string {
+	if frontmatter == "" {
+		return RenderShard(shard, entries)
+	}
+	if !strings.HasSuffix(frontmatter, "\n") {
+		frontmatter += "\n"
+	}
+	return frontmatter + "\n" + RenderShard(shard, entries)
+}
