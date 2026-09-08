@@ -143,14 +143,18 @@ func TestFormatWaitForTimer_CaptionCommentFormat(t *testing.T) {
 			caption: "Wait 2 Hours",
 			actName: "waitAct1",
 			delay:   "${PT2H}",
-			want:    "wait for timer '${PT2H}' comment 'Wait 2 Hours'",
+			// The stored name is not derivable from the caption, so describe
+			// emits it — dropping it is what broke `jump to` (ako/mxcli#408).
+			want: "wait for timer waitAct1 '${PT2H}' comment 'Wait 2 Hours'",
 		},
 		{
 			name:    "name fallback no delay",
 			caption: "",
 			actName: "waitAct1",
 			delay:   "",
-			want:    "wait for timer comment 'waitAct1'",
+			// Caption falls back to the name here, so the name is derivable and
+			// the clause is suppressed: unchanged output.
+			want: "wait for timer comment 'waitAct1'",
 		},
 	}
 
@@ -183,13 +187,14 @@ func TestFormatCallWorkflowActivity_CaptionCommentFormat(t *testing.T) {
 			name:    "caption used",
 			caption: "Run Sub-Workflow",
 			actName: "callWf1",
-			want:    "call workflow Module.SubFlow comment 'Run Sub-Workflow'",
+			// callWf1 is not the called workflow's name, so it is emitted.
+			want: "call workflow Module.SubFlow as callWf1 comment 'Run Sub-Workflow'",
 		},
 		{
 			name:    "name fallback",
 			caption: "",
 			actName: "callWf1",
-			want:    "call workflow Module.SubFlow comment 'callWf1'",
+			want:    "call workflow Module.SubFlow as callWf1 comment 'callWf1'",
 		},
 	}
 

@@ -2495,8 +2495,9 @@ func setRawWidgetPropertyMut(widget bson.D, propName string, value any) error {
 	// Property names arrive verbatim from MDL (any case) — `set class on …` is as
 	// valid as `set Class on …`, and `create page` reads them case-insensitively
 	// (WidgetV3.GetStringProp). Match the first-class properties case-insensitively
-	// so the ALTER path behaves the same; the pluggable fallback (default) keeps the
-	// original casing, since pluggable property keys must match the template exactly.
+	// so the ALTER path behaves the same. The pluggable fallback (default) passes
+	// the author's spelling through and resolves it case-insensitively against the
+	// widget's own template keys — see setPluggableWidgetPropertyMut.
 	switch strings.ToLower(propName) {
 	case "caption":
 		return setWidgetCaptionMut(widget, value)
@@ -2781,6 +2782,24 @@ func setWidgetAttributeRefMut(widget bson.D, value any) error {
 	return fmt.Errorf("widget does not have an AttributeRef property")
 }
 
+// setPluggableWidgetPropertyMut writes one property of a pluggable widget's
+// Object, resolving the author's spelling against the widget's template keys
+// CASE-INSENSITIVELY.
+//
+// That last part is the fix for #1069. A pluggable property key is lowerCamel in
+// the template (`pageSize`), while DESCRIBE PAGE prints it capitalised
+// (`PageSize:`) and CREATE accepts either — the widget engine resolves it with
+// lookupProperty, which lowercases both sides. Comparing byte-for-byte here made
+// `alter page … set PageSize = 10` fail with `pluggable property "PageSize" not
+// found` on a grid that `create page … (PageSize: 20)` had just written, so the
+// tool refused to execute its own DESCRIBE output.
+//
+// It is unambiguous, not merely convenient: this searches one object type's
+// PropertyTypes, and no shipped template or definition has two keys in the same
+// list differing only in case (96 scopes, 1208 keys, 0 collisions — held by
+// TestPluggablePropertyKeysAreUniqueIgnoringCase). An unknown property still
+// errors, which is the author's only signal: `check --references` does not
+// resolve pluggable property names.
 func setPluggableWidgetPropertyMut(widget bson.D, propName string, value any) error {
 	obj := bsonnav.DGetDoc(widget, "Object")
 	if obj == nil {
@@ -2816,7 +2835,7 @@ func setPluggableWidgetPropertyMut(widget bson.D, propName string, value any) er
 		}
 		typePointerID := bsonnav.ExtractBinaryIDFromDoc(bsonnav.DGet(propDoc, "TypePointer"))
 		propKey := propTypeKeyMap[typePointerID]
-		if propKey != propName {
+		if propKey == "" || !strings.EqualFold(propKey, propName) {
 			continue
 		}
 		if valDoc := bsonnav.DGetDoc(propDoc, "Value"); valDoc != nil {

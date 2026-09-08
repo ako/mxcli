@@ -618,7 +618,7 @@ Nested folders use `/` separator: `'Parent/Child/Grandchild'`. Missing folders a
 | Drop module role | `drop module role Mod.Role;` | |
 | Create user role | `create user role Name (Mod.Role, ...) [manage all roles];` | Aggregates module roles |
 | Alter user role | `alter user role Name add\|remove module roles (Mod.Role, ...);` | |
-| Drop user role | `drop user role Name;` | |
+| Drop user role | `drop user role [if exists] Name;` | `if exists` makes a cleanup script re-runnable |
 | Grant microflow access | `grant execute on microflow Mod.MF to Mod.Role, ...;` | |
 | Revoke microflow access | `revoke execute on microflow Mod.MF from Mod.Role, ...;` | |
 | Grant nanoflow access | `grant execute on nanoflow Mod.NF to Mod.Role, ...;` | |
@@ -633,7 +633,7 @@ Nested folders use `/` separator: `'Parent/Child/Grandchild'`. Missing folders a
 | Enable guest access | `alter project security guest access on role UserRole;` | Anonymous users. The role is what visitors get — its entity access is the public surface. Mendix fails the build without one (CE0133), so `on` is refused unless a role is given or already stored. mxcli validates the role exists; Mendix does not |
 | Disable guest access | `alter project security guest access off;` | Keeps the stored role, so re-enabling needs no `role` clause |
 | Create demo user | `create demo user 'name' password 'pass' [entity Module.Entity] (UserRole, ...);` | |
-| Drop demo user | `drop demo user 'name';` | |
+| Drop demo user | `drop demo user [if exists] 'name';` | `if exists` makes a cleanup script re-runnable |
 
 ## Workflows
 
@@ -646,14 +646,35 @@ Nested folders use `/` separator: `'Parent/Child/Grandchild'`. Missing folders a
 
 **Workflow Activity Types:**
 - `user task <name> '<caption>' [page Mod.Page] [targeting [users|groups] microflow Mod.MF] [targeting [users|groups] xpath '<expr>'] [outcomes '<out>' { } ...];`
-- `call microflow Mod.MF [comment '<text>'] [outcomes '<out>' { } ...];`
-- `call workflow Mod.WF [comment '<text>'];`
-- `decision ['<caption>'] outcomes '<out>' { } ...;`
-- `parallel split path 1 { } path 2 { };`
+- `call microflow Mod.MF [as <name>] [comment '<text>'] [with (<Param> = '<expr>', ...)] [outcomes '<out>' -> { } ...];`
+- `call workflow Mod.WF [as <name>] [comment '<text>'] [with (<Param> = '<expr>', ...)];`
+- `decision [<name>] ['<expression>'] outcomes <true|false|'Module.Enum.Value'> -> { } ...;`
+- `parallel split [<name>] path 1 { } path 2 { };`
 - `jump to <activity-name>;`
-- `wait for timer ['<expr>'];`
-- `wait for notification;`
+- `wait for timer [<name>] ['<expr>'];`
+- `wait for notification [<name>];`
 - `end;`
+
+**Activity names.** Every activity has a name, and `jump to` resolves against it
+— Mendix stores `JumpToActivity.TargetActivity` as a name string, not a pointer.
+Without an explicit name mxcli derives one (from the caption, or from the called
+document for `call microflow` / `call workflow`), which is fine for a workflow
+written from scratch. Name activities explicitly when a `jump to` targets them,
+and when reproducing a workflow Studio Pro authored: Studio Pro names activities
+by type and ordinal (`decision1`, `split1`, `callMicroflow1`) regardless of
+caption, so `describe workflow` emits the name whenever it is not derivable.
+
+**Decision outcomes** are `true` / `false` for a boolean decision, and a **fully
+qualified** enumeration value identifier — `Module.Enumeration.Value` — for an
+enum decision, plus one `'' -> { }` outcome for "none of the above" (without it
+the build fails `CE6686`). Anything shorter is refused as `MDL-WF03`, and by
+`exec`: Mendix parses the value when the project is **loaded**, so a bare
+`'Approved'` — or `'Status.Approved'`, even when the enumeration is in the same
+module — is not a build error but a `StorageLoadException` that leaves the
+project unopenable in Studio Pro and mxbuild.
+
+**Parameter values in `with (...)` are quoted strings**, not bare variables:
+`call microflow Mod.MF with (Request = '$WorkflowContext')`.
 
 **Example:**
 ```sql
@@ -801,6 +822,27 @@ name at all:
 | `icon Atlas_Core.Atlas.home` | `Forms$IconCollectionIcon` | a name in an icon collection |
 | `icon glyph 57377` | `Forms$GlyphIcon` | a numeric character code |
 | `icon image MyModule.Images.logo` | `Forms$ImageIcon` | a name in an image collection |
+
+**Browse the glyph codes with `show glyphs`.** A glyph is a character code in a
+font, not a document in the project, so there is nothing to scope with `IN` and
+no connection is needed:
+
+```sql
+show glyphs;                  -- all 247, with names
+show glyphs like 'star';      -- 57350 star, 57351 star-empty
+describe glyph 57350;         -- by code
+describe glyph 'star';        -- or by name
+```
+
+**A glyph code the font does not define is reported (MDL078, a warning).** A
+glyph code is a bare integer, so nothing resolves it: `mxcli check` and `mx check`
+both pass at 0 errors and the failure lands at `mxbuild --target=deploy`, as
+*"An exception occurred while exporting layout '<some layout>'"* — naming a
+document that is not the cause. Measured on 11.14.0: mxbuild resolves the code
+through a LINQ `.First(...)` in `GlyphFont.GetClass`, which throws on an absent
+one. The rule checks the 247 codes the shipped font actually defines. Prefer an
+icon collection reference, which `check --references` resolves before anything is
+written.
 
 The bare form is the icon-collection icon, so every existing script keeps its
 meaning. The keyword forms exist because writing a bare name for an image icon

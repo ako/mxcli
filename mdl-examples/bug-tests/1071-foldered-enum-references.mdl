@@ -1,0 +1,78 @@
+-- ============================================================================
+-- `check --references` reported every enumeration missing  (mendixlabs/mxcli#1071)
+-- ============================================================================
+--
+-- Symptom (before fix):
+--
+--   $ mxcli check script.mdl -p project.mpr --references
+--   Reference errors:
+--     statement 4: attribute 'CriticalPathStation': enumeration not found: Approval.StationKey
+--
+--   while DESCRIBE ENUMERATION returned its values, SHOW ENUMERATIONS listed
+--   it, and mxbuild built the same declaration at 0 errors. A pure FALSE
+--   NEGATIVE: `exec` writes the attribute and the project checks clean, so the
+--   only thing broken was the checker.
+--
+--   It read as "enumerations are never resolved", because the reporter's module
+--   keeps its enumerations in folders — and that is the whole discriminator.
+--
+-- Root cause:
+--   `enumerationExists` matched containers directly,
+--
+--     if enum.ContainerID == module.ID && enum.Name == enumName
+--
+--   which only ever holds for an enumeration sitting directly in the module
+--   ROOT. One inside a folder has the FOLDER as its container. Every other
+--   command resolves through the container hierarchy, which walks folders up to
+--   the module — so the reference checker was the only one that could not see
+--   inside a folder.
+--
+--   This is the same defect as upstream #976, which fixed DROP and did not
+--   sweep for the other caller of that question.
+--
+-- After fix:
+--   `enumerationExists` defers to `findEnumeration`, deleting the duplicate
+--   rather than patching one copy of it. Both call sites are covered: ALTER
+--   ENTITY ADD ATTRIBUTE (reported) and CREATE ENTITY with an enumerated
+--   attribute (not reported, measured before fixing).
+--
+-- WHAT THIS FILE PROVES, AND WHAT IT DOES NOT
+--   Executing it proves nothing about the bug: `exec` always worked. The defect
+--   is only visible to `check --references` against a project that HAS the
+--   foldered enumeration, so run the two commands at the bottom. The automated
+--   coverage is in mdl/executor/validate_enum_folder_test.go, which exercises
+--   both call sites and keeps the controls.
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/1071-foldered-enum-references.mdl -p app.mpr
+--   -- then, against that same project:
+--   mxcli check <a script using Approval.StationKey> -p app.mpr --references
+-- ============================================================================
+
+create module Approval;
+create or modify entity Approval.ApprovalRun ( Name: string(200) );
+
+-- The control: an enumeration at the module root. This one resolved before the
+-- fix too, which is what makes the failure below a container-resolution bug
+-- rather than "references are broken".
+create or modify enumeration Approval.RootEnum ( A 'Alpha', B 'Bravo' );
+
+-- The reported shape: an enumeration filed in a folder.
+create or modify enumeration Approval.StationKey ( S1 'Station one', S2 'Station two' );
+move enumeration Approval.StationKey to folder 'Enums';
+
+-- Both of these must pass `check --references`. Before the fix the first was
+-- reported as "enumeration not found" and the second passed.
+alter entity Approval."ApprovalRun"
+  add attribute if not exists "CriticalPathStation": Enumeration(Approval.StationKey);
+alter entity Approval."ApprovalRun"
+  add attribute if not exists "RootAttr": Enumeration(Approval.RootEnum);
+
+-- The other call site, which the report did not mention: CREATE ENTITY resolves
+-- enumerated attributes through the same helper and failed the same way.
+create or modify entity Approval.NewThing (
+  Name: string(200),
+  Station: Enumeration(Approval.StationKey)
+);
+
+show enumerations in Approval;

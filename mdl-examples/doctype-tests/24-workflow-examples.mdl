@@ -486,3 +486,46 @@ begin
   -- Open workflow admin page
   open workflow $workflow;
 end;
+
+-- =============================================================================
+-- Named activities and jump targets (ako/mxcli#408)
+-- =============================================================================
+-- Mendix resolves `jump to` by JumpToActivity.TargetActivity, which stores an
+-- activity NAME. Studio Pro names every activity by type and ordinal
+-- (decision1, split1, callMicroflow1) independently of its caption, so an
+-- activity needs an explicit name for a described workflow to be re-executable.
+-- The name is optional: without one it is still derived from the caption.
+--
+-- Note where the jump sits. MxBuild refuses one that is not at the end of a
+-- path (CE6679), one that crosses a parallel-split boundary (CE6682 / CE7415),
+-- and a main flow ending in a jump makes the implicit End unreachable (CE6689)
+-- — so the jump lives at the end of a user-task outcome branch, which is where
+-- Studio Pro puts it too.
+
+create workflow WFTest.NamedActivities
+  parameter $WorkflowContext: WFTest.OrderContext
+begin
+  call microflow WFTest.ACT_Validate as callMicroflow1;
+
+  decision decision1 '$WorkflowContext/Total > 1000'
+    outcomes
+      true -> {
+        user task Rework 'Fix and resubmit'
+          page WFTest.TaskPage
+          outcomes
+            'Resubmit' { jump to decision1; }
+            'Abandon'  { }
+        ;
+      }
+      false -> { call microflow WFTest.ACT_Process as callMicroflow2; }
+  ;
+
+  parallel split split1
+    path 1 { call microflow WFTest.ACT_Notify as callMicroflow3; }
+    path 2 { call microflow WFTest.ACT_Review as callMicroflow4; }
+  ;
+
+  wait for timer timer1 'addHours([%CurrentDateTime%], 1)';
+  wait for notification waitForNotification1;
+end workflow;
+/

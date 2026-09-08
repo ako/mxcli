@@ -1306,38 +1306,34 @@ func (w *Writer) ReconcileMemberAccesses(unitID model.ID, moduleName string) (in
 				continue
 			}
 
-			// Collect current attribute names and track calculated attributes
-			attrNames := map[string]bool{}
-			calculatedAttrs := map[string]bool{}
-			attrsArr := getBsonArray(entityDoc, "Attributes")
-			for _, attrItem := range attrsArr {
-				attrDoc, ok := attrItem.(bson.D)
-				if !ok {
-					continue
-				}
-				attrName := ""
-				isCalculated := false
-				for _, f := range attrDoc {
-					if f.Key == "Name" {
-						attrName = bsonutil.String(f.Value, "Name")
-					}
-					if f.Key == "Value" {
-						if valueDoc, ok := f.Value.(bson.D); ok {
-							for _, vf := range valueDoc {
-								if vf.Key == "$Type" {
-									if vt, ok := vf.Value.(string); ok && vt == "DomainModels$CalculatedValue" {
-										isCalculated = true
-									}
-								}
-							}
-						}
-					}
-				}
-				if attrName != "" {
-					attrNames[attrName] = true
-					if isCalculated {
-						calculatedAttrs[attrName] = true
-					}
+			// The attributes this entity's rules must cover: its OWN and those it
+			// INHERITS from a generalization in this module, each qualified
+			// against the entity that DECLARES it — which is what Mendix stores,
+			// and what makes an inherited entry's reference name an ancestor
+			// rather than this entity.
+			//
+			// Collecting only the entity's own attributes left every
+			// specialization's rule short of a member as soon as the
+			// generalization gained one, which Mendix reports as CE0066 "Entity
+			// access is out of date" — and `UPDATE SECURITY`, the command that
+			// exists to repair it, found nothing missing and reported "All entity
+			// access rules are up to date" over a project mx check rejects
+			// (mendixlabs/mxcli#1047, reported against 0.21.0). The codec engine
+			// had the same defect in the same shape; both are fixed together,
+			// because a fix in one of these parallel writers leaves the other
+			// latent until something switches engines.
+			//
+			// Keyed by full reference rather than bare name: the compare pass
+			// below preserves any reference not qualified against this entity, so
+			// a bare-name key would mark an inherited entry uncovered and ADD a
+			// second copy of a member the rule already has.
+			expectedAttrs := entityAttrsInChain(entitiesArr, entityName, moduleName)
+			expectedAttrRefs := map[string]bool{}
+			calculatedAttrRefs := map[string]bool{}
+			for _, ea := range expectedAttrs {
+				expectedAttrRefs[ea.ref] = true
+				if ea.calculated {
+					calculatedAttrRefs[ea.ref] = true
 				}
 			}
 
@@ -1511,26 +1507,27 @@ func (w *Writer) ReconcileMemberAccesses(unitID model.ID, moduleName string) (in
 							}
 
 							if attrRef != "" {
-								// Extract attribute name from Module.Entity.AttrName
-								parts := splitQualifiedRef(attrRef)
-								// An inherited member's reference is qualified against the
-								// entity that DECLARES it, so it does not match this
-								// entity's own attribute list and used to be deleted as
-								// stale (mendixlabs/mxcli#758). The ancestor may live in
-								// another module or in System, neither loaded here, so an
-								// inherited reference cannot be validated at this layer —
-								// preserve what cannot be checked. Mirrors the codec engine
-								// (mdl/backend/modelsdk.attrRefBelongsTo).
-								if !attrRefBelongsToEntity(attrRef, moduleName, entityName) {
-									filtered = append(filtered, maDoc)
-								} else if parts != "" && attrNames[parts] {
-									coveredAttrs[parts] = true
+								switch {
+								case expectedAttrRefs[attrRef]:
+									// A member the entity has — its own, or one inherited
+									// from a generalization in this module.
+									coveredAttrs[attrRef] = true
 									// Downgrade write rights on calculated attributes (CE6592)
-									if calculatedAttrs[parts] {
+									if calculatedAttrRefs[attrRef] {
 										maDoc = downgradeCalculatedAttrRights(maDoc)
 									}
 									filtered = append(filtered, maDoc)
-								} else {
+								case !attrRefBelongsToEntity(attrRef, moduleName, entityName):
+									// An inherited member's reference is qualified against the
+									// entity that DECLARES it, so it does not match this
+									// entity's own attribute list and used to be deleted as
+									// stale (mendixlabs/mxcli#758). The ancestor may live in
+									// another module or in System, neither loaded here, so an
+									// inherited reference cannot be validated at this layer —
+									// preserve what cannot be checked. Mirrors the codec engine
+									// (mdl/backend/modelsdk.attrRefBelongsTo).
+									filtered = append(filtered, maDoc)
+								default:
 									changed = true // stale attribute entry removed
 								}
 							} else if assocRef != "" {
@@ -1553,19 +1550,22 @@ func (w *Writer) ReconcileMemberAccesses(unitID model.ID, moduleName string) (in
 							}
 						}
 
-						// Add missing attributes
-						for attrName := range attrNames {
-							if !coveredAttrs[attrName] {
+						// Add missing attributes, in declaration order (own first,
+						// then each ancestor's). Iterating the map instead made the
+						// order of new entries vary between runs, so two identical
+						// reconciles could produce different bytes.
+						for _, ea := range expectedAttrs {
+							if !coveredAttrs[ea.ref] {
 								rights := defaultRights
 								// Calculated attributes cannot have write rights (CE6592)
-								if calculatedAttrs[attrName] && (rights == "ReadWrite" || rights == "WriteOnly") {
+								if ea.calculated && (rights == "ReadWrite" || rights == "WriteOnly") {
 									rights = "ReadOnly"
 								}
 								newMA := bson.D{
 									{Key: "$ID", Value: idToBsonBinary(generateUUID())},
 									{Key: "$Type", Value: "DomainModels$MemberAccess"},
 									{Key: "AccessRights", Value: rights},
-									{Key: "Attribute", Value: moduleName + "." + entityName + "." + attrName},
+									{Key: "Attribute", Value: ea.ref},
 								}
 								filtered = append(filtered, newMA)
 								changed = true
@@ -1704,6 +1704,131 @@ func stripInvalidAccessRuleProps(doc bson.D) (bson.D, bool) {
 
 // ensure primitive import is used
 var _ = primitive.Binary{}
+
+// chainAttr is one attribute of an entity's access surface: the reference
+// Mendix stores for it, and whether it is calculated (which caps its rights).
+type chainAttr struct {
+	ref        string // "Module.DeclaringEntity.Attribute"
+	calculated bool
+}
+
+// entityAttrsInChain returns the attributes an entity's access rules must
+// cover — its own, then those of each generalization that lives in THIS module,
+// nearest ancestor first — each qualified against the entity that declares it.
+//
+// A nearer entity's attribute SHADOWS an ancestor's of the same name, matching
+// the executor's own member walk (EntityMembersFor): emitting both would put two
+// entries in the rule for one member the modeller sees.
+//
+// The walk stops at the first ancestor outside this module (or one that cannot
+// be found), because only this module's domain model is loaded here. Those
+// members are neither added nor pruned — the compare pass preserves the entries
+// that already reference them.
+func entityAttrsInChain(entitiesArr bson.A, entityName, moduleName string) []chainAttr {
+	byName := map[string]bson.D{}
+	for _, item := range entitiesArr {
+		ed, ok := item.(bson.D)
+		if !ok {
+			continue
+		}
+		for _, f := range ed {
+			if f.Key == "Name" {
+				if n := bsonutil.String(f.Value, "Name"); n != "" {
+					byName[n] = ed
+				}
+				break
+			}
+		}
+	}
+
+	var out []chainAttr
+	claimed := map[string]bool{} // bare attribute name -> already taken by a nearer entity
+	seen := map[string]bool{}    // cycle guard
+
+	for name := entityName; name != ""; {
+		ed, ok := byName[name]
+		if !ok || seen[name] {
+			break
+		}
+		seen[name] = true
+
+		for _, ca := range ownAttrsOf(ed, moduleName, name) {
+			bare := ca.ref[strings.LastIndex(ca.ref, ".")+1:]
+			if claimed[bare] {
+				continue
+			}
+			claimed[bare] = true
+			out = append(out, ca)
+		}
+
+		// Step to the generalization, if it is in this module.
+		genRef := generalizationRefOf(ed)
+		idx := strings.LastIndex(genRef, ".")
+		if idx < 0 || !strings.EqualFold(genRef[:idx], moduleName) {
+			break
+		}
+		name = genRef[idx+1:]
+	}
+	return out
+}
+
+// ownAttrsOf reads one entity document's own attributes.
+func ownAttrsOf(entityDoc bson.D, moduleName, entityName string) []chainAttr {
+	var out []chainAttr
+	for _, attrItem := range getBsonArray(entityDoc, "Attributes") {
+		attrDoc, ok := attrItem.(bson.D)
+		if !ok {
+			continue
+		}
+		attrName := ""
+		isCalculated := false
+		for _, f := range attrDoc {
+			if f.Key == "Name" {
+				attrName = bsonutil.String(f.Value, "Name")
+			}
+			if f.Key == "Value" {
+				if valueDoc, ok := f.Value.(bson.D); ok {
+					for _, vf := range valueDoc {
+						if vf.Key == "$Type" {
+							if vt, ok := vf.Value.(string); ok && vt == "DomainModels$CalculatedValue" {
+								isCalculated = true
+							}
+						}
+					}
+				}
+			}
+		}
+		if attrName != "" {
+			out = append(out, chainAttr{
+				ref:        moduleName + "." + entityName + "." + attrName,
+				calculated: isCalculated,
+			})
+		}
+	}
+	return out
+}
+
+// generalizationRefOf returns the qualified name of an entity's generalization
+// ("Module.Entity"), or "" when it has none. Newer formats store the field as
+// MaybeGeneralization; a NoGeneralization carries no reference.
+func generalizationRefOf(entityDoc bson.D) string {
+	for _, f := range entityDoc {
+		if f.Key != "Generalization" && f.Key != "MaybeGeneralization" {
+			continue
+		}
+		gd, ok := f.Value.(bson.D)
+		if !ok {
+			return ""
+		}
+		for _, gf := range gd {
+			if gf.Key == "Generalization" {
+				return bsonutil.String(gf.Value, "Generalization")
+			}
+		}
+		return ""
+	}
+	return ""
+}
 
 // attrRefBelongsToEntity reports whether a MemberAccess attribute reference
 // ("Module.Entity.Attribute") names one of the given entity's OWN attributes,

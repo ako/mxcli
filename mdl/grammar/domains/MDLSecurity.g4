@@ -32,8 +32,13 @@ alterUserRoleStatement
     | ALTER USER ROLE identifierOrKeyword REMOVE MODULE ROLES LPAREN moduleRoleList RPAREN
     ;
 
+// IF EXISTS makes a cleanup script re-runnable. Without it the statement fails
+// the second time, so a one-time cleanup either breaks every later run of the
+// slice or has to be commented out — which is what happened to
+// `drop demo user` / `drop user role` in a real project (ako/CapTrackV4 R5).
+// Same spelling as ALTER ENTITY's DROP ATTRIBUTE IF EXISTS.
 dropUserRoleStatement
-    : DROP USER ROLE (identifierOrKeyword | STRING_LITERAL)
+    : DROP USER ROLE ifExists? (identifierOrKeyword | STRING_LITERAL)
     ;
 
 grantEntityAccessStatement
@@ -112,7 +117,7 @@ createDemoUserStatement
     ;
 
 dropDemoUserStatement
-    : DROP DEMO USER STRING_LITERAL
+    : DROP DEMO USER ifExists? STRING_LITERAL
     ;
 
 // IN is optional before the module name, not just before the whole clause.

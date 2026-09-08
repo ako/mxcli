@@ -368,10 +368,11 @@ func formatWorkflowActivities(flow *workflows.Flow, indent string) []string {
 			if a.Annotation != "" {
 				actLines = append(actLines, formatAnnotation(a.Annotation, indent))
 			}
+			nameClause := workflowActivityNameClause(a.Name, caption)
 			if a.DelayExpression != "" {
-				actLines = append(actLines, fmt.Sprintf("%swait for timer %s comment %s", indent, mdlQuoted(a.DelayExpression), mdlQuoted(caption)))
+				actLines = append(actLines, fmt.Sprintf("%swait for timer%s %s comment %s", indent, nameClause, mdlQuoted(a.DelayExpression), mdlQuoted(caption)))
 			} else {
-				actLines = append(actLines, fmt.Sprintf("%swait for timer comment %s", indent, mdlQuoted(caption)))
+				actLines = append(actLines, fmt.Sprintf("%swait for timer%s comment %s", indent, nameClause, mdlQuoted(caption)))
 			}
 		case *workflows.WaitForNotificationActivity:
 			caption := a.Caption
@@ -381,7 +382,8 @@ func formatWorkflowActivities(flow *workflows.Flow, indent string) []string {
 			if a.Annotation != "" {
 				actLines = append(actLines, formatAnnotation(a.Annotation, indent))
 			}
-			actLines = append(actLines, fmt.Sprintf("%swait for notification -- %s", indent, caption))
+			actLines = append(actLines, fmt.Sprintf("%swait for notification%s -- %s", indent,
+				workflowActivityNameClause(a.Name, caption), caption))
 			// BoundaryEvents
 			actLines = append(actLines, formatBoundaryEvents(a.BoundaryEvents, indent+"  ")...)
 		case *workflows.StartWorkflowActivity:
@@ -552,9 +554,11 @@ func formatCallMicroflowTask(a *workflows.CallMicroflowTask, indent string) []st
 			}
 			params = append(params, fmt.Sprintf("%s = %s", paramName, mdlQuoted(pm.Expression)))
 		}
-		lines = append(lines, fmt.Sprintf("%scall microflow %s with (%s) -- %s", indent, mf, strings.Join(params, ", "), caption))
+		lines = append(lines, fmt.Sprintf("%scall microflow %s%s with (%s) -- %s", indent, mf,
+			workflowActivityAsClause(a.Name, shortDocName(mf)), strings.Join(params, ", "), caption))
 	} else {
-		lines = append(lines, fmt.Sprintf("%scall microflow %s -- %s", indent, mf, caption))
+		lines = append(lines, fmt.Sprintf("%scall microflow %s%s -- %s", indent, mf,
+			workflowActivityAsClause(a.Name, shortDocName(mf)), caption))
 	}
 
 	// Outcomes, then boundary events — the order the grammar requires
@@ -586,7 +590,8 @@ func formatSystemTask(a *workflows.SystemTask, indent string) []string {
 		mf = "?"
 	}
 
-	lines = append(lines, fmt.Sprintf("%scall microflow %s -- %s", indent, mf, caption))
+	lines = append(lines, fmt.Sprintf("%scall microflow %s%s -- %s", indent, mf,
+		workflowActivityAsClause(a.Name, shortDocName(mf)), caption))
 
 	// Outcomes
 	lines = append(lines, formatConditionOutcomes(a.Outcomes, indent)...)
@@ -621,15 +626,50 @@ func formatCallWorkflowActivity(a *workflows.CallWorkflowActivity, indent string
 			}
 			params = append(params, fmt.Sprintf("%s = %s", paramName, mdlQuoted(pm.Expression)))
 		}
-		lines = append(lines, fmt.Sprintf("%scall workflow %s comment %s with (%s)", indent, wf, mdlQuoted(caption), strings.Join(params, ", ")))
+		lines = append(lines, fmt.Sprintf("%scall workflow %s%s comment %s with (%s)", indent, wf,
+			workflowActivityAsClause(a.Name, shortDocName(wf)), mdlQuoted(caption), strings.Join(params, ", ")))
 	} else {
-		lines = append(lines, fmt.Sprintf("%scall workflow %s comment %s", indent, wf, mdlQuoted(caption)))
+		lines = append(lines, fmt.Sprintf("%scall workflow %s%s comment %s", indent, wf,
+			workflowActivityAsClause(a.Name, shortDocName(wf)), mdlQuoted(caption)))
 	}
 
 	// BoundaryEvents
 	lines = append(lines, formatBoundaryEvents(a.BoundaryEvents, indent+"  ")...)
 
 	return lines
+}
+
+// workflowActivityNameClause renders an activity's explicit name for describe
+// output, or "" when the name is what the builder would derive from the caption
+// anyway. Mendix resolves `jump to` by JumpToActivity.TargetActivity, which
+// stores an activity NAME, and Studio Pro names every activity by type and
+// ordinal (decision1, split1) independently of its caption — so without this the
+// described workflow's jump wiring did not survive re-execution (ako/mxcli#408).
+// Derived names are left off so mxcli-authored workflows describe unchanged.
+func workflowActivityNameClause(name, caption string) string {
+	if name == "" || name == caption || name == sanitizeActivityName(caption) {
+		return ""
+	}
+	return " " + mdlIdent(name)
+}
+
+// shortDocName returns the document name of a qualified name.
+func shortDocName(qn string) string {
+	if i := strings.LastIndex(qn, "."); i >= 0 {
+		return qn[i+1:]
+	}
+	return qn
+}
+
+// workflowActivityAsClause renders an `as <name>` clause for a call activity,
+// whose name is otherwise derived from the document it calls. Studio Pro names
+// these callMicroflow1 / callWorkflow1, so the derived name is almost never the
+// stored one. See workflowActivityNameClause.
+func workflowActivityAsClause(name, derived string) string {
+	if name == "" || name == derived || name == sanitizeActivityName(derived) {
+		return ""
+	}
+	return " as " + mdlIdent(name)
 }
 
 // formatExclusiveSplit formats an exclusive split (decision) for describe output.
@@ -645,10 +685,11 @@ func formatExclusiveSplit(a *workflows.ExclusiveSplitActivity, indent string) []
 		caption = a.Name
 	}
 
+	nameClause := workflowActivityNameClause(a.Name, caption)
 	if a.Expression != "" {
-		lines = append(lines, fmt.Sprintf("%sdecision %s -- %s", indent, mdlQuoted(a.Expression), caption))
+		lines = append(lines, fmt.Sprintf("%sdecision%s %s -- %s", indent, nameClause, mdlQuoted(a.Expression), caption))
 	} else {
-		lines = append(lines, fmt.Sprintf("%sdecision -- %s", indent, caption))
+		lines = append(lines, fmt.Sprintf("%sdecision%s -- %s", indent, nameClause, caption))
 	}
 
 	lines = append(lines, formatConditionOutcomes(a.Outcomes, indent)...)
@@ -669,7 +710,8 @@ func formatParallelSplit(a *workflows.ParallelSplitActivity, indent string) []st
 		caption = a.Name
 	}
 
-	lines = append(lines, fmt.Sprintf("%sparallel split -- %s", indent, caption))
+	lines = append(lines, fmt.Sprintf("%sparallel split%s -- %s", indent,
+		workflowActivityNameClause(a.Name, caption), caption))
 	for i, outcome := range a.Outcomes {
 		lines = append(lines, fmt.Sprintf("%s  path %d {", indent, i+1))
 		if outcome.Flow != nil && len(outcome.Flow.Activities) > 0 {

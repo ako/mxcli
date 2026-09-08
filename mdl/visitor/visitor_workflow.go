@@ -541,10 +541,27 @@ func buildWorkflowUserTaskOutcome(ctx parser.IWorkflowUserTaskOutcomeContext) as
 	return outcome
 }
 
+// workflowActivityNameText reads an optional explicit activity name off a
+// statement. Mendix resolves `jump to` by activity NAME, so this is the only way
+// a described workflow's jump wiring survives a re-execution (ako/mxcli#408).
+func workflowActivityNameText(ctx parser.IWorkflowActivityNameContext) string {
+	if ctx == nil {
+		return ""
+	}
+	if qid := ctx.QUOTED_IDENTIFIER(); qid != nil {
+		return unquoteIdentifier(qid.GetText())
+	}
+	if id := ctx.IDENTIFIER(); id != nil {
+		return id.GetText()
+	}
+	return ""
+}
+
 // buildWorkflowCallMicroflow builds a WorkflowCallMicroflowNode.
 func buildWorkflowCallMicroflow(ctx parser.IWorkflowCallMicroflowStmtContext) *ast.WorkflowCallMicroflowNode {
 	cmCtx := ctx.(*parser.WorkflowCallMicroflowStmtContext)
 	node := &ast.WorkflowCallMicroflowNode{
+		Name:      workflowActivityNameText(cmCtx.WorkflowActivityName()),
 		Microflow: buildQualifiedName(cmCtx.QualifiedName()),
 	}
 
@@ -558,14 +575,7 @@ func buildWorkflowCallMicroflow(ctx parser.IWorkflowCallMicroflowStmtContext) *a
 	}
 
 	// Parameter mappings (Issue #10)
-	for _, pmCtx := range cmCtx.AllWorkflowParameterMapping() {
-		pmCtx2 := pmCtx.(*parser.WorkflowParameterMappingContext)
-		mapping := ast.WorkflowParameterMappingNode{
-			Parameter:  bareWorkflowParameterName(pmCtx2.QualifiedName().GetText()),
-			Expression: unquoteString(pmCtx2.STRING_LITERAL().GetText()),
-		}
-		node.ParameterMappings = append(node.ParameterMappings, mapping)
-	}
+	node.ParameterMappings = buildWorkflowParameterMappings(cmCtx.AllWorkflowParameterMapping())
 
 	// BoundaryEvents (Issue #7)
 	for _, beCtx := range cmCtx.AllWorkflowBoundaryEventClause() {
@@ -589,10 +599,40 @@ func bareWorkflowParameterName(raw string) string {
 	return unquoteIdentifier(strings.TrimSpace(raw))
 }
 
+// buildWorkflowParameterMappings builds the `with (Name = 'expr')` list shared by
+// CALL MICROFLOW and CALL WORKFLOW.
+//
+// Both children are nil-checked because the AST builder runs over the parse tree
+// even when the parse failed — Build() walks first and returns the syntax errors
+// alongside the partial program, which is what lets `check` report more than the
+// first error. Under ANTLR error recovery a rule can therefore be visited with a
+// required child missing, and reading it unguarded takes the process down. The
+// grammar requires a STRING_LITERAL value, so an unquoted one (`Ctx = $Var`, the
+// spelling used everywhere else in MDL) left STRING_LITERAL() nil and every
+// command that parses the script — check, check --references, exec — died on a
+// nil dereference with no diagnostic at all (ako/mxcli#1023). Skipping the
+// mapping keeps the syntax error the listener already recorded as the thing the
+// author is told about.
+func buildWorkflowParameterMappings(ctxs []parser.IWorkflowParameterMappingContext) []ast.WorkflowParameterMappingNode {
+	var out []ast.WorkflowParameterMappingNode
+	for _, pmCtx := range ctxs {
+		pmCtx2, ok := pmCtx.(*parser.WorkflowParameterMappingContext)
+		if !ok || pmCtx2.QualifiedName() == nil || pmCtx2.STRING_LITERAL() == nil {
+			continue
+		}
+		out = append(out, ast.WorkflowParameterMappingNode{
+			Parameter:  bareWorkflowParameterName(pmCtx2.QualifiedName().GetText()),
+			Expression: unquoteString(pmCtx2.STRING_LITERAL().GetText()),
+		})
+	}
+	return out
+}
+
 // buildWorkflowCallWorkflow builds a WorkflowCallWorkflowNode.
 func buildWorkflowCallWorkflow(ctx parser.IWorkflowCallWorkflowStmtContext) *ast.WorkflowCallWorkflowNode {
 	cwCtx := ctx.(*parser.WorkflowCallWorkflowStmtContext)
 	node := &ast.WorkflowCallWorkflowNode{
+		Name:     workflowActivityNameText(cwCtx.WorkflowActivityName()),
 		Workflow: buildQualifiedName(cwCtx.QualifiedName()),
 	}
 
@@ -601,14 +641,7 @@ func buildWorkflowCallWorkflow(ctx parser.IWorkflowCallWorkflowStmtContext) *ast
 	}
 
 	// Parameter mappings
-	for _, pmCtx := range cwCtx.AllWorkflowParameterMapping() {
-		pmCtx2 := pmCtx.(*parser.WorkflowParameterMappingContext)
-		mapping := ast.WorkflowParameterMappingNode{
-			Parameter:  bareWorkflowParameterName(pmCtx2.QualifiedName().GetText()),
-			Expression: unquoteString(pmCtx2.STRING_LITERAL().GetText()),
-		}
-		node.ParameterMappings = append(node.ParameterMappings, mapping)
-	}
+	node.ParameterMappings = buildWorkflowParameterMappings(cwCtx.AllWorkflowParameterMapping())
 
 	return node
 }
@@ -616,7 +649,9 @@ func buildWorkflowCallWorkflow(ctx parser.IWorkflowCallWorkflowStmtContext) *ast
 // buildWorkflowDecision builds a WorkflowDecisionNode.
 func buildWorkflowDecision(ctx parser.IWorkflowDecisionStmtContext) *ast.WorkflowDecisionNode {
 	dCtx := ctx.(*parser.WorkflowDecisionStmtContext)
-	node := &ast.WorkflowDecisionNode{}
+	node := &ast.WorkflowDecisionNode{
+		Name: workflowActivityNameText(dCtx.WorkflowActivityName()),
+	}
 
 	allStrings := dCtx.AllSTRING_LITERAL()
 	stringIdx := 0
@@ -672,7 +707,9 @@ func buildWorkflowConditionOutcome(ctx parser.IWorkflowConditionOutcomeContext) 
 // buildWorkflowParallelSplit builds a WorkflowParallelSplitNode.
 func buildWorkflowParallelSplit(ctx parser.IWorkflowParallelSplitStmtContext) *ast.WorkflowParallelSplitNode {
 	psCtx := ctx.(*parser.WorkflowParallelSplitStmtContext)
-	node := &ast.WorkflowParallelSplitNode{}
+	node := &ast.WorkflowParallelSplitNode{
+		Name: workflowActivityNameText(psCtx.WorkflowActivityName()),
+	}
 
 	if psCtx.COMMENT() != nil && psCtx.STRING_LITERAL() != nil {
 		node.Caption = unquoteString(psCtx.STRING_LITERAL().GetText())
@@ -727,7 +764,9 @@ func buildWorkflowJumpTo(ctx parser.IWorkflowJumpToStmtContext) *ast.WorkflowJum
 // buildWorkflowWaitForTimer builds a WorkflowWaitForTimerNode.
 func buildWorkflowWaitForTimer(ctx parser.IWorkflowWaitForTimerStmtContext) *ast.WorkflowWaitForTimerNode {
 	wtCtx := ctx.(*parser.WorkflowWaitForTimerStmtContext)
-	node := &ast.WorkflowWaitForTimerNode{}
+	node := &ast.WorkflowWaitForTimerNode{
+		Name: workflowActivityNameText(wtCtx.WorkflowActivityName()),
+	}
 
 	allStrings := wtCtx.AllSTRING_LITERAL()
 	if len(allStrings) > 0 && wtCtx.COMMENT() == nil {
@@ -745,7 +784,9 @@ func buildWorkflowWaitForTimer(ctx parser.IWorkflowWaitForTimerStmtContext) *ast
 // buildWorkflowWaitForNotification builds a WorkflowWaitForNotificationNode.
 func buildWorkflowWaitForNotification(ctx parser.IWorkflowWaitForNotificationStmtContext) *ast.WorkflowWaitForNotificationNode {
 	wnCtx := ctx.(*parser.WorkflowWaitForNotificationStmtContext)
-	node := &ast.WorkflowWaitForNotificationNode{}
+	node := &ast.WorkflowWaitForNotificationNode{
+		Name: workflowActivityNameText(wnCtx.WorkflowActivityName()),
+	}
 
 	if wnCtx.COMMENT() != nil && wnCtx.STRING_LITERAL() != nil {
 		node.Caption = unquoteString(wnCtx.STRING_LITERAL().GetText())

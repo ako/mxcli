@@ -74,8 +74,19 @@ func init() {
 		// outcome does not ('OK' { }). The two read alike but are separate
 		// grammar rules, so the arrow is easy to drop — this entry did, and
 		// taught the broken form until TestExamplesParse started checking it.
-		Syntax:  "DECISION ['<caption>'] [COMMENT '<text>']\n  OUTCOMES '<outcome>' -> { <activities> } ...;",
-		Example: "DECISION 'Check amount'\n  OUTCOMES\n    'Under 1000' -> { }\n    'Over 1000' -> {\n      USER TASK ManagerApproval 'Manager must approve'\n        OUTCOMES 'OK' { };\n    };",
+		//
+		// The outcome VALUE is not free text either: Mendix stores it as an
+		// EnumerationValueIdentifier and parses it when the project is loaded,
+		// so anything but Module.Enumeration.Value leaves a project Studio Pro
+		// cannot open. This entry taught 'Under 1000' / 'Over 1000' — both of
+		// which corrupt the model (ako/mxcli#1031, ako/mxcli#1065).
+		Syntax: "-- Boolean decision:\n" +
+			"DECISION [<name>] '<boolean-expression>' [COMMENT '<text>']\n  OUTCOMES TRUE -> { <activities> } FALSE -> { <activities> };\n\n" +
+			"-- Enumeration decision — each outcome is a QUALIFIED enum value,\n" +
+			"-- plus one '' outcome for 'none of the above' (without it: CE6686):\n" +
+			"DECISION [<name>] '<enum-expression>' [COMMENT '<text>']\n  OUTCOMES 'Module.Enumeration.Value' -> { <activities> } ... '' -> { };",
+		Example: "-- Boolean\nDECISION decision1 '$WorkflowContext/Amount > 1000'\n  OUTCOMES\n    TRUE -> {\n      USER TASK ManagerApproval 'Manager must approve'\n        OUTCOMES 'OK' { };\n    }\n    FALSE -> { };\n\n" +
+			"-- Enumeration: the value must be Module.Enumeration.Value.\n-- A bare 'Approved' makes the project UNLOADABLE, not merely invalid.\nDECISION decision2 '$WorkflowContext/Status'\n  OUTCOMES\n    'Sales.ENUM_Status.Approved' -> { }\n    'Sales.ENUM_Status.Rejected' -> { }\n    '' -> { };",
 		SeeAlso: []string{"workflow.create", "workflow.parallel-split"},
 	})
 
@@ -86,7 +97,7 @@ func init() {
 			"parallel", "concurrent", "split", "fork", "join",
 			"parallel gateway", "AND",
 		},
-		Syntax:  "PARALLEL SPLIT [COMMENT '<text>']\n  PATH 1 { <activities> }\n  PATH 2 { <activities> };",
+		Syntax:  "PARALLEL SPLIT [<name>] [COMMENT '<text>']\n  PATH 1 { <activities> }\n  PATH 2 { <activities> };",
 		Example: "PARALLEL SPLIT\n  PATH 1 {\n    USER TASK LegalReview 'Legal review'\n      OUTCOMES 'Done' { };\n  }\n  PATH 2 {\n    USER TASK TechReview 'Technical review'\n      OUTCOMES 'Done' { };\n  };",
 		SeeAlso: []string{"workflow.decision", "workflow.create"},
 	})
@@ -98,8 +109,11 @@ func init() {
 			"call microflow", "microflow task", "automated step",
 			"system task",
 		},
-		Syntax:  "CALL MICROFLOW Module.MF [COMMENT '<text>']\n  [OUTCOMES '<outcome>' { <activities> } ...];",
-		Example: "CALL MICROFLOW HR.SendNotification\n  COMMENT 'Notify manager';",
+		// The WITH values are QUOTED — the grammar takes a string literal there,
+		// not a bare variable. Omitting the clause from this entry is how an
+		// author ends up writing the unquoted form (ako/mxcli#1023).
+		Syntax:  "CALL MICROFLOW Module.MF [AS <name>] [COMMENT '<text>']\n  [WITH (<Param> = '<expression>', ...)]\n  [OUTCOMES '<outcome>' -> { <activities> } ...];",
+		Example: "CALL MICROFLOW HR.SendNotification\n  COMMENT 'Notify manager';\n\n-- Parameter values are quoted, and named by their BARE parameter name:\nCALL MICROFLOW HR.Escalate AS callMicroflow1\n  WITH (Request = '$WorkflowContext');",
 		SeeAlso: []string{"workflow.create", "workflow.call-workflow"},
 	})
 
@@ -109,9 +123,31 @@ func init() {
 		Keywords: []string{
 			"call workflow", "sub-workflow", "nested workflow",
 		},
-		Syntax:  "CALL WORKFLOW Module.WF [COMMENT '<text>'];",
-		Example: "CALL WORKFLOW HR.SubApproval COMMENT 'Delegate to sub-process';",
+		Syntax:  "CALL WORKFLOW Module.WF [AS <name>] [COMMENT '<text>']\n  [WITH (<Param> = '<expression>', ...)];",
+		Example: "CALL WORKFLOW HR.SubApproval COMMENT 'Delegate to sub-process';\n\n-- Parameter values are quoted:\nCALL WORKFLOW HR.SubApproval AS callWf1\n  WITH (Request = '$WorkflowContext');",
 		SeeAlso: []string{"workflow.create", "workflow.call-microflow"},
+	})
+
+	Register(SyntaxFeature{
+		Path:    "workflow.jump-to",
+		Summary: "Jump to another activity — and the activity names it resolves against",
+		Keywords: []string{
+			"jump", "jump to", "goto", "loop back", "activity name",
+		},
+		// Mendix stores JumpToActivity.TargetActivity as an activity NAME, not a
+		// pointer, so the jump is only as good as the name. Studio Pro names
+		// activities by type and ordinal regardless of caption (decision1,
+		// split1, callMicroflow1); mxcli derives a name when none is given, which
+		// is why an explicit one matters when reproducing a stored workflow.
+		Syntax: "JUMP TO <activity-name> [COMMENT '<text>'];\n\n" +
+			"-- name the target so the jump resolves:\n" +
+			"DECISION <name> ['<caption>'] ...\nPARALLEL SPLIT <name> ...\n" +
+			"WAIT FOR TIMER <name> ...\nWAIT FOR NOTIFICATION <name>\n" +
+			"CALL MICROFLOW Module.MF AS <name>\nCALL WORKFLOW Module.WF AS <name>",
+		Example: "DECISION decision1 '$WorkflowContext/Total > 1000'\n" +
+			"  OUTCOMES\n    true -> { }\n    false -> { };\n\n" +
+			"PARALLEL SPLIT split1\n  PATH 1 { JUMP TO decision1; }\n  PATH 2 { };",
+		SeeAlso: []string{"workflow.create", "workflow.decision", "workflow.parallel-split"},
 	})
 
 	Register(SyntaxFeature{

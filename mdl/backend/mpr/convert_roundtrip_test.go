@@ -628,4 +628,12 @@ func TestFieldCountDrift(t *testing.T) {
 	assertFieldCount(t, "types.EntityMemberAccess", types.EntityMemberAccess{}, 3)
 	assertFieldCount(t, "mpr.EntityAccessRevocation", mpr.EntityAccessRevocation{}, 6)
 	assertFieldCount(t, "types.EntityAccessRevocation", types.EntityAccessRevocation{}, 6)
+	// Both are hand-copied in convertNavProfile and were unguarded: adding
+	// CompatibilityMode to NavOfflineEntity left this test passing while the
+	// new field was silently not carried, which is the exact drift the test
+	// exists to catch.
+	assertFieldCount(t, "mpr.NavigationProfile", mpr.NavigationProfile{}, 9)
+	assertFieldCount(t, "types.NavigationProfile", types.NavigationProfile{}, 9)
+	assertFieldCount(t, "mpr.NavOfflineEntity", mpr.NavOfflineEntity{}, 4)
+	assertFieldCount(t, "types.NavOfflineEntity", types.NavOfflineEntity{}, 4)
 }

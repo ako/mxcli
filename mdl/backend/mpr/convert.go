@@ -225,6 +225,7 @@ func convertNavProfile(in *mpr.NavigationProfile) *types.NavigationProfile {
 		for i, oe := range in.OfflineEntities {
 			p.OfflineEntities[i] = &types.NavOfflineEntity{
 				Entity: oe.Entity, SyncMode: oe.SyncMode, Constraint: oe.Constraint,
+				CompatibilityMode: oe.CompatibilityMode,
 			}
 		}
 	}

@@ -56,6 +56,7 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 		// collapsed to its icon rail (MDL077). Covers both statements that carry
 		// menu items, which share one AST node so they cannot diverge.
 		violations = append(violations, validateMenuItemIcons(stmt)...)
+		violations = append(violations, validateMenuItemGlyphCodes(stmt)...)
 		// A page with parameters and a Url must name each parameter in it (CE5601).
 		if pageStmt, ok := stmt.(*ast.CreatePageStmtV3); ok {
 			violations = append(violations, ValidatePageURLParameters(pageStmt)...)
@@ -80,6 +81,11 @@ func ValidateProgram(prog *ast.Program, projectPath string) []linter.Violation {
 		// single-outcome-with-activities, invalid decision outcome names)
 		if wfStmt, ok := stmt.(*ast.CreateWorkflowStmt); ok {
 			violations = append(violations, ValidateWorkflow(wfStmt)...)
+		}
+		// ALTER WORKFLOW … INSERT BRANCH writes the same outcome value, so it
+		// carries the same load-time trap (MDL-WF03).
+		if awfStmt, ok := stmt.(*ast.AlterWorkflowStmt); ok {
+			violations = append(violations, ValidateAlterWorkflow(awfStmt)...)
 		}
 		// Check GRANT for member rights Mendix cannot store
 		if grantStmt, ok := stmt.(*ast.GrantEntityAccessStmt); ok {
