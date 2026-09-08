@@ -9,7 +9,13 @@ A navigation profile defines the navigation structure for a specific device type
 | Responsive web | `Responsive` | Default browser navigation |
 | Tablet web | `Tablet` | Tablet-optimized browser navigation |
 | Phone web | `Phone` | Phone-optimized browser navigation |
+| Responsive web offline | `ResponsiveOffline` | Offline-capable (PWA) |
+| Tablet web offline | `TabletOffline` | Offline-capable (PWA) |
+| Phone web offline | `PhoneOffline` | Offline-capable (PWA) |
 | Native mobile | `NativePhone` | React Native mobile navigation |
+
+The web kinds are a closed set and the profile is **created** if the project
+does not have it yet. The offline kinds are the online names plus `Offline`.
 
 ## CREATE OR REPLACE NAVIGATION
 
@@ -52,6 +58,42 @@ A profile only requires a home page:
 CREATE OR REPLACE NAVIGATION Phone
   HOME PAGE MyModule.Home_Phone;
 ```
+
+## Offline Synchronization
+
+An offline profile downloads **nothing** until its entities have a sync mode.
+Without a `sync` block the app builds, routes and installs as a PWA — and shows
+an empty screen. This is the most common way an offline profile looks broken
+while every check passes.
+
+```sql
+create or replace navigation PhoneOffline
+  home page MyModule.Mobile_Dashboard
+  sync (
+    sync MyModule.Setting online;
+    sync MyModule.Order all;
+    sync MyModule.Trip where [Distance > 0];
+    sync MyModule.Audit never;
+    sync MyModule.Lookup none;
+    sync MyModule.Draft none preserve data;
+  );
+```
+
+| Mode | Meaning |
+|------|---------|
+| `online` | fetched from the server, never held on the device |
+| `all` | every object downloaded |
+| `where [xpath]` | only the objects the XPath selects |
+| `never` | not synchronized |
+| `none` | not downloaded; anything already on the device is dropped |
+| `none preserve data` | not downloaded; what is on the device stays |
+
+The words are the values Mendix stores, not Studio Pro's captions — its
+"All Objects" is `all` and its "By XPath" is `where`. Copying a caption gives a
+parse error rather than a broken document.
+
+See [ALTER NAVIGATION](../reference/navigation/alter-navigation.md#offline-synchronization)
+for the full reference.
 
 ## DESCRIBE NAVIGATION
 

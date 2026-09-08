@@ -13,10 +13,28 @@ type AlterNavigationStmt struct {
 	NotFoundPage   *QualifiedName   // NOT FOUND PAGE ...
 	MenuItems      []NavMenuItemDef // MENU (...) block
 	HasMenuBlock   bool             // true if MENU (...) was present (even if empty → clears menu)
+	SyncEntries    []NavSyncDef     // SYNC (...) block — offline synchronization
+	HasSyncBlock   bool             // true if SYNC (...) was present (even if empty → clears the list)
 	CreateOrModify bool             // true if CREATE OR REPLACE/MODIFY was used
 }
 
 func (s *AlterNavigationStmt) isStatement() {}
+
+// NavSyncDef represents one `SYNC <entity> <mode>` line inside a SYNC block.
+//
+// Mode carries the STORED enum member, not the word the user typed: the visitor
+// maps ONLINE/ALL/NEVER/NONE/NONE PRESERVE DATA/WHERE onto Online/All/Never/
+// None/NoneAndPreserveData/Constrained, so nothing downstream has to know the
+// spelling. Studio Pro's captions ("All Objects", "By XPath") are not members
+// of the enumeration and never appear here.
+type NavSyncDef struct {
+	Entity QualifiedName
+	Mode   string
+	// Constraint is the XPath from a WHERE clause, and is set only when Mode is
+	// Constrained — the two are derived from the same alternative precisely so
+	// they cannot disagree.
+	Constraint string
+}
 
 // NavHomePageDef represents a HOME PAGE or HOME MICROFLOW clause.
 type NavHomePageDef struct {
