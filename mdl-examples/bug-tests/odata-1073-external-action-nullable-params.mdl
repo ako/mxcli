@@ -1,0 +1,114 @@
+-- ============================================================================
+-- mendixlabs/mxcli#1073: a call on a NULLABLE action parameter was CE7252
+-- ============================================================================
+--
+-- Report: "no way to pass an empty/null binding for an optional parameter;
+-- results in CE7252". Four MDL spellings were tried (`= null`, `= empty`,
+-- a bare `= )`, and omitting the parameter) and the conclusion drawn was that
+-- MDL had no syntax for the state.
+--
+-- The premise was wrong and the bug was real, but they were not the same thing.
+--
+-- WHAT STUDIO PRO ACTUALLY STORES. Measured on ako/TestApp (Mendix 11.14.0),
+-- microflow Odata.UnboundedActionMF, against the contract below:
+--
+--   ParameterName  Nullable   Argument   CanBeEmpty
+--   command        false      "empty"    false
+--   additional     true       "empty"    true
+--
+-- Two things follow, and both contradict the natural reading:
+--
+--   1. `Argument` is the EXPRESSION `empty`, not an empty string. An unfilled
+--      argument in Studio Pro is the Mendix null literal. So there is no
+--      "empty binding" to spell — `additional = empty` was always the right
+--      MDL, and it already wrote a byte-identical Argument. `= empty` and
+--      `= null` both parse and always did; the grammar rules involved are
+--      byte-identical at v0.20.0, so this was never a parser gap.
+--
+--   2. `CanBeEmpty` mirrors the CONTRACT's Nullable, not anything the developer
+--      typed. mxcli never set it, so it was Go's false on every mapping, and
+--      Mendix reported the disagreement as
+--
+--        CE7252 "The parameters for remote action '<x>' have changed."
+--
+--      the same code #1020 produced for a different missing field, which is
+--      why upgrading past #1020 did not clear it.
+--
+-- THE DEFAULT IS THE SUBTLE PART. CSDL makes Nullable optional on <Parameter>
+-- and defaults it to TRUE — the opposite of Go's zero value. `note` below has
+-- no Nullable attribute; defaulting it to false is CE7252, measured.
+--
+-- Not fixed here, and deliberately: Studio Pro also writes empty marker arrays
+-- `AdditionalAttributes` and `IncludedAssociations` (marker 2) on the call and
+-- on every mapping. mxbuild 11.14 builds at 0 errors without them, and they
+-- have not been verified against Studio Pro itself, so they are recorded rather
+-- than guessed at.
+--
+-- ---------------------------------------------------------------------------
+-- The contract this script assumes (import as a consumed OData service named
+-- Odata.Bug1073). The five actions are one per parameter shape that behaves
+-- differently; ako/TestApp has it imported already.
+-- ---------------------------------------------------------------------------
+--
+--   <Action Name="RunCommand" IsBound="false">
+--     <Parameter Name="command"    Type="Edm.String" Nullable="false"/>
+--     <Parameter Name="additional" Type="Edm.String" Nullable="true"/>
+--   </Action>
+--   <Action Name="Annotate" IsBound="false">
+--     <Parameter Name="target" Type="Edm.String" Nullable="false"/>
+--     <Parameter Name="note"   Type="Edm.String"/>          <!-- no Nullable -->
+--   </Action>
+--   <Action Name="Schedule" IsBound="false">
+--     <Parameter Name="label"     Type="Edm.String"         Nullable="false"/>
+--     <Parameter Name="retries"   Type="Edm.Int32"          Nullable="true"/>
+--     <Parameter Name="notBefore" Type="Edm.DateTimeOffset" Nullable="true"/>
+--   </Action>
+--
+-- Every unbound action needs an <ActionImport> in the EntityContainer or
+-- Mendix does not consider it callable at all (CE7251).
+--
+-- ---------------------------------------------------------------------------
+-- WHAT THIS SCRIPT PROVES, AND WHAT IT DOES NOT
+-- ---------------------------------------------------------------------------
+-- It proves the WRITE path: run it against a project with the contract above
+-- and `mxcli docker check --no-update-widgets` reports 0 errors, where before
+-- the fix each call was one CE7252.
+--
+-- It does NOT prove the read path, and cannot: CanBeEmpty is derived from the
+-- contract on every write, so a re-run reproduces the correct value whether or
+-- not the stored one was read back. The unit tests in
+-- mdl/executor/external_action_can_be_empty_test.go carry the control.
+-- ============================================================================
+
+-- The reporter's shape: one required parameter, one optional. Before the fix
+-- this single statement was CE7252.
+create or modify microflow Odata.ACT_1073_RunCommand ()
+begin
+  call external action Odata.Bug1073.RunCommand(command = empty, additional = empty);
+  return;
+end;
+
+-- Real arguments, not just `empty` — CanBeEmpty is about what the CONTRACT
+-- permits, so it must be written the same way when the argument is supplied.
+create or modify microflow Odata.ACT_1073_RunCommandBound ()
+begin
+  declare $Cmd string = 'restart';
+  call external action Odata.Bug1073.RunCommand(command = $Cmd, additional = 'now');
+  return;
+end;
+
+-- The absent-Nullable case. Defaulting it to false instead of true reproduces
+-- CE7252 on this statement alone.
+create or modify microflow Odata.ACT_1073_Annotate ()
+begin
+  call external action Odata.Bug1073.Annotate(target = 'x', note = empty);
+  return;
+end;
+
+-- Nullable parameters that are not strings, in case CanBeEmpty were ever
+-- type-dependent. It is not.
+create or modify microflow Odata.ACT_1073_Schedule ()
+begin
+  call external action Odata.Bug1073.Schedule(label = 'nightly', retries = empty, notBefore = empty);
+  return;
+end;
