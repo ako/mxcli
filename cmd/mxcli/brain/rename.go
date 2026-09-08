@@ -81,7 +81,12 @@ func (s *Store) RenameAnchors(old, new string) (int, error) {
 		if shard == moveShard {
 			// Write the new shard first, then drop the old one, so an
 			// interruption leaves a duplicate rather than nothing.
-			if err := s.SaveShard(new, entries); err != nil {
+			//
+			// The frontmatter is read from the OLD path and passed explicitly:
+			// the destination has no file yet, so the usual preserve-on-write
+			// has nothing to read it off, and the block would be lost precisely
+			// when the shard is being moved rather than edited.
+			if err := s.saveShardWith(new, entries, s.Frontmatter(shard)); err != nil {
 				return total, err
 			}
 			if err := os.Remove(s.ShardPath(shard)); err != nil && !os.IsNotExist(err) {

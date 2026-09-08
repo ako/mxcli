@@ -41,6 +41,14 @@ docs/brain/
 
 Committed, and reviewed in a pull request like any other change.
 
+A shard is re-rendered from its entries on every write, so the title and the
+preamble are regenerated and hand-edits to them do not survive. **YAML
+frontmatter is preserved**, because mxcli does not own it — it is where markdown
+tooling keeps per-file metadata (Foam and Obsidian tags, a docs site's nav
+weight), and discarding it would quietly break any of those. It counts toward
+the shard's cap, since a session loading the shard loads it too. A shard with no
+frontmatter never grows an empty block.
+
 The split is not cosmetic. A single file would make the size cap a project-wide
 budget — recording a `Sales` decision would compete with a `Finance` one — and
 every session would load every module's decisions. With one file per module, a
