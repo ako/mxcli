@@ -11,6 +11,9 @@ CREATE OR REPLACE NAVIGATION profile
     [ MENU (
         menu_items
     ) ]
+    [ SYNC (
+        sync_rules
+    ) ]
 ```
 
 ## Description
@@ -28,7 +31,15 @@ Mendix supports the following navigation profile types:
 | `Responsive` | Web browser (desktop and mobile responsive) |
 | `Tablet` | Tablet-optimized web |
 | `Phone` | Phone-optimized web |
+| `ResponsiveOffline` | Responsive web, offline-capable (PWA) |
+| `TabletOffline` | Tablet web, offline-capable (PWA) |
+| `PhoneOffline` | Phone web, offline-capable (PWA) |
 | `NativePhone` | Native mobile application |
+
+The web kinds are a closed set, and the profile is **created** if the project
+does not have it yet. The three offline kinds are the online names plus
+`Offline`, and each one needs a [`SYNC` block](#offline-synchronization) to
+download anything.
 
 ### Menu Items
 
@@ -39,7 +50,9 @@ Each `MENU ITEM` specifies a label and a target page. Menu items are terminated 
 ## Parameters
 
 `profile`
-:   The navigation profile type: `Responsive`, `Tablet`, `Phone`, or `NativePhone`.
+:   The navigation profile type — see [Profile Types](#profile-types). One of
+    `Responsive`, `Tablet`, `Phone`, `ResponsiveOffline`, `TabletOffline`,
+    `PhoneOffline` or `NativePhone`.
 
 `HOME PAGE module.PageName`
 :   The default home page for the profile. Required. The page must already exist.
@@ -63,6 +76,48 @@ Each `MENU ITEM` specifies a label and a target page. Menu items are terminated 
 
 `MENU 'label' ( ... )`
 :   A submenu containing nested menu items and/or further submenus.
+
+### Offline Synchronization
+
+`SYNC ( ... )` configures which entities an offline profile downloads. **An
+offline profile downloads nothing without it** — the app builds, routes and
+installs as a PWA, and shows an empty screen.
+
+```sql
+SYNC (
+    SYNC Sales.Setting ONLINE;
+    SYNC Sales.Order ALL;
+    SYNC Sales.Trip WHERE [Distance > 0];
+    SYNC Sales.Audit NEVER;
+    SYNC Sales.Lookup NONE;
+    SYNC Sales.Draft NONE PRESERVE DATA;
+)
+```
+
+| Mode | Meaning |
+|------|---------|
+| `ONLINE` | Fetched from the server; never held on the device |
+| `ALL` | Every object downloaded |
+| `WHERE [ xpath ]` | Only the objects the XPath selects |
+| `NEVER` | Not synchronized |
+| `NONE` | Not downloaded; anything already on the device is dropped |
+| `NONE PRESERVE DATA` | Not downloaded; what is on the device stays |
+
+These are the values Mendix stores, **not** the captions Studio Pro shows in
+its *Customize offline synchronization* dialog: its "All Objects" is `ALL` and
+its "By XPath" is `WHERE`. A caption is refused rather than written.
+
+`WHERE` implies the constrained mode rather than naming it, so a constraint
+without a mode and a mode without a constraint are both unspellable. The XPath
+goes in **brackets** and is taken verbatim — nothing inside is escaped. A
+quoted `WHERE 'xpath'` still parses, but every quote inside it must be doubled.
+
+The block replaces the stored list, the way `MENU` replaces the menu. Omitting
+it leaves the stored configuration alone.
+
+An entity's *compatibility mode* flag has no MDL syntax. It is read, preserved
+across a rewrite, and reported by `DESCRIBE NAVIGATION` — never silently
+dropped.
 
 ## Examples
 
