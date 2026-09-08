@@ -62,6 +62,15 @@ var engineScriptSkip = map[string]string{
 	// a half-written one would look valid, so the legacy backend refuses
 	// create/modify/drop rather than emitting one. Reads work on both engines.
 	"legacy/rules.mdl": "rule authoring is modelsdk-only by design; the legacy backend refuses it",
+	// Same shape once more. The script creates a PhoneOffline profile, and
+	// creating a profile means writing a fourteen-key
+	// Navigation$NavigationProfile pinned against a Studio Pro reference. The
+	// legacy writer has no such path and refuses rather than approximating —
+	// "a profile assembled from a guess builds clean and will not open in
+	// Studio Pro" (mdl/backend/mpr/backend.go). The SYNC block itself is
+	// implemented on BOTH engines and covered by unit tests on each; it is
+	// reaching an offline profile that legacy cannot do.
+	"legacy/navigation-offline-sync.mdl": "creating a navigation profile is modelsdk-only by design; the legacy backend refuses it",
 	// Same shape again: layout authoring is modelsdk-only. A layout's widget tree
 	// hangs off a Forms$WebLayoutContent wrapper the legacy writer cannot build —
 	// its serializeLayout emitted four header keys, a string $ID where Studio Pro

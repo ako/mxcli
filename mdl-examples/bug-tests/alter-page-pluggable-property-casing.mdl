@@ -1,0 +1,76 @@
+-- ============================================================================
+-- ALTER PAGE ... SET <prop> rejected a pluggable property CREATE had accepted
+-- Upstream issue: mendixlabs/mxcli#1069
+-- ============================================================================
+--
+-- Symptom (before fix):
+--   `create page` accepted `PageSize: 20` on a DataGrid 2 and the app paged at
+--   20 — but the same spelling in ALTER PAGE hard-errored:
+--     Error: failed to set: failed to set PageSize on dgProducts:
+--       pluggable property "PageSize" not found
+--   `mxcli check --references` passed the script, so the failure only appeared
+--   at exec, after earlier statements had already been written. The workaround
+--   was to re-emit the whole page with CREATE OR MODIFY — a two-value edit
+--   turned into a 190-line script.
+--
+--   Aggravating it: DESCRIBE PAGE prints the property CAPITALISED
+--   (`PageSize: 10`), so describe -> edit -> exec produced a script mxcli then
+--   refused to run.
+--
+-- Root cause:
+--   A pluggable property is keyed in the widget template in lowerCamel
+--   (`pageSize`). CREATE resolves the author's spelling case-insensitively
+--   (the widget engine's lookupProperty, and WidgetV3.GetStringProp before it).
+--   ALTER went through setPluggableWidgetPropertyMut, which compared the
+--   template key BYTE-FOR-BYTE. Only the exact `pageSize` worked.
+--
+--   This is the sequel to alter-page-lowercase-set-on-builtin.mdl, which fixed
+--   the same class for FIRST-CLASS properties and left the pluggable fallback
+--   case-sensitive on the belief that "template keys are case-sensitive". They
+--   are stored case-sensitively; they do not need to be MATCHED that way.
+--   Measured across every shipped widget template and definition: 96 property
+--   scopes, 1208 keys, 0 pairs differing only in case — so the relaxed match is
+--   unambiguous, not merely convenient
+--   (TestPluggablePropertyKeysAreUniqueIgnoringCase pins it).
+--
+-- After fix:
+--   setPluggableWidgetPropertyMut resolves with strings.EqualFold, so every
+--   spelling below works on both engines. A genuine typo still errors — that is
+--   the author's only signal, since check --references does not resolve
+--   pluggable property names.
+--
+-- Usage:
+--   mxcli exec mdl-examples/bug-tests/alter-page-pluggable-property-casing.mdl -p app.mpr
+-- ============================================================================
+
+create entity MyFirstModule.Product ( Title: String(200) );
+
+create or replace page MyFirstModule.P_GridPaging
+(
+  Title: 'Grid Paging',
+  Layout: Atlas_Core.Atlas_Default
+)
+{
+  datagrid dgProducts (DataSource: database MyFirstModule.Product, PageSize: 20) {
+    column colTitle (Attribute: Title, Caption: 'Title')
+  }
+}
+
+-- The statement from the issue. Before the fix: `pluggable property "PageSize"
+-- not found`, and nothing after it in the script ran.
+alter page MyFirstModule.P_GridPaging {
+  set PageSize = 10 on dgProducts;
+}
+
+-- The template's own spelling — the only one that used to work.
+alter page MyFirstModule.P_GridPaging {
+  set pageSize = 25 on dgProducts;
+}
+
+-- Flat lowercase, as an author types it without thinking about the template.
+alter page MyFirstModule.P_GridPaging {
+  set pagesize = 15 on dgProducts;
+}
+
+-- Round-trip: DESCRIBE emits `PageSize: 15`, which is now executable MDL.
+describe page MyFirstModule.P_GridPaging;

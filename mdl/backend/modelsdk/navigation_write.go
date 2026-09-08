@@ -197,6 +197,11 @@ func navPatchWebProfile(doc bson.D, spec types.NavigationProfileSpec) bson.D {
 			{Key: "Items", Value: menuItems},
 		})
 	}
+
+	if spec.HasSync {
+		doc = navSetField(doc, "OfflineEntityConfigs",
+			navOfflineConfigs(navGetArray(doc, "OfflineEntityConfigs"), spec.OfflineEntities))
+	}
 	return doc
 }
 
@@ -378,4 +383,60 @@ func navMenuAction(mi types.NavMenuItemSpec) bson.D {
 		{Key: "$ID", Value: navID()},
 		{Key: "$Type", Value: "Forms$NoAction"},
 	}
+}
+
+// navOfflineConfigs rebuilds the OfflineEntityConfigs list from the spec while
+// carrying forward the properties MDL cannot express.
+//
+// The carry is the whole point. Studio Pro writes four properties on a web
+// profile's config and MDL can spell three; CompatibilityMode is read (phase 1)
+// and put back here, keyed by entity. Building the element from the spec alone
+// would clear it on every rewrite — silently, because the document stays valid
+// and `mx check` reports 0 errors either way. That is the defect that had
+// `create or modify entity` deleting access rules.
+//
+// DownloadMode and ShouldDownload are NOT written, though modelsdk/gen declares
+// them: they occur zero times in ako/TestApp's configs. A property absent from
+// every real document is one Studio Pro fills in on load, and emitting it is
+// how a document mxbuild accepts becomes one Studio Pro cannot open.
+func navOfflineConfigs(stored bson.A, specs []types.NavOfflineEntitySpec) bson.A {
+	// Index what is stored by entity so a rewrite of the same entity keeps its
+	// unauthorable properties. An entity the spec adds has no stored config and
+	// takes the default every reference config carries.
+	compat := map[string]bool{}
+	for _, item := range stored {
+		cfg, ok := item.(bson.D)
+		if !ok {
+			continue // the leading typed-array marker
+		}
+		if e := navGetString(cfg, "Entity"); e != "" {
+			compat[e] = navGetBool(cfg, "CompatibilityMode")
+		}
+	}
+
+	out := bson.A{navMarkerItems}
+	for _, s := range specs {
+		out = append(out, bson.D{
+			{Key: "$ID", Value: navID()},
+			{Key: "$Type", Value: "Navigation$OfflineEntityConfig"},
+			{Key: "CompatibilityMode", Value: compat[s.Entity]},
+			{Key: "Constraint", Value: s.Constraint},
+			{Key: "Entity", Value: s.Entity},
+			{Key: "SyncMode", Value: s.SyncMode},
+		})
+	}
+	return out
+}
+
+// navGetBool reads a bool field, defaulting to false for an absent or
+// wrong-typed value — which is what every reference config carries.
+func navGetBool(doc bson.D, key string) bool {
+	for _, e := range doc {
+		if e.Key == key {
+			if b, ok := e.Value.(bool); ok {
+				return b
+			}
+		}
+	}
+	return false
 }

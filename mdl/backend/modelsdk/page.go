@@ -85,7 +85,12 @@ func (b *Backend) ListSnippets() ([]*pages.Snippet, error) {
 	}
 	out := make([]*pages.Snippet, 0, len(units))
 	for _, u := range units {
-		s := &pages.Snippet{ContainerID: u.ContainerID, Name: u.Element.Name(), Excluded: u.Element.Excluded()}
+		s := &pages.Snippet{
+			ContainerID:   u.ContainerID,
+			Name:          u.Element.Name(),
+			Documentation: u.Element.Documentation(),
+			Excluded:      u.Element.Excluded(),
+		}
 		s.ID = model.ID(u.Element.ID())
 		// Populate declared parameters — the page builder reads these to validate
 		// and wire SNIPPETCALL argument mappings (without them every parameterised
@@ -135,9 +140,17 @@ func pageFromGen(p *genPg.Page, containerID model.ID) *pages.Page {
 	out := &pages.Page{
 		ContainerID: containerID,
 		Name:        p.Name(),
-		Excluded:    p.Excluded(),
-		URL:         p.Url(),
-		Title:       textElementToModel(p.Title()),
+		// A page's documentation is written correctly and stored correctly; this
+		// engine simply did not read it back, so `mxcli lint` QUAL002 reported
+		// "Page 'X' has no documentation" against a page carrying a javadoc
+		// comment, and the catalog's Description column was blank for every page
+		// (ako/CapTrackV4 R12). The legacy parser has always carried it, as do the
+		// layout, building-block and page-template readers in this file — page and
+		// snippet were the two that did not.
+		Documentation: p.Documentation(),
+		Excluded:      p.Excluded(),
+		URL:           p.Url(),
+		Title:         textElementToModel(p.Title()),
 	}
 	out.ID = model.ID(p.ID())
 	// AllowedRoles (BY_NAME module-role references, stored under the

@@ -35,6 +35,7 @@ const (
 	RefKindSchedule   = "schedule"   // Scheduled event runs a microflow
 	RefKindValidate   = "validate"   // Attribute validation rule uses a regular expression
 	RefKindWidget     = "widget"     // Page/snippet uses a pluggable or custom widget
+	RefKindSettings   = "settings"   // A project setting names a microflow
 )
 
 // collectActionActivities returns all ActionActivity objects from an ObjectCollection,
@@ -542,6 +543,14 @@ func (b *Builder) buildReferences() error {
 	// pattern.
 	refCount += b.extractRegexRuleRefs(stmt, projectID, snapshotID)
 
+	// Three project settings name a microflow the runtime calls. Same class as
+	// the scheduled-event edge above and found the same way: a microflow wired as
+	// AfterStartupMicroflow reported no callers and no references, QUAL004 said
+	// "not called from anywhere. Remove if unused", and dropping it left a
+	// dangling name that `mx check` did not catch either — it surfaced only when
+	// the runtime refused to start (ako/CapTrackV4 049).
+	refCount += b.extractProjectSettingsRefs(stmt, projectID, snapshotID)
+
 	b.report("References", refCount)
 	return nil
 }
@@ -973,4 +982,55 @@ func (b *Builder) extractWorkflowConditionOutcomeRefs(stmt *sql.Stmt, outcome wo
 		return 0
 	}
 	return b.extractWorkflowFlowRefs(stmt, outcome.GetFlow(), sourceID, sourceQN, moduleName, projectID, snapshotID)
+}
+
+// projectSettingsMicroflowRefs lists the project settings whose value is the
+// qualified name of a microflow the RUNTIME calls, with the key each is stored
+// under so a reference reads as the setting that made it.
+//
+// It is a literal list rather than reflection over ProjectSettings because most
+// of that struct is strings that are not microflow names, and a wrong entry here
+// would invent an edge rather than miss one.
+var projectSettingsMicroflowRefs = []struct {
+	setting string
+	value   func(*model.ModelSettings) string
+}{
+	{"AfterStartupMicroflow", func(ms *model.ModelSettings) string { return ms.AfterStartupMicroflow }},
+	{"BeforeShutdownMicroflow", func(ms *model.ModelSettings) string { return ms.BeforeShutdownMicroflow }},
+	{"HealthCheckMicroflow", func(ms *model.ModelSettings) string { return ms.HealthCheckMicroflow }},
+}
+
+// extractProjectSettingsRefs emits one `settings` edge per project setting that
+// names a microflow, from the setting to the microflow it runs.
+//
+// The source is the SETTING, not the project, so `show references to <microflow>`
+// names which setting depends on it — which is the thing you need before dropping
+// it, and what `describe settings` would otherwise be the only way to learn.
+func (b *Builder) extractProjectSettingsRefs(stmt *sql.Stmt, projectID, snapshotID string) int {
+	ps, err := b.reader.GetProjectSettings()
+	if err != nil || ps == nil || ps.Model == nil {
+		return 0 // a project may have no settings document; not an error
+	}
+	count := 0
+	for _, s := range projectSettingsMicroflowRefs {
+		target := strings.TrimSpace(s.value(ps.Model))
+		if target == "" {
+			continue
+		}
+		// The module is the microflow's own — a project setting belongs to no
+		// module, and leaving it blank would drop the edge out of any per-module
+		// view of the graph.
+		moduleName := ""
+		if i := strings.Index(target, "."); i > 0 {
+			moduleName = target[:i]
+		}
+		if _, err := stmt.Exec(
+			"PROJECT_SETTINGS", "", s.setting,
+			"MICROFLOW", "", target,
+			RefKindSettings, moduleName, projectID, snapshotID,
+		); err == nil {
+			count++
+		}
+	}
+	return count
 }

@@ -157,6 +157,22 @@ func createFolder(ctx *ExecContext, name string, containerID model.ID) (model.ID
 // ----------------------------------------------------------------------------
 
 // enumerationExists checks if an enumeration exists in the project.
+//
+// It defers to findEnumeration rather than matching containers itself. The
+// second implementation this used to carry compared `enum.ContainerID ==
+// module.ID`, which only ever matches an enumeration sitting directly in the
+// module root: one inside a FOLDER has the folder as its container, so
+// `mxcli check --references` reported it missing while DESCRIBE, SHOW, ALTER
+// and mxbuild all resolved it — a false negative on a script that executes
+// cleanly (mendixlabs/mxcli#1071).
+//
+// That is the same defect upstream #976 fixed in DROP, which patched the one
+// reported command and left the other caller of this question behind. Deleting
+// the duplicate is the point of this change: two functions answering "does this
+// enumeration exist" is what let them drift, and only one of them was exercised
+// by the commands people run interactively. findEnumeration also prefers a live
+// enumeration over an excluded twin of the same name (#914), which the copy did
+// not do.
 func enumerationExists(ctx *ExecContext, qualifiedName string) bool {
 	if !ctx.Connected() {
 		return false
@@ -167,26 +183,8 @@ func enumerationExists(ctx *ExecContext, qualifiedName string) bool {
 	if len(parts) != 2 {
 		return false
 	}
-	moduleName, enumName := parts[0], parts[1]
 
-	// Find the module to get its ID
-	module, err := findModule(ctx, moduleName)
-	if err != nil {
-		return false
-	}
-
-	// Get all enumerations and check if one matches
-	enums, err := ctx.Backend.ListEnumerations()
-	if err != nil {
-		return false
-	}
-
-	for _, enum := range enums {
-		if enum.ContainerID == module.ID && enum.Name == enumName {
-			return true
-		}
-	}
-	return false
+	return findEnumeration(ctx, parts[0], parts[1]) != nil
 }
 
 // ----------------------------------------------------------------------------
@@ -578,6 +576,55 @@ func buildEntityEnumAttrMap(ctx *ExecContext, entityQN string) map[string]string
 			}
 			return result
 		}
+	}
+	return result
+}
+
+// buildAssociationQualifiedNames returns a set of all association qualified names
+// in the project, covering both intra-module associations and cross-module ones
+// (which live on the FROM entity's domain model, so both come off the same walk).
+func buildAssociationQualifiedNames(ctx *ExecContext) map[string]bool {
+	result := make(map[string]bool)
+	modules, err := getModulesFromCache(ctx)
+	if err != nil {
+		return result
+	}
+	moduleNames := make(map[model.ID]string)
+	for _, m := range modules {
+		moduleNames[m.ID] = m.Name
+	}
+	dms, err := ctx.Backend.ListDomainModels()
+	if err != nil {
+		return result
+	}
+	for _, dm := range dms {
+		modName := moduleNames[dm.ContainerID]
+		if modName == "" {
+			continue
+		}
+		for _, assoc := range dm.Associations {
+			result[modName+"."+assoc.Name] = true
+		}
+		for _, ca := range dm.CrossAssociations {
+			result[modName+"."+ca.Name] = true
+		}
+	}
+	return result
+}
+
+// buildRuleQualifiedNames returns a set of all rule qualified names in the project.
+func buildRuleQualifiedNames(ctx *ExecContext) map[string]bool {
+	result := make(map[string]bool)
+	h, err := getHierarchy(ctx)
+	if err != nil {
+		return result
+	}
+	rules, err := ctx.Backend.ListRules()
+	if err != nil {
+		return result
+	}
+	for _, r := range rules {
+		result[h.GetQualifiedName(r.ContainerID, r.Name)] = true
 	}
 	return result
 }

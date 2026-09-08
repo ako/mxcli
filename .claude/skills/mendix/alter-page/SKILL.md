@@ -460,6 +460,16 @@ actions — cannot be set by ALTER at all. It refuses them and points at
 `create or replace page`, rather than writing a string where Mendix expects a
 reference.
 
+**Widget property names are matched case-insensitively**, pluggable ones
+included, so a spelling `CREATE PAGE` accepts is a spelling `ALTER PAGE` accepts
+— `set PageSize = 10 on dgProducts` and `set pageSize = 10 on dgProducts` are the
+same statement. This is what makes DESCRIBE output re-executable: `describe page`
+prints the capitalised `PageSize:`, while the widget template stores `pageSize`
+(mendixlabs/mxcli#1069). A property the widget does not declare is still an
+error, and it is the only signal you get — `mxcli check --references` does not
+resolve pluggable property names, so a typo checks clean and fails at exec, after
+earlier statements in the script have already been written.
+
 ## Common Mistakes
 
 | Mistake | Fix |
@@ -467,6 +477,7 @@ reference.
 | Missing `on widgetName` for widget SET | Add `on widgetName` (only page-level properties — `Title`, `PopupWidth`, `PopupHeight`, `PopupResizable`, `Class`, `Style` — omit ON) |
 | `unsupported page-level property: title` | Page-level property names are case-sensitive — use `Title`, `PopupWidth`, `PopupHeight`, `PopupResizable`, `Class`, `Style` |
 | Using unquoted pluggable property names | Quote pluggable props: `set 'showLabel' = false on cb` |
+| `pluggable property "X" not found` | The widget does not declare it — casing is not the problem (any casing resolves). Check the real name with `describe widget <type>` or `describe page` |
 | Wrong widget name | Use `describe page Module.Name` to see widget names |
 | SET on non-existent widget | Widget names are case-sensitive; check with DESCRIBE |
 | Missing semicolons between operations | Each operation inside `{ }` ends with `;` |

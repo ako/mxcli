@@ -8,6 +8,8 @@
 // most need the store (PROPOSAL_project_brain.md §4.1).
 package brain
 
+import "encoding/json"
+
 // Caps are measured in lines, because lines are what an agent pays for when a
 // shard is loaded into context.
 //
@@ -45,10 +47,22 @@ func CapFor(shard string) int {
 // none of it is ever written into a committed file, because a figure in prose
 // is stale the next time anyone promotes (A6).
 type Usage struct {
-	Shard   string
-	Entries int
-	Lines   int
-	Cap     int
+	Shard   string `json:"shard"`
+	Entries int    `json:"entries"`
+	Lines   int    `json:"lines"`
+	Cap     int    `json:"cap"`
+}
+
+// MarshalJSON adds the two derived figures a reader would otherwise recompute,
+// and which are the whole point of the command: headroom, and whether the shard
+// is over its cap.
+func (u Usage) MarshalJSON() ([]byte, error) {
+	type usage Usage
+	return json.Marshal(struct {
+		usage
+		Headroom int  `json:"headroom"`
+		Over     bool `json:"over_cap"`
+	}{usage(u), u.Headroom(), u.Over()})
 }
 
 // Headroom is the number of lines still available. It goes negative for a shard

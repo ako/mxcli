@@ -13,7 +13,11 @@
 //     anchor can resolve perfectly and the entry still sit in the wrong file.
 package brain
 
-import "sort"
+import (
+	"encoding/json"
+	"fmt"
+	"sort"
+)
 
 // AnchorState is the outcome of resolving one anchor.
 type AnchorState int
@@ -28,6 +32,32 @@ const (
 	// would make `check` demand edits to entries that are perfectly current.
 	NotIndexable
 )
+
+// MarshalJSON writes the state's name. The zero value of an int is a state
+// here, so an ordinal contract would make "0" mean `resolved` today and
+// something else the moment a state is inserted above it — a change nothing
+// downstream could notice. The three states are the substance of the check, so
+// they travel as names.
+func (s AnchorState) MarshalJSON() ([]byte, error) { return json.Marshal(s.String()) }
+
+// UnmarshalJSON accepts what MarshalJSON writes, so a report round-trips.
+func (s *AnchorState) UnmarshalJSON(b []byte) error {
+	var name string
+	if err := json.Unmarshal(b, &name); err != nil {
+		return err
+	}
+	switch name {
+	case "resolved":
+		*s = Resolved
+	case "not found":
+		*s = NotFound
+	case "not indexable":
+		*s = NotIndexable
+	default:
+		return fmt.Errorf("unknown anchor state %q", name)
+	}
+	return nil
+}
 
 func (s AnchorState) String() string {
 	switch s {
@@ -59,47 +89,48 @@ type Resolver interface {
 
 // AnchorFinding is one anchor's outcome.
 type AnchorFinding struct {
-	Shard   string
-	EntryID string
-	Title   string
-	Anchor  string
-	State   AnchorState
-	Kind    string
+	Shard   string      `json:"shard"`
+	EntryID string      `json:"entry_id"`
+	Title   string      `json:"title"`
+	Anchor  string      `json:"anchor"`
+	State   AnchorState `json:"state"`
+	Kind    string      `json:"kind,omitempty"`
 }
 
 // OpenQuestion is something the project has not decided yet.
 type OpenQuestion struct {
-	Shard   string
-	EntryID string
-	Title   string
+	Shard   string `json:"shard"`
+	EntryID string `json:"entry_id"`
+	Title   string `json:"title"`
 }
 
 // MisfiledFinding is an entry sitting in a shard none of its anchors belong to.
 type MisfiledFinding struct {
-	Shard   string
-	EntryID string
-	Title   string
-	Belongs string // the shard it should be in, from its first resolved anchor
+	Shard   string `json:"shard"`
+	EntryID string `json:"entry_id"`
+	Title   string `json:"title"`
+	// Belongs is the shard it should be in, from its first resolved anchor.
+	Belongs string `json:"belongs,omitempty"`
 }
 
 // SliceProgress is a slice's requirements counted against the model. Every
 // figure is derived from resolving anchors, so nothing here is self-reported
 // and no one has to maintain a status column that will go stale.
 type SliceProgress struct {
-	Slice string
+	Slice string `json:"slice"`
 	// Built is requirements whose anchors all resolve — the thing exists.
-	Built int
+	Built int `json:"built"`
 	// Planned is requirements with at least one anchor that does not resolve
 	// yet. Not a failure: that is what a requirement is until it is built.
-	Planned int
+	Planned int `json:"planned"`
 	// Questions is open questions filed against this slice — scope that is not
 	// settled. They are not requirements and are not counted as either built
 	// or planned; counting an unanswered question as outstanding work would
 	// overstate the slice.
-	Questions int
+	Questions int `json:"questions"`
 	// Unanchored is requirements with no anchor at all. They cannot be
 	// measured, and are counted apart rather than silently called planned.
-	Unanchored int
+	Unanchored int `json:"unanchored"`
 }
 
 // Total is every requirement in the slice. Open questions are excluded: they
@@ -108,15 +139,33 @@ func (p SliceProgress) Total() int { return p.Built + p.Planned + p.Unanchored }
 
 // Report is what `brain check` prints and exits on.
 type Report struct {
-	Shards    []string
-	Entries   int
-	Anchors   int
-	ResolvedN int
-	Findings  []AnchorFinding // NotFound and NotIndexable only
-	Misfiled  []MisfiledFinding
-	Malformed []string // entry blocks whose metadata line could not be read
-	Slices    []SliceProgress
-	Open      []OpenQuestion
+	Shards    []string `json:"shards"`
+	Entries   int      `json:"entries"`
+	Anchors   int      `json:"anchors"`
+	ResolvedN int      `json:"resolved"`
+	// Findings carries NotFound and NotIndexable anchors only; a resolved
+	// anchor is not a finding.
+	Findings []AnchorFinding   `json:"findings"`
+	Misfiled []MisfiledFinding `json:"misfiled"`
+	// Malformed names entry blocks whose metadata line could not be read.
+	Malformed []string        `json:"malformed"`
+	Slices    []SliceProgress `json:"slices"`
+	Open      []OpenQuestion  `json:"open"`
+}
+
+// MarshalJSON adds a derived "failed" alongside the report's contents. A
+// consumer deciding whether to advance should not have to re-implement which of
+// these states are defects and which are information — that rule lives in
+// Failed() and is easy to get subtly wrong from outside (a not-indexable anchor
+// and an open question both look like problems and neither is one).
+//
+// It is computed here rather than stored, so it cannot disagree with Failed().
+func (r Report) MarshalJSON() ([]byte, error) {
+	type report Report // shed the method, keep the tags
+	return json.Marshal(struct {
+		report
+		Failed bool `json:"failed"`
+	}{report(r), r.Failed()})
 }
 
 // Failed reports whether the check should exit non-zero.

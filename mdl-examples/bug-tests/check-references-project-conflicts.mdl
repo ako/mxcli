@@ -1,0 +1,57 @@
+-- `mxcli check --references` under-reported project conflicts.
+--
+-- stmtCreateInfo classified 24 document types; projectNameSets.setFor knew 20.
+-- The four that fell through returned nil, which the caller reads as "no
+-- conflicts for that type" — so a plain CREATE of an association, rule or
+-- javascript action that the project already had passed the check and then
+-- failed at exec, part-way through, with the earlier statements written.
+--
+-- Run this twice against the same project:
+--
+--   mxcli exec  mdl-examples/bug-tests/check-references-project-conflicts.mdl -p app.mpr
+--   mxcli check mdl-examples/bug-tests/check-references-project-conflicts.mdl -p app.mpr --references
+--
+-- The second command must report a conflict for EACH of ConflictTest.Child_Parent,
+-- ConflictTest.IsBig and ConflictTest.Ping — not only the entities. Before the
+-- fix it reported the entities alone.
+
+create module ConflictTest;
+
+create entity ConflictTest.Parent ( Name : String(100) );
+create entity ConflictTest.Child ( Label : String(100) );
+
+-- association: was not project-checked
+create association ConflictTest.Child_Parent
+    from ConflictTest.Child
+    to ConflictTest.Parent;
+
+-- rule: was not project-checked
+create rule ConflictTest.IsBig ( Amount : Decimal ) returns Boolean
+begin
+    return $Amount > 10;
+end;
+
+-- javascript action: was not project-checked
+create javascript action ConflictTest.Ping() returns Boolean
+as $$
+    return true;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- The other half: IF NOT EXISTS is the THIRD idempotency spelling (beside OR
+-- MODIFY and OR REPLACE) and stmtCreateInfo did not recognise it. Exec skips
+-- these with "already exists — skipped", but the check reported them as
+-- conflicts — so a re-runnable domain script failed its own second run at
+-- check time. On a second run these two statements must stay clean.
+-- ---------------------------------------------------------------------------
+
+create entity if not exists ConflictTest.Parent ( Name : String(100) );
+create association if not exists ConflictTest.Child_Parent
+    from ConflictTest.Child
+    to ConflictTest.Parent;
+
+-- CREATE MODULE is deliberately NOT project-checked: it is idempotent at exec
+-- (prints "already exists", exits 0), and `create module M;` opens nearly every
+-- script — which is why statement 1 above must stay clean on the second run.
+-- (Repeating it HERE would instead trip MDL-DUPDEF, the in-script duplicate
+-- check, which is a different rule and correctly still fires.)
