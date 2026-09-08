@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **`check --references` reported an enumeration in a folder as missing** (mendixlabs/mxcli#1071) — `attribute 'CriticalPathStation': enumeration not found: Approval.StationKey`, while `DESCRIBE ENUMERATION` returned its values, `SHOW ENUMERATIONS` listed it, `exec` wrote the attribute and mxbuild built the project at 0 errors. A pure false negative, and it read as *"enumerations are never resolved"* because the reporting project keeps its enumerations in folders.
+
+  `enumerationExists` matched containers directly — `enum.ContainerID == module.ID` — which only ever holds for an enumeration sitting in the module **root**; one inside a folder has the folder as its container. Every other command resolves through the container hierarchy, which walks folders up to the module, so the reference checker was the only one that could not see inside one. It now defers to `findEnumeration`, deleting the duplicate rather than patching the copy — and picking up the live-over-excluded handling the copy never had.
+
+  Both call sites are fixed: `ALTER ENTITY … ADD ATTRIBUTE` (reported) and `CREATE ENTITY` with an enumerated attribute, which fails identically and was not in the report. A genuinely missing enumeration is still reported, and a foldered one still does not answer for another module's name.
+
 - **An attribute added to a generalization left every specialization's access rule short a member — and `update security` said the model was fine** (mendixlabs/mxcli#1047). `ALTER ENTITY M.Gen ADD ATTRIBUTE …`, where a specialization of `Gen` also has an access rule, produced **CE0066 "Entity access is out of date"**; `UPDATE SECURITY` — project-wide or scoped, the command that exists to repair exactly that — reported **"All entity access rules are up to date"** and changed nothing.
 
   `ReconcileMemberAccesses` computes the same-module ancestor set and then used it **only** for associations. The attribute pass beside it walked the entity's own attributes, so a specialization's expected member set never contained what it inherits: nothing looked missing, nothing was added, and the 0 it returned is what the command prints as "up to date". A false success, which is worse than an error — it ends the investigation. Both engines had it in the same shape and both are fixed; a fix in one of these parallel writers stays latent in the other until something switches engines.
