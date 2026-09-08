@@ -575,14 +575,7 @@ func buildWorkflowCallMicroflow(ctx parser.IWorkflowCallMicroflowStmtContext) *a
 	}
 
 	// Parameter mappings (Issue #10)
-	for _, pmCtx := range cmCtx.AllWorkflowParameterMapping() {
-		pmCtx2 := pmCtx.(*parser.WorkflowParameterMappingContext)
-		mapping := ast.WorkflowParameterMappingNode{
-			Parameter:  bareWorkflowParameterName(pmCtx2.QualifiedName().GetText()),
-			Expression: unquoteString(pmCtx2.STRING_LITERAL().GetText()),
-		}
-		node.ParameterMappings = append(node.ParameterMappings, mapping)
-	}
+	node.ParameterMappings = buildWorkflowParameterMappings(cmCtx.AllWorkflowParameterMapping())
 
 	// BoundaryEvents (Issue #7)
 	for _, beCtx := range cmCtx.AllWorkflowBoundaryEventClause() {
@@ -606,6 +599,35 @@ func bareWorkflowParameterName(raw string) string {
 	return unquoteIdentifier(strings.TrimSpace(raw))
 }
 
+// buildWorkflowParameterMappings builds the `with (Name = 'expr')` list shared by
+// CALL MICROFLOW and CALL WORKFLOW.
+//
+// Both children are nil-checked because the AST builder runs over the parse tree
+// even when the parse failed — Build() walks first and returns the syntax errors
+// alongside the partial program, which is what lets `check` report more than the
+// first error. Under ANTLR error recovery a rule can therefore be visited with a
+// required child missing, and reading it unguarded takes the process down. The
+// grammar requires a STRING_LITERAL value, so an unquoted one (`Ctx = $Var`, the
+// spelling used everywhere else in MDL) left STRING_LITERAL() nil and every
+// command that parses the script — check, check --references, exec — died on a
+// nil dereference with no diagnostic at all (ako/mxcli#1023). Skipping the
+// mapping keeps the syntax error the listener already recorded as the thing the
+// author is told about.
+func buildWorkflowParameterMappings(ctxs []parser.IWorkflowParameterMappingContext) []ast.WorkflowParameterMappingNode {
+	var out []ast.WorkflowParameterMappingNode
+	for _, pmCtx := range ctxs {
+		pmCtx2, ok := pmCtx.(*parser.WorkflowParameterMappingContext)
+		if !ok || pmCtx2.QualifiedName() == nil || pmCtx2.STRING_LITERAL() == nil {
+			continue
+		}
+		out = append(out, ast.WorkflowParameterMappingNode{
+			Parameter:  bareWorkflowParameterName(pmCtx2.QualifiedName().GetText()),
+			Expression: unquoteString(pmCtx2.STRING_LITERAL().GetText()),
+		})
+	}
+	return out
+}
+
 // buildWorkflowCallWorkflow builds a WorkflowCallWorkflowNode.
 func buildWorkflowCallWorkflow(ctx parser.IWorkflowCallWorkflowStmtContext) *ast.WorkflowCallWorkflowNode {
 	cwCtx := ctx.(*parser.WorkflowCallWorkflowStmtContext)
@@ -619,14 +641,7 @@ func buildWorkflowCallWorkflow(ctx parser.IWorkflowCallWorkflowStmtContext) *ast
 	}
 
 	// Parameter mappings
-	for _, pmCtx := range cwCtx.AllWorkflowParameterMapping() {
-		pmCtx2 := pmCtx.(*parser.WorkflowParameterMappingContext)
-		mapping := ast.WorkflowParameterMappingNode{
-			Parameter:  bareWorkflowParameterName(pmCtx2.QualifiedName().GetText()),
-			Expression: unquoteString(pmCtx2.STRING_LITERAL().GetText()),
-		}
-		node.ParameterMappings = append(node.ParameterMappings, mapping)
-	}
+	node.ParameterMappings = buildWorkflowParameterMappings(cwCtx.AllWorkflowParameterMapping())
 
 	return node
 }

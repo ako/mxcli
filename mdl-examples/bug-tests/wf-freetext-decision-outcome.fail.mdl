@@ -9,9 +9,16 @@
 -- outcome is not a valid EnumerationValueIdentifier (a decision branches on the
 -- enumeration returned by its expression).
 --
--- Fix: `mxcli check` now flags any decision/call-microflow outcome whose name
--- is not a valid identifier as MDL-WF03 (error). 'Reopened' is a valid
--- identifier and is NOT flagged; only 'Confirmed closed' is.
+-- Fix: `mxcli check` flags any decision/call-microflow outcome that is not a
+-- qualified enumeration value identifier as MDL-WF03 (error).
+--
+-- BOTH outcomes here are now flagged. The original fix accepted 'Reopened'
+-- because it is a well-formed identifier — but Mendix stores the value as an
+-- EnumerationValueIdentifier and parses it when the project is LOADED, so a
+-- short name is not a build error, it leaves a project Studio Pro and mxbuild
+-- cannot open at all (ako/mxcli#1031, ako/mxcli#1065). Measured: one segment
+-- and two segments both fail to load, three (Module.Enumeration.Value) checks
+-- at 0 errors.
 --
 -- Note: the deeper issue — MDL decision syntax cannot bind the enum / deciding
 -- microflow the outcomes belong to — is a separate language-design gap.
