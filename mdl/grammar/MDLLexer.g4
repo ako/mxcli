@@ -601,6 +601,13 @@ HEADERS: H E A D E R S;
 
 // Navigation keywords
 NAVIGATION: N A V I G A T I O N;
+// Offline synchronization. SYNC is safe beside SYNCHRONIZE (declared earlier,
+// for the nanoflow activity): ANTLR takes the longest match, so "synchronize"
+// is never lexed as SYNC followed by an identifier.
+SYNC: S Y N C;
+ONLINE: O N L I N E;
+NEVER: N E V E R;
+PRESERVE: P R E S E R V E;
 MENU_KW: M E N U;
 HOMES: H O M E S;
 HOME: H O M E;
