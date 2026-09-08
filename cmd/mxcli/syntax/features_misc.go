@@ -152,7 +152,8 @@ DISCONNECT;`,
 			"create navigation", "replace navigation", "home page",
 			"login page", "not found page", "menu item", "menu icon",
 			"navigation profile", "phone profile", "tablet profile",
-			"offline profile", "offline navigation",
+			"offline profile", "offline navigation", "sync", "synchronization",
+			"offline sync", "offline entity", "pwa", "download mode",
 		},
 		Syntax: `CREATE OR REPLACE NAVIGATION <profile>
   HOME PAGE Module.Page
@@ -162,6 +163,14 @@ DISCONNECT;`,
   [MENU (
     MENU ITEM 'Label' PAGE Module.Page [ICON Module.IconCollection.Name];
     MENU 'Group' [ICON Module.IconCollection.Name] ( ... );
+  )]
+  [SYNC (
+    SYNC Module.Entity ONLINE;
+    SYNC Module.Entity ALL;
+    SYNC Module.Entity WHERE '[Amount > 0]';
+    SYNC Module.Entity NEVER;
+    SYNC Module.Entity NONE;
+    SYNC Module.Entity NONE PRESERVE DATA;
   )];
 
 -- FOR takes a USER role, written BARE (FOR Administrator). User roles are
@@ -183,6 +192,26 @@ DISCONNECT;`,
 -- the project does not have it yet:
 --   Responsive  Phone  Tablet                       online
 --   ResponsiveOffline  PhoneOffline  TabletOffline  offline
+--
+-- SYNC configures offline synchronization, and an offline profile downloads
+-- NOTHING until its entities have one -- a profile with no SYNC block builds,
+-- routes and installs as a PWA, and shows an empty app.
+--
+-- The six modes are the members Mendix stores, NOT the captions Studio Pro
+-- shows: its "All Objects" is ALL and its "By XPath" is WHERE. WHERE implies
+-- the constrained mode rather than naming it, so a constraint without a mode
+-- and a mode without a constraint are both unspellable.
+--
+--   ONLINE               fetched from the server, never held on the device
+--   ALL                  every object downloaded
+--   WHERE '<xpath>'      only the objects the XPath selects
+--   NEVER                not synchronized
+--   NONE                 not downloaded; anything already on the device is dropped
+--   NONE PRESERVE DATA   not downloaded; what is on the device stays
+--
+-- The block REPLACES the stored list, the way MENU replaces the menu. An
+-- entity's compatibility-mode flag has no syntax and is preserved across the
+-- rewrite untouched; DESCRIBE NAVIGATION flags it rather than dropping it.
 -- An invented name ("Mobile") is an error: the runtime routes on User-Agent to
 -- Mendix's own kinds, so a profile the platform does not define can never route.
 --

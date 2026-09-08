@@ -330,6 +330,32 @@ navigationClause
     | LOGIN PAGE qualifiedName
     | NOT FOUND PAGE qualifiedName
     | MENU_KW LPAREN navMenuItemDef* RPAREN
+    | SYNC LPAREN navSyncDef* RPAREN
+    ;
+
+// Offline synchronization, one statement per entity, mirroring the MENU block:
+// a list of rules rather than a property bag, so it diffs a line at a time.
+//
+// WHERE implies the Constrained mode rather than naming it. A constrained
+// entity with no constraint and a constraint with no mode are both nonsense,
+// so deriving one from the other makes the invalid pair unspellable instead of
+// merely diagnosable — and leaves Constrained with no bare word, which is
+// correct because there is nothing to say without the XPath.
+navSyncDef
+    : SYNC qualifiedName navSyncMode SEMICOLON?
+    ;
+
+// Every alternative maps to exactly one Navigation$SyncMode member. The words
+// are not the captions Studio Pro shows -- "All Objects" and "By XPath" are not
+// members of the enumeration at all -- so the mapping lives in the visitor with
+// a test asserting each target is a declared member.
+navSyncMode
+    : ONLINE
+    | ALL
+    | NEVER
+    | NONE PRESERVE DATA
+    | NONE
+    | WHERE STRING_LITERAL
     ;
 
 // The icon is a qualifiedName, like every other reference into the model, and

@@ -82,7 +82,56 @@ func (b *Builder) processNavigationClause(stmt *ast.AlterNavigationStmt, ctx *pa
 			item := buildNavMenuItemDef(itemCtx)
 			stmt.MenuItems = append(stmt.MenuItems, item)
 		}
+	} else if ctx.SYNC() != nil {
+		// SYNC (navSyncDef*)
+		stmt.HasSyncBlock = true
+		for _, defCtx := range ctx.AllNavSyncDef() {
+			stmt.SyncEntries = append(stmt.SyncEntries, buildNavSyncDef(defCtx))
+		}
 	}
+}
+
+// syncModeFor maps an MDL mode word onto the stored Navigation$SyncMode member.
+//
+// The words are deliberately NOT Studio Pro's captions: "All Objects" and "By
+// XPath" are captions of All and Constrained and are not members of the
+// enumeration at all. Writing a caption where a key belongs is what made every
+// mxcli-authored gallery fail with CE0463 (mendixlabs/mxcli#1035), so every
+// value on the right of this table is asserted to be a declared member by
+// TestNavSyncModesAreDeclaredEnumMembers.
+func buildNavSyncDef(ctx parser.INavSyncDefContext) ast.NavSyncDef {
+	c := ctx.(*parser.NavSyncDefContext)
+
+	def := ast.NavSyncDef{}
+	if qn := c.QualifiedName(); qn != nil {
+		def.Entity = buildQualifiedName(qn)
+	}
+
+	m := c.NavSyncMode()
+	if m == nil {
+		return def
+	}
+	mc := m.(*parser.NavSyncModeContext)
+	switch {
+	case mc.ONLINE() != nil:
+		def.Mode = "Online"
+	case mc.ALL() != nil:
+		def.Mode = "All"
+	case mc.NEVER() != nil:
+		def.Mode = "Never"
+	case mc.NONE() != nil && mc.PRESERVE() != nil:
+		def.Mode = "NoneAndPreserveData"
+	case mc.NONE() != nil:
+		def.Mode = "None"
+	case mc.WHERE() != nil:
+		// WHERE implies Constrained: the mode and the constraint come from one
+		// alternative so they cannot disagree.
+		def.Mode = "Constrained"
+		if lit := mc.STRING_LITERAL(); lit != nil {
+			def.Constraint = unquoteString(lit.GetText())
+		}
+	}
+	return def
 }
 
 // buildNavMenuItemDef recursively builds a NavMenuItemDef from the parse context.

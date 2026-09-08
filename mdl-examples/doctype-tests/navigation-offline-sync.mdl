@@ -1,0 +1,72 @@
+-- Offline synchronization on a navigation profile.
+--
+-- An offline profile downloads NOTHING until its entities are given a sync
+-- mode: without a SYNC block the app builds, routes and installs as a PWA, and
+-- shows an empty screen.
+--
+-- The mode words are the members Mendix stores, not the captions Studio Pro
+-- shows in its "Customize offline synchronization" dialog -- "All Objects" is
+-- ALL and "By XPath" is WHERE. All six are exercised here because a real
+-- project (ako/TestApp) stores all six.
+
+create module "OfflineSync";
+
+create entity "OfflineSync"."Vehicle" (
+  "Name": String(100),
+  "Mileage": Integer
+);
+
+create entity "OfflineSync"."Trip" (
+  "Distance": Integer
+);
+
+create entity "OfflineSync"."Lookup" (
+  "Code": String(20)
+);
+
+create entity "OfflineSync"."AuditEntry" (
+  "Message": String(200)
+);
+
+create entity "OfflineSync"."Draft" (
+  "Body": String(500)
+);
+
+create entity "OfflineSync"."Setting" (
+  "Key": String(50)
+);
+
+create page "OfflineSync"."Mobile_Home"
+(
+  title: 'Offline home',
+  layout: Atlas_Core.Atlas_Default,
+  url: 'offline_home'
+)
+{
+  dynamictext home_text (content: 'Offline home', rendermode: H2)
+}
+
+-- PhoneOffline is created if the project does not already have it: Mendix's
+-- web profile kinds are a closed set, and the offline ones are the online
+-- names plus "Offline".
+create or replace navigation "PhoneOffline"
+  home page "OfflineSync"."Mobile_Home"
+  sync (
+    -- Fetched from the server; never held on the device.
+    sync "OfflineSync"."Setting" online;
+    -- Every object downloaded.
+    sync "OfflineSync"."Vehicle" all;
+    -- Only what the XPath selects. WHERE implies the constrained mode, so a
+    -- constraint without a mode cannot be written.
+    sync "OfflineSync"."Trip" where '[Distance > 0]';
+    -- Not synchronized at all.
+    sync "OfflineSync"."AuditEntry" never;
+    -- Not downloaded, and anything already on the device is dropped.
+    sync "OfflineSync"."Lookup" none;
+    -- Not downloaded, but what is already on the device stays.
+    sync "OfflineSync"."Draft" none preserve data;
+  );
+
+-- Re-running the block replaces the stored list, the way MENU replaces the
+-- menu. Compatibility mode has no syntax and survives the rewrite untouched.
+describe navigation "PhoneOffline";

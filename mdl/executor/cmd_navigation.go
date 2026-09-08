@@ -96,6 +96,15 @@ func execAlterNavigation(ctx *ExecContext, s *ast.AlterNavigationStmt) error {
 		spec.MenuItems = append(spec.MenuItems, convertMenuItemDef(mi))
 	}
 
+	spec.HasSync = s.HasSyncBlock
+	for _, se := range s.SyncEntries {
+		spec.OfflineEntities = append(spec.OfflineEntities, types.NavOfflineEntitySpec{
+			Entity:     se.Entity.String(),
+			SyncMode:   se.Mode,
+			Constraint: se.Constraint,
+		})
+	}
+
 	if err := ctx.Backend.UpdateNavigationProfile(nav.ID, s.ProfileName, spec); err != nil {
 		return mdlerrors.NewBackend("update navigation profile", err)
 	}
@@ -341,22 +350,23 @@ func outputNavigationProfile(ctx *ExecContext, p *types.NavigationProfile) {
 		fmt.Fprintln(ctx.Output, "  )")
 	}
 
-	// Offline entities (as comments since CREATE NAVIGATION doesn't handle sync yet)
+	// Offline entities. These are re-executable now, so they are emitted as a
+	// SYNC block rather than as the commented-out approximation that made
+	// describe -> exec lossy for every project using offline sync.
 	if len(p.OfflineEntities) > 0 {
-		fmt.Fprintln(ctx.Output, "  -- Offline Entities (not yet modifiable):")
+		fmt.Fprintln(ctx.Output, "  sync (")
 		for _, oe := range p.OfflineEntities {
-			constraint := ""
-			if oe.Constraint != "" {
-				// The stored constraint is multi-line in real documents
-				// (measured on ako/TestApp), and a newline inside a `--`
-				// comment would end the comment and leave XPath as MDL.
-				constraint = fmt.Sprintf(" where '%s'", singleLine(oe.Constraint))
-			}
-			compat := ""
+			fmt.Fprintf(ctx.Output, "    sync %s %s;\n", oe.Entity, syncModeMDL(oe.SyncMode, oe.Constraint))
+		}
+		fmt.Fprintln(ctx.Output, "  )")
+		// CompatibilityMode has no syntax: it is carried through a rewrite
+		// untouched, but a reader should know it is set rather than discover it
+		// missing later. Flagged, never silently dropped.
+		for _, oe := range p.OfflineEntities {
 			if oe.CompatibilityMode {
-				compat = " compatibility mode"
+				fmt.Fprintf(ctx.Output,
+					"  -- %s has compatibility mode on; mxcli preserves it but cannot author it\n", oe.Entity)
 			}
-			fmt.Fprintf(ctx.Output, "  -- SYNC %s MODE %s%s%s;\n", oe.Entity, oe.SyncMode, constraint, compat)
 		}
 	}
 
@@ -489,4 +499,32 @@ func singleLine(s string) string {
 	s = strings.ReplaceAll(s, "\r\n", " ")
 	s = strings.ReplaceAll(s, "\n", " ")
 	return strings.Join(strings.Fields(s), " ")
+}
+
+// syncModeMDL renders a stored sync mode as the MDL that reproduces it.
+//
+// The inverse of the visitor's mapping, and the reason describe -> exec now
+// round-trips: emitting the stored member verbatim would produce `sync X
+// Constrained`, which is not MDL, and emitting a Studio Pro caption would
+// produce a document mxbuild refuses.
+func syncModeMDL(mode, constraint string) string {
+	switch mode {
+	case "Online":
+		return "online"
+	case "All":
+		return "all"
+	case "Never":
+		return "never"
+	case "None":
+		return "none"
+	case "NoneAndPreserveData":
+		return "none preserve data"
+	case "Constrained":
+		return fmt.Sprintf("where '%s'", escapeMDLString(singleLine(constraint)))
+	default:
+		// An unknown member is not guessed at. Emitting a mode MDL cannot spell
+		// would produce a script that fails at check; saying so is honest and
+		// keeps the rest of the block re-executable.
+		return fmt.Sprintf("all -- UNKNOWN MODE %q, not reproducible", mode)
+	}
 }

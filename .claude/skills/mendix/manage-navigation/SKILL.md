@@ -190,6 +190,57 @@ menu item 'Close' page MyModule.Close;
 -- icon System.Images.Close (Forms$ImageIcon) is not reproducible by CREATE NAVIGATION; set it in Studio Pro
 ```
 
+### Offline Synchronization
+
+An offline profile downloads **nothing** until its entities are given a sync
+mode. Without a `SYNC` block the app builds, routes and installs as a PWA — and
+shows an empty screen. That is the single most common way an offline profile
+looks broken while every check passes.
+
+```sql
+create or replace navigation PhoneOffline
+  home page MyModule.Mobile_Dashboard
+  sync (
+    sync MyModule.Setting online;
+    sync MyModule.Vehicle all;
+    sync MyModule.Trip where '[Distance > 0]';
+    sync MyModule.AuditEntry never;
+    sync MyModule.Lookup none;
+    sync MyModule.Draft none preserve data;
+  );
+```
+
+| MDL | Meaning |
+|---|---|
+| `online` | fetched from the server, never held on the device |
+| `all` | every object downloaded |
+| `where '<xpath>'` | only the objects the XPath selects |
+| `never` | not synchronized |
+| `none` | not downloaded; anything already on the device is dropped |
+| `none preserve data` | not downloaded; what is on the device stays |
+
+**The words are not Studio Pro's captions.** Its dialog shows "All Objects" and
+"By XPath"; neither is a value Mendix stores. `all` and `where` are. Copying a
+caption out of the UI gives a parse error rather than a broken document, which
+is deliberate.
+
+**`where` implies the constrained mode** rather than naming it, so a constraint
+without a mode and a mode without a constraint are both unspellable.
+
+**Quote doubling matters here.** An offline constraint routinely contains quoted
+literals, and every `'` inside the MDL string is doubled:
+
+```sql
+sync MyModule.Team where '[contains(Name, ''''abc'''')]';
+```
+
+**The block replaces the stored list**, the way `menu (...)` replaces the menu.
+Omitting it leaves the stored configuration alone.
+
+**Compatibility mode has no syntax.** mxcli reads it, preserves it across a
+rewrite, and `describe navigation` flags any entity that has it on — it is never
+silently dropped.
+
 ### Clear the Menu
 
 An empty `menu ()` block removes all menu items:
