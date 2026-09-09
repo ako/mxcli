@@ -963,7 +963,7 @@ func groupGuard(js string, callStart int) string {
 	head := strings.TrimRight(js[:open], " ")
 	for _, c := range []string{"&&", "||"} {
 		if strings.HasSuffix(head, c) {
-			return stripReturnPrefix(trailingExpr(head[:len(head)-2]))
+			return stripReturnPrefix(operandBefore(head[:len(head)-2]))
 		}
 	}
 	for _, c := range []string{"?", ":"} {
@@ -985,6 +985,37 @@ func groupGuard(js string, callStart int) string {
 		}
 	}
 	return ""
+}
+
+// operandBefore returns the single expression immediately to the left of a
+// connector, which is the group's own condition.
+//
+// `trailingExpr` alone is too greedy here. It stops at a STATEMENT separator,
+// and a chained ternary contains none — so for Combo box's
+//
+//	["enumeration","boolean"].includes(t.optionsSourceType)
+//	  ? ( …hides… )
+//	  : "association"===t.optionsSourceType && ( …hides… )
+//
+// it returns the whole `A ? (…) : B` expression as the "condition" of the `&&`
+// group, which is not a comparison, so the chain reads as unreadable and six
+// rules go unlifted. `lastGuardExpr` bounds at `:` and `?` as well and yields
+// exactly `"association"===t.optionsSourceType`.
+//
+// It is not a straight swap: `lastGuardExpr` bounds at `{` too, so where the
+// expression is preceded by a block — ProgressCircle's ternary follows a whole
+// `switch` — it hands back a fragment with an unbalanced `}`. So take
+// lastGuardExpr's answer only when it stopped at a boundary INSIDE an
+// expression (`:`, `?`, `,`), and fall back to trailingExpr otherwise.
+func operandBefore(head string) string {
+	guard, boundary := lastGuardExpr(head)
+	switch boundary {
+	case ':', '?', ',':
+		if guard != "" {
+			return guard
+		}
+	}
+	return trailingExpr(head)
 }
 
 // matchingTernaryQuestion returns the index of the `?` matching the `:` that
