@@ -229,6 +229,22 @@ revoke MyModule.User on MyModule.Customer (write (Email));
 revoke MyModule.User on MyModule.Customer (delete);
 ```
 
+#### Members added later
+
+A rule also carries a default for members added **after** it was written, and MDL
+derives it from the grant: `write *` → ReadWrite, `read *` → ReadOnly, and a
+grant written **purely as member lists** leaves it at **None**.
+
+So `alter entity … add attribute` gives the new attribute None on a
+member-listed rule. Nothing is broken — every rule gets an entry, the build is
+clean — but the attribute renders blank for that role. `alter entity` warns and
+prints the grant that widens it.
+
+What decides this is the rule's default, **not** how narrow its member list is:
+`read *, write (Email)` is narrower than `read *, write *` and still picks up new
+members, because `read *` set its default to ReadOnly. Give a rule `read *` and
+narrow with `revoke` when the role should follow the entity as it grows.
+
 #### Inherited members
 
 Mendix inheritance is multi-table: a child adds attributes to its parent's, and
